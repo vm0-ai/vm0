@@ -10,7 +10,6 @@ import { db$, writeDb$ } from "../external/db";
 import { nowDate } from "../external/time";
 import { notFound } from "../../lib/error";
 import { zeroAgentExists } from "../services/zero-agent-data.service";
-import { maybeCreateUserMessageDocument } from "../services/zero-chat-user-message.service";
 import type { RouteEntry } from "../route-entry";
 
 const agentReadAuth = {
@@ -89,12 +88,7 @@ const patchAgentDraftInner$ = command(
 
     const draftContent = bodyResult.data.draftContent ?? null;
     const draftAttachments = bodyResult.data.draftAttachments ?? null;
-    const draftUserMessage =
-      bodyResult.data.draftUserMessage ??
-      maybeCreateUserMessageDocument({
-        text: draftContent,
-        files: draftAttachments ?? undefined,
-      });
+    const draftUserMessage = bodyResult.data.draftUserMessage;
     const writeDb = set(writeDb$);
 
     if (

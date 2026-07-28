@@ -340,10 +340,8 @@ function asInputChatEvent(message: ChatMessage): ChatInputMessage | undefined {
 
 function visibleUserMessage(
   inputMessage: ChatInputMessage | undefined,
-  userMessageEnabled: boolean,
 ): UserMessageDocument | undefined {
-  return inputMessage &&
-    shouldUseUserMessage(userMessageEnabled, inputMessage.userMessage)
+  return inputMessage && shouldUseUserMessage(inputMessage.userMessage)
     ? inputMessage.userMessage
     : undefined;
 }
@@ -2551,10 +2549,7 @@ function runGroupFoldMessages(fold: RunGroupFold): EnrichedChatMessage[] {
   });
 }
 
-function runGroupFoldSourceLabel(
-  fold: RunGroupFold,
-  userMessageEnabled: boolean,
-): string {
+function runGroupFoldSourceLabel(fold: RunGroupFold): string {
   const messages = runGroupFoldMessages(fold);
   const workflowLabel = runGroupFoldWorkflowLabel(fold);
   if (workflowLabel) {
@@ -2564,10 +2559,7 @@ function runGroupFoldSourceLabel(
     if (!isInputChatEvent(message)) {
       continue;
     }
-    const content = shouldUseUserMessage(
-      userMessageEnabled,
-      message.userMessage,
-    )
+    const content = shouldUseUserMessage(message.userMessage)
       ? messageDocumentToDisplayText(message.userMessage)
       : message.content;
     if (content?.trim()) {
@@ -2657,17 +2649,14 @@ function verboseDurationLabelForRunGroupFold(
   return parts.join(" ");
 }
 
-function runGroupFoldLabel(
-  fold: RunGroupFold,
-  userMessageEnabled: boolean,
-): string {
+function runGroupFoldLabel(fold: RunGroupFold): string {
   if (isGoalRunGroupFold(fold)) {
     const duration = verboseDurationLabelForRunGroupFold(fold);
     const label = runGroupFoldGoalLabel(fold);
     return duration ? `${duration} for ${label}` : `Goal for ${label}`;
   }
   const runLabel = fold.hiddenRunCount === 1 ? "run" : "runs";
-  const sourceLabel = runGroupFoldSourceLabel(fold, userMessageEnabled);
+  const sourceLabel = runGroupFoldSourceLabel(fold);
   return `${fold.hiddenRunCount} ${runLabel} for ${sourceLabel}`;
 }
 
@@ -2679,11 +2668,7 @@ function RunGroupFoldRow({
   embedded?: boolean;
 }) {
   const { fold, expanded, onToggle } = control;
-  const featureSwitches = useGet(featureSwitch$);
-  const label = runGroupFoldLabel(
-    fold,
-    featureSwitches[FeatureSwitchKey.StructuredPrompt] ?? false,
-  );
+  const label = runGroupFoldLabel(fold);
   const isGoal = isGoalRunGroupFold(fold);
   const Icon = isGoal ? IconTarget : IconPackage;
   return (
@@ -6374,14 +6359,105 @@ function GoalUserMessage({
 
 function useUserMessageRendering() {
   const featureSwitches = useGet(featureSwitch$);
-  const structured =
-    featureSwitches[FeatureSwitchKey.StructuredPrompt] ?? false;
   return {
-    structured,
     inlineTemplates:
-      structured &&
-      (featureSwitches[FeatureSwitchKey.StructuredPromptInlineTemplates] ??
-        false),
+      featureSwitches[FeatureSwitchKey.StructuredPromptInlineTemplates] ??
+      false,
+  };
+}
+
+function matchesLegacyUserMessageFields(
+  inputMessage: ChatInputMessage | undefined,
+  userMessage: UserMessageDocument | undefined,
+): boolean {
+  // Migration 0717 reconstructs this exact files-then-text projection. Keep
+  // its existing Markdown and attachment UI until the userMessage-only read
+  // cutover removes the legacy fields in a later change.
+  if (!inputMessage || !userMessage) {
+    return false;
+  }
+  const attachments = inputMessage.attachFiles ?? [];
+  const content = inputMessage.content ?? "";
+  const expectedPartCount = attachments.length + (content.length > 0 ? 1 : 0);
+  if (userMessage.parts.length !== expectedPartCount) {
+    return false;
+  }
+  for (const [index, attachment] of attachments.entries()) {
+    const part = userMessage.parts[index];
+    if (
+      part?.type !== "file" ||
+      part.fileId !== attachment.id ||
+      part.filenameSnapshot !== attachment.filename ||
+      part.contentType !== attachment.contentType
+    ) {
+      return false;
+    }
+  }
+  if (content.length === 0) {
+    return true;
+  }
+  const textPart = userMessage.parts.at(-1);
+  return textPart?.type === "text" && textPart.text === content;
+}
+
+function resolvePagedUserMessageRendering({
+  message,
+  inputMessage,
+  userMessage,
+  inlineTemplates,
+}: {
+  message: EnrichedChatMessage;
+  inputMessage: ChatInputMessage | undefined;
+  userMessage: UserMessageDocument | undefined;
+  inlineTemplates: boolean;
+}) {
+  // Two attachment sources coexist: the structured `attachFiles` field
+  // (current flow) and legacy `[Attached file: ...](url)` inline lines left
+  // over from messages sent before #10243 split the flows. Keep the legacy
+  // representation when those inline lines are still present.
+  const { cleanContent, parsed } = parseInlineAttachments(
+    message.content ?? "",
+  );
+  const canonicalUserMessage =
+    parsed.length === 0 &&
+    !matchesLegacyUserMessageFields(inputMessage, userMessage)
+      ? userMessage
+      : undefined;
+  const attachFiles = inputMessage?.attachFiles;
+  const legacyCopyText =
+    attachFiles &&
+    attachFiles.length > 0 &&
+    cleanContent.trim() === ATTACH_ONLY_PLACEHOLDER
+      ? ""
+      : cleanContent;
+  const copyText = canonicalUserMessage
+    ? (messageDocumentToPrompt(canonicalUserMessage, {
+        inlineTemplates,
+      }) ?? "")
+    : legacyCopyText;
+  const legacyClipboardAttachments = clipboardAttachmentsFromMessage(
+    message,
+    parsed,
+  );
+  const clipboardAttachments = canonicalUserMessage
+    ? clipboardAttachmentsFromUserMessage(
+        canonicalUserMessage,
+        legacyClipboardAttachments,
+      )
+    : legacyClipboardAttachments;
+  const generationTemplate = canonicalUserMessage?.parts.some((part) => {
+    return part.type === "template";
+  })
+    ? undefined
+    : inputMessage?.generationTemplate;
+
+  return {
+    attachFiles,
+    canonicalUserMessage,
+    clipboardAttachments,
+    copyText,
+    generationTemplate,
+    parsed,
   };
 }
 
@@ -6392,27 +6468,22 @@ function PagedUserMessage({
   message: EnrichedChatMessage;
   thread: ChatThreadSignals;
 }) {
-  const { structured, inlineTemplates } = useUserMessageRendering();
+  const { inlineTemplates } = useUserMessageRendering();
   const inputMessage = asInputChatEvent(message);
-  const userMessage = visibleUserMessage(inputMessage, structured);
-  const content = message.content ?? "";
-  // Two attachment sources coexist: the structured `attachFiles` field
-  // (current flow) and legacy `[Attached file: ...](url)` inline lines left
-  // over from messages sent before #10243 split the flows. Use the structured
-  // source when it's present and fall back to inline parsing otherwise.
-  const { cleanContent, parsed } = parseInlineAttachments(content);
-  const attachFiles = inputMessage?.attachFiles;
-  const legacyCopyText =
-    attachFiles &&
-    attachFiles.length > 0 &&
-    cleanContent.trim() === ATTACH_ONLY_PLACEHOLDER
-      ? ""
-      : cleanContent;
-  const copyText = userMessage
-    ? (messageDocumentToPrompt(userMessage, {
-        inlineTemplates,
-      }) ?? "")
-    : legacyCopyText;
+  const userMessage = visibleUserMessage(inputMessage);
+  const {
+    attachFiles,
+    canonicalUserMessage,
+    clipboardAttachments,
+    copyText,
+    generationTemplate,
+    parsed,
+  } = resolvePagedUserMessageRendering({
+    message,
+    inputMessage,
+    userMessage,
+    inlineTemplates,
+  });
   const bodyBlocks = message.blocks;
   const pageSignal = useGet(pageSignal$);
   const openImageLightbox = useSet(openAttachmentImageLightbox$);
@@ -6422,16 +6493,6 @@ function PagedUserMessage({
   const copyMessage = useSet(thread.copyMessage$);
   const findArtifact = thread.artifactSignalsForUrl;
   const allAttachments = resolveAttachments(message, parsed, findArtifact);
-  const legacyClipboardAttachments = clipboardAttachmentsFromMessage(
-    message,
-    parsed,
-  );
-  const clipboardAttachments = userMessage
-    ? clipboardAttachmentsFromUserMessage(
-        userMessage,
-        legacyClipboardAttachments,
-      )
-    : legacyClipboardAttachments;
   const canCopy =
     userMessage !== undefined ||
     copyText.trim().length > 0 ||
@@ -6476,9 +6537,12 @@ function PagedUserMessage({
         <div className="flex flex-col items-end w-full">
           <SlackUserMessageOrigin permalink={message.slackMessagePermalink} />
           <FeishuUserMessageOrigin chatOpenUrl={message.feishuChatOpenUrl} />
-          {userMessage ? (
+          <UserMessageGenerationTemplate
+            generationTemplate={generationTemplate}
+          />
+          {canonicalUserMessage ? (
             <UserMessageContent
-              document={userMessage}
+              document={canonicalUserMessage}
               attachments={allAttachments}
               referenceAttachments={attachFiles ?? []}
               onImageClick={openLightbox}
@@ -6486,9 +6550,6 @@ function PagedUserMessage({
             />
           ) : (
             <>
-              <UserMessageGenerationTemplate
-                generationTemplate={inputMessage?.generationTemplate}
-              />
               <UserMessageAttachments
                 attachments={allAttachments}
                 onImageClick={openLightbox}

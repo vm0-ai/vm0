@@ -32,6 +32,10 @@ const chatEvents = [
     threadId: THREAD_ID,
     eventType: "input.prompt",
     content: "Run the task",
+    userMessage: {
+      version: 1,
+      parts: [{ type: "text", text: "Run the task" }],
+    },
     createdAt: CREATED_AT,
   },
   {
@@ -51,6 +55,10 @@ const chatEvents = [
     threadId: THREAD_ID,
     eventType: "input.rejected",
     content: "Run the task",
+    userMessage: {
+      version: 1,
+      parts: [{ type: "text", text: "Run the task" }],
+    },
     error: "Insufficient credits",
     automationId: "00000000-0000-4000-8000-000000000010",
     triggerSource: "workflow-event",

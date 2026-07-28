@@ -1,7 +1,6 @@
 import { fireEvent, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { toast } from "@vm0/ui/components/ui/sonner";
-import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import { ILLUSTRATION_TEMPLATE_ITEMS } from "@vm0/core";
 import { HttpResponse } from "msw";
 import { describe, expect, it, vi } from "vitest";
@@ -102,6 +101,7 @@ function mockThreadDetails(): void {
   context.mocks.api(chatThreadDraftContract.get, ({ respond }) => {
     return respond(200, {
       draftContent: null,
+      draftUserMessage: null,
       draftAttachments: null,
     });
   });
@@ -201,11 +201,14 @@ describe("chat drafts", () => {
           version: 1,
           parts: [
             {
-              type: "feedback",
-              quote: "Structured agent quote stays hidden",
-              note: [
-                { type: "text", text: "Structured agent note stays hidden" },
-              ],
+              type: "file",
+              fileId: "agent-draft-brief",
+              filenameSnapshot: "agent-brief.md",
+              contentType: "text/markdown",
+            },
+            {
+              type: "text",
+              text: `Resume the ${params.id} launch notes`,
             },
           ],
         },
@@ -233,17 +236,10 @@ describe("chat drafts", () => {
       expect(
         screen.getByLabelText("Remove agent-brief.md"),
       ).toBeInTheDocument();
-      expect(textarea()).not.toHaveTextContent(
-        "Structured agent quote stays hidden",
-      );
-      expect(textarea()).not.toHaveTextContent(
-        "Structured agent note stays hidden",
-      );
-      expect(textarea().querySelector("[data-feedback-item]")).toBeNull();
     });
   });
 
-  it("restores an agent feedback draft with the structured prompt rollout", async () => {
+  it("normalizes an agent feedback draft from the preceding API", async () => {
     const agentId = "c0000000-0000-4000-a000-000000000111";
     const referencedThreadId = "b1000000-0000-4000-a000-000000000111";
     const firstAttachment = {
@@ -300,7 +296,6 @@ describe("chat drafts", () => {
     detachedSetupPage({
       context,
       path: `/agents/${agentId}/chat`,
-      featureSwitches: { [FeatureSwitchKey.StructuredPrompt]: true },
     });
 
     const editor = await findComposerEditor();
@@ -338,6 +333,7 @@ describe("chat drafts", () => {
     context.mocks.api(zeroAgentDraftContract.get, ({ respond }) => {
       return respond(200, {
         draftContent: null,
+        draftUserMessage: null,
         draftAttachments: null,
       });
     });
@@ -353,7 +349,6 @@ describe("chat drafts", () => {
       detachedSetupPage({
         context,
         path: `/agents/${agentId}/chat`,
-        featureSwitches: { [FeatureSwitchKey.StructuredPrompt]: true },
       });
 
       await waitFor(() => {
@@ -396,7 +391,7 @@ describe("chat drafts", () => {
     }
   });
 
-  it("persists and clears typed thread drafts when structured prompts are enabled", async () => {
+  it("persists and clears typed thread drafts as userMessage documents", async () => {
     const user = userEvent.setup({ delay: null });
     const threadId = "b1000000-0000-4000-a000-000000000107";
     const draftPatches: Record<string, unknown>[] = [];
@@ -409,7 +404,6 @@ describe("chat drafts", () => {
     detachedSetupPage({
       context,
       path: `/chats/${threadId}`,
-      featureSwitches: { [FeatureSwitchKey.StructuredPrompt]: true },
     });
 
     const editor = await findComposerEditor();
@@ -487,6 +481,7 @@ describe("chat drafts", () => {
       if (params.id !== THREAD_ONE_ID) {
         return respond(200, {
           draftContent: null,
+          draftUserMessage: null,
           draftAttachments: null,
         });
       }
@@ -509,7 +504,6 @@ describe("chat drafts", () => {
     detachedSetupPage({
       context,
       path: `/chats/${THREAD_ONE_ID}`,
-      featureSwitches: { [FeatureSwitchKey.StructuredPrompt]: true },
     });
 
     await waitFor(() => {
@@ -548,6 +542,18 @@ describe("chat drafts", () => {
     context.mocks.api(chatThreadDraftContract.get, ({ respond }) => {
       return respond(200, {
         draftContent: "Review the saved launch brief",
+        draftUserMessage: {
+          version: 1,
+          parts: [
+            {
+              type: "file",
+              fileId: "draft-brief",
+              filenameSnapshot: "brief.md",
+              contentType: "text/markdown",
+            },
+            { type: "text", text: "Review the saved launch brief" },
+          ],
+        },
         draftAttachments: [
           {
             id: "draft-brief",
@@ -568,7 +574,7 @@ describe("chat drafts", () => {
     });
   });
 
-  it("restores and persists feedback with the structured prompt rollout", async () => {
+  it("restores and persists feedback as a userMessage draft", async () => {
     const user = userEvent.setup({ delay: null });
     const threadId = "b1000000-0000-4000-a000-000000000104";
     const referencedThreadId = "b1000000-0000-4000-a000-000000000105";
@@ -652,7 +658,6 @@ describe("chat drafts", () => {
     detachedSetupPage({
       context,
       path: `/chats/${threadId}`,
-      featureSwitches: { [FeatureSwitchKey.StructuredPrompt]: true },
     });
 
     const editor = await findComposerEditor();
@@ -743,80 +748,6 @@ describe("chat drafts", () => {
     });
   });
 
-  it("keeps legacy draft hydration while dual-writing with the switch disabled", async () => {
-    const user = userEvent.setup({ delay: null });
-    const threadId = "b1000000-0000-4000-a000-000000000106";
-    const draftPatches: Record<string, unknown>[] = [];
-    const legacyAttachment = {
-      id: "legacy-draft-file",
-      filename: "legacy.txt",
-      contentType: "text/plain",
-      size: 6,
-      url: "https://cdn.vm7.io/artifacts/test/drafts/legacy.txt",
-    };
-
-    mockChatLifecycle(context, { threadId });
-    context.mocks.api(chatThreadDraftContract.get, ({ respond }) => {
-      return respond(200, {
-        draftContent: "legacy draft",
-        draftUserMessage: {
-          version: 1,
-          parts: [
-            { type: "text", text: "structured draft" },
-            {
-              type: "feedback",
-              quote: "Structured quote stays hidden",
-              note: [{ type: "text", text: "Structured note stays hidden" }],
-            },
-          ],
-        },
-        draftAttachments: [legacyAttachment],
-      });
-    });
-    context.mocks.api(chatThreadByIdContract.patch, ({ body, respond }) => {
-      draftPatches.push(chatThreadByIdContract.patch.body.parse(body));
-      return respond(204);
-    });
-
-    detachedSetupPage({
-      context,
-      path: `/chats/${threadId}`,
-      featureSwitches: { [FeatureSwitchKey.StructuredPrompt]: false },
-    });
-
-    const editor = await findComposerEditor();
-    await waitFor(() => {
-      expect(editor).toHaveTextContent("legacy draft");
-      expect(editor).not.toHaveTextContent("structured draft");
-      expect(editor).not.toHaveTextContent("Structured quote stays hidden");
-      expect(editor).not.toHaveTextContent("Structured note stays hidden");
-      expect(editor.querySelector("[data-feedback-item]")).toBeNull();
-      expect(screen.getByLabelText("Remove legacy.txt")).toBeInTheDocument();
-    });
-
-    await user.click(editor);
-    await user.keyboard(" updated");
-
-    await waitFor(() => {
-      expect(draftPatches).toContainEqual({
-        draftContent: "legacy draft updated",
-        draftUserMessage: {
-          version: 1,
-          parts: [
-            {
-              type: "file",
-              fileId: legacyAttachment.id,
-              filenameSnapshot: legacyAttachment.filename,
-              contentType: legacyAttachment.contentType,
-            },
-            { type: "text", text: "legacy draft updated" },
-          ],
-        },
-        draftAttachments: [legacyAttachment],
-      });
-    });
-  });
-
   it("persists edited draft attachments and clears the server draft after sending", async () => {
     const user = userEvent.setup({ delay: null });
     const threadId = "b1000000-0000-4000-a000-000000000102";
@@ -830,6 +761,18 @@ describe("chat drafts", () => {
     context.mocks.api(chatThreadDraftContract.get, ({ respond }) => {
       return respond(200, {
         draftContent: "Review the saved launch brief",
+        draftUserMessage: {
+          version: 1,
+          parts: [
+            {
+              type: "file",
+              fileId: "draft-brief",
+              filenameSnapshot: "brief.md",
+              contentType: "text/markdown",
+            },
+            { type: "text", text: "Review the saved launch brief" },
+          ],
+        },
         draftAttachments: [
           {
             id: "draft-brief",

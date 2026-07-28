@@ -152,6 +152,10 @@ describe("CHAT-01 chat thread lifecycle", () => {
     await api.patchThread(owner, thread.id, {
       draftContent: "private draft",
       draftAttachments: null,
+      draftUserMessage: {
+        version: 1,
+        parts: [{ type: "text", text: "private draft" }],
+      },
     });
     await expect(api.readThreadDraft(owner, thread.id)).resolves.toMatchObject({
       draftContent: "private draft",
@@ -300,6 +304,7 @@ describe("CHAT-02 chat messages and visible validation", () => {
         },
       ],
     };
+    const expectedContent = "Build a launch-plan presentation";
 
     const sent = await api.requestSendEvent(
       actor,
@@ -355,13 +360,13 @@ describe("CHAT-02 chat messages and visible validation", () => {
 
     expect(queuedMessage).toMatchObject({
       eventType: "input.prompt",
-      content: "Build a launch-plan presentation",
+      content: expectedContent,
       userMessage: expectedUserMessage,
     });
     expect(queuedMessage).not.toHaveProperty("error");
     expect(rejectedUserMessage).toMatchObject({
       eventType: "input.rejected",
-      content: "Build a launch-plan presentation",
+      content: expectedContent,
       userMessage: expectedUserMessage,
       error: "insufficient_credits",
       revokesEventId: clientEventId,

@@ -817,7 +817,7 @@ async function readThreadProjection(actor: ApiTestUser, threadId: string) {
  */
 async function requestSendEventRaw(
   actor: ApiTestUser,
-  body: ChatRunSendBody,
+  body: ChatRunSendBody & { readonly userMessage: UserMessageDocument },
 ): Promise<{ readonly status: number; readonly body: unknown }> {
   const headers = sessionHeaders(actor);
   const app = createApp({ signal: context.signal });
@@ -839,7 +839,13 @@ async function requestSendEventWithBearer(
   return await accept(
     chatEventsClient().send({
       headers: { authorization: `Bearer ${token}` },
-      body,
+      body: {
+        ...body,
+        userMessage: {
+          version: 1,
+          parts: [{ type: "text", text: body.prompt }],
+        },
+      },
     }),
     statuses,
   );
@@ -860,6 +866,10 @@ describe("CHAT-02: web chat send and client ids", () => {
         body: {
           agentId,
           prompt,
+          userMessage: {
+            version: 1,
+            parts: [{ type: "text", text: prompt }],
+          },
           clientThreadId,
           clientEventId,
           model,
@@ -2207,9 +2217,14 @@ describe("CHAT-02: model-first provider policies", () => {
         modelProviderId: null,
       },
     ]);
+    const vm0Prompt = "vm0-backed admission with spendable credits";
     const vm0Send = await requestSendEventRaw(actor, {
       agentId,
-      prompt: "vm0-backed admission with spendable credits",
+      prompt: vm0Prompt,
+      userMessage: {
+        version: 1,
+        parts: [{ type: "text", text: vm0Prompt }],
+      },
       model: "claude-sonnet-4-6",
     });
     expect([201, 503]).toContain(vm0Send.status);
@@ -3429,11 +3444,16 @@ describe("CHAT-02: run-level model overrides", () => {
       conversationChanges.releaseAll();
       await conversationChanges.done;
     });
+    const retryPrompt = "exhaust every session preparation attempt";
     const failedPromise = requestSendEventRaw(actor, {
       agentId,
       threadId: first.threadId,
       clientEventId: randomUUID(),
-      prompt: "exhaust every session preparation attempt",
+      prompt: retryPrompt,
+      userMessage: {
+        version: 1,
+        parts: [{ type: "text", text: retryPrompt }],
+      },
     });
 
     for (let attempt = 0; attempt < preparationAttempts; attempt += 1) {
@@ -4095,17 +4115,9 @@ describe("CHAT-02: prior rounds and thread titles", () => {
 });
 
 describe("CHAT-02: generation templates and attachments", () => {
-  it("uses the structured message document for the enabled runtime path", async () => {
+  it("uses the userMessage document for the runtime prompt", async () => {
     const { actor, agentId } = await entitledChatActor();
     chatCallbacks.failIfChatCallbackRouteIsFetched();
-    if (!actor.orgId) {
-      throw new Error("Expected an org-scoped actor");
-    }
-    await updateFeatureSwitchesForUser(
-      context,
-      { ...actor, orgId: actor.orgId },
-      { [FeatureSwitchKey.StructuredPrompt]: true },
-    );
 
     const style = ILLUSTRATION_TEMPLATE_ITEMS[0];
     if (!style) {
@@ -4124,12 +4136,6 @@ describe("CHAT-02: generation templates and attachments", () => {
       `> Second quote\n\nAdd supporting evidence from [Roadmap](/chats/${referencedThreadId})`;
     const prompt =
       `Review [Roadmap](/chats/${referencedThreadId}) now\n\n` + feedbackPrompt;
-    const displayText = [
-      `[Template: ${style.title}]`,
-      "[File: brief.pdf]",
-      "Review [Chat thread: Roadmap] now",
-      feedbackPrompt,
-    ].join("\n\n");
     const userMessage: UserMessageDocument = {
       version: 1,
       parts: [
@@ -4222,7 +4228,7 @@ describe("CHAT-02: generation templates and attachments", () => {
       },
     );
     expect(message).toMatchObject({
-      content: displayText,
+      content: prompt,
       userMessage,
     });
     await cancelChatRun(actor, sent.runId);
@@ -4240,7 +4246,6 @@ describe("CHAT-02: generation templates and attachments", () => {
       context,
       { ...actor, orgId: actor.orgId },
       {
-        [FeatureSwitchKey.StructuredPrompt]: true,
         [FeatureSwitchKey.StructuredPromptInlineTemplates]: true,
       },
     );
@@ -4331,28 +4336,33 @@ describe("CHAT-02: generation templates and attachments", () => {
       },
     );
     expect(message?.generationTemplate).toStrictEqual(illustrationTemplate);
-    expect(message?.content).toContain(
-      `Use [Template: ${style.title}] for the dog, then [Template: ${workflow.title}] for the follow-up`,
-    );
+    expect(message).toMatchObject({
+      content: "legacy fallback",
+      userMessage,
+    });
     await cancelChatRun(actor, sent.runId);
   }, 90_000);
 
-  it("synthesizes a missing user message without changing runtime content", async () => {
+  it("preserves the attachment userMessage order in the runtime prompt", async () => {
     const { actor, agentId } = await entitledChatActor();
     chatCallbacks.failIfChatCallbackRouteIsFetched();
-    if (!actor.orgId) {
-      throw new Error("Expected an org-scoped actor");
-    }
-    await updateFeatureSwitchesForUser(
-      context,
-      { ...actor, orgId: actor.orgId },
-      { [FeatureSwitchKey.StructuredPrompt]: true },
-    );
 
     const fileId = randomUUID();
     const sent = await sendChatRun(actor, {
       agentId,
       prompt: "plain API attachment",
+      userMessage: {
+        version: 1,
+        parts: [
+          {
+            type: "file",
+            fileId,
+            filenameSnapshot: "api-input.txt",
+            contentType: "text/plain",
+          },
+          { type: "text", text: "plain API attachment" },
+        ],
+      },
       attachFiles: [
         {
           id: fileId,
@@ -4366,8 +4376,8 @@ describe("CHAT-02: generation templates and attachments", () => {
     const run = await api.readRun(actor, sent.runId);
     expect(run.prompt).toBe(
       [
-        "plain API attachment",
         `[Web file] api-input.txt (text/plain)\n   [ID] ${fileId}`,
+        "plain API attachment",
       ].join("\n\n"),
     );
     const messages = await waitForThreadMessages(
@@ -4413,7 +4423,6 @@ describe("CHAT-02: generation templates and attachments", () => {
       context,
       { ...actor, orgId: actor.orgId },
       {
-        [FeatureSwitchKey.StructuredPrompt]: true,
         [FeatureSwitchKey.StructuredPromptInlineTemplates]: true,
       },
     );
@@ -4942,14 +4951,6 @@ describe("CHAT-02: queued attachments on auto-send", () => {
   it("preserves structured part order when a queued message is promoted", async () => {
     const { actor, agentId, runnerGroup } = await entitledChatActor();
     chatCallbacks.failIfChatCallbackRouteIsFetched();
-    if (!actor.orgId) {
-      throw new Error("Expected an org-scoped actor");
-    }
-    await updateFeatureSwitchesForUser(
-      context,
-      { ...actor, orgId: actor.orgId },
-      { [FeatureSwitchKey.StructuredPrompt]: true },
-    );
 
     const anchor = await sendChatRun(actor, {
       agentId,
@@ -5368,13 +5369,14 @@ describe("CHAT-02: shared user message queue", () => {
     chatCallbacks.failIfChatCallbackRouteIsFetched();
 
     const messageId = randomUUID();
+    const referencedThreadId = randomUUID();
     const userMessage: UserMessageDocument = {
       version: 1,
       parts: [
         { type: "text", text: "queue-first " },
         {
           type: "chat_thread",
-          threadId: randomUUID(),
+          threadId: referencedThreadId,
           titleSnapshot: "direct dispatch",
         },
       ],
@@ -5452,7 +5454,9 @@ describe("CHAT-02: shared user message queue", () => {
       .toBe(true);
 
     const claimedRun = await claimChatRun(runnerGroup, runId);
-    expect(claimedRun.claim.prompt).toBe("queue-first direct dispatch");
+    expect(claimedRun.claim.prompt).toBe(
+      `queue-first [direct dispatch](/chats/${referencedThreadId})`,
+    );
     await expect
       .poll(() => {
         return apiDispatchActionTypes(apiDispatchTimingEventsForRun(runId)).has(

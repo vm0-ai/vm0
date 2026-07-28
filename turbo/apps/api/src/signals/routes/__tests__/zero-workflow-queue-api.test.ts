@@ -446,6 +446,15 @@ describe("workflow queue API", () => {
           agentId: scenario.agentId,
           threadId: automation.threadId,
           prompt: "queued user message before manual Run now",
+          userMessage: {
+            version: 1,
+            parts: [
+              {
+                type: "text",
+                text: "queued user message before manual Run now",
+              },
+            ],
+          },
         },
       }),
       [201],

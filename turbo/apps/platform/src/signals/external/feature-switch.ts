@@ -103,13 +103,6 @@ export const reloadFeatureSwitch$ = command(
       result.body.switches,
       result.body.effectiveSwitches,
     );
-    if (result.body.supportsStructuredFeedbackParts !== true) {
-      // The capability field was added after the original structured-prompt
-      // rollout. An older API cannot validate feedback parts, so keep the
-      // whole structured-prompt path on its legacy payload until the API
-      // handshake succeeds.
-      combined[FeatureSwitchKey.StructuredPrompt] = false;
-    }
     if (result.body.supportsStructuredInlineTemplates !== true) {
       combined[FeatureSwitchKey.StructuredPromptInlineTemplates] = false;
     }

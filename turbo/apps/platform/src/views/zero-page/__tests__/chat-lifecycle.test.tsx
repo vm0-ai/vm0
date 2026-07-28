@@ -563,7 +563,7 @@ describe("chat lifecycle", () => {
       return bubble as HTMLElement;
     });
 
-    expect(userBubble.querySelector("span")).toBeNull();
+    expect(userBubble.querySelector("span span")).toBeNull();
   });
 
   it("ignores usage-only pages for rendering and thinking state", async () => {

@@ -36,6 +36,7 @@ import {
   revokeChatEvent,
 } from "./zero-chat-event.service";
 import { chatEventTypeIn } from "./zero-chat-event-type.service";
+import { createUserMessageDocument } from "./zero-chat-user-message.service";
 
 const WORKFLOW_QUEUE_EVENT_PARAMS_KEY = "__workflow_queue_event_params__";
 const automationEventRevoker = alias(chatMessages, "automation_event_revoker");
@@ -409,10 +410,12 @@ export async function rejectWorkflowQueueEvent(
     if (!payload?.automationId || !payload.triggerSource) {
       return false;
     }
+    const rejectionMessage = payload.triggerBrief ?? args.reason;
     const rejected = await replaceChatEvent(tx, args.eventId, {
       chatThreadId: args.chatThreadId,
       eventType: "input.rejected",
-      content: payload.triggerBrief,
+      content: rejectionMessage,
+      userMessage: createUserMessageDocument({ text: rejectionMessage }),
       runId: null,
       error: args.reason,
       automationId: payload.automationId,
@@ -451,10 +454,12 @@ export async function failWorkflowQueueEventAfterRunFailure(
     if (!payload?.automationId || !payload.triggerSource) {
       return false;
     }
+    const rejectionMessage = payload.triggerBrief ?? args.pauseReason;
     const rejected = await replaceChatEvent(tx, args.eventId, {
       chatThreadId: args.chatThreadId,
       eventType: "input.rejected",
-      content: payload.triggerBrief,
+      content: rejectionMessage,
+      userMessage: createUserMessageDocument({ text: rejectionMessage }),
       runId: null,
       error: args.pauseReason,
       automationId: payload.automationId,

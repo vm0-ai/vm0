@@ -8,12 +8,6 @@ export const featureSwitchesResponseSchema = z.object({
   switches: z.record(z.string(), z.boolean()),
   effectiveSwitches: z.record(z.string(), z.boolean()),
   /**
-   * Optional capability handshake. Older API deployments omit this field;
-   * clients must treat omission as unsupported before sending new structured
-   * message parts.
-   */
-  supportsStructuredFeedbackParts: z.boolean().optional(),
-  /**
    * Optional capability handshake for multiple inline template parts.
    * Older API deployments omit this field.
    */

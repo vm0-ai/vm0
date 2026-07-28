@@ -4,6 +4,7 @@ import {
   artifactItemSchema,
   artifactsContract,
   artifactsListResponseSchema,
+  chatThreadByIdContract,
   chatEventsContract,
   chatThreadEventsContract,
   chatThreadComputerUseHostContract,
@@ -42,6 +43,10 @@ describe("chat message response contract", () => {
       threadId: "thread-1",
       eventType: "input.prompt",
       content: "Run the workflow",
+      userMessage: {
+        version: 1,
+        parts: [{ type: "text", text: "Run the workflow" }],
+      },
       seqId: 1,
       createdAt: "2026-07-13T00:00:00.000Z",
       automationId: "legacy-automation-id",
@@ -74,6 +79,10 @@ describe("chat message response contract", () => {
       threadId: "thread-1",
       eventType: "input.prompt",
       content: "Run the workflow",
+      userMessage: {
+        version: 1,
+        parts: [{ type: "text", text: "Run the workflow" }],
+      },
       seqId: 1,
       createdAt: "2026-07-13T00:00:00.000Z",
       workflowSnapshot: { ...workflowSnapshot, automationId },
@@ -129,6 +138,32 @@ describe("chat message response contract", () => {
       draftContent: "Resume the draft",
       draftUserMessage: userMessage,
       draftAttachments: null,
+    });
+  });
+
+  it("requires userMessage for non-empty thread drafts", () => {
+    expect(
+      chatThreadByIdContract.patch.body.safeParse({
+        draftContent: null,
+        draftUserMessage: null,
+        draftAttachments: null,
+      }),
+    ).toMatchObject({ success: true });
+    expect(
+      chatThreadByIdContract.patch.body.safeParse({
+        draftContent: "Resume the draft",
+        draftUserMessage: null,
+        draftAttachments: null,
+      }),
+    ).toMatchObject({
+      success: false,
+      error: {
+        issues: [
+          expect.objectContaining({
+            path: ["draftUserMessage"],
+          }),
+        ],
+      },
     });
   });
 });
@@ -247,6 +282,10 @@ describe("chat thread model request compatibility", () => {
     const parsed = chatEventsContract.send.body.safeParse({
       agentId: "agent-1",
       prompt: "Build a launch plan",
+      userMessage: {
+        version: 1,
+        parts: [{ type: "text", text: "Build a launch plan" }],
+      },
       modelProvider: "anthropic-api-key",
       modelSelection: legacyModelSelection,
     });
@@ -299,6 +338,10 @@ describe("chat thread model request compatibility", () => {
     const parsed = chatEventsContract.send.body.safeParse({
       agentId: "agent-1",
       prompt: "Build a launch plan",
+      userMessage: {
+        version: 1,
+        parts: [{ type: "text", text: "Build a launch plan" }],
+      },
       modelProvider: "anthropic-api-key",
       modelSelection: legacyProviderPinnedModelSelection,
     });

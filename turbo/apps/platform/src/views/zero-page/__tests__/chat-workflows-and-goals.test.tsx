@@ -2,7 +2,6 @@ import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it } from "vitest";
 import { chatThreadArtifactsContract } from "@vm0/api-contracts/contracts/chat-threads";
-import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import {
   ILLUSTRATION_TEMPLATE_ITEMS,
   PRESENTATION_TEMPLATE_PICKER_ITEMS,
@@ -1408,6 +1407,18 @@ Full autonomous goal prompt that should stay out of the compact chat UI`;
           size: 2048,
         },
       ],
+      userMessage: {
+        version: 1,
+        parts: [
+          {
+            type: "file",
+            fileId: "attachment-photo",
+            filenameSnapshot: "photo.png",
+            contentType: "image/png",
+          },
+          { type: "text", text: messageText },
+        ],
+      },
     });
   });
 
@@ -1486,7 +1497,6 @@ Full autonomous goal prompt that should stay out of the compact chat UI`;
     detachedSetupPage({
       context,
       path: `/chats/${threadId}`,
-      featureSwitches: { [FeatureSwitchKey.StructuredPrompt]: true },
     });
 
     await waitFor(() => {
@@ -1553,7 +1563,6 @@ Full autonomous goal prompt that should stay out of the compact chat UI`;
     detachedSetupPage({
       context,
       path: `/chats/${threadId}`,
-      featureSwitches: { [FeatureSwitchKey.StructuredPrompt]: true },
     });
 
     await waitFor(() => {
@@ -1627,7 +1636,6 @@ Full autonomous goal prompt that should stay out of the compact chat UI`;
     detachedSetupPage({
       context,
       path: `/chats/${threadId}`,
-      featureSwitches: { [FeatureSwitchKey.StructuredPrompt]: true },
     });
 
     await screen.findByText("The release plan needs an owner");
@@ -1663,76 +1671,6 @@ Full autonomous goal prompt that should stay out of the compact chat UI`;
       expect(feedbackItems[1]).toHaveTextContent("Add the milestones");
       expect(feedbackItems[0]).toBeVisible();
       expect(feedbackItems[1]).toBeVisible();
-    });
-  });
-
-  it("does not restore a copied structured template when the switch is off", async () => {
-    const threadId = "structured-template-paste-disabled";
-    const style = ILLUSTRATION_TEMPLATE_ITEMS[0]!;
-    const messageText = "Paste without restoring the template";
-    const payload = {
-      text: messageText,
-      attachments: [],
-      userMessage: {
-        version: 1 as const,
-        parts: [
-          {
-            type: "template" as const,
-            titleSnapshot: style.title,
-            template: {
-              type: "illustration" as const,
-              selection: {
-                illustrationStyleId: style.illustrationStyleId,
-              },
-            },
-          },
-          { type: "text" as const, text: messageText },
-          {
-            type: "feedback" as const,
-            quote: "Structured quote stays hidden",
-            note: [
-              {
-                type: "text" as const,
-                text: "Structured note stays hidden",
-              },
-            ],
-          },
-        ],
-      },
-    };
-    mockChatLifecycle(context, { threadId });
-
-    detachedSetupPage({
-      context,
-      path: `/chats/${threadId}`,
-      featureSwitches: { [FeatureSwitchKey.StructuredPrompt]: false },
-    });
-
-    const composer = await screen.findByRole("textbox", { name: "Message" });
-    fireEvent.paste(composer, {
-      clipboardData: {
-        getData: (type: string) => {
-          if (type === "text/html") {
-            return `<div data-vm0-chat-message="${encodeURIComponent(
-              JSON.stringify(payload),
-            )}"></div>`;
-          }
-          return type === "text/plain" ? messageText : "";
-        },
-        items: [],
-      },
-    });
-
-    await waitFor(() => {
-      expect(composer).toHaveTextContent(messageText);
-      expect(
-        screen.queryByLabelText(`Remove template ${style.title}`),
-      ).not.toBeInTheDocument();
-      expect(
-        composer.querySelector("[data-feedback-item]"),
-      ).not.toBeInTheDocument();
-      expect(composer).not.toHaveTextContent("Structured quote stays hidden");
-      expect(composer).not.toHaveTextContent("Structured note stays hidden");
     });
   });
 });

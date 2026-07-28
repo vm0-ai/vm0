@@ -817,6 +817,15 @@ describe("team page navigation", () => {
                     threadId: firstThreadId,
                     eventType: "input.prompt" as const,
                     content: "First shortcut thread message",
+                    userMessage: {
+                      version: 1,
+                      parts: [
+                        {
+                          type: "text",
+                          text: "First shortcut thread message",
+                        },
+                      ],
+                    },
                     seqId: 1,
                     createdAt: "2026-06-01T00:02:00Z",
                   },

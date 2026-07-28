@@ -26,7 +26,6 @@ import {
   lte,
   ne,
   or,
-  type SQL,
 } from "drizzle-orm";
 
 import { env } from "../../lib/env";
@@ -584,7 +583,6 @@ async function collectUnreadChatThreads(args: {
   readonly since: Date;
   readonly until: Date;
   readonly excludeChatThreadId: string | null;
-  readonly userMessageEnabled: boolean;
 }): Promise<MorningBriefChatThreadsData> {
   const appUrl = env("APP_URL");
   const rows = await args.db
@@ -626,15 +624,13 @@ async function collectUnreadChatThreads(args: {
       .where(
         and(
           eq(chatMessages.chatThreadId, row.id),
-          args.userMessageEnabled
-            ? (or(
-                isNotNull(chatMessages.content),
-                and(
-                  chatEventTypeIn(["input.prompt", "input.rejected"]),
-                  isNotNull(chatMessages.userMessage),
-                ),
-              ) as SQL)
-            : isNotNull(chatMessages.content),
+          or(
+            isNotNull(chatMessages.content),
+            and(
+              chatEventTypeIn(["input.prompt", "input.rejected"]),
+              isNotNull(chatMessages.userMessage),
+            ),
+          ),
           chatEventTypeIn(CHAT_EVENT_TYPES),
         ),
       )
@@ -648,7 +644,7 @@ async function collectUnreadChatThreads(args: {
       recentMessages: messages.reverse().flatMap((message) => {
         const role = chatEventCompatibilityRole(message.eventType);
         const content =
-          args.userMessageEnabled && role === "user" && message.userMessage
+          role === "user" && message.userMessage
             ? projectUserMessage(message.userMessage).displayText
             : message.content;
         return content === null
@@ -719,7 +715,6 @@ interface CollectMorningBriefInputArgs {
   readonly dayEnd: Date;
   /** The member's Morning Brief thread; never reported as unread. */
   readonly excludeChatThreadId: string | null;
-  readonly userMessageEnabled: boolean;
   readonly signal: AbortSignal;
 }
 
@@ -767,7 +762,6 @@ export async function collectMorningBriefInput(
         since: args.since,
         until: args.until,
         excludeChatThreadId: args.excludeChatThreadId,
-        userMessageEnabled: args.userMessageEnabled,
       });
     }),
   ]);

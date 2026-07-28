@@ -12,7 +12,6 @@ import {
   type ChatThreadEvent,
   type ChatEvent,
 } from "@vm0/api-contracts/contracts/chat-threads";
-import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import { triggerAblyEvent } from "../../../mocks/ably.ts";
 import { chatIdb$ } from "../../../signals/external/chat-idb-store.ts";
 import { CHAT_THREAD_VIRTUAL_ROW_HEIGHT } from "../../../signals/zero-page/zero-sidebar-state.ts";
@@ -364,6 +363,7 @@ describe("chat lifecycle", () => {
         threadId,
         eventType: "input.prompt",
         content: body.prompt,
+        userMessage: body.userMessage,
         createdAt: "2026-06-09T10:01:00.000Z",
         seqId: 2,
         runId,
@@ -850,66 +850,54 @@ describe("chat lifecycle", () => {
     });
   });
 
-  it.each([
-    { projection: "structured", userMessageEnabled: true },
-    { projection: "legacy", userMessageEnabled: false },
-  ])(
-    "labels folded runs from their $projection projection",
-    async ({ userMessageEnabled }) => {
-      const threadId = `structured-run-group-label-${userMessageEnabled ? "on" : "off"}`;
-      const messages = makeRunGroupMessages({
-        label: "legacy run label",
-        count: 2,
-        runGroupId: "structured-label-group",
-        startMinute: 0,
-      }).map((message) => {
-        return message.role === "user"
-          ? {
-              ...message,
-              userMessage: {
-                version: 1 as const,
-                parts: [
-                  {
-                    type: "file" as const,
-                    fileId: "roadmap-file",
-                    filenameSnapshot: "roadmap.pdf",
-                    contentType: "application/pdf",
-                  },
-                  { type: "text" as const, text: "Review the roadmap" },
-                ],
-              },
-            }
-          : message;
-      });
-      mockChatLifecycle(context, {
-        threadId,
-        threadTitle: "Structured run group label",
-        chatMessages: messages,
-      });
+  it("labels folded runs from their userMessage projection", async () => {
+    const threadId = "structured-run-group-label";
+    const messages = makeRunGroupMessages({
+      label: "legacy run label",
+      count: 2,
+      runGroupId: "structured-label-group",
+      startMinute: 0,
+    }).map((message) => {
+      return message.role === "user"
+        ? {
+            ...message,
+            userMessage: {
+              version: 1 as const,
+              parts: [
+                {
+                  type: "file" as const,
+                  fileId: "roadmap-file",
+                  filenameSnapshot: "roadmap.pdf",
+                  contentType: "application/pdf",
+                },
+                { type: "text" as const, text: "Review the roadmap" },
+              ],
+            },
+          }
+        : message;
+    });
+    mockChatLifecycle(context, {
+      threadId,
+      threadTitle: "Structured run group label",
+      chatMessages: messages,
+    });
 
-      detachedSetupPage({
-        context,
-        path: `/chats/${threadId}`,
-        featureSwitches: {
-          [FeatureSwitchKey.StructuredPrompt]: userMessageEnabled,
-        },
-      });
+    detachedSetupPage({
+      context,
+      path: `/chats/${threadId}`,
+    });
 
-      const userMessageLabel =
-        "1 run for [File: roadmap.pdf] Review the roadmap";
-      const legacyLabel = "1 run for legacy run label";
-      const expectedLabel = userMessageEnabled ? userMessageLabel : legacyLabel;
-      const excludedLabel = userMessageEnabled ? legacyLabel : userMessageLabel;
-      await waitFor(() => {
-        expect(buttonByLabel("Expand grouped run history")).toHaveTextContent(
-          expectedLabel,
-        );
-      });
-      expect(buttonByLabel("Expand grouped run history")).not.toHaveTextContent(
-        excludedLabel,
+    const userMessageLabel = "1 run for [File: roadmap.pdf] Review the roadmap";
+    const legacyLabel = "1 run for legacy run label";
+    await waitFor(() => {
+      expect(buttonByLabel("Expand grouped run history")).toHaveTextContent(
+        userMessageLabel,
       );
-    },
-  );
+    });
+    expect(buttonByLabel("Expand grouped run history")).not.toHaveTextContent(
+      legacyLabel,
+    );
+  });
 
   it("keeps the item before a folded middle run group in the initial chat window", async () => {
     const threadId = "render-window-middle-run-group";

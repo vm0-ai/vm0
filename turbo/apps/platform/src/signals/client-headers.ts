@@ -1,7 +1,5 @@
 import {
-  addClientCapabilityToVersion,
   CLIENT_REQUEST_ID_HEADER,
-  CLIENT_CAPABILITY_STRUCTURED_FEEDBACK_PARTS,
   CLIENT_SESSION_ID_HEADER,
   CLIENT_TYPE_APP,
   CLIENT_TYPE_HEADER,
@@ -25,10 +23,7 @@ const clientSessionId = crypto.randomUUID();
 
 function createClientHeaders(): Record<string, string> {
   return {
-    [CLIENT_VERSION_HEADER]: addClientCapabilityToVersion(
-      clientVersion,
-      CLIENT_CAPABILITY_STRUCTURED_FEEDBACK_PARTS,
-    ),
+    [CLIENT_VERSION_HEADER]: clientVersion,
     [CLIENT_TYPE_HEADER]: CLIENT_TYPE_APP,
     [CLIENT_SESSION_ID_HEADER]: clientSessionId,
     [CLIENT_REQUEST_ID_HEADER]: crypto.randomUUID(),

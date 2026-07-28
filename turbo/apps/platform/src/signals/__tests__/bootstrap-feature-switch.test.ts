@@ -14,7 +14,6 @@ describe("bootstrap feature switch hydration", () => {
       return respond(200, {
         switches: { [FeatureSwitchKey.AhrefsConnector]: true },
         effectiveSwitches: { [FeatureSwitchKey.AhrefsConnector]: true },
-        supportsStructuredFeedbackParts: true,
       });
     });
 

@@ -402,7 +402,7 @@ zero_chat_run_with_model() {
         --arg selectedModel "$selected_model" \
         --arg clientEventId "$client_event_id" \
         --argjson realAgentInPreview "$real_agent_in_preview" \
-        '{agentId: $agentId, prompt: $prompt, model: $selectedModel, clientEventId: $clientEventId, hasTextContent: true, realAgentInPreview: $realAgentInPreview}')
+        '{agentId: $agentId, prompt: $prompt, userMessage: {version: 1, parts: [{type: "text", text: $prompt}]}, model: $selectedModel, clientEventId: $clientEventId, hasTextContent: true, realAgentInPreview: $realAgentInPreview}')
 
     body=$(e2e_api_curl "/api/zero/chat/events" -X POST -d "$payload")
     LAST_RUN_ID=$(printf '%s' "$body" | jq -r '.runId // ""')
@@ -430,7 +430,7 @@ zero_chat_run_with_model_selection() {
         --arg selectedModel "$selected_model" \
         --arg clientEventId "$client_event_id" \
         --argjson realAgentInPreview "$real_agent_in_preview" \
-        '{agentId: $agentId, prompt: $prompt, modelSelection: {modelProviderId: $modelProviderId, selectedModel: $selectedModel}, clientEventId: $clientEventId, hasTextContent: true, realAgentInPreview: $realAgentInPreview}')
+        '{agentId: $agentId, prompt: $prompt, userMessage: {version: 1, parts: [{type: "text", text: $prompt}]}, modelSelection: {modelProviderId: $modelProviderId, selectedModel: $selectedModel}, clientEventId: $clientEventId, hasTextContent: true, realAgentInPreview: $realAgentInPreview}')
 
     body=$(e2e_api_curl "/api/zero/chat/events" -X POST -d "$payload")
     LAST_RUN_ID=$(printf '%s' "$body" | jq -r '.runId // ""')

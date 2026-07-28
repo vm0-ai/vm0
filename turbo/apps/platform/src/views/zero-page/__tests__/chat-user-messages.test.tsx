@@ -66,7 +66,6 @@ describe("user messages", () => {
       context,
       path: `/chats/${threadId}`,
       featureSwitches: {
-        [FeatureSwitchKey.StructuredPrompt]: true,
         [FeatureSwitchKey.StructuredPromptInlineTemplates]: true,
       },
     });
@@ -113,7 +112,7 @@ describe("user messages", () => {
     ).toBeNull();
   });
 
-  it("renders ordered snapshots and keeps the legacy Markdown fallback", async () => {
+  it("renders ordered snapshots with literal Markdown text", async () => {
     const threadId = "b0000000-0000-4000-a000-000000000741";
     const referencedThreadId = "b0000000-0000-4000-a000-000000000742";
     mockChatLifecycle(context, {
@@ -190,8 +189,12 @@ describe("user messages", () => {
         {
           id: "00000000-0000-4000-8000-000000000743",
           role: "user",
-          content: "Legacy **bold** remains",
+          content: "Legacy text stays hidden",
           runId: "d0000000-0000-4000-a000-000000000743",
+          userMessage: {
+            version: 1,
+            parts: [{ type: "text", text: "Canonical **bold** remains" }],
+          },
           createdAt: "2026-07-21T10:01:00Z",
         },
       ],
@@ -200,7 +203,6 @@ describe("user messages", () => {
     detachedSetupPage({
       context,
       path: `/chats/${threadId}`,
-      featureSwitches: { [FeatureSwitchKey.StructuredPrompt]: true },
     });
 
     const userMessageElement = await waitFor(() => {
@@ -243,44 +245,13 @@ describe("user messages", () => {
     expect(screen.queryByText("Retired template")).not.toBeInTheDocument();
     expect(screen.queryByText("renamed-report.pdf")).not.toBeInTheDocument();
 
-    const legacyBold = await screen.findByText("bold");
-    expect(legacyBold.tagName).toBe("STRONG");
-    expect(screen.getByText("Legacy", { exact: false })).toBeInTheDocument();
-  });
-
-  it("uses the legacy renderer when the feature switch is disabled", async () => {
-    const threadId = "b0000000-0000-4000-a000-000000000744";
-    mockChatLifecycle(context, {
-      threadId,
-      threadTitle: "Structured message disabled",
-      chatMessages: [
-        {
-          id: "00000000-0000-4000-8000-000000000744",
-          role: "user",
-          content: "Legacy **fallback** stays",
-          runId: "d0000000-0000-4000-a000-000000000744",
-          userMessage: {
-            version: 1,
-            parts: [{ type: "text", text: "Structured content stays hidden" }],
-          },
-          createdAt: "2026-07-21T10:02:00Z",
-        },
-      ],
-    });
-
-    detachedSetupPage({
-      context,
-      path: `/chats/${threadId}`,
-      featureSwitches: { [FeatureSwitchKey.StructuredPrompt]: false },
-    });
-
-    const legacyBold = await screen.findByText("fallback");
-    expect(legacyBold.tagName).toBe("STRONG");
-    expect(screen.getByText("Legacy", { exact: false })).toBeInTheDocument();
+    const literalMarkdown = await screen.findByText(
+      "Canonical **bold** remains",
+    );
+    expect(literalMarkdown.querySelector("strong")).toBeNull();
     expect(
-      screen.queryByText("Structured content stays hidden"),
+      screen.queryByText("Legacy text stays hidden"),
     ).not.toBeInTheDocument();
-    expect(document.querySelector("[data-structured-user-message]")).toBeNull();
   });
 
   it("groups structured feedback and highlights chat thread mentions in notes", async () => {
@@ -336,7 +307,6 @@ describe("user messages", () => {
     detachedSetupPage({
       context,
       path: `/chats/${threadId}`,
-      featureSwitches: { [FeatureSwitchKey.StructuredPrompt]: true },
     });
 
     const group = await waitFor(() => {
@@ -366,47 +336,5 @@ describe("user messages", () => {
     expect(group).not.toHaveTextContent(`/chats/${referencedThreadId}`);
     expect(screen.getByText("Before feedback.")).toBeInTheDocument();
     expect(screen.getByText("After feedback.")).toBeInTheDocument();
-  });
-
-  it("uses legacy feedback content when the feature switch is disabled", async () => {
-    const threadId = "b0000000-0000-4000-a000-000000000745";
-    mockChatLifecycle(context, {
-      threadId,
-      threadTitle: "Structured feedback rendering",
-      chatMessages: [
-        {
-          id: "00000000-0000-4000-8000-000000000745",
-          role: "user",
-          content: "Flattened **feedback** stays visible",
-          runId: "d0000000-0000-4000-a000-000000000745",
-          userMessage: {
-            version: 1,
-            parts: [
-              {
-                type: "feedback",
-                quote: "Quoted reply passage",
-                note: [{ type: "text", text: "Explain the complete result." }],
-              },
-            ],
-          },
-          createdAt: "2026-07-26T10:00:00Z",
-        },
-      ],
-    });
-
-    detachedSetupPage({
-      context,
-      path: `/chats/${threadId}`,
-      featureSwitches: { [FeatureSwitchKey.StructuredPrompt]: false },
-    });
-
-    const legacyFeedback = await screen.findByText("feedback");
-    expect(legacyFeedback.tagName).toBe("STRONG");
-    expect(screen.getByText("Flattened", { exact: false })).toBeInTheDocument();
-    expect(screen.queryByText("Quoted reply passage")).not.toBeInTheDocument();
-    expect(
-      screen.queryByText("Explain the complete result."),
-    ).not.toBeInTheDocument();
-    expect(document.querySelector("[data-structured-user-message]")).toBeNull();
   });
 });

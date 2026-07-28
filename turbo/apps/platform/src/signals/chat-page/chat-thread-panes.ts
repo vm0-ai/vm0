@@ -175,15 +175,11 @@ const loadDraft$ = command(
     }
 
     const features = get(featureSwitch$);
-    const userMessageEnabled =
-      features[FeatureSwitchKey.StructuredPrompt] ?? false;
     const inlineTemplatesEnabled =
-      userMessageEnabled &&
-      (features[FeatureSwitchKey.StructuredPromptInlineTemplates] ?? false);
-    const restoredDraft = userMessageEnabled
-      ? (userMessageDraftState(threadDraft, inlineTemplatesEnabled) ??
-        legacyDraftState(threadDraft))
-      : legacyDraftState(threadDraft);
+      features[FeatureSwitchKey.StructuredPromptInlineTemplates] ?? false;
+    const restoredDraft =
+      userMessageDraftState(threadDraft, inlineTemplatesEnabled) ??
+      legacyDraftState(threadDraft);
     const hasDraft =
       restoredDraft.content.length > 0 ||
       restoredDraft.userMessage !== null ||
@@ -246,8 +242,7 @@ const setupPaneThread$ = command(
     );
     const features = get(featureSwitch$);
     const inlineTemplatesEnabled =
-      (features[FeatureSwitchKey.StructuredPrompt] ?? false) &&
-      (features[FeatureSwitchKey.StructuredPromptInlineTemplates] ?? false);
+      features[FeatureSwitchKey.StructuredPromptInlineTemplates] ?? false;
     const thread = createChatThreadSignals(threadId, draft, dataSource, {
       initialOptimisticEntries,
       inlineTemplatesEnabled,

@@ -440,6 +440,10 @@ describe("workflow queue", () => {
         agentId: scenario.agentId,
         threadId: automation.threadId,
         prompt: "fresh user message",
+        userMessage: {
+          version: 1,
+          parts: [{ type: "text", text: "fresh user message" }],
+        },
       },
     });
     // The persisted queued message is the product milestone proving the send
@@ -533,6 +537,10 @@ describe("workflow queue", () => {
           agentId: scenario.agentId,
           threadId: automation.threadId,
           prompt: "stale user message",
+          userMessage: {
+            version: 1,
+            parts: [{ type: "text", text: "stale user message" }],
+          },
           clientEventId: messageId,
         },
       }),
@@ -856,7 +864,14 @@ describe("workflow queue", () => {
         event.automationId === automation.automationId
       );
     });
-    expect(rejectedEvent).not.toHaveProperty("userMessage");
+    expect(rejectedEvent).toStrictEqual(
+      expect.objectContaining({
+        userMessage: {
+          version: 1,
+          parts: [{ type: "text", text: expect.any(String) }],
+        },
+      }),
+    );
 
     await runsApi.ensureOrgModelProvider(scenario.actor);
     const resumed = await accept(
@@ -1063,6 +1078,10 @@ describe("workflow queue", () => {
           agentId: scenario.agentId,
           threadId: automation.threadId,
           prompt: "user interjection",
+          userMessage: {
+            version: 1,
+            parts: [{ type: "text", text: "user interjection" }],
+          },
         },
       }),
       [201],
@@ -1154,6 +1173,10 @@ describe("workflow queue", () => {
         agentId: scenario.agentId,
         threadId: automation.threadId,
         prompt: "user wins final admission",
+        userMessage: {
+          version: 1,
+          parts: [{ type: "text", text: "user wins final admission" }],
+        },
       },
     });
     await expect

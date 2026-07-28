@@ -142,7 +142,12 @@ function setupChatThread({
       id: "msg-sidebar-user",
       threadId: THREAD_ID,
       eventType: "input.prompt",
+      role: "user",
       content: "Build the launch plan",
+      userMessage: {
+        version: 1,
+        parts: [{ type: "text", text: "Build the launch plan" }],
+      },
       runId: "run-sidebar",
       seqId: 1,
       createdAt: "2026-03-10T00:00:00Z",

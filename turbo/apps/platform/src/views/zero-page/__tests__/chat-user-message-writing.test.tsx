@@ -5,7 +5,6 @@ import type {
   PersistedAttachment,
   UserMessageDocument,
 } from "@vm0/api-contracts/contracts/chat-threads";
-import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 
 import { detachedSetupPage, fill } from "../../../__tests__/page-helper.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
@@ -58,7 +57,6 @@ describe("user-message writes", () => {
     detachedSetupPage({
       context,
       path: `/agents/${AGENT_ID}/chat`,
-      featureSwitches: { [FeatureSwitchKey.StructuredPrompt]: false },
     });
 
     const composer = await screen.findByPlaceholderText(PLACEHOLDER);
@@ -93,44 +91,37 @@ describe("user-message writes", () => {
     });
   });
 
-  it.each([
-    { enabled: true, label: "enabled" },
-    { enabled: false, label: "disabled" },
-  ])(
-    "writes a user message with the $label switch state",
-    async ({ enabled }) => {
-      const user = userEvent.setup({ delay: null });
-      let sent: SentMessageCapture | null = null;
-      mockChatLifecycle(context, {
-        threadId: THREAD_ID,
-        onRunCreate: (body) => {
-          sent = body;
-        },
-      });
+  it("dual-writes content and userMessage", async () => {
+    const user = userEvent.setup({ delay: null });
+    let sent: SentMessageCapture | null = null;
+    mockChatLifecycle(context, {
+      threadId: THREAD_ID,
+      onRunCreate: (body) => {
+        sent = body;
+      },
+    });
 
-      detachedSetupPage({
-        context,
-        path: `/chats/${THREAD_ID}`,
-        featureSwitches: { [FeatureSwitchKey.StructuredPrompt]: enabled },
-      });
+    detachedSetupPage({
+      context,
+      path: `/chats/${THREAD_ID}`,
+    });
 
-      const composer = await screen.findByRole("textbox", {
-        name: "Message",
-      });
-      await sendMessageInUI(user, composer, "Keep the legacy prompt too");
+    const composer = await screen.findByRole("textbox", {
+      name: "Message",
+    });
+    await sendMessageInUI(user, composer, "Keep the legacy prompt too");
 
-      await waitFor(() => {
-        expect(sent).not.toBeNull();
-      });
-      expect(sent).toMatchObject({
-        prompt: "Keep the legacy prompt too",
-        userMessage: {
-          version: 1,
-          parts: [{ type: "text", text: "Keep the legacy prompt too" }],
-        },
-      });
-    },
-  );
+    await waitFor(() => {
+      expect(sent).not.toBeNull();
+    });
+    expect(sent).toMatchObject({
+      prompt: "Keep the legacy prompt too",
+      userMessage: {
+        version: 1,
+        parts: [{ type: "text", text: "Keep the legacy prompt too" }],
+      },
+    });
+  });
 
   it("queues one user-message snapshot", async () => {
     let queued: QueuedMessageCapture | null = null;
@@ -163,7 +154,6 @@ describe("user-message writes", () => {
     detachedSetupPage({
       context,
       path: `/chats/${THREAD_ID}`,
-      featureSwitches: { [FeatureSwitchKey.StructuredPrompt]: true },
     });
 
     await screen.findByLabelText("Stop");

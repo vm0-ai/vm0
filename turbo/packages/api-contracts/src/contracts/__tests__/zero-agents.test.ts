@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
 
-import { zeroAgentDraftResponseSchema } from "../zero-agents";
+import {
+  zeroAgentDraftRequestSchema,
+  zeroAgentDraftResponseSchema,
+} from "../zero-agents";
 
 describe("zero agent draft contract", () => {
   it("normalizes the preceding agent draft response", () => {
@@ -19,6 +22,40 @@ describe("zero agent draft contract", () => {
       draftContent: "Resume agent work",
       draftUserMessage: userMessage,
       draftAttachments: null,
+    });
+  });
+
+  it("requires userMessage for non-empty agent drafts", () => {
+    expect(
+      zeroAgentDraftRequestSchema.safeParse({
+        draftContent: null,
+        draftUserMessage: null,
+        draftAttachments: null,
+      }),
+    ).toMatchObject({ success: true });
+    expect(
+      zeroAgentDraftRequestSchema.safeParse({
+        draftContent: null,
+        draftUserMessage: null,
+        draftAttachments: [
+          {
+            id: "draft-file",
+            filename: "brief.md",
+            contentType: "text/markdown",
+            size: 42,
+            url: "https://example.com/brief.md",
+          },
+        ],
+      }),
+    ).toMatchObject({
+      success: false,
+      error: {
+        issues: [
+          expect.objectContaining({
+            path: ["draftUserMessage"],
+          }),
+        ],
+      },
     });
   });
 });

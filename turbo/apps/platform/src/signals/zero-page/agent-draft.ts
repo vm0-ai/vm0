@@ -248,15 +248,11 @@ export const loadAgentDraft$ = command(
 
     const response = zeroAgentDraftResponseSchema.parse(result.body);
     const features = get(featureSwitch$);
-    const userMessageEnabled =
-      features[FeatureSwitchKey.StructuredPrompt] ?? false;
     const inlineTemplatesEnabled =
-      userMessageEnabled &&
-      (features[FeatureSwitchKey.StructuredPromptInlineTemplates] ?? false);
-    const restoredDraft = userMessageEnabled
-      ? (userMessageAgentDraftState(response, inlineTemplatesEnabled) ??
-        legacyAgentDraftState(response))
-      : legacyAgentDraftState(response);
+      features[FeatureSwitchKey.StructuredPromptInlineTemplates] ?? false;
+    const restoredDraft =
+      userMessageAgentDraftState(response, inlineTemplatesEnabled) ??
+      legacyAgentDraftState(response);
     const hasServerDraft =
       restoredDraft.content.length > 0 ||
       restoredDraft.userMessage !== null ||

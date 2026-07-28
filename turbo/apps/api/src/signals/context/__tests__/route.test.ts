@@ -1,8 +1,3 @@
-import {
-  addClientCapabilityToVersion,
-  CLIENT_CAPABILITY_STRUCTURED_FEEDBACK_PARTS,
-  CLIENT_VERSION_HEADER,
-} from "@vm0/api-contracts/contracts/client-headers";
 import { initContract } from "@vm0/api-contracts/contracts/trpc-contract";
 import { command, computed } from "ccstate";
 import { describe, expect, it } from "vitest";
@@ -167,7 +162,7 @@ describe("honoSignalHandler", () => {
     expect(response.body).toStrictEqual({ ok: true });
   });
 
-  it("hides feedback parts from clients without the capability", async () => {
+  it("returns the complete userMessage document", async () => {
     const handler$ = computed(() => {
       return {
         status: 200 as const,
@@ -185,27 +180,8 @@ describe("honoSignalHandler", () => {
       ],
     })(routeTestContract);
 
-    const legacyResponse = await accept(
-      client.structured({
-        extraHeaders: { [CLIENT_VERSION_HEADER]: "0.636.1" },
-      }),
-      [200],
-    );
-    expect(legacyResponse.body).toStrictEqual({
-      content: "The button is hard to find\nIncrease the contrast",
-    });
-
-    const capableVersion = addClientCapabilityToVersion(
-      "0.636.1",
-      CLIENT_CAPABILITY_STRUCTURED_FEEDBACK_PARTS,
-    );
-    const capableResponse = await accept(
-      client.structured({
-        extraHeaders: { [CLIENT_VERSION_HEADER]: capableVersion },
-      }),
-      [200],
-    );
-    expect(capableResponse.body).toStrictEqual({
+    const response = await accept(client.structured(), [200]);
+    expect(response.body).toStrictEqual({
       content: "The button is hard to find\nIncrease the contrast",
       userMessage: userMessageFeedbackDocument,
     });

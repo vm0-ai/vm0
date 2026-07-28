@@ -2,6 +2,7 @@ import { z } from "zod";
 import { authHeadersSchema, initContract } from "./base";
 import { chatEventTypeSchema } from "./chat-events";
 import { apiErrorSchema } from "./errors";
+import { requireUserMessageForNonEmptyDraft } from "./draft-user-message";
 import { hostedArtifactKindSchema } from "./zero-host";
 import { runStatusSchema } from "./runs";
 import { zeroGoalEventSchema } from "./zero-goals";
@@ -454,7 +455,7 @@ const chatMessageRecommendedFollowupsSchema = z.preprocess((value) => {
 const inputPromptEventSchema = chatEventBaseSchema
   .extend({
     eventType: z.literal("input.prompt"),
-    userMessage: userMessageDocumentSchema.optional(),
+    userMessage: userMessageDocumentSchema,
     attachFiles: z.array(resolvedAttachFileSchema).optional(),
     generationTemplate: generationTemplateRequestSchema.optional(),
   })
@@ -473,7 +474,7 @@ const inputAutomationEventSchema = chatEventBaseSchema
 const inputRejectedEventSchema = chatEventBaseSchema
   .extend({
     eventType: z.literal("input.rejected"),
-    userMessage: userMessageDocumentSchema.optional(),
+    userMessage: userMessageDocumentSchema,
     error: z.string(),
     automationId: z.string().uuid().optional(),
     triggerBrief: z.string().nullable().optional(),
@@ -650,11 +651,13 @@ const chatThreadMetadataSchema = z.object({
 
 const chatThreadDraftSchema = z.preprocess(
   normalizePrecedingDraftStructuredPrompt,
-  z.object({
-    draftContent: z.string().nullable(),
-    draftUserMessage: userMessageDocumentSchema.nullable().optional(),
-    draftAttachments: z.array(persistedAttachmentSchema).nullable(),
-  }),
+  z
+    .object({
+      draftContent: z.string().nullable(),
+      draftUserMessage: userMessageDocumentSchema.nullable(),
+      draftAttachments: z.array(persistedAttachmentSchema).nullable(),
+    })
+    .superRefine(requireUserMessageForNonEmptyDraft),
 );
 
 const selectedModelRequestSchema = requestedRunModelSchema;
@@ -743,7 +746,7 @@ const chatNormalSendBodyShape = {
    */
   model: selectedModelRequestSchema.optional(),
   runOptions: chatRunOptionsRequestSchema.optional(),
-  userMessage: userMessageDocumentSchema.optional(),
+  userMessage: userMessageDocumentSchema,
   generationTemplate: generationTemplateRequestSchema.optional(),
   computerUseHostId: z.string().uuid().nullable().optional(),
   cloudBrowserEnabled: z.boolean().optional(),
@@ -933,14 +936,16 @@ export const chatThreadByIdContract = c.router({
     path: "/api/zero/chat-threads/:id",
     headers: authHeadersSchema,
     pathParams: chatThreadIdPathParamsSchema,
-    body: z.object({
-      draftContent: z.string().nullable().optional(),
-      draftUserMessage: userMessageDocumentSchema.nullable().optional(),
-      draftAttachments: z
-        .array(persistedAttachmentSchema)
-        .nullable()
-        .optional(),
-    }),
+    body: z
+      .object({
+        draftContent: z.string().nullable().optional(),
+        draftUserMessage: userMessageDocumentSchema.nullable(),
+        draftAttachments: z
+          .array(persistedAttachmentSchema)
+          .nullable()
+          .optional(),
+      })
+      .superRefine(requireUserMessageForNonEmptyDraft),
     responses: {
       204: c.noBody(),
       400: apiErrorSchema,

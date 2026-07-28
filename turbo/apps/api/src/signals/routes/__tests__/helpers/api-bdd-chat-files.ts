@@ -39,11 +39,7 @@ import {
 import { composesMainContract } from "@vm0/api-contracts/contracts/composes";
 import type { ApiErrorResponse } from "@vm0/api-contracts/contracts/errors";
 import { DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL } from "@vm0/api-contracts/contracts/model-providers";
-import {
-  addClientCapabilityToVersion,
-  CLIENT_CAPABILITY_STRUCTURED_FEEDBACK_PARTS,
-  CLIENT_VERSION_HEADER,
-} from "@vm0/api-contracts/contracts/client-headers";
+import { CLIENT_VERSION_HEADER } from "@vm0/api-contracts/contracts/client-headers";
 import { zeroModelPoliciesMainContract } from "@vm0/api-contracts/contracts/zero-model-policies";
 import {
   zeroHostContract,
@@ -87,10 +83,7 @@ interface AuthHeaders {
   readonly [CLIENT_VERSION_HEADER]?: string;
 }
 
-const BDD_CLIENT_VERSION = addClientCapabilityToVersion(
-  "0.636.1",
-  CLIENT_CAPABILITY_STRUCTURED_FEEDBACK_PARTS,
-);
+const BDD_CLIENT_VERSION = "0.636.1";
 
 interface BddCompose {
   readonly composeId: string;
@@ -616,7 +609,7 @@ export function createChatFilesBddApi(context: TestContext) {
       threadId: string,
       body: {
         readonly draftContent?: string | null;
-        readonly draftUserMessage?: UserMessageDocument | null;
+        readonly draftUserMessage: UserMessageDocument | null;
         readonly draftAttachments?: readonly PersistedAttachment[] | null;
       },
     ): Promise<void> {
@@ -624,9 +617,7 @@ export function createChatFilesBddApi(context: TestContext) {
         ...(body.draftContent === undefined
           ? {}
           : { draftContent: body.draftContent }),
-        ...(body.draftUserMessage === undefined
-          ? {}
-          : { draftUserMessage: body.draftUserMessage }),
+        draftUserMessage: body.draftUserMessage,
         ...(body.draftAttachments === undefined
           ? {}
           : {
@@ -651,7 +642,7 @@ export function createChatFilesBddApi(context: TestContext) {
       threadId: string,
       body: {
         readonly draftContent?: string | null;
-        readonly draftUserMessage?: UserMessageDocument | null;
+        readonly draftUserMessage: UserMessageDocument | null;
         readonly draftAttachments?: readonly PersistedAttachment[] | null;
       },
       statuses: readonly (204 | 400 | 401 | 404)[],
@@ -664,9 +655,7 @@ export function createChatFilesBddApi(context: TestContext) {
             ...(body.draftContent === undefined
               ? {}
               : { draftContent: body.draftContent }),
-            ...(body.draftUserMessage === undefined
-              ? {}
-              : { draftUserMessage: body.draftUserMessage }),
+            draftUserMessage: body.draftUserMessage,
             ...(body.draftAttachments === undefined
               ? {}
               : {
@@ -1174,9 +1163,22 @@ export function createChatFilesBddApi(context: TestContext) {
                 ...(body.runOptions === undefined
                   ? {}
                   : { runOptions: body.runOptions }),
-                ...(body.userMessage === undefined
-                  ? {}
-                  : { userMessage: body.userMessage }),
+                userMessage:
+                  body.userMessage ??
+                  ({
+                    version: 1,
+                    parts: [
+                      ...(body.attachFiles ?? []).map((file) => {
+                        return {
+                          type: "file" as const,
+                          fileId: file.id,
+                          filenameSnapshot: file.filename,
+                          contentType: file.contentType,
+                        };
+                      }),
+                      { type: "text", text: body.prompt },
+                    ],
+                  } satisfies UserMessageDocument),
                 ...(body.generationTemplate === undefined
                   ? {}
                   : { generationTemplate: body.generationTemplate }),

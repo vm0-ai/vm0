@@ -1,10 +1,6 @@
 import { randomUUID } from "node:crypto";
 
-import {
-  addClientCapabilityToVersion,
-  CLIENT_CAPABILITY_STRUCTURED_FEEDBACK_PARTS,
-  CLIENT_VERSION_HEADER,
-} from "@vm0/api-contracts/contracts/client-headers";
+import { CLIENT_VERSION_HEADER } from "@vm0/api-contracts/contracts/client-headers";
 import { zeroAgentDraftContract } from "@vm0/api-contracts/contracts/zero-agents";
 import type { UserMessageDocument } from "@vm0/api-contracts/contracts/chat-threads";
 import { describe, expect, it } from "vitest";
@@ -36,10 +32,7 @@ async function seedAgent(): Promise<AgentDraftFixture> {
   return { userId: actor.userId, orgId: actor.orgId, agentId: agent.agentId };
 }
 
-const CLIENT_VERSION = addClientCapabilityToVersion(
-  "0.636.1",
-  CLIENT_CAPABILITY_STRUCTURED_FEEDBACK_PARTS,
-);
+const CLIENT_VERSION = "0.636.1";
 
 function authHeaders() {
   return {
@@ -154,54 +147,6 @@ describe("GET/PATCH /api/zero/agents/:id/draft", () => {
     });
   });
 
-  it("derives a user message when a draft writer omits it", async () => {
-    const fixture = await seedAgent();
-    mocks.clerk.session(fixture.userId, fixture.orgId);
-    const attachment = {
-      id: randomUUID(),
-      url: "https://cdn.example.com/derived-draft.pdf",
-      filename: "derived-draft.pdf",
-      contentType: "application/pdf",
-      size: 321,
-    };
-
-    await accept(
-      draftsClient().patch({
-        params: { id: fixture.agentId },
-        headers: authHeaders(),
-        body: {
-          draftContent: "derived draft",
-          draftAttachments: [attachment],
-        },
-      }),
-      [204],
-    );
-
-    const saved = await accept(
-      draftsClient().get({
-        params: { id: fixture.agentId },
-        headers: authHeaders(),
-      }),
-      [200],
-    );
-    expect(saved.body).toStrictEqual({
-      draftContent: "derived draft",
-      draftUserMessage: {
-        version: 1,
-        parts: [
-          {
-            type: "file",
-            fileId: attachment.id,
-            filenameSnapshot: attachment.filename,
-            contentType: attachment.contentType,
-          },
-          { type: "text", text: "derived draft" },
-        ],
-      },
-      draftAttachments: [attachment],
-    });
-  });
-
   it("does not expose another user's draft on the same public agent", async () => {
     const fixture = await seedAgent();
     mocks.clerk.session(fixture.userId, fixture.orgId);
@@ -212,6 +157,10 @@ describe("GET/PATCH /api/zero/agents/:id/draft", () => {
         headers: authHeaders(),
         body: {
           draftContent: "owner draft",
+          draftUserMessage: {
+            version: 1,
+            parts: [{ type: "text", text: "owner draft" }],
+          },
           draftAttachments: null,
         },
       }),

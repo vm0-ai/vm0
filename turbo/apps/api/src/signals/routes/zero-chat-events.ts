@@ -109,10 +109,7 @@ import {
 } from "../services/zero-chat-event.service";
 import { loadWebChatIncompleteContext } from "../services/zero-chat-incomplete-context.service";
 import { chatThreadAdmissionBlocked } from "../services/zero-chat-active-run.service";
-import {
-  createUserMessageDocument,
-  projectUserMessage,
-} from "../services/zero-chat-user-message.service";
+import { projectUserMessage } from "../services/zero-chat-user-message.service";
 import { appendQueuedRunAssistantMarker } from "../services/zero-chat-queue-marker.service";
 import {
   deleteLegacyUserMessageQueueItem,
@@ -158,7 +155,7 @@ interface NormalSendBody {
   readonly runOptions?: {
     readonly codexServiceTier?: CodexServiceTier;
   };
-  readonly userMessage?: UserMessageDocument;
+  readonly userMessage: UserMessageDocument;
   readonly generationTemplate?: GenerationTemplateRequest;
   readonly hasTextContent?: boolean;
   readonly attachFiles?: AttachFile[];
@@ -255,7 +252,6 @@ interface PreparedNormalSend {
   readonly computerUseHostGrant: ResolvedComputerUseHostGrant | null;
   readonly persistedExplicitSelection: boolean;
   readonly initialThinkingEnabled: boolean;
-  readonly userMessageEnabled: boolean;
   readonly runConfiguration: ResolvedRunConfiguration;
   readonly clientMessagePrechecked: boolean;
   readonly preflightClientMessageConflict:
@@ -276,7 +272,6 @@ function shouldTouchThreadSortFromNormalSend(
 
 interface NormalSendFeatureSwitches {
   readonly codexFastModeEnabled: boolean;
-  readonly userMessageEnabled: boolean;
   readonly userMessageInlineTemplatesEnabled: boolean;
   readonly imageStyleR2Enabled: boolean;
 }
@@ -285,6 +280,7 @@ interface RuntimeNormalSendBody extends Omit<NormalSendBody, "userMessage"> {
   readonly userMessage: UserMessageDocument;
   readonly agentPrompt: string;
   readonly generationTemplates: readonly GenerationTemplateRequest[];
+  readonly userMessageGenerationTemplates: readonly GenerationTemplateRequest[];
   readonly hasTextContent: boolean;
 }
 
@@ -594,20 +590,6 @@ function buildWebChatPrompt(): string {
   ].join("\n\n");
 }
 
-function buildWebAttachFilesPrompt(
-  files: readonly {
-    readonly id: string;
-    readonly filename: string;
-    readonly contentType: string;
-  }[],
-): string {
-  return files
-    .map((file) => {
-      return `[Web file] ${file.filename} (${file.contentType})\n   [ID] ${file.id}`;
-    })
-    .join("\n");
-}
-
 function buildAppendSystemPrompt(
   incompleteContext: string,
   priorContext: string,
@@ -638,47 +620,26 @@ function buildComputerUseSystemPrompt(displayName: string): string {
   ].join("\n");
 }
 
-function buildFullPrompt(
-  prompt: string,
-  attachFiles: readonly AttachFile[] | undefined,
-): string {
-  if (!attachFiles || attachFiles.length === 0) {
-    return prompt;
-  }
-  return `${prompt}\n\n${buildWebAttachFilesPrompt(attachFiles)}`;
-}
-
 function resolveRuntimeNormalSendBody(
   body: NormalSendBody,
-  userMessageEnabled: boolean,
   inlineTemplatesEnabled: boolean,
 ): RuntimeNormalSendBody {
-  const userMessage =
-    body.userMessage ??
-    createUserMessageDocument({
-      text: body.prompt,
-      files: body.attachFiles,
-    });
-  if (!userMessageEnabled || !body.userMessage) {
-    return {
-      ...body,
-      userMessage,
-      agentPrompt: buildFullPrompt(body.prompt, body.attachFiles),
-      generationTemplates: body.generationTemplate
-        ? [body.generationTemplate]
-        : [],
-      hasTextContent: body.hasTextContent !== false,
-    };
-  }
   const projection = projectUserMessage(body.userMessage, {
     inlineTemplates: inlineTemplatesEnabled,
   });
+  const generationTemplate =
+    projection.generationTemplate ?? body.generationTemplate;
   return {
     ...body,
-    prompt: projection.displayText,
     userMessage: body.userMessage,
-    generationTemplate: projection.generationTemplate,
-    generationTemplates: projection.generationTemplates,
+    generationTemplate,
+    generationTemplates:
+      projection.generationTemplates.length > 0
+        ? projection.generationTemplates
+        : generationTemplate
+          ? [generationTemplate]
+          : [],
+    userMessageGenerationTemplates: projection.generationTemplates,
     agentPrompt: projection.agentPrompt,
     hasTextContent: projection.hasTextContent,
   };
@@ -732,11 +693,10 @@ function formatAttachFileIds(
 
 function formatPriorRunMessage(
   message: WebChatPriorRunMessage,
-  userMessageEnabled: boolean,
   inlineTemplatesEnabled: boolean,
 ): string {
   const roleLabel = message.role === "user" ? "User" : "Assistant";
-  if (userMessageEnabled && message.role === "user" && message.userMessage) {
+  if (message.role === "user" && message.userMessage) {
     const prompt = projectUserMessage(message.userMessage, {
       inlineTemplates: inlineTemplatesEnabled,
     }).agentPrompt;
@@ -749,7 +709,6 @@ function formatPriorRunMessage(
 
 function buildWebChatPriorRunsContext(
   runs: readonly WebChatPriorRun[],
-  userMessageEnabled: boolean,
   inlineTemplatesEnabled: boolean,
 ): string {
   if (runs.length === 0) {
@@ -759,11 +718,7 @@ function buildWebChatPriorRunsContext(
   const blocks = runs.map((run, index) => {
     const relativeIndex = index - total + 1;
     const renderedMessages = run.messages.map((message) => {
-      return formatPriorRunMessage(
-        message,
-        userMessageEnabled,
-        inlineTemplatesEnabled,
-      );
+      return formatPriorRunMessage(message, inlineTemplatesEnabled);
     });
     const hasUserMessage = run.messages.some((message) => {
       return message.role === "user";
@@ -1045,16 +1000,10 @@ async function resolveNormalSendFeatureSwitches(
       FeatureSwitchKey.CodexFastMode,
       context,
     ),
-    userMessageEnabled: isFeatureEnabled(
-      FeatureSwitchKey.StructuredPrompt,
+    userMessageInlineTemplatesEnabled: isFeatureEnabled(
+      FeatureSwitchKey.StructuredPromptInlineTemplates,
       context,
     ),
-    userMessageInlineTemplatesEnabled:
-      isFeatureEnabled(FeatureSwitchKey.StructuredPrompt, context) &&
-      isFeatureEnabled(
-        FeatureSwitchKey.StructuredPromptInlineTemplates,
-        context,
-      ),
     imageStyleR2Enabled: isFeatureEnabled(
       FeatureSwitchKey.ImageStyleR2,
       context,
@@ -1457,7 +1406,6 @@ async function resolveThread(params: {
   readonly requestedCodexServiceTier: CodexServiceTier | undefined;
   readonly persistRequestedCodexServiceTier: boolean;
   readonly codexFastModeEnabled: boolean;
-  readonly userMessageEnabled: boolean;
   readonly userMessageInlineTemplatesEnabled: boolean;
 }): Promise<ResolvedThreadAndRunConfiguration | NormalSendFailure> {
   if (!params.existingThreadId) {
@@ -1549,7 +1497,6 @@ async function resolveThread(params: {
     loadWebChatIncompleteContext(
       params.db,
       thread.id,
-      params.userMessageEnabled,
       params.userMessageInlineTemplatesEnabled,
     ),
   ]);
@@ -1573,7 +1520,6 @@ async function prepareRecentChatContext(
   isNewThread: boolean,
   incompleteContext: string,
   options: {
-    readonly userMessageEnabled: boolean;
     readonly inlineTemplatesEnabled: boolean;
   },
 ): Promise<string> {
@@ -1585,7 +1531,6 @@ async function prepareRecentChatContext(
   }
   return buildWebChatPriorRunsContext(
     await getLatestRunsByThreadId(db, threadId, RECENT_CHAT_RUN_LIMIT),
-    options.userMessageEnabled,
     options.inlineTemplatesEnabled,
   );
 }
@@ -2264,7 +2209,6 @@ function resolveTimedThread(
           args.body.modelSelection !== undefined ||
           args.body.runOptions !== undefined,
         codexFastModeEnabled: featureSwitches.codexFastModeEnabled,
-        userMessageEnabled: featureSwitches.userMessageEnabled,
         userMessageInlineTemplatesEnabled:
           featureSwitches.userMessageInlineTemplatesEnabled,
       });
@@ -2276,7 +2220,6 @@ function prepareTimedRecentChatContext(
   args: NormalSendArgs,
   db: Db,
   thread: ResolvedThread,
-  userMessageEnabled: boolean,
   inlineTemplatesEnabled: boolean,
 ): ReturnType<typeof prepareRecentChatContext> {
   return measureApiDispatchTiming(
@@ -2289,7 +2232,7 @@ function prepareTimedRecentChatContext(
         thread.threadId,
         thread.isNewThread,
         thread.incompleteContext,
-        { userMessageEnabled, inlineTemplatesEnabled },
+        { inlineTemplatesEnabled },
       );
     },
   );
@@ -2401,7 +2344,6 @@ const prepareNormalSend$ = command(
     signal.throwIfAborted();
     const runtimeBody = resolveRuntimeNormalSendBody(
       args.body,
-      featureSwitches.userMessageEnabled,
       featureSwitches.userMessageInlineTemplatesEnabled,
     );
     const generationTemplateError = validateGenerationTemplatePrompt(
@@ -2448,7 +2390,6 @@ const prepareNormalSend$ = command(
       args,
       db,
       thread,
-      featureSwitches.userMessageEnabled,
       featureSwitches.userMessageInlineTemplatesEnabled,
     );
     signal.throwIfAborted();
@@ -2456,8 +2397,8 @@ const prepareNormalSend$ = command(
       explicit: runtimeBody.generationTemplate,
       explicitTemplates:
         featureSwitches.userMessageInlineTemplatesEnabled &&
-        args.body.userMessage !== undefined
-          ? runtimeBody.generationTemplates
+        runtimeBody.userMessageGenerationTemplates.length > 0
+          ? runtimeBody.userMessageGenerationTemplates
           : undefined,
       imageStyleR2Enabled: featureSwitches.imageStyleR2Enabled,
     });
@@ -2482,7 +2423,6 @@ const prepareNormalSend$ = command(
       computerUseHostGrant: computerAccess.computerUseHostGrant,
       persistedExplicitSelection,
       initialThinkingEnabled: args.zeroPreCreateSource === undefined,
-      userMessageEnabled: featureSwitches.userMessageEnabled,
       runConfiguration,
       clientMessagePrechecked,
       preflightClientMessageConflict: preflightClientMessageResponse,
@@ -2561,7 +2501,6 @@ function scheduleChatTitleGeneration(params: {
   readonly thread: ResolvedThread;
   readonly userId: string;
   readonly orgId: string;
-  readonly userMessageEnabled: boolean;
 }): void {
   if (
     params.body.hasTextContent === false ||
@@ -2576,12 +2515,8 @@ function scheduleChatTitleGeneration(params: {
       threadId: params.thread.threadId,
       userId: params.userId,
       orgId: params.orgId,
-      prompt:
-        params.userMessageEnabled && params.body.userMessage
-          ? params.body.agentPrompt
-          : params.body.prompt,
+      prompt: params.body.agentPrompt,
       includePriorRounds: !params.thread.isNewThread,
-      userMessageEnabled: params.userMessageEnabled,
     }),
   );
 }
@@ -2651,7 +2586,6 @@ function scheduleCreatedChatRunSideEffects(params: {
   readonly runId: string;
   readonly runStatus: string;
   readonly initialThinkingEnabled: boolean;
-  readonly userMessageEnabled: boolean;
   readonly touchThreadSort: boolean;
   readonly queueFirstClaim:
     | {
@@ -2665,7 +2599,6 @@ function scheduleCreatedChatRunSideEffects(params: {
     thread: params.thread,
     userId: params.userId,
     orgId: params.orgId,
-    userMessageEnabled: params.userMessageEnabled,
   });
   const appendInitialThinking =
     params.initialThinkingEnabled &&
@@ -2805,6 +2738,9 @@ async function appendQueueFirstInsufficientCreditsMessages(params: {
       .limit(1);
     if (!queuedMessage) {
       throw new Error("Queue-first message is no longer available");
+    }
+    if (!queuedMessage.userMessage) {
+      throw new Error("Queue-first message is missing userMessage");
     }
     const rejectedCreatedAt = new Date(
       Math.max(userCreatedAt.getTime(), queuedMessage.createdAt.getTime() + 1),
@@ -3135,7 +3071,6 @@ function scheduleNormalChatRunSideEffects(params: {
     runId: params.runId,
     runStatus: params.runStatus,
     initialThinkingEnabled: params.prepared.initialThinkingEnabled,
-    userMessageEnabled: params.prepared.userMessageEnabled,
     touchThreadSort: shouldTouchThreadSortFromNormalSend(
       params.args.zeroPreCreateSource,
       params.prepared.thread.isNewThread,

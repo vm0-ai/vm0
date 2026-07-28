@@ -9,7 +9,6 @@ import type {
   ChatEventResponse,
   UserMessageDocument,
 } from "@vm0/api-contracts/contracts/chat-threads";
-import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import { zeroGoalsContract } from "@vm0/api-contracts/contracts/zero-goals";
 import {
   ILLUSTRATION_TEMPLATE_ITEMS,
@@ -1108,132 +1107,113 @@ describe("CHAT-02: completed chat callback", () => {
     await waitForRunStatus(actor, claimed.runId, "cancelled");
   }, 90_000);
 
-  it.each([
-    { projection: "structured", userMessageEnabled: true },
-    { projection: "legacy", userMessageEnabled: false },
-  ])(
-    "uses $projection message semantics for title and recommended follow-up context",
-    async ({ userMessageEnabled }) => {
-      const { actor, agentId, runnerGroup } = await entitledChatActor();
-      chatCallbacks.failIfChatCallbackRouteIsFetched();
-      if (!actor.orgId) {
-        throw new Error("Expected an org-scoped actor");
-      }
-      await updateFeatureSwitchesForUser(
-        context,
-        { ...actor, orgId: actor.orgId },
-        { [FeatureSwitchKey.StructuredPrompt]: userMessageEnabled },
-      );
+  it("uses userMessage semantics for title and recommended follow-up context", async () => {
+    const { actor, agentId, runnerGroup } = await entitledChatActor();
+    chatCallbacks.failIfChatCallbackRouteIsFetched();
 
-      const style = ILLUSTRATION_TEMPLATE_ITEMS[0];
-      if (!style) {
-        throw new Error("Expected a registered illustration style");
-      }
-      const generationTemplate: GenerationTemplateRequest = {
-        type: "illustration",
-        selection: { illustrationStyleId: style.illustrationStyleId },
-      };
-      const firstUserMessage: UserMessageDocument = {
-        version: 1,
-        parts: [
-          {
-            type: "template",
-            titleSnapshot: style.title,
-            template: generationTemplate,
-          },
-          { type: "text", text: "first structured request" },
-        ],
-      };
-      const templatePrompt = `Select ${style.title} illustration template`;
-
-      const first = await startChatRun(actor, {
-        agentId,
-        prompt: "stale first legacy request",
-        generationTemplate,
-        userMessage: firstUserMessage,
-      });
-      const firstHeaders = await claimChatRun(runnerGroup, first.runId);
-      chatCallbacks.mockChatOutputEvents([
-        assistantEvent(0, "first structured answer"),
-      ]);
-      await completeChatRunOk(first.runId, firstHeaders, {
-        lastEventSequence: 0,
-      });
-      await flushWaitUntilForTest();
-
-      const titlePrompts: string[] = [];
-      const followupPrompts: string[] = [];
-      mockOptionalEnv("OPENROUTER_API_KEY", "bdd-openrouter-key");
-      chatCallbacks.mockOpenRouterCompletions((body) => {
-        const systemContent = body.messages[0]?.content ?? "";
-        if (systemContent.includes("Generate a short, descriptive title")) {
-          titlePrompts.push(body.messages[1]?.content ?? "");
-          return "Structured Context";
-        }
-        if (systemContent.includes("concise follow-up prompts")) {
-          followupPrompts.push(body.messages[1]?.content ?? "");
-          return JSON.stringify([
-            { prompt: "Continue the structured work", kind: "talk" },
-          ]);
-        }
-        return "Generated summary";
-      });
-
-      const second = await startChatRun(actor, {
-        agentId,
-        threadId: first.threadId,
-        prompt: "stale second legacy request",
-        userMessage: {
-          version: 1,
-          parts: [{ type: "text", text: "second structured request" }],
+    const style = ILLUSTRATION_TEMPLATE_ITEMS[0];
+    if (!style) {
+      throw new Error("Expected a registered illustration style");
+    }
+    const generationTemplate: GenerationTemplateRequest = {
+      type: "illustration",
+      selection: { illustrationStyleId: style.illustrationStyleId },
+    };
+    const firstUserMessage: UserMessageDocument = {
+      version: 1,
+      parts: [
+        {
+          type: "template",
+          titleSnapshot: style.title,
+          template: generationTemplate,
         },
-      });
-      await waitForThreadTitle(actor, first.threadId, "Structured Context");
+        { type: "text", text: "first structured request" },
+      ],
+    };
+    const templatePrompt = `Select ${style.title} illustration template`;
 
-      const userMessageContext = [
-        templatePrompt,
-        "first structured request",
-        "second structured request",
-      ];
-      const legacyContext = [
-        "stale first legacy request",
-        "stale second legacy request",
-      ];
-      const expectedContext = userMessageEnabled
-        ? userMessageContext
-        : legacyContext;
-      const excludedContext = userMessageEnabled
-        ? legacyContext
-        : userMessageContext;
+    const first = await startChatRun(actor, {
+      agentId,
+      prompt: "stale first legacy request",
+      generationTemplate,
+      userMessage: firstUserMessage,
+    });
+    const firstHeaders = await claimChatRun(runnerGroup, first.runId);
+    chatCallbacks.mockChatOutputEvents([
+      assistantEvent(0, "first structured answer"),
+    ]);
+    await completeChatRunOk(first.runId, firstHeaders, {
+      lastEventSequence: 0,
+    });
+    await flushWaitUntilForTest();
 
-      expect(titlePrompts).toHaveLength(1);
-      for (const value of expectedContext) {
-        expect(titlePrompts[0]).toContain(value);
+    const titlePrompts: string[] = [];
+    const followupPrompts: string[] = [];
+    mockOptionalEnv("OPENROUTER_API_KEY", "bdd-openrouter-key");
+    chatCallbacks.mockOpenRouterCompletions((body) => {
+      const systemContent = body.messages[0]?.content ?? "";
+      if (systemContent.includes("Generate a short, descriptive title")) {
+        titlePrompts.push(body.messages[1]?.content ?? "");
+        return "Structured Context";
       }
-      for (const value of excludedContext) {
-        expect(titlePrompts[0]).not.toContain(value);
+      if (systemContent.includes("concise follow-up prompts")) {
+        followupPrompts.push(body.messages[1]?.content ?? "");
+        return JSON.stringify([
+          { prompt: "Continue the structured work", kind: "talk" },
+        ]);
       }
+      return "Generated summary";
+    });
 
-      const secondHeaders = await claimChatRun(runnerGroup, second.runId);
-      chatCallbacks.mockChatOutputEvents([
-        assistantEvent(0, "second structured answer"),
-      ]);
-      await completeChatRunOk(second.runId, secondHeaders, {
-        lastEventSequence: 0,
-      });
-      await flushWaitUntilForTest();
+    const second = await startChatRun(actor, {
+      agentId,
+      threadId: first.threadId,
+      prompt: "stale second legacy request",
+      userMessage: {
+        version: 1,
+        parts: [{ type: "text", text: "second structured request" }],
+      },
+    });
+    await waitForThreadTitle(actor, first.threadId, "Structured Context");
 
-      expect(followupPrompts).toHaveLength(1);
-      for (const value of expectedContext) {
-        expect(followupPrompts[0]).toContain(value);
-      }
-      expect(followupPrompts[0]).toContain("second structured answer");
-      for (const value of excludedContext) {
-        expect(followupPrompts[0]).not.toContain(value);
-      }
-    },
-    90_000,
-  );
+    const userMessageContext = [
+      templatePrompt,
+      "first structured request",
+      "second structured request",
+    ];
+    const legacyContext = [
+      "stale first legacy request",
+      "stale second legacy request",
+    ];
+    const expectedContext = userMessageContext;
+    const excludedContext = legacyContext;
+
+    expect(titlePrompts).toHaveLength(1);
+    for (const value of expectedContext) {
+      expect(titlePrompts[0]).toContain(value);
+    }
+    for (const value of excludedContext) {
+      expect(titlePrompts[0]).not.toContain(value);
+    }
+
+    const secondHeaders = await claimChatRun(runnerGroup, second.runId);
+    chatCallbacks.mockChatOutputEvents([
+      assistantEvent(0, "second structured answer"),
+    ]);
+    await completeChatRunOk(second.runId, secondHeaders, {
+      lastEventSequence: 0,
+    });
+    await flushWaitUntilForTest();
+
+    expect(followupPrompts).toHaveLength(1);
+    for (const value of expectedContext) {
+      expect(followupPrompts[0]).toContain(value);
+    }
+    expect(followupPrompts[0]).toContain("second structured answer");
+    for (const value of excludedContext) {
+      expect(followupPrompts[0]).not.toContain(value);
+    }
+  }, 90_000);
 
   it("suppresses malformed recommended follow-up JSON instead of storing raw syntax lines", async () => {
     const { actor, agentId, runnerGroup } = await entitledChatActor();
@@ -2558,14 +2538,6 @@ describe("CHAT-02: auto-send after failures", () => {
   it("uses structured failed messages for normal and queued incomplete-round context", async () => {
     const { actor, agentId, runnerGroup } = await entitledChatActor();
     chatCallbacks.failIfChatCallbackRouteIsFetched();
-    if (!actor.orgId) {
-      throw new Error("Expected an org-scoped actor");
-    }
-    await updateFeatureSwitchesForUser(
-      context,
-      { ...actor, orgId: actor.orgId },
-      { [FeatureSwitchKey.StructuredPrompt]: true },
-    );
 
     const anchor = await startChatRun(actor, {
       agentId,
@@ -2748,6 +2720,7 @@ describe("CHAT-02: auto-send after failures", () => {
     const queuedFile = await chat.completeUpload(actor, {
       id: queuedUpload.id,
     });
+    const queuedContent = "queued with files";
     await queueChatMessage(actor, {
       agentId,
       threadId: first.threadId,
@@ -2779,7 +2752,7 @@ describe("CHAT-02: auto-send after failures", () => {
         return userMessages(items).some((message) => {
           return (
             message.eventType === "input.prompt" &&
-            message.content === "queued with files" &&
+            message.content === queuedContent &&
             message.runId !== undefined
           );
         });
@@ -2789,7 +2762,7 @@ describe("CHAT-02: auto-send after failures", () => {
       (message): message is PromptMessage => {
         return (
           message.eventType === "input.prompt" &&
-          message.content === "queued with files" &&
+          message.content === queuedContent &&
           message.runId !== undefined
         );
       },
@@ -2810,7 +2783,6 @@ describe("CHAT-02: auto-send after failures", () => {
         "api_dispatch_pre_create_zero_chat_callback_auto_send_lookup_queued_message",
         "api_dispatch_pre_create_zero_chat_callback_auto_send_load_agent",
         "api_dispatch_pre_create_zero_chat_callback_auto_send_build_input",
-        "api_dispatch_pre_create_zero_chat_callback_auto_send_resolve_attachments",
         "api_dispatch_pre_create_zero_chat_callback_auto_send_create_run",
         "api_dispatch_pre_create_zero_chat_callback_auto_send_publish_signals",
       ],
@@ -2847,7 +2819,9 @@ describe("CHAT-02: auto-send after failures", () => {
     expect(appended).toContain("# Incomplete Rounds Context");
     expect(appended).toContain("RUN_STATUS: failed");
     expect(appended).toContain("...[truncated]");
-    expect(appended).toContain(`[Web file]\n   [ID] ${contextFile.id}`);
+    expect(appended).toContain(
+      `[Web file] ${contextFile.filename} (${contextFile.contentType})\n   [ID] ${contextFile.id}`,
+    );
     expect(appended).not.toContain("# Web Chat Run Context");
     expect(autoContext.body.sessionId).toBe(`bdd-cli-${first.runId}`);
 

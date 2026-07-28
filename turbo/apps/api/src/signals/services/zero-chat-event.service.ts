@@ -33,10 +33,8 @@ type ChatEventIdentity = Pick<
 type ChatEventInputPayload = Pick<
   ChatEventInsert,
   "attachFiles" | "attachFileMetadata" | "generationTemplate" | "goalSnapshot"
->;
-
-type ChatEventUserMessagePayload = {
-  readonly userMessage: NonNullable<ChatEventInsert["userMessage"]> | null;
+> & {
+  readonly userMessage: NonNullable<ChatEventInsert["userMessage"]>;
 };
 
 type ChatEventOutputSequence = Pick<
@@ -45,8 +43,7 @@ type ChatEventOutputSequence = Pick<
 >;
 
 type InputPromptEvent = ChatEventIdentity &
-  ChatEventInputPayload &
-  ChatEventUserMessagePayload & {
+  ChatEventInputPayload & {
     readonly eventType: "input.prompt";
     readonly content: string | null;
     readonly triggerSource?: TriggerSource;
@@ -64,7 +61,6 @@ type InputAutomationEvent = ChatEventIdentity & {
 
 type InputRejectedEvent = ChatEventIdentity &
   ChatEventInputPayload &
-  Partial<ChatEventUserMessagePayload> &
   Pick<ChatEventInsert, "sequenceNumber"> & {
     readonly eventType: "input.rejected";
     readonly content: string | null;

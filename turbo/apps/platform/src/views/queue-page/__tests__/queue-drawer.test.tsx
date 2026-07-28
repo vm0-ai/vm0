@@ -101,6 +101,10 @@ function mockQueuedThread(): void {
           threadId: THREAD_ID,
           eventType: "input.prompt" as const,
           content: "Previous prompt",
+          userMessage: {
+            version: 1,
+            parts: [{ type: "text", text: "Previous prompt" }],
+          },
           runId: "run-completed",
           seqId: 1,
           createdAt: "2026-01-01T00:00:00Z",

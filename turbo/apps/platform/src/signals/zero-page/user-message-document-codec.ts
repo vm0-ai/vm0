@@ -32,10 +32,9 @@ export interface EditorDocumentSnapshot {
 }
 
 export function shouldUseUserMessage(
-  enabled: boolean,
   document: UserMessageDocument | null | undefined,
 ): document is UserMessageDocument {
-  return enabled && document !== null && document !== undefined;
+  return document !== null && document !== undefined;
 }
 
 interface TextMessageTemplateSnapshot {

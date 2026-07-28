@@ -24,7 +24,6 @@ export function setMockFeatureSwitches(
       return respond(200, {
         switches: sanitized,
         effectiveSwitches: sanitized,
-        supportsStructuredFeedbackParts: true,
         supportsStructuredInlineTemplates: true,
       });
     }),

@@ -371,6 +371,9 @@ async function appendClaimedUserMessage(
   if (!queued) {
     return null;
   }
+  if (!queued.userMessage) {
+    throw new Error("Queued input event is missing userMessage");
+  }
 
   const claimed = await replaceChatEvent(db, args.messageId, {
     chatThreadId: args.threadId,
@@ -589,6 +592,9 @@ export async function failQueuedUserMessage(
       .limit(1);
     if (!queued) {
       return null;
+    }
+    if (!queued.userMessage) {
+      throw new Error("Queued input event is missing userMessage");
     }
 
     const replacement = await replaceChatEvent(tx, args.messageId, {

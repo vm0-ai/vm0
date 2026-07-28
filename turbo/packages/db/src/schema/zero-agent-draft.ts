@@ -1,4 +1,6 @@
+import { sql } from "drizzle-orm";
 import {
+  check,
   jsonb,
   pgTable,
   text,
@@ -40,6 +42,14 @@ export const zeroAgentDrafts = pgTable(
         table.userId,
         table.orgId,
         table.agentId,
+      ),
+      draftUserMessageCheck: check(
+        "zero_agent_drafts_draft_user_message_check",
+        sql`${table.draftUserMessage} IS NOT NULL
+          OR (
+            COALESCE(${table.draftContent}, '') = ''
+            AND COALESCE(${table.draftAttachments}, '[]'::jsonb) = '[]'::jsonb
+          )`,
       ),
     };
   },
