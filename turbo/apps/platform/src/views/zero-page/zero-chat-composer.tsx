@@ -1637,26 +1637,6 @@ function presentationTemplateCardSlideImage(
   return presentationTemplateFallbackSlideImage(item, index, size);
 }
 
-function presentationTemplateDetailUsesStaticPreview(
-  item: PresentationTemplateItem,
-  activeSlideIndex: number,
-  theme: PresentationTemplateThemeOption,
-): boolean {
-  return (
-    activeSlideIndex === 0 &&
-    item.cardPreviewImagesByTheme?.[theme.id] !== undefined
-  );
-}
-
-function presentationTemplateDetailFrameClassName(
-  usesStaticPreview: boolean,
-): string {
-  return cn(
-    "pointer-events-none absolute inset-0 h-full w-full border-0 bg-background opacity-0",
-    !usesStaticPreview && "data-[loaded=true]:opacity-100",
-  );
-}
-
 function presentationTemplateFallbackSlideImage(
   item: PresentationTemplateItem,
   index: number,
@@ -1671,6 +1651,21 @@ function presentationTemplateFallbackSlideImage(
     `${PRESENTATION_GALLERY_PREVIEW_BASE_URL}/${item.slug}/slide-${slideNumber}.webp`,
     size,
   );
+}
+
+function presentationTemplateHighResolutionSlideImage(
+  item: PresentationTemplateItem,
+  index: number,
+  theme: PresentationTemplateThemeOption,
+  size: TemplatePreviewImageSize = TEMPLATE_HIGH_RESOLUTION_PREVIEW_SIZE,
+): string {
+  // Theme card assets are intentionally pre-rendered at 480x270. They are
+  // useful as an immediate placeholder, but resizing them cannot add detail.
+  // Use the gallery's original slide for the high-resolution image instead.
+  if (index === 0) {
+    return presentationTemplateFallbackSlideImage(item, index, size);
+  }
+  return presentationTemplateCardSlideImage(item, index, theme, size);
 }
 
 function prewarmTemplatePreviewImage(
@@ -2967,12 +2962,13 @@ function TemplatePreview({
     hoverSlideIndex,
     previewTheme,
   );
-  const highResolutionFallbackImageUrl = presentationTemplateCardSlideImage(
-    item,
-    hoverSlideIndex,
-    previewTheme,
-    TEMPLATE_HIGH_RESOLUTION_PREVIEW_SIZE,
-  );
+  const highResolutionFallbackImageUrl =
+    presentationTemplateHighResolutionSlideImage(
+      item,
+      hoverSlideIndex,
+      previewTheme,
+      TEMPLATE_HIGH_RESOLUTION_PREVIEW_SIZE,
+    );
   const activeHtmlPreview =
     htmlPreview?.slug === item.slug &&
     htmlPreview.embedUrl === item.embedUrl &&
@@ -3288,17 +3284,12 @@ function TemplatePreviewPage({
     activeSlideIndex,
     selectedTheme,
   );
-  const detailHighResolutionImage = presentationTemplateCardSlideImage(
-    item,
-    activeSlideIndex,
-    selectedTheme,
-    TEMPLATE_HIGH_RESOLUTION_PREVIEW_SIZE,
-  );
-  const detailHasThemedStaticPreview =
-    presentationTemplateDetailUsesStaticPreview(
+  const detailHighResolutionImage =
+    presentationTemplateHighResolutionSlideImage(
       item,
       activeSlideIndex,
       selectedTheme,
+      TEMPLATE_HIGH_RESOLUTION_PREVIEW_SIZE,
     );
 
   const selectDetailSlide = (index: number) => {
@@ -3392,9 +3383,7 @@ function TemplatePreviewPage({
               src={visibleDetailPreview?.frameUrl ?? undefined}
               sandbox="allow-same-origin"
               tabIndex={-1}
-              className={presentationTemplateDetailFrameClassName(
-                detailHasThemedStaticPreview,
-              )}
+              className="pointer-events-none absolute inset-0 h-full w-full border-0 bg-background opacity-0 data-[loaded=true]:opacity-100"
               onLoad={(event) => {
                 const frameUrl = visibleDetailPreview?.frameUrl;
                 if (!frameUrl) {

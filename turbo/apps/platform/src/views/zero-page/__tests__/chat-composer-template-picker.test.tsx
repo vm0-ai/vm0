@@ -285,6 +285,12 @@ describe("chat composer templates", () => {
       "data-src",
       expect.stringContaining("width=708,height=398"),
     );
+    expect(highResolutionImage).toHaveAttribute(
+      "data-src",
+      expect.stringContaining(
+        `/presentation-gallery/2026-07-04/${template.slug}/slide-001.webp`,
+      ),
+    );
 
     fireEvent.load(lowResolutionImage);
     expect(highResolutionImage).toHaveAttribute(
@@ -1031,6 +1037,24 @@ describe("chat composer templates", () => {
         height: 270,
       }),
     );
+    const highResolutionDetailImage = within(templateDialog)
+      .getByTestId(`${template.title} detail image preview`)
+      .parentElement?.querySelector<HTMLImageElement>(
+        '[data-template-preview-image="high"]',
+      );
+    if (
+      highResolutionDetailImage === null ||
+      highResolutionDetailImage === undefined
+    ) {
+      throw new Error("High-resolution detail preview image not found");
+    }
+    expect(highResolutionDetailImage).toHaveAttribute(
+      "data-src",
+      r2ImageTransformUrl(
+        `https://static.vm0.io/web/assets/presentation-gallery/2026-07-04/${template.slug}/slide-001.webp`,
+        { width: 708, height: 398 },
+      ),
+    );
     expect(initialDetailImageSrc).not.toBe(
       r2ImageTransformUrl(prismCardPreview, {
         width: 480,
@@ -1153,7 +1177,7 @@ describe("chat composer templates", () => {
           expect.stringMatching(/^blob:detail-theme-preview-/),
         );
       });
-      expect(frame().className).not.toContain("data-[loaded=true]:opacity-100");
+      expect(frame().className).toContain("data-[loaded=true]:opacity-100");
       const initialFrameSrc = frame().getAttribute("src");
       if (initialFrameSrc === null) {
         throw new Error("Initial detail preview frame URL not found");
