@@ -130,6 +130,24 @@ export async function removeRunCanonicalStorageState(
   });
 }
 
+export async function readRunnerJobStorageState(
+  context: TestContext,
+  runId: string,
+): Promise<
+  NonNullable<TestRuntimeStateActionResponse["runner_job_storage_state"]>
+> {
+  const response = await postAction(context, {
+    action: "read-runner-job-storage-state",
+    run_id: runId,
+  });
+  if (!response.runner_job_storage_state) {
+    throw new Error(
+      "readRunnerJobStorageState missing runner_job_storage_state",
+    );
+  }
+  return response.runner_job_storage_state;
+}
+
 export async function readStoragePersistenceState(
   context: TestContext,
   ids: {

@@ -14,7 +14,7 @@ import {
   agentComposeVersions,
 } from "@vm0/db/schema/agent-compose";
 import { agentRuns } from "@vm0/db/schema/agent-run";
-import { chatMessageQueue } from "@vm0/db/schema/chat-message-queue";
+import { chatMessages } from "@vm0/db/schema/chat-message";
 import { creditExpiresRecord } from "@vm0/db/schema/credit-expires-record";
 import { e2eSlackMockCallLog } from "@vm0/db/schema/e2e-slack-mock-call-log";
 import { orgCache } from "@vm0/db/schema/org-cache";
@@ -28,7 +28,8 @@ import { variables } from "@vm0/db/schema/variable";
 import { vm0ApiKeys } from "@vm0/db/schema/vm0-api-key";
 import { zeroAgents } from "@vm0/db/schema/zero-agent";
 import { zeroRuns } from "@vm0/db/schema/zero-run";
-import { and, desc, eq, inArray, isNull, sql } from "drizzle-orm";
+import { and, desc, eq, inArray, isNull, notExists, sql } from "drizzle-orm";
+import { alias } from "drizzle-orm/pg-core";
 
 import { pgTextDecoder } from "../../lib/db-structured-result";
 import { optionalEnv } from "../../lib/env";
@@ -39,6 +40,10 @@ import { db$, type Db, type ReadonlyDb, writeDb$ } from "../external/db";
 import type { RouteEntry } from "../route-entry";
 import { resolveTestOrgId$, testUserId$ } from "../services/cli-auth.service";
 import { encryptPersistentSecretValue } from "../services/crypto.utils";
+import {
+  chatEventTypeIn,
+  chatEventTypeSql,
+} from "../services/zero-chat-event-type.service";
 import {
   isTestEndpointAllowed,
   testEndpointNotFoundResponse,
@@ -71,6 +76,7 @@ const SLACK_E2E_FIXTURES = {
   botUserId: "U_E2E_BOT",
   botToken: "xoxb-e2e-test-bot-token",
 } as const;
+const slackStateQueueRevoker = alias(chatMessages, "slack_state_queue_revoker");
 
 type StarterGrantTx = Parameters<Parameters<Db["transaction"]>[0]>[0];
 
@@ -561,26 +567,37 @@ function slackChatIngressRows(db: ReadonlyDb, teamId: string) {
     .where(eq(slackOrgConnections.slackWorkspaceId, teamId));
 }
 
-function slackChatQueueRows(db: ReadonlyDb, teamId: string) {
+function slackPendingChatEventRows(db: ReadonlyDb, teamId: string) {
   return db
     .select({
-      id: chatMessageQueue.id,
-      chatThreadId: chatMessageQueue.chatThreadId,
-      chatMessageId: chatMessageQueue.chatMessageId,
-      itemType: chatMessageQueue.itemType,
-      triggerSource: chatMessageQueue.triggerSource,
-      createdAt: chatMessageQueue.createdAt,
+      id: chatMessages.id,
+      chatThreadId: chatMessages.chatThreadId,
+      eventType: chatEventTypeSql().as("event_type"),
+      triggerSource: chatMessages.triggerSource,
+      createdAt: chatMessages.createdAt,
     })
-    .from(chatMessageQueue)
+    .from(chatMessages)
     .innerJoin(
       slackChatThreadRoutes,
-      eq(chatMessageQueue.chatThreadId, slackChatThreadRoutes.chatThreadId),
+      eq(chatMessages.chatThreadId, slackChatThreadRoutes.chatThreadId),
     )
     .innerJoin(
       slackOrgConnections,
       eq(slackChatThreadRoutes.connectionId, slackOrgConnections.id),
     )
-    .where(eq(slackOrgConnections.slackWorkspaceId, teamId));
+    .where(
+      and(
+        eq(slackOrgConnections.slackWorkspaceId, teamId),
+        chatEventTypeIn(["input.prompt", "input.automation"]),
+        isNull(chatMessages.runId),
+        notExists(
+          db
+            .select({ id: slackStateQueueRevoker.id })
+            .from(slackStateQueueRevoker)
+            .where(eq(slackStateQueueRevoker.revokesEventId, chatMessages.id)),
+        ),
+      ),
+    );
 }
 
 function recentSlackRuns(db: ReadonlyDb, orgId: string | null | undefined) {
@@ -822,7 +839,9 @@ const getSlackState$ = computed(async (get) => {
   const chatIngress = hasTeamIdLookup
     ? await slackChatIngressRows(db, teamId)
     : [];
-  const chatQueue = hasTeamIdLookup ? await slackChatQueueRows(db, teamId) : [];
+  const pendingChatEvents = hasTeamIdLookup
+    ? await slackPendingChatEventRows(db, teamId)
+    : [];
   const stateOrgId = query.org_id ?? installationRow?.orgId;
   const recentRuns = await recentSlackRuns(db, stateOrgId);
   const orgMeta = await orgMetaFor(db, stateOrgId);
@@ -859,7 +878,7 @@ const getSlackState$ = computed(async (get) => {
           updatedAt: isoString(ingress.updatedAt),
         };
       }),
-      chat_message_queue: chatQueue.map((item) => {
+      pending_chat_events: pendingChatEvents.map((item) => {
         return { ...item, createdAt: isoString(item.createdAt) };
       }),
       recent_runs: recentRuns.map((run) => {

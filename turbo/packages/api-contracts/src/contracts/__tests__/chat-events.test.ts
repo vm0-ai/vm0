@@ -53,6 +53,9 @@ const chatEvents = [
     eventType: "input.rejected",
     content: "Run the task",
     error: "Insufficient credits",
+    automationId: "00000000-0000-4000-8000-000000000010",
+    triggerSource: "workflow-event",
+    triggerBrief: "Gmail label applied",
     createdAt: CREATED_AT,
   },
   {
@@ -261,6 +264,12 @@ describe("ChatEvent catalog", () => {
     expect(chatEventSchema.safeParse({ ...prompt, role: "user" }).success).toBe(
       false,
     );
+    expect(
+      chatEventSchema.safeParse({
+        ...prompt,
+        encryptedParams: "must-stay-server-side",
+      }).success,
+    ).toBe(false);
     expect(
       chatEventSchema.safeParse({
         ...prompt,

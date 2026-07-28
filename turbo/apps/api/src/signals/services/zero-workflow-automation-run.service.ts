@@ -1,7 +1,10 @@
 import { command } from "ccstate";
 
 import { writeDb$ } from "../external/db";
-import { publishChatThreadWorkflowQueueChangedSafely } from "../external/realtime";
+import {
+  publishChatThreadMessageCreatedSafely,
+  publishChatThreadWorkflowQueueChangedSafely,
+} from "../external/realtime";
 import {
   admitWorkflowAutomationEvent,
   type WorkflowQueueEventParams,
@@ -96,6 +99,13 @@ export const runWorkflowAutomationNow$ = command(
       chatThreadId,
     );
     signal.throwIfAborted();
+    if (admission.kind === "inserted") {
+      await publishChatThreadMessageCreatedSafely(
+        automation.ownerUserId,
+        chatThreadId,
+      );
+      signal.throwIfAborted();
+    }
 
     const drained = await set(
       drainChatThreadQueueForThread$,
