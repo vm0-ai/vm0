@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.22.5](https://github.com/vm0-ai/vm0/compare/guest-download-v0.22.4...guest-download-v0.22.5) (2026-07-28)
+
+
+### Refactoring
+
+* **runner:** require canonical storage manifests ([#23550](https://github.com/vm0-ai/vm0/issues/23550)) ([cedc736](https://github.com/vm0-ai/vm0/commit/cedc736c5d46390ba0d145df5274359aff5330a6))
+
 ## [0.22.4](https://github.com/vm0-ai/vm0/compare/guest-download-v0.22.3...guest-download-v0.22.4) (2026-07-28)
 
 ## [0.22.3](https://github.com/vm0-ai/vm0/compare/guest-download-v0.22.2...guest-download-v0.22.3) (2026-07-25)

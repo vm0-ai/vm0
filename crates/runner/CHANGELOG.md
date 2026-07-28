@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.148.24](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.148.23...runner-rs-v0.148.24) (2026-07-28)
+
+
+### Refactoring
+
+* **runner:** require canonical storage manifests ([#23550](https://github.com/vm0-ai/vm0/issues/23550)) ([cedc736](https://github.com/vm0-ai/vm0/commit/cedc736c5d46390ba0d145df5274359aff5330a6))
+
 ## [0.148.23](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.148.22...runner-rs-v0.148.23) (2026-07-28)
 
 

@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.4.5](https://github.com/vm0-ai/vm0/compare/guest-contracts-v0.4.4...guest-contracts-v0.4.5) (2026-07-28)
+
+
+### Refactoring
+
+* **runner:** require canonical storage manifests ([#23550](https://github.com/vm0-ai/vm0/issues/23550)) ([cedc736](https://github.com/vm0-ai/vm0/commit/cedc736c5d46390ba0d145df5274359aff5330a6))
+
 ## [0.4.4](https://github.com/vm0-ai/vm0/compare/guest-contracts-v0.4.3...guest-contracts-v0.4.4) (2026-07-28)
 
 

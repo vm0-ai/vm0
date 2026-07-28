@@ -1,5 +1,26 @@
 # Changelog
 
+## [1.338.2](https://github.com/vm0-ai/vm0/compare/api-v1.338.1...api-v1.338.2) (2026-07-28)
+
+
+### Refactoring
+
+* **chat:** migrate and require canonical user messages ([#23505](https://github.com/vm0-ai/vm0/issues/23505)) ([52955a3](https://github.com/vm0-ai/vm0/commit/52955a380745b5d717750eb9409bf064e33c514c))
+
+
+### Performance Improvements
+
+* **api:** avoid catalog loading during runner claim ([#23555](https://github.com/vm0-ai/vm0/issues/23555)) ([a2247ee](https://github.com/vm0-ai/vm0/commit/a2247ee072c508d39916621c3bc34980aabded40))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.242.1
+    * @vm0/core bumped to 8.482.1
+    * @vm0/db bumped to 1.150.1
+
 ## [1.338.1](https://github.com/vm0-ai/vm0/compare/api-v1.338.0...api-v1.338.1) (2026-07-28)
 
 

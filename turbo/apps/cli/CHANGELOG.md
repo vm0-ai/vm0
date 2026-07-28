@@ -1,5 +1,20 @@
 # Changelog
 
+## [9.264.1](https://github.com/vm0-ai/vm0/compare/cli-v9.264.0...cli-v9.264.1) (2026-07-28)
+
+
+### Refactoring
+
+* reduce fallback slop in notion automations ([#23574](https://github.com/vm0-ai/vm0/issues/23574)) ([2a9c999](https://github.com/vm0-ai/vm0/commit/2a9c999f1133a45cde765a143452da147388808d))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/api-contracts bumped to 1.242.1
+    * @vm0/core bumped to 8.482.1
+
 ## [9.264.0](https://github.com/vm0-ai/vm0/compare/cli-v9.263.2...cli-v9.264.0) (2026-07-28)
 
 
