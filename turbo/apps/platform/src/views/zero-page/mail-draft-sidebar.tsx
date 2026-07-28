@@ -126,8 +126,14 @@ function UnavailableMailDraftSidebar({
   );
 }
 
-function GmailReconnectButton() {
-  const { reconnect, reconnectDisabled, reconnecting } = useGmailReconnect();
+function GmailReconnectButton({
+  signals,
+}: {
+  readonly signals: MailDraftSignals;
+}) {
+  const reloadDraft = useSet(signals.reloadDraft$);
+  const { reconnect, reconnectDisabled, reconnecting } =
+    useGmailReconnect(reloadDraft);
   return (
     <Button
       type="button"
@@ -1067,7 +1073,7 @@ export function MailDraftSidebar({ signals, onClose }: MailDraftSidebarProps) {
       <UnavailableMailDraftSidebar
         close={close}
         message="You no longer have permission to access this email. Reconnect Gmail to continue."
-        action={<GmailReconnectButton />}
+        action={<GmailReconnectButton signals={signals} />}
       />
     );
   }

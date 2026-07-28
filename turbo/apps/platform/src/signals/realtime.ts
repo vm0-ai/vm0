@@ -80,6 +80,7 @@ interface SetAblyPayloadLoopArgs {
     Promise<boolean> | boolean,
     [unknown, AbortSignal]
   >;
+  readonly catchUpCommand$?: Command<Promise<boolean> | boolean, [AbortSignal]>;
   readonly options?: RealtimeSubscribeOptions;
 }
 
@@ -403,6 +404,9 @@ const runWithChannelPayload$ = command(
       signal,
       run: async () => {
         options?.onSubscribed?.();
+        if (options?.runOnSubscribe) {
+          requestCatchUp();
+        }
         L.debug("subscribed to payload topic: " + subscriptionLabel);
 
         await setLoop(
@@ -580,14 +584,14 @@ export const setAblyLoop$ = command(
 export const setAblyPayloadLoop$ = command(
   async (
     { set },
-    { topic, loopCommand$, options }: SetAblyPayloadLoopArgs,
+    { topic, loopCommand$, catchUpCommand$, options }: SetAblyPayloadLoopArgs,
     signal: AbortSignal,
   ) => {
     const channel = await set(userChannel$, topic, signal);
     signal.throwIfAborted();
     await set(
       runWithChannelPayload$,
-      { channel, topic, loopCommand$, options },
+      { channel, topic, loopCommand$, catchUpCommand$, options },
       signal,
     );
     signal.throwIfAborted();

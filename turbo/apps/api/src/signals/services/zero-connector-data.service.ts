@@ -7,7 +7,9 @@ import {
   type ConnectorResponse,
   type ScopeDiffResponse,
 } from "@vm0/api-contracts/contracts/connector-schemas";
+import type { ConnectorRef } from "@vm0/api-contracts/contracts/connector-identity";
 import type { ConnectorSearchItem } from "@vm0/api-contracts/contracts/zero-connectors";
+import type { ConnectorChangedPayload } from "@vm0/api-contracts/contracts/realtime";
 import {
   connectorAuthMethodGrantMetadata,
   connectorAuthMethodOwnedSecretNames,
@@ -270,6 +272,7 @@ function throwCapturedAbort(error: unknown): void {
 
 async function finalizeConnectorStateChangeAfterCommit(args: {
   readonly userId: string;
+  readonly connectorRef: ConnectorRef;
   readonly pendingTokenRevoke: PendingConnectorTokenRevoke | null;
   readonly signal: AbortSignal;
   readonly postCommitAbort: unknown;
@@ -285,7 +288,9 @@ async function finalizeConnectorStateChangeAfterCommit(args: {
     }
   }
 
-  await publishUserSignal([args.userId], "connector:changed");
+  await publishUserSignal([args.userId], "connector:changed", {
+    connectorRef: args.connectorRef,
+  } satisfies ConnectorChangedPayload);
   if (args.signal.aborted) {
     postCommitAbort ??= args.signal.reason;
   }
@@ -783,6 +788,7 @@ export const deleteZeroConnectorLocalState$ = command(
 
     await finalizeConnectorStateChangeAfterCommit({
       userId: args.userId,
+      connectorRef: args.type,
       pendingTokenRevoke: deleteResult.pendingTokenRevoke,
       signal,
       postCommitAbort,
@@ -1120,6 +1126,7 @@ export const connectManualGrantConnector$ = command(
 
     await finalizeConnectorStateChangeAfterCommit({
       userId: args.userId,
+      connectorRef: args.runtimeMethod.connectorRef,
       pendingTokenRevoke,
       signal,
       postCommitAbort,
@@ -1197,6 +1204,7 @@ export const connectNoAuthConnector$ = command(
 
     await finalizeConnectorStateChangeAfterCommit({
       userId: args.userId,
+      connectorRef: args.runtimeMethod.connectorRef,
       pendingTokenRevoke,
       signal,
       postCommitAbort,
@@ -1851,6 +1859,7 @@ export const upsertConnectorTokenConnection$ = command(
 
     await finalizeConnectorStateChangeAfterCommit({
       userId: args.userId,
+      connectorRef: args.runtimeMethod.connectorRef,
       pendingTokenRevoke: connectionResult.pendingTokenRevoke,
       signal,
       postCommitAbort,
