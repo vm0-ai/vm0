@@ -688,6 +688,29 @@ export function createRunsApi(context: TestContext) {
       );
     },
 
+    async replaceUserPermissionGrants(
+      actor: ApiTestUser,
+      body: {
+        readonly agentId: string;
+        readonly connectorRef: string;
+        readonly grants: readonly ApplyUserPermissionGrant[];
+      },
+    ): Promise<readonly UserPermissionGrantResponse[]> {
+      const response = await accept(
+        runApp(context)(zeroUserPermissionGrantsContract).apply({
+          headers: authenticate(context, actor),
+          body: {
+            agentId: body.agentId,
+            connectorRef: body.connectorRef,
+            mode: "replace",
+            grants: [...body.grants],
+          },
+        }),
+        [200],
+      );
+      return response.body;
+    },
+
     async listUserPermissionGrants(
       actor: ApiTestUser,
       agentId: string,

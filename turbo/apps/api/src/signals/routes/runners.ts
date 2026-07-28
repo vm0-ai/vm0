@@ -7,6 +7,7 @@ import {
   runnersHeartbeatContract,
   runnersJobClaimContract,
   runnersPollContract,
+  storedConnectorPermissionBaselineSchema,
   storedExecutionContextSchema,
   type ExecutionContext,
   type HeldSessionState,
@@ -70,6 +71,7 @@ import {
   mergeNetworkPolicyRefreshes,
   networkPolicyRefreshConnectorRefs,
   resolveActiveNetworkPolicyRefreshes,
+  resolveActiveNetworkPolicyRefreshesFromBaseline,
 } from "../services/zero-user-permission-grants.service";
 import {
   type CompressedSessionHistoryBlobEncoding,
@@ -142,6 +144,12 @@ function isResumeSessionHistoryLoadError(
 }
 
 type ClaimRouteTimingSpanKind = "top_level" | "nested";
+type ClaimNetworkPolicyRefreshPath =
+  | "baseline"
+  | "baseline_empty"
+  | "full_missing_baseline"
+  | "full_invalid_baseline"
+  | "full_incompatible_baseline";
 type ClaimRouteTimingActionType =
   | "claim_route_request_prepare"
   | "claim_route_lookup_authorization"
@@ -159,6 +167,7 @@ interface ClaimRouteTimingRecord {
   readonly durationMs: number;
   readonly timestamp: string;
   readonly fallbackReason?: "invalid_keys";
+  readonly policyRefreshPath?: ClaimNetworkPolicyRefreshPath;
 }
 
 class ClaimRouteTimingCollector {
@@ -205,6 +214,28 @@ class ClaimRouteTimingCollector {
     });
   }
 
+  async measureNetworkPolicyRefresh<T>(
+    operation: () => Promise<{
+      readonly value: T;
+      readonly path: ClaimNetworkPolicyRefreshPath;
+    }>,
+  ): Promise<T> {
+    const startedAt = now();
+    const result = await settle(operation());
+    const finishedAt = now();
+    this.records.push({
+      actionType: "claim_route_response_network_policy_refresh",
+      spanKind: "nested",
+      durationMs: Math.max(0, finishedAt - startedAt),
+      timestamp: new Date(finishedAt).toISOString(),
+      ...(result.ok ? { policyRefreshPath: result.value.path } : {}),
+    });
+    if (!result.ok) {
+      throw result.error;
+    }
+    return result.value.value;
+  }
+
   flush(args: {
     readonly runId: string;
     readonly runnerGroup: string;
@@ -240,6 +271,9 @@ class ClaimRouteTimingCollector {
             span_kind: record.spanKind,
             ...(record.fallbackReason
               ? { fallback_reason: record.fallbackReason }
+              : {}),
+            ...(record.policyRefreshPath
+              ? { policy_refresh_path: record.policyRefreshPath }
               : {}),
           },
         };
@@ -1127,50 +1161,92 @@ async function refreshClaimNetworkPolicies(args: {
 }): Promise<
   Pick<StoredExecutionContext, "networkPolicies" | "networkPolicyRefreshes">
 > {
-  const networkPolicyConnectorRefs = Object.keys(
-    args.storedContext.networkPolicies ?? {},
-  );
+  const storedNetworkPolicies = args.storedContext.networkPolicies ?? {};
+  const networkPolicyConnectorRefs = Object.keys(storedNetworkPolicies);
   if (networkPolicyConnectorRefs.length === 0) {
     return {
       networkPolicies: args.storedContext.networkPolicies,
       networkPolicyRefreshes: undefined,
     };
   }
-  const connectorCatalogSnapshot = await loadConnectorRuntimeSnapshot(args.db);
-  const connectorRefs = networkPolicyRefreshConnectorRefs(
-    connectorCatalogSnapshot.serverFirewalls,
-    networkPolicyConnectorRefs,
-  );
-  if (connectorRefs.length === 0) {
-    return {
-      networkPolicies: args.storedContext.networkPolicies,
-      networkPolicyRefreshes: undefined,
-    };
-  }
 
-  return await args.timing.measure(
-    "claim_route_response_network_policy_refresh",
-    "nested",
-    async () => {
-      const refreshes = await resolveActiveNetworkPolicyRefreshes(
+  return await args.timing.measureNetworkPolicyRefresh(async () => {
+    const scope = {
+      orgId: args.run.orgId,
+      userId: args.run.userId,
+      agentId: args.run.agentId,
+    };
+    const fullRefresh = async (
+      path: Extract<ClaimNetworkPolicyRefreshPath, `full_${string}`>,
+    ) => {
+      const connectorCatalogSnapshot = await loadConnectorRuntimeSnapshot(
         args.db,
-        {
-          orgId: args.run.orgId,
-          userId: args.run.userId,
-          agentId: args.run.agentId,
-        },
-        connectorRefs,
-        connectorCatalogSnapshot,
       );
+      const connectorRefs = networkPolicyRefreshConnectorRefs(
+        connectorCatalogSnapshot.serverFirewalls,
+        networkPolicyConnectorRefs,
+      );
+      const refreshes =
+        connectorRefs.length === 0
+          ? []
+          : await resolveActiveNetworkPolicyRefreshes(
+              args.db,
+              scope,
+              connectorRefs,
+              connectorCatalogSnapshot,
+            );
+      return { refreshes, path };
+    };
+
+    const selectRefresh = async () => {
+      if (args.storedContext.connectorPermissionBaseline === undefined) {
+        return await fullRefresh("full_missing_baseline");
+      }
+      const baselineResult = storedConnectorPermissionBaselineSchema.safeParse(
+        args.storedContext.connectorPermissionBaseline,
+      );
+      if (
+        !baselineResult.success ||
+        Object.keys(baselineResult.data.connectors).some((connectorRef) => {
+          return !(connectorRef in storedNetworkPolicies);
+        })
+      ) {
+        return await fullRefresh("full_invalid_baseline");
+      }
+      const resolution = await resolveActiveNetworkPolicyRefreshesFromBaseline(
+        args.db,
+        scope,
+        baselineResult.data,
+      );
+      if (resolution.kind === "incompatible") {
+        return await fullRefresh("full_incompatible_baseline");
+      }
+      if (resolution.kind === "empty") {
+        return {
+          refreshes: resolution.refreshes,
+          path: "baseline_empty" as const,
+        };
+      }
       return {
-        networkPolicies: mergeNetworkPolicyRefreshes(
-          args.storedContext.networkPolicies,
-          refreshes,
-        ),
-        networkPolicyRefreshes: networkPolicyRefreshesRecord(refreshes),
+        refreshes: resolution.refreshes,
+        path: "baseline" as const,
       };
-    },
-  );
+    };
+    const selected = await selectRefresh();
+
+    return {
+      value: {
+        networkPolicies: mergeNetworkPolicyRefreshes(
+          storedNetworkPolicies,
+          selected.refreshes,
+        ),
+        networkPolicyRefreshes: networkPolicyRefreshesRecord(
+          selected.refreshes,
+        ),
+      },
+      path: selected.path,
+    };
+  });
 }
 
 type StoredResumeSessionWithHistoryRef = Extract<
@@ -1546,6 +1622,7 @@ async function buildClaimResponseBody(args: {
       const refreshedPolicies = refreshedPoliciesResult.value;
       args.signal.throwIfAborted();
       const {
+        connectorPermissionBaseline: _connectorPermissionBaseline,
         secretValueEnvironmentKeys: _secretValueEnvironmentKeys,
         storageManifest: _legacyStorageManifest,
         storageMounts: _storedStorageMounts,

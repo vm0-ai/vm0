@@ -108,6 +108,23 @@ export async function mutateRunnerJobSecretValueEnvironmentKeys(
   });
 }
 
+export async function mutateRunnerJobConnectorPermissionBaseline(
+  context: TestContext,
+  runId: string,
+  mode:
+    | "remove"
+    | "malformed"
+    | "catalog-mismatch"
+    | "authority-mismatch"
+    | "inconsistent",
+): Promise<void> {
+  await postAction(context, {
+    action: "mutate-runner-job-connector-permission-baseline",
+    run_id: runId,
+    mode,
+  });
+}
+
 export async function setRunnerJobContextProfileAsPreviousApi(
   context: TestContext,
   runId: string,

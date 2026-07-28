@@ -34,6 +34,17 @@ export const testRuntimeStateActionBodySchema = z.discriminatedUnion("action", [
     mode: z.enum(["remove", "invalid"]),
   }),
   z.object({
+    action: z.literal("mutate-runner-job-connector-permission-baseline"),
+    run_id: z.uuid(),
+    mode: z.enum([
+      "remove",
+      "malformed",
+      "catalog-mismatch",
+      "authority-mismatch",
+      "inconsistent",
+    ]),
+  }),
+  z.object({
     action: z.literal("remove-run-canonical-storage-state"),
     run_id: z.uuid(),
   }),

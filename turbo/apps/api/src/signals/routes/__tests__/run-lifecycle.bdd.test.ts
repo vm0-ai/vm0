@@ -83,6 +83,7 @@ import {
   deleteVm0ManagedDefaultModelKey,
   enableFakeKms,
   holdOrgAdmissionLock,
+  mutateRunnerJobConnectorPermissionBaseline,
   mutateRunnerJobSecretValueEnvironmentKeys,
   removeRunCanonicalStorageState,
   replaceCustomConnectorPrefixes,
@@ -772,6 +773,27 @@ function expectClaimRouteResponseTimingActions(args: {
       expect(serialized).not.toContain(forbiddenValue);
     }
   }
+}
+
+function expectClaimNetworkPolicyRefreshPath(
+  runId: string,
+  path:
+    | "baseline"
+    | "baseline_empty"
+    | "full_missing_baseline"
+    | "full_invalid_baseline"
+    | "full_incompatible_baseline",
+): void {
+  expect(
+    singleSandboxOperationEvent(
+      claimRouteTimingEventsForRun(runId),
+      "claim_route_response_network_policy_refresh",
+    ),
+  ).toStrictEqual(
+    expect.objectContaining({
+      policy_refresh_path: path,
+    }),
+  );
 }
 
 function expectCustomConnectorRuntimePhaseTimingEvents(
@@ -2807,7 +2829,10 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     });
     expectClaimRouteResponseTimingActions({
       runId: resumed.runId,
-      expectedActionTypes: ["claim_route_response_resume_session"],
+      expectedActionTypes: [
+        "claim_route_response_resume_session",
+        "claim_route_response_network_policy_refresh",
+      ],
       forbiddenValues: [
         history,
         historyHash,
@@ -2815,6 +2840,7 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
         resumedClaim.sandboxToken,
       ],
     });
+    expectClaimNetworkPolicyRefreshPath(resumed.runId, "baseline_empty");
 
     await api.requestCancelRun(actor, resumed.runId, [200]);
   });
@@ -7722,6 +7748,158 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
     expectApiError(rejected.body);
   });
 
+  it("refreshes queued connector grants from the stored permission baseline", async () => {
+    const bdd = createBddApi(context);
+    const api = createRunsApi(context);
+    const fw = createFirewallApi(context);
+    const { actor, runnerGroup } = await entitledRunActor();
+    const agent = await bdd.createAgent(actor, {
+      displayName: "BDD queued permission baseline agent",
+    });
+    const agentId = agent.agentId;
+    await fw.seedTestConnector(actor, {
+      connectorName: "slack",
+      authMethod: "oauth",
+      accessToken: "xoxb-bdd-baseline",
+    });
+    await api.enableAgentConnectors(actor, agentId, ["slack"]);
+    await api.heartbeatRunner(runnerGroup);
+
+    await api.applyUserPermissionGrant(actor, {
+      agentId,
+      connectorRef: "slack",
+      permission: "chat:write",
+      action: "allow",
+      expiresIn: "1h",
+    });
+    const expiringRun = await api.createRun(actor, {
+      agentId,
+      prompt: "expire a queued permission",
+      modelProvider: "anthropic-api-key",
+    });
+    mockNow(now() + 2 * 3_600_000);
+    const expiredClaim = await api.claimRunnerJob(expiringRun.runId);
+    expect(expiredClaim.networkPolicies?.slack?.deny).toContain("chat:write");
+    expect(expiredClaim.networkPolicies?.slack?.allow).not.toContain(
+      "chat:write",
+    );
+    expectClaimNetworkPolicyRefreshPath(expiringRun.runId, "baseline");
+    await api.requestCancelRun(actor, expiringRun.runId, [200]);
+
+    await api.applyUserPermissionGrant(actor, {
+      agentId,
+      connectorRef: "slack",
+      permission: "chat:write",
+      action: "allow",
+    });
+    const revokedRun = await api.createRun(actor, {
+      agentId,
+      prompt: "revoke a queued permission",
+      modelProvider: "anthropic-api-key",
+    });
+    await expect(
+      api.replaceUserPermissionGrants(actor, {
+        agentId,
+        connectorRef: "slack",
+        grants: [],
+      }),
+    ).resolves.toStrictEqual([]);
+    const revokedClaim = await api.claimRunnerJob(revokedRun.runId);
+    expect(revokedClaim.networkPolicies?.slack?.deny).toContain("chat:write");
+    expect(revokedClaim.networkPolicies?.slack?.allow).not.toContain(
+      "chat:write",
+    );
+    expect(revokedClaim).not.toHaveProperty("connectorPermissionBaseline");
+    expectClaimNetworkPolicyRefreshPath(revokedRun.runId, "baseline");
+    await api.requestCancelRun(actor, revokedRun.runId, [200]);
+  });
+
+  it("skips connector catalog work for a current writer without built-ins", async () => {
+    const bdd = createBddApi(context);
+    const api = createRunsApi(context);
+    const { actor, runnerGroup } = await entitledRunActor();
+    const agent = await bdd.createAgent(actor, {
+      displayName: "BDD empty permission baseline agent",
+    });
+    await api.heartbeatRunner(runnerGroup);
+
+    const run = await api.createRun(actor, {
+      agentId: agent.agentId,
+      prompt: "claim without built-in connectors",
+      modelProvider: "anthropic-api-key",
+    });
+    const claim = await api.claimRunnerJob(run.runId);
+
+    expect(claim.networkPolicies).toHaveProperty(
+      "model-provider:anthropic-api-key",
+    );
+    expect(claim).not.toHaveProperty("connectorPermissionBaseline");
+    expectClaimNetworkPolicyRefreshPath(run.runId, "baseline_empty");
+    await api.requestCancelRun(actor, run.runId, [200]);
+  });
+
+  it("falls back for old, invalid, and incompatible permission baselines", async () => {
+    const bdd = createBddApi(context);
+    const api = createRunsApi(context);
+    const fw = createFirewallApi(context);
+    const { actor, runnerGroup } = await entitledRunActor();
+    const agent = await bdd.createAgent(actor, {
+      displayName: "BDD permission baseline fallback agent",
+    });
+    await fw.seedTestConnector(actor, {
+      connectorName: "slack",
+      authMethod: "oauth",
+      accessToken: "xoxb-bdd-baseline-fallback",
+    });
+    await api.enableAgentConnectors(actor, agent.agentId, ["slack"]);
+    await api.heartbeatRunner(runnerGroup);
+
+    const cases = [
+      {
+        mode: "remove",
+        path: "full_missing_baseline",
+      },
+      {
+        mode: "malformed",
+        path: "full_invalid_baseline",
+      },
+      {
+        mode: "inconsistent",
+        path: "full_invalid_baseline",
+      },
+      {
+        mode: "catalog-mismatch",
+        path: "full_incompatible_baseline",
+      },
+      {
+        mode: "authority-mismatch",
+        path: "full_incompatible_baseline",
+      },
+    ] as const;
+
+    for (const fallbackCase of cases) {
+      const run = await api.createRun(actor, {
+        agentId: agent.agentId,
+        prompt: `fallback ${fallbackCase.mode}`,
+        modelProvider: "anthropic-api-key",
+      });
+      await mutateRunnerJobConnectorPermissionBaseline(
+        context,
+        run.runId,
+        fallbackCase.mode,
+      );
+      const claim = await api.claimRunnerJob(run.runId);
+
+      expect(claim.networkPolicies?.slack?.allow).toContain(
+        "conversations:read",
+      );
+      expect(claim.networkPolicies?.slack?.deny).toContain("chat:write");
+      expect(claim).not.toHaveProperty("connectorPermissionBaseline");
+      expectClaimNetworkPolicyRefreshPath(run.runId, fallbackCase.path);
+      await api.requestCancelRun(actor, run.runId, [200]);
+    }
+  });
+
   it("applies, scopes, expires, and snapshots user permission grants", async () => {
     const bdd = createBddApi(context);
     const api = createRunsApi(context);
@@ -7843,6 +8021,10 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
         grantedContext.claim.sandboxToken,
       ],
     });
+    expectClaimNetworkPolicyRefreshPath(grantedContext.claim.runId, "baseline");
+    expect(grantedContext.claim).not.toHaveProperty(
+      "connectorPermissionBaseline",
+    );
     expect(
       grantedContext.claim.networkPolicyRefreshes?.slack?.nextRefreshAt,
     ).toStrictEqual(expect.any(String));
@@ -9058,12 +9240,13 @@ describe("RUN-03: user-runner protocol and runner authentication", () => {
     expect(claimed.body.sandboxToken).not.toBe("");
     expectClaimRouteResponseTimingActions({
       runId: first.runId,
-      expectedActionTypes: [],
+      expectedActionTypes: ["claim_route_response_network_policy_refresh"],
       forbiddenValues: [firstPrompt, claimed.body.sandboxToken, apiKey.token],
     });
+    expectClaimNetworkPolicyRefreshPath(first.runId, "baseline_empty");
     const claimRouteTimingEvents = claimRouteTimingEventsForRun(first.runId);
     expect(claimRouteTimingEvents).toHaveLength(
-      CLAIM_ROUTE_TIMING_ACTION_TYPES.length,
+      CLAIM_ROUTE_TIMING_ACTION_TYPES.length + 1,
     );
     const observedClaimRouteActionTypes = new Set(
       claimRouteTimingEvents.map((event) => {

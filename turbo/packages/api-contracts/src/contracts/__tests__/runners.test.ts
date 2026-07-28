@@ -19,6 +19,7 @@ import {
   runnersPollContract,
   storageMountEntrySchema,
   storageManifestSchema,
+  storedConnectorPermissionBaselineSchema,
   storedExecutionContextSchema,
   storedResumeSessionSchema,
 } from "../runners";
@@ -30,6 +31,35 @@ function loadRunnerClaimResponseFixture(): unknown {
       "utf-8",
     ),
   );
+}
+
+function connectorPermissionBaselineFixture() {
+  return {
+    version: 1 as const,
+    catalogIdentity: {
+      sourceId: "connector-catalog",
+      schemaVersion: 1,
+      catalogVersion: "2026-07-28",
+      catalogDigest: `sha256:${"a".repeat(64)}`,
+      capabilityDigest: `sha256:${"b".repeat(64)}`,
+    },
+    validationAuthority: {
+      backendVersion: "1.337.1",
+      buildCommitSha: "c".repeat(40),
+    },
+    connectors: {
+      slack: {
+        permissionNames: ["conversations:read", "chat:write"],
+        defaultPolicy: {
+          permissionDefault: "allow" as const,
+          permissionOverrides: {
+            deny: ["chat:write"],
+          },
+          unknownPolicy: "deny" as const,
+        },
+      },
+    },
+  };
 }
 
 describe("runner claim response contract", () => {
@@ -45,6 +75,108 @@ describe("runner claim response contract", () => {
       modelUsageProvider: "fixture-model",
     });
     expect(context).not.toHaveProperty("experimentalProfile");
+  });
+
+  it("does not expose the API-only connector permission baseline", () => {
+    const fixture = executionContextSchema.parse(
+      loadRunnerClaimResponseFixture(),
+    );
+    const context = executionContextSchema.parse({
+      ...fixture,
+      connectorPermissionBaseline: connectorPermissionBaselineFixture(),
+    });
+
+    expect(context).not.toHaveProperty("connectorPermissionBaseline");
+  });
+});
+
+describe("stored connector permission baseline contract", () => {
+  const storedContext = {
+    storageMounts: [],
+    environment: null,
+    secretValueEnvironmentKeys: null,
+    resumeSession: null,
+    encryptedSecrets: null,
+    cliAgentType: "codex",
+  };
+
+  it("accepts compact versioned defaults", () => {
+    expect(
+      storedConnectorPermissionBaselineSchema.parse(
+        connectorPermissionBaselineFixture(),
+      ),
+    ).toEqual(connectorPermissionBaselineFixture());
+  });
+
+  it("rejects unsupported, overlapping, and unknown permission metadata", () => {
+    const baseline = connectorPermissionBaselineFixture();
+    expect(
+      storedConnectorPermissionBaselineSchema.safeParse({
+        ...baseline,
+        version: 2,
+      }).success,
+    ).toBe(false);
+    expect(
+      storedConnectorPermissionBaselineSchema.safeParse({
+        ...baseline,
+        connectors: {
+          slack: {
+            ...baseline.connectors.slack,
+            defaultPolicy: {
+              ...baseline.connectors.slack.defaultPolicy,
+              permissionOverrides: {
+                allow: ["chat:write"],
+                deny: ["chat:write"],
+              },
+            },
+          },
+        },
+      }).success,
+    ).toBe(false);
+    expect(
+      storedConnectorPermissionBaselineSchema.safeParse({
+        ...baseline,
+        connectors: {
+          slack: {
+            ...baseline.connectors.slack,
+            defaultPolicy: {
+              ...baseline.connectors.slack.defaultPolicy,
+              permissionOverrides: {
+                deny: ["files:write"],
+              },
+            },
+          },
+        },
+      }).success,
+    ).toBe(false);
+  });
+
+  it("keeps malformed future metadata outside stored-context validity", () => {
+    const futureBaseline = { version: 2, payload: "future" };
+    const parsed = storedExecutionContextSchema.parse({
+      ...storedContext,
+      connectorPermissionBaseline: futureBaseline,
+    });
+
+    expect(parsed.connectorPermissionBaseline).toEqual(futureBaseline);
+    expect(
+      storedConnectorPermissionBaselineSchema.safeParse(
+        parsed.connectorPermissionBaseline,
+      ).success,
+    ).toBe(false);
+  });
+
+  it("allows a previous reader to ignore the new optional field", () => {
+    const previousStoredExecutionContextSchema =
+      storedExecutionContextSchema.omit({
+        connectorPermissionBaseline: true,
+      });
+    const parsed = previousStoredExecutionContextSchema.parse({
+      ...storedContext,
+      connectorPermissionBaseline: connectorPermissionBaselineFixture(),
+    });
+
+    expect(parsed).not.toHaveProperty("connectorPermissionBaseline");
   });
 });
 
