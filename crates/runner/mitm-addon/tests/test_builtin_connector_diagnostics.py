@@ -176,6 +176,106 @@ def test_skips_static_connector_without_injectable_auth_references():
     assert candidate is None
 
 
+def test_skips_static_connector_with_reference_looking_basic_literals():
+    snapshot = _diagnostic_snapshot(
+        [
+            _firewall(
+                "literal-auth",
+                "UNUSED_TOKEN",
+                base="https://literal-auth.example.com",
+                auth={
+                    "headers": {
+                        "Authorization": '${{ basic("secrets.FAKE", "vars.FAKE") }}',
+                        "X-Bare": "secrets.BARE vars.BARE",
+                        "X-Nested": (
+                            '${{ basic("${{ secrets.NESTED_FAKE }}", "${{ vars.NESTED_FAKE }}") }}'
+                        ),
+                    }
+                },
+            )
+        ]
+    )
+
+    candidate = builtin_connector_diagnostics.find_candidate(
+        snapshot,
+        "https://literal-auth.example.com/items",
+        "GET",
+        active_firewall_names=set(),
+    )
+
+    assert candidate is None
+
+
+def test_classifies_mixed_basic_auth_with_only_real_references():
+    snapshot = _diagnostic_snapshot(
+        [
+            _firewall(
+                "mixed-auth",
+                "UNUSED_TOKEN",
+                base="https://mixed-auth.example.com",
+                auth={
+                    "headers": {
+                        "Authorization": '${{ basic("secrets.FAKE", secrets.REAL_TOKEN) }}',
+                        "X-Bare": "secrets.BARE",
+                        "X-Nested": (
+                            '${{ basic("${{ secrets.NESTED_FAKE }}", secrets.REAL_TOKEN) }}'
+                        ),
+                        "X-Second": '${{\t basic(vars.REAL_USER, "vars.FAKE") \r}}',
+                        "X-Simple": "Bearer ${{ vars.SIMPLE_VAR }}",
+                    }
+                },
+            )
+        ]
+    )
+
+    candidate = builtin_connector_diagnostics.find_candidate(
+        snapshot,
+        "https://mixed-auth.example.com/items",
+        "GET",
+        active_firewall_names=set(),
+    )
+
+    assert candidate is not None
+    assert candidate.env_names == ("REAL_TOKEN", "REAL_USER", "SIMPLE_VAR")
+
+
+def test_malformed_basic_auth_keeps_later_valid_templates_visible():
+    snapshot = _diagnostic_snapshot(
+        [
+            _firewall(
+                "malformed-auth",
+                "UNUSED_TOKEN",
+                base="https://malformed-auth.example.com",
+                auth={
+                    "headers": {
+                        "Authorization": (
+                            'prefix ${{ basic("unterminated '
+                            "${{ basic(secrets.USER, secrets.PASS) }}"
+                        ),
+                        "X-Escaped": (
+                            'prefix ${{ basic("bad '
+                            "${{ basic(secrets.USER, secrets.PASS) }}"
+                            '\\", secrets.SKIP) }}'
+                        ),
+                        "X-Long": "${{ basic(" + "\t" * 20_000,
+                        "X-Repeated": ('${{ basic("' + "\t" * 20) * 1_000,
+                    }
+                },
+            )
+        ]
+    )
+
+    candidate = builtin_connector_diagnostics.find_candidate(
+        snapshot,
+        "https://malformed-auth.example.com/items",
+        "GET",
+        active_firewall_names=set(),
+    )
+
+    assert candidate is not None
+    assert candidate.env_names == ("USER", "PASS")
+
+
 def test_model_provider_route_excludes_connector_on_same_host():
     snapshot = _diagnostic_snapshot(
         [
@@ -228,6 +328,34 @@ def test_find_candidate_suppresses_shared_base_only_candidates():
     )
 
     assert candidate is None
+
+
+def test_literal_only_connector_does_not_create_shared_base_ambiguity():
+    snapshot = _diagnostic_snapshot(
+        [
+            _firewall("credentialed", "REAL_TOKEN"),
+            _firewall(
+                "literal-only",
+                "UNUSED_TOKEN",
+                auth={
+                    "headers": {
+                        "Authorization": '${{ basic("secrets.FAKE", "fixed") }}',
+                    }
+                },
+            ),
+        ]
+    )
+
+    candidate = builtin_connector_diagnostics.find_candidate(
+        snapshot,
+        "https://shared.example.com/messages/123",
+        "GET",
+        active_firewall_names=set(),
+    )
+
+    assert candidate is not None
+    assert candidate.connector_type == "credentialed"
+    assert candidate.env_names == ("REAL_TOKEN",)
 
 
 def test_find_candidate_selects_unique_shared_base_route_owner():
