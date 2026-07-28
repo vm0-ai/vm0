@@ -14,6 +14,10 @@ import {
   MODEL_PROVIDER_FIREWALL_CONFIGS,
 } from "../../contracts/model-providers";
 import {
+  MCP_TOOL_NAME_MAX_LENGTH,
+  MCP_TOOL_POLICY_MAX_EXACT_NAMES,
+} from "@vm0/connectors/firewall-types";
+import {
   CLIENT_REQUEST_ID_HEADER,
   CLIENT_SESSION_ID_HEADER,
   CLIENT_TYPE_APP,
@@ -100,7 +104,6 @@ const clientSessionIdHeaderDoc = [
 const clientRequestIdHeaderDoc = [
   "HTTP header carrying the per-request vm0 client request identifier.",
 ] as const;
-
 function rustString(value: string): RustConstantValue {
   return { kind: "string", value };
 }
@@ -117,6 +120,18 @@ function placeholderRustDoc(name: string): readonly string[] {
 }
 
 const expectedBindings = [
+  {
+    rustModulePath: ["firewall"],
+    rustConstName: "MCP_TOOL_NAME_MAX_LENGTH",
+    value: rustU64(MCP_TOOL_NAME_MAX_LENGTH),
+    rustDoc: ["Maximum accepted MCP tool name length."],
+  },
+  {
+    rustModulePath: ["firewall"],
+    rustConstName: "MCP_TOOL_POLICY_MAX_EXACT_NAMES",
+    value: rustU64(MCP_TOOL_POLICY_MAX_EXACT_NAMES),
+    rustDoc: ["Maximum exact MCP tool names accepted in one firewall policy."],
+  },
   {
     rustModulePath: ["client", "headers"],
     rustConstName: "CLIENT_VERSION_HEADER",

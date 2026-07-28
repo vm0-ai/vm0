@@ -1621,6 +1621,8 @@ mod tests {
                             description: None,
                             rules: vec!["GET /records".to_string()],
                         }]),
+                        mcp: None,
+                        suppress_body_capture: false,
                     }],
                 },
             },

@@ -213,6 +213,14 @@ pub struct FirewallApi {
     pub host_policy: Option<FirewallBaseHostPolicy>,
     #[serde(default)]
     pub permissions: Option<Vec<FirewallPermission>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub mcp: Option<FirewallMcpPolicy>,
+    #[serde(
+        default,
+        rename = "suppressBodyCapture",
+        skip_serializing_if = "is_false"
+    )]
+    pub suppress_body_capture: bool,
 }
 
 impl FirewallApi {
@@ -238,6 +246,99 @@ impl FirewallApi {
                         permission.name
                     ));
                 }
+            }
+        }
+        if let Some(mcp) = &self.mcp {
+            self.validate_mcp_for_cache(mcp)?;
+        }
+        Ok(())
+    }
+
+    fn validate_mcp_for_cache(&self, mcp: &FirewallMcpPolicy) -> Result<(), String> {
+        let parsed =
+            url::Url::parse(&self.base).map_err(|_| "MCP base URL is invalid".to_string())?;
+        if self.base.contains("${{")
+            || self.base.contains('{')
+            || self.base.contains('}')
+            || parsed.scheme() != "https"
+            || parsed.host_str().is_none()
+            || !parsed.username().is_empty()
+            || parsed.password().is_some()
+            || parsed.query().is_some()
+            || parsed.fragment().is_some()
+        {
+            return Err(
+                "MCP base must be a static HTTPS URL without credentials, query, or fragment"
+                    .to_string(),
+            );
+        }
+        if self.host_policy != Some(FirewallBaseHostPolicy::PublicDestination) {
+            return Err("MCP firewall requires publicDestination hostPolicy".to_string());
+        }
+        if !self.auth.headers.is_empty()
+            || self.auth.base.is_some()
+            || self
+                .auth
+                .query
+                .as_ref()
+                .is_some_and(|query| !query.is_empty())
+            || self.auth.aws_sigv4.is_some()
+        {
+            return Err("MCP firewall V1 does not support authentication".to_string());
+        }
+        if !self.suppress_body_capture {
+            return Err("MCP firewall requires body capture suppression".to_string());
+        }
+        mcp.validate_for_cache()
+    }
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct FirewallMcpPolicy {
+    pub tool_policy: FirewallMcpToolPolicy,
+}
+
+impl FirewallMcpPolicy {
+    fn validate_for_cache(&self) -> Result<(), String> {
+        self.tool_policy.validate_for_cache()
+    }
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(tag = "kind", deny_unknown_fields)]
+pub enum FirewallMcpToolPolicy {
+    #[serde(rename = "exact", rename_all = "camelCase")]
+    Exact { tool_names: Vec<String> },
+    #[serde(rename = "all")]
+    All,
+}
+
+impl FirewallMcpToolPolicy {
+    fn validate_for_cache(&self) -> Result<(), String> {
+        use api_contracts::generated::constants::firewall::{
+            MCP_TOOL_NAME_MAX_LENGTH, MCP_TOOL_POLICY_MAX_EXACT_NAMES,
+        };
+
+        let Self::Exact { tool_names } = self else {
+            return Ok(());
+        };
+        if tool_names.is_empty() {
+            return Err("exact MCP tool policy requires tool names".to_string());
+        }
+        if tool_names.len() > MCP_TOOL_POLICY_MAX_EXACT_NAMES as usize {
+            return Err("exact MCP tool policy has too many tool names".to_string());
+        }
+        let mut seen = HashSet::new();
+        for name in tool_names {
+            if name.trim().is_empty() {
+                return Err("MCP tool name must not be empty".to_string());
+            }
+            if name.chars().count() > MCP_TOOL_NAME_MAX_LENGTH as usize {
+                return Err("MCP tool name is too long".to_string());
+            }
+            if !seen.insert(name) {
+                return Err(format!("duplicate exact MCP tool name {name:?}"));
             }
         }
         Ok(())
@@ -1521,6 +1622,8 @@ mod tests {
                     description: Some("read repo metadata".into()),
                     rules: vec!["GET /repos/{owner}/{repo}".into()],
                 }]),
+                mcp: None,
+                suppress_body_capture: false,
             }],
         };
         let json = serde_json::to_value(&fw).unwrap();
@@ -1583,6 +1686,85 @@ mod tests {
             round_trip["apis"][0]["auth"]["awsSigv4"]["accessKeyId"],
             "${{ secrets.AWS_ACCESS_KEY_ID }}"
         );
+    }
+
+    #[test]
+    fn firewall_preserves_and_validates_mcp_policy() {
+        let json = serde_json::json!({
+            "name": "remote-mcp",
+            "apis": [{
+                "base": "https://mcp.example.com/v1/mcp",
+                "hostPolicy": {"kind": "publicDestination"},
+                "auth": {},
+                "mcp": {
+                    "toolPolicy": {
+                        "kind": "exact",
+                        "toolNames": ["search", "calendar.create"]
+                    }
+                },
+                "suppressBodyCapture": true
+            }]
+        });
+
+        let firewall: Firewall = serde_json::from_value(json).unwrap();
+        firewall.validate_for_cache().unwrap();
+        let round_trip = serde_json::to_value(&firewall).unwrap();
+
+        assert_eq!(
+            round_trip["apis"][0]["mcp"]["toolPolicy"]["toolNames"],
+            serde_json::json!(["search", "calendar.create"])
+        );
+        assert_eq!(round_trip["apis"][0]["suppressBodyCapture"], true);
+    }
+
+    #[test]
+    fn firewall_mcp_validation_fails_closed_on_unsafe_entries() {
+        let invalid_apis = [
+            serde_json::json!({
+                "base": "http://mcp.example.com/v1/mcp",
+                "hostPolicy": {"kind": "publicDestination"},
+                "auth": {},
+                "mcp": {"toolPolicy": {"kind": "all"}},
+                "suppressBodyCapture": true
+            }),
+            serde_json::json!({
+                "base": "https://user:password@mcp.example.com/v1/mcp?tenant=1#fragment",
+                "hostPolicy": {"kind": "publicDestination"},
+                "auth": {},
+                "mcp": {"toolPolicy": {"kind": "all"}},
+                "suppressBodyCapture": true
+            }),
+            serde_json::json!({
+                "base": "https://mcp.example.com/v1/mcp",
+                "hostPolicy": {"kind": "providerOwned", "exactHosts": ["mcp.example.com"]},
+                "auth": {},
+                "mcp": {"toolPolicy": {"kind": "all"}},
+                "suppressBodyCapture": true
+            }),
+            serde_json::json!({
+                "base": "https://mcp.example.com/v1/mcp",
+                "hostPolicy": {"kind": "publicDestination"},
+                "auth": {"headers": {"Authorization": "Bearer token"}},
+                "mcp": {"toolPolicy": {"kind": "all"}},
+                "suppressBodyCapture": true
+            }),
+            serde_json::json!({
+                "base": "https://mcp.example.com/v1/mcp",
+                "hostPolicy": {"kind": "publicDestination"},
+                "auth": {},
+                "mcp": {"toolPolicy": {"kind": "exact", "toolNames": ["search", "search"]}},
+                "suppressBodyCapture": true
+            }),
+        ];
+
+        for api in invalid_apis {
+            let firewall: Firewall = serde_json::from_value(serde_json::json!({
+                "name": "remote-mcp",
+                "apis": [api]
+            }))
+            .unwrap();
+            assert!(firewall.validate_for_cache().is_err());
+        }
     }
 
     #[test]

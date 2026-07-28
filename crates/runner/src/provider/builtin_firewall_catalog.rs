@@ -512,6 +512,8 @@ mod tests {
                             description: None,
                             rules: vec!["GET /items".to_string()],
                         }]),
+                        mcp: None,
+                        suppress_body_capture: false,
                     }],
                 },
             )]),

@@ -439,6 +439,10 @@ def _api_routing_identity(api_entry: dict) -> str | None:
     }
     if "hostPolicy" in api_entry:
         identity["hostPolicy"] = api_entry["hostPolicy"]
+    if "mcp" in api_entry:
+        identity["mcp"] = api_entry["mcp"]
+    if "suppressBodyCapture" in api_entry:
+        identity["suppressBodyCapture"] = api_entry["suppressBodyCapture"]
     try:
         return json.dumps(
             identity,

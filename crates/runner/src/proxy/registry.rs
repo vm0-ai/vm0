@@ -354,7 +354,10 @@ pub(super) async fn write_empty_registry(path: &Path) -> RunnerResult<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::types::{Firewall, FirewallApi, FirewallAuth, FirewallEntry, FirewallPermission};
+    use crate::types::{
+        Firewall, FirewallApi, FirewallAuth, FirewallBaseHostPolicy, FirewallEntry,
+        FirewallMcpPolicy, FirewallMcpToolPolicy, FirewallPermission,
+    };
     use std::os::unix::fs::PermissionsExt;
 
     struct RegistryHarness {
@@ -430,6 +433,8 @@ mod tests {
                                 rules: vec!["POST /repos/{owner}/{repo}/issues".to_string()],
                             },
                         ]),
+                        mcp: None,
+                        suppress_body_capture: false,
                     }],
                 },
             })
@@ -1064,6 +1069,8 @@ mod tests {
                             "GET /messages/{id}".to_string(),
                         ],
                     }]),
+                    mcp: None,
+                    suppress_body_capture: false,
                 }],
             },
         }];
@@ -1116,6 +1123,54 @@ mod tests {
 
         // Empty billableFirewalls round-trips as [] (Python reads vm_info["billableFirewalls"]).
         assert_eq!(vm_json["billableFirewalls"], serde_json::json!([]));
+    }
+
+    #[tokio::test]
+    async fn registry_preserves_mcp_enforcement_policy() {
+        let harness = RegistryHarness::new().await;
+        let firewall_entries = vec![FirewallEntry::Inline {
+            firewall: Firewall {
+                name: "remote-mcp".to_string(),
+                apis: vec![FirewallApi {
+                    id: String::new(),
+                    base: "https://mcp.example.com/v1/mcp".to_string(),
+                    auth: FirewallAuth {
+                        headers: HashMap::new(),
+                        base: None,
+                        query: None,
+                        aws_sigv4: None,
+                    },
+                    host_policy: Some(FirewallBaseHostPolicy::PublicDestination),
+                    permissions: None,
+                    mcp: Some(FirewallMcpPolicy {
+                        tool_policy: FirewallMcpToolPolicy::Exact {
+                            tool_names: vec!["search".to_string()],
+                        },
+                    }),
+                    suppress_body_capture: true,
+                }],
+            },
+        }];
+        let registration = VmRegistration {
+            firewalls: Some(&firewall_entries),
+            ..base_registration()
+        };
+
+        harness
+            .handle
+            .register_vm("10.200.0.5", &registration)
+            .await
+            .unwrap();
+
+        let raw = tokio::fs::read_to_string(harness.registry_path())
+            .await
+            .unwrap();
+        let value: serde_json::Value = serde_json::from_str(&raw).unwrap();
+        let api = &value["vms"]["10.200.0.5"]["firewalls"][0]["firewall"]["apis"][0];
+        assert_eq!(api["hostPolicy"]["kind"], "publicDestination");
+        assert_eq!(api["mcp"]["toolPolicy"]["kind"], "exact");
+        assert_eq!(api["mcp"]["toolPolicy"]["toolNames"][0], "search");
+        assert_eq!(api["suppressBodyCapture"], true);
     }
 
     #[tokio::test]
@@ -1217,6 +1272,8 @@ mod tests {
                     },
                     host_policy: None,
                     permissions: None,
+                    mcp: None,
+                    suppress_body_capture: false,
                 }],
             },
         }];
@@ -1268,6 +1325,8 @@ mod tests {
                     },
                     host_policy: None,
                     permissions: None,
+                    mcp: None,
+                    suppress_body_capture: false,
                 }],
             },
         }];

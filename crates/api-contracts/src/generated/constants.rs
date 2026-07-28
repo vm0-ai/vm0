@@ -62,6 +62,15 @@ pub mod codex_oauth_token {
     }
 }
 
+/// Firewall contract constants shared by TypeScript and Rust.
+pub mod firewall {
+    /// Maximum accepted MCP tool name length.
+    pub const MCP_TOOL_NAME_MAX_LENGTH: u64 = 256;
+
+    /// Maximum exact MCP tool names accepted in one firewall policy.
+    pub const MCP_TOOL_POLICY_MAX_EXACT_NAMES: u64 = 128;
+}
+
 /// Model-provider environment contract constants shared by TypeScript and Rust.
 pub mod model_provider_env {
     /// Fake model-provider environment placeholder marker values.

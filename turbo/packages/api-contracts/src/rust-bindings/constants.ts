@@ -3,6 +3,10 @@ import {
   MODEL_PROVIDER_FIREWALL_CONFIGS,
 } from "../contracts/model-providers";
 import {
+  MCP_TOOL_NAME_MAX_LENGTH,
+  MCP_TOOL_POLICY_MAX_EXACT_NAMES,
+} from "@vm0/connectors/firewall-types";
+import {
   CLIENT_REQUEST_ID_HEADER,
   CLIENT_SESSION_ID_HEADER,
   CLIENT_TYPE_APP,
@@ -83,6 +87,7 @@ const modelProviderEnvPlaceholderModule = [
 const clientHeadersModule = ["client", "headers"] as const;
 const clientTypesModule = ["client", "types"] as const;
 const runnerPathsModule = ["runners", "paths"] as const;
+const firewallModule = ["firewall"] as const;
 
 export const rustConstantRootDoc = [
   "Generated Rust constants for `@vm0/api-contracts`.",
@@ -141,6 +146,10 @@ export const rustConstantModuleDocs = [
     rustDoc: ["Runner contract constants shared by TypeScript and Rust."],
   },
   {
+    rustModulePath: firewallModule,
+    rustDoc: ["Firewall contract constants shared by TypeScript and Rust."],
+  },
+  {
     rustModulePath: runnerPathsModule,
     rustDoc: [
       "Runner and guest filesystem path constants shared across Rust and TypeScript.",
@@ -188,6 +197,18 @@ function rustU64(value: number): RustConstantValue {
 }
 
 export const rustConstantBindings = [
+  {
+    rustModulePath: firewallModule,
+    rustConstName: "MCP_TOOL_NAME_MAX_LENGTH",
+    value: rustU64(MCP_TOOL_NAME_MAX_LENGTH),
+    rustDoc: ["Maximum accepted MCP tool name length."],
+  },
+  {
+    rustModulePath: firewallModule,
+    rustConstName: "MCP_TOOL_POLICY_MAX_EXACT_NAMES",
+    value: rustU64(MCP_TOOL_POLICY_MAX_EXACT_NAMES),
+    rustDoc: ["Maximum exact MCP tool names accepted in one firewall policy."],
+  },
   {
     rustModulePath: clientHeadersModule,
     rustConstName: "CLIENT_VERSION_HEADER",

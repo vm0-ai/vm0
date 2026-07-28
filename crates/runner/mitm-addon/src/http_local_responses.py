@@ -11,6 +11,7 @@ import flow_metadata
 import flow_metadata_keys as metadata_keys
 import http_network_log
 import matching
+import mcp_policy
 import registry
 from logging_utils import log_proxy_entry
 from url_utils import AuthorityValidationError
@@ -19,7 +20,40 @@ _BUILTIN_HOST_POLICY_DENIED_ERROR: Final = "builtin_host_policy_denied"
 _AMBIGUOUS_CONNECTOR_ROUTE_ERROR: Final = "ambiguous_connector_route"
 _STALE_TLS_ADMISSION_ERROR: Final = "stale_tls_admission"
 _UPSTREAM_DESTINATION_UNBOUND_ERROR: Final = "upstream_destination_unbound"
+_MCP_POLICY_DENIED_ERROR: Final = "mcp_policy_denied"
 _HTTP_STATUS_CONFLICT = 409
+
+
+def block_mcp_policy_violation(
+    flow: http.HTTPFlow,
+    violation: mcp_policy.McpPolicyViolation,
+) -> None:
+    proxy_log_path = flow_metadata.proxy_log_path(flow.metadata)
+    log_proxy_entry(
+        proxy_log_path,
+        "warn",
+        "Request blocked by MCP policy",
+        type="mcp_policy",
+        reason=violation.reason,
+        method=violation.method,
+    )
+    flow_metadata.set_firewall_decision(
+        flow.metadata,
+        "BLOCK",
+        error=_MCP_POLICY_DENIED_ERROR,
+    )
+    flow.response = http.Response.make(
+        violation.status_code,
+        json.dumps(
+            {
+                "error": _MCP_POLICY_DENIED_ERROR,
+                "message": violation.message,
+                "reason": violation.reason,
+                "method": violation.method,
+            }
+        ).encode(),
+        {"Content-Type": "application/json"},
+    )
 
 
 def block_authority_validation_error(

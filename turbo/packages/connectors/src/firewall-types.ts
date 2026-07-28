@@ -12,6 +12,8 @@ export { normalizeFirewallFixedHost } from "./firewall-url-utils";
 const HOST_DOT_EQUIVALENT_PATTERN = /[\u3002\uff0e\uff61]/g;
 const HOST_POLICY_HOST_FORBIDDEN_PATTERN = /[%*[\]/?#@\\:{}<>^|]/u;
 const DNS_HOST_FORBIDDEN_ASCII_CHARS = new Set(["<", ">", "[", "]", "^", "|"]);
+export const MCP_TOOL_POLICY_MAX_EXACT_NAMES = 128;
+export const MCP_TOOL_NAME_MAX_LENGTH = 256;
 
 /**
  * Proxy-side firewall configuration for token replacement.
@@ -164,17 +166,135 @@ export const firewallBaseHostPolicySchema = z.union([
   firewallPublicDestinationHostPolicySchema,
 ]);
 
+export const firewallMcpToolNameSchema = z
+  .string()
+  .min(1)
+  .max(MCP_TOOL_NAME_MAX_LENGTH)
+  .refine(
+    (name) => {
+      return name.trim().length > 0;
+    },
+    { message: "Tool name cannot contain only whitespace" },
+  );
+
+const firewallExactMcpToolPolicySchema = z
+  .object({
+    kind: z.literal("exact"),
+    toolNames: z
+      .array(firewallMcpToolNameSchema)
+      .min(1)
+      .max(MCP_TOOL_POLICY_MAX_EXACT_NAMES),
+  })
+  .strict()
+  .superRefine((policy, ctx) => {
+    const seen = new Set<string>();
+    for (const [index, name] of policy.toolNames.entries()) {
+      if (seen.has(name)) {
+        ctx.addIssue({
+          code: "custom",
+          path: ["toolNames", index],
+          message: `Duplicate exact tool name: ${name}`,
+        });
+      }
+      seen.add(name);
+    }
+  });
+
+const firewallAllMcpToolsPolicySchema = z
+  .object({
+    kind: z.literal("all"),
+  })
+  .strict();
+
+export const firewallMcpToolPolicySchema = z.discriminatedUnion("kind", [
+  firewallExactMcpToolPolicySchema,
+  firewallAllMcpToolsPolicySchema,
+]);
+
+export const firewallMcpPolicySchema = z
+  .object({
+    toolPolicy: firewallMcpToolPolicySchema,
+  })
+  .strict();
+
+function isStaticHttpsMcpBase(base: string): boolean {
+  if (
+    base.includes("${{") ||
+    base.includes("{") ||
+    base.includes("}") ||
+    base.includes("?") ||
+    base.includes("#")
+  ) {
+    return false;
+  }
+
+  try {
+    const url = new URL(base);
+    return (
+      url.protocol === "https:" &&
+      url.hostname.length > 0 &&
+      url.username === "" &&
+      url.password === ""
+    );
+  } catch {
+    return false;
+  }
+}
+
 /**
  * Firewall API entry — a base URL with optional auth headers/query/base and permissions.
  * An entry without permissions is the owner's fallback when no concrete
  * permission route matches.
  */
-export const firewallApiSchema = z.object({
-  base: z.string(),
-  hostPolicy: firewallBaseHostPolicySchema.optional(),
-  auth: firewallAuthSchema,
-  permissions: z.array(firewallPermissionSchema).optional(),
-});
+export const firewallApiSchema = z
+  .object({
+    base: z.string(),
+    hostPolicy: firewallBaseHostPolicySchema.optional(),
+    auth: firewallAuthSchema,
+    permissions: z.array(firewallPermissionSchema).optional(),
+    mcp: firewallMcpPolicySchema.optional(),
+    suppressBodyCapture: z.literal(true).optional(),
+  })
+  .superRefine((api, ctx) => {
+    if (!api.mcp) {
+      return;
+    }
+    if (!isStaticHttpsMcpBase(api.base)) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["base"],
+        message:
+          "MCP firewall base must be a static HTTPS URL without credentials, query, or fragment",
+      });
+    }
+    if (api.hostPolicy?.kind !== "publicDestination") {
+      ctx.addIssue({
+        code: "custom",
+        path: ["hostPolicy"],
+        message: "MCP firewall requires publicDestination host policy",
+      });
+    }
+    if (
+      api.auth.base !== undefined ||
+      api.auth.awsSigv4 !== undefined ||
+      (api.auth.headers !== undefined &&
+        Object.keys(api.auth.headers).length > 0) ||
+      (api.auth.query !== undefined && Object.keys(api.auth.query).length > 0)
+    ) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["auth"],
+        message: "MCP firewall V1 does not support authentication",
+      });
+    }
+    if (api.suppressBodyCapture !== true) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["suppressBodyCapture"],
+        message: "MCP firewall requires body capture suppression",
+      });
+    }
+  });
 
 /**
  * A single firewall with its name and API entries.
@@ -278,6 +398,8 @@ export type FirewallApi = z.infer<typeof firewallApiSchema>;
 export type FirewallBaseHostPolicy = z.infer<
   typeof firewallBaseHostPolicySchema
 >;
+export type FirewallMcpPolicy = z.infer<typeof firewallMcpPolicySchema>;
+export type FirewallMcpToolPolicy = z.infer<typeof firewallMcpToolPolicySchema>;
 
 export class FirewallBaseUrlResolutionError extends Error {
   constructor(message: string) {

@@ -51,6 +51,7 @@ import flow_metadata_keys as metadata_keys
 import http_local_responses
 import http_network_log
 import matching
+import mcp_policy
 import mitmproxy_compat
 import model_usage_pricing
 import network_log_sanitization
@@ -665,7 +666,9 @@ def requestheaders(flow: http.HTTPFlow) -> Awaitable[None] | None:
         request_end_stream=request_end_stream,
     )
     body_fits_stream_buffer = body_check.kind == "ok" and _request_body_fits_stream_buffer(flow)
-    if body_fits_stream_buffer:
+    if body_fits_stream_buffer and upstream_destination_binding.has_server_binding(
+        flow.server_conn
+    ):
         _prebind_bounded_requestheaders_upstream_destination(flow)
         return None
 
@@ -688,6 +691,32 @@ def requestheaders(flow: http.HTTPFlow) -> Awaitable[None] | None:
         flow.metadata[_REQUEST_HEADERS_TERMINATED] = True
         upstream_admission.forget_server_binding(flow.server_conn)
         flow.kill()
+        return None
+
+    if classification.kind == "firewall_allow" and mcp_policy.is_mcp_allow(
+        classification.firewall_allow
+    ):
+        _start_request_timing(flow)
+        prepare_firewall_metadata(
+            flow,
+            classification.firewall_allow,
+            classification.vm_info,
+        )
+        violation = mcp_policy.preflight_request(
+            flow,
+            classification.firewall_allow,
+        )
+        if violation is not None:
+            http_local_responses.block_mcp_policy_violation(flow, violation)
+            flow.metadata[_REQUEST_HEADERS_TERMINATED] = True
+            upstream_admission.forget_server_binding(flow.server_conn)
+            return None
+        request_classification.cache_classification(flow, classification)
+        return None
+
+    if body_fits_stream_buffer:
+        _prebind_requestheaders_upstream_destination(flow, classification)
+        _restore_request_headers_probe_metadata(flow, metadata_snapshot)
         return None
 
     if (
@@ -881,6 +910,8 @@ def _block_public_destination_denied(
     *,
     send_response: bool = True,
 ) -> None:
+    if denial.suppress_body_capture:
+        flow.metadata[metadata_keys.CAPTURE_BODY] = False
     http_local_responses.block_public_destination_denied(
         flow,
         name=denial.name,
@@ -1022,6 +1053,18 @@ async def request(flow: http.HTTPFlow) -> None:
         if classification.kind == "firewall_allow":
             allow = classification.firewall_allow
             vm_info = classification.vm_info
+            if mcp_policy.is_mcp_allow(allow):
+                prepare_firewall_metadata(flow, allow, vm_info)
+                violation = mcp_policy.authorize_request(flow, allow)
+                if violation is not None:
+                    http_local_responses.block_mcp_policy_violation(flow, violation)
+                    auth_base_forwarder.release_forward_request_admission_from_flow(flow)
+                    terminal_usage.release_tracked_flow(flow)
+                    return
+                flow.metadata[metadata_keys.FIREWALL_BILLABLE] = False
+                flow.metadata.pop(metadata_keys.MODEL_USAGE_PROVIDER, None)
+                flow_metadata.set_firewall_decision(flow.metadata, "ALLOW")
+                return
             if connector_diagnostics.maybe_make_firewall_allow_local_response(
                 flow,
                 classification,

@@ -95,6 +95,7 @@ class PublicDestinationDenial:
     trusted_authority_host: str
     destination_host: str
     reason: public_destination.DestinationDenialReason
+    suppress_body_capture: bool
 
 
 @dataclass(frozen=True)
@@ -449,6 +450,7 @@ def _classify_request(
                 if isinstance(result, matching.FirewallPolicyAllow)
                 else result
             )
+            _apply_firewall_body_capture_policy(flow, firewall_allow)
             public_destination_denial = _public_destination_denial(
                 flow,
                 firewall_allow,
@@ -512,6 +514,14 @@ def should_try_firewall_stream_capture_request(classification: RequestClassifica
 def firewall_allow_uses_public_destination(allow: matching.FirewallAllow) -> bool:
     host_policy = allow.api_entry.get("hostPolicy")
     return isinstance(host_policy, dict) and host_policy.get("kind") == "publicDestination"
+
+
+def _apply_firewall_body_capture_policy(
+    flow: http.HTTPFlow,
+    allow: matching.FirewallAllow,
+) -> None:
+    if allow.api_entry.get("suppressBodyCapture") is True:
+        flow.metadata[metadata_keys.CAPTURE_BODY] = False
 
 
 def current_public_destination_denial(
@@ -635,6 +645,7 @@ def _public_destination_denial(
         trusted_authority_host=trusted_authority_host,
         destination_host=validation.destination_host,
         reason=validation.reason,
+        suppress_body_capture=allow.api_entry.get("suppressBodyCapture") is True,
     )
 
 

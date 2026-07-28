@@ -1,4 +1,10 @@
 import { z } from "zod";
+import {
+  firewallMcpToolNameSchema,
+  firewallMcpToolPolicySchema,
+  MCP_TOOL_NAME_MAX_LENGTH,
+  MCP_TOOL_POLICY_MAX_EXACT_NAMES,
+} from "@vm0/connectors/firewall-types";
 import { authHeadersSchema, initContract } from "./base";
 import { apiErrorSchema } from "./errors";
 
@@ -8,8 +14,8 @@ export const MCP_SERVER_REF_MAX_LENGTH = 64;
 export const MCP_SERVER_DISPLAY_NAME_MAX_LENGTH = 128;
 export const MCP_SERVER_ENDPOINT_MAX_LENGTH = 2048;
 export const MCP_AGENT_GRANT_MAX_SERVERS = 32;
-export const MCP_AGENT_GRANT_MAX_TOOL_NAMES = 128;
-export const MCP_TOOL_NAME_MAX_LENGTH = 256;
+export const MCP_AGENT_GRANT_MAX_TOOL_NAMES = MCP_TOOL_POLICY_MAX_EXACT_NAMES;
+export { MCP_TOOL_NAME_MAX_LENGTH };
 export const MCP_AGENT_GRANTS_MAX_ENCODED_BYTES = 64 * 1024;
 
 const MCP_SERVER_REF_PATTERN = /^[a-z0-9](?:[a-z0-9-]{0,62}[a-z0-9])?$/;
@@ -69,50 +75,8 @@ export const patchMcpServerBodySchema = z
   );
 export type PatchMcpServerBody = z.infer<typeof patchMcpServerBodySchema>;
 
-export const mcpToolNameSchema = z
-  .string()
-  .min(1)
-  .max(MCP_TOOL_NAME_MAX_LENGTH)
-  .refine(
-    (name) => {
-      return name.trim().length > 0;
-    },
-    { message: "Tool name cannot contain only whitespace" },
-  );
-
-const exactMcpToolPolicySchema = z
-  .object({
-    kind: z.literal("exact"),
-    toolNames: z
-      .array(mcpToolNameSchema)
-      .min(1)
-      .max(MCP_AGENT_GRANT_MAX_TOOL_NAMES),
-  })
-  .strict()
-  .superRefine((policy, ctx) => {
-    const seen = new Set<string>();
-    for (const [index, name] of policy.toolNames.entries()) {
-      if (seen.has(name)) {
-        ctx.addIssue({
-          code: "custom",
-          path: ["toolNames", index],
-          message: `Duplicate exact tool name: ${name}`,
-        });
-      }
-      seen.add(name);
-    }
-  });
-
-const allMcpToolsPolicySchema = z
-  .object({
-    kind: z.literal("all"),
-  })
-  .strict();
-
-export const mcpToolPolicySchema = z.discriminatedUnion("kind", [
-  exactMcpToolPolicySchema,
-  allMcpToolsPolicySchema,
-]);
+export const mcpToolNameSchema = firewallMcpToolNameSchema;
+export const mcpToolPolicySchema = firewallMcpToolPolicySchema;
 export type McpToolPolicy = z.infer<typeof mcpToolPolicySchema>;
 
 export const mcpAgentGrantSchema = z
