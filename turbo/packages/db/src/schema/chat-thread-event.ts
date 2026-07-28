@@ -1,11 +1,14 @@
 import {
+  bigint,
   boolean,
   check,
   index,
   pgEnum,
   pgTable,
+  primaryKey,
   text,
   timestamp,
+  uniqueIndex,
   uuid,
   varchar,
 } from "drizzle-orm/pg-core";
@@ -27,12 +30,26 @@ export const chatThreadEventKind = pgEnum("chat_thread_event_kind", [
 export type ChatThreadEventKind =
   (typeof chatThreadEventKind.enumValues)[number];
 
+export const chatThreadEventSequences = pgTable(
+  "chat_thread_event_sequences",
+  {
+    userId: text("user_id").notNull(),
+    orgId: text("org_id").notNull(),
+    lastSeqId: bigint("last_seq_id", { mode: "number" }).default(0).notNull(),
+  },
+  (table) => {
+    return [primaryKey({ columns: [table.userId, table.orgId] })];
+  },
+);
+
 export const chatThreadEvents = pgTable(
   "chat_thread_events",
   {
     id: uuid("id").defaultRandom().primaryKey(),
     userId: text("user_id").notNull(),
     orgId: text("org_id").notNull(),
+    /** Strictly increasing position within the owning user/org event stream. */
+    seqId: bigint("seq_id", { mode: "number" }).notNull(),
     chatThreadId: uuid("chat_thread_id").notNull(),
     kind: chatThreadEventKind("kind").notNull(),
     agentComposeId: uuid("agent_compose_id").notNull(),
@@ -63,6 +80,11 @@ export const chatThreadEvents = pgTable(
         table.chatThreadId,
         table.createdAt,
         table.id,
+      ),
+      uniqueIndex("chat_thread_events_user_org_seq_unique").on(
+        table.userId,
+        table.orgId,
+        table.seqId,
       ),
     ];
   },

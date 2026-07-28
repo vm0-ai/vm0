@@ -5,7 +5,6 @@ import {
   chatThreadMarkReadContract,
   chatThreadComputerUseHostContract,
   chatThreadModelSelectionContract,
-  type ChatThreadEvent,
 } from "@vm0/api-contracts/contracts/chat-threads";
 import { accept } from "../../lib/accept.ts";
 import { nowDate } from "../../lib/time.ts";
@@ -40,6 +39,7 @@ import type {
   RecallEventArgs,
   SubscribeRealtimeArgs,
 } from "./chat-thread-data-source.ts";
+import type { OptimisticChatThreadEvent } from "./chat-thread-event-types.ts";
 
 const L = logger("ChatThread");
 export const CHAT_MESSAGES_PAGE_LIMIT = 50;
@@ -95,7 +95,7 @@ const patchModelSelection$ = command(
         computerUseHostId: null,
         cloudBrowserEnabled: false,
         createdAt,
-      } satisfies ChatThreadEvent);
+      } satisfies OptimisticChatThreadEvent);
       set(registerOptimisticChatThreadEvent$, {
         id: serviceTierEventId,
         kind: "service_tier_updated",
@@ -108,7 +108,7 @@ const patchModelSelection$ = command(
         computerUseHostId: null,
         cloudBrowserEnabled: false,
         createdAt,
-      } satisfies ChatThreadEvent);
+      } satisfies OptimisticChatThreadEvent);
     }
 
     const client = get(zeroClient$)(chatThreadModelSelectionContract);
@@ -152,7 +152,7 @@ const patchComputerUseHost$ = command(
         computerUseHostId,
         cloudBrowserEnabled,
         createdAt: nowDate().toISOString(),
-      } satisfies ChatThreadEvent);
+      } satisfies OptimisticChatThreadEvent);
     }
     const client = get(zeroClient$)(chatThreadComputerUseHostContract);
     await accept(

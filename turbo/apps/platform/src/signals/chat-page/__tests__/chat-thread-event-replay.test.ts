@@ -1,9 +1,9 @@
 import { describe, expect, it } from "vitest";
-import type {
-  ChatThreadEvent,
-  ChatThreadSnapshotProjection,
-} from "@vm0/api-contracts/contracts/chat-threads";
-import { replayChatThreadEvents } from "@vm0/core/chat-thread-event-replay";
+import type { ChatThreadSnapshotProjection } from "@vm0/api-contracts/contracts/chat-threads";
+import {
+  replayChatThreadEvents,
+  type ReplayChatThreadEvent,
+} from "@vm0/core/chat-thread-event-replay";
 
 function snapshotThread(
   params: Partial<ChatThreadSnapshotProjection> & {
@@ -28,7 +28,7 @@ function snapshotThread(
 
 function event(
   params: Omit<
-    ChatThreadEvent,
+    ReplayChatThreadEvent,
     | "id"
     | "createdAt"
     | "selectedModel"
@@ -43,7 +43,7 @@ function event(
     readonly computerUseHostId?: string | null;
     readonly cloudBrowserEnabled?: boolean;
   },
-): ChatThreadEvent {
+): ReplayChatThreadEvent {
   return {
     ...params,
     selectedModel: params.selectedModel ?? null,

@@ -735,12 +735,12 @@ async function readThreadComputerUseHostId(
 async function readThreadProjection(actor: ApiTestUser, threadId: string) {
   const snapshot = await chat.getThreadSnapshot(actor);
   const events: ChatThreadEvent[] = [];
-  let cursor = snapshot.latestEventId;
+  let cursor = snapshot.latestSeqId;
 
   for (let page = 0; page < 20; page++) {
     const response = await chat.requestThreadEvents(
       actor,
-      cursor ? { sinceEventId: cursor } : {},
+      cursor ? { sinceSeqId: cursor } : {},
       [200],
     );
     expect(response.status).toBe(200);
@@ -748,16 +748,22 @@ async function readThreadProjection(actor: ApiTestUser, threadId: string) {
       throw new Error("Expected chat thread events to load");
     }
 
-    events.push(...response.body.events);
+    const sequencedEvents = response.body.events.map((event) => {
+      if (event.seqId === undefined) {
+        throw new Error("Expected chat thread event sequence ID");
+      }
+      return { ...event, seqId: event.seqId };
+    });
+    events.push(...sequencedEvents);
     if (!response.body.hasMore) {
       break;
     }
 
-    const lastEvent = response.body.events.at(-1);
+    const lastEvent = sequencedEvents.at(-1);
     if (!lastEvent) {
       throw new Error("Expected paginated chat thread events");
     }
-    cursor = lastEvent.id;
+    cursor = lastEvent.seqId;
   }
 
   const thread = replayChatThreadEvents(snapshot.chatThreads, events).find(

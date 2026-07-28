@@ -502,6 +502,7 @@ export function mockChatLifecycle(
   let computerUseHostId: string | null = options?.computerUseHostId ?? null;
   let cloudBrowserEnabled = options?.cloudBrowserEnabled ?? false;
   let latestThreadEventId: string | null = null;
+  let latestThreadEventSeqId: number | null = null;
   const queuedMessages: MockPagedMessage[] = [];
   const optionActiveRunIds = options?.activeRunIds ?? [];
   // Version counter: bumped whenever the run reaches a terminal state so
@@ -874,6 +875,7 @@ export function mockChatLifecycle(
       codexServiceTier = body.codexServiceTier ?? null;
       latestThreadEventId =
         body.serviceTierEventId ?? body.eventId ?? crypto.randomUUID();
+      latestThreadEventSeqId = (latestThreadEventSeqId ?? 0) + 1;
       options?.onModelSelectionUpdate?.({
         model: body.model,
         modelSelection,
@@ -890,6 +892,7 @@ export function mockChatLifecycle(
         body.cloudBrowserEnabled ??
         (body.computerUseHostId ? false : cloudBrowserEnabled);
       latestThreadEventId = body.eventId ?? crypto.randomUUID();
+      latestThreadEventSeqId = (latestThreadEventSeqId ?? 0) + 1;
       options?.onComputerUseHostUpdate?.({
         computerUseHostId: body.computerUseHostId,
         cloudBrowserEnabled: body.cloudBrowserEnabled,
@@ -901,6 +904,7 @@ export function mockChatLifecycle(
     return respond(200, {
       chatThreads: threadListSnapshot(effectiveThreadList()),
       latestEventId: latestThreadEventId,
+      latestSeqId: latestThreadEventSeqId,
     });
   });
   context.mocks.api(chatThreadsContract.events, ({ respond }) => {
@@ -1044,6 +1048,7 @@ export function mockChatLifecycle(
     setCodexServiceTier: (tier) => {
       codexServiceTier = tier;
       latestThreadEventId = crypto.randomUUID();
+      latestThreadEventSeqId = (latestThreadEventSeqId ?? 0) + 1;
     },
     completeRun: (content?: string) => {
       runStatus = "completed";

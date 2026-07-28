@@ -2166,6 +2166,7 @@ describe("chat composer models", () => {
     const workflowRequestCount = workflowAgentIds.length;
     persistedThreadEvent = {
       id: "d0000000-0000-4000-a000-000000000099",
+      seqId: 1,
       kind: "renamed",
       chatThreadId: OTHER_AGENT_THREAD_ID,
       agentId: OTHER_AGENT_ID,
