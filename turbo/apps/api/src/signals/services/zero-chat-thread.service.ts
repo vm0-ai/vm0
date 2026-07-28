@@ -2471,6 +2471,7 @@ export const updateChatThreadDraft$ = command(
       .set({
         draftContent: args.draftContent,
         draftStructuredPrompt: args.draftStructuredPrompt,
+        draftStructuredPromptWithFeedback: null,
         draftAttachments: args.draftAttachments
           ? [...args.draftAttachments]
           : null,
