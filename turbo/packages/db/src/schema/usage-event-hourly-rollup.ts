@@ -59,10 +59,16 @@ export const usageEventHourlyRollup = pgTable(
         table.orgId,
         table.processedHour,
       ),
-      index("idx_usage_event_hourly_rollup_processed_org_user").on(
+      index("idx_usage_event_hourly_rollup_physical_grain").on(
         table.processedHour.desc(),
         table.orgId,
         table.userId,
+        table.runId,
+        table.kind,
+        table.provider,
+        table.category,
+        table.shortWindowId,
+        table.weeklyWindowId,
       ),
       index("idx_usage_event_hourly_rollup_run_id").on(table.runId),
       index("idx_usage_event_hourly_rollup_user_id").on(table.userId),
