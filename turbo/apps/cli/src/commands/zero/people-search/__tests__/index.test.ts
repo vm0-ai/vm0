@@ -210,7 +210,7 @@ describe("zero people-search command", () => {
         return HttpResponse.json(
           {
             error: {
-              message: "Zero People Search is not enabled",
+              message: "Missing required capability: people-search:read",
               code: "FORBIDDEN",
             },
           },
@@ -223,7 +223,9 @@ describe("zero people-search command", () => {
       zeroPeopleSearchCommand.parseAsync(["node", "cli", "leaders"]),
     ).rejects.toThrow("process.exit called");
 
-    expect(errorOutput()).toContain("403: Zero People Search is not enabled");
+    expect(errorOutput()).toContain(
+      "403: Missing required capability: people-search:read",
+    );
     expect(mockExit).toHaveBeenCalledWith(1);
   });
 });

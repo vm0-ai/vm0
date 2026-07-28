@@ -8554,7 +8554,7 @@ describe("RUN-01: zero runner context, queue promotion, and skills", () => {
     expect(cancelled.status).toBe("cancelled");
   });
 
-  it("advertises managed web search without rollout enrollment", async () => {
+  it("advertises managed search tools for regular runs", async () => {
     const api = createRunsApi(context);
     const { actor, agentId, runnerGroup } = await entitledRunActor();
 
@@ -8573,66 +8573,11 @@ describe("RUN-01: zero runner context, queue promotion, and skills", () => {
     expect(claim.appendSystemPrompt ?? "").toContain("zero web-search --help");
     expect(claim.appendSystemPrompt ?? "").not.toContain("zero finance --help");
     expect(claim.appendSystemPrompt ?? "").toContain("zero scrape --help");
-    expect(claim.appendSystemPrompt ?? "").not.toContain(
+    expect(claim.appendSystemPrompt ?? "").toContain(
       "zero people-search <query>",
     );
-
-    await api.requestCancelRun(actor, run.runId, [200]);
-  });
-
-  it("advertises managed people search only for enrolled staff runs", async () => {
-    const bdd = createBddApi(context);
-    const api = createRunsApi(context);
-    const actor = bdd.user({ orgId: STAFF_ORG_ID });
-    onTestFinished(async () => {
-      await deleteOrgPlanEntitlementFixture(STAFF_ORG_ID);
-    });
-    bdd.acceptAgentStorageWrites();
-    api.acceptStorageDownloads();
-    api.acceptTelemetryIngest();
-    const runnerGroup = api.configureRunnerGroup();
-    await upsertOrgPlanEntitlementFixture({
-      orgId: STAFF_ORG_ID,
-      status: "active",
-      supportByok: true,
-      restrictedVm0Models: false,
-    });
-    const completed = await bdd.completeOnboarding(actor);
-    expect(completed.status).toBe(200);
-    await seedOrgMetadata({
-      orgId: STAFF_ORG_ID,
-      tier: "limited-free-1",
-      credits: 20_000,
-    });
-    await upsertOrgPlanEntitlementFixture({
-      orgId: STAFF_ORG_ID,
-      status: "active",
-      supportByok: true,
-      restrictedVm0Models: false,
-    });
-    await api.ensureOrgModelProvider(actor);
-    const agent = await bdd.createAgent(actor, {
-      displayName: "BDD people search staff agent",
-      visibility: "private",
-    });
-
-    const run = await api.createRun(actor, {
-      agentId: agent.agentId,
-      prompt: "find public professional information",
-      modelProvider: "anthropic-api-key",
-    });
-    await api.heartbeatRunner(runnerGroup);
-    const claim = await api.claimRunnerJob(run.runId);
-    const prompt = claim.appendSystemPrompt ?? "";
-
-    expect(prompt).toContain("zero people-search <query>");
-    expect(prompt).toContain("model-extracted");
-    expect(prompt).toContain("provider-backed sources");
-    expect(prompt).toContain("zero web-search --help");
-    expect(prompt).toContain("zero scrape --help");
-    expect(claim.disallowedTools).toStrictEqual(
-      EXPECTED_ZERO_RUN_DISALLOWED_TOOLS,
-    );
+    expect(claim.appendSystemPrompt ?? "").toContain("model-extracted");
+    expect(claim.appendSystemPrompt ?? "").toContain("provider-backed sources");
 
     await api.requestCancelRun(actor, run.runId, [200]);
   });

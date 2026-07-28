@@ -193,22 +193,10 @@ describe("auth tokens", () => {
     );
   });
 
-  it("gates people-search capability behind its staff rollout switch", () => {
-    const defaultToken = generateZeroToken(
-      "user_zero",
-      "run_zero",
-      "org_nonexistent",
-    );
-    const staffToken = generateZeroToken(
-      "user_zero",
-      "run_zero",
-      "org_3ANttyrbWYJk6JKRSTRLEsbsDLe",
-    );
+  it("includes people-search capability in zero-scoped tokens", () => {
+    const token = generateZeroToken("user_zero", "run_zero", "org_zero");
 
-    expect(verifyZeroToken(defaultToken)?.capabilities).not.toContain(
-      "people-search:read",
-    );
-    expect(verifyZeroToken(staffToken)?.capabilities).toContain(
+    expect(verifyZeroToken(token)?.capabilities).toContain(
       "people-search:read",
     );
   });
