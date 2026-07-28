@@ -2615,6 +2615,9 @@ describe("chat message action cards", () => {
       ).toBeInTheDocument();
     });
     expect(queryButtonByText("Confirm", permissionCard)).toBeNull();
+    expect(
+      within(permissionCard).queryByTestId("permission-action-card-controls"),
+    ).not.toBeInTheDocument();
   });
 
   it("shows already allowed permission action cards as read-only after refresh", async () => {
@@ -3212,8 +3215,11 @@ describe("chat message action cards", () => {
     });
 
     const permissionCard = await screen.findByTestId("permission-action-card");
+    const permissionControls = within(permissionCard).getByTestId(
+      "permission-action-card-controls",
+    );
     expect(
-      within(permissionCard).getByText("Checking permission status..."),
+      within(permissionControls).getByText("Checking permission status..."),
     ).toBeInTheDocument();
     expect(
       queryButtonByText("Checking permission status...", permissionCard),
@@ -3221,7 +3227,14 @@ describe("chat message action cards", () => {
     expect(queryButtonByText("Confirm", permissionCard)).toBeNull();
 
     resolveList();
-    await waitForButtonByText("Confirm", permissionCard);
+    const confirmButton = await waitForButtonByText(
+      "Confirm",
+      permissionControls,
+    );
+    expect(within(permissionControls).getByText("Confirm")).toBe(confirmButton);
+    expect(
+      within(permissionControls).getByLabelText("Permission duration"),
+    ).toBeInTheDocument();
   });
 
   it("does not retry non-transient permission action loading failures", async () => {
@@ -3276,6 +3289,9 @@ describe("chat message action cards", () => {
       queryButtonByText("Couldn't load permission status", permissionCard),
     ).toBeNull();
     expect(queryButtonByText("Confirm", permissionCard)).toBeNull();
+    expect(
+      within(permissionCard).queryByTestId("permission-action-card-controls"),
+    ).not.toBeInTheDocument();
     expect(listRequests).toBe(1);
   });
 

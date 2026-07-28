@@ -5215,6 +5215,26 @@ function PermissionActionInlineStatus({
   }
 }
 
+function permissionActionHasControls(
+  status: PermissionActionCardStatus,
+): boolean {
+  switch (status.kind) {
+    case "loading":
+    case "save-error":
+    case "ready":
+    case "saving":
+    case "saved":
+    case "already-applied": {
+      return true;
+    }
+    case "load-error":
+    case "missing-target":
+    case "missing-permission": {
+      return false;
+    }
+  }
+}
+
 function isPermissionActionLoading(params: {
   agentLoading: boolean;
   permissionMetadataLoading: boolean;
@@ -5544,24 +5564,29 @@ function PermissionActionCardContent({
           )}
         </div>
       </div>
-      <div className="flex min-h-9 w-full shrink-0 flex-row items-center gap-2 sm:w-auto">
-        {status.kind === "loading" && (
-          <PermissionActionInlineStatus status={status} />
-        )}
-        {showDurationSelect && (
-          <PermissionGrantDurationSelect
-            value={expiresIn}
-            onValueChange={onExpiresInChange}
-            disabled={status.kind === "saving"}
-            ariaLabel="Permission duration"
+      {permissionActionHasControls(status) && (
+        <div
+          data-testid="permission-action-card-controls"
+          className="flex min-h-9 w-full shrink-0 flex-row items-center gap-2 sm:w-auto"
+        >
+          {status.kind === "loading" && (
+            <PermissionActionInlineStatus status={status} />
+          )}
+          {showDurationSelect && (
+            <PermissionGrantDurationSelect
+              value={expiresIn}
+              onValueChange={onExpiresInChange}
+              disabled={status.kind === "saving"}
+              ariaLabel="Permission duration"
+            />
+          )}
+          <PermissionActionTerminalStatus
+            status={status}
+            action={signals.action}
           />
-        )}
-        <PermissionActionTerminalStatus
-          status={status}
-          action={signals.action}
-        />
-        <PermissionActionButton status={status} onClick={onClick} />
-      </div>
+          <PermissionActionButton status={status} onClick={onClick} />
+        </div>
+      )}
     </div>
   );
 }
