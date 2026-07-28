@@ -5,11 +5,13 @@ import time
 import uuid
 from pathlib import Path
 
+import pytest
 from mitmproxy.flow import Error
 from mitmproxy.test import tutils
 
 import auth_base_forwarder
 import flow_metadata_keys as metadata_keys
+import http_network_log
 import mitm_addon
 import request_classification
 import request_streaming
@@ -324,6 +326,12 @@ class TestErrorHandler:
         # Matches the request handler's invariant: original_url is set
         # alongside vm_run_id.
         flow.metadata[metadata_keys.ORIGINAL_URL] = "https://example.com/"
+        http_network_log.set_target(
+            flow,
+            url="https://example.com/",
+            host="example.com",
+            port=443,
+        )
         flow.error = Error("connection reset")
         flow.metadata[metadata_keys.HTTP_REQUEST_START_MONOTONIC] = time.monotonic()
 
@@ -340,6 +348,12 @@ class TestErrorHandler:
         flow.metadata[metadata_keys.VM_PROXY_LOG_PATH] = str(tmp_path / "proxy.jsonl")
         flow.metadata[metadata_keys.FIREWALL_ACTION] = "ALLOW"
         flow.metadata[metadata_keys.ORIGINAL_URL] = "https://api.anthropic.com/v1/messages"
+        http_network_log.set_target(
+            flow,
+            url="https://api.anthropic.com/v1/messages",
+            host="api.anthropic.com",
+            port=443,
+        )
         flow.metadata[metadata_keys.FIREWALL_NAME] = "model-provider:anthropic-api-key"
         flow.metadata[metadata_keys.FIREWALL_BILLABLE] = True
         flow.response = tutils.tresp(
@@ -411,6 +425,12 @@ class TestErrorHandler:
         flow.metadata[metadata_keys.VM_SANDBOX_AUTH_KEY] = "test-token"
         flow.metadata[metadata_keys.FIREWALL_ACTION] = "ALLOW"
         flow.metadata[metadata_keys.ORIGINAL_URL] = "https://api.x.com/2/tweets?ids=1,2,3"
+        http_network_log.set_target(
+            flow,
+            url="https://api.x.com/2/tweets?ids=1,2,3",
+            host="api.x.com",
+            port=443,
+        )
         flow.metadata[metadata_keys.FIREWALL_NAME] = "x"
         flow.metadata[metadata_keys.FIREWALL_BILLABLE] = True
         flow.metadata[metadata_keys.FIREWALL_PERMISSION] = "tweet.read"
@@ -447,6 +467,12 @@ class TestErrorHandler:
         flow.metadata[metadata_keys.VM_RUN_ID] = "run-abc-123"
         flow.metadata[metadata_keys.VM_NETWORK_LOG_PATH] = log_path
         flow.metadata[metadata_keys.ORIGINAL_URL] = raw_url
+        http_network_log.set_target(
+            flow,
+            url=raw_url,
+            host="slack.com",
+            port=443,
+        )
         flow.metadata[metadata_keys.FIREWALL_ACTION] = "ALLOW"
         flow.error = Error("connection reset by peer")
         flow.metadata[metadata_keys.HTTP_REQUEST_START_MONOTONIC] = time.monotonic() - 1.5
@@ -497,12 +523,18 @@ class TestErrorHandler:
         assert entry["error"] == "connection reset by peer"
         assert metadata_keys.HTTP_REQUEST_START_MONOTONIC not in flow.metadata
 
-    def test_error_logs_explicit_zero_original_url_port(self, tmp_path, real_flow, mitm_ctx):
+    def test_error_logs_typed_target_port_zero(self, tmp_path, real_flow, mitm_ctx):
         flow = real_flow(with_response=False, host="request.example.com", port=9443)
         log_path = str(tmp_path / "network.jsonl")
         flow.metadata[metadata_keys.VM_RUN_ID] = "run-abc-123"
         flow.metadata[metadata_keys.VM_NETWORK_LOG_PATH] = log_path
         flow.metadata[metadata_keys.ORIGINAL_URL] = "https://target.example.com:0/path"
+        http_network_log.set_target(
+            flow,
+            url="https://target.example.com:0/path",
+            host="target.example.com",
+            port=0,
+        )
         flow.metadata[metadata_keys.FIREWALL_ACTION] = "ALLOW"
         flow.error = Error("connection reset by peer")
 
@@ -515,25 +547,24 @@ class TestErrorHandler:
         assert entry["url"] == "https://target.example.com:0/path"
         assert entry["error"] == "connection reset by peer"
 
-    def test_error_logs_legacy_target_when_original_url_port_is_invalid(
-        self, tmp_path, real_flow, mitm_ctx
-    ):
+    def test_missing_network_log_target_fails_error(self, tmp_path, real_flow, mitm_ctx):
         flow = real_flow(with_response=False, host="fallback.example.com", port=9443)
         log_path = str(tmp_path / "network.jsonl")
         flow.metadata[metadata_keys.VM_RUN_ID] = "run-abc-123"
         flow.metadata[metadata_keys.VM_NETWORK_LOG_PATH] = log_path
         flow.metadata[metadata_keys.ORIGINAL_URL] = "https://invalid.example.com:bad/path"
         flow.metadata[metadata_keys.FIREWALL_ACTION] = "ALLOW"
+        flow.metadata[metadata_keys.HTTP_REQUEST_START_MONOTONIC] = time.monotonic()
         flow.error = Error("connection reset by peer")
+        request_streaming.configure_request_stream(flow)
 
-        with mitm_ctx():
+        with mitm_ctx(), pytest.raises(KeyError, match=metadata_keys.NETWORK_LOG_TARGET):
             mitm_addon.error(flow)
 
-        [entry] = read_jsonl_entries_after_flush(Path(log_path))
-        assert entry["host"] == "fallback.example.com"
-        assert entry["port"] == 9443
-        assert entry["url"] == "https://invalid.example.com:bad/path"
-        assert entry["error"] == "connection reset by peer"
+        assert metadata_keys.HTTP_REQUEST_START_MONOTONIC not in flow.metadata
+        assert metadata_keys.REQUEST_STREAM_BUFFER not in flow.metadata
+        assert flow.request.stream is False
+        assert not Path(log_path).exists()
 
     def test_error_request_size_tracks_streamed_bytes_and_releases_request_stream_state(
         self, tmp_path, real_flow, mitm_ctx
@@ -550,6 +581,12 @@ class TestErrorHandler:
         flow.metadata[metadata_keys.VM_RUN_ID] = "run-abc-123"
         flow.metadata[metadata_keys.VM_NETWORK_LOG_PATH] = log_path
         flow.metadata[metadata_keys.ORIGINAL_URL] = "https://api.example.com/"
+        http_network_log.set_target(
+            flow,
+            url="https://api.example.com/",
+            host="api.example.com",
+            port=443,
+        )
         flow.metadata[metadata_keys.FIREWALL_ACTION] = "ALLOW"
         flow.error = Error("connection reset by peer")
 
@@ -575,6 +612,12 @@ class TestErrorHandler:
         flow.metadata[metadata_keys.VM_RUN_ID] = "run-abc-123"
         flow.metadata[metadata_keys.VM_NETWORK_LOG_PATH] = log_path
         flow.metadata[metadata_keys.ORIGINAL_URL] = "https://slack.com/api/chat.postMessage"
+        http_network_log.set_target(
+            flow,
+            url="https://slack.com/api/chat.postMessage",
+            host="slack.com",
+            port=443,
+        )
         flow.metadata[metadata_keys.FIREWALL_ACTION] = "ALLOW"
         flow.metadata[metadata_keys.FIREWALL_BASE] = "https://slack.com/api"
         flow.metadata[metadata_keys.FIREWALL_NAME] = "slack"
@@ -601,6 +644,12 @@ class TestErrorHandler:
         flow.metadata[metadata_keys.VM_NETWORK_LOG_PATH] = log_path
         flow.metadata[metadata_keys.VM_PROXY_LOG_PATH] = str(proxy_log)
         flow.metadata[metadata_keys.ORIGINAL_URL] = "https://slack.com/api/test?api_key=secret#frag"
+        http_network_log.set_target(
+            flow,
+            url="https://slack.com/api/test?api_key=secret#frag",
+            host="slack.com",
+            port=443,
+        )
         flow.error = Error("connection reset by peer")
 
         mitm_addon.error(flow)
@@ -623,6 +672,12 @@ class TestErrorHandler:
         flow.metadata[metadata_keys.VM_RUN_ID] = "run-int-002"
         flow.metadata[metadata_keys.VM_NETWORK_LOG_PATH] = log_path
         flow.metadata[metadata_keys.ORIGINAL_URL] = "https://api.anthropic.com/v1/messages"
+        http_network_log.set_target(
+            flow,
+            url="https://api.anthropic.com/v1/messages",
+            host="api.anthropic.com",
+            port=443,
+        )
         flow.metadata[metadata_keys.FIREWALL_ACTION] = "ALLOW"
         flow.metadata[metadata_keys.FIREWALL_NAME] = "model-provider:anthropic-api-key"
         flow.metadata[metadata_keys.FIREWALL_BILLABLE] = True

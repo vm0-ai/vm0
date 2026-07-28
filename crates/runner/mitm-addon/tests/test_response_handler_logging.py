@@ -8,6 +8,7 @@ from mitmproxy import http
 from mitmproxy.test import tutils
 
 import flow_metadata_keys as metadata_keys
+import http_network_log
 import mitm_addon
 import request_classification
 import request_streaming
@@ -36,6 +37,12 @@ def test_calculates_latency_and_logs(registry_file, tmp_path, real_flow, mitm_ct
     flow.metadata[metadata_keys.VM_NETWORK_LOG_PATH] = log_path
     flow.metadata[metadata_keys.FIREWALL_ACTION] = "ALLOW"
     flow.metadata[metadata_keys.ORIGINAL_URL] = "https://api.anthropic.com/"
+    http_network_log.set_target(
+        flow,
+        url="https://api.anthropic.com/",
+        host="api.anthropic.com",
+        port=443,
+    )
 
     # Add response
     flow.response = tutils.tresp(
@@ -116,6 +123,12 @@ def test_response_log_includes_firewall_auth_metadata(tmp_path, real_flow, mitm_
             metadata_keys.AUTH_URL_REWRITE: True,
         }
     )
+    http_network_log.set_target(
+        flow,
+        url="https://api.example.com/items",
+        host="api.example.com",
+        port=443,
+    )
     flow.response = tutils.tresp(status_code=200, headers=header_map({"content-length": "0"}))
 
     with mitm_ctx():
@@ -168,6 +181,12 @@ def test_response_log_serializes_common_metadata_independent_of_firewall_context
             metadata_keys.FIREWALL_ERROR: "ambiguous_connector_route",
             metadata_keys.CONNECTOR_ROUTE_REASON: "connector_intent_required",
         }
+    )
+    http_network_log.set_target(
+        flow,
+        url="https://api.example.com/items",
+        host="api.example.com",
+        port=443,
     )
     if route_candidates is not None:
         flow.metadata[metadata_keys.CONNECTOR_ROUTE_CANDIDATES] = route_candidates
@@ -271,9 +290,7 @@ def test_network_log_target_url_strips_query_and_fragment(
         ("https://target.example.com/path", 443),
     ],
 )
-def test_logs_explicit_or_default_original_url_port(
-    tmp_path, real_flow, mitm_ctx, original_url, expected_port
-):
+def test_logs_typed_target_port(tmp_path, real_flow, mitm_ctx, original_url, expected_port):
     flow = real_flow(with_response=False, host="request.example.com", port=9443)
     log_path = str(tmp_path / "network.jsonl")
 
@@ -281,6 +298,12 @@ def test_logs_explicit_or_default_original_url_port(
     flow.metadata[metadata_keys.VM_NETWORK_LOG_PATH] = log_path
     flow.metadata[metadata_keys.FIREWALL_ACTION] = "ALLOW"
     flow.metadata[metadata_keys.ORIGINAL_URL] = original_url
+    http_network_log.set_target(
+        flow,
+        url=original_url,
+        host="target.example.com",
+        port=expected_port,
+    )
     flow.response = tutils.tresp(status_code=200, headers=header_map({"content-length": "0"}))
 
     with mitm_ctx():
@@ -292,7 +315,7 @@ def test_logs_explicit_or_default_original_url_port(
     assert entry["url"] == original_url
 
 
-def test_logs_legacy_target_when_original_url_port_is_invalid(tmp_path, real_flow, mitm_ctx):
+def test_missing_network_log_target_fails_response(tmp_path, real_flow, mitm_ctx):
     flow = real_flow(with_response=False, host="fallback.example.com", port=9443)
     log_path = str(tmp_path / "network.jsonl")
 
@@ -302,15 +325,17 @@ def test_logs_legacy_target_when_original_url_port_is_invalid(tmp_path, real_flo
     flow.metadata[metadata_keys.ORIGINAL_URL] = (
         "https://invalid.example.com:bad/path?secret=value#frag"
     )
+    flow.metadata[metadata_keys.HTTP_REQUEST_START_MONOTONIC] = time.monotonic()
     flow.response = tutils.tresp(status_code=200, headers=header_map({"content-length": "0"}))
+    request_streaming.configure_request_stream(flow)
 
-    with mitm_ctx():
+    with mitm_ctx(), pytest.raises(KeyError, match=metadata_keys.NETWORK_LOG_TARGET):
         mitm_addon.response(flow)
 
-    [entry] = read_jsonl_entries_after_flush(Path(log_path))
-    assert entry["host"] == "fallback.example.com"
-    assert entry["port"] == 9443
-    assert entry["url"] == "https://invalid.example.com:bad/path"
+    assert metadata_keys.HTTP_REQUEST_START_MONOTONIC not in flow.metadata
+    assert metadata_keys.REQUEST_STREAM_BUFFER not in flow.metadata
+    assert flow.request.stream is False
+    assert not Path(log_path).exists()
 
 
 def test_response_size_tracks_streamed_bytes(tmp_path, real_flow, mitm_ctx):
@@ -322,6 +347,12 @@ def test_response_size_tracks_streamed_bytes(tmp_path, real_flow, mitm_ctx):
     flow.metadata[metadata_keys.VM_NETWORK_LOG_PATH] = log_path
     flow.metadata[metadata_keys.FIREWALL_ACTION] = "ALLOW"
     flow.metadata[metadata_keys.ORIGINAL_URL] = "https://api.example.com/"
+    http_network_log.set_target(
+        flow,
+        url="https://api.example.com/",
+        host="api.example.com",
+        port=443,
+    )
     flow.response = tutils.tresp(
         status_code=200,
         headers=header_map({"content-length": "999", "content-type": "application/json"}),
@@ -348,6 +379,12 @@ def test_response_size_tracks_large_stream_without_body_buffer(tmp_path, real_fl
     flow.metadata[metadata_keys.VM_NETWORK_LOG_PATH] = log_path
     flow.metadata[metadata_keys.FIREWALL_ACTION] = "ALLOW"
     flow.metadata[metadata_keys.ORIGINAL_URL] = "https://api.example.com/"
+    http_network_log.set_target(
+        flow,
+        url="https://api.example.com/",
+        host="api.example.com",
+        port=443,
+    )
     flow.response = tutils.tresp(
         status_code=200,
         headers=header_map({"content-length": "12", "content-type": "application/json"}),
@@ -381,6 +418,12 @@ def test_request_size_tracks_streamed_bytes_and_captures_stream_body(tmp_path, r
     flow.metadata[metadata_keys.VM_NETWORK_LOG_PATH] = log_path
     flow.metadata[metadata_keys.FIREWALL_ACTION] = "ALLOW"
     flow.metadata[metadata_keys.ORIGINAL_URL] = "https://api.example.com/"
+    http_network_log.set_target(
+        flow,
+        url="https://api.example.com/",
+        host="api.example.com",
+        port=443,
+    )
     flow.metadata[metadata_keys.CAPTURE_BODY] = True
     flow.response = tutils.tresp(
         status_code=200,
@@ -629,6 +672,12 @@ def test_response_size_uses_content_length_without_stream_state(
     flow.metadata[metadata_keys.VM_NETWORK_LOG_PATH] = log_path
     flow.metadata[metadata_keys.FIREWALL_ACTION] = "ALLOW"
     flow.metadata[metadata_keys.ORIGINAL_URL] = "https://api.example.com/"
+    http_network_log.set_target(
+        flow,
+        url="https://api.example.com/",
+        host="api.example.com",
+        port=443,
+    )
     flow.response = tutils.tresp(
         status_code=200, headers=header_map({"content-length": content_length})
     )
@@ -649,6 +698,12 @@ def test_response_size_accepts_max_safe_content_length(tmp_path, real_flow, mitm
     flow.metadata[metadata_keys.VM_NETWORK_LOG_PATH] = log_path
     flow.metadata[metadata_keys.FIREWALL_ACTION] = "ALLOW"
     flow.metadata[metadata_keys.ORIGINAL_URL] = "https://api.example.com/"
+    http_network_log.set_target(
+        flow,
+        url="https://api.example.com/",
+        host="api.example.com",
+        port=443,
+    )
     flow.response = tutils.tresp(
         status_code=200, headers=header_map({"content-length": "9007199254740991"})
     )
@@ -671,6 +726,12 @@ def test_response_size_is_zero_without_stream_state_or_content_length(
     flow.metadata[metadata_keys.VM_NETWORK_LOG_PATH] = log_path
     flow.metadata[metadata_keys.FIREWALL_ACTION] = "ALLOW"
     flow.metadata[metadata_keys.ORIGINAL_URL] = "https://api.example.com/"
+    http_network_log.set_target(
+        flow,
+        url="https://api.example.com/",
+        host="api.example.com",
+        port=443,
+    )
     flow.response = tutils.tresp(
         status_code=200, headers=header_map({"content-type": "application/json"})
     )
@@ -716,6 +777,12 @@ def test_response_size_is_zero_for_invalid_content_length(
     flow.metadata[metadata_keys.VM_NETWORK_LOG_PATH] = log_path
     flow.metadata[metadata_keys.FIREWALL_ACTION] = "ALLOW"
     flow.metadata[metadata_keys.ORIGINAL_URL] = "https://api.example.com/"
+    http_network_log.set_target(
+        flow,
+        url="https://api.example.com/",
+        host="api.example.com",
+        port=443,
+    )
     flow.response = tutils.tresp(
         status_code=200, headers=header_map({"content-length": content_length})
     )
@@ -736,6 +803,12 @@ def test_response_size_accepts_matching_repeated_content_length(tmp_path, real_f
     flow.metadata[metadata_keys.VM_NETWORK_LOG_PATH] = log_path
     flow.metadata[metadata_keys.FIREWALL_ACTION] = "ALLOW"
     flow.metadata[metadata_keys.ORIGINAL_URL] = "https://api.example.com/"
+    http_network_log.set_target(
+        flow,
+        url="https://api.example.com/",
+        host="api.example.com",
+        port=443,
+    )
     flow.response = tutils.tresp(
         status_code=200,
         headers=http.Headers([(b"content-length", b"50000"), (b"content-length", b"50000")]),
@@ -757,6 +830,12 @@ def test_response_size_rejects_conflicting_repeated_content_length(tmp_path, rea
     flow.metadata[metadata_keys.VM_NETWORK_LOG_PATH] = log_path
     flow.metadata[metadata_keys.FIREWALL_ACTION] = "ALLOW"
     flow.metadata[metadata_keys.ORIGINAL_URL] = "https://api.example.com/"
+    http_network_log.set_target(
+        flow,
+        url="https://api.example.com/",
+        host="api.example.com",
+        port=443,
+    )
     flow.response = tutils.tresp(
         status_code=200,
         headers=http.Headers([(b"content-length", b"50000"), (b"content-length", b"50001")]),
@@ -778,6 +857,12 @@ def test_response_size_keeps_zero_streamed_bytes(tmp_path, real_flow, mitm_ctx):
     flow.metadata[metadata_keys.VM_NETWORK_LOG_PATH] = log_path
     flow.metadata[metadata_keys.FIREWALL_ACTION] = "ALLOW"
     flow.metadata[metadata_keys.ORIGINAL_URL] = "https://api.example.com/"
+    http_network_log.set_target(
+        flow,
+        url="https://api.example.com/",
+        host="api.example.com",
+        port=443,
+    )
     flow.response = tutils.tresp(
         status_code=200,
         headers=header_map({"content-length": "50000", "content-type": "application/json"}),
@@ -802,6 +887,12 @@ def test_response_size_tracks_large_unbounded_stream_without_length(tmp_path, re
     flow.metadata[metadata_keys.VM_NETWORK_LOG_PATH] = log_path
     flow.metadata[metadata_keys.FIREWALL_ACTION] = "ALLOW"
     flow.metadata[metadata_keys.ORIGINAL_URL] = "https://api.example.com/"
+    http_network_log.set_target(
+        flow,
+        url="https://api.example.com/",
+        host="api.example.com",
+        port=443,
+    )
     flow.response = tutils.tresp(
         status_code=200,
         headers=header_map({"content-type": "application/json"}),
