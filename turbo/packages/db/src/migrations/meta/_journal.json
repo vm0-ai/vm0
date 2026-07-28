@@ -4950,6 +4950,13 @@
       "when": 1785205907968,
       "tag": "0706_skinny_random",
       "breakpoints": true
+    },
+    {
+      "idx": 707,
+      "version": "7",
+      "when": 1785210621425,
+      "tag": "0707_backfill_structured_prompt_drafts",
+      "breakpoints": true
     }
   ]
 }
