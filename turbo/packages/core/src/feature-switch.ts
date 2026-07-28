@@ -237,9 +237,8 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
   [FeatureSwitchKey.BrazilianPortugueseLocale]: {
     maintainer: "yuma@vm0.ai",
     description:
-      "Allow pt-BR preference writes after incompatible API readers and rollback candidates have drained.",
+      "Enable Brazilian Portuguese as a workspace language preference.",
     enabled: false,
-    userOverridable: false,
   },
   [FeatureSwitchKey.ZeroFinance]: {
     maintainer: "ethan@vm0.ai",

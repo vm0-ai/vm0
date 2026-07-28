@@ -7,7 +7,6 @@ import { mockApi } from "../msw-contract.ts";
 let mockPreferences: UserPreferencesResponse = {
   timezone: null,
   locale: null,
-  supportedLocales: ["en-US", "pt-BR"],
   pinnedAgentIds: [],
   sendMode: "enter",
   morningBriefEnabled: false,
@@ -23,7 +22,6 @@ export function resetMockUserPreferences(): void {
   mockPreferences = {
     timezone: null,
     locale: null,
-    supportedLocales: ["en-US", "pt-BR"],
     pinnedAgentIds: [],
     sendMode: "enter",
     morningBriefEnabled: false,

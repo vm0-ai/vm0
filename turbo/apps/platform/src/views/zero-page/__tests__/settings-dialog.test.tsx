@@ -63,7 +63,6 @@ function createPreferences(locale: UserLocale | null): UserPreferencesResponse {
   return {
     timezone: null,
     locale,
-    supportedLocales: ["en-US", "pt-BR"],
     pinnedAgentIds: [],
     sendMode: "enter",
     morningBriefEnabled: false,
@@ -93,6 +92,7 @@ describe("settings dialog", () => {
 
     await openDialog("admin", "preference", {
       [FeatureSwitchKey.LanguagePreference]: true,
+      [FeatureSwitchKey.BrazilianPortugueseLocale]: true,
     });
 
     const languageSelect = await screen.findByRole("combobox", {
@@ -144,6 +144,7 @@ describe("settings dialog", () => {
 
     await openDialog("admin", "preference", {
       [FeatureSwitchKey.LanguagePreference]: true,
+      [FeatureSwitchKey.BrazilianPortugueseLocale]: true,
     });
 
     const languageSelect = await screen.findByRole("combobox", {
@@ -178,6 +179,7 @@ describe("settings dialog", () => {
 
     await openDialog("admin", "preference", {
       [FeatureSwitchKey.LanguagePreference]: true,
+      [FeatureSwitchKey.BrazilianPortugueseLocale]: true,
     });
 
     const languageSelect = await screen.findByRole("combobox", {
@@ -217,6 +219,7 @@ describe("settings dialog", () => {
 
     await openDialog("admin", "preference", {
       [FeatureSwitchKey.LanguagePreference]: true,
+      [FeatureSwitchKey.BrazilianPortugueseLocale]: true,
     });
 
     await waitFor(() => {
@@ -225,27 +228,8 @@ describe("settings dialog", () => {
     });
   });
 
-  it("hides the language entry when the API does not advertise Brazilian Portuguese", async () => {
-    const oldApiPreferences = createPreferences("en-US");
-    delete oldApiPreferences.supportedLocales;
-    context.mocks.api(zeroUserPreferencesContract.get, ({ respond }) => {
-      return respond(200, oldApiPreferences);
-    });
-
-    await openDialog("admin", "preference", {
-      [FeatureSwitchKey.LanguagePreference]: true,
-    });
-
-    await waitFor(() => {
-      expect(screen.getByText("Theme")).toBeInTheDocument();
-      expect(screen.queryByText("Language")).not.toBeInTheDocument();
-    });
-  });
-
-  it("hides the language entry while the API locale rollout is disabled", async () => {
-    const guardedPreferences = createPreferences("en-US");
-    guardedPreferences.supportedLocales = ["en-US"];
-    context.mocks.data.userPreferences(guardedPreferences);
+  it("hides the language entry when Brazilian Portuguese is disabled", async () => {
+    context.mocks.data.userPreferences(createPreferences("en-US"));
 
     await openDialog("admin", "preference", {
       [FeatureSwitchKey.LanguagePreference]: true,
