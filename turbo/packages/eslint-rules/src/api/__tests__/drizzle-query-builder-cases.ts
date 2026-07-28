@@ -1146,6 +1146,45 @@ const queryBuilderCases = {
     {
       code: `${unnestUpdatePreamble}
         import { sql } from "drizzle-orm";
+        declare function createDatabase(): DrizzleDatabase;
+        class DatabaseHolder {
+          readonly database: DrizzleDatabase = createDatabase();
+
+          async update(): Promise<void> {
+            await this.database.execute(sql\`
+              UPDATE \${allowanceWindows}
+              SET consumed_units = consumption.units_applied
+              FROM unnest(\${sql.param(windowIds)}::uuid[]) AS consumption(window_id)
+              WHERE true
+            \`);
+          }
+        }
+        void DatabaseHolder;
+      `,
+    },
+    {
+      code: `${unnestUpdatePreamble}
+        import { sql } from "drizzle-orm";
+        declare function createDatabase(): DrizzleDatabase;
+        class DatabaseHolder {
+          database: DrizzleDatabase = db;
+
+          async update(): Promise<void> {
+            this.database = createDatabase();
+            await this.database.execute(sql\`
+              UPDATE \${allowanceWindows}
+              SET consumed_units = consumption.units_applied
+              FROM unnest(\${sql.param(windowIds)}::uuid[]) AS consumption(window_id)
+              WHERE true
+            \`);
+          }
+        }
+        void DatabaseHolder;
+      `,
+    },
+    {
+      code: `${unnestUpdatePreamble}
+        import { sql } from "drizzle-orm";
         const holder = {
           database: {
             execute: db.execute,
@@ -1266,6 +1305,39 @@ const queryBuilderCases = {
           \`);
         }
         await update();
+      `,
+    },
+    {
+      code: `${unnestUpdatePreamble}
+        import { sql } from "drizzle-orm";
+        declare function createDatabase(): DrizzleDatabase;
+        async function update(
+          database: DrizzleDatabase = createDatabase(),
+        ): Promise<void> {
+          await database.execute(sql\`
+            UPDATE \${allowanceWindows}
+            SET consumed_units = consumption.units_applied
+            FROM unnest(\${sql.param(windowIds)}::uuid[]) AS consumption(window_id)
+            WHERE true
+          \`);
+        }
+        await update();
+      `,
+    },
+    {
+      code: `${unnestUpdatePreamble}
+        import { sql } from "drizzle-orm";
+        declare function createDatabase(): DrizzleDatabase;
+        async function update(database: DrizzleDatabase): Promise<void> {
+          database = createDatabase();
+          await database.execute(sql\`
+            UPDATE \${allowanceWindows}
+            SET consumed_units = consumption.units_applied
+            FROM unnest(\${sql.param(windowIds)}::uuid[]) AS consumption(window_id)
+            WHERE true
+          \`);
+        }
+        await update(db);
       `,
     },
     {
@@ -3068,6 +3140,70 @@ const queryBuilderCases = {
           DELETE FROM \${cleanupRows}
           WHERE \${cleanupRows.expiresAt} <= \${cutoff}
         \`);
+      `,
+      errors: [{ messageId: "deleteQueryBuilder" }],
+    },
+    {
+      code: `${deletePreamble}
+        import { sql } from "drizzle-orm";
+        async function deleteExpired(
+          database: DrizzleDatabase,
+        ): Promise<void> {
+          await database.execute(sql\`
+            DELETE FROM \${cleanupRows}
+            WHERE \${cleanupRows.expiresAt} <= \${cutoff}
+          \`);
+        }
+        await deleteExpired(db);
+      `,
+      errors: [{ messageId: "deleteQueryBuilder" }],
+    },
+    {
+      code: `${deletePreamble}
+        import { sql } from "drizzle-orm";
+        async function deleteExpired(
+          database: DrizzleDatabase = db,
+        ): Promise<void> {
+          await database.execute(sql\`
+            DELETE FROM \${cleanupRows}
+            WHERE \${cleanupRows.expiresAt} <= \${cutoff}
+          \`);
+        }
+        await deleteExpired();
+      `,
+      errors: [{ messageId: "deleteQueryBuilder" }],
+    },
+    {
+      code: `${deletePreamble}
+        import { sql } from "drizzle-orm";
+        class DatabaseHolder {
+          readonly database: DrizzleDatabase = db;
+
+          async deleteExpired(): Promise<void> {
+            await this.database.execute(sql\`
+              DELETE FROM \${cleanupRows}
+              WHERE \${cleanupRows.expiresAt} <= \${cutoff}
+            \`);
+          }
+        }
+        void DatabaseHolder;
+      `,
+      errors: [{ messageId: "deleteQueryBuilder" }],
+    },
+    {
+      code: `${deletePreamble}
+        import { sql } from "drizzle-orm";
+        class DatabaseHolder {
+          constructor(readonly database: DrizzleDatabase) {}
+
+          async deleteExpired(): Promise<void> {
+            await this.database.execute(sql\`
+              DELETE FROM \${cleanupRows}
+              WHERE \${cleanupRows.expiresAt} <= \${cutoff}
+            \`);
+          }
+        }
+        void new DatabaseHolder(db);
       `,
       errors: [{ messageId: "deleteQueryBuilder" }],
     },
