@@ -434,6 +434,8 @@ pub enum FailureReason {
     ProviderStreamTimeout,
     /// The provider returned a server error.
     ProviderServerError,
+    /// The provider refused the request under a safety policy.
+    SafetyPolicyRefusal,
     /// The CLI requires reconnecting or re-authentication.
     ReconnectRequired,
     /// The provider reported a usage limit.
@@ -454,6 +456,7 @@ impl FailureReason {
             Self::ProviderOverloaded => "provider_overloaded",
             Self::ProviderStreamTimeout => "provider_stream_timeout",
             Self::ProviderServerError => "provider_server_error",
+            Self::SafetyPolicyRefusal => "safety_policy_refusal",
             Self::ReconnectRequired => "reconnect_required",
             Self::UsageLimit => "usage_limit",
         }
@@ -1067,6 +1070,28 @@ mod tests {
 
         let json = serde_json::to_value(&diagnostic).unwrap();
         assert_eq!(json["failureReason"], "provider_server_error");
+
+        let round_trip: FailureDiagnostic = serde_json::from_value(json).unwrap();
+        assert_eq!(round_trip, diagnostic);
+    }
+
+    #[test]
+    fn failure_diagnostic_serializes_safety_policy_refusal_reason() {
+        assert_eq!(
+            FailureReason::SafetyPolicyRefusal.as_str(),
+            "safety_policy_refusal"
+        );
+
+        let diagnostic = FailureDiagnostic::new(
+            FailureClass::CliNonzero,
+            AgentFramework::Codex,
+            PromptMetadata::from_prompt("debug failure"),
+        )
+        .with_cli_exit_code(1)
+        .with_failure_reason(FailureReason::SafetyPolicyRefusal);
+
+        let json = serde_json::to_value(&diagnostic).unwrap();
+        assert_eq!(json["failureReason"], "safety_policy_refusal");
 
         let round_trip: FailureDiagnostic = serde_json::from_value(json).unwrap();
         assert_eq!(round_trip, diagnostic);

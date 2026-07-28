@@ -916,6 +916,7 @@ fn is_info_level_job_failure(diagnostic: &FailureDiagnostic) -> bool {
                     | FailureReason::ProviderOverloaded
                     | FailureReason::ProviderStreamTimeout
                     | FailureReason::ProviderServerError
+                    | FailureReason::SafetyPolicyRefusal
                     | FailureReason::ReconnectRequired
                     | FailureReason::UsageLimit
             )
@@ -1412,6 +1413,7 @@ mod tests {
             FailureReason::ProviderOverloaded,
             FailureReason::ProviderStreamTimeout,
             FailureReason::ProviderServerError,
+            FailureReason::SafetyPolicyRefusal,
             FailureReason::ReconnectRequired,
             FailureReason::UsageLimit,
         ] {
@@ -1536,6 +1538,7 @@ mod tests {
             FailureReason::ProviderOverloaded,
             FailureReason::ProviderStreamTimeout,
             FailureReason::ProviderServerError,
+            FailureReason::SafetyPolicyRefusal,
             FailureReason::ReconnectRequired,
             FailureReason::UsageLimit,
         ] {
