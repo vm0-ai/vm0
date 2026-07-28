@@ -1,3 +1,5 @@
+use std::time::Duration;
+
 use vsock_proto::ExecOutputPolicy;
 
 use crate::{ExecOperationHandle, ExecOperationRequest};
@@ -5,6 +7,7 @@ use crate::{ExecOperationHandle, ExecOperationRequest};
 async fn start_capture_operation(host: &crate::VsockHost, command: &str) -> ExecOperationHandle {
     host.start_exec_operation(ExecOperationRequest {
         timeout_ms: 5000,
+        start_write_timeout: Duration::from_secs(5),
         command,
         env: &[],
         sudo: false,

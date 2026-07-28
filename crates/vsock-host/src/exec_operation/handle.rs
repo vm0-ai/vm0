@@ -1,3 +1,4 @@
+use std::future::Future;
 use std::io;
 use std::sync::Arc;
 use std::time::Duration;
@@ -300,12 +301,13 @@ impl ExecWaitCore {
         }
     }
 
-    pub(in crate::exec_operation) async fn wait_with_timeout(
+    async fn wait_with_timeout_future(
         &mut self,
-        timeout: Duration,
+        timeout: impl Future<Output = ()>,
         poison_on_timeout: bool,
         lifecycle: ExecWaitLifecycle,
     ) -> io::Result<ExecOperationResult> {
+        tokio::pin!(timeout);
         let seq = self.active_seq_or_closed(lifecycle.operation_closed_message())?;
         let rx = self.result_rx.as_mut().ok_or_else(|| {
             io::Error::new(
@@ -324,10 +326,34 @@ impl ExecWaitCore {
                     "connection closed",
                 ))?
             }
-            _ = tokio::time::sleep(timeout) => {
+            _ = &mut timeout => {
                 Err(self.abandon_timed_out_operation(seq, poison_on_timeout, lifecycle))
             }
         }
+    }
+
+    pub(in crate::exec_operation) async fn wait_with_timeout(
+        &mut self,
+        timeout: Duration,
+        poison_on_timeout: bool,
+        lifecycle: ExecWaitLifecycle,
+    ) -> io::Result<ExecOperationResult> {
+        self.wait_with_timeout_future(tokio::time::sleep(timeout), poison_on_timeout, lifecycle)
+            .await
+    }
+
+    pub(in crate::exec_operation) async fn wait_with_deadline(
+        &mut self,
+        deadline: Instant,
+        poison_on_timeout: bool,
+        lifecycle: ExecWaitLifecycle,
+    ) -> io::Result<ExecOperationResult> {
+        self.wait_with_timeout_future(
+            tokio::time::sleep_until(deadline),
+            poison_on_timeout,
+            lifecycle,
+        )
+        .await
     }
 
     async fn send_cancel_before_terminal_with_deadline(
@@ -443,6 +469,15 @@ impl ExecOperationHandle {
     pub async fn wait(mut self, timeout: Duration) -> io::Result<ExecOperationResult> {
         self.wait_core
             .wait_with_timeout(timeout, false, ExecWaitLifecycle::OneShot)
+            .await
+    }
+
+    pub(in crate::exec_operation) async fn wait_until(
+        mut self,
+        deadline: Instant,
+    ) -> io::Result<ExecOperationResult> {
+        self.wait_core
+            .wait_with_deadline(deadline, false, ExecWaitLifecycle::OneShot)
             .await
     }
 

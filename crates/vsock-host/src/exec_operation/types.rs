@@ -111,6 +111,12 @@ pub struct ExecOperationRequest<'a> {
     /// `Some` is valid only when stdout or stderr streams; zero and oversized
     /// capacities are rejected.
     pub stream_queue_capacity: Option<usize>,
+    /// Maximum host-side time to write the complete exec-start frame.
+    ///
+    /// This includes waiting for the shared writer and is separate from
+    /// `timeout_ms`, which is the guest-side process timeout. A zero duration
+    /// expires before the frame is sent.
+    pub start_write_timeout: Duration,
 }
 
 /// Request parameters for a capture-only exec operation helper.
@@ -135,10 +141,12 @@ pub struct ExecCaptureRequest<'a> {
     pub expected_exit_codes: &'a [i32],
     /// Optional bounded stdin payload written to the child and then closed.
     pub stdin_bytes: Option<&'a [u8]>,
-    /// Maximum host-side wait for the terminal result after the request starts.
+    /// Maximum total host-side time to write the start frame and wait for the
+    /// terminal result.
     ///
     /// This is separate from `timeout_ms`, which is the guest-side process
-    /// timeout encoded in the exec request.
+    /// timeout encoded in the exec request. A zero duration expires before the
+    /// frame is sent.
     pub wait_timeout: Duration,
 }
 
@@ -173,6 +181,12 @@ pub struct ExecStreamRequest<'a> {
     /// `None` uses the default queue capacity. Zero and oversized capacities
     /// are rejected.
     pub stream_queue_capacity: Option<usize>,
+    /// Maximum host-side time to write the complete exec-start frame.
+    ///
+    /// This includes waiting for the shared writer and is separate from
+    /// `timeout_ms`, which is the guest-side process timeout. A zero duration
+    /// expires before the frame is sent.
+    pub start_write_timeout: Duration,
 }
 
 /// Exec control policy for supervised host operations.
@@ -219,17 +233,20 @@ pub struct SupervisedExecRequest<'a> {
     /// `Some` is valid only when stdout or stderr streams; zero and oversized
     /// capacities are rejected.
     pub stream_queue_capacity: Option<usize>,
-    /// Maximum time to wait for the guest `exec_started` acknowledgement.
+    /// Maximum total host-side time to write the start frame and wait for the
+    /// guest `exec_started` acknowledgement.
     ///
-    /// If this elapses after the start frame is written, the host sends
-    /// `MSG_EXEC_CANCEL` for the operation before returning a timeout error.
-    /// If that cancel frame cannot be written within the bounded fallback
-    /// window, the connection is poisoned because the guest process state is
-    /// no longer known.
+    /// If this elapses before the complete start frame is written, no cancel
+    /// frame is sent. If it elapses while waiting for the acknowledgement after
+    /// a complete write, the host sends `MSG_EXEC_CANCEL` for the operation
+    /// before returning a timeout error. If that cancel frame cannot be written
+    /// within the bounded fallback window, the connection is poisoned because
+    /// the guest process state is no longer known.
     ///
     /// A successful start-timeout cancellation still abandons terminal proof
     /// for this operation, so the connection should not be reused for later
-    /// normal operations.
+    /// normal operations. A zero duration expires before the start frame is
+    /// sent.
     pub start_timeout: Duration,
 }
 

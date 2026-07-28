@@ -3,18 +3,22 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::Duration;
 
+use nix::sys::socket::{setsockopt, sockopt};
 use tokio::io::AsyncWriteExt;
 use vsock_proto::{ExecTermination, MSG_ERROR, MSG_EXEC_CANCEL, MSG_EXEC_START};
 
 use super::super::support::{
     assert_connection_accepts_exec_operation, captured_output_bytes, exec_capture_default,
-    exec_capture_with_write_observer, is_connected, normal_operation_readiness, operation_count,
-    read_guest_message, send_exec_result, setup_host_and_guest, wait_for_operation_count,
+    exec_capture_with_write_observer, host_from_stream, is_connected, make_pair, mock_handshake,
+    normal_operation_readiness, operation_count, read_guest_message, send_exec_result,
+    setup_host_and_guest, wait_for_operation_count,
 };
 use super::start_capture_operation;
 use crate::exec_operation as exec_operation_impl;
 use crate::operation_tracker::NormalOperationReadiness;
 use crate::{ExecCaptureRequest, FrameWriteObserver};
+
+const EXEC_START_WRITE_TEST_TIMEOUT: Duration = Duration::from_millis(50);
 
 fn capture_request(command: &str) -> ExecCaptureRequest<'_> {
     ExecCaptureRequest {
@@ -72,6 +76,175 @@ async fn exec_start_cancelled_before_write_does_not_poison_or_send_frame() {
     let exec_result = exec_task.await.unwrap().unwrap();
     assert_eq!(captured_output_bytes(&exec_result.stdout), b"ok");
     assert!(is_connected(&host));
+}
+
+#[tokio::test]
+async fn exec_capture_start_timeout_before_write_cleans_state_and_preserves_connection() {
+    let (host, mut guest) = setup_host_and_guest().await;
+    let host = Arc::new(host);
+    let writer_guard = host.shared.writer.lock().await;
+    let write_start_count = Arc::new(AtomicUsize::new(0));
+    let task = {
+        let host = Arc::clone(&host);
+        let write_start_count = Arc::clone(&write_start_count);
+        tokio::spawn(async move {
+            exec_capture_with_write_observer(
+                &host,
+                ExecCaptureRequest {
+                    wait_timeout: EXEC_START_WRITE_TEST_TIMEOUT,
+                    ..capture_request("writer-timeout")
+                },
+                FrameWriteObserver::new(move || {
+                    write_start_count.fetch_add(1, Ordering::SeqCst);
+                    Ok(())
+                }),
+            )
+            .await
+        })
+    };
+
+    wait_for_operation_count(&host, 1).await;
+    let result = tokio::time::timeout(Duration::from_secs(5), task)
+        .await
+        .expect("exec start should respect its writer deadline")
+        .unwrap();
+    let err = match result {
+        Ok(_) => panic!("exec start should time out while waiting for the writer"),
+        Err(err) => err,
+    };
+    assert_eq!(err.kind(), io::ErrorKind::TimedOut);
+    assert_eq!(err.to_string(), "exec start timeout");
+    assert_eq!(write_start_count.load(Ordering::SeqCst), 0);
+    assert_eq!(operation_count(&host), 0);
+    assert_eq!(
+        normal_operation_readiness(&host),
+        NormalOperationReadiness::Idle
+    );
+    assert!(is_connected(&host));
+    match guest.try_read(&mut [0u8; 1]) {
+        Err(err) if err.kind() == io::ErrorKind::WouldBlock => {}
+        Ok(n) => panic!("pre-write timeout must not send an exec frame; read {n} bytes"),
+        Err(err) => panic!("unexpected read error after pre-write timeout: {err}"),
+    }
+
+    drop(writer_guard);
+    tokio::task::yield_now().await;
+    match guest.try_read(&mut [0u8; 1]) {
+        Err(err) if err.kind() == io::ErrorKind::WouldBlock => {}
+        Ok(n) => panic!("timed-out exec start must not send a stale frame; read {n} bytes"),
+        Err(err) => panic!("unexpected read error after releasing the writer: {err}"),
+    }
+    assert_connection_accepts_exec_operation(&host, &mut guest).await;
+}
+
+#[tokio::test]
+async fn exec_capture_wait_timeout_is_not_restarted_after_start_write() {
+    let (host, mut guest) = setup_host_and_guest().await;
+    let host = Arc::new(host);
+    tokio::time::pause();
+    let writer_guard = host.shared.writer.lock().await;
+    let wait_timeout = Duration::from_secs(1);
+    let task = {
+        let host = Arc::clone(&host);
+        tokio::spawn(async move {
+            host.exec_operation_capture(ExecCaptureRequest {
+                wait_timeout,
+                ..capture_request("single-capture-deadline")
+            })
+            .await
+        })
+    };
+
+    wait_for_operation_count(&host, 1).await;
+    tokio::time::advance(Duration::from_millis(900)).await;
+    drop(writer_guard);
+    let start = read_guest_message(&mut guest).await;
+    assert_eq!(start.msg_type, MSG_EXEC_START);
+
+    tokio::time::advance(Duration::from_millis(200)).await;
+    tokio::task::yield_now().await;
+    assert_eq!(operation_count(&host), 0);
+    send_exec_result(
+        &mut guest,
+        start.seq,
+        ExecTermination::Exited { exit_code: 0 },
+        b"late",
+        b"",
+    )
+    .await;
+    let result = task.await.unwrap();
+    let err = match result {
+        Ok(_) => panic!("capture wait must use the deadline established before frame writing"),
+        Err(err) => err,
+    };
+    assert_eq!(err.kind(), io::ErrorKind::TimedOut);
+    assert_eq!(err.to_string(), "exec operation timeout");
+    assert_eq!(operation_count(&host), 0);
+    assert_eq!(
+        normal_operation_readiness(&host),
+        NormalOperationReadiness::NotParkable
+    );
+    assert!(is_connected(&host));
+}
+
+#[tokio::test]
+async fn exec_capture_start_timeout_during_write_poisons_connection() {
+    let (host_stream, mut guest) = make_pair();
+    setsockopt(&host_stream, sockopt::SndBuf, &4096usize).unwrap();
+    let host_task = tokio::spawn(async move { host_from_stream(host_stream).await.unwrap() });
+    mock_handshake(&mut guest).await;
+    let host = Arc::new(host_task.await.unwrap());
+    let write_start_count = Arc::new(AtomicUsize::new(0));
+    let task = {
+        let host = Arc::clone(&host);
+        let write_start_count = Arc::clone(&write_start_count);
+        let stdin_bytes = vec![0xA5; vsock_proto::MAX_EXEC_STDIN_BYTES];
+        tokio::spawn(async move {
+            exec_capture_with_write_observer(
+                &host,
+                ExecCaptureRequest {
+                    command: "cat",
+                    stdin_bytes: Some(&stdin_bytes),
+                    wait_timeout: EXEC_START_WRITE_TEST_TIMEOUT,
+                    ..capture_request("blocked-write")
+                },
+                FrameWriteObserver::new(move || {
+                    write_start_count.fetch_add(1, Ordering::SeqCst);
+                    Ok(())
+                }),
+            )
+            .await
+        })
+    };
+
+    tokio::time::timeout(Duration::from_secs(5), async {
+        while write_start_count.load(Ordering::SeqCst) == 0 {
+            tokio::task::yield_now().await;
+        }
+    })
+    .await
+    .expect("exec start should reach the frame write boundary");
+    let result = tokio::time::timeout(Duration::from_secs(5), task)
+        .await
+        .expect("blocked exec start write should respect its deadline")
+        .unwrap();
+    let err = match result {
+        Ok(_) => panic!("blocked exec start write should time out"),
+        Err(err) => err,
+    };
+    assert_eq!(err.kind(), io::ErrorKind::TimedOut);
+    assert_eq!(err.to_string(), "exec start timeout");
+
+    host.wait_until_closed(Duration::from_secs(5))
+        .await
+        .unwrap();
+    assert!(!is_connected(&host));
+    assert_eq!(operation_count(&host), 0);
+    assert_eq!(
+        normal_operation_readiness(&host),
+        NormalOperationReadiness::NotParkable
+    );
+    assert!(host.shared.writer.try_lock().is_ok());
 }
 
 #[tokio::test]
