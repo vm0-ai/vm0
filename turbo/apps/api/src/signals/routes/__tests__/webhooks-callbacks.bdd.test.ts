@@ -5,7 +5,7 @@ import { LIMITED_FREE1_DEFAULT_RUN_MODEL } from "@vm0/api-contracts/contracts/mo
 import { RESUME_SESSION_HISTORY_MAX_BYTES } from "@vm0/api-contracts/contracts/runners";
 import { MAX_FILE_SIZE_BYTES } from "@vm0/api-contracts/contracts/storages";
 import { HttpResponse, http } from "msw";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, onTestFinished } from "vitest";
 
 import { mockEnv, mockOptionalEnv } from "../../../lib/env";
 import { now, nowDate } from "../../../lib/time";
@@ -20,6 +20,7 @@ import {
 } from "../../../test-fixtures/org-plan-entitlement";
 import { seedUsagePricingRows } from "../../../test-fixtures/system-config-seeds";
 import { readUsageAllowanceEntitlementFixture } from "../../../test-fixtures/usage-allowance";
+import { holdUsageEventCompactionLockFixture } from "../../../test-fixtures/usage-event-compaction";
 import {
   createBddApi,
   expectApiError,
@@ -4599,12 +4600,30 @@ describe("WHCB-08: Clerk deletion webhooks tear down account state", () => {
       }
       return Promise.resolve({});
     });
+    const compactionLock = await holdUsageEventCompactionLockFixture(
+      context.signal,
+    );
+    onTestFinished(async () => {
+      compactionLock.release();
+      await compactionLock.done;
+      await flushWaitUntilForTest();
+    });
     api.verifyNextClerkWebhook({
       type: "organization.deleted",
       data: { id: orgOf(actor) },
     });
     const redelivery = await api.requestClerkWebhook("{}", {}, [200]);
     expect(redelivery.body).toBe("OK");
+    await expect.poll(compactionLock.waiterCount).toBeGreaterThanOrEqual(1);
+    await expect(
+      store.set(
+        readUsageStorageCounts$,
+        { scope: "organization", id: orgOf(actor) },
+        context.signal,
+      ),
+    ).resolves.toStrictEqual({ raw: 1, hourly: 1 });
+    compactionLock.release();
+    await compactionLock.done;
     await flushWaitUntilForTest();
 
     await expect
@@ -4975,12 +4994,30 @@ describe("WHCB-08: Clerk deletion webhooks tear down account state", () => {
     // stop the rest of the teardown.
     const s3CallCountBeforeCleanup = context.mocks.s3.send.mock.calls.length;
     context.mocks.s3.send.mockRejectedValueOnce(new Error("R2 unavailable"));
+    const compactionLock = await holdUsageEventCompactionLockFixture(
+      context.signal,
+    );
+    onTestFinished(async () => {
+      compactionLock.release();
+      await compactionLock.done;
+      await flushWaitUntilForTest();
+    });
     api.verifyNextClerkWebhook({
       type: "user.deleted",
       data: { id: doomed.userId },
     });
     const response = await api.requestClerkWebhook("{}", {}, [200]);
     expect(response.body).toBe("OK");
+    await expect.poll(compactionLock.waiterCount).toBeGreaterThanOrEqual(1);
+    await expect(
+      store.set(
+        readUsageStorageCounts$,
+        { scope: "user", id: doomed.userId },
+        context.signal,
+      ),
+    ).resolves.toStrictEqual({ raw: 1, hourly: 1 });
+    compactionLock.release();
+    await compactionLock.done;
     await flushWaitUntilForTest();
     const firstCleanupS3Prefix = commandInput(
       context.mocks.s3.send.mock.calls[s3CallCountBeforeCleanup]?.[0],

@@ -25,9 +25,12 @@ pub struct MockSandboxControl {
 impl MockSandboxControl {
     /// Create a control mock that records remote exec calls and kill ids.
     ///
-    /// The `base_dir` is used as the remote exec working directory. Result
-    /// queues start empty, so remote exec succeeds with ordinary exit code 0
-    /// and remote kill returns accepted by default.
+    /// The `base_dir` is the root used by [`SandboxControl::runtime_dir`] to
+    /// resolve each sandbox's runtime socket directory for orphan cleanup.
+    /// Remote exec records its inputs and returns a queued result, or ordinary
+    /// exit code 0 by default; it does not execute the command or derive a
+    /// working directory from `base_dir`. Remote kill likewise returns its next
+    /// queued result, or [`RemoteKillResult::Accepted`] if its queue is empty.
     pub fn new(base_dir: impl Into<PathBuf>) -> Self {
         Self {
             base_dir: base_dir.into(),

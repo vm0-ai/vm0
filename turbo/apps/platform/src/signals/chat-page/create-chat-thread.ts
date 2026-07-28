@@ -154,20 +154,15 @@ import type {
 import { createWorkflowComposerSignals } from "../zero-page/tiptap-workflow-composer.ts";
 import {
   createMailDraftCardSignalsRegistry,
-  parseMailDraftUrl,
   type MailDraftCardSignalsRegistry,
   type MailDraftSignals,
 } from "./mail-draft.ts";
-import { currentMailDraftId$ } from "../zero-page/mail-draft-sidebar.ts";
-import { currentBrowserSessionId$ } from "../zero-page/browser-session-sidebar.ts";
 import {
   createBrowserSessionCardSignalsRegistry,
-  parseBrowserSessionUrl,
   type BrowserSessionCardSignalsRegistry,
   type BrowserSessionSignals,
 } from "./browser-session-block.ts";
 import { createChatThreadContainerSignals } from "./chat-thread-container.ts";
-import { searchParams$ } from "../route.ts";
 import { createComposerConnectorSignals } from "../zero-page/zero-connectors.ts";
 import {
   messageDocumentToDisplayText,
@@ -2449,24 +2444,11 @@ function createInitializeIndexedDbMessages({
 }
 
 function createMailDraftCardSignalsById(
-  threadId: string,
   rawMessages$: Computed<ChatMessageProjectionEntry[]>,
   mailDraftCardSignals: MailDraftCardSignalsRegistry,
 ): Computed<ReadonlyMap<string, MailDraftSignals>> {
   return computed((get) => {
     get(rawMessages$);
-    const selectedMailDraftId = get(currentMailDraftId$);
-    const restoredDraftOwnerThreadId =
-      get(searchParams$).get("sidebar") || threadId;
-    const selectedMailDraftDescriptor = selectedMailDraftId
-      ? parseMailDraftUrl(`/mail/drafts/${selectedMailDraftId}`)
-      : null;
-    if (
-      selectedMailDraftDescriptor &&
-      restoredDraftOwnerThreadId === threadId
-    ) {
-      mailDraftCardSignals.register(selectedMailDraftDescriptor);
-    }
     return new Map(mailDraftCardSignals.entries());
   });
 }
@@ -2477,15 +2459,6 @@ function createBrowserSessionCardSignalsById(
 ): Computed<ReadonlyMap<string, BrowserSessionSignals>> {
   return computed((get) => {
     get(rawMessages$);
-    // The sidebar can be restored from the URL before its message renders, so
-    // register the selected browser as well as the ones already in the stream.
-    const selectedBrowserId = get(currentBrowserSessionId$);
-    const selectedDescriptor = selectedBrowserId
-      ? parseBrowserSessionUrl(`/browsers/${selectedBrowserId}`)
-      : null;
-    if (selectedDescriptor) {
-      browserSessionCardSignals.register(selectedDescriptor);
-    }
     return new Map(browserSessionCardSignals.entries());
   });
 }
@@ -2595,7 +2568,6 @@ function createPagedMessages(
   const renderedMessages = createRenderedChatGroups(semanticMessages$);
 
   const mailDraftCardSignalsById$ = createMailDraftCardSignalsById(
-    threadId,
     rawMessages$,
     mailDraftCardSignals,
   );

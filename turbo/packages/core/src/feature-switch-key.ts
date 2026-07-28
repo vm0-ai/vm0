@@ -81,6 +81,5 @@ export enum FeatureSwitchKey {
   ComposerConnectorPermissions = "composerConnectorPermissions",
   ThreeColumnNav = "threeColumnNav",
   ChatHistoryBackfillProgress = "chatHistoryBackfillProgress",
-  NewChatThreadSidebar = "newChatThreadSidebar",
   ChatThreadSidebarAutoOpen = "chatThreadSidebarAutoOpen",
 }

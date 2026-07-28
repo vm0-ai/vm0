@@ -9,7 +9,6 @@ import {
 import { useGet, useLastLoadable, useSet } from "ccstate-react";
 import { cn } from "@vm0/ui";
 
-import { newChatThreadSidebarEnabled$ } from "../../signals/external/feature-switch.ts";
 import { pageSignal$ } from "../../signals/page-signal.ts";
 import { detach, Reason } from "../../signals/utils.ts";
 import {
@@ -19,10 +18,10 @@ import {
 import { openThreadArtifacts$ } from "../../signals/chat-page/thread-sidebar-coordinator.ts";
 import type { ChatThreadSignals } from "../../signals/chat-page/chat-thread-signals.ts";
 import type {
+  ArtifactRef,
   ThreadSidebarArtifactSource,
   ThreadSidebarTarget,
 } from "../../signals/chat-page/thread-sidebar.ts";
-import type { ArtifactRef } from "../../signals/zero-page/zero-artifact-sidebar.ts";
 import { artifactDetailPreview } from "../../signals/artifacts-page/artifact-catalog-signals.ts";
 import {
   ArtifactCatalogEmpty,
@@ -35,12 +34,11 @@ import { MailDraftSidebar } from "./mail-draft-sidebar.tsx";
 import { ArtifactSidebar } from "./zero-artifact-sidebar.tsx";
 
 // ---------------------------------------------------------------------------
-// Thread-owned utility sidebar content (NewChatThreadSidebar feature switch).
+// Thread-owned utility sidebar content.
 //
 // The outer ChatThreadSidebarShell owns width, resize, and the responsive
 // split. This module chooses among the five mutually exclusive bodies and
-// routes Close/Back/fullscreen into the owning thread's `sidebar` signals
-// instead of legacy search params.
+// routes Close/Back/fullscreen into the owning thread's `sidebar` signals.
 // ---------------------------------------------------------------------------
 
 const ARTIFACT_AUTO_LOAD_THRESHOLD_PX = 800;
@@ -51,7 +49,6 @@ const THREAD_SIDEBAR_FULLSCREEN_CLASSNAME =
 function artifactRefFromUrl(url: string): ArtifactRef {
   const attachment = previewAttachmentFromUrl(url);
   return {
-    source: "url",
     url,
     kind: classifyChatAttachment(attachment),
     filename: attachment.filename,
@@ -64,19 +61,16 @@ function artifactRefFromUrl(url: string): ArtifactRef {
  * detail's Back action share this hook so the session always starts.
  */
 export function useOpenThreadArtifacts(thread: ChatThreadSignals): () => void {
-  const enabled = useGet(newChatThreadSidebarEnabled$);
   const open = useSet(openThreadArtifacts$);
   const setupSession = useSet(thread.sidebar.setupArtifactsSession$);
   const pageSignal = useGet(pageSignal$);
   return () => {
     open(thread);
-    if (enabled) {
-      detach(
-        setupSession(pageSignal),
-        Reason.DomCallback,
-        "thread artifacts sidebar session",
-      );
-    }
+    detach(
+      setupSession(pageSignal),
+      Reason.DomCallback,
+      "thread artifacts sidebar session",
+    );
   };
 }
 
@@ -312,12 +306,12 @@ function ThreadArtifactDetail({
   return (
     <ArtifactSidebar
       artifactRef={{
-        source: "url",
         url: preview.url,
         kind: preview.kind,
         filename: preview.filename,
       }}
       thread={thread}
+      text$={sidebar.selectedArtifactText$}
       fullscreenState={fullscreenState}
       onBack={backToArtifacts}
       onClose={close}

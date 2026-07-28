@@ -9,12 +9,12 @@ import {
 import { useGet, useSet } from "ccstate-react";
 import { detach, Reason } from "../../signals/utils.ts";
 import type { TextPreviewComputed } from "../../signals/text-preview.ts";
-import { lightboxUrl$ } from "../../signals/zero-page/zero-attachment-chips.ts";
 import {
-  openAudioLightboxOrArtifact$,
-  openDocumentLightboxOrArtifact$,
-  openVideoLightboxOrArtifact$,
-} from "../../signals/zero-page/zero-artifact-sidebar.ts";
+  lightboxUrl$,
+  openAudioLightbox$,
+  openDocumentLightbox$,
+  openVideoLightbox$,
+} from "../../signals/zero-page/zero-attachment-chips.ts";
 import { classifyChatAttachment } from "../../signals/chat-page/parse-body-blocks.ts";
 import {
   FilePreviewIcon,
@@ -173,7 +173,7 @@ function AttachmentAnchorChip({
   text$?: TextPreviewComputed;
 }) {
   const publicUrl = publicAttachmentUrl(url);
-  const openDocument = useSet(openDocumentLightboxOrArtifact$);
+  const openDocument = useSet(openDocumentLightbox$);
 
   return (
     <a
@@ -244,7 +244,7 @@ function HtmlSitePreviewCard({
   url: string;
 }) {
   const publicUrl = publicAttachmentUrl(url);
-  const openDocument = useSet(openDocumentLightboxOrArtifact$);
+  const openDocument = useSet(openDocumentLightbox$);
   const title = fallbackHtmlPreviewTitle(filename, url);
 
   return (
@@ -417,7 +417,7 @@ function AudioPreview({
   filename: string;
   url: string;
 }) {
-  const openAudioLightbox = useSet(openAudioLightboxOrArtifact$);
+  const openAudioLightbox = useSet(openAudioLightbox$);
   const lightboxOpen = useGet(lightboxUrl$) !== null;
   const accentClass = getFilePreviewAccentClass(
     filename,
@@ -472,7 +472,7 @@ function VideoThumbnailPreview({
   filename: string;
   url: string;
 }) {
-  const openVideoLightbox = useSet(openVideoLightboxOrArtifact$);
+  const openVideoLightbox = useSet(openVideoLightbox$);
   const lightboxOpen = useGet(lightboxUrl$) !== null;
   const videoUrl = publicAttachmentUrl(url);
 

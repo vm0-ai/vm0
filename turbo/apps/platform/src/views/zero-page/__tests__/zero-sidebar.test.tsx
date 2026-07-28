@@ -3,7 +3,6 @@ import { describe, expect, it } from "vitest";
 
 import {
   chatThreadByIdContract,
-  chatThreadArtifactsContract,
   chatThreadMarkAgentReadContract,
   chatThreadMarkReadContract,
   chatThreadEventsContract,
@@ -590,66 +589,6 @@ describe("zero sidebar", () => {
     });
 
     createDeferred.resolve();
-  });
-
-  it("closes the legacy artifact sidebar when creating a new main chat", async () => {
-    prepareDefaultAgent();
-    const artifactUrl = encodeURIComponent(
-      "https://cdn.vm7.io/artifacts/test/archive.zip",
-    );
-    const threads = [
-      {
-        id: EXISTING_THREAD_ID,
-        title: "Existing conversation",
-        agent: { id: AGENT_ID, avatarUrl: null },
-        createdAt: "2026-03-10T00:00:00Z",
-        updatedAt: "2026-03-10T00:00:00Z",
-      },
-    ];
-    mockChatThreadSnapshot(() => {
-      return threads;
-    });
-    context.mocks.api(chatThreadsContract.create, ({ body, respond }) => {
-      return respond(201, {
-        id: body.clientThreadId ?? "created-thread-id",
-        title: null,
-        createdAt: "2026-03-10T00:00:00Z",
-      });
-    });
-    context.mocks.api(chatThreadArtifactsContract.list, ({ respond }) => {
-      return respond(200, { runs: [] });
-    });
-    context.mocks.api(chatThreadByIdContract.get, ({ respond }) => {
-      return respond(200, {
-        lastReadAt: null,
-      });
-    });
-
-    setupSidebarPage({
-      context,
-      path: `/chats/${EXISTING_THREAD_ID}?artifact=${artifactUrl}`,
-      featureSwitches: {
-        [FeatureSwitchKey.NewChatThreadSidebar]: false,
-      },
-    });
-
-    const newChatButton = await waitFor(() => {
-      expect(screen.getByTestId("artifact-sidebar")).toBeInTheDocument();
-      expect(
-        within(sidebar()).getByText("Existing conversation"),
-      ).toBeInTheDocument();
-      const button = screen.getByLabelText("Open chat list menu");
-      expect(button).not.toBeDisabled();
-      return button;
-    });
-
-    click(newChatButton);
-    click(menuItemByText("New chat"));
-
-    await waitFor(() => {
-      expect(screen.queryByTestId("artifact-sidebar")).not.toBeInTheDocument();
-      expect(window.location.search).not.toContain("artifact=");
-    });
   });
 
   it("requests unread chat threads and filters the event-sourced list", async () => {

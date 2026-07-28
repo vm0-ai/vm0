@@ -1,16 +1,6 @@
 import { command, computed } from "ccstate";
 
-import {
-  chatThreadSidebarAutoOpenEnabled$,
-  newChatThreadSidebarEnabled$,
-} from "../external/feature-switch.ts";
-import { openMailDraftSidebar$ } from "../zero-page/mail-draft-sidebar.ts";
-import { openBrowserSessionSidebar$ } from "../zero-page/browser-session-sidebar.ts";
-import {
-  openArtifactInbox$,
-  openArtifactSidebarPreview$,
-  type ArtifactRef,
-} from "../zero-page/zero-artifact-sidebar.ts";
+import { chatThreadSidebarAutoOpenEnabled$ } from "../external/feature-switch.ts";
 import {
   classifyChatAttachment,
   previewAttachmentFromUrl,
@@ -19,10 +9,9 @@ import {
   currentLeftThread$,
   currentRightThread$,
 } from "./chat-thread-pane-state.ts";
-import { openHeaderAutomationSidebar$ } from "./header-automation-sidebar.ts";
 import type { ChatThreadSignals } from "./chat-thread-signals.ts";
 import { CHAT_THREAD_SIDEBAR_SPLIT_VIEW_MEDIA_QUERY } from "./chat-thread-sidebar-layout.ts";
-import type { ThreadSidebarTarget } from "./thread-sidebar.ts";
+import type { ArtifactRef, ThreadSidebarTarget } from "./thread-sidebar.ts";
 import {
   threadSidebarAutoOpenCandidateKey,
   type ThreadSidebarAutoOpenCandidate,
@@ -32,8 +21,7 @@ import {
 // Page-level coordinator for the thread-owned utility sidebar. Sidebar state
 // lives in the initiating thread's `ChatThreadSignals`; this module only
 // enforces "at most one utility sidebar per page" across the two thread panes
-// and routes each entry point to the legacy search-param sidebars while the
-// `NewChatThreadSidebar` switch is off.
+// and routes every entry point into that thread-owned state.
 // ---------------------------------------------------------------------------
 
 /**
@@ -82,7 +70,6 @@ function targetFromAutoOpenCandidate(
   }
   const attachment = previewAttachmentFromUrl(candidate.resourceKey);
   const ref: ArtifactRef = {
-    source: "url",
     url: candidate.resourceKey,
     kind: classifyChatAttachment(attachment),
     filename: attachment.filename,
@@ -102,7 +89,6 @@ export const autoOpenThreadSidebar$ = command(
     await get(thread.hasNewMessages$);
     signal.throwIfAborted();
     if (
-      !get(newChatThreadSidebarEnabled$) ||
       !get(chatThreadSidebarAutoOpenEnabled$) ||
       typeof window === "undefined" ||
       !window.matchMedia(CHAT_THREAD_SIDEBAR_SPLIT_VIEW_MEDIA_QUERY).matches
@@ -130,7 +116,6 @@ export const autoOpenThreadSidebar$ = command(
       return;
     }
     if (
-      !get(newChatThreadSidebarEnabled$) ||
       !get(chatThreadSidebarAutoOpenEnabled$) ||
       typeof window === "undefined" ||
       !window.matchMedia(CHAT_THREAD_SIDEBAR_SPLIT_VIEW_MEDIA_QUERY).matches ||
@@ -143,21 +128,13 @@ export const autoOpenThreadSidebar$ = command(
 );
 
 export const openThreadArtifacts$ = command(
-  ({ get, set }, thread: ChatThreadSignals) => {
-    if (!get(newChatThreadSidebarEnabled$)) {
-      set(openArtifactInbox$, thread.threadId);
-      return;
-    }
+  ({ set }, thread: ChatThreadSignals) => {
     set(openOnThread$, thread, { type: "artifacts" });
   },
 );
 
 export const openThreadAutomations$ = command(
-  ({ get, set }, thread: ChatThreadSignals) => {
-    if (!get(newChatThreadSidebarEnabled$)) {
-      set(openHeaderAutomationSidebar$, thread.threadId);
-      return;
-    }
+  ({ set }, thread: ChatThreadSignals) => {
     set(openOnThread$, thread, { type: "automations" });
   },
 );
@@ -181,10 +158,6 @@ function threadOwningCard(
 
 export const openThreadMailDraft$ = command(
   ({ get, set }, mailDraftId: string) => {
-    if (!get(newChatThreadSidebarEnabled$)) {
-      set(openMailDraftSidebar$, mailDraftId);
-      return;
-    }
     const thread = threadOwningCard(
       [get(currentLeftThread$), get(currentRightThread$)],
       (candidate) => {
@@ -200,10 +173,6 @@ export const openThreadMailDraft$ = command(
 
 export const openThreadBrowserSession$ = command(
   ({ get, set }, browserSessionId: string) => {
-    if (!get(newChatThreadSidebarEnabled$)) {
-      set(openBrowserSessionSidebar$, browserSessionId);
-      return;
-    }
     const thread = threadOwningCard(
       [get(currentLeftThread$), get(currentRightThread$)],
       (candidate) => {
@@ -225,17 +194,12 @@ export const openThreadBrowserSession$ = command(
  */
 export const openThreadArtifactSplitView$ = command(
   ({ get, set }, url: string) => {
-    if (!get(newChatThreadSidebarEnabled$)) {
-      set(openArtifactSidebarPreview$, url);
-      return;
-    }
     const thread = get(currentLeftThread$) ?? get(currentRightThread$);
     if (!thread) {
       return;
     }
     const attachment = previewAttachmentFromUrl(url);
     const ref: ArtifactRef = {
-      source: "url",
       url,
       kind: classifyChatAttachment(attachment),
       filename: attachment.filename,
@@ -248,8 +212,8 @@ export const openThreadArtifactSplitView$ = command(
 );
 
 /**
- * Card selection indicators for the new track: which mail draft / browser
- * session the open sidebar is showing, page-wide.
+ * Card selection indicators for which mail draft / browser session the open
+ * sidebar is showing, page-wide.
  */
 export const activeSidebarMailDraftId$ = computed((get): string | null => {
   const active = get(activeThreadSidebar$);

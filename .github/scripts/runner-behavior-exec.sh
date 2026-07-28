@@ -40,6 +40,8 @@ NETFILTER_TRACE_FILE=""
 NETFILTER_TRACE_PID=""
 POOL_LOCK_GUARD_DIR=""
 POOL_LOCK_HOLDER_PID=""
+POOL_LOCK_HOLDER_STATUS=""
+POOL_LOCK_PUBLISH_RELEASE=""
 POOL_LOCK_RELEASE_FD=""
 POOL_LOCK_ERROR=""
 
@@ -136,12 +138,14 @@ start_netfilter_trace() {
 }
 
 cleanup_pool_lock_guard() {
+  if [ -n "$POOL_LOCK_PUBLISH_RELEASE" ]; then
+    touch "$POOL_LOCK_PUBLISH_RELEASE" 2>/dev/null || true
+  fi
   if [ -n "$POOL_LOCK_RELEASE_FD" ]; then
     exec {POOL_LOCK_RELEASE_FD}>&-
     POOL_LOCK_RELEASE_FD=""
   fi
   if [ -n "$POOL_LOCK_HOLDER_PID" ]; then
-    kill "$POOL_LOCK_HOLDER_PID" 2>/dev/null || true
     wait "$POOL_LOCK_HOLDER_PID" 2>/dev/null || true
     POOL_LOCK_HOLDER_PID=""
   fi
@@ -149,6 +153,9 @@ cleanup_pool_lock_guard() {
     rm -rf "$POOL_LOCK_GUARD_DIR"
     POOL_LOCK_GUARD_DIR=""
   fi
+  POOL_LOCK_HOLDER_STATUS=""
+  POOL_LOCK_PUBLISH_RELEASE=""
+  POOL_LOCK_ERROR=""
 }
 
 rule_values() {
@@ -1868,19 +1875,29 @@ POOL_LOCK_GUARD_DIR=$(mktemp -d "/tmp/vm0-${SVC}-pool-lock.XXXXXX") \
 POOL_LOCK_READY="$POOL_LOCK_GUARD_DIR/ready"
 POOL_LOCK_RELEASE_FIFO="$POOL_LOCK_GUARD_DIR/release"
 POOL_LOCK_ERROR="$POOL_LOCK_GUARD_DIR/error"
+POOL_LOCK_HOLDER_STATUS="$POOL_LOCK_GUARD_DIR/holder-status"
+POOL_LOCK_PUBLISH_READY="$POOL_LOCK_GUARD_DIR/publish-ready"
+POOL_LOCK_PUBLISH_RELEASE="$POOL_LOCK_GUARD_DIR/release-publish"
 POOL_LOCK_TARGET="$POOL_LOCK_GUARD_DIR/target"
 mkfifo "$POOL_LOCK_RELEASE_FIFO" \
   || fail "failed to create pool-lock release FIFO"
 exec {POOL_LOCK_RELEASE_FD}<>"$POOL_LOCK_RELEASE_FIFO" \
   || fail "failed to open pool-lock release FIFO"
 
-sudo python3 - \
-  "$RUNNER_MAIN_PID" \
-  "$RUNNER_POOL_INDEX" \
-  "$POOL_LOCK_READY" \
-  "$POOL_LOCK_RELEASE_FIFO" \
-  "$POOL_LOCK_TARGET" \
-  {POOL_LOCK_RELEASE_FD}>&- >"$POOL_LOCK_ERROR" 2>&1 <<'PY' &
+# A stable supervisor publishes the privileged helper's terminal status;
+# sudo's process identity is not part of the lifecycle protocol.
+(
+  pool_lock_holder_status=0
+  exec {POOL_LOCK_RELEASE_FD}>&-
+  sudo python3 - \
+    "$RUNNER_MAIN_PID" \
+    "$RUNNER_POOL_INDEX" \
+    "$POOL_LOCK_READY" \
+    "$POOL_LOCK_RELEASE_FIFO" \
+    "$POOL_LOCK_TARGET" \
+    "$POOL_LOCK_PUBLISH_READY" \
+    "$POOL_LOCK_PUBLISH_RELEASE" \
+    <<'PY' || pool_lock_holder_status=$?
 import ctypes
 import errno
 import os
@@ -1888,12 +1905,15 @@ import platform
 from pathlib import Path
 import signal
 import sys
+import time
 
 runner_pid = int(sys.argv[1])
 pool_index = int(sys.argv[2])
 ready_path = Path(sys.argv[3])
 release_fifo = Path(sys.argv[4])
 target_path = Path(sys.argv[5])
+publish_ready_path = Path(sys.argv[6])
+publish_release_path = Path(sys.argv[7])
 lock_name = f"vm0-netns-pool-{pool_index}.lock"
 
 
@@ -1942,6 +1962,9 @@ try:
         )
     release_fd = os.open(release_fifo, os.O_RDONLY)
     try:
+        publish_ready_path.touch()
+        while not publish_release_path.exists():
+            time.sleep(0.05)
         target_path.write_text(target)
         ready_path.touch()
         while os.read(release_fd, 1):
@@ -1953,18 +1976,45 @@ finally:
 
 signal.alarm(0)
 PY
+  status_tmp="${POOL_LOCK_HOLDER_STATUS}.tmp.${BASHPID}"
+  printf '%s\n' "$pool_lock_holder_status" >"$status_tmp"
+  mv "$status_tmp" "$POOL_LOCK_HOLDER_STATUS"
+  exit "$pool_lock_holder_status"
+) >"$POOL_LOCK_ERROR" 2>&1 &
 POOL_LOCK_HOLDER_PID=$!
 
+fail_pool_lock_holder() {
+  local status=$1 checkpoint=$2
+  [ ! -s "$POOL_LOCK_ERROR" ] || cat "$POOL_LOCK_ERROR"
+  fail "pool-lock holder completed with status ${status} ${checkpoint}"
+}
+
+fail_if_pool_lock_holder_completed() {
+  local checkpoint=$1 status
+  if [ -s "$POOL_LOCK_HOLDER_STATUS" ]; then
+    status=$(<"$POOL_LOCK_HOLDER_STATUS")
+    fail_pool_lock_holder "$status" "$checkpoint"
+  fi
+}
+
+POOL_LOCK_PUBLISH_ACKNOWLEDGED=false
 for _ in $(seq 1 200); do
   [ -e "$POOL_LOCK_READY" ] && break
-  kill -0 "$POOL_LOCK_HOLDER_PID" 2>/dev/null \
-    || break
+  fail_if_pool_lock_holder_completed "before retained-lock readiness"
+  if [ -e "$POOL_LOCK_PUBLISH_READY" ] \
+    && [ "$POOL_LOCK_PUBLISH_ACKNOWLEDGED" = false ]; then
+    touch "$POOL_LOCK_PUBLISH_RELEASE"
+    POOL_LOCK_PUBLISH_ACKNOWLEDGED=true
+  fi
   sleep 0.05
 done
 if [ ! -e "$POOL_LOCK_READY" ]; then
+  fail_if_pool_lock_holder_completed "before retained-lock readiness"
   [ ! -s "$POOL_LOCK_ERROR" ] || cat "$POOL_LOCK_ERROR"
-  fail "failed to retain runner pool lock before stop"
+  fail "timed out retaining runner pool lock before stop"
 fi
+[ "$POOL_LOCK_PUBLISH_ACKNOWLEDGED" = true ] \
+  || fail "pool-lock holder skipped delayed readiness"
 POOL_LOCK_PATH=$(cat "$POOL_LOCK_TARGET") \
   || fail "failed to read retained pool lock path"
 [ -n "$POOL_LOCK_PATH" ] || fail "retained pool lock path is empty"
@@ -2020,16 +2070,20 @@ LEAKED_HOST_VETHS=$(printf '%s\n' "$LINKS_AFTER_STOP" \
 exec {POOL_LOCK_RELEASE_FD}>&-
 POOL_LOCK_RELEASE_FD=""
 if wait "$POOL_LOCK_HOLDER_PID"; then
-  :
+  POOL_LOCK_HOLDER_EXIT=0
 else
-  POOL_LOCK_HOLDER_STATUS=$?
-  POOL_LOCK_HOLDER_PID=""
-  [ ! -s "$POOL_LOCK_ERROR" ] || cat "$POOL_LOCK_ERROR"
-  fail "pool-lock holder exited with status $POOL_LOCK_HOLDER_STATUS"
+  POOL_LOCK_HOLDER_EXIT=$?
 fi
 POOL_LOCK_HOLDER_PID=""
+if [ "$POOL_LOCK_HOLDER_EXIT" -ne 0 ]; then
+  fail_pool_lock_holder \
+    "$POOL_LOCK_HOLDER_EXIT" \
+    "after releasing retained pool lock"
+fi
 rm -rf "$POOL_LOCK_GUARD_DIR"
 POOL_LOCK_GUARD_DIR=""
+POOL_LOCK_HOLDER_STATUS=""
+POOL_LOCK_PUBLISH_RELEASE=""
 POOL_LOCK_ERROR=""
 
 cleanup_submit_pid "$SUBMIT_PID"

@@ -1886,9 +1886,9 @@ async function validateStructuredPromptDraftBackfill(): Promise<void> {
   );
 }
 
-const USER_MESSAGE_BACKFILL_PREVIOUS_MIGRATION = 714;
-const USER_MESSAGE_BACKFILL_MIGRATION = 715;
-const USER_MESSAGE_CONTRACT_MIGRATION = 716;
+const USER_MESSAGE_BACKFILL_PREVIOUS_MIGRATION = 715;
+const USER_MESSAGE_BACKFILL_MIGRATION = 716;
+const USER_MESSAGE_CONTRACT_MIGRATION = 717;
 
 async function validateUserMessageBackfillAndContract(): Promise<void> {
   console.log(
