@@ -38,6 +38,10 @@ export const testRuntimeStateActionBodySchema = z.discriminatedUnion("action", [
     run_id: z.uuid(),
   }),
   z.object({
+    action: z.literal("read-runner-job-storage-state"),
+    run_id: z.uuid(),
+  }),
+  z.object({
     action: z.literal("read-storage-persistence-state"),
     run_id: z.uuid(),
     session_id: z.uuid(),
@@ -130,6 +134,13 @@ export const testRuntimeStateActionResponseSchema = z.object({
       run_canonical: z.boolean(),
       session_canonical: z.boolean(),
       checkpoint_canonical: z.boolean(),
+    })
+    .optional(),
+  runner_job_storage_state: z
+    .object({
+      legacy_manifest_state: z.enum(["missing", "null", "object"]),
+      canonical_mount_count: z.number().int().nonnegative(),
+      has_run_context_storage: z.boolean(),
     })
     .optional(),
 });

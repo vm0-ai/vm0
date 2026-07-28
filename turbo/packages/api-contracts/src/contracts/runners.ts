@@ -516,9 +516,9 @@ export const secretConnectorMetadataMapSchema = z.record(
  */
 export const storedExecutionContextSchema = z.object({
   // Compatibility projection for the previous API version and rollback. The
-  // API emits storageMounts to every runner; remove this projection after
-  // rollback-eligible API versions have drained.
-  storageManifest: legacyStorageManifestSchema.nullable(),
+  // API writes null while storageMounts drive every claim. Omission is accepted
+  // for the final contraction after rollback-eligible APIs and queues drain.
+  storageManifest: legacyStorageManifestSchema.nullable().optional(),
   storageMounts: z
     .array(storedStorageMountEntrySchema)
     .superRefine(uniqueStorageMountPaths),
