@@ -73,30 +73,12 @@ jobs:
         run: |
           set -euo pipefail
 
-          case "$EVENT_NAME" in
-            pull_request)
-              if [ -z "$PR_NUMBER" ]; then
-                echo "::error::Could not resolve pull request number from the pull_request event"
-                exit 1
-              fi
-              # Read the title from the API rather than the event payload: a
-              # re-run replays the original payload, so a payload read would keep
-              # failing on the pre-edit title and force an empty commit instead.
-              title="$(gh pr view "$PR_NUMBER" --repo "$REPO" --json title --jq .title)"
-              ;;
-            merge_group)
-              pr_number="$(printf '%s\n' "$MQ_HEAD_REF" | grep -oE 'pr-[0-9]+' | head -1 | sed 's/pr-//' || true)"
-              if [ -z "$pr_number" ]; then
-                echo "::error::Could not resolve pull request number from merge queue ref: $MQ_HEAD_REF"
-                exit 1
-              fi
-              title="$(gh pr view "$pr_number" --repo "$REPO" --json title --jq .title)"
-              ;;
-            *)
-              echo "No pull request title to validate for $EVENT_NAME"
-              exit 0
-              ;;
-          esac
+          title="$(.github/scripts/resolve-pr-title.sh)"
+
+          if [ -z "$title" ]; then
+            echo "No pull request title to validate for $EVENT_NAME"
+            exit 0
+          fi
 
           .github/scripts/check-pr-title.sh "$title"
 
