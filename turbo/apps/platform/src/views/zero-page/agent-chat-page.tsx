@@ -59,7 +59,6 @@ import { talkDraft$ } from "../../signals/zero-page/chat-draft.ts";
 import {
   newThreadGenerationTemplate$,
   newThreadComputerAccess$,
-  type NewThreadComputerAccess,
   resetNewThreadComputerAccess$,
   setNewThreadGenerationTemplate$,
   setNewThreadCloudBrowserEnabled$,
@@ -455,15 +454,9 @@ function useNewThreadComputerUse() {
     computerUseHostsLoadable.state === "hasData"
       ? computerUseHostsLoadable.data
       : lastResolvedComputerUseHosts;
-  const storedComputerAccess = useGet(newThreadComputerAccess$);
+  const computerAccess = useGet(newThreadComputerAccess$);
   const cloudBrowserAvailable = useGet(zeroBrowserEnabled$);
-  // Cloud browser is the default surface for a new thread wherever Zero Browser
-  // is available; the user can still pick a computer or none for this draft.
-  const computerAccess: NewThreadComputerAccess =
-    storedComputerAccess ??
-    (cloudBrowserAvailable ? { kind: "cloudBrowser" } : { kind: "none" });
-  const cloudBrowserEnabled =
-    cloudBrowserAvailable && computerAccess.kind === "cloudBrowser";
+  const cloudBrowserEnabled = computerAccess.kind === "cloudBrowser";
   const selectedComputerUseHostId = resolveSelectedComputerUseHostId(
     computerUseHosts,
     computerAccess.kind === "computerUse" ? computerAccess.hostId : null,
