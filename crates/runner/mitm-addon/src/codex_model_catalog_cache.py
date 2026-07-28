@@ -524,6 +524,7 @@ async def prepare_request(flow: http.HTTPFlow, *, request_end_stream: bool) -> N
 
     key = _CacheKey(canonical_url, credential_digest)
     is_prefetch = flow.metadata.get(_PREFETCH_REQUEST) is True
+    wait_deadline: float | None = None
 
     while True:
         now = time.monotonic()
@@ -556,13 +557,24 @@ async def prepare_request(flow: http.HTTPFlow, *, request_end_stream: bool) -> N
                     entry_age_ms=entry_age_ms,
                 )
                 return
+            if wait_deadline is None:
+                wait_deadline = now + MAX_IN_FLIGHT_WAIT_SECONDS
+            remaining_wait_seconds = wait_deadline - now
+            if remaining_wait_seconds <= 0:
+                _set_telemetry(
+                    flow,
+                    "model_catalog_bypass",
+                    bypass_reason="request_capacity",
+                    entry_age_ms=entry_age_ms,
+                )
+                return
             joined_prefetch = in_flight.prefetch_owner and not is_prefetch
             in_flight.waiters += 1
             try:
                 try:
                     completed_entry = await asyncio.wait_for(
                         asyncio.shield(in_flight.future),
-                        timeout=MAX_IN_FLIGHT_WAIT_SECONDS,
+                        timeout=remaining_wait_seconds,
                     )
                 except TimeoutError:
                     _set_telemetry(
@@ -575,6 +587,8 @@ async def prepare_request(flow: http.HTTPFlow, *, request_end_stream: bool) -> N
             finally:
                 in_flight.waiters -= 1
             if completed_entry is None:
+                continue
+            if _entries.get(key) is not completed_entry:
                 continue
             completed_at = time.monotonic()
             if completed_at - completed_entry.validated_at >= FRESH_SECONDS:

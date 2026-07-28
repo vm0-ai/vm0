@@ -819,6 +819,56 @@ async def test_singleflight_wait_is_bounded_without_canceling_owner(real_flow):
     assert hit.response.content == _CATALOG_BODY
 
 
+async def test_singleflight_wait_deadline_spans_replacement_owners(real_flow):
+    with patch.object(catalog_cache, "time") as cache_time:
+        cache_time.monotonic.return_value = 100.0
+        first_owner = _catalog_flow(real_flow, version="bounded-retry")
+        await _prepare_miss(first_owner)
+        follower = _catalog_flow(real_flow, version="bounded-retry")
+        follower_prepare = asyncio.create_task(
+            catalog_cache.prepare_request(follower, request_end_stream=True)
+        )
+        await asyncio.sleep(0)
+        assert not follower_prepare.done()
+
+        catalog_cache.handle_error(first_owner)
+        replacement_owner = _catalog_flow(real_flow, version="bounded-retry")
+        await _prepare_miss(replacement_owner)
+        cache_time.monotonic.return_value = 100.0 + catalog_cache.MAX_IN_FLIGHT_WAIT_SECONDS
+
+        await asyncio.wait_for(follower_prepare, timeout=0.1)
+        follower_telemetry: dict[str, object] = {}
+        catalog_cache.add_network_log_fields(follower, follower_telemetry)
+        assert follower.response is None
+        assert follower.request.headers["Accept-Encoding"] == "identity"
+        assert follower_telemetry == {
+            "model_catalog_cache_status": "model_catalog_bypass",
+            "model_catalog_cache_bypass_reason": "request_capacity",
+        }
+        catalog_cache.handle_error(replacement_owner)
+
+
+async def test_singleflight_rechecks_entry_after_etag_invalidation(real_flow):
+    owner = _catalog_flow(real_flow, version="invalidated-inflight")
+    await _prepare_miss(owner)
+    follower = _catalog_flow(real_flow, version="invalidated-inflight")
+    follower_prepare = asyncio.create_task(
+        catalog_cache.prepare_request(follower, request_end_stream=True)
+    )
+    await asyncio.sleep(0)
+    assert not follower_prepare.done()
+
+    owner.response = _catalog_response(encoding="br")
+    _finish_response(owner)
+    invalidation = _responses_flow(real_flow, etag='"catalog-v2"')
+    mitm_addon.responseheaders(invalidation)
+
+    await asyncio.wait_for(follower_prepare, timeout=0.1)
+    assert follower.response is None
+    assert follower.request.headers["Accept-Encoding"] == "br"
+    catalog_cache.handle_error(follower)
+
+
 async def test_singleflight_waiter_bound_bypasses_excess_requests(real_flow):
     owner = _catalog_flow(real_flow, version="waiter-capacity")
     await _prepare_miss(owner)
