@@ -228,6 +228,42 @@ describe("artifact catalog page", () => {
     expect(buttonByLabel("Preview first-page.txt")).toBeInTheDocument();
   });
 
+  it("prefetches the next page within three viewport heights of the end", async () => {
+    context.mocks.api(artifactCatalogContract.list, ({ query, respond }) => {
+      if (query.cursor === "cursor-2") {
+        return respond(200, {
+          artifacts: [
+            artifact({
+              id: "a0000000-0000-4000-a000-000000000002",
+              title: "prefetched-page.txt",
+            }),
+          ],
+          nextCursor: null,
+        });
+      }
+      return respond(200, {
+        artifacts: [artifact({ title: "first-page.txt" })],
+        nextCursor: "cursor-2",
+      });
+    });
+
+    setupArtifactCatalogPage();
+    await findCard("first-page.txt");
+
+    const viewport = document.querySelector("main");
+    if (!viewport) {
+      throw new Error("Expected the artifacts page to render a scroll region");
+    }
+    Object.defineProperties(viewport, {
+      clientHeight: { configurable: true, value: 1000 },
+      scrollHeight: { configurable: true, value: 5000 },
+      scrollTop: { configurable: true, value: 1500 },
+    });
+    viewport.dispatchEvent(new Event("scroll", { bubbles: true }));
+
+    await expect(findCard("prefetched-page.txt")).resolves.toBeInTheDocument();
+  });
+
   it("discards an in-flight page after the kind changes", async () => {
     const secondPageStarted = context.mocks.deferred<void>();
     const releaseSecondPage = context.mocks.deferred<void>();
