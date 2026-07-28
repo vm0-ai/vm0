@@ -1,10 +1,408 @@
 {
   "settings": {
+    "accountMenu": {
+      "addAccount": "Adicionar conta",
+      "exportData": "Exportar dados",
+      "lab": "Lab",
+      "settings": "Configurações",
+      "signOut": "Sair",
+      "switchAccount": "Trocar de conta",
+      "userFallback": "Usuário"
+    },
+    "dialog": {
+      "description": "Gerencie sua conta, preferências e configurações do espaço de trabalho e de faturamento.",
+      "groups": {
+        "billing": "Faturamento e preços",
+        "models": "Modelos",
+        "personal": "Pessoal",
+        "workspace": "Espaço de trabalho"
+      },
+      "sections": {
+        "billing": {
+          "description": "Gerencie seu plano e sua forma de pagamento.",
+          "title": "Faturamento"
+        },
+        "debug": {
+          "description": "Diagnósticos e ferramentas de desenvolvimento.",
+          "title": "Depuração"
+        },
+        "general": {
+          "description": "Gerencie o perfil e as configurações do seu espaço de trabalho.",
+          "title": "Geral"
+        },
+        "invoices": {
+          "description": "Veja e baixe faturas anteriores.",
+          "title": "Faturas"
+        },
+        "model": {
+          "description": "Escolha quais modelos de IA serão usados pelo seu espaço de trabalho e pelas suas execuções.",
+          "title": "Modelos"
+        },
+        "people": {
+          "description": "Gerencie quem tem acesso a este espaço de trabalho.",
+          "title": "Pessoas"
+        },
+        "preference": {
+          "description": "Personalize a aparência e o comportamento do app.",
+          "title": "Preferência"
+        },
+        "usage": {
+          "balanceDescription": "O saldo e o uso de créditos da sua equipe.",
+          "balanceTitle": "Saldo de créditos",
+          "usageDescription": "Seu uso de créditos em conversas, automações e canais.",
+          "usageTitle": "Uso de créditos"
+        }
+      },
+      "title": "Configurações"
+    },
+    "models": {
+      "actions": {
+        "addModel": "Adicionar modelo",
+        "deleteModel": "Excluir modelo",
+        "editModel": "Editar modelo",
+        "resetUsage": "Redefinir uso",
+        "upgradePro": "Faça upgrade para o Pro para usar",
+        "upgradeToPro": "Fazer upgrade para o Pro"
+      },
+      "deviceAuth": {
+        "claude": {
+          "approvalOpenError": "Não foi possível abrir a página de aprovação. Use o link manualmente e cole o código aqui.",
+          "authorizationCode": "Código de autorização",
+          "codePlaceholder": "Cole o código do Claude",
+          "codeRequired": "Cole o código de autorização do Claude Code para continuar.",
+          "connectedToast": "Claude Code conectado",
+          "connectTitle": "Conectar o Claude Code",
+          "error": "Falha na conexão com o Claude Code. Inicie novamente para tentar de novo.",
+          "expired": "A sessão de conexão com o Claude Code expirou. Inicie novamente para tentar de novo.",
+          "instructions": "Primeiro, clique em Abrir página de aprovação do Claude. Depois, aprove o vm0 no Claude e copie o código de autorização exibido após a aprovação. Por fim, cole o código aqui e clique em Conectar.",
+          "openApproval": "Abrir página de aprovação do Claude",
+          "preparing": "Preparando...",
+          "reconnectAction": "Reconectar o Claude Code",
+          "reconnectTitle": "Reconectar o Claude Code",
+          "signIn": "Entrar com o Claude",
+          "submit": "Conectar"
+        },
+        "codex": {
+          "approvalOpened": "Página de aprovação aberta. Copie o código do dispositivo antes de aprovar.",
+          "codeCopied": "Código do dispositivo copiado. Aguardando aprovação...",
+          "codeCopiedRetry": "Código do dispositivo copiado. Tente abrir a página de aprovação novamente.",
+          "connectedToast": "ChatGPT conectado",
+          "connectTitle": "Conectar o Codex",
+          "copyAndOpen": "Copiar código e abrir página de aprovação",
+          "copyAndOpenError": "Não foi possível copiar o código do dispositivo nem abrir a página de aprovação. Copie o código manualmente e tente de novo.",
+          "copyError": "A página de aprovação foi aberta, mas o código do dispositivo não foi copiado. Copie-o manualmente antes de aprovar.",
+          "deviceCode": "Código do dispositivo",
+          "error": "Falha na conexão com o ChatGPT. Inicie novamente para tentar de novo.",
+          "expired": "A sessão de conexão com o Codex expirou. Inicie novamente para tentar de novo.",
+          "freePlanRejected": "Os planos gratuitos do ChatGPT não podem usar o Codex pelo vm0. Faça upgrade para o Plus ou Pro e tente de novo.",
+          "instructions": "Primeiro, clique em Copiar código e abrir página de aprovação. Depois, cole o código do dispositivo na OpenAI quando solicitado. Por fim, aprove o acesso e mantenha esta caixa de diálogo aberta enquanto o vm0 conclui a conexão.",
+          "invalidTokenFormat": "O Codex gerou um formato de token de login que o vm0 não reconhece. Atualize o Codex e tente de novo.",
+          "openError": "O código do dispositivo foi copiado, mas não foi possível abrir a página de aprovação. Tente de novo.",
+          "preparing": "Preparando...",
+          "reconnectAction": "Reconectar o ChatGPT",
+          "reconnectTitle": "Reconectar o Codex",
+          "signIn": "Entrar com o ChatGPT"
+        }
+      },
+      "personal": {
+        "actionForProvider": "{{action}} {{provider}}",
+        "claudeDescription": "Conecte o login do Claude Code para usar rotas de modelos baseadas no Claude.",
+        "claudeTitle": "OAuth do Claude Code",
+        "codexDescription": "Conecte o login do dispositivo do Codex para usar rotas de modelos baseadas no Codex.",
+        "codexTitle": "ChatGPT (Codex)",
+        "description": "Usados somente nas suas execuções, com suas próprias credenciais.",
+        "sectionTitle": "Pessoal",
+        "status": {
+          "connected": "Conectado",
+          "connectedWithDetail": "Conectado ({{detail}})",
+          "left": "{{percent}} restante",
+          "stale": "Atenção",
+          "week": "Semana"
+        }
+      },
+      "policies": {
+        "actionsFor": "Ações para {{model}}",
+        "apiKey": "Chave de API",
+        "apiKeyDescription": "Uma chave compartilhada do espaço de trabalho. Ideal quando a equipe fatura o uso por uma única conta.",
+        "builtIn": "Integrado",
+        "builtInDescription": "Os créditos do espaço de trabalho cobrem o uso.",
+        "claudeSubscription": "Assinatura do Claude",
+        "claudeSubscriptionDescription": "Cada membro conecta seu próprio plano Pro, Max ou Team.",
+        "codexSubscription": "Assinatura do Codex",
+        "codexSubscriptionDescription": "Cada membro conecta seu próprio plano Pro ou Team.",
+        "defaultModel": "Modelo padrão",
+        "defaultModelDescription": "Usado quando uma tarefa não escolhe um modelo próprio.",
+        "dialogDescription": "Defina como os membros acessam este modelo.",
+        "enterProviderSecret": "Insira {{secret}}",
+        "getKey": "Obter uma chave",
+        "invalidRoute": "Rota inválida",
+        "missingProvider": "Provedor ausente",
+        "model": "Modelo",
+        "noAvailableModels": "Nenhum modelo disponível",
+        "providedBy": "Disponibilizado por",
+        "provider": "Provedor",
+        "secretRequired": "O campo {{secret}} é obrigatório",
+        "secretStored": "Armazenado nos segredos do espaço de trabalho.",
+        "selectDefaultModel": "Selecionar um modelo padrão",
+        "selectModel": "Selecionar um modelo",
+        "selectProvider": "Selecionar um provedor",
+        "workspaceDescription": "Disponível para todos neste espaço de trabalho.",
+        "workspaceTitle": "Espaço de trabalho"
+      },
+      "reset": {
+        "confirmDescription": "Use uma redefinição do Codex para redefinir suas janelas de uso atuais. Você tem {{remaining}}.",
+        "progress": "Redefinindo...",
+        "remaining_one": "{{count}} redefinição restante",
+        "remaining_many": "{{count}} redefinições restantes",
+        "remaining_other": "{{count}} redefinições restantes",
+        "remainingUnavailable": "Redefinições restantes indisponíveis",
+        "title": "Redefinir o uso do Codex?"
+      },
+      "stale": {
+        "claudeExpired": "Sua sessão do Claude Code expirou. Reconecte para continuar.",
+        "claudeFailed": "Falha ao atualizar o Claude Code. Reconecte para tentar de novo.",
+        "claudeTitle": "A sessão do Claude Code precisa ser reconectada",
+        "codexExpired": "Sua sessão do ChatGPT expirou. Reconecte para continuar.",
+        "codexFailed": "Falha ao atualizar o ChatGPT. Reconecte para tentar de novo.",
+        "codexInvalidated": "Sua sessão do ChatGPT foi revogada. Reconecte.",
+        "codexReused": "Sua sessão do ChatGPT foi usada em outro lugar. Reconecte.",
+        "codexTitle": "A sessão do ChatGPT precisa ser reconectada"
+      },
+      "toasts": {
+        "disconnected": "{{provider}} desconectado",
+        "reset": "Uso do Codex redefinido",
+        "resetUnavailable": "Nenhuma redefinição de uso do Codex disponível",
+        "resetUnneeded": "O uso do Codex não precisa ser redefinido agora"
+      },
+      "usage": {
+        "inDays": "em {{days}}d",
+        "inDaysHours": "em {{days}}d {{hours}}h",
+        "inHours": "em {{hours}}h",
+        "inHoursMinutes": "em {{hours}}h {{minutes}}min",
+        "inLessThanMinute": "em menos de 1min",
+        "inMinutes": "em {{minutes}}min",
+        "resetsAt": "redefine em {{date}}",
+        "resetsRaw": "redefine {{value}}",
+        "resetsRelative": "Redefine {{relative}}",
+        "resetTimePassed": "o horário de redefinição já passou",
+        "resetTimePassedTitle": "O horário de redefinição já passou"
+      }
+    },
     "preferences": {
+      "account": {
+        "manage": "Gerenciar",
+        "sectionTitle": "Conta e segurança"
+      },
+      "appearance": {
+        "description": "Escolha a aparência da interface.",
+        "sectionTitle": "Aparência",
+        "theme": {
+          "dark": "Escuro",
+          "description": "Seu esquema de cores preferido",
+          "light": "Claro",
+          "system": "Sistema",
+          "title": "Tema"
+        }
+      },
+      "debug": {
+        "capture": {
+          "description": "Capture nomes de cabeçalhos HTTP, valores seguros selecionados e corpos nos logs de rede para depuração.",
+          "disabled": "Desativado",
+          "enabled_one": "Ativado por mais {{count}} execução",
+          "enabled_many": "Ativado por mais {{count}} execuções",
+          "enabled_other": "Ativado por mais {{count}} execuções",
+          "title": "Capturar corpos das requisições de rede"
+        },
+        "tab": "Depuração"
+      },
+      "documentTitle": "Preferências",
       "language": {
         "description": "Escolha seu idioma preferido para a interface do {{brandName}}",
         "label": "Idioma",
         "title": "Idioma"
+      },
+      "morningBrief": {
+        "description": "Um e-mail diário às 7h com sua agenda, itens de ação e atualizações do GitHub, Gmail e Google Calendar conectados",
+        "nextEmail": "Próximo e-mail: {{date}}",
+        "nextEmailInTimezone": "Próximo e-mail: {{date}} ({{timezone}})",
+        "notScheduled": "Próximo e-mail: ainda não agendado — desative e ative novamente para reagendar",
+        "sending": "Enviando...",
+        "sendNow": "Enviar agora",
+        "title": "Resumo matinal",
+        "triggeredToast": "Resumo matinal acionado; o e-mail chegará em breve"
+      },
+      "pageDescription": "Gerencie suas preferências de aparência e de execução dos agentes",
+      "pageTitle": "Preferências",
+      "send": {
+        "cmdEnter": "⌘ Enter",
+        "cmdEnterDescription": "Pressione ⌘/Ctrl+Enter para enviar e Enter para criar uma nova linha",
+        "description": "Escolha como enviar mensagens no chat.",
+        "enter": "Enter",
+        "enterDescription": "Pressione Enter para enviar e Shift+Enter para criar uma nova linha",
+        "sectionTitle": "Enter",
+        "title": "Enviar mensagem com"
+      },
+      "tabs": {
+        "appearance": "Aparência",
+        "models": "Modelos pessoais",
+        "timezone": "Fuso horário"
+      },
+      "timezone": {
+        "description": "Horários exibidos para você e usados nas execuções de automações.",
+        "rowDescription": "Seus agentes usarão este fuso horário durante as execuções",
+        "rowTitle": "Fuso horário",
+        "sectionTitle": "Fuso horário",
+        "zones": {
+          "alaska": "Horário do Alasca (AKT)",
+          "auckland": "Horário da Nova Zelândia (NZST)",
+          "berlin": "Horário da Europa Central (CET)",
+          "brasilia": "Horário de Brasília (BRT)",
+          "central": "Horário Central (CT)",
+          "dubai": "Horário Padrão do Golfo (GST)",
+          "eastern": "Horário do Leste (ET)",
+          "hawaii": "Horário do Havaí (HST)",
+          "india": "Horário Padrão da Índia (IST)",
+          "london": "Londres (GMT/BST)",
+          "losAngeles": "Horário do Pacífico (PT)",
+          "moscow": "Horário de Moscou (MSK)",
+          "mountain": "Horário das Montanhas (MT)",
+          "paris": "Paris (CET)",
+          "seoul": "Horário Padrão da Coreia (KST)",
+          "shanghai": "Horário Padrão da China (CST)",
+          "singapore": "Horário de Singapura (SGT)",
+          "sydney": "Horário do Leste da Austrália (AET)",
+          "tokyo": "Horário Padrão do Japão (JST)",
+          "toronto": "Toronto (ET)",
+          "utc": "UTC",
+          "vancouver": "Vancouver (PT)"
+        }
+      }
+    },
+    "shared": {
+      "cancel": "Cancelar",
+      "connect": "Conectar",
+      "connecting": "Conectando...",
+      "delete": "Excluir",
+      "discard": "Descartar",
+      "disconnect": "Desconectar",
+      "loading": "Carregando",
+      "moreOptions": "Mais opções",
+      "reconnect": "Reconectar",
+      "remove": "Remover",
+      "replace": "Substituir",
+      "save": "Salvar",
+      "saveChanges": "Salvar alterações",
+      "saving": "Salvando..."
+    },
+    "workspace": {
+      "danger": {
+        "delete": {
+          "button": "Excluir espaço de trabalho",
+          "confirmDescription": "Isso excluirá permanentemente {{workspace}} e todos os dados dele. Esta ação não pode ser desfeita. Digite o nome do espaço de trabalho para confirmar.",
+          "description": "Exclua permanentemente este espaço de trabalho e todos os dados dele. Esta ação não pode ser desfeita.",
+          "progress": "Excluindo...",
+          "title": "Excluir espaço de trabalho",
+          "titleQuestion": "Excluir espaço de trabalho?"
+        },
+        "leave": {
+          "confirmDescription": "Você não terá mais acesso a este espaço de trabalho. Só será possível entrar novamente se um administrador convidar você.",
+          "description": "Você perderá o acesso a este espaço de trabalho e aos recursos dele.",
+          "progress": "Saindo...",
+          "title": "Sair do espaço de trabalho",
+          "titleQuestion": "Sair do espaço de trabalho?"
+        },
+        "sectionTitle": "Zona de perigo"
+      },
+      "members": {
+        "actionsFor": "Ações para {{email}}",
+        "addMember": "Adicionar membro",
+        "admin": "Administrador",
+        "empty": "Nenhum membro",
+        "emptySearch": "Nenhum membro encontrado",
+        "invite": {
+          "description": "Envie um convite para participar deste espaço de trabalho.",
+          "emailPlaceholder": "email@example.com",
+          "invalidEmail": "Insira um endereço de e-mail válido",
+          "progress": "Enviando...",
+          "roleLabel": "Função",
+          "send": "Enviar convite",
+          "title": "Convidar membro"
+        },
+        "joined": "Data de entrada",
+        "joinRequests": "Solicitações de entrada",
+        "member": "Membro",
+        "membershipRequest": {
+          "acceptTitle": "Aceitar solicitação",
+          "rejectTitle": "Rejeitar solicitação",
+          "role": "Solicitação"
+        },
+        "pending": "Pendente",
+        "remove": {
+          "action": "Remover do espaço de trabalho",
+          "confirmDescription": "{{email}} será removido deste espaço de trabalho e perderá o acesso a todos os recursos.",
+          "progress": "Removendo...",
+          "title": "Remover membro?"
+        },
+        "revoke": {
+          "action": "Revogar convite",
+          "button": "Revogar",
+          "confirmDescription": "O convite para {{email}} será cancelado. Essa pessoa não poderá mais usar este convite para entrar.",
+          "progress": "Revogando...",
+          "title": "Revogar convite?"
+        },
+        "role": "Função",
+        "roleActions": {
+          "makeAdmin": "Tornar administrador",
+          "makeMember": "Tornar membro"
+        },
+        "search": "Pesquisar",
+        "selfDemote": {
+          "action": "Mudar para membro",
+          "confirm": "Confirmar",
+          "description": "Você se tornará um membro comum e perderá os privilégios de administrador. Outro administrador precisará promover você novamente.",
+          "progress": "Alterando...",
+          "title": "Mudar para membro?"
+        },
+        "user": "Usuário",
+        "you": "Você"
+      },
+      "profile": {
+        "logo": {
+          "description": "Avatar do espaço de trabalho exibido em todo o app",
+          "fallbackAlt": "Espaço de trabalho",
+          "title": "Logo",
+          "upload": "Enviar logo"
+        },
+        "name": {
+          "description": "Usado para identificar este espaço de trabalho",
+          "placeholder": "Nome do espaço de trabalho",
+          "title": "Nome"
+        },
+        "sectionTitle": "Perfil",
+        "slug": {
+          "description": "Identificador da organização usado em URLs",
+          "placeholder": "organization-slug",
+          "title": "Slug"
+        }
+      },
+      "toasts": {
+        "deleted": "Espaço de trabalho excluído",
+        "invitationRevoked": "Convite revogado",
+        "invitationSent": "Convite enviado para {{email}}",
+        "left": "Você saiu do espaço de trabalho",
+        "memberRemoved": "{{email}} removido",
+        "membershipRequestAccepted": "Solicitação de entrada aceita",
+        "membershipRequestRejected": "Solicitação de entrada rejeitada",
+        "roleUpdated": "Função de {{email}} atualizada",
+        "updated": "Espaço de trabalho atualizado"
+      },
+      "unsaved": {
+        "message": "Você tem alterações não salvas"
+      },
+      "validation": {
+        "imageUnreadable": "Não foi possível ler o arquivo de imagem",
+        "logoTooLarge": "O logo é muito grande ({{width}}×{{height}}px). O tamanho máximo é {{maximum}}×{{maximum}}px.",
+        "logoTooSmall": "O logo é muito pequeno ({{width}}×{{height}}px). O tamanho mínimo é {{minimum}}×{{minimum}}px."
       }
     }
   }
