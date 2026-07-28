@@ -864,6 +864,40 @@ describe("POST /api/zero/mail/drafts/link", () => {
         FeatureSwitchKey.ZeroMailReplyFollowUp
       ],
     ).toBeFalsy();
+
+    const workflow = await accept(
+      setupApp({ context })(zeroWorkflowsCollectionContract).create({
+        headers: authHeaders(),
+        body: {
+          agentId: fixture.agent.agentId,
+          chatThreadId: fixture.thread.id,
+          name: "disabled-mail-follow-up",
+          visibility: "private",
+        },
+      }),
+      [201],
+    );
+    const genericWriter = await accept(
+      setupApp({ context })(zeroWorkflowAutomationsContract).create({
+        headers: authHeaders(),
+        params: { workflowId: workflow.body.id },
+        body: {
+          kind: "event",
+          eventType: "gmail-new-message",
+          eventConfig: {
+            provider: "gmail",
+            event: "new_message",
+            threadId: GMAIL_THREAD_ID,
+          },
+          enabled: true,
+        },
+      }),
+      [400],
+    );
+    expect(genericWriter.body.error.message).toBe(
+      "Gmail thread matching is not enabled",
+    );
+
     mockGmailDraftApi();
     const linked = await linkDraft(fixture);
 
