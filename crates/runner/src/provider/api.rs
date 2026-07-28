@@ -588,7 +588,7 @@ impl JobProvider for ApiProvider {
             }
             Ok(None) => {
                 self.claim_cooldowns.remove(run_id).await;
-                info!(run_id = %run_id, "already claimed, skipping");
+                info!(run_id = %run_id, "job unavailable, skipping");
                 self.poll_wakeups.request_immediate_poll().await;
                 None
             }
@@ -885,8 +885,7 @@ impl ApiClient {
         Ok(())
     }
 
-    /// Claim a job for execution. Treats the current HTTP 404 unavailable
-    /// response and the legacy HTTP 409 conflict response as a lost race so
+    /// Claim a job for execution. Treats HTTP 404 as an unavailable job so
     /// callers can continue gracefully.
     async fn claim(
         &self,
@@ -909,10 +908,6 @@ impl ApiClient {
             "claim",
         )
         .await?;
-
-        if resp.status() == StatusCode::CONFLICT {
-            return Ok(None);
-        }
 
         if resp.status() == StatusCode::NOT_FOUND {
             return Ok(None);
@@ -2472,11 +2467,11 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn lost_claim_race_polls_backlog_without_excluding_run() {
+    async fn unavailable_claim_polls_backlog_without_excluding_run() {
         let server = MockServer::start_async().await;
-        let lost_run_id: RunId = "00000000-0000-0000-0000-00000000001b".parse().unwrap();
+        let unavailable_run_id: RunId = "00000000-0000-0000-0000-00000000001b".parse().unwrap();
         let next_run_id: RunId = "00000000-0000-0000-0000-00000000001c".parse().unwrap();
-        let claim_path = format!("/api/runners/jobs/{lost_run_id}/claim");
+        let claim_path = format!("/api/runners/jobs/{unavailable_run_id}/claim");
         let claim_mock = server
             .mock_async(|when, then| {
                 when.method(POST).path(claim_path.as_str());
@@ -2518,15 +2513,18 @@ mod tests {
         );
         push_direct_candidate_for_test(
             &provider,
-            DirectJobCandidate::new(lost_run_id, crate::profile::DEFAULT_PROFILE.to_string()),
+            DirectJobCandidate::new(
+                unavailable_run_id,
+                crate::profile::DEFAULT_PROFILE.to_string(),
+            ),
         )
         .await;
 
-        let lost = provider.discover().await.unwrap();
-        assert!(provider.claim(lost).await.is_none());
+        let unavailable = provider.discover().await.unwrap();
+        assert!(provider.claim(unavailable).await.is_none());
         let next = tokio::time::timeout(Duration::from_secs(1), provider.discover())
             .await
-            .expect("lost race should promptly poll the backlog")
+            .expect("unavailable claim should promptly poll the backlog")
             .unwrap();
         assert_eq!(next.run_id(), next_run_id);
 
@@ -2985,25 +2983,46 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn api_client_claim_not_found_or_legacy_conflict_is_already_claimed() {
-        for status in [409_u16, 404] {
-            let server = MockServer::start_async().await;
-            let run_id = RunId::nil();
-            let path = format!("/api/runners/jobs/{run_id}/claim");
-            let mock = server
-                .mock_async(|when, then| {
-                    when.method(POST).path(path.as_str());
-                    then.status(status);
-                })
-                .await;
-            let api = api_client_for_server(&server);
+    async fn api_client_claim_not_found_is_unavailable() {
+        let server = MockServer::start_async().await;
+        let run_id = RunId::nil();
+        let path = format!("/api/runners/jobs/{run_id}/claim");
+        let mock = server
+            .mock_async(|when, then| {
+                when.method(POST).path(path.as_str());
+                then.status(404);
+            })
+            .await;
+        let api = api_client_for_server(&server);
 
-            let candidate = JobCandidate::new(run_id, crate::profile::DEFAULT_PROFILE.to_string());
-            let outcome = api.claim(&candidate).await.unwrap();
+        let candidate = JobCandidate::new(run_id, crate::profile::DEFAULT_PROFILE.to_string());
+        let outcome = api.claim(&candidate).await.unwrap();
 
-            assert!(outcome.is_none());
-            mock.assert_async().await;
-        }
+        assert!(outcome.is_none());
+        mock.assert_async().await;
+    }
+
+    #[tokio::test]
+    async fn api_client_claim_conflict_is_api_status_error() {
+        let server = MockServer::start_async().await;
+        let run_id = RunId::nil();
+        let path = format!("/api/runners/jobs/{run_id}/claim");
+        let mock = server
+            .mock_async(|when, then| {
+                when.method(POST).path(path.as_str());
+                then.status(409).body("unexpected conflict");
+            })
+            .await;
+        let api = api_client_for_server(&server);
+
+        let candidate = JobCandidate::new(run_id, crate::profile::DEFAULT_PROFILE.to_string());
+        let error = api.claim(&candidate).await.unwrap_err();
+
+        let ClaimApiError::Request(error) = error else {
+            panic!("expected ClaimApiError::Request");
+        };
+        assert_api_status_error(error, "claim", StatusCode::CONFLICT, "unexpected conflict");
+        mock.assert_async().await;
     }
 
     #[tokio::test]

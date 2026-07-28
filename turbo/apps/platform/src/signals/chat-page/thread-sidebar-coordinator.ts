@@ -1,6 +1,9 @@
 import { command, computed } from "ccstate";
 
-import { newChatThreadSidebarEnabled$ } from "../external/feature-switch.ts";
+import {
+  chatThreadSidebarAutoOpenEnabled$,
+  newChatThreadSidebarEnabled$,
+} from "../external/feature-switch.ts";
 import { openMailDraftSidebar$ } from "../zero-page/mail-draft-sidebar.ts";
 import { openBrowserSessionSidebar$ } from "../zero-page/browser-session-sidebar.ts";
 import {
@@ -15,10 +18,15 @@ import {
 import {
   currentLeftThread$,
   currentRightThread$,
-} from "./chat-thread-panes.ts";
+} from "./chat-thread-pane-state.ts";
 import { openHeaderAutomationSidebar$ } from "./header-automation-sidebar.ts";
 import type { ChatThreadSignals } from "./chat-thread-signals.ts";
+import { CHAT_THREAD_SIDEBAR_SPLIT_VIEW_MEDIA_QUERY } from "./chat-thread-sidebar-layout.ts";
 import type { ThreadSidebarTarget } from "./thread-sidebar.ts";
+import {
+  threadSidebarAutoOpenCandidateKey,
+  type ThreadSidebarAutoOpenCandidate,
+} from "./thread-sidebar-auto-open.ts";
 
 // ---------------------------------------------------------------------------
 // Page-level coordinator for the thread-owned utility sidebar. Sidebar state
@@ -60,6 +68,77 @@ const openOnThread$ = command(
       }
     }
     set(thread.sidebar.open$, target);
+  },
+);
+
+function targetFromAutoOpenCandidate(
+  candidate: ThreadSidebarAutoOpenCandidate,
+): ThreadSidebarTarget {
+  if (candidate.type === "email-draft") {
+    return { type: "email-draft", mailDraftId: candidate.resourceKey };
+  }
+  if (candidate.type === "browser") {
+    return { type: "browser", browserSessionId: candidate.resourceKey };
+  }
+  const attachment = previewAttachmentFromUrl(candidate.resourceKey);
+  const ref: ArtifactRef = {
+    source: "url",
+    url: candidate.resourceKey,
+    kind: classifyChatAttachment(attachment),
+    filename: attachment.filename,
+  };
+  return {
+    type: "artifact",
+    source: { kind: "attachment", ref },
+  };
+}
+
+export const autoOpenThreadSidebar$ = command(
+  async (
+    { get, set },
+    thread: ChatThreadSignals,
+    signal: AbortSignal,
+  ): Promise<void> => {
+    await get(thread.hasNewMessages$);
+    signal.throwIfAborted();
+    if (
+      !get(newChatThreadSidebarEnabled$) ||
+      !get(chatThreadSidebarAutoOpenEnabled$) ||
+      typeof window === "undefined" ||
+      !window.matchMedia(CHAT_THREAD_SIDEBAR_SPLIT_VIEW_MEDIA_QUERY).matches
+    ) {
+      return;
+    }
+
+    const candidate = await get(thread.sidebarAutoOpenCandidate$);
+    signal.throwIfAborted();
+    if (!candidate) {
+      return;
+    }
+
+    const visible = [get(currentLeftThread$), get(currentRightThread$)].some(
+      (current) => {
+        return current === thread;
+      },
+    );
+    if (!visible) {
+      return;
+    }
+
+    const candidateKey = threadSidebarAutoOpenCandidateKey(candidate);
+    if (!set(thread.sidebar.claimAutoOpenCandidate$, candidateKey)) {
+      return;
+    }
+    if (
+      !get(newChatThreadSidebarEnabled$) ||
+      !get(chatThreadSidebarAutoOpenEnabled$) ||
+      typeof window === "undefined" ||
+      !window.matchMedia(CHAT_THREAD_SIDEBAR_SPLIT_VIEW_MEDIA_QUERY).matches ||
+      get(activeThreadSidebar$) !== null
+    ) {
+      return;
+    }
+    set(openOnThread$, thread, targetFromAutoOpenCandidate(candidate));
   },
 );
 

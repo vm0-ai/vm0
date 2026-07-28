@@ -82,4 +82,5 @@ export enum FeatureSwitchKey {
   ThreeColumnNav = "threeColumnNav",
   ChatHistoryBackfillProgress = "chatHistoryBackfillProgress",
   NewChatThreadSidebar = "newChatThreadSidebar",
+  ChatThreadSidebarAutoOpen = "chatThreadSidebarAutoOpen",
 }

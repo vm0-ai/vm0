@@ -1,5 +1,31 @@
 # Changelog
 
+## [1.337.1](https://github.com/vm0-ai/vm0/compare/api-v1.337.0...api-v1.337.1) (2026-07-28)
+
+
+### Bug Fixes
+
+* **feishu:** limit workspaces to one admin-managed bot ([#23486](https://github.com/vm0-ai/vm0/issues/23486)) ([382cf02](https://github.com/vm0-ai/vm0/commit/382cf02e09dc7fd29f39849007bbed0509feb038))
+
+
+### Refactoring
+
+* **chat:** remove legacy message compatibility ([#23394](https://github.com/vm0-ai/vm0/issues/23394)) ([e6fca94](https://github.com/vm0-ai/vm0/commit/e6fca9481261ad52080bb0f202b15b6d75de767d))
+
+
+### Performance Improvements
+
+* **api:** attribute atomic launch transaction latency ([#23497](https://github.com/vm0-ai/vm0/issues/23497)) ([ce12b51](https://github.com/vm0-ai/vm0/commit/ce12b51f270e8cadcebfe25fd04527170a241edb))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.241.1
+    * @vm0/core bumped to 8.481.1
+    * @vm0/db bumped to 1.149.1
+
 ## [1.337.0](https://github.com/vm0-ai/vm0/compare/api-v1.336.0...api-v1.337.0) (2026-07-28)
 
 

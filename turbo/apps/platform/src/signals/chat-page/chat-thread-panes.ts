@@ -1,4 +1,4 @@
-import { command, computed, state, type Command } from "ccstate";
+import { command, type Command } from "ccstate";
 import type {
   ChatThreadDraft,
   GenerationTemplateRequest,
@@ -26,33 +26,22 @@ import { closeMailDraftSidebar$ } from "../zero-page/mail-draft-sidebar.ts";
 import { createChatThreadSignals, ensureDraft$ } from "./create-chat-thread.ts";
 import { createOptimisticChatMessagesForThread } from "./optimistic-chat-messages.ts";
 import type { ChatThreadSignals } from "./chat-thread-signals.ts";
+import {
+  currentLeftThread$,
+  currentRightThread$,
+  setCurrentLeftThread$,
+  setCurrentRightThread$,
+} from "./chat-thread-pane-state.ts";
 import { closeHeaderAutomationSidebar$ } from "./header-automation-sidebar.ts";
 import { createRemoteChatThreadDataSource } from "./remote-chat-thread-data-source.ts";
 import { setupChatThreadInitScroll$ } from "./setup-chat-thread-signals.ts";
 import { syncPrimaryThread$ } from "./sync-primary-thread.ts";
+import { autoOpenThreadSidebar$ } from "./thread-sidebar-coordinator.ts";
 
 export const SIDEBAR_PARAM = "sidebar";
+export { currentLeftThread$, currentRightThread$ };
 
 const L = logger("ChatPanes");
-
-const internalLeftThread$ = state<ChatThreadSignals | null>(null);
-const internalRightThread$ = state<ChatThreadSignals | null>(null);
-
-export const currentLeftThread$ = computed((get): ChatThreadSignals | null => {
-  return get(internalLeftThread$);
-});
-
-export const currentRightThread$ = computed((get): ChatThreadSignals | null => {
-  return get(internalRightThread$);
-});
-
-const setLeftThread$ = command(({ set }, thread: ChatThreadSignals | null) => {
-  set(internalLeftThread$, thread);
-});
-
-const setRightThread$ = command(({ set }, thread: ChatThreadSignals | null) => {
-  set(internalRightThread$, thread);
-});
 
 const resetLeftSetupSignal$ = resetSignal();
 const resetRightSetupSignal$ = resetSignal();
@@ -60,7 +49,7 @@ const resetRightSetupSignal$ = resetSignal();
 // Thread-owned sidebars (NewChatThreadSidebar switch) are anchored to the
 // previous thread's messages just like the legacy panels above.
 const closeThreadSidebars$ = command(({ get, set }) => {
-  for (const thread of [get(internalLeftThread$), get(internalRightThread$)]) {
+  for (const thread of [get(currentLeftThread$), get(currentRightThread$)]) {
     if (thread) {
       set(thread.sidebar.close$);
     }
@@ -68,13 +57,13 @@ const closeThreadSidebars$ = command(({ get, set }) => {
 });
 
 export const unloadRightThread$ = command(({ get, set }) => {
-  const currentRightThread = get(internalRightThread$);
+  const currentRightThread = get(currentRightThread$);
   if (currentRightThread) {
     set(currentRightThread.resetRenderedChatGroupsIfAtBottom$);
     set(currentRightThread.sidebar.close$);
   }
   set(resetRightSetupSignal$);
-  set(internalRightThread$, null);
+  set(setCurrentRightThread$, null);
   const next = new URLSearchParams(get(searchParams$));
   if (next.has(SIDEBAR_PARAM)) {
     next.delete(SIDEBAR_PARAM);
@@ -212,6 +201,7 @@ const resolvePaneThread$ = command(
       set(loadDraft$, thread, isNew, signal),
       set(setupChatThreadInitScroll$, thread, signal),
       set(thread.subscribeChatThread$, signal),
+      set(autoOpenThreadSidebar$, thread, signal),
     ]);
     signal.throwIfAborted();
     L.debug("resolvePaneThread$ Promise.all done", {
@@ -270,7 +260,7 @@ export const setupLeftThread$ = command(
       set(
         setupPaneThread$,
         {
-          setPaneThread$: setLeftThread$,
+          setPaneThread$: setCurrentLeftThread$,
           resetSetupSignal$: resetLeftSetupSignal$,
         },
         threadId,
@@ -289,7 +279,7 @@ export const setupRightThread$ = command(
     await set(
       setupPaneThread$,
       {
-        setPaneThread$: setRightThread$,
+        setPaneThread$: setCurrentRightThread$,
         resetSetupSignal$: resetRightSetupSignal$,
       },
       threadId,
@@ -329,11 +319,11 @@ export const loadRightThread$ = command(
       return;
     }
 
-    if (get(internalRightThread$)?.threadId === threadId) {
+    if (get(currentRightThread$)?.threadId === threadId) {
       return;
     }
 
-    const currentRightThread = get(internalRightThread$);
+    const currentRightThread = get(currentRightThread$);
     if (currentRightThread && currentRightThread.threadId !== threadId) {
       set(currentRightThread.resetRenderedChatGroupsIfAtBottom$);
     }

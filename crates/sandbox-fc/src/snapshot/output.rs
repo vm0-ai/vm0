@@ -171,6 +171,13 @@ pub(super) fn sync_snapshot_output_dir(output: &SnapshotOutputPaths) -> Result<(
 pub(super) fn publish_snapshot_complete_marker(
     output: &SnapshotOutputPaths,
 ) -> Result<(), SnapshotError> {
+    publish_snapshot_complete_marker_with_marker_sync(output, std::fs::File::sync_all)
+}
+
+fn publish_snapshot_complete_marker_with_marker_sync(
+    output: &SnapshotOutputPaths,
+    sync_marker: impl FnOnce(&std::fs::File) -> io::Result<()>,
+) -> Result<(), SnapshotError> {
     let marker = output.complete_marker();
     let mut marker_created = false;
 
@@ -185,7 +192,7 @@ pub(super) fn publish_snapshot_complete_marker(
             .open(&marker)?;
         marker_created = true;
         file.write_all(SNAPSHOT_COMPLETE_MARKER_CONTENT)?;
-        file.sync_all()?;
+        sync_marker(&file)?;
         drop(file);
 
         std::fs::File::open(output.dir())?.sync_all()?;
@@ -217,6 +224,9 @@ pub(super) async fn snapshot_complete_marker_present(
 
 #[cfg(test)]
 mod tests {
+    use sandbox::SnapshotProvider;
+
+    use crate::FirecrackerSnapshotProvider;
     use crate::paths::SnapshotOutputPaths;
 
     use super::*;
@@ -367,6 +377,56 @@ mod tests {
             .await
             .expect("read complete marker");
         assert_eq!(marker, SNAPSHOT_COMPLETE_MARKER_CONTENT);
+    }
+
+    #[tokio::test]
+    async fn publish_snapshot_complete_marker_cleans_up_after_marker_sync_failure() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let output = SnapshotOutputPaths::new(dir.path().to_path_buf());
+        write_required_snapshot_artifacts(&output).await;
+        let marker = output.complete_marker();
+
+        let err = publish_snapshot_complete_marker_with_marker_sync(&output, |_| {
+            let content = std::fs::read(&marker).expect("read marker before injected sync failure");
+            assert_eq!(content, SNAPSHOT_COMPLETE_MARKER_CONTENT);
+            Err(io::Error::other("injected marker sync failure"))
+        })
+        .expect_err("marker sync failure should fail publication");
+
+        match err {
+            SnapshotError::Io(error) => {
+                assert_eq!(error.kind(), io::ErrorKind::Other);
+                assert_eq!(error.to_string(), "injected marker sync failure");
+            }
+            other => panic!("expected marker sync I/O error, got: {other:?}"),
+        }
+        assert!(
+            !tokio::fs::try_exists(&marker).await.unwrap(),
+            "failed publication must remove its complete marker"
+        );
+        for artifact in snapshot_artifact_paths(&output) {
+            let content = tokio::fs::read(&artifact)
+                .await
+                .unwrap_or_else(|e| panic!("read {}: {e}", artifact.display()));
+            assert_eq!(
+                content,
+                b"snapshot artifact",
+                "failed publication must preserve {}",
+                artifact.display()
+            );
+        }
+
+        let provider = FirecrackerSnapshotProvider;
+        assert!(
+            !provider.is_complete(output.dir()).await.unwrap(),
+            "failed publication must leave the snapshot incomplete"
+        );
+
+        publish_snapshot_complete_marker(&output).expect("retry marker publication");
+        assert!(
+            provider.is_complete(output.dir()).await.unwrap(),
+            "retry must publish a complete snapshot"
+        );
     }
 
     #[tokio::test]

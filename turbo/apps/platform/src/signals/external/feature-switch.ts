@@ -58,6 +58,12 @@ export const newChatThreadSidebarEnabled$ = computed((get): boolean => {
   return get(featureSwitch$)[FeatureSwitchKey.NewChatThreadSidebar] ?? false;
 });
 
+export const chatThreadSidebarAutoOpenEnabled$ = computed((get): boolean => {
+  return (
+    get(featureSwitch$)[FeatureSwitchKey.ChatThreadSidebarAutoOpen] ?? false
+  );
+});
+
 export const codexFastModeEnabled$ = computed((get): boolean => {
   return get(featureSwitch$)[FeatureSwitchKey.CodexFastMode] ?? false;
 });

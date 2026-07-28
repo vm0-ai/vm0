@@ -1,5 +1,19 @@
 # Changelog
 
+## [8.481.1](https://github.com/vm0-ai/vm0/compare/core-v8.481.0...core-v8.481.1) (2026-07-28)
+
+
+### Refactoring
+
+* **chat:** remove legacy message compatibility ([#23394](https://github.com/vm0-ai/vm0/issues/23394)) ([e6fca94](https://github.com/vm0-ai/vm0/commit/e6fca9481261ad52080bb0f202b15b6d75de767d))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.241.1
+
 ## [8.481.0](https://github.com/vm0-ai/vm0/compare/core-v8.480.0...core-v8.481.0) (2026-07-28)
 
 

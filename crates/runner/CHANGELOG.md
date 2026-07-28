@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.148.21](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.148.20...runner-rs-v0.148.21) (2026-07-28)
+
+
+### Bug Fixes
+
+* **mitm-addon:** ignore literal auth text in connector diagnostics ([#23488](https://github.com/vm0-ai/vm0/issues/23488)) ([98044a7](https://github.com/vm0-ai/vm0/commit/98044a733fb507a8b0b34f20449f1538932a6b63))
+
 ## [0.148.20](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.148.19...runner-rs-v0.148.20) (2026-07-28)
 
 

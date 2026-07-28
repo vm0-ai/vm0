@@ -55,6 +55,7 @@ import {
   defaultAgentName$,
   sortedAgents$,
 } from "../../signals/agent.ts";
+import { brandName$ } from "../../signals/branding.ts";
 import { pageSignal$ } from "../../signals/page-signal.ts";
 import { ROUTES } from "../../signals/route-paths.ts";
 import { writeToClipboard } from "../../signals/zero-page/clipboard.ts";
@@ -451,6 +452,8 @@ function canSubmitFeishuSetup(
 }
 
 function FeishuCreateStep() {
+  const brandName = useGet(brandName$);
+
   return (
     <div className="space-y-4">
       <div className="rounded-lg border border-border bg-muted/30 p-4 text-sm text-muted-foreground">
@@ -467,8 +470,8 @@ function FeishuCreateStep() {
           >
             Feishu developer console
           </a>
-          , create an enterprise custom app named VM0, upload the VM0 icon, then
-          add the Bot capability.
+          , create an enterprise custom app named {brandName}, upload the{" "}
+          {brandName} icon, then add the Bot capability.
         </p>
         <div className="mt-4">
           <FeishuGuideImage
@@ -480,7 +483,7 @@ function FeishuCreateStep() {
       <div className="flex items-center justify-between gap-4 rounded-lg border border-border p-4">
         <div>
           <div className="text-sm font-medium text-foreground">
-            VM0 app icon
+            {brandName} app icon
           </div>
           <p className="mt-1 text-sm text-muted-foreground">
             <a
@@ -488,14 +491,14 @@ function FeishuCreateStep() {
               download="vm0-feishu-app-icon.png"
               className="font-medium text-foreground underline underline-offset-4"
             >
-              Download the VM0 icon
+              Download the {brandName} icon
             </a>
             , or use any icon you prefer.
           </p>
         </div>
         <img
           src="/icons/icon-512.png"
-          alt="VM0 app icon"
+          alt={`${brandName} app icon`}
           className="h-14 w-14 shrink-0 rounded-xl"
         />
       </div>
@@ -641,6 +644,8 @@ function FeishuEventsStep({ data }: { data: FeishuDialogData | null }) {
 }
 
 function FeishuRedirectStep({ data }: { data: FeishuDialogData | null }) {
+  const brandName = useGet(brandName$);
+
   return (
     <div className="space-y-4">
       <div className="rounded-lg border border-border bg-muted/30 p-4 text-sm text-muted-foreground">
@@ -659,7 +664,7 @@ function FeishuRedirectStep({ data }: { data: FeishuDialogData | null }) {
           </a>
           , open Development Configuration → Security Settings. Add the URL
           below under Redirect URLs so workspace members can connect their
-          Feishu account to VM0.
+          Feishu account to {brandName}.
         </p>
       </div>
       <div className="flex gap-2">
@@ -1573,6 +1578,7 @@ function FeishuSetupDialog({
 }
 
 function FeishuUninstallDialog({ bot }: { bot: FeishuBotInstallation | null }) {
+  const brandName = useGet(brandName$);
   const setUninstallInstallationId = useSet(setFeishuUninstallInstallationId$);
   const [uninstallLoadable, uninstallInstallation] = useLoadableSet(
     uninstallFeishuInstallation$,
@@ -1593,8 +1599,8 @@ function FeishuUninstallDialog({ bot }: { bot: FeishuBotInstallation | null }) {
         <DialogHeader>
           <DialogTitle>Uninstall Feishu bot?</DialogTitle>
           <DialogDescription>
-            This uninstalls {title} from the workspace and disconnects every VM0
-            account using it. This action cannot be undone.
+            This uninstalls {title} from the workspace and disconnects every{" "}
+            {brandName} account using it. This action cannot be undone.
           </DialogDescription>
         </DialogHeader>
         <DialogFooter>

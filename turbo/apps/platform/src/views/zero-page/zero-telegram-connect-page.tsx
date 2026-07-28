@@ -9,6 +9,7 @@ import {
 } from "@tabler/icons-react";
 import { Button, CopyButton } from "@vm0/ui";
 import { clerk$, resolveAppAuthUrl } from "../../signals/auth.ts";
+import { brandName$ } from "../../signals/branding.ts";
 import { pageSignal$ } from "../../signals/page-signal.ts";
 import { searchParams$ } from "../../signals/route.ts";
 import {
@@ -332,6 +333,7 @@ function ConnectActions({
 }
 
 export function ZeroTelegramConnectPage(): JSX.Element {
+  const brandName = useGet(brandName$);
   const params = useGet(searchParams$);
   const parsed = parseTelegramConnectParams(params);
   const clerkLoadable = useLoadable(clerk$);
@@ -360,7 +362,7 @@ export function ZeroTelegramConnectPage(): JSX.Element {
         <TelegramMark state="loading" />
         <CenterText
           title="Checking account status..."
-          body="Please wait while we verify your VM0 session."
+          body={`Please wait while we verify your ${brandName} session.`}
         />
       </PageShell>
     );
@@ -381,13 +383,13 @@ export function ZeroTelegramConnectPage(): JSX.Element {
         <TelegramMark />
         <CenterText
           title="Sign in to continue"
-          body="Use your VM0 account before connecting this Telegram user."
+          body={`Use your ${brandName} account before connecting this Telegram user.`}
         />
         <a
           href={signInHref()}
           className="inline-flex h-10 w-full items-center justify-center rounded-lg bg-primary px-4 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90"
         >
-          Sign in to VM0
+          Sign in to {brandName}
         </a>
       </PageShell>
     );
