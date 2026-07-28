@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.148.16](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.148.15...runner-rs-v0.148.16) (2026-07-28)
+
+
+### Refactoring
+
+* **mitm-addon:** retire responses event json wrapper ([#23375](https://github.com/vm0-ai/vm0/issues/23375)) ([c9e6863](https://github.com/vm0-ai/vm0/commit/c9e68635d796f03f8ea57ae4f77a8aae17d0fe1d))
+* **runner:** canonicalize profile discovery contract ([#23387](https://github.com/vm0-ai/vm0/issues/23387)) ([b2fb830](https://github.com/vm0-ai/vm0/commit/b2fb830a6c4d656d35ca95f23ee877b652aa8599))
+* **runner:** require session history claim encoding ([#23385](https://github.com/vm0-ai/vm0/issues/23385)) ([c4e9a36](https://github.com/vm0-ai/vm0/commit/c4e9a36b2647866fc401b8e4ae335b6429739e6b))
+
 ## [0.148.15](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.148.14...runner-rs-v0.148.15) (2026-07-27)
 
 
