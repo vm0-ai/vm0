@@ -11,7 +11,8 @@
 //! network namespaces. A cloneable [`GuestDnsNetfilterTraceReader`] follows the namespace-pool
 //! configuration, while each namespace records its own [`GuestDnsNetfilterTraceAttachment`].
 //! Attachments distinguish tracing that was not requested from tracing that was requested but
-//! unavailable because the monitor, DNS proxy, or namespace rule could not be installed.
+//! unavailable because no monitor or DNS proxy was available, or because namespace TRACE-rule
+//! installation failed.
 //!
 //! Before DNS readiness starts, network evidence snapshots an attachment cursor together with its
 //! counter baseline. Terminal failure capture reuses that cursor to select only later trace
@@ -60,9 +61,10 @@
 //!   missing cursor, namespace-local diagnostic unavailability, and loss of the shared monitor.
 //! - `cursor_mismatch` prevents evidence from different monitor generations from being combined.
 //!
-//! A disabled attachment omits the trace report entirely. Report counters such as evicted,
-//! malformed, and oversized lines are cumulative for the shared monitor generation, not scoped to
-//! the cursor window.
+//! A disabled attachment omits the trace report entirely. For reports captured through an enabled
+//! reader, evicted, malformed, and oversized-line counters are cumulative for the shared monitor
+//! generation, not scoped to the cursor window. Synthetic unavailable-attachment and
+//! unavailable-baseline reports use zero counters because they have no usable reader window.
 //!
 //! # Resource and output bounds
 //!
@@ -71,9 +73,10 @@
 //! - [`MAX_PACKETS`] bounds the shared FIFO and records each eviction. [`MAX_HEADERS_PER_PACKET`]
 //!   and [`MAX_STEPS_PER_PACKET`] discard excess per-packet detail and mark the packet truncated;
 //!   terminal and farthest-boundary summaries are still updated before step detail is discarded.
-//! - [`MAX_IDENTIFIER_BYTES`] rejects overlong identifiers, while [`MAX_TRACE_LINE_BYTES`]
-//!   discards an entire oversized input line. Both outcomes remain visible through malformed or
-//!   truncated-line counters.
+//! - [`MAX_IDENTIFIER_BYTES`] bounds parsed identifier fields. An overlong required token makes the
+//!   non-empty line malformed, while an overlong optional header value is ignored.
+//!   [`MAX_TRACE_LINE_BYTES`] discards an entire oversized input line and records it in the
+//!   truncated-line counter.
 //! - [`MAX_RULE_DETAIL_BYTES`] retains a bounded rule prefix for correlation, and
 //!   [`MAX_STDERR_BYTES`] bounds captured monitor-failure detail. [`READ_CHUNK_BYTES`] only bounds
 //!   temporary read buffers; it is not a content truncation limit.
@@ -960,7 +963,7 @@ enum TraceReportStatus {
     BufferTruncated,
     /// An enabled attachment was captured without a cursor from its evidence baseline.
     BaselineUnavailable,
-    /// The namespace could not attach to the requested diagnostic monitor or TRACE rule.
+    /// Requested namespace diagnostics were unavailable before capture could attach.
     AttachmentUnavailable,
     /// No packet matched and the shared monitor is unavailable or stopped.
     MonitorUnavailable,
@@ -1000,8 +1003,9 @@ impl TraceMonitorSnapshot {
 /// Bounded root-netfilter evidence embedded in a terminal DNS network report.
 ///
 /// `matched_packets` counts all matching packets still present in the cursor window before the
-/// serialized packet cap is applied. Eviction and line counters are cumulative for the monitor
-/// generation, and each packet separately reports whether its retained detail was truncated.
+/// serialized packet cap is applied. Reader-produced eviction and line counters are cumulative for
+/// the monitor generation, while synthetic attachment/baseline reports use zero counters. Each
+/// packet separately reports whether its retained detail was truncated.
 #[derive(Clone, Debug, Serialize)]
 pub(crate) struct GuestDnsNetfilterTraceReport {
     status: TraceReportStatus,
@@ -1097,7 +1101,7 @@ impl GuestDnsNetfilterTraceReader {
     ///
     /// This rejects another monitor generation before inspecting packets, applies the complete
     /// readiness identity filter, and keeps only the newest [`MAX_REPORTED_PACKETS`] packet
-    /// details after recording the total match count.
+    /// details after recording the retained match count.
     fn capture_now(
         &self,
         cursor: GuestDnsNetfilterTraceCursor,
