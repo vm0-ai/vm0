@@ -10,7 +10,6 @@ import { pageSignal$ } from "../../signals/page-signal.ts";
 import { rootSignal$ } from "../../signals/root-signal.ts";
 import { user$ } from "../../signals/auth.ts";
 import { IconArrowUpRight, IconPin, IconUserPlus } from "@tabler/icons-react";
-import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import { isSupportedRunModel } from "@vm0/api-contracts/contracts/model-providers";
 import type { GenerationTemplateRequest } from "@vm0/api-contracts/contracts/chat-threads";
 import type { PublicConnectorCatalogStatusItem } from "@vm0/api-contracts/contracts/zero-connector-catalog";
@@ -59,8 +58,8 @@ import {
 import { talkDraft$ } from "../../signals/zero-page/chat-draft.ts";
 import {
   newThreadGenerationTemplate$,
-  newThreadCloudBrowserEnabled$,
-  newThreadComputerUseHostId$,
+  newThreadComputerAccess$,
+  resetNewThreadComputerAccess$,
   setNewThreadGenerationTemplate$,
   setNewThreadCloudBrowserEnabled$,
   setNewThreadComputerUseHostId$,
@@ -87,7 +86,7 @@ import { PersonalClaudeCodeDeviceAuthDialog } from "./components/settings/claude
 import { PersonalCodexDeviceAuthDialog } from "./components/settings/codex-device-auth-dialog.tsx";
 import { queueCurrentAgentDraftSync$ } from "../../signals/zero-page/agent-draft.ts";
 import type { EditorDocumentSnapshot } from "../../signals/zero-page/user-message-document-codec.ts";
-import { featureSwitch$ } from "../../signals/external/feature-switch.ts";
+import { zeroBrowserEnabled$ } from "../../signals/external/feature-switch.ts";
 
 function getTagline(
   agentName: string,
@@ -455,14 +454,12 @@ function useNewThreadComputerUse() {
     computerUseHostsLoadable.state === "hasData"
       ? computerUseHostsLoadable.data
       : lastResolvedComputerUseHosts;
-  const storedComputerUseHostId = useGet(newThreadComputerUseHostId$);
-  const storedCloudBrowserEnabled = useGet(newThreadCloudBrowserEnabled$);
-  const featureSwitches = useGet(featureSwitch$);
-  const cloudBrowserAvailable =
-    featureSwitches[FeatureSwitchKey.ZeroBrowser] ?? false;
+  const computerAccess = useGet(newThreadComputerAccess$);
+  const cloudBrowserAvailable = useGet(zeroBrowserEnabled$);
+  const cloudBrowserEnabled = computerAccess.kind === "cloudBrowser";
   const selectedComputerUseHostId = resolveSelectedComputerUseHostId(
     computerUseHosts,
-    storedComputerUseHostId,
+    computerAccess.kind === "computerUse" ? computerAccess.hostId : null,
   );
   const visibleHosts = visibleComputerUseHosts(
     computerUseHosts,
@@ -470,14 +467,12 @@ function useNewThreadComputerUse() {
   );
   const setComputerUseHostId = useSet(setNewThreadComputerUseHostId$);
   const setCloudBrowserEnabled = useSet(setNewThreadCloudBrowserEnabled$);
+  const resetComputerAccess = useSet(resetNewThreadComputerAccess$);
 
   return {
     selectedComputerUseHostId,
-    cloudBrowserEnabled: cloudBrowserAvailable && storedCloudBrowserEnabled,
-    clearComputerAccess: () => {
-      setComputerUseHostId(null);
-      setCloudBrowserEnabled(false);
-    },
+    cloudBrowserEnabled,
+    clearComputerAccess: resetComputerAccess,
     computerUse: {
       hosts: visibleHosts,
       loading:
@@ -486,7 +481,7 @@ function useNewThreadComputerUse() {
       selectedHostId: selectedComputerUseHostId,
       onChange: setComputerUseHostId,
       cloudBrowserAvailable,
-      cloudBrowserEnabled: cloudBrowserAvailable && storedCloudBrowserEnabled,
+      cloudBrowserEnabled,
       onCloudBrowserChange: setCloudBrowserEnabled,
       downloadUrl: ZERO_DESKTOP_DOWNLOAD_URL,
     },
