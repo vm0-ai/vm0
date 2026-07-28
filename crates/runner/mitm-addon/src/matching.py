@@ -268,9 +268,9 @@ class CompiledFirewallSet:
 
         A match is eligibility for the privileged ``connector_auth`` binding, not
         request authorization. Request handling later evaluates full base/path,
-        connector-owner, permission/rule, and network-policy decisions, then
-        revalidates the current direct binding, public destination, and host policy
-        before ordinary credentials mutate the request.
+        connector-owner, permission/rule, and network-policy decisions. Before it
+        mutates a request, ordinary credential handling still requires the current
+        direct binding and applicable public-destination and host-policy guards.
 
         Contract coverage lives in
         ``tests/test_compiled_firewall_authority_normalization.py`` and
