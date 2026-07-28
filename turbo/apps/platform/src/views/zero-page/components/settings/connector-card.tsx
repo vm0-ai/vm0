@@ -23,7 +23,6 @@ import {
 import {
   connectorCurrentConnectionStatus,
   connectorExpiryCountdownText,
-  isStandaloneMode,
 } from "../../../../signals/zero-page/settings/connectors.ts";
 import { DropdownMenuModalItem } from "../../../components/dropdown-menu-modal-item.tsx";
 import { LoadingSwitch } from "../../../components/loading-switch.tsx";
@@ -178,13 +177,10 @@ function ConnectorConnectionStatus({
 }) {
   const connectionStatus = connectorCurrentConnectionStatus(connector);
   if (busy) {
-    const standaloneHint = isStandaloneMode()
-      ? " Switch back here after completing sign-in."
-      : "";
     return (
       <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
         <IconLoader2 size={12} stroke={1.5} className="animate-spin" />
-        {`Connecting…${standaloneHint}`}
+        Connecting…
       </span>
     );
   }
