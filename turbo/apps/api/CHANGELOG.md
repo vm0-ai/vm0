@@ -1,5 +1,38 @@
 # Changelog
 
+## [1.338.0](https://github.com/vm0-ai/vm0/compare/api-v1.337.1...api-v1.338.0) (2026-07-28)
+
+
+### Features
+
+* add disabled no-auth mcp management domain ([#23513](https://github.com/vm0-ai/vm0/issues/23513)) ([6bcd50b](https://github.com/vm0-ai/vm0/commit/6bcd50b396ea6acc9afff609380da7abbc464f11))
+
+
+### Bug Fixes
+
+* **api:** log managed browser response validation issues ([#23506](https://github.com/vm0-ai/vm0/issues/23506)) ([a0a0980](https://github.com/vm0-ai/vm0/commit/a0a098079d0fef10af4a7d5191c567a742b0b42d))
+* upload large attachments through r2 multipart ([#23490](https://github.com/vm0-ai/vm0/issues/23490)) ([a10f111](https://github.com/vm0-ai/vm0/commit/a10f111c7fe5a4e6b777c5ab7d81582d6f9630a3))
+
+
+### Refactoring
+
+* **api:** prepare storage queue manifest contraction ([#23512](https://github.com/vm0-ai/vm0/issues/23512)) ([9f63154](https://github.com/vm0-ai/vm0/commit/9f6315470b16f681b7f3d9dd7a3b1be1112fed6b))
+* **chat:** drive queues from chat event stream ([#23451](https://github.com/vm0-ai/vm0/issues/23451)) ([1ccf9ef](https://github.com/vm0-ai/vm0/commit/1ccf9efc5653fd6b777e6f45a1873d1b9489f174))
+
+
+### Performance Improvements
+
+* prepare usage compaction serialization ([#23519](https://github.com/vm0-ai/vm0/issues/23519)) ([e10f70a](https://github.com/vm0-ai/vm0/commit/e10f70a6ac1b0f634e38234ae6edab11033b3d57))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.242.0
+    * @vm0/core bumped to 8.482.0
+    * @vm0/db bumped to 1.150.0
+
 ## [1.337.1](https://github.com/vm0-ai/vm0/compare/api-v1.337.0...api-v1.337.1) (2026-07-28)
 
 
