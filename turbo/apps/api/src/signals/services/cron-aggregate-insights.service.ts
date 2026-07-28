@@ -792,7 +792,7 @@ async function queryActiveUsers(
   const usage = buildFinalizedUsageRelation({
     start: ceilFinalizedUsageHour(lookbackStart),
   });
-  const [completedRuns, eventUsage] = await Promise.all([
+  const [completedRuns, finalizedUsage] = await Promise.all([
     db
       .select({
         orgId: agentRuns.orgId,
@@ -822,7 +822,7 @@ async function queryActiveUsers(
   ]);
   signal.throwIfAborted();
 
-  return mergeActiveUserRows([...completedRuns, ...eventUsage]);
+  return mergeActiveUserRows([...completedRuns, ...finalizedUsage]);
 }
 
 function mergeAgentRows(
@@ -924,7 +924,7 @@ async function queryCompletedRunCounts(
   return rows;
 }
 
-async function queryUsageEventCreditRows(
+async function queryFinalizedUsageCreditRows(
   db: Db,
   orgIds: string[],
   dayStart: Date,
@@ -1042,7 +1042,7 @@ async function loadWindowUsageData(
 ): Promise<WindowUsageData> {
   const [runRows, ledgerCreditRows] = await Promise.all([
     queryCompletedRunCounts(db, scope, signal),
-    queryUsageEventCreditRows(
+    queryFinalizedUsageCreditRows(
       db,
       scope.orgIds,
       scope.dayStart,

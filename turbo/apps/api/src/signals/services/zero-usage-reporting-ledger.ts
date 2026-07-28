@@ -90,22 +90,22 @@ export async function getMemberUsageTotals(
   );
   const totalsSelect = {
     userId: usage.userId,
-    inputTokens: usageEventTokenSum(
+    inputTokens: finalizedUsageTokenSum(
       usage,
       INPUT_TOKEN_CATEGORIES,
       "input_tokens",
     ),
-    outputTokens: usageEventTokenSum(
+    outputTokens: finalizedUsageTokenSum(
       usage,
       OUTPUT_TOKEN_CATEGORIES,
       "output_tokens",
     ),
-    cacheReadInputTokens: usageEventTokenSum(
+    cacheReadInputTokens: finalizedUsageTokenSum(
       usage,
       CACHE_READ_TOKEN_CATEGORIES,
       "cache_read_input_tokens",
     ),
-    cacheCreationInputTokens: usageEventTokenSum(
+    cacheCreationInputTokens: finalizedUsageTokenSum(
       usage,
       CACHE_CREATION_TOKEN_CATEGORIES,
       "cache_creation_input_tokens",
@@ -120,31 +120,31 @@ export async function getMemberUsageTotals(
     .groupBy(usage.userId);
 }
 
-export function buildUsageEventRunUsageTotalsSubquery(db: Db, orgId: string) {
+export function buildFinalizedUsageRunTotalsSubquery(db: Db, orgId: string) {
   const usage = buildFinalizedUsageRelation();
   const totalsSelect = {
     runId: usage.runId,
-    inputTokens: usageEventTokenSum(
+    inputTokens: finalizedUsageTokenSum(
       usage,
       INPUT_TOKEN_CATEGORIES,
       "input_tokens_sum",
     ),
-    outputTokens: usageEventTokenSum(
+    outputTokens: finalizedUsageTokenSum(
       usage,
       OUTPUT_TOKEN_CATEGORIES,
       "output_tokens_sum",
     ),
-    cacheReadInputTokens: usageEventTokenSum(
+    cacheReadInputTokens: finalizedUsageTokenSum(
       usage,
       CACHE_READ_TOKEN_CATEGORIES,
       "cache_read_input_tokens_sum",
     ),
-    cacheCreationInputTokens: usageEventTokenSum(
+    cacheCreationInputTokens: finalizedUsageTokenSum(
       usage,
       CACHE_CREATION_TOKEN_CATEGORIES,
       "cache_creation_input_tokens_sum",
     ),
-    cacheTokens: usageEventTokenSum(
+    cacheTokens: finalizedUsageTokenSum(
       usage,
       ALL_CACHE_TOKEN_CATEGORIES,
       "cache_tokens_sum",
@@ -162,42 +162,40 @@ export function buildUsageEventRunUsageTotalsSubquery(db: Db, orgId: string) {
     .from(usage)
     .where(and(eq(usage.orgId, orgId), isNotNull(usage.runId)))
     .groupBy(usage.runId)
-    .as("usage_event_run_usage_totals");
+    .as("finalized_usage_run_totals");
 }
 
-type UsageEventRunUsageTotalsSubquery = ReturnType<
-  typeof buildUsageEventRunUsageTotalsSubquery
+type FinalizedUsageRunTotalsSubquery = ReturnType<
+  typeof buildFinalizedUsageRunTotalsSubquery
 >;
 
-export function hasRunUsageTotals(events: UsageEventRunUsageTotalsSubquery) {
+export function hasRunUsageTotals(events: FinalizedUsageRunTotalsSubquery) {
   return isNotNull(events.runId);
 }
 
-export function mergedRunInputTokens(events: UsageEventRunUsageTotalsSubquery) {
+export function mergedRunInputTokens(events: FinalizedUsageRunTotalsSubquery) {
   return coalesceRunTotal(events.inputTokens, "input_tokens");
 }
 
-export function mergedRunOutputTokens(
-  events: UsageEventRunUsageTotalsSubquery,
-) {
+export function mergedRunOutputTokens(events: FinalizedUsageRunTotalsSubquery) {
   return coalesceRunTotal(events.outputTokens, "output_tokens");
 }
 
-export function mergedRunCacheTokens(events: UsageEventRunUsageTotalsSubquery) {
+export function mergedRunCacheTokens(events: FinalizedUsageRunTotalsSubquery) {
   return coalesceRunTotal(events.cacheTokens, "cache_tokens");
 }
 
 export function mergedRunCreditsCharged(
-  events: UsageEventRunUsageTotalsSubquery,
+  events: FinalizedUsageRunTotalsSubquery,
 ) {
   return coalesceRunTotal(events.creditsCharged, "credits_charged");
 }
 
-export function mergedRunModel(events: UsageEventRunUsageTotalsSubquery) {
+export function mergedRunModel(events: FinalizedUsageRunTotalsSubquery) {
   return sql`${events.model}`.mapWith(nullableTextDecoder).as("model");
 }
 
-function usageEventTokenSum(
+function finalizedUsageTokenSum(
   usage: FinalizedUsageRelation,
   categories: readonly string[],
   alias: string,

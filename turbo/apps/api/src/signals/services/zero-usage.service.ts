@@ -19,7 +19,7 @@ import { writeDb$ } from "../external/db";
 import { nowDate } from "../external/time";
 import { getOrgBillingPeriod$ } from "./zero-org-billing-period.service";
 import {
-  buildUsageEventRunUsageTotalsSubquery,
+  buildFinalizedUsageRunTotalsSubquery,
   getMemberUsageTotals,
   hasRunUsageTotals,
   mergedRunCacheTokens,
@@ -125,7 +125,7 @@ export const zeroUsageRuns$ = command(
     signal: AbortSignal,
   ): Promise<UsageRunsResponse> => {
     const db = set(writeDb$);
-    const eventUsage = buildUsageEventRunUsageTotalsSubquery(db, args.orgId);
+    const finalizedUsage = buildFinalizedUsageRunTotalsSubquery(db, args.orgId);
     const conditions = [eq(agentRuns.orgId, args.orgId)];
 
     if (args.runId) {
@@ -147,13 +147,13 @@ export const zeroUsageRuns$ = command(
     const [countResult] = await db
       .select({ total: count() })
       .from(agentRuns)
-      .leftJoin(eventUsage, eq(agentRuns.id, eventUsage.runId))
+      .leftJoin(finalizedUsage, eq(agentRuns.id, finalizedUsage.runId))
       .leftJoin(agentSessions, eq(agentRuns.sessionId, agentSessions.id))
       .leftJoin(
         agentComposes,
         eq(agentSessions.agentComposeId, agentComposes.id),
       )
-      .where(and(...conditions, hasRunUsageTotals(eventUsage)));
+      .where(and(...conditions, hasRunUsageTotals(finalizedUsage)));
     signal.throwIfAborted();
 
     const offset = (args.page - 1) * args.pageSize;
@@ -168,14 +168,14 @@ export const zeroUsageRuns$ = command(
         prompt: agentRuns.prompt,
         triggerSource: zeroRuns.triggerSource,
         agentName: zeroAgents.displayName,
-        inputTokens: mergedRunInputTokens(eventUsage),
-        outputTokens: mergedRunOutputTokens(eventUsage),
-        cacheTokens: mergedRunCacheTokens(eventUsage),
-        creditsCharged: mergedRunCreditsCharged(eventUsage),
-        model: mergedRunModel(eventUsage),
+        inputTokens: mergedRunInputTokens(finalizedUsage),
+        outputTokens: mergedRunOutputTokens(finalizedUsage),
+        cacheTokens: mergedRunCacheTokens(finalizedUsage),
+        creditsCharged: mergedRunCreditsCharged(finalizedUsage),
+        model: mergedRunModel(finalizedUsage),
       })
       .from(agentRuns)
-      .leftJoin(eventUsage, eq(agentRuns.id, eventUsage.runId))
+      .leftJoin(finalizedUsage, eq(agentRuns.id, finalizedUsage.runId))
       .leftJoin(zeroRuns, eq(agentRuns.id, zeroRuns.id))
       .leftJoin(agentSessions, eq(agentRuns.sessionId, agentSessions.id))
       .leftJoin(
@@ -183,7 +183,7 @@ export const zeroUsageRuns$ = command(
         eq(agentSessions.agentComposeId, agentComposes.id),
       )
       .leftJoin(zeroAgents, eq(agentComposes.id, zeroAgents.id))
-      .where(and(...conditions, hasRunUsageTotals(eventUsage)))
+      .where(and(...conditions, hasRunUsageTotals(finalizedUsage)))
       .orderBy(desc(agentRuns.createdAt), asc(agentRuns.id))
       .limit(args.pageSize)
       .offset(offset);
