@@ -1419,30 +1419,34 @@ function buildNotionPageContentUpdatedCreateRequest(
   }
   const pageUrl = options.pageUrl?.trim();
   const databaseUrl = options.databaseUrl?.trim();
-  if (
-    (pageUrl !== undefined && pageUrl.length > 0) ===
-    (databaseUrl !== undefined && databaseUrl.length > 0)
-  ) {
-    throw new Error(
-      'notion-page-content-updated automations require exactly one of --page-url "https://www.notion.so/..." or --database-url "https://www.notion.so/..."',
-    );
+  const invalidScopeMessage =
+    'notion-page-content-updated automations require exactly one of --page-url "https://www.notion.so/..." or --database-url "https://www.notion.so/..."';
+  if (pageUrl && databaseUrl) {
+    throw new Error(invalidScopeMessage);
   }
 
+  if (pageUrl) {
+    return {
+      kind: "event",
+      eventType: "notion-page-content-updated",
+      eventConfig: {
+        provider: "notion",
+        event: "page_content_updated",
+        pageUrl,
+      },
+    };
+  }
+  if (!databaseUrl) {
+    throw new Error(invalidScopeMessage);
+  }
   return {
     kind: "event",
     eventType: "notion-page-content-updated",
-    eventConfig:
-      pageUrl !== undefined && pageUrl.length > 0
-        ? {
-            provider: "notion",
-            event: "page_content_updated",
-            pageUrl,
-          }
-        : {
-            provider: "notion",
-            event: "page_content_updated",
-            databaseUrl: databaseUrl ?? "",
-          },
+    eventConfig: {
+      provider: "notion",
+      event: "page_content_updated",
+      databaseUrl,
+    },
   };
 }
 
