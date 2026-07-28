@@ -72,7 +72,7 @@ function createPreferences(locale: UserLocale | null): UserPreferencesResponse {
 }
 
 describe("settings dialog", () => {
-  it("persists the browser language when the workspace has no server preference", async () => {
+  it("defaults to English instead of the browser language before user selection", async () => {
     const submittedLocales: UserLocale[] = [];
     let serverLocale: UserLocale | null = null;
     context.mocks.browser.language("zh-CN");
@@ -98,23 +98,67 @@ describe("settings dialog", () => {
       name: "Language",
     });
     await waitFor(() => {
+      expect(submittedLocales).toContain("en-US");
+      expect(languageSelect).toHaveTextContent("English");
+      expect(languageSelect).toBeEnabled();
+      expect(document.documentElement.lang).toBe("en-US");
+      expect(cachedLocale()).toBe("en-US");
+    });
+
+    click(languageSelect);
+    click(screen.getByRole("option", { name: "简体中文" }));
+
+    await waitFor(() => {
+      expect(submittedLocales).toContain("zh-CN");
+      expect(
+        screen.getByRole("combobox", { name: "Language" }),
+      ).toHaveTextContent("简体中文");
+      expect(document.documentElement.lang).toBe("zh-CN");
+      expect(cachedLocale()).toBe("zh-CN");
+    });
+
+    click(screen.getByRole("combobox", { name: "Language" }));
+    click(screen.getByRole("option", { name: "English" }));
+    await waitFor(() => {
+      expect(document.documentElement.lang).toBe("en-US");
+    });
+  });
+
+  it("persists a cached locale when the workspace has no server preference", async () => {
+    const submittedLocales: UserLocale[] = [];
+    document.documentElement.lang = "zh-CN";
+    context.store.set(setCachedLocale$, "zh-CN");
+    context.mocks.api(zeroUserPreferencesContract.get, ({ respond }) => {
+      return respond(200, createPreferences(null));
+    });
+    context.mocks.api(
+      zeroUserPreferencesContract.update,
+      ({ body, respond }) => {
+        if (body.locale !== undefined) {
+          submittedLocales.push(body.locale);
+        }
+        return respond(200, createPreferences(body.locale ?? null));
+      },
+    );
+
+    await openDialog("admin", "preference", {
+      [FeatureSwitchKey.LanguagePreference]: true,
+    });
+
+    const languageSelect = await screen.findByRole("combobox", {
+      name: "Language",
+    });
+    await waitFor(() => {
       expect(submittedLocales).toContain("zh-CN");
       expect(languageSelect).toHaveTextContent("简体中文");
-      expect(languageSelect).toBeEnabled();
       expect(document.documentElement.lang).toBe("zh-CN");
       expect(cachedLocale()).toBe("zh-CN");
     });
 
     click(languageSelect);
     click(screen.getByRole("option", { name: "English" }));
-
     await waitFor(() => {
-      expect(submittedLocales).toContain("en-US");
-      expect(
-        screen.getByRole("combobox", { name: "Language" }),
-      ).toHaveTextContent("English");
       expect(document.documentElement.lang).toBe("en-US");
-      expect(cachedLocale()).toBe("en-US");
     });
   });
 
