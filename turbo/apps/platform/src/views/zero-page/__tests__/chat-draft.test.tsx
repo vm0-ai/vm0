@@ -1287,7 +1287,7 @@ describe("chat drafts", () => {
       expect(
         screen.getByText("Failed to upload failed-recording.mp4"),
       ).toBeInTheDocument();
-      expect(partAttempts).toBe(3);
+      expect(partAttempts).toBe(5);
       expect(abortBody).toStrictEqual({
         id: "8d70fdfa-2eb4-4a32-a2e2-635799804ad6",
         filename: "failed-recording.mp4",

@@ -6,9 +6,11 @@ import {
   type Computed,
   type State,
 } from "ccstate";
+import { delay } from "signal-timers";
 import { onRejection, resetSignal, settle, tapError } from "../utils.ts";
 import { zeroClient$ } from "../api-client.ts";
 import { accept } from "../../lib/accept.ts";
+import { IN_VITEST } from "../../env.ts";
 import type {
   GenerationTemplateRequest,
   PersistedAttachment,
@@ -28,7 +30,8 @@ interface FileInfo {
 }
 
 const MULTIPART_UPLOAD_THRESHOLD_BYTES = 5 * 1024 * 1024;
-const MAX_PART_UPLOAD_ATTEMPTS = 3;
+const MAX_PART_UPLOAD_ATTEMPTS = 5;
+const PART_UPLOAD_RETRY_BASE_DELAY_MS = 250;
 
 function uploadContentTypeByExtension(ext: string): string | undefined {
   const contentTypeByExtension: Record<string, string | undefined> = {
@@ -151,6 +154,10 @@ async function uploadPartWithRetry(
     } else if (attempt === MAX_PART_UPLOAD_ATTEMPTS) {
       throw result.error;
     }
+    await delay(
+      IN_VITEST ? 0 : PART_UPLOAD_RETRY_BASE_DELAY_MS * 2 ** (attempt - 1),
+      { signal },
+    );
   }
   throw new Error("Multipart upload retry loop ended unexpectedly");
 }
