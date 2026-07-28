@@ -2310,10 +2310,10 @@ async function buildCreateQueuedChatRunInput(
     featureSwitchContext,
   );
   const userMessageProjection = args.queuedMessage.userMessage
-      ? projectUserMessage(args.queuedMessage.userMessage, {
-          inlineTemplates: inlineTemplatesEnabled,
-        })
-      : undefined;
+    ? projectUserMessage(args.queuedMessage.userMessage, {
+        inlineTemplates: inlineTemplatesEnabled,
+      })
+    : undefined;
   const generationTemplatePrompt =
     await resolveQueuedMessageGenerationTemplatePrompt({
       input: args,

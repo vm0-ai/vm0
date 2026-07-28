@@ -3761,7 +3761,9 @@ describe("CHAT-02: run-level model overrides", () => {
     expect(boundedContext).toContain(`- RUN_ID: ${second.runId}`);
     expect(boundedContext).toContain(`User: ${newestPrompt}`);
     expect(boundedContext).toContain(`Assistant: ${newestAnswer}`);
-    expect(boundedContext).toContain(`[Web file]\n   [ID] ${oldestFileId}`);
+    expect(boundedContext).toContain(
+      `[Web file] bounded-context.txt (text/plain)\n   [ID] ${oldestFileId}`,
+    );
     expect(boundedContext).toContain(
       "[Transcript truncated to fit the chat context budget.]",
     );
