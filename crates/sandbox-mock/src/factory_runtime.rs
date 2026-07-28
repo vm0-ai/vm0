@@ -4,7 +4,7 @@ use std::sync::{Arc, Mutex};
 use ::sandbox::*;
 use async_trait::async_trait;
 
-use crate::lifecycle::{DestroyBehavior, wait_blocking_gate};
+use crate::lifecycle::{DestroyBehavior, wait_lifecycle_gate};
 use crate::overrides::MockSandboxOverrides;
 use crate::sandbox::MockSandbox;
 use crate::support::LockIgnoringPoison;
@@ -100,7 +100,7 @@ impl SandboxFactory for MockSandboxFactory {
     async fn destroy(&self, _sandbox: Box<dyn Sandbox>) {
         if let Some(o) = &self.overrides {
             *o.lifecycle.destroy_calls.lock_ignoring_poison() += 1;
-            wait_blocking_gate(&o.lifecycle.destroy_gate).await;
+            wait_lifecycle_gate(&o.lifecycle.destroy_gate).await;
             match o
                 .lifecycle
                 .destroy_behaviors
