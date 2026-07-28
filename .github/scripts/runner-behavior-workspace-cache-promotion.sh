@@ -250,9 +250,8 @@ cat /tmp/vm0-workspace-cache-release >/dev/null' &
     "_SYSTEMD_INVOCATION_ID=$TURN2_INVOCATION_ID" 2>&1) \
     || fail "failed to read workspace cache restore runner logs"
   if grep -F 'workspace image cache lock busy or unavailable; using fresh workspace image' \
-    <<<"$RESTORE_LOGS" >/dev/null \
-    && grep -F 'lock is already held by another process' \
-      <<<"$RESTORE_LOGS" >/dev/null; then
+    <<<"$RESTORE_LOGS" \
+    | grep -F 'lock is already held by another process' >/dev/null; then
     if [ "$ATTEMPT" -eq "$MAX_ATTEMPTS" ]; then
       fail "Workspace cache restore entry lock remained busy after ${MAX_ATTEMPTS} attempts"
     fi
