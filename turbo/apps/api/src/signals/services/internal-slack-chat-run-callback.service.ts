@@ -166,7 +166,10 @@ async function loadSlackChatDeliveryContext(args: {
       and(
         eq(slackChatThreadRoutes.chatThreadId, run.chatThreadId),
         eq(slackChatThreadRoutes.channelId, payload.channelId),
-        eq(slackChatThreadRoutes.threadTs, payload.threadTs),
+        eq(
+          slackChatThreadRoutes.threadTs,
+          payload.routeThreadTs ?? payload.threadTs,
+        ),
         eq(slackChatThreadRoutes.userId, run.userId),
         eq(slackOrgConnections.vm0UserId, run.userId),
         eq(slackOrgInstallations.orgId, run.orgId),
@@ -216,7 +219,7 @@ async function deliverClaimedSlackChatCallback(args: {
       db: args.db,
       workspaceId: binding.workspaceId,
       channelId: payload.channelId,
-      threadTs: payload.threadTs,
+      threadTs: payload.routeThreadTs ?? payload.threadTs,
     }),
     loadUserFeatureSwitchContext(args.db, run.orgId, run.userId),
   ]);
@@ -320,6 +323,7 @@ export async function deliverSlackChatAdmissionFailure(args: {
   readonly agentId: string;
   readonly channelId: string;
   readonly threadTs: string;
+  readonly routeThreadTs?: string;
   readonly chatMessageId: string;
   readonly signal: AbortSignal;
 }): Promise<void> {
@@ -358,7 +362,10 @@ export async function deliverSlackChatAdmissionFailure(args: {
         and(
           eq(slackChatThreadRoutes.chatThreadId, args.chatThreadId),
           eq(slackChatThreadRoutes.channelId, args.channelId),
-          eq(slackChatThreadRoutes.threadTs, args.threadTs),
+          eq(
+            slackChatThreadRoutes.threadTs,
+            args.routeThreadTs ?? args.threadTs,
+          ),
           eq(slackChatThreadRoutes.userId, args.userId),
           eq(slackOrgConnections.vm0UserId, args.userId),
           eq(slackOrgInstallations.orgId, args.orgId),
@@ -379,7 +386,7 @@ export async function deliverSlackChatAdmissionFailure(args: {
         db: args.db,
         workspaceId: binding.workspaceId,
         channelId: args.channelId,
-        threadTs: args.threadTs,
+        threadTs: args.routeThreadTs ?? args.threadTs,
       }),
       loadUserFeatureSwitchContext(args.db, args.orgId, args.userId),
       args.db
