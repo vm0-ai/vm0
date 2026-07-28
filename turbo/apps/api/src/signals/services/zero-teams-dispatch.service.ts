@@ -1683,15 +1683,15 @@ async function persistTeamsChatMessage(args: {
         eventType: "input.prompt",
         content: prompt,
         userMessage: createUserMessageDocument({
-            text: args.activity.text,
-            files: args.promptFiles.map((file) => {
-              return {
-                id: file.fileId,
-                filename: file.name,
-                contentType: file.contentType,
-              };
-            }),
+          text: args.activity.text,
+          files: args.promptFiles.map((file) => {
+            return {
+              id: file.fileId,
+              filename: file.name,
+              contentType: file.contentType,
+            };
           }),
+        }),
         runId: null,
         createdAt: currentTime,
       },

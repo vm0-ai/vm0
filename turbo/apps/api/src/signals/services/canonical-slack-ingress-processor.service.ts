@@ -360,15 +360,15 @@ async function persistCanonicalSlackMessage(
         eventType: "input.prompt",
         content: args.displayContent,
         userMessage: createUserMessageDocument({
-            text: args.displayContent,
-            files: args.canonicalAssets.map((asset) => {
-              return {
-                id: asset.assetId,
-                filename: asset.filename,
-                contentType: asset.contentType,
-              };
-            }),
+          text: args.displayContent,
+          files: args.canonicalAssets.map((asset) => {
+            return {
+              id: asset.assetId,
+              filename: asset.filename,
+              contentType: asset.contentType,
+            };
           }),
+        }),
         runId: null,
         slackMessagePermalink: args.messagePermalink,
         createdAt: args.ingress.createdAt,

@@ -2475,7 +2475,7 @@ const prepareNormalSend$ = command(
       explicit: runtimeBody.generationTemplate,
       explicitTemplates:
         featureSwitches.userMessageInlineTemplatesEnabled &&
-        runtimeBody.userMessage !== undefined
+        args.body.userMessage !== undefined
           ? runtimeBody.generationTemplates
           : undefined,
       websiteTemplateV2Enabled: featureSwitches.websiteTemplateV2Enabled,

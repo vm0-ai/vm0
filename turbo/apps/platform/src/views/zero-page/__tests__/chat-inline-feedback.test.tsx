@@ -414,7 +414,7 @@ describe("chat inline feedback", () => {
     await expect(findComposerEditor()).resolves.toBe(composerEditor);
   });
 
-  it("uses the legacy send path for feedback when structured prompts are disabled", async () => {
+  it("keeps legacy feedback runtime behavior while dual-writing user messages", async () => {
     const user = userEvent.setup({ delay: null });
     const threadId = "b0000000-0000-4000-a000-000000000707";
     const assistantReply = "The release summary needs a clearer owner.";
@@ -463,7 +463,16 @@ describe("chat inline feedback", () => {
     );
     expect(sentMessages[0]?.prompt).toContain(`> ${assistantReply}`);
     expect(sentMessages[0]?.prompt).toContain("Name the owner.");
-    expect(sentMessages[0]).not.toHaveProperty("userMessage");
+    expect(sentMessages[0]?.userMessage).toStrictEqual({
+      version: 1,
+      parts: [
+        {
+          type: "feedback",
+          quote: assistantReply,
+          note: [{ type: "text", text: "Name the owner." }],
+        },
+      ],
+    });
   });
 
   it("restores queued inline feedback with the structured prompt rollout", async () => {
