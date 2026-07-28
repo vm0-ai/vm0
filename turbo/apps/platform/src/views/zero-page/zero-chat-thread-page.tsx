@@ -129,6 +129,7 @@ import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import { Markdown } from "../components/markdown.tsx";
 import { detach, Reason } from "../../signals/utils.ts";
 import {
+  chatThreadSidebarAutoOpenEnabled$,
   featureSwitch$,
   newChatThreadSidebarEnabled$,
 } from "../../signals/external/feature-switch.ts";
@@ -239,8 +240,10 @@ import {
 } from "../../signals/chat-page/header-automation-sidebar.ts";
 import {
   activeThreadSidebar$,
+  autoOpenThreadSidebarRef$,
   openThreadAutomations$,
 } from "../../signals/chat-page/thread-sidebar-coordinator.ts";
+import { threadSidebarAutoOpenCandidateKey } from "../../signals/chat-page/thread-sidebar-auto-open.ts";
 import {
   ThreadSidebarSlot,
   useOpenThreadArtifacts,
@@ -2628,6 +2631,26 @@ function ThreadAutomationsSidebarSlot({
   return <HeaderAutomationSidebar thread={thread} onClose={close} />;
 }
 
+function ThreadSidebarAutoOpen({ thread }: { thread: ChatThreadSignals }) {
+  const enabled = useGet(chatThreadSidebarAutoOpenEnabled$);
+  const newSidebarEnabled = useGet(newChatThreadSidebarEnabled$);
+  const candidate = useLastResolved(thread.sidebarAutoOpenCandidate$);
+  const autoOpenRef = useSet(autoOpenThreadSidebarRef$);
+  if (!enabled || !newSidebarEnabled || !candidate) {
+    return null;
+  }
+  return (
+    <span
+      key={`${thread.threadId}:${threadSidebarAutoOpenCandidateKey(candidate)}`}
+      ref={autoOpenRef}
+      data-thread-sidebar-auto-open-thread-id={thread.threadId}
+      data-thread-sidebar-auto-open-type={candidate.type}
+      data-thread-sidebar-auto-open-resource-key={candidate.resourceKey}
+      hidden
+    />
+  );
+}
+
 export function ZeroChatThreadPage() {
   const newSidebarEnabled = useGet(newChatThreadSidebarEnabled$);
   const activeThreadSidebar = useGet(activeThreadSidebar$);
@@ -2661,6 +2684,8 @@ export function ZeroChatThreadPage() {
       browserPanelOpen;
   return (
     <>
+      {leftThread ? <ThreadSidebarAutoOpen thread={leftThread} /> : null}
+      {rightThread ? <ThreadSidebarAutoOpen thread={rightThread} /> : null}
       <ChatThreadSidebarShell
         open={rightPanelOpen}
         sidebar={

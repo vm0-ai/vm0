@@ -1,6 +1,10 @@
 import { command, computed } from "ccstate";
 
-import { newChatThreadSidebarEnabled$ } from "../external/feature-switch.ts";
+import {
+  chatThreadSidebarAutoOpenEnabled$,
+  newChatThreadSidebarEnabled$,
+} from "../external/feature-switch.ts";
+import { onRef } from "../utils.ts";
 import { openMailDraftSidebar$ } from "../zero-page/mail-draft-sidebar.ts";
 import { openBrowserSessionSidebar$ } from "../zero-page/browser-session-sidebar.ts";
 import {
@@ -18,7 +22,9 @@ import {
 } from "./chat-thread-panes.ts";
 import { openHeaderAutomationSidebar$ } from "./header-automation-sidebar.ts";
 import type { ChatThreadSignals } from "./chat-thread-signals.ts";
+import { CHAT_THREAD_SIDEBAR_SPLIT_VIEW_MEDIA_QUERY } from "./chat-thread-sidebar-layout.ts";
 import type { ThreadSidebarTarget } from "./thread-sidebar.ts";
+import type { ThreadSidebarAutoOpenCandidate } from "./thread-sidebar-auto-open.ts";
 
 // ---------------------------------------------------------------------------
 // Page-level coordinator for the thread-owned utility sidebar. Sidebar state
@@ -62,6 +68,77 @@ const openOnThread$ = command(
     set(thread.sidebar.open$, target);
   },
 );
+
+function autoOpenCandidateFromElement(
+  element: HTMLElement,
+): ThreadSidebarAutoOpenCandidate | null {
+  const type = element.dataset.threadSidebarAutoOpenType;
+  const resourceKey = element.dataset.threadSidebarAutoOpenResourceKey;
+  if (
+    !resourceKey ||
+    (type !== "artifact" && type !== "email-draft" && type !== "browser")
+  ) {
+    return null;
+  }
+  return { type, resourceKey };
+}
+
+function targetFromAutoOpenCandidate(
+  candidate: ThreadSidebarAutoOpenCandidate,
+): ThreadSidebarTarget {
+  if (candidate.type === "email-draft") {
+    return { type: "email-draft", mailDraftId: candidate.resourceKey };
+  }
+  if (candidate.type === "browser") {
+    return { type: "browser", browserSessionId: candidate.resourceKey };
+  }
+  const attachment = previewAttachmentFromUrl(candidate.resourceKey);
+  const ref: ArtifactRef = {
+    source: "url",
+    url: candidate.resourceKey,
+    kind: classifyChatAttachment(attachment),
+    filename: attachment.filename,
+  };
+  return {
+    type: "artifact",
+    source: { kind: "attachment", ref },
+  };
+}
+
+const autoOpenThreadSidebarOnRef$ = command(
+  ({ get, set }, element: HTMLElement, _signal: AbortSignal): void => {
+    if (
+      !get(newChatThreadSidebarEnabled$) ||
+      !get(chatThreadSidebarAutoOpenEnabled$) ||
+      typeof window === "undefined" ||
+      !window.matchMedia(CHAT_THREAD_SIDEBAR_SPLIT_VIEW_MEDIA_QUERY).matches ||
+      get(activeThreadSidebar$) !== null
+    ) {
+      return;
+    }
+
+    const threadId = element.dataset.threadSidebarAutoOpenThreadId;
+    const candidate = autoOpenCandidateFromElement(element);
+    if (!threadId || !candidate) {
+      return;
+    }
+    const thread = [get(currentLeftThread$), get(currentRightThread$)].find(
+      (current) => {
+        return current?.threadId === threadId;
+      },
+    );
+    if (!thread) {
+      return;
+    }
+    set(openOnThread$, thread, targetFromAutoOpenCandidate(candidate));
+  },
+);
+
+/**
+ * A keyed hidden marker invokes this only when the preferred card changes.
+ * Closing a sidebar therefore does not immediately reopen the same card.
+ */
+export const autoOpenThreadSidebarRef$ = onRef(autoOpenThreadSidebarOnRef$);
 
 export const openThreadArtifacts$ = command(
   ({ get, set }, thread: ChatThreadSignals) => {

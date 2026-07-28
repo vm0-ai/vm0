@@ -18,6 +18,7 @@ import {
 } from "../utils.ts";
 import { createHeaderAutomationSignals } from "./header-automation-menu.ts";
 import { createThreadSidebarSignals } from "./thread-sidebar.ts";
+import { latestThreadSidebarAutoOpenCandidate } from "./thread-sidebar-auto-open.ts";
 import { createWorkflowQueueSignals } from "./workflow-queue.ts";
 import {
   createScrollSignals,
@@ -1260,6 +1261,11 @@ function createRenderedChatGroups(
       return groupMessagesForDisplay(messages);
     },
   );
+  const sidebarAutoOpenCandidate$ = computed(async (get) => {
+    return latestThreadSidebarAutoOpenCandidate(
+      await get(allRenderedChatGroups$),
+    );
+  });
 
   const messageImageGroups$ = computed(
     async (get): Promise<MessageImageGroupProjection[]> => {
@@ -1278,6 +1284,7 @@ function createRenderedChatGroups(
 
   return {
     allRenderedChatGroups$,
+    sidebarAutoOpenCandidate$,
     messageImageGroups$,
   };
 }
@@ -4344,6 +4351,7 @@ function publicChatThreadMessageSignals(
     latestAssistantTextCreatedAt$: messages.latestAssistantTextCreatedAt$,
     visibleRenderedChatGroups$: messages.visibleRenderedChatGroups$,
     visibleRenderedChatGroupsReady$: messages.visibleRenderedChatGroupsReady$,
+    sidebarAutoOpenCandidate$: messages.sidebarAutoOpenCandidate$,
     messageImageGroups$: messages.messageImageGroups$,
     artifactSignalsForUrl: messages.artifactSignalsForUrl,
     mailDraftCardSignalsById$: messages.mailDraftCardSignalsById$,
