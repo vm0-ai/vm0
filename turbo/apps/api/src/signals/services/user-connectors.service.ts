@@ -1,9 +1,11 @@
 import { and, eq, inArray, or } from "drizzle-orm";
 import type { ConnectorSlug } from "@vm0/api-contracts/contracts/connector-identity";
+import { CUSTOM_CONNECTOR_OAUTH_AUTHORIZATION_FIELD_KEY } from "@vm0/api-contracts/contracts/zero-custom-connectors";
 import { agentComposes } from "@vm0/db/schema/agent-compose";
 import {
   orgCustomConnectors,
   type OrgCustomConnectorField,
+  type OrgCustomConnectorAuthMethod,
   type OrgCustomConnectorHeaderInjection,
   type OrgCustomConnectorQueryInjection,
 } from "@vm0/db/schema/org-custom-connector";
@@ -350,6 +352,7 @@ async function lockCustomConnectorsForReplace(
     readonly fields: readonly OrgCustomConnectorField[];
     readonly headerInjections: readonly OrgCustomConnectorHeaderInjection[];
     readonly queryInjections: readonly OrgCustomConnectorQueryInjection[];
+    readonly authMethods: readonly OrgCustomConnectorAuthMethod[];
   }[] = [];
   for (const id of sortedIds) {
     const [locked] = await db
@@ -361,6 +364,7 @@ async function lockCustomConnectorsForReplace(
         fields: orgCustomConnectors.fields,
         headerInjections: orgCustomConnectors.headerInjections,
         queryInjections: orgCustomConnectors.queryInjections,
+        authMethods: orgCustomConnectors.authMethods,
       })
       .from(orgCustomConnectors)
       .where(
@@ -396,7 +400,15 @@ async function lockCustomConnectorsForReplace(
     }),
   });
   const unconfiguredIds = lockedRows.flatMap((row) => {
-    const fields = customConnectorGrantFields(row.fields);
+    const supportsApi =
+      row.authMethods.length === 0 ||
+      row.authMethods.some((method) => {
+        return method.type === "api";
+      });
+    const supportsOAuth2 = row.authMethods.some((method) => {
+      return method.type === "oauth2";
+    });
+    const fields = supportsApi ? customConnectorGrantFields(row.fields) : [];
     const missingRequired = fields.some((field) => {
       return (
         field.required &&
@@ -415,6 +427,11 @@ async function lockCustomConnectorsForReplace(
         });
       },
     );
+    const hasConfiguredOAuth2 =
+      supportsOAuth2 &&
+      configuredMarkers.has(
+        `${row.id}:secret:${CUSTOM_CONNECTOR_OAUTH_AUTHORIZATION_FIELD_KEY}`,
+      );
     const hasConfiguredPrefix = customConnectorPrefixTemplates(row).some(
       (template) => {
         return customConnectorPrefixTemplateConfigured({
@@ -425,9 +442,10 @@ async function lockCustomConnectorsForReplace(
         });
       },
     );
-    return missingRequired || !hasConfiguredAuth || !hasConfiguredPrefix
-      ? [row.id]
-      : [];
+    const hasConfiguredMethod =
+      hasConfiguredOAuth2 ||
+      (supportsApi && !missingRequired && hasConfiguredAuth);
+    return !hasConfiguredMethod || !hasConfiguredPrefix ? [row.id] : [];
   });
   return { missingIds: [], unconfiguredIds };
 }

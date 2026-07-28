@@ -139,6 +139,7 @@ import {
   encryptPersistentSecretsMap,
 } from "./crypto.utils";
 import {
+  CUSTOM_CONNECTOR_OAUTH_AUTHORIZATION_KEY,
   CustomConnectorRuntimePrefixError,
   customConnectorInternalName,
   customConnectorPrefixTemplateVariableKeys,
@@ -149,6 +150,7 @@ import {
   renderCustomConnectorRuntimePrefix,
   renderTemplateForRuntime,
 } from "./zero-custom-connector.service";
+import { refreshCustomConnectorOAuth2ValuesIfNeeded } from "./custom-connector-oauth2.service";
 import { activePendingRunPredicate } from "./agent-run-activity.service";
 import {
   prepareAgentRunStorage,
@@ -3420,6 +3422,52 @@ class CustomConnectorRuntimeBuildStats {
   }
 }
 
+function customConnectorRuntimeAuth(args: {
+  readonly connector: CustomConnectorRuntimeDataRows[number]["connector"];
+  readonly valueMarkers: ReadonlySet<string>;
+  readonly oauth2Connected: boolean;
+}): {
+  readonly headers: Record<string, string>;
+  readonly query: Record<string, string>;
+} {
+  if (args.oauth2Connected) {
+    return {
+      headers: {
+        Authorization: `\${{ secrets.${customConnectorSecretKey({
+          connectorId: args.connector.id,
+          kind: "secret",
+          key: CUSTOM_CONNECTOR_OAUTH_AUTHORIZATION_KEY,
+        })} }}`,
+      },
+      query: {},
+    };
+  }
+  return {
+    headers: Object.fromEntries(
+      args.connector.headerInjections.flatMap((header) => {
+        const rendered = renderTemplateForRuntime({
+          template: header.valueTemplate,
+          connectorId: args.connector.id,
+          fields: args.connector.fields,
+          configuredValueMarkers: args.valueMarkers,
+        });
+        return rendered === null ? [] : [[header.name, rendered]];
+      }),
+    ),
+    query: Object.fromEntries(
+      args.connector.queryInjections.flatMap((queryInjection) => {
+        const rendered = renderTemplateForRuntime({
+          template: queryInjection.valueTemplate,
+          connectorId: args.connector.id,
+          fields: args.connector.fields,
+          configuredValueMarkers: args.valueMarkers,
+        });
+        return rendered === null ? [] : [[queryInjection.name, rendered]];
+      }),
+    ),
+  };
+}
+
 async function buildCustomConnectorRuntimeContext(args: {
   readonly rows: CustomConnectorRuntimeDataRows;
   readonly featureSwitchContext: FeatureSwitchContext;
@@ -3436,12 +3484,24 @@ async function buildCustomConnectorRuntimeContext(args: {
         return customConnectorValueMarkerKey(value);
       }),
     );
-    const missingRequired = row.connector.fields.some((field) => {
-      return (
-        field.required &&
-        !valueMarkers.has(customConnectorValueMarkerKey(field))
-      );
+    const oauth2Connected = valueMarkers.has(
+      customConnectorValueMarkerKey({
+        kind: "secret",
+        key: CUSTOM_CONNECTOR_OAUTH_AUTHORIZATION_KEY,
+      }),
+    );
+    const supportsApi = row.connector.authMethods.some((method) => {
+      return method.type === "api";
     });
+    const missingRequired =
+      !oauth2Connected &&
+      (!supportsApi ||
+        row.connector.fields.some((field) => {
+          return (
+            field.required &&
+            !valueMarkers.has(customConnectorValueMarkerKey(field))
+          );
+        }));
     stats.recordPhaseDuration("assembleFirewalls", missingRequiredStartedAt);
     if (missingRequired) {
       stats.recordMissingRequiredConnector();
@@ -3449,28 +3509,11 @@ async function buildCustomConnectorRuntimeContext(args: {
     }
     const apis: ExpandedFirewallConfig["apis"] = [];
     const authTemplateStartedAt = now();
-    const headers = Object.fromEntries(
-      row.connector.headerInjections.flatMap((header) => {
-        const rendered = renderTemplateForRuntime({
-          template: header.valueTemplate,
-          connectorId: row.connector.id,
-          fields: row.connector.fields,
-          configuredValueMarkers: valueMarkers,
-        });
-        return rendered === null ? [] : [[header.name, rendered]];
-      }),
-    );
-    const query = Object.fromEntries(
-      row.connector.queryInjections.flatMap((queryInjection) => {
-        const rendered = renderTemplateForRuntime({
-          template: queryInjection.valueTemplate,
-          connectorId: row.connector.id,
-          fields: row.connector.fields,
-          configuredValueMarkers: valueMarkers,
-        });
-        return rendered === null ? [] : [[queryInjection.name, rendered]];
-      }),
-    );
+    const { headers, query } = customConnectorRuntimeAuth({
+      connector: row.connector,
+      valueMarkers,
+      oauth2Connected,
+    });
     stats.recordPhaseDuration("renderAuthTemplates", authTemplateStartedAt);
     if (Object.keys(headers).length === 0 && Object.keys(query).length === 0) {
       stats.recordNoAuthInjectionConnector();
@@ -3554,6 +3597,7 @@ async function loadCustomConnectorContext(
     readonly allowedCustomConnectorIds: readonly string[] | undefined;
     readonly featureSwitchContext: FeatureSwitchContext;
   },
+  signal: AbortSignal,
   timing?: ApiDispatchTimingCollector,
 ): Promise<CustomConnectorRuntimeContext> {
   if (args.allowedCustomConnectorIds?.length === 0) {
@@ -3580,6 +3624,22 @@ async function loadCustomConnectorContext(
   if (rows.length === 0) {
     return { firewalls: [], reservedSecretAliases: undefined, authRefs: [] };
   }
+  const refreshedRows: CustomConnectorRuntimeDataRows[number][] = [];
+  for (const row of rows) {
+    refreshedRows.push({
+      connector: row.connector,
+      values: await refreshCustomConnectorOAuth2ValuesIfNeeded({
+        db,
+        orgId: args.orgId,
+        userId: args.userId,
+        connector: row.connector,
+        values: row.values,
+        featureContext: args.featureSwitchContext,
+        signal,
+      }),
+    });
+    signal.throwIfAborted();
+  }
 
   return await measureApiDispatchTiming(
     timing,
@@ -3587,7 +3647,7 @@ async function loadCustomConnectorContext(
     "nested",
     async () => {
       return await buildCustomConnectorRuntimeContext({
-        rows,
+        rows: refreshedRows,
         featureSwitchContext: args.featureSwitchContext,
         timing,
       });
@@ -6171,6 +6231,7 @@ async function loadRunConnectorContexts(
     readonly orgId: string;
     readonly userId: string;
     readonly connectorScope: EffectiveConnectorScope;
+    readonly signal: AbortSignal;
   },
   connectorCatalogSnapshot: ConnectorRuntimeSnapshot,
   featureSwitchContext: FeatureSwitchContext,
@@ -6216,6 +6277,7 @@ async function loadRunConnectorContexts(
               args.connectorScope.allowedCustomConnectorIds,
             featureSwitchContext,
           },
+          args.signal,
           timing,
         );
       },
@@ -6588,6 +6650,7 @@ async function prepareRunConnectorContexts(args: {
   readonly featureSwitchContext: FeatureSwitchContext;
   readonly connectorCatalogSnapshot: ConnectorRuntimeSnapshot;
   readonly timing: ApiDispatchTimingCollector;
+  readonly signal: AbortSignal;
 }): Promise<
   Awaited<ReturnType<typeof loadRunConnectorContexts>> | CreateRunErrorResult
 > {
@@ -6602,6 +6665,7 @@ async function prepareRunConnectorContexts(args: {
             orgId: args.createArgs.orgId,
             userId: args.createArgs.userId,
             connectorScope: args.connectorScope,
+            signal: args.signal,
           },
           args.connectorCatalogSnapshot,
           args.featureSwitchContext,
@@ -6658,12 +6722,10 @@ async function prepareRunRuntimeContext(args: {
     ? modelProviderFramework(modelProvider)
     : requestedFramework;
   const connectorContexts = await prepareRunConnectorContexts({
-    db: args.db,
-    createArgs: args.createArgs,
+    ...args,
     connectorScope,
     featureSwitchContext,
     connectorCatalogSnapshot,
-    timing: args.timing,
   });
   if (isRouteError(connectorContexts)) {
     return connectorContexts;
@@ -6739,7 +6801,6 @@ async function prepareRunRuntimeContext(args: {
   if (isRouteError(modelUsageContext)) {
     return modelUsageContext;
   }
-
   return {
     framework,
     modelProvider,

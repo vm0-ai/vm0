@@ -1,7 +1,9 @@
 import {
   zeroCustomConnectorByIdContract,
+  zeroCustomConnectorOAuth2Contract,
   zeroCustomConnectorSecretContract,
   zeroCustomConnectorsContract,
+  type CreateCustomConnectorBody,
   type CustomConnectorResponse,
 } from "@vm0/api-contracts/contracts/zero-custom-connectors";
 import {
@@ -3134,6 +3136,188 @@ describe("connectors page", () => {
     expect(
       within(connectDialog).getByPlaceholderText("Code"),
     ).toBeInTheDocument();
+  });
+
+  it("adds API and OAuth 2.0 auth methods and connects with user credentials", async () => {
+    context.mocks.data.org({
+      id: "org_1",
+      slug: "test-org",
+      name: "Test Org",
+      role: "admin",
+    });
+    const createdBodies: CreateCustomConnectorBody[] = [];
+    const oauthStartBodies: {
+      readonly clientId: string;
+      readonly clientSecret: string;
+    }[] = [];
+    let connector: CustomConnectorResponse | null = null;
+    const authWindow = createMockAuthWindow();
+    const browserOpen = context.mocks.browser.open(authWindow);
+
+    context.mocks.api(zeroCustomConnectorsContract.list, ({ respond }) => {
+      return respond(200, { connectors: connector ? [connector] : [] });
+    });
+    context.mocks.api(
+      zeroCustomConnectorsContract.create,
+      ({ body, respond }) => {
+        createdBodies.push(body);
+        connector = customConnector({
+          displayName: body.displayName,
+          prefixes: body.prefixTemplates ?? [],
+          prefixTemplates: body.prefixTemplates ?? [],
+          fields: body.fields ?? [],
+          headerInjections: body.headerInjections ?? [],
+          queryInjections: body.queryInjections ?? [],
+          ...(body.authMethods ? { authMethods: body.authMethods } : {}),
+          connectedAuthMethod: null,
+        });
+        return respond(201, connector);
+      },
+    );
+    context.mocks.api(
+      zeroCustomConnectorOAuth2Contract.start,
+      ({ params, body, respond }) => {
+        expect(params.id).toBe(connector?.id);
+        oauthStartBodies.push(body);
+        if (!connector) {
+          throw new Error("Expected custom connector to exist");
+        }
+        connector = {
+          ...connector,
+          connected: true,
+          connectedAuthMethod: "oauth2",
+          hasSecret: true,
+          missingRequiredFields: [],
+        };
+        authWindow.close();
+        return respond(200, {
+          authorizationUrl: "https://oauth.acme.test/authorize?state=ui-test",
+        });
+      },
+    );
+
+    detachedSetupPage({
+      context,
+      path: "/connectors",
+      featureSwitches: {
+        [FeatureSwitchKey.CustomConnectorOAuth2]: true,
+      },
+    });
+
+    click(await screen.findByText("Custom"));
+    click(await screen.findByText("New connector"));
+
+    const createDialog = await screen.findByRole("dialog", {
+      name: "New custom connector",
+    });
+    await fill(within(createDialog).getByLabelText("Display name"), "Acme API");
+    await fill(
+      within(createDialog).getByLabelText(/Prefixes/u),
+      "https://api.acme.test/v1/",
+    );
+
+    click(buttonByText("Add authentication", createDialog));
+    click(menuItemByText("API authentication"));
+    expect(
+      within(createDialog).getByText("API authentication"),
+    ).toBeInTheDocument();
+
+    click(buttonByText("Add authentication", createDialog));
+    click(menuItemByText("OAuth 2.0"));
+    await fill(
+      within(createDialog).getByLabelText("Authorization URL"),
+      "https://oauth.acme.test/authorize",
+    );
+    await fill(
+      within(createDialog).getByLabelText("Token URL"),
+      "https://oauth.acme.test/token",
+    );
+    await fill(
+      within(createDialog).getByLabelText(/Scopes/u),
+      "search.read search.write",
+    );
+    const redirectUrlInput =
+      within(createDialog).getByLabelText("Redirect URL");
+    if (!(redirectUrlInput instanceof HTMLInputElement)) {
+      throw new Error("Expected custom connector redirect URL input");
+    }
+    expect(redirectUrlInput.value).toContain(
+      "/api/zero/custom-connectors/oauth2/callback",
+    );
+
+    click(buttonByText("Create", createDialog));
+    await waitFor(() => {
+      expect(screen.getByText("Acme API")).toBeInTheDocument();
+    });
+    expect(createdBodies).toHaveLength(1);
+    expect(createdBodies[0]).toMatchObject({
+      displayName: "Acme API",
+      prefixTemplates: ["https://api.acme.test/v1/"],
+      fields: [
+        {
+          key: "secret",
+          kind: "secret",
+          required: true,
+        },
+      ],
+      headerInjections: [
+        {
+          name: "Authorization",
+          valueTemplate: "Bearer {{secrets.secret}}",
+        },
+      ],
+      authMethods: [
+        { type: "api" },
+        {
+          type: "oauth2",
+          authorizationUrl: "https://oauth.acme.test/authorize",
+          tokenUrl: "https://oauth.acme.test/token",
+          scopes: ["search.read", "search.write"],
+          clientAuthentication: "client_secret_post",
+        },
+      ],
+    });
+
+    click(screen.getByText("Connect"));
+    const connectDialog = await screen.findByRole("dialog", {
+      name: "Connect Acme API",
+    });
+    const oauthChoice = within(connectDialog)
+      .getByText("OAuth 2.0")
+      .closest("button");
+    if (!(oauthChoice instanceof HTMLButtonElement)) {
+      throw new Error("Expected OAuth 2.0 authentication choice");
+    }
+    click(oauthChoice);
+    await fill(
+      within(connectDialog).getByLabelText("Client ID"),
+      "user-oauth-client-id",
+    );
+    await fill(
+      within(connectDialog).getByLabelText("Client secret"),
+      "user-oauth-client-secret",
+    );
+    click(buttonByText("Continue", connectDialog));
+
+    await waitFor(() => {
+      expect(authWindow.location.href).toBe(
+        "https://oauth.acme.test/authorize?state=ui-test",
+      );
+      expect(screen.getByText("Connected")).toBeInTheDocument();
+    });
+    expect(browserOpen.calls).toStrictEqual([
+      {
+        url: "about:blank",
+        target: "_blank",
+        features: "width=600,height=700",
+      },
+    ]);
+    expect(oauthStartBodies).toStrictEqual([
+      {
+        clientId: "user-oauth-client-id",
+        clientSecret: "user-oauth-client-secret",
+      },
+    ]);
   });
 
   it("manages a custom connector from creation through deletion", async () => {

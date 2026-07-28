@@ -27,6 +27,7 @@ import { createAuthOrgAgentsBddApi } from "./helpers/api-bdd-auth-org";
 import {
   createConnectorBddApi,
   mockBase44OAuthProvider,
+  mockCustomConnectorOAuth2Provider,
   mockDatadogConnectorOAuth,
   mockDeferredTestOAuthTokenEndpoint,
   mockGitHubConnectorOAuth,
@@ -1508,6 +1509,149 @@ describe("CONN-02: external-code authorization", () => {
 });
 
 describe("CONN-03: custom connectors and connector-owned secrets", () => {
+  it("supports API and OAuth 2.0 auth methods with user-supplied client credentials", async () => {
+    const provider = mockCustomConnectorOAuth2Provider(context);
+    const bdd = createBddApi(context);
+    bdd.acceptAgentStorageWrites();
+    const admin = bdd.user({ orgRole: "org:admin" });
+    const clientSecret = "bdd-custom-oauth-client-secret";
+    const connectorBody = {
+      displayName: "BDD Multi Auth Connector",
+      prefixTemplates: ["https://multi-auth.example.test/v1/"],
+      fields: [
+        {
+          key: "secret",
+          label: "Secret",
+          kind: "secret" as const,
+          required: true,
+        },
+      ],
+      headerInjections: [
+        {
+          name: "Authorization",
+          valueTemplate: "Bearer {{secrets.secret}}",
+        },
+      ],
+      queryInjections: [],
+      authMethods: [
+        { type: "api" as const },
+        {
+          type: "oauth2" as const,
+          authorizationUrl: provider.authorizationUrl,
+          tokenUrl: provider.tokenUrl,
+          scopes: ["read", "write"],
+          clientAuthentication: "client_secret_post" as const,
+        },
+      ],
+    };
+
+    const disabled = await connectorsApi.requestCreateCustomConnector(
+      admin,
+      connectorBody,
+      [403],
+    );
+    expectApiError(disabled.body);
+    expect(disabled.body.error.message).toContain("not enabled");
+
+    await connectorsApi.updateFeatureSwitches(admin, {
+      [FeatureSwitchKey.CustomConnectorOAuth2]: true,
+    });
+    const created = await connectorsApi.createCustomConnector(
+      admin,
+      connectorBody,
+    );
+    expect(created).toMatchObject({
+      authMethods: connectorBody.authMethods,
+      connected: false,
+      connectedAuthMethod: null,
+    });
+
+    const authorizationUrl = await connectorsApi.startCustomConnectorOAuth2(
+      admin,
+      created.id,
+      {
+        clientId: "bdd-custom-oauth-client-id",
+        clientSecret,
+      },
+    );
+    const authorization = new URL(authorizationUrl);
+    expect(authorization.origin + authorization.pathname).toBe(
+      provider.authorizationUrl,
+    );
+    expect(authorization.searchParams.get("response_type")).toBe("code");
+    expect(authorization.searchParams.get("client_id")).toBe(
+      "bdd-custom-oauth-client-id",
+    );
+    expect(authorization.searchParams.get("scope")).toBe("read write");
+    const redirectUri = authorization.searchParams.get("redirect_uri");
+    if (!redirectUri) {
+      throw new Error("Expected custom connector OAuth redirect URI");
+    }
+    expect(new URL(redirectUri).pathname).toBe(
+      "/api/zero/custom-connectors/oauth2/callback",
+    );
+    expectNoVisibleSecret(authorizationUrl, clientSecret);
+
+    const callback = await connectorsApi.completeCustomConnectorOAuth2Callback({
+      code: "bdd-custom-oauth-code",
+      state: stateFromAuthorizationUrl(authorizationUrl),
+    });
+    expect(redirectLocation(callback).pathname).toBe(
+      "/connectors/custom/callback/success",
+    );
+    expect(provider.tokenBodies).toHaveLength(1);
+    expect(provider.tokenBodies[0]?.get("grant_type")).toBe(
+      "authorization_code",
+    );
+    expect(provider.tokenBodies[0]?.get("code")).toBe("bdd-custom-oauth-code");
+    expect(provider.tokenBodies[0]?.get("client_id")).toBe(
+      "bdd-custom-oauth-client-id",
+    );
+    expect(provider.tokenBodies[0]?.get("client_secret")).toBe(clientSecret);
+    expect(provider.authorizationHeaders).toStrictEqual([null]);
+
+    const oauthConnected = await connectorsApi.listCustomConnectors(admin);
+    expect(
+      oauthConnected.find((connector) => {
+        return connector.id === created.id;
+      }),
+    ).toMatchObject({
+      connected: true,
+      connectedAuthMethod: "oauth2",
+      hasSecret: true,
+    });
+    expectNoVisibleSecret(oauthConnected, clientSecret);
+    expectNoVisibleSecret(oauthConnected, "custom-oauth-initial-access-token");
+    expectNoVisibleSecret(oauthConnected, "custom-oauth-refresh-token");
+
+    const agent = await bdd.createAgent(admin, {
+      displayName: "BDD Multi Auth Agent",
+    });
+    await connectorsApi.updateAgentCustomConnectors(admin, agent.agentId, [
+      created.id,
+    ]);
+
+    await connectorsApi.setCustomConnectorSecret(
+      admin,
+      created.id,
+      "bdd-api-secret",
+    );
+    const apiConnected = await connectorsApi.listCustomConnectors(admin);
+    expect(
+      apiConnected.find((connector) => {
+        return connector.id === created.id;
+      }),
+    ).toMatchObject({
+      connected: true,
+      connectedAuthMethod: "api",
+      hasSecret: true,
+    });
+    expectNoVisibleSecret(apiConnected, "bdd-api-secret");
+
+    await connectorsApi.deleteCustomConnector(admin, created.id);
+    await bdd.deleteAgent(admin, agent.agentId);
+  });
+
   it("creates, patches, secrets, enables for an agent, rejects cross-org ids, and deletes through APIs", async () => {
     const bdd = createBddApi(context);
     bdd.acceptAgentStorageWrites();
@@ -2043,6 +2187,18 @@ describe("CONN-03: custom connectors and connector-owned secrets", () => {
         );
       expectApiError(secretDelete.body);
       expect(secretDelete.body.error.code).toBe("UNAUTHORIZED");
+
+      const oauthStart = await connectorsApi.requestStartCustomConnectorOAuth2(
+        actor,
+        connectorId,
+        {
+          clientId: "unauthorized-client-id",
+          clientSecret: "unauthorized-client-secret",
+        },
+        [401],
+      );
+      expectApiError(oauthStart.body);
+      expect(oauthStart.body.error.code).toBe("UNAUTHORIZED");
     }
   });
 

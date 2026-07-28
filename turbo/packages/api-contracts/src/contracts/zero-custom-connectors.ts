@@ -4,6 +4,9 @@ import { apiErrorSchema } from "./errors";
 
 const c = initContract();
 
+export const CUSTOM_CONNECTOR_OAUTH_AUTHORIZATION_FIELD_KEY =
+  "__oauth_authorization";
+
 export const customConnectorFieldKindSchema = z.enum(["secret", "variable"]);
 export type CustomConnectorFieldKind = z.infer<
   typeof customConnectorFieldKindSchema
@@ -34,6 +37,34 @@ export type CustomConnectorQueryInjection = z.infer<
   typeof customConnectorQueryInjectionSchema
 >;
 
+export const customConnectorApiAuthMethodSchema = z.object({
+  type: z.literal("api"),
+});
+
+export const customConnectorOAuth2AuthMethodSchema = z.object({
+  type: z.literal("oauth2"),
+  authorizationUrl: z.string().url().max(2048),
+  tokenUrl: z.string().url().max(2048),
+  scopes: z.array(z.string().min(1).max(256)).max(100),
+  clientAuthentication: z.enum(["client_secret_basic", "client_secret_post"]),
+});
+
+export const customConnectorAuthMethodSchema = z.discriminatedUnion("type", [
+  customConnectorApiAuthMethodSchema,
+  customConnectorOAuth2AuthMethodSchema,
+]);
+export type CustomConnectorAuthMethod = z.infer<
+  typeof customConnectorAuthMethodSchema
+>;
+export type CustomConnectorOAuth2AuthMethod = z.infer<
+  typeof customConnectorOAuth2AuthMethodSchema
+>;
+
+export const customConnectorAuthMethodsSchema = z
+  .array(customConnectorAuthMethodSchema)
+  .min(1)
+  .max(2);
+
 /**
  * Custom connector response — safe to return to any org member.
  * Never includes any secret material.
@@ -49,6 +80,8 @@ export const customConnectorResponseSchema = z.object({
   fields: z.array(customConnectorFieldSchema),
   headerInjections: z.array(customConnectorHeaderInjectionSchema),
   queryInjections: z.array(customConnectorQueryInjectionSchema),
+  authMethods: customConnectorAuthMethodsSchema.optional(),
+  connectedAuthMethod: z.enum(["api", "oauth2"]).nullable().optional(),
   connected: z.boolean(),
   missingRequiredFields: z.array(z.string()),
   configuredFieldKeys: z.array(z.string()),
@@ -73,6 +106,7 @@ export const createCustomConnectorBodySchema = z.object({
   fields: z.array(customConnectorFieldSchema).optional(),
   headerInjections: z.array(customConnectorHeaderInjectionSchema).optional(),
   queryInjections: z.array(customConnectorQueryInjectionSchema).optional(),
+  authMethods: customConnectorAuthMethodsSchema.optional(),
   slug: z.string().optional(),
 });
 export type CreateCustomConnectorBody = z.infer<
@@ -92,6 +126,18 @@ export type UpdateCustomConnectorBody = z.infer<
 
 export const setCustomConnectorSecretBodySchema = z.object({
   value: z.string().min(1),
+});
+
+export const startCustomConnectorOAuth2BodySchema = z.object({
+  clientId: z.string().min(1).max(2048),
+  clientSecret: z.string().min(1).max(4096),
+});
+export type StartCustomConnectorOAuth2Body = z.infer<
+  typeof startCustomConnectorOAuth2BodySchema
+>;
+
+export const startCustomConnectorOAuth2ResponseSchema = z.object({
+  authorizationUrl: z.string().url(),
 });
 
 export const customConnectorValueInputSchema = z.object({
@@ -266,6 +312,43 @@ export const zeroCustomConnectorSecretContract = c.router({
 });
 export type ZeroCustomConnectorSecretContract =
   typeof zeroCustomConnectorSecretContract;
+
+export const zeroCustomConnectorOAuth2Contract = c.router({
+  start: {
+    method: "POST",
+    path: "/api/zero/custom-connectors/:id/oauth2/start",
+    headers: authHeadersSchema,
+    pathParams: z.object({ id: z.string().uuid() }),
+    body: startCustomConnectorOAuth2BodySchema,
+    responses: {
+      200: startCustomConnectorOAuth2ResponseSchema,
+      400: apiErrorSchema,
+      401: apiErrorSchema,
+      403: apiErrorSchema,
+      404: apiErrorSchema,
+      500: apiErrorSchema,
+    },
+    summary: "Start OAuth 2.0 for a custom connector",
+  },
+  callback: {
+    method: "GET",
+    path: "/api/zero/custom-connectors/oauth2/callback",
+    query: z
+      .object({
+        code: z.string().optional(),
+        state: z.string().optional(),
+        error: z.string().optional(),
+        error_description: z.string().optional(),
+      })
+      .catchall(z.string()),
+    responses: {
+      307: c.noBody(),
+    },
+    summary: "Complete OAuth 2.0 for a custom connector",
+  },
+});
+export type ZeroCustomConnectorOAuth2Contract =
+  typeof zeroCustomConnectorOAuth2Contract;
 
 export const zeroCustomConnectorProposalContract = c.router({
   save: {

@@ -20,6 +20,7 @@ type LookupCallback = (
 
 interface RequestOptionsLike {
   readonly headers?: HeadersInit;
+  readonly method?: string;
   readonly lookup?: (
     hostname: string,
     options: unknown,
@@ -601,9 +602,9 @@ async function mockPinnedRequestModule<TModule extends object>(
     }
     const [url, options, callback] = args;
     const req = new EventEmitter() as InstanceType<typeof EventEmitter> & {
-      end: () => void;
+      end: (body?: string) => void;
     };
-    req.end = () => {
+    req.end = (requestBody?: string) => {
       queueMicrotask(() => {
         void (async () => {
           options.lookup?.(url.hostname, {}, (error, address) => {
@@ -613,7 +614,12 @@ async function mockPinnedRequestModule<TModule extends object>(
             apiTestMocks.nodeRequest.pinnedAddresses.push(address);
           });
           const fetched = await fetch(url, {
+            method: options.method,
             headers: options.headers,
+            body:
+              options.method === "GET" || options.method === "HEAD"
+                ? undefined
+                : requestBody,
             redirect: "manual",
           });
           const headers: Record<string, string> = {};

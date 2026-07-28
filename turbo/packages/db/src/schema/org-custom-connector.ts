@@ -15,20 +15,23 @@ import type {
   OrgCustomConnectorPrefixes,
   OrgCustomConnectorPrefixTemplates,
   OrgCustomConnectorQueryInjections,
+  OrgCustomConnectorAuthMethods,
 } from "@vm0/db/jsonb-contracts/org-custom-connector";
 export type {
+  OrgCustomConnectorAuthMethod,
+  OrgCustomConnectorApiAuthMethod,
   OrgCustomConnectorField,
   OrgCustomConnectorHeaderInjection,
+  OrgCustomConnectorOAuth2AuthMethod,
   OrgCustomConnectorQueryInjection,
 } from "@vm0/db/jsonb-contracts/org-custom-connector";
 
 /**
  * Org-defined custom connectors (v1 of the connector gallery).
  *
- * An admin registers a set of URL prefixes plus a single header template
- * (e.g. `Authorization: Bearer {{secret}}`). The runtime mitm proxy injects
- * each user's own secret at request time — the secret never enters the
- * sandbox as an env var.
+ * An admin registers URL prefixes plus one or more authentication methods.
+ * The runtime mitm proxy injects each user's API or OAuth credential at
+ * request time, so credential values never enter the sandbox as env vars.
  */
 export const orgCustomConnectors = pgTable(
   "org_custom_connectors",
@@ -56,6 +59,10 @@ export const orgCustomConnectors = pgTable(
       .notNull()
       .default(sql`'[]'::jsonb`)
       .$type<OrgCustomConnectorQueryInjections>(),
+    authMethods: jsonb("auth_methods")
+      .notNull()
+      .default(sql`'[]'::jsonb`)
+      .$type<OrgCustomConnectorAuthMethods>(),
     createdBy: text("created_by").notNull(),
     createdAt: timestamp("created_at").defaultNow().notNull(),
     updatedAt: timestamp("updated_at").defaultNow().notNull(),

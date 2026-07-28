@@ -2,14 +2,19 @@ import { command, computed, state } from "ccstate";
 import { toast } from "@vm0/ui/components/ui/sonner";
 import {
   zeroCustomConnectorByIdContract,
+  zeroCustomConnectorOAuth2Contract,
   zeroCustomConnectorSecretContract,
   zeroCustomConnectorsContract,
+  type CreateCustomConnectorBody,
+  type CustomConnectorAuthMethod,
   type CustomConnectorResponse,
 } from "@vm0/api-contracts/contracts/zero-custom-connectors";
+import { IN_VITEST } from "../../../env.ts";
+import { i18n } from "../../../i18n/index.ts";
 import { accept } from "../../../lib/accept.ts";
 import { zeroClient$ } from "../../api-client.ts";
+import { setLoop, withCleanup } from "../../utils.ts";
 import { sanitizeTokenInput } from "./token-input.ts";
-import { i18n } from "../../../i18n/index.ts";
 
 const internalReload$ = state(0);
 
@@ -50,12 +55,7 @@ const bumpReload$ = command(({ set }) => {
 export const createCustomConnector$ = command(
   async (
     { get, set },
-    body: {
-      displayName: string;
-      prefixes: string[];
-      headerName: string;
-      headerTemplate: string;
-    },
+    body: CreateCustomConnectorBody,
     _signal: AbortSignal,
   ): Promise<CustomConnectorResponse> => {
     const createClient = get(zeroClient$);
@@ -174,6 +174,66 @@ export const clearCustomConnectorSecret$ = command(
   },
 );
 
+export const connectCustomConnectorOAuth2$ = command(
+  async (
+    { get, set },
+    args: {
+      readonly id: string;
+      readonly clientId: string;
+      readonly clientSecret: string;
+    },
+    signal: AbortSignal,
+  ): Promise<void> => {
+    const authWindow = window.open(
+      "about:blank",
+      "_blank",
+      "width=600,height=700",
+    );
+    if (!authWindow) {
+      throw new Error("Failed to open authorization window");
+    }
+    authWindow.opener = null;
+    let navigated = false;
+    await withCleanup(
+      (async () => {
+        const createClient = get(zeroClient$);
+        const client = createClient(zeroCustomConnectorOAuth2Contract, {
+          apiBase: "api",
+        });
+        const result = await accept(
+          client.start({
+            params: { id: args.id },
+            body: {
+              clientId: args.clientId.trim(),
+              clientSecret: args.clientSecret,
+            },
+            fetchOptions: { signal },
+          }),
+          [200],
+        );
+        signal.throwIfAborted();
+        authWindow.location.href = result.body.authorizationUrl;
+        navigated = true;
+      })(),
+      () => {
+        if (!navigated) {
+          authWindow.close();
+        }
+      },
+    );
+    signal.throwIfAborted();
+    await setLoop(
+      () => {
+        return authWindow.closed;
+      },
+      IN_VITEST ? 10 : 250,
+      signal,
+    );
+    signal.throwIfAborted();
+    set(bumpReload$);
+  },
+);
+
 // ---------------------------------------------------------------------------
 // Settings page dialog state — tracks which dialog is open.
 // ---------------------------------------------------------------------------
@@ -199,6 +259,11 @@ export const openCustomConnectorRenameDialog$ = command(
 );
 export const openCustomConnectorConnectDialog$ = command(
   ({ set }, connector: CustomConnectorResponse) => {
+    const methods = connector.authMethods ?? [{ type: "api" as const }];
+    set(internalConnectForm$, {
+      ...CONNECT_FORM_DEFAULTS,
+      authMethod: methods.length === 1 ? methods[0]!.type : null,
+    });
     set(internalDialog$, { kind: "connect", connector });
   },
 );
@@ -215,11 +280,16 @@ export const closeCustomConnectorDialog$ = command(({ set }) => {
 // Create form state
 // ---------------------------------------------------------------------------
 
-interface CustomConnectorCreateForm {
+export interface CustomConnectorCreateForm {
   displayName: string;
   prefixesRaw: string;
   headerName: string;
   headerTemplate: string;
+  authMethodTypes: readonly CustomConnectorAuthMethod["type"][];
+  oauthAuthorizationUrl: string;
+  oauthTokenUrl: string;
+  oauthScopesRaw: string;
+  oauthClientAuthentication: "client_secret_basic" | "client_secret_post";
 }
 
 const CREATE_FORM_DEFAULTS = {
@@ -227,6 +297,11 @@ const CREATE_FORM_DEFAULTS = {
   prefixesRaw: "",
   headerName: "Authorization",
   headerTemplate: "Bearer {{secret}}",
+  authMethodTypes: [],
+  oauthAuthorizationUrl: "",
+  oauthTokenUrl: "",
+  oauthScopesRaw: "",
+  oauthClientAuthentication: "client_secret_post",
 } as const satisfies CustomConnectorCreateForm;
 
 const internalCreateForm$ =
@@ -235,9 +310,36 @@ export const customConnectorCreateForm$ = computed((get) => {
   return get(internalCreateForm$);
 });
 export const setCustomConnectorCreateField$ = command(
-  ({ get, set }, field: keyof CustomConnectorCreateForm, value: string) => {
+  (
+    { get, set },
+    field: Exclude<keyof CustomConnectorCreateForm, "authMethodTypes">,
+    value: string,
+  ) => {
     const prev = get(internalCreateForm$);
     set(internalCreateForm$, { ...prev, [field]: value });
+  },
+);
+export const addCustomConnectorAuthMethod$ = command(
+  ({ get, set }, type: CustomConnectorAuthMethod["type"]) => {
+    const form = get(internalCreateForm$);
+    if (form.authMethodTypes.includes(type)) {
+      return;
+    }
+    set(internalCreateForm$, {
+      ...form,
+      authMethodTypes: [...form.authMethodTypes, type],
+    });
+  },
+);
+export const removeCustomConnectorAuthMethod$ = command(
+  ({ get, set }, type: CustomConnectorAuthMethod["type"]) => {
+    const form = get(internalCreateForm$);
+    set(internalCreateForm$, {
+      ...form,
+      authMethodTypes: form.authMethodTypes.filter((value) => {
+        return value !== type;
+      }),
+    });
   },
 );
 export const resetCustomConnectorCreateForm$ = command(({ set }) => {
@@ -262,15 +364,36 @@ export const setCustomConnectorRenameInput$ = command(
 // Connect form state
 // ---------------------------------------------------------------------------
 
-const internalConnectInput$ = state("");
-export const customConnectorConnectInput$ = computed((get) => {
-  return get(internalConnectInput$);
+interface CustomConnectorConnectForm {
+  readonly authMethod: CustomConnectorAuthMethod["type"] | null;
+  readonly apiSecret: string;
+  readonly clientId: string;
+  readonly clientSecret: string;
+}
+
+const CONNECT_FORM_DEFAULTS = {
+  authMethod: null,
+  apiSecret: "",
+  clientId: "",
+  clientSecret: "",
+} as const satisfies CustomConnectorConnectForm;
+
+const internalConnectForm$ = state<CustomConnectorConnectForm>(
+  CONNECT_FORM_DEFAULTS,
+);
+export const customConnectorConnectForm$ = computed((get) => {
+  return get(internalConnectForm$);
 });
-export const setCustomConnectorConnectInput$ = command(
-  ({ set }, value: string) => {
-    set(internalConnectInput$, value);
+export const setCustomConnectorConnectField$ = command(
+  (
+    { get, set },
+    field: keyof CustomConnectorConnectForm,
+    value: string | null,
+  ) => {
+    const form = get(internalConnectForm$);
+    set(internalConnectForm$, { ...form, [field]: value });
   },
 );
 export const resetCustomConnectorConnectInput$ = command(({ set }) => {
-  set(internalConnectInput$, "");
+  set(internalConnectForm$, CONNECT_FORM_DEFAULTS);
 });

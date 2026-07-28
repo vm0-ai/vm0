@@ -60,7 +60,10 @@ import { createChatCallbacksApi } from "./helpers/api-bdd-chat-callbacks";
 import { createChatFilesBddApi } from "./helpers/api-bdd-chat-files";
 import { createComposesBddApi } from "./helpers/api-bdd-composes";
 import { createComputerUseBddApi } from "./helpers/api-bdd-computer-use";
-import { createConnectorBddApi } from "./helpers/api-bdd-connectors";
+import {
+  createConnectorBddApi,
+  mockCustomConnectorOAuth2Provider,
+} from "./helpers/api-bdd-connectors";
 import { createFirewallApi } from "./helpers/api-bdd-firewall";
 import { createMiscRoutesApi } from "./helpers/api-bdd-misc";
 import { createRunReadsApi } from "./helpers/api-bdd-run-reads";
@@ -7232,6 +7235,106 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
     await api.requestCancelRun(actor, run.runId, [200]);
     const cancelled = await api.readRun(actor, run.runId);
     expect(cancelled.status).toBe("cancelled");
+  });
+
+  it("refreshes and injects custom connector OAuth 2.0 authorization", async () => {
+    const provider = mockCustomConnectorOAuth2Provider(context);
+    const api = createRunsApi(context);
+    const connectors = createConnectorBddApi(context);
+    const fw = createFirewallApi(context);
+    const { actor, agentId, runnerGroup } = await entitledRunActor();
+
+    await connectors.updateFeatureSwitches(actor, {
+      [FeatureSwitchKey.CustomConnectorOAuth2]: true,
+    });
+    const custom = await connectors.createCustomConnector(actor, {
+      displayName: "BDD OAuth 2.0 Runtime API",
+      prefixTemplates: ["https://oauth-runtime.example.test/api/"],
+      fields: [],
+      headerInjections: [],
+      queryInjections: [],
+      authMethods: [
+        {
+          type: "oauth2",
+          authorizationUrl: provider.authorizationUrl,
+          tokenUrl: provider.tokenUrl,
+          scopes: ["read"],
+          clientAuthentication: "client_secret_basic",
+        },
+      ],
+    });
+    const authorizationUrl = await connectors.startCustomConnectorOAuth2(
+      actor,
+      custom.id,
+      {
+        clientId: "runtime-client-id",
+        clientSecret: "runtime-client-secret",
+      },
+    );
+    const state = new URL(authorizationUrl).searchParams.get("state");
+    if (!state) {
+      throw new Error("Expected custom connector OAuth state");
+    }
+    await connectors.completeCustomConnectorOAuth2Callback({
+      code: "runtime-authorization-code",
+      state,
+    });
+    await connectors.updateAgentCustomConnectors(actor, agentId, [custom.id]);
+
+    const run = await api.createRun(actor, {
+      agentId,
+      prompt: "use the OAuth custom connector",
+      modelProvider: "anthropic-api-key",
+    });
+    expect(provider.tokenBodies).toHaveLength(2);
+    expect(
+      provider.tokenBodies.map((body) => {
+        return body.get("grant_type");
+      }),
+    ).toStrictEqual(["authorization_code", "refresh_token"]);
+    expect(provider.tokenBodies[1]?.get("refresh_token")).toBe(
+      "custom-oauth-refresh-token",
+    );
+    const expectedBasicAuthorization = `Basic ${Buffer.from(
+      "runtime-client-id:runtime-client-secret",
+      "utf8",
+    ).toString("base64")}`;
+    expect(provider.authorizationHeaders).toStrictEqual([
+      expectedBasicAuthorization,
+      expectedBasicAuthorization,
+    ]);
+
+    await api.heartbeatRunner(runnerGroup);
+    const claim = await api.claimRunnerJob(run.runId);
+    const internalName = `custom_connector_${custom.id.replaceAll("-", "")}`;
+    const secretKey = `CUSTOM_${custom.id.replaceAll("-", "")}_S___OAUTH_AUTHORIZATION`;
+    const customApis = inlineFirewallApis(claim.firewalls, internalName);
+    expect(customApis).toHaveLength(1);
+    expect(customApis[0]?.auth?.headers?.Authorization).toBe(
+      `\${{ secrets.${secretKey} }}`,
+    );
+    expect(claim.secretValues).not.toContain(
+      "Bearer custom-oauth-refreshed-access-token",
+    );
+
+    const resolved = await fw.requestFirewallAuth(
+      { authorization: `Bearer ${claim.sandboxToken}` },
+      {
+        encryptedSecrets: fw.encryptedSecretsBody({}),
+        authHeaders: {
+          Authorization: `\${{ secrets.${secretKey} }}`,
+        },
+      },
+      [200],
+    );
+    if (resolved.status !== 200) {
+      throw new Error("Expected custom OAuth firewall auth to resolve");
+    }
+    expect(resolved.body.headers).toStrictEqual({
+      Authorization: "Bearer custom-oauth-refreshed-access-token",
+    });
+
+    await api.requestCancelRun(actor, run.runId, [200]);
   });
 
   it("resolves custom connector auth from run-scoped refs when encrypted secrets omit aliases", async () => {

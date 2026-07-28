@@ -1,16 +1,19 @@
 import { command, computed, type Computed } from "ccstate";
 import { randomUUID } from "node:crypto";
 import { and, eq, inArray } from "drizzle-orm";
-import type {
-  CreateCustomConnectorBody,
-  CustomConnectorField,
-  CustomConnectorFieldKind,
-  CustomConnectorHeaderInjection,
-  CustomConnectorProposal,
-  CustomConnectorQueryInjection,
-  CustomConnectorResponse,
-  CustomConnectorValueInput,
-  UpdateCustomConnectorBody,
+import {
+  CUSTOM_CONNECTOR_OAUTH_AUTHORIZATION_FIELD_KEY,
+  type CreateCustomConnectorBody,
+  type CustomConnectorAuthMethod,
+  type CustomConnectorField,
+  type CustomConnectorFieldKind,
+  type CustomConnectorHeaderInjection,
+  type CustomConnectorOAuth2AuthMethod,
+  type CustomConnectorProposal,
+  type CustomConnectorQueryInjection,
+  type CustomConnectorResponse,
+  type CustomConnectorValueInput,
+  type UpdateCustomConnectorBody,
 } from "@vm0/api-contracts/contracts/zero-custom-connectors";
 import {
   canonicalizeFirewallBaseUrl,
@@ -49,11 +52,24 @@ const TEMPLATE_REFERENCE_REGEX =
 const VARIABLE_REFERENCE_REGEX = /\{\{\s*variables\.[a-z][a-z0-9_]*\s*\}\}/;
 const TEMPLATE_PLACEHOLDER_VALUE = "placeholder";
 const HOST_TEMPLATE_VALUE_UNSAFE_REGEX = /[/?#\\@:]/;
+export const CUSTOM_CONNECTOR_OAUTH_AUTHORIZATION_KEY =
+  CUSTOM_CONNECTOR_OAUTH_AUTHORIZATION_FIELD_KEY;
+export const CUSTOM_CONNECTOR_OAUTH_CLIENT_ID_KEY = "__oauth_client_id";
+export const CUSTOM_CONNECTOR_OAUTH_CLIENT_SECRET_KEY = "__oauth_client_secret";
+export const CUSTOM_CONNECTOR_OAUTH_REFRESH_TOKEN_KEY = "__oauth_refresh_token";
+export const CUSTOM_CONNECTOR_OAUTH_EXPIRES_AT_KEY = "__oauth_expires_at";
+export const CUSTOM_CONNECTOR_OAUTH_VALUE_KEYS = [
+  CUSTOM_CONNECTOR_OAUTH_AUTHORIZATION_KEY,
+  CUSTOM_CONNECTOR_OAUTH_CLIENT_ID_KEY,
+  CUSTOM_CONNECTOR_OAUTH_CLIENT_SECRET_KEY,
+  CUSTOM_CONNECTOR_OAUTH_REFRESH_TOKEN_KEY,
+  CUSTOM_CONNECTOR_OAUTH_EXPIRES_AT_KEY,
+] as const;
 
 type BadRequestResponse = ReturnType<typeof badRequestMessage>;
 type NotFoundResponse = ReturnType<typeof notFound>;
 
-interface CustomConnectorRow {
+export interface CustomConnectorRow {
   readonly id: string;
   readonly orgId: string;
   readonly slug: string;
@@ -65,6 +81,7 @@ interface CustomConnectorRow {
   readonly fields: readonly CustomConnectorField[];
   readonly headerInjections: readonly CustomConnectorHeaderInjection[];
   readonly queryInjections: readonly CustomConnectorQueryInjection[];
+  readonly authMethods: readonly CustomConnectorAuthMethod[];
   readonly createdBy: string;
   readonly createdAt: Date;
   readonly updatedAt: Date;
@@ -76,6 +93,7 @@ interface DefinitionInput {
   readonly fields: readonly CustomConnectorField[];
   readonly headerInjections: readonly CustomConnectorHeaderInjection[];
   readonly queryInjections: readonly CustomConnectorQueryInjection[];
+  readonly authMethods?: readonly CustomConnectorAuthMethod[];
   readonly slug?: string;
 }
 
@@ -85,6 +103,7 @@ interface ValidatedDefinition {
   readonly fields: readonly CustomConnectorField[];
   readonly headerInjections: readonly CustomConnectorHeaderInjection[];
   readonly queryInjections: readonly CustomConnectorQueryInjection[];
+  readonly authMethods: readonly CustomConnectorAuthMethod[];
   readonly slug: string | undefined;
 }
 
@@ -105,7 +124,7 @@ export class CustomConnectorRuntimePrefixError extends Error {
   }
 }
 
-interface StoredValueRow extends ValueMarker {
+export interface StoredValueRow extends ValueMarker {
   readonly encryptedValue: string;
 }
 
@@ -196,6 +215,39 @@ function queryInjectionArray(
   });
 }
 
+function authMethodArray(value: unknown): readonly CustomConnectorAuthMethod[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+  return value.filter((item): item is CustomConnectorAuthMethod => {
+    if (typeof item !== "object" || item === null || !("type" in item)) {
+      return false;
+    }
+    if (item.type === "api") {
+      return true;
+    }
+    if (
+      item.type !== "oauth2" ||
+      !("authorizationUrl" in item) ||
+      !("tokenUrl" in item) ||
+      !("scopes" in item) ||
+      !("clientAuthentication" in item)
+    ) {
+      return false;
+    }
+    return (
+      typeof item.authorizationUrl === "string" &&
+      typeof item.tokenUrl === "string" &&
+      Array.isArray(item.scopes) &&
+      item.scopes.every((scope: unknown) => {
+        return typeof scope === "string";
+      }) &&
+      (item.clientAuthentication === "client_secret_basic" ||
+        item.clientAuthentication === "client_secret_post")
+    );
+  });
+}
+
 function canonicalFieldsFromLegacy(): readonly CustomConnectorField[] {
   return [
     {
@@ -226,8 +278,16 @@ export function normaliseCustomConnectorRow(
   row: typeof orgCustomConnectors.$inferSelect,
 ): CustomConnectorRow {
   const prefixTemplates = stringArray(row.prefixTemplates);
-  const fields = fieldArray(row.fields);
-  const headerInjections = headerInjectionArray(row.headerInjections);
+  const storedAuthMethods = authMethodArray(row.authMethods);
+  const authMethods =
+    storedAuthMethods.length > 0
+      ? storedAuthMethods
+      : [{ type: "api" as const }];
+  const supportsApi = authMethods.some((method) => {
+    return method.type === "api";
+  });
+  const storedFields = fieldArray(row.fields);
+  const storedHeaderInjections = headerInjectionArray(row.headerInjections);
   const queryInjections = queryInjectionArray(row.queryInjections);
   const legacyPrefixes = stringArray(row.prefixes);
   return {
@@ -235,20 +295,40 @@ export function normaliseCustomConnectorRow(
     prefixes: legacyPrefixes,
     prefixTemplates:
       prefixTemplates.length > 0 ? prefixTemplates : legacyPrefixes,
-    fields: fields.length > 0 ? fields : canonicalFieldsFromLegacy(),
+    fields:
+      storedFields.length > 0
+        ? storedFields
+        : supportsApi
+          ? canonicalFieldsFromLegacy()
+          : [],
     headerInjections:
-      headerInjections.length > 0
-        ? headerInjections
-        : [
-            {
-              name: row.headerName,
-              valueTemplate: canonicalHeaderTemplateFromLegacy(
-                row.headerTemplate,
-              ),
-            },
-          ],
+      storedHeaderInjections.length > 0
+        ? storedHeaderInjections
+        : supportsApi
+          ? [
+              {
+                name: row.headerName,
+                valueTemplate: canonicalHeaderTemplateFromLegacy(
+                  row.headerTemplate,
+                ),
+              },
+            ]
+          : [],
     queryInjections,
+    authMethods,
   };
+}
+
+export function customConnectorOAuth2AuthMethod(
+  connector: Pick<CustomConnectorRow, "authMethods">,
+): CustomConnectorOAuth2AuthMethod | null {
+  return (
+    connector.authMethods.find(
+      (method): method is CustomConnectorOAuth2AuthMethod => {
+        return method.type === "oauth2";
+      },
+    ) ?? null
+  );
 }
 
 export function customConnectorValueMarkerKey(marker: {
@@ -305,18 +385,42 @@ export function serialiseCustomConnector(args: {
   readonly row: CustomConnectorRow;
   readonly valueMarkers: readonly ValueMarker[];
 }): CustomConnectorResponse {
+  const connectorMarkers = args.valueMarkers.filter((marker) => {
+    return marker.connectorId === args.row.id;
+  });
   const missingRequiredFields = computeMissingRequiredFields({
     fields: args.row.fields,
-    markers: args.valueMarkers.filter((marker) => {
-      return marker.connectorId === args.row.id;
-    }),
+    markers: connectorMarkers,
   });
   const configured = configuredFieldKeys({
     fields: args.row.fields,
-    markers: args.valueMarkers.filter((marker) => {
-      return marker.connectorId === args.row.id;
-    }),
+    markers: connectorMarkers,
   });
+  const supportsApi = args.row.authMethods.some((method) => {
+    return method.type === "api";
+  });
+  const supportsOAuth2 = args.row.authMethods.some((method) => {
+    return method.type === "oauth2";
+  });
+  const oauth2Connected =
+    supportsOAuth2 &&
+    connectorMarkers.some((marker) => {
+      return (
+        marker.kind === "secret" &&
+        marker.key === CUSTOM_CONNECTOR_OAUTH_AUTHORIZATION_KEY
+      );
+    });
+  const apiConnected = supportsApi && missingRequiredFields.length === 0;
+  const connectedAuthMethod = oauth2Connected
+    ? ("oauth2" as const)
+    : apiConnected
+      ? ("api" as const)
+      : null;
+  const responseMissingRequiredFields = connectedAuthMethod
+    ? []
+    : supportsApi
+      ? missingRequiredFields
+      : ["oauth2"];
   return {
     id: args.row.id,
     slug: args.row.slug,
@@ -330,12 +434,14 @@ export function serialiseCustomConnector(args: {
     fields: [...args.row.fields],
     headerInjections: [...args.row.headerInjections],
     queryInjections: [...args.row.queryInjections],
-    connected: missingRequiredFields.length === 0,
-    missingRequiredFields: [...missingRequiredFields],
+    authMethods: [...args.row.authMethods],
+    connectedAuthMethod,
+    connected: connectedAuthMethod !== null,
+    missingRequiredFields: [...responseMissingRequiredFields],
     configuredFieldKeys: [...configured],
     createdAt: args.row.createdAt.toISOString(),
     updatedAt: args.row.updatedAt.toISOString(),
-    hasSecret: missingRequiredFields.length === 0,
+    hasSecret: connectedAuthMethod !== null,
   };
 }
 
@@ -650,6 +756,97 @@ function validateQueryInjections(args: {
   return queries;
 }
 
+function validateOAuth2Endpoint(
+  raw: string,
+  label: string,
+): URL | BadRequestResponse {
+  if (!URL.canParse(raw)) {
+    return badRequestMessage(`${label} must be a valid URL`);
+  }
+  const url = new URL(raw);
+  if (url.protocol !== "https:") {
+    return badRequestMessage(`${label} must use https://`);
+  }
+  if (url.username || url.password || url.hash) {
+    return badRequestMessage(
+      `${label} must not contain credentials or a fragment`,
+    );
+  }
+  return url;
+}
+
+function validateOAuth2AuthMethod(
+  method: CustomConnectorOAuth2AuthMethod,
+): CustomConnectorOAuth2AuthMethod | BadRequestResponse {
+  const authorizationUrl = validateOAuth2Endpoint(
+    method.authorizationUrl.trim(),
+    "OAuth authorization URL",
+  );
+  if (isBadRequest(authorizationUrl)) {
+    return authorizationUrl;
+  }
+  const tokenUrl = validateOAuth2Endpoint(
+    method.tokenUrl.trim(),
+    "OAuth token URL",
+  );
+  if (isBadRequest(tokenUrl)) {
+    return tokenUrl;
+  }
+  const scopes = method.scopes.map((scope) => {
+    return scope.trim();
+  });
+  if (
+    scopes.some((scope) => {
+      return scope.length === 0 || /\s/u.test(scope);
+    })
+  ) {
+    return badRequestMessage(
+      "OAuth scopes must be non-empty and must not contain whitespace",
+    );
+  }
+  if (new Set(scopes).size !== scopes.length) {
+    return badRequestMessage("OAuth scopes must be unique");
+  }
+  return {
+    type: "oauth2",
+    authorizationUrl: authorizationUrl.toString(),
+    tokenUrl: tokenUrl.toString(),
+    scopes,
+    clientAuthentication: method.clientAuthentication,
+  };
+}
+
+function validateAuthMethods(
+  raw: readonly CustomConnectorAuthMethod[] | undefined,
+): readonly CustomConnectorAuthMethod[] | BadRequestResponse {
+  const methods = raw ?? [{ type: "api" as const }];
+  if (methods.length === 0 || methods.length > 2) {
+    return badRequestMessage(
+      "Custom connector requires one or two authentication methods",
+    );
+  }
+  const seen = new Set<CustomConnectorAuthMethod["type"]>();
+  const result: CustomConnectorAuthMethod[] = [];
+  for (const method of methods) {
+    if (seen.has(method.type)) {
+      return badRequestMessage(
+        `Duplicate custom connector authentication method: ${method.type}`,
+      );
+    }
+    seen.add(method.type);
+    if (method.type === "oauth2") {
+      const validated = validateOAuth2AuthMethod(method);
+      if (isBadRequest(validated)) {
+        return validated;
+      }
+      result.push(validated);
+    } else {
+      result.push({ type: "api" });
+    }
+  }
+  return result;
+}
+
 function validateDefinition(
   input: DefinitionInput,
   serverFirewalls: ConnectorServerFirewallCatalog,
@@ -661,6 +858,10 @@ function validateDefinition(
   const fields = validateFields(input.fields);
   if (isBadRequest(fields)) {
     return fields;
+  }
+  const authMethods = validateAuthMethods(input.authMethods);
+  if (isBadRequest(authMethods)) {
+    return authMethods;
   }
 
   const prefixTemplates: string[] = [];
@@ -700,9 +901,26 @@ function validateDefinition(
   if (isBadRequest(queryInjections)) {
     return queryInjections;
   }
-  if (headerInjections.length === 0 && queryInjections.length === 0) {
+  const supportsApi = authMethods.some((method) => {
+    return method.type === "api";
+  });
+  if (
+    supportsApi &&
+    headerInjections.length === 0 &&
+    queryInjections.length === 0
+  ) {
     return badRequestMessage(
       "At least one header or query injection is required",
+    );
+  }
+  if (
+    !supportsApi &&
+    (fields.length > 0 ||
+      headerInjections.length > 0 ||
+      queryInjections.length > 0)
+  ) {
+    return badRequestMessage(
+      "API fields and injections require an API authentication method",
     );
   }
   const slug = validateOptionalSlug(input.slug);
@@ -716,6 +934,7 @@ function validateDefinition(
     fields,
     headerInjections,
     queryInjections,
+    authMethods,
     slug,
   };
 }
@@ -727,7 +946,8 @@ function definitionFromCreateInput(
     input.prefixTemplates !== undefined ||
     input.fields !== undefined ||
     input.headerInjections !== undefined ||
-    input.queryInjections !== undefined;
+    input.queryInjections !== undefined ||
+    input.authMethods !== undefined;
   if (usesCanonical) {
     return {
       displayName: input.displayName,
@@ -735,6 +955,7 @@ function definitionFromCreateInput(
       fields: input.fields ?? [],
       headerInjections: input.headerInjections ?? [],
       queryInjections: input.queryInjections ?? [],
+      authMethods: input.authMethods,
       slug: input.slug,
     };
   }
@@ -759,6 +980,7 @@ function definitionFromCreateInput(
       },
     ],
     queryInjections: [],
+    authMethods: [{ type: "api" }],
     slug: input.slug,
   };
 }
@@ -915,6 +1137,7 @@ export const createCustomConnector$ = command(
         fields: [...v.fields],
         headerInjections: [...v.headerInjections],
         queryInjections: [...v.queryInjections],
+        authMethods: [...v.authMethods],
         createdBy: args.userId,
       })
       .returning();
@@ -1026,7 +1249,7 @@ export const deleteCustomConnector$ = command(
   },
 );
 
-function getCustomConnectorById(args: {
+export function getCustomConnectorById(args: {
   readonly orgId: string;
   readonly connectorId: string;
 }): Computed<Promise<CustomConnectorRow | null>> {
@@ -1181,6 +1404,15 @@ export const setCustomConnectorValues$ = command(
     if (!connector) {
       return notFound("Custom connector not found");
     }
+    if (
+      !connector.authMethods.some((method) => {
+        return method.type === "api";
+      })
+    ) {
+      return badRequestMessage(
+        "Custom connector does not support API authentication",
+      );
+    }
     const values = validateValueInputs({ connector, values: args.values });
     if (isBadRequest(values)) {
       return values;
@@ -1190,6 +1422,22 @@ export const setCustomConnectorValues$ = command(
     );
     signal.throwIfAborted();
     const writeDb = set(writeDb$);
+    if (values.length > 0) {
+      await writeDb
+        .delete(orgCustomConnectorValues)
+        .where(
+          and(
+            eq(orgCustomConnectorValues.connectorId, args.connectorId),
+            eq(orgCustomConnectorValues.userId, args.userId),
+            eq(orgCustomConnectorValues.orgId, args.orgId),
+            eq(orgCustomConnectorValues.kind, "secret"),
+            inArray(orgCustomConnectorValues.key, [
+              ...CUSTOM_CONNECTOR_OAUTH_VALUE_KEYS,
+            ]),
+          ),
+        );
+      signal.throwIfAborted();
+    }
     for (const value of values) {
       const encryptedValue = await encryptStoredSecretValue(
         value.value,
@@ -1258,7 +1506,7 @@ export const setCustomConnectorValues$ = command(
   },
 );
 
-export const deleteLegacyCustomConnectorSecret$ = command(
+export const disconnectCustomConnector$ = command(
   async (
     { get, set },
     args: {
@@ -1287,7 +1535,10 @@ export const deleteLegacyCustomConnectorSecret$ = command(
           eq(orgCustomConnectorValues.userId, args.userId),
           eq(orgCustomConnectorValues.orgId, args.orgId),
           eq(orgCustomConnectorValues.kind, "secret"),
-          eq(orgCustomConnectorValues.key, LEGACY_SECRET_KEY),
+          inArray(orgCustomConnectorValues.key, [
+            LEGACY_SECRET_KEY,
+            ...CUSTOM_CONNECTOR_OAUTH_VALUE_KEYS,
+          ]),
         ),
       );
     signal.throwIfAborted();

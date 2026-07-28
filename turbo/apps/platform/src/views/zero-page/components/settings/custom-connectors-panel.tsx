@@ -217,10 +217,7 @@ export function CustomConnectorsPanel() {
         />
       )}
       {dialog.kind === "connect" && (
-        <CustomConnectorConnectDialog
-          id={dialog.connector.id}
-          displayName={dialog.connector.displayName}
-        />
+        <CustomConnectorConnectDialog connector={dialog.connector} />
       )}
       {dialog.kind === "delete" && (
         <CustomConnectorDeleteConfirm
