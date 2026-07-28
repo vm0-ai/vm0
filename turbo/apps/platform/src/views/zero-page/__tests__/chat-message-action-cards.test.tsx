@@ -1,5 +1,5 @@
 import type { ConnectorResponse } from "@vm0/api-contracts/contracts/connector-schemas";
-import { chatThreadMessagesContract } from "@vm0/api-contracts/contracts/chat-threads";
+import { chatThreadEventsContract } from "@vm0/api-contracts/contracts/chat-threads";
 import {
   zeroConnectorManualGrantContract,
   zeroConnectorNoAuthGrantContract,
@@ -1179,7 +1179,7 @@ describe("chat message action cards", () => {
       chatMessages: [],
     });
     context.mocks.api(
-      chatThreadMessagesContract.list,
+      chatThreadEventsContract.list,
       ({ params, query, respond }) => {
         if (
           params.threadId !== rightThreadId ||
@@ -1187,16 +1187,17 @@ describe("chat message action cards", () => {
           query.sinceSeqId
         ) {
           return respond(200, {
-            messages: [],
+            events: [],
             ...(query.beforeSeqId ? { hasHistoryBefore: false } : {}),
           });
         }
         return respond(200, {
-          messages: [
+          events: [
             {
               id: "c0000000-0000-4000-a000-000000000034",
+              threadId: rightThreadId,
+              eventType: "output.message",
               seqId: 1,
-              role: "assistant",
               content: `https://app.vm0.ai/mail/drafts/${mailDraftId}`,
               createdAt,
             },

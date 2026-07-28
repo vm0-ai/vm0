@@ -34,7 +34,7 @@ import {
   createOptimisticChatMessageEntry,
   type OptimisticChatMessageInput,
 } from "./optimistic-chat-messages.ts";
-import { sendChatEventWithCompatibility } from "./chat-event-api-rollout.ts";
+import { sendChatEvent } from "./chat-event-api.ts";
 import {
   applyCodexFastModeDefault,
   isCodexFastModeAvailableForSelection,
@@ -593,11 +593,7 @@ const sendNewThreadMessage$ = command(
       await Promise.all([clearDraftResult, createResult]);
       signal.throwIfAborted();
 
-      const result = await sendChatEventWithCompatibility(
-        createClient,
-        sendBody,
-        signal,
-      );
+      const result = await sendChatEvent(createClient, sendBody, signal);
       signal.throwIfAborted();
       L.debug("sendNewThreadMessage$ POST chat/events 201", {
         threadId: result.threadId,

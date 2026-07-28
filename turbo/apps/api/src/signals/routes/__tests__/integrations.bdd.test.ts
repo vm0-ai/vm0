@@ -1,6 +1,7 @@
 import { createHash, createHmac, randomInt, randomUUID } from "node:crypto";
 
 import { OFFICIAL_TELEGRAM_BOT_ID } from "@vm0/api-contracts/contracts/zero-integrations-telegram";
+import type { ChatEventResponse } from "@vm0/api-contracts/contracts/chat-threads";
 import { HttpResponse, http } from "msw";
 import { createStore } from "ccstate";
 import { describe, expect, it } from "vitest";
@@ -59,21 +60,12 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
 }
 
-interface SlackInputAssetMessage {
-  readonly attachFiles?:
-    | readonly {
-        readonly filename?: string | null;
-        readonly assetRef?: { readonly id?: string | null } | null;
-      }[]
-    | null;
-}
-
 function requireCanonicalSlackInputAssetId(
-  messages: readonly SlackInputAssetMessage[],
+  events: readonly ChatEventResponse[],
 ): string {
-  const assetId = messages
-    .flatMap((message) => {
-      return message.attachFiles ?? [];
+  const assetId = events
+    .flatMap((event) => {
+      return "attachFiles" in event ? (event.attachFiles ?? []) : [];
     })
     .find((file) => {
       return file.filename === "source-notes.txt";
@@ -1301,13 +1293,19 @@ describe("INT-01: Slack app deep webhook flows", () => {
       new Error("historical reads must not fetch Slack files"),
     );
 
-    const listedMessages = (await chat.listThreadMessages(actor, chatThreadId))
-      .messages;
+    const listedMessages = (
+      await chat.listThreadEvents(actor, chatThreadId)
+    ).events.filter((message) => {
+      return "attachFiles" in message;
+    });
     const assetId = requireCanonicalSlackInputAssetId(listedMessages);
     const listedMessage = listedMessages.find((message) => {
-      return message.attachFiles?.some((file) => {
-        return file.assetRef?.id === assetId;
-      });
+      return (
+        "attachFiles" in message &&
+        message.attachFiles?.some((file) => {
+          return file.assetRef?.id === assetId;
+        })
+      );
     });
     expect(listedMessage).toMatchObject({
       attachFiles: [
@@ -1330,7 +1328,7 @@ describe("INT-01: Slack app deep webhook flows", () => {
       throw new Error("Expected a canonical Slack input message");
     }
 
-    const fetchedMessage = await chat.getThreadMessage(
+    const fetchedMessage = await chat.getThreadEvent(
       actor,
       chatThreadId,
       listedMessage.id,
@@ -1495,12 +1493,12 @@ describe("INT-01: Slack app deep webhook flows", () => {
         .status,
     ).toBe(200);
     const visibleMessages = (
-      await chat.listThreadMessages(actor, canonicalChatThreadId)
-    ).messages;
+      await chat.listThreadEvents(actor, canonicalChatThreadId)
+    ).events;
     expect(visibleMessages).toStrictEqual(
       expect.arrayContaining([
         expect.objectContaining({
-          role: "user",
+          eventType: "input.prompt",
           content: "admit this event once",
           slackMessagePermalink:
             "https://vm0.slack.com/archives/C_BDD_CANONICAL_INGRESS/p2900000100",
@@ -1528,8 +1526,11 @@ describe("INT-01: Slack app deep webhook flows", () => {
         return message.content?.includes("[Slack file]") ?? false;
       }),
     ).toBeFalsy();
-    const canonicalInputAssetId =
-      requireCanonicalSlackInputAssetId(visibleMessages);
+    const canonicalInputAssetId = requireCanonicalSlackInputAssetId(
+      visibleMessages.filter((message) => {
+        return "attachFiles" in message;
+      }),
+    );
     const canonicalInputRun = await runs.readRun(actor, run1Id);
     expect(canonicalInputRun.prompt).toContain(
       `[Web file] source-notes.txt (text/plain)`,
@@ -1546,13 +1547,13 @@ describe("INT-01: Slack app deep webhook flows", () => {
     if (!defaultAgentId) {
       throw new Error("Expected canonical Slack thread to use a default agent");
     }
-    const queuedWebMessage = await chat.requestSendMessage(
+    const queuedWebMessage = await chat.requestSendEvent(
       actor,
       {
         agentId: defaultAgentId,
         prompt: "keep the web session separate",
         threadId: canonicalChatThreadId,
-        clientMessageId: randomUUID(),
+        clientEventId: randomUUID(),
       },
       [201],
     );
@@ -1848,11 +1849,11 @@ describe("INT-01: Slack app deep webhook flows", () => {
       status: "",
     });
     expect(
-      (await chat.listThreadMessages(actor, canonicalChatThreadId)).messages,
+      (await chat.listThreadEvents(actor, canonicalChatThreadId)).events,
     ).toStrictEqual(
       expect.arrayContaining([
         expect.objectContaining({
-          role: "assistant",
+          eventType: "output.message",
           content: "Canonical Slack answer two",
         }),
       ]),
@@ -2165,11 +2166,11 @@ describe("INT-01: Slack app deep webhook flows", () => {
       throw new Error("Expected recovered Slack route to own a chat thread");
     }
     expect(
-      (await chat.listThreadMessages(actor, recoveredThreadId)).messages,
+      (await chat.listThreadEvents(actor, recoveredThreadId)).events,
     ).toStrictEqual(
       expect.arrayContaining([
         expect.objectContaining({
-          role: "user",
+          eventType: "input.prompt",
           content: "recover this event after admission conflict",
         }),
       ]),

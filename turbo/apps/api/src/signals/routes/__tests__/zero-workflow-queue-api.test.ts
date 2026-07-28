@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 
-import { chatMessagesContract } from "@vm0/api-contracts/contracts/chat-threads";
+import { chatEventsContract } from "@vm0/api-contracts/contracts/chat-threads";
 import { zeroWorkflowQueueContract } from "@vm0/api-contracts/contracts/zero-workflow-queue";
 import { zeroWorkflowAutomationsContract } from "@vm0/api-contracts/contracts/zero-workflows";
 
@@ -33,7 +33,7 @@ function automationsClient() {
 }
 
 function chatMessagesClient() {
-  return setupApp({ context })(chatMessagesContract);
+  return setupApp({ context })(chatEventsContract);
 }
 
 function queueClient() {
@@ -168,10 +168,10 @@ async function postWorkflowWebhook(
 
 /** Run ids of automation-fired `/workflow-name` user messages, oldest first. */
 async function workflowRunIds(threadId: string): Promise<readonly string[]> {
-  const messages = await wf.readThreadMessages(threadId);
+  const messages = await wf.readThreadEvents(threadId);
   return messages.flatMap((message) => {
     if (
-      message.role !== "user" ||
+      message.eventType !== "input.prompt" ||
       message.content !== `/${WORKFLOW_NAME}` ||
       !message.runId
     ) {
@@ -486,7 +486,7 @@ describe("workflow queue API", () => {
         return event.automationId;
       }),
     ).toStrictEqual([automation.automationId]);
-    const messages = await wf.readThreadMessages(automation.threadId);
+    const messages = await wf.readThreadEvents(automation.threadId);
     const claimedUserMessage = messages.find((message) => {
       return (
         message.content === "queued user message before manual Run now" &&

@@ -10,7 +10,7 @@ import { Buffer } from "node:buffer";
 import { HttpResponse, http } from "msw";
 import { beforeEach, describe, expect, it } from "vitest";
 import {
-  chatThreadMessagesContract,
+  chatThreadEventsContract,
   chatThreadsContract,
 } from "@vm0/api-contracts/contracts/chat-threads";
 import { zeroFeishuConnectContract } from "@vm0/api-contracts/contracts/zero-feishu-connect";
@@ -1838,14 +1838,14 @@ describe("Feishu integration", () => {
       "Expected the canonical Feishu chat thread",
     );
     const threadMessages = await accept(
-      setupApp({ context })(chatThreadMessagesContract).list({
+      setupApp({ context })(chatThreadEventsContract).list({
         headers: { authorization: "Bearer clerk-session" },
         params: { threadId: chatThreadCreated.chatThreadId },
         query: {},
       }),
       [200],
     );
-    expect(threadMessages.body.messages).toContainEqual(
+    expect(threadMessages.body.events).toContainEqual(
       expect.objectContaining({
         content: "do the Feishu task",
         feishuChatOpenUrl:

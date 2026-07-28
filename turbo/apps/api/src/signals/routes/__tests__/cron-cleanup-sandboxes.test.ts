@@ -41,7 +41,7 @@ interface QueueMarkerFixture {
 
 interface QueueMarkerRevoker {
   readonly id: string;
-  readonly revokesMessageId: string;
+  readonly revokesEventId: string;
   readonly runEventId: string | null;
 }
 
@@ -297,7 +297,7 @@ async function findQueueMarkerRevoker(
   return row
     ? {
         id: stringField(row, "id"),
-        revokesMessageId: stringField(row, "revokesMessageId"),
+        revokesEventId: stringField(row, "revokesEventId"),
         runEventId: nullableString(row.runEventId),
       }
     : null;
@@ -688,7 +688,7 @@ describe("GET /api/cron/cleanup-sandboxes", () => {
     await expect(
       findQueueMarkerRevoker(marker.markerId),
     ).resolves.toMatchObject({
-      revokesMessageId: marker.markerId,
+      revokesEventId: marker.markerId,
       runEventId: "queue:dequeued",
     });
     expect(context.mocks.ably.publish).toHaveBeenCalledWith(

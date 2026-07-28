@@ -24,7 +24,6 @@ function eventForSeq(seqId: number): ChatEventResponse {
     id: `00000000-0000-4000-8000-${String(seqId).padStart(12, "0")}`,
     threadId: THREAD_ID,
     eventType: "goal.changed",
-    role: "assistant",
     // Control rows participate in history pagination without rendering
     // hundreds of unrelated transcript nodes in this progress-only test.
     content: null,

@@ -614,7 +614,7 @@ describe("chat lifecycle", () => {
       afterInitialMessagesList: () => {
         initialPageReturned = true;
       },
-      historyMessages: [
+      historyEvents: [
         {
           eventType: "output.message" as const,
           role: "assistant",

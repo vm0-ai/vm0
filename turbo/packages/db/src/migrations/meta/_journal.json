@@ -4957,6 +4957,13 @@
       "when": 1785209964889,
       "tag": "0707_orange_solo",
       "breakpoints": true
+    },
+    {
+      "idx": 708,
+      "version": "7",
+      "when": 1785211238764,
+      "tag": "0708_loud_imperial_guard",
+      "breakpoints": true
     }
   ]
 }

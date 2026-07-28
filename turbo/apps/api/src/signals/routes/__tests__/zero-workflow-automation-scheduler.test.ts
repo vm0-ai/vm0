@@ -1,6 +1,6 @@
 import { createHash, randomUUID } from "node:crypto";
 
-import type { PagedChatMessage } from "@vm0/api-contracts/contracts/chat-threads";
+import type { ChatEventResponse } from "@vm0/api-contracts/contracts/chat-threads";
 import { zeroWorkflowAutomationsContract } from "@vm0/api-contracts/contracts/zero-workflows";
 import {
   zeroAgentsByIdContract,
@@ -160,7 +160,7 @@ interface WorkflowRunMessage {
   readonly automationId: string | undefined;
   readonly hasLegacyTriggerId: boolean;
   readonly triggerBrief: string | null | undefined;
-  readonly workflowSnapshot: PagedChatMessage["workflowSnapshot"];
+  readonly workflowSnapshot: ChatEventResponse["workflowSnapshot"];
 }
 
 /**
@@ -170,10 +170,10 @@ interface WorkflowRunMessage {
 async function workflowRunMessages(
   threadId: string,
 ): Promise<readonly WorkflowRunMessage[]> {
-  const messages = await wf.readThreadMessages(threadId);
+  const messages = await wf.readThreadEvents(threadId);
   return messages.flatMap((message) => {
     if (
-      message.role !== "user" ||
+      message.eventType !== "input.prompt" ||
       message.content !== `/${WORKFLOW_NAME}` ||
       !message.runId
     ) {

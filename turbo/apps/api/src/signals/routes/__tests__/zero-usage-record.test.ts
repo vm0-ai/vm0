@@ -100,7 +100,7 @@ async function createChatThreadRun(
   if (args.createdAt) {
     mockNow(args.createdAt);
   }
-  const sent = await chatApi.requestSendMessage(
+  const sent = await chatApi.requestSendEvent(
     fixture.actor,
     { agentId: fixture.agentId, prompt: "record usage", threadId },
     [201],

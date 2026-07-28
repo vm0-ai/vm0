@@ -2,7 +2,6 @@ import { describe, expect, it } from "vitest";
 
 import {
   CHAT_EVENT_TYPES,
-  chatEventCompatibilityRole,
   foldActiveChatGoalObjective,
   foldChatAutomationIntakePause,
   foldChatRunStates,
@@ -15,16 +14,10 @@ import {
   terminatedChatRunIds,
 } from "../chat-events";
 import {
-  canonicalChatEvent,
-  canonicalChatEventFromCompatibilityResponse,
   chatEventResponse,
   chatEventResponseSchema,
   chatEventSchema,
   chatEventsContract,
-  chatMessagesContract,
-  legacyChatMessageResponse,
-  legacyChatMessageSendBody,
-  legacyPagedChatMessageSchema,
   chatThreadEventsContract,
   type ChatEvent,
 } from "../chat-threads";
@@ -210,58 +203,6 @@ const chatEvents = [
   },
 ] satisfies ChatEvent[];
 
-function compatibilityRoundTripExpectation(event: ChatEvent): ChatEvent {
-  switch (event.eventType) {
-    case "input.automation": {
-      const { eventType, automationId, triggerBrief, ...legacy } = event;
-      void eventType;
-      void automationId;
-      return chatEventSchema.parse({
-        ...legacy,
-        eventType: "input.prompt",
-        content: triggerBrief,
-      });
-    }
-    case "queue.automation_paused": {
-      const { eventType, pauseReason, ...legacy } = event;
-      void eventType;
-      void pauseReason;
-      return chatEventSchema.parse({
-        ...legacy,
-        eventType: "output.thinking",
-        thinking: "",
-      });
-    }
-    case "queue.automation_resumed": {
-      const { eventType, ...legacy } = event;
-      void eventType;
-      return chatEventSchema.parse({
-        ...legacy,
-        eventType: "output.thinking",
-        thinking: "",
-      });
-    }
-    case "run.queued":
-      return { ...event, runEventId: "queue:queued" };
-    case "run.dequeued":
-      return { ...event, runEventId: "queue:dequeued" };
-    case "input.prompt":
-    case "input.rejected":
-    case "output.message":
-    case "output.error":
-    case "output.thinking":
-    case "output.followups":
-    case "run.completed":
-    case "run.failed":
-    case "run.cancelled":
-    case "control.interrupt":
-    case "control.revoke":
-    case "goal.changed":
-    case "usage.recorded":
-      return event;
-  }
-}
-
 const queueFoldFixture = [
   {
     id: "automation-oldest",
@@ -334,35 +275,27 @@ describe("ChatEvent catalog", () => {
     ).toBe(false);
   });
 
-  it("round-trips the one-release wire compatibility projection", () => {
+  it("uses the canonical event shape at the response boundary", () => {
     for (const event of chatEvents) {
       const response = chatEventResponse(event);
-      expect(response.role).toBe(chatEventCompatibilityRole(event.eventType));
       expect(chatEventResponseSchema.parse(response)).toStrictEqual(response);
-      expect(canonicalChatEvent(response)).toStrictEqual(event);
+      expect(response).toStrictEqual(event);
     }
   });
 
-  it("rejects a compatibility role that disagrees with eventType", () => {
+  it("rejects compatibility-only response fields", () => {
     expect(
       chatEventResponseSchema.safeParse({
         ...chatEventResponse(chatEvents[0]!),
-        role: "assistant",
+        role: "user",
       }).success,
     ).toBe(false);
-  });
-
-  it("projects every event onto the exact preceding message response", () => {
-    for (const event of chatEvents) {
-      const legacy = legacyChatMessageResponse(chatEventResponse(event));
-      expect(legacyPagedChatMessageSchema.parse(legacy)).toStrictEqual(legacy);
-      expect(legacy).not.toHaveProperty("eventType");
-      expect(legacy).not.toHaveProperty("threadId");
-      expect(legacy).not.toHaveProperty("revokesEventId");
-      expect(
-        canonicalChatEventFromCompatibilityResponse(THREAD_ID, legacy),
-      ).toStrictEqual(compatibilityRoundTripExpectation(event));
-    }
+    expect(
+      chatEventResponseSchema.safeParse({
+        ...chatEventResponse(chatEvents[0]!),
+        revokesMessageId: "legacy-target",
+      }).success,
+    ).toBe(false);
   });
 });
 
@@ -528,23 +461,5 @@ describe("ChatEvent HTTP contracts", () => {
       revokesEventId: "input-prompt",
       clientEventId: "00000000-0000-4000-8000-000000000002",
     });
-  });
-
-  it("maps canonical write ids to the preceding message route", () => {
-    const legacy = legacyChatMessageSendBody(
-      chatEventsContract.send.body.parse({
-        agentId: "agent-1",
-        threadId: THREAD_ID,
-        revokesEventId: "input-prompt",
-        clientEventId: "00000000-0000-4000-8000-000000000002",
-      }),
-    );
-
-    expect(chatMessagesContract.send.body.parse(legacy)).toMatchObject({
-      revokesMessageId: "input-prompt",
-      clientMessageId: "00000000-0000-4000-8000-000000000002",
-    });
-    expect(legacy).not.toHaveProperty("revokesEventId");
-    expect(legacy).not.toHaveProperty("clientEventId");
   });
 });

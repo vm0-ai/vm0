@@ -1,10 +1,6 @@
 import { z } from "zod";
 import { authHeadersSchema, initContract } from "./base";
-import {
-  chatEventCompatibilityRole,
-  chatEventTypeSchema,
-  type ChatEventType,
-} from "./chat-events";
+import { chatEventTypeSchema } from "./chat-events";
 import { apiErrorSchema } from "./errors";
 import { hostedArtifactKindSchema } from "./zero-host";
 import { runStatusSchema } from "./runs";
@@ -623,159 +619,11 @@ const chatEventSchema = z.discriminatedUnion("eventType", [
   usageRecordedEventSchema,
 ]);
 
-const userEventCompatibilityResponseShape = {
-  /**
-   * @deprecated Derived compatibility field for the preceding App release.
-   * Canonical ChatEvent consumers derive presentation role from eventType.
-   */
-  role: z.literal("user"),
-  /**
-   * @deprecated Use revokesEventId.
-   */
-  revokesMessageId: z.string().optional(),
-} as const;
+const chatEventResponseSchema = chatEventSchema;
 
-const assistantEventCompatibilityResponseShape = {
-  /**
-   * @deprecated Derived compatibility field for the preceding App release.
-   * Canonical ChatEvent consumers derive presentation role from eventType.
-   */
-  role: z.literal("assistant"),
-  /**
-   * @deprecated Use revokesEventId.
-   */
-  revokesMessageId: z.string().optional(),
-} as const;
-
-/**
- * One-release wire compatibility shape. The canonical ChatEvent domain type
- * intentionally excludes role and message-named relationship fields.
- */
-const chatEventResponseSchema = z.discriminatedUnion("eventType", [
-  inputPromptEventSchema.extend(userEventCompatibilityResponseShape).strict(),
-  inputAutomationEventSchema
-    .extend(userEventCompatibilityResponseShape)
-    .strict(),
-  inputRejectedEventSchema.extend(userEventCompatibilityResponseShape).strict(),
-  outputMessageEventSchema
-    .extend(assistantEventCompatibilityResponseShape)
-    .strict(),
-  outputErrorEventSchema
-    .extend(assistantEventCompatibilityResponseShape)
-    .strict(),
-  outputThinkingEventSchema
-    .extend(assistantEventCompatibilityResponseShape)
-    .strict(),
-  outputFollowupsEventSchema
-    .extend(assistantEventCompatibilityResponseShape)
-    .strict(),
-  runQueuedEventSchema
-    .extend(assistantEventCompatibilityResponseShape)
-    .strict(),
-  runDequeuedEventSchema
-    .extend({
-      ...assistantEventCompatibilityResponseShape,
-      revokesMessageId: z.string(),
-    })
-    .strict(),
-  runCompletedEventSchema
-    .extend(assistantEventCompatibilityResponseShape)
-    .strict(),
-  runFailedEventSchema
-    .extend(assistantEventCompatibilityResponseShape)
-    .strict(),
-  runCancelledEventSchema
-    .extend(assistantEventCompatibilityResponseShape)
-    .strict(),
-  queueAutomationPausedEventSchema
-    .extend(assistantEventCompatibilityResponseShape)
-    .strict(),
-  queueAutomationResumedEventSchema
-    .extend(assistantEventCompatibilityResponseShape)
-    .strict(),
-  controlInterruptEventSchema
-    .extend(userEventCompatibilityResponseShape)
-    .strict(),
-  controlRevokeEventSchema
-    .extend({
-      ...userEventCompatibilityResponseShape,
-      revokesMessageId: z.string(),
-    })
-    .strict(),
-  goalChangedEventSchema
-    .extend(assistantEventCompatibilityResponseShape)
-    .strict(),
-  usageRecordedEventSchema
-    .extend(assistantEventCompatibilityResponseShape)
-    .strict(),
-]);
-
-/**
- * Response emitted by the API release immediately before ChatEvent routes
- * shipped. Keep this codec at the HTTP boundary only: canonical application
- * state must contain ChatEvent values.
- */
-const legacyPagedChatMessageBaseSchema = z.object({
-  id: z.string(),
-  content: z.string().nullable(),
-  runId: z.string().optional(),
-  runGroupId: z.string().optional(),
-  triggerSource: triggerSourceSchema.optional(),
-  slackMessagePermalink: z.string().url().optional(),
-  feishuChatOpenUrl: z.string().url().optional(),
-  isGoalRun: z.boolean().optional(),
-  runEventId: z.string().optional(),
-  goalEvent: zeroGoalEventSchema.optional(),
-  goalSnapshot: z
-    .object({
-      objectiveBrief: z.string().min(1),
-    })
-    .optional(),
-  usage: chatMessageUsagePayloadSchema.optional(),
-  revokesMessageId: z.string().optional(),
-  interruptsRunId: z.string().optional(),
-  error: z.string().optional(),
-  attachFiles: z.array(resolvedAttachFileSchema).optional(),
-  generationTemplate: generationTemplateRequestSchema.optional(),
-  seqId: z.number().int().positive(),
-  sequenceNumber: z.number().nullable().optional(),
-  workflowSnapshot: workflowSnapshotSchema.optional(),
-  createdAt: z.string(),
-});
-
-const legacyPagedChatMessageSchema = z.discriminatedUnion("role", [
-  legacyPagedChatMessageBaseSchema
-    .extend({
-      role: z.literal("user"),
-      structuredPrompt: userMessageDocumentSchema.optional(),
-    })
-    .strict(),
-  legacyPagedChatMessageBaseSchema
-    .extend({
-      role: z.literal("assistant"),
-      thinking: z.string().optional(),
-      runLifecycleEvent: z
-        .enum(["completed", "failed", "cancelled"])
-        .optional(),
-      recommendedFollowups: chatMessageRecommendedFollowupsSchema.optional(),
-    })
-    .strict(),
-]);
-
-const chatMessageCompatibilityResponseSchema = z.union([
-  chatEventResponseSchema,
-  legacyPagedChatMessageSchema,
-]);
-
-if (
-  chatEventTypeSchema.options.length !== chatEventSchema.options.length ||
-  chatEventTypeSchema.options.length !== chatEventResponseSchema.options.length
-) {
+if (chatEventTypeSchema.options.length !== chatEventSchema.options.length) {
   throw new Error("ChatEvent schema must cover the complete event catalog");
 }
-
-/** @deprecated Use chatEventResponseSchema on canonical `/events` routes. */
-const pagedChatMessageSchema = legacyPagedChatMessageSchema;
 
 const chatThreadDetailSchema = z.object({
   /**
@@ -895,31 +743,6 @@ const chatNormalSendBodyShape = {
   // runner to bypass preview mock CLIs and use the real agent runtime.
   realAgentInPreview: z.boolean().optional(),
 } as const;
-
-const chatMessageNormalSendBodySchema = z.preprocess(
-  (value) => {
-    return normalizeLegacyModelSelectionInput(value, { allowNull: false });
-  },
-  z
-    .object({
-      ...chatNormalSendBodyShape,
-      // Client-generated UUID used as the user message's primary key.
-      // Lets the client render an optimistic row and reconcile with the
-      // server row by id — no temp-id swap, no React remount.
-      clientMessageId: z.string().uuid().optional(),
-      revokesMessageId: z.string().min(1).optional(),
-      interruptsRunId: z.undefined().optional(),
-    })
-    .refine(
-      (body) => {
-        return !(body.cloudBrowserEnabled && body.computerUseHostId);
-      },
-      {
-        message: "Cloud browser and Computer Use cannot both be enabled",
-        path: ["cloudBrowserEnabled"],
-      },
-    ),
-);
 
 const chatEventNormalSendBodySchema = z.preprocess(
   (value) => {
@@ -1074,10 +897,6 @@ const chatThreadIdPathParamsSchema = z.object({ id: z.string().uuid() });
 const chatThreadThreadIdPathParamsSchema = z.object({
   threadId: z.string().uuid(),
 });
-const chatThreadMessagePathParamsSchema =
-  chatThreadThreadIdPathParamsSchema.extend({
-    messageId: z.string().uuid(),
-  });
 const chatThreadEventPathParamsSchema =
   chatThreadThreadIdPathParamsSchema.extend({
     eventId: z.string().uuid(),
@@ -1362,81 +1181,7 @@ export const chatThreadComputerUseHostContract = c.router({
   },
 });
 
-/**
- * Chat messages contract (/api/zero/chat/messages)
- * Unified endpoint: create thread (if needed) + run + association in one call.
- */
-export const chatMessagesContract = c.router({
-  send: {
-    method: "POST",
-    path: "/api/zero/chat/messages",
-    headers: authHeadersSchema,
-    body: z.union([
-      chatMessageNormalSendBodySchema,
-      z.object({
-        agentId: z.string().min(1),
-        threadId: z.string().min(1),
-        revokesMessageId: z.string().min(1),
-        clientMessageId: z.string().uuid().optional(),
-        prompt: z.undefined().optional(),
-        clientThreadId: z.undefined().optional(),
-        chatThreadEventId: z.undefined().optional(),
-        chatThreadSortEventId: z.undefined().optional(),
-        model: z.undefined().optional(),
-        runOptions: z.undefined().optional(),
-        structuredPrompt: z.undefined().optional(),
-        generationTemplate: z.undefined().optional(),
-        computerUseHostId: z.undefined().optional(),
-        cloudBrowserEnabled: z.undefined().optional(),
-        hasTextContent: z.undefined().optional(),
-        attachFiles: z.undefined().optional(),
-        realAgentInPreview: z.undefined().optional(),
-        interruptsRunId: z.undefined().optional(),
-      }),
-      z.object({
-        agentId: z.string().min(1),
-        threadId: z.string().min(1),
-        interruptsRunId: z.string().uuid(),
-        clientMessageId: z.string().uuid().optional(),
-        prompt: z.undefined().optional(),
-        clientThreadId: z.undefined().optional(),
-        chatThreadEventId: z.undefined().optional(),
-        chatThreadSortEventId: z.undefined().optional(),
-        model: z.undefined().optional(),
-        runOptions: z.undefined().optional(),
-        structuredPrompt: z.undefined().optional(),
-        generationTemplate: z.undefined().optional(),
-        computerUseHostId: z.undefined().optional(),
-        cloudBrowserEnabled: z.undefined().optional(),
-        hasTextContent: z.undefined().optional(),
-        attachFiles: z.undefined().optional(),
-        realAgentInPreview: z.undefined().optional(),
-        revokesMessageId: z.undefined().optional(),
-      }),
-    ]),
-    responses: {
-      201: z.object({
-        runId: z.string().nullable(),
-        threadId: z.string(),
-        status: runStatusSchema.optional(),
-        createdAt: z.string().optional(),
-      }),
-      400: apiErrorSchema,
-      401: apiErrorSchema,
-      402: apiErrorSchema,
-      403: apiErrorSchema,
-      404: apiErrorSchema,
-      409: apiErrorSchema,
-      422: apiErrorSchema,
-    },
-    summary: "Send a chat message (create thread + run + association)",
-  },
-});
-
-/**
- * Canonical ChatEvent write contract. The message-named route above remains a
- * compatibility alias for the preceding App release.
- */
+/** Canonical ChatEvent write contract. */
 export const chatEventsContract = c.router({
   send: {
     method: "POST",
@@ -1568,91 +1313,7 @@ export const chatSearchContract = c.router({
   },
 });
 
-/**
- * Paginated chat messages contract (/api/zero/chat-threads/:threadId/messages)
- * Cursor-based pagination using the thread-scoped message sequence.
- *
- * Query params (mutually exclusive):
- *   sinceSeqId  — forward pagination: messages strictly after this cursor
- *   beforeSeqId — backward pagination: messages strictly before this cursor
- *   sinceId / beforeId — previous frontend UUID cursors retained during rollout
- *   (neither) — initial load anchored at the last user message
- *
- * Response includes `hasMore` for initial load and backward pagination so the
- * UI knows whether to offer upward scroll loading.
- */
-export const chatThreadMessagesContract = c.router({
-  list: {
-    method: "GET",
-    path: "/api/zero/chat-threads/:threadId/messages",
-    headers: authHeadersSchema,
-    pathParams: chatThreadThreadIdPathParamsSchema,
-    query: z.object({
-      sinceSeqId: z.coerce.number().int().positive().optional(),
-      beforeSeqId: z.coerce.number().int().positive().optional(),
-      // Remove after browser clients from the pre-seqId release can no longer
-      // remain active against the current backend.
-      sinceId: z.string().uuid().optional(),
-      beforeId: z.string().uuid().optional(),
-      limit: z.coerce.number().min(1).max(50).default(50),
-    }),
-    responses: {
-      200: z.object({
-        messages: z.array(pagedChatMessageSchema),
-        hasHistoryBefore: z.boolean().optional(),
-      }),
-      400: apiErrorSchema,
-      401: apiErrorSchema,
-      404: apiErrorSchema,
-    },
-    summary: "Get paginated chat messages for a thread",
-  },
-  // Compatibility for already-open app-v0.627.3 browser clients. The next app
-  // no longer calls this route; remove it only after those clients can no
-  // longer reasonably remain active against the current backend.
-  get: {
-    method: "GET",
-    path: "/api/zero/chat-threads/:threadId/messages/:messageId",
-    headers: authHeadersSchema,
-    pathParams: chatThreadMessagePathParamsSchema,
-    responses: {
-      200: pagedChatMessageSchema,
-      401: apiErrorSchema,
-      404: apiErrorSchema,
-    },
-    summary: "Get a chat message by id for a thread",
-  },
-});
-
-/**
- * Read contract for the API release immediately before ChatEvent routes
- * shipped. This is a client-only rollout bridge and must not be used to type
- * current `/messages` route handlers.
- */
-export const precedingChatThreadMessagesContract = c.router({
-  list: {
-    method: "GET",
-    path: "/api/zero/chat-threads/:threadId/messages",
-    headers: authHeadersSchema,
-    pathParams: chatThreadThreadIdPathParamsSchema,
-    query: chatThreadMessagesContract.list.query,
-    responses: {
-      200: z.object({
-        messages: z.array(legacyPagedChatMessageSchema),
-        hasHistoryBefore: z.boolean().optional(),
-      }),
-      400: apiErrorSchema,
-      401: apiErrorSchema,
-      404: apiErrorSchema,
-    },
-    summary: "Read chat messages from the preceding API release",
-  },
-});
-
-/**
- * Canonical ChatEvent read contract. The message-named routes above remain
- * compatibility aliases for the preceding App and CLI releases.
- */
+/** Canonical ChatEvent read contract. */
 export const chatThreadEventsContract = c.router({
   list: {
     method: "GET",
@@ -1808,12 +1469,6 @@ export type ChatThreadComputerUseHostContract =
   typeof chatThreadComputerUseHostContract;
 export type ChatEventsContract = typeof chatEventsContract;
 export type ChatThreadEventsContract = typeof chatThreadEventsContract;
-/** @deprecated Use ChatEventsContract. */
-export type ChatMessagesContract = typeof chatMessagesContract;
-/** @deprecated Use ChatThreadEventsContract. */
-export type ChatThreadMessagesContract = typeof chatThreadMessagesContract;
-export type PrecedingChatThreadMessagesContract =
-  typeof precedingChatThreadMessagesContract;
 export type ChatThreadArtifactsContract = typeof chatThreadArtifactsContract;
 export type ArtifactsContract = typeof artifactsContract;
 export type ChatSearchContract = typeof chatSearchContract;
@@ -1836,8 +1491,6 @@ export {
   illustrationGenerationTemplateRequestSchema,
   websiteGenerationTemplateRequestSchema,
   chatEventSchema,
-  /** @deprecated Use chatEventSchema. */
-  pagedChatMessageSchema,
   chatMessageUsagePayloadSchema,
   summaryEntrySchema,
   persistedAttachmentSchema,
@@ -1851,8 +1504,6 @@ export {
   chatThreadArtifactGoogleDriveSyncSchema,
   chatThreadArtifactRunSchema,
   chatEventResponseSchema,
-  legacyPagedChatMessageSchema,
-  chatMessageCompatibilityResponseSchema,
 };
 
 export type CodexServiceTier = z.infer<typeof codexServiceTierSchema>;
@@ -1909,218 +1560,10 @@ export type ChatThreadMetadata = z.infer<typeof chatThreadMetadataSchema>;
 export type ChatThreadDraft = z.infer<typeof chatThreadDraftSchema>;
 export type ChatEvent = z.infer<typeof chatEventSchema>;
 export type ChatEventResponse = z.infer<typeof chatEventResponseSchema>;
-export type LegacyPagedChatMessage = z.infer<
-  typeof legacyPagedChatMessageSchema
->;
-export type ChatMessageCompatibilityResponse = z.infer<
-  typeof chatMessageCompatibilityResponseSchema
->;
 export type ChatEventSendBody = z.infer<typeof chatEventsContract.send.body>;
-export type ChatMessageSendBody = z.infer<
-  typeof chatMessagesContract.send.body
->;
-
-export function canonicalChatEvent(response: ChatEventResponse): ChatEvent {
-  if (response.role !== chatEventCompatibilityRole(response.eventType)) {
-    throw new Error(
-      `Invalid compatibility role for chat event ${response.eventType}`,
-    );
-  }
-  if (
-    response.revokesMessageId !== undefined &&
-    response.revokesMessageId !== response.revokesEventId
-  ) {
-    throw new Error("Chat event revoke compatibility fields disagree");
-  }
-  const { role, revokesMessageId, ...event } = response;
-  void role;
-  void revokesMessageId;
-  return event;
-}
-
-function legacyChatEventType(message: LegacyPagedChatMessage): ChatEventType {
-  if (message.role === "user") {
-    if (message.interruptsRunId !== undefined) {
-      return "control.interrupt";
-    }
-    if (message.error !== undefined) {
-      return "input.rejected";
-    }
-    if (
-      message.revokesMessageId !== undefined &&
-      message.content === null &&
-      message.structuredPrompt === undefined &&
-      message.attachFiles === undefined &&
-      message.generationTemplate === undefined
-    ) {
-      return "control.revoke";
-    }
-    return "input.prompt";
-  }
-
-  if (message.runEventId === "queue:queued") {
-    return "run.queued";
-  }
-  if (message.runEventId === "queue:dequeued") {
-    return "run.dequeued";
-  }
-  if (message.runLifecycleEvent !== undefined) {
-    return `run.${message.runLifecycleEvent}`;
-  }
-  if (message.goalEvent !== undefined) {
-    return "goal.changed";
-  }
-  if (message.usage !== undefined) {
-    return "usage.recorded";
-  }
-  if (message.recommendedFollowups !== undefined) {
-    return "output.followups";
-  }
-  if (message.thinking !== undefined) {
-    return "output.thinking";
-  }
-  if (message.error !== undefined) {
-    return "output.error";
-  }
-  if (message.content !== null) {
-    return "output.message";
-  }
-  throw new Error(`Cannot classify legacy chat message ${message.id}`);
-}
-
-/**
- * Converts the one-release `/messages` response into the canonical event
- * domain. The thread id was path-scoped and absent from the legacy payload.
- */
-export function canonicalChatEventFromCompatibilityResponse(
-  threadId: string,
-  response: ChatMessageCompatibilityResponse,
-): ChatEvent {
-  if ("eventType" in response) {
-    return canonicalChatEvent(response);
-  }
-  const { role, revokesMessageId, ...message } = response;
-  void role;
-  return chatEventSchema.parse({
-    ...message,
-    threadId,
-    eventType: legacyChatEventType(response),
-    ...(revokesMessageId === undefined
-      ? {}
-      : { revokesEventId: revokesMessageId }),
-  });
-}
-
-/** Maps canonical event write names to the preceding `/messages` request. */
-export function legacyChatMessageSendBody(
-  body: ChatEventSendBody,
-): ChatMessageSendBody {
-  const { clientEventId, revokesEventId, ...request } = body;
-  return chatMessagesContract.send.body.parse({
-    ...request,
-    ...(clientEventId === undefined ? {} : { clientMessageId: clientEventId }),
-    ...(revokesEventId === undefined
-      ? {}
-      : { revokesMessageId: revokesEventId }),
-  });
-}
 
 export function chatEventResponse(event: ChatEvent): ChatEventResponse {
-  const revokesMessageId = event.revokesEventId;
-  return chatEventResponseSchema.parse({
-    ...event,
-    role: chatEventCompatibilityRole(event.eventType),
-    ...(revokesMessageId === undefined ? {} : { revokesMessageId }),
-  });
-}
-
-/**
- * Projects a canonical response onto the exact payload accepted by the
- * preceding App release. Keep this at the `/messages` HTTP boundary.
- */
-export function legacyChatMessageResponse(
-  response: ChatEventResponse,
-): LegacyPagedChatMessage {
-  switch (response.eventType) {
-    case "input.automation": {
-      const {
-        eventType,
-        threadId,
-        revokesEventId,
-        automationId,
-        triggerBrief,
-        ...legacyResponse
-      } = response;
-      void eventType;
-      void threadId;
-      void revokesEventId;
-      void automationId;
-      return legacyPagedChatMessageSchema.parse({
-        ...legacyResponse,
-        content: triggerBrief,
-      });
-    }
-    case "queue.automation_paused": {
-      const {
-        eventType,
-        threadId,
-        revokesEventId,
-        pauseReason,
-        ...legacyResponse
-      } = response;
-      void eventType;
-      void threadId;
-      void revokesEventId;
-      void pauseReason;
-      return legacyPagedChatMessageSchema.parse({
-        ...legacyResponse,
-        thinking: "",
-      });
-    }
-    case "queue.automation_resumed": {
-      const { eventType, threadId, revokesEventId, ...legacyResponse } =
-        response;
-      void eventType;
-      void threadId;
-      void revokesEventId;
-      return legacyPagedChatMessageSchema.parse({
-        ...legacyResponse,
-        thinking: "",
-      });
-    }
-    case "run.queued":
-    case "run.dequeued": {
-      const { eventType, threadId, revokesEventId, ...legacyResponse } =
-        response;
-      void threadId;
-      void revokesEventId;
-      return legacyPagedChatMessageSchema.parse({
-        ...legacyResponse,
-        runEventId:
-          eventType === "run.queued" ? "queue:queued" : "queue:dequeued",
-      });
-    }
-    case "input.prompt":
-    case "input.rejected":
-    case "output.message":
-    case "output.error":
-    case "output.thinking":
-    case "output.followups":
-    case "run.completed":
-    case "run.failed":
-    case "run.cancelled":
-    case "control.interrupt":
-    case "control.revoke":
-    case "goal.changed":
-    case "usage.recorded": {
-      const { eventType, threadId, revokesEventId, ...legacyResponse } =
-        response;
-      void eventType;
-      void threadId;
-      void revokesEventId;
-      return legacyPagedChatMessageSchema.parse(legacyResponse);
-    }
-  }
+  return chatEventResponseSchema.parse(event);
 }
 
 export type ChatInputEvent = Extract<
@@ -2144,8 +1587,6 @@ export type ChatUsageEvent = Extract<
   ChatEvent,
   { eventType: "usage.recorded" }
 >;
-/** @deprecated Use LegacyPagedChatMessage for `/messages` compatibility. */
-export type PagedChatMessage = LegacyPagedChatMessage;
 export type ChatMessageUsagePayload = z.infer<
   typeof chatMessageUsagePayloadSchema
 >;

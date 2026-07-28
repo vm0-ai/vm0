@@ -58,7 +58,7 @@ describe("chat lifecycle", () => {
     });
     const sentMessages: {
       prompt?: string;
-      revokesMessageId?: string;
+      revokesEventId?: string;
       structuredPrompt?: unknown;
     }[] = [];
 
@@ -342,7 +342,7 @@ describe("chat lifecycle", () => {
           role: "user",
           content: prompt,
           runId,
-          revokesMessageId: queuedMessageId,
+          revokesEventId: queuedMessageId,
           createdAt: "2026-06-09T10:00:01Z",
         },
       ],

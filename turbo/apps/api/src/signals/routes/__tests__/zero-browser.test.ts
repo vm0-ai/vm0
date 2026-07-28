@@ -225,7 +225,7 @@ async function createClaimedChatRun(
   agentId: string,
   prompt: string,
 ) {
-  const sent = await chat.requestSendMessage(
+  const sent = await chat.requestSendEvent(
     actor,
     {
       agentId,
@@ -261,7 +261,7 @@ describe("zero browser route", () => {
 
   it("keeps managed browser access off for a default chat thread", async () => {
     const { runs, chat, actor, agent } = await setupBrowserScenario();
-    const sent = await chat.requestSendMessage(
+    const sent = await chat.requestSendEvent(
       actor,
       {
         agentId: agent.agentId,
@@ -292,7 +292,7 @@ describe("zero browser route", () => {
 
   it("normalizes a previous API host-only write during cloud browser rollout", async () => {
     const { runs, chat, actor, agent } = await setupBrowserScenario();
-    const sent = await chat.requestSendMessage(
+    const sent = await chat.requestSendEvent(
       actor,
       {
         agentId: agent.agentId,
@@ -333,7 +333,7 @@ describe("zero browser route", () => {
   it("lets an agent request cloud browser access for its chat thread", async () => {
     const { routeMocks, runs, chat, actor, agent } =
       await setupBrowserScenario();
-    const sent = await chat.requestSendMessage(
+    const sent = await chat.requestSendEvent(
       actor,
       {
         agentId: agent.agentId,
@@ -662,7 +662,7 @@ describe("zero browser route", () => {
     // Admission candidates only need a browser-capable run token, so they skip
     // the runner claim that the org's run concurrency limit would throttle.
     async function createCandidate(prompt: string) {
-      const sentCandidate = await chat.requestSendMessage(
+      const sentCandidate = await chat.requestSendEvent(
         actor,
         {
           agentId: agent.agentId,
@@ -941,7 +941,7 @@ describe("zero browser route", () => {
 
     await runs.heartbeatRunner(runnerGroup);
     mockNow(STARTED_AT_MS + 5 * MINUTE_MS);
-    const followup = await chat.requestSendMessage(
+    const followup = await chat.requestSendEvent(
       actor,
       {
         agentId: agent.agentId,

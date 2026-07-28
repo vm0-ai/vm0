@@ -4,9 +4,7 @@ import {
   chatThreadByIdContract,
   chatThreadArtifactsContract,
   chatThreadEventsContract,
-  chatThreadMessagesContract,
   chatThreadsContract,
-  legacyChatMessageResponse,
 } from "@vm0/api-contracts/contracts/chat-threads";
 import { z } from "zod";
 
@@ -168,35 +166,6 @@ const listChatEventsInner$ = computed(async (get) => {
   };
 });
 
-const listLegacyChatThreadMessagesInner$ = computed(async (get) => {
-  const auth = get(authContext$);
-  const params = get(pathParamsOf(chatThreadMessagesContract.list));
-  const query = get(queryOf(chatThreadMessagesContract.list));
-
-  const page = await get(
-    zeroChatThreadEventsPage({
-      threadId: params.threadId,
-      userId: auth.userId,
-      sinceSeqId: query.sinceSeqId,
-      beforeSeqId: query.beforeSeqId,
-      sinceId: query.sinceId,
-      beforeId: query.beforeId,
-      limit: query.limit,
-    }),
-  );
-  if (!page) {
-    return chatThreadNotFound();
-  }
-
-  return {
-    status: 200 as const,
-    body: {
-      messages: page.events.map(legacyChatMessageResponse),
-      hasHistoryBefore: page.hasHistoryBefore,
-    },
-  };
-});
-
 const getChatThreadEventInner$ = computed(async (get) => {
   const auth = get(authContext$);
   const params = get(pathParamsOf(chatThreadEventsContract.get));
@@ -213,24 +182,6 @@ const getChatThreadEventInner$ = computed(async (get) => {
   }
 
   return { status: 200 as const, body: event };
-});
-
-const getLegacyChatThreadMessageInner$ = computed(async (get) => {
-  const auth = get(authContext$);
-  const params = get(pathParamsOf(chatThreadMessagesContract.get));
-
-  const event = await get(
-    zeroChatThreadEventById({
-      threadId: params.threadId,
-      userId: auth.userId,
-      eventId: params.messageId,
-    }),
-  );
-  if (!event) {
-    return chatThreadNotFound();
-  }
-
-  return { status: 200 as const, body: legacyChatMessageResponse(event) };
 });
 
 const listChatThreadDraftsInner$ = computed(async (get) => {
@@ -384,14 +335,6 @@ export const zeroChatThreadRoutes: readonly RouteEntry[] = [
   {
     route: chatThreadEventsContract.get,
     handler: authRoute({}, getChatThreadEventInner$),
-  },
-  {
-    route: chatThreadMessagesContract.list,
-    handler: authRoute({}, listLegacyChatThreadMessagesInner$),
-  },
-  {
-    route: chatThreadMessagesContract.get,
-    handler: authRoute({}, getLegacyChatThreadMessageInner$),
   },
   {
     route: chatSearchContract.search,

@@ -18,10 +18,7 @@ import {
   applyUnreadSnapshot$,
   recordOptimisticReadMark$,
 } from "./sidebar-unread-threads.ts";
-import {
-  listChatEventsWithCompatibility,
-  sendChatEventWithCompatibility,
-} from "./chat-event-api-rollout.ts";
+import { listChatEvents, sendChatEvent } from "./chat-event-api.ts";
 import {
   chatThreadMetaMap$,
   optimisticChatThreadCreateUnsettled,
@@ -186,7 +183,7 @@ const appendQueuedEvent$ = command(
     }: AppendQueuedEventArgs,
     signal: AbortSignal,
   ) => {
-    await sendChatEventWithCompatibility(
+    await sendChatEvent(
       get(zeroClient$),
       {
         agentId,
@@ -215,7 +212,7 @@ const recallEvent$ = command(
     { threadId, agentId, revokesEventId, clientEventId }: RecallEventArgs,
     signal: AbortSignal,
   ) => {
-    await sendChatEventWithCompatibility(
+    await sendChatEvent(
       get(zeroClient$),
       {
         agentId,
@@ -235,7 +232,7 @@ export const listEventsAfter$ = command(
     { threadId, sinceSeqId }: ListEventsAfterArgs,
     signal: AbortSignal,
   ) => {
-    const result = await listChatEventsWithCompatibility(
+    const result = await listChatEvents(
       get(zeroClient$),
       threadId,
       { sinceSeqId, limit: CHAT_MESSAGES_PAGE_LIMIT },
@@ -268,7 +265,7 @@ const listEventsBefore$ = command(
     { threadId, beforeSeqId }: ListEventsBeforeArgs,
     signal: AbortSignal,
   ) => {
-    return await listChatEventsWithCompatibility(
+    return await listChatEvents(
       get(zeroClient$),
       threadId,
       { beforeSeqId, limit: 50 },
@@ -291,7 +288,7 @@ const cancelRuns$ = command(
     });
     await Promise.all(
       interrupts.map(async ({ runId, clientEventId }) => {
-        await sendChatEventWithCompatibility(
+        await sendChatEvent(
           get(zeroClient$),
           {
             agentId,

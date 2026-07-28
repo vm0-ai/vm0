@@ -1,6 +1,5 @@
 /** Typed append-only commands for the canonical ChatEvent stream. */
 import {
-  chatEventCompatibilityRole,
   chatEventRunLifecycle,
   isValidChatEventRevocation,
 } from "@vm0/api-contracts/contracts/chat-events";
@@ -190,7 +189,6 @@ function persistedChatEventValues(values: NewChatEvent): PersistedChatEvent {
   return {
     ...values,
     eventType: values.eventType,
-    role: chatEventCompatibilityRole(values.eventType),
     ...(runLifecycleEvent === null ? {} : { runLifecycleEvent }),
   };
 }
