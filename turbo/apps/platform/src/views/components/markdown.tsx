@@ -4,7 +4,7 @@ import MarkdownPreview, {
 import { IconLoader2, IconPhoto } from "@tabler/icons-react";
 import { useGet, useSet } from "ccstate-react";
 import type { ComponentPropsWithoutRef, ReactNode } from "react";
-import { openImageLightboxOrArtifact$ } from "../../signals/zero-page/zero-artifact-sidebar.ts";
+import { openImageLightbox$ } from "../../signals/zero-page/zero-attachment-chips.ts";
 import rehypeKatex from "rehype-katex";
 import remarkMath from "remark-math";
 import { theme$ } from "../../signals/theme.ts";
@@ -238,9 +238,8 @@ function MediaImage({ src, alt }: { src: string; alt: string }) {
   // prop chain is what lets the `components` map and the renderer
   // functions live at module scope with stable identity — which in turn
   // prevents React from tearing down the <video>/<img> subtree on every
-  // re-render of the parent (the previous behavior caused .mp4 metadata
-  // to refetch every time `?artifact=` was toggled).
-  const openImageLightbox = useSet(openImageLightboxOrArtifact$);
+  // re-render of the parent and refetching media metadata unnecessarily.
+  const openImageLightbox = useSet(openImageLightbox$);
   const imageLoadKey = `markdown:${src}`;
   const imageStatus = imageLoadStatuses[imageLoadKey] ?? "loading";
   const showPlaceholder = imageStatus !== "loaded";

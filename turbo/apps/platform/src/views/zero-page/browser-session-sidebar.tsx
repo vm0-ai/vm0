@@ -1,23 +1,17 @@
 import { IconArrowsDiagonal, IconX } from "@tabler/icons-react";
-import { useSet } from "ccstate-react";
 
 import type { BrowserSessionSignals } from "../../signals/chat-page/browser-session-block.ts";
-import { closeBrowserSessionSidebar$ } from "../../signals/zero-page/browser-session-sidebar.ts";
 import { BrowserSessionPanel } from "./browser-session-panel.tsx";
 
 interface BrowserSessionSidebarProps {
   readonly signals: BrowserSessionSignals;
-  // Overrides the legacy search-param close when the thread-owned sidebar
-  // hosts the session.
-  readonly onClose?: () => void;
+  readonly onClose: () => void;
 }
 
 export function BrowserSessionSidebar({
   signals,
   onClose,
 }: BrowserSessionSidebarProps) {
-  const legacyClose = useSet(closeBrowserSessionSidebar$);
-  const close = onClose ?? legacyClose;
   return (
     <aside
       aria-label="Live browser"
@@ -37,7 +31,7 @@ export function BrowserSessionSidebar({
         </a>
         <button
           type="button"
-          onClick={close}
+          onClick={onClose}
           aria-label="Close live browser"
           className="inline-flex size-8 items-center justify-center rounded-md text-muted-foreground hover:bg-muted/60 hover:text-foreground"
         >

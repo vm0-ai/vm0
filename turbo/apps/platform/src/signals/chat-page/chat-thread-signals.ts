@@ -135,7 +135,7 @@ export interface ChatThreadSignals {
   // -- Thread-owned automation resources -----------------------------------
   headerAutomations: HeaderAutomationSignals;
   workflowQueue: WorkflowQueueSignals;
-  // -- Thread-owned utility sidebar (NewChatThreadSidebar switch) -----------
+  // -- Thread-owned utility sidebar -----------------------------------------
   sidebar: ThreadSidebarSignals;
   // -- Per-thread UI state --------------------------------------------------
   timelineExpandedIds$: Computed<Set<string>>;

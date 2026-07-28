@@ -9,7 +9,6 @@ import {
   chatThreadsContract,
   type PagedChatMessage,
 } from "@vm0/api-contracts/contracts/chat-threads";
-import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import { describe, expect, it } from "vitest";
 
 import {
@@ -40,11 +39,7 @@ function catalogArtifact(
   };
 }
 
-function setupChatThread({
-  newSidebarEnabled,
-}: {
-  newSidebarEnabled: boolean;
-}) {
+function setupChatThread() {
   context.mocks.data.team([
     {
       id: AGENT_ID,
@@ -113,9 +108,6 @@ function setupChatThread({
   detachedSetupPage({
     context,
     path: THREAD_PATH,
-    featureSwitches: {
-      [FeatureSwitchKey.NewChatThreadSidebar]: newSidebarEnabled,
-    },
   });
 }
 
@@ -133,7 +125,7 @@ async function openArtifactsFromHeader(): Promise<void> {
 }
 
 describe("thread-owned utility sidebar", () => {
-  it("opens the thread-scoped catalog list without legacy search params", async () => {
+  it("opens the thread-scoped catalog list", async () => {
     const requestedThreadIds: (string | undefined)[] = [];
     context.mocks.api(artifactCatalogContract.list, ({ query, respond }) => {
       requestedThreadIds.push(query.chatThreadId);
@@ -143,7 +135,7 @@ describe("thread-owned utility sidebar", () => {
       });
     });
 
-    setupChatThread({ newSidebarEnabled: true });
+    setupChatThread();
     await openArtifactsFromHeader();
 
     await waitFor(() => {
@@ -153,8 +145,6 @@ describe("thread-owned utility sidebar", () => {
     });
     await screen.findByLabelText("Preview launch-plan.txt");
     expect(requestedThreadIds).toContain(THREAD_ID);
-    // The legacy search-param inbox stays closed on the new track.
-    expect(screen.queryByTestId("artifact-inbox")).not.toBeInTheDocument();
   });
 
   it("shows an unavailable artifact detail with a way back to the list", async () => {
@@ -170,7 +160,7 @@ describe("thread-owned utility sidebar", () => {
       });
     });
 
-    setupChatThread({ newSidebarEnabled: true });
+    setupChatThread();
     await openArtifactsFromHeader();
     click(await screen.findByLabelText("Preview launch-plan.txt"));
 
@@ -186,21 +176,5 @@ describe("thread-owned utility sidebar", () => {
         screen.getByTestId("thread-sidebar-artifacts"),
       ).toBeInTheDocument();
     });
-  });
-
-  it("keeps the legacy artifact inbox when the switch is off", async () => {
-    context.mocks.api(chatThreadMessagesContract.list, ({ respond }) => {
-      return respond(200, { messages: [], hasHistoryBefore: false });
-    });
-
-    setupChatThread({ newSidebarEnabled: false });
-    await openArtifactsFromHeader();
-
-    await waitFor(() => {
-      expect(screen.getByTestId("artifact-inbox")).toBeInTheDocument();
-    });
-    expect(
-      screen.queryByTestId("thread-sidebar-artifacts"),
-    ).not.toBeInTheDocument();
   });
 });

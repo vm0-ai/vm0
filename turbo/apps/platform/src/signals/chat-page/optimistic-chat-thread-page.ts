@@ -17,12 +17,6 @@ import { zeroClient$, type ZeroClientFactory } from "../api-client.ts";
 import { currentChatThreadId$ } from "../agent-chat.ts";
 import { detachedNavigateTo$, searchParams$ } from "../route.ts";
 import { loadRightThread$ } from "./chat-thread-panes.ts";
-import {
-  clearArtifactSidebarParams,
-  clearBrowserSessionSidebarParams,
-  clearChatAutomationSidebarParams,
-  clearMailDraftSidebarParams,
-} from "../zero-page/right-sidebar-search-params.ts";
 import { talkDraft$ } from "../zero-page/chat-draft.ts";
 import { clearAgentDraftById$ } from "../zero-page/agent-draft.ts";
 import {
@@ -274,10 +268,6 @@ const routeMainChatThread$ = command(
     if (next.get(SIDEBAR_PARAM) === args.threadId) {
       next.delete(SIDEBAR_PARAM);
     }
-    clearArtifactSidebarParams(next);
-    clearChatAutomationSidebarParams(next);
-    clearMailDraftSidebarParams(next);
-    clearBrowserSessionSidebarParams(next);
     set(detachedNavigateTo$, "/chats/:threadId", {
       pathParams: { threadId: args.threadId },
       searchParams: next,

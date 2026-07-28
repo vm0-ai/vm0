@@ -24,14 +24,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@vm0/ui";
-import {
-  artifactFullscreen$,
-  type ArtifactRef,
-  closeArtifact$,
-  currentArtifactText$,
-  navigateArtifactSidebarImage$,
-  toggleArtifactFullscreen$,
-} from "../../signals/zero-page/zero-artifact-sidebar.ts";
+import type { ArtifactRef } from "../../signals/chat-page/thread-sidebar.ts";
 import {
   CsvPreviewTable,
   parseCsvRows,
@@ -71,9 +64,9 @@ import {
 import { AutoFocusedArtifactIframe } from "./auto-focused-artifact-iframe.tsx";
 
 // ---------------------------------------------------------------------------
-// ArtifactSidebar — page-level pane for previewing the artifact pointed to
-// by ?artifact=. Renders kind-specific bodies inline (no modal), with a
-// fullscreen toggle that swaps to a full-viewport layout.
+// ArtifactSidebar — thread-owned pane for rendering kind-specific artifact
+// previews inline, with a fullscreen toggle that swaps to a full-viewport
+// layout.
 // ---------------------------------------------------------------------------
 
 const ARTIFACT_FULLSCREEN_SHELL_CLASSNAME =
@@ -86,45 +79,35 @@ export function ArtifactSidebar({
   onBack,
   onClose,
   onNavigateImage,
+  text$,
   thread,
 }: ArtifactSidebarProps) {
-  if (thread) {
-    return (
-      <ArtifactSidebarWithThreadContext
-        artifactRef={artifactRef}
-        fullscreenState={fullscreenState}
-        onBack={onBack}
-        onClose={onClose}
-        onNavigateImage={onNavigateImage}
-        thread={thread}
-      />
-    );
-  }
-
   return (
-    <ArtifactSidebarContent
+    <ArtifactSidebarWithThreadContext
       artifactRef={artifactRef}
       fullscreenState={fullscreenState}
       onBack={onBack}
       onClose={onClose}
+      onNavigateImage={onNavigateImage}
+      text$={text$}
+      thread={thread}
     />
   );
 }
 
-// Fullscreen normally lives in the `?artifact-fullscreen` search param; the
-// thread-owned sidebar passes its own session-scoped state instead.
 type ArtifactSidebarFullscreenState = {
   readonly active: boolean;
   readonly toggle: () => void;
 };
 
 type ArtifactSidebarProps = {
-  artifactRef: ArtifactRef;
-  fullscreenState?: ArtifactSidebarFullscreenState;
-  onBack?: () => void;
-  onClose?: () => void;
-  onNavigateImage?: (url: string) => void;
-  thread?: ChatThreadSignals;
+  readonly artifactRef: ArtifactRef;
+  readonly fullscreenState: ArtifactSidebarFullscreenState;
+  readonly onBack?: () => void;
+  readonly onClose: () => void;
+  readonly onNavigateImage: (url: string) => void;
+  readonly text$?: TextPreviewComputed;
+  readonly thread: ChatThreadSignals;
 };
 
 type ArtifactSidebarItem = {
@@ -140,11 +123,11 @@ type ArtifactImageNavigationActions = {
 type ArtifactSidebarContentProps = {
   agentId?: string | null;
   artifactRef: ArtifactRef;
-  fullscreenState?: ArtifactSidebarFullscreenState;
+  fullscreenState: ArtifactSidebarFullscreenState;
   imageNavigation?: ArtifactImageNavigationActions;
   item?: ArtifactSidebarItem;
   onBack?: () => void;
-  onClose?: () => void;
+  onClose: () => void;
   onSyncSuccess?: () => void;
   text$?: TextPreviewComputed;
   threadId?: string;
@@ -156,23 +139,20 @@ function ArtifactSidebarWithThreadContext({
   onBack,
   onClose,
   onNavigateImage,
+  text$: providedText$,
   thread,
-}: ArtifactSidebarProps & { thread: ChatThreadSignals }) {
+}: ArtifactSidebarProps) {
   const loadable = useLastLoadable(thread.artifacts$);
   const agentId = useGet(thread.agentId$);
   const messageGroups = useLastResolved(thread.messageImageGroups$, {
     equalityFn: equalMessageImageGroups,
   });
-  const navigateLegacyArtifactSidebarImage = useSet(
-    navigateArtifactSidebarImage$,
-  );
-  const navigateArtifactSidebarImage =
-    onNavigateImage ?? navigateLegacyArtifactSidebarImage;
   const reloadArtifacts = useSet(thread.reloadArtifacts$);
   const text$ =
-    artifactRef.source === "url"
+    providedText$ ??
+    (artifactRef.source === "url"
       ? thread.artifactSignalsForUrl(artifactRef.url)?.text$
-      : undefined;
+      : undefined);
   const item =
     artifactRef.source === "url" && loadable.state === "hasData"
       ? findArtifactItemForUrl(loadable.data, artifactRef.url)
@@ -192,7 +172,7 @@ function ArtifactSidebarWithThreadContext({
       return undefined;
     }
     return () => {
-      navigateArtifactSidebarImage(navigationItem.url);
+      onNavigateImage(navigationItem.url);
     };
   };
 
@@ -254,13 +234,9 @@ function ArtifactSidebarContent({
   text$,
   threadId,
 }: ArtifactSidebarContentProps) {
-  const legacyFullscreen = useGet(artifactFullscreen$);
-  const close = useSet(closeArtifact$);
-  const legacyToggleFullscreen = useSet(toggleArtifactFullscreen$);
-  const fullscreen = fullscreenState?.active ?? legacyFullscreen;
-  const toggleFullscreen = fullscreenState?.toggle ?? legacyToggleFullscreen;
+  const fullscreen = fullscreenState.active;
+  const toggleFullscreen = fullscreenState.toggle;
   const resetZoomableImageCanvasZoom = useSet(resetZoomableImageCanvasZoom$);
-  const closePreview = onClose ?? close;
   const display = resolveArtifactDisplay(artifactRef, item);
   const syncTarget = artifactSidebarSyncTargetForItem({
     agentId,
@@ -275,7 +251,7 @@ function ArtifactSidebarContent({
 
   return (
     <ArtifactSidebarResolvedContent
-      closePreview={closePreview}
+      closePreview={onClose}
       display={display}
       fullscreen={fullscreen}
       imageNavigation={imageNavigation}
@@ -337,6 +313,7 @@ function ArtifactSidebarResolvedContent({
           filename={display.filename}
           artifactKind={display.artifactKind}
           imageNavigation={imageNavigation}
+          fullscreen={fullscreen}
           text$={text$}
         />
       </div>
@@ -778,6 +755,7 @@ function ArtifactBody({
   filename,
   artifactKind,
   imageNavigation,
+  fullscreen,
   text$,
 }: {
   url: string;
@@ -785,21 +763,34 @@ function ArtifactBody({
   filename: string;
   artifactKind?: ChatThreadArtifactFile["artifactKind"];
   imageNavigation?: ArtifactImageNavigationActions;
+  fullscreen: boolean;
   text$?: TextPreviewComputed;
 }) {
-  const previewText$ = text$ ?? currentArtifactText$;
   if (kind === "markdown") {
-    return <ArtifactMarkdownBody text$={previewText$} />;
+    return text$ ? (
+      <ArtifactMarkdownBody text$={text$} />
+    ) : (
+      <ArtifactBodyError message="Preview unavailable." />
+    );
   }
   if (kind === "text" || kind === "json") {
-    return <ArtifactPlainTextBody kind={kind} text$={previewText$} />;
+    return text$ ? (
+      <ArtifactPlainTextBody kind={kind} text$={text$} />
+    ) : (
+      <ArtifactBodyError message="Preview unavailable." />
+    );
   }
   if (kind === "csv") {
-    return <ArtifactCsvBody text$={previewText$} />;
+    return text$ ? (
+      <ArtifactCsvBody text$={text$} />
+    ) : (
+      <ArtifactBodyError message="Preview unavailable." />
+    );
   }
   if (kind === "image") {
     return (
       <ArtifactImageBody
+        fullscreen={fullscreen}
         imageNavigation={imageNavigation}
         url={url}
         filename={filename}
@@ -819,6 +810,7 @@ function ArtifactBody({
         kind={kind}
         filename={filename}
         artifactKind={artifactKind}
+        fullscreen={fullscreen}
       />
     );
   }
@@ -1042,15 +1034,16 @@ function ArtifactCsvBody({ text$ }: { text$: TextPreviewComputed }) {
 }
 
 function ArtifactImageBody({
+  fullscreen,
   imageNavigation,
   url,
   filename,
 }: {
+  fullscreen: boolean;
   imageNavigation?: ArtifactImageNavigationActions;
   url: string;
   filename: string;
 }) {
-  const fullscreen = useGet(artifactFullscreen$);
   const modalOpen = useGet(lightboxDialogVisible$);
 
   return (
@@ -1230,18 +1223,19 @@ function ArtifactIframeBody({
   kind,
   filename,
   artifactKind,
+  fullscreen,
 }: {
   url: string;
   kind: "html" | "pdf";
   filename: string;
   artifactKind?: ChatThreadArtifactFile["artifactKind"];
+  fullscreen: boolean;
 }) {
   // PDF Open Parameters: #navpanes=0 hides Chromium's built-in left rail
   // (thumbnails / bookmarks) so the embedded preview shows just the page
   // and toolbar by default. Firefox/PDF.js silently ignores it.
   const publicUrl = publicAttachmentUrl(url);
   const src = kind === "pdf" ? `${publicUrl}#navpanes=0` : publicUrl;
-  const fullscreen = useGet(artifactFullscreen$);
   const isPresentationHtml =
     kind === "html" && artifactKind === "presentation-html";
   if (kind === "html") {

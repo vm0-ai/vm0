@@ -21,12 +21,9 @@ import {
   messageDocumentToEditorDoc,
   messageDocumentToPrompt,
 } from "../zero-page/user-message-document-codec.ts";
-import { clearArtifactPreview$ } from "../zero-page/zero-artifact-sidebar.ts";
-import { closeMailDraftSidebar$ } from "../zero-page/mail-draft-sidebar.ts";
 import { createChatThreadSignals, ensureDraft$ } from "./create-chat-thread.ts";
 import { createOptimisticChatMessagesForThread } from "./optimistic-chat-messages.ts";
 import type { ChatThreadSignals } from "./chat-thread-signals.ts";
-import { closeHeaderAutomationSidebar$ } from "./header-automation-sidebar.ts";
 import { createRemoteChatThreadDataSource } from "./remote-chat-thread-data-source.ts";
 import { setupChatThreadInitScroll$ } from "./setup-chat-thread-signals.ts";
 import { syncPrimaryThread$ } from "./sync-primary-thread.ts";
@@ -57,8 +54,7 @@ const setRightThread$ = command(({ set }, thread: ChatThreadSignals | null) => {
 const resetLeftSetupSignal$ = resetSignal();
 const resetRightSetupSignal$ = resetSignal();
 
-// Thread-owned sidebars (NewChatThreadSidebar switch) are anchored to the
-// previous thread's messages just like the legacy panels above.
+// Thread-owned sidebars are anchored to the previous thread's messages.
 const closeThreadSidebars$ = command(({ get, set }) => {
   for (const thread of [get(internalLeftThread$), get(internalRightThread$)]) {
     if (thread) {
@@ -309,11 +305,8 @@ export const loadLeftThread$ = command(
       return;
     }
 
-    // Drop right sidebar state before switching threads — open artifact
-    // and automation panels are anchored to the previous thread's messages.
-    set(clearArtifactPreview$);
-    set(closeHeaderAutomationSidebar$);
-    set(closeMailDraftSidebar$);
+    // Drop sidebar state before switching threads because its content is
+    // anchored to the previous thread's messages.
     set(closeThreadSidebars$);
 
     const next = new URLSearchParams(get(searchParams$));
@@ -343,9 +336,6 @@ export const loadRightThread$ = command(
       set(currentRightThread.resetRenderedChatGroupsIfAtBottom$);
     }
 
-    set(clearArtifactPreview$);
-    set(closeHeaderAutomationSidebar$);
-    set(closeMailDraftSidebar$);
     set(closeThreadSidebars$);
 
     const next = new URLSearchParams(get(searchParams$));

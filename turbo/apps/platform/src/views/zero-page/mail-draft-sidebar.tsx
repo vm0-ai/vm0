@@ -30,7 +30,6 @@ import {
   openImageLightbox$,
   openVideoLightbox$,
 } from "../../signals/zero-page/zero-attachment-chips.ts";
-import { closeMailDraftSidebar$ } from "../../signals/zero-page/mail-draft-sidebar.ts";
 import { detach, Reason } from "../../signals/utils.ts";
 import {
   isTextPreviewKind,
@@ -45,9 +44,7 @@ import { useGmailReconnect } from "./use-gmail-reconnect.ts";
 
 interface MailDraftSidebarProps {
   readonly signals: MailDraftSignals;
-  // Overrides the legacy search-param close when the thread-owned sidebar
-  // hosts the draft.
-  readonly onClose?: () => void;
+  readonly onClose: () => void;
 }
 
 function SidebarCloseButton({ close }: { readonly close: () => void }) {
@@ -1101,15 +1098,13 @@ function MailDraftDetail({
 
 export function MailDraftSidebar({ signals, onClose }: MailDraftSidebarProps) {
   const draftLoadable = useLastLoadable(signals.sidebarDraft$);
-  const legacyClose = useSet(closeMailDraftSidebar$);
-  const close = onClose ?? legacyClose;
   if (draftLoadable.state === "loading") {
-    return <MailDraftSidebarSkeleton close={close} />;
+    return <MailDraftSidebarSkeleton close={onClose} />;
   }
   if (draftLoadable.state === "hasError" || draftLoadable.data === null) {
     return (
       <UnavailableMailDraftSidebar
-        close={close}
+        close={onClose}
         message="This email is no longer available."
       />
     );
@@ -1117,7 +1112,7 @@ export function MailDraftSidebar({ signals, onClose }: MailDraftSidebarProps) {
   if (draftLoadable.data.accessStatus === "reconnect") {
     return (
       <UnavailableMailDraftSidebar
-        close={close}
+        close={onClose}
         message="You no longer have permission to access this email. Reconnect Gmail to continue."
         action={<GmailReconnectButton signals={signals} />}
       />
@@ -1126,7 +1121,7 @@ export function MailDraftSidebar({ signals, onClose }: MailDraftSidebarProps) {
   if (draftLoadable.data.status === "deleted") {
     return (
       <UnavailableMailDraftSidebar
-        close={close}
+        close={onClose}
         message="This draft was deleted."
       />
     );
@@ -1135,7 +1130,7 @@ export function MailDraftSidebar({ signals, onClose }: MailDraftSidebarProps) {
     <MailDraftDetail
       draft={draftLoadable.data}
       signals={signals}
-      close={close}
+      close={onClose}
     />
   );
 }

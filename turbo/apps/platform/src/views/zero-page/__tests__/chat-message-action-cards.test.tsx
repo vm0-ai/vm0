@@ -1,5 +1,5 @@
 import type { ConnectorResponse } from "@vm0/api-contracts/contracts/connector-schemas";
-import { chatThreadMessagesContract } from "@vm0/api-contracts/contracts/chat-threads";
+import { chatThreadEventsContract } from "@vm0/api-contracts/contracts/chat-threads";
 import {
   zeroConnectorManualGrantContract,
   zeroConnectorNoAuthGrantContract,
@@ -34,6 +34,7 @@ import {
 import { isoFromNowMs, mockNow } from "../../../__tests__/time.ts";
 import { triggerAblyEvent, hasSubscription } from "../../../mocks/ably.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
+import { normalizeMockChatEvents } from "./chat-event-test-helpers.ts";
 import { mockChatLifecycle } from "./chat-test-helpers.ts";
 
 const context = testContext();
@@ -871,64 +872,6 @@ describe("chat message action cards", () => {
     expect(untrustedLink).toHaveAttribute("href", untrustedUrl);
   });
 
-  it("restores the mail draft sidebar from the URL before its card is loaded", async () => {
-    const threadId = "c0000000-0000-4000-a000-000000000021";
-    const mailDraftId = "c0000000-0000-4000-a000-000000000022";
-    const createdAt = "2026-07-14T10:00:00.000Z";
-    let draftRequests = 0;
-
-    context.mocks.api(zeroMailContract.getDraft, ({ respond }) => {
-      draftRequests += 1;
-      return respond(200, {
-        mailDraftId,
-        mailDraftUrl: `https://app.vm0.ai/mail/drafts/${mailDraftId}`,
-        mailDraft: {
-          version: 3,
-          provider: "gmail",
-          from: "sender@example.com",
-          to: ["recipient@example.com", "teammate@example.com"],
-          cc: [],
-          bcc: [],
-          subject: "Restored draft",
-          body: "Mail body",
-          status: "draft",
-          detailAvailable: true,
-          gmailDraftId: "r-restored-draft",
-          gmailThreadId: "gmail-thread-id",
-          gmailMessageId: "gmail-message-id",
-          references: [],
-          attachments: [],
-          createdAt,
-          updatedAt: createdAt,
-        },
-      });
-    });
-    mockChatLifecycle(context, {
-      threadId,
-      threadTitle: "Restored mail draft",
-      chatMessages: [],
-    });
-
-    detachedSetupPage({
-      context,
-      path: `/chats/${threadId}?mail-draft=${mailDraftId}`,
-      featureSwitches: {
-        [FeatureSwitchKey.NewChatThreadSidebar]: false,
-      },
-    });
-
-    const sidebar = await screen.findByTestId("mail-draft-sidebar");
-    expect(within(sidebar).getByText("Restored draft")).toBeInTheDocument();
-    expect(
-      within(sidebar).getByText(
-        /to recipient@example\.com, teammate@example\.com/u,
-      ),
-    ).toBeInTheDocument();
-    const sendButton = await waitForButtonByText("Send", sidebar);
-    expect(sendButton).toBeInTheDocument();
-    expect(draftRequests).toBe(1);
-  });
-
   it("offers follow-up after sending without starting another round", async () => {
     const user = userEvent.setup({ delay: null });
     const scenario = mailFollowUpScenario({
@@ -988,34 +931,6 @@ describe("chat message action cards", () => {
 
     expect(queryButtonByText("Follow up", document)).toBeNull();
     expect(scenario.followUpRequests).toStrictEqual([]);
-  });
-
-  it("keeps follow-up available when the sidebar is restored before its card", async () => {
-    const user = userEvent.setup({ delay: null });
-    const scenario = mailFollowUpScenario({
-      threadId: "c0000000-0000-4000-a000-000000000051",
-      mailDraftId: "c0000000-0000-4000-a000-000000000052",
-    });
-
-    detachedSetupPage({
-      context,
-      path: `/chats/${scenario.threadId}?mail-draft=${scenario.mailDraftId}`,
-      featureSwitches: {
-        [FeatureSwitchKey.NewChatThreadSidebar]: false,
-        [FeatureSwitchKey.ZeroMailReplyFollowUp]: true,
-      },
-    });
-
-    let sidebar = await screen.findByTestId("mail-draft-sidebar");
-    await user.click(await waitForButtonByText("Send", sidebar));
-    await expect(screen.findByText("Email sent")).resolves.toBeInTheDocument();
-    sidebar = screen.getByTestId("mail-draft-sidebar");
-    await user.click(await waitForButtonByText("Follow up", sidebar));
-
-    await waitFor(() => {
-      expect(scenario.followUpRequests).toStrictEqual([scenario.mailDraftId]);
-      expect(scenario.sentPrompts).toStrictEqual([]);
-    });
   });
 
   it("keeps the email sent when reply tracking cannot be enabled", async () => {
@@ -1183,7 +1098,7 @@ describe("chat message action cards", () => {
       chatMessages: [],
     });
     context.mocks.api(
-      chatThreadMessagesContract.list,
+      chatThreadEventsContract.list,
       ({ params, query, respond }) => {
         if (
           params.threadId !== rightThreadId ||
@@ -1191,20 +1106,21 @@ describe("chat message action cards", () => {
           query.sinceSeqId
         ) {
           return respond(200, {
-            messages: [],
+            events: [],
             ...(query.beforeSeqId ? { hasHistoryBefore: false } : {}),
           });
         }
         return respond(200, {
-          messages: [
+          events: normalizeMockChatEvents([
             {
               id: "c0000000-0000-4000-a000-000000000034",
+              threadId: rightThreadId,
               seqId: 1,
               role: "assistant",
               content: `https://app.vm0.ai/mail/drafts/${mailDraftId}`,
               createdAt,
             },
-          ],
+          ]),
           hasHistoryBefore: false,
         });
       },
@@ -1212,12 +1128,12 @@ describe("chat message action cards", () => {
 
     detachedSetupPage({
       context,
-      path: `/chats/${leftThreadId}?sidebar=${rightThreadId}&mail-draft=${mailDraftId}`,
-      featureSwitches: {
-        [FeatureSwitchKey.NewChatThreadSidebar]: false,
-      },
+      path: `/chats/${leftThreadId}?sidebar=${rightThreadId}`,
     });
 
+    await user.click(
+      await screen.findByLabelText("Open draft email: Right chat draft"),
+    );
     const sidebar = await screen.findByTestId("mail-draft-sidebar");
     expect(sidebar).toHaveAttribute(
       "data-chat-thread-container-id",
@@ -1882,10 +1798,7 @@ describe("chat message action cards", () => {
 
     detachedSetupPage({
       context,
-      path: `/chats/${threadId}?mail-draft=${mailDraftId}`,
-      featureSwitches: {
-        [FeatureSwitchKey.NewChatThreadSidebar]: false,
-      },
+      path: `/chats/${threadId}`,
     });
 
     const card = await screen.findByLabelText(
@@ -1893,20 +1806,11 @@ describe("chat message action cards", () => {
     );
     expect(within(card).getByText("Need reconnect")).toBeInTheDocument();
     expect(card).toBeEnabled();
-
-    const message = await screen.findByText(
-      "You no longer have permission to access this email. Reconnect Gmail to continue.",
-    );
-    const sidebar = message.closest("aside");
-    if (!sidebar) {
-      throw new Error("Expected Gmail reconnect sidebar");
-    }
-    const reconnect = buttonByText("Reconnect Gmail", sidebar);
     expect(catalogRequests).toBeGreaterThanOrEqual(1);
     expect(hasSubscription("connector:changed")).toBeFalsy();
     expect(draftRequests).toBe(1);
 
-    await user.click(reconnect);
+    await user.click(card);
     await waitFor(() => {
       expect(oauthStartRequests).toBe(1);
       expect(openAuthWindow.calls).toHaveLength(1);
@@ -1930,21 +1834,15 @@ describe("chat message action cards", () => {
 
     await refreshStarted.promise;
     const cardRemainedVisible = card.isConnected;
-    const sidebarRemainedVisible = message.isConnected;
     completeRefresh.resolve();
     expect(cardRemainedVisible).toBeTruthy();
-    expect(sidebarRemainedVisible).toBeTruthy();
 
     const refreshedCard = await screen.findByLabelText(
       "Open draft email: Reconnect required",
     );
     expect(within(refreshedCard).getByText("Draft")).toBeInTheDocument();
+    await user.click(refreshedCard);
     await waitFor(() => {
-      expect(
-        screen.queryByText(
-          "You no longer have permission to access this email. Reconnect Gmail to continue.",
-        ),
-      ).toBeNull();
       expect(
         within(screen.getByTestId("mail-draft-sidebar")).getByRole("heading", {
           name: "Reconnect required",

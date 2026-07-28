@@ -54,10 +54,6 @@ export const featureSwitch$ = computed((get) => {
   return JSON.parse(raw) as Record<FeatureSwitchKey, boolean>;
 });
 
-export const newChatThreadSidebarEnabled$ = computed((get): boolean => {
-  return get(featureSwitch$)[FeatureSwitchKey.NewChatThreadSidebar] ?? false;
-});
-
 export const codexFastModeEnabled$ = computed((get): boolean => {
   return get(featureSwitch$)[FeatureSwitchKey.CodexFastMode] ?? false;
 });

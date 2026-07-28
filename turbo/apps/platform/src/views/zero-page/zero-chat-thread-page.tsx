@@ -5,7 +5,6 @@ import type {
   ReactNode,
   UIEvent as ReactUIEvent,
 } from "react";
-import { createPortal } from "react-dom";
 import {
   useGet,
   useSet,
@@ -28,8 +27,6 @@ import {
 } from "../../signals/chat-page/workflow-prompt-action.ts";
 import {
   IconAlertCircle,
-  IconArrowsDiagonal,
-  IconArrowsDiagonalMinimize2,
   IconHandStop,
   IconPhoto,
   IconChartLine,
@@ -86,7 +83,6 @@ import {
 } from "@vm0/ui";
 import { RUN_ERROR_GUIDANCE } from "@vm0/api-contracts/contracts/errors";
 import type {
-  ChatThreadArtifactFile,
   ChatMessageUsagePayload,
   FeedbackNotePart,
   ChatFollowupsEvent,
@@ -123,15 +119,12 @@ import type {
   UserPermissionGrantResponse,
 } from "@vm0/api-contracts/contracts/zero-user-permission-grants";
 import type { PublicConnectorCatalogPermissionDetail } from "@vm0/api-contracts/contracts/zero-connector-catalog";
-import { emptyArtifactImg, emptyChatImg } from "./platform-assets.ts";
+import { emptyChatImg } from "./platform-assets.ts";
 import type { FirewallPolicyValue } from "@vm0/connectors/firewall-types";
 import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import { Markdown } from "../components/markdown.tsx";
 import { detach, Reason } from "../../signals/utils.ts";
-import {
-  featureSwitch$,
-  newChatThreadSidebarEnabled$,
-} from "../../signals/external/feature-switch.ts";
+import { featureSwitch$ } from "../../signals/external/feature-switch.ts";
 import {
   captureRecommendedFollowupSelected,
   captureRecommendedFollowupsShown,
@@ -144,11 +137,8 @@ import {
   PreviewableFileAttachmentChip,
   publicAttachmentUrl,
 } from "./zero-attachment-chips.tsx";
-import { ArtifactSidebar } from "./zero-artifact-sidebar.tsx";
 import { MailDraftCard } from "./mail-draft-card.tsx";
 import { BrowserSessionCard } from "./browser-session-card.tsx";
-import { BrowserSessionSidebar } from "./browser-session-sidebar.tsx";
-import { MailDraftSidebar } from "./mail-draft-sidebar.tsx";
 import { settingsIconAssetUrl } from "./components/settings/settings-icon-assets.ts";
 import {
   classifyChatAttachment,
@@ -181,14 +171,6 @@ import {
 import { runChatActionCallback$ } from "../../signals/chat-page/action-callback.ts";
 import type { ComputerUseAuthorizationSignals } from "../../signals/chat-page/computer-use-authorization-block.ts";
 import type { PlanUpgradeSignals } from "../../signals/chat-page/plan-upgrade-block.ts";
-import {
-  emptyMailDraftSignalsById$,
-  type MailDraftSignals,
-} from "../../signals/chat-page/mail-draft.ts";
-import {
-  emptyBrowserSessionSignalsById$,
-  type BrowserSessionSignals,
-} from "../../signals/chat-page/browser-session-block.ts";
 import type { PermissionSignals } from "../../signals/chat-page/permission-card-signals.ts";
 import { AttachmentPreview } from "./zero-attachment-preview.tsx";
 import { ArtifactThumbnailImage } from "./zero-artifact-thumbnail.tsx";
@@ -197,7 +179,11 @@ import { ConnectorIcon } from "./components/settings/connector-icons.tsx";
 import { ConnectorCard } from "./components/settings/connector-card.tsx";
 import { ConnectModal } from "./components/settings/add-connection-dialog.tsx";
 import { PermissionGrantDurationSelect } from "../components/permission-grant-duration-select.tsx";
-import { lightboxUrl$ as attachmentLightboxUrl$ } from "../../signals/zero-page/zero-attachment-chips.ts";
+import {
+  lightboxUrl$ as attachmentLightboxUrl$,
+  openImageLightbox$ as openAttachmentImageLightbox$,
+  openVideoLightbox$ as openAttachmentVideoLightbox$,
+} from "../../signals/zero-page/zero-attachment-chips.ts";
 import {
   DEFAULT_USER_PERMISSION_GRANT_EXPIRES_IN,
   permissionGrantExpiresInByScope$,
@@ -205,25 +191,6 @@ import {
   setPermissionGrantExpiresIn$,
 } from "../../signals/permission-allow/permission-grant-expiration.ts";
 import { isActiveUserPermissionGrant } from "../../signals/user-permission-grants.ts";
-import {
-  artifactFullscreen$,
-  artifactInboxQuery$,
-  artifactInboxSearchOpen$,
-  artifactInboxSection$,
-  backToArtifactInbox$,
-  type ArtifactInboxSection,
-  type ArtifactRef,
-  closeArtifact$,
-  currentArtifactInboxThreadId$,
-  currentArtifactRef$,
-  openArtifactFromInbox$,
-  setArtifactInboxQuery$,
-  setArtifactInboxSection$,
-  openImageLightboxOrArtifact$ as openAttachmentImageLightbox$,
-  openVideoLightboxOrArtifact$ as openAttachmentVideoLightbox$,
-  toggleArtifactFullscreen$,
-  toggleArtifactInboxSearch$,
-} from "../../signals/zero-page/zero-artifact-sidebar.ts";
 import type { ChatClipboardAttachment } from "../../signals/zero-page/clipboard.ts";
 import { toast } from "@vm0/ui/components/ui/sonner";
 import type {
@@ -232,23 +199,16 @@ import type {
 } from "../../signals/chat-page/header-automation-menu.ts";
 import { pauseChatThreadGoal$ } from "../../signals/chat-page/chat-goal.ts";
 import {
-  closeHeaderAutomationSidebar$,
-  currentEditingHeaderWorkflowAutomationId$,
-  currentHeaderAutomationThreadId$,
-  setEditingHeaderWorkflowAutomationId$,
-} from "../../signals/chat-page/header-automation-sidebar.ts";
-import {
   activeThreadSidebar$,
   openThreadAutomations$,
 } from "../../signals/chat-page/thread-sidebar-coordinator.ts";
+import type { ThreadSidebarSignals } from "../../signals/chat-page/thread-sidebar.ts";
 import {
   ThreadSidebarSlot,
   useOpenThreadArtifacts,
 } from "./thread-sidebar.tsx";
 import { ChatThreadSidebarShell } from "./chat-thread-sidebar-shell.tsx";
 import { openQueueDrawer$ } from "../../signals/queue-page/queue-drawer-state.ts";
-import { currentMailDraftId$ } from "../../signals/zero-page/mail-draft-sidebar.ts";
-import { currentBrowserSessionId$ } from "../../signals/zero-page/browser-session-sidebar.ts";
 import {
   closeChatThreadEmojiMenu$,
   emojiMenuThreadId$,
@@ -409,14 +369,10 @@ function ArtifactsButton({ thread }: { thread: ChatThreadSignals }) {
 }
 
 function ArtifactsButtonInner({ thread }: { thread: ChatThreadSignals }) {
-  const newSidebarEnabled = useGet(newChatThreadSidebarEnabled$);
-  const inboxThreadId = useGet(currentArtifactInboxThreadId$);
   const sidebarTarget = useGet(thread.sidebar.target$);
   const reloadArtifacts = useSet(thread.reloadArtifacts$);
   const openThreadArtifacts = useOpenThreadArtifacts(thread);
-  const open = newSidebarEnabled
-    ? sidebarTarget?.type === "artifacts"
-    : inboxThreadId === thread.threadId;
+  const open = sidebarTarget?.type === "artifacts";
 
   return (
     <TooltipProvider delayDuration={300}>
@@ -455,9 +411,7 @@ export function AutomationMenuButton({
   ariaLabel?: string;
 }) {
   const reloadAutomations = useSet(thread.headerAutomations.reload$);
-  const newSidebarEnabled = useGet(newChatThreadSidebarEnabled$);
   const openAutomationSidebar = useSet(openThreadAutomations$);
-  const openThreadId = useGet(currentHeaderAutomationThreadId$);
   const sidebarTarget = useGet(thread.sidebar.target$);
   const workflowAutomations$ = thread.headerAutomations.automations$;
   const workflowAutomationsLoadable = useLastLoadable(workflowAutomations$);
@@ -466,9 +420,7 @@ export function AutomationMenuButton({
     workflowAutomationsLoadable.state === "hasData"
       ? workflowAutomationsLoadable.data
       : (lastResolvedAutomations ?? []);
-  const open = newSidebarEnabled
-    ? sidebarTarget?.type === "automations"
-    : openThreadId === thread.threadId;
+  const open = sidebarTarget?.type === "automations";
 
   // Show the opener when the thread has a workflow automation.
   // Goals live in the composer, so a goal-only thread has nothing here.
@@ -866,22 +818,6 @@ function ChatThreadEmojiGrid({
   );
 }
 
-function formatBytes(bytes: number): string {
-  if (bytes < 1024) {
-    return `${bytes} B`;
-  }
-  const units = ["KB", "MB", "GB"] as const;
-  let value = bytes / 1024;
-  for (let i = 0; i < units.length; i++) {
-    const unit = units[i]!;
-    if (value < 1024 || i === units.length - 1) {
-      return `${value.toFixed(value >= 10 ? 0 : 1)} ${unit}`;
-    }
-    value = value / 1024;
-  }
-  return `${bytes} B`;
-}
-
 function formatChatTimestamp(value: string): string {
   return new Date(value).toLocaleString("en-US", {
     month: "short",
@@ -889,322 +825,6 @@ function formatChatTimestamp(value: string): string {
     hour: "numeric",
     minute: "2-digit",
   });
-}
-
-type ChatArtifactItem = {
-  runId: string;
-  file: ChatThreadArtifactFile;
-};
-
-type ArtifactPreviewKind = "image" | "video" | "audio" | "document" | "file";
-
-const ARTIFACT_INBOX_SECTIONS = [
-  { key: "all", label: "All" },
-  { key: "media", label: "Media" },
-  { key: "docs", label: "Docs" },
-  { key: "sites", label: "Sites" },
-] as const satisfies readonly {
-  key: ArtifactInboxSection;
-  label: string;
-}[];
-
-type ArtifactInboxSectionEntry = (typeof ARTIFACT_INBOX_SECTIONS)[number];
-
-function artifactItemKey(item: ChatArtifactItem): string {
-  return `${item.runId}:${item.file.id}:${item.file.url}`;
-}
-
-function getArtifactPreviewKind(
-  file: ChatThreadArtifactFile,
-): ArtifactPreviewKind {
-  const kind = classifyChatAttachment({
-    filename: file.filename,
-    url: file.url,
-    contentType: file.contentType,
-  });
-
-  if (kind === "image") {
-    return "image";
-  }
-  if (kind === "video") {
-    return "video";
-  }
-  if (kind === "audio") {
-    return "audio";
-  }
-  if (
-    kind === "markdown" ||
-    kind === "text" ||
-    kind === "json" ||
-    kind === "csv" ||
-    kind === "pdf" ||
-    kind === "html"
-  ) {
-    return "document";
-  }
-  return "file";
-}
-
-function flattenArtifactRuns(
-  runs: { runId: string; files: ChatThreadArtifactFile[] }[],
-): ChatArtifactItem[] {
-  return runs.flatMap((run) => {
-    return run.files.map((file) => {
-      return { runId: run.runId, file };
-    });
-  });
-}
-
-function artifactFileKindLabel(file: ChatThreadArtifactFile): string {
-  if (file.artifactKind === "presentation-html") {
-    return "Presentation";
-  }
-  const documentKind = getArtifactDocumentPreviewKind(file);
-  if (documentKind === "html") {
-    return "Hosted site";
-  }
-  if (documentKind === "pdf") {
-    return "PDF";
-  }
-  if (documentKind === "markdown") {
-    return "Markdown";
-  }
-  if (documentKind === "json") {
-    return "JSON";
-  }
-  if (documentKind === "csv") {
-    return "Data";
-  }
-  if (documentKind === "text") {
-    return "Text";
-  }
-
-  const previewKind = getArtifactPreviewKind(file);
-  switch (previewKind) {
-    case "image": {
-      return "Image";
-    }
-    case "video": {
-      return "Video";
-    }
-    case "audio": {
-      return "Audio";
-    }
-    case "document": {
-      return "Document";
-    }
-    case "file": {
-      return "File";
-    }
-  }
-}
-
-function artifactMatchesInboxSection(
-  item: ChatArtifactItem,
-  section: ArtifactInboxSection,
-): boolean {
-  if (section === "all") {
-    return true;
-  }
-
-  const documentKind = getArtifactDocumentPreviewKind(item.file);
-  if (section === "sites") {
-    return documentKind === "html";
-  }
-  if (section === "docs") {
-    return documentKind !== null && documentKind !== "html";
-  }
-
-  const previewKind = getArtifactPreviewKind(item.file);
-  return (
-    previewKind === "image" ||
-    previewKind === "video" ||
-    previewKind === "audio"
-  );
-}
-
-function artifactInboxSectionsForItems(
-  items: readonly ChatArtifactItem[],
-): readonly ArtifactInboxSectionEntry[] {
-  return ARTIFACT_INBOX_SECTIONS.filter((entry) => {
-    return (
-      entry.key === "all" ||
-      items.some((item) => {
-        return artifactMatchesInboxSection(item, entry.key);
-      })
-    );
-  });
-}
-
-function resolveVisibleArtifactInboxSection(
-  section: ArtifactInboxSection,
-  sections: readonly ArtifactInboxSectionEntry[],
-): ArtifactInboxSection {
-  return sections.some((entry) => {
-    return entry.key === section;
-  })
-    ? section
-    : "all";
-}
-
-function artifactMatchesSearch(item: ChatArtifactItem, query: string): boolean {
-  if (query.length === 0) {
-    return true;
-  }
-  const haystack =
-    `${item.file.filename} ${item.file.contentType}`.toLowerCase();
-  return haystack.includes(query);
-}
-
-function ArtifactFileIcon({
-  file,
-  size = "sm",
-}: {
-  file: ChatThreadArtifactFile;
-  size?: "sm" | "md";
-}) {
-  return (
-    <FilePreviewIcon
-      filename={file.filename}
-      contentType={file.contentType}
-      size={size}
-      testId="artifact-file-icon"
-    />
-  );
-}
-
-function ArtifactPreviewBadge({ file }: { file: ChatThreadArtifactFile }) {
-  const previewKind = getArtifactPreviewKind(file);
-  const publicUrl = publicAttachmentUrl(file.url);
-
-  if (previewKind === "image") {
-    return (
-      <img
-        src={r2ImageTransformUrl(publicUrl, { width: 96, height: 96 })}
-        alt=""
-        aria-hidden="true"
-        className="h-full w-full object-cover"
-      />
-    );
-  }
-
-  if (previewKind === "video") {
-    const videoFallback = (
-      <video
-        src={videoPosterFrameUrl(publicUrl)}
-        preload="metadata"
-        muted
-        playsInline
-        aria-hidden="true"
-        className="h-full w-full object-cover"
-        data-testid="artifact-video-preview-fallback"
-      />
-    );
-    return (
-      <span
-        aria-hidden="true"
-        className="relative block h-full w-full overflow-hidden bg-black"
-        data-testid="artifact-video-preview-badge"
-      >
-        {file.previewImageUrl ? (
-          <ArtifactThumbnailImage
-            src={file.previewImageUrl}
-            testId="artifact-video-thumbnail-badge"
-            className="absolute inset-0 h-full w-full object-cover"
-            fallback={videoFallback}
-          />
-        ) : (
-          videoFallback
-        )}
-      </span>
-    );
-  }
-
-  if (getArtifactDocumentPreviewKind(file) === "html") {
-    const iframeFallback = (
-      <iframe
-        src={publicUrl}
-        title={`${file.filename} artifact thumbnail`}
-        sandbox="allow-same-origin allow-scripts"
-        tabIndex={-1}
-        loading="lazy"
-        scrolling="no"
-        className="pointer-events-none absolute left-0 top-0 h-[400%] w-[400%] origin-top-left scale-[0.25] border-0 bg-background"
-      />
-    );
-    return (
-      <span
-        className="relative block h-full w-full overflow-hidden bg-background"
-        aria-hidden="true"
-        data-testid="artifact-html-preview-badge"
-      >
-        {file.previewImageUrl ? (
-          <ArtifactThumbnailImage
-            src={file.previewImageUrl}
-            testId="artifact-html-thumbnail-badge"
-            className="absolute inset-0 h-full w-full object-cover"
-            fallback={iframeFallback}
-          />
-        ) : (
-          iframeFallback
-        )}
-      </span>
-    );
-  }
-
-  return <ArtifactFileIcon file={file} />;
-}
-
-type ArtifactTextPreviewKind = "markdown" | "text" | "json" | "csv";
-type ArtifactDocumentPreviewKind = ArtifactTextPreviewKind | "pdf" | "html";
-
-function getArtifactTextPreviewKind(
-  file: ChatThreadArtifactFile,
-): ArtifactTextPreviewKind | null {
-  const kind = classifyChatAttachment({
-    filename: file.filename,
-    url: file.url,
-    contentType: file.contentType,
-  });
-
-  if (
-    kind === "markdown" ||
-    kind === "text" ||
-    kind === "json" ||
-    kind === "csv"
-  ) {
-    return kind;
-  }
-
-  if (/\.log$/i.test(file.filename)) {
-    return "text";
-  }
-
-  return null;
-}
-
-function getArtifactDocumentPreviewKind(
-  file: ChatThreadArtifactFile,
-): ArtifactDocumentPreviewKind | null {
-  const textKind = getArtifactTextPreviewKind(file);
-  if (textKind) {
-    return textKind;
-  }
-
-  const contentType = file.contentType.toLowerCase();
-  const filename = file.filename.toLowerCase();
-  if (contentType === "application/pdf" || filename.endsWith(".pdf")) {
-    return "pdf";
-  }
-  if (
-    contentType === "text/html" ||
-    filename.endsWith(".html") ||
-    filename.endsWith(".htm")
-  ) {
-    return "html";
-  }
-
-  return null;
 }
 
 type ChatImagePreviewLinkProps = {
@@ -1238,9 +858,6 @@ const CHAT_INLINE_VIDEO_BODY_PREVIEW_CLASS = cn(
   CHAT_INLINE_MEDIA_PREVIEW_CHROME_CLASS,
   "bg-black",
 );
-
-const ARTIFACT_FULLSCREEN_SHELL_CLASSNAME =
-  "fixed inset-0 z-[100] flex min-h-0 flex-col bg-background pt-[var(--sat)] pb-[var(--sab)]";
 
 function ChatImagePreviewLink({
   alt,
@@ -1402,375 +1019,6 @@ function ChatVideoPreviewButton({
   );
 }
 
-function ChatArtifactInboxHeader({
-  count,
-  fullscreen,
-  searchOpen,
-  onClose,
-  onToggleSearch,
-  onToggleFullscreen,
-}: {
-  count: number | null;
-  fullscreen: boolean;
-  searchOpen: boolean;
-  onClose: () => void;
-  onToggleSearch: () => void;
-  onToggleFullscreen: () => void;
-}) {
-  return (
-    <div className="flex min-h-14 shrink-0 items-center gap-3 border-b border-border/60 px-4 py-2">
-      <div className="flex min-w-0 flex-1 items-center gap-2">
-        <h2 className="truncate text-sm font-medium text-foreground">
-          Artifacts
-        </h2>
-        {count !== null && (
-          <span className="shrink-0 rounded-full bg-muted px-2 py-0.5 text-xs font-medium text-muted-foreground">
-            {count}
-          </span>
-        )}
-      </div>
-      <TooltipProvider delayDuration={300}>
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <button
-              type="button"
-              onClick={onToggleSearch}
-              aria-label="Search artifacts"
-              aria-pressed={searchOpen}
-              className={cn(
-                "inline-flex h-8 w-8 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted/60 hover:text-foreground",
-                searchOpen && "bg-muted/60 text-foreground",
-              )}
-            >
-              <IconSearch size={16} />
-            </button>
-          </TooltipTrigger>
-          <TooltipContent side="bottom">Search artifacts</TooltipContent>
-        </Tooltip>
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <button
-              type="button"
-              onClick={onToggleFullscreen}
-              aria-label={fullscreen ? "Exit fullscreen" : "Enter fullscreen"}
-              data-testid="artifact-inbox-fullscreen-toggle"
-              className="hidden h-8 w-8 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted/60 hover:text-foreground xl:inline-flex"
-            >
-              {fullscreen ? (
-                <IconArrowsDiagonalMinimize2 size={16} />
-              ) : (
-                <IconArrowsDiagonal size={16} />
-              )}
-            </button>
-          </TooltipTrigger>
-          <TooltipContent side="bottom">
-            {fullscreen ? "Exit fullscreen" : "Enter fullscreen"}
-          </TooltipContent>
-        </Tooltip>
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <button
-              type="button"
-              onClick={onClose}
-              aria-label="Close artifacts"
-              className="inline-flex h-8 w-8 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted/60 hover:text-foreground"
-            >
-              <IconX size={16} />
-            </button>
-          </TooltipTrigger>
-          <TooltipContent side="bottom">Close artifacts</TooltipContent>
-        </Tooltip>
-      </TooltipProvider>
-    </div>
-  );
-}
-
-function ArtifactInboxTabs({
-  section,
-  sections,
-  setSection,
-}: {
-  section: ArtifactInboxSection;
-  sections: readonly ArtifactInboxSectionEntry[];
-  setSection: (value: ArtifactInboxSection) => void;
-}) {
-  return (
-    <div
-      className="grid rounded-lg bg-muted/70 p-1"
-      style={{
-        gridTemplateColumns: `repeat(${sections.length}, minmax(0, 1fr))`,
-      }}
-      role="tablist"
-      aria-label="Artifact sections"
-    >
-      {sections.map((entry) => {
-        const selected = section === entry.key;
-        return (
-          <button
-            key={entry.key}
-            type="button"
-            role="tab"
-            aria-selected={selected}
-            onClick={() => {
-              setSection(entry.key);
-            }}
-            className={cn(
-              "h-8 rounded-md px-2 text-xs font-medium transition-colors",
-              selected
-                ? "bg-background text-foreground shadow-sm"
-                : "text-muted-foreground hover:text-foreground",
-            )}
-          >
-            {entry.label}
-          </button>
-        );
-      })}
-    </div>
-  );
-}
-
-function ArtifactInboxSearch({
-  query,
-  setQuery,
-}: {
-  query: string;
-  setQuery: (value: string) => void;
-}) {
-  return (
-    <label className="relative block">
-      <span className="sr-only">Search artifacts</span>
-      <IconSearch
-        size={15}
-        className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground"
-      />
-      <input
-        value={query}
-        onChange={(event) => {
-          setQuery(event.currentTarget.value);
-        }}
-        className="h-9 w-full rounded-lg border border-border/70 bg-background pl-9 pr-3 text-sm text-foreground outline-none transition-colors placeholder:text-muted-foreground focus:border-ring"
-        placeholder="Search"
-        autoComplete="off"
-        autoFocus
-      />
-    </label>
-  );
-}
-
-function ArtifactInboxRow({
-  item,
-  onOpen,
-}: {
-  item: ChatArtifactItem;
-  onOpen: () => void;
-}) {
-  const { file } = item;
-
-  return (
-    <button
-      type="button"
-      onClick={onOpen}
-      aria-label={`Open artifact ${file.filename}`}
-      className="group flex w-full min-w-0 items-center gap-3 rounded-lg border border-border/60 bg-background/80 p-3 text-left shadow-sm transition-colors hover:border-foreground/20 hover:bg-muted/25 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
-    >
-      <span className="flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-lg bg-muted text-muted-foreground">
-        <ArtifactPreviewBadge file={file} />
-      </span>
-      <span className="min-w-0 flex-1">
-        <span
-          className="block truncate text-sm font-medium text-foreground"
-          title={file.filename}
-        >
-          {file.filename}
-        </span>
-        <span className="mt-1 flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground">
-          <span>{artifactFileKindLabel(file)}</span>
-          <span aria-hidden>·</span>
-          <span>{formatBytes(file.size)}</span>
-          <span aria-hidden>·</span>
-          <span>{formatChatTimestamp(file.createdAt)}</span>
-        </span>
-      </span>
-      <IconChevronRight
-        size={16}
-        className="shrink-0 text-muted-foreground transition-transform group-hover:translate-x-0.5 group-hover:text-foreground"
-      />
-    </button>
-  );
-}
-
-function ChatArtifactInboxBody({ thread }: { thread: ChatThreadSignals }) {
-  const loadable = useLastLoadable(thread.artifacts$);
-  const section = useGet(artifactInboxSection$);
-  const query = useGet(artifactInboxQuery$);
-  const searchOpen = useGet(artifactInboxSearchOpen$);
-  const setSection = useSet(setArtifactInboxSection$);
-  const setQuery = useSet(setArtifactInboxQuery$);
-  const openArtifact = useSet(openArtifactFromInbox$);
-
-  if (loadable.state === "loading") {
-    return (
-      <div className="flex flex-col gap-3">
-        {Array.from({ length: 5 }, (_, i) => {
-          return <Skeleton key={i} className="h-[74px] rounded-lg" />;
-        })}
-      </div>
-    );
-  }
-
-  if (loadable.state === "hasError") {
-    return (
-      <div className="rounded-lg border border-destructive/30 bg-destructive/5 p-4 text-sm text-destructive">
-        Failed to load artifacts
-      </div>
-    );
-  }
-
-  if (loadable.state !== "hasData") {
-    return null;
-  }
-
-  const items = flattenArtifactRuns(loadable.data);
-  if (items.length === 0) {
-    return (
-      <div className="flex h-full min-h-[360px] flex-col items-center justify-center gap-3 rounded-lg border border-dashed border-border/70 p-8 text-center">
-        <img
-          src={emptyArtifactImg}
-          alt=""
-          role="presentation"
-          loading="lazy"
-          className="h-24 w-24 object-contain opacity-80"
-        />
-        <p className="text-sm text-muted-foreground">
-          No uploaded files in this chat yet.
-        </p>
-      </div>
-    );
-  }
-
-  const normalizedQuery = query.trim().toLowerCase();
-  const sections = artifactInboxSectionsForItems(items);
-  const activeSection = resolveVisibleArtifactInboxSection(section, sections);
-  const visibleItems = items.filter((item) => {
-    return (
-      artifactMatchesInboxSection(item, activeSection) &&
-      artifactMatchesSearch(item, normalizedQuery)
-    );
-  });
-
-  return (
-    <div className="flex min-h-full flex-col gap-4">
-      <ArtifactInboxTabs
-        section={activeSection}
-        sections={sections}
-        setSection={setSection}
-      />
-      {(searchOpen || query.length > 0) && (
-        <ArtifactInboxSearch query={query} setQuery={setQuery} />
-      )}
-      {visibleItems.length === 0 ? (
-        <div className="flex flex-1 items-center justify-center rounded-lg border border-dashed border-border/70 p-8 text-center text-sm text-muted-foreground">
-          No artifacts match this view.
-        </div>
-      ) : (
-        <div className="flex flex-col gap-2">
-          {visibleItems.map((item) => {
-            return (
-              <ArtifactInboxRow
-                key={artifactItemKey(item)}
-                item={item}
-                onOpen={() => {
-                  openArtifact({
-                    threadId: thread.threadId,
-                    url: item.file.url,
-                  });
-                }}
-              />
-            );
-          })}
-        </div>
-      )}
-    </div>
-  );
-}
-
-function ChatArtifactInboxList({ thread }: { thread: ChatThreadSignals }) {
-  const loadable = useLastLoadable(thread.artifacts$);
-  const fullscreen = useGet(artifactFullscreen$);
-  const searchOpen = useGet(artifactInboxSearchOpen$);
-  const toggleFullscreen = useSet(toggleArtifactFullscreen$);
-  const toggleSearch = useSet(toggleArtifactInboxSearch$);
-  const close = useSet(closeArtifact$);
-  const count =
-    loadable.state === "hasData"
-      ? flattenArtifactRuns(loadable.data).length
-      : null;
-
-  const inbox = (
-    <div
-      className={cn(
-        fullscreen
-          ? ARTIFACT_FULLSCREEN_SHELL_CLASSNAME
-          : "flex h-full w-full min-h-0 flex-col border-l border-border/60 bg-background xl:border-l-0",
-        "animate-in fade-in duration-[180ms] ease",
-      )}
-      data-testid="artifact-inbox"
-    >
-      <ChatArtifactInboxHeader
-        count={count}
-        fullscreen={fullscreen}
-        searchOpen={searchOpen}
-        onToggleSearch={toggleSearch}
-        onToggleFullscreen={toggleFullscreen}
-        onClose={close}
-      />
-      <div className="min-h-0 flex-1 overflow-y-auto px-4 py-4">
-        <ChatArtifactInboxBody thread={thread} />
-      </div>
-    </div>
-  );
-  return fullscreen && typeof document !== "undefined"
-    ? createPortal(inbox, document.body)
-    : inbox;
-}
-
-function ChatArtifactInboxSlot({
-  artifactRef,
-  leftThread,
-  rightThread,
-}: {
-  artifactRef: ArtifactRef | null;
-  leftThread: ChatThreadSignals | null;
-  rightThread: ChatThreadSignals | null;
-}) {
-  const inboxThreadId = useGet(currentArtifactInboxThreadId$);
-  const backToInbox = useSet(backToArtifactInbox$);
-  const close = useSet(closeArtifact$);
-  const thread =
-    [leftThread, rightThread].find((candidate) => {
-      return candidate?.threadId === inboxThreadId;
-    }) ??
-    leftThread ??
-    rightThread;
-
-  if (artifactRef) {
-    return (
-      <ArtifactSidebar
-        artifactRef={artifactRef}
-        thread={thread ?? undefined}
-        onBack={inboxThreadId ? backToInbox : undefined}
-        onClose={close}
-      />
-    );
-  }
-
-  if (!thread || !inboxThreadId) {
-    return null;
-  }
-
-  return <ChatArtifactInboxList key={thread.threadId} thread={thread} />;
-}
-
 function formatHeaderWorkflowAutomationRun(value: string | null): string {
   if (!value) {
     return "No runs yet";
@@ -1918,13 +1166,15 @@ function headerWorkflowAutomationRows(
 function HeaderWorkflowAutomationCard({
   automation,
   headerAutomations,
+  threadSidebar,
 }: {
   automation: HeaderWorkflowAutomationEntry;
   headerAutomations: HeaderAutomationSignals;
+  threadSidebar: ThreadSidebarSignals;
 }) {
   const pageSignal = useGet(pageSignal$);
-  const editingAutomationId = useGet(currentEditingHeaderWorkflowAutomationId$);
-  const setEditingAutomationId = useSet(setEditingHeaderWorkflowAutomationId$);
+  const editingAutomationId = useGet(threadSidebar.editingAutomationId$);
+  const setEditingAutomationId = useSet(threadSidebar.setEditingAutomationId$);
   const [runningLoadable, runNow] = useLoadableSet(headerAutomations.runNow$);
   const running = runningLoadable.state === "loading";
   const title =
@@ -2458,15 +1708,11 @@ function HeaderAutomationSidebar({
   onClose,
 }: {
   thread: ChatThreadSignals;
-  // Overrides the legacy search-param close when the thread-owned sidebar
-  // hosts the automations list.
-  onClose?: () => void;
+  onClose: () => void;
 }) {
   const workflowAutomations$ = thread.headerAutomations.automations$;
   const workflowAutomationsLoadable = useLastLoadable(workflowAutomations$);
   const lastResolvedAutomations = useLastResolved(workflowAutomations$);
-  const legacyClose = useSet(closeHeaderAutomationSidebar$);
-  const close = onClose ?? legacyClose;
   const workflowAutomations =
     workflowAutomationsLoadable.state === "hasData"
       ? workflowAutomationsLoadable.data
@@ -2488,7 +1734,7 @@ function HeaderAutomationSidebar({
         </div>
         <button
           type="button"
-          onClick={close}
+          onClick={onClose}
           aria-label="Close automations"
           className="inline-flex h-8 w-8 items-center justify-center rounded-md text-muted-foreground hover:bg-muted/60 hover:text-foreground"
         >
@@ -2514,6 +1760,7 @@ function HeaderAutomationSidebar({
                   key={automation.id}
                   automation={automation}
                   headerAutomations={thread.headerAutomations}
+                  threadSidebar={thread.sidebar}
                 />
               );
             })}
@@ -2577,48 +1824,6 @@ function ChatThreadArea({
   );
 }
 
-function useSelectedBrowserSessionSignals(
-  leftThread: ChatThreadSignals | null,
-  rightThread: ChatThreadSignals | null,
-): BrowserSessionSignals | undefined {
-  const selectedBrowserId = useGet(currentBrowserSessionId$);
-  const leftBrowserSignalsById = useGet(
-    leftThread?.browserSessionCardSignalsById$ ??
-      emptyBrowserSessionSignalsById$,
-  );
-  const rightBrowserSignalsById = useGet(
-    rightThread?.browserSessionCardSignalsById$ ??
-      emptyBrowserSessionSignalsById$,
-  );
-  if (!selectedBrowserId) {
-    return undefined;
-  }
-  return (
-    leftBrowserSignalsById.get(selectedBrowserId) ??
-    rightBrowserSignalsById.get(selectedBrowserId)
-  );
-}
-
-function useSelectedMailDraftSignals(
-  leftThread: ChatThreadSignals | null,
-  rightThread: ChatThreadSignals | null,
-): MailDraftSignals | undefined {
-  const selectedMailDraftId = useGet(currentMailDraftId$);
-  const leftMailDraftSignalsById = useGet(
-    leftThread?.mailDraftCardSignalsById$ ?? emptyMailDraftSignalsById$,
-  );
-  const rightMailDraftSignalsById = useGet(
-    rightThread?.mailDraftCardSignalsById$ ?? emptyMailDraftSignalsById$,
-  );
-  if (!selectedMailDraftId) {
-    return undefined;
-  }
-  return (
-    leftMailDraftSignalsById.get(selectedMailDraftId) ??
-    rightMailDraftSignalsById.get(selectedMailDraftId)
-  );
-}
-
 function ThreadAutomationsSidebarSlot({
   thread,
 }: {
@@ -2629,70 +1834,27 @@ function ThreadAutomationsSidebarSlot({
 }
 
 export function ZeroChatThreadPage() {
-  const newSidebarEnabled = useGet(newChatThreadSidebarEnabled$);
   const activeThreadSidebar = useGet(activeThreadSidebar$);
   const leftThread = useGet(currentLeftThread$);
   const rightThread = useGet(currentRightThread$);
   const lightboxUrl = useGet(attachmentLightboxUrl$);
-  const artifactRef = useGet(currentArtifactRef$);
-  const artifactInboxThreadId = useGet(currentArtifactInboxThreadId$);
-  const automationPanelThreadId = useGet(currentHeaderAutomationThreadId$);
-  const automationPanelThread = [leftThread, rightThread].find((thread) => {
-    return thread?.threadId === automationPanelThreadId;
-  });
-  const selectedMailDraftSignals = useSelectedMailDraftSignals(
-    leftThread,
-    rightThread,
-  );
-  const selectedBrowserSessionSignals = useSelectedBrowserSessionSignals(
-    leftThread,
-    rightThread,
-  );
-  const artifactPanelOpen =
-    artifactRef !== null || artifactInboxThreadId !== null;
-  const automationPanelOpen = automationPanelThread !== undefined;
-  const mailDraftPanelOpen = selectedMailDraftSignals !== undefined;
-  const browserPanelOpen = selectedBrowserSessionSignals !== undefined;
-  const rightPanelOpen = newSidebarEnabled
-    ? activeThreadSidebar !== null
-    : artifactPanelOpen ||
-      automationPanelOpen ||
-      mailDraftPanelOpen ||
-      browserPanelOpen;
   return (
     <>
       <ChatThreadSidebarShell
-        open={rightPanelOpen}
+        open={activeThreadSidebar !== null}
         sidebar={
-          newSidebarEnabled ? (
-            activeThreadSidebar ? (
-              activeThreadSidebar.target.type === "automations" ? (
-                <ThreadAutomationsSidebarSlot
-                  key={activeThreadSidebar.thread.threadId}
-                  thread={activeThreadSidebar.thread}
-                />
-              ) : (
-                <ThreadSidebarSlot
-                  thread={activeThreadSidebar.thread}
-                  target={activeThreadSidebar.target}
-                />
-              )
-            ) : null
-          ) : selectedBrowserSessionSignals ? (
-            <BrowserSessionSidebar signals={selectedBrowserSessionSignals} />
-          ) : selectedMailDraftSignals ? (
-            <MailDraftSidebar signals={selectedMailDraftSignals} />
-          ) : automationPanelThread ? (
-            <HeaderAutomationSidebar
-              key={automationPanelThread.threadId}
-              thread={automationPanelThread}
-            />
-          ) : artifactPanelOpen ? (
-            <ChatArtifactInboxSlot
-              artifactRef={artifactRef}
-              leftThread={leftThread}
-              rightThread={rightThread}
-            />
+          activeThreadSidebar ? (
+            activeThreadSidebar.target.type === "automations" ? (
+              <ThreadAutomationsSidebarSlot
+                key={activeThreadSidebar.thread.threadId}
+                thread={activeThreadSidebar.thread}
+              />
+            ) : (
+              <ThreadSidebarSlot
+                thread={activeThreadSidebar.thread}
+                target={activeThreadSidebar.target}
+              />
+            )
           ) : null
         }
       >
