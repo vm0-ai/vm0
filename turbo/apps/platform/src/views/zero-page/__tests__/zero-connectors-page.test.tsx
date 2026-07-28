@@ -19,7 +19,6 @@ import {
   type PublicConnectorCatalogStatusItem,
 } from "@vm0/api-contracts/contracts/zero-connector-catalog";
 import { zeroFeatureSwitchesContract } from "@vm0/api-contracts/contracts/zero-feature-switches";
-import { platformRealtimeTokenContract } from "@vm0/api-contracts/contracts/realtime";
 import { zeroUserConnectorsContract } from "@vm0/api-contracts/contracts/user-connectors";
 import { zeroUserPermissionGrantsContract } from "@vm0/api-contracts/contracts/zero-user-permission-grants";
 import type { TeamComposeItem } from "@vm0/api-contracts/contracts/zero-team";
@@ -39,7 +38,6 @@ import {
   fill,
   queryAllByRoleFast,
 } from "../../../__tests__/page-helper.ts";
-import { now } from "../../../lib/time.ts";
 import { search } from "../../../signals/location.ts";
 import { setFeatureSwitch$ } from "../../../signals/external/feature-switch.ts";
 import { detachedNavigateTo$ } from "../../../signals/route.ts";
@@ -1018,102 +1016,16 @@ describe("connectors page", () => {
     expect(search()).toContain(agentId);
   });
 
-  it("refreshes connector and agent authorization state after an Ably update", async () => {
-    const agentId = "c0000000-0000-4000-a000-000000000010";
-    let enabledTypes = ["github"];
+  it("does not subscribe untouched connector cards to connector changes", async () => {
     mockConnectors([{ type: "github", externalUsername: "octocat" }]);
-    context.mocks.data.team([teamAgent(agentId, "Research Agent", "preset:0")]);
-    context.mocks.api(zeroUserConnectorsContract.get, ({ params, respond }) => {
-      return respond(200, {
-        enabledTypes: params.id === agentId ? enabledTypes : [],
-      });
-    });
 
     detachedSetupPage({
       context,
-      path: `/connectors?connection=agent:${agentId}`,
+      path: "/connectors",
     });
 
-    await waitFor(() => {
-      expect(screen.getByText("GitHub")).toBeInTheDocument();
-      expect(screen.queryByText("Asana")).not.toBeInTheDocument();
-      expect(
-        context.mocks.ably.hasSubscription("connector:changed"),
-      ).toBeTruthy();
-    });
-
-    enabledTypes = ["github", "asana"];
-    mockConnectors([
-      { type: "github", externalUsername: "octocat" },
-      { type: "asana" },
-    ]);
-    context.mocks.ably.trigger("connector:changed");
-
-    await waitFor(() => {
-      expect(screen.getByText("GitHub")).toBeInTheDocument();
-      expect(screen.getByText("Asana")).toBeInTheDocument();
-      expect(
-        within(connectorCardByLabel("Asana")).getByText("Connected"),
-      ).toBeInTheDocument();
-    });
-  });
-
-  it("catches connector changes when the Ably subscription attaches", async () => {
-    const agentId = "c0000000-0000-4000-a000-000000000010";
-    const realtimeReady = Promise.withResolvers<void>();
-    let enabledTypes = ["github"];
-    mockConnectors([{ type: "github", externalUsername: "octocat" }]);
-    context.mocks.data.team([teamAgent(agentId, "Research Agent", "preset:0")]);
-    context.mocks.api(zeroUserConnectorsContract.get, ({ params, respond }) => {
-      return respond(200, {
-        enabledTypes: params.id === agentId ? enabledTypes : [],
-      });
-    });
-    context.mocks.api(
-      platformRealtimeTokenContract.create,
-      async ({ respond }) => {
-        await realtimeReady.promise;
-        return respond(200, {
-          keyName: "mock-key",
-          clientId: "test-user-123",
-          timestamp: now(),
-          capability: '{"*":["*"]}',
-          nonce: "mock-nonce",
-          mac: "mock-mac",
-        });
-      },
-    );
-
-    detachedSetupPage({
-      context,
-      path: `/connectors?connection=agent:${agentId}`,
-    });
-
-    await waitFor(() => {
-      expect(screen.getByText("GitHub")).toBeInTheDocument();
-      expect(screen.queryByText("Asana")).not.toBeInTheDocument();
-      expect(
-        context.mocks.ably.hasSubscription("connector:changed"),
-      ).toBeFalsy();
-    });
-
-    enabledTypes = ["github", "asana"];
-    mockConnectors([
-      { type: "github", externalUsername: "octocat" },
-      { type: "asana" },
-    ]);
-    realtimeReady.resolve();
-
-    await waitFor(() => {
-      expect(
-        context.mocks.ably.hasSubscription("connector:changed"),
-      ).toBeTruthy();
-      expect(screen.getByText("GitHub")).toBeInTheDocument();
-      expect(screen.getByText("Asana")).toBeInTheDocument();
-      expect(
-        within(connectorCardByLabel("Asana")).getByText("Connected"),
-      ).toBeInTheDocument();
-    });
+    await screen.findByText("GitHub");
+    expect(context.mocks.ably.hasSubscription("connector:changed")).toBeFalsy();
   });
 
   it("hydrates connector search and clears it on clean navigation", async () => {
@@ -1553,48 +1465,59 @@ describe("connectors page", () => {
     ).not.toBeInTheDocument();
   });
 
-  it("starts Mercury OAuth with the app callback", async () => {
-    mockConnectors([]);
-    mockPublicConnectorStatus([
-      publicStatusItem({
-        connectorRef: "mercury",
-        label: "Mercury",
-        authMethods: [
-          {
-            id: "oauth",
-            label: "OAuth",
-            description: null,
-            grantKind: "auth-code",
-            manualFields: [],
-            startOptions: [],
-          },
-        ],
-        singleAuthCodeAuthMethodId: "oauth",
-      }),
-    ]);
-    const authWindow = createMockAuthWindow();
-    context.mocks.browser.open(authWindow);
-    context.mocks.api(
-      zeroConnectorOauthStartContract.start,
-      ({ body, params, respond }) => {
-        expect(params.type).toBe("mercury");
-        expect(body.callbackTarget).toBe("app");
-        return respond(200, {
-          authorizationUrl: "https://oauth.test/mercury/authorize",
-        });
-      },
-    );
-
-    detachedSetupPage({ context, path: "/connectors" });
-
-    click(await screen.findByLabelText("Connect Mercury"));
-
-    await waitFor(() => {
-      expect(authWindow.location.href).toBe(
-        "https://oauth.test/mercury/authorize",
+  it.each([
+    ["hubspot", "HubSpot"],
+    ["intervals-icu", "Intervals.icu"],
+    ["linear", "Linear"],
+    ["mercury", "Mercury"],
+    ["notion", "Notion"],
+    ["sentry", "Sentry"],
+    ["vercel", "Vercel"],
+  ] as const)(
+    "starts %s OAuth with the app callback",
+    async (connectorRef, label) => {
+      mockConnectors([]);
+      mockPublicConnectorStatus([
+        publicStatusItem({
+          connectorRef,
+          label,
+          authMethods: [
+            {
+              id: "oauth",
+              label: "OAuth",
+              description: null,
+              grantKind: "auth-code",
+              manualFields: [],
+              startOptions: [],
+            },
+          ],
+          singleAuthCodeAuthMethodId: "oauth",
+        }),
+      ]);
+      const authWindow = createMockAuthWindow();
+      context.mocks.browser.open(authWindow);
+      context.mocks.api(
+        zeroConnectorOauthStartContract.start,
+        ({ body, params, respond }) => {
+          expect(params.type).toBe(connectorRef);
+          expect(body.callbackTarget).toBe("app");
+          return respond(200, {
+            authorizationUrl: `https://oauth.test/${connectorRef}/authorize`,
+          });
+        },
       );
-    });
-  });
+
+      detachedSetupPage({ context, path: "/connectors" });
+
+      click(await screen.findByLabelText(`Connect ${label}`));
+
+      await waitFor(() => {
+        expect(authWindow.location.href).toBe(
+          `https://oauth.test/${connectorRef}/authorize`,
+        );
+      });
+    },
+  );
 
   it("routes a server-authored connector from its catalog grant metadata", async () => {
     const connectorRef = "server-authored-steam";
@@ -1809,7 +1732,7 @@ describe("connectors page", () => {
     });
   });
 
-  it("connects Stripe OAuth from the dialog for all visible agents", async () => {
+  it("connects Stripe OAuth from a legacy event for all visible agents", async () => {
     const defaultAgentId = "c0000000-0000-4000-a000-000000000001";
     const researchAgentId = "c0000000-0000-4000-a000-000000000002";
     mockConnectors([]);
@@ -1900,12 +1823,26 @@ describe("connectors page", () => {
       ).toBeTruthy();
     });
 
+    context.mocks.ably.trigger("connector:changed", {
+      connectorRef: "github",
+    });
+    expect(authorizedAgentIds).toStrictEqual([]);
+
     mockConnectors([{ type: "stripe", authMethod: "oauth" }]);
-    context.mocks.ably.trigger("connector:changed");
+    context.mocks.ably.trigger("connector:changed", null);
 
     await waitFor(() => {
       expect(authorizedAgentIds).toStrictEqual([researchAgentId]);
+      expect(
+        within(connectorCardByLabel("Public Stripe")).getByText("Connected"),
+      ).toBeInTheDocument();
+      expect(
+        context.mocks.ably.hasSubscription("connector:changed"),
+      ).toBeFalsy();
     });
+    expect(
+      screen.queryByRole("dialog", { name: "Public Stripe" }),
+    ).not.toBeInTheDocument();
   });
 
   it("enables a no-auth connector for all visible agents without dialogs", async () => {

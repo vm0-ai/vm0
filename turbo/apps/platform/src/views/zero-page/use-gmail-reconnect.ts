@@ -3,16 +3,16 @@ import { useGet, useLastResolved, useSet } from "ccstate-react";
 import { connectorCatalogStatusByRef$ } from "../../signals/external/connectors.ts";
 import { pageSignal$ } from "../../signals/page-signal.ts";
 import {
-  connectConnectorOAuthAuthCode$,
+  connectConnectorOAuthAuthCodeAndSettle$,
   connectFlowConnectorRef$,
   getOnlyAvailableStatusBrowserAuthMethodDetail,
 } from "../../signals/zero-page/settings/connectors.ts";
 import { detach, Reason } from "../../signals/utils.ts";
 
-export function useGmailReconnect() {
+export function useGmailReconnect(onSuccess: () => void | Promise<void>) {
   const catalogByRef = useLastResolved(connectorCatalogStatusByRef$);
   const connectFlowConnectorRef = useGet(connectFlowConnectorRef$);
-  const connect = useSet(connectConnectorOAuthAuthCode$);
+  const connect = useSet(connectConnectorOAuthAuthCodeAndSettle$);
   const signal = useGet(pageSignal$);
   const connector = catalogByRef?.get("gmail");
   const authMethod = connector
@@ -31,12 +31,15 @@ export function useGmailReconnect() {
       }
       detach(
         connect(
-          "gmail",
-          authMethod,
           {
-            authorizeVisibleAgents: true,
-            connectorLabel: connector.label,
-            connectorIcon: connector.icon,
+            connectorRef: "gmail",
+            method: authMethod,
+            onSuccess,
+            options: {
+              authorizeVisibleAgents: true,
+              connectorLabel: connector.label,
+              connectorIcon: connector.icon,
+            },
           },
           signal,
         ),

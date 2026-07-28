@@ -199,6 +199,7 @@ describe("portable platform runtime environment", () => {
       expect.objectContaining({
         dsn: SENTRY_DSN,
         enabled: true,
+        enhanceFetchErrorMessages: false,
         environment: "production",
       }),
     );

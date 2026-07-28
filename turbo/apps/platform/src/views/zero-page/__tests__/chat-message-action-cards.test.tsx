@@ -748,7 +748,7 @@ describe("chat message action cards", () => {
       expect(feedbackItem).toHaveTextContent("Mail body after");
     });
 
-    expect(draftRequests).toBe(2);
+    expect(draftRequests).toBe(1);
     await user.click(await waitForButtonByText("Send", sidebar));
 
     await waitFor(() => {
@@ -774,7 +774,7 @@ describe("chat message action cards", () => {
       "data-feedback-source-sent-id",
       "gmail-sent-message-id",
     );
-    expect(draftRequests).toBe(2);
+    expect(draftRequests).toBe(1);
 
     let liveAttachmentUrls: string[] = [];
     await waitFor(() => {
@@ -1152,7 +1152,7 @@ describe("chat message action cards", () => {
     });
   });
 
-  it("switches drafts and reloads a draft when it is reopened", async () => {
+  it("switches drafts without reloading a draft when it is reopened", async () => {
     const user = userEvent.setup({ delay: null });
     const threadId = "c0000000-0000-4000-a000-000000000023";
     const firstMailDraftId = "c0000000-0000-4000-a000-000000000024";
@@ -1248,11 +1248,7 @@ describe("chat message action cards", () => {
       await screen.findByLabelText("Open draft email: Second draft"),
     );
     sidebar = await screen.findByTestId("mail-draft-sidebar");
-    await waitFor(() => {
-      expect(
-        within(sidebar).getByText("Updated second draft"),
-      ).toBeInTheDocument();
-    });
+    expect(within(sidebar).getByText("Second draft")).toBeInTheDocument();
     expect(
       screen.getByLabelText("Open draft email: Second draft"),
     ).toBeInTheDocument();
@@ -1260,8 +1256,8 @@ describe("chat message action cards", () => {
       screen.queryByLabelText("Open draft email: Updated second draft"),
     ).toBeNull();
 
-    expect(firstDraftRequests).toBe(2);
-    expect(secondDraftRequests).toBe(3);
+    expect(firstDraftRequests).toBe(1);
+    expect(secondDraftRequests).toBe(1);
   });
 
   it("preserves assistant copy and reconnects an expired connector", async () => {
@@ -1597,7 +1593,7 @@ describe("chat message action cards", () => {
     ).not.toBeInTheDocument();
   });
 
-  it("reloads the shared mail draft after deleting it", async () => {
+  it("deletes the shared mail draft without reloading it", async () => {
     const user = userEvent.setup({ delay: null });
     const threadId = "c0000000-0000-4000-a000-000000000018";
     const mailDraftId = "c0000000-0000-4000-a000-000000000019";
@@ -1668,14 +1664,14 @@ describe("chat message action cards", () => {
     expect(draftRequests).toBe(1);
     await user.click(card);
     const sidebar = await screen.findByTestId("mail-draft-sidebar");
-    expect(draftRequests).toBe(2);
+    expect(draftRequests).toBe(1);
     expect(within(sidebar).queryByText("Cc")).toBeNull();
     expect(within(sidebar).queryByText("Bcc")).toBeNull();
     await user.click(await waitForButtonByText("Delete", sidebar));
 
     await waitFor(() => {
       expect(deleted).toBeTruthy();
-      expect(draftRequests).toBe(2);
+      expect(draftRequests).toBe(1);
       expect(screen.queryByLabelText("Open draft email: Delete me")).toBeNull();
       expect(screen.queryByTestId("mail-draft-sidebar")).toBeNull();
     });
@@ -1698,6 +1694,7 @@ describe("chat message action cards", () => {
     let reconnectRequired = true;
     let pauseReadyRefresh = false;
     let catalogRequests = 0;
+    let draftRequests = 0;
     let oauthStartRequests = 0;
 
     context.mocks.data.connectors([
@@ -1753,6 +1750,7 @@ describe("chat message action cards", () => {
       },
     );
     context.mocks.api(zeroMailContract.getDraft, async ({ respond }) => {
+      draftRequests += 1;
       if (pauseReadyRefresh && !reconnectRequired) {
         refreshStarted.resolve();
         await completeRefresh.promise;
@@ -1814,10 +1812,9 @@ describe("chat message action cards", () => {
       throw new Error("Expected Gmail reconnect sidebar");
     }
     const reconnect = buttonByText("Reconnect Gmail", sidebar);
-    await waitFor(() => {
-      expect(hasSubscription("connector:changed")).toBeTruthy();
-      expect(catalogRequests).toBeGreaterThanOrEqual(2);
-    });
+    expect(catalogRequests).toBeGreaterThanOrEqual(1);
+    expect(hasSubscription("connector:changed")).toBeFalsy();
+    expect(draftRequests).toBe(1);
 
     await user.click(reconnect);
     await waitFor(() => {
@@ -1827,6 +1824,7 @@ describe("chat message action cards", () => {
         "https://accounts.google.test/oauth",
       );
       expect(within(card).getByText("Reconnecting…")).toBeInTheDocument();
+      expect(hasSubscription("connector:changed")).toBeTruthy();
     });
 
     reconnectRequired = false;
@@ -1838,7 +1836,7 @@ describe("chat message action cards", () => {
         updatedAt: "2026-01-01T00:00:01Z",
       }),
     ]);
-    triggerAblyEvent("connector:changed");
+    triggerAblyEvent("connector:changed", { connectorRef: "gmail" });
 
     await refreshStarted.promise;
     const cardRemainedVisible = card.isConnected;
@@ -1863,6 +1861,8 @@ describe("chat message action cards", () => {
         }),
       ).toBeInTheDocument();
     });
+    expect(draftRequests).toBe(2);
+    expect(hasSubscription("connector:changed")).toBeFalsy();
   });
 
   it("renders a deleted email card without an interactive sidebar trigger", async () => {

@@ -16,7 +16,6 @@ import {
   registeredCardSignals,
 } from "./card-signal-map.ts";
 import { onRef } from "../utils.ts";
-import { connectorChangedVersion$ } from "../connector-reload.ts";
 import {
   chatActionCallbackFromUrl,
   runChatActionCallback$,
@@ -56,7 +55,7 @@ export interface MailDraftSignals extends Omit<
     (() => void) | undefined,
     [HTMLDivElement | null]
   >;
-  readonly reloadSidebar$: Command<void, []>;
+  readonly reloadDraft$: Command<void, []>;
   readonly delete$: Command<Promise<void>, [AbortSignal]>;
   readonly send$: Command<Promise<void>, [AbortSignal]>;
   readonly runSendCallback$: Command<Promise<void>, [AbortSignal]>;
@@ -282,11 +281,9 @@ function createMailDraftSignals(
   sendCallbacks: ReadonlyMap<string, MailDraftSendCallback>,
 ): MailDraftSignals {
   const draftOverride$ = state<ZeroMailDraft | null | undefined>(undefined);
-  const sidebarDraftOverride$ = state<ZeroMailDraft | null | undefined>(
-    undefined,
-  );
+  const draftReloadVersion$ = state(0);
   const draft$ = computed(async (get): Promise<ZeroMailDraft | null> => {
-    get(connectorChangedVersion$);
+    get(draftReloadVersion$);
     const override = get(draftOverride$);
     if (override !== undefined) {
       return override;
@@ -300,30 +297,14 @@ function createMailDraftSignals(
     );
     return response.status === 200 ? response.body.mailDraft : null;
   });
-  const sidebarReloadVersion$ = state(0);
-  const sidebarDraft$ = computed(async (get): Promise<ZeroMailDraft | null> => {
-    get(connectorChangedVersion$);
-    get(sidebarReloadVersion$);
-    const override = get(sidebarDraftOverride$);
-    if (override !== undefined) {
-      return override;
-    }
-    const response = await accept(
-      get(zeroClient$)(zeroMailContract).getDraft({
-        params: { mailDraftId: descriptor.mailDraftId },
-        fetchOptions: { signal: get(pageSignal$) },
-      }),
-      [200, 404],
-    );
-    return response.status === 200 ? response.body.mailDraft : null;
-  });
+  const sidebarDraft$ = draft$;
   const attachmentPreviews = createAttachmentPreviews(
     descriptor,
     sidebarDraft$,
   );
-  const reloadSidebar$ = command(({ set }) => {
-    set(sidebarDraftOverride$, undefined);
-    set(sidebarReloadVersion$, (version) => {
+  const reloadDraft$ = command(({ set }) => {
+    set(draftOverride$, undefined);
+    set(draftReloadVersion$, (version) => {
       return version + 1;
     });
   });
@@ -338,7 +319,6 @@ function createMailDraftSignals(
       );
       signal.throwIfAborted();
       set(draftOverride$, null);
-      set(sidebarDraftOverride$, null);
     },
   );
   const send$ = command(async ({ get, set }, signal: AbortSignal) => {
@@ -351,7 +331,6 @@ function createMailDraftSignals(
     );
     signal.throwIfAborted();
     set(draftOverride$, response.body.mailDraft);
-    set(sidebarDraftOverride$, response.body.mailDraft);
   });
   // Resuming the chat is a separate transition from sending the email: a failed
   // resume must not report the sent email as a failed send.
@@ -372,7 +351,7 @@ function createMailDraftSignals(
     draft$,
     sidebarDraft$,
     ...attachmentPreviews,
-    reloadSidebar$,
+    reloadDraft$,
     delete$,
     send$,
     runSendCallback$,

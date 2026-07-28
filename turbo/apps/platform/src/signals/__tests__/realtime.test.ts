@@ -435,6 +435,53 @@ describe("realtime signals", () => {
     await expect(loopPromise).rejects.toMatchObject({ name: "AbortError" });
   });
 
+  it("uses catch-up commands for payload subscriptions and reconnects", async () => {
+    mockSignedInUser();
+    const topic = "test:payload-catch-up";
+    const subscriber = new AbortController();
+    const payloads: unknown[] = [];
+    let catchUps = 0;
+    const loop$ = command(
+      (_ctx, payload: unknown, _signal: AbortSignal): boolean => {
+        payloads.push(payload);
+        return false;
+      },
+    );
+    const catchUp$ = command((_ctx, _signal: AbortSignal): boolean => {
+      catchUps += 1;
+      return false;
+    });
+
+    await context.store.set(setupRealtime$, context.signal);
+    const loopPromise = context.store.set(
+      setAblyPayloadLoop$,
+      {
+        topic,
+        loopCommand$: loop$,
+        catchUpCommand$: catchUp$,
+        options: { runOnSubscribe: true },
+      },
+      subscriber.signal,
+    );
+
+    await waitFor(() => {
+      expect(catchUps).toBe(1);
+    });
+    context.mocks.ably.trigger(topic, { connectorRef: "gmail" });
+    await waitFor(() => {
+      expect(payloads).toStrictEqual([{ connectorRef: "gmail" }]);
+    });
+
+    context.mocks.ably.triggerReconnect();
+    await waitFor(() => {
+      expect(catchUps).toBe(2);
+    });
+    expect(payloads).toStrictEqual([{ connectorRef: "gmail" }]);
+
+    subscriber.abort(abortError("test done"));
+    await expect(loopPromise).rejects.toMatchObject({ name: "AbortError" });
+  });
+
   it("serializes user-channel messages received while the handler is in flight", async () => {
     mockSignedInUser();
     const subscriber = new AbortController();
