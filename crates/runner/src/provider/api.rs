@@ -170,6 +170,26 @@ enum DiscoveryWakeup {
 /// - **Discovery**: HTTP poll fallback (adaptive interval)
 /// - **Claim**: `POST /api/runners/jobs/{id}/claim`
 /// - **Complete**: `POST /api/webhooks/agent/complete` with per-job sandbox token
+///
+/// ## Claim failure and rediscovery
+///
+/// Claim is also feedback into discovery. A successful or unavailable claim
+/// clears any per-run cooldown; an unavailable claim promptly polls the backlog.
+/// Other failures are classified as transient or deterministic and give that run
+/// a corresponding runner-local cooldown.
+///
+/// While a run is cooling down, matching direct candidates are skipped and the
+/// bounded active run IDs are sent as optional poll exclusions. Recording a
+/// per-run cooldown requests an immediate poll so unrelated candidates can make
+/// progress. An empty excluded poll schedules a deferred retry through the
+/// `PollWakeups` state machine. If every exclusion expires while that poll is in
+/// flight, the provider immediately polls again without the stale exclusions.
+///
+/// An older API may ignore the additive exclusions and return a cooled run. The
+/// provider therefore checks returned candidates locally and defers rather than
+/// reclaiming that run at network-round-trip cadence. Cooldown capacity never
+/// evicts an active entry; saturation instead applies a short provider-wide
+/// cooldown and defers all discovery before retrying.
 pub struct ApiProvider {
     api: ApiClient,
     runner_id: String,
