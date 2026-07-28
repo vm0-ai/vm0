@@ -149,16 +149,13 @@ function ArtifactSidebarWithThreadContext({
   });
   const reloadArtifacts = useSet(thread.reloadArtifacts$);
   const text$ =
-    providedText$ ??
-    (artifactRef.source === "url"
-      ? thread.artifactSignalsForUrl(artifactRef.url)?.text$
-      : undefined);
+    providedText$ ?? thread.artifactSignalsForUrl(artifactRef.url)?.text$;
   const item =
-    artifactRef.source === "url" && loadable.state === "hasData"
+    loadable.state === "hasData"
       ? findArtifactItemForUrl(loadable.data, artifactRef.url)
       : undefined;
   const imageNavigation =
-    artifactRef.source === "url" && loadable.state === "hasData"
+    loadable.state === "hasData"
       ? currentMessageImageArtifactNavigation(
           loadable.data,
           messageGroups ?? [],

@@ -35,7 +35,6 @@ export type ArtifactPreviewKind =
   | "file";
 
 export type ArtifactRef = {
-  readonly source: "url";
   readonly url: string;
   readonly kind: ArtifactPreviewKind;
   readonly filename: string;
