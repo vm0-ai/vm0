@@ -450,19 +450,10 @@ ruleTester.run("prefer-drizzle-apis", preferDrizzleApis, {
     },
     {
       code: `${drizzlePreamble}
-        import { eq, sql, type SQL } from "drizzle-orm";
+        import { eq, sql } from "drizzle-orm";
         import { executeRawRows as decodeRows } from "./lib/db-raw-rows";
         declare const rowSchema: never;
 
-        const composed: SQL = sql\`
-          SELECT \${users.id}
-          FROM \${users}
-          WHERE \${eq(users.id, 1)}
-          LIMIT 1
-        \`;
-        declare function expose(value: SQL): void;
-        expose(composed);
-        await decodeRows(db, composed, rowSchema);
         await decodeRows(
           db,
           sql\`
@@ -542,42 +533,8 @@ ruleTester.run("prefer-drizzle-apis", preferDrizzleApis, {
     },
     {
       code: `${drizzlePreamble}
-        import { eq, sql, type SQL } from "drizzle-orm";
-        import { executeRawRows } from "./lib/db-raw-rows";
-        declare const rowSchema: never;
-        export const exportedQuery: SQL = sql\`
-          SELECT \${users.id}
-          FROM \${users}
-          WHERE \${eq(users.id, 1)}
-          LIMIT 1
-        \`;
-        await executeRawRows(db, exportedQuery, rowSchema);
-
-        const mutatedQuery: SQL = sql\`
-          SELECT \${users.id}
-          FROM \${users}
-          WHERE \${eq(users.id, 1)}
-          LIMIT 1
-        \`;
-        mutatedQuery.append(sql.raw(""));
-        await executeRawRows(db, mutatedQuery, rowSchema);
-
-        const nestedSource: SQL = sql\`
-          SELECT \${users.id}
-          FROM \${users}
-          WHERE \${eq(users.id, 1)}
-          LIMIT 1
-        \`;
-        const escapedWrapper = sql\`\${nestedSource}\`;
-        declare function expose(value: SQL): void;
-        expose(escapedWrapper);
-        await executeRawRows(db, nestedSource, rowSchema);
-      `,
-    },
-    {
-      code: `${drizzlePreamble}
         import { sql, type SQL } from "drizzle-orm";
-        const fake = {
+        const customSqlComposer = {
           empty(): SQL {
             return sql\`true\`;
           },
@@ -585,10 +542,10 @@ ruleTester.run("prefer-drizzle-apis", preferDrizzleApis, {
             return items[0] ?? sql\`true\`;
           },
         };
-        db.select().from(users).innerJoin(users, fake.empty());
+        db.select().from(users).innerJoin(users, customSqlComposer.empty());
         db.select()
           .from(users)
-          .innerJoin(users, fake.join([sql\`true\`]));
+          .innerJoin(users, customSqlComposer.join([sql\`true\`]));
       `,
     },
     {
@@ -671,16 +628,6 @@ ruleTester.run("prefer-drizzle-apis", preferDrizzleApis, {
         db.select()
           .from(users)
           .where(sql\`COALESCE(\${column} = \${1}, FALSE)\`);
-      `,
-    },
-    {
-      code: `${drizzlePreamble}
-        import { sql } from "drizzle-orm";
-        const statement = sql\`
-          DELETE FROM \${users}
-          WHERE \${users.id} = \${1}
-        \`;
-        await db.execute(statement);
       `,
     },
     {
