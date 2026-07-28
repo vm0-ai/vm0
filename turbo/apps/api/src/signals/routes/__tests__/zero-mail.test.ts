@@ -1,11 +1,18 @@
 import { Buffer } from "node:buffer";
 
 import { testMailDraftStateContract } from "@vm0/api-contracts/contracts/test-mail-draft-state";
+import { zeroFeatureSwitchesContract } from "@vm0/api-contracts/contracts/zero-feature-switches";
 import { zeroMailContract } from "@vm0/api-contracts/contracts/zero-mail";
+import {
+  zeroWorkflowAutomationsContract,
+  zeroWorkflowsCollectionContract,
+} from "@vm0/api-contracts/contracts/zero-workflows";
+import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import { HttpResponse, http } from "msw";
 import { describe, expect, it } from "vitest";
 
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
+import { mockOptionalEnv } from "../../../lib/env";
 import { server } from "../../../mocks/server";
 import { testMailDraftStateRoutes } from "../test-mail-draft-state";
 import { createBddApi } from "./helpers/api-bdd";
@@ -15,6 +22,7 @@ import {
   mockGmailConnectorOAuth,
 } from "./helpers/api-bdd-connectors";
 import { createRunsApi } from "./helpers/api-bdd-runs";
+import { updateFeatureSwitchesForUser } from "./helpers/zero-feature-switches";
 import { createZeroRouteMocks } from "./helpers/zero-route-test";
 import {
   seedConnectorStorageRow,
@@ -239,7 +247,9 @@ function mockGmailDraftApi(options?: {
   return state;
 }
 
-async function seedGmailMailCardFixture() {
+async function seedGmailMailCardFixture(options?: {
+  readonly replyFollowUpEnabled?: boolean;
+}) {
   const actor = bdd.user();
   if (!actor.orgId) {
     throw new Error("Expected an org-scoped actor");
@@ -268,12 +278,19 @@ async function seedGmailMailCardFixture() {
     state,
   });
   await runs.enableAgentConnectors(actor, agent.agentId, ["gmail"]);
+  if (options?.replyFollowUpEnabled) {
+    mockOptionalEnv("ZERO_MAIL_REPLY_FOLLOW_UP_ROLLOUT_ENABLED", "true");
+  }
   mocks.clerk.session(actor.userId, actorWithOrg.orgId);
   return { actor, agent, thread };
 }
 
 function client() {
   return setupApp({ context })(zeroMailContract);
+}
+
+function featureSwitchesClient() {
+  return setupApp({ context })(zeroFeatureSwitchesContract);
 }
 
 function stateClient() {
@@ -701,5 +718,292 @@ describe("POST /api/zero/mail/drafts/link", () => {
       [200],
     );
     expect(unlinked.body.exists).toBeFalsy();
+  });
+
+  it("sets up reply tracking without starting an agent run", async () => {
+    const fixture = await seedGmailMailCardFixture({
+      replyFollowUpEnabled: true,
+    });
+    mockGmailDraftApi();
+    const featureSwitches = await accept(
+      featureSwitchesClient().get({ headers: authHeaders() }),
+      [200],
+    );
+    expect(
+      featureSwitches.body.effectiveSwitches[
+        FeatureSwitchKey.ZeroMailReplyFollowUp
+      ],
+    ).toBeTruthy();
+
+    const linked = await linkDraft(fixture);
+    await accept(
+      client().sendDraft({
+        headers: authHeaders(),
+        params: { mailDraftId: linked.body.mailDraftId },
+      }),
+      [200],
+    );
+
+    mockOptionalEnv(
+      "GMAIL_PUBSUB_TOPIC_NAME",
+      "projects/test/topics/gmail-replies",
+    );
+    server.use(
+      http.post(`${GMAIL_API_BASE}/watch`, ({ request }) => {
+        expect(request.headers.get("authorization")).toBe(
+          "Bearer gmail-mail-card-token",
+        );
+        return HttpResponse.json({
+          historyId: "101",
+          expiration: "4102444800000",
+        });
+      }),
+    );
+
+    const created = await accept(
+      client().createFollowUp({
+        headers: authHeaders(),
+        params: { mailDraftId: linked.body.mailDraftId },
+        body: {},
+      }),
+      [200],
+    );
+    expect(created.body.mailDraftId).toBe(linked.body.mailDraftId);
+
+    const active = await accept(
+      client().getDraft({
+        headers: authHeaders(),
+        params: { mailDraftId: linked.body.mailDraftId },
+      }),
+      [200],
+    );
+    expect(active.body.mailDraft.followUp).toStrictEqual({
+      status: "active",
+      automationId: created.body.automationId,
+    });
+
+    const automations = await accept(
+      setupApp({ context })(zeroWorkflowAutomationsContract).listForChatThread({
+        headers: authHeaders(),
+        params: { threadId: fixture.thread.id },
+      }),
+      [200],
+    );
+    expect(automations.body).toHaveLength(1);
+    expect(automations.body[0]).toMatchObject({
+      id: created.body.automationId,
+      kind: "event",
+      enabled: true,
+      eventType: "gmail-new-message",
+      eventConfig: {
+        provider: "gmail",
+        event: "new_message",
+        threadId: GMAIL_THREAD_ID,
+        match: {
+          from: {
+            containsAny: ["recipient@example.com", "copy@example.com"],
+          },
+        },
+      },
+      chatThreadId: fixture.thread.id,
+      workflow: {
+        agentId: fixture.agent.agentId,
+        displayName: "Mail reply follow-ups",
+      },
+    });
+
+    const messages = await chat.listThreadMessages(
+      fixture.actor,
+      fixture.thread.id,
+    );
+    expect(messages.messages).toStrictEqual([
+      expect.objectContaining({
+        role: "assistant",
+        content:
+          "Reply tracking is on. When a reply arrives, I’ll let you know in this chat.",
+      }),
+    ]);
+
+    const repeated = await accept(
+      client().createFollowUp({
+        headers: authHeaders(),
+        params: { mailDraftId: linked.body.mailDraftId },
+        body: {},
+      }),
+      [200],
+    );
+    expect(repeated.body).toStrictEqual({
+      mailDraftId: linked.body.mailDraftId,
+      automationId: created.body.automationId,
+    });
+    expect(
+      (await chat.listThreadMessages(fixture.actor, fixture.thread.id))
+        .messages,
+    ).toHaveLength(1);
+  });
+
+  it("rejects reply tracking while its rollout switch is disabled", async () => {
+    const fixture = await seedGmailMailCardFixture();
+    if (!fixture.actor.orgId) {
+      throw new Error("Expected an org-scoped actor");
+    }
+    await updateFeatureSwitchesForUser(
+      context,
+      { ...fixture.actor, orgId: fixture.actor.orgId },
+      { [FeatureSwitchKey.ZeroMailReplyFollowUp]: true },
+    );
+    const featureSwitches = await accept(
+      featureSwitchesClient().get({ headers: authHeaders() }),
+      [200],
+    );
+    expect(featureSwitches.body.switches).not.toHaveProperty(
+      FeatureSwitchKey.ZeroMailReplyFollowUp,
+    );
+    expect(
+      featureSwitches.body.effectiveSwitches[
+        FeatureSwitchKey.ZeroMailReplyFollowUp
+      ],
+    ).toBeFalsy();
+
+    const workflow = await accept(
+      setupApp({ context })(zeroWorkflowsCollectionContract).create({
+        headers: authHeaders(),
+        body: {
+          agentId: fixture.agent.agentId,
+          chatThreadId: fixture.thread.id,
+          name: "disabled-mail-follow-up",
+          visibility: "private",
+        },
+      }),
+      [201],
+    );
+    const genericWriter = await accept(
+      setupApp({ context })(zeroWorkflowAutomationsContract).create({
+        headers: authHeaders(),
+        params: { workflowId: workflow.body.id },
+        body: {
+          kind: "event",
+          eventType: "gmail-new-message",
+          eventConfig: {
+            provider: "gmail",
+            event: "new_message",
+            threadId: GMAIL_THREAD_ID,
+          },
+          enabled: true,
+        },
+      }),
+      [400],
+    );
+    expect(genericWriter.body.error.message).toBe(
+      "Gmail thread matching is not enabled",
+    );
+
+    mockGmailDraftApi();
+    const linked = await linkDraft(fixture);
+
+    const response = await accept(
+      client().createFollowUp({
+        headers: authHeaders(),
+        params: { mailDraftId: linked.body.mailDraftId },
+        body: {},
+      }),
+      [403],
+    );
+
+    expect(response.body.error.message).toBe(
+      "Zero Mail reply follow-up is not enabled",
+    );
+  });
+
+  it("reuses a matching paused automation attached to the mail chat", async () => {
+    const fixture = await seedGmailMailCardFixture({
+      replyFollowUpEnabled: true,
+    });
+    mockGmailDraftApi();
+    const linked = await linkDraft(fixture);
+    await accept(
+      client().sendDraft({
+        headers: authHeaders(),
+        params: { mailDraftId: linked.body.mailDraftId },
+      }),
+      [200],
+    );
+    mockOptionalEnv(
+      "GMAIL_PUBSUB_TOPIC_NAME",
+      "projects/test/topics/gmail-replies",
+    );
+    server.use(
+      http.post(`${GMAIL_API_BASE}/watch`, () => {
+        return HttpResponse.json({
+          historyId: "102",
+          expiration: "4102444800000",
+        });
+      }),
+    );
+
+    const workflow = await accept(
+      setupApp({ context })(zeroWorkflowsCollectionContract).create({
+        headers: authHeaders(),
+        body: {
+          agentId: fixture.agent.agentId,
+          chatThreadId: fixture.thread.id,
+          name: "existing-mail-follow-up",
+          visibility: "private",
+        },
+      }),
+      [201],
+    );
+    const automationsClient = setupApp({ context })(
+      zeroWorkflowAutomationsContract,
+    );
+    const existing = await accept(
+      automationsClient.create({
+        headers: authHeaders(),
+        params: { workflowId: workflow.body.id },
+        body: {
+          kind: "event",
+          eventType: "gmail-new-message",
+          eventConfig: {
+            provider: "gmail",
+            event: "new_message",
+            threadId: GMAIL_THREAD_ID,
+            match: {
+              from: {
+                containsAny: ["recipient@example.com", "copy@example.com"],
+              },
+            },
+          },
+          enabled: false,
+        },
+      }),
+      [201],
+    );
+    expect(existing.body).toMatchObject({
+      enabled: false,
+      chatThreadId: fixture.thread.id,
+    });
+
+    const followedUp = await accept(
+      client().createFollowUp({
+        headers: authHeaders(),
+        params: { mailDraftId: linked.body.mailDraftId },
+        body: {},
+      }),
+      [200],
+    );
+    expect(followedUp.body.automationId).toBe(existing.body.id);
+
+    const automations = await accept(
+      automationsClient.listForChatThread({
+        headers: authHeaders(),
+        params: { threadId: fixture.thread.id },
+      }),
+      [200],
+    );
+    expect(automations.body).toHaveLength(1);
+    expect(automations.body[0]).toMatchObject({
+      id: existing.body.id,
+      enabled: true,
+    });
   });
 });

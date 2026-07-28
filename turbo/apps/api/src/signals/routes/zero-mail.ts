@@ -1,10 +1,16 @@
 import { command } from "ccstate";
 import { zeroMailContract } from "@vm0/api-contracts/contracts/zero-mail";
 
-import { conflict, notFound } from "../../lib/error";
+import { badRequestMessage, conflict, notFound } from "../../lib/error";
+import { isZeroMailReplyFollowUpRolloutEnabled } from "../../lib/zero-mail-reply-follow-up-rollout";
 import { organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
 import { bodyResultOf, pathParamsOf } from "../context/request";
+import {
+  publishChatThreadAutomationsChangedSafely,
+  publishChatThreadMessageCreatedSafely,
+  publishThreadListChangedSafely,
+} from "../external/realtime";
 import type { RouteEntry } from "../route-entry";
 import {
   deleteZeroMailDraft$,
@@ -12,9 +18,28 @@ import {
   getZeroMailDraft$,
   linkZeroMailDraft$,
   sendZeroMailDraft$,
+  setupZeroMailFollowUp$,
   type ZeroMailDraftLinkMutationResult,
   type ZeroMailDraftMutationResult,
+  type ZeroMailFollowUpSetupResult,
 } from "../services/zero-mail.service";
+
+const zeroMailReplyFollowUpDisabled = Object.freeze({
+  status: 403 as const,
+  body: Object.freeze({
+    error: Object.freeze({
+      message: "Zero Mail reply follow-up is not enabled",
+      code: "FORBIDDEN",
+    }),
+  }),
+});
+
+function forbidden(message: string) {
+  return {
+    status: 403 as const,
+    body: { error: { message, code: "FORBIDDEN" as const } },
+  };
+}
 
 function mutationResponse(result: ZeroMailDraftMutationResult) {
   switch (result.kind) {
@@ -53,6 +78,32 @@ function linkMutationResponse(result: ZeroMailDraftLinkMutationResult) {
     }
     case "conflict": {
       return conflict(result.message);
+    }
+  }
+}
+
+function followUpSetupResponse(result: ZeroMailFollowUpSetupResult) {
+  switch (result.kind) {
+    case "ok": {
+      return {
+        status: 200 as const,
+        body: {
+          mailDraftId: result.mailDraftId,
+          automationId: result.automationId,
+        },
+      };
+    }
+    case "not_found": {
+      return notFound(result.message);
+    }
+    case "conflict": {
+      return conflict(result.message);
+    }
+    case "forbidden": {
+      return forbidden(result.message);
+    }
+    case "bad_request": {
+      return badRequestMessage(result.message);
     }
   }
 }
@@ -181,6 +232,52 @@ const sendDraftInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   );
 });
 
+const createFollowUpBody$ = bodyResultOf(zeroMailContract.createFollowUp);
+const createFollowUpParams$ = pathParamsOf(zeroMailContract.createFollowUp);
+const createFollowUpInner$ = command(
+  async ({ get, set }, signal: AbortSignal) => {
+    const auth = get(organizationAuthContext$);
+    if (!isZeroMailReplyFollowUpRolloutEnabled()) {
+      return zeroMailReplyFollowUpDisabled;
+    }
+    signal.throwIfAborted();
+    const bodyResult = await get(createFollowUpBody$);
+    signal.throwIfAborted();
+    if (!bodyResult.ok) {
+      return bodyResult.response;
+    }
+    const result = await set(
+      setupZeroMailFollowUp$,
+      {
+        orgId: auth.orgId,
+        userId: auth.userId,
+        memberRole: auth.orgRole ?? "member",
+        ...get(createFollowUpParams$),
+      },
+      signal,
+    );
+    signal.throwIfAborted();
+    if (result.kind === "ok") {
+      await publishChatThreadAutomationsChangedSafely(
+        auth.userId,
+        result.chatThreadId,
+      );
+      signal.throwIfAborted();
+      if (result.messageSeqId !== undefined) {
+        await publishChatThreadMessageCreatedSafely(
+          auth.userId,
+          result.chatThreadId,
+          result.messageSeqId,
+        );
+        signal.throwIfAborted();
+        await publishThreadListChangedSafely(auth.userId);
+        signal.throwIfAborted();
+      }
+    }
+    return followUpSetupResponse(result);
+  },
+);
+
 const mailDraftLinkAuth = Object.freeze({
   requireOrganization: true,
   missingOrganizationStatus: 401 as const,
@@ -192,6 +289,13 @@ const mailDraftHumanAuth = Object.freeze({
   requireOrganization: true,
   missingOrganizationStatus: 401 as const,
   requiredCapability: "connector:read" as const,
+  accept: Object.freeze(["session"] as const),
+});
+
+const mailFollowUpHumanAuth = Object.freeze({
+  requireOrganization: true,
+  missingOrganizationStatus: 401 as const,
+  requiredCapability: "agent:write" as const,
   accept: Object.freeze(["session"] as const),
 });
 
@@ -215,5 +319,9 @@ export const zeroMailRoutes: readonly RouteEntry[] = [
   {
     route: zeroMailContract.sendDraft,
     handler: authRoute(mailDraftHumanAuth, sendDraftInner$),
+  },
+  {
+    route: zeroMailContract.createFollowUp,
+    handler: authRoute(mailFollowUpHumanAuth, createFollowUpInner$),
   },
 ];

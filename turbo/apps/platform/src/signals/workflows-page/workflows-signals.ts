@@ -67,10 +67,12 @@ export interface WorkflowCopyFormState {
 }
 
 export type GmailTextField = "from" | "subject" | "body" | "to" | "cc";
-export type GmailTextOperator = "contains" | "doesNotContain";
+export type GmailTextOperator = "contains" | "containsAny" | "doesNotContain";
+export type GmailMatchField = GmailTextField | "threadId";
+export type GmailMatchOperator = GmailTextOperator | "is";
 export interface GmailMatchCondition {
-  readonly field: GmailTextField;
-  readonly operator: GmailTextOperator;
+  readonly field: GmailMatchField;
+  readonly operator: GmailMatchOperator;
   readonly value: string;
 }
 

@@ -47,6 +47,7 @@ import {
 } from "@vm0/db/schema/zero-workflow";
 import { and, asc, eq } from "drizzle-orm";
 
+import { isZeroMailReplyFollowUpRolloutEnabled } from "../../lib/zero-mail-reply-follow-up-rollout";
 import { writeDb$, type Db, type ReadonlyDb } from "../external/db";
 import { publishChatThreadAutomationsChangedSafely } from "../external/realtime";
 import { nowDate } from "../../lib/time";
@@ -1432,6 +1433,12 @@ async function prepareGmailEventConfigForPersist(
       return {
         kind: "bad-request",
         message: "eventConfig must be a Gmail new message config",
+      };
+    }
+    if (args.eventConfig.threadId && !isZeroMailReplyFollowUpRolloutEnabled()) {
+      return {
+        kind: "bad-request",
+        message: "Gmail thread matching is not enabled",
       };
     }
     return { kind: "ok", eventConfig: args.eventConfig };

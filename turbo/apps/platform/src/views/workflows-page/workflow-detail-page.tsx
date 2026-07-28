@@ -175,7 +175,9 @@ import {
   type WorkflowDetailTab,
   type WorkflowAutomationCreateDialog,
   type NotionPageContentUpdatedScopeMode,
+  type GmailMatchField,
   type GmailMatchCondition,
+  type GmailMatchOperator,
   type GmailTextField,
   type GmailTextOperator,
   workflowMetadataPatch$,
@@ -289,14 +291,32 @@ const GMAIL_TEXT_FIELDS: readonly {
   { field: "cc", label: "Cc" },
 ];
 
-const GMAIL_TEXT_OPERATORS: readonly {
-  readonly operator: GmailTextOperator;
+const GMAIL_MATCH_FIELDS: readonly {
+  readonly field: GmailMatchField;
   readonly label: string;
-}[] = [
-  { operator: "contains", label: "Contains" },
-  { operator: "doesNotContain", label: "Does not contain" },
-];
+}[] = [{ field: "threadId", label: "Thread ID" }, ...GMAIL_TEXT_FIELDS];
 
+interface GmailMatchOperatorOption {
+  readonly operator: GmailMatchOperator;
+  readonly label: string;
+  readonly formSuffix: string;
+}
+
+const GMAIL_TEXT_OPERATORS: readonly (GmailMatchOperatorOption & {
+  readonly operator: GmailTextOperator;
+})[] = [
+  { operator: "contains", label: "Contains", formSuffix: "Contains" },
+  {
+    operator: "containsAny",
+    label: "Contains any",
+    formSuffix: "ContainsAny",
+  },
+  {
+    operator: "doesNotContain",
+    label: "Does not contain",
+    formSuffix: "DoesNotContain",
+  },
+];
 const GITHUB_SUBJECT_OPTIONS: readonly {
   readonly value: GithubLabelAppliedSubjectFilter;
   readonly label: string;
@@ -2627,25 +2647,46 @@ function formTextValue(form: FormData, name: string): string | undefined {
   return trimmed.length > 0 ? trimmed : undefined;
 }
 
+function formTextValues(
+  form: FormData,
+  name: string,
+): readonly string[] | undefined {
+  const value = formTextValue(form, name);
+  if (!value) {
+    return undefined;
+  }
+  const values = value
+    .split(",")
+    .map((entry) => {
+      return entry.trim();
+    })
+    .filter((entry) => {
+      return entry.length > 0;
+    });
+  return values.length > 0 ? values : undefined;
+}
+
 function buildGmailNewMessageEventConfig(
   form: FormData,
   baseConfig?: GmailNewMessageEventConfig,
 ): GmailNewMessageEventConfig {
   const baseMatch = baseConfig?.match;
+  const threadId = formTextValue(form, "threadId");
   const match: GmailMatchRules = {};
   for (const { field } of GMAIL_TEXT_FIELDS) {
     const existing = baseMatch?.[field];
     const contains = formTextValue(form, `${field}Contains`);
+    const containsAny = formTextValues(form, `${field}ContainsAny`);
     const doesNotContain = formTextValue(form, `${field}DoesNotContain`);
     const matcher: GmailTextMatcher = {};
-    if (existing?.containsAny) {
-      matcher.containsAny = existing.containsAny;
-    }
     if (existing?.doesNotContainAny) {
       matcher.doesNotContainAny = existing.doesNotContainAny;
     }
     if (contains) {
       matcher.contains = contains;
+    }
+    if (containsAny) {
+      matcher.containsAny = [...containsAny];
     }
     if (doesNotContain) {
       matcher.doesNotContain = doesNotContain;
@@ -2654,9 +2695,12 @@ function buildGmailNewMessageEventConfig(
       match[field] = matcher;
     }
   }
-  return Object.keys(match).length > 0
-    ? { provider: "gmail", event: "new_message", match }
-    : { provider: "gmail", event: "new_message" };
+  return {
+    provider: "gmail",
+    event: "new_message",
+    ...(threadId ? { threadId } : {}),
+    ...(Object.keys(match).length > 0 ? { match } : {}),
+  };
 }
 
 function gmailMatchConditions(
@@ -2666,10 +2710,19 @@ function gmailMatchConditions(
   for (const { field } of GMAIL_TEXT_FIELDS) {
     for (const { operator } of GMAIL_TEXT_OPERATORS) {
       const value = config?.match?.[field]?.[operator];
-      if (value) {
+      if (typeof value === "string" && value.length > 0) {
         conditions.push({ field, operator, value });
+      } else if (Array.isArray(value) && value.length > 0) {
+        conditions.push({ field, operator, value: value.join(", ") });
       }
     }
+  }
+  if (config?.threadId) {
+    conditions.push({
+      field: "threadId",
+      operator: "is",
+      value: config.threadId,
+    });
   }
   return conditions.length > 0
     ? conditions
@@ -2678,6 +2731,7 @@ function gmailMatchConditions(
 
 function nextGmailMatchCondition(
   conditions: readonly GmailMatchCondition[],
+  threadIdEnabled: boolean,
 ): GmailMatchCondition | null {
   for (const { operator } of GMAIL_TEXT_OPERATORS) {
     for (const { field } of GMAIL_TEXT_FIELDS) {
@@ -2689,31 +2743,59 @@ function nextGmailMatchCondition(
       }
     }
   }
+  if (!threadIdEnabled) {
+    return null;
+  }
+  const threadIdUsed = conditions.some((condition) => {
+    return condition.field === "threadId";
+  });
+  if (!threadIdUsed) {
+    return { field: "threadId", operator: "is", value: "" };
+  }
   return null;
 }
 
-function gmailTextFieldOption(
+function gmailMatchFieldOption(
   value: string,
-): (typeof GMAIL_TEXT_FIELDS)[number] {
-  const option = GMAIL_TEXT_FIELDS.find((candidate) => {
+): (typeof GMAIL_MATCH_FIELDS)[number] {
+  const option = GMAIL_MATCH_FIELDS.find((candidate) => {
     return candidate.field === value;
   });
   if (!option) {
-    throw new Error(`Unknown Gmail text field: ${value}`);
+    throw new Error(`Unknown Gmail match field: ${value}`);
   }
   return option;
 }
 
-function gmailTextOperatorOption(
+function gmailMatchOperatorOptions(
+  field: GmailMatchField,
+): readonly GmailMatchOperatorOption[] {
+  return field === "threadId"
+    ? [{ operator: "is", label: "Is", formSuffix: "" }]
+    : GMAIL_TEXT_OPERATORS;
+}
+
+function gmailMatchOperatorOption(
+  field: GmailMatchField,
   value: string,
-): (typeof GMAIL_TEXT_OPERATORS)[number] {
-  const option = GMAIL_TEXT_OPERATORS.find((candidate) => {
+): GmailMatchOperatorOption {
+  const option = gmailMatchOperatorOptions(field).find((candidate) => {
     return candidate.operator === value;
   });
   if (!option) {
-    throw new Error(`Unknown Gmail text operator: ${value}`);
+    throw new Error(`Unknown Gmail match operator: ${value}`);
   }
   return option;
+}
+
+function gmailMatchOperatorForField(
+  field: GmailMatchField,
+  operator: GmailMatchOperator,
+): GmailMatchOperator {
+  if (field === "threadId") {
+    return "is";
+  }
+  return operator === "is" ? "contains" : operator;
 }
 
 function buildGmailLabelAppliedEventConfig(
@@ -2972,16 +3054,16 @@ function textMatcherParts(
 }
 
 function formatGmailMatchSummary(config: GmailNewMessageEventConfig): string {
+  const parts: string[] = config.threadId
+    ? [`Thread ID is ${quote(config.threadId)}`]
+    : [];
   const match = config.match;
-  if (!match) {
-    return "all inbound messages";
-  }
-
-  const parts: string[] = [];
-  for (const { field } of GMAIL_TEXT_FIELDS) {
-    const matcher = match[field];
-    if (matcher) {
-      parts.push(...textMatcherParts(field, matcher));
+  if (match) {
+    for (const { field } of GMAIL_TEXT_FIELDS) {
+      const matcher = match[field];
+      if (matcher) {
+        parts.push(...textMatcherParts(field, matcher));
+      }
     }
   }
   return parts.length > 0 ? parts.join("; ") : "all inbound messages";
@@ -4966,8 +5048,8 @@ function updateGmailMatchCondition(
 function gmailMatchConditionUsed(
   conditions: readonly GmailMatchCondition[],
   index: number,
-  field: GmailTextField,
-  operator: GmailTextOperator,
+  field: GmailMatchField,
+  operator: GmailMatchOperator,
 ): boolean {
   return conditions.some((condition, conditionIndex) => {
     return (
@@ -4983,16 +5065,23 @@ function GmailMatchConditionRow({
   conditions,
   index,
   disabled,
+  threadIdEnabled,
   onChange,
 }: {
   readonly condition: GmailMatchCondition;
   readonly conditions: readonly GmailMatchCondition[];
   readonly index: number;
   readonly disabled: boolean;
+  readonly threadIdEnabled: boolean;
   readonly onChange: (conditions: readonly GmailMatchCondition[]) => void;
 }) {
-  const fieldLabel = gmailTextFieldOption(condition.field).label;
-  const operatorLabel = gmailTextOperatorOption(condition.operator).label;
+  const fieldLabel = gmailMatchFieldOption(condition.field).label;
+  const operatorOptions = gmailMatchOperatorOptions(condition.field);
+  const operatorOption = gmailMatchOperatorOption(
+    condition.field,
+    condition.operator,
+  );
+  const operatorLabel = operatorOption.label;
   const updateCondition = (update: Partial<GmailMatchCondition>) => {
     onChange(updateGmailMatchCondition(conditions, index, update));
   };
@@ -5003,29 +5092,39 @@ function GmailMatchConditionRow({
         value={condition.field}
         disabled={disabled}
         onValueChange={(value) => {
-          updateCondition({ field: gmailTextFieldOption(value).field });
+          const field = gmailMatchFieldOption(value).field;
+          updateCondition({
+            field,
+            operator: gmailMatchOperatorForField(field, condition.operator),
+          });
         }}
       >
         <SelectTrigger aria-label={`Condition ${index + 1} field`}>
           <SelectValue />
         </SelectTrigger>
         <SelectContent>
-          {GMAIL_TEXT_FIELDS.map((option) => {
-            return (
-              <SelectItem
-                key={option.field}
-                value={option.field}
-                disabled={gmailMatchConditionUsed(
-                  conditions,
-                  index,
-                  option.field,
-                  condition.operator,
-                )}
-              >
-                {option.label}
-              </SelectItem>
-            );
-          })}
+          {(threadIdEnabled ? GMAIL_MATCH_FIELDS : GMAIL_TEXT_FIELDS).map(
+            (option) => {
+              const operator = gmailMatchOperatorForField(
+                option.field,
+                condition.operator,
+              );
+              return (
+                <SelectItem
+                  key={option.field}
+                  value={option.field}
+                  disabled={gmailMatchConditionUsed(
+                    conditions,
+                    index,
+                    option.field,
+                    operator,
+                  )}
+                >
+                  {option.label}
+                </SelectItem>
+              );
+            },
+          )}
         </SelectContent>
       </Select>
       <Select
@@ -5033,7 +5132,7 @@ function GmailMatchConditionRow({
         disabled={disabled}
         onValueChange={(value) => {
           updateCondition({
-            operator: gmailTextOperatorOption(value).operator,
+            operator: gmailMatchOperatorOption(condition.field, value).operator,
           });
         }}
       >
@@ -5041,7 +5140,7 @@ function GmailMatchConditionRow({
           <SelectValue />
         </SelectTrigger>
         <SelectContent>
-          {GMAIL_TEXT_OPERATORS.map((option) => {
+          {operatorOptions.map((option) => {
             return (
               <SelectItem
                 key={option.operator}
@@ -5060,7 +5159,7 @@ function GmailMatchConditionRow({
         </SelectContent>
       </Select>
       <Input
-        name={`${condition.field}${condition.operator === "contains" ? "Contains" : "DoesNotContain"}`}
+        name={`${condition.field}${operatorOption.formSuffix}`}
         aria-label={`${fieldLabel} ${operatorLabel.toLowerCase()}`}
         value={condition.value}
         disabled={disabled}
@@ -5100,7 +5199,10 @@ function GmailMatchConditionsEditor({
   readonly disabled: boolean;
   readonly onChange: (conditions: readonly GmailMatchCondition[]) => void;
 }) {
-  const nextCondition = nextGmailMatchCondition(conditions);
+  const features = useGet(featureSwitch$);
+  const threadIdEnabled =
+    features[FeatureSwitchKey.ZeroMailReplyFollowUp] ?? false;
+  const nextCondition = nextGmailMatchCondition(conditions, threadIdEnabled);
   return (
     <div className="flex flex-col gap-2">
       {conditions.map((condition, index) => {
@@ -5111,6 +5213,7 @@ function GmailMatchConditionsEditor({
             conditions={conditions}
             index={index}
             disabled={disabled}
+            threadIdEnabled={threadIdEnabled}
             onChange={onChange}
           />
         );

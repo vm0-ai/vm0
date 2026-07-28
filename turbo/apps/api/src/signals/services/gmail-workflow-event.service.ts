@@ -793,6 +793,9 @@ function gmailMessageMatchesConfig(
   message: GmailMessageContext,
   config: GmailNewMessageEventConfig,
 ): boolean {
+  if (config.threadId && message.threadId !== config.threadId) {
+    return false;
+  }
   const match = config.match;
   if (!match) {
     return true;

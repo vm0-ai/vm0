@@ -446,7 +446,9 @@ describe("chat lifecycle", () => {
         eventConfig: {
           provider: "gmail",
           event: "new_message",
+          threadId: "gmail-thread-1",
           match: {
+            from: { containsAny: ["customer@example.com"] },
             subject: { doesNotContain: "newsletter" },
           },
         },
@@ -464,6 +466,16 @@ describe("chat lifecycle", () => {
     const dialog = await screen.findByRole("dialog", {
       name: "Edit automation",
     });
+    expect(within(dialog).getByLabelText("From contains any")).toHaveValue(
+      "customer@example.com",
+    );
+    expect(within(dialog).getByLabelText("Thread ID value")).toHaveValue(
+      "gmail-thread-1",
+    );
+    await fill(
+      within(dialog).getByLabelText("Thread ID value"),
+      "gmail-thread-2",
+    );
     await fill(within(dialog).getByLabelText("From contains"), "@acme.com");
     await fill(within(dialog).getByLabelText("Body contains"), "invoice");
     click(buttonByText("Save automation", dialog));
@@ -475,8 +487,12 @@ describe("chat lifecycle", () => {
           eventConfig: {
             provider: "gmail",
             event: "new_message",
+            threadId: "gmail-thread-2",
             match: {
-              from: { contains: "@acme.com" },
+              from: {
+                contains: "@acme.com",
+                containsAny: ["customer@example.com"],
+              },
               subject: { doesNotContain: "newsletter" },
               body: { contains: "invoice" },
             },
