@@ -206,6 +206,30 @@ def test_unknown_event_type_with_usage_extracts_usage():
     }
 
 
+def test_missing_type_with_usage_extracts_usage():
+    body = json.dumps(
+        {
+            "response": {
+                "id": "resp_missing_type",
+                "model": "gpt-5.6",
+                "usage": {
+                    "input_tokens": 8,
+                    "output_tokens": 3,
+                },
+            },
+        }
+    ).encode()
+    event = inspect_openai_responses_event_json(body)
+
+    assert event.event_type is None
+    assert extract_openai_responses_usage_from_event(event) == {
+        "message_id": "resp_missing_type",
+        "model": "gpt-5.6",
+        "tokens.input": 8,
+        "tokens.output": 3,
+    }
+
+
 def test_known_non_usage_event_with_usage_fields_is_ignored():
     body = json.dumps(
         {
