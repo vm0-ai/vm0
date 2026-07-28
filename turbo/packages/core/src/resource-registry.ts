@@ -3683,9 +3683,9 @@ function websiteTemplateV2ArchiveSha256(slug: string): string {
   return sha256;
 }
 
-// Keep refreshed packages outside the picker-backed list. The API selects
-// these additive resource ids behind WebsiteTemplateV2 while released clients
-// and users outside the rollout continue pulling the original package ids.
+// Keep refreshed packages outside the picker-backed list. Website generation
+// resolves to these additive v2 resource ids, while released clients continue
+// pulling the original package ids.
 const WEBSITE_TEMPLATE_V2_PACKAGES: readonly WebsiteTemplatePackage[] =
   WEBSITE_TEMPLATE_ITEMS.map((item) => {
     return {

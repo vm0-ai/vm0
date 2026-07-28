@@ -1,5 +1,26 @@
 # Changelog
 
+## [0.647.0](https://github.com/vm0-ai/vm0/compare/app-v0.646.1...app-v0.647.0) (2026-07-28)
+
+
+### Features
+
+* **platform:** persist workspace language preference ([#23396](https://github.com/vm0-ai/vm0/issues/23396)) ([7a409c9](https://github.com/vm0-ai/vm0/commit/7a409c99494fe765a896e72aee1b5450df3b1427))
+
+
+### Bug Fixes
+
+* **ci:** use immutable pages urls for browser e2e ([#23382](https://github.com/vm0-ai/vm0/issues/23382)) ([0ca6562](https://github.com/vm0-ai/vm0/commit/0ca6562131023efb48ea8fd4ca1e331115011703))
+* **platform:** prefetch artifact pages before scroll boundary ([#23429](https://github.com/vm0-ai/vm0/issues/23429)) ([127ba8e](https://github.com/vm0-ai/vm0/commit/127ba8ea56a468488078665a687572356955baa2))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.240.0
+    * @vm0/core bumped to 8.480.0
+
 ## [0.646.1](https://github.com/vm0-ai/vm0/compare/app-v0.646.0...app-v0.646.1) (2026-07-28)
 
 
