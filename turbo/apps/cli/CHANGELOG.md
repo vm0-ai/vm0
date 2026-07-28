@@ -1,5 +1,22 @@
 # Changelog
 
+## [9.260.1](https://github.com/vm0-ai/vm0/compare/cli-v9.260.0...cli-v9.260.1) (2026-07-27)
+
+
+### Refactoring
+
+* move feature switch keys into core ([#23299](https://github.com/vm0-ai/vm0/issues/23299)) ([11071e0](https://github.com/vm0-ai/vm0/commit/11071e056383e7ead21cc578961ed8496865f718))
+* remove graduated user-facing feature switches ([#23308](https://github.com/vm0-ai/vm0/issues/23308)) ([88670a3](https://github.com/vm0-ai/vm0/commit/88670a3f7df97bdf4a6caec3b17ed1550126f51a))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/api-contracts bumped to 1.237.0
+    * @vm0/connectors bumped to 1.197.1
+    * @vm0/core bumped to 8.476.0
+
 ## [9.260.0](https://github.com/vm0-ai/vm0/compare/cli-v9.259.0...cli-v9.260.0) (2026-07-27)
 
 

@@ -233,10 +233,3 @@ async function fetchAirtableUserInfo(
     email: data.email ?? null,
   };
 }
-
-/**
- * Get the primary secret name for Airtable connector (the access token).
- */
-export function getAirtableSecretName(): string {
-  return "AIRTABLE_ACCESS_TOKEN";
-}

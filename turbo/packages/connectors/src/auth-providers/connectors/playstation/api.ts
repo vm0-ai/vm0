@@ -31,7 +31,7 @@ interface PlaystationProfile {
   readonly onlineId?: string;
 }
 
-export interface PlaystationIdentity {
+interface PlaystationIdentity {
   readonly accountId: string;
   readonly onlineId: string | null;
 }

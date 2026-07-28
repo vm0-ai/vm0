@@ -1611,6 +1611,7 @@ const CHAT_EVENT_TYPE_PREVIOUS_MIGRATION = 696;
 const CHAT_EVENT_TYPE_ADDITIVE_MIGRATION = 697;
 const CHAT_EVENT_TYPE_BACKFILL_MIGRATION = 698;
 const CHAT_EVENT_TYPE_CONTRACT_MIGRATION = 701;
+const CHAT_EVENT_TYPE_CONSUMER_MIGRATION = 702;
 
 async function validateChatEventTypeBackfillAndContract(): Promise<void> {
   console.log(
@@ -1852,6 +1853,177 @@ async function validateChatEventTypeBackfillAndContract(): Promise<void> {
         query: `UPDATE "chat_messages" SET "content" = 'mutated' WHERE "id" = $1`,
         rowId: rolloutTailId,
       });
+
+      await applyMigrationsUpToInTransaction(
+        client,
+        CHAT_EVENT_TYPE_CONSUMER_MIGRATION,
+      );
+
+      const consumerEvents = await client.query<{
+        eventType: string;
+        id: string;
+      }>(
+        `
+          INSERT INTO "chat_messages" (
+            "chat_thread_id",
+            "role",
+            "content",
+            "event_type",
+            "automation_id",
+            "trigger_source",
+            "trigger_brief",
+            "encrypted_params",
+            "error"
+          )
+          VALUES
+            (
+              $1,
+              'user',
+              NULL,
+              'input.automation',
+              '80000000-0000-4000-8000-000000000001',
+              'workflow-event',
+              'Gmail label applied',
+              'encrypted-queue-params',
+              NULL
+            ),
+            (
+              $1,
+              'assistant',
+              NULL,
+              'queue.automation_paused',
+              NULL,
+              NULL,
+              NULL,
+              NULL,
+              'Provider unavailable'
+            ),
+            (
+              $1,
+              'assistant',
+              NULL,
+              'queue.automation_resumed',
+              NULL,
+              NULL,
+              NULL,
+              NULL,
+              NULL
+            )
+          RETURNING "id", "event_type" AS "eventType"
+        `,
+        [threadId],
+      );
+      assert.deepEqual(
+        consumerEvents.rows.map(({ eventType }) => {
+          return eventType;
+        }),
+        [
+          "input.automation",
+          "queue.automation_paused",
+          "queue.automation_resumed",
+        ],
+      );
+
+      const automationEventId = consumerEvents.rows[0]?.id;
+      assert.ok(automationEventId);
+
+      const automationPayload = await client.query<{
+        automationId: string;
+        encryptedParams: string;
+        triggerBrief: string;
+        triggerSource: string;
+      }>(
+        `
+          SELECT
+            "automation_id" AS "automationId",
+            "trigger_source" AS "triggerSource",
+            "trigger_brief" AS "triggerBrief",
+            "encrypted_params" AS "encryptedParams"
+          FROM "chat_messages"
+          WHERE "id" = $1
+        `,
+        [automationEventId],
+      );
+      assert.deepEqual(automationPayload.rows[0], {
+        automationId: "80000000-0000-4000-8000-000000000001",
+        encryptedParams: "encrypted-queue-params",
+        triggerBrief: "Gmail label applied",
+        triggerSource: "workflow-event",
+      });
+
+      const consumerColumns = await client.query<{
+        columnName: string;
+        isNullable: string;
+      }>(`
+        SELECT
+          column_name AS "columnName",
+          is_nullable AS "isNullable"
+        FROM information_schema.columns
+        WHERE table_schema = 'public'
+          AND table_name = 'chat_messages'
+          AND column_name IN (
+            'automation_id',
+            'trigger_source',
+            'trigger_brief',
+            'encrypted_params'
+          )
+        ORDER BY column_name
+      `);
+      assert.deepEqual(consumerColumns.rows, [
+        { columnName: "automation_id", isNullable: "YES" },
+        { columnName: "encrypted_params", isNullable: "YES" },
+        { columnName: "trigger_brief", isNullable: "YES" },
+        { columnName: "trigger_source", isNullable: "YES" },
+      ]);
+
+      const consumerIndexes = await client.query<{ indexName: string }>(`
+        SELECT indexname AS "indexName"
+        FROM pg_catalog.pg_indexes
+        WHERE schemaname = 'public'
+          AND tablename = 'chat_messages'
+          AND indexname IN (
+            'chat_messages_input_automation_idx',
+            'chat_messages_pending_queue_idx',
+            'chat_messages_automation_pause_idx'
+          )
+        ORDER BY indexname
+      `);
+      assert.deepEqual(consumerIndexes.rows, [
+        { indexName: "chat_messages_automation_pause_idx" },
+        { indexName: "chat_messages_input_automation_idx" },
+        { indexName: "chat_messages_pending_queue_idx" },
+      ]);
+
+      const consumerConstraint = await client.query<{
+        constraintValidated: boolean;
+      }>(`
+        SELECT convalidated AS "constraintValidated"
+        FROM pg_catalog.pg_constraint
+        WHERE conrelid = 'public.chat_messages'::regclass
+          AND conname = 'chat_messages_event_type_check'
+      `);
+      assert.deepEqual(consumerConstraint.rows, [
+        { constraintValidated: true },
+      ]);
+
+      await expectDatabaseError(client, {
+        code: "23514",
+        query: `
+          INSERT INTO "chat_messages" (
+            "chat_thread_id",
+            "role",
+            "content",
+            "event_type"
+          )
+          VALUES ($1, 'user', 'unsupported event type after expansion', 'unsupported.event')
+        `,
+        values: [threadId],
+      });
+      await expectAppendOnlyUpdateRejected(client, {
+        tableName: "chat_messages",
+        query: `UPDATE "chat_messages" SET "trigger_brief" = 'mutated' WHERE "id" = $1`,
+        rowId: automationEventId,
+      });
     } finally {
       await client.end();
     }
@@ -1860,7 +2032,7 @@ async function validateChatEventTypeBackfillAndContract(): Promise<void> {
   }
 
   console.log(
-    "   ✅ Rollout-tail rows are classified, event_type is contracted, and append-only protection remains active\n",
+    "   ✅ Rollout-tail rows are classified, automation queue leaves are accepted, and append-only protection remains active\n",
   );
 }
 

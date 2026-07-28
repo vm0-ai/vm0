@@ -49,7 +49,7 @@ type StripeCliPollState = z.infer<typeof stripeCliPollStateSchema>;
 
 type StripeCliPollResponse = z.infer<typeof stripeCliPollResponseSchema>;
 
-export function redactStripeCliDashboardAuthText(value: string): string {
+function redactStripeCliDashboardAuthText(value: string): string {
   return value
     .replace(
       /https:\/\/dashboard\.stripe\.com\/stripecli\/[^\s"'<>)]*/gu,

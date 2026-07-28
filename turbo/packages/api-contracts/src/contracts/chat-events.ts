@@ -3,6 +3,7 @@ import type { ZeroGoalEvent } from "./zero-goals";
 
 export const CHAT_EVENT_TYPES = [
   "input.prompt",
+  "input.automation",
   "input.rejected",
   "output.message",
   "output.error",
@@ -13,6 +14,8 @@ export const CHAT_EVENT_TYPES = [
   "run.completed",
   "run.failed",
   "run.cancelled",
+  "queue.automation_paused",
+  "queue.automation_resumed",
   "control.interrupt",
   "control.revoke",
   "goal.changed",
@@ -26,12 +29,91 @@ export type ChatEventCompatibilityRole = "user" | "assistant";
 export type ChatEventRunLifecycle = "completed" | "failed" | "cancelled";
 export type ChatRunFoldState = "queued" | "dequeued" | ChatEventRunLifecycle;
 
+const VALID_CHAT_EVENT_REVOCATION_TARGETS = {
+  "input.prompt": ["input.prompt", "input.automation", "output.followups"],
+  "input.automation": [],
+  "input.rejected": ["input.prompt", "input.automation", "output.followups"],
+  "output.message": [],
+  "output.error": [],
+  "output.thinking": [],
+  "output.followups": [],
+  "run.queued": [],
+  "run.dequeued": ["run.queued"],
+  "run.completed": [],
+  "run.failed": [],
+  "run.cancelled": [],
+  "queue.automation_paused": [],
+  "queue.automation_resumed": [],
+  "control.interrupt": [],
+  "control.revoke": ["input.prompt", "input.automation", "input.rejected"],
+  "goal.changed": [],
+  "usage.recorded": [],
+} satisfies Record<ChatEventType, readonly ChatEventType[]>;
+
+const CHAT_RUN_FOLD_STATES = {
+  "input.prompt": null,
+  "input.automation": null,
+  "input.rejected": null,
+  "output.message": null,
+  "output.error": null,
+  "output.thinking": null,
+  "output.followups": null,
+  "run.queued": "queued",
+  "run.dequeued": "dequeued",
+  "run.completed": "completed",
+  "run.failed": "failed",
+  "run.cancelled": "cancelled",
+  "queue.automation_paused": null,
+  "queue.automation_resumed": null,
+  "control.interrupt": null,
+  "control.revoke": null,
+  "goal.changed": null,
+  "usage.recorded": null,
+} satisfies Record<ChatEventType, ChatRunFoldState | null>;
+
+const CHAT_AUTOMATION_INTAKE_PAUSE_TRANSITIONS = {
+  "input.prompt": null,
+  "input.automation": null,
+  "input.rejected": null,
+  "output.message": null,
+  "output.error": null,
+  "output.thinking": null,
+  "output.followups": null,
+  "run.queued": null,
+  "run.dequeued": null,
+  "run.completed": null,
+  "run.failed": null,
+  "run.cancelled": null,
+  "queue.automation_paused": "pause",
+  "queue.automation_resumed": "resume",
+  "control.interrupt": null,
+  "control.revoke": null,
+  "goal.changed": null,
+  "usage.recorded": null,
+} satisfies Record<ChatEventType, "pause" | "resume" | null>;
+
 interface ChatEventFoldInput {
+  readonly id?: string;
   readonly eventType: ChatEventType;
-  readonly runId?: string;
+  readonly runId?: string | null;
   readonly interruptsRunId?: string;
-  readonly revokesEventId?: string;
+  readonly revokesEventId?: string | null;
   readonly goalEvent?: ZeroGoalEvent;
+}
+
+export interface ChatQueueFoldInput extends ChatEventFoldInput {
+  readonly id: string;
+  readonly createdAt: string;
+}
+
+export interface ChatAutomationIntakePauseFoldInput extends ChatEventFoldInput {
+  readonly createdAt: string;
+  readonly pauseReason?: string | null;
+}
+
+export interface ChatAutomationIntakePauseState {
+  readonly pausedAt: string;
+  readonly pauseReason: string | null;
 }
 
 interface ChatUsageFoldInput extends ChatEventFoldInput {
@@ -45,6 +127,7 @@ export function chatEventCompatibilityRole(
 ): ChatEventCompatibilityRole {
   switch (eventType) {
     case "input.prompt":
+    case "input.automation":
     case "input.rejected":
     case "control.interrupt":
     case "control.revoke":
@@ -58,6 +141,8 @@ export function chatEventCompatibilityRole(
     case "run.completed":
     case "run.failed":
     case "run.cancelled":
+    case "queue.automation_paused":
+    case "queue.automation_resumed":
     case "goal.changed":
     case "usage.recorded":
       return "assistant";
@@ -75,6 +160,7 @@ export function chatEventRunLifecycle(
     case "run.cancelled":
       return "cancelled";
     case "input.prompt":
+    case "input.automation":
     case "input.rejected":
     case "output.message":
     case "output.error":
@@ -82,6 +168,8 @@ export function chatEventRunLifecycle(
     case "output.followups":
     case "run.queued":
     case "run.dequeued":
+    case "queue.automation_paused":
+    case "queue.automation_resumed":
     case "control.interrupt":
     case "control.revoke":
     case "goal.changed":
@@ -102,8 +190,12 @@ export function isChatRunTerminalEventType(
 
 export function isChatInputEventType(
   eventType: ChatEventType,
-): eventType is "input.prompt" | "input.rejected" {
-  return eventType === "input.prompt" || eventType === "input.rejected";
+): eventType is "input.prompt" | "input.automation" | "input.rejected" {
+  return (
+    eventType === "input.prompt" ||
+    eventType === "input.automation" ||
+    eventType === "input.rejected"
+  );
 }
 
 export function isChatOutputEventType(
@@ -120,28 +212,9 @@ export function isValidChatEventRevocation(
   sourceType: ChatEventType,
   targetType: ChatEventType,
 ): boolean {
-  switch (sourceType) {
-    case "input.prompt":
-      return targetType === "input.prompt" || targetType === "output.followups";
-    case "input.rejected":
-      return targetType === "input.prompt" || targetType === "output.followups";
-    case "control.revoke":
-      return targetType === "input.prompt" || targetType === "input.rejected";
-    case "run.dequeued":
-      return targetType === "run.queued";
-    case "output.message":
-    case "output.error":
-    case "output.thinking":
-    case "output.followups":
-    case "run.queued":
-    case "run.completed":
-    case "run.failed":
-    case "run.cancelled":
-    case "control.interrupt":
-    case "goal.changed":
-    case "usage.recorded":
-      return false;
-  }
+  const targets: readonly ChatEventType[] =
+    VALID_CHAT_EVENT_REVOCATION_TARGETS[sourceType];
+  return targets.includes(targetType);
 }
 
 export function revokedChatEventIds(
@@ -149,7 +222,9 @@ export function revokedChatEventIds(
 ): Set<string> {
   return new Set(
     events.flatMap((event) => {
-      return event.revokesEventId === undefined ? [] : [event.revokesEventId];
+      return event.revokesEventId === undefined || event.revokesEventId === null
+        ? []
+        : [event.revokesEventId];
     }),
   );
 }
@@ -167,6 +242,7 @@ export function terminatedChatRunIds(
     }
     if (
       event.runId !== undefined &&
+      event.runId !== null &&
       isChatRunTerminalEventType(event.eventType)
     ) {
       runIds.add(event.runId);
@@ -180,39 +256,86 @@ export function foldChatRunStates(
 ): Map<string, ChatRunFoldState> {
   const states = new Map<string, ChatRunFoldState>();
   for (const event of events) {
-    if (event.runId === undefined) {
+    if (event.runId === undefined || event.runId === null) {
       continue;
     }
-    switch (event.eventType) {
-      case "run.queued":
-        states.set(event.runId, "queued");
-        break;
-      case "run.dequeued":
-        states.set(event.runId, "dequeued");
-        break;
-      case "run.completed":
-        states.set(event.runId, "completed");
-        break;
-      case "run.failed":
-        states.set(event.runId, "failed");
-        break;
-      case "run.cancelled":
-        states.set(event.runId, "cancelled");
-        break;
-      case "input.prompt":
-      case "input.rejected":
-      case "output.message":
-      case "output.error":
-      case "output.thinking":
-      case "output.followups":
-      case "control.interrupt":
-      case "control.revoke":
-      case "goal.changed":
-      case "usage.recorded":
-        break;
+    const state = CHAT_RUN_FOLD_STATES[event.eventType];
+    if (state !== null) {
+      states.set(event.runId, state);
     }
   }
   return states;
+}
+
+export function isPendingChatQueueEvent(
+  event: ChatQueueFoldInput,
+  revokedEventIds: ReadonlySet<string>,
+): boolean {
+  return (
+    (event.eventType === "input.prompt" ||
+      event.eventType === "input.automation") &&
+    (event.runId === undefined || event.runId === null) &&
+    !revokedEventIds.has(event.id)
+  );
+}
+
+function compareChatQueueEvents(
+  left: ChatQueueFoldInput,
+  right: ChatQueueFoldInput,
+): number {
+  const leftPriority = left.eventType === "input.prompt" ? 0 : 1;
+  const rightPriority = right.eventType === "input.prompt" ? 0 : 1;
+  if (leftPriority !== rightPriority) {
+    return leftPriority - rightPriority;
+  }
+  if (left.createdAt !== right.createdAt) {
+    return left.createdAt < right.createdAt ? -1 : 1;
+  }
+  if (left.id === right.id) {
+    return 0;
+  }
+  return left.id < right.id ? -1 : 1;
+}
+
+export function foldPendingChatQueueEvents<TEvent extends ChatQueueFoldInput>(
+  events: readonly TEvent[],
+): TEvent[] {
+  const revokedEventIds = revokedChatEventIds(events);
+  return events
+    .filter((event) => {
+      return isPendingChatQueueEvent(event, revokedEventIds);
+    })
+    .sort(compareChatQueueEvents);
+}
+
+export function foldChatAutomationIntakePause(
+  events: readonly ChatAutomationIntakePauseFoldInput[],
+): ChatAutomationIntakePauseState | null {
+  let pause: ChatAutomationIntakePauseState | null = null;
+  for (const event of events) {
+    const transition =
+      CHAT_AUTOMATION_INTAKE_PAUSE_TRANSITIONS[event.eventType];
+    if (transition === "pause") {
+      pause = {
+        pausedAt: event.createdAt,
+        pauseReason: event.pauseReason ?? null,
+      };
+    } else if (transition === "resume") {
+      pause = null;
+    }
+  }
+  return pause;
+}
+
+export function foldRunnableChatQueueEvents<
+  TEvent extends ChatQueueFoldInput & ChatAutomationIntakePauseFoldInput,
+>(events: readonly TEvent[]): TEvent[] {
+  const pending = foldPendingChatQueueEvents(events);
+  return foldChatAutomationIntakePause(events) === null
+    ? pending
+    : pending.filter((event) => {
+        return event.eventType === "input.prompt";
+      });
 }
 
 export function foldActiveChatGoalObjective(
@@ -245,6 +368,7 @@ export function foldLatestChatUsageByRunId<
     if (
       event.eventType !== "usage.recorded" ||
       event.runId === undefined ||
+      event.runId === null ||
       event.usage === undefined
     ) {
       continue;

@@ -153,6 +153,7 @@ export function clearMockedAuth() {
   internalMockedMemberships = [{ id: "org_default" }];
   internalMockedClientSessions = [];
   clerkListeners.length = 0;
+  mockedClerk.on = defaultClerkStatusOn;
   mockedClerk.signOut.mockReset();
   mockedClerk.openSignIn.mockReset();
   mockedClerk.openUserProfile.mockReset();
@@ -162,8 +163,9 @@ export function clearMockedAuth() {
   mockedClerk.createOrganization.mockReset();
   mockedClerk.sessionGetToken.mockReset();
   mockedClerk.sessionGetToken.mockImplementation(defaultGetTokenImpl);
-  mockedClerk.load.mockReset();
-  mockedClerk.load.mockImplementation(defaultLoadImpl);
+  mockedClerk.load = mockedClerkLoad;
+  mockedClerkLoad.mockReset();
+  mockedClerkLoad.mockImplementation(defaultLoadImpl);
   mockedClerk.clientSignInCreate.mockReset();
   mockedClerk.clientSignInCreate.mockResolvedValue({
     status: "complete",
@@ -175,6 +177,7 @@ export function clearMockedAuth() {
 }
 
 const clerkListeners: (() => void)[] = [];
+function defaultClerkStatusOn(): void {}
 
 export function emitMockedClerkEvent(): void {
   for (const listener of clerkListeners) {
@@ -205,6 +208,7 @@ const defaultBuildUrlWithAuthImpl = (to: string) => {
 const defaultLoadImpl = () => {
   return Promise.resolve();
 };
+export const mockedClerkLoad = vi.fn<typeof defaultLoadImpl>(defaultLoadImpl);
 
 interface MockedSetActiveParams {
   organization?: string | null;
@@ -277,7 +281,8 @@ export const mockedClerk = {
   }),
   openUserProfile: vi.fn<(options?: MockedUserProfileOptions) => void>(),
   closeUserProfile: vi.fn<() => void>(),
-  load: vi.fn(defaultLoadImpl),
+  load: mockedClerkLoad,
+  on: defaultClerkStatusOn,
   addListener: (cb: () => void) => {
     clerkListeners.push(cb);
     return () => {

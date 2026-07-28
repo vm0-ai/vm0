@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.37.154](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.37.153...sandbox-fc-v0.37.154) (2026-07-27)
+
+
+### Bug Fixes
+
+* **runner:** trace guest dns through root netfilter ([#23311](https://github.com/vm0-ai/vm0/issues/23311)) ([ca05dd0](https://github.com/vm0-ai/vm0/commit/ca05dd0a296ac2b1634aceba5ca1a64adcbd601a))
+
 ## [0.37.153](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.37.152...sandbox-fc-v0.37.153) (2026-07-27)
 
 

@@ -14,7 +14,7 @@ function setBrowserUrl(url: string): void {
 }
 
 describe("app auth pages", () => {
-  it("keeps the app skeleton visible until Clerk mounts the sign-up route", async () => {
+  it("mounts the Clerk sign-up route before Clerk finishes loading", async () => {
     setBrowserUrl("https://app.vm0.ai/sign-up");
 
     const clerkLoad = createDeferredPromise<void>(context.signal);
@@ -27,17 +27,17 @@ describe("app auth pages", () => {
 
     const appSkeleton = await screen.findByTestId("app-skeleton");
     expect(appSkeleton).not.toHaveAttribute("aria-hidden");
-    expect(screen.queryByTestId("clerk-sign-up")).not.toBeInTheDocument();
+    await expect(
+      screen.findByTestId("clerk-auth-loading"),
+    ).resolves.toBeInTheDocument();
+    expect(screen.getByTestId("clerk-sign-up")).toBeEmptyDOMElement();
 
     await act(async () => {
       clerkLoad.resolve();
       await clerkLoad.promise;
     });
 
-    await expect(
-      screen.findByTestId("clerk-auth-loading"),
-    ).resolves.toBeInTheDocument();
-    expect(screen.getByTestId("clerk-sign-up")).toBeEmptyDOMElement();
+    expect(screen.getByTestId("clerk-auth-loading")).toBeInTheDocument();
     expect(appSkeleton).not.toHaveAttribute("aria-hidden");
 
     act(() => {

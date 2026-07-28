@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.148.15](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.148.14...runner-rs-v0.148.15) (2026-07-27)
+
+
+### Bug Fixes
+
+* **runner:** trace guest dns through root netfilter ([#23311](https://github.com/vm0-ai/vm0/issues/23311)) ([ca05dd0](https://github.com/vm0-ai/vm0/commit/ca05dd0a296ac2b1634aceba5ca1a64adcbd601a))
+
+
+### Refactoring
+
+* **mitm-addon:** retire original url compatibility wrapper ([#23312](https://github.com/vm0-ai/vm0/issues/23312)) ([57c4604](https://github.com/vm0-ai/vm0/commit/57c4604e8b4ce6804d18ff93804aeb2236b0efc6))
+
 ## [0.148.14](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.148.13...runner-rs-v0.148.14) (2026-07-27)
 
 

@@ -2,11 +2,11 @@ import {
   ClerkProvider as BaseClerkProvider,
   type ClerkProviderProps as BaseClerkProviderProps,
 } from "@clerk/react";
-import { useLoadable } from "ccstate-react";
+import { useGet } from "ccstate-react";
 import type { ReactNode } from "react";
 import { resolvePlatformRuntimeConfig } from "../../lib/platform-host.ts";
 import {
-  clerk$,
+  clerkInstance$,
   clerkUi$,
   getAllowedAuthRedirectOriginsForCurrentPage,
   resolveAppAuthUrl,
@@ -21,15 +21,8 @@ interface ClerkProviderProps {
 }
 
 export function VM0ClerkProvider({ children }: ClerkProviderProps) {
-  const clerkLoadable = useLoadable(clerk$);
-  const clerkUiLoadable = useLoadable(clerkUi$);
-
-  if (
-    clerkLoadable.state !== "hasData" ||
-    clerkUiLoadable.state !== "hasData"
-  ) {
-    return null;
-  }
+  const clerkInstance = useGet(clerkInstance$);
+  const clerkUi = useGet(clerkUi$);
 
   const publishableKey = resolvePlatformRuntimeConfig().clerkPublishableKey;
   const appUrl = resolveAppUrl();
@@ -37,7 +30,8 @@ export function VM0ClerkProvider({ children }: ClerkProviderProps) {
   const satelliteConfig = resolveClerkSatelliteConfig();
 
   const providerProps = {
-    Clerk: clerkLoadable.data as unknown as BaseClerkProviderProps["Clerk"],
+    Clerk: clerkInstance as unknown as BaseClerkProviderProps["Clerk"],
+    afterSignOutUrl: resolveAppAuthUrl("/sign-in"),
     allowedRedirectOrigins,
     appearance: getClerkAppearance(),
     localization: getVm0ClerkLocalization(),
@@ -46,7 +40,7 @@ export function VM0ClerkProvider({ children }: ClerkProviderProps) {
     signInUrl: resolveAppAuthUrl("/sign-in"),
     signUpFallbackRedirectUrl: appUrl,
     signUpUrl: resolveAppAuthUrl("/sign-up"),
-    ui: clerkUiLoadable.data,
+    ui: clerkUi,
   };
   return satelliteConfig ? (
     <BaseClerkProvider {...providerProps} {...satelliteConfig}>

@@ -1,7 +1,7 @@
 import { z } from "zod";
 
-export const STEAM_OPENID_ENDPOINT = "https://steamcommunity.com/openid/login";
-export const STEAM_OPENID_NS = "http://specs.openid.net/auth/2.0";
+const STEAM_OPENID_ENDPOINT = "https://steamcommunity.com/openid/login";
+const STEAM_OPENID_NS = "http://specs.openid.net/auth/2.0";
 const STEAM_OPENID_IDENTIFIER_SELECT =
   "http://specs.openid.net/auth/2.0/identifier_select";
 const STEAM_CLAIMED_ID_PATTERN =
@@ -20,7 +20,7 @@ const steamOpenIdVerificationResponseSchema = z.object({
   is_valid: z.enum(["true", "false"]).optional(),
 });
 
-export interface SteamOpenIdVerificationResult {
+interface SteamOpenIdVerificationResult {
   readonly steamId: string;
 }
 

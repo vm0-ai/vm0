@@ -1,6 +1,6 @@
 {
-  "id": "971a70dd-ec74-4103-8050-9ada924dfb27",
-  "prevId": "0f7d90a0-6040-4c66-b7ae-50bafae5630f",
+  "id": "ab9e6f98-3197-4487-82d2-7baa7f9831cb",
+  "prevId": "c5b96a78-26c0-41fd-8d81-f8f2bb4aadcb",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -4684,6 +4684,46 @@
       "checkConstraints": {},
       "isRLSEnabled": false
     },
+    "public.chat_thread_event_sequences": {
+      "name": "chat_thread_event_sequences",
+      "schema": "",
+      "columns": {
+        "user_id": {
+          "name": "user_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "org_id": {
+          "name": "org_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "last_seq_id": {
+          "name": "last_seq_id",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {
+        "chat_thread_event_sequences_user_id_org_id_pk": {
+          "name": "chat_thread_event_sequences_user_id_org_id_pk",
+          "columns": [
+            "user_id",
+            "org_id"
+          ]
+        }
+      },
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
     "public.chat_thread_events": {
       "name": "chat_thread_events",
       "schema": "",
@@ -4704,6 +4744,12 @@
         "org_id": {
           "name": "org_id",
           "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "seq_id": {
+          "name": "seq_id",
+          "type": "bigint",
           "primaryKey": false,
           "notNull": true
         },
@@ -4825,6 +4871,33 @@
           "concurrently": false,
           "method": "btree",
           "with": {}
+        },
+        "chat_thread_events_user_org_seq_unique": {
+          "name": "chat_thread_events_user_org_seq_unique",
+          "columns": [
+            {
+              "expression": "user_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "org_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "seq_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
         }
       },
       "foreignKeys": {},
@@ -4858,6 +4931,12 @@
         "latest_event_id": {
           "name": "latest_event_id",
           "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "latest_event_seq_id": {
+          "name": "latest_event_seq_id",
+          "type": "bigint",
           "primaryKey": false,
           "notNull": false
         },

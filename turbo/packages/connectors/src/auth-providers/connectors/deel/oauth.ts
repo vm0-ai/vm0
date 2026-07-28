@@ -266,10 +266,3 @@ async function fetchDeelUserInfo(
     email,
   };
 }
-
-/**
- * Get the primary secret name for Deel connector (the access token).
- */
-export function getDeelSecretName(): string {
-  return "DEEL_ACCESS_TOKEN";
-}

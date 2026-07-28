@@ -4,8 +4,12 @@ import {
   CHAT_EVENT_TYPES,
   chatEventCompatibilityRole,
   foldActiveChatGoalObjective,
+  foldChatAutomationIntakePause,
   foldChatRunStates,
   foldLatestChatUsageByRunId,
+  foldPendingChatQueueEvents,
+  foldRunnableChatQueueEvents,
+  isPendingChatQueueEvent,
   isValidChatEventRevocation,
   revokedChatEventIds,
   terminatedChatRunIds,
@@ -38,8 +42,19 @@ const chatEvents = [
     createdAt: CREATED_AT,
   },
   {
-    id: "input-rejected",
+    id: "input-automation",
     seqId: 2,
+    threadId: THREAD_ID,
+    eventType: "input.automation",
+    content: null,
+    automationId: "00000000-0000-4000-8000-000000000010",
+    triggerSource: "workflow-event",
+    triggerBrief: "Gmail label applied",
+    createdAt: "2026-07-23T00:00:01.000Z",
+  },
+  {
+    id: "input-rejected",
+    seqId: 3,
     threadId: THREAD_ID,
     eventType: "input.rejected",
     content: "Run the task",
@@ -48,7 +63,7 @@ const chatEvents = [
   },
   {
     id: "output-message",
-    seqId: 3,
+    seqId: 4,
     threadId: THREAD_ID,
     eventType: "output.message",
     content: "Done",
@@ -56,7 +71,7 @@ const chatEvents = [
   },
   {
     id: "output-error",
-    seqId: 4,
+    seqId: 5,
     threadId: THREAD_ID,
     eventType: "output.error",
     content: null,
@@ -65,7 +80,7 @@ const chatEvents = [
   },
   {
     id: "output-thinking",
-    seqId: 5,
+    seqId: 6,
     threadId: THREAD_ID,
     eventType: "output.thinking",
     content: null,
@@ -74,7 +89,7 @@ const chatEvents = [
   },
   {
     id: "output-followups",
-    seqId: 6,
+    seqId: 7,
     threadId: THREAD_ID,
     eventType: "output.followups",
     content: null,
@@ -83,7 +98,7 @@ const chatEvents = [
   },
   {
     id: "run-queued",
-    seqId: 7,
+    seqId: 8,
     threadId: THREAD_ID,
     eventType: "run.queued",
     runId: "run-1",
@@ -92,7 +107,7 @@ const chatEvents = [
   },
   {
     id: "run-dequeued",
-    seqId: 8,
+    seqId: 9,
     threadId: THREAD_ID,
     eventType: "run.dequeued",
     runId: "run-1",
@@ -102,7 +117,7 @@ const chatEvents = [
   },
   {
     id: "run-completed",
-    seqId: 9,
+    seqId: 10,
     threadId: THREAD_ID,
     eventType: "run.completed",
     runId: "run-1",
@@ -112,7 +127,7 @@ const chatEvents = [
   },
   {
     id: "run-failed",
-    seqId: 10,
+    seqId: 11,
     threadId: THREAD_ID,
     eventType: "run.failed",
     runId: "run-2",
@@ -122,7 +137,7 @@ const chatEvents = [
   },
   {
     id: "run-cancelled",
-    seqId: 11,
+    seqId: 12,
     threadId: THREAD_ID,
     eventType: "run.cancelled",
     runId: "run-3",
@@ -131,8 +146,25 @@ const chatEvents = [
     createdAt: CREATED_AT,
   },
   {
+    id: "queue-automation-paused",
+    seqId: 13,
+    threadId: THREAD_ID,
+    eventType: "queue.automation_paused",
+    content: null,
+    pauseReason: "Model provider unavailable",
+    createdAt: "2026-07-23T00:01:00.000Z",
+  },
+  {
+    id: "queue-automation-resumed",
+    seqId: 14,
+    threadId: THREAD_ID,
+    eventType: "queue.automation_resumed",
+    content: null,
+    createdAt: "2026-07-23T00:02:00.000Z",
+  },
+  {
     id: "control-interrupt",
-    seqId: 12,
+    seqId: 15,
     threadId: THREAD_ID,
     eventType: "control.interrupt",
     content: null,
@@ -141,7 +173,7 @@ const chatEvents = [
   },
   {
     id: "control-revoke",
-    seqId: 13,
+    seqId: 16,
     threadId: THREAD_ID,
     eventType: "control.revoke",
     content: null,
@@ -150,7 +182,7 @@ const chatEvents = [
   },
   {
     id: "goal-changed",
-    seqId: 14,
+    seqId: 17,
     threadId: THREAD_ID,
     eventType: "goal.changed",
     content: null,
@@ -163,7 +195,7 @@ const chatEvents = [
   },
   {
     id: "usage-recorded",
-    seqId: 15,
+    seqId: 18,
     threadId: THREAD_ID,
     eventType: "usage.recorded",
     runId: "run-1",
@@ -177,6 +209,94 @@ const chatEvents = [
     createdAt: CREATED_AT,
   },
 ] satisfies ChatEvent[];
+
+function compatibilityRoundTripExpectation(event: ChatEvent): ChatEvent {
+  switch (event.eventType) {
+    case "input.automation": {
+      const { eventType, automationId, triggerBrief, ...legacy } = event;
+      void eventType;
+      void automationId;
+      return chatEventSchema.parse({
+        ...legacy,
+        eventType: "input.prompt",
+        content: triggerBrief,
+      });
+    }
+    case "queue.automation_paused": {
+      const { eventType, pauseReason, ...legacy } = event;
+      void eventType;
+      void pauseReason;
+      return chatEventSchema.parse({
+        ...legacy,
+        eventType: "output.thinking",
+        thinking: "",
+      });
+    }
+    case "queue.automation_resumed": {
+      const { eventType, ...legacy } = event;
+      void eventType;
+      return chatEventSchema.parse({
+        ...legacy,
+        eventType: "output.thinking",
+        thinking: "",
+      });
+    }
+    case "run.queued":
+      return { ...event, runEventId: "queue:queued" };
+    case "run.dequeued":
+      return { ...event, runEventId: "queue:dequeued" };
+    case "input.prompt":
+    case "input.rejected":
+    case "output.message":
+    case "output.error":
+    case "output.thinking":
+    case "output.followups":
+    case "run.completed":
+    case "run.failed":
+    case "run.cancelled":
+    case "control.interrupt":
+    case "control.revoke":
+    case "goal.changed":
+    case "usage.recorded":
+      return event;
+  }
+}
+
+const queueFoldFixture = [
+  {
+    id: "automation-oldest",
+    eventType: "input.automation",
+    createdAt: "2026-07-23T00:00:00.000Z",
+  },
+  {
+    id: "prompt-newer",
+    eventType: "input.prompt",
+    createdAt: "2026-07-23T00:01:00.000Z",
+  },
+  {
+    id: "prompt-claimed",
+    eventType: "input.prompt",
+    runId: "run-claimed",
+    createdAt: "2026-07-23T00:00:30.000Z",
+  },
+  {
+    id: "automation-revoked",
+    eventType: "input.automation",
+    createdAt: "2026-07-23T00:00:15.000Z",
+  },
+  {
+    id: "automation-revoker",
+    eventType: "control.revoke",
+    revokesEventId: "automation-revoked",
+    createdAt: "2026-07-23T00:02:00.000Z",
+  },
+  {
+    id: "automation-paused",
+    eventType: "queue.automation_paused",
+    pauseReason: "Provider unavailable",
+    createdAt: "2026-07-23T00:03:00.000Z",
+  },
+] as const;
 
 describe("ChatEvent catalog", () => {
   it("parses exactly one canonical fixture for every registered leaf", () => {
@@ -203,6 +323,13 @@ describe("ChatEvent catalog", () => {
       chatEventSchema.safeParse({
         ...prompt,
         revokesMessageId: "legacy-target",
+      }).success,
+    ).toBe(false);
+    const automation = chatEvents[1];
+    expect(
+      chatEventSchema.safeParse({
+        ...automation,
+        encryptedParams: "must-stay-server-side",
       }).success,
     ).toBe(false);
   });
@@ -234,13 +361,7 @@ describe("ChatEvent catalog", () => {
       expect(legacy).not.toHaveProperty("revokesEventId");
       expect(
         canonicalChatEventFromCompatibilityResponse(THREAD_ID, legacy),
-      ).toStrictEqual(
-        event.eventType === "run.queued"
-          ? { ...event, runEventId: "queue:queued" }
-          : event.eventType === "run.dequeued"
-            ? { ...event, runEventId: "queue:dequeued" }
-            : event,
-      );
+      ).toStrictEqual(compatibilityRoundTripExpectation(event));
     }
   });
 });
@@ -248,10 +369,13 @@ describe("ChatEvent catalog", () => {
 describe("ChatEvent revocation rules", () => {
   const validPairs = new Set([
     "input.prompt->input.prompt",
+    "input.prompt->input.automation",
     "input.prompt->output.followups",
     "input.rejected->input.prompt",
+    "input.rejected->input.automation",
     "input.rejected->output.followups",
     "control.revoke->input.prompt",
+    "control.revoke->input.automation",
     "control.revoke->input.rejected",
     "run.dequeued->run.queued",
   ]);
@@ -340,6 +464,44 @@ describe("ChatEvent folds", () => {
     expect(revokedChatEventIds(chatEvents)).toStrictEqual(
       new Set(["run-queued", "input-prompt"]),
     );
+  });
+
+  it("folds pending queue events by user priority, original time, and revoke state", () => {
+    const revoked = revokedChatEventIds(queueFoldFixture);
+    expect(isPendingChatQueueEvent(queueFoldFixture[1], revoked)).toBe(true);
+    expect(isPendingChatQueueEvent(queueFoldFixture[3], revoked)).toBe(false);
+    expect(
+      foldPendingChatQueueEvents(queueFoldFixture).map((event) => {
+        return event.id;
+      }),
+    ).toStrictEqual(["prompt-newer", "automation-oldest"]);
+  });
+
+  it("folds automation intake pause without blocking pending user messages", () => {
+    expect(foldChatAutomationIntakePause(queueFoldFixture)).toStrictEqual({
+      pausedAt: "2026-07-23T00:03:00.000Z",
+      pauseReason: "Provider unavailable",
+    });
+    expect(
+      foldRunnableChatQueueEvents(queueFoldFixture).map((event) => {
+        return event.id;
+      }),
+    ).toStrictEqual(["prompt-newer"]);
+
+    const resumed = [
+      ...queueFoldFixture,
+      {
+        id: "automation-resumed",
+        eventType: "queue.automation_resumed" as const,
+        createdAt: "2026-07-23T00:04:00.000Z",
+      },
+    ];
+    expect(foldChatAutomationIntakePause(resumed)).toBeNull();
+    expect(
+      foldRunnableChatQueueEvents(resumed).map((event) => {
+        return event.id;
+      }),
+    ).toStrictEqual(["prompt-newer", "automation-oldest"]);
   });
 });
 

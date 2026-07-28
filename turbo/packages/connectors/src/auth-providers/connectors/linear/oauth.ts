@@ -246,10 +246,3 @@ export async function revokeLinearToken(
     throw new Error(`Linear token revocation failed: ${response.status}`);
   }
 }
-
-/**
- * Get the primary secret name for Linear connector (the access token).
- */
-export function getLinearSecretName(): string {
-  return "LINEAR_ACCESS_TOKEN";
-}

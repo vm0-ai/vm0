@@ -172,10 +172,3 @@ export async function refreshSentryToken(
     expiresIn: data.expires_in,
   };
 }
-
-/**
- * Get the primary secret name for Sentry connector (the access token).
- */
-export function getSentrySecretName(): string {
-  return "SENTRY_ACCESS_TOKEN";
-}

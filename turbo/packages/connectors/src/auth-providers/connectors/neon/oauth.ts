@@ -191,10 +191,3 @@ async function fetchNeonUserInfo(accessToken: string): Promise<NeonUserInfo> {
     email: data.email ?? null,
   };
 }
-
-/**
- * Get the primary secret name for Neon connector (the access token).
- */
-export function getNeonSecretName(): string {
-  return "NEON_ACCESS_TOKEN";
-}

@@ -190,10 +190,3 @@ async function fetchCloseUserInfo(
     email: data.email ?? null,
   };
 }
-
-/**
- * Get the primary secret name for Close connector (the access token).
- */
-export function getCloseSecretName(): string {
-  return "CLOSE_ACCESS_TOKEN";
-}

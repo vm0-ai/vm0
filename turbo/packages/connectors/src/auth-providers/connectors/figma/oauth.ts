@@ -196,10 +196,3 @@ async function fetchFigmaUserInfo(accessToken: string): Promise<FigmaUserInfo> {
     name: data.handle ?? null,
   };
 }
-
-/**
- * Get the primary secret name for Figma connector (the access token).
- */
-export function getFigmaSecretName(): string {
-  return "FIGMA_ACCESS_TOKEN";
-}

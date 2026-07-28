@@ -235,10 +235,3 @@ async function fetchGarminConnectUserId(
     email: null,
   };
 }
-
-/**
- * Get the primary secret name for Garmin Connect connector.
- */
-export function getGarminConnectSecretName(): string {
-  return "GARMIN_CONNECT_ACCESS_TOKEN";
-}

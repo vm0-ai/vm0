@@ -192,10 +192,3 @@ async function fetchXeroUserInfo(accessToken: string): Promise<XeroUserInfo> {
     email: data.email ?? null,
   };
 }
-
-/**
- * Get the primary secret name for Xero connector (the access token).
- */
-export function getXeroSecretName(): string {
-  return "XERO_ACCESS_TOKEN";
-}

@@ -7,6 +7,9 @@ function chatMessageBodyContent(message: ChatMessage): string {
   if (chatEventCompatibilityRole(message.eventType) === "assistant") {
     return message.content ?? "";
   }
+  if (message.eventType === "input.automation") {
+    return message.triggerBrief?.trim() ?? "";
+  }
   const content = (message.content ?? "").replace(
     /\[Attached file: ([^\]]+)\]\(([^)]+)\)(?:\nDownload with: curl [^\n]*)?\n?/g,
     "",

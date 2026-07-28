@@ -5,7 +5,6 @@ import type {
   RefreshTokenAccessProvider,
 } from "../../types";
 import {
-  AWS_SIGNIN_CROSS_DEVICE_CLIENT_ID,
   buildAwsSigninAuthorizationUrl,
   createAwsExternalCodeProviderState,
   exchangeAwsSigninAuthorizationCode,
@@ -132,5 +131,3 @@ export const awsProvider = {
 } as const satisfies ExternalCodeConnectorAuthProvider<"aws", "cli"> & {
   readonly access: RefreshTokenAccessProvider<"aws", "cli">;
 };
-
-export { AWS_SIGNIN_CROSS_DEVICE_CLIENT_ID };

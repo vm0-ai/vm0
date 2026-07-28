@@ -1,5 +1,6 @@
 import { sql } from "drizzle-orm";
 import type { ChatEventType } from "@vm0/api-contracts/contracts/chat-events";
+import type { TriggerSource } from "@vm0/api-contracts/contracts/logs";
 import {
   check,
   pgTable,
@@ -51,10 +52,10 @@ export type {
  * Each row is one typed event belonging to a chat_thread. The table and
  * selected physical column names stay message-named during the rollout.
  *
- * User messages are persisted immediately on send. Queued user messages are
- * represented by chat_message_queue rows; when the queue is drained, a new
- * user row is appended with run_id and revokes_message_id pointing at the
- * queued row it supersedes.
+ * User messages are persisted immediately on send. Until the queue writer
+ * cutover, queued state remains represented by chat_message_queue rows. The
+ * nullable automation payload columns prepare readers for pending events
+ * without changing the active writer path in this release.
  *
  * Assistant rows are appended after run output exists. Queue marker control
  * rows can also be appended for queued runs and later revoked when the run
@@ -99,6 +100,12 @@ export const chatMessages = pgTable(
     // runs rendered in a chat thread.
     runGroupId: uuid("run_group_id"),
     eventType: text("event_type").$type<ChatEventType>().notNull(),
+    automationId: uuid("automation_id"),
+    triggerSource: text("trigger_source").$type<TriggerSource>(),
+    triggerBrief: text("trigger_brief"),
+    // Persistent-secret encrypted queue parameters. This field never leaves
+    // the API and is populated only by a later writer cutover.
+    encryptedParams: text("encrypted_params"),
     role: text("role").notNull(), // "user" | "assistant"
     content: text("content"),
     /** Stable business representation of rich user-message content. */
@@ -158,6 +165,19 @@ export const chatMessages = pgTable(
       index("idx_chat_messages_run_group_id")
         .on(table.runGroupId)
         .where(sql`${table.runGroupId} IS NOT NULL`),
+      index("chat_messages_input_automation_idx")
+        .on(table.automationId)
+        .where(sql`${table.eventType} = 'input.automation'`),
+      index("chat_messages_pending_queue_idx")
+        .on(table.chatThreadId, table.createdAt, table.id)
+        .where(
+          sql`${table.runId} IS NULL AND ${table.eventType} IN ('input.prompt', 'input.automation')`,
+        ),
+      index("chat_messages_automation_pause_idx")
+        .on(table.chatThreadId, table.seqId.desc())
+        .where(
+          sql`${table.eventType} IN ('queue.automation_paused', 'queue.automation_resumed')`,
+        ),
       uniqueIndex("chat_messages_run_seq_unique").on(
         table.runId,
         table.sequenceNumber,
@@ -176,6 +196,7 @@ export const chatMessages = pgTable(
         "chat_messages_event_type_check",
         sql`${table.eventType} IN (
           'input.prompt',
+          'input.automation',
           'input.rejected',
           'output.message',
           'output.error',
@@ -186,6 +207,8 @@ export const chatMessages = pgTable(
           'run.completed',
           'run.failed',
           'run.cancelled',
+          'queue.automation_paused',
+          'queue.automation_resumed',
           'control.interrupt',
           'control.revoke',
           'goal.changed',

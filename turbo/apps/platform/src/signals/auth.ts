@@ -293,16 +293,16 @@ export function buildSignInRedirectUrl(
   return redirectUrl ?? resolveAppUrl();
 }
 
-/**
- * Clerk instance signal.
- *
- * Initializes the real Clerk SDK with the publishable key.
- */
 export const clerkUi$ = computed(() => {
   return ui;
 });
 
-export const clerk$ = computed(async () => {
+/**
+ * Construct Clerk synchronously so the React provider can subscribe before
+ * loading starts. Passing an already-loaded instance can make the provider
+ * miss Clerk's ready event and leave hosted auth UI in its loading fallback.
+ */
+export const clerkInstance$ = computed(() => {
   const publishableKey = resolvePlatformRuntimeConfig().clerkPublishableKey;
   const satelliteConfig = resolveClerkSatelliteConfig();
 
@@ -314,6 +314,33 @@ export const clerk$ = computed(async () => {
   const clerkInstance = satelliteConfig
     ? new Clerk(publishableKey, { domain: satelliteConfig.domain })
     : new Clerk(publishableKey);
+
+  // @clerk/react subscribes to status in a passive effect without requesting
+  // the current value. If Clerk loads first, that leaves its context stuck at
+  // "loading". Make every status subscription replay the latest value.
+  const subscribeToStatus = clerkInstance.on.bind(clerkInstance);
+  clerkInstance.on = (event, handler, options) => {
+    subscribeToStatus(event, handler, { ...options, notify: true });
+  };
+
+  // Both VM0 signals and @clerk/react need the loaded instance. Share the
+  // first load instead of issuing concurrent bootstrap requests.
+  const loadClerk = clerkInstance.load.bind(clerkInstance);
+  let loadPromise: Promise<void> | undefined;
+  clerkInstance.load = (options) => {
+    loadPromise ??= loadClerk(options);
+    return loadPromise;
+  };
+
+  return clerkInstance;
+});
+
+/**
+ * Loaded Clerk instance for consumers that need authentication state.
+ */
+export const clerk$ = computed(async (get) => {
+  const clerkInstance = get(clerkInstance$);
+  const satelliteConfig = resolveClerkSatelliteConfig();
   await clerkInstance.load({
     ui,
     ...(satelliteConfig
@@ -326,6 +353,7 @@ export const clerk$ = computed(async () => {
     signUpUrl: resolveAppAuthUrl("/sign-up"),
     afterSignOutUrl: resolveAppAuthUrl("/sign-in"),
   });
+
   return clerkInstance;
 });
 

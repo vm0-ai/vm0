@@ -193,10 +193,3 @@ async function fetchPosthogUserInfo(
     email: data.email ?? null,
   };
 }
-
-/**
- * Get the primary secret name for PostHog connector (the access token).
- */
-export function getPosthogSecretName(): string {
-  return "POSTHOG_ACCESS_TOKEN";
-}

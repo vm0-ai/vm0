@@ -453,6 +453,16 @@ const inputPromptEventSchema = chatEventBaseSchema
   })
   .strict();
 
+const inputAutomationEventSchema = chatEventBaseSchema
+  .extend({
+    eventType: z.literal("input.automation"),
+    content: z.null(),
+    automationId: z.string().uuid(),
+    triggerSource: triggerSourceSchema,
+    triggerBrief: z.string().nullable(),
+  })
+  .strict();
+
 const inputRejectedEventSchema = chatEventBaseSchema
   .extend({
     eventType: z.literal("input.rejected"),
@@ -537,6 +547,21 @@ const runCancelledEventSchema = chatEventBaseSchema
   })
   .strict();
 
+const queueAutomationPausedEventSchema = chatEventBaseSchema
+  .extend({
+    eventType: z.literal("queue.automation_paused"),
+    content: z.null(),
+    pauseReason: z.string().nullable(),
+  })
+  .strict();
+
+const queueAutomationResumedEventSchema = chatEventBaseSchema
+  .extend({
+    eventType: z.literal("queue.automation_resumed"),
+    content: z.null(),
+  })
+  .strict();
+
 const controlInterruptEventSchema = chatEventBaseSchema
   .extend({
     eventType: z.literal("control.interrupt"),
@@ -572,6 +597,7 @@ const usageRecordedEventSchema = chatEventBaseSchema
 
 const chatEventSchema = z.discriminatedUnion("eventType", [
   inputPromptEventSchema,
+  inputAutomationEventSchema,
   inputRejectedEventSchema,
   outputMessageEventSchema,
   outputErrorEventSchema,
@@ -582,6 +608,8 @@ const chatEventSchema = z.discriminatedUnion("eventType", [
   runCompletedEventSchema,
   runFailedEventSchema,
   runCancelledEventSchema,
+  queueAutomationPausedEventSchema,
+  queueAutomationResumedEventSchema,
   controlInterruptEventSchema,
   controlRevokeEventSchema,
   goalChangedEventSchema,
@@ -618,6 +646,9 @@ const assistantEventCompatibilityResponseShape = {
  */
 const chatEventResponseSchema = z.discriminatedUnion("eventType", [
   inputPromptEventSchema.extend(userEventCompatibilityResponseShape).strict(),
+  inputAutomationEventSchema
+    .extend(userEventCompatibilityResponseShape)
+    .strict(),
   inputRejectedEventSchema.extend(userEventCompatibilityResponseShape).strict(),
   outputMessageEventSchema
     .extend(assistantEventCompatibilityResponseShape)
@@ -647,6 +678,12 @@ const chatEventResponseSchema = z.discriminatedUnion("eventType", [
     .extend(assistantEventCompatibilityResponseShape)
     .strict(),
   runCancelledEventSchema
+    .extend(assistantEventCompatibilityResponseShape)
+    .strict(),
+  queueAutomationPausedEventSchema
+    .extend(assistantEventCompatibilityResponseShape)
+    .strict(),
+  queueAutomationResumedEventSchema
     .extend(assistantEventCompatibilityResponseShape)
     .strict(),
   controlInterruptEventSchema
@@ -1995,22 +2032,99 @@ export function chatEventResponse(event: ChatEvent): ChatEventResponse {
 export function legacyChatMessageResponse(
   response: ChatEventResponse,
 ): LegacyPagedChatMessage {
-  const { eventType, threadId, revokesEventId, ...legacyResponse } = response;
-  void threadId;
-  void revokesEventId;
-  return legacyPagedChatMessageSchema.parse({
-    ...legacyResponse,
-    ...(eventType === "run.queued"
-      ? { runEventId: "queue:queued" }
-      : eventType === "run.dequeued"
-        ? { runEventId: "queue:dequeued" }
-        : {}),
-  });
+  switch (response.eventType) {
+    case "input.automation": {
+      const {
+        eventType,
+        threadId,
+        revokesEventId,
+        automationId,
+        triggerBrief,
+        ...legacyResponse
+      } = response;
+      void eventType;
+      void threadId;
+      void revokesEventId;
+      void automationId;
+      return legacyPagedChatMessageSchema.parse({
+        ...legacyResponse,
+        content: triggerBrief,
+      });
+    }
+    case "queue.automation_paused": {
+      const {
+        eventType,
+        threadId,
+        revokesEventId,
+        pauseReason,
+        ...legacyResponse
+      } = response;
+      void eventType;
+      void threadId;
+      void revokesEventId;
+      void pauseReason;
+      return legacyPagedChatMessageSchema.parse({
+        ...legacyResponse,
+        thinking: "",
+      });
+    }
+    case "queue.automation_resumed": {
+      const { eventType, threadId, revokesEventId, ...legacyResponse } =
+        response;
+      void eventType;
+      void threadId;
+      void revokesEventId;
+      return legacyPagedChatMessageSchema.parse({
+        ...legacyResponse,
+        thinking: "",
+      });
+    }
+    case "run.queued":
+    case "run.dequeued": {
+      const { eventType, threadId, revokesEventId, ...legacyResponse } =
+        response;
+      void threadId;
+      void revokesEventId;
+      return legacyPagedChatMessageSchema.parse({
+        ...legacyResponse,
+        runEventId:
+          eventType === "run.queued" ? "queue:queued" : "queue:dequeued",
+      });
+    }
+    case "input.prompt":
+    case "input.rejected":
+    case "output.message":
+    case "output.error":
+    case "output.thinking":
+    case "output.followups":
+    case "run.completed":
+    case "run.failed":
+    case "run.cancelled":
+    case "control.interrupt":
+    case "control.revoke":
+    case "goal.changed":
+    case "usage.recorded": {
+      const { eventType, threadId, revokesEventId, ...legacyResponse } =
+        response;
+      void eventType;
+      void threadId;
+      void revokesEventId;
+      return legacyPagedChatMessageSchema.parse(legacyResponse);
+    }
+  }
 }
 
 export type ChatInputEvent = Extract<
   ChatEvent,
+  { eventType: "input.prompt" | "input.automation" | "input.rejected" }
+>;
+export type ChatUserMessageEvent = Extract<
+  ChatEvent,
   { eventType: "input.prompt" | "input.rejected" }
+>;
+export type ChatAutomationEvent = Extract<
+  ChatEvent,
+  { eventType: "input.automation" }
 >;
 export type ChatPromptEvent = Extract<ChatEvent, { eventType: "input.prompt" }>;
 export type ChatFollowupsEvent = Extract<

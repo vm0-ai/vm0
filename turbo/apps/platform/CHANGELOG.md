@@ -1,5 +1,36 @@
 # Changelog
 
+## [0.642.0](https://github.com/vm0-ai/vm0/compare/app-v0.641.0...app-v0.642.0) (2026-07-27)
+
+
+### Features
+
+* **chat:** add automation queue event consumers ([#23356](https://github.com/vm0-ai/vm0/issues/23356)) ([ae28bdd](https://github.com/vm0-ai/vm0/commit/ae28bdda4f94c2ea12f0fec5f26017cc62fd4abb))
+* **chat:** support multiple inline templates ([#23326](https://github.com/vm0-ai/vm0/issues/23326)) ([1e0f8f4](https://github.com/vm0-ai/vm0/commit/1e0f8f4b2b742fbc0a417b8ec410d7b0b824f856))
+
+
+### Bug Fixes
+
+* **auth:** prevent clerk ui bootstrap stall ([#23337](https://github.com/vm0-ai/vm0/issues/23337)) ([2cfc078](https://github.com/vm0-ai/vm0/commit/2cfc078cbad91cb9228cbc7a9133422c47d67816))
+* **browser:** accept browser use v3 session responses ([#23334](https://github.com/vm0-ai/vm0/issues/23334)) ([a19ea6e](https://github.com/vm0-ai/vm0/commit/a19ea6e0cc7004883a445c8c00d2d89b0d1a2c60))
+* show fallback artwork for unavailable artifact previews ([#23277](https://github.com/vm0-ai/vm0/issues/23277)) ([50067e7](https://github.com/vm0-ai/vm0/commit/50067e763a8d4183be8c50b2e9f3ac621aa8021e))
+
+
+### Refactoring
+
+* move feature switch keys into core ([#23299](https://github.com/vm0-ai/vm0/issues/23299)) ([11071e0](https://github.com/vm0-ai/vm0/commit/11071e056383e7ead21cc578961ed8496865f718))
+* remove graduated user-facing feature switches ([#23308](https://github.com/vm0-ai/vm0/issues/23308)) ([88670a3](https://github.com/vm0-ai/vm0/commit/88670a3f7df97bdf4a6caec3b17ed1550126f51a))
+* retire mail and thread mention feature switches ([#23324](https://github.com/vm0-ai/vm0/issues/23324)) ([535b9bc](https://github.com/vm0-ai/vm0/commit/535b9bc54238cc1ee75367dd33c9e4f314981eb7))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.237.0
+    * @vm0/connectors bumped to 1.197.1
+    * @vm0/core bumped to 8.476.0
+
 ## [0.641.0](https://github.com/vm0-ai/vm0/compare/app-v0.640.0...app-v0.641.0) (2026-07-27)
 
 
