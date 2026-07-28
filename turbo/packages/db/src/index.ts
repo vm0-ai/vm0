@@ -114,6 +114,8 @@ import * as googleWorkspaceEventSchema from "./schema/google-workspace-event";
 import * as connectorCatalogSchema from "./schema/connector-catalog";
 import * as mailDraftSchema from "./schema/mail-draft";
 import * as browserSessionSchema from "./schema/browser-session";
+import * as mcpServerSchema from "./schema/mcp-server";
+import * as mcpAgentGrantSchema from "./schema/mcp-agent-grant";
 
 export const schema = {
   ...userSchema,
@@ -232,6 +234,8 @@ export const schema = {
   ...connectorCatalogSchema,
   ...mailDraftSchema,
   ...browserSessionSchema,
+  ...mcpServerSchema,
+  ...mcpAgentGrantSchema,
 };
 
 export type DatabaseSchema = typeof schema;

@@ -44,6 +44,7 @@ export enum FeatureSwitchKey {
   LanguagePreference = "languagePreference",
   ZeroFinance = "zeroFinance",
   ZeroBrowser = "zeroBrowser",
+  ZeroMcp = "zeroMcp",
   ZeroMailReplyFollowUp = "zeroMailReplyFollowUp",
   Banking = "banking",
   Lab = "lab",
