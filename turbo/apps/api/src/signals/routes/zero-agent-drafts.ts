@@ -10,10 +10,6 @@ import { db$, writeDb$ } from "../external/db";
 import { nowDate } from "../external/time";
 import { notFound } from "../../lib/error";
 import { zeroAgentExists } from "../services/zero-agent-data.service";
-import {
-  effectiveZeroAgentDraftStructuredPrompt,
-  splitStructuredMessage,
-} from "../services/zero-chat-structured-message-storage.service";
 import type { RouteEntry } from "../route-entry";
 
 const agentReadAuth = {
@@ -44,7 +40,7 @@ const getAgentDraftInner$ = computed(async (get) => {
   const [draft] = await get(db$)
     .select({
       draftContent: zeroAgentDrafts.draftContent,
-      draftStructuredPrompt: effectiveZeroAgentDraftStructuredPrompt(),
+      draftStructuredPrompt: zeroAgentDrafts.draftStructuredPrompt,
       draftAttachments: zeroAgentDrafts.draftAttachments,
     })
     .from(zeroAgentDrafts)
@@ -92,9 +88,6 @@ const patchAgentDraftInner$ = command(
 
     const draftContent = bodyResult.data.draftContent ?? null;
     const draftStructuredPrompt = bodyResult.data.draftStructuredPrompt ?? null;
-    const persistedStructuredPrompt = splitStructuredMessage(
-      draftStructuredPrompt,
-    );
     const draftAttachments = bodyResult.data.draftAttachments ?? null;
     const writeDb = set(writeDb$);
 
@@ -124,9 +117,8 @@ const patchAgentDraftInner$ = command(
         orgId: auth.orgId,
         agentId: params.id,
         draftContent,
-        draftStructuredPrompt: persistedStructuredPrompt.structuredPrompt,
-        draftStructuredPromptWithFeedback:
-          persistedStructuredPrompt.structuredPromptWithFeedback,
+        draftStructuredPrompt,
+        draftStructuredPromptWithFeedback: null,
         draftAttachments,
         updatedAt,
       })
@@ -138,9 +130,8 @@ const patchAgentDraftInner$ = command(
         ],
         set: {
           draftContent,
-          draftStructuredPrompt: persistedStructuredPrompt.structuredPrompt,
-          draftStructuredPromptWithFeedback:
-            persistedStructuredPrompt.structuredPromptWithFeedback,
+          draftStructuredPrompt,
+          draftStructuredPromptWithFeedback: null,
           draftAttachments,
           updatedAt,
         },

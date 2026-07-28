@@ -177,7 +177,7 @@ export const jobSchema = z.object({
   appendSystemPrompt: z.string().nullable(),
   agentComposeVersionId: z.string().nullable(),
   vars: z.record(z.string(), z.string()).nullable(),
-  experimentalProfile: z.string().optional(),
+  experimentalProfile: z.string(),
   cliAgentSessionId: z.string().nullable().optional(),
   historyGenerationRunId: z.uuid().optional(),
   historyGenerationAffinityProtectedUntil: z
@@ -447,7 +447,7 @@ const storedResumeSessionRefSchema = z.object({
 const resumeSessionIdentityHistoryRefSchema = resumeSessionHistoryBlobRefSchema
   .extend({
     url: z.string().url(),
-    encoding: z.literal("identity").optional(),
+    encoding: z.literal("identity"),
     rawSize: resumeSessionHistoryRawSizeSchema,
     encodedSize: resumeSessionHistoryEncodedSizeSchema,
     ...resumeSessionHistoryDownloadSourceFieldSchema,
@@ -569,8 +569,6 @@ export const storedExecutionContextSchema = z.object({
   tools: z.array(z.string()).optional(),
   // Settings JSON to pass to Claude CLI (passed as --settings)
   settings: z.string().optional(),
-  // VM profile for resource allocation (e.g., "vm0/default")
-  experimentalProfile: z.string().optional(),
   // Feature flags evaluated at job creation time (all switch states for user/org)
   featureFlags: z.record(z.string(), z.boolean()).optional(),
   billableFirewalls: z.array(z.string()).optional(),
@@ -642,8 +640,6 @@ export const executionContextSchema = z.object({
   tools: z.array(z.string()).optional(),
   // Settings JSON to pass to Claude CLI (passed as --settings)
   settings: z.string().optional(),
-  // VM profile for resource allocation (e.g., "vm0/default")
-  experimentalProfile: z.string().optional(),
   // Feature flags evaluated at job creation time (all switch states for user/org)
   featureFlags: z.record(z.string(), z.boolean()).optional(),
   billableFirewalls: z.array(z.string()).optional(),

@@ -18,7 +18,7 @@ import {
   connectorCatalogSyncState,
 } from "@vm0/db/schema/connector-catalog";
 import { command } from "ccstate";
-import { and, eq, ne } from "drizzle-orm";
+import { and, eq, isNull, ne, or, sql } from "drizzle-orm";
 
 import { optionalEnv } from "../../lib/env";
 import { nowDate } from "../../lib/time";
@@ -30,6 +30,11 @@ import {
 } from "./connector-catalog-artifacts/artifacts";
 import { decodeConnectorCatalogSnapshot } from "./connector-catalog-artifacts/loader";
 import { connectorCatalogSource } from "./connector-catalog-source";
+import {
+  connectorCatalogValidationAuthorityIsCurrentOrNewer,
+  currentConnectorCatalogValidatorIdentity,
+  type ConnectorCatalogValidatorIdentity,
+} from "./connector-catalog-validator-authority";
 
 const COMPATIBILITY_REASON_ORDER = [
   "missing-grant-provider",
@@ -305,6 +310,7 @@ export async function persistConnectorCatalogCompatibility(args: {
   readonly identity: ConnectorCatalogCompatibilityIdentity;
   readonly artifact: ConnectorCatalogArtifact;
   readonly capability: ExecutableCapabilityState;
+  readonly validator: ConnectorCatalogValidatorIdentity;
 }): Promise<void> {
   await deleteReplacedEvaluations({
     db: args.db,
@@ -315,6 +321,8 @@ export async function persistConnectorCatalogCompatibility(args: {
     artifact: args.artifact,
     capability: args.capability,
   });
+  const evaluatedAt = nowDate();
+  const persistedFilteredAuthMethods = [...filteredAuthMethods];
   await args.db
     .insert(connectorCatalogCompatibilityEvaluation)
     .values({
@@ -323,10 +331,34 @@ export async function persistConnectorCatalogCompatibility(args: {
       catalogVersion: args.identity.catalogVersion,
       catalogDigest: args.identity.catalogDigest,
       executableCapabilityDigest: args.capability.digest,
-      evaluatedAt: nowDate(),
-      filteredAuthMethods: [...filteredAuthMethods],
+      catalogValidationBackendVersion: args.validator.backendVersion,
+      catalogValidationBuildCommitSha: args.validator.buildCommitSha,
+      evaluatedAt,
+      filteredAuthMethods: persistedFilteredAuthMethods,
     })
-    .onConflictDoNothing();
+    .onConflictDoUpdate({
+      target: [
+        connectorCatalogCompatibilityEvaluation.sourceId,
+        connectorCatalogCompatibilityEvaluation.schemaVersion,
+        connectorCatalogCompatibilityEvaluation.catalogVersion,
+        connectorCatalogCompatibilityEvaluation.catalogDigest,
+        connectorCatalogCompatibilityEvaluation.executableCapabilityDigest,
+      ],
+      set: {
+        catalogValidationBackendVersion: args.validator.backendVersion,
+        catalogValidationBuildCommitSha: args.validator.buildCommitSha,
+        evaluatedAt,
+        filteredAuthMethods: persistedFilteredAuthMethods,
+      },
+      // A draining older API release must not downgrade an attestation written
+      // by a newer release during a rolling deployment.
+      setWhere: or(
+        isNull(
+          connectorCatalogCompatibilityEvaluation.catalogValidationBackendVersion,
+        ),
+        sql`string_to_array(${connectorCatalogCompatibilityEvaluation.catalogValidationBackendVersion}, '.')::numeric[] <= string_to_array(${args.validator.backendVersion}, '.')::numeric[]`,
+      ),
+    });
 }
 
 async function lockSyncState(db: Db, sourceId: string): Promise<boolean> {
@@ -388,6 +420,7 @@ async function reconcileCompatibility(args: {
   readonly db: Db;
   readonly sourceId: string;
   readonly capability: ExecutableCapabilityState;
+  readonly validator: ConnectorCatalogValidatorIdentity;
 }): Promise<void> {
   const hasState = await lockSyncState(args.db, args.sourceId);
   if (!hasState) {
@@ -400,8 +433,10 @@ async function reconcileCompatibility(args: {
 
   const [existing] = await args.db
     .select({
-      capabilityDigest:
-        connectorCatalogCompatibilityEvaluation.executableCapabilityDigest,
+      catalogValidationBackendVersion:
+        connectorCatalogCompatibilityEvaluation.catalogValidationBackendVersion,
+      catalogValidationBuildCommitSha:
+        connectorCatalogCompatibilityEvaluation.catalogValidationBuildCommitSha,
     })
     .from(connectorCatalogCompatibilityEvaluation)
     .where(
@@ -426,7 +461,17 @@ async function reconcileCompatibility(args: {
       ),
     )
     .limit(1);
-  if (existing !== undefined) {
+  if (
+    existing !== undefined &&
+    existing.catalogValidationBackendVersion !== null &&
+    connectorCatalogValidationAuthorityIsCurrentOrNewer({
+      authority: {
+        backendVersion: existing.catalogValidationBackendVersion,
+        buildCommitSha: existing.catalogValidationBuildCommitSha,
+      },
+      validator: args.validator,
+    })
+  ) {
     return;
   }
 
@@ -437,6 +482,7 @@ async function reconcileCompatibility(args: {
     identity: snapshot,
     artifact: decoded.artifact,
     capability: args.capability,
+    validator: args.validator,
   });
 }
 
@@ -496,11 +542,13 @@ export const reconcileConnectorCatalogCompatibility$ = command(
   async ({ set }, signal: AbortSignal): Promise<void> => {
     const source = connectorCatalogSource();
     const capability = connectorCatalogExecutableCapabilityState();
+    const validator = currentConnectorCatalogValidatorIdentity();
     await set(writeDb$).transaction(async (tx) => {
       await reconcileCompatibility({
         db: tx,
         sourceId: source.sourceId,
         capability,
+        validator,
       });
     });
     signal.throwIfAborted();

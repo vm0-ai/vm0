@@ -99,7 +99,6 @@ import { insertChatEvent } from "./zero-chat-event.service";
 import { loadWebChatIncompleteContext } from "./zero-chat-incomplete-context.service";
 import { chatThreadAdmissionBlocked } from "./zero-chat-active-run.service";
 import { projectStructuredUserMessage } from "./zero-chat-structured-message.service";
-import { effectiveChatMessageStructuredPrompt } from "./zero-chat-structured-message-storage.service";
 import { appendQueuedRunAssistantMarker } from "./zero-chat-queue-marker.service";
 import {
   integrationCompletionFallbackMessageIdForRun,
@@ -2046,7 +2045,7 @@ async function getLatestRunsByThreadId(
       runId: chatMessages.runId,
       eventType: chatEventTypeSql().as("event_type"),
       content: chatMessages.content,
-      structuredPrompt: effectiveChatMessageStructuredPrompt(),
+      structuredPrompt: chatMessages.structuredPrompt,
       attachFiles: chatMessages.attachFiles,
       createdAt: chatMessages.createdAt,
       sequenceNumber: chatMessages.sequenceNumber,

@@ -111,10 +111,6 @@ import {
 import { loadWebChatIncompleteContext } from "../services/zero-chat-incomplete-context.service";
 import { chatThreadAdmissionBlocked } from "../services/zero-chat-active-run.service";
 import { projectStructuredUserMessage } from "../services/zero-chat-structured-message.service";
-import {
-  effectiveChatMessageStructuredPrompt,
-  splitStructuredMessage,
-} from "../services/zero-chat-structured-message-storage.service";
 import { appendQueuedRunAssistantMarker } from "../services/zero-chat-queue-marker.service";
 import {
   deleteUserMessageQueueItem,
@@ -868,7 +864,7 @@ async function getLatestRunsByThreadId(
       runId: chatMessages.runId,
       eventType: chatEventTypeSql().as("event_type"),
       content: chatMessages.content,
-      structuredPrompt: effectiveChatMessageStructuredPrompt(),
+      structuredPrompt: chatMessages.structuredPrompt,
       attachFiles: chatMessages.attachFiles,
       createdAt: chatMessages.createdAt,
       sequenceNumber: chatMessages.sequenceNumber,
@@ -1641,7 +1637,7 @@ function appendUnassociatedUserMessage(params: {
         chatThreadId: params.threadId,
         eventType: "input.prompt",
         content: params.prompt,
-        ...splitStructuredMessage(params.structuredPrompt),
+        structuredPrompt: params.structuredPrompt,
         runId: null,
         attachFiles: fileIds,
         attachFileMetadata: fileMetadata,
@@ -1769,7 +1765,7 @@ async function appendAssociatedUserMessage(params: {
       chatThreadId: params.threadId,
       eventType: "input.prompt",
       content: params.prompt,
-      ...splitStructuredMessage(params.structuredPrompt),
+      structuredPrompt: params.structuredPrompt,
       runId: params.runId,
       attachFiles: fileIds,
       attachFileMetadata: fileMetadata,
@@ -2799,8 +2795,7 @@ async function appendQueueFirstInsufficientCreditsMessages(params: {
     const [queuedMessage] = await tx
       .select({
         content: chatMessages.content,
-        structuredPrompt: effectiveChatMessageStructuredPrompt(),
-        structuredPromptWithFeedback: chatMessages.structuredPromptWithFeedback,
+        structuredPrompt: chatMessages.structuredPrompt,
         attachFiles: chatMessages.attachFiles,
         attachFileMetadata: chatMessages.attachFileMetadata,
         generationTemplate: chatMessages.generationTemplate,
@@ -2840,7 +2835,6 @@ async function appendQueueFirstInsufficientCreditsMessages(params: {
       eventType: "input.rejected",
       content: queuedMessage.content,
       structuredPrompt: queuedMessage.structuredPrompt,
-      structuredPromptWithFeedback: queuedMessage.structuredPromptWithFeedback,
       runId: null,
       error: INSUFFICIENT_CREDITS_MARKER,
       sequenceNumber: 0,
@@ -2931,7 +2925,7 @@ async function appendInsufficientCreditsMessages(params: {
       chatThreadId: params.prepared.thread.threadId,
       eventType: "input.rejected",
       content: params.body.prompt,
-      ...splitStructuredMessage(params.body.structuredPrompt),
+      structuredPrompt: params.body.structuredPrompt,
       runId: null,
       error: INSUFFICIENT_CREDITS_MARKER,
       sequenceNumber: 0,

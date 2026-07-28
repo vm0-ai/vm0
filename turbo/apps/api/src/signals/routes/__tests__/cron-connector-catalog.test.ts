@@ -44,7 +44,15 @@ import { env, mockEnv, mockOptionalEnv } from "../../../lib/env";
 import { singleton } from "../../../lib/singleton";
 import { clearMockNow, mockNow, now } from "../../../lib/time";
 import { server } from "../../../mocks/server";
-import { mockApiTestConnectorProviderConfiguration } from "../../../test-fixtures/connector-catalog";
+import {
+  apiTestConnectorCatalogValidationAuthority,
+  deleteApiTestConnectorCatalogCompatibility,
+  invalidateApiTestConnectorCatalogCompatibility,
+  mockApiTestConnectorProviderConfiguration,
+  readApiTestConnectorCatalogValidationAuthority,
+  replaceApiTestConnectorCatalogStoredBytes,
+  setApiTestConnectorCatalogValidationAuthority,
+} from "../../../test-fixtures/connector-catalog";
 import {
   deleteOrgPlanEntitlementFixture,
   upsertOrgPlanEntitlementFixture,
@@ -1145,6 +1153,14 @@ function catalogObjects(
   return objects;
 }
 
+function releaseCatalogBytes(release: ReleaseFixture): Buffer {
+  const bytes = release.objects.get(release.catalogKey);
+  if (bytes === undefined) {
+    throw new Error("Expected release catalog bytes");
+  }
+  return bytes;
+}
+
 function commandInput(command: unknown): JsonRecord {
   if (!isJsonRecord(command)) {
     return {};
@@ -1537,6 +1553,9 @@ describe("connector catalog valid lifecycle", () => {
         filteredAuthMethods: [],
       },
     });
+    await expect(
+      readApiTestConnectorCatalogValidationAuthority(),
+    ).resolves.toStrictEqual(apiTestConnectorCatalogValidationAuthority());
     expect(
       commandInput(context.mocks.s3.send.mock.calls[0]?.[0]),
     ).toMatchObject({
@@ -1820,6 +1839,198 @@ describe("connector catalog valid lifecycle", () => {
 
     await accept(catalogClient.list({ headers }), [200]);
     expect(context.mocks.s3.send).toHaveBeenCalledTimes(callsBeforePublicReads);
+  });
+
+  it("fails closed when attested catalog integrity or identity is corrupted", async () => {
+    configureSource();
+    const digestRelease = buildRelease({
+      version: "2026-07-27.attested-digest-corruption",
+    });
+    serveObjects(catalogObjects([digestRelease], digestRelease));
+    await syncCatalog();
+    const changedBytes = Buffer.from(releaseCatalogBytes(digestRelease));
+    changedBytes[changedBytes.length - 1] = 0x20;
+    await replaceApiTestConnectorCatalogStoredBytes({
+      catalogVersion: digestRelease.version,
+      rawBytes: changedBytes,
+      catalogValidationAuthority: apiTestConnectorCatalogValidationAuthority(),
+      retainCatalogDigest: true,
+    });
+    zeroMocks.clerk.session(`user_${randomUUID()}`, `org_${randomUUID()}`);
+    const digestResponse = await accept(
+      setupApp({ context })(zeroConnectorCatalogContract).list({
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [503],
+    );
+    expect(digestResponse.body.error.code).toBe("PROVIDER_UNAVAILABLE");
+
+    configureSource();
+    const jsonRelease = buildRelease({
+      version: "2026-07-27.attested-json-corruption",
+    });
+    serveObjects(catalogObjects([jsonRelease], jsonRelease));
+    await syncCatalog();
+    await replaceApiTestConnectorCatalogStoredBytes({
+      catalogVersion: jsonRelease.version,
+      rawBytes: Buffer.from("{"),
+      catalogValidationAuthority: apiTestConnectorCatalogValidationAuthority(),
+    });
+    const jsonResponse = await accept(
+      setupApp({ context })(zeroConnectorCatalogContract).list({
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [503],
+    );
+    expect(jsonResponse.body.error.code).toBe("PROVIDER_UNAVAILABLE");
+
+    configureSource();
+    const identityRelease = buildRelease({
+      version: "2026-07-27.attested-identity-corruption",
+    });
+    const mismatchedIdentity = buildRelease({
+      version: identityRelease.version,
+      mutateArtifact: (artifact) => {
+        artifact.catalogVersion = "different-catalog-version";
+      },
+    });
+    serveObjects(catalogObjects([identityRelease], identityRelease));
+    await syncCatalog();
+    await replaceApiTestConnectorCatalogStoredBytes({
+      catalogVersion: identityRelease.version,
+      rawBytes: releaseCatalogBytes(mismatchedIdentity),
+      catalogValidationAuthority: apiTestConnectorCatalogValidationAuthority(),
+    });
+    const identityResponse = await accept(
+      setupApp({ context })(zeroConnectorCatalogContract).list({
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [503],
+    );
+    expect(identityResponse.body.error.code).toBe("PROVIDER_UNAVAILABLE");
+
+    configureSource();
+    const nonObjectRelease = buildRelease({
+      version: "2026-07-27.attested-non-object-corruption",
+    });
+    serveObjects(catalogObjects([nonObjectRelease], nonObjectRelease));
+    await syncCatalog();
+    await replaceApiTestConnectorCatalogStoredBytes({
+      catalogVersion: nonObjectRelease.version,
+      rawBytes: Buffer.from("null"),
+      catalogValidationAuthority: apiTestConnectorCatalogValidationAuthority(),
+    });
+    const nonObjectResponse = await accept(
+      setupApp({ context })(zeroConnectorCatalogContract).list({
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [503],
+    );
+    expect(nonObjectResponse.body.error.code).toBe("PROVIDER_UNAVAILABLE");
+
+    configureSource();
+    const schemaRelease = buildRelease({
+      version: "2026-07-27.attested-schema-corruption",
+    });
+    serveObjects(catalogObjects([schemaRelease], schemaRelease));
+    await syncCatalog();
+    await replaceApiTestConnectorCatalogStoredBytes({
+      catalogVersion: schemaRelease.version,
+      rawBytes: jsonBytes({
+        artifactSchemaVersion: 2,
+        catalogVersion: schemaRelease.version,
+      }),
+      catalogValidationAuthority: apiTestConnectorCatalogValidationAuthority(),
+    });
+    const schemaResponse = await accept(
+      setupApp({ context })(zeroConnectorCatalogContract).list({
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [503],
+    );
+    expect(schemaResponse.body.error.code).toBe("PROVIDER_UNAVAILABLE");
+
+    configureSource();
+    const shapeRelease = buildRelease({
+      version: "2026-07-27.attested-shape-corruption",
+    });
+    serveObjects(catalogObjects([shapeRelease], shapeRelease));
+    await syncCatalog();
+    await replaceApiTestConnectorCatalogStoredBytes({
+      catalogVersion: shapeRelease.version,
+      rawBytes: jsonBytes({
+        artifactSchemaVersion: 1,
+      }),
+      catalogValidationAuthority: apiTestConnectorCatalogValidationAuthority(),
+    });
+    const shapeResponse = await accept(
+      setupApp({ context })(zeroConnectorCatalogContract).list({
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [503],
+    );
+    expect(shapeResponse.body.error.code).toBe("PROVIDER_UNAVAILABLE");
+  });
+
+  it("keeps stale semantic and compatibility corruption fail closed", async () => {
+    configureSource();
+    const semanticRelease = buildRelease({
+      version: "2026-07-27.stale-semantic-corruption",
+    });
+    const invalidSemanticRelease = buildRelease({
+      version: semanticRelease.version,
+      mutateArtifact: (artifact) => {
+        firstRecord(artifact.connectors, "connectors").label = "";
+      },
+    });
+    serveObjects(catalogObjects([semanticRelease], semanticRelease));
+    await syncCatalog();
+    await replaceApiTestConnectorCatalogStoredBytes({
+      catalogVersion: semanticRelease.version,
+      rawBytes: releaseCatalogBytes(invalidSemanticRelease),
+      catalogValidationAuthority: null,
+    });
+    zeroMocks.clerk.session(`user_${randomUUID()}`, `org_${randomUUID()}`);
+    const semanticResponse = await accept(
+      setupApp({ context })(zeroConnectorCatalogContract).list({
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [503],
+    );
+    expect(semanticResponse.body.error.code).toBe("PROVIDER_UNAVAILABLE");
+    await expect(
+      readApiTestConnectorCatalogValidationAuthority(),
+    ).resolves.toBeNull();
+
+    configureSource();
+    const compatibilityRelease = buildRelease({
+      version: "2026-07-27.compatibility-corruption",
+    });
+    serveObjects(catalogObjects([compatibilityRelease], compatibilityRelease));
+    await syncCatalog();
+    await invalidateApiTestConnectorCatalogCompatibility();
+    const compatibilityResponse = await accept(
+      setupApp({ context })(zeroConnectorCatalogContract).list({
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [503],
+    );
+    expect(compatibilityResponse.body.error.code).toBe("PROVIDER_UNAVAILABLE");
+
+    configureSource();
+    const missingRelease = buildRelease({
+      version: "2026-07-27.missing-compatibility",
+    });
+    serveObjects(catalogObjects([missingRelease], missingRelease));
+    await syncCatalog();
+    await deleteApiTestConnectorCatalogCompatibility();
+    const missingResponse = await accept(
+      setupApp({ context })(zeroConnectorCatalogContract).list({
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [503],
+    );
+    expect(missingResponse.body.error.code).toBe("PROVIDER_UNAVAILABLE");
   });
 
   it("applies compatibility, authored visibility, and request rollout filters", async () => {
@@ -4778,6 +4989,130 @@ describe("connector catalog valid lifecycle", () => {
 });
 
 describe("connector catalog executable compatibility", () => {
+  it("repairs missing and preserves newer catalog validation authorities", async () => {
+    configureSource();
+    const release = buildRelease({
+      version: "2026-07-27.validation-authority-repair",
+    });
+    serveObjects(catalogObjects([release], release));
+    await syncCatalog();
+    const currentAuthority = apiTestConnectorCatalogValidationAuthority();
+    await expect(
+      readApiTestConnectorCatalogValidationAuthority(),
+    ).resolves.toStrictEqual(currentAuthority);
+
+    await setApiTestConnectorCatalogValidationAuthority(null);
+    mockNow(new Date("2026-07-27T08:01:00.000Z"));
+    expect((await syncCatalog()).body.outcome).toBe("unchanged");
+    await expect(
+      readApiTestConnectorCatalogValidationAuthority(),
+    ).resolves.toStrictEqual(currentAuthority);
+
+    const newerAuthority = {
+      ...currentAuthority,
+      backendVersion: "999999.0.0",
+    };
+    await setApiTestConnectorCatalogValidationAuthority(newerAuthority);
+    mockNow(new Date("2026-07-27T08:02:00.000Z"));
+    expect((await syncCatalog()).body.outcome).toBe("unchanged");
+    await expect(
+      readApiTestConnectorCatalogValidationAuthority(),
+    ).resolves.toStrictEqual(newerAuthority);
+  });
+
+  it("repairs accepted validation authority after an API release", async () => {
+    configureSource();
+    mockEnv("ENV", "production");
+    setApiVersion("1.318.0");
+    const release = buildRelease({
+      version: "2026-07-27.validation-backend-release",
+    });
+    serveObjects(catalogObjects([release], release));
+    await syncCatalog();
+    await expect(
+      readApiTestConnectorCatalogValidationAuthority(),
+    ).resolves.toStrictEqual({
+      backendVersion: "1.318.0",
+      buildCommitSha: null,
+    });
+
+    setApiVersion("1.319.0");
+    mockNow(new Date("2026-07-27T08:01:00.000Z"));
+    expect((await syncCatalog()).body.outcome).toBe("unchanged");
+    await expect(
+      readApiTestConnectorCatalogValidationAuthority(),
+    ).resolves.toStrictEqual({
+      backendVersion: "1.319.0",
+      buildCommitSha: null,
+    });
+  });
+
+  it("prevents a draining older API release from downgrading validation authority", async () => {
+    configureSource();
+    mockEnv("ENV", "production");
+    setApiVersion("1.319.0");
+    const release = buildRelease({
+      version: "2026-07-27.validation-release-overlap",
+    });
+    serveObjects(catalogObjects([release], release));
+    await syncCatalog();
+
+    const alternateCatalogKey = release.catalogKey.replace(
+      /catalog\.json$/u,
+      "catalog-copy.json",
+    );
+    const alternatePointer = buildRelease({
+      version: release.version,
+      mutatePointer: (pointer) => {
+        pointer.catalogKey = alternateCatalogKey;
+      },
+    });
+    const alternateObjects = new Map(
+      catalogObjects([release], alternatePointer),
+    );
+    alternateObjects.set(alternateCatalogKey, releaseCatalogBytes(release));
+
+    setApiVersion("1.318.0");
+    serveObjects(alternateObjects);
+    mockNow(new Date("2026-07-27T08:01:00.000Z"));
+    expect((await syncCatalog()).body.outcome).toBe("accepted");
+    await expect(
+      readApiTestConnectorCatalogValidationAuthority(),
+    ).resolves.toStrictEqual({
+      backendVersion: "1.319.0",
+      buildCommitSha: null,
+    });
+  });
+
+  it("repairs accepted validation authority after a preview build", async () => {
+    configureSource();
+    mockEnv("ENV", "preview");
+    const firstCommit = "a".repeat(40);
+    const secondCommit = "b".repeat(40);
+    mockEnv("GIT_COMMIT_SHA", firstCommit);
+    const release = buildRelease({
+      version: "2026-07-27.validation-preview-build",
+    });
+    serveObjects(catalogObjects([release], release));
+    await syncCatalog();
+    await expect(
+      readApiTestConnectorCatalogValidationAuthority(),
+    ).resolves.toStrictEqual({
+      backendVersion: DEFAULT_API_VERSION,
+      buildCommitSha: firstCommit,
+    });
+
+    mockEnv("GIT_COMMIT_SHA", secondCommit);
+    mockNow(new Date("2026-07-27T08:01:00.000Z"));
+    expect((await syncCatalog()).body.outcome).toBe("unchanged");
+    await expect(
+      readApiTestConnectorCatalogValidationAuthority(),
+    ).resolves.toStrictEqual({
+      backendVersion: DEFAULT_API_VERSION,
+      buildCommitSha: secondCommit,
+    });
+  });
+
   it("leaves feature-switch rollout out of executable compatibility", async () => {
     configureSource();
     const unknownSwitch = buildRelease({

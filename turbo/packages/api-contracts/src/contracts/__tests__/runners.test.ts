@@ -42,9 +42,32 @@ describe("runner claim response contract", () => {
       runId: "00000000-0000-4000-8000-000000020985",
       agentComposeVersionId:
         "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
-      experimentalProfile: "vm0/default",
       modelUsageProvider: "fixture-model",
     });
+    expect(context).not.toHaveProperty("experimentalProfile");
+  });
+});
+
+describe("runner poll response contract", () => {
+  const job = {
+    runId: "22222222-2222-4222-8222-222222222222",
+    prompt: "continue",
+    appendSystemPrompt: null,
+    agentComposeVersionId: null,
+    vars: null,
+  };
+
+  it.each(["vm0/default", "vm0/large"])(
+    "requires and preserves profile %s",
+    (experimentalProfile) => {
+      expect(jobSchema.parse({ ...job, experimentalProfile })).toMatchObject({
+        experimentalProfile,
+      });
+    },
+  );
+
+  it("rejects a missing profile", () => {
+    expect(jobSchema.safeParse(job).success).toBe(false);
   });
 });
 
@@ -465,6 +488,7 @@ describe("runner resume session contract", () => {
       historyRef: {
         ...storedResumeSession.historyRef,
         url: "https://r2.example.com/blobs/history.blob?sig=secret",
+        encoding: "identity",
         rawSize: 1024,
         encodedSize: 1024,
       },
@@ -477,6 +501,7 @@ describe("runner resume session contract", () => {
       appendSystemPrompt: null,
       agentComposeVersionId: null,
       vars: null,
+      experimentalProfile: "vm0/default",
       historyGenerationRunId,
       historyGenerationAffinityProtectedUntil,
       sessionAffinityResource: "reusableSandbox",
@@ -521,6 +546,7 @@ describe("runner resume session contract", () => {
       appendSystemPrompt: null,
       agentComposeVersionId: null,
       vars: null,
+      experimentalProfile: "vm0/default",
       historyGenerationAffinityProtectedUntil: null,
     });
     expect(job.historyGenerationAffinityProtectedUntil).toBeNull();
@@ -658,12 +684,12 @@ describe("runner resume session contract", () => {
     ).toBe(false);
   });
 
-  it("requires a URL for hash-backed claim resume sessions", () => {
+  it("keeps stored identity refs tolerant and requires explicit claim metadata", () => {
     const storedResumeSession = {
       sessionId: "sess-123",
       historyRef: { kind: "blob", hash: historyHash },
     };
-    const claimResumeSession = {
+    const claimResumeSessionWithoutEncoding = {
       sessionId: "sess-123",
       historyRef: {
         kind: "blob",
@@ -673,10 +699,23 @@ describe("runner resume session contract", () => {
         encodedSize: 1024,
       },
     };
+    const claimResumeSession = {
+      ...claimResumeSessionWithoutEncoding,
+      historyRef: {
+        ...claimResumeSessionWithoutEncoding.historyRef,
+        encoding: "identity",
+      },
+    };
 
+    expect(
+      storedResumeSessionSchema.safeParse(storedResumeSession).success,
+    ).toBe(true);
     expect(resumeSessionSchema.safeParse(storedResumeSession).success).toBe(
       false,
     );
+    expect(
+      resumeSessionSchema.safeParse(claimResumeSessionWithoutEncoding).success,
+    ).toBe(false);
     expect(resumeSessionSchema.parse(claimResumeSession)).toEqual(
       claimResumeSession,
     );
@@ -705,6 +744,7 @@ describe("runner resume session contract", () => {
         kind: "blob",
         hash: historyHash,
         url: "https://r2.example.com/blobs/history.blob?sig=secret",
+        encoding: "identity",
         rawSize: RESUME_SESSION_HISTORY_MAX_BYTES + 1,
         encodedSize: RESUME_SESSION_HISTORY_MAX_BYTES + 1,
       },
@@ -738,6 +778,7 @@ describe("runner resume session contract", () => {
         kind: "blob",
         hash: historyHash,
         url: "https://r2.example.com/blobs/history.blob?sig=secret",
+        encoding: "identity",
         rawSize: 1024,
         encodedSize: 1024,
         downloadSource: "regional_edge_cache",

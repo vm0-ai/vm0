@@ -10,8 +10,6 @@ import {
 import { command } from "ccstate";
 import { and, eq } from "drizzle-orm";
 
-import { getBuildVersion, normalizeBuildCommitSha } from "../../lib/build-info";
-import { env } from "../../lib/env";
 import { logger } from "../../lib/log";
 import { nowDate } from "../../lib/time";
 import { db$, writeDb$, type Db, type ReadonlyDb } from "../external/db";
@@ -43,10 +41,10 @@ import {
 } from "./connector-catalog-compatibility.service";
 import {
   connectorCatalogRejectionIsReusable,
-  createConnectorCatalogValidatorIdentity,
+  currentConnectorCatalogValidatorIdentity,
   type ConnectorCatalogRejectionAuthority,
   type ConnectorCatalogValidatorIdentity,
-} from "./connector-catalog-rejection-authority";
+} from "./connector-catalog-validator-authority";
 import {
   connectorCatalogSkillFailure,
   prepareConnectorCatalogSkills,
@@ -221,17 +219,6 @@ function rejectionAuthorityFromState(
     backendVersion: state.lastRejectedBackendVersion,
     buildCommitSha: state.lastRejectedBuildCommitSha,
   };
-}
-
-function currentConnectorCatalogValidatorIdentity(): ConnectorCatalogValidatorIdentity {
-  const production = env("ENV") === "production";
-  return createConnectorCatalogValidatorIdentity({
-    backendVersion: getBuildVersion(),
-    buildCommitSha: production
-      ? null
-      : normalizeBuildCommitSha(env("GIT_COMMIT_SHA")),
-    production,
-  });
 }
 
 function activeStatusFromState(
@@ -654,6 +641,7 @@ async function commitCandidate(args: {
   readonly pointerObservation: PointerObservation;
   readonly attemptedAt: Date;
   readonly capability: ExecutableCapabilityState;
+  readonly validator: ConnectorCatalogValidatorIdentity;
   readonly signal: AbortSignal;
 }): Promise<CandidateCommitResult> {
   const result = await settle(
@@ -670,6 +658,7 @@ async function commitCandidate(args: {
         identity: args.candidate.identity,
         artifact: args.candidate.artifact,
         capability: args.capability,
+        validator: args.validator,
       });
       return "accepted" as const;
     }),
@@ -919,6 +908,7 @@ async function commitValidatedCandidate(
     candidate,
     catalogGzip,
     capability: runtime.capability,
+    validator: runtime.validator,
     skillRegistrations,
     pointerObservation,
     attemptedAt: nowDate(),

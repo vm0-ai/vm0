@@ -35,6 +35,7 @@ import {
 } from "./connector-catalog-artifacts/artifacts";
 import {
   connectorCatalogArtifactFailureCode,
+  decodeAttestedConnectorCatalogSnapshot,
   decodeConnectorCatalogSnapshot,
 } from "./connector-catalog-artifacts/loader";
 import { connectorCatalogIconUrl } from "./connector-catalog-artifacts/icon";
@@ -43,6 +44,11 @@ import { connectorCatalogExecutableCapabilityDigest } from "./connector-catalog-
 import type { ConnectorFeatureStates } from "./connector-catalog-feature-states";
 import type { ConnectorCatalogLoadTiming } from "./connector-catalog-load-timing.service";
 import { connectorCatalogSource } from "./connector-catalog-source";
+import {
+  connectorCatalogValidationAuthorityIsCurrent,
+  currentConnectorCatalogValidatorIdentity,
+  type ConnectorCatalogValidationAuthority,
+} from "./connector-catalog-validator-authority";
 import type { ApiDispatchTimingActionType } from "./api-dispatch-timing.service";
 
 const log = logger("connector-catalog:reader");
@@ -155,6 +161,18 @@ function identityLogFields(identity: ExternalCatalogIdentity) {
     catalogDigest: identity.catalogDigest,
     capabilityDigest: identity.capabilityDigest,
   };
+}
+
+function persistedCatalogValidationAuthority(args: {
+  readonly backendVersion: string | null;
+  readonly buildCommitSha: string | null;
+}): ConnectorCatalogValidationAuthority | null {
+  return args.backendVersion === null
+    ? null
+    : {
+        backendVersion: args.backendVersion,
+        buildCommitSha: args.buildCommitSha,
+      };
 }
 
 function isRecognizedFeatureSwitchKey(
@@ -294,6 +312,10 @@ async function readCurrentCatalog(args: {
         .select({
           catalogRawSize: connectorCatalogActiveSnapshot.catalogRawSize,
           catalogGzip: connectorCatalogActiveSnapshot.catalogGzip,
+          catalogValidationBackendVersion:
+            connectorCatalogCompatibilityEvaluation.catalogValidationBackendVersion,
+          catalogValidationBuildCommitSha:
+            connectorCatalogCompatibilityEvaluation.catalogValidationBuildCommitSha,
           filteredAuthMethods:
             connectorCatalogCompatibilityEvaluation.filteredAuthMethods,
         })
@@ -330,13 +352,37 @@ async function readCurrentCatalog(args: {
     return undefined;
   }
 
-  const decoded = decodeConnectorCatalogSnapshot({
+  const decodeArgs = {
     catalogGzip: row.catalogGzip,
     catalogRawSize: row.catalogRawSize,
     catalogVersion: args.identity.catalogVersion,
     catalogDigest: args.identity.catalogDigest,
     ...(args.timing === undefined ? {} : { timing: args.timing }),
+  };
+  const validationAuthority = persistedCatalogValidationAuthority({
+    backendVersion: row.catalogValidationBackendVersion,
+    buildCommitSha: row.catalogValidationBuildCommitSha,
   });
+  const validationAuthorityIsCurrent =
+    validationAuthority !== null &&
+    connectorCatalogValidationAuthorityIsCurrent({
+      authority: validationAuthority,
+      validator: currentConnectorCatalogValidatorIdentity(),
+    });
+  if (validationAuthorityIsCurrent) {
+    args.timing?.recordValidationResult({ outcome: "attested" });
+  } else {
+    args.timing?.recordValidationResult({
+      outcome: "full_fallback",
+      fallbackReason:
+        validationAuthority === null
+          ? "missing_authority"
+          : "different_authority",
+    });
+  }
+  const decoded = validationAuthorityIsCurrent
+    ? decodeAttestedConnectorCatalogSnapshot(decodeArgs)
+    : decodeConnectorCatalogSnapshot(decodeArgs);
   const filteredAuthMethods = measureCatalogLoadSync(
     args.timing,
     "api_dispatch_connector_catalog_validate_compatibility",
@@ -433,12 +479,14 @@ async function loadAcceptedConnectorCatalogSnapshotAttempt(
   const cache = preparedCatalogCache();
   if (cache.completed?.key === currentKey) {
     timing?.recordAcceptedCacheOutcome("hit");
+    timing?.recordValidationResult({ outcome: "not_run" });
     return cache.completed.catalog;
   }
 
   const existing = cache.inFlight.get(currentKey);
   if (existing) {
     timing?.recordAcceptedCacheOutcome("in_flight");
+    timing?.recordValidationResult({ outcome: "not_run" });
     return await existing;
   }
 
