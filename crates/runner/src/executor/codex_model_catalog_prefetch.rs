@@ -17,6 +17,7 @@ use crate::types::{ExecutionContext, FirewallEntry, SandboxReuseResult};
 
 const PREFETCH_ACTION: &str = "runner_codex_model_catalog_prefetch";
 const CODEX_OAUTH_FIREWALL: &str = "model-provider:codex-oauth-token";
+pub(super) const PREFETCH_HOST_START_TIMEOUT: Duration = Duration::from_secs(1);
 const PREFETCH_GUEST_TIMEOUT: Duration = Duration::from_secs(10);
 const PREFETCH_HOST_WAIT_TIMEOUT: Duration = Duration::from_secs(18);
 const PREFETCH_CANCEL_WRITE_TIMEOUT: Duration = Duration::from_secs(1);
@@ -93,7 +94,26 @@ impl<'a> CodexModelCatalogPrefetch<'a> {
         };
         let result = tokio::select! {
             biased;
-            result = sandbox.start_process(&request) => result,
+            result = tokio::time::timeout(
+                PREFETCH_HOST_START_TIMEOUT,
+                sandbox.start_process(&request),
+            ) => match result {
+                Ok(result) => result,
+                Err(_) => {
+                    warn!("timed out starting Codex model catalog prefetch");
+                    return Self {
+                        wait: None,
+                        cancel: None,
+                        started_at,
+                        outcome: Some(PrefetchOutcome {
+                            duration: started_at.elapsed(),
+                            success: false,
+                            error: Some("start_timed_out"),
+                        }),
+                        recorded: false,
+                    };
+                }
+            },
             () = cancel.cancelled() => {
                 return Self {
                     wait: None,
@@ -242,61 +262,4 @@ fn has_codex_oauth_firewall(context: &ExecutionContext) -> bool {
             )
         })
     })
-}
-
-#[cfg(test)]
-mod tests {
-    use api_contracts::generated::types::runners::storage::{StorageEntry, StorageManifest};
-
-    use super::*;
-    use crate::ids::RunId;
-    use crate::test_fixtures::execution_context_for_test;
-
-    fn eligible_context() -> ExecutionContext {
-        let mut context = execution_context_for_test(RunId::nil());
-        context.cli_agent_type = "codex".to_string();
-        context.encrypted_secrets = Some("encrypted".to_string());
-        context.firewalls = Some(vec![FirewallEntry::Builtin {
-            name: CODEX_OAUTH_FIREWALL.to_string(),
-            base_url_vars: None,
-        }]);
-        context
-    }
-
-    fn storage_manifest(mount_path: &str) -> StorageManifest {
-        StorageManifest {
-            storages: vec![StorageEntry {
-                name: "storage".to_string(),
-                mount_path: mount_path.to_string(),
-                vas_storage_name: "storage".to_string(),
-                vas_version_id: "version".to_string(),
-                instructions_target_filename: None,
-                archive_url: "https://storage.example/archive".to_string(),
-                archive_size: Some(1),
-            }],
-            artifacts: vec![],
-        }
-    }
-
-    #[test]
-    fn eligibility_is_limited_to_fresh_codex_oauth_runs() {
-        let mut context = eligible_context();
-        assert!(is_eligible(&context, SandboxReuseResult::PoolMiss));
-        assert!(!is_eligible(&context, SandboxReuseResult::Reused));
-
-        context.codex_runtime_config = Some(crate::types::CodexRuntimeConfig {
-            provider_id: "provider".to_string(),
-            name: "custom".to_string(),
-            base_url: "https://provider.example".to_string(),
-            env_key: "TOKEN".to_string(),
-            wire_api: "responses".to_string(),
-            supports_websockets: false,
-            model_catalog: None,
-        });
-        assert!(!is_eligible(&context, SandboxReuseResult::PoolMiss));
-
-        let mut context = eligible_context();
-        context.storage_manifest = Some(storage_manifest("/home/user/.codex"));
-        assert!(is_eligible(&context, SandboxReuseResult::PoolMiss));
-    }
 }

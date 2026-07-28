@@ -25,6 +25,7 @@ MAX_TOTAL_BYTES = 16 * 1024 * 1024
 MAX_IN_FLIGHT_REQUESTS = MAX_TOTAL_BYTES // MAX_ENTRY_BYTES
 MAX_WAITERS_PER_KEY = MAX_IN_FLIGHT_REQUESTS
 MAX_TOTAL_WAITERS = MAX_IN_FLIGHT_REQUESTS * 2
+MAX_IN_FLIGHT_WAIT_SECONDS = 10.0
 _MAX_CONTENT_LENGTH_DIGITS = len(str(MAX_ENTRY_BYTES))
 
 _FIREWALL_NAME = "model-provider:codex-oauth-token"
@@ -558,7 +559,19 @@ async def prepare_request(flow: http.HTTPFlow, *, request_end_stream: bool) -> N
             joined_prefetch = in_flight.prefetch_owner and not is_prefetch
             in_flight.waiters += 1
             try:
-                completed_entry = await asyncio.shield(in_flight.future)
+                try:
+                    completed_entry = await asyncio.wait_for(
+                        asyncio.shield(in_flight.future),
+                        timeout=MAX_IN_FLIGHT_WAIT_SECONDS,
+                    )
+                except TimeoutError:
+                    _set_telemetry(
+                        flow,
+                        "model_catalog_bypass",
+                        bypass_reason="request_capacity",
+                        entry_age_ms=entry_age_ms,
+                    )
+                    return
             finally:
                 in_flight.waiters -= 1
             if completed_entry is None:

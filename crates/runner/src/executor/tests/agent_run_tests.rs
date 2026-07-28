@@ -36,6 +36,7 @@ use tokio::sync::{Notify, oneshot};
 use super::super::agent_run::{
     ProcessCancelTimeouts, RunControls, RunStart, build_agent_start_command, run_in_sandbox,
 };
+use super::super::codex_model_catalog_prefetch::PREFETCH_HOST_START_TIMEOUT;
 use super::super::diagnostics::AgentStdoutStreamDiagnostics;
 use super::super::storage::guest_download_stdin_command;
 use super::super::telemetry::RunnerSpawnTiming;
@@ -61,15 +62,26 @@ use crate::storage_fingerprints::{StorageFingerprint, StorageFingerprints};
 use crate::telemetry::SessionHistoryTelemetrySnapshot;
 use crate::test_fixtures::OneShotSessionHistoryServer;
 use crate::types::{
-    FirewallEntry, ResumeSession, ResumeSessionHistory, ResumeSessionHistoryDownloadSource,
-    ResumeSessionHistoryEncoding, ResumeSessionHistoryRef, ResumeSessionHistoryRefKind,
-    SandboxReuseResult,
+    CodexRuntimeConfig, ExecutionContext, FirewallEntry, ResumeSession, ResumeSessionHistory,
+    ResumeSessionHistoryDownloadSource, ResumeSessionHistoryEncoding, ResumeSessionHistoryRef,
+    ResumeSessionHistoryRefKind, SandboxReuseResult,
 };
 use crate::workspace_image_cache::{
     WorkspaceSessionHistorySidecar, WorkspaceSessionHistorySidecarRepresentation,
 };
 
 const LARGE_SESSION_HISTORY_SIZE_BYTES: usize = 1024 * 1024 + 1;
+
+fn codex_oauth_context() -> ExecutionContext {
+    let mut context = minimal_context();
+    context.cli_agent_type = "codex".into();
+    context.encrypted_secrets = Some("encrypted".into());
+    context.firewalls = Some(vec![FirewallEntry::Builtin {
+        name: "model-provider:codex-oauth-token".into(),
+        base_url_vars: None,
+    }]);
+    context
+}
 
 fn gzip_bytes(raw: &[u8]) -> Vec<u8> {
     let mut encoder = GzEncoder::new(Vec::new(), Compression::fast());
@@ -3533,13 +3545,7 @@ async fn codex_catalog_prefetch_waits_for_guest_state_restore() {
         entered: Arc::clone(&prefetch_started),
         release: Arc::new(Notify::new()),
     };
-    let mut ctx = minimal_context();
-    ctx.cli_agent_type = "codex".into();
-    ctx.encrypted_secrets = Some("encrypted".into());
-    ctx.firewalls = Some(vec![FirewallEntry::Builtin {
-        name: "model-provider:codex-oauth-token".into(),
-        base_url_vars: None,
-    }]);
+    let ctx = codex_oauth_context();
     let mut telemetry = test_telemetry(&config, &ctx);
 
     let result = tokio::time::timeout(
@@ -3581,13 +3587,7 @@ async fn codex_catalog_prefetch_start_observes_run_cancellation() {
         entered: Arc::clone(&prefetch_started),
         release: Arc::new(Notify::new()),
     };
-    let mut ctx = minimal_context();
-    ctx.cli_agent_type = "codex".into();
-    ctx.encrypted_secrets = Some("encrypted".into());
-    ctx.firewalls = Some(vec![FirewallEntry::Builtin {
-        name: "model-provider:codex-oauth-token".into(),
-        base_url_vars: None,
-    }]);
+    let ctx = codex_oauth_context();
     let cancel = tokio_util::sync::CancellationToken::new();
     let run_task = spawn_run_in_sandbox_test(Box::new(sandbox), ctx, config, cancel.clone());
 
@@ -3611,6 +3611,132 @@ async fn codex_catalog_prefetch_start_observes_run_cancellation() {
     assert!(overrides.process_cancel_calls().is_empty());
 }
 
+#[tokio::test(start_paused = true)]
+async fn codex_catalog_prefetch_start_timeout_does_not_delay_agent() {
+    let dir = tempfile::tempdir().unwrap();
+    let config = test_executor_config(dir.path()).await;
+    let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::new());
+    let process_start_entered = Arc::new(Notify::new());
+    let process_start_release = Arc::new(Notify::new());
+    let sandbox = OperationGateSandbox {
+        inner: create_overridden_sandbox(Arc::clone(&overrides)).await,
+        point: SandboxGatePoint::StartProcess,
+        entered: Arc::clone(&process_start_entered),
+        release: Arc::clone(&process_start_release),
+    };
+    let run_task = spawn_run_in_sandbox_test(
+        Box::new(sandbox),
+        codex_oauth_context(),
+        config,
+        tokio_util::sync::CancellationToken::new(),
+    );
+
+    process_start_entered.notified().await;
+    tokio::time::advance(PREFETCH_HOST_START_TIMEOUT).await;
+    tokio::task::yield_now().await;
+    process_start_release.notify_one();
+
+    let result = run_task.await.unwrap().unwrap();
+    assert!(result.failure.is_none());
+    let start_calls = overrides.start_process_calls();
+    assert_eq!(start_calls.len(), 1);
+    assert!(!start_calls[0].cmd.contains("codex --version"));
+}
+
+async fn assert_codex_catalog_prefetch_skipped(
+    context: ExecutionContext,
+    reuse_result: SandboxReuseResult,
+    scenario: &str,
+) {
+    let dir = tempfile::tempdir().unwrap();
+    let config = test_executor_config(dir.path()).await;
+    let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::new());
+    let sandbox = create_overridden_sandbox(Arc::clone(&overrides)).await;
+    let mut telemetry = test_telemetry(&config, &context);
+
+    let result = tokio::time::timeout(
+        RUN_IN_SANDBOX_TEST_TIMEOUT,
+        run_in_sandbox(
+            &*sandbox,
+            &context,
+            &config,
+            RunStart {
+                restore_guest_state: false,
+                reuse_result,
+                prev_storage: None,
+            },
+            &mut telemetry,
+            RunControls::new(tokio_util::sync::CancellationToken::new(), None),
+        ),
+    )
+    .await
+    .unwrap()
+    .unwrap();
+
+    assert!(result.failure.is_none(), "{scenario}");
+    let start_calls = overrides.start_process_calls();
+    assert_eq!(start_calls.len(), 1, "{scenario}");
+    assert!(
+        !start_calls[0].cmd.contains("codex --version"),
+        "{scenario}"
+    );
+}
+
+#[tokio::test]
+async fn codex_catalog_prefetch_skips_ineligible_runs() {
+    let mut unrelated_framework = codex_oauth_context();
+    unrelated_framework.cli_agent_type = "claude-code".into();
+
+    let mut missing_secrets = codex_oauth_context();
+    missing_secrets.encrypted_secrets = None;
+
+    let mut missing_firewall = codex_oauth_context();
+    missing_firewall.firewalls = None;
+
+    let mut custom_runtime = codex_oauth_context();
+    custom_runtime.codex_runtime_config = Some(CodexRuntimeConfig {
+        provider_id: "provider".into(),
+        name: "custom".into(),
+        base_url: "https://provider.example".into(),
+        env_key: "TOKEN".into(),
+        wire_api: "responses".into(),
+        supports_websockets: false,
+        model_catalog: None,
+    });
+
+    let scenarios = [
+        (
+            unrelated_framework,
+            SandboxReuseResult::PoolMiss,
+            "unrelated framework",
+        ),
+        (
+            missing_secrets,
+            SandboxReuseResult::PoolMiss,
+            "missing encrypted secrets",
+        ),
+        (
+            missing_firewall,
+            SandboxReuseResult::PoolMiss,
+            "missing Codex OAuth firewall",
+        ),
+        (
+            custom_runtime,
+            SandboxReuseResult::PoolMiss,
+            "custom Codex runtime",
+        ),
+        (
+            codex_oauth_context(),
+            SandboxReuseResult::Reused,
+            "reused sandbox",
+        ),
+    ];
+
+    for (context, reuse_result, scenario) in scenarios {
+        assert_codex_catalog_prefetch_skipped(context, reuse_result, scenario).await;
+    }
+}
+
 #[tokio::test]
 async fn codex_catalog_prefetch_is_cancelled_on_pre_spawn_exit() {
     let dir = tempfile::tempdir().unwrap();
@@ -3625,13 +3751,7 @@ async fn codex_catalog_prefetch_is_cancelled_on_pre_spawn_exit() {
         entered: Arc::clone(&private_write_started),
         release: Arc::new(Notify::new()),
     };
-    let mut ctx = minimal_context();
-    ctx.cli_agent_type = "codex".into();
-    ctx.encrypted_secrets = Some("encrypted".into());
-    ctx.firewalls = Some(vec![FirewallEntry::Builtin {
-        name: "model-provider:codex-oauth-token".into(),
-        base_url_vars: None,
-    }]);
+    let ctx = codex_oauth_context();
     let cancel = tokio_util::sync::CancellationToken::new();
     let run_task = spawn_run_in_sandbox_test(Box::new(sandbox), ctx, config, cancel.clone());
 
@@ -3676,13 +3796,7 @@ async fn fresh_codex_oauth_run_prefetches_catalog_while_agent_prepares() {
         Arc::clone(&wait_gate),
     ));
     let sandbox = create_overridden_sandbox(Arc::clone(&overrides)).await;
-    let mut ctx = minimal_context();
-    ctx.cli_agent_type = "codex".into();
-    ctx.encrypted_secrets = Some("encrypted".into());
-    ctx.firewalls = Some(vec![FirewallEntry::Builtin {
-        name: "model-provider:codex-oauth-token".into(),
-        base_url_vars: None,
-    }]);
+    let ctx = codex_oauth_context();
     let run_task = spawn_run_in_sandbox_test(
         sandbox,
         ctx,
