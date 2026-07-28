@@ -556,11 +556,14 @@ class TestErrorHandler:
         flow.metadata[metadata_keys.FIREWALL_ACTION] = "ALLOW"
         flow.metadata[metadata_keys.HTTP_REQUEST_START_MONOTONIC] = time.monotonic()
         flow.error = Error("connection reset by peer")
+        request_streaming.configure_request_stream(flow)
 
         with mitm_ctx(), pytest.raises(KeyError, match=metadata_keys.NETWORK_LOG_TARGET):
             mitm_addon.error(flow)
 
         assert metadata_keys.HTTP_REQUEST_START_MONOTONIC not in flow.metadata
+        assert metadata_keys.REQUEST_STREAM_BUFFER not in flow.metadata
+        assert flow.request.stream is False
         assert not Path(log_path).exists()
 
     def test_error_request_size_tracks_streamed_bytes_and_releases_request_stream_state(

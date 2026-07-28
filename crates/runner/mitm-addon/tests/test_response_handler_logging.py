@@ -327,11 +327,14 @@ def test_missing_network_log_target_fails_response(tmp_path, real_flow, mitm_ctx
     )
     flow.metadata[metadata_keys.HTTP_REQUEST_START_MONOTONIC] = time.monotonic()
     flow.response = tutils.tresp(status_code=200, headers=header_map({"content-length": "0"}))
+    request_streaming.configure_request_stream(flow)
 
     with mitm_ctx(), pytest.raises(KeyError, match=metadata_keys.NETWORK_LOG_TARGET):
         mitm_addon.response(flow)
 
     assert metadata_keys.HTTP_REQUEST_START_MONOTONIC not in flow.metadata
+    assert metadata_keys.REQUEST_STREAM_BUFFER not in flow.metadata
+    assert flow.request.stream is False
     assert not Path(log_path).exists()
 
 
