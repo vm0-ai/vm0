@@ -77,7 +77,6 @@
   "disallowedTools": ["FixtureDangerousTool"],
   "tools": ["Bash", "Read"],
   "settings": "{\"fixture\":true}",
-  "experimentalProfile": "vm0/default",
   "featureFlags": {
     "fixtureFlag": true
   },

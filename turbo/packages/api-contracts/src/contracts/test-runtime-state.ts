@@ -91,6 +91,11 @@ export const testRuntimeStateActionBodySchema = z.discriminatedUnion("action", [
     computer_use_host_id: z.uuid(),
   }),
   z.object({
+    action: z.literal("set-runner-job-context-profile-as-previous-api"),
+    run_id: z.uuid(),
+    profile: z.string(),
+  }),
+  z.object({
     action: z.literal("read-browser-profile-as-previous-api"),
     browser_id: z.uuid(),
     user_id: z.string(),
