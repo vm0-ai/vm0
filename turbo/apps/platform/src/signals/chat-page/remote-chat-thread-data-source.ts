@@ -2,10 +2,12 @@ import { command, computed, type Command } from "ccstate";
 import {
   chatThreadByIdContract,
   chatThreadDraftContract,
+  chatThreadDraftSchema,
   chatThreadMarkReadContract,
   chatThreadComputerUseHostContract,
   chatThreadModelSelectionContract,
 } from "@vm0/api-contracts/contracts/chat-threads";
+import { withPrecedingDraftStructuredPrompt } from "@vm0/api-contracts/contracts/user-message-rollout";
 import { accept } from "../../lib/accept.ts";
 import { nowDate } from "../../lib/time.ts";
 import { zeroClient$ } from "../api-client.ts";
@@ -59,11 +61,11 @@ const patchDraft$ = command(
     await accept(
       client.patch({
         params: { id: threadId },
-        body: {
+        body: withPrecedingDraftStructuredPrompt({
           draftContent: content,
           draftUserMessage: userMessage,
           draftAttachments: attachments,
-        },
+        }),
         fetchOptions: { signal },
       }),
       [200, 204],
@@ -405,7 +407,7 @@ export function createRemoteChatThreadDataSource(threadId: string) {
     if (result.status === 404) {
       return null;
     }
-    return result.body;
+    return chatThreadDraftSchema.parse(result.body);
   });
 
   return {

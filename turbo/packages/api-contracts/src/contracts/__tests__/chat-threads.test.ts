@@ -7,6 +7,7 @@ import {
   chatMessagesContract,
   chatThreadMessagesContract,
   chatThreadComputerUseHostContract,
+  chatThreadDraftSchema,
   chatThreadEventSchema,
   chatThreadModelSelectionContract,
   chatThreadsContract,
@@ -111,6 +112,25 @@ describe("chat message response contract", () => {
 
     expect(event).toMatchObject({ success: true, data: { userMessage } });
     expect(send).toMatchObject({ success: true, data: { userMessage } });
+  });
+
+  it("normalizes preceding thread draft responses", () => {
+    const userMessage = {
+      version: 1 as const,
+      parts: [{ type: "text" as const, text: "Resume the draft" }],
+    };
+
+    expect(
+      chatThreadDraftSchema.parse({
+        draftContent: "Resume the draft",
+        draftStructuredPrompt: userMessage,
+        draftAttachments: null,
+      }),
+    ).toStrictEqual({
+      draftContent: "Resume the draft",
+      draftUserMessage: userMessage,
+      draftAttachments: null,
+    });
   });
 });
 

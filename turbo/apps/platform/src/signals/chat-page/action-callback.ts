@@ -1,7 +1,5 @@
 import { command, computed } from "ccstate";
-import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import { zeroClient$ } from "../api-client.ts";
-import { featureSwitch$ } from "../external/feature-switch.ts";
 import { searchParams$ } from "../route.ts";
 import { textToMessageDocument } from "../zero-page/user-message-document-codec.ts";
 import { sendChatEventWithCompatibility } from "./chat-event-api-rollout.ts";
@@ -36,14 +34,9 @@ export const runChatActionCallback$ = command(
     },
     signal: AbortSignal,
   ): Promise<void> => {
-    const features = get(featureSwitch$);
-    const userMessageEnabled =
-      features[FeatureSwitchKey.StructuredPrompt] ?? false;
-    const userMessage = userMessageEnabled
-      ? textToMessageDocument(args.callbackPrompt)
-      : undefined;
-    if (userMessageEnabled && !userMessage) {
-      throw new Error("Failed to serialize structured callback prompt");
+    const userMessage = textToMessageDocument(args.callbackPrompt);
+    if (!userMessage) {
+      throw new Error("Failed to serialize callback user message");
     }
     await sendChatEventWithCompatibility(
       get(zeroClient$),
@@ -52,7 +45,7 @@ export const runChatActionCallback$ = command(
         threadId: args.threadId,
         prompt: args.callbackPrompt,
         hasTextContent: true,
-        ...(userMessage ? { userMessage } : {}),
+        userMessage,
         clientEventId: crypto.randomUUID(),
         chatThreadSortEventId: crypto.randomUUID(),
       },

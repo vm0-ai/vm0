@@ -1,11 +1,15 @@
 import { command, state, type Command } from "ccstate";
 import { delay } from "signal-timers";
-import { zeroAgentDraftContract } from "@vm0/api-contracts/contracts/zero-agents";
+import {
+  zeroAgentDraftContract,
+  zeroAgentDraftResponseSchema,
+} from "@vm0/api-contracts/contracts/zero-agents";
 import type {
   GenerationTemplateRequest,
   PersistedAttachment,
   UserMessageDocument,
 } from "@vm0/api-contracts/contracts/chat-threads";
+import { withPrecedingDraftStructuredPrompt } from "@vm0/api-contracts/contracts/user-message-rollout";
 import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import { accept } from "../../lib/accept.ts";
 import { currentChatAgentRecordId$ } from "../agent-chat.ts";
@@ -128,11 +132,11 @@ function createAgentDraftSync(agentId: string, draft: DraftSignals) {
       await accept(
         client.patch({
           params: { id: agentId },
-          body: {
+          body: withPrecedingDraftStructuredPrompt({
             draftContent: payload.content,
             draftUserMessage: payload.userMessage,
             draftAttachments: payload.attachments,
-          },
+          }),
           fetchOptions: { signal },
         }),
         [200, 204],
@@ -242,6 +246,7 @@ export const loadAgentDraft$ = command(
     );
     signal.throwIfAborted();
 
+    const response = zeroAgentDraftResponseSchema.parse(result.body);
     const features = get(featureSwitch$);
     const userMessageEnabled =
       features[FeatureSwitchKey.StructuredPrompt] ?? false;
@@ -249,9 +254,9 @@ export const loadAgentDraft$ = command(
       userMessageEnabled &&
       (features[FeatureSwitchKey.StructuredPromptInlineTemplates] ?? false);
     const restoredDraft = userMessageEnabled
-      ? (userMessageAgentDraftState(result.body, inlineTemplatesEnabled) ??
-        legacyAgentDraftState(result.body))
-      : legacyAgentDraftState(result.body);
+      ? (userMessageAgentDraftState(response, inlineTemplatesEnabled) ??
+        legacyAgentDraftState(response))
+      : legacyAgentDraftState(response);
     const hasServerDraft =
       restoredDraft.content.length > 0 ||
       restoredDraft.userMessage !== null ||

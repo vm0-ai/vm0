@@ -260,10 +260,10 @@ describe("chat drafts", () => {
       url: "https://cdn.vm7.io/artifacts/test/drafts/second.txt",
     };
     mockAgentChatPage(agentId);
-    context.mocks.api(zeroAgentDraftContract.get, ({ respond }) => {
-      return respond(200, {
+    context.mocks.http.get("*/api/zero/agents/:id/draft", () => {
+      return HttpResponse.json({
         draftContent: "stale legacy agent draft",
-        draftUserMessage: {
+        draftStructuredPrompt: {
           version: 1,
           parts: [
             {
@@ -367,6 +367,10 @@ describe("chat drafts", () => {
             version: 1,
             parts: [{ type: "text", text: "agent-level draft" }],
           },
+          draftStructuredPrompt: {
+            version: 1,
+            parts: [{ type: "text", text: "agent-level draft" }],
+          },
           draftAttachments: null,
         });
       });
@@ -378,6 +382,7 @@ describe("chat drafts", () => {
         expect(draftPatches).toContainEqual({
           draftContent: null,
           draftUserMessage: null,
+          draftStructuredPrompt: null,
           draftAttachments: null,
         });
       });
@@ -416,6 +421,10 @@ describe("chat drafts", () => {
           version: 1,
           parts: [{ type: "text", text: "thread-level draft" }],
         },
+        draftStructuredPrompt: {
+          version: 1,
+          parts: [{ type: "text", text: "thread-level draft" }],
+        },
         draftAttachments: null,
       });
     });
@@ -427,6 +436,7 @@ describe("chat drafts", () => {
       expect(draftPatches).toContainEqual({
         draftContent: null,
         draftUserMessage: null,
+        draftStructuredPrompt: null,
         draftAttachments: null,
       });
     });
@@ -586,10 +596,10 @@ describe("chat drafts", () => {
     };
 
     mockChatLifecycle(context, { threadId });
-    context.mocks.api(chatThreadDraftContract.get, ({ respond }) => {
-      return respond(200, {
+    context.mocks.http.get("*/api/zero/chat-threads/:id/draft", () => {
+      return HttpResponse.json({
         draftContent: "stale legacy draft",
-        draftUserMessage: {
+        draftStructuredPrompt: {
           version: 1,
           parts: [
             {
@@ -634,7 +644,7 @@ describe("chat drafts", () => {
       });
     });
     context.mocks.api(chatThreadByIdContract.patch, ({ body, respond }) => {
-      draftPatches.push(body as Record<string, unknown>);
+      draftPatches.push(chatThreadByIdContract.patch.body.parse(body));
       return respond(204);
     });
 
@@ -763,7 +773,7 @@ describe("chat drafts", () => {
       });
     });
     context.mocks.api(chatThreadByIdContract.patch, ({ body, respond }) => {
-      draftPatches.push(body as Record<string, unknown>);
+      draftPatches.push(chatThreadByIdContract.patch.body.parse(body));
       return respond(204);
     });
 
@@ -831,7 +841,7 @@ describe("chat drafts", () => {
       });
     });
     context.mocks.api(chatThreadByIdContract.patch, ({ body, respond }) => {
-      draftPatches.push(body as Record<string, unknown>);
+      draftPatches.push(chatThreadByIdContract.patch.body.parse(body));
       return respond(204);
     });
     context.mocks.upload.success({

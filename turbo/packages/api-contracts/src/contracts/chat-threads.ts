@@ -11,6 +11,11 @@ import { runStatusSchema } from "./runs";
 import { zeroGoalEventSchema } from "./zero-goals";
 import { triggerSourceSchema } from "./logs";
 import { requestedRunModelSchema } from "./model-providers";
+import {
+  normalizePrecedingDraftStructuredPrompt,
+  normalizePrecedingStructuredPrompt,
+  withPrecedingStructuredPrompt,
+} from "./user-message-rollout";
 
 const c = initContract();
 export const MODEL_FIRST_SELECTION_PROVIDER_ID =
@@ -651,7 +656,7 @@ const assistantEventCompatibilityResponseShape = {
  * One-release wire compatibility shape. The canonical ChatEvent domain type
  * intentionally excludes role and message-named relationship fields.
  */
-const chatEventResponseSchema = z.discriminatedUnion("eventType", [
+const canonicalChatEventResponseSchema = z.discriminatedUnion("eventType", [
   inputPromptEventSchema.extend(userEventCompatibilityResponseShape).strict(),
   inputAutomationEventSchema
     .extend(userEventCompatibilityResponseShape)
@@ -710,6 +715,11 @@ const chatEventResponseSchema = z.discriminatedUnion("eventType", [
     .strict(),
 ]);
 
+const chatEventResponseSchema = z.preprocess(
+  normalizePrecedingStructuredPrompt,
+  canonicalChatEventResponseSchema,
+);
+
 /**
  * Response emitted by the API release immediately before ChatEvent routes
  * shipped. Keep this codec at the HTTP boundary only: canonical application
@@ -743,24 +753,27 @@ const legacyPagedChatMessageBaseSchema = z.object({
   createdAt: z.string(),
 });
 
-const legacyPagedChatMessageSchema = z.discriminatedUnion("role", [
-  legacyPagedChatMessageBaseSchema
-    .extend({
-      role: z.literal("user"),
-      userMessage: userMessageDocumentSchema.optional(),
-    })
-    .strict(),
-  legacyPagedChatMessageBaseSchema
-    .extend({
-      role: z.literal("assistant"),
-      thinking: z.string().optional(),
-      runLifecycleEvent: z
-        .enum(["completed", "failed", "cancelled"])
-        .optional(),
-      recommendedFollowups: chatMessageRecommendedFollowupsSchema.optional(),
-    })
-    .strict(),
-]);
+const legacyPagedChatMessageSchema = z.preprocess(
+  normalizePrecedingStructuredPrompt,
+  z.discriminatedUnion("role", [
+    legacyPagedChatMessageBaseSchema
+      .extend({
+        role: z.literal("user"),
+        userMessage: userMessageDocumentSchema.optional(),
+      })
+      .strict(),
+    legacyPagedChatMessageBaseSchema
+      .extend({
+        role: z.literal("assistant"),
+        thinking: z.string().optional(),
+        runLifecycleEvent: z
+          .enum(["completed", "failed", "cancelled"])
+          .optional(),
+        recommendedFollowups: chatMessageRecommendedFollowupsSchema.optional(),
+      })
+      .strict(),
+  ]),
+);
 
 const chatMessageCompatibilityResponseSchema = z.union([
   chatEventResponseSchema,
@@ -769,7 +782,8 @@ const chatMessageCompatibilityResponseSchema = z.union([
 
 if (
   chatEventTypeSchema.options.length !== chatEventSchema.options.length ||
-  chatEventTypeSchema.options.length !== chatEventResponseSchema.options.length
+  chatEventTypeSchema.options.length !==
+    canonicalChatEventResponseSchema.options.length
 ) {
   throw new Error("ChatEvent schema must cover the complete event catalog");
 }
@@ -791,11 +805,14 @@ const chatThreadMetadataSchema = z.object({
   selectedModel: z.string().nullable(),
 });
 
-const chatThreadDraftSchema = z.object({
-  draftContent: z.string().nullable(),
-  draftUserMessage: userMessageDocumentSchema.nullable().optional(),
-  draftAttachments: z.array(persistedAttachmentSchema).nullable(),
-});
+const chatThreadDraftSchema = z.preprocess(
+  normalizePrecedingDraftStructuredPrompt,
+  z.object({
+    draftContent: z.string().nullable(),
+    draftUserMessage: userMessageDocumentSchema.nullable().optional(),
+    draftAttachments: z.array(persistedAttachmentSchema).nullable(),
+  }),
+);
 
 const selectedModelRequestSchema = requestedRunModelSchema;
 
@@ -1921,18 +1938,22 @@ export type ChatMessageSendBody = z.infer<
 >;
 
 export function canonicalChatEvent(response: ChatEventResponse): ChatEvent {
-  if (response.role !== chatEventCompatibilityRole(response.eventType)) {
+  const canonicalResponse = chatEventResponseSchema.parse(response);
+  if (
+    canonicalResponse.role !==
+    chatEventCompatibilityRole(canonicalResponse.eventType)
+  ) {
     throw new Error(
-      `Invalid compatibility role for chat event ${response.eventType}`,
+      `Invalid compatibility role for chat event ${canonicalResponse.eventType}`,
     );
   }
   if (
-    response.revokesMessageId !== undefined &&
-    response.revokesMessageId !== response.revokesEventId
+    canonicalResponse.revokesMessageId !== undefined &&
+    canonicalResponse.revokesMessageId !== canonicalResponse.revokesEventId
   ) {
     throw new Error("Chat event revoke compatibility fields disagree");
   }
-  const { role, revokesMessageId, ...event } = response;
+  const { role, revokesMessageId, ...event } = canonicalResponse;
   void role;
   void revokesMessageId;
   return event;
@@ -1999,12 +2020,13 @@ export function canonicalChatEventFromCompatibilityResponse(
   if ("eventType" in response) {
     return canonicalChatEvent(response);
   }
-  const { role, revokesMessageId, ...message } = response;
+  const canonicalResponse = legacyPagedChatMessageSchema.parse(response);
+  const { role, revokesMessageId, ...message } = canonicalResponse;
   void role;
   return chatEventSchema.parse({
     ...message,
     threadId,
-    eventType: legacyChatEventType(response),
+    eventType: legacyChatEventType(canonicalResponse),
     ...(revokesMessageId === undefined
       ? {}
       : { revokesEventId: revokesMessageId }),
@@ -2014,15 +2036,19 @@ export function canonicalChatEventFromCompatibilityResponse(
 /** Maps canonical event write names to the preceding `/messages` request. */
 export function legacyChatMessageSendBody(
   body: ChatEventSendBody,
-): ChatMessageSendBody {
+): ChatMessageSendBody & { readonly structuredPrompt?: UserMessageDocument } {
   const { clientEventId, revokesEventId, ...request } = body;
-  return chatMessagesContract.send.body.parse({
-    ...request,
-    ...(clientEventId === undefined ? {} : { clientMessageId: clientEventId }),
-    ...(revokesEventId === undefined
-      ? {}
-      : { revokesMessageId: revokesEventId }),
-  });
+  return withPrecedingStructuredPrompt(
+    chatMessagesContract.send.body.parse({
+      ...request,
+      ...(clientEventId === undefined
+        ? {}
+        : { clientMessageId: clientEventId }),
+      ...(revokesEventId === undefined
+        ? {}
+        : { revokesMessageId: revokesEventId }),
+    }),
+  );
 }
 
 export function chatEventResponse(event: ChatEvent): ChatEventResponse {
