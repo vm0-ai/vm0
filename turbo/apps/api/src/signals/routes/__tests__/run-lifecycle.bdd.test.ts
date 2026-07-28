@@ -5197,6 +5197,11 @@ describe("RUN-02: model provider selection and vm0 admission", () => {
       ["api_dispatch_check_vm0_credits"],
       "nested",
     );
+    expectApiDispatchSpanKind(
+      timingEvents,
+      ["api_dispatch_activate_usage_allowance_windows"],
+      "nested",
+    );
     await api.heartbeatRunner(runnerGroup);
     const claim = await api.claimRunnerJob(run.runId);
 

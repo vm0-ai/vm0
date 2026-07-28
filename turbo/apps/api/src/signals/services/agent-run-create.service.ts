@@ -5560,11 +5560,17 @@ async function insertAtomicLaunchRunRecord(args: {
     createdAt,
   );
   if (args.commit.context.modelProvider?.type === "vm0") {
-    await activateUsageAllowanceWindowsForRun(args.tx, {
-      orgId: args.commit.createArgs.orgId,
-      runId: run.id,
-      runCreatedAt: run.createdAt,
-    });
+    await args.commit.timing.measure(
+      "api_dispatch_activate_usage_allowance_windows",
+      "nested",
+      async () => {
+        await activateUsageAllowanceWindowsForRun(args.tx, {
+          orgId: args.commit.createArgs.orgId,
+          runId: run.id,
+          runCreatedAt: run.createdAt,
+        });
+      },
+    );
   }
   return run;
 }
@@ -5575,18 +5581,26 @@ async function persistThreadSessionBinding(
     readonly chatThreadId: string | undefined;
     readonly identity: LaunchRunIdentity;
     readonly resolution: ChatThreadSessionResolution | undefined;
+    readonly timing: ApiDispatchTimingCollector;
   },
 ): Promise<ThreadSessionBindingWrite | undefined> {
   if (!args.chatThreadId) {
     return undefined;
   }
+  const chatThreadId = args.chatThreadId;
 
-  const [thread] = await tx
-    .select({ agentSessionId: chatThreads.agentSessionId })
-    .from(chatThreads)
-    .where(eq(chatThreads.id, args.chatThreadId))
-    .for("update")
-    .limit(1);
+  const [thread] = await args.timing.measure(
+    "api_dispatch_load_thread_session_binding",
+    "nested",
+    async () => {
+      return await tx
+        .select({ agentSessionId: chatThreads.agentSessionId })
+        .from(chatThreads)
+        .where(eq(chatThreads.id, chatThreadId))
+        .for("update")
+        .limit(1);
+    },
+  );
   if (!thread) {
     throw new Error("Chat thread not found while persisting session binding");
   }
@@ -5598,14 +5612,20 @@ async function persistThreadSessionBinding(
       : thread.agentSessionId === args.identity.sessionId
         ? "reused"
         : "rotated");
-  const [updated] = await tx
-    .update(chatThreads)
-    .set({
-      agentSessionId: args.identity.sessionId,
-      agentSessionRunId: args.identity.runId,
-    })
-    .where(eq(chatThreads.id, args.chatThreadId))
-    .returning({ id: chatThreads.id });
+  const [updated] = await args.timing.measure(
+    "api_dispatch_update_thread_session_binding",
+    "nested",
+    async () => {
+      return await tx
+        .update(chatThreads)
+        .set({
+          agentSessionId: args.identity.sessionId,
+          agentSessionRunId: args.identity.runId,
+        })
+        .where(eq(chatThreads.id, chatThreadId))
+        .returning({ id: chatThreads.id });
+    },
+  );
   if (!updated) {
     throw new Error("Failed to persist chat thread session binding");
   }
@@ -5643,6 +5663,7 @@ async function validateThreadSessionSnapshot(
   args: {
     readonly createArgs: CreateAgentRunArgs;
     readonly identity: LaunchRunIdentity;
+    readonly timing: ApiDispatchTimingCollector;
   },
 ): Promise<ThreadSessionSnapshotStale | undefined> {
   const resolution = args.createArgs.threadSessionResolution;
@@ -5651,15 +5672,21 @@ async function validateThreadSessionSnapshot(
     return undefined;
   }
 
-  const [thread] = await tx
-    .select({
-      agentSessionId: chatThreads.agentSessionId,
-      agentSessionRunId: chatThreads.agentSessionRunId,
-    })
-    .from(chatThreads)
-    .where(eq(chatThreads.id, chatThreadId))
-    .for("update")
-    .limit(1);
+  const [thread] = await args.timing.measure(
+    "api_dispatch_validate_thread_session_snapshot_thread",
+    "nested",
+    async () => {
+      return await tx
+        .select({
+          agentSessionId: chatThreads.agentSessionId,
+          agentSessionRunId: chatThreads.agentSessionRunId,
+        })
+        .from(chatThreads)
+        .where(eq(chatThreads.id, chatThreadId))
+        .for("update")
+        .limit(1);
+    },
+  );
   if (!thread) {
     throw new Error("Chat thread not found while validating session snapshot");
   }
@@ -5674,15 +5701,22 @@ async function validateThreadSessionSnapshot(
     });
   }
 
-  if (resolution.expected.sessionId === null) {
+  const expectedSessionId = resolution.expected.sessionId;
+  if (expectedSessionId === null) {
     return undefined;
   }
-  const [session] = await tx
-    .select({ conversationId: agentSessions.conversationId })
-    .from(agentSessions)
-    .where(eq(agentSessions.id, resolution.expected.sessionId))
-    .for("update")
-    .limit(1);
+  const [session] = await args.timing.measure(
+    "api_dispatch_validate_thread_session_snapshot_session",
+    "nested",
+    async () => {
+      return await tx
+        .select({ conversationId: agentSessions.conversationId })
+        .from(agentSessions)
+        .where(eq(agentSessions.id, expectedSessionId))
+        .for("update")
+        .limit(1);
+    },
+  );
   if (
     !session ||
     session.conversationId !== resolution.expected.conversationId
@@ -5712,26 +5746,45 @@ async function commitQueuedPreparedLaunch(
     status: "queued",
     runnerGroup: payload.runnerGroup,
   });
-  await persistRunCustomConnectorAuthRefs(tx, {
-    runId: args.identity.runId,
-    refs: args.launch.customConnectorAuthRefs,
-  });
-  await tx.insert(agentRunQueue).values({
-    runId: args.identity.runId,
-    userId: args.createArgs.userId,
-    orgId: args.createArgs.orgId,
-    encryptedParams: args.encryptedQueuedParams,
-    createdAt: run.createdAt,
-    expiresAt: sql`now() + interval '2 hours'`,
-  });
-  const [depthRow] = await tx
-    .select({ depth: count() })
-    .from(agentRunQueue)
-    .where(eq(agentRunQueue.orgId, args.createArgs.orgId));
+  await args.timing.measure(
+    "api_dispatch_persist_custom_connector_auth_refs",
+    "nested",
+    async () => {
+      await persistRunCustomConnectorAuthRefs(tx, {
+        runId: args.identity.runId,
+        refs: args.launch.customConnectorAuthRefs,
+      });
+    },
+  );
+  await args.timing.measure(
+    "api_dispatch_insert_agent_run_queue",
+    "nested",
+    async () => {
+      await tx.insert(agentRunQueue).values({
+        runId: args.identity.runId,
+        userId: args.createArgs.userId,
+        orgId: args.createArgs.orgId,
+        encryptedParams: args.encryptedQueuedParams,
+        createdAt: run.createdAt,
+        expiresAt: sql`now() + interval '2 hours'`,
+      });
+    },
+  );
+  const [depthRow] = await args.timing.measure(
+    "api_dispatch_count_agent_run_queue_depth",
+    "nested",
+    async () => {
+      return await tx
+        .select({ depth: count() })
+        .from(agentRunQueue)
+        .where(eq(agentRunQueue.orgId, args.createArgs.orgId));
+    },
+  );
   const threadSessionBinding = await persistThreadSessionBinding(tx, {
     chatThreadId: args.createArgs.chatThreadId,
     identity: args.identity,
     resolution: args.createArgs.threadSessionResolution,
+    timing: args.timing,
   });
   return {
     kind: "queued",
@@ -5787,6 +5840,7 @@ async function commitPendingPreparedLaunch(
     chatThreadId: args.createArgs.chatThreadId,
     identity: args.identity,
     resolution: args.createArgs.threadSessionResolution,
+    timing: args.timing,
   });
   return {
     kind: "pending",
@@ -5816,6 +5870,7 @@ async function commitPreparedLaunch(
     const staleThreadSession = await validateThreadSessionSnapshot(tx, {
       createArgs: args.createArgs,
       identity: args.identity,
+      timing: args.timing,
     });
     if (staleThreadSession) {
       return staleThreadSession;

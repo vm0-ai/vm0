@@ -125,6 +125,16 @@ const API_DISPATCH_ZERO_WEB_CHAT_PRE_CREATE_ACTION_TYPES = [
 const API_DISPATCH_ZERO_INTERNAL_ENTRYPOINT_ACTION_TYPES = [
   "api_dispatch_pre_create_zero_entrypoint_gap",
 ] as const;
+const API_DISPATCH_THREAD_SESSION_BINDING_ACTION_TYPES = [
+  "api_dispatch_validate_thread_session_snapshot_thread",
+  "api_dispatch_load_thread_session_binding",
+  "api_dispatch_update_thread_session_binding",
+] as const;
+const API_DISPATCH_QUEUED_PERSISTENCE_ACTION_TYPES = [
+  "api_dispatch_persist_custom_connector_auth_refs",
+  "api_dispatch_insert_agent_run_queue",
+  "api_dispatch_count_agent_run_queue_depth",
+] as const;
 const FORBIDDEN_API_DISPATCH_TIMING_KEYS = [
   "org_id",
   "user_id",
@@ -876,6 +886,11 @@ describe("CHAT-02: web chat send and client ids", () => {
       ["api_dispatch_pre_create_agent_run"],
       "top_level",
     );
+    expectApiDispatchSpanKind(
+      timingEvents,
+      API_DISPATCH_THREAD_SESSION_BINDING_ACTION_TYPES,
+      "nested",
+    );
     expect(timingEvents).toContainEqual(
       expect.objectContaining({
         op_type: "api_dispatch_prepare_run_callbacks",
@@ -1506,6 +1521,14 @@ describe("CHAT-02: org queue markers", () => {
       binding_action: "initialized",
       run_status: "queued",
     });
+    const queuedTimingEvents = apiDispatchTimingEventsForRun(
+      queuedRun.body.runId,
+    );
+    expectApiDispatchSpanKind(
+      queuedTimingEvents,
+      API_DISPATCH_QUEUED_PERSISTENCE_ACTION_TYPES,
+      "nested",
+    );
 
     const queuedThread = queuedRun.body.threadId;
     const beforeDequeue = await waitForThreadMessages(
@@ -3016,6 +3039,11 @@ describe("CHAT-02: run-level model overrides", () => {
       prompt: "continue on sonnet in the same session",
       model: "claude-sonnet-4-6",
     });
+    expectApiDispatchSpanKind(
+      apiDispatchTimingEventsForRun(second.runId),
+      ["api_dispatch_validate_thread_session_snapshot_session"],
+      "nested",
+    );
     const secondClaim = await claimChatRun(runnerGroup, second.runId);
     expect(secondClaim.claim.resumeSession?.sessionId).toBe(
       `bdd-cli-${first.runId}`,
