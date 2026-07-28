@@ -112,11 +112,6 @@ import { appendChatThreadEvent } from "./zero-chat-thread-event.service";
 import { excludeGoalMarkerCondition } from "./zero-chat-goal-marker.service";
 import { cancelRun$, type CancelRunResult } from "./zero-run-cancel.service";
 import { buildWorkflowScheduleAutomationBrief } from "./zero-workflow-automation-brief.service";
-import {
-  effectiveChatMessageStructuredPrompt,
-  effectiveChatThreadDraftStructuredPrompt,
-  splitStructuredMessage,
-} from "./zero-chat-structured-message-storage.service";
 import { chatEventTypeSql } from "./zero-chat-event-type.service";
 
 export { insertAssistantEventMessages$ };
@@ -295,7 +290,7 @@ const eventColumns = {
   chatThreadId: chatMessages.chatThreadId,
   eventType: chatEventTypeSql().as("event_type"),
   content: chatMessages.content,
-  structuredPrompt: effectiveChatMessageStructuredPrompt(),
+  structuredPrompt: chatMessages.structuredPrompt,
   thinking: chatMessages.thinking,
   runId: effectiveChatMessageRunId(),
   runGroupId: chatMessages.runGroupId,
@@ -514,7 +509,7 @@ function ownedChatThread(
         title: chatThreads.title,
         agentComposeId: chatThreads.agentComposeId,
         draftContent: chatThreads.draftContent,
-        draftStructuredPrompt: effectiveChatThreadDraftStructuredPrompt(),
+        draftStructuredPrompt: chatThreads.draftStructuredPrompt,
         draftAttachments: chatThreads.draftAttachments,
         computerUseHostId: chatThreads.computerUseHostId,
         cloudBrowserEnabled: chatThreads.cloudBrowserEnabled,
@@ -1243,7 +1238,6 @@ export function zeroChatThreadDraftIds(args: {
           or(
             sql`COALESCE(${chatThreads.draftContent}, '') <> ''`,
             isNotNull(chatThreads.draftStructuredPrompt),
-            isNotNull(chatThreads.draftStructuredPromptWithFeedback),
             and(
               isNotNull(chatThreads.draftAttachments),
               sql`jsonb_array_length(${chatThreads.draftAttachments}) > 0`,
@@ -2471,17 +2465,12 @@ export const updateChatThreadDraft$ = command(
     signal: AbortSignal,
   ): Promise<{ readonly updated: boolean }> => {
     const writeDb = set(writeDb$);
-    const persistedStructuredPrompt = splitStructuredMessage(
-      args.draftStructuredPrompt,
-    );
 
     const updated = await writeDb
       .update(chatThreads)
       .set({
         draftContent: args.draftContent,
-        draftStructuredPrompt: persistedStructuredPrompt.structuredPrompt,
-        draftStructuredPromptWithFeedback:
-          persistedStructuredPrompt.structuredPromptWithFeedback,
+        draftStructuredPrompt: args.draftStructuredPrompt,
         draftAttachments: args.draftAttachments
           ? [...args.draftAttachments]
           : null,

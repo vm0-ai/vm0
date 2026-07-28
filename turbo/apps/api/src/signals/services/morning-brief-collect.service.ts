@@ -41,7 +41,6 @@ import {
 } from "./connector-credential-runtime.service";
 import { loadConnectorRuntimeSnapshot } from "./connector-catalog-runtime.service";
 import { projectStructuredUserMessage } from "./zero-chat-structured-message.service";
-import { effectiveChatMessageStructuredPrompt } from "./zero-chat-structured-message-storage.service";
 import {
   chatEventTypeIn,
   chatEventTypeSql,
@@ -620,7 +619,7 @@ async function collectUnreadChatThreads(args: {
       .select({
         eventType: chatEventTypeSql().as("event_type"),
         content: chatMessages.content,
-        structuredPrompt: effectiveChatMessageStructuredPrompt(),
+        structuredPrompt: chatMessages.structuredPrompt,
         createdAt: chatMessages.createdAt,
       })
       .from(chatMessages)
@@ -632,10 +631,7 @@ async function collectUnreadChatThreads(args: {
                 isNotNull(chatMessages.content),
                 and(
                   chatEventTypeIn(["input.prompt", "input.rejected"]),
-                  or(
-                    isNotNull(chatMessages.structuredPrompt),
-                    isNotNull(chatMessages.structuredPromptWithFeedback),
-                  ),
+                  isNotNull(chatMessages.structuredPrompt),
                 ),
               ) as SQL)
             : isNotNull(chatMessages.content),

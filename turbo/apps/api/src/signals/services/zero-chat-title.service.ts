@@ -42,7 +42,6 @@ import {
 import { appendChatThreadEvent } from "./zero-chat-thread-event.service";
 import { queuedUserMessageExists } from "./zero-chat-queued-message.service";
 import { projectStructuredUserMessage } from "./zero-chat-structured-message.service";
-import { effectiveChatMessageStructuredPrompt } from "./zero-chat-structured-message-storage.service";
 
 const log = logger("api:zero:chat-title");
 const OPENROUTER_CHAT_COMPLETIONS_URL =
@@ -124,10 +123,7 @@ function contextMessageContentCondition(structuredPromptEnabled: boolean): SQL {
         isNotNull(chatMessages.content),
         and(
           chatEventTypeIn(["input.prompt", "input.rejected"]),
-          or(
-            isNotNull(chatMessages.structuredPrompt),
-            isNotNull(chatMessages.structuredPromptWithFeedback),
-          ),
+          isNotNull(chatMessages.structuredPrompt),
         ),
       ) as SQL)
     : isNotNull(chatMessages.content);
@@ -269,7 +265,7 @@ async function getLatestTitleContextMessages(
     .select({
       eventType: chatEventTypeSql().as("event_type"),
       content: chatMessages.content,
-      structuredPrompt: effectiveChatMessageStructuredPrompt(),
+      structuredPrompt: chatMessages.structuredPrompt,
       createdAt: chatMessages.createdAt,
       sequenceNumber: chatMessages.sequenceNumber,
     })
@@ -472,7 +468,7 @@ async function getLatestFollowupContextMessages(
     .select({
       eventType: chatEventTypeSql().as("event_type"),
       content: chatMessages.content,
-      structuredPrompt: effectiveChatMessageStructuredPrompt(),
+      structuredPrompt: chatMessages.structuredPrompt,
       createdAt: chatMessages.createdAt,
       sequenceNumber: chatMessages.sequenceNumber,
     })
