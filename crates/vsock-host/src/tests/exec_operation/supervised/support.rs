@@ -209,18 +209,19 @@ pub(super) fn assert_no_guest_frame(guest: &mut UnixStream, context: &str) {
     }
 }
 
-pub(super) async fn assert_supervised_start_rejected_without_frame(
+pub(super) async fn assert_supervised_start_fails_without_frame(
     request: SupervisedExecRequest<'_>,
+    expected_kind: io::ErrorKind,
     expected_message: &str,
 ) {
     let (host, mut guest) = setup_host_and_guest().await;
     let host = Arc::new(host);
 
     let err = match host.start_supervised_exec(request).await {
-        Ok(_) => panic!("invalid supervised exec request should be rejected"),
+        Ok(_) => panic!("supervised exec request should fail before sending a frame"),
         Err(err) => err,
     };
-    assert_eq!(err.kind(), io::ErrorKind::InvalidInput);
+    assert_eq!(err.kind(), expected_kind);
     assert!(
         err.to_string().contains(expected_message),
         "unexpected error: {err}",
@@ -230,6 +231,7 @@ pub(super) async fn assert_supervised_start_rejected_without_frame(
         normal_operation_readiness(&host),
         NormalOperationReadiness::Idle
     );
+    assert_no_guest_frame(&mut guest, "failed supervised exec must not send a frame");
 
     assert_connection_accepts_exec_operation(&host, &mut guest).await;
 }

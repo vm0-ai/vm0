@@ -154,6 +154,7 @@ pub(crate) async fn probe_guest_dns_once(
     let command = format!("/usr/bin/getent ahostsv4 {DNS_READINESS_HOSTNAME}");
     let request = ExecOperationRequest {
         timeout_ms: PROCESS_TIMEOUT_MS,
+        start_write_timeout: wait_timeout,
         command: &command,
         env: RESOLVER_ENV,
         sudo: false,

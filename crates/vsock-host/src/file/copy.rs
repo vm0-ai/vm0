@@ -538,11 +538,13 @@ impl VsockHost {
         } else {
             &[]
         };
+        let wait_timeout = Duration::from_millis(timeout_ms as u64 + 5000);
         let mut handle =
             exec_operation::exec_operation_stream_with_composite_on_shared_and_observer(
                 &self.shared,
                 ExecStreamRequest {
                     timeout_ms,
+                    start_write_timeout: wait_timeout,
                     command: &command,
                     env: &[],
                     sudo: false,
@@ -570,7 +572,6 @@ impl VsockHost {
                 "copy_file exec operation did not create a stream receiver",
             ))
         })?;
-        let wait_timeout = Duration::from_millis(timeout_ms as u64 + 5000);
         let mut bytes_copied = 0u64;
 
         let drain_result = tokio::time::timeout(wait_timeout, async {

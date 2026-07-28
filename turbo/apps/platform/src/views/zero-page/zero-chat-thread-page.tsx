@@ -276,7 +276,9 @@ import {
   setTemplatePickerSearch$,
 } from "../../signals/zero-page/zero-chat-composer.ts";
 import {
+  useComposerConnectorReadState,
   useZeroChatComposer,
+  type ComposerConnectorReadState,
   type ZeroChatComposerProps,
   type QueuedComposerItem,
   type WorkflowEventComposerItem,
@@ -2801,6 +2803,9 @@ function ChatHistoryBackfillSkeleton({
 }
 
 function ChatThreadContent({ thread }: { thread: ChatThreadSignals }) {
+  const connectorReadState = useComposerConnectorReadState(
+    thread.composerConnectors,
+  );
   return (
     <>
       <ChatThreadHeader thread={thread} />
@@ -2810,7 +2815,11 @@ function ChatThreadContent({ thread }: { thread: ChatThreadSignals }) {
           <ChatThreadMessagesPane thread={thread} />
           {/* Command loadables are hook-owned, so keep their identity boundary
               narrower than the persistent thread and message owners. */}
-          <ChatThreadComposer key={thread.threadId} thread={thread} />
+          <ChatThreadComposer
+            key={thread.threadId}
+            thread={thread}
+            connectorReadState={connectorReadState}
+          />
         </div>
       </div>
 
@@ -3453,7 +3462,13 @@ function useQueuedMessageItems(thread: ChatThreadSignals) {
   );
 }
 
-function ChatThreadComposer({ thread }: { thread: ChatThreadSignals }) {
+function ChatThreadComposer({
+  thread,
+  connectorReadState,
+}: {
+  thread: ChatThreadSignals;
+  connectorReadState: ComposerConnectorReadState;
+}) {
   const queuedMessageItems = useQueuedMessageItems(thread);
   const hasMessagesResolved = useLastResolved(thread.hasMessages$);
   const hasMessages = hasMessagesResolved ?? false;
@@ -3538,7 +3553,7 @@ function ChatThreadComposer({ thread }: { thread: ChatThreadSignals }) {
     activeGoal,
     onCancelActiveGoal,
   };
-  const composer = useZeroChatComposer(composerOptions);
+  const composer = useZeroChatComposer(composerOptions, connectorReadState);
 
   return (
     <footer

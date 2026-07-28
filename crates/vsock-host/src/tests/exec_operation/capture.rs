@@ -124,6 +124,7 @@ async fn fenced_capture_excludes_normal_operations_until_fence_drops() {
     let error = match host
         .start_exec_operation(ExecOperationRequest {
             timeout_ms: 5000,
+            start_write_timeout: Duration::from_secs(5),
             command: "competing-operation",
             env: &[],
             sudo: false,
@@ -216,6 +217,7 @@ async fn exec_operation_capture_sends_stdin_bytes() {
     let handle = host
         .start_exec_operation(ExecOperationRequest {
             timeout_ms: 5000,
+            start_write_timeout: Duration::from_secs(5),
             command: "cat",
             env: &[],
             sudo: false,
@@ -255,6 +257,7 @@ async fn exec_operation_rejects_oversized_stdin_without_sending_frame() {
     let err = match host
         .start_exec_operation(ExecOperationRequest {
             timeout_ms: 5000,
+            start_write_timeout: Duration::from_secs(5),
             command: "cat",
             env: &[],
             sudo: false,
@@ -288,6 +291,7 @@ async fn exec_start_sends_expected_exit_codes() {
     let handle = host
         .start_exec_operation(ExecOperationRequest {
             timeout_ms: 5000,
+            start_write_timeout: Duration::from_secs(5),
             command: "optional",
             env: &[],
             sudo: false,
@@ -330,6 +334,7 @@ async fn exec_operation_capture_repeated_short_operations_soak() {
         let handle = host
             .start_exec_operation(ExecOperationRequest {
                 timeout_ms: 5000,
+                start_write_timeout: Duration::from_secs(5),
                 command: "printf ok",
                 env: &[],
                 sudo: false,
@@ -378,6 +383,7 @@ async fn exec_operation_capture_large_stdout_stderr_within_limits_soak() {
     let handle = host
         .start_exec_operation(ExecOperationRequest {
             timeout_ms: 5000,
+            start_write_timeout: Duration::from_secs(5),
             command: "large-capture",
             env: &[],
             sudo: false,
@@ -431,6 +437,7 @@ async fn exec_result_preserves_non_default_metadata() {
     let handle = host
         .start_exec_operation(ExecOperationRequest {
             timeout_ms: 5000,
+            start_write_timeout: Duration::from_secs(5),
             command: "metadata",
             env: &[],
             sudo: false,
@@ -480,6 +487,7 @@ async fn exec_result_capture_for_discard_policy_poisons_connection() {
     let handle = host
         .start_exec_operation(ExecOperationRequest {
             timeout_ms: 5000,
+            start_write_timeout: Duration::from_secs(5),
             command: "discard",
             env: &[],
             sudo: false,
@@ -520,6 +528,7 @@ async fn exec_result_over_capture_limit_poisons_connection() {
     let handle = host
         .start_exec_operation(ExecOperationRequest {
             timeout_ms: 5000,
+            start_write_timeout: Duration::from_secs(5),
             command: "capture-limit",
             env: &[],
             sudo: false,
@@ -560,6 +569,7 @@ async fn exec_result_discard_for_capture_policy_poisons_connection() {
     let handle = host
         .start_exec_operation(ExecOperationRequest {
             timeout_ms: 5000,
+            start_write_timeout: Duration::from_secs(5),
             command: "missing-capture",
             env: &[],
             sudo: false,
@@ -597,6 +607,7 @@ async fn exec_result_zero_capture_limit_accepts_empty_capture() {
     let handle = host
         .start_exec_operation(ExecOperationRequest {
             timeout_ms: 5000,
+            start_write_timeout: Duration::from_secs(5),
             command: "zero-capture",
             env: &[],
             sudo: false,

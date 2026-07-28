@@ -291,6 +291,9 @@ impl VsockHost {
     }
 
     /// Start a request-scoped exec operation using the exec operation protocol.
+    ///
+    /// `request.start_write_timeout` bounds waiting for the shared writer and
+    /// writing the complete start frame.
     pub async fn start_exec_operation(
         &self,
         request: ExecOperationRequest<'_>,
@@ -300,12 +303,13 @@ impl VsockHost {
 
     /// Start a supervised exec operation and wait for its PID acknowledgement.
     ///
-    /// If `request.start_timeout` elapses after the start frame is written,
-    /// the host sends `MSG_EXEC_CANCEL` before returning a timeout error. If
-    /// the bounded cancel write also times out, the connection is poisoned.
-    /// If the cancel write succeeds, the connection remains open but should
-    /// not be reused for later normal operations because terminal proof for the
-    /// timed-out operation was abandoned.
+    /// `request.start_timeout` bounds both start-frame writing and waiting for
+    /// `MSG_EXEC_STARTED`. If it elapses after the complete start frame is
+    /// written, the host sends `MSG_EXEC_CANCEL` before returning a timeout
+    /// error. If the bounded cancel write also times out, the connection is
+    /// poisoned. If the cancel write succeeds, the connection remains open but
+    /// should not be reused for later normal operations because terminal proof
+    /// for the timed-out operation was abandoned.
     pub async fn start_supervised_exec(
         &self,
         request: SupervisedExecRequest<'_>,
@@ -389,6 +393,9 @@ impl VsockHost {
     }
 
     /// Start a streaming exec operation with a bounded output event receiver.
+    ///
+    /// `request.start_write_timeout` bounds waiting for the shared writer and
+    /// writing the complete start frame.
     pub async fn exec_operation_stream(
         &self,
         request: ExecStreamRequest<'_>,
