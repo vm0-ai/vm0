@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.148.23](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.148.22...runner-rs-v0.148.23) (2026-07-28)
+
+
+### Bug Fixes
+
+* **runner:** preserve drain override removal after cleanup error ([#23548](https://github.com/vm0-ai/vm0/issues/23548)) ([8bd51ed](https://github.com/vm0-ai/vm0/commit/8bd51edfdfaa6d9bd628ce272f1407782faa51ad))
+* trigger api platform and runner releases ([#23559](https://github.com/vm0-ai/vm0/issues/23559)) ([bc61816](https://github.com/vm0-ai/vm0/commit/bc61816360ad9ebe814198d3bd41cff38eeff116))
+
+
+### Documentation
+
+* **mitm-addon:** document diagnostic candidate selection ([#23536](https://github.com/vm0-ai/vm0/issues/23536)) ([821063e](https://github.com/vm0-ai/vm0/commit/821063e8a59d216a7ba2ca710ccf06c1051fb5c7))
+
 ## [0.148.22](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.148.21...runner-rs-v0.148.22) (2026-07-28)
 
 

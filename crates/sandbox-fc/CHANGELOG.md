@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.37.157](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.37.156...sandbox-fc-v0.37.157) (2026-07-28)
+
+
+### Bug Fixes
+
+* **vsock-host:** bound exec start writes by host deadlines ([#23551](https://github.com/vm0-ai/vm0/issues/23551)) ([7b7822d](https://github.com/vm0-ai/vm0/commit/7b7822dbb2520442f78812db4fd290f5baa5ec56))
+
 ## [0.37.156](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.37.155...sandbox-fc-v0.37.156) (2026-07-28)
 
 

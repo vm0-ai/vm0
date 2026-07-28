@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.338.1](https://github.com/vm0-ai/vm0/compare/api-v1.338.0...api-v1.338.1) (2026-07-28)
+
+
+### Bug Fixes
+
+* trigger api platform and runner releases ([#23559](https://github.com/vm0-ai/vm0/issues/23559)) ([bc61816](https://github.com/vm0-ai/vm0/commit/bc61816360ad9ebe814198d3bd41cff38eeff116))
+
 ## [1.338.0](https://github.com/vm0-ai/vm0/compare/api-v1.337.1...api-v1.338.0) (2026-07-28)
 
 
