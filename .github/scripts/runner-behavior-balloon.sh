@@ -98,12 +98,35 @@ echo "Found sandbox: $SANDBOX_ID"
 
 API_SOCK="/run/vm0/sock/$SANDBOX_ID/api.sock"
 
+# Keep these recovery expectations aligned with balloon.rs: the controller
+# polls every 5 seconds and inflates only when free_memory is above 384 MiB.
+INFLATE_FREE_BOUNDARY_MIB=384
+CONTROLLER_OBSERVATION_SECONDS=12
+RECOVERY_POLL_SECONDS=2
+RECOVERY_TIMEOUT_SECONDS=60
+
 # Helper: read current balloon actual_mib (returns 0 if VM is dead)
 balloon_mib() {
   local val
   val=$(sudo curl -sf --unix-socket "$API_SOCK" http://localhost/balloon/statistics \
     | jq -r '.actual_mib // 0' 2>/dev/null)
   echo "${val:-0}"
+}
+
+# Helper: read a validated target/actual/free-memory snapshot from one
+# Firecracker response. The controller also truncates free_memory to MiB.
+balloon_snapshot() {
+  sudo curl -sf --unix-socket "$API_SOCK" http://localhost/balloon/statistics \
+    | jq -er '
+      [.target_mib, .actual_mib, .free_memory] as $values
+      | select(all($values[]; type == "number" and . >= 0 and . == floor))
+      | [
+          $values[0],
+          $values[1],
+          ($values[2] / 1048576 | floor)
+        ]
+      | @tsv
+    ' 2>/dev/null
 }
 
 # Helper: read guest MemAvailable in kB.
@@ -220,23 +243,100 @@ vm_alive || fail "VM crashed during memory pressure test"
 
 # Kill guest-side allocator — Test 2 passing means the controller has
 # already returned memory to the guest, enough for pkill exec.
-sudo "$BIN_DIR/runner" exec --sandbox "$SANDBOX_ID" -- pkill -f BALLOON_ALLOC_MARKER 2>/dev/null || true
+sudo "$BIN_DIR/runner" exec --sandbox "$SANDBOX_ID" -- pkill -f '[B]ALLOON_ALLOC_MARKER' 2>/dev/null || true
 
-# Wait for balloon to re-inflate past midpoint between deflate and original inflate
-MIDPOINT=$(( (INFLATE_MIB + DEFLATE_MIB) / 2 ))
-REINFLATED=0
-for i in $(seq 1 30); do
+# A failed runner exec must not masquerade as allocator absence, so probe
+# through a guest command that reports state while always exiting successfully.
+ALLOCATOR_STOPPED=0
+for i in $(seq 1 5); do
+  if ! ALLOCATOR_STATE=$(sudo "$BIN_DIR/runner" exec --sandbox "$SANDBOX_ID" -- \
+    sh -c 'pgrep -f "[B]ALLOON_ALLOC_MARKER" >/dev/null; status=$?; if [ "$status" -eq 0 ]; then printf "running\n"; elif [ "$status" -eq 1 ]; then printf "stopped\n"; else exit "$status"; fi' \
+    2>/dev/null); then
+    fail "failed to verify guest pressure allocator state"
+  fi
+  case "$ALLOCATOR_STATE" in
+    stopped)
+      ALLOCATOR_STOPPED=1
+      break
+      ;;
+    running)
+      sleep 1
+      ;;
+    *)
+      fail "unexpected guest pressure allocator state: $ALLOCATOR_STATE"
+      ;;
+  esac
+done
+[ "$ALLOCATOR_STOPPED" -eq 1 ] || fail "guest pressure allocator remained running"
+
+# Accept either realized re-inflation or a stable state inside the controller's
+# hysteresis band. Both sides must persist for a complete observation window so
+# a single boundary crossing cannot determine the result.
+RECOVERY_DEADLINE=$(( SECONDS + RECOVERY_TIMEOUT_SECONDS ))
+HIGH_FREE_SINCE=""
+LOW_FREE_SINCE=""
+TARGET_RAISED=0
+RECOVERY_RESULT=""
+LAST_TARGET=$DEFLATE_MIB
+LAST_ACTUAL=$DEFLATE_MIB
+LAST_FREE_MIB=""
+while [ "$SECONDS" -lt "$RECOVERY_DEADLINE" ]; do
   ensure_submit_running
   vm_alive || fail "VM exited during balloon re-inflate test"
-  ACTUAL=$(balloon_mib)
-  if [ "$ACTUAL" -gt "$MIDPOINT" ]; then
-    REINFLATED=1
+
+  if ! SNAPSHOT=$(balloon_snapshot); then
+    fail "failed to read valid balloon recovery statistics"
+  fi
+  IFS=$'\t' read -r LAST_TARGET LAST_ACTUAL LAST_FREE_MIB <<< "$SNAPSHOT"
+  echo "Recovery snapshot: target=${LAST_TARGET}MiB actual=${LAST_ACTUAL}MiB free=${LAST_FREE_MIB}MiB"
+
+  if [ "$LAST_TARGET" -gt "$DEFLATE_MIB" ]; then
+    TARGET_RAISED=1
+  fi
+  if [ "$LAST_ACTUAL" -gt "$DEFLATE_MIB" ]; then
+    RECOVERY_RESULT="re-inflated"
     break
   fi
-  sleep 2
+
+  NOW=$SECONDS
+  if [ "$LAST_FREE_MIB" -gt "$INFLATE_FREE_BOUNDARY_MIB" ]; then
+    LOW_FREE_SINCE=""
+    if [ -z "$HIGH_FREE_SINCE" ]; then
+      HIGH_FREE_SINCE=$NOW
+    fi
+    if [ "$TARGET_RAISED" -eq 0 ] \
+      && [ $(( NOW - HIGH_FREE_SINCE )) -ge "$CONTROLLER_OBSERVATION_SECONDS" ]; then
+      fail "balloon controller did not respond above inflate boundary: target=${LAST_TARGET}MiB actual=${LAST_ACTUAL}MiB free=${LAST_FREE_MIB}MiB boundary=${INFLATE_FREE_BOUNDARY_MIB}MiB"
+    fi
+  else
+    HIGH_FREE_SINCE=""
+    if [ -z "$LOW_FREE_SINCE" ]; then
+      LOW_FREE_SINCE=$NOW
+    fi
+    if [ $(( NOW - LOW_FREE_SINCE )) -ge "$CONTROLLER_OBSERVATION_SECONDS" ] \
+      && [ "$LAST_TARGET" -eq "$LAST_ACTUAL" ]; then
+      RECOVERY_RESULT="hysteresis-settled"
+      break
+    fi
+  fi
+
+  sleep "$RECOVERY_POLL_SECONDS"
 done
-[ "$REINFLATED" -eq 1 ] || fail "balloon did not re-inflate enough: actual_mib=$ACTUAL (midpoint=$MIDPOINT, was $DEFLATE_MIB)"
-echo "PASS: balloon re-inflated from ${DEFLATE_MIB} to ${ACTUAL} MiB (midpoint=${MIDPOINT})"
+
+case "$RECOVERY_RESULT" in
+  re-inflated)
+    echo "PASS: balloon re-inflated from ${DEFLATE_MIB} to ${LAST_ACTUAL} MiB (target=${LAST_TARGET}MiB free=${LAST_FREE_MIB}MiB)"
+    ;;
+  hysteresis-settled)
+    echo "PASS: balloon settled inside inflate hysteresis (deflated=${DEFLATE_MIB}MiB target=${LAST_TARGET}MiB actual=${LAST_ACTUAL}MiB free=${LAST_FREE_MIB}MiB boundary=${INFLATE_FREE_BOUNDARY_MIB}MiB)"
+    ;;
+  *)
+    if [ "$TARGET_RAISED" -eq 1 ]; then
+      fail "balloon target increase was not realized before timeout: deflated=${DEFLATE_MIB}MiB target=${LAST_TARGET}MiB actual=${LAST_ACTUAL}MiB free=${LAST_FREE_MIB:-unknown}MiB"
+    fi
+    fail "balloon recovery did not reach a stable outcome: deflated=${DEFLATE_MIB}MiB target=${LAST_TARGET}MiB actual=${LAST_ACTUAL}MiB free=${LAST_FREE_MIB:-unknown}MiB"
+    ;;
+esac
 
 # Stop transient service
 sudo "$BIN_DIR/runner" service stop --name "$SVC" --force \
