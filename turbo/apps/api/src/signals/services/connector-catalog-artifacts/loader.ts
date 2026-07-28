@@ -370,8 +370,8 @@ export function decodeAttestedConnectorCatalogSnapshot(
   args: ConnectorCatalogSnapshotDecodeArgs,
 ): DecodedConnectorCatalogSnapshot {
   const artifact = decodeConnectorCatalogSnapshotJson(args);
-  // The exact-digest compatibility row and its validation contract establish
-  // deep schema and semantic validity. Keep this trusted boundary local.
+  // The exact-digest compatibility row and current validator authority
+  // establish deep schema and semantic validity. Keep this boundary local.
   assertAttestedConnectorCatalogArtifact(artifact, args.catalogVersion);
   return { artifact };
 }
