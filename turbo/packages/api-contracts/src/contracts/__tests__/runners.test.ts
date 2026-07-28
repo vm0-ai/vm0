@@ -3,6 +3,7 @@ import * as path from "node:path";
 import { describe, expect, it } from "vitest";
 
 import {
+  compatibleStoredExecutionContextSchema,
   elapsedSinceApiStartMs,
   executionContextSchema,
   heartbeatBodySchema,
@@ -151,12 +152,16 @@ describe("stored connector permission baseline contract", () => {
     ).toBe(false);
   });
 
-  it("keeps malformed future metadata outside stored-context validity", () => {
+  it("isolates future metadata to the compatible persisted reader", () => {
     const futureBaseline = { version: 2, payload: "future" };
-    const parsed = storedExecutionContextSchema.parse({
+    const context = {
       ...storedContext,
       connectorPermissionBaseline: futureBaseline,
-    });
+    };
+
+    expect(storedExecutionContextSchema.safeParse(context).success).toBe(false);
+
+    const parsed = compatibleStoredExecutionContextSchema.parse(context);
 
     expect(parsed.connectorPermissionBaseline).toEqual(futureBaseline);
     expect(

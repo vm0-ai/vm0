@@ -649,9 +649,8 @@ export const storedExecutionContextSchema = z.object({
   // active sandbox policy when temporary allow grants expire.
   networkPolicyRefreshes: networkPolicyRefreshesSchema.optional(),
   // API-only catalog-derived permission defaults for claim-time grant refresh.
-  // Kept unknown here so malformed or future versions fall back independently
-  // instead of invalidating the complete queued execution context.
-  connectorPermissionBaseline: z.unknown().optional(),
+  connectorPermissionBaseline:
+    storedConnectorPermissionBaselineSchema.optional(),
   // Tools to disable in Claude CLI (passed as --disallowed-tools)
   disallowedTools: z.array(z.string()).optional(),
   // Tools to make available in Claude CLI (passed as --tools)
@@ -670,6 +669,17 @@ export const storedExecutionContextSchema = z.object({
     .nullable()
     .optional(),
 });
+
+/**
+ * Tolerant reader for execution contexts already persisted in a database or
+ * encrypted queue payload. The optional baseline is derived performance data,
+ * so malformed or future versions must remain an independent cache miss rather
+ * than invalidating the complete queued execution context.
+ */
+export const compatibleStoredExecutionContextSchema =
+  storedExecutionContextSchema.extend({
+    connectorPermissionBaseline: z.unknown().optional(),
+  });
 
 /**
  * Execution context returned when claiming a job.
@@ -895,6 +905,9 @@ export type HeldSessionState = z.infer<typeof heldSessionStateSchema>;
 export type ExecutionContext = z.infer<typeof executionContextSchema>;
 export type StoredExecutionContext = z.infer<
   typeof storedExecutionContextSchema
+>;
+export type CompatibleStoredExecutionContext = z.infer<
+  typeof compatibleStoredExecutionContextSchema
 >;
 export type StoredConnectorPermissionBaseline = z.infer<
   typeof storedConnectorPermissionBaselineSchema

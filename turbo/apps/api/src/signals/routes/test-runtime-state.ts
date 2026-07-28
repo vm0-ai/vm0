@@ -14,7 +14,7 @@ import {
   testRuntimeStateContract,
   type TestRuntimeStateActionBody,
 } from "@vm0/api-contracts/contracts/test-runtime-state";
-import { storedExecutionContextSchema } from "@vm0/api-contracts/contracts/runners";
+import { compatibleStoredExecutionContextSchema } from "@vm0/api-contracts/contracts/runners";
 import { agentRuns } from "@vm0/db/schema/agent-run";
 import { agentSessions } from "@vm0/db/schema/agent-session";
 import {
@@ -499,7 +499,7 @@ async function readRunnerJobStorageState(
   const rawContext = z
     .record(z.string(), z.unknown())
     .parse(job.executionContext);
-  const context = storedExecutionContextSchema.parse(rawContext);
+  const context = compatibleStoredExecutionContextSchema.parse(rawContext);
   let legacyManifestState: "missing" | "null" | "object";
   if (!Object.hasOwn(rawContext, "storageManifest")) {
     legacyManifestState = "missing";

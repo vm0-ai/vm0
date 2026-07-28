@@ -1,6 +1,7 @@
 import { command } from "ccstate";
 import { connectorRefSchema } from "@vm0/api-contracts/contracts/connector-identity";
 import {
+  compatibleStoredExecutionContextSchema,
   elapsedSinceApiStartMs,
   RESUME_SESSION_HISTORY_MAX_BYTES,
   runnersNetworkPolicyRefreshContract,
@@ -9,7 +10,7 @@ import {
   runnersJobClaimContract,
   runnersPollContract,
   storedConnectorPermissionBaselineSchema,
-  storedExecutionContextSchema,
+  type CompatibleStoredExecutionContext,
   type ExecutionContext,
   type HeldSessionState,
   type SessionHistoryDownloadSource,
@@ -1103,6 +1104,51 @@ type PreparedSecretValuesResult =
       readonly status: "invalid-keys";
     };
 
+type ConnectorPermissionBaselineRead =
+  | { readonly kind: "missing" }
+  | { readonly kind: "invalid" }
+  | {
+      readonly kind: "valid";
+      readonly value: StoredConnectorPermissionBaseline;
+    };
+
+function decodeCompatibleStoredExecutionContext(
+  context: CompatibleStoredExecutionContext,
+): {
+  readonly context: StoredExecutionContext;
+  readonly connectorPermissionBaseline: ConnectorPermissionBaselineRead;
+} {
+  const {
+    connectorPermissionBaseline: rawConnectorPermissionBaseline,
+    ...contextWithoutConnectorPermissionBaseline
+  } = context;
+  if (rawConnectorPermissionBaseline === undefined) {
+    return {
+      context: contextWithoutConnectorPermissionBaseline,
+      connectorPermissionBaseline: { kind: "missing" },
+    };
+  }
+  const baselineResult = storedConnectorPermissionBaselineSchema.safeParse(
+    rawConnectorPermissionBaseline,
+  );
+  if (!baselineResult.success) {
+    return {
+      context: contextWithoutConnectorPermissionBaseline,
+      connectorPermissionBaseline: { kind: "invalid" },
+    };
+  }
+  return {
+    context: {
+      ...contextWithoutConnectorPermissionBaseline,
+      connectorPermissionBaseline: baselineResult.data,
+    },
+    connectorPermissionBaseline: {
+      kind: "valid",
+      value: baselineResult.data,
+    },
+  };
+}
+
 function preparedSecretValuesForRunner(
   storedContext: StoredExecutionContext,
 ): PreparedSecretValuesResult {
@@ -1184,6 +1230,7 @@ async function refreshClaimNetworkPolicies(args: {
   readonly db: Db;
   readonly run: ClaimedRun;
   readonly storedContext: StoredExecutionContext;
+  readonly connectorPermissionBaseline: ConnectorPermissionBaselineRead;
   readonly timing: ClaimRouteTimingCollector;
 }): Promise<
   Pick<StoredExecutionContext, "networkPolicies" | "networkPolicyRefreshes">
@@ -1226,17 +1273,17 @@ async function refreshClaimNetworkPolicies(args: {
     };
 
     const selectRefresh = async () => {
-      if (args.storedContext.connectorPermissionBaseline === undefined) {
+      if (args.connectorPermissionBaseline.kind === "missing") {
         return await fullRefresh("full_missing_baseline");
       }
-      const baselineResult = storedConnectorPermissionBaselineSchema.safeParse(
-        args.storedContext.connectorPermissionBaseline,
-      );
+      if (args.connectorPermissionBaseline.kind === "invalid") {
+        return await fullRefresh("full_invalid_baseline");
+      }
+      const baseline = args.connectorPermissionBaseline.value;
       if (
-        !baselineResult.success ||
         !connectorPermissionBaselineMatchesStoredContext(
           args.storedContext,
-          baselineResult.data,
+          baseline,
         )
       ) {
         return await fullRefresh("full_invalid_baseline");
@@ -1244,7 +1291,7 @@ async function refreshClaimNetworkPolicies(args: {
       const resolution = await resolveActiveNetworkPolicyRefreshesFromBaseline(
         args.db,
         scope,
-        baselineResult.data,
+        baseline,
       );
       if (resolution.kind === "incompatible") {
         return await fullRefresh("full_incompatible_baseline");
@@ -1583,6 +1630,7 @@ async function buildClaimResponseBody(args: {
   readonly db: Db;
   readonly run: ClaimedRun;
   readonly storedContext: StoredExecutionContext;
+  readonly connectorPermissionBaseline: ConnectorPermissionBaselineRead;
   readonly timing: ClaimRouteTimingCollector;
   readonly signal: AbortSignal;
   readonly loadIdentityRepresentation: (
@@ -1629,6 +1677,7 @@ async function buildClaimResponseBody(args: {
             db: args.db,
             run: args.run,
             storedContext: args.storedContext,
+            connectorPermissionBaseline: args.connectorPermissionBaseline,
             timing: args.timing,
           }),
         ]);
@@ -1689,6 +1738,7 @@ const buildClaimResponseBodyForClaim$ = command(
       readonly db: Db;
       readonly run: ClaimedRun;
       readonly storedContext: StoredExecutionContext;
+      readonly connectorPermissionBaseline: ConnectorPermissionBaselineRead;
       readonly timing: ClaimRouteTimingCollector;
       readonly signal: AbortSignal;
     },
@@ -1697,6 +1747,7 @@ const buildClaimResponseBodyForClaim$ = command(
       db: args.db,
       run: args.run,
       storedContext: args.storedContext,
+      connectorPermissionBaseline: args.connectorPermissionBaseline,
       timing: args.timing,
       signal: args.signal,
       loadIdentityRepresentation(hash: string) {
@@ -2115,9 +2166,10 @@ const claimAuthorizedJob$ = command(
     const run = jobWithRun.run;
 
     const contextParseStartedAt = now();
-    const storedContextResult = storedExecutionContextSchema.safeParse(
-      jobWithRun.job.executionContext,
-    );
+    const storedContextResult =
+      compatibleStoredExecutionContextSchema.safeParse(
+        jobWithRun.job.executionContext,
+      );
     claimRouteTiming.recordElapsed(
       "claim_route_context_parse",
       "top_level",
@@ -2140,13 +2192,15 @@ const claimAuthorizedJob$ = command(
         },
       });
     }
-    const storedContext = storedContextResult.data;
+    const { context: storedContext, connectorPermissionBaseline } =
+      decodeCompatibleStoredExecutionContext(storedContextResult.data);
 
     const responseBodyResult = await settle(
       set(buildClaimResponseBodyForClaim$, {
         db,
         run,
         storedContext,
+        connectorPermissionBaseline,
         timing: claimRouteTiming,
         signal,
       }),
