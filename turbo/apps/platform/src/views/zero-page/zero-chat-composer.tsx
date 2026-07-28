@@ -178,6 +178,7 @@ import {
   ZERO_DESKTOP_UNSUPPORTED_INTEL_MAC_LABEL,
 } from "../../signals/zero-page/computer-use-hosts.ts";
 import type { ComposerConnectorSignals } from "../../signals/zero-page/zero-connectors.ts";
+import type { AgentConnectorAuthorizations } from "../../signals/zero-page/agent-connector-authorizations.ts";
 import { applyUserPermissionGrants$ } from "../../signals/permission-allow/permission-allow-signals.ts";
 import { activeUserPermissionGrantSnapshot } from "../../signals/user-permission-grants.ts";
 import { savePermissionDraftPolicies } from "../../signals/zero-page/settings/permission-grant-save.ts";
@@ -365,6 +366,12 @@ export interface ZeroChatComposerProps {
   activeGoal?: ActiveGoalComposerItem;
   /** Cancels the active goal through the goal API. */
   onCancelActiveGoal?: () => void;
+}
+
+export interface ComposerConnectorReadState {
+  readonly catalogItems: Loadable<readonly PublicConnectorCatalogStatusItem[]>;
+  readonly agentId: Loadable<string | null>;
+  readonly authorizations: Loadable<AgentConnectorAuthorizations | null>;
 }
 
 export interface QueuedComposerItem {
@@ -6595,45 +6602,89 @@ function nullToUndefined<T>(value: T | null): T | undefined {
   return value === null ? undefined : value;
 }
 
+function equalAgentConnectorAuthorizations(
+  left: AgentConnectorAuthorizations | null,
+  right: AgentConnectorAuthorizations | null,
+): boolean {
+  if (left === null || right === null) {
+    return left === right;
+  }
+  return (
+    left.agentId === right.agentId &&
+    equalArrays(left.enabledTypes, right.enabledTypes)
+  );
+}
+
+export function useComposerConnectorReadState(
+  composerConnectors: ComposerConnectorSignals,
+): ComposerConnectorReadState {
+  return {
+    catalogItems: useLastLoadable(allConnectorCatalogItems$),
+    agentId: useLoadable(composerConnectors.agentId$),
+    authorizations: useLastLoadable(composerConnectors.authorizations$, {
+      equalityFn: equalAgentConnectorAuthorizations,
+    }),
+  };
+}
+
+function matchingAuthorizedConnectorRefs(
+  agentId: Loadable<string | null>,
+  authorizations: Loadable<AgentConnectorAuthorizations | null>,
+): readonly ConnectorRef[] | null {
+  if (agentId.state !== "hasData" || authorizations.state !== "hasData") {
+    return null;
+  }
+  if (agentId.data === null) {
+    return authorizations.data === null ? [] : null;
+  }
+  if (authorizations.data?.agentId !== agentId.data) {
+    return null;
+  }
+  return authorizations.data.enabledTypes;
+}
+
 // The thread route invokes this hook from its ccstate-connected composer so
 // dynamic bindings do not cross another React component boundary. The agent
 // landing page uses the component wrapper below for its separate signal scope.
-export function useZeroChatComposer({
-  composer,
-  composerConnectors,
-  onSend,
-  onQueue,
-  sending,
-  queueWhileSending = false,
-  submissionLoading = false,
-  onCancel,
-  displayName,
-  className,
-  autoFocus,
-  enableMobileSingleLine = false,
-  draft,
-  composerFileInput$: composerFileInputProp$,
-  setComposerFileInput$: setComposerFileInputProp$,
-  chatThreadId,
-  onDraftChange,
-  actionsLoading = false,
-  modelPicker,
-  templatePicker,
-  onCreateWorkflowPrompt,
-  computerUse,
-  modelPickerLoading = false,
-  submitBlocker,
-  queuedItems,
-  onRemoveQueuedItem,
-  workflowEventItems,
-  onRemoveWorkflowEvent,
-  workflowEventsPaused = false,
-  workflowEventsPauseReason,
-  onSetWorkflowEventsPaused,
-  onClearWorkflowEvents,
-  activeGoal,
-  onCancelActiveGoal,
-}: ZeroChatComposerProps) {
+export function useZeroChatComposer(
+  {
+    composer,
+    composerConnectors,
+    onSend,
+    onQueue,
+    sending,
+    queueWhileSending = false,
+    submissionLoading = false,
+    onCancel,
+    displayName,
+    className,
+    autoFocus,
+    enableMobileSingleLine = false,
+    draft,
+    composerFileInput$: composerFileInputProp$,
+    setComposerFileInput$: setComposerFileInputProp$,
+    chatThreadId,
+    onDraftChange,
+    actionsLoading = false,
+    modelPicker,
+    templatePicker,
+    onCreateWorkflowPrompt,
+    computerUse,
+    modelPickerLoading = false,
+    submitBlocker,
+    queuedItems,
+    onRemoveQueuedItem,
+    workflowEventItems,
+    onRemoveWorkflowEvent,
+    workflowEventsPaused = false,
+    workflowEventsPauseReason,
+    onSetWorkflowEventsPaused,
+    onClearWorkflowEvents,
+    activeGoal,
+    onCancelActiveGoal,
+  }: ZeroChatComposerProps,
+  connectorReadState: ComposerConnectorReadState,
+) {
   const showAddDialog = useGet(composerConnectors.showAddDialog$);
   const setShowAddDialog = useSet(composerConnectors.setShowAddDialog$);
   const openGoalDialog = useSet(openChatThreadGoalDialog$);
@@ -6782,13 +6833,9 @@ export function useZeroChatComposer({
   };
 
   // Connectors: connected (org-level) + authorized (agent-level) → available
-  const connectorCatalogItemsLoadable = useLastLoadable(
-    allConnectorCatalogItems$,
-  );
-  const authorizedConnectorsLoadable = useLastLoadable(
-    composerConnectors.authorizedConnectors$,
-    { equalityFn: equalArrays },
-  );
+  const connectorCatalogItemsLoadable = connectorReadState.catalogItems;
+  const agentIdLoadable = connectorReadState.agentId;
+  const authorizationsLoadable = connectorReadState.authorizations;
   const pageSignal = useGet(pageSignal$);
   const selectedConnectorRef = useGet(composerConnectors.selectedConnectorRef$);
   const pendingConnectorRef = useGet(composerConnectors.pendingConnectorRef$);
@@ -6813,13 +6860,16 @@ export function useZeroChatComposer({
   const setSavingConnectorRef = useSet(
     composerConnectors.setSavingConnectorRef$,
   );
-  const agentRecordId = loadableDataOrNull(
-    useLastLoadable(composerConnectors.agentId$),
+  const agentRecordId = loadableDataOrNull(agentIdLoadable);
+
+  const authorizedConnectors = matchingAuthorizedConnectorRefs(
+    agentIdLoadable,
+    authorizationsLoadable,
   );
 
   const connectorsLoading =
     connectorCatalogItemsLoadable.state !== "hasData" ||
-    authorizedConnectorsLoadable.state !== "hasData";
+    authorizedConnectors === null;
 
   const connectorCatalogItems =
     connectorCatalogItemsLoadable.state === "hasData"
@@ -6830,11 +6880,7 @@ export function useZeroChatComposer({
       return [connector.connectorRef, connector];
     }),
   );
-  const authorizedConnectors =
-    authorizedConnectorsLoadable.state === "hasData"
-      ? authorizedConnectorsLoadable.data
-      : [];
-  const authorizedSet = new Set(authorizedConnectors);
+  const authorizedSet = new Set(authorizedConnectors ?? []);
 
   const unconnectedConnectors = connectorCatalogItems.filter((connector) => {
     return (
@@ -7242,5 +7288,8 @@ export function useZeroChatComposer({
 }
 
 export function ZeroChatComposer(props: ZeroChatComposerProps) {
-  return useZeroChatComposer(props);
+  const connectorReadState = useComposerConnectorReadState(
+    props.composerConnectors,
+  );
+  return useZeroChatComposer(props, connectorReadState);
 }

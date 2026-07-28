@@ -1,4 +1,4 @@
-import { command, type Command } from "ccstate";
+import { command, computed, type Command } from "ccstate";
 import type {
   ChatThreadDraft,
   GenerationTemplateRequest,
@@ -34,11 +34,28 @@ import { createRemoteChatThreadDataSource } from "./remote-chat-thread-data-sour
 import { setupChatThreadInitScroll$ } from "./setup-chat-thread-signals.ts";
 import { syncPrimaryThread$ } from "./sync-primary-thread.ts";
 import { autoOpenThreadSidebar$ } from "./thread-sidebar-coordinator.ts";
+import {
+  createComposerConnectorAuthorizationSignals,
+  type ComposerConnectorAuthorizationSignals,
+} from "../zero-page/zero-connectors.ts";
 
 export const SIDEBAR_PARAM = "sidebar";
 export { currentLeftThread$, currentRightThread$ };
 
 const L = logger("ChatPanes");
+
+const leftPaneAgentId$ = computed((get): string | null => {
+  const thread = get(currentLeftThread$);
+  return thread ? get(thread.agentId$) : null;
+});
+const rightPaneAgentId$ = computed((get): string | null => {
+  const thread = get(currentRightThread$);
+  return thread ? get(thread.agentId$) : null;
+});
+const leftPaneConnectorAuthorization =
+  createComposerConnectorAuthorizationSignals(leftPaneAgentId$);
+const rightPaneConnectorAuthorization =
+  createComposerConnectorAuthorizationSignals(rightPaneAgentId$);
 
 const resetLeftSetupSignal$ = resetSignal();
 const resetRightSetupSignal$ = resetSignal();
@@ -70,6 +87,7 @@ export const unloadRightThread$ = command(({ get, set }) => {
 interface PaneSpec {
   setPaneThread$: Command<void, [ChatThreadSignals | null]>;
   resetSetupSignal$: ReturnType<typeof resetSignal>;
+  connectorAuthorization: ComposerConnectorAuthorizationSignals;
 }
 
 interface RestoredDraftState {
@@ -230,13 +248,11 @@ const setupPaneThread$ = command(
     const inlineTemplatesEnabled =
       (features[FeatureSwitchKey.StructuredPrompt] ?? false) &&
       (features[FeatureSwitchKey.StructuredPromptInlineTemplates] ?? false);
-    const thread = createChatThreadSignals(
-      threadId,
-      draft,
-      dataSource,
+    const thread = createChatThreadSignals(threadId, draft, dataSource, {
       initialOptimisticEntries,
       inlineTemplatesEnabled,
-    );
+      connectorAuthorization: spec.connectorAuthorization,
+    });
     set(spec.setPaneThread$, thread);
 
     await set(
@@ -263,6 +279,7 @@ export const setupLeftThread$ = command(
         {
           setPaneThread$: setCurrentLeftThread$,
           resetSetupSignal$: resetLeftSetupSignal$,
+          connectorAuthorization: leftPaneConnectorAuthorization,
         },
         threadId,
         parentSignal,
@@ -282,6 +299,7 @@ export const setupRightThread$ = command(
       {
         setPaneThread$: setCurrentRightThread$,
         resetSetupSignal$: resetRightSetupSignal$,
+        connectorAuthorization: rightPaneConnectorAuthorization,
       },
       threadId,
       parentSignal,

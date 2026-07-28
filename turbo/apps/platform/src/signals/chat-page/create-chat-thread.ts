@@ -163,7 +163,10 @@ import {
   type BrowserSessionSignals,
 } from "./browser-session-block.ts";
 import { createChatThreadContainerSignals } from "./chat-thread-container.ts";
-import { createComposerConnectorSignals } from "../zero-page/zero-connectors.ts";
+import {
+  createComposerConnectorSignals,
+  type ComposerConnectorAuthorizationSignals,
+} from "../zero-page/zero-connectors.ts";
 import {
   messageDocumentToDisplayText,
   messageDocumentToPrompt,
@@ -4350,6 +4353,7 @@ function createThreadComposer(
   threadId: string,
   agentId$: Computed<string | null>,
   inlineTemplatesEnabled: boolean,
+  connectorAuthorization?: ComposerConnectorAuthorizationSignals,
 ) {
   const workflowComposer = createWorkflowComposerSignals(
     draft,
@@ -4359,7 +4363,10 @@ function createThreadComposer(
   );
   return {
     workflowComposer,
-    composerConnectors: createComposerConnectorSignals(agentId$),
+    composerConnectors: createComposerConnectorSignals(
+      agentId$,
+      connectorAuthorization,
+    ),
     focusInput$: workflowComposer.focus$,
   };
 }
@@ -4368,9 +4375,14 @@ export function createChatThreadSignals(
   threadId: string,
   draft: DraftSignals,
   dataSource: ChatThreadRemote = createRemoteChatThreadDataSource(threadId),
-  initialOptimisticEntries: readonly OptimisticChatMessageEntry[] = [],
-  inlineTemplatesEnabled = false,
+  options: {
+    readonly initialOptimisticEntries?: readonly OptimisticChatMessageEntry[];
+    readonly inlineTemplatesEnabled?: boolean;
+    readonly connectorAuthorization?: ComposerConnectorAuthorizationSignals;
+  } = {},
 ): ChatThreadSignals {
+  const initialOptimisticEntries = options.initialOptimisticEntries ?? [];
+  const inlineTemplatesEnabled = options.inlineTemplatesEnabled ?? false;
   const threadDraft$ = createRemoteThreadDraft(dataSource);
   const threadMeta$ = createThreadMeta(threadId);
   const threadTitle = createThreadTitleParts(threadMeta$);
@@ -4401,6 +4413,7 @@ export function createChatThreadSignals(
     threadId,
     threadOwned.agentId$,
     inlineTemplatesEnabled,
+    options.connectorAuthorization,
   );
   const artifact = createArtifacts(threadId);
   const previewImageUrlsByUrl$ = createArtifactPreviewImageUrls(
