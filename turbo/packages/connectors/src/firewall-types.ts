@@ -284,7 +284,7 @@ export const firewallApiSchema = z
       ctx.addIssue({
         code: "custom",
         path: ["auth"],
-        message: "MCP firewall V1 does not support authentication",
+        message: "MCP firewall does not support authentication",
       });
     }
     if (api.suppressBodyCapture !== true) {

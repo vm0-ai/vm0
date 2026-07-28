@@ -284,7 +284,7 @@ impl FirewallApi {
                 .is_some_and(|query| !query.is_empty())
             || self.auth.aws_sigv4.is_some()
         {
-            return Err("MCP firewall V1 does not support authentication".to_string());
+            return Err("MCP firewall does not support authentication".to_string());
         }
         if !self.suppress_body_capture {
             return Err("MCP firewall requires body capture suppression".to_string());
