@@ -1146,6 +1146,33 @@ fn cli_failure_reason_prefers_message_classification_over_carried_reason() {
 }
 
 #[test]
+fn cli_failure_reason_preserves_structured_safety_policy_refusal() {
+    let diagnostic = FailureDiagnostic::new(
+        FailureClass::CliNonzero,
+        AgentFramework::Codex,
+        PromptMetadata::from_prompt("debug failure"),
+    )
+    .with_cli_exit_code(1)
+    .with_failure_detail_source(FailureDetailSource::CodexJsonl);
+    let failure_message = selected_failure_message(
+        "This request was refused by the provider.",
+        FailureDetailSource::CodexJsonl,
+        Some(FailureReason::SafetyPolicyRefusal),
+    );
+    let diagnostic = with_cli_failure_reason(diagnostic, &failure_message);
+
+    assert_eq!(diagnostic.failure_class, FailureClass::CliNonzero);
+    assert_eq!(
+        diagnostic.failure_reason,
+        Some(FailureReason::SafetyPolicyRefusal)
+    );
+    assert_eq!(
+        diagnostic.failure_detail_source,
+        Some(FailureDetailSource::CodexJsonl)
+    );
+}
+
+#[test]
 fn cli_failure_reason_ignores_non_codex_invalid_api_key_text() {
     let reason = classify_cli_failure_reason(
         AgentFramework::ClaudeCode,
