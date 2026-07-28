@@ -571,19 +571,18 @@ async def prepare_request(flow: http.HTTPFlow, *, request_end_stream: bool) -> N
             joined_prefetch = in_flight.prefetch_owner and not is_prefetch
             in_flight.waiters += 1
             try:
-                try:
-                    completed_entry = await asyncio.wait_for(
-                        asyncio.shield(in_flight.future),
-                        timeout=remaining_wait_seconds,
-                    )
-                except TimeoutError:
-                    _set_telemetry(
-                        flow,
-                        "model_catalog_bypass",
-                        bypass_reason="request_capacity",
-                        entry_age_ms=entry_age_ms,
-                    )
-                    return
+                completed_entry = await asyncio.wait_for(
+                    asyncio.shield(in_flight.future),
+                    timeout=remaining_wait_seconds,
+                )
+            except TimeoutError:
+                _set_telemetry(
+                    flow,
+                    "model_catalog_bypass",
+                    bypass_reason="request_capacity",
+                    entry_age_ms=entry_age_ms,
+                )
+                return
             finally:
                 in_flight.waiters -= 1
             if completed_entry is None:
