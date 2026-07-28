@@ -1,5 +1,5 @@
 import { command } from "ccstate";
-import { and, asc, desc, eq, inArray, lte, or, sql } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, lt, lte, or, sql } from "drizzle-orm";
 import type {
   ArtifactCatalogKind,
   ArtifactDetail,
@@ -245,7 +245,10 @@ async function upsertArtifact(args: UpsertArtifactArgs): Promise<void> {
         thumbnail: args.thumbnail,
         updatedAt: nowDate(),
       },
-      setWhere: sql`(${artifacts.projectionCreatedAt}, ${artifacts.projectionFileId}) <= (excluded.projection_created_at, excluded.projection_file_id)`,
+      setWhere: lte(
+        sql`(${artifacts.projectionCreatedAt}, ${artifacts.projectionFileId})`,
+        sql`(excluded.projection_created_at, excluded.projection_file_id)`,
+      ),
     });
 }
 
@@ -753,7 +756,10 @@ export const listArtifactCatalog$ = command(
             ? chatThreadFilter(db, args.chatThreadId)
             : undefined,
           cursor
-            ? sql`(${artifacts.createdAt}, ${artifacts.id}) < (${cursor.createdAt}::timestamptz AT TIME ZONE 'UTC', ${cursor.id}::uuid)`
+            ? lt(
+                sql`(${artifacts.createdAt}, ${artifacts.id})`,
+                sql`(${cursor.createdAt}::timestamptz AT TIME ZONE 'UTC', ${cursor.id}::uuid)`,
+              )
             : undefined,
         ),
       )

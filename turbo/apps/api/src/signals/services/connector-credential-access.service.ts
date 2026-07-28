@@ -150,10 +150,13 @@ function connectorIdentityExists(
           eq(credentialAccessConnector.storageVersion, access.storageVersion),
           connectorStateRevision === undefined
             ? undefined
-            : sql`(
-                EXTRACT(EPOCH FROM ${credentialAccessConnector.updatedAt})
-                * 1000000
-              )::bigint = ${connectorStateRevision}`,
+            : eq(
+                sql`(
+                  EXTRACT(EPOCH FROM ${credentialAccessConnector.updatedAt})
+                  * 1000000
+                )::bigint`,
+                connectorStateRevision,
+              ),
         ),
       ),
   );

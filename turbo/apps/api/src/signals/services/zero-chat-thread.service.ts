@@ -1636,8 +1636,14 @@ async function listChangedArtifacts(args: {
     visible_runs.metadata_updated_at
   )`;
   const lowerBoundClause = args.cursor
-    ? sql`(${effectiveUpdatedAt}, ${runUploadedFiles.id}) > (${args.cursor.updatedAt}::timestamptz AT TIME ZONE 'UTC', ${args.cursor.rowId}::uuid)`
-    : sql`${effectiveUpdatedAt} >= (${args.updatedAfter}::timestamptz AT TIME ZONE 'UTC') - (${ARTIFACT_SYNC_REPLAY_WINDOW_MINUTES} * interval '1 minute')`;
+    ? gt(
+        sql`(${effectiveUpdatedAt}, ${runUploadedFiles.id})`,
+        sql`(${args.cursor.updatedAt}::timestamptz AT TIME ZONE 'UTC', ${args.cursor.rowId}::uuid)`,
+      )
+    : gte(
+        effectiveUpdatedAt,
+        sql`(${args.updatedAfter}::timestamptz AT TIME ZONE 'UTC') - (${ARTIFACT_SYNC_REPLAY_WINDOW_MINUTES} * interval '1 minute')`,
+      );
   const callerConditions = artifactCallerVisibilityConditions(args.query);
   const fileConditions = artifactFileVisibilityConditions(args.db);
   const rows = await executeRawRows(
@@ -1747,7 +1753,10 @@ async function listArtifactHistory(args: {
   // The full path returns visible rows. IndexedDB owns stable-ID merging and
   // hosted-run shadowing, so this query avoids a history-wide URL sort.
   const keysetCondition = args.cursor
-    ? sql`(${runUploadedFiles.createdAt}, ${runUploadedFiles.id}) < (${args.cursor.createdAt}::timestamptz AT TIME ZONE 'UTC', ${args.cursor.rowId}::uuid)`
+    ? lt(
+        sql`(${runUploadedFiles.createdAt}, ${runUploadedFiles.id})`,
+        sql`(${args.cursor.createdAt}::timestamptz AT TIME ZONE 'UTC', ${args.cursor.rowId}::uuid)`,
+      )
     : undefined;
   const conditions = artifactVisibilityConditions(args.db, args.query);
   const rows: ArtifactListRow[] = await args.db

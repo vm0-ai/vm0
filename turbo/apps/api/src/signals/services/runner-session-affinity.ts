@@ -145,18 +145,24 @@ export function runnerSessionAffinityPollPriority(args: {
   const hasGlobalWorkspace = global(workspaceCondition);
   const hasLocalWorkspace = local(workspaceCondition);
   return sql`CASE
-    WHEN ${gt(runnerJobQueue.createdAt, generationProtectedAfter)}
-    AND ${isNotNull(runnerJobQueue.cliAgentSessionId)}
-    AND ${isNotNull(targetGenerationRunId)}
-    AND ${hasGlobalExact}
+    WHEN ${and(
+      gt(runnerJobQueue.createdAt, generationProtectedAfter),
+      isNotNull(runnerJobQueue.cliAgentSessionId),
+      isNotNull(targetGenerationRunId),
+      hasGlobalExact,
+    )}
     THEN CASE WHEN ${hasLocalExact} THEN 5 ELSE 0 END
-    WHEN ${gt(runnerJobQueue.createdAt, protectedAfter)}
-    AND ${isNotNull(runnerJobQueue.cliAgentSessionId)}
-    AND ${hasGlobalReusable}
+    WHEN ${and(
+      gt(runnerJobQueue.createdAt, protectedAfter),
+      isNotNull(runnerJobQueue.cliAgentSessionId),
+      hasGlobalReusable,
+    )}
     THEN CASE WHEN ${hasLocalReusable} THEN 4 ELSE 0 END
-    WHEN ${gt(runnerJobQueue.createdAt, protectedAfter)}
-    AND ${isNotNull(runnerJobQueue.cliAgentSessionId)}
-    AND ${hasGlobalWorkspace}
+    WHEN ${and(
+      gt(runnerJobQueue.createdAt, protectedAfter),
+      isNotNull(runnerJobQueue.cliAgentSessionId),
+      hasGlobalWorkspace,
+    )}
     THEN CASE
       WHEN ${hasLocalReusable} THEN 4
       WHEN ${hasLocalWorkspace} THEN 3

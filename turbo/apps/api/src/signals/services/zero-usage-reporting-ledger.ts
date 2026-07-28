@@ -219,7 +219,9 @@ function coalesceRunTotal(column: SQLWrapper, alias: string) {
 }
 
 function usageCreditsSum(usage: FinalizedUsageRelation, alias: string) {
-  return sql`COALESCE(SUM(${usage.creditsCharged} + ${usage.allowanceUnits}), 0)::bigint`
+  return sql`COALESCE(${sum(
+    sql`${usage.creditsCharged} + ${usage.allowanceUnits}`,
+  )}, 0)::bigint`
     .mapWith(pgInt8ToSafeIntegerDecoder)
     .as(alias);
 }

@@ -160,6 +160,19 @@ const directQuery = `
   \`
 `;
 
+const safeDirectQuery = `
+  sql\`
+    SELECT \${runs.id} AS "id"
+    FROM \${runs}
+    WHERE \${eq(runs.threadId, threadId)}
+    LIMIT 1
+  \`
+`;
+
+const opaqueQuery = `
+  sql\`SELECT pg_advisory_xact_lock(\${threadId})\`
+`;
+
 const joinedHistoryQuery = `
   sql\`
     SELECT
@@ -205,7 +218,7 @@ const runnerLockingQuery = `
   sql\`
     SELECT
       \${runs.id} AS "runId",
-      \${runs.threadId} > 0 AS "isExpired"
+      \${gt(runs.threadId, sql\`0\`)} AS "isExpired"
     FROM \${runs}
     WHERE \${eq(runs.id, threadId)}
     FOR UPDATE
@@ -648,7 +661,7 @@ const queryBuilderCases = {
     },
     {
       code: `${unnestUpdatePreamble}
-        import { sql } from "drizzle-orm";
+        import { eq, sql } from "drizzle-orm";
         const customExecutor = {
           async execute(query: unknown) {
             return query;
@@ -658,7 +671,7 @@ const queryBuilderCases = {
           UPDATE \${allowanceWindows}
           SET consumed_units = consumption.units_applied
           FROM unnest(\${sql.param(windowIds)}::uuid[]) AS consumption(window_id)
-          WHERE \${allowanceWindows.id} = consumption.window_id
+          WHERE \${eq(allowanceWindows.id, sql\`consumption.window_id\`)}
         \`);
       `,
     },
@@ -1455,27 +1468,27 @@ const queryBuilderCases = {
       code: `${schemaPreamble}
         import { eq, sql } from "drizzle-orm";
         async function executeRawRows(...args: unknown[]) { return args; }
-        await executeRawRows(db, ${directQuery}, rowSchema);
+        await executeRawRows(db, ${safeDirectQuery}, rowSchema);
       `,
     },
     {
       code: `${schemaPreamble}
         import { eq, sql } from "drizzle-orm";
         import { executeRawRows } from "./other/db-raw-rows";
-        await executeRawRows(db, ${directQuery}, rowSchema);
+        await executeRawRows(db, ${safeDirectQuery}, rowSchema);
       `,
     },
     {
       code: `${schemaPreamble}
         import { eq, sql } from "drizzle-orm";
         import { executeRawRows } from "@fake/lib/db-raw-rows";
-        await executeRawRows(db, ${directQuery}, rowSchema);
+        await executeRawRows(db, ${safeDirectQuery}, rowSchema);
       `,
     },
     {
       code: `${rawRowsImport}${schemaPreamble}
-        import { eq, sql } from "drizzle-orm";
-        const query = ${directQuery};
+        import { sql } from "drizzle-orm";
+        const query = ${opaqueQuery};
         await executeRawRows(db, query, rowSchema);
       `,
     },
@@ -1486,7 +1499,7 @@ const queryBuilderCases = {
         function runLocal(
           decodeRows: (...args: unknown[]) => unknown,
         ) {
-          return decodeRows(db, ${directQuery}, rowSchema);
+          return decodeRows(db, ${safeDirectQuery}, rowSchema);
         }
         runLocal(() => undefined);
       `,
@@ -1982,7 +1995,7 @@ const queryBuilderCases = {
     },
     {
       code: `${schemaPreamble}
-        import { eq, sql } from "drizzle-orm";
+        import { eq, gt, sql } from "drizzle-orm";
         async function executeRawRows(...args: unknown[]) { return args; }
         await executeRawRows(db, ${runnerLockingQuery}, rowSchema);
       `,
@@ -1993,6 +2006,7 @@ const queryBuilderCases = {
           return { strings, values };
         }
         const eq = (...values: unknown[]) => values;
+        const gt = (...values: unknown[]) => values;
         await executeRawRows(db, ${runnerLockingQuery}, rowSchema);
       `,
     },
@@ -2557,16 +2571,16 @@ const queryBuilderCases = {
     },
     {
       code: `${deletePreamble}
-        import { sql } from "drizzle-orm";
+        import { gt, lte, sql } from "drizzle-orm";
         declare const firstPredicate: boolean;
         const query = firstPredicate
           ? sql\`
               DELETE FROM \${cleanupRows}
-              WHERE \${cleanupRows.expiresAt} <= \${cutoff}
+              WHERE \${lte(cleanupRows.expiresAt, cutoff)}
             \`
           : sql\`
               DELETE FROM \${cleanupRows}
-              WHERE \${cleanupRows.id} > \${0}
+              WHERE \${gt(cleanupRows.id, 0)}
             \`;
         await db.execute(query);
       `,
@@ -2628,7 +2642,7 @@ const queryBuilderCases = {
     },
     {
       code: `${rawRowsImport}${schemaPreamble}
-        import { eq, sql, type SQL } from "drizzle-orm";
+        import { eq, gt, sql, type SQL } from "drizzle-orm";
         const query: SQL = ${runnerLockingQuery};
         await executeRawRows(db, query, rowSchema);
       `,
@@ -2652,7 +2666,11 @@ const queryBuilderCases = {
           WHERE \${cacheRows.cacheKey} = locked.cache_key
         \`);
       `,
-      errors: [{ messageId: "lockingCteUpdateQueryBuilder" }],
+      errors: [
+        { messageId: "lockingCteUpdateQueryBuilder" },
+        { messageId: "typedApi", data: { helper: "and" } },
+        { messageId: "typedApi", data: { helper: "eq" } },
+      ],
     },
     {
       code: `${lockingCteUpdatePreamble}
@@ -2672,7 +2690,12 @@ const queryBuilderCases = {
           WHERE \${cacheRows.cacheKey} = locked.cache_key;
         \`);
       `,
-      errors: [{ messageId: "lockingCteUpdateQueryBuilder" }],
+      errors: [
+        { messageId: "lockingCteUpdateQueryBuilder" },
+        { messageId: "typedApi", data: { helper: "and" } },
+        { messageId: "typedApi", data: { helper: "asc" } },
+        { messageId: "typedApi", data: { helper: "eq" } },
+      ],
     },
     {
       code: `${lockingCteUpdatePreamble}
@@ -2692,7 +2715,12 @@ const queryBuilderCases = {
           WHERE \${cacheRows.cacheKey} = locked.cache_key
         \`);
       `,
-      errors: [{ messageId: "lockingCteUpdateQueryBuilder" }],
+      errors: [
+        { messageId: "lockingCteUpdateQueryBuilder" },
+        { messageId: "typedApi", data: { helper: "and" } },
+        { messageId: "typedApi", data: { helper: "desc" } },
+        { messageId: "typedApi", data: { helper: "eq" } },
+      ],
     },
     {
       code: `${unnestUpdatePreamble}
@@ -2709,7 +2737,10 @@ const queryBuilderCases = {
           WHERE \${allowanceWindows.id} = consumption.window_id
         \`);
       `,
-      errors: [{ messageId: "unnestUpdateQueryBuilder" }],
+      errors: [
+        { messageId: "unnestUpdateQueryBuilder" },
+        { messageId: "typedApi", data: { helper: "eq" } },
+      ],
     },
     {
       code: `${unnestUpdatePreamble}
@@ -2729,7 +2760,10 @@ const queryBuilderCases = {
           WHERE \${usageEvents.id} = settlement.usage_event_id
         \`);
       `,
-      errors: [{ messageId: "unnestUpdateQueryBuilder" }],
+      errors: [
+        { messageId: "unnestUpdateQueryBuilder" },
+        { messageId: "typedApi", data: { helper: "eq" } },
+      ],
     },
     {
       code: `${unnestUpdatePreamble}
@@ -2744,7 +2778,10 @@ const queryBuilderCases = {
           WHERE \${allowanceWindows.id} = consumption.window_id;
         \`);
       `,
-      errors: [{ messageId: "unnestUpdateQueryBuilder" }],
+      errors: [
+        { messageId: "unnestUpdateQueryBuilder" },
+        { messageId: "typedApi", data: { helper: "eq" } },
+      ],
     },
     {
       code: `${unnestUpdatePreamble}
@@ -2760,7 +2797,10 @@ const queryBuilderCases = {
           WHERE \${allowanceWindows.id} = consumption.window_id
         \`);
       `,
-      errors: [{ messageId: "unnestUpdateQueryBuilder" }],
+      errors: [
+        { messageId: "unnestUpdateQueryBuilder" },
+        { messageId: "typedApi", data: { helper: "eq" } },
+      ],
     },
     {
       code: `${unnestUpdatePreamble}
@@ -2775,7 +2815,10 @@ const queryBuilderCases = {
           WHERE \${allowanceWindows.id} = consumption.window_id
         \`);
       `,
-      errors: [{ messageId: "unnestUpdateQueryBuilder" }],
+      errors: [
+        { messageId: "unnestUpdateQueryBuilder" },
+        { messageId: "typedApi", data: { helper: "eq" } },
+      ],
     },
     {
       code: `
@@ -2853,14 +2896,16 @@ const queryBuilderCases = {
     },
     {
       code: `${deletePreamble}
-        import { gte, inArray, lt, sql } from "drizzle-orm";
+        import { and, gte, inArray, lt, sql } from "drizzle-orm";
         declare const windowStart: Date;
         declare const windowEnd: Date;
         await db.execute(sql\`
           DELETE FROM \${cleanupRows}
-          WHERE \${gte(cleanupRows.expiresAt, windowStart)}
-            AND \${lt(cleanupRows.expiresAt, windowEnd)}
-            AND \${inArray(cleanupRows.id, [1, 2])}
+          WHERE \${and(
+            gte(cleanupRows.expiresAt, windowStart),
+            lt(cleanupRows.expiresAt, windowEnd),
+            inArray(cleanupRows.id, [1, 2]),
+          )}
         \`);
       `,
       errors: [{ messageId: "deleteQueryBuilder" }],
@@ -3100,14 +3145,24 @@ const queryBuilderCases = {
         import { desc, eq, sql } from "drizzle-orm";
         await executeRawRows(db, ${joinedHistoryQuery}, rowSchema);
       `,
-      errors: [{ messageId: "queryBuilder" }],
+      errors: [
+        { messageId: "queryBuilder" },
+        { messageId: "typedApi", data: { helper: "eq" } },
+        { messageId: "typedApi", data: { helper: "and" } },
+      ],
     },
     {
       code: `${rawRowsImport}${schemaPreamble}
         import { eq, sql } from "drizzle-orm";
         await executeRawRows(db, ${joinedExistsQuery}, rowSchema);
       `,
-      errors: [{ messageId: "existsQueryBuilder" }],
+      errors: [
+        {
+          messageId: "existencePredicate",
+          data: { helper: "exists" },
+        },
+        { messageId: "existsQueryBuilder" },
+      ],
     },
     {
       code: `${rawRowsImport}${schemaPreamble}
@@ -3129,7 +3184,7 @@ const queryBuilderCases = {
     },
     {
       code: `${rawRowsImport}${schemaPreamble}
-        import { eq, sql } from "drizzle-orm";
+        import { eq, gt, sql } from "drizzle-orm";
         await executeRawRows(db, ${runnerLockingQuery}, rowSchema);
       `,
       errors: [{ messageId: "lockingQueryBuilder" }],

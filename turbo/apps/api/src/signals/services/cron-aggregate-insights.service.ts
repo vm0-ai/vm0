@@ -19,6 +19,7 @@ import {
   lt,
   max,
   sql,
+  sum,
 } from "drizzle-orm";
 
 import {
@@ -947,10 +948,11 @@ async function queryFinalizedUsageCreditRows(
         sql`CASE WHEN ${isRunless} THEN ${OTHER_USAGE_AGENT_NAME} ELSE COALESCE(${zeroAgents.displayName}, ${zeroAgents.name}, 'Unknown agent') END`
           .mapWith(pgTextDecoder)
           .as("agent_name"),
-      credits:
-        sql`COALESCE(SUM(${usage.creditsCharged} + ${usage.allowanceUnits}), 0)::bigint`
-          .mapWith(pgInt8ToSafeIntegerDecoder)
-          .as("credits"),
+      credits: sql`COALESCE(${sum(
+        sql`${usage.creditsCharged} + ${usage.allowanceUnits}`,
+      )}, 0)::bigint`
+        .mapWith(pgInt8ToSafeIntegerDecoder)
+        .as("credits"),
     })
     .from(usage)
     .leftJoin(agentRuns, eq(usage.runId, agentRuns.id))
