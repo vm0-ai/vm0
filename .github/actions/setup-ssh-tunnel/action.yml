@@ -64,6 +64,12 @@ runs:
         echo "$SSH_KEY" > "$HOME/.ssh/runner.pem"
         chmod 600 "$HOME/.ssh/runner.pem"
 
+        # Ansible expands ~ from the system account rather than the HOME
+        # provided by GitHub container jobs. Point it at the shared master
+        # socket created below so both clients use the same connection.
+        printf 'ANSIBLE_SSH_CONTROL_PATH=%s\n' \
+          "$HOME/.ssh/vm0-ssh-%%C" >> "$GITHUB_ENV"
+
         # Store credentials in a restricted file sourced by the proxy script,
         # so they don't appear in SSH config or process listings.
         printf 'export CF_ACCESS_CLIENT_ID="%s"\nexport CF_ACCESS_CLIENT_SECRET="%s"\n' \
