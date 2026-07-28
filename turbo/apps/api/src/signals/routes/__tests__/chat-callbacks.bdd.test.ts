@@ -2783,7 +2783,6 @@ describe("CHAT-02: auto-send after failures", () => {
         "api_dispatch_pre_create_zero_chat_callback_auto_send_lookup_queued_message",
         "api_dispatch_pre_create_zero_chat_callback_auto_send_load_agent",
         "api_dispatch_pre_create_zero_chat_callback_auto_send_build_input",
-        "api_dispatch_pre_create_zero_chat_callback_auto_send_resolve_attachments",
         "api_dispatch_pre_create_zero_chat_callback_auto_send_create_run",
         "api_dispatch_pre_create_zero_chat_callback_auto_send_publish_signals",
       ],
