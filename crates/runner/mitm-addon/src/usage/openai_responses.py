@@ -14,8 +14,7 @@ model-provider usage billing:
   ``inspect_openai_responses_event_json`` and
   ``extract_openai_responses_usage_from_event``, consumed by
   ``mitm_addon.py`` and ``response_streaming.py`` for Responses events received
-  over upgrades. ``extract_openai_responses_usage_from_event_json`` remains the
-  one-shot entry point.
+  over upgrades.
 - Per-event usage aggregation via ``merge_openai_responses_usage_result``,
   used by ``response_streaming.py`` to fold terminal SSE and WebSocket event
   usage into a per-flow accumulator.
@@ -722,17 +721,6 @@ def extract_openai_responses_usage_with_error_from_json(
         if decompress_error:
             return None, decompress_error
     return _extract_openai_responses_usage_from_decoded_json_body(body)
-
-
-def extract_openai_responses_usage_from_event_json(body: bytes) -> dict | None:
-    """Extract usage from a complete Responses event JSON object.
-
-    Codex can receive Responses API events over a WebSocket upgrade.  In that
-    path each server frame is already one JSON event rather than an SSE
-    ``event:`` / ``data:`` envelope, so reuse the SSE field map and event gate
-    directly.
-    """
-    return extract_openai_responses_usage_from_event(inspect_openai_responses_event_json(body))
 
 
 def extract_openai_responses_usage_from_event(
