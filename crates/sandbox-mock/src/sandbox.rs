@@ -13,7 +13,7 @@ use crate::call_records::{
     CopyFileCall, ExecCall, ProcessCancelCall, ProcessControlCall, ReadFileCall, StartProcessCall,
     WaitProcessCall, WriteFileCall, WriteFilesCall,
 };
-use crate::lifecycle::{MockLifecycleGate, wait_blocking_gate};
+use crate::lifecycle::{MockLifecycleGate, wait_lifecycle_gate};
 use crate::overrides::MockSandboxOverrides;
 use crate::support::{
     LockIgnoringPoison, MOCK_COPY_FILE_MAX_BYTES, validate_mock_copy_host_path,
@@ -313,7 +313,7 @@ impl Sandbox for MockSandbox {
             return Ok(SandboxParkOutcome::Reusable);
         };
         *o.lifecycle.park_calls.lock_ignoring_poison() += 1;
-        wait_blocking_gate(&o.lifecycle.park_gate).await;
+        wait_lifecycle_gate(&o.lifecycle.park_gate).await;
         o.lifecycle
             .park_behaviors
             .next_result(SandboxParkOutcome::Reusable)
