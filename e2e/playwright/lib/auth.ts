@@ -60,8 +60,6 @@ export async function signInWithClerkTestingHelper(
     await page.evaluate(async (organizationId) => {
       await window.Clerk?.setActive({ organization: organizationId });
     }, options.activeOrganizationId);
-    await gotoAboutBlankAfterClerkNavigation(page);
-    await page.goto(helperUrl.toString(), { waitUntil: "domcontentloaded" });
     await page.waitForFunction(
       () => Boolean(window.Clerk?.loaded && window.Clerk?.session),
       undefined,
