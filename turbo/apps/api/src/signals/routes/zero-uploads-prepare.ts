@@ -67,13 +67,14 @@ const prepareUploadInner$ = command(
       bodyResult.data.multipart === true &&
       size >= MULTIPART_PART_SIZE_BYTES
     ) {
-      const uploadId = await get(
-        createMultipartS3Upload(bucket, s3Key, contentType),
-      );
-      signal.throwIfAborted();
-      const partCount = Math.ceil(size / MULTIPART_PART_SIZE_BYTES);
-      const parts = await onRejection(
+      let uploadId: string | undefined;
+      return await onRejection(
         (async () => {
+          uploadId = await get(
+            createMultipartS3Upload(bucket, s3Key, contentType),
+          );
+          signal.throwIfAborted();
+          const partCount = Math.ceil(size / MULTIPART_PART_SIZE_BYTES);
           const signedParts: {
             partNumber: number;
             uploadUrl: string;
@@ -91,29 +92,30 @@ const prepareUploadInner$ = command(
             signal.throwIfAborted();
             signedParts.push({ partNumber, uploadUrl });
           }
-          return signedParts;
+          return {
+            status: 200 as const,
+            body: {
+              id,
+              filename,
+              contentType,
+              size,
+              url,
+              multipart: {
+                uploadId,
+                partSize: MULTIPART_PART_SIZE_BYTES,
+                parts: signedParts,
+              },
+            },
+          };
         })(),
         async () => {
-          await tapError(get(abortMultipartS3Upload(bucket, s3Key, uploadId)));
+          if (uploadId !== undefined) {
+            await tapError(
+              get(abortMultipartS3Upload(bucket, s3Key, uploadId)),
+            );
+          }
         },
       );
-      signal.throwIfAborted();
-
-      return {
-        status: 200 as const,
-        body: {
-          id,
-          filename,
-          contentType,
-          size,
-          url,
-          multipart: {
-            uploadId,
-            partSize: MULTIPART_PART_SIZE_BYTES,
-            parts,
-          },
-        },
-      };
     }
 
     const uploadUrl = await get(

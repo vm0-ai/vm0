@@ -32,6 +32,37 @@ interface FileInfo {
 const MULTIPART_UPLOAD_THRESHOLD_BYTES = 5 * 1024 * 1024;
 const MAX_PART_UPLOAD_ATTEMPTS = 5;
 const PART_UPLOAD_RETRY_BASE_DELAY_MS = 250;
+const MULTIPART_ABORT_TIMEOUT_MS = 5000;
+
+interface MultipartUploadReference {
+  id: string;
+  filename: string;
+  uploadId: string;
+}
+
+const abortMultipartUpload$ = command(
+  async (
+    { get },
+    upload: MultipartUploadReference,
+    signal: AbortSignal,
+  ): Promise<void> => {
+    const client = get(zeroClient$)(zeroUploadsContract);
+    await tapError(
+      accept(
+        client.abortMultipart({
+          body: upload,
+          fetchOptions: {
+            keepalive: true,
+            signal,
+          },
+        }),
+        [200],
+        signal,
+        { showErrorToast: false },
+      ),
+    );
+  },
+);
 
 function uploadContentTypeByExtension(ext: string): string | undefined {
   const contentTypeByExtension: Record<string, string | undefined> = {
@@ -213,12 +244,12 @@ function createChatAttachment(file: File): ZeroChatAttachment {
         }),
         [200],
       );
-      signal.throwIfAborted();
 
       if ("multipart" in prepared.body) {
         const multipart = prepared.body.multipart;
         return await onRejection(
           (async () => {
+            signal.throwIfAborted();
             for (const part of multipart.parts) {
               const start = (part.partNumber - 1) * multipart.partSize;
               const end = Math.min(start + multipart.partSize, file.size);
@@ -246,23 +277,23 @@ function createChatAttachment(file: File): ZeroChatAttachment {
             return completed.body;
           })(),
           async () => {
-            await tapError(
-              accept(
-                client.abortMultipart({
-                  body: {
-                    id: prepared.body.id,
-                    filename: prepared.body.filename,
-                    uploadId: multipart.uploadId,
-                  },
-                  fetchOptions: { signal: parentSignal },
-                }),
-                [200],
-              ),
+            const cleanupSignal = AbortSignal.timeout(
+              MULTIPART_ABORT_TIMEOUT_MS,
+            );
+            await set(
+              abortMultipartUpload$,
+              {
+                id: prepared.body.id,
+                filename: prepared.body.filename,
+                uploadId: multipart.uploadId,
+              },
+              cleanupSignal,
             );
           },
         );
       }
 
+      signal.throwIfAborted();
       const putRes = await fetch(prepared.body.uploadUrl, {
         method: "PUT",
         body: file,

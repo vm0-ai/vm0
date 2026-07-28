@@ -106,6 +106,48 @@ describe("multipart user artifact uploads", () => {
     expect(response.body).not.toHaveProperty("multipart");
   });
 
+  it("aborts the multipart session when the API owner is cancelled after creation", async () => {
+    const userId = `user_${randomUUID()}`;
+    const orgId = `org_${randomUUID()}`;
+    const controller = new AbortController();
+    const abortError = new Error("API owner cancelled multipart preparation");
+    abortError.name = "AbortError";
+    const ownerContext = {
+      mocks: context.mocks,
+      sessionHistoryBlobs: context.sessionHistoryBlobs,
+      signal: controller.signal,
+    };
+    mocks.clerk.session(userId, orgId);
+    context.mocks.s3.send.mockImplementation((command: unknown) => {
+      if (command?.constructor.name === "CreateMultipartUploadCommand") {
+        controller.abort(abortError);
+        return Promise.resolve({ UploadId: "multipart-upload-cancelled" });
+      }
+      return Promise.resolve({});
+    });
+
+    const response = await setupApp({ context: ownerContext })(
+      zeroUploadsContract,
+    ).prepare({
+      body: {
+        filename: "cancelled.mp4",
+        contentType: "video/mp4",
+        size: 5 * 1024 * 1024,
+        multipart: true,
+      },
+      headers: authHeaders(),
+    });
+
+    expect(response.status).toBe(500);
+    expect(context.mocks.s3.send).toHaveBeenCalledTimes(2);
+    expect(context.mocks.s3.send.mock.calls[1]?.[0]).toMatchObject({
+      input: {
+        Bucket: "test-user-artifacts",
+        UploadId: "multipart-upload-cancelled",
+      },
+    });
+  });
+
   it("lists uploaded parts and completes the multipart upload", async () => {
     const userId = `user_${randomUUID()}`;
     const orgId = `org_${randomUUID()}`;

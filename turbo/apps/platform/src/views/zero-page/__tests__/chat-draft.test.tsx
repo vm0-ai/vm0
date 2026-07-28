@@ -17,6 +17,7 @@ import {
 import { zeroTeamContract } from "@vm0/api-contracts/contracts/zero-team";
 import { zeroWorkflowsCollectionContract } from "@vm0/api-contracts/contracts/zero-workflows";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
+import { resetSignal } from "../../../signals/utils.ts";
 import {
   click,
   detachedSetupPage as baseDetachedSetupPage,
@@ -1292,6 +1293,103 @@ describe("chat drafts", () => {
         id: "8d70fdfa-2eb4-4a32-a2e2-635799804ad6",
         filename: "failed-recording.mp4",
         uploadId: "multipart-upload-failed",
+      });
+    });
+  });
+
+  it("aborts multipart storage when the upload owner is cancelled", async () => {
+    const user = userEvent.setup({ delay: null });
+    const resetUploadOwnerSignal$ = resetSignal();
+    const ownerSignal = context.store.set(
+      resetUploadOwnerSignal$,
+      context.signal,
+    );
+    const ownerContext = {
+      mocks: context.mocks,
+      signal: ownerSignal,
+      store: context.store,
+    };
+    const partStarted = context.mocks.deferred<void>();
+    let abortBody: unknown = null;
+    let abortRequestWasCancelled = true;
+
+    context.mocks.data.userModelPreference({
+      selectedModel: "claude-sonnet-4-6",
+      updatedAt: "2026-03-10T00:00:00Z",
+    });
+    mockThreadDetails();
+    context.mocks.http.post("*/api/zero/uploads/prepare", () => {
+      return HttpResponse.json({
+        id: "6eb9fa2a-c5ec-4a6a-afbf-a28939735454",
+        filename: "cancelled-recording.mp4",
+        contentType: "video/mp4",
+        size: 5 * 1024 * 1024 + 1,
+        url: "https://example.com/cancelled-recording.mp4",
+        multipart: {
+          uploadId: "multipart-upload-cancelled",
+          partSize: 5 * 1024 * 1024,
+          parts: [
+            {
+              partNumber: 1,
+              uploadUrl:
+                "https://mock-upload.example.com/cancelled-recording-part-1",
+            },
+            {
+              partNumber: 2,
+              uploadUrl:
+                "https://mock-upload.example.com/cancelled-recording-part-2",
+            },
+          ],
+        },
+      });
+    });
+    context.mocks.http.put(
+      "https://mock-upload.example.com/cancelled-recording-part-1",
+      ({ deferred }) => {
+        partStarted.resolve();
+        return deferred<Response>().promise;
+      },
+    );
+    context.mocks.http.post(
+      "*/api/zero/uploads/multipart/abort",
+      async ({ request }) => {
+        abortRequestWasCancelled = request.signal.aborted;
+        abortBody = await request.json();
+        return HttpResponse.json({
+          id: "6eb9fa2a-c5ec-4a6a-afbf-a28939735454",
+        });
+      },
+    );
+
+    detachedSetupPage({
+      context: ownerContext,
+      path: `/chats/${THREAD_UPLOADS_ID}`,
+    });
+
+    await waitFor(() => {
+      expect(textarea()).toBeInTheDocument();
+    });
+
+    const fileInput =
+      document.querySelector<HTMLInputElement>('input[type="file"]')!;
+    await user.upload(
+      fileInput,
+      new File(
+        [new Uint8Array(5 * 1024 * 1024 + 1)],
+        "cancelled-recording.mp4",
+        { type: "video/mp4" },
+      ),
+    );
+    await partStarted.promise;
+
+    context.store.set(resetUploadOwnerSignal$);
+
+    await waitFor(() => {
+      expect(abortRequestWasCancelled).toBeFalsy();
+      expect(abortBody).toStrictEqual({
+        id: "6eb9fa2a-c5ec-4a6a-afbf-a28939735454",
+        filename: "cancelled-recording.mp4",
+        uploadId: "multipart-upload-cancelled",
       });
     });
   });
