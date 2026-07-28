@@ -6351,6 +6351,40 @@ function useUserMessageRendering() {
   };
 }
 
+function matchesLegacyUserMessageFields(
+  inputMessage: ChatInputMessage | undefined,
+  userMessage: UserMessageDocument | undefined,
+): boolean {
+  // Migration 0717 reconstructs this exact files-then-text projection. Keep
+  // its existing Markdown and attachment UI until the userMessage-only read
+  // cutover removes the legacy fields in a later change.
+  if (!inputMessage || !userMessage) {
+    return false;
+  }
+  const attachments = inputMessage.attachFiles ?? [];
+  const content = inputMessage.content ?? "";
+  const expectedPartCount = attachments.length + (content.length > 0 ? 1 : 0);
+  if (userMessage.parts.length !== expectedPartCount) {
+    return false;
+  }
+  for (const [index, attachment] of attachments.entries()) {
+    const part = userMessage.parts[index];
+    if (
+      part?.type !== "file" ||
+      part.fileId !== attachment.id ||
+      part.filenameSnapshot !== attachment.filename ||
+      part.contentType !== attachment.contentType
+    ) {
+      return false;
+    }
+  }
+  if (content.length === 0) {
+    return true;
+  }
+  const textPart = userMessage.parts.at(-1);
+  return textPart?.type === "text" && textPart.text === content;
+}
+
 function resolvePagedUserMessageRendering({
   message,
   inputMessage,
@@ -6369,7 +6403,11 @@ function resolvePagedUserMessageRendering({
   const { cleanContent, parsed } = parseInlineAttachments(
     message.content ?? "",
   );
-  const canonicalUserMessage = parsed.length === 0 ? userMessage : undefined;
+  const canonicalUserMessage =
+    parsed.length === 0 &&
+    !matchesLegacyUserMessageFields(inputMessage, userMessage)
+      ? userMessage
+      : undefined;
   const attachFiles = inputMessage?.attachFiles;
   const legacyCopyText =
     attachFiles &&

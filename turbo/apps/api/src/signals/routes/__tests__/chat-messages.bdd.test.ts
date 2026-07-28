@@ -817,7 +817,7 @@ async function readThreadProjection(actor: ApiTestUser, threadId: string) {
  */
 async function requestSendEventRaw(
   actor: ApiTestUser,
-  body: ChatRunSendBody,
+  body: ChatRunSendBody & { readonly userMessage: UserMessageDocument },
 ): Promise<{ readonly status: number; readonly body: unknown }> {
   const headers = sessionHeaders(actor);
   const app = createApp({ signal: context.signal });
@@ -2217,9 +2217,14 @@ describe("CHAT-02: model-first provider policies", () => {
         modelProviderId: null,
       },
     ]);
+    const vm0Prompt = "vm0-backed admission with spendable credits";
     const vm0Send = await requestSendEventRaw(actor, {
       agentId,
-      prompt: "vm0-backed admission with spendable credits",
+      prompt: vm0Prompt,
+      userMessage: {
+        version: 1,
+        parts: [{ type: "text", text: vm0Prompt }],
+      },
       model: "claude-sonnet-4-6",
     });
     expect([201, 503]).toContain(vm0Send.status);
@@ -3439,11 +3444,16 @@ describe("CHAT-02: run-level model overrides", () => {
       conversationChanges.releaseAll();
       await conversationChanges.done;
     });
+    const retryPrompt = "exhaust every session preparation attempt";
     const failedPromise = requestSendEventRaw(actor, {
       agentId,
       threadId: first.threadId,
       clientEventId: randomUUID(),
-      prompt: "exhaust every session preparation attempt",
+      prompt: retryPrompt,
+      userMessage: {
+        version: 1,
+        parts: [{ type: "text", text: retryPrompt }],
+      },
     });
 
     for (let attempt = 0; attempt < preparationAttempts; attempt += 1) {

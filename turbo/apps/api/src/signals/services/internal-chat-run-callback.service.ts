@@ -2229,6 +2229,9 @@ async function resolveQueuedRuntimePrompt(args: {
   readonly userId: string;
   readonly timing?: ChatCallbackPreCreateTimingCollector;
 }): Promise<string> {
+  if (args.sourcePrompt !== undefined) {
+    return args.sourcePrompt;
+  }
   if (args.userMessageProjection) {
     return args.userMessageProjection.agentPrompt;
   }
@@ -2245,7 +2248,7 @@ async function resolveQueuedRuntimePrompt(args: {
       });
     },
   );
-  return args.sourcePrompt ?? canonicalPrompt;
+  return canonicalPrompt;
 }
 
 interface QueuedMessageModelRoute {

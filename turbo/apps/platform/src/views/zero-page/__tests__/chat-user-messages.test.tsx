@@ -189,11 +189,11 @@ describe("user messages", () => {
         {
           id: "00000000-0000-4000-8000-000000000743",
           role: "user",
-          content: "Legacy **bold** remains",
+          content: "Legacy text stays hidden",
           runId: "d0000000-0000-4000-a000-000000000743",
           userMessage: {
             version: 1,
-            parts: [{ type: "text", text: "Legacy **bold** remains" }],
+            parts: [{ type: "text", text: "Canonical **bold** remains" }],
           },
           createdAt: "2026-07-21T10:01:00Z",
         },
@@ -245,8 +245,13 @@ describe("user messages", () => {
     expect(screen.queryByText("Retired template")).not.toBeInTheDocument();
     expect(screen.queryByText("renamed-report.pdf")).not.toBeInTheDocument();
 
-    const literalMarkdown = await screen.findByText("Legacy **bold** remains");
+    const literalMarkdown = await screen.findByText(
+      "Canonical **bold** remains",
+    );
     expect(literalMarkdown.querySelector("strong")).toBeNull();
+    expect(
+      screen.queryByText("Legacy text stays hidden"),
+    ).not.toBeInTheDocument();
   });
 
   it("groups structured feedback and highlights chat thread mentions in notes", async () => {
