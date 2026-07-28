@@ -468,7 +468,7 @@ async function markConnectorCredentialNeedsReconnectAfterRefreshFailure(args: {
           eq(connectors.userId, args.userId),
           eq(connectors.type, args.connection.connectorRef),
           eq(connectors.authMethod, args.connection.runtimeMethod.authMethodId),
-          sql`${connectors.updatedAt}::text = ${args.connection.stateRevision}`,
+          eq(sql`${connectors.updatedAt}::text`, args.connection.stateRevision),
         ),
       );
   });

@@ -76,6 +76,7 @@ import {
   isNotNull,
   isNull,
   lt,
+  ne,
   notExists,
   or,
   type SQL,
@@ -1239,11 +1240,14 @@ export function zeroChatThreadDraftIds(args: {
         and(
           eq(chatThreads.userId, args.userId),
           or(
-            sql`COALESCE(${chatThreads.draftContent}, '') <> ''`,
+            ne(sql`COALESCE(${chatThreads.draftContent}, '')`, sql`''`),
             isNotNull(chatThreads.draftUserMessage),
             and(
               isNotNull(chatThreads.draftAttachments),
-              sql`jsonb_array_length(${chatThreads.draftAttachments}) > 0`,
+              gt(
+                sql`jsonb_array_length(${chatThreads.draftAttachments})`,
+                sql`0`,
+              ),
             ),
           ),
         ),

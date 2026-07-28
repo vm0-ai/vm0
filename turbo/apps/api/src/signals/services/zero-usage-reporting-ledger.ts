@@ -5,6 +5,7 @@ import {
   isNotNull,
   max,
   sql,
+  sum,
   type SQLWrapper,
 } from "drizzle-orm";
 
@@ -150,10 +151,11 @@ export function buildFinalizedUsageRunTotalsSubquery(db: Db, orgId: string) {
       "cache_tokens_sum",
     ),
     creditsCharged: usageCreditsSum(usage, "credits_sum"),
-    model:
-      sql`MAX(CASE WHEN ${eq(usage.kind, MODEL_USAGE_KIND)} THEN ${usage.provider} ELSE NULL END)`
-        .mapWith(nullableTextDecoder)
-        .as("model"),
+    model: max(
+      sql`CASE WHEN ${eq(usage.kind, MODEL_USAGE_KIND)} THEN ${usage.provider} ELSE NULL END`,
+    )
+      .mapWith(nullableTextDecoder)
+      .as("model"),
     userId: max(usage.userId).mapWith(pgTextDecoder).as("user_id"),
   } satisfies Record<keyof UsageRunTotalsRow, unknown>;
 
@@ -200,10 +202,12 @@ function finalizedUsageTokenSum(
   categories: readonly string[],
   alias: string,
 ) {
-  return sql`COALESCE(SUM(CASE WHEN ${and(
-    eq(usage.kind, MODEL_USAGE_KIND),
-    inArray(usage.category, categories),
-  )} THEN ${usage.quantity} ELSE 0 END), 0)::bigint`
+  return sql`COALESCE(${sum(
+    sql`CASE WHEN ${and(
+      eq(usage.kind, MODEL_USAGE_KIND),
+      inArray(usage.category, categories),
+    )} THEN ${usage.quantity} ELSE 0 END`,
+  )}, 0)::bigint`
     .mapWith(pgInt8ToSafeIntegerDecoder)
     .as(alias);
 }

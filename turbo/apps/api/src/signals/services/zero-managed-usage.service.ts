@@ -121,10 +121,11 @@ export async function checkCreditAmountForLockedOrg(
   const reserved = writeDb.$with("reserved").as(
     writeDb
       .select({
-        total:
-          sql`COALESCE(SUM(GREATEST(${browserSessions.maxCredits} - ${browserSessions.grossCredits}, 0)), 0)::bigint`
-            .mapWith(pgInt8ToBigIntDecoder)
-            .as("reserved_total"),
+        total: sql`COALESCE(${sum(
+          sql`GREATEST(${browserSessions.maxCredits} - ${browserSessions.grossCredits}, 0)`,
+        )}, 0)::bigint`
+          .mapWith(pgInt8ToBigIntDecoder)
+          .as("reserved_total"),
       })
       .from(browserSessions)
       .where(
@@ -237,10 +238,11 @@ export const checkManagedCredits$ = command(
     const reserved = writeDb.$with("reserved").as(
       writeDb
         .select({
-          total:
-            sql`COALESCE(SUM(GREATEST(${browserSessions.maxCredits} - ${browserSessions.grossCredits}, 0)), 0)::bigint`
-              .mapWith(pgInt8ToBigIntDecoder)
-              .as("reserved_total"),
+          total: sql`COALESCE(${sum(
+            sql`GREATEST(${browserSessions.maxCredits} - ${browserSessions.grossCredits}, 0)`,
+          )}, 0)::bigint`
+            .mapWith(pgInt8ToBigIntDecoder)
+            .as("reserved_total"),
         })
         .from(browserSessions)
         .where(
