@@ -259,6 +259,8 @@ jobs:
       - name: Setup SSH via Cloudflare Tunnel
         uses: ./.github/actions/setup-ssh-tunnel
         with:
+          ssh-user: ${{ vars.AWS_METAL_RUNNER_USER }}
+          ssh-hosts: ${{ secrets.AWS_METAL_RUNNER_HOSTS }}
           ssh-key: ${{ secrets.AWS_METAL_RUNNER_SSH_KEY }}
           cf-access-client-id: ${{ secrets.CF_ACCESS_CLIENT_ID }}
           cf-access-client-secret: ${{ secrets.CF_ACCESS_CLIENT_SECRET }}
@@ -526,6 +528,8 @@ jobs:
       - name: Setup SSH via Cloudflare Tunnel
         uses: ./.github/actions/setup-ssh-tunnel
         with:
+          ssh-user: ${{ vars.AWS_METAL_RUNNER_USER }}
+          ssh-hosts: ${{ secrets.AWS_METAL_RUNNER_HOSTS }}
           ssh-key: ${{ secrets.AWS_METAL_RUNNER_SSH_KEY }}
           cf-access-client-id: ${{ secrets.CF_ACCESS_CLIENT_ID }}
           cf-access-client-secret: ${{ secrets.CF_ACCESS_CLIENT_SECRET }}
@@ -584,6 +588,8 @@ jobs:
       - name: Setup SSH via Cloudflare Tunnel
         uses: ./.github/actions/setup-ssh-tunnel
         with:
+          ssh-user: ${{ vars.AWS_METAL_RUNNER_USER }}
+          ssh-hosts: ${{ secrets.AWS_METAL_RUNNER_HOSTS }}
           ssh-key: ${{ secrets.AWS_METAL_RUNNER_SSH_KEY }}
           cf-access-client-id: ${{ secrets.CF_ACCESS_CLIENT_ID }}
           cf-access-client-secret: ${{ secrets.CF_ACCESS_CLIENT_SECRET }}
@@ -641,6 +647,8 @@ jobs:
       - name: Setup SSH via Cloudflare Tunnel
         uses: ./.github/actions/setup-ssh-tunnel
         with:
+          ssh-user: ${{ vars.AWS_METAL_RUNNER_USER }}
+          ssh-hosts: ${{ secrets.AWS_METAL_RUNNER_HOSTS }}
           ssh-key: ${{ secrets.AWS_METAL_RUNNER_SSH_KEY }}
           cf-access-client-id: ${{ secrets.CF_ACCESS_CLIENT_ID }}
           cf-access-client-secret: ${{ secrets.CF_ACCESS_CLIENT_SECRET }}
@@ -695,6 +703,8 @@ jobs:
       - name: Setup SSH via Cloudflare Tunnel
         uses: ./.github/actions/setup-ssh-tunnel
         with:
+          ssh-user: ${{ env.METAL_USER }}
+          ssh-hosts: ${{ env.HOST }}
           ssh-key: ${{ secrets.AWS_METAL_RUNNER_SSH_KEY }}
           cf-access-client-id: ${{ secrets.CF_ACCESS_CLIENT_ID }}
           cf-access-client-secret: ${{ secrets.CF_ACCESS_CLIENT_SECRET }}
@@ -722,6 +732,8 @@ jobs:
       - name: Setup SSH via Cloudflare Tunnel
         uses: ./.github/actions/setup-ssh-tunnel
         with:
+          ssh-user: ${{ env.METAL_USER }}
+          ssh-hosts: ${{ env.HOST }}
           ssh-key: ${{ secrets.AWS_METAL_RUNNER_SSH_KEY }}
           cf-access-client-id: ${{ secrets.CF_ACCESS_CLIENT_ID }}
           cf-access-client-secret: ${{ secrets.CF_ACCESS_CLIENT_SECRET }}
@@ -755,6 +767,8 @@ jobs:
       - name: Setup SSH via Cloudflare Tunnel
         uses: ./.github/actions/setup-ssh-tunnel
         with:
+          ssh-user: ${{ env.METAL_USER }}
+          ssh-hosts: ${{ env.HOST }}
           ssh-key: ${{ secrets.AWS_METAL_RUNNER_SSH_KEY }}
           cf-access-client-id: ${{ secrets.CF_ACCESS_CLIENT_ID }}
           cf-access-client-secret: ${{ secrets.CF_ACCESS_CLIENT_SECRET }}
@@ -794,6 +808,8 @@ jobs:
       - name: Setup SSH via Cloudflare Tunnel
         uses: ./.github/actions/setup-ssh-tunnel
         with:
+          ssh-user: ${{ env.METAL_USER }}
+          ssh-hosts: ${{ env.HOST }}
           ssh-key: ${{ secrets.AWS_METAL_RUNNER_SSH_KEY }}
           cf-access-client-id: ${{ secrets.CF_ACCESS_CLIENT_ID }}
           cf-access-client-secret: ${{ secrets.CF_ACCESS_CLIENT_SECRET }}

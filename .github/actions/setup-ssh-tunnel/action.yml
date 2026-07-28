@@ -2,6 +2,12 @@ name: "Setup SSH via Cloudflare Tunnel"
 description: "Install cloudflared and configure SSH to proxy through Cloudflare Tunnel"
 
 inputs:
+  ssh-user:
+    description: "SSH user for metal runner hosts"
+    required: true
+  ssh-hosts:
+    description: "Comma-separated metal runner hosts to pre-connect"
+    required: true
   ssh-key:
     description: "SSH private key for metal runner"
     required: true
@@ -75,6 +81,9 @@ runs:
           "  TCPKeepAlive yes" \
           "  IPQoS throughput" \
           "  IdentityFile $HOME/.ssh/runner.pem" \
+          "  ControlMaster auto" \
+          "  ControlPath $HOME/.ssh/vm0-ssh-%C" \
+          "  ControlPersist 600s" \
           "  ProxyCommand $HOME/.ssh/cf-proxy.sh %h")"
 
         # Write to system config so all SSH clients (ssh, scp, ansible) read it
@@ -85,3 +94,10 @@ runs:
           mkdir -p /etc/ssh/ssh_config.d
           echo "$SSH_CONFIG" > /etc/ssh/ssh_config.d/tunnel.conf
         fi
+
+    - name: Establish replay-safe SSH transport
+      shell: bash
+      env:
+        SSH_USER: ${{ inputs.ssh-user }}
+        SSH_HOSTS: ${{ inputs.ssh-hosts }}
+      run: bash "$GITHUB_WORKSPACE/.github/scripts/cloudflare-ssh-preconnect.sh" "$SSH_USER" "$SSH_HOSTS"
