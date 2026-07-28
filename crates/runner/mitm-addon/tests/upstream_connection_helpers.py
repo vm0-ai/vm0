@@ -1,13 +1,34 @@
-"""Shared helpers for connected upstream mitmproxy test state."""
+"""Shared helpers for upstream mitmproxy test state."""
 
 from typing import cast
 
 from mitmproxy import certs, connection, http
 
+import upstream_destination_binding
+
 # Keep the shape mitmproxy types expect without adding an authoritative endpoint.
 _NO_CONNECTED_CLIENT_SOCKNAME = ("", 0)
 # Admission only checks that mitmproxy recorded at least one upstream certificate.
 _TLS_CERTIFICATE_PROOF = cast(certs.Cert, object())
+
+
+def bind_flow_upstream(
+    flow: http.HTTPFlow,
+    *,
+    host: str = "api.github.com",
+    port: int = 443,
+    kinds: frozenset[upstream_destination_binding.BindingKind] = frozenset(("connector_auth",)),
+) -> None:
+    """Bind a flow to an admitted upstream destination."""
+    original_address = flow.server_conn.address
+    flow.server_conn.address = (host, port)
+    upstream_destination_binding.record_server_binding(
+        flow.server_conn,
+        host=host,
+        port=port,
+        kinds=kinds,
+        original_address=original_address,
+    )
 
 
 def mark_connected_tls_upstream(

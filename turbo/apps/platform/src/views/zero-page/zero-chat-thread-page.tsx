@@ -2848,6 +2848,7 @@ function ChatThreadMessagesMain({ thread }: { thread: ChatThreadSignals }) {
       >
         <ChatThreadSessionError thread={thread} />
         <ChatThreadEmptyState thread={thread} />
+        <ChatHistoryBackfillSkeleton thread={thread} />
         <ChatThreadRenderedMessageGroups thread={thread} />
         <ChatThreadThinkingIndicator thread={thread} />
       </div>
@@ -3653,7 +3654,7 @@ function ChatThreadMessagesPane({ thread }: { thread: ChatThreadSignals }) {
   );
 }
 
-function ChatHistoryBackfillProgress({
+function ChatHistoryBackfillSkeleton({
   thread,
 }: {
   thread: ChatThreadSignals;
@@ -3665,21 +3666,14 @@ function ChatHistoryBackfillProgress({
   if (!enabled || progress === null || progress === undefined) {
     return null;
   }
-  const percent = Math.min(100, Math.max(0, progress * 100));
   return (
     <div
-      data-history-backfill-progress
-      role="progressbar"
-      aria-label="Loading message history"
-      aria-valuemin={0}
-      aria-valuemax={100}
-      aria-valuenow={Math.round(percent)}
-      className="h-0.5 w-full shrink-0 overflow-hidden"
+      data-history-backfill-skeleton
+      role="status"
+      aria-label="Loading earlier messages"
+      className="flex flex-col gap-6"
     >
-      <div
-        className="h-full bg-primary/60 transition-[width] duration-500 ease-out"
-        style={{ width: `${percent}%` }}
-      />
+      <ChatMessageSkeletonPair />
     </div>
   );
 }
@@ -3688,7 +3682,6 @@ function ChatThreadContent({ thread }: { thread: ChatThreadSignals }) {
   return (
     <>
       <ChatThreadHeader thread={thread} />
-      <ChatHistoryBackfillProgress key={thread.threadId} thread={thread} />
 
       <div className="relative min-h-0 flex-1">
         <div className="flex h-full min-w-0 flex-col">
@@ -4451,34 +4444,45 @@ function ChatThreadComposer({ thread }: { thread: ChatThreadSignals }) {
 // Skeleton placeholder while session loads
 // ---------------------------------------------------------------------------
 
-function ChatSkeleton() {
+function ChatMessageSkeletonPair({ compact = false }: { compact?: boolean }) {
   return (
     <>
       {/* User bubble skeleton */}
-      <div className="flex justify-end">
-        <Skeleton className="h-10 w-[60%] rounded-xl" />
+      <div
+        data-chat-message-skeleton="user"
+        aria-hidden
+        className="flex justify-end"
+      >
+        <Skeleton
+          className={cn("h-10 rounded-xl", compact ? "w-[45%]" : "w-[60%]")}
+        />
       </div>
       {/* Assistant bubble skeleton */}
-      <div className="flex flex-col gap-2 @[900px]:grid @[900px]:grid-cols-[36px_minmax(0,1fr)] @[900px]:gap-2.5 @[900px]:-ml-[46px] @[900px]:items-start">
+      <div
+        data-chat-message-skeleton="assistant"
+        aria-hidden
+        className="flex flex-col gap-2 @[900px]:grid @[900px]:grid-cols-[36px_minmax(0,1fr)] @[900px]:gap-2.5 @[900px]:-ml-[46px] @[900px]:items-start"
+      >
         <Skeleton className="h-7 w-7 @[900px]:h-9 @[900px]:w-9 shrink-0 @[900px]:mt-0.5 rounded-xl" />
         <div className="flex flex-col gap-2">
-          <Skeleton className="h-4 w-[90%] rounded-lg" />
-          <Skeleton className="h-4 w-[75%] rounded-lg" />
-          <Skeleton className="h-4 w-[40%] rounded-lg" />
+          <Skeleton
+            className={cn("h-4 rounded-lg", compact ? "w-[85%]" : "w-[90%]")}
+          />
+          <Skeleton
+            className={cn("h-4 rounded-lg", compact ? "w-[60%]" : "w-[75%]")}
+          />
+          {!compact && <Skeleton className="h-4 w-[40%] rounded-lg" />}
         </div>
       </div>
-      {/* User bubble skeleton */}
-      <div className="flex justify-end">
-        <Skeleton className="h-10 w-[45%] rounded-xl" />
-      </div>
-      {/* Assistant bubble skeleton */}
-      <div className="flex flex-col gap-2 @[900px]:grid @[900px]:grid-cols-[36px_minmax(0,1fr)] @[900px]:gap-2.5 @[900px]:-ml-[46px] @[900px]:items-start">
-        <Skeleton className="h-7 w-7 @[900px]:h-9 @[900px]:w-9 shrink-0 @[900px]:mt-0.5 rounded-xl" />
-        <div className="flex flex-col gap-2">
-          <Skeleton className="h-4 w-[85%] rounded-lg" />
-          <Skeleton className="h-4 w-[60%] rounded-lg" />
-        </div>
-      </div>
+    </>
+  );
+}
+
+function ChatSkeleton() {
+  return (
+    <>
+      <ChatMessageSkeletonPair />
+      <ChatMessageSkeletonPair compact />
     </>
   );
 }

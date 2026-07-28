@@ -412,7 +412,7 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
   [FeatureSwitchKey.ChatHistoryBackfillProgress]: {
     maintainer: "ethan@vm0.ai",
     description:
-      "Progress bar under the chat thread header showing history backfill progress while older messages load.",
+      "Chat message skeletons above the first visible message while older history loads.",
     // Not rolled out to anyone yet; enable per-user via the Lab page.
     enabled: false,
   },
