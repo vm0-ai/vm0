@@ -2481,10 +2481,7 @@ describe("chat composer templates", () => {
       expect(
         screen.getByTitle(`${websiteTemplate.title} website template preview`),
       ).toHaveAttribute("src", websiteTemplatePreviewImageUrl);
-      expect(
-        screen.getByTitle(`${websiteTemplate.title} website template preview`)
-          .tagName,
-      ).toBe("IMG");
+      expect(screen.getAllByRole("dialog")).toHaveLength(1);
     });
 
     click(
@@ -2496,13 +2493,45 @@ describe("chat composer templates", () => {
       expect(
         screen.getByTitle(`${websiteTemplate.title} website full preview`),
       ).toHaveAttribute("src", websiteTemplate.previewUrl);
+      expect(
+        screen.queryByTitle(
+          `${websiteTemplate.title} website template preview`,
+        ),
+      ).not.toBeInTheDocument();
+      expect(screen.getAllByRole("dialog")).toHaveLength(1);
     });
     const websitePreviewDialog = screen.getByRole("dialog", {
       name: `Website / ${websiteTemplate.title}`,
     });
+    click(within(websitePreviewDialog).getByLabelText("Close"));
+    await waitFor(() => {
+      expect(
+        screen.queryByTitle(`${websiteTemplate.title} website full preview`),
+      ).not.toBeInTheDocument();
+      expect(
+        screen.getByTitle(`${websiteTemplate.title} website template preview`),
+      ).toHaveAttribute("src", websiteTemplatePreviewImageUrl);
+      expect(tabByText("Website")).toHaveAttribute("aria-selected", "true");
+      expect(screen.getAllByRole("dialog")).toHaveLength(1);
+    });
+
+    click(
+      within(screen.getByRole("dialog")).getByLabelText(
+        `Preview website template ${websiteTemplate.title}`,
+      ),
+    );
+    await waitFor(() => {
+      expect(
+        screen.getByTitle(`${websiteTemplate.title} website full preview`),
+      ).toHaveAttribute("src", websiteTemplate.previewUrl);
+      expect(screen.getAllByRole("dialog")).toHaveLength(1);
+    });
+    const reopenedWebsitePreviewDialog = screen.getByRole("dialog", {
+      name: `Website / ${websiteTemplate.title}`,
+    });
     const websiteBackButton = queryAllByRoleFast(
       "button",
-      websitePreviewDialog,
+      reopenedWebsitePreviewDialog,
     ).find((candidate) => {
       return candidate.textContent?.replace(/\s+/g, " ").trim() === "Website";
     });

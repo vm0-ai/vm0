@@ -60,9 +60,13 @@ export const setModelPickerOpen$ = command(({ set }, open: boolean) => {
 
 // -- Template picker open/category state ------------------------------------
 
+const internalWebsiteTemplatePreviewId$ = state<string | null>(null);
 const internalTemplatePickerOpen$ = state(false);
 export const templatePickerOpen$ = computed((get) => {
-  return get(internalTemplatePickerOpen$);
+  return (
+    get(internalTemplatePickerOpen$) &&
+    get(internalWebsiteTemplatePreviewId$) === null
+  );
 });
 export const setTemplatePickerOpen$ = command(({ set }, open: boolean) => {
   set(internalTemplatePickerOpen$, open);
@@ -79,7 +83,6 @@ export const setTemplatePickerReferenceValue$ = command(
   },
 );
 
-const internalWebsiteTemplatePreviewId$ = state<string | null>(null);
 export const websiteTemplatePreviewId$ = computed((get) => {
   return get(internalWebsiteTemplatePreviewId$);
 });
