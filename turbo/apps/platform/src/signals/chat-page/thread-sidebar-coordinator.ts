@@ -4,7 +4,6 @@ import {
   chatThreadSidebarAutoOpenEnabled$,
   newChatThreadSidebarEnabled$,
 } from "../external/feature-switch.ts";
-import { onRef } from "../utils.ts";
 import { openMailDraftSidebar$ } from "../zero-page/mail-draft-sidebar.ts";
 import { openBrowserSessionSidebar$ } from "../zero-page/browser-session-sidebar.ts";
 import {
@@ -19,12 +18,15 @@ import {
 import {
   currentLeftThread$,
   currentRightThread$,
-} from "./chat-thread-panes.ts";
+} from "./chat-thread-pane-state.ts";
 import { openHeaderAutomationSidebar$ } from "./header-automation-sidebar.ts";
 import type { ChatThreadSignals } from "./chat-thread-signals.ts";
 import { CHAT_THREAD_SIDEBAR_SPLIT_VIEW_MEDIA_QUERY } from "./chat-thread-sidebar-layout.ts";
 import type { ThreadSidebarTarget } from "./thread-sidebar.ts";
-import type { ThreadSidebarAutoOpenCandidate } from "./thread-sidebar-auto-open.ts";
+import {
+  threadSidebarAutoOpenCandidateKey,
+  type ThreadSidebarAutoOpenCandidate,
+} from "./thread-sidebar-auto-open.ts";
 
 // ---------------------------------------------------------------------------
 // Page-level coordinator for the thread-owned utility sidebar. Sidebar state
@@ -69,20 +71,6 @@ const openOnThread$ = command(
   },
 );
 
-function autoOpenCandidateFromElement(
-  element: HTMLElement,
-): ThreadSidebarAutoOpenCandidate | null {
-  const type = element.dataset.threadSidebarAutoOpenType;
-  const resourceKey = element.dataset.threadSidebarAutoOpenResourceKey;
-  if (
-    !resourceKey ||
-    (type !== "artifact" && type !== "email-draft" && type !== "browser")
-  ) {
-    return null;
-  }
-  return { type, resourceKey };
-}
-
 function targetFromAutoOpenCandidate(
   candidate: ThreadSidebarAutoOpenCandidate,
 ): ThreadSidebarTarget {
@@ -105,8 +93,42 @@ function targetFromAutoOpenCandidate(
   };
 }
 
-const autoOpenThreadSidebarOnRef$ = command(
-  ({ get, set }, element: HTMLElement, _signal: AbortSignal): void => {
+export const autoOpenThreadSidebar$ = command(
+  async (
+    { get, set },
+    thread: ChatThreadSignals,
+    signal: AbortSignal,
+  ): Promise<void> => {
+    await get(thread.hasNewMessages$);
+    signal.throwIfAborted();
+    if (
+      !get(newChatThreadSidebarEnabled$) ||
+      !get(chatThreadSidebarAutoOpenEnabled$) ||
+      typeof window === "undefined" ||
+      !window.matchMedia(CHAT_THREAD_SIDEBAR_SPLIT_VIEW_MEDIA_QUERY).matches
+    ) {
+      return;
+    }
+
+    const candidate = await get(thread.sidebarAutoOpenCandidate$);
+    signal.throwIfAborted();
+    if (!candidate) {
+      return;
+    }
+
+    const visible = [get(currentLeftThread$), get(currentRightThread$)].some(
+      (current) => {
+        return current === thread;
+      },
+    );
+    if (!visible) {
+      return;
+    }
+
+    const candidateKey = threadSidebarAutoOpenCandidateKey(candidate);
+    if (!set(thread.sidebar.claimAutoOpenCandidate$, candidateKey)) {
+      return;
+    }
     if (
       !get(newChatThreadSidebarEnabled$) ||
       !get(chatThreadSidebarAutoOpenEnabled$) ||
@@ -116,29 +138,9 @@ const autoOpenThreadSidebarOnRef$ = command(
     ) {
       return;
     }
-
-    const threadId = element.dataset.threadSidebarAutoOpenThreadId;
-    const candidate = autoOpenCandidateFromElement(element);
-    if (!threadId || !candidate) {
-      return;
-    }
-    const thread = [get(currentLeftThread$), get(currentRightThread$)].find(
-      (current) => {
-        return current?.threadId === threadId;
-      },
-    );
-    if (!thread) {
-      return;
-    }
     set(openOnThread$, thread, targetFromAutoOpenCandidate(candidate));
   },
 );
-
-/**
- * A keyed hidden marker invokes this only when the preferred card changes.
- * Closing a sidebar therefore does not immediately reopen the same card.
- */
-export const autoOpenThreadSidebarRef$ = onRef(autoOpenThreadSidebarOnRef$);
 
 export const openThreadArtifacts$ = command(
   ({ get, set }, thread: ChatThreadSignals) => {

@@ -1,3 +1,6 @@
+import { computed, type Computed } from "ccstate";
+
+import { settle } from "../utils.ts";
 import type { GroupedChatMessageGroup } from "./chat-message.ts";
 import type { BodyRenderBlock } from "./parse-body-blocks.ts";
 
@@ -7,6 +10,28 @@ export type ThreadSidebarAutoOpenCandidate =
   | { readonly type: "browser"; readonly resourceKey: string };
 
 type RunGroupState = "running" | "completed" | null;
+
+type ThreadSidebarAutoOpenCandidateSource =
+  | {
+      readonly type: "artifact";
+      readonly resourceKey: string;
+    }
+  | {
+      readonly type: "email-draft";
+      readonly resourceKey: string;
+      readonly signals: Extract<
+        BodyRenderBlock,
+        { type: "mail-draft" }
+      >["signals"];
+    }
+  | {
+      readonly type: "browser";
+      readonly resourceKey: string;
+      readonly signals: Extract<
+        BodyRenderBlock,
+        { type: "browser-session" }
+      >["signals"];
+    };
 
 function runGroupState(group: GroupedChatMessageGroup): RunGroupState {
   if (group.role !== "assistant") {
@@ -36,7 +61,7 @@ function runGroupState(group: GroupedChatMessageGroup): RunGroupState {
 
 function autoOpenCandidateFromBlock(
   block: BodyRenderBlock,
-): ThreadSidebarAutoOpenCandidate | null {
+): ThreadSidebarAutoOpenCandidateSource | null {
   switch (block.type) {
     case "artifact": {
       return { type: "artifact", resourceKey: block.signals.url };
@@ -45,10 +70,15 @@ function autoOpenCandidateFromBlock(
       return {
         type: "email-draft",
         resourceKey: block.signals.mailDraftId,
+        signals: block.signals,
       };
     }
     case "browser-session": {
-      return { type: "browser", resourceKey: block.signals.browserId };
+      return {
+        type: "browser",
+        resourceKey: block.signals.browserId,
+        signals: block.signals,
+      };
     }
     case "markdown":
     case "connector-action":
@@ -61,9 +91,10 @@ function autoOpenCandidateFromBlock(
   }
 }
 
-function latestAutoOpenCandidateInGroup(
+function autoOpenCandidatesInGroup(
   group: GroupedChatMessageGroup,
-): ThreadSidebarAutoOpenCandidate | null {
+): ThreadSidebarAutoOpenCandidateSource[] {
+  const candidates: ThreadSidebarAutoOpenCandidateSource[] = [];
   for (
     let messageIndex = group.messages.length - 1;
     messageIndex >= 0;
@@ -84,22 +115,18 @@ function latestAutoOpenCandidateInGroup(
       }
       const candidate = autoOpenCandidateFromBlock(block);
       if (candidate) {
-        return candidate;
+        candidates.push(candidate);
       }
     }
   }
-  return null;
+  return candidates;
 }
 
-/**
- * Prefer the newest sidebar-capable card in any running run. If no running
- * run has one, fall back to the newest successfully completed run that does.
- */
-export function latestThreadSidebarAutoOpenCandidate(
+function orderedThreadSidebarAutoOpenCandidates(
   groups: readonly GroupedChatMessageGroup[],
-): ThreadSidebarAutoOpenCandidate | null {
-  let latestCompletedCandidate: ThreadSidebarAutoOpenCandidate | null = null;
-
+): ThreadSidebarAutoOpenCandidateSource[] {
+  const running: ThreadSidebarAutoOpenCandidateSource[] = [];
+  const completed: ThreadSidebarAutoOpenCandidateSource[] = [];
   for (let groupIndex = groups.length - 1; groupIndex >= 0; groupIndex--) {
     const group = groups[groupIndex];
     if (!group) {
@@ -109,17 +136,52 @@ export function latestThreadSidebarAutoOpenCandidate(
     if (!state) {
       continue;
     }
-    const candidate = latestAutoOpenCandidateInGroup(group);
-    if (!candidate) {
-      continue;
-    }
-    if (state === "running") {
-      return candidate;
-    }
-    latestCompletedCandidate ??= candidate;
+    const target = state === "running" ? running : completed;
+    target.push(...autoOpenCandidatesInGroup(group));
   }
+  return [...running, ...completed];
+}
 
-  return latestCompletedCandidate;
+function candidateFromSource(
+  source: ThreadSidebarAutoOpenCandidateSource,
+): ThreadSidebarAutoOpenCandidate {
+  return { type: source.type, resourceKey: source.resourceKey };
+}
+
+/**
+ * Prefer the newest openable card in any running run. If no running run has
+ * one, fall back to the newest openable card in a successfully completed run.
+ */
+export function createThreadSidebarAutoOpenCandidate(
+  allRenderedChatGroups$: Computed<Promise<GroupedChatMessageGroup[]>>,
+): Computed<Promise<ThreadSidebarAutoOpenCandidate | null>> {
+  return computed(async (get) => {
+    const sources = orderedThreadSidebarAutoOpenCandidates(
+      await get(allRenderedChatGroups$),
+    );
+    for (const source of sources) {
+      if (source.type === "artifact") {
+        return candidateFromSource(source);
+      }
+      if (source.type === "email-draft") {
+        const draft = await settle(get(source.signals.draft$));
+        if (
+          draft.ok &&
+          draft.value !== null &&
+          draft.value.status !== "deleted" &&
+          draft.value.accessStatus !== "reconnect"
+        ) {
+          return candidateFromSource(source);
+        }
+        continue;
+      }
+      const session = await settle(get(source.signals.session$));
+      if (session.ok && session.value !== null) {
+        return candidateFromSource(source);
+      }
+    }
+    return null;
+  });
 }
 
 export function threadSidebarAutoOpenCandidateKey(
