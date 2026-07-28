@@ -100,7 +100,6 @@ export const strapiWebhookDeliveries = pgTable(
 
 export type StrapiWorkflowPendingEventStatus =
   | "pending"
-  | "running"
   | "processed"
   | "skipped";
 
@@ -136,6 +135,7 @@ export const strapiWorkflowPendingEvents = pgTable(
     latestEventAt: timestamp("latest_event_at").notNull(),
     runAfter: timestamp("run_after").notNull(),
     attempts: integer("attempts").default(0).notNull(),
+    revision: integer("revision").default(0).notNull(),
     lastError: text("last_error"),
     skipReason: text("skip_reason"),
     processedAt: timestamp("processed_at"),

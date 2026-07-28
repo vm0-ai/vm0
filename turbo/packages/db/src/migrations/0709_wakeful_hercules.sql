@@ -35,6 +35,7 @@ CREATE TABLE "strapi_workflow_pending_events" (
 	"latest_event_at" timestamp NOT NULL,
 	"run_after" timestamp NOT NULL,
 	"attempts" integer DEFAULT 0 NOT NULL,
+	"revision" integer DEFAULT 0 NOT NULL,
 	"last_error" text,
 	"skip_reason" text,
 	"processed_at" timestamp,

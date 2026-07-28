@@ -17554,6 +17554,13 @@
           "notNull": true,
           "default": 0
         },
+        "revision": {
+          "name": "revision",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
         "last_error": {
           "name": "last_error",
           "type": "text",

@@ -12,6 +12,7 @@ import {
   isQueueFirstRunClaimLost,
   type DispatchFailedRunCallbacks,
 } from "./agent-run-create.service";
+import type { PersistWorkflowQueueSourceTransition } from "./chat-message-queue.service";
 import type { InternalRunCallbackKind } from "./internal-run-callback";
 import {
   finalizeClaimedRunUserMessage,
@@ -92,6 +93,11 @@ export interface RunWorkflowAutomationNowArgs {
   readonly coalescePendingScheduleRun?: boolean;
   readonly recordLastRunId?: boolean;
   readonly recordLastRunAt?: boolean;
+  /**
+   * Admission-only source transition. This callback is never serialized into
+   * the durable workflow queue payload.
+   */
+  readonly persistSourceTransition?: PersistWorkflowQueueSourceTransition;
   readonly dispatchFailedCallbacks: DispatchFailedRunCallbacks;
   readonly timing?: ApiDispatchTimingCollector;
 }

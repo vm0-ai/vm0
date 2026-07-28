@@ -1,13 +1,14 @@
 import { randomUUID } from "node:crypto";
 
 import { zeroStrapiIntegrationsContract } from "@vm0/api-contracts/contracts/zero-strapi-integrations";
+import { zeroWorkflowQueueContract } from "@vm0/api-contracts/contracts/zero-workflow-queue";
 import { zeroWorkflowAutomationsContract } from "@vm0/api-contracts/contracts/zero-workflows";
 import { beforeEach, describe, expect, it } from "vitest";
 
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
 import { createApp } from "../../../app-factory";
-import { clearMockNow, mockNow, now } from "../../../lib/time";
 import { mockEnv } from "../../../lib/env";
+import { clearMockNow, mockNow, now } from "../../../lib/time";
 import { createRunsApi } from "./helpers/api-bdd-runs";
 import { createWorkflowsBddApi } from "./helpers/api-bdd-workflows";
 import { createZeroRouteMocks } from "./helpers/zero-route-test";
@@ -18,6 +19,9 @@ const workflows = createWorkflowsBddApi(context);
 const runs = createRunsApi(context);
 
 const STAFF_ORG_ID = "org_3ANttyrbWYJk6JKRSTRLEsbsDLe";
+// Synthetic tenant whose FNV-1a value matches the staff rollout allowlist, so
+// tenant isolation can be exercised entirely through external API behavior.
+const SECOND_ROLLOUT_ORG_ID = "org_j3tn5H";
 const CRON_SECRET = "strapi-cron-secret";
 const WORKFLOW_NAME = "publish-strapi-blog";
 
@@ -31,6 +35,10 @@ function integrationsClient() {
 
 function automationsClient() {
   return setupApp({ context })(zeroWorkflowAutomationsContract);
+}
+
+function queueClient() {
+  return setupApp({ context })(zeroWorkflowQueueContract);
 }
 
 async function postStrapiEvent(args: {
@@ -75,6 +83,148 @@ describe("Strapi integration", () => {
     );
     expect(response.body.error.message).toBe(
       "Strapi integration is not enabled",
+    );
+  });
+
+  it("requires organization admins and keeps integrations tenant-scoped", async () => {
+    const admin = workflows.user({
+      orgId: STAFF_ORG_ID,
+      orgRole: "org:admin",
+    });
+    mocks.clerk.session(admin.userId, admin.orgId, admin.orgRole);
+
+    const ownIntegration = await accept(
+      integrationsClient().create({
+        headers: authHeaders(),
+        body: {
+          name: "Admin-owned CMS",
+          baseUrl: `https://admin-${randomUUID()}.example.com`,
+        },
+      }),
+      [201],
+    );
+
+    const member = workflows.user({
+      orgId: STAFF_ORG_ID,
+      orgRole: "org:member",
+    });
+    mocks.clerk.session(member.userId, member.orgId, member.orgRole);
+    const memberList = await accept(
+      integrationsClient().list({ headers: authHeaders() }),
+      [200],
+    );
+    expect(
+      memberList.body.map((integration) => {
+        return integration.id;
+      }),
+    ).toContain(ownIntegration.body.id);
+    await accept(
+      integrationsClient().create({
+        headers: authHeaders(),
+        body: {
+          name: "Member CMS",
+          baseUrl: `https://member-${randomUUID()}.example.com`,
+        },
+      }),
+      [403],
+    );
+    await accept(
+      integrationsClient().revealSecret({
+        headers: authHeaders(),
+        params: { integrationId: ownIntegration.body.id },
+      }),
+      [403],
+    );
+    await accept(
+      integrationsClient().checkTest({
+        headers: authHeaders(),
+        params: { integrationId: ownIntegration.body.id },
+      }),
+      [403],
+    );
+    await accept(
+      integrationsClient().remove({
+        headers: authHeaders(),
+        params: { integrationId: ownIntegration.body.id },
+      }),
+      [403],
+    );
+
+    const foreignAdmin = workflows.user({
+      orgId: SECOND_ROLLOUT_ORG_ID,
+      orgRole: "org:admin",
+    });
+    mocks.clerk.session(
+      foreignAdmin.userId,
+      foreignAdmin.orgId,
+      foreignAdmin.orgRole,
+    );
+    const foreignIntegration = await accept(
+      integrationsClient().create({
+        headers: authHeaders(),
+        body: {
+          name: "Foreign CMS",
+          baseUrl: `https://foreign-${randomUUID()}.example.com`,
+        },
+      }),
+      [201],
+    );
+
+    mocks.clerk.session(admin.userId, admin.orgId, admin.orgRole);
+    const adminList = await accept(
+      integrationsClient().list({ headers: authHeaders() }),
+      [200],
+    );
+    expect(
+      adminList.body.map((integration) => {
+        return integration.id;
+      }),
+    ).toContain(ownIntegration.body.id);
+    expect(
+      adminList.body.map((integration) => {
+        return integration.id;
+      }),
+    ).not.toContain(foreignIntegration.body.id);
+    await accept(
+      integrationsClient().revealSecret({
+        headers: authHeaders(),
+        params: { integrationId: foreignIntegration.body.id },
+      }),
+      [404],
+    );
+    await accept(
+      integrationsClient().checkTest({
+        headers: authHeaders(),
+        params: { integrationId: foreignIntegration.body.id },
+      }),
+      [404],
+    );
+    await accept(
+      integrationsClient().remove({
+        headers: authHeaders(),
+        params: { integrationId: foreignIntegration.body.id },
+      }),
+      [404],
+    );
+
+    await accept(
+      integrationsClient().remove({
+        headers: authHeaders(),
+        params: { integrationId: ownIntegration.body.id },
+      }),
+      [204],
+    );
+    mocks.clerk.session(
+      foreignAdmin.userId,
+      foreignAdmin.orgId,
+      foreignAdmin.orgRole,
+    );
+    await accept(
+      integrationsClient().remove({
+        headers: authHeaders(),
+        params: { integrationId: foreignIntegration.body.id },
+      }),
+      [204],
     );
   });
 
@@ -180,6 +330,14 @@ describe("Strapi integration", () => {
     if (!automation.body.chatThreadId) {
       throw new Error("Expected Strapi automation chat thread");
     }
+    const paused = await accept(
+      queueClient().pause({
+        headers: authHeaders(),
+        params: { threadId: automation.body.chatThreadId },
+      }),
+      [200],
+    );
+    expect(paused.body.pausedAt).not.toBeNull();
 
     const publishStartedAt = now() - 60_000;
     mockNow(publishStartedAt);
@@ -228,15 +386,74 @@ describe("Strapi integration", () => {
     });
 
     mockNow(publishStartedAt + 46_000);
-    const cronResponse = await createApp({ signal: context.signal }).request(
-      "/api/cron/execute-workflow-automations",
-      { headers: { authorization: `Bearer ${CRON_SECRET}` } },
+    const cronResponses = await Promise.all(
+      [0, 1].map(() => {
+        return createApp({ signal: context.signal }).request(
+          "/api/cron/execute-workflow-automations",
+          { headers: { authorization: `Bearer ${CRON_SECRET}` } },
+        );
+      }),
     );
-    expect(cronResponse.status).toBe(200);
-    await expect(cronResponse.json()).resolves.toMatchObject({
-      success: true,
-      executed: 1,
+    expect(
+      cronResponses.map((response) => {
+        return response.status;
+      }),
+    ).toStrictEqual([200, 200]);
+    const cronBodies = (await Promise.all(
+      cronResponses.map(async (response) => {
+        return (await response.json()) as {
+          readonly success: boolean;
+          readonly executed: number;
+        };
+      }),
+    )) satisfies readonly {
+      readonly success: boolean;
+      readonly executed: number;
+    }[];
+    expect(
+      cronBodies.every((body) => {
+        return body.success;
+      }),
+    ).toBeTruthy();
+    expect(
+      cronBodies.reduce((total, body) => {
+        return total + body.executed;
+      }, 0),
+    ).toBe(1);
+
+    const durableQueue = await accept(
+      queueClient().get({
+        headers: authHeaders(),
+        params: { threadId: automation.body.chatThreadId },
+      }),
+      [200],
+    );
+    expect(durableQueue.body.running).toBeNull();
+    expect(durableQueue.body.pending).toHaveLength(1);
+    expect(durableQueue.body.pausedAt).not.toBeNull();
+
+    const duplicateAfterAdmission = await postStrapiEvent({
+      webhookUrl: createdIntegration.body.webhookUrl,
+      authorizationHeader: createdIntegration.body.authorizationHeader,
+      eventHeader: "entry.publish",
+      payload: englishPayload,
     });
+    expect(duplicateAfterAdmission.body).toStrictEqual({
+      success: true,
+      kind: "duplicate",
+      queued: 0,
+    });
+
+    const resumed = await accept(
+      queueClient().resume({
+        headers: authHeaders(),
+        params: { threadId: automation.body.chatThreadId },
+      }),
+      [200],
+    );
+    expect(resumed.body.running).not.toBeNull();
+    expect(resumed.body.pending).toHaveLength(0);
+    expect(resumed.body.pausedAt).toBeNull();
 
     const messages = await workflows.readThreadMessages(
       automation.body.chatThreadId,
@@ -265,5 +482,40 @@ describe("Strapi integration", () => {
     expect(claim.appendSystemPrompt).not.toContain(
       createdIntegration.body.authorizationHeader,
     );
+
+    const nextPublishStartedAt = publishStartedAt + 47_000;
+    mockNow(nextPublishStartedAt);
+    const publishDuringRun = await postStrapiEvent({
+      webhookUrl: createdIntegration.body.webhookUrl,
+      authorizationHeader: createdIntegration.body.authorizationHeader,
+      eventHeader: "entry.publish",
+      payload: publishPayload("fr"),
+    });
+    expect(publishDuringRun.body).toStrictEqual({
+      success: true,
+      kind: "publish",
+      queued: 1,
+    });
+
+    mockNow(nextPublishStartedAt + 46_000);
+    const successorCron = await createApp({
+      signal: context.signal,
+    }).request("/api/cron/execute-workflow-automations", {
+      headers: { authorization: `Bearer ${CRON_SECRET}` },
+    });
+    expect(successorCron.status).toBe(200);
+    await expect(successorCron.json()).resolves.toMatchObject({
+      success: true,
+      executed: 1,
+    });
+    const queueDuringRun = await accept(
+      queueClient().get({
+        headers: authHeaders(),
+        params: { threadId: automation.body.chatThreadId },
+      }),
+      [200],
+    );
+    expect(queueDuringRun.body.running?.runId).toBe(runId);
+    expect(queueDuringRun.body.pending).toHaveLength(1);
   });
 });

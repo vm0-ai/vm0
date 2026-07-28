@@ -25,10 +25,12 @@ import { writeDb$, type Db } from "../external/db";
 import { now, nowDate } from "../external/time";
 import { safeJsonParse, settle } from "../utils";
 import { workflowAutomationCanFire } from "./zero-workflow-automation-access.service";
+import type { WorkflowQueueAdmissionTransaction } from "./chat-message-queue.service";
 import {
   buildChatOnlyWorkflowAutomationCallbacks,
   runWorkflowAutomationNow$,
   type AutomationRow,
+  type RunFailure,
   type RunWorkflowAutomationNowArgs,
   type RunWorkflowAutomationResult,
 } from "./zero-workflow-automation-run.service";
@@ -59,6 +61,7 @@ const strapiPublishEventSchema = z
 type StrapiPublishEvent = z.infer<typeof strapiPublishEventSchema>;
 type StrapiIntegrationRow = typeof strapiIntegrations.$inferSelect;
 type StrapiPendingRow = typeof strapiWorkflowPendingEvents.$inferSelect;
+type StrapiWebhookTransaction = Parameters<Parameters<Db["transaction"]>[0]>[0];
 
 type DispatchStrapiWebhookResult =
   | {
@@ -127,77 +130,73 @@ function pendingEventLockKey(args: {
 }
 
 async function enqueueOrRefreshStrapiPendingEvent(args: {
-  readonly db: Db;
+  readonly db: StrapiWebhookTransaction;
   readonly automation: AutomationRow;
   readonly integrationId: string;
   readonly event: StrapiPublishEvent;
   readonly signal: AbortSignal;
 }): Promise<void> {
-  await args.db.transaction(async (tx) => {
-    const lockKey = pendingEventLockKey({
-      automationId: args.automation.id,
-      uid: args.event.uid,
-      documentId: args.event.entry.documentId,
-    });
-    await tx.execute(
-      sql`select pg_advisory_xact_lock(hashtextextended(${lockKey}, 0))`,
-    );
-    args.signal.throwIfAborted();
+  const lockKey = pendingEventLockKey({
+    automationId: args.automation.id,
+    uid: args.event.uid,
+    documentId: args.event.entry.documentId,
+  });
+  await args.db.execute(
+    sql`select pg_advisory_xact_lock(hashtextextended(${lockKey}, 0))`,
+  );
+  args.signal.throwIfAborted();
 
-    const [pending] = await tx
-      .select()
-      .from(strapiWorkflowPendingEvents)
-      .where(
-        and(
-          eq(strapiWorkflowPendingEvents.automationId, args.automation.id),
-          eq(strapiWorkflowPendingEvents.uid, args.event.uid),
-          eq(
-            strapiWorkflowPendingEvents.documentId,
-            args.event.entry.documentId,
-          ),
-          eq(strapiWorkflowPendingEvents.status, "pending"),
-        ),
-      )
-      .limit(1);
-    const currentTime = nowDate();
-    const locale = eventLocale(args.event);
-    const receivedEventAt = eventTimestamp(args.event);
-    const runAfter = new Date(
-      currentTime.getTime() + STRAPI_PUBLISH_QUIET_WINDOW_MS,
-    );
-    if (pending) {
-      await tx
-        .update(strapiWorkflowPendingEvents)
-        .set({
-          model: args.event.model,
-          locales: [...new Set([...pending.locales, locale])].sort(),
-          latestEventAt: receivedEventAt,
-          runAfter,
-          lastError: null,
-          updatedAt: currentTime,
-        })
-        .where(eq(strapiWorkflowPendingEvents.id, pending.id));
-      return;
-    }
-    await tx.insert(strapiWorkflowPendingEvents).values({
-      automationId: args.automation.id,
-      integrationId: args.integrationId,
-      uid: args.event.uid,
-      model: args.event.model,
-      documentId: args.event.entry.documentId,
-      locales: [locale],
-      status: "pending",
-      firstEventAt: receivedEventAt,
-      latestEventAt: receivedEventAt,
-      runAfter,
-      createdAt: currentTime,
-      updatedAt: currentTime,
-    });
+  const [pending] = await args.db
+    .select()
+    .from(strapiWorkflowPendingEvents)
+    .where(
+      and(
+        eq(strapiWorkflowPendingEvents.automationId, args.automation.id),
+        eq(strapiWorkflowPendingEvents.uid, args.event.uid),
+        eq(strapiWorkflowPendingEvents.documentId, args.event.entry.documentId),
+        eq(strapiWorkflowPendingEvents.status, "pending"),
+      ),
+    )
+    .limit(1);
+  const currentTime = nowDate();
+  const locale = eventLocale(args.event);
+  const receivedEventAt = eventTimestamp(args.event);
+  const runAfter = new Date(
+    currentTime.getTime() + STRAPI_PUBLISH_QUIET_WINDOW_MS,
+  );
+  if (pending) {
+    await args.db
+      .update(strapiWorkflowPendingEvents)
+      .set({
+        model: args.event.model,
+        locales: [...new Set([...pending.locales, locale])].sort(),
+        latestEventAt: receivedEventAt,
+        runAfter,
+        revision: sql`${strapiWorkflowPendingEvents.revision} + 1`,
+        lastError: null,
+        updatedAt: currentTime,
+      })
+      .where(eq(strapiWorkflowPendingEvents.id, pending.id));
+    return;
+  }
+  await args.db.insert(strapiWorkflowPendingEvents).values({
+    automationId: args.automation.id,
+    integrationId: args.integrationId,
+    uid: args.event.uid,
+    model: args.event.model,
+    documentId: args.event.entry.documentId,
+    locales: [locale],
+    status: "pending",
+    firstEventAt: receivedEventAt,
+    latestEventAt: receivedEventAt,
+    runAfter,
+    createdAt: currentTime,
+    updatedAt: currentTime,
   });
 }
 
 async function enqueueMatchingStrapiAutomations(args: {
-  readonly db: Db;
+  readonly db: StrapiWebhookTransaction;
   readonly integration: StrapiIntegrationRow;
   readonly event: StrapiPublishEvent;
   readonly signal: AbortSignal;
@@ -219,7 +218,8 @@ async function enqueueMatchingStrapiAutomations(args: {
         eq(zeroWorkflowAutomations.eventType, "strapi-entry-published"),
         eq(zeroWorkflowAutomations.enabled, true),
       ),
-    );
+    )
+    .orderBy(asc(zeroWorkflowAutomations.id));
   args.signal.throwIfAborted();
 
   let queued = 0;
@@ -307,33 +307,41 @@ export const dispatchStrapiWebhook$ = command(
       };
     }
 
-    const bodySha256 = sha256Hex(args.rawBody);
-    const [delivery] = await db
-      .insert(strapiWebhookDeliveries)
-      .values({
-        integrationId: integration.id,
-        bodySha256,
-        event: parsed.data.event,
-        receivedAt: nowDate(),
-      })
-      .onConflictDoNothing()
-      .returning({ id: strapiWebhookDeliveries.id });
-    signal.throwIfAborted();
-    if (!delivery) {
-      return { kind: "ok", webhookKind: "duplicate", queued: 0 };
-    }
-    await db
-      .update(strapiIntegrations)
-      .set({ lastReceivedAt: nowDate(), updatedAt: nowDate() })
-      .where(eq(strapiIntegrations.id, integration.id));
-    signal.throwIfAborted();
-    const queued = await enqueueMatchingStrapiAutomations({
-      db,
-      integration,
-      event: parsed.data,
-      signal,
+    const result = await db.transaction(async (tx) => {
+      const bodySha256 = sha256Hex(args.rawBody);
+      const [delivery] = await tx
+        .insert(strapiWebhookDeliveries)
+        .values({
+          integrationId: integration.id,
+          bodySha256,
+          event: parsed.data.event,
+          receivedAt: nowDate(),
+        })
+        .onConflictDoNothing()
+        .returning({ id: strapiWebhookDeliveries.id });
+      signal.throwIfAborted();
+      if (!delivery) {
+        return {
+          kind: "ok",
+          webhookKind: "duplicate",
+          queued: 0,
+        } as const;
+      }
+      await tx
+        .update(strapiIntegrations)
+        .set({ lastReceivedAt: nowDate(), updatedAt: nowDate() })
+        .where(eq(strapiIntegrations.id, integration.id));
+      signal.throwIfAborted();
+      const queued = await enqueueMatchingStrapiAutomations({
+        db: tx,
+        integration,
+        event: parsed.data,
+        signal,
+      });
+      return { kind: "ok", webhookKind: "publish", queued } as const;
     });
-    return { kind: "ok", webhookKind: "publish", queued };
+    signal.throwIfAborted();
+    return result;
   },
 );
 
@@ -351,6 +359,7 @@ function pendingColumns() {
     latestEventAt: strapiWorkflowPendingEvents.latestEventAt,
     runAfter: strapiWorkflowPendingEvents.runAfter,
     attempts: strapiWorkflowPendingEvents.attempts,
+    revision: strapiWorkflowPendingEvents.revision,
     lastError: strapiWorkflowPendingEvents.lastError,
     skipReason: strapiWorkflowPendingEvents.skipReason,
     processedAt: strapiWorkflowPendingEvents.processedAt,
@@ -359,58 +368,40 @@ function pendingColumns() {
   };
 }
 
-async function claimPendingEvent(args: {
-  readonly db: Db;
-  readonly pending: StrapiPendingRow;
-  readonly signal: AbortSignal;
-}): Promise<StrapiPendingRow | null> {
-  return await args.db.transaction(async (tx) => {
-    const lockKey = pendingEventLockKey({
-      automationId: args.pending.automationId,
-      uid: args.pending.uid,
-      documentId: args.pending.documentId,
-    });
-    await tx.execute(
-      sql`select pg_advisory_xact_lock(hashtextextended(${lockKey}, 0))`,
-    );
-    args.signal.throwIfAborted();
-
-    const currentTime = nowDate();
-    const [claimed] = await tx
-      .update(strapiWorkflowPendingEvents)
-      .set({
-        status: "running",
-        attempts: sql`${strapiWorkflowPendingEvents.attempts} + 1`,
-        updatedAt: currentTime,
-      })
-      .where(
-        and(
-          eq(strapiWorkflowPendingEvents.id, args.pending.id),
-          eq(strapiWorkflowPendingEvents.status, "pending"),
-          lte(strapiWorkflowPendingEvents.runAfter, currentTime),
-        ),
-      )
-      .returning(pendingColumns());
-    args.signal.throwIfAborted();
-    return claimed ?? null;
-  });
+function pendingVersionCondition(pending: StrapiPendingRow) {
+  return and(
+    eq(strapiWorkflowPendingEvents.id, pending.id),
+    eq(strapiWorkflowPendingEvents.status, "pending"),
+    eq(strapiWorkflowPendingEvents.revision, pending.revision),
+  );
 }
 
 async function skipPendingEvent(args: {
   readonly db: Db;
-  readonly pendingId: string;
+  readonly pending: StrapiPendingRow;
   readonly reason: string;
+  readonly attempts?: number;
+  readonly lastError?: string;
   readonly signal: AbortSignal;
 }): Promise<void> {
-  await args.db
-    .update(strapiWorkflowPendingEvents)
-    .set({
-      status: "skipped",
-      skipReason: args.reason,
-      processedAt: nowDate(),
-      updatedAt: nowDate(),
-    })
-    .where(eq(strapiWorkflowPendingEvents.id, args.pendingId));
+  await args.db.transaction(async (tx) => {
+    const lockKey = pendingEventLockKey(args.pending);
+    await tx.execute(
+      sql`select pg_advisory_xact_lock(hashtextextended(${lockKey}, 0))`,
+    );
+    args.signal.throwIfAborted();
+    await tx
+      .update(strapiWorkflowPendingEvents)
+      .set({
+        status: "skipped",
+        attempts: args.attempts ?? args.pending.attempts,
+        lastError: args.lastError ?? args.pending.lastError,
+        skipReason: args.reason,
+        processedAt: nowDate(),
+        updatedAt: nowDate(),
+      })
+      .where(pendingVersionCondition(args.pending));
+  });
   args.signal.throwIfAborted();
 }
 
@@ -420,41 +411,69 @@ async function retryPendingEvent(args: {
   readonly message: string;
   readonly signal: AbortSignal;
 }): Promise<void> {
-  if (args.pending.attempts >= STRAPI_PENDING_MAX_ATTEMPTS) {
+  const nextAttempts = args.pending.attempts + 1;
+  if (nextAttempts >= STRAPI_PENDING_MAX_ATTEMPTS) {
     await skipPendingEvent({
       db: args.db,
-      pendingId: args.pending.id,
+      pending: args.pending,
       reason: args.message,
+      attempts: nextAttempts,
+      lastError: args.message,
       signal: args.signal,
     });
     return;
   }
-  await args.db
-    .update(strapiWorkflowPendingEvents)
-    .set({
-      status: "pending",
-      lastError: args.message,
-      runAfter: new Date(now() + STRAPI_PENDING_RETRY_MS),
-      updatedAt: nowDate(),
-    })
-    .where(eq(strapiWorkflowPendingEvents.id, args.pending.id));
+  await args.db.transaction(async (tx) => {
+    const lockKey = pendingEventLockKey(args.pending);
+    await tx.execute(
+      sql`select pg_advisory_xact_lock(hashtextextended(${lockKey}, 0))`,
+    );
+    args.signal.throwIfAborted();
+    await tx
+      .update(strapiWorkflowPendingEvents)
+      .set({
+        attempts: nextAttempts,
+        revision: sql`${strapiWorkflowPendingEvents.revision} + 1`,
+        lastError: args.message,
+        runAfter: new Date(now() + STRAPI_PENDING_RETRY_MS),
+        updatedAt: nowDate(),
+      })
+      .where(pendingVersionCondition(args.pending));
+  });
   args.signal.throwIfAborted();
 }
 
-async function markPendingEventProcessed(args: {
-  readonly db: Db;
-  readonly pendingId: string;
+class StrapiPendingEventChangedError extends Error {
+  constructor() {
+    super("Strapi pending event changed before durable queue admission");
+    this.name = "StrapiPendingEventChangedError";
+  }
+}
+
+async function persistPendingEventProcessed(args: {
+  readonly tx: WorkflowQueueAdmissionTransaction;
+  readonly pending: StrapiPendingRow;
   readonly signal: AbortSignal;
 }): Promise<void> {
-  await args.db
+  const lockKey = pendingEventLockKey(args.pending);
+  await args.tx.execute(
+    sql`select pg_advisory_xact_lock(hashtextextended(${lockKey}, 0))`,
+  );
+  args.signal.throwIfAborted();
+  const currentTime = nowDate();
+  const [processed] = await args.tx
     .update(strapiWorkflowPendingEvents)
     .set({
       status: "processed",
-      processedAt: nowDate(),
-      updatedAt: nowDate(),
+      processedAt: currentTime,
+      updatedAt: currentTime,
     })
-    .where(eq(strapiWorkflowPendingEvents.id, args.pendingId));
+    .where(pendingVersionCondition(args.pending))
+    .returning({ id: strapiWorkflowPendingEvents.id });
   args.signal.throwIfAborted();
+  if (!processed) {
+    throw new StrapiPendingEventChangedError();
+  }
 }
 
 async function loadPendingEventTarget(args: {
@@ -508,6 +527,12 @@ async function loadPendingEventTarget(args: {
   return row ?? null;
 }
 
+function runFailureMessage(result: RunFailure): string {
+  return result.kind === "conflict"
+    ? result.message
+    : result.response.body.error.message;
+}
+
 async function processPendingEvent(args: {
   readonly db: Db;
   readonly pending: StrapiPendingRow;
@@ -546,7 +571,7 @@ async function processPendingEvent(args: {
   ) {
     await skipPendingEvent({
       db: args.db,
-      pendingId: args.pending.id,
+      pending: args.pending,
       reason: "Automation is no longer active or no longer matches",
       signal: args.signal,
     });
@@ -560,7 +585,7 @@ async function processPendingEvent(args: {
   if (!canFire) {
     await skipPendingEvent({
       db: args.db,
-      pendingId: args.pending.id,
+      pending: args.pending,
       reason: "Automation owner can no longer run this workflow",
       signal: args.signal,
     });
@@ -612,8 +637,16 @@ async function processPendingEvent(args: {
         row.agentId,
       ),
       activePreviousRunPolicy: "allow",
+      coalescePendingScheduleRun: false,
       recordLastRunId: false,
       recordLastRunAt: true,
+      persistSourceTransition: async (tx) => {
+        await persistPendingEventProcessed({
+          tx,
+          pending: args.pending,
+          signal: args.signal,
+        });
+      },
       dispatchFailedCallbacks: dispatchFailedRunCallbacks,
     },
     args.signal,
@@ -622,19 +655,11 @@ async function processPendingEvent(args: {
     await retryPendingEvent({
       db: args.db,
       pending: args.pending,
-      message:
-        result.kind === "conflict"
-          ? result.message
-          : result.response.body.error.message,
+      message: runFailureMessage(result),
       signal: args.signal,
     });
     return "skipped";
   }
-  await markPendingEventProcessed({
-    db: args.db,
-    pendingId: args.pending.id,
-    signal: args.signal,
-  });
   return "executed";
 }
 
@@ -660,14 +685,10 @@ export const executeDueStrapiWorkflowEvents$ = command(
     let executed = 0;
     let skipped = 0;
     for (const pending of due) {
-      const claimed = await claimPendingEvent({ db, pending, signal });
-      if (!claimed) {
-        continue;
-      }
       const result = await settle(
         processPendingEvent({
           db,
-          pending: claimed,
+          pending,
           signal,
           startRun: (input, childSignal) => {
             return set(runWorkflowAutomationNow$, input, childSignal);
@@ -676,14 +697,17 @@ export const executeDueStrapiWorkflowEvents$ = command(
         signal,
       );
       if (!result.ok) {
+        if (result.error instanceof StrapiPendingEventChangedError) {
+          continue;
+        }
         log.error("Failed to process Strapi workflow event", {
-          automationId: claimed.automationId,
-          pendingEventId: claimed.id,
+          automationId: pending.automationId,
+          pendingEventId: pending.id,
           error: result.error,
         });
         await retryPendingEvent({
           db,
-          pending: claimed,
+          pending,
           message:
             result.error instanceof Error
               ? result.error.message
