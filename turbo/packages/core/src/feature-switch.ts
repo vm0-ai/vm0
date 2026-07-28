@@ -241,13 +241,6 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
-  [FeatureSwitchKey.ZeroPeopleSearch]: {
-    maintainer: "liangyou@vm0.ai",
-    description:
-      "Enable managed Perplexity People Search and the people-search:read ZERO_TOKEN capability.",
-    enabled: false,
-    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
-  },
   [FeatureSwitchKey.Banking]: {
     maintainer: "linghan@vm0.ai",
     description:
@@ -399,7 +392,7 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
   [FeatureSwitchKey.ChatHistoryBackfillProgress]: {
     maintainer: "ethan@vm0.ai",
     description:
-      "Progress bar under the chat thread header showing history backfill progress while older messages load.",
+      "Chat message skeletons above the first visible message while older history loads.",
     // Not rolled out to anyone yet; enable per-user via the Lab page.
     enabled: false,
   },
@@ -437,6 +430,14 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
       "Show the Feishu direct-message integration and Works page entry point.",
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+  },
+  [FeatureSwitchKey.StrapiIntegration]: {
+    maintainer: "ethan@vm0.ai",
+    description:
+      "Enable Strapi integration settings and Strapi entry-published workflow automations.",
+    enabled: false,
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+    userOverridable: false,
   },
   [FeatureSwitchKey.Artifacts]: {
     maintainer: "bingjie@vm0.ai",

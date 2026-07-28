@@ -19,6 +19,7 @@ import {
   type NotionChildPageCreatedEventCreateConfig,
   type NotionDatabaseItemCreatedEventCreateConfig,
   type NotionPageContentUpdatedEventCreateConfig,
+  type StrapiEntryPublishedEventConfig,
   type ZeroWorkflowDetailResponse,
   type ZeroWorkflowConnectorReadinessResponse,
   type ZeroWorkflowSchedule,
@@ -105,6 +106,7 @@ export type WorkflowAutomationCreateDialog =
   | "notion-child-page"
   | "notion-database-item"
   | "notion-page-content-updated"
+  | "strapi-entry-published"
   | "webhook"
   | null;
 export type NotionPageContentUpdatedScopeMode = "page" | "database";
@@ -233,6 +235,7 @@ const internalCreatedWorkflowWebhookAutomation$ =
   state<WorkflowWebhookAutomationSummary | null>(null);
 const internalWorkflowAutomationPickerOpen$ = state(false);
 const internalWorkflowWebhookUpgradeDialogOpen$ = state(false);
+const internalCreateStrapiIntegrationId$ = state<string | null>(null);
 const internalWorkflowAutomationPickerCategory$ =
   state<WorkflowAutomationCategoryKey>("schedule");
 const internalCreateNotionPageContentUpdatedScope$ =
@@ -578,6 +581,16 @@ export const setWorkflowAutomationPickerCategory$ = command(
 export const createNotionPageContentUpdatedScope$ = computed((get) => {
   return get(internalCreateNotionPageContentUpdatedScope$);
 });
+
+export const createStrapiIntegrationId$ = computed((get) => {
+  return get(internalCreateStrapiIntegrationId$);
+});
+
+export const setCreateStrapiIntegrationId$ = command(
+  ({ set }, integrationId: string | null) => {
+    set(internalCreateStrapiIntegrationId$, integrationId);
+  },
+);
 
 export const setCreateNotionPageContentUpdatedScope$ = command(
   ({ set }, scope: NotionPageContentUpdatedScopeMode) => {
@@ -1257,6 +1270,33 @@ export const createWorkflowNotionPageContentUpdatedAutomation$ = command(
         body: {
           kind: "event",
           eventType: "notion-page-content-updated",
+          eventConfig: input.eventConfig,
+        },
+        fetchOptions: { signal },
+      }),
+      [201],
+    );
+    signal.throwIfAborted();
+    set(reloadWorkflows$);
+  },
+);
+
+export const createWorkflowStrapiEntryPublishedAutomation$ = command(
+  async (
+    { get, set },
+    input: {
+      readonly workflowId: string;
+      readonly eventConfig: StrapiEntryPublishedEventConfig;
+    },
+    signal: AbortSignal,
+  ) => {
+    const client = get(zeroClient$)(zeroWorkflowAutomationsContract);
+    await accept(
+      client.create({
+        params: { workflowId: input.workflowId },
+        body: {
+          kind: "event",
+          eventType: "strapi-entry-published",
           eventConfig: input.eventConfig,
         },
         fetchOptions: { signal },

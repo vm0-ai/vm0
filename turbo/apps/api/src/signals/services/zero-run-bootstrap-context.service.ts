@@ -106,7 +106,6 @@ export interface ZeroRunBootstrapContext extends AgentConnectorScope {
   readonly userInfo: UserInfo;
   readonly featureSwitchContext: FeatureSwitchContext;
   readonly zeroFinanceEnabled: boolean;
-  readonly zeroPeopleSearchEnabled: boolean;
   readonly workflows: readonly RunWorkflowRef[];
   readonly permissionGrants: readonly FirewallPermissionGrant[];
   readonly triggerAgentId: string | undefined;
@@ -422,10 +421,6 @@ export function materializeZeroRunBootstrapContext(
     featureSwitchContext,
     zeroFinanceEnabled: isFeatureEnabled(
       FeatureSwitchKey.ZeroFinance,
-      featureSwitchContext,
-    ),
-    zeroPeopleSearchEnabled: isFeatureEnabled(
-      FeatureSwitchKey.ZeroPeopleSearch,
       featureSwitchContext,
     ),
     ...connectorScope,

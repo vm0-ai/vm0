@@ -3,7 +3,6 @@ import { i18n, initializeI18n } from "../i18n/index.ts";
 import { DEFAULT_LOCALE, type SupportedLocale } from "../i18n/resources.ts";
 import {
   localeStorageKey,
-  resolveBrowserLocale,
   resolveDocumentLocale,
 } from "../i18n/locale-storage.ts";
 import { clerk$ } from "./auth.ts";
@@ -76,7 +75,7 @@ export const syncLocalePreference$ = command(
       return;
     }
 
-    const locale = preferences.locale ?? resolveBrowserLocale();
+    const locale = preferences.locale ?? resolveDocumentLocale();
     await set(applyLocalePreference$, clerk.organization.id, locale, signal);
 
     if (preferences.locale === null) {

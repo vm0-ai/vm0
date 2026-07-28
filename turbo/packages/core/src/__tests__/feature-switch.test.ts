@@ -117,7 +117,6 @@ describe("getAllFeatureStates", () => {
     });
     expect(staffOrgStates[FeatureSwitchKey.Lab]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.ZeroFinance]).toBe(true);
-    expect(staffOrgStates[FeatureSwitchKey.ZeroPeopleSearch]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.ZeroBrowser]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.LanguagePreference]).toBe(false);
     expect(staffOrgStates[FeatureSwitchKey.CodexSessionPruning]).toBe(true);
@@ -141,13 +140,13 @@ describe("getAllFeatureStates", () => {
     expect(staffOrgStates[FeatureSwitchKey.GithubWebhookAutomations]).toBe(
       true,
     );
+    expect(staffOrgStates[FeatureSwitchKey.StrapiIntegration]).toBe(true);
 
     const otherOrgStates = getAllFeatureStates({
       orgId: "org_nonexistent",
     });
     expect(otherOrgStates[FeatureSwitchKey.Lab]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.ZeroFinance]).toBe(false);
-    expect(otherOrgStates[FeatureSwitchKey.ZeroPeopleSearch]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.ZeroBrowser]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.LanguagePreference]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.CodexSessionPruning]).toBe(false);
@@ -172,6 +171,7 @@ describe("getAllFeatureStates", () => {
     expect(otherOrgStates[FeatureSwitchKey.GithubWebhookAutomations]).toBe(
       false,
     );
+    expect(otherOrgStates[FeatureSwitchKey.StrapiIntegration]).toBe(false);
   });
 
   it("should apply overrides to enable disabled features", () => {
@@ -227,10 +227,10 @@ describe("user-overridable switches", () => {
       FeatureSwitchKey.GithubWebhookAutomations,
     );
     expect(getUserOverridableFeatureSwitchKeys()).not.toContain(
-      FeatureSwitchKey.StructuredPromptInlineTemplates,
+      FeatureSwitchKey.StrapiIntegration,
     );
-    expect(getUserOverridableFeatureSwitchKeys()).toContain(
-      FeatureSwitchKey.ZeroPeopleSearch,
+    expect(getUserOverridableFeatureSwitchKeys()).not.toContain(
+      FeatureSwitchKey.StructuredPromptInlineTemplates,
     );
     expect(getUserOverridableFeatureSwitchKeys()).toContain(
       FeatureSwitchKey.ZeroFinance,
@@ -250,16 +250,22 @@ describe("user-overridable switches", () => {
         [FeatureSwitchKey.StructuredPromptInlineTemplates]: true,
         [FeatureSwitchKey.ZeroMailReplyFollowUp]: true,
         [FeatureSwitchKey.ZeroBrowser]: true,
-        [FeatureSwitchKey.ZeroPeopleSearch]: true,
         [FeatureSwitchKey.ComposerConnectorPermissions]: true,
         [FeatureSwitchKey.Dummy]: false,
       }),
     ).toStrictEqual({
       [FeatureSwitchKey.ZeroBrowser]: true,
-      [FeatureSwitchKey.ZeroPeopleSearch]: true,
       [FeatureSwitchKey.ComposerConnectorPermissions]: true,
       [FeatureSwitchKey.Dummy]: false,
     });
+  });
+
+  it("ignores persisted overrides for removed switches", () => {
+    expect(
+      filterUserOverridableFeatureSwitchOverrides({
+        zeroPeopleSearch: false,
+      }),
+    ).toStrictEqual({});
   });
 });
 

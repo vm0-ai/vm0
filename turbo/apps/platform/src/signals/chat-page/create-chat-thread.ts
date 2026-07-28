@@ -2466,7 +2466,7 @@ function createHistoryBackfillProgress(
   // Approximate backfill progress from the loaded seqId range. The thread's
   // true max seqId is not exposed to the client, so the newest loaded message
   // stands in for it. The reached-oldest computed hides progress once the
-  // first persistent seqId is 1. Null hides the progress bar.
+  // first persistent seqId is 1. Null hides the loading skeleton.
   return computed((get): Promise<number | null> => {
     if (get(hasReachedOldestMessage$)) {
       return Promise.resolve(null);

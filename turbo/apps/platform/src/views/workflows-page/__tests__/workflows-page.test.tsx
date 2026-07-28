@@ -16,6 +16,7 @@ import {
   type ZeroWorkflowAutomationSummary,
 } from "@vm0/api-contracts/contracts/zero-workflows";
 import { zeroAgentsByIdContract } from "@vm0/api-contracts/contracts/zero-agents";
+import { zeroStrapiIntegrationsContract } from "@vm0/api-contracts/contracts/zero-strapi-integrations";
 import type { TeamComposeItem } from "@vm0/api-contracts/contracts/zero-team";
 import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import { toast } from "@vm0/ui/components/ui/sonner";
@@ -992,7 +993,10 @@ function mockCreateWorkflowAutomation(
           },
         });
       }
-      if (body.eventConfig.provider === "github") {
+      if (
+        body.eventConfig.provider === "github" ||
+        body.eventConfig.provider === "strapi"
+      ) {
         return respond(201, {
           ...gmailWorkflowAutomation(),
           eventType: body.eventType,
@@ -2670,6 +2674,73 @@ describe("workflow detail page", () => {
           event: "database_item_created",
           databaseUrl:
             "https://www.notion.so/22222222222242228222222222222222?v=aaaaaaaaaaaa4aaa8aaaaaaaaaaaaaaa",
+        },
+      });
+    });
+  });
+
+  it("hides Strapi automation creation when the feature is disabled", async () => {
+    mockWorkflowApis([salesResearch()]);
+    detachedSetupWorkflowDetailPage(workflowDetailPath("automations"), {
+      [FeatureSwitchKey.StrapiIntegration]: false,
+    });
+
+    click(await screen.findByText("Add automation"));
+    const picker = await screen.findByRole("dialog");
+    click(buttonByText("Integrations", picker));
+    expect(
+      screen.queryByText("Strapi entry published"),
+    ).not.toBeInTheDocument();
+  });
+
+  it("creates a Strapi entry-published automation behind the feature switch", async () => {
+    const integrationId = "00000000-0000-4000-8000-000000000092";
+    const createBodies: ZeroWorkflowAutomationCreateRequest[] = [];
+    mockWorkflowApis([salesResearch()]);
+    mockCreateWorkflowAutomation((body) => {
+      createBodies.push(body);
+    });
+    context.mocks.api(zeroStrapiIntegrationsContract.list, ({ respond }) => {
+      return respond(200, [
+        {
+          id: integrationId,
+          name: "Marketing CMS",
+          baseUrl: "https://cms.example.com",
+          webhookUrl: `https://www.vm0.test/api/zero/strapi/events/${integrationId}`,
+          secretLastFour: "abcd",
+          lastTestedAt: "2026-07-28T04:00:00.000Z",
+          lastReceivedAt: null,
+          createdAt: "2026-07-28T03:00:00.000Z",
+        },
+      ]);
+    });
+    detachedSetupWorkflowDetailPage(workflowDetailPath("automations"), {
+      [FeatureSwitchKey.StrapiIntegration]: true,
+    });
+
+    click(await screen.findByText("Add automation"));
+    await screen.findByRole("dialog");
+    pickAutomation("Integrations", /^Strapi entry published/);
+    const form = await screen.findByRole("form", {
+      name: "Add Strapi entry published automation",
+    });
+    await fill(
+      within(form).getByLabelText("Content type UID (optional)"),
+      "api::article.article",
+    );
+    await fill(within(form).getByLabelText("Locale (optional)"), "en");
+    fireEvent.submit(form);
+
+    await waitFor(() => {
+      expect(createBodies.at(-1)).toStrictEqual({
+        kind: "event",
+        eventType: "strapi-entry-published",
+        eventConfig: {
+          provider: "strapi",
+          event: "entry_published",
+          integrationId,
+          contentTypeUid: "api::article.article",
+          locale: "en",
         },
       });
     });

@@ -71,6 +71,9 @@ interface AddOptions extends GmailAutomationOptions {
   readonly pageUrl?: string;
   readonly parentPageUrl?: string;
   readonly databaseUrl?: string;
+  readonly integrationId?: string;
+  readonly contentTypeUid?: string;
+  readonly locale?: string;
 }
 
 interface UpdateOptions extends GmailAutomationOptions {
@@ -121,10 +124,19 @@ const GITHUB_WEBHOOK_EVENT_KINDS = [
   "github-deployment-status-created",
   "github-issue-comment-created",
 ] as const;
+const STRAPI_EVENT_KINDS = ["strapi-entry-published"] as const;
 
 function githubWebhookAutomationsEnabled(): boolean {
   const payload = decodeZeroTokenPayload();
   return isFeatureEnabled(FeatureSwitchKey.GithubWebhookAutomations, {
+    userId: payload?.userId,
+    orgId: payload?.orgId,
+  });
+}
+
+function strapiIntegrationEnabled(): boolean {
+  const payload = decodeZeroTokenPayload();
+  return isFeatureEnabled(FeatureSwitchKey.StrapiIntegration, {
     userId: payload?.userId,
     orgId: payload?.orgId,
   });
@@ -135,6 +147,7 @@ function automationKinds(): readonly string[] {
     ...SCHEDULE_KINDS,
     ...EVENT_KINDS,
     ...(githubWebhookAutomationsEnabled() ? GITHUB_WEBHOOK_EVENT_KINDS : []),
+    ...(strapiIntegrationEnabled() ? STRAPI_EVENT_KINDS : []),
   ];
 }
 
@@ -560,13 +573,22 @@ function hasNotionAutomationOptions(options: AddOptions): boolean {
   );
 }
 
+function hasStrapiAutomationOptions(options: AddOptions): boolean {
+  return (
+    options.integrationId !== undefined ||
+    options.contentTypeUid !== undefined ||
+    options.locale !== undefined
+  );
+}
+
 function hasEventAddOptions(options: AddOptions): boolean {
   return (
     hasGmailAutomationOptions(options) ||
     hasGmailLabelOption(options) ||
     hasGithubAutomationOptions(options) ||
     hasCalendarAutomationOptions(options) ||
-    hasNotionAutomationOptions(options)
+    hasNotionAutomationOptions(options) ||
+    hasStrapiAutomationOptions(options)
   );
 }
 
@@ -599,6 +621,14 @@ function assertNoNotionAutomationOptions(options: AddOptions): void {
   if (hasNotionAutomationOptions(options)) {
     throw new Error(
       "Notion automation flags only apply to Notion event automations",
+    );
+  }
+}
+
+function assertNoStrapiAutomationOptions(options: AddOptions): void {
+  if (hasStrapiAutomationOptions(options)) {
+    throw new Error(
+      "Strapi automation flags only apply to Strapi event automations",
     );
   }
 }
@@ -1015,6 +1045,7 @@ function buildGmailNewMessageCreateRequest(
   assertNoGithubAutomationOptions(options);
   assertNoCalendarAutomationOptions(options);
   assertNoNotionAutomationOptions(options);
+  assertNoStrapiAutomationOptions(options);
   return {
     kind: "event",
     eventType: "gmail-new-message",
@@ -1034,6 +1065,7 @@ function buildGmailLabelAppliedCreateRequest(
   assertNoGithubAutomationOptions(options);
   assertNoCalendarAutomationOptions(options);
   assertNoNotionAutomationOptions(options);
+  assertNoStrapiAutomationOptions(options);
   return {
     kind: "event",
     eventType: "gmail-label-applied",
@@ -1052,6 +1084,7 @@ function buildGithubLabelAppliedCreateRequest(
   }
   assertNoCalendarAutomationOptions(options);
   assertNoNotionAutomationOptions(options);
+  assertNoStrapiAutomationOptions(options);
   if (hasGithubWorkflowRunSpecificOptions(options)) {
     throw new Error(
       "Workflow run filter flags only apply to github-workflow-run-completed automations",
@@ -1089,6 +1122,7 @@ function buildGithubWorkflowRunCompletedCreateRequest(
   ]);
   assertNoCalendarAutomationOptions(options);
   assertNoNotionAutomationOptions(options);
+  assertNoStrapiAutomationOptions(options);
   return {
     kind: "event",
     eventType: "github-workflow-run-completed",
@@ -1108,6 +1142,7 @@ function assertGithubWebhookCreateOptions(
   }
   assertNoCalendarAutomationOptions(options);
   assertNoNotionAutomationOptions(options);
+  assertNoStrapiAutomationOptions(options);
   assertOnlyGithubAutomationOptions(options, allowed);
 }
 
@@ -1194,10 +1229,11 @@ function buildGoogleCalendarEventCreateRequest(
     hasGmailAutomationOptions(options) ||
     hasGmailLabelOption(options) ||
     hasGithubAutomationOptions(options) ||
-    hasNotionAutomationOptions(options)
+    hasNotionAutomationOptions(options) ||
+    hasStrapiAutomationOptions(options)
   ) {
     throw new Error(
-      "Gmail, GitHub, and Notion automation flags only apply to their event automations",
+      "Gmail, GitHub, Notion, and Strapi automation flags only apply to their event automations",
     );
   }
   const calendarId = options.calendarId?.trim() || "primary";
@@ -1242,10 +1278,11 @@ function buildNotionChildPageCreatedCreateRequest(
     hasGmailAutomationOptions(options) ||
     hasGmailLabelOption(options) ||
     hasGithubAutomationOptions(options) ||
-    hasCalendarAutomationOptions(options)
+    hasCalendarAutomationOptions(options) ||
+    hasStrapiAutomationOptions(options)
   ) {
     throw new Error(
-      "Gmail, GitHub, and Google Calendar automation flags only apply to their event automations",
+      "Gmail, GitHub, Google Calendar, and Strapi automation flags only apply to their event automations",
     );
   }
 
@@ -1280,10 +1317,11 @@ function buildNotionDatabaseItemCreatedCreateRequest(
     hasGmailAutomationOptions(options) ||
     hasGmailLabelOption(options) ||
     hasGithubAutomationOptions(options) ||
-    hasCalendarAutomationOptions(options)
+    hasCalendarAutomationOptions(options) ||
+    hasStrapiAutomationOptions(options)
   ) {
     throw new Error(
-      "Gmail, GitHub, and Google Calendar automation flags only apply to their event automations",
+      "Gmail, GitHub, Google Calendar, and Strapi automation flags only apply to their event automations",
     );
   }
 
@@ -1318,10 +1356,11 @@ function buildNotionPageContentUpdatedCreateRequest(
     hasGmailAutomationOptions(options) ||
     hasGmailLabelOption(options) ||
     hasGithubAutomationOptions(options) ||
-    hasCalendarAutomationOptions(options)
+    hasCalendarAutomationOptions(options) ||
+    hasStrapiAutomationOptions(options)
   ) {
     throw new Error(
-      "Gmail, GitHub, and Google Calendar automation flags only apply to their event automations",
+      "Gmail, GitHub, Google Calendar, and Strapi automation flags only apply to their event automations",
     );
   }
 
@@ -1377,6 +1416,42 @@ function buildWebhookCreateRequest(
   };
 }
 
+function buildStrapiEntryPublishedCreateRequest(
+  options: AddOptions,
+): ZeroWorkflowAutomationCreateRequest {
+  assertNoScheduleAddOptions(options);
+  if (
+    hasGmailAutomationOptions(options) ||
+    hasGmailLabelOption(options) ||
+    hasGithubAutomationOptions(options) ||
+    hasCalendarAutomationOptions(options) ||
+    hasNotionAutomationOptions(options)
+  ) {
+    throw new Error(
+      "Only Strapi automation flags apply to strapi-entry-published automations",
+    );
+  }
+  const integrationId = options.integrationId?.trim();
+  if (!integrationId) {
+    throw new Error(
+      "strapi-entry-published automations require --integration-id <uuid>",
+    );
+  }
+  const contentTypeUid = options.contentTypeUid?.trim();
+  const locale = options.locale?.trim();
+  return {
+    kind: "event",
+    eventType: "strapi-entry-published",
+    eventConfig: {
+      provider: "strapi",
+      event: "entry_published",
+      integrationId,
+      ...(contentTypeUid ? { contentTypeUid } : {}),
+      ...(locale ? { locale } : {}),
+    },
+  };
+}
+
 function buildScheduleCreateRequest(
   kind: string,
   options: AddOptions,
@@ -1420,6 +1495,8 @@ function buildCreateRequest(
       return buildNotionDatabaseItemCreatedCreateRequest(options);
     case "notion-page-content-updated":
       return buildNotionPageContentUpdatedCreateRequest(options);
+    case "strapi-entry-published":
+      return buildStrapiEntryPublishedCreateRequest(options);
     case "webhook":
       return buildWebhookCreateRequest(options);
     default:
@@ -1717,6 +1794,15 @@ const addCommand = addGithubAutomationOptions(
     "--database-url <url>",
     "Notion database URL for notion-database-item-created or notion-page-content-updated automations",
   )
+  .option(
+    "--integration-id <uuid>",
+    "Strapi integration ID for Strapi event automations",
+  )
+  .option(
+    "--content-type-uid <uid>",
+    "Optional Strapi content type UID, for example api::article.article",
+  )
+  .option("--locale <locale>", "Optional Strapi locale filter")
   .option("--agent <id>", "Agent ID for resolving a workflow name")
   .addHelpText(
     "after",
@@ -1737,6 +1823,7 @@ Examples:
   zero workflow automation add research-notes --agent <agent-id> notion-database-item-created --database-url "https://www.notion.so/1234567890abcdef1234567890abcdef?v=abcdef1234567890abcdef1234567890"
   zero workflow automation add research-notes --agent <agent-id> notion-page-content-updated --page-url "https://www.notion.so/workspace/Page-title-1234567890abcdef1234567890abcdef"
   zero workflow automation add research-notes --agent <agent-id> notion-page-content-updated --database-url "https://www.notion.so/1234567890abcdef1234567890abcdef?v=abcdef1234567890abcdef1234567890"
+  zero workflow automation add deploy-blog --agent <agent-id> strapi-entry-published --integration-id <uuid> --content-type-uid api::article.article
   zero workflow automation add triage --agent <agent-id> webhook
 
 Notes:
@@ -1756,6 +1843,11 @@ Notes:
         ) {
           throw new Error(
             "GitHub webhook automations are not enabled for this workspace",
+          );
+        }
+        if (kind === "strapi-entry-published" && !strapiIntegrationEnabled()) {
+          throw new Error(
+            "Strapi workflow automations are not enabled for this workspace",
           );
         }
         if (

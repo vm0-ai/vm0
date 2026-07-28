@@ -8,6 +8,7 @@ import {
   IconDotsVertical,
   IconDownload,
   IconSettings,
+  IconWebhook,
 } from "@tabler/icons-react";
 import { Button } from "@vm0/ui";
 import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
@@ -610,10 +611,38 @@ function TelegramCard() {
   );
 }
 
+function StrapiCard() {
+  return (
+    <Link
+      pathname={ROUTES.settingsStrapi}
+      className="zero-card flex flex-col transition-colors hover:bg-accent/40"
+    >
+      <div className="flex items-center gap-4 p-4">
+        <div className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-[#4945ff]/10 text-[#4945ff]">
+          <IconWebhook size={18} />
+        </div>
+        <div className="flex min-w-0 flex-1 flex-col gap-1">
+          <div className="truncate text-sm font-medium text-foreground">
+            Strapi
+          </div>
+          <div className="truncate text-sm text-muted-foreground">
+            Automate work when entries are published
+          </div>
+        </div>
+        <span className="inline-flex h-8 shrink-0 items-center gap-1.5 rounded-lg border border-border bg-background px-2.5 text-xs font-medium text-secondary-foreground">
+          <IconSettings size={14} stroke={1.5} />
+          Manage
+        </span>
+      </div>
+    </Link>
+  );
+}
+
 export function ZeroWorksPage() {
   const features = useGet(featureSwitch$);
   const teamsEnabled = features[FeatureSwitchKey.TeamsIntegration] ?? false;
   const feishuEnabled = features[FeatureSwitchKey.FeishuIntegration] ?? false;
+  const strapiEnabled = features[FeatureSwitchKey.StrapiIntegration] ?? false;
   const displayNameLoadable = useLoadable(currentChatAgentDisplayName$);
   const displayName =
     displayNameLoadable.state === "hasData"
@@ -638,6 +667,7 @@ export function ZeroWorksPage() {
           <SlackCard displayName={displayName} />
           {teamsEnabled ? <TeamsCard displayName={displayName} /> : null}
           {feishuEnabled ? <FeishuCard /> : null}
+          {strapiEnabled ? <StrapiCard /> : null}
           <TelegramCard />
           <AgentPhoneCard />
         </div>
