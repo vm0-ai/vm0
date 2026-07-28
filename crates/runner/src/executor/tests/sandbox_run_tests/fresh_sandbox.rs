@@ -840,7 +840,10 @@ async fn execute_job_workspace_mount_failure_drains_early_prefetch_before_destro
     assert!(start_calls[0].cmd.contains("codex --version"));
     let wait_calls = overrides.wait_process_calls();
     assert_eq!(wait_calls.len(), 1);
-    assert!(wait_calls[0].timeout <= Duration::from_secs(18));
+    assert!(
+        wait_calls[0].timeout < Duration::from_secs(18),
+        "workspace mount time must reduce the original prefetch wait deadline"
+    );
     assert_eq!(overrides.process_cancel_calls().len(), 1);
     assert_proxy_registry_empty(dir.path()).await;
 }
