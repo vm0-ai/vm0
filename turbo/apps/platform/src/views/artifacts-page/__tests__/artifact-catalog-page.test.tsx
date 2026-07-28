@@ -96,15 +96,16 @@ describe("artifact catalog page", () => {
     );
   });
 
-  it("asks the server for one kind when a filter is selected", async () => {
+  it("defaults to presentations and uses the requested filter order", async () => {
     const requestedKinds: (string | undefined)[] = [];
     context.mocks.api(artifactCatalogContract.list, ({ query, respond }) => {
       requestedKinds.push(query.kind);
+      const imageSelected = query.kind === "image";
       return respond(200, {
         artifacts: [
           artifact({
-            kind: query.kind === "image" ? "image" : "file",
-            title: query.kind === "image" ? "generated.png" : "notes.txt",
+            kind: imageSelected ? "image" : "presentation",
+            title: imageSelected ? "generated.png" : "launch-deck",
           }),
         ],
         nextCursor: null,
@@ -112,7 +113,26 @@ describe("artifact catalog page", () => {
     });
 
     setupArtifactCatalogPage();
-    await findCard("notes.txt");
+    await findCard("launch-deck");
+
+    const kindFilterGroup = document.querySelector<HTMLElement>(
+      '[aria-label="Artifact kind filters"]',
+    );
+    if (!kindFilterGroup) {
+      throw new Error("Expected artifact kind filters");
+    }
+    const kindFilters = queryAllByRoleFast("button", kindFilterGroup);
+    expect(
+      kindFilters.map((button) => {
+        return button.textContent;
+      }),
+    ).toStrictEqual(["Presentations", "Websites", "Images", "Videos", "Files"]);
+    expect(buttonByLabel("Show all artifacts")).toBeUndefined();
+    expect(buttonByLabel("Show presentation artifacts")).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
+    expect(requestedKinds).toStrictEqual(["presentation"]);
 
     const imageFilter = buttonByLabel("Show image artifacts");
     if (!imageFilter) {
@@ -121,7 +141,7 @@ describe("artifact catalog page", () => {
     await click(imageFilter);
 
     await findCard("generated.png");
-    expect(requestedKinds).toStrictEqual([undefined, "image"]);
+    expect(requestedKinds).toStrictEqual(["presentation", "image"]);
   });
 
   it("renders generic file artwork when a card has no thumbnail", async () => {
