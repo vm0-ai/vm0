@@ -17,9 +17,19 @@ fi
 
 TEMP_ROOT="${RUNNER_TEMP:-${TMPDIR:-/tmp}}"
 TEMP_DIR=$(mktemp -d "${TEMP_ROOT%/}/cloudflare-ssh-preconnect.XXXXXX")
+connected_targets=()
 
 cleanup() {
+  local status=$?
+  local target
+  trap - EXIT
+  if [ "$status" -ne 0 ]; then
+    for target in "${connected_targets[@]}"; do
+      ssh -n -O exit "$target" > /dev/null 2>&1 || true
+    done
+  fi
   rm -rf "$TEMP_DIR"
+  exit "$status"
 }
 trap cleanup EXIT
 
@@ -74,6 +84,7 @@ preconnect_host() {
       GITHUB_STEP_SUMMARY="$summary_file" \
         ssh -n -O check "$target" 2>> "$stderr_file" || status=$?
       if [ "$status" -eq 0 ]; then
+        connected_targets+=("$target")
         echo "Established replay-safe SSH transport to ${host}"
         return 0
       fi

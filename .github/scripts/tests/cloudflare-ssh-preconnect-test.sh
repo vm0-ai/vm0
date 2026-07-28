@@ -127,6 +127,12 @@ case "$FAKE_SSH_SCENARIO" in
     ;;
   check-failure-success)
     ;;
+  partial-failure)
+    if [[ "$*" == *"metal@dev-11.gcp.aws.vm3.ai"* ]]; then
+      echo "Permission denied (publickey)." >&2
+      exit 255
+    fi
+    ;;
   *)
     echo "unexpected fake SSH scenario: $FAKE_SSH_SCENARIO" >&2
     exit 2
@@ -220,6 +226,14 @@ if [ -e "$tmp/permanent/outer-summary" ]; then
   exit 1
 fi
 assert_runner_temp_empty "$tmp/permanent/runner-temp"
+
+run_case partial-failure partial-failure "dev-1.aws.vm3.ai,dev-11.gcp.aws.vm3.ai"
+assert_contains "$tmp/partial-failure/status" "255"
+assert_line_count "$tmp/partial-failure/ssh-invocations" 1 "-n -M -N -f metal@dev-1.aws.vm3.ai"
+assert_line_count "$tmp/partial-failure/ssh-invocations" 1 "-n -O check metal@dev-1.aws.vm3.ai"
+assert_line_count "$tmp/partial-failure/ssh-invocations" 1 "-n -M -N -f metal@dev-11.gcp.aws.vm3.ai"
+assert_line_count "$tmp/partial-failure/ssh-invocations" 1 "-n -O exit metal@dev-1.aws.vm3.ai"
+assert_runner_temp_empty "$tmp/partial-failure/runner-temp"
 
 run_case exhaustion exhaustion "dev-1.aws.vm3.ai"
 assert_contains "$tmp/exhaustion/status" "255"
