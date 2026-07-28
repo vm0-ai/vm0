@@ -77,10 +77,10 @@ pub(crate) struct ProcessDiscovery {
     /// uncertainty that callers must treat as a potentially undiscovered live
     /// Firecracker.
     ///
-    /// Missing PIDs, zombie Firecrackers, and known non-Firecracker processes
-    /// are intentionally ignored. Traversal failures, unreadable or
-    /// unparseable live Firecracker cmdlines, and unavailable or malformed
-    /// stat facts that cannot rule one out make this false. This is not a
-    /// completeness guarantee for arbitrary process argvs.
+    /// Missing PIDs, zombie or otherwise terminal Firecrackers, and known
+    /// non-Firecracker processes are intentionally ignored. Traversal failures,
+    /// unreadable or unparseable live Firecracker cmdlines, and unavailable or
+    /// malformed stat facts that cannot rule one out make this false. This is
+    /// not a completeness guarantee for arbitrary process argvs.
     pub(crate) proc_scan_complete: bool,
 }

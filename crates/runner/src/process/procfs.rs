@@ -312,9 +312,9 @@ pub(super) struct ProcCmdlineScan {
     /// unreadable or unparseable cmdline belongs to a live Firecracker, or when
     /// unavailable or malformed `/proc/{pid}/stat` facts cannot rule one out.
     /// Empty and NUL-free cmdlines use this same classification. A disappeared
-    /// PID, zombie Firecracker, or known non-Firecracker process does not make
-    /// the scan incomplete. This is not a guarantee that every non-Firecracker
-    /// cmdline was readable.
+    /// PID, zombie or otherwise terminal Firecracker, or known non-Firecracker
+    /// process does not make the scan incomplete. This is not a guarantee that
+    /// every non-Firecracker cmdline was readable.
     pub(super) complete: bool,
 }
 
