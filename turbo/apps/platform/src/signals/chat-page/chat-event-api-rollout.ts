@@ -9,6 +9,7 @@ import {
   type ChatEvent,
   type ChatEventSendBody,
 } from "@vm0/api-contracts/contracts/chat-threads";
+import { withPrecedingStructuredPrompt } from "@vm0/api-contracts/contracts/user-message-rollout";
 
 import { accept } from "../../lib/accept.ts";
 import type { ZeroClientFactory } from "../api-client.ts";
@@ -38,7 +39,7 @@ export async function sendChatEventWithCompatibility(
 ) {
   const eventResult = await accept(
     createClient(chatEventsContract).send({
-      body,
+      body: withPrecedingStructuredPrompt(body),
       fetchOptions: { signal },
     }),
     [201, 404],

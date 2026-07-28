@@ -1,5 +1,6 @@
 import { createHash, randomInt, randomUUID } from "node:crypto";
 
+import { createStore } from "ccstate";
 import { LIMITED_FREE1_DEFAULT_RUN_MODEL } from "@vm0/api-contracts/contracts/model-providers";
 import { RESUME_SESSION_HISTORY_MAX_BYTES } from "@vm0/api-contracts/contracts/runners";
 import { MAX_FILE_SIZE_BYTES } from "@vm0/api-contracts/contracts/storages";
@@ -17,6 +18,7 @@ import {
   deleteOrgPlanEntitlementFixture,
   readOrgPlanEntitlementFixture,
 } from "../../../test-fixtures/org-plan-entitlement";
+import { seedUsagePricingRows } from "../../../test-fixtures/system-config-seeds";
 import { readUsageAllowanceEntitlementFixture } from "../../../test-fixtures/usage-allowance";
 import {
   createBddApi,
@@ -33,9 +35,20 @@ import {
 } from "./helpers/api-bdd-runs";
 import { createStoragesBddApi } from "./helpers/api-bdd-storages";
 import { createWebhookCallbackApi } from "./helpers/api-bdd-webhooks";
+import {
+  generatedStripeCustomerId,
+  generatedStripeSubscriptionId,
+  postUsageAllowanceInvoicePaid,
+} from "./helpers/stripe-billing-webhook";
+import {
+  insertUsageEvent$,
+  materializeHourlyUsage$,
+  readUsageStorageCounts$,
+} from "./helpers/zero-usage-insight";
 
 const context = testContext();
 const api = createWebhookCallbackApi(context);
+const store = createStore();
 const THIRTY_DAYS_MS = 30 * 24 * 60 * 60 * 1000;
 const DEFAULT_AGENT_AVATAR_URL = "svg:r1s0h1c5f4h";
 
@@ -4426,6 +4439,18 @@ describe("WHCB-08: Clerk deletion webhooks tear down account state", () => {
 
     const actor = bdd.user();
     const granted = await runs.grantProEntitlement(actor);
+    await postUsageAllowanceInvoicePaid(context.signal, {
+      orgId: orgOf(actor),
+      userId: actor.userId,
+      customerId: generatedStripeCustomerId(),
+      subscriptionId: generatedStripeSubscriptionId(),
+      effectiveAt: new Date(now() - 60_000),
+      expiresAt: new Date(now() + 365 * 86_400_000),
+      shortWindowSeconds: 3600,
+      shortWindowUnits: 100,
+      weeklyWindowSeconds: 7 * 86_400,
+      weeklyWindowUnits: 100,
+    });
     await runs.ensureOrgModelProvider(actor);
     await connectors.connectManualGrant(actor, "openai", "api-token", {
       apiKey: "org-teardown-connector-token",
@@ -4440,6 +4465,63 @@ describe("WHCB-08: Clerk deletion webhooks tear down account state", () => {
       modelProvider: "anthropic-api-key",
     });
     expect(run.status).toBe("pending");
+    const usageProvider = `org-teardown-${randomUUID().slice(0, 8)}`;
+    await seedUsagePricingRows([
+      {
+        kind: "connector",
+        provider: usageProvider,
+        category: "call",
+        unitPrice: 10,
+        unitSize: 1,
+      },
+    ]);
+    await api.requestAgentUsageEvent(
+      {
+        runId: run.runId,
+        events: [
+          {
+            idempotencyKey: randomUUID(),
+            kind: "connector",
+            provider: usageProvider,
+            category: "call",
+            quantity: 1,
+          },
+        ],
+      },
+      { authorization: `Bearer ${runs.sandboxTokenForRun(actor, run.runId)}` },
+      [200],
+    );
+    await createBillingMediaApi(context).processOrgUsageEvents(actor);
+    await expect(
+      store.set(
+        materializeHourlyUsage$,
+        {
+          orgId: orgOf(actor),
+          userId: actor.userId,
+          runId: run.runId,
+        },
+        context.signal,
+      ),
+    ).resolves.toBe(1);
+    await store.set(
+      insertUsageEvent$,
+      {
+        orgId: orgOf(actor),
+        userId: actor.userId,
+        runId: run.runId,
+        status: "processed",
+        creditsCharged: 5,
+        processedAt: nowDate(),
+      },
+      context.signal,
+    );
+    await expect(
+      store.set(
+        readUsageStorageCounts$,
+        { scope: "organization", id: orgOf(actor) },
+        context.signal,
+      ),
+    ).resolves.toStrictEqual({ raw: 1, hourly: 1 });
 
     await gh.installGithubApp(actor, agent.agentId, {
       oauthCode: {
@@ -4538,6 +4620,15 @@ describe("WHCB-08: Clerk deletion webhooks tear down account state", () => {
     });
     await waitForExpectation(async () => {
       await expect(bdd.listAgents(actor)).resolves.toStrictEqual([]);
+    });
+    await waitForExpectation(async () => {
+      await expect(
+        store.set(
+          readUsageStorageCounts$,
+          { scope: "organization", id: orgOf(actor) },
+          context.signal,
+        ),
+      ).resolves.toStrictEqual({ raw: 0, hourly: 0 });
     });
     await waitForExpectation(async () => {
       const listed = await connectors.listConnectors(actor);
@@ -4812,6 +4903,48 @@ describe("WHCB-08: Clerk deletion webhooks tear down account state", () => {
       modelProvider: "anthropic-api-key",
     });
     expect(run.status).toBe("pending");
+    await store.set(
+      insertUsageEvent$,
+      {
+        orgId: orgOf(doomed),
+        userId: doomed.userId,
+        runId: run.runId,
+        status: "processed",
+        creditsCharged: 10,
+        processedAt: nowDate(),
+      },
+      context.signal,
+    );
+    await expect(
+      store.set(
+        materializeHourlyUsage$,
+        {
+          orgId: orgOf(doomed),
+          userId: doomed.userId,
+          runId: run.runId,
+        },
+        context.signal,
+      ),
+    ).resolves.toBe(1);
+    await store.set(
+      insertUsageEvent$,
+      {
+        orgId: orgOf(doomed),
+        userId: doomed.userId,
+        runId: run.runId,
+        status: "processed",
+        creditsCharged: 5,
+        processedAt: nowDate(),
+      },
+      context.signal,
+    );
+    await expect(
+      store.set(
+        readUsageStorageCounts$,
+        { scope: "user", id: doomed.userId },
+        context.signal,
+      ),
+    ).resolves.toStrictEqual({ raw: 1, hourly: 1 });
 
     // The installation's default agent is the peer's compose, so the
     // installation itself survives the user teardown while the doomed
@@ -4905,6 +5038,13 @@ describe("WHCB-08: Clerk deletion webhooks tear down account state", () => {
       permission: "chat:write",
       action: "deny",
     });
+    await expect(
+      store.set(
+        readUsageStorageCounts$,
+        { scope: "user", id: doomed.userId },
+        context.signal,
+      ),
+    ).resolves.toStrictEqual({ raw: 0, hourly: 0 });
     expect(context.mocks.stripe.subscriptions.list).not.toHaveBeenCalled();
     expect(context.mocks.stripe.subscriptions.update).not.toHaveBeenCalled();
     expect(context.mocks.stripe.subscriptions.cancel).not.toHaveBeenCalled();

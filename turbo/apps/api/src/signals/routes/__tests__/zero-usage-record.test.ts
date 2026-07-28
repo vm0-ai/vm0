@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 
+import { createStore } from "ccstate";
 import type { TriggerSource } from "@vm0/api-contracts/contracts/logs";
 import { zeroMapsContract } from "@vm0/api-contracts/contracts/zero-maps";
 import { zeroUsageRecordContract } from "@vm0/api-contracts/contracts/zero-usage-record";
@@ -17,6 +18,10 @@ import { createChatFilesBddApi } from "./helpers/api-bdd-chat-files";
 import { createRunsApi } from "./helpers/api-bdd-runs";
 import { createWebhookCallbackApi } from "./helpers/api-bdd-webhooks";
 import { createZeroRouteMocks } from "./helpers/zero-route-test";
+import {
+  materializeHourlyUsage$,
+  readUsageStorageCounts$,
+} from "./helpers/zero-usage-insight";
 
 const context = testContext();
 const bdd = createBddApi(context);
@@ -26,6 +31,7 @@ const webhooks = createWebhookCallbackApi(context);
 const chatApi = createChatFilesBddApi(context);
 const chatCallbacks = createChatCallbacksApi(context);
 const mocks = createZeroRouteMocks(context);
+const store = createStore();
 
 /*
  * Finalized period membership follows settlement time. Database insertion time
@@ -427,6 +433,74 @@ describe("GET /api/zero/usage/record", () => {
     expect(response.body.rows[2]?.credits).toBe(80);
   });
 
+  it("returns rows, totals, tokens, and breakdowns from hourly storage", async () => {
+    const fixture = await entitledRecordActor();
+    if (!fixture.actor.orgId) {
+      throw new Error("Expected an org-scoped actor");
+    }
+    const model = uniqueProvider("hourly-model");
+    const connectorProvider = uniqueProvider("hourly-connector");
+    await seedModelPricing(model);
+    await seedConnectorPricing(connectorProvider);
+    const run = await createUnthreadedRun(fixture.actor, {
+      prompt: "Hourly usage record",
+      triggerSource: "slack",
+    });
+    await recordModelUsage(fixture.actor, run.runId, model, { input: 50 });
+    await recordConnectorUsage(fixture.actor, run.runId, connectorProvider, 2);
+    await billing.processOrgUsageEvents(fixture.actor);
+    await expect(
+      store.set(
+        materializeHourlyUsage$,
+        {
+          orgId: fixture.actor.orgId,
+          userId: fixture.actor.userId,
+          runId: run.runId,
+        },
+        context.signal,
+      ),
+    ).resolves.toBe(2);
+    await expect(
+      store.set(
+        readUsageStorageCounts$,
+        { scope: "user", id: fixture.actor.userId },
+        context.signal,
+      ),
+    ).resolves.toStrictEqual({ raw: 0, hourly: 2 });
+
+    mocks.clerk.session(fixture.actor.userId, fixture.actor.orgId);
+    const response = await accept(
+      apiClient().get({
+        query: { range: "today", tz: "UTC" },
+        headers: authHeaders(),
+      }),
+      [200],
+    );
+
+    expect(response.body.totalCredits).toBe(70);
+    expect(response.body.pagination.total).toBe(1);
+    expect(response.body.rows).toStrictEqual([
+      expect.objectContaining({
+        source: "slack",
+        runId: run.runId,
+        credits: 70,
+        tokens: 50,
+        breakdown: [
+          {
+            kind: "model",
+            credits: 50,
+            providers: [{ provider: model, credits: 50 }],
+          },
+          {
+            kind: "connector",
+            credits: 20,
+            providers: [{ provider: connectorProvider, credits: 20 }],
+          },
+        ],
+      }),
+    ]);
+  });
+
   it("normalizes current Workflow Automation sources without changing credits", async () => {
     const fixture = await entitledRecordActor();
     const connectorProvider = uniqueProvider("bdd-connector");
@@ -655,12 +729,15 @@ describe("GET /api/zero/usage/record", () => {
     const fixture = await entitledRecordActor();
     const connectorProvider = uniqueProvider("bdd-connector");
     await seedConnectorPricing(connectorProvider);
+    const tiedCreatedAt = createdAt(10);
+    const threadIds: string[] = [];
 
-    for (const minutesAgo of [30, 20, 10]) {
+    for (const title of ["Chat A", "Chat B", "Chat C"]) {
       const chat = await createChatThreadRun(fixture, {
-        title: `Chat ${minutesAgo}`,
-        createdAt: createdAt(minutesAgo),
+        title,
+        createdAt: tiedCreatedAt,
       });
+      threadIds.push(chat.threadId);
       await recordConnectorUsage(
         fixture.actor,
         chat.runId,
@@ -682,8 +759,22 @@ describe("GET /api/zero/usage/record", () => {
 
     expect(response.body.rows).toHaveLength(2);
     expect(response.body.pagination.total).toBe(3);
-    expect(response.body.rows[0]?.title).toBe("Chat 10");
-    expect(response.body.rows[1]?.title).toBe("Chat 20");
+    const expectedThreadIds = [...threadIds].sort();
+    expect(
+      response.body.rows.map((row) => {
+        return row.threadId;
+      }),
+    ).toStrictEqual(expectedThreadIds.slice(0, 2));
+
+    const secondPage = await accept(
+      apiClient().get({
+        query: { page: 2, pageSize: 2 },
+        headers: authHeaders(),
+      }),
+      [200],
+    );
+    expect(secondPage.body.rows).toHaveLength(1);
+    expect(secondPage.body.rows[0]?.threadId).toBe(expectedThreadIds[2]);
   });
 
   it("returns kind and provider breakdowns for each usage row", async () => {

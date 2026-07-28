@@ -1430,7 +1430,7 @@ Full autonomous goal prompt that should stay out of the compact chat UI`;
       size: 6,
       url: "https://cdn.vm7.io/artifacts/test/copy/second.txt",
     };
-    const structuredPrompt = {
+    const userMessage = {
       version: 1 as const,
       parts: [
         {
@@ -1476,7 +1476,7 @@ Full autonomous goal prompt that should stay out of the compact chat UI`;
           id: "msg-structured-copy",
           role: "user",
           content: "stale legacy content",
-          structuredPrompt,
+          userMessage,
           attachFiles: [firstAttachment, secondAttachment],
           createdAt: "2026-06-09T10:00:00Z",
         },
@@ -1504,7 +1504,7 @@ Full autonomous goal prompt that should stay out of the compact chat UI`;
         "Feedback on this part of your reply:\n\n" +
         "> The roadmap lacks dates\n\nAdd the launch milestones",
       attachments: [secondAttachment, firstAttachment],
-      structuredPrompt,
+      userMessage,
     });
   });
 
@@ -1521,7 +1521,7 @@ Full autonomous goal prompt that should stay out of the compact chat UI`;
     const messageText = "Create a matching illustration";
     const feedbackQuote = "The illustration lacks contrast";
     const feedbackNote = "Increase the foreground contrast";
-    const structuredPrompt = {
+    const userMessage = {
       version: 1 as const,
       parts: [
         {
@@ -1544,7 +1544,7 @@ Full autonomous goal prompt that should stay out of the compact chat UI`;
           id: "msg-structured-template-copy-paste",
           role: "user",
           content: "invalidate",
-          structuredPrompt,
+          userMessage,
           createdAt: "2026-06-09T10:00:00Z",
         },
       ],
@@ -1596,7 +1596,7 @@ Full autonomous goal prompt that should stay out of the compact chat UI`;
     );
     const fallbackClipboard = context.mocks.browser.clipboardExecCommand();
     const threadId = "structured-feedback-copy-fallback";
-    const structuredPrompt = {
+    const userMessage = {
       version: 1 as const,
       parts: [
         {
@@ -1618,7 +1618,7 @@ Full autonomous goal prompt that should stay out of the compact chat UI`;
           id: "msg-structured-feedback-copy-fallback",
           role: "user",
           content: "stale legacy feedback",
-          structuredPrompt,
+          userMessage,
           createdAt: "2026-06-09T10:00:00Z",
         },
       ],
@@ -1673,7 +1673,7 @@ Full autonomous goal prompt that should stay out of the compact chat UI`;
     const payload = {
       text: messageText,
       attachments: [],
-      structuredPrompt: {
+      userMessage: {
         version: 1 as const,
         parts: [
           {

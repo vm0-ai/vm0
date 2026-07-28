@@ -22,7 +22,7 @@ import type {
   ChatMessageGoalEvent,
   ChatMessageGoalSnapshot,
   ChatMessageRecommendedFollowups,
-  ChatMessageStructuredPrompt,
+  ChatMessageUserMessage,
   ChatMessageUsagePayload,
 } from "@vm0/db/jsonb-contracts/chat-message";
 export type {
@@ -38,7 +38,7 @@ export type {
   ChatMessageRecommendedFollowupGenerationType,
   ChatMessageRecommendedFollowupKind,
   ChatMessageRecommendedFollowups,
-  ChatMessageStructuredPrompt,
+  ChatMessageUserMessage,
   ChatMessageUsageKindBreakdown,
   ChatMessageUsagePayload,
   ChatMessageUsageProviderBreakdown,
@@ -109,16 +109,15 @@ export const chatMessages = pgTable(
     role: text("role").notNull(), // "user" | "assistant"
     content: text("content"),
     /** Stable business representation of rich user-message content. */
-    structuredPrompt:
-      jsonb("structured_prompt").$type<ChatMessageStructuredPrompt>(),
+    userMessage: jsonb("structured_prompt").$type<ChatMessageUserMessage>(),
     /**
      * Full structured content for rollout-only parts that older API versions
      * cannot decode. The legacy column remains a safe projection so an older
      * API can continue reading messages during a rollback.
      */
-    structuredPromptWithFeedback: jsonb(
+    userMessageWithFeedback: jsonb(
       "structured_prompt_with_feedback",
-    ).$type<ChatMessageStructuredPrompt>(),
+    ).$type<ChatMessageUserMessage>(),
     thinking: text("thinking"),
     error: text("error"),
     /** "completed" | "failed" | "cancelled"; null for non-terminal rows. */

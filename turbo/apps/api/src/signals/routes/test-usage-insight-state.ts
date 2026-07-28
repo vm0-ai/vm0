@@ -14,15 +14,17 @@ import { agentSessions } from "@vm0/db/schema/agent-session";
 import { chatThreads } from "@vm0/db/schema/chat-thread";
 import { connectors } from "@vm0/db/schema/connector";
 import { orgMetadata } from "@vm0/db/schema/org-metadata";
+import { usageAllowanceAllocations } from "@vm0/db/schema/org-usage-allowance";
 import { secrets } from "@vm0/db/schema/secret";
 import { storages, storageVersions } from "@vm0/db/schema/storage";
 import { usageEvent } from "@vm0/db/schema/usage-event";
+import { usageEventHourlyRollup } from "@vm0/db/schema/usage-event-hourly-rollup";
 import { userConnectors } from "@vm0/db/schema/user-connector";
 import { userPermissionGrants } from "@vm0/db/schema/user-permission-grant";
 import { variables } from "@vm0/db/schema/variable";
 import { zeroAgents } from "@vm0/db/schema/zero-agent";
 import { zeroRuns } from "@vm0/db/schema/zero-run";
-import { and, eq, inArray } from "drizzle-orm";
+import { and, count, eq, inArray, isNotNull, isNull, sql } from "drizzle-orm";
 
 import { nowDate } from "../../lib/time";
 import { bodyResultOf } from "../context/request";
@@ -89,6 +91,8 @@ type UsageInsightEventAction = UsageInsightAction<
   | "insert-model-usage-event-for-run"
   | "insert-usage-event"
   | "set-usage-event-created-at"
+  | "materialize-hourly-usage"
+  | "read-usage-storage-counts"
 >;
 
 const MODEL_TOKEN_CATEGORIES = [
@@ -143,6 +147,16 @@ async function deleteUsageInsightFixture(
 ): Promise<void> {
   const orgId = fixture.orgId;
   const userId = fixture.userId;
+
+  await db
+    .delete(usageEventHourlyRollup)
+    .where(
+      and(
+        eq(usageEventHourlyRollup.orgId, orgId),
+        eq(usageEventHourlyRollup.userId, userId),
+      ),
+    );
+  signal.throwIfAborted();
 
   await db
     .delete(usageEvent)
@@ -524,6 +538,119 @@ async function setUsageEventCreatedAt(
   signal.throwIfAborted();
 }
 
+async function materializeHourlyUsage(
+  db: Db,
+  args: {
+    readonly orgId: string;
+    readonly userId: string;
+    readonly runId: string | null;
+  },
+  signal: AbortSignal,
+): Promise<number> {
+  return await db.transaction(async (tx) => {
+    const runPredicate =
+      args.runId === null
+        ? isNull(usageEvent.runId)
+        : eq(usageEvent.runId, args.runId);
+    const rows = await tx
+      .select({
+        id: usageEvent.id,
+        processedHour: sql`date_trunc('hour', ${usageEvent.processedAt})`
+          .mapWith(usageEvent.createdAt)
+          .as("processed_hour"),
+        orgId: usageEvent.orgId,
+        userId: usageEvent.userId,
+        runId: usageEvent.runId,
+        kind: usageEvent.kind,
+        provider: usageEvent.provider,
+        category: usageEvent.category,
+        shortWindowId: usageAllowanceAllocations.shortWindowId,
+        weeklyWindowId: usageAllowanceAllocations.weeklyWindowId,
+        quantity: usageEvent.quantity,
+        creditsCharged: usageEvent.creditsCharged,
+        allowanceUnits: usageAllowanceAllocations.unitsApplied,
+      })
+      .from(usageEvent)
+      .leftJoin(
+        usageAllowanceAllocations,
+        eq(usageAllowanceAllocations.usageEventId, usageEvent.id),
+      )
+      .where(
+        and(
+          eq(usageEvent.orgId, args.orgId),
+          eq(usageEvent.userId, args.userId),
+          runPredicate,
+          eq(usageEvent.status, "processed"),
+          isNotNull(usageEvent.processedAt),
+        ),
+      );
+    signal.throwIfAborted();
+
+    if (rows.length === 0) {
+      return 0;
+    }
+
+    await tx.insert(usageEventHourlyRollup).values(
+      rows.map((row) => {
+        return {
+          processedHour: row.processedHour,
+          orgId: row.orgId,
+          userId: row.userId,
+          runId: row.runId,
+          kind: row.kind,
+          provider: row.provider,
+          category: row.category,
+          shortWindowId: row.shortWindowId,
+          weeklyWindowId: row.weeklyWindowId,
+          quantity: row.quantity,
+          creditsCharged: row.creditsCharged ?? 0,
+          allowanceUnits: row.allowanceUnits ?? 0,
+        };
+      }),
+    );
+    signal.throwIfAborted();
+
+    await tx.delete(usageEvent).where(
+      inArray(
+        usageEvent.id,
+        rows.map((row) => {
+          return row.id;
+        }),
+      ),
+    );
+    signal.throwIfAborted();
+    return rows.length;
+  });
+}
+
+async function readUsageStorageCounts(
+  db: Db,
+  args: {
+    readonly scope: "organization" | "user";
+    readonly id: string;
+  },
+): Promise<{ readonly raw: number; readonly hourly: number }> {
+  const rawPredicate =
+    args.scope === "organization"
+      ? eq(usageEvent.orgId, args.id)
+      : eq(usageEvent.userId, args.id);
+  const hourlyPredicate =
+    args.scope === "organization"
+      ? eq(usageEventHourlyRollup.orgId, args.id)
+      : eq(usageEventHourlyRollup.userId, args.id);
+  const [[raw], [hourly]] = await Promise.all([
+    db.select({ value: count() }).from(usageEvent).where(rawPredicate),
+    db
+      .select({ value: count() })
+      .from(usageEventHourlyRollup)
+      .where(hourlyPredicate),
+  ]);
+  return {
+    raw: raw?.value ?? 0,
+    hourly: hourly?.value ?? 0,
+  };
+}
+
 async function mutateUsageInsightFixtureState(
   db: Db,
   body: UsageInsightFixtureAction,
@@ -685,6 +812,36 @@ async function mutateUsageInsightEventState(
       );
       return { status: 200 as const, body: { ok: true as const } };
     }
+    case "materialize-hourly-usage": {
+      const hourlyCount = await materializeHourlyUsage(
+        db,
+        {
+          orgId: body.org_id,
+          userId: body.user_id,
+          runId: body.run_id,
+        },
+        signal,
+      );
+      return {
+        status: 200 as const,
+        body: { ok: true as const, hourly_count: hourlyCount },
+      };
+    }
+    case "read-usage-storage-counts": {
+      const counts = await readUsageStorageCounts(db, {
+        scope: body.scope,
+        id: body.id,
+      });
+      signal.throwIfAborted();
+      return {
+        status: 200 as const,
+        body: {
+          ok: true as const,
+          raw_count: counts.raw,
+          hourly_count: counts.hourly,
+        },
+      };
+    }
   }
 }
 
@@ -705,7 +862,9 @@ async function mutateUsageInsightState(
     }
     case "insert-model-usage-event-for-run":
     case "insert-usage-event":
-    case "set-usage-event-created-at": {
+    case "set-usage-event-created-at":
+    case "materialize-hourly-usage":
+    case "read-usage-storage-counts": {
       return await mutateUsageInsightEventState(db, body, signal);
     }
   }

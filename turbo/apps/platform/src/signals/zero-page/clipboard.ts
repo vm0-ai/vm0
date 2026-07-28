@@ -17,7 +17,7 @@ export interface ChatClipboardAttachment {
 export interface ChatClipboardPayload {
   text: string;
   attachments: ChatClipboardAttachment[];
-  structuredPrompt?: UserMessageDocument;
+  userMessage?: UserMessageDocument;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -53,19 +53,17 @@ function parseChatClipboardPayload(
   if (!parsed.attachments.every(isChatClipboardAttachment)) {
     return null;
   }
-  const structuredPrompt =
-    parsed.structuredPrompt === undefined
+  const userMessage =
+    parsed.userMessage === undefined
       ? undefined
-      : userMessageDocumentSchema.safeParse(parsed.structuredPrompt);
-  if (structuredPrompt !== undefined && !structuredPrompt.success) {
+      : userMessageDocumentSchema.safeParse(parsed.userMessage);
+  if (userMessage !== undefined && !userMessage.success) {
     return null;
   }
   return {
     text: parsed.text,
     attachments: parsed.attachments,
-    ...(structuredPrompt?.success
-      ? { structuredPrompt: structuredPrompt.data }
-      : {}),
+    ...(userMessage?.success ? { userMessage: userMessage.data } : {}),
   };
 }
 
@@ -254,7 +252,7 @@ export async function writeChatMessageToClipboard(
   payload: ChatClipboardPayload,
 ): Promise<boolean> {
   const plainText = formatPlainText(payload);
-  if (payload.attachments.length === 0 && !payload.structuredPrompt) {
+  if (payload.attachments.length === 0 && !payload.userMessage) {
     return await writeToClipboard(plainText);
   }
 

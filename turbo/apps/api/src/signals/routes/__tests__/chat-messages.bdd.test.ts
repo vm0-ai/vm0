@@ -209,7 +209,7 @@ interface EntitledChatActor {
 interface ChatRunSendBody {
   readonly agentId: string;
   readonly prompt: string;
-  readonly structuredPrompt?: UserMessageDocument;
+  readonly userMessage?: UserMessageDocument;
   readonly threadId?: string;
   readonly clientThreadId?: string;
   readonly clientMessageId?: string;
@@ -4056,7 +4056,7 @@ describe("CHAT-02: generation templates and attachments", () => {
       "Review [Chat thread: Roadmap] now",
       feedbackPrompt,
     ].join("\n\n");
-    const structuredPrompt: UserMessageDocument = {
+    const userMessage: UserMessageDocument = {
       version: 1,
       parts: [
         {
@@ -4110,7 +4110,7 @@ describe("CHAT-02: generation templates and attachments", () => {
     const sent = await sendChatRun(actor, {
       agentId,
       prompt,
-      structuredPrompt,
+      userMessage,
       generationTemplate,
       attachFiles: [
         {
@@ -4147,7 +4147,7 @@ describe("CHAT-02: generation templates and attachments", () => {
     });
     expect(message).toMatchObject({
       content: displayText,
-      structuredPrompt,
+      userMessage,
     });
     await cancelChatRun(actor, sent.runId);
   }, 90_000);
@@ -4182,7 +4182,7 @@ describe("CHAT-02: generation templates and attachments", () => {
       type: "workflow",
       selection: { workflowTemplateId: workflow.id },
     };
-    const structuredPrompt: UserMessageDocument = {
+    const userMessage: UserMessageDocument = {
       version: 1,
       parts: [
         { type: "text", text: "Use " },
@@ -4216,7 +4216,7 @@ describe("CHAT-02: generation templates and attachments", () => {
     const sent = await sendChatRun(actor, {
       agentId,
       prompt: "legacy fallback",
-      structuredPrompt,
+      userMessage,
     });
     const run = await api.readRun(actor, sent.runId);
     const firstMarker = `[Template #1: ${style.title} (illustration)]`;
@@ -4259,7 +4259,7 @@ describe("CHAT-02: generation templates and attachments", () => {
     await cancelChatRun(actor, sent.runId);
   }, 90_000);
 
-  it("falls back to the legacy runtime path for enabled old clients", async () => {
+  it("synthesizes a missing user message without changing runtime content", async () => {
     const { actor, agentId } = await entitledChatActor();
     chatCallbacks.failIfChatCallbackRouteIsFetched();
     if (!actor.orgId) {
@@ -4274,11 +4274,11 @@ describe("CHAT-02: generation templates and attachments", () => {
     const fileId = randomUUID();
     const sent = await sendChatRun(actor, {
       agentId,
-      prompt: "legacy client attachment",
+      prompt: "plain API attachment",
       attachFiles: [
         {
           id: fileId,
-          filename: "legacy.txt",
+          filename: "api-input.txt",
           contentType: "text/plain",
           size: 12,
         },
@@ -4288,10 +4288,38 @@ describe("CHAT-02: generation templates and attachments", () => {
     const run = await api.readRun(actor, sent.runId);
     expect(run.prompt).toBe(
       [
-        "legacy client attachment",
-        `[Web file] legacy.txt (text/plain)\n   [ID] ${fileId}`,
+        "plain API attachment",
+        `[Web file] api-input.txt (text/plain)\n   [ID] ${fileId}`,
       ].join("\n\n"),
     );
+    const messages = await waitForThreadMessages(
+      actor,
+      sent.threadId,
+      (items) => {
+        return userMessages(items).some((message) => {
+          return message.runId === sent.runId;
+        });
+      },
+    );
+    expect(
+      userMessages(messages.messages).find((message) => {
+        return message.runId === sent.runId;
+      }),
+    ).toMatchObject({
+      content: "plain API attachment",
+      userMessage: {
+        version: 1,
+        parts: [
+          {
+            type: "file",
+            fileId,
+            filenameSnapshot: "api-input.txt",
+            contentType: "text/plain",
+          },
+          { type: "text", text: "plain API attachment" },
+        ],
+      },
+    });
     await cancelChatRun(actor, sent.runId);
   }, 60_000);
 
@@ -4852,7 +4880,7 @@ describe("CHAT-02: queued attachments on auto-send", () => {
       "queued structured text\n\n" +
       "Feedback on this part of your reply:\n\n" +
       "> Queued quote\n\nRevise after the anchor completes";
-    const structuredPrompt: UserMessageDocument = {
+    const userMessage: UserMessageDocument = {
       version: 1,
       parts: [
         {
@@ -4875,7 +4903,7 @@ describe("CHAT-02: queued attachments on auto-send", () => {
         agentId,
         threadId: anchor.threadId,
         prompt: queuedPrompt,
-        structuredPrompt,
+        userMessage,
         clientMessageId: queuedId,
         attachFiles: [
           {
@@ -4909,7 +4937,7 @@ describe("CHAT-02: queued attachments on auto-send", () => {
     if (!promoted?.runId) {
       throw new Error("Expected the structured queued message to auto-send");
     }
-    expect(promoted.structuredPrompt).toStrictEqual(structuredPrompt);
+    expect(promoted.userMessage).toStrictEqual(userMessage);
 
     const run = await api.readRun(actor, promoted.runId);
     expect(run.prompt).toBe(
@@ -5247,7 +5275,7 @@ describe("CHAT-02: shared user message queue", () => {
     chatCallbacks.failIfChatCallbackRouteIsFetched();
 
     const messageId = randomUUID();
-    const structuredPrompt: UserMessageDocument = {
+    const userMessage: UserMessageDocument = {
       version: 1,
       parts: [
         { type: "text", text: "queue-first " },
@@ -5263,7 +5291,7 @@ describe("CHAT-02: shared user message queue", () => {
       {
         agentId,
         prompt: "queue-first direct dispatch",
-        structuredPrompt,
+        userMessage,
         clientMessageId: messageId,
       },
       [201],
@@ -5293,7 +5321,7 @@ describe("CHAT-02: shared user message queue", () => {
     });
     expect(claimed).toMatchObject({
       content: "queue-first direct dispatch",
-      structuredPrompt,
+      userMessage,
       runId,
       revokesMessageId: messageId,
     });
@@ -5307,7 +5335,7 @@ describe("CHAT-02: shared user message queue", () => {
     expect(queued).toMatchObject({
       id: messageId,
       content: "queue-first direct dispatch",
-      structuredPrompt,
+      userMessage,
     });
     expect(queued.runId).toBeUndefined();
 

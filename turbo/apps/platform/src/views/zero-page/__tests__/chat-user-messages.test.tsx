@@ -13,7 +13,7 @@ import { mockChatLifecycle } from "./chat-test-helpers.ts";
 
 const context = testContext();
 
-describe("structured user messages", () => {
+describe("user messages", () => {
   it("renders templates inline in message and feedback-note order", async () => {
     const user = userEvent.setup({ delay: null });
     const threadId = "b0000000-0000-4000-a000-000000000748";
@@ -33,7 +33,7 @@ describe("structured user messages", () => {
           role: "user",
           content: "Legacy body stays hidden",
           runId: "d0000000-0000-4000-a000-000000000748",
-          structuredPrompt: {
+          userMessage: {
             version: 1,
             parts: [
               { type: "text", text: "Before " },
@@ -71,7 +71,7 @@ describe("structured user messages", () => {
       },
     });
 
-    const structuredMessage = await waitFor(() => {
+    const userMessageElement = await waitFor(() => {
       const element = document.querySelector("[data-structured-user-message]");
       expect(element).toBeInstanceOf(HTMLElement);
       return element as HTMLElement;
@@ -92,7 +92,7 @@ describe("structured user messages", () => {
     const feedback = document.querySelector("[data-structured-feedback-group]");
     expect(feedback).toBeInstanceOf(HTMLElement);
     expect(feedback).toContainElement(references[1]);
-    expect(structuredMessage.textContent).toContain(
+    expect(userMessageElement.textContent).toContain(
       `Before ${templateItem.title} after`,
     );
     expect(feedback).toHaveTextContent(`Restyle with ${templateItem.title}`);
@@ -145,7 +145,7 @@ describe("structured user messages", () => {
               size: 42,
             },
           ],
-          structuredPrompt: {
+          userMessage: {
             version: 1,
             parts: [
               {
@@ -203,19 +203,19 @@ describe("structured user messages", () => {
       featureSwitches: { [FeatureSwitchKey.StructuredPrompt]: true },
     });
 
-    const structuredMessage = await waitFor(() => {
+    const userMessageElement = await waitFor(() => {
       const element = document.querySelector("[data-structured-user-message]");
       expect(element).toBeInstanceOf(HTMLElement);
       return element as HTMLElement;
     });
-    expect(structuredMessage.textContent).toBe(
+    expect(userMessageElement.textContent).toBe(
       "Start Archived source with PDForiginal-report.pdf, then " +
         "TXTdeleted-notes.txt.\n" +
         "Use **literal** <span>.",
     );
-    expect(structuredMessage.querySelector("strong")).toBeNull();
+    expect(userMessageElement.querySelector("strong")).toBeNull();
 
-    const threadLink = structuredMessage.querySelector(
+    const threadLink = userMessageElement.querySelector(
       'a[aria-label="Open chat Archived source"]',
     );
     expect(threadLink).toHaveAttribute("href", `/chats/${referencedThreadId}`);
@@ -224,15 +224,15 @@ describe("structured user messages", () => {
     expect(template).toBeInTheDocument();
     expect(image).toBeInTheDocument();
     expect(
-      template.compareDocumentPosition(structuredMessage) &
+      template.compareDocumentPosition(userMessageElement) &
         Node.DOCUMENT_POSITION_FOLLOWING,
     ).toBeTruthy();
     expect(
-      image.compareDocumentPosition(structuredMessage) &
+      image.compareDocumentPosition(userMessageElement) &
         Node.DOCUMENT_POSITION_FOLLOWING,
     ).toBeTruthy();
     expect(
-      structuredMessage.querySelector(
+      userMessageElement.querySelector(
         'button[aria-label="Download original-report.pdf"]',
       ),
     ).toBeInTheDocument();
@@ -259,7 +259,7 @@ describe("structured user messages", () => {
           role: "user",
           content: "Legacy **fallback** stays",
           runId: "d0000000-0000-4000-a000-000000000744",
-          structuredPrompt: {
+          userMessage: {
             version: 1,
             parts: [{ type: "text", text: "Structured content stays hidden" }],
           },
@@ -295,7 +295,7 @@ describe("structured user messages", () => {
           role: "user",
           content: "Legacy feedback stays hidden",
           runId: "d0000000-0000-4000-a000-000000000746",
-          structuredPrompt: {
+          userMessage: {
             version: 1,
             parts: [
               { type: "text", text: "Before feedback.\n" },
@@ -379,7 +379,7 @@ describe("structured user messages", () => {
           role: "user",
           content: "Flattened **feedback** stays visible",
           runId: "d0000000-0000-4000-a000-000000000745",
-          structuredPrompt: {
+          userMessage: {
             version: 1,
             parts: [
               {

@@ -39,6 +39,26 @@ interface SeedRunArgs {
   readonly selectedModel?: string | null;
 }
 
+interface InsertUsageEventArgs {
+  readonly orgId: string;
+  readonly userId?: string;
+  readonly runId?: string | null;
+  readonly kind?: string;
+  readonly provider?: string;
+  readonly category?: string;
+  readonly quantity?: number;
+  readonly status?: string;
+  readonly creditsCharged?: number;
+  readonly idempotencyKey?: string;
+  readonly createdAt?: Date;
+  readonly processedAt?: Date | null;
+}
+
+interface UsageStorageCounts {
+  readonly raw: number;
+  readonly hourly: number;
+}
+
 function requestUsageInsightState(
   signal: AbortSignal,
   path: string,
@@ -197,5 +217,85 @@ export const seedRun$ = command(
       throw new Error("seedRun$: response missing run_id");
     }
     return { runId: response.run_id };
+  },
+);
+
+export const insertUsageEvent$ = command(
+  async (
+    _,
+    args: InsertUsageEventArgs,
+    signal: AbortSignal,
+  ): Promise<string> => {
+    const response = await postAction(signal, {
+      action: "insert-usage-event",
+      org_id: args.orgId,
+      user_id: args.userId,
+      run_id: args.runId,
+      kind: args.kind,
+      provider: args.provider,
+      category: args.category,
+      quantity: args.quantity,
+      status: args.status,
+      credits_charged: args.creditsCharged,
+      idempotency_key: args.idempotencyKey,
+      created_at: dateToWire(args.createdAt) ?? undefined,
+      processed_at: dateToWire(args.processedAt),
+    });
+    if (!response.usage_event_id) {
+      throw new Error("insertUsageEvent$: response missing usage_event_id");
+    }
+    return response.usage_event_id;
+  },
+);
+
+export const materializeHourlyUsage$ = command(
+  async (
+    _,
+    args: {
+      readonly orgId: string;
+      readonly userId: string;
+      readonly runId: string | null;
+    },
+    signal: AbortSignal,
+  ): Promise<number> => {
+    const response = await postAction(signal, {
+      action: "materialize-hourly-usage",
+      org_id: args.orgId,
+      user_id: args.userId,
+      run_id: args.runId,
+    });
+    if (response.hourly_count === undefined) {
+      throw new Error("materializeHourlyUsage$: response missing hourly_count");
+    }
+    return response.hourly_count;
+  },
+);
+
+export const readUsageStorageCounts$ = command(
+  async (
+    _,
+    args: {
+      readonly scope: "organization" | "user";
+      readonly id: string;
+    },
+    signal: AbortSignal,
+  ): Promise<UsageStorageCounts> => {
+    const response = await postAction(signal, {
+      action: "read-usage-storage-counts",
+      scope: args.scope,
+      id: args.id,
+    });
+    if (
+      response.raw_count === undefined ||
+      response.hourly_count === undefined
+    ) {
+      throw new Error(
+        "readUsageStorageCounts$: response missing storage counts",
+      );
+    }
+    return {
+      raw: response.raw_count,
+      hourly: response.hourly_count,
+    };
   },
 );

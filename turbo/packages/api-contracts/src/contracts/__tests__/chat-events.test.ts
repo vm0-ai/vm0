@@ -343,6 +343,35 @@ describe("ChatEvent catalog", () => {
     }
   });
 
+  it("normalizes the preceding rich-input response field", () => {
+    const userMessage = {
+      version: 1 as const,
+      parts: [{ type: "text" as const, text: "Run the task" }],
+    };
+    const current = chatEventResponse({
+      id: "preceding-input",
+      seqId: 1,
+      threadId: THREAD_ID,
+      eventType: "input.prompt",
+      content: "Run the task",
+      userMessage,
+      createdAt: CREATED_AT,
+    });
+
+    expect(
+      chatEventResponseSchema.parse({
+        id: "preceding-input",
+        seqId: 1,
+        threadId: THREAD_ID,
+        eventType: "input.prompt",
+        role: "user",
+        content: "Run the task",
+        structuredPrompt: userMessage,
+        createdAt: CREATED_AT,
+      }),
+    ).toStrictEqual(current);
+  });
+
   it("rejects a compatibility role that disagrees with eventType", () => {
     expect(
       chatEventResponseSchema.safeParse({
@@ -531,19 +560,26 @@ describe("ChatEvent HTTP contracts", () => {
   });
 
   it("maps canonical write ids to the preceding message route", () => {
+    const userMessage = {
+      version: 1 as const,
+      parts: [{ type: "text" as const, text: "Run the task" }],
+    };
     const legacy = legacyChatMessageSendBody(
       chatEventsContract.send.body.parse({
         agentId: "agent-1",
+        prompt: "Run the task",
+        userMessage,
         threadId: THREAD_ID,
-        revokesEventId: "input-prompt",
         clientEventId: "00000000-0000-4000-8000-000000000002",
       }),
     );
 
     expect(chatMessagesContract.send.body.parse(legacy)).toMatchObject({
-      revokesMessageId: "input-prompt",
+      prompt: "Run the task",
+      userMessage,
       clientMessageId: "00000000-0000-4000-8000-000000000002",
     });
+    expect(legacy).toMatchObject({ structuredPrompt: userMessage });
     expect(legacy).not.toHaveProperty("revokesEventId");
     expect(legacy).not.toHaveProperty("clientEventId");
   });

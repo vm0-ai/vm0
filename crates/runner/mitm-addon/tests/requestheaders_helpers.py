@@ -4,10 +4,13 @@ import inspect
 from collections.abc import Awaitable
 from typing import cast
 
+import pytest
 from mitmproxy import http
 
 import flow_metadata_keys as metadata_keys
+import mitm_addon
 import request_classification
+from url_utils import TrustedAuthority, get_trusted_authority
 
 
 async def await_requestheaders_result(result: object) -> None:
@@ -23,3 +26,18 @@ def _assert_no_request_stream(flow: http.HTTPFlow) -> None:
     assert metadata_keys.REQUEST_STREAM_BUFFER not in flow.metadata
     assert metadata_keys.REQUEST_STREAM_BUFFER_STATE not in flow.metadata
     assert request_classification.REQUEST_CLASSIFICATION_METADATA_KEY not in flow.metadata
+
+
+def track_trusted_authority_validations(
+    monkeypatch: pytest.MonkeyPatch,
+) -> list[http.HTTPFlow]:
+    """Wrap both hook-owned validator bindings and return validated flows."""
+    validated_flows: list[http.HTTPFlow] = []
+
+    def track(flow: http.HTTPFlow) -> TrustedAuthority:
+        validated_flows.append(flow)
+        return get_trusted_authority(flow)
+
+    monkeypatch.setattr(mitm_addon, "get_trusted_authority", track)
+    monkeypatch.setattr(request_classification, "get_trusted_authority", track)
+    return validated_flows

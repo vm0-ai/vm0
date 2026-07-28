@@ -10,6 +10,7 @@ from mitmproxy import connection
 import auth
 import flow_metadata_keys as metadata_keys
 import mitm_addon
+import registry
 import request_classification
 import upstream_admission
 import upstream_destination_binding
@@ -23,6 +24,7 @@ from tests.request_handler_helpers import (
 from tests.requestheaders_helpers import (
     _assert_no_request_stream,
     await_requestheaders_result,
+    track_trusted_authority_validations,
 )
 from tests.upstream_connection_helpers import mark_connected_tls_upstream
 
@@ -578,7 +580,7 @@ async def test_firewall_allow_header_auth_requestheaders_retargets_unconnected_u
 
 
 async def test_firewall_allow_small_bounded_body_retargets_unconnected_upstream(
-    tmp_path, real_flow, mitm_ctx, fake_firewall_headers, headers
+    tmp_path, real_flow, mitm_ctx, fake_firewall_headers, headers, monkeypatch
 ):
     reg_path = _write_github_firewall_registry(
         tmp_path,
@@ -593,12 +595,14 @@ async def test_firewall_allow_small_bounded_body_retargets_unconnected_upstream(
         path="/repos/octocat/hello",
         request_headers=headers(("Host", "api.github.com"), ("Content-Length", "4")),
     )
+    validated_flows = track_trusted_authority_validations(monkeypatch)
 
     with (
         mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
         fake_firewall_headers(headers={"Authorization": "Bearer resolved"}) as auth_fetch,
     ):
         assert mitm_addon.requestheaders(flow) is None
+        assert validated_flows == [flow]
         _assert_no_request_stream(flow)
         assert metadata_keys.VM_RUN_ID not in flow.metadata
         assert metadata_keys.ORIGINAL_URL not in flow.metadata
@@ -606,6 +610,7 @@ async def test_firewall_allow_small_bounded_body_retargets_unconnected_upstream(
 
         await mitm_addon.request(flow)
 
+    assert validated_flows == [flow, flow]
     auth_fetch.assert_awaited_once()
     assert flow.response is None
     assert flow.request.headers["Authorization"] == "Bearer resolved"
@@ -613,6 +618,49 @@ async def test_firewall_allow_small_bounded_body_retargets_unconnected_upstream(
     assert binding.host == "api.github.com"
     assert binding.kinds == frozenset(("connector_auth",))
     assert binding.original_address == ("203.0.113.10", 443)
+
+
+def test_bounded_requestheaders_keeps_matching_connector_binding_without_classification(
+    tmp_path, real_flow, mitm_ctx, headers, monkeypatch
+):
+    reg_path = _write_github_firewall_registry(tmp_path)
+    flow = real_flow(
+        with_response=False,
+        client_ip="10.200.0.5",
+        host="203.0.113.10",
+        sni="api.github.com",
+        method="POST",
+        path="/repos/octocat/hello",
+        request_headers=headers(("Host", "api.github.com"), ("Content-Length", "4")),
+    )
+    upstream_destination_binding.record_server_binding(
+        flow.server_conn,
+        client=flow.client_conn,
+        host="api.github.com",
+        port=443,
+        kinds=frozenset(("connector_auth",)),
+        original_address=("203.0.113.10", 443),
+    )
+    flow.server_conn.address = ("api.github.com", 443)
+    validated_flows = track_trusted_authority_validations(monkeypatch)
+    registry_loads: list[str] = []
+    load_registry_state = registry.load_registry_state
+
+    def track_registry_load(registry_path: str) -> registry.RegistryState:
+        registry_loads.append(registry_path)
+        return load_registry_state(registry_path)
+
+    monkeypatch.setattr(registry, "load_registry_state", track_registry_load)
+
+    with mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"):
+        assert mitm_addon.requestheaders(flow) is None
+
+    assert validated_flows == [flow]
+    assert registry_loads == []
+    _assert_no_request_stream(flow)
+    binding = upstream_destination_binding.binding_snapshot_for_tests()[flow.server_conn.id]
+    assert binding.host == "api.github.com"
+    assert binding.kinds == frozenset(("connector_auth",))
 
 
 async def test_firewall_allow_small_bounded_body_uses_connected_upstream_when_tls_verified(

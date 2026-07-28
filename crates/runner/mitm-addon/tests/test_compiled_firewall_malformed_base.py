@@ -41,6 +41,18 @@ def test_empty_port_base_authority_is_invalid():
 
 
 @pytest.mark.parametrize(
+    "host",
+    [
+        pytest.param("api%FF.example.com", id="lone-invalid-byte"),
+        pytest.param("api%E2%82.example.com", id="truncated-multibyte"),
+        pytest.param("api%C0%AF.example.com", id="overlong-sequence"),
+    ],
+)
+def test_invalid_utf8_percent_encoded_base_authority_is_invalid(host: str) -> None:
+    assert not matching.firewall_base_config_is_valid(f"https://{host}")
+
+
+@pytest.mark.parametrize(
     "base",
     [
         "https://*.example.com",

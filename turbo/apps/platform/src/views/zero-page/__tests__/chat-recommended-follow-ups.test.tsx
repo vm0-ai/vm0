@@ -59,7 +59,7 @@ describe("chat lifecycle", () => {
     const sentMessages: {
       prompt?: string;
       revokesMessageId?: string;
-      structuredPrompt?: unknown;
+      userMessage?: unknown;
     }[] = [];
 
     mockChatLifecycle(context, {

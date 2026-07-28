@@ -12,6 +12,7 @@ from mitmproxy import http
 from mitmproxy.test import tutils
 
 import flow_metadata_keys as metadata_keys
+import http_network_log
 from tests.flow_helpers import header_map
 
 RealFlowFactory = Callable[..., http.HTTPFlow]
@@ -132,6 +133,12 @@ def make_model_provider_flow(
     )
     flow.metadata[metadata_keys.FIREWALL_ACTION] = firewall_action
     flow.metadata[metadata_keys.ORIGINAL_URL] = original_url
+    http_network_log.set_target(
+        flow,
+        url=original_url,
+        host=host,
+        port=flow.request.port,
+    )
     flow.metadata[metadata_keys.FIREWALL_NAME] = firewall_name
     flow.metadata[metadata_keys.FIREWALL_BILLABLE] = firewall_billable
     flow.metadata[metadata_keys.VM_SANDBOX_AUTH_KEY] = (

@@ -1,4 +1,4 @@
-"""Cross-stage contracts for malformed builtin host policies."""
+"""Validation contracts for credentialed builtin bases and host policies."""
 
 import pytest
 
@@ -7,6 +7,19 @@ import builtin_host_policy
 _AUTH_CONFIG: dict[str, object] = {
     "headers": {"Authorization": "Bearer x"},
 }
+
+
+def test_invalid_utf8_credentialed_base_host_is_rejected() -> None:
+    with pytest.raises(
+        builtin_host_policy.BuiltinHostPolicyError,
+        match="resolved base URL is invalid",
+    ):
+        builtin_host_policy.validate_credentialed_builtin_base(
+            firewall_name="contract-test",
+            base="https://api%FF.example.com/v1",
+            auth_config=_AUTH_CONFIG,
+            host_policy={"kind": "providerOwned", "suffixes": ["example.com"]},
+        )
 
 
 @pytest.mark.parametrize(
