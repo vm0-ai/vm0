@@ -1,4 +1,4 @@
-"""Shared helpers for connected upstream mitmproxy test state."""
+"""Shared helpers for upstream mitmproxy test state."""
 
 from typing import cast
 
