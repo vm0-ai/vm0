@@ -4975,8 +4975,15 @@
     {
       "idx": 710,
       "version": "7",
-      "when": 1785222930265,
-      "tag": "0710_chat_event_queue_cutover",
+      "when": 1785222471228,
+      "tag": "0710_chief_lizard",
+      "breakpoints": true
+    },
+    {
+      "idx": 711,
+      "version": "7",
+      "when": 1785224718859,
+      "tag": "0711_chat_event_queue_cutover",
       "breakpoints": true
     }
   ]

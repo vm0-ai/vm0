@@ -4,7 +4,7 @@
 -- cutover starts.
 LOCK TABLE "chat_message_queue" IN ACCESS EXCLUSIVE MODE;
 --> statement-breakpoint
-CREATE TEMP TABLE "chat_event_queue_rows_0710"
+CREATE TEMP TABLE "chat_event_queue_rows_0711"
 ON COMMIT DROP
 AS
 SELECT
@@ -103,7 +103,7 @@ DECLARE
 BEGIN
   SELECT COUNT(*), MIN("id"::text)
   INTO unclassified_count, unclassified_sample
-  FROM "chat_event_queue_rows_0710"
+  FROM "chat_event_queue_rows_0711"
   WHERE "classification" IS NULL;
 
   IF unclassified_count > 0 THEN
@@ -119,7 +119,7 @@ END $$;
 SELECT "id"
 FROM "chat_threads"
 WHERE "id" IN (
-  SELECT "chat_thread_id" FROM "chat_event_queue_rows_0710"
+  SELECT "chat_thread_id" FROM "chat_event_queue_rows_0711"
   UNION
   SELECT "id" FROM "chat_threads" WHERE "queue_paused_at" IS NOT NULL
 )
@@ -169,7 +169,7 @@ SET
     message."encrypted_params",
     queue."encrypted_params"
   )
-FROM "chat_event_queue_rows_0710" AS queue
+FROM "chat_event_queue_rows_0711" AS queue
 WHERE queue."classification" = 'user'
   AND message."id" = queue."chat_message_id"
   AND (
@@ -194,7 +194,7 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 --> statement-breakpoint
-CREATE TEMP TABLE "chat_event_queue_appends_0710" (
+CREATE TEMP TABLE "chat_event_queue_appends_0711" (
   "id" uuid PRIMARY KEY,
   "chat_thread_id" uuid NOT NULL,
   "event_type" text NOT NULL,
@@ -207,7 +207,7 @@ CREATE TEMP TABLE "chat_event_queue_appends_0710" (
   "created_at" timestamp NOT NULL
 ) ON COMMIT DROP;
 --> statement-breakpoint
-INSERT INTO "chat_event_queue_appends_0710" (
+INSERT INTO "chat_event_queue_appends_0711" (
   "id",
   "chat_thread_id",
   "event_type",
@@ -228,10 +228,10 @@ SELECT
   queue."trigger_brief",
   queue."encrypted_params",
   queue."created_at"
-FROM "chat_event_queue_rows_0710" AS queue
+FROM "chat_event_queue_rows_0711" AS queue
 WHERE queue."classification" = 'automation';
 --> statement-breakpoint
-INSERT INTO "chat_event_queue_appends_0710" (
+INSERT INTO "chat_event_queue_appends_0711" (
   "id",
   "chat_thread_id",
   "event_type",
@@ -265,7 +265,7 @@ DECLARE
 BEGIN
   SELECT COUNT(*), MIN(planned."id"::text)
   INTO collision_count, collision_sample
-  FROM "chat_event_queue_appends_0710" AS planned
+  FROM "chat_event_queue_appends_0711" AS planned
   INNER JOIN "chat_messages" AS existing ON existing."id" = planned."id";
 
   IF collision_count > 0 THEN
@@ -276,7 +276,7 @@ BEGIN
   END IF;
 END $$;
 --> statement-breakpoint
-CREATE TEMP TABLE "chat_event_queue_offsets_0710"
+CREATE TEMP TABLE "chat_event_queue_offsets_0711"
 ON COMMIT DROP
 AS
 SELECT
@@ -284,14 +284,14 @@ SELECT
   thread."last_chat_message_seq_id" AS "base_seq_id",
   COUNT(*)::bigint AS "event_count"
 FROM "chat_threads" AS thread
-INNER JOIN "chat_event_queue_appends_0710" AS planned
+INNER JOIN "chat_event_queue_appends_0711" AS planned
   ON planned."chat_thread_id" = thread."id"
 GROUP BY thread."id", thread."last_chat_message_seq_id";
 --> statement-breakpoint
 UPDATE "chat_threads" AS thread
 SET "last_chat_message_seq_id" =
   thread."last_chat_message_seq_id" + offsets."event_count"
-FROM "chat_event_queue_offsets_0710" AS offsets
+FROM "chat_event_queue_offsets_0711" AS offsets
 WHERE thread."id" = offsets."chat_thread_id";
 --> statement-breakpoint
 INSERT INTO "chat_messages" (
@@ -326,8 +326,8 @@ SELECT
     ORDER BY planned."created_at", planned."id"
   ),
   planned."created_at"
-FROM "chat_event_queue_appends_0710" AS planned
-INNER JOIN "chat_event_queue_offsets_0710" AS offsets
+FROM "chat_event_queue_appends_0711" AS planned
+INNER JOIN "chat_event_queue_offsets_0711" AS offsets
   ON offsets."chat_thread_id" = planned."chat_thread_id";
 --> statement-breakpoint
 DELETE FROM "chat_message_queue";

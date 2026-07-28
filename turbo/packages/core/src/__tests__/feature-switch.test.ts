@@ -46,6 +46,9 @@ describe("isFeatureEnabled", () => {
     expect(
       isFeatureEnabled(FeatureSwitchKey.StructuredPromptInlineTemplates, {}),
     ).toBe(false);
+    expect(isFeatureEnabled(FeatureSwitchKey.LanguagePreference, {})).toBe(
+      false,
+    );
   });
 
   it("should return false for disabled switch with non-matching userId", () => {
@@ -120,6 +123,7 @@ describe("getAllFeatureStates", () => {
     expect(staffOrgStates[FeatureSwitchKey.ZeroFinance]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.ZeroPeopleSearch]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.ZeroBrowser]).toBe(true);
+    expect(staffOrgStates[FeatureSwitchKey.LanguagePreference]).toBe(false);
     expect(staffOrgStates[FeatureSwitchKey.CodexSessionPruning]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.ClaudeSessionPruning]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.ChatThreadUnifiedSearch]).toBe(true);
@@ -150,6 +154,7 @@ describe("getAllFeatureStates", () => {
     expect(otherOrgStates[FeatureSwitchKey.ZeroFinance]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.ZeroPeopleSearch]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.ZeroBrowser]).toBe(false);
+    expect(otherOrgStates[FeatureSwitchKey.LanguagePreference]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.CodexSessionPruning]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.ClaudeSessionPruning]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.ChatThreadUnifiedSearch]).toBe(
@@ -217,6 +222,9 @@ describe("user-overridable switches", () => {
     );
     expect(getUserOverridableFeatureSwitchKeys()).not.toContain(
       FeatureSwitchKey.ZeroMailReplyFollowUp,
+    );
+    expect(getUserOverridableFeatureSwitchKeys()).toContain(
+      FeatureSwitchKey.LanguagePreference,
     );
     expect(getUserOverridableFeatureSwitchKeys()).toContain(
       FeatureSwitchKey.ZeroBrowser,

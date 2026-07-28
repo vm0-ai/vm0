@@ -6,6 +6,7 @@ import { mockApi } from "../msw-contract.ts";
 
 let mockPreferences: UserPreferencesResponse = {
   timezone: null,
+  locale: null,
   pinnedAgentIds: [],
   sendMode: "enter",
   morningBriefEnabled: false,
@@ -20,6 +21,7 @@ function normalizePinnedAgentIds(ids: readonly string[]): string[] {
 export function resetMockUserPreferences(): void {
   mockPreferences = {
     timezone: null,
+    locale: null,
     pinnedAgentIds: [],
     sendMode: "enter",
     morningBriefEnabled: false,

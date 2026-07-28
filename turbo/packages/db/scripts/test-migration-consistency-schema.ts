@@ -2237,8 +2237,8 @@ async function validateChatEventTypeBackfillAndContract(): Promise<void> {
   );
 }
 
-const CHAT_EVENT_QUEUE_PREVIOUS_MIGRATION = 709;
-const CHAT_EVENT_QUEUE_CUTOVER_MIGRATION = 710;
+const CHAT_EVENT_QUEUE_PREVIOUS_MIGRATION = 710;
+const CHAT_EVENT_QUEUE_CUTOVER_MIGRATION = 711;
 
 const chatEventQueueCutoverFixture = {
   orgId: "chat-event-queue-cutover-org",
@@ -2530,7 +2530,7 @@ async function validateChatEventQueueCutover(): Promise<void> {
       );
 
       const migrationSql = await fs.readFile(
-        path.join(MIGRATIONS_DIR, "0710_chat_event_queue_cutover.sql"),
+        path.join(MIGRATIONS_DIR, "0711_chat_event_queue_cutover.sql"),
         "utf-8",
       );
       let rejectedMalformedState = false;
