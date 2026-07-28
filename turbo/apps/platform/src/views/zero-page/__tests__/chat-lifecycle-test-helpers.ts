@@ -418,7 +418,7 @@ export function mockAutomationThread(): void {
   mockChatLifecycle(context, {
     threadId: AUTOMATION_THREAD_ID,
     threadTitle: "Scheduled launch review",
-    historyMessages: [
+    historyEvents: [
       {
         role: "user",
         content: "Review launch risks",

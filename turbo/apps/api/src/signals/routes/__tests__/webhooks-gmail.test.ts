@@ -564,15 +564,15 @@ async function workflowAutomationBriefs(
   actor: ApiTestUser,
   chatThreadId: string,
 ): Promise<readonly (string | null | undefined)[]> {
-  const { messages } = await chatApi.listThreadMessages(actor, chatThreadId, {
+  const { events } = await chatApi.listThreadEvents(actor, chatThreadId, {
     limit: 20,
   });
-  return messages
-    .filter((message) => {
-      return message.role === "user";
+  return events
+    .filter((event) => {
+      return event.eventType === "input.prompt";
     })
-    .map((message) => {
-      return message.workflowSnapshot?.triggerBrief;
+    .map((event) => {
+      return event.workflowSnapshot?.triggerBrief;
     });
 }
 
@@ -580,12 +580,12 @@ async function workflowRunIds(
   actor: ApiTestUser,
   chatThreadId: string,
 ): Promise<readonly string[]> {
-  const { messages } = await chatApi.listThreadMessages(actor, chatThreadId, {
+  const { events } = await chatApi.listThreadEvents(actor, chatThreadId, {
     limit: 20,
   });
-  return messages.flatMap((message) => {
+  return events.flatMap((message) => {
     if (
-      message.role !== "user" ||
+      message.eventType !== "input.prompt" ||
       message.content !== `/${WORKFLOW_NAME}` ||
       !message.runId
     ) {

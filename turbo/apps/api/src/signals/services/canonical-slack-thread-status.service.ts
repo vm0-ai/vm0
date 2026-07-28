@@ -16,6 +16,7 @@ import {
 } from "../external/slack-message-client";
 import { decryptPersistentSecretValue } from "./crypto.utils";
 import { loadUserFeatureSwitchContext } from "./feature-switches.service";
+import { chatEventTypeIn } from "./zero-chat-event-type.service";
 
 const ACTIVE_RUN_STATUSES = ["queued", "pending", "running"] as const;
 const ACTIVE_INGRESS_STATUSES = ["pending", "processing"] as const;
@@ -166,7 +167,10 @@ async function canonicalSlackThreadHasOutstandingWorkInSnapshot(
     .innerJoin(agentRuns, eq(agentRuns.id, zeroRuns.id))
     .innerJoin(
       chatMessages,
-      and(eq(chatMessages.runId, zeroRuns.id), eq(chatMessages.role, "user")),
+      and(
+        eq(chatMessages.runId, zeroRuns.id),
+        chatEventTypeIn(["input.prompt"]),
+      ),
     )
     .innerJoin(
       slackChatIngress,

@@ -1,7 +1,7 @@
 import {
-  chatThreadMessagesContract,
+  chatThreadEventsContract,
   chatThreadMetadataContract,
-  type PagedChatMessage,
+  type ChatEventResponse,
 } from "@vm0/api-contracts/contracts/chat-threads";
 import {
   zeroWorkflowsCollectionContract,
@@ -209,10 +209,10 @@ export function createWorkflowsBddApi(context: TestContext) {
       return response.body.selectedModel;
     },
 
-    async readThreadMessages(
+    async readThreadEvents(
       threadId: string,
-    ): Promise<readonly PagedChatMessage[]> {
-      const client = setupApp({ context })(chatThreadMessagesContract);
+    ): Promise<readonly ChatEventResponse[]> {
+      const client = setupApp({ context })(chatThreadEventsContract);
       const response = await accept(
         client.list({
           headers: authHeaders(),
@@ -221,7 +221,7 @@ export function createWorkflowsBddApi(context: TestContext) {
         }),
         [200],
       );
-      return response.body.messages;
+      return response.body.events;
     },
 
     /**

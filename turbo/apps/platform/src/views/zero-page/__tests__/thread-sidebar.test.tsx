@@ -5,9 +5,9 @@ import {
 } from "@vm0/api-contracts/contracts/artifact-catalog";
 import {
   chatThreadByIdContract,
-  chatThreadMessagesContract,
+  chatThreadEventsContract,
   chatThreadsContract,
-  type PagedChatMessage,
+  type ChatEventResponse,
 } from "@vm0/api-contracts/contracts/chat-threads";
 import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import { describe, expect, it } from "vitest";
@@ -59,18 +59,25 @@ function setupChatThread({
     },
   ]);
 
-  const messages: PagedChatMessage[] = [
+  const messages: ChatEventResponse[] = [
     {
       id: "msg-sidebar-user",
+      threadId: THREAD_ID,
+      eventType: "input.prompt",
       role: "user",
       content: "Build the launch plan",
+      userMessage: {
+        version: 1,
+        parts: [{ type: "text", text: "Build the launch plan" }],
+      },
       runId: "run-sidebar",
       seqId: 1,
       createdAt: "2026-03-10T00:00:00Z",
     },
     {
       id: "msg-sidebar-completed",
-      role: "assistant",
+      threadId: THREAD_ID,
+      eventType: "run.completed",
       content: null,
       runId: "run-sidebar",
       runLifecycleEvent: "completed",
@@ -103,11 +110,11 @@ function setupChatThread({
       latestSeqId: 1,
     });
   });
-  context.mocks.api(chatThreadMessagesContract.list, ({ query, respond }) => {
+  context.mocks.api(chatThreadEventsContract.list, ({ query, respond }) => {
     if (query.sinceSeqId || query.beforeSeqId) {
-      return respond(200, { messages: [] });
+      return respond(200, { events: [] });
     }
-    return respond(200, { messages, hasHistoryBefore: false });
+    return respond(200, { events: messages, hasHistoryBefore: false });
   });
 
   detachedSetupPage({
@@ -189,8 +196,8 @@ describe("thread-owned utility sidebar", () => {
   });
 
   it("keeps the legacy artifact inbox when the switch is off", async () => {
-    context.mocks.api(chatThreadMessagesContract.list, ({ respond }) => {
-      return respond(200, { messages: [], hasHistoryBefore: false });
+    context.mocks.api(chatThreadEventsContract.list, ({ respond }) => {
+      return respond(200, { events: [], hasHistoryBefore: false });
     });
 
     setupChatThread({ newSidebarEnabled: false });

@@ -502,7 +502,6 @@ describe("chat lifecycle", () => {
                 id: "msg-running-user",
                 threadId: RUNNING_THREAD_ID,
                 eventType: "input.prompt" as const,
-                role: "user",
                 content: "Active task prompt",
                 userMessage: {
                   version: 1,
@@ -517,7 +516,6 @@ describe("chat lifecycle", () => {
                 threadId: RUNNING_THREAD_ID,
                 eventType: "output.thinking" as const,
                 thinking: "",
-                role: "assistant",
                 content: null,
                 runId: "run-active",
                 seqId: 2,
@@ -532,7 +530,6 @@ describe("chat lifecycle", () => {
               id: "msg-completed-user",
               threadId: COMPLETED_THREAD_ID,
               eventType: "input.prompt" as const,
-              role: "user",
               content: "Done task",
               userMessage: {
                 version: 1,
@@ -545,7 +542,6 @@ describe("chat lifecycle", () => {
               id: "msg-completed-assistant",
               threadId: COMPLETED_THREAD_ID,
               eventType: "output.message" as const,
-              role: "assistant",
               content: "All done!",
               seqId: 2,
               createdAt: "2026-03-10T00:00:01Z",
@@ -637,7 +633,6 @@ describe("initial thinking indicator", () => {
         {
           id: "msg-thinking-user",
           eventType: "input.prompt" as const,
-          role: "user",
           content: "Draft a launch checklist",
           runId: "run-active",
           createdAt: "2026-03-10T00:00:00Z",
@@ -645,7 +640,6 @@ describe("initial thinking indicator", () => {
         {
           id: "msg-thinking-marker",
           eventType: "output.thinking" as const,
-          role: "assistant",
           content: null,
           thinking: "Reviewing your request",
           runId: "run-active",
@@ -677,7 +671,6 @@ describe("initial thinking indicator", () => {
         {
           id: "msg-thinking-detail-gated-user",
           eventType: "input.prompt" as const,
-          role: "user",
           content: "Draft a launch checklist",
           runId: "run-active",
           createdAt: "2026-03-10T00:00:00Z",
@@ -685,7 +678,6 @@ describe("initial thinking indicator", () => {
         {
           id: "msg-thinking-detail-gated-marker",
           eventType: "output.thinking" as const,
-          role: "assistant",
           content: null,
           thinking: "Reading the prompt",
           runId: "run-active",
@@ -747,7 +739,6 @@ describe("initial thinking indicator", () => {
         {
           id: "msg-thinking-rollover-user",
           eventType: "input.prompt" as const,
-          role: "user",
           content: "Draft a launch checklist",
           runId: "run-active",
           createdAt: "2026-03-10T00:00:00Z",
@@ -755,7 +746,6 @@ describe("initial thinking indicator", () => {
         {
           id: "msg-thinking-rollover-marker",
           eventType: "output.thinking" as const,
-          role: "assistant",
           content: null,
           thinking,
           runId: "run-active",
@@ -798,7 +788,6 @@ describe("initial thinking indicator", () => {
         {
           id: "msg-thinking-queued-user",
           eventType: "input.prompt" as const,
-          role: "user",
           content: "Draft a launch checklist",
           runId: "run-active",
           createdAt: "2026-03-10T00:00:00Z",
@@ -806,7 +795,6 @@ describe("initial thinking indicator", () => {
         {
           id: "msg-thinking-queued-marker",
           eventType: "output.thinking" as const,
-          role: "assistant",
           content: null,
           thinking: "Reviewing your request",
           runId: "run-active",
@@ -815,7 +803,6 @@ describe("initial thinking indicator", () => {
         {
           id: "msg-thinking-queued-followup",
           eventType: "input.prompt" as const,
-          role: "user",
           content: "Also include owners",
           runId: undefined,
           createdAt: "2026-03-10T00:00:02Z",
@@ -846,7 +833,6 @@ describe("initial thinking indicator", () => {
         {
           id: "msg-thinking-answer-user",
           eventType: "input.prompt" as const,
-          role: "user",
           content: "Draft a launch checklist",
           runId: "run-active",
           createdAt: "2026-03-10T00:00:00Z",
@@ -854,7 +840,6 @@ describe("initial thinking indicator", () => {
         {
           id: "msg-thinking-answer-marker",
           eventType: "output.thinking" as const,
-          role: "assistant",
           content: null,
           thinking: "Reviewing your request",
           runId: "run-active",
@@ -863,7 +848,6 @@ describe("initial thinking indicator", () => {
         {
           id: "msg-thinking-answer",
           eventType: "output.message" as const,
-          role: "assistant",
           content: "Here is the checklist.",
           runId: "run-active",
           createdAt: "2026-03-10T00:00:02Z",

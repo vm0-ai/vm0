@@ -42,7 +42,7 @@ interface RunCreateCapture {
   generationTemplate?: GenerationTemplateRequest;
   modelSelection?: ModelSelectionRequest | null;
   computerUseHostId?: string | null;
-  clientMessageId?: string;
+  clientEventId?: string;
 }
 
 function selectTextRangeForInlineFeedback(element: HTMLElement): void {

@@ -4,9 +4,9 @@ import {
   artifactItemSchema,
   artifactsContract,
   artifactsListResponseSchema,
-  chatMessagesContract,
   chatThreadByIdContract,
-  chatThreadMessagesContract,
+  chatEventsContract,
+  chatThreadEventsContract,
   chatThreadComputerUseHostContract,
   chatThreadDraftSchema,
   chatThreadEventSchema,
@@ -113,7 +113,7 @@ describe("chat message response contract", () => {
       seqId: 1,
       createdAt: "2026-07-13T00:00:00.000Z",
     });
-    const send = chatMessagesContract.send.body.safeParse({
+    const send = chatEventsContract.send.body.safeParse({
       agentId: "agent-1",
       prompt: "Run the task",
       userMessage,
@@ -169,10 +169,10 @@ describe("chat message response contract", () => {
   });
 });
 
-describe("chat message pagination request compatibility", () => {
+describe("chat event pagination request compatibility", () => {
   it("accepts current sequence cursors", () => {
     expect(
-      chatThreadMessagesContract.list.query.safeParse({
+      chatThreadEventsContract.list.query.safeParse({
         sinceSeqId: "42",
         limit: "20",
       }),
@@ -185,7 +185,7 @@ describe("chat message pagination request compatibility", () => {
   it("accepts previous frontend UUID cursors during rollout", () => {
     const beforeId = "11111111-1111-4111-8111-111111111111";
     expect(
-      chatThreadMessagesContract.list.query.safeParse({
+      chatThreadEventsContract.list.query.safeParse({
         beforeId,
         limit: "20",
       }),
@@ -279,8 +279,8 @@ describe("chat thread model request compatibility", () => {
     expect(parsed.data).toStrictEqual({ model: null });
   });
 
-  it("normalizes legacy chat send modelSelection bodies to model", () => {
-    const parsed = chatMessagesContract.send.body.safeParse({
+  it("normalizes legacy chat event send modelSelection bodies to model", () => {
+    const parsed = chatEventsContract.send.body.safeParse({
       agentId: "agent-1",
       prompt: "Build a launch plan",
       userMessage: {
@@ -335,8 +335,8 @@ describe("chat thread model request compatibility", () => {
     expect(parsed.data).toStrictEqual({ model: "claude-sonnet-4-6" });
   });
 
-  it("normalizes legacy chat send bodies pinned to a concrete provider", () => {
-    const parsed = chatMessagesContract.send.body.safeParse({
+  it("normalizes legacy chat event send bodies pinned to a concrete provider", () => {
+    const parsed = chatEventsContract.send.body.safeParse({
       agentId: "agent-1",
       prompt: "Build a launch plan",
       userMessage: {
@@ -375,7 +375,7 @@ describe("chat thread computer access contract", () => {
 
   it("rejects selecting Cloud browser and Computer Use together", () => {
     expect(
-      chatMessagesContract.send.body.safeParse({
+      chatEventsContract.send.body.safeParse({
         agentId: "agent-1",
         prompt: "Browse from both places",
         computerUseHostId: hostId,

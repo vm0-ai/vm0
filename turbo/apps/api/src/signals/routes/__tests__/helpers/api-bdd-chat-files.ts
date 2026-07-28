@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 
 import {
   artifactsContract,
-  chatMessagesContract,
+  chatEventsContract,
   chatSearchContract,
   chatThreadArtifactsContract,
   chatThreadByIdContract,
@@ -16,7 +16,6 @@ import {
   chatThreadRenameContract,
   chatThreadUnpinContract,
   chatThreadsContract,
-  chatThreadMessagesContract,
   type AttachFile,
   type ArtifactsListResponse,
   type ChatEventResponse,
@@ -28,7 +27,6 @@ import {
   type ChatRunOptionsRequest,
   type CodexServiceTier,
   type GenerationTemplateRequest,
-  type PagedChatMessage,
   type PersistedAttachment,
   type UserMessageDocument,
 } from "@vm0/api-contracts/contracts/chat-threads";
@@ -95,7 +93,7 @@ interface BddCompose {
   readonly updatedAt: string;
 }
 
-type BddSendMessageBody =
+type BddSendEventBody =
   | {
       readonly agentId: string;
       readonly prompt: string;
@@ -109,22 +107,22 @@ type BddSendMessageBody =
       readonly attachFiles?: readonly AttachFile[];
       readonly computerUseHostId?: string | null;
       readonly cloudBrowserEnabled?: boolean;
-      readonly clientMessageId?: string;
+      readonly clientEventId?: string;
       readonly chatThreadSortEventId?: string;
       readonly realAgentInPreview?: boolean;
-      readonly revokesMessageId?: string;
+      readonly revokesEventId?: string;
     }
   | {
       readonly agentId: string;
       readonly threadId: string;
-      readonly revokesMessageId: string;
-      readonly clientMessageId?: string;
+      readonly revokesEventId: string;
+      readonly clientEventId?: string;
     }
   | {
       readonly agentId: string;
       readonly threadId: string;
       readonly interruptsRunId: string;
-      readonly clientMessageId?: string;
+      readonly clientEventId?: string;
     };
 
 function authHeaders(actor: ApiTestUser | null): AuthHeaders {
@@ -252,10 +250,6 @@ export function createChatFilesBddApi(context: TestContext) {
     return chatFilesApp(context)(chatThreadDraftContract);
   }
 
-  function threadMessagesClient() {
-    return chatFilesApp(context)(chatThreadMessagesContract);
-  }
-
   function threadEventsClient() {
     return chatFilesApp(context)(chatThreadEventsContract);
   }
@@ -300,8 +294,8 @@ export function createChatFilesBddApi(context: TestContext) {
     return chatFilesApp(context)(chatThreadComputerUseHostContract);
   }
 
-  function chatMessagesClient() {
-    return chatFilesApp(context)(chatMessagesContract);
+  function chatEventsClient() {
+    return chatFilesApp(context)(chatEventsContract);
   }
 
   function chatSearchClient() {
@@ -888,31 +882,6 @@ export function createChatFilesBddApi(context: TestContext) {
       );
     },
 
-    async listThreadMessages(
-      actor: ApiTestUser,
-      threadId: string,
-      query: {
-        readonly sinceSeqId?: number;
-        readonly beforeSeqId?: number;
-        readonly sinceId?: string;
-        readonly beforeId?: string;
-        readonly limit?: number;
-      } = {},
-    ): Promise<{
-      readonly messages: readonly PagedChatMessage[];
-      readonly hasHistoryBefore?: boolean;
-    }> {
-      const response = await accept(
-        threadMessagesClient().list({
-          headers: authenticate(context, actor),
-          params: { threadId },
-          query,
-        }),
-        [200],
-      );
-      return response.body;
-    },
-
     async listThreadEvents(
       actor: ApiTestUser,
       threadId: string,
@@ -938,7 +907,7 @@ export function createChatFilesBddApi(context: TestContext) {
       return response.body;
     },
 
-    async requestListThreadMessages(
+    async requestListThreadEvents(
       actor: ApiTestUser | null,
       threadId: string,
       query: {
@@ -951,7 +920,7 @@ export function createChatFilesBddApi(context: TestContext) {
       statuses: readonly (200 | 400 | 401 | 404)[],
     ) {
       return await accept(
-        threadMessagesClient().list({
+        threadEventsClient().list({
           headers: authenticate(context, actor),
           params: { threadId },
           query,
@@ -960,15 +929,15 @@ export function createChatFilesBddApi(context: TestContext) {
       );
     },
 
-    async getThreadMessage(
+    async getThreadEvent(
       actor: ApiTestUser,
       threadId: string,
-      messageId: string,
-    ): Promise<PagedChatMessage> {
+      eventId: string,
+    ): Promise<ChatEventResponse> {
       const response = await accept(
-        threadMessagesClient().get({
+        threadEventsClient().get({
           headers: authenticate(context, actor),
-          params: { threadId, messageId },
+          params: { threadId, eventId },
         }),
         [200],
       );
@@ -1158,17 +1127,17 @@ export function createChatFilesBddApi(context: TestContext) {
       );
     },
 
-    async requestSendMessage(
+    async requestSendEvent(
       actor: ApiTestUser | null,
-      body: BddSendMessageBody,
+      body: BddSendEventBody,
       statuses: readonly (201 | 400 | 401 | 402 | 403 | 404 | 409 | 422)[],
       signal?: AbortSignal,
     ) {
       const client = signal
         ? setupAppWithRoutes({ context, routes: chatFilesRoutes, signal })(
-            chatMessagesContract,
+            chatEventsContract,
           )
-        : chatMessagesClient();
+        : chatEventsClient();
       const defaultModel =
         "prompt" in body &&
         body.threadId === undefined &&
@@ -1227,18 +1196,18 @@ export function createChatFilesBddApi(context: TestContext) {
                 ...(body.cloudBrowserEnabled === undefined
                   ? {}
                   : { cloudBrowserEnabled: body.cloudBrowserEnabled }),
-                ...(body.clientMessageId === undefined
+                ...(body.clientEventId === undefined
                   ? {}
-                  : { clientMessageId: body.clientMessageId }),
+                  : { clientEventId: body.clientEventId }),
                 ...(body.chatThreadSortEventId === undefined
                   ? {}
                   : { chatThreadSortEventId: body.chatThreadSortEventId }),
                 ...(body.realAgentInPreview === undefined
                   ? {}
                   : { realAgentInPreview: body.realAgentInPreview }),
-                ...(body.revokesMessageId === undefined
+                ...(body.revokesEventId === undefined
                   ? {}
-                  : { revokesMessageId: body.revokesMessageId }),
+                  : { revokesEventId: body.revokesEventId }),
               };
             })()
           : "interruptsRunId" in body
@@ -1246,17 +1215,17 @@ export function createChatFilesBddApi(context: TestContext) {
                 agentId: body.agentId,
                 threadId: body.threadId,
                 interruptsRunId: body.interruptsRunId,
-                ...(body.clientMessageId === undefined
+                ...(body.clientEventId === undefined
                   ? {}
-                  : { clientMessageId: body.clientMessageId }),
+                  : { clientEventId: body.clientEventId }),
               }
             : {
                 agentId: body.agentId,
                 threadId: body.threadId,
-                revokesMessageId: body.revokesMessageId,
-                ...(body.clientMessageId === undefined
+                revokesEventId: body.revokesEventId,
+                ...(body.clientEventId === undefined
                   ? {}
-                  : { clientMessageId: body.clientMessageId }),
+                  : { clientEventId: body.clientEventId }),
               };
 
       return await accept(

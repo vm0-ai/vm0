@@ -178,7 +178,6 @@ describe("zero chat thread IndexedDB fallback", () => {
             id: "00000000-0000-4000-8000-000000000101",
             threadId: THREAD_ID,
             eventType: "input.prompt" as const,
-            role: "user",
             content: USER_MESSAGE,
             userMessage: {
               version: 1,
@@ -191,7 +190,6 @@ describe("zero chat thread IndexedDB fallback", () => {
             id: "00000000-0000-4000-8000-000000000102",
             threadId: THREAD_ID,
             eventType: "output.message" as const,
-            role: "assistant",
             content: ASSISTANT_MESSAGE,
             seqId: 2,
             createdAt: "2026-03-10T00:00:02Z",

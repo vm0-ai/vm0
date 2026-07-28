@@ -33,7 +33,6 @@ function mockThread(content: string): void {
           id: "msg-1",
           threadId: "thread-markdown",
           eventType: "output.message" as const,
-          role: "assistant",
           content,
           seqId: 1,
           createdAt: "2026-01-01T00:00:00Z",

@@ -41,7 +41,7 @@ interface QueuedMessageCapture {
   content?: string;
   hasTextContent?: boolean;
   attachments?: PersistedAttachment[];
-  clientMessageId: string;
+  clientEventId: string;
   modelSelection?: ModelSelectionRequest | null;
   runOptions?: ChatRunOptionsRequest;
 }

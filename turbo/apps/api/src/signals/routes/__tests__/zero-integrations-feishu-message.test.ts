@@ -478,7 +478,7 @@ describe("POST /api/zero/integrations/feishu/message", () => {
     await runsApi.ensureOrgModelProvider(actor);
     const runnerGroup = runsApi.configureRunnerGroup();
     await runsApi.heartbeatRunner(runnerGroup);
-    const sent = await chatApi.requestSendMessage(
+    const sent = await chatApi.requestSendEvent(
       actor,
       {
         agentId,

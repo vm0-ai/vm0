@@ -2,7 +2,7 @@ import { Buffer } from "node:buffer";
 import { createHash } from "node:crypto";
 
 import {
-  chatThreadMessagesContract,
+  chatThreadEventsContract,
   chatThreadsContract,
 } from "@vm0/api-contracts/contracts/chat-threads";
 import { zeroTeamsConnectContract } from "@vm0/api-contracts/contracts/zero-teams-connect";
@@ -753,16 +753,16 @@ describe("Teams org internal callbacks", () => {
       throw new Error("Expected the canonical Teams chat thread");
     }
     const threadMessages = await accept(
-      setupApp({ context })(chatThreadMessagesContract).list({
+      setupApp({ context })(chatThreadEventsContract).list({
         headers: { authorization: "Bearer clerk-session" },
         params: { threadId: createdThread.chatThreadId },
         query: {},
       }),
       [200],
     );
-    expect(threadMessages.body.messages).toContainEqual(
+    expect(threadMessages.body.events).toContainEqual(
       expect.objectContaining({
-        role: "user",
+        eventType: "input.prompt",
         content: "finish the task",
       }),
     );
@@ -819,16 +819,16 @@ describe("Teams org internal callbacks", () => {
       },
     ]);
     const completedThreadMessages = await accept(
-      setupApp({ context })(chatThreadMessagesContract).list({
+      setupApp({ context })(chatThreadEventsContract).list({
         headers: { authorization: "Bearer clerk-session" },
         params: { threadId: createdThread.chatThreadId },
         query: {},
       }),
       [200],
     );
-    expect(completedThreadMessages.body.messages).toContainEqual(
+    expect(completedThreadMessages.body.events).toContainEqual(
       expect.objectContaining({
-        role: "assistant",
+        eventType: "output.message",
         content: "Task completed successfully.",
       }),
     );

@@ -1,5 +1,6 @@
 """Tests for the mitm addon responseheaders hook."""
 
+import base64
 from types import SimpleNamespace
 
 import pytest
@@ -10,9 +11,17 @@ import flow_metadata_keys as metadata_keys
 import mitm_addon
 import model_usage_pricing
 from tests.flow_helpers import header_map, response_stream
-from tests.model_provider_flow_helpers import RealFlowFactory, signed_usage_pricing_headers
+from tests.model_provider_flow_helpers import (
+    RealFlowFactory,
+    signed_raw_usage_pricing_headers,
+    signed_usage_pricing_headers,
+)
 
 _FIXED_TIME = 1_750_000_000
+
+
+def _encode_base64url(value: bytes) -> str:
+    return base64.urlsafe_b64encode(value).decode().rstrip("=")
 
 
 def _fix_pricing_clock(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -300,6 +309,44 @@ class TestResponseHeadersHandler:
                 }
             ),
         )
+
+        mitm_addon.responseheaders(flow)
+
+        assert metadata_keys.MODEL_USAGE_PRICING not in flow.metadata
+        assert "x-vm0-usage-pricing" not in flow.response.headers
+        assert "x-vm0-usage-pricing-signature" not in flow.response.headers
+
+    @pytest.mark.parametrize(
+        "pricing",
+        [
+            "invalid!",
+            _encode_base64url(b"\xff"),
+            _encode_base64url(b"{"),
+            _encode_base64url(b"[]"),
+            _encode_base64url(b'{"version":1}'),
+            _encode_base64url(
+                b'{"version":2,"issuedAt":1750000000,"unitSize":1000000,'
+                b'"unitPrices":{"tokens.input":1000,"tokens.cache_read":100,'
+                b'"tokens.cache_creation":1250,"tokens.output":6000}}'
+            ),
+        ],
+        ids=[
+            "invalid-base64",
+            "invalid-utf8",
+            "invalid-json",
+            "non-object",
+            "wrong-shape",
+            "unsupported-version",
+        ],
+    )
+    def test_rejects_and_strips_hmac_valid_malformed_model_usage_pricing(
+        self,
+        real_flow: RealFlowFactory,
+        pricing: str,
+    ) -> None:
+        flow = _signed_pricing_flow(real_flow, _FIXED_TIME)
+        assert flow.response is not None
+        flow.response.headers = header_map(signed_raw_usage_pricing_headers(pricing))
 
         mitm_addon.responseheaders(flow)
 

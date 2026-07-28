@@ -708,7 +708,7 @@ describe("OPS-01: user data export", () => {
         { type: "text", text: "Export the structured request" },
       ],
     };
-    const sent = await chat.requestSendMessage(
+    const sent = await chat.requestSendEvent(
       actor,
       {
         agentId,

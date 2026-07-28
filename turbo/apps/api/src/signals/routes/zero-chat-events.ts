@@ -1,4 +1,4 @@
-/** Canonical ChatEvent routes plus one-release message-named aliases. */
+/** Canonical ChatEvent routes. */
 import { randomBytes } from "node:crypto";
 
 import { command } from "ccstate";
@@ -9,7 +9,6 @@ import {
 } from "@vm0/api-contracts/contracts/chat-events";
 import {
   chatEventsContract,
-  chatMessagesContract,
   type AttachFile,
   type CodexServiceTier,
   type GenerationTemplateRequest,
@@ -141,7 +140,6 @@ import { resolveThreadGenerationTemplatePrompt } from "./thread-generation-templ
 const L = logger("ZeroChatEvents");
 
 type SendBody = z.infer<typeof chatEventsContract.send.body>;
-type LegacySendBody = z.infer<typeof chatMessagesContract.send.body>;
 
 interface NormalSendBody {
   readonly agentId: string;
@@ -370,7 +368,6 @@ interface ExistingClientEventIdRow {
   readonly replacementRunCreatedAt: Date | null;
 }
 
-const sendBody$ = bodyResultOf(chatMessagesContract.send);
 const sendEventBody$ = bodyResultOf(chatEventsContract.send);
 // Existing web chat threads carry a small recent-run window in the system
 // prompt. Session compatibility is decided server-side from the target model.
@@ -3449,19 +3446,6 @@ const handleSendChatEvent$ = command(
   },
 );
 
-function toChatEventSendBody(body: LegacySendBody): SendBody {
-  const { clientMessageId, revokesMessageId, ...rest } = body;
-  return chatEventsContract.send.body.parse({
-    ...rest,
-    ...(clientMessageId === undefined
-      ? {}
-      : { clientEventId: clientMessageId }),
-    ...(revokesMessageId === undefined
-      ? {}
-      : { revokesEventId: revokesMessageId }),
-  });
-}
-
 const sendChatEventInner$ = command(
   async ({ get, set }, signal: AbortSignal) => {
     const body = await get(sendEventBody$);
@@ -3470,28 +3454,6 @@ const sendChatEventInner$ = command(
       return body.response;
     }
     return await set(handleSendChatEvent$, body.data, signal);
-  },
-);
-
-const sendLegacyChatMessageInner$ = command(
-  async ({ get, set }, signal: AbortSignal) => {
-    const body = await get(sendBody$);
-    signal.throwIfAborted();
-    if (!body.ok) {
-      return body.response;
-    }
-    const response = await set(
-      handleSendChatEvent$,
-      toChatEventSendBody(body.data),
-      signal,
-    );
-    if (
-      response.status === 409 &&
-      response.body.error.message === "clientEventId is already in use"
-    ) {
-      return conflict("clientMessageId is already in use");
-    }
-    return response;
   },
 );
 
@@ -3505,17 +3467,6 @@ export const zeroChatEventsRoutes: readonly RouteEntry[] = [
         requiredCapability: "agent-run:write",
       },
       sendChatEventInner$,
-    ),
-  },
-  {
-    route: chatMessagesContract.send,
-    handler: authRoute(
-      {
-        requireOrganization: true,
-        missingOrganizationStatus: 401,
-        requiredCapability: "agent-run:write",
-      },
-      sendLegacyChatMessageInner$,
     ),
   },
 ];

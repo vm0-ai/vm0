@@ -100,7 +100,6 @@ function mockQueuedThread(): void {
           id: "msg-previous-user",
           threadId: THREAD_ID,
           eventType: "input.prompt" as const,
-          role: "user",
           content: "Previous prompt",
           userMessage: {
             version: 1,
@@ -114,7 +113,6 @@ function mockQueuedThread(): void {
           id: "msg-previous-assistant",
           threadId: THREAD_ID,
           eventType: "run.completed" as const,
-          role: "assistant",
           content: "Previous answer",
           runId: "run-completed",
           runLifecycleEvent: "completed",
@@ -125,7 +123,6 @@ function mockQueuedThread(): void {
           id: "msg-queued-marker",
           threadId: THREAD_ID,
           eventType: "run.queued" as const,
-          role: "assistant",
           content: "Waiting in queue...",
           runId: "run-queued",
           runEventId: "queue:queued",

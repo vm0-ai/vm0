@@ -2382,9 +2382,12 @@ describe("zero workflow automations", () => {
 
     // The run landed in the bound thread as the workflow slash-command user
     // message, linked to the created run id.
-    const messages = await wf.readThreadMessages(threadId);
+    const messages = await wf.readThreadEvents(threadId);
     const workflowMessage = messages.find((message) => {
-      return message.role === "user" && message.content === `/${WORKFLOW_NAME}`;
+      return (
+        message.eventType === "input.prompt" &&
+        message.content === `/${WORKFLOW_NAME}`
+      );
     });
     expect(workflowMessage).toBeDefined();
     expect(workflowMessage?.runId).toBe(run.body.runId);
