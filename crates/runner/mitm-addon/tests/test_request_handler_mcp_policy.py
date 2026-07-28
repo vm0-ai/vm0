@@ -391,6 +391,26 @@ async def test_mcp_header_preflight_bounds_oversized_content_length_digits(
     assert flow.metadata[metadata_keys.CAPTURE_BODY] is False
 
 
+async def test_mcp_rejects_request_trailers_before_upstream(
+    tmp_path,
+    real_flow,
+    headers,
+    mitm_ctx,
+):
+    registry_path = _write_mcp_registry(tmp_path)
+    flow = _mcp_flow(real_flow, headers)
+    flow.request.trailers = headers(("Mcp-Name", "delete-all"))
+
+    with mitm_ctx(registry_path=str(registry_path), api_url="https://api.vm0.ai"):
+        mitm_addon.requestheaders(flow)
+        await mitm_addon.request(flow)
+
+    assert flow.response is not None
+    assert json.loads(flow.response.content)["reason"] == "request_trailers_not_allowed"
+    assert flow.metadata[metadata_keys.CAPTURE_BODY] is False
+    assert flow.metadata[metadata_keys.FIREWALL_ACTION] == "BLOCK"
+
+
 async def test_mcp_public_destination_header_denial_suppresses_body_capture(
     tmp_path,
     real_flow,

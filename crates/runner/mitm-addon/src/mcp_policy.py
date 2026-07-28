@@ -183,6 +183,13 @@ def authorize_request(
         return preflight_error
 
     transport_method = flow.request.method.upper()
+    if flow.request.trailers:
+        return _violation(
+            "request_trailers_not_allowed",
+            "MCP requests do not support trailers",
+            400,
+            transport_method,
+        )
     body = flow.request.raw_content or b""
     if transport_method in ("GET", "DELETE"):
         if body:
