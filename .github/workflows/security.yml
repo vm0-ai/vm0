@@ -254,6 +254,11 @@ jobs:
       - name: Install actionlint
         run: bash <(curl -fsSL --retry 5 --retry-delay 2 --retry-max-time 60 --retry-all-errors https://raw.githubusercontent.com/rhysd/actionlint/main/scripts/download-actionlint.bash)
 
+      - name: Install Ansible
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends ansible-core
+
       - name: Run workflow script tests
         run: |
           shopt -s nullglob
@@ -267,6 +272,7 @@ jobs:
             .github/scripts/check-workflow-shell-compatibility.sh \
             .github/scripts/cloudflare-ssh-preconnect.sh \
             .github/scripts/runner-behavior-*.sh \
+            .github/scripts/tests/ansible-ssh-control-path-test.sh \
             .github/scripts/tests/check-release-please-component-releases-test.sh \
             .github/scripts/tests/check-workflow-shell-compatibility-test.sh \
             .github/scripts/tests/cloudflare-ssh-preconnect-test.sh \
