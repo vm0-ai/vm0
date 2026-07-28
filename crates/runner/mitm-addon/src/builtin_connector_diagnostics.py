@@ -168,7 +168,31 @@ def find_candidate(
     *,
     active_firewall_names: set[str],
 ) -> ConnectorDiagnosticCandidate | None:
-    """Classify a URL against static built-in connector bases without enforcing it."""
+    """Select an inactive connector that may explain an upstream auth failure.
+
+    The diagnostic catalog contains only static connector bases whose auth
+    configuration has injectable ``secrets`` or ``vars`` references. Dynamic
+    bases and entries without those references never become candidates.
+    Model-provider routes are retained only as exclusions and are checked
+    before connector ownership.
+
+    Selection is intentionally asymmetric. A base owned by one eligible
+    connector matches broadly without enforcing its catalog permission method
+    or rules because ownership is unambiguous. A base shared by eligible
+    connectors requires exactly one method-and-route-specific owner; base-only
+    matches and multiple route owners are ambiguous and suppressed. A selected
+    owner is also suppressed when its connector is already active.
+
+    Return ``None`` when the catalog or connector matcher is unavailable, a
+    model-provider exclusion matches, no eligible connector matches, shared-base
+    ownership is not unique, or the selected owner is active.
+
+    Keep this contract aligned with
+    ``tests/test_builtin_connector_diagnostics.py``, especially
+    ``test_classifies_static_connector_without_permission_method_enforcement``,
+    ``test_model_provider_route_excludes_connector_on_same_host``, and
+    ``test_find_candidate_selects_unique_shared_base_route_owner``.
+    """
     catalog = diagnostic_snapshot.catalog
     if catalog is None or catalog.compiled_connector_firewalls is None:
         return None

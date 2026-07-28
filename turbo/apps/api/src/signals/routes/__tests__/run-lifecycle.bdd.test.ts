@@ -1303,6 +1303,11 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
 
   it("fully validates legacy catalog attestations before caching them", async () => {
     const api = createRunsApi(context);
+    // Catalog rows are global by source, so isolate mutations from parallel test files.
+    mockEnv(
+      "R2_USER_STORAGES_BUCKET_NAME",
+      "test-run-lifecycle-legacy-catalog",
+    );
     onTestFinished(async () => {
       mockApiTestConnectorProviderConfiguration();
       await installApiTestConnectorCatalog();
