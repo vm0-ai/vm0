@@ -3,6 +3,7 @@ import { createElement } from "react";
 import { toast } from "@vm0/ui/components/ui/sonner";
 import { setupClerk$, watchOrgSwitch$ } from "./auth.ts";
 import { initTheme$ } from "./theme.ts";
+import { initLocale$ } from "./locale.ts";
 import { setRootSignal$ } from "./root-signal.ts";
 import {
   initRoutes$,
@@ -503,6 +504,8 @@ const setupNotificationListener$ = command(({ set }, signal: AbortSignal) => {
 
 export const bootstrap$ = command(
   async ({ set }, render: () => void, signal: AbortSignal) => {
+    await set(initLocale$, signal);
+    signal.throwIfAborted();
     set(initTheme$);
     set(setRootSignal$, signal);
     set(initBootstrapSkeleton$);
