@@ -2,6 +2,7 @@ import { command, computed, state } from "ccstate";
 import type { GenerationTemplateRequest } from "@vm0/api-contracts/contracts/chat-threads";
 import type { PresentationTemplateItem } from "@vm0/core";
 import { localStorageSignals } from "../external/local-storage.ts";
+import { zeroBrowserEnabled$ } from "../external/feature-switch.ts";
 import { jsonParseOr, tapError } from "../utils.ts";
 import type {
   PresentationTemplateDetailSelection,
@@ -21,13 +22,19 @@ import { readableAttachmentResourceUrl } from "../../views/zero-page/zero-attach
 // -- New-thread computer access selection -----------------------------------
 
 const internalNewThreadComputerUseHostId$ = state<string | null>(null);
-const internalNewThreadCloudBrowserEnabled$ = state(false);
+// Cloud browser is opt-out on a new thread: `null` means the composer has not
+// been touched for the current draft and the Zero Browser default applies,
+// while an explicit boolean is the user's own choice for that draft.
+const internalNewThreadCloudBrowserEnabled$ = state<boolean | null>(null);
 
 export const newThreadComputerUseHostId$ = computed((get) => {
   return get(internalNewThreadComputerUseHostId$);
 });
 export const newThreadCloudBrowserEnabled$ = computed((get) => {
-  return get(internalNewThreadCloudBrowserEnabled$);
+  if (!get(zeroBrowserEnabled$)) {
+    return false;
+  }
+  return get(internalNewThreadCloudBrowserEnabled$) ?? true;
 });
 
 export const setNewThreadComputerUseHostId$ = command(
@@ -47,6 +54,13 @@ export const setNewThreadCloudBrowserEnabled$ = command(
     }
   },
 );
+
+// Sending a new thread starts the next draft from scratch, so the cloud browser
+// choice goes back to the default instead of the sent thread's value.
+export const resetNewThreadComputerAccess$ = command(({ set }) => {
+  set(internalNewThreadComputerUseHostId$, null);
+  set(internalNewThreadCloudBrowserEnabled$, null);
+});
 
 // -- Model picker open state ------------------------------------------------
 

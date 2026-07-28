@@ -120,7 +120,7 @@ describe("chat lifecycle", () => {
     });
   });
 
-  it("creates a new chat thread with Cloud browser only when enabled", async () => {
+  it("creates a new chat thread with Cloud browser on by default", async () => {
     const user = userEvent.setup({ delay: null });
     let sentCloudBrowserEnabled: boolean | undefined;
     let sentComputerUseHostId: string | null | undefined;
@@ -142,11 +142,9 @@ describe("chat lifecycle", () => {
 
     const textarea = await screen.findByPlaceholderText(PLACEHOLDER);
     await user.click(await screen.findByLabelText("Connectors"));
-    const cloudBrowser = screen.getByRole("switch", {
-      name: "Enable Cloud browser",
-    });
-    expect(cloudBrowser).toHaveAttribute("aria-checked", "false");
-    await user.click(cloudBrowser);
+    expect(
+      screen.getByRole("switch", { name: "Disable Cloud browser" }),
+    ).toHaveAttribute("aria-checked", "true");
     await user.keyboard("{Escape}");
 
     await sendMessageInUI(user, textarea, "Open a cloud browser");
@@ -154,6 +152,75 @@ describe("chat lifecycle", () => {
     await waitFor(() => {
       expect(sentCloudBrowserEnabled).toBeTruthy();
       expect(sentComputerUseHostId).toBeUndefined();
+    });
+  });
+
+  it("creates a new chat thread without Cloud browser after turning it off", async () => {
+    const user = userEvent.setup({ delay: null });
+    let sentCloudBrowserEnabled: boolean | undefined;
+    mockChatLifecycle(context, {
+      onRunCreate: (body) => {
+        sentCloudBrowserEnabled = body.cloudBrowserEnabled;
+      },
+    });
+    context.mocks.api(zeroComputerUseHostsContract.list, ({ respond }) => {
+      return respond(200, { hosts: [] });
+    });
+
+    detachedSetupPage({
+      context,
+      path: AGENT_CHAT_PATH,
+      featureSwitches: { [FeatureSwitchKey.ZeroBrowser]: true },
+    });
+
+    const textarea = await screen.findByPlaceholderText(PLACEHOLDER);
+    await user.click(await screen.findByLabelText("Connectors"));
+    await user.click(
+      screen.getByRole("switch", { name: "Disable Cloud browser" }),
+    );
+    await waitFor(() => {
+      expect(
+        screen.getByRole("switch", { name: "Enable Cloud browser" }),
+      ).toHaveAttribute("aria-checked", "false");
+    });
+    await user.keyboard("{Escape}");
+
+    await sendMessageInUI(user, textarea, "Keep the cloud browser closed");
+
+    await waitFor(() => {
+      expect(sentCloudBrowserEnabled).toBeUndefined();
+    });
+  });
+
+  it("hides Cloud browser from a new chat thread when the feature is disabled", async () => {
+    const user = userEvent.setup({ delay: null });
+    let sentCloudBrowserEnabled: boolean | undefined;
+    mockChatLifecycle(context, {
+      onRunCreate: (body) => {
+        sentCloudBrowserEnabled = body.cloudBrowserEnabled;
+      },
+    });
+    context.mocks.api(zeroComputerUseHostsContract.list, ({ respond }) => {
+      return respond(200, { hosts: [] });
+    });
+
+    detachedSetupPage({ context, path: AGENT_CHAT_PATH });
+
+    const textarea = await screen.findByPlaceholderText(PLACEHOLDER);
+    await user.click(await screen.findByLabelText("Connectors"));
+    expect(screen.getByText("Your computer")).toBeInTheDocument();
+    expect(
+      screen.queryByRole("switch", { name: "Disable Cloud browser" }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("switch", { name: "Enable Cloud browser" }),
+    ).not.toBeInTheDocument();
+    await user.keyboard("{Escape}");
+
+    await sendMessageInUI(user, textarea, "No cloud browser here");
+
+    await waitFor(() => {
+      expect(sentCloudBrowserEnabled).toBeUndefined();
     });
   });
 
