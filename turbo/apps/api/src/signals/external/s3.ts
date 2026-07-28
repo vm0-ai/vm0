@@ -1,12 +1,17 @@
 import { computed, type Computed } from "ccstate";
 import {
+  AbortMultipartUploadCommand,
+  CompleteMultipartUploadCommand,
+  CreateMultipartUploadCommand,
   DeleteObjectsCommand,
   GetObjectCommand,
   type GetObjectCommandOutput,
   HeadObjectCommand,
+  ListPartsCommand,
   ListObjectsV2Command,
   PutObjectCommand,
   S3Client,
+  UploadPartCommand,
 } from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import {
@@ -28,6 +33,11 @@ interface S3FileEntry {
   readonly path: string;
   readonly hash: string;
   readonly size: number;
+}
+
+interface MultipartS3Part {
+  readonly partNumber: number;
+  readonly etag: string;
 }
 
 interface S3StorageManifest {
@@ -455,6 +465,113 @@ export function generatePresignedPutUrl(
     contentType,
     expiresIn,
   );
+}
+
+export function createMultipartS3Upload(
+  bucket: string,
+  key: string,
+  contentType: string,
+): Computed<Promise<string>> {
+  return computed(async (get): Promise<string> => {
+    const client = get(s3ClientForBucket(bucket));
+    const response = await client.send(
+      new CreateMultipartUploadCommand({
+        Bucket: bucket,
+        Key: key,
+        ContentType: contentType,
+      }),
+    );
+    if (!response.UploadId) {
+      throw new Error("R2 did not return a multipart upload ID");
+    }
+    return response.UploadId;
+  });
+}
+
+export function generatePresignedUploadPartUrl(
+  bucket: string,
+  key: string,
+  uploadId: string,
+  partNumber: number,
+  expiresIn: number,
+): Computed<Promise<string>> {
+  return computed((get): Promise<string> => {
+    const client = get(s3ClientForBucket(bucket, true));
+    return getSignedUrl(
+      client,
+      new UploadPartCommand({
+        Bucket: bucket,
+        Key: key,
+        UploadId: uploadId,
+        PartNumber: partNumber,
+      }),
+      { expiresIn },
+    );
+  });
+}
+
+export function listMultipartS3Parts(
+  bucket: string,
+  key: string,
+  uploadId: string,
+): Computed<Promise<readonly MultipartS3Part[]>> {
+  return computed(async (get): Promise<readonly MultipartS3Part[]> => {
+    const client = get(s3ClientForBucket(bucket));
+    const response = await client.send(
+      new ListPartsCommand({
+        Bucket: bucket,
+        Key: key,
+        UploadId: uploadId,
+        MaxParts: 1000,
+      }),
+    );
+    return (response.Parts ?? []).map((part) => {
+      if (part.PartNumber === undefined || part.ETag === undefined) {
+        throw new Error("R2 returned incomplete multipart part metadata");
+      }
+      return { partNumber: part.PartNumber, etag: part.ETag };
+    });
+  });
+}
+
+export function completeMultipartS3Upload(
+  bucket: string,
+  key: string,
+  uploadId: string,
+  parts: readonly MultipartS3Part[],
+): Computed<Promise<void>> {
+  return computed(async (get): Promise<void> => {
+    const client = get(s3ClientForBucket(bucket));
+    await client.send(
+      new CompleteMultipartUploadCommand({
+        Bucket: bucket,
+        Key: key,
+        UploadId: uploadId,
+        MultipartUpload: {
+          Parts: parts.map((part) => {
+            return { ETag: part.etag, PartNumber: part.partNumber };
+          }),
+        },
+      }),
+    );
+  });
+}
+
+export function abortMultipartS3Upload(
+  bucket: string,
+  key: string,
+  uploadId: string,
+): Computed<Promise<void>> {
+  return computed(async (get): Promise<void> => {
+    const client = get(s3ClientForBucket(bucket));
+    await client.send(
+      new AbortMultipartUploadCommand({
+        Bucket: bucket,
+        Key: key,
+        UploadId: uploadId,
+      }),
+    );
+  });
 }
 
 function generatePresignedPutUrlWithClient(

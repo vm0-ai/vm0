@@ -16,11 +16,18 @@ import {
 import { authContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
 import { bodyResultOf } from "../context/request";
-import { generatePresignedPutUrl } from "../external/s3";
+import {
+  abortMultipartS3Upload,
+  createMultipartS3Upload,
+  generatePresignedPutUrl,
+  generatePresignedUploadPartUrl,
+} from "../external/s3";
 import { rejectSuspendedOrg$ } from "../services/zero-org-suspension.service";
 import type { RouteEntry } from "../route-entry";
+import { onRejection, tapError } from "../utils";
 
 const PUT_URL_TTL_SECONDS = 3600;
+const MULTIPART_PART_SIZE_BYTES = 5 * 1024 * 1024;
 
 const prepareUploadInner$ = command(
   async ({ get, set }, signal: AbortSignal) => {
@@ -54,6 +61,60 @@ const prepareUploadInner$ = command(
     const sanitizedName = sanitizeArtifactFilename(filename);
     const s3Key = buildArtifactKey(auth.userId, id, sanitizedName);
     const bucket = env("R2_USER_ARTIFACTS_BUCKET_NAME");
+    const url = buildFileUrl(auth.userId, id, sanitizedName);
+
+    if (
+      bodyResult.data.multipart === true &&
+      size >= MULTIPART_PART_SIZE_BYTES
+    ) {
+      const uploadId = await get(
+        createMultipartS3Upload(bucket, s3Key, contentType),
+      );
+      signal.throwIfAborted();
+      const partCount = Math.ceil(size / MULTIPART_PART_SIZE_BYTES);
+      const parts = await onRejection(
+        (async () => {
+          const signedParts: {
+            partNumber: number;
+            uploadUrl: string;
+          }[] = [];
+          for (let partNumber = 1; partNumber <= partCount; partNumber += 1) {
+            const uploadUrl = await get(
+              generatePresignedUploadPartUrl(
+                bucket,
+                s3Key,
+                uploadId,
+                partNumber,
+                PUT_URL_TTL_SECONDS,
+              ),
+            );
+            signal.throwIfAborted();
+            signedParts.push({ partNumber, uploadUrl });
+          }
+          return signedParts;
+        })(),
+        async () => {
+          await tapError(get(abortMultipartS3Upload(bucket, s3Key, uploadId)));
+        },
+      );
+      signal.throwIfAborted();
+
+      return {
+        status: 200 as const,
+        body: {
+          id,
+          filename,
+          contentType,
+          size,
+          url,
+          multipart: {
+            uploadId,
+            partSize: MULTIPART_PART_SIZE_BYTES,
+            parts,
+          },
+        },
+      };
+    }
 
     const uploadUrl = await get(
       generatePresignedPutUrl(
@@ -65,7 +126,6 @@ const prepareUploadInner$ = command(
       ),
     );
     signal.throwIfAborted();
-    const url = buildFileUrl(auth.userId, id, sanitizedName);
 
     return {
       status: 200 as const,

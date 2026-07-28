@@ -6,7 +6,7 @@ import {
   type Computed,
   type State,
 } from "ccstate";
-import { resetSignal, tapError } from "../utils.ts";
+import { onRejection, resetSignal, settle, tapError } from "../utils.ts";
 import { zeroClient$ } from "../api-client.ts";
 import { accept } from "../../lib/accept.ts";
 import type {
@@ -26,6 +26,9 @@ interface FileInfo {
   id: string;
   url: string;
 }
+
+const MULTIPART_UPLOAD_THRESHOLD_BYTES = 5 * 1024 * 1024;
+const MAX_PART_UPLOAD_ATTEMPTS = 3;
 
 function uploadContentTypeByExtension(ext: string): string | undefined {
   const contentTypeByExtension: Record<string, string | undefined> = {
@@ -120,6 +123,38 @@ function inferUploadContentType(file: File): string {
     : "application/octet-stream";
 }
 
+async function uploadPartWithRetry(
+  uploadUrl: string,
+  body: Blob,
+  contentType: string,
+  signal: AbortSignal,
+): Promise<void> {
+  for (let attempt = 1; attempt <= MAX_PART_UPLOAD_ATTEMPTS; attempt += 1) {
+    const result = await settle(
+      fetch(uploadUrl, {
+        method: "PUT",
+        body,
+        headers: { "content-type": contentType },
+        signal,
+      }),
+      signal,
+    );
+    if (result.ok) {
+      if (result.value.ok) {
+        return;
+      }
+      if (attempt === MAX_PART_UPLOAD_ATTEMPTS) {
+        throw new Error(
+          `storage returned ${result.value.status} ${result.value.statusText}`,
+        );
+      }
+    } else if (attempt === MAX_PART_UPLOAD_ATTEMPTS) {
+      throw result.error;
+    }
+  }
+  throw new Error("Multipart upload retry loop ended unexpectedly");
+}
+
 export interface ZeroChatAttachment {
   filename: string;
   contentType: string;
@@ -155,15 +190,17 @@ function createChatAttachment(file: File): ZeroChatAttachment {
     const signal = set(resetSignal$, parentSignal);
 
     const promise = (async () => {
-      // Step 1: ask the server to sign a PUT URL for R2. The file body never
-      // travels through the Next.js runtime, which lets us exceed Vercel's
-      // serverless body cap and next dev's multipart parser limits.
+      // Step 1: ask the server to sign either one PUT URL or retryable R2
+      // multipart URLs. The file body never travels through the app runtime.
       const prepared = await accept(
         client.prepare({
           body: {
             filename: file.name,
             contentType,
             size: file.size,
+            ...(file.size >= MULTIPART_UPLOAD_THRESHOLD_BYTES
+              ? { multipart: true as const }
+              : {}),
           },
           fetchOptions: { signal },
         }),
@@ -171,13 +208,61 @@ function createChatAttachment(file: File): ZeroChatAttachment {
       );
       signal.throwIfAborted();
 
+      if ("multipart" in prepared.body) {
+        const multipart = prepared.body.multipart;
+        return await onRejection(
+          (async () => {
+            for (const part of multipart.parts) {
+              const start = (part.partNumber - 1) * multipart.partSize;
+              const end = Math.min(start + multipart.partSize, file.size);
+              await uploadPartWithRetry(
+                part.uploadUrl,
+                file.slice(start, end, prepared.body.contentType),
+                prepared.body.contentType,
+                signal,
+              );
+            }
+
+            const completed = await accept(
+              client.completeMultipart({
+                body: {
+                  id: prepared.body.id,
+                  filename: prepared.body.filename,
+                  uploadId: multipart.uploadId,
+                  partCount: multipart.parts.length,
+                },
+                fetchOptions: { signal },
+              }),
+              [200],
+            );
+            signal.throwIfAborted();
+            return completed.body;
+          })(),
+          async () => {
+            await tapError(
+              accept(
+                client.abortMultipart({
+                  body: {
+                    id: prepared.body.id,
+                    filename: prepared.body.filename,
+                    uploadId: multipart.uploadId,
+                  },
+                  fetchOptions: { signal: parentSignal },
+                }),
+                [200],
+              ),
+            );
+          },
+        );
+      }
+
       const putRes = await fetch(prepared.body.uploadUrl, {
         method: "PUT",
         body: file,
         headers: { "content-type": prepared.body.contentType },
         signal,
       });
-      parentSignal.throwIfAborted();
+      signal.throwIfAborted();
 
       if (!putRes.ok) {
         throw new Error(
