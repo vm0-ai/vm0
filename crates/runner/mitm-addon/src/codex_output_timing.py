@@ -1,4 +1,17 @@
-"""Content-free provider-output timing observations for default Codex runs."""
+"""Run-scoped, content-free provider-output timing for default Codex runs.
+
+State is keyed by ``run_id``, not WebSocket flow, so first-milestone selection
+spans provider responses, tool turns, and Responses WebSocket reconnections.
+The process-global run map is LRU-bounded by ``_MAX_TRACKED_RUNS``.
+
+Pending milestones keep their original observation timestamps when reporting
+context or bounded webhook admission is unavailable. This module retries
+admission on later applicable lifecycle events; after admission,
+``usage.webhook`` owns HTTP delivery. Only the run ID and fixed milestone
+fields are retained and reported, never provider content.
+
+See ``tests/test_codex_output_timing.py`` for focused lifecycle coverage.
+"""
 
 from __future__ import annotations
 
@@ -38,7 +51,15 @@ _run_states: OrderedDict[str, _RunTimingState] = OrderedDict()
 
 
 def observe_server_event(flow: http.HTTPFlow, event_type: str | None) -> None:
-    """Observe one server-originated Codex Responses WebSocket event."""
+    """Advance one run's timing state from a server-originated Responses event.
+
+    ``response.created`` remains a candidate until the first
+    ``response.output_item.added`` confirms generated output, promotes any
+    candidate timestamp, and records the output-item milestone. The first
+    subsequent ``response.output_text.delta`` records the text milestone. A
+    terminal event discards an unconfirmed candidate as prewarm; confirmed
+    state remains run-scoped for later tool turns and reconnections.
+    """
     if event_type is None:
         return
 

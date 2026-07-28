@@ -49,6 +49,14 @@ redact_cloudflared_log() {
     "$LOG_FILE"
 }
 
+emit_redacted_cloudflared_log() {
+  local header="$1"
+  if [ -s "$LOG_FILE" ]; then
+    echo "$header" >&2
+    redact_cloudflared_log | tail -n 20 >&2
+  fi
+}
+
 failure_title() {
   if grep -Eiq "Unable to reach the origin service|connection (refused|reset|timed out)|i/o timeout|context canceled|no route to host|websocket: bad handshake|EOF" "$LOG_FILE"; then
     echo "Metal Cloudflare tunnel unavailable"
@@ -102,10 +110,8 @@ emit_failure_report() {
     } >> "$GITHUB_STEP_SUMMARY"
   fi
 
-  if [ -s "$LOG_FILE" ]; then
-    echo "----- cloudflared stderr (last 20 lines, redacted) -----" >&2
-    redact_cloudflared_log | tail -n 20 >&2
-  fi
+  emit_redacted_cloudflared_log \
+    "----- cloudflared stderr (last 20 lines, redacted) -----"
 }
 
 emit_failure_marker() {
@@ -143,6 +149,14 @@ cleanup() {
   exit "$status"
 }
 
+handle_hup() {
+  trap - HUP INT TERM
+  terminate_cloudflared
+  emit_redacted_cloudflared_log \
+    "----- cloudflared stderr before ProxyCommand teardown (last 20 lines, redacted) -----"
+  exit 129
+}
+
 handle_signal() {
   local signal="$1"
   local status="$2"
@@ -153,7 +167,7 @@ handle_signal() {
 }
 
 trap 'cleanup $?' EXIT
-trap 'handle_signal HUP 129' HUP
+trap handle_hup HUP
 trap 'handle_signal INT 130' INT
 trap 'handle_signal TERM 143' TERM
 

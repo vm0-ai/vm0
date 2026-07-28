@@ -80,7 +80,7 @@ describe("zero resource pull registry resolver", () => {
     );
   });
 
-  it("resolves every feature-switched website v2 package", () => {
+  it("resolves every website template v2 package", () => {
     for (const item of WEBSITE_TEMPLATE_ITEMS) {
       const resourceId = `${item.resourceId}-v2`;
 

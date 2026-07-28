@@ -79,13 +79,6 @@ export const chatThreads = pgTable(
       "draft_structured_prompt",
     ).$type<ChatThreadDraftUserMessage>(),
     /**
-     * Full structured draft content for rollout-only parts that older API
-     * versions cannot decode. The legacy column remains a safe projection.
-     */
-    draftUserMessageWithFeedback: jsonb(
-      "draft_structured_prompt_with_feedback",
-    ).$type<ChatThreadDraftUserMessage>(),
-    /**
      * Draft attachment metadata for the thread's composer. Only completed uploads.
      * Null when no draft attachments are saved.
      */
