@@ -10,6 +10,7 @@ import {
   zeroFeishuConnectContract,
   type FeishuConnectStatus,
 } from "@vm0/api-contracts/contracts/zero-feishu-connect";
+import { zeroStrapiIntegrationsContract } from "@vm0/api-contracts/contracts/zero-strapi-integrations";
 import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import { screen, waitFor } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
@@ -103,7 +104,11 @@ function mockFeishuAPI(overrides: Partial<FeishuConnectStatus> = {}): void {
 }
 
 function setupWorksPage(
-  options: { teamsEnabled?: boolean; feishuEnabled?: boolean } = {},
+  options: {
+    teamsEnabled?: boolean;
+    feishuEnabled?: boolean;
+    strapiEnabled?: boolean;
+  } = {},
 ): void {
   detachedSetupPage({
     context,
@@ -111,6 +116,7 @@ function setupWorksPage(
     featureSwitches: {
       [FeatureSwitchKey.TeamsIntegration]: options.teamsEnabled ?? false,
       [FeatureSwitchKey.FeishuIntegration]: options.feishuEnabled ?? false,
+      [FeatureSwitchKey.StrapiIntegration]: options.strapiEnabled ?? false,
     },
   });
 }
@@ -205,6 +211,7 @@ describe("works page", () => {
       expect(screen.getByText("Slack")).toBeInTheDocument();
       expect(screen.queryByText("Microsoft Teams")).not.toBeInTheDocument();
       expect(screen.queryByText("Feishu")).not.toBeInTheDocument();
+      expect(screen.queryByText("Strapi")).not.toBeInTheDocument();
       expect(screen.getByText("Telegram")).toBeInTheDocument();
       expect(screen.getByText("Phone")).toBeInTheDocument();
       expect(screen.getByText(/update permissions/i)).toBeInTheDocument();
@@ -301,6 +308,80 @@ describe("works page", () => {
     click(getRole("button", "More options for Okou Feishu"));
     expect(queryRole("button", "Manage")).toBeNull();
     expect(getRole("button", "Uninstall")).toBeInTheDocument();
+  });
+
+  it("shows Strapi only when its integration switch is enabled", async () => {
+    mockSlackAPI({ isConnected: true, isInstalled: true, isAdmin: true });
+
+    setupWorksPage({ strapiEnabled: true });
+
+    await waitFor(() => {
+      expect(screen.getByText("Strapi")).toBeInTheDocument();
+      expect(
+        screen.getByText("Automate work when entries are published"),
+      ).toBeInTheDocument();
+    });
+  });
+
+  it("redirects direct Strapi settings navigation when the switch is disabled", async () => {
+    detachedSetupPage({
+      context,
+      path: "/settings/strapi",
+      featureSwitches: {
+        [FeatureSwitchKey.StrapiIntegration]: false,
+      },
+    });
+
+    await waitFor(() => {
+      expect(window.location.pathname).toBe("/");
+    });
+    expect(screen.queryByText("Add Strapi instance")).not.toBeInTheDocument();
+  });
+
+  it("checks whether Strapi delivered its external test webhook", async () => {
+    const integrationId = "00000000-0000-4000-8000-000000000091";
+    let tested = false;
+    context.mocks.api(zeroStrapiIntegrationsContract.list, ({ respond }) => {
+      return respond(200, [
+        {
+          id: integrationId,
+          name: "Marketing CMS",
+          baseUrl: "https://cms.example.com",
+          webhookUrl: `https://www.vm0.test/api/zero/strapi/events/${integrationId}`,
+          secretLastFour: "abcd",
+          lastTestedAt: tested ? "2026-07-28T04:00:00.000Z" : null,
+          lastReceivedAt: null,
+          createdAt: "2026-07-28T03:00:00.000Z",
+        },
+      ]);
+    });
+    context.mocks.api(
+      zeroStrapiIntegrationsContract.checkTest,
+      ({ respond }) => {
+        tested = true;
+        return respond(200, {
+          received: true,
+          lastTestedAt: "2026-07-28T04:00:00.000Z",
+        });
+      },
+    );
+
+    detachedSetupPage({
+      context,
+      path: "/settings/strapi",
+      featureSwitches: {
+        [FeatureSwitchKey.StrapiIntegration]: true,
+      },
+    });
+
+    await expect(
+      screen.findByText("Marketing CMS"),
+    ).resolves.toBeInTheDocument();
+    expect(screen.queryByText("Webhook tested")).not.toBeInTheDocument();
+    click(getRole("button", "Check test"));
+    await expect(
+      screen.findByText("Webhook tested"),
+    ).resolves.toBeInTheDocument();
   });
 
   it("redirects direct Feishu settings navigation when the switch is disabled", async () => {

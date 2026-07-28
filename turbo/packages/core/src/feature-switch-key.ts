@@ -72,6 +72,7 @@ export enum FeatureSwitchKey {
   SlackDmSessionRouting = "slackDmSessionRouting",
   TeamsIntegration = "teamsIntegration",
   FeishuIntegration = "feishuIntegration",
+  StrapiIntegration = "strapiIntegration",
   Artifacts = "artifacts",
   HostedArtifactVersions = "hostedArtifactVersions",
   VideoArtifactPosters = "videoArtifactPosters",

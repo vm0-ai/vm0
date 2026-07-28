@@ -108,6 +108,7 @@ import * as builtInGenerationJobSchema from "./schema/built-in-generation-job";
 import * as bankingSchema from "./schema/banking";
 import * as gmailEventSchema from "./schema/gmail-event";
 import * as notionEventSchema from "./schema/notion-event";
+import * as strapiIntegrationSchema from "./schema/strapi-integration";
 import * as googleCalendarEventSchema from "./schema/google-calendar-event";
 import * as googleWorkspaceEventSchema from "./schema/google-workspace-event";
 import * as connectorCatalogSchema from "./schema/connector-catalog";
@@ -225,6 +226,7 @@ export const schema = {
   ...bankingSchema,
   ...gmailEventSchema,
   ...notionEventSchema,
+  ...strapiIntegrationSchema,
   ...googleCalendarEventSchema,
   ...googleWorkspaceEventSchema,
   ...connectorCatalogSchema,

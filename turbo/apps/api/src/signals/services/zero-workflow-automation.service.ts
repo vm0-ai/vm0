@@ -15,6 +15,7 @@ import {
   notionChildPageCreatedEventConfigSchema,
   notionDatabaseItemCreatedEventConfigSchema,
   notionPageContentUpdatedEventConfigSchema,
+  strapiEntryPublishedEventConfigSchema,
   webhookReceivedEventConfigSchema,
   type ChatThreadWorkflowAutomation,
   type GmailWorkflowEventConfig,
@@ -28,6 +29,7 @@ import {
   type NotionPageContentUpdatedEventConfig,
   type NotionPageContentUpdatedEventCreateConfig,
   type NotionWorkflowEventConfig,
+  type StrapiEntryPublishedEventConfig,
   type WebhookReceivedEventConfig,
   type ZeroWorkflowEventType,
   type ZeroWorkflowSchedule,
@@ -35,9 +37,15 @@ import {
   type ZeroWorkflowAutomationsListEntry,
   type ZeroWorkflowAutomationSummary,
 } from "@vm0/api-contracts/contracts/zero-workflows";
+import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
+import { isFeatureEnabled } from "@vm0/core/feature-switch";
 import { parseScheduledAtTime } from "@vm0/core/timezone";
 import { orgMembersMetadata } from "@vm0/db/schema/org-members-metadata";
 import { zeroAgents } from "@vm0/db/schema/zero-agent";
+import {
+  strapiIntegrations,
+  zeroWorkflowStrapiAutomations,
+} from "@vm0/db/schema/strapi-integration";
 import {
   workflowUserAutomationThreads,
   zeroWorkflowAutomations,
@@ -134,6 +142,10 @@ type NotionWorkflowEventType = Extract<
   | "notion-child-page-created"
   | "notion-database-item-created"
   | "notion-page-content-updated"
+>;
+type StrapiWorkflowEventType = Extract<
+  ZeroWorkflowEventType,
+  "strapi-entry-published"
 >;
 
 /**
@@ -391,6 +403,7 @@ function supportedWorkflowEventType(
     eventType === "notion-child-page-created" ||
     eventType === "notion-database-item-created" ||
     eventType === "notion-page-content-updated" ||
+    eventType === "strapi-entry-published" ||
     eventType === "webhook-received"
   );
 }
@@ -451,6 +464,12 @@ function supportedNotionEventType(
     eventType === "notion-database-item-created" ||
     eventType === "notion-page-content-updated"
   );
+}
+
+function supportedStrapiEventType(
+  eventType: string | null,
+): eventType is StrapiWorkflowEventType {
+  return eventType === "strapi-entry-published";
 }
 
 function rowSummaryBase(row: AutomationRow, chatThreadId: string | null) {
@@ -685,6 +704,16 @@ function eventRowToSummary(
   if (row.eventType === "notion-page-content-updated") {
     return notionPageContentUpdatedRowSummary(row, chatThreadId);
   }
+  if (row.eventType === "strapi-entry-published") {
+    return {
+      ...rowSummaryBase(row, chatThreadId),
+      kind: "event",
+      eventType: "strapi-entry-published",
+      eventConfig: strapiEntryPublishedEventConfigSchema.parse(row.eventConfig),
+      schedule: null,
+      scheduleSummary: null,
+    };
+  }
   return null;
 }
 
@@ -730,6 +759,14 @@ async function rowToPublicSummary(
   options: { readonly chatThreadId?: string | null } = {},
 ): Promise<ZeroWorkflowAutomationSummary | null> {
   if (row.kind === "event" && !supportedWorkflowEventType(row.eventType)) {
+    return null;
+  }
+  if (
+    row.eventType === "strapi-entry-published" &&
+    !isFeatureEnabled(FeatureSwitchKey.StrapiIntegration, {
+      orgId: row.orgId,
+    })
+  ) {
     return null;
   }
   return await rowToSummary(db, row, options);
@@ -1220,6 +1257,15 @@ interface CreateNotionEventAutomationInput {
   readonly enabled: boolean;
 }
 
+interface CreateStrapiEventAutomationInput {
+  readonly orgId: string;
+  readonly member: WorkflowMember;
+  readonly workflowId: string;
+  readonly eventType: StrapiWorkflowEventType;
+  readonly eventConfig: StrapiEntryPublishedEventConfig;
+  readonly enabled: boolean;
+}
+
 interface CreateWebhookEventAutomationInput {
   readonly orgId: string;
   readonly member: WorkflowMember;
@@ -1236,6 +1282,7 @@ type CreateAutomationInput =
   | CreateGoogleCalendarEventAutomationInput
   | CreateGoogleMeetEventAutomationInput
   | CreateNotionEventAutomationInput
+  | CreateStrapiEventAutomationInput
   | CreateWebhookEventAutomationInput;
 type CreateEventAutomationInput = Exclude<
   CreateAutomationInput,
@@ -1279,6 +1326,12 @@ function automationCreateInputIsNotion(
   args: CreateEventAutomationInput,
 ): args is CreateNotionEventAutomationInput {
   return supportedNotionEventType(args.eventType);
+}
+
+function automationCreateInputIsStrapi(
+  args: CreateEventAutomationInput,
+): args is CreateStrapiEventAutomationInput {
+  return supportedStrapiEventType(args.eventType);
 }
 
 async function insertWorkflowEventAutomation(
@@ -1820,6 +1873,86 @@ async function createNotionEventAutomationForWorkflow(args: {
   return { kind: "ok", summary };
 }
 
+async function createStrapiEventAutomationForWorkflow(args: {
+  readonly context: CreateEventAutomationWorkflowContext;
+  readonly input: CreateStrapiEventAutomationInput;
+  readonly signal: AbortSignal;
+}): Promise<AutomationResult> {
+  if (
+    !isFeatureEnabled(FeatureSwitchKey.StrapiIntegration, {
+      orgId: args.input.orgId,
+    })
+  ) {
+    return {
+      kind: "bad-request",
+      message: "Strapi workflow automations are not enabled",
+    };
+  }
+  const eventConfig = strapiEntryPublishedEventConfigSchema.parse(
+    args.input.eventConfig,
+  );
+  const [integration] = await args.context.db
+    .select({ id: strapiIntegrations.id })
+    .from(strapiIntegrations)
+    .where(
+      and(
+        eq(strapiIntegrations.id, eventConfig.integrationId),
+        eq(strapiIntegrations.orgId, args.input.orgId),
+      ),
+    )
+    .limit(1);
+  args.signal.throwIfAborted();
+  if (!integration) {
+    return {
+      kind: "bad-request",
+      message: "Select a Strapi integration from this organization",
+    };
+  }
+
+  const currentTime = nowDate();
+  const summary = await args.context.db.transaction(async (tx) => {
+    const chatThreadId = await ensureWorkflowUserAutomationThread(tx, {
+      orgId: args.input.orgId,
+      userId: args.input.member.userId,
+      workflowId: args.context.workflowId,
+      agentId: args.context.agentId,
+      workflowTitle: args.context.workflowTitle,
+      currentTime,
+    });
+    const [row] = await tx
+      .insert(zeroWorkflowAutomations)
+      .values({
+        orgId: args.input.orgId,
+        workflowId: args.context.workflowId,
+        ownerUserId: args.input.member.userId,
+        kind: "event",
+        eventType: args.input.eventType,
+        eventConfig,
+        scheduleType: null,
+        cronExpression: null,
+        intervalSeconds: null,
+        atTime: null,
+        timezone: "UTC",
+        enabled: args.input.enabled,
+        nextRunAt: null,
+        createdAt: currentTime,
+        updatedAt: currentTime,
+      })
+      .returning();
+    if (!row) {
+      throw new Error("Failed to create Strapi workflow automation");
+    }
+    await tx.insert(zeroWorkflowStrapiAutomations).values({
+      automationId: row.id,
+      integrationId: integration.id,
+      createdAt: currentTime,
+    });
+    return await rowToSummary(tx, row, { chatThreadId });
+  });
+  args.signal.throwIfAborted();
+  return { kind: "ok", summary };
+}
+
 const createEventAutomationForWorkflow$ = command(
   async (
     { get },
@@ -1894,6 +2027,14 @@ const createEventAutomationForWorkflow$ = command(
       }
 
       return await createNotionEventAutomationForWorkflow({
+        context: args,
+        input,
+        signal,
+      });
+    }
+
+    if (automationCreateInputIsStrapi(input)) {
+      return await createStrapiEventAutomationForWorkflow({
         context: args,
         input,
         signal,
@@ -2389,6 +2530,17 @@ export const runOwnedWorkflowAutomationNow$ = command(
       return owned;
     }
     const { automation } = owned;
+    if (
+      automation.eventType === "strapi-entry-published" &&
+      !isFeatureEnabled(FeatureSwitchKey.StrapiIntegration, {
+        orgId: automation.orgId,
+      })
+    ) {
+      return {
+        kind: "bad-request",
+        message: "Strapi workflow automations are not enabled",
+      };
+    }
 
     const target = await loadAutomationWorkflowRunTarget(writeDb, {
       orgId: args.orgId,
@@ -2655,6 +2807,17 @@ export const enableWorkflowAutomation$ = command(
       return owned;
     }
     const { automation } = owned;
+    if (
+      automation.eventType === "strapi-entry-published" &&
+      !isFeatureEnabled(FeatureSwitchKey.StrapiIntegration, {
+        orgId: automation.orgId,
+      })
+    ) {
+      return {
+        kind: "bad-request",
+        message: "Strapi workflow automations are not enabled",
+      };
+    }
 
     // The owning agent is derived from the workflow row (hard 1:N); it always
     // exists. Re-confirm the owner can still run it before re-enabling.
