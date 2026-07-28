@@ -5,7 +5,6 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::Duration;
 
 use api_contracts::generated::constants::runners::paths::CANONICAL_WORKING_DIR;
-use api_contracts::generated::types::runners::storage::StorageManifest;
 use futures_util::FutureExt;
 use guest_contracts::diagnostics::{
     AgentFramework, CliObservedExitDiagnostic, FailureClass, FailureDetailSource,
@@ -41,6 +40,7 @@ use super::support::{
 };
 use crate::ids::RunId;
 use crate::paths::{RunnerPaths, scoped_session_workspace_cache_key};
+use crate::storage_manifest::StorageManifest;
 use crate::types::{FirewallEntry, ResumeSession, SandboxReuseResult};
 use crate::workspace_image_cache::{
     SessionWorkspaceCache, WorkspaceCacheCheckoutResult, WorkspaceCacheTerminalStatus,

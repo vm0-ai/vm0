@@ -182,7 +182,7 @@ describe("runner storage manifest contract", () => {
     ).toBe(false);
   });
 
-  it("accepts exactly one canonical or legacy wire representation", () => {
+  it("accepts only the canonical wire representation", () => {
     const canonical = {
       storageMounts: [
         {
@@ -197,14 +197,14 @@ describe("runner storage manifest contract", () => {
     const legacy = { storages: [], artifacts: [] };
 
     expect(storageManifestSchema.parse(canonical)).toEqual(canonical);
-    expect(storageManifestSchema.parse(legacy)).toEqual(legacy);
-    expect(
-      storageManifestSchema.safeParse({ ...canonical, ...legacy }).success,
-    ).toBe(false);
-    expect(storageManifestSchema.safeParse({ storages: [] }).success).toBe(
-      false,
-    );
+    expect(storageManifestSchema.safeParse(legacy).success).toBe(false);
     expect(storageManifestSchema.safeParse({}).success).toBe(false);
+    expect(
+      storageManifestSchema.parse({
+        ...canonical,
+        futureRunnerField: true,
+      }),
+    ).toEqual(canonical);
   });
 
   it("rejects duplicate canonical mount paths", () => {
@@ -223,7 +223,7 @@ describe("runner storage manifest contract", () => {
     ).toBe(false);
   });
 
-  it("accepts the web-produced claim manifest shape", () => {
+  it("accepts the stored legacy manifest shape", () => {
     expect(
       legacyStorageManifestSchema.parse({
         storages: [
@@ -444,7 +444,7 @@ describe("runner storage manifest contract", () => {
     expect(result.success).toBe(false);
   });
 
-  it("strips runner-derived guest-download fields", () => {
+  it("strips fields outside the stored legacy schema", () => {
     const manifest = legacyStorageManifestSchema.parse({
       storages: [
         {

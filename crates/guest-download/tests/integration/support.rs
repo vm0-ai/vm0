@@ -165,27 +165,22 @@ pub(crate) fn manifest_json(
     artifact: Option<(&str, Option<&str>)>,
 ) -> std::io::Result<Vec<u8>> {
     let mut manifest = Map::new();
-    manifest.insert(
-        "storages".to_owned(),
-        Value::Array(
-            storages
-                .iter()
-                .map(|(mount_path, archive_url)| manifest_entry(mount_path, *archive_url))
-                .collect(),
-        ),
-    );
-
-    let artifacts = artifact
-        .map(|(mount_path, archive_url)| vec![manifest_entry(mount_path, archive_url)])
-        .unwrap_or_default();
-    manifest.insert("artifacts".to_owned(), Value::Array(artifacts));
+    let mut storage_mounts: Vec<Value> = storages
+        .iter()
+        .map(|(mount_path, archive_url)| manifest_entry(mount_path, *archive_url, false))
+        .collect();
+    if let Some((mount_path, archive_url)) = artifact {
+        storage_mounts.push(manifest_entry(mount_path, archive_url, true));
+    }
+    manifest.insert("storageMounts".to_owned(), Value::Array(storage_mounts));
 
     serde_json::to_vec(&Value::Object(manifest)).map_err(std::io::Error::other)
 }
 
-fn manifest_entry(mount_path: &str, archive_url: Option<&str>) -> Value {
+fn manifest_entry(mount_path: &str, archive_url: Option<&str>, writeback: bool) -> Value {
     let mut entry = Map::new();
     entry.insert("mountPath".to_owned(), json!(mount_path));
+    entry.insert("writeback".to_owned(), json!(writeback));
     if let Some(url) = archive_url {
         entry.insert("archiveUrl".to_owned(), json!(url));
     }

@@ -1,9 +1,7 @@
 use std::collections::{HashMap, HashSet};
 
 use api_contracts::generated::constants::model_provider_env::placeholders as model_provider_placeholders;
-use api_contracts::generated::types::runners::storage::{
-    ArtifactEntryMissingRootPolicy, StorageManifest,
-};
+use api_contracts::generated::types::runners::storage::ArtifactEntryMissingRootPolicy;
 use sandbox::SandboxId;
 use sandbox_mock::MockSandbox;
 use serde_json::json;
@@ -29,6 +27,7 @@ use crate::host_env::{
     RUNNER_NET_RX_MIB_PER_SEC_ENV, RUNNER_NET_TX_MIB_PER_SEC_ENV,
 };
 use crate::ids::RunId;
+use crate::storage_manifest::StorageManifest;
 use crate::types::{CodexRuntimeConfig, ExecutionContext, ResumeSession, SandboxReuseResult};
 
 fn validate_context_for_test(ctx: &ExecutionContext) -> Result<(), String> {

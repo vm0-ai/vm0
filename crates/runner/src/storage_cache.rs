@@ -2739,9 +2739,6 @@ fn rewrite_url(plan: &mut StoragePlan, target: &CacheTarget) {
 mod tests {
     use super::*;
 
-    use api_contracts::generated::types::runners::storage::{
-        ArtifactEntry, StorageEntry, StorageManifest,
-    };
     use async_trait::async_trait;
     use httpmock::Method::{GET, HEAD};
     use httpmock::prelude::*;
@@ -2755,6 +2752,7 @@ mod tests {
     use crate::http::{HttpClient, HttpClientConfig};
     use crate::ids::RunId;
     use crate::storage_fingerprints::{StorageFingerprint, StorageFingerprints};
+    use crate::storage_manifest::{ArtifactEntry, StorageEntry, StorageManifest};
     use crate::storage_plan::build_storage_plan;
 
     const CACHE_TEST_RUNTIME_DIR: &str = "/tmp/storage-cache-test-runtime";

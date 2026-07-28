@@ -49,6 +49,7 @@ mod status;
 mod status_file;
 mod storage_cache;
 mod storage_fingerprints;
+mod storage_manifest;
 mod storage_plan;
 mod telemetry;
 #[cfg(test)]

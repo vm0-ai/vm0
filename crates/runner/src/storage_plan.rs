@@ -1,13 +1,12 @@
 use std::collections::HashSet;
 use std::path::PathBuf;
 
-use api_contracts::generated::types::runners::storage::{
-    ArtifactEntryMissingRootPolicy, StorageManifest,
-};
+use api_contracts::generated::types::runners::storage::ArtifactEntryMissingRootPolicy;
 use guest_contracts::storage_manifest as wire;
 
 use crate::error::{RunnerError, RunnerResult};
 use crate::storage_fingerprints::{StorageFingerprint, StorageFingerprints};
+use crate::storage_manifest::StorageManifest;
 
 const CODEX_FRAMEWORK_HOME: &str = "/home/user/.codex";
 const CLAUDE_FRAMEWORK_HOME: &str = "/home/user/.claude";

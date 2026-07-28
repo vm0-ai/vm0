@@ -727,10 +727,7 @@ mod tests {
     use std::sync::Arc;
     use std::time::Duration;
 
-    use api_contracts::generated::{
-        constants::runners::paths::CANONICAL_WORKING_DIR,
-        types::runners::storage::{ArtifactEntry, StorageEntry, StorageManifest},
-    };
+    use api_contracts::generated::constants::runners::paths::CANONICAL_WORKING_DIR;
     use guest_contracts::reuse_preparation::{ReusePreparationReport, RootFilesystemCapacity};
     use sandbox::{ExecResult, SandboxFactory, SandboxId};
     use sandbox_mock::{MockLifecycleGate, MockSandbox, MockSandboxFactory, MockSandboxOverrides};
@@ -753,6 +750,7 @@ mod tests {
     use crate::resource_budget::{BudgetLease, ResourceBudget};
     use crate::status::StatusTracker;
     use crate::storage_fingerprints::StorageFingerprint;
+    use crate::storage_manifest::{ArtifactEntry, StorageEntry, StorageManifest};
     use crate::storage_plan::build_storage_plan;
     use crate::types::SandboxReuseResult;
     use crate::workspace_image_cache::{
