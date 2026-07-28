@@ -231,7 +231,8 @@ pub struct ExecuteOutcome {
     pub network_log_session: Option<NetworkLogSession>,
     pub workspace_image: Option<WorkspaceImageLease>,
     /// CLI-generated session ID read from the guest after execution.
-    /// Used for first-run VM parking when `resume_session` is absent.
+    /// Used for late session tracking and finalization when `resume_session`
+    /// is absent.
     pub discovered_cli_agent_session_id: Option<String>,
     pub restored_session_identity: Option<RestoredSessionIdentity>,
 }

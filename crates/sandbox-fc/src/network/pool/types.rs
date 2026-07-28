@@ -200,7 +200,7 @@ pub(crate) struct CheckedNetnsPoolConfig {
 }
 
 impl NetnsPoolConfig {
-    /// Validate host tools required by [`NetnsPool::create`].
+    /// Validate host tools required by [`super::NetnsPool::create`].
     pub(crate) async fn into_checked(
         self,
     ) -> std::result::Result<CheckedNetnsPoolConfig, SandboxError> {

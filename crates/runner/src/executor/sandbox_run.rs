@@ -1330,23 +1330,22 @@ pub(super) async fn execute_prepared_sandbox_run(
         }
     }
 
-    // Read CLI-generated session ID for first-run parking.
-    let discovered_cli_agent_session_id =
-        if agent_result.exit_code() == 0 && context.cli_agent_session_id().is_none() {
-            let id = read_guest_cli_agent_session_id(sandbox.as_ref(), context.run_id)
-                .await
-                .and_then(|id| normalize_guest_cli_agent_session_id_for_parking(context, id));
-            if let Some(ref sid) = id {
-                info!(
-                    run_id = %context.run_id,
-                    session_id = %sid,
-                    "read guest session ID for parking"
-                );
-            }
-            id
-        } else {
-            None
-        };
+    // Read the CLI-generated session ID after a first-run execution.
+    let discovered_cli_agent_session_id = if context.cli_agent_session_id().is_none() {
+        let id = read_guest_cli_agent_session_id(sandbox.as_ref(), context.run_id)
+            .await
+            .and_then(|id| normalize_guest_cli_agent_session_id(context, id));
+        if let Some(ref sid) = id {
+            info!(
+                run_id = %context.run_id,
+                session_id = %sid,
+                "read guest CLI agent session ID after execution"
+            );
+        }
+        id
+    } else {
+        None
+    };
 
     ExecuteOutcome {
         failure: agent_result.failure,
@@ -1359,7 +1358,7 @@ pub(super) async fn execute_prepared_sandbox_run(
     }
 }
 
-fn normalize_guest_cli_agent_session_id_for_parking(
+fn normalize_guest_cli_agent_session_id(
     context: &ExecutionContext,
     session_id: String,
 ) -> Option<String> {

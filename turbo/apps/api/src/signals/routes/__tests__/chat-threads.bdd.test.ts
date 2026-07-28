@@ -1,5 +1,6 @@
 import { createHash, randomUUID } from "node:crypto";
 
+import { createStore } from "ccstate";
 import { cronCompactChatThreadSnapshotsContract } from "@vm0/api-contracts/contracts/cron";
 import {
   chatThreadsContract,
@@ -60,6 +61,10 @@ import {
   generatedStripeSubscriptionId,
   postUsageAllowanceInvoicePaid,
 } from "./helpers/stripe-billing-webhook";
+import {
+  insertUsageEvent$,
+  materializeHourlyUsage$,
+} from "./helpers/zero-usage-insight";
 
 /**
  * CHAT-01 / CHAT-03: chat thread lifecycle beyond the mutation chain that
@@ -83,6 +88,7 @@ const chatCallbacks = createChatCallbacksApi(context);
 const cu = createComputerUseBddApi(context);
 const connectorsApi = createConnectorBddApi(context);
 const authOrg = createAuthOrgAgentsBddApi(context);
+const store = createStore();
 const CHAT_THREAD_SNAPSHOT_CRON_SECRET = "chat-thread-snapshot-cron-secret";
 
 type AssistantMessage = Extract<PagedChatMessage, { role: "assistant" }>;
@@ -1803,6 +1809,75 @@ describe("CHAT-01 chat thread read state", () => {
 });
 
 describe("CHAT-03 run usage events", () => {
+  it("emits aggregate-only usage with the run completion timestamp", async () => {
+    const { actor, agentId, runnerGroup } = await entitledChatActor(
+      "Hourly usage event agent",
+    );
+    if (!actor.orgId) {
+      throw new Error("Expected an org-scoped actor");
+    }
+    const run = await sendChatRun(actor, {
+      agentId,
+      prompt: "record compacted usage",
+    });
+    const { sandboxHeaders } = await claimChatRun(runnerGroup, run.runId);
+    const provider = `hourly-chat-${randomUUID().slice(0, 8)}`;
+    await store.set(
+      insertUsageEvent$,
+      {
+        orgId: actor.orgId,
+        userId: actor.userId,
+        runId: run.runId,
+        kind: "connector",
+        provider,
+        category: "api_request",
+        quantity: 3,
+        status: "processed",
+        creditsCharged: 7,
+        processedAt: new Date("2020-01-01T12:25:00.000Z"),
+      },
+      context.signal,
+    );
+    await expect(
+      store.set(
+        materializeHourlyUsage$,
+        {
+          orgId: actor.orgId,
+          userId: actor.userId,
+          runId: run.runId,
+        },
+        context.signal,
+      ),
+    ).resolves.toBe(1);
+
+    const completedAt = new Date(now() + 1000);
+    mockNow(completedAt);
+    onTestFinished(() => {
+      clearMockNow();
+    });
+    await completeChatRunOk(run.runId, sandboxHeaders);
+    await flushWaitUntilForTest();
+
+    const usageEvents = await usageEventsForRun(actor, run.threadId, run.runId);
+    expect(usageEvents).toStrictEqual([
+      expect.objectContaining({
+        createdAt: completedAt.toISOString(),
+        usage: {
+          version: 1,
+          totalCredits: 7,
+          settledAt: completedAt.toISOString(),
+          breakdown: [
+            {
+              kind: "connector",
+              credits: 7,
+              providers: [{ provider, credits: 7 }],
+            },
+          ],
+        },
+      }),
+    ]);
+  }, 60_000);
+
   it("emits one immutable usage event per run", async () => {
     const { actor, agentId } = await entitledChatActorWithoutRunner(
       "Usage message agent",

@@ -25,7 +25,7 @@ use vsock_host::{
 };
 use vsock_proto::{ExecOutputPolicy, ExecOutputStream, ExecTimeoutPolicy};
 
-use crate::api::{ApiError, BalloonStatistics};
+use crate::api::BalloonStatistics;
 use crate::duration::duration_ms;
 use nbd_cow::PooledNbdCowDevice;
 
@@ -1938,9 +1938,8 @@ impl Sandbox for FirecrackerSandbox {
     // gate. Both methods propagate guest lifecycle, operation-gate, fence, and
     // Firecracker PATCH failures as `IdleTransition(Park|Unpark)` errors. On
     // failure the caller (runner) destroys the sandbox and falls through to
-    // fresh-create. Firecracker's pause/resume returns 400 when the VM is
-    // already in the target state; within park/unpark this only happens after
-    // a partial retry, so 400 is treated as success (idempotent).
+    // fresh-create. Firecracker accepts repeated target-state requests, so
+    // partial retries do not require suppressing API errors.
     //
     // For profiles where `memory_mb <= MIN_GUEST_MIB` there is no memory
     // to reclaim (balloon is skipped), but vCPUs are still paused — timer
@@ -3439,23 +3438,13 @@ async fn park_inner(
     // Pause vCPUs to eliminate idle CPU overhead (timer ticks, kernel
     // scheduling). For small VMs (target == 0) we skip the balloon but
     // still pause — timer ticks waste CPU regardless of memory size.
-    //
-    // Idempotent 400 handling: Firecracker returns 400 if the VM is
-    // already paused. Within park_inner this only happens if a prior
-    // partial park (balloon OK, pause failed on transient error) already
-    // paused the VM. Treat as success to preserve retry semantics.
-    match client.pause().await {
-        Ok(()) => {}
-        Err(ApiError::Http { status: 400, .. }) => {
-            info!(id = %log_id, "vm already paused, continuing park");
-        }
-        Err(e) => {
-            return Err(SandboxError::IdleTransition {
-                transition: SandboxIdleTransition::Park,
-                message: format!("vm pause: {e}"),
-            });
-        }
-    }
+    client
+        .pause()
+        .await
+        .map_err(|e| SandboxError::IdleTransition {
+            transition: SandboxIdleTransition::Park,
+            message: format!("vm pause: {e}"),
+        })?;
 
     *is_parked = true;
     if target > 0 {
@@ -3489,27 +3478,17 @@ async fn unpark_inner(
 
     // Resume vCPUs before any balloon work — the guest needs running
     // vCPUs to process the deflate PATCH.
-    //
-    // Idempotent 400 handling: Firecracker returns 400 if the VM is
-    // already running. Within unpark_inner this only happens if a prior
-    // partial unpark (resume OK, deflate failed) already resumed the VM.
-    // Treat as success to preserve the trait's retry contract.
     let client = ApiClient::new(api_sock).map_err(|e| SandboxError::IdleTransition {
         transition: SandboxIdleTransition::Unpark,
         message: format!("create API client: {e}"),
     })?;
-    match client.resume().await {
-        Ok(()) => {}
-        Err(ApiError::Http { status: 400, .. }) => {
-            info!(id = %log_id, "vm already running, continuing unpark");
-        }
-        Err(e) => {
-            return Err(SandboxError::IdleTransition {
-                transition: SandboxIdleTransition::Unpark,
-                message: format!("vm resume: {e}"),
-            });
-        }
-    }
+    client
+        .resume()
+        .await
+        .map_err(|e| SandboxError::IdleTransition {
+            transition: SandboxIdleTransition::Unpark,
+            message: format!("vm resume: {e}"),
+        })?;
 
     let park_touched_controller = memory_mb > balloon::MIN_GUEST_MIB;
 

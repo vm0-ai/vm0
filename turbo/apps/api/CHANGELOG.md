@@ -1,5 +1,28 @@
 # Changelog
 
+## [1.335.0](https://github.com/vm0-ai/vm0/compare/api-v1.334.0...api-v1.335.0) (2026-07-28)
+
+
+### Features
+
+* **connectors:** default oauth callbacks to app ([#23392](https://github.com/vm0-ai/vm0/issues/23392)) ([b626e8b](https://github.com/vm0-ai/vm0/commit/b626e8b5d781ad635652943c493031c5fae369d4))
+
+
+### Bug Fixes
+
+* **api:** send low-credit alerts from contact address ([#23390](https://github.com/vm0-ai/vm0/issues/23390)) ([1b50558](https://github.com/vm0-ai/vm0/commit/1b505580bd0d50f07f6740c97cb125b5517864b1))
+* **api:** use support address for low-credit alerts ([#23406](https://github.com/vm0-ai/vm0/issues/23406)) ([880934d](https://github.com/vm0-ai/vm0/commit/880934d8d73890d8dfc5d197be5d6ea8d935daa2))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.239.1
+    * @vm0/connectors bumped to 1.199.0
+    * @vm0/core bumped to 8.479.0
+    * @vm0/db bumped to 1.147.1
+
 ## [1.334.0](https://github.com/vm0-ai/vm0/compare/api-v1.333.0...api-v1.334.0) (2026-07-28)
 
 

@@ -1,5 +1,22 @@
 # Changelog
 
+## [0.646.0](https://github.com/vm0-ai/vm0/compare/app-v0.645.0...app-v0.646.0) (2026-07-28)
+
+
+### Features
+
+* **connectors:** default oauth callbacks to app ([#23392](https://github.com/vm0-ai/vm0/issues/23392)) ([b626e8b](https://github.com/vm0-ai/vm0/commit/b626e8b5d781ad635652943c493031c5fae369d4))
+* enable new chat thread sidebar for all users ([#23378](https://github.com/vm0-ai/vm0/issues/23378)) ([3a8dc48](https://github.com/vm0-ai/vm0/commit/3a8dc48223ba96896cf142f73d4bf37e34a3d534))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.239.1
+    * @vm0/connectors bumped to 1.199.0
+    * @vm0/core bumped to 8.479.0
+
 ## [0.645.0](https://github.com/vm0-ai/vm0/compare/app-v0.644.0...app-v0.645.0) (2026-07-28)
 
 

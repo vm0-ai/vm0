@@ -801,6 +801,12 @@ def _parse_response_metadata(flow: http.HTTPFlow) -> dict:
 
 
 def _request_body_for_billing_refinement(flow: http.HTTPFlow) -> bytes | None:
+    """Select the authoritative request body eligible for billing refinement.
+
+    When present, stream capture is authoritative over ``flow.request.raw_content``:
+    only a complete, non-truncated capture is returned. Raw content is used only
+    when no stream capture exists.
+    """
     captured = request_streaming.captured_request_stream_body(flow)
     if captured is not None:
         if (

@@ -758,7 +758,7 @@ describe("connectors page", () => {
     ).not.toBeInTheDocument();
   });
 
-  it("moves reconnect into the connector options menu", async () => {
+  it("omits standalone instructions from reconnect progress", async () => {
     mockConnectors([
       {
         type: "meta-ads",
@@ -767,6 +767,7 @@ describe("connectors page", () => {
     ]);
     const authWindow = createMockAuthWindow();
     context.mocks.browser.open(authWindow);
+    context.mocks.browser.standaloneDisplayMode(true);
     context.mocks.api(
       zeroConnectorOauthStartContract.start,
       ({ body, params, respond }) => {
@@ -804,6 +805,14 @@ describe("connectors page", () => {
         "https://oauth.test/meta-ads/authorize",
       );
     });
+    expect(
+      within(connectorCardByLabel("Meta Ads")).getByText("Connecting…"),
+    ).toBeInTheDocument();
+    expect(
+      within(connectorCardByLabel("Meta Ads")).queryByText(
+        "Switch back here after completing sign-in.",
+      ),
+    ).not.toBeInTheDocument();
   });
 
   it("disconnects a connected catalog connector from the options menu", async () => {
