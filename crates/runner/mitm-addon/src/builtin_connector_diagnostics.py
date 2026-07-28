@@ -12,7 +12,50 @@ _DIAGNOSTIC_ANY_PERMISSION: Final = "__connector_diagnostic_any__"
 _DIAGNOSTIC_ANY_RULES: Final = ("ANY /", "ANY /{path+}")
 _DIAGNOSTIC_CANDIDATE_KEY: Final = "_diagnostic_candidate"
 _MODEL_PROVIDER_PREFIX: Final = "model-provider:"
-_REFERENCE_NAME_PATTERN: Final = re.compile(r"\b(?:secrets|vars)\.([a-zA-Z_][a-zA-Z0-9_]*)")
+# Keep this regular grammar aligned with AUTH_REFERENCE_PATTERN and
+# parseBasicAuthTemplates() in the TypeScript connector contract.
+_BASIC_TEMPLATE_WHITESPACE: Final = r"[\u0009-\u000d\u0020]"
+_SIMPLE_TEMPLATE_WHITESPACE: Final = (
+    r"[\u0009-\u000d\u0020\u00a0\u1680\u2000-\u200a"
+    r"\u2028\u2029\u202f\u205f\u3000\ufeff]"
+)
+_TEMPLATE_IDENTIFIER: Final = r"[a-zA-Z_][a-zA-Z0-9_]*"
+_BASIC_LITERAL: Final = r'"[^"\\]*"'
+_BASIC_FIRST_REFERENCE: Final = rf"(?:secrets|vars)\.(?P<basic_first_name>{_TEMPLATE_IDENTIFIER})"
+_BASIC_SECOND_REFERENCE: Final = rf"(?:secrets|vars)\.(?P<basic_second_name>{_TEMPLATE_IDENTIFIER})"
+_BASIC_FIRST_ARGUMENT: Final = (
+    rf"{_BASIC_TEMPLATE_WHITESPACE}*"
+    rf"(?:(?:{_BASIC_LITERAL}|{_BASIC_FIRST_REFERENCE})"
+    rf"{_BASIC_TEMPLATE_WHITESPACE}*)?"
+)
+_BASIC_SECOND_ARGUMENT: Final = (
+    rf"{_BASIC_TEMPLATE_WHITESPACE}*"
+    rf"(?:(?:{_BASIC_LITERAL}|{_BASIC_SECOND_REFERENCE})"
+    rf"{_BASIC_TEMPLATE_WHITESPACE}*)?"
+)
+_BASIC_AUTH_TEMPLATE_PATTERN: Final = (
+    r"\$\{\{"
+    rf"{_BASIC_TEMPLATE_WHITESPACE}*basic\("
+    rf"{_BASIC_FIRST_ARGUMENT},"
+    rf"{_BASIC_SECOND_ARGUMENT}\)"
+    rf"{_BASIC_TEMPLATE_WHITESPACE}*"
+    r"\}\}"
+)
+_SIMPLE_AUTH_REFERENCE_PATTERN: Final = (
+    r"\$\{\{"
+    rf"{_SIMPLE_TEMPLATE_WHITESPACE}*(?:secrets|vars)\."
+    rf"(?P<simple_name>{_TEMPLATE_IDENTIFIER})"
+    rf"{_SIMPLE_TEMPLATE_WHITESPACE}*"
+    r"\}\}"
+)
+_DIAGNOSTIC_TEMPLATE_PATTERN: Final = re.compile(
+    rf"(?:{_BASIC_AUTH_TEMPLATE_PATTERN}|{_SIMPLE_AUTH_REFERENCE_PATTERN})"
+)
+_REFERENCE_NAME_GROUPS: Final = (
+    "basic_first_name",
+    "basic_second_name",
+    "simple_name",
+)
 _SHARED_BASE_MIN_CANDIDATES: Final = 2
 
 
@@ -463,11 +506,12 @@ def _diagnostic_reference_names(value: object) -> tuple[str, ...]:
 
     def visit(nested: object) -> None:
         if isinstance(nested, str):
-            for match in _REFERENCE_NAME_PATTERN.finditer(nested):
-                name = match.group(1)
-                if name not in seen:
-                    seen.add(name)
-                    names.append(name)
+            for match in _DIAGNOSTIC_TEMPLATE_PATTERN.finditer(nested):
+                for group_name in _REFERENCE_NAME_GROUPS:
+                    name = match.group(group_name)
+                    if name is not None and name not in seen:
+                        seen.add(name)
+                        names.append(name)
             return
         if isinstance(nested, list):
             for item in nested:
