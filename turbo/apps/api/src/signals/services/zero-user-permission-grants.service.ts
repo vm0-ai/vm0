@@ -3,7 +3,6 @@ import type { StoredConnectorPermissionBaseline } from "@vm0/api-contracts/contr
 import {
   createFirewallMetadataPolicyResolver,
   permissionGrantsToFirewallPolicies,
-  type FirewallPermissionPolicyDefaultMetadata,
 } from "@vm0/connectors/firewall-metadata/policy";
 import {
   UNKNOWN_PERMISSION_GRANT,
@@ -45,7 +44,10 @@ import {
   publishNetworkPolicyRefreshToRunnerGroup,
 } from "../external/realtime";
 import { nowDate } from "../external/time";
-import { networkPolicyForFirewallPolicy } from "./firewall-network-policy.service";
+import {
+  defaultFirewallPolicyForPermissionIndex,
+  networkPolicyForFirewallPolicy,
+} from "./firewall-network-policy.service";
 import {
   loadConnectorRuntimeSnapshot,
   type ConnectorRuntimeSnapshot,
@@ -76,7 +78,7 @@ interface ActiveNetworkPolicyRefresh {
 interface ConnectorPermissionPolicyBaseline {
   readonly connectorRef: string;
   readonly permissionNames: readonly string[];
-  readonly defaultPolicy: FirewallPermissionPolicyDefaultMetadata;
+  readonly defaultPolicy: FirewallPolicy;
 }
 
 type BaselineNetworkPolicyRefreshResolution =
@@ -350,7 +352,7 @@ export async function resolveActiveNetworkPolicyRefreshes(
             {
               connectorRef,
               permissionNames: [...index.permissionNames],
-              defaultPolicy: index.defaultPolicy,
+              defaultPolicy: defaultFirewallPolicyForPermissionIndex(index),
             },
           ]
         : [];
@@ -403,7 +405,7 @@ function baselineStaticIdentityIsCurrent(
 }
 
 function defaultFirewallPolicyForBaseline(
-  baseline: ConnectorPermissionPolicyBaseline,
+  baseline: StoredConnectorPermissionBaseline["connectors"][string],
 ): FirewallPolicy {
   const resolver = createFirewallMetadataPolicyResolver({
     defaultPolicy: baseline.defaultPolicy,
@@ -424,7 +426,7 @@ function activeNetworkPolicyRefreshesForPermissionBaselines(
 ): readonly ActiveNetworkPolicyRefresh[] {
   const policies = resolvedConnectorFirewallPolicies(grants);
   return baselines.map((baseline) => {
-    const defaultPolicy = defaultFirewallPolicyForBaseline(baseline);
+    const defaultPolicy = baseline.defaultPolicy;
     const connectorRef = baseline.connectorRef;
     const overlay = policies[connectorRef];
     const policy: FirewallPolicy = overlay
@@ -531,7 +533,7 @@ export async function resolveActiveNetworkPolicyRefreshesFromBaseline(
         return {
           connectorRef,
           permissionNames: entry.permissionNames,
-          defaultPolicy: entry.defaultPolicy,
+          defaultPolicy: defaultFirewallPolicyForBaseline(entry),
         };
       }),
       grants,

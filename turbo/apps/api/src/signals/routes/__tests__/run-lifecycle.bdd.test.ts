@@ -4419,6 +4419,7 @@ describe("RUN-01: admission boundaries beyond request validation", () => {
     expect(thirdClaim.secretValues).toContain(zeroToken);
     expect(thirdClaim).not.toHaveProperty("secretValueEnvironmentKeys");
     expect(thirdClaim).not.toHaveProperty("runContextStorage");
+    expectClaimNetworkPolicyRefreshPath(third.runId, "baseline_empty");
     const apiToRunnerQueueMs = sandboxOperationDurationForRun(
       third.runId,
       "api_to_runner_queue",
