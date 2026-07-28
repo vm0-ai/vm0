@@ -45,7 +45,6 @@ import {
   API_TEST_CONNECTOR_FIREWALL_CONFIGS,
   apiTestConnectorCatalogValidationAuthority,
   installApiTestConnectorCatalog,
-  mockApiTestConnectorProviderConfiguration,
   readApiTestConnectorCatalogValidationAuthority,
   setApiTestConnectorCatalogValidationAuthority,
 } from "../../../test-fixtures/connector-catalog";
@@ -1308,10 +1307,6 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
       "R2_USER_STORAGES_BUCKET_NAME",
       "test-run-lifecycle-legacy-catalog",
     );
-    onTestFinished(async () => {
-      mockApiTestConnectorProviderConfiguration();
-      await installApiTestConnectorCatalog();
-    });
 
     const missingCatalogVersion = `api-test-missing-validation-${randomUUID()}`;
     await installApiTestConnectorCatalog({
