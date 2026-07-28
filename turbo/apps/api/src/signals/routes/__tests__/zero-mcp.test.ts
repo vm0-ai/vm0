@@ -297,7 +297,36 @@ describe("MCP server management", () => {
     expect(listed.body.servers).toStrictEqual([server]);
   });
 
+  it("requires an explicit initial enabled state", async () => {
+    const admin = bdd.user();
+    const app = createAppWithRoutes({
+      signal: context.signal,
+      routes: zeroMcpRoutes,
+    });
+
+    const response = await app.request("/api/zero/mcp/servers", {
+      method: "POST",
+      headers: {
+        ...authenticate(admin),
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({
+        ref: "missing-enabled",
+        displayName: "Missing enabled",
+        endpoint: "https://mcp.example.com/mcp",
+      }),
+    });
+    expect(response.status).toBe(400);
+
+    const listed = await accept(
+      serversClient().list({ headers: authenticate(admin) }),
+      [200],
+    );
+    expect(listed.body.servers).toStrictEqual([]);
+  });
+
   it.each([
+    "not a URL",
     "http://mcp.example.com/mcp",
     "file:///tmp/server",
     "https://user:password@mcp.example.com/mcp",
@@ -438,6 +467,16 @@ describe("MCP agent grants", () => {
       [404],
     );
     expect(nonOwnerWrite.body.error.code).toBe("NOT_FOUND");
+
+    const missingAgentWrite = await accept(
+      agentGrantsClient().replace({
+        params: { id: randomUUID() },
+        headers: authenticate(owner),
+        body: { grants: [] },
+      }),
+      [404],
+    );
+    expect(missingAgentWrite.body.error.code).toBe("NOT_FOUND");
 
     const crossOrgServer = await accept(
       agentGrantsClient().replace({

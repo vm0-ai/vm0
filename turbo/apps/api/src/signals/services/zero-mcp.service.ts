@@ -82,6 +82,8 @@ function hostnameIsInternal(hostname: string): boolean {
 }
 
 function normalizeMcpEndpoint(rawEndpoint: string): McpEndpointResult {
+  // Registration validates stable syntax only. Every runtime connector must
+  // resolve the hostname and reject blocked addresses immediately before use.
   const url = safeUrlParse(rawEndpoint.trim());
   if (!url) {
     return { ok: false, message: "MCP endpoint must be a valid URL" };
