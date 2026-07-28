@@ -14,6 +14,7 @@ import { connectors } from "@vm0/db/schema/connector";
 import { deviceCodes } from "@vm0/db/schema/device-codes";
 import { exportJobs } from "@vm0/db/schema/export-job";
 import { githubUserLinks } from "@vm0/db/schema/github-user-link";
+import { mcpServers } from "@vm0/db/schema/mcp-server";
 import { modelProviderAuthSessions } from "@vm0/db/schema/model-provider-auth-session";
 import { modelProviders } from "@vm0/db/schema/model-provider";
 import { orgCache } from "@vm0/db/schema/org-cache";
@@ -738,6 +739,7 @@ async function deleteOrgData(db: Db, orgId: string): Promise<void> {
   await db.delete(artifacts).where(eq(artifacts.orgId, orgId));
   await db.delete(agentRuns).where(eq(agentRuns.orgId, orgId));
   await db.delete(agentComposes).where(eq(agentComposes.orgId, orgId));
+  await db.delete(mcpServers).where(eq(mcpServers.orgId, orgId));
   await db.delete(storages).where(eq(storages.orgId, orgId));
   await db.delete(modelProviders).where(eq(modelProviders.orgId, orgId));
   await db
