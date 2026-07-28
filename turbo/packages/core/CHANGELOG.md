@@ -1,5 +1,25 @@
 # Changelog
 
+## [8.482.0](https://github.com/vm0-ai/vm0/compare/core-v8.481.1...core-v8.482.0) (2026-07-28)
+
+
+### Features
+
+* add disabled no-auth mcp management domain ([#23513](https://github.com/vm0-ai/vm0/issues/23513)) ([6bcd50b](https://github.com/vm0-ai/vm0/commit/6bcd50b396ea6acc9afff609380da7abbc464f11))
+* auto-open active chat cards in the thread sidebar ([#23478](https://github.com/vm0-ai/vm0/issues/23478)) ([974eacf](https://github.com/vm0-ai/vm0/commit/974eacfabe873b7aab667121de0d032819179f04))
+
+
+### Refactoring
+
+* **platform:** retire the chat thread sidebar switch ([#23473](https://github.com/vm0-ai/vm0/issues/23473)) ([75a18f6](https://github.com/vm0-ai/vm0/commit/75a18f6204cecf869686125abdb06a50859d1f45))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.242.0
+
 ## [8.481.1](https://github.com/vm0-ai/vm0/compare/core-v8.481.0...core-v8.481.1) (2026-07-28)
 
 

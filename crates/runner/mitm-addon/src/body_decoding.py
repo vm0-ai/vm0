@@ -32,6 +32,11 @@ from body_limits import (
 _BROTLI_DECOMPRESS_MIN_INPUT_CHUNK_SIZE = 16
 _BROTLI_DECOMPRESS_MAX_INPUT_CHUNK_SIZE = 1024
 _BROTLI_DECOMPRESS_TARGET_INPUT_CHUNKS = 64
+# Bound how much following compressed input zlib can copy into unused_data at
+# a member boundary. This is larger than zstd validation chunks because zlib's
+# max_length already bounds decoded output and ordinary inputs benefit from
+# fewer Python-to-C calls.
+_ZLIB_DECOMPRESS_INPUT_CHUNK_SIZE = 1024
 # zstd's Python decompression object has no zlib-style max_length argument.
 # Keep validation input chunks small so the discarded decoded output is bounded.
 _ZSTD_VALIDATE_INPUT_CHUNK_SIZE = 32
@@ -62,6 +67,32 @@ _StreamDecodeFinishError = Callable[[], str | None]
 class StreamDecodeSession(NamedTuple):
     feed: _StreamDecodeFeed
     finish_error: _StreamDecodeFinishError
+
+
+class _ZlibInputCursor:
+    """Advance source bytes once while prioritizing bounded decompressor tails."""
+
+    def __init__(self, data: bytes) -> None:
+        self._source = memoryview(data)
+        self._source_offset = 0
+        self._pending_input = b""
+
+    def __bool__(self) -> bool:
+        return self._source_offset < len(self._source) or bool(self._pending_input)
+
+    def take(self) -> bytes | memoryview:
+        if self._pending_input:
+            chunk = self._pending_input
+            self._pending_input = b""
+            return chunk
+        chunk = self._source[
+            self._source_offset : self._source_offset + _ZLIB_DECOMPRESS_INPUT_CHUNK_SIZE
+        ]
+        self._source_offset += len(chunk)
+        return chunk
+
+    def carry(self, data: bytes) -> None:
+        self._pending_input = data
 
 
 def _log_streaming_decode_error(encoding_label: str, exc: Exception) -> None:
@@ -107,8 +138,13 @@ def _create_zlib_stream_decode_session(
         if chunk:
             saw_input = True
             compressed_bytes_seen += len(chunk)
-        data = chunk
-        while data:
+        input_cursor = _ZlibInputCursor(chunk)
+        # Input slicing can make zlib return partial parser chunks. Coalesce
+        # only within this callback and member so existing delivery boundaries
+        # and the max_decoded_chunk contract remain intact.
+        pending_decoded = bytearray()
+        while input_cursor:
+            data = input_cursor.take()
             member_in_progress = True
             allowed_decoded_bytes = max(
                 STREAM_DECODE_EXPANSION_GRACE,
@@ -119,33 +155,45 @@ def _create_zlib_stream_decode_session(
             max_length = (
                 1
                 if probing_for_additional_output
-                else min(max_decoded_chunk, remaining_decoded_bytes)
+                else min(
+                    max_decoded_chunk - len(pending_decoded),
+                    remaining_decoded_bytes,
+                )
             )
             try:
                 decoded = obj.decompress(data, max_length=max_length)
             except zlib.error as exc:
+                if pending_decoded:
+                    feed(bytes(pending_decoded))
                 decode_error = INVALID_COMPRESSED_BODY
                 _log_streaming_decode_error(encoding, exc)
                 return
             if probing_for_additional_output and decoded:
+                if pending_decoded:
+                    feed(bytes(pending_decoded))
                 decode_error = DECODED_BODY_LIMIT_EXCEEDED
                 return
             if decoded:
                 decoded_bytes_emitted += len(decoded)
-                feed(decoded)
+                pending_decoded.extend(decoded)
+                if len(pending_decoded) == max_decoded_chunk:
+                    feed(bytes(pending_decoded))
+                    pending_decoded.clear()
             if obj.eof:
+                if pending_decoded:
+                    feed(bytes(pending_decoded))
+                    pending_decoded.clear()
                 # At an exact output boundary, zlib can expose the next member
                 # through both unused_data and unconsumed_tail. Reset before
                 # consulting unconsumed_tail so the next member makes progress.
-                data = obj.unused_data
+                input_cursor.carry(obj.unused_data)
                 obj = zlib.decompressobj(wbits)
                 member_in_progress = False
-                if data:
-                    continue
-            if obj.unconsumed_tail:
-                data = obj.unconsumed_tail
                 continue
-            return
+            if obj.unconsumed_tail:
+                input_cursor.carry(obj.unconsumed_tail)
+        if pending_decoded:
+            feed(bytes(pending_decoded))
 
     def finish_error() -> str | None:
         if decode_error is not None:
@@ -275,38 +323,41 @@ def _decompress_zlib_best_effort_bounded(
         return _BodyDecodeResult(b"", False)
 
     wbits = 16 + zlib.MAX_WBITS if encoding == "gzip" else zlib.MAX_WBITS
-    remaining_data = data
+    input_cursor = _ZlibInputCursor(data)
     out = bytearray()
+    # A full-input zlib call exposes no partial output when that member raises.
+    # Commit each member only at EOF so bounded slicing preserves that policy.
+    member_out = bytearray()
     completed_member = False
+    obj = zlib.decompressobj(wbits)
 
-    while remaining_data and len(out) < max_output:
-        obj = zlib.decompressobj(wbits)
-        member_data = remaining_data
+    while input_cursor and len(out) < max_output:
+        member_data = input_cursor.take()
+        try:
+            decoded = obj.decompress(
+                member_data,
+                max_length=max_output - len(out) - len(member_out),
+            )
+        except zlib.error as exc:
+            if completed_member:
+                return _BodyDecodeResult(bytes(out), False)
+            return _BodyDecodeResult(data, True, exc)
 
-        while member_data and len(out) < max_output:
-            try:
-                decoded = obj.decompress(member_data, max_length=max_output - len(out))
-            except zlib.error as exc:
-                if completed_member:
-                    return _BodyDecodeResult(bytes(out), False)
-                return _BodyDecodeResult(data, True, exc)
-
-            out.extend(decoded)
-            if obj.unconsumed_tail:
-                member_data = obj.unconsumed_tail
-                continue
-            break
-
-        if len(out) >= max_output:
+        member_out.extend(decoded)
+        if len(out) + len(member_out) >= max_output:
+            out.extend(member_out)
             return _BodyDecodeResult(bytes(out), False)
         if obj.eof:
+            out.extend(member_out)
+            member_out.clear()
             completed_member = True
-            if obj.unused_data:
-                remaining_data = obj.unused_data
-                continue
-            return _BodyDecodeResult(bytes(out), False)
-        return _BodyDecodeResult(bytes(out), False)
+            input_cursor.carry(obj.unused_data)
+            if input_cursor:
+                obj = zlib.decompressobj(wbits)
+        elif obj.unconsumed_tail:
+            input_cursor.carry(obj.unconsumed_tail)
 
+    out.extend(member_out)
     return _BodyDecodeResult(bytes(out), False)
 
 
@@ -401,30 +452,36 @@ def _decompress_zlib_json_usage_body(
         return b"", DECODED_BODY_LIMIT_EXCEEDED if data else None
 
     wbits = 16 + zlib.MAX_WBITS if encoding == "gzip" else zlib.MAX_WBITS
-    remaining_data = data
+    input_cursor = _ZlibInputCursor(data)
     out = bytearray()
 
-    while remaining_data:
+    while input_cursor:
         remaining_output = max_output - len(out)
         # One probe byte distinguishes exact completion from real overflow.
         obj = zlib.decompressobj(wbits)
-        try:
-            decoded = obj.decompress(remaining_data, max_length=remaining_output + 1)
-        except zlib.error as exc:
-            with contextlib.suppress(AttributeError):
-                # ctx.log unavailable outside mitmproxy runtime
-                ctx.log.debug(f"Decompression failed ({encoding}): {exc}")
-            return b"", INVALID_COMPRESSED_BODY
 
-        if len(decoded) > remaining_output:
-            out.extend(decoded[:remaining_output])
-            return bytes(out), DECODED_BODY_LIMIT_EXCEEDED
-        out.extend(decoded)
-        if not obj.eof:
+        while input_cursor:
+            member_data = input_cursor.take()
+            try:
+                decoded = obj.decompress(member_data, max_length=remaining_output + 1)
+            except zlib.error as exc:
+                with contextlib.suppress(AttributeError):
+                    # ctx.log unavailable outside mitmproxy runtime
+                    ctx.log.debug(f"Decompression failed ({encoding}): {exc}")
+                return b"", INVALID_COMPRESSED_BODY
+
+            if len(decoded) > remaining_output:
+                out.extend(decoded[:remaining_output])
+                return bytes(out), DECODED_BODY_LIMIT_EXCEEDED
+            out.extend(decoded)
+            remaining_output -= len(decoded)
+            if obj.eof:
+                input_cursor.carry(obj.unused_data)
+                break
+            if obj.unconsumed_tail:
+                input_cursor.carry(obj.unconsumed_tail)
+        else:
             return bytes(out), INCOMPLETE_COMPRESSED_BODY
-        if not obj.unused_data:
-            return bytes(out), None
-        remaining_data = obj.unused_data
 
     return bytes(out), None
 

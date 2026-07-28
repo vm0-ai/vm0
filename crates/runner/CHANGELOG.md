@@ -1,5 +1,23 @@
 # Changelog
 
+## [0.148.22](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.148.21...runner-rs-v0.148.22) (2026-07-28)
+
+
+### Documentation
+
+* **python:** document credential-authority admission contract ([#23537](https://github.com/vm0-ai/vm0/issues/23537)) ([309bbdd](https://github.com/vm0-ai/vm0/commit/309bbdd88512875dc0670dd7456e4d2e7168fe6e))
+* **runner:** document claim cooldown rediscovery ([#23538](https://github.com/vm0-ai/vm0/issues/23538)) ([746e5c4](https://github.com/vm0-ai/vm0/commit/746e5c4823ae0ec43dfb9401f81bc8f2a39ce882))
+
+
+### Refactoring
+
+* **python:** retire raw server binding recorder ([#23520](https://github.com/vm0-ai/vm0/issues/23520)) ([5356139](https://github.com/vm0-ai/vm0/commit/5356139694cea89cb8da6dceea0f329622dcc7a5))
+
+
+### Performance Improvements
+
+* **runner:** skip no-op private directory chmod ([#23544](https://github.com/vm0-ai/vm0/issues/23544)) ([ee7a54a](https://github.com/vm0-ai/vm0/commit/ee7a54a03c41ebba8804baeee4e700fc8f8beadc))
+
 ## [0.148.21](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.148.20...runner-rs-v0.148.21) (2026-07-28)
 
 

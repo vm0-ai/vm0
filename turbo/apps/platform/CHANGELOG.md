@@ -1,5 +1,32 @@
 # Changelog
 
+## [0.649.0](https://github.com/vm0-ai/vm0/compare/app-v0.648.1...app-v0.649.0) (2026-07-28)
+
+
+### Features
+
+* auto-open active chat cards in the thread sidebar ([#23478](https://github.com/vm0-ai/vm0/issues/23478)) ([974eacf](https://github.com/vm0-ai/vm0/commit/974eacfabe873b7aab667121de0d032819179f04))
+
+
+### Bug Fixes
+
+* **platform:** show host-aware brand copy on okou hosts ([#23502](https://github.com/vm0-ai/vm0/issues/23502)) ([b32f31e](https://github.com/vm0-ai/vm0/commit/b32f31ec86d60e2b0102f4a5dbf4333b4d9348bc))
+* upload large attachments through r2 multipart ([#23490](https://github.com/vm0-ai/vm0/issues/23490)) ([a10f111](https://github.com/vm0-ai/vm0/commit/a10f111c7fe5a4e6b777c5ab7d81582d6f9630a3))
+
+
+### Refactoring
+
+* **chat:** remove event response aliases ([#23541](https://github.com/vm0-ai/vm0/issues/23541)) ([f3eb8cc](https://github.com/vm0-ai/vm0/commit/f3eb8cc0072242be15ef23ee2d2056ba78e3632d))
+* **platform:** retire the chat thread sidebar switch ([#23473](https://github.com/vm0-ai/vm0/issues/23473)) ([75a18f6](https://github.com/vm0-ai/vm0/commit/75a18f6204cecf869686125abdb06a50859d1f45))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.242.0
+    * @vm0/core bumped to 8.482.0
+
 ## [0.648.1](https://github.com/vm0-ai/vm0/compare/app-v0.648.0...app-v0.648.1) (2026-07-28)
 
 
