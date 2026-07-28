@@ -89,6 +89,7 @@ export const testUsageInsightStateActionBodySchema = z.discriminatedUnion(
       billing_error: z.string().nullable().optional(),
       created_at: optionalDateStringSchema,
       processed_at: nullableDateStringSchema.optional(),
+      count: z.number().int().positive().optional(),
     }),
     z.object({
       action: z.literal("set-browser-usage-hold"),
@@ -139,18 +140,6 @@ export const testUsageInsightStateActionBodySchema = z.discriminatedUnion(
       id: z.string(),
     }),
     z.object({
-      action: z.literal("hold-usage-compaction-lock"),
-      gate_id: z.string().uuid(),
-    }),
-    z.object({
-      action: z.literal("release-usage-compaction-lock"),
-      gate_id: z.string().uuid(),
-    }),
-    z.object({
-      action: z.literal("read-usage-compaction-lock-state"),
-      gate_id: z.string().uuid(),
-    }),
-    z.object({
       action: z.literal("delete-usage-data"),
       scope: z.enum(["organization", "user"]),
       id: z.string(),
@@ -175,8 +164,6 @@ export const testUsageInsightStateActionResponseSchema = z.object({
   raw_allowance_units: z.string().optional(),
   hourly_allowance_units: z.string().optional(),
   allocation_count: z.number().optional(),
-  lock_held: z.boolean().optional(),
-  lock_waiter_count: z.number().optional(),
 });
 
 export const testUsageInsightStateContract = c.router({

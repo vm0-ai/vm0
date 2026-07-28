@@ -53,6 +53,7 @@ interface InsertUsageEventArgs {
   readonly billingError?: string | null;
   readonly createdAt?: Date;
   readonly processedAt?: Date | null;
+  readonly count?: number;
 }
 
 interface UsageStorageCounts {
@@ -71,11 +72,6 @@ interface UsageAllowanceWindowState {
   readonly rawAllowanceUnits: string;
   readonly hourlyAllowanceUnits: string;
   readonly allocationCount: number;
-}
-
-interface UsageCompactionLockState {
-  readonly held: boolean;
-  readonly waiterCount: number;
 }
 
 function requestUsageInsightState(
@@ -283,6 +279,7 @@ export const insertUsageEvent$ = command(
       billing_error: args.billingError,
       created_at: dateToWire(args.createdAt) ?? undefined,
       processed_at: dateToWire(args.processedAt),
+      count: args.count,
     });
     if (!response.usage_event_id) {
       throw new Error("insertUsageEvent$: response missing usage_event_id");
@@ -451,49 +448,6 @@ export const readUsageStorageCounts$ = command(
     return {
       raw: response.raw_count,
       hourly: response.hourly_count,
-    };
-  },
-);
-
-export const holdUsageCompactionLock$ = command(
-  async (_, gateId: string, signal: AbortSignal): Promise<void> => {
-    await postAction(signal, {
-      action: "hold-usage-compaction-lock",
-      gate_id: gateId,
-    });
-  },
-);
-
-export const releaseUsageCompactionLock$ = command(
-  async (_, gateId: string, signal: AbortSignal): Promise<void> => {
-    await postAction(signal, {
-      action: "release-usage-compaction-lock",
-      gate_id: gateId,
-    });
-  },
-);
-
-export const readUsageCompactionLockState$ = command(
-  async (
-    _,
-    gateId: string,
-    signal: AbortSignal,
-  ): Promise<UsageCompactionLockState> => {
-    const response = await postAction(signal, {
-      action: "read-usage-compaction-lock-state",
-      gate_id: gateId,
-    });
-    if (
-      response.lock_held === undefined ||
-      response.lock_waiter_count === undefined
-    ) {
-      throw new Error(
-        "readUsageCompactionLockState$: response missing lock state",
-      );
-    }
-    return {
-      held: response.lock_held,
-      waiterCount: response.lock_waiter_count,
     };
   },
 );
