@@ -11,6 +11,7 @@ import brotli
 import zstandard
 
 import flow_metadata_keys as metadata_keys
+import http_network_log
 import mitm_addon
 import usage
 
@@ -358,6 +359,12 @@ def set_model_provider_metadata(
         run_id=run_id,
     )
     flow.metadata[metadata_keys.ORIGINAL_URL] = provider_case.original_url
+    http_network_log.set_target(
+        flow,
+        url=provider_case.original_url,
+        host=provider_case.host,
+        port=flow.request.port,
+    )
     flow.metadata[metadata_keys.FIREWALL_NAME] = provider_case.firewall_name
     if observable:
         flow.metadata[metadata_keys.MODEL_USAGE_PROVIDER] = provider_case.model

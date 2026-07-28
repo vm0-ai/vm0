@@ -518,13 +518,12 @@ def _http_network_log_entry(
     flow: http.HTTPFlow,
     *,
     action: str,
-    original_url: str,
     status_code: int,
     latency_ms: int,
     request_size: int,
     response_size: int,
 ) -> dict:
-    url, host, port = http_network_log.target(flow, original_url)
+    url, host, port = http_network_log.target(flow)
     entry = {
         "type": "http",
         "action": action,
@@ -1375,7 +1374,6 @@ def _handle_response(flow: http.HTTPFlow) -> None:
         log_entry = _http_network_log_entry(
             flow,
             action=firewall_action,
-            original_url=original_url,
             status_code=status_code,
             latency_ms=latency_ms,
             request_size=request_size,
@@ -1490,7 +1488,6 @@ def _handle_error(flow: http.HTTPFlow) -> None:
     log_entry = _http_network_log_entry(
         flow,
         action=firewall_action,
-        original_url=original_url,
         status_code=0,
         latency_ms=latency_ms,
         request_size=request_size,
