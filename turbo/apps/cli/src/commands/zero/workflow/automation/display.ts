@@ -8,6 +8,17 @@ type GmailMatchRules = NonNullable<GmailNewMessageEventConfig["match"]>;
 type GmailTextMatcher = NonNullable<GmailMatchRules["from"]>;
 type GmailTextField = "from" | "subject" | "body" | "to" | "cc";
 
+export interface WorkflowAutomationThreadModel {
+  readonly id: string;
+  readonly label: string;
+}
+
+interface WorkflowAutomationDetailsOptions {
+  readonly workflowRef?: string;
+  readonly workflowId?: string;
+  readonly threadModel?: WorkflowAutomationThreadModel;
+}
+
 const GMAIL_TEXT_FIELDS: readonly GmailTextField[] = [
   "from",
   "subject",
@@ -449,9 +460,139 @@ function printGithubFilters(automation: ZeroWorkflowAutomationSummary): void {
   }
 }
 
+function printCommand(lines: readonly string[]): void {
+  for (const line of lines) {
+    console.log(chalk.cyan(`    ${line}`));
+  }
+}
+
+function automationUpdateGuidance(automation: ZeroWorkflowAutomationSummary): {
+  readonly label: string;
+  readonly command: readonly string[];
+} {
+  if (automation.kind !== "schedule") {
+    return {
+      label: "Edit automation",
+      command: ["zero workflow automation update --help"],
+    };
+  }
+
+  switch (automation.schedule.type) {
+    case "cron":
+      return {
+        label: "Change schedule",
+        command: [
+          "zero workflow automation update \\",
+          `  ${automation.id} \\`,
+          '  --expr "<cron-expression>" -z <timezone>',
+        ],
+      };
+    case "loop":
+      return {
+        label: "Change interval",
+        command: [
+          "zero workflow automation update \\",
+          `  ${automation.id} \\`,
+          "  --every <duration>",
+        ],
+      };
+    case "once":
+      return {
+        label: "Change run time",
+        command: [
+          "zero workflow automation update \\",
+          `  ${automation.id} \\`,
+          '  --at "<iso-time>" -z <timezone>',
+        ],
+      };
+  }
+}
+
+function printManagementCommands(
+  automation: ZeroWorkflowAutomationSummary,
+  options: WorkflowAutomationDetailsOptions,
+): void {
+  if (!options.workflowId) {
+    return;
+  }
+
+  const update = automationUpdateGuidance(automation);
+  const statusAction = automation.enabled
+    ? {
+        label: "Pause automation",
+        command: "disable",
+      }
+    : {
+        label: "Resume automation",
+        command: "enable",
+      };
+
+  console.log("");
+  console.log(chalk.bold("Manage with Zero CLI:"));
+  console.log("  Edit workflow:");
+  printCommand([
+    `zero workflow edit ${options.workflowId} \\`,
+    "  --instruction-file <path>",
+  ]);
+  console.log("");
+  console.log(`  ${update.label}:`);
+  printCommand(update.command);
+  console.log("");
+  console.log(`  ${statusAction.label}:`);
+  printCommand([
+    `zero workflow automation ${statusAction.command} \\`,
+    `  ${automation.id}`,
+  ]);
+  console.log("");
+  console.log("  More automation options:");
+  printCommand(["zero workflow automation --help"]);
+
+  if (!automation.chatThreadId || !options.threadModel) {
+    return;
+  }
+
+  console.log("");
+  console.log(chalk.bold("About model selection:"));
+  console.log(
+    "  The selected model affects run behavior, output quality, and cost.",
+  );
+  console.log(
+    "  Automations do not store a separate model. All automations on this workflow",
+  );
+  console.log(
+    "  share one chat thread and use that thread's model. Changing the thread model",
+  );
+  console.log("  changes the model used by all of them.");
+  console.log("");
+  console.log(chalk.bold("Model commands:"));
+  console.log("  Show:");
+  printCommand(["zero chat model \\", `  --thread ${automation.chatThreadId}`]);
+  console.log("");
+  console.log("  Change:");
+  printCommand([
+    "zero chat model \\",
+    `  --thread ${automation.chatThreadId} \\`,
+    "  <model-id>",
+  ]);
+  console.log("");
+  console.log("  Options:");
+  printCommand(["zero model list"]);
+}
+
+export function printWorkflowAutomationThreadModel(
+  model: WorkflowAutomationThreadModel | undefined,
+): void {
+  if (!model) {
+    return;
+  }
+  console.log(
+    `${"Thread model:".padEnd(14)}${model.label} ${chalk.dim(`(${model.id})`)}`,
+  );
+}
+
 export function printWorkflowAutomationDetails(
   automation: ZeroWorkflowAutomationSummary,
-  options?: { readonly workflowRef?: string },
+  options: WorkflowAutomationDetailsOptions = {},
 ): void {
   const status = automation.enabled
     ? chalk.green("enabled")
@@ -550,10 +691,12 @@ export function printWorkflowAutomationDetails(
   console.log(
     `${"Chat thread:".padEnd(14)}${automation.chatThreadId ?? chalk.dim("-")}`,
   );
+  printWorkflowAutomationThreadModel(options.threadModel);
   console.log(
     `${"Next run:".padEnd(14)}${formatRunTime(automation.nextRunAt)}`,
   );
   console.log(
     `${"Last run:".padEnd(14)}${formatRunTime(automation.lastRunAt)}`,
   );
+  printManagementCommands(automation, options);
 }
