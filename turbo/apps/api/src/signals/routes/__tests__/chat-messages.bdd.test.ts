@@ -4869,9 +4869,9 @@ describe("CHAT-02: generation templates and attachments", () => {
     const followUpPrompt = (await api.readRun(actor, followUp.runId))
       .appendSystemPrompt;
     // No explicit selection this turn, so there is no live block for either
-    // type. Both earlier runs were cancelled, so the general "# Web Chat Run
-    // Context" replay is suppressed in favor of resuming the existing session
-    // (see prepareRecentChatContext).
+    // type. Both earlier runs were cancelled, so authoritative reused-session
+    // context selects the incomplete rounds instead of the general full
+    // "# Web Chat Run Context".
     expect(followUpPrompt).not.toContain("# Workflow Template Context");
     expect(followUpPrompt).not.toContain(workflowTemplate.id);
     expect(followUpPrompt).not.toContain("# Artifact Template Context");
