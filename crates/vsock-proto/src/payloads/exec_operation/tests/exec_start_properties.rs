@@ -457,8 +457,23 @@ fn exec_start_roundtrips_collection_limits_and_unicode() {
     .unwrap();
 
     let decoded = decode_exec_start(&payload).unwrap();
-    assert_eq!(decoded.command, "打印“你好”");
-    assert_eq!(decoded.env, env);
-    assert_eq!(decoded.label, "边界");
-    assert_eq!(decoded.expected_exit_codes, expected_exit_codes);
+    assert_eq!(
+        decoded,
+        DecodedExecStart {
+            lifecycle: ExecLifecyclePolicy::Supervised,
+            timeout: ExecTimeoutPolicy::None,
+            command: "打印“你好”",
+            env,
+            sudo: true,
+            label: "边界",
+            stdout: ExecOutputPolicy::Capture { limit_bytes: 0 },
+            stderr: ExecOutputPolicy::Stream {
+                limit_bytes: u32::MAX,
+                chunk_limit_bytes: 1,
+            },
+            expected_exit_codes,
+            control: ExecControlPolicy::Disabled,
+            stdin_bytes: None,
+        }
+    );
 }
