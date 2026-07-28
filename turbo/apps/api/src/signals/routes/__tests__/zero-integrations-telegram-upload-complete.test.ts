@@ -84,7 +84,7 @@ async function createRunScopedChat(args: {
   const agent = await bdd.createAgent(actor, {
     displayName: `Telegram upload ${randomUUID().slice(0, 8)}`,
   });
-  const sent = await chatApi.requestSendMessage(
+  const sent = await chatApi.requestSendEvent(
     actor,
     {
       agentId: agent.agentId,

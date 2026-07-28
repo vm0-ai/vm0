@@ -1,12 +1,10 @@
 import { createHash, randomUUID } from "node:crypto";
 
 import {
-  DecryptCommand,
-  type DecryptCommandOutput,
   GenerateDataKeyCommand,
   type GenerateDataKeyCommandOutput,
 } from "@aws-sdk/client-kms";
-import { chatMessagesContract } from "@vm0/api-contracts/contracts/chat-threads";
+import { chatEventsContract } from "@vm0/api-contracts/contracts/chat-threads";
 import { zeroModelProvidersByTypeContract } from "@vm0/api-contracts/contracts/zero-model-providers";
 import { zeroWorkflowQueueContract } from "@vm0/api-contracts/contracts/zero-workflow-queue";
 import { zeroWorkflowAutomationsContract } from "@vm0/api-contracts/contracts/zero-workflows";
@@ -16,10 +14,6 @@ import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
 import { createApp } from "../../../app-factory";
 import { computeHmacSignature } from "../../../lib/event-consumer/hmac";
 import { mockEnv, mockOptionalEnv } from "../../../lib/env";
-import {
-  setSecretKmsClientForTests,
-  type SecretKmsClient,
-} from "../../../lib/secret-kms-client";
 import { mockNow, now } from "../../../lib/time";
 import { flushWaitUntilForTest } from "../../context/wait-until";
 import { createDeferredPromise } from "../../utils";
@@ -29,6 +23,10 @@ import { createRunsApi } from "./helpers/api-bdd-runs";
 import { createWebhookCallbackApi } from "./helpers/api-bdd-webhooks";
 import { createWorkflowsBddApi } from "./helpers/api-bdd-workflows";
 import { readThreadSessionBinding } from "./helpers/runtime-state";
+import {
+  generateDataKeyOutput,
+  useSecretKmsProbe,
+} from "./helpers/secret-kms-probe";
 import { createZeroRouteMocks } from "./helpers/zero-route-test";
 import {
   completeRunWithoutCallbacksFixture,
@@ -49,61 +47,6 @@ const CRON_CLEANUP_SANDBOXES_ROUTE = "/api/cron/cleanup-sandboxes";
 const CRON_EXECUTE_WORKFLOW_AUTOMATIONS_ROUTE =
   "/api/cron/execute-workflow-automations";
 const CRON_SECRET = "test-cron-secret";
-const TEST_DATA_KEY = Buffer.from("0123456789abcdef0123456789abcdef", "utf8");
-
-interface SecretKmsProbe {
-  readonly generateDataKeyCalls: number;
-}
-
-function generateDataKeyOutput(
-  command: GenerateDataKeyCommand,
-): GenerateDataKeyCommandOutput {
-  return {
-    $metadata: {},
-    KeyId: command.input.KeyId,
-    CiphertextBlob: Buffer.from(
-      `encrypted-data-key:${command.input.KeyId}`,
-      "utf8",
-    ),
-    Plaintext: TEST_DATA_KEY,
-  };
-}
-
-function useSecretKmsProbe(
-  overrideGenerateDataKey?: (
-    command: GenerateDataKeyCommand,
-    callNumber: number,
-  ) => Promise<GenerateDataKeyCommandOutput> | undefined,
-): SecretKmsProbe {
-  let generateDataKeyCalls = 0;
-
-  function send(
-    command: GenerateDataKeyCommand,
-  ): Promise<GenerateDataKeyCommandOutput>;
-  function send(command: DecryptCommand): Promise<DecryptCommandOutput>;
-  function send(
-    command: GenerateDataKeyCommand | DecryptCommand,
-  ): Promise<GenerateDataKeyCommandOutput | DecryptCommandOutput> {
-    if (command instanceof GenerateDataKeyCommand) {
-      generateDataKeyCalls += 1;
-      const overridden = overrideGenerateDataKey?.(
-        command,
-        generateDataKeyCalls,
-      );
-      return overridden ?? Promise.resolve(generateDataKeyOutput(command));
-    }
-
-    return Promise.resolve({ $metadata: {}, Plaintext: TEST_DATA_KEY });
-  }
-
-  const client: SecretKmsClient = { send };
-  setSecretKmsClientForTests(client);
-  return {
-    get generateDataKeyCalls() {
-      return generateDataKeyCalls;
-    },
-  };
-}
 
 function authHeaders() {
   return { authorization: "Bearer clerk-session" };
@@ -114,7 +57,7 @@ function automationsClient() {
 }
 
 function chatMessagesClient() {
-  return setupApp({ context })(chatMessagesContract);
+  return setupApp({ context })(chatEventsContract);
 }
 
 function queueClient() {
@@ -271,10 +214,10 @@ async function expectAcceptedRunId(
 
 /** Run ids of automation-fired `/workflow-name` user messages, oldest first. */
 async function workflowRunIds(threadId: string): Promise<readonly string[]> {
-  const messages = await wf.readThreadMessages(threadId);
+  const messages = await wf.readThreadEvents(threadId);
   return messages.flatMap((message) => {
     if (
-      message.role !== "user" ||
+      message.eventType !== "input.prompt" ||
       message.content !== `/${WORKFLOW_NAME}` ||
       !message.runId
     ) {
@@ -355,7 +298,7 @@ async function expectSweepLeftQueueUntouched(
       return event.id;
     }),
   ).toStrictEqual(pendingEventIds);
-  const messages = await wf.readThreadMessages(threadId);
+  const messages = await wf.readThreadEvents(threadId);
   expect(
     messages.filter((message) => {
       return typeof message.runId === "string";
@@ -450,7 +393,7 @@ describe("workflow queue", () => {
     // is only used as a lower-bound barrier here.
     await expect
       .poll(async () => {
-        const messages = await wf.readThreadMessages(automation.threadId);
+        const messages = await wf.readThreadEvents(automation.threadId);
         return messages.some((message) => {
           return message.content === "fresh user message";
         });
@@ -535,7 +478,7 @@ describe("workflow queue", () => {
           agentId: scenario.agentId,
           threadId: automation.threadId,
           prompt: "stale user message",
-          clientMessageId: messageId,
+          clientEventId: messageId,
         },
       }),
       [201],
@@ -552,11 +495,11 @@ describe("workflow queue", () => {
 
     await cleanupSandboxes();
 
-    const messages = await wf.readThreadMessages(automation.threadId);
+    const messages = await wf.readThreadEvents(automation.threadId);
     expect(messages).toContainEqual(
       expect.objectContaining({
         content: "stale user message",
-        revokesMessageId: messageId,
+        revokesEventId: messageId,
         runId: expect.any(String),
       }),
     );
@@ -1040,7 +983,7 @@ describe("workflow queue", () => {
     // Terminal run: the user message drains first, the workflow event waits.
     await completeRunThroughSandbox(scenario, firstRunId);
     await expect(workflowRunIds(automation.threadId)).resolves.toHaveLength(1);
-    const messages = await wf.readThreadMessages(automation.threadId);
+    const messages = await wf.readThreadEvents(automation.threadId);
     const userMessage = messages.find((message) => {
       return (
         message.content === "user interjection" &&
@@ -1126,7 +1069,7 @@ describe("workflow queue", () => {
     });
     await expect
       .poll(async () => {
-        const messages = await wf.readThreadMessages(automation.threadId);
+        const messages = await wf.readThreadEvents(automation.threadId);
         return messages.some((message) => {
           return message.content === "user wins final admission";
         });

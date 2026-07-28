@@ -24,6 +24,7 @@ import { now, nowDate } from "../external/time";
 import { settleIncludingAbort } from "../utils";
 import { loadUserFeatureSwitchContext } from "./feature-switches.service";
 import { resolveIntegrationAgentResponsePresentation } from "./integration-agent-response-presentation.service";
+import { chatEventTypeIn } from "./zero-chat-event-type.service";
 import {
   teamsChatCallbackPayloadSchema,
   type TeamsDeliveryTarget,
@@ -129,7 +130,12 @@ async function loadTeamsChatDeliveryContext(args: {
         eq(chatMessages.id, payload.chatMessageId),
         eq(chatMessages.runId, args.callback.runId),
         eq(chatMessages.chatThreadId, run.chatThreadId),
-        eq(chatMessages.role, "assistant"),
+        chatEventTypeIn([
+          "output.message",
+          "output.error",
+          "run.failed",
+          "run.cancelled",
+        ]),
         isNotNull(chatMessages.content),
       ),
     )
@@ -356,7 +362,7 @@ async function loadTeamsAdmissionFailureContext(
         and(
           eq(chatMessages.id, args.chatMessageId),
           eq(chatMessages.chatThreadId, args.chatThreadId),
-          eq(chatMessages.role, "assistant"),
+          chatEventTypeIn(["output.error"]),
           isNotNull(chatMessages.content),
         ),
       )

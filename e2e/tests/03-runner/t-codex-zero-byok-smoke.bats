@@ -6,7 +6,7 @@
 #   feature-switch on  →  zero org model-provider setup --type openai-api-key
 #   →  model policy routes the selected Codex model to that BYOK provider
 #   →  compose fixture API  →
-#   POST /api/zero/chat/messages (the same unified create-thread + run endpoint
+#   POST /api/zero/chat/events (the same unified create-thread + run endpoint
 #   the web composer uses) → thread pins the selected model  →  real codex CLI runs with
 #   $OPENAI_API_KEY  →  response contains the expected sentinel.
 #

@@ -448,6 +448,7 @@ def test_non_refinement_flow_does_not_decode_request_body(x_usage, tmp_path, rea
         "Accent mañana.com",
         "Sharp S faß.de",
         "Fullwidth compatibility \uff26\uff2f\uff2f.com",
+        "Fullwidth terminal example.\uff23\uff2f\uff2d",
     ],
 )
 def test_tweet_create_with_url_stays_on_with_url_bucket(x_usage, tmp_path, real_flow, text):
@@ -482,6 +483,7 @@ def test_tweet_create_with_url_stays_on_with_url_bucket(x_usage, tmp_path, real_
         "Fullwidth mention \uff20twitter.com",
         "Fullwidth tag \uff03twitter.com",
         "Plus suffix example.com+tag",
+        "Fullwidth terminal plus suffix example.\uff23\uff2f\uff2d+tag",
         "At suffix example.com@user",
         "Hyphen suffix example.com-tag",
         "ASCII suffix example.comuser",

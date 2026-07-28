@@ -7,7 +7,6 @@ import {
   chatThreadByIdContract,
   chatThreadEventsContract,
   chatThreadsContract,
-  type PagedChatMessage,
 } from "@vm0/api-contracts/contracts/chat-threads";
 import {
   zeroBrowserContract,
@@ -24,7 +23,10 @@ import {
 } from "../../../__tests__/page-helper.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { CHAT_THREAD_SIDEBAR_SPLIT_VIEW_MEDIA_QUERY } from "../../../signals/chat-page/chat-thread-sidebar-layout.ts";
-import { normalizeMockChatEvents } from "./chat-event-test-helpers.ts";
+import {
+  normalizeMockChatEvents,
+  type MockChatEventInput,
+} from "./chat-event-test-helpers.ts";
 
 const context = testContext();
 
@@ -53,7 +55,8 @@ function setupChatThread({
   messages = [
     {
       id: "msg-sidebar-user",
-      role: "user",
+      threadId: THREAD_ID,
+      eventType: "input.prompt",
       content: "Build the launch plan",
       runId: "run-sidebar",
       seqId: 1,
@@ -61,7 +64,8 @@ function setupChatThread({
     },
     {
       id: "msg-sidebar-completed",
-      role: "assistant",
+      threadId: THREAD_ID,
+      eventType: "run.completed",
       content: null,
       runId: "run-sidebar",
       runLifecycleEvent: "completed",
@@ -72,7 +76,7 @@ function setupChatThread({
 }: {
   newSidebarEnabled: boolean;
   autoOpenEnabled?: boolean;
-  messages?: PagedChatMessage[];
+  messages?: MockChatEventInput[];
 }) {
   let servedMessages = [...messages];
   context.mocks.data.team([
@@ -114,10 +118,14 @@ function setupChatThread({
     });
   });
   context.mocks.api(chatThreadEventsContract.list, ({ query, respond }) => {
-    if (query.beforeSeqId || query.sinceId || query.beforeId) {
+    if (query.beforeSeqId !== undefined) {
       return respond(200, { events: [] });
     }
-    const events = normalizeMockChatEvents(servedMessages);
+    const events = normalizeMockChatEvents(
+      servedMessages.map((message) => {
+        return { ...message, threadId: message.threadId ?? THREAD_ID };
+      }),
+    );
     const sinceSeqId = query.sinceSeqId;
     if (sinceSeqId !== undefined) {
       return respond(200, {
@@ -143,7 +151,7 @@ function setupChatThread({
   });
 
   return {
-    publishMessages(nextMessages: PagedChatMessage[]): void {
+    publishMessages(nextMessages: MockChatEventInput[]): void {
       servedMessages = [...servedMessages, ...nextMessages];
       const syncThroughSeqId = nextMessages.at(-1)?.seqId;
       if (syncThroughSeqId === undefined) {

@@ -130,52 +130,31 @@ def _request_allows_platform_connector_auth(flow: http.HTTPFlow) -> bool:
     return _request_has_platform_test_endpoint_bypass(flow)
 
 
-def _requires_platform_connector_auth_bypass(
-    *,
-    kind: upstream_destination_binding.BindingKind,
-    normalized_host: str,
-    port: int,
-    api_url: str,
-) -> bool:
-    return kind == "connector_auth" and api_destination_matches(
-        api_url,
-        normalized_host,
-        port,
-    )
-
-
-def _flow_requires_platform_connector_auth_bypass(
-    flow: http.HTTPFlow,
-    *,
-    kind: upstream_destination_binding.BindingKind,
-    api_url: str,
-) -> bool:
-    if kind != "connector_auth":
-        return False
-    trusted_host = flow_metadata.trusted_authority_host(flow.metadata)
-    if not trusted_host:
-        return False
-    try:
-        normalized_host = normalize_trusted_hostname(trusted_host)
-    except (UnicodeError, ValueError):
-        return False
-    return _requires_platform_connector_auth_bypass(
-        kind=kind,
-        normalized_host=normalized_host,
-        port=flow.request.port,
-        api_url=api_url,
-    )
-
-
 def api_destination_matches(api_url: str, hostname: str, port: int) -> bool:
     api_destination = _api_destination(api_url)
     if api_destination is None:
         return False
-    api_hostname, api_port = api_destination
-    return port == api_port and (hostname == api_hostname or hostname.endswith(f".{api_hostname}"))
+    return _hostname_port_matches_api_destination(
+        hostname=hostname,
+        port=port,
+        api_destination=api_destination,
+    )
 
 
-def _api_destination(api_url: str) -> tuple[str, int] | None:
+def _hostname_port_matches_api_destination(
+    *,
+    hostname: str,
+    port: int,
+    api_destination: upstream_destination_binding.NormalizedUpstreamDestination,
+) -> bool:
+    return port == api_destination.port and (
+        hostname == api_destination.host or hostname.endswith(f".{api_destination.host}")
+    )
+
+
+def _api_destination(
+    api_url: str,
+) -> upstream_destination_binding.NormalizedUpstreamDestination | None:
     if not api_url:
         return None
     parsed_api = urllib.parse.urlparse(api_url)
@@ -191,7 +170,10 @@ def _api_destination(api_url: str) -> tuple[str, int] | None:
         api_port = 80
     else:
         api_port = 443
-    return api_hostname, api_port
+    return upstream_destination_binding.NormalizedUpstreamDestination(
+        host=api_hostname,
+        port=api_port,
+    )
 
 
 def _server_connect_binding_kinds(
@@ -239,31 +221,37 @@ def _bind_privileged_upstream_destination(
 
     if not isinstance(raw_sni, str) or not raw_sni.strip():
         return
-    try:
-        hostname = normalize_trusted_hostname(raw_sni.strip())
-    except (UnicodeError, ValueError):
-        return
 
     address = connection_endpoints.server_address(server)
     if address is None:
         return
     _original_host, port = address
-    is_api_destination = api_destination_matches(api_url, hostname, port)
+    try:
+        destination = upstream_destination_binding.normalize_upstream_destination(
+            host=raw_sni.strip(),
+            port=port,
+        )
+    except (UnicodeError, ValueError):
+        return
+    is_api_destination = api_destination_matches(
+        api_url,
+        destination.host,
+        destination.port,
+    )
     reusable_kind: upstream_destination_binding.BindingKind = (
         "api_allow" if is_api_destination else "connector_auth"
     )
     if upstream_destination_binding.reuse_server_binding_kind_if_matching(
         server,
         client=client,
-        host=hostname,
-        port=port,
+        destination=destination,
         kind=reusable_kind,
     ):
         return
 
     kinds = _server_connect_binding_kinds(
-        hostname=hostname,
-        port=port,
+        hostname=destination.host,
+        port=destination.port,
         compiled_firewalls=registry_state.compiled_firewalls.get(client_ip),
         is_api_destination=is_api_destination,
     )
@@ -275,8 +263,7 @@ def _bind_privileged_upstream_destination(
             upstream_destination_binding.add_server_binding_kind_if_matching(
                 server,
                 client=client,
-                host=hostname,
-                port=port,
+                destination=destination,
                 kind=kind,
             )
             for kind in kinds
@@ -287,13 +274,12 @@ def _bind_privileged_upstream_destination(
     if bool(getattr(server, "connected", False)):
         return
 
-    server.address = (hostname, port)
+    server.address = (destination.host, destination.port)
 
-    upstream_destination_binding.record_server_binding(
+    upstream_destination_binding.record_normalized_server_binding(
         server,
         client=client,
-        host=hostname,
-        port=port,
+        destination=destination,
         kinds=kinds,
         original_address=address,
     )
@@ -419,41 +405,25 @@ def has_bound_destination(
 def _bind_flow_upstream_destination(
     flow: http.HTTPFlow,
     *,
+    destination: upstream_destination_binding.NormalizedUpstreamDestination,
     kind: upstream_destination_binding.BindingKind,
-    api_url: str,
 ) -> bool:
-    trusted_host = flow_metadata.trusted_authority_host(flow.metadata)
-    if not trusted_host:
-        return False
-    try:
-        normalized_host = normalize_trusted_hostname(trusted_host)
-    except (UnicodeError, ValueError):
-        return False
-
     original_address = connection_endpoints.server_address(flow.server_conn)
     has_server_binding = upstream_destination_binding.has_server_binding(flow.server_conn)
-    if _requires_platform_connector_auth_bypass(
-        kind=kind,
-        normalized_host=normalized_host,
-        port=flow.request.port,
-        api_url=api_url,
-    ) and not _request_allows_platform_connector_auth(flow):
-        return False
 
     if has_server_binding:
         if upstream_destination_binding.add_server_binding_kind_if_matching(
             flow.server_conn,
             client=flow.client_conn,
-            host=normalized_host,
-            port=flow.request.port,
+            destination=destination,
             kind=kind,
         ):
             return True
         if flow.server_conn.connected:
             connected_address = _connected_verified_tls_destination_endpoint(
                 flow.server_conn,
-                host=normalized_host,
-                port=flow.request.port,
+                host=destination.host,
+                port=destination.port,
                 extra_endpoints=(connection_endpoints.connection_sockname(flow.client_conn),),
             )
             if connected_address is None:
@@ -462,8 +432,7 @@ def _bind_flow_upstream_destination(
                 upstream_destination_binding.refresh_server_binding_connected_address_if_matching(
                     flow.server_conn,
                     client=flow.client_conn,
-                    host=normalized_host,
-                    port=flow.request.port,
+                    destination=destination,
                     kind=kind,
                     connected_address=connected_address,
                 )
@@ -473,21 +442,20 @@ def _bind_flow_upstream_destination(
     if flow.server_conn.connected:
         connected_address = _connected_verified_tls_destination_endpoint(
             flow.server_conn,
-            host=normalized_host,
-            port=flow.request.port,
+            host=destination.host,
+            port=destination.port,
             extra_endpoints=(connection_endpoints.connection_sockname(flow.client_conn),),
         )
         if connected_address is None:
             return False
         original_address = connected_address
     else:
-        flow.server_conn.address = (normalized_host, flow.request.port)
+        flow.server_conn.address = (destination.host, destination.port)
 
-    upstream_destination_binding.record_server_binding(
+    upstream_destination_binding.record_normalized_server_binding(
         flow.server_conn,
         client=flow.client_conn,
-        host=normalized_host,
-        port=flow.request.port,
+        destination=destination,
         kinds=frozenset((kind,)),
         original_address=original_address,
     )
@@ -523,21 +491,45 @@ def ensure_bound_destination(
     callers must fail closed before API auto-allow or ordinary connector
     credential injection.
     """
-    if _flow_requires_platform_connector_auth_bypass(
-        flow,
-        kind=kind,
-        api_url=api_url,
-    ) and not _request_allows_platform_connector_auth(flow):
+    trusted_host = flow_metadata.trusted_authority_host(flow.metadata)
+    if not trusted_host:
+        return False
+    try:
+        destination = upstream_destination_binding.normalize_upstream_destination(
+            host=trusted_host,
+            port=flow.request.port,
+        )
+    except (UnicodeError, ValueError):
+        return False
+
+    api_destination = _api_destination(api_url) if kind == "connector_auth" else None
+    if (
+        api_destination is not None
+        and _hostname_port_matches_api_destination(
+            hostname=destination.host,
+            port=destination.port,
+            api_destination=api_destination,
+        )
+        and not _request_allows_platform_connector_auth(flow)
+    ):
         return False
 
     allowed_kinds = frozenset((kind,))
-    has_bound = has_bound_destination(flow, allowed_kinds=allowed_kinds)
+    has_bound = upstream_destination_binding.flow_matches_normalized_destination(
+        flow,
+        destination=destination,
+        allowed_kinds=allowed_kinds,
+    )
     if has_bound and upstream_destination_binding.has_server_binding(flow.server_conn):
         return True
     # If has_bound is true here, it is only an unconnected address or
     # prior-client match. That is retargetable, not durable proof for later
     # keepalive reuse, and connected flows still need current upstream TLS proof.
-    return _bind_flow_upstream_destination(flow, kind=kind, api_url=api_url)
+    return _bind_flow_upstream_destination(
+        flow,
+        destination=destination,
+        kind=kind,
+    )
 
 
 def forget_server_binding(server: object) -> None:

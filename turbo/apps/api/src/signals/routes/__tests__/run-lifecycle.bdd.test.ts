@@ -1071,7 +1071,7 @@ async function sendChatRunMessage(
   },
 ): Promise<{ readonly runId: string; readonly threadId: string }> {
   const chat = createChatFilesBddApi(context);
-  const sent = await chat.requestSendMessage(actor, body, [201]);
+  const sent = await chat.requestSendEvent(actor, body, [201]);
   if (sent.status !== 201 || sent.body.runId === null) {
     throw new Error("Expected the entitled chat send to create a run");
   }
@@ -5106,7 +5106,7 @@ describe("RUN-02: model provider selection and vm0 admission", () => {
 
     for (const model of ["gpt-5.6-terra", "gpt-5.6-luna"] as const) {
       await seedVm0ManagedModelKey(model);
-      const sent = await chat.requestSendMessage(
+      const sent = await chat.requestSendEvent(
         actor,
         {
           agentId,
@@ -5127,7 +5127,7 @@ describe("RUN-02: model provider selection and vm0 admission", () => {
     }
 
     const solThreadId = randomUUID();
-    const sol = await chat.requestSendMessage(
+    const sol = await chat.requestSendEvent(
       actor,
       {
         agentId,
@@ -5144,7 +5144,7 @@ describe("RUN-02: model provider selection and vm0 admission", () => {
     expect(queue.body.queue).toHaveLength(0);
     expect(queue.body.concurrency.active).toBe(0);
 
-    const retiredAuto = await chat.requestSendMessage(
+    const retiredAuto = await chat.requestSendEvent(
       actor,
       {
         agentId,
@@ -5197,6 +5197,11 @@ describe("RUN-02: model provider selection and vm0 admission", () => {
       ["api_dispatch_check_vm0_credits"],
       "nested",
     );
+    expectApiDispatchSpanKind(
+      timingEvents,
+      ["api_dispatch_activate_usage_allowance_windows"],
+      "nested",
+    );
     await api.heartbeatRunner(runnerGroup);
     const claim = await api.claimRunnerJob(run.runId);
 
@@ -5228,7 +5233,7 @@ describe("RUN-02: model provider selection and vm0 admission", () => {
       },
     ]);
 
-    const sent = await chat.requestSendMessage(
+    const sent = await chat.requestSendEvent(
       actor,
       {
         agentId,
@@ -5500,7 +5505,7 @@ describe("RUN-02: model provider selection and vm0 admission", () => {
       agentId: agent.agentId,
       model: "claude-sonnet-4-6",
     });
-    const sent = await chat.requestSendMessage(
+    const sent = await chat.requestSendEvent(
       actor,
       {
         agentId: agent.agentId,
@@ -8554,7 +8559,7 @@ describe("RUN-01: zero runner context, queue promotion, and skills", () => {
     expect(cancelled.status).toBe("cancelled");
   });
 
-  it("advertises managed web search without rollout enrollment", async () => {
+  it("advertises managed search tools for regular runs", async () => {
     const api = createRunsApi(context);
     const { actor, agentId, runnerGroup } = await entitledRunActor();
 
@@ -8573,66 +8578,11 @@ describe("RUN-01: zero runner context, queue promotion, and skills", () => {
     expect(claim.appendSystemPrompt ?? "").toContain("zero web-search --help");
     expect(claim.appendSystemPrompt ?? "").not.toContain("zero finance --help");
     expect(claim.appendSystemPrompt ?? "").toContain("zero scrape --help");
-    expect(claim.appendSystemPrompt ?? "").not.toContain(
+    expect(claim.appendSystemPrompt ?? "").toContain(
       "zero people-search <query>",
     );
-
-    await api.requestCancelRun(actor, run.runId, [200]);
-  });
-
-  it("advertises managed people search only for enrolled staff runs", async () => {
-    const bdd = createBddApi(context);
-    const api = createRunsApi(context);
-    const actor = bdd.user({ orgId: STAFF_ORG_ID });
-    onTestFinished(async () => {
-      await deleteOrgPlanEntitlementFixture(STAFF_ORG_ID);
-    });
-    bdd.acceptAgentStorageWrites();
-    api.acceptStorageDownloads();
-    api.acceptTelemetryIngest();
-    const runnerGroup = api.configureRunnerGroup();
-    await upsertOrgPlanEntitlementFixture({
-      orgId: STAFF_ORG_ID,
-      status: "active",
-      supportByok: true,
-      restrictedVm0Models: false,
-    });
-    const completed = await bdd.completeOnboarding(actor);
-    expect(completed.status).toBe(200);
-    await seedOrgMetadata({
-      orgId: STAFF_ORG_ID,
-      tier: "limited-free-1",
-      credits: 20_000,
-    });
-    await upsertOrgPlanEntitlementFixture({
-      orgId: STAFF_ORG_ID,
-      status: "active",
-      supportByok: true,
-      restrictedVm0Models: false,
-    });
-    await api.ensureOrgModelProvider(actor);
-    const agent = await bdd.createAgent(actor, {
-      displayName: "BDD people search staff agent",
-      visibility: "private",
-    });
-
-    const run = await api.createRun(actor, {
-      agentId: agent.agentId,
-      prompt: "find public professional information",
-      modelProvider: "anthropic-api-key",
-    });
-    await api.heartbeatRunner(runnerGroup);
-    const claim = await api.claimRunnerJob(run.runId);
-    const prompt = claim.appendSystemPrompt ?? "";
-
-    expect(prompt).toContain("zero people-search <query>");
-    expect(prompt).toContain("model-extracted");
-    expect(prompt).toContain("provider-backed sources");
-    expect(prompt).toContain("zero web-search --help");
-    expect(prompt).toContain("zero scrape --help");
-    expect(claim.disallowedTools).toStrictEqual(
-      EXPECTED_ZERO_RUN_DISALLOWED_TOOLS,
-    );
+    expect(claim.appendSystemPrompt ?? "").toContain("model-extracted");
+    expect(claim.appendSystemPrompt ?? "").toContain("provider-backed sources");
 
     await api.requestCancelRun(actor, run.runId, [200]);
   });
@@ -9552,10 +9502,10 @@ describe("HOOK-01/RUN-03: terminal run callbacks dispatch on cancellation", () =
     expect(firstCancelled.status).toBe("cancelled");
     await expect
       .poll(async () => {
-        const messages = await chat.listThreadMessages(actor, first.threadId);
-        return messages.messages.some((message) => {
+        const messages = await chat.listThreadEvents(actor, first.threadId);
+        return messages.events.some((message) => {
           return (
-            message.role === "assistant" &&
+            message.eventType === "run.cancelled" &&
             message.runId === first.runId &&
             message.runLifecycleEvent === "cancelled"
           );
@@ -9575,10 +9525,10 @@ describe("HOOK-01/RUN-03: terminal run callbacks dispatch on cancellation", () =
     expect(secondCancelled.status).toBe("cancelled");
     await expect
       .poll(async () => {
-        const messages = await chat.listThreadMessages(actor, first.threadId);
-        return messages.messages.some((message) => {
+        const messages = await chat.listThreadEvents(actor, first.threadId);
+        return messages.events.some((message) => {
           return (
-            message.role === "assistant" &&
+            message.eventType === "run.cancelled" &&
             message.runId === second.runId &&
             message.runLifecycleEvent === "cancelled"
           );
@@ -9598,20 +9548,23 @@ describe("HOOK-01/RUN-03: terminal run callbacks dispatch on cancellation", () =
     expect(thirdCancelled.status).toBe("cancelled");
 
     let cancelNote:
-      | Awaited<ReturnType<typeof chat.listThreadMessages>>["messages"][number]
+      | Awaited<ReturnType<typeof chat.listThreadEvents>>["events"][number]
       | undefined;
     await expect
       .poll(async () => {
-        const messages = await chat.listThreadMessages(actor, first.threadId);
-        cancelNote = messages.messages.find((message) => {
-          return message.role === "assistant" && message.runId === third.runId;
+        const messages = await chat.listThreadEvents(actor, first.threadId);
+        cancelNote = messages.events.find((message) => {
+          return (
+            message.eventType === "run.cancelled" &&
+            message.runId === third.runId
+          );
         });
-        return cancelNote?.role;
+        return cancelNote?.eventType;
       })
-      .toBe("assistant");
-    if (!cancelNote || cancelNote.role !== "assistant") {
+      .toBe("run.cancelled");
+    if (!cancelNote || cancelNote.eventType !== "run.cancelled") {
       throw new Error(
-        "Expected the delivered chat callback to append an assistant message",
+        "Expected the delivered chat callback to append a cancellation event",
       );
     }
     expect(cancelNote.runLifecycleEvent).toBe("cancelled");
@@ -9856,10 +9809,10 @@ describe("HOOK-02/CHAT-02: assistant events reach optional chat consumers", () =
 
     await expect
       .poll(async () => {
-        const page = await chat.listThreadMessages(actor, threadId);
-        return page.messages.filter((message) => {
+        const page = await chat.listThreadEvents(actor, threadId);
+        return page.events.filter((message) => {
           return (
-            message.role === "assistant" &&
+            message.eventType === "output.message" &&
             message.runId === runId &&
             message.content === "cleanup-first assistant text"
           );
@@ -9893,9 +9846,9 @@ describe("HOOK-02/CHAT-02: assistant events reach optional chat consumers", () =
     );
     expect(late.status).toBe(200);
 
-    const afterLate = await chat.listThreadMessages(actor, threadId);
-    const assistantTexts = afterLate.messages.flatMap((message) => {
-      return message.role === "assistant" &&
+    const afterLate = await chat.listThreadEvents(actor, threadId);
+    const assistantTexts = afterLate.events.flatMap((message) => {
+      return message.eventType === "output.message" &&
         message.runId === runId &&
         message.content
         ? [message.content]
@@ -9980,9 +9933,9 @@ describe("HOOK-02/CHAT-02: assistant events reach optional chat consumers", () =
     );
     await flushWaitUntilForTest();
 
-    const afterFirst = await chat.listThreadMessages(actor, threadId);
-    const firstAssistant = afterFirst.messages.find((message) => {
-      return message.role === "assistant" && message.runId === runId;
+    const afterFirst = await chat.listThreadEvents(actor, threadId);
+    const firstAssistant = afterFirst.events.find((message) => {
+      return message.eventType === "output.message" && message.runId === runId;
     });
     expect(firstAssistant?.id).toBe(
       assistantMessageIdForRunEvent(runId, "msg_bdd_1"),
@@ -10016,9 +9969,9 @@ describe("HOOK-02/CHAT-02: assistant events reach optional chat consumers", () =
     expect(swallowed.status).toBe(200);
     await flushWaitUntilForTest();
 
-    const afterSecond = await chat.listThreadMessages(actor, threadId);
-    const persisted = afterSecond.messages.filter((message) => {
-      return message.role === "assistant" && message.runId === runId;
+    const afterSecond = await chat.listThreadEvents(actor, threadId);
+    const persisted = afterSecond.events.filter((message) => {
+      return message.eventType === "output.message" && message.runId === runId;
     });
     expect(persisted).toHaveLength(2);
     expect(
@@ -10087,9 +10040,9 @@ describe("HOOK-02/CHAT-02: assistant events reach optional chat consumers", () =
       sandboxHeaders,
       [200],
     );
-    const afterCodex = await chat.listThreadMessages(actor, threadId);
-    const codexPersisted = afterCodex.messages.filter((message) => {
-      return message.role === "assistant" && message.runId === runId;
+    const afterCodex = await chat.listThreadEvents(actor, threadId);
+    const codexPersisted = afterCodex.events.filter((message) => {
+      return message.eventType === "output.message" && message.runId === runId;
     });
     expect(codexPersisted).toHaveLength(3);
     expect(
@@ -10126,10 +10079,12 @@ describe("HOOK-02/CHAT-02: assistant events reach optional chat consumers", () =
       sandboxHeaders,
       [200],
     );
-    const afterSilent = await chat.listThreadMessages(actor, threadId);
+    const afterSilent = await chat.listThreadEvents(actor, threadId);
     expect(
-      afterSilent.messages.filter((message) => {
-        return message.role === "assistant" && message.runId === runId;
+      afterSilent.events.filter((message) => {
+        return (
+          message.eventType === "output.message" && message.runId === runId
+        );
       }),
     ).toHaveLength(3);
 
@@ -10150,13 +10105,16 @@ describe("HOOK-02/CHAT-02: assistant events reach optional chat consumers", () =
       sandboxHeaders,
       [200],
     );
-    const afterDuplicate = await chat.listThreadMessages(actor, threadId);
+    const afterDuplicate = await chat.listThreadEvents(actor, threadId);
     const duplicatedMessageId = assistantMessageIdForRunEvent(
       runId,
       "msg_bdd_1",
     );
-    const matchingDuplicateRows = afterDuplicate.messages.filter((message) => {
-      return message.role === "assistant" && message.id === duplicatedMessageId;
+    const matchingDuplicateRows = afterDuplicate.events.filter((message) => {
+      return (
+        message.eventType === "output.message" &&
+        message.id === duplicatedMessageId
+      );
     });
     expect(matchingDuplicateRows).toHaveLength(1);
     expect(matchingDuplicateRows[0]?.content).toBe("Hello from BDD events");
@@ -10295,9 +10253,9 @@ describe("HOOK-02/CHAT-02: assistant events reach optional chat consumers", () =
     await Promise.all(publications);
     await flushWaitUntilForTest();
 
-    const messages = await chat.listThreadMessages(actor, threadId);
-    const assistantContents = messages.messages.flatMap((message) => {
-      return message.role === "assistant" &&
+    const messages = await chat.listThreadEvents(actor, threadId);
+    const assistantContents = messages.events.flatMap((message) => {
+      return message.eventType === "output.message" &&
         message.runId === runId &&
         message.content !== null
         ? [message.content]
@@ -10388,10 +10346,10 @@ describe("HOOK-02/CHAT-02: assistant events reach optional chat consumers", () =
     );
     await flushWaitUntilForTest();
 
-    const messages = await chat.listThreadMessages(actor, threadId);
-    const assistantContent = messages.messages.filter((message) => {
+    const messages = await chat.listThreadEvents(actor, threadId);
+    const assistantContent = messages.events.filter((message) => {
       return (
-        message.role === "assistant" &&
+        message.eventType === "output.message" &&
         message.runId === runId &&
         message.content !== null
       );
@@ -10553,10 +10511,10 @@ describe("HOOK-02/CHAT-02: assistant events reach optional chat consumers", () =
     );
     await flushWaitUntilForTest();
 
-    const messages = await chat.listThreadMessages(actor, threadId);
-    expect(messages.messages).toContainEqual(
+    const messages = await chat.listThreadEvents(actor, threadId);
+    expect(messages.events).toContainEqual(
       expect.objectContaining({
-        role: "assistant",
+        eventType: "output.message",
         runId,
         content: "Mixed-version visible text",
       }),

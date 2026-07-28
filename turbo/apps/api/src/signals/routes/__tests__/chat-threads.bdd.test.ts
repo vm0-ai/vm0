@@ -5,7 +5,6 @@ import { cronCompactChatThreadSnapshotsContract } from "@vm0/api-contracts/contr
 import {
   chatThreadsContract,
   type ChatEventResponse,
-  type PagedChatMessage,
 } from "@vm0/api-contracts/contracts/chat-threads";
 import type { ZeroCapability } from "@vm0/api-contracts/contracts/composes";
 import { DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL } from "@vm0/api-contracts/contracts/model-providers";
@@ -91,8 +90,18 @@ const authOrg = createAuthOrgAgentsBddApi(context);
 const store = createStore();
 const CHAT_THREAD_SNAPSHOT_CRON_SECRET = "chat-thread-snapshot-cron-secret";
 
-type AssistantMessage = Extract<PagedChatMessage, { role: "assistant" }>;
-type UserMessage = Extract<PagedChatMessage, { role: "user" }>;
+type UserMessage = Extract<
+  ChatEventResponse,
+  {
+    eventType:
+      | "input.prompt"
+      | "input.automation"
+      | "input.rejected"
+      | "control.interrupt"
+      | "control.revoke";
+  }
+>;
+type AssistantMessage = Exclude<ChatEventResponse, UserMessage>;
 type RunnerClaim = Awaited<ReturnType<typeof api.claimRunnerJob>>;
 
 async function compactChatThreadSnapshots() {
@@ -155,7 +164,7 @@ async function sendChatRun(
     readonly model?: string;
   },
 ): Promise<{ readonly runId: string; readonly threadId: string }> {
-  const sent = await chat.requestSendMessage(actor, body, [201]);
+  const sent = await chat.requestSendEvent(actor, body, [201]);
   if (sent.status !== 201 || sent.body.runId === null) {
     throw new Error("Expected the entitled chat send to create a run");
   }
@@ -189,13 +198,13 @@ function zeroTokenFromClaim(claim: RunnerClaim): string {
 async function waitForThreadMessages(
   actor: ApiTestUser,
   threadId: string,
-  predicate: (messages: readonly PagedChatMessage[]) => boolean,
+  predicate: (messages: readonly ChatEventResponse[]) => boolean,
 ) {
-  let page: Awaited<ReturnType<typeof chat.listThreadMessages>> | undefined;
+  let page: Awaited<ReturnType<typeof chat.listThreadEvents>> | undefined;
   await expect
     .poll(async () => {
-      page = await chat.listThreadMessages(actor, threadId);
-      return predicate(page.messages);
+      page = await chat.listThreadEvents(actor, threadId);
+      return predicate(page.events);
     })
     .toBe(true);
   if (!page) {
@@ -269,17 +278,30 @@ async function cancelChatRun(actor: ApiTestUser, runId: string): Promise<void> {
 }
 
 function assistantMessages(
-  messages: readonly PagedChatMessage[],
+  messages: readonly ChatEventResponse[],
 ): AssistantMessage[] {
-  return messages.flatMap((message) => {
-    return message.role === "assistant" ? [message] : [];
+  return messages.filter((message): message is AssistantMessage => {
+    return !isUserMessage(message);
   });
 }
 
-function userMessages(messages: readonly PagedChatMessage[]): UserMessage[] {
-  return messages.flatMap((message) => {
-    return message.role === "user" ? [message] : [];
-  });
+function userMessages(messages: readonly ChatEventResponse[]): UserMessage[] {
+  return messages.filter(isUserMessage);
+}
+
+function isUserMessage(message: ChatEventResponse): message is UserMessage {
+  switch (message.eventType) {
+    case "input.prompt":
+    case "input.automation":
+    case "input.rejected":
+    case "control.interrupt":
+    case "control.revoke": {
+      return true;
+    }
+    default: {
+      return false;
+    }
+  }
 }
 
 type UsageRecordedEvent = Extract<
@@ -326,7 +348,7 @@ async function sendNoCreditMessage(
   },
 ): Promise<string> {
   await api.ensureOrgModelProvider(actor);
-  const sent = await chat.requestSendMessage(actor, body, [201]);
+  const sent = await chat.requestSendEvent(actor, body, [201]);
   if (sent.status !== 201 || sent.body.runId !== null) {
     throw new Error("Expected a no-credit send without a run");
   }
@@ -463,7 +485,7 @@ const malformedChatThreadIdRequests = [
   },
   {
     method: "GET",
-    path: "/api/zero/chat-threads/:id/messages",
+    path: "/api/zero/chat-threads/:id/events",
     paramName: "threadId",
   },
   {
@@ -875,6 +897,7 @@ describe("CHAT-01 thread detail, create, and delete cascades", () => {
     await waitForThreadMessages(actor, run.threadId, (messages) => {
       return assistantMessages(messages).some((message) => {
         return (
+          message.eventType === "run.completed" &&
           message.runId === run.runId &&
           message.runLifecycleEvent === "completed"
         );
@@ -1614,7 +1637,7 @@ describe("CHAT-01 chat thread read state", () => {
     await expect(chat.listUnreadAgents(owner)).resolves.toStrictEqual([agentB]);
   }, 120_000);
 
-  it("pages thread messages with since and before cursors", async () => {
+  it("pages thread events with since and before cursors", async () => {
     const owner = bdd.user();
     bdd.acceptAgentStorageWrites();
     const agent = await bdd.createAgent(owner, {
@@ -1631,21 +1654,21 @@ describe("CHAT-01 chat thread read state", () => {
       prompt: "cursor round two",
     });
 
-    const full = await chat.listThreadMessages(owner, threadId);
+    const full = await chat.listThreadEvents(owner, threadId);
     expect(full.hasHistoryBefore).toBeFalsy();
     expect(
-      full.messages.map((message) => {
-        return [message.role, message.content] as const;
+      full.events.map((event) => {
+        return [event.eventType, event.content] as const;
       }),
     ).toStrictEqual([
-      ["user", "cursor round one"],
-      ["user", "cursor round one"],
-      ["assistant", expect.stringContaining("Insufficient credits")],
-      ["user", "cursor round two"],
-      ["user", "cursor round two"],
-      ["assistant", expect.stringContaining("Insufficient credits")],
+      ["input.prompt", "cursor round one"],
+      ["input.rejected", "cursor round one"],
+      ["output.error", expect.stringContaining("Insufficient credits")],
+      ["input.prompt", "cursor round two"],
+      ["input.rejected", "cursor round two"],
+      ["output.error", expect.stringContaining("Insufficient credits")],
     ]);
-    const seqIds = full.messages.map((message) => {
+    const seqIds = full.events.map((message) => {
       return message.seqId;
     });
     expect(seqIds).toStrictEqual(
@@ -1661,7 +1684,7 @@ describe("CHAT-01 chat thread read state", () => {
       secondQueuedUserMessage,
       secondReplacementMessage,
       secondAssistantMessage,
-    ] = full.messages;
+    ] = full.events;
     if (
       !firstQueuedUserMessage ||
       !firstReplacementMessage ||
@@ -1681,74 +1704,74 @@ describe("CHAT-01 chat thread read state", () => {
     const firstAssistantSeqId = firstAssistantMessage.seqId;
     const secondQueuedUserSeqId = secondQueuedUserMessage.seqId;
     const secondAssistantSeqId = secondAssistantMessage.seqId;
-    expect(full.messages[0]?.error).toBeUndefined();
-    expect(full.messages[1]).toMatchObject({
+    expect(full.events[1]).toMatchObject({
+      eventType: "input.rejected",
       error: "insufficient_credits",
-      revokesMessageId: firstQueuedUser,
+      revokesEventId: firstQueuedUser,
     });
-    expect(full.messages[3]?.error).toBeUndefined();
-    expect(full.messages[4]).toMatchObject({
+    expect(full.events[4]).toMatchObject({
+      eventType: "input.rejected",
       error: "insufficient_credits",
-      revokesMessageId: secondQueuedUser,
+      revokesEventId: secondQueuedUser,
     });
 
     // Latest page overflow: only the newest rows, with history behind them.
-    const latest = await chat.listThreadMessages(owner, threadId, {
+    const latest = await chat.listThreadEvents(owner, threadId, {
       limit: 2,
     });
     expect(
-      latest.messages.map((message) => {
+      latest.events.map((message) => {
         return message.id;
       }),
     ).toStrictEqual([secondReplacement, secondAssistant]);
     expect(latest.hasHistoryBefore).toBeTruthy();
 
     // Forward pagination strictly after the cursor.
-    const since = await chat.listThreadMessages(owner, threadId, {
+    const since = await chat.listThreadEvents(owner, threadId, {
       sinceSeqId: firstAssistantSeqId,
     });
     expect(
-      since.messages.map((message) => {
+      since.events.map((message) => {
         return message.id;
       }),
     ).toStrictEqual([secondQueuedUser, secondReplacement, secondAssistant]);
-    const legacySince = await chat.listThreadMessages(owner, threadId, {
+    const legacySince = await chat.listThreadEvents(owner, threadId, {
       sinceId: firstAssistant,
     });
     expect(
-      legacySince.messages.map((message) => {
+      legacySince.events.map((message) => {
         return message.id;
       }),
     ).toStrictEqual([secondQueuedUser, secondReplacement, secondAssistant]);
 
     // Backward pagination strictly before the cursor.
-    const before = await chat.listThreadMessages(owner, threadId, {
+    const before = await chat.listThreadEvents(owner, threadId, {
       beforeSeqId: secondQueuedUserSeqId,
       limit: 3,
     });
     expect(
-      before.messages.map((message) => {
+      before.events.map((message) => {
         return message.id;
       }),
     ).toStrictEqual([firstQueuedUser, firstReplacement, firstAssistant]);
     expect(before.hasHistoryBefore).toBeFalsy();
-    const legacyBefore = await chat.listThreadMessages(owner, threadId, {
+    const legacyBefore = await chat.listThreadEvents(owner, threadId, {
       beforeId: secondQueuedUser,
       limit: 3,
     });
     expect(
-      legacyBefore.messages.map((message) => {
+      legacyBefore.events.map((message) => {
         return message.id;
       }),
     ).toStrictEqual([firstQueuedUser, firstReplacement, firstAssistant]);
     expect(legacyBefore.hasHistoryBefore).toBeFalsy();
 
-    const beforeOverflow = await chat.listThreadMessages(owner, threadId, {
+    const beforeOverflow = await chat.listThreadEvents(owner, threadId, {
       beforeSeqId: secondAssistantSeqId,
       limit: 2,
     });
     expect(
-      beforeOverflow.messages.map((message) => {
+      beforeOverflow.events.map((message) => {
         return message.id;
       }),
     ).toStrictEqual([secondQueuedUser, secondReplacement]);
@@ -1783,9 +1806,9 @@ describe("CHAT-01 chat thread read state", () => {
     });
 
     await expect.poll(held.blockedWaiterCount).toBe(1);
-    const beforeCommit = await chat.listThreadMessages(owner, threadId);
+    const beforeCommit = await chat.listThreadEvents(owner, threadId);
     expect(
-      beforeCommit.messages.some((message) => {
+      beforeCommit.events.some((message) => {
         return (
           message.content === firstContent || message.content === secondContent
         );
@@ -1795,8 +1818,8 @@ describe("CHAT-01 chat thread read state", () => {
     held.release();
     await held.done;
     const second = await secondInsert;
-    const committed = await chat.listThreadMessages(owner, threadId);
-    const concurrentRows = committed.messages.filter((message) => {
+    const committed = await chat.listThreadEvents(owner, threadId);
+    const concurrentRows = committed.events.filter((message) => {
       return message.id === held.message.id || message.id === second.id;
     });
     expect(

@@ -3,6 +3,7 @@ import { command } from "ccstate";
 
 import type { RouteEntry } from "../route-entry";
 import { executeDueNotionWorkflowEvents$ } from "../services/notion-workflow-event.service";
+import { executeDueStrapiWorkflowEvents$ } from "../services/strapi-workflow-event.service";
 import { executeDueWorkflowAutomations$ } from "../services/zero-workflow-automation-poller.service";
 import { cronUnauthorized, hasValidCronSecret$ } from "./cron-auth";
 
@@ -16,14 +17,16 @@ const executeWorkflowAutomationsRoute$: RouteEntry["handler"] = command(
 
     const result = await set(executeDueWorkflowAutomations$, signal);
     const notionResult = await set(executeDueNotionWorkflowEvents$, signal);
+    const strapiResult = await set(executeDueStrapiWorkflowEvents$, signal);
     signal.throwIfAborted();
 
     return {
       status: 200 as const,
       body: {
         success: true as const,
-        executed: result.executed + notionResult.executed,
-        skipped: result.skipped + notionResult.skipped,
+        executed:
+          result.executed + notionResult.executed + strapiResult.executed,
+        skipped: result.skipped + notionResult.skipped + strapiResult.skipped,
       },
     };
   },
