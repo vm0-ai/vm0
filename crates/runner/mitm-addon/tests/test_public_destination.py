@@ -104,3 +104,19 @@ def test_validate_runtime_destination_host(host, allowed, reason):
 
     assert result.allowed is allowed
     assert result.reason == reason
+
+
+@pytest.mark.parametrize(
+    "host",
+    [
+        "[2001:4860:4860::8888",
+        "2001:4860:4860::8888]",
+    ],
+)
+def test_unmatched_ipv6_brackets_are_rejected(host: str):
+    assert public_destination.public_ip_literal_is_public(host) is False
+
+    result = public_destination.validate_runtime_destination_host(host)
+
+    assert result.allowed is False
+    assert result.reason == "invalid_destination"
