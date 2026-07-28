@@ -9,6 +9,7 @@ import type {
 } from "@vm0/api-contracts/contracts/zero-workflows";
 import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import { isFeatureEnabled } from "@vm0/core/feature-switch";
+import { getModelDisplayName } from "@vm0/core/model-display-name";
 import {
   type ZeroWorkflowAutomationCreateRequest,
   type ZeroWorkflowAutomationSummary,
@@ -17,7 +18,10 @@ import {
   deleteWorkflowAutomation,
   disableWorkflowAutomation,
   enableWorkflowAutomation,
+  getZeroChatThread,
   getWorkflowAutomation,
+  listWorkspaceWorkflowAutomations,
+  listZeroModelPolicies,
   listWorkflowAutomations,
   updateWorkflowAutomation,
 } from "../../../../lib/api";
@@ -30,7 +34,9 @@ import {
 } from "../resolve-workflow-ref";
 import {
   printWorkflowAutomationDetails,
+  printWorkflowAutomationThreadModel,
   printWorkflowAutomationsTable,
+  type WorkflowAutomationThreadModel,
 } from "./display";
 import {
   buildGmailLabelAppliedEventConfig,
@@ -149,6 +155,48 @@ function automationKinds(): readonly string[] {
     ...(githubWebhookAutomationsEnabled() ? GITHUB_WEBHOOK_EVENT_KINDS : []),
     ...(strapiIntegrationEnabled() ? STRAPI_EVENT_KINDS : []),
   ];
+}
+
+async function loadWorkflowAutomationThreadModel(
+  automation: ZeroWorkflowAutomationSummary,
+): Promise<WorkflowAutomationThreadModel | undefined> {
+  if (!automation.chatThreadId) {
+    return undefined;
+  }
+
+  const thread = await getZeroChatThread({
+    threadId: automation.chatThreadId,
+  });
+  const modelId =
+    thread.selectedModel ??
+    (await listZeroModelPolicies()).workspaceDefaultModel;
+  if (!modelId) {
+    throw new Error(
+      `Chat thread "${automation.chatThreadId}" has no available model`,
+    );
+  }
+
+  return {
+    id: modelId,
+    label: getModelDisplayName(modelId),
+  };
+}
+
+async function tryLoadWorkflowAutomationThreadModel(
+  automation: ZeroWorkflowAutomationSummary,
+): Promise<WorkflowAutomationThreadModel | undefined> {
+  try {
+    return await loadWorkflowAutomationThreadModel(automation);
+  } catch (error) {
+    console.warn(
+      chalk.yellow(
+        `⚠ Automation changed, but thread model details could not be loaded: ${
+          error instanceof Error ? error.message : "Unknown error"
+        }`,
+      ),
+    );
+    return undefined;
+  }
 }
 
 function githubWebhookEventKind(
@@ -1867,7 +1915,13 @@ Notes:
         console.log(
           chalk.green(`✓ Automation added to workflow "${workflowRef}"`),
         );
-        printWorkflowAutomationDetails(automation, { workflowRef });
+        const threadModel =
+          await tryLoadWorkflowAutomationThreadModel(automation);
+        printWorkflowAutomationDetails(automation, {
+          workflowRef,
+          workflowId,
+          threadModel,
+        });
       },
     ),
   );
@@ -1903,13 +1957,13 @@ Examples:
   .action(
     withErrorHandler(async (id: string, options: UpdateOptions) => {
       const existing = await getWorkflowAutomation(id);
-      const automation = await updateWorkflowAutomation(
-        id,
-        buildUpdate(options, existing),
-      );
+      const body = buildUpdate(options, existing);
+      const automation = await updateWorkflowAutomation(id, body);
 
       console.log(chalk.green(`✓ Automation ${automation.id} updated`));
-      printWorkflowAutomationDetails(automation);
+      const threadModel =
+        await tryLoadWorkflowAutomationThreadModel(automation);
+      printWorkflowAutomationDetails(automation, { threadModel });
     }),
   );
 
@@ -1954,7 +2008,22 @@ const showCommand = new Command()
   .action(
     withErrorHandler(async (id: string) => {
       const automation = await getWorkflowAutomation(id);
-      printWorkflowAutomationDetails(automation);
+      const entries = await listWorkspaceWorkflowAutomations();
+      const entry = entries.find(({ automation }) => {
+        return automation.id === id;
+      });
+      if (!entry) {
+        printWorkflowAutomationDetails(automation);
+        return;
+      }
+      const threadModel = await loadWorkflowAutomationThreadModel(
+        entry.automation,
+      );
+      printWorkflowAutomationDetails(entry.automation, {
+        workflowRef: entry.workflow.name,
+        workflowId: entry.workflow.id,
+        threadModel,
+      });
     }),
   );
 
@@ -1978,6 +2047,9 @@ const enableCommand = new Command()
     withErrorHandler(async (id: string) => {
       const automation = await enableWorkflowAutomation(id);
       console.log(chalk.green(`✓ Automation ${automation.id} enabled`));
+      const threadModel =
+        await tryLoadWorkflowAutomationThreadModel(automation);
+      printWorkflowAutomationThreadModel(threadModel);
     }),
   );
 
@@ -1989,6 +2061,9 @@ const disableCommand = new Command()
     withErrorHandler(async (id: string) => {
       const automation = await disableWorkflowAutomation(id);
       console.log(chalk.green(`✓ Automation ${automation.id} disabled`));
+      const threadModel =
+        await tryLoadWorkflowAutomationThreadModel(automation);
+      printWorkflowAutomationThreadModel(threadModel);
     }),
   );
 

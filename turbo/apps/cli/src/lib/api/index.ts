@@ -97,6 +97,7 @@ export {
   deleteWorkflow,
   copyWorkflow,
   listWorkflowAutomations,
+  listWorkspaceWorkflowAutomations,
   createWorkflowAutomation,
   getWorkflowAutomation,
   updateWorkflowAutomation,
