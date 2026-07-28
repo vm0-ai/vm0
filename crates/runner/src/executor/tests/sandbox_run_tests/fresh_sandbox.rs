@@ -769,27 +769,55 @@ async fn execute_job_workspace_mount_failure_drains_early_prefetch_before_destro
     let config = test_executor_config(dir.path()).await;
     let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::new());
     let wait_gate = MockLifecycleGate::new();
-    overrides.set_wait_process_lifecycle_gate(wait_gate);
+    overrides.set_wait_process_lifecycle_gate(wait_gate.clone());
+    overrides.set_process_cancel_releases_wait_gate(false);
     overrides.add_exec_matcher(sandbox_mock::ExecMatcher {
         pattern: "mount -t ext4".to_string(),
         exit_code: 64,
         stdout: Vec::new(),
         stderr: b"mount denied".to_vec(),
     });
-    let factory = MockSandboxFactory::with_overrides(Arc::clone(&overrides));
+    let factory = Arc::new(MockSandboxFactory::with_overrides(Arc::clone(&overrides)));
 
-    let (outcome, _telemetry) = execute_job(
-        &factory,
-        codex_oauth_context(),
-        NewSandboxDispatch {
-            id: SandboxId::new_v4(),
-            reuse_result: SandboxReuseResult::PoolMiss,
-        },
-        &config,
-        &default_params(),
-        tokio_util::sync::CancellationToken::new(),
-    )
-    .await;
+    let task = tokio::spawn({
+        let factory = Arc::clone(&factory);
+        async move {
+            execute_job(
+                factory.as_ref(),
+                codex_oauth_context(),
+                NewSandboxDispatch {
+                    id: SandboxId::new_v4(),
+                    reuse_result: SandboxReuseResult::PoolMiss,
+                },
+                &config,
+                &default_params(),
+                tokio_util::sync::CancellationToken::new(),
+            )
+            .await
+        }
+    });
+
+    wait_gate
+        .wait_entered(1, Duration::from_secs(5))
+        .await
+        .expect("prefetch wait should start before sandbox destruction");
+    assert!(
+        overrides
+            .wait_for_process_cancel_calls(1, Duration::from_secs(5))
+            .await,
+        "mount failure should cancel the prefetch before destruction"
+    );
+    assert_eq!(
+        overrides.destroy_call_count(),
+        0,
+        "sandbox must remain alive until the prefetch wait is drained"
+    );
+    wait_gate.release_one();
+
+    let (outcome, _telemetry) = tokio::time::timeout(Duration::from_secs(5), task)
+        .await
+        .expect("mount-failure cleanup should finish after the prefetch wait is released")
+        .expect("mount-failure task should not panic");
 
     assert_eq!(outcome.exit_code(), 1);
     let error = outcome.error().unwrap();
