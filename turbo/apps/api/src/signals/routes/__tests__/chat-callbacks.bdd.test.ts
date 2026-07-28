@@ -2720,6 +2720,7 @@ describe("CHAT-02: auto-send after failures", () => {
     const queuedFile = await chat.completeUpload(actor, {
       id: queuedUpload.id,
     });
+    const queuedContent = `[File: ${queuedFile.filename}]\n\nqueued with files`;
     await queueChatMessage(actor, {
       agentId,
       threadId: first.threadId,
@@ -2751,7 +2752,7 @@ describe("CHAT-02: auto-send after failures", () => {
         return userMessages(items).some((message) => {
           return (
             message.eventType === "input.prompt" &&
-            message.content === "queued with files" &&
+            message.content === queuedContent &&
             message.runId !== undefined
           );
         });
@@ -2761,7 +2762,7 @@ describe("CHAT-02: auto-send after failures", () => {
       (message): message is PromptMessage => {
         return (
           message.eventType === "input.prompt" &&
-          message.content === "queued with files" &&
+          message.content === queuedContent &&
           message.runId !== undefined
         );
       },

@@ -2522,9 +2522,9 @@ function resolveQueuedMessageGenerationTemplatePrompt(args: {
     "nested",
     () => {
       return resolveThreadGenerationTemplatePrompt({
-        explicit: args.userMessageProjection
-          ? args.userMessageProjection.generationTemplate
-          : args.input.queuedMessage.generationTemplate,
+        explicit:
+          args.userMessageProjection?.generationTemplate ??
+          args.input.queuedMessage.generationTemplate,
         explicitTemplates: args.inlineTemplatesEnabled
           ? args.userMessageProjection?.generationTemplates
           : undefined,

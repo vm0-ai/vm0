@@ -25,6 +25,7 @@ import { bench } from "vitest";
 import {
   chatThreadByIdContract,
   chatThreadEventsContract,
+  type UserMessageDocument,
 } from "@vm0/api-contracts/contracts/chat-threads";
 import { zeroBillingStatusContract } from "@vm0/api-contracts/contracts/zero-billing";
 import { zeroConnectorsMainContract } from "@vm0/api-contracts/contracts/zero-connectors";
@@ -319,6 +320,28 @@ function targetAttachmentId(index: number): string {
   return `bench-attachment-${String(index).padStart(2, "0")}`;
 }
 
+function benchUserMessage(
+  content: string,
+  attachmentId: string | undefined,
+): UserMessageDocument {
+  return {
+    version: 1,
+    parts: [
+      ...(attachmentId
+        ? [
+            {
+              type: "file" as const,
+              fileId: attachmentId,
+              filenameSnapshot: "bench-attachment.md",
+              contentType: "text/markdown",
+            },
+          ]
+        : []),
+      { type: "text", text: content },
+    ],
+  };
+}
+
 function commandName(command: unknown): string {
   return command instanceof Object && "constructor" in command
     ? command.constructor.name
@@ -589,6 +612,7 @@ async function seedTargetThreadRuns(
     sequenceNumber: number;
     seqId: number;
     attachFiles?: string[];
+    userMessage?: UserMessageDocument;
     createdAt: Date;
   }[] = [];
   const now = nowDate().getTime();
@@ -610,16 +634,22 @@ async function seedTargetThreadRuns(
     });
     for (let m = 0; m < TARGET_MESSAGES_PER_RUN; m++) {
       const latestAttachmentStart = TARGET_RUN_COUNT - TARGET_ATTACHMENT_COUNT;
+      const attachmentId =
+        m === 0 && i >= latestAttachmentStart
+          ? targetAttachmentId(i - latestAttachmentStart)
+          : undefined;
+      const content = markdownLorem(i, m);
       messageRows.push({
         chatThreadId: fixture.threadId,
         runId,
         eventType: m === 0 ? "input.prompt" : "output.message",
-        content: markdownLorem(i, m),
+        content,
         sequenceNumber: m,
         seqId: i * TARGET_MESSAGES_PER_RUN + m + 1,
-        ...(m === 0 && i >= latestAttachmentStart
-          ? { attachFiles: [targetAttachmentId(i - latestAttachmentStart)] }
+        ...(m === 0
+          ? { userMessage: benchUserMessage(content, attachmentId) }
           : {}),
+        ...(attachmentId ? { attachFiles: [attachmentId] } : {}),
         createdAt: new Date(now + i * 1000 + m),
       });
     }

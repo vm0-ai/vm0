@@ -1407,6 +1407,18 @@ Full autonomous goal prompt that should stay out of the compact chat UI`;
           size: 2048,
         },
       ],
+      userMessage: {
+        version: 1,
+        parts: [
+          {
+            type: "file",
+            fileId: "attachment-photo",
+            filenameSnapshot: "photo.png",
+            contentType: "image/png",
+          },
+          { type: "text", text: messageText },
+        ],
+      },
     });
   });
 

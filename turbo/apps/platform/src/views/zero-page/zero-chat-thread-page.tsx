@@ -6351,6 +6351,63 @@ function useUserMessageRendering() {
   };
 }
 
+function resolvePagedUserMessageRendering({
+  message,
+  inputMessage,
+  userMessage,
+  inlineTemplates,
+}: {
+  message: EnrichedChatMessage;
+  inputMessage: ChatInputMessage | undefined;
+  userMessage: UserMessageDocument | undefined;
+  inlineTemplates: boolean;
+}) {
+  // Two attachment sources coexist: the structured `attachFiles` field
+  // (current flow) and legacy `[Attached file: ...](url)` inline lines left
+  // over from messages sent before #10243 split the flows. Keep the legacy
+  // representation when those inline lines are still present.
+  const { cleanContent, parsed } = parseInlineAttachments(
+    message.content ?? "",
+  );
+  const canonicalUserMessage = parsed.length === 0 ? userMessage : undefined;
+  const attachFiles = inputMessage?.attachFiles;
+  const legacyCopyText =
+    attachFiles &&
+    attachFiles.length > 0 &&
+    cleanContent.trim() === ATTACH_ONLY_PLACEHOLDER
+      ? ""
+      : cleanContent;
+  const copyText = canonicalUserMessage
+    ? (messageDocumentToPrompt(canonicalUserMessage, {
+        inlineTemplates,
+      }) ?? "")
+    : legacyCopyText;
+  const legacyClipboardAttachments = clipboardAttachmentsFromMessage(
+    message,
+    parsed,
+  );
+  const clipboardAttachments = canonicalUserMessage
+    ? clipboardAttachmentsFromUserMessage(
+        canonicalUserMessage,
+        legacyClipboardAttachments,
+      )
+    : legacyClipboardAttachments;
+  const generationTemplate = canonicalUserMessage?.parts.some((part) => {
+    return part.type === "template";
+  })
+    ? undefined
+    : inputMessage?.generationTemplate;
+
+  return {
+    attachFiles,
+    canonicalUserMessage,
+    clipboardAttachments,
+    copyText,
+    generationTemplate,
+    parsed,
+  };
+}
+
 function PagedUserMessage({
   message,
   thread,
@@ -6361,24 +6418,19 @@ function PagedUserMessage({
   const { inlineTemplates } = useUserMessageRendering();
   const inputMessage = asInputChatEvent(message);
   const userMessage = visibleUserMessage(inputMessage);
-  const content = message.content ?? "";
-  // Two attachment sources coexist: the structured `attachFiles` field
-  // (current flow) and legacy `[Attached file: ...](url)` inline lines left
-  // over from messages sent before #10243 split the flows. Use the structured
-  // source when it's present and fall back to inline parsing otherwise.
-  const { cleanContent, parsed } = parseInlineAttachments(content);
-  const attachFiles = inputMessage?.attachFiles;
-  const legacyCopyText =
-    attachFiles &&
-    attachFiles.length > 0 &&
-    cleanContent.trim() === ATTACH_ONLY_PLACEHOLDER
-      ? ""
-      : cleanContent;
-  const copyText = userMessage
-    ? (messageDocumentToPrompt(userMessage, {
-        inlineTemplates,
-      }) ?? "")
-    : legacyCopyText;
+  const {
+    attachFiles,
+    canonicalUserMessage,
+    clipboardAttachments,
+    copyText,
+    generationTemplate,
+    parsed,
+  } = resolvePagedUserMessageRendering({
+    message,
+    inputMessage,
+    userMessage,
+    inlineTemplates,
+  });
   const bodyBlocks = message.blocks;
   const pageSignal = useGet(pageSignal$);
   const openImageLightbox = useSet(openAttachmentImageLightbox$);
@@ -6388,16 +6440,6 @@ function PagedUserMessage({
   const copyMessage = useSet(thread.copyMessage$);
   const findArtifact = thread.artifactSignalsForUrl;
   const allAttachments = resolveAttachments(message, parsed, findArtifact);
-  const legacyClipboardAttachments = clipboardAttachmentsFromMessage(
-    message,
-    parsed,
-  );
-  const clipboardAttachments = userMessage
-    ? clipboardAttachmentsFromUserMessage(
-        userMessage,
-        legacyClipboardAttachments,
-      )
-    : legacyClipboardAttachments;
   const canCopy =
     userMessage !== undefined ||
     copyText.trim().length > 0 ||
@@ -6442,9 +6484,12 @@ function PagedUserMessage({
         <div className="flex flex-col items-end w-full">
           <SlackUserMessageOrigin permalink={message.slackMessagePermalink} />
           <FeishuUserMessageOrigin chatOpenUrl={message.feishuChatOpenUrl} />
-          {userMessage ? (
+          <UserMessageGenerationTemplate
+            generationTemplate={generationTemplate}
+          />
+          {canonicalUserMessage ? (
             <UserMessageContent
-              document={userMessage}
+              document={canonicalUserMessage}
               attachments={allAttachments}
               referenceAttachments={attachFiles ?? []}
               onImageClick={openLightbox}
@@ -6452,9 +6497,6 @@ function PagedUserMessage({
             />
           ) : (
             <>
-              <UserMessageGenerationTemplate
-                generationTemplate={inputMessage?.generationTemplate}
-              />
               <UserMessageAttachments
                 attachments={allAttachments}
                 onImageClick={openLightbox}
