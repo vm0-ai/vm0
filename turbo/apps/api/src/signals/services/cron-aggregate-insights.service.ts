@@ -4,7 +4,7 @@ import { agentSessions } from "@vm0/db/schema/agent-session";
 import { insightsDaily } from "@vm0/db/schema/insights-daily";
 import { orgMembersCache } from "@vm0/db/schema/org-members-cache";
 import { orgMetadata } from "@vm0/db/schema/org-metadata";
-import { usageEventHourly } from "@vm0/db/schema/usage-event-hourly";
+import { usageEventHourlyRollup } from "@vm0/db/schema/usage-event-hourly-rollup";
 import { userCache } from "@vm0/db/schema/user-cache";
 import { zeroAgents } from "@vm0/db/schema/zero-agent";
 import { command, computed, type Computed } from "ccstate";
@@ -814,7 +814,7 @@ async function queryActiveUsers(
         orgId: usage.orgId,
         userId: usage.userId,
         lastActivity: max(usage.processedHour)
-          .mapWith(usageEventHourly.processedHour)
+          .mapWith(usageEventHourlyRollup.processedHour)
           .as("last_activity"),
       })
       .from(usage)

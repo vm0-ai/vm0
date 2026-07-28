@@ -1,6 +1,6 @@
 import { usageAllowanceAllocations } from "@vm0/db/schema/org-usage-allowance";
 import { usageEvent } from "@vm0/db/schema/usage-event";
-import { usageEventHourly } from "@vm0/db/schema/usage-event-hourly";
+import { usageEventHourlyRollup } from "@vm0/db/schema/usage-event-hourly-rollup";
 import { and, eq, gte, isNotNull, lt, sql } from "drizzle-orm";
 import { QueryBuilder } from "drizzle-orm/pg-core";
 
@@ -52,27 +52,27 @@ export function buildFinalizedUsageRelation(bounds?: FinalizedUsageBounds) {
     );
   const hourlyRows = queryBuilder
     .select({
-      processedHour: usageEventHourly.processedHour,
-      orgId: usageEventHourly.orgId,
-      userId: usageEventHourly.userId,
-      runId: usageEventHourly.runId,
-      kind: usageEventHourly.kind,
-      provider: usageEventHourly.provider,
-      category: usageEventHourly.category,
-      shortWindowId: usageEventHourly.shortWindowId,
-      weeklyWindowId: usageEventHourly.weeklyWindowId,
-      quantity: usageEventHourly.quantity,
-      creditsCharged: usageEventHourly.creditsCharged,
-      allowanceUnits: usageEventHourly.allowanceUnits,
+      processedHour: usageEventHourlyRollup.processedHour,
+      orgId: usageEventHourlyRollup.orgId,
+      userId: usageEventHourlyRollup.userId,
+      runId: usageEventHourlyRollup.runId,
+      kind: usageEventHourlyRollup.kind,
+      provider: usageEventHourlyRollup.provider,
+      category: usageEventHourlyRollup.category,
+      shortWindowId: usageEventHourlyRollup.shortWindowId,
+      weeklyWindowId: usageEventHourlyRollup.weeklyWindowId,
+      quantity: usageEventHourlyRollup.quantity,
+      creditsCharged: usageEventHourlyRollup.creditsCharged,
+      allowanceUnits: usageEventHourlyRollup.allowanceUnits,
     })
-    .from(usageEventHourly)
+    .from(usageEventHourlyRollup)
     .where(
       and(
         bounds?.start
-          ? gte(usageEventHourly.processedHour, bounds.start)
+          ? gte(usageEventHourlyRollup.processedHour, bounds.start)
           : undefined,
         bounds?.end
-          ? lt(usageEventHourly.processedHour, bounds.end)
+          ? lt(usageEventHourlyRollup.processedHour, bounds.end)
           : undefined,
       ),
     );

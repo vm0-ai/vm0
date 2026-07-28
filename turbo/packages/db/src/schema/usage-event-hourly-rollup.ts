@@ -15,14 +15,14 @@ import { agentRuns } from "./agent-run";
 import { orgUsageAllowanceWindows } from "./org-usage-allowance";
 
 /**
- * Hourly aggregates of finalized usage events.
+ * Hourly rollups of finalized usage events.
  *
  * Product readers regroup across the nullable allowance-window pair. The pair
  * identifies only the allowance portion of a row and remains available for
  * allowance reconciliation after raw allocations are removed.
  */
-export const usageEventHourly = pgTable(
-  "usage_event_hourly",
+export const usageEventHourlyRollup = pgTable(
+  "usage_event_hourly_rollup",
   {
     id: uuid("id").defaultRandom().primaryKey(),
     processedHour: timestamp("processed_hour").notNull(),
@@ -46,43 +46,50 @@ export const usageEventHourly = pgTable(
   (table) => {
     return [
       foreignKey({
-        name: "fk_usage_event_hourly_short_window",
+        name: "fk_usage_event_hourly_rollup_short_window",
         columns: [table.shortWindowId],
         foreignColumns: [orgUsageAllowanceWindows.id],
       }),
       foreignKey({
-        name: "fk_usage_event_hourly_weekly_window",
+        name: "fk_usage_event_hourly_rollup_weekly_window",
         columns: [table.weeklyWindowId],
         foreignColumns: [orgUsageAllowanceWindows.id],
       }),
-      index("idx_usage_event_hourly_org_hour").on(
+      index("idx_usage_event_hourly_rollup_org_hour").on(
         table.orgId,
         table.processedHour,
       ),
-      index("idx_usage_event_hourly_processed_org_user").on(
+      index("idx_usage_event_hourly_rollup_processed_org_user").on(
         table.processedHour.desc(),
         table.orgId,
         table.userId,
       ),
-      index("idx_usage_event_hourly_run_id").on(table.runId),
-      index("idx_usage_event_hourly_user_id").on(table.userId),
-      index("idx_usage_event_hourly_short_window_id").on(table.shortWindowId),
-      index("idx_usage_event_hourly_weekly_window_id").on(table.weeklyWindowId),
+      index("idx_usage_event_hourly_rollup_run_id").on(table.runId),
+      index("idx_usage_event_hourly_rollup_user_id").on(table.userId),
+      index("idx_usage_event_hourly_rollup_short_window_id").on(
+        table.shortWindowId,
+      ),
+      index("idx_usage_event_hourly_rollup_weekly_window_id").on(
+        table.weeklyWindowId,
+      ),
       check(
-        "chk_usage_event_hourly_processed_hour",
+        "chk_usage_event_hourly_rollup_processed_hour",
         sql`${table.processedHour} = date_trunc('hour', ${table.processedHour})`,
       ),
-      check("chk_usage_event_hourly_quantity", sql`${table.quantity} >= 0`),
       check(
-        "chk_usage_event_hourly_credits_charged",
+        "chk_usage_event_hourly_rollup_quantity",
+        sql`${table.quantity} >= 0`,
+      ),
+      check(
+        "chk_usage_event_hourly_rollup_credits_charged",
         sql`${table.creditsCharged} >= 0`,
       ),
       check(
-        "chk_usage_event_hourly_allowance_units",
+        "chk_usage_event_hourly_rollup_allowance_units",
         sql`${table.allowanceUnits} >= 0`,
       ),
       check(
-        "chk_usage_event_hourly_allowance_window_pair",
+        "chk_usage_event_hourly_rollup_allowance_window_pair",
         sql`(
           ${table.allowanceUnits} = 0
           AND ${table.shortWindowId} IS NULL

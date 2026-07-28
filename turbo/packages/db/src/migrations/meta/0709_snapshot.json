@@ -1,5 +1,5 @@
 {
-  "id": "9d025b15-7120-4f78-99b4-8a80d0a44546",
+  "id": "e154f90e-2b57-42a7-926c-b73a6fb196d3",
   "prevId": "3a8ae427-913b-446e-9de2-69fda33be2a3",
   "version": "7",
   "dialect": "postgresql",
@@ -19263,8 +19263,8 @@
       "checkConstraints": {},
       "isRLSEnabled": false
     },
-    "public.usage_event_hourly": {
-      "name": "usage_event_hourly",
+    "public.usage_event_hourly_rollup": {
+      "name": "usage_event_hourly_rollup",
       "schema": "",
       "columns": {
         "id": {
@@ -19348,8 +19348,8 @@
         }
       },
       "indexes": {
-        "idx_usage_event_hourly_org_hour": {
-          "name": "idx_usage_event_hourly_org_hour",
+        "idx_usage_event_hourly_rollup_org_hour": {
+          "name": "idx_usage_event_hourly_rollup_org_hour",
           "columns": [
             {
               "expression": "org_id",
@@ -19369,8 +19369,8 @@
           "method": "btree",
           "with": {}
         },
-        "idx_usage_event_hourly_processed_org_user": {
-          "name": "idx_usage_event_hourly_processed_org_user",
+        "idx_usage_event_hourly_rollup_processed_org_user": {
+          "name": "idx_usage_event_hourly_rollup_processed_org_user",
           "columns": [
             {
               "expression": "processed_hour",
@@ -19396,8 +19396,8 @@
           "method": "btree",
           "with": {}
         },
-        "idx_usage_event_hourly_run_id": {
-          "name": "idx_usage_event_hourly_run_id",
+        "idx_usage_event_hourly_rollup_run_id": {
+          "name": "idx_usage_event_hourly_rollup_run_id",
           "columns": [
             {
               "expression": "run_id",
@@ -19411,8 +19411,8 @@
           "method": "btree",
           "with": {}
         },
-        "idx_usage_event_hourly_user_id": {
-          "name": "idx_usage_event_hourly_user_id",
+        "idx_usage_event_hourly_rollup_user_id": {
+          "name": "idx_usage_event_hourly_rollup_user_id",
           "columns": [
             {
               "expression": "user_id",
@@ -19426,8 +19426,8 @@
           "method": "btree",
           "with": {}
         },
-        "idx_usage_event_hourly_short_window_id": {
-          "name": "idx_usage_event_hourly_short_window_id",
+        "idx_usage_event_hourly_rollup_short_window_id": {
+          "name": "idx_usage_event_hourly_rollup_short_window_id",
           "columns": [
             {
               "expression": "short_window_id",
@@ -19441,8 +19441,8 @@
           "method": "btree",
           "with": {}
         },
-        "idx_usage_event_hourly_weekly_window_id": {
-          "name": "idx_usage_event_hourly_weekly_window_id",
+        "idx_usage_event_hourly_rollup_weekly_window_id": {
+          "name": "idx_usage_event_hourly_rollup_weekly_window_id",
           "columns": [
             {
               "expression": "weekly_window_id",
@@ -19458,9 +19458,9 @@
         }
       },
       "foreignKeys": {
-        "usage_event_hourly_run_id_agent_runs_id_fk": {
-          "name": "usage_event_hourly_run_id_agent_runs_id_fk",
-          "tableFrom": "usage_event_hourly",
+        "usage_event_hourly_rollup_run_id_agent_runs_id_fk": {
+          "name": "usage_event_hourly_rollup_run_id_agent_runs_id_fk",
+          "tableFrom": "usage_event_hourly_rollup",
           "tableTo": "agent_runs",
           "columnsFrom": [
             "run_id"
@@ -19471,9 +19471,9 @@
           "onDelete": "set null",
           "onUpdate": "no action"
         },
-        "fk_usage_event_hourly_short_window": {
-          "name": "fk_usage_event_hourly_short_window",
-          "tableFrom": "usage_event_hourly",
+        "fk_usage_event_hourly_rollup_short_window": {
+          "name": "fk_usage_event_hourly_rollup_short_window",
+          "tableFrom": "usage_event_hourly_rollup",
           "tableTo": "org_usage_allowance_windows",
           "columnsFrom": [
             "short_window_id"
@@ -19484,9 +19484,9 @@
           "onDelete": "no action",
           "onUpdate": "no action"
         },
-        "fk_usage_event_hourly_weekly_window": {
-          "name": "fk_usage_event_hourly_weekly_window",
-          "tableFrom": "usage_event_hourly",
+        "fk_usage_event_hourly_rollup_weekly_window": {
+          "name": "fk_usage_event_hourly_rollup_weekly_window",
+          "tableFrom": "usage_event_hourly_rollup",
           "tableTo": "org_usage_allowance_windows",
           "columnsFrom": [
             "weekly_window_id"
@@ -19502,25 +19502,25 @@
       "uniqueConstraints": {},
       "policies": {},
       "checkConstraints": {
-        "chk_usage_event_hourly_processed_hour": {
-          "name": "chk_usage_event_hourly_processed_hour",
-          "value": "\"usage_event_hourly\".\"processed_hour\" = date_trunc('hour', \"usage_event_hourly\".\"processed_hour\")"
+        "chk_usage_event_hourly_rollup_processed_hour": {
+          "name": "chk_usage_event_hourly_rollup_processed_hour",
+          "value": "\"usage_event_hourly_rollup\".\"processed_hour\" = date_trunc('hour', \"usage_event_hourly_rollup\".\"processed_hour\")"
         },
-        "chk_usage_event_hourly_quantity": {
-          "name": "chk_usage_event_hourly_quantity",
-          "value": "\"usage_event_hourly\".\"quantity\" >= 0"
+        "chk_usage_event_hourly_rollup_quantity": {
+          "name": "chk_usage_event_hourly_rollup_quantity",
+          "value": "\"usage_event_hourly_rollup\".\"quantity\" >= 0"
         },
-        "chk_usage_event_hourly_credits_charged": {
-          "name": "chk_usage_event_hourly_credits_charged",
-          "value": "\"usage_event_hourly\".\"credits_charged\" >= 0"
+        "chk_usage_event_hourly_rollup_credits_charged": {
+          "name": "chk_usage_event_hourly_rollup_credits_charged",
+          "value": "\"usage_event_hourly_rollup\".\"credits_charged\" >= 0"
         },
-        "chk_usage_event_hourly_allowance_units": {
-          "name": "chk_usage_event_hourly_allowance_units",
-          "value": "\"usage_event_hourly\".\"allowance_units\" >= 0"
+        "chk_usage_event_hourly_rollup_allowance_units": {
+          "name": "chk_usage_event_hourly_rollup_allowance_units",
+          "value": "\"usage_event_hourly_rollup\".\"allowance_units\" >= 0"
         },
-        "chk_usage_event_hourly_allowance_window_pair": {
-          "name": "chk_usage_event_hourly_allowance_window_pair",
-          "value": "(\n          \"usage_event_hourly\".\"allowance_units\" = 0\n          AND \"usage_event_hourly\".\"short_window_id\" IS NULL\n          AND \"usage_event_hourly\".\"weekly_window_id\" IS NULL\n        ) OR (\n          \"usage_event_hourly\".\"allowance_units\" > 0\n          AND \"usage_event_hourly\".\"short_window_id\" IS NOT NULL\n          AND \"usage_event_hourly\".\"weekly_window_id\" IS NOT NULL\n        )"
+        "chk_usage_event_hourly_rollup_allowance_window_pair": {
+          "name": "chk_usage_event_hourly_rollup_allowance_window_pair",
+          "value": "(\n          \"usage_event_hourly_rollup\".\"allowance_units\" = 0\n          AND \"usage_event_hourly_rollup\".\"short_window_id\" IS NULL\n          AND \"usage_event_hourly_rollup\".\"weekly_window_id\" IS NULL\n        ) OR (\n          \"usage_event_hourly_rollup\".\"allowance_units\" > 0\n          AND \"usage_event_hourly_rollup\".\"short_window_id\" IS NOT NULL\n          AND \"usage_event_hourly_rollup\".\"weekly_window_id\" IS NOT NULL\n        )"
         }
       },
       "isRLSEnabled": false

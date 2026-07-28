@@ -10,7 +10,7 @@ import {
 } from "@vm0/db/schema/agent-compose";
 import { agentRuns } from "@vm0/db/schema/agent-run";
 import { chatThreads } from "@vm0/db/schema/chat-thread";
-import { usageEventHourly } from "@vm0/db/schema/usage-event-hourly";
+import { usageEventHourlyRollup } from "@vm0/db/schema/usage-event-hourly-rollup";
 import { zeroAgents } from "@vm0/db/schema/zero-agent";
 import { zeroRuns } from "@vm0/db/schema/zero-run";
 import {
@@ -316,7 +316,7 @@ function rangeToWindow(
 
 function usageBucketExpr(activityTime: SQLWrapper, p: UsageInsightSqlParams) {
   return sql`date_trunc(${p.trunc}, ${activityTime} AT TIME ZONE 'UTC' AT TIME ZONE ${p.tz})`.mapWith(
-    usageEventHourly.processedHour,
+    usageEventHourlyRollup.processedHour,
   );
 }
 

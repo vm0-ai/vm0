@@ -18,7 +18,7 @@ import { usageAllowanceAllocations } from "@vm0/db/schema/org-usage-allowance";
 import { secrets } from "@vm0/db/schema/secret";
 import { storages, storageVersions } from "@vm0/db/schema/storage";
 import { usageEvent } from "@vm0/db/schema/usage-event";
-import { usageEventHourly } from "@vm0/db/schema/usage-event-hourly";
+import { usageEventHourlyRollup } from "@vm0/db/schema/usage-event-hourly-rollup";
 import { userConnectors } from "@vm0/db/schema/user-connector";
 import { userPermissionGrants } from "@vm0/db/schema/user-permission-grant";
 import { variables } from "@vm0/db/schema/variable";
@@ -149,11 +149,11 @@ async function deleteUsageInsightFixture(
   const userId = fixture.userId;
 
   await db
-    .delete(usageEventHourly)
+    .delete(usageEventHourlyRollup)
     .where(
       and(
-        eq(usageEventHourly.orgId, orgId),
-        eq(usageEventHourly.userId, userId),
+        eq(usageEventHourlyRollup.orgId, orgId),
+        eq(usageEventHourlyRollup.userId, userId),
       ),
     );
   signal.throwIfAborted();
@@ -590,7 +590,7 @@ async function materializeHourlyUsage(
       return 0;
     }
 
-    await tx.insert(usageEventHourly).values(
+    await tx.insert(usageEventHourlyRollup).values(
       rows.map((row) => {
         return {
           processedHour: row.processedHour,
@@ -636,11 +636,14 @@ async function readUsageStorageCounts(
       : eq(usageEvent.userId, args.id);
   const hourlyPredicate =
     args.scope === "organization"
-      ? eq(usageEventHourly.orgId, args.id)
-      : eq(usageEventHourly.userId, args.id);
+      ? eq(usageEventHourlyRollup.orgId, args.id)
+      : eq(usageEventHourlyRollup.userId, args.id);
   const [[raw], [hourly]] = await Promise.all([
     db.select({ value: count() }).from(usageEvent).where(rawPredicate),
-    db.select({ value: count() }).from(usageEventHourly).where(hourlyPredicate),
+    db
+      .select({ value: count() })
+      .from(usageEventHourlyRollup)
+      .where(hourlyPredicate),
   ]);
   return {
     raw: raw?.value ?? 0,
