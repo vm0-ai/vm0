@@ -101,7 +101,7 @@ ruleTester.run("prefer-drizzle-apis", preferDrizzleApis, {
   valid: [
     {
       code: `${drizzlePreamble}
-        import { eq, sql } from "drizzle-orm";
+        import { eq, gt, sql } from "drizzle-orm";
         import { executeRawRows } from "./lib/db-raw-rows";
         declare const chooseLock: boolean;
         declare const rowSchema: never;
@@ -128,15 +128,10 @@ ruleTester.run("prefer-drizzle-apis", preferDrizzleApis, {
         const condition = gte(users.id, 1);
         const fragment = sql\`\${users.id} + \${value}\`;
         sql\`SELECT \${users.id} FROM \${users} WHERE \${fragment}\`;
-        sql\`\${users.id}::text = \${"1"}\`;
-        sql\`LOWER(\${users.name}) = \${"name"}\`;
-        sql\`LOWER(\${users.name}) IS NULL\`;
         sql\`\${users.id} IS DISTINCT FROM \${value}\`;
         sql\`UPDATE users SET \${users.id} = \${value}\`;
-        sql\`1 + \${users.id} = \${value}\`;
-        sql\`\${users.id} = \${value} + 1\`;
         sql\`\${gte(users.deletedAt, sql\`\${"2026-01-01"}::timestamp\`)}\`;
-        sql\`MAX(\${users.id} + 1) FILTER (WHERE \${users.id} > 0)\`;
+        sql\`MAX(\${users.id} + 1) FILTER (WHERE \${condition})\`;
         sql\`MAX(\${users.id}) OVER (ORDER BY id)\`;
         sql\`COUNT(\${users.id}) FILTER (WHERE (\${condition})) OVER (ORDER BY id)\`;
         db.select({
@@ -276,16 +271,6 @@ ruleTester.run("prefer-drizzle-apis", preferDrizzleApis, {
           names.map((name) => sql\`\${name}\`),
           sql\`, \`,
         )})\`;
-        query\`upper(\${users.name}) IN (\${query.join(
-          names.map((name) => query\`\${name}\`),
-          query\`, \`,
-        )})\`;
-        query\`lower(\${users.name}) NOT IN (\${query.join(
-          names.map((name) => query\`\${name}\`),
-          query\`, \`,
-        )})\`;
-        query\`lower(\${users.name}) IN (\${nameList})\`;
-        query\`lower(\${users.name}) IN (\${nameSqlList()})\`;
         query\`lower(\${users.name}) IN (\${otherSql.join(names)})\`;
         query\`lower(\${users.name}) IN (\${subquery})\`;
         query\`lower(\${users.name}) IN (\${query.join(
@@ -296,18 +281,6 @@ ruleTester.run("prefer-drizzle-apis", preferDrizzleApis, {
           names.map((name) => query\`\${name}\`),
           query\`; \`,
         )})\`;
-        query\`SELECT lower(\${users.name}) IN (\${query.join(
-          names.map((name) => query\`\${name}\`),
-          query\`, \`,
-        )}) FROM \${users}\`;
-        query\`prefix_lower(\${users.name}) IN (\${query.join(
-          names.map((name) => query\`\${name}\`),
-          query\`, \`,
-        )})\`;
-        query\`lower(\${users.name}) IN (\${query.join(
-          names.map((name) => query\`\${name}\`),
-          query\`, \`,
-        )}) IS TRUE\`;
         query\`lower(\${condition}) IN (\${query.join(
           names.map((name) => query\`\${name}\`),
           query\`, \`,
@@ -377,7 +350,7 @@ ruleTester.run("prefer-drizzle-apis", preferDrizzleApis, {
     },
     {
       code: `${drizzlePreamble}
-        import { eq, sql } from "drizzle-orm";
+        import { eq, or, sql } from "drizzle-orm";
         import { alias } from "drizzle-orm/pg-core";
         const otherUsers = alias(users, "other_users");
         const condition = eq(users.id, 1);
@@ -392,18 +365,9 @@ ruleTester.run("prefer-drizzle-apis", preferDrizzleApis, {
           LEFT JOIN \${otherUsers} ON \${condition}
           WHERE \${condition}
         )\`;
-        sql\`EXISTS (SELECT 1 FROM \${users} WHERE \${condition} OR \${condition})\`;
+        sql\`EXISTS (SELECT 1 FROM \${users} WHERE \${or(condition, condition)})\`;
         sql\`EXISTS (SELECT 1 FROM \${users} WHERE \${condition} FOR UPDATE)\`;
-        sql\`EXISTS (
-          SELECT 1 FROM \${users}
-          WHERE EXISTS (SELECT 1 FROM \${otherUsers} WHERE \${condition})
-        )\`;
-        sql\`SELECT EXISTS (SELECT 1 FROM \${users} WHERE \${condition})\`;
-        sql\`NOT EXISTS (SELECT 1 FROM \${users} WHERE \${condition}) AND \${condition}\`;
         sql\`EXISTS (SELECT 1 FROM \${users} WHERE \${condition}); SELECT 1\`;
-        sql\`WITH selected AS (SELECT 1) SELECT EXISTS (
-          SELECT 1 FROM \${users} WHERE \${condition}
-        )\`;
       `,
     },
     {
@@ -516,19 +480,6 @@ ruleTester.run("prefer-drizzle-apis", preferDrizzleApis, {
     },
     {
       code: `${drizzlePreamble}
-        import { sql } from "drizzle-orm";
-        declare const flag: boolean;
-        db.select()
-          .from(users)
-          .where(
-            flag
-              ? sql\`\${users.id} = \${1}\`
-              : sql\`\${users.id} > \${1}\`,
-          );
-      `,
-    },
-    {
-      code: `${drizzlePreamble}
         import { sql, type SQL } from "drizzle-orm";
         const customSqlComposer = {
           empty(): SQL {
@@ -631,19 +582,9 @@ ruleTester.run("prefer-drizzle-apis", preferDrizzleApis, {
     },
     {
       code: `${drizzlePreamble}
-        import { sql } from "drizzle-orm";
-        const selection = sql\`\${users.id} = \${1} AS matched\`;
+        import { eq } from "drizzle-orm";
+        const selection = eq(users.id, 1);
         db.select({ matched: selection }).from(users);
-      `,
-    },
-    {
-      code: `${drizzlePreamble}
-        import { sql } from "drizzle-orm";
-        const predicate = sql\`
-          \${users.id} = \${1}
-          ORDER BY \${users.id}
-        \`;
-        db.select().from(users).where(predicate);
       `,
     },
     {
@@ -725,7 +666,7 @@ ruleTester.run("prefer-drizzle-apis", preferDrizzleApis, {
     },
     {
       code: `${readQueryPreamble}
-        import { eq, sql } from "drizzle-orm";
+        import { eq, gt, sql } from "drizzle-orm";
         await executeRawRows(
           db,
           sql\`
@@ -741,17 +682,23 @@ ruleTester.run("prefer-drizzle-apis", preferDrizzleApis, {
           rowSchema,
         );
       `,
-      errors: [{ messageId: "existsQueryBuilder" }],
+      errors: [
+        {
+          messageId: "existencePredicate",
+          data: { helper: "exists" },
+        },
+        { messageId: "existsQueryBuilder" },
+      ],
     },
     {
       code: `${readQueryPreamble}
-        import { eq, sql } from "drizzle-orm";
+        import { eq, gt, sql } from "drizzle-orm";
         await executeRawRows(
           db,
           sql\`
             SELECT
               \${runs.id} AS "runId",
-              \${runs.threadId} > 0 AS "isExpired"
+              \${gt(runs.threadId, sql\`0\`)} AS "isExpired"
             FROM \${runs}
             WHERE \${eq(runs.id, threadId)}
             FOR UPDATE
@@ -870,7 +817,6 @@ ruleTester.run("prefer-drizzle-apis", preferDrizzleApis, {
         {
           messageId: "typedApi",
           data: { helper: "eq" },
-          line: 23,
         },
       ],
     },
@@ -886,12 +832,6 @@ ruleTester.run("prefer-drizzle-apis", preferDrizzleApis, {
         {
           messageId: "typedApi",
           data: { helper: "eq" },
-          line: 23,
-        },
-        {
-          messageId: "typedApi",
-          data: { helper: "eq" },
-          line: 23,
         },
       ],
     },
@@ -930,13 +870,7 @@ ruleTester.run("prefer-drizzle-apis", preferDrizzleApis, {
             )}, FALSE)\`,
           );
       `,
-      errors: [
-        {
-          messageId: "typedApi",
-          data: { helper: "and" },
-          line: 26,
-        },
-      ],
+      errors: [{ messageId: "typedApi", data: { helper: "and" } }],
     },
     {
       code: `${drizzlePreamble}
@@ -950,10 +884,11 @@ ruleTester.run("prefer-drizzle-apis", preferDrizzleApis, {
           .where(sql\`EXISTS (SELECT 1 WHERE \${fragment})\`);
       `,
       errors: [
+        { messageId: "typedApi", data: { helper: "eq" } },
+        { messageId: "typedApi", data: { helper: "eq" } },
         {
           messageId: "typedApi",
           data: { helper: "and" },
-          line: 26,
         },
       ],
     },
@@ -994,11 +929,11 @@ ruleTester.run("prefer-drizzle-apis", preferDrizzleApis, {
       errors: [
         {
           messageId: "typedApi",
-          data: { helper: "and" },
+          data: { helper: "isNotNull" },
         },
         {
           messageId: "typedApi",
-          data: { helper: "isNotNull" },
+          data: { helper: "and" },
         },
       ],
     },
@@ -1013,15 +948,15 @@ ruleTester.run("prefer-drizzle-apis", preferDrizzleApis, {
         db.select().from(users).having(sql\`NOT \${fragment}\`);
       `,
       errors: [
+        { messageId: "typedApi", data: { helper: "eq" } },
+        { messageId: "typedApi", data: { helper: "eq" } },
         {
           messageId: "typedApi",
           data: { helper: "and" },
-          line: 24,
         },
         {
           messageId: "typedApi",
           data: { helper: "and" },
-          line: 25,
         },
       ],
     },
@@ -1035,10 +970,11 @@ ruleTester.run("prefer-drizzle-apis", preferDrizzleApis, {
         db.select().from(users).where(sql\`NOT \${fragment}\`);
       `,
       errors: [
+        { messageId: "typedApi", data: { helper: "eq" } },
+        { messageId: "typedApi", data: { helper: "eq" } },
         {
           messageId: "typedApi",
           data: { helper: "and" },
-          line: 24,
         },
       ],
     },
@@ -1056,10 +992,11 @@ ruleTester.run("prefer-drizzle-apis", preferDrizzleApis, {
           );
       `,
       errors: [
+        { messageId: "typedApi", data: { helper: "eq" } },
+        { messageId: "typedApi", data: { helper: "eq" } },
         {
           messageId: "typedApi",
           data: { helper: "and" },
-          line: 27,
         },
       ],
     },
@@ -1077,10 +1014,11 @@ ruleTester.run("prefer-drizzle-apis", preferDrizzleApis, {
           );
       `,
       errors: [
+        { messageId: "typedApi", data: { helper: "eq" } },
+        { messageId: "typedApi", data: { helper: "eq" } },
         {
           messageId: "typedApi",
           data: { helper: "or" },
-          line: 27,
         },
       ],
     },
@@ -1094,10 +1032,11 @@ ruleTester.run("prefer-drizzle-apis", preferDrizzleApis, {
         db.select().from(users).where(sql\` \${fragment} \`);
       `,
       errors: [
+        { messageId: "typedApi", data: { helper: "eq" } },
+        { messageId: "typedApi", data: { helper: "eq" } },
         {
           messageId: "typedApi",
           data: { helper: "and" },
-          line: 24,
         },
       ],
     },
@@ -1111,12 +1050,6 @@ ruleTester.run("prefer-drizzle-apis", preferDrizzleApis, {
         {
           messageId: "typedApi",
           data: { helper: "eq" },
-          line: 21,
-        },
-        {
-          messageId: "typedApi",
-          data: { helper: "eq" },
-          line: 21,
         },
       ],
     },
@@ -1144,8 +1077,15 @@ ruleTester.run("prefer-drizzle-apis", preferDrizzleApis, {
       errors: [
         {
           messageId: "typedApi",
+          data: { helper: "eq" },
+        },
+        {
+          messageId: "typedApi",
+          data: { helper: "eq" },
+        },
+        {
+          messageId: "typedApi",
           data: { helper: "and" },
-          line: 26,
         },
       ],
     },
@@ -1165,11 +1105,9 @@ ruleTester.run("prefer-drizzle-apis", preferDrizzleApis, {
           );
       `,
       errors: [
-        {
-          messageId: "typedApi",
-          data: { helper: "and" },
-          line: 23,
-        },
+        { messageId: "typedApi", data: { helper: "and" } },
+        { messageId: "typedApi", data: { helper: "eq" } },
+        { messageId: "typedApi", data: { helper: "eq" } },
       ],
     },
     {
@@ -1184,10 +1122,7 @@ ruleTester.run("prefer-drizzle-apis", preferDrizzleApis, {
         db.select().from(users).where(comparison(users.id, 1));
         db.select().from(users).having(comparison(users.id, 2));
       `,
-      errors: [
-        { messageId: "typedApi", data: { helper: "eq" } },
-        { messageId: "typedApi", data: { helper: "eq" } },
-      ],
+      errors: [{ messageId: "typedApi", data: { helper: "eq" } }],
     },
     {
       code: `${drizzlePreamble}
@@ -1216,13 +1151,15 @@ ruleTester.run("prefer-drizzle-apis", preferDrizzleApis, {
         {
           messageId: "typedApi",
           data: { helper: "and" },
-          line: 26,
         },
+        { messageId: "typedApi", data: { helper: "eq" } },
+        { messageId: "typedApi", data: { helper: "eq" } },
         {
           messageId: "typedApi",
           data: { helper: "and" },
-          line: 34,
         },
+        { messageId: "typedApi", data: { helper: "eq" } },
+        { messageId: "typedApi", data: { helper: "eq" } },
       ],
     },
     {
@@ -1245,7 +1182,10 @@ ruleTester.run("prefer-drizzle-apis", preferDrizzleApis, {
         {
           messageId: "typedApi",
           data: { helper: "eq" },
-          line: 27,
+        },
+        {
+          messageId: "typedApi",
+          data: { helper: "eq" },
         },
       ],
     },
@@ -1279,8 +1219,12 @@ ruleTester.run("prefer-drizzle-apis", preferDrizzleApis, {
           );
       `,
       errors: [
+        { messageId: "typedApi", data: { helper: "eq" } },
         { messageId: "typedApi", data: { helper: "and" } },
+        { messageId: "typedApi", data: { helper: "eq" } },
+        { messageId: "typedApi", data: { helper: "eq" } },
         { messageId: "typedApi", data: { helper: "and" } },
+        { messageId: "typedApi", data: { helper: "eq" } },
       ],
     },
     {
@@ -1303,7 +1247,7 @@ ruleTester.run("prefer-drizzle-apis", preferDrizzleApis, {
     },
     {
       code: `${drizzlePreamble}
-        import { sql } from "drizzle-orm";
+        import { isNull, sql } from "drizzle-orm";
         import { executeRawRows } from "./lib/db-raw-rows";
         declare const rowSchema: never;
         await executeRawRows(
@@ -1311,7 +1255,7 @@ ruleTester.run("prefer-drizzle-apis", preferDrizzleApis, {
           sql\`
             SELECT \${users.id}
             FROM \${users}
-            WHERE \${users.deletedAt} IS NULL
+            WHERE \${isNull(users.deletedAt)}
             LIMIT 1
           \`,
           rowSchema,
@@ -1350,7 +1294,10 @@ ruleTester.run("prefer-drizzle-apis", preferDrizzleApis, {
           rowSchema,
         );
       `,
-      errors: [{ messageId: "queryBuilder" }],
+      errors: [
+        { messageId: "queryBuilder" },
+        { messageId: "typedApi", data: { helper: "and" } },
+      ],
     },
     {
       code: `${drizzlePreamble}
@@ -2035,6 +1982,7 @@ ruleTester.run("prefer-drizzle-apis", preferDrizzleApis, {
         { messageId: "typedApi", data: { helper: "countDistinct" } },
         { messageId: "typedApi", data: { helper: "max" } },
         { messageId: "typedApi", data: { helper: "or" } },
+        { messageId: "typedApi", data: { helper: "and" } },
         { messageId: "typedApi", data: { helper: "arrayContains" } },
       ],
     },
@@ -2215,11 +2163,6 @@ ruleTester.run("prefer-drizzle-apis retained operands", preferDrizzleApis, {
         db.select()
           .from(users)
           .where(sql\`\${users.name} IN (\${selected})\`);
-        db.select()
-          .from(users)
-          .where(
-            sql\`(SELECT \${users.id} FROM \${users} LIMIT 1) = \${1}\`,
-          );
       `,
     },
     {
@@ -2374,7 +2317,7 @@ ruleTester.run("prefer-drizzle-apis retained operands", preferDrizzleApis, {
       errors: [{ messageId: "typedApi", data: { helper: "max" } }],
     },
     {
-      name: "locally returned descendant reports at each use site",
+      name: "locally returned descendant reports at its source",
       code: `${drizzlePreamble}
         import { sql } from "drizzle-orm";
         function selectionOrder() {
@@ -2383,10 +2326,7 @@ ruleTester.run("prefer-drizzle-apis retained operands", preferDrizzleApis, {
         db.select().from(users).orderBy(selectionOrder());
         db.select().from(users).orderBy(selectionOrder());
       `,
-      errors: [
-        { messageId: "typedApi", data: { helper: "eq" }, line: 23 },
-        { messageId: "typedApi", data: { helper: "eq" }, line: 24 },
-      ],
+      errors: [{ messageId: "typedApi", data: { helper: "eq" }, line: 21 }],
     },
     {
       name: "unsupported case and complete statement expose descendants",
@@ -2434,6 +2374,300 @@ ruleTester.run("prefer-drizzle-apis retained operands", preferDrizzleApis, {
               ? sql\`LOWER(\${users.name}) = \${"one"}\`
               : sql\`UPPER(\${users.name}) = \${"two"}\`,
           );
+      `,
+      errors: [
+        { messageId: "typedApi", data: { helper: "eq" } },
+        { messageId: "typedApi", data: { helper: "eq" } },
+      ],
+    },
+  ],
+});
+
+ruleTester.run("prefer-drizzle-apis source-local analysis", preferDrizzleApis, {
+  valid: [
+    {
+      name: "consumerless logical and unmapped aggregate contracts stay raw",
+      code: `${drizzlePreamble}
+        import { eq, sql } from "drizzle-orm";
+        const first = eq(users.id, 1);
+        const second = eq(users.name, "name");
+        sql\`\${first} AND \${second}\`;
+        sql\`SUM(\${users.id} + 1)\`;
+      `,
+    },
+    {
+      name: "unsupported and raw-identifier source remains allowed",
+      code: `${drizzlePreamble}
+        import { sql } from "drizzle-orm";
+        sql\`LOWER(raw_name) = \${"name"}\`;
+        sql\`\${users.id} IS DISTINCT FROM \${1}\`;
+        sql\`\${users.id} = ANY(\${[1, 2]})\`;
+      `,
+    },
+    {
+      name: "unqualified conflict target remains raw",
+      code: `${drizzlePreamble}
+        import { sql } from "drizzle-orm";
+        await db
+          .insert(users)
+          .values({ id: 1, name: "name", tags: [] })
+          .onConflictDoUpdate({
+            target: users.id,
+            set: { name: "other" },
+            targetWhere: sql\`raw_id IS NULL\`,
+          });
+      `,
+    },
+    {
+      name: "dynamic predicate spread remains opaque",
+      code: `${drizzlePreamble}
+        import { and, type SQL } from "drizzle-orm";
+        declare const fragments: SQL[];
+        db.select().from(users).where(and(...fragments));
+      `,
+    },
+  ],
+  invalid: [
+    {
+      name: "direct unsupported expression exposes its comparison leaf",
+      code: `${drizzlePreamble}
+        import { sql } from "drizzle-orm";
+        sql\`COALESCE(LOWER(\${users.name}) = \${"name"}, FALSE)\`;
+      `,
+      errors: [{ messageId: "typedApi", data: { helper: "eq" } }],
+    },
+    {
+      name: "postgres inequality alias reaches the ne capability",
+      code: `${drizzlePreamble}
+        import { sql } from "drizzle-orm";
+        sql\`COALESCE(\${users.id} != \${1}, FALSE)\`;
+      `,
+      errors: [{ messageId: "typedApi", data: { helper: "ne" } }],
+    },
+    {
+      name: "leading interpolation does not hide a nested comparison leaf",
+      code: `${drizzlePreamble}
+        import { eq, sql } from "drizzle-orm";
+        const first = eq(users.id, 1);
+        const fragment =
+          sql\`\${first} AND LOWER(\${users.name}) = \${"name"}\`;
+        void fragment;
+      `,
+      errors: [{ messageId: "typedApi", data: { helper: "eq" } }],
+    },
+    {
+      name: "complete statement exposes its nested comparison leaf",
+      code: `${drizzlePreamble}
+        import { sql } from "drizzle-orm";
+        sql\`
+          SELECT CASE WHEN \${users.id} > \${1} THEN 1 ELSE 0 END
+          FROM \${users}
+        \`;
+      `,
+      errors: [{ messageId: "typedApi", data: { helper: "gt" } }],
+    },
+    {
+      name: "leading predicate fragments use deterministic hosts",
+      code: `${drizzlePreamble}
+        import { sql } from "drizzle-orm";
+        const whereFragment = sql\`WHERE \${users.id} = \${1}\`;
+        const andFragment = sql\`AND \${users.name} IS NOT NULL\`;
+        void whereFragment;
+        void andFragment;
+      `,
+      errors: [
+        { messageId: "typedApi", data: { helper: "eq" } },
+        { messageId: "typedApi", data: { helper: "isNotNull" } },
+      ],
+    },
+    {
+      name: "conditional spread branch is analyzed at its own source",
+      code: `${drizzlePreamble}
+        import { sql } from "drizzle-orm";
+        declare const enabled: boolean;
+        const fragments = [
+          ...(enabled
+            ? [sql\`LOWER(\${users.name}) = \${"name"}\`]
+            : []),
+        ];
+        void fragments;
+      `,
+      errors: [{ messageId: "typedApi", data: { helper: "eq" } }],
+    },
+    {
+      name: "optional conditional branch is analyzed at its own source",
+      code: `${drizzlePreamble}
+        import { sql } from "drizzle-orm";
+        declare const enabled: boolean;
+        const predicate = enabled
+          ? sql\`LOWER(\${users.name}) = \${"name"}\`
+          : undefined;
+        void predicate;
+      `,
+      errors: [{ messageId: "typedApi", data: { helper: "eq" } }],
+    },
+    {
+      name: "optional predicate branch provides the logical result contract",
+      code: `${drizzlePreamble}
+        import { eq, sql } from "drizzle-orm";
+        declare const enabled: boolean;
+        const first = eq(users.id, 1);
+        const second = eq(users.name, "name");
+        db.select()
+          .from(users)
+          .where(enabled ? sql\`\${first} AND \${second}\` : undefined);
+      `,
+      errors: [{ messageId: "typedApi", data: { helper: "and" } }],
+    },
+    {
+      name: "conditional array spread provides the logical result contract",
+      code: `${drizzlePreamble}
+        import { and, eq, sql } from "drizzle-orm";
+        declare const enabled: boolean;
+        const first = eq(users.id, 1);
+        const second = eq(users.name, "name");
+        db.select()
+          .from(users)
+          .where(
+            and(
+              ...(enabled
+                ? [sql\`\${first} AND \${second}\`]
+                : []),
+            ),
+          );
+      `,
+      errors: [{ messageId: "typedApi", data: { helper: "and" } }],
+    },
+    {
+      name: "local factory declarations do not hide source leaves",
+      code: `${drizzlePreamble}
+        import { sql } from "drizzle-orm";
+        function rank() {
+          const threshold = 1;
+          return sql\`CASE WHEN \${users.id} > \${threshold} THEN 1 ELSE 0 END\`;
+        }
+        void rank();
+      `,
+      errors: [{ messageId: "typedApi", data: { helper: "gt" } }],
+    },
+    {
+      name: "conflict update fields use write and predicate contexts",
+      code: `${drizzlePreamble}
+        import { eq, sql } from "drizzle-orm";
+        await db
+          .insert(users)
+          .values({ id: 1, name: "name", tags: [] })
+          .onConflictDoUpdate({
+            target: users.id,
+            set: {
+              name: sql\`CASE WHEN LOWER(\${users.name}) = \${"name"} THEN 'same' ELSE 'other' END\`,
+            },
+            setWhere: sql\`\${eq(users.id, 1)} AND \${eq(users.name, "name")}\`,
+          });
+      `,
+      errors: [
+        { messageId: "typedApi", data: { helper: "eq" } },
+        { messageId: "typedApi", data: { helper: "and" } },
+      ],
+    },
+    {
+      name: "mapped aggregate and window ordering expose nested leaves",
+      code: `${drizzlePreamble}
+        import { sql } from "drizzle-orm";
+        const total =
+          sql\`COALESCE(SUM(\${users.id} + 1), 0)\`.mapWith(Number);
+        const rank =
+          sql\`ROW_NUMBER() OVER (ORDER BY \${users.name} ASC)\`.mapWith(
+            Number,
+          );
+        void total;
+        void rank;
+      `,
+      errors: [
+        { messageId: "typedApi", data: { helper: "sum" } },
+        { messageId: "typedApi", data: { helper: "asc" } },
+      ],
+    },
+    {
+      name: "scalar subquery comparison keeps the subquery operand",
+      code: `${drizzlePreamble}
+        import { sql } from "drizzle-orm";
+        declare const userId: number;
+        sql\`\${users.id} > COALESCE(
+          (
+            SELECT MAX(other.id)
+            FROM users other
+            WHERE other.id = \${userId}
+              AND NOT EXISTS (
+                SELECT 1 FROM users nested WHERE nested.id = other.id
+              )
+          ),
+          0
+        )\`;
+      `,
+      errors: [{ messageId: "typedApi", data: { helper: "gt" } }],
+    },
+    {
+      name: "nested hand-built existence leaves remain source-local",
+      code: `${drizzlePreamble}
+        import { eq, sql } from "drizzle-orm";
+        import { alias } from "drizzle-orm/pg-core";
+        const otherUsers = alias(users, "other_users");
+        const condition = eq(users.id, 1);
+        sql\`EXISTS (
+          SELECT 1 FROM \${users}
+          WHERE EXISTS (
+            SELECT 1 FROM \${otherUsers} WHERE \${condition}
+          )
+        )\`;
+        sql\`SELECT EXISTS (
+          SELECT 1 FROM \${users} WHERE \${condition}
+        )\`;
+        sql\`NOT EXISTS (
+          SELECT 1 FROM \${users} WHERE \${condition}
+        ) AND \${condition}\`;
+        sql\`WITH selected AS (SELECT 1) SELECT EXISTS (
+          SELECT 1 FROM \${users} WHERE \${condition}
+        )\`;
+      `,
+      errors: [
+        {
+          messageId: "existencePredicate",
+          data: { helper: "exists" },
+        },
+        {
+          messageId: "existencePredicate",
+          data: { helper: "exists" },
+        },
+        {
+          messageId: "existencePredicate",
+          data: { helper: "notExists" },
+        },
+        {
+          messageId: "existencePredicate",
+          data: { helper: "exists" },
+        },
+      ],
+    },
+    {
+      name: "one source leaf reused by multiple consumers reports once",
+      code: `${drizzlePreamble}
+        import { sql } from "drizzle-orm";
+        const predicate = sql\`LOWER(\${users.name}) = \${"name"}\`;
+        db.select().from(users).where(predicate);
+        db.select().from(users).having(predicate);
+      `,
+      errors: [{ messageId: "typedApi", data: { helper: "eq" } }],
+    },
+    {
+      name: "distinct same-helper leaves remain distinct",
+      code: `${drizzlePreamble}
+        import { sql } from "drizzle-orm";
+        sql\`CASE
+          WHEN \${users.id} = \${1} THEN 1
+          WHEN \${users.id} = \${2} THEN 2
+          ELSE 0
+        END\`;
       `,
       errors: [
         { messageId: "typedApi", data: { helper: "eq" } },

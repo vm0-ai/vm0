@@ -191,7 +191,10 @@ export const recordHostedSiteArtifact$ = command(
           ...(args.deploymentVersion === null
             ? {
                 previewImageUrl: sql`case
-                  when ${runUploadedFiles.metadata}->>'deploymentId' = ${args.deploymentId}
+                  when ${eq(
+                    sql`${runUploadedFiles.metadata}->>'deploymentId'`,
+                    args.deploymentId,
+                  )}
                   then ${runUploadedFiles.previewImageUrl}
                   else null
                 end`,

@@ -39,9 +39,12 @@ import {
 import { createExecuteRawRowsMatcher } from "../execute-raw-rows.ts";
 import {
   analyzeSql,
+  analyzeSqlSource,
+  sqlTagMightContainHelper,
   type SqlAnalysis,
   type SqlAnalysisContext,
   type SqlCapabilityChecks,
+  type SqlAnalysisFinding,
 } from "../sql-analysis/sql-analysis.ts";
 import { createSqlSourceComposer } from "../sql-analysis/sql-source.ts";
 import { createRule } from "../utils.ts";
@@ -161,6 +164,7 @@ export const preferDrizzleApis = createRule({
       checker,
       services,
     );
+    const sourceLocalCandidates: TSESTree.TaggedTemplateExpression[] = [];
     const structuralCallInspections: Array<() => void> = [];
     const structuredScalarCandidates =
       new Set<TSESTree.TaggedTemplateExpression>();
@@ -169,6 +173,7 @@ export const preferDrizzleApis = createRule({
       TSESTree.Node,
       Set<string>
     >();
+    const reportedSourceLocalFindings = new Set<string>();
     const resolvedCallSignatureCache = new WeakMap<
       TSESTree.CallExpression,
       Signature | null
@@ -291,8 +296,22 @@ export const preferDrizzleApis = createRule({
       });
     }
 
-    function reportStructuralAnalysis(analysis: SqlAnalysis): void {
-      for (const finding of analysis.findings) {
+    function reportStructuralFindings(
+      findings: readonly SqlAnalysisFinding[],
+      sourceLocal = false,
+    ): void {
+      for (const finding of findings) {
+        const sourceKey =
+          finding.kind === "helper" || finding.kind === "existence-predicate"
+            ? `${finding.kind}:${finding.helper}:${finding.sourceKey}`
+            : undefined;
+        if (sourceKey !== undefined) {
+          if (sourceLocal) {
+            reportedSourceLocalFindings.add(sourceKey);
+          } else if (reportedSourceLocalFindings.has(sourceKey)) {
+            continue;
+          }
+        }
         const key =
           finding.kind === "query-builder"
             ? finding.kind
@@ -347,6 +366,10 @@ export const preferDrizzleApis = createRule({
           reportTypedApi(finding.node, finding.helper);
         }
       }
+    }
+
+    function reportStructuralAnalysis(analysis: SqlAnalysis): void {
+      reportStructuralFindings(analysis.findings);
     }
 
     function memberName(node: TSESTree.MemberExpression): string | undefined {
@@ -520,31 +543,44 @@ export const preferDrizzleApis = createRule({
       const predicate = node.arguments[predicateIndex];
       if (
         predicate === undefined ||
-        predicate.type === AST_NODE_TYPES.SpreadElement ||
-        !sqlSourceComposer.couldCompose(predicate)
+        predicate.type === AST_NODE_TYPES.SpreadElement
       ) {
         return;
       }
+      const roots = contextRoots(predicate);
+      if (roots.length === 0) {
+        return;
+      }
       structuralCallInspections.push(() => {
-        const analysis = analyzeSql(
-          predicate,
-          "predicate",
-          checker,
-          services,
-          sqlSourceComposer,
-          sqlCapabilityChecks,
-        );
+        const analyses = roots.map((root) => {
+          return analyzeSql(
+            root,
+            root === predicate ? "predicate" : "optional-predicate",
+            checker,
+            services,
+            sqlSourceComposer,
+            sqlCapabilityChecks,
+          );
+        });
+        const isTrueJoinPredicate =
+          roots.length === 1 &&
+          roots[0] === predicate &&
+          analyses[0]?.isTruePredicate === true;
         if (
-          analysis.findings.length === 0 &&
-          !(method === "innerJoin" && analysis.isTruePredicate)
+          !analyses.some((analysis) => {
+            return analysis.findings.length > 0;
+          }) &&
+          !(method === "innerJoin" && isTrueJoinPredicate)
         ) {
           return;
         }
         if (!isDrizzleMethodCall(node, method)) {
           return;
         }
-        reportStructuralAnalysis(analysis);
-        if (method === "innerJoin" && analysis.isTruePredicate) {
+        for (const analysis of analyses) {
+          reportStructuralAnalysis(analysis);
+        }
+        if (method === "innerJoin" && isTrueJoinPredicate) {
           context.report({ node, messageId: "crossJoin" });
         }
       });
@@ -562,11 +598,18 @@ export const preferDrizzleApis = createRule({
       }
       if (node.type === AST_NODE_TYPES.ArrayExpression) {
         return node.elements.flatMap((element) => {
-          return element === null ||
-            element.type === AST_NODE_TYPES.SpreadElement
+          return element === null
             ? []
-            : contextRoots(element);
+            : element.type === AST_NODE_TYPES.SpreadElement
+              ? contextRoots(element.argument)
+              : contextRoots(element);
         });
+      }
+      if (node.type === AST_NODE_TYPES.ConditionalExpression) {
+        return [
+          ...contextRoots(node.consequent),
+          ...contextRoots(node.alternate),
+        ];
       }
       if (
         node.type === AST_NODE_TYPES.ArrowFunctionExpression ||
@@ -587,7 +630,6 @@ export const preferDrizzleApis = createRule({
       if (
         node.type === AST_NODE_TYPES.CallExpression ||
         node.type === AST_NODE_TYPES.ChainExpression ||
-        node.type === AST_NODE_TYPES.ConditionalExpression ||
         node.type === AST_NODE_TYPES.Identifier ||
         node.type === AST_NODE_TYPES.TaggedTemplateExpression ||
         node.type === AST_NODE_TYPES.TSAsExpression ||
@@ -840,7 +882,7 @@ export const preferDrizzleApis = createRule({
       if (helper !== undefined && helperContext !== undefined) {
         const roots = node.arguments.flatMap((argument) => {
           return argument.type === AST_NODE_TYPES.SpreadElement
-            ? []
+            ? contextRoots(argument.argument)
             : contextRoots(argument);
         });
         if (roots.length > 0) {
@@ -848,7 +890,9 @@ export const preferDrizzleApis = createRule({
             const analyses = roots.map((root) => {
               return analyzeSql(
                 root,
-                helperContext,
+                helper === "and" || helper === "or"
+                  ? "optional-predicate"
+                  : helperContext,
                 checker,
                 services,
                 sqlSourceComposer,
@@ -935,7 +979,7 @@ export const preferDrizzleApis = createRule({
         }
         const roots = argumentsToInspect.flatMap((argument) => {
           return argument.type === AST_NODE_TYPES.SpreadElement
-            ? []
+            ? contextRoots(argument.argument)
             : contextRoots(argument);
         });
         if (roots.length === 0) {
@@ -984,8 +1028,90 @@ export const preferDrizzleApis = createRule({
     }
 
     interface ContextualRoot {
-      readonly context: "ordering" | "predicate" | "selection";
+      readonly context:
+        | "ordering"
+        | "optional-predicate"
+        | "predicate"
+        | "selection"
+        | "write-expression";
       readonly node: TSESTree.Expression;
+    }
+
+    function conflictUpdateRoots(
+      options: TSESTree.ObjectExpression,
+    ): readonly ContextualRoot[] {
+      return options.properties.flatMap<ContextualRoot>((property) => {
+        if (
+          property.type !== AST_NODE_TYPES.Property ||
+          property.kind !== "init"
+        ) {
+          return [];
+        }
+        const name = staticPropertyName(property);
+        if (
+          name === "set" &&
+          property.value.type === AST_NODE_TYPES.ObjectExpression
+        ) {
+          return property.value.properties.flatMap<ContextualRoot>((field) => {
+            return field.type === AST_NODE_TYPES.Property &&
+              field.kind === "init" &&
+              !field.computed
+              ? contextRoots(field.value).map((root) => {
+                  return { context: "write-expression", node: root };
+                })
+              : [];
+          });
+        }
+        return name === "setWhere" || name === "targetWhere"
+          ? contextRoots(property.value).map((root) => {
+              return { context: "optional-predicate", node: root };
+            })
+          : [];
+      });
+    }
+
+    function inspectConflictUpdateCall(node: TSESTree.CallExpression): void {
+      if (
+        node.callee.type !== AST_NODE_TYPES.MemberExpression ||
+        memberName(node.callee) !== "onConflictDoUpdate" ||
+        node.arguments.length !== 1
+      ) {
+        return;
+      }
+      const options = node.arguments[0];
+      if (
+        options === undefined ||
+        options.type !== AST_NODE_TYPES.ObjectExpression
+      ) {
+        return;
+      }
+      const roots = conflictUpdateRoots(options);
+      if (roots.length === 0) {
+        return;
+      }
+      structuralCallInspections.push(() => {
+        const analyses = roots.map((root) => {
+          return analyzeSql(
+            root.node,
+            root.context,
+            checker,
+            services,
+            sqlSourceComposer,
+            sqlCapabilityChecks,
+          );
+        });
+        if (
+          !analyses.some((analysis) => {
+            return analysis.findings.length > 0;
+          }) ||
+          !isDrizzleMethodCall(node, "onConflictDoUpdate")
+        ) {
+          return;
+        }
+        for (const analysis of analyses) {
+          reportStructuralAnalysis(analysis);
+        }
+      });
     }
 
     function relationalConfigRoots(
@@ -1439,6 +1565,7 @@ export const preferDrizzleApis = createRule({
         inspectRawQueryCall(node);
         inspectPredicateCall(node);
         inspectAdditionalContextCall(node);
+        inspectConflictUpdateCall(node);
         inspectLateralJoin(node);
         inspectRelationalQueryCall(node);
         inspectStructuredSelectionCall(node);
@@ -1464,6 +1591,9 @@ export const preferDrizzleApis = createRule({
           firstQuasi !== undefined &&
           (firstQuasi.value.cooked ?? firstQuasi.value.raw) === "";
         if (!isExactEmpty) {
+          if (sqlTagMightContainHelper(node)) {
+            sourceLocalCandidates.push(node);
+          }
           return;
         }
         structuralCallInspections.push(() => {
@@ -1474,6 +1604,21 @@ export const preferDrizzleApis = createRule({
         });
       },
       "Program:exit"(): void {
+        for (const node of sourceLocalCandidates) {
+          if (!isDrizzleSqlTag(checker, services, node.tag)) {
+            continue;
+          }
+          reportStructuralFindings(
+            analyzeSqlSource(
+              node,
+              checker,
+              services,
+              sqlSourceComposer,
+              sqlCapabilityChecks,
+            ),
+            true,
+          );
+        }
         for (const inspect of structuralCallInspections) {
           inspect();
         }

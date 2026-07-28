@@ -1,5 +1,5 @@
 import { command } from "ccstate";
-import { count, sql, type SQL } from "drizzle-orm";
+import { and, count, eq, inArray, sql, type SQL } from "drizzle-orm";
 import {
   type UsageRecordKind,
   type UsageRecordRow,
@@ -111,13 +111,10 @@ type UsageRecordBreakdownSqlRow = z.output<
 >;
 
 function tokenExpr(usage: FinalizedUsageRelation) {
-  const list = sql.join(
-    MODEL_TOKEN_CATEGORIES.map((category) => {
-      return sql`${category}`;
-    }),
-    sql`, `,
-  );
-  return sql`CASE WHEN ${usage.kind} = ${MODEL_USAGE_KIND} AND ${usage.category} IN (${list}) THEN ${usage.quantity} ELSE 0 END`;
+  return sql`CASE WHEN ${and(
+    eq(usage.kind, MODEL_USAGE_KIND),
+    inArray(usage.category, MODEL_TOKEN_CATEGORIES),
+  )} THEN ${usage.quantity} ELSE 0 END`;
 }
 
 function sourceExpr() {
@@ -137,15 +134,9 @@ function sourceExpr() {
 }
 
 function usageKindExpr(usage: FinalizedUsageRelation) {
-  const usageKindList = sql.join(
-    USAGE_RECORD_KINDS.map((kind) => {
-      return sql`${kind}`;
-    }),
-    sql`, `,
-  );
   return sql`
     CASE
-      WHEN ${usage.kind} IN (${usageKindList}) THEN ${usage.kind}
+      WHEN ${inArray(usage.kind, USAGE_RECORD_KINDS)} THEN ${usage.kind}
       ELSE 'other'
     END`;
 }
@@ -172,7 +163,7 @@ function recordWith(
   );
   const usage = buildFinalizedUsageRelation(period ?? undefined);
   const userPredicate =
-    userId === null ? sql.empty() : sql`AND ${usage.userId} = ${userId}`;
+    userId === null ? sql.empty() : sql`AND ${eq(usage.userId, userId)}`;
   return sql`
     WITH usage_rows AS (
       SELECT
@@ -314,9 +305,15 @@ function rowKeyExpr() {
   );
   return sql`
     CASE
-      WHEN chat_thread_id IS NOT NULL AND source IN (${threadedSourceList})
+      WHEN ${and(
+        sql`chat_thread_id IS NOT NULL`,
+        sql`source IN (${threadedSourceList})`,
+      )}
         THEN CONCAT(source, ':thread:', chat_thread_id::text, ':user:', user_id)
-      WHEN chat_thread_id IS NULL AND source IN (${threadedSourceList})
+      WHEN ${and(
+        sql`chat_thread_id IS NULL`,
+        sql`source IN (${threadedSourceList})`,
+      )}
         THEN CONCAT(source, ':deleted-thread:user:', user_id)
       ELSE CONCAT(source, ':run:', run_id::text, ':user:', user_id)
     END`;
@@ -335,7 +332,7 @@ async function queryUsageRecordBreakdown(
 
   const usage = buildFinalizedUsageRelation(period ?? undefined);
   const userPredicate =
-    userId === null ? sql.empty() : sql`AND ${usage.userId} = ${userId}`;
+    userId === null ? sql.empty() : sql`AND ${eq(usage.userId, userId)}`;
   const rowKeyList = sql.join(
     rowKeys.map((rowKey) => {
       return sql`${rowKey}`;

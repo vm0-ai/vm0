@@ -10,6 +10,7 @@ import {
   asc,
   desc,
   eq,
+  gt,
   inArray,
   isNotNull,
   not,
@@ -161,20 +162,23 @@ async function selectIncompleteRoundFrontier(
 }
 
 function afterSuccessfulRunBoundary(threadId: string, successfulRunId: string) {
-  return sql`${chatMessages.seqId} > COALESCE(
-    (
-      SELECT MAX(boundary_message.seq_id)
-      FROM chat_messages boundary_message
-      WHERE boundary_message.chat_thread_id = ${threadId}
-        AND boundary_message.run_id = ${successfulRunId}
-        AND NOT EXISTS (
-          SELECT 1
-          FROM chat_messages boundary_revoker
-          WHERE boundary_revoker.revokes_message_id = boundary_message.id
-        )
-    ),
-    0::bigint
-  )`;
+  return gt(
+    chatMessages.seqId,
+    sql`COALESCE(
+      (
+        SELECT MAX(boundary_message.seq_id)
+        FROM chat_messages boundary_message
+        WHERE boundary_message.chat_thread_id = ${threadId}
+          AND boundary_message.run_id = ${successfulRunId}
+          AND NOT EXISTS (
+            SELECT 1
+            FROM chat_messages boundary_revoker
+            WHERE boundary_revoker.revokes_message_id = boundary_message.id
+          )
+      ),
+      0::bigint
+    )`,
+  );
 }
 
 async function loadSelectedIncompleteRounds(

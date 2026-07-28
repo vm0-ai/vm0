@@ -50,11 +50,17 @@ import {
 
 export type SqlAnalysisContext =
   | "ordering"
+  | "optional-predicate"
   | "predicate"
   | "relation"
   | "selection"
+  | "source-predicate-prefix"
+  | "source-selection"
+  | "source-statement"
+  | "source-where-prefix"
   | "statement"
-  | "structured-selection";
+  | "structured-selection"
+  | "write-expression";
 
 type QueryCapability =
   | "composed-cte"
@@ -73,11 +79,17 @@ export type SqlAnalysisFinding =
       readonly helper: SqlHelper;
       readonly kind: "helper";
       readonly node: TSESTree.Node;
+      readonly sourceKey: string;
+      readonly sourceLocalEligible: boolean;
+      readonly sourceTemplateKey: string;
     }
   | {
       readonly helper: "exists" | "notExists";
       readonly kind: "existence-predicate";
       readonly node: TSESTree.Node;
+      readonly sourceKey: string;
+      readonly sourceLocalEligible: boolean;
+      readonly sourceTemplateKey: string;
     }
   | {
       readonly kind: "empty-fragment";
@@ -300,10 +312,18 @@ interface StructuralOrdering {
   readonly sourceChunks: ReadonlySet<SqlSourceChunk>;
 }
 
-type ClassifiedHelperFinding = Extract<
-  SqlAnalysisFinding,
-  { readonly kind: "existence-predicate" | "helper" }
-> & {
+type ClassifiedHelperFinding = (
+  | {
+      readonly helper: SqlHelper;
+      readonly kind: "helper";
+      readonly node: TSESTree.Node;
+    }
+  | {
+      readonly helper: "exists" | "notExists";
+      readonly kind: "existence-predicate";
+      readonly node: TSESTree.Node;
+    }
+) & {
   readonly isolationContext: "ordering" | "predicate" | "selection";
   readonly isPartial: boolean;
   readonly sourceChunks: ReadonlySet<SqlSourceChunk>;
@@ -317,6 +337,7 @@ interface ExpressionClassification {
 
 interface ClassificationContext {
   readonly allowsOptionalSql: boolean;
+  readonly allowsRetainedSqlWrapper: boolean;
   readonly capabilities: SqlCapabilityChecks;
   readonly checker: TypeChecker;
   readonly ownsResultMapping: boolean;
@@ -944,15 +965,22 @@ function parseSqlVariant(
   const markerNames: string[] = [];
   const selectCandidateNames = new Set<string>();
   const contextPrefix =
-    context === "statement"
+    context === "statement" || context === "source-statement"
       ? ""
-      : context === "predicate"
+      : context === "predicate" || context === "optional-predicate"
         ? "SELECT 1 WHERE "
-        : context === "selection" || context === "structured-selection"
-          ? "SELECT "
-          : context === "ordering"
-            ? "SELECT 1 ORDER BY "
-            : "SELECT 1 FROM ";
+        : context === "source-predicate-prefix"
+          ? "SELECT 1 WHERE TRUE "
+          : context === "source-where-prefix"
+            ? "SELECT 1 "
+            : context === "selection" ||
+                context === "source-selection" ||
+                context === "structured-selection" ||
+                context === "write-expression"
+              ? "SELECT "
+              : context === "ordering"
+                ? "SELECT 1 ORDER BY "
+                : "SELECT 1 FROM ";
   let markerIndex = 0;
   let precedingLiteral = "";
   for (const chunk of variant.chunks) {
@@ -1694,24 +1722,20 @@ function directStructuralChildren(
 
 function retainableInlineMarkers(
   expression: StructuralExpression,
+  context: ClassificationContext,
 ): readonly SqlMarker[] | undefined {
   if (expression.kind === "marker") {
     const marker = expression.marker;
     return !marker.isTable &&
       !marker.isSelect &&
-      marker.isAnalyzableWriteInterpolation
+      (marker.isAnalyzableWriteInterpolation ||
+        (context.allowsRetainedSqlWrapper && marker.isWrapper))
       ? [marker]
       : undefined;
   }
-  if (
-    expression.kind === "existence" ||
-    (expression.kind === "opaque" && expression.nodeKey === "SubLink")
-  ) {
-    return undefined;
-  }
   const markers: SqlMarker[] = [];
   for (const child of directStructuralChildren(expression)) {
-    const childMarkers = retainableInlineMarkers(child);
+    const childMarkers = retainableInlineMarkers(child, context);
     if (childMarkers === undefined) {
       return undefined;
     }
@@ -1745,7 +1769,7 @@ function isSafeHelperValueOperand(
       (marker.isBoundScalar || marker.isWrapper)
     );
   }
-  const markers = retainableInlineMarkers(expression);
+  const markers = retainableInlineMarkers(expression, context);
   return (
     markers !== undefined &&
     (markers.length === 0 || hasInlineValueBoundary(expression, context))
@@ -1761,7 +1785,7 @@ function retainedOperandAnchor(
   requirement: RetainedOperandRequirement,
   context: ClassificationContext,
 ): TSESTree.Expression | undefined {
-  const markers = retainableInlineMarkers(expression);
+  const markers = retainableInlineMarkers(expression, context);
   if (
     role === "array" ||
     role === "column" ||
@@ -2168,7 +2192,12 @@ function classifyExpression(
     const argumentNode =
       expression.argument === undefined
         ? undefined
-        : operandAnchor(expression.argument, "wrapper", context);
+        : operandAnchor(
+            expression.argument,
+            "wrapper",
+            context,
+            "interpolation",
+          );
     const validArgument = expression.isStar
       ? expression.helper === "count"
       : argumentNode !== undefined;
@@ -4175,13 +4204,23 @@ function structuralExpressionsForContext(
   context: SqlAnalysisContext,
   parsed: ParsedSql,
 ): readonly StructuralExpression[] {
-  if (context === "predicate") {
+  if (
+    context === "predicate" ||
+    context === "optional-predicate" ||
+    context === "source-predicate-prefix" ||
+    context === "source-where-prefix"
+  ) {
     const predicate = predicateExpression(parsed.statement);
     return predicate === undefined
       ? []
       : [structuralExpression(predicate, parsed.markers, parsed.sourceRanges)];
   }
-  if (context === "selection" || context === "structured-selection") {
+  if (
+    context === "selection" ||
+    context === "source-selection" ||
+    context === "structured-selection" ||
+    context === "write-expression"
+  ) {
     return selectedExpressions(parsed.statement).map((expression) => {
       return structuralExpression(
         expression,
@@ -4524,17 +4563,102 @@ function classifyOrdering(
   };
 }
 
-function publicFinding(finding: ClassifiedHelperFinding): SqlAnalysisFinding {
+function findingSourceProvenance(
+  chunks: ReadonlySet<SqlSourceChunk>,
+  findingNode: TSESTree.Node,
+): {
+  readonly sourceKey: string;
+  readonly sourceTemplateKey: string;
+} {
+  const sourceChunks = [...chunks];
+  const firstChunk = sourceChunks[0];
+  let sourceTemplate: TSESTree.TaggedTemplateExpression | undefined;
+  if (firstChunk !== undefined) {
+    for (let index = firstChunk.origins.length - 1; index >= 0; index -= 1) {
+      const candidate = firstChunk.origins[index];
+      if (
+        candidate?.type === AST_NODE_TYPES.TaggedTemplateExpression &&
+        sourceChunks.every((chunk) => {
+          return chunk.origins.includes(candidate);
+        })
+      ) {
+        sourceTemplate = candidate;
+        break;
+      }
+    }
+  }
+  const origins = [
+    ...new Set(
+      sourceChunks.flatMap((chunk) => {
+        let origin = chunk.origins.at(-1);
+        if (sourceTemplate !== undefined) {
+          for (let index = chunk.origins.length - 1; index >= 0; index -= 1) {
+            const candidate = chunk.origins[index];
+            if (
+              candidate !== undefined &&
+              candidate.range[0] >= sourceTemplate.range[0] &&
+              candidate.range[1] <= sourceTemplate.range[1]
+            ) {
+              origin = candidate;
+              break;
+            }
+          }
+        }
+        return origin === undefined ||
+          origin.type === AST_NODE_TYPES.TemplateElement
+          ? []
+          : [origin];
+      }),
+    ),
+  ].sort((left, right) => {
+    return (
+      left.range[0] - right.range[0] ||
+      left.range[1] - right.range[1] ||
+      left.type.localeCompare(right.type)
+    );
+  });
+  const originKey = origins
+    .map((origin) => {
+      return `${origin.type}:${origin.range[0]}:${origin.range[1]}`;
+    })
+    .join("|");
+  const sourceTemplateKey =
+    sourceTemplate === undefined
+      ? ""
+      : `${sourceTemplate.type}:${sourceTemplate.range[0]}:${sourceTemplate.range[1]}`;
+  return {
+    sourceKey:
+      originKey === ""
+        ? `${sourceTemplateKey}:${findingNode.type}:${findingNode.range[0]}:${findingNode.range[1]}`
+        : originKey,
+    sourceTemplateKey,
+  };
+}
+
+function publicFinding(
+  finding: ClassifiedHelperFinding,
+  sourceLocalEligible: boolean,
+): SqlAnalysisFinding {
+  const { sourceKey, sourceTemplateKey } = findingSourceProvenance(
+    finding.sourceChunks,
+    finding.node,
+  );
   return finding.kind === "existence-predicate"
     ? {
         helper: finding.helper,
         kind: finding.kind,
         node: finding.node,
+        sourceKey,
+        sourceLocalEligible,
+        sourceTemplateKey,
       }
     : {
         helper: finding.helper,
         kind: finding.kind,
         node: finding.node,
+        sourceKey,
+        sourceLocalEligible,
+        sourceTemplateKey,
       };
 }
 
@@ -4557,6 +4681,7 @@ function replacementBoundaryForFinding(
   checker: TypeChecker,
   services: ParserServicesWithTypeInformation,
   capabilities: SqlCapabilityChecks,
+  allowsRetainedSqlWrapper: boolean,
 ): TSESTree.Expression | undefined {
   // A parsed descendant can cross template boundaries because Drizzle inserts
   // nested SQL without parentheses. Reparse each editable boundary in
@@ -4590,6 +4715,7 @@ function replacementBoundaryForFinding(
     }
     const classificationContext: ClassificationContext = {
       allowsOptionalSql: true,
+      allowsRetainedSqlWrapper,
       capabilities,
       checker,
       ownsResultMapping: false,
@@ -4688,21 +4814,42 @@ function analyzeParsed(
           parsed.markers,
           parsed.sourceRanges,
         )
-      : context === "statement"
+      : context === "statement" || context === "source-statement"
         ? collectStructuralOrderings(
             parsed.statement,
             parsed.markers,
             parsed.sourceRanges,
           )
-        : [];
+        : context === "selection" ||
+            context === "source-selection" ||
+            context === "structured-selection" ||
+            context === "write-expression"
+          ? selectedExpressions(parsed.statement).flatMap((expression) => {
+              return collectStructuralOrderings(
+                expression,
+                parsed.markers,
+                parsed.sourceRanges,
+              );
+            })
+          : [];
   const ownsResultMapping =
-    (context === "selection" || context === "structured-selection") &&
+    (context === "selection" ||
+      context === "source-selection" ||
+      context === "structured-selection") &&
     structuralExpressions.length === 1;
   const classificationContext: ClassificationContext = {
     allowsOptionalSql:
       context === "statement" ||
+      context === "source-statement" ||
+      context === "source-where-prefix" ||
+      context === "optional-predicate" ||
       context === "relation" ||
       capabilities.acceptsOptionalSql(node),
+    allowsRetainedSqlWrapper:
+      context === "source-predicate-prefix" ||
+      context === "source-selection" ||
+      context === "source-statement" ||
+      context === "source-where-prefix",
     capabilities,
     checker,
     ownsResultMapping,
@@ -4721,16 +4868,27 @@ function analyzeParsed(
   const rootClassification =
     classifications.length === 1 ? classifications[0] : undefined;
   const rootFinding = rootClassification?.findings[0];
-  const canReplaceRoot =
-    hasLocalExpansion &&
+  const contextOwnsSourceExpression =
     (context === "ordering" ||
+      context === "optional-predicate" ||
       context === "predicate" ||
       context === "selection" ||
-      context === "structured-selection") &&
+      context === "source-selection" ||
+      context === "structured-selection" ||
+      context === "write-expression") &&
     contextOwnsWholeExpression(
-      context === "structured-selection" ? "selection" : context,
+      context === "optional-predicate"
+        ? "predicate"
+        : context === "structured-selection" ||
+            context === "source-selection" ||
+            context === "write-expression"
+          ? "selection"
+          : context,
       parsed.statement,
-    ) &&
+    );
+  const canReplaceRoot =
+    hasLocalExpansion &&
+    contextOwnsSourceExpression &&
     rootClassification?.isWholeReplacement === true &&
     rootClassification.findings.length === 1 &&
     rootFinding !== undefined &&
@@ -4741,12 +4899,30 @@ function analyzeParsed(
   const hasWholeReplacementBoundary = replacementBoundary !== undefined;
   const findingEntries = deduplicateFindingEntries(
     classifications.flatMap((classification) => {
+      function isSourceLocalEligible(
+        finding: ClassifiedHelperFinding,
+      ): boolean {
+        return (
+          (finding.helper !== "and" && finding.helper !== "or") ||
+          !(
+            contextOwnsSourceExpression &&
+            classification === rootClassification &&
+            classification.isWholeReplacement &&
+            classification.findings.length === 1 &&
+            finding === rootFinding
+          )
+        );
+      }
+
       if (hasWholeReplacementBoundary) {
         return classification.findings.map((finding) => {
-          const publicResult = publicFinding({
-            ...finding,
-            node: replacementBoundary ?? node,
-          });
+          const publicResult = publicFinding(
+            {
+              ...finding,
+              node: replacementBoundary ?? node,
+            },
+            isSourceLocalEligible(finding),
+          );
           return {
             finding: publicResult,
             signature: {
@@ -4763,7 +4939,10 @@ function analyzeParsed(
       }
       return classification.findings.flatMap((finding) => {
         if (!hasLocalExpansion) {
-          const publicResult = publicFinding(finding);
+          const publicResult = publicFinding(
+            finding,
+            isSourceLocalEligible(finding),
+          );
           return [
             {
               finding: publicResult,
@@ -4786,11 +4965,15 @@ function analyzeParsed(
           checker,
           services,
           capabilities,
+          classificationContext.allowsRetainedSqlWrapper,
         );
         if (boundary === undefined) {
           return [];
         }
-        const publicResult = publicFinding({ ...finding, node: boundary });
+        const publicResult = publicFinding(
+          { ...finding, node: boundary },
+          isSourceLocalEligible(finding),
+        );
         return [
           {
             finding: publicResult,
@@ -4886,8 +5069,16 @@ function emptyTemplateFindings(
 }
 
 const SQL_CAPABILITY_TOKEN =
-  /(?:<>|>=|<=|@>|<@|&&|(?<![-=>])=(?!=|>)|(?<![-@>])>|<(?![@=>])|\b(?:AND|ASC|AVG|BETWEEN|COUNT|DESC|EXISTS|ILIKE|IN|IS|LIKE|MAX|MIN|NOT|NULL|OR|SUM|TRUE)\b)/i;
+  /(?:<>|!=|>=|<=|@>|<@|&&|(?<![-=>])=(?!=|>)|(?<![-@>])>|<(?![@=>])|\b(?:AND|ASC|AVG|BETWEEN|COUNT|DESC|EXISTS|ILIKE|IN|IS|LIKE|MAX|MIN|NOT|NULL|OR|SUM|TRUE)\b)/i;
 const WRITE_CAPABILITY_TOKEN = /\b(?:DELETE|INSERT|UPDATE)\b/i;
+
+export function sqlTagMightContainHelper(
+  node: TSESTree.TaggedTemplateExpression,
+): boolean {
+  return node.quasi.quasis.some((quasi) => {
+    return SQL_CAPABILITY_TOKEN.test(quasi.value.cooked ?? quasi.value.raw);
+  });
+}
 
 function variantMightContainCapability(
   variant: SqlSourceVariant,
@@ -5028,4 +5219,54 @@ export function analyzeSql(
     nodeCache.set(context, analysis);
   }
   return analysis;
+}
+
+function sourceLocalContext(
+  node: TSESTree.TaggedTemplateExpression,
+): SqlAnalysisContext {
+  const leadingLiteral =
+    node.quasi.quasis[0]?.value.cooked ?? node.quasi.quasis[0]?.value.raw ?? "";
+  if (/^\s*(?:DELETE|INSERT|SELECT|UPDATE|WITH)\b/iu.test(leadingLiteral)) {
+    return "source-statement";
+  }
+  if (/^\s*WHERE\b/iu.test(leadingLiteral)) {
+    return "source-where-prefix";
+  }
+  if (/^\s*(?:AND|OR)\b/iu.test(leadingLiteral)) {
+    return "source-predicate-prefix";
+  }
+  return "source-selection";
+}
+
+export function analyzeSqlSource(
+  node: TSESTree.TaggedTemplateExpression,
+  checker: TypeChecker,
+  services: ParserServicesWithTypeInformation,
+  composer: SqlSourceComposer,
+  capabilities: SqlCapabilityChecks = NO_CAPABILITY_CHECKS,
+): readonly SqlAnalysisFinding[] {
+  const context = sourceLocalContext(node);
+  const sourceTemplateKey = `${node.type}:${node.range[0]}:${node.range[1]}`;
+  return analyzeSql(
+    node,
+    context,
+    checker,
+    services,
+    composer,
+    capabilities,
+  ).findings.filter((finding) => {
+    if (finding.kind !== "helper" && finding.kind !== "existence-predicate") {
+      return false;
+    }
+    if (finding.sourceTemplateKey !== sourceTemplateKey) {
+      return false;
+    }
+    if (
+      context === "source-predicate-prefix" &&
+      (finding.helper === "and" || finding.helper === "or")
+    ) {
+      return false;
+    }
+    return finding.sourceLocalEligible;
+  });
 }

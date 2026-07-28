@@ -15,6 +15,7 @@ import { zeroAgents } from "@vm0/db/schema/zero-agent";
 import { zeroRuns } from "@vm0/db/schema/zero-run";
 import {
   and,
+  asc,
   count,
   desc,
   eq,
@@ -390,7 +391,7 @@ function agentNameExpr() {
 
 function chatRankExpr(credits: SQLWrapper, stableKey: SQLWrapper) {
   return sql`ROW_NUMBER() OVER (
-    ORDER BY ${desc(sum(credits))} NULLS LAST, ${stableKey} ASC
+    ORDER BY ${desc(sum(credits))} NULLS LAST, ${asc(stableKey)}
   )`.mapWith(pgInt8ToSafeIntegerDecoder);
 }
 
