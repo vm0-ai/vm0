@@ -132,6 +132,7 @@ async fn supervised_exec_start_timeout_before_write_preserves_connection() {
 async fn supervised_exec_start_timeout_is_not_restarted_after_write() {
     let (host, mut guest) = setup_host_and_guest().await;
     let host = Arc::new(host);
+    tokio::time::pause();
     let (deadline_elapsed_tx, deadline_elapsed_rx) = tokio::sync::oneshot::channel();
     let task = {
         let host = Arc::clone(&host);
@@ -154,6 +155,7 @@ async fn supervised_exec_start_timeout_is_not_restarted_after_write() {
 
     let start = read_guest_message(&mut guest).await;
     assert_eq!(start.msg_type, MSG_EXEC_START);
+    tokio::time::advance(START_ACK_TEST_TIMEOUT).await;
     tokio::time::timeout(Duration::from_secs(5), deadline_elapsed_rx)
         .await
         .expect("after-write hook should consume the start deadline")
