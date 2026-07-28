@@ -4957,6 +4957,13 @@
       "when": 1785209964889,
       "tag": "0707_orange_solo",
       "breakpoints": true
+    },
+    {
+      "idx": 708,
+      "version": "7",
+      "when": 1785211488965,
+      "tag": "0708_backfill_structured_prompt_drafts",
+      "breakpoints": true
     }
   ]
 }
