@@ -1,4 +1,9 @@
-"""Request streaming setup for stream-safe body capture paths."""
+"""Shared capped request streaming state for capture logging and X billing.
+
+The pass-through buffer is consumed by network capture and X connector billing
+refinement. Terminal response and error handling retain its metadata through
+applicable connector usage reporting, then release it.
+"""
 
 from typing import NamedTuple
 
@@ -16,7 +21,7 @@ class CapturedRequestStreamBody(NamedTuple):
 
 
 def configure_request_stream(flow: http.HTTPFlow) -> None:
-    """Enable capped request body capture without modifying forwarded chunks."""
+    """Enable capped shared body observation without modifying forwarded chunks."""
     if callable(flow.request.stream):
         return
 
@@ -50,7 +55,10 @@ def streamed_request_size(flow: http.HTTPFlow) -> int | None:
 
 
 def captured_request_stream_body(flow: http.HTTPFlow) -> CapturedRequestStreamBody | None:
-    """Return buffered request body bytes and truncation state for capture logging."""
+    """Return buffered bytes and truncation state to capture and billing consumers.
+
+    Request completeness is recorded separately in ``REQUEST_STREAM_COMPLETE``.
+    """
     stream_buf = flow.metadata.get(metadata_keys.REQUEST_STREAM_BUFFER)
     stream_state = flow.metadata.get(metadata_keys.REQUEST_STREAM_BUFFER_STATE)
     stream_truncated = False
@@ -86,7 +94,11 @@ def captured_request_stream_body(flow: http.HTTPFlow) -> CapturedRequestStreamBo
 
 
 def release_request_stream_state(flow: http.HTTPFlow) -> None:
-    """Release request stream callback and buffered capture metadata."""
+    """Release shared stream state after terminal consumers have finished.
+
+    Terminal cleanup calls this after network logging and applicable connector
+    usage reporting.
+    """
     stream_callback = flow.metadata.pop(_REQUEST_STREAM_CALLBACK, None)
     flow.metadata.pop(metadata_keys.REQUEST_STREAM_BUFFER, None)
     flow.metadata.pop(metadata_keys.REQUEST_STREAM_BUFFER_STATE, None)
