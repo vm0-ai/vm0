@@ -9,7 +9,7 @@ import type { ComposerSlashWorkflow } from "../../signals/zero-page/workflow-com
 
 export {
   buildComposerSlashWorkflows,
-  matchesWorkflowQuery,
+  findWorkflowQueryMatches,
   type ComposerSlashWorkflow,
 } from "../../signals/zero-page/workflow-composer-domain.ts";
 

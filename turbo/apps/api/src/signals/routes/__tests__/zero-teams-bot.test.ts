@@ -2055,9 +2055,10 @@ describe("POST /api/zero/teams/bot", () => {
     outboundRequests.splice(0, outboundRequests.length);
 
     const firstResponse = await postTeamsActivity({
-      activity: teamsPersonalMessageActivity({
+      activity: teamsPersonalThreadMessageActivity({
         fixture,
         id: "activity-queue-active-1",
+        threadId: "activity-queue-thread-1",
         text: "active run one",
       }),
       token: teamsToken(),
@@ -2068,9 +2069,10 @@ describe("POST /api/zero/teams/bot", () => {
     const firstRunId = await runIdForPrompt(actor, "active run one");
 
     const secondResponse = await postTeamsActivity({
-      activity: teamsPersonalMessageActivity({
+      activity: teamsPersonalThreadMessageActivity({
         fixture,
         id: "activity-queue-active-2",
+        threadId: "activity-queue-thread-2",
         text: "active run two",
       }),
       token: teamsToken(),
@@ -2081,9 +2083,10 @@ describe("POST /api/zero/teams/bot", () => {
     const secondRunId = await runIdForPrompt(actor, "active run two");
 
     const queuedResponse = await postTeamsActivity({
-      activity: teamsPersonalMessageActivity({
+      activity: teamsPersonalThreadMessageActivity({
         fixture,
         id: "activity-queue-third",
+        threadId: "activity-queue-thread-3",
         text: "queued run three",
       }),
       token: teamsToken(),

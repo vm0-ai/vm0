@@ -44,19 +44,18 @@ const ARTIFACT_KIND_OPTIONS: readonly {
   readonly label: string;
   readonly value: ArtifactCatalogKind | null;
 }[] = [
-  { ariaLabel: "Show all artifacts", label: "All", value: null },
-  { ariaLabel: "Show image artifacts", label: "Images", value: "image" },
-  { ariaLabel: "Show video artifacts", label: "Videos", value: "video" },
-  {
-    ariaLabel: "Show website artifacts",
-    label: "Websites",
-    value: "hosted-site",
-  },
   {
     ariaLabel: "Show presentation artifacts",
     label: "Presentations",
     value: "presentation",
   },
+  {
+    ariaLabel: "Show website artifacts",
+    label: "Websites",
+    value: "hosted-site",
+  },
+  { ariaLabel: "Show image artifacts", label: "Images", value: "image" },
+  { ariaLabel: "Show video artifacts", label: "Videos", value: "video" },
   { ariaLabel: "Show file artifacts", label: "Files", value: "file" },
 ];
 

@@ -49,6 +49,10 @@ fi
 if [ "$failed" -ne 0 ]; then
   cat >&2 <<EOF
 
+How to fix:
+  Edit the pull request title, then re-run this check.
+  This check reads the current title, so no new commit is needed.
+
 Expected examples:
   feat(api): compact chat thread snapshots hourly
   fix: remove stale runner cleanup

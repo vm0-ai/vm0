@@ -48,6 +48,7 @@ const queuedUserMessageRunParamsSchema = z.object({
     .object({
       channelId: z.string(),
       threadTs: z.string(),
+      routeThreadTs: z.string().optional(),
     })
     .optional(),
   feishuDelivery: z

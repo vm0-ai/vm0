@@ -1,5 +1,28 @@
 # Changelog
 
+## [0.644.0](https://github.com/vm0-ai/vm0/compare/app-v0.643.0...app-v0.644.0) (2026-07-28)
+
+
+### Features
+
+* **billing:** add monthly invoice downloads ([#23285](https://github.com/vm0-ai/vm0/issues/23285)) ([1dcd80b](https://github.com/vm0-ai/vm0/commit/1dcd80b67a7dd0527dfe8f8557df2610c9672a1b))
+* **chat:** add sequence cursors to thread events ([#23347](https://github.com/vm0-ai/vm0/issues/23347)) ([27d941d](https://github.com/vm0-ai/vm0/commit/27d941df65372b980b7f1aa4d3d7d4f7fa871750))
+* **platform:** add typed i18n foundation ([#23307](https://github.com/vm0-ai/vm0/issues/23307)) ([95a2c5d](https://github.com/vm0-ai/vm0/commit/95a2c5deb90a9482a29eeb2cf7fb23afc5905c8a))
+
+
+### Bug Fixes
+
+* **platform:** default artifacts to presentations ([#23367](https://github.com/vm0-ai/vm0/issues/23367)) ([01ef926](https://github.com/vm0-ai/vm0/commit/01ef9269f08bcdf0f1ea9fe37a6e060518b7bd01))
+* **platform:** prioritize prefix matches in slash skill search ([#23365](https://github.com/vm0-ai/vm0/issues/23365)) ([d342d6a](https://github.com/vm0-ai/vm0/commit/d342d6aebe444d3bb55a95506028c8ceba01f4c7))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.238.0
+    * @vm0/core bumped to 8.477.0
+
 ## [0.643.0](https://github.com/vm0-ai/vm0/compare/app-v0.642.1...app-v0.643.0) (2026-07-28)
 
 

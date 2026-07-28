@@ -717,6 +717,8 @@ describe("CHAT-02: completed chat callback", () => {
     const titlePrompts: string[] = [];
     const followupSystemPrompts: string[] = [];
     const followupPrompts: string[] = [];
+    const longFollowupPrompt =
+      "Can you draft a new 90-minute workshop outline that focuses on the event-driven workflow of an AI Lead Operations Team and includes hands-on exercises?";
     mockOptionalEnv("OPENROUTER_API_KEY", "bdd-openrouter-key");
     chatCallbacks.mockOpenRouterCompletions((body) => {
       const systemContent = body.messages[0]?.content ?? "";
@@ -728,7 +730,7 @@ describe("CHAT-02: completed chat callback", () => {
         followupSystemPrompts.push(systemContent);
         followupPrompts.push(body.messages[1]?.content ?? "");
         return JSON.stringify([
-          { prompt: "Turn this into a checklist", kind: "talk" },
+          { prompt: longFollowupPrompt, kind: "talk" },
           {
             prompt: "Generate a landing page for this plan",
             kind: "generate",
@@ -831,7 +833,7 @@ describe("CHAT-02: completed chat callback", () => {
       throw new Error("Expected a recommended follow-up message");
     }
     expect(recommender.recommendedFollowups).toStrictEqual([
-      { prompt: "Turn this into a checklist", kind: "talk" },
+      { prompt: longFollowupPrompt, kind: "talk" },
       {
         prompt: "Generate a landing page for this plan",
         kind: "generate",

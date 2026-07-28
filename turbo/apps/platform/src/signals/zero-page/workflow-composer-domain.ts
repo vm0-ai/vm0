@@ -1,19 +1,27 @@
 import type { ZeroWorkflowSummary } from "@vm0/api-contracts/contracts/zero-workflows";
 
-function matchesWorkflowNameQuery(
-  workflowName: string,
+export function findWorkflowQueryMatches(
+  workflows: readonly ComposerSlashWorkflow[],
   query: string,
   substringSearchEnabled: boolean,
-): boolean {
-  if (!query) {
-    return true;
+): readonly ComposerSlashWorkflow[] {
+  const normalizedQuery = query.toLowerCase();
+  const prefixMatches: ComposerSlashWorkflow[] = [];
+  const substringMatches: ComposerSlashWorkflow[] = [];
+
+  for (const workflow of workflows) {
+    const normalizedName = workflow.name.toLowerCase();
+    if (normalizedName.startsWith(normalizedQuery)) {
+      prefixMatches.push(workflow);
+    } else if (
+      substringSearchEnabled &&
+      normalizedName.includes(normalizedQuery)
+    ) {
+      substringMatches.push(workflow);
+    }
   }
 
-  const normalizedName = workflowName.toLowerCase();
-  const normalizedQuery = query.toLowerCase();
-  return substringSearchEnabled
-    ? normalizedName.includes(normalizedQuery)
-    : normalizedName.startsWith(normalizedQuery);
+  return [...prefixMatches, ...substringMatches];
 }
 
 export interface SlashWorkflowRange {
@@ -47,14 +55,6 @@ export function findActiveSlashWorkflowRange(
   const slashOffset = match[0].lastIndexOf("/");
   const start = beforeCaret.length - match[0].length + slashOffset;
   return { start, end: caretIndex, query };
-}
-
-export function matchesWorkflowQuery(
-  workflow: ComposerSlashWorkflow,
-  query: string,
-  substringSearchEnabled: boolean,
-): boolean {
-  return matchesWorkflowNameQuery(workflow.name, query, substringSearchEnabled);
 }
 
 export function workflowTokenPattern(

@@ -16,6 +16,7 @@ import { toast } from "@vm0/ui/components/ui/sonner";
 import { zeroClient$ } from "../api-client.ts";
 import { reloadUsageRecords$ } from "./settings/personal-usage-record.ts";
 import { setAblyLoop$ } from "../realtime.ts";
+import { tapError } from "../utils.ts";
 import { accept } from "../../lib/accept.ts";
 import {
   applyStoredAdAttribution,
@@ -697,6 +698,101 @@ export const invoicesAsync$ = computed(async (get) => {
   const result = await accept(client.get(), [200]);
   return result.body;
 });
+
+interface ReceiptDownloadRange {
+  readonly startMonth: string;
+  readonly endMonth: string;
+}
+
+const internalReceiptDownloadRange$ = state<ReceiptDownloadRange>({
+  startMonth: "",
+  endMonth: "",
+});
+
+export const receiptDownloadRange$ = computed((get) => {
+  return get(internalReceiptDownloadRange$);
+});
+
+export const receiptDownloadRangeExceedsLimit$ = computed((get) => {
+  const range = get(internalReceiptDownloadRange$);
+  if (range.startMonth === "" || range.endMonth === "") {
+    return false;
+  }
+  const monthIndex = (month: string) => {
+    return Number(month.slice(0, 4)) * 12 + Number(month.slice(5, 7)) - 1;
+  };
+  return (
+    Math.abs(monthIndex(range.endMonth) - monthIndex(range.startMonth)) >= 3
+  );
+});
+
+export const initializeReceiptDownloadRange$ = command(
+  ({ set }, month: string) => {
+    set(internalReceiptDownloadRange$, {
+      startMonth: month,
+      endMonth: month,
+    });
+  },
+);
+
+export const setReceiptDownloadStartMonth$ = command(
+  ({ get, set }, startMonth: string) => {
+    const range = get(internalReceiptDownloadRange$);
+    set(internalReceiptDownloadRange$, { ...range, startMonth });
+  },
+);
+
+export const setReceiptDownloadEndMonth$ = command(
+  ({ get, set }, endMonth: string) => {
+    const range = get(internalReceiptDownloadRange$);
+    set(internalReceiptDownloadRange$, { ...range, endMonth });
+  },
+);
+
+export const downloadMonthlyReceipts$ = command(
+  async ({ get }, range: ReceiptDownloadRange, signal: AbortSignal) => {
+    const toastId = toast.loading("Preparing receipt download...");
+    signal.addEventListener(
+      "abort",
+      () => {
+        toast.dismiss(toastId);
+      },
+      { once: true },
+    );
+    const downloaded = await tapError(
+      (async () => {
+        const createClient = get(zeroClient$);
+        const client = createClient(zeroBillingInvoicesContract);
+        const response = await accept(
+          client.downloadReceipts({
+            query: range,
+            fetchOptions: { signal },
+          }),
+          [200],
+        );
+        signal.throwIfAborted();
+
+        const url = URL.createObjectURL(response.body);
+        const anchor = document.createElement("a");
+        anchor.href = url;
+        anchor.download =
+          range.startMonth === range.endMonth
+            ? `receipts-${range.startMonth}.zip`
+            : `receipts-${range.startMonth}-to-${range.endMonth}.zip`;
+        anchor.click();
+        URL.revokeObjectURL(url);
+        return true;
+      })(),
+      () => {
+        toast.error("Failed to download receipts", { id: toastId });
+      },
+    );
+    signal.throwIfAborted();
+    if (downloaded) {
+      toast.success("Receipts downloaded", { id: toastId });
+    }
+  },
+);
 
 // ---------------------------------------------------------------------------
 // Buy credits form state (Billing page > Buy credits section)

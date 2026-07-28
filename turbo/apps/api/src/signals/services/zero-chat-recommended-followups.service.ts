@@ -17,7 +17,7 @@ function sanitizeFollowupPrompt(raw: string): string | null {
   if (text.length === 0) {
     return null;
   }
-  return text.length > 120 ? `${text.slice(0, 117).trim()}...` : text;
+  return text;
 }
 
 function isRecommendedFollowupGenerationType(
