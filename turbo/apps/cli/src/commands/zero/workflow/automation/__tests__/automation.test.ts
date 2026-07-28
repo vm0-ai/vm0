@@ -26,6 +26,7 @@ const MODEL_ID = "gpt-5.6-sol";
 const STRAPI_INTEGRATION_ID = "55555555-5555-4555-8555-555555555556";
 const STAFF_ORG_ID = "org_3ANttyrbWYJk6JKRSTRLEsbsDLe";
 const THREAD_METADATA_URL = `http://localhost:3000/api/zero/chat-threads/${THREAD_ID}/metadata`;
+const MODEL_POLICIES_URL = "http://localhost:3000/api/zero/model-policies";
 
 function zeroToken(orgId: string): string {
   const payload = Buffer.from(
@@ -289,6 +290,9 @@ describe("zero workflow automation commands", () => {
   const mockConsoleError = vi
     .spyOn(console, "error")
     .mockImplementation(() => {});
+  const mockConsoleWarn = vi
+    .spyOn(console, "warn")
+    .mockImplementation(() => {});
   const tempDirs: string[] = [];
 
   beforeEach(() => {
@@ -310,6 +314,7 @@ describe("zero workflow automation commands", () => {
     mockExit.mockClear();
     mockConsoleLog.mockClear();
     mockConsoleError.mockClear();
+    mockConsoleWarn.mockClear();
     for (const dir of tempDirs.splice(0)) {
       rmSync(dir, { recursive: true, force: true });
     }
@@ -353,6 +358,48 @@ describe("zero workflow automation commands", () => {
         return capturedUrl;
       },
     };
+  }
+
+  function failThreadModelLookup(
+    boundary: "metadata" | "model-policy" = "metadata",
+  ): void {
+    if (boundary === "metadata") {
+      server.use(
+        http.get(THREAD_METADATA_URL, () => {
+          return HttpResponse.json(
+            {
+              error: {
+                code: "SERVER_ERROR",
+                message: "Thread metadata unavailable",
+              },
+            },
+            { status: 500 },
+          );
+        }),
+      );
+      return;
+    }
+
+    server.use(
+      http.get(THREAD_METADATA_URL, () => {
+        return HttpResponse.json({
+          id: THREAD_ID,
+          title: "Tell a joke",
+          selectedModel: null,
+        });
+      }),
+      http.get(MODEL_POLICIES_URL, () => {
+        return HttpResponse.json(
+          {
+            error: {
+              code: "SERVER_ERROR",
+              message: "Model policies unavailable",
+            },
+          },
+          { status: 500 },
+        );
+      }),
+    );
   }
 
   describe("add", () => {
@@ -405,6 +452,33 @@ describe("zero workflow automation commands", () => {
       expect(logCalls).toContain(`--thread ${THREAD_ID}`);
       expect(logCalls).toContain("zero model list");
     });
+
+    it.each(["metadata", "model-policy"] as const)(
+      "should preserve a successful add when %s lookup fails",
+      async (boundary) => {
+        const captured = captureCreateAutomation(cronAutomation);
+        failThreadModelLookup(boundary);
+
+        await automationCommand.parseAsync([
+          "node",
+          "cli",
+          "add",
+          WORKFLOW_ID,
+          "cron",
+          "--expr",
+          "0 9 * * *",
+        ]);
+
+        expect(captured.workflowId).toBe(WORKFLOW_ID);
+        expect(mockConsoleLog.mock.calls.flat().join("\n")).toContain(
+          `Automation added to workflow "${WORKFLOW_ID}"`,
+        );
+        expect(mockConsoleWarn.mock.calls.flat().join("\n")).toContain(
+          "Automation changed, but thread model details could not be loaded",
+        );
+        expect(mockExit).not.toHaveBeenCalled();
+      },
+    );
 
     it("should resolve a workflow name under ZERO_AGENT_ID", async () => {
       vi.stubEnv("ZERO_AGENT_ID", AGENT_ID);
@@ -1337,6 +1411,36 @@ describe("zero workflow automation commands", () => {
       expect(logCalls).not.toContain("Manage with Zero CLI:");
     });
 
+    it("should preserve a successful update when thread model lookup fails", async () => {
+      const captured = captureUpdateAutomation(cronAutomation);
+      failThreadModelLookup();
+
+      await automationCommand.parseAsync([
+        "node",
+        "cli",
+        "update",
+        AUTOMATION_ID,
+        "--expr",
+        "0 9 * * *",
+      ]);
+
+      expect(captured.id).toBe(AUTOMATION_ID);
+      expect(captured.body).toEqual({
+        schedule: {
+          type: "cron",
+          cronExpression: "0 9 * * *",
+          timezone: "UTC",
+        },
+      });
+      expect(mockConsoleLog.mock.calls.flat().join("\n")).toContain(
+        `Automation ${AUTOMATION_ID} updated`,
+      );
+      expect(mockConsoleWarn.mock.calls.flat().join("\n")).toContain(
+        "Automation changed, but thread model details could not be loaded",
+      );
+      expect(mockExit).not.toHaveBeenCalled();
+    });
+
     it("should update a Gmail new message automation with text match flags", async () => {
       const updated = {
         ...gmailAutomation,
@@ -1649,6 +1753,12 @@ describe("zero workflow automation commands", () => {
   describe("show", () => {
     it("should display automation details", async () => {
       server.use(
+        http.get(
+          "http://localhost:3000/api/zero/workflow-automations/:id",
+          () => {
+            return HttpResponse.json({ ...gmailAutomation, enabled: false });
+          },
+        ),
         http.get("http://localhost:3000/api/zero/workflow-automations", () => {
           return HttpResponse.json([
             {
@@ -1676,6 +1786,39 @@ describe("zero workflow automation commands", () => {
       expect(logCalls).toContain("Resume automation:");
       expect(logCalls).toContain("zero workflow automation enable");
       expect(logCalls).toContain("zero workflow automation update --help");
+    });
+
+    it("should display an automation owned by another user on a visible workflow", async () => {
+      const sharedAutomation = {
+        ...gmailAutomation,
+        ownerUserId: "another-user",
+      };
+      server.use(
+        http.get(
+          "http://localhost:3000/api/zero/workflow-automations/:id",
+          ({ params }) => {
+            expect(params.id).toBe(AUTOMATION_ID);
+            return HttpResponse.json(sharedAutomation);
+          },
+        ),
+        http.get("http://localhost:3000/api/zero/workflow-automations", () => {
+          return HttpResponse.json([]);
+        }),
+      );
+
+      await automationCommand.parseAsync([
+        "node",
+        "cli",
+        "show",
+        AUTOMATION_ID,
+      ]);
+
+      const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
+      expect(logCalls).toContain(AUTOMATION_ID);
+      expect(logCalls).toContain("another-user");
+      expect(logCalls).toContain("Gmail new message");
+      expect(logCalls).not.toContain("Manage with Zero CLI:");
+      expect(mockExit).not.toHaveBeenCalled();
     });
   });
 
@@ -1751,5 +1894,38 @@ describe("zero workflow automation commands", () => {
         `Thread model: GPT 5.6 Sol (${MODEL_ID})`,
       );
     });
+
+    it.each(["enable", "disable"] as const)(
+      "should preserve a successful %s when thread model lookup fails",
+      async (command) => {
+        server.use(
+          http.post(
+            `http://localhost:3000/api/zero/workflow-automations/:id/${command}`,
+            () => {
+              return HttpResponse.json({
+                ...cronAutomation,
+                enabled: command === "enable",
+              });
+            },
+          ),
+        );
+        failThreadModelLookup();
+
+        await automationCommand.parseAsync([
+          "node",
+          "cli",
+          command,
+          AUTOMATION_ID,
+        ]);
+
+        expect(mockConsoleLog.mock.calls.flat().join("\n")).toContain(
+          `Automation ${AUTOMATION_ID} ${command}d`,
+        );
+        expect(mockConsoleWarn.mock.calls.flat().join("\n")).toContain(
+          "Automation changed, but thread model details could not be loaded",
+        );
+        expect(mockExit).not.toHaveBeenCalled();
+      },
+    );
   });
 });

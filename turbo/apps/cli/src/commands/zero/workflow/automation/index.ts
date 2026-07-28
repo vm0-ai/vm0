@@ -182,6 +182,23 @@ async function loadWorkflowAutomationThreadModel(
   };
 }
 
+async function tryLoadWorkflowAutomationThreadModel(
+  automation: ZeroWorkflowAutomationSummary,
+): Promise<WorkflowAutomationThreadModel | undefined> {
+  try {
+    return await loadWorkflowAutomationThreadModel(automation);
+  } catch (error) {
+    console.warn(
+      chalk.yellow(
+        `⚠ Automation changed, but thread model details could not be loaded: ${
+          error instanceof Error ? error.message : "Unknown error"
+        }`,
+      ),
+    );
+    return undefined;
+  }
+}
+
 function githubWebhookEventKind(
   kind: string,
 ): kind is (typeof GITHUB_WEBHOOK_EVENT_KINDS)[number] {
@@ -1894,11 +1911,12 @@ Notes:
         const workflowId = await resolveWorkflowRef(workflowRef, options);
         const body = buildCreateRequest(kind, options);
         const automation = await createWorkflowAutomation(workflowId, body);
-        const threadModel = await loadWorkflowAutomationThreadModel(automation);
 
         console.log(
           chalk.green(`✓ Automation added to workflow "${workflowRef}"`),
         );
+        const threadModel =
+          await tryLoadWorkflowAutomationThreadModel(automation);
         printWorkflowAutomationDetails(automation, {
           workflowRef,
           workflowId,
@@ -1940,10 +1958,11 @@ Examples:
     withErrorHandler(async (id: string, options: UpdateOptions) => {
       const existing = await getWorkflowAutomation(id);
       const body = buildUpdate(options, existing);
-      const threadModel = await loadWorkflowAutomationThreadModel(existing);
       const automation = await updateWorkflowAutomation(id, body);
 
       console.log(chalk.green(`✓ Automation ${automation.id} updated`));
+      const threadModel =
+        await tryLoadWorkflowAutomationThreadModel(automation);
       printWorkflowAutomationDetails(automation, { threadModel });
     }),
   );
@@ -1988,12 +2007,14 @@ const showCommand = new Command()
   .argument("<automation>", "Workflow automation ID")
   .action(
     withErrorHandler(async (id: string) => {
+      const automation = await getWorkflowAutomation(id);
       const entries = await listWorkspaceWorkflowAutomations();
       const entry = entries.find(({ automation }) => {
         return automation.id === id;
       });
       if (!entry) {
-        throw new Error(`Workflow automation "${id}" not found`);
+        printWorkflowAutomationDetails(automation);
+        return;
       }
       const threadModel = await loadWorkflowAutomationThreadModel(
         entry.automation,
@@ -2025,8 +2046,9 @@ const enableCommand = new Command()
   .action(
     withErrorHandler(async (id: string) => {
       const automation = await enableWorkflowAutomation(id);
-      const threadModel = await loadWorkflowAutomationThreadModel(automation);
       console.log(chalk.green(`✓ Automation ${automation.id} enabled`));
+      const threadModel =
+        await tryLoadWorkflowAutomationThreadModel(automation);
       printWorkflowAutomationThreadModel(threadModel);
     }),
   );
@@ -2038,8 +2060,9 @@ const disableCommand = new Command()
   .action(
     withErrorHandler(async (id: string) => {
       const automation = await disableWorkflowAutomation(id);
-      const threadModel = await loadWorkflowAutomationThreadModel(automation);
       console.log(chalk.green(`✓ Automation ${automation.id} disabled`));
+      const threadModel =
+        await tryLoadWorkflowAutomationThreadModel(automation);
       printWorkflowAutomationThreadModel(threadModel);
     }),
   );
