@@ -68,12 +68,6 @@ export interface MailDraftCardSignalsRegistry {
   readonly reload$: Command<void, []>;
 }
 
-export const emptyMailDraftSignalsById$ = computed<
-  ReadonlyMap<string, MailDraftSignals>
->(() => {
-  return new Map();
-});
-
 function browserOrigin(): string | null {
   if (typeof location === "undefined" || !location.origin) {
     return null;
