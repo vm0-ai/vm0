@@ -10,28 +10,26 @@ import {
   executeRawRows,
   pgTimestampWithoutTimezoneToDateSchema,
 } from "../../lib/db-raw-rows";
-import { optionalEnv } from "../../lib/env";
 import { logger } from "../../lib/log";
 import { writeDb$, type Db } from "../external/db";
 import { timestampWithoutTimeZone } from "../external/time";
 import { lockUsageEventCompaction } from "./usage-event-compaction-lock.service";
 
 const L = logger("CronCompactUsageEvents");
-const DEFAULT_USAGE_EVENT_COMPACTION_BATCH_SIZE = 100;
+const USAGE_EVENT_COMPACTION_RAW_SEED_LIMIT = 100;
 
 type UsageEventCompactionDb = Pick<Db, "execute" | "transaction">;
 
 interface UsageEventCompactionStats {
   readonly cutoff: string;
-  readonly batchSize: number;
-  readonly candidateGrains: number;
+  readonly rawSeedLimit: number;
+  readonly seededRawRows: number;
   readonly selectedGrains: number;
   readonly probedRawRows: number;
   readonly browserHeldRows: number;
   readonly billingErrorHeldRows: number;
   readonly rawRowsDeleted: number;
   readonly hourlyRowsDeleted: number;
-  readonly duplicateHourlyRowsDeleted: number;
   readonly hourlyRowsInserted: number;
   readonly quantity: string;
   readonly creditsCharged: string;
@@ -57,11 +55,10 @@ const holdProbeRowSchema = z.object({
 });
 
 const compactionRowSchema = z.object({
-  candidateGrains: z.int(),
+  seededRawRows: z.int(),
   selectedGrains: z.int(),
   rawRowsDeleted: z.int(),
   hourlyRowsDeleted: z.int(),
-  duplicateHourlyRowsDeleted: z.int(),
   hourlyRowsInserted: z.int(),
   quantity: integerTextSchema,
   creditsCharged: integerTextSchema,
@@ -69,26 +66,11 @@ const compactionRowSchema = z.object({
   affectedShortWindows: z.int(),
   affectedWeeklyWindows: z.int(),
   reconciled: z.boolean(),
-  hasMoreHourlyDuplicates: z.boolean(),
 });
 
 const remainingRawRowSchema = z.object({
   hasMoreRaw: z.boolean(),
 });
-
-function usageEventCompactionBatchSize(): number {
-  const raw = optionalEnv("USAGE_EVENT_COMPACTION_BATCH_SIZE");
-  if (raw === undefined) {
-    return DEFAULT_USAGE_EVENT_COMPACTION_BATCH_SIZE;
-  }
-  const parsed = Number(raw);
-  if (!Number.isInteger(parsed) || parsed <= 0) {
-    throw new Error(
-      "USAGE_EVENT_COMPACTION_BATCH_SIZE must be a positive integer",
-    );
-  }
-  return parsed;
-}
 
 function eligibleRawPredicate(cutoff: string): SQL {
   return sql`
@@ -153,9 +135,8 @@ function physicalGrainOrder(alias: string): SQL {
 
 function candidateCtes(args: {
   readonly cutoff: string;
-  readonly batchSize: number;
+  readonly rawSeedLimit: number;
 }): SQL {
-  const duplicateCandidateLimit = args.batchSize + 1;
   return sql`
     raw_seed AS MATERIALIZED (
       SELECT
@@ -174,53 +155,17 @@ function candidateCtes(args: {
         ON allocation.usage_event_id = event.id
       WHERE ${eligibleRawPredicate(args.cutoff)}
       ORDER BY event.processed_at ASC, event.id ASC
-      LIMIT ${args.batchSize}
+      LIMIT ${args.rawSeedLimit}
       FOR UPDATE OF event
     ),
     raw_seed_grains AS MATERIALIZED (
       SELECT DISTINCT ${physicalGrainColumns("raw_seed")}
       FROM raw_seed
     ),
-    hourly_duplicate_candidates AS MATERIALIZED (
-      SELECT
-        hourly.processed_hour,
-        hourly.org_id,
-        hourly.user_id,
-        hourly.run_id,
-        hourly.kind,
-        hourly.provider,
-        hourly.category,
-        hourly.short_window_id,
-        hourly.weekly_window_id
-      FROM ${usageEventHourlyRollup} hourly
-      GROUP BY ${physicalGrainColumns("hourly")}
-      HAVING ${count()} > 1
-      ORDER BY
-        hourly.processed_hour ASC,
-        hourly.org_id ASC,
-        hourly.user_id ASC,
-        hourly.run_id ASC NULLS FIRST,
-        hourly.kind ASC,
-        hourly.provider ASC,
-        hourly.category ASC,
-        hourly.short_window_id ASC NULLS FIRST,
-        hourly.weekly_window_id ASC NULLS FIRST
-      LIMIT ${duplicateCandidateLimit}
-    ),
-    dirty_candidates AS MATERIALIZED (
+    selected_grains AS MATERIALIZED (
       SELECT ${physicalGrainColumns("raw_seed_grains")}
       FROM raw_seed_grains
-
-      UNION
-
-      SELECT ${physicalGrainColumns("hourly_duplicate_candidates")}
-      FROM hourly_duplicate_candidates
-    ),
-    selected_grains AS MATERIALIZED (
-      SELECT ${physicalGrainColumns("dirty_candidates")}
-      FROM dirty_candidates
-      ORDER BY ${physicalGrainOrder("dirty_candidates")}
-      LIMIT ${args.batchSize}
+      ORDER BY ${physicalGrainOrder("raw_seed_grains")}
     )
   `;
 }
@@ -331,13 +276,6 @@ function lockedSourceCtes(cutoff: string): SQL {
         SUM(source_facts.allowance_units) AS allowance_units
       FROM source_facts
       GROUP BY ${physicalGrainColumns("source_facts")}
-    ),
-    locked_hourly_grain_counts AS MATERIALIZED (
-      SELECT
-        ${physicalGrainColumns("locked_hourly")},
-        ${count()}::int AS row_count
-      FROM locked_hourly
-      GROUP BY ${physicalGrainColumns("locked_hourly")}
     )
   `;
 }
@@ -390,6 +328,21 @@ function mutationCtes(): SQL {
       USING locked_raw
       WHERE event.id = locked_raw.id
       RETURNING event.id
+    )
+  `;
+}
+
+function rowCountCte(): SQL {
+  return sql`
+    row_counts AS (
+      SELECT
+        (SELECT ${count()}::int FROM raw_seed) AS seeded_raw_rows,
+        (SELECT ${count()}::int FROM selected_grains) AS selected_grains,
+        (SELECT ${count()}::int FROM locked_raw) AS locked_raw_rows,
+        (SELECT ${count()}::int FROM locked_hourly) AS locked_hourly_rows,
+        (SELECT ${count()}::int FROM deleted_raw) AS raw_rows_deleted,
+        (SELECT ${count()}::int FROM deleted_hourly) AS hourly_rows_deleted,
+        (SELECT ${count()}::int FROM inserted_hourly) AS hourly_rows_inserted
     )
   `;
 }
@@ -494,15 +447,11 @@ function windowReconciliationCte(): SQL {
 function compactionSummarySelect(): SQL {
   return sql`
     SELECT
-      (SELECT ${count()}::int FROM dirty_candidates) AS "candidateGrains",
-      (SELECT ${count()}::int FROM selected_grains) AS "selectedGrains",
-      (SELECT ${count()}::int FROM deleted_raw) AS "rawRowsDeleted",
-      (SELECT ${count()}::int FROM deleted_hourly) AS "hourlyRowsDeleted",
-      (
-        SELECT COALESCE(SUM(GREATEST(row_count - 1, 0)), 0)::int
-        FROM locked_hourly_grain_counts
-      ) AS "duplicateHourlyRowsDeleted",
-      (SELECT ${count()}::int FROM inserted_hourly) AS "hourlyRowsInserted",
+      row_counts.seeded_raw_rows AS "seededRawRows",
+      row_counts.selected_grains AS "selectedGrains",
+      row_counts.raw_rows_deleted AS "rawRowsDeleted",
+      row_counts.hourly_rows_deleted AS "hourlyRowsDeleted",
+      row_counts.hourly_rows_inserted AS "hourlyRowsInserted",
       source_totals.quantity::text AS "quantity",
       source_totals.credits_charged::text AS "creditsCharged",
       source_totals.allowance_units::text AS "allowanceUnits",
@@ -513,37 +462,27 @@ function compactionSummarySelect(): SQL {
         AND source_totals.credits_charged = inserted_totals.credits_charged
         AND source_totals.allowance_units = inserted_totals.allowance_units
         AND window_reconciliation.reconciled
-        AND (SELECT ${count()} FROM locked_raw)
-          = (SELECT ${count()} FROM deleted_raw)
-        AND (SELECT ${count()} FROM locked_hourly)
-          = (SELECT ${count()} FROM deleted_hourly)
-        AND (SELECT ${count()} FROM selected_grains)
-          = (SELECT ${count()} FROM inserted_hourly)
-      ) AS "reconciled",
-      EXISTS (
-        SELECT 1
-        FROM hourly_duplicate_candidates duplicate_candidate
-        WHERE NOT EXISTS (
-          SELECT 1
-          FROM selected_grains selected
-          WHERE ${physicalGrainMatch("duplicate_candidate", "selected")}
-        )
-      ) AS "hasMoreHourlyDuplicates"
+        AND row_counts.locked_raw_rows = row_counts.raw_rows_deleted
+        AND row_counts.locked_hourly_rows = row_counts.hourly_rows_deleted
+        AND row_counts.selected_grains = row_counts.hourly_rows_inserted
+      ) AS "reconciled"
     FROM source_totals
     CROSS JOIN inserted_totals
     CROSS JOIN window_reconciliation
+    CROSS JOIN row_counts
   `;
 }
 
 function compactUsageEventsSql(args: {
   readonly cutoff: string;
-  readonly batchSize: number;
+  readonly rawSeedLimit: number;
 }): SQL {
   return sql`
     WITH
     ${candidateCtes(args)},
     ${lockedSourceCtes(args.cutoff)},
     ${mutationCtes()},
+    ${rowCountCte()},
     ${productTotalCtes()},
     ${windowTotalCtes()},
     ${windowReconciliationCte()}
@@ -572,7 +511,7 @@ async function loadCompactionCutoff(db: Pick<Db, "execute">): Promise<Date> {
 async function loadHoldProbe(
   db: Pick<Db, "execute">,
   cutoff: string,
-  batchSize: number,
+  rawSeedLimit: number,
 ): Promise<z.output<typeof holdProbeRowSchema>> {
   const rows = await executeRawRows(
     db,
@@ -591,7 +530,7 @@ async function loadHoldProbe(
           AND event.processed_at IS NOT NULL
           AND event.processed_at < ${cutoff}::timestamp
         ORDER BY event.processed_at ASC, event.id ASC
-        LIMIT ${batchSize}
+        LIMIT ${rawSeedLimit}
       )
       SELECT
         ${count()}::int AS "probedRawRows",
@@ -634,7 +573,7 @@ async function compactUsageEventBatch(
   db: UsageEventCompactionDb,
   signal: AbortSignal,
 ): Promise<Omit<UsageEventCompactionStats, "durationMs">> {
-  const batchSize = usageEventCompactionBatchSize();
+  const rawSeedLimit = USAGE_EVENT_COMPACTION_RAW_SEED_LIMIT;
   return await db.transaction(async (tx) => {
     const lockStartedAt = performance.now();
     await lockUsageEventCompaction(tx);
@@ -643,10 +582,10 @@ async function compactUsageEventBatch(
 
     const cutoffDate = await loadCompactionCutoff(tx);
     const cutoff = timestampWithoutTimeZone(cutoffDate);
-    const holdProbe = await loadHoldProbe(tx, cutoff, batchSize);
+    const holdProbe = await loadHoldProbe(tx, cutoff, rawSeedLimit);
     const rows = await executeRawRows(
       tx,
-      compactUsageEventsSql({ cutoff, batchSize }),
+      compactUsageEventsSql({ cutoff, rawSeedLimit }),
       compactionRowSchema,
     );
     const compacted = rows[0];
@@ -656,8 +595,8 @@ async function compactUsageEventBatch(
     if (!compacted.reconciled) {
       L.error("usage event compaction reconciliation failed", {
         cutoff: cutoffDate.toISOString(),
-        batchSize,
-        candidateGrains: compacted.candidateGrains,
+        rawSeedLimit,
+        seededRawRows: compacted.seededRawRows,
         selectedGrains: compacted.selectedGrains,
         rawRowsDeleted: compacted.rawRowsDeleted,
         hourlyRowsDeleted: compacted.hourlyRowsDeleted,
@@ -671,15 +610,14 @@ async function compactUsageEventBatch(
 
     return {
       cutoff: cutoffDate.toISOString(),
-      batchSize,
-      candidateGrains: compacted.candidateGrains,
+      rawSeedLimit,
+      seededRawRows: compacted.seededRawRows,
       selectedGrains: compacted.selectedGrains,
       probedRawRows: holdProbe.probedRawRows,
       browserHeldRows: holdProbe.browserHeldRows,
       billingErrorHeldRows: holdProbe.billingErrorHeldRows,
       rawRowsDeleted: compacted.rawRowsDeleted,
       hourlyRowsDeleted: compacted.hourlyRowsDeleted,
-      duplicateHourlyRowsDeleted: compacted.duplicateHourlyRowsDeleted,
       hourlyRowsInserted: compacted.hourlyRowsInserted,
       quantity: compacted.quantity,
       creditsCharged: compacted.creditsCharged,
@@ -687,7 +625,7 @@ async function compactUsageEventBatch(
       affectedShortWindows: compacted.affectedShortWindows,
       affectedWeeklyWindows: compacted.affectedWeeklyWindows,
       reconciled: compacted.reconciled,
-      hasMore: hasMoreRaw || compacted.hasMoreHourlyDuplicates,
+      hasMore: hasMoreRaw,
       lockWaitMs,
     };
   });

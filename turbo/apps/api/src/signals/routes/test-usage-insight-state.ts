@@ -43,10 +43,7 @@ import {
   sql,
   sum,
 } from "drizzle-orm";
-import { z } from "zod";
 
-import { executeRawRows } from "../../lib/db-raw-rows";
-import { testOverride } from "../../lib/singleton";
 import { nowDate } from "../../lib/time";
 import { bodyResultOf } from "../context/request";
 import { request$ } from "../context/hono";
@@ -56,31 +53,12 @@ import {
   deleteOrgUsageData,
   deleteUserUsageData,
 } from "../services/usage-event-cleanup.service";
-import { lockUsageEventCompaction } from "../services/usage-event-compaction-lock.service";
-import { createDeferredPromise, onRejection } from "../utils";
 import {
   isTestEndpointAllowed,
   testEndpointNotFoundResponse,
 } from "./test-oauth-provider-helpers";
 
 const actionBody$ = bodyResultOf(testUsageInsightStateContract.action);
-
-interface UsageCompactionLockGate {
-  readonly gateId: string;
-  held: boolean;
-  readonly released: ReturnType<typeof createDeferredPromise<void>>;
-  readonly release: () => void;
-}
-
-const usageCompactionLockGate = testOverride<UsageCompactionLockGate | null>(
-  () => {
-    return null;
-  },
-);
-
-const usageCompactionLockWaiterRowSchema = z.object({
-  waiterCount: z.int(),
-});
 
 interface UsageInsightFixture {
   readonly orgId: string;
@@ -147,12 +125,7 @@ type UsageInsightEventMaterializationAction = UsageInsightAction<
   | "read-usage-storage-counts"
 >;
 
-type UsageInsightCompactionTestAction = UsageInsightAction<
-  | "hold-usage-compaction-lock"
-  | "release-usage-compaction-lock"
-  | "read-usage-compaction-lock-state"
-  | "delete-usage-data"
->;
+type UsageInsightCleanupAction = UsageInsightAction<"delete-usage-data">;
 
 const MODEL_TOKEN_CATEGORIES = [
   "tokens.input",
@@ -572,6 +545,7 @@ async function insertUsageEvent(
     readonly billingError?: string | null;
     readonly createdAt?: Date;
     readonly processedAt?: Date | null;
+    readonly count?: number;
   },
 ): Promise<string> {
   const status = args.status ?? "pending";
@@ -581,25 +555,32 @@ async function insertUsageEvent(
       : status === "processed"
         ? nowDate()
         : null;
-  const values: typeof usageEvent.$inferInsert = {
-    runId: args.runId ?? null,
-    orgId: args.orgId,
-    userId: args.userId ?? "test-user",
-    kind: args.kind ?? "connector",
-    provider: args.provider ?? "x",
-    category: args.category ?? "tweet.read",
-    quantity: args.quantity ?? 1,
-    status,
-    creditsCharged: args.creditsCharged ?? null,
-    billingError: args.billingError ?? null,
-    idempotencyKey: args.idempotencyKey ?? randomUUID(),
-    createdAt: args.createdAt ?? nowDate(),
-    processedAt,
-  };
-  const [row] = await db
+  const count = args.count ?? 1;
+  const values: (typeof usageEvent.$inferInsert)[] = Array.from(
+    { length: count },
+    () => {
+      return {
+        runId: args.runId ?? null,
+        orgId: args.orgId,
+        userId: args.userId ?? "test-user",
+        kind: args.kind ?? "connector",
+        provider: args.provider ?? "x",
+        category: args.category ?? "tweet.read",
+        quantity: args.quantity ?? 1,
+        status,
+        creditsCharged: args.creditsCharged ?? null,
+        billingError: args.billingError ?? null,
+        idempotencyKey: args.idempotencyKey ?? randomUUID(),
+        createdAt: args.createdAt ?? nowDate(),
+        processedAt,
+      };
+    },
+  );
+  const rows = await db
     .insert(usageEvent)
     .values(values)
     .returning({ id: usageEvent.id });
+  const row = rows[0];
   if (!row) {
     throw new Error("insertUsageEvent: insert returned no row");
   }
@@ -1041,77 +1022,6 @@ async function readUsageStorageCounts(
   };
 }
 
-function createUsageCompactionLockGate(
-  gateId: string,
-  signal: AbortSignal,
-): UsageCompactionLockGate {
-  const released = createDeferredPromise<void>(signal);
-  return {
-    gateId,
-    held: false,
-    released,
-    release: () => {
-      if (!released.settled()) {
-        released.resolve(undefined);
-      }
-    },
-  };
-}
-
-function clearUsageCompactionLockGate(gate: UsageCompactionLockGate): void {
-  if (usageCompactionLockGate.get() === gate) {
-    usageCompactionLockGate.clear();
-  }
-}
-
-async function holdUsageCompactionLock(
-  db: Db,
-  gateId: string,
-  signal: AbortSignal,
-): Promise<void> {
-  if (usageCompactionLockGate.get()) {
-    throw new Error("A usage compaction lock gate is already active");
-  }
-  const gate = createUsageCompactionLockGate(gateId, signal);
-  usageCompactionLockGate.set(gate);
-  await onRejection(
-    db.transaction(async (tx) => {
-      await lockUsageEventCompaction(tx);
-      signal.throwIfAborted();
-      gate.held = true;
-      await gate.released.promise;
-    }),
-    () => {
-      clearUsageCompactionLockGate(gate);
-    },
-  );
-  clearUsageCompactionLockGate(gate);
-}
-
-async function readUsageCompactionLockWaiterCount(db: Db): Promise<number> {
-  const rows = await executeRawRows(
-    db,
-    sql`
-      SELECT ${count()}::int AS "waiterCount"
-      FROM pg_locks lock
-      WHERE lock.locktype = 'advisory'
-        AND lock.granted = false
-        AND lock.database = (
-          SELECT database.oid
-          FROM pg_database database
-          WHERE database.datname = current_database()
-        )
-        AND lock.classid::bigint
-          = (hashtext('vm0')::bigint & 4294967295)
-        AND lock.objid::bigint
-          = (hashtext('usage_event_compaction')::bigint & 4294967295)
-        AND lock.objsubid = 2
-    `,
-    usageCompactionLockWaiterRowSchema,
-  );
-  return rows[0]?.waiterCount ?? 0;
-}
-
 async function deleteUsageData(
   db: Db,
   scope: "organization" | "user",
@@ -1271,6 +1181,7 @@ async function mutateUsageInsightEventWriteState(
           body.processed_at === undefined
             ? undefined
             : parseOptionalDate(body.processed_at),
+        count: body.count,
       });
       signal.throwIfAborted();
       return {
@@ -1389,37 +1300,12 @@ async function mutateUsageInsightEventMaterializationState(
   }
 }
 
-async function mutateUsageInsightCompactionTestState(
+async function mutateUsageInsightCleanupState(
   db: Db,
-  body: UsageInsightCompactionTestAction,
+  body: UsageInsightCleanupAction,
   signal: AbortSignal,
 ) {
   switch (body.action) {
-    case "hold-usage-compaction-lock": {
-      await holdUsageCompactionLock(db, body.gate_id, signal);
-      signal.throwIfAborted();
-      return { status: 200 as const, body: { ok: true as const } };
-    }
-    case "release-usage-compaction-lock": {
-      const gate = usageCompactionLockGate.get();
-      if (gate?.gateId === body.gate_id) {
-        gate.release();
-      }
-      return { status: 200 as const, body: { ok: true as const } };
-    }
-    case "read-usage-compaction-lock-state": {
-      const waiterCount = await readUsageCompactionLockWaiterCount(db);
-      signal.throwIfAborted();
-      const gate = usageCompactionLockGate.get();
-      return {
-        status: 200 as const,
-        body: {
-          ok: true as const,
-          lock_held: gate?.gateId === body.gate_id && gate.held,
-          lock_waiter_count: waiterCount,
-        },
-      };
-    }
     case "delete-usage-data": {
       await deleteUsageData(db, body.scope, body.id);
       signal.throwIfAborted();
@@ -1461,11 +1347,8 @@ async function mutateUsageInsightState(
         signal,
       );
     }
-    case "hold-usage-compaction-lock":
-    case "release-usage-compaction-lock":
-    case "read-usage-compaction-lock-state":
     case "delete-usage-data": {
-      return await mutateUsageInsightCompactionTestState(db, body, signal);
+      return await mutateUsageInsightCleanupState(db, body, signal);
     }
   }
 }
