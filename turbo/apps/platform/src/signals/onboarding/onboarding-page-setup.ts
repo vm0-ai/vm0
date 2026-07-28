@@ -23,6 +23,7 @@ import {
   OnboardingVideoRunPage,
 } from "../../views/onboarding/onboarding-template-run-pages.tsx";
 import { hideAppSkeleton$, showAppSkeleton$ } from "../app-skeleton.ts";
+import { brandName$, type BrandName } from "../branding.ts";
 import { updateDocumentTitle$ } from "../document-title.ts";
 import { updatePage$ } from "../react-router.ts";
 import { detachedNavigateTo$, searchParams$ } from "../route.ts";
@@ -41,7 +42,7 @@ import { zeroOnboardingStatus$ } from "../zero-page/zero-onboarding.ts";
 
 interface OnboardingPageConfig {
   readonly step: OnboardingRouteStep;
-  readonly title: string;
+  readonly title: string | ((brandName: BrandName) => string);
   readonly Page: ComponentType;
   readonly fallbackPath?: RoutePath;
 }
@@ -143,15 +144,21 @@ function createOnboardingPageSetup(
       return;
     }
 
+    const title =
+      typeof config.title === "string"
+        ? config.title
+        : config.title(get(brandName$));
     set(updatePage$, createElement(config.Page), "none");
-    set(updateDocumentTitle$, config.title);
+    set(updateDocumentTitle$, title);
     await set(hideAppSkeleton$, signal);
   });
 }
 
 export const setupOnboardingMakePage$ = createOnboardingPageSetup({
   step: "make",
-  title: "Welcome to VM0",
+  title: (brandName) => {
+    return `Welcome to ${brandName}`;
+  },
   Page: OnboardingMakePage,
 });
 

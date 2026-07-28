@@ -10,6 +10,7 @@ import {
 } from "@vm0/ui/components/ui/dialog";
 
 import { forceUpgradeDialogOpen$ } from "../../signals/force-upgrade.ts";
+import { brandName$ } from "../../signals/branding.ts";
 
 type ForceUpgradeDialogProps = {
   readonly reload?: () => void;
@@ -23,6 +24,7 @@ export function ForceUpgradeDialog({
   reload = reloadPage,
 }: ForceUpgradeDialogProps) {
   const open = useGet(forceUpgradeDialogOpen$);
+  const brandName = useGet(brandName$);
 
   return (
     <Dialog open={open}>
@@ -41,8 +43,8 @@ export function ForceUpgradeDialog({
         <DialogHeader>
           <DialogTitle>Update required</DialogTitle>
           <DialogDescription>
-            This version of vm0 is no longer supported. Refresh to load the
-            latest version.
+            This version of {brandName} is no longer supported. Refresh to load
+            the latest version.
           </DialogDescription>
         </DialogHeader>
         <DialogFooter>

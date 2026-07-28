@@ -2,6 +2,7 @@ import { useGet, useSet } from "ccstate-react";
 import { Button } from "@vm0/ui";
 import { IconAlertCircle, IconCheck, IconLoader2 } from "@tabler/icons-react";
 import { pageSignal$ } from "../../signals/page-signal.ts";
+import { brandName$ } from "../../signals/branding.ts";
 import {
   confirmEmailUnsubscribe$,
   emailUnsubscribeStatus$,
@@ -10,11 +11,9 @@ import {
 import { detach, Reason } from "../../signals/utils.ts";
 import { VM0Logo } from "../components/vm0-logo.tsx";
 
-const DESCRIPTION =
-  "You will no longer receive system-initiated email notifications from VM0.";
-
 export function EmailUnsubscribePage() {
   const pageSignal = useGet(pageSignal$);
+  const brandName = useGet(brandName$);
   const status = useGet(emailUnsubscribeStatus$);
   const token = useGet(emailUnsubscribeToken$);
   const confirm = useSet(confirmEmailUnsubscribe$);
@@ -29,7 +28,10 @@ export function EmailUnsubscribePage() {
             <h1 className="text-lg font-medium text-foreground">
               Unsubscribed
             </h1>
-            <p className="text-sm text-muted-foreground">{DESCRIPTION}</p>
+            <p className="text-sm text-muted-foreground">
+              You will no longer receive system-initiated email notifications
+              from {brandName}.
+            </p>
           </div>
         ) : status === "error" || !token ? (
           <div className="flex flex-col items-center gap-2.5">
@@ -48,7 +50,10 @@ export function EmailUnsubscribePage() {
               <h1 className="text-lg font-medium text-foreground">
                 Unsubscribe from email notifications?
               </h1>
-              <p className="text-sm text-muted-foreground">{DESCRIPTION}</p>
+              <p className="text-sm text-muted-foreground">
+                You will no longer receive system-initiated email notifications
+                from {brandName}.
+              </p>
             </div>
             <Button
               disabled={status === "submitting"}

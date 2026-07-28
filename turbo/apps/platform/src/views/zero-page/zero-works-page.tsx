@@ -26,6 +26,7 @@ import {
   DialogTitle,
 } from "@vm0/ui/components/ui/dialog";
 import { currentChatAgentDisplayName$ } from "../../signals/agent-chat.ts";
+import { brandName$ } from "../../signals/branding.ts";
 import {
   slackOrgData$,
   disconnectSlackOrg$,
@@ -470,6 +471,7 @@ function teamsCardDescription(args: {
 }
 
 function TeamsCard({ displayName }: { displayName: string }) {
+  const brandName = useGet(brandName$);
   const teamsDataLoadable = useLastLoadable(teamsOrgData$);
   const teamsData =
     teamsDataLoadable.state === "hasData" ? teamsDataLoadable.data : null;
@@ -543,8 +545,8 @@ function TeamsCard({ displayName }: { displayName: string }) {
           <DialogHeader>
             <DialogTitle>Uninstall Microsoft Teams integration?</DialogTitle>
             <DialogDescription>
-              This removes the Microsoft Teams integration from VM0 for your
-              workspace. All connected users will be disconnected and{" "}
+              This removes the Microsoft Teams integration from {brandName} for
+              your workspace. All connected users will be disconnected and{" "}
               {displayName} will no longer respond to Teams messages for this
               workspace until an admin reconnects it.
             </DialogDescription>

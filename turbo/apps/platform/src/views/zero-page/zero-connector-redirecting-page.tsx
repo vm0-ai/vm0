@@ -10,6 +10,7 @@ import {
   connectorRedirectingMobileWarningVisible$,
   type ConnectorRedirectingStatus,
 } from "../../signals/connectors-page/connector-redirecting.ts";
+import { brandName$ } from "../../signals/branding.ts";
 import { ROUTES } from "../../signals/route-paths.ts";
 import { Link } from "../router/link.tsx";
 import { ZeroConnectorFlowCard } from "./zero-connector-flow-card.tsx";
@@ -24,6 +25,7 @@ export function ZeroConnectorRedirectingPage({
   readonly status: ConnectorRedirectingStatus;
 }) {
   const hasError = status === "error";
+  const brandName = useGet(brandName$);
   const showMobileWarning = useGet(connectorRedirectingMobileWarningVisible$);
 
   return (
@@ -36,8 +38,8 @@ export function ZeroConnectorRedirectingPage({
       }
       description={
         hasError
-          ? "Return to VM0 and try connecting again."
-          : `You’ll continue on ${connectorLabel} to authorize VM0.`
+          ? `Return to ${brandName} and try connecting again.`
+          : `You’ll continue on ${connectorLabel} to authorize ${brandName}.`
       }
     >
       <div className="flex flex-col items-center gap-4">
@@ -59,13 +61,13 @@ export function ZeroConnectorRedirectingPage({
         {!hasError && showMobileWarning && (
           <p className="w-72 max-w-full text-sm text-amber-600 dark:text-amber-400">
             The {connectorLabel} app may not support this OAuth link. Please
-            complete this connection in the VM0 web app on a computer.
+            complete this connection in the {brandName} web app on a computer.
           </p>
         )}
         <Button variant="outline" asChild>
           <Link pathname={ROUTES.home}>
             <IconArrowLeft size={16} aria-hidden="true" />
-            Back to VM0
+            Back to {brandName}
           </Link>
         </Button>
       </div>
