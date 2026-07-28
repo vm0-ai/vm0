@@ -1,5 +1,10 @@
 import { screen, waitFor, within } from "@testing-library/react";
 import { zeroConnectorCatalogContract } from "@vm0/api-contracts/contracts/zero-connector-catalog";
+import {
+  type UserLocale,
+  type UserPreferencesResponse,
+  zeroUserPreferencesContract,
+} from "@vm0/api-contracts/contracts/zero-user-preferences";
 import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import { describe, expect, it } from "vitest";
 
@@ -9,12 +14,23 @@ import {
   queryAllByRoleFast,
 } from "../../../__tests__/page-helper.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
+import { localeStorageKey } from "../../../i18n/locale-storage.ts";
+import { localStorageSignals } from "../../../signals/external/local-storage.ts";
 
 const context = testContext();
+const { set$: setCachedLocale$ } = localStorageSignals(
+  localeStorageKey("org_default"),
+);
+
+function cachedLocale(): string | null {
+  const { get$ } = localStorageSignals(localeStorageKey("org_default"));
+  return context.store.get(get$);
+}
 
 async function openDialog(
   role: "admin" | "member" = "admin",
-  section: "debug" | "general" = "general",
+  section: "debug" | "general" | "preference" = "general",
+  featureSwitches?: Partial<Record<FeatureSwitchKey, boolean>>,
 ): Promise<void> {
   context.mocks.data.org({
     id: "org_1",
@@ -33,16 +49,129 @@ async function openDialog(
   detachedSetupPage({
     context,
     path: `/?settings=${section}`,
-    ...(section === "debug"
-      ? { featureSwitches: { [FeatureSwitchKey.ZeroDebug]: true } }
-      : {}),
+    featureSwitches: {
+      ...(section === "debug" ? { [FeatureSwitchKey.ZeroDebug]: true } : {}),
+      ...featureSwitches,
+    },
   });
   await waitFor(() => {
     expect(screen.getByRole("dialog")).toBeInTheDocument();
   });
 }
 
+function createPreferences(locale: UserLocale | null): UserPreferencesResponse {
+  return {
+    timezone: null,
+    locale,
+    pinnedAgentIds: [],
+    sendMode: "enter",
+    morningBriefEnabled: false,
+    morningBriefNextRunAt: null,
+    captureNetworkBodiesRemaining: 0,
+  };
+}
+
 describe("settings dialog", () => {
+  it("persists the browser language when the workspace has no server preference", async () => {
+    const submittedLocales: UserLocale[] = [];
+    let serverLocale: UserLocale | null = null;
+    context.mocks.browser.language("zh-CN");
+    context.mocks.api(zeroUserPreferencesContract.get, ({ respond }) => {
+      return respond(200, createPreferences(serverLocale));
+    });
+    context.mocks.api(
+      zeroUserPreferencesContract.update,
+      ({ body, respond }) => {
+        if (body.locale !== undefined) {
+          serverLocale = body.locale;
+          submittedLocales.push(body.locale);
+        }
+        return respond(200, createPreferences(serverLocale));
+      },
+    );
+
+    await openDialog("admin", "preference", {
+      [FeatureSwitchKey.LanguagePreference]: true,
+    });
+
+    const languageSelect = await screen.findByRole("combobox", {
+      name: "Language",
+    });
+    await waitFor(() => {
+      expect(submittedLocales).toContain("zh-CN");
+      expect(languageSelect).toHaveTextContent("简体中文");
+      expect(languageSelect).toBeEnabled();
+      expect(document.documentElement.lang).toBe("zh-CN");
+      expect(cachedLocale()).toBe("zh-CN");
+    });
+
+    click(languageSelect);
+    click(screen.getByRole("option", { name: "English" }));
+
+    await waitFor(() => {
+      expect(submittedLocales).toContain("en-US");
+      expect(
+        screen.getByRole("combobox", { name: "Language" }),
+      ).toHaveTextContent("English");
+      expect(document.documentElement.lang).toBe("en-US");
+      expect(cachedLocale()).toBe("en-US");
+    });
+  });
+
+  it("overrides a cached language with the workspace server preference", async () => {
+    document.documentElement.lang = "zh-CN";
+    context.store.set(setCachedLocale$, "zh-CN");
+    context.signal.addEventListener(
+      "abort",
+      () => {
+        document.documentElement.lang = "en-US";
+      },
+      { once: true },
+    );
+    context.mocks.data.userPreferences(createPreferences("en-US"));
+
+    await openDialog("admin", "preference", {
+      [FeatureSwitchKey.LanguagePreference]: true,
+    });
+
+    const languageSelect = await screen.findByRole("combobox", {
+      name: "Language",
+    });
+    await waitFor(() => {
+      expect(languageSelect).toHaveTextContent("English");
+      expect(document.documentElement.lang).toBe("en-US");
+      expect(cachedLocale()).toBe("en-US");
+    });
+  });
+
+  it("hides the language entry when the feature switch is off", async () => {
+    context.mocks.data.userPreferences(createPreferences("en-US"));
+
+    await openDialog("admin", "preference");
+
+    await waitFor(() => {
+      expect(screen.getByText("Theme")).toBeInTheDocument();
+      expect(screen.queryByText("Language")).not.toBeInTheDocument();
+    });
+  });
+
+  it("hides the language entry when the deployed API predates locale support", async () => {
+    const oldApiPreferences = createPreferences(null);
+    delete oldApiPreferences.locale;
+    context.mocks.api(zeroUserPreferencesContract.get, ({ respond }) => {
+      return respond(200, oldApiPreferences);
+    });
+
+    await openDialog("admin", "preference", {
+      [FeatureSwitchKey.LanguagePreference]: true,
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText("Theme")).toBeInTheDocument();
+      expect(screen.queryByText("Language")).not.toBeInTheDocument();
+    });
+  });
+
   it("lets admins navigate workspace settings without closing the dialog", async () => {
     await openDialog("admin");
 

@@ -41,6 +41,7 @@ export enum FeatureSwitchKey {
   PexelsConnector = "pexelsConnector",
   SpotifyConnector = "spotifyConnector",
   ZeroDebug = "zeroDebug",
+  LanguagePreference = "languagePreference",
   ZeroFinance = "zeroFinance",
   ZeroPeopleSearch = "zeroPeopleSearch",
   ZeroBrowser = "zeroBrowser",
