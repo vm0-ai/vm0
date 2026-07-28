@@ -515,6 +515,21 @@ class TestDecompressBody:
         assert result == b"prefix"
 
     @pytest.mark.parametrize("encoding", ["gzip", "deflate"])
+    def test_corrupt_later_zlib_member_discards_its_partial_output(self, headers, encoding):
+        prefix = b"prefix"
+        trailing_member = bytearray(
+            _compress_one_shot_body(encoding, pseudo_random_ascii(4 * 1024))
+        )
+        assert len(trailing_member) > _ZLIB_INPUT_BOUND
+        trailing_member[-1] ^= 0xFF
+        compressed = _compress_one_shot_body(encoding, prefix) + trailing_member
+
+        hdrs = headers(("Content-Encoding", encoding))
+        result = decompress_body(compressed, hdrs, max_output=64 * 1024)
+
+        assert result == prefix
+
+    @pytest.mark.parametrize("encoding", ["gzip", "deflate"])
     def test_invalid_zlib_first_member_returns_original_data(self, headers, encoding):
         if encoding == "gzip":
             corrupted = bytearray(gzip.compress(b"payload"))

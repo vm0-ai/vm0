@@ -325,22 +325,31 @@ def _decompress_zlib_best_effort_bounded(
     wbits = 16 + zlib.MAX_WBITS if encoding == "gzip" else zlib.MAX_WBITS
     input_cursor = _ZlibInputCursor(data)
     out = bytearray()
+    # A full-input zlib call exposes no partial output when that member raises.
+    # Commit each member only at EOF so bounded slicing preserves that policy.
+    member_out = bytearray()
     completed_member = False
     obj = zlib.decompressobj(wbits)
 
     while input_cursor and len(out) < max_output:
         member_data = input_cursor.take()
         try:
-            decoded = obj.decompress(member_data, max_length=max_output - len(out))
+            decoded = obj.decompress(
+                member_data,
+                max_length=max_output - len(out) - len(member_out),
+            )
         except zlib.error as exc:
             if completed_member:
                 return _BodyDecodeResult(bytes(out), False)
             return _BodyDecodeResult(data, True, exc)
 
-        out.extend(decoded)
-        if len(out) >= max_output:
+        member_out.extend(decoded)
+        if len(out) + len(member_out) >= max_output:
+            out.extend(member_out)
             return _BodyDecodeResult(bytes(out), False)
         if obj.eof:
+            out.extend(member_out)
+            member_out.clear()
             completed_member = True
             input_cursor.carry(obj.unused_data)
             if input_cursor:
@@ -348,6 +357,7 @@ def _decompress_zlib_best_effort_bounded(
         elif obj.unconsumed_tail:
             input_cursor.carry(obj.unconsumed_tail)
 
+    out.extend(member_out)
     return _BodyDecodeResult(bytes(out), False)
 
 
