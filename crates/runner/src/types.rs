@@ -35,8 +35,7 @@ pub struct PollResponse {
 #[serde(rename_all = "camelCase")]
 pub struct Job {
     pub run_id: RunId,
-    #[serde(default)]
-    pub experimental_profile: Option<String>,
+    pub experimental_profile: String,
     #[serde(default)]
     pub cli_agent_session_id: Option<String>,
     #[serde(default)]
@@ -1538,7 +1537,7 @@ mod tests {
                 .parse::<RunId>()
                 .unwrap()
         );
-        assert_eq!(job.experimental_profile.as_deref(), Some("browser"));
+        assert_eq!(job.experimental_profile, "browser");
         assert_eq!(
             job.session_affinity_resource,
             Some(SessionAffinityResource::WorkspaceCache)
@@ -1553,13 +1552,11 @@ mod tests {
     }
 
     #[test]
-    fn job_optional_profile_defaults_to_none() {
+    fn job_requires_profile() {
         let json = json!({
             "runId": "550e8400-e29b-41d4-a716-446655440000"
         });
-        let job: Job = serde_json::from_value(json).unwrap();
-        assert!(job.experimental_profile.is_none());
-        assert!(job.session_affinity_resource.is_none());
+        assert!(serde_json::from_value::<Job>(json).is_err());
     }
 
     #[test]

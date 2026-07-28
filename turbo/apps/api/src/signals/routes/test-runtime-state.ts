@@ -599,6 +599,37 @@ async function setComputerUseHostAsPreviousApi(
   return { status: 200 as const, body: { ok: true as const } };
 }
 
+type PreviousApiRunnerJobContextProfileAction = Extract<
+  TestRuntimeStateActionBody,
+  { action: "set-runner-job-context-profile-as-previous-api" }
+>;
+
+async function setRunnerJobContextProfileAsPreviousApi(
+  db: Db,
+  body: PreviousApiRunnerJobContextProfileAction,
+  signal: AbortSignal,
+) {
+  // The previous API stored the routing profile in both the dedicated queue
+  // column and execution-context JSON.
+  const [updated] = await db
+    .update(runnerJobQueue)
+    .set({
+      executionContext: sql`jsonb_set(
+        ${runnerJobQueue.executionContext},
+        '{experimentalProfile}',
+        to_jsonb(${body.profile}::text),
+        true
+      )`,
+    })
+    .where(eq(runnerJobQueue.runId, body.run_id))
+    .returning({ runId: runnerJobQueue.runId });
+  signal.throwIfAborted();
+  if (!updated) {
+    throw new Error("Expected a runner job for previous API profile update");
+  }
+  return { status: 200 as const, body: { ok: true as const } };
+}
+
 type PreviousApiBrowserProfileAction = Extract<
   TestRuntimeStateActionBody,
   { action: "read-browser-profile-as-previous-api" }
@@ -659,6 +690,7 @@ async function readBrowserProfileAsPreviousApi(
 type CompatibilityFixtureAction =
   | LegacyArtifactCatalogFileAction
   | PreviousApiComputerAccessAction
+  | PreviousApiRunnerJobContextProfileAction
   | PreviousApiBrowserProfileAction;
 
 function isCompatibilityFixtureAction(
@@ -667,6 +699,7 @@ function isCompatibilityFixtureAction(
   return [
     "insert-legacy-artifact-catalog-file",
     "set-computer-use-host-as-previous-api",
+    "set-runner-job-context-profile-as-previous-api",
     "read-browser-profile-as-previous-api",
   ].includes(body.action);
 }
@@ -682,6 +715,9 @@ async function compatibilityFixtureActionResponse(
     }
     case "set-computer-use-host-as-previous-api": {
       return await setComputerUseHostAsPreviousApi(db, body, signal);
+    }
+    case "set-runner-job-context-profile-as-previous-api": {
+      return await setRunnerJobContextProfileAsPreviousApi(db, body, signal);
     }
     case "read-browser-profile-as-previous-api": {
       return await readBrowserProfileAsPreviousApi(db, body, signal);

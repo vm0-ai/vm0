@@ -87,6 +87,7 @@ import {
   resetFakeKms,
   seedVm0ManagedDefaultModelKey as seedVm0ManagedDefaultModelKeyState,
   seedVm0ManagedModelKey as seedVm0ManagedModelKeyState,
+  setRunnerJobContextProfileAsPreviousApi,
 } from "./helpers/runtime-state";
 import {
   setSecretKmsClientForTests,
@@ -2689,9 +2690,37 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     await api.requestCancelRun(actor, run.runId, [200]);
   });
 
-  it("filters runner polls by supported profiles without widening malformed polls", async () => {
+  it("polls and claims context written by the previous profile API", async () => {
     const api = createRunsApi(context);
     const { actor, agentId, runnerGroup } = await entitledRunActor();
+
+    const created = await api.createRun(actor, {
+      agentId,
+      prompt: "claim previous profile context",
+      modelProvider: "anthropic-api-key",
+    });
+    await setRunnerJobContextProfileAsPreviousApi(
+      context,
+      created.runId,
+      "vm0/large",
+    );
+
+    const poll = await api.pollRunner(runnerGroup);
+    expect(poll.body.job).toMatchObject({
+      runId: created.runId,
+      experimentalProfile: "vm0/default",
+    });
+
+    const claim = await api.claimRunnerJob(created.runId);
+    expect(claim.prompt).toBe("claim previous profile context");
+    expect(claim).not.toHaveProperty("experimentalProfile");
+
+    await api.requestCancelRun(actor, created.runId, [200]);
+  });
+
+  it("filters runner polls by supported profiles without widening malformed polls", async () => {
+    const api = createRunsApi(context);
+    const { actor, runnerGroup } = await entitledRunActor();
 
     const missingSupport = await api.requestRawPollRunner(
       true,
@@ -2706,17 +2735,27 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     );
     expectApiError(emptySupport.body);
 
-    const created = await api.createRun(actor, {
-      agentId,
+    const composeName = `bdd-runner-profile-${randomUUID().slice(0, 8)}`;
+    const compose = await api.createCompose(actor, {
+      version: "1",
+      agents: {
+        [composeName]: {
+          framework: "claude-code",
+          experimental_profile: "vm0/large",
+          environment: { ANTHROPIC_API_KEY: "bdd-inline-key" },
+        },
+      },
+    });
+    const created = await api.createDirectRun(actor, {
+      agentComposeVersionId: compose.versionId,
       prompt: "poll with explicit support list",
-      modelProvider: "anthropic-api-key",
     });
 
     const incompatiblePoll = await api.requestPollRunner(
       true,
       {
         group: runnerGroup,
-        supportedProfiles: ["vm0/large"],
+        supportedProfiles: ["vm0/default"],
       },
       [200],
     );
@@ -2731,7 +2770,7 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
       true,
       {
         group: runnerGroup,
-        supportedProfiles: ["vm0/default"],
+        supportedProfiles: ["vm0/large"],
       },
       [200],
     );
@@ -2741,6 +2780,7 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
       );
     }
     expect(compatiblePoll.body.job?.runId).toBe(created.runId);
+    expect(compatiblePoll.body.job?.experimentalProfile).toBe("vm0/large");
 
     await api.requestCancelRun(actor, created.runId, [200]);
   });
