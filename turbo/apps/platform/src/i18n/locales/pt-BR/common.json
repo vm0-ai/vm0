@@ -9,6 +9,14 @@
       "switchAccount": "Trocar de conta",
       "userFallback": "Usuário"
     },
+    "buildInfo": {
+      "backend": "Backend",
+      "commitSha": "SHA do commit",
+      "frontend": "Frontend",
+      "loading": "Carregando",
+      "title": "Informações da compilação",
+      "unavailable": "Indisponível"
+    },
     "dialog": {
       "description": "Gerencie sua conta, preferências e configurações do espaço de trabalho e de faturamento.",
       "groups": {
@@ -55,6 +63,72 @@
       },
       "title": "Configurações"
     },
+    "export": {
+      "actions": {
+        "again": "Exportar novamente",
+        "download": "Baixar exportação",
+        "start": "Exportar meus dados",
+        "starting": "Iniciando exportação"
+      },
+      "backToZero": "Voltar ao Zero",
+      "description": "Baixe os arquivos e registros de texto que você criou no Zero.",
+      "documentTitle": "Exportar dados",
+      "duration": {
+        "soon": "breve"
+      },
+      "errors": {
+        "loadFailed": "Não foi possível carregar a exportação",
+        "rateLimited": "Você pode exportar uma vez a cada 24 horas.",
+        "startFailed": "Não foi possível iniciar a exportação"
+      },
+      "scope": {
+        "agentInstructions": "Documentos de instruções do agente",
+        "artifactsExcluded": "Os artefatos não estão incluídos nesta exportação.",
+        "chatMessages": "Mensagens de texto do usuário e do assistente",
+        "memoryFiles": "Arquivos de memória",
+        "workflowInstructions": "Instruções e arquivos SKILL.md dos fluxos de trabalho"
+      },
+      "status": {
+        "checkingDescription": "O estado da sua exportação mais recente aparecerá aqui.",
+        "checkingTitle": "Verificando o status da exportação",
+        "downloadExpires": "O link para download expira em {{duration}}.",
+        "downloadNoExpiry": "Baixe o arquivo antes que o link expire.",
+        "downloadTitle": "Sua exportação está pronta",
+        "expiredDescription": "Inicie uma nova exportação para obter um novo link de download.",
+        "expiredTitle": "A exportação anterior expirou",
+        "failedDescription": "Tente novamente ou entre em contato com o suporte se o problema persistir.",
+        "failedTitle": "Não foi possível concluir a exportação",
+        "preparingDescription": "Isso pode levar alguns minutos. Você pode deixar esta página aberta.",
+        "preparingTitle": "Preparando sua exportação",
+        "rateLimitedFallback": "Você poderá iniciar outra exportação após o fim do período de espera.",
+        "rateLimitedTitle": "Exportação solicitada recentemente",
+        "rateLimitedUntil": "Você poderá iniciar outra exportação em {{duration}}.",
+        "readyDescription": "Crie um arquivo ZIP com os dados do seu espaço de trabalho.",
+        "readyTitle": "Pronto para exportar"
+      },
+      "title": "Exportar dados"
+    },
+    "lab": {
+      "actions": {
+        "resetAll": "Redefinir tudo",
+        "resetting": "Redefinindo…"
+      },
+      "description": "Ative ou desative recursos experimentais.",
+      "documentTitle": "Laboratório",
+      "empty": {
+        "description": "Não há recursos experimentais para este responsável.",
+        "title": "Nenhum recurso experimental"
+      },
+      "filters": {
+        "all": "Todos"
+      },
+      "groups": {
+        "connectors": "Conectores",
+        "other": "Outros"
+      },
+      "maintainer": "Responsável: {{maintainer}}",
+      "title": "Laboratório"
+    },
     "models": {
       "actions": {
         "addModel": "Adicionar modelo",
@@ -74,7 +148,7 @@
           "connectTitle": "Conectar o Claude Code",
           "error": "Falha na conexão com o Claude Code. Inicie novamente para tentar de novo.",
           "expired": "A sessão de conexão com o Claude Code expirou. Inicie novamente para tentar de novo.",
-          "instructions": "Primeiro, clique em Abrir página de aprovação do Claude. Depois, aprove o vm0 no Claude e copie o código de autorização exibido após a aprovação. Por fim, cole o código aqui e clique em Conectar.",
+          "instructions": "Primeiro, clique em Abrir página de aprovação do Claude. Depois, aprove o {{brandName}} no Claude e copie o código de autorização exibido após a aprovação. Por fim, cole o código aqui e clique em Conectar.",
           "openApproval": "Abrir página de aprovação do Claude",
           "preparing": "Preparando...",
           "reconnectAction": "Reconectar o Claude Code",
@@ -94,9 +168,9 @@
           "deviceCode": "Código do dispositivo",
           "error": "Falha na conexão com o ChatGPT. Inicie novamente para tentar de novo.",
           "expired": "A sessão de conexão com o Codex expirou. Inicie novamente para tentar de novo.",
-          "freePlanRejected": "Os planos gratuitos do ChatGPT não podem usar o Codex pelo vm0. Faça upgrade para o Plus ou Pro e tente de novo.",
-          "instructions": "Primeiro, clique em Copiar código e abrir página de aprovação. Depois, cole o código do dispositivo na OpenAI quando solicitado. Por fim, aprove o acesso e mantenha esta caixa de diálogo aberta enquanto o vm0 conclui a conexão.",
-          "invalidTokenFormat": "O Codex gerou um formato de token de login que o vm0 não reconhece. Atualize o Codex e tente de novo.",
+          "freePlanRejected": "Os planos gratuitos do ChatGPT não podem usar o Codex pelo {{brandName}}. Faça upgrade para o Plus ou Pro e tente de novo.",
+          "instructions": "Primeiro, clique em Copiar código e abrir página de aprovação. Depois, cole o código do dispositivo na OpenAI quando solicitado. Por fim, aprove o acesso e mantenha esta caixa de diálogo aberta enquanto o {{brandName}} conclui a conexão.",
+          "invalidTokenFormat": "O Codex gerou um formato de token de login que o {{brandName}} não reconhece. Atualize o Codex e tente de novo.",
           "openError": "O código do dispositivo foi copiado, mas não foi possível abrir a página de aprovação. Tente de novo.",
           "preparing": "Preparando...",
           "reconnectAction": "Reconectar o ChatGPT",
@@ -187,80 +261,6 @@
         "resetTimePassed": "o horário de redefinição já passou",
         "resetTimePassedTitle": "O horário de redefinição já passou"
       }
-    },
-    "buildInfo": {
-      "backend": "Backend",
-      "commitSha": "SHA do commit",
-      "frontend": "Frontend",
-      "loading": "Carregando",
-      "title": "Informações da compilação",
-      "unavailable": "Indisponível"
-    },
-    "export": {
-      "actions": {
-        "again": "Exportar novamente",
-        "download": "Baixar exportação",
-        "start": "Exportar meus dados",
-        "starting": "Iniciando exportação"
-      },
-      "backToZero": "Voltar ao Zero",
-      "description": "Baixe os arquivos e registros de texto que você criou no Zero.",
-      "documentTitle": "Exportar dados",
-      "duration": {
-        "soon": "breve"
-      },
-      "errors": {
-        "loadFailed": "Não foi possível carregar a exportação",
-        "rateLimited": "Você pode exportar uma vez a cada 24 horas.",
-        "startFailed": "Não foi possível iniciar a exportação"
-      },
-      "scope": {
-        "agentInstructions": "Documentos de instruções do agente",
-        "artifactsExcluded": "Os artefatos não estão incluídos nesta exportação.",
-        "chatMessages": "Mensagens de texto do usuário e do assistente",
-        "memoryFiles": "Arquivos de memória",
-        "workflowInstructions": "Instruções e arquivos SKILL.md dos fluxos de trabalho"
-      },
-      "status": {
-        "checkingDescription": "O estado da sua exportação mais recente aparecerá aqui.",
-        "checkingTitle": "Verificando o status da exportação",
-        "downloadExpires": "O link para download expira em {{duration}}.",
-        "downloadNoExpiry": "Baixe o arquivo antes que o link expire.",
-        "downloadTitle": "Sua exportação está pronta",
-        "expiredDescription": "Inicie uma nova exportação para obter um novo link de download.",
-        "expiredTitle": "A exportação anterior expirou",
-        "failedDescription": "Tente novamente ou entre em contato com o suporte se o problema persistir.",
-        "failedTitle": "Não foi possível concluir a exportação",
-        "preparingDescription": "Isso pode levar alguns minutos. Você pode deixar esta página aberta.",
-        "preparingTitle": "Preparando sua exportação",
-        "rateLimitedFallback": "Você poderá iniciar outra exportação após o fim do período de espera.",
-        "rateLimitedTitle": "Exportação solicitada recentemente",
-        "rateLimitedUntil": "Você poderá iniciar outra exportação em {{duration}}.",
-        "readyDescription": "Crie um arquivo ZIP com os dados do seu espaço de trabalho.",
-        "readyTitle": "Pronto para exportar"
-      },
-      "title": "Exportar dados"
-    },
-    "lab": {
-      "actions": {
-        "resetAll": "Redefinir tudo",
-        "resetting": "Redefinindo…"
-      },
-      "description": "Ative ou desative recursos experimentais.",
-      "documentTitle": "Laboratório",
-      "empty": {
-        "description": "Não há recursos experimentais para este responsável.",
-        "title": "Nenhum recurso experimental"
-      },
-      "filters": {
-        "all": "Todos"
-      },
-      "groups": {
-        "connectors": "Conectores",
-        "other": "Outros"
-      },
-      "maintainer": "Responsável: {{maintainer}}",
-      "title": "Laboratório"
     },
     "preferences": {
       "account": {
