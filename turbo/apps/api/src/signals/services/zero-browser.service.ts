@@ -34,6 +34,7 @@ import {
 import { z } from "zod";
 
 import { env } from "../../lib/env";
+import { logger } from "../../lib/log";
 import { writeDb$, type Db } from "../external/db";
 import { nowDate } from "../external/time";
 import { settle } from "../utils";
@@ -61,6 +62,7 @@ const RECONCILE_BATCH_SIZE = 20;
 const PROVIDER_CLEANUP_TIMEOUT_MS = 30_000;
 const PROVIDER_START_LIFECYCLE_TIMEOUT_MS = 90_000;
 const STRANDED_START_GRACE_MS = 60_000;
+const MAX_PROVIDER_VALIDATION_ISSUES_TO_LOG = 10;
 const IDLE_LEASE_MS = ZERO_BROWSER_IDLE_LEASE_MINUTES * 60_000;
 const OWNED_BROWSER_STATUSES = [
   "creating",
@@ -75,6 +77,7 @@ const TERMINAL_RUN_STATUSES = [
   "timeout",
   "cancelled",
 ] as const;
+const L = logger("ZeroBrowser");
 
 type BrowserSessionRow = typeof browserSessions.$inferSelect;
 type BrowserInstanceRow = typeof browserSessionInstances.$inferSelect;
@@ -186,6 +189,26 @@ function providerFailure(error: unknown): BrowserServiceError {
     return serviceError(error.status, error.code, error.message);
   }
   if (error instanceof z.ZodError) {
+    const validationIssueCount = error.issues.length;
+    L.warn("Managed browser provider returned an invalid response", {
+      validationIssueCount,
+      validationIssues: error.issues
+        .slice(0, MAX_PROVIDER_VALIDATION_ISSUES_TO_LOG)
+        .map((issue) => {
+          return {
+            path:
+              issue.path.length === 0
+                ? "<root>"
+                : issue.path.map(String).join("."),
+            code: issue.code,
+            message: issue.message,
+          };
+        }),
+      validationIssuesOmitted: Math.max(
+        0,
+        validationIssueCount - MAX_PROVIDER_VALIDATION_ISSUES_TO_LOG,
+      ),
+    });
     return serviceError(
       502,
       "BROWSER_USE_INVALID_RESPONSE",
