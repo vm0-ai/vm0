@@ -1617,7 +1617,6 @@ function appendUnassociatedUserMessage(params: {
       .set({
         draftContent: null,
         draftStructuredPrompt: null,
-        draftStructuredPromptWithFeedback: null,
         draftAttachments: null,
       })
       .where(
@@ -1729,7 +1728,6 @@ async function clearThreadDraft(
     .set({
       draftContent: null,
       draftStructuredPrompt: null,
-      draftStructuredPromptWithFeedback: null,
       draftAttachments: null,
     })
     .where(and(eq(chatThreads.id, threadId), eq(chatThreads.userId, userId)));
@@ -2904,7 +2902,6 @@ async function appendInsufficientCreditsMessages(params: {
       .set({
         draftContent: null,
         draftStructuredPrompt: null,
-        draftStructuredPromptWithFeedback: null,
         draftAttachments: null,
       })
       .where(

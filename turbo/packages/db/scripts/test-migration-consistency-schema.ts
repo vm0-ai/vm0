@@ -1609,6 +1609,7 @@ async function applyMigrationsUpToInTransaction(
 
 const STRUCTURED_PROMPT_DRAFT_BACKFILL_PREVIOUS_MIGRATION = 707;
 const STRUCTURED_PROMPT_DRAFT_BACKFILL_MIGRATION = 708;
+const STRUCTURED_PROMPT_DRAFT_LEGACY_COLUMN_DROP_MIGRATION = 709;
 
 async function validateStructuredPromptDraftBackfill(): Promise<void> {
   console.log("=== Validate structured prompt draft backfill ===\n");
@@ -1699,6 +1700,8 @@ async function validateStructuredPromptDraftBackfill(): Promise<void> {
           JSON.stringify(feedbackDocument),
         ],
       );
+      // Seed the compatibility columns before their backfill and removal so
+      // this fixture covers the full migration sequence.
       await client.query(
         `INSERT INTO "zero_agent_drafts" (
            "user_id",
@@ -1796,6 +1799,74 @@ async function validateStructuredPromptDraftBackfill(): Promise<void> {
         draft_structured_prompt: feedbackDocument,
         draft_structured_prompt_with_feedback: feedbackDocument,
       });
+
+      await applyMigrationsUpToInTransaction(
+        client,
+        STRUCTURED_PROMPT_DRAFT_LEGACY_COLUMN_DROP_MIGRATION,
+      );
+
+      const legacyColumns = await client.query<{
+        table_name: string;
+        column_name: string;
+      }>(
+        `SELECT
+           "table_name",
+           "column_name"
+         FROM information_schema.columns
+         WHERE "table_schema" = 'public'
+           AND "column_name" IN (
+             'structured_prompt_with_feedback',
+             'draft_structured_prompt_with_feedback'
+           )
+         ORDER BY "table_name", "column_name"`,
+      );
+      assert.deepEqual(legacyColumns.rows, []);
+
+      const canonicalRowsAfterDrop = await client.query<{
+        id: string;
+        draft_structured_prompt: unknown;
+      }>(
+        `SELECT
+           "id",
+           "draft_structured_prompt"
+         FROM "chat_threads"
+         WHERE "id" = ANY($1::uuid[])
+         ORDER BY "id"`,
+        [Object.values(fixture.threadIds)],
+      );
+      assert.deepEqual(
+        canonicalRowsAfterDrop.rows.map((row) => {
+          return [row.id, row.draft_structured_prompt] as const;
+        }),
+        [
+          [fixture.threadIds.legacy, feedbackDocument],
+          [fixture.threadIds.canonical, canonicalDocument],
+          [fixture.threadIds.equal, feedbackDocument],
+        ],
+      );
+
+      const canonicalDraftRowsAfterDrop = await client.query<{
+        user_id: string;
+        draft_structured_prompt: unknown;
+      }>(
+        `SELECT
+           "user_id",
+           "draft_structured_prompt"
+         FROM "zero_agent_drafts"
+         WHERE "user_id" = ANY($1::text[])
+         ORDER BY "user_id"`,
+        [Object.values(fixture.draftUsers)],
+      );
+      assert.deepEqual(
+        canonicalDraftRowsAfterDrop.rows.map((row) => {
+          return [row.user_id, row.draft_structured_prompt] as const;
+        }),
+        [
+          [fixture.draftUsers.canonical, canonicalDocument],
+          [fixture.draftUsers.equal, feedbackDocument],
+          [fixture.draftUsers.legacy, feedbackDocument],
+        ],
+      );
     } finally {
       await client.end();
     }
@@ -1804,7 +1875,7 @@ async function validateStructuredPromptDraftBackfill(): Promise<void> {
   }
 
   console.log(
-    "   ✅ Both draft tables backfill feedback documents and preserve canonical rows\n",
+    "   ✅ Both draft tables backfill feedback, preserve canonical rows, and drop legacy columns\n",
   );
 }
 

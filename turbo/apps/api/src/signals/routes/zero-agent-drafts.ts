@@ -118,7 +118,6 @@ const patchAgentDraftInner$ = command(
         agentId: params.id,
         draftContent,
         draftStructuredPrompt,
-        draftStructuredPromptWithFeedback: null,
         draftAttachments,
         updatedAt,
       })
@@ -131,7 +130,6 @@ const patchAgentDraftInner$ = command(
         set: {
           draftContent,
           draftStructuredPrompt,
-          draftStructuredPromptWithFeedback: null,
           draftAttachments,
           updatedAt,
         },
