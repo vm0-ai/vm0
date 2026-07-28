@@ -22,10 +22,6 @@ import { validateConnectorCatalogArtifact } from "./relationships";
 const ACTIVE_POINTER_MAX_BYTES = 16 * 1024;
 const CONNECTOR_CATALOG_MAX_GZIP_BYTES = CONNECTOR_CATALOG_MAX_RAW_BYTES * 2;
 
-// Increment whenever complete schema, public-projection, relationship, or
-// firewall semantic validation can reject bytes accepted by an older contract.
-export const CONNECTOR_CATALOG_VALIDATION_VERSION = 1;
-
 const connectorCatalogObjectKeySchema = artifactKeySchema.refine((key) => {
   const namespace = `connectors/v${SUPPORTED_CONNECTOR_CATALOG_SCHEMA_VERSION}/`;
   return (

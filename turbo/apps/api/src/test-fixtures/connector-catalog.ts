@@ -16,10 +16,7 @@ import {
   connectorCatalogArtifactSchema,
   SUPPORTED_CONNECTOR_CATALOG_SCHEMA_VERSION,
 } from "../signals/services/connector-catalog-artifacts/artifacts";
-import {
-  CONNECTOR_CATALOG_VALIDATION_VERSION,
-  encodeConnectorCatalogSnapshot,
-} from "../signals/services/connector-catalog-artifacts/loader";
+import { encodeConnectorCatalogSnapshot } from "../signals/services/connector-catalog-artifacts/loader";
 import {
   connectorCatalogFirewallConfig,
   validateConnectorCatalogArtifact,
@@ -29,10 +26,11 @@ import {
   persistConnectorCatalogCompatibility,
 } from "../signals/services/connector-catalog-compatibility.service";
 import { connectorCatalogSource } from "../signals/services/connector-catalog-source";
+import {
+  currentConnectorCatalogValidatorIdentity,
+  type ConnectorCatalogValidationAuthority,
+} from "../signals/services/connector-catalog-validator-authority";
 import { API_TEST_CONNECTOR_CATALOG_ARTIFACT } from "./connector-catalog-artifact";
-
-export const API_TEST_CONNECTOR_CATALOG_VALIDATION_VERSION =
-  CONNECTOR_CATALOG_VALIDATION_VERSION;
 
 export const API_TEST_CONNECTOR_CATALOG = connectorCatalogArtifactSchema.parse(
   API_TEST_CONNECTOR_CATALOG_ARTIFACT,
@@ -161,6 +159,7 @@ export async function installApiTestConnectorCatalog(
       },
       artifact: catalog,
       capability,
+      validator: currentConnectorCatalogValidatorIdentity(),
     });
   });
 }
@@ -233,15 +232,23 @@ function requireSingleCatalogMutation(
   }
 }
 
-export async function readApiTestConnectorCatalogValidationVersion(): Promise<
-  number | null
-> {
+export function apiTestConnectorCatalogValidationAuthority(): ConnectorCatalogValidationAuthority {
+  const validator = currentConnectorCatalogValidatorIdentity();
+  return {
+    backendVersion: validator.backendVersion,
+    buildCommitSha: validator.buildCommitSha,
+  };
+}
+
+export async function readApiTestConnectorCatalogValidationAuthority(): Promise<ConnectorCatalogValidationAuthority | null> {
   const identity = await currentApiTestConnectorCatalogIdentity();
   const db = store.set(writeDb$);
   const [row] = await db
     .select({
-      catalogValidationVersion:
-        connectorCatalogCompatibilityEvaluation.catalogValidationVersion,
+      catalogValidationBackendVersion:
+        connectorCatalogCompatibilityEvaluation.catalogValidationBackendVersion,
+      catalogValidationBuildCommitSha:
+        connectorCatalogCompatibilityEvaluation.catalogValidationBuildCommitSha,
     })
     .from(connectorCatalogCompatibilityEvaluation)
     .where(currentApiTestConnectorCatalogCompatibilityWhere(identity))
@@ -251,26 +258,34 @@ export async function readApiTestConnectorCatalogValidationVersion(): Promise<
       "Expected a current API test connector catalog compatibility evaluation",
     );
   }
-  return row.catalogValidationVersion;
+  return row.catalogValidationBackendVersion === null
+    ? null
+    : {
+        backendVersion: row.catalogValidationBackendVersion,
+        buildCommitSha: row.catalogValidationBuildCommitSha,
+      };
 }
 
-export async function setApiTestConnectorCatalogValidationVersion(
-  catalogValidationVersion: number | null,
+export async function setApiTestConnectorCatalogValidationAuthority(
+  authority: ConnectorCatalogValidationAuthority | null,
 ): Promise<void> {
   const identity = await currentApiTestConnectorCatalogIdentity();
   const db = store.set(writeDb$);
   const updated = await db
     .update(connectorCatalogCompatibilityEvaluation)
-    .set({ catalogValidationVersion })
+    .set({
+      catalogValidationBackendVersion: authority?.backendVersion ?? null,
+      catalogValidationBuildCommitSha: authority?.buildCommitSha ?? null,
+    })
     .where(currentApiTestConnectorCatalogCompatibilityWhere(identity))
     .returning({ sourceId: connectorCatalogCompatibilityEvaluation.sourceId });
-  requireSingleCatalogMutation(updated, "validation-version update");
+  requireSingleCatalogMutation(updated, "validation-authority update");
 }
 
 export async function replaceApiTestConnectorCatalogStoredBytes(args: {
   readonly catalogVersion: string;
   readonly rawBytes: Uint8Array;
-  readonly catalogValidationVersion: number | null;
+  readonly catalogValidationAuthority: ConnectorCatalogValidationAuthority | null;
   readonly retainCatalogDigest?: boolean;
 }): Promise<void> {
   const identity = await currentApiTestConnectorCatalogIdentity();
@@ -286,7 +301,10 @@ export async function replaceApiTestConnectorCatalogStoredBytes(args: {
       .set({
         catalogVersion: args.catalogVersion,
         catalogDigest,
-        catalogValidationVersion: args.catalogValidationVersion,
+        catalogValidationBackendVersion:
+          args.catalogValidationAuthority?.backendVersion ?? null,
+        catalogValidationBuildCommitSha:
+          args.catalogValidationAuthority?.buildCommitSha ?? null,
       })
       .where(currentApiTestConnectorCatalogCompatibilityWhere(identity))
       .returning({

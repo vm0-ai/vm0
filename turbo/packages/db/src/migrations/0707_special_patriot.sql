@@ -1,2 +1,0 @@
-ALTER TABLE "connector_catalog_compatibility_evaluation" ADD COLUMN "catalog_validation_version" integer;--> statement-breakpoint
-ALTER TABLE "connector_catalog_compatibility_evaluation" ADD CONSTRAINT "connector_catalog_compat_validation_version_positive" CHECK ("connector_catalog_compatibility_evaluation"."catalog_validation_version" IS NULL OR "connector_catalog_compatibility_evaluation"."catalog_validation_version" > 0);

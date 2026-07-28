@@ -51,6 +51,7 @@ import {
 } from "../../services/connector-catalog-artifacts/artifacts";
 import { encodeConnectorCatalogSnapshot } from "../../services/connector-catalog-artifacts/loader";
 import { connectorCatalogSource } from "../../services/connector-catalog-source";
+import { currentConnectorCatalogValidatorIdentity } from "../../services/connector-catalog-validator-authority";
 import { seedUserModelProvider$ } from "./helpers/zero-model-providers";
 import { seedOrgMembership$ } from "../__tests__/helpers/zero-org-membership";
 import { createZeroRouteMocks } from "../__tests__/helpers/zero-route-test";
@@ -282,6 +283,7 @@ async function seedBenchConnectorCatalog(): Promise<void> {
       },
       artifact: BENCH_CONNECTOR_CATALOG,
       capability,
+      validator: currentConnectorCatalogValidatorIdentity(),
     });
   });
 }

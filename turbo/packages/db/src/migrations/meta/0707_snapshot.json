@@ -1,5 +1,5 @@
 {
-  "id": "cee18216-602a-4156-b47a-0d0dbf4528dc",
+  "id": "e8fd34e5-7e5b-45ef-8fbc-fa40f096d757",
   "prevId": "0ea41d89-71dd-4277-8085-e6e2a8909d1b",
   "version": "7",
   "dialect": "postgresql",
@@ -6479,9 +6479,15 @@
           "primaryKey": false,
           "notNull": true
         },
-        "catalog_validation_version": {
-          "name": "catalog_validation_version",
-          "type": "integer",
+        "catalog_validation_backend_version": {
+          "name": "catalog_validation_backend_version",
+          "type": "varchar(64)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "catalog_validation_build_commit_sha": {
+          "name": "catalog_validation_build_commit_sha",
+          "type": "varchar(40)",
           "primaryKey": false,
           "notNull": false
         },
@@ -6543,9 +6549,9 @@
           "name": "connector_catalog_compatibility_catalog_digest_valid",
           "value": "\"connector_catalog_compatibility_evaluation\".\"catalog_digest\" ~ '^sha256:[a-f0-9]{64}$'"
         },
-        "connector_catalog_compat_validation_version_positive": {
-          "name": "connector_catalog_compat_validation_version_positive",
-          "value": "\"connector_catalog_compatibility_evaluation\".\"catalog_validation_version\" IS NULL OR \"connector_catalog_compatibility_evaluation\".\"catalog_validation_version\" > 0"
+        "connector_catalog_compat_validation_authority_complete": {
+          "name": "connector_catalog_compat_validation_authority_complete",
+          "value": "(\n          \"connector_catalog_compatibility_evaluation\".\"catalog_validation_backend_version\" IS NULL\n          AND \"connector_catalog_compatibility_evaluation\".\"catalog_validation_build_commit_sha\" IS NULL\n        ) OR (\n          \"connector_catalog_compatibility_evaluation\".\"catalog_validation_backend_version\" IS NOT NULL\n          AND \"connector_catalog_compatibility_evaluation\".\"catalog_validation_backend_version\" ~ '^(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)$'\n          AND (\n            \"connector_catalog_compatibility_evaluation\".\"catalog_validation_build_commit_sha\" IS NULL\n            OR \"connector_catalog_compatibility_evaluation\".\"catalog_validation_build_commit_sha\" ~ '^[a-f0-9]{40}$'\n          )\n        )"
         }
       },
       "isRLSEnabled": false

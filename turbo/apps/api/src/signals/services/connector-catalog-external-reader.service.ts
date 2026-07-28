@@ -34,7 +34,6 @@ import {
   type ConnectorCatalogAuthMethod,
 } from "./connector-catalog-artifacts/artifacts";
 import {
-  CONNECTOR_CATALOG_VALIDATION_VERSION,
   connectorCatalogArtifactFailureCode,
   decodeAttestedConnectorCatalogSnapshot,
   decodeConnectorCatalogSnapshot,
@@ -45,6 +44,11 @@ import { connectorCatalogExecutableCapabilityDigest } from "./connector-catalog-
 import type { ConnectorFeatureStates } from "./connector-catalog-feature-states";
 import type { ConnectorCatalogLoadTiming } from "./connector-catalog-load-timing.service";
 import { connectorCatalogSource } from "./connector-catalog-source";
+import {
+  connectorCatalogValidationAuthorityIsCurrent,
+  currentConnectorCatalogValidatorIdentity,
+  type ConnectorCatalogValidationAuthority,
+} from "./connector-catalog-validator-authority";
 import type { ApiDispatchTimingActionType } from "./api-dispatch-timing.service";
 
 const log = logger("connector-catalog:reader");
@@ -157,6 +161,18 @@ function identityLogFields(identity: ExternalCatalogIdentity) {
     catalogDigest: identity.catalogDigest,
     capabilityDigest: identity.capabilityDigest,
   };
+}
+
+function persistedCatalogValidationAuthority(args: {
+  readonly backendVersion: string | null;
+  readonly buildCommitSha: string | null;
+}): ConnectorCatalogValidationAuthority | null {
+  return args.backendVersion === null
+    ? null
+    : {
+        backendVersion: args.backendVersion,
+        buildCommitSha: args.buildCommitSha,
+      };
 }
 
 function isRecognizedFeatureSwitchKey(
@@ -296,8 +312,10 @@ async function readCurrentCatalog(args: {
         .select({
           catalogRawSize: connectorCatalogActiveSnapshot.catalogRawSize,
           catalogGzip: connectorCatalogActiveSnapshot.catalogGzip,
-          catalogValidationVersion:
-            connectorCatalogCompatibilityEvaluation.catalogValidationVersion,
+          catalogValidationBackendVersion:
+            connectorCatalogCompatibilityEvaluation.catalogValidationBackendVersion,
+          catalogValidationBuildCommitSha:
+            connectorCatalogCompatibilityEvaluation.catalogValidationBuildCommitSha,
           filteredAuthMethods:
             connectorCatalogCompatibilityEvaluation.filteredAuthMethods,
         })
@@ -341,20 +359,28 @@ async function readCurrentCatalog(args: {
     catalogDigest: args.identity.catalogDigest,
     ...(args.timing === undefined ? {} : { timing: args.timing }),
   };
-  const validationVersionIsCurrent =
-    row.catalogValidationVersion === CONNECTOR_CATALOG_VALIDATION_VERSION;
-  if (validationVersionIsCurrent) {
+  const validationAuthority = persistedCatalogValidationAuthority({
+    backendVersion: row.catalogValidationBackendVersion,
+    buildCommitSha: row.catalogValidationBuildCommitSha,
+  });
+  const validationAuthorityIsCurrent =
+    validationAuthority !== null &&
+    connectorCatalogValidationAuthorityIsCurrent({
+      authority: validationAuthority,
+      validator: currentConnectorCatalogValidatorIdentity(),
+    });
+  if (validationAuthorityIsCurrent) {
     args.timing?.recordValidationResult({ outcome: "attested" });
   } else {
     args.timing?.recordValidationResult({
       outcome: "full_fallback",
       fallbackReason:
-        row.catalogValidationVersion === null
-          ? "missing_version"
-          : "unsupported_version",
+        validationAuthority === null
+          ? "missing_authority"
+          : "different_authority",
     });
   }
-  const decoded = validationVersionIsCurrent
+  const decoded = validationAuthorityIsCurrent
     ? decodeAttestedConnectorCatalogSnapshot(decodeArgs)
     : decodeConnectorCatalogSnapshot(decodeArgs);
   const filteredAuthMethods = measureCatalogLoadSync(

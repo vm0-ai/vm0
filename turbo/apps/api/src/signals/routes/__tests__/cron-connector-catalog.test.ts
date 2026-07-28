@@ -45,13 +45,13 @@ import { singleton } from "../../../lib/singleton";
 import { clearMockNow, mockNow, now } from "../../../lib/time";
 import { server } from "../../../mocks/server";
 import {
-  API_TEST_CONNECTOR_CATALOG_VALIDATION_VERSION,
+  apiTestConnectorCatalogValidationAuthority,
   deleteApiTestConnectorCatalogCompatibility,
   invalidateApiTestConnectorCatalogCompatibility,
   mockApiTestConnectorProviderConfiguration,
-  readApiTestConnectorCatalogValidationVersion,
+  readApiTestConnectorCatalogValidationAuthority,
   replaceApiTestConnectorCatalogStoredBytes,
-  setApiTestConnectorCatalogValidationVersion,
+  setApiTestConnectorCatalogValidationAuthority,
 } from "../../../test-fixtures/connector-catalog";
 import {
   deleteOrgPlanEntitlementFixture,
@@ -1553,9 +1553,9 @@ describe("connector catalog valid lifecycle", () => {
         filteredAuthMethods: [],
       },
     });
-    await expect(readApiTestConnectorCatalogValidationVersion()).resolves.toBe(
-      API_TEST_CONNECTOR_CATALOG_VALIDATION_VERSION,
-    );
+    await expect(
+      readApiTestConnectorCatalogValidationAuthority(),
+    ).resolves.toStrictEqual(apiTestConnectorCatalogValidationAuthority());
     expect(
       commandInput(context.mocks.s3.send.mock.calls[0]?.[0]),
     ).toMatchObject({
@@ -1853,7 +1853,7 @@ describe("connector catalog valid lifecycle", () => {
     await replaceApiTestConnectorCatalogStoredBytes({
       catalogVersion: digestRelease.version,
       rawBytes: changedBytes,
-      catalogValidationVersion: API_TEST_CONNECTOR_CATALOG_VALIDATION_VERSION,
+      catalogValidationAuthority: apiTestConnectorCatalogValidationAuthority(),
       retainCatalogDigest: true,
     });
     zeroMocks.clerk.session(`user_${randomUUID()}`, `org_${randomUUID()}`);
@@ -1874,7 +1874,7 @@ describe("connector catalog valid lifecycle", () => {
     await replaceApiTestConnectorCatalogStoredBytes({
       catalogVersion: jsonRelease.version,
       rawBytes: Buffer.from("{"),
-      catalogValidationVersion: API_TEST_CONNECTOR_CATALOG_VALIDATION_VERSION,
+      catalogValidationAuthority: apiTestConnectorCatalogValidationAuthority(),
     });
     const jsonResponse = await accept(
       setupApp({ context })(zeroConnectorCatalogContract).list({
@@ -1899,7 +1899,7 @@ describe("connector catalog valid lifecycle", () => {
     await replaceApiTestConnectorCatalogStoredBytes({
       catalogVersion: identityRelease.version,
       rawBytes: releaseCatalogBytes(mismatchedIdentity),
-      catalogValidationVersion: API_TEST_CONNECTOR_CATALOG_VALIDATION_VERSION,
+      catalogValidationAuthority: apiTestConnectorCatalogValidationAuthority(),
     });
     const identityResponse = await accept(
       setupApp({ context })(zeroConnectorCatalogContract).list({
@@ -1918,7 +1918,7 @@ describe("connector catalog valid lifecycle", () => {
     await replaceApiTestConnectorCatalogStoredBytes({
       catalogVersion: nonObjectRelease.version,
       rawBytes: Buffer.from("null"),
-      catalogValidationVersion: API_TEST_CONNECTOR_CATALOG_VALIDATION_VERSION,
+      catalogValidationAuthority: apiTestConnectorCatalogValidationAuthority(),
     });
     const nonObjectResponse = await accept(
       setupApp({ context })(zeroConnectorCatalogContract).list({
@@ -1940,7 +1940,7 @@ describe("connector catalog valid lifecycle", () => {
         artifactSchemaVersion: 2,
         catalogVersion: schemaRelease.version,
       }),
-      catalogValidationVersion: API_TEST_CONNECTOR_CATALOG_VALIDATION_VERSION,
+      catalogValidationAuthority: apiTestConnectorCatalogValidationAuthority(),
     });
     const schemaResponse = await accept(
       setupApp({ context })(zeroConnectorCatalogContract).list({
@@ -1961,7 +1961,7 @@ describe("connector catalog valid lifecycle", () => {
       rawBytes: jsonBytes({
         artifactSchemaVersion: 1,
       }),
-      catalogValidationVersion: API_TEST_CONNECTOR_CATALOG_VALIDATION_VERSION,
+      catalogValidationAuthority: apiTestConnectorCatalogValidationAuthority(),
     });
     const shapeResponse = await accept(
       setupApp({ context })(zeroConnectorCatalogContract).list({
@@ -1988,7 +1988,7 @@ describe("connector catalog valid lifecycle", () => {
     await replaceApiTestConnectorCatalogStoredBytes({
       catalogVersion: semanticRelease.version,
       rawBytes: releaseCatalogBytes(invalidSemanticRelease),
-      catalogValidationVersion: null,
+      catalogValidationAuthority: null,
     });
     zeroMocks.clerk.session(`user_${randomUUID()}`, `org_${randomUUID()}`);
     const semanticResponse = await accept(
@@ -1999,7 +1999,7 @@ describe("connector catalog valid lifecycle", () => {
     );
     expect(semanticResponse.body.error.code).toBe("PROVIDER_UNAVAILABLE");
     await expect(
-      readApiTestConnectorCatalogValidationVersion(),
+      readApiTestConnectorCatalogValidationAuthority(),
     ).resolves.toBeNull();
 
     configureSource();
@@ -4989,32 +4989,128 @@ describe("connector catalog valid lifecycle", () => {
 });
 
 describe("connector catalog executable compatibility", () => {
-  it("repairs missing and preserves newer catalog validation versions", async () => {
+  it("repairs missing and preserves newer catalog validation authorities", async () => {
     configureSource();
     const release = buildRelease({
-      version: "2026-07-27.validation-version-repair",
+      version: "2026-07-27.validation-authority-repair",
     });
     serveObjects(catalogObjects([release], release));
     await syncCatalog();
-    await expect(readApiTestConnectorCatalogValidationVersion()).resolves.toBe(
-      API_TEST_CONNECTOR_CATALOG_VALIDATION_VERSION,
-    );
+    const currentAuthority = apiTestConnectorCatalogValidationAuthority();
+    await expect(
+      readApiTestConnectorCatalogValidationAuthority(),
+    ).resolves.toStrictEqual(currentAuthority);
 
-    await setApiTestConnectorCatalogValidationVersion(null);
+    await setApiTestConnectorCatalogValidationAuthority(null);
     mockNow(new Date("2026-07-27T08:01:00.000Z"));
     expect((await syncCatalog()).body.outcome).toBe("unchanged");
-    await expect(readApiTestConnectorCatalogValidationVersion()).resolves.toBe(
-      API_TEST_CONNECTOR_CATALOG_VALIDATION_VERSION,
-    );
+    await expect(
+      readApiTestConnectorCatalogValidationAuthority(),
+    ).resolves.toStrictEqual(currentAuthority);
 
-    const newerValidationVersion =
-      API_TEST_CONNECTOR_CATALOG_VALIDATION_VERSION + 1;
-    await setApiTestConnectorCatalogValidationVersion(newerValidationVersion);
+    const newerAuthority = {
+      ...currentAuthority,
+      backendVersion: "999999.0.0",
+    };
+    await setApiTestConnectorCatalogValidationAuthority(newerAuthority);
     mockNow(new Date("2026-07-27T08:02:00.000Z"));
     expect((await syncCatalog()).body.outcome).toBe("unchanged");
-    await expect(readApiTestConnectorCatalogValidationVersion()).resolves.toBe(
-      newerValidationVersion,
+    await expect(
+      readApiTestConnectorCatalogValidationAuthority(),
+    ).resolves.toStrictEqual(newerAuthority);
+  });
+
+  it("repairs accepted validation authority after an API release", async () => {
+    configureSource();
+    mockEnv("ENV", "production");
+    setApiVersion("1.318.0");
+    const release = buildRelease({
+      version: "2026-07-27.validation-backend-release",
+    });
+    serveObjects(catalogObjects([release], release));
+    await syncCatalog();
+    await expect(
+      readApiTestConnectorCatalogValidationAuthority(),
+    ).resolves.toStrictEqual({
+      backendVersion: "1.318.0",
+      buildCommitSha: null,
+    });
+
+    setApiVersion("1.319.0");
+    mockNow(new Date("2026-07-27T08:01:00.000Z"));
+    expect((await syncCatalog()).body.outcome).toBe("unchanged");
+    await expect(
+      readApiTestConnectorCatalogValidationAuthority(),
+    ).resolves.toStrictEqual({
+      backendVersion: "1.319.0",
+      buildCommitSha: null,
+    });
+  });
+
+  it("prevents a draining older API release from downgrading validation authority", async () => {
+    configureSource();
+    mockEnv("ENV", "production");
+    setApiVersion("1.319.0");
+    const release = buildRelease({
+      version: "2026-07-27.validation-release-overlap",
+    });
+    serveObjects(catalogObjects([release], release));
+    await syncCatalog();
+
+    const alternateCatalogKey = release.catalogKey.replace(
+      /catalog\.json$/u,
+      "catalog-copy.json",
     );
+    const alternatePointer = buildRelease({
+      version: release.version,
+      mutatePointer: (pointer) => {
+        pointer.catalogKey = alternateCatalogKey;
+      },
+    });
+    const alternateObjects = new Map(
+      catalogObjects([release], alternatePointer),
+    );
+    alternateObjects.set(alternateCatalogKey, releaseCatalogBytes(release));
+
+    setApiVersion("1.318.0");
+    serveObjects(alternateObjects);
+    mockNow(new Date("2026-07-27T08:01:00.000Z"));
+    expect((await syncCatalog()).body.outcome).toBe("accepted");
+    await expect(
+      readApiTestConnectorCatalogValidationAuthority(),
+    ).resolves.toStrictEqual({
+      backendVersion: "1.319.0",
+      buildCommitSha: null,
+    });
+  });
+
+  it("repairs accepted validation authority after a preview build", async () => {
+    configureSource();
+    mockEnv("ENV", "preview");
+    const firstCommit = "a".repeat(40);
+    const secondCommit = "b".repeat(40);
+    mockEnv("GIT_COMMIT_SHA", firstCommit);
+    const release = buildRelease({
+      version: "2026-07-27.validation-preview-build",
+    });
+    serveObjects(catalogObjects([release], release));
+    await syncCatalog();
+    await expect(
+      readApiTestConnectorCatalogValidationAuthority(),
+    ).resolves.toStrictEqual({
+      backendVersion: DEFAULT_API_VERSION,
+      buildCommitSha: firstCommit,
+    });
+
+    mockEnv("GIT_COMMIT_SHA", secondCommit);
+    mockNow(new Date("2026-07-27T08:01:00.000Z"));
+    expect((await syncCatalog()).body.outcome).toBe("unchanged");
+    await expect(
+      readApiTestConnectorCatalogValidationAuthority(),
+    ).resolves.toStrictEqual({
+      backendVersion: DEFAULT_API_VERSION,
+      buildCommitSha: secondCommit,
+    });
   });
 
   it("leaves feature-switch rollout out of executable compatibility", async () => {

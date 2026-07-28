@@ -43,11 +43,11 @@ import {
 } from "../../../test-fixtures/org-plan-entitlement";
 import {
   API_TEST_CONNECTOR_FIREWALL_CONFIGS,
-  API_TEST_CONNECTOR_CATALOG_VALIDATION_VERSION,
+  apiTestConnectorCatalogValidationAuthority,
   installApiTestConnectorCatalog,
   mockApiTestConnectorProviderConfiguration,
-  readApiTestConnectorCatalogValidationVersion,
-  setApiTestConnectorCatalogValidationVersion,
+  readApiTestConnectorCatalogValidationAuthority,
+  setApiTestConnectorCatalogValidationAuthority,
 } from "../../../test-fixtures/connector-catalog";
 import { readStorageS3PrefixFixture } from "../../../test-fixtures/storage";
 import {
@@ -812,7 +812,7 @@ function expectConnectorCatalogLoadTiming(args: {
     | { readonly outcome: "attested" | "not_run" }
     | {
         readonly outcome: "full_fallback";
-        readonly fallbackReason: "missing_version" | "unsupported_version";
+        readonly fallbackReason: "missing_authority" | "different_authority";
       };
 }): void {
   const event = singleApiDispatchEvent(
@@ -1310,86 +1310,93 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     await installApiTestConnectorCatalog({
       catalogVersion: missingCatalogVersion,
     });
-    await setApiTestConnectorCatalogValidationVersion(null);
-    const missingVersionActor = await entitledRunActor();
-    const missingVersionPrompt = "legacy connector catalog validation marker";
-    const missingVersionRun = await api.createRun(missingVersionActor.actor, {
-      agentId: missingVersionActor.agentId,
-      prompt: missingVersionPrompt,
-      modelProvider: "anthropic-api-key",
-    });
-    const missingVersionEvents = apiDispatchTimingEventsForRun(
-      missingVersionRun.runId,
+    await setApiTestConnectorCatalogValidationAuthority(null);
+    const missingAuthorityActor = await entitledRunActor();
+    const missingAuthorityPrompt =
+      "legacy connector catalog validation authority";
+    const missingAuthorityRun = await api.createRun(
+      missingAuthorityActor.actor,
+      {
+        agentId: missingAuthorityActor.agentId,
+        prompt: missingAuthorityPrompt,
+        modelProvider: "anthropic-api-key",
+      },
+    );
+    const missingAuthorityEvents = apiDispatchTimingEventsForRun(
+      missingAuthorityRun.runId,
     );
     expectApiDispatchActions(
-      missingVersionEvents,
+      missingAuthorityEvents,
       API_DISPATCH_CONNECTOR_CATALOG_COMPLETE_VALIDATION_ACTION_TYPES,
     );
     expectConnectorCatalogLoadTiming({
-      events: missingVersionEvents,
+      events: missingAuthorityEvents,
       acceptedCacheOutcome: "miss",
       runtimeCacheOutcome: "miss",
       requestedConnectorCount: "known",
       validation: {
         outcome: "full_fallback",
-        fallbackReason: "missing_version",
+        fallbackReason: "missing_authority",
       },
     });
     await expect(
-      readApiTestConnectorCatalogValidationVersion(),
+      readApiTestConnectorCatalogValidationAuthority(),
     ).resolves.toBeNull();
-    expectApiDispatchTimingEventsNotToLeak(missingVersionEvents, [
+    expectApiDispatchTimingEventsNotToLeak(missingAuthorityEvents, [
       missingCatalogVersion,
-      missingVersionPrompt,
-      missingVersionActor.agentId,
+      missingAuthorityPrompt,
+      missingAuthorityActor.agentId,
       "test-oauth-secret",
       "fixture-confidential-secret",
     ]);
 
-    const unsupportedCatalogVersion = `api-test-unsupported-validation-${randomUUID()}`;
+    const differentCatalogVersion = `api-test-different-validation-${randomUUID()}`;
     await installApiTestConnectorCatalog({
-      catalogVersion: unsupportedCatalogVersion,
+      catalogVersion: differentCatalogVersion,
     });
-    const unsupportedValidationVersion =
-      API_TEST_CONNECTOR_CATALOG_VALIDATION_VERSION + 1;
-    await setApiTestConnectorCatalogValidationVersion(
-      unsupportedValidationVersion,
+    const differentValidationAuthority = {
+      ...apiTestConnectorCatalogValidationAuthority(),
+      backendVersion: "999999.0.0",
+    };
+    await setApiTestConnectorCatalogValidationAuthority(
+      differentValidationAuthority,
     );
-    const unsupportedVersionActor = await entitledRunActor();
-    const unsupportedVersionPrompt =
-      "unsupported connector catalog validation marker";
-    const unsupportedVersionRun = await api.createRun(
-      unsupportedVersionActor.actor,
+    const differentAuthorityActor = await entitledRunActor();
+    const differentAuthorityPrompt =
+      "different connector catalog validation authority";
+    const differentAuthorityRun = await api.createRun(
+      differentAuthorityActor.actor,
       {
-        agentId: unsupportedVersionActor.agentId,
-        prompt: unsupportedVersionPrompt,
+        agentId: differentAuthorityActor.agentId,
+        prompt: differentAuthorityPrompt,
         modelProvider: "anthropic-api-key",
       },
     );
-    const unsupportedVersionEvents = apiDispatchTimingEventsForRun(
-      unsupportedVersionRun.runId,
+    const differentAuthorityEvents = apiDispatchTimingEventsForRun(
+      differentAuthorityRun.runId,
     );
     expectApiDispatchActions(
-      unsupportedVersionEvents,
+      differentAuthorityEvents,
       API_DISPATCH_CONNECTOR_CATALOG_COMPLETE_VALIDATION_ACTION_TYPES,
     );
     expectConnectorCatalogLoadTiming({
-      events: unsupportedVersionEvents,
+      events: differentAuthorityEvents,
       acceptedCacheOutcome: "miss",
       runtimeCacheOutcome: "miss",
       requestedConnectorCount: "known",
       validation: {
         outcome: "full_fallback",
-        fallbackReason: "unsupported_version",
+        fallbackReason: "different_authority",
       },
     });
-    await expect(readApiTestConnectorCatalogValidationVersion()).resolves.toBe(
-      unsupportedValidationVersion,
-    );
-    expectApiDispatchTimingEventsNotToLeak(unsupportedVersionEvents, [
-      unsupportedCatalogVersion,
-      unsupportedVersionPrompt,
-      unsupportedVersionActor.agentId,
+    await expect(
+      readApiTestConnectorCatalogValidationAuthority(),
+    ).resolves.toStrictEqual(differentValidationAuthority);
+    expectApiDispatchTimingEventsNotToLeak(differentAuthorityEvents, [
+      differentCatalogVersion,
+      differentValidationAuthority.backendVersion,
+      differentAuthorityPrompt,
+      differentAuthorityActor.agentId,
       "test-oauth-secret",
       "fixture-confidential-secret",
     ]);
@@ -1422,7 +1429,8 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
       validation: { outcome: "not_run" },
     });
     expectApiDispatchTimingEventsNotToLeak(cachedEvents, [
-      unsupportedCatalogVersion,
+      differentCatalogVersion,
+      differentValidationAuthority.backendVersion,
       cachedPrompt,
       cachedActor.agentId,
       "test-oauth-secret",

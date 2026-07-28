@@ -10,7 +10,7 @@ type ConnectorCatalogValidationResult =
   | { readonly outcome: "attested" }
   | {
       readonly outcome: "full_fallback";
-      readonly fallbackReason: "missing_version" | "unsupported_version";
+      readonly fallbackReason: "missing_authority" | "different_authority";
     }
   | { readonly outcome: "not_run" };
 
