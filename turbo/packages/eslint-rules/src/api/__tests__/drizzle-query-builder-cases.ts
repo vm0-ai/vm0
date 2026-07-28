@@ -312,6 +312,147 @@ interface WriteDescendantError {
 const queryBuilderCases = {
   writeValid: [
     {
+      descendantErrors: [{ messageId: "typedApi", data: { helper: "lte" } }],
+      code: `${deletePreamble}
+        import { and, lte, sql, type SQL } from "drizzle-orm";
+        declare function dynamicPredicate(): SQL;
+        const predicate = dynamicPredicate();
+        declare const optionalPredicate: boolean | SQL;
+        declare const optionalCutoff: Date | undefined;
+        declare const erasedPredicate: object;
+        const assertedPredicate =
+          dynamicPredicate() as unknown as boolean;
+        const rawPredicate = sql.raw("true RETURNING *");
+        const wrapperLookalike = {
+          getSQL(): SQL {
+            return sql.raw("true RETURNING *");
+          },
+        };
+        const nestedPredicate = and(
+          lte(cleanupRows.expiresAt, cutoff),
+          dynamicPredicate(),
+        );
+        const mutablePredicate = lte(cleanupRows.expiresAt, cutoff);
+        mutablePredicate.append(sql.raw(" RETURNING *"));
+        const fragments = [
+          sql.raw("true"),
+          sql.raw(" RETURNING *"),
+        ];
+        declare const readonlyFragments: readonly SQL[];
+        const fakeLte: typeof lte = () => {
+          return sql.raw("true RETURNING *");
+        };
+        await db.execute(sql\`
+          DELETE FROM \${cleanupRows}
+          WHERE \${predicate}
+        \`);
+        await db.execute(sql\`
+          DELETE FROM \${cleanupRows}
+          WHERE \${optionalPredicate}
+        \`);
+        await db.execute(sql\`
+          DELETE FROM \${cleanupRows}
+          WHERE \${erasedPredicate}
+        \`);
+        await db.execute(sql\`
+          DELETE FROM \${cleanupRows}
+          WHERE \${cleanupRows.expiresAt} <= \${optionalCutoff}
+        \`);
+        await db.execute(sql\`
+          DELETE FROM \${cleanupRows}
+          WHERE \${assertedPredicate}
+        \`);
+        await db.execute(sql\`
+          DELETE FROM \${cleanupRows}
+          WHERE \${rawPredicate}
+        \`);
+        await db.execute(sql\`
+          DELETE FROM \${cleanupRows}
+          WHERE \${wrapperLookalike}
+        \`);
+        await db.execute(sql\`
+          DELETE FROM \${cleanupRows}
+          WHERE \${nestedPredicate}
+        \`);
+        await db.execute(sql\`
+          DELETE FROM \${cleanupRows}
+          WHERE \${mutablePredicate}
+        \`);
+        await db.execute(sql\`
+          DELETE FROM \${cleanupRows}
+          WHERE \${fragments}
+        \`);
+        await db.execute(sql\`
+          DELETE FROM \${cleanupRows}
+          WHERE \${readonlyFragments}
+        \`);
+        await db.execute(sql\`
+          DELETE FROM \${cleanupRows}
+          WHERE \${fakeLte(cleanupRows.expiresAt, cutoff)}
+        \`);
+      `,
+    },
+    {
+      code: `${unnestUpdatePreamble}
+        import { sql, type SQL } from "drizzle-orm";
+        declare function dynamicAssignment(): SQL;
+        const sqlProducingEncoder = {
+          mapToDriverValue(): SQL {
+            return sql.raw("ARRAY[]::bigint[]) RETURNING *");
+          },
+        };
+        await db.execute(sql\`
+          UPDATE \${allowanceWindows}
+          SET
+            consumed_units = source.units_applied,
+            updated_at = \${dynamicAssignment()}
+          FROM unnest(
+            \${sql.param(unitDeltas)}::bigint[]
+          ) AS source(units_applied)
+          WHERE true
+        \`);
+        await db.execute(sql\`
+          UPDATE \${allowanceWindows}
+          SET consumed_units = source.units_applied
+          FROM unnest(
+            \${sql.param(
+              unitDeltas,
+              sqlProducingEncoder,
+            )}::bigint[]
+          ) AS source(units_applied)
+          WHERE true
+        \`);
+      `,
+    },
+    {
+      code: `${upsertPreamble}
+        import { sql, type SQL } from "drizzle-orm";
+        declare function dynamicValue(): SQL;
+        await db.execute(sql\`
+          INSERT INTO \${orgMetadata} (
+            org_id,
+            credits,
+            tier,
+            created_at,
+            updated_at
+          )
+          VALUES (
+            \${dynamicValue()},
+            \${amount},
+            'free',
+            now(),
+            now()
+          )
+          ON CONFLICT (org_id)
+          DO UPDATE SET
+            credits = \${amount},
+            tier = 'free',
+            created_at = now(),
+            updated_at = now()
+        \`);
+      `,
+    },
+    {
       descendantErrors: [
         { messageId: "typedApi", data: { helper: "and" } },
         { messageId: "typedApi", data: { helper: "eq" } },
@@ -3121,6 +3262,30 @@ const queryBuilderCases = {
     },
   ],
   invalid: [
+    {
+      code: `${deletePreamble}
+        import { and, gte, lte, sql } from "drizzle-orm";
+        await db.execute(sql\`
+          DELETE FROM \${cleanupRows}
+          WHERE \${and(
+            gte(cleanupRows.expiresAt, new Date(0)),
+            lte(cleanupRows.expiresAt, cutoff),
+          )}
+        \`);
+      `,
+      errors: [{ messageId: "deleteQueryBuilder" }],
+    },
+    {
+      code: `${deletePreamble}
+        import { lte, sql } from "drizzle-orm";
+        const lessThanOrEqual = lte;
+        await db.execute(sql\`
+          DELETE FROM \${cleanupRows}
+          WHERE \${lessThanOrEqual(cleanupRows.expiresAt, cutoff)}
+        \`);
+      `,
+      errors: [{ messageId: "deleteQueryBuilder" }],
+    },
     {
       code: `${deletePreamble}
         import { sql, type SQL } from "drizzle-orm";

@@ -350,6 +350,83 @@ function hasStableDrizzleRuntimeOrigin(
   );
 }
 
+function stableDrizzleRuntimeName(
+  checker: TypeChecker,
+  node: Node,
+  visited: Set<TypeScriptSymbol>,
+): string | undefined {
+  const expression = unwrapStableOriginExpression(node);
+  if (isIdentifier(expression)) {
+    const symbol = resolvedSymbol(
+      checker,
+      checker.getSymbolAtLocation(expression),
+    );
+    if (symbol === undefined || visited.has(symbol)) {
+      return undefined;
+    }
+    if (isDrizzleSymbol(checker, symbol)) {
+      return symbol.getName();
+    }
+    if (symbol.declarations === undefined || symbol.declarations.length === 0) {
+      return undefined;
+    }
+    visited.add(symbol);
+    const names = symbol.declarations.map((declaration) => {
+      return isVariableDeclaration(declaration) &&
+        isVariableDeclarationList(declaration.parent) &&
+        (declaration.parent.flags & NodeFlags.Const) !== 0 &&
+        declaration.initializer !== undefined
+        ? stableDrizzleRuntimeName(checker, declaration.initializer, visited)
+        : undefined;
+    });
+    visited.delete(symbol);
+    const first = names[0];
+    return first !== undefined &&
+      names.every((name) => {
+        return name === first;
+      })
+      ? first
+      : undefined;
+  }
+  if (isPropertyAccessExpression(expression)) {
+    const property = resolvedSymbol(
+      checker,
+      checker.getSymbolAtLocation(expression.name),
+    );
+    return property !== undefined &&
+      isDrizzleSymbol(checker, property) &&
+      hasStableDrizzleRuntimeOrigin(checker, expression.expression, visited)
+      ? property.getName()
+      : undefined;
+  }
+  if (!isCallExpression(expression)) {
+    return undefined;
+  }
+  const declaration = checker.getResolvedSignature(expression)?.declaration;
+  return declaration !== undefined &&
+    "name" in declaration &&
+    declaration.name !== undefined &&
+    isDrizzleDeclaration(declaration) &&
+    hasStableDrizzleRuntimeOrigin(checker, expression.expression, visited)
+    ? declaration.name.getText()
+    : undefined;
+}
+
+export function stableDrizzleCallName(
+  checker: TypeChecker,
+  node: Node,
+): string | undefined {
+  const expression = unwrapStableOriginExpression(node);
+  if (!isCallExpression(expression)) {
+    return undefined;
+  }
+  const declaration = checker.getResolvedSignature(expression)?.declaration;
+  if (declaration === undefined || !isDrizzleDeclaration(declaration)) {
+    return undefined;
+  }
+  return stableDrizzleRuntimeName(checker, expression.expression, new Set());
+}
+
 function hasDirectDrizzleCallOrigin(checker: TypeChecker, node: Node): boolean {
   const expression = unwrapStableOriginExpression(node);
   if (!isCallExpression(expression)) {

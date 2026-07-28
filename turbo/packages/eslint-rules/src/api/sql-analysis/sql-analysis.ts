@@ -6,7 +6,26 @@ import {
   type TSESTree,
 } from "@typescript-eslint/utils";
 import {
+  canHaveModifiers,
+  getModifiers,
+  isArrayLiteralExpression,
+  isAsExpression,
+  isCallExpression,
+  isConditionalExpression,
+  isIdentifier,
+  isNonNullExpression,
+  isParenthesizedExpression,
+  isSatisfiesExpression,
+  isSpreadElement,
+  isTypeAssertionExpression,
+  isVariableDeclaration,
+  isVariableDeclarationList,
+  IndexKind,
+  NodeFlags,
+  SyntaxKind,
   TypeFlags,
+  type Node,
+  type SourceFile,
   type Symbol as TypeScriptSymbol,
   type Type,
   type TypeChecker,
@@ -24,6 +43,7 @@ import {
   isDrizzleTableType,
   isDrizzleWrapperType,
   resolvedSymbol,
+  stableDrizzleCallName,
   type DrizzleTableColumnMetadata,
   type DrizzleTableMetadata,
   type StableDrizzleColumnOrigin,
@@ -178,6 +198,7 @@ interface SqlMarker {
   readonly isPatternOperand: boolean;
   readonly isSelect: boolean;
   readonly isStringOrWrapper: boolean;
+  readonly isStableWriteInterpolation: boolean;
   readonly isTable: boolean;
   readonly isWrapper: boolean;
   readonly node: TSESTree.Expression;
@@ -384,6 +405,32 @@ const PATTERN_HELPERS = new Map<string, PatternHelper>([
   ["!~~", "notLike"],
   ["~~*", "ilike"],
   ["!~~*", "notIlike"],
+]);
+
+// These helpers always emit an expression fragment. Whole-write analysis can
+// retain them as leaves after recursively proving that none of their arguments
+// is an opaque SQL-producing value.
+const STABLE_WRITE_EXPRESSION_HELPERS = new Set<string>([
+  ...COMPARISON_HELPERS.values(),
+  ...ARRAY_HELPERS.values(),
+  ...PATTERN_HELPERS.values(),
+  "and",
+  "avg",
+  "avgDistinct",
+  "between",
+  "count",
+  "countDistinct",
+  "inArray",
+  "isNotNull",
+  "isNull",
+  "max",
+  "min",
+  "not",
+  "notBetween",
+  "notInArray",
+  "or",
+  "sum",
+  "sumDistinct",
 ]);
 
 const EXPRESSION_NODE_KEYS = new Set([
@@ -611,6 +658,323 @@ function markerIsWrapper(
   return isDrizzleWrapperType(checker, checker.getTypeAtLocation(tsNode));
 }
 
+function typeMayBeSqlWrapper(type: Type, checker: TypeChecker): boolean {
+  if ((type.flags & (TypeFlags.Any | TypeFlags.Unknown)) !== 0) {
+    return true;
+  }
+  if ((type.flags & TypeFlags.TypeParameter) !== 0) {
+    const constraint = checker.getBaseConstraintOfType(type);
+    return constraint === undefined || typeMayBeSqlWrapper(constraint, checker);
+  }
+  if (type.isUnion()) {
+    return type.types.some((member) => {
+      return typeMayBeSqlWrapper(member, checker);
+    });
+  }
+  if (
+    (type.flags & TypeFlags.NonPrimitive) !== 0 ||
+    ((type.flags & TypeFlags.Object) !== 0 &&
+      checker.getPropertiesOfType(type).length === 0)
+  ) {
+    return true;
+  }
+  // Drizzle's runtime isSQLWrapper(...) check is intentionally structural:
+  // every value with a callable getSQL property can emit source text. Treat
+  // even project-defined lookalikes as syntax-producing here.
+  return checker.getPropertyOfType(type, "getSQL") !== undefined;
+}
+
+function typeMayBeArray(type: Type, checker: TypeChecker): boolean {
+  if ((type.flags & (TypeFlags.Any | TypeFlags.Unknown)) !== 0) {
+    return true;
+  }
+  if ((type.flags & TypeFlags.TypeParameter) !== 0) {
+    const constraint = checker.getBaseConstraintOfType(type);
+    return constraint === undefined || typeMayBeArray(constraint, checker);
+  }
+  if (type.isUnion()) {
+    return type.types.some((member) => {
+      return typeMayBeArray(member, checker);
+    });
+  }
+  return checker.isArrayType(type) || checker.isTupleType(type);
+}
+
+function typeMayBeUndefined(type: Type, checker: TypeChecker): boolean {
+  if ((type.flags & (TypeFlags.Any | TypeFlags.Unknown)) !== 0) {
+    return true;
+  }
+  if ((type.flags & TypeFlags.TypeParameter) !== 0) {
+    const constraint = checker.getBaseConstraintOfType(type);
+    return constraint === undefined || typeMayBeUndefined(constraint, checker);
+  }
+  if (type.isUnion()) {
+    return type.types.some((member) => {
+      return typeMayBeUndefined(member, checker);
+    });
+  }
+  return (type.flags & (TypeFlags.Undefined | TypeFlags.Void)) !== 0;
+}
+
+function arrayMayContainDrizzleWrapper(
+  type: Type,
+  checker: TypeChecker,
+): boolean {
+  if ((type.flags & (TypeFlags.Any | TypeFlags.Unknown)) !== 0) {
+    return true;
+  }
+  if ((type.flags & TypeFlags.TypeParameter) !== 0) {
+    const constraint = checker.getBaseConstraintOfType(type);
+    return (
+      constraint === undefined ||
+      arrayMayContainDrizzleWrapper(constraint, checker)
+    );
+  }
+  if (type.isUnion()) {
+    return type.types.some((member) => {
+      return arrayMayContainDrizzleWrapper(member, checker);
+    });
+  }
+  const element = checker.getIndexTypeOfType(type, IndexKind.Number);
+  return element === undefined || typeMayBeSqlWrapper(element, checker);
+}
+
+function unwrapStableWriteExpression(node: Node): Node {
+  let current = node;
+  while (
+    isNonNullExpression(current) ||
+    isParenthesizedExpression(current) ||
+    isSatisfiesExpression(current)
+  ) {
+    current = current.expression;
+  }
+  return current;
+}
+
+function hasExportModifier(node: Node): boolean {
+  return (
+    canHaveModifiers(node) &&
+    getModifiers(node)?.some((modifier) => {
+      return modifier.kind === SyntaxKind.ExportKeyword;
+    }) === true
+  );
+}
+
+interface StableLocalInitializers {
+  readonly initializers: readonly Node[];
+  readonly symbol: TypeScriptSymbol;
+}
+
+function stableLocalInitializers(
+  checker: TypeChecker,
+  node: Node,
+  sourceFile: SourceFile,
+  visited: Set<TypeScriptSymbol>,
+): StableLocalInitializers | undefined {
+  if (!isIdentifier(node)) {
+    return undefined;
+  }
+  const symbol = resolvedSymbol(checker, checker.getSymbolAtLocation(node));
+  if (
+    symbol === undefined ||
+    visited.has(symbol) ||
+    symbol.declarations === undefined ||
+    symbol.declarations.length === 0
+  ) {
+    return undefined;
+  }
+  const initializers = symbol.declarations.map((declaration) => {
+    return isVariableDeclaration(declaration) &&
+      declaration.getSourceFile() === sourceFile &&
+      isVariableDeclarationList(declaration.parent) &&
+      (declaration.parent.flags & NodeFlags.Const) !== 0 &&
+      !hasExportModifier(declaration.parent.parent) &&
+      declaration.initializer !== undefined
+      ? declaration.initializer
+      : undefined;
+  });
+  if (
+    initializers.some((initializer) => {
+      return initializer === undefined;
+    })
+  ) {
+    return undefined;
+  }
+  return {
+    initializers: initializers.flatMap((initializer) => {
+      return initializer === undefined ? [] : [initializer];
+    }),
+    symbol,
+  };
+}
+
+function stableWriteInterpolationValue(
+  checker: TypeChecker,
+  node: Node,
+  sourceFile: SourceFile,
+  visited: Set<TypeScriptSymbol>,
+  allowsValueSemantics: boolean,
+): boolean {
+  const expression = unwrapStableWriteExpression(node);
+  if (isAsExpression(expression) || isTypeAssertionExpression(expression)) {
+    return false;
+  }
+
+  const type = checker.getTypeAtLocation(expression);
+  const isColumnOrTable =
+    isDrizzleColumnType(checker, type, expression) ||
+    isDrizzleTableType(checker, type, expression);
+  const local = stableLocalInitializers(
+    checker,
+    expression,
+    sourceFile,
+    visited,
+  );
+  if (local !== undefined) {
+    // SQL objects are mutable through APIs such as append(...). Only direct
+    // calls, or templates already expanded by the source composer after its
+    // reference analysis, are stable enough for a whole-write claim.
+    if (typeMayBeSqlWrapper(type, checker) && !isColumnOrTable) {
+      return false;
+    }
+    visited.add(local.symbol);
+    const stable = local.initializers.every((initializer) => {
+      return stableWriteInterpolationValue(
+        checker,
+        initializer,
+        sourceFile,
+        visited,
+        allowsValueSemantics,
+      );
+    });
+    visited.delete(local.symbol);
+    return stable;
+  }
+
+  if (isConditionalExpression(expression)) {
+    return (
+      stableWriteInterpolationValue(
+        checker,
+        expression.whenTrue,
+        sourceFile,
+        visited,
+        allowsValueSemantics,
+      ) &&
+      stableWriteInterpolationValue(
+        checker,
+        expression.whenFalse,
+        sourceFile,
+        visited,
+        allowsValueSemantics,
+      )
+    );
+  }
+
+  if (isColumnOrTable) {
+    return true;
+  }
+  if (typeMayBeArray(type, checker)) {
+    // A directly interpolated array is a list of SQL chunks in Drizzle, not a
+    // bound value. Arrays are only stable inside a known helper or sql.param.
+    if (!allowsValueSemantics) {
+      return false;
+    }
+    if (!arrayMayContainDrizzleWrapper(type, checker)) {
+      return true;
+    }
+    if (!isArrayLiteralExpression(expression)) {
+      return false;
+    }
+    return expression.elements.every((element) => {
+      return isSpreadElement(element)
+        ? stableWriteInterpolationValue(
+            checker,
+            element.expression,
+            sourceFile,
+            visited,
+            true,
+          )
+        : stableWriteInterpolationValue(
+            checker,
+            element,
+            sourceFile,
+            visited,
+            false,
+          );
+    });
+  }
+
+  if (isCallExpression(expression)) {
+    const callName = stableDrizzleCallName(checker, expression);
+    if (callName === "param") {
+      const argument = expression.arguments[0];
+      return (
+        expression.arguments.length === 1 &&
+        argument !== undefined &&
+        !isSpreadElement(argument) &&
+        stableWriteInterpolationValue(
+          checker,
+          argument,
+          sourceFile,
+          visited,
+          true,
+        )
+      );
+    }
+    if (
+      callName !== undefined &&
+      STABLE_WRITE_EXPRESSION_HELPERS.has(callName) &&
+      expression.arguments.every((argument) => {
+        return (
+          !isSpreadElement(argument) &&
+          stableWriteInterpolationValue(
+            checker,
+            argument,
+            sourceFile,
+            visited,
+            true,
+          )
+        );
+      })
+    ) {
+      return (
+        (callName !== "and" && callName !== "or") ||
+        expression.arguments.some((argument) => {
+          return (
+            !isSpreadElement(argument) &&
+            !typeMayBeUndefined(checker.getTypeAtLocation(argument), checker)
+          );
+        })
+      );
+    }
+  }
+
+  // Undefined top-level chunks disappear from Drizzle SQL entirely. Inside a
+  // known helper or sql.param, the helper owns that value's placement.
+  if (!allowsValueSemantics && typeMayBeUndefined(type, checker)) {
+    return false;
+  }
+  if (!typeMayBeSqlWrapper(type, checker)) {
+    return true;
+  }
+  return false;
+}
+
+function markerIsStableWriteInterpolation(
+  node: TSESTree.Expression,
+  checker: TypeChecker,
+  services: ParserServicesWithTypeInformation,
+): boolean {
+  const tsNode = services.esTreeNodeToTSNodeMap.get(node);
+  return stableWriteInterpolationValue(
+    checker,
+    tsNode,
+    tsNode.getSourceFile(),
+    new Set(),
+    false,
+  );
+}
+
 function markerPrefix(quasis: readonly string[]): string {
   let suffix = 0;
   while (true) {
@@ -675,6 +1039,7 @@ function parseSqlVariant(
     let cachedPatternOperand: boolean | undefined;
     let cachedSelect: boolean | undefined;
     let cachedStableColumnOrigin: StableDrizzleColumnOrigin | null | undefined;
+    let cachedStableWriteInterpolation: boolean | undefined;
     let cachedStringOrWrapper: boolean | undefined;
     let cachedTable: boolean | undefined;
     let cachedTableMetadata: DrizzleTableMetadata | null | undefined;
@@ -734,6 +1099,14 @@ function parseSqlVariant(
       get isSelect(): boolean {
         cachedSelect ??= markerIsSelect(expression, checker, services);
         return cachedSelect;
+      },
+      get isStableWriteInterpolation(): boolean {
+        cachedStableWriteInterpolation ??= markerIsStableWriteInterpolation(
+          expression,
+          checker,
+          services,
+        );
+        return cachedStableWriteInterpolation;
       },
       get isStringOrWrapper(): boolean {
         cachedStringOrWrapper ??= markerIsStringOrWrapper(
@@ -3569,6 +3942,15 @@ function isSingleRowUpsert(
 }
 
 function writeQueryCapability(parsed: ParsedSql): QueryCapability | undefined {
+  // The parser renders each interpolation as one quoted marker. That model is
+  // only sound when the runtime value cannot expand into unparsed SQL syntax.
+  if (
+    ![...parsed.markers.values()].every((marker) => {
+      return marker.isStableWriteInterpolation;
+    })
+  ) {
+    return undefined;
+  }
   if (isSingleTargetDelete(parsed.statement, parsed.markers)) {
     return "delete";
   }
