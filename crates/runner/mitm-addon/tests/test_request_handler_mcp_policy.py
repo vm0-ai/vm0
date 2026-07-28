@@ -373,6 +373,24 @@ async def test_mcp_header_preflight_rejects_before_request_body_handling(
     assert flow.metadata[metadata_keys.CAPTURE_BODY] is False
 
 
+async def test_mcp_header_preflight_bounds_oversized_content_length_digits(
+    tmp_path,
+    real_flow,
+    headers,
+    mitm_ctx,
+):
+    registry_path = _write_mcp_registry(tmp_path)
+    flow = _mcp_flow(real_flow, headers)
+    flow.request.headers["Content-Length"] = "9" * 5_000
+
+    with mitm_ctx(registry_path=str(registry_path), api_url="https://api.vm0.ai"):
+        mitm_addon.requestheaders(flow)
+
+    assert flow.response is not None
+    assert json.loads(flow.response.content)["reason"] == "body_too_large"
+    assert flow.metadata[metadata_keys.CAPTURE_BODY] is False
+
+
 async def test_mcp_public_destination_header_denial_suppresses_body_capture(
     tmp_path,
     real_flow,

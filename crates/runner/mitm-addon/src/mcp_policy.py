@@ -398,7 +398,11 @@ def _content_length(flow: http.HTTPFlow) -> int | McpPolicyViolation:
             400,
             flow.request.method.upper(),
         )
-    return int(value)
+    normalized = value.lstrip("0") or "0"
+    limit = str(MCP_REQUEST_BODY_MAX_BYTES)
+    if len(normalized) > len(limit) or (len(normalized) == len(limit) and normalized > limit):
+        return MCP_REQUEST_BODY_MAX_BYTES + 1
+    return int(normalized)
 
 
 def _is_json_content_type(value: str | None) -> bool:
