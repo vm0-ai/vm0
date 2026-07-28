@@ -572,7 +572,7 @@ export const preferDrizzleApis = createRule({
             receiverDeclaration = receiverDeclaration.parent;
           }
           if (isParameter(receiverDeclaration)) {
-            return true;
+            return !containsTypeAssertion(receiverDeclaration);
           }
         }
         if (!isVariableDeclaration(receiverDeclaration)) {

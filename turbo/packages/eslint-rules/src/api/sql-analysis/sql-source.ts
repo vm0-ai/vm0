@@ -34,6 +34,7 @@ import {
   isDrizzleSqlType,
   isDrizzleSqlTag,
   isDrizzleSymbol,
+  isStableDrizzleSqlTag,
   resolvedSymbol,
 } from "../drizzle.ts";
 
@@ -425,7 +426,7 @@ export function createSqlSourceComposer(
       node.callee.computed ||
       node.callee.property.type !== AST_NODE_TYPES.Identifier ||
       node.callee.property.name !== name ||
-      !isDrizzleSqlTag(checker, services, node.callee.object)
+      !isStableDrizzleSqlTag(checker, services, node.callee.object)
     ) {
       return false;
     }

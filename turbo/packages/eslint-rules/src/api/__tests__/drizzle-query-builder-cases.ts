@@ -1020,6 +1020,22 @@ const queryBuilderCases = {
     {
       code: `${deletePreamble}
         import { sql } from "drizzle-orm";
+        declare const fakeSql: typeof sql;
+        await db.execute(
+          fakeSql.join([
+            sql\`DELETE FROM \${cleanupRows}\`,
+            sql\` WHERE true\`,
+          ]),
+        );
+        await db.execute(sql\`
+          \${fakeSql.empty()}DELETE FROM \${cleanupRows}
+          WHERE true
+        \`);
+      `,
+    },
+    {
+      code: `${deletePreamble}
+        import { sql } from "drizzle-orm";
         type MySqlDatabase = import("drizzle-orm/mysql-core").MySqlDatabase<
           never,
           never
@@ -1221,6 +1237,26 @@ const queryBuilderCases = {
           database: DrizzleDatabase = {
             execute: db.execute,
           } as unknown as DrizzleDatabase,
+        ): Promise<void> {
+          await database.execute(sql\`
+            UPDATE \${allowanceWindows}
+            SET consumed_units = consumption.units_applied
+            FROM unnest(\${sql.param(windowIds)}::uuid[]) AS consumption(window_id)
+            WHERE true
+          \`);
+        }
+        await update();
+      `,
+    },
+    {
+      code: `${unnestUpdatePreamble}
+        import { sql } from "drizzle-orm";
+        async function update(
+          { database }: { readonly database: DrizzleDatabase } = {
+            database: {
+              execute: db.execute,
+            } as unknown as DrizzleDatabase,
+          },
         ): Promise<void> {
           await database.execute(sql\`
             UPDATE \${allowanceWindows}
@@ -3228,6 +3264,19 @@ const queryBuilderCases = {
           sql\` WHERE \${cleanupRows.expiresAt} <= \${cutoff}\`,
         ];
         await db.execute(sql.join(parts));
+      `,
+      errors: [{ messageId: "deleteQueryBuilder" }],
+    },
+    {
+      code: `${deletePreamble}
+        import { sql } from "drizzle-orm";
+        const query = sql;
+        await db.execute(
+          query.join([
+            query\`DELETE FROM \${cleanupRows}\`,
+            query\` WHERE true\`,
+          ]),
+        );
       `,
       errors: [{ messageId: "deleteQueryBuilder" }],
     },
