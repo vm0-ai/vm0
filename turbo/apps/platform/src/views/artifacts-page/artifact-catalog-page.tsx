@@ -35,7 +35,7 @@ import {
 
 // Distance from the bottom of the scroll container at which the next page is
 // requested. The signal layer deduplicates repeated requests for one cursor.
-const ARTIFACT_AUTO_LOAD_VIEWPORT_COUNT = 3;
+const ARTIFACT_AUTO_LOAD_VIEWPORT_COUNT = 2;
 const ARTIFACT_GRID_MIN_CARD_WIDTH_PX = 292;
 const ARTIFACT_CARD_THUMBNAIL_WIDTH_PX = 640;
 

@@ -228,7 +228,7 @@ describe("artifact catalog page", () => {
     expect(buttonByLabel("Preview first-page.txt")).toBeInTheDocument();
   });
 
-  it("prefetches the next page within three viewport heights of the end", async () => {
+  it("prefetches the next page within two viewport heights of the end", async () => {
     context.mocks.api(artifactCatalogContract.list, ({ query, respond }) => {
       if (query.cursor === "cursor-2") {
         return respond(200, {
@@ -257,7 +257,7 @@ describe("artifact catalog page", () => {
     Object.defineProperties(viewport, {
       clientHeight: { configurable: true, value: 1000 },
       scrollHeight: { configurable: true, value: 5000 },
-      scrollTop: { configurable: true, value: 1500 },
+      scrollTop: { configurable: true, value: 2200 },
     });
     viewport.dispatchEvent(new Event("scroll", { bubbles: true }));
 
