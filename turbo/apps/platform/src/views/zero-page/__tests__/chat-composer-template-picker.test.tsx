@@ -1100,6 +1100,119 @@ describe("chat composer templates", () => {
     });
   });
 
+  it("updates the visible detail preview frame when the theme changes", async () => {
+    const user = userEvent.setup({ delay: null });
+    const template = PRESENTATION_TEMPLATE_PICKER_ITEMS.find((item) => {
+      return item.slug === "editorial-magazine-deck";
+    });
+    if (template === undefined) {
+      throw new Error("Editorial magazine presentation template not found");
+    }
+
+    const originalCreateObjectURL = URL.createObjectURL;
+    const originalRevokeObjectURL = URL.revokeObjectURL;
+    const blobHtml: Promise<string>[] = [];
+    const createObjectURL = vi.fn((blob: Blob) => {
+      blobHtml.push(blob.text());
+      return `blob:detail-theme-preview-${String(blobHtml.length)}`;
+    });
+    const revokeObjectURL = vi.fn();
+    Object.defineProperty(URL, "createObjectURL", {
+      configurable: true,
+      value: createObjectURL,
+    });
+    Object.defineProperty(URL, "revokeObjectURL", {
+      configurable: true,
+      value: revokeObjectURL,
+    });
+
+    try {
+      mockChatLifecycle(context, { threadId: THREAD_ID });
+      detachedSetupPage({
+        context,
+        path: `/chats/${THREAD_ID}`,
+      });
+
+      click(
+        await waitFor(() => {
+          return screen.getByLabelText("Template");
+        }),
+      );
+      await user.click(
+        screen.getByLabelText(`Preview ${template.title} at current slide`),
+      );
+      const templateDialog = screen.getByRole("dialog");
+      const frame = () => {
+        return within(templateDialog).getByTestId(
+          `${template.title} detail HTML preview`,
+        );
+      };
+      await waitFor(() => {
+        expect(frame()).toHaveAttribute(
+          "src",
+          expect.stringMatching(/^blob:detail-theme-preview-/),
+        );
+      });
+      expect(frame().className).not.toContain("data-[loaded=true]:opacity-100");
+      const initialFrameSrc = frame().getAttribute("src");
+      if (initialFrameSrc === null) {
+        throw new Error("Initial detail preview frame URL not found");
+      }
+      const firstThumbnail = () => {
+        return within(templateDialog).getByLabelText(
+          `${template.title} slide 1 preview`,
+        );
+      };
+      const initialThumbnailAccent = firstThumbnail().getAttribute("style");
+
+      await user.click(
+        within(templateDialog).getByLabelText("Select style Prism"),
+      );
+      await waitFor(() => {
+        expect(frame()).toHaveAttribute(
+          "src",
+          expect.stringMatching(/^blob:detail-theme-preview-/),
+        );
+        expect(frame().getAttribute("src")).not.toBe(initialFrameSrc);
+      });
+
+      const themedFrameSrc = frame().getAttribute("src");
+      if (themedFrameSrc === null) {
+        throw new Error("Themed detail preview frame URL not found");
+      }
+      const match = /^blob:detail-theme-preview-(\d+)$/.exec(themedFrameSrc);
+      if (match === null) {
+        throw new Error(
+          `Unexpected detail preview frame URL: ${themedFrameSrc}`,
+        );
+      }
+      const themedHtml = await blobHtml[Number(match[1]) - 1];
+      expect(themedHtml).toContain("--accent:#7257E6");
+      await waitFor(() => {
+        const themedThumbnailAccent = firstThumbnail().getAttribute("style");
+        expect(themedThumbnailAccent).toContain("--accent: #7257E6");
+        expect(themedThumbnailAccent).not.toBe(initialThumbnailAccent);
+      });
+    } finally {
+      if (originalCreateObjectURL) {
+        Object.defineProperty(URL, "createObjectURL", {
+          configurable: true,
+          value: originalCreateObjectURL,
+        });
+      } else {
+        delete (URL as { createObjectURL?: unknown }).createObjectURL;
+      }
+      if (originalRevokeObjectURL) {
+        Object.defineProperty(URL, "revokeObjectURL", {
+          configurable: true,
+          value: originalRevokeObjectURL,
+        });
+      } else {
+        delete (URL as { revokeObjectURL?: unknown }).revokeObjectURL;
+      }
+    }
+  });
+
   it("selects presentation templates with the default card theme", async () => {
     const template = PRESENTATION_TEMPLATE_PICKER_ITEMS.find((item) => {
       return item.slug !== PRESENTATION_TEMPLATE_PICKER_ITEMS[0]?.slug;

@@ -1637,6 +1637,26 @@ function presentationTemplateCardSlideImage(
   return presentationTemplateFallbackSlideImage(item, index, size);
 }
 
+function presentationTemplateDetailUsesStaticPreview(
+  item: PresentationTemplateItem,
+  activeSlideIndex: number,
+  theme: PresentationTemplateThemeOption,
+): boolean {
+  return (
+    activeSlideIndex === 0 &&
+    item.cardPreviewImagesByTheme?.[theme.id] !== undefined
+  );
+}
+
+function presentationTemplateDetailFrameClassName(
+  usesStaticPreview: boolean,
+): string {
+  return cn(
+    "pointer-events-none absolute inset-0 h-full w-full border-0 bg-background opacity-0",
+    !usesStaticPreview && "data-[loaded=true]:opacity-100",
+  );
+}
+
 function presentationTemplateFallbackSlideImage(
   item: PresentationTemplateItem,
   index: number,
@@ -3274,6 +3294,12 @@ function TemplatePreviewPage({
     selectedTheme,
     TEMPLATE_HIGH_RESOLUTION_PREVIEW_SIZE,
   );
+  const detailHasThemedStaticPreview =
+    presentationTemplateDetailUsesStaticPreview(
+      item,
+      activeSlideIndex,
+      selectedTheme,
+    );
 
   const selectDetailSlide = (index: number) => {
     selectDetailPreview({
@@ -3366,7 +3392,9 @@ function TemplatePreviewPage({
               src={visibleDetailPreview?.frameUrl ?? undefined}
               sandbox="allow-same-origin"
               tabIndex={-1}
-              className="pointer-events-none absolute inset-0 h-full w-full border-0 bg-background opacity-0 data-[loaded=true]:opacity-100"
+              className={presentationTemplateDetailFrameClassName(
+                detailHasThemedStaticPreview,
+              )}
               onLoad={(event) => {
                 const frameUrl = visibleDetailPreview?.frameUrl;
                 if (!frameUrl) {
@@ -3418,9 +3446,10 @@ function TemplatePreviewPage({
             ).map((slideNumber) => {
               const slideIndex = slideNumber - 1;
               const active = slideIndex === activeSlideIndex;
-              const thumbnailImage = presentationTemplateFallbackSlideImage(
+              const thumbnailImage = presentationTemplateCardSlideImage(
                 item,
                 slideIndex,
+                selectedTheme,
               );
               const thumbnailSlide =
                 cachedDetailDraft?.slides[slideIndex] ?? null;
