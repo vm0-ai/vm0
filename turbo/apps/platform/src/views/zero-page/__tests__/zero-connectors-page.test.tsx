@@ -1472,6 +1472,7 @@ describe("connectors page", () => {
     ["mercury", "Mercury"],
     ["notion", "Notion"],
     ["sentry", "Sentry"],
+    ["server-authored-oauth", "Server-authored OAuth"],
     ["vercel", "Vercel"],
   ] as const)(
     "starts %s OAuth with the app callback",
@@ -1518,6 +1519,49 @@ describe("connectors page", () => {
       });
     },
   );
+
+  it("keeps denylisted OAuth connectors on their legacy callback", async () => {
+    mockConnectors([]);
+    mockPublicConnectorStatus([
+      publicStatusItem({
+        connectorRef: "cloudflare",
+        label: "Cloudflare",
+        authMethods: [
+          {
+            id: "oauth",
+            label: "OAuth",
+            description: null,
+            grantKind: "auth-code",
+            manualFields: [],
+            startOptions: [],
+          },
+        ],
+        singleAuthCodeAuthMethodId: "oauth",
+      }),
+    ]);
+    const authWindow = createMockAuthWindow();
+    context.mocks.browser.open(authWindow);
+    context.mocks.api(
+      zeroConnectorOauthStartContract.start,
+      ({ body, params, respond }) => {
+        expect(params.type).toBe("cloudflare");
+        expect(body.callbackTarget).toBeUndefined();
+        return respond(200, {
+          authorizationUrl: "https://oauth.test/cloudflare/authorize",
+        });
+      },
+    );
+
+    detachedSetupPage({ context, path: "/connectors" });
+
+    click(await screen.findByLabelText("Connect Cloudflare"));
+
+    await waitFor(() => {
+      expect(authWindow.location.href).toBe(
+        "https://oauth.test/cloudflare/authorize",
+      );
+    });
+  });
 
   it("routes a server-authored connector from its catalog grant metadata", async () => {
     const connectorRef = "server-authored-steam";

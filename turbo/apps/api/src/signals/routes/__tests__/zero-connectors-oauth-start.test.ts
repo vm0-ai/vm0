@@ -413,7 +413,26 @@ describe("POST /api/zero/connectors/:type/oauth/start", () => {
     await rejectProviderAuthorization(authorizationUrl);
   });
 
-  it("keeps API-origin callbacks on the API when the app target is requested", async () => {
+  it("uses App callbacks by default outside the legacy callback list", async () => {
+    mockEnv("APP_URL", "https://app.vm0.test");
+    mockAuthenticatedSession();
+
+    const response = await requestOauthStart("test-oauth", {
+      headers: authHeaders(),
+      origin: API_ORIGIN,
+      callbackTarget: "app",
+    });
+
+    expect(response.status).toBe(200);
+    const authorizationUrl = await authorizationUrlFromResponse(response);
+    expect(authorizationUrl.searchParams.get("redirect_uri")).toBe(
+      "https://app.vm0.test/connectors/test-oauth/callback",
+    );
+    expectOauthState(authorizationUrl);
+    await rejectProviderAuthorization(authorizationUrl);
+  });
+
+  it("keeps denylisted API-origin callbacks on the API", async () => {
     mockAuthenticatedSession();
 
     const response = await requestOauthStart("cloudflare", {
