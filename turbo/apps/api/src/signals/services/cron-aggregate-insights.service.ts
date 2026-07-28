@@ -4,8 +4,7 @@ import { agentSessions } from "@vm0/db/schema/agent-session";
 import { insightsDaily } from "@vm0/db/schema/insights-daily";
 import { orgMembersCache } from "@vm0/db/schema/org-members-cache";
 import { orgMetadata } from "@vm0/db/schema/org-metadata";
-import { usageAllowanceAllocations } from "@vm0/db/schema/org-usage-allowance";
-import { usageEvent } from "@vm0/db/schema/usage-event";
+import { usageEventHourly } from "@vm0/db/schema/usage-event-hourly";
 import { userCache } from "@vm0/db/schema/user-cache";
 import { zeroAgents } from "@vm0/db/schema/zero-agent";
 import { command, computed, type Computed } from "ccstate";
@@ -35,6 +34,12 @@ import { writeDb$, type Db } from "../external/db";
 import { nowDate } from "../external/time";
 import { getLocalToday, resolveUserTimezones } from "./local-day";
 import { tapError } from "../utils";
+import { buildFinalizedUsageRelation } from "./finalized-usage-relation";
+import {
+  ceilFinalizedUsageHour,
+  floorFinalizedUsageHour,
+  normalizeFinalizedUsagePeriod,
+} from "./finalized-usage-time";
 import { loadConnectorRuntimeSnapshot } from "./connector-catalog-runtime.service";
 import type { ConnectorServerFirewallCatalog } from "./connector-server-firewall-catalog.service";
 
@@ -649,7 +654,7 @@ function aggregateOrgCredits(
       });
     }
     teamUsage.sort((a, b) => {
-      return b.credits - a.credits;
+      return b.credits - a.credits || a.userId.localeCompare(b.userId);
     });
     orgCreditsMap.set(orgId, { creditsUsed, teamUsage });
   }
@@ -784,6 +789,9 @@ async function queryActiveUsers(
   lookbackStart: Date,
   signal: AbortSignal,
 ): Promise<ActiveUserRow[]> {
+  const usage = buildFinalizedUsageRelation({
+    start: ceilFinalizedUsageHour(lookbackStart),
+  });
   const [completedRuns, eventUsage] = await Promise.all([
     db
       .select({
@@ -803,21 +811,14 @@ async function queryActiveUsers(
       .groupBy(agentRuns.orgId, agentRuns.userId),
     db
       .select({
-        orgId: usageEvent.orgId,
-        userId: usageEvent.userId,
-        lastActivity: max(usageEvent.processedAt)
-          .mapWith(usageEvent.processedAt)
+        orgId: usage.orgId,
+        userId: usage.userId,
+        lastActivity: max(usage.processedHour)
+          .mapWith(usageEventHourly.processedHour)
           .as("last_activity"),
       })
-      .from(usageEvent)
-      .where(
-        and(
-          eq(usageEvent.status, "processed"),
-          gte(usageEvent.processedAt, lookbackStart),
-          isNotNull(usageEvent.processedAt),
-        ),
-      )
-      .groupBy(usageEvent.orgId, usageEvent.userId),
+      .from(usage)
+      .groupBy(usage.orgId, usage.userId),
   ]);
   signal.throwIfAborted();
 
@@ -872,7 +873,8 @@ function mergeAgentRows(
       return (
         b.credits - a.credits ||
         b.runs - a.runs ||
-        a.agentName.localeCompare(b.agentName)
+        a.agentName.localeCompare(b.agentName) ||
+        (a.agentId ?? "").localeCompare(b.agentId ?? "")
       );
     });
     result.set(userKey, list);
@@ -929,11 +931,14 @@ async function queryUsageEventCreditRows(
   dayEnd: Date,
   signal: AbortSignal,
 ): Promise<LedgerCreditRow[]> {
-  const isRunless = isNull(usageEvent.runId);
+  const usage = buildFinalizedUsageRelation(
+    normalizeFinalizedUsagePeriod({ start: dayStart, end: dayEnd }),
+  );
+  const isRunless = isNull(usage.runId);
   const rows = await db
     .select({
-      orgId: usageEvent.orgId,
-      userId: usageEvent.userId,
+      orgId: usage.orgId,
+      userId: usage.userId,
       agentId:
         sql`CASE WHEN ${isRunless} THEN NULL ELSE ${zeroAgents.id}::text END`
           .mapWith(nullableTextDecoder)
@@ -943,30 +948,18 @@ async function queryUsageEventCreditRows(
           .mapWith(pgTextDecoder)
           .as("agent_name"),
       credits:
-        sql`COALESCE(SUM(COALESCE(${usageEvent.creditsCharged}, 0) + COALESCE(${usageAllowanceAllocations.unitsApplied}, 0)), 0)::bigint`
+        sql`COALESCE(SUM(${usage.creditsCharged} + ${usage.allowanceUnits}), 0)::bigint`
           .mapWith(pgInt8ToSafeIntegerDecoder)
           .as("credits"),
     })
-    .from(usageEvent)
-    .leftJoin(
-      usageAllowanceAllocations,
-      eq(usageAllowanceAllocations.usageEventId, usageEvent.id),
-    )
-    .leftJoin(agentRuns, eq(usageEvent.runId, agentRuns.id))
+    .from(usage)
+    .leftJoin(agentRuns, eq(usage.runId, agentRuns.id))
     .leftJoin(agentSessions, eq(agentRuns.sessionId, agentSessions.id))
     .leftJoin(zeroAgents, eq(agentSessions.agentComposeId, zeroAgents.id))
-    .where(
-      and(
-        inArray(usageEvent.orgId, orgIds),
-        eq(usageEvent.status, "processed"),
-        gte(usageEvent.processedAt, dayStart),
-        lt(usageEvent.processedAt, dayEnd),
-        isNotNull(usageEvent.processedAt),
-      ),
-    )
+    .where(and(inArray(usage.orgId, orgIds)))
     .groupBy(
-      usageEvent.orgId,
-      usageEvent.userId,
+      usage.orgId,
+      usage.userId,
       isRunless,
       zeroAgents.id,
       zeroAgents.displayName,
@@ -1335,8 +1328,10 @@ export const aggregateInsights$ = command(
       if (!lastAgg) {
         return true;
       }
-      const lastCovered = new Date(
-        lastAgg.getTime() - AGGREGATION_REPROCESS_OVERLAP_MS,
+      // processed_hour cannot distinguish facts finalized within the same
+      // hour, so retain that whole hour in the reprocessing overlap.
+      const lastCovered = floorFinalizedUsageHour(
+        new Date(lastAgg.getTime() - AGGREGATION_REPROCESS_OVERLAP_MS),
       );
       return user.lastActivity >= lastCovered;
     });

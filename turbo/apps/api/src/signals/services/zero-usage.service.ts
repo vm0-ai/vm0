@@ -1,5 +1,5 @@
 import { command } from "ccstate";
-import { and, count, desc, eq, gte, inArray, lt } from "drizzle-orm";
+import { and, asc, count, desc, eq, gte, inArray, lt } from "drizzle-orm";
 import type {
   MemberUsage,
   UsageMembersResponse,
@@ -92,7 +92,9 @@ export const zeroUsageMembers$ = command(
     });
 
     members.sort((a, b) => {
-      return b.creditsCharged - a.creditsCharged;
+      return (
+        b.creditsCharged - a.creditsCharged || a.userId.localeCompare(b.userId)
+      );
     });
 
     return {
@@ -182,7 +184,7 @@ export const zeroUsageRuns$ = command(
       )
       .leftJoin(zeroAgents, eq(agentComposes.id, zeroAgents.id))
       .where(and(...conditions, hasRunUsageTotals(eventUsage)))
-      .orderBy(desc(agentRuns.createdAt))
+      .orderBy(desc(agentRuns.createdAt), asc(agentRuns.id))
       .limit(args.pageSize)
       .offset(offset);
     signal.throwIfAborted();

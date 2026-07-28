@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 
+import { createStore } from "ccstate";
 import type { TriggerSource } from "@vm0/api-contracts/contracts/logs";
 import { zeroUsageRunsContract } from "@vm0/api-contracts/contracts/zero-usage-daily";
 
@@ -10,6 +11,15 @@ import { createBddApi, type ApiTestUser } from "./helpers/api-bdd";
 import { createBillingMediaApi } from "./helpers/api-bdd-billing-media";
 import { createRunsApi } from "./helpers/api-bdd-runs";
 import { createWebhookCallbackApi } from "./helpers/api-bdd-webhooks";
+import {
+  generatedStripeCustomerId,
+  generatedStripeSubscriptionId,
+  postUsageAllowanceInvoicePaid,
+} from "./helpers/stripe-billing-webhook";
+import {
+  materializeHourlyUsage$,
+  readUsageStorageCounts$,
+} from "./helpers/zero-usage-insight";
 import { createZeroRouteMocks } from "./helpers/zero-route-test";
 
 const context = testContext();
@@ -18,6 +28,7 @@ const api = createRunsApi(context);
 const billing = createBillingMediaApi(context);
 const webhooks = createWebhookCallbackApi(context);
 const mocks = createZeroRouteMocks(context);
+const store = createStore();
 
 const MODEL_TOKEN_CATEGORIES = {
   input: "tokens.input",
@@ -420,11 +431,14 @@ describe("GET /api/zero/usage/runs", () => {
     const actor = await entitledUsageActor();
     const model = uniqueModelName();
     await seedModelPricing(model);
+    const tiedCreatedAt = createdAt(10);
+    const runIds: string[] = [];
 
     for (let index = 0; index < 3; index++) {
       const run = await createBillableRun(actor, {
-        createdAt: createdAt(10 - index),
+        createdAt: tiedCreatedAt,
       });
+      runIds.push(run.runId);
       await recordModelUsage(actor, run.runId, model, {
         output: (index + 1) * 10,
       });
@@ -442,6 +456,12 @@ describe("GET /api/zero/usage/runs", () => {
       [200],
     );
     expect(response1.body.runs).toHaveLength(2);
+    const expectedRunIds = [...runIds].sort();
+    expect(
+      response1.body.runs.map((run) => {
+        return run.runId;
+      }),
+    ).toStrictEqual(expectedRunIds.slice(0, 2));
     expect(response1.body.pagination).toStrictEqual({
       page: 1,
       pageSize: 2,
@@ -456,6 +476,7 @@ describe("GET /api/zero/usage/runs", () => {
       [200],
     );
     expect(response2.body.runs).toHaveLength(1);
+    expect(response2.body.runs[0]?.runId).toBe(expectedRunIds[2]);
     expect(response2.body.pagination.page).toBe(2);
   });
 
@@ -489,6 +510,40 @@ describe("GET /api/zero/usage/runs", () => {
     expect(response.body.runs).toHaveLength(1);
     expect(response.body.runs[0]?.userId).toBe(member.userId);
     expect(response.body.runs[0]?.creditsCharged).toBe(100);
+  });
+
+  it("orders tied member totals by user ID", async () => {
+    const actor = await entitledUsageActor();
+    const members = [
+      actor,
+      bdd.user({ orgId: actor.orgId, orgRole: "org:member" }),
+      bdd.user({ orgId: actor.orgId, orgRole: "org:member" }),
+    ];
+    const model = uniqueModelName();
+    await seedModelPricing(model);
+    for (const member of members) {
+      const run = await createBillableRun(member);
+      await recordModelUsage(member, run.runId, model, { output: 10 });
+    }
+    await billing.processOrgUsageEvents(actor);
+    mockClerkUserLookup();
+
+    const response = await billing.readUsageMembers(actor, {
+      range: "today",
+      tz: "UTC",
+    });
+
+    expect(
+      response.body.members.map((member) => {
+        return member.userId;
+      }),
+    ).toStrictEqual(
+      members
+        .map((member) => {
+          return member.userId;
+        })
+        .sort(),
+    );
   });
 
   it("filters by agentId", async () => {
@@ -707,5 +762,127 @@ describe("GET /api/zero/usage/runs", () => {
       cacheTokens: 54,
       creditsCharged: 304,
     });
+  });
+
+  it("regroups mixed raw and hourly facts with partial allowance usage", async () => {
+    const actor = await entitledUsageActor();
+    if (!actor.orgId) {
+      throw new Error("Expected an org-scoped actor");
+    }
+    const firstRunAt = new Date(nowDate());
+    firstRunAt.setUTCHours(8, 0, 0, 0);
+    mockNow(firstRunAt);
+    await postUsageAllowanceInvoicePaid(context.signal, {
+      orgId: actor.orgId,
+      userId: actor.userId,
+      customerId: generatedStripeCustomerId(),
+      subscriptionId: generatedStripeSubscriptionId(),
+      effectiveAt: new Date(firstRunAt.getTime() - 1000),
+      expiresAt: new Date(firstRunAt.getTime() + 365 * 86_400_000),
+      shortWindowSeconds: 3600,
+      shortWindowUnits: 100,
+      weeklyWindowSeconds: 7 * 86_400,
+      weeklyWindowUnits: 100,
+    });
+    const model = uniqueModelName();
+    await seedModelPricing(model);
+    const firstRun = await createBillableRun(actor);
+
+    await recordModelUsage(actor, firstRun.runId, model, { input: 80 });
+    await billing.processOrgUsageEvents(actor);
+    await expect(
+      store.set(
+        materializeHourlyUsage$,
+        {
+          orgId: actor.orgId,
+          userId: actor.userId,
+          runId: firstRun.runId,
+        },
+        context.signal,
+      ),
+    ).resolves.toBe(1);
+
+    mockNow(new Date(firstRunAt.getTime() + 2 * 3_600_000));
+    const secondRun = await createBillableRun(actor);
+    await recordModelUsage(actor, secondRun.runId, model, {
+      input: 50,
+      output: 40,
+    });
+    await billing.processOrgUsageEvents(actor);
+    mockNow(new Date(firstRunAt.getTime() + 2 * 3_600_000 + 60_000));
+    await expect(
+      store.set(
+        readUsageStorageCounts$,
+        { scope: "organization", id: actor.orgId },
+        context.signal,
+      ),
+    ).resolves.toStrictEqual({ raw: 2, hourly: 1 });
+
+    mockClerkUserLookup();
+    mocks.clerk.session(actor.userId, actor.orgId);
+    const runsResponse = await accept(
+      apiClient().get({ query: {}, headers: authHeaders() }),
+      [200],
+    );
+    expect(runsResponse.body.runs).toStrictEqual([
+      expect.objectContaining({
+        runId: secondRun.runId,
+        model,
+        inputTokens: 50,
+        outputTokens: 40,
+        creditsCharged: 90,
+      }),
+      expect.objectContaining({
+        runId: firstRun.runId,
+        model,
+        inputTokens: 80,
+        outputTokens: 0,
+        creditsCharged: 80,
+      }),
+    ]);
+
+    const membersResponse = await billing.readUsageMembers(actor, {
+      range: "today",
+      tz: "UTC",
+    });
+    expect(membersResponse.body.members).toStrictEqual([
+      expect.objectContaining({
+        userId: actor.userId,
+        inputTokens: 130,
+        outputTokens: 40,
+        creditsCharged: 170,
+      }),
+    ]);
+
+    await bdd.updateAgent(actor, firstRun.composeId, {
+      displayName: "Deleted first usage agent",
+      visibility: "private",
+    });
+    await bdd.updateAgent(actor, secondRun.composeId, {
+      displayName: "Deleted second usage agent",
+      visibility: "private",
+    });
+    await bdd.deleteAgent(actor, firstRun.composeId);
+    await bdd.deleteAgent(actor, secondRun.composeId);
+    const deletedRunsResponse = await accept(
+      apiClient().get({ query: {}, headers: authHeaders() }),
+      [200],
+    );
+    expect(deletedRunsResponse.body).toStrictEqual({
+      runs: [],
+      pagination: { page: 1, pageSize: 20, total: 0 },
+    });
+    const membersAfterRunDeletion = await billing.readUsageMembers(actor, {
+      range: "today",
+      tz: "UTC",
+    });
+    expect(membersAfterRunDeletion.body.members).toStrictEqual([
+      expect.objectContaining({
+        userId: actor.userId,
+        inputTokens: 130,
+        outputTokens: 40,
+        creditsCharged: 170,
+      }),
+    ]);
   });
 });

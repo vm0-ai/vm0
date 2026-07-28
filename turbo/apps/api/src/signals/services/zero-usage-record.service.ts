@@ -16,9 +16,10 @@ import {
   pgInt8ToSafeIntegerSchema,
   pgTimestampWithoutTimezoneToDateSchema,
 } from "../../lib/db-raw-rows";
-import { timestampWithoutTimeZone } from "../../lib/time";
 import { clerk$ } from "../external/clerk";
 import { writeDb$, type Db } from "../external/db";
+import { buildFinalizedUsageRelation } from "./finalized-usage-relation";
+import { normalizeFinalizedUsagePeriod } from "./finalized-usage-time";
 import { getOrgBillingPeriod$ } from "./zero-org-billing-period.service";
 import { resolveEmails } from "./zero-usage.service";
 import {
@@ -113,7 +114,7 @@ function tokenExpr() {
     }),
     sql`, `,
   );
-  return sql`CASE WHEN ue.kind = ${MODEL_USAGE_KIND} AND ue.category IN (${list}) THEN ue.quantity ELSE 0 END`;
+  return sql`CASE WHEN finalized_usage.kind = ${MODEL_USAGE_KIND} AND finalized_usage.category IN (${list}) THEN finalized_usage.quantity ELSE 0 END`;
 }
 
 function sourceExpr() {
@@ -141,13 +142,13 @@ function usageKindExpr() {
   );
   return sql`
     CASE
-      WHEN ue.kind IN (${usageKindList}) THEN ue.kind
+      WHEN finalized_usage.kind IN (${usageKindList}) THEN finalized_usage.kind
       ELSE 'other'
     END`;
 }
 
 function usageCreditsExpr() {
-  return sql`COALESCE(ue.credits_charged, 0) + COALESCE(uaa.units_applied, 0)`;
+  return sql`finalized_usage.credits_charged + finalized_usage.allowance_units`;
 }
 
 // Per-source usage for one user in one org. `record` is the shared CTE so the
@@ -167,27 +168,20 @@ function recordWith(
     sql`, `,
   );
   const userPredicate =
-    userId === null ? sql.empty() : sql`AND ue.user_id = ${userId}`;
-  // Finalized reports assign usage to the time settlement completed.
-  const periodPredicate = period
-    ? sql`
-        AND ue.processed_at >= ${timestampWithoutTimeZone(period.start)}::timestamp
-        AND ue.processed_at < ${timestampWithoutTimeZone(period.end)}::timestamp`
-    : sql.empty();
+    userId === null
+      ? sql.empty()
+      : sql`AND finalized_usage.user_id = ${userId}`;
+  const usage = buildFinalizedUsageRelation(period ?? undefined);
   return sql`
     WITH usage_rows AS (
       SELECT
-        ue.run_id,
-        ue.user_id,
+        finalized_usage.run_id,
+        finalized_usage.user_id,
         ${usageCreditsExpr()}::bigint AS credits,
         ${tokenExpr()}::bigint AS tokens
-      FROM usage_event ue
-      LEFT JOIN usage_allowance_allocations uaa ON uaa.usage_event_id = ue.id
-      WHERE ue.org_id = ${orgId}
+      FROM ${usage}
+      WHERE finalized_usage.org_id = ${orgId}
         ${userPredicate}
-        AND ue.status = 'processed'
-        AND ue.processed_at IS NOT NULL
-        ${periodPredicate}
     ),
     runs AS (
       SELECT
@@ -279,7 +273,7 @@ async function queryUsageRecordRows(
       SELECT row_key, source, user_id, thread_id, run_id, title, credits, tokens, last_activity
       FROM record
       ${where}
-      ORDER BY last_activity DESC
+      ORDER BY last_activity DESC, row_key
       LIMIT ${pageSize} OFFSET ${offset}
     `,
     usageRecordSqlRowSchema,
@@ -339,13 +333,9 @@ async function queryUsageRecordBreakdown(
   }
 
   const userPredicate =
-    userId === null ? sql.empty() : sql`AND ue.user_id = ${userId}`;
-  // Keep breakdown membership on the same settlement clock as record totals.
-  const periodPredicate = period
-    ? sql`
-          AND ue.processed_at >= ${timestampWithoutTimeZone(period.start)}::timestamp
-          AND ue.processed_at < ${timestampWithoutTimeZone(period.end)}::timestamp`
-    : sql.empty();
+    userId === null
+      ? sql.empty()
+      : sql`AND finalized_usage.user_id = ${userId}`;
   const rowKeyList = sql.join(
     rowKeys.map((rowKey) => {
       return sql`${rowKey}`;
@@ -354,6 +344,7 @@ async function queryUsageRecordBreakdown(
   );
   const sourceSql = sourceExpr();
   const kindSql = usageKindExpr();
+  const usage = buildFinalizedUsageRelation(period ?? undefined);
 
   const rows = await executeRawRows(
     db,
@@ -362,19 +353,15 @@ async function queryUsageRecordBreakdown(
         SELECT
           ${sourceSql} AS source,
           zr.chat_thread_id,
-          ue.run_id,
-          ue.user_id,
+          finalized_usage.run_id,
+          finalized_usage.user_id,
           ${kindSql} AS kind,
-          COALESCE(NULLIF(ue.provider, ''), 'unknown') AS provider,
+          COALESCE(NULLIF(finalized_usage.provider, ''), 'unknown') AS provider,
           ${usageCreditsExpr()}::bigint AS credits
-        FROM usage_event ue
-        LEFT JOIN usage_allowance_allocations uaa ON uaa.usage_event_id = ue.id
-        INNER JOIN zero_runs zr ON zr.id = ue.run_id
-        WHERE ue.org_id = ${orgId}
+        FROM ${usage}
+        INNER JOIN zero_runs zr ON zr.id = finalized_usage.run_id
+        WHERE finalized_usage.org_id = ${orgId}
           ${userPredicate}
-          AND ue.status = 'processed'
-          AND ue.processed_at IS NOT NULL
-          ${periodPredicate}
       ),
       keyed AS (
         SELECT
@@ -479,7 +466,8 @@ export const zeroUsageRecord$ = command(
     const db = set(writeDb$);
     const userId = args.scope === "mine" ? args.userId : null;
     const offset = (args.page - 1) * args.pageSize;
-    const recordCte = recordWith(userId, args.orgId, period);
+    const queryPeriod = period ? normalizeFinalizedUsagePeriod(period) : null;
+    const recordCte = recordWith(userId, args.orgId, queryPeriod);
 
     signal.throwIfAborted();
     const rows = await queryUsageRecordRows(
@@ -494,7 +482,7 @@ export const zeroUsageRecord$ = command(
       db,
       userId,
       args.orgId,
-      period,
+      queryPeriod,
       rows.map((row) => {
         return row.rowKey;
       }),
