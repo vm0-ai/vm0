@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.17.68](https://github.com/vm0-ai/vm0/compare/vsock-host-v0.17.67...vsock-host-v0.17.68) (2026-07-28)
+
+
+### Bug Fixes
+
+* **vsock-host:** bound exec start writes by host deadlines ([#23551](https://github.com/vm0-ai/vm0/issues/23551)) ([7b7822d](https://github.com/vm0-ai/vm0/commit/7b7822dbb2520442f78812db4fd290f5baa5ec56))
+
 ## [0.17.67](https://github.com/vm0-ai/vm0/compare/vsock-host-v0.17.66...vsock-host-v0.17.67) (2026-07-25)
 
 

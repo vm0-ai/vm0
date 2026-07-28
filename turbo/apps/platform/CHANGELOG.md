@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.649.1](https://github.com/vm0-ai/vm0/compare/app-v0.649.0...app-v0.649.1) (2026-07-28)
+
+
+### Bug Fixes
+
+* trigger api platform and runner releases ([#23559](https://github.com/vm0-ai/vm0/issues/23559)) ([bc61816](https://github.com/vm0-ai/vm0/commit/bc61816360ad9ebe814198d3bd41cff38eeff116))
+
+
+### Performance Improvements
+
+* **platform:** retain composer connector state across chats ([#23554](https://github.com/vm0-ai/vm0/issues/23554)) ([324a17a](https://github.com/vm0-ai/vm0/commit/324a17ac1fc984ce6958425e743f68f7d5c90a12))
+
 ## [0.649.0](https://github.com/vm0-ai/vm0/compare/app-v0.648.1...app-v0.649.0) (2026-07-28)
 
 

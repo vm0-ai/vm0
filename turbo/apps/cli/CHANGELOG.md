@@ -1,5 +1,12 @@
 # Changelog
 
+## [9.264.0](https://github.com/vm0-ai/vm0/compare/cli-v9.263.2...cli-v9.264.0) (2026-07-28)
+
+
+### Features
+
+* **cli:** show automation model and management guidance ([#23553](https://github.com/vm0-ai/vm0/issues/23553)) ([0aa3285](https://github.com/vm0-ai/vm0/commit/0aa3285c1217697262547e976a855a65580ab5a0))
+
 ## [9.263.2](https://github.com/vm0-ai/vm0/compare/cli-v9.263.1...cli-v9.263.2) (2026-07-28)
 
 
