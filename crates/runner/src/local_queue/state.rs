@@ -1653,6 +1653,7 @@ mod tests {
         let cancel_dir = super::super::ensure_cancels_dir(group_dir).unwrap();
         let queue = LocalQueue::new(group_dir.to_path_buf());
         let before = ctime(&cancel_dir);
+        // Separate filesystem clock ticks so an unexpected chmod changes the observed ctime.
         std::thread::sleep(Duration::from_millis(20));
 
         assert!(queue.collect_cancel_markers_sync().is_empty());
