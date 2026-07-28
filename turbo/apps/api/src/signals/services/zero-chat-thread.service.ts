@@ -2479,7 +2479,6 @@ export const updateChatThreadDraft$ = command(
       .set({
         draftContent: args.draftContent,
         draftUserMessage,
-        draftUserMessageWithFeedback: null,
         draftAttachments: args.draftAttachments
           ? [...args.draftAttachments]
           : null,

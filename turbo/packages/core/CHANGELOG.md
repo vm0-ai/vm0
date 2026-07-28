@@ -1,5 +1,39 @@
 # Changelog
 
+## [8.481.0](https://github.com/vm0-ai/vm0/compare/core-v8.480.0...core-v8.481.0) (2026-07-28)
+
+
+### Features
+
+* add strapi integration and entry-published automations ([#23397](https://github.com/vm0-ai/vm0/issues/23397)) ([2303632](https://github.com/vm0-ai/vm0/commit/23036322816e375918499c53da66148154c889cf))
+* **platform:** show chat skeletons while loading older messages ([#23455](https://github.com/vm0-ai/vm0/issues/23455)) ([61b62ea](https://github.com/vm0-ai/vm0/commit/61b62eac6353513b72f7fdf693fa8d45c9c28e02))
+
+
+### Refactoring
+
+* **zero:** graduate people search ([#23477](https://github.com/vm0-ai/vm0/issues/23477)) ([b72f4e1](https://github.com/vm0-ai/vm0/commit/b72f4e152e27a156d79968c742c6720a3132fb19))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.241.0
+
+## [8.480.0](https://github.com/vm0-ai/vm0/compare/core-v8.479.1...core-v8.480.0) (2026-07-28)
+
+
+### Features
+
+* **platform:** persist workspace language preference ([#23396](https://github.com/vm0-ai/vm0/issues/23396)) ([7a409c9](https://github.com/vm0-ai/vm0/commit/7a409c99494fe765a896e72aee1b5450df3b1427))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.240.0
+
 ## [8.479.1](https://github.com/vm0-ai/vm0/compare/core-v8.479.0...core-v8.479.1) (2026-07-28)
 
 

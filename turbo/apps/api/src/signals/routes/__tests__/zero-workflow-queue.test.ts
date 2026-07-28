@@ -1,8 +1,6 @@
 import { createHash, randomUUID } from "node:crypto";
 
 import {
-  DecryptCommand,
-  type DecryptCommandOutput,
   GenerateDataKeyCommand,
   type GenerateDataKeyCommandOutput,
 } from "@aws-sdk/client-kms";
@@ -19,10 +17,6 @@ import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
 import { createApp } from "../../../app-factory";
 import { computeHmacSignature } from "../../../lib/event-consumer/hmac";
 import { mockEnv, mockOptionalEnv } from "../../../lib/env";
-import {
-  setSecretKmsClientForTests,
-  type SecretKmsClient,
-} from "../../../lib/secret-kms-client";
 import { mockNow, now } from "../../../lib/time";
 import { flushWaitUntilForTest } from "../../context/wait-until";
 import { createDeferredPromise } from "../../utils";
@@ -32,6 +26,10 @@ import { createRunsApi } from "./helpers/api-bdd-runs";
 import { createWebhookCallbackApi } from "./helpers/api-bdd-webhooks";
 import { createWorkflowsBddApi } from "./helpers/api-bdd-workflows";
 import { readThreadSessionBinding } from "./helpers/runtime-state";
+import {
+  generateDataKeyOutput,
+  useSecretKmsProbe,
+} from "./helpers/secret-kms-probe";
 import { createZeroRouteMocks } from "./helpers/zero-route-test";
 import {
   completeRunWithoutCallbacksFixture,
@@ -53,61 +51,6 @@ const CRON_CLEANUP_SANDBOXES_ROUTE = "/api/cron/cleanup-sandboxes";
 const CRON_EXECUTE_WORKFLOW_AUTOMATIONS_ROUTE =
   "/api/cron/execute-workflow-automations";
 const CRON_SECRET = "test-cron-secret";
-const TEST_DATA_KEY = Buffer.from("0123456789abcdef0123456789abcdef", "utf8");
-
-interface SecretKmsProbe {
-  readonly generateDataKeyCalls: number;
-}
-
-function generateDataKeyOutput(
-  command: GenerateDataKeyCommand,
-): GenerateDataKeyCommandOutput {
-  return {
-    $metadata: {},
-    KeyId: command.input.KeyId,
-    CiphertextBlob: Buffer.from(
-      `encrypted-data-key:${command.input.KeyId}`,
-      "utf8",
-    ),
-    Plaintext: TEST_DATA_KEY,
-  };
-}
-
-function useSecretKmsProbe(
-  overrideGenerateDataKey?: (
-    command: GenerateDataKeyCommand,
-    callNumber: number,
-  ) => Promise<GenerateDataKeyCommandOutput> | undefined,
-): SecretKmsProbe {
-  let generateDataKeyCalls = 0;
-
-  function send(
-    command: GenerateDataKeyCommand,
-  ): Promise<GenerateDataKeyCommandOutput>;
-  function send(command: DecryptCommand): Promise<DecryptCommandOutput>;
-  function send(
-    command: GenerateDataKeyCommand | DecryptCommand,
-  ): Promise<GenerateDataKeyCommandOutput | DecryptCommandOutput> {
-    if (command instanceof GenerateDataKeyCommand) {
-      generateDataKeyCalls += 1;
-      const overridden = overrideGenerateDataKey?.(
-        command,
-        generateDataKeyCalls,
-      );
-      return overridden ?? Promise.resolve(generateDataKeyOutput(command));
-    }
-
-    return Promise.resolve({ $metadata: {}, Plaintext: TEST_DATA_KEY });
-  }
-
-  const client: SecretKmsClient = { send };
-  setSecretKmsClientForTests(client);
-  return {
-    get generateDataKeyCalls() {
-      return generateDataKeyCalls;
-    },
-  };
-}
 
 function authHeaders() {
   return { authorization: "Bearer clerk-session" };

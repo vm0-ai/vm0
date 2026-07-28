@@ -88,6 +88,7 @@ export const runWorkflowAutomationNow$ = command(
           triggerBrief: args.triggerBrief,
           coalescePendingScheduleRun: args.coalescePendingScheduleRun !== false,
           params: queueEventParams(args),
+          persistSourceTransition: args.persistSourceTransition,
         });
       },
     );

@@ -1,11 +1,12 @@
 """Connector requestheaders upstream-admission tests."""
 
 import asyncio
+import urllib.parse
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
 import pytest
-from mitmproxy import connection
+from mitmproxy import connection, http
 
 import auth
 import flow_metadata_keys as metadata_keys
@@ -114,17 +115,89 @@ async def test_test_connector_bounded_requestheaders_uses_connector_binding(
         ),
     )
     monkeypatch.setenv("VERCEL_AUTOMATION_BYPASS_SECRET", "preview-secret")
+    admission_derivations: list[tuple[tuple[tuple[str, int], ...], tuple[str, ...]]] = []
+    active_destinations: list[tuple[str, int]] | None = None
+    active_api_urls: list[str] | None = None
+    ensure_bound_destination = upstream_admission.ensure_bound_destination
+    normalize_upstream_destination = upstream_destination_binding.normalize_upstream_destination
+    parse_api_url = urllib.parse.urlparse
+
+    def track_ensure_bound_destination(
+        tracked_flow: http.HTTPFlow,
+        *,
+        kind: upstream_destination_binding.BindingKind,
+        api_url: str,
+    ) -> bool:
+        nonlocal active_destinations, active_api_urls
+        destinations: list[tuple[str, int]] = []
+        api_urls: list[str] = []
+        active_destinations = destinations
+        active_api_urls = api_urls
+        try:
+            return ensure_bound_destination(
+                tracked_flow,
+                kind=kind,
+                api_url=api_url,
+            )
+        finally:
+            admission_derivations.append((tuple(destinations), tuple(api_urls)))
+            active_destinations = None
+            active_api_urls = None
+
+    def track_normalized_destination(
+        *,
+        host: str,
+        port: int,
+    ) -> upstream_destination_binding.NormalizedUpstreamDestination:
+        if active_destinations is not None:
+            active_destinations.append((host, port))
+        return normalize_upstream_destination(host=host, port=port)
+
+    def track_api_url_parse(
+        api_url: str,
+        scheme: str = "",
+        allow_fragments: bool = True,
+    ) -> urllib.parse.ParseResult:
+        if active_api_urls is not None:
+            active_api_urls.append(api_url)
+        return parse_api_url(
+            api_url,
+            scheme=scheme,
+            allow_fragments=allow_fragments,
+        )
+
+    monkeypatch.setattr(
+        upstream_admission,
+        "ensure_bound_destination",
+        track_ensure_bound_destination,
+    )
+    monkeypatch.setattr(
+        upstream_destination_binding,
+        "normalize_upstream_destination",
+        track_normalized_destination,
+    )
+    monkeypatch.setattr(
+        urllib.parse,
+        "urlparse",
+        track_api_url_parse,
+    )
+    expected_derivation = (
+        (("api.vm0.ai", 443),),
+        ("https://api.vm0.ai",),
+    )
 
     with (
         mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
         fake_firewall_headers(headers={"Authorization": "Bearer resolved"}) as auth_fetch,
     ):
         assert mitm_addon.requestheaders(flow) is None
+        assert admission_derivations == [expected_derivation]
         _assert_no_request_stream(flow)
         assert flow.server_conn.address == ("api.vm0.ai", 443)
 
         await mitm_addon.request(flow)
 
+    assert admission_derivations == [expected_derivation, expected_derivation]
     auth_fetch.assert_awaited_once()
     assert flow.response is None
     assert flow.request.headers["Authorization"] == "Bearer resolved"
@@ -132,6 +205,33 @@ async def test_test_connector_bounded_requestheaders_uses_connector_binding(
     assert binding.host == "api.vm0.ai"
     assert binding.kinds == frozenset(("connector_auth",))
     assert binding.original_address == ("203.0.113.10", 443)
+
+
+def test_raw_binding_helpers_normalize_noncanonical_authority(
+    real_flow,
+    headers,
+):
+    flow = real_flow(
+        with_response=False,
+        host="api.github.com",
+        sni="api.github.com",
+        request_headers=headers(("Host", "api.github.com")),
+    )
+    flow.metadata[metadata_keys.TRUSTED_AUTHORITY_HOST] = "API.GITHUB.COM."
+    flow.server_conn.address = ("api.github.com", 443)
+    upstream_destination_binding.record_server_binding(
+        flow.server_conn,
+        client=flow.client_conn,
+        host="API.GITHUB.COM.",
+        port=443,
+        kinds=frozenset(("connector_auth",)),
+        original_address=("203.0.113.10", 443),
+    )
+
+    assert upstream_admission.has_bound_destination(
+        flow,
+        allowed_kinds=frozenset(("connector_auth",)),
+    )
 
 
 async def test_test_connector_bounded_requestheaders_without_bypass_blocks(

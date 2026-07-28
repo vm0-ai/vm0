@@ -1,5 +1,53 @@
 # Changelog
 
+## [1.337.0](https://github.com/vm0-ai/vm0/compare/api-v1.336.0...api-v1.337.0) (2026-07-28)
+
+
+### Features
+
+* add strapi integration and entry-published automations ([#23397](https://github.com/vm0-ai/vm0/issues/23397)) ([2303632](https://github.com/vm0-ai/vm0/commit/23036322816e375918499c53da66148154c889cf))
+
+
+### Refactoring
+
+* **db:** remove structured prompt feedback compatibility columns ([#23418](https://github.com/vm0-ai/vm0/issues/23418)) ([c66a81f](https://github.com/vm0-ai/vm0/commit/c66a81fba41413a1ae518be377b77298bc571efe))
+* **zero:** graduate people search ([#23477](https://github.com/vm0-ai/vm0/issues/23477)) ([b72f4e1](https://github.com/vm0-ai/vm0/commit/b72f4e152e27a156d79968c742c6720a3132fb19))
+
+
+### Performance Improvements
+
+* **api:** lazily materialize connector server firewalls ([#23447](https://github.com/vm0-ai/vm0/issues/23447)) ([c3d1f22](https://github.com/vm0-ai/vm0/commit/c3d1f22eaf594215e759a7b137aadd55488bc8c2))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.241.0
+    * @vm0/core bumped to 8.481.0
+    * @vm0/db bumped to 1.149.0
+
+## [1.336.0](https://github.com/vm0-ai/vm0/compare/api-v1.335.1...api-v1.336.0) (2026-07-28)
+
+
+### Features
+
+* **platform:** persist workspace language preference ([#23396](https://github.com/vm0-ai/vm0/issues/23396)) ([7a409c9](https://github.com/vm0-ai/vm0/commit/7a409c99494fe765a896e72aee1b5450df3b1427))
+
+
+### Bug Fixes
+
+* **ci:** use immutable pages urls for browser e2e ([#23382](https://github.com/vm0-ai/vm0/issues/23382)) ([0ca6562](https://github.com/vm0-ai/vm0/commit/0ca6562131023efb48ea8fd4ca1e331115011703))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.240.0
+    * @vm0/core bumped to 8.480.0
+    * @vm0/db bumped to 1.148.0
+
 ## [1.335.1](https://github.com/vm0-ai/vm0/compare/api-v1.335.0...api-v1.335.1) (2026-07-28)
 
 

@@ -9,7 +9,6 @@ import { zeroUsageRecordContract } from "@vm0/api-contracts/contracts/zero-usage
 import { HttpResponse, http, type JsonBodyType } from "msw";
 import { describe, expect, it } from "vitest";
 
-import { createAppWithRoutes } from "../../../app-factory-core";
 import { accept, testContext } from "../../../__tests__/test-context";
 import { setupApp } from "../../../__tests__/test-helpers";
 import { setupAppWithRoutes } from "../../../__tests__/test-app";
@@ -34,7 +33,6 @@ import { createRunsApi } from "./helpers/api-bdd-runs";
 import { createZeroRouteMocks } from "./helpers/zero-route-test";
 
 const context = testContext();
-const STAFF_ORG_ID = "org_3ANttyrbWYJk6JKRSTRLEsbsDLe";
 const PERPLEXITY_AGENT_URL = "https://api.perplexity.ai/v1/agent";
 const MAX_PROVIDER_RESPONSE_BYTES = 512 * 1024;
 
@@ -68,30 +66,6 @@ function authenticate(actor: ApiTestUser | null): AuthHeaders {
 
 function client() {
   return setupAppWithRoutes({ context, routes: peopleSearchRoutes });
-}
-
-function staffActor(): ApiTestUser {
-  return createBddApi(context).user({ orgId: STAFF_ORG_ID });
-}
-
-async function rawPeopleSearchRequest(
-  actor: ApiTestUser,
-  body: unknown,
-): Promise<Response> {
-  const app = createAppWithRoutes({
-    signal: context.signal,
-    routes: peopleSearchRoutes,
-  });
-  return await app.request(
-    new Request("http://api.test/api/zero/people-search", {
-      method: "POST",
-      headers: {
-        ...authenticate(actor),
-        "content-type": "application/json",
-      },
-      body: JSON.stringify(body),
-    }),
-  );
 }
 
 async function bootstrapOnboarding(actor: ApiTestUser): Promise<void> {
@@ -239,54 +213,17 @@ async function successfulRequest(
 }
 
 describe("zero people-search route", () => {
-  it("rejects a stale capable token when the rollout switch is disabled", async () => {
+  it("rejects zero tokens without people-search capability", async () => {
     const actor = createBddApi(context).user();
     if (!actor.orgId) {
       throw new Error("People Search test actor must have an organization");
     }
     await bootstrapOnboarding(actor);
-    configureProvider();
-    let providerRequests = 0;
-    server.use(
-      http.post(PERPLEXITY_AGENT_URL, () => {
-        providerRequests += 1;
-        return HttpResponse.json(providerResponse());
-      }),
-    );
     const seconds = Math.floor(now() / 1000);
     const token = signSandboxJwtForTests({
       scope: "zero",
       userId: actor.userId,
       orgId: actor.orgId,
-      runId: "run_stale_people_search_capability",
-      capabilities: ["people-search:read"],
-      iat: seconds,
-      exp: seconds + 60,
-    });
-
-    const response = await accept(
-      client()(zeroPeopleSearchContract).search({
-        headers: { authorization: `Bearer ${token}` },
-        body: defaultRequest(),
-      }),
-      [403],
-    );
-
-    expectApiError(response.body);
-    expect(response.body.error.message).toBe(
-      "Zero People Search is not enabled",
-    );
-    expect(providerRequests).toBe(0);
-  });
-
-  it("rejects zero tokens without people-search capability", async () => {
-    const actor = staffActor();
-    await bootstrapOnboarding(actor);
-    const seconds = Math.floor(now() / 1000);
-    const token = signSandboxJwtForTests({
-      scope: "zero",
-      userId: actor.userId,
-      orgId: STAFF_ORG_ID,
       runId: "run_missing_people_search_capability",
       capabilities: [],
       iat: seconds,
@@ -307,28 +244,8 @@ describe("zero people-search route", () => {
     );
   });
 
-  it("checks rollout before request validation and provider work", async () => {
-    const actor = createBddApi(context).user();
-    let providerRequests = 0;
-    configureProvider();
-    server.use(
-      http.post(PERPLEXITY_AGENT_URL, () => {
-        providerRequests += 1;
-        return HttpResponse.json(providerResponse());
-      }),
-    );
-
-    const response = await rawPeopleSearchRequest(actor, {
-      query: "",
-      limit: 100,
-    });
-
-    expect(response.status).toBe(403);
-    expect(providerRequests).toBe(0);
-  });
-
   it("sends one bounded tool request and returns provider-backed profiles", async () => {
-    const actor = staffActor();
+    const actor = createBddApi(context).user();
     let requestBody: unknown;
     let authorization: string | null = null;
     configureProvider();
@@ -453,8 +370,8 @@ describe("zero people-search route", () => {
     expect(beforeCredits - afterCredits).toBe(20);
   });
 
-  it("accepts a CLI token for an enrolled user", async () => {
-    const actor = staffActor();
+  it("accepts a CLI token", async () => {
+    const actor = createBddApi(context).user();
     configureProvider();
     await seedPeopleSearchPricing();
     await fundActor(actor);
@@ -478,7 +395,7 @@ describe("zero people-search route", () => {
   });
 
   it("deduplicates by validated source identity before enforcing the response budget", async () => {
-    const actor = staffActor();
+    const actor = createBddApi(context).user();
     const sourceIds = [1, 2, 3, 4, 5];
     const profiles = Array.from({ length: 7 }, (_, index) => {
       return structuredProfile({
@@ -517,7 +434,7 @@ describe("zero people-search route", () => {
   });
 
   it("returns twenty profiles at the supported maximum", async () => {
-    const actor = staffActor();
+    const actor = createBddApi(context).user();
     const profiles = Array.from({ length: 20 }, (_, index) => {
       return structuredProfile({
         name: `Professional ${String(index + 1)}`,
@@ -544,7 +461,7 @@ describe("zero people-search route", () => {
   });
 
   it("bills a valid search with no matching profiles", async () => {
-    const actor = staffActor();
+    const actor = createBddApi(context).user();
     configureProvider();
     await seedPeopleSearchPricing();
     await fundActor(actor);
@@ -564,7 +481,7 @@ describe("zero people-search route", () => {
   });
 
   it("rejects invalid provider/model output without billing", async () => {
-    const actor = staffActor();
+    const actor = createBddApi(context).user();
     configureProvider();
     await seedPeopleSearchPricing();
     await fundActor(actor);
@@ -635,7 +552,7 @@ describe("zero people-search route", () => {
   });
 
   it("fails before provider work when configuration or pricing is absent", async () => {
-    const actor = staffActor();
+    const actor = createBddApi(context).user();
     await fundActor(actor);
     let providerRequests = 0;
     server.use(
@@ -674,7 +591,7 @@ describe("zero people-search route", () => {
   });
 
   it("rejects insufficient credits before provider work", async () => {
-    const actor = staffActor();
+    const actor = createBddApi(context).user();
     let providerRequests = 0;
     configureProvider();
     await seedPeopleSearchPricing();
@@ -701,7 +618,7 @@ describe("zero people-search route", () => {
   });
 
   it("maps provider failures without billing", async () => {
-    const actor = staffActor();
+    const actor = createBddApi(context).user();
     configureProvider();
     await seedPeopleSearchPricing();
     await fundActor(actor);
@@ -764,7 +681,7 @@ describe("zero people-search route", () => {
   });
 
   it("maps and bounds nested provider errors without billing", async () => {
-    const actor = staffActor();
+    const actor = createBddApi(context).user();
     configureProvider();
     await seedPeopleSearchPricing();
     await fundActor(actor);
@@ -801,7 +718,7 @@ describe("zero people-search route", () => {
   });
 
   it("attributes usage to a run", async () => {
-    const actor = staffActor();
+    const actor = createBddApi(context).user();
     const bdd = createBddApi(context);
     const api = createRunsApi(context);
     bdd.acceptAgentStorageWrites();

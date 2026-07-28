@@ -1,5 +1,31 @@
 # Changelog
 
+## [0.148.20](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.148.19...runner-rs-v0.148.20) (2026-07-28)
+
+
+### Documentation
+
+* **mitm-addon:** align usage facade overview ([#23450](https://github.com/vm0-ai/vm0/issues/23450)) ([9410c4d](https://github.com/vm0-ai/vm0/commit/9410c4dfe83c63040850f2575d9499c0e4ba8a10))
+* **mitm-addon:** document codex timing lifecycle ([#23472](https://github.com/vm0-ai/vm0/issues/23472)) ([2e90614](https://github.com/vm0-ai/vm0/commit/2e90614843b930fbba691c902635fec1eb442bdc))
+
+
+### Refactoring
+
+* **runner:** isolate service drain and resume orchestration ([#23469](https://github.com/vm0-ai/vm0/issues/23469)) ([13fd0e1](https://github.com/vm0-ai/vm0/commit/13fd0e130607ff5f7b58fd98389f2e7013d1d9cb))
+
+
+### Performance Improvements
+
+* **python:** reuse upstream admission targets ([#23476](https://github.com/vm0-ai/vm0/issues/23476)) ([8998ee8](https://github.com/vm0-ai/vm0/commit/8998ee8d303b719c042e25bb9ae184681b28a00f))
+* **runner:** overlap codex model prefetch with workspace mount ([#23448](https://github.com/vm0-ai/vm0/issues/23448)) ([f3eaa96](https://github.com/vm0-ai/vm0/commit/f3eaa96ef69f0af487c1e4c46a76c61916bc6a49))
+
+## [0.148.19](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.148.18...runner-rs-v0.148.19) (2026-07-28)
+
+
+### Refactoring
+
+* **python:** require typed network log targets ([#23427](https://github.com/vm0-ai/vm0/issues/23427)) ([2897f24](https://github.com/vm0-ai/vm0/commit/2897f24908ca1486ff9f20ee95672c7f30beb13d))
+
 ## [0.148.18](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.148.17...runner-rs-v0.148.18) (2026-07-28)
 
 

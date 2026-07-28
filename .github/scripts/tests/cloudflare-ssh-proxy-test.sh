@@ -103,17 +103,19 @@ assert_contains "$tmp/failure.err" "----- cloudflared stderr (last 20 lines, red
 assert_contains "$summary" "### Metal Cloudflare tunnel unavailable"
 assert_contains "$summary" "Exit status: \`255\`"
 assert_not_contains "$tmp/failure.err" "super-secret"
+assert_not_contains "$tmp/failure.err" "client-id"
 assert_not_contains "$summary" "super-secret"
+assert_not_contains "$summary" "client-id"
 
-home_interrupted="$tmp/home-interrupted"
-make_home "$home_interrupted"
-interrupted_summary="$tmp/interrupted-summary.md"
-interrupted_logs="$tmp/interrupted-logs"
-interrupted_pid_file="$tmp/interrupted.pid"
-interrupted_signal_file="$tmp/interrupted.signal"
-mkdir -p "$interrupted_logs"
-interrupted_cloudflared="$tmp/cloudflared-interrupted"
-cat > "$interrupted_cloudflared" <<'EOF'
+home_hup="$tmp/home-hup"
+make_home "$home_hup"
+hup_summary="$tmp/hup-summary.md"
+hup_logs="$tmp/hup-logs"
+hup_pid_file="$tmp/hup.pid"
+hup_signal_file="$tmp/hup.signal"
+mkdir -p "$hup_logs"
+hup_cloudflared="$tmp/cloudflared-hup"
+cat > "$hup_cloudflared" <<'EOF'
 #!/usr/bin/env bash
 trap 'printf "terminated\n" > "$FAKE_SIGNAL_FILE"; exit 143' TERM
 printf '%s\n' "$$" > "$FAKE_PID_FILE"
@@ -122,19 +124,19 @@ while :; do
   :
 done
 EOF
-chmod +x "$interrupted_cloudflared"
+chmod +x "$hup_cloudflared"
 
-HOME="$home_interrupted" \
-CLOUDFLARED_BIN="$interrupted_cloudflared" \
-FAKE_PID_FILE="$interrupted_pid_file" \
-FAKE_SIGNAL_FILE="$interrupted_signal_file" \
-GITHUB_STEP_SUMMARY="$interrupted_summary" \
-RUNNER_TEMP="$interrupted_logs" \
-"$PROXY" dev-1.aws.vm3.ai < /dev/null > "$tmp/interrupted.out" 2> "$tmp/interrupted.err" &
+HOME="$home_hup" \
+CLOUDFLARED_BIN="$hup_cloudflared" \
+FAKE_PID_FILE="$hup_pid_file" \
+FAKE_SIGNAL_FILE="$hup_signal_file" \
+GITHUB_STEP_SUMMARY="$hup_summary" \
+RUNNER_TEMP="$hup_logs" \
+"$PROXY" dev-1.aws.vm3.ai < /dev/null > "$tmp/hup.out" 2> "$tmp/hup.err" &
 proxy_pid=$!
 
 deadline=$((SECONDS + 5))
-while [ ! -s "$interrupted_pid_file" ]; do
+while [ ! -s "$hup_pid_file" ]; do
   if ! kill -0 "$proxy_pid" 2>/dev/null; then
     echo "proxy exited before starting cloudflared" >&2
     exit 1
@@ -145,31 +147,35 @@ while [ ! -s "$interrupted_pid_file" ]; do
   fi
 done
 
-interrupted_pid=$(cat "$interrupted_pid_file")
+hup_pid=$(cat "$hup_pid_file")
 kill -HUP "$proxy_pid"
 status=0
 wait "$proxy_pid" || status=$?
 proxy_pid=""
 
 if [ "$status" -ne 129 ]; then
-  echo "expected interrupted status 129, got ${status}" >&2
+  echo "expected HUP status 129, got ${status}" >&2
   exit 1
 fi
 
-assert_contains "$interrupted_signal_file" "terminated"
-assert_contains "$tmp/interrupted.err" "::error title=Cloudflare SSH proxy interrupted::"
-assert_contains "$tmp/interrupted.err" "interrupted by signal HUP"
-assert_contains "$tmp/interrupted.err" "websocket handshake still pending"
-assert_contains "$interrupted_summary" "### Cloudflare SSH proxy interrupted"
-assert_contains "$interrupted_summary" "Exit status: \`129\`"
-assert_not_contains "$tmp/interrupted.err" "super-secret"
-assert_not_contains "$interrupted_summary" "super-secret"
-if kill -0 "$interrupted_pid" 2>/dev/null; then
-  echo "expected interrupted cloudflared process ${interrupted_pid} to be reaped" >&2
+assert_contains "$hup_signal_file" "terminated"
+assert_contains "$tmp/hup.err" "cloudflared stderr before ProxyCommand teardown"
+assert_contains "$tmp/hup.err" "websocket handshake still pending"
+assert_not_contains "$tmp/hup.err" "::error"
+assert_not_contains "$tmp/hup.err" "Cloudflare SSH proxy interrupted"
+assert_not_contains "$tmp/hup.err" "super-secret"
+assert_not_contains "$tmp/hup.err" "client-id"
+if [ -s "$hup_summary" ]; then
+  echo "expected HUP not to write a failure summary" >&2
+  cat "$hup_summary" >&2
   exit 1
 fi
-if compgen -G "$interrupted_logs/cloudflared-ssh-*.log" > /dev/null; then
-  echo "expected interrupted cloudflared logs to be removed" >&2
+if kill -0 "$hup_pid" 2>/dev/null; then
+  echo "expected HUP cloudflared process ${hup_pid} to be reaped" >&2
+  exit 1
+fi
+if compgen -G "$hup_logs/cloudflared-ssh-*.log" > /dev/null; then
+  echo "expected HUP cloudflared logs to be removed" >&2
   exit 1
 fi
 

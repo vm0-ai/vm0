@@ -2534,7 +2534,6 @@ function resolveQueuedMessageGenerationTemplatePrompt(args: {
   readonly userMessageProjection:
     | ReturnType<typeof projectUserMessage>
     | undefined;
-  readonly websiteTemplateV2Enabled: boolean;
   readonly imageStyleR2Enabled: boolean;
   readonly inlineTemplatesEnabled: boolean;
 }) {
@@ -2550,7 +2549,6 @@ function resolveQueuedMessageGenerationTemplatePrompt(args: {
         explicitTemplates: args.inlineTemplatesEnabled
           ? args.userMessageProjection?.generationTemplates
           : undefined,
-        websiteTemplateV2Enabled: args.websiteTemplateV2Enabled,
         imageStyleR2Enabled: args.imageStyleR2Enabled,
       });
     },
@@ -2623,10 +2621,6 @@ async function buildCreateQueuedChatRunInput(
     await resolveQueuedMessageGenerationTemplatePrompt({
       input: args,
       userMessageProjection,
-      websiteTemplateV2Enabled: isFeatureEnabled(
-        FeatureSwitchKey.WebsiteTemplateV2,
-        featureSwitchContext,
-      ),
       imageStyleR2Enabled: isFeatureEnabled(
         FeatureSwitchKey.ImageStyleR2,
         featureSwitchContext,

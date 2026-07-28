@@ -178,6 +178,14 @@ type WorkflowQueueAdmissionAttempt =
   | WorkflowQueueAdmission
   | { readonly kind: "payload-required" };
 
+export type WorkflowQueueAdmissionTransaction = Parameters<
+  Parameters<Db["transaction"]>[0]
+>[0];
+
+export type PersistWorkflowQueueSourceTransition = (
+  tx: WorkflowQueueAdmissionTransaction,
+) => Promise<void>;
+
 interface WorkflowQueueAdmissionArgs {
   readonly automation: typeof zeroWorkflowAutomations.$inferSelect;
   readonly chatThreadId: string;
@@ -185,6 +193,11 @@ interface WorkflowQueueAdmissionArgs {
   readonly triggerBrief: string | undefined;
   readonly coalescePendingScheduleRun: boolean;
   readonly params: WorkflowQueueEventParams;
+  /**
+   * Atomically transitions a provider-owned source event only after its
+   * workflow queue item has been inserted. Throwing rolls back both writes.
+   */
+  readonly persistSourceTransition?: PersistWorkflowQueueSourceTransition;
 }
 
 async function attemptWorkflowQueueAdmission(
@@ -221,6 +234,7 @@ async function attemptWorkflowQueueAdmission(
     if (!inserted) {
       throw new Error("Workflow queue event insert returned no row");
     }
+    await args.persistSourceTransition?.(tx);
     return { kind: "inserted", eventId: inserted.id };
   });
 }

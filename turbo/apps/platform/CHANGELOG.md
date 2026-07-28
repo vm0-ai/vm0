@@ -1,5 +1,43 @@
 # Changelog
 
+## [0.648.0](https://github.com/vm0-ai/vm0/compare/app-v0.647.0...app-v0.648.0) (2026-07-28)
+
+
+### Features
+
+* add strapi integration and entry-published automations ([#23397](https://github.com/vm0-ai/vm0/issues/23397)) ([2303632](https://github.com/vm0-ai/vm0/commit/23036322816e375918499c53da66148154c889cf))
+* **platform:** show chat skeletons while loading older messages ([#23455](https://github.com/vm0-ai/vm0/issues/23455)) ([61b62ea](https://github.com/vm0-ai/vm0/commit/61b62eac6353513b72f7fdf693fa8d45c9c28e02))
+* **platform:** show okou in document titles on okou hosts ([#23453](https://github.com/vm0-ai/vm0/issues/23453)) ([bc2ec87](https://github.com/vm0-ai/vm0/commit/bc2ec878e78dd777991d256a85208209ee4c9e55))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.241.0
+    * @vm0/core bumped to 8.481.0
+
+## [0.647.0](https://github.com/vm0-ai/vm0/compare/app-v0.646.1...app-v0.647.0) (2026-07-28)
+
+
+### Features
+
+* **platform:** persist workspace language preference ([#23396](https://github.com/vm0-ai/vm0/issues/23396)) ([7a409c9](https://github.com/vm0-ai/vm0/commit/7a409c99494fe765a896e72aee1b5450df3b1427))
+
+
+### Bug Fixes
+
+* **ci:** use immutable pages urls for browser e2e ([#23382](https://github.com/vm0-ai/vm0/issues/23382)) ([0ca6562](https://github.com/vm0-ai/vm0/commit/0ca6562131023efb48ea8fd4ca1e331115011703))
+* **platform:** prefetch artifact pages before scroll boundary ([#23429](https://github.com/vm0-ai/vm0/issues/23429)) ([127ba8e](https://github.com/vm0-ai/vm0/commit/127ba8ea56a468488078665a687572356955baa2))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.240.0
+    * @vm0/core bumped to 8.480.0
+
 ## [0.646.1](https://github.com/vm0-ai/vm0/compare/app-v0.646.0...app-v0.646.1) (2026-07-28)
 
 

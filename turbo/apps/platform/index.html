@@ -430,12 +430,10 @@
         var orgId = sessionStorage.getItem("clerk-active-org-id");
         var cacheKey = orgId ? "vm0:locale:" + orgId : null;
         var cached = cacheKey ? localStorage.getItem(cacheKey) : null;
+        // Browser-language auto-selection stays disabled during rollout.
+        // Locale changes come from the workspace cache or gated preference UI.
         var locale =
-          cached === "en-US" || cached === "zh-CN"
-            ? cached
-            : /^zh(?:-|$)/i.test(navigator.language)
-              ? "zh-CN"
-              : "en-US";
+          cached === "en-US" || cached === "zh-CN" ? cached : "en-US";
 
         document.documentElement.lang = locale;
         if (cacheKey) localStorage.setItem(cacheKey, locale);

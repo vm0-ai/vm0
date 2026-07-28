@@ -654,7 +654,6 @@ function appendRunMessages(
     role: "user",
     content: prompt,
     userMessage: { version: 1, parts: [{ type: "text", text: prompt }] },
-    userMessageWithFeedback: null,
     createdAt: baseCreatedAt,
   };
 

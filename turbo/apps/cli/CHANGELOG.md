@@ -1,5 +1,35 @@
 # Changelog
 
+## [9.263.0](https://github.com/vm0-ai/vm0/compare/cli-v9.262.3...cli-v9.263.0) (2026-07-28)
+
+
+### Features
+
+* add strapi integration and entry-published automations ([#23397](https://github.com/vm0-ai/vm0/issues/23397)) ([2303632](https://github.com/vm0-ai/vm0/commit/23036322816e375918499c53da66148154c889cf))
+
+
+### Refactoring
+
+* **zero:** graduate people search ([#23477](https://github.com/vm0-ai/vm0/issues/23477)) ([b72f4e1](https://github.com/vm0-ai/vm0/commit/b72f4e152e27a156d79968c742c6720a3132fb19))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/api-contracts bumped to 1.241.0
+    * @vm0/core bumped to 8.481.0
+
+## [9.262.3](https://github.com/vm0-ai/vm0/compare/cli-v9.262.2...cli-v9.262.3) (2026-07-28)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/api-contracts bumped to 1.240.0
+    * @vm0/core bumped to 8.480.0
+
 ## [9.262.2](https://github.com/vm0-ai/vm0/compare/cli-v9.262.1...cli-v9.262.2) (2026-07-28)
 
 

@@ -38,6 +38,10 @@ type WorkflowNotionPageContentUpdatedAutomationSummary = Extract<
     readonly eventType: "notion-page-content-updated";
   }
 >;
+type WorkflowStrapiAutomationSummary = Extract<
+  ZeroWorkflowAutomationSummary,
+  { readonly kind: "event"; readonly eventType: "strapi-entry-published" }
+>;
 
 function isWebhookAutomation(
   automation: ZeroWorkflowAutomationSummary,
@@ -72,6 +76,15 @@ function isNotionPageContentUpdatedAutomation(
     automation.kind === "event" &&
     automation.eventType === "notion-page-content-updated"
   );
+}
+
+function formatStrapiAutomation(
+  automation: WorkflowStrapiAutomationSummary,
+): string {
+  const contentType =
+    automation.eventConfig.contentTypeUid ?? "any content type";
+  const locale = automation.eventConfig.locale ?? "any locale";
+  return `Strapi entry published: ${contentType}, ${locale}`;
 }
 
 function isGoogleCalendarAutomation(
@@ -296,6 +309,8 @@ function workflowAutomationKindLabel(
       return `New Notion database item: ${formatNotionDatabase(automation)}`;
     case "notion-page-content-updated":
       return `Notion page content updated: ${formatNotionContentUpdatedScope(automation)}`;
+    case "strapi-entry-published":
+      return formatStrapiAutomation(automation);
     case "webhook-received":
       return "Webhook";
   }
