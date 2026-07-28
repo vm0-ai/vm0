@@ -15,6 +15,7 @@ import {
 } from "../../signals/redeem-campaign/redeem-campaign-signals.ts";
 import { ROUTES } from "../../signals/route-paths.ts";
 import { clerk$ } from "../../signals/auth.ts";
+import { brandName$ } from "../../signals/branding.ts";
 import { Link } from "../router/link.tsx";
 import { VM0Logo } from "../components/vm0-logo.tsx";
 
@@ -126,6 +127,8 @@ function PrimaryAction({
   response: RedeemResponse | null;
   stripeSuccess: boolean;
 }): ReactNode {
+  const brandName = useGet(brandName$);
+
   if (!stripeSuccess && response?.status === "ready") {
     // Render as an <a> (via asChild) so the browser handles cmd/ctrl+click,
     // middle-click, and right-click → "open in new tab" natively. A plain
@@ -142,7 +145,7 @@ function PrimaryAction({
   // where the new credit balance is visible. Error cards just send them home.
   return (
     <Button className="w-full" asChild>
-      <Link pathname={ROUTES.home}>Back to VM0</Link>
+      <Link pathname={ROUTES.home}>Back to {brandName}</Link>
     </Button>
   );
 }

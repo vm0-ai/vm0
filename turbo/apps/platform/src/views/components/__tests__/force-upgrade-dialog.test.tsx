@@ -36,7 +36,7 @@ describe("force upgrade dialog", () => {
       name: "Update required",
     });
     expect(dialog).toHaveTextContent(
-      "This version of vm0 is no longer supported.",
+      "This version of VM0 is no longer supported.",
     );
 
     await userEvent.click(screen.getByText("Refresh"));

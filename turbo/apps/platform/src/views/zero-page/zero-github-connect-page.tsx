@@ -9,6 +9,7 @@ import {
 } from "@tabler/icons-react";
 import { Button } from "@vm0/ui";
 import { clerk$, resolveAppAuthUrl } from "../../signals/auth.ts";
+import { brandName$ } from "../../signals/branding.ts";
 import { pageSignal$ } from "../../signals/page-signal.ts";
 import { searchParams$ } from "../../signals/route.ts";
 import {
@@ -173,18 +174,20 @@ function LoadingState({
 }
 
 function SignInState(): JSX.Element {
+  const brandName = useGet(brandName$);
+
   return (
     <PageShell>
       <GithubMark />
       <CenterText
         title="Sign in to continue"
-        body="Use your VM0 account before connecting this GitHub user."
+        body={`Use your ${brandName} account before connecting this GitHub user.`}
       />
       <a
         href={signInHref()}
         className="inline-flex h-10 w-full items-center justify-center rounded-lg bg-primary px-4 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90"
       >
-        Sign in to VM0
+        Sign in to {brandName}
       </a>
     </PageShell>
   );
@@ -201,6 +204,8 @@ function ConnectState({
   connecting: boolean;
   onConnect: () => void;
 }): JSX.Element {
+  const brandName = useGet(brandName$);
+
   return (
     <PageShell>
       <GithubMark />
@@ -208,7 +213,7 @@ function ConnectState({
         title="Connect to GitHub"
         body={
           <>
-            Link your VM0 account to{" "}
+            Link your {brandName} account to{" "}
             <span className="font-medium">
               {githubUserLabel(params.githubUsername)}
             </span>{" "}
@@ -241,6 +246,7 @@ function ConnectState({
 }
 
 export function ZeroGithubConnectPage(): JSX.Element {
+  const brandName = useGet(brandName$);
   const params = useGet(searchParams$);
   const parsed = parseGithubConnectParams(params);
   const clerkLoadable = useLoadable(clerk$);
@@ -267,7 +273,7 @@ export function ZeroGithubConnectPage(): JSX.Element {
     return (
       <LoadingState
         title="Checking account status..."
-        body="Please wait while we verify your VM0 session."
+        body={`Please wait while we verify your ${brandName} session.`}
       />
     );
   }

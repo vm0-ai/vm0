@@ -49,6 +49,7 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "@vm0/ui/components/ui/popover";
+import { brandName$ } from "../../signals/branding.ts";
 import { pageSignal$ } from "../../signals/page-signal.ts";
 import { detachedNavigateTo$ } from "../../signals/route.ts";
 import { apiBase$ } from "../../signals/fetch.ts";
@@ -661,6 +662,8 @@ function AddTelegramCreateStep({
   disabled: boolean;
   onAgentChange: (value: string) => void;
 }) {
+  const brandName = useGet(brandName$);
+
   return (
     <div className="space-y-4">
       <div className="rounded-lg border border-border bg-muted/30 p-4 text-sm text-muted-foreground">
@@ -669,8 +672,8 @@ function AddTelegramCreateStep({
         </div>
         <div>
           {setupStatus?.username
-            ? `VM0 will register @${setupStatus.username} and configure its webhook.`
-            : "VM0 will register this bot and configure its webhook."}{" "}
+            ? `${brandName} will register @${setupStatus.username} and configure its webhook.`
+            : `${brandName} will register this bot and configure its webhook.`}{" "}
           After setup, mention the bot in a group or send it a DM to talk with
           the selected agent.
         </div>
@@ -1542,6 +1545,7 @@ function TelegramBotRow({
   canManage: boolean;
   disabled: boolean;
 }) {
+  const brandName = useGet(brandName$);
   const savingBotId = useGet(telegramSavingBotId$);
   const unlinkingBotId = useGet(telegramUnlinkingBotId$);
   const uninstallingBotId = useGet(telegramUninstallingBotId$);
@@ -1577,7 +1581,7 @@ function TelegramBotRow({
           </div>
           {isOfficial ? (
             <div className="mt-1 text-sm text-muted-foreground">
-              Official bot provided by VM0.
+              Official bot provided by {brandName}.
             </div>
           ) : bot.tokenStatus === "invalid" ? (
             <div className="mt-1 text-sm text-muted-foreground">
