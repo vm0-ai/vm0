@@ -87,6 +87,7 @@ function createS3Client(
     endpoint,
     credentials,
     forcePathStyle: env("S3_FORCE_PATH_STYLE") === "true",
+    requestChecksumCalculation: "WHEN_REQUIRED",
   });
 }
 
