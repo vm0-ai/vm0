@@ -304,10 +304,6 @@ def _single_content_encoding(headers: http.Headers) -> str | None:
     return tokens[0]
 
 
-def _header_has_non_identity_encoding(headers: http.Headers) -> bool:
-    return _single_content_encoding(headers) != _IDENTITY_ENCODING
-
-
 def _request_accepts_encoded_response(headers: http.Headers) -> bool:
     values = headers.get_all("Accept-Encoding")
     if not values:
