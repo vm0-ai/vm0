@@ -166,6 +166,7 @@ function mockChatThreadSnapshot(
         };
       }),
       latestEventId: null,
+      latestSeqId: null,
     });
   });
   context.mocks.api(chatThreadsContract.events, ({ respond }) => {
@@ -437,6 +438,7 @@ describe("zero sidebar", () => {
           },
         ],
         latestEventId: null,
+        latestSeqId: null,
       });
     });
     context.mocks.api(chatThreadsContract.events, ({ respond }) => {

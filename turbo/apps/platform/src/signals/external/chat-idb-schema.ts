@@ -6,7 +6,8 @@ const CHAT_IDB_SEQ_ID_RESET_VERSION = 18;
 // from browser databases that still carry a full history from the old page.
 const ARTIFACT_CACHE_REMOVED_VERSION = 20;
 const CHAT_IDB_CHAT_EVENT_RESET_VERSION = 21;
-const CHAT_IDB_SCHEMA_VERSION = CHAT_IDB_CHAT_EVENT_RESET_VERSION;
+const CHAT_IDB_THREAD_EVENT_SEQ_ID_RESET_VERSION = 22;
+const CHAT_IDB_SCHEMA_VERSION = CHAT_IDB_THREAD_EVENT_SEQ_ID_RESET_VERSION;
 const LEGACY_CHAT_THREAD_META_STORE = "chat_thread_agents";
 const LEGACY_ARTIFACT_ITEMS_STORE = "artifact_items";
 const LEGACY_ARTIFACT_SYNC_STORE = "artifact_sync";
@@ -17,7 +18,7 @@ export const CHAT_THREAD_SNAPSHOT_STORE = "chat_thread_snapshot";
 export const CHAT_THREAD_EVENTS_STORE = "chat_thread_events";
 export const CHAT_THREAD_EVENT_SYNC_STORE = "chat_thread_event_sync";
 export const CHAT_MESSAGES_ORDER_INDEX = "byThreadAndOrder";
-export const CHAT_THREAD_EVENTS_ORDER_INDEX = "byCreatedAt";
+export const CHAT_THREAD_EVENTS_ORDER_INDEX = "bySeqId";
 
 function createChatMessagesStore(db: IDBPDatabase): void {
   const store = db.createObjectStore(CHAT_MESSAGES_STORE, { keyPath: "id" });
@@ -34,7 +35,9 @@ function createChatThreadEventsStore(db: IDBPDatabase): void {
   const store = db.createObjectStore(CHAT_THREAD_EVENTS_STORE, {
     keyPath: "id",
   });
-  store.createIndex(CHAT_THREAD_EVENTS_ORDER_INDEX, ["createdAt", "id"]);
+  store.createIndex(CHAT_THREAD_EVENTS_ORDER_INDEX, "seqId", {
+    unique: true,
+  });
 }
 
 function createChatThreadEventSyncStore(db: IDBPDatabase): void {
@@ -49,11 +52,15 @@ function deleteObjectStoreIfExists(db: IDBPDatabase, storeName: string): void {
 
 function deleteLocalCacheStores(db: IDBPDatabase): void {
   deleteObjectStoreIfExists(db, CHAT_MESSAGES_STORE);
+  deleteChatThreadEventStores(db);
+  deleteArtifactCacheStores(db);
+  deleteObjectStoreIfExists(db, LEGACY_CHAT_THREAD_META_STORE);
+}
+
+function deleteChatThreadEventStores(db: IDBPDatabase): void {
   deleteObjectStoreIfExists(db, CHAT_THREAD_SNAPSHOT_STORE);
   deleteObjectStoreIfExists(db, CHAT_THREAD_EVENTS_STORE);
   deleteObjectStoreIfExists(db, CHAT_THREAD_EVENT_SYNC_STORE);
-  deleteArtifactCacheStores(db);
-  deleteObjectStoreIfExists(db, LEGACY_CHAT_THREAD_META_STORE);
 }
 
 function deleteArtifactCacheStores(db: IDBPDatabase): void {
@@ -70,6 +77,10 @@ export function upgradeChatIdb(db: IDBPDatabase, oldVersion: number): void {
 
   if (oldVersion < CHAT_IDB_CHAT_EVENT_RESET_VERSION) {
     deleteObjectStoreIfExists(db, CHAT_MESSAGES_STORE);
+  }
+
+  if (oldVersion < CHAT_IDB_THREAD_EVENT_SEQ_ID_RESET_VERSION) {
+    deleteChatThreadEventStores(db);
   }
 
   if (!db.objectStoreNames.contains(CHAT_MESSAGES_STORE)) {

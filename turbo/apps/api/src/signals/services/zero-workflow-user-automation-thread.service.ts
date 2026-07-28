@@ -2,12 +2,15 @@ import { chatThreads } from "@vm0/db/schema/chat-thread";
 import { workflowUserAutomationThreads } from "@vm0/db/schema/zero-workflow";
 import { and, eq } from "drizzle-orm";
 
-import type { Db, ReadonlyDb } from "../external/db";
+import type { ReadonlyDb } from "../external/db";
 import {
   chatThreadModelPinColumns,
   resolveRequiredDefaultChatThreadModelPin,
 } from "./zero-chat-thread-model.service";
-import { appendChatThreadEvent } from "./zero-chat-thread-event.service";
+import {
+  appendChatThreadEvent,
+  type ChatThreadEventTransaction,
+} from "./zero-chat-thread-event.service";
 
 export async function loadWorkflowUserAutomationThreadId(
   db: ReadonlyDb,
@@ -32,7 +35,7 @@ export async function loadWorkflowUserAutomationThreadId(
 }
 
 export async function createAutomationChatThread(
-  db: Db,
+  db: ChatThreadEventTransaction,
   args: {
     readonly userId: string;
     readonly orgId: string;
@@ -74,7 +77,7 @@ export async function createAutomationChatThread(
 }
 
 export async function ensureWorkflowUserAutomationThread(
-  db: Db,
+  db: ChatThreadEventTransaction,
   args: {
     readonly orgId: string;
     readonly userId: string;

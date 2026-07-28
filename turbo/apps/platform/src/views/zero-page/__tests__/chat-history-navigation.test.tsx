@@ -1333,6 +1333,7 @@ describe("chat lifecycle", () => {
           },
         ],
         latestEventId: null,
+        latestSeqId: null,
       });
     });
     context.mocks.api(chatThreadsContract.events, ({ respond }) => {
@@ -1350,6 +1351,7 @@ describe("chat lifecycle", () => {
         }
         persistedRenameEvent = {
           id: body.eventId,
+          seqId: 1,
           kind: "renamed",
           chatThreadId: EVENT_SOURCED_RENAME_THREAD_ID,
           agentId: AGENT_ID,

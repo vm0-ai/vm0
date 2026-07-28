@@ -486,6 +486,7 @@ describe("chat lifecycle", () => {
       return respond(200, {
         chatThreads: threadListSnapshot(threads),
         latestEventId: null,
+        latestSeqId: null,
       });
     });
     context.mocks.api(

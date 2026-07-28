@@ -219,6 +219,8 @@ const chatThreadSnapshotProjectionSchema = z.object({
 
 const chatThreadEventSchema = z.object({
   id: chatThreadEventIdSchema,
+  /** Server-assigned strict position within the user/org event stream. */
+  seqId: z.number().int().positive(),
   kind: z.enum([
     "created",
     "renamed",
@@ -238,6 +240,13 @@ const chatThreadEventSchema = z.object({
   computerUseHostId: z.string().uuid().nullable().default(null),
   cloudBrowserEnabled: z.boolean().optional(),
   createdAt: z.string(),
+});
+
+// App promotion is independent from API promotion. Keep response validation
+// tolerant of the previous API until every pre-sequence API can no longer
+// serve traffic; new API writers still use chatThreadEventSchema above.
+const chatThreadEventResponseSchema = chatThreadEventSchema.extend({
+  seqId: chatThreadEventSchema.shape.seqId.optional(),
 });
 
 const chatMessageUsageProviderBreakdownSchema = z.object({
@@ -947,6 +956,9 @@ export const chatThreadsContract = c.router({
       200: z.object({
         chatThreads: z.array(chatThreadSnapshotProjectionSchema),
         latestEventId: chatThreadEventIdSchema.nullable(),
+        // Remove optionality only after pre-sequence APIs cannot serve a newly
+        // promoted app during rollout or rollback.
+        latestSeqId: z.number().int().positive().nullable().optional(),
       }),
       401: apiErrorSchema,
       403: apiErrorSchema,
@@ -959,19 +971,21 @@ export const chatThreadsContract = c.router({
     path: "/api/zero/chat-threads/events",
     headers: authHeadersSchema,
     query: z.object({
+      sinceSeqId: z.coerce.number().int().positive().optional(),
+      // Previous clients use UUID cursors. The API resolves them to seq_id
+      // until those clients can no longer remain active.
       sinceEventId: chatThreadEventIdSchema.optional(),
     }),
     responses: {
       200: z.object({
-        events: z.array(chatThreadEventSchema),
+        events: z.array(chatThreadEventResponseSchema),
         hasMore: z.boolean(),
       }),
       401: apiErrorSchema,
       403: apiErrorSchema,
       410: apiErrorSchema,
     },
-    summary:
-      "List chat thread lifecycle events after an optional event id cursor.",
+    summary: "List chat thread lifecycle events after an optional cursor.",
   },
   activeIds: {
     method: "GET",

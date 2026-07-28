@@ -18,6 +18,10 @@ const INITIAL_EVENT_ID = "00000000-0000-4000-8000-000000000301";
 const RENAME_EVENT_ID = "00000000-0000-4000-8000-000000000302";
 const SORT_EVENT_ID = "00000000-0000-4000-8000-000000000303";
 const REFRESH_EVENT_ID = "00000000-0000-4000-8000-000000000304";
+const INITIAL_SEQ_ID = 1;
+const RENAME_SEQ_ID = 2;
+const SORT_SEQ_ID = 3;
+const REFRESH_SEQ_ID = 4;
 const SNAPSHOT_URL = "http://localhost:3000/api/zero/chat-threads/snapshot";
 const EVENTS_URL = "http://localhost:3000/api/zero/chat-threads/events";
 
@@ -54,6 +58,7 @@ function snapshotThread(options: {
 
 function event(options: {
   readonly id: string;
+  readonly seqId?: number;
   readonly kind: "renamed" | "sort_touched";
   readonly chatThreadId: string;
   readonly agentId: string;
@@ -121,17 +126,19 @@ describe("zero chat list command", () => {
             }),
           ],
           latestEventId: INITIAL_EVENT_ID,
+          latestSeqId: INITIAL_SEQ_ID,
         });
       }),
       http.get(EVENTS_URL, ({ request }) => {
         eventRequests++;
-        const cursor = new URL(request.url).searchParams.get("sinceEventId");
+        const cursor = new URL(request.url).searchParams.get("sinceSeqId");
         if (eventRequests === 1) {
-          expect(cursor).toBe(INITIAL_EVENT_ID);
+          expect(cursor).toBe(String(INITIAL_SEQ_ID));
           return HttpResponse.json({
             events: [
               event({
                 id: RENAME_EVENT_ID,
+                seqId: RENAME_SEQ_ID,
                 kind: "renamed",
                 chatThreadId: THREAD_ID,
                 agentId: AGENT_ID,
@@ -143,11 +150,12 @@ describe("zero chat list command", () => {
           });
         }
 
-        expect(cursor).toBe(RENAME_EVENT_ID);
+        expect(cursor).toBe(String(RENAME_SEQ_ID));
         return HttpResponse.json({
           events: [
             event({
               id: SORT_EVENT_ID,
+              seqId: SORT_SEQ_ID,
               kind: "sort_touched",
               chatThreadId: SECOND_THREAD_ID,
               agentId: AGENT_ID,
@@ -200,6 +208,102 @@ describe("zero chat list command", () => {
     expect(eventRequests).toBe(2);
   });
 
+  it("uses UUID pagination and cache cursors against the old API", async () => {
+    let snapshotRequests = 0;
+    const requestedCursors: Array<{
+      readonly eventId: string | null;
+      readonly seqId: string | null;
+    }> = [];
+    server.use(
+      http.get(SNAPSHOT_URL, () => {
+        snapshotRequests += 1;
+        return HttpResponse.json({
+          chatThreads: [
+            snapshotThread({
+              id: THREAD_ID,
+              agentId: AGENT_ID,
+              title: "Legacy snapshot title",
+              sortAt: "2026-07-24T03:00:00.000Z",
+            }),
+            snapshotThread({
+              id: SECOND_THREAD_ID,
+              agentId: AGENT_ID,
+              title: "Legacy second thread",
+              sortAt: "2026-07-24T02:00:00.000Z",
+            }),
+          ],
+          latestEventId: INITIAL_EVENT_ID,
+        });
+      }),
+      http.get(EVENTS_URL, ({ request }) => {
+        const url = new URL(request.url);
+        const eventId = url.searchParams.get("sinceEventId");
+        requestedCursors.push({
+          eventId,
+          seqId: url.searchParams.get("sinceSeqId"),
+        });
+        if (eventId === INITIAL_EVENT_ID) {
+          return HttpResponse.json({
+            events: [
+              event({
+                id: RENAME_EVENT_ID,
+                kind: "renamed",
+                chatThreadId: THREAD_ID,
+                agentId: AGENT_ID,
+                title: "Legacy renamed title",
+                createdAt: "2026-07-24T03:30:00.000Z",
+              }),
+            ],
+            hasMore: true,
+          });
+        }
+        if (eventId === RENAME_EVENT_ID) {
+          return HttpResponse.json({
+            events: [
+              event({
+                id: SORT_EVENT_ID,
+                kind: "sort_touched",
+                chatThreadId: SECOND_THREAD_ID,
+                agentId: AGENT_ID,
+                title: null,
+                createdAt: "2026-07-24T05:00:00.000Z",
+              }),
+            ],
+            hasMore: false,
+          });
+        }
+        return HttpResponse.json({ events: [], hasMore: false });
+      }),
+    );
+
+    await zeroChatCommand.parseAsync(["node", "cli", "list", "--json"]);
+    const firstOutput = JSON.parse(
+      String(mockConsoleLog.mock.calls[0]?.[0]),
+    ) as {
+      readonly threads: readonly {
+        readonly id: string;
+        readonly title: string;
+      }[];
+    };
+    expect(firstOutput.threads).toStrictEqual([
+      expect.objectContaining({
+        id: SECOND_THREAD_ID,
+        title: "Legacy second thread",
+      }),
+      expect.objectContaining({ id: THREAD_ID, title: "Legacy renamed title" }),
+    ]);
+
+    mockConsoleLog.mockClear();
+    await zeroChatCommand.parseAsync(["node", "cli", "list", "--json"]);
+
+    expect(snapshotRequests).toBe(1);
+    expect(requestedCursors).toStrictEqual([
+      { eventId: INITIAL_EVENT_ID, seqId: null },
+      { eventId: RENAME_EVENT_ID, seqId: null },
+      { eventId: SORT_EVENT_ID, seqId: null },
+    ]);
+  });
+
   it("reloads the snapshot when the cached event cursor expires", async () => {
     let snapshotRequests = 0;
     let eventRequests = 0;
@@ -218,13 +322,14 @@ describe("zero chat list command", () => {
           ],
           latestEventId:
             snapshotRequests === 1 ? INITIAL_EVENT_ID : REFRESH_EVENT_ID,
+          latestSeqId: snapshotRequests === 1 ? INITIAL_SEQ_ID : REFRESH_SEQ_ID,
         });
       }),
       http.get(EVENTS_URL, ({ request }) => {
         eventRequests++;
-        const cursor = new URL(request.url).searchParams.get("sinceEventId");
+        const cursor = new URL(request.url).searchParams.get("sinceSeqId");
         if (eventRequests === 2) {
-          expect(cursor).toBe(INITIAL_EVENT_ID);
+          expect(cursor).toBe(String(INITIAL_SEQ_ID));
           return HttpResponse.json(
             {
               error: {
@@ -236,7 +341,7 @@ describe("zero chat list command", () => {
           );
         }
         expect(cursor).toBe(
-          eventRequests === 1 ? INITIAL_EVENT_ID : REFRESH_EVENT_ID,
+          String(eventRequests === 1 ? INITIAL_SEQ_ID : REFRESH_SEQ_ID),
         );
         return HttpResponse.json({ events: [], hasMore: false });
       }),
@@ -273,6 +378,7 @@ describe("zero chat list command", () => {
             }),
           ],
           latestEventId: INITIAL_EVENT_ID,
+          latestSeqId: INITIAL_SEQ_ID,
         });
       }),
       http.get(EVENTS_URL, () => {

@@ -4,7 +4,6 @@ import {
   chatThreadModelSelectionContract,
   chatThreadsContract,
   type AttachFile,
-  type ChatThreadEvent,
   type GenerationTemplateRequest,
   type ChatPromptEvent,
   type UserMessageDocument,
@@ -51,6 +50,7 @@ import type { ModelProviderSelection } from "../../views/zero-page/components/mo
 import { registerOptimisticChatThreadEvent$ } from "./chat-thread-event-sourcing.ts";
 import { chatPageModelSelection$ } from "../zero-page/zero-chat-page.ts";
 import { selectedModelAvailable$ } from "../zero-page/model-first-personal-oauth.ts";
+import type { OptimisticChatThreadEvent } from "./chat-thread-event-types.ts";
 import { toast } from "@vm0/ui/components/ui/sonner";
 import {
   textToMessageDocument,
@@ -355,7 +355,7 @@ const mintOptimisticThreadWithEvent$ = command(
       computerUseHostId: args.computerUseHostId,
       cloudBrowserEnabled: args.cloudBrowserEnabled,
       createdAt,
-    } satisfies ChatThreadEvent);
+    } satisfies OptimisticChatThreadEvent);
   },
 );
 

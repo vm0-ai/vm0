@@ -430,6 +430,7 @@ function mockTeamAPIs({
     return respond(200, {
       chatThreads: [],
       latestEventId: null,
+      latestSeqId: null,
     });
   });
   context.mocks.api(chatThreadsContract.events, ({ respond }) => {
@@ -782,6 +783,7 @@ describe("team page navigation", () => {
           };
         }),
         latestEventId: null,
+        latestSeqId: null,
       });
     });
     context.mocks.api(chatThreadsContract.events, ({ respond }) => {

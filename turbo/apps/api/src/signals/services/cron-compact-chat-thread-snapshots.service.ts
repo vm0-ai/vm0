@@ -78,19 +78,19 @@ function candidateScopesCte(staleCutoff: Date, batchSize: number): SQL {
         ON snapshot.user_id = scope.user_id
        AND snapshot.org_id = scope.org_id
       LEFT JOIN LATERAL (
-        SELECT event.id, event.created_at
+        SELECT event.id, event.seq_id
         FROM ${chatThreadEvents} event
         WHERE event.user_id = scope.user_id
           AND event.org_id = scope.org_id
-        ORDER BY event.created_at DESC, event.id DESC
+        ORDER BY event.seq_id DESC
         LIMIT 1
       ) latest_event ON true
       WHERE snapshot.user_id IS NULL
-         OR snapshot.latest_event_id IS DISTINCT FROM latest_event.id
+         OR snapshot.latest_event_seq_id IS DISTINCT FROM latest_event.seq_id
          OR snapshot.updated_at < ${staleCutoff}
       ORDER BY
         snapshot.updated_at ASC NULLS FIRST,
-        latest_event.created_at ASC NULLS FIRST,
+        latest_event.seq_id ASC NULLS FIRST,
         scope.user_id ASC,
         scope.org_id ASC
       LIMIT ${batchSize}
@@ -105,6 +105,7 @@ function rebuiltCte(): SQL {
         scope.user_id,
         scope.org_id,
         latest_event.id AS latest_event_id,
+        latest_event.seq_id AS latest_event_seq_id,
         COALESCE(thread_projection.chat_threads, '[]'::jsonb) AS chat_threads,
         events_after_marker.count AS events_applied,
         deleted_agent_threads.count AS removed_deleted_agent_threads
@@ -143,29 +144,21 @@ function rebuiltCte(): SQL {
           AND agent.org_id = scope.org_id
       ) thread_projection ON true
       LEFT JOIN LATERAL (
-        SELECT event.id, event.created_at
+        SELECT event.id, event.seq_id
         FROM ${chatThreadEvents} event
         WHERE event.user_id = scope.user_id
           AND event.org_id = scope.org_id
-        ORDER BY event.created_at DESC, event.id DESC
+        ORDER BY event.seq_id DESC
         LIMIT 1
       ) latest_event ON true
-      LEFT JOIN LATERAL (
-        SELECT marker.id, marker.created_at
-        FROM ${chatThreadEvents} marker
-        WHERE marker.user_id = scope.user_id
-          AND marker.org_id = scope.org_id
-          AND marker.id = snapshot.latest_event_id
-        LIMIT 1
-      ) marker ON true
       LEFT JOIN LATERAL (
         SELECT ${count()}::int AS count
         FROM ${chatThreadEvents} event
         WHERE event.user_id = scope.user_id
           AND event.org_id = scope.org_id
           AND (
-            marker.id IS NULL
-            OR (event.created_at, event.id) > (marker.created_at, marker.id)
+            snapshot.latest_event_seq_id IS NULL
+            OR event.seq_id > snapshot.latest_event_seq_id
           )
       ) events_after_marker ON true
       LEFT JOIN LATERAL (
@@ -191,6 +184,7 @@ function upsertedCte(updatedAt: Date): SQL {
         user_id,
         org_id,
         latest_event_id,
+        latest_event_seq_id,
         chat_threads,
         created_at,
         updated_at
@@ -199,6 +193,7 @@ function upsertedCte(updatedAt: Date): SQL {
         rebuilt.user_id,
         rebuilt.org_id,
         rebuilt.latest_event_id,
+        rebuilt.latest_event_seq_id,
         rebuilt.chat_threads,
         ${updatedAt},
         ${updatedAt}
@@ -206,6 +201,7 @@ function upsertedCte(updatedAt: Date): SQL {
       ON CONFLICT (user_id, org_id)
       DO UPDATE SET
         latest_event_id = EXCLUDED.latest_event_id,
+        latest_event_seq_id = EXCLUDED.latest_event_seq_id,
         chat_threads = EXCLUDED.chat_threads,
         updated_at = EXCLUDED.updated_at
       RETURNING user_id, org_id
@@ -279,12 +275,13 @@ async function compactChatThreadSnapshotsForAllScopes(
         USING ${chatThreadSnapshots} snapshot
         INNER JOIN ${chatThreadEvents} marker
           ON marker.id = snapshot.latest_event_id
+         AND marker.seq_id = snapshot.latest_event_seq_id
          AND marker.user_id = snapshot.user_id
          AND marker.org_id = snapshot.org_id
         WHERE event.user_id = snapshot.user_id
           AND event.org_id = snapshot.org_id
           AND event.created_at < ${cutoff}
-          AND (event.created_at, event.id) < (marker.created_at, marker.id)
+          AND event.seq_id < marker.seq_id
         RETURNING 1
       )
       SELECT ${count()}::int AS "count"

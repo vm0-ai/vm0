@@ -361,6 +361,7 @@ export function mockKeyboardNavigationThreads({
     return respond(200, {
       chatThreads: threadListSnapshot(threadList),
       latestEventId: null,
+      latestSeqId: null,
     });
   });
   context.mocks.api(chatThreadsContract.events, ({ respond }) => {
@@ -565,6 +566,7 @@ export function mockServerQueuedThreadStories(): void {
     return respond(200, {
       chatThreads: threadListSnapshot(threadList),
       latestEventId: null,
+      latestSeqId: null,
     });
   });
   context.mocks.api(chatThreadByIdContract.get, ({ params, respond }) => {

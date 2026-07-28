@@ -4922,6 +4922,27 @@
       "when": 1785171570229,
       "tag": "0702_sturdy_power_pack",
       "breakpoints": true
+    },
+    {
+      "idx": 703,
+      "version": "7",
+      "when": 1785198008680,
+      "tag": "0703_add_chat_thread_event_seq_id",
+      "breakpoints": true
+    },
+    {
+      "idx": 704,
+      "version": "7",
+      "when": 1785198008681,
+      "tag": "0704_backfill_chat_thread_event_seq_id",
+      "breakpoints": true
+    },
+    {
+      "idx": 705,
+      "version": "7",
+      "when": 1785198008682,
+      "tag": "0705_contract_chat_thread_event_seq_id",
+      "breakpoints": true
     }
   ]
 }
