@@ -311,7 +311,11 @@ function InviteDialog() {
           })}
         </Button>
       </DialogTrigger>
-      <DialogContent>
+      <DialogContent
+        closeLabel={t(($) => {
+          return $.settings.shared.close;
+        })}
+      >
         <DialogHeader>
           <DialogTitle>
             {t(($) => {
@@ -540,7 +544,11 @@ function SelfDemoteAction({ email }: { email: string }) {
         </DropdownMenuContent>
       </DropdownMenu>
 
-      <DialogContent>
+      <DialogContent
+        closeLabel={t(($) => {
+          return $.settings.shared.close;
+        })}
+      >
         <DialogHeader>
           <DialogTitle>
             {t(($) => {
@@ -661,7 +669,11 @@ function MemberActions({ member }: { member: OrgMember }) {
         </DropdownMenuContent>
       </DropdownMenu>
 
-      <DialogContent>
+      <DialogContent
+        closeLabel={t(($) => {
+          return $.settings.shared.close;
+        })}
+      >
         <DialogHeader>
           <DialogTitle>
             {t(($) => {
@@ -797,7 +809,11 @@ function PendingInvitationRow({
               </DropdownMenuContent>
             </DropdownMenu>
 
-            <DialogContent>
+            <DialogContent
+              closeLabel={t(($) => {
+                return $.settings.shared.close;
+              })}
+            >
               <DialogHeader>
                 <DialogTitle>
                   {t(($) => {

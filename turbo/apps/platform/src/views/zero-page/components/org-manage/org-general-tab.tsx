@@ -418,7 +418,11 @@ function DangerZoneSection({
                     })}
                   </Button>
                 </DialogTrigger>
-                <DialogContent>
+                <DialogContent
+                  closeLabel={t(($) => {
+                    return $.settings.shared.close;
+                  })}
+                >
                   <DialogHeader>
                     <DialogTitle>
                       {t(($) => {
@@ -489,7 +493,11 @@ function DangerZoneSection({
                     })}
                   </Button>
                 </DialogTrigger>
-                <DialogContent>
+                <DialogContent
+                  closeLabel={t(($) => {
+                    return $.settings.shared.close;
+                  })}
+                >
                   <DialogHeader>
                     <DialogTitle>
                       {t(($) => {

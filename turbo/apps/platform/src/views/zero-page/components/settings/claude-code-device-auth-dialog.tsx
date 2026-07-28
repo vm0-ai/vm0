@@ -150,7 +150,13 @@ function ClaudeCodeDeviceAuthDialogView({
 
   return (
     <Dialog open={dialog.open} onOpenChange={handleOpenChange}>
-      <DialogContent className="max-w-md" aria-describedby={undefined}>
+      <DialogContent
+        className="max-w-md"
+        aria-describedby={undefined}
+        closeLabel={t(($) => {
+          return $.settings.shared.close;
+        })}
+      >
         <DialogHeader>
           <div className="flex items-center gap-3">
             <div className="flex h-5 w-5 shrink-0 items-center justify-center">

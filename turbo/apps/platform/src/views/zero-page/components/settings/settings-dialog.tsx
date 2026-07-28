@@ -270,6 +270,9 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
         ref={setClerkProfilePortalContainer}
+        closeLabel={t(($) => {
+          return $.settings.shared.close;
+        })}
         className="zero-app flex flex-col w-[calc(100vw-2rem)] max-w-[1200px] h-[92dvh] sm:h-[85vh] p-0 gap-0 overflow-hidden zero-border rounded-xl bg-card"
       >
         <DialogTitle className="sr-only">

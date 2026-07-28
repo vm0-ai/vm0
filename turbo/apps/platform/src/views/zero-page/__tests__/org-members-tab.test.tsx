@@ -32,6 +32,19 @@ function buttonByText(
   return button;
 }
 
+function buttonByLabel(
+  label: string,
+  container: ParentNode = document.body,
+): HTMLElement {
+  const button = queryAllByRoleFast("button", container).find((candidate) => {
+    return candidate.getAttribute("aria-label") === label;
+  });
+  if (!button) {
+    throw new Error(`${label} button not found`);
+  }
+  return button;
+}
+
 function menuItemByText(text: string): HTMLElement {
   const item = queryAllByRoleFast("menuitem").find((candidate) => {
     return candidate.textContent?.replace(/\s+/g, " ").trim() === text;
@@ -412,6 +425,7 @@ describe("organization members settings", () => {
     expect(
       within(settingsDialog).getByText("Espaço de trabalho"),
     ).toBeVisible();
+    expect(buttonByLabel("Fechar", settingsDialog)).toBeVisible();
     expect(screen.getByText("alice@example.com")).toBeVisible();
     expect(screen.getByText("01/01/2026")).toBeVisible();
 
@@ -421,6 +435,7 @@ describe("organization members settings", () => {
     const inviteDialog = await screen.findByRole("dialog", {
       name: "Convidar membro",
     });
+    expect(buttonByLabel("Fechar", inviteDialog)).toBeVisible();
     await fill(
       within(inviteDialog).getByPlaceholderText("email@example.com"),
       "bob.invited@example.com",

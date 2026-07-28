@@ -55,7 +55,11 @@ export function CodexResetUsageDialog({
         }
       }}
     >
-      <DialogContent>
+      <DialogContent
+        closeLabel={t(($) => {
+          return $.settings.shared.close;
+        })}
+      >
         <DialogHeader>
           <DialogTitle>
             {t(($) => {

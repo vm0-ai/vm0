@@ -105,12 +105,12 @@ function connectedPersonalClaudeCodeProvider(): ModelProviderResponse {
   };
 }
 
-function mockPersonalProvidersStory(): void {
+function mockPersonalProvidersStory(role: "admin" | "member" = "member"): void {
   context.mocks.data.org({
     id: "org_1",
     slug: "test-org",
     name: "Test Org",
-    role: "member",
+    role,
   });
   context.mocks.data.personalModelProviders([stalePersonalCodexProvider()]);
   context.mocks.api(zeroCodexDeviceAuthContract.start, ({ respond }) => {
@@ -216,6 +216,32 @@ function connectButtonInRow(row: HTMLElement, label: string): HTMLElement {
   });
   if (!button) {
     throw new Error(`${label} button not found`);
+  }
+  return button;
+}
+
+function buttonByLabel(
+  label: string,
+  container: ParentNode = document.body,
+): HTMLElement {
+  const button = queryAllByRoleFast("button", container).find((candidate) => {
+    return candidate.getAttribute("aria-label") === label;
+  });
+  if (!button) {
+    throw new Error(`${label} button not found`);
+  }
+  return button;
+}
+
+function buttonByText(
+  text: string,
+  container: ParentNode = document.body,
+): HTMLElement {
+  const button = queryAllByRoleFast("button", container).find((candidate) => {
+    return candidate.textContent?.replace(/\s+/g, " ").trim() === text;
+  });
+  if (!button) {
+    throw new Error(`${text} button not found`);
   }
   return button;
 }
@@ -659,13 +685,34 @@ describe("personal model providers settings", () => {
   });
 
   it("localizes personal model device authentication without changing provider data", async () => {
-    mockPersonalProvidersStory();
+    mockPersonalProvidersStory("admin");
+    context.mocks.data.orgModelProviders([]);
+    context.mocks.data.orgModelPolicies([]);
     context.mocks.data.userPreferences({
       locale: "pt-BR",
       supportedLocales: ["en-US", "pt-BR"],
     });
 
     await openModelSettings("Modelos", true);
+
+    click(screen.getByText("Adicionar modelo"));
+    const policyDialog = screen.getByRole("dialog", {
+      name: "Adicionar modelo",
+    });
+    click(within(policyDialog).getByRole("combobox"));
+    click(await screen.findByRole("option", { name: "Claude Opus 4.7" }));
+    click(screen.getByRole("radio", { name: /Chave de API/u }));
+    expect(
+      within(policyDialog).getByText("Chave de API da Anthropic"),
+    ).toBeVisible();
+    expect(
+      within(policyDialog).getByPlaceholderText("Insira sua chave de API"),
+    ).toBeVisible();
+    click(buttonByText("Adicionar modelo", policyDialog));
+    expect(
+      within(policyDialog).getByText("A chave de API é obrigatória"),
+    ).toBeVisible();
+    click(buttonByLabel("Fechar", policyDialog));
 
     const codexRow = await screen.findByTestId("oauth-card-codex-oauth-token");
     expect(within(codexRow).getByText("ChatGPT (Codex)")).toBeVisible();

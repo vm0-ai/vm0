@@ -132,14 +132,7 @@ function getOAuthRouteKind(
 }
 
 function getProviderConfig(type: ModelProviderType) {
-  return MODEL_PROVIDER_TYPES[type] as
-    | { secretLabel?: string; helpText?: string }
-    | undefined;
-}
-
-function getProviderSecretLabel(type: ModelProviderType): string {
-  const config = getProviderConfig(type);
-  return config?.secretLabel ?? "API key";
+  return MODEL_PROVIDER_TYPES[type] as { helpText?: string } | undefined;
 }
 
 function getProviderSignupUrl(type: ModelProviderType): string | null {
@@ -755,11 +748,6 @@ function ApiKeyProviderSection({
   onApiKeyFocus: () => void;
 }) {
   const { t } = useTranslation();
-  const secretLabel = selectedProviderType
-    ? getProviderSecretLabel(selectedProviderType)
-    : t(($) => {
-        return $.settings.models.policies.apiKey;
-      });
   const secretSignupUrl = selectedProviderType
     ? getProviderSignupUrl(selectedProviderType)
     : null;
@@ -785,18 +773,22 @@ function ApiKeyProviderSection({
       {selectedProviderType && (
         <div className="flex flex-col gap-2">
           <label className="text-sm font-medium text-foreground">
-            {getUILabel(selectedProviderType)} {secretLabel}
+            {t(
+              ($) => {
+                return $.settings.models.policies.providerApiKey;
+              },
+              {
+                provider: getUILabel(selectedProviderType),
+              },
+            )}
           </label>
           <Input
             type="password"
             autoComplete="off"
             value={displayedKey}
-            placeholder={t(
-              ($) => {
-                return $.settings.models.policies.enterProviderSecret;
-              },
-              { secret: secretLabel },
-            )}
+            placeholder={t(($) => {
+              return $.settings.models.policies.apiKeyPlaceholder;
+            })}
             onFocus={() => {
               if (showMaskedExistingKey) {
                 onApiKeyFocus();
@@ -1079,14 +1071,9 @@ function ModelPolicyRouteDialog({
     ) {
       if (!hasTokenInputValue(apiKeyValue)) {
         setApiKeyError(
-          t(
-            ($) => {
-              return $.settings.models.policies.secretRequired;
-            },
-            {
-              secret: getProviderSecretLabel(selectedProviderType),
-            },
-          ),
+          t(($) => {
+            return $.settings.models.policies.apiKeyRequired;
+          }),
         );
         return;
       }
@@ -1150,7 +1137,12 @@ function ModelPolicyRouteDialog({
         }
       }}
     >
-      <DialogContent className="max-w-3xl">
+      <DialogContent
+        className="max-w-3xl"
+        closeLabel={t(($) => {
+          return $.settings.shared.close;
+        })}
+      >
         <DialogHeader>
           <DialogTitle>
             {dialog.mode === "add"
