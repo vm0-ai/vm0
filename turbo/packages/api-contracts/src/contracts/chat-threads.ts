@@ -454,7 +454,7 @@ const chatMessageRecommendedFollowupsSchema = z.preprocess((value) => {
 const inputPromptEventSchema = chatEventBaseSchema
   .extend({
     eventType: z.literal("input.prompt"),
-    structuredPrompt: userMessageDocumentSchema.optional(),
+    userMessage: userMessageDocumentSchema.optional(),
     attachFiles: z.array(resolvedAttachFileSchema).optional(),
     generationTemplate: generationTemplateRequestSchema.optional(),
   })
@@ -473,7 +473,7 @@ const inputAutomationEventSchema = chatEventBaseSchema
 const inputRejectedEventSchema = chatEventBaseSchema
   .extend({
     eventType: z.literal("input.rejected"),
-    structuredPrompt: userMessageDocumentSchema.optional(),
+    userMessage: userMessageDocumentSchema.optional(),
     error: z.string(),
     attachFiles: z.array(resolvedAttachFileSchema).optional(),
     generationTemplate: generationTemplateRequestSchema.optional(),
@@ -747,7 +747,7 @@ const legacyPagedChatMessageSchema = z.discriminatedUnion("role", [
   legacyPagedChatMessageBaseSchema
     .extend({
       role: z.literal("user"),
-      structuredPrompt: userMessageDocumentSchema.optional(),
+      userMessage: userMessageDocumentSchema.optional(),
     })
     .strict(),
   legacyPagedChatMessageBaseSchema
@@ -793,7 +793,7 @@ const chatThreadMetadataSchema = z.object({
 
 const chatThreadDraftSchema = z.object({
   draftContent: z.string().nullable(),
-  draftStructuredPrompt: userMessageDocumentSchema.nullable().optional(),
+  draftUserMessage: userMessageDocumentSchema.nullable().optional(),
   draftAttachments: z.array(persistedAttachmentSchema).nullable(),
 });
 
@@ -883,7 +883,7 @@ const chatNormalSendBodyShape = {
    */
   model: selectedModelRequestSchema.optional(),
   runOptions: chatRunOptionsRequestSchema.optional(),
-  structuredPrompt: userMessageDocumentSchema.optional(),
+  userMessage: userMessageDocumentSchema.optional(),
   generationTemplate: generationTemplateRequestSchema.optional(),
   computerUseHostId: z.string().uuid().nullable().optional(),
   cloudBrowserEnabled: z.boolean().optional(),
@@ -1029,7 +1029,7 @@ export const chatThreadsContract = c.router({
       200: z.object({
         /**
          * Thread ids owned by the caller that currently hold an unsent draft
-         * (non-empty `draftContent`, a structured prompt, or one+
+         * (non-empty `draftContent`, a user message, or one+
          * `draftAttachments`).
          */
         draftThreadIds: z.array(z.string()),
@@ -1104,7 +1104,7 @@ export const chatThreadByIdContract = c.router({
     pathParams: chatThreadIdPathParamsSchema,
     body: z.object({
       draftContent: z.string().nullable().optional(),
-      draftStructuredPrompt: userMessageDocumentSchema.nullable().optional(),
+      draftUserMessage: userMessageDocumentSchema.nullable().optional(),
       draftAttachments: z
         .array(persistedAttachmentSchema)
         .nullable()
@@ -1384,7 +1384,7 @@ export const chatMessagesContract = c.router({
         chatThreadSortEventId: z.undefined().optional(),
         model: z.undefined().optional(),
         runOptions: z.undefined().optional(),
-        structuredPrompt: z.undefined().optional(),
+        userMessage: z.undefined().optional(),
         generationTemplate: z.undefined().optional(),
         computerUseHostId: z.undefined().optional(),
         cloudBrowserEnabled: z.undefined().optional(),
@@ -1404,7 +1404,7 @@ export const chatMessagesContract = c.router({
         chatThreadSortEventId: z.undefined().optional(),
         model: z.undefined().optional(),
         runOptions: z.undefined().optional(),
-        structuredPrompt: z.undefined().optional(),
+        userMessage: z.undefined().optional(),
         generationTemplate: z.undefined().optional(),
         computerUseHostId: z.undefined().optional(),
         cloudBrowserEnabled: z.undefined().optional(),
@@ -1455,7 +1455,7 @@ export const chatEventsContract = c.router({
         chatThreadSortEventId: z.undefined().optional(),
         model: z.undefined().optional(),
         runOptions: z.undefined().optional(),
-        structuredPrompt: z.undefined().optional(),
+        userMessage: z.undefined().optional(),
         generationTemplate: z.undefined().optional(),
         computerUseHostId: z.undefined().optional(),
         hasTextContent: z.undefined().optional(),
@@ -1474,7 +1474,7 @@ export const chatEventsContract = c.router({
         chatThreadSortEventId: z.undefined().optional(),
         model: z.undefined().optional(),
         runOptions: z.undefined().optional(),
-        structuredPrompt: z.undefined().optional(),
+        userMessage: z.undefined().optional(),
         generationTemplate: z.undefined().optional(),
         computerUseHostId: z.undefined().optional(),
         hasTextContent: z.undefined().optional(),
@@ -1949,7 +1949,7 @@ function legacyChatEventType(message: LegacyPagedChatMessage): ChatEventType {
     if (
       message.revokesMessageId !== undefined &&
       message.content === null &&
-      message.structuredPrompt === undefined &&
+      message.userMessage === undefined &&
       message.attachFiles === undefined &&
       message.generationTemplate === undefined
     ) {

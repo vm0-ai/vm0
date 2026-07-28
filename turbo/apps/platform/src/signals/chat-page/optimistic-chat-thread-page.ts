@@ -90,23 +90,19 @@ interface PreparedNewThreadPayload {
   hasTextContent: boolean;
 }
 
-function structuredPromptForNewThread(
-  enabled: boolean,
+function userMessageForNewThread(
   request: SendNewThreadMessageRequest,
   prepared: PreparedNewThreadPayload,
-): UserMessageDocument | undefined {
-  if (!enabled) {
-    return undefined;
-  }
+): UserMessageDocument {
   const generationTemplate = request.generationTemplate;
   if (
     generationTemplate &&
     !request.editorDocument &&
     !request.generationTemplateTitleSnapshot
   ) {
-    throw new Error("Structured template title snapshot is required");
+    throw new Error("User-message template title snapshot is required");
   }
-  const structuredPrompt = request.editorDocument
+  const userMessage = request.editorDocument
     ? request.editorDocument.toMessageDocument({
         generationTemplate,
         attachments: prepared.attachments,
@@ -119,11 +115,12 @@ function structuredPromptForNewThread(
               template: generationTemplate,
             }
           : undefined,
+        prepared.attachments,
       );
-  if (!structuredPrompt) {
-    throw new Error("Failed to serialize structured prompt");
+  if (!userMessage) {
+    throw new Error("Failed to serialize user message");
   }
-  return structuredPrompt;
+  return userMessage;
 }
 
 function createNewThreadOptimisticMessageEntry({
@@ -131,13 +128,13 @@ function createNewThreadOptimisticMessageEntry({
   clientEventId,
   prepared,
   generationTemplate,
-  structuredPrompt,
+  userMessage,
 }: {
   threadId: string;
   clientEventId: string;
   prepared: PreparedNewThreadPayload;
   generationTemplate: GenerationTemplateRequest | undefined;
-  structuredPrompt: UserMessageDocument | undefined;
+  userMessage: UserMessageDocument;
 }): OptimisticChatMessageInput {
   return {
     threadId,
@@ -149,7 +146,7 @@ function createNewThreadOptimisticMessageEntry({
       content: prepared.prompt,
       attachFiles: prepared.attachments,
       generationTemplate,
-      ...(structuredPrompt ? { structuredPrompt } : {}),
+      userMessage,
       createdAt: nowDate().toISOString(),
     },
   };
@@ -164,7 +161,7 @@ function newThreadSendBody({
   codexFastModeEnabled,
   realAgentInPreviewEnabled,
   generationTemplate,
-  structuredPrompt,
+  userMessage,
   computerUseHostId,
   cloudBrowserEnabled,
 }: {
@@ -176,7 +173,7 @@ function newThreadSendBody({
   codexFastModeEnabled: boolean;
   realAgentInPreviewEnabled: boolean;
   generationTemplate: GenerationTemplateRequest | undefined;
-  structuredPrompt: UserMessageDocument | undefined;
+  userMessage: UserMessageDocument;
   computerUseHostId?: string | null;
   cloudBrowserEnabled?: boolean;
 }) {
@@ -193,7 +190,7 @@ function newThreadSendBody({
     ...(runOptions ? { runOptions } : {}),
     ...(realAgentInPreviewEnabled ? { realAgentInPreview: true } : {}),
     generationTemplate,
-    ...(structuredPrompt ? { structuredPrompt } : {}),
+    userMessage,
     ...(computerUseHostId === undefined ? {} : { computerUseHostId }),
     ...(cloudBrowserEnabled === undefined ? {} : { cloudBrowserEnabled }),
     attachFiles: prepared.attachFiles,
@@ -520,13 +517,7 @@ const sendNewThreadMessage$ = command(
       return null;
     }
     const features = get(featureSwitch$);
-    const structuredPromptEnabled =
-      features[FeatureSwitchKey.StructuredPrompt] ?? false;
-    const structuredPrompt = structuredPromptForNewThread(
-      structuredPromptEnabled,
-      request,
-      prepared,
-    );
+    const userMessage = userMessageForNewThread(request, prepared);
     const threadId = crypto.randomUUID();
     const clientEventId = crypto.randomUUID();
     const chatThreadEventId = crypto.randomUUID();
@@ -538,7 +529,7 @@ const sendNewThreadMessage$ = command(
           clientEventId,
           prepared,
           generationTemplate,
-          structuredPrompt: structuredPrompt ?? undefined,
+          userMessage,
         }),
       ),
     );
@@ -585,7 +576,7 @@ const sendNewThreadMessage$ = command(
       realAgentInPreviewEnabled:
         features[FeatureSwitchKey.RealAgentInPreview] ?? false,
       generationTemplate,
-      structuredPrompt: structuredPrompt ?? undefined,
+      userMessage,
       computerUseHostId,
       cloudBrowserEnabled,
     });

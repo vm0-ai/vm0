@@ -2331,7 +2331,7 @@ describe("chat message action cards", () => {
     const sentPrompts: {
       prompt: string;
       threadId?: string;
-      structuredPrompt?: unknown;
+      userMessage?: unknown;
     }[] = [];
 
     context.mocks.api(
@@ -2390,11 +2390,11 @@ describe("chat message action cards", () => {
           createdAt: "2026-06-09T10:01:00Z",
         },
       ],
-      onSendRequest: ({ prompt, threadId: sentThreadId, structuredPrompt }) => {
+      onSendRequest: ({ prompt, threadId: sentThreadId, userMessage }) => {
         sentPrompts.push({
           prompt,
           threadId: sentThreadId,
-          structuredPrompt,
+          userMessage,
         });
       },
     });
@@ -2413,7 +2413,7 @@ describe("chat message action cards", () => {
         {
           prompt: callbackPrompt,
           threadId,
-          structuredPrompt: {
+          userMessage: {
             version: 1,
             parts: [{ type: "text", text: callbackPrompt }],
           },

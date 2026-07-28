@@ -7,7 +7,7 @@ import {
 import {
   chatMessages,
   type ChatMessageRecommendedFollowups,
-  type ChatMessageStructuredPrompt,
+  type ChatMessageUserMessage,
 } from "@vm0/db/schema/chat-message";
 import { chatThreads } from "@vm0/db/schema/chat-thread";
 import {
@@ -41,7 +41,7 @@ import {
 } from "./zero-chat-recommended-followups.service";
 import { appendChatThreadEvent } from "./zero-chat-thread-event.service";
 import { queuedUserMessageExists } from "./zero-chat-queued-message.service";
-import { projectStructuredUserMessage } from "./zero-chat-structured-message.service";
+import { projectUserMessage } from "./zero-chat-user-message.service";
 
 const log = logger("api:zero:chat-title");
 const OPENROUTER_CHAT_COMPLETIONS_URL =
@@ -86,7 +86,7 @@ interface ChatMessageForGeneration {
 interface ChatCompletionContextRow {
   readonly eventType: ChatEventType;
   readonly content: string | null;
-  readonly structuredPrompt: ChatMessageStructuredPrompt | null;
+  readonly userMessage: ChatMessageUserMessage | null;
 }
 
 type SelectDb = Pick<Db, "select">;
@@ -117,13 +117,13 @@ function completedConversationContextMessageCondition(db: SelectDb) {
   ) as SQL;
 }
 
-function contextMessageContentCondition(structuredPromptEnabled: boolean): SQL {
-  return structuredPromptEnabled
+function contextMessageContentCondition(userMessageEnabled: boolean): SQL {
+  return userMessageEnabled
     ? (or(
         isNotNull(chatMessages.content),
         and(
           chatEventTypeIn(["input.prompt", "input.rejected"]),
-          isNotNull(chatMessages.structuredPrompt),
+          isNotNull(chatMessages.userMessage),
         ),
       ) as SQL)
     : isNotNull(chatMessages.content);
@@ -131,14 +131,14 @@ function contextMessageContentCondition(structuredPromptEnabled: boolean): SQL {
 
 function chatCompletionContextMessage(
   row: ChatCompletionContextRow,
-  structuredPromptEnabled: boolean,
+  userMessageEnabled: boolean,
 ): ChatCompletionContextMessage[] {
   const role = chatEventCompatibilityRole(row.eventType);
-  if (structuredPromptEnabled && role === "user" && row.structuredPrompt) {
+  if (userMessageEnabled && role === "user" && row.userMessage) {
     return [
       {
         role,
-        content: projectStructuredUserMessage(row.structuredPrompt).agentPrompt,
+        content: projectUserMessage(row.userMessage).agentPrompt,
       },
     ];
   }
@@ -240,12 +240,12 @@ function generateChatTitle(input: ChatTitleInput): Promise<string | null> {
 async function getLatestTitleContextMessages(
   db: Db,
   threadId: string,
-  structuredPromptEnabled: boolean,
+  userMessageEnabled: boolean,
   options?: { readonly excludeRunId?: string },
 ): Promise<ChatCompletionContextMessage[]> {
   const filters = [
     eq(chatMessages.chatThreadId, threadId),
-    contextMessageContentCondition(structuredPromptEnabled),
+    contextMessageContentCondition(userMessageEnabled),
     chatEventTypeIn(CHAT_EVENT_TYPES),
     visibleChatEventCondition(db),
     completedConversationContextMessageCondition(db),
@@ -265,7 +265,7 @@ async function getLatestTitleContextMessages(
     .select({
       eventType: chatEventTypeSql().as("event_type"),
       content: chatMessages.content,
-      structuredPrompt: chatMessages.structuredPrompt,
+      userMessage: chatMessages.userMessage,
       createdAt: chatMessages.createdAt,
       sequenceNumber: chatMessages.sequenceNumber,
     })
@@ -276,7 +276,7 @@ async function getLatestTitleContextMessages(
     .limit(TITLE_PRIOR_MESSAGE_CAP);
 
   return rows.reverse().flatMap((row) => {
-    return chatCompletionContextMessage(row, structuredPromptEnabled);
+    return chatCompletionContextMessage(row, userMessageEnabled);
   });
 }
 
@@ -343,7 +343,7 @@ export async function generateAndPersistChatThreadTitle(args: {
   readonly orgId: string | null;
   readonly prompt: string;
   readonly includePriorRounds: boolean;
-  readonly structuredPromptEnabled: boolean;
+  readonly userMessageEnabled: boolean;
 }): Promise<void> {
   await tapError(
     (async () => {
@@ -355,7 +355,7 @@ export async function generateAndPersistChatThreadTitle(args: {
         ? await getLatestTitleContextMessages(
             args.db,
             args.threadId,
-            args.structuredPromptEnabled,
+            args.userMessageEnabled,
           )
         : [];
       const title = await generateChatTitle({
@@ -389,7 +389,7 @@ export async function generateAndPersistChatThreadTitleFromCallback(args: {
   readonly runId: string;
   readonly prompt: string;
   readonly currentAssistantReply: string | undefined;
-  readonly structuredPromptEnabled: boolean;
+  readonly userMessageEnabled: boolean;
 }): Promise<void> {
   await tapError(
     (async () => {
@@ -400,7 +400,7 @@ export async function generateAndPersistChatThreadTitleFromCallback(args: {
       const priorRounds = await getLatestTitleContextMessages(
         args.db,
         args.threadId,
-        args.structuredPromptEnabled,
+        args.userMessageEnabled,
         { excludeRunId: args.runId },
       );
       const title = await generateChatTitle({
@@ -462,13 +462,13 @@ function parseRecommendedFollowups(
 async function getLatestFollowupContextMessages(
   db: SelectDb,
   threadId: string,
-  structuredPromptEnabled: boolean,
+  userMessageEnabled: boolean,
 ): Promise<ChatCompletionContextMessage[]> {
   const rows = await db
     .select({
       eventType: chatEventTypeSql().as("event_type"),
       content: chatMessages.content,
-      structuredPrompt: chatMessages.structuredPrompt,
+      userMessage: chatMessages.userMessage,
       createdAt: chatMessages.createdAt,
       sequenceNumber: chatMessages.sequenceNumber,
     })
@@ -476,7 +476,7 @@ async function getLatestFollowupContextMessages(
     .where(
       and(
         eq(chatMessages.chatThreadId, threadId),
-        contextMessageContentCondition(structuredPromptEnabled),
+        contextMessageContentCondition(userMessageEnabled),
         chatEventTypeIn(CHAT_EVENT_TYPES),
         visibleChatEventCondition(db),
         completedConversationContextMessageCondition(db),
@@ -486,7 +486,7 @@ async function getLatestFollowupContextMessages(
     .limit(FOLLOWUP_CONTEXT_MESSAGE_CAP);
 
   return rows.reverse().flatMap((row) => {
-    return chatCompletionContextMessage(row, structuredPromptEnabled);
+    return chatCompletionContextMessage(row, userMessageEnabled);
   });
 }
 
@@ -533,12 +533,12 @@ async function generateRecommendedFollowups(
 export async function loadChatThreadRecommendedFollowupContext(args: {
   readonly db: SelectDb;
   readonly threadId: string;
-  readonly structuredPromptEnabled: boolean;
+  readonly userMessageEnabled: boolean;
 }): Promise<ChatCompletionContextMessage[]> {
   return await getLatestFollowupContextMessages(
     args.db,
     args.threadId,
-    args.structuredPromptEnabled,
+    args.userMessageEnabled,
   );
 }
 

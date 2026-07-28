@@ -37,12 +37,12 @@ export const runChatActionCallback$ = command(
     signal: AbortSignal,
   ): Promise<void> => {
     const features = get(featureSwitch$);
-    const structuredPromptEnabled =
+    const userMessageEnabled =
       features[FeatureSwitchKey.StructuredPrompt] ?? false;
-    const structuredPrompt = structuredPromptEnabled
+    const userMessage = userMessageEnabled
       ? textToMessageDocument(args.callbackPrompt)
       : undefined;
-    if (structuredPromptEnabled && !structuredPrompt) {
+    if (userMessageEnabled && !userMessage) {
       throw new Error("Failed to serialize structured callback prompt");
     }
     await sendChatEventWithCompatibility(
@@ -52,7 +52,7 @@ export const runChatActionCallback$ = command(
         threadId: args.threadId,
         prompt: args.callbackPrompt,
         hasTextContent: true,
-        ...(structuredPrompt ? { structuredPrompt } : {}),
+        ...(userMessage ? { userMessage } : {}),
         clientEventId: crypto.randomUUID(),
         chatThreadSortEventId: crypto.randomUUID(),
       },

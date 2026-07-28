@@ -52,7 +52,7 @@ type ChatRealtimeSubscription = {
 const patchDraft$ = command(
   async (
     { get, set },
-    { threadId, content, structuredPrompt, attachments }: PatchDraftArgs,
+    { threadId, content, userMessage, attachments }: PatchDraftArgs,
     signal: AbortSignal,
   ) => {
     const client = get(zeroClient$)(chatThreadByIdContract);
@@ -61,7 +61,7 @@ const patchDraft$ = command(
         params: { id: threadId },
         body: {
           draftContent: content,
-          draftStructuredPrompt: structuredPrompt,
+          draftUserMessage: userMessage,
           draftAttachments: attachments,
         },
         fetchOptions: { signal },
@@ -178,7 +178,7 @@ const appendQueuedEvent$ = command(
       chatThreadSortEventId,
       hasTextContent,
       generationTemplate,
-      structuredPrompt,
+      userMessage,
       computerUseHostId,
       cloudBrowserEnabled,
       runOptions,
@@ -196,7 +196,7 @@ const appendQueuedEvent$ = command(
         clientEventId: clientEventId,
         chatThreadSortEventId,
         generationTemplate,
-        ...(structuredPrompt ? { structuredPrompt } : {}),
+        userMessage,
         ...(runOptions ? { runOptions } : {}),
         ...(realAgentInPreview ? { realAgentInPreview: true } : {}),
         ...(computerUseHostId === undefined ? {} : { computerUseHostId }),

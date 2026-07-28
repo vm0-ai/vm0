@@ -196,7 +196,7 @@ describe("chat drafts", () => {
     context.mocks.api(zeroAgentDraftContract.get, ({ params, respond }) => {
       return respond(200, {
         draftContent: `Resume the ${params.id} launch notes`,
-        draftStructuredPrompt: {
+        draftUserMessage: {
           version: 1,
           parts: [
             {
@@ -263,7 +263,7 @@ describe("chat drafts", () => {
     context.mocks.api(zeroAgentDraftContract.get, ({ respond }) => {
       return respond(200, {
         draftContent: "stale legacy agent draft",
-        draftStructuredPrompt: {
+        draftUserMessage: {
           version: 1,
           parts: [
             {
@@ -363,7 +363,7 @@ describe("chat drafts", () => {
       await waitFor(() => {
         expect(draftPatches).toContainEqual({
           draftContent: "agent-level draft",
-          draftStructuredPrompt: {
+          draftUserMessage: {
             version: 1,
             parts: [{ type: "text", text: "agent-level draft" }],
           },
@@ -377,7 +377,7 @@ describe("chat drafts", () => {
       await waitFor(() => {
         expect(draftPatches).toContainEqual({
           draftContent: null,
-          draftStructuredPrompt: null,
+          draftUserMessage: null,
           draftAttachments: null,
         });
       });
@@ -412,7 +412,7 @@ describe("chat drafts", () => {
     await waitFor(() => {
       expect(draftPatches).toContainEqual({
         draftContent: "thread-level draft",
-        draftStructuredPrompt: {
+        draftUserMessage: {
           version: 1,
           parts: [{ type: "text", text: "thread-level draft" }],
         },
@@ -426,7 +426,7 @@ describe("chat drafts", () => {
     await waitFor(() => {
       expect(draftPatches).toContainEqual({
         draftContent: null,
-        draftStructuredPrompt: null,
+        draftUserMessage: null,
         draftAttachments: null,
       });
     });
@@ -481,7 +481,7 @@ describe("chat drafts", () => {
       }
       return respond(200, {
         draftContent: `Feedback on this part of your reply:\n\n> ${quote}\n\n${note}`,
-        draftStructuredPrompt: {
+        draftUserMessage: {
           version: 1,
           parts: [
             {
@@ -589,7 +589,7 @@ describe("chat drafts", () => {
     context.mocks.api(chatThreadDraftContract.get, ({ respond }) => {
       return respond(200, {
         draftContent: "stale legacy draft",
-        draftStructuredPrompt: {
+        draftUserMessage: {
           version: 1,
           parts: [
             {
@@ -687,7 +687,7 @@ describe("chat drafts", () => {
           "Feedback on this part of your reply:\n\n" +
           "> The launch sequence is vague\n\n" +
           `Add the rollout dates from [Release notes](/chats/${feedbackReferencedThreadId})`,
-        draftStructuredPrompt: {
+        draftUserMessage: {
           version: 1,
           parts: [
             {
@@ -732,7 +732,7 @@ describe("chat drafts", () => {
     });
   });
 
-  it("keeps legacy draft hydration and clears structured state when the switch is disabled", async () => {
+  it("keeps legacy draft hydration while dual-writing with the switch disabled", async () => {
     const user = userEvent.setup({ delay: null });
     const threadId = "b1000000-0000-4000-a000-000000000106";
     const draftPatches: Record<string, unknown>[] = [];
@@ -748,7 +748,7 @@ describe("chat drafts", () => {
     context.mocks.api(chatThreadDraftContract.get, ({ respond }) => {
       return respond(200, {
         draftContent: "legacy draft",
-        draftStructuredPrompt: {
+        draftUserMessage: {
           version: 1,
           parts: [
             { type: "text", text: "structured draft" },
@@ -789,7 +789,18 @@ describe("chat drafts", () => {
     await waitFor(() => {
       expect(draftPatches).toContainEqual({
         draftContent: "legacy draft updated",
-        draftStructuredPrompt: null,
+        draftUserMessage: {
+          version: 1,
+          parts: [
+            {
+              type: "file",
+              fileId: legacyAttachment.id,
+              filenameSnapshot: legacyAttachment.filename,
+              contentType: legacyAttachment.contentType,
+            },
+            { type: "text", text: "legacy draft updated" },
+          ],
+        },
         draftAttachments: [legacyAttachment],
       });
     });
@@ -853,7 +864,24 @@ describe("chat drafts", () => {
     await waitFor(() => {
       expect(draftPatches).toContainEqual({
         draftContent: "Review the updated launch brief",
-        draftStructuredPrompt: null,
+        draftUserMessage: {
+          version: 1,
+          parts: [
+            {
+              type: "file",
+              fileId: "draft-brief",
+              filenameSnapshot: "brief.md",
+              contentType: "text/markdown",
+            },
+            {
+              type: "file",
+              fileId: "fresh-launch-note",
+              filenameSnapshot: "fresh.txt",
+              contentType: "text/plain",
+            },
+            { type: "text", text: "Review the updated launch brief" },
+          ],
+        },
         draftAttachments: [
           {
             id: "draft-brief",
@@ -883,7 +911,7 @@ describe("chat drafts", () => {
       expect(textarea().textContent ?? "").toBe("");
       expect(draftPatches).toContainEqual({
         draftContent: null,
-        draftStructuredPrompt: null,
+        draftUserMessage: null,
         draftAttachments: null,
       });
     });

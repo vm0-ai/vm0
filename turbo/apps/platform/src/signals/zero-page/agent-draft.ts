@@ -42,7 +42,7 @@ export interface EnsuredAgentDraft extends AgentDraftEntry {
 
 interface RestoredAgentDraftState {
   readonly content: string;
-  readonly structuredPrompt: UserMessageDocument | null;
+  readonly userMessage: UserMessageDocument | null;
   readonly generationTemplate: GenerationTemplateRequest | undefined;
   readonly attachments: PersistedAttachment[];
 }
@@ -55,13 +55,13 @@ function legacyAgentDraftState(args: {
 }): RestoredAgentDraftState {
   return {
     content: args.draftContent ?? "",
-    structuredPrompt: null,
+    userMessage: null,
     generationTemplate: undefined,
     attachments: args.draftAttachments ?? [],
   };
 }
 
-function structuredAgentDraftAttachments(
+function userMessageAgentDraftAttachments(
   document: UserMessageDocument,
   attachments: readonly PersistedAttachment[],
 ): PersistedAttachment[] {
@@ -79,15 +79,15 @@ function structuredAgentDraftAttachments(
   });
 }
 
-function structuredAgentDraftState(
+function userMessageAgentDraftState(
   args: {
     readonly draftContent: string | null;
-    readonly draftStructuredPrompt?: UserMessageDocument | null;
+    readonly draftUserMessage?: UserMessageDocument | null;
     readonly draftAttachments: PersistedAttachment[] | null;
   },
   inlineTemplatesEnabled: boolean,
 ): RestoredAgentDraftState | null {
-  const document = args.draftStructuredPrompt;
+  const document = args.draftUserMessage;
   if (
     !document ||
     messageDocumentToEditorDoc(document, {
@@ -107,12 +107,12 @@ function structuredAgentDraftState(
   });
   return {
     content,
-    structuredPrompt: document,
+    userMessage: document,
     generationTemplate:
       !inlineTemplatesEnabled && generationTemplate?.type === "template"
         ? generationTemplate.template
         : undefined,
-    attachments: structuredAgentDraftAttachments(
+    attachments: userMessageAgentDraftAttachments(
       document,
       args.draftAttachments ?? [],
     ),
@@ -130,7 +130,7 @@ function createAgentDraftSync(agentId: string, draft: DraftSignals) {
           params: { id: agentId },
           body: {
             draftContent: payload.content,
-            draftStructuredPrompt: payload.structuredPrompt,
+            draftUserMessage: payload.userMessage,
             draftAttachments: payload.attachments,
           },
           fetchOptions: { signal },
@@ -164,11 +164,8 @@ function createAgentDraftSync(agentId: string, draft: DraftSignals) {
           size: result.attachment.size,
         };
       });
-      const features = get(featureSwitch$);
       const payload = buildDraftPersistencePayload({
         input: get(draft.input$),
-        structuredPromptEnabled:
-          features[FeatureSwitchKey.StructuredPrompt] ?? false,
         editorDocument: set(draft.readEditorDocument$),
         generationTemplate: get(draft.generationTemplate$),
         attachments,
@@ -191,7 +188,7 @@ function createAgentDraftSync(agentId: string, draft: DraftSignals) {
     set(draftSyncReset$);
     await set(
       patchDraft$,
-      { content: null, structuredPrompt: null, attachments: null },
+      { content: null, userMessage: null, attachments: null },
       signal,
     );
   });
@@ -246,18 +243,18 @@ export const loadAgentDraft$ = command(
     signal.throwIfAborted();
 
     const features = get(featureSwitch$);
-    const structuredPromptEnabled =
+    const userMessageEnabled =
       features[FeatureSwitchKey.StructuredPrompt] ?? false;
     const inlineTemplatesEnabled =
-      structuredPromptEnabled &&
+      userMessageEnabled &&
       (features[FeatureSwitchKey.StructuredPromptInlineTemplates] ?? false);
-    const restoredDraft = structuredPromptEnabled
-      ? (structuredAgentDraftState(result.body, inlineTemplatesEnabled) ??
+    const restoredDraft = userMessageEnabled
+      ? (userMessageAgentDraftState(result.body, inlineTemplatesEnabled) ??
         legacyAgentDraftState(result.body))
       : legacyAgentDraftState(result.body);
     const hasServerDraft =
       restoredDraft.content.length > 0 ||
-      restoredDraft.structuredPrompt !== null ||
+      restoredDraft.userMessage !== null ||
       restoredDraft.attachments.length > 0;
     if (!hasServerDraft) {
       return;
@@ -265,7 +262,7 @@ export const loadAgentDraft$ = command(
 
     set(draft.seed$, {
       content: restoredDraft.content,
-      structuredPrompt: restoredDraft.structuredPrompt,
+      userMessage: restoredDraft.userMessage,
       generationTemplate: restoredDraft.generationTemplate,
       attachments: restoredDraft.attachments.map(createRestoredAttachment),
     });

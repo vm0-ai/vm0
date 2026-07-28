@@ -18,7 +18,7 @@ export interface ChatThreadRealtimeHandlers {
 export interface PatchDraftArgs {
   threadId: string;
   content: string | null;
-  structuredPrompt: UserMessageDocument | null;
+  userMessage: UserMessageDocument | null;
   attachments: PersistedAttachment[] | null;
 }
 
@@ -47,7 +47,7 @@ export interface AppendQueuedEventArgs {
   runOptions?: ChatRunOptionsRequest;
   realAgentInPreview?: boolean;
   generationTemplate: GenerationTemplateRequest | undefined;
-  structuredPrompt?: UserMessageDocument;
+  userMessage: UserMessageDocument;
   computerUseHostId?: string | null;
   cloudBrowserEnabled?: boolean;
 }

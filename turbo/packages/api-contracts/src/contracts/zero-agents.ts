@@ -66,13 +66,13 @@ export const zeroAgentInstructionsRequestSchema = z.object({
 
 export const zeroAgentDraftResponseSchema = z.object({
   draftContent: z.string().nullable(),
-  draftStructuredPrompt: userMessageDocumentSchema.nullable().optional(),
+  draftUserMessage: userMessageDocumentSchema.nullable().optional(),
   draftAttachments: z.array(persistedAttachmentSchema).nullable(),
 });
 
 export const zeroAgentDraftRequestSchema = z.object({
   draftContent: z.string().nullable().optional(),
-  draftStructuredPrompt: userMessageDocumentSchema.nullable().optional(),
+  draftUserMessage: userMessageDocumentSchema.nullable().optional(),
   draftAttachments: z.array(persistedAttachmentSchema).nullable().optional(),
 });
 

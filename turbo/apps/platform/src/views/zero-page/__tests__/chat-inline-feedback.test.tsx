@@ -31,7 +31,7 @@ interface ModelSelectionRequest {
 
 interface RunCreateCapture {
   prompt?: string;
-  structuredPrompt?: UserMessageDocument;
+  userMessage?: UserMessageDocument;
   attachFiles?: {
     id: string;
     filename: string;
@@ -283,8 +283,8 @@ describe("chat inline feedback", () => {
       expect(sentMessages).toHaveLength(1);
     });
     expect(sentMessages[0]?.generationTemplate).toBeUndefined();
-    expect(sentMessages[0]?.structuredPrompt?.parts).toHaveLength(1);
-    expect(sentMessages[0]?.structuredPrompt?.parts[0]).toMatchObject({
+    expect(sentMessages[0]?.userMessage?.parts).toHaveLength(1);
+    expect(sentMessages[0]?.userMessage?.parts[0]).toMatchObject({
       type: "feedback",
       quote: assistantReply,
       note: [
@@ -395,7 +395,7 @@ describe("chat inline feedback", () => {
     );
     expect(sentPrompt).toContain("Mention the dates before the risk summary.");
     expect(sentPrompt).toContain("Make the dates explicit.");
-    expect(sentMessages[0]?.structuredPrompt).toStrictEqual({
+    expect(sentMessages[0]?.userMessage).toStrictEqual({
       version: 1,
       parts: [
         {
@@ -463,7 +463,7 @@ describe("chat inline feedback", () => {
     );
     expect(sentMessages[0]?.prompt).toContain(`> ${assistantReply}`);
     expect(sentMessages[0]?.prompt).toContain("Name the owner.");
-    expect(sentMessages[0]).not.toHaveProperty("structuredPrompt");
+    expect(sentMessages[0]).not.toHaveProperty("userMessage");
   });
 
   it("restores queued inline feedback with the structured prompt rollout", async () => {
@@ -550,7 +550,7 @@ describe("chat inline feedback", () => {
     await waitFor(() => {
       expect(queuedMessages).toHaveLength(1);
     });
-    expect(queuedMessages[0]?.structuredPrompt).toStrictEqual({
+    expect(queuedMessages[0]?.userMessage).toStrictEqual({
       version: 1,
       parts: [
         {
@@ -601,7 +601,7 @@ describe("chat inline feedback", () => {
           "Feedback on this part of your reply:\n\n" +
           `> ${assistantReply}\n\n` +
           "Name the owner and explain the complete result.",
-        draftStructuredPrompt: queuedMessages[0]?.structuredPrompt,
+        draftUserMessage: queuedMessages[0]?.userMessage,
         draftAttachments: null,
       });
     });
@@ -684,7 +684,7 @@ describe("chat inline feedback", () => {
       );
       expect(sentMessages[0]?.prompt).toContain("> Mail body after");
       expect(sentMessages[0]?.prompt).toContain("Rewrite this paragraph.");
-      expect(sentMessages[0]?.structuredPrompt).toStrictEqual({
+      expect(sentMessages[0]?.userMessage).toStrictEqual({
         version: 1,
         parts: [
           {

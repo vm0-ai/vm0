@@ -171,7 +171,7 @@ import { createComposerConnectorSignals } from "../zero-page/zero-connectors.ts"
 import {
   messageDocumentToDisplayText,
   messageDocumentToPrompt,
-  shouldUseStructuredPrompt,
+  shouldUseUserMessage,
   textToMessageDocument,
 } from "../zero-page/user-message-document-codec.ts";
 
@@ -1047,11 +1047,8 @@ function createDraftSync(
           size: r.attachment.size,
         };
       });
-      const features = get(featureSwitch$);
       const payload = buildDraftPersistencePayload({
         input: get(draft.input$),
-        structuredPromptEnabled:
-          features[FeatureSwitchKey.StructuredPrompt] ?? false,
         editorDocument: set(draft.readEditorDocument$),
         generationTemplate: get(draft.generationTemplate$),
         attachments: persisted,
@@ -1092,7 +1089,7 @@ function createDraftSync(
         {
           threadId,
           content: null,
-          structuredPrompt: null,
+          userMessage: null,
           attachments: null,
         },
         signal,
@@ -1947,23 +1944,20 @@ function createMessageSemanticSignals(
   });
   const queuedMessageItems$ = computed(
     (get): Promise<readonly QueuedChatMessageItem[]> => {
-      const structuredPromptEnabled =
+      const userMessageEnabled =
         get(featureSwitch$)[FeatureSwitchKey.StructuredPrompt] ?? false;
       return Promise.resolve(
         get(queuedMessages$).map((message) => {
-          const structuredPrompt =
+          const userMessage =
             message.eventType === "input.prompt" &&
-            shouldUseStructuredPrompt(
-              structuredPromptEnabled,
-              message.structuredPrompt,
-            )
-              ? message.structuredPrompt
+            shouldUseUserMessage(userMessageEnabled, message.userMessage)
+              ? message.userMessage
               : undefined;
           const text =
             message.eventType === "input.automation"
               ? message.triggerBrief
-              : structuredPrompt
-                ? messageDocumentToDisplayText(structuredPrompt)
+              : userMessage
+                ? messageDocumentToDisplayText(userMessage)
                 : message.content;
           return { id: message.id, text: (text ?? "").trim() };
         }),
@@ -3182,41 +3176,34 @@ function prepareTextOnlyUserMessage(
   };
 }
 
-function structuredPromptForSend({
-  enabled,
+function userMessageForSend({
   prompt,
   editorDocument,
   generationTemplate,
   attachments,
 }: {
-  readonly enabled: boolean;
   readonly prompt: string;
   readonly editorDocument: SendMessageOptions["editorDocument"];
   readonly generationTemplate: GenerationTemplateRequest | undefined;
   readonly attachments: ChatPromptEvent["attachFiles"];
-}): UserMessageDocument | undefined {
-  if (!enabled) {
-    return undefined;
-  }
-  const structuredPrompt = editorDocument
+}): UserMessageDocument {
+  const userMessage = editorDocument
     ? editorDocument.toMessageDocument({
         generationTemplate,
         attachments,
       })
-    : textToMessageDocument(prompt);
-  if (!structuredPrompt) {
-    throw new Error("Failed to serialize structured prompt");
+    : textToMessageDocument(prompt, undefined, attachments);
+  if (!userMessage) {
+    throw new Error("Failed to serialize user message");
   }
-  return structuredPrompt;
+  return userMessage;
 }
 
-function queueStructured(
-  features: Partial<Record<FeatureSwitchKey, boolean>>,
+function queueUserMessage(
   options: QueueMessageOptions,
   result: PreparedSendMessageResult,
-): UserMessageDocument | undefined {
-  return structuredPromptForSend({
-    enabled: features[FeatureSwitchKey.StructuredPrompt] ?? false,
+): UserMessageDocument {
+  return userMessageForSend({
     prompt: result.prompt,
     editorDocument: options.editorDocument,
     generationTemplate: options.generationTemplate,
@@ -3244,7 +3231,7 @@ function createSendOptimisticMessageEntry({
   createdAt,
   result,
   generationTemplate,
-  structuredPrompt,
+  userMessage,
   options,
 }: {
   threadId: string;
@@ -3252,7 +3239,7 @@ function createSendOptimisticMessageEntry({
   createdAt: string;
   result: PreparedSendMessageResult;
   generationTemplate: GenerationTemplateRequest | undefined;
-  structuredPrompt: UserMessageDocument | undefined;
+  userMessage: UserMessageDocument;
   options: SendMessageOptions | undefined;
 }): OptimisticChatMessageInput {
   return {
@@ -3265,7 +3252,7 @@ function createSendOptimisticMessageEntry({
       content: result.prompt,
       attachFiles: result.attachments,
       generationTemplate,
-      ...(structuredPrompt ? { structuredPrompt } : {}),
+      userMessage,
       ...sendMessageRevocationPatch(options),
       createdAt,
     },
@@ -3290,7 +3277,7 @@ function sendMessageRequestBody(params: {
   readonly codexFastModeEnabled: boolean;
   readonly realAgentInPreviewEnabled: boolean;
   readonly generationTemplate: GenerationTemplateRequest | undefined;
-  readonly structuredPrompt: UserMessageDocument | undefined;
+  readonly userMessage: UserMessageDocument;
   readonly options: SendMessageOptions | undefined;
 }) {
   const runOptions = runOptionsFromModelProviderSelection(
@@ -3307,9 +3294,7 @@ function sendMessageRequestBody(params: {
     ...(runOptions ? { runOptions } : {}),
     ...(params.realAgentInPreviewEnabled ? { realAgentInPreview: true } : {}),
     generationTemplate: params.generationTemplate,
-    ...(params.structuredPrompt
-      ? { structuredPrompt: params.structuredPrompt }
-      : {}),
+    userMessage: params.userMessage,
     ...(params.options && "computerUseHostId" in params.options
       ? { computerUseHostId: params.options.computerUseHostId ?? null }
       : {}),
@@ -3335,7 +3320,7 @@ function createAppendOptimisticSendMessage(
         readonly createdAt: string;
         readonly result: PreparedSendMessageResult;
         readonly generationTemplate: GenerationTemplateRequest | undefined;
-        readonly structuredPrompt: UserMessageDocument | undefined;
+        readonly userMessage: UserMessageDocument;
         readonly options: SendMessageOptions | undefined;
       },
     ) => {
@@ -3353,7 +3338,7 @@ function createAppendOptimisticSendMessage(
           createdAt: args.createdAt,
           result: args.result,
           generationTemplate: args.generationTemplate,
-          structuredPrompt: args.structuredPrompt,
+          userMessage: args.userMessage,
           options: args.options,
         }),
       );
@@ -3415,7 +3400,7 @@ const postSendMessage$ = command(
       readonly result: PreparedSendMessageResult;
       readonly modelSelection: ModelProviderSelection | null;
       readonly generationTemplate: GenerationTemplateRequest | undefined;
-      readonly structuredPrompt: UserMessageDocument | undefined;
+      readonly userMessage: UserMessageDocument;
       readonly options: SendMessageOptions | undefined;
       readonly flushDraftClear$: Command<Promise<void>, [AbortSignal]>;
     },
@@ -3440,7 +3425,7 @@ const postSendMessage$ = command(
           codexFastModeEnabled,
           realAgentInPreviewEnabled,
           generationTemplate: args.generationTemplate,
-          structuredPrompt: args.structuredPrompt,
+          userMessage: args.userMessage,
           options: args.options,
         }),
         signal,
@@ -3493,9 +3478,7 @@ function createPerformSendMessage(deps: SendMessageDeps) {
         return false;
       }
       signal.throwIfAborted();
-      const features = get(featureSwitch$);
-      const structuredPrompt = structuredPromptForSend({
-        enabled: features[FeatureSwitchKey.StructuredPrompt] ?? false,
+      const userMessage = userMessageForSend({
         prompt: result.prompt,
         editorDocument: request.options?.editorDocument,
         generationTemplate,
@@ -3514,7 +3497,7 @@ function createPerformSendMessage(deps: SendMessageDeps) {
         createdAt,
         result,
         generationTemplate,
-        structuredPrompt,
+        userMessage,
         options: request.options,
       });
       animationFrame(
@@ -3533,7 +3516,7 @@ function createPerformSendMessage(deps: SendMessageDeps) {
           result,
           modelSelection: request.modelSelection,
           generationTemplate,
-          structuredPrompt,
+          userMessage,
           options: request.options,
           flushDraftClear$,
         },
@@ -3670,7 +3653,7 @@ function createQueueMessage(deps: QueueMessageDeps) {
       signal.throwIfAborted();
 
       const features = get(featureSwitch$);
-      const structuredPrompt = queueStructured(features, options, result);
+      const userMessage = queueUserMessage(options, result);
 
       set(cancelDraftSync$);
       set(draft.clear$);
@@ -3694,7 +3677,7 @@ function createQueueMessage(deps: QueueMessageDeps) {
           content: result.prompt,
           attachFiles: result.attachments,
           generationTemplate,
-          ...(structuredPrompt ? { structuredPrompt } : {}),
+          userMessage,
           createdAt: nowIso,
         },
       });
@@ -3724,7 +3707,7 @@ function createQueueMessage(deps: QueueMessageDeps) {
             ...(runOptions ? { runOptions } : {}),
             ...(realAgentInPreviewEnabled ? { realAgentInPreview: true } : {}),
             generationTemplate,
-            ...(structuredPrompt ? { structuredPrompt } : {}),
+            userMessage,
             ...(options.computerUseHostId === undefined
               ? {}
               : { computerUseHostId: options.computerUseHostId }),
@@ -3796,23 +3779,23 @@ function createRecallMessage(deps: RecallMessageDeps) {
         },
       });
       const features = get(featureSwitch$);
-      const structuredPromptEnabled =
+      const userMessageEnabled =
         features[FeatureSwitchKey.StructuredPrompt] ?? false;
-      const structuredPrompt = shouldUseStructuredPrompt(
-        structuredPromptEnabled,
-        message.structuredPrompt,
+      const userMessage = shouldUseUserMessage(
+        userMessageEnabled,
+        message.userMessage,
       )
-        ? message.structuredPrompt
+        ? message.userMessage
         : null;
-      const templatePart = structuredPrompt?.parts.find((part) => {
+      const templatePart = userMessage?.parts.find((part) => {
         return part.type === "template";
       });
       set(draft.seed$, {
-        content: structuredPrompt
-          ? (messageDocumentToPrompt(structuredPrompt) ?? "")
+        content: userMessage
+          ? (messageDocumentToPrompt(userMessage) ?? "")
           : (message.content ?? ""),
-        structuredPrompt,
-        generationTemplate: structuredPrompt
+        userMessage,
+        generationTemplate: userMessage
           ? templatePart?.type === "template"
             ? templatePart.template
             : undefined

@@ -223,7 +223,7 @@ interface ClaimedMorningBrief {
   readonly briefDate: string;
   readonly deliveryId: string;
   readonly currentTime: Date;
-  readonly structuredPromptEnabled: boolean;
+  readonly userMessageEnabled: boolean;
 }
 
 /** Feature and once-per-local-date gates; claims the delivery row. */
@@ -273,7 +273,7 @@ async function admitMorningBriefDelivery(
     briefDate,
     deliveryId: delivery.id,
     currentTime,
-    structuredPromptEnabled: isFeatureEnabled(
+    userMessageEnabled: isFeatureEnabled(
       FeatureSwitchKey.StructuredPrompt,
       featureSwitchContext,
     ),
@@ -317,7 +317,7 @@ const stageMorningBriefInput$ = command(
       dayStart,
       dayEnd,
       excludeChatThreadId: row.chatThreadId,
-      structuredPromptEnabled: claimed.structuredPromptEnabled,
+      userMessageEnabled: claimed.userMessageEnabled,
       signal,
     });
     signal.throwIfAborted();
@@ -781,7 +781,7 @@ async function admitManualMorningBrief(
       briefDate,
       deliveryId: delivery.id,
       currentTime,
-      structuredPromptEnabled: isFeatureEnabled(
+      userMessageEnabled: isFeatureEnabled(
         FeatureSwitchKey.StructuredPrompt,
         featureSwitchContext,
       ),

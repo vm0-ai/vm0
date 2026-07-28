@@ -688,11 +688,11 @@ describe("OPS-01: user data export", () => {
   });
 
   it.each([
-    { projection: "structured", structuredPromptEnabled: true },
-    { projection: "legacy", structuredPromptEnabled: false },
+    { projection: "structured", userMessageEnabled: true },
+    { projection: "legacy", userMessageEnabled: false },
   ])(
     "exports the $projection user-message projection",
-    async ({ structuredPromptEnabled }) => {
+    async ({ userMessageEnabled }) => {
       const api = createOpsLogsApi(context);
       const chat = createChatFilesBddApi(context);
       const { actor, agentId } = await entitledRunActor();
@@ -702,7 +702,7 @@ describe("OPS-01: user data export", () => {
       await updateFeatureSwitchesForUser(
         context,
         { ...actor, orgId: actor.orgId },
-        { [FeatureSwitchKey.StructuredPrompt]: structuredPromptEnabled },
+        { [FeatureSwitchKey.StructuredPrompt]: userMessageEnabled },
       );
 
       const style = ILLUSTRATION_TEMPLATE_ITEMS[0];
@@ -713,7 +713,7 @@ describe("OPS-01: user data export", () => {
         type: "illustration",
         selection: { illustrationStyleId: style.illustrationStyleId },
       };
-      const structuredPrompt: UserMessageDocument = {
+      const userMessage: UserMessageDocument = {
         version: 1,
         parts: [
           {
@@ -730,7 +730,7 @@ describe("OPS-01: user data export", () => {
           agentId,
           prompt: "stale export content",
           generationTemplate,
-          structuredPrompt,
+          userMessage,
         },
         [201],
       );
@@ -760,23 +760,23 @@ describe("OPS-01: user data export", () => {
       ) as {
         readonly role: string;
         readonly content: string;
-        readonly structuredPrompt?: UserMessageDocument;
+        readonly userMessage?: UserMessageDocument;
       }[];
-      const expectedContent = structuredPromptEnabled
+      const expectedContent = userMessageEnabled
         ? `[Template: ${style.title}]\n\nExport the structured request`
         : "stale export content";
       expect(messages[0]).toMatchObject({
         role: "user",
         content: expectedContent,
-        ...(structuredPromptEnabled ? { structuredPrompt } : {}),
+        ...(userMessageEnabled ? { userMessage } : {}),
       });
       expect(messages[0]?.content).not.toContain(
-        structuredPromptEnabled
+        userMessageEnabled
           ? "stale export content"
           : "Export the structured request",
       );
-      if (!structuredPromptEnabled) {
-        expect(messages[0]).not.toHaveProperty("structuredPrompt");
+      if (!userMessageEnabled) {
+        expect(messages[0]).not.toHaveProperty("userMessage");
       }
     },
   );

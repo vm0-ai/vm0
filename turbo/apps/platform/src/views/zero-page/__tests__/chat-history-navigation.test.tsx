@@ -851,12 +851,12 @@ describe("chat lifecycle", () => {
   });
 
   it.each([
-    { projection: "structured", structuredPromptEnabled: true },
-    { projection: "legacy", structuredPromptEnabled: false },
+    { projection: "structured", userMessageEnabled: true },
+    { projection: "legacy", userMessageEnabled: false },
   ])(
     "labels folded runs from their $projection projection",
-    async ({ structuredPromptEnabled }) => {
-      const threadId = `structured-run-group-label-${structuredPromptEnabled ? "on" : "off"}`;
+    async ({ userMessageEnabled }) => {
+      const threadId = `structured-run-group-label-${userMessageEnabled ? "on" : "off"}`;
       const messages = makeRunGroupMessages({
         label: "legacy run label",
         count: 2,
@@ -866,7 +866,7 @@ describe("chat lifecycle", () => {
         return message.role === "user"
           ? {
               ...message,
-              structuredPrompt: {
+              userMessage: {
                 version: 1 as const,
                 parts: [
                   {
@@ -891,19 +891,15 @@ describe("chat lifecycle", () => {
         context,
         path: `/chats/${threadId}`,
         featureSwitches: {
-          [FeatureSwitchKey.StructuredPrompt]: structuredPromptEnabled,
+          [FeatureSwitchKey.StructuredPrompt]: userMessageEnabled,
         },
       });
 
-      const structuredLabel =
+      const userMessageLabel =
         "1 run for [File: roadmap.pdf] Review the roadmap";
       const legacyLabel = "1 run for legacy run label";
-      const expectedLabel = structuredPromptEnabled
-        ? structuredLabel
-        : legacyLabel;
-      const excludedLabel = structuredPromptEnabled
-        ? legacyLabel
-        : structuredLabel;
+      const expectedLabel = userMessageEnabled ? userMessageLabel : legacyLabel;
+      const excludedLabel = userMessageEnabled ? legacyLabel : userMessageLabel;
       await waitFor(() => {
         expect(buttonByLabel("Expand grouped run history")).toHaveTextContent(
           expectedLabel,

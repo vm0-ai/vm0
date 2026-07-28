@@ -70,6 +70,7 @@ import {
 } from "./zero-teams-connect.service";
 import { touchChatThreadLastMessageAt } from "./zero-chat-message-shared.service";
 import { insertChatEvent } from "./zero-chat-event.service";
+import { createUserMessageDocument } from "./zero-chat-user-message.service";
 import {
   encryptQueuedUserMessageRunParams,
   enqueueUserMessageQueueItem,
@@ -1681,6 +1682,16 @@ async function persistTeamsChatMessage(args: {
         chatThreadId: route.chatThreadId,
         eventType: "input.prompt",
         content: prompt,
+        userMessage: createUserMessageDocument({
+            text: args.activity.text,
+            files: args.promptFiles.map((file) => {
+              return {
+                id: file.fileId,
+                filename: file.name,
+                contentType: file.contentType,
+              };
+            }),
+          }),
         runId: null,
         createdAt: currentTime,
       },
