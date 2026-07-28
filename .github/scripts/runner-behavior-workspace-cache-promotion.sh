@@ -6,6 +6,8 @@ SVC="${JOB_REF}-workspace-cache-promotion"
 GROUP="vm0/workspace-cache-promotion-${JOB_REF}"
 RUNNER_DIR="/var/lib/vm0-runner/runners/${SVC}"
 GROUP_DIR="/var/lib/vm0-runner/groups/vm0/workspace-cache-promotion-${JOB_REF}"
+# JOB_REF is stable across reruns, while promoted cache entries outlive runner cleanup.
+WORKFLOW_RUN_KEY="${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
 
 echo "=== Cleaning stale workspace cache promotion runner state ==="
 ssh "$REMOTE" bash -s -- "${BIN_DIR}" "${SVC}" "${GROUP_DIR}" "${RUNNER_DIR}" <<'REMOTE_SCRIPT'
@@ -40,16 +42,18 @@ ssh "$REMOTE" "sudo ${BIN_DIR}/runner config \
   --token vm0_official_${OFFICIAL_RUNNER_SECRET}"
 
 echo "=== Running workspace cache promotion test ==="
-ssh "$REMOTE" bash -s -- "${BIN_DIR}" "${SVC}" "${GROUP}" "${RUNNER_DIR}" "${GROUP_DIR}" <<'REMOTE_SCRIPT'
+ssh "$REMOTE" bash -s -- \
+  "${BIN_DIR}" "${SVC}" "${GROUP}" "${RUNNER_DIR}" "${GROUP_DIR}" "${WORKFLOW_RUN_KEY}" <<'REMOTE_SCRIPT'
 set -euo pipefail
-BIN_DIR=$1; SVC=$2; GROUP=$3; RUNNER_DIR=$4; GROUP_DIR=$5
+BIN_DIR=$1; SVC=$2; GROUP=$3; RUNNER_DIR=$4; GROUP_DIR=$5; WORKFLOW_RUN_KEY=$6
 UNIT="vm0-runner-${SVC}.service"
 MAX_ATTEMPTS=3
 PROMOTION_VERIFIED=false
 SUBMIT_PID=""
 WRITER_EXEC_PID=""
 SANDBOX_ID=""
-INVOCATION_ID=""
+TURN1_INVOCATION_ID=""
+TURN2_INVOCATION_ID=""
 
 fail() { echo "FAIL: $1"; exit 1; }
 wait_for_unit_inactive() {
@@ -79,11 +83,12 @@ cleanup() {
 trap cleanup EXIT
 
 for ((ATTEMPT = 1; ATTEMPT <= MAX_ATTEMPTS; ATTEMPT++)); do
-  SESSION_ID="e2e-workspace-cache-promotion-session-${ATTEMPT}"
+  SESSION_ID="e2e-workspace-cache-promotion-session-${WORKFLOW_RUN_KEY}-${ATTEMPT}"
   SUBMIT_PID=""
   WRITER_EXEC_PID=""
   SANDBOX_ID=""
-  INVOCATION_ID=""
+  TURN1_INVOCATION_ID=""
+  TURN2_INVOCATION_ID=""
 
   echo "--- Workspace cache promotion attempt ${ATTEMPT}/${MAX_ATTEMPTS} ---"
   sudo "$BIN_DIR/runner" service stop --name "$SVC" --force
@@ -95,12 +100,12 @@ for ((ATTEMPT = 1; ATTEMPT <= MAX_ATTEMPTS; ATTEMPT++)); do
     --config "$RUNNER_DIR/runner.yaml" --local --env USE_MOCK_CLAUDE=true --env USE_MOCK_CODEX=true
 
   for _ in $(seq 1 30); do
-    INVOCATION_ID=$(sudo systemctl show "$UNIT" \
+    TURN1_INVOCATION_ID=$(sudo systemctl show "$UNIT" \
       --property=InvocationID --value 2>/dev/null) || true
-    [ -n "$INVOCATION_ID" ] && break
+    [ -n "$TURN1_INVOCATION_ID" ] && break
     sleep 1
   done
-  [ -n "$INVOCATION_ID" ] || fail "runner invocation ID unavailable"
+  [ -n "$TURN1_INVOCATION_ID" ] || fail "turn 1 runner invocation ID unavailable"
 
   # Keep the supervised turn active while an independently owned runner exec
   # creates the live writer. Supervised descendants are reclaimed before
@@ -191,7 +196,7 @@ cat /tmp/vm0-workspace-cache-release >/dev/null' &
   WRITER_EXEC_PID=""
 
   PROMOTION_LOGS=$(sudo journalctl --no-pager \
-    "_SYSTEMD_INVOCATION_ID=$INVOCATION_ID" 2>&1) \
+    "_SYSTEMD_INVOCATION_ID=$TURN1_INVOCATION_ID" 2>&1) \
     || fail "failed to read workspace cache promotion runner logs"
   if grep -F 'workspace image cache promotion skipped: capacity lock busy' \
     <<<"$PROMOTION_LOGS" >/dev/null; then
@@ -203,7 +208,7 @@ cat /tmp/vm0-workspace-cache-release >/dev/null' &
   fi
   if ! grep -F 'workspace image cache promoted' \
     <<<"$PROMOTION_LOGS" >/dev/null; then
-    echo "--- Workspace cache logs for invocation ${INVOCATION_ID} ---"
+    echo "--- Workspace cache logs for invocation ${TURN1_INVOCATION_ID} ---"
     PROMOTION_LINES=$(grep -F 'workspace image cache' <<<"$PROMOTION_LOGS" || true)
     if [ -n "$PROMOTION_LINES" ]; then
       printf '%s\n' "$PROMOTION_LINES"
@@ -218,15 +223,50 @@ cat /tmp/vm0-workspace-cache-release >/dev/null' &
   sudo "$BIN_DIR/runner" service start --name "$SVC" \
     --config "$RUNNER_DIR/runner.yaml" --local --env USE_MOCK_CLAUDE=true --env USE_MOCK_CODEX=true
 
+  # Scope restore diagnostics to the restarted runner, never the promotion invocation.
+  for _ in $(seq 1 30); do
+    TURN2_INVOCATION_ID=$(sudo systemctl show "$UNIT" \
+      --property=InvocationID --value 2>/dev/null) || true
+    if [ -n "$TURN2_INVOCATION_ID" ] \
+      && [ "$TURN2_INVOCATION_ID" != "$TURN1_INVOCATION_ID" ]; then
+      break
+    fi
+    TURN2_INVOCATION_ID=""
+    sleep 1
+  done
+  [ -n "$TURN2_INVOCATION_ID" ] || fail "turn 2 runner invocation ID unavailable"
+
   echo "--- Turn 2: restore promoted workspace ---"
-  sudo "$BIN_DIR/runner" local submit --group "$GROUP" \
+  if sudo "$BIN_DIR/runner" local submit --group "$GROUP" \
     --session-id "$SESSION_ID" \
     --feature-flag sandboxReuse=true \
-    --prompt 'test "$(cat /home/user/workspace/cache-marker)" = workspace-cache-marker && test -s /home/user/workspace/live-writer && test ! -e /home/user/workspace/nested/ephemeral' \
-    || fail "Workspace cache turn 2: promoted workspace state was not restored correctly"
-  echo "PASS: workspace cache restored after freeze-based promotion"
-  PROMOTION_VERIFIED=true
-  break
+    --prompt 'test "$(cat /home/user/workspace/cache-marker)" = workspace-cache-marker && test -s /home/user/workspace/live-writer && test ! -e /home/user/workspace/nested/ephemeral'; then
+    echo "PASS: workspace cache restored after freeze-based promotion"
+    PROMOTION_VERIFIED=true
+    break
+  fi
+
+  RESTORE_LOGS=$(sudo journalctl --no-pager \
+    "_SYSTEMD_INVOCATION_ID=$TURN2_INVOCATION_ID" 2>&1) \
+    || fail "failed to read workspace cache restore runner logs"
+  if grep -F 'workspace image cache lock busy or unavailable; using fresh workspace image' \
+    <<<"$RESTORE_LOGS" \
+    | grep -F 'lock is already held by another process' >/dev/null; then
+    if [ "$ATTEMPT" -eq "$MAX_ATTEMPTS" ]; then
+      fail "Workspace cache restore entry lock remained busy after ${MAX_ATTEMPTS} attempts"
+    fi
+    echo "RETRY: workspace cache restore entry lock was busy on attempt ${ATTEMPT}"
+    continue
+  fi
+
+  echo "--- Workspace cache logs for invocation ${TURN2_INVOCATION_ID} ---"
+  RESTORE_LINES=$(grep -F 'workspace image cache' <<<"$RESTORE_LOGS" || true)
+  if [ -n "$RESTORE_LINES" ]; then
+    printf '%s\n' "$RESTORE_LINES"
+  else
+    echo "No workspace image cache logs found"
+  fi
+  fail "Workspace cache turn 2: promoted workspace state was not restored correctly"
 done
 
 [ "$PROMOTION_VERIFIED" = true ] || fail "Workspace cache promotion was not verified"
