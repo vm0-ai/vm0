@@ -689,7 +689,7 @@ describe("CHAT-02 chat messages and visible validation", () => {
       limit: 1,
     });
     expect(ownerMessages).toStrictEqual({
-      messages: [],
+      events: [],
       hasHistoryBefore: false,
     });
 

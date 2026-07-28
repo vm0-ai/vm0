@@ -106,8 +106,10 @@ export const chatMessages = pgTable(
     // Persistent-secret encrypted queue parameters. This field never leaves
     // the API and is populated only by a later writer cutover.
     encryptedParams: text("encrypted_params"),
-    // Release A keeps the legacy column nullable while draining old writers.
-    // Release B drops it after the new writer is verified in production.
+    // Release A keeps the legacy column nullable while eventType readers
+    // deploy, but writers still populate it for rollback-eligible readers.
+    // A later release stops the dual-write after old readers have drained;
+    // Release B can then drop the physical column.
     role: text("role"),
     content: text("content"),
     /** Stable business representation of rich user-message content. */

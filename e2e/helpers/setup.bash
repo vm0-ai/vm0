@@ -393,16 +393,18 @@ zero_chat_run_with_model() {
     local prompt="$2"
     local selected_model="$3"
     local real_agent_in_preview="${4:-false}"
-    local payload body
+    local payload body client_event_id
+    client_event_id=$(cat /proc/sys/kernel/random/uuid)
 
     payload=$(jq -nc \
         --arg agentId "$agent_id" \
         --arg prompt "$prompt" \
         --arg selectedModel "$selected_model" \
+        --arg clientEventId "$client_event_id" \
         --argjson realAgentInPreview "$real_agent_in_preview" \
-        '{agentId: $agentId, prompt: $prompt, model: $selectedModel, hasTextContent: true, realAgentInPreview: $realAgentInPreview}')
+        '{agentId: $agentId, prompt: $prompt, model: $selectedModel, clientEventId: $clientEventId, hasTextContent: true, realAgentInPreview: $realAgentInPreview}')
 
-    body=$(e2e_api_curl "/api/zero/chat/messages" -X POST -d "$payload")
+    body=$(e2e_api_curl "/api/zero/chat/events" -X POST -d "$payload")
     LAST_RUN_ID=$(printf '%s' "$body" | jq -r '.runId // ""')
     LAST_THREAD_ID=$(printf '%s' "$body" | jq -r '.threadId // ""')
     export LAST_RUN_ID LAST_THREAD_ID
@@ -418,17 +420,19 @@ zero_chat_run_with_model_selection() {
     local model_provider_id="$3"
     local selected_model="$4"
     local real_agent_in_preview="${5:-false}"
-    local payload body
+    local payload body client_event_id
+    client_event_id=$(cat /proc/sys/kernel/random/uuid)
 
     payload=$(jq -nc \
         --arg agentId "$agent_id" \
         --arg prompt "$prompt" \
         --arg modelProviderId "$model_provider_id" \
         --arg selectedModel "$selected_model" \
+        --arg clientEventId "$client_event_id" \
         --argjson realAgentInPreview "$real_agent_in_preview" \
-        '{agentId: $agentId, prompt: $prompt, modelSelection: {modelProviderId: $modelProviderId, selectedModel: $selectedModel}, hasTextContent: true, realAgentInPreview: $realAgentInPreview}')
+        '{agentId: $agentId, prompt: $prompt, modelSelection: {modelProviderId: $modelProviderId, selectedModel: $selectedModel}, clientEventId: $clientEventId, hasTextContent: true, realAgentInPreview: $realAgentInPreview}')
 
-    body=$(e2e_api_curl "/api/zero/chat/messages" -X POST -d "$payload")
+    body=$(e2e_api_curl "/api/zero/chat/events" -X POST -d "$payload")
     LAST_RUN_ID=$(printf '%s' "$body" | jq -r '.runId // ""')
     LAST_THREAD_ID=$(printf '%s' "$body" | jq -r '.threadId // ""')
     export LAST_RUN_ID LAST_THREAD_ID
