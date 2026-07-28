@@ -324,6 +324,70 @@ describe("chat composer models", () => {
     expect(slashWorkflowMenu).not.toHaveTextContent("/sales-research");
   });
 
+  it("prioritizes prefix matches in slash skill substring search", async () => {
+    const user = userEvent.setup({ delay: null });
+    mockOrgModelRoutes("kimi-k2.7-code");
+    mockAgent();
+    context.mocks.api(zeroWorkflowsCollectionContract.list, ({ respond }) => {
+      return respond(200, [
+        workflowSummary({
+          name: "dummy-pr-to-release",
+          displayName: "Dummy PR to Release",
+          description: null,
+          agentId: AGENT_ID,
+        }),
+        workflowSummary({
+          name: "release-production",
+          displayName: "Release Production",
+          description: null,
+          agentId: AGENT_ID,
+        }),
+        workflowSummary({
+          name: "prepare-release-notes",
+          displayName: "Prepare Release Notes",
+          description: null,
+          agentId: AGENT_ID,
+        }),
+        workflowSummary({
+          name: "release-staging",
+          displayName: "Release Staging",
+          description: null,
+          agentId: AGENT_ID,
+        }),
+      ]);
+    });
+
+    detachedSetupPage({
+      context,
+      path: `/agents/${AGENT_ID}/chat`,
+      featureSwitches: {
+        [FeatureSwitchKey.ComposerSkillSubstringSearch]: true,
+      },
+    });
+
+    const editor = await findComposerEditor();
+    await user.click(editor);
+    await user.keyboard("/ReLeAsE");
+
+    const slashWorkflowMenu = await screen.findByTestId("slash-workflow-menu");
+    expect(
+      within(slashWorkflowMenu)
+        .getAllByRole("button")
+        .map((option) => option.textContent),
+    ).toStrictEqual([
+      "/release-production",
+      "/release-staging",
+      "/dummy-pr-to-release",
+      "/prepare-release-notes",
+    ]);
+
+    await user.keyboard("{Enter}");
+
+    await waitFor(() => {
+      expect(editor.textContent).toContain("/release-production");
+    });
+  });
+
   it("does not highlight workflow names inside URLs", async () => {
     const user = userEvent.setup({ delay: null });
     mockOrgModelRoutes("kimi-k2.7-code");
