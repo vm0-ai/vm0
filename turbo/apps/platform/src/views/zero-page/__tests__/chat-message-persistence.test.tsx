@@ -31,7 +31,7 @@ const FIRST_MESSAGE = "Persist this remote response for thread re-entry";
 const STRUCTURED_MESSAGE_ID = "00000000-0000-4000-8000-000000000733";
 const STRUCTURED_MESSAGE = "Legacy structured content should stay hidden";
 const STRUCTURED_REFERENCE_TITLE = "Archived IndexedDB source";
-function structuredPromptFixture(): UserMessageDocument {
+function userMessageFixture(): UserMessageDocument {
   return {
     version: 1,
     parts: [
@@ -65,7 +65,7 @@ describe("chat message persistence", () => {
       memberships: [{ id: "idb-reentry-org" }],
     });
     const appDb = await context.store.get(chatIdb$);
-    const structuredPrompt = structuredPromptFixture();
+    const userMessage = userMessageFixture();
     const user = userEvent.setup({ delay: null });
     const blockedRemote = context.mocks.deferred<void>();
     const firstThreadCaughtUp = context.mocks.deferred<void>();
@@ -111,7 +111,7 @@ describe("chat message persistence", () => {
                 eventType: "input.prompt" as const,
                 content: STRUCTURED_MESSAGE,
                 runId: "d0000000-0000-4000-a000-000000000731",
-                structuredPrompt,
+                userMessage,
                 createdAt: "2026-06-09T10:00:00Z",
                 seqId: 1,
               },
@@ -173,13 +173,13 @@ describe("chat message persistence", () => {
       await waitFor(async () => {
         const testDb = await openChatIdb("idb-reentry-user", "idb-reentry-org");
         try {
-          const structuredMessage: unknown = await testDb.get(
+          const userMessageElement: unknown = await testDb.get(
             CHAT_MESSAGES_STORE,
             STRUCTURED_MESSAGE_ID,
           );
-          expect(structuredMessage).toMatchObject({
+          expect(userMessageElement).toMatchObject({
             content: STRUCTURED_MESSAGE,
-            structuredPrompt,
+            userMessage,
             threadId: FIRST_THREAD_ID,
           });
           const persistedMessage: unknown = await testDb.get(
@@ -190,7 +190,7 @@ describe("chat message persistence", () => {
             content: FIRST_MESSAGE,
             threadId: FIRST_THREAD_ID,
           });
-          expect(persistedMessage).not.toHaveProperty("structuredPrompt");
+          expect(persistedMessage).not.toHaveProperty("userMessage");
         } finally {
           testDb.close();
         }
@@ -233,7 +233,7 @@ describe("chat message persistence", () => {
         id: "00000000-0000-4000-8000-000000000734",
         eventType: "input.prompt" as const,
         content: cachedMessage,
-        structuredPrompt: { version: 1, parts: [] },
+        userMessage: { version: 1, parts: [] },
         createdAt: "2026-06-09T10:00:00Z",
         threadId,
         orderSequence: -1,

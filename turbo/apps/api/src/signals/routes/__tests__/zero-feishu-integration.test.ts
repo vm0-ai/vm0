@@ -1660,7 +1660,7 @@ describe("Feishu integration", () => {
 
   it("runs a Feishu DM file with downloadable resource context", async () => {
     const fixture = await setupFeishuRunFixture();
-    const { actor, runnerGroup, appId, callbackUrl } = fixture;
+    const { actor, runnerGroup, appId, callbackUrl, defaultAgentId } = fixture;
     await connectFixtureUser(fixture);
     const fileKey = `file_v2_${"a".repeat(1400)}`;
     await postEvent(
@@ -1691,6 +1691,50 @@ describe("Feishu integration", () => {
     expect(claim.prompt).toContain("   [TYPE] file");
     expect(claim.appendSystemPrompt).toContain("zero feishu download-file -h");
     expect(claim.appendSystemPrompt).toContain("zero feishu upload-file -h");
+
+    mocks.clerk.session(actor.userId, actor.orgId, actor.orgRole);
+    const threadEvents = await accept(
+      setupApp({ context })(chatThreadsContract).events({
+        headers: { authorization: "Bearer clerk-session" },
+        query: {},
+      }),
+      [200],
+    );
+    const chatThreadCreated = requireValue(
+      threadEvents.body.events.find((event) => {
+        return event.kind === "created" && event.agentId === defaultAgentId;
+      }),
+      "Expected the canonical Feishu file chat thread",
+    );
+    const threadEventsPage = await accept(
+      setupApp({ context })(chatThreadEventsContract).list({
+        headers: { authorization: "Bearer clerk-session" },
+        params: { threadId: chatThreadCreated.chatThreadId },
+        query: {},
+      }),
+      [200],
+    );
+    expect(threadEventsPage.body.events).toContainEqual(
+      expect.objectContaining({
+        content: [
+          "[Feishu file] quarterly-report.pdf",
+          "   [MESSAGE_ID] om_file_message",
+          `   [FILE_KEY] ${fileId}`,
+          "   [TYPE] file",
+        ].join("\n"),
+        userMessage: {
+          version: 1,
+          parts: [
+            {
+              type: "file",
+              fileId,
+              filenameSnapshot: "quarterly-report.pdf",
+              contentType: "application/pdf",
+            },
+          ],
+        },
+      }),
+    );
 
     const fileBytes = Buffer.from("feishu file bytes");
     server.use(

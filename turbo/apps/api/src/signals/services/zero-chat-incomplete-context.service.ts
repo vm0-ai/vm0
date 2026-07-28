@@ -25,7 +25,7 @@ import {
   chatEventTypeSql,
 } from "./zero-chat-event-type.service";
 import { visibleChatEventCondition } from "./zero-chat-message-shared.service";
-import { projectStructuredUserMessage } from "./zero-chat-structured-message.service";
+import { projectUserMessage } from "./zero-chat-user-message.service";
 
 const INCOMPLETE_ROUND_LIMIT = 20;
 const INCOMPLETE_MESSAGE_CHAR_CAP = 4000;
@@ -40,7 +40,7 @@ interface IncompleteRoundSelection {
 interface IncompleteRoundMessage {
   readonly role: "user" | "assistant";
   readonly content: string | null;
-  readonly structuredPrompt: UserMessageDocument | null;
+  readonly userMessage: UserMessageDocument | null;
   readonly attachFiles: readonly string[] | null;
 }
 
@@ -189,7 +189,7 @@ async function loadSelectedIncompleteRounds(
       runId: chatMessages.runId,
       eventType: chatEventTypeSql().as("event_type"),
       content: chatMessages.content,
-      structuredPrompt: chatMessages.structuredPrompt,
+      userMessage: chatMessages.userMessage,
       attachFiles: chatMessages.attachFiles,
     })
     .from(chatMessages)
@@ -228,7 +228,7 @@ async function loadSelectedIncompleteRounds(
     round.messages.push({
       role: chatEventCompatibilityRole(row.eventType),
       content: row.content,
-      structuredPrompt: row.structuredPrompt,
+      userMessage: row.userMessage,
       attachFiles: row.attachFiles,
     });
   }
@@ -258,15 +258,11 @@ function truncateIncomplete(value: string): string {
 
 function formatIncompleteMessage(
   message: IncompleteRoundMessage,
-  structuredPromptEnabled: boolean,
+  userMessageEnabled: boolean,
   inlineTemplatesEnabled: boolean,
 ): string {
-  if (
-    message.role === "user" &&
-    structuredPromptEnabled &&
-    message.structuredPrompt
-  ) {
-    const prompt = projectStructuredUserMessage(message.structuredPrompt, {
+  if (message.role === "user" && userMessageEnabled && message.userMessage) {
+    const prompt = projectUserMessage(message.userMessage, {
       inlineTemplates: inlineTemplatesEnabled,
     }).agentPrompt;
     return `User: ${truncateIncomplete(prompt) || "[empty message]"}`;
@@ -287,7 +283,7 @@ function formatIncompleteMessage(
 
 function buildWebChatIncompleteContext(
   rounds: readonly IncompleteRound[],
-  structuredPromptEnabled: boolean,
+  userMessageEnabled: boolean,
   inlineTemplatesEnabled: boolean,
 ): string {
   if (rounds.length === 0) {
@@ -299,7 +295,7 @@ function buildWebChatIncompleteContext(
     const rendered = round.messages.map((message) => {
       return formatIncompleteMessage(
         message,
-        structuredPromptEnabled,
+        userMessageEnabled,
         inlineTemplatesEnabled,
       );
     });
@@ -335,14 +331,14 @@ function buildWebChatIncompleteContext(
 export async function loadWebChatIncompleteContext(
   db: Db,
   threadId: string,
-  structuredPromptEnabled: boolean,
+  userMessageEnabled: boolean,
   inlineTemplatesEnabled = false,
 ): Promise<string> {
   const selection = await selectIncompleteRoundFrontier(db, threadId);
   const rounds = await loadSelectedIncompleteRounds(db, threadId, selection);
   return buildWebChatIncompleteContext(
     rounds,
-    structuredPromptEnabled,
+    userMessageEnabled,
     inlineTemplatesEnabled,
   );
 }

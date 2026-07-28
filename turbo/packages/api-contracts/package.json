@@ -1,6 +1,6 @@
 {
   "name": "@vm0/api-contracts",
-  "version": "1.239.1",
+  "version": "1.239.2",
   "private": true,
   "type": "module",
   "exports": {

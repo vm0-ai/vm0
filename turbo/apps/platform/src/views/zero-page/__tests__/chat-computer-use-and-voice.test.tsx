@@ -844,7 +844,14 @@ describe("chat lifecycle", () => {
       await waitFor(() => {
         expect(draftPatches).toContainEqual({
           draftContent: "Summarize the standup",
-          draftStructuredPrompt: null,
+          draftUserMessage: {
+            version: 1,
+            parts: [{ type: "text", text: "Summarize the standup" }],
+          },
+          draftStructuredPrompt: {
+            version: 1,
+            parts: [{ type: "text", text: "Summarize the standup" }],
+          },
           draftAttachments: null,
         });
       });
@@ -911,7 +918,14 @@ describe("chat lifecycle", () => {
     await waitFor(() => {
       expect(draftPatches).toContainEqual({
         draftContent: "First sentence",
-        draftStructuredPrompt: null,
+        draftUserMessage: {
+          version: 1,
+          parts: [{ type: "text", text: "First sentence" }],
+        },
+        draftStructuredPrompt: {
+          version: 1,
+          parts: [{ type: "text", text: "First sentence" }],
+        },
         draftAttachments: null,
       });
     });

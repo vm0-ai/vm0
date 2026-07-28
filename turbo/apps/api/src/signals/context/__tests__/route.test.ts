@@ -59,13 +59,13 @@ const routeTestContract = c.router({
     responses: {
       200: z.object({
         content: z.string(),
-        structuredPrompt: z.unknown().optional(),
+        userMessage: z.unknown().optional(),
       }),
     },
   },
 });
 
-const structuredFeedbackDocument = {
+const userMessageFeedbackDocument = {
   version: 1,
   parts: [
     {
@@ -173,7 +173,7 @@ describe("honoSignalHandler", () => {
         status: 200 as const,
         body: {
           content: "The button is hard to find\nIncrease the contrast",
-          structuredPrompt: structuredFeedbackDocument,
+          userMessage: userMessageFeedbackDocument,
         },
       };
     });
@@ -207,7 +207,7 @@ describe("honoSignalHandler", () => {
     );
     expect(capableResponse.body).toStrictEqual({
       content: "The button is hard to find\nIncrease the contrast",
-      structuredPrompt: structuredFeedbackDocument,
+      userMessage: userMessageFeedbackDocument,
     });
   });
 });

@@ -6,6 +6,10 @@ import {
   type KeyObject,
 } from "node:crypto";
 
+import {
+  chatThreadEventsContract,
+  chatThreadsContract,
+} from "@vm0/api-contracts/contracts/chat-threads";
 import { zeroTeamsConnectContract } from "@vm0/api-contracts/contracts/zero-teams-connect";
 import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import { HttpResponse, http } from "msw";
@@ -1467,6 +1471,54 @@ describe("POST /api/zero/teams/bot", () => {
     expect(fileId).toBeTruthy();
     expect(fileId).not.toContain(contentUrl);
     expect(fileId).toMatch(/^teams_file_[A-Za-z0-9_-]{22}$/u);
+
+    mocks.clerk.session(actor.userId, actor.orgId, actor.orgRole);
+    const threadEvents = await accept(
+      setupApp({ context })(chatThreadsContract).events({
+        headers: { authorization: "Bearer clerk-session" },
+        query: {},
+      }),
+      [200],
+    );
+    const chatThreadCreated = threadEvents.body.events.find((event) => {
+      return (
+        event.kind === "created" && event.agentId === defaultAgent.body.agentId
+      );
+    });
+    if (!chatThreadCreated) {
+      throw new Error("Expected the canonical Teams file chat thread");
+    }
+    const threadEventsPage = await accept(
+      setupApp({ context })(chatThreadEventsContract).list({
+        headers: { authorization: "Bearer clerk-session" },
+        params: { threadId: chatThreadCreated.chatThreadId },
+        query: {},
+      }),
+      [200],
+    );
+    expect(threadEventsPage.body.events).toContainEqual(
+      expect.objectContaining({
+        content: [
+          "please inspect this",
+          "",
+          "[Teams file] spec.png (image/png)",
+          "   [Teams attachment ID] channel-attachment-1",
+          `   [ID] ${fileId}`,
+        ].join("\n"),
+        userMessage: {
+          version: 1,
+          parts: [
+            {
+              type: "file",
+              fileId,
+              filenameSnapshot: "spec.png",
+              contentType: "image/png",
+            },
+            { type: "text", text: "please inspect this" },
+          ],
+        },
+      }),
+    );
 
     const fileBytes = Buffer.from("teams file bytes");
     const expectedShareId = `u!${Buffer.from(contentUrl, "utf8").toString(

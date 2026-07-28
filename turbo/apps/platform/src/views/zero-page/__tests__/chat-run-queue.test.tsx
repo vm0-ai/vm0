@@ -137,11 +137,11 @@ function mockActiveRunThread(
 
 describe("chat run queue", () => {
   it.each([
-    { projection: "structured", structuredPromptEnabled: true },
-    { projection: "legacy", structuredPromptEnabled: false },
+    { projection: "structured", userMessageEnabled: true },
+    { projection: "legacy", userMessageEnabled: false },
   ])(
     "labels a queued message from its $projection projection",
-    async ({ structuredPromptEnabled }) => {
+    async ({ userMessageEnabled }) => {
       mockChatLifecycle(context, {
         threadId: THREAD_ID,
         chatMessages: [
@@ -164,7 +164,7 @@ describe("chat run queue", () => {
             role: "user",
             content: "legacy queued label",
             runId: undefined,
-            structuredPrompt: {
+            userMessage: {
               version: 1,
               parts: [
                 {
@@ -206,20 +206,16 @@ describe("chat run queue", () => {
         context,
         path: CHAT_PATH,
         featureSwitches: {
-          [FeatureSwitchKey.StructuredPrompt]: structuredPromptEnabled,
+          [FeatureSwitchKey.StructuredPrompt]: userMessageEnabled,
         },
       });
 
-      const structuredLabel =
+      const userMessageLabel =
         "[Template: Pitch deck] [File: file-one.pdf] [File: file-two.txt] " +
         "Review [Chat thread: Project Alpha] then continue";
       const legacyLabel = "legacy queued label";
-      const expectedLabel = structuredPromptEnabled
-        ? structuredLabel
-        : legacyLabel;
-      const excludedLabel = structuredPromptEnabled
-        ? legacyLabel
-        : structuredLabel;
+      const expectedLabel = userMessageEnabled ? userMessageLabel : legacyLabel;
+      const excludedLabel = userMessageEnabled ? legacyLabel : userMessageLabel;
       await waitFor(() => {
         expect(screen.getByLabelText("Queued message")).toHaveTextContent(
           expectedLabel,

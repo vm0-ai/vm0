@@ -99,7 +99,7 @@ type MockChatEventOverrides = (
 const mockChatEventOverrides = {
   "input.prompt": (message) => {
     return {
-      structuredPrompt: message.structuredPrompt,
+      userMessage: message.userMessage,
       attachFiles: message.attachFiles,
       generationTemplate: message.generationTemplate,
     };
@@ -119,7 +119,7 @@ const mockChatEventOverrides = {
   "input.rejected": (message) => {
     return {
       error: message.error ?? "Mock input rejected",
-      structuredPrompt: message.structuredPrompt,
+      userMessage: message.userMessage,
       attachFiles: message.attachFiles,
       generationTemplate: message.generationTemplate,
     };

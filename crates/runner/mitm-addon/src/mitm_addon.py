@@ -94,7 +94,7 @@ from logging_utils import (
     log_proxy_entry,
     shutdown_log_writer,
 )
-from url_utils import AuthorityValidationError, get_trusted_authority
+from url_utils import AuthorityValidationError, TrustedAuthority, get_trusted_authority
 
 # HTTP status boundaries used in response-phase classification.
 _HTTP_STATUS_UNAUTHORIZED = 401
@@ -245,6 +245,22 @@ def _classify_request_for_flow(
     )
 
 
+def _classify_request_for_flow_with_trusted_authority(
+    flow: http.HTTPFlow,
+    *,
+    trusted_authority: TrustedAuthority,
+    defer_unresolved_public_destination: bool = False,
+) -> request_classification.RequestClassification:
+    return request_classification.classify_request_with_trusted_authority(
+        flow,
+        registry_path=get_registry_path(),
+        api_url=get_api_url(),
+        tls_admission=upstream_admission.tls_admission_for_client(flow.client_conn),
+        trusted_authority=trusted_authority,
+        defer_unresolved_public_destination=defer_unresolved_public_destination,
+    )
+
+
 def _request_classification_for_flow(
     flow: http.HTTPFlow,
 ) -> request_classification.RequestClassification:
@@ -300,8 +316,9 @@ def _prebind_bounded_requestheaders_upstream_destination(flow: http.HTTPFlow) ->
             trusted_authority.host,
             trusted_authority.port,
         ) and not upstream_admission.request_path_uses_platform_firewall(flow.request.path):
-            classification = _classify_request_for_flow(
+            classification = _classify_request_for_flow_with_trusted_authority(
                 flow,
+                trusted_authority=trusted_authority,
                 defer_unresolved_public_destination=True,
             )
             if classification.kind == "api_allow":
@@ -318,8 +335,9 @@ def _prebind_bounded_requestheaders_upstream_destination(flow: http.HTTPFlow) ->
             return
         _prebind_requestheaders_upstream_destination(
             flow,
-            _classify_request_for_flow(
+            _classify_request_for_flow_with_trusted_authority(
                 flow,
+                trusted_authority=trusted_authority,
                 defer_unresolved_public_destination=True,
             ),
         )

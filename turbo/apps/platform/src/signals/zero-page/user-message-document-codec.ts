@@ -31,7 +31,7 @@ export interface EditorDocumentSnapshot {
   ) => UserMessageDocument | null;
 }
 
-export function shouldUseStructuredPrompt(
+export function shouldUseUserMessage(
   enabled: boolean,
   document: UserMessageDocument | null | undefined,
 ): document is UserMessageDocument {
@@ -359,6 +359,7 @@ export function createEditorDocumentSnapshot(
 export function textToMessageDocument(
   text: string,
   template?: TextMessageTemplateSnapshot,
+  attachments: readonly PersistedAttachment[] = [],
 ): UserMessageDocument | null {
   const parts: UserMessagePart[] = [];
   if (template) {
@@ -368,6 +369,7 @@ export function textToMessageDocument(
       template: template.template,
     });
   }
+  appendFileParts(parts, attachments);
   appendTextPart(parts, text);
   const parsed = userMessageDocumentSchema.safeParse({ version: 1, parts });
   return parsed.success ? parsed.data : null;

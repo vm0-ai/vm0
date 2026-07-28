@@ -616,6 +616,8 @@ jobs:
     environment: production
     steps:
       - uses: actions/checkout@v7.0.1
+        with:
+          ref: ${{ needs.release-please.outputs.release_target }}
 
       - uses: ./.github/actions/toolchain-init
 
@@ -817,6 +819,8 @@ jobs:
     environment: production
     steps:
       - uses: actions/checkout@v7.0.1
+        with:
+          ref: ${{ needs.release-please.outputs.release_target }}
       - uses: ./.github/actions/toolchain-init
 
       - name: Build Runtime API Schema
@@ -959,6 +963,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7.0.1
         with:
+          ref: ${{ needs.release-please.outputs.release_target }}
           fetch-depth: 0
 
       - name: Detect Host Worker deploy input changes
@@ -1012,6 +1017,8 @@ jobs:
     environment: production
     steps:
       - uses: actions/checkout@v7.0.1
+        with:
+          ref: ${{ needs.release-please.outputs.release_target }}
       - uses: ./.github/actions/toolchain-init
 
       - name: Notify Slack - Starting
@@ -1167,6 +1174,8 @@ jobs:
     environment: production
     steps:
       - uses: actions/checkout@v7.0.1
+        with:
+          ref: ${{ needs.release-please.outputs.release_target }}
       - uses: ./.github/actions/toolchain-init
 
       - name: Start GitHub Deployment
@@ -1357,6 +1366,8 @@ jobs:
     environment: production
     steps:
       - uses: actions/checkout@v7.0.1
+        with:
+          ref: ${{ needs.release-please.outputs.release_target }}
       - uses: ./.github/actions/toolchain-init
 
       - name: Start GitHub Deployment
@@ -1653,6 +1664,8 @@ jobs:
       id-token: write
     steps:
       - uses: actions/checkout@v7.0.1
+        with:
+          ref: ${{ needs.release-please.outputs.release_target }}
 
       - name: Notify Slack - Starting
         id: slack-start
@@ -1801,6 +1814,8 @@ jobs:
           - x86_64-unknown-linux-musl
     steps:
       - uses: actions/checkout@v7.0.1
+        with:
+          ref: ${{ needs.release-please.outputs.release_target }}
 
       - name: Resolve runner target metadata
         id: target-metadata
@@ -1990,6 +2005,8 @@ jobs:
       matrix: ${{ steps.groups.outputs.matrix }}
     steps:
       - uses: actions/checkout@v7.0.1
+        with:
+          ref: ${{ needs.release-please.outputs.release_target }}
 
       - name: Setup SSH via Cloudflare Tunnel
         uses: ./.github/actions/setup-ssh-tunnel
@@ -2046,6 +2063,8 @@ jobs:
         include: ${{ fromJSON(needs.runner-production-host-groups.outputs.matrix || '[]') }}
     steps:
       - uses: actions/checkout@v7.0.1
+        with:
+          ref: ${{ needs.release-please.outputs.release_target }}
 
       - name: Notify Slack - Starting
         id: slack-start
@@ -2292,6 +2311,8 @@ jobs:
         include: ${{ fromJSON(needs.runner-production-host-groups.outputs.matrix || '[]') }}
     steps:
       - uses: actions/checkout@v7.0.1
+        with:
+          ref: ${{ needs.release-please.outputs.release_target }}
 
       - name: Notify Slack - Starting
         id: slack-start
@@ -2454,6 +2475,8 @@ jobs:
     environment: production
     steps:
       - uses: actions/checkout@v7.0.1
+        with:
+          ref: ${{ needs.release-please.outputs.release_target }}
       - uses: ./.github/actions/toolchain-init
 
       - name: Build E2B templates
@@ -2477,6 +2500,8 @@ jobs:
       contents: read
     steps:
       - uses: actions/checkout@v7.0.1
+        with:
+          ref: ${{ needs.release-please.outputs.release_target }}
       - uses: ./.github/actions/toolchain-init
 
       - name: Generate Node.js SBOM

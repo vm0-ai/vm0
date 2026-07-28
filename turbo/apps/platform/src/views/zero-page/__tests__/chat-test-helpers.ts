@@ -402,7 +402,7 @@ export function mockChatLifecycle(
       attachments?: PersistedAttachment[];
       clientEventId: string;
       generationTemplate?: GenerationTemplateRequest;
-      structuredPrompt?: UserMessageDocument;
+      userMessage?: UserMessageDocument;
       modelSelection?: ModelSelectionRequest | null;
       runOptions?: ChatRunOptionsRequest;
     }) => void;
@@ -451,7 +451,7 @@ export function mockChatLifecycle(
       }[];
       hasTextContent?: boolean;
       generationTemplate?: GenerationTemplateRequest;
-      structuredPrompt?: UserMessageDocument;
+      userMessage?: UserMessageDocument;
       model?: string;
       modelSelection?: ModelSelectionRequest | null;
       runOptions?: ChatRunOptionsRequest;
@@ -463,7 +463,7 @@ export function mockChatLifecycle(
       prompt: string;
       threadId?: string;
       clientThreadId?: string;
-      structuredPrompt?: UserMessageDocument;
+      userMessage?: UserMessageDocument;
       model?: string;
       modelSelection?: ModelSelectionRequest | null;
       computerUseHostId?: string | null;
@@ -492,8 +492,8 @@ export function mockChatLifecycle(
   let resultContent = "";
   let threadListOverride: ThreadListItem[] | null = null;
   let runPrompt: string | null = null;
-  let runStructuredPrompt: UserMessageDocument | undefined;
   let runUserEventId = "msg-user-sent";
+  let runUserMessage: UserMessageDocument | undefined;
   let runAssociated = false;
   let threadTitle: string | null = options?.threadTitle ?? null;
   let selectedModel: string | null = options?.selectedModel ?? null;
@@ -649,9 +649,7 @@ export function mockChatLifecycle(
         id: runUserEventId,
         role: "user",
         content: runPrompt ?? "Hello",
-        ...(runStructuredPrompt
-          ? { structuredPrompt: runStructuredPrompt }
-          : {}),
+        ...(runUserMessage ? { userMessage: runUserMessage } : {}),
         runId: MOCK_RUN_ID,
         createdAt: "2026-03-10T00:00:01Z",
       });
@@ -695,7 +693,7 @@ export function mockChatLifecycle(
     clientEventId?: string;
     hasTextContent?: boolean;
     generationTemplate?: GenerationTemplateRequest;
-    structuredPrompt?: UserMessageDocument;
+    userMessage?: UserMessageDocument;
     model?: string;
     runOptions?: ChatRunOptionsRequest;
   }) => {
@@ -713,7 +711,7 @@ export function mockChatLifecycle(
       attachments: attachFiles,
       clientEventId,
       generationTemplate: body.generationTemplate,
-      structuredPrompt: body.structuredPrompt,
+      userMessage: body.userMessage,
       modelSelection,
       runOptions: body.runOptions,
     });
@@ -727,9 +725,7 @@ export function mockChatLifecycle(
       content: body.prompt ?? "",
       attachFiles,
       generationTemplate: body.generationTemplate,
-      ...(body.structuredPrompt
-        ? { structuredPrompt: body.structuredPrompt }
-        : {}),
+      ...(body.userMessage ? { userMessage: body.userMessage } : {}),
       createdAt: now,
     });
     return { runId: null, threadId, createdAt: now };
@@ -746,7 +742,7 @@ export function mockChatLifecycle(
     }[];
     hasTextContent?: boolean;
     generationTemplate?: GenerationTemplateRequest;
-    structuredPrompt?: UserMessageDocument;
+    userMessage?: UserMessageDocument;
     model?: string;
     runOptions?: ChatRunOptionsRequest;
     computerUseHostId?: string | null;
@@ -759,7 +755,7 @@ export function mockChatLifecycle(
     if (body.prompt) {
       runPrompt = body.prompt;
     }
-    runStructuredPrompt = body.structuredPrompt;
+    runUserMessage = body.userMessage;
     if (body.cloudBrowserEnabled === true) {
       computerUseHostId = null;
       cloudBrowserEnabled = true;
@@ -956,7 +952,7 @@ export function mockChatLifecycle(
       prompt: body.prompt,
       threadId: body.threadId,
       clientThreadId: body.clientThreadId,
-      structuredPrompt: body.structuredPrompt,
+      userMessage: body.userMessage,
       model: body.model,
       modelSelection: modelSelectionFromBody(body),
       computerUseHostId: body.computerUseHostId,

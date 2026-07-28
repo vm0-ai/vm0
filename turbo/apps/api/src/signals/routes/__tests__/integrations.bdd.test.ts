@@ -1495,11 +1495,25 @@ describe("INT-01: Slack app deep webhook flows", () => {
     const visibleMessages = (
       await chat.listThreadEvents(actor, canonicalChatThreadId)
     ).events;
+    const canonicalInputAssetId =
+      requireCanonicalSlackInputAssetId(visibleMessages);
     expect(visibleMessages).toStrictEqual(
       expect.arrayContaining([
         expect.objectContaining({
           eventType: "input.prompt",
           content: "admit this event once",
+          userMessage: {
+            version: 1,
+            parts: [
+              {
+                type: "file",
+                fileId: canonicalInputAssetId,
+                filenameSnapshot: "source-notes.txt",
+                contentType: "text/plain",
+              },
+              { type: "text", text: "admit this event once" },
+            ],
+          },
           slackMessagePermalink:
             "https://vm0.slack.com/archives/C_BDD_CANONICAL_INGRESS/p2900000100",
           attachFiles: [
@@ -1526,11 +1540,6 @@ describe("INT-01: Slack app deep webhook flows", () => {
         return message.content?.includes("[Slack file]") ?? false;
       }),
     ).toBeFalsy();
-    const canonicalInputAssetId = requireCanonicalSlackInputAssetId(
-      visibleMessages.filter((message) => {
-        return "attachFiles" in message;
-      }),
-    );
     const canonicalInputRun = await runs.readRun(actor, run1Id);
     expect(canonicalInputRun.prompt).toContain(
       `[Web file] source-notes.txt (text/plain)`,

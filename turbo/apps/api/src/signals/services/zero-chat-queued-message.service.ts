@@ -4,7 +4,7 @@ import {
   chatMessages,
   type ChatMessageAttachFileMetadata,
   type ChatMessageGenerationTemplate,
-  type ChatMessageStructuredPrompt,
+  type ChatMessageUserMessage,
 } from "@vm0/db/schema/chat-message";
 import { chatThreads } from "@vm0/db/schema/chat-thread";
 import { and, asc, eq, exists, inArray, lt, sql, type SQL } from "drizzle-orm";
@@ -30,6 +30,7 @@ import {
 } from "./crypto.utils";
 import { feishuOrgCallbackFileSchema } from "./feishu-org-callback-payload";
 import { teamsDeliveryTargetSchema } from "./teams-chat-callback-payload";
+import { createUserMessageDocument } from "./zero-chat-user-message.service";
 
 type DbTransaction = Parameters<Parameters<Db["transaction"]>[0]>[0];
 
@@ -91,7 +92,7 @@ const queuedUserMessageItemTypes = [
 export interface QueuedUserMessage {
   readonly id: string;
   readonly content: string | null;
-  readonly structuredPrompt: ChatMessageStructuredPrompt | null;
+  readonly userMessage: ChatMessageUserMessage | null;
   readonly attachFiles: readonly string[] | null;
   readonly attachFileMetadata: readonly ChatMessageAttachFileMetadata[] | null;
   readonly generationTemplate: ChatMessageGenerationTemplate | null;
@@ -199,7 +200,7 @@ export async function loadNextUnclaimedQueuedUserMessage(
     .select({
       id: chatMessages.id,
       content: chatMessages.content,
-      structuredPrompt: chatMessages.structuredPrompt,
+      userMessage: chatMessages.userMessage,
       attachFiles: chatMessages.attachFiles,
       attachFileMetadata: chatMessages.attachFileMetadata,
       generationTemplate: chatMessages.generationTemplate,
@@ -338,7 +339,7 @@ async function appendClaimedUserMessage(
   const [queued] = await db
     .select({
       content: chatMessages.content,
-      structuredPrompt: chatMessages.structuredPrompt,
+      userMessage: chatMessages.userMessage,
       attachFiles: chatMessages.attachFiles,
       attachFileMetadata: chatMessages.attachFileMetadata,
       generationTemplate: chatMessages.generationTemplate,
@@ -367,7 +368,7 @@ async function appendClaimedUserMessage(
     chatThreadId: args.threadId,
     eventType: "input.prompt",
     content: queued.content,
-    structuredPrompt: queued.structuredPrompt,
+    userMessage: queued.userMessage,
     runId: args.runId,
     attachFiles: queued.attachFiles ? [...queued.attachFiles] : null,
     attachFileMetadata: queued.attachFileMetadata
@@ -463,6 +464,7 @@ export async function claimQueueFirstRunAssociation(
           chatThreadId: args.threadId,
           eventType: "input.prompt",
           content: args.prompt,
+          userMessage: createUserMessageDocument({ text: args.prompt }),
           runId: args.runId,
           runGroupId: args.runGroupId,
         });
@@ -575,7 +577,7 @@ export async function failQueuedUserMessage(
     const [queued] = await tx
       .select({
         content: chatMessages.content,
-        structuredPrompt: chatMessages.structuredPrompt,
+        userMessage: chatMessages.userMessage,
         attachFiles: chatMessages.attachFiles,
         attachFileMetadata: chatMessages.attachFileMetadata,
         generationTemplate: chatMessages.generationTemplate,
@@ -604,7 +606,7 @@ export async function failQueuedUserMessage(
       chatThreadId: args.threadId,
       eventType: "input.rejected",
       content: queued.content,
-      structuredPrompt: queued.structuredPrompt,
+      userMessage: queued.userMessage,
       attachFiles: queued.attachFiles ? [...queued.attachFiles] : null,
       attachFileMetadata: queued.attachFileMetadata
         ? [...queued.attachFileMetadata]

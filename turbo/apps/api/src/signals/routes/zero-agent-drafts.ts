@@ -10,6 +10,7 @@ import { db$, writeDb$ } from "../external/db";
 import { nowDate } from "../external/time";
 import { notFound } from "../../lib/error";
 import { zeroAgentExists } from "../services/zero-agent-data.service";
+import { maybeCreateUserMessageDocument } from "../services/zero-chat-user-message.service";
 import type { RouteEntry } from "../route-entry";
 
 const agentReadAuth = {
@@ -40,7 +41,7 @@ const getAgentDraftInner$ = computed(async (get) => {
   const [draft] = await get(db$)
     .select({
       draftContent: zeroAgentDrafts.draftContent,
-      draftStructuredPrompt: zeroAgentDrafts.draftStructuredPrompt,
+      draftUserMessage: zeroAgentDrafts.draftUserMessage,
       draftAttachments: zeroAgentDrafts.draftAttachments,
     })
     .from(zeroAgentDrafts)
@@ -57,7 +58,7 @@ const getAgentDraftInner$ = computed(async (get) => {
     status: 200 as const,
     body: {
       draftContent: draft?.draftContent ?? null,
-      draftStructuredPrompt: draft?.draftStructuredPrompt ?? null,
+      draftUserMessage: draft?.draftUserMessage ?? null,
       draftAttachments: draft?.draftAttachments ?? null,
     },
   };
@@ -87,13 +88,18 @@ const patchAgentDraftInner$ = command(
     }
 
     const draftContent = bodyResult.data.draftContent ?? null;
-    const draftStructuredPrompt = bodyResult.data.draftStructuredPrompt ?? null;
     const draftAttachments = bodyResult.data.draftAttachments ?? null;
+    const draftUserMessage =
+      bodyResult.data.draftUserMessage ??
+      maybeCreateUserMessageDocument({
+        text: draftContent,
+        files: draftAttachments ?? undefined,
+      });
     const writeDb = set(writeDb$);
 
     if (
       !draftContent &&
-      !draftStructuredPrompt &&
+      !draftUserMessage &&
       !(draftAttachments && draftAttachments.length > 0)
     ) {
       await writeDb
@@ -117,8 +123,8 @@ const patchAgentDraftInner$ = command(
         orgId: auth.orgId,
         agentId: params.id,
         draftContent,
-        draftStructuredPrompt,
-        draftStructuredPromptWithFeedback: null,
+        draftUserMessage,
+        draftUserMessageWithFeedback: null,
         draftAttachments,
         updatedAt,
       })
@@ -130,8 +136,8 @@ const patchAgentDraftInner$ = command(
         ],
         set: {
           draftContent,
-          draftStructuredPrompt,
-          draftStructuredPromptWithFeedback: null,
+          draftUserMessage,
+          draftUserMessageWithFeedback: null,
           draftAttachments,
           updatedAt,
         },

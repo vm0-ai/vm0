@@ -3,7 +3,7 @@ import type { UserMessageDocument } from "@vm0/api-contracts/contracts/chat-thre
 /** attach_files stores legacy file IDs. */
 export type ChatMessageAttachFiles = string[];
 
-export type ChatMessageStructuredPrompt = UserMessageDocument;
+export type ChatMessageUserMessage = UserMessageDocument;
 
 export interface ChatMessagePresentationGenerationTemplate {
   readonly type: "presentation";

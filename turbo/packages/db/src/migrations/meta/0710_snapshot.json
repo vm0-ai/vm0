@@ -1,6 +1,6 @@
 {
-  "id": "e154f90e-2b57-42a7-926c-b73a6fb196d3",
-  "prevId": "3a8ae427-913b-446e-9de2-69fda33be2a3",
+  "id": "029967e5-9580-41ec-a288-0dcca8809b25",
+  "prevId": "e154f90e-2b57-42a7-926c-b73a6fb196d3",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -4218,7 +4218,7 @@
           "name": "role",
           "type": "text",
           "primaryKey": false,
-          "notNull": true
+          "notNull": false
         },
         "content": {
           "name": "content",

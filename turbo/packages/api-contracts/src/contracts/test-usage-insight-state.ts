@@ -94,6 +94,17 @@ export const testUsageInsightStateActionBodySchema = z.discriminatedUnion(
       id: z.string(),
       created_at: z.string(),
     }),
+    z.object({
+      action: z.literal("materialize-hourly-usage"),
+      org_id: z.string(),
+      user_id: z.string(),
+      run_id: z.string().nullable(),
+    }),
+    z.object({
+      action: z.literal("read-usage-storage-counts"),
+      scope: z.enum(["organization", "user"]),
+      id: z.string(),
+    }),
   ],
 );
 
@@ -105,6 +116,8 @@ export const testUsageInsightStateActionResponseSchema = z.object({
   run_id: z.string().optional(),
   chat_thread_id: z.string().optional(),
   usage_event_id: z.string().optional(),
+  raw_count: z.number().optional(),
+  hourly_count: z.number().optional(),
 });
 
 export const testUsageInsightStateContract = c.router({
@@ -117,7 +130,7 @@ export const testUsageInsightStateContract = c.router({
       400: testUsageInsightStateErrorSchema,
       404: z.string(),
     },
-    summary: "Mutate usage insight API test support state",
+    summary: "Manage usage API test support state",
   },
 });
 
