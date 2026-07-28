@@ -1,7 +1,11 @@
 import chalk from "chalk";
 import { Command } from "commander";
 import type { ChatThreadMetadata } from "@vm0/api-contracts/contracts/chat-threads";
-import type { OrgModelPolicy } from "@vm0/api-contracts/contracts/model-providers";
+import type {
+  OrgModelPoliciesResponse,
+  OrgModelPolicy,
+} from "@vm0/api-contracts/contracts/model-providers";
+import { getModelDisplayName } from "@vm0/core/model-display-name";
 
 import {
   getZeroChatThread,
@@ -10,9 +14,11 @@ import {
 } from "../../../lib/api";
 import { withErrorHandler } from "../../../lib/command";
 import { formatModelProviderRoute } from "../../../lib/domain/model-policy-display";
+import { isUuid } from "../../../lib/utils/uuid";
 
 interface ModelOptions {
   readonly help?: boolean;
+  readonly thread?: string;
 }
 
 function getCurrentChatThreadId(): string | undefined {
@@ -49,11 +55,28 @@ function printSwitchableModels(policies: readonly OrgModelPolicy[]): void {
   }
 }
 
-function printCurrentModel(thread: ChatThreadMetadata): void {
+function formatThreadModel(
+  thread: ChatThreadMetadata,
+  policies: OrgModelPoliciesResponse,
+): string {
+  const model = thread.selectedModel ?? policies.workspaceDefaultModel;
+  if (!model) {
+    return "(default)";
+  }
+  const policy = policies.policies.find((candidate) => {
+    return candidate.model === model;
+  });
+  return `${policy?.modelLabel ?? getModelDisplayName(model)} (${model})`;
+}
+
+function printCurrentModel(
+  thread: ChatThreadMetadata,
+  policies: OrgModelPoliciesResponse,
+): void {
   console.log(chalk.green("✓ Chat thread loaded"));
   console.log(chalk.dim(`  Thread: ${thread.id}`));
   console.log(chalk.dim(`  Title:  ${thread.title ?? "(untitled)"}`));
-  console.log(chalk.dim(`  Model:  ${thread.selectedModel ?? "(default)"}`));
+  console.log(chalk.dim(`  Model:  ${formatThreadModel(thread, policies)}`));
 }
 
 async function printModelHelp(command: Command): Promise<void> {
@@ -64,7 +87,7 @@ async function printModelHelp(command: Command): Promise<void> {
   printSwitchableModels(result.policies);
   console.log();
   console.log("Use the model id in parentheses:");
-  console.log(chalk.cyan("  zero chat model <model>"));
+  console.log(chalk.cyan("  zero chat model [--thread <thread-id>] <model>"));
 }
 
 async function printCurrentModelAndChoices(threadId: string): Promise<void> {
@@ -73,13 +96,13 @@ async function printCurrentModelAndChoices(threadId: string): Promise<void> {
     listZeroModelPolicies(),
   ]);
 
-  printCurrentModel(thread);
+  printCurrentModel(thread, result);
   console.log();
   console.log(chalk.bold("Switchable models:"));
   printSwitchableModels(result.policies);
   console.log();
   console.log("Switch models:");
-  console.log(chalk.cyan("  zero chat model <model>"));
+  console.log(chalk.cyan(`  zero chat model --thread ${threadId} <model>`));
 }
 
 async function switchModel(threadId: string, model: string): Promise<void> {
@@ -117,16 +140,19 @@ export const modelCommand = new Command()
   .description("Show or switch the current web chat thread model")
   .argument("[model]", "Model id to use for this chat thread")
   .helpOption(false)
+  .option("--thread <id>", "Chat thread ID (defaults to ZERO_CHAT_THREAD_ID)")
   .option("-h, --help", "Show help with switchable models")
   .addHelpText(
     "after",
     `
 Examples:
-  Show this chat model:  zero chat model
-  Switch this model:    zero chat model claude-sonnet-5
+  Show this chat model:     zero chat model
+  Show another chat model:  zero chat model --thread <thread-id>
+  Switch this model:        zero chat model claude-sonnet-5
+  Switch another model:     zero chat model --thread <thread-id> claude-sonnet-5
 
 Notes:
-  - Uses ZERO_CHAT_THREAD_ID from the current web chat thread
+  - Defaults --thread to ZERO_CHAT_THREAD_ID
   - Authenticates via ZERO_TOKEN (requires chat-thread:write capability to switch)`,
   )
   .action(
@@ -137,11 +163,17 @@ Notes:
           return;
         }
 
-        const threadId = getCurrentChatThreadId();
+        const threadId = options.thread?.trim() || getCurrentChatThreadId();
         if (!threadId) {
           printUsageError(
             "ZERO_CHAT_THREAD_ID is not set",
-            "Run this command from a Zero web chat thread.",
+            "Pass --thread <thread-id> or run inside a Zero web chat thread.",
+          );
+        }
+        if (!isUuid(threadId)) {
+          printUsageError(
+            `Invalid thread ID "${threadId}" — expected a UUID`,
+            "Pass a valid UUID with --thread <thread-id>.",
           );
         }
 

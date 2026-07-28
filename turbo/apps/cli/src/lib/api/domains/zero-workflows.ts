@@ -23,6 +23,10 @@ export type ZeroWorkflowAutomationSummary = ServerInferResponseBody<
   typeof zeroWorkflowAutomationsContract.get,
   200
 >;
+type ZeroWorkflowAutomationListEntry = ServerInferResponseBody<
+  typeof zeroWorkflowAutomationsContract.listWorkspace,
+  200
+>[number];
 
 export async function listWorkflows(query: {
   agentId?: string;
@@ -110,6 +114,16 @@ export async function listWorkflowAutomations(
     result,
     `Failed to list automations for workflow "${workflowId}"`,
   );
+}
+
+export async function listWorkspaceWorkflowAutomations(): Promise<
+  readonly ZeroWorkflowAutomationListEntry[]
+> {
+  const config = await getClientConfig();
+  const client = initClient(zeroWorkflowAutomationsContract, config);
+  const result = await client.listWorkspace({ headers: {} });
+  if (result.status === 200) return result.body;
+  handleError(result, "Failed to list workflow automations");
 }
 
 export async function createWorkflowAutomation(

@@ -22,8 +22,10 @@ const AGENT_ID = "11111111-1111-4111-8111-111111111111";
 const WORKFLOW_ID = "22222222-2222-4222-8222-222222222222";
 const AUTOMATION_ID = "33333333-3333-4333-8333-333333333333";
 const THREAD_ID = "44444444-4444-4444-8444-444444444444";
+const MODEL_ID = "gpt-5.6-sol";
 const STRAPI_INTEGRATION_ID = "55555555-5555-4555-8555-555555555556";
 const STAFF_ORG_ID = "org_3ANttyrbWYJk6JKRSTRLEsbsDLe";
+const THREAD_METADATA_URL = `http://localhost:3000/api/zero/chat-threads/${THREAD_ID}/metadata`;
 
 function zeroToken(orgId: string): string {
   const payload = Buffer.from(
@@ -293,6 +295,15 @@ describe("zero workflow automation commands", () => {
     chalk.level = 0;
     vi.stubEnv("VM0_API_BACKEND_URL", "http://localhost:3000");
     vi.stubEnv("ZERO_TOKEN", "test-token");
+    server.use(
+      http.get(THREAD_METADATA_URL, () => {
+        return HttpResponse.json({
+          id: THREAD_ID,
+          title: "Tell a joke",
+          selectedModel: MODEL_ID,
+        });
+      }),
+    );
   });
 
   afterEach(() => {
@@ -375,6 +386,24 @@ describe("zero workflow automation commands", () => {
       );
       expect(logCalls).toContain(AUTOMATION_ID);
       expect(logCalls).toContain("0 9 * * *");
+      expect(logCalls).toContain(`Thread model: GPT 5.6 Sol (${MODEL_ID})`);
+      expect(logCalls).toContain("Manage with Zero CLI:");
+      expect(logCalls).toContain(`zero workflow edit ${WORKFLOW_ID}`);
+      expect(logCalls).toContain('--expr "<cron-expression>" -z <timezone>');
+      expect(logCalls).toContain("Pause automation:");
+      expect(logCalls).toContain(
+        `zero workflow automation disable \\\n      ${AUTOMATION_ID}`,
+      );
+      expect(logCalls).toContain("About model selection:");
+      expect(logCalls).toContain(
+        "The selected model affects run behavior, output quality, and cost.",
+      );
+      expect(logCalls).toContain(
+        "All automations on this workflow\n  share one chat thread",
+      );
+      expect(logCalls).toContain("Model commands:");
+      expect(logCalls).toContain(`--thread ${THREAD_ID}`);
+      expect(logCalls).toContain("zero model list");
     });
 
     it("should resolve a workflow name under ZERO_AGENT_ID", async () => {
@@ -397,6 +426,10 @@ describe("zero workflow automation commands", () => {
       expect(captured.body).toEqual({
         schedule: { type: "loop", intervalSeconds: 900 },
       });
+      const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
+      expect(logCalls).toContain("Change interval:");
+      expect(logCalls).toContain("--every <duration>");
+      expect(logCalls).not.toContain("<cron-expression>");
     });
 
     it("should convert a timezone-local one-time fire to UTC", async () => {
@@ -421,6 +454,9 @@ describe("zero workflow automation commands", () => {
           timezone: "Asia/Shanghai",
         },
       });
+      const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
+      expect(logCalls).toContain("Change run time:");
+      expect(logCalls).toContain('--at "<iso-time>" -z <timezone>');
     });
 
     it("should add a Gmail new message automation without match rules", async () => {
@@ -446,6 +482,8 @@ describe("zero workflow automation commands", () => {
       const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
       expect(logCalls).toContain("Gmail new message");
       expect(logCalls).toContain("all inbound messages");
+      expect(logCalls).toContain("Edit automation:");
+      expect(logCalls).toContain("zero workflow automation update --help");
     });
 
     it("should add a Gmail new message automation with text match flags", async () => {
@@ -1294,6 +1332,9 @@ describe("zero workflow automation commands", () => {
       expect(mockConsoleLog.mock.calls.flat().join("\n")).toContain(
         `Automation ${AUTOMATION_ID} updated`,
       );
+      const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
+      expect(logCalls).toContain(`Thread model: GPT 5.6 Sol (${MODEL_ID})`);
+      expect(logCalls).not.toContain("Manage with Zero CLI:");
     });
 
     it("should update a Gmail new message automation with text match flags", async () => {
@@ -1608,13 +1649,14 @@ describe("zero workflow automation commands", () => {
   describe("show", () => {
     it("should display automation details", async () => {
       server.use(
-        http.get(
-          "http://localhost:3000/api/zero/workflow-automations/:id",
-          ({ params }) => {
-            expect(params.id).toBe(AUTOMATION_ID);
-            return HttpResponse.json(gmailAutomation);
-          },
-        ),
+        http.get("http://localhost:3000/api/zero/workflow-automations", () => {
+          return HttpResponse.json([
+            {
+              workflow: workflowSummary,
+              automation: { ...gmailAutomation, enabled: false },
+            },
+          ]);
+        }),
       );
 
       await automationCommand.parseAsync([
@@ -1629,6 +1671,11 @@ describe("zero workflow automation commands", () => {
       expect(logCalls).toContain("Gmail new message");
       expect(logCalls).toContain('subject contains "invoice"');
       expect(logCalls).toContain(THREAD_ID);
+      expect(logCalls).toContain(`Workflow:     ${workflowSummary.name}`);
+      expect(logCalls).toContain(`Thread model: GPT 5.6 Sol (${MODEL_ID})`);
+      expect(logCalls).toContain("Resume automation:");
+      expect(logCalls).toContain("zero workflow automation enable");
+      expect(logCalls).toContain("zero workflow automation update --help");
     });
   });
 
@@ -1675,6 +1722,9 @@ describe("zero workflow automation commands", () => {
       expect(mockConsoleLog.mock.calls.flat().join("\n")).toContain(
         `Automation ${AUTOMATION_ID} enabled`,
       );
+      expect(mockConsoleLog.mock.calls.flat().join("\n")).toContain(
+        `Thread model: GPT 5.6 Sol (${MODEL_ID})`,
+      );
     });
 
     it("should disable a workflow automation", async () => {
@@ -1696,6 +1746,9 @@ describe("zero workflow automation commands", () => {
 
       expect(mockConsoleLog.mock.calls.flat().join("\n")).toContain(
         `Automation ${AUTOMATION_ID} disabled`,
+      );
+      expect(mockConsoleLog.mock.calls.flat().join("\n")).toContain(
+        `Thread model: GPT 5.6 Sol (${MODEL_ID})`,
       );
     });
   });
