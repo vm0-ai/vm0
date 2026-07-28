@@ -29,18 +29,20 @@ cat > "$fake_ssh" <<'EOF'
 #!/usr/bin/env bash
 set -euo pipefail
 
-expected_argument="ControlPath=\"${EXPECTED_CONTROL_PATH}\""
-found_control_path=false
+actual_control_path=""
 
 for argument in "$@"; do
-  if [ "$argument" = "$expected_argument" ]; then
-    found_control_path=true
+  if [[ "$argument" == ControlPath=* ]]; then
+    actual_control_path="${argument#ControlPath=}"
+    actual_control_path="${actual_control_path#\"}"
+    actual_control_path="${actual_control_path%\"}"
     break
   fi
 done
 
-if [ "$found_control_path" != true ]; then
-  echo "expected Ansible SSH arguments to contain ${expected_argument}" >&2
+if [ "$actual_control_path" != "$EXPECTED_CONTROL_PATH" ]; then
+  echo "expected Ansible SSH control path: ${EXPECTED_CONTROL_PATH}" >&2
+  echo "actual Ansible SSH control path: ${actual_control_path:-missing}" >&2
   printf 'argument: %s\n' "$@" >&2
   exit 1
 fi
