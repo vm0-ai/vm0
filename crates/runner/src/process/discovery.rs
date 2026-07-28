@@ -256,10 +256,14 @@ pub async fn discover_all() -> DiscoveredProcesses {
     discover_all_with_status().await.processes
 }
 
-/// Scan `/proc` once and include whether the top-level process scan completed.
+/// Scan `/proc` once and report Firecracker discovery uncertainty.
 ///
-/// Destructive cleanup code should use this variant so it can fail closed when
-/// `/proc` could not be scanned reliably.
+/// `proc_scan_complete` is false when `/proc` traversal fails, when an
+/// unreadable or unparseable cmdline belongs to a live Firecracker, or when
+/// unavailable or malformed stat facts cannot rule one out. Missing PIDs,
+/// zombie Firecrackers, and known non-Firecracker processes do not make it
+/// false. Destructive cleanup code should use this variant so it can fail
+/// closed; the status is not generic argv completeness for every process.
 pub(crate) async fn discover_all_with_status() -> ProcessDiscovery {
     let proc_scan = scan_proc_cmdlines().await;
 
