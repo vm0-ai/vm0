@@ -1588,7 +1588,7 @@ mod tests {
     async fn duplicate_network_policy_refresh_fails_closed() {
         let server = MockServer::start();
         let run_id = RunId::nil();
-        server.mock(|when, then| {
+        let refresh_mock = server.mock(|when, then| {
             when.method(POST)
                 .path(format!("/api/runners/runs/{run_id}/network-policy-refresh"));
             then.status(200)
@@ -1621,6 +1621,7 @@ mod tests {
 
         let harness = NetworkPolicyRefreshHarness::new(&server, run_id).await;
         harness.refresh_slack().await;
+        refresh_mock.assert_calls(1);
         let policy = harness.slack_policy().await;
         assert_fail_closed_policy(&policy);
 
