@@ -1,3 +1,18 @@
+//! Bounded runner-local deadlines for failed API claims.
+//!
+//! [`ApiProvider`](super::api::ApiProvider) owns the claim-to-rediscovery
+//! lifecycle. This module only stores its ephemeral cooldown state: per-run
+//! deadlines plus an optional provider-wide deadline used when per-run capacity
+//! is saturated. It owns no timer or wakeup; the provider routes retry deadlines
+//! through [`PollWakeups`](super::api_ably_supervisor::PollWakeups).
+//!
+//! Recording refreshes an existing run or inserts a new run while capacity is
+//! available. It never evicts an unexpired entry: saturation is returned to the
+//! provider so it can apply the provider-wide fallback. Reads and records prune
+//! expired state. A snapshot exposes sorted per-run exclusions and the earliest
+//! effective retry deadline, preferring the provider-wide deadline while it is
+//! active.
+
 use std::collections::{BTreeMap, btree_map::Entry};
 use std::time::Duration;
 
