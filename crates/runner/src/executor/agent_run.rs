@@ -901,23 +901,42 @@ impl PreparedGuestRuntime {
         }
 
         Some(
-            match prepare_guest_runtime_state_phase(
+            Self::prepare(
                 sandbox,
                 context,
                 restore_guest_state,
+                reuse_result,
                 cancel,
                 telemetry,
             )
-            .await
-            {
-                GuestRuntimeStatePreparation::Ready => Self::Ready(
-                    StartedCodexModelCatalogPrefetch::start(sandbox, context, reuse_result, cancel)
-                        .await,
-                ),
-                GuestRuntimeStatePreparation::Failed(error) => Self::Failed(error),
-                GuestRuntimeStatePreparation::Cancelled => Self::Cancelled,
-            },
+            .await,
         )
+    }
+
+    async fn prepare(
+        sandbox: &dyn Sandbox,
+        context: &ExecutionContext,
+        restore_guest_state: bool,
+        reuse_result: SandboxReuseResult,
+        cancel: &CancellationToken,
+        telemetry: &mut JobTelemetry,
+    ) -> Self {
+        match prepare_guest_runtime_state_phase(
+            sandbox,
+            context,
+            restore_guest_state,
+            cancel,
+            telemetry,
+        )
+        .await
+        {
+            GuestRuntimeStatePreparation::Ready => Self::Ready(
+                StartedCodexModelCatalogPrefetch::start(sandbox, context, reuse_result, cancel)
+                    .await,
+            ),
+            GuestRuntimeStatePreparation::Failed(error) => Self::Failed(error),
+            GuestRuntimeStatePreparation::Cancelled => Self::Cancelled,
+        }
     }
 
     pub(super) async fn finish(self, sandbox: &dyn Sandbox, telemetry: &mut JobTelemetry) {
@@ -1238,27 +1257,17 @@ pub(super) async fn run_in_sandbox_with_process_cancel_timeouts(
     let pre_spawn_started = Instant::now();
     let prepared_guest_runtime = match prepared_guest_runtime {
         Some(prepared) => prepared,
-        None => match prepare_guest_runtime_state_phase(
-            sandbox,
-            context,
-            start.restore_guest_state,
-            &cancel,
-            telemetry,
-        )
-        .await
-        {
-            GuestRuntimeStatePreparation::Ready => PreparedGuestRuntime::Ready(
-                StartedCodexModelCatalogPrefetch::start(
-                    sandbox,
-                    context,
-                    start.reuse_result,
-                    &cancel,
-                )
-                .await,
-            ),
-            GuestRuntimeStatePreparation::Failed(error) => PreparedGuestRuntime::Failed(error),
-            GuestRuntimeStatePreparation::Cancelled => PreparedGuestRuntime::Cancelled,
-        },
+        None => {
+            PreparedGuestRuntime::prepare(
+                sandbox,
+                context,
+                start.restore_guest_state,
+                start.reuse_result,
+                &cancel,
+                telemetry,
+            )
+            .await
+        }
     };
     let mut model_catalog_prefetch = match prepared_guest_runtime {
         PreparedGuestRuntime::Ready(prefetch) => prefetch.supervise(sandbox),
