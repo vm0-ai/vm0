@@ -11,6 +11,7 @@ import { mockEnv } from "../../../lib/env";
 import { clearMockNow, mockNow, now } from "../../../lib/time";
 import { createRunsApi } from "./helpers/api-bdd-runs";
 import { createWorkflowsBddApi } from "./helpers/api-bdd-workflows";
+import { useSecretKmsProbe } from "./helpers/secret-kms-probe";
 import { createZeroRouteMocks } from "./helpers/zero-route-test";
 
 const context = testContext();
@@ -24,6 +25,7 @@ const STAFF_ORG_ID = "org_3ANttyrbWYJk6JKRSTRLEsbsDLe";
 const SECOND_ROLLOUT_ORG_ID = "org_j3tn5H";
 const CRON_SECRET = "strapi-cron-secret";
 const WORKFLOW_NAME = "publish-strapi-blog";
+const STRAPI_AUTOMATION_USER_ID = "user_strapi_automation_admin";
 
 function authHeaders() {
   return { authorization: "Bearer clerk-session" } as const;
@@ -230,6 +232,7 @@ describe("Strapi integration", () => {
 
   it("tests the external webhook and coalesces localized publishes", async () => {
     const actor = workflows.user({
+      userId: STRAPI_AUTOMATION_USER_ID,
       orgId: STAFF_ORG_ID,
       orgRole: "org:admin",
     });
@@ -517,5 +520,182 @@ describe("Strapi integration", () => {
     );
     expect(queueDuringRun.body.running?.runId).toBe(runId);
     expect(queueDuringRun.body.pending).toHaveLength(1);
+  });
+
+  it("retries durable admission after queue encryption fails", async () => {
+    const actor = workflows.user({
+      userId: STRAPI_AUTOMATION_USER_ID,
+      orgId: STAFF_ORG_ID,
+      orgRole: "org:admin",
+    });
+    await runs.grantProEntitlement(actor, { tier: "team" });
+    await runs.ensureOrgModelProvider(actor);
+    const agent = await workflows.createAgent(actor, {
+      displayName: "Strapi retry agent",
+    });
+    const workflowId = await workflows.createWorkflow(actor, {
+      agentId: agent.agentId,
+      name: WORKFLOW_NAME,
+    });
+    mocks.clerk.session(actor.userId, actor.orgId, actor.orgRole);
+
+    const createdIntegration = await accept(
+      integrationsClient().create({
+        headers: authHeaders(),
+        body: {
+          name: "Retry CMS",
+          baseUrl: `https://retry-${randomUUID()}.example.com`,
+        },
+      }),
+      [201],
+    );
+    const automation = await accept(
+      automationsClient().create({
+        headers: authHeaders(),
+        params: { workflowId },
+        body: {
+          kind: "event",
+          eventType: "strapi-entry-published",
+          eventConfig: {
+            provider: "strapi",
+            event: "entry_published",
+            integrationId: createdIntegration.body.id,
+            contentTypeUid: "api::article.article",
+          },
+        },
+      }),
+      [201],
+    );
+    if (!automation.body.chatThreadId) {
+      throw new Error("Expected Strapi automation chat thread");
+    }
+    await accept(
+      queueClient().pause({
+        headers: authHeaders(),
+        params: { threadId: automation.body.chatThreadId },
+      }),
+      [200],
+    );
+
+    const publishedAt = now();
+    mockNow(publishedAt);
+    const publishPayload = {
+      event: "entry.publish",
+      createdAt: new Date(now()).toISOString(),
+      model: "article",
+      uid: "api::article.article",
+      entry: {
+        documentId: "retry-article-document",
+        locale: "en",
+      },
+    };
+    const published = await postStrapiEvent({
+      webhookUrl: createdIntegration.body.webhookUrl,
+      authorizationHeader: createdIntegration.body.authorizationHeader,
+      eventHeader: "entry.publish",
+      payload: publishPayload,
+    });
+    expect(published.body).toStrictEqual({
+      success: true,
+      kind: "publish",
+      queued: 1,
+    });
+
+    const encryptionError = new Error("queue payload encryption failed");
+    const kms = useSecretKmsProbe((_command, callNumber) => {
+      return callNumber === 1 ? Promise.reject(encryptionError) : undefined;
+    });
+    const firstCronAt = publishedAt + 46_000;
+    mockNow(firstCronAt);
+    const failedCron = await createApp({
+      signal: context.signal,
+    }).request("/api/cron/execute-workflow-automations", {
+      headers: { authorization: `Bearer ${CRON_SECRET}` },
+    });
+    expect(failedCron.status).toBe(200);
+    await expect(failedCron.json()).resolves.toMatchObject({
+      success: true,
+      executed: 0,
+      skipped: 1,
+    });
+    expect(kms.generateDataKeyCalls).toBe(1);
+
+    const queueAfterFailure = await accept(
+      queueClient().get({
+        headers: authHeaders(),
+        params: { threadId: automation.body.chatThreadId },
+      }),
+      [200],
+    );
+    expect(queueAfterFailure.body.running).toBeNull();
+    expect(queueAfterFailure.body.pending).toHaveLength(0);
+    const messagesAfterFailure = await workflows.readThreadMessages(
+      automation.body.chatThreadId,
+    );
+    expect(
+      messagesAfterFailure.filter((message) => {
+        return message.workflowSnapshot?.automationId === automation.body.id;
+      }),
+    ).toHaveLength(0);
+
+    const duplicate = await postStrapiEvent({
+      webhookUrl: createdIntegration.body.webhookUrl,
+      authorizationHeader: createdIntegration.body.authorizationHeader,
+      eventHeader: "entry.publish",
+      payload: publishPayload,
+    });
+    expect(duplicate.body).toStrictEqual({
+      success: true,
+      kind: "duplicate",
+      queued: 0,
+    });
+
+    mockNow(firstCronAt + 60_001);
+    const retriedCron = await createApp({
+      signal: context.signal,
+    }).request("/api/cron/execute-workflow-automations", {
+      headers: { authorization: `Bearer ${CRON_SECRET}` },
+    });
+    expect(retriedCron.status).toBe(200);
+    await expect(retriedCron.json()).resolves.toMatchObject({
+      success: true,
+      executed: 1,
+      skipped: 0,
+    });
+    expect(kms.generateDataKeyCalls).toBe(2);
+
+    const queueAfterRetry = await accept(
+      queueClient().get({
+        headers: authHeaders(),
+        params: { threadId: automation.body.chatThreadId },
+      }),
+      [200],
+    );
+    expect(queueAfterRetry.body.running).toBeNull();
+    expect(queueAfterRetry.body.pending).toHaveLength(1);
+    const queuedEventId = queueAfterRetry.body.pending[0]?.id;
+    expect(queuedEventId).toStrictEqual(expect.any(String));
+
+    const finalCron = await createApp({
+      signal: context.signal,
+    }).request("/api/cron/execute-workflow-automations", {
+      headers: { authorization: `Bearer ${CRON_SECRET}` },
+    });
+    expect(finalCron.status).toBe(200);
+    await expect(finalCron.json()).resolves.toMatchObject({
+      success: true,
+      executed: 0,
+      skipped: 0,
+    });
+    const finalQueue = await accept(
+      queueClient().get({
+        headers: authHeaders(),
+        params: { threadId: automation.body.chatThreadId },
+      }),
+      [200],
+    );
+    expect(finalQueue.body.running).toBeNull();
+    expect(finalQueue.body.pending).toHaveLength(1);
+    expect(finalQueue.body.pending[0]?.id).toBe(queuedEventId);
   });
 });
