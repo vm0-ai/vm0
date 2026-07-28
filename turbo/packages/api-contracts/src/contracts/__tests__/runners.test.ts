@@ -465,6 +465,7 @@ describe("runner resume session contract", () => {
       historyRef: {
         ...storedResumeSession.historyRef,
         url: "https://r2.example.com/blobs/history.blob?sig=secret",
+        encoding: "identity",
         rawSize: 1024,
         encodedSize: 1024,
       },
@@ -658,12 +659,12 @@ describe("runner resume session contract", () => {
     ).toBe(false);
   });
 
-  it("requires a URL for hash-backed claim resume sessions", () => {
+  it("keeps stored identity refs tolerant and requires explicit claim metadata", () => {
     const storedResumeSession = {
       sessionId: "sess-123",
       historyRef: { kind: "blob", hash: historyHash },
     };
-    const claimResumeSession = {
+    const claimResumeSessionWithoutEncoding = {
       sessionId: "sess-123",
       historyRef: {
         kind: "blob",
@@ -673,10 +674,23 @@ describe("runner resume session contract", () => {
         encodedSize: 1024,
       },
     };
+    const claimResumeSession = {
+      ...claimResumeSessionWithoutEncoding,
+      historyRef: {
+        ...claimResumeSessionWithoutEncoding.historyRef,
+        encoding: "identity",
+      },
+    };
 
+    expect(
+      storedResumeSessionSchema.safeParse(storedResumeSession).success,
+    ).toBe(true);
     expect(resumeSessionSchema.safeParse(storedResumeSession).success).toBe(
       false,
     );
+    expect(
+      resumeSessionSchema.safeParse(claimResumeSessionWithoutEncoding).success,
+    ).toBe(false);
     expect(resumeSessionSchema.parse(claimResumeSession)).toEqual(
       claimResumeSession,
     );
@@ -705,6 +719,7 @@ describe("runner resume session contract", () => {
         kind: "blob",
         hash: historyHash,
         url: "https://r2.example.com/blobs/history.blob?sig=secret",
+        encoding: "identity",
         rawSize: RESUME_SESSION_HISTORY_MAX_BYTES + 1,
         encodedSize: RESUME_SESSION_HISTORY_MAX_BYTES + 1,
       },
@@ -738,6 +753,7 @@ describe("runner resume session contract", () => {
         kind: "blob",
         hash: historyHash,
         url: "https://r2.example.com/blobs/history.blob?sig=secret",
+        encoding: "identity",
         rawSize: 1024,
         encodedSize: 1024,
         downloadSource: "regional_edge_cache",

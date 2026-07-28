@@ -14,8 +14,8 @@ use super::super::session_history_cpu::codex_timestamp_for_test;
 use super::super::session_restore::MaterializedResumeSession;
 use super::support::{CapturedEvent, CapturedEvents, minimal_context};
 use crate::types::{
-    ExecutionContext, ResumeSession, ResumeSessionHistory, ResumeSessionHistoryRef,
-    ResumeSessionHistoryRefKind,
+    ExecutionContext, ResumeSession, ResumeSessionHistory, ResumeSessionHistoryEncoding,
+    ResumeSessionHistoryRef, ResumeSessionHistoryRefKind,
 };
 
 static RESTORE_SESSION_LOG_CALLSITE_LOCK: Mutex<()> = Mutex::new(());
@@ -63,7 +63,7 @@ fn history_ref(hash: impl Into<String>, raw_size: u64) -> ResumeSessionHistoryRe
         kind: ResumeSessionHistoryRefKind::Blob,
         hash: hash.into(),
         url: "https://example.com/history".into(),
-        encoding: None,
+        encoding: ResumeSessionHistoryEncoding::Identity,
         raw_size,
         encoded_size: raw_size,
         download_source: None,

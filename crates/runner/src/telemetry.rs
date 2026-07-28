@@ -148,9 +148,7 @@ pub(crate) enum SessionHistoryTransferEncodingState {
 
 impl SessionHistoryTelemetryMetadata {
     pub(crate) fn from_ref(history_ref: &ResumeSessionHistoryRef) -> Self {
-        let encoding = history_ref
-            .encoding
-            .unwrap_or(ResumeSessionHistoryEncoding::Identity);
+        let encoding = history_ref.encoding;
         Self {
             encoding: session_history_encoding_value(encoding),
             raw_size_bucket: size_bucket(history_ref.raw_size),

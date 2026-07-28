@@ -378,9 +378,7 @@ impl SessionHistoryProbeKey {
     fn from_ref(history_ref: &ResumeSessionHistoryRef) -> Self {
         Self {
             hash: history_ref.hash.clone(),
-            encoding: history_ref
-                .encoding
-                .unwrap_or(ResumeSessionHistoryEncoding::Identity),
+            encoding: history_ref.encoding,
             raw_size: history_ref.raw_size,
             encoded_size: history_ref.encoded_size,
         }
@@ -725,9 +723,7 @@ async fn download_resume_session_history(
         ResumeSessionHistoryRefKind::Blob => {}
     }
 
-    let encoding = history_ref
-        .encoding
-        .unwrap_or(ResumeSessionHistoryEncoding::Identity);
+    let encoding = history_ref.encoding;
 
     let job = match encoding {
         ResumeSessionHistoryEncoding::Identity => {
@@ -1264,7 +1260,7 @@ mod tests {
                     kind: ResumeSessionHistoryRefKind::Blob,
                     hash,
                     url,
-                    encoding: None,
+                    encoding: ResumeSessionHistoryEncoding::Identity,
                     raw_size,
                     encoded_size,
                     download_source: None,
@@ -1317,7 +1313,7 @@ mod tests {
                     kind: ResumeSessionHistoryRefKind::Blob,
                     hash,
                     url,
-                    encoding: Some(encoding),
+                    encoding,
                     raw_size,
                     encoded_size,
                     download_source: None,

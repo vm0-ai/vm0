@@ -1254,8 +1254,7 @@ pub struct ResumeSessionHistoryRef {
     pub kind: ResumeSessionHistoryRefKind,
     pub hash: String,
     pub url: String,
-    #[serde(default)]
-    pub encoding: Option<ResumeSessionHistoryEncoding>,
+    pub encoding: ResumeSessionHistoryEncoding,
     #[serde(rename = "rawSize")]
     pub raw_size: u64,
     #[serde(rename = "encodedSize")]
@@ -1944,6 +1943,7 @@ mod tests {
                     "kind": "blob",
                     "hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
                     "url": "https://r2.example.com/blobs/a.blob?sig=secret",
+                    "encoding": "identity",
                     "rawSize": 42,
                     "encodedSize": 42
                 }
@@ -1956,6 +1956,7 @@ mod tests {
         assert_eq!(ctx.cli_agent_session_id(), Some("sess-ref-123"));
         assert!(session.session_history().is_none());
         assert_eq!(history_ref.kind, ResumeSessionHistoryRefKind::Blob);
+        assert_eq!(history_ref.encoding, ResumeSessionHistoryEncoding::Identity);
         assert_eq!(history_ref.raw_size, 42);
         assert_eq!(history_ref.encoded_size, 42);
     }
@@ -1987,10 +1988,7 @@ mod tests {
         assert_eq!(ctx.cli_agent_session_id(), Some("sess-ref-123"));
         assert!(session.session_history().is_none());
         assert_eq!(history_ref.kind, ResumeSessionHistoryRefKind::Blob);
-        assert_eq!(
-            history_ref.encoding,
-            Some(ResumeSessionHistoryEncoding::Gzip)
-        );
+        assert_eq!(history_ref.encoding, ResumeSessionHistoryEncoding::Gzip);
         assert_eq!(history_ref.raw_size, 42);
         assert_eq!(history_ref.encoded_size, 24);
         assert_eq!(
@@ -2056,10 +2054,7 @@ mod tests {
         assert_eq!(ctx.cli_agent_session_id(), Some("sess-ref-123"));
         assert!(session.session_history().is_none());
         assert_eq!(history_ref.kind, ResumeSessionHistoryRefKind::Blob);
-        assert_eq!(
-            history_ref.encoding,
-            Some(ResumeSessionHistoryEncoding::Zstd)
-        );
+        assert_eq!(history_ref.encoding, ResumeSessionHistoryEncoding::Zstd);
         assert_eq!(history_ref.raw_size, 42);
         assert_eq!(history_ref.encoded_size, 18);
     }
