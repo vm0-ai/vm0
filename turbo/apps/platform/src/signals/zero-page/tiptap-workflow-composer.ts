@@ -194,7 +194,7 @@ export interface WorkflowComposerSignals {
   readonly insertWorkflow$: Command<void, [ComposerSlashWorkflow]>;
   readonly insertChatThread$: Command<void, [ComposerChatThreadSuggestion]>;
   readonly insertPromptMarkdown$: Command<void, [string]>;
-  readonly insertStructuredPrompt$: Command<void, [UserMessageDocument]>;
+  readonly insertUserMessage$: Command<void, [UserMessageDocument]>;
   readonly insertTemplate$: Command<
     void,
     [GenerationTemplateRequest, ComposerTemplateAttachment]
@@ -1506,9 +1506,9 @@ function workflowComposerDocumentForValue(
   return editor.schema.node("doc", undefined, content);
 }
 
-function workflowComposerDocumentForStructuredPrompt(
+function workflowComposerDocumentForUserMessage(
   editor: Editor,
-  value: Parameters<DraftInputSyncTarget["syncStructuredPrompt"]>[0],
+  value: Parameters<DraftInputSyncTarget["syncUserMessage"]>[0],
   inlineTemplatesEnabled: boolean,
 ): ProseMirrorNode | null {
   const document = messageDocumentToEditorDoc(value, {
@@ -1522,8 +1522,8 @@ function workflowComposerDocumentForDraft(
   inlineTemplatesEnabled: boolean,
   draft: {
     readonly input: string;
-    readonly structuredPrompt:
-      | Parameters<DraftInputSyncTarget["syncStructuredPrompt"]>[0]
+    readonly userMessage:
+      | Parameters<DraftInputSyncTarget["syncUserMessage"]>[0]
       | null;
     readonly editorDocument: EditorDocumentSnapshot | null;
   },
@@ -1531,10 +1531,10 @@ function workflowComposerDocumentForDraft(
   if (feedbackItemsFromWorkflowComposer(editor).length > 0) {
     return editor.state.doc;
   }
-  const structuredDocument = draft.structuredPrompt
-    ? workflowComposerDocumentForStructuredPrompt(
+  const userMessageDocument = draft.userMessage
+    ? workflowComposerDocumentForUserMessage(
         editor,
-        draft.structuredPrompt,
+        draft.userMessage,
         inlineTemplatesEnabled,
       )
     : null;
@@ -1542,7 +1542,7 @@ function workflowComposerDocumentForDraft(
     ? editor.schema.nodeFromJSON(draft.editorDocument.toEditorDocument())
     : null;
   return (
-    structuredDocument ??
+    userMessageDocument ??
     restoredEditorDocument ??
     workflowComposerDocumentForValue(editor, draft.input)
   );
@@ -1713,7 +1713,7 @@ function createMountEditorCommand({
         editor,
         workflowComposerDocumentForDraft(editor, inlineTemplatesEnabled, {
           input: get(draft.input$),
-          structuredPrompt: set(draft.takeRestoredStructuredPrompt$),
+          userMessage: set(draft.takeRestoredUserMessage$),
           editorDocument: set(draft.readEditorDocument$),
         }),
       );
@@ -1742,8 +1742,8 @@ function createMountEditorCommand({
             );
           }
         },
-        syncStructuredPrompt(value) {
-          const document = workflowComposerDocumentForStructuredPrompt(
+        syncUserMessage(value) {
+          const document = workflowComposerDocumentForUserMessage(
             editor,
             value,
             inlineTemplatesEnabled,
@@ -2017,7 +2017,7 @@ function createTemplateInsertionCommands(editor: Editor) {
   };
 }
 
-function createInsertStructuredPromptCommand(
+function createInsertUserMessageCommand(
   editor: Editor,
   inlineTemplatesEnabled: boolean,
 ) {
@@ -2226,7 +2226,7 @@ export function createWorkflowComposerSignals<
   );
   const textCommands = createInsertTextCommands(editor);
   const templateCommands = createTemplateInsertionCommands(editor);
-  const insertStructuredPrompt$ = createInsertStructuredPromptCommand(
+  const insertUserMessage$ = createInsertUserMessageCommand(
     editor,
     inlineTemplatesEnabled,
   );
@@ -2260,7 +2260,7 @@ export function createWorkflowComposerSignals<
     insertChatThread$,
     ...textCommands,
     ...templateCommands,
-    insertStructuredPrompt$,
+    insertUserMessage$,
     readInputForSubmission$,
     setTemplateAttachmentLifecycleRef$: templateAttachment.setLifecycleRef$,
     feedback,

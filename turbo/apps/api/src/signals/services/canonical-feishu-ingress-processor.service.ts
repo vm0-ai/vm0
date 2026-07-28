@@ -10,6 +10,7 @@ import { z } from "zod";
 import { logger } from "../../lib/log";
 import { env } from "../../lib/env";
 import { buildFeishuNoticeMessage } from "../../lib/feishu-message-card";
+import { inferMimetype } from "../../lib/mimetype";
 import {
   replyWithFeishuMessage,
   sendFeishuMessage,
@@ -31,6 +32,7 @@ import {
 } from "./integration-model-route.service";
 import { touchChatThreadLastMessageAt } from "./zero-chat-message-shared.service";
 import { insertChatEvent } from "./zero-chat-event.service";
+import { createUserMessageDocument } from "./zero-chat-user-message.service";
 import {
   encryptQueuedUserMessageRunParams,
   enqueueUserMessageQueueItem,
@@ -233,6 +235,19 @@ interface PersistedCanonicalFeishuIngress {
   readonly receivedAt: Date;
 }
 
+function feishuInboundUserMessage(message: FeishuInboundMessage) {
+  return createUserMessageDocument({
+    text: message.file ? null : message.text,
+    files: (message.file ? [message.file] : []).map((file) => {
+      return {
+        id: file.fileId,
+        filename: file.filename,
+        contentType: inferMimetype(file.filename),
+      };
+    }),
+  });
+}
+
 async function persistCanonicalFeishuIngress(args: {
   readonly db: Db;
   readonly ingress: NonNullable<Awaited<ReturnType<typeof loadClaimedIngress>>>;
@@ -309,6 +324,7 @@ async function persistCanonicalFeishuIngress(args: {
         chatThreadId: route.chatThreadId,
         eventType: "input.prompt",
         content: args.message.text,
+        userMessage: feishuInboundUserMessage(args.message),
         runId: null,
         feishuChatOpenUrl: feishuChatOpenUrl(args.message.chatId),
         createdAt: args.ingress.createdAt,

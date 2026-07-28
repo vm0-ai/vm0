@@ -1,12 +1,9 @@
 import {
   AST_NODE_TYPES,
   ESLintUtils,
-  type TSESLint,
   type TSESTree,
 } from "@typescript-eslint/utils";
 import {
-  canHaveModifiers,
-  getModifiers,
   isArrowFunction,
   isBlock,
   isCallExpression,
@@ -23,7 +20,6 @@ import {
   isVariableDeclaration,
   isVariableDeclarationList,
   NodeFlags,
-  SyntaxKind,
   type Expression as TypeScriptExpression,
   type Node,
   type Signature,
@@ -34,6 +30,7 @@ import {
 
 import {
   isDrizzleDeclaration,
+  isDrizzlePgCoreDeclaration,
   isDrizzleSqlTag,
   isDrizzleSymbol,
   isNamedDrizzleSignature,
@@ -107,6 +104,11 @@ const STRUCTURED_RESULT_ARGUMENT = new Map<string, number>([
 
 const RELATIONAL_QUERY_METHODS = new Set(["findFirst", "findMany"]);
 
+// This lint models the conventional, type-correct Drizzle patterns used in this
+// repository. It assumes bindings remain unchanged after creation and uses the
+// project's default identifier casing. Unusual TypeScript or runtime
+// metaprogramming is out of scope; dynamic SQL from ordinary code is still
+// analyzed conservatively.
 export const preferDrizzleApis = createRule({
   name: "prefer-drizzle-apis",
   defaultOptions: [],
@@ -114,7 +116,7 @@ export const preferDrizzleApis = createRule({
     type: "problem",
     docs: {
       description:
-        "Prefer schema-aware Drizzle APIs for exactly equivalent SQL constructions",
+        "Prefer schema-aware Drizzle APIs for exactly equivalent SQL in conventional type-correct Drizzle code",
       recommended: true,
       requiresTypeChecking: true,
     },
@@ -126,12 +128,16 @@ export const preferDrizzleApis = createRule({
         "Use Drizzle crossJoinLateral(...) for this equivalent lateral join.",
       composedCteQueryBuilder:
         "Use Drizzle $with(...), select(), joins, grouping, ordering, and set-operation builders for this complete locally composed read query.",
+      deleteQueryBuilder:
+        "Use Drizzle delete(...).where(...) for this complete schema-backed delete query.",
       emptyFragment:
         "Use Drizzle sql.empty() for this intentionally empty SQL fragment.",
       existsQueryBuilder:
         "Use a Drizzle select builder and row existence check for this complete schema-backed EXISTS query.",
       lockingQueryBuilder:
         "Use a Drizzle select builder with .for(...) for this complete locking query.",
+      lockingCteUpdateQueryBuilder:
+        "Use Drizzle $with(...), a locking select builder, and update(...).from(...) for this complete locking update query.",
       queryBuilder:
         "Use a Drizzle select builder for this complete schema-backed query.",
       scalarCteQueryBuilder:
@@ -139,6 +145,10 @@ export const preferDrizzleApis = createRule({
       structuredScalarQuery:
         "Use a Drizzle query builder or joined relation instead of a complete raw scalar query in a structured result field.",
       typedApi: "Use Drizzle {{helper}}(...) for this equivalent SQL-tag leaf.",
+      unnestUpdateQueryBuilder:
+        "Use Drizzle update(...).set(...).from(...).where(...) for this complete unnest-backed update query.",
+      upsertQueryBuilder:
+        "Use Drizzle insert(...).values(...).onConflictDoUpdate(...) for this complete schema-backed upsert.",
       existencePredicate:
         "Use Drizzle {{helper}}(...) with a select builder for this equivalent existence predicate.",
     },
@@ -174,14 +184,31 @@ export const preferDrizzleApis = createRule({
       context.sourceCode,
       checker,
       services,
-      isSafeSqlTerminalUse,
     );
     const sqlCapabilityChecks: SqlCapabilityChecks = {
       acceptsOptionalSql,
+      allowsWriteQueryBuilder,
       hasDirectResultMapping: hasDirectMapWith,
       hasParameterListOrigin,
       isInlineParameterList: isInlineParameterListSqlJoin,
     };
+
+    function allowsWriteQueryBuilder(
+      node: TSESTree.Expression,
+      expandedTemplates: ReadonlySet<TSESTree.TaggedTemplateExpression>,
+    ): boolean {
+      const use = outerTransparentNode(node);
+      const parent = use.parent;
+      return (
+        [...expandedTemplates].every((template) => {
+          return isDrizzleSqlTag(checker, services, template.tag);
+        }) &&
+        parent?.type === AST_NODE_TYPES.CallExpression &&
+        parent.arguments.length === 1 &&
+        parent.arguments[0] === use &&
+        isDirectDrizzleDatabaseExecuteCall(parent)
+      );
+    }
 
     function acceptsOptionalSql(node: TSESTree.Expression): boolean {
       if (isRelationalWhereCallbackResult(node)) {
@@ -287,15 +314,23 @@ export const preferDrizzleApis = createRule({
             messageId:
               finding.capability === "composed-cte"
                 ? "composedCteQueryBuilder"
-                : finding.capability === "exists"
-                  ? "existsQueryBuilder"
-                  : finding.capability === "locking"
-                    ? "lockingQueryBuilder"
-                    : finding.capability === "scalar-cte"
-                      ? "scalarCteQueryBuilder"
-                      : finding.capability === "structured-scalar"
-                        ? "structuredScalarQuery"
-                        : "queryBuilder",
+                : finding.capability === "delete"
+                  ? "deleteQueryBuilder"
+                  : finding.capability === "exists"
+                    ? "existsQueryBuilder"
+                    : finding.capability === "locking"
+                      ? "lockingQueryBuilder"
+                      : finding.capability === "locking-cte-update"
+                        ? "lockingCteUpdateQueryBuilder"
+                        : finding.capability === "scalar-cte"
+                          ? "scalarCteQueryBuilder"
+                          : finding.capability === "structured-scalar"
+                            ? "structuredScalarQuery"
+                            : finding.capability === "unnest-update"
+                              ? "unnestUpdateQueryBuilder"
+                              : finding.capability === "upsert"
+                                ? "upsertQueryBuilder"
+                                : "queryBuilder",
           });
         } else if (finding.kind === "empty-fragment") {
           context.report({
@@ -355,6 +390,27 @@ export const preferDrizzleApis = createRule({
       }
       const declaration = resolvedCallSignature(node)?.declaration;
       return declaration !== undefined && isDrizzleDeclaration(declaration);
+    }
+
+    function isDirectDrizzleDatabaseExecuteCall(
+      node: TSESTree.CallExpression,
+    ): boolean {
+      if (
+        node.callee.type !== AST_NODE_TYPES.MemberExpression ||
+        !isDrizzleMethodCall(node, "execute")
+      ) {
+        return false;
+      }
+      const receiver = services.esTreeNodeToTSNodeMap.get(node.callee.object);
+      const receiverType = checker.getTypeAtLocation(receiver);
+      const update = resolvedSymbol(
+        checker,
+        checker.getPropertyOfType(receiverType, "update"),
+      );
+      return (
+        isDrizzleSymbol(checker, receiverType.getSymbol()) &&
+        update?.declarations?.some(isDrizzlePgCoreDeclaration) === true
+      );
     }
 
     function methodReturnsDrizzleProperty(
@@ -419,124 +475,6 @@ export const preferDrizzleApis = createRule({
         method === "leftJoinLateral"
         ? 1
         : undefined;
-    }
-
-    function isDrizzleHelperUse(
-      call: TSESTree.CallExpression,
-      node: TSESTree.Expression,
-    ): boolean {
-      const name =
-        call.callee.type === AST_NODE_TYPES.Identifier
-          ? call.callee.name
-          : call.callee.type === AST_NODE_TYPES.MemberExpression
-            ? memberName(call.callee)
-            : undefined;
-      return (
-        name !== undefined &&
-        (PREDICATE_HELPERS.has(name) || SELECTION_HELPERS.has(name)) &&
-        call.arguments.includes(node) &&
-        isNamedDrizzleCall(call, name)
-      );
-    }
-
-    function selectionObjectCall(
-      node: TSESTree.Expression,
-    ): TSESTree.CallExpression | undefined {
-      let current: TSESTree.Node = node;
-      while (true) {
-        const parent: TSESTree.Node = current.parent;
-        if (
-          parent.type === AST_NODE_TYPES.Property &&
-          parent.value === current &&
-          parent.parent.type === AST_NODE_TYPES.ObjectExpression
-        ) {
-          current = parent.parent;
-          continue;
-        }
-        if (
-          parent.type === AST_NODE_TYPES.ArrayExpression &&
-          parent.elements.includes(current)
-        ) {
-          current = parent;
-          continue;
-        }
-        if (
-          parent.type !== AST_NODE_TYPES.CallExpression ||
-          !parent.arguments.includes(current) ||
-          parent.callee.type !== AST_NODE_TYPES.MemberExpression
-        ) {
-          return undefined;
-        }
-        const method = memberName(parent.callee);
-        return method !== undefined &&
-          SELECTION_OBJECT_METHODS.has(method) &&
-          isDrizzleMethodCall(parent, method)
-          ? parent
-          : undefined;
-      }
-    }
-
-    function isDirectDrizzleMethodUse(
-      call: TSESTree.CallExpression,
-      node: TSESTree.Expression,
-    ): boolean {
-      if (
-        call.callee.type !== AST_NODE_TYPES.MemberExpression ||
-        !call.arguments.includes(node)
-      ) {
-        return false;
-      }
-      const method = memberName(call.callee);
-      if (method === undefined || !isDrizzleMethodCall(call, method)) {
-        return false;
-      }
-      if (
-        method === "execute" ||
-        method === "from" ||
-        method === "groupBy" ||
-        method === "orderBy"
-      ) {
-        return true;
-      }
-      const predicateIndex = predicateArgumentIndex(call);
-      return (
-        predicateIndex !== undefined && call.arguments[predicateIndex] === node
-      );
-    }
-
-    function isSafeSqlTerminalUse(node: TSESTree.Expression): boolean {
-      const parent = node.parent;
-      if (parent.type === AST_NODE_TYPES.MemberExpression) {
-        const method = memberName(parent);
-        const call = parent.parent;
-        if (
-          parent.object === node &&
-          (method === "as" || method === "mapWith") &&
-          call.type === AST_NODE_TYPES.CallExpression &&
-          call.callee === parent &&
-          isDrizzleMethodCall(call, method)
-        ) {
-          return true;
-        }
-      }
-      if (selectionObjectCall(node) !== undefined) {
-        return true;
-      }
-      if (
-        parent.type !== AST_NODE_TYPES.CallExpression ||
-        parent.arguments.some((argument) => {
-          return argument.type === AST_NODE_TYPES.SpreadElement;
-        })
-      ) {
-        return false;
-      }
-      return (
-        (parent.arguments.length === 3 &&
-          parent.arguments[1] === node &&
-          isExecuteRawRowsCallee(parent.callee)) ||
-        isDirectDrizzleMethodUse(parent, node) ||
-        isDrizzleHelperUse(parent, node)
-      );
     }
 
     function inspectRawQueryCall(node: TSESTree.CallExpression): void {
@@ -675,23 +613,6 @@ export const preferDrizzleApis = createRule({
       return undefined;
     }
 
-    function variableInScope(
-      node: TSESTree.Identifier,
-    ): TSESLint.Scope.Variable | undefined {
-      let scope: TSESLint.Scope.Scope | null =
-        context.sourceCode.getScope(node);
-      while (scope !== null) {
-        const variable = scope.variables.find((candidate) => {
-          return candidate.name === node.name;
-        });
-        if (variable !== undefined) {
-          return variable;
-        }
-        scope = scope.upper;
-      }
-      return undefined;
-    }
-
     function outerTransparentNode(node: TSESTree.Node): TSESTree.Node {
       let current = node;
       while (
@@ -701,38 +622,6 @@ export const preferDrizzleApis = createRule({
         current = current.parent;
       }
       return current;
-    }
-
-    function structuredResultArgument(node: TSESTree.Node): boolean {
-      const use = outerTransparentNode(node);
-      const call = use.parent;
-      if (
-        call === undefined ||
-        call.type !== AST_NODE_TYPES.CallExpression ||
-        call.callee.type !== AST_NODE_TYPES.MemberExpression
-      ) {
-        return false;
-      }
-      const method = memberName(call.callee);
-      const argumentIndex =
-        method === undefined
-          ? undefined
-          : STRUCTURED_RESULT_ARGUMENT.get(method);
-      return (
-        method !== undefined &&
-        argumentIndex !== undefined &&
-        call.arguments[argumentIndex] === use &&
-        isStructuredResultCall(call, method)
-      );
-    }
-
-    function hasExportModifier(node: Node): boolean {
-      return (
-        canHaveModifiers(node) &&
-        getModifiers(node)?.some((modifier) => {
-          return modifier.kind === SyntaxKind.ExportKeyword;
-        }) === true
-      );
     }
 
     function localSelectionInitializer(
@@ -746,23 +635,12 @@ export const preferDrizzleApis = createRule({
         checker,
         checker.getSymbolAtLocation(tsNode),
       )?.valueDeclaration;
-      const variable = variableInScope(node);
       if (
         declaration === undefined ||
         !isVariableDeclaration(declaration) ||
         declaration.getSourceFile() !== tsNode.getSourceFile() ||
         !isConstVariable(declaration) ||
-        hasExportModifier(declaration.parent.parent) ||
-        declaration.initializer === undefined ||
-        variable === undefined ||
-        !variable.references.every((reference) => {
-          return (
-            reference.init === true ||
-            (reference.identifier.type === AST_NODE_TYPES.Identifier &&
-              (reference.identifier === node ||
-                structuredResultArgument(reference.identifier)))
-          );
-        })
+        declaration.initializer === undefined
       ) {
         return undefined;
       }
@@ -786,31 +664,12 @@ export const preferDrizzleApis = createRule({
         checker,
         checker.getSymbolAtLocation(tsCallee),
       )?.valueDeclaration;
-      const variable = variableInScope(node.callee);
       if (
         declaration === undefined ||
         !isFunctionDeclaration(declaration) ||
         declaration.getSourceFile() !== tsCallee.getSourceFile() ||
         declaration.body === undefined ||
-        declaration.body.statements.length !== 1 ||
-        hasExportModifier(declaration) ||
-        variable === undefined ||
-        !variable.references.every((reference) => {
-          if (reference.init === true || reference.identifier === node.callee) {
-            return true;
-          }
-          if (reference.identifier.type !== AST_NODE_TYPES.Identifier) {
-            return false;
-          }
-          const callee = outerTransparentNode(reference.identifier);
-          const call = callee.parent;
-          return (
-            call !== undefined &&
-            call.type === AST_NODE_TYPES.CallExpression &&
-            call.callee === callee &&
-            structuredResultArgument(call)
-          );
-        })
+        declaration.body.statements.length !== 1
       ) {
         return undefined;
       }

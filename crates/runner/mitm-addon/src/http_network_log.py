@@ -40,15 +40,13 @@ def set_target_from_url(flow: http.HTTPFlow, url: str) -> None:
     set_target(flow, url=url, host=host, port=port)
 
 
-def target(flow: http.HTTPFlow, original_url: str) -> tuple[str, str, int]:
-    target_metadata = flow.metadata.get(metadata_keys.NETWORK_LOG_TARGET)
-    if target_metadata is not None:
-        typed_target = cast(dict[str, object], target_metadata)
-        return (
-            cast(str, typed_target["url"]),
-            cast(str, typed_target["host"]),
-            cast(int, typed_target["port"]),
-        )
-
-    host, port = fallback_host_port(flow, original_url)
-    return original_url, host, port
+def target(flow: http.HTTPFlow) -> tuple[str, str, int]:
+    typed_target = cast(
+        dict[str, object],
+        flow.metadata[metadata_keys.NETWORK_LOG_TARGET],
+    )
+    return (
+        cast(str, typed_target["url"]),
+        cast(str, typed_target["host"]),
+        cast(int, typed_target["port"]),
+    )

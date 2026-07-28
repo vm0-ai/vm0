@@ -3,17 +3,19 @@ import type {
   PersistedAttachment,
   UserMessageDocument,
 } from "@vm0/api-contracts/contracts/chat-threads";
-import type { EditorDocumentSnapshot } from "./user-message-document-codec.ts";
+import {
+  textToMessageDocument,
+  type EditorDocumentSnapshot,
+} from "./user-message-document-codec.ts";
 
 export interface DraftPersistencePayload {
   readonly content: string | null;
-  readonly structuredPrompt: UserMessageDocument | null;
+  readonly userMessage: UserMessageDocument | null;
   readonly attachments: PersistedAttachment[] | null;
 }
 
 interface DraftPersistenceSource {
   readonly input: string;
-  readonly structuredPromptEnabled: boolean;
   readonly editorDocument: EditorDocumentSnapshot | null;
   readonly generationTemplate: GenerationTemplateRequest | undefined;
   readonly attachments: readonly PersistedAttachment[];
@@ -25,25 +27,23 @@ export function buildDraftPersistencePayload(
   const content = source.input.trim() || null;
   const attachments =
     source.attachments.length > 0 ? [...source.attachments] : null;
-  const hasStructuredDraft =
+  const hasUserMessageDraft =
     content !== null ||
     source.generationTemplate !== undefined ||
     attachments !== null;
 
-  let structuredPrompt: UserMessageDocument | null = null;
-  if (
-    source.structuredPromptEnabled &&
-    source.editorDocument &&
-    hasStructuredDraft
-  ) {
-    structuredPrompt = source.editorDocument.toMessageDocument({
-      generationTemplate: source.generationTemplate,
-      attachments: source.attachments,
-    });
-    if (!structuredPrompt) {
-      throw new Error("Failed to serialize structured draft");
+  let userMessage: UserMessageDocument | null = null;
+  if (hasUserMessageDraft) {
+    userMessage = source.editorDocument
+      ? source.editorDocument.toMessageDocument({
+          generationTemplate: source.generationTemplate,
+          attachments: source.attachments,
+        })
+      : textToMessageDocument(source.input, undefined, source.attachments);
+    if (!userMessage) {
+      throw new Error("Failed to serialize user-message draft");
     }
   }
 
-  return { content, structuredPrompt, attachments };
+  return { content, userMessage, attachments };
 }

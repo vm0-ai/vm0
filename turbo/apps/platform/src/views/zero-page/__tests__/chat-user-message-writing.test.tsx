@@ -23,7 +23,7 @@ const THREAD_ID = "b0000000-0000-4000-a000-000000000951";
 
 interface SentMessageCapture {
   readonly prompt?: string;
-  readonly structuredPrompt?: UserMessageDocument;
+  readonly userMessage?: UserMessageDocument;
   readonly attachFiles?: readonly {
     readonly id: string;
     readonly filename: string;
@@ -34,11 +34,11 @@ interface SentMessageCapture {
 
 interface QueuedMessageCapture {
   readonly content?: string;
-  readonly structuredPrompt?: UserMessageDocument;
+  readonly userMessage?: UserMessageDocument;
   readonly attachments?: readonly PersistedAttachment[];
 }
 
-describe("structured prompt writes", () => {
+describe("user-message writes", () => {
   it("writes one ordered snapshot for a new-thread message", async () => {
     const user = userEvent.setup({ delay: null });
     let sent: SentMessageCapture | null = null;
@@ -58,7 +58,7 @@ describe("structured prompt writes", () => {
     detachedSetupPage({
       context,
       path: `/agents/${AGENT_ID}/chat`,
-      featureSwitches: { [FeatureSwitchKey.StructuredPrompt]: true },
+      featureSwitches: { [FeatureSwitchKey.StructuredPrompt]: false },
     });
 
     const composer = await screen.findByPlaceholderText(PLACEHOLDER);
@@ -77,7 +77,7 @@ describe("structured prompt writes", () => {
     await waitFor(() => {
       expect(sent).toMatchObject({
         prompt: "Review the launch brief",
-        structuredPrompt: {
+        userMessage: {
           version: 1,
           parts: [
             {
@@ -97,7 +97,7 @@ describe("structured prompt writes", () => {
     { enabled: true, label: "enabled" },
     { enabled: false, label: "disabled" },
   ])(
-    "applies the $label switch state to existing-thread writes",
+    "writes a user message with the $label switch state",
     async ({ enabled }) => {
       const user = userEvent.setup({ delay: null });
       let sent: SentMessageCapture | null = null;
@@ -122,21 +122,17 @@ describe("structured prompt writes", () => {
       await waitFor(() => {
         expect(sent).not.toBeNull();
       });
-      if (enabled) {
-        expect(sent).toMatchObject({
-          prompt: "Keep the legacy prompt too",
-          structuredPrompt: {
-            version: 1,
-            parts: [{ type: "text", text: "Keep the legacy prompt too" }],
-          },
-        });
-      } else {
-        expect(sent).not.toHaveProperty("structuredPrompt");
-      }
+      expect(sent).toMatchObject({
+        prompt: "Keep the legacy prompt too",
+        userMessage: {
+          version: 1,
+          parts: [{ type: "text", text: "Keep the legacy prompt too" }],
+        },
+      });
     },
   );
 
-  it("queues one structured snapshot with the enabled switch", async () => {
+  it("queues one user-message snapshot", async () => {
     let queued: QueuedMessageCapture | null = null;
     const appendGate = context.mocks.deferred<void>();
     mockChatLifecycle(context, {
@@ -178,7 +174,7 @@ describe("structured prompt writes", () => {
     await waitFor(() => {
       expect(queued).toMatchObject({
         content: "排队完整内容",
-        structuredPrompt: {
+        userMessage: {
           version: 1,
           parts: [{ type: "text", text: "排队完整内容" }],
         },

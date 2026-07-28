@@ -103,7 +103,7 @@ import {
 import {
   messageDocumentToDisplayText,
   messageDocumentToPrompt,
-  shouldUseStructuredPrompt,
+  shouldUseUserMessage,
   type EditorDocumentSnapshot,
 } from "../../signals/zero-page/user-message-document-codec.ts";
 import type {
@@ -376,16 +376,13 @@ function asInputChatEvent(message: ChatMessage): ChatInputMessage | undefined {
   return isInputChatEvent(message) ? message : undefined;
 }
 
-function visibleStructuredPrompt(
+function visibleUserMessage(
   inputMessage: ChatInputMessage | undefined,
-  structuredPromptEnabled: boolean,
+  userMessageEnabled: boolean,
 ): UserMessageDocument | undefined {
   return inputMessage &&
-    shouldUseStructuredPrompt(
-      structuredPromptEnabled,
-      inputMessage.structuredPrompt,
-    )
-    ? inputMessage.structuredPrompt
+    shouldUseUserMessage(userMessageEnabled, inputMessage.userMessage)
+    ? inputMessage.userMessage
     : undefined;
 }
 
@@ -3391,7 +3388,7 @@ function runGroupFoldMessages(fold: RunGroupFold): EnrichedChatMessage[] {
 
 function runGroupFoldSourceLabel(
   fold: RunGroupFold,
-  structuredPromptEnabled: boolean,
+  userMessageEnabled: boolean,
 ): string {
   const messages = runGroupFoldMessages(fold);
   const workflowLabel = runGroupFoldWorkflowLabel(fold);
@@ -3402,11 +3399,11 @@ function runGroupFoldSourceLabel(
     if (!isInputChatEvent(message)) {
       continue;
     }
-    const content = shouldUseStructuredPrompt(
-      structuredPromptEnabled,
-      message.structuredPrompt,
+    const content = shouldUseUserMessage(
+      userMessageEnabled,
+      message.userMessage,
     )
-      ? messageDocumentToDisplayText(message.structuredPrompt)
+      ? messageDocumentToDisplayText(message.userMessage)
       : message.content;
     if (content?.trim()) {
       return normalizedInlineLabel(content);
@@ -3497,7 +3494,7 @@ function verboseDurationLabelForRunGroupFold(
 
 function runGroupFoldLabel(
   fold: RunGroupFold,
-  structuredPromptEnabled: boolean,
+  userMessageEnabled: boolean,
 ): string {
   if (isGoalRunGroupFold(fold)) {
     const duration = verboseDurationLabelForRunGroupFold(fold);
@@ -3505,7 +3502,7 @@ function runGroupFoldLabel(
     return duration ? `${duration} for ${label}` : `Goal for ${label}`;
   }
   const runLabel = fold.hiddenRunCount === 1 ? "run" : "runs";
-  const sourceLabel = runGroupFoldSourceLabel(fold, structuredPromptEnabled);
+  const sourceLabel = runGroupFoldSourceLabel(fold, userMessageEnabled);
   return `${fold.hiddenRunCount} ${runLabel} for ${sourceLabel}`;
 }
 
@@ -6313,7 +6310,7 @@ function clipboardAttachmentsFromMessage(
   });
 }
 
-function clipboardAttachmentsFromStructuredPrompt(
+function clipboardAttachmentsFromUserMessage(
   document: UserMessageDocument,
   attachments: readonly ChatClipboardAttachment[],
 ): ChatClipboardAttachment[] {
@@ -6706,7 +6703,7 @@ function presentationTemplatePreviewSlug(
   );
 }
 
-function StructuredTemplateReference({
+function UserMessageTemplateReference({
   part,
 }: {
   part: Extract<UserMessagePart, { type: "template" }>;
@@ -6745,7 +6742,7 @@ function StructuredTemplateReference({
   );
 }
 
-function StructuredFileReference({
+function UserMessageFileReference({
   part,
   attachment,
 }: {
@@ -6781,7 +6778,7 @@ function StructuredFileReference({
   );
 }
 
-function StructuredChatThreadReference({
+function UserMessageChatThreadReference({
   threadId,
   title,
 }: {
@@ -6802,7 +6799,7 @@ function StructuredChatThreadReference({
   );
 }
 
-function StructuredFeedbackNote({
+function UserMessageFeedbackNote({
   note,
 }: {
   note: readonly FeedbackNotePart[];
@@ -6817,7 +6814,7 @@ function StructuredFeedbackNote({
         const key = `${identity}:${String(occurrence)}`;
         if (part.type === "chat_thread") {
           return (
-            <StructuredChatThreadReference
+            <UserMessageChatThreadReference
               key={key}
               threadId={part.threadId}
               title={part.titleSnapshot}
@@ -6825,7 +6822,7 @@ function StructuredFeedbackNote({
           );
         }
         if (part.type === "template") {
-          return <StructuredTemplateReference key={key} part={part} />;
+          return <UserMessageTemplateReference key={key} part={part} />;
         }
         return <span key={key}>{part.text}</span>;
       })}
@@ -6833,11 +6830,11 @@ function StructuredFeedbackNote({
   );
 }
 
-type StructuredFeedbackPart = Extract<UserMessagePart, { type: "feedback" }>;
+type UserMessageFeedbackPart = Extract<UserMessagePart, { type: "feedback" }>;
 
 function equalFeedbackSources(
-  left: StructuredFeedbackPart["source"],
-  right: StructuredFeedbackPart["source"],
+  left: UserMessageFeedbackPart["source"],
+  right: UserMessageFeedbackPart["source"],
 ): boolean {
   if (left === undefined || right === undefined) {
     return left === right;
@@ -6850,8 +6847,8 @@ function equalFeedbackSources(
   );
 }
 
-function structuredFeedbackHeading(
-  parts: readonly StructuredFeedbackPart[],
+function userMessageFeedbackHeading(
+  parts: readonly UserMessageFeedbackPart[],
 ): string {
   const source = parts[0]?.source;
   if (!source) {
@@ -6868,16 +6865,16 @@ function structuredFeedbackHeading(
     : `Feedback on ${parts.length} parts of ${description}:`;
 }
 
-function StructuredFeedbackGroup({
+function UserMessageFeedbackGroup({
   parts,
 }: {
-  parts: readonly StructuredFeedbackPart[];
+  parts: readonly UserMessageFeedbackPart[];
 }) {
   const partOccurrences = new Map<string, number>();
   let firstPart = true;
   return (
     <div data-structured-feedback-group="" className="space-y-3">
-      <div>{structuredFeedbackHeading(parts)}</div>
+      <div>{userMessageFeedbackHeading(parts)}</div>
       {parts.map((part) => {
         const identity = JSON.stringify(part);
         const occurrence = (partOccurrences.get(identity) ?? 0) + 1;
@@ -6898,7 +6895,7 @@ function StructuredFeedbackGroup({
             >
               {part.quote}
             </blockquote>
-            <StructuredFeedbackNote note={part.note} />
+            <UserMessageFeedbackNote note={part.note} />
           </div>
         );
       })}
@@ -6906,13 +6903,13 @@ function StructuredFeedbackGroup({
   );
 }
 
-type StructuredStandalonePart = Exclude<UserMessagePart, { type: "feedback" }>;
+type UserMessageStandalonePart = Exclude<UserMessagePart, { type: "feedback" }>;
 
-function StructuredUserMessagePart({
+function UserMessagePartView({
   part,
   attachments,
 }: {
-  part: StructuredStandalonePart;
+  part: UserMessageStandalonePart;
   attachments: readonly ResolvedAttachFile[];
 }): ReactNode {
   if (part.type === "text") {
@@ -6920,26 +6917,26 @@ function StructuredUserMessagePart({
   }
   if (part.type === "chat_thread") {
     return (
-      <StructuredChatThreadReference
+      <UserMessageChatThreadReference
         threadId={part.threadId}
         title={part.titleSnapshot}
       />
     );
   }
   if (part.type === "template") {
-    return <StructuredTemplateReference part={part} />;
+    return <UserMessageTemplateReference part={part} />;
   }
   if (part.type === "file") {
     const attachment = attachments.find((candidate) => {
       return candidate.id === part.fileId;
     });
-    return <StructuredFileReference part={part} attachment={attachment} />;
+    return <UserMessageFileReference part={part} attachment={attachment} />;
   }
   void (part satisfies never);
   return null;
 }
 
-function StructuredUserMessage({
+function UserMessageView({
   document,
   attachments,
   elevatedFileIds,
@@ -6952,7 +6949,7 @@ function StructuredUserMessage({
 }) {
   const partOccurrences = new Map<string, number>();
   const bodyParts = document.parts.filter((part) => {
-    return !isElevatedStructuredPart(
+    return !isElevatedUserMessagePart(
       part,
       elevatedFileIds,
       inlineTemplatesEnabled,
@@ -6969,7 +6966,7 @@ function StructuredUserMessage({
       break;
     }
     if (part.type === "feedback") {
-      const feedbackParts: StructuredFeedbackPart[] = [part];
+      const feedbackParts: UserMessageFeedbackPart[] = [part];
       let nextIndex = index + 1;
       while (nextIndex < bodyParts.length) {
         const candidate = bodyParts[nextIndex];
@@ -6983,7 +6980,7 @@ function StructuredUserMessage({
         nextIndex += 1;
       }
       renderedParts.push(
-        <StructuredFeedbackGroup
+        <UserMessageFeedbackGroup
           key={`feedback:${String(index)}`}
           parts={feedbackParts}
         />,
@@ -6995,7 +6992,7 @@ function StructuredUserMessage({
     const occurrence = (partOccurrences.get(identity) ?? 0) + 1;
     partOccurrences.set(identity, occurrence);
     renderedParts.push(
-      <StructuredUserMessagePart
+      <UserMessagePartView
         key={`${identity}:${String(occurrence)}`}
         part={part}
         attachments={attachments}
@@ -7010,7 +7007,7 @@ function StructuredUserMessage({
   );
 }
 
-function isElevatedStructuredPart(
+function isElevatedUserMessagePart(
   part: UserMessagePart,
   elevatedFileIds: ReadonlySet<string>,
   inlineTemplatesEnabled: boolean,
@@ -7021,7 +7018,7 @@ function isElevatedStructuredPart(
   );
 }
 
-function StructuredUserMessageContent({
+function UserMessageContent({
   document,
   attachments,
   referenceAttachments,
@@ -7048,7 +7045,7 @@ function StructuredUserMessageContent({
         return part.type === "template";
       });
   const hasBody = document.parts.some((part) => {
-    return !isElevatedStructuredPart(
+    return !isElevatedUserMessagePart(
       part,
       imageAttachmentIds,
       inlineTemplatesEnabled,
@@ -7061,7 +7058,7 @@ function StructuredUserMessageContent({
         <div className="mb-1.5 flex max-w-[85%] flex-wrap justify-end gap-1.5">
           {templateParts.map((part) => {
             return (
-              <StructuredTemplateReference
+              <UserMessageTemplateReference
                 key={`${part.template.type}:${part.titleSnapshot}`}
                 part={part}
               />
@@ -7076,7 +7073,7 @@ function StructuredUserMessageContent({
       {hasBody ? (
         <div className="zero-chat-bubble-user rounded-xl max-w-[85%] text-[0.9375rem] leading-[1.7] [overflow-wrap:anywhere] overflow-hidden">
           <div className="px-4 py-3">
-            <StructuredUserMessage
+            <UserMessageView
               document={document}
               attachments={referenceAttachments}
               elevatedFileIds={imageAttachmentIds}
@@ -7194,7 +7191,7 @@ function GoalUserMessage({
   );
 }
 
-function useStructuredPromptRendering() {
+function useUserMessageRendering() {
   const featureSwitches = useGet(featureSwitch$);
   const structured =
     featureSwitches[FeatureSwitchKey.StructuredPrompt] ?? false;
@@ -7214,9 +7211,9 @@ function PagedUserMessage({
   message: EnrichedChatMessage;
   thread: ChatThreadSignals;
 }) {
-  const { structured, inlineTemplates } = useStructuredPromptRendering();
+  const { structured, inlineTemplates } = useUserMessageRendering();
   const inputMessage = asInputChatEvent(message);
-  const structuredPrompt = visibleStructuredPrompt(inputMessage, structured);
+  const userMessage = visibleUserMessage(inputMessage, structured);
   const content = message.content ?? "";
   // Two attachment sources coexist: the structured `attachFiles` field
   // (current flow) and legacy `[Attached file: ...](url)` inline lines left
@@ -7230,8 +7227,8 @@ function PagedUserMessage({
     cleanContent.trim() === ATTACH_ONLY_PLACEHOLDER
       ? ""
       : cleanContent;
-  const copyText = structuredPrompt
-    ? (messageDocumentToPrompt(structuredPrompt, {
+  const copyText = userMessage
+    ? (messageDocumentToPrompt(userMessage, {
         inlineTemplates,
       }) ?? "")
     : legacyCopyText;
@@ -7248,14 +7245,14 @@ function PagedUserMessage({
     message,
     parsed,
   );
-  const clipboardAttachments = structuredPrompt
-    ? clipboardAttachmentsFromStructuredPrompt(
-        structuredPrompt,
+  const clipboardAttachments = userMessage
+    ? clipboardAttachmentsFromUserMessage(
+        userMessage,
         legacyClipboardAttachments,
       )
     : legacyClipboardAttachments;
   const canCopy =
-    structuredPrompt !== undefined ||
+    userMessage !== undefined ||
     copyText.trim().length > 0 ||
     clipboardAttachments.length > 0;
 
@@ -7269,7 +7266,7 @@ function PagedUserMessage({
         {
           text: copyText,
           attachments: clipboardAttachments,
-          ...(structuredPrompt ? { structuredPrompt } : {}),
+          ...(userMessage ? { userMessage } : {}),
         },
         pageSignal,
       ),
@@ -7298,9 +7295,9 @@ function PagedUserMessage({
         <div className="flex flex-col items-end w-full">
           <SlackUserMessageOrigin permalink={message.slackMessagePermalink} />
           <FeishuUserMessageOrigin chatOpenUrl={message.feishuChatOpenUrl} />
-          {structuredPrompt ? (
-            <StructuredUserMessageContent
-              document={structuredPrompt}
+          {userMessage ? (
+            <UserMessageContent
+              document={userMessage}
               attachments={allAttachments}
               referenceAttachments={attachFiles ?? []}
               onImageClick={openLightbox}
