@@ -6,6 +6,7 @@ import {
   DEFAULT_PROFILE,
   type ArtifactEntry,
   type SecretConnectorMetadata,
+  type StoredConnectorPermissionBaseline,
   type StoredExecutionContext,
 } from "@vm0/api-contracts/contracts/runners";
 import type { RunContextResponse } from "@vm0/api-contracts/contracts/zero-runs";
@@ -183,6 +184,7 @@ import {
   defaultFirewallPolicyForPermissionIndex,
   networkPolicyForFirewallPolicy,
 } from "./firewall-network-policy.service";
+import { currentConnectorCatalogValidatorIdentity } from "./connector-catalog-validator-authority";
 import { logger } from "../../lib/log";
 import { recordSandboxOperation } from "../external/sandbox-op-log";
 import type { InternalRunCallbackKind } from "./internal-run-callback";
@@ -603,6 +605,7 @@ interface ResolvedModelProviderEnvironment {
 interface PermissionManifest {
   readonly firewalls: ExecutionFirewalls;
   readonly networkPolicies: NetworkPolicies;
+  readonly connectorPermissionBaseline?: StoredConnectorPermissionBaseline;
   readonly environmentSecretPlaceholders:
     | Readonly<Record<string, string>>
     | undefined;
@@ -3819,6 +3822,52 @@ interface BuiltinConnectorManifestSource {
   readonly permissionIndex: ConnectorServerFirewallPermissionIndex;
 }
 
+function buildConnectorPermissionBaseline(
+  snapshot: ConnectorRuntimeSnapshot,
+  sources: readonly BuiltinConnectorManifestSource[],
+): StoredConnectorPermissionBaseline {
+  const validationAuthority = currentConnectorCatalogValidatorIdentity();
+  return {
+    version: 1,
+    catalogIdentity: snapshot.acceptedSnapshot.identity,
+    validationAuthority: {
+      backendVersion: validationAuthority.backendVersion,
+      buildCommitSha: validationAuthority.buildCommitSha,
+    },
+    connectors: Object.fromEntries(
+      sources.map((source) => {
+        const defaultPolicy = source.permissionIndex.defaultPolicy;
+        const permissionOverrides = defaultPolicy.permissionOverrides;
+        return [
+          source.metadata.connectorRef,
+          {
+            permissionNames: [...source.permissionIndex.permissionNames],
+            defaultPolicy: {
+              permissionDefault: defaultPolicy.permissionDefault,
+              ...(permissionOverrides
+                ? {
+                    permissionOverrides: {
+                      ...(permissionOverrides.allow
+                        ? { allow: [...permissionOverrides.allow] }
+                        : {}),
+                      ...(permissionOverrides.deny
+                        ? { deny: [...permissionOverrides.deny] }
+                        : {}),
+                      ...(permissionOverrides.ask
+                        ? { ask: [...permissionOverrides.ask] }
+                        : {}),
+                    },
+                  }
+                : {}),
+              unknownPolicy: defaultPolicy.unknownPolicy,
+            },
+          },
+        ];
+      }),
+    ),
+  };
+}
+
 function applyBuiltinConnectorMetadataPolicies(
   sources: readonly BuiltinConnectorManifestSource[],
   policies: FirewallPolicies | undefined,
@@ -3967,6 +4016,10 @@ async function buildPermissionManifest(args: {
 
       return Promise.resolve({
         firewalls,
+        connectorPermissionBaseline: buildConnectorPermissionBaseline(
+          args.connectorCatalogSnapshot,
+          builtinSources,
+        ),
         environmentSecretPlaceholders: mergeRecords(
           providerManifest?.environmentSecretPlaceholders,
           connectorManifest.environmentSecretPlaceholders,
@@ -4754,6 +4807,7 @@ async function buildStoredExecutionContextDraft(args: {
       userTimezone: args.userTimezone,
       firewalls: permissions?.firewalls,
       networkPolicies: permissions?.networkPolicies,
+      connectorPermissionBaseline: permissions?.connectorPermissionBaseline,
       disallowedTools: args.body.disallowedTools,
       tools: args.body.tools,
       settings: args.body.settings,

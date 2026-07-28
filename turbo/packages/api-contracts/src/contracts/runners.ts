@@ -2,6 +2,7 @@ import { z } from "zod";
 import { authHeadersSchema, initContract } from "./base";
 import {
   executionFirewallsSchema,
+  firewallPolicyValueSchema,
   firewallSchema,
   networkPolicySchema,
   networkPoliciesSchema,
@@ -121,6 +122,90 @@ const networkPolicyRefreshesSchema = z.record(
   z.string(),
   networkPolicyRefreshSchema,
 );
+const connectorPermissionNameListSchema = z
+  .array(z.string().min(1))
+  .superRefine((names, context) => {
+    if (new Set(names).size !== names.length) {
+      context.addIssue({
+        code: "custom",
+        message: "Connector permission names must be unique",
+      });
+    }
+  });
+const connectorPermissionDefaultOverridesSchema = z
+  .object({
+    allow: connectorPermissionNameListSchema.optional(),
+    deny: connectorPermissionNameListSchema.optional(),
+    ask: connectorPermissionNameListSchema.optional(),
+  })
+  .strict();
+const connectorPermissionBaselineEntrySchema = z
+  .object({
+    permissionNames: connectorPermissionNameListSchema,
+    defaultPolicy: z
+      .object({
+        permissionDefault: firewallPolicyValueSchema,
+        permissionOverrides:
+          connectorPermissionDefaultOverridesSchema.optional(),
+        unknownPolicy: firewallPolicyValueSchema,
+      })
+      .strict(),
+  })
+  .strict()
+  .superRefine((entry, context) => {
+    const permissionNames = new Set(entry.permissionNames);
+    const overrideNames = Object.values(
+      entry.defaultPolicy.permissionOverrides ?? {},
+    ).flat();
+    if (new Set(overrideNames).size !== overrideNames.length) {
+      context.addIssue({
+        code: "custom",
+        path: ["defaultPolicy", "permissionOverrides"],
+        message: "Connector permission overrides must not overlap",
+      });
+    }
+    for (const permissionName of overrideNames) {
+      if (!permissionNames.has(permissionName)) {
+        context.addIssue({
+          code: "custom",
+          path: ["defaultPolicy", "permissionOverrides"],
+          message: "Connector permission override must name a permission",
+        });
+      }
+    }
+  });
+const connectorCatalogDigestSchema = z.string().regex(/^sha256:[a-f0-9]{64}$/u);
+const connectorCatalogBackendVersionSchema = z
+  .string()
+  .regex(/^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$/u);
+const connectorCatalogBuildCommitShaSchema = z
+  .string()
+  .regex(/^[a-f0-9]{40}$/u);
+
+export const storedConnectorPermissionBaselineSchema = z
+  .object({
+    version: z.literal(1),
+    catalogIdentity: z
+      .object({
+        sourceId: z.string().min(1),
+        schemaVersion: z.number().int().positive(),
+        catalogVersion: z.string().min(1),
+        catalogDigest: connectorCatalogDigestSchema,
+        capabilityDigest: connectorCatalogDigestSchema,
+      })
+      .strict(),
+    validationAuthority: z
+      .object({
+        backendVersion: connectorCatalogBackendVersionSchema,
+        buildCommitSha: connectorCatalogBuildCommitShaSchema.nullable(),
+      })
+      .strict(),
+    connectors: z.record(
+      connectorRefSchema,
+      connectorPermissionBaselineEntrySchema,
+    ),
+  })
+  .strict();
 const runnerBuiltinFirewallNameSchema = z
   .string()
   .min(1)
@@ -536,6 +621,9 @@ export const storedExecutionContextSchema = z.object({
   // Per-connector runtime network policy refresh deadlines. Used by runners to refresh
   // active sandbox policy when temporary allow grants expire.
   networkPolicyRefreshes: networkPolicyRefreshesSchema.optional(),
+  // API-only catalog-derived permission defaults for claim-time grant refresh.
+  connectorPermissionBaseline:
+    storedConnectorPermissionBaselineSchema.optional(),
   // Tools to disable in Claude CLI (passed as --disallowed-tools)
   disallowedTools: z.array(z.string()).optional(),
   // Tools to make available in Claude CLI (passed as --tools)
@@ -554,6 +642,17 @@ export const storedExecutionContextSchema = z.object({
     .nullable()
     .optional(),
 });
+
+/**
+ * Tolerant reader for execution contexts already persisted in a database or
+ * encrypted queue payload. The optional baseline is derived performance data,
+ * so malformed or future versions must remain an independent cache miss rather
+ * than invalidating the complete queued execution context.
+ */
+export const compatibleStoredExecutionContextSchema =
+  storedExecutionContextSchema.extend({
+    connectorPermissionBaseline: z.unknown().optional(),
+  });
 
 /**
  * Execution context returned when claiming a job.
@@ -779,6 +878,12 @@ export type HeldSessionState = z.infer<typeof heldSessionStateSchema>;
 export type ExecutionContext = z.infer<typeof executionContextSchema>;
 export type StoredExecutionContext = z.infer<
   typeof storedExecutionContextSchema
+>;
+export type CompatibleStoredExecutionContext = z.infer<
+  typeof compatibleStoredExecutionContextSchema
+>;
+export type StoredConnectorPermissionBaseline = z.infer<
+  typeof storedConnectorPermissionBaselineSchema
 >;
 export type NetworkPolicyRefresh = z.infer<typeof networkPolicyRefreshSchema>;
 export type RunnerBuiltinFirewallsResolveBody = z.infer<

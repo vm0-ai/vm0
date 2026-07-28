@@ -1,5 +1,7 @@
 import { command } from "ccstate";
+import { connectorRefSchema } from "@vm0/api-contracts/contracts/connector-identity";
 import {
+  compatibleStoredExecutionContextSchema,
   elapsedSinceApiStartMs,
   RESUME_SESSION_HISTORY_MAX_BYTES,
   runnersNetworkPolicyRefreshContract,
@@ -7,10 +9,12 @@ import {
   runnersHeartbeatContract,
   runnersJobClaimContract,
   runnersPollContract,
-  storedExecutionContextSchema,
+  storedConnectorPermissionBaselineSchema,
+  type CompatibleStoredExecutionContext,
   type ExecutionContext,
   type HeldSessionState,
   type SessionHistoryDownloadSource,
+  type StoredConnectorPermissionBaseline,
   type StoredExecutionContext,
 } from "@vm0/api-contracts/contracts/runners";
 import { runnerRealtimeTokenContract } from "@vm0/api-contracts/contracts/realtime";
@@ -70,6 +74,7 @@ import {
   mergeNetworkPolicyRefreshes,
   networkPolicyRefreshConnectorRefs,
   resolveActiveNetworkPolicyRefreshes,
+  resolveActiveNetworkPolicyRefreshesFromBaseline,
 } from "../services/zero-user-permission-grants.service";
 import {
   type CompressedSessionHistoryBlobEncoding,
@@ -142,6 +147,12 @@ function isResumeSessionHistoryLoadError(
 }
 
 type ClaimRouteTimingSpanKind = "top_level" | "nested";
+type ClaimNetworkPolicyRefreshPath =
+  | "baseline"
+  | "baseline_empty"
+  | "full_missing_baseline"
+  | "full_invalid_baseline"
+  | "full_incompatible_baseline";
 type ClaimRouteTimingActionType =
   | "claim_route_request_prepare"
   | "claim_route_lookup_authorization"
@@ -159,6 +170,7 @@ interface ClaimRouteTimingRecord {
   readonly durationMs: number;
   readonly timestamp: string;
   readonly fallbackReason?: "invalid_keys";
+  readonly policyRefreshPath?: ClaimNetworkPolicyRefreshPath;
 }
 
 class ClaimRouteTimingCollector {
@@ -205,6 +217,28 @@ class ClaimRouteTimingCollector {
     });
   }
 
+  async measureNetworkPolicyRefresh<T>(
+    operation: () => Promise<{
+      readonly value: T;
+      readonly path: ClaimNetworkPolicyRefreshPath;
+    }>,
+  ): Promise<T> {
+    const startedAt = now();
+    const result = await settle(operation());
+    const finishedAt = now();
+    this.records.push({
+      actionType: "claim_route_response_network_policy_refresh",
+      spanKind: "nested",
+      durationMs: Math.max(0, finishedAt - startedAt),
+      timestamp: new Date(finishedAt).toISOString(),
+      ...(result.ok ? { policyRefreshPath: result.value.path } : {}),
+    });
+    if (!result.ok) {
+      throw result.error;
+    }
+    return result.value.value;
+  }
+
   flush(args: {
     readonly runId: string;
     readonly runnerGroup: string;
@@ -240,6 +274,9 @@ class ClaimRouteTimingCollector {
             span_kind: record.spanKind,
             ...(record.fallbackReason
               ? { fallback_reason: record.fallbackReason }
+              : {}),
+            ...(record.policyRefreshPath
+              ? { policy_refresh_path: record.policyRefreshPath }
               : {}),
           },
         };
@@ -1067,6 +1104,51 @@ type PreparedSecretValuesResult =
       readonly status: "invalid-keys";
     };
 
+type ConnectorPermissionBaselineRead =
+  | { readonly kind: "missing" }
+  | { readonly kind: "invalid" }
+  | {
+      readonly kind: "valid";
+      readonly value: StoredConnectorPermissionBaseline;
+    };
+
+function decodeCompatibleStoredExecutionContext(
+  context: CompatibleStoredExecutionContext,
+): {
+  readonly context: StoredExecutionContext;
+  readonly connectorPermissionBaseline: ConnectorPermissionBaselineRead;
+} {
+  const {
+    connectorPermissionBaseline: rawConnectorPermissionBaseline,
+    ...contextWithoutConnectorPermissionBaseline
+  } = context;
+  if (rawConnectorPermissionBaseline === undefined) {
+    return {
+      context: contextWithoutConnectorPermissionBaseline,
+      connectorPermissionBaseline: { kind: "missing" },
+    };
+  }
+  const baselineResult = storedConnectorPermissionBaselineSchema.safeParse(
+    rawConnectorPermissionBaseline,
+  );
+  if (!baselineResult.success) {
+    return {
+      context: contextWithoutConnectorPermissionBaseline,
+      connectorPermissionBaseline: { kind: "invalid" },
+    };
+  }
+  return {
+    context: {
+      ...contextWithoutConnectorPermissionBaseline,
+      connectorPermissionBaseline: baselineResult.data,
+    },
+    connectorPermissionBaseline: {
+      kind: "valid",
+      value: baselineResult.data,
+    },
+  };
+}
+
 function preparedSecretValuesForRunner(
   storedContext: StoredExecutionContext,
 ): PreparedSecretValuesResult {
@@ -1119,58 +1201,127 @@ async function secretValuesForRunner(
   });
 }
 
+function connectorPermissionBaselineMatchesStoredContext(
+  storedContext: StoredExecutionContext,
+  baseline: StoredConnectorPermissionBaseline,
+): boolean {
+  const baselineConnectorRefs = Object.keys(baseline.connectors);
+  const storedBuiltinConnectorRefs = new Set(
+    (storedContext.firewalls ?? []).flatMap((firewall) => {
+      return firewall.kind === "builtin" &&
+        connectorRefSchema.safeParse(firewall.name).success
+        ? [firewall.name]
+        : [];
+    }),
+  );
+  const storedNetworkPolicies = storedContext.networkPolicies ?? {};
+  return (
+    baselineConnectorRefs.length === storedBuiltinConnectorRefs.size &&
+    baselineConnectorRefs.every((connectorRef) => {
+      return (
+        storedBuiltinConnectorRefs.has(connectorRef) &&
+        Object.hasOwn(storedNetworkPolicies, connectorRef)
+      );
+    })
+  );
+}
+
 async function refreshClaimNetworkPolicies(args: {
   readonly db: Db;
   readonly run: ClaimedRun;
   readonly storedContext: StoredExecutionContext;
+  readonly connectorPermissionBaseline: ConnectorPermissionBaselineRead;
   readonly timing: ClaimRouteTimingCollector;
 }): Promise<
   Pick<StoredExecutionContext, "networkPolicies" | "networkPolicyRefreshes">
 > {
-  const networkPolicyConnectorRefs = Object.keys(
-    args.storedContext.networkPolicies ?? {},
-  );
+  const storedNetworkPolicies = args.storedContext.networkPolicies ?? {};
+  const networkPolicyConnectorRefs = Object.keys(storedNetworkPolicies);
   if (networkPolicyConnectorRefs.length === 0) {
     return {
       networkPolicies: args.storedContext.networkPolicies,
       networkPolicyRefreshes: undefined,
     };
   }
-  const connectorCatalogSnapshot = await loadConnectorRuntimeSnapshot(args.db);
-  const connectorRefs = networkPolicyRefreshConnectorRefs(
-    connectorCatalogSnapshot.serverFirewalls,
-    networkPolicyConnectorRefs,
-  );
-  if (connectorRefs.length === 0) {
-    return {
-      networkPolicies: args.storedContext.networkPolicies,
-      networkPolicyRefreshes: undefined,
-    };
-  }
 
-  return await args.timing.measure(
-    "claim_route_response_network_policy_refresh",
-    "nested",
-    async () => {
-      const refreshes = await resolveActiveNetworkPolicyRefreshes(
+  return await args.timing.measureNetworkPolicyRefresh(async () => {
+    const scope = {
+      orgId: args.run.orgId,
+      userId: args.run.userId,
+      agentId: args.run.agentId,
+    };
+    const fullRefresh = async (
+      path: Extract<ClaimNetworkPolicyRefreshPath, `full_${string}`>,
+    ) => {
+      const connectorCatalogSnapshot = await loadConnectorRuntimeSnapshot(
         args.db,
-        {
-          orgId: args.run.orgId,
-          userId: args.run.userId,
-          agentId: args.run.agentId,
-        },
-        connectorRefs,
-        connectorCatalogSnapshot,
       );
+      const connectorRefs = networkPolicyRefreshConnectorRefs(
+        connectorCatalogSnapshot.serverFirewalls,
+        networkPolicyConnectorRefs,
+      );
+      const refreshes =
+        connectorRefs.length === 0
+          ? []
+          : await resolveActiveNetworkPolicyRefreshes(
+              args.db,
+              scope,
+              connectorRefs,
+              connectorCatalogSnapshot,
+            );
+      return { refreshes, path };
+    };
+
+    const selectRefresh = async () => {
+      if (args.connectorPermissionBaseline.kind === "missing") {
+        return await fullRefresh("full_missing_baseline");
+      }
+      if (args.connectorPermissionBaseline.kind === "invalid") {
+        return await fullRefresh("full_invalid_baseline");
+      }
+      const baseline = args.connectorPermissionBaseline.value;
+      if (
+        !connectorPermissionBaselineMatchesStoredContext(
+          args.storedContext,
+          baseline,
+        )
+      ) {
+        return await fullRefresh("full_invalid_baseline");
+      }
+      const resolution = await resolveActiveNetworkPolicyRefreshesFromBaseline(
+        args.db,
+        scope,
+        baseline,
+      );
+      if (resolution.kind === "incompatible") {
+        return await fullRefresh("full_incompatible_baseline");
+      }
+      if (resolution.kind === "empty") {
+        return {
+          refreshes: resolution.refreshes,
+          path: "baseline_empty" as const,
+        };
+      }
       return {
-        networkPolicies: mergeNetworkPolicyRefreshes(
-          args.storedContext.networkPolicies,
-          refreshes,
-        ),
-        networkPolicyRefreshes: networkPolicyRefreshesRecord(refreshes),
+        refreshes: resolution.refreshes,
+        path: "baseline" as const,
       };
-    },
-  );
+    };
+    const selected = await selectRefresh();
+
+    return {
+      value: {
+        networkPolicies: mergeNetworkPolicyRefreshes(
+          storedNetworkPolicies,
+          selected.refreshes,
+        ),
+        networkPolicyRefreshes: networkPolicyRefreshesRecord(
+          selected.refreshes,
+        ),
+      },
+      path: selected.path,
+    };
+  });
 }
 
 type StoredResumeSessionWithHistoryRef = Extract<
@@ -1479,6 +1630,7 @@ async function buildClaimResponseBody(args: {
   readonly db: Db;
   readonly run: ClaimedRun;
   readonly storedContext: StoredExecutionContext;
+  readonly connectorPermissionBaseline: ConnectorPermissionBaselineRead;
   readonly timing: ClaimRouteTimingCollector;
   readonly signal: AbortSignal;
   readonly loadIdentityRepresentation: (
@@ -1525,6 +1677,7 @@ async function buildClaimResponseBody(args: {
             db: args.db,
             run: args.run,
             storedContext: args.storedContext,
+            connectorPermissionBaseline: args.connectorPermissionBaseline,
             timing: args.timing,
           }),
         ]);
@@ -1546,6 +1699,7 @@ async function buildClaimResponseBody(args: {
       const refreshedPolicies = refreshedPoliciesResult.value;
       args.signal.throwIfAborted();
       const {
+        connectorPermissionBaseline: _connectorPermissionBaseline,
         secretValueEnvironmentKeys: _secretValueEnvironmentKeys,
         storageManifest: _legacyStorageManifest,
         storageMounts: _storedStorageMounts,
@@ -1584,6 +1738,7 @@ const buildClaimResponseBodyForClaim$ = command(
       readonly db: Db;
       readonly run: ClaimedRun;
       readonly storedContext: StoredExecutionContext;
+      readonly connectorPermissionBaseline: ConnectorPermissionBaselineRead;
       readonly timing: ClaimRouteTimingCollector;
       readonly signal: AbortSignal;
     },
@@ -1592,6 +1747,7 @@ const buildClaimResponseBodyForClaim$ = command(
       db: args.db,
       run: args.run,
       storedContext: args.storedContext,
+      connectorPermissionBaseline: args.connectorPermissionBaseline,
       timing: args.timing,
       signal: args.signal,
       loadIdentityRepresentation(hash: string) {
@@ -2010,9 +2166,10 @@ const claimAuthorizedJob$ = command(
     const run = jobWithRun.run;
 
     const contextParseStartedAt = now();
-    const storedContextResult = storedExecutionContextSchema.safeParse(
-      jobWithRun.job.executionContext,
-    );
+    const storedContextResult =
+      compatibleStoredExecutionContextSchema.safeParse(
+        jobWithRun.job.executionContext,
+      );
     claimRouteTiming.recordElapsed(
       "claim_route_context_parse",
       "top_level",
@@ -2035,13 +2192,15 @@ const claimAuthorizedJob$ = command(
         },
       });
     }
-    const storedContext = storedContextResult.data;
+    const { context: storedContext, connectorPermissionBaseline } =
+      decodeCompatibleStoredExecutionContext(storedContextResult.data);
 
     const responseBodyResult = await settle(
       set(buildClaimResponseBodyForClaim$, {
         db,
         run,
         storedContext,
+        connectorPermissionBaseline,
         timing: claimRouteTiming,
         signal,
       }),

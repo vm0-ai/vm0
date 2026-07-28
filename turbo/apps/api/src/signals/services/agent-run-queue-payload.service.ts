@@ -1,5 +1,6 @@
 import {
-  storedExecutionContextSchema,
+  compatibleStoredExecutionContextSchema,
+  type CompatibleStoredExecutionContext,
   type StoredExecutionContext,
 } from "@vm0/api-contracts/contracts/runners";
 import type { FeatureSwitchContext } from "@vm0/core/feature-switch";
@@ -19,7 +20,7 @@ const queuedRunnerJobPayloadWireSchema = z.object({
   // Wire/backing payload compatibility field. Semantically this is the
   // Claude/Codex CLI agent session id used for runner sandbox reuse affinity.
   sessionId: z.string().nullable(),
-  executionContext: storedExecutionContextSchema,
+  executionContext: compatibleStoredExecutionContextSchema,
 });
 
 interface QueuedRunnerJobPayload {
@@ -31,8 +32,15 @@ interface QueuedRunnerJobPayload {
   readonly executionContext: StoredExecutionContext;
 }
 
+interface CompatibleQueuedRunnerJobPayload extends Omit<
+  QueuedRunnerJobPayload,
+  "executionContext"
+> {
+  readonly executionContext: CompatibleStoredExecutionContext;
+}
+
 function historyGenerationRunId(
-  executionContext: StoredExecutionContext,
+  executionContext: Pick<StoredExecutionContext, "resumeSession">,
 ): string | undefined {
   const resumeSession = executionContext.resumeSession;
   return resumeSession && "historyRef" in resumeSession
@@ -65,7 +73,7 @@ export async function encryptQueuedRunnerJobPayload(
 export async function decryptQueuedRunnerJobPayload(
   encryptedParams: string | null,
   ctx: FeatureSwitchContext = {},
-): Promise<QueuedRunnerJobPayload | null> {
+): Promise<CompatibleQueuedRunnerJobPayload | null> {
   if (!encryptedParams) {
     return null;
   }

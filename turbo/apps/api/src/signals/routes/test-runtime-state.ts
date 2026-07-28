@@ -14,7 +14,7 @@ import {
   testRuntimeStateContract,
   type TestRuntimeStateActionBody,
 } from "@vm0/api-contracts/contracts/test-runtime-state";
-import { storedExecutionContextSchema } from "@vm0/api-contracts/contracts/runners";
+import { compatibleStoredExecutionContextSchema } from "@vm0/api-contracts/contracts/runners";
 import { agentRuns } from "@vm0/db/schema/agent-run";
 import { agentSessions } from "@vm0/db/schema/agent-session";
 import {
@@ -28,7 +28,7 @@ import { runnerJobQueue } from "@vm0/db/schema/runner-job-queue";
 import { runUploadedFiles } from "@vm0/db/schema/run-uploaded-file";
 import { vm0ApiKeys } from "@vm0/db/schema/vm0-api-key";
 import { zeroRuns } from "@vm0/db/schema/zero-run";
-import { and, eq, sql } from "drizzle-orm";
+import { and, eq, sql, type SQL } from "drizzle-orm";
 import { z } from "zod";
 
 import { executeRawRows } from "../../lib/db-raw-rows";
@@ -341,6 +341,85 @@ async function mutateRunnerJobSecretValueEnvironmentKeys(
   signal.throwIfAborted();
 }
 
+type ConnectorPermissionBaselineMutationAction = Extract<
+  TestRuntimeStateActionBody,
+  { action: "mutate-runner-job-connector-permission-baseline" }
+>;
+
+async function mutateRunnerJobConnectorPermissionBaseline(
+  db: Db,
+  body: ConnectorPermissionBaselineMutationAction,
+  signal: AbortSignal,
+): Promise<void> {
+  let executionContext: SQL;
+  switch (body.mode) {
+    case "remove": {
+      executionContext = sql`${runnerJobQueue.executionContext} - 'connectorPermissionBaseline'`;
+      break;
+    }
+    case "malformed": {
+      executionContext = sql`jsonb_set(
+        ${runnerJobQueue.executionContext},
+        '{connectorPermissionBaseline}',
+        '{"version":2}'::jsonb,
+        true
+      )`;
+      break;
+    }
+    case "catalog-mismatch": {
+      executionContext = sql`jsonb_set(
+        ${runnerJobQueue.executionContext},
+        '{connectorPermissionBaseline,catalogIdentity,catalogDigest}',
+        '"sha256:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"'::jsonb,
+        true
+      )`;
+      break;
+    }
+    case "authority-mismatch": {
+      executionContext = sql`jsonb_set(
+        ${runnerJobQueue.executionContext},
+        '{connectorPermissionBaseline,validationAuthority,backendVersion}',
+        '"999.0.0"'::jsonb,
+        true
+      )`;
+      break;
+    }
+    case "inconsistent": {
+      executionContext = sql`jsonb_set(
+        ${runnerJobQueue.executionContext},
+        '{connectorPermissionBaseline,connectors,constructor}',
+        '{
+          "permissionNames": [],
+          "defaultPolicy": {
+            "permissionDefault": "allow",
+            "unknownPolicy": "allow"
+          }
+        }'::jsonb,
+        true
+      )`;
+      break;
+    }
+    case "incomplete": {
+      executionContext = sql`jsonb_set(
+        ${runnerJobQueue.executionContext},
+        '{connectorPermissionBaseline,connectors}',
+        '{}'::jsonb,
+        true
+      )`;
+      break;
+    }
+  }
+  const [updated] = await db
+    .update(runnerJobQueue)
+    .set({ executionContext })
+    .where(eq(runnerJobQueue.runId, body.run_id))
+    .returning({ runId: runnerJobQueue.runId });
+  signal.throwIfAborted();
+  if (!updated) {
+    throw new Error("Expected a runner job permission baseline");
+  }
+}
+
 async function removeRunCanonicalStorageState(
   db: Db,
   runId: string,
@@ -420,7 +499,7 @@ async function readRunnerJobStorageState(
   const rawContext = z
     .record(z.string(), z.unknown())
     .parse(job.executionContext);
-  const context = storedExecutionContextSchema.parse(rawContext);
+  const context = compatibleStoredExecutionContextSchema.parse(rawContext);
   let legacyManifestState: "missing" | "null" | "object";
   if (!Object.hasOwn(rawContext, "storageManifest")) {
     legacyManifestState = "missing";
@@ -752,7 +831,8 @@ type CompatibilityFixtureAction =
   | LegacyArtifactCatalogFileAction
   | PreviousApiComputerAccessAction
   | PreviousApiRunnerJobContextProfileAction
-  | PreviousApiBrowserProfileAction;
+  | PreviousApiBrowserProfileAction
+  | ConnectorPermissionBaselineMutationAction;
 
 function isCompatibilityFixtureAction(
   body: TestRuntimeStateActionBody,
@@ -762,6 +842,7 @@ function isCompatibilityFixtureAction(
     "set-computer-use-host-as-previous-api",
     "set-runner-job-context-profile-as-previous-api",
     "read-browser-profile-as-previous-api",
+    "mutate-runner-job-connector-permission-baseline",
   ].includes(body.action);
 }
 
@@ -782,6 +863,10 @@ async function compatibilityFixtureActionResponse(
     }
     case "read-browser-profile-as-previous-api": {
       return await readBrowserProfileAsPreviousApi(db, body, signal);
+    }
+    case "mutate-runner-job-connector-permission-baseline": {
+      await mutateRunnerJobConnectorPermissionBaseline(db, body, signal);
+      return { status: 200 as const, body: { ok: true as const } };
     }
   }
 }
