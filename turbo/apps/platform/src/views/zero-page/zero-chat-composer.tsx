@@ -3302,6 +3302,7 @@ function TemplatePreviewPage({
   );
   const detailHighResolutionImage =
     presentationTemplateDetailHighResolutionSlideImage(item, activeSlideIndex);
+  const detailFrameUrl = visibleDetailPreview?.frameUrl ?? null;
 
   const selectDetailSlide = (index: number) => {
     selectDetailPreview({
@@ -3386,23 +3387,25 @@ function TemplatePreviewPage({
             />
             <iframe
               key={
-                visibleDetailPreview?.frameUrl ??
+                detailFrameUrl ??
                 `${item.slug}:${selectedTheme.id}:${activeSlideIndex}:pending`
               }
               title={`${item.title} HTML preview`}
               data-testid={`${item.title} detail HTML preview`}
-              src={visibleDetailPreview?.frameUrl ?? undefined}
+              src={detailFrameUrl ?? undefined}
               sandbox="allow-same-origin"
               tabIndex={-1}
-              className="pointer-events-none absolute inset-0 h-full w-full border-0 bg-background opacity-0 data-[loaded=true]:opacity-100"
+              className={cn(
+                "pointer-events-none absolute inset-0 h-full w-full border-0 bg-background",
+                detailFrameUrl === null ? "opacity-0" : "opacity-100",
+              )}
               onLoad={(event) => {
-                const frameUrl = visibleDetailPreview?.frameUrl;
-                if (!frameUrl) {
+                if (detailFrameUrl === null) {
                   return;
                 }
                 revealTemplatePreviewFrameAfterPaint({
                   frame: event.currentTarget,
-                  frameUrl,
+                  frameUrl: detailFrameUrl,
                   onFrameLoad: () => {},
                 });
               }}

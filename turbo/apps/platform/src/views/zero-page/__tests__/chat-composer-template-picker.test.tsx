@@ -1174,7 +1174,11 @@ describe("chat composer templates", () => {
           expect.stringMatching(/^blob:detail-theme-preview-/),
         );
       });
-      expect(frame().className).toContain("data-[loaded=true]:opacity-100");
+      expect(frame()).toHaveClass("opacity-100");
+      fireEvent.load(frame());
+      await waitFor(() => {
+        expect(frame()).toHaveAttribute("data-loaded", "true");
+      });
       const initialFrameSrc = frame().getAttribute("src");
       if (initialFrameSrc === null) {
         throw new Error("Initial detail preview frame URL not found");
@@ -1184,7 +1188,14 @@ describe("chat composer templates", () => {
           `${template.title} slide 1 preview`,
         );
       };
+      const secondThumbnail = () => {
+        return within(templateDialog).getByLabelText(
+          `${template.title} slide 2 preview`,
+        );
+      };
       const initialThumbnailAccent = firstThumbnail().getAttribute("style");
+      const initialSecondThumbnailAccent =
+        secondThumbnail().getAttribute("style");
 
       await user.click(
         within(templateDialog).getByLabelText("Select style Prism"),
@@ -1195,6 +1206,10 @@ describe("chat composer templates", () => {
           expect.stringMatching(/^blob:detail-theme-preview-/),
         );
         expect(frame().getAttribute("src")).not.toBe(initialFrameSrc);
+      });
+      fireEvent.load(frame());
+      await waitFor(() => {
+        expect(frame()).toHaveAttribute("data-loaded", "true");
       });
 
       const themedFrameSrc = frame().getAttribute("src");
@@ -1213,6 +1228,12 @@ describe("chat composer templates", () => {
         const themedThumbnailAccent = firstThumbnail().getAttribute("style");
         expect(themedThumbnailAccent).toContain("--accent: #7257E6");
         expect(themedThumbnailAccent).not.toBe(initialThumbnailAccent);
+        const themedSecondThumbnailAccent =
+          secondThumbnail().getAttribute("style");
+        expect(themedSecondThumbnailAccent).toContain("--accent: #7257E6");
+        expect(themedSecondThumbnailAccent).not.toBe(
+          initialSecondThumbnailAccent,
+        );
       });
     } finally {
       if (originalCreateObjectURL) {
