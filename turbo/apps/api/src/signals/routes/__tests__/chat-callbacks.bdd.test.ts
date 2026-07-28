@@ -2720,7 +2720,7 @@ describe("CHAT-02: auto-send after failures", () => {
     const queuedFile = await chat.completeUpload(actor, {
       id: queuedUpload.id,
     });
-    const queuedContent = `[File: ${queuedFile.filename}]\n\nqueued with files`;
+    const queuedContent = "queued with files";
     await queueChatMessage(actor, {
       agentId,
       threadId: first.threadId,

@@ -304,8 +304,7 @@ describe("CHAT-02 chat messages and visible validation", () => {
         },
       ],
     };
-    const expectedContent =
-      "Build a launch-plan presentation\n\n[File: launch-plan.txt]";
+    const expectedContent = "Build a launch-plan presentation";
 
     const sent = await api.requestSendEvent(
       actor,

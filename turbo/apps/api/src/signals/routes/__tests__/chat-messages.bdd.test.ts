@@ -4336,9 +4336,10 @@ describe("CHAT-02: generation templates and attachments", () => {
       },
     );
     expect(message?.generationTemplate).toStrictEqual(illustrationTemplate);
-    expect(message?.content).toContain(
-      `Use [Template: ${style.title}] for the dog, then [Template: ${workflow.title}] for the follow-up`,
-    );
+    expect(message).toMatchObject({
+      content: "legacy fallback",
+      userMessage,
+    });
     await cancelChatRun(actor, sent.runId);
   }, 90_000);
 
@@ -5368,13 +5369,14 @@ describe("CHAT-02: shared user message queue", () => {
     chatCallbacks.failIfChatCallbackRouteIsFetched();
 
     const messageId = randomUUID();
+    const referencedThreadId = randomUUID();
     const userMessage: UserMessageDocument = {
       version: 1,
       parts: [
         { type: "text", text: "queue-first " },
         {
           type: "chat_thread",
-          threadId: randomUUID(),
+          threadId: referencedThreadId,
           titleSnapshot: "direct dispatch",
         },
       ],
@@ -5452,7 +5454,9 @@ describe("CHAT-02: shared user message queue", () => {
       .toBe(true);
 
     const claimedRun = await claimChatRun(runnerGroup, runId);
-    expect(claimedRun.claim.prompt).toBe("queue-first direct dispatch");
+    expect(claimedRun.claim.prompt).toBe(
+      `queue-first [direct dispatch](/chats/${referencedThreadId})`,
+    );
     await expect
       .poll(() => {
         return apiDispatchActionTypes(apiDispatchTimingEventsForRun(runId)).has(
