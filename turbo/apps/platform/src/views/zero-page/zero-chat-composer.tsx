@@ -396,6 +396,13 @@ type ComposerTemplatePicker = NonNullable<
 type ComposerComputerUse = NonNullable<ZeroChatComposerProps["computerUse"]>;
 
 const TEMPLATE_CARD_PREVIEW_SIZE = { width: 480, height: 270 } as const;
+const TEMPLATE_HIGH_RESOLUTION_PREVIEW_SIZE = {
+  width: 708,
+  height: 398,
+} as const;
+const PRESENTATION_GALLERY_PREVIEW_BASE_URL =
+  "https://static.vm0.io/web/assets/presentation-gallery/2026-07-04";
+const PRESENTATION_GALLERY_SLIDE_COUNT = 15;
 const TEMPLATE_PREWARM_IMAGE_COUNT = 15;
 const ILLUSTRATION_PREWARM_IMAGE_COUNT = 24;
 const ILLUSTRATION_EAGER_IMAGE_COUNT = 24;
@@ -1635,10 +1642,15 @@ function presentationTemplateFallbackSlideImage(
   index: number,
   size: TemplatePreviewImageSize = TEMPLATE_CARD_PREVIEW_SIZE,
 ): string {
-  const slideImages = presentationTemplateSlideImages(item);
-  const safeIndex = Math.max(0, Math.min(index, slideImages.length - 1));
-  const image = slideImages[safeIndex] ?? item.previewImage;
-  return r2ImageTransformUrl(image, size);
+  const safeIndex = Math.max(
+    0,
+    Math.min(index, PRESENTATION_GALLERY_SLIDE_COUNT - 1),
+  );
+  const slideNumber = String(safeIndex + 1).padStart(3, "0");
+  return r2ImageTransformUrl(
+    `${PRESENTATION_GALLERY_PREVIEW_BASE_URL}/${item.slug}/slide-${slideNumber}.webp`,
+    size,
+  );
 }
 
 function prewarmTemplatePreviewImage(
@@ -2724,8 +2736,112 @@ function revealTemplatePreviewFrameAfterPaint(params: {
   });
 }
 
+function startProgressiveTemplatePreviewImageLoad(
+  lowResolutionImage: HTMLImageElement,
+): void {
+  const highResolutionImage =
+    lowResolutionImage.parentElement?.querySelector<HTMLImageElement>(
+      '[data-template-preview-image="high"]',
+    );
+  if (
+    highResolutionImage === null ||
+    highResolutionImage === undefined ||
+    highResolutionImage.hasAttribute("src")
+  ) {
+    return;
+  }
+
+  const highResolutionUrl = highResolutionImage.dataset.src;
+  if (highResolutionUrl === undefined) {
+    return;
+  }
+  highResolutionImage.src = highResolutionUrl;
+}
+
+function ProgressiveTemplatePreviewImage({
+  alt,
+  className,
+  dataTestId,
+  fetchPriority,
+  highResolutionUrl,
+  loading,
+  lowResolutionUrl,
+}: {
+  readonly alt: string;
+  readonly className: string;
+  readonly dataTestId?: string;
+  readonly fetchPriority?: "high" | "low" | "auto";
+  readonly highResolutionUrl: string;
+  readonly loading?: "eager" | "lazy";
+  readonly lowResolutionUrl: string;
+}) {
+  const hasHighResolutionImage = lowResolutionUrl !== highResolutionUrl;
+
+  return (
+    <>
+      <img
+        key={`low:${lowResolutionUrl}`}
+        src={lowResolutionUrl}
+        alt={alt}
+        aria-hidden={alt === "" ? "true" : undefined}
+        data-template-preview-image="low"
+        data-testid={dataTestId}
+        className={cn(
+          className,
+          "transition-opacity duration-150 data-[replaced=true]:opacity-0",
+        )}
+        loading={loading}
+        decoding="async"
+        fetchPriority={fetchPriority}
+        onLoad={(event) => {
+          if (hasHighResolutionImage) {
+            startProgressiveTemplatePreviewImageLoad(event.currentTarget);
+          }
+        }}
+        onError={(event) => {
+          if (hasHighResolutionImage) {
+            startProgressiveTemplatePreviewImageLoad(event.currentTarget);
+          }
+        }}
+      />
+      {hasHighResolutionImage ? (
+        <img
+          key={`high:${highResolutionUrl}`}
+          src={undefined}
+          data-template-preview-image="high"
+          data-src={highResolutionUrl}
+          alt={alt}
+          aria-hidden={alt === "" ? "true" : undefined}
+          className={cn(
+            className,
+            "opacity-0 transition-opacity duration-150 data-[loaded=true]:opacity-100",
+          )}
+          loading={loading}
+          decoding="async"
+          fetchPriority={fetchPriority}
+          onLoad={(event) => {
+            const highResolutionImage = event.currentTarget;
+            highResolutionImage.dataset.loaded = "true";
+            const lowResolutionImage =
+              highResolutionImage.parentElement?.querySelector<HTMLImageElement>(
+                '[data-template-preview-image="low"]',
+              );
+            if (
+              lowResolutionImage !== null &&
+              lowResolutionImage !== undefined
+            ) {
+              lowResolutionImage.dataset.replaced = "true";
+            }
+          }}
+        />
+      ) : null}
+    </>
+  );
+}
+
 function TemplatePreviewFrames({
   fallbackImageUrl,
+  highResolutionFallbackImageUrl,
   loading,
   onFrameLoad,
   overlayFrameUrl,
@@ -2733,6 +2849,7 @@ function TemplatePreviewFrames({
   title,
 }: {
   readonly fallbackImageUrl: string;
+  readonly highResolutionFallbackImageUrl: string;
   readonly loading: boolean;
   readonly onFrameLoad: (frameUrl: string) => void;
   readonly overlayFrameUrl: string | null;
@@ -2749,16 +2866,14 @@ function TemplatePreviewFrames({
 
   return (
     <>
-      <img
-        key={fallbackImageUrl}
-        src={fallbackImageUrl}
+      <ProgressiveTemplatePreviewImage
         alt=""
-        aria-hidden="true"
-        data-testid={`${title} card image preview`}
         className="pointer-events-none absolute inset-0 h-full w-full object-cover"
-        loading="eager"
-        decoding="async"
+        dataTestId={`${title} card image preview`}
         fetchPriority="high"
+        highResolutionUrl={highResolutionFallbackImageUrl}
+        loading="eager"
+        lowResolutionUrl={fallbackImageUrl}
       />
       {frameUrls.map((frameUrl) => {
         return (
@@ -2831,6 +2946,12 @@ function TemplatePreview({
     item,
     hoverSlideIndex,
     previewTheme,
+  );
+  const highResolutionFallbackImageUrl = presentationTemplateCardSlideImage(
+    item,
+    hoverSlideIndex,
+    previewTheme,
+    TEMPLATE_HIGH_RESOLUTION_PREVIEW_SIZE,
   );
   const activeHtmlPreview =
     htmlPreview?.slug === item.slug &&
@@ -3042,6 +3163,7 @@ function TemplatePreview({
     >
       <TemplatePreviewFrames
         fallbackImageUrl={fallbackImageUrl}
+        highResolutionFallbackImageUrl={highResolutionFallbackImageUrl}
         loading={activeHtmlPreview?.loading === true}
         onFrameLoad={handleFrameLoad}
         overlayFrameUrl={overlayFrameUrl}
@@ -3141,9 +3263,16 @@ function TemplatePreviewPage({
   const cachedDetailDraft = runtime.presentation.drafts.get(item.embedUrl);
   const thumbnailThemeVariables =
     getPresentationTemplateThumbnailThemeVariables(selectedTheme);
-  const detailFallbackImage = presentationTemplateFallbackSlideImage(
+  const detailFallbackImage = presentationTemplateCardSlideImage(
     item,
     activeSlideIndex,
+    selectedTheme,
+  );
+  const detailHighResolutionImage = presentationTemplateCardSlideImage(
+    item,
+    activeSlideIndex,
+    selectedTheme,
+    TEMPLATE_HIGH_RESOLUTION_PREVIEW_SIZE,
   );
 
   const selectDetailSlide = (index: number) => {
@@ -3218,16 +3347,14 @@ function TemplatePreviewPage({
             onKeyDown={handleDetailSlideKeyDown}
             className="relative aspect-[16/9] overflow-hidden rounded-lg bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
           >
-            <img
-              key={detailFallbackImage}
-              src={detailFallbackImage}
+            <ProgressiveTemplatePreviewImage
               alt=""
-              aria-hidden="true"
-              data-testid={`${item.title} detail image preview`}
               className="pointer-events-none absolute inset-0 h-full w-full object-cover"
-              loading="eager"
-              decoding="async"
+              dataTestId={`${item.title} detail image preview`}
               fetchPriority="high"
+              highResolutionUrl={detailHighResolutionImage}
+              loading="eager"
+              lowResolutionUrl={detailFallbackImage}
             />
             <iframe
               key={

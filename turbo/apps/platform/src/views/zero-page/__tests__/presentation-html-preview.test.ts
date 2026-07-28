@@ -1,5 +1,27 @@
 import { describe, expect, it } from "vitest";
-import { previewPresentationHtml } from "../presentation-html-preview.ts";
+import {
+  parsePresentationPreviewDraft,
+  previewPresentationHtml,
+} from "../presentation-html-preview.ts";
+
+describe("parsePresentationPreviewDraft", () => {
+  it("parses static presentation HTML without editor metadata", () => {
+    const draft = parsePresentationPreviewDraft(`
+      <!doctype html>
+      <html>
+        <body>
+          <section class="slide"><h1>First slide</h1></section>
+          <section class="slide"><h1>Second slide</h1></section>
+        </body>
+      </html>
+    `);
+
+    expect(draft.slides).toStrictEqual([
+      { id: "slide-1", notes: "", title: "First slide" },
+      { id: "slide-2", notes: "", title: "Second slide" },
+    ]);
+  });
+});
 
 describe("previewPresentationHtml", () => {
   it("materializes theme switcher defaults before removing scripts", () => {

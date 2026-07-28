@@ -44,9 +44,6 @@ import {
   expectTemplateAttachedToComposer,
 } from "./chat-composer-test-helpers.ts";
 
-const PRESENTATION_DECK_METADATA =
-  '<script id="vm0-deck-metadata" type="application/json">{"kind":"presentation-html","editProtocolVersion":1,"slides":{}}</script>';
-
 beforeEach(() => {
   context.mocks.data.onboardingStatus({ defaultAgentId: AGENT_ID });
   context.mocks.http.get("*/__vm0-dev-artifact-fetch", ({ request }) => {
@@ -59,7 +56,7 @@ beforeEach(() => {
       1,
     );
     return new Response(
-      `<!doctype html><html><body>${PRESENTATION_DECK_METADATA}${Array.from(
+      `<!doctype html><html><body>${Array.from(
         { length: slideCount },
         (_, index) => {
           return `<section data-vm0-slide data-slide-id="slide-${String(index + 1)}"><h1>Slide ${String(index + 1)}</h1></section>`;
@@ -252,6 +249,55 @@ describe("chat composer templates", () => {
       restoreIdleCallback();
       imagePreloads.restore();
     }
+  });
+
+  it("loads the presentation preview at low resolution before replacing it with the high-resolution image", async () => {
+    const template = PRESENTATION_TEMPLATE_PICKER_ITEMS[0]!;
+    mockChatLifecycle(context, { threadId: THREAD_ID });
+
+    detachedSetupPage({
+      context,
+      path: `/chats/${THREAD_ID}`,
+    });
+
+    click(
+      await waitFor(() => {
+        return screen.getByLabelText("Template");
+      }),
+    );
+
+    const lowResolutionImage = await screen.findByTestId(
+      `${template.title} card image preview`,
+    );
+    const highResolutionImage = lowResolutionImage.parentElement?.querySelector(
+      '[data-template-preview-image="high"]',
+    );
+    if (!(highResolutionImage instanceof HTMLImageElement)) {
+      throw new Error("High-resolution presentation preview image not found");
+    }
+
+    expect(lowResolutionImage).toHaveAttribute(
+      "src",
+      expect.stringContaining("width=480,height=270"),
+    );
+    expect(highResolutionImage).not.toHaveAttribute("src");
+    expect(highResolutionImage).toHaveAttribute(
+      "data-src",
+      expect.stringContaining("width=708,height=398"),
+    );
+
+    fireEvent.load(lowResolutionImage);
+    expect(highResolutionImage).toHaveAttribute(
+      "src",
+      highResolutionImage.dataset.src,
+    );
+    expect(lowResolutionImage).not.toHaveAttribute("data-replaced");
+
+    fireEvent.load(highResolutionImage);
+    await waitFor(() => {
+      expect(highResolutionImage).toHaveAttribute("data-loaded", "true");
+      expect(lowResolutionImage).toHaveAttribute("data-replaced", "true");
+    });
   });
 
   it("places the template control immediately after the legacy attach button by default", async () => {
@@ -655,7 +701,6 @@ describe("chat composer templates", () => {
           <!doctype html>
           <html>
             <body>
-              ${PRESENTATION_DECK_METADATA}
               <section data-vm0-slide data-slide-id="slide-one">
                 <h1>Slide one</h1>
               </section>
@@ -867,7 +912,7 @@ describe("chat composer templates", () => {
     try {
       previewFetch.resolve(
         new Response(
-          `<!doctype html><html><body>${PRESENTATION_DECK_METADATA}${Array.from(
+          `<!doctype html><html><body>${Array.from(
             { length: slideCount },
             (_, index) => {
               const slideNumber = index + 1;
@@ -957,6 +1002,14 @@ describe("chat composer templates", () => {
         }),
       ).toBeInTheDocument();
     });
+    const initialDetailImage = within(templateDialog).getByTestId(
+      `${template.title} detail image preview`,
+    );
+    const initialDetailImageSrc = initialDetailImage.getAttribute("src");
+    const prismCardPreview = template.cardPreviewImagesByTheme?.prism;
+    if (!prismCardPreview) {
+      throw new Error("Prism card preview not found");
+    }
     await user.click(
       within(templateDialog).getByLabelText("Select style Prism"),
     );
@@ -967,21 +1020,41 @@ describe("chat composer templates", () => {
       context.store.get(templateCardThemeIdBySlug$)[template.slug],
     ).toBeUndefined();
 
-    const prismCardPreview = template.cardPreviewImagesByTheme?.prism;
-    if (!prismCardPreview) {
-      throw new Error("Prism card preview not found");
-    }
     expect(
       within(templateDialog).getByTestId(
         `${template.title} detail image preview`,
       ),
     ).toHaveAttribute(
       "src",
-      r2ImageTransformUrl(template.previewImages[0]!, {
+      r2ImageTransformUrl(prismCardPreview, {
         width: 480,
         height: 270,
       }),
     );
+    expect(initialDetailImageSrc).not.toBe(
+      r2ImageTransformUrl(prismCardPreview, {
+        width: 480,
+        height: 270,
+      }),
+    );
+
+    await user.click(within(templateDialog).getByLabelText("Preview slide 2"));
+    await waitFor(() => {
+      expect(
+        within(templateDialog).getByTestId(
+          `${template.title} detail image preview`,
+        ),
+      ).toHaveAttribute(
+        "src",
+        r2ImageTransformUrl(
+          `https://static.vm0.io/web/assets/presentation-gallery/2026-07-04/${template.slug}/slide-002.webp`,
+          {
+            width: 480,
+            height: 270,
+          },
+        ),
+      );
+    });
 
     await user.click(
       within(templateDialog).getByLabelText(
@@ -1111,7 +1184,6 @@ describe("chat composer templates", () => {
           <!doctype html>
           <html>
             <body>
-              ${PRESENTATION_DECK_METADATA}
               ${Array.from({ length: lastSlideNumber }, (_, index) => {
                 return `<section data-vm0-slide data-slide-id="slide-${String(
                   index + 1,
@@ -1281,10 +1353,9 @@ describe("chat composer templates", () => {
         previewFetchCount += 1;
         return previewFetch.promise;
       }
-      return new Response(
-        `<!doctype html><html><body>${PRESENTATION_DECK_METADATA}</body></html>`,
-        { headers: { "Content-Type": "text/html" } },
-      );
+      return new Response("<!doctype html><html><body></body></html>", {
+        headers: { "Content-Type": "text/html" },
+      });
     });
     mockChatLifecycle(context, { threadId: THREAD_ID });
 
@@ -1329,7 +1400,6 @@ describe("chat composer templates", () => {
             <!doctype html>
             <html>
               <body>
-                ${PRESENTATION_DECK_METADATA}
                 <section data-vm0-slide data-slide-id="slide-one">
                   <h1>Slide one</h1>
                 </section>
@@ -1389,7 +1459,7 @@ describe("chat composer templates", () => {
     const template = PRESENTATION_TEMPLATE_PICKER_ITEMS[0]!;
     context.mocks.http.get("*/__vm0-dev-artifact-fetch", () => {
       return new Response(
-        `<!doctype html><html><head><style>:root { --bg: white; --ink: black; } section { width: 1600px; height: 900px; background: var(--bg); color: var(--ink); }</style></head><body>${PRESENTATION_DECK_METADATA}${template.previewImages
+        `<!doctype html><html><head><style>:root { --bg: white; --ink: black; } section { width: 1600px; height: 900px; background: var(--bg); color: var(--ink); }</style></head><body>${template.previewImages
           .map((_, index) => {
             return `<section data-vm0-slide data-slide-id="slide-${index + 1}"><h1>Slide ${index + 1}</h1></section>`;
           })
