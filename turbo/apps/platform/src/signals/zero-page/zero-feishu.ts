@@ -44,10 +44,9 @@ export const feishuOrgData$ = computed(
 
 export interface FeishuBotInstallation extends Omit<
   FeishuInstallationStatus,
-  "canManage" | "connectUrl" | "id" | "oauthRedirectUrl" | "setupCompleted"
+  "connectUrl" | "id" | "oauthRedirectUrl" | "setupCompleted"
 > {
   readonly id: string | null;
-  readonly canManage: boolean;
   readonly connectUrl: string | null;
   readonly oauthRedirectUrl: string | null;
   readonly setupCompleted: boolean;
@@ -62,7 +61,6 @@ export const feishuInstallations$ = computed(
       return data.installations.map((installation) => {
         return {
           ...installation,
-          canManage: installation.canManage ?? data.isAdmin,
           connectUrl: installation.connectUrl ?? null,
           oauthRedirectUrl: installation.oauthRedirectUrl ?? null,
           setupCompleted:
@@ -94,7 +92,6 @@ export const feishuInstallations$ = computed(
         tenantName: data.tenantName,
         defaultAgentId: data.defaultAgentId,
         defaultAgentName: data.defaultAgentName,
-        canManage: data.isAdmin,
       },
     ];
   },
