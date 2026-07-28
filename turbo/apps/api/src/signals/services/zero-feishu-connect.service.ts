@@ -27,7 +27,6 @@ async function loadFeishuInstallations(db: ReadonlyDb, orgId: string) {
   return await db
     .select({
       id: feishuOrgInstallations.id,
-      ownerUserId: feishuOrgInstallations.ownerUserId,
       appId: feishuOrgInstallations.appId,
       botName: feishuOrgInstallations.botName,
       botAvatarUrl: feishuOrgInstallations.botAvatarUrl,
@@ -91,7 +90,6 @@ function toFeishuInstallationStatus(
   args: {
     readonly orgId: string;
     readonly userId: string;
-    readonly isAdmin: boolean;
   },
 ): FeishuInstallationStatus {
   return {
@@ -121,7 +119,6 @@ function toFeishuInstallationStatus(
       installation.defaultAgentDisplayName ??
       installation.defaultAgentName ??
       null,
-    canManage: args.isAdmin || installation.ownerUserId === args.userId,
   };
 }
 
@@ -204,7 +201,6 @@ export const feishuConnectStatus = (args: {
 interface ConfigureFeishuArgs {
   readonly orgId: string;
   readonly userId: string;
-  readonly isAdmin: boolean;
   readonly appId: string;
   readonly appSecret: string;
   readonly verificationToken: string;
@@ -219,7 +215,7 @@ export type ConfigureFeishuResult =
   | { readonly kind: "agent_not_found" }
   | { readonly kind: "installation_not_found" }
   | { readonly kind: "app_in_use" }
-  | { readonly kind: "forbidden" };
+  | { readonly kind: "installation_exists" };
 
 async function persistFeishuInstallation(args: {
   readonly db: Db;
@@ -336,7 +332,7 @@ export const configureFeishuInstallation$ = command(
       .where(eq(feishuOrgInstallations.appId, args.appId))
       .limit(1);
     signal.throwIfAborted();
-    if (appOwner && (args.createNew || appOwner.orgId !== args.orgId)) {
+    if (appOwner && appOwner.orgId !== args.orgId) {
       return { kind: "app_in_use" };
     }
     if (
@@ -346,23 +342,24 @@ export const configureFeishuInstallation$ = command(
     ) {
       return { kind: "app_in_use" };
     }
-    let targetInstallationId = args.installationId ?? appOwner?.id;
-    if (!targetInstallationId && !args.createNew) {
-      const [legacyInstallation] = await db
+    let targetInstallationId =
+      args.installationId ?? (args.createNew ? undefined : appOwner?.id);
+    if (!targetInstallationId) {
+      const [existingInstallation] = await db
         .select({ id: feishuOrgInstallations.id })
         .from(feishuOrgInstallations)
         .where(eq(feishuOrgInstallations.orgId, args.orgId))
         .orderBy(asc(feishuOrgInstallations.createdAt))
         .limit(1);
       signal.throwIfAborted();
-      targetInstallationId = legacyInstallation?.id;
+      if (existingInstallation && args.createNew) {
+        return { kind: "installation_exists" };
+      }
+      targetInstallationId = existingInstallation?.id;
     }
     if (targetInstallationId) {
       const [installation] = await db
-        .select({
-          id: feishuOrgInstallations.id,
-          ownerUserId: feishuOrgInstallations.ownerUserId,
-        })
+        .select({ id: feishuOrgInstallations.id })
         .from(feishuOrgInstallations)
         .where(
           and(
@@ -375,9 +372,6 @@ export const configureFeishuInstallation$ = command(
       if (!installation) {
         return { kind: "installation_not_found" };
       }
-      if (!args.isAdmin && installation.ownerUserId !== args.userId) {
-        return { kind: "forbidden" };
-      }
     }
 
     return await persistFeishuInstallation({
@@ -386,39 +380,6 @@ export const configureFeishuInstallation$ = command(
       targetInstallationId,
       signal,
     });
-  },
-);
-
-type FeishuInstallationManagementAccess = "allowed" | "forbidden" | "not_found";
-
-export const checkFeishuInstallationManagementAccess$ = command(
-  async (
-    { get },
-    args: {
-      readonly orgId: string;
-      readonly userId: string;
-      readonly isAdmin: boolean;
-      readonly installationId: string;
-    },
-    signal: AbortSignal,
-  ): Promise<FeishuInstallationManagementAccess> => {
-    const [installation] = await get(db$)
-      .select({ ownerUserId: feishuOrgInstallations.ownerUserId })
-      .from(feishuOrgInstallations)
-      .where(
-        and(
-          eq(feishuOrgInstallations.orgId, args.orgId),
-          eq(feishuOrgInstallations.id, args.installationId),
-        ),
-      )
-      .limit(1);
-    signal.throwIfAborted();
-    if (!installation) {
-      return "not_found";
-    }
-    return args.isAdmin || installation.ownerUserId === args.userId
-      ? "allowed"
-      : "forbidden";
   },
 );
 

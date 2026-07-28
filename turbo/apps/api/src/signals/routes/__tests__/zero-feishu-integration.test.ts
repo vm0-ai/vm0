@@ -799,7 +799,7 @@ describe("Feishu integration", () => {
     );
   });
 
-  it("keeps multiple Feishu apps installed in the same organization", async () => {
+  it("keeps one Feishu app installed per organization", async () => {
     const firstAppId = `cli_${randomUUID()}`;
     const secondAppId = `cli_${randomUUID()}`;
     const actor = authOrgApi.user({
@@ -810,27 +810,12 @@ describe("Feishu integration", () => {
     authOrgApi.acceptAgentStorageWrites();
     await enableFeishuIntegration(actor);
     const agent = await authOrgApi.createAgent(actor, {
-      displayName: "Feishu multi-bot agent",
+      displayName: "Feishu single-bot agent",
       visibility: "public",
     });
     mocks.clerk.session(actor.userId, actor.orgId, "org:admin");
     const client = setupApp({ context })(zeroFeishuConnectContract);
 
-    for (const appId of [firstAppId, secondAppId]) {
-      await accept(
-        client.setup({
-          headers: { authorization: "Bearer clerk-session" },
-          body: {
-            appId,
-            appSecret: APP_SECRET,
-            verificationToken: VERIFICATION_TOKEN,
-            defaultAgentId: agent.agentId,
-            createNew: true,
-          },
-        }),
-        [200],
-      );
-    }
     await accept(
       client.setup({
         headers: { authorization: "Bearer clerk-session" },
@@ -842,7 +827,35 @@ describe("Feishu integration", () => {
           createNew: true,
         },
       }),
+      [200],
+    );
+    await accept(
+      client.setup({
+        headers: { authorization: "Bearer clerk-session" },
+        body: {
+          appId: firstAppId,
+          appSecret: APP_SECRET,
+          verificationToken: VERIFICATION_TOKEN,
+          defaultAgentId: agent.agentId,
+        },
+      }),
+      [200],
+    );
+    const secondSetup = await accept(
+      client.setup({
+        headers: { authorization: "Bearer clerk-session" },
+        body: {
+          appId: secondAppId,
+          appSecret: APP_SECRET,
+          verificationToken: VERIFICATION_TOKEN,
+          defaultAgentId: agent.agentId,
+          createNew: true,
+        },
+      }),
       [409],
+    );
+    expect(secondSetup.body.error.message).toBe(
+      "This workspace already has a Feishu bot",
     );
     await accept(
       client.checkAppId({
@@ -865,29 +878,30 @@ describe("Feishu integration", () => {
       }),
       [200],
     );
-    expect(status.body.installations).toHaveLength(2);
+    expect(status.body.installations).toHaveLength(1);
     expect(
       status.body.installations?.map((installation) => {
         return installation.appId;
       }),
-    ).toStrictEqual([firstAppId, secondAppId]);
-
-    for (const installation of status.body.installations ?? []) {
-      await accept(
-        client.removeInstallation({
-          headers: { authorization: "Bearer clerk-session" },
-          params: { installationId: installation.id },
-        }),
-        [200],
-      );
+    ).toStrictEqual([firstAppId]);
+    const installation = status.body.installations?.[0];
+    if (!installation) {
+      throw new Error("Expected one Feishu installation");
     }
+    await accept(
+      client.removeInstallation({
+        headers: { authorization: "Bearer clerk-session" },
+        params: { installationId: installation.id },
+      }),
+      [200],
+    );
   });
 
-  it("allows bot owners and organization admins to manage installations", async () => {
+  it("requires organization admins even when the user created the bot", async () => {
     const actor = authOrgApi.user({
       userId: `user_${randomUUID()}`,
       orgId: `org_${randomUUID()}`,
-      orgRole: "org:member",
+      orgRole: "org:admin",
     });
     authOrgApi.acceptAgentStorageWrites();
     await enableFeishuIntegration(actor);
@@ -895,45 +909,76 @@ describe("Feishu integration", () => {
       displayName: "Feishu managed bot agent",
       visibility: "public",
     });
-    mocks.clerk.session(actor.userId, actor.orgId, "org:member");
+    mocks.clerk.session(actor.userId, actor.orgId, "org:admin");
     const client = setupApp({ context })(zeroFeishuConnectContract);
 
-    for (const appId of [`cli_${randomUUID()}`, `cli_${randomUUID()}`]) {
-      await accept(
-        client.setup({
-          headers: { authorization: "Bearer clerk-session" },
-          body: {
-            appId,
-            appSecret: APP_SECRET,
-            verificationToken: VERIFICATION_TOKEN,
-            defaultAgentId: agent.agentId,
-            createNew: true,
-          },
-        }),
-        [200],
-      );
+    const configured = await accept(
+      client.setup({
+        headers: { authorization: "Bearer clerk-session" },
+        body: {
+          appId: `cli_${randomUUID()}`,
+          appSecret: APP_SECRET,
+          verificationToken: VERIFICATION_TOKEN,
+          defaultAgentId: agent.agentId,
+          createNew: true,
+        },
+      }),
+      [200],
+    );
+    const installationId = configured.body.installationId;
+    if (!installationId) {
+      throw new Error("Expected one Feishu installation");
     }
 
-    const ownerStatus = await accept(
+    mocks.clerk.session(actor.userId, actor.orgId, "org:member");
+    const memberStatus = await accept(
       client.getStatus({
         headers: { authorization: "Bearer clerk-session" },
       }),
       [200],
     );
-    expect(
-      ownerStatus.body.installations?.every((installation) => {
-        return installation.canManage;
+    expect(memberStatus.body.isAdmin).toBeFalsy();
+    await accept(
+      client.checkAppId({
+        headers: { authorization: "Bearer clerk-session" },
+        query: { appId: `cli_${randomUUID()}` },
       }),
-    ).toBeTruthy();
-    const [ownerManagedInstallation, adminManagedInstallation] =
-      ownerStatus.body.installations ?? [];
-    if (!ownerManagedInstallation || !adminManagedInstallation) {
-      throw new Error("Expected two Feishu installations");
-    }
+      [403],
+    );
+    await accept(
+      client.setup({
+        headers: { authorization: "Bearer clerk-session" },
+        body: {
+          appId: `cli_${randomUUID()}`,
+          appSecret: APP_SECRET,
+          verificationToken: VERIFICATION_TOKEN,
+          defaultAgentId: agent.agentId,
+          createNew: true,
+        },
+      }),
+      [403],
+    );
+    await accept(
+      client.updateInstallation({
+        headers: { authorization: "Bearer clerk-session" },
+        params: { installationId },
+        body: { defaultAgentId: agent.agentId, setupCompleted: true },
+      }),
+      [403],
+    );
+    await accept(
+      client.removeInstallation({
+        headers: { authorization: "Bearer clerk-session" },
+        params: { installationId },
+      }),
+      [403],
+    );
+
+    mocks.clerk.session(actor.userId, actor.orgId, "org:admin");
     const completed = await accept(
       client.updateInstallation({
         headers: { authorization: "Bearer clerk-session" },
-        params: { installationId: ownerManagedInstallation.id },
+        params: { installationId },
         body: {
           defaultAgentId: agent.agentId,
           setupCompleted: true,
@@ -949,57 +994,7 @@ describe("Feishu integration", () => {
     await accept(
       client.removeInstallation({
         headers: { authorization: "Bearer clerk-session" },
-        params: { installationId: ownerManagedInstallation.id },
-      }),
-      [200],
-    );
-
-    const member = authOrgApi.user({
-      userId: `user_${randomUUID()}`,
-      orgId: actor.orgId,
-      orgRole: "org:member",
-    });
-    await enableFeishuIntegration(member);
-    mocks.clerk.session(member.userId, member.orgId, "org:member");
-    const memberStatus = await accept(
-      client.getStatus({
-        headers: { authorization: "Bearer clerk-session" },
-      }),
-      [200],
-    );
-    expect(memberStatus.body.installations?.[0]?.canManage).toBeFalsy();
-    await accept(
-      client.setup({
-        headers: { authorization: "Bearer clerk-session" },
-        body: {
-          appId: adminManagedInstallation.appId,
-          appSecret: APP_SECRET,
-          verificationToken: VERIFICATION_TOKEN,
-          defaultAgentId: agent.agentId,
-          installationId: adminManagedInstallation.id,
-        },
-      }),
-      [403],
-    );
-    await accept(
-      client.removeInstallation({
-        headers: { authorization: "Bearer clerk-session" },
-        params: { installationId: adminManagedInstallation.id },
-      }),
-      [403],
-    );
-
-    const admin = authOrgApi.user({
-      userId: `user_${randomUUID()}`,
-      orgId: actor.orgId,
-      orgRole: "org:admin",
-    });
-    await enableFeishuIntegration(admin);
-    mocks.clerk.session(admin.userId, admin.orgId, "org:admin");
-    await accept(
-      client.removeInstallation({
-        headers: { authorization: "Bearer clerk-session" },
-        params: { installationId: adminManagedInstallation.id },
+        params: { installationId },
       }),
       [200],
     );
@@ -1007,19 +1002,24 @@ describe("Feishu integration", () => {
 
   it("connects the current Feishu user through signed OAuth state", async () => {
     const appId = `cli_${randomUUID()}`;
-    const actor = authOrgApi.user({
+    const admin = authOrgApi.user({
       userId: `user_${randomUUID()}`,
       orgId: `org_${randomUUID()}`,
+      orgRole: "org:admin",
+    });
+    const member = authOrgApi.user({
+      userId: `user_${randomUUID()}`,
+      orgId: admin.orgId,
       orgRole: "org:member",
     });
     authOrgApi.acceptAgentStorageWrites();
-    await enableFeishuIntegration(actor);
-    const agent = await authOrgApi.createAgent(actor, {
+    await enableFeishuIntegration(admin);
+    await enableFeishuIntegration(member);
+    const agent = await authOrgApi.createAgent(admin, {
       displayName: "Feishu OAuth agent",
       visibility: "public",
     });
-    mocks.clerk.session(actor.userId, actor.orgId, "org:member");
-    mockClerkMembership(context, actor, "org:member");
+    mocks.clerk.session(admin.userId, admin.orgId, "org:admin");
     const client = setupApp({ context })(zeroFeishuConnectContract);
     const configured = await accept(
       client.setup({
@@ -1050,6 +1050,8 @@ describe("Feishu integration", () => {
       [200],
     );
 
+    mocks.clerk.session(member.userId, member.orgId, "org:member");
+    mockClerkMembership(context, member, "org:member");
     const status = await accept(
       client.getStatus({
         headers: { authorization: "Bearer clerk-session" },
@@ -1132,8 +1134,8 @@ describe("Feishu integration", () => {
         responseMode: "json",
         state: legacyFeishuAppOAuthState({
           installationId,
-          orgId: requireValue(actor.orgId, "Expected an organization"),
-          userId: actor.userId,
+          orgId: requireValue(member.orgId, "Expected an organization"),
+          userId: member.userId,
         }),
       })}`,
     );
@@ -1144,7 +1146,7 @@ describe("Feishu integration", () => {
     ]);
     await flushWaitUntilForTest();
 
-    mocks.clerk.session(actor.userId, actor.orgId, actor.orgRole);
+    mocks.clerk.session(member.userId, member.orgId, member.orgRole);
     const connected = await accept(
       client.getStatus({
         headers: { authorization: "Bearer clerk-session" },
@@ -1164,6 +1166,7 @@ describe("Feishu integration", () => {
     });
     expect(welcome?.msgType).toBe("interactive");
 
+    mocks.clerk.session(admin.userId, admin.orgId, admin.orgRole);
     await accept(
       client.removeInstallation({
         headers: { authorization: "Bearer clerk-session" },
