@@ -124,7 +124,6 @@ const patchAgentDraftInner$ = command(
         agentId: params.id,
         draftContent,
         draftUserMessage,
-        draftUserMessageWithFeedback: null,
         draftAttachments,
         updatedAt,
       })
@@ -137,7 +136,6 @@ const patchAgentDraftInner$ = command(
         set: {
           draftContent,
           draftUserMessage,
-          draftUserMessageWithFeedback: null,
           draftAttachments,
           updatedAt,
         },
