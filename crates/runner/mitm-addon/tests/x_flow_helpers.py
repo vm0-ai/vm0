@@ -7,6 +7,7 @@ from mitmproxy import http
 from mitmproxy.test import tutils
 
 import flow_metadata_keys as metadata_keys
+import http_network_log
 from tests.flow_helpers import header_map
 from tests.stream_buffer_helpers import set_response_stream_buffer
 
@@ -115,10 +116,13 @@ def make_x_pipeline_flow(
     content_type: str = "application/json",
     content_encoding: str = "",
 ) -> http.HTTPFlow:
+    resolved_original_url = (
+        original_url if original_url is not None else x_original_url(path, query)
+    )
     flow = make_x_response_flow(
         real_flow,
         path=path,
-        original_url=original_url if original_url is not None else x_original_url(path, query),
+        original_url=resolved_original_url,
         response_status=response_status,
         content_type=content_type,
         content_encoding=content_encoding,
@@ -128,6 +132,12 @@ def make_x_pipeline_flow(
     flow.metadata[metadata_keys.VM_PROXY_LOG_PATH] = str(tmp_path / "proxy.jsonl")
     flow.metadata[metadata_keys.VM_SANDBOX_AUTH_KEY] = sandbox_value
     flow.metadata[metadata_keys.FIREWALL_ACTION] = firewall_action
+    http_network_log.set_target(
+        flow,
+        url=resolved_original_url,
+        host="api.x.com",
+        port=flow.request.port,
+    )
     flow.metadata[metadata_keys.FIREWALL_PERMISSION] = permission
     flow.metadata[metadata_keys.FIREWALL_RULE_MATCH] = rule
     return flow

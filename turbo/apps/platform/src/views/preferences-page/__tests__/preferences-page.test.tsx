@@ -26,6 +26,7 @@ function createMockPreferences(
 ): UserPreferencesResponse {
   return {
     timezone: "UTC",
+    locale: "en-US",
     pinnedAgentIds: [],
     sendMode: "enter",
     morningBriefEnabled: false,

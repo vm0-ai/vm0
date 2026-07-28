@@ -229,6 +229,7 @@ phases:
 
 ```python
 import flow_metadata_keys as metadata_keys
+import http_network_log
 
 
 def test_firewall_response_logs_context(tmp_path, real_flow, mitm_ctx):
@@ -241,10 +242,20 @@ def test_firewall_response_logs_context(tmp_path, real_flow, mitm_ctx):
             metadata_keys.FIREWALL_ACTION: "ALLOW",
         }
     )
+    http_network_log.set_target(
+        flow,
+        url="https://api.github.com/repos",
+        host="api.github.com",
+        port=443,
+    )
 
     with mitm_ctx():
         mitm_addon.response(flow)
 ```
+
+Tests that enter `response()` or `error()` directly with a nonempty network log
+path must seed the typed network-log target established by request
+classification. Missing target metadata is an invariant violation.
 
 Do not hand-build `MagicMock` HTTP flows for addon hook tests. Mocks and stubs
 are still appropriate at real external boundaries such as `mitmproxy.ctx`,

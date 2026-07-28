@@ -5,6 +5,7 @@ import time
 from mitmproxy.test import tutils
 
 import flow_metadata_keys as metadata_keys
+import http_network_log
 import mitm_addon
 import request_streaming
 from tests.flow_helpers import header_map, response_stream
@@ -30,6 +31,12 @@ def test_response_releases_streaming_state(tmp_path, real_flow, mitm_ctx):
     flow.metadata[metadata_keys.VM_PROXY_LOG_PATH] = str(tmp_path / "proxy.jsonl")
     flow.metadata[metadata_keys.FIREWALL_ACTION] = "ALLOW"
     flow.metadata[metadata_keys.ORIGINAL_URL] = "https://api.anthropic.com/v1/messages"
+    http_network_log.set_target(
+        flow,
+        url="https://api.anthropic.com/v1/messages",
+        host="api.anthropic.com",
+        port=443,
+    )
     flow.metadata[metadata_keys.FIREWALL_NAME] = "model-provider:anthropic-api-key"
     flow.metadata[metadata_keys.FIREWALL_BILLABLE] = True
     flow.response = tutils.tresp(
@@ -148,6 +155,12 @@ def test_response_does_not_clear_external_stream_callback(tmp_path, real_flow, m
     flow.metadata[metadata_keys.VM_NETWORK_LOG_PATH] = log_path
     flow.metadata[metadata_keys.FIREWALL_ACTION] = "ALLOW"
     flow.metadata[metadata_keys.ORIGINAL_URL] = "https://api.example.com/"
+    http_network_log.set_target(
+        flow,
+        url="https://api.example.com/",
+        host="api.example.com",
+        port=443,
+    )
     flow.response = tutils.tresp(status_code=200)
     flow.response.stream = external_stream
 
@@ -169,6 +182,12 @@ def test_response_does_not_clear_replaced_stream_callback(tmp_path, real_flow, m
     flow.metadata[metadata_keys.VM_PROXY_LOG_PATH] = str(tmp_path / "proxy.jsonl")
     flow.metadata[metadata_keys.FIREWALL_ACTION] = "ALLOW"
     flow.metadata[metadata_keys.ORIGINAL_URL] = "https://api.anthropic.com/v1/messages"
+    http_network_log.set_target(
+        flow,
+        url="https://api.anthropic.com/v1/messages",
+        host="api.anthropic.com",
+        port=443,
+    )
     flow.metadata[metadata_keys.FIREWALL_NAME] = "model-provider:anthropic-api-key"
     flow.metadata[metadata_keys.FIREWALL_BILLABLE] = True
     flow.response = tutils.tresp(

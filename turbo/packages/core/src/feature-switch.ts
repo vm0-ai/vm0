@@ -228,6 +228,12 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
       "Reveal activity debug surfaces, activity log navigation, appended system prompts, and Debug preferences",
     enabled: false,
   },
+  [FeatureSwitchKey.LanguagePreference]: {
+    maintainer: "yuma@vm0.ai",
+    description:
+      "Enable workspace language bootstrap, persistence, and the Settings preference entry.",
+    enabled: false,
+  },
   [FeatureSwitchKey.ZeroFinance]: {
     maintainer: "ethan@vm0.ai",
     description:

@@ -13,6 +13,7 @@ from mitmproxy.test import tutils
 
 import codex_model_catalog_cache as catalog_cache
 import flow_metadata_keys as metadata_keys
+import http_network_log
 import mitm_addon
 import response_streaming
 from tests.flow_helpers import header_map, response_stream
@@ -62,8 +63,13 @@ def _catalog_flow(
     flow.metadata[metadata_keys.VM_RUN_ID] = "run-catalog-cache"
     flow.metadata[metadata_keys.FIREWALL_NAME] = "model-provider:codex-oauth-token"
     flow.metadata[metadata_keys.FIREWALL_ACTION] = "ALLOW"
-    flow.metadata[metadata_keys.ORIGINAL_URL] = (
-        f"https://chatgpt.com/backend-api/codex/models?client_version={version}"
+    original_url = f"https://chatgpt.com/backend-api/codex/models?client_version={version}"
+    flow.metadata[metadata_keys.ORIGINAL_URL] = original_url
+    http_network_log.set_target(
+        flow,
+        url=original_url,
+        host="chatgpt.com",
+        port=flow.request.port,
     )
     return flow
 
@@ -99,6 +105,12 @@ def _responses_flow(
     flow.metadata[metadata_keys.FIREWALL_NAME] = "model-provider:codex-oauth-token"
     flow.metadata[metadata_keys.FIREWALL_ACTION] = "ALLOW"
     flow.metadata[metadata_keys.ORIGINAL_URL] = "https://chatgpt.com/backend-api/codex/responses"
+    http_network_log.set_target(
+        flow,
+        url="https://chatgpt.com/backend-api/codex/responses",
+        host="chatgpt.com",
+        port=flow.request.port,
+    )
     return flow
 
 

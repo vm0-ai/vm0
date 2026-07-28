@@ -9,6 +9,7 @@ from mitmproxy.test import tutils
 
 import firewall_auth_cache as auth_cache
 import flow_metadata_keys as metadata_keys
+import http_network_log
 import mitm_addon
 from tests.auth_state_helpers import (
     auth_cache_key,
@@ -96,6 +97,12 @@ def test_invalid_content_length_with_network_log_does_not_block_401_cache_invali
     flow.metadata[metadata_keys.FIREWALL_BASE] = "https://api.github.com"
     flow.metadata[metadata_keys.FIREWALL_API_ID] = "run-conn-invalid-length-log:0"
     flow.metadata[metadata_keys.ORIGINAL_URL] = "https://api.github.com/repos"
+    http_network_log.set_target(
+        flow,
+        url="https://api.github.com/repos",
+        host="api.github.com",
+        port=443,
+    )
 
     flow.response = tutils.tresp(
         status_code=401,
