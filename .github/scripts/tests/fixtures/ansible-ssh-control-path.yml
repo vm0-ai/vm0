@@ -1,0 +1,8 @@
+---
+- name: Exercise the Ansible SSH connection plugin
+  hosts: all
+  gather_facts: false
+  tasks:
+    - name: Run a dummy command through SSH
+      ansible.builtin.raw: printf 'ansible ssh transport ok\n'
+      changed_when: false

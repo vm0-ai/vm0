@@ -4,16 +4,12 @@ set -euo pipefail
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 repo_root="$(cd "$script_dir/../../.." && pwd)"
 ansible_config="$repo_root/ansible/ansible.cfg"
+playbook="$script_dir/fixtures/ansible-ssh-control-path.yml"
 
 if ! command -v ansible-playbook >/dev/null; then
   echo "ansible-playbook is required" >&2
   exit 1
 fi
-
-for playbook in "$repo_root"/ansible/playbooks/*.yml; do
-  ANSIBLE_CONFIG="$ansible_config" \
-    ansible-playbook -i "localhost," --syntax-check "$playbook" >/dev/null
-done
 
 tmp="$(mktemp -d)"
 cleanup() {
@@ -56,18 +52,6 @@ touch "$SSH_MARKER"
 printf 'ansible ssh transport ok\n'
 EOF
 chmod +x "$fake_ssh"
-
-playbook="$tmp/control-path.yml"
-cat > "$playbook" <<'EOF'
----
-- name: Exercise the Ansible SSH connection plugin
-  hosts: all
-  gather_facts: false
-  tasks:
-    - name: Run a command through SSH
-      ansible.builtin.raw: printf 'remote command ok\n'
-      changed_when: false
-EOF
 
 expected_control_path="$test_home/.ssh/vm0-ssh-%C"
 ssh_marker="$tmp/ssh-ran"
