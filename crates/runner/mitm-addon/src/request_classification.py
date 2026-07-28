@@ -283,46 +283,6 @@ def classify_request(
     tls_admission: TlsAdmissionView | None,
     defer_unresolved_public_destination: bool = False,
 ) -> RequestClassification:
-    """Classify the current flow after validating its authority."""
-    return _classify_request(
-        flow,
-        registry_path=registry_path,
-        api_url=api_url,
-        tls_admission=tls_admission,
-        trusted_authority=None,
-        defer_unresolved_public_destination=defer_unresolved_public_destination,
-    )
-
-
-def classify_request_with_trusted_authority(
-    flow: http.HTTPFlow,
-    *,
-    registry_path: str,
-    api_url: str,
-    tls_admission: TlsAdmissionView | None,
-    trusted_authority: TrustedAuthority,
-    defer_unresolved_public_destination: bool = False,
-) -> RequestClassification:
-    """Classify using authority validated from this unchanged synchronous flow."""
-    return _classify_request(
-        flow,
-        registry_path=registry_path,
-        api_url=api_url,
-        tls_admission=tls_admission,
-        trusted_authority=trusted_authority,
-        defer_unresolved_public_destination=defer_unresolved_public_destination,
-    )
-
-
-def _classify_request(
-    flow: http.HTTPFlow,
-    *,
-    registry_path: str,
-    api_url: str,
-    tls_admission: TlsAdmissionView | None,
-    trusted_authority: TrustedAuthority | None,
-    defer_unresolved_public_destination: bool,
-) -> RequestClassification:
     """Classify a flow and write metadata needed by downstream hook handling.
 
     The decision order is registry/TLS admission, registered VM resolution,
@@ -342,7 +302,50 @@ def _classify_request(
     still requires request-phase publicDestination revalidation before the flow
     is allowed to proceed.
     """
+    return _classify_request(
+        flow,
+        registry_path=registry_path,
+        api_url=api_url,
+        tls_admission=tls_admission,
+        trusted_authority=None,
+        defer_unresolved_public_destination=defer_unresolved_public_destination,
+    )
 
+
+def classify_request_with_trusted_authority(
+    flow: http.HTTPFlow,
+    *,
+    registry_path: str,
+    api_url: str,
+    tls_admission: TlsAdmissionView | None,
+    trusted_authority: TrustedAuthority,
+    defer_unresolved_public_destination: bool = False,
+) -> RequestClassification:
+    """Classify using authority validated from this unchanged synchronous flow.
+
+    Call this only immediately after `get_trusted_authority(flow)`, without
+    yielding or mutating request or SNI state. All other callers must use
+    `classify_request()`.
+    """
+    return _classify_request(
+        flow,
+        registry_path=registry_path,
+        api_url=api_url,
+        tls_admission=tls_admission,
+        trusted_authority=trusted_authority,
+        defer_unresolved_public_destination=defer_unresolved_public_destination,
+    )
+
+
+def _classify_request(
+    flow: http.HTTPFlow,
+    *,
+    registry_path: str,
+    api_url: str,
+    tls_admission: TlsAdmissionView | None,
+    trusted_authority: TrustedAuthority | None,
+    defer_unresolved_public_destination: bool,
+) -> RequestClassification:
     client_ip = flow.client_conn.peername[0] if flow.client_conn.peername else None
 
     if not client_ip:
