@@ -35,7 +35,7 @@ import {
 
 // Distance from the bottom of the scroll container at which the next page is
 // requested. The signal layer deduplicates repeated requests for one cursor.
-const ARTIFACT_AUTO_LOAD_THRESHOLD_PX = 800;
+const ARTIFACT_AUTO_LOAD_VIEWPORT_COUNT = 2;
 const ARTIFACT_GRID_MIN_CARD_WIDTH_PX = 292;
 const ARTIFACT_CARD_THUMBNAIL_WIDTH_PX = 640;
 
@@ -308,7 +308,9 @@ export function ArtifactCatalogPage() {
     const viewport = event.currentTarget;
     const distanceFromBottom =
       viewport.scrollHeight - viewport.scrollTop - viewport.clientHeight;
-    if (distanceFromBottom > ARTIFACT_AUTO_LOAD_THRESHOLD_PX) {
+    const autoLoadThreshold =
+      viewport.clientHeight * ARTIFACT_AUTO_LOAD_VIEWPORT_COUNT;
+    if (distanceFromBottom > autoLoadThreshold) {
       return;
     }
     detach(loadMore(pageSignal), Reason.DomCallback, "artifact catalog paging");
