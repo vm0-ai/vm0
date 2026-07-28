@@ -182,10 +182,6 @@ ruleTester.run("prefer-drizzle-apis", preferDrizzleApis, {
         const left = 1;
         const right = 2;
         sql\`\${left} = \${right}\`;
-        db.query.users.findMany({
-          where: (fields, operators) =>
-            operators.sql\`length(\${fields.name}) > 0\`,
-        });
       `,
     },
     {
@@ -619,15 +615,6 @@ ruleTester.run("prefer-drizzle-apis", preferDrizzleApis, {
         db.select()
           .from(users)
           .innerJoin(users, flag ? sql.empty() : sql\`true\`);
-      `,
-    },
-    {
-      code: `${drizzlePreamble}
-        import { sql } from "drizzle-orm";
-        const column = sql\`\${users.id}\`;
-        db.select()
-          .from(users)
-          .where(sql\`COALESCE(\${column} = \${1}, FALSE)\`);
       `,
     },
     {
@@ -2173,6 +2160,279 @@ ruleTester.run("prefer-drizzle-apis", preferDrizzleApis, {
             not(
               sql\`\${users.id} = \${1} AND \${users.name} = \${"name"}\`,
             ),
+          );
+      `,
+      errors: [
+        { messageId: "typedApi", data: { helper: "eq" } },
+        { messageId: "typedApi", data: { helper: "eq" } },
+      ],
+    },
+  ],
+});
+
+ruleTester.run("prefer-drizzle-apis retained operands", preferDrizzleApis, {
+  valid: [
+    {
+      name: "raw identifiers and scalar-only transformations have no schema boundary",
+      code: `${drizzlePreamble}
+        import { sql } from "drizzle-orm";
+        db.select()
+          .from(users)
+          .where(sql\`LOWER(raw_name) = \${"name"}\`);
+        db.select()
+          .from(users)
+          .where(sql\`left_alias = right_alias\`);
+        db.select()
+          .from(users)
+          .where(sql\`LOWER(\${"name"}) = \${"other"}\`);
+      `,
+    },
+    {
+      name: "table and unsupported operator operands remain raw",
+      code: `${drizzlePreamble}
+        import { sql } from "drizzle-orm";
+        db.select()
+          .from(users)
+          .where(sql\`LOWER(\${users}) = \${"users"}\`);
+        db.select()
+          .from(users)
+          .where(sql\`\${users.id} IS DISTINCT FROM \${1}\`);
+      `,
+    },
+    {
+      name: "membership subqueries and transformed lists retain their contracts",
+      code: `${drizzlePreamble}
+        import { sql } from "drizzle-orm";
+        const names = ["one", "two"];
+        const transformed = sql.join(
+          names.map((name) => sql\`\${name.toUpperCase()}\`),
+          sql\`, \`,
+        );
+        const selected = db.select({ name: users.name }).from(users);
+        db.select()
+          .from(users)
+          .where(sql\`\${users.name} IN (\${transformed})\`);
+        db.select()
+          .from(users)
+          .where(sql\`\${users.name} IN (\${selected})\`);
+        db.select()
+          .from(users)
+          .where(
+            sql\`(SELECT \${users.id} FROM \${users} LIMIT 1) = \${1}\`,
+          );
+      `,
+    },
+    {
+      name: "aggregate retained operands still require result mapping",
+      code: `${drizzlePreamble}
+        import { sql } from "drizzle-orm";
+        db.select({
+          value: sql\`SUM(\${users.id} + 1)\`,
+        }).from(users);
+        db.select({
+          value: sql\`MAX(\${users.id} + 1) OVER (ORDER BY \${users.id})\`
+            .mapWith(Number),
+        }).from(users);
+      `,
+    },
+    {
+      name: "ambiguous retained interpolation remains raw",
+      code: `${drizzlePreamble}
+        import { sql } from "drizzle-orm";
+        const suffixes = ["one", "two"];
+        const bounds = [1, 2];
+        db.select()
+          .from(users)
+          .where(
+            sql\`LOWER(\${users.name} || \${suffixes}) = \${"name"}\`,
+          );
+        db.select()
+          .from(users)
+          .where(sql\`\${users.name} = \${suffixes}\`);
+        db.select()
+          .from(users)
+          .where(sql\`\${users.id} BETWEEN \${bounds} AND \${2}\`);
+      `,
+    },
+  ],
+  invalid: [
+    {
+      name: "relational callback transformed comparison",
+      code: `${drizzlePreamble}
+        db.query.users.findMany({
+          where: (fields, operators) =>
+            operators.sql\`length(\${fields.name}) > 0\`,
+        });
+      `,
+      errors: [{ messageId: "typedApi", data: { helper: "gt" } }],
+    },
+    {
+      name: "transformed comparison",
+      code: `${drizzlePreamble}
+        import { sql } from "drizzle-orm";
+        db.select()
+          .from(users)
+          .where(sql\`LOWER(\${users.name}) = \${"name"}\`);
+      `,
+      errors: [{ messageId: "typedApi", data: { helper: "eq" } }],
+    },
+    {
+      name: "retained comparison operands",
+      code: `${drizzlePreamble}
+        import { sql } from "drizzle-orm";
+        const value = 1;
+        db.select()
+          .from(users)
+          .where(sql\`\${users.id}::text = \${"1"}\`);
+        db.select()
+          .from(users)
+          .where(sql\`\${users.id} = \${value} + 1\`);
+      `,
+      errors: [
+        { messageId: "typedApi", data: { helper: "eq" } },
+        { messageId: "typedApi", data: { helper: "eq" } },
+      ],
+    },
+    {
+      name: "transformed null operand",
+      code: `${drizzlePreamble}
+        import { sql } from "drizzle-orm";
+        db.select()
+          .from(users)
+          .where(sql\`LOWER(\${users.name}) IS NULL\`);
+      `,
+      errors: [{ messageId: "typedApi", data: { helper: "isNull" } }],
+    },
+    {
+      name: "json comparison operand",
+      code: `${drizzlePreamble}
+        import { sql } from "drizzle-orm";
+        db.select()
+          .from(users)
+          .where(sql\`\${users.tags}->>'kind' = \${"site"}\`);
+      `,
+      errors: [{ messageId: "typedApi", data: { helper: "eq" } }],
+    },
+    {
+      name: "transformed pattern operands",
+      code: `${drizzlePreamble}
+        import { sql } from "drizzle-orm";
+        const prefix = "prefix";
+        db.select()
+          .from(users)
+          .where(
+            sql\`LOWER(\${users.name}) LIKE LOWER(\${prefix}) || '%'\`,
+          );
+      `,
+      errors: [{ messageId: "typedApi", data: { helper: "like" } }],
+    },
+    {
+      name: "transformed ordering operand",
+      code: `${drizzlePreamble}
+        import { sql } from "drizzle-orm";
+        db.select()
+          .from(users)
+          .orderBy(sql\`COALESCE(\${users.name}, '') DESC\`);
+      `,
+      errors: [{ messageId: "typedApi", data: { helper: "desc" } }],
+    },
+    {
+      name: "static literal memberships",
+      code: `${drizzlePreamble}
+        import { sql } from "drizzle-orm";
+        db.select()
+          .from(users)
+          .where(sql\`\${users.name} IN ('one', 'two')\`);
+        db.select()
+          .from(users)
+          .where(sql\`LOWER(\${users.name}) NOT IN ('one', 'two')\`);
+      `,
+      errors: [
+        { messageId: "typedApi", data: { helper: "inArray" } },
+        { messageId: "typedApi", data: { helper: "notInArray" } },
+      ],
+    },
+    {
+      name: "mapped aggregate arithmetic operand",
+      code: `${drizzlePreamble}
+        import { sql } from "drizzle-orm";
+        db.select({
+          value: sql\`COALESCE(SUM(\${users.id} + 1), 0)\`.mapWith(Number),
+        }).from(users);
+      `,
+      errors: [{ messageId: "typedApi", data: { helper: "sum" } }],
+    },
+    {
+      name: "mapped aggregate case operand",
+      code: `${drizzlePreamble}
+        import { sql } from "drizzle-orm";
+        db.select({
+          value: sql\`MAX(CASE WHEN \${users.id} > \${0} THEN \${users.name} ELSE NULL END)\`
+            .mapWith(users.name),
+        }).from(users);
+      `,
+      errors: [{ messageId: "typedApi", data: { helper: "max" } }],
+    },
+    {
+      name: "locally returned descendant reports at each use site",
+      code: `${drizzlePreamble}
+        import { sql } from "drizzle-orm";
+        function selectionOrder() {
+          return sql\`CASE WHEN \${users.name} = 'dev-seed' THEN 0 ELSE 1 END\`;
+        }
+        db.select().from(users).orderBy(selectionOrder());
+        db.select().from(users).orderBy(selectionOrder());
+      `,
+      errors: [
+        { messageId: "typedApi", data: { helper: "eq" }, line: 23 },
+        { messageId: "typedApi", data: { helper: "eq" }, line: 24 },
+      ],
+    },
+    {
+      name: "unsupported case and complete statement expose descendants",
+      code: `${drizzlePreamble}
+        import { sql } from "drizzle-orm";
+        db.select({
+          value: sql\`CASE WHEN \${users.name} = 'dev-seed' THEN 0 ELSE 1 END\`,
+        }).from(users);
+        await db.execute(
+          sql\`
+            SELECT CASE
+              WHEN LOWER(\${users.name}) = \${"name"} THEN 1
+              ELSE 0
+            END
+            FROM \${users}
+            FOR SHARE
+          \`,
+        );
+      `,
+      errors: [
+        { messageId: "typedApi", data: { helper: "eq" } },
+        { messageId: "typedApi", data: { helper: "eq" } },
+      ],
+    },
+    {
+      name: "nested composed descendant reports at the editable root",
+      code: `${drizzlePreamble}
+        import { sql } from "drizzle-orm";
+        const column = sql\`\${users.id}\`;
+        db.select()
+          .from(users)
+          .where(sql\`COALESCE(\${column} = \${1}, FALSE)\`);
+      `,
+      errors: [{ messageId: "typedApi", data: { helper: "eq" } }],
+    },
+    {
+      name: "all transformed variants must agree",
+      code: `${drizzlePreamble}
+        import { sql } from "drizzle-orm";
+        declare const flag: boolean;
+        db.select()
+          .from(users)
+          .where(
+            flag
+              ? sql\`LOWER(\${users.name}) = \${"one"}\`
+              : sql\`UPPER(\${users.name}) = \${"two"}\`,
           );
       `,
       errors: [

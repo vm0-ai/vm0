@@ -270,10 +270,10 @@ const cleanupSingleRun$ = command(
           and(
             eq(agentRuns.id, run.id),
             eq(agentRuns.status, run.status),
-            sql`COALESCE(${agentRuns.lastHeartbeatAt}, ${agentRuns.createdAt}) < ${sql.param(
-              cutoff,
-              agentRuns.createdAt,
-            )}`,
+            lt(
+              sql`COALESCE(${agentRuns.lastHeartbeatAt}, ${agentRuns.createdAt})`,
+              sql.param(cutoff, agentRuns.createdAt),
+            ),
           ),
         )
         .returning({ id: agentRuns.id });

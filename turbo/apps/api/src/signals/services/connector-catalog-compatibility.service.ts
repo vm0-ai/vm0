@@ -18,7 +18,7 @@ import {
   connectorCatalogSyncState,
 } from "@vm0/db/schema/connector-catalog";
 import { command } from "ccstate";
-import { and, eq, isNull, ne, or, sql } from "drizzle-orm";
+import { and, eq, isNull, lte, ne, or, sql } from "drizzle-orm";
 
 import { optionalEnv } from "../../lib/env";
 import { nowDate } from "../../lib/time";
@@ -356,7 +356,10 @@ export async function persistConnectorCatalogCompatibility(args: {
         isNull(
           connectorCatalogCompatibilityEvaluation.catalogValidationBackendVersion,
         ),
-        sql`string_to_array(${connectorCatalogCompatibilityEvaluation.catalogValidationBackendVersion}, '.')::numeric[] <= string_to_array(${args.validator.backendVersion}, '.')::numeric[]`,
+        lte(
+          sql`string_to_array(${connectorCatalogCompatibilityEvaluation.catalogValidationBackendVersion}, '.')::numeric[]`,
+          sql`string_to_array(${args.validator.backendVersion}, '.')::numeric[]`,
+        ),
       ),
     });
 }

@@ -1,5 +1,5 @@
 import { command } from "ccstate";
-import { and, asc, desc, eq, inArray, or, sql } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, lte, or, sql } from "drizzle-orm";
 import type {
   ArtifactCatalogKind,
   ArtifactDetail,
@@ -424,7 +424,10 @@ async function syncHostedArtifact(args: {
       .where(
         and(
           eq(artifacts.id, existingArtifact.id),
-          sql`(${artifacts.projectionCreatedAt}, ${artifacts.projectionFileId}) <= (${args.row.createdAt}::timestamp, ${args.row.id}::uuid)`,
+          lte(
+            sql`(${artifacts.projectionCreatedAt}, ${artifacts.projectionFileId})`,
+            sql`(${args.row.createdAt}::timestamp, ${args.row.id}::uuid)`,
+          ),
         ),
       )
       .returning({ id: artifacts.id });
@@ -456,7 +459,10 @@ async function runHasHostedProjection(
     .where(
       and(
         eq(runUploadedFiles.runId, runId),
-        sql`${runUploadedFiles.metadata} ->> 'artifactKind' IN ('hosted-site', 'presentation-html')`,
+        inArray(
+          sql`${runUploadedFiles.metadata} ->> 'artifactKind'`,
+          sql`('hosted-site', 'presentation-html')`,
+        ),
       ),
     )
     .limit(1);

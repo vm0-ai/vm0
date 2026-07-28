@@ -1736,7 +1736,7 @@ function providerEnvironmentFromSecretMap(
 }
 
 function vm0ApiKeySelectionOrder() {
-  return sql`case when ${vm0ApiKeys.label} = 'dev-seed' then 0 else 1 end`;
+  return sql`case when ${eq(vm0ApiKeys.label, sql`'dev-seed'`)} then 0 else 1 end`;
 }
 
 async function multiAuthModelProviderEnvironment(

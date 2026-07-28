@@ -279,7 +279,9 @@ async function selectModelRankings(
       WITH current_period AS (
       SELECT
         ${modelExpr} AS model,
-        COALESCE(SUM(${modelStat.inputTokens} + ${modelStat.cacheReadInputTokens} + ${modelStat.cacheCreationInputTokens}), 0)::bigint AS input_tokens,
+        COALESCE(${sum(
+          sql`${modelStat.inputTokens} + ${modelStat.cacheReadInputTokens} + ${modelStat.cacheCreationInputTokens}`,
+        )}, 0)::bigint AS input_tokens,
         COALESCE(${sum(modelStat.outputTokens)}, 0)::bigint AS output_tokens,
         COALESCE(${sum(modelStat.totalTokens)}, 0)::bigint AS total_tokens
       FROM ${modelStat}
