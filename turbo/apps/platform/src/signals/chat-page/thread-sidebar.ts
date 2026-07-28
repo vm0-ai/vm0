@@ -34,17 +34,12 @@ export type ArtifactPreviewKind =
   | "audio"
   | "file";
 
-export type ArtifactRef =
-  | {
-      readonly source: "url";
-      readonly url: string;
-      readonly kind: ArtifactPreviewKind;
-      readonly filename: string;
-    }
-  | {
-      readonly source: "image-id";
-      readonly imageId: string;
-    };
+export type ArtifactRef = {
+  readonly source: "url";
+  readonly url: string;
+  readonly kind: ArtifactPreviewKind;
+  readonly filename: string;
+};
 
 export type ThreadSidebarArtifactSource =
   | { readonly kind: "catalog"; readonly artifactId: string }

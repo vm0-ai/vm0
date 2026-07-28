@@ -245,10 +245,6 @@ function ArtifactSidebarContent({
     threadId,
   });
 
-  if (!display) {
-    return null;
-  }
-
   return (
     <ArtifactSidebarResolvedContent
       closePreview={onClose}
@@ -507,10 +503,7 @@ function artifactSidebarSyncTarget(params: {
 function resolveArtifactDisplay(
   ref: ArtifactRef,
   item?: ArtifactSidebarItem,
-): ArtifactDisplay | null {
-  if (ref.source !== "url") {
-    return null;
-  }
+): ArtifactDisplay {
   if (item) {
     return {
       url: ref.url,
