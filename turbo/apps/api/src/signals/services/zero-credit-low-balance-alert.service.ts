@@ -30,7 +30,7 @@ export const LOW_CREDIT_EMAIL_ALERT_THRESHOLD_CREDITS = 5000;
 
 const L = logger("CreditLowBalanceAlert");
 const ORG_MEMBERSHIP_PAGE_SIZE = 100;
-const LOW_CREDIT_EMAIL_FROM_ADDRESS = "VM0 Team <contact@vm0.ai>";
+const LOW_CREDIT_EMAIL_FROM_ADDRESS = "VM0 Team <support@vm0.ai>";
 
 function billingCreditsUrl(): string {
   return `${env("APP_URL").replace(/\/$/, "")}/?settings=billing&billingView=credits`;
