@@ -1,14 +1,5 @@
 import type { PresentationPreviewDraft } from "../../views/zero-page/presentation-html-preview.ts";
 
-export interface PresentationTemplateDetailSelection {
-  readonly embedUrl: string;
-  readonly index: number;
-  readonly slug: string;
-  readonly themeCss: string;
-  readonly themeId: string;
-  readonly token: symbol;
-}
-
 export interface TemplatePreviewRuntime {
   readonly imagePreloads: Map<string, HTMLImageElement>;
   readonly presentation: {
@@ -20,9 +11,8 @@ export interface TemplatePreviewRuntime {
     >;
     readonly activeTokens: Map<string, symbol>;
     readonly activeIndexes: Map<string, number>;
-    activeDetail: PresentationTemplateDetailSelection | null;
-    detailFrameUrl: string | null;
-    detailOwnerSignal: AbortSignal | null;
+    detailRequestToken: symbol | null;
+    previewOwnerSignal: AbortSignal | null;
     readonly pendingSlideAnimationFrames: Map<string, number>;
     readonly pendingSlideIndexes: Map<string, number>;
     readonly thumbnailHtmlByHost: WeakMap<HTMLDivElement, string>;
@@ -43,9 +33,8 @@ export function createTemplatePreviewRuntime(): TemplatePreviewRuntime {
       pendingLoads: new Map<string, Promise<PresentationPreviewDraft | null>>(),
       activeTokens: new Map<string, symbol>(),
       activeIndexes: new Map<string, number>(),
-      activeDetail: null,
-      detailFrameUrl: null,
-      detailOwnerSignal: null,
+      detailRequestToken: null,
+      previewOwnerSignal: null,
       pendingSlideAnimationFrames: new Map<string, number>(),
       pendingSlideIndexes: new Map<string, number>(),
       thumbnailHtmlByHost: new WeakMap<HTMLDivElement, string>(),

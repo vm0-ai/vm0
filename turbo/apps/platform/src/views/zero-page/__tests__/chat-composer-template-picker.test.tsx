@@ -44,9 +44,6 @@ import {
   expectTemplateAttachedToComposer,
 } from "./chat-composer-test-helpers.ts";
 
-const PRESENTATION_DECK_METADATA =
-  '<script id="vm0-deck-metadata" type="application/json">{"kind":"presentation-html","editProtocolVersion":1,"slides":{}}</script>';
-
 beforeEach(() => {
   context.mocks.data.onboardingStatus({ defaultAgentId: AGENT_ID });
   context.mocks.http.get("*/__vm0-dev-artifact-fetch", ({ request }) => {
@@ -59,7 +56,7 @@ beforeEach(() => {
       1,
     );
     return new Response(
-      `<!doctype html><html><body>${PRESENTATION_DECK_METADATA}${Array.from(
+      `<!doctype html><html><body>${Array.from(
         { length: slideCount },
         (_, index) => {
           return `<section data-vm0-slide data-slide-id="slide-${String(index + 1)}"><h1>Slide ${String(index + 1)}</h1></section>`;
@@ -250,6 +247,65 @@ describe("chat composer templates", () => {
       restoreIdleCallback();
       imagePreloads.restore();
     }
+  });
+
+  it("loads the presentation preview at low resolution before replacing it with the high-resolution image", async () => {
+    const template = PRESENTATION_TEMPLATE_PICKER_ITEMS[0]!;
+    mockChatLifecycle(context, { threadId: THREAD_ID });
+
+    detachedSetupPage({
+      context,
+      path: `/chats/${THREAD_ID}`,
+    });
+
+    click(
+      await waitFor(() => {
+        return screen.getByLabelText("Template");
+      }),
+    );
+
+    const lowResolutionImage = await screen.findByTestId(
+      `${template.title} card image preview`,
+    );
+    const highResolutionImage = lowResolutionImage.parentElement?.querySelector(
+      '[data-template-preview-image="high"]',
+    );
+    if (!(highResolutionImage instanceof HTMLImageElement)) {
+      throw new Error("High-resolution presentation preview image not found");
+    }
+
+    expect(lowResolutionImage).toHaveAttribute(
+      "src",
+      expect.stringContaining("width=480,height=270"),
+    );
+    expect(highResolutionImage).not.toHaveAttribute("src");
+    expect(highResolutionImage).toHaveAttribute(
+      "data-src",
+      expect.stringContaining("width=708,height=398"),
+    );
+    if (template.cardPreviewImage === undefined) {
+      throw new Error("Presentation card preview image not found");
+    }
+    expect(highResolutionImage).toHaveAttribute(
+      "data-src",
+      r2ImageTransformUrl(template.cardPreviewImage, {
+        width: 708,
+        height: 398,
+      }),
+    );
+
+    fireEvent.load(lowResolutionImage);
+    expect(highResolutionImage).toHaveAttribute(
+      "src",
+      highResolutionImage.dataset.src,
+    );
+    expect(lowResolutionImage).not.toHaveAttribute("data-replaced");
+
+    fireEvent.load(highResolutionImage);
+    await waitFor(() => {
+      expect(highResolutionImage).toHaveAttribute("data-loaded", "true");
+      expect(lowResolutionImage).not.toHaveAttribute("data-replaced");
+    });
   });
 
   it("places the template control immediately after the legacy attach button by default", async () => {
@@ -653,7 +709,6 @@ describe("chat composer templates", () => {
           <!doctype html>
           <html>
             <body>
-              ${PRESENTATION_DECK_METADATA}
               <section data-vm0-slide data-slide-id="slide-one">
                 <h1>Slide one</h1>
               </section>
@@ -764,10 +819,27 @@ describe("chat composer templates", () => {
           screen.getByTestId(`${prismTemplate.title} card HTML preview`),
         ).toHaveAttribute("src", expect.stringMatching(/^blob:/));
       });
-      const prismPreviewHtml = await htmlForFrame(currentPrismPreviewFrame());
+      const prismFrame = currentPrismPreviewFrame();
+      const prismFrameUrl = prismFrame.getAttribute("src");
+      if (prismFrameUrl === null) {
+        throw new Error("Prism preview frame URL not found");
+      }
+      const prismPreviewHtml = await htmlForFrame(prismFrame);
       expect(prismPreviewHtml).toContain("--accent:#7257E6");
       expect(prismPreviewHtml).toContain("--s1:#FF6B4A");
       expect(prismPreviewHtml).toContain("--s2:#AEE63E");
+      fireEvent.load(prismFrame);
+      await waitFor(() => {
+        expect(currentPrismPreviewFrame()).toHaveAttribute(
+          "data-loaded",
+          "true",
+        );
+      });
+      click(screen.getByLabelText("Close"));
+      await waitFor(() => {
+        expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+      });
+      expect(revokeObjectURL).toHaveBeenCalledWith(prismFrameUrl);
     } finally {
       if (originalCreateObjectURL) {
         Object.defineProperty(URL, "createObjectURL", {
@@ -865,7 +937,7 @@ describe("chat composer templates", () => {
     try {
       previewFetch.resolve(
         new Response(
-          `<!doctype html><html><body>${PRESENTATION_DECK_METADATA}${Array.from(
+          `<!doctype html><html><body>${Array.from(
             { length: slideCount },
             (_, index) => {
               const slideNumber = index + 1;
@@ -914,10 +986,10 @@ describe("chat composer templates", () => {
   it("uses the presentation detail theme for template selection", async () => {
     const user = userEvent.setup({ delay: null });
     const template = PRESENTATION_TEMPLATE_PICKER_ITEMS.find((item) => {
-      return item.slug !== PRESENTATION_TEMPLATE_PICKER_ITEMS[0]?.slug;
+      return item.slug === "botane-organic-deck";
     });
     if (template === undefined) {
-      throw new Error("Second presentation template not found");
+      throw new Error("Botane organic presentation template not found");
     }
     let selectedColorSystemId: string | undefined;
     mockChatLifecycle(context, {
@@ -955,6 +1027,35 @@ describe("chat composer templates", () => {
         }),
       ).toBeInTheDocument();
     });
+    const initialDetailImage = within(templateDialog).getByTestId(
+      `${template.title} detail image preview`,
+    );
+    const initialDetailImageSrc = initialDetailImage.getAttribute("src");
+    const initialHighResolutionDetailImage =
+      initialDetailImage.parentElement?.querySelector<HTMLImageElement>(
+        '[data-template-preview-image="high"]',
+      );
+    if (
+      initialHighResolutionDetailImage === null ||
+      initialHighResolutionDetailImage === undefined
+    ) {
+      throw new Error("High-resolution detail preview image not found");
+    }
+    fireEvent.load(initialDetailImage);
+    const initialHighResolutionDetailImageSrc =
+      initialHighResolutionDetailImage.getAttribute("src");
+    if (initialHighResolutionDetailImageSrc === null) {
+      throw new Error("High-resolution detail preview URL not found");
+    }
+    fireEvent.load(initialHighResolutionDetailImage);
+    expect(initialHighResolutionDetailImage).toHaveAttribute(
+      "data-loaded",
+      "true",
+    );
+    const prismCardPreview = template.cardPreviewImagesByTheme?.prism;
+    if (!prismCardPreview) {
+      throw new Error("Prism card preview not found");
+    }
     await user.click(
       within(templateDialog).getByLabelText("Select style Prism"),
     );
@@ -965,20 +1066,119 @@ describe("chat composer templates", () => {
       context.store.get(templateCardThemeIdBySlug$)[template.slug],
     ).toBeUndefined();
 
-    const prismCardPreview = template.cardPreviewImagesByTheme?.prism;
-    if (!prismCardPreview) {
-      throw new Error("Prism card preview not found");
-    }
-    expect(
-      within(templateDialog).getByTestId(
-        `${template.title} detail image preview`,
-      ),
-    ).toHaveAttribute(
+    const prismDetailImage = within(templateDialog).getByTestId(
+      `${template.title} detail image preview`,
+    );
+    expect(prismDetailImage).toBe(initialDetailImage);
+    expect(prismDetailImage).toHaveAttribute(
       "src",
-      r2ImageTransformUrl(template.previewImages[0]!, {
+      r2ImageTransformUrl(prismCardPreview, {
+        width: 224,
+        height: 126,
+      }),
+    );
+    const highResolutionDetailImage =
+      prismDetailImage.parentElement?.querySelector<HTMLImageElement>(
+        '[data-template-preview-image="high"]',
+      );
+    if (
+      highResolutionDetailImage === null ||
+      highResolutionDetailImage === undefined
+    ) {
+      throw new Error("High-resolution detail preview image not found");
+    }
+    expect(highResolutionDetailImage).toBe(initialHighResolutionDetailImage);
+    expect(highResolutionDetailImage).toHaveAttribute(
+      "src",
+      initialHighResolutionDetailImageSrc,
+    );
+    expect(highResolutionDetailImage).toHaveAttribute("data-loaded", "true");
+    expect(highResolutionDetailImage).toHaveAttribute(
+      "data-src",
+      prismCardPreview,
+    );
+    expect(initialDetailImageSrc).not.toBe(
+      r2ImageTransformUrl(prismCardPreview, {
         width: 480,
         height: 270,
       }),
+    );
+
+    await user.click(within(templateDialog).getByLabelText("Preview slide 2"));
+    const secondSlideDetailImage = within(templateDialog).getByTestId(
+      `${template.title} detail image preview`,
+    );
+    const secondSlideHighResolutionImage =
+      secondSlideDetailImage.parentElement?.querySelector<HTMLImageElement>(
+        '[data-template-preview-image="high"]',
+      );
+    if (
+      secondSlideHighResolutionImage === null ||
+      secondSlideHighResolutionImage === undefined
+    ) {
+      throw new Error("High-resolution detail preview image not found");
+    }
+    expect(secondSlideDetailImage).toBe(initialDetailImage);
+    expect(secondSlideHighResolutionImage).toBe(
+      initialHighResolutionDetailImage,
+    );
+    expect(secondSlideHighResolutionImage).toHaveAttribute(
+      "src",
+      initialHighResolutionDetailImageSrc,
+    );
+    expect(secondSlideHighResolutionImage).toHaveAttribute(
+      "data-loaded",
+      "true",
+    );
+    expect(secondSlideHighResolutionImage).toHaveAttribute(
+      "data-src",
+      template.previewImages[1],
+    );
+    expect(secondSlideDetailImage).toHaveAttribute(
+      "src",
+      r2ImageTransformUrl(template.previewImages[1]!, {
+        width: 224,
+        height: 126,
+      }),
+    );
+
+    fireEvent.load(secondSlideDetailImage);
+    await waitFor(() => {
+      expect(secondSlideHighResolutionImage).toHaveAttribute(
+        "src",
+        secondSlideHighResolutionImage.dataset.src,
+      );
+      expect(secondSlideHighResolutionImage).not.toHaveAttribute("data-loaded");
+    });
+
+    await user.click(within(templateDialog).getByLabelText("Preview slide 11"));
+    const eleventhSlideDetailImage = within(templateDialog).getByTestId(
+      `${template.title} detail image preview`,
+    );
+    const eleventhSlideHighResolutionImage =
+      eleventhSlideDetailImage.parentElement?.querySelector<HTMLImageElement>(
+        '[data-template-preview-image="high"]',
+      );
+    if (
+      eleventhSlideHighResolutionImage === null ||
+      eleventhSlideHighResolutionImage === undefined
+    ) {
+      throw new Error("High-resolution detail preview image not found");
+    }
+    expect(eleventhSlideDetailImage).toHaveAttribute(
+      "src",
+      r2ImageTransformUrl(template.previewImages[10]!, {
+        width: 224,
+        height: 126,
+      }),
+    );
+    expect(eleventhSlideHighResolutionImage).toHaveAttribute(
+      "data-src",
+      template.previewImages[10],
+    );
+    expect(eleventhSlideHighResolutionImage).not.toHaveAttribute(
+      "data-src",
+      expect.stringContaining("presentation-gallery"),
     );
 
     await user.click(
@@ -1023,6 +1223,227 @@ describe("chat composer templates", () => {
     await waitFor(() => {
       expect(selectedColorSystemId).toBe("color-system:prism");
     });
+  });
+
+  it("uses the gallery image only after the detail HTML preview fails", async () => {
+    const user = userEvent.setup({ delay: null });
+    const template = PRESENTATION_TEMPLATE_PICKER_ITEMS.find((item) => {
+      return item.slug === "botane-organic-deck";
+    });
+    if (template === undefined) {
+      throw new Error("Botane organic presentation template not found");
+    }
+    const previewFetch = createDeferredPromise<Response>(AbortSignal.any([]));
+    context.mocks.http.get("*/__vm0-dev-artifact-fetch", () => {
+      return previewFetch.promise;
+    });
+    mockChatLifecycle(context, { threadId: THREAD_ID });
+
+    detachedSetupPage({
+      context,
+      path: `/chats/${THREAD_ID}`,
+    });
+
+    click(
+      await waitFor(() => {
+        return screen.getByLabelText("Template");
+      }),
+    );
+    await user.click(
+      screen.getByLabelText(`Preview ${template.title} at current slide`),
+    );
+    const templateDialog = screen.getByRole("dialog");
+    await user.click(within(templateDialog).getByLabelText("Preview slide 11"));
+    const detailImage = within(templateDialog).getByTestId(
+      `${template.title} detail image preview`,
+    );
+    const highResolutionImage =
+      detailImage.parentElement?.querySelector<HTMLImageElement>(
+        '[data-template-preview-image="high"]',
+      );
+    if (highResolutionImage === null || highResolutionImage === undefined) {
+      throw new Error("High-resolution detail preview image not found");
+    }
+    expect(highResolutionImage).toHaveAttribute(
+      "data-src",
+      template.previewImages[10],
+    );
+
+    previewFetch.resolve(new Response(null, { status: 500 }));
+
+    await waitFor(() => {
+      expect(highResolutionImage).toHaveAttribute(
+        "data-src",
+        `https://static.vm0.io/web/assets/presentation-gallery/2026-07-04/${template.slug}/slide-011.webp`,
+      );
+    });
+  });
+
+  it("updates the visible detail preview frame when the theme changes", async () => {
+    const user = userEvent.setup({ delay: null });
+    const template = PRESENTATION_TEMPLATE_PICKER_ITEMS.find((item) => {
+      return item.slug === "editorial-magazine-deck";
+    });
+    if (template === undefined) {
+      throw new Error("Editorial magazine presentation template not found");
+    }
+
+    const originalCreateObjectURL = URL.createObjectURL;
+    const originalRevokeObjectURL = URL.revokeObjectURL;
+    const blobHtml: Promise<string>[] = [];
+    const createObjectURL = vi.fn((blob: Blob) => {
+      blobHtml.push(blob.text());
+      return `blob:detail-theme-preview-${String(blobHtml.length)}`;
+    });
+    const revokeObjectURL = vi.fn();
+    Object.defineProperty(URL, "createObjectURL", {
+      configurable: true,
+      value: createObjectURL,
+    });
+    Object.defineProperty(URL, "revokeObjectURL", {
+      configurable: true,
+      value: revokeObjectURL,
+    });
+
+    try {
+      mockChatLifecycle(context, { threadId: THREAD_ID });
+      detachedSetupPage({
+        context,
+        path: `/chats/${THREAD_ID}`,
+      });
+
+      click(
+        await waitFor(() => {
+          return screen.getByLabelText("Template");
+        }),
+      );
+      await user.click(
+        screen.getByLabelText(`Preview ${template.title} at current slide`),
+      );
+      const templateDialog = screen.getByRole("dialog");
+      const frame = () => {
+        return within(templateDialog).getByTestId(
+          `${template.title} detail HTML preview`,
+        );
+      };
+      await waitFor(() => {
+        expect(frame()).toHaveAttribute(
+          "src",
+          expect.stringMatching(/^blob:detail-theme-preview-/),
+        );
+      });
+      expect(frame()).not.toHaveAttribute("data-loaded");
+      expect(
+        within(templateDialog).getByTestId(
+          `${template.title} detail image preview`,
+        ),
+      ).toBeInTheDocument();
+      fireEvent.load(frame());
+      await waitFor(() => {
+        expect(frame()).toHaveAttribute("data-loaded", "true");
+      });
+      const initialFrameSrc = frame().getAttribute("src");
+      if (initialFrameSrc === null) {
+        throw new Error("Initial detail preview frame URL not found");
+      }
+      const firstThumbnail = () => {
+        return within(templateDialog).getByLabelText(
+          `${template.title} slide 1 preview`,
+        );
+      };
+      const secondThumbnail = () => {
+        return within(templateDialog).getByLabelText(
+          `${template.title} slide 2 preview`,
+        );
+      };
+      const initialThumbnailAccent = firstThumbnail().getAttribute("style");
+      const initialSecondThumbnailAccent =
+        secondThumbnail().getAttribute("style");
+      expect(
+        firstThumbnail().parentElement?.querySelector("img"),
+      ).not.toBeNull();
+      expect(
+        secondThumbnail().parentElement?.querySelector("img"),
+      ).not.toBeNull();
+
+      await user.click(
+        within(templateDialog).getByLabelText("Select style Prism"),
+      );
+      await waitFor(() => {
+        expect(frame()).toHaveAttribute(
+          "src",
+          expect.stringMatching(/^blob:detail-theme-preview-/),
+        );
+        expect(frame().getAttribute("src")).not.toBe(initialFrameSrc);
+      });
+      expect(frame()).not.toHaveAttribute("data-loaded");
+      const previousFrame = templateDialog.querySelector(
+        '[data-template-detail-frame="previous"]',
+      );
+      expect(previousFrame).toHaveAttribute("src", initialFrameSrc);
+      expect(previousFrame).toHaveAttribute("data-loaded", "true");
+      fireEvent.load(frame());
+      await waitFor(() => {
+        expect(frame()).toHaveAttribute("data-loaded", "true");
+        expect(
+          templateDialog.querySelector(
+            '[data-template-detail-frame="previous"]',
+          ),
+        ).not.toBeInTheDocument();
+      });
+      expect(revokeObjectURL).toHaveBeenCalledWith(initialFrameSrc);
+
+      const themedFrameSrc = frame().getAttribute("src");
+      if (themedFrameSrc === null) {
+        throw new Error("Themed detail preview frame URL not found");
+      }
+      const match = /^blob:detail-theme-preview-(\d+)$/.exec(themedFrameSrc);
+      if (match === null) {
+        throw new Error(
+          `Unexpected detail preview frame URL: ${themedFrameSrc}`,
+        );
+      }
+      const themedHtml = await blobHtml[Number(match[1]) - 1];
+      expect(themedHtml).toContain("--accent:#7257E6");
+      await waitFor(() => {
+        const themedThumbnailAccent = firstThumbnail().getAttribute("style");
+        expect(themedThumbnailAccent).toContain("--accent: #7257E6");
+        expect(themedThumbnailAccent).not.toBe(initialThumbnailAccent);
+        const themedSecondThumbnailAccent =
+          secondThumbnail().getAttribute("style");
+        expect(themedSecondThumbnailAccent).toContain("--accent: #7257E6");
+        expect(themedSecondThumbnailAccent).not.toBe(
+          initialSecondThumbnailAccent,
+        );
+      });
+      const closeButton = queryAllByRoleFast("button", templateDialog).find(
+        (candidate) => {
+          return candidate.getAttribute("aria-label") === "Close";
+        },
+      );
+      if (!closeButton) {
+        throw new Error("Close button not found");
+      }
+      await user.click(closeButton);
+      expect(revokeObjectURL).toHaveBeenCalledWith(themedFrameSrc);
+    } finally {
+      if (originalCreateObjectURL) {
+        Object.defineProperty(URL, "createObjectURL", {
+          configurable: true,
+          value: originalCreateObjectURL,
+        });
+      } else {
+        delete (URL as { createObjectURL?: unknown }).createObjectURL;
+      }
+      if (originalRevokeObjectURL) {
+        Object.defineProperty(URL, "revokeObjectURL", {
+          configurable: true,
+          value: originalRevokeObjectURL,
+        });
+      } else {
+        delete (URL as { revokeObjectURL?: unknown }).revokeObjectURL;
+      }
+    }
   });
 
   it("selects presentation templates with the default card theme", async () => {
@@ -1109,7 +1530,6 @@ describe("chat composer templates", () => {
           <!doctype html>
           <html>
             <body>
-              ${PRESENTATION_DECK_METADATA}
               ${Array.from({ length: lastSlideNumber }, (_, index) => {
                 return `<section data-vm0-slide data-slide-id="slide-${String(
                   index + 1,
@@ -1279,10 +1699,9 @@ describe("chat composer templates", () => {
         previewFetchCount += 1;
         return previewFetch.promise;
       }
-      return new Response(
-        `<!doctype html><html><body>${PRESENTATION_DECK_METADATA}</body></html>`,
-        { headers: { "Content-Type": "text/html" } },
-      );
+      return new Response("<!doctype html><html><body></body></html>", {
+        headers: { "Content-Type": "text/html" },
+      });
     });
     mockChatLifecycle(context, { threadId: THREAD_ID });
 
@@ -1304,8 +1723,8 @@ describe("chat composer templates", () => {
       await waitFor(() => {
         expect(previewFetchCount).toBe(1);
         expect(
-          screen.getByTestId(`${template.title} detail HTML preview`),
-        ).not.toHaveAttribute("src");
+          screen.queryByTestId(`${template.title} detail HTML preview`),
+        ).not.toBeInTheDocument();
       });
 
       const templateButton = queryAllByRoleFast("button").find((candidate) => {
@@ -1327,7 +1746,6 @@ describe("chat composer templates", () => {
             <!doctype html>
             <html>
               <body>
-                ${PRESENTATION_DECK_METADATA}
                 <section data-vm0-slide data-slide-id="slide-one">
                   <h1>Slide one</h1>
                 </section>
@@ -1387,7 +1805,7 @@ describe("chat composer templates", () => {
     const template = PRESENTATION_TEMPLATE_PICKER_ITEMS[0]!;
     context.mocks.http.get("*/__vm0-dev-artifact-fetch", () => {
       return new Response(
-        `<!doctype html><html><head><style>:root { --bg: white; --ink: black; } section { width: 1600px; height: 900px; background: var(--bg); color: var(--ink); }</style></head><body>${PRESENTATION_DECK_METADATA}${template.previewImages
+        `<!doctype html><html><head><style>:root { --bg: white; --ink: black; } section { width: 1600px; height: 900px; background: var(--bg); color: var(--ink); }</style></head><body>${template.previewImages
           .map((_, index) => {
             return `<section data-vm0-slide data-slide-id="slide-${index + 1}"><h1>Slide ${index + 1}</h1></section>`;
           })
@@ -1464,7 +1882,10 @@ describe("chat composer templates", () => {
     fireEvent.keyDown(firstSlidePreviewButton, { key: "Tab" });
     expect(document.activeElement).toBe(secondSlidePreviewButton);
     expect(firstSlidePreviewButton.querySelector("iframe")).toBeNull();
-    expect(firstSlidePreviewButton.querySelector("img")).toBeNull();
+    expect(firstSlidePreviewButton.querySelector("img")).toHaveAttribute(
+      "src",
+      expect.stringContaining("width=224,height=126"),
+    );
     expect(
       firstSlidePreviewButton.querySelector(
         `[aria-label="${template.title} slide 1 preview"]`,

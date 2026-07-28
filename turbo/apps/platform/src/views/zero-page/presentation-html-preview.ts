@@ -74,16 +74,19 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
-function deckMetadataScript(doc: Document): HTMLScriptElement {
+function deckMetadataScript(doc: Document): HTMLScriptElement | null {
   const script = doc.getElementById(METADATA_SCRIPT_ID);
   if (!(script instanceof HTMLScriptElement) || !script.textContent) {
-    throw new Error("Presentation deck metadata is required");
+    return null;
   }
   return script;
 }
 
 function parseDeckMetadata(doc: Document): DeckMetadata {
   const script = deckMetadataScript(doc);
+  if (script === null) {
+    return {};
+  }
   const parsed: unknown = JSON.parse(script.textContent);
   if (!isRecord(parsed)) {
     throw new Error("Invalid presentation deck metadata");

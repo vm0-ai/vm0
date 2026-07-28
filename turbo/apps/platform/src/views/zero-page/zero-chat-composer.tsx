@@ -217,12 +217,13 @@ import {
   setTemplateCardHtmlPreview$,
   type TemplateCardHtmlPreviewState,
   templateDetailHtmlPreview$,
-  templateDetailThemeIdBySlug$,
-  templateDetailSlideIndexBySlug$,
   closePresentationTemplateDetailPreview$,
   loadPresentationTemplateHtmlPreview,
+  ownTemplatePickerPreviewResources$,
   openPresentationTemplateDetailPreview$,
+  releaseTemplatePickerPreviewResources$,
   selectPresentationTemplateDetailPreview$,
+  settlePresentationTemplateDetailPreviewFrame$,
 } from "../../signals/zero-page/zero-chat-composer.ts";
 import {
   audioInputAvailable$,
@@ -403,6 +404,17 @@ type ComposerTemplatePicker = NonNullable<
 type ComposerComputerUse = NonNullable<ZeroChatComposerProps["computerUse"]>;
 
 const TEMPLATE_CARD_PREVIEW_SIZE = { width: 480, height: 270 } as const;
+const TEMPLATE_HIGH_RESOLUTION_PREVIEW_SIZE = {
+  width: 708,
+  height: 398,
+} as const;
+const TEMPLATE_DETAIL_THUMBNAIL_PREVIEW_SIZE = {
+  width: 224,
+  height: 126,
+} as const;
+const PRESENTATION_GALLERY_PREVIEW_BASE_URL =
+  "https://static.vm0.io/web/assets/presentation-gallery/2026-07-04";
+const PRESENTATION_GALLERY_SLIDE_COUNT = 15;
 const TEMPLATE_PREWARM_IMAGE_COUNT = 15;
 const ILLUSTRATION_PREWARM_IMAGE_COUNT = 24;
 const ILLUSTRATION_EAGER_IMAGE_COUNT = 24;
@@ -1599,12 +1611,6 @@ function TemplateEmptyPanel({
   );
 }
 
-function presentationTemplateSlideImages(
-  item: PresentationTemplateItem,
-): readonly string[] {
-  return item.previewImages;
-}
-
 function presentationTemplateSlideCount(
   item: PresentationTemplateItem,
 ): number {
@@ -1634,18 +1640,63 @@ function presentationTemplateCardSlideImage(
   if (cardPreviewSource !== undefined) {
     return r2ImageTransformUrl(cardPreviewSource, size);
   }
-  return presentationTemplateFallbackSlideImage(item, index, size);
+  return presentationTemplateGallerySlideImage(item, index, size);
 }
 
-function presentationTemplateFallbackSlideImage(
+function presentationTemplateGallerySlideImage(
   item: PresentationTemplateItem,
   index: number,
   size: TemplatePreviewImageSize = TEMPLATE_CARD_PREVIEW_SIZE,
 ): string {
-  const slideImages = presentationTemplateSlideImages(item);
-  const safeIndex = Math.max(0, Math.min(index, slideImages.length - 1));
-  const image = slideImages[safeIndex] ?? item.previewImage;
-  return r2ImageTransformUrl(image, size);
+  return r2ImageTransformUrl(
+    presentationTemplateGallerySlideUrl(item, index),
+    size,
+  );
+}
+
+function presentationTemplateGallerySlideUrl(
+  item: PresentationTemplateItem,
+  index: number,
+): string {
+  const safeIndex = Math.max(
+    0,
+    Math.min(index, PRESENTATION_GALLERY_SLIDE_COUNT - 1),
+  );
+  const slideNumber = String(safeIndex + 1).padStart(3, "0");
+  return `${PRESENTATION_GALLERY_PREVIEW_BASE_URL}/${item.slug}/slide-${slideNumber}.webp`;
+}
+
+function presentationTemplateHighResolutionSlideImage(
+  item: PresentationTemplateItem,
+  index: number,
+  theme: PresentationTemplateThemeOption,
+  size: TemplatePreviewImageSize = TEMPLATE_HIGH_RESOLUTION_PREVIEW_SIZE,
+): string {
+  if (index === 0) {
+    return presentationTemplateCardSlideImage(item, index, theme, size);
+  }
+  return presentationTemplateGallerySlideImage(item, index, size);
+}
+
+function presentationTemplateDetailSlideImageSource(
+  item: PresentationTemplateItem,
+  index: number,
+  theme: PresentationTemplateThemeOption,
+  htmlPreviewFailed: boolean,
+): string {
+  if (index === 0) {
+    return (
+      presentationTemplateThemedCardPreviewSource(item, theme) ??
+      presentationTemplateGallerySlideUrl(item, index)
+    );
+  }
+  if (htmlPreviewFailed) {
+    return presentationTemplateGallerySlideUrl(item, index);
+  }
+  return (
+    item.previewImages[index] ??
+    presentationTemplateGallerySlideUrl(item, index)
+  );
 }
 
 function prewarmTemplatePreviewImage(
@@ -2568,14 +2619,14 @@ function renderPresentationTemplateShadowThumbnail(
 
 function PresentationTemplateShadowThumbnail({
   draft,
-  fallbackImage,
+  imageUrl,
   runtime,
   slideId,
   themeVariables,
   title,
 }: {
   readonly draft: PresentationPreviewDraft | undefined;
-  readonly fallbackImage: string;
+  readonly imageUrl: string;
   readonly runtime: TemplatePreviewRuntime;
   readonly slideId: string | null;
   readonly themeVariables: PresentationTemplateThemeVariables;
@@ -2584,14 +2635,12 @@ function PresentationTemplateShadowThumbnail({
   const hasHtmlThumbnail = draft !== undefined && slideId !== null;
   return (
     <>
-      {hasHtmlThumbnail ? null : (
-        <img
-          src={fallbackImage}
-          alt=""
-          loading="lazy"
-          className="absolute inset-0 h-full w-full object-cover"
-        />
-      )}
+      <img
+        src={imageUrl}
+        alt=""
+        loading="lazy"
+        className="absolute inset-0 h-full w-full object-cover"
+      />
       {hasHtmlThumbnail ? (
         <div
           ref={(node) => {
@@ -2645,7 +2694,6 @@ function createPresentationTemplateHtmlPreviewState(params: {
     embedUrl: params.item.embedUrl,
     themeId: params.theme.id,
     loading: false,
-    failed: false,
     frameUrl,
     slideCount: params.draft.slides.length,
   };
@@ -2725,22 +2773,113 @@ function revealTemplatePreviewFrameAfterPaint(params: {
       if (!params.frame.isConnected) {
         return;
       }
-      params.frame.dataset.loaded = "true";
       params.onFrameLoad(params.frameUrl);
     });
   });
 }
 
-function TemplatePreviewFrames({
-  fallbackImageUrl,
+function startProgressiveTemplatePreviewImageLoad(
+  lowResolutionImage: HTMLImageElement,
+): void {
+  const highResolutionImage =
+    lowResolutionImage.parentElement?.querySelector<HTMLImageElement>(
+      '[data-template-preview-image="high"]',
+    );
+  if (highResolutionImage === null || highResolutionImage === undefined) {
+    return;
+  }
+
+  const highResolutionUrl = highResolutionImage.dataset.src;
+  if (
+    highResolutionUrl === undefined ||
+    highResolutionImage.getAttribute("src") === highResolutionUrl
+  ) {
+    return;
+  }
+  delete highResolutionImage.dataset.loaded;
+  highResolutionImage.src = highResolutionUrl;
+}
+
+function ProgressiveTemplatePreviewImage({
+  alt,
+  className,
+  dataTestId,
+  fetchPriority,
+  highResolutionUrl,
   loading,
+  lowResolutionUrl,
+}: {
+  readonly alt: string;
+  readonly className: string;
+  readonly dataTestId?: string;
+  readonly fetchPriority?: "high" | "low" | "auto";
+  readonly highResolutionUrl: string;
+  readonly loading?: "eager" | "lazy";
+  readonly lowResolutionUrl: string;
+}) {
+  const hasHighResolutionImage = lowResolutionUrl !== highResolutionUrl;
+
+  return (
+    <>
+      <img
+        src={lowResolutionUrl}
+        alt={alt}
+        aria-hidden={alt === "" ? "true" : undefined}
+        data-template-preview-image="low"
+        data-testid={dataTestId}
+        className={className}
+        loading={loading}
+        decoding="async"
+        fetchPriority={fetchPriority}
+        onLoad={(event) => {
+          if (hasHighResolutionImage) {
+            startProgressiveTemplatePreviewImageLoad(event.currentTarget);
+          }
+        }}
+        onError={(event) => {
+          if (hasHighResolutionImage) {
+            startProgressiveTemplatePreviewImageLoad(event.currentTarget);
+          }
+        }}
+      />
+      {hasHighResolutionImage ? (
+        <img
+          src={undefined}
+          data-template-preview-image="high"
+          data-src={highResolutionUrl}
+          alt={alt}
+          aria-hidden={alt === "" ? "true" : undefined}
+          className={cn(
+            className,
+            "opacity-0 transition-opacity duration-150 data-[loaded=true]:opacity-100",
+          )}
+          loading={loading}
+          decoding="async"
+          fetchPriority={fetchPriority}
+          onLoad={(event) => {
+            const highResolutionImage = event.currentTarget;
+            highResolutionImage.dataset.loaded = "true";
+          }}
+        />
+      ) : null}
+    </>
+  );
+}
+
+function TemplatePreviewFrames({
+  highResolutionImageUrl,
+  loadedFrameUrl,
+  loading,
+  lowResolutionImageUrl,
   onFrameLoad,
   overlayFrameUrl,
   primaryFrameUrl,
   title,
 }: {
-  readonly fallbackImageUrl: string;
+  readonly highResolutionImageUrl: string;
+  readonly loadedFrameUrl: string | null;
   readonly loading: boolean;
+  readonly lowResolutionImageUrl: string;
   readonly onFrameLoad: (frameUrl: string) => void;
   readonly overlayFrameUrl: string | null;
   readonly primaryFrameUrl: string | null;
@@ -2756,21 +2895,19 @@ function TemplatePreviewFrames({
 
   return (
     <>
-      <img
-        key={fallbackImageUrl}
-        src={fallbackImageUrl}
+      <ProgressiveTemplatePreviewImage
         alt=""
-        aria-hidden="true"
-        data-testid={`${title} card image preview`}
         className="pointer-events-none absolute inset-0 h-full w-full object-cover"
-        loading="eager"
-        decoding="async"
+        dataTestId={`${title} card image preview`}
         fetchPriority="high"
+        highResolutionUrl={highResolutionImageUrl}
+        loading="eager"
+        lowResolutionUrl={lowResolutionImageUrl}
       />
       {frameUrls.map((frameUrl) => {
         return (
           <iframe
-            key={frameUrl ?? "empty"}
+            key={frameUrl}
             title={
               frameUrl === overlayFrameUrl
                 ? `${title} active HTML preview`
@@ -2781,6 +2918,7 @@ function TemplatePreviewFrames({
                 ? `${title} card HTML preview`
                 : undefined
             }
+            data-loaded={frameUrl === loadedFrameUrl ? "true" : undefined}
             src={frameUrl}
             sandbox="allow-same-origin"
             tabIndex={-1}
@@ -2823,21 +2961,24 @@ function TemplatePreview({
   const setHtmlPreview = useSet(setTemplateCardHtmlPreview$);
   const loadedHtmlFrameUrls = useGet(templateCardLoadedHtmlFrameUrls$);
   const setLoadedHtmlFrameUrl = useSet(setTemplateCardLoadedHtmlFrameUrl$);
-  const fallbackSlideCount = presentationTemplateSlideCount(item);
+  const slideCount = presentationTemplateSlideCount(item);
   const hoverSlideIndex = Math.max(
     0,
-    Math.min(
-      hover?.slug === item.slug ? hover.index : 0,
-      fallbackSlideCount - 1,
-    ),
+    Math.min(hover?.slug === item.slug ? hover.index : 0, slideCount - 1),
   );
   const previewTheme =
     theme ??
     findPresentationTemplateTheme(defaultPresentationTemplateThemeId(item));
-  const fallbackImageUrl = presentationTemplateCardSlideImage(
+  const lowResolutionImageUrl = presentationTemplateCardSlideImage(
     item,
     hoverSlideIndex,
     previewTheme,
+  );
+  const highResolutionImageUrl = presentationTemplateHighResolutionSlideImage(
+    item,
+    hoverSlideIndex,
+    previewTheme,
+    TEMPLATE_HIGH_RESOLUTION_PREVIEW_SIZE,
   );
   const activeHtmlPreview =
     htmlPreview?.slug === item.slug &&
@@ -2852,7 +2993,7 @@ function TemplatePreview({
       activeFrameUrl: activeHtmlPreview?.frameUrl ?? null,
       loadedFrameUrl,
     });
-  const scrubSlideCount = activeHtmlPreview?.slideCount ?? fallbackSlideCount;
+  const scrubSlideCount = activeHtmlPreview?.slideCount ?? slideCount;
   const currentPreviewSlideIndex = () => {
     const cache = runtime.presentation;
     const index =
@@ -2903,9 +3044,8 @@ function TemplatePreview({
         embedUrl: item.embedUrl,
         themeId: previewTheme.id,
         loading: false,
-        failed: true,
         frameUrl: null,
-        slideCount: fallbackSlideCount,
+        slideCount,
       });
       return;
     }
@@ -2926,9 +3066,8 @@ function TemplatePreview({
       embedUrl: item.embedUrl,
       themeId: previewTheme.id,
       loading: true,
-      failed: false,
       frameUrl: null,
-      slideCount: fallbackSlideCount,
+      slideCount,
     });
     detach(
       (async () => {
@@ -2948,9 +3087,8 @@ function TemplatePreview({
               embedUrl: item.embedUrl,
               themeId: previewTheme.id,
               loading: false,
-              failed: true,
               frameUrl: null,
-              slideCount: fallbackSlideCount,
+              slideCount,
             });
           }
           return;
@@ -3048,8 +3186,10 @@ function TemplatePreview({
       }}
     >
       <TemplatePreviewFrames
-        fallbackImageUrl={fallbackImageUrl}
+        highResolutionImageUrl={highResolutionImageUrl}
+        loadedFrameUrl={loadedFrameUrl}
         loading={activeHtmlPreview?.loading === true}
+        lowResolutionImageUrl={lowResolutionImageUrl}
         onFrameLoad={handleFrameLoad}
         overlayFrameUrl={overlayFrameUrl}
         primaryFrameUrl={primaryFrameUrl}
@@ -3115,6 +3255,94 @@ function handleTemplateDetailTabKeyDown(
   candidates[nextIndex]?.focus();
 }
 
+function TemplateDetailPreviewFrame({
+  frameLoaded,
+  frameUrl,
+  onFrameLoad,
+  previousFrameSlideIndex,
+  previousFrameUrl,
+  slideIndex,
+  title,
+}: {
+  readonly frameLoaded: boolean;
+  readonly frameUrl: string | null;
+  readonly onFrameLoad: (frameUrl: string) => void;
+  readonly previousFrameSlideIndex: number | null;
+  readonly previousFrameUrl: string | null;
+  readonly slideIndex: number;
+  readonly title: string;
+}) {
+  const frames: readonly {
+    readonly active: boolean;
+    readonly slideIndex: number;
+    readonly url: string;
+  }[] = [
+    ...(previousFrameUrl === null || previousFrameUrl === frameUrl
+      ? []
+      : [
+          {
+            active: false,
+            slideIndex: previousFrameSlideIndex ?? slideIndex,
+            url: previousFrameUrl,
+          },
+        ]),
+    ...(frameUrl === null ? [] : [{ active: true, slideIndex, url: frameUrl }]),
+  ];
+
+  return frames.map((candidateFrame) => {
+    const previousFrameShowsActiveSlide =
+      !candidateFrame.active && candidateFrame.slideIndex === slideIndex;
+    return (
+      <iframe
+        key={candidateFrame.url}
+        title={
+          candidateFrame.active
+            ? `${title} HTML preview`
+            : `${title} previous HTML preview`
+        }
+        data-template-detail-frame={
+          candidateFrame.active ? "active" : "previous"
+        }
+        data-loaded={!candidateFrame.active || frameLoaded ? "true" : undefined}
+        data-testid={
+          candidateFrame.active ? `${title} detail HTML preview` : undefined
+        }
+        src={candidateFrame.url}
+        sandbox="allow-same-origin"
+        tabIndex={-1}
+        className={cn(
+          "pointer-events-none absolute inset-0 h-full w-full border-0 bg-background opacity-0 data-[loaded=true]:opacity-100",
+          candidateFrame.active
+            ? "z-40"
+            : previousFrameShowsActiveSlide
+              ? "z-30"
+              : "z-10",
+        )}
+        onLoad={(event) => {
+          if (!candidateFrame.active) {
+            return;
+          }
+          revealTemplatePreviewFrameAfterPaint({
+            frame: event.currentTarget,
+            frameUrl: candidateFrame.url,
+            onFrameLoad,
+          });
+        }}
+      />
+    );
+  });
+}
+
+function templateDetailPreviewMatchesItem(
+  preview: {
+    readonly embedUrl: string;
+    readonly slug: string;
+  } | null,
+  item: PresentationTemplateItem,
+): boolean {
+  return preview?.slug === item.slug && preview.embedUrl === item.embedUrl;
+}
+
 function TemplatePreviewPage({
   item,
   onBack,
@@ -3127,32 +3355,39 @@ function TemplatePreviewPage({
   runtime: TemplatePreviewRuntime;
 }) {
   const detailPreview = useGet(templateDetailHtmlPreview$);
-  const themeIdBySlug = useGet(templateDetailThemeIdBySlug$);
   const setCardThemeId = useSet(setTemplateCardThemeId$);
-  const slideIndexBySlug = useGet(templateDetailSlideIndexBySlug$);
   const selectDetailPreview = useSet(selectPresentationTemplateDetailPreview$);
+  const settleDetailPreviewFrame = useSet(
+    settlePresentationTemplateDetailPreviewFrame$,
+  );
+  const visibleDetailPreview = templateDetailPreviewMatchesItem(
+    detailPreview,
+    item,
+  )
+    ? detailPreview
+    : null;
   const selectedThemeId =
-    themeIdBySlug[item.slug] ?? defaultPresentationTemplateThemeId(item);
+    visibleDetailPreview?.themeId ?? defaultPresentationTemplateThemeId(item);
   const selectedTheme = findPresentationTemplateTheme(selectedThemeId);
-  const activeSlideIndex = slideIndexBySlug[item.slug] ?? 0;
-  const visibleDetailPreview =
-    detailPreview?.slug === item.slug &&
-    detailPreview.embedUrl === item.embedUrl &&
-    detailPreview.themeId === selectedTheme.id &&
-    detailPreview.index === activeSlideIndex
-      ? detailPreview
-      : null;
-  const fallbackSlideCount = presentationTemplateSlideCount(item);
+  const activeSlideIndex = visibleDetailPreview?.index ?? 0;
+  const defaultSlideCount = presentationTemplateSlideCount(item);
   const detailSlideCount =
-    visibleDetailPreview?.slideCount ?? fallbackSlideCount;
+    visibleDetailPreview?.slideCount ?? defaultSlideCount;
   const cachedDetailDraft = runtime.presentation.drafts.get(item.embedUrl);
+  const htmlPreviewFailed = runtime.presentation.failed.has(item.embedUrl);
   const thumbnailThemeVariables =
     getPresentationTemplateThumbnailThemeVariables(selectedTheme);
-  const detailFallbackImage = presentationTemplateFallbackSlideImage(
+  const detailImageSource = presentationTemplateDetailSlideImageSource(
     item,
     activeSlideIndex,
+    selectedTheme,
+    htmlPreviewFailed,
   );
-
+  const detailLowResolutionImage = r2ImageTransformUrl(
+    detailImageSource,
+    TEMPLATE_DETAIL_THUMBNAIL_PREVIEW_SIZE,
+  );
+  const detailHighResolutionImage = detailImageSource;
   const selectDetailSlide = (index: number) => {
     selectDetailPreview({
       item,
@@ -3225,39 +3460,27 @@ function TemplatePreviewPage({
             onKeyDown={handleDetailSlideKeyDown}
             className="relative aspect-[16/9] overflow-hidden rounded-lg bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
           >
-            <img
-              key={detailFallbackImage}
-              src={detailFallbackImage}
+            <ProgressiveTemplatePreviewImage
               alt=""
-              aria-hidden="true"
-              data-testid={`${item.title} detail image preview`}
-              className="pointer-events-none absolute inset-0 h-full w-full object-cover"
-              loading="eager"
-              decoding="async"
+              className="pointer-events-none absolute inset-0 z-20 h-full w-full object-cover"
+              dataTestId={`${item.title} detail image preview`}
               fetchPriority="high"
+              highResolutionUrl={detailHighResolutionImage}
+              loading="eager"
+              lowResolutionUrl={detailLowResolutionImage}
             />
-            <iframe
-              key={
-                visibleDetailPreview?.frameUrl ??
-                `${item.slug}:${selectedTheme.id}:${activeSlideIndex}:pending`
-              }
-              title={`${item.title} HTML preview`}
-              data-testid={`${item.title} detail HTML preview`}
-              src={visibleDetailPreview?.frameUrl ?? undefined}
-              sandbox="allow-same-origin"
-              tabIndex={-1}
-              className="pointer-events-none absolute inset-0 h-full w-full border-0 bg-background opacity-0 data-[loaded=true]:opacity-100"
-              onLoad={(event) => {
-                const frameUrl = visibleDetailPreview?.frameUrl;
-                if (!frameUrl) {
-                  return;
-                }
-                revealTemplatePreviewFrameAfterPaint({
-                  frame: event.currentTarget,
-                  frameUrl,
-                  onFrameLoad: () => {},
-                });
+            <TemplateDetailPreviewFrame
+              frameLoaded={visibleDetailPreview?.frameLoaded ?? false}
+              frameUrl={visibleDetailPreview?.frameUrl ?? null}
+              onFrameLoad={(frameUrl) => {
+                settleDetailPreviewFrame(frameUrl);
               }}
+              previousFrameSlideIndex={
+                visibleDetailPreview?.previousFrameSlideIndex ?? null
+              }
+              previousFrameUrl={visibleDetailPreview?.previousFrameUrl ?? null}
+              slideIndex={activeSlideIndex}
+              title={item.title}
             />
             <button
               type="button"
@@ -3298,9 +3521,14 @@ function TemplatePreviewPage({
             ).map((slideNumber) => {
               const slideIndex = slideNumber - 1;
               const active = slideIndex === activeSlideIndex;
-              const thumbnailImage = presentationTemplateFallbackSlideImage(
-                item,
-                slideIndex,
+              const thumbnailImage = r2ImageTransformUrl(
+                presentationTemplateDetailSlideImageSource(
+                  item,
+                  slideIndex,
+                  selectedTheme,
+                  htmlPreviewFailed,
+                ),
+                TEMPLATE_DETAIL_THUMBNAIL_PREVIEW_SIZE,
               );
               const thumbnailSlide =
                 cachedDetailDraft?.slides[slideIndex] ?? null;
@@ -3322,7 +3550,7 @@ function TemplatePreviewPage({
                 >
                   <PresentationTemplateShadowThumbnail
                     draft={cachedDetailDraft}
-                    fallbackImage={thumbnailImage}
+                    imageUrl={thumbnailImage}
                     runtime={runtime}
                     slideId={thumbnailSlide?.id ?? null}
                     themeVariables={thumbnailThemeVariables}
@@ -4423,13 +4651,15 @@ function TemplatePickerDialog({
     setTemplatePickerPresentationScrollTop$,
   );
   const detailPreview = useGet(templateDetailHtmlPreview$);
-  const detailThemeIdBySlug = useGet(templateDetailThemeIdBySlug$);
+  const ownPreviewResources = useSet(ownTemplatePickerPreviewResources$);
+  const releasePreviewResources = useSet(
+    releaseTemplatePickerPreviewResources$,
+  );
   const openDetailPreview = useSet(openPresentationTemplateDetailPreview$);
   const selectDetailPreview = useSet(selectPresentationTemplateDetailPreview$);
   const closeDetailPreview = useSet(closePresentationTemplateDetailPreview$);
   const openWebsiteTemplatePreview = useSet(openWebsiteTemplatePreview$);
   const cardThemeIdBySlug = useGet(templateCardThemeIdBySlug$);
-  const detailSlideIndexBySlug = useGet(templateDetailSlideIndexBySlug$);
   const illustrationVariantIndex = useGet(illustrationVariantIndex$);
   const setIllustrationVariantIndex = useSet(setIllustrationVariantIndex$);
   const previewItem =
@@ -4497,7 +4727,7 @@ function TemplatePickerDialog({
   };
 
   const closeTemplatePicker = () => {
-    closeDetailPreview(runtime);
+    releasePreviewResources(runtime);
     setPresentationGridScrollTop(0);
     onClose();
   };
@@ -4558,21 +4788,21 @@ function TemplatePickerDialog({
     if (previewItem === null) {
       return null;
     }
-    const selectedThemeId =
-      detailThemeIdBySlug[previewItem.slug] ??
-      defaultPresentationTemplateThemeId(previewItem);
-    const selectedTheme = findPresentationTemplateTheme(selectedThemeId);
-    const visibleDetailPreview =
+    const activeDetailPreview =
       detailPreview?.slug === previewItem.slug &&
-      detailPreview.embedUrl === previewItem.embedUrl &&
-      detailPreview.themeId === selectedTheme.id
+      detailPreview.embedUrl === previewItem.embedUrl
         ? detailPreview
         : null;
+    const selectedThemeId =
+      activeDetailPreview?.themeId ??
+      cardThemeIdBySlug[previewItem.slug] ??
+      defaultPresentationTemplateThemeId(previewItem);
+    const selectedTheme = findPresentationTemplateTheme(selectedThemeId);
     const detailSlideCount =
-      visibleDetailPreview?.slideCount ??
-      Math.max(presentationTemplateSlideImages(previewItem).length, 1);
+      activeDetailPreview?.slideCount ??
+      presentationTemplateSlideCount(previewItem);
     return {
-      activeSlideIndex: detailSlideIndexBySlug[previewItem.slug] ?? 0,
+      activeSlideIndex: activeDetailPreview?.index ?? 0,
       detailSlideCount,
       selectedTheme,
     };
@@ -4666,6 +4896,7 @@ function TemplatePickerDialog({
         }
         onOpenAutoFocus={(event) => {
           event.preventDefault();
+          ownPreviewResources(runtime, pageSignal);
           if (!isPreviewing) {
             prewarmTemplatePreviewsForCategory(selectedCategory);
           }
