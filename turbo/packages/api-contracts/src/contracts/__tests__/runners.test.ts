@@ -94,9 +94,18 @@ describe("runner storage manifest contract", () => {
       }).success,
     ).toBe(true);
     expect(
+      previousStoredExecutionContextSchema.safeParse(context).success,
+    ).toBe(false);
+    expect(
       storedExecutionContextSchema.safeParse({
         ...context,
         storageManifest: legacyManifest,
+      }).success,
+    ).toBe(true);
+    expect(
+      storedExecutionContextSchema.safeParse({
+        ...context,
+        storageManifest: null,
       }).success,
     ).toBe(true);
     expect(storedExecutionContextSchema.safeParse(context).success).toBe(true);
