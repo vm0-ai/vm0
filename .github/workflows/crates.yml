@@ -379,7 +379,7 @@ jobs:
               --ignored --exact production_write_file_identity_matches_sudo_policy
 
   coverage:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-latest-8-cores
     timeout-minutes: 20
     env:
       CARGO_PROFILE_TEST_DEBUG: line-tables-only
