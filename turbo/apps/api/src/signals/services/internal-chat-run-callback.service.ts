@@ -16,7 +16,7 @@ import {
   chatMessages,
   type ChatMessageGenerationTemplate,
   type ChatMessageRecommendedFollowups,
-  type ChatMessageStructuredPrompt,
+  type ChatMessageUserMessage,
 } from "@vm0/db/schema/chat-message";
 import { chatThreads } from "@vm0/db/schema/chat-thread";
 import { zeroAgents } from "@vm0/db/schema/zero-agent";
@@ -98,7 +98,7 @@ import {
 import { insertChatEvent } from "./zero-chat-event.service";
 import { loadWebChatIncompleteContext } from "./zero-chat-incomplete-context.service";
 import { chatThreadAdmissionBlocked } from "./zero-chat-active-run.service";
-import { projectStructuredUserMessage } from "./zero-chat-structured-message.service";
+import { projectUserMessage } from "./zero-chat-user-message.service";
 import { appendQueuedRunAssistantMarker } from "./zero-chat-queue-marker.service";
 import {
   integrationCompletionFallbackMessageIdForRun,
@@ -373,7 +373,7 @@ interface CompletedChatOutputLoad {
 interface PriorRunMessage {
   readonly role: "user" | "assistant";
   readonly content: string;
-  readonly structuredPrompt: ChatMessageStructuredPrompt | null;
+  readonly userMessage: ChatMessageUserMessage | null;
   readonly attachFiles: readonly string[] | null;
   readonly generationTemplate: ChatMessageGenerationTemplate | null;
 }
@@ -1508,7 +1508,7 @@ async function generateRecommendedFollowupsForCompletedRun(args: {
 async function loadRecommendedFollowupContextForCompletedRun(args: {
   readonly db: Db;
   readonly threadId: string;
-  readonly structuredPromptEnabled: boolean;
+  readonly userMessageEnabled: boolean;
   readonly signal: AbortSignal;
 }): Promise<readonly ChatCompletionContextMessage[]> {
   return (
@@ -1516,7 +1516,7 @@ async function loadRecommendedFollowupContextForCompletedRun(args: {
       loadChatThreadRecommendedFollowupContext({
         db: args.db,
         threadId: args.threadId,
-        structuredPromptEnabled: args.structuredPromptEnabled,
+        userMessageEnabled: args.userMessageEnabled,
       }),
       (err) => {
         log.warn("Recommended follow-up context load failed", {
@@ -1608,7 +1608,7 @@ async function handleCompletedChatCallback(args: {
   readonly run: ChatRunInfo;
   readonly chatThread: ChatThreadForRunRow;
   readonly timing: ChatCallbackPreCreateTimingCollector;
-  readonly structuredPromptEnabled: boolean;
+  readonly userMessageEnabled: boolean;
   readonly signal: AbortSignal;
   readonly slackDelivery?: SlackDeliveryTarget;
   readonly feishuDelivery?: FeishuDeliveryTarget;
@@ -1682,7 +1682,7 @@ async function handleCompletedChatCallback(args: {
       return loadRecommendedFollowupContextForCompletedRun({
         db: args.db,
         threadId: args.chatThread.chatThreadId,
-        structuredPromptEnabled: args.structuredPromptEnabled,
+        userMessageEnabled: args.userMessageEnabled,
         signal: args.signal,
       });
     },
@@ -1707,7 +1707,7 @@ async function runCompletedChatCallbackSideEffects(args: {
   readonly suppressWebPushForActiveGoal: boolean;
   readonly lastResultText: string | null;
   readonly followupContext: readonly ChatCompletionContextMessage[];
-  readonly structuredPromptEnabled: boolean;
+  readonly userMessageEnabled: boolean;
   readonly signal: AbortSignal;
   readonly saveRunSummary: (resultText: string) => Promise<void>;
 }): Promise<void> {
@@ -1723,7 +1723,7 @@ async function runCompletedChatCallbackSideEffects(args: {
     runId: args.runId,
     prompt: args.run.prompt,
     currentAssistantReply: args.lastResultText ?? undefined,
-    structuredPromptEnabled: args.structuredPromptEnabled,
+    userMessageEnabled: args.userMessageEnabled,
   });
 
   const followupsStep = (async () => {
@@ -1934,16 +1934,12 @@ function truncatePrior(value: string): string {
 
 function formatPriorRunMessage(
   message: PriorRunMessage,
-  structuredPromptEnabled: boolean,
+  userMessageEnabled: boolean,
   inlineTemplatesEnabled: boolean,
 ): string {
   const roleLabel = message.role === "user" ? "User" : "Assistant";
-  if (
-    structuredPromptEnabled &&
-    message.role === "user" &&
-    message.structuredPrompt
-  ) {
-    const prompt = projectStructuredUserMessage(message.structuredPrompt, {
+  if (userMessageEnabled && message.role === "user" && message.userMessage) {
+    const prompt = projectUserMessage(message.userMessage, {
       inlineTemplates: inlineTemplatesEnabled,
     }).agentPrompt;
     return `${roleLabel}: ${truncatePrior(prompt) || "[empty message]"}`;
@@ -1956,7 +1952,7 @@ function formatPriorRunMessage(
 function buildChatPriorRunsContext(
   runs: readonly PriorRun[],
   triggerSource: "web" | "slack" | "feishu" | "teams",
-  structuredPromptEnabled: boolean,
+  userMessageEnabled: boolean,
   inlineTemplatesEnabled: boolean,
 ): string {
   if (runs.length === 0) {
@@ -1966,7 +1962,7 @@ function buildChatPriorRunsContext(
     const renderedMessages = run.messages.map((message) => {
       return formatPriorRunMessage(
         message,
-        structuredPromptEnabled,
+        userMessageEnabled,
         inlineTemplatesEnabled,
       );
     });
@@ -2045,7 +2041,7 @@ async function getLatestRunsByThreadId(
       runId: chatMessages.runId,
       eventType: chatEventTypeSql().as("event_type"),
       content: chatMessages.content,
-      structuredPrompt: chatMessages.structuredPrompt,
+      userMessage: chatMessages.userMessage,
       attachFiles: chatMessages.attachFiles,
       createdAt: chatMessages.createdAt,
       sequenceNumber: chatMessages.sequenceNumber,
@@ -2072,7 +2068,7 @@ async function getLatestRunsByThreadId(
     existing.push({
       role: chatEventCompatibilityRole(row.eventType),
       content: row.content,
-      structuredPrompt: row.structuredPrompt,
+      userMessage: row.userMessage,
       attachFiles: row.attachFiles,
       generationTemplate: row.generationTemplate,
     });
@@ -2168,7 +2164,7 @@ async function buildQueuedPriorContext(args: {
   readonly startNewSession: boolean;
   readonly incompleteContext: string;
   readonly triggerSource: "web" | "slack" | "feishu" | "teams";
-  readonly structuredPromptEnabled: boolean;
+  readonly userMessageEnabled: boolean;
   readonly inlineTemplatesEnabled: boolean;
 }): Promise<string> {
   if (!args.startNewSession || args.incompleteContext.length > 0) {
@@ -2182,7 +2178,7 @@ async function buildQueuedPriorContext(args: {
       RECENT_CHAT_RUN_LIMIT,
     ),
     args.triggerSource,
-    args.structuredPromptEnabled,
+    args.userMessageEnabled,
     args.inlineTemplatesEnabled,
   );
 }
@@ -2241,14 +2237,14 @@ async function resolveQueuedRuntimePrompt(args: {
   readonly getResolvedAttachFiles: ResolveAttachFiles;
   readonly queuedMessage: QueuedUserMessage;
   readonly sourcePrompt: string | undefined;
-  readonly structuredProjection:
-    | ReturnType<typeof projectStructuredUserMessage>
+  readonly userMessageProjection:
+    | ReturnType<typeof projectUserMessage>
     | undefined;
   readonly userId: string;
   readonly timing?: ChatCallbackPreCreateTimingCollector;
 }): Promise<string> {
-  if (args.structuredProjection) {
-    return args.structuredProjection.agentPrompt;
+  if (args.userMessageProjection) {
+    return args.userMessageProjection.agentPrompt;
   }
   const canonicalPrompt = await measureChatCallbackPreCreateTiming(
     args.timing,
@@ -2448,12 +2444,12 @@ function loadQueuedMessageSessionState(
         }),
         loadUserFeatureSwitchContext(args.db, args.agent.orgId, args.userId),
       ]);
-      const structuredPromptEnabled = isFeatureEnabled(
+      const userMessageEnabled = isFeatureEnabled(
         FeatureSwitchKey.StructuredPrompt,
         featureSwitchContext,
       );
       const inlineTemplatesEnabled =
-        structuredPromptEnabled &&
+        userMessageEnabled &&
         isFeatureEnabled(
           FeatureSwitchKey.StructuredPromptInlineTemplates,
           featureSwitchContext,
@@ -2463,7 +2459,7 @@ function loadQueuedMessageSessionState(
           ? await loadWebChatIncompleteContext(
               args.db,
               args.threadId,
-              structuredPromptEnabled,
+              userMessageEnabled,
               inlineTemplatesEnabled,
             )
           : "";
@@ -2535,8 +2531,8 @@ function queuedMessageAdmissionFailure(
 
 function resolveQueuedMessageGenerationTemplatePrompt(args: {
   readonly input: CreateQueuedChatRunInputArgs;
-  readonly structuredProjection:
-    | ReturnType<typeof projectStructuredUserMessage>
+  readonly userMessageProjection:
+    | ReturnType<typeof projectUserMessage>
     | undefined;
   readonly websiteTemplateV2Enabled: boolean;
   readonly imageStyleR2Enabled: boolean;
@@ -2548,11 +2544,11 @@ function resolveQueuedMessageGenerationTemplatePrompt(args: {
     "nested",
     () => {
       return resolveThreadGenerationTemplatePrompt({
-        explicit: args.structuredProjection
-          ? args.structuredProjection.generationTemplate
+        explicit: args.userMessageProjection
+          ? args.userMessageProjection.generationTemplate
           : args.input.queuedMessage.generationTemplate,
         explicitTemplates: args.inlineTemplatesEnabled
-          ? args.structuredProjection?.generationTemplates
+          ? args.userMessageProjection?.generationTemplates
           : undefined,
         websiteTemplateV2Enabled: args.websiteTemplateV2Enabled,
         imageStyleR2Enabled: args.imageStyleR2Enabled,
@@ -2590,19 +2586,19 @@ async function buildCreateQueuedChatRunInput(
 
   const [startNewSession, loadedIncompleteContext, featureSwitchContext] =
     await loadQueuedMessageSessionState(args, modelRoute);
-  const structuredPromptEnabled = isFeatureEnabled(
+  const userMessageEnabled = isFeatureEnabled(
     FeatureSwitchKey.StructuredPrompt,
     featureSwitchContext,
   );
   const inlineTemplatesEnabled =
-    structuredPromptEnabled &&
+    userMessageEnabled &&
     isFeatureEnabled(
       FeatureSwitchKey.StructuredPromptInlineTemplates,
       featureSwitchContext,
     );
-  const structuredProjection =
-    structuredPromptEnabled && args.queuedMessage.structuredPrompt
-      ? projectStructuredUserMessage(args.queuedMessage.structuredPrompt, {
+  const userMessageProjection =
+    userMessageEnabled && args.queuedMessage.userMessage
+      ? projectUserMessage(args.queuedMessage.userMessage, {
           inlineTemplates: inlineTemplatesEnabled,
         })
       : undefined;
@@ -2618,7 +2614,7 @@ async function buildCreateQueuedChatRunInput(
         startNewSession,
         incompleteContext,
         triggerSource: args.queuedMessage.triggerSource,
-        structuredPromptEnabled,
+        userMessageEnabled,
         inlineTemplatesEnabled,
       });
     },
@@ -2626,7 +2622,7 @@ async function buildCreateQueuedChatRunInput(
   const generationTemplatePrompt =
     await resolveQueuedMessageGenerationTemplatePrompt({
       input: args,
-      structuredProjection,
+      userMessageProjection,
       websiteTemplateV2Enabled: isFeatureEnabled(
         FeatureSwitchKey.WebsiteTemplateV2,
         featureSwitchContext,
@@ -2654,7 +2650,7 @@ async function buildCreateQueuedChatRunInput(
     getResolvedAttachFiles: args.getResolvedAttachFiles,
     queuedMessage: args.queuedMessage,
     sourcePrompt: sourceParams?.prompt,
-    structuredProjection,
+    userMessageProjection,
     userId: args.userId,
     timing: args.timing,
   });
@@ -3150,7 +3146,7 @@ async function prepareCompletedTerminalChatCallbackWork(args: {
         args.chatThread.userId,
       );
       args.signal.throwIfAborted();
-      const structuredPromptEnabled = isFeatureEnabled(
+      const userMessageEnabled = isFeatureEnabled(
         FeatureSwitchKey.StructuredPrompt,
         featureSwitchContext,
       );
@@ -3160,7 +3156,7 @@ async function prepareCompletedTerminalChatCallbackWork(args: {
         run: args.run,
         chatThread: args.chatThread,
         timing: args.timing,
-        structuredPromptEnabled,
+        userMessageEnabled,
         signal: args.signal,
         slackDelivery: args.slackDelivery,
         feishuDelivery: args.feishuDelivery,
@@ -3178,10 +3174,10 @@ async function prepareCompletedTerminalChatCallbackWork(args: {
           );
         },
       });
-      return { completed, structuredPromptEnabled };
+      return { completed, userMessageEnabled };
     },
   );
-  const { completed, structuredPromptEnabled } = prepared;
+  const { completed, userMessageEnabled } = prepared;
   if (!completed.inserted) {
     return { shouldDrainThreadQueue: false };
   }
@@ -3200,7 +3196,7 @@ async function prepareCompletedTerminalChatCallbackWork(args: {
         suppressWebPushForActiveGoal: args.suppressWebPushForActiveGoal,
         lastResultText: completed.lastResultText,
         followupContext: completed.followupContext,
-        structuredPromptEnabled,
+        userMessageEnabled,
         signal: args.signal,
         saveRunSummary: (resultText) => {
           return args.dependencies.saveRunSummary(

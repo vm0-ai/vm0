@@ -235,7 +235,7 @@ import {
   stopAndTranscribe$,
 } from "../../signals/voice-io/voice-io-stt.ts";
 import { readChatMessageFromClipboard } from "../../signals/zero-page/clipboard.ts";
-import { shouldUseStructuredPrompt } from "../../signals/zero-page/user-message-document-codec.ts";
+import { shouldUseUserMessage } from "../../signals/zero-page/user-message-document-codec.ts";
 import { Markdown } from "../components/markdown.tsx";
 import { WebsiteTemplatePreviewDialogSlot } from "./website-template-preview-dialog.tsx";
 
@@ -5016,7 +5016,7 @@ function inlineComposerTemplatePicker({
   };
 }
 
-function structuredPromptInlineTemplatesEnabled(
+function userMessageInlineTemplatesEnabled(
   featureSwitches: Partial<Record<FeatureSwitchKey, boolean>>,
 ): boolean {
   return (
@@ -6265,21 +6265,21 @@ function toPersistedAttachments(
 
 function restoreChatClipboardPayload({
   event,
-  structuredPromptEnabled,
+  userMessageEnabled,
   inlineTemplatesEnabled,
   visualAttachmentUnsupported,
   insertPromptMarkdown,
-  insertStructuredPrompt,
+  insertUserMessage,
   restoreAttachments,
   onTemplateChange,
   onDraftChange,
 }: {
   event: ComposerPasteEvent;
-  structuredPromptEnabled: boolean;
+  userMessageEnabled: boolean;
   inlineTemplatesEnabled: boolean;
   visualAttachmentUnsupported: VisualAttachmentUnsupportedState | null;
   insertPromptMarkdown: (value: string) => void;
-  insertStructuredPrompt: (value: UserMessageDocument) => void;
+  insertUserMessage: (value: UserMessageDocument) => void;
   restoreAttachments: (attachments: PersistedAttachment[]) => void;
   onTemplateChange:
     | ((value: GenerationTemplateRequest | undefined) => void)
@@ -6293,14 +6293,14 @@ function restoreChatClipboardPayload({
   if (!payload) {
     return false;
   }
-  const structuredPrompt = shouldUseStructuredPrompt(
-    structuredPromptEnabled,
-    payload.structuredPrompt,
+  const userMessage = shouldUseUserMessage(
+    userMessageEnabled,
+    payload.userMessage,
   )
-    ? payload.structuredPrompt
+    ? payload.userMessage
     : undefined;
   const persistedAttachments = toPersistedAttachments(payload.attachments);
-  if (!structuredPrompt && persistedAttachments.length === 0) {
+  if (!userMessage && persistedAttachments.length === 0) {
     return false;
   }
   const allowedAttachments = visualAttachmentUnsupported
@@ -6319,7 +6319,7 @@ function restoreChatClipboardPayload({
   }
 
   event.preventDefault();
-  const hasInsertableStructuredPart = structuredPrompt?.parts.some((part) => {
+  const hasInsertableUserMessagePart = userMessage?.parts.some((part) => {
     return (
       part.type === "text" ||
       part.type === "chat_thread" ||
@@ -6327,12 +6327,12 @@ function restoreChatClipboardPayload({
       (inlineTemplatesEnabled && part.type === "template")
     );
   });
-  if (structuredPrompt && hasInsertableStructuredPart) {
-    insertStructuredPrompt(structuredPrompt);
+  if (userMessage && hasInsertableUserMessagePart) {
+    insertUserMessage(userMessage);
   } else if (payload.text) {
     insertPromptMarkdown(payload.text);
   }
-  const templatePart = structuredPrompt?.parts.find((part) => {
+  const templatePart = userMessage?.parts.find((part) => {
     return part.type === "template";
   });
   if (!inlineTemplatesEnabled && templatePart?.type === "template") {
@@ -6638,10 +6638,10 @@ export function useZeroChatComposer({
   const setShowAddDialog = useSet(composerConnectors.setShowAddDialog$);
   const openGoalDialog = useSet(openChatThreadGoalDialog$);
   const featureSwitches = useGet(featureSwitch$);
-  const structuredPromptEnabled =
+  const userMessageEnabled =
     featureSwitches[FeatureSwitchKey.StructuredPrompt] ?? false;
   const inlineTemplatesEnabled =
-    structuredPromptInlineTemplatesEnabled(featureSwitches);
+    userMessageInlineTemplatesEnabled(featureSwitches);
 
   const resolved = useResolvedComposerSignals(
     draft,
@@ -6661,7 +6661,7 @@ export function useZeroChatComposer({
     setDragOver,
   } = resolved;
   const insertPromptMarkdown = useSet(composer.insertPromptMarkdown$);
-  const insertStructuredPrompt = useSet(composer.insertStructuredPrompt$);
+  const insertUserMessage = useSet(composer.insertUserMessage$);
   const insertTemplate = useSet(composer.insertTemplate$);
   const appendComposerText = useSet(composer.appendText$);
   const [inputForSubmissionLoadable, readInputForSubmission] = useLoadableSet(
@@ -6692,11 +6692,11 @@ export function useZeroChatComposer({
     if (
       restoreChatClipboardPayload({
         event: e,
-        structuredPromptEnabled,
+        userMessageEnabled,
         inlineTemplatesEnabled,
         visualAttachmentUnsupported,
         insertPromptMarkdown,
-        insertStructuredPrompt,
+        insertUserMessage,
         restoreAttachments,
         onTemplateChange: composerTemplatePicker?.onChange,
         onDraftChange,

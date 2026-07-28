@@ -31,12 +31,10 @@ type ChatEventIdentity = Pick<
 
 type ChatEventInputPayload = Pick<
   ChatEventInsert,
-  | "structuredPrompt"
-  | "attachFiles"
-  | "attachFileMetadata"
-  | "generationTemplate"
-  | "goalSnapshot"
->;
+  "attachFiles" | "attachFileMetadata" | "generationTemplate" | "goalSnapshot"
+> & {
+  readonly userMessage: NonNullable<ChatEventInsert["userMessage"]> | null;
+};
 
 type ChatEventOutputSequence = Pick<
   ChatEventInsert,

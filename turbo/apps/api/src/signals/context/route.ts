@@ -93,14 +93,14 @@ function isContentlessStatus(status: StatusCode): boolean {
   return status === 101 || status === 204 || status === 205 || status === 304;
 }
 
-function supportsStructuredFeedbackParts(request: Request): boolean {
+function supportsUserMessageFeedbackParts(request: Request): boolean {
   return clientVersionSupportsCapability(
     request.headers.get(CLIENT_VERSION_HEADER),
     CLIENT_CAPABILITY_STRUCTURED_FEEDBACK_PARTS,
   );
 }
 
-function isStructuredFeedbackDocument(value: unknown): boolean {
+function isUserMessageFeedbackDocument(value: unknown): boolean {
   if (!isRecord(value) || value.version !== 1 || !Array.isArray(value.parts)) {
     return false;
   }
@@ -109,13 +109,13 @@ function isStructuredFeedbackDocument(value: unknown): boolean {
   });
 }
 
-function stripUnsupportedStructuredFeedback(value: unknown): unknown {
-  if (isStructuredFeedbackDocument(value)) {
+function stripUnsupportedUserMessageFeedback(value: unknown): unknown {
+  if (isUserMessageFeedbackDocument(value)) {
     return undefined;
   }
   if (Array.isArray(value)) {
     return value.flatMap((item) => {
-      const stripped = stripUnsupportedStructuredFeedback(item);
+      const stripped = stripUnsupportedUserMessageFeedback(item);
       return stripped === undefined ? [] : [stripped];
     });
   }
@@ -124,7 +124,7 @@ function stripUnsupportedStructuredFeedback(value: unknown): unknown {
   }
   const result: Record<string, unknown> = {};
   for (const [key, item] of Object.entries(value)) {
-    const stripped = stripUnsupportedStructuredFeedback(item);
+    const stripped = stripUnsupportedUserMessageFeedback(item);
     if (stripped !== undefined) {
       result[key] = stripped;
     }
@@ -166,11 +166,11 @@ export function honoSignalHandler(
       throw new Error("Route handler must return a contract response object");
     }
 
-    const compatibleData = supportsStructuredFeedbackParts(context.req.raw)
+    const compatibleData = supportsUserMessageFeedbackParts(context.req.raw)
       ? data
       : {
           ...data,
-          body: stripUnsupportedStructuredFeedback(data.body),
+          body: stripUnsupportedUserMessageFeedback(data.body),
         };
     const response = validateResponse({
       appRoute: contract,

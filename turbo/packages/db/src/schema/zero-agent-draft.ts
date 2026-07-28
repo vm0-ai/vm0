@@ -9,7 +9,7 @@ import {
 import { zeroAgents } from "./zero-agent";
 import type {
   ZeroAgentDraftAttachments,
-  ZeroAgentDraftStructuredPrompt,
+  ZeroAgentDraftUserMessage,
 } from "@vm0/db/jsonb-contracts/zero-agent-draft";
 
 export const zeroAgentDrafts = pgTable(
@@ -26,16 +26,16 @@ export const zeroAgentDrafts = pgTable(
         { onDelete: "cascade" },
       ),
     draftContent: text("draft_content"),
-    draftStructuredPrompt: jsonb(
+    draftUserMessage: jsonb(
       "draft_structured_prompt",
-    ).$type<ZeroAgentDraftStructuredPrompt>(),
+    ).$type<ZeroAgentDraftUserMessage>(),
     /**
      * Full structured draft content for rollout-only parts that older API
      * versions cannot decode. The legacy column remains a safe projection.
      */
-    draftStructuredPromptWithFeedback: jsonb(
+    draftUserMessageWithFeedback: jsonb(
       "draft_structured_prompt_with_feedback",
-    ).$type<ZeroAgentDraftStructuredPrompt>(),
+    ).$type<ZeroAgentDraftUserMessage>(),
     draftAttachments:
       jsonb("draft_attachments").$type<ZeroAgentDraftAttachments>(),
     createdAt: timestamp("created_at").defaultNow().notNull(),

@@ -89,7 +89,7 @@ interface PaneSpec {
 
 interface RestoredDraftState {
   readonly content: string;
-  readonly structuredPrompt: UserMessageDocument | null;
+  readonly userMessage: UserMessageDocument | null;
   readonly generationTemplate: GenerationTemplateRequest | undefined;
   readonly attachments: PersistedAttachment[];
 }
@@ -97,13 +97,13 @@ interface RestoredDraftState {
 function legacyDraftState(threadDraft: ChatThreadDraft): RestoredDraftState {
   return {
     content: threadDraft.draftContent ?? "",
-    structuredPrompt: null,
+    userMessage: null,
     generationTemplate: undefined,
     attachments: threadDraft.draftAttachments ?? [],
   };
 }
 
-function structuredDraftAttachments(
+function userMessageDraftAttachments(
   document: UserMessageDocument,
   attachments: readonly PersistedAttachment[],
 ): PersistedAttachment[] {
@@ -121,11 +121,11 @@ function structuredDraftAttachments(
   });
 }
 
-function structuredDraftState(
+function userMessageDraftState(
   threadDraft: ChatThreadDraft,
   inlineTemplatesEnabled: boolean,
 ): RestoredDraftState | null {
-  const document = threadDraft.draftStructuredPrompt;
+  const document = threadDraft.draftUserMessage;
   if (
     !document ||
     messageDocumentToEditorDoc(document, {
@@ -145,12 +145,12 @@ function structuredDraftState(
   });
   return {
     content,
-    structuredPrompt: document,
+    userMessage: document,
     generationTemplate:
       !inlineTemplatesEnabled && generationTemplate?.type === "template"
         ? generationTemplate.template
         : undefined,
-    attachments: structuredDraftAttachments(
+    attachments: userMessageDraftAttachments(
       document,
       threadDraft.draftAttachments ?? [],
     ),
@@ -172,18 +172,18 @@ const loadDraft$ = command(
     }
 
     const features = get(featureSwitch$);
-    const structuredPromptEnabled =
+    const userMessageEnabled =
       features[FeatureSwitchKey.StructuredPrompt] ?? false;
     const inlineTemplatesEnabled =
-      structuredPromptEnabled &&
+      userMessageEnabled &&
       (features[FeatureSwitchKey.StructuredPromptInlineTemplates] ?? false);
-    const restoredDraft = structuredPromptEnabled
-      ? (structuredDraftState(threadDraft, inlineTemplatesEnabled) ??
+    const restoredDraft = userMessageEnabled
+      ? (userMessageDraftState(threadDraft, inlineTemplatesEnabled) ??
         legacyDraftState(threadDraft))
       : legacyDraftState(threadDraft);
     const hasDraft =
       restoredDraft.content.length > 0 ||
-      restoredDraft.structuredPrompt !== null ||
+      restoredDraft.userMessage !== null ||
       restoredDraft.attachments.length > 0;
     if (isNew && hasDraft) {
       const restoredAttachments = restoredDraft.attachments.map(
@@ -191,7 +191,7 @@ const loadDraft$ = command(
       );
       set(thread.draft.seed$, {
         content: restoredDraft.content,
-        structuredPrompt: restoredDraft.structuredPrompt,
+        userMessage: restoredDraft.userMessage,
         generationTemplate: restoredDraft.generationTemplate,
         attachments: restoredAttachments,
       });

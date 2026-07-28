@@ -153,7 +153,7 @@ export function parseChatClipboardPayload(html: string): {
     contentType: string;
     size: number;
   }[];
-  structuredPrompt?: UserMessageDocument;
+  userMessage?: UserMessageDocument;
 } {
   const doc = new DOMParser().parseFromString(html, "text/html");
   const encoded = doc.querySelector<HTMLElement>("[data-vm0-chat-message]")
@@ -170,7 +170,7 @@ export function parseChatClipboardPayload(html: string): {
       contentType: string;
       size: number;
     }[];
-    structuredPrompt?: UserMessageDocument;
+    userMessage?: UserMessageDocument;
   };
 }
 

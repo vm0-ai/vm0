@@ -28,7 +28,7 @@ const patchInner$ = command(async ({ get, set }, signal: AbortSignal) => {
       threadId: params.id,
       userId: auth.userId,
       draftContent: bodyResult.data.draftContent ?? null,
-      draftStructuredPrompt: bodyResult.data.draftStructuredPrompt ?? null,
+      draftUserMessage: bodyResult.data.draftUserMessage ?? null,
       draftAttachments: bodyResult.data.draftAttachments ?? null,
     },
     signal,

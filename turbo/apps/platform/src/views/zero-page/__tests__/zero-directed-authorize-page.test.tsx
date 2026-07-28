@@ -12,6 +12,7 @@ import {
 import { zeroUserConnectorsContract } from "@vm0/api-contracts/contracts/user-connectors";
 import type { ConnectorResponse } from "@vm0/api-contracts/contracts/connector-schemas";
 import type { ConnectorRef } from "@vm0/api-contracts/contracts/connector-identity";
+import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import { screen, waitFor, within } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 
@@ -171,9 +172,11 @@ describe("directed connector authorize page", () => {
     const threadId = "00000000-0000-4000-a000-000000000101";
     const callbackPrompt = "Re-check Gmail, then continue";
     let continuationPrompt: string | null = null;
+    let continuationUserMessage: unknown;
     context.mocks.api(chatEventsContract.send, ({ body, respond }) => {
       if ("prompt" in body) {
         continuationPrompt = body.prompt ?? null;
+        continuationUserMessage = body.userMessage;
       }
       return respond(201, {
         runId: "00000000-0000-4000-a000-000000000201",
@@ -184,6 +187,7 @@ describe("directed connector authorize page", () => {
     detachedSetupPage({
       context,
       path: `/connectors/gmail/authorize?agentId=${AGENT_ID}&threadId=${threadId}&callbackPrompt=${encodeURIComponent(callbackPrompt)}`,
+      featureSwitches: { [FeatureSwitchKey.StructuredPrompt]: false },
     });
 
     await waitFor(() => {
@@ -196,6 +200,10 @@ describe("directed connector authorize page", () => {
       expect(screen.getByText("Gmail authorized")).toBeInTheDocument();
       expect(screen.getByText("Authorized")).toBeInTheDocument();
       expect(continuationPrompt).toBe(callbackPrompt);
+      expect(continuationUserMessage).toStrictEqual({
+        version: 1,
+        parts: [{ type: "text", text: callbackPrompt }],
+      });
     });
   });
 

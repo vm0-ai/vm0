@@ -48,14 +48,14 @@ describe("CHAT-01 chat thread lifecycle", () => {
     await expect(api.readThreadDraft(actor, created.id)).resolves.toStrictEqual(
       {
         draftContent: null,
-        draftStructuredPrompt: null,
+        draftUserMessage: null,
         draftAttachments: null,
       },
     );
 
     await api.patchThread(actor, created.id, {
       draftContent: "follow up on the launch",
-      draftStructuredPrompt: {
+      draftUserMessage: {
         version: 1,
         parts: [
           { type: "text", text: "follow up on " },
@@ -77,7 +77,7 @@ describe("CHAT-01 chat thread lifecycle", () => {
     });
     const draft = await api.readThreadDraft(actor, created.id);
     expect(draft.draftContent).toBe("follow up on the launch");
-    expect(draft.draftStructuredPrompt).toStrictEqual({
+    expect(draft.draftUserMessage).toStrictEqual({
       version: 1,
       parts: [
         { type: "text", text: "follow up on " },
@@ -152,6 +152,13 @@ describe("CHAT-01 chat thread lifecycle", () => {
     await api.patchThread(owner, thread.id, {
       draftContent: "private draft",
       draftAttachments: null,
+    });
+    await expect(api.readThreadDraft(owner, thread.id)).resolves.toMatchObject({
+      draftContent: "private draft",
+      draftUserMessage: {
+        version: 1,
+        parts: [{ type: "text", text: "private draft" }],
+      },
     });
     await expect(api.listThreadDrafts(peer)).resolves.not.toContain(thread.id);
 
@@ -281,7 +288,7 @@ describe("CHAT-02 chat messages and visible validation", () => {
     });
     const uploadId = randomUUID();
     const clientMessageId = randomUUID();
-    const structuredPrompt: UserMessageDocument = {
+    const expectedUserMessage: UserMessageDocument = {
       version: 1,
       parts: [
         { type: "text", text: "Build a launch-plan presentation" },
@@ -299,7 +306,7 @@ describe("CHAT-02 chat messages and visible validation", () => {
       {
         agentId: agent.agentId,
         prompt: "Build a launch-plan presentation",
-        structuredPrompt,
+        userMessage: expectedUserMessage,
         attachFiles: [
           {
             id: uploadId,
@@ -324,7 +331,7 @@ describe("CHAT-02 chat messages and visible validation", () => {
     const threadId = sent.body.threadId;
     await expect(api.readThreadDraft(actor, threadId)).resolves.toStrictEqual({
       draftContent: null,
-      draftStructuredPrompt: null,
+      draftUserMessage: null,
       draftAttachments: null,
     });
 
@@ -334,7 +341,7 @@ describe("CHAT-02 chat messages and visible validation", () => {
     const queuedMessage = messages.messages.find((message) => {
       return message.id === clientMessageId;
     });
-    const userMessage = messages.messages.find((message) => {
+    const rejectedUserMessage = messages.messages.find((message) => {
       return message.revokesMessageId === clientMessageId;
     });
     const assistantMessage = messages.messages.find((message) => {
@@ -344,13 +351,13 @@ describe("CHAT-02 chat messages and visible validation", () => {
     expect(queuedMessage).toMatchObject({
       role: "user",
       content: "Build a launch-plan presentation",
-      structuredPrompt,
+      userMessage: expectedUserMessage,
     });
     expect(queuedMessage?.error).toBeUndefined();
-    expect(userMessage).toMatchObject({
+    expect(rejectedUserMessage).toMatchObject({
       role: "user",
       content: "Build a launch-plan presentation",
-      structuredPrompt,
+      userMessage: expectedUserMessage,
       error: "insufficient_credits",
       revokesMessageId: clientMessageId,
       attachFiles: [
@@ -404,7 +411,7 @@ describe("CHAT-02 chat messages and visible validation", () => {
       "clientMessageId is already in use",
     );
 
-    if (!userMessage) {
+    if (!rejectedUserMessage) {
       throw new Error("Expected the no-credit send to create a user message");
     }
 
@@ -414,7 +421,7 @@ describe("CHAT-02 chat messages and visible validation", () => {
         agentId: agent.agentId,
         threadId,
         prompt: "Use a stale recommended follow-up",
-        revokesMessageId: userMessage.id,
+        revokesMessageId: rejectedUserMessage.id,
       },
       [400],
     );
@@ -429,7 +436,7 @@ describe("CHAT-02 chat messages and visible validation", () => {
       {
         agentId: agent.agentId,
         threadId,
-        revokesMessageId: userMessage.id,
+        revokesMessageId: rejectedUserMessage.id,
       },
       [404],
     );
@@ -441,7 +448,7 @@ describe("CHAT-02 chat messages and visible validation", () => {
       {
         agentId: agent.agentId,
         threadId,
-        revokesMessageId: userMessage.id,
+        revokesMessageId: rejectedUserMessage.id,
         clientMessageId: randomUUID(),
       },
       [201],
@@ -458,7 +465,7 @@ describe("CHAT-02 chat messages and visible validation", () => {
     const afterRecall = await api.listThreadMessages(actor, threadId);
     expect(
       afterRecall.messages.some((message) => {
-        return message.revokesMessageId === userMessage.id;
+        return message.revokesMessageId === rejectedUserMessage.id;
       }),
     ).toBeTruthy();
 
@@ -467,7 +474,7 @@ describe("CHAT-02 chat messages and visible validation", () => {
       {
         agentId: agent.agentId,
         threadId,
-        revokesMessageId: userMessage.id,
+        revokesMessageId: rejectedUserMessage.id,
       },
       [201],
     );
@@ -479,7 +486,7 @@ describe("CHAT-02 chat messages and visible validation", () => {
     const afterRepeatedRecall = await api.listThreadMessages(actor, threadId);
     expect(
       afterRepeatedRecall.messages.filter((message) => {
-        return message.revokesMessageId === userMessage.id;
+        return message.revokesMessageId === rejectedUserMessage.id;
       }),
     ).toHaveLength(1);
 

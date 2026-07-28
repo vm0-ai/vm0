@@ -75,12 +75,12 @@ describe("chat composer templates", () => {
     const user = userEvent.setup({ delay: null });
     const first = PRESENTATION_TEMPLATE_PICKER_ITEMS[0]!;
     const second = PRESENTATION_TEMPLATE_PICKER_ITEMS[1]!;
-    let submittedStructuredPrompt: UserMessageDocument | undefined;
+    let submittedUserMessage: UserMessageDocument | undefined;
     let submittedGenerationTemplate: GenerationTemplateRequest | undefined;
     mockChatLifecycle(context, {
       threadId: THREAD_ID,
       onRunCreate(body) {
-        submittedStructuredPrompt = body.structuredPrompt;
+        submittedUserMessage = body.userMessage;
         submittedGenerationTemplate = body.generationTemplate;
       },
     });
@@ -135,8 +135,8 @@ describe("chat composer templates", () => {
 
     await waitFor(() => {
       expect(submittedGenerationTemplate).toBeUndefined();
-      expect(submittedStructuredPrompt?.parts).toHaveLength(2);
-      expect(submittedStructuredPrompt?.parts[0]).toMatchObject({
+      expect(submittedUserMessage?.parts).toHaveLength(2);
+      expect(submittedUserMessage?.parts[0]).toMatchObject({
         type: "template",
         titleSnapshot: first.title,
         template: {
@@ -144,7 +144,7 @@ describe("chat composer templates", () => {
           selection: { templateId: first.templateId },
         },
       });
-      expect(submittedStructuredPrompt?.parts[1]).toMatchObject({
+      expect(submittedUserMessage?.parts[1]).toMatchObject({
         type: "template",
         titleSnapshot: second.title,
         template: {
@@ -2125,7 +2125,7 @@ describe("chat composer templates", () => {
       },
     } satisfies GenerationTemplateRequest;
     let queuedGenerationTemplate: GenerationTemplateRequest | undefined;
-    let queuedStructuredTemplate: GenerationTemplateRequest | undefined;
+    let queuedUserMessageTemplate: GenerationTemplateRequest | undefined;
     mockChatLifecycle(context, {
       threadId: THREAD_ID,
       chatMessages: [
@@ -2148,7 +2148,7 @@ describe("chat composer templates", () => {
           role: "user",
           content: "invalidate",
           runId: undefined,
-          structuredPrompt: {
+          userMessage: {
             version: 1,
             parts: [
               {
@@ -2165,10 +2165,10 @@ describe("chat composer templates", () => {
       activeRunIds: ["run-template-active"],
       onQueuedMessageAppend: (body) => {
         queuedGenerationTemplate = body.generationTemplate;
-        const templatePart = body.structuredPrompt?.parts.find((part) => {
+        const templatePart = body.userMessage?.parts.find((part) => {
           return part.type === "template";
         });
-        queuedStructuredTemplate =
+        queuedUserMessageTemplate =
           templatePart?.type === "template" ? templatePart.template : undefined;
       },
     });
@@ -2206,7 +2206,7 @@ describe("chat composer templates", () => {
         "Queue a recalled illustration",
       );
       expect(queuedGenerationTemplate).toStrictEqual(generationTemplate);
-      expect(queuedStructuredTemplate).toStrictEqual(generationTemplate);
+      expect(queuedUserMessageTemplate).toStrictEqual(generationTemplate);
       expect(screen.getByLabelText("Template")).toHaveAttribute(
         "aria-pressed",
         "false",
