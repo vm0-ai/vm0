@@ -1,20 +1,35 @@
 import type { ModelProviderCredentialScope } from "@vm0/api-contracts/contracts/model-providers";
-import { chatMessageQueue } from "@vm0/db/schema/chat-message-queue";
+import type { ChatEventType } from "@vm0/api-contracts/contracts/chat-events";
 import {
   chatMessages,
   type ChatMessageAttachFileMetadata,
   type ChatMessageGenerationTemplate,
   type ChatMessageUserMessage,
 } from "@vm0/db/schema/chat-message";
+import { chatMessageQueue } from "@vm0/db/schema/chat-message-queue";
 import { chatThreads } from "@vm0/db/schema/chat-thread";
-import { and, asc, eq, exists, inArray, lt, sql, type SQL } from "drizzle-orm";
+import {
+  and,
+  eq,
+  exists,
+  inArray,
+  isNull,
+  notExists,
+  sql,
+  type SQL,
+} from "drizzle-orm";
+import { alias } from "drizzle-orm/pg-core";
 import { z } from "zod";
 
-import {
-  pgNullDecoder,
-  zodDriverValueDecoder,
-} from "../../lib/db-structured-result";
+import { pgNullDecoder } from "../../lib/db-structured-result";
 import type { Db } from "../external/db";
+import {
+  hasPendingUserChatQueueEvent,
+  listPendingChatQueueEvents,
+  loadChatAutomationIntakePause,
+  loadPendingChatQueueEvent,
+  lockChatQueueThread,
+} from "./chat-event-queue.service";
 import {
   insertChatEvent,
   revokeChatEvent,
@@ -35,9 +50,18 @@ import { createUserMessageDocument } from "./zero-chat-user-message.service";
 type DbTransaction = Parameters<Parameters<Db["transaction"]>[0]>[0];
 
 const USER_MESSAGE_QUEUE_RUN_PARAMS_KEY = "__user_message_queue_run_params__";
-const queuedUserMessageTriggerSourceDecoder = zodDriverValueDecoder(
-  z.enum(["web", "slack", "feishu", "teams"]),
-);
+const legacyQueuedUserMessageItemTypes = [
+  "user_message",
+  "slack_user_message",
+  "feishu_user_message",
+  "teams_user_message",
+] as const;
+const queuedUserMessageTriggerSourceSchema = z.enum([
+  "web",
+  "slack",
+  "feishu",
+  "teams",
+]);
 
 const queuedUserMessageRunParamsSchema = z.object({
   version: z.literal(1),
@@ -82,12 +106,11 @@ type QueuedUserMessageRunParams = z.infer<
   typeof queuedUserMessageRunParamsSchema
 >;
 
-const queuedUserMessageItemTypes = [
-  "user_message",
-  "slack_user_message",
-  "feishu_user_message",
-  "teams_user_message",
-] as const;
+const queuedChatMessage = alias(chatMessages, "queued_chat_message");
+const queuedChatMessageRevoker = alias(
+  chatMessages,
+  "queued_chat_message_revoker",
+);
 
 export interface QueuedUserMessage {
   readonly id: string;
@@ -123,19 +146,54 @@ export type QueueFirstRunClaimResult =
   | { readonly kind: "lost" };
 
 /**
- * Establish the thread-first lock order shared by every user-message queue
- * consumer before it locks or deletes a queue row.
+ * Establish the thread-first lock order shared by every event-backed queue
+ * claim, rejection, and revocation.
  */
 export async function lockUserMessageQueueThread(
   db: Db,
   threadId: string,
 ): Promise<boolean> {
-  const [thread] = await db
-    .select({ id: chatThreads.id })
-    .from(chatThreads)
-    .where(eq(chatThreads.id, threadId))
-    .for("update");
-  return thread !== undefined;
+  return await lockChatQueueThread(db, threadId);
+}
+
+/**
+ * Remove a previous-API queue pointer after its mirrored ChatEvent is claimed
+ * or revoked by this API version. The row is absent for native event writers.
+ */
+export async function deleteLegacyUserMessageQueueItem(
+  db: Db,
+  args: {
+    readonly threadId: string;
+    readonly messageId: string;
+  },
+): Promise<void> {
+  await db
+    .delete(chatMessageQueue)
+    .where(
+      and(
+        eq(chatMessageQueue.chatThreadId, args.threadId),
+        eq(chatMessageQueue.chatMessageId, args.messageId),
+        inArray(chatMessageQueue.itemType, legacyQueuedUserMessageItemTypes),
+      ),
+    );
+}
+
+async function deleteLegacyWorkflowQueueItem(
+  db: Db,
+  args: {
+    readonly threadId: string;
+    readonly eventId: string;
+  },
+): Promise<void> {
+  await db
+    .delete(chatMessageQueue)
+    .where(
+      and(
+        eq(chatMessageQueue.id, args.eventId),
+        eq(chatMessageQueue.chatThreadId, args.threadId),
+        eq(chatMessageQueue.itemType, "workflow_event"),
+      ),
+    );
 }
 
 export async function encryptQueuedUserMessageRunParams(
@@ -167,25 +225,31 @@ export async function decryptQueuedUserMessageRunParams(
   return queuedUserMessageRunParamsSchema.parse(JSON.parse(raw) as unknown);
 }
 
-function unclaimedQueuedUserMessageCondition(
-  threadId: string,
-): SQL | undefined {
-  return and(
-    eq(chatMessageQueue.chatThreadId, threadId),
-    inArray(chatMessageQueue.itemType, queuedUserMessageItemTypes),
-  );
-}
-
-/** Whether the outer chat_messages row is waiting in the user-message queue. */
+/** Whether the outer chat_messages row is an unclaimed, unrevoked prompt. */
 export function queuedUserMessageExists(db: Pick<Db, "select">): SQL {
   return exists(
     db
-      .select({ id: chatMessageQueue.id })
-      .from(chatMessageQueue)
+      .select({ id: queuedChatMessage.id })
+      .from(queuedChatMessage)
       .where(
         and(
-          inArray(chatMessageQueue.itemType, queuedUserMessageItemTypes),
-          eq(chatMessageQueue.chatMessageId, chatMessages.id),
+          eq(queuedChatMessage.id, chatMessages.id),
+          eq(
+            queuedChatMessage.eventType,
+            "input.prompt" satisfies ChatEventType,
+          ),
+          isNull(queuedChatMessage.runId),
+          notExists(
+            db
+              .select({ id: queuedChatMessageRevoker.id })
+              .from(queuedChatMessageRevoker)
+              .where(
+                eq(
+                  queuedChatMessageRevoker.revokesEventId,
+                  queuedChatMessage.id,
+                ),
+              ),
+          ),
         ),
       ),
   );
@@ -196,6 +260,15 @@ export async function loadNextUnclaimedQueuedUserMessage(
   threadId: string,
   queueItemCreatedBefore?: Date,
 ): Promise<QueuedUserMessage | null> {
+  const pending = await listPendingChatQueueEvents(
+    db,
+    threadId,
+    queueItemCreatedBefore,
+  );
+  const head = pending[0];
+  if (!head || head.eventType !== "input.prompt") {
+    return null;
+  }
   const [message] = await db
     .select({
       id: chatMessages.id,
@@ -208,116 +281,48 @@ export async function loadNextUnclaimedQueuedUserMessage(
       modelProviderType: sql`NULL`.mapWith(pgNullDecoder),
       modelProviderCredentialScope: sql`NULL`.mapWith(pgNullDecoder),
       selectedModel: chatThreads.selectedModel,
-      triggerSource: sql`CASE
-        WHEN ${eq(chatMessageQueue.triggerSource, sql`'slack'`)} THEN 'slack'
-        WHEN ${eq(chatMessageQueue.triggerSource, sql`'feishu'`)} THEN 'feishu'
-        WHEN ${eq(chatMessageQueue.triggerSource, sql`'teams'`)} THEN 'teams'
-        ELSE 'web'
-      END`.mapWith(queuedUserMessageTriggerSourceDecoder),
-      encryptedParams: chatMessageQueue.encryptedParams,
+      triggerSource: chatMessages.triggerSource,
+      encryptedParams: chatMessages.encryptedParams,
     })
-    .from(chatMessageQueue)
-    .innerJoin(
-      chatMessages,
-      eq(chatMessages.id, chatMessageQueue.chatMessageId),
-    )
+    .from(chatMessages)
     .innerJoin(chatThreads, eq(chatThreads.id, chatMessages.chatThreadId))
     .where(
       and(
-        unclaimedQueuedUserMessageCondition(threadId),
-        queueItemCreatedBefore
-          ? lt(chatMessageQueue.createdAt, queueItemCreatedBefore)
-          : undefined,
+        eq(chatMessages.id, head.id),
+        eq(chatMessages.chatThreadId, threadId),
+        chatEventTypeIn(["input.prompt"]),
+        isNull(chatMessages.runId),
       ),
     )
-    .orderBy(asc(chatMessageQueue.createdAt), asc(chatMessageQueue.id))
     .limit(1);
-
-  return message ?? null;
+  if (!message) {
+    return null;
+  }
+  const triggerSource = queuedUserMessageTriggerSourceSchema.safeParse(
+    message.triggerSource,
+  );
+  // Legacy rows have no typed payload until the cutover migration backfills
+  // them. They remain pending (and keep automation behind them) without making
+  // a code-before-migration deploy fail.
+  if (!triggerSource.success) {
+    return null;
+  }
+  return { ...message, triggerSource: triggerSource.data };
 }
 
 export async function loadNextUnclaimedQueuedUserMessageId(
   db: Db,
   threadId: string,
 ): Promise<string | null> {
-  const [message] = await db
-    .select({ id: chatMessages.id })
-    .from(chatMessageQueue)
-    .innerJoin(
-      chatMessages,
-      eq(chatMessages.id, chatMessageQueue.chatMessageId),
-    )
-    .where(unclaimedQueuedUserMessageCondition(threadId))
-    .orderBy(asc(chatMessageQueue.createdAt), asc(chatMessageQueue.id))
-    .limit(1);
-
-  return message?.id ?? null;
+  const [head] = await listPendingChatQueueEvents(db, threadId);
+  return head?.eventType === "input.prompt" ? head.id : null;
 }
 
 export async function hasUnclaimedQueuedUserMessage(
   db: Db,
   threadId: string,
 ): Promise<boolean> {
-  const [item] = await db
-    .select({ id: chatMessageQueue.id })
-    .from(chatMessageQueue)
-    .where(unclaimedQueuedUserMessageCondition(threadId))
-    .limit(1);
-
-  return item !== undefined;
-}
-
-/** Persist the queue pointer used by the shared per-thread scheduler. */
-export async function enqueueUserMessageQueueItem(
-  db: Db,
-  args: {
-    readonly orgId: string;
-    readonly userId: string;
-    readonly chatThreadId: string;
-    readonly chatMessageId: string;
-    readonly triggerSource?: "web" | "slack" | "feishu" | "teams";
-    readonly encryptedParams?: string;
-  },
-): Promise<void> {
-  await db
-    .insert(chatMessageQueue)
-    .values({
-      orgId: args.orgId,
-      userId: args.userId,
-      chatThreadId: args.chatThreadId,
-      itemType:
-        args.triggerSource === "slack"
-          ? "slack_user_message"
-          : args.triggerSource === "feishu"
-            ? "feishu_user_message"
-            : args.triggerSource === "teams"
-              ? "teams_user_message"
-              : "user_message",
-      chatMessageId: args.chatMessageId,
-      triggerSource: args.triggerSource,
-      encryptedParams: args.encryptedParams,
-    })
-    .onConflictDoNothing();
-}
-
-export async function deleteUserMessageQueueItem(
-  db: Db,
-  args: {
-    readonly threadId: string;
-    readonly messageId: string;
-  },
-): Promise<boolean> {
-  const deleted = await db
-    .delete(chatMessageQueue)
-    .where(
-      and(
-        inArray(chatMessageQueue.itemType, queuedUserMessageItemTypes),
-        eq(chatMessageQueue.chatThreadId, args.threadId),
-        eq(chatMessageQueue.chatMessageId, args.messageId),
-      ),
-    )
-    .returning({ id: chatMessageQueue.id });
-  return deleted.length > 0;
+  return await hasPendingUserChatQueueEvent(db, threadId);
 }
 
 interface ClaimedUserMessage {
@@ -325,8 +330,8 @@ interface ClaimedUserMessage {
 }
 
 /**
- * Append the run-associated replacement for a queued user message and consume
- * its queue item. Callers serialize dispatch decisions before invoking this.
+ * Append the run-associated replacement for a pending user event. The revoke
+ * edge on the replacement is the atomic queue claim.
  */
 async function appendClaimedUserMessage(
   db: DbTransaction,
@@ -336,6 +341,13 @@ async function appendClaimedUserMessage(
     readonly runId: string;
   },
 ): Promise<ClaimedUserMessage | null> {
+  const pending = await loadPendingChatQueueEvent(db, {
+    chatThreadId: args.threadId,
+    eventId: args.messageId,
+  });
+  if (pending?.eventType !== "input.prompt") {
+    return null;
+  }
   const [queued] = await db
     .select({
       content: chatMessages.content,
@@ -343,19 +355,15 @@ async function appendClaimedUserMessage(
       attachFiles: chatMessages.attachFiles,
       attachFileMetadata: chatMessages.attachFileMetadata,
       generationTemplate: chatMessages.generationTemplate,
+      triggerSource: chatMessages.triggerSource,
     })
-    .from(chatMessageQueue)
-    .innerJoin(
-      chatMessages,
-      eq(chatMessages.id, chatMessageQueue.chatMessageId),
-    )
+    .from(chatMessages)
     .where(
       and(
-        inArray(chatMessageQueue.itemType, queuedUserMessageItemTypes),
-        eq(chatMessageQueue.chatMessageId, args.messageId),
-        eq(chatMessageQueue.chatThreadId, args.threadId),
+        eq(chatMessages.id, args.messageId),
         eq(chatMessages.chatThreadId, args.threadId),
         chatEventTypeIn(["input.prompt"]),
+        isNull(chatMessages.runId),
       ),
     )
     .for("update")
@@ -375,18 +383,15 @@ async function appendClaimedUserMessage(
       ? [...queued.attachFileMetadata]
       : null,
     generationTemplate: queued.generationTemplate,
+    ...(queued.triggerSource ? { triggerSource: queued.triggerSource } : {}),
   });
   if (!claimed) {
     return null;
   }
-  if (
-    !(await deleteUserMessageQueueItem(db, {
-      threadId: args.threadId,
-      messageId: args.messageId,
-    }))
-  ) {
-    throw new Error("Claimed user message queue item disappeared");
-  }
+  await deleteLegacyUserMessageQueueItem(db, {
+    threadId: args.threadId,
+    messageId: args.messageId,
+  });
   return claimed;
 }
 
@@ -425,62 +430,51 @@ export async function claimQueueFirstRunAssociation(
       }
 
       if (args.kind === "workflow_event") {
-        const [thread] = await db
-          .select({ queuePausedAt: chatThreads.queuePausedAt })
-          .from(chatThreads)
-          .where(eq(chatThreads.id, args.threadId))
-          .limit(1);
         if (
-          thread?.queuePausedAt ||
+          (await loadChatAutomationIntakePause(db, args.threadId)) ||
           (await hasUnclaimedQueuedUserMessage(db, args.threadId))
         ) {
           outcome = "lost";
           return { kind: "lost" };
         }
 
-        const [head] = await db
+        const pending = await listPendingChatQueueEvents(db, args.threadId);
+        const head = pending[0];
+        const [automationEvent] = await db
           .select({
-            id: chatMessageQueue.id,
-            automationId: chatMessageQueue.automationId,
+            automationId: chatMessages.automationId,
+            triggerSource: chatMessages.triggerSource,
           })
-          .from(chatMessageQueue)
-          .where(
-            and(
-              eq(chatMessageQueue.chatThreadId, args.threadId),
-              eq(chatMessageQueue.itemType, "workflow_event"),
-            ),
-          )
-          .orderBy(asc(chatMessageQueue.createdAt), asc(chatMessageQueue.id))
+          .from(chatMessages)
+          .where(eq(chatMessages.id, args.eventId))
           .limit(1);
         if (
+          head?.eventType !== "input.automation" ||
           head?.id !== args.eventId ||
-          head.automationId !== args.runGroupId
+          automationEvent?.automationId !== args.runGroupId
         ) {
           outcome = "lost";
           return { kind: "lost" };
         }
 
-        const claimed = await insertChatEvent(db, {
+        const claimed = await replaceChatEvent(db, args.eventId, {
           chatThreadId: args.threadId,
           eventType: "input.prompt",
           content: args.prompt,
           userMessage: createUserMessageDocument({ text: args.prompt }),
           runId: args.runId,
           runGroupId: args.runGroupId,
+          ...(automationEvent.triggerSource
+            ? { triggerSource: automationEvent.triggerSource }
+            : {}),
         });
-        const deleted = await db
-          .delete(chatMessageQueue)
-          .where(
-            and(
-              eq(chatMessageQueue.id, args.eventId),
-              eq(chatMessageQueue.chatThreadId, args.threadId),
-              eq(chatMessageQueue.itemType, "workflow_event"),
-            ),
-          )
-          .returning({ id: chatMessageQueue.id });
-        if (!claimed || deleted.length !== 1) {
+        if (!claimed) {
           throw new Error("Claimed workflow queue event disappeared");
         }
+        await deleteLegacyWorkflowQueueItem(db, {
+          threadId: args.threadId,
+          eventId: args.eventId,
+        });
 
         outcome = "claimed";
         return { kind: "claimed", createdAt: claimed.createdAt };
@@ -515,9 +509,8 @@ export async function claimQueueFirstRunAssociation(
 }
 
 /**
- * Discard a queue-first user message that never dispatched (run creation
- * failed): consume the queue item and append a tombstone so the failed send is
- * absent from the visible thread while the message stream stays append-only.
+ * Discard a queue-first user message that never dispatched by appending a
+ * tombstone. The revoke edge removes it from both queue and visible history.
  */
 export async function discardUnclaimedUserMessage(
   db: Db,
@@ -530,11 +523,11 @@ export async function discardUnclaimedUserMessage(
     if (!(await lockUserMessageQueueThread(tx, args.threadId))) {
       return;
     }
-    const queueItemDeleted = await deleteUserMessageQueueItem(tx, {
-      threadId: args.threadId,
-      messageId: args.messageId,
+    const pending = await loadPendingChatQueueEvent(tx, {
+      chatThreadId: args.threadId,
+      eventId: args.messageId,
     });
-    if (!queueItemDeleted) {
+    if (pending?.eventType !== "input.prompt") {
       return;
     }
     const tombstone = await revokeChatEvent(tx, args.messageId, {
@@ -545,6 +538,7 @@ export async function discardUnclaimedUserMessage(
     if (!tombstone) {
       throw new Error("Failed to append discarded user message tombstone");
     }
+    await deleteLegacyUserMessageQueueItem(tx, args);
   });
 }
 
@@ -582,18 +576,13 @@ export async function failQueuedUserMessage(
         attachFileMetadata: chatMessages.attachFileMetadata,
         generationTemplate: chatMessages.generationTemplate,
       })
-      .from(chatMessageQueue)
-      .innerJoin(
-        chatMessages,
-        eq(chatMessages.id, chatMessageQueue.chatMessageId),
-      )
+      .from(chatMessages)
       .where(
         and(
-          inArray(chatMessageQueue.itemType, queuedUserMessageItemTypes),
-          eq(chatMessageQueue.chatThreadId, args.threadId),
-          eq(chatMessageQueue.chatMessageId, args.messageId),
+          eq(chatMessages.id, args.messageId),
           eq(chatMessages.chatThreadId, args.threadId),
           chatEventTypeIn(["input.prompt"]),
+          isNull(chatMessages.runId),
         ),
       )
       .for("update")
@@ -619,14 +608,10 @@ export async function failQueuedUserMessage(
     if (!replacement) {
       return null;
     }
-    if (
-      !(await deleteUserMessageQueueItem(tx, {
-        threadId: args.threadId,
-        messageId: args.messageId,
-      }))
-    ) {
-      throw new Error("Failed integration queue item disappeared");
-    }
+    await deleteLegacyUserMessageQueueItem(tx, {
+      threadId: args.threadId,
+      messageId: args.messageId,
+    });
 
     const assistant = await insertChatEvent(tx, {
       chatThreadId: args.threadId,

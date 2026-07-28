@@ -4,12 +4,13 @@ import { agentSessions } from "@vm0/db/schema/agent-session";
 import { chatThreads } from "@vm0/db/schema/chat-thread";
 import { chatMessages } from "@vm0/db/schema/chat-message";
 import { chatMessageQueue } from "@vm0/db/schema/chat-message-queue";
-import { and, count, eq, like, or, sql } from "drizzle-orm";
+import { and, count, eq, isNull, like, or, sql } from "drizzle-orm";
 import { z } from "zod";
 
 import { db } from "../lib/db";
 import { executeRawRows } from "../lib/db-raw-rows";
 import { nowDate } from "../lib/time";
+import { encryptPersistentSecretsMap } from "../signals/services/crypto.utils";
 import { insertChatEvent } from "../signals/services/zero-chat-event.service";
 import { createDeferredPromise, onRejection } from "../signals/utils";
 
@@ -26,6 +27,48 @@ const databasePidRowSchema = z.object({ pid: z.int() });
 const waiterCountRowSchema = z.object({ waiterCount: z.int() });
 
 /**
+ * Seed one queue row through the previous API's persisted shape after the
+ * cutover migration. Migration-owned compatibility triggers mirror it into the
+ * immutable event stream so the current reader can claim it.
+ */
+export async function insertLegacyWorkflowQueueRowFixture(args: {
+  readonly orgId: string;
+  readonly userId: string;
+  readonly threadId: string;
+  readonly automationId: string;
+}): Promise<string> {
+  const encryptedParams = await encryptPersistentSecretsMap(
+    {
+      __workflow_queue_event_params__: JSON.stringify({
+        version: 1,
+        activePreviousRunPolicy: "allow",
+      }),
+    },
+    { orgId: args.orgId, userId: args.userId },
+  );
+  if (!encryptedParams) {
+    throw new Error("Failed to encrypt legacy workflow queue fixture");
+  }
+  const [inserted] = await db()
+    .insert(chatMessageQueue)
+    .values({
+      orgId: args.orgId,
+      userId: args.userId,
+      chatThreadId: args.threadId,
+      itemType: "workflow_event",
+      automationId: args.automationId,
+      triggerSource: "workflow-event",
+      triggerBrief: "legacy cutover window",
+      encryptedParams,
+    })
+    .returning({ id: chatMessageQueue.id });
+  if (!inserted) {
+    throw new Error("Failed to insert legacy workflow queue fixture");
+  }
+  return inserted.id;
+}
+
+/**
  * Move one exact workflow event into historical state without waiting for real
  * time to pass. Product APIs cannot construct an already-stale queue item.
  */
@@ -33,16 +76,19 @@ export async function setWorkflowQueueEventCreatedAtFixture(args: {
   readonly eventId: string;
   readonly createdAt: Date;
 }): Promise<void> {
-  const updated = await db()
-    .update(chatMessageQueue)
-    .set({ createdAt: args.createdAt })
-    .where(
-      and(
-        eq(chatMessageQueue.id, args.eventId),
-        eq(chatMessageQueue.itemType, "workflow_event"),
-      ),
-    )
-    .returning({ id: chatMessageQueue.id });
+  const updated = await db().transaction(async (tx) => {
+    await tx.execute(sql`SET LOCAL session_replication_role = replica`);
+    return await tx
+      .update(chatMessages)
+      .set({ createdAt: args.createdAt })
+      .where(
+        and(
+          eq(chatMessages.id, args.eventId),
+          eq(chatMessages.eventType, "input.automation"),
+        ),
+      )
+      .returning({ id: chatMessages.id });
+  });
   if (updated.length !== 1) {
     throw new Error("Expected one workflow queue event to become historical");
   }
@@ -56,16 +102,20 @@ export async function setQueuedUserMessageCreatedAtFixture(args: {
   readonly messageId: string;
   readonly createdAt: Date;
 }): Promise<void> {
-  const updated = await db()
-    .update(chatMessageQueue)
-    .set({ createdAt: args.createdAt })
-    .where(
-      and(
-        eq(chatMessageQueue.chatMessageId, args.messageId),
-        eq(chatMessageQueue.itemType, "user_message"),
-      ),
-    )
-    .returning({ id: chatMessageQueue.id });
+  const updated = await db().transaction(async (tx) => {
+    await tx.execute(sql`SET LOCAL session_replication_role = replica`);
+    return await tx
+      .update(chatMessages)
+      .set({ createdAt: args.createdAt })
+      .where(
+        and(
+          eq(chatMessages.id, args.messageId),
+          eq(chatMessages.eventType, "input.prompt"),
+          isNull(chatMessages.runId),
+        ),
+      )
+      .returning({ id: chatMessages.id });
+  });
   if (updated.length !== 1) {
     throw new Error("Expected one queued user message to become historical");
   }
@@ -569,7 +619,7 @@ export async function holdThreadSessionConversationChangesFixture(args: {
 }
 
 /**
- * Holds one queued user-message row so a claim and recall can reach the same
+ * Holds one pending chat input event so a claim and recall can reach the same
  * product lock in a test-owned order. This timing-only boundary neither creates
  * nor changes product rows and cannot block unrelated queue items.
  */
@@ -586,20 +636,21 @@ export async function holdChatMessageQueueItemFixture(args: {
   const started = createDeferredPromise<number>(args.signal);
   const released = createDeferredPromise<void>(args.signal);
   const done = db().transaction(async (tx) => {
-    const rows = await tx
-      .select({ id: chatMessageQueue.id })
-      .from(chatMessageQueue)
+    const [pending] = await tx
+      .select({ id: chatMessages.id })
+      .from(chatMessages)
       .where(
         and(
-          eq(chatMessageQueue.chatThreadId, args.threadId),
-          eq(chatMessageQueue.chatMessageId, args.messageId),
-          eq(chatMessageQueue.itemType, "user_message"),
+          eq(chatMessages.id, args.messageId),
+          eq(chatMessages.chatThreadId, args.threadId),
+          eq(chatMessages.eventType, "input.prompt"),
+          isNull(chatMessages.runId),
         ),
       )
       .for("update")
       .limit(1);
-    if (!rows[0]) {
-      throw new Error("Expected the queued chat message row");
+    if (!pending) {
+      throw new Error("Expected the pending chat input event");
     }
     const pidRows = await executeRawRows(
       tx,

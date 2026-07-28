@@ -301,7 +301,7 @@ describe("GET /api/test/slack-state", () => {
     expect(response.status).toBe(200);
     expect(body.installation).toBeNull();
     expect(body.connections).toStrictEqual([]);
-    expect(body.chat_message_queue).toStrictEqual([]);
+    expect(body.pending_chat_events).toStrictEqual([]);
     expect(body.recent_runs).toStrictEqual([]);
     expect(body.org_metadata).toBeNull();
     expect(body.default_agent).toBeNull();

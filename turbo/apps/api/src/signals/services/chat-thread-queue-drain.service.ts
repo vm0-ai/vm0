@@ -36,8 +36,8 @@ interface DrainChatThreadQueueInput {
  * resume, and the stale sweep all converge here. User messages are attempted
  * first; the workflow drain then observes the newly-created active run and
  * stops, or consumes the oldest workflow event when no user message
- * dispatched. Both halves serialize on the same per-thread advisory lock and
- * pop in `ORDER BY created_at, id` order.
+ * dispatched. The final claims serialize on the same thread row and fold
+ * pending events by user priority, then original `created_at` and id.
  *
  * This entry is the designated mounting point for a future unified per-thread
  * rate limiter: admission delays belong here, before either drain half runs.

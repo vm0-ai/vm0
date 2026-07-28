@@ -21,11 +21,13 @@ export const chatMessageQueueItemType = pgEnum("chat_message_queue_item_type", [
 ]);
 
 /**
- * Pending queue items for a chat thread.
+ * Legacy pending queue items retained for the cutover migration.
  *
- * A chat thread executes at most one run at a time; everything else waits
- * here and is consumed by priority (user messages before `workflow_event`)
- * then FIFO. Rows are deleted after dequeue, mirroring agent_run_queue.
+ * Current runtime admission and drain no longer use this table. The cutover
+ * migration converts existing rows and installs temporary database triggers
+ * that mirror writes from the previous API during traffic promotion. Current
+ * claims remove any mirrored legacy pointer; Phase 2 cleanup removes the
+ * triggers and physical schema after old writers have drained.
  *
  * Payload placement is per item type:
  * - `user_message` / `slack_user_message` / `feishu_user_message` /
@@ -36,10 +38,8 @@ export const chatMessageQueueItemType = pgEnum("chat_message_queue_item_type", [
  *   (`automation_id` / `trigger_source` / `trigger_brief` / `encrypted_params`)
  *   and materializes into a chat message at claim time.
  *
- * Replaces the dropped `zero_workflow_queue_events` table (FIFO key was
- * org + user + workflow; the workflow-user maps 1:1 to a chat thread, so
- * keying by thread is equivalent). This table is also the sole source of
- * queued-user-message state; `chat_messages.run_id` is attribution only.
+ * The columns remain modeled so test-state and the one-time cutover can
+ * classify the legacy payload exactly.
  */
 export const chatMessageQueue = pgTable(
   "chat_message_queue",
