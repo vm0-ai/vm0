@@ -13,16 +13,12 @@ import type { PublicConnectorCatalogIcon } from "@vm0/api-contracts/contracts/ze
 import { Button, cn } from "@vm0/ui";
 import { useGet, useLastLoadable, useSet } from "ccstate-react";
 
-import {
-  featureSwitch$,
-  newChatThreadSidebarEnabled$,
-} from "../../signals/external/feature-switch.ts";
+import { featureSwitch$ } from "../../signals/external/feature-switch.ts";
 import { pageSignal$ } from "../../signals/page-signal.ts";
 import type {
   MailDraftFollowUpState,
   MailDraftSignals,
 } from "../../signals/chat-page/mail-draft.ts";
-import { currentMailDraftId$ } from "../../signals/zero-page/mail-draft-sidebar.ts";
 import {
   activeSidebarMailDraftId$,
   openThreadMailDraft$,
@@ -233,12 +229,7 @@ function EnabledMailDraftCard({
   followUpEnabled,
 }: EnabledMailDraftCardProps) {
   const draftLoadable = useLastLoadable(signals.draft$);
-  const newSidebarEnabled = useGet(newChatThreadSidebarEnabled$);
-  const legacySelectedMailDraftId = useGet(currentMailDraftId$);
-  const activeSidebarMailDraftId = useGet(activeSidebarMailDraftId$);
-  const selectedMailDraftId = newSidebarEnabled
-    ? activeSidebarMailDraftId
-    : legacySelectedMailDraftId;
+  const selectedMailDraftId = useGet(activeSidebarMailDraftId$);
   const openSidebar = useSet(openThreadMailDraft$);
   const reloadDraft = useSet(signals.reloadDraft$);
   const pageSignal = useGet(pageSignal$);

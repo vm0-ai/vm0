@@ -47,12 +47,6 @@ export interface BrowserSessionCardSignalsRegistry {
   entries(): ReadonlyMap<string, BrowserSessionSignals>;
 }
 
-export const emptyBrowserSessionSignalsById$ = computed<
-  ReadonlyMap<string, BrowserSessionSignals>
->(() => {
-  return new Map();
-});
-
 export function parseBrowserSessionUrl(
   value: string,
   fallbackMarkdown: string = value,

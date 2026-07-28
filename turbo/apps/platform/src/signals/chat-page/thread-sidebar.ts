@@ -4,17 +4,17 @@ import {
   createArtifactCatalogSignals,
   type ArtifactCatalogSignals,
 } from "../artifacts-page/create-artifact-catalog-signals.ts";
+import { artifactDetailPreview } from "../artifacts-page/artifact-catalog-signals.ts";
+import { fetchPreviewText, isTextPreviewKind } from "../text-preview.ts";
 import { resetSignal } from "../utils.ts";
-import type { ArtifactRef } from "../zero-page/zero-artifact-sidebar.ts";
 
 // ---------------------------------------------------------------------------
-// Thread-owned utility sidebar (NewChatThreadSidebar feature switch).
+// Thread-owned utility sidebar.
 //
 // One thread holds at most one open sidebar target; the five target types are
 // mutually exclusive by construction because they share a single state. The
 // page-level coordinator (`thread-sidebar-coordinator.ts`) additionally keeps
 // at most one utility sidebar open across the left and right thread panes.
-// Legacy search-param sidebars stay untouched while the switch is off.
 // ---------------------------------------------------------------------------
 
 /**
@@ -22,6 +22,24 @@ import type { ArtifactRef } from "../zero-page/zero-artifact-sidebar.ts";
  * thread's catalog list, and a message attachment promoted from the lightbox
  * into split view.
  */
+export type ArtifactPreviewKind =
+  | "markdown"
+  | "text"
+  | "json"
+  | "csv"
+  | "html"
+  | "pdf"
+  | "image"
+  | "video"
+  | "audio"
+  | "file";
+
+export type ArtifactRef = {
+  readonly url: string;
+  readonly kind: ArtifactPreviewKind;
+  readonly filename: string;
+};
+
 export type ThreadSidebarArtifactSource =
   | { readonly kind: "catalog"; readonly artifactId: string }
   | { readonly kind: "attachment"; readonly ref: ArtifactRef };
@@ -37,6 +55,8 @@ export interface ThreadSidebarSignals {
   readonly target$: Computed<ThreadSidebarTarget | null>;
   readonly open$: Command<void, [ThreadSidebarTarget]>;
   readonly close$: Command<void, []>;
+  readonly editingAutomationId$: Computed<string | null>;
+  readonly setEditingAutomationId$: Command<void, [string | null]>;
   /**
    * Claim a derived auto-open candidate once for this thread. This prevents
    * later sync events from reopening a card the user already closed.
@@ -55,6 +75,7 @@ export interface ThreadSidebarSignals {
    * with the thread signals themselves on a thread switch.
    */
   readonly artifactCatalog: ArtifactCatalogSignals;
+  readonly selectedArtifactText$: Computed<Promise<string>>;
   /**
    * Session resources for an open artifacts list: refresh the first page in
    * the background and follow realtime catalog changes. `close$` aborts the
@@ -68,12 +89,26 @@ export function createThreadSidebarSignals(
 ): ThreadSidebarSignals {
   const internalTarget$ = state<ThreadSidebarTarget | null>(null);
   const internalFullscreen$ = state(false);
+  const internalEditingAutomationId$ = state<string | null>(null);
   const internalClaimedAutoOpenCandidateKey$ = state<string | null>(null);
   const resetSession$ = resetSignal();
 
   const artifactCatalog = createArtifactCatalogSignals({
     chatThreadId: threadId,
   });
+  const selectedArtifactText$ = computed(
+    async (get, { signal }): Promise<string> => {
+      const detail = await get(artifactCatalog.selectedArtifactDetail$);
+      if (!detail) {
+        throw new Error("Selected artifact is unavailable");
+      }
+      const preview = artifactDetailPreview(detail);
+      if (!isTextPreviewKind(preview.kind)) {
+        throw new Error("Selected artifact is not a text preview");
+      }
+      return fetchPreviewText(preview.url, signal);
+    },
+  );
 
   const open$ = command(({ get, set }, target: ThreadSidebarTarget) => {
     const current = get(internalTarget$);
@@ -92,6 +127,7 @@ export function createThreadSidebarSignals(
     set(resetSession$);
     set(internalTarget$, null);
     set(internalFullscreen$, false);
+    set(internalEditingAutomationId$, null);
   });
 
   const claimAutoOpenCandidate$ = command(
@@ -118,6 +154,12 @@ export function createThreadSidebarSignals(
     }),
     open$,
     close$,
+    editingAutomationId$: computed((get) => {
+      return get(internalEditingAutomationId$);
+    }),
+    setEditingAutomationId$: command(({ set }, automationId: string | null) => {
+      set(internalEditingAutomationId$, automationId);
+    }),
     claimAutoOpenCandidate$,
     fullscreen$: computed((get) => {
       return get(internalFullscreen$);
@@ -128,6 +170,7 @@ export function createThreadSidebarSignals(
       });
     }),
     artifactCatalog,
+    selectedArtifactText$,
     setupArtifactsSession$,
   };
 }

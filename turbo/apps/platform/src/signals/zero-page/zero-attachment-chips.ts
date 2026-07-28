@@ -46,7 +46,7 @@ type AttachmentFramedDocumentLightboxInput = AttachmentDocumentLightboxBase & {
   readonly kind: "html" | "pdf";
 };
 
-export type AttachmentDocumentLightboxInput =
+type AttachmentDocumentLightboxInput =
   | AttachmentTextDocumentLightboxInput
   | AttachmentFramedDocumentLightboxInput;
 

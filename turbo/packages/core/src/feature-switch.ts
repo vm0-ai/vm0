@@ -382,12 +382,6 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
-  [FeatureSwitchKey.NewChatThreadSidebar]: {
-    maintainer: "ethan@vm0.ai",
-    description:
-      "Thread-owned utility sidebar for chat threads: one shared shell for the artifacts list, artifact detail, email draft, browser, and automations panels. When off, the legacy search-param sidebars stay in place.",
-    enabled: true,
-  },
   [FeatureSwitchKey.ChatThreadSidebarAutoOpen]: {
     maintainer: "ethan@vm0.ai",
     description:

@@ -113,12 +113,4 @@ describe("platform entrypoint safe area behavior", () => {
     expect(globalCss).not.toContain("data-keyboard-inset-page");
     expect(globalCss).not.toMatch(/:root\[data-keyboard-open="true"\]\s+#root/);
   });
-
-  it("keeps artifact fullscreen above app chrome", () => {
-    const globalCss = readGlobalCss();
-
-    expect(globalCss).toMatch(
-      /\.zero-app\[data-zero-artifact-fullscreen="true"\]\s+\.zero-workspace-bg\s*{[\s\S]*z-index:\s*60;[\s\S]*}/,
-    );
-  });
 });

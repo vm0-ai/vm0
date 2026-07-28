@@ -39,11 +39,6 @@ import {
   InstallBanner,
   IosInstallModal,
 } from "../pwa-install/install-banner.tsx";
-import {
-  artifactFullscreen$,
-  currentArtifactInboxThreadId$,
-} from "../../signals/zero-page/zero-artifact-sidebar.ts";
-import { newChatThreadSidebarEnabled$ } from "../../signals/external/feature-switch.ts";
 import { useOpenThreadArtifacts } from "./thread-sidebar.tsx";
 import { ChatShortcutHelpDialog } from "./chat-shortcut-help-dialog.tsx";
 
@@ -87,14 +82,10 @@ function InviteButtonLeaf() {
 }
 
 function MobileArtifactsButtonInner({ thread }: { thread: ChatThreadSignals }) {
-  const newSidebarEnabled = useGet(newChatThreadSidebarEnabled$);
-  const inboxThreadId = useGet(currentArtifactInboxThreadId$);
   const sidebarTarget = useGet(thread.sidebar.target$);
   const reloadArtifacts = useSet(thread.reloadArtifacts$);
   const openThreadArtifacts = useOpenThreadArtifacts(thread);
-  const open = newSidebarEnabled
-    ? sidebarTarget?.type === "artifacts"
-    : inboxThreadId === thread.threadId;
+  const open = sidebarTarget?.type === "artifacts";
 
   return (
     <button
@@ -225,13 +216,9 @@ function SettingsDialogMount() {
 function SidebarLayoutInner({ children }: { children: ReactNode }) {
   const expanded = useGet(sidebarExpanded$);
   const setExpanded = useSet(setSidebarExpanded$);
-  const artifactFullscreen = useGet(artifactFullscreen$);
 
   return (
-    <div
-      className="zero-app zero-viewport-shell flex w-full bg-background"
-      data-zero-artifact-fullscreen={artifactFullscreen || undefined}
-    >
+    <div className="zero-app zero-viewport-shell flex w-full bg-background">
       <SettingsDialogMount />
       <ChatShortcutHelpDialog />
       <QueueDrawer />
