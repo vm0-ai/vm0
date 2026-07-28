@@ -1,5 +1,21 @@
 # Changelog
 
+## [1.335.1](https://github.com/vm0-ai/vm0/compare/api-v1.335.0...api-v1.335.1) (2026-07-28)
+
+
+### Performance Improvements
+
+* **api:** prepare hourly usage rollup readers ([#23407](https://github.com/vm0-ai/vm0/issues/23407)) ([b5b46d0](https://github.com/vm0-ai/vm0/commit/b5b46d0c0848499e2b027b56e9ab8d534db014fc))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.239.2
+    * @vm0/core bumped to 8.479.1
+    * @vm0/db bumped to 1.147.2
+
 ## [1.335.0](https://github.com/vm0-ai/vm0/compare/api-v1.334.0...api-v1.335.0) (2026-07-28)
 
 
