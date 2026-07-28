@@ -1,5 +1,27 @@
 # Changelog
 
+## [1.333.0](https://github.com/vm0-ai/vm0/compare/api-v1.332.2...api-v1.333.0) (2026-07-28)
+
+
+### Features
+
+* **billing:** add monthly invoice downloads ([#23285](https://github.com/vm0-ai/vm0/issues/23285)) ([1dcd80b](https://github.com/vm0-ai/vm0/commit/1dcd80b67a7dd0527dfe8f8557df2610c9672a1b))
+* **chat:** add sequence cursors to thread events ([#23347](https://github.com/vm0-ai/vm0/issues/23347)) ([27d941d](https://github.com/vm0-ai/vm0/commit/27d941df65372b980b7f1aa4d3d7d4f7fa871750))
+
+
+### Bug Fixes
+
+* fork slack and teams dm thread sessions ([#23280](https://github.com/vm0-ai/vm0/issues/23280)) ([de3244b](https://github.com/vm0-ai/vm0/commit/de3244b23d5c0306699fb3f15c0ed88cea7fb2d3))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.238.0
+    * @vm0/core bumped to 8.477.0
+    * @vm0/db bumped to 1.146.0
+
 ## [1.332.2](https://github.com/vm0-ai/vm0/compare/api-v1.332.1...api-v1.332.2) (2026-07-28)
 
 

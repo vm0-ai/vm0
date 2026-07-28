@@ -1,5 +1,20 @@
 # Changelog
 
+## [9.261.0](https://github.com/vm0-ai/vm0/compare/cli-v9.260.3...cli-v9.261.0) (2026-07-28)
+
+
+### Features
+
+* **chat:** add sequence cursors to thread events ([#23347](https://github.com/vm0-ai/vm0/issues/23347)) ([27d941d](https://github.com/vm0-ai/vm0/commit/27d941df65372b980b7f1aa4d3d7d4f7fa871750))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/api-contracts bumped to 1.238.0
+    * @vm0/core bumped to 8.477.0
+
 ## [9.260.3](https://github.com/vm0-ai/vm0/compare/cli-v9.260.2...cli-v9.260.3) (2026-07-28)
 
 

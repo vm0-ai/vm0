@@ -1,5 +1,24 @@
 # Changelog
 
+## [8.477.0](https://github.com/vm0-ai/vm0/compare/core-v8.476.2...core-v8.477.0) (2026-07-28)
+
+
+### Features
+
+* **chat:** add sequence cursors to thread events ([#23347](https://github.com/vm0-ai/vm0/issues/23347)) ([27d941d](https://github.com/vm0-ai/vm0/commit/27d941df65372b980b7f1aa4d3d7d4f7fa871750))
+
+
+### Bug Fixes
+
+* fork slack and teams dm thread sessions ([#23280](https://github.com/vm0-ai/vm0/issues/23280)) ([de3244b](https://github.com/vm0-ai/vm0/commit/de3244b23d5c0306699fb3f15c0ed88cea7fb2d3))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.238.0
+
 ## [8.476.2](https://github.com/vm0-ai/vm0/compare/core-v8.476.1...core-v8.476.2) (2026-07-28)
 
 
