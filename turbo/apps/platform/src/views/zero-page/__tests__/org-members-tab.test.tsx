@@ -4,6 +4,7 @@ import {
   zeroOrgMembersContract,
   zeroOrgMembershipRequestsContract,
 } from "@vm0/api-contracts/contracts/zero-org-members";
+import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import { screen, waitFor, within } from "@testing-library/react";
 import { toast } from "@vm0/ui/components/ui/sonner";
 import { describe, expect, it } from "vitest";
@@ -204,11 +205,20 @@ function mockMembersStory(): void {
   );
 }
 
-async function openMembersTab(): Promise<void> {
-  detachedSetupPage({ context, path: "/?settings=people" });
+async function openMembersTab(
+  heading = "People",
+  languagePreference = false,
+): Promise<void> {
+  detachedSetupPage({
+    context,
+    path: "/?settings=people",
+    featureSwitches: languagePreference
+      ? { [FeatureSwitchKey.LanguagePreference]: true }
+      : undefined,
+  });
   await waitFor(() => {
     expect(screen.getByRole("dialog")).toBeInTheDocument();
-    expect(screen.getByRole("heading", { name: "People" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: heading })).toBeInTheDocument();
   });
 }
 
@@ -385,6 +395,43 @@ describe("organization members settings", () => {
     await waitFor(() => {
       expect(screen.getByText("Invitation revoked")).toBeInTheDocument();
       expect(screen.queryByText("pending@example.com")).not.toBeInTheDocument();
+    });
+  });
+
+  it("localizes the invitation flow without translating workspace data", async () => {
+    mockMembersStory();
+    context.mocks.data.userPreferences({
+      locale: "pt-BR",
+      supportedLocales: ["en-US", "pt-BR"],
+    });
+    await openMembersTab("Pessoas", true);
+
+    const settingsDialog = screen.getByRole("dialog", {
+      name: "Configurações",
+    });
+    expect(
+      within(settingsDialog).getByText("Espaço de trabalho"),
+    ).toBeVisible();
+    expect(screen.getByText("alice@example.com")).toBeVisible();
+    expect(screen.getByText("01/01/2026")).toBeVisible();
+
+    await fill(screen.getByPlaceholderText("Pesquisar"), "bob");
+    click(buttonByText("Adicionar membro"));
+
+    const inviteDialog = await screen.findByRole("dialog", {
+      name: "Convidar membro",
+    });
+    await fill(
+      within(inviteDialog).getByPlaceholderText("email@example.com"),
+      "bob.invited@example.com",
+    );
+    click(buttonByText("Enviar convite", inviteDialog));
+
+    await waitFor(() => {
+      expect(screen.getByText("bob.invited@example.com")).toBeInTheDocument();
+      expect(
+        screen.getByText("Convite enviado para bob.invited@example.com"),
+      ).toBeInTheDocument();
     });
   });
 });

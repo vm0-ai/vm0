@@ -5,6 +5,7 @@ import {
   type BillingStatusResponse,
 } from "@vm0/api-contracts/contracts/zero-billing";
 import type { ModelProviderResponse } from "@vm0/api-contracts/contracts/model-providers";
+import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import { screen, waitFor, within } from "@testing-library/react";
 import { HttpResponse } from "msw";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -158,11 +159,20 @@ function mockBillingCapabilities(modelCapabilities: {
   });
 }
 
-async function openModelSettings(): Promise<void> {
-  detachedSetupPage({ context, path: "/?settings=model" });
+async function openModelSettings(
+  heading = "Models",
+  languagePreference = false,
+): Promise<void> {
+  detachedSetupPage({
+    context,
+    path: "/?settings=model",
+    featureSwitches: languagePreference
+      ? { [FeatureSwitchKey.LanguagePreference]: true }
+      : undefined,
+  });
   await waitFor(() => {
     expect(screen.getByRole("dialog")).toBeInTheDocument();
-    expect(screen.getByRole("heading", { name: "Models" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: heading })).toBeInTheDocument();
   });
 }
 
@@ -646,5 +656,40 @@ describe("personal model providers settings", () => {
         }),
       ).toBeInTheDocument();
     });
+  });
+
+  it("localizes personal model device authentication without changing provider data", async () => {
+    mockPersonalProvidersStory();
+    context.mocks.data.userPreferences({
+      locale: "pt-BR",
+      supportedLocales: ["en-US", "pt-BR"],
+    });
+
+    await openModelSettings("Modelos", true);
+
+    const codexRow = await screen.findByTestId("oauth-card-codex-oauth-token");
+    expect(within(codexRow).getByText("ChatGPT (Codex)")).toBeVisible();
+    expect(within(codexRow).getByText("Atenção")).toBeVisible();
+
+    click(within(codexRow).getByLabelText("Mais opções"));
+    click(await screen.findByText("Substituir"));
+
+    const personalCode = (
+      await screen.findAllByTestId("codex-device-auth-code")
+    ).find((candidate) => {
+      return candidate.textContent === "PERS-1234";
+    });
+    if (!(personalCode instanceof HTMLElement)) {
+      throw new Error("Personal Codex device code not found");
+    }
+    const personalDialog = dialogContaining(personalCode);
+    expect(
+      within(personalDialog).getByText("Reconectar o Codex"),
+    ).toBeInTheDocument();
+    expect(
+      within(personalDialog).getByText(
+        /mantenha esta caixa de diálogo aberta enquanto o VM0 conclui a conexão/u,
+      ),
+    ).toBeVisible();
   });
 });
