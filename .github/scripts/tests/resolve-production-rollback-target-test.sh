@@ -262,6 +262,26 @@ ruby -e '
   raise "release workflow must not use the triggering workflow SHA as a release target" if File.read(ARGV[1]).include?("github.event.workflow_run.head_sha")
 
   expected_target = "$" + "{{ needs.release-please.outputs.release_target }}"
+  desktop_target = "desktop-v" + "$" + "{{ needs.release-please.outputs.desktop_version }}"
+  checkout_ref_exceptions = {
+    "queue-production-deploy" => "main",
+    "build-desktop-release" => desktop_target,
+    "publish-desktop-update-manifest" => desktop_target,
+    "update-rollback-dashboard" => "main",
+  }
+  release.each do |job_name, job|
+    checkout_steps = job.fetch("steps", []).select do |step|
+      step["uses"].to_s.start_with?("actions/checkout@")
+    end
+    checkout_steps.each do |checkout_step|
+      expected_ref = checkout_ref_exceptions.fetch(job_name, expected_target)
+      actual_ref = checkout_step.fetch("with", {})["ref"]
+      unless actual_ref == expected_ref
+        raise "#{job_name} checkout must use #{expected_ref.inspect}, got #{actual_ref.inspect}"
+      end
+    end
+  end
+
   host_worker_step = release.fetch("detect-host-worker-deploy-inputs").fetch("steps").find { |step| step["id"] == "detect" }
   raise "Host Worker detection must use the resolved release target" unless host_worker_step.fetch("run").include?("HEAD_SHA=\"#{expected_target}\"")
   schema_step = release.fetch("deploy-api-schema").fetch("steps").find { |step| step["name"] == "Publish Runtime API Schema" }

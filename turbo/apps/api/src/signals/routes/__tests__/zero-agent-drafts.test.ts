@@ -67,7 +67,7 @@ describe("GET/PATCH /api/zero/agents/:id/draft", () => {
 
     expect(response.body).toStrictEqual({
       draftContent: null,
-      draftStructuredPrompt: null,
+      draftUserMessage: null,
       draftAttachments: null,
     });
   });
@@ -83,7 +83,7 @@ describe("GET/PATCH /api/zero/agents/:id/draft", () => {
       contentType: "text/plain",
       size: 123,
     };
-    const draftStructuredPrompt: UserMessageDocument = {
+    const draftUserMessage: UserMessageDocument = {
       version: 1,
       parts: [
         {
@@ -107,7 +107,7 @@ describe("GET/PATCH /api/zero/agents/:id/draft", () => {
         headers: authHeaders(),
         body: {
           draftContent: "draft text",
-          draftStructuredPrompt,
+          draftUserMessage,
           draftAttachments: [attachment],
         },
       }),
@@ -123,7 +123,7 @@ describe("GET/PATCH /api/zero/agents/:id/draft", () => {
     );
     expect(saved.body).toStrictEqual({
       draftContent: "draft text",
-      draftStructuredPrompt,
+      draftUserMessage,
       draftAttachments: [attachment],
     });
 
@@ -133,7 +133,7 @@ describe("GET/PATCH /api/zero/agents/:id/draft", () => {
         headers: authHeaders(),
         body: {
           draftContent: null,
-          draftStructuredPrompt: null,
+          draftUserMessage: null,
           draftAttachments: null,
         },
       }),
@@ -149,8 +149,56 @@ describe("GET/PATCH /api/zero/agents/:id/draft", () => {
     );
     expect(cleared.body).toStrictEqual({
       draftContent: null,
-      draftStructuredPrompt: null,
+      draftUserMessage: null,
       draftAttachments: null,
+    });
+  });
+
+  it("derives a user message when a draft writer omits it", async () => {
+    const fixture = await seedAgent();
+    mocks.clerk.session(fixture.userId, fixture.orgId);
+    const attachment = {
+      id: randomUUID(),
+      url: "https://cdn.example.com/derived-draft.pdf",
+      filename: "derived-draft.pdf",
+      contentType: "application/pdf",
+      size: 321,
+    };
+
+    await accept(
+      draftsClient().patch({
+        params: { id: fixture.agentId },
+        headers: authHeaders(),
+        body: {
+          draftContent: "derived draft",
+          draftAttachments: [attachment],
+        },
+      }),
+      [204],
+    );
+
+    const saved = await accept(
+      draftsClient().get({
+        params: { id: fixture.agentId },
+        headers: authHeaders(),
+      }),
+      [200],
+    );
+    expect(saved.body).toStrictEqual({
+      draftContent: "derived draft",
+      draftUserMessage: {
+        version: 1,
+        parts: [
+          {
+            type: "file",
+            fileId: attachment.id,
+            filenameSnapshot: attachment.filename,
+            contentType: attachment.contentType,
+          },
+          { type: "text", text: "derived draft" },
+        ],
+      },
+      draftAttachments: [attachment],
     });
   });
 
@@ -182,7 +230,7 @@ describe("GET/PATCH /api/zero/agents/:id/draft", () => {
     );
     expect(peerDraft.body).toStrictEqual({
       draftContent: null,
-      draftStructuredPrompt: null,
+      draftUserMessage: null,
       draftAttachments: null,
     });
   });

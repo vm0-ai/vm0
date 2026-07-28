@@ -45,6 +45,7 @@ import {
 } from "./slack-chat-ingress.service";
 import { touchChatThreadLastMessageAt } from "./zero-chat-message-shared.service";
 import { insertChatEvent } from "./zero-chat-event.service";
+import { createUserMessageDocument } from "./zero-chat-user-message.service";
 import {
   encryptQueuedUserMessageRunParams,
   enqueueUserMessageQueueItem,
@@ -358,6 +359,16 @@ async function persistCanonicalSlackMessage(
         chatThreadId: args.chatThreadId,
         eventType: "input.prompt",
         content: args.displayContent,
+        userMessage: createUserMessageDocument({
+          text: args.displayContent,
+          files: args.canonicalAssets.map((asset) => {
+            return {
+              id: asset.assetId,
+              filename: asset.filename,
+              contentType: asset.contentType,
+            };
+          }),
+        }),
         runId: null,
         slackMessagePermalink: args.messagePermalink,
         createdAt: args.ingress.createdAt,

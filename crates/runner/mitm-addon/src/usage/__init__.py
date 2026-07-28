@@ -2,10 +2,11 @@
 
 The stable facade covers:
 
-- Observable model-provider responses (SSE streams and non-streaming JSON):
-  extract model token counts and buffer them for aggregate platform webhook
-  upload to billing and/or observation endpoints through a background thread pool — see
-  :mod:`usage.providers.model_provider`.
+- Observable model-provider responses (SSE streams, non-streaming JSON, and
+  inspected WebSocket events): extract model token counts, preserve
+  per-response source identity for WebSocket reporting, and buffer results for
+  aggregate platform webhook upload to billing and/or observation endpoints
+  through a background thread pool — see :mod:`usage.providers.model_provider`.
 - Billable connector responses (flagged by the web layer via
   ``billableFirewalls`` → ``metadata_keys.FIREWALL_BILLABLE``): compute
   per-permission billable resource counts and buffer them for aggregate
@@ -15,13 +16,15 @@ The stable facade covers:
   tracking in-flight flows, and publishing runner-visible pending snapshots
   used by the runner's usage-flush and shutdown protocol.
 
-Current production consumers of this package facade are ``mitm_addon.py``,
-``response_streaming.py``, ``runner_flush_lifecycle.py``, and ``terminal_usage.py``.
+Production consumers use this package facade for proxy hooks and response
+processing, runner flush lifecycle and terminal reporting, and Claude/Codex
+provider-output timing.
 Tests should exercise public hook, provider, and lifecycle paths at their
 observable boundaries: runner-visible pending state and in-flight accounting,
 plus the local HTTP webhook boundary. Avoid patching private transport internals.
 Delivery admission tests may target the production ``usage.webhook`` enqueue
-boundary used by the usage buffer; retry and transport helpers remain private.
+boundary used by buffered usage and provider-output timing; retry and transport
+helpers remain private.
 """
 
 from . import webhook

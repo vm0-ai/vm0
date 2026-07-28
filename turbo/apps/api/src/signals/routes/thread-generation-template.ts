@@ -14,12 +14,10 @@ import {
 export function resolveThreadGenerationTemplatePrompt(args: {
   readonly explicit: GenerationTemplateRequest | null | undefined;
   readonly explicitTemplates?: readonly GenerationTemplateRequest[];
-  readonly websiteTemplateV2Enabled?: boolean;
   readonly imageStyleR2Enabled?: boolean;
 }): string {
   if (args.explicitTemplates && args.explicitTemplates.length > 0) {
     const built = buildGenerationTemplatesPrompt(args.explicitTemplates, {
-      websiteTemplateV2Enabled: args.websiteTemplateV2Enabled,
       imageStyleR2Enabled: args.imageStyleR2Enabled,
     });
     return built.status === "resolved" ? built.prompt : "";
@@ -28,7 +26,6 @@ export function resolveThreadGenerationTemplatePrompt(args: {
     return "";
   }
   const built = buildGenerationTemplatePrompt(args.explicit, {
-    websiteTemplateV2Enabled: args.websiteTemplateV2Enabled,
     imageStyleR2Enabled: args.imageStyleR2Enabled,
   });
   return built.status === "resolved" ? built.prompt : "";

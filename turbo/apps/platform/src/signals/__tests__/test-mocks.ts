@@ -246,6 +246,14 @@ export function createTestMocks(getSignal: () => AbortSignal) {
           spy.mockRestore();
         });
       },
+      language: (language: string): void => {
+        const spy = vi
+          .spyOn(navigator, "language", "get")
+          .mockReturnValue(language);
+        restoreOnAbort(getSignal(), () => {
+          spy.mockRestore();
+        });
+      },
       clipboardWriteText: (): ClipboardWriteMock => {
         return mockClipboardWriteText(getSignal());
       },

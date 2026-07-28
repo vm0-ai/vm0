@@ -228,6 +228,12 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
       "Reveal activity debug surfaces, activity log navigation, appended system prompts, and Debug preferences",
     enabled: false,
   },
+  [FeatureSwitchKey.LanguagePreference]: {
+    maintainer: "yuma@vm0.ai",
+    description:
+      "Enable workspace language bootstrap, persistence, and the Settings preference entry.",
+    enabled: false,
+  },
   [FeatureSwitchKey.ZeroFinance]: {
     maintainer: "ethan@vm0.ai",
     description:
@@ -464,12 +470,6 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     maintainer: "bingjie@vm0.ai",
     description:
       "Generate poster images asynchronously when video artifacts are recorded.",
-    enabled: true,
-  },
-  [FeatureSwitchKey.WebsiteTemplateV2]: {
-    maintainer: "bingjie@vm0.ai",
-    description:
-      "Generate websites from refreshed self-contained template packages. When off, website generation uses the existing package versions.",
     enabled: true,
   },
   [FeatureSwitchKey.ImageStyleR2]: {

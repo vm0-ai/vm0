@@ -145,6 +145,7 @@ class TestBuildRewriteUrl:
             ("https://example.com/hook/%255csecret", "unsafe path"),
             ("https://%7bparam%7d.example/hook", "unsafe percent encoding"),
             ("https://example%zz.com/hook", "invalid percent encoding"),
+            ("https://api%FF.example.com/hook", "host has invalid percent encoding"),
             ("https://0177.0.0.1/hook", "invalid host"),
             ("https://0177.0.0.1?token=static", "invalid host"),
             ("https://0x7f.0.0.1/hook", "invalid host"),

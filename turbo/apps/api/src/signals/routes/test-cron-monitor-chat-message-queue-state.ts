@@ -21,6 +21,7 @@ import {
   insertChatEvent,
   replaceChatEvent,
 } from "../services/zero-chat-event.service";
+import { createUserMessageDocument } from "../services/zero-chat-user-message.service";
 import {
   isTestEndpointAllowed,
   testEndpointNotFoundResponse,
@@ -121,6 +122,9 @@ async function seedFixture(
     const baseEvent = {
       chatThreadId: thread.id,
       content: "orphan monitor fixture",
+      userMessage: createUserMessageDocument({
+        text: "orphan monitor fixture",
+      }),
       runId: null,
     };
     return fixtureKind === "failed-message"
@@ -153,6 +157,9 @@ async function seedFixture(
         chatThreadId: thread.id,
         eventType: "input.prompt",
         content: "claimed orphan monitor fixture",
+        userMessage: createUserMessageDocument({
+          text: "claimed orphan monitor fixture",
+        }),
         runId: randomUUID(),
       });
     });

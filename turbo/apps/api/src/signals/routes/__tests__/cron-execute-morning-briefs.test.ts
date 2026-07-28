@@ -739,17 +739,17 @@ describe("cron execute morning briefs", () => {
   });
 
   it.each([
-    { projection: "structured", structuredPromptEnabled: true },
-    { projection: "legacy", structuredPromptEnabled: false },
+    { projection: "structured", userMessageEnabled: true },
+    { projection: "legacy", userMessageEnabled: false },
   ])(
     "uses $projection message text in the chat-thread source",
-    async ({ structuredPromptEnabled }) => {
+    async ({ userMessageEnabled }) => {
       const scenario = await setupMorningBriefActor({
         connectConnectors: false,
       });
       await updateFeatureSwitchesForUser(context, scenario.actor, {
         [FeatureSwitchKey.MorningBrief]: true,
-        [FeatureSwitchKey.StructuredPrompt]: structuredPromptEnabled,
+        [FeatureSwitchKey.StructuredPrompt]: userMessageEnabled,
       });
       const agent = await bdd.createAgent(scenario.actor, {
         displayName: "Structured morning brief agent",
@@ -769,7 +769,7 @@ describe("cron execute morning briefs", () => {
         type: "illustration",
         selection: { illustrationStyleId: style.illustrationStyleId },
       };
-      const structuredPrompt: UserMessageDocument = {
+      const userMessage: UserMessageDocument = {
         version: 1,
         parts: [
           {
@@ -789,7 +789,7 @@ describe("cron execute morning briefs", () => {
           threadId: thread.id,
           prompt: "stale morning brief content",
           generationTemplate,
-          structuredPrompt,
+          userMessage,
         },
         [201],
       );
@@ -810,14 +810,14 @@ describe("cron execute morning briefs", () => {
       const sourceThread = threads?.find((item) => {
         return item.threadId === thread.id;
       });
-      const structuredContent = `[Template: ${style.title}]\n\nReview the structured brief`;
+      const userMessageContent = `[Template: ${style.title}]\n\nReview the structured brief`;
       const legacyContent = "stale morning brief content";
-      const expectedContent = structuredPromptEnabled
-        ? structuredContent
+      const expectedContent = userMessageEnabled
+        ? userMessageContent
         : legacyContent;
-      const excludedContent = structuredPromptEnabled
+      const excludedContent = userMessageEnabled
         ? legacyContent
-        : structuredContent;
+        : userMessageContent;
       expect(sourceThread?.recentMessages).toContainEqual({
         role: "user",
         content: expectedContent,

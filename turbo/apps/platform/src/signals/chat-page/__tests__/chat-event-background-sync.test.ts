@@ -22,7 +22,10 @@ import { setupRealtime$ } from "../../realtime.ts";
 import { resetSignal } from "../../utils.ts";
 import { writeIndexedDbChatEvents$ } from "../chat-event-indexed-db.ts";
 import { setupChatEventBackgroundSync$ } from "../chat-event-background-sync.ts";
-import { sendChatEventWithCompatibility } from "../chat-event-api-rollout.ts";
+import {
+  listChatEventsWithCompatibility,
+  sendChatEventWithCompatibility,
+} from "../chat-event-api-rollout.ts";
 
 vi.mock("idb", async () => {
   return await vi.importActual<typeof import("idb")>("idb-real");
@@ -39,6 +42,7 @@ const FIRST_CACHED_MESSAGE_ID = "00000000-0000-4000-8000-000000000802";
 const LAST_CACHED_MESSAGE_ID = "00000000-0000-4000-8000-000000000803";
 const NEW_MESSAGE_ID = "00000000-0000-4000-8000-000000000804";
 const LEGACY_MESSAGE_ID = "00000000-0000-4000-8000-000000000806";
+const CREATED_AT = "2026-07-23T10:00:00.000Z";
 
 function assistantMessage(
   threadId: string,
@@ -292,6 +296,10 @@ describe("chat event background sync", () => {
   it("falls back to the preceding write route with message-named ids", async () => {
     mockSignedInUser();
     const clientEventId = "00000000-0000-4000-8000-000000000807";
+    const userMessage = {
+      version: 1 as const,
+      parts: [{ type: "text" as const, text: "Continue the rollout" }],
+    };
     let legacyBody: unknown;
     context.mocks.api(chatEventsContract.send, ({ respond }) => {
       return respond(404, {
@@ -312,7 +320,8 @@ describe("chat event background sync", () => {
         {
           agentId: "agent-1",
           threadId: THREAD_ID,
-          revokesEventId: FIRST_CACHED_MESSAGE_ID,
+          prompt: "Continue the rollout",
+          userMessage,
           clientEventId,
         },
         context.signal,
@@ -321,10 +330,85 @@ describe("chat event background sync", () => {
     expect(legacyBody).toMatchObject({
       agentId: "agent-1",
       threadId: THREAD_ID,
-      revokesMessageId: FIRST_CACHED_MESSAGE_ID,
+      prompt: "Continue the rollout",
+      userMessage,
+      structuredPrompt: userMessage,
       clientMessageId: clientEventId,
     });
     expect(legacyBody).not.toHaveProperty("revokesEventId");
     expect(legacyBody).not.toHaveProperty("clientEventId");
+  });
+
+  it("dual-writes the preceding rich-input wire name on the event route", async () => {
+    mockSignedInUser();
+    const userMessage = {
+      version: 1 as const,
+      parts: [{ type: "text" as const, text: "Keep both wire names" }],
+    };
+    let sentBody: unknown;
+    context.mocks.api(chatEventsContract.send, ({ body, respond }) => {
+      sentBody = body;
+      return respond(201, { runId: null, threadId: THREAD_ID });
+    });
+
+    await sendChatEventWithCompatibility(
+      context.store.get(zeroClient$),
+      {
+        agentId: "agent-1",
+        threadId: THREAD_ID,
+        prompt: "Keep both wire names",
+        userMessage,
+      },
+      context.signal,
+    );
+
+    expect(sentBody).toMatchObject({
+      userMessage,
+      structuredPrompt: userMessage,
+    });
+  });
+
+  it("normalizes preceding event responses into canonical userMessage", async () => {
+    mockSignedInUser();
+    const userMessage = {
+      version: 1 as const,
+      parts: [{ type: "text" as const, text: "Preceding response" }],
+    };
+    context.mocks.http.get("*/api/zero/chat-threads/:threadId/events", () => {
+      return Response.json({
+        events: [
+          {
+            id: "preceding-input",
+            threadId: THREAD_ID,
+            eventType: "input.prompt",
+            role: "user",
+            content: "Preceding response",
+            structuredPrompt: userMessage,
+            seqId: 1,
+            createdAt: CREATED_AT,
+          },
+        ],
+        hasHistoryBefore: false,
+      });
+    });
+
+    const result = await listChatEventsWithCompatibility(
+      context.store.get(zeroClient$),
+      THREAD_ID,
+      {},
+      context.signal,
+    );
+
+    expect(result.events).toStrictEqual([
+      {
+        id: "preceding-input",
+        threadId: THREAD_ID,
+        eventType: "input.prompt",
+        content: "Preceding response",
+        userMessage,
+        seqId: 1,
+        createdAt: CREATED_AT,
+      },
+    ]);
   });
 });

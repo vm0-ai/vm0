@@ -5,12 +5,47 @@ import type {
   UserMessagePart,
 } from "@vm0/api-contracts/contracts/chat-threads";
 
-interface StructuredUserMessageProjection {
+interface UserMessageProjection {
   readonly agentPrompt: string;
   readonly displayText: string;
   readonly generationTemplate: GenerationTemplateRequest | undefined;
   readonly generationTemplates: readonly GenerationTemplateRequest[];
   readonly hasTextContent: boolean;
+}
+
+interface UserMessageFile {
+  readonly id: string;
+  readonly filename: string;
+  readonly contentType: string;
+}
+
+export function maybeCreateUserMessageDocument(args: {
+  readonly text: string | null;
+  readonly files?: readonly UserMessageFile[];
+}): UserMessageDocument | null {
+  const parts: UserMessagePart[] = (args.files ?? []).map((file) => {
+    return {
+      type: "file",
+      fileId: file.id,
+      filenameSnapshot: file.filename,
+      contentType: file.contentType,
+    };
+  });
+  if (args.text !== null && args.text.length > 0) {
+    parts.push({ type: "text", text: args.text });
+  }
+  return parts.length > 0 ? { version: 1, parts } : null;
+}
+
+export function createUserMessageDocument(args: {
+  readonly text: string | null;
+  readonly files?: readonly UserMessageFile[];
+}): UserMessageDocument {
+  const document = maybeCreateUserMessageDocument(args);
+  if (!document) {
+    throw new Error("User message must contain text or files");
+  }
+  return document;
 }
 
 function serializeChatThreadMention(threadId: string, title: string): string {
@@ -127,10 +162,10 @@ function formatFeedbackParts(
  * order, while their selections are also returned for this run's shared
  * template context.
  */
-export function projectStructuredUserMessage(
+export function projectUserMessage(
   document: UserMessageDocument,
   options: { readonly inlineTemplates?: boolean } = {},
-): StructuredUserMessageProjection {
+): UserMessageProjection {
   const promptBlocks: string[] = [];
   const displayBlocks: string[] = [];
   let inlinePrompt = "";

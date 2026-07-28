@@ -1,5 +1,28 @@
 # Changelog
 
+## [8.480.0](https://github.com/vm0-ai/vm0/compare/core-v8.479.1...core-v8.480.0) (2026-07-28)
+
+
+### Features
+
+* **platform:** persist workspace language preference ([#23396](https://github.com/vm0-ai/vm0/issues/23396)) ([7a409c9](https://github.com/vm0-ai/vm0/commit/7a409c99494fe765a896e72aee1b5450df3b1427))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.240.0
+
+## [8.479.1](https://github.com/vm0-ai/vm0/compare/core-v8.479.0...core-v8.479.1) (2026-07-28)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.239.2
+
 ## [8.479.0](https://github.com/vm0-ai/vm0/compare/core-v8.478.0...core-v8.479.0) (2026-07-28)
 
 

@@ -35,6 +35,7 @@ import {
   updateCaptureNetworkBodies$,
 } from "../../signals/zero-page/settings/preferences-page.ts";
 import { BuildInfoBlock } from "./components/settings/build-info-block.tsx";
+import { LanguageSettings } from "./components/settings/language-settings.tsx";
 
 function AppearanceSettings() {
   const THEME_OPTIONS = [
@@ -247,6 +248,8 @@ function resolveVisiblePreferencesTab(
 export function ZeroPreferencesPage() {
   const features = useLastResolved(featureSwitch$);
   const showDebug = features?.[FeatureSwitchKey.ZeroDebug] ?? false;
+  const showLanguagePreference =
+    features?.[FeatureSwitchKey.LanguagePreference] ?? false;
   const showModelConfiguration = true;
   const tab = useGet(preferencesTab$);
   const activeTab = resolveVisiblePreferencesTab(tab, {
@@ -311,6 +314,7 @@ export function ZeroPreferencesPage() {
               {activeTab === "appearance" && (
                 <div className="flex flex-col gap-6">
                   <AppearanceSettings />
+                  {showLanguagePreference && <LanguageSettings />}
                   <SendModeSettings />
                 </div>
               )}

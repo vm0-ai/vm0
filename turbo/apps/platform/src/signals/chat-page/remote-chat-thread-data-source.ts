@@ -2,10 +2,12 @@ import { command, computed, type Command } from "ccstate";
 import {
   chatThreadByIdContract,
   chatThreadDraftContract,
+  chatThreadDraftSchema,
   chatThreadMarkReadContract,
   chatThreadComputerUseHostContract,
   chatThreadModelSelectionContract,
 } from "@vm0/api-contracts/contracts/chat-threads";
+import { withPrecedingDraftStructuredPrompt } from "@vm0/api-contracts/contracts/user-message-rollout";
 import { accept } from "../../lib/accept.ts";
 import { nowDate } from "../../lib/time.ts";
 import { zeroClient$ } from "../api-client.ts";
@@ -52,18 +54,18 @@ type ChatRealtimeSubscription = {
 const patchDraft$ = command(
   async (
     { get, set },
-    { threadId, content, structuredPrompt, attachments }: PatchDraftArgs,
+    { threadId, content, userMessage, attachments }: PatchDraftArgs,
     signal: AbortSignal,
   ) => {
     const client = get(zeroClient$)(chatThreadByIdContract);
     await accept(
       client.patch({
         params: { id: threadId },
-        body: {
+        body: withPrecedingDraftStructuredPrompt({
           draftContent: content,
-          draftStructuredPrompt: structuredPrompt,
+          draftUserMessage: userMessage,
           draftAttachments: attachments,
-        },
+        }),
         fetchOptions: { signal },
       }),
       [200, 204],
@@ -178,7 +180,7 @@ const appendQueuedEvent$ = command(
       chatThreadSortEventId,
       hasTextContent,
       generationTemplate,
-      structuredPrompt,
+      userMessage,
       computerUseHostId,
       cloudBrowserEnabled,
       runOptions,
@@ -196,7 +198,7 @@ const appendQueuedEvent$ = command(
         clientEventId: clientEventId,
         chatThreadSortEventId,
         generationTemplate,
-        ...(structuredPrompt ? { structuredPrompt } : {}),
+        userMessage,
         ...(runOptions ? { runOptions } : {}),
         ...(realAgentInPreview ? { realAgentInPreview: true } : {}),
         ...(computerUseHostId === undefined ? {} : { computerUseHostId }),
@@ -405,7 +407,7 @@ export function createRemoteChatThreadDataSource(threadId: string) {
     if (result.status === 404) {
       return null;
     }
-    return result.body;
+    return chatThreadDraftSchema.parse(result.body);
   });
 
   return {

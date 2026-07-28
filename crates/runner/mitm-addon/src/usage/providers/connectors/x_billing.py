@@ -238,8 +238,15 @@ def classify_bucket(permission: str, method: str, path: str) -> str | None:
     """Return the X billing bucket for a matched firewall request.
 
     ``permission`` is the firewall permission name set on
-    ``metadata_keys.FIREWALL_PERMISSION``.  ``method`` and ``path`` come from
-    ``flow.request``.
+    ``metadata_keys.FIREWALL_PERMISSION``.  ``method`` comes from
+    ``flow.request.method``.  ``path`` must be the URL path with its query
+    removed, not mitmproxy's raw ``flow.request.path``.  The production caller
+    applies ``_strip_request_target_query()`` in ``_response_usage_context()``
+    before calling this function.
+
+    Compiled path overrides match this normalized path.  Passing a raw,
+    query-bearing request target can miss an override and fall back to the
+    permission's default billing bucket.
 
     Returns ``None`` for permissions that are not billable (e.g. the
     ``"app-only"`` scope).  The caller should skip emission in that

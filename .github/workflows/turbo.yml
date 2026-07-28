@@ -1199,6 +1199,8 @@ jobs:
     needs: [detect-release]
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    outputs:
+      deployment-url: ${{ steps.pages-deploy.outputs.url }}
     concurrency:
       group: deploy-app-${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
       cancel-in-progress: false
@@ -1222,6 +1224,7 @@ jobs:
       CF_PAGES_PREVIEW_DOMAIN: ${{ vars.CF_PAGES_PREVIEW_DOMAIN }}
       CF_PAGES_PREVIEW_ZONE_ID: ${{ vars.CF_PAGES_PREVIEW_ZONE_ID }}
       CLOUDFLARE_ACCOUNT_ID: ${{ vars.CF_ACCOUNT_ID }}
+      PREVIEW_DOMAIN: ${{ vars.PREVIEW_DOMAIN }}
       R2_ACCOUNT_ID: ${{ vars.R2_ACCOUNT_ID }}
       R2_BUCKET_NAME: ${{ vars.R2_STATIC_BUCKET_NAME }}
     steps:
@@ -1402,18 +1405,22 @@ jobs:
 
           : "${CF_PAGES_PROJECT_NAME:?CF_PAGES_PROJECT_NAME variable is required}"
           : "${CLOUDFLARE_ACCOUNT_ID:?CF_ACCOUNT_ID variable is required}"
+          : "${PREVIEW_DOMAIN:?PREVIEW_DOMAIN variable is required}"
 
           r2_endpoint="https://${R2_ACCOUNT_ID}.r2.cloudflarestorage.com"
           artifact_uri="s3://${R2_BUCKET_NAME}/${ARTIFACT_PREFIX}"
           canonical_dist="$(mktemp -d)"
           pages_dist="$(mktemp -d)"
+          job_ref="${PAGES_BRANCH%-app}"
+          api_origin="https://${job_ref}-api.${PREVIEW_DOMAIN}"
 
           aws s3 cp "$artifact_uri/" "$canonical_dist/" \
             --endpoint-url "$r2_endpoint" \
             --recursive
           bash .github/scripts/prepare-okou-pages-dist.sh \
             "$canonical_dist" \
-            "$pages_dist"
+            "$pages_dist" \
+            "$api_origin"
 
           {
             echo "dist=$pages_dist"
@@ -1431,11 +1438,13 @@ jobs:
           echo "url=https://${PAGES_BRANCH}.${CF_PAGES_PREVIEW_DOMAIN}" >> "$GITHUB_OUTPUT"
 
       - name: Deploy Cloudflare Pages preview
+        id: pages-deploy
         env:
           ARTIFACT_SHA: ${{ steps.artifact.outputs.sha }}
           CLOUDFLARE_API_TOKEN: ${{ secrets.CF_PAGES_DEPLOY_API_TOKEN }}
           PAGES_BRANCH: ${{ steps.pages-branch.outputs.branch }}
           PAGES_DIST: ${{ steps.pages-preview.outputs.dist }}
+          WRANGLER_OUTPUT_FILE_PATH: /tmp/wrangler-pages-output.ndjson
         working-directory: turbo
         run: |
           set -euo pipefail
@@ -1445,6 +1454,36 @@ jobs:
             --branch "$PAGES_BRANCH" \
             --commit-hash "$ARTIFACT_SHA" \
             --commit-dirty=false
+
+          deployment="$(
+            jq --slurp --compact-output \
+              'map(select(.type == "pages-deploy-detailed")) | last' \
+              "$WRANGLER_OUTPUT_FILE_PATH"
+          )"
+          deployment_url="$(jq -r '.url // empty' <<< "$deployment")"
+          deployment_commit="$(jq -r \
+            '.deployment_trigger.metadata.commit_hash // empty' \
+            <<< "$deployment")"
+
+          if [[ -z "$deployment_url" ]]; then
+            echo "::error::Wrangler did not report a Pages deployment URL"
+            exit 1
+          fi
+          deployment_host="${deployment_url#https://}"
+          deployment_hash="${deployment_host%%.*}"
+          if [[ \
+            ! "$deployment_hash" =~ ^[0-9a-f]{8}$ ||
+            "$deployment_url" != "https://${deployment_hash}.${CF_PAGES_PROJECT_NAME}.pages.dev" \
+          ]]; then
+            echo "::error::Wrangler did not report an immutable Pages deployment URL"
+            exit 1
+          fi
+          if [[ "$deployment_commit" != "$ARTIFACT_SHA" ]]; then
+            echo "::error::Pages deployment commit does not match the app artifact"
+            exit 1
+          fi
+
+          echo "url=$deployment_url" >> "$GITHUB_OUTPUT"
 
       - name: Configure Cloudflare Pages custom preview domain
         if: steps.pages-custom-domain.outputs.domain != ''
@@ -1465,7 +1504,7 @@ jobs:
       - name: Wait for Cloudflare Pages preview assets
         env:
           PAGES_DIST: ${{ steps.pages-preview.outputs.dist }}
-          PAGES_URL: ${{ steps.pages-custom-domain.outputs.url || steps.pages-preview.outputs.url }}
+          PAGES_URL: ${{ steps.pages-deploy.outputs.url }}
         run: |
           set -euo pipefail
 
@@ -1576,9 +1615,11 @@ jobs:
 
       - name: Record Cloudflare Pages preview
         env:
+          PAGES_DEPLOYMENT_URL: ${{ steps.pages-deploy.outputs.url }}
           PAGES_CUSTOM_URL: ${{ steps.pages-custom-domain.outputs.url }}
           PAGES_PREVIEW_URL: ${{ steps.pages-preview.outputs.url }}
         run: |
+          echo "Cloudflare Pages deployment: ${PAGES_DEPLOYMENT_URL}" >> "$GITHUB_STEP_SUMMARY"
           echo "Cloudflare Pages preview: ${PAGES_PREVIEW_URL}" >> "$GITHUB_STEP_SUMMARY"
           if [[ -n "$PAGES_CUSTOM_URL" ]]; then
             echo "Cloudflare Pages custom preview: ${PAGES_CUSTOM_URL}" >> "$GITHUB_STEP_SUMMARY"
@@ -1709,8 +1750,8 @@ jobs:
           BATS_TEST_TIMEOUT=180 ./e2e/test/libs/bats/bin/bats -T ./e2e/tests/02-browser/*.bats
         env:
           VM0_API_BACKEND_URL: ${{ needs.deploy-api.outputs.preview-url }}
-          VM0_AUTH_URL: ${{ needs.prepare.outputs.app-preview-url }}
-          VM0_AUTH_REDIRECT_URL: ${{ needs.prepare.outputs.app-preview-url }}/_/skeleton
+          VM0_AUTH_URL: ${{ needs.deploy-app.outputs.deployment-url }}
+          VM0_AUTH_REDIRECT_URL: ${{ needs.deploy-app.outputs.deployment-url }}/_/skeleton
           VM0_AUTH_DOMAIN: ${{ needs.prepare.outputs.api-preview-url != '' && format('{0}-api.{1}', needs.prepare.outputs.job-ref, vars.PREVIEW_DOMAIN || 'vm6.ai') || '' }}
           JOB_REF: ${{ needs.prepare.outputs.job-ref }}
           CLERK_SECRET_KEY: ${{ secrets.CLERK_SECRET_KEY }}
@@ -1807,7 +1848,7 @@ jobs:
         run: cd e2e && npx playwright test --config playwright/playwright.config.ts
         env:
           VM0_API_BACKEND_URL: ${{ needs.deploy-api.outputs.preview-url }}
-          VM0_APP_URL: ${{ needs.prepare.outputs.app-preview-url }}
+          VM0_APP_URL: ${{ needs.deploy-app.outputs.deployment-url }}
           CLERK_PUBLISHABLE_KEY: ${{ vars.CLERK_PUBLISHABLE_KEY }}
           CLERK_SECRET_KEY: ${{ secrets.CLERK_SECRET_KEY }}
           JOB_REF: ${{ needs.prepare.outputs.job-ref }}

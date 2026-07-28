@@ -66,7 +66,7 @@ describe("prompt query parameter injection", () => {
 
   it("starts an optimistic chat from the prompt route", async () => {
     let runPrompt: string | undefined;
-    let structuredPrompt: unknown;
+    let userMessage: unknown;
     let createdThreadModel: string | null | undefined;
     context.mocks.data.orgModelPolicies([
       modelPolicy("deepseek-v4-pro", "DeepSeek V4 Pro"),
@@ -74,7 +74,7 @@ describe("prompt query parameter injection", () => {
     mockChatLifecycle(context, {
       onRunCreate: (body) => {
         runPrompt = body.prompt;
-        structuredPrompt = body.structuredPrompt;
+        userMessage = body.userMessage;
       },
       onThreadCreate: (body) => {
         createdThreadModel = body.modelSelection.selectedModel;
@@ -90,7 +90,7 @@ describe("prompt query parameter injection", () => {
     await waitFor(() => {
       expect(screen.getByText("Build a launch recap")).toBeInTheDocument();
       expect(runPrompt).toBe("Build a launch recap");
-      expect(structuredPrompt).toStrictEqual({
+      expect(userMessage).toStrictEqual({
         version: 1,
         parts: [{ type: "text", text: "Build a launch recap" }],
       });
@@ -172,7 +172,7 @@ describe("prompt query parameter injection", () => {
     expect(presentationTemplate).toBeDefined();
 
     let runPrompt: string | undefined;
-    let structuredPrompt: UserMessageDocument | undefined;
+    let userMessage: UserMessageDocument | undefined;
     let selection:
       | {
           templateId: string;
@@ -183,7 +183,7 @@ describe("prompt query parameter injection", () => {
     mockChatLifecycle(context, {
       onRunCreate: (body) => {
         runPrompt = body.prompt;
-        structuredPrompt = body.structuredPrompt;
+        userMessage = body.userMessage;
         selection =
           body.generationTemplate?.type === "presentation"
             ? body.generationTemplate.selection
@@ -205,7 +205,7 @@ describe("prompt query parameter injection", () => {
         templateId: presentationTemplate?.templateId,
         previewUrl: presentationTemplate?.embedUrl,
       });
-      expect(structuredPrompt).toStrictEqual({
+      expect(userMessage).toStrictEqual({
         version: 1,
         parts: [
           {
