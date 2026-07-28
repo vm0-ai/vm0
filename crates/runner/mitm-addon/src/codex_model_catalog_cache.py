@@ -665,7 +665,7 @@ def _renew_entry(key: _CacheKey, entry: _CacheEntry, now: float) -> _CacheEntry:
     return renewed
 
 
-def _bypass_encoded_response(
+def _bypass_response(
     flow: http.HTTPFlow,
     state: _FlowState,
     reason: str,
@@ -689,16 +689,16 @@ def handle_response_headers(flow: http.HTTPFlow) -> bool:
         state.upstream_encoding = _IDENTITY_ENCODING
         bypass_reason = _response_headers_bypass_reason(flow.response)
         if bypass_reason is not None:
-            _set_not_stored(flow, state, bypass_reason)
+            _bypass_response(flow, state, bypass_reason)
         return True
     if encoding != _BROTLI_ENCODING:
-        _bypass_encoded_response(flow, state, "response_encoding")
+        _bypass_response(flow, state, "response_encoding")
         return True
 
     state.upstream_encoding = _BROTLI_ENCODING
     bypass_reason = _response_headers_bypass_reason(flow.response, allow_brotli=True)
     if bypass_reason is not None:
-        _bypass_encoded_response(flow, state, bypass_reason)
+        _bypass_response(flow, state, bypass_reason)
         return True
 
     compressed_content_length = _content_length(flow.response.headers)
@@ -710,7 +710,7 @@ def handle_response_headers(flow: http.HTTPFlow) -> bool:
             and flow.response.headers.get_all("Transfer-Encoding")
         )
     ):
-        _bypass_encoded_response(flow, state, "response_size")
+        _bypass_response(flow, state, "response_size")
         return True
     state.compressed_content_length = compressed_content_length
     return True

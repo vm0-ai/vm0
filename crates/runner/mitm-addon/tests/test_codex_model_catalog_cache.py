@@ -747,6 +747,38 @@ async def test_failed_prefetch_releases_consumer_to_retry_upstream(real_flow):
     catalog_cache.handle_error(consumer)
 
 
+async def test_non_cacheable_identity_headers_release_singleflight_follower(real_flow):
+    owner = _catalog_flow(real_flow, version="identity-header-bypass")
+    await _prepare_miss(owner)
+    follower = _catalog_flow(real_flow, version="identity-header-bypass")
+    follower_prepare = asyncio.create_task(
+        catalog_cache.prepare_request(follower, request_end_stream=True)
+    )
+    await asyncio.sleep(0)
+    assert not follower_prepare.done()
+
+    owner.response = _catalog_response(
+        encoding="identity",
+        headers={"Cache-Control": "no-store"},
+    )
+    mitm_addon.responseheaders(owner)
+
+    await asyncio.wait_for(follower_prepare, timeout=0.1)
+    assert follower.response is None
+    assert follower.request.headers["Accept-Encoding"] == "br"
+    owner_telemetry: dict[str, object] = {}
+    catalog_cache.add_network_log_fields(owner, owner_telemetry)
+    validation_latency = owner_telemetry.pop("model_catalog_cache_validation_latency_ms")
+    assert isinstance(validation_latency, int)
+    assert validation_latency >= 0
+    assert owner_telemetry == {
+        "model_catalog_cache_status": "model_catalog_cold_not_stored",
+        "model_catalog_cache_bypass_reason": "response_cache_control",
+        "model_catalog_cache_upstream_encoding": "identity",
+    }
+    catalog_cache.handle_error(follower)
+
+
 async def test_released_owner_wakes_singleflight_follower(real_flow):
     owner = _catalog_flow(real_flow, version="released-owner")
     await _prepare_miss(owner)
