@@ -15,6 +15,7 @@ import {
 import { zeroUserConnectorsContract } from "@vm0/api-contracts/contracts/user-connectors";
 import { zeroConnectorCatalogContract } from "@vm0/api-contracts/contracts/zero-connector-catalog";
 import { zeroConnectorOpenIdStartContract } from "@vm0/api-contracts/contracts/zero-connectors";
+import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import { toast } from "@vm0/ui/components/ui/sonner";
 
 import {
@@ -148,7 +149,13 @@ function setupChatThread({
     });
   }
 
-  detachedSetupPage({ context, path });
+  detachedSetupPage({
+    context,
+    path,
+    featureSwitches: {
+      [FeatureSwitchKey.NewChatThreadSidebar]: false,
+    },
+  });
 }
 
 function artifactFile(
