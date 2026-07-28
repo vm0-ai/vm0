@@ -1692,39 +1692,32 @@ function directStructuralChildren(
   return expression.children;
 }
 
-function structuralMarkers(
-  expression: StructuralExpression,
-): readonly SqlMarker[] {
-  if (expression.kind === "marker") {
-    return [expression.marker];
-  }
-  return directStructuralChildren(expression).flatMap(structuralMarkers);
-}
-
-function containsSubquery(expression: StructuralExpression): boolean {
-  return (
-    expression.kind === "existence" ||
-    (expression.kind === "opaque" && expression.nodeKey === "SubLink") ||
-    directStructuralChildren(expression).some(containsSubquery)
-  );
-}
-
 function retainableInlineMarkers(
   expression: StructuralExpression,
 ): readonly SqlMarker[] | undefined {
-  if (containsSubquery(expression)) {
-    return undefined;
-  }
-  const markers = structuralMarkers(expression);
-  return markers.every((marker) => {
-    return (
-      !marker.isTable &&
+  if (expression.kind === "marker") {
+    const marker = expression.marker;
+    return !marker.isTable &&
       !marker.isSelect &&
       marker.isAnalyzableWriteInterpolation
-    );
-  })
-    ? markers
-    : undefined;
+      ? [marker]
+      : undefined;
+  }
+  if (
+    expression.kind === "existence" ||
+    (expression.kind === "opaque" && expression.nodeKey === "SubLink")
+  ) {
+    return undefined;
+  }
+  const markers: SqlMarker[] = [];
+  for (const child of directStructuralChildren(expression)) {
+    const childMarkers = retainableInlineMarkers(child);
+    if (childMarkers === undefined) {
+      return undefined;
+    }
+    markers.push(...childMarkers);
+  }
+  return markers;
 }
 
 function hasInlineValueBoundary(
