@@ -251,6 +251,31 @@ class CompiledFirewallSet:
         return self._api_index.all_candidates
 
     def matches_ordinary_credential_authority(self, host: str, port: int) -> bool:
+        """Return whether an HTTPS authority is eligible for a connector-auth binding.
+
+        The compiled admission index contains only APIs whose firewall names, bases,
+        and auth mappings are valid, whose bases use HTTPS, and whose auth applies
+        ordinary upstream credentials through headers, query parameters, or AWS
+        SigV4. HTTP APIs, APIs with ``auth.base`` alone or no ordinary mutation, and
+        malformed name, base, or auth inputs are excluded.
+
+        This connection-phase predicate normalizes the host and effective HTTPS port,
+        then compares only the authority. Static host authorities, including bases
+        parameterized only in their paths, and parameterized hosts participate.
+        Explicit and implicit port 443 are equivalent; non-default ports must match
+        exactly. Base paths, permission rules, and network policies are deliberately
+        not evaluated before an HTTP request exists.
+
+        A match is eligibility for the privileged ``connector_auth`` binding, not
+        request authorization. Request handling later evaluates full base/path,
+        connector-owner, permission/rule, and network-policy decisions, then
+        revalidates the current direct binding, public destination, and host policy
+        before ordinary credentials mutate the request.
+
+        Contract coverage lives in
+        ``tests/test_compiled_firewall_authority_normalization.py`` and
+        ``tests/test_server_connect_hook.py``.
+        """
         url_parts = _split_https_authority_parts(host, port)
         if url_parts is None:
             return False
