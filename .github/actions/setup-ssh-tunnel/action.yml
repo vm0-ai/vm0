@@ -8,6 +8,10 @@ inputs:
   ssh-hosts:
     description: "Comma-separated metal runner hosts to pre-connect"
     required: true
+  require-all-hosts:
+    description: "Fail setup unless every SSH host pre-connects"
+    required: false
+    default: "true"
   ssh-key:
     description: "SSH private key for metal runner"
     required: true
@@ -102,4 +106,5 @@ runs:
       env:
         SSH_USER: ${{ inputs.ssh-user }}
         SSH_HOSTS: ${{ inputs.ssh-hosts }}
-      run: bash "$GITHUB_WORKSPACE/.github/scripts/cloudflare-ssh-preconnect.sh" "$SSH_USER" "$SSH_HOSTS"
+        REQUIRE_ALL_HOSTS: ${{ inputs.require-all-hosts }}
+      run: bash "$GITHUB_WORKSPACE/.github/scripts/cloudflare-ssh-preconnect.sh" "$SSH_USER" "$SSH_HOSTS" "$REQUIRE_ALL_HOSTS"

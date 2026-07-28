@@ -3,15 +3,21 @@ set -euo pipefail
 
 SSH_USER="${1:-}"
 SSH_HOSTS="${2:-}"
+REQUIRE_ALL_HOSTS="${3:-true}"
 MAX_ATTEMPTS=3
 
 if [ -z "$SSH_USER" ] || [ -z "$SSH_HOSTS" ]; then
-  echo "Usage: $0 <ssh-user> <ssh-hosts>" >&2
+  echo "Usage: $0 <ssh-user> <ssh-hosts> [require-all-hosts]" >&2
   exit 2
 fi
 
 if [[ ! "$SSH_USER" =~ ^[A-Za-z0-9._-]+$ ]]; then
   echo "Invalid SSH user: ${SSH_USER}" >&2
+  exit 2
+fi
+
+if [ "$REQUIRE_ALL_HOSTS" != "true" ] && [ "$REQUIRE_ALL_HOSTS" != "false" ]; then
+  echo "require-all-hosts must be true or false" >&2
   exit 2
 fi
 
@@ -57,8 +63,13 @@ emit_failure() {
   local host="$1"
   local reason="$2"
   local diagnostics_file="$3"
+  local annotation="error"
 
-  echo "::error title=Cloudflare SSH preconnection failed::Unable to establish replay-safe SSH transport to ${host}: ${reason}" >&2
+  if [ "$REQUIRE_ALL_HOSTS" = "false" ]; then
+    annotation="warning"
+  fi
+
+  echo "::${annotation} title=Cloudflare SSH preconnection failed::Unable to establish replay-safe SSH transport to ${host}: ${reason}" >&2
   if [ -s "$diagnostics_file" ]; then
     echo "----- SSH preconnection stderr (last 20 lines, redacted) -----" >&2
     redact_diagnostics "$diagnostics_file" \
@@ -130,5 +141,10 @@ while IFS= read -r host; do
     continue
   fi
   seen_hosts[$host_key]=1
-  preconnect_host "$host"
+
+  preconnect_status=0
+  preconnect_host "$host" || preconnect_status=$?
+  if [ "$preconnect_status" -ne 0 ] && [ "$REQUIRE_ALL_HOSTS" = "true" ]; then
+    exit "$preconnect_status"
+  fi
 done <<< "$host_lines"

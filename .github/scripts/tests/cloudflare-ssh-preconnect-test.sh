@@ -153,6 +153,7 @@ run_case() {
   local name="$1"
   local scenario="$2"
   local hosts="$3"
+  local require_all_hosts="${4:-true}"
   local case_dir="$tmp/$name"
 
   mkdir -p "$case_dir/state" "$case_dir/runner-temp"
@@ -167,7 +168,7 @@ run_case() {
   FAKE_SLEEP_INVOCATIONS="$case_dir/sleep-invocations" \
   GITHUB_STEP_SUMMARY="$case_dir/outer-summary" \
   RUNNER_TEMP="$case_dir/runner-temp" \
-  bash "$PRECONNECT" metal "$hosts" \
+  bash "$PRECONNECT" metal "$hosts" "$require_all_hosts" \
     > "$case_dir/stdout" 2> "$case_dir/stderr" || status=$?
 
   printf '%s\n' "$status" > "$case_dir/status"
@@ -234,6 +235,19 @@ assert_line_count "$tmp/partial-failure/ssh-invocations" 1 "-n -O check metal@de
 assert_line_count "$tmp/partial-failure/ssh-invocations" 1 "-n -M -N -f metal@dev-11.gcp.aws.vm3.ai"
 assert_line_count "$tmp/partial-failure/ssh-invocations" 1 "-n -O exit metal@dev-1.aws.vm3.ai"
 assert_runner_temp_empty "$tmp/partial-failure/runner-temp"
+
+run_case partial-best-effort partial-failure "dev-1.aws.vm3.ai,dev-11.gcp.aws.vm3.ai,dev-2.aws.vm3.ai" false
+assert_contains "$tmp/partial-best-effort/status" "0"
+assert_contains "$tmp/partial-best-effort/stderr" "::warning title=Cloudflare SSH preconnection failed::"
+assert_not_contains "$tmp/partial-best-effort/stderr" "::error"
+assert_line_count "$tmp/partial-best-effort/ssh-invocations" 1 "-n -M -N -f metal@dev-1.aws.vm3.ai"
+assert_line_count "$tmp/partial-best-effort/ssh-invocations" 1 "-n -O check metal@dev-1.aws.vm3.ai"
+assert_line_count "$tmp/partial-best-effort/ssh-invocations" 1 "-n -M -N -f metal@dev-11.gcp.aws.vm3.ai"
+assert_line_count "$tmp/partial-best-effort/ssh-invocations" 1 "-n -M -N -f metal@dev-2.aws.vm3.ai"
+assert_line_count "$tmp/partial-best-effort/ssh-invocations" 1 "-n -O check metal@dev-2.aws.vm3.ai"
+assert_line_count "$tmp/partial-best-effort/ssh-invocations" 0 "-n -O exit metal@dev-1.aws.vm3.ai"
+assert_line_count "$tmp/partial-best-effort/ssh-invocations" 0 "-n -O exit metal@dev-2.aws.vm3.ai"
+assert_runner_temp_empty "$tmp/partial-best-effort/runner-temp"
 
 run_case exhaustion exhaustion "dev-1.aws.vm3.ai"
 assert_contains "$tmp/exhaustion/status" "255"
