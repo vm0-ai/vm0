@@ -14,7 +14,9 @@ use sandbox::{
 use tokio_util::sync::CancellationToken;
 use tracing::{info, warn};
 
-use super::agent_run::{AgentExecutionResult, RunControls, RunStart, run_in_sandbox};
+use super::agent_run::{
+    AgentExecutionResult, PreparedGuestRuntime, RunControls, RunStart, run_in_sandbox,
+};
 use super::cli_framework::{
     EffectiveCliFramework, effective_cli_framework, normalized_cli_agent_type,
 };
@@ -497,6 +499,8 @@ pub(super) async fn execute_new_sandbox_with_prepared_notifier(
             StartSandboxOptions {
                 workspace_image: workspace_image.as_ref(),
                 sandbox_prepared,
+                reuse_result,
+                cancel: &controls.cancel,
             },
         )
         .await;
@@ -671,6 +675,7 @@ pub(super) struct PreparedSandboxRun {
     pub(super) sandbox: Box<dyn Sandbox>,
     pub(super) source_ip: String,
     pub(super) network_log_session: NetworkLogSession,
+    pub(super) prepared_guest_runtime: Option<PreparedGuestRuntime>,
 }
 
 pub(super) struct SandboxPrepareError {
@@ -695,6 +700,8 @@ pub(super) struct NewSandboxHooks<'a> {
 struct StartSandboxOptions<'a> {
     workspace_image: Option<&'a WorkspaceImageLease>,
     sandbox_prepared: Option<&'a SandboxPreparedNotifier>,
+    reuse_result: SandboxReuseResult,
+    cancel: &'a CancellationToken,
 }
 
 impl SandboxPrepareError {
@@ -915,6 +922,8 @@ async fn create_started_sandbox(
     let StartSandboxOptions {
         workspace_image,
         sandbox_prepared,
+        reuse_result,
+        cancel,
     } = options;
     let sandbox_config = SandboxConfig {
         id: sandbox_id,
@@ -1094,6 +1103,17 @@ async fn create_started_sandbox(
     );
     telemetry.record("vm_create", t.elapsed(), true, None);
 
+    let mut prepared_guest_runtime =
+        PreparedGuestRuntime::prepare_for_codex_model_catalog_prefetch(
+            sandbox.as_ref(),
+            context,
+            params.restore_guest_state,
+            reuse_result,
+            cancel,
+            telemetry,
+        )
+        .await;
+
     let mount_started = Instant::now();
     if let Err(e) = ensure_workspace_drive_mounted(sandbox.as_ref(), context.run_id).await {
         telemetry.record(
@@ -1102,6 +1122,11 @@ async fn create_started_sandbox(
             false,
             Some(&e.to_string()),
         );
+        if let Some(prepared_guest_runtime) = prepared_guest_runtime.take() {
+            prepared_guest_runtime
+                .finish(sandbox.as_ref(), telemetry)
+                .await;
+        }
         let unregister_completed =
             match unregister_proxy_registry(config, &source_ip, context.run_id).await {
                 Ok(()) => true,
@@ -1134,6 +1159,7 @@ async fn create_started_sandbox(
         sandbox,
         source_ip,
         network_log_session,
+        prepared_guest_runtime,
     })
 }
 
@@ -1239,6 +1265,7 @@ pub(super) async fn execute_reused_sandbox(
             sandbox,
             source_ip,
             network_log_session,
+            prepared_guest_runtime: None,
         },
         context,
         config,
@@ -1265,10 +1292,13 @@ pub(super) async fn execute_prepared_sandbox_run(
         sandbox,
         source_ip,
         network_log_session,
+        prepared_guest_runtime,
     } = run;
     let cleanup_cancel = controls.cancel.clone();
     let reuse_result = start.reuse_result;
 
+    let mut controls = controls;
+    controls.prepared_guest_runtime = prepared_guest_runtime;
     let result = run_in_sandbox(
         sandbox.as_ref(),
         context,

@@ -648,6 +648,16 @@ function createWorkflowAutomationSummaryForRequest(
       databaseUrl: body.eventConfig.databaseUrl,
     });
   }
+  if (body.eventType === "strapi-entry-published") {
+    return {
+      ...base,
+      kind: "event",
+      eventType: "strapi-entry-published",
+      eventConfig: body.eventConfig,
+      schedule: null,
+      scheduleSummary: null,
+    };
+  }
   const exhaustive: never = body;
   return exhaustive;
 }

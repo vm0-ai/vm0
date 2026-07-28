@@ -16,7 +16,7 @@ use sandbox::{
     ProcessOutputChunk, ProcessOutputMode, Sandbox, SandboxError, SandboxFactory,
     SandboxGuestDnsReadinessReason, SandboxId,
 };
-use sandbox_mock::{MockSandbox, MockSandboxFactory};
+use sandbox_mock::{MockLifecycleGate, MockSandbox, MockSandboxFactory};
 
 use super::super::agent_run::{RunControls, RunStart};
 use super::super::env::{guest_run_payload_file_path, guest_user_env_file_path};
@@ -41,7 +41,7 @@ use super::support::{
 };
 use crate::ids::RunId;
 use crate::paths::{RunnerPaths, scoped_session_workspace_cache_key};
-use crate::types::{ResumeSession, SandboxReuseResult};
+use crate::types::{FirewallEntry, ResumeSession, SandboxReuseResult};
 use crate::workspace_image_cache::{
     SessionWorkspaceCache, WorkspaceCacheCheckoutResult, WorkspaceCacheTerminalStatus,
     WorkspaceImageLeaseIdentity, WorkspaceImagePrepareRequest,
@@ -55,6 +55,17 @@ mod idle_pool;
 mod proxy_registry;
 mod reuse;
 mod workspace_cache;
+
+fn codex_oauth_context() -> crate::types::ExecutionContext {
+    let mut context = minimal_context();
+    context.cli_agent_type = "codex".into();
+    context.encrypted_secrets = Some("encrypted".into());
+    context.firewalls = Some(vec![FirewallEntry::Builtin {
+        name: "model-provider:codex-oauth-token".into(),
+        base_url_vars: None,
+    }]);
+    context
+}
 
 fn assert_telemetry_action(
     telemetry: &crate::telemetry::JobTelemetry,

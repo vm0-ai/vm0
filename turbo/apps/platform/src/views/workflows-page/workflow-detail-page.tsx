@@ -4,6 +4,7 @@
 import type { FormEvent, ReactNode } from "react";
 import { useGet, useLastResolved, useLoadable, useSet } from "ccstate-react";
 import { useLoadableSet } from "ccstate-react/experimental";
+import type { StrapiIntegration } from "@vm0/api-contracts/contracts/zero-strapi-integrations";
 import type {
   GmailLabelAppliedEventConfig,
   GmailNewMessageEventConfig,
@@ -58,6 +59,7 @@ import {
   IconExternalLink,
   IconPlugConnected,
   IconVideo,
+  IconWebhook,
   IconX,
 } from "@tabler/icons-react";
 import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
@@ -109,6 +111,7 @@ import {
   createWorkflowNotionChildPageAutomation$,
   createWorkflowNotionDatabaseItemAutomation$,
   createWorkflowNotionPageContentUpdatedAutomation$,
+  createWorkflowStrapiEntryPublishedAutomation$,
   createWorkflowWebhookAutomation$,
   createGithubLabelActor$,
   createScheduleCronFields$,
@@ -135,6 +138,8 @@ import {
   setCreateGithubLabelActor$,
   setCreateGmailMatchConditions$,
   setCreateNotionPageContentUpdatedScope$,
+  createStrapiIntegrationId$,
+  setCreateStrapiIntegrationId$,
   setCreateScheduleCronFields$,
   setCreatedWorkflowWebhookAutomation$,
   setEditingGithubLabelActor$,
@@ -193,6 +198,7 @@ import {
 import { detach, Reason } from "../../signals/utils.ts";
 import { writeToClipboard } from "../../signals/zero-page/clipboard.ts";
 import { orgPlanCapabilities$ } from "../../signals/zero-page/org-plan-capabilities.ts";
+import { strapiIntegrations$ } from "../../signals/zero-page/zero-strapi.ts";
 import {
   connectGithubInstallation$,
   githubIntegrationData$,
@@ -709,6 +715,8 @@ function AutomationCreateAction() {
     features[FeatureSwitchKey.NotionWorkflowAutomations] ?? false;
   const githubWebhookAutomationsEnabled =
     features[FeatureSwitchKey.GithubWebhookAutomations] ?? false;
+  const strapiIntegrationEnabled =
+    features[FeatureSwitchKey.StrapiIntegration] ?? false;
 
   return (
     <AutomationCreateMenu
@@ -724,6 +732,7 @@ function AutomationCreateAction() {
       googleCalendarAutomationsEnabled
       googleMeetAutomationsEnabled
       notionWorkflowAutomationsEnabled={notionWorkflowAutomationsEnabled}
+      strapiIntegrationEnabled={strapiIntegrationEnabled}
       webhookTierEligible={webhookTierEligible}
     />
   );
@@ -3120,6 +3129,9 @@ function workflowAutomationTitle(
   if (automation.eventType === "notion-page-content-updated") {
     return "Notion page content updated";
   }
+  if (automation.eventType === "strapi-entry-published") {
+    return "Strapi entry published";
+  }
   return "Webhook";
 }
 
@@ -3271,6 +3283,14 @@ function workflowAutomationSummary(
     const title = automation.eventConfig.scope.dataSource.title;
     return title ? `Database ${quote(title)}` : "Configured database";
   }
+  if (automation.eventType === "strapi-entry-published") {
+    return [
+      automation.eventConfig.contentTypeUid ?? "Any content type",
+      automation.eventConfig.locale
+        ? `Locale ${automation.eventConfig.locale}`
+        : "Any locale",
+    ].join(" · ");
+  }
   return null;
 }
 
@@ -3293,6 +3313,7 @@ type AutomationCreateDialogKind =
   | "notion-child-page"
   | "notion-database-item"
   | "notion-page-content-updated"
+  | "strapi-entry-published"
   | "webhook";
 
 type AutomationCategoryKey =
@@ -3320,10 +3341,12 @@ type AutomationCreateCategory = {
 function buildIntegrationAutomationOptions({
   githubLabelAutomationsEnabled,
   githubWebhookAutomationsEnabled,
+  strapiIntegrationEnabled,
   webhookTierEligible,
 }: {
   readonly githubLabelAutomationsEnabled: boolean;
   readonly githubWebhookAutomationsEnabled: boolean;
+  readonly strapiIntegrationEnabled: boolean;
   readonly webhookTierEligible: boolean;
 }): AutomationCreateOption[] {
   const integrationOptions: AutomationCreateOption[] = [];
@@ -3368,6 +3391,14 @@ function buildIntegrationAutomationOptions({
         icon: IconBrandGithub,
       },
     );
+  }
+  if (strapiIntegrationEnabled) {
+    integrationOptions.push({
+      kind: "strapi-entry-published",
+      title: "Strapi entry published",
+      description: "Run after a matching Strapi entry is published.",
+      icon: IconWebhook,
+    });
   }
   integrationOptions.push({
     kind: "webhook",
@@ -3425,6 +3456,7 @@ function buildAutomationCreateCategories({
   googleCalendarAutomationsEnabled,
   googleMeetAutomationsEnabled,
   notionWorkflowAutomationsEnabled,
+  strapiIntegrationEnabled,
   webhookTierEligible,
 }: {
   readonly githubLabelAutomationsEnabled: boolean;
@@ -3432,6 +3464,7 @@ function buildAutomationCreateCategories({
   readonly googleCalendarAutomationsEnabled: boolean;
   readonly googleMeetAutomationsEnabled: boolean;
   readonly notionWorkflowAutomationsEnabled: boolean;
+  readonly strapiIntegrationEnabled: boolean;
   readonly webhookTierEligible: boolean;
 }): readonly AutomationCreateCategory[] {
   const calendarOptions: AutomationCreateOption[] = [];
@@ -3469,6 +3502,7 @@ function buildAutomationCreateCategories({
   const integrationOptions = buildIntegrationAutomationOptions({
     githubLabelAutomationsEnabled,
     githubWebhookAutomationsEnabled,
+    strapiIntegrationEnabled,
     webhookTierEligible,
   });
   const notionOptions = buildNotionAutomationOptions(
@@ -3621,6 +3655,7 @@ function AutomationCreateMenu({
   googleCalendarAutomationsEnabled,
   googleMeetAutomationsEnabled,
   notionWorkflowAutomationsEnabled,
+  strapiIntegrationEnabled,
   webhookTierEligible,
 }: {
   readonly onSelect: (kind: AutomationCreateDialogKind) => void;
@@ -3629,6 +3664,7 @@ function AutomationCreateMenu({
   readonly googleCalendarAutomationsEnabled: boolean;
   readonly googleMeetAutomationsEnabled: boolean;
   readonly notionWorkflowAutomationsEnabled: boolean;
+  readonly strapiIntegrationEnabled: boolean;
   readonly webhookTierEligible: boolean;
 }) {
   const open = useGet(workflowAutomationPickerOpen$);
@@ -3641,6 +3677,7 @@ function AutomationCreateMenu({
     googleCalendarAutomationsEnabled,
     googleMeetAutomationsEnabled,
     notionWorkflowAutomationsEnabled,
+    strapiIntegrationEnabled,
     webhookTierEligible,
   });
   const activeCategory =
@@ -3881,6 +3918,188 @@ function AutomationsSection({
   );
 }
 
+function CreateStrapiEntryPublishedAutomationDialog({
+  workflowId,
+  open,
+  onOpenChange,
+}: {
+  readonly workflowId: string;
+  readonly open: boolean;
+  readonly onOpenChange: (open: boolean) => void;
+}) {
+  const pageSignal = useGet(pageSignal$);
+  const integrations = useLastResolved(strapiIntegrations$) ?? [];
+  const selectedIntegrationId = useGet(createStrapiIntegrationId$);
+  const setSelectedIntegrationId = useSet(setCreateStrapiIntegrationId$);
+  const effectiveIntegrationId = integrations.some((integration) => {
+    return integration.id === selectedIntegrationId;
+  })
+    ? (selectedIntegrationId ?? "")
+    : (integrations[0]?.id ?? "");
+  const [createLoadable, createAutomation] = useLoadableSet(
+    createWorkflowStrapiEntryPublishedAutomation$,
+  );
+  const creating = createLoadable.state === "loading";
+  const submitAutomation = (contentTypeUid: string, locale: string) => {
+    if (!effectiveIntegrationId) {
+      return;
+    }
+    detach(
+      (async () => {
+        await createAutomation(
+          {
+            workflowId,
+            eventConfig: {
+              provider: "strapi",
+              event: "entry_published",
+              integrationId: effectiveIntegrationId,
+              ...(contentTypeUid ? { contentTypeUid } : {}),
+              ...(locale ? { locale } : {}),
+            },
+          },
+          pageSignal,
+        );
+        onOpenChange(false);
+      })(),
+      Reason.DomCallback,
+    );
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Add Strapi automation</DialogTitle>
+          <DialogDescription>
+            Run this workflow after matching localized publish events settle.
+          </DialogDescription>
+        </DialogHeader>
+        {integrations.length === 0 ? (
+          <div className="flex flex-col gap-4">
+            <div className="rounded-md border border-border/60 bg-muted/30 px-3 py-2 text-sm text-muted-foreground">
+              Connect a Strapi instance before creating this automation.
+            </div>
+            <DialogFooter>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => {
+                  onOpenChange(false);
+                }}
+              >
+                Cancel
+              </Button>
+              <Link
+                pathname={ROUTES.settingsStrapi}
+                className="zero-btn-morandi inline-flex h-9 items-center justify-center rounded-lg px-3 text-sm font-medium"
+              >
+                Configure Strapi
+              </Link>
+            </DialogFooter>
+          </div>
+        ) : (
+          <StrapiAutomationForm
+            integrations={integrations}
+            effectiveIntegrationId={effectiveIntegrationId}
+            creating={creating}
+            onSelectIntegration={setSelectedIntegrationId}
+            onCancel={() => {
+              onOpenChange(false);
+            }}
+            onSubmit={submitAutomation}
+          />
+        )}
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function StrapiAutomationForm({
+  integrations,
+  effectiveIntegrationId,
+  creating,
+  onSelectIntegration,
+  onCancel,
+  onSubmit,
+}: {
+  readonly integrations: readonly StrapiIntegration[];
+  readonly effectiveIntegrationId: string;
+  readonly creating: boolean;
+  readonly onSelectIntegration: (integrationId: string) => void;
+  readonly onCancel: () => void;
+  readonly onSubmit: (contentTypeUid: string, locale: string) => void;
+}) {
+  return (
+    <form
+      aria-label="Add Strapi entry published automation"
+      className="flex flex-col gap-4"
+      onSubmit={(event) => {
+        event.preventDefault();
+        const form = new FormData(event.currentTarget);
+        const contentTypeUid = String(form.get("contentTypeUid") ?? "").trim();
+        const locale = String(form.get("locale") ?? "").trim();
+        onSubmit(contentTypeUid, locale);
+      }}
+    >
+      <label className="flex flex-col gap-1 text-xs text-muted-foreground">
+        Strapi instance
+        <Select
+          value={effectiveIntegrationId}
+          disabled={creating}
+          onValueChange={onSelectIntegration}
+        >
+          <SelectTrigger className="h-9 w-full" aria-label="Strapi instance">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            {integrations.map((integration) => {
+              return (
+                <SelectItem key={integration.id} value={integration.id}>
+                  {integration.name}
+                </SelectItem>
+              );
+            })}
+          </SelectContent>
+        </Select>
+      </label>
+      <label className="flex flex-col gap-1 text-xs text-muted-foreground">
+        Content type UID (optional)
+        <Input
+          name="contentTypeUid"
+          disabled={creating}
+          placeholder="api::article.article"
+        />
+      </label>
+      <label className="flex flex-col gap-1 text-xs text-muted-foreground">
+        Locale (optional)
+        <Input name="locale" disabled={creating} placeholder="en" />
+      </label>
+      <p className="text-xs text-muted-foreground">
+        Leave locale blank to combine all localized publish events for the same
+        document into one workflow run.
+      </p>
+      <DialogFooter>
+        <Button
+          type="button"
+          variant="outline"
+          disabled={creating}
+          onClick={onCancel}
+        >
+          Cancel
+        </Button>
+        <Button type="submit" disabled={creating}>
+          {creating ? (
+            <IconLoader2 size={14} className="animate-spin" />
+          ) : (
+            <IconWebhook size={14} />
+          )}
+          Add Strapi automation
+        </Button>
+      </DialogFooter>
+    </form>
+  );
+}
+
 function WorkflowAutomationCreateDialogs({
   workflowId,
   displayTimezone,
@@ -3892,6 +4111,10 @@ function WorkflowAutomationCreateDialogs({
   readonly createDialog: WorkflowAutomationCreateDialog;
   readonly setCreateDialog: (dialog: WorkflowAutomationCreateDialog) => void;
 }) {
+  const features = useGet(featureSwitch$);
+  const strapiIntegrationEnabled =
+    features[FeatureSwitchKey.StrapiIntegration] ?? false;
+
   return (
     <>
       <CreateIntervalAutomationDialog
@@ -3983,6 +4206,15 @@ function WorkflowAutomationCreateDialogs({
           setCreateDialog(open ? "notion-page-content-updated" : null);
         }}
       />
+      {strapiIntegrationEnabled ? (
+        <CreateStrapiEntryPublishedAutomationDialog
+          workflowId={workflowId}
+          open={createDialog === "strapi-entry-published"}
+          onOpenChange={(open) => {
+            setCreateDialog(open ? "strapi-entry-published" : null);
+          }}
+        />
+      ) : null}
       <CreateWebhookAutomationDialog
         workflowId={workflowId}
         open={createDialog === "webhook"}

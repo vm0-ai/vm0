@@ -1,6 +1,69 @@
 use super::*;
 
 #[tokio::test]
+async fn workspace_mount_retry_starts_a_new_codex_catalog_prefetch_owner() {
+    let dir = tempfile::tempdir().unwrap();
+    let runner_paths = RunnerPaths::new(dir.path().join("runner"));
+    let cache = SessionWorkspaceCache::new(runner_paths.clone());
+    let mut config = test_executor_config(dir.path()).await;
+    config.workspace_cache = Some(cache.clone());
+    let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::new());
+    overrides.add_exec_matcher(sandbox_mock::ExecMatcher {
+        pattern: "mount -t ext4".to_string(),
+        exit_code: 64,
+        stdout: Vec::new(),
+        stderr: b"cached mount denied".to_vec(),
+    });
+    let factory = MockSandboxFactory::with_overrides(Arc::clone(&overrides));
+    let mut ctx = codex_oauth_context();
+    let session_id = "00000000-0000-4000-8000-000000023425";
+    ctx.resume_session = Some(ResumeSession::inline(
+        session_id.into(),
+        r#"{"type":"init"}"#.into(),
+    ));
+    let params = JobParams {
+        workspace_disk_mb: 16,
+        ..default_params()
+    };
+    seed_workspace_image_cache(&cache, &runner_paths, session_id, 16).await;
+    let mut telemetry = test_telemetry(&config, &ctx);
+
+    let outcome = execute_new_sandbox(
+        &factory,
+        &ctx,
+        NewSandboxDispatch {
+            id: SandboxId::new_v4(),
+            reuse_result: SandboxReuseResult::PoolMiss,
+        },
+        &config,
+        &params,
+        &mut telemetry,
+        tokio_util::sync::CancellationToken::new(),
+    )
+    .await
+    .unwrap();
+
+    assert_eq!(outcome.exit_code(), 0);
+    assert!(outcome.workspace_image.is_none());
+    assert_eq!(overrides.create_configs().len(), 2);
+    assert_eq!(overrides.destroy_call_count(), 1);
+    let start_calls = overrides.start_process_calls();
+    assert_eq!(start_calls.len(), 3);
+    assert!(start_calls[0].cmd.contains("codex --version"));
+    assert!(start_calls[1].cmd.contains("codex --version"));
+    assert!(!start_calls[2].cmd.contains("codex --version"));
+    assert_eq!(
+        telemetry
+            .pending_ops_snapshot()
+            .iter()
+            .filter(|(action, _, _)| action == "runner_codex_model_catalog_prefetch")
+            .count(),
+        2
+    );
+    assert_proxy_registry_empty(dir.path()).await;
+}
+
+#[tokio::test]
 async fn execute_inner_retries_fresh_after_workspace_cache_hit_create_failure() {
     let dir = tempfile::tempdir().unwrap();
     let runner_paths = RunnerPaths::new(dir.path().join("runner"));
