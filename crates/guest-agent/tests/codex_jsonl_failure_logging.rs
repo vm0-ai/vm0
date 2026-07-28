@@ -77,6 +77,32 @@ async fn codex_jsonl_failure_events_are_reported() -> Result<(), Box<dyn std::er
         Some(FailureReason::InvalidApiKey)
     );
 
+    unsafe {
+        std::env::set_var("MOCK_CODEX_FIXTURE", "safety-policy-refusal");
+    }
+
+    let cli_result = tokio::time::timeout(
+        Duration::from_secs(5),
+        common::execute_cli_for_runtime(&runtime, &masker, common::spawn_dummy_heartbeat()),
+    )
+    .await
+    .expect("execute_cli should return promptly")?;
+
+    assert_eq!(cli_result.exit_code, common::CLEAN_EXIT);
+    let diagnostic = cli_result
+        .failure_diagnostic
+        .as_ref()
+        .expect("safety policy refusal JSONL error should produce a diagnostic");
+    assert_eq!(
+        diagnostic.message,
+        "This content was flagged for possible cybersecurity risk. If this seems wrong, try rephrasing your request. To get authorized for security work, join the Trusted Access for Cyber program: https://chatgpt.com/cyber"
+    );
+    assert_eq!(diagnostic.source, FailureDetailSource::CodexJsonl);
+    assert_eq!(
+        diagnostic.failure_reason,
+        Some(FailureReason::SafetyPolicyRefusal)
+    );
+
     Ok(())
 }
 

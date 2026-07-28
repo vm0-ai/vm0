@@ -992,6 +992,52 @@ fn cli_failure_reason_ignores_generic_codex_401() {
 }
 
 #[test]
+fn cli_failure_reason_classifies_exact_codex_safety_policy_refusal() {
+    let reason = super::classify_cli_failure_reason(
+        AgentFramework::Codex,
+        FailureDetailSource::CodexJsonl,
+        CODEX_SAFETY_POLICY_REFUSAL_MESSAGE,
+    );
+
+    assert_eq!(reason, Some(FailureReason::SafetyPolicyRefusal));
+}
+
+#[test]
+fn cli_failure_reason_does_not_broadly_classify_safety_policy_text() {
+    for message in [
+        "policy violation",
+        "security risk",
+        "This content was flagged for possible cybersecurity risk.",
+        "This request was refused by a content policy.",
+    ] {
+        let reason = super::classify_cli_failure_reason(
+            AgentFramework::Codex,
+            FailureDetailSource::CodexJsonl,
+            message,
+        );
+
+        assert_eq!(reason, None, "message: {message}");
+    }
+
+    assert_eq!(
+        super::classify_cli_failure_reason(
+            AgentFramework::Codex,
+            FailureDetailSource::Stderr,
+            CODEX_SAFETY_POLICY_REFUSAL_MESSAGE,
+        ),
+        None
+    );
+    assert_eq!(
+        super::classify_cli_failure_reason(
+            AgentFramework::ClaudeCode,
+            FailureDetailSource::CodexJsonl,
+            CODEX_SAFETY_POLICY_REFUSAL_MESSAGE,
+        ),
+        None
+    );
+}
+
+#[test]
 fn cli_failure_reason_classifies_codex_oauth_reconnect_required() {
     let reason = classify_cli_failure_reason(
         AgentFramework::Codex,

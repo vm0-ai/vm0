@@ -363,6 +363,7 @@ fn codex_error_info_failure_reason(error: &Value) -> Option<FailureReason> {
     match codex_error_info_variant(error)? {
         "serverOverloaded" => Some(FailureReason::ProviderOverloaded),
         "usageLimitExceeded" => Some(FailureReason::UsageLimit),
+        "cyberPolicy" => Some(FailureReason::SafetyPolicyRefusal),
         _ => None,
     }
 }

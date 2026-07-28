@@ -23,6 +23,10 @@ const FIXTURES: &[(&str, &str)] = &[
         "invalid-api-key",
         include_str!("../fixtures/invalid-api-key.jsonl"),
     ),
+    (
+        "safety-policy-refusal",
+        include_str!("../fixtures/safety-policy-refusal.jsonl"),
+    ),
 ];
 
 /// Look up a fixture by name. Returns the fixture's raw JSONL content.
