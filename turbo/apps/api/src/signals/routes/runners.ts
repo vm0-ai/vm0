@@ -1,4 +1,5 @@
 import { command } from "ccstate";
+import { connectorRefSchema } from "@vm0/api-contracts/contracts/connector-identity";
 import {
   elapsedSinceApiStartMs,
   RESUME_SESSION_HISTORY_MAX_BYTES,
@@ -12,6 +13,7 @@ import {
   type ExecutionContext,
   type HeldSessionState,
   type SessionHistoryDownloadSource,
+  type StoredConnectorPermissionBaseline,
   type StoredExecutionContext,
 } from "@vm0/api-contracts/contracts/runners";
 import { runnerRealtimeTokenContract } from "@vm0/api-contracts/contracts/realtime";
@@ -1153,6 +1155,31 @@ async function secretValuesForRunner(
   });
 }
 
+function connectorPermissionBaselineMatchesStoredContext(
+  storedContext: StoredExecutionContext,
+  baseline: StoredConnectorPermissionBaseline,
+): boolean {
+  const baselineConnectorRefs = Object.keys(baseline.connectors);
+  const storedBuiltinConnectorRefs = new Set(
+    (storedContext.firewalls ?? []).flatMap((firewall) => {
+      return firewall.kind === "builtin" &&
+        connectorRefSchema.safeParse(firewall.name).success
+        ? [firewall.name]
+        : [];
+    }),
+  );
+  const storedNetworkPolicies = storedContext.networkPolicies ?? {};
+  return (
+    baselineConnectorRefs.length === storedBuiltinConnectorRefs.size &&
+    baselineConnectorRefs.every((connectorRef) => {
+      return (
+        storedBuiltinConnectorRefs.has(connectorRef) &&
+        Object.hasOwn(storedNetworkPolicies, connectorRef)
+      );
+    })
+  );
+}
+
 async function refreshClaimNetworkPolicies(args: {
   readonly db: Db;
   readonly run: ClaimedRun;
@@ -1207,9 +1234,10 @@ async function refreshClaimNetworkPolicies(args: {
       );
       if (
         !baselineResult.success ||
-        Object.keys(baselineResult.data.connectors).some((connectorRef) => {
-          return !Object.hasOwn(storedNetworkPolicies, connectorRef);
-        })
+        !connectorPermissionBaselineMatchesStoredContext(
+          args.storedContext,
+          baselineResult.data,
+        )
       ) {
         return await fullRefresh("full_invalid_baseline");
       }

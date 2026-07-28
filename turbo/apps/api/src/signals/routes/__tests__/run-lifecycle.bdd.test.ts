@@ -7442,6 +7442,7 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
     ]);
     await api.heartbeatRunner(runnerGroup);
     const claim = await api.claimRunnerJob(run.runId);
+    expectClaimNetworkPolicyRefreshPath(run.runId, "baseline_empty");
 
     const idPart = saved.connector.id.replaceAll("-", "");
     const internalName = `custom_connector_${idPart}`;
@@ -7866,6 +7867,10 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
       },
       {
         mode: "inconsistent",
+        path: "full_invalid_baseline",
+      },
+      {
+        mode: "incomplete",
         path: "full_invalid_baseline",
       },
       {

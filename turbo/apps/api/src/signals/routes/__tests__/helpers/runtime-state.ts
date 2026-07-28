@@ -116,7 +116,8 @@ export async function mutateRunnerJobConnectorPermissionBaseline(
     | "malformed"
     | "catalog-mismatch"
     | "authority-mismatch"
-    | "inconsistent",
+    | "inconsistent"
+    | "incomplete",
 ): Promise<void> {
   await postAction(context, {
     action: "mutate-runner-job-connector-permission-baseline",

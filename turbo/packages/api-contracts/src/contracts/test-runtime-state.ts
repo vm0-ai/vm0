@@ -42,6 +42,7 @@ export const testRuntimeStateActionBodySchema = z.discriminatedUnion("action", [
       "catalog-mismatch",
       "authority-mismatch",
       "inconsistent",
+      "incomplete",
     ]),
   }),
   z.object({

@@ -399,6 +399,15 @@ async function mutateRunnerJobConnectorPermissionBaseline(
       )`;
       break;
     }
+    case "incomplete": {
+      executionContext = sql`jsonb_set(
+        ${runnerJobQueue.executionContext},
+        '{connectorPermissionBaseline,connectors}',
+        '{}'::jsonb,
+        true
+      )`;
+      break;
+    }
   }
   const [updated] = await db
     .update(runnerJobQueue)
