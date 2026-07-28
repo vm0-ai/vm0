@@ -1605,11 +1605,10 @@ mod tests {
         cancel: CancellationToken,
         poll_wakeups: Arc<PollWakeups>,
     ) -> Arc<ApiProvider> {
-        api_provider_for_test_with_supported_profiles_and_claim_cooldown_capacity(
+        api_provider_for_test_with_claim_cooldown_capacity(
             api_url,
             cancel,
             poll_wakeups,
-            vec![crate::profile::DEFAULT_PROFILE.to_string()],
             CLAIM_COOLDOWN_CAPACITY,
         )
     }
@@ -1620,35 +1619,17 @@ mod tests {
         poll_wakeups: Arc<PollWakeups>,
         supported_profiles: Vec<String>,
     ) -> Arc<ApiProvider> {
-        api_provider_for_test_with_supported_profiles_and_claim_cooldown_capacity(
-            api_url,
-            cancel,
-            poll_wakeups,
-            supported_profiles,
-            CLAIM_COOLDOWN_CAPACITY,
-        )
+        let mut provider = api_provider_for_test(api_url, cancel, poll_wakeups);
+        Arc::get_mut(&mut provider)
+            .expect("fresh test provider should not be shared")
+            .supported_profiles = supported_profiles;
+        provider
     }
 
     fn api_provider_for_test_with_claim_cooldown_capacity(
         api_url: String,
         cancel: CancellationToken,
         poll_wakeups: Arc<PollWakeups>,
-        claim_cooldown_capacity: usize,
-    ) -> Arc<ApiProvider> {
-        api_provider_for_test_with_supported_profiles_and_claim_cooldown_capacity(
-            api_url,
-            cancel,
-            poll_wakeups,
-            vec![crate::profile::DEFAULT_PROFILE.to_string()],
-            claim_cooldown_capacity,
-        )
-    }
-
-    fn api_provider_for_test_with_supported_profiles_and_claim_cooldown_capacity(
-        api_url: String,
-        cancel: CancellationToken,
-        poll_wakeups: Arc<PollWakeups>,
-        supported_profiles: Vec<String>,
         claim_cooldown_capacity: usize,
     ) -> Arc<ApiProvider> {
         let api = ApiClient::new(
@@ -1666,7 +1647,7 @@ mod tests {
             api,
             runner_id: "550e8400-e29b-41d4-a716-446655440000".to_string(),
             group: "default".to_string(),
-            supported_profiles,
+            supported_profiles: vec![crate::profile::DEFAULT_PROFILE.to_string()],
             poll_wakeups,
             direct_candidates: DirectCandidateInbox::new(
                 DIRECT_CANDIDATE_INBOX_CAPACITY,
