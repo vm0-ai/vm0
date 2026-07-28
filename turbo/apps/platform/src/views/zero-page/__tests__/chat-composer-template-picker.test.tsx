@@ -2494,6 +2494,11 @@ describe("chat composer templates", () => {
         screen.getByTitle(`${websiteTemplate.title} website full preview`),
       ).toHaveAttribute("src", websiteTemplate.previewUrl);
       expect(
+        screen.getByTitle(
+          `${websiteTemplate.title} website preview placeholder`,
+        ),
+      ).toHaveAttribute("src", websiteTemplatePreviewImageUrl);
+      expect(
         screen.queryByTitle(
           `${websiteTemplate.title} website template preview`,
         ),
@@ -2502,6 +2507,20 @@ describe("chat composer templates", () => {
     });
     const websitePreviewDialog = screen.getByRole("dialog", {
       name: `Website / ${websiteTemplate.title}`,
+    });
+    const websitePreviewPlaceholder = screen.getByTitle(
+      `${websiteTemplate.title} website preview placeholder`,
+    );
+    expect(websitePreviewDialog).toHaveClass("data-[state=open]:!animate-none");
+    expect(document.querySelector(".zero-dialog-overlay")).toHaveClass(
+      "data-[state=open]:!animate-none",
+    );
+    expect(websitePreviewPlaceholder).toHaveClass("block");
+    fireEvent.load(
+      screen.getByTitle(`${websiteTemplate.title} website full preview`),
+    );
+    await waitFor(() => {
+      expect(websitePreviewPlaceholder).toHaveClass("hidden");
     });
     click(within(websitePreviewDialog).getByLabelText("Close"));
     await waitFor(() => {
@@ -2545,6 +2564,14 @@ describe("chat composer templates", () => {
       ).not.toBeInTheDocument();
       expect(tabByText("Website")).toHaveAttribute("aria-selected", "true");
     });
+    expect(
+      screen.getByRole("dialog", {
+        name: "Template",
+      }),
+    ).toHaveClass("data-[state=open]:!animate-none");
+    expect(document.querySelector(".zero-dialog-overlay")).toHaveClass(
+      "data-[state=open]:!animate-none",
+    );
     click(screen.getByLabelText("Close"));
     await waitFor(() => {
       expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
