@@ -57,7 +57,7 @@ function AuthenticationMethodChoice({
             </span>
             <span className="mt-1 block text-xs text-muted-foreground">
               {oauth2
-                ? "Enter your OAuth client ID and client secret."
+                ? "Authorize access with the connector's OAuth app."
                 : "Enter the API secret issued by the provider."}
             </span>
           </button>
@@ -95,70 +95,17 @@ function ApiSecretField({
   );
 }
 
-function OAuth2ClientFields({
-  clientId,
-  clientSecret,
-  setClientId,
-  setClientSecret,
-}: {
-  readonly clientId: string;
-  readonly clientSecret: string;
-  readonly setClientId: (value: string) => void;
-  readonly setClientSecret: (value: string) => void;
-}) {
-  return (
-    <>
-      <div className="flex flex-col gap-2">
-        <label
-          htmlFor="cc-oauth-client-id"
-          className="text-sm font-medium text-foreground"
-        >
-          Client ID
-        </label>
-        <Input
-          id="cc-oauth-client-id"
-          value={clientId}
-          onChange={(event) => {
-            setClientId(event.target.value);
-          }}
-          autoFocus
-        />
-      </div>
-      <div className="flex flex-col gap-2">
-        <label
-          htmlFor="cc-oauth-client-secret"
-          className="text-sm font-medium text-foreground"
-        >
-          Client secret
-        </label>
-        <Input
-          id="cc-oauth-client-secret"
-          type="password"
-          value={clientSecret}
-          onChange={(event) => {
-            setClientSecret(event.target.value);
-          }}
-        />
-      </div>
-    </>
-  );
-}
-
 function CredentialFields({
   selectedMethod,
   methods,
   apiSecret,
-  clientId,
-  clientSecret,
   setField,
 }: {
   readonly selectedMethod: CustomConnectorAuthMethod | undefined;
   readonly methods: readonly CustomConnectorAuthMethod[];
   readonly apiSecret: string;
-  readonly clientId: string;
-  readonly clientSecret: string;
   readonly setField: (
-    field: "authMethod" | "apiSecret" | "clientId" | "clientSecret",
+    field: "authMethod" | "apiSecret",
     value: CustomConnectorAuthMethod["type"] | string | null,
   ) => void;
 }) {
@@ -183,16 +130,9 @@ function CredentialFields({
     );
   }
   return (
-    <OAuth2ClientFields
-      clientId={clientId}
-      clientSecret={clientSecret}
-      setClientId={(value) => {
-        setField("clientId", value);
-      }}
-      setClientSecret={(value) => {
-        setField("clientSecret", value);
-      }}
-    />
+    <p className="text-sm text-muted-foreground">
+      Continue to the provider to authorize access.
+    </p>
   );
 }
 
@@ -283,10 +223,7 @@ export function CustomConnectorConnectDialog({
     !submitting &&
     (selectedMethod?.type === "api"
       ? hasTokenInputValue(form.apiSecret)
-      : selectedMethod?.type === "oauth2"
-        ? form.clientId.trim().length > 0 &&
-          hasTokenInputValue(form.clientSecret)
-        : false);
+      : selectedMethod?.type === "oauth2");
 
   const close = () => {
     resetForm();
@@ -303,14 +240,7 @@ export function CustomConnectorConnectDialog({
         if (selectedMethod.type === "api") {
           await submitApi({ id: connector.id, value: form.apiSecret }, signal);
         } else {
-          await submitOAuth2(
-            {
-              id: connector.id,
-              clientId: form.clientId,
-              clientSecret: form.clientSecret,
-            },
-            signal,
-          );
+          await submitOAuth2(connector.id, signal);
         }
         close();
       })(),
@@ -353,8 +283,6 @@ export function CustomConnectorConnectDialog({
             selectedMethod={selectedMethod}
             methods={methods}
             apiSecret={form.apiSecret}
-            clientId={form.clientId}
-            clientSecret={form.clientSecret}
             setField={setField}
           />
           <ConnectDialogFooter

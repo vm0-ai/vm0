@@ -29,9 +29,9 @@ export type {
 /**
  * Org-defined custom connectors (v1 of the connector gallery).
  *
- * An admin registers URL prefixes plus one or more authentication methods.
- * The runtime mitm proxy injects each user's API or OAuth credential at
- * request time, so credential values never enter the sandbox as env vars.
+ * An admin registers URL prefixes, authentication methods, and any shared OAuth
+ * app credentials. The runtime mitm proxy injects each user's API credential or
+ * OAuth token at request time, so credential values never enter the sandbox.
  */
 export const orgCustomConnectors = pgTable(
   "org_custom_connectors",
@@ -63,6 +63,8 @@ export const orgCustomConnectors = pgTable(
       .notNull()
       .default(sql`'[]'::jsonb`)
       .$type<OrgCustomConnectorAuthMethods>(),
+    encryptedOauthClientId: text("encrypted_oauth_client_id"),
+    encryptedOauthClientSecret: text("encrypted_oauth_client_secret"),
     createdBy: text("created_by").notNull(),
     createdAt: timestamp("created_at").defaultNow().notNull(),
     updatedAt: timestamp("updated_at").defaultNow().notNull(),

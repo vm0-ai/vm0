@@ -33,7 +33,6 @@ import {
   type PatchCustomConnectorBody,
   type SaveCustomConnectorProposalBody,
   type SaveCustomConnectorProposalResponse,
-  type StartCustomConnectorOAuth2Body,
 } from "@vm0/api-contracts/contracts/zero-custom-connectors";
 import { zeroFeatureSwitchesContract } from "@vm0/api-contracts/contracts/zero-feature-switches";
 import {
@@ -1773,7 +1772,6 @@ export function createConnectorBddApi(context: TestContext) {
     async requestStartCustomConnectorOAuth2(
       actor: ApiTestUser | null,
       connectorId: string,
-      body: StartCustomConnectorOAuth2Body,
       statuses: readonly (200 | 400 | 401 | 403 | 404 | 500)[],
     ) {
       const client = setupApp({ context })(zeroCustomConnectorOAuth2Contract);
@@ -1781,7 +1779,7 @@ export function createConnectorBddApi(context: TestContext) {
         client.start({
           params: { id: connectorId },
           headers: authenticate(actor),
-          body,
+          body: {},
         }),
         statuses,
       );
@@ -1790,12 +1788,10 @@ export function createConnectorBddApi(context: TestContext) {
     async startCustomConnectorOAuth2(
       actor: ApiTestUser,
       connectorId: string,
-      body: StartCustomConnectorOAuth2Body,
     ): Promise<string> {
       const response = await api.requestStartCustomConnectorOAuth2(
         actor,
         connectorId,
-        body,
         [200],
       );
       expectStatus(response, 200);

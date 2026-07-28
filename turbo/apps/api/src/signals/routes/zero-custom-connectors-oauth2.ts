@@ -14,12 +14,12 @@ import {
 } from "../services/connector-oauth-state.service";
 import {
   customConnectorOAuthMethodMatchesState,
+  decryptCustomConnectorOAuth2Credentials,
   exchangeCustomConnectorOAuth2Code,
   parseCustomConnectorOAuthStateContext,
   startCustomConnectorOAuth2$,
   storeCustomConnectorOAuth2Connection,
 } from "../services/custom-connector-oauth2.service";
-import { decryptStoredSecretValue } from "../services/crypto.utils";
 import { userFeatureSwitchContext } from "../services/feature-switches.service";
 import {
   customConnectorOAuth2AuthMethod,
@@ -95,7 +95,6 @@ const startOAuth2Inner$ = command(async ({ get, set }, signal: AbortSignal) => {
       userId: auth.userId,
       connectorId: params.id,
       redirectUri,
-      input: body.data,
     },
     signal,
   );
@@ -179,16 +178,7 @@ const callbackOAuth2$ = command(
     );
     signal.throwIfAborted();
     const credentials = await tapError(
-      Promise.all([
-        decryptStoredSecretValue(
-          state.context.encryptedClientId,
-          featureContext,
-        ),
-        decryptStoredSecretValue(
-          state.context.encryptedClientSecret,
-          featureContext,
-        ),
-      ]),
+      decryptCustomConnectorOAuth2Credentials(connector, featureContext),
     );
     signal.throwIfAborted();
     if (!credentials) {
@@ -198,8 +188,8 @@ const callbackOAuth2$ = command(
       (async () => {
         const token = await exchangeCustomConnectorOAuth2Code({
           method,
-          clientId: credentials[0],
-          clientSecret: credentials[1],
+          clientId: credentials.clientId,
+          clientSecret: credentials.clientSecret,
           code: authorizationCode,
           redirectUri: claimed.state.redirectUri,
           signal,
@@ -210,8 +200,6 @@ const callbackOAuth2$ = command(
           orgId: claimed.state.orgId,
           userId: claimed.state.userId,
           connectorId: connector.id,
-          clientId: credentials[0],
-          clientSecret: credentials[1],
           token,
           featureContext,
         });

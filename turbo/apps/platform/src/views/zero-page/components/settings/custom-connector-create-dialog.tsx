@@ -211,6 +211,44 @@ function customConnectorOAuthCallbackUrl(): string {
   ).toString();
 }
 
+function OAuth2ClientFields({ form, setField }: CreateFormFieldProps) {
+  return (
+    <>
+      <div className="flex flex-col gap-2">
+        <label
+          htmlFor="cc-oauth-client-id"
+          className="text-sm font-medium text-foreground"
+        >
+          Client ID
+        </label>
+        <Input
+          id="cc-oauth-client-id"
+          value={form.oauthClientId}
+          onChange={(event) => {
+            setField("oauthClientId", event.target.value);
+          }}
+        />
+      </div>
+      <div className="flex flex-col gap-2">
+        <label
+          htmlFor="cc-oauth-client-secret"
+          className="text-sm font-medium text-foreground"
+        >
+          Client secret
+        </label>
+        <Input
+          id="cc-oauth-client-secret"
+          type="password"
+          value={form.oauthClientSecret}
+          onChange={(event) => {
+            setField("oauthClientSecret", event.target.value);
+          }}
+        />
+      </div>
+    </>
+  );
+}
+
 function OAuth2AuthenticationFields({
   form,
   setField,
@@ -224,7 +262,7 @@ function OAuth2AuthenticationFields({
         <div>
           <p className="text-sm font-medium text-foreground">OAuth 2.0</p>
           <p className="text-xs text-muted-foreground">
-            Authorization Code flow with credentials supplied by each user.
+            Configure one OAuth app for members to authorize.
           </p>
         </div>
         <Button
@@ -269,6 +307,7 @@ function OAuth2AuthenticationFields({
           placeholder="https://provider.example.com/oauth/token"
         />
       </div>
+      <OAuth2ClientFields form={form} setField={setField} />
       <div className="flex flex-col gap-2">
         <label
           htmlFor="cc-oauth-scopes"
@@ -350,6 +389,7 @@ function buildCreateBody(
     };
   }
   const supportsApi = form.authMethodTypes.includes("api");
+  const supportsOAuth2 = form.authMethodTypes.includes("oauth2");
   const authMethods: CustomConnectorAuthMethod[] = form.authMethodTypes.map(
     (type) => {
       return type === "api"
@@ -390,6 +430,12 @@ function buildCreateBody(
       : [],
     queryInjections: [],
     authMethods,
+    ...(supportsOAuth2
+      ? {
+          oauthClientId: form.oauthClientId.trim(),
+          oauthClientSecret: form.oauthClientSecret,
+        }
+      : {}),
   };
 }
 
@@ -422,7 +468,9 @@ function formCanSubmit(
   return (
     !form.authMethodTypes.includes("oauth2") ||
     (form.oauthAuthorizationUrl.trim().length > 0 &&
-      form.oauthTokenUrl.trim().length > 0)
+      form.oauthTokenUrl.trim().length > 0 &&
+      form.oauthClientId.trim().length > 0 &&
+      form.oauthClientSecret.trim().length > 0)
   );
 }
 

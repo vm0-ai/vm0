@@ -1189,7 +1189,6 @@ export {
   type CustomConnectorResponse,
   type CustomConnectorAuthMethod,
   type CustomConnectorOAuth2AuthMethod,
-  type StartCustomConnectorOAuth2Body,
   type CreateCustomConnectorBody,
   type PatchCustomConnectorBody,
 } from "./zero-custom-connectors";

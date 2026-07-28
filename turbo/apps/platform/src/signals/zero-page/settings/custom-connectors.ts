@@ -175,15 +175,7 @@ export const clearCustomConnectorSecret$ = command(
 );
 
 export const connectCustomConnectorOAuth2$ = command(
-  async (
-    { get, set },
-    args: {
-      readonly id: string;
-      readonly clientId: string;
-      readonly clientSecret: string;
-    },
-    signal: AbortSignal,
-  ): Promise<void> => {
+  async ({ get, set }, id: string, signal: AbortSignal): Promise<void> => {
     const authWindow = window.open(
       "about:blank",
       "_blank",
@@ -202,11 +194,8 @@ export const connectCustomConnectorOAuth2$ = command(
         });
         const result = await accept(
           client.start({
-            params: { id: args.id },
-            body: {
-              clientId: args.clientId.trim(),
-              clientSecret: args.clientSecret,
-            },
+            params: { id },
+            body: {},
             fetchOptions: { signal },
           }),
           [200],
@@ -290,6 +279,8 @@ export interface CustomConnectorCreateForm {
   oauthTokenUrl: string;
   oauthScopesRaw: string;
   oauthClientAuthentication: "client_secret_basic" | "client_secret_post";
+  oauthClientId: string;
+  oauthClientSecret: string;
 }
 
 const CREATE_FORM_DEFAULTS = {
@@ -302,6 +293,8 @@ const CREATE_FORM_DEFAULTS = {
   oauthTokenUrl: "",
   oauthScopesRaw: "",
   oauthClientAuthentication: "client_secret_post",
+  oauthClientId: "",
+  oauthClientSecret: "",
 } as const satisfies CustomConnectorCreateForm;
 
 const internalCreateForm$ =
@@ -367,15 +360,11 @@ export const setCustomConnectorRenameInput$ = command(
 interface CustomConnectorConnectForm {
   readonly authMethod: CustomConnectorAuthMethod["type"] | null;
   readonly apiSecret: string;
-  readonly clientId: string;
-  readonly clientSecret: string;
 }
 
 const CONNECT_FORM_DEFAULTS = {
   authMethod: null,
   apiSecret: "",
-  clientId: "",
-  clientSecret: "",
 } as const satisfies CustomConnectorConnectForm;
 
 const internalConnectForm$ = state<CustomConnectorConnectForm>(

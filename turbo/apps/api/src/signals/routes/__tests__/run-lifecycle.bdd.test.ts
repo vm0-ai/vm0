@@ -7262,14 +7262,12 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
           clientAuthentication: "client_secret_basic",
         },
       ],
+      oauthClientId: "runtime-client-id",
+      oauthClientSecret: "runtime-client-secret",
     });
     const authorizationUrl = await connectors.startCustomConnectorOAuth2(
       actor,
       custom.id,
-      {
-        clientId: "runtime-client-id",
-        clientSecret: "runtime-client-secret",
-      },
     );
     const state = new URL(authorizationUrl).searchParams.get("state");
     if (!state) {

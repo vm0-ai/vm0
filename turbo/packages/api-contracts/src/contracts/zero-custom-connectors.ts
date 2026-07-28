@@ -107,6 +107,8 @@ export const createCustomConnectorBodySchema = z.object({
   headerInjections: z.array(customConnectorHeaderInjectionSchema).optional(),
   queryInjections: z.array(customConnectorQueryInjectionSchema).optional(),
   authMethods: customConnectorAuthMethodsSchema.optional(),
+  oauthClientId: z.string().min(1).max(2048).optional(),
+  oauthClientSecret: z.string().min(1).max(4096).optional(),
   slug: z.string().optional(),
 });
 export type CreateCustomConnectorBody = z.infer<
@@ -128,13 +130,7 @@ export const setCustomConnectorSecretBodySchema = z.object({
   value: z.string().min(1),
 });
 
-export const startCustomConnectorOAuth2BodySchema = z.object({
-  clientId: z.string().min(1).max(2048),
-  clientSecret: z.string().min(1).max(4096),
-});
-export type StartCustomConnectorOAuth2Body = z.infer<
-  typeof startCustomConnectorOAuth2BodySchema
->;
+export const startCustomConnectorOAuth2BodySchema = z.object({}).strict();
 
 export const startCustomConnectorOAuth2ResponseSchema = z.object({
   authorizationUrl: z.string().url(),

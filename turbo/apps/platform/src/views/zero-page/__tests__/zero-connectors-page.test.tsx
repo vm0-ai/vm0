@@ -3138,7 +3138,7 @@ describe("connectors page", () => {
     ).toBeInTheDocument();
   });
 
-  it("adds API and OAuth 2.0 auth methods and connects with user credentials", async () => {
+  it("configures OAuth app credentials at creation and authorizes on connect", async () => {
     context.mocks.data.org({
       id: "org_1",
       slug: "test-org",
@@ -3146,10 +3146,7 @@ describe("connectors page", () => {
       role: "admin",
     });
     const createdBodies: CreateCustomConnectorBody[] = [];
-    const oauthStartBodies: {
-      readonly clientId: string;
-      readonly clientSecret: string;
-    }[] = [];
+    let oauthStartCount = 0;
     let connector: CustomConnectorResponse | null = null;
     const authWindow = createMockAuthWindow();
     const browserOpen = context.mocks.browser.open(authWindow);
@@ -3178,7 +3175,8 @@ describe("connectors page", () => {
       zeroCustomConnectorOAuth2Contract.start,
       ({ params, body, respond }) => {
         expect(params.id).toBe(connector?.id);
-        oauthStartBodies.push(body);
+        expect(body).toStrictEqual({});
+        oauthStartCount += 1;
         if (!connector) {
           throw new Error("Expected custom connector to exist");
         }
@@ -3233,6 +3231,14 @@ describe("connectors page", () => {
       "https://oauth.acme.test/token",
     );
     await fill(
+      within(createDialog).getByLabelText("Client ID"),
+      "connector-oauth-client-id",
+    );
+    await fill(
+      within(createDialog).getByLabelText("Client secret"),
+      "connector-oauth-client-secret",
+    );
+    await fill(
       within(createDialog).getByLabelText(/Scopes/u),
       "search.read search.write",
     );
@@ -3276,6 +3282,8 @@ describe("connectors page", () => {
           clientAuthentication: "client_secret_post",
         },
       ],
+      oauthClientId: "connector-oauth-client-id",
+      oauthClientSecret: "connector-oauth-client-secret",
     });
 
     click(screen.getByText("Connect"));
@@ -3289,14 +3297,17 @@ describe("connectors page", () => {
       throw new Error("Expected OAuth 2.0 authentication choice");
     }
     click(oauthChoice);
-    await fill(
-      within(connectDialog).getByLabelText("Client ID"),
-      "user-oauth-client-id",
-    );
-    await fill(
-      within(connectDialog).getByLabelText("Client secret"),
-      "user-oauth-client-secret",
-    );
+    expect(
+      within(connectDialog).getByText(
+        "Continue to the provider to authorize access.",
+      ),
+    ).toBeInTheDocument();
+    expect(
+      within(connectDialog).queryByLabelText("Client ID"),
+    ).not.toBeInTheDocument();
+    expect(
+      within(connectDialog).queryByLabelText("Client secret"),
+    ).not.toBeInTheDocument();
     click(buttonByText("Continue", connectDialog));
 
     await waitFor(() => {
@@ -3312,12 +3323,7 @@ describe("connectors page", () => {
         features: "width=600,height=700",
       },
     ]);
-    expect(oauthStartBodies).toStrictEqual([
-      {
-        clientId: "user-oauth-client-id",
-        clientSecret: "user-oauth-client-secret",
-      },
-    ]);
+    expect(oauthStartCount).toBe(1);
   });
 
   it("manages a custom connector from creation through deletion", async () => {

@@ -54,14 +54,10 @@ const TEMPLATE_PLACEHOLDER_VALUE = "placeholder";
 const HOST_TEMPLATE_VALUE_UNSAFE_REGEX = /[/?#\\@:]/;
 export const CUSTOM_CONNECTOR_OAUTH_AUTHORIZATION_KEY =
   CUSTOM_CONNECTOR_OAUTH_AUTHORIZATION_FIELD_KEY;
-export const CUSTOM_CONNECTOR_OAUTH_CLIENT_ID_KEY = "__oauth_client_id";
-export const CUSTOM_CONNECTOR_OAUTH_CLIENT_SECRET_KEY = "__oauth_client_secret";
 export const CUSTOM_CONNECTOR_OAUTH_REFRESH_TOKEN_KEY = "__oauth_refresh_token";
 export const CUSTOM_CONNECTOR_OAUTH_EXPIRES_AT_KEY = "__oauth_expires_at";
 export const CUSTOM_CONNECTOR_OAUTH_VALUE_KEYS = [
   CUSTOM_CONNECTOR_OAUTH_AUTHORIZATION_KEY,
-  CUSTOM_CONNECTOR_OAUTH_CLIENT_ID_KEY,
-  CUSTOM_CONNECTOR_OAUTH_CLIENT_SECRET_KEY,
   CUSTOM_CONNECTOR_OAUTH_REFRESH_TOKEN_KEY,
   CUSTOM_CONNECTOR_OAUTH_EXPIRES_AT_KEY,
 ] as const;
@@ -82,6 +78,8 @@ export interface CustomConnectorRow {
   readonly headerInjections: readonly CustomConnectorHeaderInjection[];
   readonly queryInjections: readonly CustomConnectorQueryInjection[];
   readonly authMethods: readonly CustomConnectorAuthMethod[];
+  readonly encryptedOauthClientId: string | null;
+  readonly encryptedOauthClientSecret: string | null;
   readonly createdBy: string;
   readonly createdAt: Date;
   readonly updatedAt: Date;
@@ -105,6 +103,11 @@ interface ValidatedDefinition {
   readonly queryInjections: readonly CustomConnectorQueryInjection[];
   readonly authMethods: readonly CustomConnectorAuthMethod[];
   readonly slug: string | undefined;
+}
+
+interface OAuthClientCredentials {
+  readonly clientId: string;
+  readonly clientSecret: string;
 }
 
 interface ValueMarker {
@@ -847,6 +850,47 @@ function validateAuthMethods(
   return result;
 }
 
+function validateOAuthClientCredentials(
+  input: CreateCustomConnectorBody,
+  authMethods: readonly CustomConnectorAuthMethod[],
+): OAuthClientCredentials | null | BadRequestResponse {
+  const oauthMethod = authMethods.find(
+    (method): method is CustomConnectorOAuth2AuthMethod => {
+      return method.type === "oauth2";
+    },
+  );
+  if (!oauthMethod) {
+    if (
+      input.oauthClientId !== undefined ||
+      input.oauthClientSecret !== undefined
+    ) {
+      return badRequestMessage(
+        "OAuth client credentials require an OAuth 2.0 authentication method",
+      );
+    }
+    return null;
+  }
+  const clientId = input.oauthClientId?.trim() ?? "";
+  const clientSecret = input.oauthClientSecret ?? "";
+  if (clientId.length === 0 || clientSecret.trim().length === 0) {
+    return badRequestMessage("OAuth client ID and client secret are required");
+  }
+  if (clientId.length > 2048 || clientSecret.length > 4096) {
+    return badRequestMessage(
+      "OAuth client ID or client secret exceeds the maximum length",
+    );
+  }
+  if (
+    oauthMethod.clientAuthentication === "client_secret_basic" &&
+    clientId.includes(":")
+  ) {
+    return badRequestMessage(
+      "OAuth client ID must not contain a colon when using HTTP Basic authentication",
+    );
+  }
+  return { clientId, clientSecret };
+}
+
 function validateDefinition(
   input: DefinitionInput,
   serverFirewalls: ConnectorServerFirewallCatalog,
@@ -1091,7 +1135,7 @@ async function loadConnectorValueMarkers(args: {
 
 export const createCustomConnector$ = command(
   async (
-    { set },
+    { get, set },
     args: {
       readonly orgId: string;
       readonly userId: string;
@@ -1116,6 +1160,27 @@ export const createCustomConnector$ = command(
     if (isBadRequest(v)) {
       return v;
     }
+    const oauthCredentials = validateOAuthClientCredentials(
+      args.input,
+      v.authMethods,
+    );
+    if (isBadRequest(oauthCredentials)) {
+      return oauthCredentials;
+    }
+    signal.throwIfAborted();
+
+    let encryptedOauthClientId: string | null = null;
+    let encryptedOauthClientSecret: string | null = null;
+    if (oauthCredentials) {
+      const featureContext = await get(
+        userFeatureSwitchContext(args.orgId, args.userId),
+      );
+      signal.throwIfAborted();
+      [encryptedOauthClientId, encryptedOauthClientSecret] = await Promise.all([
+        encryptStoredSecretValue(oauthCredentials.clientId, featureContext),
+        encryptStoredSecretValue(oauthCredentials.clientSecret, featureContext),
+      ]);
+    }
     signal.throwIfAborted();
 
     const slug =
@@ -1138,6 +1203,8 @@ export const createCustomConnector$ = command(
         headerInjections: [...v.headerInjections],
         queryInjections: [...v.queryInjections],
         authMethods: [...v.authMethods],
+        encryptedOauthClientId,
+        encryptedOauthClientSecret,
         createdBy: args.userId,
       })
       .returning();

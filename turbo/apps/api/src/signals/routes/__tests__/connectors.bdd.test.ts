@@ -1509,11 +1509,16 @@ describe("CONN-02: external-code authorization", () => {
 });
 
 describe("CONN-03: custom connectors and connector-owned secrets", () => {
-  it("supports API and OAuth 2.0 auth methods with user-supplied client credentials", async () => {
+  it("stores OAuth app credentials at creation and lets members authorize", async () => {
     const provider = mockCustomConnectorOAuth2Provider(context);
     const bdd = createBddApi(context);
     bdd.acceptAgentStorageWrites();
     const admin = bdd.user({ orgRole: "org:admin" });
+    const member = bdd.user({
+      orgId: admin.orgId,
+      orgRole: "org:member",
+    });
+    const clientId = "bdd-custom-oauth-client-id";
     const clientSecret = "bdd-custom-oauth-client-secret";
     const connectorBody = {
       displayName: "BDD Multi Auth Connector",
@@ -1543,6 +1548,8 @@ describe("CONN-03: custom connectors and connector-owned secrets", () => {
           clientAuthentication: "client_secret_post" as const,
         },
       ],
+      oauthClientId: clientId,
+      oauthClientSecret: clientSecret,
     };
 
     const disabled = await connectorsApi.requestCreateCustomConnector(
@@ -1556,6 +1563,22 @@ describe("CONN-03: custom connectors and connector-owned secrets", () => {
     await connectorsApi.updateFeatureSwitches(admin, {
       [FeatureSwitchKey.CustomConnectorOAuth2]: true,
     });
+    await connectorsApi.updateFeatureSwitches(member, {
+      [FeatureSwitchKey.CustomConnectorOAuth2]: true,
+    });
+    const missingCredentials = await connectorsApi.requestCreateCustomConnector(
+      admin,
+      {
+        ...connectorBody,
+        oauthClientId: undefined,
+        oauthClientSecret: undefined,
+      },
+      [400],
+    );
+    expectApiError(missingCredentials.body);
+    expect(missingCredentials.body.error.message).toContain(
+      "client ID and client secret are required",
+    );
     const created = await connectorsApi.createCustomConnector(
       admin,
       connectorBody,
@@ -1565,23 +1588,19 @@ describe("CONN-03: custom connectors and connector-owned secrets", () => {
       connected: false,
       connectedAuthMethod: null,
     });
+    expectNoVisibleSecret(created, clientId);
+    expectNoVisibleSecret(created, clientSecret);
 
     const authorizationUrl = await connectorsApi.startCustomConnectorOAuth2(
-      admin,
+      member,
       created.id,
-      {
-        clientId: "bdd-custom-oauth-client-id",
-        clientSecret,
-      },
     );
     const authorization = new URL(authorizationUrl);
     expect(authorization.origin + authorization.pathname).toBe(
       provider.authorizationUrl,
     );
     expect(authorization.searchParams.get("response_type")).toBe("code");
-    expect(authorization.searchParams.get("client_id")).toBe(
-      "bdd-custom-oauth-client-id",
-    );
+    expect(authorization.searchParams.get("client_id")).toBe(clientId);
     expect(authorization.searchParams.get("scope")).toBe("read write");
     const redirectUri = authorization.searchParams.get("redirect_uri");
     if (!redirectUri) {
@@ -1610,7 +1629,7 @@ describe("CONN-03: custom connectors and connector-owned secrets", () => {
     expect(provider.tokenBodies[0]?.get("client_secret")).toBe(clientSecret);
     expect(provider.authorizationHeaders).toStrictEqual([null]);
 
-    const oauthConnected = await connectorsApi.listCustomConnectors(admin);
+    const oauthConnected = await connectorsApi.listCustomConnectors(member);
     expect(
       oauthConnected.find((connector) => {
         return connector.id === created.id;
@@ -1623,13 +1642,6 @@ describe("CONN-03: custom connectors and connector-owned secrets", () => {
     expectNoVisibleSecret(oauthConnected, clientSecret);
     expectNoVisibleSecret(oauthConnected, "custom-oauth-initial-access-token");
     expectNoVisibleSecret(oauthConnected, "custom-oauth-refresh-token");
-
-    const agent = await bdd.createAgent(admin, {
-      displayName: "BDD Multi Auth Agent",
-    });
-    await connectorsApi.updateAgentCustomConnectors(admin, agent.agentId, [
-      created.id,
-    ]);
 
     await connectorsApi.setCustomConnectorSecret(
       admin,
@@ -1647,6 +1659,13 @@ describe("CONN-03: custom connectors and connector-owned secrets", () => {
       hasSecret: true,
     });
     expectNoVisibleSecret(apiConnected, "bdd-api-secret");
+
+    const agent = await bdd.createAgent(admin, {
+      displayName: "BDD Multi Auth Agent",
+    });
+    await connectorsApi.updateAgentCustomConnectors(admin, agent.agentId, [
+      created.id,
+    ]);
 
     await connectorsApi.deleteCustomConnector(admin, created.id);
     await bdd.deleteAgent(admin, agent.agentId);
@@ -2191,10 +2210,6 @@ describe("CONN-03: custom connectors and connector-owned secrets", () => {
       const oauthStart = await connectorsApi.requestStartCustomConnectorOAuth2(
         actor,
         connectorId,
-        {
-          clientId: "unauthorized-client-id",
-          clientSecret: "unauthorized-client-secret",
-        },
         [401],
       );
       expectApiError(oauthStart.body);
