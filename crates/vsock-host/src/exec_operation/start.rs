@@ -4,6 +4,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use tokio::sync::oneshot;
+use tokio::time::{self, Instant};
 use vsock_proto::{
     ExecControlPolicy, ExecLifecyclePolicy, ExecOutputPolicy, ExecTimeoutPolicy, MSG_EXEC_CANCEL,
 };
@@ -26,6 +27,22 @@ use super::types::{
 };
 use super::{EXEC_OPERATION_START_TIMEOUT_CANCEL_WRITE_TIMEOUT, SMALL_EXEC_CAPTURE_LIMIT_BYTES};
 
+fn exec_start_timeout_error() -> io::Error {
+    io::Error::new(io::ErrorKind::TimedOut, "exec start timeout")
+}
+
+fn exec_start_deadline(timeout: Duration) -> io::Result<Instant> {
+    if timeout.is_zero() {
+        return Err(exec_start_timeout_error());
+    }
+    Instant::now().checked_add(timeout).ok_or_else(|| {
+        io::Error::new(
+            io::ErrorKind::InvalidInput,
+            "exec start timeout is too large",
+        )
+    })
+}
+
 pub(crate) fn append_diagnostic(stderr: &mut Vec<u8>, diagnostic: &str) {
     if diagnostic.is_empty() {
         return;
@@ -40,13 +57,14 @@ pub(crate) async fn start_exec_operation_on_shared(
     shared: &Arc<Shared>,
     request: ExecOperationRequest<'_>,
 ) -> io::Result<ExecOperationHandle> {
-    start_exec_operation_on_shared_with_tracking(
+    let (handle, _) = start_exec_operation_on_shared_with_tracking(
         shared,
         request,
         ExecOperationTracking::Tracked,
         FrameWriteObserver::default(),
     )
-    .await
+    .await?;
+    Ok(handle)
 }
 
 async fn start_exec_operation_on_shared_with_tracking(
@@ -54,7 +72,7 @@ async fn start_exec_operation_on_shared_with_tracking(
     request: ExecOperationRequest<'_>,
     tracking: ExecOperationTracking<'_>,
     write_observer: FrameWriteObserver,
-) -> io::Result<ExecOperationHandle> {
+) -> io::Result<(ExecOperationHandle, Instant)> {
     if request.timeout_ms == 0 {
         return Err(io::Error::new(
             io::ErrorKind::InvalidInput,
@@ -85,6 +103,7 @@ async fn start_exec_operation_on_shared_with_tracking(
         },
     )
     .map_err(|e| io::Error::new(io::ErrorKind::InvalidInput, e.to_string()))?;
+    let deadline = exec_start_deadline(request.start_write_timeout)?;
 
     let ExecOperationRegistration {
         seq,
@@ -104,21 +123,28 @@ async fn start_exec_operation_on_shared_with_tracking(
             tracking,
         },
     )?;
-    write_exec_start_frame(
-        shared,
-        seq,
-        &payload,
-        &diagnostic,
-        tracks_normal_operation,
-        write_observer,
+    time::timeout_at(
+        deadline,
+        write_exec_start_frame(
+            shared,
+            seq,
+            &payload,
+            &diagnostic,
+            tracks_normal_operation,
+            write_observer,
+        ),
     )
-    .await?;
+    .await
+    .map_err(|_| exec_start_timeout_error())??;
     registration_guard.disarm();
 
-    Ok(ExecOperationHandle {
-        wait_core: ExecWaitCore::new(Arc::clone(shared), seq, diagnostic, result_rx),
-        stream_rx,
-    })
+    Ok((
+        ExecOperationHandle {
+            wait_core: ExecWaitCore::new(Arc::clone(shared), seq, diagnostic, result_rx),
+            stream_rx,
+        },
+        deadline,
+    ))
 }
 
 pub(crate) async fn start_supervised_exec_on_shared(
@@ -190,6 +216,7 @@ where
         },
     )
     .map_err(|e| io::Error::new(io::ErrorKind::InvalidInput, e.to_string()))?;
+    let deadline = exec_start_deadline(request.start_timeout)?;
 
     let (start_tx, start_rx) = oneshot::channel();
     let ExecOperationRegistration {
@@ -215,15 +242,20 @@ where
     )?;
     let mut start_cancel_on_drop =
         ExecOperationCancelOnDropGuard::new_for_seq(Arc::clone(shared), seq, diagnostic.clone());
-    let start_write_result = write_exec_start_frame(
-        shared,
-        seq,
-        &payload,
-        &diagnostic,
-        tracks_normal_operation,
-        FrameWriteObserver::default(),
+    let start_write_result = time::timeout_at(
+        deadline,
+        write_exec_start_frame(
+            shared,
+            seq,
+            &payload,
+            &diagnostic,
+            tracks_normal_operation,
+            FrameWriteObserver::default(),
+        ),
     )
-    .await;
+    .await
+    .map_err(|_| exec_start_timeout_error())
+    .and_then(|result| result);
     if let Err(error) = start_write_result {
         start_cancel_on_drop.disarm();
         return Err(error);
@@ -248,7 +280,7 @@ where
                 }
             }
         }
-        _ = tokio::time::sleep(request.start_timeout) => {
+        _ = time::sleep_until(deadline) => {
             let payload = vsock_proto::encode_exec_cancel();
             shared.remove_operation(seq);
             registration_guard.disarm();
@@ -335,7 +367,7 @@ async fn exec_operation_capture_on_shared_with_tracking(
     tracking: ExecOperationTracking<'_>,
     write_observer: FrameWriteObserver,
 ) -> io::Result<ExecOperationResult> {
-    let handle = start_exec_operation_on_shared_with_tracking(
+    let (handle, deadline) = start_exec_operation_on_shared_with_tracking(
         shared,
         ExecOperationRequest {
             timeout_ms: request.timeout_ms,
@@ -352,12 +384,13 @@ async fn exec_operation_capture_on_shared_with_tracking(
             expected_exit_codes: request.expected_exit_codes,
             stdin_bytes: request.stdin_bytes,
             stream_queue_capacity: None,
+            start_write_timeout: request.wait_timeout,
         },
         tracking,
         write_observer,
     )
     .await?;
-    handle.wait(request.wait_timeout).await
+    handle.wait_until(deadline).await
 }
 
 pub(crate) async fn exec_operation_stream_on_shared(
@@ -386,7 +419,7 @@ async fn exec_operation_stream_on_shared_with_tracking(
         ));
     }
 
-    start_exec_operation_on_shared_with_tracking(
+    let (handle, _) = start_exec_operation_on_shared_with_tracking(
         shared,
         ExecOperationRequest {
             timeout_ms: request.timeout_ms,
@@ -399,11 +432,13 @@ async fn exec_operation_stream_on_shared_with_tracking(
             expected_exit_codes: request.expected_exit_codes,
             stdin_bytes: request.stdin_bytes,
             stream_queue_capacity: request.stream_queue_capacity,
+            start_write_timeout: request.start_write_timeout,
         },
         tracking,
         write_observer,
     )
-    .await
+    .await?;
+    Ok(handle)
 }
 
 pub(crate) async fn exec_operation_stream_with_composite_on_shared_and_observer(
