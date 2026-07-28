@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.37.156](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.37.155...sandbox-fc-v0.37.156) (2026-07-28)
+
+
+### Bug Fixes
+
+* **sandbox-fc:** propagate firecracker transition errors ([#23413](https://github.com/vm0-ai/vm0/issues/23413)) ([a73a42c](https://github.com/vm0-ai/vm0/commit/a73a42ceaea91c3468406b939431436f2ea3dce2))
+
 ## [0.37.155](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.37.154...sandbox-fc-v0.37.155) (2026-07-28)
 
 ## [0.37.154](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.37.153...sandbox-fc-v0.37.154) (2026-07-27)

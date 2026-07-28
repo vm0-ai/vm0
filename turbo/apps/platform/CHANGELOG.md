@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.646.1](https://github.com/vm0-ai/vm0/compare/app-v0.646.0...app-v0.646.1) (2026-07-28)
+
+
+### Bug Fixes
+
+* **platform:** remove standalone connector hint ([#23388](https://github.com/vm0-ai/vm0/issues/23388)) ([07f65c9](https://github.com/vm0-ai/vm0/commit/07f65c9ca048a37c712be06602efc1a7481d24c9))
+* show website template previews in a single dialog ([#23379](https://github.com/vm0-ai/vm0/issues/23379)) ([3452190](https://github.com/vm0-ai/vm0/commit/3452190fe5a5a82f27d6c1f63a26e04e7a9be526))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.239.2
+    * @vm0/core bumped to 8.479.1
+
 ## [0.646.0](https://github.com/vm0-ai/vm0/compare/app-v0.645.0...app-v0.646.0) (2026-07-28)
 
 
