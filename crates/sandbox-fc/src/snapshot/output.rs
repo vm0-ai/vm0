@@ -171,10 +171,10 @@ pub(super) fn sync_snapshot_output_dir(output: &SnapshotOutputPaths) -> Result<(
 pub(super) fn publish_snapshot_complete_marker(
     output: &SnapshotOutputPaths,
 ) -> Result<(), SnapshotError> {
-    publish_snapshot_complete_marker_with_sync(output, std::fs::File::sync_all)
+    publish_snapshot_complete_marker_with_marker_sync(output, std::fs::File::sync_all)
 }
 
-fn publish_snapshot_complete_marker_with_sync(
+fn publish_snapshot_complete_marker_with_marker_sync(
     output: &SnapshotOutputPaths,
     sync_marker: impl FnOnce(&std::fs::File) -> io::Result<()>,
 ) -> Result<(), SnapshotError> {
@@ -386,7 +386,7 @@ mod tests {
         write_required_snapshot_artifacts(&output).await;
         let marker = output.complete_marker();
 
-        let err = publish_snapshot_complete_marker_with_sync(&output, |_| {
+        let err = publish_snapshot_complete_marker_with_marker_sync(&output, |_| {
             let content = std::fs::read(&marker).expect("read marker before injected sync failure");
             assert_eq!(content, SNAPSHOT_COMPLETE_MARKER_CONTENT);
             Err(io::Error::other("injected marker sync failure"))
