@@ -256,7 +256,6 @@ describe("chat inline feedback", () => {
       context,
       path: `/chats/${FEEDBACK_THREAD_ID}`,
       featureSwitches: {
-        [FeatureSwitchKey.StructuredPrompt]: true,
         [FeatureSwitchKey.StructuredPromptInlineTemplates]: true,
       },
     });
@@ -340,7 +339,6 @@ describe("chat inline feedback", () => {
     detachedSetupPage({
       context,
       path: `/chats/${FEEDBACK_THREAD_ID}`,
-      featureSwitches: { [FeatureSwitchKey.StructuredPrompt]: true },
     });
 
     const composerEditor = await findComposerEditor();
@@ -447,7 +445,6 @@ describe("chat inline feedback", () => {
     detachedSetupPage({
       context,
       path: `/chats/${threadId}`,
-      featureSwitches: { [FeatureSwitchKey.StructuredPrompt]: false },
     });
 
     selectTextForInlineFeedback(await screen.findByText(assistantReply));
@@ -475,7 +472,7 @@ describe("chat inline feedback", () => {
     });
   });
 
-  it("restores queued inline feedback with the structured prompt rollout", async () => {
+  it("restores queued inline feedback as a userMessage draft", async () => {
     const user = userEvent.setup({ delay: null });
     const threadId = "b0000000-0000-4000-a000-000000000706";
     const assistantReply = "The rollout plan needs a clearer owner.";
@@ -531,7 +528,6 @@ describe("chat inline feedback", () => {
     detachedSetupPage({
       context,
       path: `/chats/${threadId}`,
-      featureSwitches: { [FeatureSwitchKey.StructuredPrompt]: true },
     });
 
     click(await screen.findByLabelText("Template"));
@@ -662,7 +658,6 @@ describe("chat inline feedback", () => {
       detachedSetupPage({
         context,
         path: `/chats/${threadId}`,
-        featureSwitches: { [FeatureSwitchKey.StructuredPrompt]: true },
       });
 
       const assistantReplyElement = await screen.findByText(assistantReply);

@@ -258,10 +258,9 @@ function truncateIncomplete(value: string): string {
 
 function formatIncompleteMessage(
   message: IncompleteRoundMessage,
-  userMessageEnabled: boolean,
   inlineTemplatesEnabled: boolean,
 ): string {
-  if (message.role === "user" && userMessageEnabled && message.userMessage) {
+  if (message.role === "user" && message.userMessage) {
     const prompt = projectUserMessage(message.userMessage, {
       inlineTemplates: inlineTemplatesEnabled,
     }).agentPrompt;
@@ -283,7 +282,6 @@ function formatIncompleteMessage(
 
 function buildWebChatIncompleteContext(
   rounds: readonly IncompleteRound[],
-  userMessageEnabled: boolean,
   inlineTemplatesEnabled: boolean,
 ): string {
   if (rounds.length === 0) {
@@ -293,11 +291,7 @@ function buildWebChatIncompleteContext(
   const blocks = rounds.map((round, index) => {
     const relativeIndex = index - total + 1;
     const rendered = round.messages.map((message) => {
-      return formatIncompleteMessage(
-        message,
-        userMessageEnabled,
-        inlineTemplatesEnabled,
-      );
+      return formatIncompleteMessage(message, inlineTemplatesEnabled);
     });
     const hasAssistant = round.messages.some((message) => {
       return message.role === "assistant";
@@ -331,14 +325,9 @@ function buildWebChatIncompleteContext(
 export async function loadWebChatIncompleteContext(
   db: Db,
   threadId: string,
-  userMessageEnabled: boolean,
   inlineTemplatesEnabled = false,
 ): Promise<string> {
   const selection = await selectIncompleteRoundFrontier(db, threadId);
   const rounds = await loadSelectedIncompleteRounds(db, threadId, selection);
-  return buildWebChatIncompleteContext(
-    rounds,
-    userMessageEnabled,
-    inlineTemplatesEnabled,
-  );
+  return buildWebChatIncompleteContext(rounds, inlineTemplatesEnabled);
 }

@@ -39,6 +39,10 @@ const chatEvents = [
     threadId: THREAD_ID,
     eventType: "input.prompt",
     content: "Run the task",
+    userMessage: {
+      version: 1,
+      parts: [{ type: "text", text: "Run the task" }],
+    },
     createdAt: CREATED_AT,
   },
   {
@@ -58,6 +62,10 @@ const chatEvents = [
     threadId: THREAD_ID,
     eventType: "input.rejected",
     content: "Run the task",
+    userMessage: {
+      version: 1,
+      parts: [{ type: "text", text: "Run the task" }],
+    },
     error: "Insufficient credits",
     createdAt: CREATED_AT,
   },
@@ -220,6 +228,10 @@ function compatibilityRoundTripExpectation(event: ChatEvent): ChatEvent {
         ...legacy,
         eventType: "input.prompt",
         content: triggerBrief,
+        userMessage: {
+          version: 1,
+          parts: [{ type: "text", text: triggerBrief }],
+        },
       });
     }
     case "queue.automation_paused": {

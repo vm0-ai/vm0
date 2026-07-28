@@ -1508,7 +1508,6 @@ async function generateRecommendedFollowupsForCompletedRun(args: {
 async function loadRecommendedFollowupContextForCompletedRun(args: {
   readonly db: Db;
   readonly threadId: string;
-  readonly userMessageEnabled: boolean;
   readonly signal: AbortSignal;
 }): Promise<readonly ChatCompletionContextMessage[]> {
   return (
@@ -1516,7 +1515,6 @@ async function loadRecommendedFollowupContextForCompletedRun(args: {
       loadChatThreadRecommendedFollowupContext({
         db: args.db,
         threadId: args.threadId,
-        userMessageEnabled: args.userMessageEnabled,
       }),
       (err) => {
         log.warn("Recommended follow-up context load failed", {
@@ -1608,7 +1606,6 @@ async function handleCompletedChatCallback(args: {
   readonly run: ChatRunInfo;
   readonly chatThread: ChatThreadForRunRow;
   readonly timing: ChatCallbackPreCreateTimingCollector;
-  readonly userMessageEnabled: boolean;
   readonly signal: AbortSignal;
   readonly slackDelivery?: SlackDeliveryTarget;
   readonly feishuDelivery?: FeishuDeliveryTarget;
@@ -1682,7 +1679,6 @@ async function handleCompletedChatCallback(args: {
       return loadRecommendedFollowupContextForCompletedRun({
         db: args.db,
         threadId: args.chatThread.chatThreadId,
-        userMessageEnabled: args.userMessageEnabled,
         signal: args.signal,
       });
     },
@@ -1707,7 +1703,6 @@ async function runCompletedChatCallbackSideEffects(args: {
   readonly suppressWebPushForActiveGoal: boolean;
   readonly lastResultText: string | null;
   readonly followupContext: readonly ChatCompletionContextMessage[];
-  readonly userMessageEnabled: boolean;
   readonly signal: AbortSignal;
   readonly saveRunSummary: (resultText: string) => Promise<void>;
 }): Promise<void> {
@@ -1723,7 +1718,6 @@ async function runCompletedChatCallbackSideEffects(args: {
     runId: args.runId,
     prompt: args.run.prompt,
     currentAssistantReply: args.lastResultText ?? undefined,
-    userMessageEnabled: args.userMessageEnabled,
   });
 
   const followupsStep = (async () => {
@@ -1934,11 +1928,10 @@ function truncatePrior(value: string): string {
 
 function formatPriorRunMessage(
   message: PriorRunMessage,
-  userMessageEnabled: boolean,
   inlineTemplatesEnabled: boolean,
 ): string {
   const roleLabel = message.role === "user" ? "User" : "Assistant";
-  if (userMessageEnabled && message.role === "user" && message.userMessage) {
+  if (message.role === "user" && message.userMessage) {
     const prompt = projectUserMessage(message.userMessage, {
       inlineTemplates: inlineTemplatesEnabled,
     }).agentPrompt;
@@ -1952,7 +1945,6 @@ function formatPriorRunMessage(
 function buildChatPriorRunsContext(
   runs: readonly PriorRun[],
   triggerSource: "web" | "slack" | "feishu" | "teams",
-  userMessageEnabled: boolean,
   inlineTemplatesEnabled: boolean,
 ): string {
   if (runs.length === 0) {
@@ -1960,11 +1952,7 @@ function buildChatPriorRunsContext(
   }
   const sections = runs.map((run, index) => {
     const renderedMessages = run.messages.map((message) => {
-      return formatPriorRunMessage(
-        message,
-        userMessageEnabled,
-        inlineTemplatesEnabled,
-      );
+      return formatPriorRunMessage(message, inlineTemplatesEnabled);
     });
     const transcript =
       renderedMessages.length > 0
@@ -2164,7 +2152,6 @@ async function buildQueuedPriorContext(args: {
   readonly startNewSession: boolean;
   readonly incompleteContext: string;
   readonly triggerSource: "web" | "slack" | "feishu" | "teams";
-  readonly userMessageEnabled: boolean;
   readonly inlineTemplatesEnabled: boolean;
 }): Promise<string> {
   if (!args.startNewSession || args.incompleteContext.length > 0) {
@@ -2178,7 +2165,6 @@ async function buildQueuedPriorContext(args: {
       RECENT_CHAT_RUN_LIMIT,
     ),
     args.triggerSource,
-    args.userMessageEnabled,
     args.inlineTemplatesEnabled,
   );
 }
@@ -2444,22 +2430,15 @@ function loadQueuedMessageSessionState(
         }),
         loadUserFeatureSwitchContext(args.db, args.agent.orgId, args.userId),
       ]);
-      const userMessageEnabled = isFeatureEnabled(
-        FeatureSwitchKey.StructuredPrompt,
+      const inlineTemplatesEnabled = isFeatureEnabled(
+        FeatureSwitchKey.StructuredPromptInlineTemplates,
         featureSwitchContext,
       );
-      const inlineTemplatesEnabled =
-        userMessageEnabled &&
-        isFeatureEnabled(
-          FeatureSwitchKey.StructuredPromptInlineTemplates,
-          featureSwitchContext,
-        );
       const incompleteContext =
         args.queuedMessage.triggerSource === "web"
           ? await loadWebChatIncompleteContext(
               args.db,
               args.threadId,
-              userMessageEnabled,
               inlineTemplatesEnabled,
             )
           : "";
@@ -2584,22 +2563,15 @@ async function buildCreateQueuedChatRunInput(
 
   const [startNewSession, loadedIncompleteContext, featureSwitchContext] =
     await loadQueuedMessageSessionState(args, modelRoute);
-  const userMessageEnabled = isFeatureEnabled(
-    FeatureSwitchKey.StructuredPrompt,
+  const inlineTemplatesEnabled = isFeatureEnabled(
+    FeatureSwitchKey.StructuredPromptInlineTemplates,
     featureSwitchContext,
   );
-  const inlineTemplatesEnabled =
-    userMessageEnabled &&
-    isFeatureEnabled(
-      FeatureSwitchKey.StructuredPromptInlineTemplates,
-      featureSwitchContext,
-    );
-  const userMessageProjection =
-    userMessageEnabled && args.queuedMessage.userMessage
-      ? projectUserMessage(args.queuedMessage.userMessage, {
-          inlineTemplates: inlineTemplatesEnabled,
-        })
-      : undefined;
+  const userMessageProjection = args.queuedMessage.userMessage
+    ? projectUserMessage(args.queuedMessage.userMessage, {
+        inlineTemplates: inlineTemplatesEnabled,
+      })
+    : undefined;
   const incompleteContext = startNewSession ? "" : loadedIncompleteContext;
   const priorContext = await measureChatCallbackPreCreateTiming(
     args.timing,
@@ -2612,7 +2584,6 @@ async function buildCreateQueuedChatRunInput(
         startNewSession,
         incompleteContext,
         triggerSource: args.queuedMessage.triggerSource,
-        userMessageEnabled,
         inlineTemplatesEnabled,
       });
     },
@@ -3134,23 +3105,12 @@ async function prepareCompletedTerminalChatCallbackWork(args: {
     "api_dispatch_pre_create_zero_chat_callback_prepare_completed",
     "top_level",
     async () => {
-      const featureSwitchContext = await loadUserFeatureSwitchContext(
-        args.db,
-        args.chatThread.orgId,
-        args.chatThread.userId,
-      );
-      args.signal.throwIfAborted();
-      const userMessageEnabled = isFeatureEnabled(
-        FeatureSwitchKey.StructuredPrompt,
-        featureSwitchContext,
-      );
       const completed = await handleCompletedChatCallback({
         db: args.db,
         runId: args.runId,
         run: args.run,
         chatThread: args.chatThread,
         timing: args.timing,
-        userMessageEnabled,
         signal: args.signal,
         slackDelivery: args.slackDelivery,
         feishuDelivery: args.feishuDelivery,
@@ -3168,10 +3128,10 @@ async function prepareCompletedTerminalChatCallbackWork(args: {
           );
         },
       });
-      return { completed, userMessageEnabled };
+      return completed;
     },
   );
-  const { completed, userMessageEnabled } = prepared;
+  const completed = prepared;
   if (!completed.inserted) {
     return { shouldDrainThreadQueue: false };
   }
@@ -3190,7 +3150,6 @@ async function prepareCompletedTerminalChatCallbackWork(args: {
         suppressWebPushForActiveGoal: args.suppressWebPushForActiveGoal,
         lastResultText: completed.lastResultText,
         followupContext: completed.followupContext,
-        userMessageEnabled,
         signal: args.signal,
         saveRunSummary: (resultText) => {
           return args.dependencies.saveRunSummary(

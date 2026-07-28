@@ -5020,7 +5020,6 @@ function userMessageInlineTemplatesEnabled(
   featureSwitches: Partial<Record<FeatureSwitchKey, boolean>>,
 ): boolean {
   return (
-    featureSwitches[FeatureSwitchKey.StructuredPrompt] === true &&
     featureSwitches[FeatureSwitchKey.StructuredPromptInlineTemplates] === true
   );
 }
@@ -6265,7 +6264,6 @@ function toPersistedAttachments(
 
 function restoreChatClipboardPayload({
   event,
-  userMessageEnabled,
   inlineTemplatesEnabled,
   visualAttachmentUnsupported,
   insertPromptMarkdown,
@@ -6275,7 +6273,6 @@ function restoreChatClipboardPayload({
   onDraftChange,
 }: {
   event: ComposerPasteEvent;
-  userMessageEnabled: boolean;
   inlineTemplatesEnabled: boolean;
   visualAttachmentUnsupported: VisualAttachmentUnsupportedState | null;
   insertPromptMarkdown: (value: string) => void;
@@ -6293,10 +6290,7 @@ function restoreChatClipboardPayload({
   if (!payload) {
     return false;
   }
-  const userMessage = shouldUseUserMessage(
-    userMessageEnabled,
-    payload.userMessage,
-  )
+  const userMessage = shouldUseUserMessage(payload.userMessage)
     ? payload.userMessage
     : undefined;
   const persistedAttachments = toPersistedAttachments(payload.attachments);
@@ -6638,8 +6632,6 @@ export function useZeroChatComposer({
   const setShowAddDialog = useSet(composerConnectors.setShowAddDialog$);
   const openGoalDialog = useSet(openChatThreadGoalDialog$);
   const featureSwitches = useGet(featureSwitch$);
-  const userMessageEnabled =
-    featureSwitches[FeatureSwitchKey.StructuredPrompt] ?? false;
   const inlineTemplatesEnabled =
     userMessageInlineTemplatesEnabled(featureSwitches);
 
@@ -6692,7 +6684,6 @@ export function useZeroChatComposer({
     if (
       restoreChatClipboardPayload({
         event: e,
-        userMessageEnabled,
         inlineTemplatesEnabled,
         visualAttachmentUnsupported,
         insertPromptMarkdown,

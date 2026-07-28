@@ -32,8 +32,7 @@ export const setChatPageInput$ = command(({ get, set }, value: string) => {
 export const chatPageWorkflowComposer$ = computed((get) => {
   const features = get(featureSwitch$);
   const inlineTemplatesEnabled =
-    (features[FeatureSwitchKey.StructuredPrompt] ?? false) &&
-    (features[FeatureSwitchKey.StructuredPromptInlineTemplates] ?? false);
+    features[FeatureSwitchKey.StructuredPromptInlineTemplates] ?? false;
   return createWorkflowComposerSignals(
     get(talkDraft$),
     undefined,

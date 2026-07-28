@@ -5,7 +5,6 @@ import {
   chatThreadEventsContract,
   type UserMessageDocument,
 } from "@vm0/api-contracts/contracts/chat-threads";
-import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 
 import { mockOrganization, mockUser } from "../../../__tests__/mock-auth.ts";
 import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
@@ -154,7 +153,6 @@ describe("chat message persistence", () => {
       detachedSetupPage({
         context,
         path: `/chats/${FIRST_THREAD_ID}`,
-        featureSwitches: { [FeatureSwitchKey.StructuredPrompt]: true },
         user: { id: "idb-reentry-user", fullName: "IndexedDB Test User" },
         org: {
           activeOrg: { id: "idb-reentry-org", name: "IndexedDB Test Org" },
@@ -274,6 +272,10 @@ describe("chat message persistence", () => {
             eventType: "input.prompt" as const,
             role: "user",
             content: remoteMessage,
+            userMessage: {
+              version: 1,
+              parts: [{ type: "text", text: remoteMessage }],
+            },
             createdAt: "2026-06-09T10:01:00Z",
             seqId: 1,
           },

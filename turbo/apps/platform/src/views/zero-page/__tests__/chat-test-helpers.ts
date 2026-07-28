@@ -123,6 +123,7 @@ export function mockSubagentThread(context: TestContext, _threadId: string) {
   context.mocks.api(chatThreadDraftContract.get, ({ respond }) => {
     return respond(200, {
       draftContent: null,
+      draftUserMessage: null,
       draftAttachments: null,
     });
   });
@@ -860,6 +861,7 @@ export function mockChatLifecycle(
   context.mocks.api(chatThreadDraftContract.get, ({ respond }) => {
     return respond(200, {
       draftContent: null,
+      draftUserMessage: null,
       draftAttachments: null,
     });
   });

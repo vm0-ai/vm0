@@ -8,7 +8,6 @@ import {
 } from "@vm0/core";
 import type { UserMessageDocument } from "@vm0/api-contracts/contracts/chat-threads";
 import type { OrgModelPolicy } from "@vm0/api-contracts/contracts/model-providers";
-import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { pathname } from "../../../signals/location.ts";
 import { searchParams$ } from "../../../signals/route.ts";
@@ -84,7 +83,6 @@ describe("prompt query parameter injection", () => {
     detachedSetupPage({
       context,
       path: "/prompt?prompt=Build%20a%20launch%20recap&connector=slack&model=deepseek-v4-pro",
-      featureSwitches: { [FeatureSwitchKey.StructuredPrompt]: true },
     });
 
     await waitFor(() => {
@@ -194,7 +192,6 @@ describe("prompt query parameter injection", () => {
     detachedSetupPage({
       context,
       path: "/prompt?prompt=Make%20a%20launch%20deck&template=presentation-template%3Aplayful-launch-presentation",
-      featureSwitches: { [FeatureSwitchKey.StructuredPrompt]: true },
     });
 
     await waitFor(() => {

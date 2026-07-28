@@ -13,8 +13,6 @@ import type {
   UserExportStartResponse,
   UserExportStatusResponse,
 } from "@vm0/api-contracts/contracts/user-export";
-import { isFeatureEnabled } from "@vm0/core/feature-switch";
-import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import {
   getInstructionsStorageName,
   MEMORY_ARTIFACT_NAME,
@@ -70,7 +68,6 @@ import {
   gunzipSessionHistoryBufferWithMaxBytes,
   unzstdSessionHistoryBufferWithMaxBytes,
 } from "./session-history-decompression";
-import { loadUserFeatureSwitchContext } from "./feature-switches.service";
 import { projectUserMessage } from "./zero-chat-user-message.service";
 import {
   chatEventTypeIn,
@@ -732,7 +729,6 @@ function verifySessionHistoryBuffer(
 async function collectConversationMessages(
   runtime: ExportRuntime,
   userId: string,
-  userMessageEnabled: boolean,
 ): Promise<{
   readonly entries: readonly ZipEntry[];
   readonly threadCount: number;
@@ -770,9 +766,7 @@ async function collectConversationMessages(
     const messages: ExportTextMessage[] = rows.flatMap((message) => {
       const role = chatEventCompatibilityRole(message.eventType);
       const userMessage =
-        userMessageEnabled && role === "user"
-          ? (message.userMessage ?? undefined)
-          : undefined;
+        role === "user" ? (message.userMessage ?? undefined) : undefined;
       const content = userMessage
         ? projectUserMessage(userMessage).displayText
         : message.content;
@@ -846,16 +840,9 @@ async function collectUserData(
   const agentInstructions = await collectAgentInstructionFiles(runtime, userId);
   const workflows = await collectWorkflowFiles(runtime, userId);
   const memory = await collectMemoryFiles(runtime, userId);
-  const featureSwitchContext = await loadUserFeatureSwitchContext(
-    runtime.db,
-    orgId,
-    userId,
-  );
-  runtime.signal.throwIfAborted();
   const conversationsResult = await collectConversationMessages(
     runtime,
     userId,
-    isFeatureEnabled(FeatureSwitchKey.StructuredPrompt, featureSwitchContext),
   );
   const zipEntries: ZipEntry[] = [
     ...agentInstructions.entries,

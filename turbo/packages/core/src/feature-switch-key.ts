@@ -61,7 +61,6 @@ export enum FeatureSwitchKey {
   ClaudeSessionPruning = "claudeSessionPruning",
   RealAgentInPreview = "realAgentInPreview",
   ComposerUploadPopover = "composerUploadPopover",
-  StructuredPrompt = "structuredPrompt",
   StructuredPromptInlineTemplates = "structuredPromptInlineTemplates",
 
   ZapierConnector = "zapierConnector",

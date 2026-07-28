@@ -844,7 +844,11 @@ const chatEventBuilders = {
     return {
       ...event,
       eventType: "input.prompt",
-      userMessage: row.userMessage ?? undefined,
+      userMessage: requiredChatEventField(
+        row.userMessage,
+        row.eventType,
+        "userMessage",
+      ),
       attachFiles: attachFiles ? [...attachFiles] : undefined,
       generationTemplate: row.generationTemplate ?? undefined,
     };
@@ -871,7 +875,11 @@ const chatEventBuilders = {
     return {
       ...event,
       eventType: "input.rejected",
-      userMessage: row.userMessage ?? undefined,
+      userMessage: requiredChatEventField(
+        row.userMessage,
+        row.eventType,
+        "userMessage",
+      ),
       error: requiredChatEventField(row.error, row.eventType, "error"),
       attachFiles: attachFiles ? [...attachFiles] : undefined,
       generationTemplate: row.generationTemplate ?? undefined,

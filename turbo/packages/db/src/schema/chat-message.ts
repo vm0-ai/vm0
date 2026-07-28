@@ -108,7 +108,7 @@ export const chatMessages = pgTable(
     encryptedParams: text("encrypted_params"),
     role: text("role").notNull(), // "user" | "assistant"
     content: text("content"),
-    /** Stable business representation of rich user-message content. */
+    /** Canonical rich user-message document for input prompt events. */
     userMessage: jsonb("structured_prompt").$type<ChatMessageUserMessage>(),
     thinking: text("thinking"),
     error: text("error"),
@@ -205,6 +205,11 @@ export const chatMessages = pgTable(
           'goal.changed',
           'usage.recorded'
         )`,
+      ),
+      check(
+        "chat_messages_input_user_message_check",
+        sql`${table.eventType} NOT IN ('input.prompt', 'input.rejected')
+          OR ${table.userMessage} IS NOT NULL`,
       ),
     ];
   },

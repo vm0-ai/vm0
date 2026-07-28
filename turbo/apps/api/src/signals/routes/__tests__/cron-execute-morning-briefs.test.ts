@@ -738,98 +738,85 @@ describe("cron execute morning briefs", () => {
     clearMockNow();
   });
 
-  it.each([
-    { projection: "structured", userMessageEnabled: true },
-    { projection: "legacy", userMessageEnabled: false },
-  ])(
-    "uses $projection message text in the chat-thread source",
-    async ({ userMessageEnabled }) => {
-      const scenario = await setupMorningBriefActor({
-        connectConnectors: false,
-      });
-      await updateFeatureSwitchesForUser(context, scenario.actor, {
-        [FeatureSwitchKey.MorningBrief]: true,
-        [FeatureSwitchKey.StructuredPrompt]: userMessageEnabled,
-      });
-      const agent = await bdd.createAgent(scenario.actor, {
-        displayName: "Structured morning brief agent",
-        visibility: "private",
-      });
-      const thread = await chat.createThread(scenario.actor, {
-        agentId: agent.agentId,
-        title: "Structured morning brief source",
-      });
-      await chat.markThreadRead(scenario.actor, thread.id);
+  it("uses userMessage text in the chat-thread source", async () => {
+    const scenario = await setupMorningBriefActor({
+      connectConnectors: false,
+    });
+    await updateFeatureSwitchesForUser(context, scenario.actor, {
+      [FeatureSwitchKey.MorningBrief]: true,
+    });
+    const agent = await bdd.createAgent(scenario.actor, {
+      displayName: "Structured morning brief agent",
+      visibility: "private",
+    });
+    const thread = await chat.createThread(scenario.actor, {
+      agentId: agent.agentId,
+      title: "Structured morning brief source",
+    });
+    await chat.markThreadRead(scenario.actor, thread.id);
 
-      const style = ILLUSTRATION_TEMPLATE_ITEMS[0];
-      if (!style) {
-        throw new Error("Expected a registered illustration style");
-      }
-      const generationTemplate: GenerationTemplateRequest = {
-        type: "illustration",
-        selection: { illustrationStyleId: style.illustrationStyleId },
-      };
-      const userMessage: UserMessageDocument = {
-        version: 1,
-        parts: [
-          {
-            type: "template",
-            titleSnapshot: style.title,
-            template: generationTemplate,
-          },
-          { type: "text", text: "Review the structured brief" },
-        ],
-      };
-
-      mockNow(BEFORE_SEVEN_LOCAL + 60_000);
-      await chat.requestSendMessage(
-        scenario.actor,
+    const style = ILLUSTRATION_TEMPLATE_ITEMS[0];
+    if (!style) {
+      throw new Error("Expected a registered illustration style");
+    }
+    const generationTemplate: GenerationTemplateRequest = {
+      type: "illustration",
+      selection: { illustrationStyleId: style.illustrationStyleId },
+    };
+    const userMessage: UserMessageDocument = {
+      version: 1,
+      parts: [
         {
-          agentId: agent.agentId,
-          threadId: thread.id,
-          prompt: "stale morning brief content",
-          generationTemplate,
-          userMessage,
+          type: "template",
+          titleSnapshot: style.title,
+          template: generationTemplate,
         },
-        [201],
-      );
+        { type: "text", text: "Review the structured brief" },
+      ],
+    };
 
-      mockNow(AFTER_SEVEN_LOCAL);
-      await executeMorningBriefsCron();
+    mockNow(BEFORE_SEVEN_LOCAL + 60_000);
+    await chat.requestSendMessage(
+      scenario.actor,
+      {
+        agentId: agent.agentId,
+        threadId: thread.id,
+        prompt: "stale morning brief content",
+        generationTemplate,
+        userMessage,
+      },
+      [201],
+    );
 
-      const input = capturedMorningBriefInput();
-      const threads = input.sources.chatThreads?.data?.threads as
-        | {
-            readonly threadId: string;
-            readonly recentMessages: readonly {
-              readonly role: string;
-              readonly content: string;
-            }[];
-          }[]
-        | undefined;
-      const sourceThread = threads?.find((item) => {
-        return item.threadId === thread.id;
-      });
-      const userMessageContent = `[Template: ${style.title}]\n\nReview the structured brief`;
-      const legacyContent = "stale morning brief content";
-      const expectedContent = userMessageEnabled
-        ? userMessageContent
-        : legacyContent;
-      const excludedContent = userMessageEnabled
-        ? legacyContent
-        : userMessageContent;
-      expect(sourceThread?.recentMessages).toContainEqual({
-        role: "user",
-        content: expectedContent,
-        at: expect.any(String),
-      });
-      expect(
-        sourceThread?.recentMessages.some((message) => {
-          return message.content.includes(excludedContent);
-        }),
-      ).toBeFalsy();
-    },
-  );
+    mockNow(AFTER_SEVEN_LOCAL);
+    await executeMorningBriefsCron();
+
+    const input = capturedMorningBriefInput();
+    const threads = input.sources.chatThreads?.data?.threads as
+      | {
+          readonly threadId: string;
+          readonly recentMessages: readonly {
+            readonly role: string;
+            readonly content: string;
+          }[];
+        }[]
+      | undefined;
+    const sourceThread = threads?.find((item) => {
+      return item.threadId === thread.id;
+    });
+    const userMessageContent = `[Template: ${style.title}]\n\nReview the structured brief`;
+    const legacyContent = "stale morning brief content";
+    expect(sourceThread?.recentMessages).toContainEqual({
+      role: "user",
+      content: userMessageContent,
+      at: expect.any(String),
+    });
+    expect(
+      sourceThread?.recentMessages.some((message) => {
+        return message.content.includes(legacyContent);
+      }),
+    ).toBeFalsy();
+  });
 
   it("triggers a brief immediately through the manual endpoint", async () => {
     context.mocks.resend.send.mockResolvedValue({

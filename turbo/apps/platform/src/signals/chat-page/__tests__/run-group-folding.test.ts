@@ -17,11 +17,16 @@ function userMessage(params: {
   readonly runGroupId?: string;
   readonly content?: string;
 }): EnrichedChatMessage {
+  const content = params.content ?? params.id;
   return {
     id: params.id,
     threadId: THREAD_ID,
     eventType: "input.prompt" as const,
-    content: params.content ?? params.id,
+    content,
+    userMessage: {
+      version: 1,
+      parts: [{ type: "text", text: content }],
+    },
     runId: params.runId,
     runGroupId: params.runGroupId,
     createdAt: "2026-06-24T00:00:00.000Z",

@@ -4049,17 +4049,9 @@ describe("CHAT-02: prior rounds and thread titles", () => {
 });
 
 describe("CHAT-02: generation templates and attachments", () => {
-  it("uses the structured message document for the enabled runtime path", async () => {
+  it("uses the userMessage document for the runtime prompt", async () => {
     const { actor, agentId } = await entitledChatActor();
     chatCallbacks.failIfChatCallbackRouteIsFetched();
-    if (!actor.orgId) {
-      throw new Error("Expected an org-scoped actor");
-    }
-    await updateFeatureSwitchesForUser(
-      context,
-      { ...actor, orgId: actor.orgId },
-      { [FeatureSwitchKey.StructuredPrompt]: true },
-    );
 
     const style = ILLUSTRATION_TEMPLATE_ITEMS[0];
     if (!style) {
@@ -4192,7 +4184,6 @@ describe("CHAT-02: generation templates and attachments", () => {
       context,
       { ...actor, orgId: actor.orgId },
       {
-        [FeatureSwitchKey.StructuredPrompt]: true,
         [FeatureSwitchKey.StructuredPromptInlineTemplates]: true,
       },
     );
@@ -4287,22 +4278,26 @@ describe("CHAT-02: generation templates and attachments", () => {
     await cancelChatRun(actor, sent.runId);
   }, 90_000);
 
-  it("synthesizes a missing user message without changing runtime content", async () => {
+  it("preserves the attachment userMessage order in the runtime prompt", async () => {
     const { actor, agentId } = await entitledChatActor();
     chatCallbacks.failIfChatCallbackRouteIsFetched();
-    if (!actor.orgId) {
-      throw new Error("Expected an org-scoped actor");
-    }
-    await updateFeatureSwitchesForUser(
-      context,
-      { ...actor, orgId: actor.orgId },
-      { [FeatureSwitchKey.StructuredPrompt]: true },
-    );
 
     const fileId = randomUUID();
     const sent = await sendChatRun(actor, {
       agentId,
       prompt: "plain API attachment",
+      userMessage: {
+        version: 1,
+        parts: [
+          {
+            type: "file",
+            fileId,
+            filenameSnapshot: "api-input.txt",
+            contentType: "text/plain",
+          },
+          { type: "text", text: "plain API attachment" },
+        ],
+      },
       attachFiles: [
         {
           id: fileId,
@@ -4316,8 +4311,8 @@ describe("CHAT-02: generation templates and attachments", () => {
     const run = await api.readRun(actor, sent.runId);
     expect(run.prompt).toBe(
       [
-        "plain API attachment",
         `[Web file] api-input.txt (text/plain)\n   [ID] ${fileId}`,
+        "plain API attachment",
       ].join("\n\n"),
     );
     const messages = await waitForThreadMessages(
@@ -4334,7 +4329,7 @@ describe("CHAT-02: generation templates and attachments", () => {
         return message.runId === sent.runId;
       }),
     ).toMatchObject({
-      content: "plain API attachment",
+      content: "[File: api-input.txt]\n\nplain API attachment",
       userMessage: {
         version: 1,
         parts: [
@@ -4363,7 +4358,6 @@ describe("CHAT-02: generation templates and attachments", () => {
       context,
       { ...actor, orgId: actor.orgId },
       {
-        [FeatureSwitchKey.StructuredPrompt]: true,
         [FeatureSwitchKey.StructuredPromptInlineTemplates]: true,
       },
     );
@@ -4887,14 +4881,6 @@ describe("CHAT-02: queued attachments on auto-send", () => {
   it("preserves structured part order when a queued message is promoted", async () => {
     const { actor, agentId, runnerGroup } = await entitledChatActor();
     chatCallbacks.failIfChatCallbackRouteIsFetched();
-    if (!actor.orgId) {
-      throw new Error("Expected an org-scoped actor");
-    }
-    await updateFeatureSwitchesForUser(
-      context,
-      { ...actor, orgId: actor.orgId },
-      { [FeatureSwitchKey.StructuredPrompt]: true },
-    );
 
     const anchor = await sendChatRun(actor, {
       agentId,

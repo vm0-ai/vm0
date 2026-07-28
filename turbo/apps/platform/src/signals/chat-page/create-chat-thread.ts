@@ -1944,13 +1944,11 @@ function createMessageSemanticSignals(
   });
   const queuedMessageItems$ = computed(
     (get): Promise<readonly QueuedChatMessageItem[]> => {
-      const userMessageEnabled =
-        get(featureSwitch$)[FeatureSwitchKey.StructuredPrompt] ?? false;
       return Promise.resolve(
         get(queuedMessages$).map((message) => {
           const userMessage =
             message.eventType === "input.prompt" &&
-            shouldUseUserMessage(userMessageEnabled, message.userMessage)
+            shouldUseUserMessage(message.userMessage)
               ? message.userMessage
               : undefined;
           const text =
@@ -3778,13 +3776,7 @@ function createRecallMessage(deps: RecallMessageDeps) {
           createdAt: nowDate().toISOString(),
         },
       });
-      const features = get(featureSwitch$);
-      const userMessageEnabled =
-        features[FeatureSwitchKey.StructuredPrompt] ?? false;
-      const userMessage = shouldUseUserMessage(
-        userMessageEnabled,
-        message.userMessage,
-      )
+      const userMessage = shouldUseUserMessage(message.userMessage)
         ? message.userMessage
         : null;
       const templatePart = userMessage?.parts.find((part) => {

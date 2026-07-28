@@ -171,6 +171,14 @@ export const chatThreads = pgTable(
         "chat_threads_computer_access_check",
         sql`NOT (${table.cloudBrowserEnabled} AND ${table.computerUseHostId} IS NOT NULL)`,
       ),
+      check(
+        "chat_threads_draft_user_message_check",
+        sql`${table.draftUserMessage} IS NOT NULL
+          OR (
+            COALESCE(${table.draftContent}, '') = ''
+            AND COALESCE(${table.draftAttachments}, '[]'::jsonb) = '[]'::jsonb
+          )`,
+      ),
       index("idx_chat_threads_user_compose_updated").on(
         table.userId,
         table.agentComposeId,

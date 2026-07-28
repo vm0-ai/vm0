@@ -378,10 +378,8 @@ function asInputChatEvent(message: ChatMessage): ChatInputMessage | undefined {
 
 function visibleUserMessage(
   inputMessage: ChatInputMessage | undefined,
-  userMessageEnabled: boolean,
 ): UserMessageDocument | undefined {
-  return inputMessage &&
-    shouldUseUserMessage(userMessageEnabled, inputMessage.userMessage)
+  return inputMessage && shouldUseUserMessage(inputMessage.userMessage)
     ? inputMessage.userMessage
     : undefined;
 }
@@ -3387,10 +3385,7 @@ function runGroupFoldMessages(fold: RunGroupFold): EnrichedChatMessage[] {
   });
 }
 
-function runGroupFoldSourceLabel(
-  fold: RunGroupFold,
-  userMessageEnabled: boolean,
-): string {
+function runGroupFoldSourceLabel(fold: RunGroupFold): string {
   const messages = runGroupFoldMessages(fold);
   const workflowLabel = runGroupFoldWorkflowLabel(fold);
   if (workflowLabel) {
@@ -3400,10 +3395,7 @@ function runGroupFoldSourceLabel(
     if (!isInputChatEvent(message)) {
       continue;
     }
-    const content = shouldUseUserMessage(
-      userMessageEnabled,
-      message.userMessage,
-    )
+    const content = shouldUseUserMessage(message.userMessage)
       ? messageDocumentToDisplayText(message.userMessage)
       : message.content;
     if (content?.trim()) {
@@ -3493,17 +3485,14 @@ function verboseDurationLabelForRunGroupFold(
   return parts.join(" ");
 }
 
-function runGroupFoldLabel(
-  fold: RunGroupFold,
-  userMessageEnabled: boolean,
-): string {
+function runGroupFoldLabel(fold: RunGroupFold): string {
   if (isGoalRunGroupFold(fold)) {
     const duration = verboseDurationLabelForRunGroupFold(fold);
     const label = runGroupFoldGoalLabel(fold);
     return duration ? `${duration} for ${label}` : `Goal for ${label}`;
   }
   const runLabel = fold.hiddenRunCount === 1 ? "run" : "runs";
-  const sourceLabel = runGroupFoldSourceLabel(fold, userMessageEnabled);
+  const sourceLabel = runGroupFoldSourceLabel(fold);
   return `${fold.hiddenRunCount} ${runLabel} for ${sourceLabel}`;
 }
 
@@ -3515,11 +3504,7 @@ function RunGroupFoldRow({
   embedded?: boolean;
 }) {
   const { fold, expanded, onToggle } = control;
-  const featureSwitches = useGet(featureSwitch$);
-  const label = runGroupFoldLabel(
-    fold,
-    featureSwitches[FeatureSwitchKey.StructuredPrompt] ?? false,
-  );
+  const label = runGroupFoldLabel(fold);
   const isGoal = isGoalRunGroupFold(fold);
   const Icon = isGoal ? IconTarget : IconPackage;
   return (
@@ -7197,14 +7182,10 @@ function GoalUserMessage({
 
 function useUserMessageRendering() {
   const featureSwitches = useGet(featureSwitch$);
-  const structured =
-    featureSwitches[FeatureSwitchKey.StructuredPrompt] ?? false;
   return {
-    structured,
     inlineTemplates:
-      structured &&
-      (featureSwitches[FeatureSwitchKey.StructuredPromptInlineTemplates] ??
-        false),
+      featureSwitches[FeatureSwitchKey.StructuredPromptInlineTemplates] ??
+      false,
   };
 }
 
@@ -7215,9 +7196,9 @@ function PagedUserMessage({
   message: EnrichedChatMessage;
   thread: ChatThreadSignals;
 }) {
-  const { structured, inlineTemplates } = useUserMessageRendering();
+  const { inlineTemplates } = useUserMessageRendering();
   const inputMessage = asInputChatEvent(message);
-  const userMessage = visibleUserMessage(inputMessage, structured);
+  const userMessage = visibleUserMessage(inputMessage);
   const content = message.content ?? "";
   // Two attachment sources coexist: the structured `attachFiles` field
   // (current flow) and legacy `[Attached file: ...](url)` inline lines left

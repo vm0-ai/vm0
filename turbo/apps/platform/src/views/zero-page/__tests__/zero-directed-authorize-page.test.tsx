@@ -12,7 +12,6 @@ import {
 import { zeroUserConnectorsContract } from "@vm0/api-contracts/contracts/user-connectors";
 import type { ConnectorResponse } from "@vm0/api-contracts/contracts/connector-schemas";
 import type { ConnectorRef } from "@vm0/api-contracts/contracts/connector-identity";
-import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import { screen, waitFor, within } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 
@@ -187,7 +186,6 @@ describe("directed connector authorize page", () => {
     detachedSetupPage({
       context,
       path: `/connectors/gmail/authorize?agentId=${AGENT_ID}&threadId=${threadId}&callbackPrompt=${encodeURIComponent(callbackPrompt)}`,
-      featureSwitches: { [FeatureSwitchKey.StructuredPrompt]: false },
     });
 
     await waitFor(() => {

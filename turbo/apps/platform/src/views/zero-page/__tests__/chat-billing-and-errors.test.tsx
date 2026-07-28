@@ -504,6 +504,10 @@ describe("chat lifecycle", () => {
                 eventType: "input.prompt" as const,
                 role: "user",
                 content: "Active task prompt",
+                userMessage: {
+                  version: 1,
+                  parts: [{ type: "text", text: "Active task prompt" }],
+                },
                 runId: "run-active",
                 seqId: 1,
                 createdAt: "2026-03-10T00:00:00Z",
@@ -530,6 +534,10 @@ describe("chat lifecycle", () => {
               eventType: "input.prompt" as const,
               role: "user",
               content: "Done task",
+              userMessage: {
+                version: 1,
+                parts: [{ type: "text", text: "Done task" }],
+              },
               seqId: 1,
               createdAt: "2026-03-10T00:00:00Z",
             },

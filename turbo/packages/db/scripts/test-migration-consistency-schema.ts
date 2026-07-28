@@ -197,9 +197,16 @@ async function validateChatEventSourcesAreAppendOnly(
           "chat_thread_id",
           "role",
           "content",
-          "event_type"
+          "event_type",
+          "structured_prompt"
         )
-        VALUES ($1, 'user', 'append-only migration test', 'input.prompt')
+        VALUES (
+          $1,
+          'user',
+          'append-only migration test',
+          'input.prompt',
+          '{"version":1,"parts":[{"type":"text","text":"append-only migration test"}]}'::jsonb
+        )
         RETURNING "id", "seq_id" AS "seqId"
       `,
       [threadId],
@@ -1876,6 +1883,306 @@ async function validateStructuredPromptDraftBackfill(): Promise<void> {
 
   console.log(
     "   ✅ Both draft tables backfill feedback, preserve canonical rows, and drop legacy columns\n",
+  );
+}
+
+const USER_MESSAGE_BACKFILL_PREVIOUS_MIGRATION = 712;
+const USER_MESSAGE_BACKFILL_MIGRATION = 713;
+const USER_MESSAGE_CONTRACT_MIGRATION = 714;
+
+async function validateUserMessageBackfillAndContract(): Promise<void> {
+  console.log(
+    "=== Validate historical userMessage backfill and contract ===\n",
+  );
+
+  const testDb = "migration_user_message_backfill_test";
+  const testDbUrl = createTestDbUrl(testDb);
+  const composeId = "92000000-0000-4000-8000-000000000001";
+  const threadIds = {
+    events: "92000000-0000-4000-8000-000000000002",
+    draft: "92000000-0000-4000-8000-000000000003",
+    emptyDraft: "92000000-0000-4000-8000-000000000004",
+  } as const;
+  const file = {
+    id: "historical-file",
+    filename: "history.txt",
+    contentType: "text/plain",
+    size: 42,
+    objectKey: "historical-file/history.txt",
+  };
+  const canonicalDocument = {
+    version: 1,
+    parts: [{ type: "text", text: "already canonical" }],
+  };
+  const synthesizedDocument = {
+    version: 1,
+    parts: [
+      {
+        type: "file",
+        fileId: file.id,
+        filenameSnapshot: file.filename,
+        contentType: file.contentType,
+      },
+      { type: "text", text: "legacy prompt" },
+    ],
+  };
+
+  await createDatabase(testDb);
+  try {
+    await runMigrationsUpTo(
+      testDbUrl,
+      USER_MESSAGE_BACKFILL_PREVIOUS_MIGRATION,
+    );
+
+    const client = new Client({ connectionString: testDbUrl });
+    await client.connect();
+    try {
+      await client.query(
+        `INSERT INTO "agent_composes" ("id", "user_id", "name", "org_id")
+         VALUES ($1, 'user-message-backfill-user', 'user-message-backfill', 'user-message-backfill-org')`,
+        [composeId],
+      );
+      await client.query(
+        `INSERT INTO "zero_agents" ("id", "org_id", "owner", "name")
+         VALUES ($1, 'user-message-backfill-org', 'user-message-backfill-user', 'user-message-backfill')`,
+        [composeId],
+      );
+      await client.query(
+        `INSERT INTO "chat_threads" (
+           "id",
+           "user_id",
+           "agent_compose_id",
+           "draft_content",
+           "draft_attachments"
+         )
+         VALUES
+           ($1, 'user-message-backfill-user', $3, 'legacy prompt', $4::jsonb),
+           ($2, 'user-message-backfill-user', $3, NULL, NULL)`,
+        [
+          threadIds.draft,
+          threadIds.emptyDraft,
+          composeId,
+          JSON.stringify([file]),
+        ],
+      );
+      await client.query(
+        `INSERT INTO "chat_threads" (
+           "id",
+           "user_id",
+           "agent_compose_id"
+         )
+         VALUES ($1, 'user-message-backfill-user', $2)`,
+        [threadIds.events, composeId],
+      );
+      await client.query(
+        `INSERT INTO "zero_agent_drafts" (
+           "user_id",
+           "org_id",
+           "agent_id",
+           "draft_content",
+           "draft_attachments"
+         )
+         VALUES (
+           'user-message-backfill-user',
+           'user-message-backfill-org',
+           $1,
+           'legacy prompt',
+           $2::jsonb
+         )`,
+        [composeId, JSON.stringify([file])],
+      );
+
+      const events = await client.query<{ id: string }>(
+        `INSERT INTO "chat_messages" (
+           "chat_thread_id",
+           "role",
+           "content",
+           "event_type",
+           "attach_file_metadata",
+           "structured_prompt",
+           "error"
+         )
+         VALUES
+           ($1, 'user', 'legacy prompt', 'input.prompt', $2::jsonb, NULL, NULL),
+           ($1, 'user', 'already canonical', 'input.prompt', NULL, $3::jsonb, NULL),
+           ($1, 'user', 'rejected prompt', 'input.rejected', NULL, NULL, 'rejected'),
+           ($1, 'user', NULL, 'input.automation', NULL, NULL, NULL)
+         RETURNING "id"`,
+        [
+          threadIds.events,
+          JSON.stringify([file]),
+          JSON.stringify(canonicalDocument),
+        ],
+      );
+      const [synthesizedEvent, canonicalEvent, rejectedEvent, automationEvent] =
+        events.rows.map((row) => {
+          return row.id;
+        });
+      assert.ok(synthesizedEvent);
+      assert.ok(canonicalEvent);
+      assert.ok(rejectedEvent);
+      assert.ok(automationEvent);
+
+      await applyMigrationsUpToInTransaction(
+        client,
+        USER_MESSAGE_BACKFILL_MIGRATION,
+      );
+
+      const inputRows = await client.query<{
+        id: string;
+        userMessage: unknown;
+      }>(
+        `SELECT "id", "structured_prompt" AS "userMessage"
+         FROM "chat_messages"
+         WHERE "id" = ANY($1::uuid[])`,
+        [[synthesizedEvent, canonicalEvent, rejectedEvent]],
+      );
+      const userMessageById = new Map(
+        inputRows.rows.map((row) => {
+          return [row.id, row.userMessage] as const;
+        }),
+      );
+      assert.deepEqual(
+        userMessageById.get(synthesizedEvent),
+        synthesizedDocument,
+      );
+      assert.deepEqual(userMessageById.get(canonicalEvent), canonicalDocument);
+      assert.deepEqual(userMessageById.get(rejectedEvent), {
+        version: 1,
+        parts: [{ type: "text", text: "rejected prompt" }],
+      });
+
+      const draftRows = await client.query<{
+        id: string;
+        draftUserMessage: unknown;
+      }>(
+        `SELECT "id", "draft_structured_prompt" AS "draftUserMessage"
+         FROM "chat_threads"
+         WHERE "id" = ANY($1::uuid[])
+         ORDER BY "id"`,
+        [[threadIds.draft, threadIds.emptyDraft]],
+      );
+      assert.deepEqual(draftRows.rows, [
+        {
+          id: threadIds.draft,
+          draftUserMessage: synthesizedDocument,
+        },
+        {
+          id: threadIds.emptyDraft,
+          draftUserMessage: null,
+        },
+      ]);
+      const agentDraft = await client.query<{ draftUserMessage: unknown }>(
+        `SELECT "draft_structured_prompt" AS "draftUserMessage"
+         FROM "zero_agent_drafts"
+         WHERE "user_id" = 'user-message-backfill-user'
+           AND "org_id" = 'user-message-backfill-org'
+           AND "agent_id" = $1`,
+        [composeId],
+      );
+      assert.deepEqual(agentDraft.rows, [
+        { draftUserMessage: synthesizedDocument },
+      ]);
+
+      await expectAppendOnlyUpdateRejected(client, {
+        tableName: "chat_messages",
+        query: `UPDATE "chat_messages" SET "content" = 'mutated' WHERE "id" = $1`,
+        rowId: synthesizedEvent,
+      });
+
+      await applyMigrationsUpToInTransaction(
+        client,
+        USER_MESSAGE_CONTRACT_MIGRATION,
+      );
+      await expectDatabaseError(client, {
+        code: "23514",
+        messageIncludes: "chat_messages_input_user_message_check",
+        query: `
+          INSERT INTO "chat_messages" (
+            "chat_thread_id",
+            "role",
+            "content",
+            "event_type"
+          )
+          VALUES ($1, 'user', 'missing userMessage', 'input.prompt')
+        `,
+        values: [threadIds.events],
+      });
+      await client.query(
+        `INSERT INTO "chat_messages" (
+           "chat_thread_id",
+           "role",
+           "content",
+           "event_type"
+         )
+         VALUES ($1, 'assistant', 'output remains nullable', 'output.message')`,
+        [threadIds.events],
+      );
+      await expectDatabaseError(client, {
+        code: "23514",
+        messageIncludes: "chat_threads_draft_user_message_check",
+        query: `
+          UPDATE "chat_threads"
+          SET
+            "draft_content" = 'missing userMessage',
+            "draft_structured_prompt" = NULL
+          WHERE "id" = $1
+        `,
+        values: [threadIds.emptyDraft],
+      });
+      await expectDatabaseError(client, {
+        code: "23514",
+        messageIncludes: "zero_agent_drafts_draft_user_message_check",
+        query: `
+          UPDATE "zero_agent_drafts"
+          SET "draft_structured_prompt" = NULL
+          WHERE "user_id" = 'user-message-backfill-user'
+            AND "org_id" = 'user-message-backfill-org'
+            AND "agent_id" = $1
+        `,
+        values: [composeId],
+      });
+      const constraints = await client.query<{
+        name: string;
+        validated: boolean;
+      }>(
+        `SELECT
+           "conname" AS "name",
+           "convalidated" AS "validated"
+         FROM "pg_catalog"."pg_constraint"
+         WHERE "conname" = ANY($1::text[])
+         ORDER BY "conname"`,
+        [
+          [
+            "chat_messages_input_user_message_check",
+            "chat_threads_draft_user_message_check",
+            "zero_agent_drafts_draft_user_message_check",
+          ],
+        ],
+      );
+      assert.deepEqual(constraints.rows, [
+        {
+          name: "chat_messages_input_user_message_check",
+          validated: true,
+        },
+        {
+          name: "chat_threads_draft_user_message_check",
+          validated: true,
+        },
+        {
+          name: "zero_agent_drafts_draft_user_message_check",
+          validated: true,
+        },
+      ]);
+    } finally {
+      await client.end();
+    }
+  } finally {
+    await dropDatabase(testDb);
+  }
+
+  console.log(
+    "   ✅ Historical events and drafts gain canonical documents, non-empty inputs require userMessage, and append-only protection remains active\n",
   );
 }
 
@@ -4584,6 +4891,7 @@ async function main(): Promise<void> {
     await validateModelObservationContractCleanup();
     await validateChatEventTypeBackfillAndContract();
     await validateStructuredPromptDraftBackfill();
+    await validateUserMessageBackfillAndContract();
 
     // Step 1.5: Validate latest snapshot accuracy (NEW)
     await validateLatestSnapshotAccuracy();

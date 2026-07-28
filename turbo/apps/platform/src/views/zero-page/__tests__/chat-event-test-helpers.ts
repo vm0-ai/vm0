@@ -2,6 +2,7 @@ import {
   chatEventResponseSchema,
   type ChatMessageCompatibilityResponse,
   type ChatEventResponse,
+  type UserMessageDocument,
 } from "@vm0/api-contracts/contracts/chat-threads";
 import {
   chatEventCompatibilityRole,
@@ -107,10 +108,35 @@ type MockChatEventOverrides = (
   id: string,
 ) => Record<string, unknown>;
 
+function requiredMockUserMessage(
+  message: MockChatEventInput,
+): UserMessageDocument {
+  if (message.userMessage !== undefined) {
+    return message.userMessage;
+  }
+  const parts: UserMessageDocument["parts"] = [
+    ...(message.attachFiles ?? []).map((file) => {
+      return {
+        type: "file" as const,
+        fileId: file.id,
+        filenameSnapshot: file.filename,
+        contentType: file.contentType,
+      };
+    }),
+    ...(message.content
+      ? [{ type: "text" as const, text: message.content }]
+      : []),
+  ];
+  if (parts.length === 0) {
+    throw new Error("Mock user-input events require a userMessage");
+  }
+  return { version: 1, parts };
+}
+
 const mockChatEventOverrides = {
   "input.prompt": (message) => {
     return {
-      userMessage: message.userMessage,
+      userMessage: requiredMockUserMessage(message),
       attachFiles: message.attachFiles,
       generationTemplate: message.generationTemplate,
     };
@@ -130,7 +156,7 @@ const mockChatEventOverrides = {
   "input.rejected": (message) => {
     return {
       error: message.error ?? "Mock input rejected",
-      userMessage: message.userMessage,
+      userMessage: requiredMockUserMessage(message),
       attachFiles: message.attachFiles,
       generationTemplate: message.generationTemplate,
     };

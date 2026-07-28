@@ -1,9 +1,4 @@
 import {
-  clientVersionSupportsCapability,
-  CLIENT_CAPABILITY_STRUCTURED_FEEDBACK_PARTS,
-  CLIENT_VERSION_HEADER,
-} from "@vm0/api-contracts/contracts/client-headers";
-import {
   type AppRoute,
   validateResponse,
 } from "@vm0/api-contracts/contracts/trpc-contract";
@@ -93,45 +88,6 @@ function isContentlessStatus(status: StatusCode): boolean {
   return status === 101 || status === 204 || status === 205 || status === 304;
 }
 
-function supportsUserMessageFeedbackParts(request: Request): boolean {
-  return clientVersionSupportsCapability(
-    request.headers.get(CLIENT_VERSION_HEADER),
-    CLIENT_CAPABILITY_STRUCTURED_FEEDBACK_PARTS,
-  );
-}
-
-function isUserMessageFeedbackDocument(value: unknown): boolean {
-  if (!isRecord(value) || value.version !== 1 || !Array.isArray(value.parts)) {
-    return false;
-  }
-  return value.parts.some((part) => {
-    return isRecord(part) && part.type === "feedback";
-  });
-}
-
-function stripUnsupportedUserMessageFeedback(value: unknown): unknown {
-  if (isUserMessageFeedbackDocument(value)) {
-    return undefined;
-  }
-  if (Array.isArray(value)) {
-    return value.flatMap((item) => {
-      const stripped = stripUnsupportedUserMessageFeedback(item);
-      return stripped === undefined ? [] : [stripped];
-    });
-  }
-  if (!isRecord(value)) {
-    return value;
-  }
-  const result: Record<string, unknown> = {};
-  for (const [key, item] of Object.entries(value)) {
-    const stripped = stripUnsupportedUserMessageFeedback(item);
-    if (stripped !== undefined) {
-      result[key] = stripped;
-    }
-  }
-  return result;
-}
-
 export function honoSignalHandler(
   handler$: SignalRouteHandler<unknown>,
   contract: AppRoute,
@@ -166,15 +122,9 @@ export function honoSignalHandler(
       throw new Error("Route handler must return a contract response object");
     }
 
-    const compatibleData = supportsUserMessageFeedbackParts(context.req.raw)
-      ? data
-      : {
-          ...data,
-          body: stripUnsupportedUserMessageFeedback(data.body),
-        };
     const response = validateResponse({
       appRoute: contract,
-      response: compatibleData,
+      response: data,
     });
     const status = response.status as StatusCode;
     if (

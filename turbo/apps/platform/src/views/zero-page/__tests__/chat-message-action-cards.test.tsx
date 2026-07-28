@@ -2402,7 +2402,6 @@ describe("chat message action cards", () => {
     detachedSetupPage({
       context,
       path: `/chats/${threadId}`,
-      featureSwitches: { [FeatureSwitchKey.StructuredPrompt]: true },
     });
 
     const permissionCard = await screen.findByTestId("permission-action-card");

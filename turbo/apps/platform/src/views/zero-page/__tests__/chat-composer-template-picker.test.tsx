@@ -88,7 +88,6 @@ describe("chat composer templates", () => {
     detachedSetupPage({
       context,
       featureSwitches: {
-        [FeatureSwitchKey.StructuredPrompt]: true,
         [FeatureSwitchKey.StructuredPromptInlineTemplates]: true,
       },
       path: `/chats/${THREAD_ID}`,
@@ -164,7 +163,6 @@ describe("chat composer templates", () => {
     detachedSetupPage({
       context,
       featureSwitches: {
-        [FeatureSwitchKey.StructuredPrompt]: true,
         [FeatureSwitchKey.StructuredPromptInlineTemplates]: true,
       },
       path: `/chats/${THREAD_ID}`,
@@ -2175,9 +2173,7 @@ describe("chat composer templates", () => {
 
     detachedSetupPage({
       context,
-      featureSwitches: {
-        [FeatureSwitchKey.StructuredPrompt]: true,
-      },
+      featureSwitches: {},
       path: `/chats/${THREAD_ID}`,
     });
 

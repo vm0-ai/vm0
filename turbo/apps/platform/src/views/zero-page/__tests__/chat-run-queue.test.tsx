@@ -136,96 +136,85 @@ function mockActiveRunThread(
 }
 
 describe("chat run queue", () => {
-  it.each([
-    { projection: "structured", userMessageEnabled: true },
-    { projection: "legacy", userMessageEnabled: false },
-  ])(
-    "labels a queued message from its $projection projection",
-    async ({ userMessageEnabled }) => {
-      mockChatLifecycle(context, {
-        threadId: THREAD_ID,
-        chatMessages: [
-          {
-            id: `${THREAD_ID}-active-user`,
-            role: "user",
-            content: "Start the active run",
-            runId: "run-active",
-            createdAt: "2026-06-09T10:00:00Z",
-          },
-          {
-            id: `${THREAD_ID}-active-assistant`,
-            role: "assistant",
-            content: null,
-            runId: "run-active",
-            createdAt: "2026-06-09T10:00:01Z",
-          },
-          {
-            id: `${THREAD_ID}-queued-user`,
-            role: "user",
-            content: "legacy queued label",
-            runId: undefined,
-            userMessage: {
-              version: 1,
-              parts: [
-                {
-                  type: "template",
-                  titleSnapshot: "Pitch deck",
-                  template: {
-                    type: "illustration",
-                    selection: { illustrationStyleId: "editorial" },
-                  },
-                },
-                {
-                  type: "file",
-                  fileId: "file-one",
-                  filenameSnapshot: "file-one.pdf",
-                  contentType: "application/pdf",
-                },
-                {
-                  type: "file",
-                  fileId: "file-two",
-                  filenameSnapshot: "file-two.txt",
-                  contentType: "text/plain",
-                },
-                { type: "text", text: "  Review " },
-                {
-                  type: "chat_thread",
-                  threadId: THREAD_ID,
-                  titleSnapshot: "Project Alpha",
-                },
-                { type: "text", text: " then\ncontinue" },
-              ],
-            },
-            createdAt: "2026-06-09T10:00:02Z",
-          },
-        ],
-        activeRunIds: ["run-active"],
-      });
-
-      detachedSetupPage({
-        context,
-        path: CHAT_PATH,
-        featureSwitches: {
-          [FeatureSwitchKey.StructuredPrompt]: userMessageEnabled,
+  it("labels a queued message from its userMessage projection", async () => {
+    mockChatLifecycle(context, {
+      threadId: THREAD_ID,
+      chatMessages: [
+        {
+          id: `${THREAD_ID}-active-user`,
+          role: "user",
+          content: "Start the active run",
+          runId: "run-active",
+          createdAt: "2026-06-09T10:00:00Z",
         },
-      });
+        {
+          id: `${THREAD_ID}-active-assistant`,
+          role: "assistant",
+          content: null,
+          runId: "run-active",
+          createdAt: "2026-06-09T10:00:01Z",
+        },
+        {
+          id: `${THREAD_ID}-queued-user`,
+          role: "user",
+          content: "legacy queued label",
+          runId: undefined,
+          userMessage: {
+            version: 1,
+            parts: [
+              {
+                type: "template",
+                titleSnapshot: "Pitch deck",
+                template: {
+                  type: "illustration",
+                  selection: { illustrationStyleId: "editorial" },
+                },
+              },
+              {
+                type: "file",
+                fileId: "file-one",
+                filenameSnapshot: "file-one.pdf",
+                contentType: "application/pdf",
+              },
+              {
+                type: "file",
+                fileId: "file-two",
+                filenameSnapshot: "file-two.txt",
+                contentType: "text/plain",
+              },
+              { type: "text", text: "  Review " },
+              {
+                type: "chat_thread",
+                threadId: THREAD_ID,
+                titleSnapshot: "Project Alpha",
+              },
+              { type: "text", text: " then\ncontinue" },
+            ],
+          },
+          createdAt: "2026-06-09T10:00:02Z",
+        },
+      ],
+      activeRunIds: ["run-active"],
+    });
 
-      const userMessageLabel =
-        "[Template: Pitch deck] [File: file-one.pdf] [File: file-two.txt] " +
-        "Review [Chat thread: Project Alpha] then continue";
-      const legacyLabel = "legacy queued label";
-      const expectedLabel = userMessageEnabled ? userMessageLabel : legacyLabel;
-      const excludedLabel = userMessageEnabled ? legacyLabel : userMessageLabel;
-      await waitFor(() => {
-        expect(screen.getByLabelText("Queued message")).toHaveTextContent(
-          expectedLabel,
-        );
-      });
-      expect(screen.getByLabelText("Queued message")).not.toHaveTextContent(
-        excludedLabel,
+    detachedSetupPage({
+      context,
+      path: CHAT_PATH,
+    });
+
+    const userMessageLabel =
+      "[Template: Pitch deck] [File: file-one.pdf] [File: file-two.txt] " +
+      "Review [Chat thread: Project Alpha] then continue";
+    const legacyLabel = "legacy queued label";
+    await waitFor(() => {
+      expect(screen.getByLabelText("Queued message")).toHaveTextContent(
+        userMessageLabel,
       );
-    },
-  );
+    });
+    expect(screen.getByLabelText("Queued message")).not.toHaveTextContent(
+      legacyLabel,
+    );
+  });
 
   it("shows a sent message and stop control while a new chat run is active", async () => {
     const user = userEvent.setup({ delay: null });

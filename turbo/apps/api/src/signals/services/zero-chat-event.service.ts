@@ -33,7 +33,7 @@ type ChatEventInputPayload = Pick<
   ChatEventInsert,
   "attachFiles" | "attachFileMetadata" | "generationTemplate" | "goalSnapshot"
 > & {
-  readonly userMessage: NonNullable<ChatEventInsert["userMessage"]> | null;
+  readonly userMessage: NonNullable<ChatEventInsert["userMessage"]>;
 };
 
 type ChatEventOutputSequence = Pick<

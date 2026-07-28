@@ -92,8 +92,8 @@ describe("api client headers", () => {
     expect(second).toBeDefined();
     expect(first.type).toBe("App");
     expect(second.type).toBe("App");
-    expect(first.version).toBe("0.540.0+structured-feedback-parts-v1");
-    expect(second.version).toBe("0.540.0+structured-feedback-parts-v1");
+    expect(first.version).toBe("0.540.0");
+    expect(second.version).toBe("0.540.0");
     expect(first.zeroMailVersion).toBe("3");
     expect(second.zeroMailVersion).toBe("3");
     expect(first.sessionId).toMatch(UUID_REGEX);
@@ -129,8 +129,8 @@ describe("api client headers", () => {
     expect(second).toBeDefined();
     expect(first.type).toBe("App");
     expect(second.type).toBe("App");
-    expect(first.version).toBe("0.540.0+structured-feedback-parts-v1");
-    expect(second.version).toBe("0.540.0+structured-feedback-parts-v1");
+    expect(first.version).toBe("0.540.0");
+    expect(second.version).toBe("0.540.0");
     expect(first.zeroMailVersion).toBe("3");
     expect(second.zeroMailVersion).toBe("3");
     expect(first.sessionId).toMatch(UUID_REGEX);

@@ -152,6 +152,10 @@ describe("CHAT-01 chat thread lifecycle", () => {
     await api.patchThread(owner, thread.id, {
       draftContent: "private draft",
       draftAttachments: null,
+      draftUserMessage: {
+        version: 1,
+        parts: [{ type: "text", text: "private draft" }],
+      },
     });
     await expect(api.readThreadDraft(owner, thread.id)).resolves.toMatchObject({
       draftContent: "private draft",

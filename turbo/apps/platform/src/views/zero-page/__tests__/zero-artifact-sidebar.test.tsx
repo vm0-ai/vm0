@@ -75,6 +75,20 @@ function setupChatThread({
       threadId: THREAD_ID,
       eventType: "input.prompt" as const,
       content: "Show me the artifact",
+      userMessage: {
+        version: 1,
+        parts: [
+          ...(attachFiles ?? []).map((file) => {
+            return {
+              type: "file" as const,
+              fileId: file.id,
+              filenameSnapshot: file.filename,
+              contentType: file.contentType,
+            };
+          }),
+          { type: "text", text: "Show me the artifact" },
+        ],
+      },
       runId: "run-artifact",
       seqId: 1,
       createdAt: "2026-03-10T00:00:00Z",

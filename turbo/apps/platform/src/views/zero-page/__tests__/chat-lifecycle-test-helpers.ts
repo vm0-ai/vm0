@@ -295,6 +295,10 @@ export function makeMessage(
     threadId,
     eventType: "input.prompt",
     content: text,
+    userMessage: {
+      version: 1,
+      parts: [{ type: "text", text }],
+    },
     createdAt: "2026-05-01T00:00:00Z",
   };
 }

@@ -6,6 +6,7 @@ import {
   type ChatEventType,
 } from "./chat-events";
 import { apiErrorSchema } from "./errors";
+import { requireUserMessageForNonEmptyDraft } from "./draft-user-message";
 import { hostedArtifactKindSchema } from "./zero-host";
 import { runStatusSchema } from "./runs";
 import { zeroGoalEventSchema } from "./zero-goals";
@@ -459,7 +460,7 @@ const chatMessageRecommendedFollowupsSchema = z.preprocess((value) => {
 const inputPromptEventSchema = chatEventBaseSchema
   .extend({
     eventType: z.literal("input.prompt"),
-    userMessage: userMessageDocumentSchema.optional(),
+    userMessage: userMessageDocumentSchema,
     attachFiles: z.array(resolvedAttachFileSchema).optional(),
     generationTemplate: generationTemplateRequestSchema.optional(),
   })
@@ -478,7 +479,7 @@ const inputAutomationEventSchema = chatEventBaseSchema
 const inputRejectedEventSchema = chatEventBaseSchema
   .extend({
     eventType: z.literal("input.rejected"),
-    userMessage: userMessageDocumentSchema.optional(),
+    userMessage: userMessageDocumentSchema,
     error: z.string(),
     attachFiles: z.array(resolvedAttachFileSchema).optional(),
     generationTemplate: generationTemplateRequestSchema.optional(),
@@ -807,11 +808,13 @@ const chatThreadMetadataSchema = z.object({
 
 const chatThreadDraftSchema = z.preprocess(
   normalizePrecedingDraftStructuredPrompt,
-  z.object({
-    draftContent: z.string().nullable(),
-    draftUserMessage: userMessageDocumentSchema.nullable().optional(),
-    draftAttachments: z.array(persistedAttachmentSchema).nullable(),
-  }),
+  z
+    .object({
+      draftContent: z.string().nullable(),
+      draftUserMessage: userMessageDocumentSchema.nullable(),
+      draftAttachments: z.array(persistedAttachmentSchema).nullable(),
+    })
+    .superRefine(requireUserMessageForNonEmptyDraft),
 );
 
 const selectedModelRequestSchema = requestedRunModelSchema;
@@ -900,7 +903,7 @@ const chatNormalSendBodyShape = {
    */
   model: selectedModelRequestSchema.optional(),
   runOptions: chatRunOptionsRequestSchema.optional(),
-  userMessage: userMessageDocumentSchema.optional(),
+  userMessage: userMessageDocumentSchema,
   generationTemplate: generationTemplateRequestSchema.optional(),
   computerUseHostId: z.string().uuid().nullable().optional(),
   cloudBrowserEnabled: z.boolean().optional(),
@@ -1119,14 +1122,16 @@ export const chatThreadByIdContract = c.router({
     path: "/api/zero/chat-threads/:id",
     headers: authHeadersSchema,
     pathParams: chatThreadIdPathParamsSchema,
-    body: z.object({
-      draftContent: z.string().nullable().optional(),
-      draftUserMessage: userMessageDocumentSchema.nullable().optional(),
-      draftAttachments: z
-        .array(persistedAttachmentSchema)
-        .nullable()
-        .optional(),
-    }),
+    body: z
+      .object({
+        draftContent: z.string().nullable().optional(),
+        draftUserMessage: userMessageDocumentSchema.nullable(),
+        draftAttachments: z
+          .array(persistedAttachmentSchema)
+          .nullable()
+          .optional(),
+      })
+      .superRefine(requireUserMessageForNonEmptyDraft),
     responses: {
       204: c.noBody(),
       400: apiErrorSchema,
@@ -2009,6 +2014,29 @@ function legacyChatEventType(message: LegacyPagedChatMessage): ChatEventType {
   throw new Error(`Cannot classify legacy chat message ${message.id}`);
 }
 
+function legacyUserMessage(
+  message: LegacyPagedChatMessage,
+): UserMessageDocument | undefined {
+  if (message.role !== "user") {
+    return undefined;
+  }
+  if (message.userMessage) {
+    return message.userMessage;
+  }
+  const parts: UserMessagePart[] = (message.attachFiles ?? []).map((file) => {
+    return {
+      type: "file",
+      fileId: file.id,
+      filenameSnapshot: file.filename,
+      contentType: file.contentType,
+    };
+  });
+  if (message.content) {
+    parts.push({ type: "text", text: message.content });
+  }
+  return parts.length > 0 ? { version: 1, parts } : undefined;
+}
+
 /**
  * Converts the one-release `/messages` response into the canonical event
  * domain. The thread id was path-scoped and absent from the legacy payload.
@@ -2023,10 +2051,16 @@ export function canonicalChatEventFromCompatibilityResponse(
   const canonicalResponse = legacyPagedChatMessageSchema.parse(response);
   const { role, revokesMessageId, ...message } = canonicalResponse;
   void role;
+  const eventType = legacyChatEventType(canonicalResponse);
+  const userMessage =
+    eventType === "input.prompt" || eventType === "input.rejected"
+      ? legacyUserMessage(canonicalResponse)
+      : undefined;
   return chatEventSchema.parse({
     ...message,
     threadId,
-    eventType: legacyChatEventType(canonicalResponse),
+    eventType,
+    ...(userMessage === undefined ? {} : { userMessage }),
     ...(revokesMessageId === undefined
       ? {}
       : { revokesEventId: revokesMessageId }),

@@ -4,7 +4,7 @@ import { describe, expect, it } from "vitest";
 import { chatMessages } from "../schema/chat-message";
 
 describe("chatMessages schema", () => {
-  it("keeps structured prompt storage optional", () => {
+  it("keeps physical userMessage storage nullable for non-input events", () => {
     const columns = new Map(
       getTableConfig(chatMessages).columns.map((column) => {
         return [column.name, column.notNull] as const;
