@@ -18,6 +18,7 @@ import {
 } from "../utils.ts";
 import { createHeaderAutomationSignals } from "./header-automation-menu.ts";
 import { createThreadSidebarSignals } from "./thread-sidebar.ts";
+import { createThreadSidebarAutoOpenCandidate } from "./thread-sidebar-auto-open.ts";
 import { createWorkflowQueueSignals } from "./workflow-queue.ts";
 import {
   createScrollSignals,
@@ -1260,6 +1261,9 @@ function createRenderedChatGroups(
       return groupMessagesForDisplay(messages);
     },
   );
+  const sidebarAutoOpenCandidate$ = createThreadSidebarAutoOpenCandidate(
+    allRenderedChatGroups$,
+  );
 
   const messageImageGroups$ = computed(
     async (get): Promise<MessageImageGroupProjection[]> => {
@@ -1278,6 +1282,7 @@ function createRenderedChatGroups(
 
   return {
     allRenderedChatGroups$,
+    sidebarAutoOpenCandidate$,
     messageImageGroups$,
   };
 }
@@ -2019,15 +2024,16 @@ function createMessageSemanticSignals(
 }
 
 function createMessageSyncSignals(hasMessages$: Computed<Promise<boolean>>) {
-  const initialSync = Promise.withResolvers<void>();
-  const internalMessageSyncPromise$ = state(initialSync.promise);
+  const initialSyncStarted = Promise.withResolvers<void>();
+  const internalMessageSyncPromise$ = state<Promise<void> | null>(null);
   const hasNewMessages$ = computed(async (get): Promise<boolean> => {
+    await initialSyncStarted.promise;
     await get(internalMessageSyncPromise$);
     return await get(hasMessages$);
   });
   const trackMessageSync$ = command(({ set }, promise: Promise<void>): void => {
     set(internalMessageSyncPromise$, promise);
-    initialSync.resolve(undefined);
+    initialSyncStarted.resolve(undefined);
   });
   const settleMessageSync$ = command(({ set }): Promise<void> => {
     const promise = Promise.resolve();
@@ -4344,6 +4350,7 @@ function publicChatThreadMessageSignals(
     latestAssistantTextCreatedAt$: messages.latestAssistantTextCreatedAt$,
     visibleRenderedChatGroups$: messages.visibleRenderedChatGroups$,
     visibleRenderedChatGroupsReady$: messages.visibleRenderedChatGroupsReady$,
+    sidebarAutoOpenCandidate$: messages.sidebarAutoOpenCandidate$,
     messageImageGroups$: messages.messageImageGroups$,
     artifactSignalsForUrl: messages.artifactSignalsForUrl,
     mailDraftCardSignalsById$: messages.mailDraftCardSignalsById$,
