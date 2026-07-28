@@ -1031,6 +1031,7 @@ function definitionFromCreateInput(
 
 function definitionFromUpdateInput(
   input: UpdateCustomConnectorBody,
+  authMethods?: readonly CustomConnectorAuthMethod[],
 ): DefinitionInput {
   return {
     displayName: input.displayName,
@@ -1038,6 +1039,7 @@ function definitionFromUpdateInput(
     fields: input.fields,
     headerInjections: input.headerInjections,
     queryInjections: input.queryInjections,
+    authMethods,
   };
 }
 
@@ -1230,12 +1232,29 @@ const updateCustomConnectorDefinition$ = command(
     signal: AbortSignal,
   ): Promise<CustomConnectorRow | BadRequestResponse | NotFoundResponse> => {
     const writeDb = set(writeDb$);
+    const [existing] = await writeDb
+      .select()
+      .from(orgCustomConnectors)
+      .where(
+        and(
+          eq(orgCustomConnectors.id, args.id),
+          eq(orgCustomConnectors.orgId, args.orgId),
+        ),
+      )
+      .limit(1);
+    signal.throwIfAborted();
+    if (!existing) {
+      return notFound("Custom connector not found");
+    }
     const connectorCatalogSnapshot =
       args.connectorCatalogSnapshot ??
       (await loadConnectorRuntimeSnapshot(writeDb));
     signal.throwIfAborted();
     const v = validateDefinition(
-      definitionFromUpdateInput(args.input),
+      definitionFromUpdateInput(
+        args.input,
+        normaliseCustomConnectorRow(existing).authMethods,
+      ),
       connectorCatalogSnapshot.serverFirewalls,
     );
     if (isBadRequest(v)) {

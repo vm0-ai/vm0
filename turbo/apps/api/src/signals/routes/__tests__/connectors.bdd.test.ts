@@ -1671,6 +1671,77 @@ describe("CONN-03: custom connectors and connector-owned secrets", () => {
     await bdd.deleteAgent(admin, agent.agentId);
   });
 
+  it("rejects API definition updates for an OAuth-only connector without changing it", async () => {
+    const provider = mockCustomConnectorOAuth2Provider(context);
+    const admin = createBddApi(context).user({ orgRole: "org:admin" });
+    await connectorsApi.updateFeatureSwitches(admin, {
+      [FeatureSwitchKey.CustomConnectorOAuth2]: true,
+    });
+    const original = await connectorsApi.createCustomConnector(admin, {
+      displayName: "BDD OAuth Only Connector",
+      prefixTemplates: ["https://oauth-only.example.test/v1/"],
+      fields: [],
+      headerInjections: [],
+      queryInjections: [],
+      authMethods: [
+        {
+          type: "oauth2",
+          authorizationUrl: provider.authorizationUrl,
+          tokenUrl: provider.tokenUrl,
+          scopes: ["read"],
+          clientAuthentication: "client_secret_post",
+        },
+      ],
+      oauthClientId: "oauth-only-client-id",
+      oauthClientSecret: "oauth-only-client-secret",
+    });
+
+    const rejected = await connectorsApi.requestSaveCustomConnectorProposal(
+      admin,
+      {
+        proposal: {
+          operation: "update",
+          connectorId: original.id,
+          displayName: "BDD OAuth Connector With API Fields",
+          prefixTemplates: ["https://oauth-only.example.test/v2/"],
+          fields: [
+            {
+              key: "api_key",
+              label: "API key",
+              kind: "secret",
+              required: true,
+            },
+          ],
+          headerInjections: [
+            {
+              name: "Authorization",
+              valueTemplate: "Bearer {{secrets.api_key}}",
+            },
+          ],
+          queryInjections: [],
+        },
+        values: [
+          {
+            key: "api_key",
+            kind: "secret",
+            value: "must-not-be-stored",
+          },
+        ],
+      },
+      [400],
+    );
+    expectApiError(rejected.body);
+    expect(rejected.body.error.message).toContain(
+      "require an API authentication method",
+    );
+
+    const listed = await connectorsApi.listCustomConnectors(admin);
+    expect(listed).toContainEqual(original);
+    expectNoVisibleSecret(listed, "must-not-be-stored");
+
+    await connectorsApi.deleteCustomConnector(admin, original.id);
+  });
+
   it("creates, patches, secrets, enables for an agent, rejects cross-org ids, and deletes through APIs", async () => {
     const bdd = createBddApi(context);
     bdd.acceptAgentStorageWrites();
