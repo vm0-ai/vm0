@@ -4964,6 +4964,13 @@
       "when": 1785211488965,
       "tag": "0708_backfill_structured_prompt_drafts",
       "breakpoints": true
+    },
+    {
+      "idx": 709,
+      "version": "7",
+      "when": 1785214194276,
+      "tag": "0709_wakeful_hercules",
+      "breakpoints": true
     }
   ]
 }

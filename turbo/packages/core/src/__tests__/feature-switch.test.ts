@@ -142,6 +142,7 @@ describe("getAllFeatureStates", () => {
     expect(staffOrgStates[FeatureSwitchKey.GithubWebhookAutomations]).toBe(
       true,
     );
+    expect(staffOrgStates[FeatureSwitchKey.StrapiIntegration]).toBe(true);
 
     const otherOrgStates = getAllFeatureStates({
       orgId: "org_nonexistent",
@@ -173,6 +174,7 @@ describe("getAllFeatureStates", () => {
     expect(otherOrgStates[FeatureSwitchKey.GithubWebhookAutomations]).toBe(
       false,
     );
+    expect(otherOrgStates[FeatureSwitchKey.StrapiIntegration]).toBe(false);
   });
 
   it("should apply overrides to enable disabled features", () => {
@@ -223,6 +225,9 @@ describe("user-overridable switches", () => {
     );
     expect(getUserOverridableFeatureSwitchKeys()).not.toContain(
       FeatureSwitchKey.GithubWebhookAutomations,
+    );
+    expect(getUserOverridableFeatureSwitchKeys()).not.toContain(
+      FeatureSwitchKey.StrapiIntegration,
     );
     expect(getUserOverridableFeatureSwitchKeys()).not.toContain(
       FeatureSwitchKey.StructuredPromptInlineTemplates,
