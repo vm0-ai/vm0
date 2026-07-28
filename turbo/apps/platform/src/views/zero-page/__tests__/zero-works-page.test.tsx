@@ -155,6 +155,34 @@ describe("works page", () => {
     expect(screen.queryByTestId("feishu-settings-loading")).toBeNull();
   });
 
+  it("shows Feishu setup troubleshooting guidance", async () => {
+    mockFeishuAPI();
+
+    detachedSetupPage({
+      context,
+      path: "/settings/feishu",
+      featureSwitches: {
+        [FeatureSwitchKey.FeishuIntegration]: true,
+      },
+    });
+
+    await expect(
+      screen.findByRole("heading", { name: "Setup FAQ" }),
+    ).resolves.toBeInTheDocument();
+    expect(
+      screen.getByText(
+        /Why does Feishu show "Challenge code didn't get a response"\?/,
+      ),
+    ).toBeInTheDocument();
+    expect(screen.getByText(/Return to the Tokens step/)).toBeInTheDocument();
+    expect(
+      screen.getByText("Why is publishing the app waiting for approval?"),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(/Feishu sends the approval request/),
+    ).toBeInTheDocument();
+  });
+
   it("shows integration cards with current connection status and realtime refreshes", async () => {
     mockSlackAPI({
       isConnected: true,
@@ -340,7 +368,7 @@ describe("works page", () => {
     ).toBeInTheDocument();
   });
 
-  it("hides the Feishu setup guide after setup completes", async () => {
+  it("lets a bot owner use the completed review guide without editing", async () => {
     const installationId = "00000000-0000-4000-8000-000000000001";
     const agentId = "00000000-0000-4000-8000-000000000002";
     mockSlackAPI({ isConnected: true, isInstalled: true, isAdmin: false });
@@ -380,10 +408,48 @@ describe("works page", () => {
     await expect(screen.findByText("Feishu bots")).resolves.toBeInTheDocument();
 
     click(getRole("button", "More options for Completed owner bot"));
-    expect(queryRole("button", "Setup guide")).toBeNull();
     expect(queryRole("button", "Manage")).toBeNull();
     expect(getRole("button", "Uninstall")).toBeInTheDocument();
     expect(getRole("button", "Disconnect")).toBeInTheDocument();
+    click(getRole("button", "Review guide"));
+
+    expect(
+      screen.getByRole("heading", { name: "Feishu review guide" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText("Create an enterprise custom app"),
+    ).toBeInTheDocument();
+
+    click(getRole("button", "Next"));
+    expect(screen.getByLabelText("App ID")).toHaveValue("cli_completed_owner");
+    expect(screen.getByLabelText("App ID")).toBeDisabled();
+    expect(screen.getByLabelText("App Secret")).toBeDisabled();
+    expect(screen.getByLabelText("App Secret")).toHaveAttribute(
+      "placeholder",
+      "Configured",
+    );
+
+    click(getRole("button", "Next"));
+    expect(screen.getByLabelText("Encrypt Key")).toBeDisabled();
+    expect(screen.getByLabelText("Verification Token")).toBeDisabled();
+    expect(getRole("button", "Next")).toBeEnabled();
+
+    click(getRole("button", "Next"));
+    expect(screen.getByText("Configure event delivery")).toBeInTheDocument();
+
+    click(getRole("button", "Next"));
+    expect(
+      screen.getByText("Configure the OAuth redirect URL"),
+    ).toBeInTheDocument();
+
+    click(getRole("button", "Next"));
+    expect(screen.getByText("Publish the app")).toBeInTheDocument();
+    expect(screen.getByLabelText("Default agent")).toBeDisabled();
+
+    click(getRole("button", "Done"));
+    expect(
+      screen.queryByRole("heading", { name: "Feishu review guide" }),
+    ).toBeNull();
   });
 
   it("only lets a connected non-owner disconnect their own account", async () => {
@@ -426,6 +492,7 @@ describe("works page", () => {
 
     click(getRole("button", "More options for Member bot"));
     expect(getRole("button", "Disconnect")).toBeInTheDocument();
+    expect(queryRole("button", "Review guide")).toBeNull();
     expect(queryRole("button", "Manage")).toBeNull();
     expect(queryRole("button", "Uninstall")).toBeNull();
   });
@@ -496,7 +563,7 @@ describe("works page", () => {
         isConnected,
         appId: "cli_feishu",
         callbackUrl: `https://api.vm0.test/api/zero/feishu/events/${installationId}`,
-        oauthRedirectUrl: "https://api.vm0.test/api/zero/feishu/oauth/callback",
+        oauthRedirectUrl: "https://app.vm0.test/connectors/feishu/callback",
         callbackVerified,
         messageReceived: false,
         tenantKey: null,
@@ -562,7 +629,7 @@ describe("works page", () => {
     ).toBeInTheDocument();
     expect(
       screen.getByDisplayValue(
-        "https://api.vm0.test/api/zero/feishu/oauth/callback",
+        "https://app.vm0.test/connectors/feishu/callback",
       ),
     ).toBeInTheDocument();
   });

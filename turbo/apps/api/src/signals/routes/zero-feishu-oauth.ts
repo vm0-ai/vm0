@@ -80,6 +80,12 @@ function appCallbackUrl(query: FeishuOAuthCallbackQuery): string {
   return url.toString();
 }
 
+function oauthRedirectUri(target: "app" | undefined): string {
+  return target === "app"
+    ? feishuOAuthAppCallbackUrl()
+    : feishuOAuthCallbackUrl();
+}
+
 function resolveCallbackState(
   query: FeishuOAuthCallbackQuery,
 ): FeishuOAuthState | Response {
@@ -259,7 +265,10 @@ const connect$ = command(async ({ get }, signal: AbortSignal) => {
     query.callbackTarget,
   );
   authorizationUrl.searchParams.set("client_id", installation.appId);
-  authorizationUrl.searchParams.set("redirect_uri", feishuOAuthCallbackUrl());
+  authorizationUrl.searchParams.set(
+    "redirect_uri",
+    oauthRedirectUri(query.callbackTarget),
+  );
   authorizationUrl.searchParams.set("response_type", "code");
   authorizationUrl.searchParams.set("state", oauthState);
   return redirectResponse(authorizationUrl.toString());
@@ -314,7 +323,7 @@ const callback$ = command(async ({ get, set }, signal: AbortSignal) => {
     appId: config.appId,
     appSecret: config.appSecret,
     code: query.code,
-    redirectUri: feishuOAuthCallbackUrl(),
+    redirectUri: oauthRedirectUri(state.oauthRedirectTarget),
     installationId: state.installationId,
     signal,
   });
