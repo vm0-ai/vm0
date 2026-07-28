@@ -108,7 +108,6 @@ const API_DISPATCH_ZERO_WEB_CHAT_PRE_CREATE_ACTION_TYPES = [
   "api_dispatch_pre_create_zero_web_chat_prepare_normal_send_validate_codex_service_tier",
   "api_dispatch_pre_create_zero_web_chat_prepare_normal_send_resolve_initial_thread_model_pin",
   "api_dispatch_pre_create_zero_web_chat_prepare_normal_send_resolve_thread",
-  "api_dispatch_pre_create_zero_web_chat_prepare_normal_send_prepare_recent_chat_context",
   "api_dispatch_pre_create_zero_web_chat_prepare_normal_send_persist_explicit_model_selection",
   "api_dispatch_pre_create_zero_web_chat_prepare_normal_send_persist_explicit_codex_service_tier",
   "api_dispatch_pre_create_zero_web_chat_prepare_normal_send_resolve_computer_use_host_grant",
@@ -3013,7 +3012,8 @@ describe("CHAT-02: run-level model overrides", () => {
     ).toMatch(/[0-9a-f-]{36}/);
 
     // A run-level override of another model in the same family resumes the CLI
-    // session while carrying the prior web round as context.
+    // session, so completed transcript bodies remain in native history and the
+    // append prompt carries only retrieval metadata.
     const second = await sendChatRun(actor, {
       agentId,
       threadId: first.threadId,
@@ -3022,11 +3022,11 @@ describe("CHAT-02: run-level model overrides", () => {
     });
     const secondRun = await api.readRun(actor, second.runId);
     const appended = secondRun.appendSystemPrompt ?? "";
-    expect(appended).toContain("# Web Chat Run Context");
+    expect(appended).toContain("# Web Chat Run Metadata");
     expect(appended).toContain(`- RUN_ID: ${first.runId}`);
     expect(appended).toContain(`- LOG_COMMAND: zero logs ${first.runId} --all`);
-    expect(appended).toContain(`User: ${firstPrompt}`);
-    expect(appended).toContain("Assistant: opus answer");
+    expect(appended).not.toContain(`User: ${firstPrompt}`);
+    expect(appended).not.toContain("Assistant: opus answer");
     const secondClaim = await claimChatRun(runnerGroup, second.runId);
     expect(secondClaim.claim.resumeSession?.sessionId).toBe(
       `bdd-cli-${first.runId}`,
@@ -3161,6 +3161,13 @@ describe("CHAT-02: run-level model overrides", () => {
         agent_session_run_id: second.runId,
         binding_action: "adopted",
       }),
+    );
+    const adoptedPrompt = (await api.readRun(actor, second.runId))
+      .appendSystemPrompt;
+    expect(adoptedPrompt).toContain("# Web Chat Run Metadata");
+    expect(adoptedPrompt).toContain(`- RUN_ID: ${first.runId}`);
+    expect(adoptedPrompt).not.toContain(
+      "User: establish history before lazy adoption",
     );
     const secondClaim = await claimChatRun(runnerGroup, second.runId);
     expect(secondClaim.claim.resumeSession?.sessionId).toBe(
@@ -3326,6 +3333,24 @@ describe("CHAT-02: run-level model overrides", () => {
         retry_reason: "binding_changed",
       }),
     );
+    expect(
+      apiDispatchTimingEventsForRun(second.runId).filter((event) => {
+        return (
+          event.op_type ===
+          "api_dispatch_pre_create_zero_resolve_chat_run_context"
+        );
+      }),
+    ).toHaveLength(2);
+    expect(sandboxOperationEventsForRun(second.runId)).toContainEqual(
+      expect.objectContaining({
+        op_type: "chat_thread_session_binding_persisted",
+        binding_action: "adopted",
+      }),
+    );
+    const retriedPrompt = (await api.readRun(actor, second.runId))
+      .appendSystemPrompt;
+    expect(retriedPrompt).toContain("# Web Chat Run Metadata");
+    expect(retriedPrompt).not.toContain("User: establish the binding snapshot");
     const secondBinding = await readThreadSessionBinding(
       context,
       first.threadId,
@@ -3600,14 +3625,32 @@ describe("CHAT-02: run-level model overrides", () => {
     const { actor, agentId, runnerGroup } = await entitledChatActor();
     chatCallbacks.failIfChatCallbackRouteIsFetched();
 
+    const oldestPrompt = `oldest bounded round ${"中".repeat(4000)}`;
+    const oldestAnswer = `oldest bounded answer ${"🙂".repeat(3000)}`;
+    const oldestFileId = randomUUID();
     const first = await sendChatRun(actor, {
       agentId,
-      prompt: "pin sonnet model-first",
+      prompt: oldestPrompt,
       model: "claude-sonnet-4-6",
+      attachFiles: [
+        {
+          id: oldestFileId,
+          filename: "bounded-context.txt",
+          contentType: "text/plain",
+          size: 42,
+        },
+      ],
     });
     const firstClaim = await claimChatRun(runnerGroup, first.runId);
-    chatCallbacks.mockChatOutputEvents([]);
-    await completeChatRunOk(first.runId, firstClaim.sandboxHeaders);
+    chatCallbacks.mockChatOutputEvents([assistantEvent(0, oldestAnswer)]);
+    await completeChatRunOk(first.runId, firstClaim.sandboxHeaders, {
+      lastEventSequence: 0,
+    });
+    await waitForThreadMessages(actor, first.threadId, (items) => {
+      return eventBackedContents(items, first.runId).some((message) => {
+        return message.content === oldestAnswer;
+      });
+    });
     const originalBinding = await readThreadSessionBinding(
       context,
       first.threadId,
@@ -3642,10 +3685,12 @@ describe("CHAT-02: run-level model overrides", () => {
       },
     ]);
 
+    const newestPrompt = "newest round must survive the context budget";
+    const newestAnswer = "newest answer must survive the context budget";
     const second = await sendChatRun(actor, {
       agentId,
       threadId: first.threadId,
-      prompt: "follow up after the provider policy reroute",
+      prompt: newestPrompt,
     });
     const secondClaim = await claimChatRun(runnerGroup, second.runId);
     const environment = claimEnvironment(secondClaim.claim);
@@ -3672,7 +3717,15 @@ describe("CHAT-02: run-level model overrides", () => {
       first.threadId,
       "claude-sonnet-4-6",
     );
-    await completeChatRunOk(second.runId, secondClaim.sandboxHeaders);
+    chatCallbacks.mockChatOutputEvents([assistantEvent(0, newestAnswer)]);
+    await completeChatRunOk(second.runId, secondClaim.sandboxHeaders, {
+      lastEventSequence: 0,
+    });
+    await waitForThreadMessages(actor, first.threadId, (items) => {
+      return eventBackedContents(items, second.runId).some((message) => {
+        return message.content === newestAnswer;
+      });
+    });
 
     const { providerId: openRouterProviderId } = await upsertOrgModelProvider(
       actor,
@@ -3696,6 +3749,23 @@ describe("CHAT-02: run-level model overrides", () => {
       threadId: first.threadId,
       prompt: "follow up after the upstream provider changes",
     });
+    const thirdRun = await api.readRun(actor, third.runId);
+    const appended = thirdRun.appendSystemPrompt ?? "";
+    const contextStart = appended.indexOf("# Web Chat Run Context");
+    expect(contextStart).toBeGreaterThanOrEqual(0);
+    const boundedContext = appended.slice(contextStart);
+    expect(Buffer.byteLength(boundedContext, "utf8")).toBeLessThanOrEqual(
+      16 * 1024,
+    );
+    expect(boundedContext).toContain(`- RUN_ID: ${first.runId}`);
+    expect(boundedContext).toContain(`- RUN_ID: ${second.runId}`);
+    expect(boundedContext).toContain(`User: ${newestPrompt}`);
+    expect(boundedContext).toContain(`Assistant: ${newestAnswer}`);
+    expect(boundedContext).toContain(`[Web file]\n   [ID] ${oldestFileId}`);
+    expect(boundedContext).toContain(
+      "[Transcript truncated to fit the chat context budget.]",
+    );
+    expect(boundedContext).not.toContain("�");
     const thirdClaim = await claimChatRun(runnerGroup, third.runId);
     expect(claimEnvironment(thirdClaim.claim).ANTHROPIC_AUTH_TOKEN).toBe(
       modelProviderSecretPlaceholder(
@@ -4054,11 +4124,11 @@ describe("CHAT-02: prior rounds and thread titles", () => {
     expect(titleRequests).toBe(1);
     const secondRun = await api.readRun(actor, second.runId);
     const appended = secondRun.appendSystemPrompt ?? "";
-    expect(appended).toContain("# Web Chat Run Context");
+    expect(appended).toContain("# Web Chat Run Metadata");
     expect(appended).toContain(`- RUN_ID: ${first.runId}`);
     expect(appended).toContain(`- LOG_COMMAND: zero logs ${first.runId} --all`);
-    expect(appended).toContain(`User: ${firstPrompt}`);
-    expect(appended).toContain("Assistant: Assistant migration answer");
+    expect(appended).not.toContain(`User: ${firstPrompt}`);
+    expect(appended).not.toContain("Assistant: Assistant migration answer");
     expect(appended).toContain("- RELATIVE_INDEX: 0");
     expect(appended).not.toContain("follow-up question");
 
@@ -4679,7 +4749,7 @@ describe("CHAT-02: generation templates and attachments", () => {
     const secondPrompt = (await api.readRun(actor, second.runId))
       .appendSystemPrompt;
     expect(secondPrompt).not.toContain("# Artifact Template Context");
-    expect(secondPrompt).toContain("# Web Chat Run Context");
+    expect(secondPrompt).toContain("# Web Chat Run Metadata");
     expect(secondPrompt).not.toContain("Selected a template");
     expect(secondPrompt).not.toContain(style.illustrationStyleId);
     await waitForRunUserMessage(

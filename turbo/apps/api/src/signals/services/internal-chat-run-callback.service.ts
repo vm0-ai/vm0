@@ -1,10 +1,6 @@
 import { randomBytes } from "node:crypto";
 
 import { command, createStore } from "ccstate";
-import {
-  CHAT_EVENT_TYPES,
-  chatEventCompatibilityRole,
-} from "@vm0/api-contracts/contracts/chat-events";
 import { formatRunErrorForExternalSurface } from "@vm0/api-contracts/contracts/errors";
 import { modelProviderCredentialScopeSchema } from "@vm0/api-contracts/contracts/model-providers";
 import { isFeatureEnabled } from "@vm0/core/feature-switch";
@@ -14,26 +10,12 @@ import { agentRuns } from "@vm0/db/schema/agent-run";
 import { chatOutputMaterializations } from "@vm0/db/schema/chat-output-materialization";
 import {
   chatMessages,
-  type ChatMessageGenerationTemplate,
   type ChatMessageRecommendedFollowups,
-  type ChatMessageUserMessage,
 } from "@vm0/db/schema/chat-message";
 import { chatThreads } from "@vm0/db/schema/chat-thread";
 import { zeroAgents } from "@vm0/db/schema/zero-agent";
 import { zeroRuns } from "@vm0/db/schema/zero-run";
-import {
-  and,
-  asc,
-  desc,
-  eq,
-  inArray,
-  isNotNull,
-  lte,
-  max,
-  not,
-  or,
-  sql,
-} from "drizzle-orm";
+import { and, asc, desc, eq, isNotNull, lte, max, not, sql } from "drizzle-orm";
 import { z } from "zod";
 
 import { waitForRunEventWatermarkVisible } from "../../lib/agent-event-visibility";
@@ -54,7 +36,6 @@ import {
   recordSandboxOperations,
 } from "../external/sandbox-op-log";
 import {
-  BEFORE_DISPATCH_CANCELLED_ERROR,
   isQueueFirstRunClaimLost,
   type DispatchFailedRunCallbacks,
 } from "./agent-run-create.service";
@@ -93,10 +74,8 @@ import {
   resolveAttachFileUrls,
   runGroupIdForRun,
   touchChatThreadLastMessageAt,
-  visibleChatEventCondition,
 } from "./zero-chat-message-shared.service";
 import { insertChatEvent } from "./zero-chat-event.service";
-import { loadWebChatIncompleteContext } from "./zero-chat-incomplete-context.service";
 import { chatThreadAdmissionBlocked } from "./zero-chat-active-run.service";
 import { projectUserMessage } from "./zero-chat-user-message.service";
 import { appendQueuedRunAssistantMarker } from "./zero-chat-queue-marker.service";
@@ -125,7 +104,6 @@ import { loadUserFeatureSwitchContext } from "./feature-switches.service";
 import { formatIntegrationRunError$ } from "./integration-run-errors.service";
 import { onRejection, settle, tapError, throwIfAbort } from "../utils";
 import { resolveThreadGenerationTemplatePrompt } from "../routes/thread-generation-template";
-import { resolveChatThreadSession } from "./chat-session-continuity.service";
 import { loadComputerUseHostGrantForAutoSend } from "./zero-chat-computer-use-host.service";
 import { resolveRunChatThreadModelContext } from "./zero-chat-run-message.service";
 import { releaseThreadBrowsersForRun$ } from "./zero-browser.service";
@@ -133,16 +111,11 @@ import {
   resolveModelFirstProviderAdmission,
   type ModelFirstPin,
 } from "./zero-model-selection.service";
-import {
-  chatEventTypeIn,
-  chatEventTypeSql,
-} from "./zero-chat-event-type.service";
+import { chatEventTypeIn } from "./zero-chat-event-type.service";
 
 const log = logger("callback:chat");
 const AGENT_RUN_EVENTS_DATASET = "agent-run-events";
 const PG_FOREIGN_KEY_VIOLATION = "23503";
-const RECENT_CHAT_RUN_LIMIT = 10;
-const PRIOR_MESSAGE_CHAR_CAP = 4000;
 type ChatCallbackPreCreateTimingSpanKind = "top_level" | "nested";
 
 type ChatCallbackPreCreateTimingActionType =
@@ -162,8 +135,7 @@ type ChatCallbackPreCreateTimingActionType =
   | "api_dispatch_pre_create_zero_chat_callback_auto_send_load_agent"
   | "api_dispatch_pre_create_zero_chat_callback_auto_send_build_input"
   | "api_dispatch_pre_create_zero_chat_callback_auto_send_resolve_model_pin"
-  | "api_dispatch_pre_create_zero_chat_callback_auto_send_load_session_state"
-  | "api_dispatch_pre_create_zero_chat_callback_auto_send_build_prior_context"
+  | "api_dispatch_pre_create_zero_chat_callback_auto_send_load_feature_switches"
   | "api_dispatch_pre_create_zero_chat_callback_auto_send_resolve_computer_use_host"
   | "api_dispatch_pre_create_zero_chat_callback_auto_send_resolve_generation_template"
   | "api_dispatch_pre_create_zero_chat_callback_auto_send_build_prompt"
@@ -370,21 +342,6 @@ interface CompletedChatOutputLoad {
   readonly skipExistingAssistantLookup: boolean;
 }
 
-interface PriorRunMessage {
-  readonly role: "user" | "assistant";
-  readonly content: string;
-  readonly userMessage: ChatMessageUserMessage | null;
-  readonly attachFiles: readonly string[] | null;
-  readonly generationTemplate: ChatMessageGenerationTemplate | null;
-}
-
-interface PriorRun {
-  readonly runId: string;
-  readonly status: string;
-  readonly prompt: string;
-  readonly messages: readonly PriorRunMessage[];
-}
-
 interface AgentForAutoSend {
   readonly id: string;
   readonly orgId: string;
@@ -526,7 +483,9 @@ interface CreateQueuedChatRunInput {
   readonly userId: string;
   readonly agentId: string;
   readonly prompt: string;
-  readonly appendSystemPrompt: string;
+  readonly appendSystemPromptBeforeContext: string;
+  readonly appendSystemPromptAfterContext: string;
+  readonly inlineTemplatesEnabled: boolean;
   readonly threadId: string;
   readonly queuedMessage: QueuedUserMessage;
   readonly modelPin: ModelFirstPin;
@@ -701,7 +660,14 @@ function buildQueuedCreateZeroRunArgs(
     ],
     triggerSource: input.triggerSource,
     zeroPreCreateSource: "chat_callback_auto_send" as const,
-    appendSystemPrompt: input.appendSystemPrompt,
+    chatAppendSystemPrompt: {
+      beforeContext: input.appendSystemPromptBeforeContext,
+      afterContext: input.appendSystemPromptAfterContext,
+      contextRequest: {
+        triggerSource: input.triggerSource,
+        inlineTemplatesEnabled: input.inlineTemplatesEnabled,
+      },
+    },
     userInfoExtras: input.userInfoExtras,
     dispatchFailedCallbacks,
     queueFirstAssociation: {
@@ -1875,17 +1841,11 @@ function buildWebAttachFilesPrompt(
     .join("\n");
 }
 
-function buildAppendSystemPrompt(
-  integrationPrompt: string,
-  incompleteContext: string,
-  priorContext: string,
+function buildAppendSystemPromptSuffix(
   generationTemplatePrompt: string,
   computerUseHostDisplayName: string | null,
 ): string {
   return [
-    integrationPrompt,
-    priorContext,
-    incompleteContext,
     generationTemplatePrompt,
     computerUseHostDisplayName
       ? buildComputerUseSystemPrompt(computerUseHostDisplayName)
@@ -1904,173 +1864,6 @@ function buildComputerUseSystemPrompt(displayName: string): string {
     "Use Zero CLI computer-use commands to inspect apps, read app state, and perform desktop actions.",
     "The computer may go offline while this run is active. If a command reports that the computer is unavailable or offline, ask the user to reconnect Zero Computer Use on that computer, then retry.",
   ].join("\n");
-}
-
-function formatAttachFileIds(
-  ids: readonly string[] | null | undefined,
-): string {
-  if (!ids || ids.length === 0) {
-    return "";
-  }
-  return ids
-    .map((id) => {
-      return `[Web file]\n   [ID] ${id}`;
-    })
-    .join("\n");
-}
-
-function truncatePrior(value: string): string {
-  if (value.length <= PRIOR_MESSAGE_CHAR_CAP) {
-    return value;
-  }
-  return `${value.slice(0, PRIOR_MESSAGE_CHAR_CAP)}...[truncated]`;
-}
-
-function formatPriorRunMessage(
-  message: PriorRunMessage,
-  inlineTemplatesEnabled: boolean,
-): string {
-  const roleLabel = message.role === "user" ? "User" : "Assistant";
-  if (message.role === "user" && message.userMessage) {
-    const prompt = projectUserMessage(message.userMessage, {
-      inlineTemplates: inlineTemplatesEnabled,
-    }).agentPrompt;
-    return `${roleLabel}: ${truncatePrior(prompt) || "[empty message]"}`;
-  }
-  const body = `${roleLabel}: ${truncatePrior(message.content) || "[empty message]"}`;
-  const attach = formatAttachFileIds(message.attachFiles);
-  return attach ? `${body}\n${attach}` : body;
-}
-
-function buildChatPriorRunsContext(
-  runs: readonly PriorRun[],
-  triggerSource: "web" | "slack" | "feishu" | "teams",
-  inlineTemplatesEnabled: boolean,
-): string {
-  if (runs.length === 0) {
-    return "";
-  }
-  const sections = runs.map((run, index) => {
-    const renderedMessages = run.messages.map((message) => {
-      return formatPriorRunMessage(message, inlineTemplatesEnabled);
-    });
-    const transcript =
-      renderedMessages.length > 0
-        ? renderedMessages.join("\n\n")
-        : [
-            `User: ${truncatePrior(run.prompt) || "[empty message]"}`,
-            "Assistant: [no visible assistant message recorded]",
-          ].join("\n\n");
-    return [
-      `## Recent Run ${index + 1}`,
-      `- RUN_ID: ${run.runId}`,
-      `- RUN_STATUS: ${run.status}`,
-      `- LOG_COMMAND: zero logs ${run.runId} --all`,
-      "",
-      transcript,
-    ].join("\n");
-  });
-  return [
-    `# ${
-      triggerSource === "slack"
-        ? "Slack"
-        : triggerSource === "feishu"
-          ? "Feishu"
-          : triggerSource === "teams"
-            ? "Microsoft Teams"
-            : "Web Chat"
-    } Run Context`,
-    "The current CLI session is fresh, so recent visible chat rounds are provided here for continuity.",
-    "Use these messages as context for the user's current request.",
-    "- Treat the newest run below as the most recent prior round.",
-    "- Use the LOG_COMMAND for a run if you need more detailed agent log context.",
-    "",
-    ...sections,
-  ].join("\n");
-}
-
-async function getLatestRunsByThreadId(
-  db: Db,
-  threadId: string,
-  triggerSource: "web" | "slack" | "feishu" | "teams",
-  limit: number,
-): Promise<PriorRun[]> {
-  const runRows = await db
-    .select({
-      runId: zeroRuns.id,
-      status: agentRuns.status,
-      prompt: agentRuns.prompt,
-    })
-    .from(zeroRuns)
-    .innerJoin(agentRuns, eq(agentRuns.id, zeroRuns.id))
-    .where(
-      and(
-        eq(zeroRuns.chatThreadId, threadId),
-        eq(zeroRuns.triggerSource, triggerSource),
-        or(
-          sql`${agentRuns.status} IS DISTINCT FROM ${"cancelled"}`,
-          sql`${agentRuns.error} IS DISTINCT FROM ${BEFORE_DISPATCH_CANCELLED_ERROR}`,
-        ),
-      ),
-    )
-    .orderBy(desc(agentRuns.createdAt))
-    .limit(limit);
-
-  const orderedRuns = runRows.reverse();
-  const runIds = orderedRuns.map((run) => {
-    return run.runId;
-  });
-  if (runIds.length === 0) {
-    return [];
-  }
-
-  const messageRows = await db
-    .select({
-      runId: chatMessages.runId,
-      eventType: chatEventTypeSql().as("event_type"),
-      content: chatMessages.content,
-      userMessage: chatMessages.userMessage,
-      attachFiles: chatMessages.attachFiles,
-      createdAt: chatMessages.createdAt,
-      sequenceNumber: chatMessages.sequenceNumber,
-      generationTemplate: chatMessages.generationTemplate,
-    })
-    .from(chatMessages)
-    .where(
-      and(
-        eq(chatMessages.chatThreadId, threadId),
-        isNotNull(chatMessages.content),
-        inArray(chatMessages.runId, runIds),
-        chatEventTypeIn(CHAT_EVENT_TYPES),
-        visibleChatEventCondition(db),
-      ),
-    )
-    .orderBy(asc(chatMessages.seqId));
-
-  const messagesByRunId = new Map<string, PriorRunMessage[]>();
-  for (const row of messageRows) {
-    if (row.runId === null || row.content === null) {
-      continue;
-    }
-    const existing = messagesByRunId.get(row.runId) ?? [];
-    existing.push({
-      role: chatEventCompatibilityRole(row.eventType),
-      content: row.content,
-      userMessage: row.userMessage,
-      attachFiles: row.attachFiles,
-      generationTemplate: row.generationTemplate,
-    });
-    messagesByRunId.set(row.runId, existing);
-  }
-
-  return orderedRuns.map((run) => {
-    return {
-      runId: run.runId,
-      status: run.status,
-      prompt: run.prompt,
-      messages: messagesByRunId.get(run.runId) ?? [],
-    };
-  });
 }
 
 async function chatThreadForRunFromDb(
@@ -2144,29 +1937,6 @@ function fallbackAttachFiles(
       url: "",
     };
   });
-}
-
-async function buildQueuedPriorContext(args: {
-  readonly db: Db;
-  readonly threadId: string;
-  readonly startNewSession: boolean;
-  readonly incompleteContext: string;
-  readonly triggerSource: "web" | "slack" | "feishu" | "teams";
-  readonly inlineTemplatesEnabled: boolean;
-}): Promise<string> {
-  if (!args.startNewSession || args.incompleteContext.length > 0) {
-    return "";
-  }
-  return buildChatPriorRunsContext(
-    await getLatestRunsByThreadId(
-      args.db,
-      args.threadId,
-      args.triggerSource,
-      RECENT_CHAT_RUN_LIMIT,
-    ),
-    args.triggerSource,
-    args.inlineTemplatesEnabled,
-  );
 }
 
 function resolveQueuedAttachFiles(args: {
@@ -2409,47 +2179,17 @@ interface CreateQueuedChatRunInputArgs {
   readonly timing?: ChatCallbackPreCreateTimingCollector;
 }
 
-function loadQueuedMessageSessionState(
-  args: CreateQueuedChatRunInputArgs,
-  modelRoute: QueuedMessageModelRoute,
-) {
+function loadQueuedMessageFeatureSwitches(args: CreateQueuedChatRunInputArgs) {
   return measureChatCallbackPreCreateTiming(
     args.timing,
-    "api_dispatch_pre_create_zero_chat_callback_auto_send_load_session_state",
+    "api_dispatch_pre_create_zero_chat_callback_auto_send_load_feature_switches",
     "nested",
-    async () => {
-      const [sessionResolution, featureSwitchContext] = await Promise.all([
-        resolveChatThreadSession({
-          db: args.db,
-          threadId: args.threadId,
-          userId: args.userId,
-          orgId: args.agent.orgId,
-          agentComposeId: args.agent.id,
-          route: {
-            selectedModel: modelRoute.modelPin.selectedModel,
-            modelProvider: modelRoute.effectiveModelProvider ?? null,
-            cliAgentType: modelRoute.cliAgentType,
-          },
-        }),
-        loadUserFeatureSwitchContext(args.db, args.agent.orgId, args.userId),
-      ]);
-      const inlineTemplatesEnabled = isFeatureEnabled(
-        FeatureSwitchKey.StructuredPromptInlineTemplates,
-        featureSwitchContext,
+    () => {
+      return loadUserFeatureSwitchContext(
+        args.db,
+        args.agent.orgId,
+        args.userId,
       );
-      const incompleteContext =
-        args.queuedMessage.triggerSource === "web"
-          ? await loadWebChatIncompleteContext(
-              args.db,
-              args.threadId,
-              inlineTemplatesEnabled,
-            )
-          : "";
-      return [
-        sessionResolution.action === "rotated",
-        incompleteContext,
-        featureSwitchContext,
-      ] as const;
     },
   );
 }
@@ -2564,33 +2304,16 @@ async function buildCreateQueuedChatRunInput(
   }
   const modelRoute = modelRouteResolution.route;
 
-  const [startNewSession, loadedIncompleteContext, featureSwitchContext] =
-    await loadQueuedMessageSessionState(args, modelRoute);
+  const featureSwitchContext = await loadQueuedMessageFeatureSwitches(args);
   const inlineTemplatesEnabled = isFeatureEnabled(
     FeatureSwitchKey.StructuredPromptInlineTemplates,
     featureSwitchContext,
   );
   const userMessageProjection = args.queuedMessage.userMessage
-    ? projectUserMessage(args.queuedMessage.userMessage, {
-        inlineTemplates: inlineTemplatesEnabled,
-      })
-    : undefined;
-  const incompleteContext = startNewSession ? "" : loadedIncompleteContext;
-  const priorContext = await measureChatCallbackPreCreateTiming(
-    args.timing,
-    "api_dispatch_pre_create_zero_chat_callback_auto_send_build_prior_context",
-    "nested",
-    () => {
-      return buildQueuedPriorContext({
-        db: args.db,
-        threadId: args.threadId,
-        startNewSession,
-        incompleteContext,
-        triggerSource: args.queuedMessage.triggerSource,
-        inlineTemplatesEnabled,
-      });
-    },
-  );
+      ? projectUserMessage(args.queuedMessage.userMessage, {
+          inlineTemplates: inlineTemplatesEnabled,
+        })
+      : undefined;
   const generationTemplatePrompt =
     await resolveQueuedMessageGenerationTemplatePrompt({
       input: args,
@@ -2628,13 +2351,13 @@ async function buildCreateQueuedChatRunInput(
     userId: args.userId,
     agentId: args.agent.id,
     prompt,
-    appendSystemPrompt: buildAppendSystemPrompt(
+    appendSystemPromptBeforeContext:
       sourceParams?.appendSystemPrompt ?? buildWebChatPrompt(),
-      incompleteContext,
-      priorContext,
+    appendSystemPromptAfterContext: buildAppendSystemPromptSuffix(
       generationTemplatePrompt,
       computerUseHostGrant?.displayName ?? null,
     ),
+    inlineTemplatesEnabled,
     threadId: args.threadId,
     queuedMessage: args.queuedMessage,
     modelPin: modelRoute.modelPin,

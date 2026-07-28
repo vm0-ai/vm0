@@ -1716,6 +1716,11 @@ describe("INT-01: Slack app deep webhook flows", () => {
       throw new Error("Expected the Web run to save its canonical session");
     }
     expect(webSessionId).toBe(slackSessionId);
+    expect(webRun.appendSystemPrompt).toContain("# Web Chat Run Metadata");
+    expect(webRun.appendSystemPrompt).toContain(`- RUN_ID: ${run1Id}`);
+    expect(webRun.appendSystemPrompt).not.toContain(
+      "User: admit this event once",
+    );
 
     ({ run2Id, claim2 } = await ensureSlackRunClaimed({
       runnerGroup,
@@ -1723,6 +1728,17 @@ describe("INT-01: Slack app deep webhook flows", () => {
       claim2,
     }));
     expect(claim2.resumeSession?.sessionId).toBe(`bdd-slack-cli-${webRunId}`);
+    const resumedSlackRun = await runs.readRun(actor, run2Id);
+    expect(resumedSlackRun.appendSystemPrompt).toContain(
+      "# Slack Run Metadata",
+    );
+    expect(resumedSlackRun.appendSystemPrompt).toContain(`- RUN_ID: ${run1Id}`);
+    expect(resumedSlackRun.appendSystemPrompt).toContain(
+      `- RUN_ID: ${webRunId}`,
+    );
+    expect(resumedSlackRun.appendSystemPrompt).not.toContain(
+      "User: keep the web session separate",
+    );
     state = await integrations.readSlackTestState(teamId);
     expect(state.recent_runs).toContainEqual(
       expect.objectContaining({

@@ -2991,6 +2991,87 @@ describe("CHAT-02: auto-send after failures", () => {
 });
 
 describe("CHAT-02: auto-send across a model switch", () => {
+  it("starts a fresh queued session with recent context after the model framework changes", async () => {
+    const { actor, agentId, runnerGroup } = await entitledChatActor();
+    chatCallbacks.failIfChatCallbackRouteIsFetched();
+
+    const first = await startChatRun(actor, {
+      agentId,
+      prompt: "finish before the queued route changes framework",
+    });
+    const firstHeaders = await claimChatRun(runnerGroup, first.runId);
+    await queueChatMessage(actor, {
+      agentId,
+      threadId: first.threadId,
+      prompt: "continue on the new framework",
+    });
+
+    const provider = await misc.upsertOrgModelProvider(
+      actor,
+      { type: "openai-api-key", secret: "queued-openai-key" },
+      [201],
+    );
+    if (provider.status !== 201) {
+      throw new Error("Expected the queued OpenAI provider to be created");
+    }
+    await api.updateOrgModelPolicies(actor, [
+      {
+        model: "gpt-5.6-terra",
+        isDefault: true,
+        defaultProviderType: "openai-api-key",
+        credentialScope: "org",
+        modelProviderId: provider.body.provider.id,
+      },
+    ]);
+
+    chatCallbacks.mockChatOutputEvents([
+      assistantEvent(0, "completed before the queued route changed"),
+    ]);
+    await completeChatRunOk(first.runId, firstHeaders, {
+      lastEventSequence: 0,
+    });
+
+    const messages = await waitForThreadMessages(
+      actor,
+      first.threadId,
+      (items) => {
+        return userMessages(items).some((message) => {
+          return (
+            message.content === "continue on the new framework" &&
+            message.runId !== undefined
+          );
+        });
+      },
+    );
+    const claimed = userMessages(messages.events).find((message) => {
+      return (
+        message.content === "continue on the new framework" &&
+        message.runId !== undefined
+      );
+    });
+    if (!claimed?.runId) {
+      throw new Error("Expected the queued framework-switch run");
+    }
+
+    const autoContext = await waitForRunContext(actor, claimed.runId);
+    expect(autoContext.body.sessionId).toBeNull();
+    expect(autoContext.body.environment.OPENAI_MODEL).toBe("gpt-5.6-terra");
+    expect(autoContext.body.environment.ANTHROPIC_MODEL).toBeUndefined();
+    const appended = autoContext.body.appendSystemPrompt ?? "";
+    expect(appended).toContain("# Web Chat Run Context");
+    expect(appended).not.toContain("# Web Chat Run Metadata");
+    expect(appended).toContain(`- RUN_ID: ${first.runId}`);
+    expect(appended).toContain(
+      "User: finish before the queued route changes framework",
+    );
+    expect(appended).toContain(
+      "Assistant: completed before the queued route changed",
+    );
+
+    await api.requestCancelRun(actor, claimed.runId, [200]);
+    await waitForRunStatus(actor, claimed.runId, "cancelled");
+  }, 90_000);
+
   it("recovers a queued message through the current same-family workspace default", async () => {
     const { actor, agentId, runnerGroup, providerId } =
       await entitledChatActor();
@@ -3092,6 +3173,11 @@ describe("CHAT-02: auto-send across a model switch", () => {
     const appended = autoContext.body.appendSystemPrompt ?? "";
     expect(appended).not.toContain("# Web Chat Run Context");
     expect(appended).not.toContain("# Incomplete Rounds Context");
+    expect(appended).toContain("# Web Chat Run Metadata");
+    expect(appended).toContain(`- RUN_ID: ${first.runId}`);
+    expect(appended).toContain(`- RUN_ID: ${second.runId}`);
+    expect(appended).not.toContain("User: How do I parse JSON?");
+    expect(appended).not.toContain("Assistant: Use JSON.parse(str).");
     expect(autoContext.body.sessionId).toBe(`bdd-cli-${second.runId}`);
     expect(Object.keys(autoContext.body.environment)).toContain(
       "ANTHROPIC_API_KEY",
@@ -3205,8 +3291,13 @@ describe("CHAT-02: auto-send across a model switch", () => {
 
     const autoContext = await waitForRunContext(actor, claimed.runId);
     expect(autoContext.body.sessionId).toBe(`bdd-cli-${second.runId}`);
-    expect(autoContext.body.appendSystemPrompt ?? "").not.toContain(
-      "# Web Chat Run Context",
+    const appended = autoContext.body.appendSystemPrompt ?? "";
+    expect(appended).not.toContain("# Web Chat Run Context");
+    expect(appended).toContain("# Web Chat Run Metadata");
+    expect(appended).toContain(`- RUN_ID: ${first.runId}`);
+    expect(appended).toContain(`- RUN_ID: ${second.runId}`);
+    expect(appended).not.toContain(
+      "User: start on opus before queueing a Claude family switch",
     );
     expect(autoContext.body.environment.ANTHROPIC_MODEL).toBe(
       "claude-sonnet-4-6",

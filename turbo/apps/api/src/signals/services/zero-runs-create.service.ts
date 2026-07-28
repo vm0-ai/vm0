@@ -45,6 +45,10 @@ import {
   type ChatThreadSessionRoute,
 } from "./chat-session-continuity.service";
 import {
+  loadChatRunContext,
+  type ChatRunContextRequest,
+} from "./zero-chat-run-context.service";
+import {
   ApiDispatchTimingCollector,
   measureApiDispatchTiming,
   type ApiDispatchTimingActionType,
@@ -152,6 +156,11 @@ interface CreateZeroRunCommandArgs {
   readonly apiStartTime: number;
   readonly triggerSource?: TriggerSource;
   readonly appendSystemPrompt?: string;
+  readonly chatAppendSystemPrompt?: {
+    readonly beforeContext: string;
+    readonly afterContext: string;
+    readonly contextRequest: ChatRunContextRequest;
+  };
   readonly userInfoExtras?: Pick<
     UserInfo,
     | "slackDisplayName"
@@ -1064,6 +1073,7 @@ async function resolveThreadSessionForZeroRun(
   if (input.kind === "integration" || !input.command.chatThreadId) {
     return input;
   }
+  const threadId = input.command.chatThreadId;
   if (!input.command.threadSessionRoute) {
     throw new Error("Thread-bound Zero run is missing its model route");
   }
@@ -1081,9 +1091,32 @@ async function resolveThreadSessionForZeroRun(
   } else {
     delete body.sessionId;
   }
+  const chatAppendSystemPrompt = input.command.chatAppendSystemPrompt;
+  const appendSystemPrompt = chatAppendSystemPrompt
+    ? await measureZeroPreCreate(
+        input.timing,
+        "api_dispatch_pre_create_zero_resolve_chat_run_context",
+        async () => {
+          const context = await loadChatRunContext(db, {
+            threadId,
+            resolutionAction: resolution.action,
+            request: chatAppendSystemPrompt.contextRequest,
+          });
+          return [
+            chatAppendSystemPrompt.beforeContext,
+            context,
+            chatAppendSystemPrompt.afterContext,
+          ]
+            .filter((part) => {
+              return part.length > 0;
+            })
+            .join("\n\n");
+        },
+      )
+    : input.command.appendSystemPrompt;
   return {
     ...input,
-    command: { ...input.command, body },
+    command: { ...input.command, body, appendSystemPrompt },
     threadSessionResolution: resolution,
   };
 }
