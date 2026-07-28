@@ -27,6 +27,9 @@ export function initSentry(): void {
     // Disable tracing - only error tracking is needed
     tracesSampleRate: 0,
 
+    // Preserve native fetch errors for application-level error handling.
+    enhanceFetchErrorMessages: false,
+
     // Filter out expected errors
     beforeSend(event, hint) {
       // Filter out 4xx client errors that are expected
