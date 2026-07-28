@@ -12,12 +12,12 @@ const MOBILE_WARNING =
 const IPHONE_USER_AGENT =
   "Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 Version/18.0 Mobile/15E148 Safari/604.1";
 
-function backToVm0Link(): HTMLElement {
+function backToBrandLink(brandName: "VM0" | "Okou"): HTMLElement {
   const link = queryAllByRoleFast("link").find((candidate) => {
-    return candidate.textContent?.trim() === "Back to VM0";
+    return candidate.textContent?.trim() === `Back to ${brandName}`;
   });
   if (!link) {
-    throw new Error("Back to VM0 link not found");
+    throw new Error(`Back to ${brandName} link not found`);
   }
   return link;
 }
@@ -43,7 +43,7 @@ describe("connector redirecting page", () => {
     expect(
       screen.getByLabelText("Connector icon unavailable"),
     ).toBeInTheDocument();
-    expect(backToVm0Link()).toHaveAttribute("href", "/");
+    expect(backToBrandLink("VM0")).toHaveAttribute("href", "/");
     expect(screen.queryByText(MOBILE_WARNING)).not.toBeInTheDocument();
   });
 
@@ -118,6 +118,25 @@ describe("connector redirecting page", () => {
     expect(
       screen.getByText("Return to VM0 and try connecting again."),
     ).toBeInTheDocument();
-    expect(backToVm0Link()).toHaveAttribute("href", "/");
+    expect(backToBrandLink("VM0")).toHaveAttribute("href", "/");
+  });
+
+  it("uses Okou copy on an Okou host", async () => {
+    window.location.href =
+      "https://app.okou.ai/connectors/github/redirecting?label=GitHub";
+    detachedSetupPage({
+      context,
+      path: "/connectors/github/redirecting?label=GitHub",
+      user: null,
+      session: null,
+    });
+
+    await expect(
+      screen.findByRole("heading", { name: "Redirecting to GitHub…" }),
+    ).resolves.toBeInTheDocument();
+    expect(
+      screen.getByText("You’ll continue on GitHub to authorize Okou."),
+    ).toBeInTheDocument();
+    expect(backToBrandLink("Okou")).toHaveAttribute("href", "/");
   });
 });

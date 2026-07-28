@@ -22,7 +22,6 @@ const feishuInstallationStatusSchema = z.object({
   tenantName: z.string().nullable(),
   defaultAgentId: z.string().uuid(),
   defaultAgentName: z.string().nullable(),
-  canManage: z.boolean().optional(),
 });
 
 const feishuConnectStatusSchema = z.object({

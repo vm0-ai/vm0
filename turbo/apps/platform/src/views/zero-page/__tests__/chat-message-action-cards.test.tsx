@@ -34,7 +34,6 @@ import {
 import { isoFromNowMs, mockNow } from "../../../__tests__/time.ts";
 import { triggerAblyEvent, hasSubscription } from "../../../mocks/ably.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
-import { normalizeMockChatEvents } from "./chat-event-test-helpers.ts";
 import { mockChatLifecycle } from "./chat-test-helpers.ts";
 
 const context = testContext();
@@ -1111,16 +1110,16 @@ describe("chat message action cards", () => {
           });
         }
         return respond(200, {
-          events: normalizeMockChatEvents([
+          events: [
             {
               id: "c0000000-0000-4000-a000-000000000034",
               threadId: rightThreadId,
+              eventType: "output.message",
               seqId: 1,
-              role: "assistant",
               content: `https://app.vm0.ai/mail/drafts/${mailDraftId}`,
               createdAt,
             },
-          ]),
+          ],
           hasHistoryBefore: false,
         });
       },
@@ -1806,6 +1805,7 @@ describe("chat message action cards", () => {
     );
     expect(within(card).getByText("Need reconnect")).toBeInTheDocument();
     expect(card).toBeEnabled();
+
     expect(catalogRequests).toBeGreaterThanOrEqual(1);
     expect(hasSubscription("connector:changed")).toBeFalsy();
     expect(draftRequests).toBe(1);

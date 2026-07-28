@@ -8,6 +8,7 @@ import {
   IconLoader2,
 } from "@tabler/icons-react";
 import { Button } from "@vm0/ui";
+import { brandName$ } from "../../signals/branding.ts";
 import { pageSignal$ } from "../../signals/page-signal.ts";
 import { searchParams$ } from "../../signals/route.ts";
 import { connectAgentPhoneAccount$ } from "../../signals/zero-page/agentphone-connect-signals.ts";
@@ -23,13 +24,15 @@ import { settingsIconAssetUrl } from "./components/settings/settings-icon-assets
 const imessageIconImg = settingsIconAssetUrl("imessage");
 
 function BackLink() {
+  const brandName = useGet(brandName$);
+
   return (
     <Link
       pathname="/works"
       className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors no-underline"
     >
       <IconArrowLeft size={14} />
-      Back to VM0
+      Back to {brandName}
     </Link>
   );
 }
@@ -115,6 +118,7 @@ function getAgentPhoneConnectErrorMessage(error: unknown): string {
 }
 
 export function ZeroAgentPhoneConnectPage(): JSX.Element {
+  const brandName = useGet(brandName$);
   const params = useGet(searchParams$);
   const parsed = parseAgentPhoneConnectParams(params);
   const [connectLoadable, connectAgentPhone] = useLoadableSet(
@@ -159,7 +163,7 @@ export function ZeroAgentPhoneConnectPage(): JSX.Element {
       <MessageMark state={connecting ? "loading" : "idle"} />
       <CenterText
         title="Connect phone number"
-        body="Link this phone number to your VM0 account so you can interact with Zero from text messages."
+        body={`Link this phone number to your ${brandName} account so you can interact with Zero from text messages.`}
       />
       <SmsMmsRiskNotice channel={parsed.channel} />
       {error ? (

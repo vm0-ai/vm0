@@ -15,16 +15,10 @@ import {
   terminatedChatRunIds,
 } from "../chat-events";
 import {
-  canonicalChatEvent,
-  canonicalChatEventFromCompatibilityResponse,
   chatEventResponse,
   chatEventResponseSchema,
   chatEventSchema,
   chatEventsContract,
-  chatMessagesContract,
-  legacyChatMessageResponse,
-  legacyChatMessageSendBody,
-  legacyPagedChatMessageSchema,
   chatThreadEventsContract,
   type ChatEvent,
 } from "../chat-threads";
@@ -210,58 +204,6 @@ const chatEvents = [
   },
 ] satisfies ChatEvent[];
 
-function compatibilityRoundTripExpectation(event: ChatEvent): ChatEvent {
-  switch (event.eventType) {
-    case "input.automation": {
-      const { eventType, automationId, triggerBrief, ...legacy } = event;
-      void eventType;
-      void automationId;
-      return chatEventSchema.parse({
-        ...legacy,
-        eventType: "input.prompt",
-        content: triggerBrief,
-      });
-    }
-    case "queue.automation_paused": {
-      const { eventType, pauseReason, ...legacy } = event;
-      void eventType;
-      void pauseReason;
-      return chatEventSchema.parse({
-        ...legacy,
-        eventType: "output.thinking",
-        thinking: "",
-      });
-    }
-    case "queue.automation_resumed": {
-      const { eventType, ...legacy } = event;
-      void eventType;
-      return chatEventSchema.parse({
-        ...legacy,
-        eventType: "output.thinking",
-        thinking: "",
-      });
-    }
-    case "run.queued":
-      return { ...event, runEventId: "queue:queued" };
-    case "run.dequeued":
-      return { ...event, runEventId: "queue:dequeued" };
-    case "input.prompt":
-    case "input.rejected":
-    case "output.message":
-    case "output.error":
-    case "output.thinking":
-    case "output.followups":
-    case "run.completed":
-    case "run.failed":
-    case "run.cancelled":
-    case "control.interrupt":
-    case "control.revoke":
-    case "goal.changed":
-    case "usage.recorded":
-      return event;
-  }
-}
-
 const queueFoldFixture = [
   {
     id: "automation-oldest",
@@ -334,13 +276,29 @@ describe("ChatEvent catalog", () => {
     ).toBe(false);
   });
 
-  it("round-trips the one-release wire compatibility projection", () => {
+  it("keeps the preceding App response shape during receiver-first rollout", () => {
     for (const event of chatEvents) {
       const response = chatEventResponse(event);
-      expect(response.role).toBe(chatEventCompatibilityRole(event.eventType));
+      expect(response).toMatchObject({
+        role: chatEventCompatibilityRole(event.eventType),
+      });
+      if (event.revokesEventId !== undefined) {
+        expect(response).toMatchObject({
+          revokesMessageId: event.revokesEventId,
+        });
+      }
       expect(chatEventResponseSchema.parse(response)).toStrictEqual(response);
-      expect(canonicalChatEvent(response)).toStrictEqual(event);
+      expect(chatEventResponseSchema.parse(event)).toStrictEqual(event);
     }
+  });
+
+  it("rejects a compatibility role that disagrees with eventType", () => {
+    expect(
+      chatEventResponseSchema.safeParse({
+        ...chatEvents[0],
+        role: "assistant",
+      }).success,
+    ).toBe(false);
   });
 
   it("normalizes the preceding rich-input response field", () => {
@@ -348,50 +306,15 @@ describe("ChatEvent catalog", () => {
       version: 1 as const,
       parts: [{ type: "text" as const, text: "Run the task" }],
     };
-    const current = chatEventResponse({
-      id: "preceding-input",
-      seqId: 1,
-      threadId: THREAD_ID,
-      eventType: "input.prompt",
-      content: "Run the task",
-      userMessage,
-      createdAt: CREATED_AT,
-    });
-
     expect(
       chatEventResponseSchema.parse({
-        id: "preceding-input",
-        seqId: 1,
-        threadId: THREAD_ID,
-        eventType: "input.prompt",
-        role: "user",
-        content: "Run the task",
-        structuredPrompt: userMessage,
-        createdAt: CREATED_AT,
-      }),
-    ).toStrictEqual(current);
-  });
-
-  it("rejects a compatibility role that disagrees with eventType", () => {
-    expect(
-      chatEventResponseSchema.safeParse({
         ...chatEventResponse(chatEvents[0]!),
-        role: "assistant",
-      }).success,
-    ).toBe(false);
-  });
-
-  it("projects every event onto the exact preceding message response", () => {
-    for (const event of chatEvents) {
-      const legacy = legacyChatMessageResponse(chatEventResponse(event));
-      expect(legacyPagedChatMessageSchema.parse(legacy)).toStrictEqual(legacy);
-      expect(legacy).not.toHaveProperty("eventType");
-      expect(legacy).not.toHaveProperty("threadId");
-      expect(legacy).not.toHaveProperty("revokesEventId");
-      expect(
-        canonicalChatEventFromCompatibilityResponse(THREAD_ID, legacy),
-      ).toStrictEqual(compatibilityRoundTripExpectation(event));
-    }
+        structuredPrompt: userMessage,
+      }),
+    ).toMatchObject({
+      userMessage,
+      role: "user",
+    });
   });
 });
 
@@ -557,30 +480,5 @@ describe("ChatEvent HTTP contracts", () => {
       revokesEventId: "input-prompt",
       clientEventId: "00000000-0000-4000-8000-000000000002",
     });
-  });
-
-  it("maps canonical write ids to the preceding message route", () => {
-    const userMessage = {
-      version: 1 as const,
-      parts: [{ type: "text" as const, text: "Run the task" }],
-    };
-    const legacy = legacyChatMessageSendBody(
-      chatEventsContract.send.body.parse({
-        agentId: "agent-1",
-        prompt: "Run the task",
-        userMessage,
-        threadId: THREAD_ID,
-        clientEventId: "00000000-0000-4000-8000-000000000002",
-      }),
-    );
-
-    expect(chatMessagesContract.send.body.parse(legacy)).toMatchObject({
-      prompt: "Run the task",
-      userMessage,
-      clientMessageId: "00000000-0000-4000-8000-000000000002",
-    });
-    expect(legacy).toMatchObject({ structuredPrompt: userMessage });
-    expect(legacy).not.toHaveProperty("revokesEventId");
-    expect(legacy).not.toHaveProperty("clientEventId");
   });
 });

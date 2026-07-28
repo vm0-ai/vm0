@@ -527,7 +527,7 @@ async function getQueueMarkerRevokerForAction(
   const [revoker] = await db
     .select({
       id: chatMessages.id,
-      revokesMessageId: chatMessages.revokesEventId,
+      revokesEventId: chatMessages.revokesEventId,
       runEventId: chatMessages.runEventId,
     })
     .from(chatMessages)

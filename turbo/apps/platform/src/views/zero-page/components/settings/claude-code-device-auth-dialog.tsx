@@ -27,6 +27,7 @@ import {
   submitClaudeCodeDeviceAuthPersonal$,
   type ClaudeCodeDeviceAuthFlowState,
 } from "../../../../signals/zero-page/settings/claude-code-device-auth.ts";
+import { brandName$ } from "../../../../signals/branding.ts";
 import { detach, Reason } from "../../../../signals/utils.ts";
 import { pageSignal$ } from "../../../../signals/page-signal.ts";
 import { ProviderIcon } from "./provider-icons.tsx";
@@ -187,6 +188,8 @@ function ClaudeCodeDeviceAuthBody({
   setAuthorizationCode: (value: string) => void;
   submitting: boolean;
 }) {
+  const brandName = useGet(brandName$);
+
   switch (flow.status) {
     case "idle": {
       return <ClaudeCodeDeviceAuthLoadingContent />;
@@ -205,9 +208,9 @@ function ClaudeCodeDeviceAuthBody({
         >
           <div className="rounded-lg border border-border bg-muted/30 p-3 text-xs leading-5 text-muted-foreground">
             <p>
-              First click Open Claude approval page. Then approve vm0 in Claude
-              and copy the authorization code shown after approval. Finally
-              paste that code here and click Connect.
+              First click Open Claude approval page. Then approve {brandName} in
+              Claude and copy the authorization code shown after approval.
+              Finally paste that code here and click Connect.
             </p>
           </div>
           <Button

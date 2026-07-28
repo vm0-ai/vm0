@@ -410,11 +410,8 @@ describe("POST /api/zero/mail/drafts/link", () => {
     expect(duplicateSend.body.error.message).toContain("can no longer be sent");
     expect(gmail.sendCount).toBe(1);
 
-    const page = await chat.listThreadMessages(
-      fixture.actor,
-      fixture.thread.id,
-    );
-    expect(page.messages).toHaveLength(0);
+    const page = await chat.listThreadEvents(fixture.actor, fixture.thread.id);
+    expect(page.events).toHaveLength(0);
   });
 
   it("serves an inline image stored directly in the Gmail MIME body", async () => {
@@ -812,13 +809,13 @@ describe("POST /api/zero/mail/drafts/link", () => {
       },
     });
 
-    const messages = await chat.listThreadMessages(
+    const events = await chat.listThreadEvents(
       fixture.actor,
       fixture.thread.id,
     );
-    expect(messages.messages).toStrictEqual([
+    expect(events.events).toStrictEqual([
       expect.objectContaining({
-        role: "assistant",
+        eventType: "output.message",
         content:
           "Reply tracking is on. When a reply arrives, I’ll let you know in this chat.",
       }),
@@ -837,8 +834,7 @@ describe("POST /api/zero/mail/drafts/link", () => {
       automationId: created.body.automationId,
     });
     expect(
-      (await chat.listThreadMessages(fixture.actor, fixture.thread.id))
-        .messages,
+      (await chat.listThreadEvents(fixture.actor, fixture.thread.id)).events,
     ).toHaveLength(1);
   });
 

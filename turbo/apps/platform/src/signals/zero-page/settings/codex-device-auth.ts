@@ -9,6 +9,7 @@ import {
 import { accept } from "../../../lib/accept.ts";
 import { now } from "../../../lib/time.ts";
 import { zeroClient$ } from "../../api-client.ts";
+import { brandName$, type BrandName } from "../../branding.ts";
 import { reloadOrgModelProviders$ } from "../../external/org-model-providers.ts";
 import { bestEffort, resetSignal, setLoop, tapError } from "../../utils.ts";
 import { writeToClipboard } from "../clipboard.ts";
@@ -62,15 +63,18 @@ function secondsToMilliseconds(seconds: number): number {
   return seconds * 1000;
 }
 
-function codexDeviceAuthErrorMessage(error: {
-  readonly code: string;
-  readonly message: string;
-}): string {
+function codexDeviceAuthErrorMessage(
+  error: {
+    readonly code: string;
+    readonly message: string;
+  },
+  brandName: BrandName,
+): string {
   if (error.code === "CODEX_AUTH_JSON_SHAPE_INVALID") {
-    return "Codex produced a login token format vm0 does not recognize. Update Codex and try again.";
+    return `Codex produced a login token format ${brandName} does not recognize. Update Codex and try again.`;
   }
   if (error.code === "CODEX_FREE_PLAN_REJECTED") {
-    return "Free ChatGPT plans cannot use Codex via vm0. Upgrade to Plus or Pro and try again.";
+    return `Free ChatGPT plans cannot use Codex via ${brandName}. Upgrade to Plus or Pro and try again.`;
   }
   return error.message;
 }
@@ -234,7 +238,10 @@ function createCodexPollFlow$(ctx: CodexDeviceAuthSignalContext) {
           if (completion.status !== 200) {
             set(ctx.internalFlowState$, {
               status: "error",
-              message: codexDeviceAuthErrorMessage(completion.body.error),
+              message: codexDeviceAuthErrorMessage(
+                completion.body.error,
+                get(brandName$),
+              ),
             });
             return true;
           }

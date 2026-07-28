@@ -225,7 +225,7 @@ async function createClaimedChatRun(
   agentId: string,
   prompt: string,
 ) {
-  const sent = await chat.requestSendMessage(
+  const sent = await chat.requestSendEvent(
     actor,
     {
       agentId,
@@ -261,7 +261,7 @@ describe("zero browser route", () => {
 
   it("keeps managed browser access off for a default chat thread", async () => {
     const { runs, chat, actor, agent } = await setupBrowserScenario();
-    const sent = await chat.requestSendMessage(
+    const sent = await chat.requestSendEvent(
       actor,
       {
         agentId: agent.agentId,
@@ -292,7 +292,7 @@ describe("zero browser route", () => {
 
   it("normalizes a previous API host-only write during cloud browser rollout", async () => {
     const { runs, chat, actor, agent } = await setupBrowserScenario();
-    const sent = await chat.requestSendMessage(
+    const sent = await chat.requestSendEvent(
       actor,
       {
         agentId: agent.agentId,
@@ -333,7 +333,7 @@ describe("zero browser route", () => {
   it("lets an agent request cloud browser access for its chat thread", async () => {
     const { routeMocks, runs, chat, actor, agent } =
       await setupBrowserScenario();
-    const sent = await chat.requestSendMessage(
+    const sent = await chat.requestSendEvent(
       actor,
       {
         agentId: agent.agentId,
@@ -402,6 +402,80 @@ describe("zero browser route", () => {
         cloudBrowserEnabled: true,
       }),
     );
+  });
+
+  it("logs provider validation issues without exposing invalid values", async () => {
+    const { runs, chat, actor, agent } = await setupBrowserScenario();
+    const sent = await chat.requestSendEvent(
+      actor,
+      {
+        agentId: agent.agentId,
+        prompt: "Open a managed browser with an invalid provider response",
+        cloudBrowserEnabled: true,
+      },
+      [201],
+    );
+    if (sent.status !== 201 || sent.body.runId === null) {
+      throw new Error("Expected a browser test run");
+    }
+    const browserHeaders = {
+      authorization: `Bearer ${runs.zeroTokenForRunWithCapabilities(
+        actor,
+        sent.body.runId,
+        ["browser:read", "browser:write"],
+      )}`,
+    };
+    const privateProviderValue = "private-provider-value";
+    server.use(
+      http.post(`${BROWSER_USE_API_URL}/profiles`, async ({ request }) => {
+        const body = z
+          .strictObject({ name: z.string() })
+          .parse(await request.json());
+        return HttpResponse.json(providerProfile(randomUUID(), body.name), {
+          status: 201,
+        });
+      }),
+      http.post(`${BROWSER_USE_API_URL}/browsers`, () => {
+        return HttpResponse.json(
+          providerBrowser(randomUUID(), {
+            browserCost: privateProviderValue,
+          }),
+          { status: 201 },
+        );
+      }),
+    );
+
+    context.mocks.axiomLogging.warn.mockClear();
+    const rejected = await requestBrowserCreate(browserHeaders, {
+      name: "invalid-provider-response",
+      proxyCountryCode: null,
+      maxCredits: 150,
+    });
+
+    expect(rejected.status).toBe(502);
+    await expect(rejected.json()).resolves.toMatchObject({
+      error: {
+        code: "BROWSER_USE_INVALID_RESPONSE",
+        message: "Managed browser provider returned an invalid response",
+      },
+    });
+    expect(context.mocks.axiomLogging.warn).toHaveBeenCalledWith(
+      "Managed browser provider returned an invalid response",
+      expect.objectContaining({
+        validationIssueCount: 1,
+        validationIssues: [
+          expect.objectContaining({
+            path: "browserCost",
+            code: "invalid_format",
+            message: expect.any(String),
+          }),
+        ],
+        validationIssuesOmitted: 0,
+      }),
+    );
+    expect(
+      JSON.stringify(context.mocks.axiomLogging.warn.mock.calls),
+    ).not.toContain(privateProviderValue);
   });
 
   it("isolates profiles across concurrent thread browser sessions", async () => {
@@ -662,7 +736,7 @@ describe("zero browser route", () => {
     // Admission candidates only need a browser-capable run token, so they skip
     // the runner claim that the org's run concurrency limit would throttle.
     async function createCandidate(prompt: string) {
-      const sentCandidate = await chat.requestSendMessage(
+      const sentCandidate = await chat.requestSendEvent(
         actor,
         {
           agentId: agent.agentId,
@@ -941,7 +1015,7 @@ describe("zero browser route", () => {
 
     await runs.heartbeatRunner(runnerGroup);
     mockNow(STARTED_AT_MS + 5 * MINUTE_MS);
-    const followup = await chat.requestSendMessage(
+    const followup = await chat.requestSendEvent(
       actor,
       {
         agentId: agent.agentId,

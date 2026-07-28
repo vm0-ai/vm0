@@ -9,6 +9,7 @@ import {
 } from "@tabler/icons-react";
 import { Button } from "@vm0/ui";
 
+import { brandName$ } from "../../signals/branding.ts";
 import { pageSignal$ } from "../../signals/page-signal.ts";
 import {
   connectFeishuAccount$,
@@ -69,6 +70,7 @@ function errorMessage(error: unknown): string {
 }
 
 export function ZeroFeishuConnectPage() {
+  const brandName = useGet(brandName$);
   const params = useGet(feishuConnectParams$);
   const statusLoadable = useLoadable(feishuConnectStatus$);
   const [connectLoadable, connect] = useLoadableSet(connectFeishuAccount$);
@@ -142,7 +144,7 @@ export function ZeroFeishuConnectPage() {
         body={
           checking
             ? "Please wait while we verify your connection."
-            : "Link your VM0 account to this Feishu bot so you can work with your agent directly from Feishu."
+            : `Link your ${brandName} account to this Feishu bot so you can work with your agent directly from Feishu.`
         }
       />
       {error ? (

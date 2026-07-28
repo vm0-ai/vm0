@@ -13,6 +13,7 @@ import {
   currentRightThread$,
   SIDEBAR_PARAM,
 } from "./chat-thread-panes.ts";
+import { autoOpenThreadSidebar$ } from "./thread-sidebar-coordinator.ts";
 import {
   CHAT_MESSAGES_PAGE_LIMIT,
   listEventsAfter$,
@@ -153,6 +154,10 @@ const receiveSyncedEventsInVisibleThreads$ = command(
     await Promise.all(
       visibleThreads.map(async (thread) => {
         await set(thread.receiveSyncedEvents$, events, signal);
+        signal.throwIfAborted();
+        if (events.length > 0) {
+          await set(autoOpenThreadSidebar$, thread, signal);
+        }
       }),
     );
     signal.throwIfAborted();

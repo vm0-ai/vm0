@@ -1,12 +1,8 @@
 import {
   chatEventResponseSchema,
-  type ChatMessageCompatibilityResponse,
   type ChatEventResponse,
 } from "@vm0/api-contracts/contracts/chat-threads";
-import {
-  chatEventCompatibilityRole,
-  type ChatEventType,
-} from "@vm0/api-contracts/contracts/chat-events";
+import type { ChatEventType } from "@vm0/api-contracts/contracts/chat-events";
 
 type UnionKeys<T> = T extends unknown ? keyof T : never;
 type UnionValue<T, K extends PropertyKey> = T extends unknown
@@ -19,13 +15,12 @@ type OptionalUnionFields<T> = {
   [K in UnionKeys<T>]?: UnionValue<T, K>;
 };
 
-export type MockChatEventInput =
-  OptionalUnionFields<ChatMessageCompatibilityResponse> & {
-    id?: string;
-    role?: "user" | "assistant";
-    content: string | null;
-    createdAt: string;
-  };
+export type MockChatEventInput = OptionalUnionFields<ChatEventResponse> & {
+  id?: string;
+  role?: "user" | "assistant";
+  content: string | null;
+  createdAt: string;
+};
 
 function inferredEventType(message: MockChatEventInput): ChatEventType {
   if (message.eventType !== undefined) {
@@ -35,11 +30,7 @@ function inferredEventType(message: MockChatEventInput): ChatEventType {
     if (message.interruptsRunId !== undefined) {
       return "control.interrupt";
     }
-    if (
-      (message.revokesEventId !== undefined ||
-        message.revokesMessageId !== undefined) &&
-      message.content === null
-    ) {
+    if (message.revokesEventId !== undefined && message.content === null) {
       return "control.revoke";
     }
     return message.error === undefined ? "input.prompt" : "input.rejected";
@@ -80,7 +71,6 @@ function baseEvent(
   content: string | null,
   fallbackSeqId: number,
 ) {
-  const revokesEventId = message.revokesEventId ?? message.revokesMessageId;
   return {
     id,
     threadId: message.threadId ?? "00000000-0000-4000-8000-000000000001",
@@ -93,8 +83,7 @@ function baseEvent(
     isGoalRun: message.isGoalRun,
     runEventId: message.runEventId,
     goalSnapshot: message.goalSnapshot,
-    revokesEventId,
-    revokesMessageId: revokesEventId,
+    revokesEventId: message.revokesEventId,
     seqId: message.seqId ?? fallbackSeqId,
     sequenceNumber: message.sequenceNumber,
     workflowSnapshot: message.workflowSnapshot,
@@ -160,13 +149,11 @@ const mockChatEventOverrides = {
     };
   },
   "run.dequeued": (message, id) => {
-    const revokesEventId =
-      message.revokesEventId ?? message.revokesMessageId ?? `mock-queued-${id}`;
+    const revokesEventId = message.revokesEventId ?? `mock-queued-${id}`;
     return {
       runId: message.runId ?? `mock-run-${id}`,
       content: null,
       revokesEventId,
-      revokesMessageId: revokesEventId,
     };
   },
   "run.completed": (message, id) => {
@@ -206,14 +193,10 @@ const mockChatEventOverrides = {
     };
   },
   "control.revoke": (message, id) => {
-    const revokesEventId =
-      message.revokesEventId ??
-      message.revokesMessageId ??
-      `mock-revoked-${id}`;
+    const revokesEventId = message.revokesEventId ?? `mock-revoked-${id}`;
     return {
       content: null,
       revokesEventId,
-      revokesMessageId: revokesEventId,
     };
   },
   "goal.changed": (message) => {
@@ -241,7 +224,6 @@ function normalizeMockChatEvent(
   return chatEventResponseSchema.parse({
     ...baseEvent(message, id, message.content, fallbackSeqId),
     eventType,
-    role: chatEventCompatibilityRole(eventType),
     ...mockChatEventOverrides[eventType](message, id),
   });
 }

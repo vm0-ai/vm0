@@ -58,6 +58,11 @@ export interface ThreadSidebarSignals {
   readonly editingAutomationId$: Computed<string | null>;
   readonly setEditingAutomationId$: Command<void, [string | null]>;
   /**
+   * Claim a derived auto-open candidate once for this thread. This prevents
+   * later sync events from reopening a card the user already closed.
+   */
+  readonly claimAutoOpenCandidate$: Command<boolean, [string]>;
+  /**
    * Sidebar fullscreen. Only the `artifacts` list and `artifact` detail render
    * a fullscreen toggle; the state belongs to the current sidebar session and
    * clears whenever the target type changes or the sidebar closes.
@@ -85,6 +90,7 @@ export function createThreadSidebarSignals(
   const internalTarget$ = state<ThreadSidebarTarget | null>(null);
   const internalFullscreen$ = state(false);
   const internalEditingAutomationId$ = state<string | null>(null);
+  const internalClaimedAutoOpenCandidateKey$ = state<string | null>(null);
   const resetSession$ = resetSignal();
 
   const artifactCatalog = createArtifactCatalogSignals({
@@ -124,6 +130,16 @@ export function createThreadSidebarSignals(
     set(internalEditingAutomationId$, null);
   });
 
+  const claimAutoOpenCandidate$ = command(
+    ({ get, set }, candidateKey: string): boolean => {
+      if (get(internalClaimedAutoOpenCandidateKey$) === candidateKey) {
+        return false;
+      }
+      set(internalClaimedAutoOpenCandidateKey$, candidateKey);
+      return true;
+    },
+  );
+
   const setupArtifactsSession$ = command(
     async ({ set }, parentSignal: AbortSignal): Promise<void> => {
       const signal = set(resetSession$, parentSignal);
@@ -144,6 +160,7 @@ export function createThreadSidebarSignals(
     setEditingAutomationId$: command(({ set }, automationId: string | null) => {
       set(internalEditingAutomationId$, automationId);
     }),
+    claimAutoOpenCandidate$,
     fullscreen$: computed((get) => {
       return get(internalFullscreen$);
     }),

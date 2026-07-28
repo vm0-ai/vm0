@@ -10,6 +10,7 @@ import {
 } from "@vm0/ui/components/ui/select";
 
 import { pageSignal$ } from "../../../../signals/page-signal.ts";
+import { brandName$ } from "../../../../signals/branding.ts";
 import {
   locale$,
   localePreferenceSupported$,
@@ -19,6 +20,7 @@ import { detach, Reason } from "../../../../signals/utils.ts";
 
 export function LanguageSettings() {
   const supportLoadable = useLoadable(localePreferenceSupported$);
+  const brandName = useGet(brandName$);
   const locale = useGet(locale$);
   const pageSignal = useGet(pageSignal$);
   const [updateLoadable, updateLocale] = useLoadableSet(
@@ -53,7 +55,7 @@ export function LanguageSettings() {
         <div className="flex flex-1 flex-col gap-1 min-w-0">
           <div className="text-sm font-medium text-foreground">Language</div>
           <div className="text-sm text-muted-foreground">
-            Choose your preferred language for the VM0 interface
+            Choose your preferred language for the {brandName} interface
           </div>
         </div>
         <div className="w-40 shrink-0">

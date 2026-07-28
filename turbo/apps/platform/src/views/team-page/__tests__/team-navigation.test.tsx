@@ -816,7 +816,6 @@ describe("team page navigation", () => {
                     id: firstMessageId,
                     threadId: firstThreadId,
                     eventType: "input.prompt" as const,
-                    role: "user",
                     content: "First shortcut thread message",
                     seqId: 1,
                     createdAt: "2026-06-01T00:02:00Z",

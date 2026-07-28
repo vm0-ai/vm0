@@ -5,6 +5,7 @@ import {
 import { useGet } from "ccstate-react";
 import type { ReactNode } from "react";
 import { resolvePlatformRuntimeConfig } from "../../lib/platform-host.ts";
+import { brandName$ } from "../../signals/branding.ts";
 import {
   clerkInstance$,
   clerkUi$,
@@ -13,7 +14,7 @@ import {
   resolveAppUrl,
   resolveClerkSatelliteConfig,
 } from "../../signals/auth.ts";
-import { getVm0ClerkLocalization } from "../auth/clerk-localization.ts";
+import { getClerkLocalization } from "../auth/clerk-localization.ts";
 import { getClerkAppearance } from "./clerk-appearance.ts";
 
 interface ClerkProviderProps {
@@ -23,6 +24,7 @@ interface ClerkProviderProps {
 export function VM0ClerkProvider({ children }: ClerkProviderProps) {
   const clerkInstance = useGet(clerkInstance$);
   const clerkUi = useGet(clerkUi$);
+  const brandName = useGet(brandName$);
 
   const publishableKey = resolvePlatformRuntimeConfig().clerkPublishableKey;
   const appUrl = resolveAppUrl();
@@ -34,7 +36,7 @@ export function VM0ClerkProvider({ children }: ClerkProviderProps) {
     afterSignOutUrl: resolveAppAuthUrl("/sign-in"),
     allowedRedirectOrigins,
     appearance: getClerkAppearance(),
-    localization: getVm0ClerkLocalization(),
+    localization: getClerkLocalization(brandName),
     publishableKey,
     signInFallbackRedirectUrl: appUrl,
     signInUrl: resolveAppAuthUrl("/sign-in"),
