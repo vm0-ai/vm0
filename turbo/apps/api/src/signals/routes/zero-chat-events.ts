@@ -631,7 +631,6 @@ function resolveRuntimeNormalSendBody(
     projection.generationTemplate ?? body.generationTemplate;
   return {
     ...body,
-    prompt: projection.displayText,
     userMessage: body.userMessage,
     generationTemplate,
     generationTemplates:

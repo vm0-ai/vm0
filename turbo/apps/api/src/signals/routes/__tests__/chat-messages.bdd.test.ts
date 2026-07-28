@@ -4136,12 +4136,6 @@ describe("CHAT-02: generation templates and attachments", () => {
       `> Second quote\n\nAdd supporting evidence from [Roadmap](/chats/${referencedThreadId})`;
     const prompt =
       `Review [Roadmap](/chats/${referencedThreadId}) now\n\n` + feedbackPrompt;
-    const displayText = [
-      `[Template: ${style.title}]`,
-      "[File: brief.pdf]",
-      "Review [Chat thread: Roadmap] now",
-      feedbackPrompt,
-    ].join("\n\n");
     const userMessage: UserMessageDocument = {
       version: 1,
       parts: [
@@ -4234,7 +4228,7 @@ describe("CHAT-02: generation templates and attachments", () => {
       },
     );
     expect(message).toMatchObject({
-      content: displayText,
+      content: prompt,
       userMessage,
     });
     await cancelChatRun(actor, sent.runId);
@@ -4399,7 +4393,7 @@ describe("CHAT-02: generation templates and attachments", () => {
         return message.runId === sent.runId;
       }),
     ).toMatchObject({
-      content: "[File: api-input.txt]\n\nplain API attachment",
+      content: "plain API attachment",
       userMessage: {
         version: 1,
         parts: [
