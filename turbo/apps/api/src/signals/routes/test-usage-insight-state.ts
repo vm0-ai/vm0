@@ -11,10 +11,19 @@ import {
 } from "@vm0/db/schema/agent-compose";
 import { agentRuns } from "@vm0/db/schema/agent-run";
 import { agentSessions } from "@vm0/db/schema/agent-session";
+import {
+  browserProfiles,
+  browserSessionInstances,
+  browserSessions,
+} from "@vm0/db/schema/browser-session";
 import { chatThreads } from "@vm0/db/schema/chat-thread";
 import { connectors } from "@vm0/db/schema/connector";
 import { orgMetadata } from "@vm0/db/schema/org-metadata";
-import { usageAllowanceAllocations } from "@vm0/db/schema/org-usage-allowance";
+import {
+  orgUsageAllowanceEntitlements,
+  orgUsageAllowanceWindows,
+  usageAllowanceAllocations,
+} from "@vm0/db/schema/org-usage-allowance";
 import { secrets } from "@vm0/db/schema/secret";
 import { storages, storageVersions } from "@vm0/db/schema/storage";
 import { usageEvent } from "@vm0/db/schema/usage-event";
@@ -24,19 +33,54 @@ import { userPermissionGrants } from "@vm0/db/schema/user-permission-grant";
 import { variables } from "@vm0/db/schema/variable";
 import { zeroAgents } from "@vm0/db/schema/zero-agent";
 import { zeroRuns } from "@vm0/db/schema/zero-run";
-import { and, count, eq, inArray, isNotNull, isNull, sql } from "drizzle-orm";
+import {
+  and,
+  count,
+  eq,
+  inArray,
+  isNotNull,
+  isNull,
+  sql,
+  sum,
+} from "drizzle-orm";
+import { z } from "zod";
 
+import { executeRawRows } from "../../lib/db-raw-rows";
+import { testOverride } from "../../lib/singleton";
 import { nowDate } from "../../lib/time";
 import { bodyResultOf } from "../context/request";
 import { request$ } from "../context/hono";
 import { writeDb$, type Db } from "../external/db";
 import type { RouteEntry } from "../route-entry";
 import {
+  deleteOrgUsageData,
+  deleteUserUsageData,
+} from "../services/usage-event-cleanup.service";
+import { lockUsageEventCompaction } from "../services/usage-event-compaction-lock.service";
+import { createDeferredPromise, onRejection } from "../utils";
+import {
   isTestEndpointAllowed,
   testEndpointNotFoundResponse,
 } from "./test-oauth-provider-helpers";
 
 const actionBody$ = bodyResultOf(testUsageInsightStateContract.action);
+
+interface UsageCompactionLockGate {
+  readonly gateId: string;
+  held: boolean;
+  readonly released: ReturnType<typeof createDeferredPromise<void>>;
+  readonly release: () => void;
+}
+
+const usageCompactionLockGate = testOverride<UsageCompactionLockGate | null>(
+  () => {
+    return null;
+  },
+);
+
+const usageCompactionLockWaiterRowSchema = z.object({
+  waiterCount: z.int(),
+});
 
 interface UsageInsightFixture {
   readonly orgId: string;
@@ -87,12 +131,27 @@ type UsageInsightRunAction = UsageInsightAction<
   "seed-run" | "seed-chat-thread"
 >;
 
-type UsageInsightEventAction = UsageInsightAction<
+type UsageInsightEventWriteAction = UsageInsightAction<
   | "insert-model-usage-event-for-run"
   | "insert-usage-event"
+  | "set-browser-usage-hold"
+  | "attach-usage-allowance"
+  | "read-allowance-window-state"
+>;
+
+type UsageInsightEventMaterializationAction = UsageInsightAction<
+  | "delete-run"
+  | "seed-usage-overflow-grain"
   | "set-usage-event-created-at"
   | "materialize-hourly-usage"
   | "read-usage-storage-counts"
+>;
+
+type UsageInsightCompactionTestAction = UsageInsightAction<
+  | "hold-usage-compaction-lock"
+  | "release-usage-compaction-lock"
+  | "read-usage-compaction-lock-state"
+  | "delete-usage-data"
 >;
 
 const MODEL_TOKEN_CATEGORIES = [
@@ -140,6 +199,53 @@ async function seedUsageInsightFixture(db: Db): Promise<UsageInsightFixture> {
   return fixture;
 }
 
+async function deleteUsageInsightFixtureUsageData(
+  db: Db,
+  fixture: UsageInsightFixture,
+  signal: AbortSignal,
+): Promise<void> {
+  await db
+    .delete(browserSessions)
+    .where(
+      and(
+        eq(browserSessions.orgId, fixture.orgId),
+        eq(browserSessions.userId, fixture.userId),
+      ),
+    );
+  signal.throwIfAborted();
+  await db
+    .delete(browserProfiles)
+    .where(
+      and(
+        eq(browserProfiles.orgId, fixture.orgId),
+        eq(browserProfiles.userId, fixture.userId),
+      ),
+    );
+  signal.throwIfAborted();
+  await db
+    .delete(usageEventHourlyRollup)
+    .where(
+      and(
+        eq(usageEventHourlyRollup.orgId, fixture.orgId),
+        eq(usageEventHourlyRollup.userId, fixture.userId),
+      ),
+    );
+  signal.throwIfAborted();
+  await db
+    .delete(usageEvent)
+    .where(
+      and(
+        eq(usageEvent.orgId, fixture.orgId),
+        eq(usageEvent.userId, fixture.userId),
+      ),
+    );
+  signal.throwIfAborted();
+  await db
+    .delete(orgUsageAllowanceEntitlements)
+    .where(eq(orgUsageAllowanceEntitlements.orgId, fixture.orgId));
+  signal.throwIfAborted();
+}
+
 async function deleteUsageInsightFixture(
   db: Db,
   fixture: UsageInsightFixture,
@@ -148,20 +254,7 @@ async function deleteUsageInsightFixture(
   const orgId = fixture.orgId;
   const userId = fixture.userId;
 
-  await db
-    .delete(usageEventHourlyRollup)
-    .where(
-      and(
-        eq(usageEventHourlyRollup.orgId, orgId),
-        eq(usageEventHourlyRollup.userId, userId),
-      ),
-    );
-  signal.throwIfAborted();
-
-  await db
-    .delete(usageEvent)
-    .where(and(eq(usageEvent.orgId, orgId), eq(usageEvent.userId, userId)));
-  signal.throwIfAborted();
+  await deleteUsageInsightFixtureUsageData(db, fixture, signal);
 
   await db
     .delete(userPermissionGrants)
@@ -476,6 +569,7 @@ async function insertUsageEvent(
     readonly status?: string;
     readonly creditsCharged?: number;
     readonly idempotencyKey?: string;
+    readonly billingError?: string | null;
     readonly createdAt?: Date;
     readonly processedAt?: Date | null;
   },
@@ -497,6 +591,7 @@ async function insertUsageEvent(
     quantity: args.quantity ?? 1,
     status,
     creditsCharged: args.creditsCharged ?? null,
+    billingError: args.billingError ?? null,
     idempotencyKey: args.idempotencyKey ?? randomUUID(),
     createdAt: args.createdAt ?? nowDate(),
     processedAt,
@@ -509,6 +604,301 @@ async function insertUsageEvent(
     throw new Error("insertUsageEvent: insert returned no row");
   }
   return row.id;
+}
+
+async function setBrowserUsageHold(
+  db: Db,
+  args: {
+    readonly orgId: string;
+    readonly userId: string;
+    readonly runId: string;
+    readonly chatThreadId: string;
+    readonly idempotencyKey: string;
+    readonly settled: boolean;
+  },
+): Promise<void> {
+  const [existing] = await db
+    .select({
+      providerSessionId: browserSessionInstances.providerSessionId,
+    })
+    .from(browserSessionInstances)
+    .where(eq(browserSessionInstances.providerSessionId, args.idempotencyKey))
+    .limit(1);
+  if (existing) {
+    await db
+      .update(browserSessionInstances)
+      .set({ settledAt: args.settled ? nowDate() : null })
+      .where(
+        eq(browserSessionInstances.providerSessionId, args.idempotencyKey),
+      );
+    return;
+  }
+
+  let [profile] = await db
+    .select({ id: browserProfiles.id })
+    .from(browserProfiles)
+    .where(
+      and(
+        eq(browserProfiles.orgId, args.orgId),
+        eq(browserProfiles.userId, args.userId),
+      ),
+    )
+    .limit(1);
+  if (!profile) {
+    [profile] = await db
+      .insert(browserProfiles)
+      .values({
+        orgId: args.orgId,
+        userId: args.userId,
+        providerProfileId: randomUUID(),
+      })
+      .returning({ id: browserProfiles.id });
+  }
+  if (!profile) {
+    throw new Error("setBrowserUsageHold: profile insert returned no row");
+  }
+
+  const [browser] = await db
+    .insert(browserSessions)
+    .values({
+      chatThreadId: args.chatThreadId,
+      runId: args.runId,
+      orgId: args.orgId,
+      userId: args.userId,
+      name: "Compaction hold fixture",
+      browserProfileId: profile.id,
+      status: "suspended",
+      timeoutMinutes: 10,
+      maxCredits: 100,
+    })
+    .returning({ id: browserSessions.id });
+  if (!browser) {
+    throw new Error("setBrowserUsageHold: browser insert returned no row");
+  }
+
+  const now = nowDate();
+  await db.insert(browserSessionInstances).values({
+    providerSessionId: args.idempotencyKey,
+    browserSessionId: browser.id,
+    chatThreadId: args.chatThreadId,
+    runId: args.runId,
+    status: "stopped",
+    pricingUnitPrice: 1,
+    pricingUnitSize: 1,
+    timeoutAt: new Date(now.getTime() + 60_000),
+    startedAt: now,
+    finishedAt: now,
+    settledAt: args.settled ? now : null,
+  });
+}
+
+async function attachUsageAllowance(
+  db: Db,
+  args: {
+    readonly orgId: string;
+    readonly runId: string | null;
+    readonly usageEventId: string;
+    readonly unitsApplied: number;
+    readonly consumedUnits: number;
+  },
+): Promise<{
+  readonly shortWindowId: string;
+  readonly weeklyWindowId: string;
+}> {
+  let [entitlement] = await db
+    .select({ id: orgUsageAllowanceEntitlements.id })
+    .from(orgUsageAllowanceEntitlements)
+    .where(eq(orgUsageAllowanceEntitlements.orgId, args.orgId))
+    .limit(1);
+  if (!entitlement) {
+    [entitlement] = await db
+      .insert(orgUsageAllowanceEntitlements)
+      .values({
+        orgId: args.orgId,
+        shortWindowSeconds: 3600,
+        shortWindowUnits: 1_000_000,
+        weeklyWindowUnits: 1_000_000,
+        effectiveAt: new Date("2000-01-01T00:00:00.000Z"),
+      })
+      .returning({ id: orgUsageAllowanceEntitlements.id });
+  }
+  if (!entitlement) {
+    throw new Error("attachUsageAllowance: entitlement insert returned no row");
+  }
+
+  const windowLimit = Math.max(args.consumedUnits, args.unitsApplied) + 100;
+  const windows = await db
+    .insert(orgUsageAllowanceWindows)
+    .values([
+      {
+        orgId: args.orgId,
+        entitlementId: entitlement.id,
+        kind: "short",
+        startsAt: new Date("2000-01-01T00:00:00.000Z"),
+        expiresAt: new Date("3000-01-01T00:00:00.000Z"),
+        unitLimit: windowLimit,
+        consumedUnits: args.consumedUnits,
+        createdByRunId: args.runId,
+      },
+      {
+        orgId: args.orgId,
+        entitlementId: entitlement.id,
+        kind: "weekly",
+        startsAt: new Date("2000-01-01T00:00:00.000Z"),
+        expiresAt: new Date("3000-01-01T00:00:00.000Z"),
+        unitLimit: windowLimit,
+        consumedUnits: args.consumedUnits,
+        createdByRunId: args.runId,
+      },
+    ])
+    .returning({
+      id: orgUsageAllowanceWindows.id,
+      kind: orgUsageAllowanceWindows.kind,
+    });
+  const shortWindow = windows.find((window) => {
+    return window.kind === "short";
+  });
+  const weeklyWindow = windows.find((window) => {
+    return window.kind === "weekly";
+  });
+  if (!shortWindow || !weeklyWindow) {
+    throw new Error("attachUsageAllowance: window insert returned no pair");
+  }
+
+  await db.insert(usageAllowanceAllocations).values({
+    usageEventId: args.usageEventId,
+    orgId: args.orgId,
+    runId: args.runId,
+    shortWindowId: shortWindow.id,
+    weeklyWindowId: weeklyWindow.id,
+    unitsApplied: args.unitsApplied,
+  });
+  return {
+    shortWindowId: shortWindow.id,
+    weeklyWindowId: weeklyWindow.id,
+  };
+}
+
+async function readAllowanceWindowState(
+  db: Db,
+  args: {
+    readonly shortWindowId: string;
+    readonly weeklyWindowId: string;
+  },
+) {
+  const [[shortWindow], [weeklyWindow], [raw], [hourly]] = await Promise.all([
+    db
+      .select({ consumedUnits: orgUsageAllowanceWindows.consumedUnits })
+      .from(orgUsageAllowanceWindows)
+      .where(eq(orgUsageAllowanceWindows.id, args.shortWindowId))
+      .limit(1),
+    db
+      .select({ consumedUnits: orgUsageAllowanceWindows.consumedUnits })
+      .from(orgUsageAllowanceWindows)
+      .where(eq(orgUsageAllowanceWindows.id, args.weeklyWindowId))
+      .limit(1),
+    db
+      .select({
+        allowanceUnits: sum(usageAllowanceAllocations.unitsApplied),
+        allocationCount: count(),
+      })
+      .from(usageAllowanceAllocations)
+      .where(
+        and(
+          eq(usageAllowanceAllocations.shortWindowId, args.shortWindowId),
+          eq(usageAllowanceAllocations.weeklyWindowId, args.weeklyWindowId),
+        ),
+      ),
+    db
+      .select({
+        allowanceUnits: sum(usageEventHourlyRollup.allowanceUnits),
+      })
+      .from(usageEventHourlyRollup)
+      .where(
+        and(
+          eq(usageEventHourlyRollup.shortWindowId, args.shortWindowId),
+          eq(usageEventHourlyRollup.weeklyWindowId, args.weeklyWindowId),
+        ),
+      ),
+  ]);
+  if (!shortWindow || !weeklyWindow) {
+    throw new Error("readAllowanceWindowState: allowance window not found");
+  }
+  return {
+    shortWindowConsumedUnits: String(shortWindow.consumedUnits),
+    weeklyWindowConsumedUnits: String(weeklyWindow.consumedUnits),
+    rawAllowanceUnits: raw?.allowanceUnits ?? "0",
+    hourlyAllowanceUnits: hourly?.allowanceUnits ?? "0",
+    allocationCount: raw?.allocationCount ?? 0,
+  };
+}
+
+async function deleteRun(
+  db: Db,
+  runId: string,
+  signal: AbortSignal,
+): Promise<void> {
+  await db.delete(zeroRuns).where(eq(zeroRuns.id, runId));
+  signal.throwIfAborted();
+  await db.delete(agentRuns).where(eq(agentRuns.id, runId));
+  signal.throwIfAborted();
+}
+
+async function seedUsageOverflowGrain(
+  db: Db,
+  args: {
+    readonly orgId: string;
+    readonly userId: string;
+    readonly processedAt: Date;
+  },
+): Promise<void> {
+  const processedHour = new Date(args.processedAt);
+  processedHour.setUTCMinutes(0, 0, 0);
+  await db.transaction(async (tx) => {
+    await tx.execute(sql`
+      INSERT INTO ${usageEvent} (
+        run_id,
+        idempotency_key,
+        org_id,
+        user_id,
+        kind,
+        provider,
+        category,
+        quantity,
+        credits_charged,
+        status,
+        created_at,
+        processed_at
+      ) VALUES (
+        NULL,
+        ${randomUUID()},
+        ${args.orgId},
+        ${args.userId},
+        'connector',
+        'overflow-fixture',
+        'call',
+        9223372036854775807,
+        0,
+        'processed',
+        ${args.processedAt},
+        ${args.processedAt}
+      )
+    `);
+    await tx.insert(usageEventHourlyRollup).values({
+      processedHour,
+      orgId: args.orgId,
+      userId: args.userId,
+      runId: null,
+      kind: "connector",
+      provider: "overflow-fixture",
+      category: "call",
+      shortWindowId: null,
+      weeklyWindowId: null,
+      quantity: 1,
+      creditsCharged: 0,
+      allowanceUnits: 0,
+    });
+  });
 }
 
 async function setUsageEventCreatedAt(
@@ -651,6 +1041,89 @@ async function readUsageStorageCounts(
   };
 }
 
+function createUsageCompactionLockGate(
+  gateId: string,
+  signal: AbortSignal,
+): UsageCompactionLockGate {
+  const released = createDeferredPromise<void>(signal);
+  return {
+    gateId,
+    held: false,
+    released,
+    release: () => {
+      if (!released.settled()) {
+        released.resolve(undefined);
+      }
+    },
+  };
+}
+
+function clearUsageCompactionLockGate(gate: UsageCompactionLockGate): void {
+  if (usageCompactionLockGate.get() === gate) {
+    usageCompactionLockGate.clear();
+  }
+}
+
+async function holdUsageCompactionLock(
+  db: Db,
+  gateId: string,
+  signal: AbortSignal,
+): Promise<void> {
+  if (usageCompactionLockGate.get()) {
+    throw new Error("A usage compaction lock gate is already active");
+  }
+  const gate = createUsageCompactionLockGate(gateId, signal);
+  usageCompactionLockGate.set(gate);
+  await onRejection(
+    db.transaction(async (tx) => {
+      await lockUsageEventCompaction(tx);
+      signal.throwIfAborted();
+      gate.held = true;
+      await gate.released.promise;
+    }),
+    () => {
+      clearUsageCompactionLockGate(gate);
+    },
+  );
+  clearUsageCompactionLockGate(gate);
+}
+
+async function readUsageCompactionLockWaiterCount(db: Db): Promise<number> {
+  const rows = await executeRawRows(
+    db,
+    sql`
+      SELECT ${count()}::int AS "waiterCount"
+      FROM pg_locks lock
+      WHERE lock.locktype = 'advisory'
+        AND lock.granted = false
+        AND lock.database = (
+          SELECT database.oid
+          FROM pg_database database
+          WHERE database.datname = current_database()
+        )
+        AND lock.classid::bigint
+          = (hashtext('vm0')::bigint & 4294967295)
+        AND lock.objid::bigint
+          = (hashtext('usage_event_compaction')::bigint & 4294967295)
+        AND lock.objsubid = 2
+    `,
+    usageCompactionLockWaiterRowSchema,
+  );
+  return rows[0]?.waiterCount ?? 0;
+}
+
+async function deleteUsageData(
+  db: Db,
+  scope: "organization" | "user",
+  id: string,
+): Promise<void> {
+  if (scope === "organization") {
+    await deleteOrgUsageData(db, id);
+    return;
+  }
+  await deleteUserUsageData(db, id);
+}
+
 async function mutateUsageInsightFixtureState(
   db: Db,
   body: UsageInsightFixtureAction,
@@ -752,9 +1225,9 @@ async function mutateUsageInsightRunState(
   }
 }
 
-async function mutateUsageInsightEventState(
+async function mutateUsageInsightEventWriteState(
   db: Db,
-  body: UsageInsightEventAction,
+  body: UsageInsightEventWriteAction,
   signal: AbortSignal,
 ) {
   switch (body.action) {
@@ -792,6 +1265,7 @@ async function mutateUsageInsightEventState(
         status: body.status,
         creditsCharged: body.credits_charged,
         idempotencyKey: body.idempotency_key,
+        billingError: body.billing_error,
         createdAt: parseMaybeDate(body.created_at),
         processedAt:
           body.processed_at === undefined
@@ -803,6 +1277,76 @@ async function mutateUsageInsightEventState(
         status: 200 as const,
         body: { ok: true as const, usage_event_id: id },
       };
+    }
+    case "set-browser-usage-hold": {
+      await setBrowserUsageHold(db, {
+        orgId: body.org_id,
+        userId: body.user_id,
+        runId: body.run_id,
+        chatThreadId: body.chat_thread_id,
+        idempotencyKey: body.idempotency_key,
+        settled: body.settled,
+      });
+      signal.throwIfAborted();
+      return { status: 200 as const, body: { ok: true as const } };
+    }
+    case "attach-usage-allowance": {
+      const windows = await attachUsageAllowance(db, {
+        orgId: body.org_id,
+        runId: body.run_id,
+        usageEventId: body.usage_event_id,
+        unitsApplied: body.units_applied,
+        consumedUnits: body.consumed_units,
+      });
+      signal.throwIfAborted();
+      return {
+        status: 200 as const,
+        body: {
+          ok: true as const,
+          short_window_id: windows.shortWindowId,
+          weekly_window_id: windows.weeklyWindowId,
+        },
+      };
+    }
+    case "read-allowance-window-state": {
+      const state = await readAllowanceWindowState(db, {
+        shortWindowId: body.short_window_id,
+        weeklyWindowId: body.weekly_window_id,
+      });
+      signal.throwIfAborted();
+      return {
+        status: 200 as const,
+        body: {
+          ok: true as const,
+          short_window_consumed_units: state.shortWindowConsumedUnits,
+          weekly_window_consumed_units: state.weeklyWindowConsumedUnits,
+          raw_allowance_units: state.rawAllowanceUnits,
+          hourly_allowance_units: state.hourlyAllowanceUnits,
+          allocation_count: state.allocationCount,
+        },
+      };
+    }
+  }
+}
+
+async function mutateUsageInsightEventMaterializationState(
+  db: Db,
+  body: UsageInsightEventMaterializationAction,
+  signal: AbortSignal,
+) {
+  switch (body.action) {
+    case "delete-run": {
+      await deleteRun(db, body.run_id, signal);
+      return { status: 200 as const, body: { ok: true as const } };
+    }
+    case "seed-usage-overflow-grain": {
+      await seedUsageOverflowGrain(db, {
+        orgId: body.org_id,
+        userId: body.user_id,
+        processedAt: new Date(body.processed_at),
+      });
+      signal.throwIfAborted();
+      return { status: 200 as const, body: { ok: true as const } };
     }
     case "set-usage-event-created-at": {
       await setUsageEventCreatedAt(
@@ -845,6 +1389,45 @@ async function mutateUsageInsightEventState(
   }
 }
 
+async function mutateUsageInsightCompactionTestState(
+  db: Db,
+  body: UsageInsightCompactionTestAction,
+  signal: AbortSignal,
+) {
+  switch (body.action) {
+    case "hold-usage-compaction-lock": {
+      await holdUsageCompactionLock(db, body.gate_id, signal);
+      signal.throwIfAborted();
+      return { status: 200 as const, body: { ok: true as const } };
+    }
+    case "release-usage-compaction-lock": {
+      const gate = usageCompactionLockGate.get();
+      if (gate?.gateId === body.gate_id) {
+        gate.release();
+      }
+      return { status: 200 as const, body: { ok: true as const } };
+    }
+    case "read-usage-compaction-lock-state": {
+      const waiterCount = await readUsageCompactionLockWaiterCount(db);
+      signal.throwIfAborted();
+      const gate = usageCompactionLockGate.get();
+      return {
+        status: 200 as const,
+        body: {
+          ok: true as const,
+          lock_held: gate?.gateId === body.gate_id && gate.held,
+          lock_waiter_count: waiterCount,
+        },
+      };
+    }
+    case "delete-usage-data": {
+      await deleteUsageData(db, body.scope, body.id);
+      signal.throwIfAborted();
+      return { status: 200 as const, body: { ok: true as const } };
+    }
+  }
+}
+
 async function mutateUsageInsightState(
   db: Db,
   body: TestUsageInsightStateActionBody,
@@ -862,10 +1445,27 @@ async function mutateUsageInsightState(
     }
     case "insert-model-usage-event-for-run":
     case "insert-usage-event":
+    case "set-browser-usage-hold":
+    case "attach-usage-allowance":
+    case "read-allowance-window-state": {
+      return await mutateUsageInsightEventWriteState(db, body, signal);
+    }
+    case "delete-run":
+    case "seed-usage-overflow-grain":
     case "set-usage-event-created-at":
     case "materialize-hourly-usage":
     case "read-usage-storage-counts": {
-      return await mutateUsageInsightEventState(db, body, signal);
+      return await mutateUsageInsightEventMaterializationState(
+        db,
+        body,
+        signal,
+      );
+    }
+    case "hold-usage-compaction-lock":
+    case "release-usage-compaction-lock":
+    case "read-usage-compaction-lock-state":
+    case "delete-usage-data": {
+      return await mutateUsageInsightCompactionTestState(db, body, signal);
     }
   }
 }

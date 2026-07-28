@@ -50,6 +50,7 @@ interface InsertUsageEventArgs {
   readonly status?: string;
   readonly creditsCharged?: number;
   readonly idempotencyKey?: string;
+  readonly billingError?: string | null;
   readonly createdAt?: Date;
   readonly processedAt?: Date | null;
 }
@@ -57,6 +58,24 @@ interface InsertUsageEventArgs {
 interface UsageStorageCounts {
   readonly raw: number;
   readonly hourly: number;
+}
+
+interface UsageAllowanceWindowPair {
+  readonly shortWindowId: string;
+  readonly weeklyWindowId: string;
+}
+
+interface UsageAllowanceWindowState {
+  readonly shortWindowConsumedUnits: string;
+  readonly weeklyWindowConsumedUnits: string;
+  readonly rawAllowanceUnits: string;
+  readonly hourlyAllowanceUnits: string;
+  readonly allocationCount: number;
+}
+
+interface UsageCompactionLockState {
+  readonly held: boolean;
+  readonly waiterCount: number;
 }
 
 function requestUsageInsightState(
@@ -220,6 +239,29 @@ export const seedRun$ = command(
   },
 );
 
+export const seedChatThread$ = command(
+  async (
+    _,
+    args: {
+      readonly userId: string;
+      readonly composeId: string;
+      readonly title?: string;
+    },
+    signal: AbortSignal,
+  ): Promise<string> => {
+    const response = await postAction(signal, {
+      action: "seed-chat-thread",
+      user_id: args.userId,
+      compose_id: args.composeId,
+      title: args.title,
+    });
+    if (!response.chat_thread_id) {
+      throw new Error("seedChatThread$: response missing chat_thread_id");
+    }
+    return response.chat_thread_id;
+  },
+);
+
 export const insertUsageEvent$ = command(
   async (
     _,
@@ -238,6 +280,7 @@ export const insertUsageEvent$ = command(
       status: args.status,
       credits_charged: args.creditsCharged,
       idempotency_key: args.idempotencyKey,
+      billing_error: args.billingError,
       created_at: dateToWire(args.createdAt) ?? undefined,
       processed_at: dateToWire(args.processedAt),
     });
@@ -245,6 +288,118 @@ export const insertUsageEvent$ = command(
       throw new Error("insertUsageEvent$: response missing usage_event_id");
     }
     return response.usage_event_id;
+  },
+);
+
+export const setBrowserUsageHold$ = command(
+  async (
+    _,
+    args: {
+      readonly orgId: string;
+      readonly userId: string;
+      readonly runId: string;
+      readonly chatThreadId: string;
+      readonly idempotencyKey: string;
+      readonly settled: boolean;
+    },
+    signal: AbortSignal,
+  ): Promise<void> => {
+    await postAction(signal, {
+      action: "set-browser-usage-hold",
+      org_id: args.orgId,
+      user_id: args.userId,
+      run_id: args.runId,
+      chat_thread_id: args.chatThreadId,
+      idempotency_key: args.idempotencyKey,
+      settled: args.settled,
+    });
+  },
+);
+
+export const attachUsageAllowance$ = command(
+  async (
+    _,
+    args: {
+      readonly orgId: string;
+      readonly runId: string | null;
+      readonly usageEventId: string;
+      readonly unitsApplied: number;
+      readonly consumedUnits: number;
+    },
+    signal: AbortSignal,
+  ): Promise<UsageAllowanceWindowPair> => {
+    const response = await postAction(signal, {
+      action: "attach-usage-allowance",
+      org_id: args.orgId,
+      run_id: args.runId,
+      usage_event_id: args.usageEventId,
+      units_applied: args.unitsApplied,
+      consumed_units: args.consumedUnits,
+    });
+    if (!response.short_window_id || !response.weekly_window_id) {
+      throw new Error("attachUsageAllowance$: response missing window IDs");
+    }
+    return {
+      shortWindowId: response.short_window_id,
+      weeklyWindowId: response.weekly_window_id,
+    };
+  },
+);
+
+export const readAllowanceWindowState$ = command(
+  async (
+    _,
+    pair: UsageAllowanceWindowPair,
+    signal: AbortSignal,
+  ): Promise<UsageAllowanceWindowState> => {
+    const response = await postAction(signal, {
+      action: "read-allowance-window-state",
+      short_window_id: pair.shortWindowId,
+      weekly_window_id: pair.weeklyWindowId,
+    });
+    if (
+      response.short_window_consumed_units === undefined ||
+      response.weekly_window_consumed_units === undefined ||
+      response.raw_allowance_units === undefined ||
+      response.hourly_allowance_units === undefined ||
+      response.allocation_count === undefined
+    ) {
+      throw new Error(
+        "readAllowanceWindowState$: response missing allowance state",
+      );
+    }
+    return {
+      shortWindowConsumedUnits: response.short_window_consumed_units,
+      weeklyWindowConsumedUnits: response.weekly_window_consumed_units,
+      rawAllowanceUnits: response.raw_allowance_units,
+      hourlyAllowanceUnits: response.hourly_allowance_units,
+      allocationCount: response.allocation_count,
+    };
+  },
+);
+
+export const deleteRun$ = command(
+  async (_, runId: string, signal: AbortSignal): Promise<void> => {
+    await postAction(signal, { action: "delete-run", run_id: runId });
+  },
+);
+
+export const seedUsageOverflowGrain$ = command(
+  async (
+    _,
+    args: {
+      readonly orgId: string;
+      readonly userId: string;
+      readonly processedAt: Date;
+    },
+    signal: AbortSignal,
+  ): Promise<void> => {
+    await postAction(signal, {
+      action: "seed-usage-overflow-grain",
+      org_id: args.orgId,
+      user_id: args.userId,
+      processed_at: args.processedAt.toISOString(),
+    });
   },
 );
 
@@ -297,5 +452,65 @@ export const readUsageStorageCounts$ = command(
       raw: response.raw_count,
       hourly: response.hourly_count,
     };
+  },
+);
+
+export const holdUsageCompactionLock$ = command(
+  async (_, gateId: string, signal: AbortSignal): Promise<void> => {
+    await postAction(signal, {
+      action: "hold-usage-compaction-lock",
+      gate_id: gateId,
+    });
+  },
+);
+
+export const releaseUsageCompactionLock$ = command(
+  async (_, gateId: string, signal: AbortSignal): Promise<void> => {
+    await postAction(signal, {
+      action: "release-usage-compaction-lock",
+      gate_id: gateId,
+    });
+  },
+);
+
+export const readUsageCompactionLockState$ = command(
+  async (
+    _,
+    gateId: string,
+    signal: AbortSignal,
+  ): Promise<UsageCompactionLockState> => {
+    const response = await postAction(signal, {
+      action: "read-usage-compaction-lock-state",
+      gate_id: gateId,
+    });
+    if (
+      response.lock_held === undefined ||
+      response.lock_waiter_count === undefined
+    ) {
+      throw new Error(
+        "readUsageCompactionLockState$: response missing lock state",
+      );
+    }
+    return {
+      held: response.lock_held,
+      waiterCount: response.lock_waiter_count,
+    };
+  },
+);
+
+export const deleteUsageData$ = command(
+  async (
+    _,
+    args: {
+      readonly scope: "organization" | "user";
+      readonly id: string;
+    },
+    signal: AbortSignal,
+  ): Promise<void> => {
+    await postAction(signal, {
+      action: "delete-usage-data",
+      scope: args.scope,
+      id: args.id,
+    });
   },
 );
