@@ -14,6 +14,7 @@ _DIAGNOSTIC_CANDIDATE_KEY: Final = "_diagnostic_candidate"
 _MODEL_PROVIDER_PREFIX: Final = "model-provider:"
 # Keep this regular grammar aligned with AUTH_REFERENCE_PATTERN and
 # parseBasicAuthTemplates() in the TypeScript connector contract.
+# basic() uses explicit ASCII whitespace; simple references use ECMAScript \s.
 _BASIC_TEMPLATE_WHITESPACE: Final = r"[\u0009-\u000d\u0020]"
 _SIMPLE_TEMPLATE_WHITESPACE: Final = (
     r"[\u0009-\u000d\u0020\u00a0\u1680\u2000-\u200a"
