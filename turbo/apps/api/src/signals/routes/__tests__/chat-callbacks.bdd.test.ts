@@ -2819,7 +2819,9 @@ describe("CHAT-02: auto-send after failures", () => {
     expect(appended).toContain("# Incomplete Rounds Context");
     expect(appended).toContain("RUN_STATUS: failed");
     expect(appended).toContain("...[truncated]");
-    expect(appended).toContain(`[Web file]\n   [ID] ${contextFile.id}`);
+    expect(appended).toContain(
+      `[Web file] ${contextFile.filename} (${contextFile.contentType})\n   [ID] ${contextFile.id}`,
+    );
     expect(appended).not.toContain("# Web Chat Run Context");
     expect(autoContext.body.sessionId).toBe(`bdd-cli-${first.runId}`);
 
