@@ -757,7 +757,9 @@ describe("FILE-01 uploads, storage, and host APIs", () => {
       contentType: "text/plain",
       size: 12,
     });
-    expect(prepared.uploadUrl).toMatch(/^https?:\/\//);
+    expect("uploadUrl" in prepared ? prepared.uploadUrl : "").toMatch(
+      /^https?:\/\//,
+    );
     expect(prepared.url).toContain(`/artifacts/${actor.userId}/`);
 
     api.mockCompletedUploadObject(actor, prepared.id, "notes.txt", 12);

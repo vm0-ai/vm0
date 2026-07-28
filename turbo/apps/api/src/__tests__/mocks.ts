@@ -432,7 +432,31 @@ const apiTestMocks: ApiTestMocks = vi.hoisted((): ApiTestMocks => {
 });
 
 vi.mock("@aws-sdk/client-s3", () => {
+  class AbortMultipartUploadCommand {
+    readonly input: unknown;
+
+    constructor(input: unknown) {
+      this.input = input;
+    }
+  }
+
+  class CompleteMultipartUploadCommand {
+    readonly input: unknown;
+
+    constructor(input: unknown) {
+      this.input = input;
+    }
+  }
+
   class CopyObjectCommand {
+    readonly input: unknown;
+
+    constructor(input: unknown) {
+      this.input = input;
+    }
+  }
+
+  class CreateMultipartUploadCommand {
     readonly input: unknown;
 
     constructor(input: unknown) {
@@ -457,6 +481,14 @@ vi.mock("@aws-sdk/client-s3", () => {
   }
 
   class ListObjectsV2Command {
+    readonly input: unknown;
+
+    constructor(input: unknown) {
+      this.input = input;
+    }
+  }
+
+  class ListPartsCommand {
     readonly input: unknown;
 
     constructor(input: unknown) {
@@ -490,14 +522,27 @@ vi.mock("@aws-sdk/client-s3", () => {
     }
   }
 
+  class UploadPartCommand {
+    readonly input: unknown;
+
+    constructor(input: unknown) {
+      this.input = input;
+    }
+  }
+
   return {
+    AbortMultipartUploadCommand,
+    CompleteMultipartUploadCommand,
     CopyObjectCommand,
+    CreateMultipartUploadCommand,
     DeleteObjectsCommand,
     GetObjectCommand,
     HeadObjectCommand,
     ListObjectsV2Command,
+    ListPartsCommand,
     PutObjectCommand,
     S3Client,
+    UploadPartCommand,
   };
 });
 
