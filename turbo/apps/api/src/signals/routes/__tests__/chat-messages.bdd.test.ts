@@ -748,12 +748,18 @@ async function readThreadProjection(actor: ApiTestUser, threadId: string) {
       throw new Error("Expected chat thread events to load");
     }
 
-    events.push(...response.body.events);
+    const sequencedEvents = response.body.events.map((event) => {
+      if (event.seqId === undefined) {
+        throw new Error("Expected chat thread event sequence ID");
+      }
+      return { ...event, seqId: event.seqId };
+    });
+    events.push(...sequencedEvents);
     if (!response.body.hasMore) {
       break;
     }
 
-    const lastEvent = response.body.events.at(-1);
+    const lastEvent = sequencedEvents.at(-1);
     if (!lastEvent) {
       throw new Error("Expected paginated chat thread events");
     }

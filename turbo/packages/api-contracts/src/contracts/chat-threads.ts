@@ -242,6 +242,13 @@ const chatThreadEventSchema = z.object({
   createdAt: z.string(),
 });
 
+// App promotion is independent from API promotion. Keep response validation
+// tolerant of the previous API until every pre-sequence API can no longer
+// serve traffic; new API writers still use chatThreadEventSchema above.
+const chatThreadEventResponseSchema = chatThreadEventSchema.extend({
+  seqId: chatThreadEventSchema.shape.seqId.optional(),
+});
+
 const chatMessageUsageProviderBreakdownSchema = z.object({
   provider: z.string(),
   credits: z.number().int().nonnegative(),
@@ -949,7 +956,9 @@ export const chatThreadsContract = c.router({
       200: z.object({
         chatThreads: z.array(chatThreadSnapshotProjectionSchema),
         latestEventId: chatThreadEventIdSchema.nullable(),
-        latestSeqId: z.number().int().positive().nullable(),
+        // Remove optionality only after pre-sequence APIs cannot serve a newly
+        // promoted app during rollout or rollback.
+        latestSeqId: z.number().int().positive().nullable().optional(),
       }),
       401: apiErrorSchema,
       403: apiErrorSchema,
@@ -969,7 +978,7 @@ export const chatThreadsContract = c.router({
     }),
     responses: {
       200: z.object({
-        events: z.array(chatThreadEventSchema),
+        events: z.array(chatThreadEventResponseSchema),
         hasMore: z.boolean(),
       }),
       401: apiErrorSchema,

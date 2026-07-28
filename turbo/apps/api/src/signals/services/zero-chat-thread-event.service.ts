@@ -16,7 +16,11 @@ import { chatThreadSnapshots } from "@vm0/db/schema/chat-thread-snapshot";
 
 import type { Db, ReadonlyDb } from "../external/db";
 
-type ChatThreadEventDb = Pick<Db, "insert" | "select">;
+// The sequence row lock must remain held until its event becomes visible.
+// Requiring a transaction prevents callers from splitting those two commits.
+export type ChatThreadEventTransaction = Parameters<
+  Parameters<Db["transaction"]>[0]
+>[0];
 const CHAT_THREAD_EVENTS_PAGE_SIZE = 1000;
 const cursorChatThreadEvent = alias(
   chatThreadEvents,
@@ -25,7 +29,7 @@ const cursorChatThreadEvent = alias(
 const pageChatThreadEvent = alias(chatThreadEvents, "page_chat_thread_event");
 
 async function reserveChatThreadEventSeqId(
-  db: ChatThreadEventDb,
+  db: ChatThreadEventTransaction,
   userId: string,
   orgId: string,
 ): Promise<number> {
@@ -50,7 +54,7 @@ async function reserveChatThreadEventSeqId(
 }
 
 export async function appendChatThreadEvent(
-  db: ChatThreadEventDb,
+  db: ChatThreadEventTransaction,
   args: {
     readonly kind: ChatThreadEventKind;
     readonly userId: string;

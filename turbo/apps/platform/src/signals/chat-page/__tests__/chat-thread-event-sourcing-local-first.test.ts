@@ -64,6 +64,7 @@ async function clearThreadEventCache(): Promise<void> {
 async function seedThreadEventCache(args: {
   readonly snapshot: {
     readonly chatThreads: readonly ChatThreadSnapshotProjection[];
+    readonly latestEventId: string | null;
     readonly latestSeqId: number | null;
   } | null;
   readonly events?: readonly ChatThreadEvent[];
@@ -126,6 +127,7 @@ describe("chat thread event sourcing local-first list", () => {
 
     await seedThreadEventCache({
       snapshot: {
+        latestEventId: EVENT_ID,
         latestSeqId: EVENT_SEQ_ID,
         chatThreads: [
           {
@@ -223,6 +225,7 @@ describe("chat thread event sourcing local-first list", () => {
 
     await seedThreadEventCache({
       snapshot: {
+        latestEventId: EVENT_ID,
         latestSeqId: EVENT_SEQ_ID,
         chatThreads: [
           {
@@ -305,6 +308,7 @@ describe("chat thread event sourcing local-first list", () => {
 
     await seedThreadEventCache({
       snapshot: {
+        latestEventId: EVENT_ID,
         latestSeqId: EVENT_SEQ_ID,
         chatThreads: [
           {
@@ -401,6 +405,7 @@ describe("chat thread event sourcing local-first list", () => {
 
     await seedThreadEventCache({
       snapshot: {
+        latestEventId: EVENT_ID,
         latestSeqId: EVENT_SEQ_ID,
         chatThreads: snapshotThreads,
       },
@@ -444,6 +449,7 @@ describe("chat thread event sourcing local-first list", () => {
 
     await seedThreadEventCache({
       snapshot: {
+        latestEventId: EVENT_ID,
         latestSeqId: EVENT_SEQ_ID,
         chatThreads: [
           {
@@ -512,6 +518,7 @@ describe("chat thread event sourcing local-first list", () => {
 
     await seedThreadEventCache({
       snapshot: {
+        latestEventId: EVENT_ID,
         latestSeqId: EVENT_SEQ_ID,
         chatThreads: [
           {
@@ -588,6 +595,7 @@ describe("chat thread event sourcing local-first list", () => {
 
     await seedThreadEventCache({
       snapshot: {
+        latestEventId: null,
         latestSeqId: null,
         chatThreads: [],
       },
@@ -726,6 +734,7 @@ describe("chat thread event sourcing local-first list", () => {
 
     await seedThreadEventCache({
       snapshot: {
+        latestEventId: EVENT_ID,
         latestSeqId: EVENT_SEQ_ID,
         chatThreads: [],
       },
@@ -789,6 +798,7 @@ describe("chat thread event sourcing local-first list", () => {
 
     await seedThreadEventCache({
       snapshot: {
+        latestEventId: EVENT_ID,
         latestSeqId: EVENT_SEQ_ID,
         chatThreads: [
           {

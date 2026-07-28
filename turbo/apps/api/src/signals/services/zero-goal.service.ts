@@ -21,7 +21,10 @@ import {
 } from "./zero-chat-goal-marker.service";
 import { normalizeGoalObjectiveBrief } from "./zero-goal-objective-brief-normalization.service";
 import { generateGoalObjectiveBrief } from "./zero-goal-objective-brief.service";
-import { appendChatThreadEvent } from "./zero-chat-thread-event.service";
+import {
+  appendChatThreadEvent,
+  type ChatThreadEventTransaction,
+} from "./zero-chat-thread-event.service";
 import {
   chatThreadModelPinColumns,
   resolveRequiredDefaultChatThreadModelPin,
@@ -209,7 +212,7 @@ async function insertGoal(
 }
 
 async function createGoalThread(
-  tx: Pick<Db, "insert" | "select">,
+  tx: ChatThreadEventTransaction,
   args: {
     readonly userId: string;
     readonly orgId: string;

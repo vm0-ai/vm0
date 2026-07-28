@@ -14,13 +14,18 @@ import { getClientConfig, handleError } from "../core/client-factory";
 
 export interface ZeroChatThreadSnapshot {
   readonly chatThreads: readonly ChatThreadSnapshotProjection[];
+  readonly latestEventId: string | null;
   readonly latestSeqId: number | null;
 }
+
+export type ZeroChatThreadEvent = Omit<ChatThreadEvent, "seqId"> & {
+  readonly seqId?: number;
+};
 
 type ZeroChatThreadEventsResult =
   | {
       readonly kind: "page";
-      readonly events: readonly ChatThreadEvent[];
+      readonly events: readonly ZeroChatThreadEvent[];
       readonly hasMore: boolean;
     }
   | { readonly kind: "expired" };
@@ -56,7 +61,10 @@ export async function getZeroChatThreadSnapshot(): Promise<ZeroChatThreadSnapsho
   if (result.status === 200) {
     return {
       chatThreads: result.body.chatThreads,
-      latestSeqId: result.body.latestSeqId,
+      latestEventId: result.body.latestEventId,
+      // CLI releases can reach an API that has not promoted sequence cursors
+      // yet, so preserve the UUID cursor until the new field is present.
+      latestSeqId: result.body.latestSeqId ?? null,
     };
   }
   handleError(result, "Failed to get chat thread snapshot");
@@ -64,11 +72,15 @@ export async function getZeroChatThreadSnapshot(): Promise<ZeroChatThreadSnapsho
 
 export async function listZeroChatThreadEvents(options: {
   sinceSeqId?: number;
+  sinceEventId?: string;
 }): Promise<ZeroChatThreadEventsResult> {
   const config = await getClientConfig();
   const client = initClient(chatThreadsContract, config);
   const result = await client.events({
-    query: options.sinceSeqId ? { sinceSeqId: options.sinceSeqId } : {},
+    query: {
+      ...(options.sinceSeqId ? { sinceSeqId: options.sinceSeqId } : {}),
+      ...(options.sinceEventId ? { sinceEventId: options.sinceEventId } : {}),
+    },
   });
   if (result.status === 200) {
     return {

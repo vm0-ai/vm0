@@ -449,7 +449,13 @@ export function createChatFilesBddApi(context: TestContext) {
         }),
         [200],
       );
-      return response.body;
+      if (response.body.latestSeqId === undefined) {
+        throw new Error("Expected snapshot sequence cursor");
+      }
+      return {
+        ...response.body,
+        latestSeqId: response.body.latestSeqId,
+      };
     },
 
     async requestThreadEvents(

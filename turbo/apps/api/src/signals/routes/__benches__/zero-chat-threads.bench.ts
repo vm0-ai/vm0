@@ -529,13 +529,15 @@ async function seedBenchChatThread(): Promise<BenchChatThreadFixture> {
     agentComposeId: composeId,
     title,
   });
-  await appendChatThreadEvent(db, {
-    userId,
-    orgId,
-    chatThreadId: threadId,
-    kind: "created",
-    agentComposeId: composeId,
-    title,
+  await db.transaction(async (tx) => {
+    await appendChatThreadEvent(tx, {
+      userId,
+      orgId,
+      chatThreadId: threadId,
+      kind: "created",
+      agentComposeId: composeId,
+      title,
+    });
   });
 
   return { userId, orgId, composeId, threadId };
