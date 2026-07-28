@@ -2,6 +2,7 @@
 // oxlint-disable max-lines-per-function
 import { useGet, useLastResolved, useLoadable, useSet } from "ccstate-react";
 import { useLoadableSet } from "ccstate-react/experimental";
+import { useTranslation } from "react-i18next";
 import {
   IconAlertTriangle,
   IconDotsVertical,
@@ -124,20 +125,10 @@ const ZERO_BORDER = {
   border: "0.7px solid hsl(var(--gray-400))",
 } as const;
 
-function getOAuthRouteCopy(oauthTypes: ModelProviderType[]): {
-  title: string;
-  description: string;
-} {
-  if (oauthTypes.includes("codex-oauth-token")) {
-    return {
-      title: "Codex subscription",
-      description: "Each member connects their own Pro or Team plan.",
-    };
-  }
-  return {
-    title: "Claude subscription",
-    description: "Each member connects their own Pro, Max, or Team plan.",
-  };
+function getOAuthRouteKind(
+  oauthTypes: ModelProviderType[],
+): "codex" | "claude" {
+  return oauthTypes.includes("codex-oauth-token") ? "codex" : "claude";
 }
 
 function getProviderConfig(type: ModelProviderType) {
@@ -149,10 +140,6 @@ function getProviderConfig(type: ModelProviderType) {
 function getProviderSecretLabel(type: ModelProviderType): string {
   const config = getProviderConfig(type);
   return config?.secretLabel ?? "API key";
-}
-
-function getProviderSecretPlaceholder(type: ModelProviderType): string {
-  return `Enter your ${getProviderSecretLabel(type)}`;
 }
 
 function getProviderSignupUrl(type: ModelProviderType): string | null {
@@ -307,6 +294,7 @@ function DefaultModelRow({
   onChange: (model: SupportedRunModel) => void;
   onUpgrade: () => void;
 }) {
+  const { t } = useTranslation();
   const selectItems = policies.filter((policy) => {
     return policy.routeStatus === "valid";
   });
@@ -323,14 +311,22 @@ function DefaultModelRow({
       style={{ border: "0.7px solid hsl(var(--gray-400))" }}
     >
       <div className="min-w-0">
-        <p className="text-sm font-medium text-foreground">Default model</p>
+        <p className="text-sm font-medium text-foreground">
+          {t(($) => {
+            return $.settings.models.policies.defaultModel;
+          })}
+        </p>
         <p className="mt-0.5 text-[13px] text-muted-foreground">
-          Used when a task doesn&apos;t choose its own model.
+          {t(($) => {
+            return $.settings.models.policies.defaultModelDescription;
+          })}
         </p>
       </div>
       {selectItems.length === 0 ? (
         <span className="shrink-0 text-sm text-muted-foreground">
-          No available models
+          {t(($) => {
+            return $.settings.models.policies.noAvailableModels;
+          })}
         </span>
       ) : (
         <Select
@@ -355,7 +351,11 @@ function DefaultModelRow({
             className="h-9 w-full shrink-0 rounded-lg bg-card sm:w-[280px]"
             style={{ border: "0.7px solid hsl(var(--gray-400))" }}
           >
-            <SelectValue placeholder="Select a default model" />
+            <SelectValue
+              placeholder={t(($) => {
+                return $.settings.models.policies.selectDefaultModel;
+              })}
+            />
           </SelectTrigger>
           <SelectContent>
             {selectItems.map((policy) => {
@@ -428,10 +428,11 @@ function getSelectedByokProvider(
 function getPolicyRouteSummary(
   policy: OrgModelPolicy,
   providers: ModelProviderResponse[],
+  builtInLabel: string,
 ): { label: string; iconType: ModelProviderType } {
   if (policy.defaultProviderType === "vm0") {
     return {
-      label: "Built-in",
+      label: builtInLabel,
       iconType: "vm0",
     };
   }
@@ -472,6 +473,7 @@ function PolicyActionsMenu({
   onEdit: (policy: OrgModelPolicy) => void;
   onDelete: (policy: OrgModelPolicy) => void;
 }) {
+  const { t } = useTranslation();
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
@@ -481,7 +483,14 @@ function PolicyActionsMenu({
           size="icon"
           className="h-9 w-9 rounded-lg text-muted-foreground hover:text-foreground"
           disabled={disabled}
-          aria-label={`Actions for ${policy.modelLabel}`}
+          aria-label={t(
+            ($) => {
+              return $.settings.models.policies.actionsFor;
+            },
+            {
+              model: policy.modelLabel,
+            },
+          )}
         >
           <IconDotsVertical size={14} stroke={1.5} />
         </Button>
@@ -494,7 +503,9 @@ function PolicyActionsMenu({
           }}
         >
           <IconPencil size={14} stroke={1.5} />
-          Edit model
+          {t(($) => {
+            return $.settings.models.actions.editModel;
+          })}
         </DropdownMenuItem>
         <DropdownMenuSeparator />
         <DropdownMenuItem
@@ -505,7 +516,9 @@ function PolicyActionsMenu({
           }}
         >
           <IconTrash size={14} stroke={1.5} />
-          Delete model
+          {t(($) => {
+            return $.settings.models.actions.deleteModel;
+          })}
         </DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>
@@ -521,6 +534,7 @@ function AddModelButton({
   disabled: boolean;
   onClick: () => void;
 }) {
+  const { t } = useTranslation();
   if (!hasModels) {
     return null;
   }
@@ -535,7 +549,9 @@ function AddModelButton({
       onClick={onClick}
     >
       <IconPlus size={14} stroke={2} />
-      Add model
+      {t(($) => {
+        return $.settings.models.actions.addModel;
+      })}
     </Button>
   );
 }
@@ -555,8 +571,15 @@ function PolicyRow({
   onEdit: (policy: OrgModelPolicy) => void;
   onDelete: (policy: OrgModelPolicy) => void;
 }) {
+  const { t } = useTranslation();
   const detail = getPolicyDetail(policy);
-  const routeSummary = getPolicyRouteSummary(policy, providers);
+  const routeSummary = getPolicyRouteSummary(
+    policy,
+    providers,
+    t(($) => {
+      return $.settings.models.policies.builtIn;
+    }),
+  );
   const modelIconType = getModelIconType(policy.model);
   const builtInPriceTier =
     policy.defaultProviderType === "vm0"
@@ -581,8 +604,12 @@ function PolicyRow({
             <span className="inline-flex items-center gap-1 rounded bg-amber-500/10 px-1.5 py-0.5 text-[11px] font-medium text-amber-700 dark:text-amber-300">
               <IconAlertTriangle size={12} />
               {policy.routeStatus === "missing_provider"
-                ? "Missing provider"
-                : "Invalid route"}
+                ? t(($) => {
+                    return $.settings.models.policies.missingProvider;
+                  })
+                : t(($) => {
+                    return $.settings.models.policies.invalidRoute;
+                  })}
             </span>
           )}
         </div>
@@ -727,9 +754,12 @@ function ApiKeyProviderSection({
   onApiKeyChange: (value: string) => void;
   onApiKeyFocus: () => void;
 }) {
+  const { t } = useTranslation();
   const secretLabel = selectedProviderType
     ? getProviderSecretLabel(selectedProviderType)
-    : "API key";
+    : t(($) => {
+        return $.settings.models.policies.apiKey;
+      });
   const secretSignupUrl = selectedProviderType
     ? getProviderSignupUrl(selectedProviderType)
     : null;
@@ -738,11 +768,17 @@ function ApiKeyProviderSection({
   return (
     <div className="flex flex-col gap-5">
       <div className="flex flex-col gap-2">
-        <label className="text-sm font-medium text-foreground">Provider</label>
+        <label className="text-sm font-medium text-foreground">
+          {t(($) => {
+            return $.settings.models.policies.provider;
+          })}
+        </label>
         <ProviderTypeSelect
           value={selectedProviderType}
           types={apiTypes}
-          placeholder="Select a provider"
+          placeholder={t(($) => {
+            return $.settings.models.policies.selectProvider;
+          })}
           onChange={onChange}
         />
       </div>
@@ -755,7 +791,12 @@ function ApiKeyProviderSection({
             type="password"
             autoComplete="off"
             value={displayedKey}
-            placeholder={getProviderSecretPlaceholder(selectedProviderType)}
+            placeholder={t(
+              ($) => {
+                return $.settings.models.policies.enterProviderSecret;
+              },
+              { secret: secretLabel },
+            )}
             onFocus={() => {
               if (showMaskedExistingKey) {
                 onApiKeyFocus();
@@ -770,7 +811,9 @@ function ApiKeyProviderSection({
             <p className="text-xs text-destructive">{apiKeyError}</p>
           ) : (
             <p className="text-xs text-muted-foreground">
-              Stored in workspace secrets.{" "}
+              {t(($) => {
+                return $.settings.models.policies.secretStored;
+              })}{" "}
               {secretSignupUrl ? (
                 <a
                   href={secretSignupUrl}
@@ -778,7 +821,9 @@ function ApiKeyProviderSection({
                   rel="noreferrer"
                   className="text-primary underline"
                 >
-                  Get a key
+                  {t(($) => {
+                    return $.settings.models.policies.getKey;
+                  })}
                 </a>
               ) : null}
             </p>
@@ -847,11 +892,14 @@ function modelRequiresProUpgrade(
 function getDialogPrimaryLabel(params: {
   mode: ModelPolicyDialogMode;
   upgradeRequired: boolean;
+  upgradeLabel: string;
+  addLabel: string;
+  saveLabel: string;
 }): string {
   if (params.upgradeRequired) {
-    return "Upgrade to Pro";
+    return params.upgradeLabel;
   }
-  return params.mode === "add" ? "Add model" : "Save changes";
+  return params.mode === "add" ? params.addLabel : params.saveLabel;
 }
 
 function isSubmitDisabled(params: {
@@ -942,6 +990,7 @@ function ModelPolicyRouteDialog({
   onUpgrade: () => void;
   onSubmit: (next: UpdateOrgModelPolicy[]) => void;
 }) {
+  const { t } = useTranslation();
   const dialog = useGet(modelPolicyDialogState$);
   const close = useSet(closeModelPolicyDialog$);
   const setModel = useSet(updateModelPolicyDialogModel$);
@@ -1030,7 +1079,14 @@ function ModelPolicyRouteDialog({
     ) {
       if (!hasTokenInputValue(apiKeyValue)) {
         setApiKeyError(
-          `${getProviderSecretLabel(selectedProviderType)} is required`,
+          t(
+            ($) => {
+              return $.settings.models.policies.secretRequired;
+            },
+            {
+              secret: getProviderSecretLabel(selectedProviderType),
+            },
+          ),
         );
         return;
       }
@@ -1065,6 +1121,15 @@ function ModelPolicyRouteDialog({
   const primaryLabel = getDialogPrimaryLabel({
     mode: dialog.mode,
     upgradeRequired,
+    upgradeLabel: t(($) => {
+      return $.settings.models.actions.upgradeToPro;
+    }),
+    addLabel: t(($) => {
+      return $.settings.models.actions.addModel;
+    }),
+    saveLabel: t(($) => {
+      return $.settings.shared.saveChanges;
+    }),
   });
   const submitDisabled = isSubmitDisabled({
     selectedModel,
@@ -1088,16 +1153,28 @@ function ModelPolicyRouteDialog({
       <DialogContent className="max-w-3xl">
         <DialogHeader>
           <DialogTitle>
-            {dialog.mode === "add" ? "Add model" : "Edit model"}
+            {dialog.mode === "add"
+              ? t(($) => {
+                  return $.settings.models.actions.addModel;
+                })
+              : t(($) => {
+                  return $.settings.models.actions.editModel;
+                })}
           </DialogTitle>
           <DialogDescription>
-            Decide how members access this model.
+            {t(($) => {
+              return $.settings.models.policies.dialogDescription;
+            })}
           </DialogDescription>
         </DialogHeader>
 
         <div className="flex flex-col gap-5">
           <div className="flex flex-col gap-2">
-            <label className="text-sm font-medium text-foreground">Model</label>
+            <label className="text-sm font-medium text-foreground">
+              {t(($) => {
+                return $.settings.models.policies.model;
+              })}
+            </label>
             <Select
               value={selectedModel ?? undefined}
               onValueChange={(next) => {
@@ -1106,7 +1183,11 @@ function ModelPolicyRouteDialog({
               disabled={dialog.mode === "edit"}
             >
               <SelectTrigger className="h-10 rounded-lg" style={ZERO_BORDER}>
-                <SelectValue placeholder="Select a model">
+                <SelectValue
+                  placeholder={t(($) => {
+                    return $.settings.models.policies.selectModel;
+                  })}
+                >
                   {selectedModel && (
                     <div className="flex items-center gap-2">
                       {selectedModelIcon && (
@@ -1142,17 +1223,25 @@ function ModelPolicyRouteDialog({
 
           <div className="flex flex-col gap-2">
             <label className="text-sm font-medium text-foreground">
-              Provided by
+              {t(($) => {
+                return $.settings.models.policies.providedBy;
+              })}
             </label>
             <div
               role="radiogroup"
-              aria-label="Provided by"
+              aria-label={t(($) => {
+                return $.settings.models.policies.providedBy;
+              })}
               className="grid grid-cols-1 gap-3 md:grid-cols-3"
             >
               <RouteChoiceButton
                 active={dialog.routeKind === "built-in"}
-                title="Built-in"
-                description="Workspace credits cover usage."
+                title={t(($) => {
+                  return $.settings.models.policies.builtIn;
+                })}
+                description={t(($) => {
+                  return $.settings.models.policies.builtInDescription;
+                })}
                 onClick={() => {
                   chooseRoute("built-in");
                 }}
@@ -1161,8 +1250,12 @@ function ModelPolicyRouteDialog({
                 active={dialog.routeKind === "api-key"}
                 disabled={apiTypes.length === 0}
                 pro={!modelCapabilities.supportByok}
-                title="API key"
-                description="A shared workspace key. Best when the team bills through one account."
+                title={t(($) => {
+                  return $.settings.models.policies.apiKey;
+                })}
+                description={t(($) => {
+                  return $.settings.models.policies.apiKeyDescription;
+                })}
                 onClick={() => {
                   chooseRoute("api-key");
                 }}
@@ -1171,8 +1264,26 @@ function ModelPolicyRouteDialog({
                 <RouteChoiceButton
                   active={dialog.routeKind === "oauth"}
                   pro={!modelCapabilities.supportByok}
-                  title={getOAuthRouteCopy(oauthTypes).title}
-                  description={getOAuthRouteCopy(oauthTypes).description}
+                  title={
+                    getOAuthRouteKind(oauthTypes) === "codex"
+                      ? t(($) => {
+                          return $.settings.models.policies.codexSubscription;
+                        })
+                      : t(($) => {
+                          return $.settings.models.policies.claudeSubscription;
+                        })
+                  }
+                  description={
+                    getOAuthRouteKind(oauthTypes) === "codex"
+                      ? t(($) => {
+                          return $.settings.models.policies
+                            .codexSubscriptionDescription;
+                        })
+                      : t(($) => {
+                          return $.settings.models.policies
+                            .claudeSubscriptionDescription;
+                        })
+                  }
                   onClick={() => {
                     chooseRoute("oauth");
                   }}
@@ -1200,7 +1311,9 @@ function ModelPolicyRouteDialog({
 
         <DialogFooter>
           <Button variant="outline" onClick={close} disabled={busy}>
-            Cancel
+            {t(($) => {
+              return $.settings.shared.cancel;
+            })}
           </Button>
           <Button
             onClick={(event) => {
@@ -1217,6 +1330,7 @@ function ModelPolicyRouteDialog({
 }
 
 export function OrgModelPoliciesSection() {
+  const { t } = useTranslation();
   const policiesLoadable = useLoadable(orgModelPolicies$);
   const lastPolicies = useLastResolved(orgModelPolicies$);
   const providersLoadable = useLoadable(orgConfiguredProviders$);
@@ -1324,8 +1438,12 @@ export function OrgModelPoliciesSection() {
   return (
     <section className="flex flex-col gap-4">
       <SettingsSectionHeading
-        title="Workspace"
-        description="Available to everyone in this workspace."
+        title={t(($) => {
+          return $.settings.models.policies.workspaceTitle;
+        })}
+        description={t(($) => {
+          return $.settings.models.policies.workspaceDescription;
+        })}
         action={
           <AddModelButton
             hasModels={addableModels.length > 0}

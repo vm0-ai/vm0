@@ -1,10 +1,406 @@
 {
   "settings": {
+    "accountMenu": {
+      "addAccount": "Add account",
+      "exportData": "Export data",
+      "lab": "Lab",
+      "settings": "Settings",
+      "signOut": "Sign out",
+      "switchAccount": "Switch account",
+      "userFallback": "User"
+    },
+    "dialog": {
+      "description": "Manage your account, preferences, workspace, and billing settings.",
+      "groups": {
+        "billing": "Billing & pricing",
+        "models": "Models",
+        "personal": "Personal",
+        "workspace": "Workspace"
+      },
+      "sections": {
+        "billing": {
+          "description": "Manage your plan and payment method.",
+          "title": "Billing"
+        },
+        "debug": {
+          "description": "Diagnostics and developer tooling.",
+          "title": "Debug"
+        },
+        "general": {
+          "description": "Manage your workspace profile and settings.",
+          "title": "General"
+        },
+        "invoices": {
+          "description": "View and download past invoices.",
+          "title": "Invoices"
+        },
+        "model": {
+          "description": "Choose which AI models your workspace and your runs use.",
+          "title": "Models"
+        },
+        "people": {
+          "description": "Manage who has access to this workspace.",
+          "title": "People"
+        },
+        "preference": {
+          "description": "Personalize how the app looks and behaves.",
+          "title": "Preference"
+        },
+        "usage": {
+          "balanceDescription": "Your team's credit balance and usage.",
+          "balanceTitle": "Credit balance",
+          "usageDescription": "Your credit usage across chats, automations, and channels.",
+          "usageTitle": "Credit usage"
+        }
+      },
+      "title": "Settings"
+    },
+    "models": {
+      "actions": {
+        "addModel": "Add model",
+        "deleteModel": "Delete model",
+        "editModel": "Edit model",
+        "resetUsage": "Reset usage",
+        "upgradePro": "Upgrade Pro to use",
+        "upgradeToPro": "Upgrade to Pro"
+      },
+      "deviceAuth": {
+        "claude": {
+          "approvalOpenError": "The approval page could not be opened. Use the link manually and paste the code here.",
+          "authorizationCode": "Authorization code",
+          "codePlaceholder": "Paste code from Claude",
+          "codeRequired": "Paste the Claude Code authorization code to continue.",
+          "connectedToast": "Claude Code connected",
+          "connectTitle": "Connect Claude Code",
+          "error": "Claude Code connection failed. Start again to retry.",
+          "expired": "Claude Code connection session expired. Start again to retry.",
+          "instructions": "First click Open Claude approval page. Then approve {{brandName}} in Claude and copy the authorization code shown after approval. Finally paste that code here and click Connect.",
+          "openApproval": "Open Claude approval page",
+          "preparing": "Preparing...",
+          "reconnectAction": "Reconnect Claude Code",
+          "reconnectTitle": "Re-connect Claude Code",
+          "signIn": "Sign in with Claude",
+          "submit": "Connect"
+        },
+        "codex": {
+          "approvalOpened": "Approval page opened. Copy the device code before approving.",
+          "codeCopied": "Device code copied. Waiting for approval...",
+          "codeCopiedRetry": "Device code copied. Try opening the approval page again.",
+          "connectedToast": "ChatGPT connected",
+          "connectTitle": "Connect Codex",
+          "copyAndOpen": "Copy code and open approval page",
+          "copyAndOpenError": "Could not copy the device code or open the approval page. Copy the code manually and try again.",
+          "copyError": "Approval page opened, but the device code was not copied. Copy it manually before approving.",
+          "deviceCode": "Device code",
+          "error": "ChatGPT connection failed. Start again to retry.",
+          "expired": "Codex connection session expired. Start again to retry.",
+          "freePlanRejected": "Free ChatGPT plans cannot use Codex via {{brandName}}. Upgrade to Plus or Pro and try again.",
+          "instructions": "First click Copy code and open approval page. Then paste the device code into OpenAI when prompted. Finally approve access and keep this dialog open while {{brandName}} finishes the connection.",
+          "invalidTokenFormat": "Codex produced a login token format {{brandName}} does not recognize. Update Codex and try again.",
+          "openError": "Device code copied, but the approval page could not be opened. Try again.",
+          "preparing": "Preparing...",
+          "reconnectAction": "Reconnect ChatGPT",
+          "reconnectTitle": "Re-connect Codex",
+          "signIn": "Sign in with ChatGPT"
+        }
+      },
+      "personal": {
+        "actionForProvider": "{{action}} {{provider}}",
+        "claudeDescription": "Connect with Claude Code login for Claude-backed model routes.",
+        "claudeTitle": "Claude Code OAuth",
+        "codexDescription": "Connect with Codex device login for Codex-backed model routes.",
+        "codexTitle": "ChatGPT (Codex)",
+        "description": "Used only in your runs, with your own credentials.",
+        "sectionTitle": "Personal",
+        "status": {
+          "connected": "Connected",
+          "connectedWithDetail": "Connected ({{detail}})",
+          "left": "{{percent}} left",
+          "stale": "Attention",
+          "week": "Week"
+        }
+      },
+      "policies": {
+        "actionsFor": "Actions for {{model}}",
+        "apiKey": "API key",
+        "apiKeyDescription": "A shared workspace key. Best when the team bills through one account.",
+        "builtIn": "Built-in",
+        "builtInDescription": "Workspace credits cover usage.",
+        "claudeSubscription": "Claude subscription",
+        "claudeSubscriptionDescription": "Each member connects their own Pro, Max, or Team plan.",
+        "codexSubscription": "Codex subscription",
+        "codexSubscriptionDescription": "Each member connects their own Pro or Team plan.",
+        "defaultModel": "Default model",
+        "defaultModelDescription": "Used when a task doesn't choose its own model.",
+        "dialogDescription": "Decide how members access this model.",
+        "enterProviderSecret": "Enter your {{secret}}",
+        "getKey": "Get a key",
+        "invalidRoute": "Invalid route",
+        "missingProvider": "Missing provider",
+        "model": "Model",
+        "noAvailableModels": "No available models",
+        "providedBy": "Provided by",
+        "provider": "Provider",
+        "secretRequired": "{{secret}} is required",
+        "secretStored": "Stored in workspace secrets.",
+        "selectDefaultModel": "Select a default model",
+        "selectModel": "Select a model",
+        "selectProvider": "Select a provider",
+        "workspaceDescription": "Available to everyone in this workspace.",
+        "workspaceTitle": "Workspace"
+      },
+      "reset": {
+        "confirmDescription": "Use one Codex reset to reset your current usage windows. You have {{remaining}}.",
+        "progress": "Resetting...",
+        "remaining_one": "{{count}} reset left",
+        "remaining_other": "{{count}} resets left",
+        "remainingUnavailable": "Resets left unavailable",
+        "title": "Reset Codex usage?"
+      },
+      "stale": {
+        "claudeExpired": "Your Claude Code session expired. Re-connect to continue.",
+        "claudeFailed": "Claude Code refresh failed. Re-connect to retry.",
+        "claudeTitle": "Claude Code session needs reconnection",
+        "codexExpired": "Your ChatGPT session expired. Re-connect to continue.",
+        "codexFailed": "ChatGPT refresh failed. Re-connect to retry.",
+        "codexInvalidated": "Your ChatGPT session was revoked. Re-connect.",
+        "codexReused": "Your ChatGPT session was used elsewhere. Re-connect.",
+        "codexTitle": "ChatGPT session needs reconnection"
+      },
+      "toasts": {
+        "disconnected": "{{provider}} disconnected",
+        "reset": "Codex usage reset",
+        "resetUnavailable": "No Codex usage resets available",
+        "resetUnneeded": "Codex usage does not need a reset right now"
+      },
+      "usage": {
+        "inDays": "in {{days}}d",
+        "inDaysHours": "in {{days}}d {{hours}}h",
+        "inHours": "in {{hours}}h",
+        "inHoursMinutes": "in {{hours}}h {{minutes}}m",
+        "inLessThanMinute": "in <1m",
+        "inMinutes": "in {{minutes}}m",
+        "resetsAt": "resets {{date}}",
+        "resetsRaw": "resets {{value}}",
+        "resetsRelative": "Resets {{relative}}",
+        "resetTimePassed": "reset time passed",
+        "resetTimePassedTitle": "Reset time passed"
+      }
+    },
     "preferences": {
+      "account": {
+        "manage": "Manage",
+        "sectionTitle": "Account & Security"
+      },
+      "appearance": {
+        "description": "Choose how the interface looks.",
+        "sectionTitle": "Appearance",
+        "theme": {
+          "dark": "Dark",
+          "description": "Your preferred color scheme",
+          "light": "Light",
+          "system": "System",
+          "title": "Theme"
+        }
+      },
+      "debug": {
+        "capture": {
+          "description": "Capture HTTP header names, selected safe header values, and bodies in network logs for debugging.",
+          "disabled": "Disabled",
+          "enabled_one": "Enabled for the next {{count}} run",
+          "enabled_other": "Enabled for the next {{count}} runs",
+          "title": "Capture network bodies"
+        },
+        "tab": "Debug"
+      },
+      "documentTitle": "Preferences",
       "language": {
         "description": "Choose your preferred language for the {{brandName}} interface",
         "label": "Language",
         "title": "Language"
+      },
+      "morningBrief": {
+        "description": "A daily 7:00 AM email with your schedule, action items, and updates from connected GitHub, Gmail, and Google Calendar",
+        "nextEmail": "Next email: {{date}}",
+        "nextEmailInTimezone": "Next email: {{date}} ({{timezone}})",
+        "notScheduled": "Next email: not scheduled yet — turn the switch off and on to reschedule",
+        "sending": "Sending...",
+        "sendNow": "Send now",
+        "title": "Morning Brief",
+        "triggeredToast": "Morning Brief triggered, the email arrives shortly"
+      },
+      "pageDescription": "Manage your appearance and agent runtime preferences",
+      "pageTitle": "Preferences",
+      "send": {
+        "cmdEnter": "⌘ Enter",
+        "cmdEnterDescription": "Press ⌘/Ctrl+Enter to send, Enter for new line",
+        "description": "Choose how to send messages in chat.",
+        "enter": "Enter",
+        "enterDescription": "Press Enter to send, Shift+Enter for new line",
+        "sectionTitle": "Enter",
+        "title": "Send message with"
+      },
+      "tabs": {
+        "appearance": "Appearance",
+        "models": "Personal Models",
+        "timezone": "Time Zone"
+      },
+      "timezone": {
+        "description": "Times shown to you and used for automation runs.",
+        "rowDescription": "Your agents will use this time zone during runs",
+        "rowTitle": "Time zone",
+        "sectionTitle": "Time Zone",
+        "zones": {
+          "alaska": "Alaska Time (AKT)",
+          "auckland": "New Zealand Time (NZST)",
+          "berlin": "Central European Time (CET)",
+          "brasilia": "Brasília Time (BRT)",
+          "central": "Central Time (CT)",
+          "dubai": "Gulf Standard Time (GST)",
+          "eastern": "Eastern Time (ET)",
+          "hawaii": "Hawaii Time (HST)",
+          "india": "India Standard Time (IST)",
+          "london": "London (GMT/BST)",
+          "losAngeles": "Pacific Time (PT)",
+          "moscow": "Moscow Time (MSK)",
+          "mountain": "Mountain Time (MT)",
+          "paris": "Paris (CET)",
+          "seoul": "Korea Standard Time (KST)",
+          "shanghai": "China Standard Time (CST)",
+          "singapore": "Singapore Time (SGT)",
+          "sydney": "Australian Eastern Time (AET)",
+          "tokyo": "Japan Standard Time (JST)",
+          "toronto": "Toronto (ET)",
+          "utc": "UTC",
+          "vancouver": "Vancouver (PT)"
+        }
+      }
+    },
+    "shared": {
+      "cancel": "Cancel",
+      "connect": "Connect",
+      "connecting": "Connecting...",
+      "delete": "Delete",
+      "discard": "Discard",
+      "disconnect": "Disconnect",
+      "loading": "Loading",
+      "moreOptions": "More options",
+      "reconnect": "Reconnect",
+      "remove": "Remove",
+      "replace": "Replace",
+      "save": "Save",
+      "saveChanges": "Save changes",
+      "saving": "Saving..."
+    },
+    "workspace": {
+      "danger": {
+        "delete": {
+          "button": "Delete workspace",
+          "confirmDescription": "This will permanently delete {{workspace}} and all its data. This action cannot be undone. Type the workspace name to confirm.",
+          "description": "Permanently delete this workspace and all its data. This action cannot be undone.",
+          "progress": "Deleting...",
+          "title": "Delete workspace",
+          "titleQuestion": "Delete workspace?"
+        },
+        "leave": {
+          "confirmDescription": "You will no longer have access to this workspace. You can rejoin only if an admin invites you again.",
+          "description": "You will lose access to this workspace and its resources.",
+          "progress": "Leaving...",
+          "title": "Leave workspace",
+          "titleQuestion": "Leave workspace?"
+        },
+        "sectionTitle": "Danger zone"
+      },
+      "members": {
+        "actionsFor": "Actions for {{email}}",
+        "addMember": "Add member",
+        "admin": "Admin",
+        "empty": "No members",
+        "emptySearch": "No members found",
+        "invite": {
+          "description": "Send an invitation to join this workspace.",
+          "emailPlaceholder": "email@example.com",
+          "invalidEmail": "Please enter a valid email address",
+          "progress": "Sending...",
+          "roleLabel": "Role",
+          "send": "Send invitation",
+          "title": "Invite member"
+        },
+        "joined": "Joined",
+        "joinRequests": "Join requests",
+        "member": "Member",
+        "membershipRequest": {
+          "acceptTitle": "Accept request",
+          "rejectTitle": "Reject request",
+          "role": "Request"
+        },
+        "pending": "Pending",
+        "remove": {
+          "action": "Remove from workspace",
+          "confirmDescription": "{{email}} will be removed from this workspace and lose access to all resources.",
+          "progress": "Removing...",
+          "title": "Remove member?"
+        },
+        "revoke": {
+          "action": "Revoke invitation",
+          "button": "Revoke",
+          "confirmDescription": "The invitation to {{email}} will be cancelled. They will no longer be able to join using this invitation.",
+          "progress": "Revoking...",
+          "title": "Revoke invitation?"
+        },
+        "role": "Role",
+        "roleActions": {
+          "makeAdmin": "Make admin",
+          "makeMember": "Make member"
+        },
+        "search": "Search",
+        "selfDemote": {
+          "action": "Switch to member",
+          "confirm": "Confirm",
+          "description": "You will become a regular member and lose admin privileges. Another admin will need to promote you back.",
+          "progress": "Switching...",
+          "title": "Switch to member?"
+        },
+        "user": "User",
+        "you": "You"
+      },
+      "profile": {
+        "logo": {
+          "description": "Workspace avatar displayed across the app",
+          "fallbackAlt": "Workspace",
+          "title": "Logo",
+          "upload": "Upload logo"
+        },
+        "name": {
+          "description": "Used to identify this workspace",
+          "placeholder": "Workspace name",
+          "title": "Name"
+        },
+        "sectionTitle": "Profile",
+        "slug": {
+          "description": "URL-friendly identifier for the organization",
+          "placeholder": "organization-slug",
+          "title": "Slug"
+        }
+      },
+      "toasts": {
+        "deleted": "Workspace deleted",
+        "invitationRevoked": "Invitation revoked",
+        "invitationSent": "Invitation sent to {{email}}",
+        "left": "You have left the workspace",
+        "memberRemoved": "Removed {{email}}",
+        "membershipRequestAccepted": "Membership request accepted",
+        "membershipRequestRejected": "Membership request rejected",
+        "roleUpdated": "Updated role for {{email}}",
+        "updated": "Workspace updated"
+      },
+      "unsaved": {
+        "message": "You have unsaved changes"
+      },
+      "validation": {
+        "imageUnreadable": "Could not read image file",
+        "logoTooLarge": "Logo is too large ({{width}}×{{height}}px). Maximum size is {{maximum}}×{{maximum}}px.",
+        "logoTooSmall": "Logo is too small ({{width}}×{{height}}px). Minimum size is {{minimum}}×{{minimum}}px."
       }
     }
   }

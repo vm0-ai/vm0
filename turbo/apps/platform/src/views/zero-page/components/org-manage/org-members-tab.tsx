@@ -2,6 +2,7 @@
 // oxlint-disable max-lines-per-function
 import { useGet, useLoadable, useSet } from "ccstate-react";
 import { useLoadableSet } from "ccstate-react/experimental";
+import { useTranslation } from "react-i18next";
 import {
   IconSearch,
   IconShieldCheck,
@@ -82,12 +83,12 @@ function displayName(m: OrgMember): string {
   return parts.length > 0 ? parts.join(" ") : "";
 }
 
-function formatDate(iso: string): string {
-  const d = new Date(iso);
-  return `${d.getMonth() + 1}/${d.getDate()}/${d.getFullYear()}`;
+function formatDate(iso: string, locale: string): string {
+  return new Intl.DateTimeFormat(locale).format(new Date(iso));
 }
 
 export function OrgMembersTab() {
+  const { t } = useTranslation();
   const membersLoadable = useLoadable(orgMembers$);
   const pendingLoadable = useLoadable(orgPendingInvitations$);
   const requestsLoadable = useLoadable(orgMembershipRequests$);
@@ -147,7 +148,9 @@ export function OrgMembersTab() {
           />
           <Input
             type="text"
-            placeholder="Search"
+            placeholder={t(($) => {
+              return $.settings.workspace.members.search;
+            })}
             value={search}
             onChange={(e) => {
               return setSearch(e.target.value);
@@ -165,9 +168,21 @@ export function OrgMembersTab() {
             "sticky top-0 z-10 px-5 py-2.5 text-[13px] font-medium text-foreground bg-card",
           )}
         >
-          <div>User</div>
-          <div>Joined</div>
-          <div>Role</div>
+          <div>
+            {t(($) => {
+              return $.settings.workspace.members.user;
+            })}
+          </div>
+          <div>
+            {t(($) => {
+              return $.settings.workspace.members.joined;
+            })}
+          </div>
+          <div>
+            {t(($) => {
+              return $.settings.workspace.members.role;
+            })}
+          </div>
           <div />
         </div>
         <div className="h-0 zero-border-t mx-5" />
@@ -186,7 +201,13 @@ export function OrgMembersTab() {
           membershipRequests.length === 0 && (
             <div className="flex items-center justify-center py-12">
               <span className="text-sm text-muted-foreground">
-                {search.trim() ? "No members found" : "No members"}
+                {search.trim()
+                  ? t(($) => {
+                      return $.settings.workspace.members.emptySearch;
+                    })
+                  : t(($) => {
+                      return $.settings.workspace.members.empty;
+                    })}
               </span>
             </div>
           )}
@@ -196,7 +217,9 @@ export function OrgMembersTab() {
             <div className="px-5 pt-3 pb-1">
               <span className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground uppercase tracking-wider">
                 <IconUserPlus size={13} stroke={1.8} />
-                Join requests
+                {t(($) => {
+                  return $.settings.workspace.members.joinRequests;
+                })}
               </span>
             </div>
             {membershipRequests.map((req, i) => {
@@ -247,6 +270,7 @@ export function OrgMembersTab() {
 }
 
 function InviteDialog() {
+  const { t } = useTranslation();
   const email = useGet(inviteEmail$);
   const setEmail = useSet(setInviteEmail$);
   const open = useGet(inviteDialogOpen$);
@@ -282,20 +306,30 @@ function InviteDialog() {
       <DialogTrigger asChild>
         <Button size="sm" className="gap-1.5 rounded-lg">
           <IconPlus size={14} stroke={2} />
-          Add member
+          {t(($) => {
+            return $.settings.workspace.members.addMember;
+          })}
         </Button>
       </DialogTrigger>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>Invite member</DialogTitle>
+          <DialogTitle>
+            {t(($) => {
+              return $.settings.workspace.members.invite.title;
+            })}
+          </DialogTitle>
           <DialogDescription>
-            Send an invitation to join this workspace.
+            {t(($) => {
+              return $.settings.workspace.members.invite.description;
+            })}
           </DialogDescription>
         </DialogHeader>
         <div className="flex flex-col gap-3">
           <div className="flex flex-col gap-1.5">
             <Input
-              placeholder="email@example.com"
+              placeholder={t(($) => {
+                return $.settings.workspace.members.invite.emailPlaceholder;
+              })}
               type="email"
               value={email}
               disabled={sending}
@@ -309,12 +343,18 @@ function InviteDialog() {
             />
             {touched && trimmed && !isValid && (
               <p className="text-[13px] text-destructive">
-                Please enter a valid email address
+                {t(($) => {
+                  return $.settings.workspace.members.invite.invalidEmail;
+                })}
               </p>
             )}
           </div>
           <div className="flex flex-col gap-1.5">
-            <label className="text-sm font-medium">Role</label>
+            <label className="text-sm font-medium">
+              {t(($) => {
+                return $.settings.workspace.members.invite.roleLabel;
+              })}
+            </label>
             <Select
               value={role}
               onValueChange={(v) => {
@@ -326,8 +366,16 @@ function InviteDialog() {
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="member">Member</SelectItem>
-                <SelectItem value="admin">Admin</SelectItem>
+                <SelectItem value="member">
+                  {t(($) => {
+                    return $.settings.workspace.members.member;
+                  })}
+                </SelectItem>
+                <SelectItem value="admin">
+                  {t(($) => {
+                    return $.settings.workspace.members.admin;
+                  })}
+                </SelectItem>
               </SelectContent>
             </Select>
           </div>
@@ -341,10 +389,18 @@ function InviteDialog() {
             }}
             disabled={sending}
           >
-            Cancel
+            {t(($) => {
+              return $.settings.shared.cancel;
+            })}
           </Button>
           <Button size="sm" disabled={!isValid || sending} onClick={handleSend}>
-            {sending ? "Sending..." : "Send invitation"}
+            {sending
+              ? t(($) => {
+                  return $.settings.workspace.members.invite.progress;
+                })
+              : t(($) => {
+                  return $.settings.workspace.members.invite.send;
+                })}
           </Button>
         </DialogFooter>
       </DialogContent>
@@ -363,6 +419,7 @@ function MemberRow({
   isAdmin: boolean;
   isOnlyAdmin: boolean;
 }) {
+  const { i18n, t } = useTranslation();
   const name = displayName(member);
   const initial = (name || member.email).charAt(0).toUpperCase();
   const canManage = isAdmin && !isCurrentUser;
@@ -386,7 +443,9 @@ function MemberRow({
                   data-testid="current-user-indicator"
                   className="inline-flex items-center rounded px-1.5 py-0.5 text-[11px] font-medium bg-muted text-muted-foreground leading-none"
                 >
-                  You
+                  {t(($) => {
+                    return $.settings.workspace.members.you;
+                  })}
                 </span>
               )}
             </span>
@@ -397,7 +456,7 @@ function MemberRow({
         </div>
       </div>
       <div className="text-[13px] text-muted-foreground tabular-nums">
-        {formatDate(member.joinedAt)}
+        {formatDate(member.joinedAt, i18n.resolvedLanguage ?? i18n.language)}
       </div>
       <div>
         <span className="inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-xs font-medium text-muted-foreground zero-badge">
@@ -410,7 +469,13 @@ function MemberRow({
                 : "text-muted-foreground/40"
             }
           />
-          {member.role === "admin" ? "Admin" : "Member"}
+          {member.role === "admin"
+            ? t(($) => {
+                return $.settings.workspace.members.admin;
+              })
+            : t(($) => {
+                return $.settings.workspace.members.member;
+              })}
         </span>
       </div>
       <div className="flex justify-end">
@@ -422,6 +487,7 @@ function MemberRow({
 }
 
 function SelfDemoteAction({ email }: { email: string }) {
+  const { t } = useTranslation();
   const open = useGet(selfDemoteDialogOpen$);
   const setOpen = useSet(setSelfDemoteDialogOpen$);
   const [loadable, doSelfDemote] = useLoadableSet(selfDemote$);
@@ -444,7 +510,14 @@ function SelfDemoteAction({ email }: { email: string }) {
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
           <button
-            aria-label={`Actions for ${email}`}
+            aria-label={t(
+              ($) => {
+                return $.settings.workspace.members.actionsFor;
+              },
+              {
+                email,
+              },
+            )}
             className="flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground hover:bg-muted/50 transition-colors"
           >
             <IconDots size={15} stroke={1.5} />
@@ -458,17 +531,26 @@ function SelfDemoteAction({ email }: { email: string }) {
           }}
         >
           <DialogTrigger asChild>
-            <DropdownMenuItem>Switch to member</DropdownMenuItem>
+            <DropdownMenuItem>
+              {t(($) => {
+                return $.settings.workspace.members.selfDemote.action;
+              })}
+            </DropdownMenuItem>
           </DialogTrigger>
         </DropdownMenuContent>
       </DropdownMenu>
 
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>Switch to member?</DialogTitle>
+          <DialogTitle>
+            {t(($) => {
+              return $.settings.workspace.members.selfDemote.title;
+            })}
+          </DialogTitle>
           <DialogDescription>
-            You will become a regular member and lose admin privileges. Another
-            admin will need to promote you back.
+            {t(($) => {
+              return $.settings.workspace.members.selfDemote.description;
+            })}
           </DialogDescription>
         </DialogHeader>
         <DialogFooter>
@@ -480,7 +562,9 @@ function SelfDemoteAction({ email }: { email: string }) {
             }}
             disabled={loading}
           >
-            Cancel
+            {t(($) => {
+              return $.settings.shared.cancel;
+            })}
           </Button>
           <Button
             variant="destructive"
@@ -488,7 +572,13 @@ function SelfDemoteAction({ email }: { email: string }) {
             disabled={loading}
             onClick={handleConfirm}
           >
-            {loading ? "Switching..." : "Confirm"}
+            {loading
+              ? t(($) => {
+                  return $.settings.workspace.members.selfDemote.progress;
+                })
+              : t(($) => {
+                  return $.settings.workspace.members.selfDemote.confirm;
+                })}
           </Button>
         </DialogFooter>
       </DialogContent>
@@ -497,6 +587,7 @@ function SelfDemoteAction({ email }: { email: string }) {
 }
 
 function MemberActions({ member }: { member: OrgMember }) {
+  const { t } = useTranslation();
   const newRole: OrgRole = member.role === "admin" ? "member" : "admin";
   const removeTarget = useGet(removeMemberDialogTarget$);
   const setRemoveTarget = useSet(setRemoveMemberDialogTarget$);
@@ -523,7 +614,14 @@ function MemberActions({ member }: { member: OrgMember }) {
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
           <button
-            aria-label={`Actions for ${member.email}`}
+            aria-label={t(
+              ($) => {
+                return $.settings.workspace.members.actionsFor;
+              },
+              {
+                email: member.email,
+              },
+            )}
             disabled={changingRole}
             className="flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground hover:bg-muted/50 transition-colors disabled:opacity-50 disabled:pointer-events-none"
           >
@@ -545,11 +643,19 @@ function MemberActions({ member }: { member: OrgMember }) {
               );
             }}
           >
-            {newRole === "admin" ? "Make admin" : "Make member"}
+            {newRole === "admin"
+              ? t(($) => {
+                  return $.settings.workspace.members.roleActions.makeAdmin;
+                })
+              : t(($) => {
+                  return $.settings.workspace.members.roleActions.makeMember;
+                })}
           </DropdownMenuItem>
           <DialogTrigger asChild>
             <DropdownMenuItem className="text-destructive focus:text-destructive">
-              Remove from org
+              {t(($) => {
+                return $.settings.workspace.members.remove.action;
+              })}
             </DropdownMenuItem>
           </DialogTrigger>
         </DropdownMenuContent>
@@ -557,10 +663,20 @@ function MemberActions({ member }: { member: OrgMember }) {
 
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>Remove member?</DialogTitle>
+          <DialogTitle>
+            {t(($) => {
+              return $.settings.workspace.members.remove.title;
+            })}
+          </DialogTitle>
           <DialogDescription>
-            {member.email} will be removed from this workspace and lose access
-            to all resources.
+            {t(
+              ($) => {
+                return $.settings.workspace.members.remove.confirmDescription;
+              },
+              {
+                email: member.email,
+              },
+            )}
           </DialogDescription>
         </DialogHeader>
         <DialogFooter>
@@ -572,7 +688,9 @@ function MemberActions({ member }: { member: OrgMember }) {
             }}
             disabled={removing}
           >
-            Cancel
+            {t(($) => {
+              return $.settings.shared.cancel;
+            })}
           </Button>
           <Button
             variant="destructive"
@@ -580,7 +698,13 @@ function MemberActions({ member }: { member: OrgMember }) {
             disabled={removing}
             onClick={handleRemove}
           >
-            {removing ? "Removing..." : "Remove"}
+            {removing
+              ? t(($) => {
+                  return $.settings.workspace.members.remove.progress;
+                })
+              : t(($) => {
+                  return $.settings.shared.remove;
+                })}
           </Button>
         </DialogFooter>
       </DialogContent>
@@ -595,6 +719,7 @@ function PendingInvitationRow({
   invitation: OrgPendingInvitation;
   isAdmin: boolean;
 }) {
+  const { i18n, t } = useTranslation();
   const initial = invitation.email.charAt(0).toUpperCase();
   const revokeTarget = useGet(revokeInvitationDialogTarget$);
   const setRevokeTarget = useSet(setRevokeInvitationDialogTarget$);
@@ -618,12 +743,17 @@ function PendingInvitationRow({
         </div>
       </div>
       <div className="text-[13px] text-muted-foreground tabular-nums">
-        {formatDate(invitation.createdAt)}
+        {formatDate(
+          invitation.createdAt,
+          i18n.resolvedLanguage ?? i18n.language,
+        )}
       </div>
       <div>
         <span className="inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-xs font-medium text-muted-foreground zero-badge">
           <IconClock size={12} stroke={1.8} className="text-amber-500" />
-          Pending
+          {t(($) => {
+            return $.settings.workspace.members.pending;
+          })}
         </span>
       </div>
       <div className="flex justify-end">
@@ -639,7 +769,12 @@ function PendingInvitationRow({
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <button
-                  aria-label={`Actions for ${invitation.email}`}
+                  aria-label={t(
+                    ($) => {
+                      return $.settings.workspace.members.actionsFor;
+                    },
+                    { email: invitation.email },
+                  )}
                   className="flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground hover:bg-muted/50 transition-colors"
                 >
                   <IconDots size={15} stroke={1.5} />
@@ -654,7 +789,9 @@ function PendingInvitationRow({
               >
                 <DialogTrigger asChild>
                   <DropdownMenuItem className="text-destructive focus:text-destructive">
-                    Revoke invitation
+                    {t(($) => {
+                      return $.settings.workspace.members.revoke.action;
+                    })}
                   </DropdownMenuItem>
                 </DialogTrigger>
               </DropdownMenuContent>
@@ -662,10 +799,19 @@ function PendingInvitationRow({
 
             <DialogContent>
               <DialogHeader>
-                <DialogTitle>Revoke invitation?</DialogTitle>
+                <DialogTitle>
+                  {t(($) => {
+                    return $.settings.workspace.members.revoke.title;
+                  })}
+                </DialogTitle>
                 <DialogDescription>
-                  The invitation to {invitation.email} will be cancelled. They
-                  will no longer be able to join using this invitation.
+                  {t(
+                    ($) => {
+                      return $.settings.workspace.members.revoke
+                        .confirmDescription;
+                    },
+                    { email: invitation.email },
+                  )}
                 </DialogDescription>
               </DialogHeader>
               <DialogFooter>
@@ -677,7 +823,9 @@ function PendingInvitationRow({
                   }}
                   disabled={revoking}
                 >
-                  Cancel
+                  {t(($) => {
+                    return $.settings.shared.cancel;
+                  })}
                 </Button>
                 <Button
                   variant="destructive"
@@ -685,7 +833,13 @@ function PendingInvitationRow({
                   disabled={revoking}
                   onClick={handleRevoke}
                 >
-                  {revoking ? "Revoking..." : "Revoke"}
+                  {revoking
+                    ? t(($) => {
+                        return $.settings.workspace.members.revoke.progress;
+                      })
+                    : t(($) => {
+                        return $.settings.workspace.members.revoke.button;
+                      })}
                 </Button>
               </DialogFooter>
             </DialogContent>
@@ -697,6 +851,7 @@ function PendingInvitationRow({
 }
 
 function MembershipRequestRow({ request }: { request: OrgMembershipRequest }) {
+  const { i18n, t } = useTranslation();
   const name = [request.firstName, request.lastName].filter(Boolean).join(" ");
   const initial = (name || request.email).charAt(0).toUpperCase();
   const [acceptLoadable, doAccept] = useLoadableSet(acceptRequest$);
@@ -733,12 +888,14 @@ function MembershipRequestRow({ request }: { request: OrgMembershipRequest }) {
         </div>
       </div>
       <div className="text-[13px] text-muted-foreground tabular-nums">
-        {formatDate(request.createdAt)}
+        {formatDate(request.createdAt, i18n.resolvedLanguage ?? i18n.language)}
       </div>
       <div>
         <span className="inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-xs font-medium text-muted-foreground zero-badge">
           <IconUserPlus size={12} stroke={1.8} className="text-blue-500" />
-          Request
+          {t(($) => {
+            return $.settings.workspace.members.membershipRequest.role;
+          })}
         </span>
       </div>
       <div className="flex justify-end gap-1">
@@ -746,7 +903,9 @@ function MembershipRequestRow({ request }: { request: OrgMembershipRequest }) {
           className="flex h-7 w-7 items-center justify-center rounded-md text-green-600 hover:bg-green-50 dark:hover:bg-green-950/30 transition-colors disabled:opacity-50"
           onClick={handleAccept}
           disabled={loading}
-          title="Accept request"
+          title={t(($) => {
+            return $.settings.workspace.members.membershipRequest.acceptTitle;
+          })}
         >
           <IconCheck size={15} stroke={2} />
         </button>
@@ -754,7 +913,9 @@ function MembershipRequestRow({ request }: { request: OrgMembershipRequest }) {
           className="flex h-7 w-7 items-center justify-center rounded-md text-destructive hover:bg-destructive/10 transition-colors disabled:opacity-50"
           onClick={handleReject}
           disabled={loading}
-          title="Reject request"
+          title={t(($) => {
+            return $.settings.workspace.members.membershipRequest.rejectTitle;
+          })}
         >
           <IconX size={15} stroke={2} />
         </button>

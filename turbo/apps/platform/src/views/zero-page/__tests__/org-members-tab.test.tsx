@@ -309,7 +309,7 @@ describe("organization members settings", () => {
     });
 
     click(screen.getByLabelText("Actions for bob@example.com"));
-    click(menuItemByText("Remove from org"));
+    click(menuItemByText("Remove from workspace"));
 
     const removeDialog = await screen.findByRole("dialog", {
       name: "Remove member?",

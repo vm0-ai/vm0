@@ -1,6 +1,7 @@
 // oxlint-disable max-lines-per-function
 import type { ReactNode } from "react";
 import { useGet, useSet, useLoadable } from "ccstate-react";
+import { useTranslation } from "react-i18next";
 import {
   Dialog,
   DialogContent,
@@ -50,44 +51,6 @@ interface SettingsDialogProps {
   onOpenChange: (open: boolean) => void;
 }
 
-const SECTION_META = {
-  preference: {
-    title: "Preference",
-    description: "Personalize how the app looks and behaves.",
-  },
-  model: {
-    title: "Models",
-    description: "Choose which AI models your workspace and your runs use.",
-  },
-  debug: {
-    title: "Debug",
-    description: "Diagnostics and developer tooling.",
-  },
-  general: {
-    title: "General",
-    description: "Manage your workspace profile and settings.",
-  },
-  people: {
-    title: "People",
-    description: "Manage who has access to this workspace.",
-  },
-  billing: {
-    title: "Billing",
-    description: "Manage your plan and payment method.",
-  },
-  usage: {
-    title: "Credit balance",
-    description: "Your team's credit balance and usage.",
-  },
-  invoices: {
-    title: "Invoices",
-    description: "View and download past invoices.",
-  },
-} as const satisfies Record<
-  SettingsSection,
-  { title: string; description: string }
->;
-
 interface SidebarItem {
   id: SettingsSection;
   label: string;
@@ -97,57 +60,6 @@ interface SidebarItem {
 interface SidebarGroup {
   label: string | null;
   items: readonly SidebarItem[];
-}
-
-const PERSONAL_GROUP = {
-  label: "Personal",
-  items: [
-    {
-      id: "preference",
-      label: "Preference",
-      icon: IconAdjustmentsHorizontal,
-    },
-    { id: "debug", label: "Debug", icon: IconBug },
-  ],
-} as const satisfies SidebarGroup;
-
-const WORKSPACE_GROUP = {
-  label: "Workspace",
-  items: [
-    { id: "general", label: "General", icon: IconBuilding },
-    { id: "people", label: "People", icon: IconUsers },
-  ],
-} as const satisfies SidebarGroup;
-
-const MODELS_GROUP = {
-  label: "Models",
-  items: [{ id: "model", label: "Models", icon: IconCpu }],
-} as const satisfies SidebarGroup;
-
-// The usage section is visible to everyone; the label and detail UI depend on
-// org role.
-const CREDIT_BALANCE_ITEM = {
-  id: "usage",
-  label: "Credit balance",
-  icon: IconCoins,
-} as const satisfies SidebarItem;
-
-const BILLING_ADMIN_ITEMS = [
-  { id: "billing", label: "Billing", icon: IconCreditCard },
-  { id: "invoices", label: "Invoices", icon: IconFileInvoice },
-] as const satisfies readonly SidebarItem[];
-
-function billingGroup(isAdmin: boolean): SidebarGroup {
-  return {
-    label: "Billing & pricing",
-    items: [
-      {
-        ...CREDIT_BALANCE_ITEM,
-        label: !isAdmin ? "Credit usage" : "Credit balance",
-      },
-      ...(isAdmin ? BILLING_ADMIN_ITEMS : []),
-    ],
-  };
 }
 
 const SECTION_COMPONENTS = {
@@ -183,6 +95,7 @@ function SectionContent({ section }: { section: SettingsSection }) {
 }
 
 export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
+  const { t } = useTranslation();
   const activeSection = useGet(settingsActiveSection$);
   const setActiveSection = useSet(setSettingsActiveSection$);
   const setClerkProfilePortalContainer = useSet(
@@ -193,17 +106,142 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
   const isAdmin =
     isAdminLoadable.state === "hasData" ? isAdminLoadable.data : false;
   const showDebug = features[FeatureSwitchKey.ZeroDebug] ?? false;
+  const sectionMeta = {
+    preference: {
+      title: t(($) => {
+        return $.settings.dialog.sections.preference.title;
+      }),
+      description: t(($) => {
+        return $.settings.dialog.sections.preference.description;
+      }),
+    },
+    model: {
+      title: t(($) => {
+        return $.settings.dialog.sections.model.title;
+      }),
+      description: t(($) => {
+        return $.settings.dialog.sections.model.description;
+      }),
+    },
+    debug: {
+      title: t(($) => {
+        return $.settings.dialog.sections.debug.title;
+      }),
+      description: t(($) => {
+        return $.settings.dialog.sections.debug.description;
+      }),
+    },
+    general: {
+      title: t(($) => {
+        return $.settings.dialog.sections.general.title;
+      }),
+      description: t(($) => {
+        return $.settings.dialog.sections.general.description;
+      }),
+    },
+    people: {
+      title: t(($) => {
+        return $.settings.dialog.sections.people.title;
+      }),
+      description: t(($) => {
+        return $.settings.dialog.sections.people.description;
+      }),
+    },
+    billing: {
+      title: t(($) => {
+        return $.settings.dialog.sections.billing.title;
+      }),
+      description: t(($) => {
+        return $.settings.dialog.sections.billing.description;
+      }),
+    },
+    usage: {
+      title: t(($) => {
+        return $.settings.dialog.sections.usage.balanceTitle;
+      }),
+      description: t(($) => {
+        return $.settings.dialog.sections.usage.balanceDescription;
+      }),
+    },
+    invoices: {
+      title: t(($) => {
+        return $.settings.dialog.sections.invoices.title;
+      }),
+      description: t(($) => {
+        return $.settings.dialog.sections.invoices.description;
+      }),
+    },
+  } satisfies Record<SettingsSection, { title: string; description: string }>;
+  const personalItems: readonly SidebarItem[] = [
+    {
+      id: "preference",
+      label: sectionMeta.preference.title,
+      icon: IconAdjustmentsHorizontal,
+    },
+    { id: "debug", label: sectionMeta.debug.title, icon: IconBug },
+  ];
   const personalGroup: SidebarGroup = {
-    ...PERSONAL_GROUP,
-    items: PERSONAL_GROUP.items.filter((item) => {
+    label: t(($) => {
+      return $.settings.dialog.groups.personal;
+    }),
+    items: personalItems.filter((item) => {
       return item.id !== "debug" || showDebug;
     }),
   };
+  const workspaceGroup: SidebarGroup = {
+    label: t(($) => {
+      return $.settings.dialog.groups.workspace;
+    }),
+    items: [
+      {
+        id: "general",
+        label: sectionMeta.general.title,
+        icon: IconBuilding,
+      },
+      { id: "people", label: sectionMeta.people.title, icon: IconUsers },
+    ],
+  };
+  const modelsGroup: SidebarGroup = {
+    label: t(($) => {
+      return $.settings.dialog.groups.models;
+    }),
+    items: [{ id: "model", label: sectionMeta.model.title, icon: IconCpu }],
+  };
+  const billingGroup: SidebarGroup = {
+    label: t(($) => {
+      return $.settings.dialog.groups.billing;
+    }),
+    items: [
+      {
+        id: "usage",
+        label: isAdmin
+          ? sectionMeta.usage.title
+          : t(($) => {
+              return $.settings.dialog.sections.usage.usageTitle;
+            }),
+        icon: IconCoins,
+      },
+      ...(isAdmin
+        ? [
+            {
+              id: "billing" as const,
+              label: sectionMeta.billing.title,
+              icon: IconCreditCard,
+            },
+            {
+              id: "invoices" as const,
+              label: sectionMeta.invoices.title,
+              icon: IconFileInvoice,
+            },
+          ]
+        : []),
+    ],
+  };
   const sidebarGroups: readonly SidebarGroup[] = [
     personalGroup,
-    ...(isAdmin ? [WORKSPACE_GROUP] : []),
-    MODELS_GROUP,
-    billingGroup(isAdmin),
+    ...(isAdmin ? [workspaceGroup] : []),
+    modelsGroup,
+    billingGroup,
   ];
 
   // If the user lost admin while the dialog is open, fall back to a safe section
@@ -215,11 +253,14 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
   const meta =
     resolvedSection === "usage" && !isAdmin
       ? {
-          title: "Credit usage",
-          description:
-            "Your credit usage across chats, automations, and channels.",
+          title: t(($) => {
+            return $.settings.dialog.sections.usage.usageTitle;
+          }),
+          description: t(($) => {
+            return $.settings.dialog.sections.usage.usageDescription;
+          }),
         }
-      : SECTION_META[resolvedSection];
+      : sectionMeta[resolvedSection];
 
   const handleSectionChange = (section: SettingsSection) => {
     setActiveSection(section);
@@ -231,9 +272,15 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
         ref={setClerkProfilePortalContainer}
         className="zero-app flex flex-col w-[calc(100vw-2rem)] max-w-[1200px] h-[92dvh] sm:h-[85vh] p-0 gap-0 overflow-hidden zero-border rounded-xl bg-card"
       >
-        <DialogTitle className="sr-only">Settings</DialogTitle>
+        <DialogTitle className="sr-only">
+          {t(($) => {
+            return $.settings.dialog.title;
+          })}
+        </DialogTitle>
         <DialogDescription className="sr-only">
-          Manage your account, preferences, workspace, and billing settings.
+          {t(($) => {
+            return $.settings.dialog.description;
+          })}
         </DialogDescription>
 
         <div className="flex flex-col sm:flex-row h-full min-h-0">

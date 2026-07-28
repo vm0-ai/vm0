@@ -1,5 +1,6 @@
 import { useGet, useSet } from "ccstate-react";
 import { useLoadableSet } from "ccstate-react/experimental";
+import { useTranslation } from "react-i18next";
 import {
   Dialog,
   DialogContent,
@@ -111,6 +112,7 @@ function ClaudeCodeDeviceAuthDialogView({
 }: {
   bundle: ClaudeCodeDeviceAuthScopeBundle;
 }) {
+  const { t } = useTranslation();
   const pageSignal = useGet(pageSignal$);
   const {
     dialog,
@@ -124,8 +126,12 @@ function ClaudeCodeDeviceAuthDialogView({
   } = bundle;
   const title =
     dialog.mode === "reconnect"
-      ? "Re-connect Claude Code"
-      : "Connect Claude Code";
+      ? t(($) => {
+          return $.settings.models.deviceAuth.claude.reconnectTitle;
+        })
+      : t(($) => {
+          return $.settings.models.deviceAuth.claude.connectTitle;
+        });
 
   function handleOpenChange(nextOpen: boolean): void {
     if (nextOpen) {
@@ -189,7 +195,7 @@ function ClaudeCodeDeviceAuthBody({
   submitting: boolean;
 }) {
   const brandName = useGet(brandName$);
-
+  const { t } = useTranslation();
   switch (flow.status) {
     case "idle": {
       return <ClaudeCodeDeviceAuthLoadingContent />;
@@ -208,9 +214,12 @@ function ClaudeCodeDeviceAuthBody({
         >
           <div className="rounded-lg border border-border bg-muted/30 p-3 text-xs leading-5 text-muted-foreground">
             <p>
-              First click Open Claude approval page. Then approve {brandName} in
-              Claude and copy the authorization code shown after approval.
-              Finally paste that code here and click Connect.
+              {t(
+                ($) => {
+                  return $.settings.models.deviceAuth.claude.instructions;
+                },
+                { brandName },
+              )}
             </p>
           </div>
           <Button
@@ -222,19 +231,25 @@ function ClaudeCodeDeviceAuthBody({
             }}
             data-testid="claude-code-device-auth-open"
           >
-            Open Claude approval page
+            {t(($) => {
+              return $.settings.models.deviceAuth.claude.openApproval;
+            })}
           </Button>
           <div className="flex flex-col gap-2">
             <label
               className="text-sm font-medium text-foreground"
               htmlFor="claude-code-device-auth-code"
             >
-              Authorization code
+              {t(($) => {
+                return $.settings.models.deviceAuth.claude.authorizationCode;
+              })}
             </label>
             <Input
               id="claude-code-device-auth-code"
               value={flow.authorizationCode}
-              placeholder="Paste code from Claude"
+              placeholder={t(($) => {
+                return $.settings.models.deviceAuth.claude.codePlaceholder;
+              })}
               readOnly={submitting}
               onChange={(event) => {
                 setAuthorizationCode(event.target.value);
@@ -254,7 +269,13 @@ function ClaudeCodeDeviceAuthBody({
             data-testid="claude-code-device-auth-submit"
           >
             {submitting && <IconLoader2 size={14} className="animate-spin" />}
-            {submitting ? "Connecting..." : "Connect"}
+            {submitting
+              ? t(($) => {
+                  return $.settings.shared.connecting;
+                })
+              : t(($) => {
+                  return $.settings.models.deviceAuth.claude.submit;
+                })}
           </Button>
         </form>
       );
@@ -274,6 +295,7 @@ function ClaudeCodeDeviceAuthBody({
 }
 
 function ClaudeCodeDeviceAuthLoadingContent() {
+  const { t } = useTranslation();
   return (
     <div
       className="flex items-center justify-center gap-2 py-8 text-sm text-muted-foreground"
@@ -281,7 +303,11 @@ function ClaudeCodeDeviceAuthLoadingContent() {
       data-testid="claude-code-device-auth-loading"
     >
       <IconLoader2 size={16} className="animate-spin" />
-      <span>Preparing...</span>
+      <span>
+        {t(($) => {
+          return $.settings.models.deviceAuth.claude.preparing;
+        })}
+      </span>
     </div>
   );
 }
@@ -293,6 +319,7 @@ function ClaudeCodeDeviceAuthStartButton({
   mode: "connect" | "reconnect";
   onStart: () => void;
 }) {
+  const { t } = useTranslation();
   return (
     <Button
       type="button"
@@ -301,7 +328,13 @@ function ClaudeCodeDeviceAuthStartButton({
       className="w-full gap-2"
       data-testid="claude-code-device-auth-start"
     >
-      {mode === "reconnect" ? "Reconnect Claude Code" : "Sign in with Claude"}
+      {mode === "reconnect"
+        ? t(($) => {
+            return $.settings.models.deviceAuth.claude.reconnectAction;
+          })
+        : t(($) => {
+            return $.settings.models.deviceAuth.claude.signIn;
+          })}
     </Button>
   );
 }

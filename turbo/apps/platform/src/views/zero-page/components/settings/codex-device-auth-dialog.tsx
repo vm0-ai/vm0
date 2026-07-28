@@ -1,5 +1,6 @@
 import { useGet, useSet } from "ccstate-react";
 import { useLoadableSet } from "ccstate-react/experimental";
+import { useTranslation } from "react-i18next";
 import {
   Dialog,
   DialogContent,
@@ -86,10 +87,17 @@ function CodexDeviceAuthDialogView({
 }: {
   bundle: CodexDeviceAuthScopeBundle;
 }) {
+  const { t } = useTranslation();
   const pageSignal = useGet(pageSignal$);
   const { dialog, flow, close, openApprovalPage, run } = bundle;
   const title =
-    dialog.mode === "reconnect" ? "Re-connect Codex" : "Connect Codex";
+    dialog.mode === "reconnect"
+      ? t(($) => {
+          return $.settings.models.deviceAuth.codex.reconnectTitle;
+        })
+      : t(($) => {
+          return $.settings.models.deviceAuth.codex.connectTitle;
+        });
 
   function handleOpenChange(nextOpen: boolean): void {
     if (nextOpen) {
@@ -140,7 +148,7 @@ function CodexDeviceAuthBody({
   pageSignal: AbortSignal;
 }) {
   const brandName = useGet(brandName$);
-
+  const { t } = useTranslation();
   switch (flow.status) {
     case "idle": {
       return <CodexDeviceAuthLoadingContent />;
@@ -150,20 +158,40 @@ function CodexDeviceAuthBody({
     }
     case "pending":
     case "polling": {
-      const statusText = codexDeviceAuthStatusText(flow);
+      const statusText =
+        !flow.approvalOpened && !flow.codeCopied
+          ? null
+          : flow.codeCopied && !flow.approvalOpened
+            ? t(($) => {
+                return $.settings.models.deviceAuth.codex.codeCopiedRetry;
+              })
+            : !flow.codeCopied
+              ? t(($) => {
+                  return $.settings.models.deviceAuth.codex.approvalOpened;
+                })
+              : t(($) => {
+                  return $.settings.models.deviceAuth.codex.codeCopied;
+                });
       return (
         <div className="space-y-3">
           <div className="rounded-lg border border-border bg-muted/30 p-3 text-xs leading-5 text-muted-foreground">
             <p>
-              First click Copy code and open approval page. Then paste the
-              device code into OpenAI when prompted. Finally approve access and
-              keep this dialog open while {brandName} finishes the connection.
+              {t(
+                ($) => {
+                  return $.settings.models.deviceAuth.codex.instructions;
+                },
+                { brandName },
+              )}
             </p>
           </div>
           <div className="rounded-lg border border-border bg-muted/30 p-3">
             <div className="flex items-start justify-between gap-3">
               <div className="min-w-0">
-                <p className="text-xs text-muted-foreground">Device code</p>
+                <p className="text-xs text-muted-foreground">
+                  {t(($) => {
+                    return $.settings.models.deviceAuth.codex.deviceCode;
+                  })}
+                </p>
                 <p
                   className="mt-1 font-mono text-2xl font-semibold tracking-normal"
                   data-testid="codex-device-auth-code"
@@ -192,7 +220,9 @@ function CodexDeviceAuthBody({
             }}
             data-testid="codex-device-auth-open"
           >
-            Copy code and open approval page
+            {t(($) => {
+              return $.settings.models.deviceAuth.codex.copyAndOpen;
+            })}
           </Button>
           {statusText && (
             <p className="text-xs text-muted-foreground" role="status">
@@ -217,6 +247,7 @@ function CodexDeviceAuthBody({
 }
 
 function CodexDeviceAuthLoadingContent() {
+  const { t } = useTranslation();
   return (
     <div
       className="flex items-center justify-center gap-2 py-8 text-sm text-muted-foreground"
@@ -224,7 +255,11 @@ function CodexDeviceAuthLoadingContent() {
       data-testid="codex-device-auth-loading"
     >
       <IconLoader2 size={16} className="animate-spin" />
-      <span>Preparing...</span>
+      <span>
+        {t(($) => {
+          return $.settings.models.deviceAuth.codex.preparing;
+        })}
+      </span>
     </div>
   );
 }
@@ -236,6 +271,7 @@ function CodexDeviceAuthStartButton({
   mode: "connect" | "reconnect";
   onStart: () => void;
 }) {
+  const { t } = useTranslation();
   return (
     <Button
       type="button"
@@ -244,22 +280,13 @@ function CodexDeviceAuthStartButton({
       className="w-full gap-2"
       data-testid="codex-device-auth-start"
     >
-      {mode === "reconnect" ? "Reconnect ChatGPT" : "Sign in with ChatGPT"}
+      {mode === "reconnect"
+        ? t(($) => {
+            return $.settings.models.deviceAuth.codex.reconnectAction;
+          })
+        : t(($) => {
+            return $.settings.models.deviceAuth.codex.signIn;
+          })}
     </Button>
   );
-}
-
-function codexDeviceAuthStatusText(
-  flow: Extract<CodexDeviceAuthFlowState, { status: "pending" | "polling" }>,
-): string | null {
-  if (!flow.approvalOpened && !flow.codeCopied) {
-    return null;
-  }
-  if (flow.codeCopied && !flow.approvalOpened) {
-    return "Device code copied. Try opening the approval page again.";
-  }
-  if (!flow.codeCopied) {
-    return "Approval page opened. Copy the device code before approving.";
-  }
-  return "Device code copied. Waiting for approval...";
 }
