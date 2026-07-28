@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.6.14](https://github.com/vm0-ai/vm0/compare/guest-mock-codex-v0.6.13...guest-mock-codex-v0.6.14) (2026-07-28)
+
+
+### Bug Fixes
+
+* **runner:** classify codex safety policy refusals ([#23391](https://github.com/vm0-ai/vm0/issues/23391)) ([a1d9986](https://github.com/vm0-ai/vm0/commit/a1d9986f1183067249dc168ba3643acdf05f79ca))
+
 ## [0.6.13](https://github.com/vm0-ai/vm0/compare/guest-mock-codex-v0.6.12...guest-mock-codex-v0.6.13) (2026-07-25)
 
 
