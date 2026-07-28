@@ -178,6 +178,8 @@ def record_server_binding(
     original_address: tuple[str, int] | None,
 ) -> None:
     """Normalize and record a destination after retargeting or verification."""
+    if _connection_id(server) is None:
+        return
     record_normalized_server_binding(
         server,
         client=client,
@@ -510,7 +512,12 @@ def flow_matches_normalized_destination(
     destination: NormalizedUpstreamDestination,
     allowed_kinds: frozenset[BindingKind],
 ) -> bool:
-    """Match current binding evidence against an already-normalized authority."""
+    """Match current binding evidence against an already-normalized authority.
+
+    The caller must derive ``destination`` from the current flow authority.
+    This function revalidates mutable endpoint evidence but does not authorize
+    an unrelated destination.
+    """
     server = flow.server_conn
     server_id = _connection_id(server)
     binding = _bindings_by_server_id.get(server_id) if server_id is not None else None

@@ -1,6 +1,7 @@
 """Connector requestheaders upstream-admission tests."""
 
 import asyncio
+import urllib.parse
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
@@ -119,7 +120,7 @@ async def test_test_connector_bounded_requestheaders_uses_connector_binding(
     active_api_urls: list[str] | None = None
     ensure_bound_destination = upstream_admission.ensure_bound_destination
     normalize_upstream_destination = upstream_destination_binding.normalize_upstream_destination
-    api_destination = upstream_admission._api_destination
+    parse_api_url = urllib.parse.urlparse
 
     def track_ensure_bound_destination(
         tracked_flow: http.HTTPFlow,
@@ -152,12 +153,18 @@ async def test_test_connector_bounded_requestheaders_uses_connector_binding(
             active_destinations.append((host, port))
         return normalize_upstream_destination(host=host, port=port)
 
-    def track_api_destination(
+    def track_api_url_parse(
         api_url: str,
-    ) -> upstream_destination_binding.NormalizedUpstreamDestination | None:
+        scheme: str = "",
+        allow_fragments: bool = True,
+    ) -> urllib.parse.ParseResult:
         if active_api_urls is not None:
             active_api_urls.append(api_url)
-        return api_destination(api_url)
+        return parse_api_url(
+            api_url,
+            scheme=scheme,
+            allow_fragments=allow_fragments,
+        )
 
     monkeypatch.setattr(
         upstream_admission,
@@ -170,9 +177,9 @@ async def test_test_connector_bounded_requestheaders_uses_connector_binding(
         track_normalized_destination,
     )
     monkeypatch.setattr(
-        upstream_admission,
-        "_api_destination",
-        track_api_destination,
+        urllib.parse,
+        "urlparse",
+        track_api_url_parse,
     )
     expected_derivation = (
         (("api.vm0.ai", 443),),
