@@ -22,6 +22,25 @@ pub const LARGE_MOCK_OUTPUT_BYTES: usize = MOCK_CAPTURE_LIMIT_BYTES + 1024;
 pub const STDOUT_TRUNCATION_MARKER: &str = "[stdout truncated after 1048576 bytes]";
 pub const STDERR_TRUNCATION_MARKER: &str = "[stderr truncated after 1048576 bytes]";
 
+pub(super) enum ChildWaitOutcome {
+    Complete(std::io::Result<ExitStatus>),
+    CleanupPending {
+        cleanup: PendingChildCleanup,
+        error: std::io::Error,
+    },
+}
+
+#[cfg(unix)]
+pub(super) struct PendingChildCleanup {
+    child: ProcessGroupChild,
+    wait_thread: JoinHandle<std::io::Result<()>>,
+}
+
+#[cfg(not(unix))]
+pub(super) struct PendingChildCleanup {
+    wait_thread: JoinHandle<std::io::Result<ExitStatus>>,
+}
+
 pub struct StreamJsonChild {
     child: Option<ProcessGroupChild>,
     stdin: Option<ChildStdin>,
@@ -76,12 +95,6 @@ pub fn spawn_managed_mock_child(command: &mut Command) -> std::io::Result<Proces
 
 fn missing_child_pipe(pipe_name: &str) -> std::io::Error {
     std::io::Error::other(format!("mock child missing {pipe_name} pipe"))
-}
-
-fn child_exit_timed_out(error: &(dyn std::error::Error + 'static)) -> bool {
-    error
-        .downcast_ref::<std::io::Error>()
-        .is_some_and(|error| error.kind() == std::io::ErrorKind::TimedOut)
 }
 
 pub fn run_mock_output(command: &mut Command) -> Result<Output, Box<dyn std::error::Error>> {
@@ -288,8 +301,11 @@ fn wait_child(
     });
 
     let status = match wait_child_status_and_cleanup_group(child) {
-        Err(error) if child_exit_timed_out(error.as_ref()) => return Err(error),
-        result => result,
+        ChildWaitOutcome::Complete(result) => result,
+        ChildWaitOutcome::CleanupPending { cleanup, error } => {
+            continue_cleanup_in_background(cleanup, stdout_thread, stderr_thread, None);
+            return Err(error.into());
+        }
     };
     let stdout_result = stdout_thread
         .join()
@@ -305,79 +321,141 @@ fn wait_child(
 }
 
 #[cfg(unix)]
-fn wait_child_status_and_cleanup_group(
+fn wait_child_status_and_cleanup_group(child: ProcessGroupChild) -> ChildWaitOutcome {
+    wait_child_status_and_cleanup_group_with_observer(
+        child,
+        CHILD_EXIT_TIMEOUT,
+        CHILD_EXIT_TIMEOUT,
+        observe_child_exit_without_reaping,
+    )
+}
+
+#[cfg(unix)]
+pub(super) fn wait_child_status_and_cleanup_group_with_observer(
     child: ProcessGroupChild,
-) -> Result<ExitStatus, Box<dyn std::error::Error>> {
+    exit_timeout: Duration,
+    kill_timeout: Duration,
+    observe_child_exit: impl FnOnce(u32) -> std::io::Result<()> + Send + 'static,
+) -> ChildWaitOutcome {
     let pid = child.id();
     let (tx, rx) = mpsc::channel();
     let wait_thread = std::thread::spawn(move || {
-        let result = observe_child_exit_without_reaping(pid);
-        let _ = tx.send(result);
+        let result = observe_child_exit(pid);
+        let _ = tx.send(());
+        result
     });
 
-    let child_observed = match rx.recv_timeout(CHILD_EXIT_TIMEOUT) {
-        Ok(result) => result,
+    match rx.recv_timeout(exit_timeout) {
+        Ok(()) | Err(mpsc::RecvTimeoutError::Disconnected) => {
+            ChildWaitOutcome::Complete(finish_observed_child(child, wait_thread))
+        }
         Err(mpsc::RecvTimeoutError::Timeout) => {
             process_group_child::terminate_child_by_pid(pid);
-            rx.recv_timeout(CHILD_EXIT_TIMEOUT).map_err(|error| {
-                std::io::Error::new(
-                    std::io::ErrorKind::TimedOut,
-                    format!("mock child did not exit after SIGKILL: {error}"),
-                )
-            })?
+            match rx.recv_timeout(kill_timeout) {
+                Ok(()) => ChildWaitOutcome::Complete(finish_observed_child(child, wait_thread)),
+                Err(error) => ChildWaitOutcome::CleanupPending {
+                    cleanup: PendingChildCleanup { child, wait_thread },
+                    error: std::io::Error::new(
+                        std::io::ErrorKind::TimedOut,
+                        format!("mock child did not exit after SIGKILL: {error}"),
+                    ),
+                },
+            }
         }
-        Err(mpsc::RecvTimeoutError::Disconnected) => Err(std::io::Error::other(
-            "mock child wait thread exited without observing status",
-        )),
-    };
+    }
+}
 
-    wait_thread
-        .join()
-        .map_err(|_| std::io::Error::other("child wait thread panicked"))?;
+#[cfg(unix)]
+fn finish_observed_child(
+    child: ProcessGroupChild,
+    wait_thread: JoinHandle<std::io::Result<()>>,
+) -> std::io::Result<ExitStatus> {
+    let child_observed = match wait_thread.join() {
+        Ok(result) => result,
+        Err(_) => {
+            child.terminate();
+            return Err(std::io::Error::other("child wait thread panicked"));
+        }
+    };
     if let Err(error) = child_observed {
         child.terminate();
-        return Err(error.into());
+        return Err(error);
     }
+    let pid = child.id();
     process_group_child::terminate_process_group(pid);
-    Ok(child.wait_direct_child()?)
+    child.wait_direct_child()
 }
 
 #[cfg(not(unix))]
-fn wait_child_status_and_cleanup_group(
-    child: ProcessGroupChild,
-) -> Result<ExitStatus, Box<dyn std::error::Error>> {
-    wait_child_status(child)
-}
-
-#[cfg(not(unix))]
-fn wait_child_status(child: ProcessGroupChild) -> Result<ExitStatus, Box<dyn std::error::Error>> {
+fn wait_child_status_and_cleanup_group(child: ProcessGroupChild) -> ChildWaitOutcome {
     let pid = child.id();
     let (tx, rx) = mpsc::channel();
     let wait_thread = std::thread::spawn(move || {
         let result = child.wait_direct_child();
-        let _ = tx.send(result);
+        let _ = tx.send(());
+        result
     });
 
-    let child_result = match rx.recv_timeout(CHILD_EXIT_TIMEOUT) {
-        Ok(result) => result,
+    match rx.recv_timeout(CHILD_EXIT_TIMEOUT) {
+        Ok(()) | Err(mpsc::RecvTimeoutError::Disconnected) => {
+            ChildWaitOutcome::Complete(join_child_waiter(wait_thread))
+        }
         Err(mpsc::RecvTimeoutError::Timeout) => {
             process_group_child::terminate_child_by_pid(pid);
-            rx.recv_timeout(CHILD_EXIT_TIMEOUT).map_err(|error| {
-                std::io::Error::new(
-                    std::io::ErrorKind::TimedOut,
-                    format!("mock child did not exit after SIGKILL: {error}"),
-                )
-            })?
+            match rx.recv_timeout(CHILD_EXIT_TIMEOUT) {
+                Ok(()) => ChildWaitOutcome::Complete(join_child_waiter(wait_thread)),
+                Err(error) => ChildWaitOutcome::CleanupPending {
+                    cleanup: PendingChildCleanup { wait_thread },
+                    error: std::io::Error::new(
+                        std::io::ErrorKind::TimedOut,
+                        format!("mock child did not exit after SIGKILL: {error}"),
+                    ),
+                },
+            }
         }
-        Err(mpsc::RecvTimeoutError::Disconnected) => Err(std::io::Error::other(
-            "mock child wait thread exited without status",
-        )),
-    };
+    }
+}
 
+#[cfg(not(unix))]
+fn join_child_waiter(
+    wait_thread: JoinHandle<std::io::Result<ExitStatus>>,
+) -> std::io::Result<ExitStatus> {
     wait_thread
         .join()
-        .map_err(|_| std::io::Error::other("child wait thread panicked"))?;
-    Ok(child_result?)
+        .map_err(|_| std::io::Error::other("child wait thread panicked"))?
+}
+
+#[cfg(unix)]
+impl PendingChildCleanup {
+    fn finish(self) -> std::io::Result<()> {
+        finish_observed_child(self.child, self.wait_thread).map(|_| ())
+    }
+}
+
+#[cfg(not(unix))]
+impl PendingChildCleanup {
+    fn finish(self) -> std::io::Result<()> {
+        join_child_waiter(self.wait_thread).map(|_| ())
+    }
+}
+
+pub(super) fn continue_cleanup_in_background<StdoutResult, StderrResult>(
+    cleanup: PendingChildCleanup,
+    stdout_thread: JoinHandle<StdoutResult>,
+    stderr_thread: JoinHandle<StderrResult>,
+    cleanup_complete: Option<mpsc::Sender<()>>,
+) where
+    StdoutResult: Send + 'static,
+    StderrResult: Send + 'static,
+{
+    let _ = std::thread::spawn(move || {
+        let _ = cleanup.finish();
+        let _ = stdout_thread.join();
+        let _ = stderr_thread.join();
+        if let Some(cleanup_complete) = cleanup_complete {
+            let _ = cleanup_complete.send(());
+        }
+    });
 }
 
 pub fn wait_child_output(
@@ -403,8 +481,11 @@ pub fn wait_child_output(
     });
 
     let status = match wait_child_status_and_cleanup_group(child) {
-        Err(error) if child_exit_timed_out(error.as_ref()) => return Err(error),
-        result => result,
+        ChildWaitOutcome::Complete(result) => result,
+        ChildWaitOutcome::CleanupPending { cleanup, error } => {
+            continue_cleanup_in_background(cleanup, stdout_thread, stderr_thread, None);
+            return Err(error.into());
+        }
     };
     let stdout_result = stdout_thread
         .join()
