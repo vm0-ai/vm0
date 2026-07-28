@@ -228,24 +228,9 @@ impl Default for MockLifecycleGate {
     }
 }
 
-#[derive(Clone)]
-pub(crate) enum BlockingGate {
-    LegacyNotify {
-        entered: Arc<tokio::sync::Notify>,
-        release: Arc<tokio::sync::Notify>,
-    },
-    Lifecycle(MockLifecycleGate),
-}
-
-pub(crate) async fn wait_blocking_gate(gate: &Mutex<Option<BlockingGate>>) {
+pub(crate) async fn wait_lifecycle_gate(gate: &Mutex<Option<MockLifecycleGate>>) {
     let gate = gate.lock_ignoring_poison().clone();
     if let Some(gate) = gate {
-        match gate {
-            BlockingGate::LegacyNotify { entered, release } => {
-                entered.notify_waiters();
-                release.notified().await;
-            }
-            BlockingGate::Lifecycle(gate) => gate.enter_and_wait().await,
-        }
+        gate.enter_and_wait().await;
     }
 }

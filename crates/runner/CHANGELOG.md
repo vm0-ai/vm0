@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.148.18](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.148.17...runner-rs-v0.148.18) (2026-07-28)
+
+
+### Documentation
+
+* **python:** document request stream billing contract ([#23422](https://github.com/vm0-ai/vm0/issues/23422)) ([bdc72a2](https://github.com/vm0-ai/vm0/commit/bdc72a259f0233e36c1d00eb91f31da87a2d840f))
+
 ## [0.148.17](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.148.16...runner-rs-v0.148.17) (2026-07-28)
 
 

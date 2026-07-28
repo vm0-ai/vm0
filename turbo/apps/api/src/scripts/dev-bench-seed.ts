@@ -645,13 +645,15 @@ function appendRunMessages(
     args.runCount,
   );
   const failed = args.runIndex < args.profile.failedRunCount;
+  const prompt = userPromptLorem(args.profile, args.runIndex);
   const userMessageRow: SeedChatMessageRow = {
     id: randomUUID(),
     chatThreadId: args.threadId,
     runId,
     eventType: "input.prompt",
     role: "user",
-    content: userPromptLorem(args.profile, args.runIndex),
+    content: prompt,
+    userMessage: { version: 1, parts: [{ type: "text", text: prompt }] },
     createdAt: baseCreatedAt,
   };
 
@@ -664,7 +666,7 @@ function appendRunMessages(
     agentComposeVersionId: args.versionId,
     sessionId: args.sessionId,
     status: failed ? "failed" : "completed",
-    prompt: userPromptLorem(args.profile, args.runIndex),
+    prompt,
     result: failed
       ? null
       : {

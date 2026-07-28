@@ -75,12 +75,12 @@ describe("chat composer templates", () => {
     const user = userEvent.setup({ delay: null });
     const first = PRESENTATION_TEMPLATE_PICKER_ITEMS[0]!;
     const second = PRESENTATION_TEMPLATE_PICKER_ITEMS[1]!;
-    let submittedStructuredPrompt: UserMessageDocument | undefined;
+    let submittedUserMessage: UserMessageDocument | undefined;
     let submittedGenerationTemplate: GenerationTemplateRequest | undefined;
     mockChatLifecycle(context, {
       threadId: THREAD_ID,
       onRunCreate(body) {
-        submittedStructuredPrompt = body.structuredPrompt;
+        submittedUserMessage = body.userMessage;
         submittedGenerationTemplate = body.generationTemplate;
       },
     });
@@ -135,8 +135,8 @@ describe("chat composer templates", () => {
 
     await waitFor(() => {
       expect(submittedGenerationTemplate).toBeUndefined();
-      expect(submittedStructuredPrompt?.parts).toHaveLength(2);
-      expect(submittedStructuredPrompt?.parts[0]).toMatchObject({
+      expect(submittedUserMessage?.parts).toHaveLength(2);
+      expect(submittedUserMessage?.parts[0]).toMatchObject({
         type: "template",
         titleSnapshot: first.title,
         template: {
@@ -144,7 +144,7 @@ describe("chat composer templates", () => {
           selection: { templateId: first.templateId },
         },
       });
-      expect(submittedStructuredPrompt?.parts[1]).toMatchObject({
+      expect(submittedUserMessage?.parts[1]).toMatchObject({
         type: "template",
         titleSnapshot: second.title,
         template: {
@@ -2125,7 +2125,7 @@ describe("chat composer templates", () => {
       },
     } satisfies GenerationTemplateRequest;
     let queuedGenerationTemplate: GenerationTemplateRequest | undefined;
-    let queuedStructuredTemplate: GenerationTemplateRequest | undefined;
+    let queuedUserMessageTemplate: GenerationTemplateRequest | undefined;
     mockChatLifecycle(context, {
       threadId: THREAD_ID,
       chatMessages: [
@@ -2148,7 +2148,7 @@ describe("chat composer templates", () => {
           role: "user",
           content: "invalidate",
           runId: undefined,
-          structuredPrompt: {
+          userMessage: {
             version: 1,
             parts: [
               {
@@ -2165,10 +2165,10 @@ describe("chat composer templates", () => {
       activeRunIds: ["run-template-active"],
       onQueuedMessageAppend: (body) => {
         queuedGenerationTemplate = body.generationTemplate;
-        const templatePart = body.structuredPrompt?.parts.find((part) => {
+        const templatePart = body.userMessage?.parts.find((part) => {
           return part.type === "template";
         });
-        queuedStructuredTemplate =
+        queuedUserMessageTemplate =
           templatePart?.type === "template" ? templatePart.template : undefined;
       },
     });
@@ -2206,7 +2206,7 @@ describe("chat composer templates", () => {
         "Queue a recalled illustration",
       );
       expect(queuedGenerationTemplate).toStrictEqual(generationTemplate);
-      expect(queuedStructuredTemplate).toStrictEqual(generationTemplate);
+      expect(queuedUserMessageTemplate).toStrictEqual(generationTemplate);
       expect(screen.getByLabelText("Template")).toHaveAttribute(
         "aria-pressed",
         "false",
@@ -2481,10 +2481,7 @@ describe("chat composer templates", () => {
       expect(
         screen.getByTitle(`${websiteTemplate.title} website template preview`),
       ).toHaveAttribute("src", websiteTemplatePreviewImageUrl);
-      expect(
-        screen.getByTitle(`${websiteTemplate.title} website template preview`)
-          .tagName,
-      ).toBe("IMG");
+      expect(screen.getAllByRole("dialog")).toHaveLength(1);
     });
 
     click(
@@ -2496,13 +2493,64 @@ describe("chat composer templates", () => {
       expect(
         screen.getByTitle(`${websiteTemplate.title} website full preview`),
       ).toHaveAttribute("src", websiteTemplate.previewUrl);
+      expect(
+        screen.getByTitle(
+          `${websiteTemplate.title} website preview placeholder`,
+        ),
+      ).toHaveAttribute("src", websiteTemplatePreviewImageUrl);
+      expect(
+        screen.queryByTitle(
+          `${websiteTemplate.title} website template preview`,
+        ),
+      ).not.toBeInTheDocument();
+      expect(screen.getAllByRole("dialog")).toHaveLength(1);
     });
     const websitePreviewDialog = screen.getByRole("dialog", {
       name: `Website / ${websiteTemplate.title}`,
     });
+    const websitePreviewPlaceholder = screen.getByTitle(
+      `${websiteTemplate.title} website preview placeholder`,
+    );
+    expect(websitePreviewDialog).toHaveClass("data-[state=open]:!animate-none");
+    expect(document.querySelector(".zero-dialog-overlay")).toHaveClass(
+      "data-[state=open]:!animate-none",
+    );
+    expect(websitePreviewPlaceholder).toHaveClass("block");
+    fireEvent.load(
+      screen.getByTitle(`${websiteTemplate.title} website full preview`),
+    );
+    await waitFor(() => {
+      expect(websitePreviewPlaceholder).toHaveClass("hidden");
+    });
+    click(within(websitePreviewDialog).getByLabelText("Close"));
+    await waitFor(() => {
+      expect(
+        screen.queryByTitle(`${websiteTemplate.title} website full preview`),
+      ).not.toBeInTheDocument();
+      expect(
+        screen.getByTitle(`${websiteTemplate.title} website template preview`),
+      ).toHaveAttribute("src", websiteTemplatePreviewImageUrl);
+      expect(tabByText("Website")).toHaveAttribute("aria-selected", "true");
+      expect(screen.getAllByRole("dialog")).toHaveLength(1);
+    });
+
+    click(
+      within(screen.getByRole("dialog")).getByLabelText(
+        `Preview website template ${websiteTemplate.title}`,
+      ),
+    );
+    await waitFor(() => {
+      expect(
+        screen.getByTitle(`${websiteTemplate.title} website full preview`),
+      ).toHaveAttribute("src", websiteTemplate.previewUrl);
+      expect(screen.getAllByRole("dialog")).toHaveLength(1);
+    });
+    const reopenedWebsitePreviewDialog = screen.getByRole("dialog", {
+      name: `Website / ${websiteTemplate.title}`,
+    });
     const websiteBackButton = queryAllByRoleFast(
       "button",
-      websitePreviewDialog,
+      reopenedWebsitePreviewDialog,
     ).find((candidate) => {
       return candidate.textContent?.replace(/\s+/g, " ").trim() === "Website";
     });
@@ -2516,6 +2564,14 @@ describe("chat composer templates", () => {
       ).not.toBeInTheDocument();
       expect(tabByText("Website")).toHaveAttribute("aria-selected", "true");
     });
+    expect(
+      screen.getByRole("dialog", {
+        name: "Template",
+      }),
+    ).toHaveClass("data-[state=open]:!animate-none");
+    expect(document.querySelector(".zero-dialog-overlay")).toHaveClass(
+      "data-[state=open]:!animate-none",
+    );
     click(screen.getByLabelText("Close"));
     await waitFor(() => {
       expect(screen.queryByRole("dialog")).not.toBeInTheDocument();

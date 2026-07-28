@@ -16,6 +16,7 @@ import {
 import { nowDate } from "../external/time";
 import { loadUserFeatureSwitchContext } from "./feature-switches.service";
 import { insertChatEvent } from "./zero-chat-event.service";
+import { createUserMessageDocument } from "./zero-chat-user-message.service";
 import { chatEventTypeIn } from "./zero-chat-event-type.service";
 import { appendQueuedRunAssistantMarker } from "./zero-chat-queue-marker.service";
 import { nonEmptyGoalObjectiveBrief } from "./zero-goal-objective-brief-normalization.service";
@@ -106,6 +107,7 @@ export async function postRunUserMessage(params: {
       chatThreadId: params.threadId,
       eventType: "input.prompt",
       content: params.prompt,
+      userMessage: createUserMessageDocument({ text: params.prompt }),
       runId: params.runId,
       runGroupId: params.runGroupId,
       goalSnapshot,

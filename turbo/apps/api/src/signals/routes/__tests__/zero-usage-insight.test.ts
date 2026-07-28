@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 
+import { createStore } from "ccstate";
 import {
   triggerSourceSchema,
   type TriggerSource,
@@ -24,6 +25,10 @@ import { createChatFilesBddApi } from "./helpers/api-bdd-chat-files";
 import { createRunsApi } from "./helpers/api-bdd-runs";
 import { createZeroRouteMocks } from "./helpers/zero-route-test";
 import { createWebhookCallbackApi } from "./helpers/api-bdd-webhooks";
+import {
+  insertUsageEvent$,
+  materializeHourlyUsage$,
+} from "./helpers/zero-usage-insight";
 
 /*
  * Finalized usage is filtered and bucketed by settlement time. Database
@@ -32,6 +37,7 @@ import { createWebhookCallbackApi } from "./helpers/api-bdd-webhooks";
  */
 const context = testContext();
 const mocks = createZeroRouteMocks(context);
+const store = createStore();
 const GOOGLE_GEOCODING_URL =
   "https://maps.googleapis.com/maps/api/geocode/json";
 const HOUR_MS = 3_600_000;
@@ -357,21 +363,22 @@ describe("GET /api/zero/usage/insight", () => {
     expect(totalByBucket["others"]).toBeGreaterThanOrEqual(250);
   });
 
-  it("groupBy=agent with 9 agents produces top-7 + others series keys", async () => {
+  it("uses agent name to break ties at the top-7 boundary", async () => {
     const actor = await entitledInsightActor();
+    const names: string[] = [];
+    const suffix = randomUUID().slice(0, 8);
 
     for (let i = 1; i <= 9; i++) {
-      const compose = await createInsightCompose(
-        actor,
-        `agent-${i}-${randomUUID().slice(0, 8)}`,
-      );
+      const name = `tie-agent-${String(i).padStart(2, "0")}-${suffix}`;
+      names.push(name);
+      const compose = await createInsightCompose(actor, name);
       const runId = await createSourceRun(actor, compose.composeId, "cli");
       await reportRunUsage(actor, runId, [
         {
           kind: "connector",
           category: "call",
           quantity: 1,
-          credits: i * 100,
+          credits: 100,
         },
       ]);
     }
@@ -392,8 +399,7 @@ describe("GET /api/zero/usage/insight", () => {
         seriesKeys.add(key);
       }
     }
-    expect(seriesKeys.size).toBeLessThanOrEqual(8);
-    expect(seriesKeys.has("others")).toBeTruthy();
+    expect(seriesKeys).toStrictEqual(new Set([...names.slice(0, 7), "others"]));
   });
 
   it("today produces hourly bucket strings", async () => {
@@ -498,6 +504,92 @@ describe("GET /api/zero/usage/insight", () => {
         tokens: { others: 0 },
       },
     ]);
+  });
+
+  it("keeps mixed facts in one adjacent day at fractional UTC offsets", async () => {
+    const actor = await entitledInsightActor();
+    if (!actor.orgId) {
+      throw new Error("Expected an org-scoped actor");
+    }
+    const orgId = actor.orgId;
+    const compose = await createInsightCompose(actor);
+    const hourlyRunId = await createSourceRun(actor, compose.composeId, "cli");
+    const rawRunId = await createSourceRun(actor, compose.composeId, "cli");
+    const insertProcessedEvent = async (
+      runId: string,
+      processedAt: Date,
+      creditsCharged: number,
+    ): Promise<void> => {
+      await store.set(
+        insertUsageEvent$,
+        {
+          orgId,
+          userId: actor.userId,
+          runId,
+          kind: "connector",
+          provider: `hour-boundary-${randomUUID().slice(0, 8)}`,
+          category: "call",
+          quantity: 1,
+          status: "processed",
+          creditsCharged,
+          processedAt,
+        },
+        context.signal,
+      );
+    };
+
+    await insertProcessedEvent(
+      hourlyRunId,
+      new Date("2026-07-26T18:50:00.000Z"),
+      1,
+    );
+    await insertProcessedEvent(
+      hourlyRunId,
+      new Date("2026-07-26T19:00:00.000Z"),
+      2,
+    );
+    await expect(
+      store.set(
+        materializeHourlyUsage$,
+        {
+          orgId: actor.orgId,
+          userId: actor.userId,
+          runId: hourlyRunId,
+        },
+        context.signal,
+      ),
+    ).resolves.toBe(2);
+    await insertProcessedEvent(
+      rawRunId,
+      new Date("2026-07-27T18:50:00.000Z"),
+      4,
+    );
+    await insertProcessedEvent(
+      rawRunId,
+      new Date("2026-07-27T19:00:00.000Z"),
+      8,
+    );
+
+    authenticateInsightActor(actor);
+    const readDay = async (date: string): Promise<number> => {
+      const response = await accept(
+        apiClient().get({
+          query: {
+            range: "day",
+            date,
+            groupBy: "source",
+            tz: "Asia/Kolkata",
+          },
+          headers: authHeaders(),
+        }),
+        [200],
+      );
+      return response.body.grandTotalCredits;
+    };
+
+    await expect(readDay("2026-07-26")).resolves.toBe(1);
+    await expect(readDay("2026-07-27")).resolves.toBe(6);
+    await expect(readDay("2026-07-28")).resolves.toBe(8);
   });
 
   it("scope isolation — other user's activity in same org is invisible", async () => {

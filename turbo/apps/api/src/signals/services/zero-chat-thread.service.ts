@@ -41,7 +41,7 @@ import {
   type ChatMessageAttachFileMetadata,
   type ChatMessageGenerationTemplate,
   type ChatMessageRecommendedFollowups,
-  type ChatMessageStructuredPrompt,
+  type ChatMessageUserMessage,
   type ChatMessageGoalEvent,
   type ChatMessageGoalSnapshot,
 } from "@vm0/db/schema/chat-message";
@@ -112,6 +112,7 @@ import { appendChatThreadEvent } from "./zero-chat-thread-event.service";
 import { excludeGoalMarkerCondition } from "./zero-chat-goal-marker.service";
 import { cancelRun$, type CancelRunResult } from "./zero-run-cancel.service";
 import { buildWorkflowScheduleAutomationBrief } from "./zero-workflow-automation-brief.service";
+import { maybeCreateUserMessageDocument } from "./zero-chat-user-message.service";
 import { chatEventTypeSql } from "./zero-chat-event-type.service";
 
 export { insertAssistantEventMessages$ };
@@ -130,7 +131,7 @@ type ChatEventRow = {
   readonly chatThreadId: string;
   readonly eventType: ChatEventType;
   readonly content: string | null;
-  readonly structuredPrompt: ChatMessageStructuredPrompt | null;
+  readonly userMessage: ChatMessageUserMessage | null;
   readonly thinking: string | null;
   readonly runId: string | null;
   readonly runGroupId: string | null;
@@ -260,7 +261,7 @@ type ChatThreadRow = {
   readonly title: string | null;
   readonly agentComposeId: string;
   readonly draftContent: string | null;
-  readonly draftStructuredPrompt: UserMessageDocument | null;
+  readonly draftUserMessage: UserMessageDocument | null;
   readonly draftAttachments: readonly PersistedAttachment[] | null;
   readonly modelProviderId: string | null;
   readonly modelProviderType: ModelProviderType | null;
@@ -290,7 +291,7 @@ const eventColumns = {
   chatThreadId: chatMessages.chatThreadId,
   eventType: chatEventTypeSql().as("event_type"),
   content: chatMessages.content,
-  structuredPrompt: chatMessages.structuredPrompt,
+  userMessage: chatMessages.userMessage,
   thinking: chatMessages.thinking,
   runId: effectiveChatMessageRunId(),
   runGroupId: chatMessages.runGroupId,
@@ -509,7 +510,7 @@ function ownedChatThread(
         title: chatThreads.title,
         agentComposeId: chatThreads.agentComposeId,
         draftContent: chatThreads.draftContent,
-        draftStructuredPrompt: chatThreads.draftStructuredPrompt,
+        draftUserMessage: chatThreads.draftUserMessage,
         draftAttachments: chatThreads.draftAttachments,
         computerUseHostId: chatThreads.computerUseHostId,
         cloudBrowserEnabled: chatThreads.cloudBrowserEnabled,
@@ -539,7 +540,7 @@ function ownedChatThread(
       title: thread.title,
       agentComposeId: thread.agentComposeId,
       draftContent: thread.draftContent ?? null,
-      draftStructuredPrompt: thread.draftStructuredPrompt ?? null,
+      draftUserMessage: thread.draftUserMessage ?? null,
       draftAttachments: persistedAttachmentSchema
         .array()
         .nullable()
@@ -577,7 +578,7 @@ export function zeroChatThreadDraft(args: {
 
     return {
       draftContent: thread.draftContent,
-      draftStructuredPrompt: thread.draftStructuredPrompt,
+      draftUserMessage: thread.draftUserMessage,
       draftAttachments: thread.draftAttachments
         ? [...thread.draftAttachments]
         : null,
@@ -843,7 +844,7 @@ const chatEventBuilders = {
     return {
       ...event,
       eventType: "input.prompt",
-      structuredPrompt: row.structuredPrompt ?? undefined,
+      userMessage: row.userMessage ?? undefined,
       attachFiles: attachFiles ? [...attachFiles] : undefined,
       generationTemplate: row.generationTemplate ?? undefined,
     };
@@ -870,7 +871,7 @@ const chatEventBuilders = {
     return {
       ...event,
       eventType: "input.rejected",
-      structuredPrompt: row.structuredPrompt ?? undefined,
+      userMessage: row.userMessage ?? undefined,
       error: requiredChatEventField(row.error, row.eventType, "error"),
       attachFiles: attachFiles ? [...attachFiles] : undefined,
       generationTemplate: row.generationTemplate ?? undefined,
@@ -1222,7 +1223,7 @@ export function zeroChatThreadActiveRunThreadIds(args: {
 
 /**
  * Thread ids owned by the user that currently hold an unsent composer draft
- * (non-empty `draftContent`, a structured prompt, or one+ `draftAttachments`).
+ * (non-empty `draftContent`, a user message, or one+ `draftAttachments`).
  */
 export function zeroChatThreadDraftIds(args: {
   readonly userId: string;
@@ -1237,7 +1238,7 @@ export function zeroChatThreadDraftIds(args: {
           eq(chatThreads.userId, args.userId),
           or(
             sql`COALESCE(${chatThreads.draftContent}, '') <> ''`,
-            isNotNull(chatThreads.draftStructuredPrompt),
+            isNotNull(chatThreads.draftUserMessage),
             and(
               isNotNull(chatThreads.draftAttachments),
               sql`jsonb_array_length(${chatThreads.draftAttachments}) > 0`,
@@ -2459,18 +2460,23 @@ export const updateChatThreadDraft$ = command(
       readonly threadId: string;
       readonly userId: string;
       readonly draftContent: string | null;
-      readonly draftStructuredPrompt: UserMessageDocument | null;
+      readonly draftUserMessage: UserMessageDocument | null;
       readonly draftAttachments: readonly PersistedAttachment[] | null;
     },
     signal: AbortSignal,
   ): Promise<{ readonly updated: boolean }> => {
     const writeDb = set(writeDb$);
-
+    const draftUserMessage =
+      args.draftUserMessage ??
+      maybeCreateUserMessageDocument({
+        text: args.draftContent,
+        files: args.draftAttachments ?? undefined,
+      });
     const updated = await writeDb
       .update(chatThreads)
       .set({
         draftContent: args.draftContent,
-        draftStructuredPrompt: args.draftStructuredPrompt,
+        draftUserMessage,
         draftAttachments: args.draftAttachments
           ? [...args.draftAttachments]
           : null,

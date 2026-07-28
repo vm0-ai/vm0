@@ -1,6 +1,6 @@
 {
-  "id": "e154f90e-2b57-42a7-926c-b73a6fb196d3",
-  "prevId": "3a8ae427-913b-446e-9de2-69fda33be2a3",
+  "id": "ce5e1470-df6e-41e2-9923-539c569211a2",
+  "prevId": "e154f90e-2b57-42a7-926c-b73a6fb196d3",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -4232,12 +4232,6 @@
           "primaryKey": false,
           "notNull": false
         },
-        "structured_prompt_with_feedback": {
-          "name": "structured_prompt_with_feedback",
-          "type": "jsonb",
-          "primaryKey": false,
-          "notNull": false
-        },
         "thinking": {
           "name": "thinking",
           "type": "text",
@@ -5033,12 +5027,6 @@
         },
         "draft_structured_prompt": {
           "name": "draft_structured_prompt",
-          "type": "jsonb",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "draft_structured_prompt_with_feedback": {
-          "name": "draft_structured_prompt_with_feedback",
           "type": "jsonb",
           "primaryKey": false,
           "notNull": false
@@ -20835,12 +20823,6 @@
         },
         "draft_structured_prompt": {
           "name": "draft_structured_prompt",
-          "type": "jsonb",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "draft_structured_prompt_with_feedback": {
-          "name": "draft_structured_prompt_with_feedback",
           "type": "jsonb",
           "primaryKey": false,
           "notNull": false

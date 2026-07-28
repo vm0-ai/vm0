@@ -110,7 +110,10 @@ import {
 } from "../services/zero-chat-event.service";
 import { loadWebChatIncompleteContext } from "../services/zero-chat-incomplete-context.service";
 import { chatThreadAdmissionBlocked } from "../services/zero-chat-active-run.service";
-import { projectStructuredUserMessage } from "../services/zero-chat-structured-message.service";
+import {
+  createUserMessageDocument,
+  projectUserMessage,
+} from "../services/zero-chat-user-message.service";
 import { appendQueuedRunAssistantMarker } from "../services/zero-chat-queue-marker.service";
 import {
   deleteUserMessageQueueItem,
@@ -158,7 +161,7 @@ interface NormalSendBody {
   readonly runOptions?: {
     readonly codexServiceTier?: CodexServiceTier;
   };
-  readonly structuredPrompt?: UserMessageDocument;
+  readonly userMessage?: UserMessageDocument;
   readonly generationTemplate?: GenerationTemplateRequest;
   readonly hasTextContent?: boolean;
   readonly attachFiles?: AttachFile[];
@@ -204,7 +207,7 @@ interface ResolvedThread {
 interface WebChatPriorRunMessage {
   readonly role: "user" | "assistant";
   readonly content: string;
-  readonly structuredPrompt: UserMessageDocument | null;
+  readonly userMessage: UserMessageDocument | null;
   readonly attachFiles: readonly string[] | null;
   readonly generationTemplate: ChatMessageGenerationTemplate | null;
 }
@@ -255,7 +258,7 @@ interface PreparedNormalSend {
   readonly computerUseHostGrant: ResolvedComputerUseHostGrant | null;
   readonly persistedExplicitSelection: boolean;
   readonly initialThinkingEnabled: boolean;
-  readonly structuredPromptEnabled: boolean;
+  readonly userMessageEnabled: boolean;
   readonly runConfiguration: ResolvedRunConfiguration;
   readonly clientMessagePrechecked: boolean;
   readonly preflightClientMessageConflict:
@@ -276,13 +279,14 @@ function shouldTouchThreadSortFromNormalSend(
 
 interface NormalSendFeatureSwitches {
   readonly codexFastModeEnabled: boolean;
-  readonly structuredPromptEnabled: boolean;
-  readonly structuredPromptInlineTemplatesEnabled: boolean;
+  readonly userMessageEnabled: boolean;
+  readonly userMessageInlineTemplatesEnabled: boolean;
   readonly websiteTemplateV2Enabled: boolean;
   readonly imageStyleR2Enabled: boolean;
 }
 
-interface RuntimeNormalSendBody extends NormalSendBody {
+interface RuntimeNormalSendBody extends Omit<NormalSendBody, "userMessage"> {
+  readonly userMessage: UserMessageDocument;
   readonly agentPrompt: string;
   readonly generationTemplates: readonly GenerationTemplateRequest[];
   readonly hasTextContent: boolean;
@@ -655,13 +659,19 @@ function buildFullPrompt(
 
 function resolveRuntimeNormalSendBody(
   body: NormalSendBody,
-  structuredPromptEnabled: boolean,
+  userMessageEnabled: boolean,
   inlineTemplatesEnabled: boolean,
 ): RuntimeNormalSendBody {
-  if (!structuredPromptEnabled || !body.structuredPrompt) {
+  const userMessage =
+    body.userMessage ??
+    createUserMessageDocument({
+      text: body.prompt,
+      files: body.attachFiles,
+    });
+  if (!userMessageEnabled || !body.userMessage) {
     return {
       ...body,
-      structuredPrompt: body.structuredPrompt,
+      userMessage,
       agentPrompt: buildFullPrompt(body.prompt, body.attachFiles),
       generationTemplates: body.generationTemplate
         ? [body.generationTemplate]
@@ -669,13 +679,13 @@ function resolveRuntimeNormalSendBody(
       hasTextContent: body.hasTextContent !== false,
     };
   }
-  const projection = projectStructuredUserMessage(body.structuredPrompt, {
+  const projection = projectUserMessage(body.userMessage, {
     inlineTemplates: inlineTemplatesEnabled,
   });
   return {
     ...body,
     prompt: projection.displayText,
-    structuredPrompt: body.structuredPrompt,
+    userMessage: body.userMessage,
     generationTemplate: projection.generationTemplate,
     generationTemplates: projection.generationTemplates,
     agentPrompt: projection.agentPrompt,
@@ -731,16 +741,12 @@ function formatAttachFileIds(
 
 function formatPriorRunMessage(
   message: WebChatPriorRunMessage,
-  structuredPromptEnabled: boolean,
+  userMessageEnabled: boolean,
   inlineTemplatesEnabled: boolean,
 ): string {
   const roleLabel = message.role === "user" ? "User" : "Assistant";
-  if (
-    structuredPromptEnabled &&
-    message.role === "user" &&
-    message.structuredPrompt
-  ) {
-    const prompt = projectStructuredUserMessage(message.structuredPrompt, {
+  if (userMessageEnabled && message.role === "user" && message.userMessage) {
+    const prompt = projectUserMessage(message.userMessage, {
       inlineTemplates: inlineTemplatesEnabled,
     }).agentPrompt;
     return `${roleLabel}: ${truncatePrior(prompt) || "[empty message]"}`;
@@ -752,7 +758,7 @@ function formatPriorRunMessage(
 
 function buildWebChatPriorRunsContext(
   runs: readonly WebChatPriorRun[],
-  structuredPromptEnabled: boolean,
+  userMessageEnabled: boolean,
   inlineTemplatesEnabled: boolean,
 ): string {
   if (runs.length === 0) {
@@ -764,7 +770,7 @@ function buildWebChatPriorRunsContext(
     const renderedMessages = run.messages.map((message) => {
       return formatPriorRunMessage(
         message,
-        structuredPromptEnabled,
+        userMessageEnabled,
         inlineTemplatesEnabled,
       );
     });
@@ -864,7 +870,7 @@ async function getLatestRunsByThreadId(
       runId: chatMessages.runId,
       eventType: chatEventTypeSql().as("event_type"),
       content: chatMessages.content,
-      structuredPrompt: chatMessages.structuredPrompt,
+      userMessage: chatMessages.userMessage,
       attachFiles: chatMessages.attachFiles,
       createdAt: chatMessages.createdAt,
       sequenceNumber: chatMessages.sequenceNumber,
@@ -891,7 +897,7 @@ async function getLatestRunsByThreadId(
     existing.push({
       role: chatEventCompatibilityRole(row.eventType),
       content: row.content,
-      structuredPrompt: row.structuredPrompt,
+      userMessage: row.userMessage,
       attachFiles: row.attachFiles,
       generationTemplate: row.generationTemplate,
     });
@@ -1048,11 +1054,11 @@ async function resolveNormalSendFeatureSwitches(
       FeatureSwitchKey.CodexFastMode,
       context,
     ),
-    structuredPromptEnabled: isFeatureEnabled(
+    userMessageEnabled: isFeatureEnabled(
       FeatureSwitchKey.StructuredPrompt,
       context,
     ),
-    structuredPromptInlineTemplatesEnabled:
+    userMessageInlineTemplatesEnabled:
       isFeatureEnabled(FeatureSwitchKey.StructuredPrompt, context) &&
       isFeatureEnabled(
         FeatureSwitchKey.StructuredPromptInlineTemplates,
@@ -1464,8 +1470,8 @@ async function resolveThread(params: {
   readonly requestedCodexServiceTier: CodexServiceTier | undefined;
   readonly persistRequestedCodexServiceTier: boolean;
   readonly codexFastModeEnabled: boolean;
-  readonly structuredPromptEnabled: boolean;
-  readonly structuredPromptInlineTemplatesEnabled: boolean;
+  readonly userMessageEnabled: boolean;
+  readonly userMessageInlineTemplatesEnabled: boolean;
 }): Promise<ResolvedThreadAndRunConfiguration | NormalSendFailure> {
   if (!params.existingThreadId) {
     if (!params.explicitRunConfiguration) {
@@ -1556,8 +1562,8 @@ async function resolveThread(params: {
     loadWebChatIncompleteContext(
       params.db,
       thread.id,
-      params.structuredPromptEnabled,
-      params.structuredPromptInlineTemplatesEnabled,
+      params.userMessageEnabled,
+      params.userMessageInlineTemplatesEnabled,
     ),
   ]);
   const startNewSession = sessionResolution.action === "rotated";
@@ -1580,7 +1586,7 @@ async function prepareRecentChatContext(
   isNewThread: boolean,
   incompleteContext: string,
   options: {
-    readonly structuredPromptEnabled: boolean;
+    readonly userMessageEnabled: boolean;
     readonly inlineTemplatesEnabled: boolean;
   },
 ): Promise<string> {
@@ -1592,7 +1598,7 @@ async function prepareRecentChatContext(
   }
   return buildWebChatPriorRunsContext(
     await getLatestRunsByThreadId(db, threadId, RECENT_CHAT_RUN_LIMIT),
-    options.structuredPromptEnabled,
+    options.userMessageEnabled,
     options.inlineTemplatesEnabled,
   );
 }
@@ -1606,7 +1612,7 @@ function appendUnassociatedUserMessage(params: {
   readonly clientEventId: string | undefined;
   readonly chatThreadSortEventId: string | undefined;
   readonly touchThreadSort: boolean;
-  readonly structuredPrompt: UserMessageDocument | undefined;
+  readonly userMessage: UserMessageDocument;
   readonly generationTemplate: IncomingGenerationTemplate;
   readonly orgId: string;
   readonly encryptedParams: string | undefined;
@@ -1616,7 +1622,7 @@ function appendUnassociatedUserMessage(params: {
       .update(chatThreads)
       .set({
         draftContent: null,
-        draftStructuredPrompt: null,
+        draftUserMessage: null,
         draftAttachments: null,
       })
       .where(
@@ -1636,7 +1642,7 @@ function appendUnassociatedUserMessage(params: {
         chatThreadId: params.threadId,
         eventType: "input.prompt",
         content: params.prompt,
-        structuredPrompt: params.structuredPrompt,
+        userMessage: params.userMessage,
         runId: null,
         attachFiles: fileIds,
         attachFileMetadata: fileMetadata,
@@ -1727,7 +1733,7 @@ async function clearThreadDraft(
     .update(chatThreads)
     .set({
       draftContent: null,
-      draftStructuredPrompt: null,
+      draftUserMessage: null,
       draftAttachments: null,
     })
     .where(and(eq(chatThreads.id, threadId), eq(chatThreads.userId, userId)));
@@ -1744,7 +1750,7 @@ async function appendAssociatedUserMessage(params: {
   readonly chatThreadSortEventId: string | undefined;
   readonly touchThreadSort: boolean;
   readonly revokesEventId: string | undefined;
-  readonly structuredPrompt: UserMessageDocument | undefined;
+  readonly userMessage: UserMessageDocument;
   readonly generationTemplate: IncomingGenerationTemplate;
   readonly appendQueueMarker: boolean;
   // When false, the thread's in-progress draft is preserved. Automation posts
@@ -1763,7 +1769,7 @@ async function appendAssociatedUserMessage(params: {
       chatThreadId: params.threadId,
       eventType: "input.prompt",
       content: params.prompt,
-      structuredPrompt: params.structuredPrompt,
+      userMessage: params.userMessage,
       runId: params.runId,
       attachFiles: fileIds,
       attachFileMetadata: fileMetadata,
@@ -2275,9 +2281,9 @@ function resolveTimedThread(
           args.body.modelSelection !== undefined ||
           args.body.runOptions !== undefined,
         codexFastModeEnabled: featureSwitches.codexFastModeEnabled,
-        structuredPromptEnabled: featureSwitches.structuredPromptEnabled,
-        structuredPromptInlineTemplatesEnabled:
-          featureSwitches.structuredPromptInlineTemplatesEnabled,
+        userMessageEnabled: featureSwitches.userMessageEnabled,
+        userMessageInlineTemplatesEnabled:
+          featureSwitches.userMessageInlineTemplatesEnabled,
       });
     },
   );
@@ -2287,7 +2293,7 @@ function prepareTimedRecentChatContext(
   args: NormalSendArgs,
   db: Db,
   thread: ResolvedThread,
-  structuredPromptEnabled: boolean,
+  userMessageEnabled: boolean,
   inlineTemplatesEnabled: boolean,
 ): ReturnType<typeof prepareRecentChatContext> {
   return measureApiDispatchTiming(
@@ -2300,7 +2306,7 @@ function prepareTimedRecentChatContext(
         thread.threadId,
         thread.isNewThread,
         thread.incompleteContext,
-        { structuredPromptEnabled, inlineTemplatesEnabled },
+        { userMessageEnabled, inlineTemplatesEnabled },
       );
     },
   );
@@ -2412,8 +2418,8 @@ const prepareNormalSend$ = command(
     signal.throwIfAborted();
     const runtimeBody = resolveRuntimeNormalSendBody(
       args.body,
-      featureSwitches.structuredPromptEnabled,
-      featureSwitches.structuredPromptInlineTemplatesEnabled,
+      featureSwitches.userMessageEnabled,
+      featureSwitches.userMessageInlineTemplatesEnabled,
     );
     const generationTemplateError = validateGenerationTemplatePrompt(
       runtimeBody.generationTemplate,
@@ -2459,15 +2465,15 @@ const prepareNormalSend$ = command(
       args,
       db,
       thread,
-      featureSwitches.structuredPromptEnabled,
-      featureSwitches.structuredPromptInlineTemplatesEnabled,
+      featureSwitches.userMessageEnabled,
+      featureSwitches.userMessageInlineTemplatesEnabled,
     );
     signal.throwIfAborted();
     const generationTemplatePrompt = resolveThreadGenerationTemplatePrompt({
       explicit: runtimeBody.generationTemplate,
       explicitTemplates:
-        featureSwitches.structuredPromptInlineTemplatesEnabled &&
-        runtimeBody.structuredPrompt !== undefined
+        featureSwitches.userMessageInlineTemplatesEnabled &&
+        args.body.userMessage !== undefined
           ? runtimeBody.generationTemplates
           : undefined,
       websiteTemplateV2Enabled: featureSwitches.websiteTemplateV2Enabled,
@@ -2494,7 +2500,7 @@ const prepareNormalSend$ = command(
       computerUseHostGrant: computerAccess.computerUseHostGrant,
       persistedExplicitSelection,
       initialThinkingEnabled: args.zeroPreCreateSource === undefined,
-      structuredPromptEnabled: featureSwitches.structuredPromptEnabled,
+      userMessageEnabled: featureSwitches.userMessageEnabled,
       runConfiguration,
       clientMessagePrechecked,
       preflightClientMessageConflict: preflightClientMessageResponse,
@@ -2504,7 +2510,7 @@ const prepareNormalSend$ = command(
 
 async function queueUnassociatedNormalMessage(params: {
   readonly prepared: PreparedNormalSend;
-  readonly body: NormalSendBody;
+  readonly body: RuntimeNormalSendBody;
   readonly userId: string;
   readonly touchThreadSort: boolean;
   readonly orgId: string;
@@ -2535,7 +2541,7 @@ async function queueUnassociatedNormalMessage(params: {
     clientEventId: params.body.clientEventId,
     chatThreadSortEventId: params.body.chatThreadSortEventId,
     touchThreadSort: params.touchThreadSort,
-    structuredPrompt: params.body.structuredPrompt,
+    userMessage: params.body.userMessage,
     generationTemplate: params.body.generationTemplate,
     orgId: params.orgId,
     encryptedParams,
@@ -2574,7 +2580,7 @@ function scheduleChatTitleGeneration(params: {
   readonly thread: ResolvedThread;
   readonly userId: string;
   readonly orgId: string;
-  readonly structuredPromptEnabled: boolean;
+  readonly userMessageEnabled: boolean;
 }): void {
   if (
     params.body.hasTextContent === false ||
@@ -2590,18 +2596,18 @@ function scheduleChatTitleGeneration(params: {
       userId: params.userId,
       orgId: params.orgId,
       prompt:
-        params.structuredPromptEnabled && params.body.structuredPrompt
+        params.userMessageEnabled && params.body.userMessage
           ? params.body.agentPrompt
           : params.body.prompt,
       includePriorRounds: !params.thread.isNewThread,
-      structuredPromptEnabled: params.structuredPromptEnabled,
+      userMessageEnabled: params.userMessageEnabled,
     }),
   );
 }
 
 function scheduleAssociatedUserMessage(params: {
   readonly db: Db;
-  readonly body: NormalSendBody;
+  readonly body: RuntimeNormalSendBody;
   readonly threadId: string;
   readonly userId: string;
   readonly runId: string;
@@ -2622,7 +2628,7 @@ function scheduleAssociatedUserMessage(params: {
         chatThreadSortEventId: params.body.chatThreadSortEventId,
         touchThreadSort: params.touchThreadSort,
         revokesEventId: params.body.revokesEventId,
-        structuredPrompt: params.body.structuredPrompt,
+        userMessage: params.body.userMessage,
         generationTemplate: params.body.generationTemplate,
         appendQueueMarker: params.appendQueueMarker,
         clearDraft: true,
@@ -2664,7 +2670,7 @@ function scheduleCreatedChatRunSideEffects(params: {
   readonly runId: string;
   readonly runStatus: string;
   readonly initialThinkingEnabled: boolean;
-  readonly structuredPromptEnabled: boolean;
+  readonly userMessageEnabled: boolean;
   readonly touchThreadSort: boolean;
   readonly queueFirstClaim:
     | {
@@ -2678,7 +2684,7 @@ function scheduleCreatedChatRunSideEffects(params: {
     thread: params.thread,
     userId: params.userId,
     orgId: params.orgId,
-    structuredPromptEnabled: params.structuredPromptEnabled,
+    userMessageEnabled: params.userMessageEnabled,
   });
   const appendInitialThinking =
     params.initialThinkingEnabled &&
@@ -2793,7 +2799,7 @@ async function appendQueueFirstInsufficientCreditsMessages(params: {
     const [queuedMessage] = await tx
       .select({
         content: chatMessages.content,
-        structuredPrompt: chatMessages.structuredPrompt,
+        userMessage: chatMessages.userMessage,
         attachFiles: chatMessages.attachFiles,
         attachFileMetadata: chatMessages.attachFileMetadata,
         generationTemplate: chatMessages.generationTemplate,
@@ -2832,7 +2838,7 @@ async function appendQueueFirstInsufficientCreditsMessages(params: {
       chatThreadId: params.prepared.thread.threadId,
       eventType: "input.rejected",
       content: queuedMessage.content,
-      structuredPrompt: queuedMessage.structuredPrompt,
+      userMessage: queuedMessage.userMessage,
       runId: null,
       error: INSUFFICIENT_CREDITS_MARKER,
       sequenceNumber: 0,
@@ -2876,7 +2882,7 @@ async function appendQueueFirstInsufficientCreditsMessages(params: {
 
 async function appendInsufficientCreditsMessages(params: {
   readonly prepared: PreparedNormalSend;
-  readonly body: NormalSendBody;
+  readonly body: RuntimeNormalSendBody;
   readonly userId: string;
   readonly orgId: string;
   readonly touchThreadSort: boolean;
@@ -2901,7 +2907,7 @@ async function appendInsufficientCreditsMessages(params: {
       .update(chatThreads)
       .set({
         draftContent: null,
-        draftStructuredPrompt: null,
+        draftUserMessage: null,
         draftAttachments: null,
       })
       .where(
@@ -2922,7 +2928,7 @@ async function appendInsufficientCreditsMessages(params: {
       chatThreadId: params.prepared.thread.threadId,
       eventType: "input.rejected",
       content: params.body.prompt,
-      structuredPrompt: params.body.structuredPrompt,
+      userMessage: params.body.userMessage,
       runId: null,
       error: INSUFFICIENT_CREDITS_MARKER,
       sequenceNumber: 0,
@@ -3148,7 +3154,7 @@ function scheduleNormalChatRunSideEffects(params: {
     runId: params.runId,
     runStatus: params.runStatus,
     initialThinkingEnabled: params.prepared.initialThinkingEnabled,
-    structuredPromptEnabled: params.prepared.structuredPromptEnabled,
+    userMessageEnabled: params.prepared.userMessageEnabled,
     touchThreadSort: shouldTouchThreadSortFromNormalSend(
       params.args.zeroPreCreateSource,
       params.prepared.thread.isNewThread,

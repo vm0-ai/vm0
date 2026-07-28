@@ -9,7 +9,7 @@ import {
 import { zeroAgents } from "./zero-agent";
 import type {
   ZeroAgentDraftAttachments,
-  ZeroAgentDraftStructuredPrompt,
+  ZeroAgentDraftUserMessage,
 } from "@vm0/db/jsonb-contracts/zero-agent-draft";
 
 export const zeroAgentDrafts = pgTable(
@@ -26,9 +26,9 @@ export const zeroAgentDrafts = pgTable(
         { onDelete: "cascade" },
       ),
     draftContent: text("draft_content"),
-    draftStructuredPrompt: jsonb(
+    draftUserMessage: jsonb(
       "draft_structured_prompt",
-    ).$type<ZeroAgentDraftStructuredPrompt>(),
+    ).$type<ZeroAgentDraftUserMessage>(),
     draftAttachments:
       jsonb("draft_attachments").$type<ZeroAgentDraftAttachments>(),
     createdAt: timestamp("created_at").defaultNow().notNull(),

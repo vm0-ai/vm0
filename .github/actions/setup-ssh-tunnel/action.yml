@@ -63,12 +63,13 @@ runs:
 
         install -m 755 "$GITHUB_WORKSPACE/.github/scripts/cloudflare-ssh-proxy.sh" "$HOME/.ssh/cf-proxy.sh"
 
+        # Cloudflare Access setup and the origin SSH banner share this timeout.
+        # ConnectionAttempts does not restart an active ProxyCommand.
         SSH_CONFIG="$(printf '%s\n' \
           "Host *.vm3.ai" \
           "  StrictHostKeyChecking no" \
           "  UserKnownHostsFile /dev/null" \
-          "  ConnectTimeout 10" \
-          "  ConnectionAttempts 3" \
+          "  ConnectTimeout 30" \
           "  ServerAliveInterval 15" \
           "  ServerAliveCountMax 4" \
           "  TCPKeepAlive yes" \

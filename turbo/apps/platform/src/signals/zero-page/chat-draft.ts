@@ -214,7 +214,7 @@ export interface DraftSignals {
   setInput$: Command<void, [string]>;
   appendInput$: Command<void, [string]>;
   setInputSyncTarget$: Command<void, [DraftInputSyncTarget | null]>;
-  takeRestoredStructuredPrompt$: Command<UserMessageDocument | null, []>;
+  takeRestoredUserMessage$: Command<UserMessageDocument | null, []>;
   readEditorDocument$: Command<EditorDocumentSnapshot | null, []>;
   setEditorDocument$: Command<void, [EditorDocumentSnapshot | null]>;
   generationTemplate$: Computed<GenerationTemplateRequest | undefined>;
@@ -237,14 +237,14 @@ export interface DraftSignals {
 
 interface DraftSeed {
   content: string;
-  structuredPrompt: UserMessageDocument | null;
+  userMessage: UserMessageDocument | null;
   generationTemplate: GenerationTemplateRequest | undefined;
   attachments: ZeroChatAttachment[];
 }
 
 export interface DraftInputSyncTarget {
   syncInput(value: string): void;
-  syncStructuredPrompt(value: UserMessageDocument): void;
+  syncUserMessage(value: UserMessageDocument): void;
 }
 
 /**
@@ -295,16 +295,14 @@ function createDraftInputSignals() {
   const syncInput$ = command(({ get }, value: string) => {
     get(internalInputSyncTarget$)?.syncInput(value);
   });
-  const syncStructuredPrompt$ = command(
-    ({ get }, value: UserMessageDocument) => {
-      const target = get(internalInputSyncTarget$);
-      if (!target) {
-        return false;
-      }
-      target.syncStructuredPrompt(value);
-      return true;
-    },
-  );
+  const syncUserMessage$ = command(({ get }, value: UserMessageDocument) => {
+    const target = get(internalInputSyncTarget$);
+    if (!target) {
+      return false;
+    }
+    target.syncUserMessage(value);
+    return true;
+  });
   const setInputSyncTarget$ = command(
     ({ set }, target: DraftInputSyncTarget | null) => {
       set(internalInputSyncTarget$, target);
@@ -330,21 +328,21 @@ function createDraftInputSignals() {
     setInput$,
     appendInput$,
     setInputSyncTarget$,
-    syncStructuredPrompt$,
+    syncUserMessage$,
   };
 }
 
 function createDraftDocumentSignals() {
-  let restoredStructuredPrompt: UserMessageDocument | null = null;
+  let restoredUserMessage: UserMessageDocument | null = null;
   let editorDocument: EditorDocumentSnapshot | null = null;
-  const setRestoredStructuredPrompt$ = command(
+  const setRestoredUserMessage$ = command(
     (_context, value: UserMessageDocument | null) => {
-      restoredStructuredPrompt = value;
+      restoredUserMessage = value;
     },
   );
-  const takeRestoredStructuredPrompt$ = command(() => {
-    const value = restoredStructuredPrompt;
-    restoredStructuredPrompt = null;
+  const takeRestoredUserMessage$ = command(() => {
+    const value = restoredUserMessage;
+    restoredUserMessage = null;
     return value;
   });
   const readEditorDocument$ = command(() => {
@@ -356,8 +354,8 @@ function createDraftDocumentSignals() {
     },
   );
   return {
-    setRestoredStructuredPrompt$,
-    takeRestoredStructuredPrompt$,
+    setRestoredUserMessage$,
+    takeRestoredUserMessage$,
     readEditorDocument$,
     setEditorDocument$,
   };
@@ -378,7 +376,7 @@ function createDraftLifecycleSignals({
 }) {
   const clear$ = command(({ get, set }) => {
     set(draftInput.setInput$, "");
-    set(draftDocument.setRestoredStructuredPrompt$, null);
+    set(draftDocument.setRestoredUserMessage$, null);
     set(draftDocument.setEditorDocument$, null);
     set(internalGenerationTemplate$, undefined);
     const attachments = get(internalAttachments$);
@@ -393,15 +391,15 @@ function createDraftLifecycleSignals({
 
   const seed$ = command(({ set }, value: DraftSeed) => {
     set(draftDocument.setEditorDocument$, null);
-    set(draftDocument.setRestoredStructuredPrompt$, value.structuredPrompt);
+    set(draftDocument.setRestoredUserMessage$, value.userMessage);
     set(internalGenerationTemplate$, value.generationTemplate);
     set(internalAttachments$, value.attachments);
     set(draftInput.setInput$, value.content);
     if (
-      value.structuredPrompt &&
-      set(draftInput.syncStructuredPrompt$, value.structuredPrompt)
+      value.userMessage &&
+      set(draftInput.syncUserMessage$, value.userMessage)
     ) {
-      set(draftDocument.takeRestoredStructuredPrompt$);
+      set(draftDocument.takeRestoredUserMessage$);
     }
   });
 
@@ -512,7 +510,7 @@ export function createDraftSignals(): DraftSignals {
 
   return {
     ...draftInput,
-    takeRestoredStructuredPrompt$: draftDocument.takeRestoredStructuredPrompt$,
+    takeRestoredUserMessage$: draftDocument.takeRestoredUserMessage$,
     readEditorDocument$: draftDocument.readEditorDocument$,
     setEditorDocument$: draftDocument.setEditorDocument$,
     generationTemplate$,

@@ -16,7 +16,7 @@ import { agentComposes } from "./agent-compose";
 import { computerUseHosts } from "./computer-use-host";
 import type {
   ChatThreadDraftAttachments,
-  ChatThreadDraftStructuredPrompt,
+  ChatThreadDraftUserMessage,
   ChatThreadGenerationTemplate,
 } from "@vm0/db/jsonb-contracts/chat-thread";
 import { agentRuns, agentSessions } from "./agent-run-session-conversation";
@@ -75,9 +75,9 @@ export const chatThreads = pgTable(
      */
     draftContent: text("draft_content"),
     /** Stable business representation of the composer's rich draft content. */
-    draftStructuredPrompt: jsonb(
+    draftUserMessage: jsonb(
       "draft_structured_prompt",
-    ).$type<ChatThreadDraftStructuredPrompt>(),
+    ).$type<ChatThreadDraftUserMessage>(),
     /**
      * Draft attachment metadata for the thread's composer. Only completed uploads.
      * Null when no draft attachments are saved.

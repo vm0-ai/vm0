@@ -71,7 +71,7 @@ import {
   unzstdSessionHistoryBufferWithMaxBytes,
 } from "./session-history-decompression";
 import { loadUserFeatureSwitchContext } from "./feature-switches.service";
-import { projectStructuredUserMessage } from "./zero-chat-structured-message.service";
+import { projectUserMessage } from "./zero-chat-user-message.service";
 import {
   chatEventTypeIn,
   chatEventTypeSql,
@@ -148,7 +148,7 @@ interface VolumeFile {
 interface ExportTextMessage {
   readonly role: "user" | "assistant";
   readonly content: string;
-  readonly structuredPrompt?: UserMessageDocument;
+  readonly userMessage?: UserMessageDocument;
   readonly createdAt: string;
 }
 
@@ -732,7 +732,7 @@ function verifySessionHistoryBuffer(
 async function collectConversationMessages(
   runtime: ExportRuntime,
   userId: string,
-  structuredPromptEnabled: boolean,
+  userMessageEnabled: boolean,
 ): Promise<{
   readonly entries: readonly ZipEntry[];
   readonly threadCount: number;
@@ -754,7 +754,7 @@ async function collectConversationMessages(
       .select({
         eventType: chatEventTypeSql().as("event_type"),
         content: chatMessages.content,
-        structuredPrompt: chatMessages.structuredPrompt,
+        userMessage: chatMessages.userMessage,
         createdAt: chatMessages.createdAt,
       })
       .from(chatMessages)
@@ -769,12 +769,12 @@ async function collectConversationMessages(
 
     const messages: ExportTextMessage[] = rows.flatMap((message) => {
       const role = chatEventCompatibilityRole(message.eventType);
-      const structuredPrompt =
-        structuredPromptEnabled && role === "user"
-          ? (message.structuredPrompt ?? undefined)
+      const userMessage =
+        userMessageEnabled && role === "user"
+          ? (message.userMessage ?? undefined)
           : undefined;
-      const content = structuredPrompt
-        ? projectStructuredUserMessage(structuredPrompt).displayText
+      const content = userMessage
+        ? projectUserMessage(userMessage).displayText
         : message.content;
       if (!content) {
         return [];
@@ -783,7 +783,7 @@ async function collectConversationMessages(
         {
           role,
           content,
-          ...(structuredPrompt ? { structuredPrompt } : {}),
+          ...(userMessage ? { userMessage } : {}),
           createdAt: message.createdAt.toISOString(),
         },
       ];

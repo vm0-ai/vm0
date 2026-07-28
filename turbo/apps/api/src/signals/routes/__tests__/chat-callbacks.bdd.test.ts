@@ -168,7 +168,7 @@ async function startChatRun(
     readonly selectedModel?: string;
     readonly attachFiles?: readonly AttachFile[];
     readonly generationTemplate?: GenerationTemplateRequest;
-    readonly structuredPrompt?: UserMessageDocument;
+    readonly userMessage?: UserMessageDocument;
   },
 ): Promise<{
   readonly runId: string;
@@ -187,9 +187,9 @@ async function startChatRun(
     ...(body.generationTemplate === undefined
       ? {}
       : { generationTemplate: body.generationTemplate }),
-    ...(body.structuredPrompt === undefined
+    ...(body.userMessage === undefined
       ? {}
-      : { structuredPrompt: body.structuredPrompt }),
+      : { userMessage: body.userMessage }),
     ...(body.selectedModel === undefined
       ? body.threadId === undefined
         ? { model: "claude-sonnet-4-6" }
@@ -1079,11 +1079,11 @@ describe("CHAT-02: completed chat callback", () => {
   }, 90_000);
 
   it.each([
-    { projection: "structured", structuredPromptEnabled: true },
-    { projection: "legacy", structuredPromptEnabled: false },
+    { projection: "structured", userMessageEnabled: true },
+    { projection: "legacy", userMessageEnabled: false },
   ])(
     "uses $projection message semantics for title and recommended follow-up context",
-    async ({ structuredPromptEnabled }) => {
+    async ({ userMessageEnabled }) => {
       const { actor, agentId, runnerGroup } = await entitledChatActor();
       chatCallbacks.failIfChatCallbackRouteIsFetched();
       if (!actor.orgId) {
@@ -1092,7 +1092,7 @@ describe("CHAT-02: completed chat callback", () => {
       await updateFeatureSwitchesForUser(
         context,
         { ...actor, orgId: actor.orgId },
-        { [FeatureSwitchKey.StructuredPrompt]: structuredPromptEnabled },
+        { [FeatureSwitchKey.StructuredPrompt]: userMessageEnabled },
       );
 
       const style = ILLUSTRATION_TEMPLATE_ITEMS[0];
@@ -1103,7 +1103,7 @@ describe("CHAT-02: completed chat callback", () => {
         type: "illustration",
         selection: { illustrationStyleId: style.illustrationStyleId },
       };
-      const firstStructuredPrompt: UserMessageDocument = {
+      const firstUserMessage: UserMessageDocument = {
         version: 1,
         parts: [
           {
@@ -1120,7 +1120,7 @@ describe("CHAT-02: completed chat callback", () => {
         agentId,
         prompt: "stale first legacy request",
         generationTemplate,
-        structuredPrompt: firstStructuredPrompt,
+        userMessage: firstUserMessage,
       });
       const firstHeaders = await claimChatRun(runnerGroup, first.runId);
       chatCallbacks.mockChatOutputEvents([
@@ -1153,14 +1153,14 @@ describe("CHAT-02: completed chat callback", () => {
         agentId,
         threadId: first.threadId,
         prompt: "stale second legacy request",
-        structuredPrompt: {
+        userMessage: {
           version: 1,
           parts: [{ type: "text", text: "second structured request" }],
         },
       });
       await waitForThreadTitle(actor, first.threadId, "Structured Context");
 
-      const structuredContext = [
+      const userMessageContext = [
         templatePrompt,
         "first structured request",
         "second structured request",
@@ -1169,12 +1169,12 @@ describe("CHAT-02: completed chat callback", () => {
         "stale first legacy request",
         "stale second legacy request",
       ];
-      const expectedContext = structuredPromptEnabled
-        ? structuredContext
+      const expectedContext = userMessageEnabled
+        ? userMessageContext
         : legacyContext;
-      const excludedContext = structuredPromptEnabled
+      const excludedContext = userMessageEnabled
         ? legacyContext
-        : structuredContext;
+        : userMessageContext;
 
       expect(titlePrompts).toHaveLength(1);
       for (const value of expectedContext) {
@@ -2574,7 +2574,7 @@ describe("CHAT-02: auto-send after failures", () => {
       type: "illustration",
       selection: { illustrationStyleId: style.illustrationStyleId },
     };
-    const structuredPrompt: UserMessageDocument = {
+    const userMessage: UserMessageDocument = {
       version: 1,
       parts: [
         {
@@ -2600,7 +2600,7 @@ describe("CHAT-02: auto-send after failures", () => {
       threadId: anchor.threadId,
       prompt: "stale failed legacy request",
       generationTemplate,
-      structuredPrompt,
+      userMessage,
     });
     const failedForNormalHeaders = await claimChatRun(
       runnerGroup,
@@ -2630,7 +2630,7 @@ describe("CHAT-02: auto-send after failures", () => {
       threadId: anchor.threadId,
       prompt: "second stale failed legacy request",
       generationTemplate,
-      structuredPrompt,
+      userMessage,
     });
     const failedForQueueHeaders = await claimChatRun(
       runnerGroup,
