@@ -749,7 +749,6 @@ function appendAssistantEventMessages(args: {
       chatThreadId: args.threadId,
       runId: args.runId,
       eventType: "output.message",
-      role: "assistant",
       content: markdownLorem(args.profile, args.runIndex, eventIndex),
       sequenceNumber,
       runEventId: runEventId(args.profile, args.runIndex, sequenceNumber),
@@ -777,7 +776,6 @@ function appendUsageMessage(args: {
     chatThreadId: args.threadId,
     runId: args.runId,
     eventType: "usage.recorded",
-    role: "assistant",
     content: null,
     usagePayload: usagePayload(args.profile, args.runIndex, createdAt),
     createdAt,
@@ -799,7 +797,6 @@ function appendLifecycleMessage(args: {
     chatThreadId: args.threadId,
     runId: args.runId,
     eventType: args.failed ? "run.failed" : "run.completed",
-    role: "assistant",
     content: null,
     error: args.failed ? "Synthetic benchmark failure" : null,
     runLifecycleEvent: args.failed ? "failed" : "completed",
@@ -825,7 +822,6 @@ function appendFollowupsMessage(args: {
     chatThreadId: args.threadId,
     runId: args.runId,
     eventType: "output.followups",
-    role: "assistant",
     content: null,
     recommendedFollowups: recommendedFollowups(args.profile, args.runIndex),
     createdAt: addMs(args.baseCreatedAt, 45_001 + args.eventCount * 100),
@@ -858,7 +854,6 @@ function appendNullRunControlRows(args: {
       chatThreadId: args.threadId,
       runId: null,
       eventType: controlIndex % 2 === 0 ? "input.prompt" : "output.thinking",
-      role: controlIndex % 2 === 0 ? "user" : "assistant",
       content:
         controlIndex % 2 === 0
           ? userPromptLorem(args.profile, controlIndex)

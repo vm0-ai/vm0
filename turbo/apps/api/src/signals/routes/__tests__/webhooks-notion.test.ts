@@ -859,9 +859,12 @@ describe("POST /api/webhooks/notion", () => {
 
     // The run landed in the automation's bound chat thread with the friendly
     // Notion brief, linked to the created run.
-    const messages = await wf.readThreadMessages(threadId);
+    const messages = await wf.readThreadEvents(threadId);
     const workflowMessage = messages.find((message) => {
-      return message.role === "user" && message.content === `/${WORKFLOW_NAME}`;
+      return (
+        message.eventType === "input.prompt" &&
+        message.content === `/${WORKFLOW_NAME}`
+      );
     });
     if (!workflowMessage?.runId) {
       throw new Error("Expected a dispatched Notion workflow run message");

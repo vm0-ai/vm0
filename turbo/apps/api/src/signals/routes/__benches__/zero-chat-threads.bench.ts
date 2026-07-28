@@ -24,7 +24,7 @@ import { zeroRuns } from "@vm0/db/schema/zero-run";
 import { bench } from "vitest";
 import {
   chatThreadByIdContract,
-  chatThreadMessagesContract,
+  chatThreadEventsContract,
 } from "@vm0/api-contracts/contracts/chat-threads";
 import { zeroBillingStatusContract } from "@vm0/api-contracts/contracts/zero-billing";
 import { zeroConnectorsMainContract } from "@vm0/api-contracts/contracts/zero-connectors";
@@ -90,9 +90,7 @@ const BENCH_CONNECTOR_CATALOG_KEY =
   `releases/${BENCH_CONNECTOR_CATALOG_VERSION}/catalog.json`;
 
 const chatThreadClient = setupApp({ context })(chatThreadByIdContract);
-const chatThreadMessagesClient = setupApp({ context })(
-  chatThreadMessagesContract,
-);
+const chatThreadEventsClient = setupApp({ context })(chatThreadEventsContract);
 const connectorsClient = setupApp({ context })(zeroConnectorsMainContract);
 const userPreferencesClient = setupApp({ context })(
   zeroUserPreferencesContract,
@@ -587,7 +585,6 @@ async function seedTargetThreadRuns(
     chatThreadId: string;
     runId: string;
     eventType: "input.prompt" | "output.message";
-    role: string;
     content: string;
     sequenceNumber: number;
     seqId: number;
@@ -617,7 +614,6 @@ async function seedTargetThreadRuns(
         chatThreadId: fixture.threadId,
         runId,
         eventType: m === 0 ? "input.prompt" : "output.message",
-        role: m === 0 ? "user" : "assistant",
         content: markdownLorem(i, m),
         sequenceNumber: m,
         seqId: i * TARGET_MESSAGES_PER_RUN + m + 1,
@@ -846,10 +842,10 @@ describe("bench side-effect-free GET API routes", () => {
   );
 
   bench(
-    "GET /api/zero/chat-threads/:threadId/messages",
+    "GET /api/zero/chat-threads/:threadId/events",
     async () => {
       const fixture = await ensureSeeded();
-      const response = await chatThreadMessagesClient.list({
+      const response = await chatThreadEventsClient.list({
         params: { threadId: fixture.threadId },
         query: { limit: 50 },
         headers: authHeaders,

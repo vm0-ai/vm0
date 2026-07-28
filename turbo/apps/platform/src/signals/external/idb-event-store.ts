@@ -32,27 +32,8 @@ interface ChatEventWriteStore {
   ): Promise<void>;
 }
 
-function toCanonicalEvent(raw: unknown): unknown {
-  if (raw === null || typeof raw !== "object" || Array.isArray(raw)) {
-    return raw;
-  }
-
-  const row = raw as Record<string, unknown>;
-  const normalized: Record<string, unknown> = {};
-  for (const [key, value] of Object.entries(row)) {
-    if (key === "role" || key === "revokesMessageId") {
-      continue;
-    }
-    if (key === "status" && row.role === "user") {
-      continue;
-    }
-    normalized[key] = value;
-  }
-  return normalized;
-}
-
 function validateEvent(raw: unknown): ChatEvent {
-  return chatEventSchema.parse(toCanonicalEvent(raw));
+  return chatEventSchema.parse(raw);
 }
 
 function storedEvent(threadId: string, event: ChatEvent): StoredChatEvent {

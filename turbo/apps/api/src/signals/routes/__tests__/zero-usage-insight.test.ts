@@ -721,7 +721,7 @@ describe("GET /api/zero/usage/insight", () => {
       agentId: agent.agentId,
       title: "Test Chat Thread",
     });
-    const sent = await chat.requestSendMessage(
+    const sent = await chat.requestSendEvent(
       actor,
       {
         agentId: agent.agentId,
