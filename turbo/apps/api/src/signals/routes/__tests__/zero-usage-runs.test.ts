@@ -788,7 +788,8 @@ describe("GET /api/zero/usage/runs", () => {
     await seedModelPricing(model);
     const firstRun = await createBillableRun(actor);
 
-    await recordModelUsage(actor, firstRun.runId, model, { input: 80 });
+    await recordModelUsage(actor, firstRun.runId, model, { input: 50 });
+    await recordModelUsage(actor, firstRun.runId, model, { input: 30 });
     await billing.processOrgUsageEvents(actor);
     await expect(
       store.set(
@@ -800,7 +801,7 @@ describe("GET /api/zero/usage/runs", () => {
         },
         context.signal,
       ),
-    ).resolves.toBe(1);
+    ).resolves.toBe(2);
 
     mockNow(new Date(firstRunAt.getTime() + 2 * 3_600_000));
     const secondRun = await createBillableRun(actor);
@@ -816,7 +817,7 @@ describe("GET /api/zero/usage/runs", () => {
         { scope: "organization", id: actor.orgId },
         context.signal,
       ),
-    ).resolves.toStrictEqual({ raw: 2, hourly: 1 });
+    ).resolves.toStrictEqual({ raw: 2, hourly: 2 });
 
     mockClerkUserLookup();
     mocks.clerk.session(actor.userId, actor.orgId);
