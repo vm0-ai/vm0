@@ -6,6 +6,7 @@ import pytest
 from mitmproxy.test import tutils
 
 import flow_metadata_keys as metadata_keys
+import http_network_log
 import mitm_addon
 import usage
 from tests.flow_helpers import header_map
@@ -758,6 +759,12 @@ class TestModelProviderResponseHookUsage:
         flow.metadata[metadata_keys.VM_NETWORK_LOG_PATH] = log_path
         flow.metadata[metadata_keys.FIREWALL_ACTION] = "ALLOW"
         flow.metadata[metadata_keys.ORIGINAL_URL] = "https://api.anthropic.com/v1/messages"
+        http_network_log.set_target(
+            flow,
+            url="https://api.anthropic.com/v1/messages",
+            host="api.anthropic.com",
+            port=443,
+        )
         flow.metadata[metadata_keys.FIREWALL_NAME] = "model-provider:anthropic-api-key"
         flow.metadata[metadata_keys.FIREWALL_BILLABLE] = True
         flow.metadata[metadata_keys.VM_SANDBOX_AUTH_KEY] = "tok-xyz"
