@@ -1,6 +1,8 @@
 use std::io::ErrorKind;
 use std::path::{Path, PathBuf};
 
+use tracing::warn;
+
 use crate::error::{RunnerError, RunnerResult};
 
 use super::target::RunnerServiceUnit;
@@ -14,6 +16,10 @@ pub(super) fn write_drain_restart_override(unit: &RunnerServiceUnit) -> RunnerRe
     write_drain_restart_override_at(Path::new(RUNTIME_SYSTEMD_SYSTEM_DIR), unit)
 }
 
+/// Returns whether the effective drop-in file was removed.
+///
+/// Cleanup of its containing directory is best-effort because an empty
+/// directory does not affect systemd configuration.
 pub(super) fn remove_drain_restart_override(unit: &RunnerServiceUnit) -> RunnerResult<bool> {
     remove_drain_restart_override_at(Path::new(RUNTIME_SYSTEMD_SYSTEM_DIR), unit)
 }
@@ -43,7 +49,7 @@ fn remove_drain_restart_override_at(root: &Path, unit: &RunnerServiceUnit) -> Ru
     let path = drain_restart_override_path_at(root, unit);
     cleanup_unit_staging_files(&path)?;
 
-    let mut changed = match std::fs::remove_file(&path) {
+    let override_removed = match std::fs::remove_file(&path) {
         Ok(()) => true,
         Err(e) if e.kind() == ErrorKind::NotFound => false,
         Err(e) => {
@@ -56,17 +62,18 @@ fn remove_drain_restart_override_at(root: &Path, unit: &RunnerServiceUnit) -> Ru
 
     let dir = drain_restart_override_dir_at(root, unit);
     match std::fs::remove_dir(&dir) {
-        Ok(()) => changed = true,
+        Ok(()) => {}
         Err(e) if matches!(e.kind(), ErrorKind::NotFound | ErrorKind::DirectoryNotEmpty) => {}
         Err(e) => {
-            return Err(RunnerError::Internal(format!(
-                "remove empty drain restart override directory {}: {e}",
-                dir.display()
-            )));
+            warn!(
+                directory = %dir.display(),
+                error = %e,
+                "failed to remove empty drain restart override directory"
+            );
         }
     }
 
-    Ok(changed)
+    Ok(override_removed)
 }
 
 #[cfg(test)]
@@ -135,6 +142,18 @@ mod tests {
     }
 
     #[test]
+    fn remove_cleans_empty_directory_without_reporting_override_change() {
+        let dir = tempfile::tempdir().unwrap();
+        let unit = service_unit();
+        let drop_in_dir = drain_restart_override_dir_at(dir.path(), &unit);
+        std::fs::create_dir(&drop_in_dir).unwrap();
+
+        assert!(!remove_drain_restart_override_at(dir.path(), &unit).unwrap());
+
+        assert!(!drop_in_dir.exists());
+    }
+
+    #[test]
     fn remove_deletes_empty_drop_in_directory() {
         let dir = tempfile::tempdir().unwrap();
         let unit = service_unit();
@@ -160,5 +179,27 @@ mod tests {
         assert!(drop_in_dir.exists());
         assert!(other.exists());
         assert!(!drain_restart_override_path_at(dir.path(), &unit).exists());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn remove_reports_override_change_when_directory_cleanup_fails() {
+        let dir = tempfile::tempdir().unwrap();
+        let target = tempfile::tempdir().unwrap();
+        let unit = service_unit();
+        let drop_in_dir = drain_restart_override_dir_at(dir.path(), &unit);
+        std::os::unix::fs::symlink(target.path(), &drop_in_dir).unwrap();
+        let path = drain_restart_override_path_at(dir.path(), &unit);
+        std::fs::write(&path, DRAIN_DROP_IN_CONTENT).unwrap();
+
+        assert!(remove_drain_restart_override_at(dir.path(), &unit).unwrap());
+
+        assert!(!path.exists());
+        assert!(
+            std::fs::symlink_metadata(&drop_in_dir)
+                .unwrap()
+                .file_type()
+                .is_symlink()
+        );
     }
 }
