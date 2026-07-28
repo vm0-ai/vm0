@@ -1606,6 +1606,8 @@ type DrizzleOperandRole =
   | "string-or-wrapper"
   | "wrapper";
 
+type RetainedOperandRequirement = "interpolation" | "schema-column";
+
 function directMarkerMatchesRole(
   marker: SqlMarker,
   role: DrizzleOperandRole,
@@ -1648,10 +1650,141 @@ function nodeMatchesRole(
   return isDrizzleWrapperType(checker, type);
 }
 
-function operandNode(
+function directStructuralChildren(
+  expression: StructuralExpression,
+): readonly StructuralExpression[] {
+  if (expression.kind === "marker" || expression.kind === "constant") {
+    return [];
+  }
+  if (expression.kind === "comparison" || expression.kind === "array") {
+    return [expression.left, expression.right];
+  }
+  if (expression.kind === "boolean") {
+    return expression.items;
+  }
+  if (expression.kind === "aggregate") {
+    return [
+      expression.argument,
+      expression.filter,
+      ...expression.orderings.map((ordering) => {
+        return ordering.expression;
+      }),
+    ].filter((item): item is StructuralExpression => {
+      return item !== undefined;
+    });
+  }
+  if (expression.kind === "pattern") {
+    return [expression.left, expression.right, expression.escape].filter(
+      (item): item is StructuralExpression => {
+        return item !== undefined;
+      },
+    );
+  }
+  if (expression.kind === "membership") {
+    return [expression.left, ...expression.values];
+  }
+  if (expression.kind === "range") {
+    return [expression.left, expression.minimum, expression.maximum];
+  }
+  if (expression.kind === "null") {
+    return [expression.operand];
+  }
+  return expression.children;
+}
+
+function retainableInlineMarkers(
+  expression: StructuralExpression,
+): readonly SqlMarker[] | undefined {
+  if (expression.kind === "marker") {
+    const marker = expression.marker;
+    return !marker.isTable &&
+      !marker.isSelect &&
+      marker.isAnalyzableWriteInterpolation
+      ? [marker]
+      : undefined;
+  }
+  if (
+    expression.kind === "existence" ||
+    (expression.kind === "opaque" && expression.nodeKey === "SubLink")
+  ) {
+    return undefined;
+  }
+  const markers: SqlMarker[] = [];
+  for (const child of directStructuralChildren(expression)) {
+    const childMarkers = retainableInlineMarkers(child);
+    if (childMarkers === undefined) {
+      return undefined;
+    }
+    markers.push(...childMarkers);
+  }
+  return markers;
+}
+
+function hasInlineValueBoundary(
+  expression: StructuralExpression,
+  context: ClassificationContext,
+): boolean {
+  return (
+    commonCompositionBoundaries([...expression.sourceChunks], context.root)
+      .length > 0
+  );
+}
+
+function isSafeHelperValueOperand(
+  expression: StructuralExpression,
+  context: ClassificationContext,
+): boolean {
+  if (expression.kind === "constant") {
+    return true;
+  }
+  if (expression.kind === "marker") {
+    const marker = expression.marker;
+    return (
+      !marker.isTable &&
+      !marker.isSelect &&
+      (marker.isBoundScalar || marker.isWrapper)
+    );
+  }
+  const markers = retainableInlineMarkers(expression);
+  return (
+    markers !== undefined &&
+    (markers.length === 0 || hasInlineValueBoundary(expression, context))
+  );
+}
+
+// A retained operand has no standalone TypeScript node. PostgreSQL has already
+// proved the expression boundary, so keep its original chunks and use a
+// schema-aware interpolation only as the diagnostic anchor.
+function retainedOperandAnchor(
+  expression: StructuralExpression,
+  role: DrizzleOperandRole,
+  requirement: RetainedOperandRequirement,
+  context: ClassificationContext,
+): TSESTree.Expression | undefined {
+  const markers = retainableInlineMarkers(expression);
+  if (
+    role === "array" ||
+    role === "column" ||
+    markers === undefined ||
+    markers.length === 0 ||
+    !hasInlineValueBoundary(expression, context)
+  ) {
+    return undefined;
+  }
+  const schemaColumn = markers.find((marker) => {
+    return marker.isColumn;
+  });
+  if (requirement === "schema-column") {
+    return schemaColumn?.node;
+  }
+  return (schemaColumn ?? markers[0])?.node;
+}
+
+function operandAnchor(
   expression: StructuralExpression,
   role: DrizzleOperandRole,
   classificationContext: ClassificationContext,
+  retainedRequirement: RetainedOperandRequirement = "schema-column",
 ): TSESTree.Expression | undefined {
   if (expression.kind === "marker") {
     return directMarkerMatchesRole(expression.marker, role)
@@ -1673,7 +1806,12 @@ function operandNode(
       classificationContext.services,
     )
     ? boundary
-    : undefined;
+    : retainedOperandAnchor(
+        expression,
+        role,
+        retainedRequirement,
+        classificationContext,
+      );
 }
 
 function nestedClassificationContext(
@@ -1782,8 +1920,12 @@ function classifyExpression(
     const leftNode =
       helper === undefined
         ? undefined
-        : operandNode(expression.left, "wrapper", context);
-    if (helper !== undefined && leftNode !== undefined) {
+        : operandAnchor(expression.left, "wrapper", context);
+    if (
+      helper !== undefined &&
+      leftNode !== undefined &&
+      isSafeHelperValueOperand(expression.right, context)
+    ) {
       return {
         anchor: leftNode,
         findings: [
@@ -1842,7 +1984,7 @@ function classifyExpression(
   }
 
   if (expression.kind === "null") {
-    const node = operandNode(expression.operand, "wrapper", context);
+    const node = operandAnchor(expression.operand, "wrapper", context);
     if (node !== undefined) {
       return {
         anchor: node,
@@ -1859,8 +2001,13 @@ function classifyExpression(
   }
 
   if (expression.kind === "pattern") {
-    const left = operandNode(expression.left, "pattern", context);
-    const right = operandNode(expression.right, "string-or-wrapper", context);
+    const left = operandAnchor(expression.left, "pattern", context);
+    const right = operandAnchor(
+      expression.right,
+      "string-or-wrapper",
+      context,
+      "interpolation",
+    );
     if (left !== undefined && right !== undefined) {
       return {
         anchor: left,
@@ -1896,8 +2043,8 @@ function classifyExpression(
   }
 
   if (expression.kind === "array") {
-    const left = operandNode(expression.left, "array", context);
-    const right = operandNode(expression.right, "wrapper", context);
+    const left = operandAnchor(expression.left, "array", context);
+    const right = operandAnchor(expression.right, "wrapper", context);
     if (left !== undefined && right !== undefined) {
       return {
         anchor: left,
@@ -1920,29 +2067,27 @@ function classifyExpression(
   }
 
   if (expression.kind === "membership") {
-    const directColumn =
-      expression.left.kind === "marker" && expression.left.marker.isColumn
-        ? expression.left.marker.node
-        : undefined;
-    const lowerColumn =
-      expression.left.kind === "opaque" &&
-      expression.left.nodeKey === "FuncCall:lower" &&
-      expression.left.children.length === 1 &&
-      expression.left.children[0]?.kind === "marker" &&
-      expression.left.children[0].marker.isColumn
-        ? expression.left.children[0].marker.node
-        : undefined;
+    const directColumn = operandAnchor(expression.left, "column", context);
+    const left =
+      directColumn ?? operandAnchor(expression.left, "wrapper", context);
     const value =
       expression.values.length === 1 && expression.values[0]?.kind === "marker"
         ? expression.values[0].marker.node
         : undefined;
-    const validValues =
+    const hasExactLiteralValues =
+      expression.values.length > 0 &&
+      expression.values.every((item) => {
+        return item.kind === "constant";
+      });
+    const hasParameterListValues =
       value !== undefined &&
-      (lowerColumn === undefined
+      (directColumn !== undefined
         ? context.capabilities.hasParameterListOrigin(value)
         : context.capabilities.isInlineParameterList(value));
-    const left = directColumn ?? lowerColumn;
-    if (left !== undefined && validValues) {
+    if (
+      left !== undefined &&
+      (hasExactLiteralValues || hasParameterListValues)
+    ) {
       return {
         anchor: left,
         findings: [
@@ -1967,8 +2112,12 @@ function classifyExpression(
   }
 
   if (expression.kind === "range") {
-    const left = operandNode(expression.left, "wrapper", context);
-    if (left !== undefined) {
+    const left = operandAnchor(expression.left, "wrapper", context);
+    if (
+      left !== undefined &&
+      isSafeHelperValueOperand(expression.minimum, context) &&
+      isSafeHelperValueOperand(expression.maximum, context)
+    ) {
       return {
         anchor: left,
         findings: [
@@ -2019,7 +2168,7 @@ function classifyExpression(
     const argumentNode =
       expression.argument === undefined
         ? undefined
-        : operandNode(expression.argument, "wrapper", context);
+        : operandAnchor(expression.argument, "wrapper", context);
     const validArgument = expression.isStar
       ? expression.helper === "count"
       : argumentNode !== undefined;
@@ -2027,7 +2176,7 @@ function classifyExpression(
     const sameColumnDecoder =
       (helper === "max" || helper === "min") &&
       expression.argument !== undefined &&
-      operandNode(expression.argument, "column", context) !== undefined;
+      operandAnchor(expression.argument, "column", context) !== undefined;
     const mappingAllowed =
       !context.ownsResultMapping ||
       context.capabilities.hasDirectResultMapping(context.root) ||
@@ -4353,7 +4502,7 @@ function classifyOrdering(
   if (ordering.direction === undefined) {
     return classifyExpression(ordering.expression, context);
   }
-  const node = operandNode(ordering.expression, "wrapper", context);
+  const node = operandAnchor(ordering.expression, "wrapper", context);
   if (node === undefined) {
     return classifyExpression(
       ordering.expression,
@@ -4389,6 +4538,18 @@ function publicFinding(finding: ClassifiedHelperFinding): SqlAnalysisFinding {
       };
 }
 
+function sameSourceChunks(
+  left: ReadonlySet<SqlSourceChunk>,
+  right: ReadonlySet<SqlSourceChunk>,
+): boolean {
+  return (
+    left.size === right.size &&
+    [...left].every((chunk) => {
+      return right.has(chunk);
+    })
+  );
+}
+
 function replacementBoundaryForFinding(
   finding: ClassifiedHelperFinding,
   variant: SqlSourceVariant,
@@ -4397,16 +4558,15 @@ function replacementBoundaryForFinding(
   services: ParserServicesWithTypeInformation,
   capabilities: SqlCapabilityChecks,
 ): TSESTree.Expression | undefined {
-  if (finding.isPartial) {
-    return undefined;
-  }
   // A parsed descendant can cross template boundaries because Drizzle inserts
   // nested SQL without parentheses. Reparse each editable boundary in
-  // isolation before claiming that the helper can replace it.
+  // isolation before claiming either a whole replacement or a descendant
+  // diagnostic at the current use site.
   const candidates = commonCompositionBoundaries(
     [...finding.sourceChunks],
     root,
   );
+  let descendantBoundary: TSESTree.Expression | undefined;
   for (const candidate of candidates) {
     const candidateVariant = {
       chunks: variant.chunks.filter((chunk) => {
@@ -4451,19 +4611,34 @@ function replacementBoundaryForFinding(
               return classifyExpression(expression, classificationContext);
             },
           );
+    const matchingFinding = classifications
+      .flatMap((classification) => {
+        return classification.findings;
+      })
+      .find((candidateFinding) => {
+        return (
+          candidateFinding.kind === finding.kind &&
+          candidateFinding.helper === finding.helper &&
+          candidateFinding.isolationContext === finding.isolationContext &&
+          candidateFinding.isPartial === finding.isPartial &&
+          sameSourceChunks(candidateFinding.sourceChunks, finding.sourceChunks)
+        );
+      });
+    if (matchingFinding === undefined) {
+      continue;
+    }
     const classification = classifications[0];
-    const candidateFinding = classification?.findings[0];
     if (
       classifications.length === 1 &&
       classification?.isWholeReplacement === true &&
       classification.findings.length === 1 &&
-      candidateFinding?.kind === finding.kind &&
-      candidateFinding.helper === finding.helper
+      classification.findings[0] === matchingFinding
     ) {
       return candidate;
     }
+    descendantBoundary ??= candidate;
   }
-  return undefined;
+  return descendantBoundary;
 }
 
 function analyzeParsed(

@@ -312,7 +312,6 @@ interface WriteDescendantError {
 const queryBuilderCases = {
   writeValid: [
     {
-      descendantErrors: [{ messageId: "typedApi", data: { helper: "lte" } }],
       code: `${deletePreamble}
         import { and, lte, sql, type SQL } from "drizzle-orm";
         declare function dynamicPredicate(): SQL;

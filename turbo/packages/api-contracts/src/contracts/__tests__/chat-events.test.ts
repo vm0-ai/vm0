@@ -2,7 +2,6 @@ import { describe, expect, it } from "vitest";
 
 import {
   CHAT_EVENT_TYPES,
-  chatEventCompatibilityRole,
   foldActiveChatGoalObjective,
   foldChatAutomationIntakePause,
   foldChatRunStates,
@@ -263,25 +262,16 @@ describe("ChatEvent catalog", () => {
     }
   });
 
-  it("fails closed for unknown leaves and compatibility-only fields", () => {
+  it("fails closed for unknown leaves and server-only fields", () => {
     const prompt = chatEvents[0];
     expect(
       chatEventSchema.safeParse({ ...prompt, eventType: "input.unknown" })
         .success,
     ).toBe(false);
-    expect(chatEventSchema.safeParse({ ...prompt, role: "user" }).success).toBe(
-      false,
-    );
     expect(
       chatEventSchema.safeParse({
         ...prompt,
         encryptedParams: "must-stay-server-side",
-      }).success,
-    ).toBe(false);
-    expect(
-      chatEventSchema.safeParse({
-        ...prompt,
-        revokesMessageId: "legacy-target",
       }).success,
     ).toBe(false);
     const automation = chatEvents[1];
@@ -293,29 +283,12 @@ describe("ChatEvent catalog", () => {
     ).toBe(false);
   });
 
-  it("keeps the preceding App response shape during receiver-first rollout", () => {
+  it("emits canonical responses for every registered leaf", () => {
     for (const event of chatEvents) {
       const response = chatEventResponse(event);
-      expect(response).toMatchObject({
-        role: chatEventCompatibilityRole(event.eventType),
-      });
-      if (event.revokesEventId !== undefined) {
-        expect(response).toMatchObject({
-          revokesMessageId: event.revokesEventId,
-        });
-      }
+      expect(response).toStrictEqual(event);
       expect(chatEventResponseSchema.parse(response)).toStrictEqual(response);
-      expect(chatEventResponseSchema.parse(event)).toStrictEqual(event);
     }
-  });
-
-  it("rejects a compatibility role that disagrees with eventType", () => {
-    expect(
-      chatEventResponseSchema.safeParse({
-        ...chatEvents[0],
-        role: "assistant",
-      }).success,
-    ).toBe(false);
   });
 
   it("normalizes the preceding rich-input response field", () => {
@@ -328,10 +301,7 @@ describe("ChatEvent catalog", () => {
         ...chatEventResponse(chatEvents[0]!),
         structuredPrompt: userMessage,
       }),
-    ).toMatchObject({
-      userMessage,
-      role: "user",
-    });
+    ).toStrictEqual({ ...chatEvents[0], userMessage });
   });
 });
 

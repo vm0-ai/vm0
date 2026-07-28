@@ -535,7 +535,7 @@ function collectSessionRuns(
       .where(
         or(
           eq(agentRuns.continuedFromSessionId, agentSessionId),
-          sql`${agentRuns.result}->>'agentSessionId' = ${agentSessionId}`,
+          eq(sql`${agentRuns.result}->>'agentSessionId'`, agentSessionId),
         ),
       )
       .orderBy(agentRuns.createdAt);

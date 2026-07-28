@@ -66,8 +66,13 @@ async function selectIncompleteRoundFrontier(
   readonly successfulRunId: string | null;
 }> {
   const isSuccessfulRun = sql`COALESCE(
-    ${agentRuns.result} ? 'agentSessionId'
-    AND jsonb_typeof(${agentRuns.result}->'agentSessionId') = 'string',
+    ${and(
+      sql`${agentRuns.result} ? 'agentSessionId'`,
+      eq(
+        sql`jsonb_typeof(${agentRuns.result}->'agentSessionId')`,
+        sql`'string'`,
+      ),
+    )},
     FALSE
   )`;
   // Terminal chat materialization runs in waitUntil, so lifecycle rows can lag
@@ -111,7 +116,10 @@ async function selectIncompleteRoundFrontier(
           or(
             isSuccessfulRun,
             and(
-              sql`${agentRuns.status} IN ('cancelled', 'failed', 'timeout')`,
+              inArray(
+                agentRuns.status,
+                sql`('cancelled', 'failed', 'timeout')`,
+              ),
               chatEventTypeIn(CHAT_EVENT_TYPES),
             ),
           ),

@@ -136,7 +136,10 @@ async function latestHistoricalThreadSession(args: {
         eq(agentSessions.userId, args.userId),
         eq(agentSessions.orgId, args.orgId),
         eq(agentSessions.agentComposeId, args.agentComposeId),
-        sql`${agentRuns.result}->>'agentSessionId' = ${agentSessions.id}::text`,
+        eq(
+          sql`${agentRuns.result}->>'agentSessionId'`,
+          sql`${agentSessions.id}::text`,
+        ),
       ),
     )
     .orderBy(desc(agentRuns.createdAt))

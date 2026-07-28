@@ -25,7 +25,6 @@ function eventForSeq(seqId: number): ChatEventResponse {
       id: `00000000-0000-4000-8000-${String(seqId).padStart(12, "0")}`,
       threadId: THREAD_ID,
       eventType: "output.message",
-      role: "assistant",
       content: "Latest visible message",
       seqId,
       createdAt: new Date(

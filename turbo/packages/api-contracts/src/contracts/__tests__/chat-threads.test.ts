@@ -66,7 +66,6 @@ describe("chat message response contract", () => {
       id: "message-1",
       threadId: "thread-1",
       eventType: "input.prompt",
-      role: "user",
       content: "Run the workflow",
       createdAt: "2026-07-13T00:00:00.000Z",
     });

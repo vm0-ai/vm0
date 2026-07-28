@@ -285,12 +285,14 @@ pub(super) struct ExecStartLayout {
     pub timeout_policy_offset: usize,
     pub timeout_value_offset: Option<usize>,
     pub flags_offset: usize,
+    pub command_len_offset: usize,
     pub command_offset: usize,
     pub env_count_offset: usize,
     pub env: Vec<ExecStartEnvLayout>,
     pub label_len_offset: usize,
     pub label_offset: usize,
     pub stdout_policy: ExecOutputPolicyLayout,
+    pub stderr_policy: ExecOutputPolicyLayout,
     pub expected_exit_count_offset: usize,
     pub expected_exit_codes_offset: usize,
     pub control: ExecStartControlLayout,
@@ -318,6 +320,7 @@ impl ExecStartLayout {
         let flags_offset = offset;
         offset += 1;
 
+        let command_len_offset = offset;
         offset += 4;
 
         let command_offset = offset;
@@ -353,7 +356,8 @@ impl ExecStartLayout {
         let stdout_policy = ExecOutputPolicyLayout::new(offset, request.stdout);
         offset = stdout_policy.end_offset;
 
-        offset = ExecOutputPolicyLayout::new(offset, request.stderr).end_offset;
+        let stderr_policy = ExecOutputPolicyLayout::new(offset, request.stderr);
+        offset = stderr_policy.end_offset;
 
         let expected_exit_count_offset = offset;
         offset += 2;
@@ -371,12 +375,14 @@ impl ExecStartLayout {
             timeout_policy_offset,
             timeout_value_offset,
             flags_offset,
+            command_len_offset,
             command_offset,
             env_count_offset,
             env,
             label_len_offset,
             label_offset,
             stdout_policy,
+            stderr_policy,
             expected_exit_count_offset,
             expected_exit_codes_offset,
             control,
