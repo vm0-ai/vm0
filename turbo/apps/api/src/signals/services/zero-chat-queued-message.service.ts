@@ -6,8 +6,18 @@ import {
   type ChatMessageGenerationTemplate,
   type ChatMessageUserMessage,
 } from "@vm0/db/schema/chat-message";
+import { chatMessageQueue } from "@vm0/db/schema/chat-message-queue";
 import { chatThreads } from "@vm0/db/schema/chat-thread";
-import { and, eq, exists, isNull, notExists, sql, type SQL } from "drizzle-orm";
+import {
+  and,
+  eq,
+  exists,
+  inArray,
+  isNull,
+  notExists,
+  sql,
+  type SQL,
+} from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
 import { z } from "zod";
 
@@ -40,6 +50,12 @@ import { createUserMessageDocument } from "./zero-chat-user-message.service";
 type DbTransaction = Parameters<Parameters<Db["transaction"]>[0]>[0];
 
 const USER_MESSAGE_QUEUE_RUN_PARAMS_KEY = "__user_message_queue_run_params__";
+const legacyQueuedUserMessageItemTypes = [
+  "user_message",
+  "slack_user_message",
+  "feishu_user_message",
+  "teams_user_message",
+] as const;
 const queuedUserMessageTriggerSourceSchema = z.enum([
   "web",
   "slack",
@@ -138,6 +154,46 @@ export async function lockUserMessageQueueThread(
   threadId: string,
 ): Promise<boolean> {
   return await lockChatQueueThread(db, threadId);
+}
+
+/**
+ * Remove a previous-API queue pointer after its mirrored ChatEvent is claimed
+ * or revoked by this API version. The row is absent for native event writers.
+ */
+export async function deleteLegacyUserMessageQueueItem(
+  db: Db,
+  args: {
+    readonly threadId: string;
+    readonly messageId: string;
+  },
+): Promise<void> {
+  await db
+    .delete(chatMessageQueue)
+    .where(
+      and(
+        eq(chatMessageQueue.chatThreadId, args.threadId),
+        eq(chatMessageQueue.chatMessageId, args.messageId),
+        inArray(chatMessageQueue.itemType, legacyQueuedUserMessageItemTypes),
+      ),
+    );
+}
+
+async function deleteLegacyWorkflowQueueItem(
+  db: Db,
+  args: {
+    readonly threadId: string;
+    readonly eventId: string;
+  },
+): Promise<void> {
+  await db
+    .delete(chatMessageQueue)
+    .where(
+      and(
+        eq(chatMessageQueue.id, args.eventId),
+        eq(chatMessageQueue.chatThreadId, args.threadId),
+        eq(chatMessageQueue.itemType, "workflow_event"),
+      ),
+    );
 }
 
 export async function encryptQueuedUserMessageRunParams(
@@ -332,6 +388,10 @@ async function appendClaimedUserMessage(
   if (!claimed) {
     return null;
   }
+  await deleteLegacyUserMessageQueueItem(db, {
+    threadId: args.threadId,
+    messageId: args.messageId,
+  });
   return claimed;
 }
 
@@ -411,6 +471,10 @@ export async function claimQueueFirstRunAssociation(
         if (!claimed) {
           throw new Error("Claimed workflow queue event disappeared");
         }
+        await deleteLegacyWorkflowQueueItem(db, {
+          threadId: args.threadId,
+          eventId: args.eventId,
+        });
 
         outcome = "claimed";
         return { kind: "claimed", createdAt: claimed.createdAt };
@@ -474,6 +538,7 @@ export async function discardUnclaimedUserMessage(
     if (!tombstone) {
       throw new Error("Failed to append discarded user message tombstone");
     }
+    await deleteLegacyUserMessageQueueItem(tx, args);
   });
 }
 
@@ -543,6 +608,10 @@ export async function failQueuedUserMessage(
     if (!replacement) {
       return null;
     }
+    await deleteLegacyUserMessageQueueItem(tx, {
+      threadId: args.threadId,
+      messageId: args.messageId,
+    });
 
     const assistant = await insertChatEvent(tx, {
       chatThreadId: args.threadId,

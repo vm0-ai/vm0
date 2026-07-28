@@ -2251,6 +2251,9 @@ const chatEventQueueCutoverFixture = {
   userQueueId: "81000000-0000-4000-8000-000000000006",
   automationQueueId: "81000000-0000-4000-8000-000000000007",
   malformedQueueId: "81000000-0000-4000-8000-000000000008",
+  overlapUserEventId: "81000000-0000-4000-8000-000000000009",
+  overlapUserQueueId: "81000000-0000-4000-8000-000000000010",
+  overlapAutomationQueueId: "81000000-0000-4000-8000-000000000011",
 } as const;
 
 async function validateChatEventQueueCutover(): Promise<void> {
@@ -2510,6 +2513,226 @@ async function validateChatEventQueueCutover(): Promise<void> {
         rowId: fixture.userEventId,
       });
 
+      // The production migration completes before the new API is promoted.
+      // Emulate writes from the still-serving previous API and verify the
+      // migration-owned compatibility triggers keep ChatEvents authoritative.
+      await client.query(
+        `
+          WITH next_seq AS (
+            UPDATE "chat_threads"
+            SET "last_chat_message_seq_id" =
+              "last_chat_message_seq_id" + 1
+            WHERE "id" = $1
+            RETURNING "last_chat_message_seq_id"
+          )
+          INSERT INTO "chat_messages" (
+            "id",
+            "chat_thread_id",
+            "run_id",
+            "event_type",
+            "role",
+            "content",
+            "seq_id",
+            "created_at"
+          )
+          SELECT
+            $2,
+            $1,
+            NULL,
+            'input.prompt',
+            'user',
+            'overlap user input',
+            next_seq."last_chat_message_seq_id",
+            TIMESTAMP '2026-07-27 03:00:00'
+          FROM next_seq
+        `,
+        [fixture.threadId, fixture.overlapUserEventId],
+      );
+      await client.query(
+        `
+          INSERT INTO "chat_message_queue" (
+            "id",
+            "org_id",
+            "user_id",
+            "chat_thread_id",
+            "item_type",
+            "chat_message_id",
+            "trigger_source",
+            "encrypted_params",
+            "created_at"
+          )
+          VALUES (
+            $1,
+            $2,
+            $3,
+            $4,
+            'slack_user_message',
+            $5,
+            'slack',
+            'overlap-user-ciphertext',
+            TIMESTAMP '2026-07-27 03:00:00'
+          )
+        `,
+        [
+          fixture.overlapUserQueueId,
+          fixture.orgId,
+          fixture.userId,
+          fixture.threadId,
+          fixture.overlapUserEventId,
+        ],
+      );
+      await client.query(
+        `
+          INSERT INTO "chat_message_queue" (
+            "id",
+            "org_id",
+            "user_id",
+            "chat_thread_id",
+            "item_type",
+            "automation_id",
+            "trigger_source",
+            "trigger_brief",
+            "encrypted_params",
+            "created_at"
+          )
+          VALUES (
+            $1,
+            $2,
+            $3,
+            $4,
+            'workflow_event',
+            $5,
+            'workflow-event',
+            'overlap automation',
+            'overlap-automation-ciphertext',
+            TIMESTAMP '2026-07-27 04:00:00'
+          )
+        `,
+        [
+          fixture.overlapAutomationQueueId,
+          fixture.orgId,
+          fixture.userId,
+          fixture.threadId,
+          fixture.automationId,
+        ],
+      );
+
+      const overlapAdmission = await client.query<{
+        automationEventCount: number;
+        lastSeqId: number;
+        userEncryptedParams: string;
+        userTriggerSource: string;
+      }>(
+        `
+          SELECT
+            user_event."trigger_source" AS "userTriggerSource",
+            user_event."encrypted_params" AS "userEncryptedParams",
+            (
+              SELECT COUNT(*)::integer
+              FROM "chat_messages" AS automation_event
+              WHERE automation_event."id" = $2
+                AND automation_event."event_type" = 'input.automation'
+                AND automation_event."automation_id" = $3
+                AND automation_event."trigger_source" = 'workflow-event'
+                AND automation_event."encrypted_params" =
+                  'overlap-automation-ciphertext'
+            ) AS "automationEventCount",
+            thread."last_chat_message_seq_id"::integer AS "lastSeqId"
+          FROM "chat_messages" AS user_event
+          INNER JOIN "chat_threads" AS thread
+            ON thread."id" = user_event."chat_thread_id"
+          WHERE user_event."id" = $1
+        `,
+        [
+          fixture.overlapUserEventId,
+          fixture.overlapAutomationQueueId,
+          fixture.automationId,
+        ],
+      );
+      assert.deepEqual(overlapAdmission.rows, [
+        {
+          automationEventCount: 1,
+          lastSeqId: 5,
+          userEncryptedParams: "overlap-user-ciphertext",
+          userTriggerSource: "slack",
+        },
+      ]);
+
+      await expectAppendOnlyUpdateRejected(client, {
+        tableName: "chat_messages",
+        query: `UPDATE "chat_messages" SET "trigger_source" = 'feishu' WHERE "id" = $1`,
+        rowId: fixture.overlapUserEventId,
+      });
+
+      await client.query(
+        `
+          DELETE FROM "chat_message_queue"
+          WHERE "id" = $1
+        `,
+        [fixture.overlapAutomationQueueId],
+      );
+      const mirroredConsumption = await client.query<{
+        queueRows: number;
+        revokers: number;
+      }>(
+        `
+          SELECT
+            (
+              SELECT COUNT(*)::integer
+              FROM "chat_message_queue"
+              WHERE "id" = $1
+            ) AS "queueRows",
+            (
+              SELECT COUNT(*)::integer
+              FROM "chat_messages"
+              WHERE "revokes_message_id" = $1
+            ) AS "revokers"
+        `,
+        [fixture.overlapAutomationQueueId],
+      );
+      assert.deepEqual(mirroredConsumption.rows, [
+        { queueRows: 0, revokers: 1 },
+      ]);
+
+      await client.query(
+        `
+          UPDATE "chat_threads"
+          SET
+            "queue_paused_at" = NULL,
+            "pause_reason" = NULL,
+            "updated_at" = TIMESTAMP '2026-07-27 05:00:00'
+          WHERE "id" = $1
+        `,
+        [fixture.threadId],
+      );
+      const mirroredResume = await client.query<{
+        eventType: string;
+        lastSeqId: number;
+      }>(
+        `
+          SELECT
+            transition."event_type" AS "eventType",
+            thread."last_chat_message_seq_id"::integer AS "lastSeqId"
+          FROM "chat_threads" AS thread
+          INNER JOIN LATERAL (
+            SELECT event."event_type"
+            FROM "chat_messages" AS event
+            WHERE event."chat_thread_id" = thread."id"
+              AND event."event_type" IN (
+                'queue.automation_paused',
+                'queue.automation_resumed'
+              )
+            ORDER BY event."seq_id" DESC
+            LIMIT 1
+          ) AS transition ON true
+          WHERE thread."id" = $1
+        `,
+        [fixture.threadId],
+      );
+      assert.deepEqual(mirroredResume.rows, [
+        { eventType: "queue.automation_resumed", lastSeqId: 7 },
+      ]);
+
       await client.query(
         `
           INSERT INTO "chat_message_queue" (
@@ -2565,7 +2788,7 @@ async function validateChatEventQueueCutover(): Promise<void> {
   }
 
   console.log(
-    "   ✅ Legacy user, automation, and pause state migrate atomically; unclassifiable rows abort without data loss\n",
+    "   ✅ Legacy user, automation, and pause state migrate atomically; overlap writes mirror into ChatEvents; unclassifiable rows abort without data loss\n",
   );
 }
 

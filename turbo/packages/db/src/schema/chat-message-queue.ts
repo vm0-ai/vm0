@@ -23,9 +23,11 @@ export const chatMessageQueueItemType = pgEnum("chat_message_queue_item_type", [
 /**
  * Legacy pending queue items retained for the cutover migration.
  *
- * Runtime admission and drain no longer read or write this table. Migration
- * converts every remaining row to a pending ChatEvent and clears the table;
- * Phase 2 cleanup removes the physical schema.
+ * Current runtime admission and drain no longer use this table. The cutover
+ * migration converts existing rows and installs temporary database triggers
+ * that mirror writes from the previous API during traffic promotion. Current
+ * claims remove any mirrored legacy pointer; Phase 2 cleanup removes the
+ * triggers and physical schema after old writers have drained.
  *
  * Payload placement is per item type:
  * - `user_message` / `slack_user_message` / `feishu_user_message` /

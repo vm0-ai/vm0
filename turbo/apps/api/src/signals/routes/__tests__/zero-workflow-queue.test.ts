@@ -372,10 +372,10 @@ async function expectSweepLeftQueueUntouched(
 }
 
 describe("workflow queue", () => {
-  it("tolerates legacy rows before the cutover migration runs", async () => {
+  it("drains rows written by the previous API after the cutover migration", async () => {
     const scenario = await setup();
     const automation = await createWebhookAutomation(scenario);
-    await insertLegacyWorkflowQueueRowFixture({
+    const legacyEventId = await insertLegacyWorkflowQueueRowFixture({
       orgId: scenario.orgId,
       userId: scenario.userId,
       threadId: automation.threadId,
@@ -390,7 +390,13 @@ describe("workflow queue", () => {
       [200],
     );
     expect(beforeAdmission.body.running).toBeNull();
-    expect(beforeAdmission.body.pending).toStrictEqual([]);
+    expect(beforeAdmission.body.pending).toStrictEqual([
+      expect.objectContaining({
+        id: legacyEventId,
+        automationId: automation.automationId,
+        triggerBrief: "legacy cutover window",
+      }),
+    ]);
 
     const runId = await expectAcceptedRunId(
       await postWorkflowWebhook(automation, "new event during cutover window"),
@@ -399,6 +405,18 @@ describe("workflow queue", () => {
     await expect(workflowRunIds(automation.threadId)).resolves.toStrictEqual([
       runId,
     ]);
+    const afterAdmission = await accept(
+      queueClient().get({
+        headers: authHeaders(),
+        params: { threadId: automation.threadId },
+      }),
+      [200],
+    );
+    expect(
+      afterAdmission.body.pending.map((event) => {
+        return event.id;
+      }),
+    ).not.toContain(legacyEventId);
   });
 
   it("does not let the stale sweep race a newly admitted workflow event", async () => {
