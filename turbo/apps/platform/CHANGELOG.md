@@ -1,5 +1,22 @@
 # Changelog
 
+## [0.648.0](https://github.com/vm0-ai/vm0/compare/app-v0.647.0...app-v0.648.0) (2026-07-28)
+
+
+### Features
+
+* add strapi integration and entry-published automations ([#23397](https://github.com/vm0-ai/vm0/issues/23397)) ([2303632](https://github.com/vm0-ai/vm0/commit/23036322816e375918499c53da66148154c889cf))
+* **platform:** show chat skeletons while loading older messages ([#23455](https://github.com/vm0-ai/vm0/issues/23455)) ([61b62ea](https://github.com/vm0-ai/vm0/commit/61b62eac6353513b72f7fdf693fa8d45c9c28e02))
+* **platform:** show okou in document titles on okou hosts ([#23453](https://github.com/vm0-ai/vm0/issues/23453)) ([bc2ec87](https://github.com/vm0-ai/vm0/commit/bc2ec878e78dd777991d256a85208209ee4c9e55))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.241.0
+    * @vm0/core bumped to 8.481.0
+
 ## [0.647.0](https://github.com/vm0-ai/vm0/compare/app-v0.646.1...app-v0.647.0) (2026-07-28)
 
 
