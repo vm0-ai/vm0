@@ -155,10 +155,8 @@ export const chatThreads = pgTable(
       .default(0)
       .notNull(),
     /**
-     * Chat-message-queue pause state: while set, workflow events keep
-     * enqueueing but are not consumed. Never blocks user messages.
-     * `pauseReason` is user-visible (set on manual pause or automatically
-     * when run creation for a dequeued event fails).
+     * Legacy workflow-queue pause projection retained until Phase 2 cleanup.
+     * Runtime state folds queue.automation_paused/resumed events instead.
      */
     queuePausedAt: timestamp("queue_paused_at"),
     pauseReason: text("pause_reason"),

@@ -89,6 +89,7 @@ import {
   readFakeKmsDecryptCallCount,
   readOrgAdmissionLockState,
   readRunApiStart,
+  readRunnerJobStorageState,
   readStoragePersistenceState,
   releaseOrgAdmissionLock,
   resetFakeKms,
@@ -2080,10 +2081,20 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     });
     expect(created.status).toBe("pending");
 
+    const directStorageState = await readRunnerJobStorageState(
+      context,
+      created.runId,
+    );
+    expect(directStorageState.legacy_manifest_state).toBe("null");
+    expect(directStorageState.canonical_mount_count).toBeGreaterThan(0);
+    expect(directStorageState.has_run_context_storage).toBeFalsy();
+
     const claim = await api.claimRunnerJob(created.runId);
-    expect(
-      expectCanonicalStorageManifest(claim.storageManifest)?.storageMounts,
-    ).toStrictEqual(
+    const manifest = expectCanonicalStorageManifest(claim.storageManifest);
+    if (!manifest) {
+      throw new Error("Expected canonical Storage mounts");
+    }
+    expect(manifest.storageMounts).toStrictEqual(
       expect.arrayContaining([
         expect.objectContaining({
           mountPath: "/primary",
@@ -2092,13 +2103,31 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
         }),
       ]),
     );
-    expect(
-      expectCanonicalStorageManifest(claim.storageManifest)?.storageMounts.some(
-        (mount) => {
-          return mount.name === "memory";
+    const memoryMount = manifest.storageMounts.find((mount) => {
+      return mount.name === "memory";
+    });
+    if (!memoryMount) {
+      throw new Error("Expected canonical memory mount");
+    }
+    expect(claim).not.toHaveProperty("runContextStorage");
+    expect(context.mocks.axiom.ingest).toHaveBeenCalledWith("run-context", [
+      expect.objectContaining({
+        runId: created.runId,
+        volumes: expect.arrayContaining([
+          {
+            name: "primary",
+            mountPath: "/primary",
+            vasStorageName: storageName,
+            vasVersionId: prepared.versionId,
+          },
+        ]),
+        artifact: {
+          mountPath: memoryMount.mountPath,
+          vasStorageName: memoryMount.name,
+          vasVersionId: memoryMount.versionId,
         },
-      ),
-    ).toBeTruthy();
+      }),
+    ]);
 
     await api.requestCancelRun(actor, created.runId, [200]);
   });
@@ -4346,6 +4375,13 @@ describe("RUN-01: admission boundaries beyond request validation", () => {
     expect(promoted.status).toBe("pending");
     const drained = await waitForRunQueueLength(api, actor, 0);
     expect(drained.body.queue).toHaveLength(0);
+    const promotedStorageState = await readRunnerJobStorageState(
+      context,
+      third.runId,
+    );
+    expect(promotedStorageState.legacy_manifest_state).toBe("null");
+    expect(promotedStorageState.canonical_mount_count).toBeGreaterThan(0);
+    expect(promotedStorageState.has_run_context_storage).toBeFalsy();
     const decryptCountBeforeClaim = await readFakeKmsDecryptCallCount(context);
     await api.heartbeatRunner(runnerGroup);
     const thirdClaim = await api.claimRunnerJob(third.runId);
@@ -4356,6 +4392,7 @@ describe("RUN-01: admission boundaries beyond request validation", () => {
     }
     expect(thirdClaim.secretValues).toContain(zeroToken);
     expect(thirdClaim).not.toHaveProperty("secretValueEnvironmentKeys");
+    expect(thirdClaim).not.toHaveProperty("runContextStorage");
     const apiToRunnerQueueMs = sandboxOperationDurationForRun(
       third.runId,
       "api_to_runner_queue",

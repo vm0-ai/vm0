@@ -121,7 +121,7 @@ describe("cron monitor chat message queue", () => {
     expect(context.mocks.sentry.captureException).not.toHaveBeenCalled();
   });
 
-  it("raises the existing error alert when an orphan is present", async () => {
+  it("raises the existing error alert for a malformed pending event", async () => {
     await trackFixture(seedFixture("orphan"));
 
     const response = await rawCronRequest(cronHeaders());

@@ -1,17 +1,6 @@
-import { agentRuns } from "@vm0/db/schema/agent-run";
 import { chatMessages } from "@vm0/db/schema/chat-message";
-import { chatMessageQueue } from "@vm0/db/schema/chat-message-queue";
-import { zeroRuns } from "@vm0/db/schema/zero-run";
 import { command } from "ccstate";
-import {
-  and,
-  count,
-  eq,
-  inArray,
-  isNotNull,
-  isNull,
-  notExists,
-} from "drizzle-orm";
+import { and, count, inArray, isNull, or } from "drizzle-orm";
 
 import { writeDb$ } from "../external/db";
 import { visibleChatEventCondition } from "./zero-chat-message-shared.service";
@@ -36,28 +25,22 @@ export const monitorChatMessageQueue$ = command(
       .from(chatMessages)
       .where(
         and(
-          chatEventTypeIn(["input.prompt"]),
           isNull(chatMessages.runId),
-          isNotNull(chatMessages.content),
-          isNull(chatMessages.error),
           visibleChatEventCondition(db),
-          notExists(
-            db
-              .select({ id: chatMessageQueue.id })
-              .from(chatMessageQueue)
-              .where(eq(chatMessageQueue.chatMessageId, chatMessages.id)),
-          ),
-          notExists(
-            db
-              .select({ id: zeroRuns.id })
-              .from(zeroRuns)
-              .innerJoin(agentRuns, eq(agentRuns.id, zeroRuns.id))
-              .where(
-                and(
-                  eq(zeroRuns.chatThreadId, chatMessages.chatThreadId),
-                  inArray(agentRuns.status, ["queued", "pending", "running"]),
-                ),
+          or(
+            and(
+              chatEventTypeIn(["input.automation"]),
+              or(
+                isNull(chatMessages.automationId),
+                isNull(chatMessages.triggerSource),
+                isNull(chatMessages.encryptedParams),
               ),
+            ),
+            and(
+              chatEventTypeIn(["input.prompt"]),
+              inArray(chatMessages.triggerSource, ["slack", "feishu", "teams"]),
+              isNull(chatMessages.encryptedParams),
+            ),
           ),
         ),
       );

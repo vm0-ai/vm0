@@ -8,7 +8,6 @@ import {
   type SupportedRunModel,
 } from "@vm0/api-contracts/contracts/model-providers";
 import { agentRuns } from "@vm0/db/schema/agent-run";
-import { chatMessageQueue } from "@vm0/db/schema/chat-message-queue";
 import { chatMessages } from "@vm0/db/schema/chat-message";
 import { orgMetadata } from "@vm0/db/schema/org-metadata";
 import { teamsOrgConnections } from "@vm0/db/schema/teams-org-connection";
@@ -19,7 +18,8 @@ import type {
   TeamsInboundActivity,
   TeamsInboundAttachment,
 } from "@vm0/api-contracts/contracts/zero-teams-bot";
-import { and, desc, eq, or } from "drizzle-orm";
+import { and, desc, eq, isNull, notExists, or } from "drizzle-orm";
+import { alias } from "drizzle-orm/pg-core";
 import { convert } from "html-to-text";
 
 import { env } from "../../lib/env";
@@ -71,10 +71,8 @@ import {
 import { touchChatThreadLastMessageAt } from "./zero-chat-message-shared.service";
 import { insertChatEvent } from "./zero-chat-event.service";
 import { createUserMessageDocument } from "./zero-chat-user-message.service";
-import {
-  encryptQueuedUserMessageRunParams,
-  enqueueUserMessageQueueItem,
-} from "./zero-chat-queued-message.service";
+import { chatEventTypeIn } from "./zero-chat-event-type.service";
+import { encryptQueuedUserMessageRunParams } from "./zero-chat-queued-message.service";
 
 const L = logger("TeamsDispatch");
 const TEAMS_LOGIN_PROMPT_FALLBACK_TEXT =
@@ -102,6 +100,7 @@ const TEAMS_FILE_DOWNLOAD_INFO_CONTENT_TYPE =
 const TEAMS_REFERENCE_ATTACHMENT_CONTENT_TYPE = "reference";
 const TEAMS_CHAT_MESSAGE_ID_NAMESPACE = "b60a5846-d85f-4db8-b9aa-d7d803efbb57";
 const TEAMS_DIRECT_MESSAGE_THREAD_ID = "direct-message";
+const teamsQueueEventRevoker = alias(chatMessages, "teams_queue_event_revoker");
 
 type TeamsBotCommand = "help" | "connect" | "disconnect" | "switch" | "model";
 type TeamsCardAction = "switch_agent" | "switch_model";
@@ -1693,6 +1692,8 @@ async function persistTeamsChatMessage(args: {
           }),
         }),
         runId: null,
+        triggerSource: "teams",
+        encryptedParams,
         createdAt: currentTime,
       },
       "id",
@@ -1701,15 +1702,6 @@ async function persistTeamsChatMessage(args: {
     if (!message) {
       return false;
     }
-    await enqueueUserMessageQueueItem(tx, {
-      orgId: args.installation.orgId,
-      userId: args.connection.vm0UserId,
-      chatThreadId: route.chatThreadId,
-      chatMessageId,
-      triggerSource: "teams",
-      encryptedParams,
-    });
-    args.signal.throwIfAborted();
     await touchChatThreadLastMessageAt(
       tx,
       route.chatThreadId,
@@ -1747,12 +1739,22 @@ async function teamsMessageDispatchState(
       )
       .limit(1),
     db
-      .select({ id: chatMessageQueue.id })
-      .from(chatMessageQueue)
+      .select({ id: chatMessages.id })
+      .from(chatMessages)
       .where(
         and(
-          eq(chatMessageQueue.chatThreadId, args.chatThreadId),
-          eq(chatMessageQueue.chatMessageId, args.chatMessageId),
+          eq(chatMessages.id, args.chatMessageId),
+          eq(chatMessages.chatThreadId, args.chatThreadId),
+          chatEventTypeIn(["input.prompt"]),
+          isNull(chatMessages.runId),
+          notExists(
+            db
+              .select({ id: teamsQueueEventRevoker.id })
+              .from(teamsQueueEventRevoker)
+              .where(
+                eq(teamsQueueEventRevoker.revokesEventId, chatMessages.id),
+              ),
+          ),
         ),
       )
       .limit(1),

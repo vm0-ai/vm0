@@ -1,12 +1,12 @@
 import { agentRuns } from "@vm0/db/schema/agent-run";
-import { chatMessageQueue } from "@vm0/db/schema/chat-message-queue";
 import { chatMessages } from "@vm0/db/schema/chat-message";
 import { slackChatIngress } from "@vm0/db/schema/slack-chat-ingress";
 import { slackChatThreadRoutes } from "@vm0/db/schema/slack-chat-thread-route";
 import { slackOrgConnections } from "@vm0/db/schema/slack-org-connection";
 import { slackOrgInstallations } from "@vm0/db/schema/slack-org-installation";
 import { zeroRuns } from "@vm0/db/schema/zero-run";
-import { and, eq, inArray } from "drizzle-orm";
+import { and, eq, inArray, isNull, notExists } from "drizzle-orm";
+import { alias } from "drizzle-orm/pg-core";
 import { z } from "zod";
 
 import type { Db } from "../external/db";
@@ -20,6 +20,7 @@ import { chatEventTypeIn } from "./zero-chat-event-type.service";
 
 const ACTIVE_RUN_STATUSES = ["queued", "pending", "running"] as const;
 const ACTIVE_INGRESS_STATUSES = ["pending", "processing"] as const;
+const slackQueueEventRevoker = alias(chatMessages, "slack_queue_event_revoker");
 
 const slackStatusIngressPayloadSchema = z.object({
   event: z.object({
@@ -138,19 +139,24 @@ async function canonicalSlackThreadHasOutstandingWorkInSnapshot(
   }
   const queuedSlackMessages = await db
     .select({ payload: slackChatIngress.payload })
-    .from(chatMessageQueue)
-    .innerJoin(
-      slackChatIngress,
-      eq(slackChatIngress.id, chatMessageQueue.chatMessageId),
-    )
+    .from(chatMessages)
+    .innerJoin(slackChatIngress, eq(slackChatIngress.id, chatMessages.id))
     .where(
       and(
-        inArray(chatMessageQueue.chatThreadId, chatThreadIds),
-        eq(chatMessageQueue.itemType, "slack_user_message"),
+        inArray(chatMessages.chatThreadId, chatThreadIds),
+        chatEventTypeIn(["input.prompt"]),
+        eq(chatMessages.triggerSource, "slack"),
+        isNull(chatMessages.runId),
+        notExists(
+          db
+            .select({ id: slackQueueEventRevoker.id })
+            .from(slackQueueEventRevoker)
+            .where(eq(slackQueueEventRevoker.revokesEventId, chatMessages.id)),
+        ),
       ),
     );
-  // Dequeue atomically replaces this row with an active run, so the row
-  // itself keeps the physical Slack thread busy during that handoff.
+  // Claim atomically appends a revoking replacement with an active run, so the
+  // pending event keeps the physical Slack thread busy during that handoff.
   if (
     queuedSlackMessages.some((message) => {
       return (

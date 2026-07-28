@@ -12,6 +12,29 @@ _NO_CONNECTED_CLIENT_SOCKNAME = ("", 0)
 _TLS_CERTIFICATE_PROOF = cast(certs.Cert, object())
 
 
+def seed_server_binding(
+    server: object,
+    *,
+    client: object | None = None,
+    host: str,
+    port: int,
+    kinds: frozenset[upstream_destination_binding.BindingKind],
+    original_address: tuple[str, int] | None,
+) -> None:
+    """Seed normalized upstream binding state for a test."""
+    destination = upstream_destination_binding.normalize_upstream_destination(
+        host=host,
+        port=port,
+    )
+    upstream_destination_binding.record_normalized_server_binding(
+        server,
+        client=client,
+        destination=destination,
+        kinds=kinds,
+        original_address=original_address,
+    )
+
+
 def bind_flow_upstream(
     flow: http.HTTPFlow,
     *,
@@ -22,7 +45,7 @@ def bind_flow_upstream(
     """Bind a flow to an admitted upstream destination."""
     original_address = flow.server_conn.address
     flow.server_conn.address = (host, port)
-    upstream_destination_binding.record_server_binding(
+    seed_server_binding(
         flow.server_conn,
         host=host,
         port=port,

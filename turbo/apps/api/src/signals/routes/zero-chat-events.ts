@@ -16,7 +16,6 @@ import {
 } from "@vm0/api-contracts/contracts/chat-threads";
 import type { SupportedRunModel } from "@vm0/api-contracts/contracts/model-providers";
 import { agentRuns } from "@vm0/db/schema/agent-run";
-import { chatMessageQueue } from "@vm0/db/schema/chat-message-queue";
 import {
   chatMessages,
   type ChatMessageAttachFileMetadata,
@@ -72,6 +71,7 @@ import {
 } from "../services/agent-run-create.service";
 import { dispatchFailedRunCallbacks } from "../services/agent-run-callback.service";
 import { drainChatThreadQueueForThread$ } from "../services/chat-thread-queue-drain.service";
+import { loadPendingChatQueueEvent } from "../services/chat-event-queue.service";
 import {
   ApiDispatchTimingCollector,
   measureApiDispatchTiming,
@@ -112,10 +112,9 @@ import { chatThreadAdmissionBlocked } from "../services/zero-chat-active-run.ser
 import { projectUserMessage } from "../services/zero-chat-user-message.service";
 import { appendQueuedRunAssistantMarker } from "../services/zero-chat-queue-marker.service";
 import {
-  deleteUserMessageQueueItem,
+  deleteLegacyUserMessageQueueItem,
   discardUnclaimedUserMessage,
   encryptQueuedUserMessageRunParams,
-  enqueueUserMessageQueueItem,
   loadNextUnclaimedQueuedUserMessageId,
   lockUserMessageQueueThread,
 } from "../services/zero-chat-queued-message.service";
@@ -361,7 +360,7 @@ interface ExistingClientEventIdRow {
   readonly messageCreatedAt: Date;
   readonly runStatus: string | null;
   readonly runCreatedAt: Date | null;
-  readonly queueItemId: string | null;
+  readonly replacementEventId: string | null;
   readonly replacementRunId: string | null;
   readonly replacementError: string | null;
   readonly replacementRunStatus: string | null;
@@ -413,7 +412,11 @@ function resolveExistingClientEventIdRow(
   ) {
     return { kind: "conflict" };
   }
-  if (row.queueItemId !== null) {
+  if (
+    row.eventType === "input.prompt" &&
+    row.runId === null &&
+    row.replacementEventId === null
+  ) {
     return {
       kind: "queued",
       createdAt: row.messageCreatedAt,
@@ -471,7 +474,7 @@ async function resolveClientEventId(
       messageCreatedAt: chatMessages.createdAt,
       runStatus: agentRuns.status,
       runCreatedAt: agentRuns.createdAt,
-      queueItemId: chatMessageQueue.id,
+      replacementEventId: replacementChatMessage.id,
       replacementRunId: replacementChatMessage.runId,
       replacementError: replacementChatMessage.error,
       replacementRunStatus: replacementAgentRun.status,
@@ -487,14 +490,6 @@ async function resolveClientEventId(
     .leftJoin(
       replacementAgentRun,
       eq(replacementAgentRun.id, replacementChatMessage.runId),
-    )
-    .leftJoin(
-      chatMessageQueue,
-      and(
-        eq(chatMessageQueue.itemType, "user_message"),
-        eq(chatMessageQueue.chatThreadId, chatMessages.chatThreadId),
-        eq(chatMessageQueue.chatMessageId, chatMessages.id),
-      ),
     )
     .where(eq(chatMessages.id, params.clientEventId))
     .limit(1);
@@ -1552,7 +1547,6 @@ function appendUnassociatedUserMessage(params: {
   readonly touchThreadSort: boolean;
   readonly userMessage: UserMessageDocument;
   readonly generationTemplate: IncomingGenerationTemplate;
-  readonly orgId: string;
   readonly encryptedParams: string | undefined;
 }): Promise<ClientEventIdResolution> {
   return params.db.transaction(async (tx) => {
@@ -1582,6 +1576,8 @@ function appendUnassociatedUserMessage(params: {
         content: params.prompt,
         userMessage: params.userMessage,
         runId: null,
+        triggerSource: "web",
+        encryptedParams: params.encryptedParams,
         attachFiles: fileIds,
         attachFileMetadata: fileMetadata,
         generationTemplate: params.generationTemplate,
@@ -1589,13 +1585,6 @@ function appendUnassociatedUserMessage(params: {
       "id",
     );
     if (inserted) {
-      await enqueueUserMessageQueueItem(tx, {
-        orgId: params.orgId,
-        userId: params.userId,
-        chatThreadId: params.threadId,
-        chatMessageId: inserted.id,
-        encryptedParams: params.encryptedParams,
-      });
       if (params.touchThreadSort) {
         await touchChatThreadLastMessageAt(
           tx,
@@ -1627,7 +1616,7 @@ function appendUnassociatedUserMessage(params: {
         messageCreatedAt: chatMessages.createdAt,
         runStatus: agentRuns.status,
         runCreatedAt: agentRuns.createdAt,
-        queueItemId: chatMessageQueue.id,
+        replacementEventId: replacementChatMessage.id,
         replacementRunId: replacementChatMessage.runId,
         replacementError: replacementChatMessage.error,
         replacementRunStatus: replacementAgentRun.status,
@@ -1643,14 +1632,6 @@ function appendUnassociatedUserMessage(params: {
       .leftJoin(
         replacementAgentRun,
         eq(replacementAgentRun.id, replacementChatMessage.runId),
-      )
-      .leftJoin(
-        chatMessageQueue,
-        and(
-          eq(chatMessageQueue.itemType, "user_message"),
-          eq(chatMessageQueue.chatThreadId, chatMessages.chatThreadId),
-          eq(chatMessageQueue.chatMessageId, chatMessages.id),
-        ),
       )
       .where(eq(chatMessages.id, explicitId))
       .limit(1);
@@ -1743,13 +1724,11 @@ function appendRecallUserMessage(params: {
 }): Promise<AppendMessageResult> {
   return params.db.transaction(async (tx) => {
     await lockUserMessageQueueThread(tx, params.threadId);
-    // Deleting the queue item atomically wins the queued message. If a
-    // concurrent claim wins first, its replacement remains linked and the
-    // revoker check below rejects recall.
-    const queueItemDeleted = await deleteUserMessageQueueItem(tx, {
-      threadId: params.threadId,
-      messageId: params.revokesEventId,
+    const pendingTarget = await loadPendingChatQueueEvent(tx, {
+      chatThreadId: params.threadId,
+      eventId: params.revokesEventId,
     });
+    const wasPending = pendingTarget?.eventType === "input.prompt";
 
     const [existingRevoker] = await tx
       .select({
@@ -1770,6 +1749,10 @@ function appendRecallUserMessage(params: {
         existingRevoker.eventType === "control.revoke" &&
         existingRevoker.content === null
       ) {
+        await deleteLegacyUserMessageQueueItem(tx, {
+          threadId: params.threadId,
+          messageId: params.revokesEventId,
+        });
         return { ok: true, createdAt: existingRevoker.createdAt };
       }
       return {
@@ -1794,11 +1777,11 @@ function appendRecallUserMessage(params: {
       .limit(1);
     if (
       !target ||
-      (!queueItemDeleted && target.error !== INSUFFICIENT_CREDITS_MARKER) ||
+      (!wasPending && target.error !== INSUFFICIENT_CREDITS_MARKER) ||
       (target.revokesEventId !== null &&
         target.error !== INSUFFICIENT_CREDITS_MARKER)
     ) {
-      if (queueItemDeleted) {
+      if (wasPending) {
         throw new Error("Queued message is not recallable");
       }
       const [exists] = await tx
@@ -1829,6 +1812,10 @@ function appendRecallUserMessage(params: {
       runId: null,
     });
     if (inserted) {
+      await deleteLegacyUserMessageQueueItem(tx, {
+        threadId: params.threadId,
+        messageId: params.revokesEventId,
+      });
       return { ok: true, createdAt: inserted.createdAt };
     }
     const [resolved] = await tx
@@ -1845,11 +1832,15 @@ function appendRecallUserMessage(params: {
       )
       .limit(1);
     if (!resolved) {
-      if (queueItemDeleted) {
+      if (wasPending) {
         throw new Error("Failed to append recall user message");
       }
       return { ok: false, message: "Failed to insert recall user message" };
     }
+    await deleteLegacyUserMessageQueueItem(tx, {
+      threadId: params.threadId,
+      messageId: params.revokesEventId,
+    });
     return { ok: true, createdAt: resolved.createdAt };
   });
 }
@@ -2475,7 +2466,6 @@ async function queueUnassociatedNormalMessage(params: {
     touchThreadSort: params.touchThreadSort,
     userMessage: params.body.userMessage,
     generationTemplate: params.body.generationTemplate,
-    orgId: params.orgId,
     encryptedParams,
   });
   if (message.kind === "queued" && message.inserted) {
@@ -2715,12 +2705,18 @@ async function appendQueueFirstInsufficientCreditsMessages(params: {
   readonly messageId: string;
   readonly assistantContent: string;
 }): Promise<CreatedChatMessageResponse> {
-  // The queue-first send already persisted the user message. Append an
-  // error-bearing replacement so the original row remains immutable, then
-  // consume its queue item so it can never auto-dispatch.
+  // The queue-first send already persisted the pending input. Its rejected
+  // replacement is the atomic claim that makes it non-runnable.
   const userCreatedAt = nowDate();
   const createdAt = await params.prepared.db.transaction(async (tx) => {
     await lockUserMessageQueueThread(tx, params.prepared.thread.threadId);
+    const pending = await loadPendingChatQueueEvent(tx, {
+      chatThreadId: params.prepared.thread.threadId,
+      eventId: params.messageId,
+    });
+    if (pending?.eventType !== "input.prompt") {
+      throw new Error("Queue-first message is no longer available");
+    }
     const [queuedMessage] = await tx
       .select({
         content: chatMessages.content,
@@ -2730,19 +2726,13 @@ async function appendQueueFirstInsufficientCreditsMessages(params: {
         generationTemplate: chatMessages.generationTemplate,
         createdAt: chatMessages.createdAt,
       })
-      .from(chatMessageQueue)
-      .innerJoin(
-        chatMessages,
-        eq(chatMessages.id, chatMessageQueue.chatMessageId),
-      )
+      .from(chatMessages)
       .where(
         and(
-          eq(chatMessageQueue.itemType, "user_message"),
-          eq(chatMessageQueue.chatMessageId, params.messageId),
-          eq(chatMessageQueue.chatThreadId, params.prepared.thread.threadId),
           eq(chatMessages.id, params.messageId),
           eq(chatMessages.chatThreadId, params.prepared.thread.threadId),
           chatEventTypeIn(["input.prompt"]),
+          isNull(chatMessages.runId),
         ),
       )
       .for("update")
@@ -2758,10 +2748,6 @@ async function appendQueueFirstInsufficientCreditsMessages(params: {
     );
     const assistantCreatedAt = new Date(rejectedCreatedAt.getTime() + 1);
 
-    const queueItemDeleted = await deleteUserMessageQueueItem(tx, {
-      threadId: params.prepared.thread.threadId,
-      messageId: params.messageId,
-    });
     const replacement = await replaceChatEvent(tx, params.messageId, {
       chatThreadId: params.prepared.thread.threadId,
       eventType: "input.rejected",
@@ -2789,9 +2775,13 @@ async function appendQueueFirstInsufficientCreditsMessages(params: {
         createdAt: assistantCreatedAt,
         runId: null,
       });
-    } else if (queueItemDeleted) {
+    } else {
       throw new Error("Failed to append insufficient-credits replacement");
     }
+    await deleteLegacyUserMessageQueueItem(tx, {
+      threadId: params.prepared.thread.threadId,
+      messageId: params.messageId,
+    });
     return queuedMessage.createdAt;
   });
   await publishChatMessageCreated(

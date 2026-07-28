@@ -476,6 +476,8 @@ const inputRejectedEventSchema = chatEventBaseSchema
     eventType: z.literal("input.rejected"),
     userMessage: userMessageDocumentSchema,
     error: z.string(),
+    automationId: z.string().uuid().optional(),
+    triggerBrief: z.string().nullable().optional(),
     attachFiles: z.array(resolvedAttachFileSchema).optional(),
     generationTemplate: generationTemplateRequestSchema.optional(),
   })

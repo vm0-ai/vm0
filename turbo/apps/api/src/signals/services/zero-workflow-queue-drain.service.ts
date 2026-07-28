@@ -1,21 +1,23 @@
-import { triggerSourceSchema } from "@vm0/api-contracts/contracts/logs";
 import {
   zeroWorkflows,
   zeroWorkflowAutomations,
 } from "@vm0/db/schema/zero-workflow";
 import { command } from "ccstate";
-import { and, eq } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 
 import { logger } from "../../lib/log";
 import type { DispatchFailedRunCallbacks } from "./agent-run-create.service";
-import { publishChatThreadWorkflowQueueChangedSafely } from "../external/realtime";
-import { writeDb$, type Db } from "../external/db";
-import { now, nowDate } from "../external/time";
 import {
-  consumeWorkflowQueueEvent,
+  publishChatThreadMessageCreatedSafely,
+  publishChatThreadWorkflowQueueChangedSafely,
+} from "../external/realtime";
+import { writeDb$, type Db } from "../external/db";
+import { now } from "../external/time";
+import {
   decryptWorkflowQueueEventParams,
+  failWorkflowQueueEventAfterRunFailure,
   loadNextWorkflowQueueEvent,
-  pauseWorkflowQueueEventAfterRunFailure,
+  rejectWorkflowQueueEvent,
   type PendingWorkflowQueueEvent,
 } from "./chat-message-queue.service";
 import type { ApiDispatchTimingCollector } from "./api-dispatch-timing.service";
@@ -51,12 +53,7 @@ async function loadDequeueTarget(
       zeroWorkflows,
       eq(zeroWorkflows.id, zeroWorkflowAutomations.workflowId),
     )
-    .where(
-      and(
-        eq(zeroWorkflowAutomations.id, event.automationId),
-        eq(zeroWorkflowAutomations.orgId, event.orgId),
-      ),
-    )
+    .where(eq(zeroWorkflowAutomations.id, event.automationId))
     .limit(1);
   return row ?? null;
 }
@@ -65,8 +62,8 @@ async function loadDequeueTarget(
  * Advance the thread's workflow queue: as long as user queued messages always
  * win (enforced inside `loadNextWorkflowQueueEvent`), prepare the oldest event
  * and turn it into a run. The final run persistence transaction consumes the
- * event. Stale events are serialized and removed; a run-creation failure
- * leaves the event in place and pauses the queue.
+ * event. Stale events are rejected; a run-creation failure atomically rejects
+ * its trigger and pauses later automation intake.
  */
 export interface WorkflowQueueDrainResult {
   readonly eventId: string;
@@ -101,6 +98,8 @@ async function publishQueueChanged(
     event.chatThreadId,
   );
   signal.throwIfAborted();
+  await publishChatThreadMessageCreatedSafely(event.userId, event.chatThreadId);
+  signal.throwIfAborted();
 }
 
 async function consumeInvalidWorkflowEvent(
@@ -110,9 +109,10 @@ async function consumeInvalidWorkflowEvent(
   launchHint: WorkflowEventLaunch | undefined,
   signal: AbortSignal,
 ): Promise<WorkflowQueueDrainStep> {
-  const consumed = await consumeWorkflowQueueEvent(db, {
+  const consumed = await rejectWorkflowQueueEvent(db, {
     eventId: event.id,
     chatThreadId: event.chatThreadId,
+    reason: conflictMessage,
   });
   signal.throwIfAborted();
   if (!consumed) {
@@ -145,9 +145,10 @@ async function handleWorkflowLaunchResult(
       automationId: event.automationId,
       message: result.message,
     });
-    const consumed = await consumeWorkflowQueueEvent(db, {
+    const consumed = await rejectWorkflowQueueEvent(db, {
       eventId: event.id,
       chatThreadId: event.chatThreadId,
+      reason: result.message,
     });
     signal.throwIfAborted();
     if (!consumed) {
@@ -157,13 +158,15 @@ async function handleWorkflowLaunchResult(
     return launchHint ? { eventId: event.id, result } : CONTINUE_DRAIN;
   }
 
-  await pauseWorkflowQueueEventAfterRunFailure(db, {
+  const failed = await failWorkflowQueueEventAfterRunFailure(db, {
     eventId: event.id,
     chatThreadId: event.chatThreadId,
     pauseReason: result.response.body.error.message,
-    pausedAt: nowDate(),
   });
   signal.throwIfAborted();
+  if (!failed) {
+    return null;
+  }
   log.warn("Workflow queue paused after run creation failure", {
     eventId: event.id,
     chatThreadId: event.chatThreadId,
@@ -172,9 +175,7 @@ async function handleWorkflowLaunchResult(
   await publishQueueChanged(event, signal);
   return {
     eventId: event.id,
-    // The failed launch did not consume the durable event. Report accepted
-    // ownership so ingress callers do not retry or reschedule a retained event.
-    result: { kind: "enqueued" },
+    result,
   };
 }
 
@@ -219,7 +220,10 @@ export const drainWorkflowQueueForThread$ = command(
 
       const params = await decryptWorkflowQueueEventParams(
         event.encryptedParams,
-        { userId: event.userId, orgId: event.orgId },
+        {
+          userId: target.automation.ownerUserId,
+          orgId: target.automation.orgId,
+        },
       );
       signal.throwIfAborted();
       if (!params) {
@@ -240,7 +244,6 @@ export const drainWorkflowQueueForThread$ = command(
         continue;
       }
 
-      const triggerSource = triggerSourceSchema.safeParse(event.triggerSource);
       const launchHint =
         args.workflowEventLaunch?.eventId === event.id
           ? args.workflowEventLaunch
@@ -260,7 +263,7 @@ export const drainWorkflowQueueForThread$ = command(
           apiStartTime: launchHint?.apiStartTime ?? now(),
           prompt: params.prompt,
           triggerBrief: event.triggerBrief ?? undefined,
-          triggerSource: triggerSource.success ? triggerSource.data : undefined,
+          triggerSource: event.triggerSource,
           appendSystemPrompt: params.appendSystemPrompt,
           callbacks: params.callbacks,
           activePreviousRunPolicy: params.activePreviousRunPolicy,

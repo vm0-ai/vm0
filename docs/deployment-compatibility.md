@@ -192,8 +192,23 @@ application readers require canonical run, session, and checkpoint persistence.
 Legacy API response shapes are still projected from canonical mounts. After the
 detached API release was healthy and every rollback-eligible API version that
 accessed them had drained, the physical legacy run, session, and checkpoint
-columns were removed. The short-lived runner job queue still retains its legacy
-claim projection for the previous API version and rollback.
+columns were removed.
+
+The short-lived direct and delayed runner queues use a separate expand/contract
+sequence. Preparation-release readers accept the previous full
+`storageManifest`, `null`, or omission while still requiring canonical
+`storageMounts`. New writers explicitly store `storageManifest: null`; the
+preceding API reader already accepts that value, so rollback remains safe
+without serializing a second set of presigned URLs. Run-context volume and
+artifact observations are created before persistence and are not part of queue
+or Runner state.
+
+Do not omit the queue field until every active and rollback-eligible API has the
+tolerant reader and null writer, the database-clock cutoff for the last
+full-object writer is recorded, more than the two-hour queue TTL has elapsed,
+and neither queue contains an unexpired row predating that cutoff. Runner/guest
+legacy reader removal is independently gated on canonical claim producers; the
+backend field and legacy schema are removed only after both gates pass.
 
 Phase 4A contracts the migration denominator to the latest state used by
 session continuation. Every session continuation head must have canonical
@@ -213,8 +228,8 @@ Runner and guest binaries ship together, so the Runner-to-guest manifest uses
 the canonical shape while the guest reader temporarily accepts both
 representations. This keeps a newly promoted Runner compatible with the
 previous API during a cross-version window. Remove the legacy readers and queue
-projection only after canonical-only API output is stable and rollback-eligible
-API versions have drained.
+field only after canonical-only API output is stable, rollback-eligible API
+versions have drained, and the queue gate above has passed.
 
 ### Firewall hostname policy
 
