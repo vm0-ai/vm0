@@ -18,7 +18,10 @@ import {
 } from "../../lib/db-raw-rows";
 import { clerk$ } from "../external/clerk";
 import { writeDb$, type Db } from "../external/db";
-import { buildFinalizedUsageRelation } from "./finalized-usage-relation";
+import {
+  buildFinalizedUsageRelation,
+  type FinalizedUsageRelation,
+} from "./finalized-usage-relation";
 import { normalizeFinalizedUsagePeriod } from "./finalized-usage-time";
 import { getOrgBillingPeriod$ } from "./zero-org-billing-period.service";
 import { resolveEmails } from "./zero-usage.service";
@@ -107,14 +110,14 @@ type UsageRecordBreakdownSqlRow = z.output<
   typeof usageRecordBreakdownSqlRowSchema
 >;
 
-function tokenExpr() {
+function tokenExpr(usage: FinalizedUsageRelation) {
   const list = sql.join(
     MODEL_TOKEN_CATEGORIES.map((category) => {
       return sql`${category}`;
     }),
     sql`, `,
   );
-  return sql`CASE WHEN finalized_usage.kind = ${MODEL_USAGE_KIND} AND finalized_usage.category IN (${list}) THEN finalized_usage.quantity ELSE 0 END`;
+  return sql`CASE WHEN ${usage.kind} = ${MODEL_USAGE_KIND} AND ${usage.category} IN (${list}) THEN ${usage.quantity} ELSE 0 END`;
 }
 
 function sourceExpr() {
@@ -133,7 +136,7 @@ function sourceExpr() {
     END`;
 }
 
-function usageKindExpr() {
+function usageKindExpr(usage: FinalizedUsageRelation) {
   const usageKindList = sql.join(
     USAGE_RECORD_KINDS.map((kind) => {
       return sql`${kind}`;
@@ -142,13 +145,13 @@ function usageKindExpr() {
   );
   return sql`
     CASE
-      WHEN finalized_usage.kind IN (${usageKindList}) THEN finalized_usage.kind
+      WHEN ${usage.kind} IN (${usageKindList}) THEN ${usage.kind}
       ELSE 'other'
     END`;
 }
 
-function usageCreditsExpr() {
-  return sql`finalized_usage.credits_charged + finalized_usage.allowance_units`;
+function usageCreditsExpr(usage: FinalizedUsageRelation) {
+  return sql`${usage.creditsCharged} + ${usage.allowanceUnits}`;
 }
 
 // Per-source usage for one user in one org. `record` is the shared CTE so the
@@ -167,20 +170,18 @@ function recordWith(
     }),
     sql`, `,
   );
-  const userPredicate =
-    userId === null
-      ? sql.empty()
-      : sql`AND finalized_usage.user_id = ${userId}`;
   const usage = buildFinalizedUsageRelation(period ?? undefined);
+  const userPredicate =
+    userId === null ? sql.empty() : sql`AND ${usage.userId} = ${userId}`;
   return sql`
     WITH usage_rows AS (
       SELECT
-        finalized_usage.run_id,
-        finalized_usage.user_id,
-        ${usageCreditsExpr()}::bigint AS credits,
-        ${tokenExpr()}::bigint AS tokens
+        ${usage.runId} AS run_id,
+        ${usage.userId} AS user_id,
+        ${usageCreditsExpr(usage)}::bigint AS credits,
+        ${tokenExpr(usage)}::bigint AS tokens
       FROM ${usage}
-      WHERE finalized_usage.org_id = ${orgId}
+      WHERE ${usage.orgId} = ${orgId}
         ${userPredicate}
     ),
     runs AS (
@@ -332,10 +333,9 @@ async function queryUsageRecordBreakdown(
     return new Map();
   }
 
+  const usage = buildFinalizedUsageRelation(period ?? undefined);
   const userPredicate =
-    userId === null
-      ? sql.empty()
-      : sql`AND finalized_usage.user_id = ${userId}`;
+    userId === null ? sql.empty() : sql`AND ${usage.userId} = ${userId}`;
   const rowKeyList = sql.join(
     rowKeys.map((rowKey) => {
       return sql`${rowKey}`;
@@ -343,8 +343,7 @@ async function queryUsageRecordBreakdown(
     sql`, `,
   );
   const sourceSql = sourceExpr();
-  const kindSql = usageKindExpr();
-  const usage = buildFinalizedUsageRelation(period ?? undefined);
+  const kindSql = usageKindExpr(usage);
 
   const rows = await executeRawRows(
     db,
@@ -353,14 +352,14 @@ async function queryUsageRecordBreakdown(
         SELECT
           ${sourceSql} AS source,
           zr.chat_thread_id,
-          finalized_usage.run_id,
-          finalized_usage.user_id,
+          ${usage.runId} AS run_id,
+          ${usage.userId} AS user_id,
           ${kindSql} AS kind,
-          COALESCE(NULLIF(finalized_usage.provider, ''), 'unknown') AS provider,
-          ${usageCreditsExpr()}::bigint AS credits
+          COALESCE(NULLIF(${usage.provider}, ''), 'unknown') AS provider,
+          ${usageCreditsExpr(usage)}::bigint AS credits
         FROM ${usage}
-        INNER JOIN zero_runs zr ON zr.id = finalized_usage.run_id
-        WHERE finalized_usage.org_id = ${orgId}
+        INNER JOIN zero_runs zr ON zr.id = ${usage.runId}
+        WHERE ${usage.orgId} = ${orgId}
           ${userPredicate}
       ),
       keyed AS (
