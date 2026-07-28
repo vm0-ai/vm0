@@ -3650,6 +3650,57 @@ const WEBSITE_TEMPLATE_PACKAGES: readonly WebsiteTemplatePackage[] =
     };
   });
 
+const WEBSITE_TEMPLATE_V2_ARCHIVE_SHA256: Record<string, string> = {
+  "black-slabs":
+    "de6f78c5a524cf3959ca56af7a93ec5bca113555bbd1a5983eebf1bc353971d4",
+  "blueprint-grid":
+    "dec02c4fe156566272a92b7386cb032cec7e3a1250dd42429ca3e7f42374dc28",
+  "coastal-hotel":
+    "09d239d7a0e1c27334f2c3c8da9e408174cece6bcc8a34342438598db739aa4e",
+  "dot-matrix":
+    "0beb9b1bcb12ace6d3541df269a629af8e3b41c8f9d7e3c3fcfe069655cd9074",
+  "frame-stack":
+    "7c4c13eaa22b4185607c6ac6a726dd931fe896b279b38a6267c0105f81214f8b",
+  "frosted-scatter":
+    "c67a7baf924ae4b57241e61527dd875d084e38040653a9bbcc659c13d2382cf9",
+  "gallery-wall":
+    "f6e41fb711b8c9317a425b463a9812e99f2aecb630d1acbfb77ef0965c2ba55f",
+  "glass-bloom":
+    "713fbac57cf37a0ddd6d7e7d79a0b9f29f8fff7a0aa55bc741bc5dcd0e498d25",
+  "serif-stack":
+    "6d5d65fb21d6c5ec5627fe32fbfc55e80841a2343f2d91bf3ee3a0f62547766a",
+  "sticker-pop":
+    "61954f4652e2cc86cd1016a537078ea050fe95735a7477e6bd56c91a0c0aec3b",
+  "warm-cards":
+    "213197ef200b16738b51b5d6c4a90b6e6c12c86c63207ef6afc31456cdd0d2e1",
+};
+
+function websiteTemplateV2ArchiveSha256(slug: string): string {
+  const sha256 = WEBSITE_TEMPLATE_V2_ARCHIVE_SHA256[slug];
+  if (!sha256) {
+    throw new Error(`Missing website template v2 archive sha256 for ${slug}`);
+  }
+  return sha256;
+}
+
+// Keep refreshed packages outside the picker-backed list. Website generation
+// resolves to these additive v2 resource ids, while released clients continue
+// pulling the original package ids.
+const WEBSITE_TEMPLATE_V2_PACKAGES: readonly WebsiteTemplatePackage[] =
+  WEBSITE_TEMPLATE_ITEMS.map((item) => {
+    return {
+      templateId: `${item.templateId}-v2`,
+      resourceId: `${item.resourceId}-v2`,
+      slug: item.sourcePath,
+      name: item.title,
+      description: item.description,
+      source: privateR2ArchiveSource(
+        item.sourcePath,
+        websiteTemplateV2ArchiveSha256(item.slug),
+      ),
+    };
+  });
+
 function websiteTemplatePackageToRegistryEntry(
   pkg: WebsiteTemplatePackage,
 ): RegistryEntry {
@@ -3670,7 +3721,10 @@ export function listWebsiteTemplatePackages(): readonly WebsiteTemplatePackage[]
 export function findWebsiteTemplatePackage(
   templateId: string,
 ): WebsiteTemplatePackage | undefined {
-  const directPackage = WEBSITE_TEMPLATE_PACKAGES.find((pkg) => {
+  const directPackage = [
+    ...WEBSITE_TEMPLATE_PACKAGES,
+    ...WEBSITE_TEMPLATE_V2_PACKAGES,
+  ].find((pkg) => {
     return pkg.templateId === templateId || pkg.resourceId === templateId;
   });
   if (directPackage) {
@@ -3686,6 +3740,12 @@ export function findWebsiteTemplatePackage(
 export function findWebsiteTemplateResource(
   resourceId: string,
 ): RegistryEntry | undefined {
+  const directPackage = WEBSITE_TEMPLATE_V2_PACKAGES.find((pkg) => {
+    return pkg.resourceId === resourceId;
+  });
+  if (directPackage) {
+    return websiteTemplatePackageToRegistryEntry(directPackage);
+  }
   const normalizedResourceId =
     findWebsiteTemplateItem(resourceId)?.resourceId ?? resourceId;
   const pkg = WEBSITE_TEMPLATE_PACKAGES.find((entry) => {

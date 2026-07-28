@@ -70,6 +70,31 @@ const EXPECTED_WEBSITE_TEMPLATE_SHA256: Record<string, string> = {
     "2721c013f76e1b2eea09282269b33d7f143b7e83ee3e701e83a0fcf7773852dd",
 };
 
+const EXPECTED_WEBSITE_TEMPLATE_V2_SHA256: Record<string, string> = {
+  "black-slabs":
+    "de6f78c5a524cf3959ca56af7a93ec5bca113555bbd1a5983eebf1bc353971d4",
+  "blueprint-grid":
+    "dec02c4fe156566272a92b7386cb032cec7e3a1250dd42429ca3e7f42374dc28",
+  "coastal-hotel":
+    "09d239d7a0e1c27334f2c3c8da9e408174cece6bcc8a34342438598db739aa4e",
+  "dot-matrix":
+    "0beb9b1bcb12ace6d3541df269a629af8e3b41c8f9d7e3c3fcfe069655cd9074",
+  "frame-stack":
+    "7c4c13eaa22b4185607c6ac6a726dd931fe896b279b38a6267c0105f81214f8b",
+  "frosted-scatter":
+    "c67a7baf924ae4b57241e61527dd875d084e38040653a9bbcc659c13d2382cf9",
+  "gallery-wall":
+    "f6e41fb711b8c9317a425b463a9812e99f2aecb630d1acbfb77ef0965c2ba55f",
+  "glass-bloom":
+    "713fbac57cf37a0ddd6d7e7d79a0b9f29f8fff7a0aa55bc741bc5dcd0e498d25",
+  "serif-stack":
+    "6d5d65fb21d6c5ec5627fe32fbfc55e80841a2343f2d91bf3ee3a0f62547766a",
+  "sticker-pop":
+    "61954f4652e2cc86cd1016a537078ea050fe95735a7477e6bd56c91a0c0aec3b",
+  "warm-cards":
+    "213197ef200b16738b51b5d6c4a90b6e6c12c86c63207ef6afc31456cdd0d2e1",
+};
+
 describe("website template items", () => {
   it("exposes the built-in website template catalog in picker order", () => {
     expect(
@@ -209,12 +234,38 @@ describe("website template items", () => {
     }
   });
 
-  it("does not expose retired website template v2 packages", () => {
+  it("keeps all v2 packages additive to the picker catalog", () => {
     for (const item of WEBSITE_TEMPLATE_ITEMS) {
       const resourceId = `${item.resourceId}-v2`;
-      expect(findWebsiteTemplatePackage(resourceId)).toBeUndefined();
-      expect(findWebsiteTemplateResource(resourceId)).toBeUndefined();
+      const pkg = findWebsiteTemplatePackage(resourceId);
+
+      expect(pkg).toMatchObject({
+        templateId: `${item.templateId}-v2`,
+        resourceId,
+        slug: item.sourcePath,
+        source: {
+          path: item.sourcePath,
+          archive: {
+            type: "tar.gz",
+            sha256: EXPECTED_WEBSITE_TEMPLATE_V2_SHA256[item.slug],
+          },
+        },
+      });
+      expect(findWebsiteTemplateResource(resourceId)).toEqual(
+        expect.objectContaining({
+          id: resourceId,
+          targets: ["website"],
+        }),
+      );
     }
+    expect(listWebsiteTemplatePackages()).toHaveLength(
+      WEBSITE_TEMPLATE_ITEMS.length,
+    );
+    expect(
+      listTemplates("website").some((template) => {
+        return template.id.endsWith("-v2");
+      }),
+    ).toBe(false);
   });
 
   it("keeps built-in R2 website packages out of the unscoped generic template list", () => {
