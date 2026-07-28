@@ -215,32 +215,31 @@ describe("chat event background sync", () => {
     }
   });
 
-  it("accepts preceding and canonical API response shapes during rollout", async () => {
+  it("returns canonical API response events unchanged", async () => {
     mockSignedInUser();
-    const precedingEventId = "00000000-0000-4000-8000-000000000806";
-    const canonicalEventId = "00000000-0000-4000-8000-000000000807";
+    const inputEventId = "00000000-0000-4000-8000-000000000806";
+    const outputEventId = "00000000-0000-4000-8000-000000000807";
     const userMessage = {
       version: 1 as const,
-      parts: [{ type: "text" as const, text: "Preceding response" }],
+      parts: [{ type: "text" as const, text: "Canonical input" }],
     };
     context.mocks.http.get("*/api/zero/chat-threads/:threadId/events", () => {
       return Response.json({
         events: [
           {
-            id: precedingEventId,
+            id: inputEventId,
             threadId: THREAD_ID,
             eventType: "input.prompt",
-            role: "user",
-            content: "Preceding response",
-            structuredPrompt: userMessage,
+            content: "Canonical input",
+            userMessage,
             seqId: 1,
             createdAt: CREATED_AT,
           },
           {
-            id: canonicalEventId,
+            id: outputEventId,
             threadId: THREAD_ID,
             eventType: "output.message",
-            content: "Canonical response",
+            content: "Canonical output",
             seqId: 2,
             createdAt: CREATED_AT,
           },
@@ -258,19 +257,19 @@ describe("chat event background sync", () => {
 
     expect(result.events).toStrictEqual([
       {
-        id: precedingEventId,
+        id: inputEventId,
         threadId: THREAD_ID,
         eventType: "input.prompt",
-        content: "Preceding response",
+        content: "Canonical input",
         userMessage,
         seqId: 1,
         createdAt: CREATED_AT,
       },
       {
-        id: canonicalEventId,
+        id: outputEventId,
         threadId: THREAD_ID,
         eventType: "output.message",
-        content: "Canonical response",
+        content: "Canonical output",
         seqId: 2,
         createdAt: CREATED_AT,
       },
