@@ -1642,15 +1642,22 @@ function presentationTemplateFallbackSlideImage(
   index: number,
   size: TemplatePreviewImageSize = TEMPLATE_CARD_PREVIEW_SIZE,
 ): string {
+  return r2ImageTransformUrl(
+    presentationTemplateGallerySlideUrl(item, index),
+    size,
+  );
+}
+
+function presentationTemplateGallerySlideUrl(
+  item: PresentationTemplateItem,
+  index: number,
+): string {
   const safeIndex = Math.max(
     0,
     Math.min(index, PRESENTATION_GALLERY_SLIDE_COUNT - 1),
   );
   const slideNumber = String(safeIndex + 1).padStart(3, "0");
-  return r2ImageTransformUrl(
-    `${PRESENTATION_GALLERY_PREVIEW_BASE_URL}/${item.slug}/slide-${slideNumber}.webp`,
-    size,
-  );
+  return `${PRESENTATION_GALLERY_PREVIEW_BASE_URL}/${item.slug}/slide-${slideNumber}.webp`;
 }
 
 function presentationTemplateHighResolutionSlideImage(
@@ -1666,6 +1673,15 @@ function presentationTemplateHighResolutionSlideImage(
     return presentationTemplateFallbackSlideImage(item, index, size);
   }
   return presentationTemplateCardSlideImage(item, index, theme, size);
+}
+
+function presentationTemplateDetailHighResolutionSlideImage(
+  item: PresentationTemplateItem,
+  index: number,
+): string {
+  // Detail previews can be wider than the gallery cards. Keep the original
+  // 1200x676 WebP so text does not get softened by a 708px JPEG transform.
+  return presentationTemplateGallerySlideUrl(item, index);
 }
 
 function prewarmTemplatePreviewImage(
@@ -3285,12 +3301,7 @@ function TemplatePreviewPage({
     selectedTheme,
   );
   const detailHighResolutionImage =
-    presentationTemplateHighResolutionSlideImage(
-      item,
-      activeSlideIndex,
-      selectedTheme,
-      TEMPLATE_HIGH_RESOLUTION_PREVIEW_SIZE,
-    );
+    presentationTemplateDetailHighResolutionSlideImage(item, activeSlideIndex);
 
   const selectDetailSlide = (index: number) => {
     selectDetailPreview({

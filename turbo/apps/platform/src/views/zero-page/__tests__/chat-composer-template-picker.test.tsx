@@ -1050,10 +1050,7 @@ describe("chat composer templates", () => {
     }
     expect(highResolutionDetailImage).toHaveAttribute(
       "data-src",
-      r2ImageTransformUrl(
-        `https://static.vm0.io/web/assets/presentation-gallery/2026-07-04/${template.slug}/slide-001.webp`,
-        { width: 708, height: 398 },
-      ),
+      `https://static.vm0.io/web/assets/presentation-gallery/2026-07-04/${template.slug}/slide-001.webp`,
     );
     expect(initialDetailImageSrc).not.toBe(
       r2ImageTransformUrl(prismCardPreview, {
