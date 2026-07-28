@@ -214,8 +214,9 @@ describe("buildGenerationTemplatePrompt", () => {
     expect(result.prompt).not.toContain("# Artifact Template Context");
   });
 
-  it("builds website template package guidance", () => {
+  it("builds website template v2 package guidance", () => {
     const item = WEBSITE_TEMPLATE_ITEMS[0]!;
+    const resourceId = `${item.resourceId}-v2`;
 
     const result = buildGenerationTemplatePrompt({
       type: "website",
@@ -232,10 +233,10 @@ describe("buildGenerationTemplatePrompt", () => {
       return;
     }
     expect(result.prompt).toContain(`Template: ${item.title} (${item.id})`);
-    expect(result.prompt).toContain(`Template package id: ${item.templateId}`);
-    expect(result.prompt).toContain(`Package resource: ${item.resourceId}`);
+    expect(result.prompt).toContain(`Template package id: ${resourceId}`);
+    expect(result.prompt).toContain(`Package resource: ${resourceId}`);
     expect(result.prompt).toContain(
-      `zero resource pull ${item.resourceId} --dir ./generated/resources`,
+      `zero resource pull ${resourceId} --dir ./generated/resources`,
     );
     expect(result.prompt).toContain(
       `./generated/resources/${item.sourcePath}/resolve-images.mjs`,
@@ -249,18 +250,15 @@ describe("buildGenerationTemplatePrompt", () => {
     expect(result.prompt).not.toContain("zero generate website --template");
   });
 
-  it("selects every additive v2 package behind the rollout switch", () => {
+  it("selects every website template v2 package", () => {
     for (const item of WEBSITE_TEMPLATE_ITEMS) {
       const resourceId = `${item.resourceId}-v2`;
-      const result = buildGenerationTemplatePrompt(
-        {
-          type: "website",
-          selection: {
-            websiteTemplateId: item.id,
-          },
+      const result = buildGenerationTemplatePrompt({
+        type: "website",
+        selection: {
+          websiteTemplateId: item.id,
         },
-        { websiteTemplateV2Enabled: true },
-      );
+      });
 
       expect(result).toStrictEqual({
         status: "resolved",

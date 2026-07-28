@@ -279,7 +279,6 @@ interface NormalSendFeatureSwitches {
   readonly codexFastModeEnabled: boolean;
   readonly userMessageEnabled: boolean;
   readonly userMessageInlineTemplatesEnabled: boolean;
-  readonly websiteTemplateV2Enabled: boolean;
   readonly imageStyleR2Enabled: boolean;
 }
 
@@ -1061,10 +1060,6 @@ async function resolveNormalSendFeatureSwitches(
         FeatureSwitchKey.StructuredPromptInlineTemplates,
         context,
       ),
-    websiteTemplateV2Enabled: isFeatureEnabled(
-      FeatureSwitchKey.WebsiteTemplateV2,
-      context,
-    ),
     imageStyleR2Enabled: isFeatureEnabled(
       FeatureSwitchKey.ImageStyleR2,
       context,
@@ -1620,7 +1615,6 @@ function appendUnassociatedUserMessage(params: {
       .set({
         draftContent: null,
         draftUserMessage: null,
-        draftUserMessageWithFeedback: null,
         draftAttachments: null,
       })
       .where(
@@ -1732,7 +1726,6 @@ async function clearThreadDraft(
     .set({
       draftContent: null,
       draftUserMessage: null,
-      draftUserMessageWithFeedback: null,
       draftAttachments: null,
     })
     .where(and(eq(chatThreads.id, threadId), eq(chatThreads.userId, userId)));
@@ -2475,7 +2468,6 @@ const prepareNormalSend$ = command(
         args.body.userMessage !== undefined
           ? runtimeBody.generationTemplates
           : undefined,
-      websiteTemplateV2Enabled: featureSwitches.websiteTemplateV2Enabled,
       imageStyleR2Enabled: featureSwitches.imageStyleR2Enabled,
     });
     const persistedExplicitSelection =
@@ -2907,7 +2899,6 @@ async function appendInsufficientCreditsMessages(params: {
       .set({
         draftContent: null,
         draftUserMessage: null,
-        draftUserMessageWithFeedback: null,
         draftAttachments: null,
       })
       .where(

@@ -29,13 +29,6 @@ export const zeroAgentDrafts = pgTable(
     draftUserMessage: jsonb(
       "draft_structured_prompt",
     ).$type<ZeroAgentDraftUserMessage>(),
-    /**
-     * Full structured draft content for rollout-only parts that older API
-     * versions cannot decode. The legacy column remains a safe projection.
-     */
-    draftUserMessageWithFeedback: jsonb(
-      "draft_structured_prompt_with_feedback",
-    ).$type<ZeroAgentDraftUserMessage>(),
     draftAttachments:
       jsonb("draft_attachments").$type<ZeroAgentDraftAttachments>(),
     createdAt: timestamp("created_at").defaultNow().notNull(),

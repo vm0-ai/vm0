@@ -241,13 +241,6 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
-  [FeatureSwitchKey.ZeroPeopleSearch]: {
-    maintainer: "liangyou@vm0.ai",
-    description:
-      "Enable managed Perplexity People Search and the people-search:read ZERO_TOKEN capability.",
-    enabled: false,
-    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
-  },
   [FeatureSwitchKey.Banking]: {
     maintainer: "linghan@vm0.ai",
     description:
@@ -405,7 +398,7 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
   [FeatureSwitchKey.ChatHistoryBackfillProgress]: {
     maintainer: "ethan@vm0.ai",
     description:
-      "Progress bar under the chat thread header showing history backfill progress while older messages load.",
+      "Chat message skeletons above the first visible message while older history loads.",
     // Not rolled out to anyone yet; enable per-user via the Lab page.
     enabled: false,
   },
@@ -462,12 +455,6 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     maintainer: "bingjie@vm0.ai",
     description:
       "Generate poster images asynchronously when video artifacts are recorded.",
-    enabled: true,
-  },
-  [FeatureSwitchKey.WebsiteTemplateV2]: {
-    maintainer: "bingjie@vm0.ai",
-    description:
-      "Generate websites from refreshed self-contained template packages. When off, website generation uses the existing package versions.",
     enabled: true,
   },
   [FeatureSwitchKey.ImageStyleR2]: {

@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.148.19](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.148.18...runner-rs-v0.148.19) (2026-07-28)
+
+
+### Refactoring
+
+* **python:** require typed network log targets ([#23427](https://github.com/vm0-ai/vm0/issues/23427)) ([2897f24](https://github.com/vm0-ai/vm0/commit/2897f24908ca1486ff9f20ee95672c7f30beb13d))
+
 ## [0.148.18](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.148.17...runner-rs-v0.148.18) (2026-07-28)
 
 
