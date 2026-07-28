@@ -11,12 +11,18 @@ import { withCleanup } from "../utils.ts";
 import {
   agentConnectorAuthorizations,
   reloadAgentConnectorAuthorizations$,
+  type AgentConnectorAuthorizations,
 } from "./agent-connector-authorizations.ts";
 import { reloadOnboardingStatus$ } from "./zero-onboarding.ts";
 
-export interface ComposerConnectorSignals {
+export interface ComposerConnectorAuthorizationSignals {
   readonly agentId$: Computed<Promise<string | null>>;
-  readonly authorizedConnectors$: Computed<Promise<readonly ConnectorRef[]>>;
+  readonly authorizations$: Computed<
+    Promise<AgentConnectorAuthorizations | null>
+  >;
+}
+
+export interface ComposerConnectorSignals extends ComposerConnectorAuthorizationSignals {
   readonly authorizeConnector$: Command<
     Promise<void>,
     [ConnectorRef, AbortSignal]
@@ -94,27 +100,30 @@ function initialComposerConnectorUiState(): ComposerConnectorUiState {
   };
 }
 
-type ConnectorAuthorizationSignals = Pick<
-  ComposerConnectorSignals,
-  "authorizedConnectors$" | "authorizeConnector$" | "deauthorizeConnector$"
->;
-
-function createConnectorAuthorizationSignals(
-  agentId$: Computed<Promise<string | null>>,
-): ConnectorAuthorizationSignals {
-  const authorizedConnectors$ = computed(
-    async (get): Promise<readonly ConnectorRef[]> => {
+export function createComposerConnectorAuthorizationSignals<
+  T extends AgentIdValue,
+>(agentIdSource$: Computed<T>): ComposerConnectorAuthorizationSignals {
+  const agentId$ = computed(async (get): Promise<string | null> => {
+    return await get(agentIdSource$);
+  });
+  const authorizations$ = computed(
+    async (get): Promise<AgentConnectorAuthorizations | null> => {
       const agentId = await get(agentId$);
       if (!agentId) {
-        return [];
+        return null;
       }
-      const authorizations = await get(
-        agentConnectorAuthorizations({ agentId }),
-      );
-      return authorizations.enabledTypes;
+      return await get(agentConnectorAuthorizations({ agentId }));
     },
   );
+  return { agentId$, authorizations$ };
+}
 
+function createConnectorAuthorizationCommands(
+  agentId$: Computed<Promise<string | null>>,
+): Pick<
+  ComposerConnectorSignals,
+  "authorizeConnector$" | "deauthorizeConnector$"
+> {
   const updateAuthorizedConnectors$ = command(
     async (
       { get, set },
@@ -170,7 +179,6 @@ function createConnectorAuthorizationSignals(
   );
 
   return {
-    authorizedConnectors$,
     authorizeConnector$,
     deauthorizeConnector$,
   };
@@ -178,11 +186,15 @@ function createConnectorAuthorizationSignals(
 
 export function createComposerConnectorSignals<T extends AgentIdValue>(
   agentIdSource$: Computed<T>,
+  authorization?: ComposerConnectorAuthorizationSignals,
 ): ComposerConnectorSignals {
-  const agentId$ = computed(async (get): Promise<string | null> => {
+  const localAgentId$ = computed(async (get): Promise<string | null> => {
     return await get(agentIdSource$);
   });
-  const authorization = createConnectorAuthorizationSignals(agentId$);
+  const resolvedAuthorization =
+    authorization ?? createComposerConnectorAuthorizationSignals(localAgentId$);
+  const authorizationCommands =
+    createConnectorAuthorizationCommands(localAgentId$);
   const initial = initialComposerConnectorUiState();
   const showAddDialog = createStateBinding(initial.showAddDialog);
   const pendingConnectorRef = createStateBinding(initial.pendingConnectorRef);
@@ -207,7 +219,7 @@ export function createComposerConnectorSignals<T extends AgentIdValue>(
   });
   const permissionGrants$ = computed(
     async (get): Promise<readonly UserPermissionGrantResponse[]> => {
-      const agentId = await get(agentId$);
+      const agentId = await get(localAgentId$);
       if (!agentId) {
         return [];
       }
@@ -216,8 +228,8 @@ export function createComposerConnectorSignals<T extends AgentIdValue>(
   );
 
   return {
-    agentId$,
-    ...authorization,
+    ...resolvedAuthorization,
+    ...authorizationCommands,
     showAddDialog$: showAddDialog.value$,
     setShowAddDialog$: showAddDialog.set$,
     pendingConnectorRef$: pendingConnectorRef.value$,
