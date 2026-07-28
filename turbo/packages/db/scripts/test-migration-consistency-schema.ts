@@ -1609,7 +1609,7 @@ async function applyMigrationsUpToInTransaction(
 
 const STRUCTURED_PROMPT_DRAFT_BACKFILL_PREVIOUS_MIGRATION = 707;
 const STRUCTURED_PROMPT_DRAFT_BACKFILL_MIGRATION = 708;
-const STRUCTURED_PROMPT_DRAFT_LEGACY_COLUMN_DROP_MIGRATION = 709;
+const STRUCTURED_PROMPT_DRAFT_LEGACY_COLUMN_DROP_MIGRATION = 710;
 
 async function validateStructuredPromptDraftBackfill(): Promise<void> {
   console.log("=== Validate structured prompt draft backfill ===\n");
