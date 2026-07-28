@@ -15,6 +15,7 @@ import {
   integrationsSlackUploadInitContract,
   integrationsSlackUploadMaterializeContract,
 } from "@vm0/api-contracts/contracts/integrations";
+import type { ChatEventResponse } from "@vm0/api-contracts/contracts/chat-threads";
 import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
@@ -44,6 +45,11 @@ import {
   type UsageInsightFixture,
 } from "./helpers/zero-usage-insight";
 import { updateFeatureSwitchesForUser } from "./helpers/zero-feature-switches";
+
+type CompletedChatEvent = Extract<
+  ChatEventResponse,
+  { eventType: "run.completed" }
+>;
 
 const context = testContext();
 const store = createStore();
@@ -263,7 +269,7 @@ describe("POST /api/zero/integrations/slack/upload-file/complete", () => {
     const agent = await bdd.createAgent(actor, {
       displayName: `Slack upload ${randomUUID().slice(0, 8)}`,
     });
-    const sent = await chatApi.requestSendMessage(
+    const sent = await chatApi.requestSendEvent(
       actor,
       {
         agentId: agent.agentId,
@@ -658,25 +664,27 @@ describe("POST /api/zero/integrations/slack/upload-file/complete", () => {
       lastEventSequence: 0,
     });
 
-    const messages = await chatApi.listThreadMessages(
+    const messages = await chatApi.listThreadEvents(
       actorFor({ orgId, userId }),
       threadId,
     );
-    const finalReply = messages.messages.find((message) => {
+    const finalReply = messages.events.find((message) => {
       return (
-        message.role === "assistant" &&
+        message.eventType === "output.message" &&
         message.content === "The canonical report is ready."
       );
     });
-    expect(finalReply?.attachFiles).toBeUndefined();
+    expect(finalReply).not.toHaveProperty("attachFiles");
 
-    const lifecycleMarker = messages.messages.find((message) => {
-      return (
-        message.role === "assistant" &&
-        message.runId === runId &&
-        message.runLifecycleEvent === "completed"
-      );
-    });
+    const lifecycleMarker = messages.events.find(
+      (message): message is CompletedChatEvent => {
+        return (
+          message.eventType === "run.completed" &&
+          message.runId === runId &&
+          message.runLifecycleEvent === "completed"
+        );
+      },
+    );
     expect(lifecycleMarker).toBeDefined();
     expect(lifecycleMarker?.content).toBeNull();
     expect(lifecycleMarker?.attachFiles).toHaveLength(1);
@@ -728,17 +736,19 @@ describe("POST /api/zero/integrations/slack/upload-file/complete", () => {
       events: [],
     });
 
-    const messages = await chatApi.listThreadMessages(
+    const messages = await chatApi.listThreadEvents(
       actorFor({ orgId, userId }),
       threadId,
     );
-    const lifecycleMarker = messages.messages.find((message) => {
-      return (
-        message.role === "assistant" &&
-        message.runId === runId &&
-        message.runLifecycleEvent === "completed"
-      );
-    });
+    const lifecycleMarker = messages.events.find(
+      (message): message is CompletedChatEvent => {
+        return (
+          message.eventType === "run.completed" &&
+          message.runId === runId &&
+          message.runLifecycleEvent === "completed"
+        );
+      },
+    );
     expect(lifecycleMarker).toBeDefined();
     expect(lifecycleMarker?.content).toBeNull();
     expect(lifecycleMarker?.attachFiles?.[0]).toMatchObject({
@@ -751,11 +761,11 @@ describe("POST /api/zero/integrations/slack/upload-file/complete", () => {
         materialization: { status: "pending" },
       },
     });
-    const separateAttachmentReply = messages.messages.find((message) => {
+    const separateAttachmentReply = messages.events.find((message) => {
       return (
-        message.role === "assistant" &&
+        message.eventType !== "run.completed" &&
         message.runId === runId &&
-        message.runLifecycleEvent === undefined &&
+        "attachFiles" in message &&
         message.attachFiles?.some((file) => {
           return file.id === canonicalAssetId;
         })

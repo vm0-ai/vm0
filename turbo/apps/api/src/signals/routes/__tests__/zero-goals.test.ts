@@ -77,7 +77,7 @@ async function seedGoalApiFixture(): Promise<GoalApiFixture> {
     displayName: "Goal Agent",
     visibility: "private",
   });
-  const sent = await chat.requestSendMessage(
+  const sent = await chat.requestSendEvent(
     actor,
     {
       agentId: agent.agentId,
@@ -282,7 +282,7 @@ describe("zero goals", () => {
     }
 
     mocks.clerk.session(fixture.userId, fixture.orgId, "org:member");
-    const messages = await chat.listThreadMessages(
+    const messages = await chat.listThreadEvents(
       {
         userId: fixture.userId,
         orgId: fixture.orgId,
@@ -291,9 +291,9 @@ describe("zero goals", () => {
       },
       fixture.threadId,
     );
-    expect(messages.messages).toContainEqual(
+    expect(messages.events).toContainEqual(
       expect.objectContaining({
-        role: "assistant",
+        eventType: "goal.changed",
         goalEvent: {
           type: "state",
           status: "active",
@@ -327,7 +327,7 @@ describe("zero goals", () => {
       status: "active",
     });
     mocks.clerk.session(fixture.userId, fixture.orgId, "org:member");
-    const messages = await chat.listThreadMessages(
+    const messages = await chat.listThreadEvents(
       {
         userId: fixture.userId,
         orgId: fixture.orgId,
@@ -336,9 +336,9 @@ describe("zero goals", () => {
       },
       fixture.threadId,
     );
-    expect(messages.messages).toContainEqual(
+    expect(messages.events).toContainEqual(
       expect.objectContaining({
-        role: "assistant",
+        eventType: "goal.changed",
         goalEvent: {
           type: "state",
           status: "active",

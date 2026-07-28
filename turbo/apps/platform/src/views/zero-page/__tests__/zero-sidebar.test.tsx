@@ -797,7 +797,6 @@ describe("zero sidebar", () => {
                     threadId: INCIDENT_THREAD_ID,
                     eventType: "run.completed" as const,
                     runId: "mock-run",
-                    role: "assistant",
                     content: "Incident update",
                     runLifecycleEvent: "completed",
                     seqId: 1,

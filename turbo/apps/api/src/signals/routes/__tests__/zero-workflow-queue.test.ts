@@ -5,7 +5,7 @@ import {
   type GenerateDataKeyCommandOutput,
 } from "@aws-sdk/client-kms";
 import {
-  chatMessagesContract,
+  chatEventsContract,
   chatThreadEventsContract,
 } from "@vm0/api-contracts/contracts/chat-threads";
 import { zeroModelProvidersByTypeContract } from "@vm0/api-contracts/contracts/zero-model-providers";
@@ -61,7 +61,7 @@ function automationsClient() {
 }
 
 function chatMessagesClient() {
-  return setupApp({ context })(chatMessagesContract);
+  return setupApp({ context })(chatEventsContract);
 }
 
 function chatThreadEventsClient() {
@@ -222,10 +222,10 @@ async function expectAcceptedRunId(
 
 /** Run ids of automation-fired `/workflow-name` user messages, oldest first. */
 async function workflowRunIds(threadId: string): Promise<readonly string[]> {
-  const messages = await wf.readThreadMessages(threadId);
+  const messages = await wf.readThreadEvents(threadId);
   return messages.flatMap((message) => {
     if (
-      message.role !== "user" ||
+      message.eventType !== "input.prompt" ||
       message.content !== `/${WORKFLOW_NAME}` ||
       !message.runId
     ) {
@@ -306,7 +306,7 @@ async function expectSweepLeftQueueUntouched(
       return event.id;
     }),
   ).toStrictEqual(pendingEventIds);
-  const messages = await wf.readThreadMessages(threadId);
+  const messages = await wf.readThreadEvents(threadId);
   expect(
     messages.filter((message) => {
       return typeof message.runId === "string";
@@ -448,7 +448,7 @@ describe("workflow queue", () => {
     // is only used as a lower-bound barrier here.
     await expect
       .poll(async () => {
-        const messages = await wf.readThreadMessages(automation.threadId);
+        const messages = await wf.readThreadEvents(automation.threadId);
         return messages.some((message) => {
           return message.content === "fresh user message";
         });
@@ -533,7 +533,7 @@ describe("workflow queue", () => {
           agentId: scenario.agentId,
           threadId: automation.threadId,
           prompt: "stale user message",
-          clientMessageId: messageId,
+          clientEventId: messageId,
         },
       }),
       [201],
@@ -550,11 +550,11 @@ describe("workflow queue", () => {
 
     await cleanupSandboxes();
 
-    const messages = await wf.readThreadMessages(automation.threadId);
+    const messages = await wf.readThreadEvents(automation.threadId);
     expect(messages).toContainEqual(
       expect.objectContaining({
         content: "stale user message",
-        revokesMessageId: messageId,
+        revokesEventId: messageId,
         runId: expect.any(String),
       }),
     );
@@ -1072,7 +1072,7 @@ describe("workflow queue", () => {
     // Terminal run: the user message drains first, the workflow event waits.
     await completeRunThroughSandbox(scenario, firstRunId);
     await expect(workflowRunIds(automation.threadId)).resolves.toHaveLength(1);
-    const messages = await wf.readThreadMessages(automation.threadId);
+    const messages = await wf.readThreadEvents(automation.threadId);
     const userMessage = messages.find((message) => {
       return (
         message.content === "user interjection" &&
@@ -1158,7 +1158,7 @@ describe("workflow queue", () => {
     });
     await expect
       .poll(async () => {
-        const messages = await wf.readThreadMessages(automation.threadId);
+        const messages = await wf.readThreadEvents(automation.threadId);
         return messages.some((message) => {
           return message.content === "user wins final admission";
         });

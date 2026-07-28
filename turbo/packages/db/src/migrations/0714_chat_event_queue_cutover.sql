@@ -4,7 +4,7 @@
 -- mirror subsequent writes from the still-serving previous API.
 LOCK TABLE "chat_message_queue" IN ACCESS EXCLUSIVE MODE;
 --> statement-breakpoint
-CREATE TEMP TABLE "chat_event_queue_rows_0713"
+CREATE TEMP TABLE "chat_event_queue_rows_0714"
 ON COMMIT DROP
 AS
 SELECT
@@ -103,7 +103,7 @@ DECLARE
 BEGIN
   SELECT COUNT(*), MIN("id"::text)
   INTO unclassified_count, unclassified_sample
-  FROM "chat_event_queue_rows_0713"
+  FROM "chat_event_queue_rows_0714"
   WHERE "classification" IS NULL;
 
   IF unclassified_count > 0 THEN
@@ -119,7 +119,7 @@ END $$;
 SELECT "id"
 FROM "chat_threads"
 WHERE "id" IN (
-  SELECT "chat_thread_id" FROM "chat_event_queue_rows_0713"
+  SELECT "chat_thread_id" FROM "chat_event_queue_rows_0714"
   UNION
   SELECT "id" FROM "chat_threads" WHERE "queue_paused_at" IS NOT NULL
 )
@@ -169,7 +169,7 @@ SET
     message."encrypted_params",
     queue."encrypted_params"
   )
-FROM "chat_event_queue_rows_0713" AS queue
+FROM "chat_event_queue_rows_0714" AS queue
 WHERE queue."classification" = 'user'
   AND message."id" = queue."chat_message_id"
   AND (
@@ -214,7 +214,7 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 --> statement-breakpoint
-CREATE TEMP TABLE "chat_event_queue_appends_0713" (
+CREATE TEMP TABLE "chat_event_queue_appends_0714" (
   "id" uuid PRIMARY KEY,
   "chat_thread_id" uuid NOT NULL,
   "event_type" text NOT NULL,
@@ -227,7 +227,7 @@ CREATE TEMP TABLE "chat_event_queue_appends_0713" (
   "created_at" timestamp NOT NULL
 ) ON COMMIT DROP;
 --> statement-breakpoint
-INSERT INTO "chat_event_queue_appends_0713" (
+INSERT INTO "chat_event_queue_appends_0714" (
   "id",
   "chat_thread_id",
   "event_type",
@@ -248,10 +248,10 @@ SELECT
   queue."trigger_brief",
   queue."encrypted_params",
   queue."created_at"
-FROM "chat_event_queue_rows_0713" AS queue
+FROM "chat_event_queue_rows_0714" AS queue
 WHERE queue."classification" = 'automation';
 --> statement-breakpoint
-INSERT INTO "chat_event_queue_appends_0713" (
+INSERT INTO "chat_event_queue_appends_0714" (
   "id",
   "chat_thread_id",
   "event_type",
@@ -285,7 +285,7 @@ DECLARE
 BEGIN
   SELECT COUNT(*), MIN(planned."id"::text)
   INTO collision_count, collision_sample
-  FROM "chat_event_queue_appends_0713" AS planned
+  FROM "chat_event_queue_appends_0714" AS planned
   INNER JOIN "chat_messages" AS existing ON existing."id" = planned."id";
 
   IF collision_count > 0 THEN
@@ -296,7 +296,7 @@ BEGIN
   END IF;
 END $$;
 --> statement-breakpoint
-CREATE TEMP TABLE "chat_event_queue_offsets_0713"
+CREATE TEMP TABLE "chat_event_queue_offsets_0714"
 ON COMMIT DROP
 AS
 SELECT
@@ -304,14 +304,14 @@ SELECT
   thread."last_chat_message_seq_id" AS "base_seq_id",
   COUNT(*)::bigint AS "event_count"
 FROM "chat_threads" AS thread
-INNER JOIN "chat_event_queue_appends_0713" AS planned
+INNER JOIN "chat_event_queue_appends_0714" AS planned
   ON planned."chat_thread_id" = thread."id"
 GROUP BY thread."id", thread."last_chat_message_seq_id";
 --> statement-breakpoint
 UPDATE "chat_threads" AS thread
 SET "last_chat_message_seq_id" =
   thread."last_chat_message_seq_id" + offsets."event_count"
-FROM "chat_event_queue_offsets_0713" AS offsets
+FROM "chat_event_queue_offsets_0714" AS offsets
 WHERE thread."id" = offsets."chat_thread_id";
 --> statement-breakpoint
 INSERT INTO "chat_messages" (
@@ -346,8 +346,8 @@ SELECT
     ORDER BY planned."created_at", planned."id"
   ),
   planned."created_at"
-FROM "chat_event_queue_appends_0713" AS planned
-INNER JOIN "chat_event_queue_offsets_0713" AS offsets
+FROM "chat_event_queue_appends_0714" AS planned
+INNER JOIN "chat_event_queue_offsets_0714" AS offsets
   ON offsets."chat_thread_id" = planned."chat_thread_id";
 --> statement-breakpoint
 DELETE FROM "chat_message_queue";
@@ -356,7 +356,7 @@ DELETE FROM "chat_message_queue";
 -- API can keep writing the legacy queue briefly after the one-time conversion.
 -- Mirror those writes into canonical ChatEvents until Phase 2 removes the old
 -- API compatibility window and the physical legacy schema.
-CREATE OR REPLACE FUNCTION "mirror_legacy_chat_queue_insert_0713"()
+CREATE OR REPLACE FUNCTION "mirror_legacy_chat_queue_insert_0714"()
 RETURNS trigger AS $$
 DECLARE
   next_seq_id bigint;
@@ -441,15 +441,15 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 --> statement-breakpoint
-CREATE TRIGGER "mirror_legacy_chat_queue_insert_0713"
+CREATE TRIGGER "mirror_legacy_chat_queue_insert_0714"
 AFTER INSERT ON "chat_message_queue"
 FOR EACH ROW
-EXECUTE FUNCTION "mirror_legacy_chat_queue_insert_0713"();
+EXECUTE FUNCTION "mirror_legacy_chat_queue_insert_0714"();
 --> statement-breakpoint
 -- A previous API consumes workflow rows by DELETE rather than by appending a
 -- revoking replacement. Mirror that consumption so the event fold cannot run
 -- the same automation again after traffic moves to the new API.
-CREATE OR REPLACE FUNCTION "mirror_legacy_chat_queue_delete_0713"()
+CREATE OR REPLACE FUNCTION "mirror_legacy_chat_queue_delete_0714"()
 RETURNS trigger AS $$
 DECLARE
   next_seq_id bigint;
@@ -509,15 +509,15 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 --> statement-breakpoint
-CREATE TRIGGER "mirror_legacy_chat_queue_delete_0713"
+CREATE TRIGGER "mirror_legacy_chat_queue_delete_0714"
 AFTER DELETE ON "chat_message_queue"
 FOR EACH ROW
-EXECUTE FUNCTION "mirror_legacy_chat_queue_delete_0713"();
+EXECUTE FUNCTION "mirror_legacy_chat_queue_delete_0714"();
 --> statement-breakpoint
 -- Keep the legacy mutable pause projection synchronized in both directions.
 -- New ChatEvent writes remain authoritative; old API column updates append the
 -- equivalent immutable transition during the overlap.
-CREATE OR REPLACE FUNCTION "project_chat_queue_pause_event_0713"()
+CREATE OR REPLACE FUNCTION "project_chat_queue_pause_event_0714"()
 RETURNS trigger AS $$
 BEGIN
   IF NEW."event_type" = 'queue.automation_paused' THEN
@@ -538,7 +538,7 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 --> statement-breakpoint
-CREATE TRIGGER "project_chat_queue_pause_event_0713"
+CREATE TRIGGER "project_chat_queue_pause_event_0714"
 AFTER INSERT ON "chat_messages"
 FOR EACH ROW
 WHEN (
@@ -547,9 +547,9 @@ WHEN (
     'queue.automation_resumed'
   )
 )
-EXECUTE FUNCTION "project_chat_queue_pause_event_0713"();
+EXECUTE FUNCTION "project_chat_queue_pause_event_0714"();
 --> statement-breakpoint
-CREATE OR REPLACE FUNCTION "mirror_legacy_chat_queue_pause_0713"()
+CREATE OR REPLACE FUNCTION "mirror_legacy_chat_queue_pause_0714"()
 RETURNS trigger AS $$
 DECLARE
   latest_event_type text;
@@ -631,7 +631,7 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 --> statement-breakpoint
-CREATE TRIGGER "mirror_legacy_chat_queue_pause_0713"
+CREATE TRIGGER "mirror_legacy_chat_queue_pause_0714"
 AFTER UPDATE OF "queue_paused_at", "pause_reason" ON "chat_threads"
 FOR EACH ROW
-EXECUTE FUNCTION "mirror_legacy_chat_queue_pause_0713"();
+EXECUTE FUNCTION "mirror_legacy_chat_queue_pause_0714"();

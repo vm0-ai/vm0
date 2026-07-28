@@ -173,7 +173,10 @@ async function canonicalSlackThreadHasOutstandingWorkInSnapshot(
     .innerJoin(agentRuns, eq(agentRuns.id, zeroRuns.id))
     .innerJoin(
       chatMessages,
-      and(eq(chatMessages.runId, zeroRuns.id), eq(chatMessages.role, "user")),
+      and(
+        eq(chatMessages.runId, zeroRuns.id),
+        chatEventTypeIn(["input.prompt"]),
+      ),
     )
     .innerJoin(
       slackChatIngress,

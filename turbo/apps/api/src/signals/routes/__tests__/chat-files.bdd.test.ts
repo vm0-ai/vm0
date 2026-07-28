@@ -108,8 +108,8 @@ describe("CHAT-01 chat thread lifecycle", () => {
     detail = await api.readThread(actor, created.id);
     expect(detail).not.toHaveProperty("selectedModel");
 
-    const messages = await api.listThreadMessages(actor, created.id);
-    expect(messages.messages).toStrictEqual([]);
+    const messages = await api.listThreadEvents(actor, created.id);
+    expect(messages.events).toStrictEqual([]);
 
     const artifacts = await api.listThreadArtifacts(actor, created.id);
     expect(artifacts.runs).toStrictEqual([]);
@@ -287,7 +287,7 @@ describe("CHAT-02 chat messages and visible validation", () => {
       displayName: "No-credit chat branch agent",
     });
     const uploadId = randomUUID();
-    const clientMessageId = randomUUID();
+    const clientEventId = randomUUID();
     const expectedUserMessage: UserMessageDocument = {
       version: 1,
       parts: [
@@ -301,7 +301,7 @@ describe("CHAT-02 chat messages and visible validation", () => {
       ],
     };
 
-    const sent = await api.requestSendMessage(
+    const sent = await api.requestSendEvent(
       actor,
       {
         agentId: agent.agentId,
@@ -316,7 +316,7 @@ describe("CHAT-02 chat messages and visible validation", () => {
           },
         ],
         hasTextContent: false,
-        clientMessageId,
+        clientEventId,
       },
       [201],
     );
@@ -335,31 +335,36 @@ describe("CHAT-02 chat messages and visible validation", () => {
       draftAttachments: null,
     });
 
-    const messages = await api.listThreadMessages(actor, threadId);
-    expect(messages.messages).toHaveLength(3);
+    const messages = await api.listThreadEvents(actor, threadId);
+    expect(messages.events).toHaveLength(3);
 
-    const queuedMessage = messages.messages.find((message) => {
-      return message.id === clientMessageId;
+    const queuedMessage = messages.events.find((message) => {
+      return (
+        message.eventType === "input.prompt" && message.id === clientEventId
+      );
     });
-    const rejectedUserMessage = messages.messages.find((message) => {
-      return message.revokesMessageId === clientMessageId;
+    const rejectedUserMessage = messages.events.find((message) => {
+      return (
+        message.eventType === "input.rejected" &&
+        message.revokesEventId === clientEventId
+      );
     });
-    const assistantMessage = messages.messages.find((message) => {
-      return message.role === "assistant";
+    const assistantMessage = messages.events.find((message) => {
+      return message.eventType === "output.error";
     });
 
     expect(queuedMessage).toMatchObject({
-      role: "user",
+      eventType: "input.prompt",
       content: "Build a launch-plan presentation",
       userMessage: expectedUserMessage,
     });
-    expect(queuedMessage?.error).toBeUndefined();
+    expect(queuedMessage).not.toHaveProperty("error");
     expect(rejectedUserMessage).toMatchObject({
-      role: "user",
+      eventType: "input.rejected",
       content: "Build a launch-plan presentation",
       userMessage: expectedUserMessage,
       error: "insufficient_credits",
-      revokesMessageId: clientMessageId,
+      revokesEventId: clientEventId,
       attachFiles: [
         {
           id: uploadId,
@@ -372,13 +377,13 @@ describe("CHAT-02 chat messages and visible validation", () => {
     expect(assistantMessage?.content).toContain("Insufficient credits");
     expect(assistantMessage?.error).toBe("insufficient_credits");
 
-    const retried = await api.requestSendMessage(
+    const retried = await api.requestSendEvent(
       actor,
       {
         agentId: agent.agentId,
         threadId,
         prompt: "Retry the same client message",
-        clientMessageId,
+        clientEventId,
       },
       [201],
     );
@@ -388,40 +393,40 @@ describe("CHAT-02 chat messages and visible validation", () => {
       createdAt: expect.any(String),
     });
 
-    const afterRetry = await api.listThreadMessages(actor, threadId);
-    expect(afterRetry.messages).toHaveLength(3);
+    const afterRetry = await api.listThreadEvents(actor, threadId);
+    expect(afterRetry.events).toHaveLength(3);
 
     const secondThread = await api.createThread(actor, {
       agentId: agent.agentId,
       title: "Duplicate client message id",
     });
-    const duplicateAcrossThreads = await api.requestSendMessage(
+    const duplicateAcrossThreads = await api.requestSendEvent(
       actor,
       {
         agentId: agent.agentId,
         threadId: secondThread.id,
         prompt: "Reuse the client message id in another thread",
-        clientMessageId,
+        clientEventId,
       },
       [409],
     );
     expectApiError(duplicateAcrossThreads.body);
     expect(duplicateAcrossThreads.body.error.code).toBe("CONFLICT");
     expect(duplicateAcrossThreads.body.error.message).toBe(
-      "clientMessageId is already in use",
+      "clientEventId is already in use",
     );
 
     if (!rejectedUserMessage) {
       throw new Error("Expected the no-credit send to create a user message");
     }
 
-    const unavailableFollowup = await api.requestSendMessage(
+    const unavailableFollowup = await api.requestSendEvent(
       actor,
       {
         agentId: agent.agentId,
         threadId,
         prompt: "Use a stale recommended follow-up",
-        revokesMessageId: rejectedUserMessage.id,
+        revokesEventId: rejectedUserMessage.id,
       },
       [400],
     );
@@ -431,25 +436,25 @@ describe("CHAT-02 chat messages and visible validation", () => {
       "Recommended follow-up is no longer available",
     );
 
-    const peerRecall = await api.requestSendMessage(
+    const peerRecall = await api.requestSendEvent(
       peer,
       {
         agentId: agent.agentId,
         threadId,
-        revokesMessageId: rejectedUserMessage.id,
+        revokesEventId: rejectedUserMessage.id,
       },
       [404],
     );
     expectApiError(peerRecall.body);
     expect(peerRecall.body.error.code).toBe("NOT_FOUND");
 
-    const recalled = await api.requestSendMessage(
+    const recalled = await api.requestSendEvent(
       actor,
       {
         agentId: agent.agentId,
         threadId,
-        revokesMessageId: rejectedUserMessage.id,
-        clientMessageId: randomUUID(),
+        revokesEventId: rejectedUserMessage.id,
+        clientEventId: randomUUID(),
       },
       [201],
     );
@@ -462,19 +467,19 @@ describe("CHAT-02 chat messages and visible validation", () => {
       createdAt: expect.any(String),
     });
 
-    const afterRecall = await api.listThreadMessages(actor, threadId);
+    const afterRecall = await api.listThreadEvents(actor, threadId);
     expect(
-      afterRecall.messages.some((message) => {
-        return message.revokesMessageId === rejectedUserMessage.id;
+      afterRecall.events.some((message) => {
+        return message.revokesEventId === rejectedUserMessage.id;
       }),
     ).toBeTruthy();
 
-    const repeatedRecall = await api.requestSendMessage(
+    const repeatedRecall = await api.requestSendEvent(
       actor,
       {
         agentId: agent.agentId,
         threadId,
-        revokesMessageId: rejectedUserMessage.id,
+        revokesEventId: rejectedUserMessage.id,
       },
       [201],
     );
@@ -483,14 +488,14 @@ describe("CHAT-02 chat messages and visible validation", () => {
       threadId,
       createdAt: expect.any(String),
     });
-    const afterRepeatedRecall = await api.listThreadMessages(actor, threadId);
+    const afterRepeatedRecall = await api.listThreadEvents(actor, threadId);
     expect(
-      afterRepeatedRecall.messages.filter((message) => {
-        return message.revokesMessageId === rejectedUserMessage.id;
+      afterRepeatedRecall.events.filter((message) => {
+        return message.revokesEventId === rejectedUserMessage.id;
       }),
     ).toHaveLength(1);
 
-    const interrupted = await api.requestSendMessage(
+    const interrupted = await api.requestSendEvent(
       actor,
       {
         agentId: agent.agentId,
@@ -512,7 +517,7 @@ describe("CHAT-02 chat messages and visible validation", () => {
       displayName: "Client-thread retry branch agent",
     });
 
-    const invalidTemplate = await api.requestSendMessage(
+    const invalidTemplate = await api.requestSendEvent(
       actor,
       {
         agentId: agent.agentId,
@@ -533,7 +538,7 @@ describe("CHAT-02 chat messages and visible validation", () => {
     );
 
     const clientThreadId = randomUUID();
-    const first = await api.requestSendMessage(
+    const first = await api.requestSendEvent(
       actor,
       {
         agentId: agent.agentId,
@@ -547,7 +552,7 @@ describe("CHAT-02 chat messages and visible validation", () => {
     }
     expect(first.body.threadId).toBe(clientThreadId);
 
-    const retry = await api.requestSendMessage(
+    const retry = await api.requestSendEvent(
       actor,
       {
         agentId: agent.agentId,
@@ -563,7 +568,7 @@ describe("CHAT-02 chat messages and visible validation", () => {
     const otherAgent = await bdd.createAgent(actor, {
       displayName: "Client-thread mismatch branch agent",
     });
-    const reusedClientThreadForOtherAgent = await api.requestSendMessage(
+    const reusedClientThreadForOtherAgent = await api.requestSendEvent(
       actor,
       {
         agentId: otherAgent.agentId,
@@ -580,7 +585,7 @@ describe("CHAT-02 chat messages and visible validation", () => {
       agentId: agent.agentId,
       title: "Owner-only send target",
     });
-    const peerSendToOwnerThread = await api.requestSendMessage(
+    const peerSendToOwnerThread = await api.requestSendEvent(
       peer,
       {
         agentId: agent.agentId,
@@ -592,7 +597,7 @@ describe("CHAT-02 chat messages and visible validation", () => {
     expectApiError(peerSendToOwnerThread.body);
     expect(peerSendToOwnerThread.body.error.code).toBe("NOT_FOUND");
 
-    const modelSelected = await api.requestSendMessage(
+    const modelSelected = await api.requestSendEvent(
       actor,
       {
         agentId: agent.agentId,
@@ -623,7 +628,7 @@ describe("CHAT-02 chat messages and visible validation", () => {
     );
   });
 
-  it("lists visible messages and rejects invalid send requests without hidden fixtures", async () => {
+  it("lists visible events and rejects invalid send requests without hidden fixtures", async () => {
     const actor = bdd.user();
     const peer = bdd.user({ orgId: actor.orgId });
     const compose = await api.createComposeForChatThread(actor);
@@ -632,10 +637,10 @@ describe("CHAT-02 chat messages and visible validation", () => {
       title: "Message validation",
     });
 
-    const initialMessages = await api.listThreadMessages(actor, thread.id);
-    expect(initialMessages.messages).toStrictEqual([]);
+    const initialMessages = await api.listThreadEvents(actor, thread.id);
+    expect(initialMessages.events).toStrictEqual([]);
 
-    const unauthenticated = await api.requestSendMessage(
+    const unauthenticated = await api.requestSendEvent(
       null,
       { agentId: randomUUID(), prompt: "hello" },
       [401],
@@ -643,7 +648,7 @@ describe("CHAT-02 chat messages and visible validation", () => {
     expectApiError(unauthenticated.body);
     expect(unauthenticated.body.error.code).toBe("UNAUTHORIZED");
 
-    const missingAgent = await api.requestSendMessage(
+    const missingAgent = await api.requestSendEvent(
       actor,
       { agentId: randomUUID(), prompt: "hello" },
       [404],
@@ -651,7 +656,7 @@ describe("CHAT-02 chat messages and visible validation", () => {
     expectApiError(missingAgent.body);
     expect(missingAgent.body.error.code).toBe("NOT_FOUND");
 
-    const blankPrompt = await api.requestSendMessage(
+    const blankPrompt = await api.requestSendEvent(
       actor,
       { agentId: randomUUID(), prompt: "" },
       [400],
@@ -663,7 +668,7 @@ describe("CHAT-02 chat messages and visible validation", () => {
       displayName: "Private chat send agent",
       visibility: "private",
     });
-    const forbiddenPrivateAgent = await api.requestSendMessage(
+    const forbiddenPrivateAgent = await api.requestSendEvent(
       peer,
       {
         agentId: privateAgent.agentId,
@@ -688,15 +693,15 @@ describe("CHAT-02 chat messages and visible validation", () => {
       title: "Zero message boundary",
     });
 
-    const ownerMessages = await api.listThreadMessages(owner, thread.id, {
+    const ownerMessages = await api.listThreadEvents(owner, thread.id, {
       limit: 1,
     });
     expect(ownerMessages).toStrictEqual({
-      messages: [],
+      events: [],
       hasHistoryBefore: false,
     });
 
-    const peerMessages = await api.requestListThreadMessages(
+    const peerMessages = await api.requestListThreadEvents(
       peer,
       thread.id,
       { limit: 1 },
@@ -705,7 +710,7 @@ describe("CHAT-02 chat messages and visible validation", () => {
     expectApiError(peerMessages.body);
     expect(peerMessages.body.error.code).toBe("NOT_FOUND");
 
-    const missingMessages = await api.requestListThreadMessages(
+    const missingMessages = await api.requestListThreadEvents(
       owner,
       randomUUID(),
       {},

@@ -20,6 +20,24 @@ _WEBSOCKET_KEY = "dGhlIHNhbXBsZSBub25jZQ=="
 _WEBSOCKET_ACCEPT = "s3pPLMBiTxaQ9kYGzzhZRbK+xOo="
 
 
+def signed_raw_usage_pricing_headers(pricing: str) -> dict[str, str]:
+    signature = (
+        base64.urlsafe_b64encode(
+            hmac.new(
+                b"proxy-secret",
+                b"vm0-model-usage-pricing-v1\0" + pricing.encode("ascii"),
+                hashlib.sha256,
+            ).digest()
+        )
+        .decode()
+        .rstrip("=")
+    )
+    return {
+        "x-vm0-usage-pricing": pricing,
+        "x-vm0-usage-pricing-signature": signature,
+    }
+
+
 def signed_usage_pricing_headers(
     unit_prices: dict[str, object] | None = None,
     *,
@@ -48,21 +66,7 @@ def signed_usage_pricing_headers(
         .decode()
         .rstrip("=")
     )
-    signature = (
-        base64.urlsafe_b64encode(
-            hmac.new(
-                b"proxy-secret",
-                b"vm0-model-usage-pricing-v1\0" + pricing.encode(),
-                hashlib.sha256,
-            ).digest()
-        )
-        .decode()
-        .rstrip("=")
-    )
-    return {
-        "x-vm0-usage-pricing": pricing,
-        "x-vm0-usage-pricing-signature": signature,
-    }
+    return signed_raw_usage_pricing_headers(pricing)
 
 
 def _openai_responses_websocket_request_headers() -> http.Headers:

@@ -15,7 +15,6 @@ import type { RouteEntry } from "../route-entry";
 import { loadUserFeatureSwitchContext } from "../services/feature-switches.service";
 import { settle } from "../utils";
 import {
-  checkFeishuInstallationManagementAccess$,
   configureFeishuInstallation$,
   type ConfigureFeishuResult,
   disconnectFeishuConnection$,
@@ -29,20 +28,7 @@ function adminRequired() {
     status: 403 as const,
     body: {
       error: {
-        message: "Only organization admins can configure Feishu",
-        code: "FORBIDDEN" as const,
-      },
-    },
-  };
-}
-
-function managementRequired() {
-  return {
-    status: 403 as const,
-    body: {
-      error: {
-        message:
-          "Only the bot owner or organization admins can manage this Feishu bot",
+        message: "Only organization admins can manage Feishu bots",
         code: "FORBIDDEN" as const,
       },
     },
@@ -88,6 +74,10 @@ const checkAppId$ = computed(async (get) => {
   if (!(await get(feishuIntegrationEnabled$))) {
     return feishuIntegrationDisabled;
   }
+  const auth = get(organizationAuthContext$);
+  if (auth.orgRole !== "admin") {
+    return adminRequired();
+  }
   const query = get(queryOf(zeroFeishuConnectContract.checkAppId));
   const [installation] = await get(db$)
     .select({ id: feishuOrgInstallations.id })
@@ -104,6 +94,9 @@ const setup$ = command(async ({ get, set }, signal: AbortSignal) => {
     return feishuIntegrationDisabled;
   }
   const auth = get(organizationAuthContext$);
+  if (auth.orgRole !== "admin") {
+    return adminRequired();
+  }
   const bodyResult = await get(bodyResultOf(zeroFeishuConnectContract.setup));
   signal.throwIfAborted();
   if (!bodyResult.ok) {
@@ -115,7 +108,6 @@ const setup$ = command(async ({ get, set }, signal: AbortSignal) => {
       {
         orgId: auth.orgId,
         userId: auth.userId,
-        isAdmin: auth.orgRole === "admin",
         ...bodyResult.data,
       },
       signal,
@@ -141,8 +133,8 @@ const setup$ = command(async ({ get, set }, signal: AbortSignal) => {
   if (result.kind === "app_in_use") {
     return conflict("This Feishu App ID is already registered in VM0");
   }
-  if (result.kind === "forbidden") {
-    return managementRequired();
+  if (result.kind === "installation_exists") {
+    return conflict("This workspace already has a Feishu bot");
   }
   const status = await get(
     feishuConnectStatus({
@@ -192,25 +184,12 @@ const updateInstallation$ = command(
       return feishuIntegrationDisabled;
     }
     const auth = get(organizationAuthContext$);
+    if (auth.orgRole !== "admin") {
+      return adminRequired();
+    }
     const params = get(
       pathParamsOf(zeroFeishuConnectContract.updateInstallation),
     );
-    const access = await set(
-      checkFeishuInstallationManagementAccess$,
-      {
-        orgId: auth.orgId,
-        userId: auth.userId,
-        isAdmin: auth.orgRole === "admin",
-        installationId: params.installationId,
-      },
-      signal,
-    );
-    if (access === "not_found") {
-      return notFound("Feishu integration not found");
-    }
-    if (access === "forbidden") {
-      return managementRequired();
-    }
     const bodyResult = await get(
       bodyResultOf(zeroFeishuConnectContract.updateInstallation),
     );
@@ -259,25 +238,12 @@ const removeInstallation$ = command(
       return feishuIntegrationDisabled;
     }
     const auth = get(organizationAuthContext$);
+    if (auth.orgRole !== "admin") {
+      return adminRequired();
+    }
     const params = get(
       pathParamsOf(zeroFeishuConnectContract.removeInstallation),
     );
-    const access = await set(
-      checkFeishuInstallationManagementAccess$,
-      {
-        orgId: auth.orgId,
-        userId: auth.userId,
-        isAdmin: auth.orgRole === "admin",
-        installationId: params.installationId,
-      },
-      signal,
-    );
-    if (access === "not_found") {
-      return notFound("Feishu integration not found");
-    }
-    if (access === "forbidden") {
-      return managementRequired();
-    }
     const removed = await set(
       removeFeishuInstallation$,
       { orgId: auth.orgId, installationId: params.installationId },

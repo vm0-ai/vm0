@@ -7,7 +7,7 @@ import {
 } from "node:crypto";
 
 import {
-  chatThreadMessagesContract,
+  chatThreadEventsContract,
   chatThreadsContract,
 } from "@vm0/api-contracts/contracts/chat-threads";
 import { zeroTeamsConnectContract } from "@vm0/api-contracts/contracts/zero-teams-connect";
@@ -1488,15 +1488,15 @@ describe("POST /api/zero/teams/bot", () => {
     if (!chatThreadCreated) {
       throw new Error("Expected the canonical Teams file chat thread");
     }
-    const threadMessages = await accept(
-      setupApp({ context })(chatThreadMessagesContract).list({
+    const threadEventsPage = await accept(
+      setupApp({ context })(chatThreadEventsContract).list({
         headers: { authorization: "Bearer clerk-session" },
         params: { threadId: chatThreadCreated.chatThreadId },
         query: {},
       }),
       [200],
     );
-    expect(threadMessages.body.messages).toContainEqual(
+    expect(threadEventsPage.body.events).toContainEqual(
       expect.objectContaining({
         content: [
           "please inspect this",
