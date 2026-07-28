@@ -1,6 +1,7 @@
 import {
   createCipheriv,
   createHash,
+  createHmac,
   randomBytes,
   randomUUID,
 } from "node:crypto";
@@ -18,7 +19,7 @@ import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
 import { createAppWithRoutes } from "../../../app-factory-core";
-import { mockEnv, mockOptionalEnv } from "../../../lib/env";
+import { env, mockEnv, mockOptionalEnv } from "../../../lib/env";
 import { server } from "../../../mocks/server";
 import { flushWaitUntilForTest } from "../../context/wait-until";
 import { now } from "../../external/time";
@@ -108,6 +109,24 @@ function feishuConnectBody(connectUrl: string) {
       "Expected signature in Feishu connect URL",
     ),
   };
+}
+
+function legacyFeishuAppOAuthState(args: {
+  readonly installationId: string;
+  readonly orgId: string;
+  readonly userId: string;
+}): string {
+  const encodedPayload = Buffer.from(
+    JSON.stringify({
+      ...args,
+      callbackTarget: "app",
+      timestamp: Math.floor(now() / 1000),
+    }),
+  ).toString("base64url");
+  const signature = createHmac("sha256", env("SECRETS_ENCRYPTION_KEY"))
+    .update(encodedPayload)
+    .digest("base64url");
+  return `${encodedPayload}.${signature}`;
 }
 
 function encryptPayload(payload: unknown): string {
@@ -330,12 +349,6 @@ beforeEach(() => {
         },
       });
     }),
-    http.post("https://open.feishu.cn/open-apis/authen/v2/oauth/token", () => {
-      return HttpResponse.json({
-        code: 0,
-        access_token: "feishu-user-access-token",
-      });
-    }),
     http.get("https://open.feishu.cn/open-apis/authen/v1/user_info", () => {
       return HttpResponse.json({
         code: 0,
@@ -355,6 +368,7 @@ describe("Feishu integration", () => {
   let removedReactions: string[];
   let historyMessages: readonly Readonly<Record<string, unknown>>[];
   let failedSendTargets: string[];
+  let oauthTokenRedirectUris: string[];
 
   beforeEach(() => {
     outboundMessages = [];
@@ -362,7 +376,27 @@ describe("Feishu integration", () => {
     removedReactions = [];
     historyMessages = [];
     failedSendTargets = [];
+    oauthTokenRedirectUris = [];
     server.use(
+      http.post(
+        "https://open.feishu.cn/open-apis/authen/v2/oauth/token",
+        async ({ request }) => {
+          const body: unknown = await request.json();
+          if (
+            typeof body !== "object" ||
+            body === null ||
+            !("redirect_uri" in body) ||
+            typeof body.redirect_uri !== "string"
+          ) {
+            throw new Error("Expected Feishu OAuth redirect URI");
+          }
+          oauthTokenRedirectUris.push(body.redirect_uri);
+          return HttpResponse.json({
+            code: 0,
+            access_token: "feishu-user-access-token",
+          });
+        },
+      ),
       http.post(
         "https://open.feishu.cn/open-apis/im/v1/messages/:messageId/reply",
         async ({ params, request }) => {
@@ -1025,7 +1059,7 @@ describe("Feishu integration", () => {
     const connectUrl = status.body.installations?.[0]?.connectUrl;
     expect(connectUrl).toBeDefined();
     expect(status.body.oauthRedirectUrl).toBe(
-      "https://www.vm0.test/api/zero/feishu/oauth/callback",
+      `${APP_ORIGIN}/connectors/feishu/callback`,
     );
     if (!connectUrl) {
       throw new Error("Expected Feishu status to return an OAuth connect URL");
@@ -1057,7 +1091,7 @@ describe("Feishu integration", () => {
     expect(authorizationUrl.origin).toBe("https://accounts.feishu.cn");
     expect(authorizationUrl.searchParams.get("client_id")).toBe(appId);
     expect(authorizationUrl.searchParams.get("redirect_uri")).toBe(
-      "https://www.vm0.test/api/zero/feishu/oauth/callback",
+      `${APP_ORIGIN}/connectors/feishu/callback`,
     );
     const state = authorizationUrl.searchParams.get("state");
     if (!state) {
@@ -1088,6 +1122,26 @@ describe("Feishu integration", () => {
     await expect(callbackResponse.json()).resolves.toStrictEqual({
       redirectUrl: `https://applink.feishu.cn/client/bot/open?appId=${appId}`,
     });
+    expect(oauthTokenRedirectUris).toStrictEqual([
+      `${APP_ORIGIN}/connectors/feishu/callback`,
+    ]);
+
+    const legacyCallbackResponse = await oauthApp.request(
+      `${zeroFeishuOauthContract.callback.path}?${new URLSearchParams({
+        code: "legacy-feishu-oauth-code",
+        responseMode: "json",
+        state: legacyFeishuAppOAuthState({
+          installationId,
+          orgId: requireValue(actor.orgId, "Expected an organization"),
+          userId: actor.userId,
+        }),
+      })}`,
+    );
+    expect(legacyCallbackResponse.status).toBe(200);
+    expect(oauthTokenRedirectUris).toStrictEqual([
+      `${APP_ORIGIN}/connectors/feishu/callback`,
+      "https://www.vm0.test/api/zero/feishu/oauth/callback",
+    ]);
     await flushWaitUntilForTest();
 
     mocks.clerk.session(actor.userId, actor.orgId, actor.orgRole);

@@ -296,12 +296,14 @@ function FeishuCredentialInput({
   label,
   form,
   saving,
+  readOnly,
   placeholder,
 }: {
   field: FeishuCredentialField;
   label: string;
   form: FeishuSetupInput;
   saving: boolean;
+  readOnly: boolean;
   placeholder?: string;
 }) {
   const updateForm = useSet(updateFeishuSetupForm$);
@@ -315,10 +317,10 @@ function FeishuCredentialInput({
         id={id}
         type={field === "appId" ? "text" : "password"}
         value={form[field]}
-        disabled={saving}
+        disabled={saving || readOnly}
         required
         autoComplete="off"
-        placeholder={placeholder}
+        placeholder={readOnly && field !== "appId" ? "Configured" : placeholder}
         onChange={(event) => {
           updateForm({ [field]: event.target.value });
         }}
@@ -330,9 +332,11 @@ function FeishuCredentialInput({
 function FeishuAppCredentialFields({
   form,
   saving,
+  readOnly,
 }: {
   form: FeishuSetupInput;
   saving: boolean;
+  readOnly: boolean;
 }) {
   return (
     <div className="grid gap-4 sm:grid-cols-2">
@@ -341,6 +345,7 @@ function FeishuAppCredentialFields({
         label="App ID"
         form={form}
         saving={saving}
+        readOnly={readOnly}
         placeholder="cli_..."
       />
       <FeishuCredentialInput
@@ -348,6 +353,7 @@ function FeishuAppCredentialFields({
         label="App Secret"
         form={form}
         saving={saving}
+        readOnly={readOnly}
       />
     </div>
   );
@@ -356,9 +362,11 @@ function FeishuAppCredentialFields({
 function FeishuEventCredentialFields({
   form,
   saving,
+  readOnly,
 }: {
   form: FeishuSetupInput;
   saving: boolean;
+  readOnly: boolean;
 }) {
   return (
     <div className="grid gap-4 sm:grid-cols-2">
@@ -367,12 +375,14 @@ function FeishuEventCredentialFields({
         label="Encrypt Key"
         form={form}
         saving={saving}
+        readOnly={readOnly}
       />
       <FeishuCredentialInput
         field="verificationToken"
         label="Verification Token"
         form={form}
         saving={saving}
+        readOnly={readOnly}
       />
     </div>
   );
@@ -384,6 +394,7 @@ function FeishuAgentSelect({
   orgDefaultAgentId,
   orgDefaultAgentName,
   saving,
+  readOnly,
   onAgentChange,
 }: {
   form: FeishuSetupInput;
@@ -391,6 +402,7 @@ function FeishuAgentSelect({
   orgDefaultAgentId: string | null;
   orgDefaultAgentName: string | null;
   saving: boolean;
+  readOnly: boolean;
   onAgentChange?: (defaultAgentId: string) => void;
 }) {
   const updateForm = useSet(updateFeishuSetupForm$);
@@ -401,7 +413,7 @@ function FeishuAgentSelect({
       </label>
       <Select
         value={form.defaultAgentId}
-        disabled={saving}
+        disabled={saving || readOnly}
         onValueChange={(defaultAgentId) => {
           updateForm({ defaultAgentId });
           onAgentChange?.(defaultAgentId);
@@ -494,9 +506,11 @@ function FeishuCreateStep() {
 function FeishuCredentialsStep({
   form,
   saving,
+  readOnly,
 }: {
   form: FeishuSetupInput;
   saving: boolean;
+  readOnly: boolean;
 }) {
   return (
     <div className="space-y-4">
@@ -515,7 +529,11 @@ function FeishuCredentialsStep({
           />
         </div>
       </div>
-      <FeishuAppCredentialFields form={form} saving={saving} />
+      <FeishuAppCredentialFields
+        form={form}
+        saving={saving}
+        readOnly={readOnly}
+      />
     </div>
   );
 }
@@ -523,9 +541,11 @@ function FeishuCredentialsStep({
 function FeishuTokensStep({
   form,
   saving,
+  readOnly,
 }: {
   form: FeishuSetupInput;
   saving: boolean;
+  readOnly: boolean;
 }) {
   return (
     <div className="space-y-4">
@@ -554,7 +574,11 @@ function FeishuTokensStep({
           />
         </div>
       </div>
-      <FeishuEventCredentialFields form={form} saving={saving} />
+      <FeishuEventCredentialFields
+        form={form}
+        saving={saving}
+        readOnly={readOnly}
+      />
     </div>
   );
 }
@@ -661,12 +685,14 @@ function FeishuPublishStep({
   agents,
   orgDefaultAgentId,
   orgDefaultAgentName,
+  readOnly,
 }: {
   data: FeishuDialogData | null;
   form: FeishuSetupInput;
   agents: TeamComposeItem[];
   orgDefaultAgentId: string | null;
   orgDefaultAgentName: string | null;
+  readOnly: boolean;
 }) {
   const [updateLoadable, updateAgent] = useLoadableSet(
     updateFeishuInstallationAgent$,
@@ -718,6 +744,7 @@ function FeishuPublishStep({
           orgDefaultAgentId={orgDefaultAgentId}
           orgDefaultAgentName={orgDefaultAgentName}
           saving={!data?.id || updateLoadable.state === "loading"}
+          readOnly={readOnly}
           onAgentChange={(defaultAgentId) => {
             if (!data?.id) {
               return;
@@ -741,6 +768,7 @@ function FeishuSetupStepContent({
   orgDefaultAgentId,
   orgDefaultAgentName,
   saving,
+  readOnly,
 }: {
   step: FeishuSetupStep;
   data: FeishuDialogData | null;
@@ -749,16 +777,25 @@ function FeishuSetupStepContent({
   orgDefaultAgentId: string | null;
   orgDefaultAgentName: string | null;
   saving: boolean;
+  readOnly: boolean;
 }) {
   switch (step) {
     case "create": {
       return <FeishuCreateStep />;
     }
     case "credentials": {
-      return <FeishuCredentialsStep form={form} saving={saving} />;
+      return (
+        <FeishuCredentialsStep
+          form={form}
+          saving={saving}
+          readOnly={readOnly}
+        />
+      );
     }
     case "tokens": {
-      return <FeishuTokensStep form={form} saving={saving} />;
+      return (
+        <FeishuTokensStep form={form} saving={saving} readOnly={readOnly} />
+      );
     }
     case "redirect": {
       return <FeishuRedirectStep data={data} />;
@@ -774,6 +811,7 @@ function FeishuSetupStepContent({
           agents={agents}
           orgDefaultAgentId={orgDefaultAgentId}
           orgDefaultAgentName={orgDefaultAgentName}
+          readOnly={readOnly}
         />
       );
     }
@@ -839,7 +877,11 @@ function feishuSetupContinueLabel(args: {
   readonly saving: boolean;
   readonly checkingAppId: boolean;
   readonly callbackVerified: boolean;
+  readonly readOnly: boolean;
 }): string {
+  if (args.readOnly) {
+    return args.step === "publish" ? "Done" : "Next";
+  }
   if (args.step === "tokens") {
     return args.saving ? "Verifying…" : "Verify and continue";
   }
@@ -858,6 +900,7 @@ function FeishuSetupWizardFooter({
   saving,
   checkingAppId,
   canContinue,
+  readOnly,
   onClose,
   onBack,
   onContinue,
@@ -867,16 +910,19 @@ function FeishuSetupWizardFooter({
   saving: boolean;
   checkingAppId: boolean;
   canContinue: boolean;
+  readOnly: boolean;
   onClose: () => void;
   onBack: () => void;
   onContinue: () => void;
 }) {
   const isFirstStep = step === "create";
+  const firstStepLabel = readOnly ? "Close" : "Cancel";
   const continueLabel = feishuSetupContinueLabel({
     step,
     saving,
     checkingAppId,
     callbackVerified: data?.callbackVerified ?? false,
+    readOnly,
   });
   return (
     <DialogFooter>
@@ -887,7 +933,7 @@ function FeishuSetupWizardFooter({
         onClick={isFirstStep ? onClose : onBack}
       >
         {isFirstStep ? (
-          "Cancel"
+          firstStepLabel
         ) : (
           <span className="inline-flex items-center gap-2">
             <IconArrowLeft size={16} />
@@ -896,13 +942,13 @@ function FeishuSetupWizardFooter({
         )}
       </Button>
       <Button
-        type={step === "tokens" ? "submit" : "button"}
+        type={step === "tokens" && !readOnly ? "submit" : "button"}
         disabled={!canContinue}
-        onClick={step === "tokens" ? undefined : onContinue}
+        onClick={step === "tokens" && !readOnly ? undefined : onContinue}
       >
         {saving ? <IconLoader2 size={16} className="animate-spin" /> : null}
         {continueLabel}
-        {step !== "tokens" && step !== "publish" ? (
+        {(step !== "tokens" || readOnly) && step !== "publish" ? (
           <IconArrowRight size={16} />
         ) : null}
       </Button>
@@ -915,12 +961,14 @@ function FeishuSetupWizard({
   agents,
   orgDefaultAgentId,
   orgDefaultAgentName,
+  readOnly,
   onClose,
 }: {
   data: FeishuDialogData | null;
   agents: TeamComposeItem[];
   orgDefaultAgentId: string | null;
   orgDefaultAgentName: string | null;
+  readOnly: boolean;
   onClose: () => void;
 }) {
   const step = useGet(feishuSetupStep$);
@@ -940,11 +988,12 @@ function FeishuSetupWizard({
     setupLoadable.state === "loading" ||
     completionLoadable.state === "loading";
   const canSave = canSubmitFeishuSetup(form, saving);
-  const canContinue = canContinueFeishuSetup({ step, data, form, saving });
+  const canContinue =
+    readOnly || canContinueFeishuSetup({ step, data, form, saving });
 
   const submit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    if (step !== "tokens" || !canSave) {
+    if (readOnly || step !== "tokens" || !canSave) {
       return;
     }
     detach(
@@ -961,6 +1010,10 @@ function FeishuSetupWizard({
       return;
     }
     if (step === "publish") {
+      if (readOnly) {
+        onClose();
+        return;
+      }
       const installationId = data?.id;
       if (!installationId) {
         return;
@@ -998,6 +1051,7 @@ function FeishuSetupWizard({
         orgDefaultAgentId={orgDefaultAgentId}
         orgDefaultAgentName={orgDefaultAgentName}
         saving={saving}
+        readOnly={readOnly}
       />
       <FeishuSetupWizardFooter
         step={step}
@@ -1005,6 +1059,7 @@ function FeishuSetupWizard({
         saving={saving}
         checkingAppId={appIdCheckLoadable.state === "loading"}
         canContinue={canContinue}
+        readOnly={readOnly}
         onClose={onClose}
         onBack={goBack}
         onContinue={continueFlow}
@@ -1132,22 +1187,20 @@ function FeishuBotMenu({
       <PopoverContent align="end" className="flex w-40 flex-col gap-0.5 p-2">
         {bot.canManage ? (
           <>
-            {!bot.setupCompleted ? (
-              <button
-                type="button"
-                className="flex w-full items-center gap-2 rounded-md px-3 py-2 text-left text-sm transition-colors hover:bg-accent hover:text-accent-foreground"
-                onClick={() => {
-                  open({
-                    appId: bot.appId,
-                    defaultAgentId: bot.defaultAgentId,
-                    step: "events",
-                    installationId: bot.id,
-                  });
-                }}
-              >
-                Manage
-              </button>
-            ) : null}
+            <button
+              type="button"
+              className="flex w-full items-center gap-2 rounded-md px-3 py-2 text-left text-sm transition-colors hover:bg-accent hover:text-accent-foreground"
+              onClick={() => {
+                open({
+                  appId: bot.appId,
+                  defaultAgentId: bot.defaultAgentId,
+                  step: bot.setupCompleted ? "create" : "events",
+                  installationId: bot.id,
+                });
+              }}
+            >
+              {bot.setupCompleted ? "Review guide" : "Manage"}
+            </button>
             <button
               type="button"
               disabled={!bot.id}
@@ -1322,6 +1375,61 @@ function FeishuBotsCard({
   );
 }
 
+function FeishuSetupFaq() {
+  return (
+    <section
+      className="zero-card overflow-hidden"
+      aria-labelledby="feishu-setup-faq-title"
+    >
+      <div className="border-b border-border/50 px-4 py-3">
+        <h2
+          id="feishu-setup-faq-title"
+          className="text-sm font-medium text-foreground"
+        >
+          Setup FAQ
+        </h2>
+      </div>
+      <div className="divide-y divide-border/50">
+        <details className="group px-4 py-4 sm:px-5">
+          <summary className="flex cursor-pointer list-none items-start gap-2 text-sm font-medium text-foreground">
+            <IconChevronRight
+              size={17}
+              aria-hidden="true"
+              className="mt-0.5 shrink-0 text-muted-foreground transition-transform group-open:rotate-90"
+            />
+            <span>
+              Why does Feishu show &quot;Challenge code didn&apos;t get a
+              response&quot;?
+            </span>
+          </summary>
+          <p className="mt-2 pl-[25px] text-sm leading-relaxed text-muted-foreground">
+            This usually means the Encrypt Key or Verification Token saved
+            during the Tokens step is incorrect. Return to the Tokens step,
+            enter both values from Event Configuration → Encryption Strategy
+            again, save them, and retry the Request URL.
+          </p>
+        </details>
+        <details className="group px-4 py-4 sm:px-5">
+          <summary className="flex cursor-pointer list-none items-start gap-2 text-sm font-medium text-foreground">
+            <IconChevronRight
+              size={17}
+              aria-hidden="true"
+              className="mt-0.5 shrink-0 text-muted-foreground transition-transform group-open:rotate-90"
+            />
+            <span>Why is publishing the app waiting for approval?</span>
+          </summary>
+          <p className="mt-2 pl-[25px] text-sm leading-relaxed text-muted-foreground">
+            If availability is set to All members, a Feishu administrator must
+            approve the release. Feishu sends the approval request to an
+            administrator in a direct message, and the app remains pending until
+            an administrator completes the review.
+          </p>
+        </details>
+      </div>
+    </section>
+  );
+}
+
 function FeishuSettingsSkeleton() {
   return (
     <section
@@ -1382,12 +1490,14 @@ function FeishuDialogBody({
       </p>
     );
   }
+  const readOnly = data?.setupCompleted ?? false;
   return (
     <FeishuSetupWizard
       data={data}
       agents={agents}
       orgDefaultAgentId={orgDefaultAgentId}
       orgDefaultAgentName={orgDefaultAgentName}
+      readOnly={readOnly}
       onClose={onClose}
     />
   );
@@ -1409,6 +1519,14 @@ function FeishuSetupDialog({
   const open = useGet(feishuDialogOpen$);
   const existing = useGet(feishuDialogExisting$);
   const close = useSet(closeFeishuDialog$);
+  const readOnly = data?.setupCompleted ?? false;
+  let title = existing ? "Manage Feishu bot" : "Add a Feishu bot";
+  let description =
+    "Create an enterprise custom app, enable its bot, and complete these steps in the Feishu developer console.";
+  if (readOnly) {
+    title = "Feishu review guide";
+    description = "Review the completed setup steps for this Feishu bot.";
+  }
   return (
     <Dialog
       open={open}
@@ -1425,13 +1543,8 @@ function FeishuSetupDialog({
         }}
       >
         <DialogHeader>
-          <DialogTitle>
-            {existing ? "Manage Feishu bot" : "Add a Feishu bot"}
-          </DialogTitle>
-          <DialogDescription>
-            Create an enterprise custom app, enable its bot, and complete these
-            steps in the Feishu developer console.
-          </DialogDescription>
+          <DialogTitle>{title}</DialogTitle>
+          <DialogDescription>{description}</DialogDescription>
         </DialogHeader>
         <FeishuDialogBody
           data={data}
@@ -1682,6 +1795,7 @@ export function ZeroFeishuSettingsPage() {
               <FeishuUninstallDialog bot={uninstallBot} />
             </>
           )}
+          <FeishuSetupFaq />
         </div>
       </main>
     </div>

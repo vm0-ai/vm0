@@ -18,7 +18,7 @@ import {
 } from "../external/feishu-client";
 import { tapError } from "../utils";
 import { encryptPersistentSecretValue } from "./crypto.utils";
-import { feishuCallbackUrl, feishuOAuthCallbackUrl } from "./feishu-config";
+import { feishuCallbackUrl, feishuOAuthAppCallbackUrl } from "./feishu-config";
 import { buildFeishuOAuthConnectUrl } from "./feishu-oauth-state";
 
 const L = logger("ZeroFeishuConnect");
@@ -103,7 +103,7 @@ function toFeishuInstallationStatus(
     botName: installation.botName,
     botAvatarUrl: installation.botAvatarUrl,
     callbackUrl: feishuCallbackUrl(installation.id),
-    oauthRedirectUrl: feishuOAuthCallbackUrl(),
+    oauthRedirectUrl: feishuOAuthAppCallbackUrl(),
     connectUrl: installation.setupCompletedAt
       ? buildFeishuOAuthConnectUrl({
           installationId: installation.id,

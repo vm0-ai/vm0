@@ -14,6 +14,7 @@ const feishuOAuthStateSchema = z.object({
   orgId: z.string().min(1),
   userId: z.string().min(1),
   callbackTarget: z.literal("app").optional(),
+  oauthRedirectTarget: z.literal("app").optional(),
   timestamp: z.number().int(),
 });
 
@@ -30,6 +31,7 @@ function createFeishuOAuthState(args: {
   readonly orgId: string;
   readonly userId: string;
   readonly callbackTarget?: "app";
+  readonly oauthRedirectTarget?: "app";
   readonly timestamp?: number;
 }): string {
   const encodedPayload = Buffer.from(
@@ -86,6 +88,7 @@ export function createFeishuOAuthAuthorizationState(
     orgId: state.orgId,
     userId: state.userId,
     callbackTarget,
+    oauthRedirectTarget: callbackTarget,
     timestamp: state.timestamp,
   });
 }
