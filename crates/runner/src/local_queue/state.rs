@@ -1036,13 +1036,19 @@ fn validate_optional_cancel_dir(group_dir: &Path, cancel_dir: &Path) -> std::io:
 #[cfg(test)]
 mod tests {
     use std::collections::HashMap;
-    use std::os::unix::fs::{PermissionsExt, symlink};
+    use std::os::unix::fs::{MetadataExt, PermissionsExt, symlink};
     use std::path::{Path, PathBuf};
+    use std::time::Duration;
 
     use super::*;
 
     fn mode(path: &Path) -> u32 {
-        std::fs::metadata(path).unwrap().permissions().mode() & 0o777
+        std::fs::metadata(path).unwrap().permissions().mode() & 0o7777
+    }
+
+    fn ctime(path: &Path) -> (i64, i64) {
+        let metadata = std::fs::metadata(path).unwrap();
+        (metadata.ctime(), metadata.ctime_nsec())
     }
 
     fn write_job_request(group_dir: &Path, run_id: RunId, profile: &str) -> PathBuf {
@@ -1111,7 +1117,7 @@ mod tests {
         let group_dir = dir.path();
         let result_dir = super::super::results_dir(group_dir);
         std::fs::create_dir_all(&result_dir).unwrap();
-        std::fs::set_permissions(&result_dir, std::fs::Permissions::from_mode(0o755)).unwrap();
+        std::fs::set_permissions(&result_dir, std::fs::Permissions::from_mode(0o1755)).unwrap();
         let queue = LocalQueue::new(group_dir.to_path_buf());
 
         assert!(queue.write_result_sync(RunId::new_v4(), 0, None));
@@ -1638,6 +1644,21 @@ mod tests {
             .expect("fallback should still discover an eligible job");
 
         assert_eq!(candidate.run_id, eligible);
+    }
+
+    #[test]
+    fn collect_cancel_markers_keeps_private_cancel_dir_ctime() {
+        let dir = tempfile::tempdir().unwrap();
+        let group_dir = dir.path();
+        let cancel_dir = super::super::ensure_cancels_dir(group_dir).unwrap();
+        let queue = LocalQueue::new(group_dir.to_path_buf());
+        let before = ctime(&cancel_dir);
+        // Separate filesystem clock ticks so an unexpected chmod changes the observed ctime.
+        std::thread::sleep(Duration::from_millis(20));
+
+        assert!(queue.collect_cancel_markers_sync().is_empty());
+
+        assert_eq!(ctime(&cancel_dir), before);
     }
 
     #[test]

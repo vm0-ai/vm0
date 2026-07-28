@@ -81,6 +81,21 @@ class TestLoadRegistry:
         assert result == {}
         assert isinstance(state, registry.RegistryUnavailable)
 
+    def test_fstat_failure_closes_opened_descriptor(self):
+        opened_fd = 42
+        error = OSError("fstat failed")
+
+        with (
+            patch.object(registry.os, "open", return_value=opened_fd),
+            patch.object(registry.os, "fstat", side_effect=error),
+            patch.object(registry.os, "close") as close,
+            pytest.raises(OSError, match="fstat failed") as exc_info,
+        ):
+            registry._open_registry_for_read(Path("registry.json"))
+
+        assert exc_info.value is error
+        close.assert_called_once_with(opened_fd)
+
     def test_cache_returns_same_on_unchanged(self, registry_file):
         result1 = registry.load_registry(str(registry_file))
         result2 = registry.load_registry(str(registry_file))
