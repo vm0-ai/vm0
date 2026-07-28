@@ -6960,6 +6960,53 @@ describe("RUN-02: stored connector injection into claimed runs", () => {
 });
 
 describe("RUN-02: custom connectors, grants, and network policies", () => {
+  it("preserves global fixed-host ownership after selected firewall metadata is used", async () => {
+    const api = createRunsApi(context);
+    const connectors = createConnectorBddApi(context);
+    const { actor, agentId, runnerGroup } = await entitledRunActor();
+
+    await connectors.connectManualGrant(
+      actor,
+      "figma",
+      "api-token",
+      {
+        accessToken: "selected-figma-token",
+      },
+      agentId,
+    );
+    await api.enableAgentConnectors(actor, agentId, ["figma"]);
+
+    const run = await api.createRun(actor, {
+      agentId,
+      prompt: "use selected connector metadata before a global lookup",
+      modelProvider: "anthropic-api-key",
+    });
+    await api.heartbeatRunner(runnerGroup);
+    const claim = await api.claimRunnerJob(run.runId);
+    expect(findFirewallEntry(claim.firewalls, "figma")).toMatchObject({
+      kind: "builtin",
+      name: "figma",
+    });
+
+    const collision = await connectors.requestCreateCustomConnector(
+      actor,
+      {
+        slug: `lazy-global-${randomUUID().slice(0, 8)}`,
+        displayName: "Lazy Global Collision",
+        prefixes: ["https://api.github.com/v3/"],
+        headerName: "Authorization",
+        headerTemplate: "Bearer {{secret}}",
+      },
+      [400],
+    );
+    expectApiError(collision.body);
+    expect(collision.body.error.message).toContain("api.github.com");
+    expect(collision.body.error.message).toContain("GitHub");
+
+    await api.requestCancelRun(actor, run.runId, [200]);
+    expect((await api.readRun(actor, run.runId)).status).toBe("cancelled");
+  });
+
   it("injects enabled custom connector firewalls with resolvable org secrets", async () => {
     const api = createRunsApi(context);
     const connectors = createConnectorBddApi(context);
