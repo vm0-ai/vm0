@@ -387,7 +387,7 @@ async function mutateRunnerJobConnectorPermissionBaseline(
     case "inconsistent": {
       executionContext = sql`jsonb_set(
         ${runnerJobQueue.executionContext},
-        '{connectorPermissionBaseline,connectors,github}',
+        '{connectorPermissionBaseline,connectors,constructor}',
         '{
           "permissionNames": [],
           "defaultPolicy": {

@@ -564,7 +564,10 @@ export function mergeNetworkPolicyRefreshes(
   }
   const merged: NetworkPolicies = { ...networkPolicies };
   for (const refresh of refreshes) {
-    if (networkPolicies && !(refresh.connectorRef in networkPolicies)) {
+    if (
+      networkPolicies &&
+      !Object.hasOwn(networkPolicies, refresh.connectorRef)
+    ) {
       continue;
     }
     merged[refresh.connectorRef] = refresh.networkPolicy;

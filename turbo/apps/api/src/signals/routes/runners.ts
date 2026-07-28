@@ -1208,7 +1208,7 @@ async function refreshClaimNetworkPolicies(args: {
       if (
         !baselineResult.success ||
         Object.keys(baselineResult.data.connectors).some((connectorRef) => {
-          return !(connectorRef in storedNetworkPolicies);
+          return !Object.hasOwn(storedNetworkPolicies, connectorRef);
         })
       ) {
         return await fullRefresh("full_invalid_baseline");
