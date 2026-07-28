@@ -1,5 +1,25 @@
 # Changelog
 
+## [0.649.2](https://github.com/vm0-ai/vm0/compare/app-v0.649.1...app-v0.649.2) (2026-07-28)
+
+
+### Bug Fixes
+
+* **platform:** stabilize presentation template previews ([#23564](https://github.com/vm0-ai/vm0/issues/23564)) ([55b968e](https://github.com/vm0-ai/vm0/commit/55b968e1c377bd9f4536a90b667526023215f705))
+
+
+### Refactoring
+
+* **chat:** migrate and require canonical user messages ([#23505](https://github.com/vm0-ai/vm0/issues/23505)) ([52955a3](https://github.com/vm0-ai/vm0/commit/52955a380745b5d717750eb9409bf064e33c514c))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.242.1
+    * @vm0/core bumped to 8.482.1
+
 ## [0.649.1](https://github.com/vm0-ai/vm0/compare/app-v0.649.0...app-v0.649.1) (2026-07-28)
 
 

@@ -1,5 +1,19 @@
 # Changelog
 
+## [8.482.1](https://github.com/vm0-ai/vm0/compare/core-v8.482.0...core-v8.482.1) (2026-07-28)
+
+
+### Refactoring
+
+* **chat:** migrate and require canonical user messages ([#23505](https://github.com/vm0-ai/vm0/issues/23505)) ([52955a3](https://github.com/vm0-ai/vm0/commit/52955a380745b5d717750eb9409bf064e33c514c))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.242.1
+
 ## [8.482.0](https://github.com/vm0-ai/vm0/compare/core-v8.481.1...core-v8.482.0) (2026-07-28)
 
 
