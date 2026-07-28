@@ -11,15 +11,15 @@ from mitmproxy import http
 
 import flow_metadata
 import matching
+from body_limits import STREAM_BUFFER_LIMIT
 
-MCP_REQUEST_BODY_MAX_BYTES: Final = 64 * 1024
+MCP_REQUEST_BODY_MAX_BYTES: Final = STREAM_BUFFER_LIMIT
 MCP_TOOL_NAME_MAX_LENGTH: Final = 256
 MCP_TOOL_POLICY_MAX_EXACT_NAMES: Final = 128
 MCP_PROTOCOL_VERSION_MODERN: Final = "2026-07-28"
 _CONTENT_TYPE_MAX_PARTS: Final = 2
 _SUPPORTED_PROTOCOL_VERSIONS: Final = frozenset(
     (
-        "2024-11-05",
         "2025-03-26",
         "2025-06-18",
         "2025-11-25",
@@ -73,6 +73,9 @@ def is_mcp_allow(allow: matching.FirewallAllow) -> bool:
 def preflight_request(
     flow: http.HTTPFlow,
     allow: matching.FirewallAllow,
+    *,
+    request_end_stream: bool | None = None,
+    request_body_buffered: bool = False,
 ) -> McpPolicyViolation | None:
     """Validate endpoint, transport method, and bounded HTTP framing."""
 
@@ -155,6 +158,13 @@ def preflight_request(
                 400,
                 method,
             )
+    elif request_end_stream is not True and not request_body_buffered:
+        return _violation(
+            "body_framing_ambiguous",
+            "MCP lifecycle request body framing is ambiguous",
+            400,
+            method,
+        )
     return None
 
 
@@ -164,7 +174,11 @@ def authorize_request(
 ) -> McpPolicyViolation | None:
     """Authorize one fully buffered MCP request before it reaches upstream."""
 
-    preflight_error = preflight_request(flow, allow)
+    preflight_error = preflight_request(
+        flow,
+        allow,
+        request_body_buffered=True,
+    )
     if preflight_error is not None:
         return preflight_error
 

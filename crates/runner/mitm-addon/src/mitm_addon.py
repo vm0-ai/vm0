@@ -705,6 +705,7 @@ def requestheaders(flow: http.HTTPFlow) -> Awaitable[None] | None:
         violation = mcp_policy.preflight_request(
             flow,
             classification.firewall_allow,
+            request_end_stream=request_end_stream,
         )
         if violation is not None:
             http_local_responses.block_mcp_policy_violation(flow, violation)

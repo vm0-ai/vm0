@@ -15,6 +15,9 @@ from tests.request_handler_helpers import _single_firewall_vm, _write_registry
 _PUBLIC_DESTINATION = "93.184.216.34"
 _MCP_HOST = "mcp.example.com"
 _MCP_PATH = "/v1/mcp"
+_BROWSER_USER_AGENT = (
+    "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 Chrome/126.0 Safari/537.36"
+)
 
 
 def _write_mcp_registry(
@@ -182,6 +185,103 @@ async def test_mcp_all_tool_policy_allows_an_unlisted_tool(
     assert flow.metadata[metadata_keys.FIREWALL_ACTION] == "ALLOW"
 
 
+async def test_mcp_policy_cannot_be_bypassed_with_a_browser_user_agent(
+    tmp_path,
+    real_flow,
+    headers,
+    mitm_ctx,
+):
+    registry_path = _write_mcp_registry(tmp_path)
+    flow = _mcp_flow(
+        real_flow,
+        headers,
+        body=_modern_tool_call("delete-all"),
+        semantic_name="delete-all",
+        extra_headers=(("User-Agent", _BROWSER_USER_AGENT),),
+    )
+
+    with mitm_ctx(registry_path=str(registry_path), api_url="https://api.vm0.ai"):
+        mitm_addon.requestheaders(flow)
+        await mitm_addon.request(flow)
+
+    assert flow.response is not None
+    assert json.loads(flow.response.content)["reason"] == "tool_not_allowed"
+    assert flow.metadata[metadata_keys.CAPTURE_BODY] is False
+    assert flow.metadata[metadata_keys.FIREWALL_ACTION] == "BLOCK"
+
+
+async def test_mcp_policy_cannot_be_bypassed_on_the_platform_api_origin(
+    tmp_path,
+    real_flow,
+    headers,
+    mitm_ctx,
+):
+    registry_path = _write_mcp_registry(tmp_path)
+    flow = _mcp_flow(
+        real_flow,
+        headers,
+        body=_modern_tool_call("delete-all"),
+        semantic_name="delete-all",
+    )
+
+    with mitm_ctx(
+        registry_path=str(registry_path),
+        api_url=f"https://{_MCP_HOST}",
+    ):
+        mitm_addon.requestheaders(flow)
+        await mitm_addon.request(flow)
+
+    assert flow.response is not None
+    assert json.loads(flow.response.content)["reason"] == "tool_not_allowed"
+    assert flow.metadata[metadata_keys.CAPTURE_BODY] is False
+    assert flow.metadata[metadata_keys.FIREWALL_ACTION] == "BLOCK"
+
+
+async def test_mcp_rejection_logs_never_capture_request_or_response_bodies(
+    tmp_path,
+    real_flow,
+    headers,
+    mitm_ctx,
+):
+    registry_path = _write_mcp_registry(tmp_path)
+    body = json.dumps(
+        {
+            "jsonrpc": "2.0",
+            "id": 1,
+            "method": "tools/call",
+            "params": {
+                "name": "delete-all",
+                "arguments": {"secret": "must-not-be-logged"},
+            },
+        },
+        separators=(",", ":"),
+    ).encode()
+    flow = _mcp_flow(
+        real_flow,
+        headers,
+        body=body,
+        protocol_version=None,
+        semantic_method=None,
+        semantic_name=None,
+    )
+
+    with mitm_ctx(registry_path=str(registry_path), api_url="https://api.vm0.ai"):
+        mitm_addon.requestheaders(flow)
+        await mitm_addon.request(flow)
+        mitm_addon.response(flow)
+
+    [network_entry] = read_jsonl_entries_after_flush(tmp_path / "net.jsonl")
+    assert "request_body" not in network_entry
+    assert "response_body" not in network_entry
+    serialized_logs = json.dumps(
+        [
+            network_entry,
+            *read_jsonl_entries_after_flush(tmp_path / "proxy.jsonl"),
+        ]
+    )
+    assert "must-not-be-logged" not in serialized_logs
+
+
 @pytest.mark.parametrize(
     ("body", "expected_reason"),
     [
@@ -320,6 +420,61 @@ async def test_mcp_legacy_bodyless_lifecycle_request_is_allowed(
     assert flow.metadata[metadata_keys.FIREWALL_ACTION] == "ALLOW"
 
 
+@pytest.mark.parametrize("request_end_stream", [None, False])
+async def test_mcp_bodyless_lifecycle_rejects_ambiguous_http2_framing(
+    tmp_path,
+    real_flow,
+    headers,
+    mitm_ctx,
+    request_end_stream,
+):
+    registry_path = _write_mcp_registry(tmp_path)
+    flow = _mcp_flow(
+        real_flow,
+        headers,
+        body=b"",
+        method="GET",
+        protocol_version="2025-11-25",
+        semantic_method=None,
+        semantic_name=None,
+    )
+    if request_end_stream is not None:
+        flow.metadata["_vm0_request_end_stream"] = request_end_stream
+
+    with mitm_ctx(registry_path=str(registry_path), api_url="https://api.vm0.ai"):
+        mitm_addon.requestheaders(flow)
+
+    assert flow.response is not None
+    assert json.loads(flow.response.content)["reason"] == "body_framing_ambiguous"
+    assert flow.metadata[metadata_keys.CAPTURE_BODY] is False
+
+
+async def test_mcp_bodyless_lifecycle_accepts_confirmed_http2_end_stream(
+    tmp_path,
+    real_flow,
+    headers,
+    mitm_ctx,
+):
+    registry_path = _write_mcp_registry(tmp_path)
+    flow = _mcp_flow(
+        real_flow,
+        headers,
+        body=b"",
+        method="GET",
+        protocol_version="2025-11-25",
+        semantic_method=None,
+        semantic_name=None,
+    )
+    flow.metadata["_vm0_request_end_stream"] = True
+
+    with mitm_ctx(registry_path=str(registry_path), api_url="https://api.vm0.ai"):
+        mitm_addon.requestheaders(flow)
+        await mitm_addon.request(flow)
+
+    assert flow.response is None
+    assert flow.metadata[metadata_keys.FIREWALL_ACTION] == "ALLOW"
+
+
 async def test_mcp_legacy_initialize_validates_its_negotiated_protocol_version(
     tmp_path,
     real_flow,
@@ -365,7 +520,7 @@ async def test_mcp_legacy_initialize_validates_its_negotiated_protocol_version(
                 "jsonrpc": "2.0",
                 "id": 1,
                 "method": "initialize",
-                "params": {"protocolVersion": "unsupported"},
+                "params": {"protocolVersion": "2024-11-05"},
             },
             None,
             None,

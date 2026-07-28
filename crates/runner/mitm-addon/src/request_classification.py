@@ -289,6 +289,8 @@ def classify_request(
     The decision order is registry/TLS admission, registered VM resolution,
     trusted authority validation, platform API allow, browser passthrough,
     firewall match, publicDestination runtime validation, and default allow.
+    A configured MCP API base bypasses neither platform API nor browser
+    classification because those heuristics must not skip protocol policy.
 
     After registry and TLS admission checks accept a registered VM,
     classification stores VM/run metadata on the flow. Once trusted authority
@@ -412,18 +414,25 @@ def _classify_request(
         port=trusted_authority.port,
     )
 
-    if upstream_admission.api_destination_matches(
+    platform_api_request = upstream_admission.api_destination_matches(
         api_url,
         trusted_authority.host,
         trusted_authority.port,
-    ) and not upstream_admission.request_path_uses_platform_firewall(flow.request.path):
-        return ApiAllow(vm_info=vm_info)
-
-    if flow.metadata.get(metadata_keys.BROWSER_USER_AGENT):
-        return BrowserAllow(vm_info=vm_info)
+    ) and not upstream_admission.request_path_uses_platform_firewall(flow.request.path)
 
     is_asterisk_form = flow.request.path == "*"
     compiled_firewalls = registry_state.compiled_firewalls.get(client_ip)
+    browser_request = bool(flow.metadata.get(metadata_keys.BROWSER_USER_AGENT))
+    # Browser provenance is spoofable and the platform origin can also host an
+    # explicitly configured endpoint. MCP policy remains authoritative for both.
+    if (platform_api_request or browser_request) and not matching.matches_compiled_mcp_api(
+        original_url,
+        compiled_firewalls,
+    ):
+        if platform_api_request:
+            return ApiAllow(vm_info=vm_info)
+        return BrowserAllow(vm_info=vm_info)
+
     compiled_network_policies = registry_state.compiled_network_policies[client_ip]
     if compiled_firewalls:
         result = matching.match_compiled_firewall_request(

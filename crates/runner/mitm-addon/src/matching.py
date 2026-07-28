@@ -1869,3 +1869,24 @@ def match_compiled_firewall_request(
         intent=intent or connector_intent.ABSENT,
         is_asterisk_form=is_asterisk_form,
     )
+
+
+def matches_compiled_mcp_api(
+    url: str,
+    compiled_firewalls: CompiledFirewallSet | None,
+) -> bool:
+    """Return whether a request URL is within a configured MCP API base."""
+
+    if compiled_firewalls is None:
+        return False
+    url_parts = _split_base_match_url(
+        url,
+        allow_runtime_backslash_syntax="\\" in url,
+    )
+    if url_parts is None:
+        return False
+    return any(
+        isinstance(candidate.api.raw_api_entry.get("mcp"), dict)
+        and _match_compiled_base_url_parts(url_parts, candidate.api.base) is not None
+        for candidate in compiled_firewalls.indexed_api_candidates(url_parts)
+    )
