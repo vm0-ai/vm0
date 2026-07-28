@@ -4,7 +4,10 @@ import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import { zeroWorkflowsCollectionContract } from "@vm0/api-contracts/contracts/zero-workflows";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { pathname } from "../../../signals/location.ts";
-import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
+import {
+  detachedSetupPage,
+  queryAllByRoleFast,
+} from "../../../__tests__/page-helper.ts";
 import {
   context,
   AGENT_ID,
@@ -371,9 +374,9 @@ describe("chat composer models", () => {
 
     const slashWorkflowMenu = await screen.findByTestId("slash-workflow-menu");
     expect(
-      within(slashWorkflowMenu)
-        .getAllByRole("button")
-        .map((option) => option.textContent),
+      queryAllByRoleFast("button", slashWorkflowMenu).map((option) => {
+        return option.textContent;
+      }),
     ).toStrictEqual([
       "/release-production",
       "/release-staging",
