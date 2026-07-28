@@ -912,6 +912,9 @@ describe("chat message action cards", () => {
     detachedSetupPage({
       context,
       path: `/chats/${threadId}?mail-draft=${mailDraftId}`,
+      featureSwitches: {
+        [FeatureSwitchKey.NewChatThreadSidebar]: false,
+      },
     });
 
     const sidebar = await screen.findByTestId("mail-draft-sidebar");
@@ -998,6 +1001,7 @@ describe("chat message action cards", () => {
       context,
       path: `/chats/${scenario.threadId}?mail-draft=${scenario.mailDraftId}`,
       featureSwitches: {
+        [FeatureSwitchKey.NewChatThreadSidebar]: false,
         [FeatureSwitchKey.ZeroMailReplyFollowUp]: true,
       },
     });
@@ -1209,6 +1213,9 @@ describe("chat message action cards", () => {
     detachedSetupPage({
       context,
       path: `/chats/${leftThreadId}?sidebar=${rightThreadId}&mail-draft=${mailDraftId}`,
+      featureSwitches: {
+        [FeatureSwitchKey.NewChatThreadSidebar]: false,
+      },
     });
 
     const sidebar = await screen.findByTestId("mail-draft-sidebar");
@@ -1876,6 +1883,9 @@ describe("chat message action cards", () => {
     detachedSetupPage({
       context,
       path: `/chats/${threadId}?mail-draft=${mailDraftId}`,
+      featureSwitches: {
+        [FeatureSwitchKey.NewChatThreadSidebar]: false,
+      },
     });
 
     const card = await screen.findByLabelText(

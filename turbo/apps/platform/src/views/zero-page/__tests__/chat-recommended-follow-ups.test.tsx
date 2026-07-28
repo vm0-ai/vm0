@@ -1,6 +1,6 @@
 import { screen, waitFor } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
-import { chatThreadArtifactsContract } from "@vm0/api-contracts/contracts/chat-threads";
+import { artifactCatalogContract } from "@vm0/api-contracts/contracts/artifact-catalog";
 import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import { click, fill } from "../../../__tests__/page-helper.ts";
 import { mockChatLifecycle } from "./chat-test-helpers.ts";
@@ -30,8 +30,8 @@ describe("chat lifecycle", () => {
         },
       ],
     });
-    context.mocks.api(chatThreadArtifactsContract.list, ({ respond }) => {
-      return respond(200, { runs: [] });
+    context.mocks.api(artifactCatalogContract.list, ({ respond }) => {
+      return respond(200, { artifacts: [], nextCursor: null });
     });
 
     detachedSetupPage({ context, path: `/chats/${HISTORY_THREAD_ID}` });
@@ -39,10 +39,10 @@ describe("chat lifecycle", () => {
     click(await screen.findByLabelText("Open artifacts"));
 
     await waitFor(() => {
-      expect(screen.getByTestId("artifact-inbox")).toBeInTheDocument();
       expect(
-        screen.getByText("No uploaded files in this chat yet."),
+        screen.getByTestId("thread-sidebar-artifacts"),
       ).toBeInTheDocument();
+      expect(screen.getByText("No artifacts found")).toBeInTheDocument();
     });
   });
   it("selects or appends a recommended follow-up without sending it", async () => {
