@@ -27,7 +27,10 @@ from tests.requestheaders_helpers import (
     await_requestheaders_result,
     track_trusted_authority_validations,
 )
-from tests.upstream_connection_helpers import mark_connected_tls_upstream
+from tests.upstream_connection_helpers import (
+    mark_connected_tls_upstream,
+    seed_server_binding,
+)
 
 
 async def test_firewall_allow_current_server_binding_address_mismatch_blocks(
@@ -50,7 +53,7 @@ async def test_firewall_allow_current_server_binding_address_mismatch_blocks(
         ),
     )
     flow.server_conn.address = ("203.0.113.99", 443)
-    upstream_destination_binding.record_server_binding(
+    seed_server_binding(
         flow.server_conn,
         client=flow.client_conn,
         host="api.github.com",
@@ -207,7 +210,7 @@ async def test_test_connector_bounded_requestheaders_uses_connector_binding(
     assert binding.original_address == ("203.0.113.10", 443)
 
 
-def test_raw_binding_helpers_normalize_noncanonical_authority(
+def test_normalized_binding_matches_noncanonical_raw_authority(
     real_flow,
     headers,
 ):
@@ -219,11 +222,16 @@ def test_raw_binding_helpers_normalize_noncanonical_authority(
     )
     flow.metadata[metadata_keys.TRUSTED_AUTHORITY_HOST] = "API.GITHUB.COM."
     flow.server_conn.address = ("api.github.com", 443)
-    upstream_destination_binding.record_server_binding(
-        flow.server_conn,
-        client=flow.client_conn,
+    destination = upstream_destination_binding.normalize_upstream_destination(
         host="API.GITHUB.COM.",
         port=443,
+    )
+    assert destination.host == "api.github.com"
+    assert destination.port == 443
+    upstream_destination_binding.record_normalized_server_binding(
+        flow.server_conn,
+        client=flow.client_conn,
+        destination=destination,
         kinds=frozenset(("connector_auth",)),
         original_address=("203.0.113.10", 443),
     )
@@ -232,6 +240,22 @@ def test_raw_binding_helpers_normalize_noncanonical_authority(
         flow,
         allowed_kinds=frozenset(("connector_auth",)),
     )
+
+
+def test_normalized_binding_ignores_server_without_usable_id():
+    destination = upstream_destination_binding.normalize_upstream_destination(
+        host="api.github.com",
+        port=443,
+    )
+
+    upstream_destination_binding.record_normalized_server_binding(
+        SimpleNamespace(id=None),
+        destination=destination,
+        kinds=frozenset(("connector_auth",)),
+        original_address=("203.0.113.10", 443),
+    )
+
+    assert upstream_destination_binding.binding_snapshot_for_tests() == {}
 
 
 async def test_test_connector_bounded_requestheaders_without_bypass_blocks(
@@ -547,7 +571,7 @@ async def test_firewall_allow_prior_client_binding_endpoint_mismatch_blocks(
     flow.client_conn.sockname = ("198.18.20.34", 443)
 
     server_connect_server = connection.Server(address=("198.18.20.34", 443))
-    upstream_destination_binding.record_server_binding(
+    seed_server_binding(
         server_connect_server,
         client=flow.client_conn,
         host="api.github.com",
@@ -602,7 +626,7 @@ async def test_firewall_allow_prior_client_binding_endpoint_match_still_requires
     flow.server_conn.state = connection.ConnectionState.OPEN
 
     server_connect_server = connection.Server(address=("172.66.0.243", 443))
-    upstream_destination_binding.record_server_binding(
+    seed_server_binding(
         server_connect_server,
         client=flow.client_conn,
         host="api.github.com",
@@ -733,7 +757,7 @@ def test_bounded_requestheaders_keeps_matching_connector_binding_without_classif
         path="/repos/octocat/hello",
         request_headers=headers(("Host", "api.github.com"), ("Content-Length", "4")),
     )
-    upstream_destination_binding.record_server_binding(
+    seed_server_binding(
         flow.server_conn,
         client=flow.client_conn,
         host="api.github.com",

@@ -41,7 +41,6 @@ __all__ = (
     "has_server_binding",
     "normalize_upstream_destination",
     "record_normalized_server_binding",
-    "record_server_binding",
     "refresh_server_binding_connected_address_if_matching",
     "reset_for_tests",
     "reuse_server_binding_kind_if_matching",
@@ -166,27 +165,6 @@ def record_normalized_server_binding(
         original_address=original_address,
     )
     _associate_server_with_client(server_id, client)
-
-
-def record_server_binding(
-    server: object,
-    *,
-    client: object | None = None,
-    host: str,
-    port: int,
-    kinds: frozenset[BindingKind],
-    original_address: tuple[str, int] | None,
-) -> None:
-    """Normalize and record a destination after retargeting or verification."""
-    if _connection_id(server) is None:
-        return
-    record_normalized_server_binding(
-        server,
-        client=client,
-        destination=normalize_upstream_destination(host=host, port=port),
-        kinds=kinds,
-        original_address=original_address,
-    )
 
 
 def _matching_server_binding(

@@ -9,7 +9,7 @@ import mitm_addon
 import upstream_destination_binding
 from tests.jsonl_log_helpers import read_jsonl_entries_after_flush
 from tests.request_handler_helpers import _write_github_firewall_registry
-from tests.upstream_connection_helpers import bind_flow_upstream
+from tests.upstream_connection_helpers import bind_flow_upstream, seed_server_binding
 
 _BROWSER_USER_AGENT = (
     "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 "
@@ -43,7 +43,7 @@ async def test_rejects_spoofed_host_before_firewall_auth(
         path="/repos",
         request_headers=headers(("Host", "api.github.com")),
     )
-    upstream_destination_binding.record_server_binding(
+    seed_server_binding(
         flow.server_conn,
         client=flow.client_conn,
         host="api.github.com",

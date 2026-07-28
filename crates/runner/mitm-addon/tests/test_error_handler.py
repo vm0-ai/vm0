@@ -32,6 +32,7 @@ from tests.request_handler_helpers import (
     _write_registry,
 )
 from tests.timestamp_helpers import assert_utc_millisecond_timestamp
+from tests.upstream_connection_helpers import seed_server_binding
 
 
 class TestErrorHandler:
@@ -42,7 +43,7 @@ class TestErrorHandler:
             host="api.github.com",
             path="/repos/octocat/hello",
         )
-        upstream_destination_binding.record_server_binding(
+        seed_server_binding(
             flow.server_conn,
             client=flow.client_conn,
             host="api.github.com",
