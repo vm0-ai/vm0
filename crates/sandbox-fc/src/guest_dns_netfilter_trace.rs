@@ -38,7 +38,8 @@
 //! packet's headers and trace steps across raw PREROUTING, NAT/REDIRECT, and FORWARD/INPUT
 //! processing. Reaching NAT also proves passage through the intervening root conntrack hook. These
 //! checks prevent interleaved traffic from another local namespace from being reported as evidence
-//! for this guest.
+//! for this guest. The configured DNS proxy port does not broaden that initial identity; after
+//! attribution it confirms the REDIRECT target, post-redirect header, and pool INPUT rule.
 //!
 //! Capture waits until it has seen a terminal trace step for each reported readiness attempt, or
 //! until [`TRACE_CAPTURE_WAIT`] expires. DROP and REJECT verdicts, filter ACCEPT verdicts, and
