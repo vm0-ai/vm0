@@ -257,6 +257,14 @@ describe("user-overridable switches", () => {
       [FeatureSwitchKey.Dummy]: false,
     });
   });
+
+  it("ignores persisted overrides for removed switches", () => {
+    expect(
+      filterUserOverridableFeatureSwitchOverrides({
+        zeroPeopleSearch: false,
+      }),
+    ).toStrictEqual({});
+  });
 });
 
 describe("getFeatureSwitchDescriptions", () => {
