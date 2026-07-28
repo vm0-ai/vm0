@@ -611,6 +611,7 @@ describe("chat inline feedback", () => {
           `> ${assistantReply}\n\n` +
           "Name the owner and explain the complete result.",
         draftUserMessage: queuedMessages[0]?.userMessage,
+        draftStructuredPrompt: queuedMessages[0]?.userMessage,
         draftAttachments: null,
       });
     });
