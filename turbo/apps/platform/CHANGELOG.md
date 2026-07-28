@@ -1,5 +1,25 @@
 # Changelog
 
+## [0.648.1](https://github.com/vm0-ai/vm0/compare/app-v0.648.0...app-v0.648.1) (2026-07-28)
+
+
+### Bug Fixes
+
+* **feishu:** limit workspaces to one admin-managed bot ([#23486](https://github.com/vm0-ai/vm0/issues/23486)) ([382cf02](https://github.com/vm0-ai/vm0/commit/382cf02e09dc7fd29f39849007bbed0509feb038))
+
+
+### Refactoring
+
+* **chat:** remove legacy message compatibility ([#23394](https://github.com/vm0-ai/vm0/issues/23394)) ([e6fca94](https://github.com/vm0-ai/vm0/commit/e6fca9481261ad52080bb0f202b15b6d75de767d))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.241.1
+    * @vm0/core bumped to 8.481.1
+
 ## [0.648.0](https://github.com/vm0-ai/vm0/compare/app-v0.647.0...app-v0.648.0) (2026-07-28)
 
 
