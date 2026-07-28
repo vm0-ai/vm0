@@ -46,10 +46,7 @@ import {
 import { touchChatThreadLastMessageAt } from "./zero-chat-message-shared.service";
 import { insertChatEvent } from "./zero-chat-event.service";
 import { createUserMessageDocument } from "./zero-chat-user-message.service";
-import {
-  encryptQueuedUserMessageRunParams,
-  enqueueUserMessageQueueItem,
-} from "./zero-chat-queued-message.service";
+import { encryptQueuedUserMessageRunParams } from "./zero-chat-queued-message.service";
 
 const L = logger("CanonicalSlackIngressProcessor");
 const PROCESSING_STALE_AFTER_MS = 5 * 60 * 1000;
@@ -341,7 +338,6 @@ async function persistCanonicalSlackMessage(
   args: {
     readonly ingress: ClaimedCanonicalSlackIngress;
     readonly chatThreadId: string;
-    readonly orgId: string;
     readonly displayContent: string;
     readonly messagePermalink: string | null;
     readonly canonicalAssets: readonly CanonicalSlackInputAsset[];
@@ -370,6 +366,8 @@ async function persistCanonicalSlackMessage(
           }),
         }),
         runId: null,
+        triggerSource: "slack",
+        encryptedParams: args.encryptedParams,
         slackMessagePermalink: args.messagePermalink,
         createdAt: args.ingress.createdAt,
       },
@@ -384,15 +382,6 @@ async function persistCanonicalSlackMessage(
       args.ingress.ingressId,
       args.canonicalAssets,
     );
-    await enqueueUserMessageQueueItem(tx, {
-      orgId: args.orgId,
-      userId: args.ingress.userId,
-      chatThreadId: args.chatThreadId,
-      chatMessageId: args.ingress.ingressId,
-      triggerSource: "slack",
-      encryptedParams: args.encryptedParams,
-    });
-    signal.throwIfAborted();
     await touchChatThreadLastMessageAt(
       tx,
       args.chatThreadId,
@@ -528,7 +517,6 @@ const persistClaimedCanonicalSlackIngress$ = command(
       {
         ingress,
         chatThreadId,
-        orgId,
         displayContent: enriched.displayContent,
         messagePermalink,
         canonicalAssets,

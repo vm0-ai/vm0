@@ -1613,16 +1613,15 @@ describe("INT-01: Slack app deep webhook flows", () => {
         return ingress.eventId;
       }),
     ).toStrictEqual(expect.arrayContaining([eventId, stickyEventId]));
-    // Slack work keeps a dedicated item type so queue ownership preserves its
-    // integration trigger source alongside web messages.
-    expect(state.chat_message_queue).toStrictEqual(
+    // Pending input events retain channel attribution alongside web messages.
+    expect(state.pending_chat_events).toStrictEqual(
       expect.arrayContaining([
         expect.objectContaining({
-          itemType: "user_message",
-          triggerSource: null,
+          eventType: "input.prompt",
+          triggerSource: "web",
         }),
         expect.objectContaining({
-          itemType: "slack_user_message",
+          eventType: "input.prompt",
           triggerSource: "slack",
         }),
       ]),
@@ -2164,10 +2163,10 @@ describe("INT-01: Slack app deep webhook flows", () => {
         }),
       ]),
     );
-    expect(targetState.chat_message_queue).toStrictEqual(
+    expect(targetState.pending_chat_events).toStrictEqual(
       expect.arrayContaining([
         expect.objectContaining({
-          itemType: "slack_user_message",
+          eventType: "input.prompt",
           triggerSource: "slack",
         }),
       ]),

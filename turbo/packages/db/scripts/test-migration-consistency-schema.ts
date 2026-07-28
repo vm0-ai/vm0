@@ -2237,6 +2237,338 @@ async function validateChatEventTypeBackfillAndContract(): Promise<void> {
   );
 }
 
+const CHAT_EVENT_QUEUE_PREVIOUS_MIGRATION = 709;
+const CHAT_EVENT_QUEUE_CUTOVER_MIGRATION = 710;
+
+const chatEventQueueCutoverFixture = {
+  orgId: "chat-event-queue-cutover-org",
+  userId: "chat-event-queue-cutover-user",
+  composeId: "81000000-0000-4000-8000-000000000001",
+  threadId: "81000000-0000-4000-8000-000000000002",
+  workflowId: "81000000-0000-4000-8000-000000000003",
+  automationId: "81000000-0000-4000-8000-000000000004",
+  userEventId: "81000000-0000-4000-8000-000000000005",
+  userQueueId: "81000000-0000-4000-8000-000000000006",
+  automationQueueId: "81000000-0000-4000-8000-000000000007",
+  malformedQueueId: "81000000-0000-4000-8000-000000000008",
+} as const;
+
+async function validateChatEventQueueCutover(): Promise<void> {
+  console.log("=== Validate ChatEvent queue cutover ===\n");
+
+  const testDb = "migration_chat_event_queue_cutover_test";
+  const testDbUrl = createTestDbUrl(testDb);
+  const fixture = chatEventQueueCutoverFixture;
+
+  await createDatabase(testDb);
+  try {
+    await runMigrationsUpTo(testDbUrl, CHAT_EVENT_QUEUE_PREVIOUS_MIGRATION);
+    const client = new Client({ connectionString: testDbUrl });
+    await client.connect();
+    try {
+      await client.query(
+        `
+          WITH compose AS (
+            INSERT INTO "agent_composes" (
+              "id",
+              "user_id",
+              "name",
+              "org_id"
+            )
+            VALUES ($1, $2, 'chat-event-queue-cutover', $3)
+            RETURNING "id"
+          ), agent AS (
+            INSERT INTO "zero_agents" (
+              "id",
+              "org_id",
+              "owner",
+              "name",
+              "visibility"
+            )
+            SELECT
+              compose."id",
+              $3,
+              $2,
+              'chat-event-queue-cutover',
+              'private'
+            FROM compose
+            RETURNING "id"
+          ), thread AS (
+            INSERT INTO "chat_threads" (
+              "id",
+              "user_id",
+              "agent_compose_id",
+              "last_chat_message_seq_id",
+              "queue_paused_at",
+              "pause_reason"
+            )
+            SELECT
+              $4,
+              $2,
+              compose."id",
+              1,
+              TIMESTAMP '2026-07-27 00:30:00',
+              'cutover fixture pause'
+            FROM compose
+            RETURNING "id"
+          ), workflow AS (
+            INSERT INTO "zero_workflows" (
+              "id",
+              "org_id",
+              "agent_id",
+              "name",
+              "owner_user_id",
+              "created_by",
+              "updated_by"
+            )
+            SELECT
+              $5,
+              $3,
+              agent."id",
+              'chat-event-queue-cutover',
+              $2,
+              $2,
+              $2
+            FROM agent
+            RETURNING "id"
+          ), automation AS (
+            INSERT INTO "zero_workflow_automations" (
+              "id",
+              "org_id",
+              "workflow_id",
+              "owner_user_id",
+              "kind",
+              "schedule_type",
+              "interval_seconds"
+            )
+            SELECT $6, $3, workflow."id", $2, 'schedule', 'loop', 3600
+            FROM workflow
+            RETURNING "id", "workflow_id"
+          ), binding AS (
+            INSERT INTO "workflow_user_automation_threads" (
+              "org_id",
+              "user_id",
+              "workflow_id",
+              "chat_thread_id"
+            )
+            SELECT $3, $2, automation."workflow_id", thread."id"
+            FROM automation
+            CROSS JOIN thread
+            RETURNING "chat_thread_id"
+          ), user_event AS (
+            INSERT INTO "chat_messages" (
+              "id",
+              "chat_thread_id",
+              "run_id",
+              "event_type",
+              "role",
+              "content",
+              "seq_id",
+              "created_at"
+            )
+            SELECT
+              $7,
+              binding."chat_thread_id",
+              NULL,
+              'input.prompt',
+              'user',
+              'legacy pending user',
+              1,
+              TIMESTAMP '2026-07-27 01:00:00'
+            FROM binding
+            RETURNING "id", "chat_thread_id"
+          ), queue_rows AS (
+            INSERT INTO "chat_message_queue" (
+              "id",
+              "org_id",
+              "user_id",
+              "chat_thread_id",
+              "item_type",
+              "chat_message_id",
+              "automation_id",
+              "trigger_source",
+              "trigger_brief",
+              "encrypted_params",
+              "created_at"
+            )
+            SELECT
+              $8::uuid,
+              $3,
+              $2,
+              user_event."chat_thread_id",
+              'user_message'::chat_message_queue_item_type,
+              user_event."id",
+              NULL,
+              NULL,
+              NULL,
+              NULL,
+              TIMESTAMP '2026-07-27 01:00:00'
+            FROM user_event
+
+            UNION ALL
+
+            SELECT
+              $9::uuid,
+              $3,
+              $2,
+              user_event."chat_thread_id",
+              'workflow_event'::chat_message_queue_item_type,
+              NULL,
+              automation."id",
+              'workflow-event',
+              'cutover automation',
+              'encrypted-cutover-params',
+              TIMESTAMP '2026-07-27 02:00:00'
+            FROM user_event
+            CROSS JOIN automation
+            RETURNING "id"
+          )
+          SELECT COUNT(*) FROM queue_rows
+        `,
+        [
+          fixture.composeId,
+          fixture.userId,
+          fixture.orgId,
+          fixture.threadId,
+          fixture.workflowId,
+          fixture.automationId,
+          fixture.userEventId,
+          fixture.userQueueId,
+          fixture.automationQueueId,
+        ],
+      );
+
+      await applyMigrationsUpToInTransaction(
+        client,
+        CHAT_EVENT_QUEUE_CUTOVER_MIGRATION,
+      );
+
+      const cutoverState = await client.query<{
+        automationId: string;
+        automationTriggerSource: string;
+        encryptedParams: string;
+        lastSeqId: number;
+        legacyQueueRows: number;
+        maxSeqId: number;
+        pauseReason: string;
+        triggerBrief: string;
+        userEncryptedParams: string | null;
+        userTriggerSource: string;
+      }>(
+        `
+          SELECT
+            (SELECT COUNT(*)::integer FROM "chat_message_queue")
+              AS "legacyQueueRows",
+            user_event."trigger_source" AS "userTriggerSource",
+            user_event."encrypted_params" AS "userEncryptedParams",
+            automation_event."automation_id" AS "automationId",
+            automation_event."trigger_source" AS "automationTriggerSource",
+            automation_event."trigger_brief" AS "triggerBrief",
+            automation_event."encrypted_params" AS "encryptedParams",
+            pause_event."error" AS "pauseReason",
+            thread."last_chat_message_seq_id"::integer AS "lastSeqId",
+            (
+              SELECT MAX(event."seq_id")::integer
+              FROM "chat_messages" AS event
+              WHERE event."chat_thread_id" = thread."id"
+            ) AS "maxSeqId"
+          FROM "chat_threads" AS thread
+          INNER JOIN "chat_messages" AS user_event ON user_event."id" = $1
+          INNER JOIN "chat_messages" AS automation_event
+            ON automation_event."id" = $2
+            AND automation_event."event_type" = 'input.automation'
+          INNER JOIN LATERAL (
+            SELECT transition."error"
+            FROM "chat_messages" AS transition
+            WHERE transition."chat_thread_id" = thread."id"
+              AND transition."event_type" = 'queue.automation_paused'
+            ORDER BY transition."seq_id" DESC
+            LIMIT 1
+          ) AS pause_event ON true
+          WHERE thread."id" = $3
+        `,
+        [fixture.userEventId, fixture.automationQueueId, fixture.threadId],
+      );
+      assert.deepEqual(cutoverState.rows, [
+        {
+          automationId: fixture.automationId,
+          automationTriggerSource: "workflow-event",
+          encryptedParams: "encrypted-cutover-params",
+          lastSeqId: 3,
+          legacyQueueRows: 0,
+          maxSeqId: 3,
+          pauseReason: "cutover fixture pause",
+          triggerBrief: "cutover automation",
+          userEncryptedParams: null,
+          userTriggerSource: "web",
+        },
+      ]);
+
+      await expectAppendOnlyUpdateRejected(client, {
+        tableName: "chat_messages",
+        query: `UPDATE "chat_messages" SET "content" = 'mutated' WHERE "id" = $1`,
+        rowId: fixture.userEventId,
+      });
+
+      await client.query(
+        `
+          INSERT INTO "chat_message_queue" (
+            "id",
+            "org_id",
+            "user_id",
+            "chat_thread_id",
+            "item_type"
+          )
+          VALUES ($1, $2, $3, $4, 'user_message')
+        `,
+        [
+          fixture.malformedQueueId,
+          fixture.orgId,
+          fixture.userId,
+          fixture.threadId,
+        ],
+      );
+
+      const migrationSql = await fs.readFile(
+        path.join(MIGRATIONS_DIR, "0710_chat_event_queue_cutover.sql"),
+        "utf-8",
+      );
+      let rejectedMalformedState = false;
+      await client.query("BEGIN");
+      try {
+        await client.query(migrationSql);
+      } catch (error) {
+        rejectedMalformedState = true;
+        assert.equal(databaseErrorCode(error), "P0001");
+        assert.ok(error instanceof Error);
+        assert.ok(error.message.includes("1 unclassifiable rows"));
+        assert.ok(error.message.includes(fixture.malformedQueueId));
+      } finally {
+        await client.query("ROLLBACK");
+      }
+      assert.equal(rejectedMalformedState, true);
+
+      const preservedMalformedRow = await client.query<{ count: number }>(
+        `
+          SELECT COUNT(*)::integer AS "count"
+          FROM "chat_message_queue"
+          WHERE "id" = $1
+        `,
+        [fixture.malformedQueueId],
+      );
+      assert.deepEqual(preservedMalformedRow.rows, [{ count: 1 }]);
+    } finally {
+      await client.end();
+    }
+  } finally {
+    await dropDatabase(testDb);
+  }
+
+  console.log(
+    "   ✅ Legacy user, automation, and pause state migrate atomically; unclassifiable rows abort without data loss\n",
+  );
+}
+
 const SESSION_STORAGE_BACKFILL_PREVIOUS_MIGRATION = 653;
 const SESSION_STORAGE_BACKFILL_MIGRATION = 654;
 
@@ -4513,6 +4845,7 @@ async function main(): Promise<void> {
     await validateModelObservationContractCleanup();
     await validateChatEventTypeBackfillAndContract();
     await validateStructuredPromptDraftBackfill();
+    await validateChatEventQueueCutover();
 
     // Step 1.5: Validate latest snapshot accuracy (NEW)
     await validateLatestSnapshotAccuracy();

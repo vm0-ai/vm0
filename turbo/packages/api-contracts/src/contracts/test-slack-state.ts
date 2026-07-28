@@ -91,18 +91,11 @@ export const testSlackStateResponseSchema = z.object({
       updatedAt: z.string(),
     }),
   ),
-  chat_message_queue: z.array(
+  pending_chat_events: z.array(
     z.object({
       id: z.string(),
       chatThreadId: z.string(),
-      chatMessageId: z.string().nullable(),
-      itemType: z.enum([
-        "user_message",
-        "slack_user_message",
-        "feishu_user_message",
-        "teams_user_message",
-        "workflow_event",
-      ]),
+      eventType: z.enum(["input.prompt", "input.automation"]),
       triggerSource: z.string().nullable(),
       createdAt: z.string(),
     }),

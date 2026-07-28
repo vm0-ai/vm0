@@ -7,7 +7,6 @@ import {
 import { agentComposes } from "@vm0/db/schema/agent-compose";
 import { agentRuns } from "@vm0/db/schema/agent-run";
 import { agentSessions } from "@vm0/db/schema/agent-session";
-import { chatMessageQueue } from "@vm0/db/schema/chat-message-queue";
 import { chatThreads } from "@vm0/db/schema/chat-thread";
 import { zeroRuns } from "@vm0/db/schema/zero-run";
 import { command } from "ccstate";
@@ -136,6 +135,7 @@ async function seedFixture(
       : await insertChatEvent(tx, {
           ...baseEvent,
           eventType: "input.prompt",
+          triggerSource: fixtureKind === "orphan" ? "slack" : "web",
         });
   });
   signal.throwIfAborted();
@@ -143,15 +143,7 @@ async function seedFixture(
     throw new Error("Failed to seed orphan monitor message");
   }
 
-  if (fixtureKind === "queued-message") {
-    await db.insert(chatMessageQueue).values({
-      orgId,
-      userId,
-      chatThreadId: thread.id,
-      itemType: "user_message",
-      chatMessageId: message.id,
-    });
-  } else if (fixtureKind === "revoked-message") {
+  if (fixtureKind === "revoked-message") {
     await db.transaction(async (tx) => {
       await replaceChatEvent(tx, message.id, {
         chatThreadId: thread.id,

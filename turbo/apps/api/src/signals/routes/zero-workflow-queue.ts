@@ -5,7 +5,10 @@ import { organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
 import { pathParamsOf } from "../context/request";
 import { db$, writeDb$, type ReadonlyDb } from "../external/db";
-import { publishChatThreadWorkflowQueueChangedSafely } from "../external/realtime";
+import {
+  publishChatThreadMessageCreatedSafely,
+  publishChatThreadWorkflowQueueChangedSafely,
+} from "../external/realtime";
 import { notFound } from "../../lib/error";
 import { nowDate } from "../external/time";
 import {
@@ -62,7 +65,7 @@ async function workflowQueueResponse(
           createdAt: event.createdAt.toISOString(),
         };
       }),
-      pausedAt: thread.queuePausedAt?.toISOString() ?? null,
+      pausedAt: thread.automationPausedAt?.toISOString() ?? null,
       pauseReason: thread.pauseReason,
     },
   };
@@ -110,6 +113,11 @@ const skipEventInner$ = command(async ({ get, set }, signal: AbortSignal) => {
     deleted.chatThreadId,
   );
   signal.throwIfAborted();
+  await publishChatThreadMessageCreatedSafely(
+    auth.userId,
+    deleted.chatThreadId,
+  );
+  signal.throwIfAborted();
   return await workflowQueueResponse(db, thread, deleted.chatThreadId);
 });
 
@@ -132,6 +140,8 @@ const clearQueueInner$ = command(async ({ get, set }, signal: AbortSignal) => {
     auth.userId,
     params.threadId,
   );
+  signal.throwIfAborted();
+  await publishChatThreadMessageCreatedSafely(auth.userId, params.threadId);
   signal.throwIfAborted();
   return await workflowQueueResponse(db, thread, params.threadId);
 });
@@ -181,6 +191,8 @@ const setPauseInner = (paused: boolean) => {
       auth.userId,
       params.threadId,
     );
+    signal.throwIfAborted();
+    await publishChatThreadMessageCreatedSafely(auth.userId, params.threadId);
     signal.throwIfAborted();
     const updated = await loadWorkflowQueueThread(db, {
       orgId: auth.orgId,
