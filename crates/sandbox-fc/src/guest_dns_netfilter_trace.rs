@@ -139,13 +139,13 @@ pub(crate) struct GuestDnsNetfilterTraceReader {
 
 /// Per-namespace availability of root netfilter trace diagnostics.
 ///
-/// This state is independent from namespace health: unavailable diagnostics remain serializable
-/// evidence, while namespace creation and DNS routing continue normally.
+/// This state does not participate in namespace admission or modify DNS routing. `Unavailable`
+/// preserves why requested diagnostics could not attach; `Disabled` intentionally omits evidence.
 #[derive(Clone, Debug)]
 pub(crate) enum GuestDnsNetfilterTraceAttachment {
     /// Tracing was not requested, so evidence capture omits a trace report.
     Disabled,
-    /// Tracing was requested but this namespace could not receive it.
+    /// Requested diagnostics were unavailable before an enabled attachment could be formed.
     Unavailable(&'static str),
     /// The namespace TRACE rule and shared reader are available.
     Enabled(GuestDnsNetfilterTraceReader),
