@@ -22,7 +22,6 @@ import { orgConcurrencySubscriptions } from "@vm0/db/schema/org-concurrency-subs
 import { orgMembersCache } from "@vm0/db/schema/org-members-cache";
 import { orgMembersMetadata } from "@vm0/db/schema/org-members-metadata";
 import { orgMetadata } from "@vm0/db/schema/org-metadata";
-import { orgUsageAllowanceEntitlements } from "@vm0/db/schema/org-usage-allowance";
 import { secrets } from "@vm0/db/schema/secret";
 import { slackOrgConnections } from "@vm0/db/schema/slack-org-connection";
 import { slackOrgInstallations } from "@vm0/db/schema/slack-org-installation";
@@ -30,8 +29,6 @@ import { storages } from "@vm0/db/schema/storage";
 import { telegramInstallations } from "@vm0/db/schema/telegram-installation";
 import { telegramUserLinks } from "@vm0/db/schema/telegram-user-link";
 import { usageDaily } from "@vm0/db/schema/usage-daily";
-import { usageEvent } from "@vm0/db/schema/usage-event";
-import { usageEventHourlyRollup } from "@vm0/db/schema/usage-event-hourly-rollup";
 import { userCache } from "@vm0/db/schema/user-cache";
 import { users } from "@vm0/db/schema/user";
 import { userPermissionGrants } from "@vm0/db/schema/user-permission-grant";
@@ -57,6 +54,10 @@ import { settle, tapError } from "../utils";
 import { decryptPersistentSecretValue } from "./crypto.utils";
 import { loadUserFeatureSwitchContext } from "./feature-switches.service";
 import { cleanupOrgMemberResources } from "./org-member-cleanup.service";
+import {
+  deleteOrgUsageData,
+  deleteUserUsageData,
+} from "./usage-event-cleanup.service";
 import { deleteZeroConnectorLocalState$ } from "./zero-connector-data.service";
 import { loadConnectorRuntimeSnapshot } from "./connector-catalog-runtime.service";
 
@@ -733,13 +734,7 @@ async function deleteOrgData(db: Db, orgId: string): Promise<void> {
     await cleanupWorkspaceInstallation(db, installation.slackWorkspaceId);
   }
 
-  await db
-    .delete(usageEventHourlyRollup)
-    .where(eq(usageEventHourlyRollup.orgId, orgId));
-  await db.delete(usageEvent).where(eq(usageEvent.orgId, orgId));
-  await db
-    .delete(orgUsageAllowanceEntitlements)
-    .where(eq(orgUsageAllowanceEntitlements.orgId, orgId));
+  await deleteOrgUsageData(db, orgId);
   await db.delete(artifacts).where(eq(artifacts.orgId, orgId));
   await db.delete(agentRuns).where(eq(agentRuns.orgId, orgId));
   await db.delete(agentComposes).where(eq(agentComposes.orgId, orgId));
@@ -787,10 +782,7 @@ async function deleteUserData(db: Db, userId: string): Promise<void> {
   await db
     .delete(telegramInstallations)
     .where(eq(telegramInstallations.ownerUserId, userId));
-  await db
-    .delete(usageEventHourlyRollup)
-    .where(eq(usageEventHourlyRollup.userId, userId));
-  await db.delete(usageEvent).where(eq(usageEvent.userId, userId));
+  await deleteUserUsageData(db, userId);
   await db.delete(artifacts).where(eq(artifacts.authorUserId, userId));
   await db.delete(agentRuns).where(eq(agentRuns.userId, userId));
 
