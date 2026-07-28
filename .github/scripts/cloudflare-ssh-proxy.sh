@@ -22,7 +22,7 @@ if [ -z "${CF_ACCESS_CLIENT_ID:-}" ] || [ -z "${CF_ACCESS_CLIENT_SECRET:-}" ]; t
 fi
 
 DOMAIN="${CF_TUNNEL_DOMAIN:-vm3.ai}"
-SUB="${HOST%.${DOMAIN}}"
+SUB="${HOST%."${DOMAIN}"}"
 TUNNEL_HOST="${SUB//./-}-ssh.${DOMAIN}"
 CLOUDFLARED_BIN="${CLOUDFLARED_BIN:-cloudflared}"
 LOG_DIR="${RUNNER_TEMP:-${TMPDIR:-/tmp}}"
@@ -45,6 +45,8 @@ redact_cloudflared_log() {
     -e 's/(--id(=|[[:space:]]+))[^[:space:]]+/\1[redacted]/g' \
     -e 's/(CF_ACCESS_CLIENT_SECRET=)[^[:space:]]+/\1[redacted]/g' \
     -e 's/(CF_ACCESS_CLIENT_ID=)[^[:space:]]+/\1[redacted]/g' \
+    -e 's/(TUNNEL_SERVICE_TOKEN_SECRET=)[^[:space:]]+/\1[redacted]/g' \
+    -e 's/(TUNNEL_SERVICE_TOKEN_ID=)[^[:space:]]+/\1[redacted]/g' \
     -e 's/(Authorization:[[:space:]]*Bearer[[:space:]]+)[^[:space:]]+/\1[redacted]/Ig' \
     "$LOG_FILE"
 }
@@ -172,10 +174,10 @@ trap 'handle_signal INT 130' INT
 trap 'handle_signal TERM 143' TERM
 
 status=0
-"$CLOUDFLARED_BIN" access ssh \
+TUNNEL_SERVICE_TOKEN_ID="$CF_ACCESS_CLIENT_ID" \
+  TUNNEL_SERVICE_TOKEN_SECRET="$CF_ACCESS_CLIENT_SECRET" \
+  "$CLOUDFLARED_BIN" access ssh \
   --hostname "$TUNNEL_HOST" \
-  --id "$CF_ACCESS_CLIENT_ID" \
-  --secret "$CF_ACCESS_CLIENT_SECRET" \
   <&0 2> "$LOG_FILE" &
 cloudflared_pid=$!
 wait "$cloudflared_pid" || status=$?
