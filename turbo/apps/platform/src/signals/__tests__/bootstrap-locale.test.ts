@@ -9,7 +9,9 @@ import { testContext } from "./test-helpers.ts";
 const context = testContext();
 
 describe("bootstrap locale", () => {
-  it("initializes English and supports changing to a bundled locale", async () => {
+  it("ignores the browser language and supports changing to a bundled locale", async () => {
+    context.mocks.browser.language("zh-CN");
+
     await setupPage({
       context,
       path: "/error",
@@ -32,7 +34,7 @@ describe("bootstrap locale", () => {
     await context.store.set(setLocale$, DEFAULT_LOCALE, context.signal);
   });
 
-  it("initializes i18next from the locale selected by the inline script", async () => {
+  it("initializes i18next from the cached locale selected by the inline script", async () => {
     document.documentElement.lang = "zh-CN";
 
     await setupPage({
