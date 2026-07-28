@@ -458,12 +458,6 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
       "Generate poster images asynchronously when video artifacts are recorded.",
     enabled: true,
   },
-  [FeatureSwitchKey.WebsiteTemplateV2]: {
-    maintainer: "bingjie@vm0.ai",
-    description:
-      "Generate websites from refreshed self-contained template packages. When off, website generation uses the existing package versions.",
-    enabled: true,
-  },
   [FeatureSwitchKey.ImageStyleR2]: {
     maintainer: "bingjie@vm0.ai",
     description:
