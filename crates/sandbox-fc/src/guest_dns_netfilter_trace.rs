@@ -25,11 +25,11 @@
 //! # Capture window and packet identity
 //!
 //! A [`GuestDnsNetfilterTraceCursor`] is a reusable value identifying one monitor generation and
-//! the last packet sequence present at baseline time. It is not a consumer offset: capture does not
-//! advance shared state, and every capture with that cursor applies the same baseline boundary to
-//! the packets retained at capture time. A packet first observed before the baseline stays outside
-//! that window even if later steps arrive afterward. A cursor from another monitor generation
-//! returns `cursor_mismatch` instead of comparing unrelated sequence numbers.
+//! the last packet sequence assigned by baseline time. It is not a consumer offset: capture does
+//! not advance shared state, and every capture with that cursor applies the same baseline boundary
+//! to the packets retained at capture time. A packet first observed before the baseline stays
+//! outside that window even if later steps arrive afterward. A cursor from another monitor
+//! generation returns `cursor_mismatch` instead of comparing unrelated sequence numbers.
 //!
 //! Because the monitor is runtime-wide, a packet is attributed to one readiness attempt only when
 //! the packet header and the exact raw PREROUTING TRACE rule jointly match all isolation fields:
