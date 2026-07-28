@@ -441,6 +441,7 @@ export function createChatFilesBddApi(context: TestContext) {
     async getThreadSnapshot(actor: ApiTestUser): Promise<{
       readonly chatThreads: readonly ChatThreadSnapshotProjection[];
       readonly latestEventId: string | null;
+      readonly latestSeqId: number | null;
     }> {
       const response = await accept(
         threadsClient().snapshot({
@@ -448,12 +449,21 @@ export function createChatFilesBddApi(context: TestContext) {
         }),
         [200],
       );
-      return response.body;
+      if (response.body.latestSeqId === undefined) {
+        throw new Error("Expected snapshot sequence cursor");
+      }
+      return {
+        ...response.body,
+        latestSeqId: response.body.latestSeqId,
+      };
     },
 
     async requestThreadEvents(
       actor: ApiTestUser,
-      query: { readonly sinceEventId?: string },
+      query: {
+        readonly sinceSeqId?: number;
+        readonly sinceEventId?: string;
+      },
       statuses: readonly (200 | 410)[],
     ) {
       return await accept(

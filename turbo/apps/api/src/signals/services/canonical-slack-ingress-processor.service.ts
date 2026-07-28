@@ -39,6 +39,10 @@ import {
 import { drainChatThreadQueueForThread$ } from "./chat-thread-queue-drain.service";
 import { decryptPersistentSecretValue } from "./crypto.utils";
 import { loadUserFeatureSwitchContext } from "./feature-switches.service";
+import {
+  isSlackDirectMessageSessionThreadTs,
+  slackSessionThreadTs,
+} from "./slack-chat-ingress.service";
 import { touchChatThreadLastMessageAt } from "./zero-chat-message-shared.service";
 import { insertChatEvent } from "./zero-chat-event.service";
 import {
@@ -94,6 +98,10 @@ function slackChannelType(
     return "group_dm";
   }
   return "channel";
+}
+
+function slackPhysicalThreadTs(event: SlackAgentEvent): string {
+  return event.thread_ts ?? event.ts;
 }
 
 function buildSlackSystemPrompt(args: {
@@ -229,11 +237,21 @@ function requireMatchingEvent(
 ) {
   const parsed = slackEventCallbackSchema.parse(JSON.parse(payload) as unknown);
   const event = parsed.event;
+  const channelType = slackChannelType(event);
+  const matchesThread =
+    channelType === "dm" && !event.thread_ts
+      ? isSlackDirectMessageSessionThreadTs(route.threadTs) ||
+        route.threadTs === event.ts
+      : slackSessionThreadTs({
+          channelType,
+          messageTs: event.ts,
+          ...(event.thread_ts ? { threadTs: event.thread_ts } : {}),
+        }) === route.threadTs;
   if (
     parsed.team_id !== route.workspaceId ||
     event.user !== route.slackUserId ||
     event.channel !== route.channelId ||
-    (event.thread_ts ?? event.ts) !== route.threadTs
+    !matchesThread
   ) {
     throw new Error("Canonical Slack ingress payload does not match its route");
   }
@@ -272,17 +290,22 @@ interface PersistedCanonicalSlackIngress {
   readonly chatThreadId: string;
   readonly channelId: string;
   readonly threadTs: string;
+  readonly routeThreadTs?: string;
 }
 
 function persistedCanonicalSlackIngress(
   ingress: NonNullable<Awaited<ReturnType<typeof loadClaimedIngress>>>,
+  threadTs: string,
   chatThreadId: string,
 ): PersistedCanonicalSlackIngress {
   return {
     userId: ingress.userId,
     chatThreadId,
     channelId: ingress.channelId,
-    threadTs: ingress.threadTs,
+    threadTs,
+    ...(threadTs === ingress.threadTs
+      ? {}
+      : { routeThreadTs: ingress.threadTs }),
   };
 }
 
@@ -394,6 +417,7 @@ const persistClaimedCanonicalSlackIngress$ = command(
     const chatThreadId = ingress.chatThreadId;
     const orgId = ingress.orgId;
     const event = requireMatchingEvent(ingress.payload, ingress);
+    const threadTs = slackPhysicalThreadTs(event);
     const featureContext = await loadUserFeatureSwitchContext(
       db,
       orgId,
@@ -410,7 +434,7 @@ const persistClaimedCanonicalSlackIngress$ = command(
       client,
       ingressId,
       channelId: ingress.channelId,
-      threadTs: ingress.threadTs,
+      threadTs,
     });
     signal.throwIfAborted();
     const userInfoResolver = createSlackUserInfoResolver(client);
@@ -472,12 +496,15 @@ const persistClaimedCanonicalSlackIngress$ = command(
           botUserId: ingress.botUserId,
           channelId: ingress.channelId,
           channelType: slackChannelType(event),
-          threadTs: ingress.threadTs,
+          threadTs,
           executionContext: context.executionContext,
         }),
         slackDelivery: {
           channelId: ingress.channelId,
-          threadTs: ingress.threadTs,
+          threadTs,
+          ...(threadTs === ingress.threadTs
+            ? {}
+            : { routeThreadTs: ingress.threadTs }),
         },
         userInfoExtras: enriched.userInfoExtras,
       },
@@ -499,7 +526,7 @@ const persistClaimedCanonicalSlackIngress$ = command(
       signal,
     );
     signal.throwIfAborted();
-    return persistedCanonicalSlackIngress(ingress, chatThreadId);
+    return persistedCanonicalSlackIngress(ingress, threadTs, chatThreadId);
   },
 );
 
@@ -547,6 +574,9 @@ export const processCanonicalSlackIngress$ = command(
               chatThreadId: ingress.chatThreadId,
               channelId: ingress.channelId,
               threadTs: ingress.threadTs,
+              ...(ingress.routeThreadTs
+                ? { routeThreadTs: ingress.routeThreadTs }
+                : {}),
             },
             signal,
           ),

@@ -405,6 +405,7 @@ export function mockThread(options?: {
         },
       ],
       latestEventId: null,
+      latestSeqId: null,
     });
   });
   context.mocks.api(chatThreadsContract.events, ({ respond }) => {
@@ -460,6 +461,7 @@ export function mockComposerThreadSnapshot(
         };
       }),
       latestEventId: null,
+      latestSeqId: null,
     });
   });
 }

@@ -30,7 +30,7 @@
       "ignoreDependencies": ["@hono/node-server-v1"]
     },
     "apps/platform": {
-      "entry": ["src/main.ts", "**/*.{test,spec}.ts?(x)"],
+      "entry": ["src/main.ts", "i18next.config.ts", "**/*.{test,spec}.ts?(x)"],
       "project": ["**/*.{ts,tsx}"],
       "ignore": [
         "src/views/zero-page/zero-sidebar-account.tsx",

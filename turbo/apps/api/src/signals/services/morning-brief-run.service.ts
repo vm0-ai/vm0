@@ -377,23 +377,25 @@ async function ensureMorningBriefChatThread(
   if (row.chatThreadId) {
     return row.chatThreadId;
   }
-  const chatThreadId = await createAutomationChatThread(db, {
-    userId: row.userId,
-    orgId: row.orgId,
-    agentId,
-    title: MORNING_BRIEF_THREAD_TITLE,
-    currentTime,
+  return await db.transaction(async (tx) => {
+    const chatThreadId = await createAutomationChatThread(tx, {
+      userId: row.userId,
+      orgId: row.orgId,
+      agentId,
+      title: MORNING_BRIEF_THREAD_TITLE,
+      currentTime,
+    });
+    await tx
+      .update(morningBriefSchedules)
+      .set({ chatThreadId, updatedAt: currentTime })
+      .where(
+        and(
+          eq(morningBriefSchedules.orgId, row.orgId),
+          eq(morningBriefSchedules.userId, row.userId),
+        ),
+      );
+    return chatThreadId;
   });
-  await db
-    .update(morningBriefSchedules)
-    .set({ chatThreadId, updatedAt: currentTime })
-    .where(
-      and(
-        eq(morningBriefSchedules.orgId, row.orgId),
-        eq(morningBriefSchedules.userId, row.userId),
-      ),
-    );
-  return chatThreadId;
 }
 
 interface MorningBriefModelContext {

@@ -27,7 +27,7 @@ export const setupArtifactsPage$ = command(
 
     // Entering the page always starts a fresh first page. Later pages are
     // fetched on scroll and never cached across visits.
-    set(setArtifactCatalogKind$, null);
+    set(setArtifactCatalogKind$, "presentation");
     set(reloadArtifactCatalog$);
     set(updatePage$, createElement(ArtifactCatalogPage), "sidebar");
     set(updateDocumentTitle$, "Artifacts");

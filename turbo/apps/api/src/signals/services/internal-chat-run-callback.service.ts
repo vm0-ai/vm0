@@ -299,6 +299,7 @@ const chatCallbackPayloadSchema = z
       .object({
         channelId: z.string(),
         threadTs: z.string(),
+        routeThreadTs: z.string().optional(),
       })
       .optional(),
     feishuDelivery: feishuDeliveryTargetSchema.optional(),
@@ -473,6 +474,7 @@ interface ChatCallbackDependencies {
       readonly agentId: string;
       readonly channelId: string;
       readonly threadTs: string;
+      readonly routeThreadTs?: string;
       readonly chatMessageId: string;
     },
     signal: AbortSignal,
@@ -541,6 +543,7 @@ interface CreateQueuedChatRunInput {
   readonly slackDelivery?: {
     readonly channelId: string;
     readonly threadTs: string;
+    readonly routeThreadTs?: string;
   };
   readonly feishuDelivery?: FeishuDeliveryTarget;
   readonly teamsDelivery?: TeamsDeliveryTarget;
@@ -566,6 +569,7 @@ interface SlackQueuedMessageAdmissionFailure {
   readonly slackDelivery: {
     readonly channelId: string;
     readonly threadTs: string;
+    readonly routeThreadTs?: string;
   };
   readonly error: QueuedMessageModelRouteError;
 }
@@ -1034,6 +1038,7 @@ async function recordLastEventToComplete(db: Db, runId: string): Promise<void> {
 interface SlackDeliveryTarget {
   readonly channelId: string;
   readonly threadTs: string;
+  readonly routeThreadTs?: string;
 }
 
 async function insertSlackChatDeliveryCallback(args: {
@@ -1069,8 +1074,7 @@ async function insertSlackChatDeliveryCallback(args: {
       internalKind: "slack:chat",
       encryptedSecret: sourceCallback.encryptedSecret,
       payload: {
-        channelId: args.target.channelId,
-        threadTs: args.target.threadTs,
+        ...args.target,
         chatMessageId: args.chatMessageId,
       },
     })
@@ -2822,6 +2826,9 @@ async function handleSlackQueuedMessageAdmissionFailure(args: {
         agentId: args.failure.agentId,
         channelId: args.failure.slackDelivery.channelId,
         threadTs: args.failure.slackDelivery.threadTs,
+        ...(args.failure.slackDelivery.routeThreadTs
+          ? { routeThreadTs: args.failure.slackDelivery.routeThreadTs }
+          : {}),
         chatMessageId: failed.assistantMessageId,
       },
       args.signal,
@@ -3309,6 +3316,9 @@ async function clearSlackThreadStatusAfterTerminalCallback(args: {
         chatThreadId: args.chatThreadId,
         channelId: args.slackDelivery.channelId,
         threadTs: args.slackDelivery.threadTs,
+        ...(args.slackDelivery.routeThreadTs
+          ? { routeThreadTs: args.slackDelivery.routeThreadTs }
+          : {}),
       },
       args.signal,
     ),
@@ -3706,6 +3716,11 @@ async function handleChatInternalCallback(args: {
               chatThreadId: payload.data.threadId,
               channelId: payload.data.slackDelivery.channelId,
               threadTs: payload.data.slackDelivery.threadTs,
+              ...(payload.data.slackDelivery.routeThreadTs
+                ? {
+                    routeThreadTs: payload.data.slackDelivery.routeThreadTs,
+                  }
+                : {}),
             },
             backgroundSignal,
           ),

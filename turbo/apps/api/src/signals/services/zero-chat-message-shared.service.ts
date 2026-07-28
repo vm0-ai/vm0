@@ -26,7 +26,10 @@ import { assistantMessageIdForRunEvent } from "./assistant-message-id";
 import { insertChatEvents } from "./zero-chat-event.service";
 import { chatEventTypeIn } from "./zero-chat-event-type.service";
 import { publishFirstAssistantMessageCreated } from "./zero-chat-first-assistant-message-metric.service";
-import { appendChatThreadEvent } from "./zero-chat-thread-event.service";
+import {
+  appendChatThreadEvent,
+  type ChatThreadEventTransaction,
+} from "./zero-chat-thread-event.service";
 
 const EXT_MIMETYPE_MAP: Readonly<Record<string, string>> = {
   png: "image/png",
@@ -77,7 +80,7 @@ export function inferMimetype(filename: string): string {
 }
 
 export async function touchChatThreadLastMessageAt(
-  tx: Pick<Db, "insert" | "select" | "update">,
+  tx: ChatThreadEventTransaction,
   threadId: string,
   touchedAt: Date = nowDate(),
   eventId?: string,

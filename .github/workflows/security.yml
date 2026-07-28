@@ -68,28 +68,17 @@ jobs:
           EVENT_NAME: ${{ github.event_name }}
           GH_TOKEN: ${{ github.token }}
           MQ_HEAD_REF: ${{ github.event.merge_group.head_ref || '' }}
-          PR_TITLE: ${{ github.event.pull_request.title || '' }}
+          PR_NUMBER: ${{ github.event.pull_request.number || '' }}
           REPO: ${{ github.repository }}
         run: |
           set -euo pipefail
 
-          case "$EVENT_NAME" in
-            pull_request)
-              title="$PR_TITLE"
-              ;;
-            merge_group)
-              pr_number="$(printf '%s\n' "$MQ_HEAD_REF" | grep -oE 'pr-[0-9]+' | head -1 | sed 's/pr-//' || true)"
-              if [ -z "$pr_number" ]; then
-                echo "::error::Could not resolve pull request number from merge queue ref: $MQ_HEAD_REF"
-                exit 1
-              fi
-              title="$(gh pr view "$pr_number" --repo "$REPO" --json title --jq .title)"
-              ;;
-            *)
-              echo "No pull request title to validate for $EVENT_NAME"
-              exit 0
-              ;;
-          esac
+          title="$(.github/scripts/resolve-pr-title.sh)"
+
+          if [ -z "$title" ]; then
+            echo "No pull request title to validate for $EVENT_NAME"
+            exit 0
+          fi
 
           .github/scripts/check-pr-title.sh "$title"
 

@@ -123,6 +123,7 @@ function setupChatThread({
         },
       ],
       latestEventId: "00000000-0000-4000-8000-000000000001",
+      latestSeqId: 1,
     });
   });
   context.mocks.api(chatThreadEventsContract.list, ({ query, respond }) => {

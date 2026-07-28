@@ -1,5 +1,26 @@
 # Changelog
 
+## [0.643.0](https://github.com/vm0-ai/vm0/compare/app-v0.642.1...app-v0.643.0) (2026-07-28)
+
+
+### Features
+
+* **connectors:** route configured oauth providers through app callbacks ([#23362](https://github.com/vm0-ai/vm0/issues/23362)) ([79f5ea1](https://github.com/vm0-ai/vm0/commit/79f5ea1f5b02c6323dfc11838a0ce4c8a659d0b1))
+
+
+### Bug Fixes
+
+* **platform:** preserve native fetch error messages ([#23361](https://github.com/vm0-ai/vm0/issues/23361)) ([6a90009](https://github.com/vm0-ai/vm0/commit/6a900094b395d0ff97e011f3d2a930b031b63685))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.237.2
+    * @vm0/connectors bumped to 1.198.0
+    * @vm0/core bumped to 8.476.2
+
 ## [0.642.1](https://github.com/vm0-ai/vm0/compare/app-v0.642.0...app-v0.642.1) (2026-07-28)
 
 

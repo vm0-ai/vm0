@@ -68,6 +68,7 @@ export enum FeatureSwitchKey {
   ChatThreadUnifiedSearch = "chatThreadUnifiedSearch",
   ComposerSkillSubstringSearch = "composerSkillSubstringSearch",
   SidebarSubscriptionUsage = "sidebarSubscriptionUsage",
+  SlackDmSessionRouting = "slackDmSessionRouting",
   TeamsIntegration = "teamsIntegration",
   FeishuIntegration = "feishuIntegration",
   Artifacts = "artifacts",

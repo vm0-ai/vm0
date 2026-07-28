@@ -7,6 +7,7 @@ import {
   chatMessagesContract,
   chatThreadMessagesContract,
   chatThreadComputerUseHostContract,
+  chatThreadEventSchema,
   chatThreadModelSelectionContract,
   chatThreadsContract,
   chatEventResponseSchema,
@@ -113,6 +114,45 @@ describe("chat message pagination request compatibility", () => {
       success: true,
       data: { beforeId, limit: 20 },
     });
+  });
+});
+
+describe("chat thread event sequence contract", () => {
+  it("coerces current sequence cursors", () => {
+    expect(
+      chatThreadsContract.events.query.safeParse({ sinceSeqId: "42" }),
+    ).toMatchObject({
+      success: true,
+      data: { sinceSeqId: 42 },
+    });
+  });
+
+  it("accepts previous API responses during independent app promotion", () => {
+    const legacyEvent = {
+      id: "11111111-1111-4111-8111-111111111111",
+      kind: "renamed",
+      chatThreadId: "22222222-2222-4222-8222-222222222222",
+      agentId: "33333333-3333-4333-8333-333333333333",
+      title: "Legacy cursor title",
+      selectedModel: null,
+      serviceTier: null,
+      computerUseHostId: null,
+      createdAt: "2026-07-28T00:00:00.000Z",
+    };
+
+    expect(
+      chatThreadsContract.snapshot.responses[200].safeParse({
+        chatThreads: [],
+        latestEventId: legacyEvent.id,
+      }).success,
+    ).toBe(true);
+    expect(
+      chatThreadsContract.events.responses[200].safeParse({
+        events: [legacyEvent],
+        hasMore: false,
+      }).success,
+    ).toBe(true);
+    expect(chatThreadEventSchema.safeParse(legacyEvent).success).toBe(false);
   });
 });
 

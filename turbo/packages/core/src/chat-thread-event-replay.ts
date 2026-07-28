@@ -3,6 +3,8 @@ import type {
   ChatThreadSnapshotProjection,
 } from "@vm0/api-contracts/contracts/chat-threads";
 
+export type ReplayChatThreadEvent = Omit<ChatThreadEvent, "seqId">;
+
 export interface EventDrivenChatThread extends ChatThreadSnapshotProjection {
   readonly sortAt: string;
   readonly cloudBrowserEnabled: boolean;
@@ -26,8 +28,8 @@ function compareThreadOrder(
 
 function applyEvent(
   threads: Map<string, EventDrivenChatThread>,
-  event: ChatThreadEvent,
-  pendingThreadUpdates: Map<string, ChatThreadEvent[]>,
+  event: ReplayChatThreadEvent,
+  pendingThreadUpdates: Map<string, ReplayChatThreadEvent[]>,
 ) {
   if (event.kind === "created") {
     threads.set(event.chatThreadId, {
@@ -136,7 +138,7 @@ function applyEvent(
 
 export function replayChatThreadEvents(
   snapshot: readonly ChatThreadSnapshotProjection[],
-  events: readonly ChatThreadEvent[],
+  events: readonly ReplayChatThreadEvent[],
 ): EventDrivenChatThread[] {
   const threads = new Map<string, EventDrivenChatThread>();
   for (const thread of snapshot) {
@@ -148,7 +150,7 @@ export function replayChatThreadEvents(
       cloudBrowserEnabled: thread.cloudBrowserEnabled ?? false,
     });
   }
-  const pendingThreadUpdates = new Map<string, ChatThreadEvent[]>();
+  const pendingThreadUpdates = new Map<string, ReplayChatThreadEvent[]>();
   for (const event of events) {
     applyEvent(threads, event, pendingThreadUpdates);
   }

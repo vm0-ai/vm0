@@ -1465,48 +1465,59 @@ describe("connectors page", () => {
     ).not.toBeInTheDocument();
   });
 
-  it("starts Mercury OAuth with the app callback", async () => {
-    mockConnectors([]);
-    mockPublicConnectorStatus([
-      publicStatusItem({
-        connectorRef: "mercury",
-        label: "Mercury",
-        authMethods: [
-          {
-            id: "oauth",
-            label: "OAuth",
-            description: null,
-            grantKind: "auth-code",
-            manualFields: [],
-            startOptions: [],
-          },
-        ],
-        singleAuthCodeAuthMethodId: "oauth",
-      }),
-    ]);
-    const authWindow = createMockAuthWindow();
-    context.mocks.browser.open(authWindow);
-    context.mocks.api(
-      zeroConnectorOauthStartContract.start,
-      ({ body, params, respond }) => {
-        expect(params.type).toBe("mercury");
-        expect(body.callbackTarget).toBe("app");
-        return respond(200, {
-          authorizationUrl: "https://oauth.test/mercury/authorize",
-        });
-      },
-    );
-
-    detachedSetupPage({ context, path: "/connectors" });
-
-    click(await screen.findByLabelText("Connect Mercury"));
-
-    await waitFor(() => {
-      expect(authWindow.location.href).toBe(
-        "https://oauth.test/mercury/authorize",
+  it.each([
+    ["hubspot", "HubSpot"],
+    ["intervals-icu", "Intervals.icu"],
+    ["linear", "Linear"],
+    ["mercury", "Mercury"],
+    ["notion", "Notion"],
+    ["sentry", "Sentry"],
+    ["vercel", "Vercel"],
+  ] as const)(
+    "starts %s OAuth with the app callback",
+    async (connectorRef, label) => {
+      mockConnectors([]);
+      mockPublicConnectorStatus([
+        publicStatusItem({
+          connectorRef,
+          label,
+          authMethods: [
+            {
+              id: "oauth",
+              label: "OAuth",
+              description: null,
+              grantKind: "auth-code",
+              manualFields: [],
+              startOptions: [],
+            },
+          ],
+          singleAuthCodeAuthMethodId: "oauth",
+        }),
+      ]);
+      const authWindow = createMockAuthWindow();
+      context.mocks.browser.open(authWindow);
+      context.mocks.api(
+        zeroConnectorOauthStartContract.start,
+        ({ body, params, respond }) => {
+          expect(params.type).toBe(connectorRef);
+          expect(body.callbackTarget).toBe("app");
+          return respond(200, {
+            authorizationUrl: `https://oauth.test/${connectorRef}/authorize`,
+          });
+        },
       );
-    });
-  });
+
+      detachedSetupPage({ context, path: "/connectors" });
+
+      click(await screen.findByLabelText(`Connect ${label}`));
+
+      await waitFor(() => {
+        expect(authWindow.location.href).toBe(
+          `https://oauth.test/${connectorRef}/authorize`,
+        );
+      });
+    },
+  );
 
   it("routes a server-authored connector from its catalog grant metadata", async () => {
     const connectorRef = "server-authored-steam";

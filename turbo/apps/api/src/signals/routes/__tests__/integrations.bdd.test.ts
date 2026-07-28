@@ -1862,6 +1862,173 @@ describe("INT-01: Slack app deep webhook flows", () => {
     expect(run2.result?.agentSessionId).toBe(webSessionId);
   });
 
+  it("forks Slack DM threads without replacing the main session", async () => {
+    const actor = bdd.user();
+    bdd.acceptAgentStorageWrites();
+    await integrations.enableSlackDmSessionRoutingSwitch(actor);
+    runs.acceptStorageDownloads();
+    runs.acceptTelemetryIngest();
+    integrations.configureSlackAppMocks();
+    integrations.acceptSlackSessionHistoryDownloads();
+    const runnerGroup = runs.configureRunnerGroup();
+    await runs.grantProEntitlement(actor);
+    await integrations.configureSlackRunModelPolicies(actor);
+    await bdd.readOnboardingStatus(actor);
+    const slackUserId = uniqueSlackUserId();
+    const { teamId } = await integrations.installSlackWorkspace(actor, {
+      installerSlackUserId: slackUserId,
+    });
+    integrations.clearSlackCallHistory();
+
+    const channelId = "D_BDD_SESSION_ROUTING";
+    const firstMessageTs = "2950.000100";
+    await integrations.postSlackEvent(teamId, {
+      type: "message",
+      channel_type: "im",
+      user: slackUserId,
+      text: "remember the main Slack DM",
+      ts: firstMessageTs,
+      channel: channelId,
+    });
+    const firstRunId = await pollSlackRun(runnerGroup);
+    const firstClaim = await runs.claimRunnerJob(firstRunId);
+    expect(firstClaim.resumeSession).toBeNull();
+    await completeSlackTriggeredRun({
+      runId: firstRunId,
+      sandboxToken: firstClaim.sandboxToken,
+      cliAgentType: firstClaim.cliAgentType,
+      assistantText: "Main Slack DM answer",
+    });
+    await flushWaitUntilForTest();
+    expect(context.mocks.slack.chat.postMessage).toHaveBeenCalledWith(
+      expect.objectContaining({
+        channel: channelId,
+        thread_ts: firstMessageTs,
+        text: "Main Slack DM answer",
+      }),
+    );
+
+    const secondMessageTs = "2950.000200";
+    await integrations.postSlackEvent(teamId, {
+      type: "message",
+      channel_type: "im",
+      user: slackUserId,
+      text: "continue the main Slack DM",
+      ts: secondMessageTs,
+      channel: channelId,
+    });
+    const secondRunId = await pollSlackRun(runnerGroup);
+    const secondClaim = await runs.claimRunnerJob(secondRunId);
+    expect(secondClaim.resumeSession?.sessionId).toBe(
+      `bdd-slack-cli-${firstRunId}`,
+    );
+    await completeSlackTriggeredRun({
+      runId: secondRunId,
+      sandboxToken: secondClaim.sandboxToken,
+      cliAgentType: secondClaim.cliAgentType,
+      assistantText: "Continued main Slack DM answer",
+    });
+    await flushWaitUntilForTest();
+    expect(context.mocks.slack.chat.postMessage).toHaveBeenCalledWith(
+      expect.objectContaining({
+        channel: channelId,
+        thread_ts: secondMessageTs,
+        text: "Continued main Slack DM answer",
+      }),
+    );
+
+    const alternateAgent = await bdd.createAgent(actor, {
+      displayName: "BDD alternate Slack DM agent",
+    });
+    await integrations.postSlackInteractive(
+      integrations.agentPickerSubmission({
+        workspaceId: teamId,
+        slackUserId,
+        selectedValue: alternateAgent.agentId,
+        channelId,
+      }),
+    );
+    await integrations.postSlackEvent(teamId, {
+      type: "message",
+      channel_type: "im",
+      user: slackUserId,
+      text: "use an alternate Slack DM agent",
+      ts: "2950.000250",
+      channel: channelId,
+    });
+    const alternateRunId = await pollSlackRun(runnerGroup);
+    const alternateClaim = await runs.claimRunnerJob(alternateRunId);
+    expect(alternateClaim.resumeSession).toBeNull();
+    await completeSlackTriggeredRun({
+      runId: alternateRunId,
+      sandboxToken: alternateClaim.sandboxToken,
+      cliAgentType: alternateClaim.cliAgentType,
+    });
+    await flushWaitUntilForTest();
+    await integrations.postSlackInteractive(
+      integrations.agentPickerSubmission({
+        workspaceId: teamId,
+        slackUserId,
+        selectedValue: "__org_default__",
+        channelId,
+      }),
+    );
+
+    await integrations.postSlackEvent(teamId, {
+      type: "message",
+      channel_type: "im",
+      user: slackUserId,
+      text: "open a Slack DM thread",
+      ts: "2950.000300",
+      thread_ts: secondMessageTs,
+      channel: channelId,
+    });
+    const threadRunId = await pollSlackRun(runnerGroup);
+    const threadClaim = await runs.claimRunnerJob(threadRunId);
+    expect(threadClaim.resumeSession).toBeNull();
+    await completeSlackTriggeredRun({
+      runId: threadRunId,
+      sandboxToken: threadClaim.sandboxToken,
+      cliAgentType: threadClaim.cliAgentType,
+    });
+    await flushWaitUntilForTest();
+
+    await integrations.postSlackEvent(teamId, {
+      type: "message",
+      channel_type: "im",
+      user: slackUserId,
+      text: "continue the Slack DM thread",
+      ts: "2950.000400",
+      thread_ts: secondMessageTs,
+      channel: channelId,
+    });
+    const threadFollowUpRunId = await pollSlackRun(runnerGroup);
+    const threadFollowUpClaim = await runs.claimRunnerJob(threadFollowUpRunId);
+    expect(threadFollowUpClaim.resumeSession?.sessionId).toBe(
+      `bdd-slack-cli-${threadRunId}`,
+    );
+    await completeSlackTriggeredRun({
+      runId: threadFollowUpRunId,
+      sandboxToken: threadFollowUpClaim.sandboxToken,
+      cliAgentType: threadFollowUpClaim.cliAgentType,
+    });
+    await flushWaitUntilForTest();
+
+    await integrations.postSlackEvent(teamId, {
+      type: "message",
+      channel_type: "im",
+      user: slackUserId,
+      text: "return to the main Slack DM",
+      ts: "2950.000500",
+      channel: channelId,
+    });
+    const returnToMainRunId = await pollSlackRun(runnerGroup);
+    const returnToMainClaim = await runs.claimRunnerJob(returnToMainRunId);
+    expect(returnToMainClaim.resumeSession?.sessionId).toBe(
+      `bdd-slack-cli-${secondRunId}`,
+    );
+  });
+
   it("admits a later canonical-route retry after its first ingress insert fails", async () => {
     const actor = bdd.user();
     const blockerActor = bdd.user();
