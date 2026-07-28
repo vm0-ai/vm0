@@ -261,6 +261,10 @@ fi
 assert_runner_temp_empty "$tmp/multiple/runner-temp"
 
 assert_contains "$SSH_ACTION" "ControlPath \$HOME/.ssh/vm0-ssh-%C"
+assert_contains "$SSH_ACTION" "ServerAliveInterval 15"
+assert_contains "$SSH_ACTION" "ServerAliveCountMax 20"
 assert_contains "$ANSIBLE_CONFIG" 'control_path = ~/.ssh/vm0-ssh-%%C'
+assert_contains "$ANSIBLE_CONFIG" "ServerAliveInterval=15"
+assert_contains "$ANSIBLE_CONFIG" "ServerAliveCountMax=20"
 
 echo "cloudflare-ssh-preconnect-test: ok"
