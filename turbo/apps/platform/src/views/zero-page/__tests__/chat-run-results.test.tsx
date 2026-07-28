@@ -516,7 +516,7 @@ describe("chat lifecycle", () => {
         interrupts.push(body.interruptsRunId);
       },
       onRecallMessageAppend: (body) => {
-        recalls.push(body.revokesMessageId);
+        recalls.push(body.revokesEventId);
       },
       activeRunIds: ["run-server-queued"],
     });
@@ -1230,7 +1230,7 @@ describe("chat lifecycle", () => {
           role: "assistant",
           content: "Use the revised launch plan with updated owners.",
           runId: "run-corrected-answer",
-          revokesMessageId: "msg-stale-answer",
+          revokesEventId: "msg-stale-answer",
           createdAt: "2026-06-09T10:02:00Z",
         },
       ],

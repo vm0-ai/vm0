@@ -2,7 +2,7 @@ import { command, computed } from "ccstate";
 import { zeroClient$ } from "../api-client.ts";
 import { searchParams$ } from "../route.ts";
 import { textToMessageDocument } from "../zero-page/user-message-document-codec.ts";
-import { sendChatEventWithCompatibility } from "./chat-event-api-rollout.ts";
+import { sendChatEvent } from "./chat-event-api.ts";
 
 export interface ChatActionCallback {
   readonly callbackPrompt: string | null;
@@ -38,7 +38,7 @@ export const runChatActionCallback$ = command(
     if (!userMessage) {
       throw new Error("Failed to serialize callback user message");
     }
-    await sendChatEventWithCompatibility(
+    await sendChatEvent(
       get(zeroClient$),
       {
         agentId: args.agentId,

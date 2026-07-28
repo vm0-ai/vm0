@@ -1160,16 +1160,18 @@ function FeishuBotAgentSelect({
 function FeishuBotMenu({
   bot,
   title,
+  isAdmin,
 }: {
   bot: FeishuBotInstallation;
   title: string;
+  isAdmin: boolean;
 }) {
   const open = useSet(openFeishuDialog$);
   const setUninstallInstallationId = useSet(setFeishuUninstallInstallationId$);
   const [disconnectLoadable, disconnect] = useLoadableSet(disconnectFeishuOrg$);
   const signal = useGet(pageSignal$);
   const disconnecting = disconnectLoadable.state === "loading";
-  if (!bot.canManage && !bot.isConnected) {
+  if (!isAdmin && !bot.isConnected) {
     return null;
   }
   return (
@@ -1185,7 +1187,7 @@ function FeishuBotMenu({
         </button>
       </PopoverTrigger>
       <PopoverContent align="end" className="flex w-40 flex-col gap-0.5 p-2">
-        {bot.canManage ? (
+        {isAdmin ? (
           <>
             <button
               type="button"
@@ -1234,10 +1236,12 @@ function FeishuBotRow({
   bot,
   agents,
   agentsLoading,
+  isAdmin,
 }: {
   bot: FeishuBotInstallation;
   agents: TeamComposeItem[];
   agentsLoading: boolean;
+  isAdmin: boolean;
 }) {
   const title = bot.botName ?? bot.tenantName ?? "Feishu bot";
   const connectUrl = bot.connectUrl;
@@ -1267,7 +1271,7 @@ function FeishuBotRow({
         </div>
       </div>
       <div className="flex items-center justify-end gap-1.5 sm:w-[420px]">
-        {bot.canManage ? (
+        {isAdmin ? (
           <div className="min-w-0 flex-1">
             <FeishuBotAgentSelect
               bot={bot}
@@ -1291,7 +1295,7 @@ function FeishuBotRow({
             Connect
           </Button>
         ) : null}
-        <FeishuBotMenu bot={bot} title={title} />
+        <FeishuBotMenu bot={bot} title={title} isAdmin={isAdmin} />
       </div>
     </div>
   );
@@ -1301,10 +1305,12 @@ function FeishuBotList({
   bots,
   agents,
   agentsLoading,
+  isAdmin,
 }: {
   bots: FeishuBotInstallation[];
   agents: TeamComposeItem[];
   agentsLoading: boolean;
+  isAdmin: boolean;
 }) {
   if (bots.length === 0) {
     return (
@@ -1316,7 +1322,9 @@ function FeishuBotList({
           No Feishu bots yet
         </div>
         <div className="mt-1 text-sm text-muted-foreground">
-          Add a custom app to route Feishu messages to an agent.
+          {isAdmin
+            ? "Add a custom app to route Feishu messages to an agent."
+            : "Ask an organization admin to add a Feishu bot."}
         </div>
       </div>
     );
@@ -1330,6 +1338,7 @@ function FeishuBotList({
               bot={bot}
               agents={agents}
               agentsLoading={agentsLoading}
+              isAdmin={isAdmin}
             />
             {index < bots.length - 1 ? (
               <div className="mx-5 border-b border-border/50" />
@@ -1345,31 +1354,36 @@ function FeishuBotsCard({
   bots,
   agents,
   agentsLoading,
+  isAdmin,
   onAdd,
 }: {
   bots: FeishuBotInstallation[];
   agents: TeamComposeItem[];
   agentsLoading: boolean;
+  isAdmin: boolean;
   onAdd: () => void;
 }) {
   return (
     <section className="zero-card overflow-hidden">
       <div className="flex items-center justify-between gap-3 border-b border-border/50 px-4 py-3">
         <h2 className="text-sm font-medium text-foreground">Feishu bots</h2>
-        <Button
-          type="button"
-          size="sm"
-          disabled={agentsLoading}
-          onClick={onAdd}
-        >
-          <IconPlus size={16} />
-          Add bot
-        </Button>
+        {isAdmin && bots.length === 0 ? (
+          <Button
+            type="button"
+            size="sm"
+            disabled={agentsLoading}
+            onClick={onAdd}
+          >
+            <IconPlus size={16} />
+            Add bot
+          </Button>
+        ) : null}
       </div>
       <FeishuBotList
         bots={bots}
         agents={agents}
         agentsLoading={agentsLoading}
+        isAdmin={isAdmin}
       />
     </section>
   );
@@ -1468,25 +1482,24 @@ function FeishuSettingsSkeleton() {
 
 function FeishuDialogBody({
   data,
-  canManage,
+  isAdmin,
   agents,
   orgDefaultAgentId,
   orgDefaultAgentName,
   onClose,
 }: {
   data: FeishuDialogData | null;
-  canManage: boolean;
+  isAdmin: boolean;
   agents: TeamComposeItem[];
   orgDefaultAgentId: string | null;
   orgDefaultAgentName: string | null;
   onClose: () => void;
 }) {
-  if (!canManage) {
+  if (!isAdmin) {
     return (
       <p className="rounded-lg border border-border bg-muted/30 p-4 text-sm text-muted-foreground">
-        The bot owner or an organization admin must configure the app. You can
-        connect your own account from the Feishu bot list after setup is
-        complete.
+        An organization admin must configure the app. You can connect your own
+        account from the Feishu bot list after setup is complete.
       </p>
     );
   }
@@ -1505,13 +1518,13 @@ function FeishuDialogBody({
 
 function FeishuSetupDialog({
   data,
-  canManage,
+  isAdmin,
   agents,
   orgDefaultAgentId,
   orgDefaultAgentName,
 }: {
   data: FeishuDialogData | null;
-  canManage: boolean;
+  isAdmin: boolean;
   agents: TeamComposeItem[];
   orgDefaultAgentId: string | null;
   orgDefaultAgentName: string | null;
@@ -1548,7 +1561,7 @@ function FeishuSetupDialog({
         </DialogHeader>
         <FeishuDialogBody
           data={data}
-          canManage={canManage}
+          isAdmin={isAdmin}
           agents={agents}
           orgDefaultAgentId={orgDefaultAgentId}
           orgDefaultAgentName={orgDefaultAgentName}
@@ -1657,17 +1670,6 @@ function dialogFeishuBot(args: {
     : (args.bots[0] ?? null);
 }
 
-function canManageFeishuDialog(args: {
-  readonly existing: boolean;
-  readonly bot: FeishuBotInstallation | null;
-  readonly isAdmin: boolean;
-}): boolean {
-  if (!args.existing) {
-    return true;
-  }
-  return args.bot?.canManage ?? args.isAdmin;
-}
-
 function initialFeishuAgentId(
   orgDefaultAgentId: string | null,
   agents: readonly TeamComposeItem[],
@@ -1723,11 +1725,6 @@ export function ZeroFeishuSettingsPage() {
     agentsLoadable.state,
   );
   const agentsLoading = agentsLoadable.state === "loading";
-  const canManageDialog = canManageFeishuDialog({
-    existing: dialogExisting,
-    bot: dialogData,
-    isAdmin,
-  });
   const newBotAgentId = initialFeishuAgentId(orgDefaultAgentId, agents);
 
   return (
@@ -1777,6 +1774,7 @@ export function ZeroFeishuSettingsPage() {
                 bots={bots}
                 agents={agents}
                 agentsLoading={agentsLoading}
+                isAdmin={isAdmin}
                 onAdd={() => {
                   open({
                     appId: "",
@@ -1787,7 +1785,7 @@ export function ZeroFeishuSettingsPage() {
               />
               <FeishuSetupDialog
                 data={dialogData}
-                canManage={canManageDialog}
+                isAdmin={isAdmin}
                 agents={agents}
                 orgDefaultAgentId={orgDefaultAgentId}
                 orgDefaultAgentName={orgDefaultAgentName}

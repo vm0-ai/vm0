@@ -36,7 +36,7 @@ async function seedVisibleImage(): Promise<{
     agentId: agent.agentId,
     title: "Image editing",
   });
-  await chat.requestSendMessage(
+  await chat.requestSendEvent(
     actor,
     {
       agentId: agent.agentId,

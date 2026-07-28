@@ -458,14 +458,14 @@ describe("Strapi integration", () => {
     expect(resumed.body.pending).toHaveLength(0);
     expect(resumed.body.pausedAt).toBeNull();
 
-    const messages = await workflows.readThreadMessages(
+    const events = await workflows.readThreadEvents(
       automation.body.chatThreadId,
     );
-    const runsForAutomation = messages.filter((message) => {
+    const runsForAutomation = events.filter((event) => {
       return (
-        message.role === "user" &&
-        message.content === `/${WORKFLOW_NAME}` &&
-        message.workflowSnapshot?.automationId === automation.body.id
+        event.eventType === "input.prompt" &&
+        event.content === `/${WORKFLOW_NAME}` &&
+        event.workflowSnapshot?.automationId === automation.body.id
       );
     });
     expect(runsForAutomation).toHaveLength(1);
@@ -629,12 +629,12 @@ describe("Strapi integration", () => {
     );
     expect(queueAfterFailure.body.running).toBeNull();
     expect(queueAfterFailure.body.pending).toHaveLength(0);
-    const messagesAfterFailure = await workflows.readThreadMessages(
+    const eventsAfterFailure = await workflows.readThreadEvents(
       automation.body.chatThreadId,
     );
     expect(
-      messagesAfterFailure.filter((message) => {
-        return message.workflowSnapshot?.automationId === automation.body.id;
+      eventsAfterFailure.filter((event) => {
+        return event.workflowSnapshot?.automationId === automation.body.id;
       }),
     ).toHaveLength(0);
 

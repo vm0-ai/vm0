@@ -8,7 +8,7 @@ import {
   cronExecuteMorningBriefsContract,
 } from "@vm0/api-contracts/contracts/cron";
 import {
-  chatThreadMessagesContract,
+  chatThreadEventsContract,
   chatThreadsContract,
   type GenerationTemplateRequest,
   type UserMessageDocument,
@@ -357,21 +357,17 @@ async function findMorningBriefThreadOrNull(scenario: Scenario): Promise<{
     return null;
   }
   const messages = await accept(
-    setupApp({ context })(chatThreadMessagesContract).list({
+    setupApp({ context })(chatThreadEventsContract).list({
       headers: actorHeaders(),
       params: { threadId: thread.chatThreadId },
       query: { limit: 50 },
     }),
     [200],
   );
-  const runMessage = messages.body.messages.find((message) => {
-    return message.role === "user" && message.runId !== undefined;
+  const runMessage = messages.body.events.find((message) => {
+    return message.eventType === "input.prompt" && message.runId !== undefined;
   });
-  if (
-    !runMessage?.runId ||
-    runMessage.role !== "user" ||
-    runMessage.content === null
-  ) {
+  if (!runMessage?.runId || runMessage.content === null) {
     throw new Error("Expected the Morning Brief run message");
   }
   return {
@@ -782,7 +778,7 @@ describe("cron execute morning briefs", () => {
       };
 
       mockNow(BEFORE_SEVEN_LOCAL + 60_000);
-      await chat.requestSendMessage(
+      await chat.requestSendEvent(
         scenario.actor,
         {
           agentId: agent.agentId,

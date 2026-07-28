@@ -65,7 +65,7 @@ that card type exists.
 
 ### 1. Parse content into pure descriptors
 
-`parseMessageBodyBlocks` extracts renderable content from a `PagedChatMessage`
+`parseMessageBodyBlocks` extracts renderable content from a `ChatMessage`
 and passes it to `parseBodyBlocks`. The parser separates normal Markdown from
 recognized cards.
 

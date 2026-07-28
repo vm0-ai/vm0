@@ -78,7 +78,7 @@ async function sendChatRun(
   actor: ApiTestUser,
   body: { readonly agentId: string; readonly prompt: string },
 ): Promise<{ readonly runId: string; readonly threadId: string }> {
-  const sent = await chat.requestSendMessage(actor, body, [201]);
+  const sent = await chat.requestSendEvent(actor, body, [201]);
   if (sent.status !== 201 || sent.body.runId === null) {
     throw new Error("Expected chat send to create a run");
   }

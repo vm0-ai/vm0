@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { chatEventCompatibilityRole } from "@vm0/api-contracts/contracts/chat-events";
 
 import { buildProfileRows, DEV_BENCH_THREAD_PROFILES } from "../dev-bench-seed";
 
@@ -64,12 +65,12 @@ describe("dev bench seed profile rows", () => {
       expect(rows.messageRows).toHaveLength(expected.messages);
       expect(
         countWhere(rows.messageRows, (row) => {
-          return row.role === "user";
+          return chatEventCompatibilityRole(row.eventType) === "user";
         }),
       ).toBe(expected.userMessages);
       expect(
         countWhere(rows.messageRows, (row) => {
-          return row.role === "assistant";
+          return chatEventCompatibilityRole(row.eventType) === "assistant";
         }),
       ).toBe(expected.assistantMessages);
       expect(

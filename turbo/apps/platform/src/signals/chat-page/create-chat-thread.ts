@@ -93,7 +93,7 @@ import {
   loadIndexedDbChatEvents$,
   writeIndexedDbChatEvents$,
 } from "./chat-event-indexed-db.ts";
-import { sendChatEventWithCompatibility } from "./chat-event-api-rollout.ts";
+import { sendChatEvent } from "./chat-event-api.ts";
 import {
   classifyChatAttachment,
   type BodyRenderBlock,
@@ -3385,7 +3385,7 @@ const postSendMessage$ = command(
       features[FeatureSwitchKey.RealAgentInPreview] ?? false;
     const [, sendResult] = await Promise.all([
       set(args.flushDraftClear$, signal),
-      sendChatEventWithCompatibility(
+      sendChatEvent(
         get(zeroClient$),
         sendMessageRequestBody({
           agentId: args.agentId,

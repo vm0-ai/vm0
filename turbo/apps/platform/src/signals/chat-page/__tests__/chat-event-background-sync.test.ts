@@ -1,10 +1,7 @@
 import { waitFor } from "@testing-library/react";
 import {
   chatEventResponse,
-  chatEventsContract,
-  chatMessagesContract,
   chatThreadEventsContract,
-  precedingChatThreadMessagesContract,
   type ChatEvent,
 } from "@vm0/api-contracts/contracts/chat-threads";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -15,17 +12,14 @@ import {
   mockUser,
 } from "../../../__tests__/mock-auth.ts";
 import { testContext } from "../../__tests__/test-helpers.ts";
+import { zeroClient$ } from "../../api-client.ts";
 import { CHAT_MESSAGES_STORE } from "../../external/chat-idb-schema.ts";
 import { chatIdb$ } from "../../external/chat-idb-store.ts";
-import { zeroClient$ } from "../../api-client.ts";
 import { setupRealtime$ } from "../../realtime.ts";
 import { resetSignal } from "../../utils.ts";
 import { writeIndexedDbChatEvents$ } from "../chat-event-indexed-db.ts";
 import { setupChatEventBackgroundSync$ } from "../chat-event-background-sync.ts";
-import {
-  listChatEventsWithCompatibility,
-  sendChatEventWithCompatibility,
-} from "../chat-event-api-rollout.ts";
+import { listChatEvents } from "../chat-event-api.ts";
 
 vi.mock("idb", async () => {
   return await vi.importActual<typeof import("idb")>("idb-real");
@@ -41,7 +35,6 @@ const OTHER_THREAD_ID = "b0000000-0000-4000-a000-000000000805";
 const FIRST_CACHED_MESSAGE_ID = "00000000-0000-4000-8000-000000000802";
 const LAST_CACHED_MESSAGE_ID = "00000000-0000-4000-8000-000000000803";
 const NEW_MESSAGE_ID = "00000000-0000-4000-8000-000000000804";
-const LEGACY_MESSAGE_ID = "00000000-0000-4000-8000-000000000806";
 const CREATED_AT = "2026-07-23T10:00:00.000Z";
 
 function assistantMessage(
@@ -222,154 +215,10 @@ describe("chat event background sync", () => {
     }
   });
 
-  it("falls back to the preceding message route and stores canonical events", async () => {
+  it("accepts preceding and canonical API response shapes during rollout", async () => {
     mockSignedInUser();
-    const appDb = await context.store.get(chatIdb$);
-    let eventRequests = 0;
-    let messageRequests = 0;
-    context.mocks.api(chatThreadEventsContract.list, ({ respond }) => {
-      eventRequests += 1;
-      return respond(404, {
-        error: { code: "NOT_FOUND", message: "Event route not deployed" },
-      });
-    });
-    context.mocks.api(
-      precedingChatThreadMessagesContract.list,
-      ({ query, respond }) => {
-        messageRequests += 1;
-        if (query.sinceSeqId) {
-          return respond(200, {
-            messages: [],
-            hasHistoryBefore: false,
-          });
-        }
-        return respond(200, {
-          messages: [
-            {
-              id: LEGACY_MESSAGE_ID,
-              role: "assistant",
-              content: "Legacy remote message",
-              seqId: 1,
-              createdAt: "2026-07-23T10:04:00.000Z",
-            },
-          ],
-          hasHistoryBefore: false,
-        });
-      },
-    );
-
-    await context.store.set(setupRealtime$, context.signal);
-    const subscriberSignal = context.store.set(
-      resetSubscriberSignal$,
-      context.signal,
-    );
-    const subscription = context.store.set(
-      setupChatEventBackgroundSync$,
-      subscriberSignal,
-    );
-
-    try {
-      await waitFor(() => {
-        expect(context.mocks.ably.hasChannelSubscription()).toBeTruthy();
-      });
-
-      context.mocks.ably.trigger(`chatThreadMessageCreated:${OTHER_THREAD_ID}`);
-
-      await waitFor(async () => {
-        await expect(
-          appDb.get(CHAT_MESSAGES_STORE, LEGACY_MESSAGE_ID),
-        ).resolves.toMatchObject({
-          id: LEGACY_MESSAGE_ID,
-          threadId: OTHER_THREAD_ID,
-          eventType: "output.message",
-        });
-      });
-      expect(eventRequests).toBe(2);
-      expect(messageRequests).toBe(2);
-    } finally {
-      context.store.set(resetSubscriberSignal$, context.signal);
-      await expect(subscription).rejects.toMatchObject({ name: "AbortError" });
-      appDb.close();
-    }
-  });
-
-  it("falls back to the preceding write route with message-named ids", async () => {
-    mockSignedInUser();
-    const clientEventId = "00000000-0000-4000-8000-000000000807";
-    const userMessage = {
-      version: 1 as const,
-      parts: [{ type: "text" as const, text: "Continue the rollout" }],
-    };
-    let legacyBody: unknown;
-    context.mocks.api(chatEventsContract.send, ({ respond }) => {
-      return respond(404, {
-        error: { code: "NOT_FOUND", message: "Event route not deployed" },
-      });
-    });
-    context.mocks.api(chatMessagesContract.send, ({ body, respond }) => {
-      legacyBody = body;
-      return respond(201, {
-        runId: null,
-        threadId: THREAD_ID,
-      });
-    });
-
-    await expect(
-      sendChatEventWithCompatibility(
-        context.store.get(zeroClient$),
-        {
-          agentId: "agent-1",
-          threadId: THREAD_ID,
-          prompt: "Continue the rollout",
-          userMessage,
-          clientEventId,
-        },
-        context.signal,
-      ),
-    ).resolves.toMatchObject({ threadId: THREAD_ID });
-    expect(legacyBody).toMatchObject({
-      agentId: "agent-1",
-      threadId: THREAD_ID,
-      prompt: "Continue the rollout",
-      userMessage,
-      structuredPrompt: userMessage,
-      clientMessageId: clientEventId,
-    });
-    expect(legacyBody).not.toHaveProperty("revokesEventId");
-    expect(legacyBody).not.toHaveProperty("clientEventId");
-  });
-
-  it("dual-writes the preceding rich-input wire name on the event route", async () => {
-    mockSignedInUser();
-    const userMessage = {
-      version: 1 as const,
-      parts: [{ type: "text" as const, text: "Keep both wire names" }],
-    };
-    let sentBody: unknown;
-    context.mocks.api(chatEventsContract.send, ({ body, respond }) => {
-      sentBody = body;
-      return respond(201, { runId: null, threadId: THREAD_ID });
-    });
-
-    await sendChatEventWithCompatibility(
-      context.store.get(zeroClient$),
-      {
-        agentId: "agent-1",
-        threadId: THREAD_ID,
-        prompt: "Keep both wire names",
-        userMessage,
-      },
-      context.signal,
-    );
-
-    expect(sentBody).toMatchObject({
-      userMessage,
-      structuredPrompt: userMessage,
-    });
-  });
-
-  it("normalizes preceding event responses into canonical userMessage", async () => {
-    mockSignedInUser();
+    const precedingEventId = "00000000-0000-4000-8000-000000000806";
+    const canonicalEventId = "00000000-0000-4000-8000-000000000807";
     const userMessage = {
       version: 1 as const,
       parts: [{ type: "text" as const, text: "Preceding response" }],
@@ -378,7 +227,7 @@ describe("chat event background sync", () => {
       return Response.json({
         events: [
           {
-            id: "preceding-input",
+            id: precedingEventId,
             threadId: THREAD_ID,
             eventType: "input.prompt",
             role: "user",
@@ -387,12 +236,20 @@ describe("chat event background sync", () => {
             seqId: 1,
             createdAt: CREATED_AT,
           },
+          {
+            id: canonicalEventId,
+            threadId: THREAD_ID,
+            eventType: "output.message",
+            content: "Canonical response",
+            seqId: 2,
+            createdAt: CREATED_AT,
+          },
         ],
         hasHistoryBefore: false,
       });
     });
 
-    const result = await listChatEventsWithCompatibility(
+    const result = await listChatEvents(
       context.store.get(zeroClient$),
       THREAD_ID,
       {},
@@ -401,12 +258,20 @@ describe("chat event background sync", () => {
 
     expect(result.events).toStrictEqual([
       {
-        id: "preceding-input",
+        id: precedingEventId,
         threadId: THREAD_ID,
         eventType: "input.prompt",
         content: "Preceding response",
         userMessage,
         seqId: 1,
+        createdAt: CREATED_AT,
+      },
+      {
+        id: canonicalEventId,
+        threadId: THREAD_ID,
+        eventType: "output.message",
+        content: "Canonical response",
+        seqId: 2,
         createdAt: CREATED_AT,
       },
     ]);
