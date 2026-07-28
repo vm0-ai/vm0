@@ -1,16 +1,23 @@
 import { zeroFeatureSwitchesContract } from "@vm0/api-contracts/contracts/zero-feature-switches";
 import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import { screen, waitFor, within } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 
 import {
   click,
   detachedSetupPage,
   queryAllByRoleFast,
 } from "../../../__tests__/page-helper.ts";
+import { initializeI18n } from "../../../i18n/index.ts";
+import { DEFAULT_LOCALE } from "../../../i18n/resources.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 
 const context = testContext();
+
+afterEach(async () => {
+  document.documentElement.lang = DEFAULT_LOCALE;
+  await initializeI18n(DEFAULT_LOCALE);
+});
 
 function featureSwitchControl(feature: FeatureSwitchKey): HTMLElement {
   const label = screen.getByText(feature).closest("label");
@@ -191,5 +198,27 @@ describe("lab page", () => {
         screen.getByText(FeatureSwitchKey.AhrefsConnector),
       ).toBeInTheDocument();
     });
+  });
+
+  it("shows the Lab controls in Brazilian Portuguese", async () => {
+    document.documentElement.lang = "pt-BR";
+    context.mocks.api(zeroFeatureSwitchesContract.get, ({ respond }) => {
+      return respond(200, { switches: {}, effectiveSwitches: {} });
+    });
+
+    detachedSetupPage({ context, path: "/_/lab" });
+
+    await waitFor(() => {
+      expect(
+        screen.getByRole("heading", { name: "Laboratório" }),
+      ).toBeInTheDocument();
+      expect(document.title).toBe("Laboratório | VM0");
+    });
+    expect(
+      screen.getByText("Ative ou desative recursos experimentais."),
+    ).toBeInTheDocument();
+    expect(screen.getByText("Redefinir tudo")).toBeInTheDocument();
+    expect(screen.getByText("Outros")).toBeInTheDocument();
+    expect(screen.getAllByText("Conectores").length).toBeGreaterThan(0);
   });
 });

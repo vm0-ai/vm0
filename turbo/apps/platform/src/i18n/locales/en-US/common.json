@@ -187,6 +187,80 @@
         "resetTimePassedTitle": "Reset time passed"
       }
     },
+    "buildInfo": {
+      "backend": "Backend",
+      "commitSha": "Commit SHA",
+      "frontend": "Frontend",
+      "loading": "Loading",
+      "title": "Build information",
+      "unavailable": "Unavailable"
+    },
+    "export": {
+      "actions": {
+        "again": "Export again",
+        "download": "Download export",
+        "start": "Export my data",
+        "starting": "Starting export"
+      },
+      "backToZero": "Back to Zero",
+      "description": "Download the files and text records you created in Zero.",
+      "documentTitle": "Export data",
+      "duration": {
+        "soon": "soon"
+      },
+      "errors": {
+        "loadFailed": "Failed to load export",
+        "rateLimited": "You can export once every 24 hours.",
+        "startFailed": "Failed to start export"
+      },
+      "scope": {
+        "agentInstructions": "Agent instruction documents",
+        "artifactsExcluded": "Artifacts are not included in this export.",
+        "chatMessages": "User and assistant text chat messages",
+        "memoryFiles": "Memory files",
+        "workflowInstructions": "Workflow SKILL.md instructions and files"
+      },
+      "status": {
+        "checkingDescription": "Your latest export state will appear here.",
+        "checkingTitle": "Checking export status",
+        "downloadExpires": "The download link expires in {{duration}}.",
+        "downloadNoExpiry": "Download it before the link expires.",
+        "downloadTitle": "Your export is ready",
+        "expiredDescription": "Start a new export to get a fresh download link.",
+        "expiredTitle": "Previous export expired",
+        "failedDescription": "Try again, or contact support if this keeps happening.",
+        "failedTitle": "Export did not finish",
+        "preparingDescription": "This can take a few minutes. You can leave this page open.",
+        "preparingTitle": "Preparing your export",
+        "rateLimitedFallback": "You can start another export after the cooldown ends.",
+        "rateLimitedTitle": "Export recently requested",
+        "rateLimitedUntil": "You can start another export in {{duration}}.",
+        "readyDescription": "Create a ZIP file with your workspace data.",
+        "readyTitle": "Ready to export"
+      },
+      "title": "Export data"
+    },
+    "lab": {
+      "actions": {
+        "resetAll": "Reset all",
+        "resetting": "Resetting…"
+      },
+      "description": "Toggle experimental features on or off.",
+      "documentTitle": "Lab",
+      "empty": {
+        "description": "No feature switches for this maintainer.",
+        "title": "No feature switches"
+      },
+      "filters": {
+        "all": "All"
+      },
+      "groups": {
+        "connectors": "Connectors",
+        "other": "Other"
+      },
+      "maintainer": "Maintainer: {{maintainer}}",
+      "title": "Lab"
+    },
     "preferences": {
       "account": {
         "manage": "Manage",

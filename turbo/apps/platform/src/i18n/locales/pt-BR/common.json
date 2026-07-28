@@ -188,6 +188,80 @@
         "resetTimePassedTitle": "O horário de redefinição já passou"
       }
     },
+    "buildInfo": {
+      "backend": "Backend",
+      "commitSha": "SHA do commit",
+      "frontend": "Frontend",
+      "loading": "Carregando",
+      "title": "Informações da compilação",
+      "unavailable": "Indisponível"
+    },
+    "export": {
+      "actions": {
+        "again": "Exportar novamente",
+        "download": "Baixar exportação",
+        "start": "Exportar meus dados",
+        "starting": "Iniciando exportação"
+      },
+      "backToZero": "Voltar ao Zero",
+      "description": "Baixe os arquivos e registros de texto que você criou no Zero.",
+      "documentTitle": "Exportar dados",
+      "duration": {
+        "soon": "breve"
+      },
+      "errors": {
+        "loadFailed": "Não foi possível carregar a exportação",
+        "rateLimited": "Você pode exportar uma vez a cada 24 horas.",
+        "startFailed": "Não foi possível iniciar a exportação"
+      },
+      "scope": {
+        "agentInstructions": "Documentos de instruções do agente",
+        "artifactsExcluded": "Os artefatos não estão incluídos nesta exportação.",
+        "chatMessages": "Mensagens de texto do usuário e do assistente",
+        "memoryFiles": "Arquivos de memória",
+        "workflowInstructions": "Instruções e arquivos SKILL.md dos fluxos de trabalho"
+      },
+      "status": {
+        "checkingDescription": "O estado da sua exportação mais recente aparecerá aqui.",
+        "checkingTitle": "Verificando o status da exportação",
+        "downloadExpires": "O link para download expira em {{duration}}.",
+        "downloadNoExpiry": "Baixe o arquivo antes que o link expire.",
+        "downloadTitle": "Sua exportação está pronta",
+        "expiredDescription": "Inicie uma nova exportação para obter um novo link de download.",
+        "expiredTitle": "A exportação anterior expirou",
+        "failedDescription": "Tente novamente ou entre em contato com o suporte se o problema persistir.",
+        "failedTitle": "Não foi possível concluir a exportação",
+        "preparingDescription": "Isso pode levar alguns minutos. Você pode deixar esta página aberta.",
+        "preparingTitle": "Preparando sua exportação",
+        "rateLimitedFallback": "Você poderá iniciar outra exportação após o fim do período de espera.",
+        "rateLimitedTitle": "Exportação solicitada recentemente",
+        "rateLimitedUntil": "Você poderá iniciar outra exportação em {{duration}}.",
+        "readyDescription": "Crie um arquivo ZIP com os dados do seu espaço de trabalho.",
+        "readyTitle": "Pronto para exportar"
+      },
+      "title": "Exportar dados"
+    },
+    "lab": {
+      "actions": {
+        "resetAll": "Redefinir tudo",
+        "resetting": "Redefinindo…"
+      },
+      "description": "Ative ou desative recursos experimentais.",
+      "documentTitle": "Laboratório",
+      "empty": {
+        "description": "Não há recursos experimentais para este responsável.",
+        "title": "Nenhum recurso experimental"
+      },
+      "filters": {
+        "all": "Todos"
+      },
+      "groups": {
+        "connectors": "Conectores",
+        "other": "Outros"
+      },
+      "maintainer": "Responsável: {{maintainer}}",
+      "title": "Laboratório"
+    },
     "preferences": {
       "account": {
         "manage": "Gerenciar",
