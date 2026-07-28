@@ -183,6 +183,7 @@ async fn execute_inner_proxy_unregister_failure_marks_successful_run_failed() {
             sandbox,
             source_ip,
             network_log_session,
+            prepared_guest_runtime: None,
         },
         &ctx,
         &config,

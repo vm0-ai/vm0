@@ -70,6 +70,60 @@ async fn execute_inner_happy_path() {
 }
 
 #[tokio::test]
+async fn execute_inner_carries_early_codex_catalog_prefetch_into_agent_run() {
+    let dir = tempfile::tempdir().unwrap();
+    let config = test_executor_config(dir.path()).await;
+    let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::new());
+    let factory = MockSandboxFactory::with_overrides(Arc::clone(&overrides));
+
+    let (exit_code, error_msg) =
+        run_new_sandbox_status(&factory, &codex_oauth_context(), &config, &default_params())
+            .await
+            .unwrap();
+
+    assert_eq!(exit_code, 0);
+    assert!(error_msg.is_none());
+    let start_calls = overrides.start_process_calls();
+    assert_eq!(start_calls.len(), 2);
+    assert!(start_calls[0].cmd.contains("codex --version"));
+    assert!(!start_calls[1].cmd.contains("codex --version"));
+    assert_proxy_registry_empty(dir.path()).await;
+}
+
+#[tokio::test]
+async fn execute_inner_does_not_prefetch_after_early_guest_state_failure() {
+    let dir = tempfile::tempdir().unwrap();
+    let config = test_executor_config(dir.path()).await;
+    let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::new());
+    overrides.add_exec_matcher(sandbox_mock::ExecMatcher {
+        pattern: "guest-reseed".to_string(),
+        exit_code: 64,
+        stdout: Vec::new(),
+        stderr: b"restore denied".to_vec(),
+    });
+    let factory = MockSandboxFactory::with_overrides(Arc::clone(&overrides));
+    let params = JobParams {
+        restore_guest_state: true,
+        ..default_params()
+    };
+
+    let (exit_code, error_msg) =
+        run_new_sandbox_status(&factory, &codex_oauth_context(), &config, &params)
+            .await
+            .unwrap();
+
+    assert_eq!(exit_code, 1);
+    let error = error_msg.expect("guest state failure should fail the run");
+    assert!(error.contains("guest state restore failed"), "got: {error}");
+    assert!(error.contains("restore denied"), "got: {error}");
+    assert!(
+        overrides.start_process_calls().is_empty(),
+        "neither prefetch nor agent may start after guest state failure"
+    );
+    assert_proxy_registry_empty(dir.path()).await;
+}
+
+#[tokio::test]
 async fn fresh_archive_download_overlaps_blocked_sandbox_create() {
     let dir = tempfile::tempdir().unwrap();
     let config = test_executor_config(dir.path()).await;
@@ -710,30 +764,60 @@ async fn execute_new_sandbox_does_not_notify_after_post_start_prepare_failure() 
 }
 
 #[tokio::test]
-async fn execute_job_workspace_mount_failure_destroys_sandbox() {
+async fn execute_job_workspace_mount_failure_drains_early_prefetch_before_destroy() {
     let dir = tempfile::tempdir().unwrap();
     let config = test_executor_config(dir.path()).await;
     let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::new());
+    let wait_gate = MockLifecycleGate::new();
+    overrides.set_wait_process_lifecycle_gate(wait_gate.clone());
+    overrides.set_process_cancel_releases_wait_gate(false);
     overrides.add_exec_matcher(sandbox_mock::ExecMatcher {
         pattern: "mount -t ext4".to_string(),
         exit_code: 64,
         stdout: Vec::new(),
         stderr: b"mount denied".to_vec(),
     });
-    let factory = MockSandboxFactory::with_overrides(Arc::clone(&overrides));
+    let factory = Arc::new(MockSandboxFactory::with_overrides(Arc::clone(&overrides)));
 
-    let (outcome, _telemetry) = execute_job(
-        &factory,
-        minimal_context(),
-        NewSandboxDispatch {
-            id: SandboxId::new_v4(),
-            reuse_result: SandboxReuseResult::PoolMiss,
-        },
-        &config,
-        &default_params(),
-        tokio_util::sync::CancellationToken::new(),
-    )
-    .await;
+    let task = tokio::spawn({
+        let factory = Arc::clone(&factory);
+        async move {
+            execute_job(
+                factory.as_ref(),
+                codex_oauth_context(),
+                NewSandboxDispatch {
+                    id: SandboxId::new_v4(),
+                    reuse_result: SandboxReuseResult::PoolMiss,
+                },
+                &config,
+                &default_params(),
+                tokio_util::sync::CancellationToken::new(),
+            )
+            .await
+        }
+    });
+
+    wait_gate
+        .wait_entered(1, Duration::from_secs(5))
+        .await
+        .expect("prefetch wait should start before sandbox destruction");
+    assert!(
+        overrides
+            .wait_for_process_cancel_calls(1, Duration::from_secs(5))
+            .await,
+        "mount failure should cancel the prefetch before destruction"
+    );
+    assert_eq!(
+        overrides.destroy_call_count(),
+        0,
+        "sandbox must remain alive until the prefetch wait is drained"
+    );
+    wait_gate.release_one();
+
+    let (outcome, _telemetry) = tokio::time::timeout(Duration::from_secs(5), task)
+        .await
+        .expect("mount-failure cleanup should finish after the prefetch wait is released")
+        .expect("mount-failure task should not panic");
 
     assert_eq!(outcome.exit_code(), 1);
     let error = outcome.error().unwrap();
@@ -751,10 +835,16 @@ async fn execute_job_workspace_mount_failure_destroys_sandbox() {
         "network log session should be closed before returning"
     );
     assert_eq!(overrides.destroy_call_count(), 1);
+    let start_calls = overrides.start_process_calls();
+    assert_eq!(start_calls.len(), 1);
+    assert!(start_calls[0].cmd.contains("codex --version"));
+    let wait_calls = overrides.wait_process_calls();
+    assert_eq!(wait_calls.len(), 1);
     assert!(
-        overrides.start_process_calls().is_empty(),
-        "agent must not start after workspace mount failure"
+        wait_calls[0].timeout < Duration::from_secs(18),
+        "workspace mount time must reduce the original prefetch wait deadline"
     );
+    assert_eq!(overrides.process_cancel_calls().len(), 1);
     assert_proxy_registry_empty(dir.path()).await;
 }
 

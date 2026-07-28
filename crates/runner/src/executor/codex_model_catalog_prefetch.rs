@@ -4,8 +4,8 @@ use std::time::{Duration, Instant};
 
 use futures_util::FutureExt;
 use sandbox::{
-    ExecOutputLimits, ExecTermination, GuestProcessCancelHandle, ProcessControlMode, ProcessExit,
-    ProcessOutputMode, Sandbox, StartProcessRequest,
+    ExecOutputLimits, ExecTermination, GuestProcessCancelHandle, GuestProcessHandle,
+    ProcessControlMode, ProcessExit, ProcessOutputMode, Sandbox, StartProcessRequest,
 };
 use tokio_util::sync::CancellationToken;
 use tracing::{debug, warn};
@@ -55,6 +55,15 @@ struct PrefetchOutcome {
     error: Option<&'static str>,
 }
 
+pub(super) struct StartedCodexModelCatalogPrefetch {
+    handle: Option<GuestProcessHandle>,
+    cancel: Option<GuestProcessCancelHandle>,
+    wait_deadline: Option<Instant>,
+    started_at: Instant,
+    outcome: Option<PrefetchOutcome>,
+    recorded: bool,
+}
+
 pub(super) struct CodexModelCatalogPrefetch<'a> {
     wait: Option<PrefetchWait<'a>>,
     cancel: Option<GuestProcessCancelHandle>,
@@ -63,22 +72,16 @@ pub(super) struct CodexModelCatalogPrefetch<'a> {
     recorded: bool,
 }
 
-impl<'a> CodexModelCatalogPrefetch<'a> {
+impl StartedCodexModelCatalogPrefetch {
     pub(super) async fn start(
-        sandbox: &'a dyn Sandbox,
+        sandbox: &dyn Sandbox,
         context: &ExecutionContext,
         reuse_result: SandboxReuseResult,
         cancel: &CancellationToken,
     ) -> Self {
         let started_at = Instant::now();
         if !is_eligible(context, reuse_result) {
-            return Self {
-                wait: None,
-                cancel: None,
-                started_at,
-                outcome: None,
-                recorded: false,
-            };
+            return Self::without_process(started_at, None);
         }
 
         let request = StartProcessRequest {
@@ -101,41 +104,35 @@ impl<'a> CodexModelCatalogPrefetch<'a> {
                 Ok(result) => result,
                 Err(_) => {
                     warn!("timed out starting Codex model catalog prefetch");
-                    return Self {
-                        wait: None,
-                        cancel: None,
+                    return Self::without_process(
                         started_at,
-                        outcome: Some(PrefetchOutcome {
+                        Some(PrefetchOutcome {
                             duration: started_at.elapsed(),
                             success: false,
                             error: Some("start_timed_out"),
                         }),
-                        recorded: false,
-                    };
+                    );
                 }
             },
             () = cancel.cancelled() => {
-                return Self {
-                    wait: None,
-                    cancel: None,
+                return Self::without_process(
                     started_at,
-                    outcome: Some(PrefetchOutcome {
+                    Some(PrefetchOutcome {
                         duration: started_at.elapsed(),
                         success: false,
                         error: Some("start_cancelled"),
                     }),
-                    recorded: false,
-                };
+                );
             }
         };
 
         match result {
             Ok(mut handle) => {
                 let cancel = handle.take_cancel_handle();
-                let wait = Box::pin(sandbox.wait_process(handle, PREFETCH_HOST_WAIT_TIMEOUT));
                 Self {
-                    wait: Some(wait),
+                    handle: Some(handle),
                     cancel,
+                    wait_deadline: Some(Instant::now() + PREFETCH_HOST_WAIT_TIMEOUT),
                     started_at,
                     outcome: None,
                     recorded: false,
@@ -143,21 +140,52 @@ impl<'a> CodexModelCatalogPrefetch<'a> {
             }
             Err(error) => {
                 warn!(error = %error, "failed to start Codex model catalog prefetch");
-                Self {
-                    wait: None,
-                    cancel: None,
+                Self::without_process(
                     started_at,
-                    outcome: Some(PrefetchOutcome {
+                    Some(PrefetchOutcome {
                         duration: started_at.elapsed(),
                         success: false,
                         error: Some("start_failed"),
                     }),
-                    recorded: false,
-                }
+                )
             }
         }
     }
 
+    pub(super) fn supervise(self, sandbox: &dyn Sandbox) -> CodexModelCatalogPrefetch<'_> {
+        let wait = self.handle.map(|handle| {
+            let timeout = self
+                .wait_deadline
+                .map(|deadline| deadline.saturating_duration_since(Instant::now()))
+                .unwrap_or(Duration::ZERO);
+            Box::pin(sandbox.wait_process(handle, timeout)) as PrefetchWait<'_>
+        });
+        CodexModelCatalogPrefetch {
+            wait,
+            cancel: self.cancel,
+            started_at: self.started_at,
+            outcome: self.outcome,
+            recorded: self.recorded,
+        }
+    }
+
+    pub(super) async fn finish(self, sandbox: &dyn Sandbox, telemetry: &mut JobTelemetry) {
+        self.supervise(sandbox).finish(telemetry).await;
+    }
+
+    fn without_process(started_at: Instant, outcome: Option<PrefetchOutcome>) -> Self {
+        Self {
+            handle: None,
+            cancel: None,
+            wait_deadline: None,
+            started_at,
+            outcome,
+            recorded: false,
+        }
+    }
+}
+
+impl<'a> CodexModelCatalogPrefetch<'a> {
     pub(super) async fn race<T>(&mut self, phase: impl Future<Output = T>) -> T {
         let Some(wait) = self.wait.as_mut() else {
             return phase.await;
@@ -242,7 +270,7 @@ impl<'a> CodexModelCatalogPrefetch<'a> {
     }
 }
 
-fn is_eligible(context: &ExecutionContext, reuse_result: SandboxReuseResult) -> bool {
+pub(super) fn is_eligible(context: &ExecutionContext, reuse_result: SandboxReuseResult) -> bool {
     reuse_result != SandboxReuseResult::Reused
         && effective_cli_framework(&context.cli_agent_type) == EffectiveCliFramework::Codex
         && context.codex_runtime_config.is_none()
