@@ -26,8 +26,13 @@ import {
 } from "@vm0/api-contracts/contracts/zero-personal-model-providers";
 import { zeroOrgLogoContract } from "@vm0/api-contracts/contracts/zero-org-logo";
 import {
+  addClientCapabilityToVersion,
+  CLIENT_CAPABILITY_PT_BR_LOCALE,
+  CLIENT_VERSION_HEADER,
+} from "@vm0/api-contracts/contracts/client-headers";
+import {
   zeroUserPreferencesContract,
-  type UpdateUserPreferencesRequest,
+  updateUserPreferencesRequestSchema,
 } from "@vm0/api-contracts/contracts/zero-user-preferences";
 import { zeroLogsSearchContract } from "@vm0/api-contracts/contracts/zero-runs";
 
@@ -42,7 +47,17 @@ import { createZeroRouteMocks } from "./zero-route-test";
 
 interface AuthHeaders {
   readonly authorization?: string;
+  readonly [CLIENT_VERSION_HEADER]?: string;
 }
+
+type UpdateUserPreferencesInput = z.input<
+  typeof updateUserPreferencesRequestSchema
+>;
+
+export const BRAZILIAN_PORTUGUESE_CLIENT_VERSION = addClientCapabilityToVersion(
+  "0.648.0",
+  CLIENT_CAPABILITY_PT_BR_LOCALE,
+);
 
 type ZeroLogsSearchQuery = z.input<
   (typeof zeroLogsSearchContract.searchLogs)["query"]
@@ -61,6 +76,7 @@ function authHeaders(actor: ApiTestUser | null): AuthHeaders {
 function authenticate(
   context: TestContext,
   actor: ApiTestUser | null,
+  clientVersion?: string,
 ): AuthHeaders {
   if (!actor) {
     context.mocks.clerk.authenticateRequest.mockResolvedValue({
@@ -74,7 +90,10 @@ function authenticate(
     actor.orgId,
     actor.orgRole,
   );
-  return authHeaders(actor);
+  return {
+    ...authHeaders(actor),
+    ...(clientVersion && { [CLIENT_VERSION_HEADER]: clientVersion }),
+  };
 }
 
 function workflowFiles(content: string): WorkflowFileEntry[] {
@@ -218,23 +237,24 @@ export function createMiscRoutesApi(context: TestContext) {
       );
     },
 
-    async readPreferences(actor: ApiTestUser) {
+    async readPreferences(actor: ApiTestUser, clientVersion?: string) {
       return await accept(
         setupApp({ context })(zeroUserPreferencesContract).get({
-          headers: authenticate(context, actor),
+          headers: authenticate(context, actor, clientVersion),
         }),
         [200],
       );
     },
 
-    async updatePreferences(
+    async updatePreferences<TStatus extends 200 | 400 | 401 | 500>(
       actor: ApiTestUser,
-      body: UpdateUserPreferencesRequest,
-      statuses: readonly (200 | 400 | 401 | 500)[],
+      body: UpdateUserPreferencesInput,
+      statuses: readonly TStatus[],
+      clientVersion?: string,
     ) {
       return await accept(
         setupApp({ context })(zeroUserPreferencesContract).update({
-          headers: authenticate(context, actor),
+          headers: authenticate(context, actor, clientVersion),
           body,
         }),
         statuses,

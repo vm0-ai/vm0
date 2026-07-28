@@ -63,6 +63,7 @@ function createPreferences(locale: UserLocale | null): UserPreferencesResponse {
   return {
     timezone: null,
     locale,
+    supportedLocales: ["en-US", "pt-BR"],
     pinnedAgentIds: [],
     sendMode: "enter",
     morningBriefEnabled: false,
@@ -75,7 +76,7 @@ describe("settings dialog", () => {
   it("defaults to English instead of the browser language before user selection", async () => {
     const submittedLocales: UserLocale[] = [];
     let serverLocale: UserLocale | null = null;
-    context.mocks.browser.language("zh-CN");
+    context.mocks.browser.language("pt-BR");
     context.mocks.api(zeroUserPreferencesContract.get, ({ respond }) => {
       return respond(200, createPreferences(serverLocale));
     });
@@ -106,18 +107,18 @@ describe("settings dialog", () => {
     });
 
     click(languageSelect);
-    click(screen.getByRole("option", { name: "简体中文" }));
+    click(screen.getByRole("option", { name: "Português (Brasil)" }));
 
     await waitFor(() => {
-      expect(submittedLocales).toContain("zh-CN");
+      expect(submittedLocales).toContain("pt-BR");
       expect(
-        screen.getByRole("combobox", { name: "Language" }),
-      ).toHaveTextContent("简体中文");
-      expect(document.documentElement.lang).toBe("zh-CN");
-      expect(cachedLocale()).toBe("zh-CN");
+        screen.getByRole("combobox", { name: "Idioma" }),
+      ).toHaveTextContent("Português (Brasil)");
+      expect(document.documentElement.lang).toBe("pt-BR");
+      expect(cachedLocale()).toBe("pt-BR");
     });
 
-    click(screen.getByRole("combobox", { name: "Language" }));
+    click(screen.getByRole("combobox", { name: "Idioma" }));
     click(screen.getByRole("option", { name: "English" }));
     await waitFor(() => {
       expect(document.documentElement.lang).toBe("en-US");
@@ -126,8 +127,8 @@ describe("settings dialog", () => {
 
   it("persists a cached locale when the workspace has no server preference", async () => {
     const submittedLocales: UserLocale[] = [];
-    document.documentElement.lang = "zh-CN";
-    context.store.set(setCachedLocale$, "zh-CN");
+    document.documentElement.lang = "pt-BR";
+    context.store.set(setCachedLocale$, "pt-BR");
     context.mocks.api(zeroUserPreferencesContract.get, ({ respond }) => {
       return respond(200, createPreferences(null));
     });
@@ -146,13 +147,14 @@ describe("settings dialog", () => {
     });
 
     const languageSelect = await screen.findByRole("combobox", {
-      name: "Language",
+      name: "Idioma",
     });
     await waitFor(() => {
-      expect(submittedLocales).toContain("zh-CN");
-      expect(languageSelect).toHaveTextContent("简体中文");
-      expect(document.documentElement.lang).toBe("zh-CN");
-      expect(cachedLocale()).toBe("zh-CN");
+      expect(submittedLocales).toContain("pt-BR");
+      expect(languageSelect).toHaveTextContent("Português (Brasil)");
+      expect(languageSelect).toHaveAccessibleName("Idioma");
+      expect(document.documentElement.lang).toBe("pt-BR");
+      expect(cachedLocale()).toBe("pt-BR");
     });
 
     click(languageSelect);
@@ -163,8 +165,8 @@ describe("settings dialog", () => {
   });
 
   it("overrides a cached language with the workspace server preference", async () => {
-    document.documentElement.lang = "zh-CN";
-    context.store.set(setCachedLocale$, "zh-CN");
+    document.documentElement.lang = "en-US";
+    context.store.set(setCachedLocale$, "en-US");
     context.signal.addEventListener(
       "abort",
       () => {
@@ -172,19 +174,26 @@ describe("settings dialog", () => {
       },
       { once: true },
     );
-    context.mocks.data.userPreferences(createPreferences("en-US"));
+    context.mocks.data.userPreferences(createPreferences("pt-BR"));
 
     await openDialog("admin", "preference", {
       [FeatureSwitchKey.LanguagePreference]: true,
     });
 
     const languageSelect = await screen.findByRole("combobox", {
-      name: "Language",
+      name: "Idioma",
     });
     await waitFor(() => {
-      expect(languageSelect).toHaveTextContent("English");
+      expect(languageSelect).toHaveTextContent("Português (Brasil)");
+      expect(languageSelect).toHaveAccessibleName("Idioma");
+      expect(document.documentElement.lang).toBe("pt-BR");
+      expect(cachedLocale()).toBe("pt-BR");
+    });
+
+    click(languageSelect);
+    click(screen.getByRole("option", { name: "English" }));
+    await waitFor(() => {
       expect(document.documentElement.lang).toBe("en-US");
-      expect(cachedLocale()).toBe("en-US");
     });
   });
 
@@ -205,6 +214,38 @@ describe("settings dialog", () => {
     context.mocks.api(zeroUserPreferencesContract.get, ({ respond }) => {
       return respond(200, oldApiPreferences);
     });
+
+    await openDialog("admin", "preference", {
+      [FeatureSwitchKey.LanguagePreference]: true,
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText("Theme")).toBeInTheDocument();
+      expect(screen.queryByText("Language")).not.toBeInTheDocument();
+    });
+  });
+
+  it("hides the language entry when the API does not advertise Brazilian Portuguese", async () => {
+    const oldApiPreferences = createPreferences("en-US");
+    delete oldApiPreferences.supportedLocales;
+    context.mocks.api(zeroUserPreferencesContract.get, ({ respond }) => {
+      return respond(200, oldApiPreferences);
+    });
+
+    await openDialog("admin", "preference", {
+      [FeatureSwitchKey.LanguagePreference]: true,
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText("Theme")).toBeInTheDocument();
+      expect(screen.queryByText("Language")).not.toBeInTheDocument();
+    });
+  });
+
+  it("hides the language entry while the API locale rollout is disabled", async () => {
+    const guardedPreferences = createPreferences("en-US");
+    guardedPreferences.supportedLocales = ["en-US"];
+    context.mocks.data.userPreferences(guardedPreferences);
 
     await openDialog("admin", "preference", {
       [FeatureSwitchKey.LanguagePreference]: true,
