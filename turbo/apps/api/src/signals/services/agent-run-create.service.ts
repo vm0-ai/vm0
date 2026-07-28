@@ -4,8 +4,8 @@ import {
   CANONICAL_CODEX_MEMORY_MOUNT_PATH,
   CANONICAL_CLAUDE_MEMORY_MOUNT_PATH,
   DEFAULT_PROFILE,
+  type ArtifactEntry,
   type SecretConnectorMetadata,
-  type LegacyStorageManifest,
   type StoredExecutionContext,
 } from "@vm0/api-contracts/contracts/runners";
 import type { RunContextResponse } from "@vm0/api-contracts/contracts/zero-runs";
@@ -150,8 +150,8 @@ import {
 } from "./zero-custom-connector.service";
 import { activePendingRunPredicate } from "./agent-run-activity.service";
 import {
-  prepareAgentRunStorageManifest,
-  type PreparedAgentRunStorageManifest,
+  prepareAgentRunStorage,
+  type PreparedAgentRunStorage,
   StorageManifestBuildStats,
   type StorageManifestSource,
 } from "./agent-run-storage.service";
@@ -228,7 +228,7 @@ import {
 const PENDING_RUN_TTL_MS = 15 * 60 * 1000;
 const AUTO_MEMORY_ARTIFACT_NAME = MEMORY_ARTIFACT_NAME;
 type ArtifactMissingRootPolicy = NonNullable<
-  LegacyStorageManifest["artifacts"][number]["missingRootPolicy"]
+  ArtifactEntry["missingRootPolicy"]
 >;
 const AUTO_MEMORY_MISSING_ROOT_POLICY: ArtifactMissingRootPolicy =
   "preserveParentVersion";
@@ -629,6 +629,7 @@ interface StoredExecutionSecrets {
 interface BuiltStoredExecutionContext {
   readonly context: StoredExecutionContext;
   readonly persistedStorageMounts: readonly PersistedStorageMount[];
+  readonly runContextStorage: PreparedAgentRunStorage["runContextStorage"];
   readonly secretNames: readonly string[];
   // Plain secret values used for run-context redaction; values, not names.
   readonly secretValues: readonly string[];
@@ -636,7 +637,7 @@ interface BuiltStoredExecutionContext {
 
 type BuiltStoredExecutionContextDraft = Omit<
   BuiltStoredExecutionContext,
-  "context" | "persistedStorageMounts"
+  "context" | "persistedStorageMounts" | "runContextStorage"
 > & {
   readonly context: Omit<
     StoredExecutionContext,
@@ -4767,16 +4768,16 @@ async function buildStoredExecutionContextDraft(args: {
 }
 
 async function resolveBuiltStoredExecutionContext(
-  storageManifestPromise: Promise<PreparedAgentRunStorageManifest>,
+  preparedStoragePromise: Promise<PreparedAgentRunStorage>,
   builtContextDraftPromise: Promise<BuiltStoredExecutionContextDraft>,
 ): Promise<BuiltStoredExecutionContext> {
-  const [storageManifestResult, builtContextDraftResult] =
+  const [preparedStorageResult, builtContextDraftResult] =
     await Promise.allSettled([
-      storageManifestPromise,
+      preparedStoragePromise,
       builtContextDraftPromise,
     ]);
-  if (storageManifestResult.status === "rejected") {
-    throw storageManifestResult.reason;
+  if (preparedStorageResult.status === "rejected") {
+    throw preparedStorageResult.reason;
   }
   if (builtContextDraftResult.status === "rejected") {
     throw builtContextDraftResult.reason;
@@ -4784,12 +4785,13 @@ async function resolveBuiltStoredExecutionContext(
   return {
     ...builtContextDraftResult.value,
     persistedStorageMounts: [
-      ...storageManifestResult.value.persistedStorageMounts,
+      ...preparedStorageResult.value.persistedStorageMounts,
     ],
+    runContextStorage: preparedStorageResult.value.runContextStorage,
     context: {
       ...builtContextDraftResult.value.context,
-      storageManifest: storageManifestResult.value.storageManifest,
-      storageMounts: [...storageManifestResult.value.storageMounts],
+      storageManifest: null,
+      storageMounts: [...preparedStorageResult.value.storageMounts],
     },
   };
 }
@@ -4855,7 +4857,6 @@ function buildRunContextSnapshot(args: {
   readonly builtContext: BuiltStoredExecutionContext;
 }): RunContextAxiomSnapshot {
   const storedContext = args.builtContext.context;
-  const manifest: LegacyStorageManifest | null = storedContext.storageManifest;
   const sanitizedEnvironment = sanitizeEnvironment(
     storedContext.environment,
     args.builtContext.secretValues,
@@ -4875,22 +4876,8 @@ function buildRunContextSnapshot(args: {
     networkPolicyEntries: networkPoliciesRecordToEntries(
       storedContext.networkPolicies,
     ),
-    volumes: (manifest?.storages ?? []).map((storage) => {
-      return {
-        name: storage.name,
-        mountPath: storage.mountPath,
-        vasStorageName: storage.vasStorageName,
-        vasVersionId: storage.vasVersionId,
-      };
-    }),
-    artifact:
-      manifest && manifest.artifacts.length > 0
-        ? {
-            mountPath: manifest.artifacts[0]!.mountPath,
-            vasStorageName: manifest.artifacts[0]!.vasStorageName,
-            vasVersionId: manifest.artifacts[0]!.vasVersionId,
-          }
-        : null,
+    volumes: args.builtContext.runContextStorage.volumes,
+    artifact: args.builtContext.runContextStorage.artifact,
     featureFlagEntries: featureFlagsRecordToEntries(storedContext.featureFlags),
   };
   return snapshot;
@@ -5264,13 +5251,13 @@ function buildRunnerJobPayload(
     const storageManifestStats = args.timing
       ? new StorageManifestBuildStats()
       : undefined;
-    const storageManifestPromise = measureApiDispatchTiming(
+    const preparedStoragePromise = measureApiDispatchTiming(
       args.timing,
       "api_dispatch_prepare_storage_manifest",
       "nested",
       async () => {
         return await get(
-          prepareAgentRunStorageManifest({
+          prepareAgentRunStorage({
             db,
             content: args.resolved.content,
             vars: body.vars,
@@ -5305,7 +5292,7 @@ function buildRunnerJobPayload(
       },
     );
     const builtContext = await resolveBuiltStoredExecutionContext(
-      storageManifestPromise,
+      preparedStoragePromise,
       builtContextDraftPromise,
     );
     const runContextSnapshot = buildRunContextSnapshot({

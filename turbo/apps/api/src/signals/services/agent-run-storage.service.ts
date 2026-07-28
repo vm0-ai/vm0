@@ -2,6 +2,7 @@ import type {
   LegacyStorageManifest,
   StoredStorageMountEntry,
 } from "@vm0/api-contracts/contracts/runners";
+import type { RunContextResponse } from "@vm0/api-contracts/contracts/zero-runs";
 import { expandVariablesInString } from "@vm0/core/variable-expander";
 import {
   getInstructionsFilename,
@@ -217,10 +218,15 @@ interface StorageManifestEntries {
   readonly resolvedAdditionalEntryCount: number;
 }
 
-export interface PreparedAgentRunStorageManifest {
-  readonly storageManifest: LegacyStorageManifest;
+interface RunContextStorageObservation {
+  readonly volumes: RunContextResponse["volumes"];
+  readonly artifact: RunContextResponse["artifact"];
+}
+
+export interface PreparedAgentRunStorage {
   readonly storageMounts: readonly StoredStorageMountEntry[];
   readonly persistedStorageMounts: readonly PersistedStorageMount[];
+  readonly runContextStorage: RunContextStorageObservation;
 }
 
 interface BuildStorageManifestEntriesArgs {
@@ -2802,7 +2808,7 @@ function combineStorageManifestEntries(args: {
   };
 }
 
-async function assembleStorageManifest(args: {
+async function finalizePreparedStorage(args: {
   readonly composeEntries: readonly ManifestStorage[];
   readonly additionalEntries: readonly ManifestStorage[];
   readonly artifactEntries: ManifestArtifact[];
@@ -2812,7 +2818,7 @@ async function assembleStorageManifest(args: {
   readonly resolvedAdditionalEntryCount: number;
   readonly timing?: ApiDispatchTimingCollector;
   readonly stats?: StorageManifestBuildStats;
-}): Promise<PreparedAgentRunStorageManifest> {
+}): Promise<PreparedAgentRunStorage> {
   return await measureApiDispatchTiming(
     args.timing,
     "api_dispatch_prepare_storage_manifest_assemble",
@@ -2830,10 +2836,24 @@ async function assembleStorageManifest(args: {
         resolvedComposeEntryCount: args.resolvedComposeEntryCount,
         resolvedAdditionalEntryCount: args.resolvedAdditionalEntryCount,
       });
+      const artifact = args.artifactEntries[0];
       return {
-        storageManifest: {
-          storages: [...storages],
-          artifacts: args.artifactEntries,
+        runContextStorage: {
+          volumes: storages.map((storage) => {
+            return {
+              name: storage.name,
+              mountPath: storage.mountPath,
+              vasStorageName: storage.vasStorageName,
+              vasVersionId: storage.vasVersionId,
+            };
+          }),
+          artifact: artifact
+            ? {
+                mountPath: artifact.mountPath,
+                vasStorageName: artifact.vasStorageName,
+                vasVersionId: artifact.vasVersionId,
+              }
+            : null,
         },
         storageMounts: args.storageMounts,
         persistedStorageMounts: args.persistedStorageMounts,
@@ -2951,11 +2971,11 @@ async function buildLegacyStorageManifestEntries(
   });
 }
 
-async function prepareStorageManifestWithSessionOverlay(
+async function prepareStorageWithSessionOverlay(
   get: ComputedGetter,
   args: PrepareAgentRunStorageManifestArgs,
   bucket: string,
-): Promise<PreparedAgentRunStorageManifest> {
+): Promise<PreparedAgentRunStorage> {
   const { artifacts, composeVolumes } =
     await resolveStorageManifestInputs(args);
   const { canonicalWritebackMounts, legacyArtifacts } =
@@ -2986,18 +3006,18 @@ async function prepareStorageManifestWithSessionOverlay(
             },
           ),
         });
-  return await assembleStorageManifest({
+  return await finalizePreparedStorage({
     ...entries,
     timing: args.timing,
     stats: args.stats,
   });
 }
 
-export function prepareAgentRunStorageManifest(
+export function prepareAgentRunStorage(
   args: PrepareAgentRunStorageManifestArgs,
-): Computed<Promise<PreparedAgentRunStorageManifest>> {
-  return computed(async (get): Promise<PreparedAgentRunStorageManifest> => {
+): Computed<Promise<PreparedAgentRunStorage>> {
+  return computed(async (get): Promise<PreparedAgentRunStorage> => {
     const bucket = env("R2_USER_STORAGES_BUCKET_NAME");
-    return await prepareStorageManifestWithSessionOverlay(get, args, bucket);
+    return await prepareStorageWithSessionOverlay(get, args, bucket);
   });
 }

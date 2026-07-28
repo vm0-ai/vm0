@@ -72,13 +72,39 @@ describe("runner poll response contract", () => {
 });
 
 describe("runner storage manifest contract", () => {
-  it("requires canonical mounts in stored execution contexts", () => {
+  it("preserves stored context compatibility while preparing field removal", () => {
+    const context = {
+      storageMounts: [],
+      environment: null,
+      secretValueEnvironmentKeys: null,
+      resumeSession: null,
+      encryptedSecrets: null,
+      cliAgentType: "codex",
+    };
+    const legacyManifest = { storages: [], artifacts: [] };
+    const previousStoredExecutionContextSchema =
+      storedExecutionContextSchema.extend({
+        storageManifest: legacyStorageManifestSchema.nullable(),
+      });
+
     expect(
-      storedExecutionContextSchema.shape.storageMounts.safeParse([]).success,
+      previousStoredExecutionContextSchema.safeParse({
+        ...context,
+        storageManifest: null,
+      }).success,
     ).toBe(true);
     expect(
-      storedExecutionContextSchema.shape.storageMounts.safeParse(undefined)
-        .success,
+      storedExecutionContextSchema.safeParse({
+        ...context,
+        storageManifest: legacyManifest,
+      }).success,
+    ).toBe(true);
+    expect(storedExecutionContextSchema.safeParse(context).success).toBe(true);
+    expect(
+      storedExecutionContextSchema.safeParse({
+        ...context,
+        storageMounts: undefined,
+      }).success,
     ).toBe(false);
   });
 

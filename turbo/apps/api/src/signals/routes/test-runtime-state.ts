@@ -14,6 +14,7 @@ import {
   testRuntimeStateContract,
   type TestRuntimeStateActionBody,
 } from "@vm0/api-contracts/contracts/test-runtime-state";
+import { storedExecutionContextSchema } from "@vm0/api-contracts/contracts/runners";
 import { agentRuns } from "@vm0/db/schema/agent-run";
 import { agentSessions } from "@vm0/db/schema/agent-session";
 import {
@@ -402,6 +403,39 @@ async function readStoragePersistenceState(
   };
 }
 
+async function readRunnerJobStorageState(
+  db: Db,
+  runId: string,
+  signal: AbortSignal,
+) {
+  const [job] = await db
+    .select({ executionContext: runnerJobQueue.executionContext })
+    .from(runnerJobQueue)
+    .where(eq(runnerJobQueue.runId, runId))
+    .limit(1);
+  signal.throwIfAborted();
+  if (!job) {
+    throw new Error("Runner job queue row not found");
+  }
+  const rawContext = z
+    .record(z.string(), z.unknown())
+    .parse(job.executionContext);
+  const context = storedExecutionContextSchema.parse(rawContext);
+  let legacyManifestState: "missing" | "null" | "object";
+  if (!Object.hasOwn(rawContext, "storageManifest")) {
+    legacyManifestState = "missing";
+  } else if (rawContext.storageManifest === null) {
+    legacyManifestState = "null";
+  } else {
+    legacyManifestState = "object";
+  }
+  return {
+    legacy_manifest_state: legacyManifestState,
+    canonical_mount_count: context.storageMounts.length,
+    has_run_context_storage: Object.hasOwn(rawContext, "runContextStorage"),
+  };
+}
+
 type StorageStateAction = Extract<
   TestRuntimeStateActionBody,
   { action: "remove-run-canonical-storage-state" }
@@ -411,7 +445,14 @@ type ReadStorageStateAction = Extract<
   TestRuntimeStateActionBody,
   { action: "read-storage-persistence-state" }
 >;
-type AnyStorageStateAction = StorageStateAction | ReadStorageStateAction;
+type ReadRunnerJobStorageStateAction = Extract<
+  TestRuntimeStateActionBody,
+  { action: "read-runner-job-storage-state" }
+>;
+type AnyStorageStateAction =
+  | StorageStateAction
+  | ReadStorageStateAction
+  | ReadRunnerJobStorageStateAction;
 
 function isStorageStateAction(
   body: TestRuntimeStateActionBody,
@@ -419,6 +460,9 @@ function isStorageStateAction(
   switch (body.action) {
     case "remove-run-canonical-storage-state":
     case "read-storage-persistence-state": {
+      return true;
+    }
+    case "read-runner-job-storage-state": {
       return true;
     }
     default: {
@@ -441,25 +485,42 @@ async function storageStateActionResponse(
   body: AnyStorageStateAction,
   signal: AbortSignal,
 ) {
-  if (body.action === "read-storage-persistence-state") {
-    return {
-      status: 200 as const,
-      body: {
-        ok: true as const,
-        storage_persistence: await readStoragePersistenceState(
-          db,
-          {
-            runId: body.run_id,
-            sessionId: body.session_id,
-            checkpointId: body.checkpoint_id,
-          },
-          signal,
-        ),
-      },
-    };
+  switch (body.action) {
+    case "read-storage-persistence-state": {
+      return {
+        status: 200 as const,
+        body: {
+          ok: true as const,
+          storage_persistence: await readStoragePersistenceState(
+            db,
+            {
+              runId: body.run_id,
+              sessionId: body.session_id,
+              checkpointId: body.checkpoint_id,
+            },
+            signal,
+          ),
+        },
+      };
+    }
+    case "read-runner-job-storage-state": {
+      return {
+        status: 200 as const,
+        body: {
+          ok: true as const,
+          runner_job_storage_state: await readRunnerJobStorageState(
+            db,
+            body.run_id,
+            signal,
+          ),
+        },
+      };
+    }
+    case "remove-run-canonical-storage-state": {
+      await mutateStorageState(db, body, signal);
+      return { status: 200 as const, body: { ok: true as const } };
+    }
   }
-  await mutateStorageState(db, body, signal);
-  return { status: 200 as const, body: { ok: true as const } };
 }
 
 type TimingStateAction = Extract<
