@@ -84,7 +84,8 @@ pub(in crate::executor) async fn read_guest_failure_diagnostic_file(
 ///
 /// The guest-agent writes the session ID to the guest runtime directory
 /// after the CLI emits its `system/init` event. On first runs (no
-/// `resume_session`), the runner uses this to park the VM for keep-alive.
+/// `resume_session`), the runner uses this as the late-discovered identity
+/// for session tracking and finalization.
 pub(in crate::executor) async fn read_guest_cli_agent_session_id(
     sandbox: &dyn Sandbox,
     run_id: RunId,

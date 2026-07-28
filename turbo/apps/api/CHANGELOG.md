@@ -1,5 +1,61 @@
 # Changelog
 
+## [1.335.0](https://github.com/vm0-ai/vm0/compare/api-v1.334.0...api-v1.335.0) (2026-07-28)
+
+
+### Features
+
+* **connectors:** default oauth callbacks to app ([#23392](https://github.com/vm0-ai/vm0/issues/23392)) ([b626e8b](https://github.com/vm0-ai/vm0/commit/b626e8b5d781ad635652943c493031c5fae369d4))
+
+
+### Bug Fixes
+
+* **api:** send low-credit alerts from contact address ([#23390](https://github.com/vm0-ai/vm0/issues/23390)) ([1b50558](https://github.com/vm0-ai/vm0/commit/1b505580bd0d50f07f6740c97cb125b5517864b1))
+* **api:** use support address for low-credit alerts ([#23406](https://github.com/vm0-ai/vm0/issues/23406)) ([880934d](https://github.com/vm0-ai/vm0/commit/880934d8d73890d8dfc5d197be5d6ea8d935daa2))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.239.1
+    * @vm0/connectors bumped to 1.199.0
+    * @vm0/core bumped to 8.479.0
+    * @vm0/db bumped to 1.147.1
+
+## [1.334.0](https://github.com/vm0-ai/vm0/compare/api-v1.333.0...api-v1.334.0) (2026-07-28)
+
+
+### Features
+
+* **mail:** add reply follow-up action ([#23291](https://github.com/vm0-ai/vm0/issues/23291)) ([83c7cba](https://github.com/vm0-ai/vm0/commit/83c7cbafc1d241aa0fd072625547cbbc6e81b042))
+
+
+### Bug Fixes
+
+* **chat:** preserve full recommended follow-up prompts ([#23377](https://github.com/vm0-ai/vm0/issues/23377)) ([58698c7](https://github.com/vm0-ai/vm0/commit/58698c7f7b25d82da7ec04fabdf72363b9a25e66))
+* improve feishu setup guidance and oauth callback ([#23384](https://github.com/vm0-ai/vm0/issues/23384)) ([7529209](https://github.com/vm0-ai/vm0/commit/7529209c3e4761cca04d5d05f99b8663b8ec4ffb))
+
+
+### Refactoring
+
+* **chat:** use full structured prompt as canonical message ([#23380](https://github.com/vm0-ai/vm0/issues/23380)) ([94e9abb](https://github.com/vm0-ai/vm0/commit/94e9abbb99239d85669a4728fbcb513546560b5d))
+* **runner:** canonicalize profile discovery contract ([#23387](https://github.com/vm0-ai/vm0/issues/23387)) ([b2fb830](https://github.com/vm0-ai/vm0/commit/b2fb830a6c4d656d35ca95f23ee877b652aa8599))
+
+
+### Performance Improvements
+
+* **api:** trust api-release-attested connector catalogs ([#23348](https://github.com/vm0-ai/vm0/issues/23348)) ([eda102e](https://github.com/vm0-ai/vm0/commit/eda102ea43c58828f5a6053b00aaaf41b3afdbf5))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.239.0
+    * @vm0/core bumped to 8.478.0
+    * @vm0/db bumped to 1.147.0
+
 ## [1.333.0](https://github.com/vm0-ai/vm0/compare/api-v1.332.2...api-v1.333.0) (2026-07-28)
 
 

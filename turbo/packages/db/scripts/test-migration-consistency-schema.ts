@@ -1607,6 +1607,207 @@ async function applyMigrationsUpToInTransaction(
   }
 }
 
+const STRUCTURED_PROMPT_DRAFT_BACKFILL_PREVIOUS_MIGRATION = 707;
+const STRUCTURED_PROMPT_DRAFT_BACKFILL_MIGRATION = 708;
+
+async function validateStructuredPromptDraftBackfill(): Promise<void> {
+  console.log("=== Validate structured prompt draft backfill ===\n");
+
+  const testDb = "migration_structured_prompt_draft_backfill_test";
+  const testDbUrl = createTestDbUrl(testDb);
+  const fixture = {
+    composeId: "90000000-0000-4000-8000-000000000001",
+    threadIds: {
+      legacy: "91000000-0000-4000-8000-000000000001",
+      canonical: "91000000-0000-4000-8000-000000000002",
+      equal: "91000000-0000-4000-8000-000000000003",
+    },
+    draftUsers: {
+      legacy: "structured-prompt-backfill-legacy-user",
+      canonical: "structured-prompt-backfill-canonical-user",
+      equal: "structured-prompt-backfill-equal-user",
+    },
+    orgId: "structured-prompt-backfill-org",
+  } as const;
+  const canonicalDocument = {
+    version: 1,
+    parts: [{ type: "text", text: "canonical draft" }],
+  };
+  const feedbackDocument = {
+    version: 1,
+    parts: [
+      { type: "text", text: "draft with feedback" },
+      {
+        type: "feedback",
+        quote: "quoted draft",
+        note: [{ type: "text", text: "feedback note" }],
+      },
+    ],
+  };
+
+  await createDatabase(testDb);
+  try {
+    await runMigrationsUpTo(
+      testDbUrl,
+      STRUCTURED_PROMPT_DRAFT_BACKFILL_PREVIOUS_MIGRATION,
+    );
+
+    const client = new Client({ connectionString: testDbUrl });
+    await client.connect();
+    try {
+      await client.query(
+        `INSERT INTO "agent_composes" ("id", "user_id", "name", "org_id")
+         VALUES ($1, $2, $3, $4)`,
+        [
+          fixture.composeId,
+          fixture.draftUsers.legacy,
+          "structured-prompt-backfill",
+          fixture.orgId,
+        ],
+      );
+      await client.query(
+        `INSERT INTO "zero_agents" ("id", "org_id", "owner", "name")
+         VALUES ($1, $2, $3, $4)`,
+        [
+          fixture.composeId,
+          fixture.orgId,
+          fixture.draftUsers.legacy,
+          "structured-prompt-backfill",
+        ],
+      );
+      await client.query(
+        `INSERT INTO "chat_threads" (
+           "id",
+           "user_id",
+           "agent_compose_id",
+           "draft_structured_prompt",
+           "draft_structured_prompt_with_feedback"
+         )
+         VALUES
+           ($1, $2, $7, $8::jsonb, $9::jsonb),
+           ($3, $4, $7, $8::jsonb, NULL),
+           ($5, $6, $7, $9::jsonb, $9::jsonb)`,
+        [
+          fixture.threadIds.legacy,
+          fixture.draftUsers.legacy,
+          fixture.threadIds.canonical,
+          fixture.draftUsers.canonical,
+          fixture.threadIds.equal,
+          fixture.draftUsers.equal,
+          fixture.composeId,
+          JSON.stringify(canonicalDocument),
+          JSON.stringify(feedbackDocument),
+        ],
+      );
+      await client.query(
+        `INSERT INTO "zero_agent_drafts" (
+           "user_id",
+           "org_id",
+           "agent_id",
+           "draft_structured_prompt",
+           "draft_structured_prompt_with_feedback"
+         )
+         VALUES
+           ($1, $2, $3, $4::jsonb, $5::jsonb),
+           ($6, $2, $3, $4::jsonb, NULL),
+           ($7, $2, $3, $5::jsonb, $5::jsonb)`,
+        [
+          fixture.draftUsers.legacy,
+          fixture.orgId,
+          fixture.composeId,
+          JSON.stringify(canonicalDocument),
+          JSON.stringify(feedbackDocument),
+          fixture.draftUsers.canonical,
+          fixture.draftUsers.equal,
+        ],
+      );
+
+      await applyMigrationsUpToInTransaction(
+        client,
+        STRUCTURED_PROMPT_DRAFT_BACKFILL_MIGRATION,
+      );
+
+      const chatRows = await client.query<{
+        id: string;
+        draft_structured_prompt: unknown;
+        draft_structured_prompt_with_feedback: unknown;
+      }>(
+        `SELECT
+           "id",
+           "draft_structured_prompt",
+           "draft_structured_prompt_with_feedback"
+         FROM "chat_threads"
+         WHERE "id" = ANY($1::uuid[])
+         ORDER BY "id"`,
+        [Object.values(fixture.threadIds)],
+      );
+      const chatRowsById = new Map(
+        chatRows.rows.map((row) => {
+          return [row.id, row] as const;
+        }),
+      );
+      assert.deepEqual(chatRowsById.get(fixture.threadIds.legacy), {
+        id: fixture.threadIds.legacy,
+        draft_structured_prompt: feedbackDocument,
+        draft_structured_prompt_with_feedback: feedbackDocument,
+      });
+      assert.deepEqual(chatRowsById.get(fixture.threadIds.canonical), {
+        id: fixture.threadIds.canonical,
+        draft_structured_prompt: canonicalDocument,
+        draft_structured_prompt_with_feedback: null,
+      });
+      assert.deepEqual(chatRowsById.get(fixture.threadIds.equal), {
+        id: fixture.threadIds.equal,
+        draft_structured_prompt: feedbackDocument,
+        draft_structured_prompt_with_feedback: feedbackDocument,
+      });
+
+      const draftRows = await client.query<{
+        user_id: string;
+        draft_structured_prompt: unknown;
+        draft_structured_prompt_with_feedback: unknown;
+      }>(
+        `SELECT
+           "user_id",
+           "draft_structured_prompt",
+           "draft_structured_prompt_with_feedback"
+         FROM "zero_agent_drafts"
+         WHERE "user_id" = ANY($1::text[])
+         ORDER BY "user_id"`,
+        [Object.values(fixture.draftUsers)],
+      );
+      const draftRowsByUser = new Map(
+        draftRows.rows.map((row) => {
+          return [row.user_id, row] as const;
+        }),
+      );
+      assert.deepEqual(draftRowsByUser.get(fixture.draftUsers.legacy), {
+        user_id: fixture.draftUsers.legacy,
+        draft_structured_prompt: feedbackDocument,
+        draft_structured_prompt_with_feedback: feedbackDocument,
+      });
+      assert.deepEqual(draftRowsByUser.get(fixture.draftUsers.canonical), {
+        user_id: fixture.draftUsers.canonical,
+        draft_structured_prompt: canonicalDocument,
+        draft_structured_prompt_with_feedback: null,
+      });
+      assert.deepEqual(draftRowsByUser.get(fixture.draftUsers.equal), {
+        user_id: fixture.draftUsers.equal,
+        draft_structured_prompt: feedbackDocument,
+        draft_structured_prompt_with_feedback: feedbackDocument,
+      });
+    } finally {
+      await client.end();
+    }
+  } finally {
+    await dropDatabase(testDb);
+  }
+
+  console.log(
+    "   ✅ Both draft tables backfill feedback documents and preserve canonical rows\n",
+  );
+}
+
 const CHAT_EVENT_TYPE_PREVIOUS_MIGRATION = 696;
 const CHAT_EVENT_TYPE_ADDITIVE_MIGRATION = 697;
 const CHAT_EVENT_TYPE_BACKFILL_MIGRATION = 698;
@@ -4311,6 +4512,7 @@ async function main(): Promise<void> {
     await validateOrgPlanEntitlementBackfill();
     await validateModelObservationContractCleanup();
     await validateChatEventTypeBackfillAndContract();
+    await validateStructuredPromptDraftBackfill();
 
     // Step 1.5: Validate latest snapshot accuracy (NEW)
     await validateLatestSnapshotAccuracy();

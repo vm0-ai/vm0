@@ -508,8 +508,6 @@ impl JobProvider for ApiProvider {
                     if self.cancel.is_cancelled() {
                         return None;
                     }
-                    // Fall back to default profile when server doesn't send one
-                    // (backwards compat with pre-profile API).
                     let run_id = job.run_id;
                     let cli_agent_session_id = job.cli_agent_session_id;
                     let history_generation_run_id = job.history_generation_run_id;
@@ -517,9 +515,7 @@ impl JobProvider for ApiProvider {
                         job.history_generation_affinity_protected_until;
                     let affinity_protected_until = job.affinity_protected_until;
                     let session_affinity_resource = job.session_affinity_resource;
-                    let profile = job
-                        .experimental_profile
-                        .unwrap_or_else(|| crate::profile::DEFAULT_PROFILE.to_owned());
+                    let profile = job.experimental_profile;
                     info!(run_id = %run_id, %profile, poll_reason = ?reason, "poll: job found");
                     let mut candidate = JobCandidate::new(run_id, profile)
                         .with_affinity_metadata(cli_agent_session_id, affinity_protected_until)
@@ -1617,6 +1613,19 @@ mod tests {
         )
     }
 
+    fn api_provider_for_test_with_supported_profiles(
+        api_url: String,
+        cancel: CancellationToken,
+        poll_wakeups: Arc<PollWakeups>,
+        supported_profiles: Vec<String>,
+    ) -> Arc<ApiProvider> {
+        let mut provider = api_provider_for_test(api_url, cancel, poll_wakeups);
+        Arc::get_mut(&mut provider)
+            .expect("fresh test provider should not be shared")
+            .supported_profiles = supported_profiles;
+        provider
+    }
+
     fn api_provider_for_test_with_claim_cooldown_capacity(
         api_url: String,
         cancel: CancellationToken,
@@ -2169,7 +2178,7 @@ mod tests {
                 then.status(200).json_body(serde_json::json!({
                     "job": {
                         "runId": run_id,
-                        "experimentalProfile": "vm0/default",
+                        "experimentalProfile": "vm0/large",
                         "cliAgentSessionId": "sess-poll",
                         "historyGenerationRunId": history_generation_run_id,
                         "historyGenerationAffinityProtectedUntil": "2999-01-01T00:00:00.000Z",
@@ -2179,10 +2188,11 @@ mod tests {
                 }));
             })
             .await;
-        let provider = api_provider_for_test(
+        let provider = api_provider_for_test_with_supported_profiles(
             server.base_url(),
             CancellationToken::new(),
             Arc::new(PollWakeups::new(false)),
+            vec!["vm0/large".to_string()],
         );
 
         let discovered = tokio::time::timeout(Duration::from_secs(1), provider.discover())
@@ -2191,7 +2201,7 @@ mod tests {
             .unwrap();
 
         assert_eq!(discovered.run_id(), run_id);
-        assert_eq!(discovered.profile_name(), "vm0/default");
+        assert_eq!(discovered.profile_name(), "vm0/large");
         assert_eq!(discovered.cli_agent_session_id(), Some("sess-poll"));
         assert_eq!(
             discovered.history_generation_run_id(),

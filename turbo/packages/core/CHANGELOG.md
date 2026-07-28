@@ -1,5 +1,33 @@
 # Changelog
 
+## [8.479.0](https://github.com/vm0-ai/vm0/compare/core-v8.478.0...core-v8.479.0) (2026-07-28)
+
+
+### Features
+
+* enable new chat thread sidebar for all users ([#23378](https://github.com/vm0-ai/vm0/issues/23378)) ([3a8dc48](https://github.com/vm0-ai/vm0/commit/3a8dc48223ba96896cf142f73d4bf37e34a3d534))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.239.1
+
+## [8.478.0](https://github.com/vm0-ai/vm0/compare/core-v8.477.0...core-v8.478.0) (2026-07-28)
+
+
+### Features
+
+* **mail:** add reply follow-up action ([#23291](https://github.com/vm0-ai/vm0/issues/23291)) ([83c7cba](https://github.com/vm0-ai/vm0/commit/83c7cbafc1d241aa0fd072625547cbbc6e81b042))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.239.0
+
 ## [8.477.0](https://github.com/vm0-ai/vm0/compare/core-v8.476.2...core-v8.477.0) (2026-07-28)
 
 

@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.58.3](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.58.2...guest-agent-v0.58.3) (2026-07-28)
+
+
+### Bug Fixes
+
+* **runner:** classify codex safety policy refusals ([#23391](https://github.com/vm0-ai/vm0/issues/23391)) ([a1d9986](https://github.com/vm0-ai/vm0/commit/a1d9986f1183067249dc168ba3643acdf05f79ca))
+
 ## [0.58.2](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.58.1...guest-agent-v0.58.2) (2026-07-27)
 
 

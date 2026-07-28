@@ -13,7 +13,6 @@ import { clerk$ } from "../external/clerk";
 import { writeDb$, type Db } from "../external/db";
 import { nowDate } from "../external/time";
 import {
-  buildFromAddress,
   buildOneClickUnsubscribeUrl,
   buildUnsubscribeHeaders,
   buildUnsubscribeUrl,
@@ -31,6 +30,7 @@ export const LOW_CREDIT_EMAIL_ALERT_THRESHOLD_CREDITS = 5000;
 
 const L = logger("CreditLowBalanceAlert");
 const ORG_MEMBERSHIP_PAGE_SIZE = 100;
+const LOW_CREDIT_EMAIL_FROM_ADDRESS = "VM0 Team <support@vm0.ai>";
 
 function billingCreditsUrl(): string {
   return `${env("APP_URL").replace(/\/$/, "")}/?settings=billing&billingView=credits`;
@@ -305,7 +305,7 @@ export const enqueueCreditLowBalanceAlert$ = command(
           },
         } satisfies EmailTemplate;
         return {
-          fromAddress: buildFromAddress("vm0"),
+          fromAddress: LOW_CREDIT_EMAIL_FROM_ADDRESS,
           toAddresses: recipient.email,
           ccAddresses: null,
           subject: CREDIT_LOW_BALANCE_EMAIL_SUBJECT,

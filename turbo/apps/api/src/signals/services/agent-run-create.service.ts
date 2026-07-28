@@ -4756,7 +4756,6 @@ async function buildStoredExecutionContextDraft(args: {
       disallowedTools: args.body.disallowedTools,
       tools: args.body.tools,
       settings: args.body.settings,
-      experimentalProfile: runnerProfile(args.resolved.content),
       featureFlags: getAllFeatureStates(args.featureSwitchContext),
       billableFirewalls: [...args.billableFirewalls],
       modelUsageProvider: args.modelUsageProvider,

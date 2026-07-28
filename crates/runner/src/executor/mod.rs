@@ -26,6 +26,7 @@ use tokio_util::sync::CancellationToken;
 mod active_input;
 mod agent_run;
 mod cli_framework;
+mod codex_model_catalog_prefetch;
 mod diagnostics;
 mod env;
 mod guest_state;
@@ -230,7 +231,8 @@ pub struct ExecuteOutcome {
     pub network_log_session: Option<NetworkLogSession>,
     pub workspace_image: Option<WorkspaceImageLease>,
     /// CLI-generated session ID read from the guest after execution.
-    /// Used for first-run VM parking when `resume_session` is absent.
+    /// Used for late session tracking and finalization when `resume_session`
+    /// is absent.
     pub discovered_cli_agent_session_id: Option<String>,
     pub restored_session_identity: Option<RestoredSessionIdentity>,
 }

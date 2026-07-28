@@ -1811,6 +1811,7 @@ function networkHardeningRows(
       model_catalog_cache_entry_age_ms: "61000",
       model_catalog_cache_validation_latency_ms: -1,
       model_catalog_cache_eviction_count: 33,
+      model_catalog_prefetch_role: "credential-specific-value",
     },
     {
       _time: "2026-06-10T12:01:00Z",
@@ -1827,6 +1828,7 @@ function networkHardeningRows(
       model_catalog_cache_entry_age_ms: 61_000,
       model_catalog_cache_validation_latency_ms: 1700,
       model_catalog_cache_eviction_count: 1,
+      model_catalog_prefetch_role: "inflight_consumer",
       upstream_binding_reason: "connector_auth",
       upstream_binding_trusted_host: "api.github.com",
       upstream_binding_request_host: "203.0.113.10",
@@ -2323,6 +2325,7 @@ describe("RUN-04: agent run telemetry families", () => {
         model_catalog_cache_entry_age_ms: 61_000,
         model_catalog_cache_validation_latency_ms: 1700,
         model_catalog_cache_eviction_count: 1,
+        model_catalog_prefetch_role: "inflight_consumer",
         upstream_binding_reason: "connector_auth",
         upstream_binding_trusted_host: "api.github.com",
         upstream_binding_request_host: "203.0.113.10",

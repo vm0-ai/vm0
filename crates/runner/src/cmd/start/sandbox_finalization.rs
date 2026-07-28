@@ -1625,6 +1625,93 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn finalizer_promotes_failed_first_run_workspace_with_discovered_session() {
+        let (_budget, lease) = test_budget_lease();
+        let fixture = FinalizeTestFixture::new().await;
+        let network_log_session = fixture.network_log_session().await;
+        let dir = tempfile::tempdir().unwrap();
+        let paths = RunnerPaths::new(dir.path().join("runner"));
+        tokio::fs::create_dir_all(paths.base_dir()).await.unwrap();
+        let cache = SessionWorkspaceCache::new(paths.clone());
+        let run_id = RunId::new_v4();
+        let sandbox_id = SandboxId::new_v4();
+        let session_id = "sess-discovered-after-failure";
+        let workspace_image = cache
+            .prepare(WorkspaceImagePrepareRequest {
+                identity: WorkspaceImageLeaseIdentity {
+                    run_id,
+                    sandbox_id,
+                    profile_name: "vm0/default",
+                    cli_agent_session_id: None,
+                    working_dir: CANONICAL_WORKING_DIR,
+                    image_size_bytes: b"image".len() as u64,
+                },
+                workspace_drive_required: true,
+            })
+            .await;
+        assert_eq!(
+            workspace_image.result(),
+            crate::workspace_image_cache::WorkspaceCacheCheckoutResult::NoSession
+        );
+        tokio::fs::create_dir_all(paths.workspace_dir(&sandbox_id))
+            .await
+            .unwrap();
+        tokio::fs::write(paths.active_workspace_image(&sandbox_id), b"image")
+            .await
+            .unwrap();
+        let overrides = Arc::new(MockSandboxOverrides::new());
+        let (factory, sandbox) = sandbox_with_overrides(sandbox_id, Arc::clone(&overrides)).await;
+        let mut context = fixture.finalize_context(
+            run_id,
+            sandbox_id,
+            "unused-context-session",
+            network_log_session,
+            RunCancellationHandle::new(),
+        );
+        context.factory = factory;
+        context.cli_agent_session_id = None;
+        context.discovered_cli_agent_session_id = Some(session_id.into());
+        context.exit_code = 1;
+        context.workspace_image = Some(workspace_image);
+        context.workspace_image_size_bytes = b"image".len() as u64;
+        let held_session_snapshot = context.held_session_snapshot.clone();
+
+        let _completion_ready = finalize_sandbox_for_completion(
+            Some(sandbox),
+            ActiveBudgetLease::new(lease),
+            CompletionPayload::new(
+                run_id,
+                1,
+                Some("simulated agent failure".into()),
+                sandbox_id,
+                SandboxReuseResult::PoolMiss,
+                CompletionAuth::local(),
+            ),
+            context,
+        )
+        .await;
+
+        assert_eq!(overrides.park_call_count(), 0);
+        assert_eq!(overrides.destroy_call_count(), 1);
+        assert_eq!(fixture.idle_pool.lock().await.len(), 0);
+        let cache_states = cache.held_session_states().await;
+        assert_eq!(cache_states.len(), 1);
+        assert_eq!(cache_states[0].session_id, session_id);
+        let inspection = cache.inspect().await.unwrap();
+        assert_eq!(inspection.entries.len(), 1);
+        assert_eq!(
+            inspection.entries[0].last_terminal_status,
+            Some(WorkspaceCacheTerminalStatus::NonzeroExit)
+        );
+        let active_sessions = super::super::active_sessions::new_active_cli_agent_sessions();
+        let snapshot_states =
+            held_session_snapshot.current_held_session_states(Vec::new(), &active_sessions, None);
+        assert_eq!(snapshot_states.len(), 1);
+        assert_eq!(snapshot_states[0].session_id, session_id);
+        assert_eq!(snapshot_states[0].workspace_caches.len(), 1);
+    }
+
+    #[tokio::test]
     async fn finalizer_stop_error_abandons_frozen_workspace_cache_before_destroy() {
         let (_budget, lease) = test_budget_lease();
         let fixture = FinalizeTestFixture::new().await;

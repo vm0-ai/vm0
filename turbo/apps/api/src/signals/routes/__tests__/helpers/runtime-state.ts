@@ -108,6 +108,18 @@ export async function mutateRunnerJobSecretValueEnvironmentKeys(
   });
 }
 
+export async function setRunnerJobContextProfileAsPreviousApi(
+  context: TestContext,
+  runId: string,
+  profile: string,
+): Promise<void> {
+  await postAction(context, {
+    action: "set-runner-job-context-profile-as-previous-api",
+    run_id: runId,
+    profile,
+  });
+}
+
 export async function removeRunCanonicalStorageState(
   context: TestContext,
   runId: string,

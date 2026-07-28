@@ -640,6 +640,7 @@ def client_disconnected(client: connection.Client) -> None:
 def requestheaders(flow: http.HTTPFlow) -> Awaitable[None] | None:
     """Handle request-header-only decisions before mitmproxy buffers bodies."""
     request_end_stream = mitmproxy_compat.take_request_end_stream(flow)
+    codex_model_catalog_cache.capture_and_strip_prefetch_marker(flow)
     connector_intent.capture_and_strip(flow)
 
     body_check = _auth_base_body_header_check(
@@ -836,7 +837,7 @@ async def _try_firewall_request_stream_capture_from_headers(
     )
     request_classification.cache_classification(flow, classification)
     flow.metadata[_FIREWALL_AUTH_APPLIED_IN_REQUESTHEADERS] = True
-    codex_model_catalog_cache.prepare_request(
+    await codex_model_catalog_cache.prepare_request(
         flow,
         request_end_stream=request_end_stream is True,
     )
@@ -922,6 +923,7 @@ async def request(flow: http.HTTPFlow) -> None:
     `request_classification.classify_request()`, which owns the canonical decision
     order. This hook dispatches the current-state result.
     """
+    codex_model_catalog_cache.capture_and_strip_prefetch_marker(flow)
     connector_intent.capture_and_strip(flow)
 
     if flow.metadata.get(_REQUEST_HEADERS_TERMINATED):
@@ -1060,7 +1062,7 @@ async def request(flow: http.HTTPFlow) -> None:
                 auth_base_forwarder.release_forward_request_admission_from_flow(flow)
                 terminal_usage.release_tracked_flow(flow)
             elif auth_result is FirewallAuthHandlingResult.CONTINUE_UPSTREAM:
-                codex_model_catalog_cache.prepare_request(
+                await codex_model_catalog_cache.prepare_request(
                     flow,
                     request_end_stream=True,
                 )

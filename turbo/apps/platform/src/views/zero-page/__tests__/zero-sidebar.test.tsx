@@ -592,7 +592,7 @@ describe("zero sidebar", () => {
     createDeferred.resolve();
   });
 
-  it("closes the artifact sidebar when creating a new main chat", async () => {
+  it("closes the legacy artifact sidebar when creating a new main chat", async () => {
     prepareDefaultAgent();
     const artifactUrl = encodeURIComponent(
       "https://cdn.vm7.io/artifacts/test/archive.zip",
@@ -628,6 +628,9 @@ describe("zero sidebar", () => {
     setupSidebarPage({
       context,
       path: `/chats/${EXISTING_THREAD_ID}?artifact=${artifactUrl}`,
+      featureSwitches: {
+        [FeatureSwitchKey.NewChatThreadSidebar]: false,
+      },
     });
 
     const newChatButton = await waitFor(() => {

@@ -1,5 +1,44 @@
 # Changelog
 
+## [0.646.0](https://github.com/vm0-ai/vm0/compare/app-v0.645.0...app-v0.646.0) (2026-07-28)
+
+
+### Features
+
+* **connectors:** default oauth callbacks to app ([#23392](https://github.com/vm0-ai/vm0/issues/23392)) ([b626e8b](https://github.com/vm0-ai/vm0/commit/b626e8b5d781ad635652943c493031c5fae369d4))
+* enable new chat thread sidebar for all users ([#23378](https://github.com/vm0-ai/vm0/issues/23378)) ([3a8dc48](https://github.com/vm0-ai/vm0/commit/3a8dc48223ba96896cf142f73d4bf37e34a3d534))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.239.1
+    * @vm0/connectors bumped to 1.199.0
+    * @vm0/core bumped to 8.479.0
+
+## [0.645.0](https://github.com/vm0-ai/vm0/compare/app-v0.644.0...app-v0.645.0) (2026-07-28)
+
+
+### Features
+
+* **mail:** add reply follow-up action ([#23291](https://github.com/vm0-ai/vm0/issues/23291)) ([83c7cba](https://github.com/vm0-ai/vm0/commit/83c7cbafc1d241aa0fd072625547cbbc6e81b042))
+* **platform:** default new chat threads to cloud browser when zero browser is on ([#23364](https://github.com/vm0-ai/vm0/issues/23364)) ([351f50f](https://github.com/vm0-ai/vm0/commit/351f50fa166b33e8382c18995bab4cd6b8adf80a))
+
+
+### Bug Fixes
+
+* **chat:** keep permission card height stable while checking grants ([#23371](https://github.com/vm0-ai/vm0/issues/23371)) ([464b1da](https://github.com/vm0-ai/vm0/commit/464b1da732dc24124c9c4e13f092af53cf46a5c6))
+* improve feishu setup guidance and oauth callback ([#23384](https://github.com/vm0-ai/vm0/issues/23384)) ([7529209](https://github.com/vm0-ai/vm0/commit/7529209c3e4761cca04d5d05f99b8663b8ec4ffb))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.239.0
+    * @vm0/core bumped to 8.478.0
+
 ## [0.644.0](https://github.com/vm0-ai/vm0/compare/app-v0.643.0...app-v0.644.0) (2026-07-28)
 
 

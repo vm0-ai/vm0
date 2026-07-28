@@ -22,6 +22,12 @@ use std::path::Path;
 const LOG_TAG: &str = "sandbox:guest-agent";
 const MAX_LOGGED_CLI_STDERR_LINES: usize = 20;
 const MAX_LOGGED_CLI_STDERR_LINE_BYTES: usize = 4096;
+const CODEX_SAFETY_POLICY_REFUSAL_MESSAGE: &str = concat!(
+    "This content was flagged for possible cybersecurity risk. ",
+    "If this seems wrong, try rephrasing your request. ",
+    "To get authorized for security work, join the Trusted Access for Cyber program: ",
+    "https://chatgpt.com/cyber",
+);
 
 /// Final message and structured diagnostic for a nonzero CLI result.
 #[derive(Debug)]
@@ -244,6 +250,12 @@ fn classify_cli_failure_reason(
     source: FailureDetailSource,
     failure_message: &str,
 ) -> Option<FailureReason> {
+    if matches!(framework, AgentFramework::Codex)
+        && is_codex_safety_policy_refusal(source, failure_message)
+    {
+        return Some(FailureReason::SafetyPolicyRefusal);
+    }
+
     let normalized = failure_message.to_ascii_lowercase();
     if is_insufficient_credits_error(&normalized) {
         return Some(FailureReason::InsufficientCredits);
@@ -315,6 +327,11 @@ fn classify_cli_failure_reason(
         return Some(FailureReason::UsageLimit);
     }
     None
+}
+
+fn is_codex_safety_policy_refusal(source: FailureDetailSource, failure_message: &str) -> bool {
+    source == FailureDetailSource::CodexJsonl
+        && failure_message.trim() == CODEX_SAFETY_POLICY_REFUSAL_MESSAGE
 }
 
 fn is_insufficient_credits_error(normalized: &str) -> bool {
