@@ -2066,12 +2066,27 @@ mod tests {
                 "empty": true
             }),
             json!({
-                "name": "writeback-instructions",
+                "name": "read-only-missing-root-policy",
                 "storageId": "storage-3",
                 "versionId": "version-3",
+                "mountPath": "/read-only-missing-root-policy",
+                "archiveUrl": "https://example.com/read-only.tar.gz",
+                "missingRootPolicy": "preserveParentVersion"
+            }),
+            json!({
+                "name": "writeback-instructions",
+                "storageId": "storage-4",
+                "versionId": "version-4",
                 "mountPath": "/writeback-instructions",
                 "archiveUrl": "https://example.com/instructions.tar.gz",
                 "instructionsTargetFilename": "AGENTS.md",
+                "writeback": true
+            }),
+            json!({
+                "name": "writeback-without-archive",
+                "storageId": "storage-5",
+                "versionId": "version-5",
+                "mountPath": "/writeback-without-archive",
                 "writeback": true
             }),
         ] {
