@@ -57,9 +57,22 @@ export async function signInWithClerkTestingHelper(
     timeout: 30_000,
   });
   if (options.activeOrganizationId) {
-    await page.evaluate(async (organizationId) => {
-      await window.Clerk?.setActive({ organization: organizationId });
-    }, options.activeOrganizationId);
+    // Activating the organization lets the skeleton route redirect to the app.
+    // Observe that redirect before setActive so it cannot race the token read.
+    await Promise.all([
+      page.waitForURL(
+        (url) =>
+          url.origin === helperUrl.origin &&
+          url.pathname !== helperUrl.pathname,
+        {
+          timeout: 30_000,
+          waitUntil: "domcontentloaded",
+        },
+      ),
+      page.evaluate(async (organizationId) => {
+        await window.Clerk?.setActive({ organization: organizationId });
+      }, options.activeOrganizationId),
+    ]);
     await page.waitForFunction(
       () => Boolean(window.Clerk?.loaded && window.Clerk?.session),
       undefined,
