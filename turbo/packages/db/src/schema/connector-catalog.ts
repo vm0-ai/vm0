@@ -246,6 +246,18 @@ export const connectorCatalogCompatibilityEvaluation = pgTable(
     executableCapabilityDigest: varchar("executable_capability_digest", {
       length: 71,
     }).notNull(),
+    catalogValidationBackendVersion: varchar(
+      "catalog_validation_backend_version",
+      {
+        length: 64,
+      },
+    ),
+    catalogValidationBuildCommitSha: varchar(
+      "catalog_validation_build_commit_sha",
+      {
+        length: 40,
+      },
+    ),
     evaluatedAt: timestamp("evaluated_at").notNull(),
     filteredAuthMethods: jsonb("filtered_auth_methods")
       .$type<ConnectorCatalogFilteredAuthMethods>()
@@ -282,6 +294,20 @@ export const connectorCatalogCompatibilityEvaluation = pgTable(
       check(
         "connector_catalog_compatibility_catalog_digest_valid",
         sql`${table.catalogDigest} ~ '^sha256:[a-f0-9]{64}$'`,
+      ),
+      check(
+        "connector_catalog_compat_validation_authority_complete",
+        sql`(
+          ${table.catalogValidationBackendVersion} IS NULL
+          AND ${table.catalogValidationBuildCommitSha} IS NULL
+        ) OR (
+          ${table.catalogValidationBackendVersion} IS NOT NULL
+          AND ${table.catalogValidationBackendVersion} ~ '^(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)$'
+          AND (
+            ${table.catalogValidationBuildCommitSha} IS NULL
+            OR ${table.catalogValidationBuildCommitSha} ~ '^[a-f0-9]{40}$'
+          )
+        )`,
       ),
     ];
   },

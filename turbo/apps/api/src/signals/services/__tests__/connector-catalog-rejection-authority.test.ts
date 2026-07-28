@@ -5,7 +5,7 @@ import {
   createConnectorCatalogValidatorIdentity,
   type ConnectorCatalogRejectionAuthority,
   type ConnectorCatalogValidatorIdentity,
-} from "../connector-catalog-rejection-authority";
+} from "../connector-catalog-validator-authority";
 
 function authority(
   backendVersion: string,

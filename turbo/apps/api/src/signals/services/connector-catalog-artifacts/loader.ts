@@ -155,25 +155,18 @@ function measureSnapshotPhase<T>(
   return timing ? timing.measureSync(actionType, operation) : operation();
 }
 
-function parseAndValidateCatalog(args: {
-  readonly bytes: Uint8Array;
+function validateCatalogJson(args: {
+  readonly json: unknown;
   readonly catalogVersion: string;
   readonly timing?: ConnectorCatalogLoadTiming;
 }): ConnectorCatalogArtifact {
-  const json = measureSnapshotPhase(
-    args.timing,
-    "api_dispatch_connector_catalog_decode_json",
-    () => {
-      return decodedJson(args.bytes);
-    },
-  );
   const artifact = measureSnapshotPhase(
     args.timing,
     "api_dispatch_connector_catalog_validate_schema",
     () => {
-      assertSupportedArtifactSchema(json);
+      assertSupportedArtifactSchema(args.json);
       const parsed = parseStrict(
-        json,
+        args.json,
         connectorCatalogArtifactSchema,
         "invalid-artifact",
       );
@@ -208,6 +201,31 @@ function parseAndValidateCatalog(args: {
     },
   );
   return artifact;
+}
+
+function decodeCatalogJson(
+  bytes: Uint8Array,
+  timing: ConnectorCatalogLoadTiming | undefined,
+): unknown {
+  return measureSnapshotPhase(
+    timing,
+    "api_dispatch_connector_catalog_decode_json",
+    () => {
+      return decodedJson(bytes);
+    },
+  );
+}
+
+function parseAndValidateCatalog(args: {
+  readonly bytes: Uint8Array;
+  readonly catalogVersion: string;
+  readonly timing?: ConnectorCatalogLoadTiming;
+}): ConnectorCatalogArtifact {
+  return validateCatalogJson({
+    json: decodeCatalogJson(args.bytes, args.timing),
+    catalogVersion: args.catalogVersion,
+    ...(args.timing === undefined ? {} : { timing: args.timing }),
+  });
 }
 
 export const CONNECTOR_CATALOG_ACTIVE_MAX_BYTES = ACTIVE_POINTER_MAX_BYTES;
@@ -273,13 +291,17 @@ function gunzipCatalog(bytes: Uint8Array): Buffer {
   fail("invalid-compression");
 }
 
-export function decodeConnectorCatalogSnapshot(args: {
+interface ConnectorCatalogSnapshotDecodeArgs {
   readonly catalogGzip: Uint8Array;
   readonly catalogRawSize: number;
   readonly catalogVersion: string;
   readonly catalogDigest: string;
   readonly timing?: ConnectorCatalogLoadTiming;
-}): DecodedConnectorCatalogSnapshot {
+}
+
+function decodeConnectorCatalogSnapshotJson(
+  args: ConnectorCatalogSnapshotDecodeArgs,
+): unknown {
   if (
     args.catalogGzip.byteLength > CONNECTOR_CATALOG_MAX_GZIP_BYTES ||
     args.catalogRawSize > CONNECTOR_CATALOG_MAX_RAW_BYTES
@@ -304,11 +326,52 @@ export function decodeConnectorCatalogSnapshot(args: {
       assertDigest(rawBytes, args.catalogDigest);
     },
   );
+  return decodeCatalogJson(rawBytes, args.timing);
+}
+
+export function decodeConnectorCatalogSnapshot(
+  args: ConnectorCatalogSnapshotDecodeArgs,
+): DecodedConnectorCatalogSnapshot {
   return {
-    artifact: parseAndValidateCatalog({
-      bytes: rawBytes,
+    artifact: validateCatalogJson({
+      json: decodeConnectorCatalogSnapshotJson(args),
       catalogVersion: args.catalogVersion,
       ...(args.timing === undefined ? {} : { timing: args.timing }),
     }),
   };
+}
+
+function assertAttestedConnectorCatalogArtifact(
+  value: unknown,
+  catalogVersion: string,
+): asserts value is ConnectorCatalogArtifact {
+  if (!isRecord(value)) {
+    fail("invalid-artifact");
+  }
+  if (
+    typeof value.artifactSchemaVersion === "number" &&
+    value.artifactSchemaVersion !== SUPPORTED_CONNECTOR_CATALOG_SCHEMA_VERSION
+  ) {
+    fail("unsupported-schema");
+  }
+  if (
+    value.artifactSchemaVersion !==
+      SUPPORTED_CONNECTOR_CATALOG_SCHEMA_VERSION ||
+    typeof value.catalogVersion !== "string"
+  ) {
+    fail("invalid-artifact");
+  }
+  if (value.catalogVersion !== catalogVersion) {
+    fail("invalid-reference");
+  }
+}
+
+export function decodeAttestedConnectorCatalogSnapshot(
+  args: ConnectorCatalogSnapshotDecodeArgs,
+): DecodedConnectorCatalogSnapshot {
+  const artifact = decodeConnectorCatalogSnapshotJson(args);
+  // The exact-digest compatibility row and current validator authority
+  // establish deep schema and semantic validity. Keep this boundary local.
+  assertAttestedConnectorCatalogArtifact(artifact, args.catalogVersion);
+  return { artifact };
 }

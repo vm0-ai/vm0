@@ -1,5 +1,13 @@
+import { getBuildVersion, normalizeBuildCommitSha } from "../../lib/build-info";
+import { env } from "../../lib/env";
+
 const CORE_SEMVER_REGEX =
   /^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$/u;
+
+export interface ConnectorCatalogValidationAuthority {
+  readonly backendVersion: string;
+  readonly buildCommitSha: string | null;
+}
 
 export interface ConnectorCatalogValidatorIdentity {
   readonly backendVersion: string;
@@ -7,10 +15,8 @@ export interface ConnectorCatalogValidatorIdentity {
   readonly production: boolean;
 }
 
-export interface ConnectorCatalogRejectionAuthority {
-  readonly backendVersion: string;
-  readonly buildCommitSha: string | null;
-}
+export type ConnectorCatalogRejectionAuthority =
+  ConnectorCatalogValidationAuthority;
 
 interface CoreSemVer {
   readonly major: bigint;
@@ -53,6 +59,44 @@ export function createConnectorCatalogValidatorIdentity(
 ): ConnectorCatalogValidatorIdentity {
   parseCoreSemVer(identity.backendVersion);
   return identity;
+}
+
+export function currentConnectorCatalogValidatorIdentity(): ConnectorCatalogValidatorIdentity {
+  const production = env("ENV") === "production";
+  return createConnectorCatalogValidatorIdentity({
+    backendVersion: getBuildVersion(),
+    buildCommitSha: production
+      ? null
+      : normalizeBuildCommitSha(env("GIT_COMMIT_SHA")),
+    production,
+  });
+}
+
+export function connectorCatalogValidationAuthorityIsCurrent(args: {
+  readonly authority: ConnectorCatalogValidationAuthority;
+  readonly validator: ConnectorCatalogValidatorIdentity;
+}): boolean {
+  return (
+    compareCoreSemVer(
+      args.authority.backendVersion,
+      args.validator.backendVersion,
+    ) === 0 && args.authority.buildCommitSha === args.validator.buildCommitSha
+  );
+}
+
+export function connectorCatalogValidationAuthorityIsCurrentOrNewer(args: {
+  readonly authority: ConnectorCatalogValidationAuthority;
+  readonly validator: ConnectorCatalogValidatorIdentity;
+}): boolean {
+  const versionOrder = compareCoreSemVer(
+    args.authority.backendVersion,
+    args.validator.backendVersion,
+  );
+  return (
+    versionOrder > 0 ||
+    (versionOrder === 0 &&
+      args.authority.buildCommitSha === args.validator.buildCommitSha)
+  );
 }
 
 export function connectorCatalogRejectionIsReusable(args: {
