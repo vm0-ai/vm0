@@ -25,6 +25,7 @@ function featureSwitchResponseBody(params: {
   readonly userId: string;
   readonly switches: Record<string, boolean>;
   readonly supportsStructuredInlineTemplates: boolean;
+  readonly supportsCustomConnectorOAuth2: boolean;
 }) {
   const effectiveSwitches = getAllFeatureStates({
     orgId: params.orgId,
@@ -40,6 +41,7 @@ function featureSwitchResponseBody(params: {
     switches: params.switches,
     effectiveSwitches,
     supportsStructuredInlineTemplates: params.supportsStructuredInlineTemplates,
+    supportsCustomConnectorOAuth2: params.supportsCustomConnectorOAuth2,
   };
 }
 
@@ -55,6 +57,7 @@ const getFeatureSwitchesInner$ = computed(async (get): Promise<unknown> => {
       userId: auth.userId,
       switches,
       supportsStructuredInlineTemplates: true,
+      supportsCustomConnectorOAuth2: true,
     }),
   };
 });
@@ -89,6 +92,7 @@ const updateFeatureSwitchesInner$ = command(
         userId: auth.userId,
         switches,
         supportsStructuredInlineTemplates: true,
+        supportsCustomConnectorOAuth2: true,
       }),
     };
   },

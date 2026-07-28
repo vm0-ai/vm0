@@ -28,6 +28,29 @@ describe("bootstrap feature switch hydration", () => {
     ).toBeTruthy();
   });
 
+  it("keeps custom connector OAuth disabled when the API lacks support", async () => {
+    context.mocks.api(zeroFeatureSwitchesContract.get, ({ respond }) => {
+      return respond(200, {
+        switches: { [FeatureSwitchKey.CustomConnectorOAuth2]: true },
+        effectiveSwitches: {
+          [FeatureSwitchKey.CustomConnectorOAuth2]: true,
+        },
+        supportsStructuredFeedbackParts: true,
+        supportsStructuredInlineTemplates: true,
+      });
+    });
+
+    await setupPage({
+      context,
+      path: "/error",
+      withoutRender: true,
+    });
+
+    expect(
+      context.store.get(featureSwitch$)[FeatureSwitchKey.CustomConnectorOAuth2],
+    ).toBeFalsy();
+  });
+
   it("skips feature switch hydration without an authenticated organization", async () => {
     context.mocks.api(zeroFeatureSwitchesContract.get, ({ respond }) => {
       return respond(500, {
