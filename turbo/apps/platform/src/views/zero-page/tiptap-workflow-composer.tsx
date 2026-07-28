@@ -17,7 +17,7 @@ import {
 } from "./chat-thread-suggestion.tsx";
 import {
   buildComposerSlashWorkflows,
-  matchesWorkflowQuery,
+  findWorkflowQueryMatches,
   scrollSlashWorkflowIntoView,
   SlashWorkflowMenu,
   type ComposerSlashWorkflow,
@@ -297,13 +297,11 @@ function useComposerSuggestionMenu({
       workflowsLoadable.state === "hasData" ? workflowsLoadable.data : [],
   });
   const workflowSuggestions = slashRange
-    ? workflows.filter((workflow) => {
-        return matchesWorkflowQuery(
-          workflow,
-          slashRange.query,
-          skillSubstringSearchEnabled,
-        );
-      })
+    ? findWorkflowQueryMatches(
+        workflows,
+        slashRange.query,
+        skillSubstringSearchEnabled,
+      )
     : [];
   const showWorkflows = slashRange !== null;
   const chatThreads =
