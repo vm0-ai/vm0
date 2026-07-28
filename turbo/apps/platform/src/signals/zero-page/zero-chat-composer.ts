@@ -87,11 +87,21 @@ export const setModelPickerOpen$ = command(({ set }, open: boolean) => {
 
 // -- Template picker open/category state ------------------------------------
 
+const internalWebsiteTemplatePreviewId$ = state<string | null>(null);
+const internalWebsiteTemplatePreviewLoaded$ = state(false);
 const internalTemplatePickerOpen$ = state(false);
+const internalTemplatePickerSkipEnterAnimation$ = state(false);
 export const templatePickerOpen$ = computed((get) => {
-  return get(internalTemplatePickerOpen$);
+  return (
+    get(internalTemplatePickerOpen$) &&
+    get(internalWebsiteTemplatePreviewId$) === null
+  );
+});
+export const templatePickerSkipEnterAnimation$ = computed((get) => {
+  return get(internalTemplatePickerSkipEnterAnimation$);
 });
 export const setTemplatePickerOpen$ = command(({ set }, open: boolean) => {
+  set(internalTemplatePickerSkipEnterAnimation$, false);
   set(internalTemplatePickerOpen$, open);
 });
 
@@ -106,16 +116,25 @@ export const setTemplatePickerReferenceValue$ = command(
   },
 );
 
-const internalWebsiteTemplatePreviewId$ = state<string | null>(null);
 export const websiteTemplatePreviewId$ = computed((get) => {
   return get(internalWebsiteTemplatePreviewId$);
 });
+export const websiteTemplatePreviewLoaded$ = computed((get) => {
+  return get(internalWebsiteTemplatePreviewLoaded$);
+});
+export const markWebsiteTemplatePreviewLoaded$ = command(({ set }) => {
+  set(internalWebsiteTemplatePreviewLoaded$, true);
+});
 export const openWebsiteTemplatePreview$ = command(
   ({ set }, templateId: string) => {
+    set(internalTemplatePickerSkipEnterAnimation$, false);
+    set(internalWebsiteTemplatePreviewLoaded$, false);
     set(internalWebsiteTemplatePreviewId$, templateId);
   },
 );
 export const closeWebsiteTemplatePreview$ = command(({ set }) => {
+  set(internalTemplatePickerSkipEnterAnimation$, true);
+  set(internalWebsiteTemplatePreviewLoaded$, false);
   set(internalWebsiteTemplatePreviewId$, null);
 });
 

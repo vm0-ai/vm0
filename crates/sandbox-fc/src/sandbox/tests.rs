@@ -662,6 +662,26 @@ fn assert_idle_transition<T: std::fmt::Debug>(
     }
 }
 
+fn assert_idle_transition_message<T: std::fmt::Debug>(
+    result: sandbox::Result<T>,
+    expected_transition: SandboxIdleTransition,
+    expected_message: &str,
+) {
+    match result {
+        Err(SandboxError::IdleTransition {
+            transition,
+            message,
+        }) => {
+            assert_eq!(transition, expected_transition);
+            assert_eq!(message, expected_message);
+        }
+        other => panic!(
+            "expected {expected_transition} idle transition error with message \
+             {expected_message:?}, got {other:?}"
+        ),
+    }
+}
+
 fn assert_operation_error(
     error: SandboxError,
     expected_operation: SandboxOperation,
@@ -4853,13 +4873,14 @@ async fn unpark_retry_after_failure_succeeds() {
 // -- new tests for vCPU pause/resume --
 
 #[tokio::test]
-async fn park_pause_failure_propagates_as_idle_transition() {
+async fn park_pause_http_400_propagates_as_idle_transition() {
     // Balloon inflate succeeds and observes a severe deficit. The next stats
     // request fails, terminating settle with that severe classification, but
-    // the final VM pause still fails and must remain an operational error.
+    // the final VM pause returns a Firecracker fault and must remain an
+    // operational error.
     let target_mib = 2048 - balloon::MIN_GUEST_MIB;
     let mut api = MockLifecycleApi::with_stats(
-        std::collections::VecDeque::from(vec![204, 500]),
+        std::collections::VecDeque::from(vec![204, 400]),
         std::collections::VecDeque::from([
             MockBalloonStatsReply::Ok(MockBalloonStats::new(target_mib, 0)),
             MockBalloonStatsReply::Status(500),
@@ -4878,7 +4899,11 @@ async fn park_pause_failure_propagates_as_idle_transition() {
     )
     .await;
 
-    assert_idle_transition(result, SandboxIdleTransition::Park);
+    assert_idle_transition_message(
+        result,
+        SandboxIdleTransition::Park,
+        "vm pause: HTTP 400: test",
+    );
     assert!(!is_parked, "flag must stay false on failure");
     // Controller was aborted before balloon PATCH.
     assert!(controller.is_none());
@@ -4891,9 +4916,10 @@ async fn park_pause_failure_propagates_as_idle_transition() {
 }
 
 #[tokio::test]
-async fn unpark_resume_failure_propagates_as_idle_transition() {
-    // Resume fails with 500 (genuine error). No deflate should be attempted.
-    let mut api = MockLifecycleApi::new(std::collections::VecDeque::from(vec![500]), None);
+async fn unpark_resume_http_400_propagates_as_idle_transition() {
+    // A Firecracker resume fault must not be mistaken for an already-running
+    // VM. No deflate should be attempted.
+    let mut api = MockLifecycleApi::new(std::collections::VecDeque::from(vec![400]), None);
 
     let mut is_parked = true;
     let mut controller: Option<balloon::ControllerHandle> = None;
@@ -4909,7 +4935,11 @@ async fn unpark_resume_failure_propagates_as_idle_transition() {
     )
     .await;
 
-    assert_idle_transition(result, SandboxIdleTransition::Unpark);
+    assert_idle_transition_message(
+        result,
+        SandboxIdleTransition::Unpark,
+        "vm resume: HTTP 400: test",
+    );
     assert!(is_parked, "flag must stay true on failure");
     assert!(controller.is_none(), "controller must not be respawned");
 
@@ -4923,9 +4953,9 @@ async fn unpark_resume_failure_propagates_as_idle_transition() {
 #[tokio::test]
 async fn unpark_retry_after_partial_failure_resumes_idempotently() {
     // First unpark: resume OK (204), deflate fails (400).
-    // Second unpark: resume 400 (already running — treated as OK), deflate OK (204).
+    // Second unpark: repeated resume OK (204), deflate OK (204).
     let api = MockLifecycleApi::new(
-        std::collections::VecDeque::from(vec![204, 400, 400, 204]),
+        std::collections::VecDeque::from(vec![204, 400, 204, 204]),
         None,
     );
 
@@ -4946,7 +4976,7 @@ async fn unpark_retry_after_partial_failure_resumes_idempotently() {
     assert_idle_transition(first, SandboxIdleTransition::Unpark);
     assert!(is_parked, "flag must stay true after partial failure");
 
-    // Second attempt: resume 400 (idempotent), deflate OK.
+    // Firecracker accepts the repeated target-state request.
     unpark_inner(
         &mut is_parked,
         2048,

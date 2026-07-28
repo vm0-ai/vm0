@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.148.17](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.148.16...runner-rs-v0.148.17) (2026-07-28)
+
+
+### Bug Fixes
+
+* **runner:** classify codex safety policy refusals ([#23391](https://github.com/vm0-ai/vm0/issues/23391)) ([a1d9986](https://github.com/vm0-ai/vm0/commit/a1d9986f1183067249dc168ba3643acdf05f79ca))
+* **runner:** discover first-run session ids after failures ([#23408](https://github.com/vm0-ai/vm0/issues/23408)) ([fa69041](https://github.com/vm0-ai/vm0/commit/fa690416e2c18ed4487ade152bf455233724b8c8))
+
 ## [0.148.16](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.148.15...runner-rs-v0.148.16) (2026-07-28)
 
 

@@ -189,6 +189,7 @@ import {
   uploadPopoverOpen$,
   setUploadPopoverOpen$,
   templatePickerOpen$,
+  templatePickerSkipEnterAnimation$,
   setTemplatePickerOpen$,
   templatePickerReferenceValue$,
   setTemplatePickerReferenceValue$,
@@ -4383,6 +4384,7 @@ function TemplatePickerDialog({
   value,
   onChange,
   onClose,
+  skipEnterAnimation,
   hasPptTab,
   presentationItems,
   hasIllustrationTab,
@@ -4393,6 +4395,7 @@ function TemplatePickerDialog({
   value: GenerationTemplateRequest | undefined;
   onChange: (value: GenerationTemplateRequest | undefined) => void;
   onClose: () => void;
+  skipEnterAnimation: boolean;
   hasPptTab: boolean;
   presentationItems: readonly PresentationTemplateItem[];
   hasIllustrationTab: boolean;
@@ -4429,6 +4432,7 @@ function TemplatePickerDialog({
   const isPreviewing = Boolean(previewItem);
   const dialogContentClassName = cn(
     "gap-0 overflow-hidden p-0 focus:outline-none focus-visible:outline-none focus-visible:ring-0",
+    skipEnterAnimation && "data-[state=open]:!animate-none",
     isPreviewing
       ? "flex h-[min(90dvh,760px)] max-w-6xl flex-col sm:h-auto [&>button[aria-label=Close]]:top-[7px]"
       : "flex h-[min(82vh,760px)] max-w-6xl flex-col [&>button[aria-label=Close]]:top-[7px] sm:[&>button[aria-label=Close]]:top-[19px]",
@@ -4645,6 +4649,9 @@ function TemplatePickerDialog({
     >
       <DialogContent
         className={dialogContentClassName}
+        overlayClassName={
+          skipEnterAnimation ? "data-[state=open]:!animate-none" : undefined
+        }
         aria-describedby={undefined}
         onKeyDown={handleDialogKeyDown}
         onKeyDownCapture={
@@ -5113,6 +5120,7 @@ function TemplatePickerButton({
   runtime: TemplatePreviewRuntime;
 }) {
   const open = useGet(templatePickerOpen$);
+  const skipEnterAnimation = useGet(templatePickerSkipEnterAnimation$);
   const category = useGet(templatePickerCategory$);
   const referenceValue = useGet(templatePickerReferenceValue$);
   const setOpen = useSet(setTemplatePickerOpen$);
@@ -5184,6 +5192,7 @@ function TemplatePickerButton({
             setReferenceValue(null);
             setOpen(false);
           }}
+          skipEnterAnimation={skipEnterAnimation}
           hasPptTab={hasPptTab}
           presentationItems={presentationItems}
           hasIllustrationTab={hasIllustrationTab}

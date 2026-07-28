@@ -734,10 +734,6 @@ impl AgentExecutionResult {
         }
     }
 
-    pub(super) fn exit_code(&self) -> i32 {
-        self.failure.as_ref().map_or(0, |failure| failure.exit_code)
-    }
-
     pub(super) fn with_stdout_stream_diagnostics(
         mut self,
         diagnostics: AgentStdoutStreamDiagnostics,
