@@ -23,6 +23,7 @@ import { env, mockEnv, mockOptionalEnv } from "../../../lib/env";
 import { server } from "../../../mocks/server";
 import { flushWaitUntilForTest } from "../../context/wait-until";
 import { now } from "../../external/time";
+import { createDeferredPromise } from "../../utils";
 import { zeroFeishuBrowserConnectRoutes } from "../zero-feishu-browser-connect";
 import { zeroFeishuEventsRoutes } from "../zero-feishu-events";
 import { zeroFeishuOauthRoutes } from "../zero-feishu-oauth";
@@ -884,6 +885,92 @@ describe("Feishu integration", () => {
         return installation.appId;
       }),
     ).toStrictEqual([firstAppId]);
+    const installation = status.body.installations?.[0];
+    if (!installation) {
+      throw new Error("Expected one Feishu installation");
+    }
+    await accept(
+      client.removeInstallation({
+        headers: { authorization: "Bearer clerk-session" },
+        params: { installationId: installation.id },
+      }),
+      [200],
+    );
+  });
+
+  it("serializes concurrent Feishu app creation per organization", async () => {
+    const actor = authOrgApi.user({
+      userId: `user_${randomUUID()}`,
+      orgId: `org_${randomUUID()}`,
+      orgRole: "org:admin",
+    });
+    authOrgApi.acceptAgentStorageWrites();
+    await enableFeishuIntegration(actor);
+    const agent = await authOrgApi.createAgent(actor, {
+      displayName: "Feishu concurrent setup agent",
+      visibility: "public",
+    });
+    mocks.clerk.session(actor.userId, actor.orgId, "org:admin");
+    const client = setupApp({ context })(zeroFeishuConnectContract);
+    const bothTokenRequestsStarted = createDeferredPromise<void>(
+      context.signal,
+    );
+    const releaseTokenRequests = createDeferredPromise<void>(context.signal);
+    let tokenRequestCount = 0;
+    server.use(
+      http.post(
+        "https://open.feishu.cn/open-apis/auth/v3/tenant_access_token/internal",
+        async () => {
+          tokenRequestCount += 1;
+          if (tokenRequestCount === 2) {
+            bothTokenRequestsStarted.resolve();
+          }
+          await releaseTokenRequests.promise;
+          return HttpResponse.json({
+            code: 0,
+            tenant_access_token: "tenant-access-token",
+            expire: 7200,
+          });
+        },
+      ),
+    );
+
+    const setupResponsesPromise = Promise.all(
+      [`cli_${randomUUID()}`, `cli_${randomUUID()}`].map((appId) => {
+        return client.setup({
+          headers: { authorization: "Bearer clerk-session" },
+          body: {
+            appId,
+            appSecret: APP_SECRET,
+            verificationToken: VERIFICATION_TOKEN,
+            defaultAgentId: agent.agentId,
+            createNew: true,
+          },
+        });
+      }),
+    );
+    await bothTokenRequestsStarted.promise;
+    releaseTokenRequests.resolve();
+    const setupResponses = await setupResponsesPromise;
+
+    expect(
+      setupResponses.map((response) => {
+        return response.status;
+      }),
+    ).toContain(200);
+    expect(
+      setupResponses.map((response) => {
+        return response.status;
+      }),
+    ).toContain(409);
+
+    const status = await accept(
+      client.getStatus({
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [200],
+    );
+    expect(status.body.installations).toHaveLength(1);
     const installation = status.body.installations?.[0];
     if (!installation) {
       throw new Error("Expected one Feishu installation");
