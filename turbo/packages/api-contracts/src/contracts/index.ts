@@ -720,7 +720,6 @@ export {
   SESSION_HISTORY_DOWNLOAD_SOURCE_CONFIGURED_PUBLIC_ENDPOINT,
   SESSION_HISTORY_DOWNLOAD_SOURCE_DEFAULT_R2_ENDPOINT,
   artifactEntrySchema,
-  canonicalStorageManifestSchema,
   legacyStorageManifestSchema,
   storageMountEntrySchema,
   storedStorageMountEntrySchema,

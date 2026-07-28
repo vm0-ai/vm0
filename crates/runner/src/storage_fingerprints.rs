@@ -1,7 +1,8 @@
 use std::collections::HashMap;
 
-use api_contracts::generated::types::runners::storage::StorageManifest;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
+
+use crate::storage_manifest::StorageManifest;
 
 /// Compact version fingerprints for storage manifest entries.
 /// Used to skip re-downloading unchanged storages on VM reuse.

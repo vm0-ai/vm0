@@ -173,8 +173,8 @@ For runner/backend API changes:
 
 ### Storage mount manifest rollout
 
-The runtime Storage unification used a receiver-first Runner rollout. Runners
-accept exactly one of these response shapes:
+The runtime Storage unification used a receiver-first Runner rollout. During
+the expansion phase, Runners accepted exactly one of these response shapes:
 
 - canonical `storageMounts`
 - legacy `storages` plus `artifacts`
@@ -206,9 +206,8 @@ or Runner state.
 Do not omit the queue field until every active and rollback-eligible API has the
 tolerant reader and null writer, the database-clock cutoff for the last
 full-object writer is recorded, more than the two-hour queue TTL has elapsed,
-and neither queue contains an unexpired row predating that cutoff. Runner/guest
-legacy reader removal is independently gated on canonical claim producers; the
-backend field and legacy schema are removed only after both gates pass.
+and neither queue contains an unexpired row predating that cutoff. The backend
+field and legacy schema remain until this queue gate passes.
 
 Phase 4A contracts the migration denominator to the latest state used by
 session continuation. Every session continuation head must have canonical
@@ -224,12 +223,12 @@ writes, zero unmigrated session continuation heads, and no lossy session
 conversion. Malformed, ambiguous, or unresolvable latest session state blocked
 contraction rather than being silently rewritten.
 
-Runner and guest binaries ship together, so the Runner-to-guest manifest uses
-the canonical shape while the guest reader temporarily accepts both
-representations. This keeps a newly promoted Runner compatible with the
-previous API during a cross-version window. Remove the legacy readers and queue
-field only after canonical-only API output is stable, rollback-eligible API
-versions have drained, and the queue gate above has passed.
+Runner and guest binaries ship together, so both the API-to-Runner and
+Runner-to-guest runtime readers now require `storageMounts`. Both boundaries
+reject exact duplicate `mountPath` values while continuing to ignore unrelated
+unknown fields for forward compatibility. The backend's stored queue context
+still accepts its legacy nullable field until the independent queue gate above
+passes.
 
 ### Firewall hostname policy
 

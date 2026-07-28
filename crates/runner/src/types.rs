@@ -6,11 +6,8 @@ use sandbox::SandboxId;
 use serde::{Deserialize, Serialize};
 use unicode_normalization::UnicodeNormalization;
 
-use api_contracts::generated::types::runners::storage::{
-    ArtifactEntry, StorageEntry, StorageManifest, StorageMountEntry,
-};
-
 use crate::ids::RunId;
+use crate::storage_manifest::StorageManifest;
 
 pub(crate) const MAX_HELD_SESSION_STATES: usize = 1024;
 pub(crate) const MAX_WORKSPACE_CACHES_PER_SESSION: usize = 8;
@@ -77,8 +74,8 @@ pub struct ExecutionContext {
     #[serde(default)]
     pub vars: Option<HashMap<String, String>>,
     pub sandbox_token: String,
-    #[serde(default, deserialize_with = "deserialize_storage_manifest")]
-    pub storage_manifest: Option<StorageManifest>,
+    #[serde(default)]
+    pub(crate) storage_manifest: Option<StorageManifest>,
     #[serde(default)]
     pub environment: Option<HashMap<String, String>>,
     #[serde(default)]
@@ -133,106 +130,6 @@ pub struct ExecutionContext {
     pub model_usage_provider: Option<String>,
     #[serde(default)]
     pub codex_runtime_config: Option<CodexRuntimeConfig>,
-}
-
-#[derive(Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct StorageManifestInput {
-    #[serde(default)]
-    storages: Option<Vec<StorageEntry>>,
-    #[serde(default)]
-    artifacts: Option<Vec<ArtifactEntry>>,
-    #[serde(default)]
-    storage_mounts: Option<Vec<StorageMountEntry>>,
-}
-
-fn deserialize_storage_manifest<'de, D>(
-    deserializer: D,
-) -> Result<Option<StorageManifest>, D::Error>
-where
-    D: serde::Deserializer<'de>,
-{
-    let input = Option::<StorageManifestInput>::deserialize(deserializer)?;
-    input
-        .map(normalize_storage_manifest)
-        .transpose()
-        .map_err(serde::de::Error::custom)
-}
-
-fn normalize_storage_manifest(input: StorageManifestInput) -> Result<StorageManifest, String> {
-    match (input.storages, input.artifacts, input.storage_mounts) {
-        (Some(storages), Some(artifacts), None) => Ok(StorageManifest {
-            storages,
-            artifacts,
-        }),
-        (None, None, Some(storage_mounts)) => normalize_storage_mounts(storage_mounts),
-        _ => Err(
-            "storage manifest must contain exactly storageMounts or both storages and artifacts"
-                .to_string(),
-        ),
-    }
-}
-
-fn normalize_storage_mounts(
-    storage_mounts: Vec<StorageMountEntry>,
-) -> Result<StorageManifest, String> {
-    let mut storages = Vec::new();
-    let mut artifacts = Vec::new();
-
-    for mount in storage_mounts {
-        let writeback = mount.writeback.unwrap_or(false);
-        if writeback {
-            if mount.instructions_target_filename.is_some() {
-                return Err(
-                    "storage manifest writeback mount cannot contain instructionsTargetFilename"
-                        .to_string(),
-                );
-            }
-            if mount.empty != Some(true) && mount.archive_url.is_none() {
-                return Err(
-                    "storage manifest writeback mount requires archiveUrl unless empty is true"
-                        .to_string(),
-                );
-            }
-            artifacts.push(ArtifactEntry {
-                mount_path: mount.mount_path,
-                vas_storage_name: mount.name,
-                vas_storage_id: mount.storage_id,
-                vas_version_id: mount.version_id,
-                archive_url: mount.archive_url,
-                archive_size: mount.archive_size,
-                empty: mount.empty,
-                missing_root_policy: mount.missing_root_policy,
-            });
-            continue;
-        }
-
-        if mount.empty == Some(true) {
-            return Err("storage manifest read-only mount cannot be empty".to_string());
-        }
-        if mount.missing_root_policy.is_some() {
-            return Err(
-                "storage manifest read-only mount cannot contain missingRootPolicy".to_string(),
-            );
-        }
-        let archive_url = mount
-            .archive_url
-            .ok_or_else(|| "storage manifest read-only mount requires archiveUrl".to_string())?;
-        storages.push(StorageEntry {
-            name: mount.name.clone(),
-            mount_path: mount.mount_path,
-            vas_storage_name: mount.name,
-            vas_version_id: mount.version_id,
-            instructions_target_filename: mount.instructions_target_filename,
-            archive_url,
-            archive_size: mount.archive_size,
-        });
-    }
-
-    Ok(StorageManifest {
-        storages,
-        artifacts,
-    })
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -2079,7 +1976,8 @@ mod tests {
                     "versionId": "version-1",
                     "mountPath": "/home/user/.claude",
                     "archiveUrl": "https://example.com/instructions.tar.gz",
-                    "instructionsTargetFilename": "CLAUDE.md"
+                    "instructionsTargetFilename": "CLAUDE.md",
+                    "futureMountField": true
                 },
                 {
                     "name": "memory",
@@ -2090,7 +1988,8 @@ mod tests {
                     "missingRootPolicy": "preserveParentVersion",
                     "writeback": true
                 }
-            ]
+            ],
+            "futureManifestField": true
         }));
 
         let context: ExecutionContext = serde_json::from_value(json).unwrap();
@@ -2107,13 +2006,9 @@ mod tests {
     }
 
     #[test]
-    fn execution_context_rejects_ambiguous_storage_manifest_representations() {
+    fn execution_context_rejects_legacy_storage_manifest_representations() {
         for storage_manifest in [
-            json!({
-                "storageMounts": [],
-                "storages": [],
-                "artifacts": []
-            }),
+            json!({ "storages": [], "artifacts": [] }),
             json!({ "storages": [] }),
             json!({ "artifacts": [] }),
             json!({}),
@@ -2123,6 +2018,34 @@ mod tests {
             );
             assert!(result.is_err());
         }
+    }
+
+    #[test]
+    fn execution_context_rejects_duplicate_storage_mount_paths() {
+        let result = serde_json::from_value::<ExecutionContext>(
+            execution_context_with_storage_manifest(json!({
+                "storageMounts": [
+                    {
+                        "name": "workspace",
+                        "storageId": "storage-read-only",
+                        "versionId": "version-1",
+                        "mountPath": "/workspace",
+                        "archiveUrl": "https://example.com/workspace.tar.gz"
+                    },
+                    {
+                        "name": "artifact",
+                        "storageId": "storage-writeback",
+                        "versionId": "version-2",
+                        "mountPath": "/workspace",
+                        "empty": true,
+                        "writeback": true
+                    }
+                ]
+            })),
+        );
+
+        let error = result.unwrap_err().to_string();
+        assert!(error.contains("duplicate mountPath \"/workspace\""));
     }
 
     #[test]
@@ -2143,12 +2066,27 @@ mod tests {
                 "empty": true
             }),
             json!({
-                "name": "writeback-instructions",
+                "name": "read-only-missing-root-policy",
                 "storageId": "storage-3",
                 "versionId": "version-3",
+                "mountPath": "/read-only-missing-root-policy",
+                "archiveUrl": "https://example.com/read-only.tar.gz",
+                "missingRootPolicy": "preserveParentVersion"
+            }),
+            json!({
+                "name": "writeback-instructions",
+                "storageId": "storage-4",
+                "versionId": "version-4",
                 "mountPath": "/writeback-instructions",
                 "archiveUrl": "https://example.com/instructions.tar.gz",
                 "instructionsTargetFilename": "AGENTS.md",
+                "writeback": true
+            }),
+            json!({
+                "name": "writeback-without-archive",
+                "storageId": "storage-5",
+                "versionId": "version-5",
+                "mountPath": "/writeback-without-archive",
                 "writeback": true
             }),
         ] {
@@ -2159,66 +2097,6 @@ mod tests {
             );
             assert!(result.is_err());
         }
-    }
-
-    #[test]
-    fn storage_manifest_camel_case() {
-        let json = json!({
-            "storages": [{
-                "name": "workspace",
-                "mountPath": "/workspace",
-                "archiveUrl": "https://example.com/workspace.tar.gz",
-                "vasStorageName": "workspace",
-                "vasVersionId": "v1"
-            }],
-            "artifacts": [{
-                "mountPath": "/artifacts",
-                "archiveUrl": "https://example.com/artifacts.tar.gz",
-                "vasStorageName": "my-artifact",
-                "vasStorageId": "sid-1",
-                "vasVersionId": "v1"
-            }]
-        });
-        let manifest: StorageManifest = serde_json::from_value(json).unwrap();
-        assert_eq!(manifest.storages[0].mount_path, "/workspace");
-        assert_eq!(manifest.storages[0].name, "workspace");
-        assert_eq!(manifest.artifacts.len(), 1);
-        assert_eq!(manifest.artifacts[0].vas_storage_name, "my-artifact");
-    }
-
-    #[test]
-    fn storage_manifest_multiple_artifacts() {
-        let json = json!({
-            "storages": [],
-            "artifacts": [
-                {
-                    "mountPath": "/workspace",
-                    "archiveUrl": "https://example.com/a.tar.gz",
-                    "vasStorageName": "art-a",
-                    "vasStorageId": "sid-a",
-                    "vasVersionId": "v1"
-                },
-                {
-                    "mountPath": "/data",
-                    "archiveUrl": "https://example.com/b.tar.gz",
-                    "vasStorageName": "art-b",
-                    "vasStorageId": "sid-b",
-                    "vasVersionId": "v2"
-                }
-            ]
-        });
-        let manifest: StorageManifest = serde_json::from_value(json).unwrap();
-        assert_eq!(manifest.artifacts.len(), 2);
-        assert_eq!(manifest.artifacts[0].mount_path, "/workspace");
-        assert_eq!(manifest.artifacts[1].vas_storage_name, "art-b");
-    }
-
-    #[test]
-    fn storage_manifest_requires_artifacts_field() {
-        let json = json!({
-            "storages": []
-        });
-        assert!(serde_json::from_value::<StorageManifest>(json).is_err());
     }
 
     #[test]

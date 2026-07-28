@@ -7,7 +7,6 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use api_contracts::generated::constants::runners::paths::CANONICAL_GUEST_HOME_DIR;
-use api_contracts::generated::types::runners::storage::StorageManifest;
 use flate2::{Compression, write::GzEncoder};
 use guest_contracts::session_history_identity::{
     FINAL_SESSION_HISTORY_IDENTITY_MAX_BYTES, FinalSessionHistoryFramework,
@@ -59,6 +58,7 @@ use crate::restored_session_identity::{
     RestoredSessionIdentityMismatchReason,
 };
 use crate::storage_fingerprints::{StorageFingerprint, StorageFingerprints};
+use crate::storage_manifest::StorageManifest;
 use crate::telemetry::SessionHistoryTelemetrySnapshot;
 use crate::test_fixtures::OneShotSessionHistoryServer;
 use crate::types::{

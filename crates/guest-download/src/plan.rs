@@ -297,27 +297,27 @@ mod tests {
     #[test]
     fn manifest_entries_yield_storage_and_artifact_tasks() {
         let json = r#"{
-            "storages": [
+            "storageMounts": [
                 {
                     "mountPath": "/data",
                     "archiveUrl": "https://s3/storage.tar.gz",
-                    "vasStorageName": "data",
-                    "vasVersionId": "storage-v1"
-                }
-            ],
-            "artifacts": [
+                    "name": "data",
+                    "versionId": "storage-v1"
+                },
                 {
                     "mountPath": "/workspace/a",
                     "archiveUrl": "https://s3/a.tar.gz",
-                    "vasStorageName": "workspace-a",
-                    "vasVersionId": "artifact-v1",
-                    "missingRootPolicy": "preserveParentVersion"
+                    "name": "workspace-a",
+                    "versionId": "artifact-v1",
+                    "missingRootPolicy": "preserveParentVersion",
+                    "writeback": true
                 },
                 {
                     "mountPath": "/workspace/b",
                     "archiveUrl": "file:///tmp/vm0-storage-cache/b.tar.gz",
-                    "vasStorageName": "workspace-b",
-                    "vasVersionId": "artifact-v2"
+                    "name": "workspace-b",
+                    "versionId": "artifact-v2",
+                    "writeback": true
                 }
             ]
         }"#;
@@ -360,14 +360,14 @@ mod tests {
     #[test]
     fn run_plan_prepares_explicit_empty_artifact_without_download_task() {
         let json = r#"{
-            "storages": [],
-            "artifacts": [{
+            "storageMounts": [{
                 "mountPath": "/workspace",
                 "archiveUrl": "https://s3/compat-empty-artifact.tar.gz",
                 "empty": true,
-                "vasStorageName": "memory",
-                "vasVersionId": "empty-v1",
-                "missingRootPolicy": "preserveParentVersion"
+                "name": "memory",
+                "versionId": "empty-v1",
+                "missingRootPolicy": "preserveParentVersion",
+                "writeback": true
             }]
         }"#;
         let manifest: Manifest = serde_json::from_str(json).unwrap();
@@ -385,37 +385,9 @@ mod tests {
     }
 
     #[test]
-    fn run_plan_does_not_treat_storage_empty_field_as_special() {
-        let json = r#"{
-            "storages": [{
-                "mountPath": "/data",
-                "archiveUrl": "https://s3/storage.tar.gz",
-                "empty": true,
-                "vasStorageName": "data",
-                "vasVersionId": "storage-v1"
-            }],
-            "artifacts": []
-        }"#;
-        let manifest: Manifest = serde_json::from_str(json).unwrap();
-
-        let plan = RunPlan::from_manifest(&manifest);
-
-        assert_eq!(plan.empty_artifacts, []);
-        assert_eq!(
-            plan.download_tasks,
-            [DownloadTask::new(
-                "storage 1 mountPath=/data vasStorageName=data vasVersionId=storage-v1 urlScheme=https cached=false".into(),
-                ArchiveKind::Storage,
-                "https://s3/storage.tar.gz".into(),
-                "/data".into(),
-            )]
-        );
-    }
-
-    #[test]
     fn run_plan_collects_preserved_paths_and_instruction_targets() {
         let json = r#"{
-            "storages": [
+            "storageMounts": [
                 {
                     "mountPath": "/home/user/.codex",
                     "archiveUrl": null,
@@ -426,10 +398,13 @@ mod tests {
                     "mountPath": "/home/user/new",
                     "archiveUrl": null,
                     "cached": false
+                },
+                {
+                    "mountPath": "/workspace",
+                    "archiveUrl": null,
+                    "cached": true,
+                    "writeback": true
                 }
-            ],
-            "artifacts": [
-                {"mountPath": "/workspace", "archiveUrl": null, "cached": true}
             ],
             "cleanupPaths": ["/home/user/.codex"]
         }"#;
@@ -450,13 +425,12 @@ mod tests {
     #[test]
     fn run_plan_downloads_instruction_archive_to_extract_path() {
         let json = r#"{
-            "storages": [{
+            "storageMounts": [{
                 "mountPath": "/home/user/.codex",
                 "extractPath": "/home/user/.vm0/guest-agent/runs/run-1/storage-instructions/0",
                 "archiveUrl": "https://s3/instructions.tar.gz",
                 "instructionsTargetFilename": "AGENTS.md"
-            }],
-            "artifacts": []
+            }]
         }"#;
         let manifest: Manifest = serde_json::from_str(json).unwrap();
 
@@ -486,12 +460,11 @@ mod tests {
     #[test]
     fn run_plan_ignores_extract_path_for_non_instruction_storage() {
         let json = r#"{
-            "storages": [{
+            "storageMounts": [{
                 "mountPath": "/data",
                 "extractPath": "/tmp/staged-data",
                 "archiveUrl": "https://s3/data.tar.gz"
-            }],
-            "artifacts": []
+            }]
         }"#;
         let manifest: Manifest = serde_json::from_str(json).unwrap();
 
@@ -512,37 +485,9 @@ mod tests {
     }
 
     #[test]
-    fn run_plan_ignores_extract_path_for_artifacts() {
-        let json = r#"{
-            "storages": [],
-            "artifacts": [{
-                "mountPath": "/workspace",
-                "extractPath": "/tmp/staged-artifact",
-                "archiveUrl": "https://s3/workspace.tar.gz"
-            }]
-        }"#;
-        let manifest: Manifest = serde_json::from_str(json).unwrap();
-
-        let plan = RunPlan::from_manifest(&manifest);
-
-        assert_eq!(plan.download_tasks.len(), 1);
-        assert_eq!(
-            plan.download_tasks[0],
-            DownloadTask::new_with_kind(
-                "artifact 1 mountPath=/workspace vasStorageName=unknown vasVersionId=unknown urlScheme=https cached=false missingRootPolicy=fail".into(),
-                ArchiveKind::Artifact,
-                "https://s3/workspace.tar.gz".into(),
-                "/workspace".into(),
-                crate::download::DownloadTaskKind::Other,
-            )
-        );
-    }
-
-    #[test]
     fn run_plan_collects_instruction_cleanups() {
         let json = r#"{
-            "storages": [],
-            "artifacts": [],
+            "storageMounts": [],
             "instructionCleanups": [{
                 "mountPath": "/home/user/.codex",
                 "targetFilename": "AGENTS.md"
@@ -566,7 +511,7 @@ mod tests {
     #[test]
     fn run_plan_derives_download_task_kinds() {
         let json = r#"{
-            "storages": [
+            "storageMounts": [
                 {
                     "mountPath": "/home/user/.codex",
                     "archiveUrl": "https://s3/instructions.tar.gz",
@@ -583,17 +528,17 @@ mod tests {
                 {
                     "mountPath": "/workspace/storage",
                     "archiveUrl": "https://s3/storage.tar.gz"
-                }
-            ],
-            "artifacts": [
+                },
                 {
                     "mountPath": "/workspace",
-                    "archiveUrl": "https://s3/artifact.tar.gz"
+                    "archiveUrl": "https://s3/artifact.tar.gz",
+                    "writeback": true
                 },
                 {
                     "mountPath": "/home/user/.codex/skills/cached",
                     "archiveUrl": null,
-                    "cached": true
+                    "cached": true,
+                    "writeback": true
                 }
             ]
         }"#;

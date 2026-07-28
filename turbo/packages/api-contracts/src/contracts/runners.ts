@@ -376,38 +376,11 @@ function uniqueStorageMountPaths<T extends { readonly mountPath: string }>(
 }
 
 /** Canonical Runner wire representation. */
-export const canonicalStorageManifestSchema = z.object({
+export const storageManifestSchema = z.object({
   storageMounts: z
     .array(storageMountEntrySchema)
     .superRefine(uniqueStorageMountPaths),
 });
-
-/**
- * Runner Storage manifests contain exactly one complete representation. Other
- * runner-derived fields remain strip-compatible, but representation fields may
- * never be mixed or omitted.
- */
-export const storageManifestSchema = z
-  .unknown()
-  .superRefine((manifest, ctx) => {
-    if (typeof manifest !== "object" || manifest === null) {
-      return;
-    }
-    const value = manifest as Record<string, unknown>;
-    const hasStorageMounts = Object.hasOwn(value, "storageMounts");
-    const hasStorages = Object.hasOwn(value, "storages");
-    const hasArtifacts = Object.hasOwn(value, "artifacts");
-    const hasCanonical = hasStorageMounts && !hasStorages && !hasArtifacts;
-    const hasLegacy = !hasStorageMounts && hasStorages && hasArtifacts;
-    if (!hasCanonical && !hasLegacy) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        message:
-          "storage manifest must contain exactly storageMounts or both storages and artifacts",
-      });
-    }
-  })
-  .pipe(z.union([legacyStorageManifestSchema, canonicalStorageManifestSchema]));
 
 /**
  * Resume session information. The compatibility wire field is `sessionId`, but
@@ -824,10 +797,8 @@ export type StoredStorageMountEntry = z.infer<
   typeof storedStorageMountEntrySchema
 >;
 export type LegacyStorageManifest = z.infer<typeof legacyStorageManifestSchema>;
-export type CanonicalStorageManifest = z.infer<
-  typeof canonicalStorageManifestSchema
->;
 export type StorageManifest = z.infer<typeof storageManifestSchema>;
+export type CanonicalStorageManifest = StorageManifest;
 export type StoredResumeSession = z.infer<typeof storedResumeSessionSchema>;
 export type ResumeSession = z.infer<typeof resumeSessionSchema>;
 export type SessionHistoryDownloadSource = z.infer<

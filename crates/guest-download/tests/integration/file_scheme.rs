@@ -104,7 +104,7 @@ fn file_scheme_staged_instructions_promote_without_touching_skill_child() {
 
     let manifest_path = dir.path().join("manifest.json");
     let manifest = json!({
-        "storages": [
+        "storageMounts": [
             {
                 "mountPath": final_home,
                 "extractPath": extract_path,
@@ -115,8 +115,7 @@ fn file_scheme_staged_instructions_promote_without_touching_skill_child() {
                 "mountPath": skill_mount,
                 "archiveUrl": format!("file://{}", skill_archive.display())
             }
-        ],
-        "artifacts": []
+        ]
     });
     std::fs::write(&manifest_path, serde_json::to_vec(&manifest).unwrap()).unwrap();
 
