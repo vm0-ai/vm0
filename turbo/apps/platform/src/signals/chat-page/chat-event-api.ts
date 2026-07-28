@@ -1,7 +1,10 @@
 import {
+  chatEventResponseSchema,
+  chatEventSchema,
   chatEventsContract,
   chatThreadEventsContract,
   type ChatEvent,
+  type ChatEventResponse,
   type ChatEventSendBody,
 } from "@vm0/api-contracts/contracts/chat-threads";
 
@@ -19,6 +22,25 @@ interface ChatEventListQuery {
 interface ChatEventListResult {
   readonly events: ChatEvent[];
   readonly hasHistoryBefore: boolean;
+}
+
+function canonicalChatEventFromResponse(
+  response: ChatEventResponse,
+): ChatEvent {
+  const parsed = chatEventResponseSchema.parse(response);
+  if (!("role" in parsed)) {
+    return parsed;
+  }
+  if (
+    parsed.revokesMessageId !== undefined &&
+    parsed.revokesMessageId !== parsed.revokesEventId
+  ) {
+    throw new Error("Chat event revoke compatibility fields disagree");
+  }
+  const { role, revokesMessageId, ...event } = parsed;
+  void role;
+  void revokesMessageId;
+  return chatEventSchema.parse(event);
 }
 
 export async function sendChatEvent(
@@ -53,7 +75,7 @@ export async function listChatEvents(
     signal,
   );
   return {
-    events: result.body.events,
+    events: result.body.events.map(canonicalChatEventFromResponse),
     hasHistoryBefore: result.body.hasHistoryBefore ?? false,
   };
 }

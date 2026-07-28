@@ -12,12 +12,14 @@ import {
   mockUser,
 } from "../../../__tests__/mock-auth.ts";
 import { testContext } from "../../__tests__/test-helpers.ts";
+import { zeroClient$ } from "../../api-client.ts";
 import { CHAT_MESSAGES_STORE } from "../../external/chat-idb-schema.ts";
 import { chatIdb$ } from "../../external/chat-idb-store.ts";
 import { setupRealtime$ } from "../../realtime.ts";
 import { resetSignal } from "../../utils.ts";
 import { writeIndexedDbChatEvents$ } from "../chat-event-indexed-db.ts";
 import { setupChatEventBackgroundSync$ } from "../chat-event-background-sync.ts";
+import { listChatEvents } from "../chat-event-api.ts";
 
 vi.mock("idb", async () => {
   return await vi.importActual<typeof import("idb")>("idb-real");
@@ -33,6 +35,7 @@ const OTHER_THREAD_ID = "b0000000-0000-4000-a000-000000000805";
 const FIRST_CACHED_MESSAGE_ID = "00000000-0000-4000-8000-000000000802";
 const LAST_CACHED_MESSAGE_ID = "00000000-0000-4000-8000-000000000803";
 const NEW_MESSAGE_ID = "00000000-0000-4000-8000-000000000804";
+const CREATED_AT = "2026-07-23T10:00:00.000Z";
 
 function assistantMessage(
   threadId: string,
@@ -210,5 +213,67 @@ describe("chat event background sync", () => {
       await expect(subscription).rejects.toMatchObject({ name: "AbortError" });
       appDb.close();
     }
+  });
+
+  it("accepts preceding and canonical API response shapes during rollout", async () => {
+    mockSignedInUser();
+    const precedingEventId = "00000000-0000-4000-8000-000000000806";
+    const canonicalEventId = "00000000-0000-4000-8000-000000000807";
+    const userMessage = {
+      version: 1 as const,
+      parts: [{ type: "text" as const, text: "Preceding response" }],
+    };
+    context.mocks.http.get("*/api/zero/chat-threads/:threadId/events", () => {
+      return Response.json({
+        events: [
+          {
+            id: precedingEventId,
+            threadId: THREAD_ID,
+            eventType: "input.prompt",
+            role: "user",
+            content: "Preceding response",
+            structuredPrompt: userMessage,
+            seqId: 1,
+            createdAt: CREATED_AT,
+          },
+          {
+            id: canonicalEventId,
+            threadId: THREAD_ID,
+            eventType: "output.message",
+            content: "Canonical response",
+            seqId: 2,
+            createdAt: CREATED_AT,
+          },
+        ],
+        hasHistoryBefore: false,
+      });
+    });
+
+    const result = await listChatEvents(
+      context.store.get(zeroClient$),
+      THREAD_ID,
+      {},
+      context.signal,
+    );
+
+    expect(result.events).toStrictEqual([
+      {
+        id: precedingEventId,
+        threadId: THREAD_ID,
+        eventType: "input.prompt",
+        content: "Preceding response",
+        userMessage,
+        seqId: 1,
+        createdAt: CREATED_AT,
+      },
+      {
+        id: canonicalEventId,
+        threadId: THREAD_ID,
+        eventType: "output.message",
+        content: "Canonical response",
+        seqId: 2,
+        createdAt: CREATED_AT,
+      },
+    ]);
   });
 });

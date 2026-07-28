@@ -1,13 +1,16 @@
 import { z } from "zod";
 import { authHeadersSchema, initContract } from "./base";
-import { chatEventTypeSchema } from "./chat-events";
+import { chatEventCompatibilityRole, chatEventTypeSchema } from "./chat-events";
 import { apiErrorSchema } from "./errors";
 import { hostedArtifactKindSchema } from "./zero-host";
 import { runStatusSchema } from "./runs";
 import { zeroGoalEventSchema } from "./zero-goals";
 import { triggerSourceSchema } from "./logs";
 import { requestedRunModelSchema } from "./model-providers";
-import { normalizePrecedingDraftStructuredPrompt } from "./user-message-rollout";
+import {
+  normalizePrecedingDraftStructuredPrompt,
+  normalizePrecedingStructuredPrompt,
+} from "./user-message-rollout";
 
 const c = initContract();
 export const MODEL_FIRST_SELECTION_PROVIDER_ID =
@@ -620,9 +623,104 @@ const chatEventSchema = z.discriminatedUnion("eventType", [
   usageRecordedEventSchema,
 ]);
 
-const chatEventResponseSchema = chatEventSchema;
+const userEventCompatibilityResponseShape = {
+  /**
+   * @deprecated Receiver-first compatibility for the preceding App release.
+   * Canonical ChatEvent consumers derive presentation role from eventType.
+   */
+  role: z.literal("user"),
+  /**
+   * @deprecated Use revokesEventId.
+   */
+  revokesMessageId: z.string().optional(),
+} as const;
 
-if (chatEventTypeSchema.options.length !== chatEventSchema.options.length) {
+const assistantEventCompatibilityResponseShape = {
+  /**
+   * @deprecated Receiver-first compatibility for the preceding App release.
+   * Canonical ChatEvent consumers derive presentation role from eventType.
+   */
+  role: z.literal("assistant"),
+  /**
+   * @deprecated Use revokesEventId.
+   */
+  revokesMessageId: z.string().optional(),
+} as const;
+
+/**
+ * Receiver-first wire shape for the App release deployed before this cleanup.
+ * The current App accepts both this shape and canonical ChatEvent so a later
+ * API release can remove these compatibility fields after old clients drain.
+ */
+const precedingAppChatEventResponseSchema = z.discriminatedUnion("eventType", [
+  inputPromptEventSchema.extend(userEventCompatibilityResponseShape).strict(),
+  inputAutomationEventSchema
+    .extend(userEventCompatibilityResponseShape)
+    .strict(),
+  inputRejectedEventSchema.extend(userEventCompatibilityResponseShape).strict(),
+  outputMessageEventSchema
+    .extend(assistantEventCompatibilityResponseShape)
+    .strict(),
+  outputErrorEventSchema
+    .extend(assistantEventCompatibilityResponseShape)
+    .strict(),
+  outputThinkingEventSchema
+    .extend(assistantEventCompatibilityResponseShape)
+    .strict(),
+  outputFollowupsEventSchema
+    .extend(assistantEventCompatibilityResponseShape)
+    .strict(),
+  runQueuedEventSchema
+    .extend(assistantEventCompatibilityResponseShape)
+    .strict(),
+  runDequeuedEventSchema
+    .extend({
+      ...assistantEventCompatibilityResponseShape,
+      revokesMessageId: z.string(),
+    })
+    .strict(),
+  runCompletedEventSchema
+    .extend(assistantEventCompatibilityResponseShape)
+    .strict(),
+  runFailedEventSchema
+    .extend(assistantEventCompatibilityResponseShape)
+    .strict(),
+  runCancelledEventSchema
+    .extend(assistantEventCompatibilityResponseShape)
+    .strict(),
+  queueAutomationPausedEventSchema
+    .extend(assistantEventCompatibilityResponseShape)
+    .strict(),
+  queueAutomationResumedEventSchema
+    .extend(assistantEventCompatibilityResponseShape)
+    .strict(),
+  controlInterruptEventSchema
+    .extend(userEventCompatibilityResponseShape)
+    .strict(),
+  controlRevokeEventSchema
+    .extend({
+      ...userEventCompatibilityResponseShape,
+      revokesMessageId: z.string(),
+    })
+    .strict(),
+  goalChangedEventSchema
+    .extend(assistantEventCompatibilityResponseShape)
+    .strict(),
+  usageRecordedEventSchema
+    .extend(assistantEventCompatibilityResponseShape)
+    .strict(),
+]);
+
+const chatEventResponseSchema = z.preprocess(
+  normalizePrecedingStructuredPrompt,
+  z.union([chatEventSchema, precedingAppChatEventResponseSchema]),
+);
+
+if (
+  chatEventTypeSchema.options.length !== chatEventSchema.options.length ||
+  chatEventTypeSchema.options.length !==
+    precedingAppChatEventResponseSchema.options.length
+) {
   throw new Error("ChatEvent schema must cover the complete event catalog");
 }
 
@@ -1567,7 +1665,12 @@ export type ChatEventResponse = z.infer<typeof chatEventResponseSchema>;
 export type ChatEventSendBody = z.infer<typeof chatEventsContract.send.body>;
 
 export function chatEventResponse(event: ChatEvent): ChatEventResponse {
-  return chatEventResponseSchema.parse(event);
+  const revokesMessageId = event.revokesEventId;
+  return chatEventResponseSchema.parse({
+    ...event,
+    role: chatEventCompatibilityRole(event.eventType),
+    ...(revokesMessageId === undefined ? {} : { revokesMessageId }),
+  });
 }
 
 export type ChatInputEvent = Extract<

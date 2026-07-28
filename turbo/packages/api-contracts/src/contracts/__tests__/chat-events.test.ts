@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   CHAT_EVENT_TYPES,
+  chatEventCompatibilityRole,
   foldActiveChatGoalObjective,
   foldChatAutomationIntakePause,
   foldChatRunStates,
@@ -275,27 +276,45 @@ describe("ChatEvent catalog", () => {
     ).toBe(false);
   });
 
-  it("uses the canonical event shape at the response boundary", () => {
+  it("keeps the preceding App response shape during receiver-first rollout", () => {
     for (const event of chatEvents) {
       const response = chatEventResponse(event);
+      expect(response).toMatchObject({
+        role: chatEventCompatibilityRole(event.eventType),
+      });
+      if (event.revokesEventId !== undefined) {
+        expect(response).toMatchObject({
+          revokesMessageId: event.revokesEventId,
+        });
+      }
       expect(chatEventResponseSchema.parse(response)).toStrictEqual(response);
-      expect(response).toStrictEqual(event);
+      expect(chatEventResponseSchema.parse(event)).toStrictEqual(event);
     }
   });
 
-  it("rejects compatibility-only response fields", () => {
+  it("rejects a compatibility role that disagrees with eventType", () => {
     expect(
       chatEventResponseSchema.safeParse({
-        ...chatEventResponse(chatEvents[0]!),
-        role: "user",
+        ...chatEvents[0],
+        role: "assistant",
       }).success,
     ).toBe(false);
+  });
+
+  it("normalizes the preceding rich-input response field", () => {
+    const userMessage = {
+      version: 1 as const,
+      parts: [{ type: "text" as const, text: "Run the task" }],
+    };
     expect(
-      chatEventResponseSchema.safeParse({
+      chatEventResponseSchema.parse({
         ...chatEventResponse(chatEvents[0]!),
-        revokesMessageId: "legacy-target",
-      }).success,
-    ).toBe(false);
+        structuredPrompt: userMessage,
+      }),
+    ).toMatchObject({
+      userMessage,
+      role: "user",
+    });
   });
 });
 
