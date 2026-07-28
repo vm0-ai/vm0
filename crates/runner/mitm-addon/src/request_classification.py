@@ -29,7 +29,7 @@ import registry
 import registry_firewalls
 import upstream_admission
 import upstream_destination_binding
-from url_utils import AuthorityValidationError, get_trusted_authority
+from url_utils import AuthorityValidationError, TrustedAuthority, get_trusted_authority
 
 REQUEST_CLASSIFICATION_METADATA_KEY = "_request_classification"
 # Metadata that the requestheaders probe path may write while using this
@@ -283,6 +283,46 @@ def classify_request(
     tls_admission: TlsAdmissionView | None,
     defer_unresolved_public_destination: bool = False,
 ) -> RequestClassification:
+    """Classify the current flow after validating its authority."""
+    return _classify_request(
+        flow,
+        registry_path=registry_path,
+        api_url=api_url,
+        tls_admission=tls_admission,
+        trusted_authority=None,
+        defer_unresolved_public_destination=defer_unresolved_public_destination,
+    )
+
+
+def classify_request_with_trusted_authority(
+    flow: http.HTTPFlow,
+    *,
+    registry_path: str,
+    api_url: str,
+    tls_admission: TlsAdmissionView | None,
+    trusted_authority: TrustedAuthority,
+    defer_unresolved_public_destination: bool = False,
+) -> RequestClassification:
+    """Classify using authority validated from this unchanged synchronous flow."""
+    return _classify_request(
+        flow,
+        registry_path=registry_path,
+        api_url=api_url,
+        tls_admission=tls_admission,
+        trusted_authority=trusted_authority,
+        defer_unresolved_public_destination=defer_unresolved_public_destination,
+    )
+
+
+def _classify_request(
+    flow: http.HTTPFlow,
+    *,
+    registry_path: str,
+    api_url: str,
+    tls_admission: TlsAdmissionView | None,
+    trusted_authority: TrustedAuthority | None,
+    defer_unresolved_public_destination: bool,
+) -> RequestClassification:
     """Classify a flow and write metadata needed by downstream hook handling.
 
     The decision order is registry/TLS admission, registered VM resolution,
@@ -351,13 +391,14 @@ def classify_request(
     if is_browser_passthrough_heuristic(flow):
         flow.metadata[metadata_keys.BROWSER_USER_AGENT] = True
 
-    try:
-        trusted_authority = get_trusted_authority(flow)
-    except AuthorityValidationError as e:
-        return AuthorityDenied(
-            vm_info=vm_info,
-            authority_error=e,
-        )
+    if trusted_authority is None:
+        try:
+            trusted_authority = get_trusted_authority(flow)
+        except AuthorityValidationError as e:
+            return AuthorityDenied(
+                vm_info=vm_info,
+                authority_error=e,
+            )
 
     original_url = trusted_authority.url
     _store_trusted_authority_metadata(
