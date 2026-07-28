@@ -49,7 +49,6 @@ const THREAD_SIDEBAR_FULLSCREEN_CLASSNAME =
 function artifactRefFromUrl(url: string): ArtifactRef {
   const attachment = previewAttachmentFromUrl(url);
   return {
-    source: "url",
     url,
     kind: classifyChatAttachment(attachment),
     filename: attachment.filename,
@@ -307,7 +306,6 @@ function ThreadArtifactDetail({
   return (
     <ArtifactSidebar
       artifactRef={{
-        source: "url",
         url: preview.url,
         kind: preview.kind,
         filename: preview.filename,

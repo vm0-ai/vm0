@@ -126,7 +126,6 @@ export const openThreadArtifactSplitView$ = command(
     }
     const attachment = previewAttachmentFromUrl(url);
     const ref: ArtifactRef = {
-      source: "url",
       url,
       kind: classifyChatAttachment(attachment),
       filename: attachment.filename,
