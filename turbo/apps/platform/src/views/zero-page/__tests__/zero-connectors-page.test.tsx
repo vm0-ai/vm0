@@ -1721,7 +1721,7 @@ describe("connectors page", () => {
     });
   });
 
-  it("connects Stripe OAuth from the dialog for all visible agents", async () => {
+  it("connects Stripe OAuth from a legacy event for all visible agents", async () => {
     const defaultAgentId = "c0000000-0000-4000-a000-000000000001";
     const researchAgentId = "c0000000-0000-4000-a000-000000000002";
     mockConnectors([]);
@@ -1818,13 +1818,20 @@ describe("connectors page", () => {
     expect(authorizedAgentIds).toStrictEqual([]);
 
     mockConnectors([{ type: "stripe", authMethod: "oauth" }]);
-    context.mocks.ably.trigger("connector:changed", {
-      connectorRef: "stripe",
-    });
+    context.mocks.ably.trigger("connector:changed", null);
 
     await waitFor(() => {
       expect(authorizedAgentIds).toStrictEqual([researchAgentId]);
+      expect(
+        within(connectorCardByLabel("Public Stripe")).getByText("Connected"),
+      ).toBeInTheDocument();
+      expect(
+        context.mocks.ably.hasSubscription("connector:changed"),
+      ).toBeFalsy();
     });
+    expect(
+      screen.queryByRole("dialog", { name: "Public Stripe" }),
+    ).not.toBeInTheDocument();
   });
 
   it("enables a no-auth connector for all visible agents without dialogs", async () => {
