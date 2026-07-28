@@ -417,6 +417,10 @@ const networkLogDetailFields = {
     "Model Catalog Cache Eviction Count",
     "model_catalog_cache_eviction_count",
   ),
+  model_catalog_prefetch_role: detailField(
+    "Model Catalog Prefetch Role",
+    "model_catalog_prefetch_role",
+  ),
   dns_event: detailField("DNS Event", "dns_event"),
   dns_query_type: detailField("DNS Query Type", "dns_query_type"),
   dns_result: detailField("DNS Result", "dns_result"),
