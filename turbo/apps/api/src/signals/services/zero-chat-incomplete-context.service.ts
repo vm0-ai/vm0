@@ -26,7 +26,6 @@ import {
 } from "./zero-chat-event-type.service";
 import { visibleChatEventCondition } from "./zero-chat-message-shared.service";
 import { projectStructuredUserMessage } from "./zero-chat-structured-message.service";
-import { effectiveChatMessageStructuredPrompt } from "./zero-chat-structured-message-storage.service";
 
 const INCOMPLETE_ROUND_LIMIT = 20;
 const INCOMPLETE_MESSAGE_CHAR_CAP = 4000;
@@ -190,7 +189,7 @@ async function loadSelectedIncompleteRounds(
       runId: chatMessages.runId,
       eventType: chatEventTypeSql().as("event_type"),
       content: chatMessages.content,
-      structuredPrompt: effectiveChatMessageStructuredPrompt(),
+      structuredPrompt: chatMessages.structuredPrompt,
       attachFiles: chatMessages.attachFiles,
     })
     .from(chatMessages)

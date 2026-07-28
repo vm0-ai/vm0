@@ -32,7 +32,6 @@ type ChatEventIdentity = Pick<
 type ChatEventInputPayload = Pick<
   ChatEventInsert,
   | "structuredPrompt"
-  | "structuredPromptWithFeedback"
   | "attachFiles"
   | "attachFileMetadata"
   | "generationTemplate"

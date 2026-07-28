@@ -72,7 +72,6 @@ import {
 } from "./session-history-decompression";
 import { loadUserFeatureSwitchContext } from "./feature-switches.service";
 import { projectStructuredUserMessage } from "./zero-chat-structured-message.service";
-import { effectiveChatMessageStructuredPrompt } from "./zero-chat-structured-message-storage.service";
 import {
   chatEventTypeIn,
   chatEventTypeSql,
@@ -755,7 +754,7 @@ async function collectConversationMessages(
       .select({
         eventType: chatEventTypeSql().as("event_type"),
         content: chatMessages.content,
-        structuredPrompt: effectiveChatMessageStructuredPrompt(),
+        structuredPrompt: chatMessages.structuredPrompt,
         createdAt: chatMessages.createdAt,
       })
       .from(chatMessages)
