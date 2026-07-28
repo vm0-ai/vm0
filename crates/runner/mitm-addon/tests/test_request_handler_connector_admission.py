@@ -19,6 +19,7 @@ from tests.request_handler_helpers import (
 from tests.upstream_connection_helpers import (
     bind_flow_upstream,
     mark_connected_tls_upstream,
+    seed_server_binding,
 )
 
 
@@ -254,7 +255,7 @@ async def test_matching_sni_and_host_allows_connected_firewall_auth_with_early_b
     )
     flow.server_conn.state = connection.ConnectionState.OPEN
     flow.server_conn.peername = ("140.82.112.5", 443)
-    upstream_destination_binding.record_server_binding(
+    seed_server_binding(
         flow.server_conn,
         client=flow.client_conn,
         host="api.github.com",
@@ -294,7 +295,7 @@ async def test_matching_sni_and_host_allows_connected_firewall_auth_after_retarg
         server_address=("api.github.com", 443),
         peername=("140.82.112.5", 443),
     )
-    upstream_destination_binding.record_server_binding(
+    seed_server_binding(
         flow.server_conn,
         client=flow.client_conn,
         host="api.github.com",
@@ -337,7 +338,7 @@ async def test_matching_sni_and_host_allows_connected_firewall_auth_with_verifie
         peername=None,
         client_sockname=("140.82.112.5", 443),
     )
-    upstream_destination_binding.record_server_binding(
+    seed_server_binding(
         flow.server_conn,
         client=flow.client_conn,
         host="api.github.com",
@@ -375,7 +376,7 @@ async def test_matching_sni_and_host_blocks_connected_firewall_auth_without_endp
     flow.server_conn.state = connection.ConnectionState.OPEN
     flow.server_conn.peername = None
     flow.client_conn.sockname = ("127.0.0.1", 8080)
-    upstream_destination_binding.record_server_binding(
+    seed_server_binding(
         flow.server_conn,
         client=flow.client_conn,
         host="api.github.com",
@@ -437,7 +438,7 @@ async def test_matching_sni_and_host_blocks_non_authoritative_connected_endpoint
         peername=None,
         client_sockname=client_sockname,
     )
-    upstream_destination_binding.record_server_binding(
+    seed_server_binding(
         flow.server_conn,
         client=flow.client_conn,
         host="api.github.com",
@@ -481,7 +482,7 @@ async def test_matching_sni_and_host_allows_equivalent_ipv6_binding_peer(
         tuple[str, int],
         ("2001:4860:4860:0:0:0:0:8888", 443, 0, 0),
     )
-    upstream_destination_binding.record_server_binding(
+    seed_server_binding(
         flow.server_conn,
         client=flow.client_conn,
         host="api.github.com",
@@ -515,7 +516,7 @@ async def test_matching_sni_and_host_blocks_connected_firewall_auth_with_stale_b
     )
     flow.server_conn.state = connection.ConnectionState.OPEN
     flow.server_conn.peername = ("203.0.113.99", 443)
-    upstream_destination_binding.record_server_binding(
+    seed_server_binding(
         flow.server_conn,
         client=flow.client_conn,
         host="api.github.com",
@@ -625,7 +626,7 @@ async def test_test_connector_extends_existing_api_allow_binding(
     )
     flow.server_conn.state = connection.ConnectionState.OPEN
     flow.server_conn.peername = ("203.0.113.10", 443)
-    upstream_destination_binding.record_server_binding(
+    seed_server_binding(
         flow.server_conn,
         client=flow.client_conn,
         host="api.vm0.ai",
@@ -666,7 +667,7 @@ async def test_test_connector_without_bypass_does_not_extend_existing_api_allow_
         ),
     )
     flow.server_conn.state = connection.ConnectionState.OPEN
-    upstream_destination_binding.record_server_binding(
+    seed_server_binding(
         flow.server_conn,
         client=flow.client_conn,
         host="api.vm0.ai",
@@ -738,7 +739,7 @@ async def test_test_connector_without_bypass_does_not_reuse_connector_auth_bindi
     )
     flow.server_conn.state = connection.ConnectionState.OPEN
     flow.server_conn.peername = ("203.0.113.10", 443)
-    upstream_destination_binding.record_server_binding(
+    seed_server_binding(
         flow.server_conn,
         client=flow.client_conn,
         host="api.vm0.ai",
@@ -778,7 +779,7 @@ async def test_test_connector_rejects_stale_unconnected_api_allow_binding(
         ),
     )
     flow.server_conn.address = ("203.0.113.99", 443)
-    upstream_destination_binding.record_server_binding(
+    seed_server_binding(
         flow.server_conn,
         client=flow.client_conn,
         host="api.vm0.ai",
@@ -818,7 +819,7 @@ async def test_test_connector_rejects_mismatched_existing_binding(
         ),
     )
     flow.server_conn.state = connection.ConnectionState.OPEN
-    upstream_destination_binding.record_server_binding(
+    seed_server_binding(
         flow.server_conn,
         client=flow.client_conn,
         host="api.github.com",

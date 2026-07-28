@@ -24,6 +24,7 @@ from tests.request_handler_helpers import (
     _write_registry,
 )
 from tests.requestheaders_helpers import await_requestheaders_result
+from tests.upstream_connection_helpers import seed_server_binding
 
 
 def _resolved_firewall_auth() -> auth_client.FirewallAuthSuccess:
@@ -388,7 +389,7 @@ async def test_firewall_permission_blocks_unmatched(tmp_path, real_flow, mitm_ct
     flow = real_flow(
         with_response=False, client_ip="10.200.0.5", host="api.github.com", path="/orgs"
     )
-    upstream_destination_binding.record_server_binding(
+    seed_server_binding(
         flow.server_conn,
         client=flow.client_conn,
         host="api.github.com",
@@ -1444,7 +1445,7 @@ async def test_request_stream_metadata_error_clears_upstream_binding(tmp_path, r
         path="/repos/octocat/hello",
     )
     flow.metadata[metadata_keys.REQUEST_STREAM_BUFFER_STATE] = {}
-    upstream_destination_binding.record_server_binding(
+    seed_server_binding(
         flow.server_conn,
         client=flow.client_conn,
         host="api.github.com",

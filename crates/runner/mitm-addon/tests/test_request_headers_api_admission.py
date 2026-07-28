@@ -15,7 +15,10 @@ from tests.requestheaders_helpers import (
     _assert_no_request_stream,
     track_trusted_authority_validations,
 )
-from tests.upstream_connection_helpers import mark_connected_tls_upstream
+from tests.upstream_connection_helpers import (
+    mark_connected_tls_upstream,
+    seed_server_binding,
+)
 
 
 def _write_api_registry(tmp_path: Path, *, capture_network_bodies: bool) -> Path:
@@ -194,7 +197,7 @@ async def test_capture_enabled_api_allow_uses_prior_client_binding_when_server_c
     )
 
     server_connect_server = connection.Server(address=("198.18.20.34", 443))
-    upstream_destination_binding.record_server_binding(
+    seed_server_binding(
         server_connect_server,
         client=flow.client_conn,
         host="api.vm0.ai",
@@ -236,7 +239,7 @@ async def test_api_allow_prior_client_binding_endpoint_mismatch_blocks(
     flow.client_conn.sockname = ("203.0.113.10", 443)
 
     server_connect_server = connection.Server(address=("198.18.20.34", 443))
-    upstream_destination_binding.record_server_binding(
+    seed_server_binding(
         server_connect_server,
         client=flow.client_conn,
         host="api.vm0.ai",
@@ -281,7 +284,7 @@ async def test_api_allow_current_server_binding_mismatch_blocks_even_with_prior_
     flow.server_conn.state = connection.ConnectionState.OPEN
 
     server_connect_server = connection.Server(address=("198.18.20.34", 443))
-    upstream_destination_binding.record_server_binding(
+    seed_server_binding(
         server_connect_server,
         client=flow.client_conn,
         host="api.vm0.ai",
@@ -289,7 +292,7 @@ async def test_api_allow_current_server_binding_mismatch_blocks_even_with_prior_
         kinds=frozenset(("api_allow",)),
         original_address=("198.18.20.34", 443),
     )
-    upstream_destination_binding.record_server_binding(
+    seed_server_binding(
         flow.server_conn,
         client=flow.client_conn,
         host="attacker.example.com",

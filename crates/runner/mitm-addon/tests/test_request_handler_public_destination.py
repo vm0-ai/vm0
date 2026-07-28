@@ -23,7 +23,10 @@ from tests.firewall_helpers import cancel_pending_task
 from tests.jsonl_log_helpers import read_jsonl_entries_after_flush
 from tests.request_handler_helpers import _single_firewall_vm, _write_registry
 from tests.requestheaders_helpers import _assert_no_request_stream
-from tests.upstream_connection_helpers import mark_connected_tls_upstream
+from tests.upstream_connection_helpers import (
+    mark_connected_tls_upstream,
+    seed_server_binding,
+)
 
 
 def _write_public_destination_firewall_registry(
@@ -357,7 +360,7 @@ async def test_public_destination_blocks_prebound_private_original_destination(
     reg_path = _write_public_destination_firewall_registry(tmp_path)
     flow = _public_destination_flow(real_flow, headers, destination_host="service.example.com")
     flow.server_conn.address = ("service.example.com", 443)
-    upstream_destination_binding.record_server_binding(
+    seed_server_binding(
         flow.server_conn,
         client=flow.client_conn,
         host="service.example.com",
@@ -386,7 +389,7 @@ async def test_public_destination_allows_prebound_public_original_destination(
     reg_path = _write_public_destination_firewall_registry(tmp_path)
     flow = _public_destination_flow(real_flow, headers, destination_host="service.example.com")
     flow.server_conn.address = ("service.example.com", 443)
-    upstream_destination_binding.record_server_binding(
+    seed_server_binding(
         flow.server_conn,
         client=flow.client_conn,
         host="service.example.com",
@@ -416,7 +419,7 @@ async def test_public_destination_blocks_private_transparent_host_despite_public
     reg_path = _write_public_destination_firewall_registry(tmp_path)
     flow = _public_destination_flow(real_flow, headers, destination_host="10.0.0.1")
     flow.server_conn.address = ("service.example.com", 443)
-    upstream_destination_binding.record_server_binding(
+    seed_server_binding(
         flow.server_conn,
         client=flow.client_conn,
         host="service.example.com",
@@ -445,7 +448,7 @@ async def test_public_destination_blocks_bracketed_private_host_despite_public_o
     reg_path = _write_public_destination_firewall_registry(tmp_path)
     flow = _public_destination_flow(real_flow, headers, destination_host="[::1]")
     flow.server_conn.address = ("service.example.com", 443)
-    upstream_destination_binding.record_server_binding(
+    seed_server_binding(
         flow.server_conn,
         client=flow.client_conn,
         host="service.example.com",
@@ -478,7 +481,7 @@ async def test_public_destination_allows_bracketed_public_ipv6_host_with_public_
         destination_host="[2001:4860:4860::8888]",
     )
     flow.server_conn.address = ("service.example.com", 443)
-    upstream_destination_binding.record_server_binding(
+    seed_server_binding(
         flow.server_conn,
         client=flow.client_conn,
         host="service.example.com",
@@ -516,7 +519,7 @@ async def test_public_destination_blocks_legacy_ipv4_host_despite_public_origina
     reg_path = _write_public_destination_firewall_registry(tmp_path)
     flow = _public_destination_flow(real_flow, headers, destination_host=destination_host)
     flow.server_conn.address = ("service.example.com", 443)
-    upstream_destination_binding.record_server_binding(
+    seed_server_binding(
         flow.server_conn,
         client=flow.client_conn,
         host="service.example.com",
@@ -556,7 +559,7 @@ async def test_public_destination_blocks_percent_encoded_host_despite_public_ori
     reg_path = _write_public_destination_firewall_registry(tmp_path)
     flow = _public_destination_flow(real_flow, headers, destination_host=destination_host)
     flow.server_conn.address = ("service.example.com", 443)
-    upstream_destination_binding.record_server_binding(
+    seed_server_binding(
         flow.server_conn,
         client=flow.client_conn,
         host="service.example.com",
@@ -595,7 +598,7 @@ async def test_public_destination_blocks_malformed_host_despite_public_original(
     reg_path = _write_public_destination_firewall_registry(tmp_path)
     flow = _public_destination_flow(real_flow, headers, destination_host=destination_host)
     flow.server_conn.address = ("service.example.com", 443)
-    upstream_destination_binding.record_server_binding(
+    seed_server_binding(
         flow.server_conn,
         client=flow.client_conn,
         host="service.example.com",
@@ -624,7 +627,7 @@ async def test_public_destination_blocks_prebound_public_original_port_mismatch(
     reg_path = _write_public_destination_firewall_registry(tmp_path)
     flow = _public_destination_flow(real_flow, headers, destination_host="service.example.com")
     flow.server_conn.address = ("service.example.com", 443)
-    upstream_destination_binding.record_server_binding(
+    seed_server_binding(
         flow.server_conn,
         client=flow.client_conn,
         host="service.example.com",
@@ -658,7 +661,7 @@ async def test_public_destination_allows_connected_prebound_public_original_dest
         server_address=("service.example.com", 443),
         peername=("93.184.216.35", 443),
     )
-    upstream_destination_binding.record_server_binding(
+    seed_server_binding(
         flow.server_conn,
         client=flow.client_conn,
         host="service.example.com",
@@ -730,7 +733,7 @@ async def test_public_destination_blocks_connected_private_transparent_host_desp
         server_address=("service.example.com", 443),
         peername=("93.184.216.35", 443),
     )
-    upstream_destination_binding.record_server_binding(
+    seed_server_binding(
         flow.server_conn,
         client=flow.client_conn,
         host="service.example.com",
@@ -764,7 +767,7 @@ async def test_public_destination_blocks_connected_public_original_port_mismatch
         server_address=("service.example.com", 443),
         peername=("93.184.216.35", 443),
     )
-    upstream_destination_binding.record_server_binding(
+    seed_server_binding(
         flow.server_conn,
         client=flow.client_conn,
         host="service.example.com",
@@ -1031,7 +1034,7 @@ async def test_public_destination_blocks_connected_private_peer_despite_public_o
         server_address=("service.example.com", 443),
         peername=("10.0.0.1", 443),
     )
-    upstream_destination_binding.record_server_binding(
+    seed_server_binding(
         flow.server_conn,
         client=flow.client_conn,
         host="service.example.com",
@@ -1065,7 +1068,7 @@ async def test_public_destination_blocks_private_original_despite_connected_publ
         server_address=("service.example.com", 443),
         peername=("93.184.216.35", 443),
     )
-    upstream_destination_binding.record_server_binding(
+    seed_server_binding(
         flow.server_conn,
         client=flow.client_conn,
         host="service.example.com",
@@ -1093,7 +1096,7 @@ async def test_public_destination_ignores_stale_prebound_public_original_destina
 ):
     reg_path = _write_public_destination_firewall_registry(tmp_path)
     flow = _public_destination_flow(real_flow, headers, destination_host="10.0.0.1")
-    upstream_destination_binding.record_server_binding(
+    seed_server_binding(
         flow.server_conn,
         client=flow.client_conn,
         host="service.example.com",
