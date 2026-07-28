@@ -9,6 +9,12 @@ interface StripeInvoice {
   readonly amount_paid: number;
   readonly status: string | null;
   readonly hosted_invoice_url: string | null;
+  readonly invoice_pdf: string | null;
+}
+
+interface StripeInvoiceCreatedRange {
+  readonly gte: number;
+  readonly lt: number;
 }
 
 const {
@@ -16,23 +22,29 @@ const {
   set: setMockedListInvoices,
   clear: clearMockedListInvoices,
 } = testOverride<
-  ((customerId: string) => Promise<readonly StripeInvoice[]>) | undefined
+  | ((
+      customerId: string,
+      created?: StripeInvoiceCreatedRange,
+    ) => Promise<readonly StripeInvoice[]>)
+  | undefined
 >(() => {
   return undefined;
 });
 
 export async function listStripeInvoices(
   customerId: string,
+  created?: StripeInvoiceCreatedRange,
 ): Promise<readonly StripeInvoice[]> {
   const mocked = getMockedListInvoices();
   if (mocked) {
-    return await mocked(customerId);
+    return await mocked(customerId, created);
   }
 
   const stripe = new StripeSDK(env("STRIPE_SECRET_KEY"));
   const result = await stripe.invoices.list({
     customer: customerId,
-    limit: 24,
+    limit: created ? 100 : 24,
+    ...(created ? { created } : {}),
   });
 
   return result.data.map((inv) => {
@@ -43,12 +55,16 @@ export async function listStripeInvoices(
       amount_paid: inv.amount_paid,
       status: inv.status ?? null,
       hosted_invoice_url: inv.hosted_invoice_url ?? null,
+      invoice_pdf: inv.invoice_pdf ?? null,
     };
   });
 }
 
 export function mockListStripeInvoices(
-  fn: (customerId: string) => Promise<readonly StripeInvoice[]>,
+  fn: (
+    customerId: string,
+    created?: StripeInvoiceCreatedRange,
+  ) => Promise<readonly StripeInvoice[]>,
 ): void {
   setMockedListInvoices(fn);
 }

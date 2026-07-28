@@ -164,7 +164,17 @@ export const apiBillingHandlers = [
   }),
 
   mockApi(zeroBillingInvoicesContract.get, ({ respond }) => {
-    return respond(200, { invoices: mockBillingInvoices });
+    return respond(200, {
+      invoices: mockBillingInvoices,
+      receiptDownloadsSupported: true,
+    });
+  }),
+
+  mockApi(zeroBillingInvoicesContract.downloadReceipts, ({ respond }) => {
+    return respond(
+      200,
+      new Blob(["mock receipts"], { type: "application/zip" }),
+    );
   }),
 
   mockApi(zeroBillingRedeemContract.create, ({ respond }) => {
