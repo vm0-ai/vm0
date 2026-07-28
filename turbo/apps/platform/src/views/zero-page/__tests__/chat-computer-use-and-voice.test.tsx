@@ -224,6 +224,70 @@ describe("chat lifecycle", () => {
     });
   });
 
+  it("replaces the new chat thread Cloud browser default with a Computer Use host", async () => {
+    const user = userEvent.setup({ delay: null });
+    const hostId = "55555555-5555-4555-8555-555555555555";
+    let sentCloudBrowserEnabled: boolean | undefined;
+    let sentComputerUseHostId: string | null | undefined;
+    mockChatLifecycle(context, {
+      onRunCreate: (body) => {
+        sentCloudBrowserEnabled = body.cloudBrowserEnabled;
+        sentComputerUseHostId = body.computerUseHostId;
+      },
+    });
+    context.mocks.api(zeroComputerUseHostsContract.list, ({ respond }) => {
+      return respond(200, {
+        hosts: [
+          {
+            id: hostId,
+            displayName: "Studio Mac",
+            appVersion: "1.0.0",
+            osVersion: "macOS 15.0",
+            supportedCapabilities: ["app.open"],
+            permissions: computerUsePermissions(),
+            status: "online",
+            lastSeenAt: "2026-06-10T12:00:00Z",
+            createdAt: "2026-06-10T11:00:00Z",
+          },
+        ],
+      });
+    });
+
+    detachedSetupPage({
+      context,
+      path: AGENT_CHAT_PATH,
+      featureSwitches: { [FeatureSwitchKey.ZeroBrowser]: true },
+    });
+
+    const textarea = await screen.findByPlaceholderText(PLACEHOLDER);
+    await user.click(await screen.findByLabelText("Connectors"));
+    expect(
+      screen.getByRole("switch", { name: "Disable Cloud browser" }),
+    ).toHaveAttribute("aria-checked", "true");
+
+    const hostsGroup = await screen.findByRole("group", {
+      name: "Computer Use hosts",
+    });
+    await user.click(within(hostsGroup).getByText("Studio Mac"));
+
+    await waitFor(() => {
+      expect(
+        screen.getByRole("switch", { name: "Enable Cloud browser" }),
+      ).toHaveAttribute("aria-checked", "false");
+      expect(
+        screen.getByRole("switch", { name: "Disconnect Studio Mac" }),
+      ).toHaveAttribute("aria-checked", "true");
+    });
+    await user.keyboard("{Escape}");
+
+    await sendMessageInUI(user, textarea, "Open the app on my computer");
+
+    await waitFor(() => {
+      expect(sentComputerUseHostId).toBe(hostId);
+      expect(sentCloudBrowserEnabled).toBeUndefined();
+    });
+  });
+
   it("shows online computers in the chat composer", async () => {
     const user = userEvent.setup({ delay: null });
     const threadId = COMPUTER_USE_SELECTION_THREAD_ID;
