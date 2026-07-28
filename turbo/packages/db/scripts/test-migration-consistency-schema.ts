@@ -2309,7 +2309,7 @@ async function validateChatEventTypeBackfillAndContract(): Promise<void> {
 }
 
 const CHAT_EVENT_QUEUE_PREVIOUS_MIGRATION = 710;
-const CHAT_EVENT_QUEUE_CUTOVER_MIGRATION = 713;
+const CHAT_EVENT_QUEUE_CUTOVER_MIGRATION = 714;
 
 const chatEventQueueCutoverFixture = {
   orgId: "chat-event-queue-cutover-org",
