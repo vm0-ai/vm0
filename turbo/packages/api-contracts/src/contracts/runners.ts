@@ -447,7 +447,7 @@ const storedResumeSessionRefSchema = z.object({
 const resumeSessionIdentityHistoryRefSchema = resumeSessionHistoryBlobRefSchema
   .extend({
     url: z.string().url(),
-    encoding: z.literal("identity").optional(),
+    encoding: z.literal("identity"),
     rawSize: resumeSessionHistoryRawSizeSchema,
     encodedSize: resumeSessionHistoryEncodedSizeSchema,
     ...resumeSessionHistoryDownloadSourceFieldSchema,

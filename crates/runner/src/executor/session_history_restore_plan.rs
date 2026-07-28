@@ -300,7 +300,8 @@ mod tests {
     };
     use crate::test_fixtures::execution_context_for_test;
     use crate::types::{
-        ResumeSession, ResumeSessionHistory, ResumeSessionHistoryRef, ResumeSessionHistoryRefKind,
+        ResumeSession, ResumeSessionHistory, ResumeSessionHistoryEncoding, ResumeSessionHistoryRef,
+        ResumeSessionHistoryRefKind,
     };
 
     fn test_http_client() -> HttpClient {
@@ -325,7 +326,7 @@ mod tests {
                     kind: ResumeSessionHistoryRefKind::Blob,
                     hash: history_hash.into(),
                     url: "http://127.0.0.1:9/history.blob".into(),
-                    encoding: None,
+                    encoding: ResumeSessionHistoryEncoding::Identity,
                     raw_size: size,
                     encoded_size: size,
                     download_source: None,
@@ -438,7 +439,7 @@ mod tests {
                     kind: ResumeSessionHistoryRefKind::Blob,
                     hash: history_hash.clone(),
                     url: "http://127.0.0.1:9/history.blob".into(),
-                    encoding: None,
+                    encoding: ResumeSessionHistoryEncoding::Identity,
                     raw_size: 12,
                     encoded_size: 12,
                     download_source: None,
