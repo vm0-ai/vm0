@@ -228,8 +228,7 @@ function buildWebsiteGenerationTemplatePrompt(
     return { status: "invalid", message: "Unknown website template" };
   }
 
-  const packageId = `${item.templateId}-v2`;
-  const pkg = findWebsiteTemplatePackage(packageId);
+  const pkg = findWebsiteTemplatePackage(item.templateId);
   if (!pkg) {
     return { status: "invalid", message: "Unknown website template" };
   }

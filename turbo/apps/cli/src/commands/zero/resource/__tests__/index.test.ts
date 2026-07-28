@@ -2,7 +2,6 @@ import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 
-import { WEBSITE_TEMPLATE_ITEMS } from "@vm0/core";
 import chalk from "chalk";
 import { HttpResponse, http } from "msw";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -10,31 +9,6 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { server } from "../../../../mocks/server";
 import { findRegistryResourceForPull, zeroResourceCommand } from "../index";
 import { VM0_ILLUSTRATION_ARCHIVE } from "./fixtures/vm0-illustration-archive";
-
-const EXPECTED_WEBSITE_TEMPLATE_V2_SHA256: Record<string, string> = {
-  "black-slabs":
-    "de6f78c5a524cf3959ca56af7a93ec5bca113555bbd1a5983eebf1bc353971d4",
-  "blueprint-grid":
-    "dec02c4fe156566272a92b7386cb032cec7e3a1250dd42429ca3e7f42374dc28",
-  "coastal-hotel":
-    "09d239d7a0e1c27334f2c3c8da9e408174cece6bcc8a34342438598db739aa4e",
-  "dot-matrix":
-    "0beb9b1bcb12ace6d3541df269a629af8e3b41c8f9d7e3c3fcfe069655cd9074",
-  "frame-stack":
-    "7c4c13eaa22b4185607c6ac6a726dd931fe896b279b38a6267c0105f81214f8b",
-  "frosted-scatter":
-    "c67a7baf924ae4b57241e61527dd875d084e38040653a9bbcc659c13d2382cf9",
-  "gallery-wall":
-    "f6e41fb711b8c9317a425b463a9812e99f2aecb630d1acbfb77ef0965c2ba55f",
-  "glass-bloom":
-    "713fbac57cf37a0ddd6d7e7d79a0b9f29f8fff7a0aa55bc741bc5dcd0e498d25",
-  "serif-stack":
-    "6d5d65fb21d6c5ec5627fe32fbfc55e80841a2343f2d91bf3ee3a0f62547766a",
-  "sticker-pop":
-    "61954f4652e2cc86cd1016a537078ea050fe95735a7477e6bd56c91a0c0aec3b",
-  "warm-cards":
-    "213197ef200b16738b51b5d6c4a90b6e6c12c86c63207ef6afc31456cdd0d2e1",
-};
 
 describe("zero resource pull registry resolver", () => {
   it("resolves a presentation color system archive", () => {
@@ -80,25 +54,10 @@ describe("zero resource pull registry resolver", () => {
     );
   });
 
-  it("resolves every website template v2 package", () => {
-    for (const item of WEBSITE_TEMPLATE_ITEMS) {
-      const resourceId = `${item.resourceId}-v2`;
-
-      expect(findRegistryResourceForPull(resourceId)).toEqual(
-        expect.objectContaining({
-          id: resourceId,
-          kind: "template",
-          targets: ["website"],
-          source: expect.objectContaining({
-            path: item.sourcePath,
-            archive: {
-              type: "tar.gz",
-              sha256: EXPECTED_WEBSITE_TEMPLATE_V2_SHA256[item.slug],
-            },
-          }),
-        }),
-      );
-    }
+  it("rejects retired website template v2 packages", () => {
+    expect(
+      findRegistryResourceForPull("template:black-slabs-v2"),
+    ).toBeUndefined();
   });
 });
 
