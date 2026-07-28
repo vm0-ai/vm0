@@ -68,7 +68,7 @@ function normalizeMcpHostname(hostname: string): string {
     hostname.startsWith("[") && hostname.endsWith("]")
       ? hostname.slice(1, -1)
       : hostname;
-  return withoutBrackets.toLowerCase().replace(/\.$/, "");
+  return withoutBrackets.toLowerCase().replace(/\.+$/, "");
 }
 
 function hostnameIsInternal(hostname: string): boolean {

@@ -335,7 +335,9 @@ describe("MCP server management", () => {
     "https://mcp.example.com/mcp#section",
     "https://mcp.example.com/mcp#",
     "https://localhost/mcp",
+    "https://localhost../mcp",
     "https://service/mcp",
+    "https://service.local../mcp",
     "https://10.0.0.1/mcp",
     "https://[::1]/mcp",
   ])("rejects unsupported endpoint %s", async (endpoint) => {
