@@ -23,6 +23,7 @@ import { nowDate } from "../../lib/time";
 import { writeDb$, type Db } from "../external/db";
 import { publishThreadListChanged } from "../external/realtime";
 import { teamsOrgCallbackPayloadSchema } from "./teams-org-callback-payload";
+import { ensureTeamsChatThreadRoute } from "./teams-chat-ingress.service";
 import { appendChatThreadEvent } from "./zero-chat-thread-event.service";
 import {
   computerUseHostIsOnline,
@@ -281,6 +282,65 @@ async function loadTeamsChatThread(args: {
   return thread;
 }
 
+async function loadLegacyTeamsRouteSeed(args: {
+  readonly db: Pick<Db, "select">;
+  readonly request: AuthorizationRequestRow;
+}) {
+  const [callback] = await args.db
+    .select({
+      payload: agentRunCallbacks.payload,
+      selectedModel: zeroRuns.selectedModel,
+    })
+    .from(agentRunCallbacks)
+    .innerJoin(zeroRuns, eq(zeroRuns.id, agentRunCallbacks.runId))
+    .where(
+      and(
+        eq(agentRunCallbacks.runId, args.request.runId),
+        eq(agentRunCallbacks.internalKind, "teams:org"),
+      ),
+    )
+    .limit(1);
+  const payload = teamsOrgCallbackPayloadSchema.safeParse(callback?.payload);
+  if (
+    !payload.success ||
+    payload.data.connectionId !== args.request.teamsConnectionId ||
+    payload.data.conversationId !== args.request.teamsConversationId ||
+    payload.data.threadId !== args.request.teamsThreadId
+  ) {
+    return undefined;
+  }
+  return {
+    connectionId: payload.data.connectionId,
+    conversationId: payload.data.conversationId,
+    threadId: payload.data.threadId,
+    agentComposeId: payload.data.agentId,
+    selectedModel: callback?.selectedModel ?? null,
+  };
+}
+
+async function ensureLegacyTeamsAuthorizationRoute(args: {
+  readonly db: Db;
+  readonly request: AuthorizationRequestRow;
+  readonly orgId: string;
+  readonly userId: string;
+  readonly now: Date;
+}): Promise<boolean> {
+  if (await loadTeamsChatThread(args)) {
+    return true;
+  }
+  const seed = await loadLegacyTeamsRouteSeed(args);
+  if (!seed) {
+    return false;
+  }
+  await ensureTeamsChatThreadRoute(args.db, {
+    ...seed,
+    orgId: args.orgId,
+    userId: args.userId,
+    currentTime: args.now,
+  });
+  return true;
+}
+
 async function loadAuthorizedComputerUseHostId(args: {
   readonly db: Db;
   readonly request: AuthorizationRequestRow;
@@ -407,6 +467,18 @@ async function applyTeamsAuthorizationScope(args: {
       orgId: args.orgId,
       userId: args.userId,
       connectionId,
+    }))
+  ) {
+    return false;
+  }
+
+  if (
+    !(await ensureLegacyTeamsAuthorizationRoute({
+      db: args.db,
+      request: args.request,
+      orgId: args.orgId,
+      userId: args.userId,
+      now: args.now,
     }))
   ) {
     return false;

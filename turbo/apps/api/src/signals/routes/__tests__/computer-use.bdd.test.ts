@@ -352,7 +352,7 @@ describe("FILE-03 desktop computer-use runtime", () => {
     });
   });
 
-  it("moves an in-flight Teams authorization request onto its canonical chat thread", async () => {
+  it("materializes a canonical thread for an in-flight Teams authorization request", async () => {
     const orgId = `org_${randomUUID()}`;
     const actor = bdd.user({ orgId });
     const run = await seedZeroRun({ actor, triggerSource: "teams" });

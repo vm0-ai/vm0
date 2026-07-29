@@ -198,7 +198,6 @@ async function seedTeamsComputerUseCallback(args: {
   const conversationId = `19:${randomUUID()}@thread.tacv2`;
   const threadId = `root-${randomUUID()}`;
   const connectionId = randomUUID();
-  const chatThreadId = randomUUID();
   const teamsUserId = `29:${randomUUID()}`;
 
   await args.db.insert(teamsOrgInstallations).values({
@@ -216,23 +215,6 @@ async function seedTeamsComputerUseCallback(args: {
     teamsTenantId: tenantId,
     teamsUserId,
     vm0UserId: args.userId,
-  });
-  args.signal.throwIfAborted();
-
-  await args.db.insert(chatThreads).values({
-    id: chatThreadId,
-    userId: args.userId,
-    agentComposeId: args.composeId,
-    title: "Teams Computer Use authorization test",
-  });
-  args.signal.throwIfAborted();
-
-  await args.db.insert(teamsChatThreadRoutes).values({
-    connectionId,
-    conversationId,
-    threadId,
-    userId: args.userId,
-    chatThreadId,
   });
   args.signal.throwIfAborted();
 
