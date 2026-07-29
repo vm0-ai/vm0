@@ -31,6 +31,7 @@ import { createChatFilesBddApi } from "./helpers/api-bdd-chat-files";
 import { createMiscRoutesApi } from "./helpers/api-bdd-misc";
 import { createRunsApi } from "./helpers/api-bdd-runs";
 import { createWebhookCallbackApi } from "./helpers/api-bdd-webhooks";
+import { chatEventDisplayText } from "./helpers/chat-event";
 import { updateFeatureSwitchesForUser } from "./helpers/zero-feature-switches";
 
 /**
@@ -536,7 +537,7 @@ function isGoalContinuationUserMessage(
     message.isGoalRun === true &&
     message.runId !== undefined &&
     (message.goalSnapshot?.objectiveBrief === objectiveBrief ||
-      message.content?.includes("# Active thread goal") === true)
+      chatEventDisplayText(message)?.includes("# Active thread goal") === true)
   );
 }
 
@@ -797,7 +798,7 @@ describe("CHAT-02: completed chat callback", () => {
     });
     const beforeComplete = await chat.listThreadEvents(actor, first.threadId);
     const queued = userMessages(beforeComplete.events).find((message) => {
-      return message.content === "queued next turn";
+      return chatEventDisplayText(message) === "queued next turn";
     });
     if (!queued) {
       throw new Error("Expected the queued user message to be listed");
@@ -925,7 +926,7 @@ describe("CHAT-02: completed chat callback", () => {
       (messages) => {
         return userMessages(messages).some((message) => {
           return (
-            message.content === "queued next turn" &&
+            chatEventDisplayText(message) === "queued next turn" &&
             message.runId !== undefined
           );
         });
@@ -935,7 +936,7 @@ describe("CHAT-02: completed chat callback", () => {
       (message): message is PromptMessage => {
         return (
           message.eventType === "input.prompt" &&
-          message.content === "queued next turn" &&
+          chatEventDisplayText(message) === "queued next turn" &&
           message.runId !== undefined
         );
       },
@@ -957,7 +958,7 @@ describe("CHAT-02: completed chat callback", () => {
     // original into its run-associated replacement.
     const matchingMessageIds = userMessages(afterAutoSend.events)
       .filter((message) => {
-        return message.content === "queued next turn";
+        return chatEventDisplayText(message) === "queued next turn";
       })
       .map((message) => {
         return message.id;
@@ -1055,13 +1056,17 @@ describe("CHAT-02: completed chat callback", () => {
       (messages) => {
         return userMessages(messages).some((message) => {
           return (
-            message.content === queuedPrompt && message.runId !== undefined
+            chatEventDisplayText(message) === queuedPrompt &&
+            message.runId !== undefined
           );
         });
       },
     );
     const claimed = userMessages(afterAutoSend.events).find((message) => {
-      return message.content === queuedPrompt && message.runId !== undefined;
+      return (
+        chatEventDisplayText(message) === queuedPrompt &&
+        message.runId !== undefined
+      );
     });
     if (!claimed?.runId) {
       throw new Error("Expected the queued Web message to auto-send");
@@ -1289,7 +1294,7 @@ describe("CHAT-02: completed chat callback", () => {
       first.threadId,
     );
     const queued = userMessages(queuedBeforeComplete.events).find((message) => {
-      return message.content === "queued while side effects wait";
+      return chatEventDisplayText(message) === "queued while side effects wait";
     });
     if (!queued) {
       throw new Error("Expected the queued user message to be listed");
@@ -1418,7 +1423,9 @@ describe("CHAT-02: completed chat callback", () => {
     const afterSecondQueue = await chat.listThreadEvents(actor, first.threadId);
     const duplicateProbeQueued = userMessages(afterSecondQueue.events).find(
       (message) => {
-        return message.content === "queued after duplicate callback";
+        return (
+          chatEventDisplayText(message) === "queued after duplicate callback"
+        );
       },
     );
     if (!duplicateProbeQueued) {
@@ -1494,8 +1501,11 @@ Continue the JPM IJTXX Treasury allocation follow-up for issue #20818 and [ACME-
     expect(goalContinuation?.goalSnapshot).toStrictEqual({
       objectiveBrief: goalBrief,
     });
-    expect(goalContinuation?.content).toContain("# Active thread goal");
-    expect(goalContinuation?.content).toContain(goalObjective);
+    expect(goalContinuation?.content).toBeNull();
+    expect(chatEventDisplayText(goalContinuation!)).toContain(
+      "# Active thread goal",
+    );
+    expect(chatEventDisplayText(goalContinuation!)).toContain(goalObjective);
 
     if (!goalContinuation?.runId) {
       throw new Error("Expected goal continuation run id");
@@ -1610,7 +1620,7 @@ Continue the JPM IJTXX Treasury allocation follow-up for issue #20818 and [ACME-
       first.threadId,
     );
     const queued = userMessages(queuedBeforeComplete.events).find((message) => {
-      return message.content === "queued user interruption";
+      return chatEventDisplayText(message) === "queued user interruption";
     });
     if (!queued) {
       throw new Error("Expected the queued user message to be listed");
@@ -1725,7 +1735,7 @@ Continue the JPM IJTXX Treasury allocation follow-up for issue #20818 and [ACME-
       first.threadId,
     );
     const queued = userMessages(queuedBeforeComplete.events).find((message) => {
-      return message.content === "queued while org cap is full";
+      return chatEventDisplayText(message) === "queued while org cap is full";
     });
     if (!queued) {
       throw new Error("Expected the queued user message to be listed");
@@ -1839,7 +1849,7 @@ describe("CHAT-02: chat output extraction and progress callbacks", () => {
       (threadMessages) => {
         return userMessages(threadMessages).some((message) => {
           return (
-            message.content === "queued after streamed output" &&
+            chatEventDisplayText(message) === "queued after streamed output" &&
             message.runId !== undefined
           );
         });
@@ -1857,7 +1867,7 @@ describe("CHAT-02: chat output extraction and progress callbacks", () => {
 
     const claimed = userMessages(messages.events).find((message) => {
       return (
-        message.content === "queued after streamed output" &&
+        chatEventDisplayText(message) === "queued after streamed output" &&
         message.runId !== undefined
       );
     });
@@ -2637,13 +2647,17 @@ describe("CHAT-02: auto-send after failures", () => {
       (items) => {
         return userMessages(items).some((message) => {
           return (
-            message.content === queuedPrompt && message.runId !== undefined
+            chatEventDisplayText(message) === queuedPrompt &&
+            message.runId !== undefined
           );
         });
       },
     );
     const promoted = userMessages(messages.events).find((message) => {
-      return message.content === queuedPrompt && message.runId !== undefined;
+      return (
+        chatEventDisplayText(message) === queuedPrompt &&
+        message.runId !== undefined
+      );
     });
     if (!promoted?.runId) {
       throw new Error("Expected the queued probe to be promoted");
@@ -2752,7 +2766,7 @@ describe("CHAT-02: auto-send after failures", () => {
         return userMessages(items).some((message) => {
           return (
             message.eventType === "input.prompt" &&
-            message.content === queuedContent &&
+            chatEventDisplayText(message) === queuedContent &&
             message.runId !== undefined
           );
         });
@@ -2762,7 +2776,7 @@ describe("CHAT-02: auto-send after failures", () => {
       (message): message is PromptMessage => {
         return (
           message.eventType === "input.prompt" &&
-          message.content === queuedContent &&
+          chatEventDisplayText(message) === queuedContent &&
           message.runId !== undefined
         );
       },
@@ -2844,7 +2858,10 @@ describe("CHAT-02: auto-send after failures", () => {
     const duplicateFailureProbeQueued = userMessages(
       afterFailureSecondQueue.events,
     ).find((message) => {
-      return message.content === "queued after duplicate failed callback";
+      return (
+        chatEventDisplayText(message) ===
+        "queued after duplicate failed callback"
+      );
     });
     if (!duplicateFailureProbeQueued) {
       throw new Error("Expected the duplicate failure probe message to queue");
@@ -2945,13 +2962,17 @@ describe("CHAT-02: auto-send after failures", () => {
       (items) => {
         return userMessages(items).some((message) => {
           return (
-            message.content === queuedPrompt && message.runId !== undefined
+            chatEventDisplayText(message) === queuedPrompt &&
+            message.runId !== undefined
           );
         });
       },
     );
     const autoSent = userMessages(messages.events).find((message) => {
-      return message.content === queuedPrompt && message.runId !== undefined;
+      return (
+        chatEventDisplayText(message) === queuedPrompt &&
+        message.runId !== undefined
+      );
     });
     if (!autoSent?.runId) {
       throw new Error("Expected the queued frontier probe to auto-send");
@@ -3070,7 +3091,7 @@ describe("CHAT-02: auto-send across a model switch", () => {
       (items) => {
         return userMessages(items).some((message) => {
           return (
-            message.content === "queued before policy removal" &&
+            chatEventDisplayText(message) === "queued before policy removal" &&
             message.runId !== undefined
           );
         });
@@ -3078,7 +3099,7 @@ describe("CHAT-02: auto-send across a model switch", () => {
     );
     const claimed = userMessages(messages.events).find((message) => {
       return (
-        message.content === "queued before policy removal" &&
+        chatEventDisplayText(message) === "queued before policy removal" &&
         message.runId !== undefined
       );
     });
@@ -3187,7 +3208,7 @@ describe("CHAT-02: auto-send across a model switch", () => {
       (items) => {
         return userMessages(items).some((message) => {
           return (
-            message.content === "queue a sonnet follow-up" &&
+            chatEventDisplayText(message) === "queue a sonnet follow-up" &&
             message.runId !== undefined
           );
         });
@@ -3195,7 +3216,7 @@ describe("CHAT-02: auto-send across a model switch", () => {
     );
     const claimed = userMessages(messages.events).find((message) => {
       return (
-        message.content === "queue a sonnet follow-up" &&
+        chatEventDisplayText(message) === "queue a sonnet follow-up" &&
         message.runId !== undefined
       );
     });

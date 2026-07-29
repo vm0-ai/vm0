@@ -125,6 +125,7 @@ function requiredMockUserMessage(
 const mockChatEventOverrides = {
   "input.prompt": (message) => {
     return {
+      content: null,
       userMessage: requiredMockUserMessage(message),
       attachFiles: message.attachFiles,
       generationTemplate: message.generationTemplate,
@@ -144,6 +145,7 @@ const mockChatEventOverrides = {
   },
   "input.rejected": (message) => {
     return {
+      content: null,
       error: message.error ?? "Mock input rejected",
       userMessage: requiredMockUserMessage(message),
       attachFiles: message.attachFiles,

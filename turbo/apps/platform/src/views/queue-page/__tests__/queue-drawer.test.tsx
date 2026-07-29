@@ -100,7 +100,7 @@ function mockQueuedThread(): void {
           id: "msg-previous-user",
           threadId: THREAD_ID,
           eventType: "input.prompt" as const,
-          content: "Previous prompt",
+          content: null,
           userMessage: {
             version: 1,
             parts: [{ type: "text", text: "Previous prompt" }],

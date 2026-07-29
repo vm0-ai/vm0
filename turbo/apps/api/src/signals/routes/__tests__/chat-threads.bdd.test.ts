@@ -52,6 +52,7 @@ import {
 } from "./helpers/api-bdd-connectors";
 import { createRunsApi } from "./helpers/api-bdd-runs";
 import { createWebhookCallbackApi } from "./helpers/api-bdd-webhooks";
+import { chatEventDisplayText } from "./helpers/chat-event";
 import {
   deleteVm0ManagedDefaultModelKey,
   seedVm0ManagedDefaultModelKey,
@@ -881,7 +882,9 @@ describe("CHAT-01 thread detail, create, and delete cascades", () => {
     });
     await waitForThreadMessages(actor, run.threadId, (messages) => {
       return userMessages(messages).some((message) => {
-        return message.content === "move this thread when I send it";
+        return (
+          chatEventDisplayText(message) === "move this thread when I send it"
+        );
       });
     });
     await flushWaitUntilForTest();
@@ -1812,7 +1815,8 @@ describe("CHAT-01 chat thread read state", () => {
     expect(
       beforeCommit.events.some((message) => {
         return (
-          message.content === firstContent || message.content === secondContent
+          chatEventDisplayText(message) === firstContent ||
+          chatEventDisplayText(message) === secondContent
         );
       }),
     ).toBeFalsy();

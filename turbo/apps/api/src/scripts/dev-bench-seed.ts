@@ -651,7 +651,6 @@ function appendRunMessages(
     chatThreadId: args.threadId,
     runId,
     eventType: "input.prompt",
-    content: prompt,
     userMessage: { version: 1, parts: [{ type: "text", text: prompt }] },
     createdAt: baseCreatedAt,
   };

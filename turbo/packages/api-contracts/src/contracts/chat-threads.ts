@@ -451,6 +451,7 @@ const chatMessageRecommendedFollowupsSchema = z.preprocess((value) => {
 const inputPromptEventSchema = chatEventBaseSchema
   .extend({
     eventType: z.literal("input.prompt"),
+    content: z.null(),
     userMessage: userMessageDocumentSchema,
     attachFiles: z.array(resolvedAttachFileSchema).optional(),
     generationTemplate: generationTemplateRequestSchema.optional(),
@@ -470,6 +471,7 @@ const inputAutomationEventSchema = chatEventBaseSchema
 const inputRejectedEventSchema = chatEventBaseSchema
   .extend({
     eventType: z.literal("input.rejected"),
+    content: z.null(),
     userMessage: userMessageDocumentSchema,
     error: z.string(),
     automationId: z.string().uuid().optional(),

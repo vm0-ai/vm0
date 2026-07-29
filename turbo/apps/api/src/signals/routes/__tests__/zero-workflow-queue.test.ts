@@ -25,6 +25,7 @@ import { createChatCallbacksApi } from "./helpers/api-bdd-chat-callbacks";
 import { createRunsApi } from "./helpers/api-bdd-runs";
 import { createWebhookCallbackApi } from "./helpers/api-bdd-webhooks";
 import { createWorkflowsBddApi } from "./helpers/api-bdd-workflows";
+import { chatEventDisplayText } from "./helpers/chat-event";
 import { readThreadSessionBinding } from "./helpers/runtime-state";
 import {
   generateDataKeyOutput,
@@ -225,7 +226,7 @@ async function workflowRunIds(threadId: string): Promise<readonly string[]> {
   return messages.flatMap((message) => {
     if (
       message.eventType !== "input.prompt" ||
-      message.content !== `/${WORKFLOW_NAME}` ||
+      chatEventDisplayText(message) !== `/${WORKFLOW_NAME}` ||
       !message.runId
     ) {
       return [];
@@ -406,7 +407,7 @@ describe("workflow queue", () => {
       .poll(async () => {
         const messages = await wf.readThreadEvents(automation.threadId);
         return messages.some((message) => {
-          return message.content === "fresh user message";
+          return chatEventDisplayText(message) === "fresh user message";
         });
       })
       .toBe(true);
@@ -513,11 +514,19 @@ describe("workflow queue", () => {
     const messages = await wf.readThreadEvents(automation.threadId);
     expect(messages).toContainEqual(
       expect.objectContaining({
-        content: "stale user message",
+        content: null,
         revokesEventId: messageId,
         runId: expect.any(String),
       }),
     );
+    expect(
+      messages.some((message) => {
+        return (
+          message.revokesEventId === messageId &&
+          chatEventDisplayText(message) === "stale user message"
+        );
+      }),
+    ).toBeTruthy();
   });
 
   it("queues webhook events behind the active run and drains one per completion", async () => {
@@ -1046,7 +1055,7 @@ describe("workflow queue", () => {
     const messages = await wf.readThreadEvents(automation.threadId);
     const userMessage = messages.find((message) => {
       return (
-        message.content === "user interjection" &&
+        chatEventDisplayText(message) === "user interjection" &&
         typeof message.runId === "string"
       );
     });
@@ -1135,7 +1144,7 @@ describe("workflow queue", () => {
       .poll(async () => {
         const messages = await wf.readThreadEvents(automation.threadId);
         return messages.some((message) => {
-          return message.content === "user wins final admission";
+          return chatEventDisplayText(message) === "user wins final admission";
         });
       })
       .toBe(true);

@@ -137,7 +137,7 @@ function createNewThreadOptimisticMessageEntry({
       id: clientEventId,
       threadId,
       eventType: "input.prompt",
-      content: prepared.prompt,
+      content: null,
       attachFiles: prepared.attachments,
       generationTemplate,
       userMessage,

@@ -149,6 +149,192 @@ async function expectAppendOnlyUpdateRejected(
   throw new Error(`${args.tableName} accepted an UPDATE`);
 }
 
+async function validateCanonicalChatMessageCompatibility(
+  client: Client,
+  threadId: string,
+): Promise<string> {
+  const legacyUserMessage = {
+    version: 1,
+    parts: [{ type: "text", text: "append-only migration test" }],
+  };
+  const message = await client.query<{
+    content: string | null;
+    id: string;
+    legacyUserMessage: unknown;
+    seqId: string;
+    userMessage: unknown;
+  }>(
+    `
+      INSERT INTO "chat_messages" (
+        "chat_thread_id",
+        "role",
+        "content",
+        "event_type",
+        "structured_prompt"
+      )
+      VALUES (
+        $1,
+        'user',
+        'append-only migration test',
+        'input.prompt',
+        '{"version":1,"parts":[{"type":"text","text":"append-only migration test"}]}'::jsonb
+      )
+      RETURNING
+        "id",
+        "seq_id" AS "seqId",
+        "content",
+        "structured_prompt" AS "legacyUserMessage",
+        "user_message" AS "userMessage"
+    `,
+    [threadId],
+  );
+  const messageRow = message.rows[0];
+  if (!messageRow) {
+    throw new Error("Failed to create append-only chat message fixture");
+  }
+  assert.equal(messageRow.seqId, "1");
+  assert.equal(messageRow.content, null);
+  assert.deepEqual(messageRow.legacyUserMessage, legacyUserMessage);
+  assert.deepEqual(messageRow.userMessage, legacyUserMessage);
+
+  const nextMessage = await client.query<{ seqId: string }>(
+    `
+      INSERT INTO "chat_messages" (
+        "chat_thread_id",
+        "role",
+        "content",
+        "event_type"
+      )
+      VALUES (
+        $1,
+        'assistant',
+        'second typed API migration test',
+        'output.message'
+      )
+      RETURNING "seq_id" AS "seqId"
+    `,
+    [threadId],
+  );
+  assert.equal(nextMessage.rows[0]?.seqId, "2");
+
+  const canonicalUserMessage = {
+    version: 1,
+    parts: [{ type: "text", text: "canonical API migration test" }],
+  };
+  const canonicalMessage = await client.query<{
+    content: string | null;
+    legacyUserMessage: unknown;
+    seqId: string;
+    userMessage: unknown;
+  }>(
+    `
+      INSERT INTO "chat_messages" (
+        "chat_thread_id",
+        "role",
+        "content",
+        "event_type",
+        "user_message"
+      )
+      VALUES (
+        $1,
+        'user',
+        'retired canonical input content',
+        'input.prompt',
+        $2::jsonb
+      )
+      RETURNING
+        "seq_id" AS "seqId",
+        "content",
+        "structured_prompt" AS "legacyUserMessage",
+        "user_message" AS "userMessage"
+    `,
+    [threadId, JSON.stringify(canonicalUserMessage)],
+  );
+  const canonicalMessageRow = canonicalMessage.rows[0];
+  assert.equal(canonicalMessageRow?.seqId, "3");
+  assert.equal(canonicalMessageRow?.content, null);
+  assert.deepEqual(
+    canonicalMessageRow?.legacyUserMessage,
+    canonicalUserMessage,
+  );
+  assert.deepEqual(canonicalMessageRow?.userMessage, canonicalUserMessage);
+
+  const sequenceState = await client.query<{ lastSeqId: string }>(
+    `
+      SELECT "last_chat_message_seq_id" AS "lastSeqId"
+      FROM "chat_threads"
+      WHERE "id" = $1
+    `,
+    [threadId],
+  );
+  assert.equal(sequenceState.rows[0]?.lastSeqId, "3");
+
+  return messageRow.id;
+}
+
+async function validateCanonicalDraftCompatibility(
+  client: Client,
+  threadId: string,
+): Promise<void> {
+  const legacyDraftUserMessage = {
+    version: 1,
+    parts: [{ type: "text", text: "legacy API draft" }],
+  };
+  const legacyDraft = await client.query<{
+    draftUserMessage: unknown;
+    legacyDraftUserMessage: unknown;
+  }>(
+    `
+      UPDATE "chat_threads"
+      SET
+        "draft_content" = 'legacy API draft',
+        "draft_structured_prompt" = $2::jsonb
+      WHERE "id" = $1
+      RETURNING
+        "draft_structured_prompt" AS "legacyDraftUserMessage",
+        "draft_user_message" AS "draftUserMessage"
+    `,
+    [threadId, JSON.stringify(legacyDraftUserMessage)],
+  );
+  assert.deepEqual(
+    legacyDraft.rows[0]?.legacyDraftUserMessage,
+    legacyDraftUserMessage,
+  );
+  assert.deepEqual(
+    legacyDraft.rows[0]?.draftUserMessage,
+    legacyDraftUserMessage,
+  );
+
+  const canonicalDraftUserMessage = {
+    version: 1,
+    parts: [{ type: "text", text: "canonical API draft" }],
+  };
+  const canonicalDraft = await client.query<{
+    draftUserMessage: unknown;
+    legacyDraftUserMessage: unknown;
+  }>(
+    `
+      UPDATE "chat_threads"
+      SET
+        "draft_content" = 'canonical API draft',
+        "draft_user_message" = $2::jsonb
+      WHERE "id" = $1
+      RETURNING
+        "draft_structured_prompt" AS "legacyDraftUserMessage",
+        "draft_user_message" AS "draftUserMessage"
+    `,
+    [threadId, JSON.stringify(canonicalDraftUserMessage)],
+  );
+  assert.deepEqual(
+    canonicalDraft.rows[0]?.legacyDraftUserMessage,
+    canonicalDraftUserMessage,
+  );
+  assert.deepEqual(
+    canonicalDraft.rows[0]?.draftUserMessage,
+    canonicalDraftUserMessage,
+  );
+}
+
 async function validateChatEventSourcesAreAppendOnly(
   dbUrl: string,
 ): Promise<void> {
@@ -191,59 +377,11 @@ async function validateChatEventSourcesAreAppendOnly(
     // Simulate the previous typed API version serving during migration: it
     // writes event_type but does not know about seq_id and relies on the
     // temporary database allocator.
-    const message = await client.query<{ id: string; seqId: string }>(
-      `
-        INSERT INTO "chat_messages" (
-          "chat_thread_id",
-          "role",
-          "content",
-          "event_type",
-          "structured_prompt"
-        )
-        VALUES (
-          $1,
-          'user',
-          'append-only migration test',
-          'input.prompt',
-          '{"version":1,"parts":[{"type":"text","text":"append-only migration test"}]}'::jsonb
-        )
-        RETURNING "id", "seq_id" AS "seqId"
-      `,
-      [threadId],
+    messageId = await validateCanonicalChatMessageCompatibility(
+      client,
+      threadId,
     );
-    messageId = message.rows[0]?.id;
-    if (!messageId) {
-      throw new Error("Failed to create append-only chat message fixture");
-    }
-    assert.equal(message.rows[0]?.seqId, "1");
-    const nextMessage = await client.query<{ seqId: string }>(
-      `
-        INSERT INTO "chat_messages" (
-          "chat_thread_id",
-          "role",
-          "content",
-          "event_type"
-        )
-        VALUES (
-          $1,
-          'assistant',
-          'second typed API migration test',
-          'output.message'
-        )
-        RETURNING "seq_id" AS "seqId"
-      `,
-      [threadId],
-    );
-    assert.equal(nextMessage.rows[0]?.seqId, "2");
-    const sequenceState = await client.query<{ lastSeqId: string }>(
-      `
-        SELECT "last_chat_message_seq_id" AS "lastSeqId"
-        FROM "chat_threads"
-        WHERE "id" = $1
-      `,
-      [threadId],
-    );
-    assert.equal(sequenceState.rows[0]?.lastSeqId, "2");
+    await validateCanonicalDraftCompatibility(client, threadId);
 
     const event = await client.query<{ id: string; seqId: string }>(
       `

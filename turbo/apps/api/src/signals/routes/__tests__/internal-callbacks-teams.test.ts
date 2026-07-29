@@ -763,7 +763,11 @@ describe("Teams org internal callbacks", () => {
     expect(threadMessages.body.events).toContainEqual(
       expect.objectContaining({
         eventType: "input.prompt",
-        content: "finish the task",
+        content: null,
+        userMessage: {
+          version: 1,
+          parts: [{ type: "text", text: "finish the task" }],
+        },
       }),
     );
     const claim = await claimTeamsRun({

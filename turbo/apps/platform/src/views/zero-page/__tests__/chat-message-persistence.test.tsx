@@ -28,7 +28,6 @@ const SECOND_THREAD_ID = "b0000000-0000-4000-a000-000000000732";
 const FIRST_MESSAGE_ID = "00000000-0000-4000-8000-000000000731";
 const FIRST_MESSAGE = "Persist this remote response for thread re-entry";
 const STRUCTURED_MESSAGE_ID = "00000000-0000-4000-8000-000000000733";
-const STRUCTURED_MESSAGE = "Legacy structured content should stay hidden";
 const STRUCTURED_REFERENCE_TITLE = "Archived IndexedDB source";
 function userMessageFixture(): UserMessageDocument {
   return {
@@ -108,7 +107,7 @@ describe("chat message persistence", () => {
                 id: STRUCTURED_MESSAGE_ID,
                 threadId: FIRST_THREAD_ID,
                 eventType: "input.prompt" as const,
-                content: STRUCTURED_MESSAGE,
+                content: null,
                 runId: "d0000000-0000-4000-a000-000000000731",
                 userMessage,
                 createdAt: "2026-06-09T10:00:00Z",
@@ -167,7 +166,6 @@ describe("chat message persistence", () => {
         );
         expect(reference).toHaveAttribute("href", `/chats/${FIRST_THREAD_ID}`);
       });
-      expect(screen.queryByText(STRUCTURED_MESSAGE)).not.toBeInTheDocument();
       await waitFor(async () => {
         const testDb = await openChatIdb("idb-reentry-user", "idb-reentry-org");
         try {
@@ -176,7 +174,7 @@ describe("chat message persistence", () => {
             STRUCTURED_MESSAGE_ID,
           );
           expect(userMessageElement).toMatchObject({
-            content: STRUCTURED_MESSAGE,
+            content: null,
             userMessage,
             threadId: FIRST_THREAD_ID,
           });
@@ -210,7 +208,6 @@ describe("chat message persistence", () => {
           `a[aria-label="Open chat ${STRUCTURED_REFERENCE_TITLE}"]`,
         );
         expect(reference).toHaveAttribute("href", `/chats/${FIRST_THREAD_ID}`);
-        expect(screen.queryByText(STRUCTURED_MESSAGE)).not.toBeInTheDocument();
       });
     } finally {
       blockedRemote.resolve();
@@ -266,7 +263,7 @@ describe("chat message persistence", () => {
             id: "00000000-0000-4000-8000-000000000735",
             threadId,
             eventType: "input.prompt" as const,
-            content: remoteMessage,
+            content: null,
             userMessage: {
               version: 1,
               parts: [{ type: "text", text: remoteMessage }],

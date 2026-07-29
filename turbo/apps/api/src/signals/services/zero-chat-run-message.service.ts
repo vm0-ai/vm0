@@ -106,7 +106,6 @@ export async function postRunUserMessage(params: {
     const inserted = await insertChatEvent(tx, {
       chatThreadId: params.threadId,
       eventType: "input.prompt",
-      content: params.prompt,
       userMessage: createUserMessageDocument({ text: params.prompt }),
       runId: params.runId,
       runGroupId: params.runGroupId,

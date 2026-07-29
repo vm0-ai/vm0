@@ -49,8 +49,7 @@ export type {
 
 /**
  * Physical storage for the immutable ChatEvent stream.
- * Each row is one typed event belonging to a chat_thread. The table and
- * selected physical column names stay message-named during the rollout.
+ * Each row is one typed event belonging to a chat_thread.
  *
  * User and automation inputs are persisted immediately. A run-less,
  * unrevoked input event is pending queue state; its run-attributed replacement
@@ -105,14 +104,16 @@ export const chatMessages = pgTable(
     // Persistent-secret encrypted queue parameters. This field never leaves
     // the API and remains only on the original pending input event.
     encryptedParams: text("encrypted_params"),
-    // Release A keeps the legacy column nullable while eventType readers
-    // deploy, but writers still populate it for rollback-eligible readers.
-    // A later release stops the dual-write after old readers have drained;
-    // Release B can then drop the physical column.
     role: text("role"),
     content: text("content"),
-    /** Canonical rich user-message document for input prompt events. */
-    userMessage: jsonb("structured_prompt").$type<ChatMessageUserMessage>(),
+    /**
+     * Rollout bridge for API versions that still write structured_prompt.
+     * Remove with the compatibility trigger after the old API has drained.
+     */
+    legacyUserMessage:
+      jsonb("structured_prompt").$type<ChatMessageUserMessage>(),
+    /** Canonical rich user-message document for user input events. */
+    userMessage: jsonb("user_message").$type<ChatMessageUserMessage>(),
     thinking: text("thinking"),
     error: text("error"),
     /** "completed" | "failed" | "cancelled"; null for non-terminal rows. */
@@ -213,6 +214,11 @@ export const chatMessages = pgTable(
         "chat_messages_input_user_message_check",
         sql`${table.eventType} NOT IN ('input.prompt', 'input.rejected')
           OR ${table.userMessage} IS NOT NULL`,
+      ),
+      check(
+        "chat_messages_input_content_check",
+        sql`${table.eventType} NOT IN ('input.prompt', 'input.rejected')
+          OR ${table.content} IS NULL`,
       ),
     ];
   },

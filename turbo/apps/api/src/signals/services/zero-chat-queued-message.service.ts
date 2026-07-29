@@ -98,7 +98,6 @@ const queuedChatMessageRevoker = alias(
 
 export interface QueuedUserMessage {
   readonly id: string;
-  readonly content: string | null;
   readonly userMessage: ChatMessageUserMessage;
   readonly attachFiles: readonly string[] | null;
   readonly attachFileMetadata: readonly ChatMessageAttachFileMetadata[] | null;
@@ -216,7 +215,6 @@ export async function loadNextUnclaimedQueuedUserMessage(
   const [message] = await db
     .select({
       id: chatMessages.id,
-      content: chatMessages.content,
       userMessage: chatMessages.userMessage,
       attachFiles: chatMessages.attachFiles,
       attachFileMetadata: chatMessages.attachFileMetadata,
@@ -301,7 +299,6 @@ async function appendClaimedUserMessage(
   }
   const [queued] = await db
     .select({
-      content: chatMessages.content,
       userMessage: chatMessages.userMessage,
       attachFiles: chatMessages.attachFiles,
       attachFileMetadata: chatMessages.attachFileMetadata,
@@ -329,7 +326,6 @@ async function appendClaimedUserMessage(
   const claimed = await replaceChatEvent(db, args.messageId, {
     chatThreadId: args.threadId,
     eventType: "input.prompt",
-    content: queued.content,
     userMessage: queued.userMessage,
     runId: args.runId,
     attachFiles: queued.attachFiles ? [...queued.attachFiles] : null,
@@ -410,7 +406,6 @@ export async function claimQueueFirstRunAssociation(
         const claimed = await replaceChatEvent(db, args.eventId, {
           chatThreadId: args.threadId,
           eventType: "input.prompt",
-          content: args.prompt,
           userMessage: createUserMessageDocument({ text: args.prompt }),
           runId: args.runId,
           runGroupId: args.runGroupId,
@@ -515,7 +510,6 @@ export async function failQueuedUserMessage(
 
     const [queued] = await tx
       .select({
-        content: chatMessages.content,
         userMessage: chatMessages.userMessage,
         attachFiles: chatMessages.attachFiles,
         attachFileMetadata: chatMessages.attachFileMetadata,
@@ -542,7 +536,6 @@ export async function failQueuedUserMessage(
     const replacement = await replaceChatEvent(tx, args.messageId, {
       chatThreadId: args.threadId,
       eventType: "input.rejected",
-      content: queued.content,
       userMessage: queued.userMessage,
       attachFiles: queued.attachFiles ? [...queued.attachFiles] : null,
       attachFileMetadata: queued.attachFileMetadata

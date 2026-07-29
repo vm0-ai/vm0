@@ -362,7 +362,7 @@ describe("chat lifecycle", () => {
         id: clientEventId,
         threadId,
         eventType: "input.prompt",
-        content: body.prompt,
+        content: null,
         userMessage: body.userMessage,
         createdAt: "2026-06-09T10:01:00.000Z",
         seqId: 2,

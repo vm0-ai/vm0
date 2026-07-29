@@ -1594,7 +1594,6 @@ function appendUnassociatedUserMessage(params: {
         ...(explicitId ? { id: explicitId } : {}),
         chatThreadId: params.threadId,
         eventType: "input.prompt",
-        content: params.prompt,
         userMessage: params.userMessage,
         runId: null,
         triggerSource: "web",
@@ -1708,7 +1707,6 @@ async function appendAssociatedUserMessage(params: {
       ...(explicitId ? { id: explicitId } : {}),
       chatThreadId: params.threadId,
       eventType: "input.prompt",
-      content: params.prompt,
       userMessage: params.userMessage,
       runId: params.runId,
       attachFiles: fileIds,
@@ -2728,7 +2726,6 @@ async function appendQueueFirstInsufficientCreditsMessages(params: {
     }
     const [queuedMessage] = await tx
       .select({
-        content: chatMessages.content,
         userMessage: chatMessages.userMessage,
         attachFiles: chatMessages.attachFiles,
         attachFileMetadata: chatMessages.attachFileMetadata,
@@ -2760,7 +2757,6 @@ async function appendQueueFirstInsufficientCreditsMessages(params: {
     const replacement = await replaceChatEvent(tx, params.messageId, {
       chatThreadId: params.prepared.thread.threadId,
       eventType: "input.rejected",
-      content: queuedMessage.content,
       userMessage: queuedMessage.userMessage,
       runId: null,
       error: INSUFFICIENT_CREDITS_MARKER,
@@ -2850,7 +2846,6 @@ async function appendInsufficientCreditsMessages(params: {
       ...(explicitId ? { id: explicitId } : {}),
       chatThreadId: params.prepared.thread.threadId,
       eventType: "input.rejected",
-      content: params.body.prompt,
       userMessage: params.body.userMessage,
       runId: null,
       error: INSUFFICIENT_CREDITS_MARKER,
