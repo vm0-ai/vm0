@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.19.50](https://github.com/vm0-ai/vm0/compare/vsock-guest-v0.19.49...vsock-guest-v0.19.50) (2026-07-29)
+
+
+### Bug Fixes
+
+* **vsock-guest:** make pidfd waits independent of nofile limit ([#23675](https://github.com/vm0-ai/vm0/issues/23675)) ([05b7d8e](https://github.com/vm0-ai/vm0/commit/05b7d8e657b2fa48813e3339b8f34a6291b157f4))
+* **vsock:** retain guest transport until host disconnect ([#23679](https://github.com/vm0-ai/vm0/issues/23679)) ([b3a059c](https://github.com/vm0-ai/vm0/commit/b3a059c9a65b25adddcd6b9a1ca7c88be5e50b45))
+
 ## [0.19.49](https://github.com/vm0-ai/vm0/compare/vsock-guest-v0.19.48...vsock-guest-v0.19.49) (2026-07-29)
 
 

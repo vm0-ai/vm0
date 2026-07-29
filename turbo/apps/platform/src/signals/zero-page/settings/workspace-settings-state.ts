@@ -19,6 +19,7 @@ import { zeroClient$ } from "../../api-client.ts";
 import { clerk$, resolveAppAuthUrl } from "../../auth.ts";
 import { refreshOrgMembers$ } from "../../external/org-members.ts";
 import { accept } from "../../../lib/accept.ts";
+import { i18n } from "../../../i18n/index.ts";
 
 const internalBillingScrollTarget$ = state<"buy-credits" | null>(null);
 
@@ -412,7 +413,11 @@ export const saveOrgProfile$ = command(
     signal.throwIfAborted();
     await clerk?.organization?.reload();
     signal.throwIfAborted();
-    toast.success("Workspace updated");
+    toast.success(
+      i18n.t(($) => {
+        return $.settings.workspace.toasts.updated;
+      }),
+    );
   },
 );
 
@@ -431,7 +436,11 @@ export const leaveOrg$ = command(
     signal.throwIfAborted();
     await clerk?.setActive({ organization: null });
     signal.throwIfAborted();
-    toast.success("You have left the workspace");
+    toast.success(
+      i18n.t(($) => {
+        return $.settings.workspace.toasts.left;
+      }),
+    );
     window.location.href = resolveAppAuthUrl(
       "/sign-in/tasks/choose-organization",
     );
@@ -453,7 +462,11 @@ export const deleteOrg$ = command(
     signal.throwIfAborted();
     await clerk?.setActive({ organization: null });
     signal.throwIfAborted();
-    toast.success("Workspace deleted");
+    toast.success(
+      i18n.t(($) => {
+        return $.settings.workspace.toasts.deleted;
+      }),
+    );
     window.location.href = resolveAppAuthUrl(
       "/sign-in/tasks/choose-organization",
     );
@@ -476,7 +489,14 @@ export const inviteMember$ = command(
       [200],
     );
     signal.throwIfAborted();
-    toast.success(`Invitation sent to ${email}`);
+    toast.success(
+      i18n.t(
+        ($) => {
+          return $.settings.workspace.toasts.invitationSent;
+        },
+        { email },
+      ),
+    );
     set(refreshOrgMembers$);
     set(internalInviteDialogOpen$, false);
     set(internalInviteEmail$, "");
@@ -496,7 +516,14 @@ export const changeRole$ = command(
       [200],
     );
     signal.throwIfAborted();
-    toast.success(`Updated role for ${email}`);
+    toast.success(
+      i18n.t(
+        ($) => {
+          return $.settings.workspace.toasts.roleUpdated;
+        },
+        { email },
+      ),
+    );
     const clerk = await get(clerk$);
     signal.throwIfAborted();
     await clerk.session?.getToken({ skipCache: true });
@@ -518,7 +545,14 @@ export const selfDemote$ = command(
       [200],
     );
     signal.throwIfAborted();
-    toast.success(`Updated role for ${email}`);
+    toast.success(
+      i18n.t(
+        ($) => {
+          return $.settings.workspace.toasts.roleUpdated;
+        },
+        { email },
+      ),
+    );
     const clerk = await get(clerk$);
     signal.throwIfAborted();
     await clerk.session?.getToken({ skipCache: true });
@@ -541,7 +575,14 @@ export const removeMember$ = command(
       [200],
     );
     signal.throwIfAborted();
-    toast.success(`Removed ${email}`);
+    toast.success(
+      i18n.t(
+        ($) => {
+          return $.settings.workspace.toasts.memberRemoved;
+        },
+        { email },
+      ),
+    );
     set(refreshOrgMembers$);
     set(internalRemoveMemberDialogTarget$, null);
   },
@@ -559,7 +600,11 @@ export const revokeInvitation$ = command(
       [200],
     );
     signal.throwIfAborted();
-    toast.success("Invitation revoked");
+    toast.success(
+      i18n.t(($) => {
+        return $.settings.workspace.toasts.invitationRevoked;
+      }),
+    );
     set(refreshOrgMembers$);
     set(internalRevokeInvitationDialogTarget$, null);
   },
@@ -577,7 +622,11 @@ export const acceptRequest$ = command(
       [200],
     );
     signal.throwIfAborted();
-    toast.success("Membership request accepted");
+    toast.success(
+      i18n.t(($) => {
+        return $.settings.workspace.toasts.membershipRequestAccepted;
+      }),
+    );
     set(refreshOrgMembers$);
   },
 );
@@ -594,7 +643,11 @@ export const rejectRequest$ = command(
       [200],
     );
     signal.throwIfAborted();
-    toast.success("Membership request rejected");
+    toast.success(
+      i18n.t(($) => {
+        return $.settings.workspace.toasts.membershipRequestRejected;
+      }),
+    );
     set(refreshOrgMembers$);
   },
 );

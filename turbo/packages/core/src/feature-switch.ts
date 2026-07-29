@@ -465,13 +465,6 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
       "Resolve archive-enabled image styles from private R2 packages. When off, image style authoring continues reading vm0-skills from GitHub.",
     enabled: true,
   },
-  [FeatureSwitchKey.OrgPlanEntitlementReads]: {
-    maintainer: "yuma@vm0.ai",
-    description:
-      "Read runtime plan capability limits from org_plan_entitlements instead of deriving them from org_metadata.tier.",
-    enabled: true,
-    userOverridable: false,
-  },
   [FeatureSwitchKey.WorkflowConnectorReadiness]: {
     maintainer: "lancy@vm0.ai",
     description:

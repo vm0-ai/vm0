@@ -133,9 +133,9 @@ GMAIL_PUBSUB_PUSH_SERVICE_ACCOUNT_EMAIL=op://Development/gmail/GMAIL_PUBSUB_PUSH
 # new-message event configurations with threadId.
 ZERO_MAIL_REPLY_FOLLOW_UP_ROLLOUT_ENABLED=false
 
-# Keep disabled until every rollback-eligible API version accepts stored
-# Brazilian Portuguese locale preferences.
-BRAZILIAN_PORTUGUESE_LOCALE_ROLLOUT_ENABLED=false
+# Brazilian Portuguese has not shipped yet. Enable it in development so the
+# capable Platform client can exercise the rollout path.
+BRAZILIAN_PORTUGUESE_LOCALE_ROLLOUT_ENABLED=true
 
 # Optional: Google Ads API (developer token + login customer ID for MCC)
 GOOGLE_ADS_DEVELOPER_TOKEN=op://Development/google/GOOGLE_ADS_DEVELOPER_TOKEN

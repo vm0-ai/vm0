@@ -1,4 +1,5 @@
 import { createPortal } from "react-dom";
+import { useTranslation } from "react-i18next";
 import { IconPencil, IconLoader2 } from "@tabler/icons-react";
 import { Button } from "@vm0/ui";
 
@@ -15,6 +16,7 @@ export function UnsavedBar({
   testId?: string;
   saveDisabled?: boolean;
 }) {
+  const { t } = useTranslation();
   const container = document.getElementById("settings-dialog-content");
   if (!container) {
     return null;
@@ -31,7 +33,11 @@ export function UnsavedBar({
             stroke={1.5}
             className="shrink-0 text-muted-foreground"
           />
-          <span>You have unsaved changes</span>
+          <span>
+            {t(($) => {
+              return $.settings.workspace.unsaved.message;
+            })}
+          </span>
         </div>
         <div className="flex items-center gap-2 shrink-0">
           <Button
@@ -42,7 +48,9 @@ export function UnsavedBar({
             onClick={onDiscard}
             disabled={saving}
           >
-            Discard
+            {t(($) => {
+              return $.settings.shared.discard;
+            })}
           </Button>
           <Button
             data-testid="save-button"
@@ -58,7 +66,9 @@ export function UnsavedBar({
                 className="animate-spin mr-1.5"
               />
             ) : null}
-            Save
+            {t(($) => {
+              return $.settings.shared.save;
+            })}
           </Button>
         </div>
       </div>

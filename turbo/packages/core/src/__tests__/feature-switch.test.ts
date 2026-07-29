@@ -143,7 +143,6 @@ describe("getAllFeatureStates", () => {
     expect(
       staffOrgStates[FeatureSwitchKey.StructuredPromptInlineTemplates],
     ).toBe(true);
-    expect(staffOrgStates[FeatureSwitchKey.OrgPlanEntitlementReads]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.WorkflowConnectorReadiness]).toBe(
       true,
     );
@@ -179,7 +178,6 @@ describe("getAllFeatureStates", () => {
     expect(
       otherOrgStates[FeatureSwitchKey.StructuredPromptInlineTemplates],
     ).toBe(false);
-    expect(otherOrgStates[FeatureSwitchKey.OrgPlanEntitlementReads]).toBe(true);
     expect(otherOrgStates[FeatureSwitchKey.WorkflowConnectorReadiness]).toBe(
       false,
     );
@@ -227,9 +225,6 @@ describe("user-overridable switches", () => {
       FeatureSwitchKey.WorkflowConnectorReadiness,
     );
     expect(getUserOverridableFeatureSwitchKeys()).not.toContain(
-      FeatureSwitchKey.OrgPlanEntitlementReads,
-    );
-    expect(getUserOverridableFeatureSwitchKeys()).not.toContain(
       FeatureSwitchKey.ZeroMailReplyFollowUp,
     );
     expect(getUserOverridableFeatureSwitchKeys()).toContain(
@@ -264,7 +259,6 @@ describe("user-overridable switches", () => {
       filterUserOverridableFeatureSwitchOverrides({
         [FeatureSwitchKey.ComposerUploadPopover]: true,
         [FeatureSwitchKey.WorkflowConnectorReadiness]: true,
-        [FeatureSwitchKey.OrgPlanEntitlementReads]: true,
         [FeatureSwitchKey.StructuredPromptInlineTemplates]: true,
         [FeatureSwitchKey.ZeroMailReplyFollowUp]: true,
         [FeatureSwitchKey.BrazilianPortugueseLocale]: true,
