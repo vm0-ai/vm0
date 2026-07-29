@@ -63,6 +63,7 @@ export const dispatchProgressCallbacks$ = command(
               "slack:chat",
               "feishu:chat",
               "teams:chat",
+              "telegram:chat",
               "slack:org",
             ]),
           ),
@@ -94,7 +95,8 @@ export const dispatchProgressCallbacks$ = command(
         if (
           internalKind === "slack:chat" ||
           internalKind === "feishu:chat" ||
-          internalKind === "teams:chat"
+          internalKind === "teams:chat" ||
+          internalKind === "telegram:chat"
         ) {
           return;
         }

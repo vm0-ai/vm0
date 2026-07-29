@@ -5094,15 +5094,22 @@
     {
       "idx": 727,
       "version": "7",
-      "when": 1785325499130,
-      "tag": "0727_prepare_browser_billing_removal",
+      "when": 1785322216162,
+      "tag": "0727_long_amphibian",
       "breakpoints": true
     },
     {
       "idx": 728,
       "version": "7",
-      "when": 1785325526718,
-      "tag": "0728_remove_browser_usage_pricing",
+      "when": 1785326636355,
+      "tag": "0728_prepare_browser_billing_removal",
+      "breakpoints": true
+    },
+    {
+      "idx": 729,
+      "version": "7",
+      "when": 1785326650784,
+      "tag": "0729_remove_browser_usage_pricing",
       "breakpoints": true
     }
   ]

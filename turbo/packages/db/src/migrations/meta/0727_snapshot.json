@@ -1,5 +1,5 @@
 {
-  "id": "ab62b08e-c7d1-4f60-80a7-da4b427e8ee3",
+  "id": "e8e5f071-bed9-4cf4-8b15-45ee425704ab",
   "prevId": "b43acc64-f006-4c0f-846c-60a8770bf82f",
   "version": "7",
   "dialect": "postgresql",
@@ -3241,15 +3241,13 @@
           "name": "pricing_unit_price",
           "type": "bigint",
           "primaryKey": false,
-          "notNull": true,
-          "default": 0
+          "notNull": true
         },
         "pricing_unit_size": {
           "name": "pricing_unit_size",
           "type": "bigint",
           "primaryKey": false,
-          "notNull": true,
-          "default": 1
+          "notNull": true
         },
         "gross_credits": {
           "name": "gross_credits",
@@ -3377,6 +3375,12 @@
           "columns": [
             {
               "expression": "status",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "settled_at",
               "isExpression": false,
               "asc": true,
               "nulls": "last"
@@ -3519,8 +3523,7 @@
           "name": "max_credits",
           "type": "integer",
           "primaryKey": false,
-          "notNull": true,
-          "default": 1
+          "notNull": true
         },
         "gross_credits": {
           "name": "gross_credits",
@@ -18264,6 +18267,197 @@
       "uniqueConstraints": {},
       "policies": {},
       "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.telegram_chat_thread_routes": {
+      "name": "telegram_chat_thread_routes",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "telegram_user_link_id": {
+          "name": "telegram_user_link_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "telegram_official_user_link_id": {
+          "name": "telegram_official_user_link_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "chat_id": {
+          "name": "chat_id",
+          "type": "varchar(255)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "root_message_id": {
+          "name": "root_message_id",
+          "type": "varchar(255)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "chat_thread_id": {
+          "name": "chat_thread_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "idx_telegram_chat_thread_routes_chat_user_link": {
+          "name": "idx_telegram_chat_thread_routes_chat_user_link",
+          "columns": [
+            {
+              "expression": "telegram_user_link_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "chat_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "root_message_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "where": "telegram_user_link_id IS NOT NULL",
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "idx_telegram_chat_thread_routes_chat_official_link": {
+          "name": "idx_telegram_chat_thread_routes_chat_official_link",
+          "columns": [
+            {
+              "expression": "telegram_official_user_link_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "chat_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "root_message_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "where": "telegram_official_user_link_id IS NOT NULL",
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "idx_telegram_chat_thread_routes_user_link": {
+          "name": "idx_telegram_chat_thread_routes_user_link",
+          "columns": [
+            {
+              "expression": "telegram_user_link_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "where": "telegram_user_link_id IS NOT NULL",
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "idx_telegram_chat_thread_routes_official_user_link": {
+          "name": "idx_telegram_chat_thread_routes_official_user_link",
+          "columns": [
+            {
+              "expression": "telegram_official_user_link_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "where": "telegram_official_user_link_id IS NOT NULL",
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "telegram_chat_thread_routes_telegram_user_link_id_telegram_user_links_id_fk": {
+          "name": "telegram_chat_thread_routes_telegram_user_link_id_telegram_user_links_id_fk",
+          "tableFrom": "telegram_chat_thread_routes",
+          "tableTo": "telegram_user_links",
+          "columnsFrom": [
+            "telegram_user_link_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "telegram_chat_thread_routes_telegram_official_user_link_id_telegram_official_user_links_id_fk": {
+          "name": "telegram_chat_thread_routes_telegram_official_user_link_id_telegram_official_user_links_id_fk",
+          "tableFrom": "telegram_chat_thread_routes",
+          "tableTo": "telegram_official_user_links",
+          "columnsFrom": [
+            "telegram_official_user_link_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "telegram_chat_thread_routes_chat_thread_id_chat_threads_id_fk": {
+          "name": "telegram_chat_thread_routes_chat_thread_id_chat_threads_id_fk",
+          "tableFrom": "telegram_chat_thread_routes",
+          "tableTo": "chat_threads",
+          "columnsFrom": [
+            "chat_thread_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "chk_telegram_chat_thread_routes_one_owner": {
+          "name": "chk_telegram_chat_thread_routes_one_owner",
+          "value": "(telegram_user_link_id IS NOT NULL) <> (telegram_official_user_link_id IS NOT NULL)"
+        }
+      },
       "isRLSEnabled": false
     },
     "public.telegram_installations": {
