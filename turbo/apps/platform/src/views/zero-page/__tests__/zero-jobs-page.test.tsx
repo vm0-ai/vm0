@@ -457,7 +457,9 @@ describe("zero jobs page", () => {
 
     detachedSetupPage({ context, path: "/agents" });
 
-    await expect(screen.findByText("Agentes")).resolves.toBeInTheDocument();
+    await expect(
+      screen.findByRole("heading", { name: "Agentes" }),
+    ).resolves.toBeInTheDocument();
     expect(screen.getByText("Research Agent")).toBeInTheDocument();
     expect(screen.getByText("Finds launch risks")).toBeInTheDocument();
 
