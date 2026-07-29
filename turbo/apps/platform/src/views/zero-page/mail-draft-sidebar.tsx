@@ -21,8 +21,12 @@ import { toast } from "@vm0/ui/components/ui/sonner";
 import { useGet, useLastLoadable, useLoadable, useSet } from "ccstate-react";
 import { useLoadableSet } from "ccstate-react/experimental";
 import type { CSSProperties, ReactNode } from "react";
+import { useTranslation } from "react-i18next";
 
-import type { MailDraftSignals } from "../../signals/chat-page/mail-draft.ts";
+import type {
+  MailDraftFollowUpState,
+  MailDraftSignals,
+} from "../../signals/chat-page/mail-draft.ts";
 import { classifyChatAttachment } from "../../signals/chat-page/parse-body-blocks.ts";
 import { featureSwitch$ } from "../../signals/external/feature-switch.ts";
 import { pageSignal$ } from "../../signals/page-signal.ts";
@@ -48,11 +52,14 @@ interface MailDraftSidebarProps {
 }
 
 function SidebarCloseButton({ close }: { readonly close: () => void }) {
+  const { t } = useTranslation();
   return (
     <button
       type="button"
       onClick={close}
-      aria-label="Close email details"
+      aria-label={t(($) => {
+        return $.chat.mail.closeDetails;
+      })}
       className="inline-flex size-8 items-center justify-center rounded-md text-muted-foreground hover:bg-muted/60 hover:text-foreground"
     >
       <IconX size={16} />
@@ -61,10 +68,13 @@ function SidebarCloseButton({ close }: { readonly close: () => void }) {
 }
 
 function MailDraftSidebarSkeleton({ close }: { readonly close: () => void }) {
+  const { t } = useTranslation();
   return (
     <aside
       aria-busy="true"
-      aria-label="Loading email details"
+      aria-label={t(($) => {
+        return $.chat.mail.loadingDetails;
+      })}
       className="flex h-full w-full min-h-0 flex-col border-l border-border/60 bg-background xl:border-l-0"
     >
       <div className="min-h-0 flex-1 overflow-hidden px-5 py-5 animate-pulse">
@@ -107,13 +117,20 @@ function UnavailableMailDraftSidebar({
   readonly close: () => void;
   readonly message: string;
 }) {
+  const { t } = useTranslation();
   return (
     <aside
-      aria-label="Email details"
+      aria-label={t(($) => {
+        return $.chat.mail.details;
+      })}
       className="flex h-full w-full flex-col border-l border-border/60 bg-background xl:border-l-0"
     >
       <div className="flex min-h-14 items-center border-b border-border/60 px-4">
-        <span className="min-w-0 flex-1 text-sm font-medium">Email</span>
+        <span className="min-w-0 flex-1 text-sm font-medium">
+          {t(($) => {
+            return $.chat.mail.email;
+          })}
+        </span>
         <SidebarCloseButton close={close} />
       </div>
       <div className="flex flex-1 items-center justify-center px-6 text-center">
@@ -131,6 +148,7 @@ function GmailReconnectButton({
 }: {
   readonly signals: MailDraftSignals;
 }) {
+  const { t } = useTranslation();
   const reloadDraft = useSet(signals.reloadDraft$);
   const { reconnect, reconnectDisabled, reconnecting } =
     useGmailReconnect(reloadDraft);
@@ -142,7 +160,13 @@ function GmailReconnectButton({
       onClick={reconnect}
     >
       {reconnecting ? <IconLoader2 size={15} className="animate-spin" /> : null}
-      {reconnecting ? "Reconnecting…" : "Reconnect Gmail"}
+      {reconnecting
+        ? t(($) => {
+            return $.chat.mail.reconnecting;
+          })
+        : t(($) => {
+            return $.chat.mail.reconnectGmail;
+          })}
     </Button>
   );
 }
@@ -154,6 +178,7 @@ function MailMessageHeader({
   readonly close: () => void;
   readonly draft: ZeroMailDraft;
 }) {
+  const { t } = useTranslation();
   const active = draft.status === "draft";
   const senderName = draft.fromName?.trim() || null;
   const senderInitial = (senderName ?? draft.from).slice(0, 1).toUpperCase();
@@ -162,7 +187,10 @@ function MailMessageHeader({
       <div className="flex items-start gap-3">
         <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2">
           <h1 className="break-words text-xl font-semibold leading-7 tracking-[-0.015em] text-foreground">
-            {draft.subject || "(No subject)"}
+            {draft.subject ||
+              t(($) => {
+                return $.chat.mail.noSubject;
+              })}
           </h1>
           <span
             className={
@@ -176,7 +204,13 @@ function MailMessageHeader({
             ) : (
               <IconCircleCheck size={11} stroke={2} />
             )}
-            {active ? "Draft" : "Sent"}
+            {active
+              ? t(($) => {
+                  return $.chat.mail.status.draft;
+                })
+              : t(($) => {
+                  return $.chat.mail.status.sent;
+                })}
           </span>
         </div>
         <SidebarCloseButton close={close} />
@@ -203,7 +237,16 @@ function MailMessageHeader({
             </span>
           </div>
           <div className="mt-0.5 min-w-0 break-words text-xs leading-5 text-muted-foreground">
-            <span>to {draft.to.join(", ") || "—"}</span>
+            <span>
+              {t(
+                ($) => {
+                  return $.chat.mail.recipientsLine;
+                },
+                {
+                  recipients: draft.to.join(", ") || "—",
+                },
+              )}
+            </span>
             {draft.cc.length > 0 ? (
               <>
                 <span aria-hidden="true"> · </span>
@@ -312,6 +355,7 @@ function MailMediaAttachmentPreview({
   readonly kind: "image" | "video";
   readonly url: string;
 }) {
+  const { t } = useTranslation();
   const openImageLightbox = useSet(openImageLightbox$);
   const openVideoLightbox = useSet(openVideoLightbox$);
   const onPreview = () => {
@@ -335,7 +379,12 @@ function MailMediaAttachmentPreview({
     <button
       type="button"
       onClick={onPreview}
-      aria-label={`Preview ${filename}`}
+      aria-label={t(
+        ($) => {
+          return $.chat.attachments.previewFile;
+        },
+        { filename },
+      )}
       title={filename}
       className="group relative aspect-[10/9] w-[50px] max-w-full cursor-pointer overflow-hidden rounded-lg border border-foreground/10 bg-muted/30 shadow-sm transition-all duration-200 hover:scale-[1.015] hover:border-foreground/20 hover:shadow-lg hover:shadow-black/10 dark:hover:shadow-black/30"
     >
@@ -371,10 +420,18 @@ function MailDraftInlineImage({
   readonly image: ZeroMailInlineImage;
   readonly imageUrl: string | null | undefined;
 }) {
+  const { t } = useTranslation();
   if (imageUrl === undefined) {
     return (
       <span
-        aria-label={`Loading ${image.alt}`}
+        aria-label={t(
+          ($) => {
+            return $.chat.attachments.loadingFile;
+          },
+          {
+            filename: image.alt,
+          },
+        )}
         className="my-2 inline-block aspect-video w-full rounded-lg bg-muted/50 align-middle animate-pulse"
       />
     );
@@ -382,7 +439,14 @@ function MailDraftInlineImage({
   if (imageUrl === null) {
     return (
       <span className="text-sm text-muted-foreground">
-        [Image unavailable: {image.alt}]
+        {t(
+          ($) => {
+            return $.chat.attachments.imageUnavailable;
+          },
+          {
+            filename: image.alt,
+          },
+        )}
       </span>
     );
   }
@@ -878,6 +942,7 @@ function MailDraftMessage({
   readonly draft: ZeroMailDraft;
   readonly signals: MailDraftSignals;
 }) {
+  const { t } = useTranslation();
   if (draft.bodyHtml && typeof DOMParser !== "undefined") {
     return (
       <MailDraftRichMessage
@@ -897,7 +962,10 @@ function MailDraftMessage({
       data-feedback-source-sent-id={draft.sentGmailMessageId}
       className="whitespace-pre-wrap break-words text-sm leading-6 text-foreground"
     >
-      {draft.body || "(No message)"}
+      {draft.body ||
+        t(($) => {
+          return $.chat.mail.noMessage;
+        })}
     </div>
   );
 }
@@ -911,6 +979,7 @@ function MailDraftDetails({
   readonly draft: ZeroMailDraft;
   readonly signals: MailDraftSignals;
 }) {
+  const { t } = useTranslation();
   const setAttachmentScopeRef = useSet(signals.setAttachmentScopeRef$);
   const attachmentPreviewsLoadable = useLoadable(signals.attachmentPreviews$);
   const attachmentPreviews =
@@ -937,7 +1006,9 @@ function MailDraftDetails({
       {attachments.length > 0 ? (
         <div className="grid gap-2.5 border-t border-border/60 pt-4">
           <div className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-            Attachments
+            {t(($) => {
+              return $.chat.attachments.title;
+            })}
           </div>
           <div className="flex flex-wrap gap-3">
             {attachments.map((attachment) => {
@@ -970,6 +1041,49 @@ function isReplyFollowUpEnabled(
   return featureSwitches[FeatureSwitchKey.ZeroMailReplyFollowUp];
 }
 
+function MailFollowUpButton({
+  state,
+  pending,
+  onClick,
+}: {
+  readonly state: MailDraftFollowUpState;
+  readonly pending: boolean;
+  readonly onClick: () => void;
+}) {
+  const { t } = useTranslation();
+  return (
+    <Button
+      type="button"
+      size="sm"
+      disabled={pending || state !== "idle"}
+      onClick={onClick}
+    >
+      {state === "submitting" ? (
+        <IconLoader2 size={15} className="animate-spin" />
+      ) : state === "active" ? (
+        <IconCircleCheck size={15} />
+      ) : (
+        <IconRoute size={15} />
+      )}
+      {state === "active"
+        ? t(($) => {
+            return $.chat.mail.followUp.tracking;
+          })
+        : state === "paused"
+          ? t(($) => {
+              return $.chat.mail.followUp.paused;
+            })
+          : state === "submitting"
+            ? t(($) => {
+                return $.chat.mail.followUp.settingUp;
+              })
+            : t(($) => {
+                return $.chat.mail.followUp.action;
+              })}
+    </Button>
+  );
+}
+
 function MailDraftDetail({
   draft,
   signals,
@@ -979,6 +1093,7 @@ function MailDraftDetail({
   readonly signals: MailDraftSignals;
   readonly close: () => void;
 }) {
+  const { t } = useTranslation();
   const pageSignal = useGet(pageSignal$);
   const featureSwitches = useGet(featureSwitch$);
   const [deleteLoadable, deleteDraft] = useLoadableSet(signals.delete$);
@@ -990,8 +1105,6 @@ function MailDraftDetail({
       ? localFollowUpState
       : (draft.followUp?.status ?? localFollowUpState);
   const followUpSubmitting = followUpState === "submitting";
-  const followUpActive = followUpState === "active";
-  const followUpPaused = followUpState === "paused";
   const followUpEnabled = isReplyFollowUpEnabled(featureSwitches);
   const active = draft.status === "draft";
   const pending =
@@ -1012,7 +1125,11 @@ function MailDraftDetail({
   const onSend = () => {
     const sendAndNotify = async () => {
       await send(pageSignal);
-      toast.success("Email sent");
+      toast.success(
+        t(($) => {
+          return $.chat.mail.sentToast;
+        }),
+      );
     };
     detach(sendAndNotify(), Reason.DomCallback);
   };
@@ -1022,7 +1139,9 @@ function MailDraftDetail({
 
   return (
     <aside
-      aria-label="Email details"
+      aria-label={t(($) => {
+        return $.chat.mail.details;
+      })}
       data-chat-thread-container-id={signals.threadId}
       data-testid="mail-draft-sidebar"
       className="flex h-full w-full min-h-0 flex-col border-l border-border/60 bg-background xl:border-l-0"
@@ -1043,7 +1162,9 @@ function MailDraftDetail({
             ) : (
               <IconTrash size={15} />
             )}
-            Delete
+            {t(($) => {
+              return $.chat.actions.delete;
+            })}
           </Button>
         ) : (
           <span />
@@ -1053,7 +1174,9 @@ function MailDraftDetail({
             <Button asChild variant="outline" size="sm">
               <a href={openInGmail} target="_blank" rel="noreferrer">
                 <IconExternalLink size={15} />
-                Open in Gmail
+                {t(($) => {
+                  return $.chat.mail.openInGmail;
+                })}
               </a>
             </Button>
           ) : null}
@@ -1064,31 +1187,17 @@ function MailDraftDetail({
               ) : (
                 <IconSend size={15} />
               )}
-              Send
+              {t(($) => {
+                return $.chat.actions.send;
+              })}
             </Button>
           ) : null}
           {!active && followUpEnabled ? (
-            <Button
-              type="button"
-              size="sm"
-              disabled={pending || followUpState !== "idle"}
+            <MailFollowUpButton
+              state={followUpState}
+              pending={pending}
               onClick={onFollowUp}
-            >
-              {followUpSubmitting ? (
-                <IconLoader2 size={15} className="animate-spin" />
-              ) : followUpActive ? (
-                <IconCircleCheck size={15} />
-              ) : (
-                <IconRoute size={15} />
-              )}
-              {followUpActive
-                ? "Tracking replies"
-                : followUpPaused
-                  ? "Tracking paused"
-                  : followUpSubmitting
-                    ? "Setting up…"
-                    : "Follow up"}
-            </Button>
+            />
           ) : null}
         </div>
       </footer>
@@ -1097,6 +1206,7 @@ function MailDraftDetail({
 }
 
 export function MailDraftSidebar({ signals, onClose }: MailDraftSidebarProps) {
+  const { t } = useTranslation();
   const draftLoadable = useLastLoadable(signals.sidebarDraft$);
   if (draftLoadable.state === "loading") {
     return <MailDraftSidebarSkeleton close={onClose} />;
@@ -1105,7 +1215,9 @@ export function MailDraftSidebar({ signals, onClose }: MailDraftSidebarProps) {
     return (
       <UnavailableMailDraftSidebar
         close={onClose}
-        message="This email is no longer available."
+        message={t(($) => {
+          return $.chat.mail.unavailable;
+        })}
       />
     );
   }
@@ -1113,7 +1225,9 @@ export function MailDraftSidebar({ signals, onClose }: MailDraftSidebarProps) {
     return (
       <UnavailableMailDraftSidebar
         close={onClose}
-        message="You no longer have permission to access this email. Reconnect Gmail to continue."
+        message={t(($) => {
+          return $.chat.mail.reconnectDescription;
+        })}
         action={<GmailReconnectButton signals={signals} />}
       />
     );
@@ -1122,7 +1236,9 @@ export function MailDraftSidebar({ signals, onClose }: MailDraftSidebarProps) {
     return (
       <UnavailableMailDraftSidebar
         close={onClose}
-        message="This draft was deleted."
+        message={t(($) => {
+          return $.chat.mail.deleted;
+        })}
       />
     );
   }

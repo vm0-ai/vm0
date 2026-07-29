@@ -9,6 +9,7 @@ import {
 import { animationFrame, delay } from "signal-timers";
 import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import { IN_VITEST } from "../../env.ts";
+import { i18n } from "../../i18n/index.ts";
 import {
   onRef,
   onRejection,
@@ -169,6 +170,7 @@ import {
   messageDocumentToPrompt,
   textToMessageDocument,
 } from "../zero-page/user-message-document-codec.ts";
+import { locale$ } from "../locale.ts";
 
 type ChatThreadRemote = ReturnType<typeof createRemoteChatThreadDataSource>;
 
@@ -249,9 +251,13 @@ function createInterruptedAssistantProjection(
   return {
     ...rest,
     eventType: "run.cancelled" as const,
-    content: "Run cancelled",
+    content: i18n.t(($) => {
+      return $.chat.run.cancelled;
+    }),
     runId,
-    error: "Run cancelled",
+    error: i18n.t(($) => {
+      return $.chat.run.cancelled;
+    }),
     runLifecycleEvent: "cancelled",
   };
 }
@@ -302,60 +308,144 @@ function shuffleBlockColors(): [string, string, string] {
   return [shuffled[0]!, shuffled[1]!, shuffled[2]!];
 }
 
-const THINKING_PHRASES = [
-  "Brewing...",
-  "Piecing together...",
-  "Spinning up...",
-  "On it...",
-  "Assembling...",
-  "Sketching out...",
-  "Mapping it...",
-  "Wiring up...",
-  "Shaping...",
-  "Tuning in...",
-] as const;
+const THINKING_PHRASE_COUNT = 10;
+const DONE_PHRASE_COUNT = 8;
 
-const DONE_PHRASES = [
-  (t: string) => {
-    return `Wrapped up at ${t}`;
-  },
-  (t: string) => {
-    return `All done — ${t}`;
-  },
-  (t: string) => {
-    return `Delivered at ${t}`;
-  },
-  (t: string) => {
-    return `Finished at ${t}, at your service`;
-  },
-  (t: string) => {
-    return `That was a wrap — ${t}`;
-  },
-  (t: string) => {
-    return `Mission complete, ${t}`;
-  },
-  (t: string) => {
-    return `Signed off at ${t}`;
-  },
-  (t: string) => {
-    return `Done and dusted — ${t}`;
-  },
-] as const;
+function thinkingPhrase(index: number): string {
+  switch (index) {
+    case 0: {
+      return i18n.t(($) => {
+        return $.chat.run.thinking.brewing;
+      });
+    }
+    case 1: {
+      return i18n.t(($) => {
+        return $.chat.run.thinking.piecingTogether;
+      });
+    }
+    case 2: {
+      return i18n.t(($) => {
+        return $.chat.run.thinking.spinningUp;
+      });
+    }
+    case 3: {
+      return i18n.t(($) => {
+        return $.chat.run.thinking.onIt;
+      });
+    }
+    case 4: {
+      return i18n.t(($) => {
+        return $.chat.run.thinking.assembling;
+      });
+    }
+    case 5: {
+      return i18n.t(($) => {
+        return $.chat.run.thinking.sketching;
+      });
+    }
+    case 6: {
+      return i18n.t(($) => {
+        return $.chat.run.thinking.mapping;
+      });
+    }
+    case 7: {
+      return i18n.t(($) => {
+        return $.chat.run.thinking.wiring;
+      });
+    }
+    case 8: {
+      return i18n.t(($) => {
+        return $.chat.run.thinking.shaping;
+      });
+    }
+    default: {
+      return i18n.t(($) => {
+        return $.chat.run.thinking.tuningIn;
+      });
+    }
+  }
+}
 
 function formatDonePhrase(lastEvent: ChatEvent | undefined): string {
   const time = lastEvent
-    ? new Date(lastEvent.createdAt).toLocaleString("en-US", {
+    ? new Date(lastEvent.createdAt).toLocaleString(i18n.resolvedLanguage, {
         month: "short",
         day: "numeric",
         hour: "numeric",
         minute: "2-digit",
       })
-    : "just now";
+    : i18n.t(($) => {
+        return $.chat.run.justNow;
+      });
   const phraseIndex = lastEvent?.id
-    ? lastEvent.id.charCodeAt(lastEvent.id.length - 1) % DONE_PHRASES.length
+    ? lastEvent.id.charCodeAt(lastEvent.id.length - 1) % DONE_PHRASE_COUNT
     : 0;
-  const pick = DONE_PHRASES[phraseIndex]!;
-  return pick(time);
+  switch (phraseIndex) {
+    case 0: {
+      return i18n.t(
+        ($) => {
+          return $.chat.run.done.wrappedUp;
+        },
+        { time },
+      );
+    }
+    case 1: {
+      return i18n.t(
+        ($) => {
+          return $.chat.run.done.allDone;
+        },
+        { time },
+      );
+    }
+    case 2: {
+      return i18n.t(
+        ($) => {
+          return $.chat.run.done.delivered;
+        },
+        { time },
+      );
+    }
+    case 3: {
+      return i18n.t(
+        ($) => {
+          return $.chat.run.done.finished;
+        },
+        { time },
+      );
+    }
+    case 4: {
+      return i18n.t(
+        ($) => {
+          return $.chat.run.done.wrap;
+        },
+        { time },
+      );
+    }
+    case 5: {
+      return i18n.t(
+        ($) => {
+          return $.chat.run.done.missionComplete;
+        },
+        { time },
+      );
+    }
+    case 6: {
+      return i18n.t(
+        ($) => {
+          return $.chat.run.done.signedOff;
+        },
+        { time },
+      );
+    }
+    default: {
+      return i18n.t(
+        ($) => {
+          return $.chat.run.done.doneAndDusted;
+        },
+        { time },
+      );
+    }
+  }
 }
 
 function revokedEventIdsFromRawEvents(
@@ -1990,6 +2080,7 @@ function createEventSemanticSignals(
     },
   );
   const donePhrase$ = computed((get): Promise<string> => {
+    get(locale$);
     const lastEvent = get(semanticGroups$)
       .allGroups.at(-1)
       ?.events.at(-1)?.event;
@@ -4317,10 +4408,10 @@ function createThinkingIndicatorSignals(
   const blockColors$ = computed(() => {
     return blockColors;
   });
-  const thinkingPhrase =
-    THINKING_PHRASES[Math.floor(Math.random() * THINKING_PHRASES.length)]!;
-  const thinkingPhrase$ = computed(() => {
-    return thinkingPhrase;
+  const thinkingPhraseIndex = Math.floor(Math.random() * THINKING_PHRASE_COUNT);
+  const thinkingPhrase$ = computed((get) => {
+    get(locale$);
+    return thinkingPhrase(thinkingPhraseIndex);
   });
   const thinkingTypewriterFrame$ = state<ThinkingTypewriterFrame>(
     emptyThinkingTypewriterFrame(),

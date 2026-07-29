@@ -77,6 +77,7 @@ import {
 } from "./template-preview-runtime.ts";
 import { createComposerWorkflows } from "./composer-workflows.ts";
 import { reloadWorkflowData$ } from "../workflows-page/workflow-reload.ts";
+import { i18n } from "../../i18n/index.ts";
 
 type AgentIdValue = string | null | Promise<string | null>;
 type WorkflowNamesSyncCommand = Command<
@@ -154,7 +155,11 @@ function editorContentClass(singleLineOnMobile: boolean): string {
 }
 
 const WORKFLOW_HIGHLIGHT_CLASS = "text-primary";
-const COMPOSER_PLACEHOLDER = "Ask me to automate workflows, manage tasks...";
+function composerPlaceholder(): string {
+  return i18n.t(($) => {
+    return $.chat.composer.placeholder;
+  });
+}
 
 function isIOS(): boolean {
   if (typeof navigator === "undefined") {
@@ -480,6 +485,7 @@ function createComposerIcon(
 function createFeedbackItemNodeView(
   node: ProseMirrorNode,
   removeFeedback: (id: number) => void,
+  localizedUi: Set<() => void>,
 ): NodeView {
   const dom = document.createElement("div");
   dom.dataset.feedbackItem = "";
@@ -510,8 +516,6 @@ function createFeedbackItemNodeView(
     "text-muted-foreground/70 transition-colors hover:bg-muted " +
     "hover:text-foreground focus-visible:outline-none focus-visible:ring-2 " +
     "focus-visible:ring-ring";
-  removeButton.setAttribute("aria-label", "Remove feedback");
-  removeButton.title = "Remove feedback";
   removeButton.append(
     createComposerIcon(14, 1.8, ["M18 6l-12 12", "M6 6l12 12"]),
   );
@@ -523,17 +527,27 @@ function createFeedbackItemNodeView(
   placeholderDom.className =
     "pointer-events-none absolute left-1 top-1 text-[0.9375rem] " +
     "leading-snug text-muted-foreground/40";
-  placeholderDom.textContent = "What should change about this?";
   placeholderDom.setAttribute("aria-hidden", "true");
   const contentDOM = document.createElement("div");
   contentDOM.dataset.feedbackNote = "";
   contentDOM.setAttribute("role", "textbox");
-  contentDOM.setAttribute("aria-label", "What should change about this?");
   contentDOM.setAttribute("aria-multiline", "true");
   noteDom.append(placeholderDom, contentDOM);
   dom.append(quoteDom, noteDom);
 
   let currentNode = node;
+  function localize(): void {
+    const removeLabel = i18n.t(($) => {
+      return $.chat.feedback.remove;
+    });
+    const placeholder = i18n.t(($) => {
+      return $.chat.feedback.placeholder;
+    });
+    removeButton.setAttribute("aria-label", removeLabel);
+    removeButton.title = removeLabel;
+    placeholderDom.textContent = placeholder;
+    contentDOM.setAttribute("aria-label", placeholder);
+  }
   function render(nextNode: ProseMirrorNode): void {
     const { quote, showDivider, fill } = feedbackItemNodeAttributes(nextNode);
     dom.className = `flex flex-col gap-1.5 pb-1.5 pt-1.5${
@@ -552,6 +566,8 @@ function createFeedbackItemNodeView(
   removeButton.addEventListener("click", () => {
     removeFeedback(feedbackItemNodeAttributes(currentNode).feedbackId);
   });
+  localizedUi.add(localize);
+  localize();
   render(currentNode);
 
   return {
@@ -575,6 +591,9 @@ function createFeedbackItemNodeView(
       return (
         mutation.type !== "selection" && !contentDOM.contains(mutation.target)
       );
+    },
+    destroy() {
+      localizedUi.delete(localize);
     },
   };
 }
@@ -610,42 +629,121 @@ function templateAttachmentPreviewLabel(
   attachment: ComposerTemplateAttachment,
 ): string {
   if (attachment.type === "video") {
-    return `Preview video template ${attachment.title}`;
+    return i18n.t(
+      ($) => {
+        return $.chat.templates.previewVideo;
+      },
+      {
+        title: attachment.title,
+      },
+    );
   }
   if (attachment.type === "workflow") {
-    return `Preview workflow template ${attachment.title}`;
+    return i18n.t(
+      ($) => {
+        return $.chat.templates.previewWorkflow;
+      },
+      {
+        title: attachment.title,
+      },
+    );
   }
   if (attachment.type === "website") {
-    return `Preview website template ${attachment.title}`;
+    return i18n.t(
+      ($) => {
+        return $.chat.templates.previewWebsite;
+      },
+      {
+        title: attachment.title,
+      },
+    );
   }
-  return `Preview template ${attachment.title}`;
+  return i18n.t(
+    ($) => {
+      return $.chat.templates.previewTemplate;
+    },
+    {
+      title: attachment.title,
+    },
+  );
 }
 
 function templateAttachmentRemoveLabel(
   attachment: ComposerTemplateAttachment,
 ): string {
   if (attachment.type === "video") {
-    return `Remove video template ${attachment.title}`;
+    return i18n.t(
+      ($) => {
+        return $.chat.templates.removeVideo;
+      },
+      {
+        title: attachment.title,
+      },
+    );
   }
   if (attachment.type === "workflow") {
-    return `Remove workflow template ${attachment.title}`;
+    return i18n.t(
+      ($) => {
+        return $.chat.templates.removeWorkflow;
+      },
+      {
+        title: attachment.title,
+      },
+    );
   }
   if (attachment.type === "website") {
-    return `Remove website template ${attachment.title}`;
+    return i18n.t(
+      ($) => {
+        return $.chat.templates.removeWebsite;
+      },
+      {
+        title: attachment.title,
+      },
+    );
   }
-  return `Remove template ${attachment.title}`;
+  return i18n.t(
+    ($) => {
+      return $.chat.templates.removeTemplate;
+    },
+    {
+      title: attachment.title,
+    },
+  );
 }
 
 function templateAttachmentTypeLabel(
   type: ComposerTemplateAttachmentType,
 ): string {
-  return `${type.charAt(0).toUpperCase()}${type.slice(1)}`;
+  if (type === "presentation") {
+    return i18n.t(($) => {
+      return $.chat.templates.categories.presentation;
+    });
+  }
+  if (type === "illustration") {
+    return i18n.t(($) => {
+      return $.chat.templates.categories.illustration;
+    });
+  }
+  if (type === "video") {
+    return i18n.t(($) => {
+      return $.chat.templates.categories.video;
+    });
+  }
+  if (type === "website") {
+    return i18n.t(($) => {
+      return $.chat.templates.categories.website;
+    });
+  }
+  return i18n.t(($) => {
+    return $.chat.templates.categories.workflow;
+  });
 }
 
 function createTemplateAttachmentNodeView(
   node: ProseMirrorNode,
   openTemplate: (category: string) => void,
   removeTemplate: () => void,
+  localizedUi: Set<() => void>,
 ): NodeView {
   const dom = document.createElement("div");
   dom.dataset.composerTemplateAttachment = "";
@@ -689,18 +787,20 @@ function createTemplateAttachmentNodeView(
   dom.append(chip);
 
   let currentNode = node;
-  function render(nextNode: ProseMirrorNode): void {
-    const attachment = templateAttachmentNodeAttributes(nextNode);
+  function localize(): void {
+    const attachment = templateAttachmentNodeAttributes(currentNode);
     openButton.setAttribute(
       "aria-label",
       templateAttachmentPreviewLabel(attachment),
     );
-    removeButton.setAttribute(
-      "aria-label",
-      templateAttachmentRemoveLabel(attachment),
-    );
-    removeButton.title = templateAttachmentRemoveLabel(attachment);
+    const removeLabel = templateAttachmentRemoveLabel(attachment);
+    removeButton.setAttribute("aria-label", removeLabel);
+    removeButton.title = removeLabel;
     typeText.textContent = templateAttachmentTypeLabel(attachment.type);
+  }
+  function render(nextNode: ProseMirrorNode): void {
+    const attachment = templateAttachmentNodeAttributes(nextNode);
+    localize();
     titleText.textContent = attachment.title;
     iconContainer.replaceChildren();
     if (attachment.previewImageUrl) {
@@ -730,6 +830,7 @@ function createTemplateAttachmentNodeView(
     event.preventDefault();
   });
   removeButton.addEventListener("click", removeTemplate);
+  localizedUi.add(localize);
   render(currentNode);
 
   return {
@@ -750,12 +851,16 @@ function createTemplateAttachmentNodeView(
     ignoreMutation() {
       return true;
     },
+    destroy() {
+      localizedUi.delete(localize);
+    },
   };
 }
 
 function createInlineTemplateNodeView(
   node: ProseMirrorNode,
   selectAndOpenTemplate: (category: string) => void,
+  localizedUi: Set<() => void>,
 ): NodeView {
   const dom = document.createElement("span");
   dom.dataset.composerInlineTemplate = "";
@@ -786,13 +891,18 @@ function createInlineTemplateNodeView(
   dom.append(openButton);
 
   let currentNode = node;
+  function localize(): void {
+    openButton.setAttribute(
+      "aria-label",
+      templateAttachmentPreviewLabel(
+        templateAttachmentNodeAttributes(currentNode),
+      ),
+    );
+  }
   function render(nextNode: ProseMirrorNode): void {
     const attachment = templateAttachmentNodeAttributes(nextNode);
     title.textContent = attachment.title;
-    openButton.setAttribute(
-      "aria-label",
-      templateAttachmentPreviewLabel(attachment),
-    );
+    localize();
   }
   openButton.addEventListener("mousedown", (event) => {
     event.preventDefault();
@@ -800,6 +910,7 @@ function createInlineTemplateNodeView(
       templateAttachmentNodeAttributes(currentNode).category,
     );
   });
+  localizedUi.add(localize);
   render(currentNode);
 
   return {
@@ -825,6 +936,9 @@ function createInlineTemplateNodeView(
     },
     ignoreMutation() {
       return true;
+    },
+    destroy() {
+      localizedUi.delete(localize);
     },
   };
 }
@@ -1320,6 +1434,7 @@ interface WorkflowComposerRuntime {
   templateRemoved(): void;
   replaceFeedbackItems(items: readonly FeedbackItem[]): void;
   removeFeedback(id: number): void;
+  localizedUi: Set<() => void>;
 }
 
 function createTemplateAttachmentNode(
@@ -1359,6 +1474,7 @@ function createTemplateAttachmentNode(
           () => {
             runtime.removeTemplate();
           },
+          runtime.localizedUi,
         );
       };
     },
@@ -1423,18 +1539,22 @@ function createInlineTemplateNode(
     },
     addNodeView() {
       return ({ node, getPos, editor }) => {
-        return createInlineTemplateNodeView(node, (category) => {
-          const position = getPos();
-          if (typeof position !== "number") {
-            return;
-          }
-          editor.view.dispatch(
-            editor.state.tr.setSelection(
-              NodeSelection.create(editor.state.doc, position),
-            ),
-          );
-          runtime.openTemplate(category);
-        });
+        return createInlineTemplateNodeView(
+          node,
+          (category) => {
+            const position = getPos();
+            if (typeof position !== "number") {
+              return;
+            }
+            editor.view.dispatch(
+              editor.state.tr.setSelection(
+                NodeSelection.create(editor.state.doc, position),
+              ),
+            );
+            runtime.openTemplate(category);
+          },
+          runtime.localizedUi,
+        );
       };
     },
   });
@@ -1470,9 +1590,13 @@ function createFeedbackItemNode(
     },
     addNodeView() {
       return ({ node }) => {
-        return createFeedbackItemNodeView(node, (id) => {
-          runtime.removeFeedback(id);
-        });
+        return createFeedbackItemNodeView(
+          node,
+          (id) => {
+            runtime.removeFeedback(id);
+          },
+          runtime.localizedUi,
+        );
       };
     },
   });
@@ -1499,8 +1623,10 @@ function createWorkflowEditor(
     content: valueToWorkflowComposerDoc(""),
     editorProps: {
       attributes: {
-        "aria-label": "Message",
-        placeholder: COMPOSER_PLACEHOLDER,
+        "aria-label": i18n.t(($) => {
+          return $.chat.composer.message;
+        }),
+        placeholder: composerPlaceholder(),
         tabindex: "0",
         class: EDITOR_CONTENT_CLASS,
       },
@@ -1598,13 +1724,40 @@ function configureMountedWorkflowEditor(
   editor.setOptions({
     editorProps: {
       attributes: {
-        "aria-label": "Message",
-        placeholder: COMPOSER_PLACEHOLDER,
+        "aria-label": i18n.t(($) => {
+          return $.chat.composer.message;
+        }),
+        placeholder: composerPlaceholder(),
         tabindex: "0",
         class: editorContentClass(singleLineOnMobile),
       },
     },
   });
+}
+
+function refreshMountedWorkflowEditorLocalization(editor: Editor): void {
+  editor.setOptions({
+    editorProps: {
+      ...editor.options.editorProps,
+      attributes: {
+        ...editor.options.editorProps.attributes,
+        "aria-label": i18n.t(($) => {
+          return $.chat.composer.message;
+        }),
+        placeholder: composerPlaceholder(),
+      },
+    },
+  });
+}
+
+function refreshWorkflowComposerLocalization(
+  editor: Editor,
+  runtime: WorkflowComposerRuntime,
+): void {
+  refreshMountedWorkflowEditorLocalization(editor);
+  for (const localize of runtime.localizedUi) {
+    localize();
+  }
 }
 
 function resetMountedWorkflowRuntime(runtime: WorkflowComposerRuntime): void {
@@ -1777,6 +1930,10 @@ function createMountEditorCommand({
         createEditorDocumentSnapshot(editor.state.doc),
       );
       editor.mount(element);
+      const refreshLocalizedUi = () => {
+        refreshWorkflowComposerLocalization(editor, runtime);
+      };
+      i18n.on("languageChanged", refreshLocalizedUi);
       mountCompositionListeners(editor, compositionGate, signal);
       set(draft.setInputSyncTarget$, {
         syncInput(value: string) {
@@ -1828,6 +1985,7 @@ function createMountEditorCommand({
         editor.commands.focus("end");
       }
       signal.addEventListener("abort", () => {
+        i18n.off("languageChanged", refreshLocalizedUi);
         set(unregisterMountedWorkflowNamesSync$, mountedWorkflowNamesSync);
         compositionGate.cancel(signal.reason);
         resetMountedWorkflowRuntime(runtime);
@@ -2200,6 +2358,7 @@ function createWorkflowComposerRuntime(): WorkflowComposerRuntime {
     templateRemoved(): void {},
     replaceFeedbackItems(_items: readonly FeedbackItem[]): void {},
     removeFeedback(_id: number): void {},
+    localizedUi: new Set(),
   };
 }
 

@@ -11,6 +11,7 @@ import { isEditableTarget, matchShortcut } from "@vm0/ui";
 import { toast } from "@vm0/ui/components/ui/sonner";
 import { writeToClipboard } from "./clipboard.ts";
 import { onDomEventFn, onRef, resetSignal } from "../utils.ts";
+import { i18n } from "../../i18n/index.ts";
 
 // Assistant messages and other agent-produced content, such as linked email
 // drafts, opt into the shared Copy / Provide feedback interaction.
@@ -378,7 +379,11 @@ function createFeedbackSelectionState(threadId: string) {
     signal.throwIfAborted();
     if (ok) {
       set(closeSelectionToolbar$);
-      toast.success("Copied");
+      toast.success(
+        i18n.t(($) => {
+          return $.chat.toasts.copied;
+        }),
+      );
     }
   });
   return {

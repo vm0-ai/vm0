@@ -5,6 +5,7 @@ import type {
 } from "react";
 import { useGet, useSet } from "ccstate-react";
 import { cn } from "@vm0/ui";
+import { useTranslation } from "react-i18next";
 
 import {
   CHAT_THREAD_SIDEBAR_MIN_THREAD_WIDTH,
@@ -34,6 +35,7 @@ function chatThreadSidebarLayout(
 }
 
 function ChatThreadSidebarResizeHandle() {
+  const { t } = useTranslation();
   const startResize = useSet(startChatThreadSidebarResize$);
   const pageSignal = useGet(pageSignal$);
 
@@ -50,7 +52,9 @@ function ChatThreadSidebarResizeHandle() {
     <div
       role="separator"
       aria-orientation="vertical"
-      aria-label="Resize sidebar"
+      aria-label={t(($) => {
+        return $.chat.threadSidebar.resize;
+      })}
       className="group relative hidden w-1 shrink-0 cursor-col-resize items-stretch justify-center xl:flex"
       onPointerDown={handlePointerDown}
     >
