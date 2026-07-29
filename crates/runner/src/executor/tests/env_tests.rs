@@ -28,7 +28,11 @@ use crate::host_env::{
 };
 use crate::ids::RunId;
 use crate::storage_manifest::StorageManifest;
-use crate::types::{CodexRuntimeConfig, ExecutionContext, ResumeSession, SandboxReuseResult};
+use crate::types::{
+    CodexRuntimeConfig, ExecutionContext, Firewall, FirewallApi, FirewallAuth,
+    FirewallBaseHostPolicy, FirewallEntry, FirewallMcpPolicy, FirewallMcpToolPolicy, ResumeSession,
+    SandboxReuseResult,
+};
 
 fn validate_context_for_test(ctx: &ExecutionContext) -> Result<(), String> {
     let sandbox_id = SandboxId::new_v4().to_string();
@@ -159,6 +163,50 @@ fn execution_context_validation_accepts_minimal_context() {
     let ctx = minimal_context();
 
     assert!(validate_context_for_test(&ctx).is_ok());
+}
+
+#[test]
+fn execution_context_validation_enforces_inline_mcp_firewall_policy() {
+    let mut ctx = minimal_context();
+    ctx.firewalls = Some(vec![FirewallEntry::Inline {
+        firewall: Firewall {
+            name: "remote-mcp".to_string(),
+            apis: vec![FirewallApi {
+                id: String::new(),
+                base: "https://mcp.example.com/v1/mcp".to_string(),
+                auth: FirewallAuth {
+                    headers: HashMap::new(),
+                    base: None,
+                    query: None,
+                    aws_sigv4: None,
+                },
+                host_policy: Some(FirewallBaseHostPolicy::PublicDestination),
+                permissions: None,
+                mcp: Some(FirewallMcpPolicy {
+                    tool_policy: FirewallMcpToolPolicy::Exact {
+                        tool_names: vec!["search".to_string()],
+                    },
+                }),
+                suppress_body_capture: true,
+            }],
+        },
+    }]);
+
+    validate_context_for_test(&ctx).unwrap();
+
+    let Some(FirewallEntry::Inline { firewall }) = ctx
+        .firewalls
+        .as_mut()
+        .and_then(|entries| entries.first_mut())
+    else {
+        panic!("expected inline firewall");
+    };
+    firewall.apis[0].suppress_body_capture = false;
+
+    assert_eq!(
+        validate_context_for_test(&ctx).unwrap_err(),
+        "firewall remote-mcp apis[0]: MCP firewall requires body capture suppression"
+    );
 }
 
 #[test]

@@ -9,7 +9,7 @@ use super::cli_framework::{
 use super::session_id::{canonical_codex_thread_id, is_valid_session_id};
 use super::{RunnerError, RunnerResult, guest_runtime_dir, guest_runtime_path};
 use crate::ids::RunId;
-use crate::types::{CodexRuntimeConfig, ExecutionContext, SandboxReuseResult};
+use crate::types::{CodexRuntimeConfig, ExecutionContext, FirewallEntry, SandboxReuseResult};
 
 pub(super) struct ProtectedModelProviderEnvKey {
     name: &'static str,
@@ -122,6 +122,7 @@ pub(super) fn validate_execution_context_before_sandbox_with_host_env(
 ) -> Result<(), String> {
     validate_resume_session_id(context)?;
     validate_model_provider_env_placeholders(context)?;
+    validate_inline_mcp_firewalls(context)?;
     validate_user_environment_for_guest(context)?;
     validate_claude_tool_lists(context)?;
     validate_run_payload_fields_before_sandbox(context)?;
@@ -129,6 +130,18 @@ pub(super) fn validate_execution_context_before_sandbox_with_host_env(
         build_env_json_with_host_env(context, api_url, sandbox_id, reuse_result, host_env)
             .map_err(|error| error.to_string())?;
     validate_bootstrap_environment_for_guest(&bootstrap_env)?;
+    Ok(())
+}
+
+fn validate_inline_mcp_firewalls(context: &ExecutionContext) -> Result<(), String> {
+    let Some(firewalls) = &context.firewalls else {
+        return Ok(());
+    };
+    for entry in firewalls {
+        if let FirewallEntry::Inline { firewall } = entry {
+            firewall.validate_mcp_policies()?;
+        }
+    }
     Ok(())
 }
 

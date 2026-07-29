@@ -193,6 +193,16 @@ impl Firewall {
         }
         Ok(())
     }
+
+    pub(crate) fn validate_mcp_policies(&self) -> Result<(), String> {
+        for (index, api) in self.apis.iter().enumerate() {
+            if let Some(mcp) = &api.mcp {
+                api.validate_mcp_policy(mcp)
+                    .map_err(|e| format!("firewall {} apis[{index}]: {e}", self.name))?;
+            }
+        }
+        Ok(())
+    }
 }
 
 /// A single firewall API entry with base URL and auth headers for proxy-side matching.
@@ -249,12 +259,12 @@ impl FirewallApi {
             }
         }
         if let Some(mcp) = &self.mcp {
-            self.validate_mcp_for_cache(mcp)?;
+            self.validate_mcp_policy(mcp)?;
         }
         Ok(())
     }
 
-    fn validate_mcp_for_cache(&self, mcp: &FirewallMcpPolicy) -> Result<(), String> {
+    fn validate_mcp_policy(&self, mcp: &FirewallMcpPolicy) -> Result<(), String> {
         let parsed =
             url::Url::parse(&self.base).map_err(|_| "MCP base URL is invalid".to_string())?;
         if self.base.contains("${{")
