@@ -74,6 +74,8 @@ export const modelProviderCodexRuntimeConfigSchema = z.object({
   name: z.string().min(1),
   baseUrl: z.url(),
   envKey: z.string().regex(/^[A-Za-z_][A-Za-z0-9_]*$/),
+  httpHeaders: z.record(z.string(), z.string()).optional(),
+  requiresOpenaiAuth: z.boolean().optional(),
   wireApi: z.literal("responses"),
   supportsWebsockets: z.boolean(),
   modelCatalog: z.record(z.string(), z.unknown()).optional(),
@@ -1460,6 +1462,7 @@ export const orgModelPolicySchema = z.object({
   defaultProviderType: modelProviderTypeSchema,
   credentialScope: modelProviderCredentialScopeSchema,
   modelProviderId: z.uuid().nullable(),
+  modelProviderSurfaceId: z.uuid().nullable().optional(),
   routeStatus: orgModelPolicyRouteStatusSchema,
   routeStatusReason: z.string().nullable(),
   createdAt: z.string(),
@@ -1474,6 +1477,7 @@ export const updateOrgModelPolicySchema = z.object({
   defaultProviderType: modelProviderTypeSchema,
   credentialScope: modelProviderCredentialScopeSchema,
   modelProviderId: z.uuid().nullable(),
+  modelProviderSurfaceId: z.uuid().nullable().optional(),
 });
 
 export type UpdateOrgModelPolicy = z.infer<typeof updateOrgModelPolicySchema>;
@@ -1512,6 +1516,7 @@ export const updateOrgModelPoliciesRequestSchema = z
             defaultProviderType: policy.defaultProviderType,
             credentialScope: policy.credentialScope,
             modelProviderId: policy.modelProviderId,
+            modelProviderSurfaceId: policy.modelProviderSurfaceId ?? null,
           },
         ];
       },
@@ -1532,11 +1537,14 @@ export const updateOrgModelPoliciesRequestSchema = z
           defaultProviderType: replacementRouteSource.defaultProviderType,
           credentialScope: replacementRouteSource.credentialScope,
           modelProviderId: replacementRouteSource.modelProviderId,
+          modelProviderSurfaceId:
+            replacementRouteSource.modelProviderSurfaceId ?? null,
         }
       : {
           defaultProviderType: "vm0" as const,
           credentialScope: "org" as const,
           modelProviderId: null,
+          modelProviderSurfaceId: null,
         };
     const replacementExists = activePolicies.some((policy) => {
       return policy.model === DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL;

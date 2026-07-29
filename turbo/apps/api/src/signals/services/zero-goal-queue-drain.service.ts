@@ -252,6 +252,7 @@ const launchQueuedGoal$ = command(
         threadSessionRoute: {
           selectedModel: modelPin.selectedModel,
           modelProvider: effectiveModelProvider ?? null,
+          modelProviderId: modelPin.modelProviderId,
           cliAgentType,
         },
         codexServiceTier,

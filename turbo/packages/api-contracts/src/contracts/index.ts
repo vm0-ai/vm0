@@ -163,6 +163,22 @@ export {
   type ZeroModelPoliciesMainContract,
 } from "./zero-model-policies";
 export {
+  createModelProviderConnectionRequestSchema,
+  getModelProviderTypeForSurfaceProtocol,
+  modelProviderConnectionResponseSchema,
+  modelProviderConnectionsResponseSchema,
+  modelProviderSurfaceInputSchema,
+  modelProviderSurfaceProtocolSchema,
+  modelProviderSurfaceResponseSchema,
+  updateModelProviderConnectionRequestSchema,
+  zeroModelProviderConnectionsByIdContract,
+  zeroModelProviderConnectionsMainContract,
+  type CreateModelProviderConnectionRequest,
+  type ModelProviderConnectionResponse,
+  type ModelProviderSurfaceProtocol,
+  type UpdateModelProviderConnectionRequest,
+} from "./zero-model-provider-gateways";
+export {
   userModelPreferenceResponseSchema,
   updateUserModelPreferenceRequestSchema,
   zeroUserModelPreferenceContract,

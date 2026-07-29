@@ -1,4 +1,4 @@
-use std::collections::{HashMap, HashSet};
+use std::collections::{BTreeMap, HashMap, HashSet};
 use std::net::IpAddr;
 use std::sync::Arc;
 
@@ -139,6 +139,10 @@ pub struct CodexRuntimeConfig {
     pub name: String,
     pub base_url: String,
     pub env_key: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub http_headers: Option<BTreeMap<String, String>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub requires_openai_auth: Option<bool>,
     pub wire_api: String,
     pub supports_websockets: bool,
     #[serde(default)]

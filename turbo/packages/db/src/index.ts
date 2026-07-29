@@ -17,6 +17,7 @@ import * as runnerStateSchema from "./schema/runner-state";
 import * as agentRunQueueSchema from "./schema/agent-run-queue";
 import * as secretSchema from "./schema/secret";
 import * as modelProviderSchema from "./schema/model-provider";
+import * as modelProviderGatewaySchema from "./schema/model-provider-gateway";
 import * as orgModelPolicySchema from "./schema/org-model-policy";
 import * as modelStatSchema from "./schema/model-stat";
 import * as modelUsageObservationSchema from "./schema/model-usage-observation";
@@ -135,6 +136,7 @@ export const schema = {
   ...agentRunQueueSchema,
   ...secretSchema,
   ...modelProviderSchema,
+  ...modelProviderGatewaySchema,
   ...orgModelPolicySchema,
   ...modelStatSchema,
   ...modelUsageObservationSchema,

@@ -8,6 +8,8 @@ import {
   SUPPORTED_RUN_MODELS,
   getCanonicalModelDisplayName,
   getDefaultOrgModelPolicySeed,
+  getFrameworkForType,
+  getVm0ConcreteProviderType,
   isModelSupportedByProvider,
   isLimitedFree1RestrictedRunModel,
   type ModelProviderCredentialScope,
@@ -18,7 +20,15 @@ import {
   type SupportedRunModel,
   type UpdateOrgModelPolicy,
 } from "@vm0/api-contracts/contracts/model-providers";
+import {
+  getModelProviderTypeForSurfaceProtocol,
+  modelProviderSurfaceProtocolSchema,
+} from "@vm0/api-contracts/contracts/zero-model-provider-gateways";
 import { modelProviders } from "@vm0/db/schema/model-provider";
+import {
+  modelProviderConnections,
+  modelProviderSurfaces,
+} from "@vm0/db/schema/model-provider-gateway";
 import { orgMembersMetadata } from "@vm0/db/schema/org-members-metadata";
 import { orgModelPolicies } from "@vm0/db/schema/org-model-policy";
 
@@ -36,6 +46,12 @@ interface ProviderRouteInfo {
   readonly id: string;
   readonly userId: string;
   readonly type: ModelProviderType;
+}
+
+interface SurfaceRouteInfo {
+  readonly id: string;
+  readonly protocol: string;
+  readonly modelMappings: Record<string, string>;
 }
 
 type ServiceResult<T> =
@@ -62,6 +78,26 @@ function planRestricted<T>(): ServiceResult<T> {
 
 function isOAuthMemberProviderType(type: ModelProviderType): boolean {
   return type === "claude-code-oauth-token" || type === "codex-oauth-token";
+}
+
+function providerTypeForSurface(protocol: string): ModelProviderType | null {
+  const parsed = modelProviderSurfaceProtocolSchema.safeParse(protocol);
+  return parsed.success
+    ? getModelProviderTypeForSurfaceProtocol(parsed.data)
+    : null;
+}
+
+function surfaceSupportsModel(
+  surface: SurfaceRouteInfo,
+  model: SupportedRunModel,
+): boolean {
+  const providerType = providerTypeForSurface(surface.protocol);
+  return (
+    providerType !== null &&
+    getFrameworkForType(providerType) ===
+      getFrameworkForType(getVm0ConcreteProviderType(model)) &&
+    typeof surface.modelMappings[model] === "string"
+  );
 }
 
 function parseProviderType(value: string): ModelProviderType | null {
@@ -184,7 +220,8 @@ function shouldReplaceExistingDefaultForPlan(
     (!capabilities.supportByok &&
       (existingDefault.defaultProviderType !== "vm0" ||
         existingDefault.credentialScope !== "org" ||
-        existingDefault.modelProviderId !== null))
+        existingDefault.modelProviderId !== null ||
+        existingDefault.modelProviderSurfaceId !== null))
   );
 }
 
@@ -245,6 +282,7 @@ async function setDefaultModelPolicy(
             defaultProviderType: "vm0",
             credentialScope: "org",
             modelProviderId: null,
+            modelProviderSurfaceId: null,
           }
         : {}),
       updatedByUserId: userId,
@@ -350,11 +388,68 @@ async function listOrgProviderRoutes(
   });
 }
 
+async function listOrgSurfaceRoutes(
+  db: Db,
+  orgId: string,
+): Promise<SurfaceRouteInfo[]> {
+  return await db
+    .select({
+      id: modelProviderSurfaces.id,
+      protocol: modelProviderSurfaces.protocol,
+      modelMappings: modelProviderSurfaces.modelMappings,
+    })
+    .from(modelProviderSurfaces)
+    .innerJoin(
+      modelProviderConnections,
+      eq(modelProviderSurfaces.connectionId, modelProviderConnections.id),
+    )
+    .where(eq(modelProviderConnections.orgId, orgId));
+}
+
 async function validateOrgProviderRoute(
   db: Db,
   orgId: string,
   policy: UpdateOrgModelPolicy,
 ): Promise<string | null> {
+  const surfaceId = policy.modelProviderSurfaceId ?? null;
+  if (surfaceId) {
+    if (policy.credentialScope !== "org") {
+      return "Custom gateway routes require workspace credentials";
+    }
+    if (policy.modelProviderId) {
+      return "Custom gateway routes cannot store a legacy provider ID";
+    }
+    const [surface] = await db
+      .select({
+        id: modelProviderSurfaces.id,
+        protocol: modelProviderSurfaces.protocol,
+        modelMappings: modelProviderSurfaces.modelMappings,
+      })
+      .from(modelProviderSurfaces)
+      .innerJoin(
+        modelProviderConnections,
+        eq(modelProviderSurfaces.connectionId, modelProviderConnections.id),
+      )
+      .where(
+        and(
+          eq(modelProviderSurfaces.id, surfaceId),
+          eq(modelProviderConnections.orgId, orgId),
+        ),
+      )
+      .limit(1);
+    if (!surface) {
+      return "Selected custom gateway surface is not configured for this workspace";
+    }
+    if (
+      providerTypeForSurface(surface.protocol) !== policy.defaultProviderType
+    ) {
+      return "Selected custom gateway protocol does not match the route";
+    }
+    return surfaceSupportsModel(surface, policy.model)
+      ? null
+      : `Model "${policy.model}" is not mapped on the selected custom gateway surface`;
+  }
+
   if (!isModelSupportedByProvider(policy.model, policy.defaultProviderType)) {
     return `Model "${policy.model}" is not supported by provider "${policy.defaultProviderType}"`;
   }
@@ -471,7 +566,9 @@ function getRouteStatus(params: {
   readonly providerType: ModelProviderType;
   readonly credentialScope: ModelProviderCredentialScope;
   readonly modelProviderId: string | null;
+  readonly modelProviderSurfaceId: string | null;
   readonly providersById: Map<string, ProviderRouteInfo>;
+  readonly surfacesById: Map<string, SurfaceRouteInfo>;
 }): {
   readonly status: OrgModelPolicyRouteStatus;
   readonly reason: string | null;
@@ -481,8 +578,25 @@ function getRouteStatus(params: {
     providerType,
     credentialScope,
     modelProviderId,
+    modelProviderSurfaceId,
     providersById,
+    surfacesById,
   } = params;
+
+  if (modelProviderSurfaceId) {
+    const surface = surfacesById.get(modelProviderSurfaceId);
+    if (
+      !surface ||
+      providerTypeForSurface(surface.protocol) !== providerType ||
+      !surfaceSupportsModel(surface, model)
+    ) {
+      return {
+        status: "missing_provider",
+        reason: "The selected custom gateway route is missing or unmapped.",
+      };
+    }
+    return { status: "valid", reason: null };
+  }
 
   if (!isModelSupportedByProvider(model, providerType)) {
     return {
@@ -521,6 +635,7 @@ function getRouteStatus(params: {
 function serializePolicy(
   policy: OrgModelPolicyRow,
   providersById: Map<string, ProviderRouteInfo>,
+  surfacesById: Map<string, SurfaceRouteInfo>,
 ): OrgModelPolicy {
   const model = parseSupportedModel(policy.model);
   const providerType = parseProviderType(policy.defaultProviderType);
@@ -534,7 +649,9 @@ function serializePolicy(
     providerType,
     credentialScope,
     modelProviderId: policy.modelProviderId ?? null,
+    modelProviderSurfaceId: policy.modelProviderSurfaceId ?? null,
     providersById,
+    surfacesById,
   });
 
   return {
@@ -545,6 +662,7 @@ function serializePolicy(
     defaultProviderType: providerType,
     credentialScope,
     modelProviderId: policy.modelProviderId ?? null,
+    modelProviderSurfaceId: policy.modelProviderSurfaceId ?? null,
     routeStatus: route.status,
     routeStatusReason: route.reason,
     createdAt: policy.createdAt.toISOString(),
@@ -569,13 +687,19 @@ async function listOrgModelPolicies(
 ): Promise<OrgModelPoliciesResponse> {
   const rows = await ensureOrgModelPolicies(db, orgId, userId);
   const providers = await listOrgProviderRoutes(db, orgId);
+  const surfaces = await listOrgSurfaceRoutes(db, orgId);
   const providersById = new Map(
     providers.map((provider) => {
       return [provider.id, provider];
     }),
   );
+  const surfacesById = new Map(
+    surfaces.map((surface) => {
+      return [surface.id, surface];
+    }),
+  );
   const policies = rows.map((row) => {
-    return serializePolicy(row, providersById);
+    return serializePolicy(row, providersById, surfacesById);
   });
   const workspaceDefault = selectWorkspaceDefaultPolicy(policies);
 
@@ -643,6 +767,7 @@ export const updateOrgModelPolicies$ = command(
               defaultProviderType: policy.defaultProviderType,
               credentialScope: policy.credentialScope,
               modelProviderId: policy.modelProviderId,
+              modelProviderSurfaceId: policy.modelProviderSurfaceId ?? null,
               createdByUserId: params.userId,
               updatedByUserId: params.userId,
               createdAt: now,
@@ -701,6 +826,7 @@ export const updateOrgModelPolicies$ = command(
             defaultProviderType: policy.defaultProviderType,
             credentialScope: policy.credentialScope,
             modelProviderId: policy.modelProviderId,
+            modelProviderSurfaceId: policy.modelProviderSurfaceId ?? null,
             updatedAt: now,
             updatedByUserId: params.userId,
           })
