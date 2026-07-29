@@ -99,6 +99,7 @@ const enqueueGoalContinuation$ = command(
         chatThreadId: args.goal.threadId,
         orgId: args.goal.orgId,
         userId: args.goal.userId,
+        objectiveBrief: args.goal.objectiveBrief,
         params: {
           goalId: args.goal.goalId,
           callbackSecret: generateCallbackSecret(),
@@ -199,6 +200,7 @@ export const continueGoalIfIdle$ = command(
           orgId: goal.orgId,
           userId: goal.ownerUserId,
           threadId: goal.chatThreadId,
+          objectiveBrief: goal.objectiveBrief,
         },
         dispatchFailedCallbacks: args.dispatchFailedCallbacks,
       },

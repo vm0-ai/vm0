@@ -61,6 +61,7 @@ type InputGoalEvent = ChatEventIdentity & {
   readonly eventType: "input.goal";
   readonly content?: null;
   readonly encryptedParams: string;
+  readonly goalSnapshot: NonNullable<ChatEventInsert["goalSnapshot"]>;
 };
 
 type InputRejectedEvent = ChatEventIdentity &
