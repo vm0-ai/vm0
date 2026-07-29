@@ -188,6 +188,7 @@ impl CacheBudget {
 
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
+/// A non-blocking, best-effort snapshot of the workspace image cache.
 pub(crate) struct WorkspaceImageCacheInspection {
     pub(crate) cache_dir: String,
     pub(crate) lock_dir: String,
@@ -199,6 +200,12 @@ pub(crate) struct WorkspaceImageCacheInspection {
 
 #[derive(Debug, Clone, Default, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
+/// Aggregates measured from entries whose locks were available.
+///
+/// When `locked_entries` is nonzero, reusable, invalid, stale, and temporary
+/// entry counts and temporary-path and size totals exclude locked entry
+/// contents and are lower bounds. `total_entries` and `locked_entries` remain
+/// observed values.
 pub(crate) struct WorkspaceImageCacheInspectionSummary {
     pub(crate) total_entries: usize,
     pub(crate) reusable_entries: usize,
@@ -214,6 +221,11 @@ pub(crate) struct WorkspaceImageCacheInspectionSummary {
 
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
+/// A best-effort per-entry inspection record.
+///
+/// A locked record skips metadata, image-size, temporary-path, storage, and
+/// artifact inspection. Its absent and zero-valued fields mean unavailable,
+/// not measured zero.
 pub(crate) struct WorkspaceImageCacheInspectionEntry {
     pub(crate) cache_key: String,
     pub(crate) status: WorkspaceImageCacheInspectionStatus,
