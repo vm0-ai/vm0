@@ -30,7 +30,8 @@ export function BrowserSessionSidebar({
     sessionLoadable.state !== "loading" &&
     sessionLoadable.state !== "hasError" &&
     sessionLoadable.data?.status === "active" &&
-    sessionLoadable.data.liveUrl !== null;
+    sessionLoadable.data.liveUrl !== null &&
+    sessionLoadable.data.screen?.resizable === true;
 
   const handleFitWindow = (button: HTMLButtonElement) => {
     if (!canFitWindow || fittingWindow) {

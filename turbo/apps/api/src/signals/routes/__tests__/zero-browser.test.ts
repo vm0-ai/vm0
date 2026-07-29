@@ -28,6 +28,7 @@ import { createRunsApi } from "./helpers/api-bdd-runs";
 import { createWebhookCallbackApi } from "./helpers/api-bdd-webhooks";
 import {
   readBrowserProfileAsPreviousApi,
+  setBrowserInstanceAsPreviousApi,
   setComputerUseHostAsPreviousApi,
 } from "./helpers/runtime-state";
 import { createZeroRouteMocks } from "./helpers/zero-route-test";
@@ -610,6 +611,11 @@ describe("zero browser route", () => {
       timeoutMinutes: 240,
       idleExpiresAt: isoAt(10 * MINUTE_MS),
       viewerUrl: `https://app.vm0.ai/browsers/${created.body.browser.id}`,
+      screen: {
+        width: 1440,
+        height: 900,
+        resizable: true,
+      },
     });
     expect(created.body.cdpUrl).toMatch(
       /^https:\/\/[0-9a-f-]{36}\.cdp\.browser-use\.com\/$/u,
@@ -693,9 +699,13 @@ describe("zero browser route", () => {
       }),
       [200],
     );
-    expect(resized.body).toStrictEqual({
-      screenWidth: 1440,
-      screenHeight: 1920,
+    expect(resized.body.browser).toMatchObject({
+      id: created.body.browser.id,
+      screen: {
+        width: 1440,
+        height: 1920,
+        resizable: true,
+      },
     });
     expect(context.mocks.browserUseCdp.connect).toHaveBeenCalledTimes(1);
     expect(context.mocks.browserUseCdp.connect).toHaveBeenCalledWith(
@@ -718,6 +728,56 @@ describe("zero browser route", () => {
         params: { windowId: 7, width: 1440, height: 1920 },
       },
     ]);
+
+    const restoredForAnotherViewer = await accept(
+      client().get({
+        headers: { authorization: "Bearer clerk-session" },
+        params: { browserId: created.body.browser.id },
+        query: {},
+      }),
+      [200],
+    );
+    expect(restoredForAnotherViewer.body.browser.screen).toStrictEqual({
+      width: 1440,
+      height: 1920,
+      resizable: true,
+    });
+
+    await setBrowserInstanceAsPreviousApi(
+      context,
+      createdInOtherThread.body.browser.id,
+    );
+    const previousApiBrowser = await accept(
+      client().get({
+        headers: { authorization: "Bearer clerk-session" },
+        params: { browserId: createdInOtherThread.body.browser.id },
+        query: {},
+      }),
+      [200],
+    );
+    expect(previousApiBrowser.body.browser.screen).toStrictEqual({
+      width: 1440,
+      height: 900,
+      resizable: false,
+    });
+    const unsupportedResize = await createApp({
+      signal: context.signal,
+    }).request(
+      `/api/zero/browsers/${createdInOtherThread.body.browser.id}/resize`,
+      {
+        method: "POST",
+        headers: {
+          authorization: "Bearer clerk-session",
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({ aspectRatio: 0.75 }),
+      },
+    );
+    expect(unsupportedResize.status).toBe(409);
+    await expect(unsupportedResize.json()).resolves.toMatchObject({
+      error: { code: "BROWSER_RESIZE_UNSUPPORTED" },
+    });
+    expect(context.mocks.browserUseCdp.connect).toHaveBeenCalledTimes(1);
 
     const copiedToAnotherThread = await createApp({
       signal: context.signal,

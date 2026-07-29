@@ -36,6 +36,16 @@ export const zeroBrowserSuspensionReasonSchema = z.enum([
   "reconcile",
 ]);
 
+const zeroBrowserScreenSchema = z.object({
+  width: z.literal(ZERO_BROWSER_SCREEN_WIDTH),
+  height: z
+    .number()
+    .int()
+    .min(ZERO_BROWSER_MIN_SCREEN_HEIGHT)
+    .max(ZERO_BROWSER_MAX_SCREEN_HEIGHT),
+  resizable: z.boolean(),
+});
+
 export const zeroBrowserSessionSchema = z.object({
   id: z.uuid(),
   name: z.string().min(1).max(64),
@@ -47,6 +57,9 @@ export const zeroBrowserSessionSchema = z.object({
   maxCredits: z.number().int().positive(),
   grossCredits: z.number().int().nonnegative(),
   creditsCharged: z.number().int().nonnegative(),
+  // Optional so a newly deployed frontend remains compatible with the
+  // previous API during rollout. New APIs include it for live instances.
+  screen: zeroBrowserScreenSchema.optional(),
   // When Zero reclaims the live provider instance unless somebody leases it
   // again. Null once no provider instance is running.
   idleExpiresAt: z.iso.datetime().nullable(),
@@ -99,15 +112,6 @@ const browserResponseSchema = z.object({
 
 const browserResizeRequestSchema = z.object({
   aspectRatio: z.number().positive().finite(),
-});
-
-const browserResizeResponseSchema = z.object({
-  screenWidth: z.literal(ZERO_BROWSER_SCREEN_WIDTH),
-  screenHeight: z
-    .number()
-    .int()
-    .min(ZERO_BROWSER_MIN_SCREEN_HEIGHT)
-    .max(ZERO_BROWSER_MAX_SCREEN_HEIGHT),
 });
 
 const browserAuthorizationRequestTokenPathParamsSchema = z.object({
@@ -224,7 +228,7 @@ export const zeroBrowserContract = c.router({
     pathParams: browserIdParamsSchema,
     body: browserResizeRequestSchema,
     responses: {
-      200: browserResizeResponseSchema,
+      200: browserResponseSchema,
       ...commonErrorResponses,
     },
     summary: "Resize a live browser to match a viewer aspect ratio",

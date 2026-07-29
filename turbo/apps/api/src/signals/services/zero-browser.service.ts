@@ -3,6 +3,7 @@ import { randomUUID } from "node:crypto";
 import {
   ZERO_BROWSER_DEFAULT_MAX_CREDITS,
   ZERO_BROWSER_IDLE_LEASE_MINUTES,
+  ZERO_BROWSER_INITIAL_SCREEN_HEIGHT,
   ZERO_BROWSER_MAX_SCREEN_HEIGHT,
   ZERO_BROWSER_MIN_SCREEN_HEIGHT,
   ZERO_BROWSER_PROVIDER_TIMEOUT_MINUTES,
@@ -171,11 +172,6 @@ interface BrowserReleaseResult {
   readonly released: number;
 }
 
-interface BrowserResizeResult {
-  readonly screenWidth: typeof ZERO_BROWSER_SCREEN_WIDTH;
-  readonly screenHeight: number;
-}
-
 interface BrowserReconcileResult {
   readonly checked: number;
   readonly stopped: number;
@@ -294,6 +290,7 @@ function publicBrowser(
   row: BrowserSessionRow,
   liveUrl: string | null,
   idleExpiresAt: Date | null = null,
+  instance: BrowserInstanceRow | null = null,
 ): ZeroBrowserSession {
   return {
     id: row.id,
@@ -306,6 +303,15 @@ function publicBrowser(
     maxCredits: row.maxCredits,
     grossCredits: row.grossCredits,
     creditsCharged: row.creditsCharged,
+    ...(instance
+      ? {
+          screen: {
+            width: instance.screenWidth,
+            height: instance.screenHeight,
+            resizable: instance.resizable,
+          },
+        }
+      : {}),
     idleExpiresAt: idleExpiresAt?.toISOString() ?? null,
     suspendedAt: row.suspendedAt?.toISOString() ?? null,
     suspensionReason: row.suspensionReason,
@@ -1291,6 +1297,9 @@ async function claimStartedProviderInstance(
         chatThreadId: current.chatThreadId,
         runId: args.context.runId,
         status: cleanupAfterStart ? "stopping" : "active",
+        resizable: true,
+        screenWidth: ZERO_BROWSER_SCREEN_WIDTH,
+        screenHeight: ZERO_BROWSER_INITIAL_SCREEN_HEIGHT,
         pricingUnitPrice: args.pricing.unitPrice,
         pricingUnitSize: args.pricing.unitSize,
         timeoutAt: new Date(args.provider.timeoutAt),
@@ -1463,6 +1472,7 @@ const startProviderInstance$ = command(
           browser,
           started.liveUrl,
           claimed.instance.idleExpiresAt,
+          claimed.instance,
         ),
         cdpUrl: started.cdpUrl,
       },
@@ -1735,6 +1745,7 @@ const inspectActiveConnection$ = command(
             owner ?? browser,
             liveUrl,
             leased?.idleExpiresAt ?? instance.idleExpiresAt,
+            leased ?? instance,
           ),
           cdpUrl,
         },
@@ -2156,7 +2167,7 @@ const leaseInstanceForBrowser$ = command(
     }
     return {
       kind: "ok",
-      value: publicBrowser(browser, null, leased.idleExpiresAt),
+      value: publicBrowser(browser, null, leased.idleExpiresAt, leased),
     };
   },
 );
@@ -2208,7 +2219,7 @@ export const resizeZeroBrowserById$ = command(
     { set },
     access: BrowserSessionAccess & { readonly aspectRatio: number },
     signal: AbortSignal,
-  ): Promise<BrowserServiceResult<BrowserResizeResult>> => {
+  ): Promise<BrowserServiceResult<ZeroBrowserSession>> => {
     const db = set(writeDb$);
     const browser = await loadOwnedBrowser(db, access);
     signal.throwIfAborted();
@@ -2232,6 +2243,12 @@ export const resizeZeroBrowserById$ = command(
       return conflict(
         "This managed browser is no longer live; resume it before resizing it",
         "BROWSER_NOT_LIVE",
+      );
+    }
+    if (!instance.resizable) {
+      return conflict(
+        "This managed browser was started before window resizing was enabled; resume it before resizing it",
+        "BROWSER_RESIZE_UNSUPPORTED",
       );
     }
     const touched = await touchInstanceLease(
@@ -2268,15 +2285,44 @@ export const resizeZeroBrowserById$ = command(
       ),
     );
     signal.throwIfAborted();
-    return resized.kind === "error"
-      ? resized
-      : {
-          kind: "ok",
-          value: {
-            screenWidth: ZERO_BROWSER_SCREEN_WIDTH,
-            screenHeight,
-          },
-        };
+    if (resized.kind === "error") {
+      return resized;
+    }
+    const [updatedInstance] = await db
+      .update(browserSessionInstances)
+      .set({
+        screenWidth: ZERO_BROWSER_SCREEN_WIDTH,
+        screenHeight,
+        updatedAt: nowDate(),
+      })
+      .where(
+        and(
+          eq(
+            browserSessionInstances.providerSessionId,
+            instance.providerSessionId,
+          ),
+          eq(browserSessionInstances.status, "active"),
+        ),
+      )
+      .returning();
+    signal.throwIfAborted();
+    if (!updatedInstance) {
+      return conflict(
+        "This managed browser is no longer live; resume it before resizing it",
+        "BROWSER_NOT_LIVE",
+      );
+    }
+    await publishBrowserSessionChangedSafely(browser.userId, browser.id);
+    signal.throwIfAborted();
+    return {
+      kind: "ok",
+      value: publicBrowser(
+        browser,
+        provider.value.liveUrl,
+        updatedInstance.idleExpiresAt,
+        updatedInstance,
+      ),
+    };
   },
 );
 
@@ -2299,10 +2345,12 @@ export const getZeroBrowser$ = command(
     }
     let liveUrl: string | null = null;
     let idleExpiresAt: Date | null = null;
+    let activeInstance: BrowserInstanceRow | null = null;
     if (row.status === "active") {
       const instance = await loadActiveInstance(db, row.id);
       signal.throwIfAborted();
       if (instance) {
+        activeInstance = instance;
         idleExpiresAt = instance.idleExpiresAt;
         const provider = await providerCall(
           getBrowserUseSession(instance.providerSessionId, signal),
@@ -2315,7 +2363,10 @@ export const getZeroBrowser$ = command(
           provider.value.status === "active" ? provider.value.liveUrl : null;
       }
     }
-    return { kind: "ok", value: publicBrowser(row, liveUrl, idleExpiresAt) };
+    return {
+      kind: "ok",
+      value: publicBrowser(row, liveUrl, idleExpiresAt, activeInstance),
+    };
   },
 );
 

@@ -19,6 +19,7 @@ import { agentRuns } from "@vm0/db/schema/agent-run";
 import { agentSessions } from "@vm0/db/schema/agent-session";
 import {
   browserProfiles,
+  browserSessionInstances,
   browserSessions,
 } from "@vm0/db/schema/browser-session";
 import { chatThreads } from "@vm0/db/schema/chat-thread";
@@ -767,6 +768,37 @@ type PreviousApiBrowserProfileAction = Extract<
   { action: "read-browser-profile-as-previous-api" }
 >;
 
+type PreviousApiBrowserInstanceAction = Extract<
+  TestRuntimeStateActionBody,
+  { action: "set-browser-instance-as-previous-api" }
+>;
+
+async function setBrowserInstanceAsPreviousApi(
+  db: Db,
+  body: PreviousApiBrowserInstanceAction,
+  signal: AbortSignal,
+) {
+  // The previous API created provider sessions with resizing disabled. Its
+  // insert receives the migration's false/default 1440x900 resize state.
+  const [updated] = await db
+    .update(browserSessionInstances)
+    .set({ resizable: false })
+    .where(
+      and(
+        eq(browserSessionInstances.browserSessionId, body.browser_id),
+        eq(browserSessionInstances.status, "active"),
+      ),
+    )
+    .returning({
+      providerSessionId: browserSessionInstances.providerSessionId,
+    });
+  signal.throwIfAborted();
+  if (!updated) {
+    throw new Error("Expected an active previous API browser instance");
+  }
+  return { status: 200 as const, body: { ok: true as const } };
+}
+
 async function readBrowserProfileAsPreviousApi(
   db: Db,
   body: PreviousApiBrowserProfileAction,
@@ -824,6 +856,7 @@ type CompatibilityFixtureAction =
   | PreviousApiComputerAccessAction
   | PreviousApiRunnerJobContextProfileAction
   | PreviousApiBrowserProfileAction
+  | PreviousApiBrowserInstanceAction
   | ConnectorPermissionBaselineMutationAction;
 
 function isCompatibilityFixtureAction(
@@ -834,6 +867,7 @@ function isCompatibilityFixtureAction(
     "set-computer-use-host-as-previous-api",
     "set-runner-job-context-profile-as-previous-api",
     "read-browser-profile-as-previous-api",
+    "set-browser-instance-as-previous-api",
     "mutate-runner-job-connector-permission-baseline",
   ].includes(body.action);
 }
@@ -855,6 +889,9 @@ async function compatibilityFixtureActionResponse(
     }
     case "read-browser-profile-as-previous-api": {
       return await readBrowserProfileAsPreviousApi(db, body, signal);
+    }
+    case "set-browser-instance-as-previous-api": {
+      return await setBrowserInstanceAsPreviousApi(db, body, signal);
     }
     case "mutate-runner-job-connector-permission-baseline": {
       await mutateRunnerJobConnectorPermissionBaseline(db, body, signal);

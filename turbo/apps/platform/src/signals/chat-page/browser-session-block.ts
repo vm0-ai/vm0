@@ -1,7 +1,5 @@
 import {
-  ZERO_BROWSER_INITIAL_SCREEN_HEIGHT,
   ZERO_BROWSER_IDLE_LEASE_MINUTES,
-  ZERO_BROWSER_SCREEN_WIDTH,
   zeroBrowserContract,
   type ZeroBrowserSession,
 } from "@vm0/api-contracts/contracts/zero-browser";
@@ -24,8 +22,6 @@ import { parseTrustedPlatformActionUrl } from "./platform-action-url.ts";
 // One heartbeat per minute keeps a viewed browser comfortably inside its
 // ten-minute idle lease without making the lease itself stackable.
 const LEASE_HEARTBEAT_INTERVAL_MS = 60_000;
-const INITIAL_BROWSER_ASPECT_RATIO =
-  ZERO_BROWSER_SCREEN_WIDTH / ZERO_BROWSER_INITIAL_SCREEN_HEIGHT;
 
 export interface BrowserSessionDescriptor {
   readonly browserId: string;
@@ -40,7 +36,6 @@ export interface BrowserSessionSignals extends BrowserSessionDescriptor {
   readonly panelSession$: Computed<Promise<ZeroBrowserSession | null>>;
   readonly resuming$: Computed<boolean>;
   readonly fittingWindow$: Computed<boolean>;
-  readonly browserAspectRatio$: Computed<number>;
   readonly reload$: Command<void, []>;
   readonly reloadPanel$: Command<void, []>;
   readonly resume$: Command<Promise<void>, [AbortSignal]>;
@@ -108,59 +103,6 @@ async function fetchBrowserSession(
   return response.status === 200 ? response.body.browser : null;
 }
 
-function createBrowserFitSignals(browserId: string) {
-  const fittingWindowState$ = state(false);
-  const browserAspectRatioState$ = state(INITIAL_BROWSER_ASPECT_RATIO);
-  const resetBrowserAspectRatio$ = command(({ set }) => {
-    set(browserAspectRatioState$, INITIAL_BROWSER_ASPECT_RATIO);
-  });
-  const fitWindow$ = command(
-    async (
-      { get, set },
-      aspectRatio: number,
-      signal: AbortSignal,
-    ): Promise<void> => {
-      if (get(fittingWindowState$)) {
-        return;
-      }
-      set(fittingWindowState$, true);
-      const fitted = await settle(
-        withCleanup(
-          accept(
-            get(zeroClient$)(zeroBrowserContract).resizeById({
-              params: { browserId },
-              body: { aspectRatio },
-              fetchOptions: { signal },
-            }),
-            [200],
-            signal,
-          ),
-          () => {
-            set(fittingWindowState$, false);
-          },
-        ),
-        signal,
-      );
-      if (fitted.ok) {
-        set(
-          browserAspectRatioState$,
-          fitted.value.body.screenWidth / fitted.value.body.screenHeight,
-        );
-      }
-    },
-  );
-  return {
-    fittingWindow$: computed((get) => {
-      return get(fittingWindowState$);
-    }),
-    browserAspectRatio$: computed((get) => {
-      return get(browserAspectRatioState$);
-    }),
-    resetBrowserAspectRatio$,
-    fitWindow$,
-  };
-}
-
 export function createBrowserSessionSignals(
   threadId: string | null,
   descriptor: BrowserSessionDescriptor,
@@ -185,7 +127,39 @@ export function createBrowserSessionSignals(
   });
 
   const resumingState$ = state(false);
-  const fit = createBrowserFitSignals(descriptor.browserId);
+  const fittingWindowState$ = state(false);
+  const fitWindow$ = command(
+    async (
+      { get, set },
+      aspectRatio: number,
+      signal: AbortSignal,
+    ): Promise<void> => {
+      if (get(fittingWindowState$)) {
+        return;
+      }
+      set(fittingWindowState$, true);
+      const fitted = await settle(
+        withCleanup(
+          accept(
+            get(zeroClient$)(zeroBrowserContract).resizeById({
+              params: { browserId: descriptor.browserId },
+              body: { aspectRatio },
+              fetchOptions: { signal },
+            }),
+            [200],
+            signal,
+          ),
+          () => {
+            set(fittingWindowState$, false);
+          },
+        ),
+        signal,
+      );
+      if (fitted.ok) {
+        set(sessionOverride$, fitted.value.body.browser);
+      }
+    },
+  );
   // accept() reports a failed resume through the app's toast surface, so the
   // panel only has to stop showing a pending state and reload what is real.
   const resume$ = command(async ({ get, set }, signal: AbortSignal) => {
@@ -205,7 +179,6 @@ export function createBrowserSessionSignals(
     set(resumingState$, false);
     if (resumed.ok) {
       set(sessionOverride$, resumed.value.body.browser);
-      set(fit.resetBrowserAspectRatio$);
       return;
     }
     set(reload$);
@@ -228,6 +201,7 @@ export function createBrowserSessionSignals(
               [200, 404, 409],
             );
             if (response.status === 200) {
+              set(sessionOverride$, response.body.browser);
               return false;
             }
             // The browser was reclaimed while the panel was hidden or idle. Stop
@@ -250,12 +224,13 @@ export function createBrowserSessionSignals(
     resuming$: computed((get) => {
       return get(resumingState$);
     }),
-    fittingWindow$: fit.fittingWindow$,
-    browserAspectRatio$: fit.browserAspectRatio$,
+    fittingWindow$: computed((get) => {
+      return get(fittingWindowState$);
+    }),
     reload$,
     reloadPanel$: reload$,
     resume$,
-    fitWindow$: fit.fitWindow$,
+    fitWindow$,
     keepAliveRef$,
   };
 }

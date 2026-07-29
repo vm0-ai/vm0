@@ -174,7 +174,7 @@ const resizeBrowserByIdInner$ = command(
     );
     return result.kind === "error"
       ? errorResponse(result)
-      : { status: 200 as const, body: result.value };
+      : { status: 200 as const, body: { browser: result.value } };
   },
 );
 

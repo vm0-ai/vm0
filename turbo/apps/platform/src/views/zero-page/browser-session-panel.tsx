@@ -4,6 +4,10 @@ import {
   IconLoader2,
   IconPlayerPlay,
 } from "@tabler/icons-react";
+import {
+  ZERO_BROWSER_INITIAL_SCREEN_HEIGHT,
+  ZERO_BROWSER_SCREEN_WIDTH,
+} from "@vm0/api-contracts/contracts/zero-browser";
 import { cn } from "@vm0/ui";
 import { useGet, useLastLoadable, useSet } from "ccstate-react";
 import { useTranslation } from "react-i18next";
@@ -105,7 +109,6 @@ export function BrowserSessionPanel({
   const keepAliveRef = useSet(signals.keepAliveRef$);
   const resume = useSet(signals.resume$);
   const resuming = useGet(signals.resuming$);
-  const browserAspectRatio = useGet(signals.browserAspectRatio$);
   const pageSignal = useGet(pageSignal$);
 
   if (sessionLoadable.state === "loading") {
@@ -142,6 +145,9 @@ export function BrowserSessionPanel({
   }
 
   const session = sessionLoadable.data;
+  const browserAspectRatio = session.screen
+    ? session.screen.width / session.screen.height
+    : ZERO_BROWSER_SCREEN_WIDTH / ZERO_BROWSER_INITIAL_SCREEN_HEIGHT;
   const liveUrl = session.status === "active" ? session.liveUrl : null;
   if (liveUrl === null) {
     return (

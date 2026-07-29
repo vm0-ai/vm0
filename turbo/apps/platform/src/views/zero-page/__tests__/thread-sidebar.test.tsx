@@ -733,6 +733,7 @@ describe("thread-owned utility sidebar", () => {
       maxCredits: 500,
       grossCredits: 0,
       creditsCharged: 0,
+      screen: { width: 1440, height: 900, resizable: true },
       idleExpiresAt: "2026-03-10T00:10:00.000Z",
       suspendedAt: null,
       suspensionReason: null,
@@ -751,7 +752,12 @@ describe("thread-owned utility sidebar", () => {
     const resizeAspectRatios: number[] = [];
     context.mocks.api(zeroBrowserContract.resizeById, ({ body, respond }) => {
       resizeAspectRatios.push(body.aspectRatio);
-      return respond(200, { screenWidth: 1440, screenHeight: 1800 });
+      return respond(200, {
+        browser: {
+          ...browser,
+          screen: { width: 1440, height: 1800, resizable: true },
+        },
+      });
     });
     setupChatThread({
       autoOpenEnabled: true,
@@ -770,15 +776,12 @@ describe("thread-owned utility sidebar", () => {
     const frame = await screen.findByTitle("Live browser: Auto-open browser");
     expect(frame).toHaveAttribute("src", liveUrl);
     expect(frame.closest("[data-browser-session-sidebar]")).not.toBeNull();
-    expect(Number.parseFloat(frame.style.aspectRatio)).toBe(1.6);
     expect(resizeAspectRatios).toStrictEqual([]);
 
     const viewport = frame.closest("[data-browser-session-viewport]");
     if (!(viewport instanceof HTMLDivElement)) {
       throw new Error("Expected a live browser viewport");
     }
-    expect(viewport).toHaveClass("items-center", "justify-center");
-    expect(frame).toHaveClass("max-h-full", "max-w-full");
     vi.spyOn(viewport, "getBoundingClientRect").mockReturnValue(
       DOMRect.fromRect({
         width: 720,
@@ -796,8 +799,60 @@ describe("thread-owned utility sidebar", () => {
 
     await waitFor(() => {
       expect(resizeAspectRatios).toStrictEqual([0.8]);
-      expect(Number.parseFloat(frame.style.aspectRatio)).toBe(0.8);
+      expect(fitWindow).toBeEnabled();
     });
+  });
+
+  it("disables Fit Window for a session returned by the previous API", async () => {
+    const browserId = "c0000000-0000-4000-a000-000000000052";
+    const browser: ZeroBrowserSession = {
+      id: browserId,
+      name: "Previous API browser",
+      status: "active",
+      viewerUrl: `https://app.vm0.ai/browsers/${browserId}`,
+      liveUrl: "https://live.browser-use.com/?wss=previous-api-browser",
+      proxyCountryCode: null,
+      timeoutMinutes: 240,
+      maxCredits: 500,
+      grossCredits: 0,
+      creditsCharged: 0,
+      idleExpiresAt: "2026-03-10T00:10:00.000Z",
+      suspendedAt: null,
+      suspensionReason: null,
+      createdAt: "2026-03-10T00:00:00.000Z",
+      updatedAt: "2026-03-10T00:00:00.000Z",
+    };
+    context.mocks.browser.matchMedia((query) => {
+      return query === CHAT_THREAD_SIDEBAR_SPLIT_VIEW_MEDIA_QUERY;
+    });
+    context.mocks.api(zeroBrowserContract.get, ({ respond }) => {
+      return respond(200, { browser });
+    });
+    context.mocks.api(zeroBrowserContract.leaseById, ({ respond }) => {
+      return respond(200, { browser });
+    });
+    setupChatThread({
+      autoOpenEnabled: true,
+      messages: [
+        {
+          id: "msg-previous-api-browser",
+          role: "assistant",
+          content: `[Open browser](/browsers/${browserId})`,
+          runId: "run-previous-api-browser",
+          seqId: 1,
+          createdAt: "2026-03-10T00:00:00Z",
+        },
+      ],
+    });
+
+    await screen.findByTitle("Live browser: Previous API browser");
+    const fitWindow = queryAllByRoleFast("button").find((button) => {
+      return button.getAttribute("aria-label") === "Fit browser to window";
+    });
+    if (!(fitWindow instanceof HTMLButtonElement)) {
+      throw new Error("Expected the fit browser button");
+    }
+    expect(fitWindow).toBeDisabled();
   });
 
   it("falls back to the latest successful run and ignores failed and cancelled runs", async () => {

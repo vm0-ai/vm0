@@ -117,6 +117,10 @@ export const testRuntimeStateActionBodySchema = z.discriminatedUnion("action", [
     user_id: z.string(),
     org_id: z.string(),
   }),
+  z.object({
+    action: z.literal("set-browser-instance-as-previous-api"),
+    browser_id: z.uuid(),
+  }),
 ]);
 
 export const testRuntimeStateActionResponseSchema = z.object({

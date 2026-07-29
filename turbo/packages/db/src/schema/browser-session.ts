@@ -1,6 +1,7 @@
 import { sql } from "drizzle-orm";
 import {
   bigint,
+  boolean,
   index,
   integer,
   pgTable,
@@ -17,6 +18,11 @@ import type {
 
 import { agentRuns } from "./agent-run";
 import { usageEvent } from "./usage-event";
+
+// These defaults match the managed-browser API contract. They stay literal
+// here because drizzle-kit evaluates DB schemas through its CJS loader.
+const BROWSER_SCREEN_WIDTH = 1440;
+const BROWSER_INITIAL_SCREEN_HEIGHT = 900;
 
 export const browserProfiles = pgTable(
   "browser_profiles",
@@ -188,6 +194,16 @@ export const browserSessionInstances = pgTable(
     billingRunId: uuid("billing_run_id"),
     status: varchar("status", { length: 20 })
       .$type<"active" | "stopping" | "stopped">()
+      .notNull(),
+    // The migration defaults to false so instances created by the previous
+    // API remain safely non-resizable while that API drains.
+    resizable: boolean("resizable").default(false).notNull(),
+    screenWidth: integer("screen_width")
+      .$type<typeof BROWSER_SCREEN_WIDTH>()
+      .default(BROWSER_SCREEN_WIDTH)
+      .notNull(),
+    screenHeight: integer("screen_height")
+      .default(BROWSER_INITIAL_SCREEN_HEIGHT)
       .notNull(),
     browserCostMicrousd: bigint("browser_cost_microusd", { mode: "number" })
       .default(0)
