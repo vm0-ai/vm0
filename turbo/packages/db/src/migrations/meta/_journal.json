@@ -5062,6 +5062,13 @@
       "when": 1785305123889,
       "tag": "0722_drop_chat_messages_role",
       "breakpoints": true
+    },
+    {
+      "idx": 723,
+      "version": "7",
+      "when": 1785310179237,
+      "tag": "0723_rename_chat_messages_to_chat_events",
+      "breakpoints": true
     }
   ]
 }
