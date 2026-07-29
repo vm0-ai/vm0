@@ -423,12 +423,15 @@ def _classify_request(
     is_asterisk_form = flow.request.path == "*"
     compiled_firewalls = registry_state.compiled_firewalls.get(client_ip)
     browser_request = bool(flow.metadata.get(metadata_keys.BROWSER_USER_AGENT))
-    # Browser provenance is spoofable and the platform origin can also host an
-    # explicitly configured endpoint. MCP policy remains authoritative for both.
-    if (platform_api_request or browser_request) and not matching.matches_compiled_mcp_api(
+    mcp_api_request = (
+        platform_api_request or browser_request
+    ) and matching.matches_compiled_mcp_api(
         original_url,
         compiled_firewalls,
-    ):
+    )
+    # Browser provenance is spoofable and the platform origin can also host an
+    # explicitly configured endpoint. MCP policy remains authoritative for both.
+    if (platform_api_request or browser_request) and not mcp_api_request:
         if platform_api_request:
             return ApiAllow(vm_info=vm_info)
         return BrowserAllow(vm_info=vm_info)
@@ -443,12 +446,19 @@ def _classify_request(
             connector_intent.from_flow(flow),
             is_asterisk_form=is_asterisk_form,
         )
-        if isinstance(result, matching.FirewallAmbiguous):
-            return FirewallAmbiguous(
-                vm_info=vm_info,
-                firewall_ambiguous=result,
-            )
-        if isinstance(result, matching.FirewallBlock):
+        if isinstance(result, matching.FirewallAmbiguous | matching.FirewallBlock):
+            # MCP payload privacy belongs to the destination match, even when
+            # owner selection or another firewall decision rejects the route.
+            if mcp_api_request or matching.matches_compiled_mcp_api(
+                original_url,
+                compiled_firewalls,
+            ):
+                flow.metadata[metadata_keys.CAPTURE_BODY] = False
+            if isinstance(result, matching.FirewallAmbiguous):
+                return FirewallAmbiguous(
+                    vm_info=vm_info,
+                    firewall_ambiguous=result,
+                )
             return FirewallBlock(
                 vm_info=vm_info,
                 firewall_block=result,

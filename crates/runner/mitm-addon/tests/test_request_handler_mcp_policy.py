@@ -24,24 +24,36 @@ def _write_mcp_registry(
     tmp_path,
     *,
     tool_policy: dict[str, object] | None = None,
+    duplicate_owner: bool = False,
 ):
-    return _write_registry(
+    api_entry = {
+        "base": f"https://{_MCP_HOST}{_MCP_PATH}",
+        "hostPolicy": {"kind": "publicDestination"},
+        "auth": {},
+        "mcp": {"toolPolicy": tool_policy or {"kind": "exact", "toolNames": ["search"]}},
+        "suppressBodyCapture": True,
+    }
+    vm_info = _single_firewall_vm(
         tmp_path,
-        vm_info=_single_firewall_vm(
-            tmp_path,
-            firewall_name="remote-mcp",
-            api_entry={
-                "base": f"https://{_MCP_HOST}{_MCP_PATH}",
-                "hostPolicy": {"kind": "publicDestination"},
-                "auth": {},
-                "mcp": {"toolPolicy": tool_policy or {"kind": "exact", "toolNames": ["search"]}},
-                "suppressBodyCapture": True,
-            },
-            network_policy=None,
-            include_encrypted_secrets=False,
-            vm_fields={"captureNetworkBodies": True},
-        ),
+        firewall_name="remote-mcp",
+        api_entry=api_entry,
+        network_policy=None,
+        include_encrypted_secrets=False,
+        vm_fields={"captureNetworkBodies": True},
     )
+    if duplicate_owner:
+        firewalls = vm_info["firewalls"]
+        assert isinstance(firewalls, list)
+        firewalls.append(
+            {
+                "kind": "inline",
+                "firewall": {
+                    "name": "remote-mcp-copy",
+                    "apis": [api_entry],
+                },
+            }
+        )
+    return _write_registry(tmp_path, vm_info=vm_info)
 
 
 def _modern_tool_call(tool_name: str = "search") -> bytes:
@@ -235,6 +247,28 @@ async def test_mcp_policy_cannot_be_bypassed_on_the_platform_api_origin(
     assert json.loads(flow.response.content)["reason"] == "tool_not_allowed"
     assert flow.metadata[metadata_keys.CAPTURE_BODY] is False
     assert flow.metadata[metadata_keys.FIREWALL_ACTION] == "BLOCK"
+
+
+async def test_mcp_ambiguous_route_never_captures_request_body(
+    tmp_path,
+    real_flow,
+    headers,
+    mitm_ctx,
+):
+    registry_path = _write_mcp_registry(tmp_path, duplicate_owner=True)
+    flow = _mcp_flow(real_flow, headers)
+
+    with mitm_ctx(registry_path=str(registry_path), api_url="https://api.vm0.ai"):
+        mitm_addon.requestheaders(flow)
+        await mitm_addon.request(flow)
+        mitm_addon.response(flow)
+
+    assert flow.response is not None
+    assert flow.response.status_code == 409
+    assert flow.metadata[metadata_keys.CAPTURE_BODY] is False
+    [network_entry] = read_jsonl_entries_after_flush(tmp_path / "net.jsonl")
+    assert "request_body" not in network_entry
+    assert "must-not-be-logged" not in json.dumps(network_entry)
 
 
 async def test_mcp_rejection_logs_never_capture_request_or_response_bodies(
