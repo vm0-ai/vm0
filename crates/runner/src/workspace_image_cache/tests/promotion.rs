@@ -4,10 +4,11 @@ use tokio::fs;
 
 use super::super::fs::local_timestamp;
 use super::super::{
-    SessionWorkspaceCache, WorkspaceCacheCheckoutResult, WorkspaceCacheTerminalStatus,
-    WorkspaceImageLeaseIdentity, WorkspaceImagePrepareRequest,
-    WorkspaceImagePromotionIdentityMismatch, WorkspaceImagePromotionIdentityRequest,
-    WorkspaceImagePromotionOutcome, WorkspaceImagePromotionRequest,
+    CacheBudget, FsStats, SessionWorkspaceCache, TEST_FS_AVAILABLE_BYTES, TEST_FS_TOTAL_BYTES,
+    WorkspaceCacheCheckoutResult, WorkspaceCacheTerminalStatus, WorkspaceImageLeaseIdentity,
+    WorkspaceImagePrepareRequest, WorkspaceImagePromotionIdentityMismatch,
+    WorkspaceImagePromotionIdentityRequest, WorkspaceImagePromotionOutcome,
+    WorkspaceImagePromotionRequest,
 };
 use super::support::{
     TEST_PROFILE_NAME, local_cache, promote_current_cache_entry, write_current_cache_entry,
@@ -16,6 +17,37 @@ use crate::error::RunnerError;
 use crate::ids::RunId;
 use crate::paths::{RunnerPaths, session_workspace_cache_key};
 use crate::storage_fingerprints::StorageFingerprints;
+
+async fn cross_filesystem_cache(
+    fs_stats: FsStats,
+) -> (
+    tempfile::TempDir,
+    tempfile::TempDir,
+    RunnerPaths,
+    SessionWorkspaceCache,
+) {
+    let runner_dir = tempfile::tempdir_in("/tmp").unwrap();
+    let cache_dir = tempfile::tempdir_in("/dev/shm").unwrap();
+    let paths = RunnerPaths::new(runner_dir.path().join("runner"));
+    fs::create_dir_all(paths.base_dir()).await.unwrap();
+    let cache_root = cache_dir.path().join("workspace-image-cache");
+    fs::create_dir_all(&cache_root).await.unwrap();
+    let runner_device = fs::metadata(paths.base_dir()).await.unwrap().dev();
+    let cache_device = fs::metadata(&cache_root).await.unwrap().dev();
+    assert_ne!(
+        runner_device, cache_device,
+        "cross-filesystem promotion tests require /tmp and /dev/shm on distinct devices"
+    );
+    let lock_dir = runner_dir.path().join("locks");
+    let cache = SessionWorkspaceCache::with_cache_dirs_and_fs_stats(
+        paths.clone(),
+        cache_root,
+        lock_dir,
+        "",
+        fs_stats,
+    );
+    (runner_dir, cache_dir, paths, cache)
+}
 
 #[tokio::test]
 async fn promotion_does_not_overwrite_newer_cache_entry() {
@@ -447,7 +479,7 @@ async fn no_lock_promotion_context_abandonment_preserves_existing_entry() {
 }
 
 #[tokio::test]
-async fn consumed_cache_hit_promotion_copies_active_image_back_to_cache() {
+async fn consumed_cache_hit_promotion_moves_active_image_back_to_cache() {
     let (_dir, paths, cache) = local_cache().await;
     let run_id = RunId::new_v4();
     let sandbox_id = sandbox::SandboxId::new_v4();
@@ -484,6 +516,8 @@ async fn consumed_cache_hit_promotion_copies_active_image_back_to_cache() {
     fs::rename(&current, &active_image).await.unwrap();
     let updated = vec![b'x'; image_size as usize];
     fs::write(&active_image, &updated).await.unwrap();
+    let active_metadata = fs::metadata(&active_image).await.unwrap();
+    let active_identity = (active_metadata.dev(), active_metadata.ino());
 
     assert!(
         lease
@@ -498,14 +532,16 @@ async fn consumed_cache_hit_promotion_copies_active_image_back_to_cache() {
             .unwrap()
     );
 
-    assert_eq!(fs::read(&active_image).await.unwrap(), updated);
+    assert!(
+        !fs::try_exists(&active_image).await.unwrap(),
+        "same-filesystem promotion must transfer ownership out of the sandbox workspace"
+    );
     assert_eq!(fs::read(&current).await.unwrap(), updated);
-    let active_metadata = fs::metadata(&active_image).await.unwrap();
     let current_metadata = fs::metadata(&current).await.unwrap();
-    assert_ne!(
-        (active_metadata.dev(), active_metadata.ino()),
+    assert_eq!(
+        active_identity,
         (current_metadata.dev(), current_metadata.ino()),
-        "published cache image must not share an inode with a sandbox that has not been destroyed yet"
+        "same-filesystem promotion must publish the moved image without copying its extents"
     );
     let metadata = cache
         .read_metadata_file(&paths.session_workspace_cache_metadata(&key))
@@ -513,6 +549,130 @@ async fn consumed_cache_hit_promotion_copies_active_image_back_to_cache() {
         .unwrap();
     assert_eq!(metadata.logical_image_size_bytes, image_size);
     assert_eq!(metadata.last_completed_at, "2026-05-02T00:00:00.000Z");
+}
+
+#[tokio::test]
+async fn cross_filesystem_promotion_falls_back_to_sparse_copy() {
+    let (_runner_dir, _cache_dir, paths, cache) = cross_filesystem_cache(FsStats {
+        total_bytes: TEST_FS_TOTAL_BYTES,
+        available_bytes: TEST_FS_AVAILABLE_BYTES,
+    })
+    .await;
+    let run_id = RunId::new_v4();
+    let sandbox_id = sandbox::SandboxId::new_v4();
+    let session_id = "sess-cross-filesystem";
+    let image = vec![b'x'; 4096];
+    let lease = cache
+        .prepare(WorkspaceImagePrepareRequest {
+            identity: WorkspaceImageLeaseIdentity {
+                run_id,
+                sandbox_id,
+                profile_name: TEST_PROFILE_NAME,
+                cli_agent_session_id: Some(session_id),
+                working_dir: "/workspace",
+                image_size_bytes: image.len() as u64,
+            },
+            workspace_drive_required: false,
+        })
+        .await;
+    assert_eq!(lease.result(), WorkspaceCacheCheckoutResult::Miss);
+    let active_image = paths.active_workspace_image(&sandbox_id);
+    fs::create_dir_all(active_image.parent().unwrap())
+        .await
+        .unwrap();
+    fs::write(&active_image, &image).await.unwrap();
+
+    assert!(
+        lease
+            .promote(
+                run_id,
+                None,
+                WorkspaceCacheTerminalStatus::Success,
+                "2026-05-02T00:00:00.000Z".into(),
+                &StorageFingerprints::default(),
+            )
+            .await
+            .unwrap()
+    );
+    assert_eq!(
+        fs::read(&active_image).await.unwrap(),
+        image,
+        "cross-filesystem fallback must retain the source image"
+    );
+    let cache_key = cache.scoped_cache_key(
+        TEST_PROFILE_NAME,
+        session_id,
+        "/workspace",
+        image.len() as u64,
+    );
+    let current = cache.session_workspace_cache_current_image(&cache_key);
+    assert_eq!(fs::read(&current).await.unwrap(), image);
+    assert_ne!(
+        fs::metadata(&active_image).await.unwrap().dev(),
+        fs::metadata(&current).await.unwrap().dev()
+    );
+}
+
+#[tokio::test]
+async fn cross_filesystem_promotion_still_requires_copy_headroom() {
+    let min_free = CacheBudget::from_fs_stats(FsStats {
+        total_bytes: TEST_FS_TOTAL_BYTES,
+        available_bytes: TEST_FS_AVAILABLE_BYTES,
+    })
+    .min_free_bytes;
+    let (_runner_dir, _cache_dir, paths, cache) = cross_filesystem_cache(FsStats {
+        total_bytes: TEST_FS_TOTAL_BYTES,
+        available_bytes: min_free,
+    })
+    .await;
+    let run_id = RunId::new_v4();
+    let sandbox_id = sandbox::SandboxId::new_v4();
+    let session_id = "sess-cross-filesystem-headroom";
+    let image = vec![b'x'; 4096];
+    let lease = cache
+        .prepare(WorkspaceImagePrepareRequest {
+            identity: WorkspaceImageLeaseIdentity {
+                run_id,
+                sandbox_id,
+                profile_name: TEST_PROFILE_NAME,
+                cli_agent_session_id: Some(session_id),
+                working_dir: "/workspace",
+                image_size_bytes: image.len() as u64,
+            },
+            workspace_drive_required: false,
+        })
+        .await;
+    let active_image = paths.active_workspace_image(&sandbox_id);
+    fs::create_dir_all(active_image.parent().unwrap())
+        .await
+        .unwrap();
+    fs::write(&active_image, &image).await.unwrap();
+
+    assert!(
+        !lease
+            .promote(
+                run_id,
+                None,
+                WorkspaceCacheTerminalStatus::Success,
+                "2026-05-02T00:00:00.000Z".into(),
+                &StorageFingerprints::default(),
+            )
+            .await
+            .unwrap(),
+        "cross-filesystem sparse-copy fallback must preserve duplicate-copy headroom admission"
+    );
+    assert!(fs::try_exists(&active_image).await.unwrap());
+    let cache_key = cache.scoped_cache_key(
+        TEST_PROFILE_NAME,
+        session_id,
+        "/workspace",
+        image.len() as u64,
+    );
+    assert!(
+        !fs::try_exists(cache.session_workspace_cache_current_image(&cache_key))
+            .await
+            .unwrap()
+    );
 }
 
 #[tokio::test]
@@ -915,9 +1075,8 @@ async fn promote_removes_current_image_when_metadata_write_fails() {
     tokio::fs::create_dir_all(paths.workspace_dir(&sandbox_id))
         .await
         .unwrap();
-    tokio::fs::write(paths.active_workspace_image(&sandbox_id), b"image")
-        .await
-        .unwrap();
+    let active_image = paths.active_workspace_image(&sandbox_id);
+    tokio::fs::write(&active_image, b"image").await.unwrap();
 
     let cache_key = session_workspace_cache_key("sess-1", "/workspace");
     let metadata_path = paths.session_workspace_cache_metadata(&cache_key);
@@ -935,6 +1094,10 @@ async fn promote_removes_current_image_when_metadata_write_fails() {
         .unwrap_err();
 
     assert!(matches!(err, RunnerError::Io(_)));
+    assert!(
+        !active_image.exists(),
+        "metadata failure after ownership transfer must not leave a second active image"
+    );
     assert!(
         !paths
             .session_workspace_cache_current_image(&cache_key)
@@ -1049,7 +1212,7 @@ async fn promote_replaces_stale_current_directory_before_rename() {
 }
 
 #[tokio::test]
-async fn promote_skips_copied_image_with_unexpected_logical_size() {
+async fn promote_skips_transferred_image_with_unexpected_logical_size() {
     let (_dir, paths, cache) = local_cache().await;
     let run_id = RunId::new_v4();
     let sandbox_id = sandbox::SandboxId::new_v4();

@@ -4,7 +4,7 @@ use std::sync::Arc;
 
 use crate::paths::RunnerPaths;
 use crate::resource_budget::ResourceBudget;
-use crate::workspace_image_cache::WorkspaceImagePromotionContext;
+use crate::workspace_image_cache::{WorkspaceCacheCheckoutResult, WorkspaceImagePromotionContext};
 use crate::workspace_promotion::test_support::WorkspacePromotionFixture;
 use sandbox::{ResourceLimits, SandboxConfig};
 use sandbox_mock::{MockSandboxFactory, MockSandboxOverrides};
@@ -177,6 +177,21 @@ async fn idle_destroy_job_publishes_frozen_workspace_only_after_successful_stop(
     let states = fixture.cache.held_session_states().await;
     assert_eq!(states.len(), 1);
     assert_eq!(states[0].session_id, fixture.session_id);
+    let paths = RunnerPaths::new(fixture._dir.path().join("runner"));
+    assert!(
+        !tokio::fs::try_exists(paths.active_workspace_image(&fixture.sandbox_id))
+            .await
+            .unwrap(),
+        "successful promotion must move the image out before sandbox destruction"
+    );
+    tokio::fs::remove_dir_all(paths.workspace_dir(&fixture.sandbox_id))
+        .await
+        .unwrap();
+    assert_eq!(
+        WorkspacePromotionFixture::checkout_result(&fixture.cache, &fixture.session_id).await,
+        WorkspaceCacheCheckoutResult::Hit,
+        "removing the destroyed sandbox workspace must not remove the promoted cache entry"
+    );
 }
 
 #[tokio::test]
