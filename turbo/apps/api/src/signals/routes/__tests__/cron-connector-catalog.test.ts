@@ -1754,6 +1754,7 @@ describe("connector catalog valid lifecycle", () => {
     expect(search.body.connectors).toStrictEqual([
       {
         id: release.connectorSlug,
+        slug: release.connectorSlug,
         label: "External Test",
         description: "An external connector used only by the sync fixture",
         authMethods: ["api-token"],
@@ -3929,6 +3930,7 @@ describe("connector catalog valid lifecycle", () => {
     expect(readiness.body.connectors).toStrictEqual([
       {
         connectorRef: "gmail",
+        connectorSlug: "gmail",
         label: "Catalog Gmail",
         icon: {
           url: expect.stringMatching(
