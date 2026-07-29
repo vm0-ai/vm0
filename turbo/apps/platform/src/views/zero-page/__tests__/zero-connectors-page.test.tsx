@@ -1482,6 +1482,7 @@ describe("connectors page", () => {
     ["notion", "Notion"],
     ["sentry", "Sentry"],
     ["server-authored-oauth", "Server-authored OAuth"],
+    ["strava", "Strava"],
     ["vercel", "Vercel"],
   ] as const)(
     "starts %s OAuth with the app callback",
