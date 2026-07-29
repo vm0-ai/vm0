@@ -8,6 +8,7 @@ use std::future::Future;
 use std::path::PathBuf;
 
 use serde_json::{Map, Value, json};
+use tokio::io::AsyncWriteExt;
 use tokio::sync::oneshot;
 
 use crate::env::Framework;
@@ -368,6 +369,9 @@ async fn run_codex_app_server(
         }
     };
     let stderr_lines = masker.mask_diagnostic_lines(client.stderr_tail().to_vec());
+    // Complete the final event-log write after the child is stopped and
+    // before callers observe the finished app-server execution.
+    let _ = log_file.flush().await;
 
     match run_outcome {
         AppServerRunOutcome::Completed(run_result) => match (*run_result, shutdown_result) {
