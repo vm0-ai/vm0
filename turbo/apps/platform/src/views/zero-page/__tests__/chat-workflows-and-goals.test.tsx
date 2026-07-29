@@ -1416,11 +1416,13 @@ Full autonomous goal prompt that should stay out of the compact chat UI`;
     await waitFor(() => {
       expect(screen.getByText(messageText)).toBeInTheDocument();
       expect(screen.getByLabelText("Preview chart.png")).toBeInTheDocument();
-      expect(screen.getByLabelText("Download demo.mp4")).toBeInTheDocument();
+      expect(screen.getByLabelText("Preview demo.mp4")).toBeInTheDocument();
       expect(
-        screen.getByLabelText("Download briefing.mp3"),
+        screen.getByLabelText("Open audio preview for briefing.mp3"),
       ).toBeInTheDocument();
-      expect(screen.getByLabelText("Download notes.md")).toBeInTheDocument();
+      expect(
+        screen.getByLabelText("Open markdown preview for notes.md"),
+      ).toBeInTheDocument();
     });
 
     click(screen.getByLabelText("Copy message"));
