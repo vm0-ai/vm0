@@ -72,6 +72,10 @@ const remainingRawRowSchema = z.object({
   hasMoreRaw: z.boolean(),
 });
 
+// The explicit null order matches a reverse scan of the deployed
+// idx_usage_event_processed_org_user index. Eligible rows are always non-null.
+const oldestProcessedEventOrder = sql`event.processed_at ASC NULLS FIRST`;
+
 function eligibleRawPredicate(cutoff: string): SQL {
   return sql`
     event.status = 'processed'
@@ -154,7 +158,7 @@ function candidateCtes(args: {
       LEFT JOIN ${usageAllowanceAllocations} allocation
         ON allocation.usage_event_id = event.id
       WHERE ${eligibleRawPredicate(args.cutoff)}
-      ORDER BY event.processed_at ASC, event.id ASC
+      ORDER BY ${oldestProcessedEventOrder}
       LIMIT ${args.rawSeedLimit}
       FOR UPDATE OF event
     ),
@@ -529,7 +533,7 @@ async function loadHoldProbe(
         WHERE event.status = 'processed'
           AND event.processed_at IS NOT NULL
           AND event.processed_at < ${cutoff}::timestamp
-        ORDER BY event.processed_at ASC, event.id ASC
+        ORDER BY ${oldestProcessedEventOrder}
         LIMIT ${rawSeedLimit}
       )
       SELECT
