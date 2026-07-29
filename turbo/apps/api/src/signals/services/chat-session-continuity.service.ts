@@ -13,7 +13,7 @@ import {
   modelProviderSurfaces,
 } from "@vm0/db/schema/model-provider-gateway";
 import { zeroRuns } from "@vm0/db/schema/zero-run";
-import { and, desc, eq, sql } from "drizzle-orm";
+import { and, desc, eq, inArray, sql } from "drizzle-orm";
 
 import type { Db, ReadonlyDb } from "../external/db";
 
@@ -88,8 +88,6 @@ function shouldStartNewChatSession(args: {
   readonly nextModel: string | null;
   readonly latestModelProvider?: string | null;
   readonly nextModelProvider?: string | null;
-  readonly latestModelProviderId?: string | null;
-  readonly nextModelProviderId?: string | null;
   readonly latestCliAgentType?: string | null;
   readonly nextCliAgentType?: string | null;
 }): boolean {
@@ -97,13 +95,6 @@ function shouldStartNewChatSession(args: {
     args.latestCliAgentType &&
     args.nextCliAgentType &&
     args.latestCliAgentType !== args.nextCliAgentType
-  ) {
-    return true;
-  }
-  if (
-    args.latestModelProviderId !== undefined &&
-    args.nextModelProviderId !== undefined &&
-    args.latestModelProviderId !== args.nextModelProviderId
   ) {
     return true;
   }
@@ -199,21 +190,23 @@ async function latestSessionRunRoute(args: {
   return row ?? null;
 }
 
-async function customSurfaceChangedSince(args: {
+async function customSurfaceRouteChanged(args: {
   readonly db: Db | ReadonlyDb;
   readonly orgId: string;
   readonly previousModelProviderId: string | null;
   readonly nextModelProviderId: string | null;
   readonly previousRunCreatedAt: Date | null;
 }): Promise<boolean> {
-  if (
-    !args.nextModelProviderId ||
-    args.previousModelProviderId !== args.nextModelProviderId ||
-    !args.previousRunCreatedAt
-  ) {
+  const candidateSurfaceIds = [
+    args.previousModelProviderId,
+    args.nextModelProviderId,
+  ].filter((id): id is string => {
+    return id !== null;
+  });
+  if (candidateSurfaceIds.length === 0) {
     return false;
   }
-  const [surface] = await args.db
+  const surfaces = await args.db
     .select({
       surfaceUpdatedAt: modelProviderSurfaces.updatedAt,
       connectionUpdatedAt: modelProviderConnections.updatedAt,
@@ -225,13 +218,17 @@ async function customSurfaceChangedSince(args: {
     )
     .where(
       and(
-        eq(modelProviderSurfaces.id, args.nextModelProviderId),
+        inArray(modelProviderSurfaces.id, candidateSurfaceIds),
         eq(modelProviderConnections.orgId, args.orgId),
       ),
-    )
-    .limit(1);
+    );
+  if (args.previousModelProviderId !== args.nextModelProviderId) {
+    return surfaces.length > 0;
+  }
+  const [surface] = surfaces;
   return (
     surface !== undefined &&
+    args.previousRunCreatedAt !== null &&
     (surface.surfaceUpdatedAt > args.previousRunCreatedAt ||
       surface.connectionUpdatedAt > args.previousRunCreatedAt)
   );
@@ -246,8 +243,6 @@ function shouldRotateCanonicalSession(args: {
     nextModel: args.nextRoute.selectedModel,
     latestModelProvider: args.previousRoute.modelProvider,
     nextModelProvider: args.nextRoute.modelProvider,
-    latestModelProviderId: args.previousRoute.modelProviderId,
-    nextModelProviderId: args.nextRoute.modelProviderId,
     latestCliAgentType: args.previousRoute.cliAgentType,
     nextCliAgentType: args.nextRoute.cliAgentType,
   });
@@ -260,7 +255,7 @@ async function shouldRotateResolvedSession(args: {
   readonly nextRoute: ChatThreadSessionRoute;
   readonly previousRunCreatedAt: Date | null;
 }): Promise<boolean> {
-  const routeConfigurationChanged = await customSurfaceChangedSince({
+  const routeConfigurationChanged = await customSurfaceRouteChanged({
     db: args.db,
     orgId: args.orgId,
     previousModelProviderId: args.previousRoute.modelProviderId,
