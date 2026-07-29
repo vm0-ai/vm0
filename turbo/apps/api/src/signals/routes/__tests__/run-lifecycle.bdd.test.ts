@@ -11392,6 +11392,70 @@ describe("RUN-03: sandbox completion reports against missing checkpoints and set
     expect(expiredTelemetry.body.error.code).toBe("UNAUTHORIZED");
   });
 
+  it("continues from a recovery checkpoint posted after timeout completion", async () => {
+    const api = createRunsApi(context);
+    const webhooks = createWebhookCallbackApi(context);
+    const { actor, agentId } = await entitledRunActor();
+
+    const source = await api.createRun(actor, {
+      agentId,
+      prompt: "run until the execution deadline",
+      modelProvider: "anthropic-api-key",
+    });
+    const sourceClaim = await api.claimRunnerJob(source.runId);
+    const history = `bdd timeout recovery history ${source.runId}`;
+    const historyHash = createHash("sha256").update(history).digest("hex");
+    const cliSessionId = `bdd-timeout-cli-${source.runId}`;
+    mockSessionHistoryBlob(historyHash, history);
+    const sandboxHeaders = {
+      authorization: `Bearer ${sourceClaim.sandboxToken}`,
+    };
+
+    const completion = await webhooks.requestAgentComplete(
+      {
+        runId: source.runId,
+        exitCode: 124,
+        error: "Agent execution timed out after 7200 seconds",
+        lastEventSequence: 0,
+      },
+      sandboxHeaders,
+      [200],
+    );
+    expect(completion.body).toStrictEqual({ success: true, status: "failed" });
+    const failed = await api.readRun(actor, source.runId);
+    expect(failed.status).toBe("failed");
+    expect(failed.error).toBe("Agent execution timed out after 7200 seconds");
+
+    await webhooks.requestAgentCheckpoint(
+      {
+        runId: source.runId,
+        cliAgentType: "claude-code",
+        cliAgentSessionId: cliSessionId,
+        cliAgentSessionHistoryHash: historyHash,
+      },
+      sandboxHeaders,
+      [200],
+    );
+
+    const continued = await api.createRun(actor, {
+      agentId,
+      sessionId: source.sessionId,
+      prompt: "continue after the execution deadline",
+      modelProvider: "anthropic-api-key",
+    });
+    const continuedClaim = await api.claimRunnerJob(continued.runId);
+    expect(continuedClaim.resumeSession).toMatchObject({
+      sessionId: cliSessionId,
+      historyRef: {
+        kind: "blob",
+        hash: historyHash,
+        url: expect.any(String),
+      },
+    });
+
+    await api.requestCancelRun(actor, continued.runId, [200]);
+  });
+
   it("acknowledges a clean exit whose missing checkpoint fails the run", async () => {
     const api = createRunsApi(context);
     const webhooks = createWebhookCallbackApi(context);

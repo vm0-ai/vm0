@@ -20,6 +20,7 @@ import {
   type ChatMessageUserMessage,
 } from "@vm0/db/schema/chat-message";
 import { chatThreads } from "@vm0/db/schema/chat-thread";
+import { morningBriefDeliveries } from "@vm0/db/schema/morning-brief";
 import { zeroAgents } from "@vm0/db/schema/zero-agent";
 import { zeroRuns } from "@vm0/db/schema/zero-run";
 import {
@@ -109,10 +110,12 @@ import {
 import { attachCanonicalPublishedAssetsToCompletionEvent } from "./canonical-published-asset-message.service";
 import {
   decryptQueuedUserMessageRunParams,
+  discardUnclaimedUserMessage,
   failQueuedUserMessage,
   loadNextUnclaimedQueuedUserMessage,
   type QueuedUserMessage,
 } from "./zero-chat-queued-message.service";
+import { handleMorningBriefEmailInternalCallback } from "./internal-morning-brief-run-callback.service";
 import { sendUserPushNotifications } from "./zero-push-notifications.service";
 import {
   type ChatCompletionContextMessage,
@@ -576,9 +579,20 @@ interface TeamsQueuedMessageAdmissionFailure {
   readonly error: QueuedMessageModelRouteError;
 }
 
+interface MorningBriefQueuedMessageAdmissionFailure {
+  readonly kind: "morning_brief_admission_failure";
+  readonly threadId: string;
+  readonly queuedMessage: QueuedUserMessage;
+  readonly morningBriefDelivery?: NonNullable<
+    CreateQueuedChatRunInput["morningBriefDelivery"]
+  >;
+  readonly error: QueuedMessageModelRouteError;
+}
+
 type QueuedMessageAdmissionFailure =
   | SlackQueuedMessageAdmissionFailure
-  | TeamsQueuedMessageAdmissionFailure;
+  | TeamsQueuedMessageAdmissionFailure
+  | MorningBriefQueuedMessageAdmissionFailure;
 
 type CompletedChatCallbackResult =
   | {
@@ -2401,6 +2415,23 @@ function teamsQueuedMessageAdmissionFailure(
   };
 }
 
+function morningBriefQueuedMessageAdmissionFailure(
+  args: CreateQueuedChatRunInputArgs,
+  sourceParams: Awaited<ReturnType<typeof decryptQueuedUserMessageRunParams>>,
+  error: QueuedMessageModelRouteError,
+): MorningBriefQueuedMessageAdmissionFailure | null {
+  if (args.queuedMessage.triggerSource !== "workflow-schedule") {
+    return null;
+  }
+  return {
+    kind: "morning_brief_admission_failure",
+    threadId: args.threadId,
+    queuedMessage: args.queuedMessage,
+    morningBriefDelivery: sourceParams?.morningBriefDelivery,
+    error,
+  };
+}
+
 function queuedMessageAdmissionFailure(
   args: CreateQueuedChatRunInputArgs,
   sourceParams: Awaited<ReturnType<typeof decryptQueuedUserMessageRunParams>>,
@@ -2408,8 +2439,19 @@ function queuedMessageAdmissionFailure(
 ): QueuedMessageAdmissionFailure | null {
   return (
     slackQueuedMessageAdmissionFailure(args, sourceParams, error) ??
-    teamsQueuedMessageAdmissionFailure(args, sourceParams, error)
+    teamsQueuedMessageAdmissionFailure(args, sourceParams, error) ??
+    morningBriefQueuedMessageAdmissionFailure(args, sourceParams, error)
   );
+}
+
+function queuedMessageApiStartTime(
+  triggerSource: QueuedUserMessage["triggerSource"],
+  sourceParams: Awaited<ReturnType<typeof decryptQueuedUserMessageRunParams>>,
+): number | undefined {
+  if (triggerSource === "workflow-schedule") {
+    return undefined;
+  }
+  return sourceParams?.apiStartTime;
 }
 
 function resolveQueuedMessageGenerationTemplatePrompt(args: {
@@ -2550,7 +2592,10 @@ async function buildCreateQueuedChatRunInput(
     feishuDelivery: sourceParams?.feishuDelivery,
     teamsDelivery: sourceParams?.teamsDelivery,
     morningBriefDelivery: sourceParams?.morningBriefDelivery,
-    apiStartTime: sourceParams?.apiStartTime,
+    apiStartTime: queuedMessageApiStartTime(
+      args.queuedMessage.triggerSource,
+      sourceParams,
+    ),
     userInfoExtras: sourceParams?.userInfoExtras,
   };
 }
@@ -2771,6 +2816,7 @@ async function handleQueuedMessageAdmissionFailure(args: {
   readonly formatError: ChatCallbackDependencies["formatIntegrationRunError"];
   readonly deliverSlack: ChatCallbackDependencies["deliverSlackAdmissionFailure"];
   readonly deliverTeams: ChatCallbackDependencies["deliverTeamsAdmissionFailure"];
+  readonly continueDrain: () => Promise<void>;
 }): Promise<void> {
   if (args.failure.kind === "slack_admission_failure") {
     await handleSlackQueuedMessageAdmissionFailure({
@@ -2782,22 +2828,44 @@ async function handleQueuedMessageAdmissionFailure(args: {
     });
     return;
   }
-  await handleTeamsQueuedMessageAdmissionFailure({
-    db: args.db,
-    failure: args.failure,
-    signal: args.signal,
-    formatError: args.formatError,
-    deliver: args.deliverTeams,
+  if (args.failure.kind === "teams_admission_failure") {
+    await handleTeamsQueuedMessageAdmissionFailure({
+      db: args.db,
+      failure: args.failure,
+      signal: args.signal,
+      formatError: args.formatError,
+      deliver: args.deliverTeams,
+    });
+    return;
+  }
+  await discardUnclaimedUserMessage(args.db, {
+    threadId: args.failure.threadId,
+    messageId: args.failure.queuedMessage.id,
   });
+  args.signal.throwIfAborted();
+  if (args.failure.morningBriefDelivery) {
+    const [delivery] = await args.db
+      .update(morningBriefDeliveries)
+      .set({
+        status: "failed",
+        error: args.failure.error.message,
+        updatedAt: nowDate(),
+      })
+      .where(
+        eq(
+          morningBriefDeliveries.id,
+          args.failure.morningBriefDelivery.deliveryId,
+        ),
+      )
+      .returning({ id: morningBriefDeliveries.id });
+    if (!delivery) {
+      throw new Error("Failed to record Morning Brief admission failure");
+    }
+  }
+  await args.continueDrain();
 }
 
-/**
- * User-message half of the per-thread scheduler: when the thread has no
- * in-flight run, dispatch the oldest queued user message — whoever sent it.
- * The shared thread scheduler calls this before attempting the workflow-event
- * half, preserving user-message priority.
- */
-async function autoSendQueuedMessageForThread(args: {
+interface AutoSendQueuedMessageArgs {
   readonly createRun: (
     input: CreateQueuedChatRunInput,
   ) => Promise<CreatedQueuedRun | null>;
@@ -2811,7 +2879,17 @@ async function autoSendQueuedMessageForThread(args: {
   readonly formatIntegrationRunError: ChatCallbackDependencies["formatIntegrationRunError"];
   readonly deliverSlackAdmissionFailure: ChatCallbackDependencies["deliverSlackAdmissionFailure"];
   readonly deliverTeamsAdmissionFailure: ChatCallbackDependencies["deliverTeamsAdmissionFailure"];
-}): Promise<void> {
+}
+
+/**
+ * User-message half of the per-thread scheduler: when the thread has no
+ * in-flight run, dispatch the oldest queued user message — whoever sent it.
+ * The shared thread scheduler calls this before attempting the workflow-event
+ * half, preserving user-message priority.
+ */
+async function autoSendQueuedMessageForThread(
+  args: AutoSendQueuedMessageArgs,
+): Promise<void> {
   const { chatThreadId: threadId, userId } = args;
 
   const queuedMessage = await measureChatCallbackPreCreateTiming(
@@ -2883,6 +2961,9 @@ async function autoSendQueuedMessageForThread(args: {
       formatError: args.formatIntegrationRunError,
       deliverSlack: args.deliverSlackAdmissionFailure,
       deliverTeams: args.deliverTeamsAdmissionFailure,
+      continueDrain: async () => {
+        await autoSendQueuedMessageForThread(args);
+      },
     });
     return;
   }
@@ -3521,7 +3602,19 @@ function buildQueuedChatDispatchFailedCallbacks(args: {
       slackDelivery: args.runInput.slackDelivery,
       feishuDelivery: args.runInput.feishuDelivery,
       teamsDelivery: args.runInput.teamsDelivery,
+      morningBriefDelivery: args.runInput.morningBriefDelivery,
     };
+    if (payload.morningBriefDelivery) {
+      const deliveryResult = await handleMorningBriefEmailInternalCallback(db, {
+        runId,
+        status: "failed",
+        error,
+        payload: payload.morningBriefDelivery.payload,
+      });
+      if (!deliveryResult.success) {
+        throw new Error(deliveryResult.error);
+      }
+    }
     const suppressWebPushForActiveGoal = await runHasActiveGoal(db, runId);
     args.signal.throwIfAborted();
     await processTerminalChatCallback({
