@@ -105,11 +105,6 @@ export const chatMessages = pgTable(
     // Persistent-secret encrypted queue parameters. This field never leaves
     // the API and remains only on the original pending input event.
     encryptedParams: text("encrypted_params"),
-    // Release A keeps the legacy column nullable while eventType readers
-    // deploy, but writers still populate it for rollback-eligible readers.
-    // A later release stops the dual-write after old readers have drained;
-    // Release B can then drop the physical column.
-    role: text("role"),
     content: text("content"),
     /** Canonical rich user-message document for input prompt events. */
     userMessage: jsonb("structured_prompt").$type<ChatMessageUserMessage>(),
