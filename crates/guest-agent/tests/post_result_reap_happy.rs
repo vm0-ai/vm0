@@ -24,6 +24,7 @@ async fn post_result_reap_stays_silent_on_clean_exit() -> Result<(), Box<dyn std
         // happy path returns successfully, it returned before the reap
         // deadline could fire. sigkill grace is unused on this path.
         common::setup_env(&mock, tmp.path(), "@exit-after-result", 60, 1)?;
+        std::env::set_var(guest_contracts::env::AGENT_EXECUTION_TIMEOUT_SECS_ENV, "2");
     }
 
     let runtime = common::guest_runtime_from_process_env()?;
@@ -58,6 +59,10 @@ async fn post_result_reap_stays_silent_on_clean_exit() -> Result<(), Box<dyn std
         exit_code,
         common::CLEAN_EXIT,
         "expected clean exit, got {exit_code} — reap may have killed a healthy CLI"
+    );
+    assert!(
+        result.cli_termination.is_none(),
+        "a CLI that exits before the execution deadline must keep its natural result"
     );
     Ok(())
 }

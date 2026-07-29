@@ -307,6 +307,12 @@ pub enum HeartbeatStatus {
 /// callers that do not own a heartbeat task.
 pub type HeartbeatMonitor = Option<oneshot::Receiver<HeartbeatStatus>>;
 
+#[derive(Clone, Copy)]
+struct AgentExecutionDeadline {
+    at: Instant,
+    timeout_secs: u64,
+}
+
 pub(super) struct CliRuntimeConfig<'a> {
     framework: env::Framework,
     run_id: Cow<'a, str>,
@@ -331,6 +337,7 @@ pub(super) struct CliRuntimeConfig<'a> {
     codex_oauth_mode: bool,
     codex_fast_mode: bool,
     disable_builtin_web_search: bool,
+    agent_execution_deadline: Option<AgentExecutionDeadline>,
     stuck_tool_timeout_secs: u64,
     post_result_cleanup_policy: PostResultCleanupPolicy,
     agent_log_file: Cow<'a, str>,
@@ -344,6 +351,7 @@ impl<'a> CliRuntimeConfig<'a> {
     fn from_config(
         config: &'a env::GuestConfig,
         paths: &'a paths::GuestPaths,
+        execution_started_at: Instant,
     ) -> Result<Self, AgentError> {
         let codex_runtime_config = if matches!(config.framework, env::Framework::Codex) {
             codex_runtime_config::parse_raw(&config.codex_runtime_config)?
@@ -355,6 +363,23 @@ impl<'a> CliRuntimeConfig<'a> {
             &config.disallowed_tools,
             disable_builtin_web_search,
         );
+        let agent_execution_deadline = config
+            .agent_execution_timeout
+            .map(|timeout| {
+                execution_started_at
+                    .checked_add(timeout)
+                    .map(|at| AgentExecutionDeadline {
+                        at,
+                        timeout_secs: timeout.as_secs(),
+                    })
+                    .ok_or_else(|| {
+                        AgentError::Execution(format!(
+                            "{} is too large",
+                            guest_contracts::env::AGENT_EXECUTION_TIMEOUT_SECS_ENV
+                        ))
+                    })
+            })
+            .transpose()?;
         Ok(Self {
             framework: config.framework,
             run_id: Cow::Borrowed(&config.run_id),
@@ -383,6 +408,7 @@ impl<'a> CliRuntimeConfig<'a> {
             codex_fast_mode: !user_env_value(&config.user_env, "CHATGPT_ACCOUNT_ID").is_empty()
                 && user_env_value(&config.user_env, "VM0_CODEX_SERVICE_TIER") == "fast",
             disable_builtin_web_search,
+            agent_execution_deadline,
             stuck_tool_timeout_secs: config.stuck_tool_timeout_secs,
             post_result_cleanup_policy: PostResultCleanupPolicy::new(
                 config.post_result_sigterm_grace,
@@ -586,9 +612,6 @@ impl CliEventIngestor {
 
 /// Execute the CLI process using values captured in a [`env::GuestConfig`] and
 /// [`paths::GuestPaths`].
-///
-/// Production guest-agent bootstrap should prefer this entry point so CLI
-/// setup observes the same immutable runtime snapshot as the rest of the run.
 pub async fn execute_cli_with_active_input_for_config(
     masker: &SecretMasker,
     heartbeat_monitor: HeartbeatMonitor,
@@ -597,7 +620,33 @@ pub async fn execute_cli_with_active_input_for_config(
     config: &env::GuestConfig,
     paths: &paths::GuestPaths,
 ) -> Result<CliExecutionResult, AgentError> {
-    let runtime = CliRuntimeConfig::from_config(config, paths)?;
+    execute_cli_with_active_input_for_config_started_at(
+        masker,
+        heartbeat_monitor,
+        http,
+        active_input,
+        config,
+        paths,
+        Instant::now(),
+    )
+    .await
+}
+
+/// Execute the CLI against an execution budget that started before guest
+/// initialization.
+///
+/// Production guest-agent bootstrap uses this entry point so setup time counts
+/// against the runner-owned execution budget.
+pub async fn execute_cli_with_active_input_for_config_started_at(
+    masker: &SecretMasker,
+    heartbeat_monitor: HeartbeatMonitor,
+    http: HttpClient,
+    active_input: ActiveInputWriter,
+    config: &env::GuestConfig,
+    paths: &paths::GuestPaths,
+    execution_started_at: Instant,
+) -> Result<CliExecutionResult, AgentError> {
+    let runtime = CliRuntimeConfig::from_config(config, paths, execution_started_at)?;
     execute_cli_inner(masker, heartbeat_monitor, http, active_input, &runtime).await
 }
 
@@ -780,6 +829,18 @@ async fn execute_cli_inner(
     let mut termination_runtime =
         CliTerminationRuntime::new(process_group, runtime.post_result_cleanup_policy);
 
+    let agent_execution_deadline = tokio::time::sleep(Duration::MAX);
+    tokio::pin!(agent_execution_deadline);
+    let mut agent_execution_deadline_armed = false;
+    let mut agent_execution_timeout_secs = 0;
+    if let Some(deadline) = runtime.agent_execution_deadline {
+        agent_execution_deadline
+            .as_mut()
+            .reset(tokio::time::Instant::from_std(deadline.at));
+        agent_execution_deadline_armed = true;
+        agent_execution_timeout_secs = deadline.timeout_secs;
+    }
+
     // A resumed Codex process prints `thread.started` from the resume response
     // before its real turn notifications begin. Bound only that transition;
     // once any real lifecycle event arrives, long turns remain unrestricted.
@@ -828,6 +889,37 @@ async fn execute_cli_inner(
     let mut event_ingestor = CliEventIngestor::new(runtime);
     let event_result: Result<(), AgentError> = loop {
         tokio::select! {
+            () = &mut agent_execution_deadline, if agent_execution_deadline_armed && cli_status.is_none() => {
+                match try_observe_cli_exit(
+                    &mut child,
+                    &mut cli_status,
+                    &mut cli_exit_at,
+                    &active_input_controller,
+                    &mut termination_runtime,
+                    stdout_closed,
+                    drain_deadline.as_mut(),
+                )? {
+                    CliExitObservation::NoNewExit => {}
+                    CliExitObservation::ExitedDrainingStdout => {
+                        agent_execution_deadline_armed = false;
+                        continue;
+                    }
+                    CliExitObservation::ExitedAndStdoutClosed => break Ok(()),
+                }
+                agent_execution_deadline_armed = false;
+                active_input_controller.close_terminal();
+                let timeout_error = AgentError::Execution(format!(
+                    "Agent execution timed out after {agent_execution_timeout_secs} seconds"
+                ));
+                termination_runtime.begin_control_failure(
+                    TerminationReason::ExecutionTimeout,
+                    timeout_error,
+                    ControlTerminationLog::ExecutionTimeout {
+                        timeout_secs: agent_execution_timeout_secs,
+                    },
+                    termination_deadline.as_mut(),
+                );
+            }
             stdin_write_result = async {
                 match claude_stdin_write_handle.as_mut() {
                     Some(handle) => Some(handle.await),
@@ -1598,6 +1690,7 @@ mod tests {
             codex_oauth_mode: false,
             codex_fast_mode: false,
             disable_builtin_web_search: false,
+            agent_execution_deadline: None,
             stuck_tool_timeout_secs: constants::STUCK_TOOL_TIMEOUT_SECS,
             post_result_cleanup_policy: PostResultCleanupPolicy::new(
                 Duration::from_secs(constants::POST_RESULT_SIGTERM_GRACE_SECS),
