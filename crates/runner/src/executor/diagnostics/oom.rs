@@ -12,7 +12,7 @@ pub(in crate::executor) fn dmesg_indicates_oom(stdout: &str) -> bool {
 ///
 /// Invokes `dmesg` directly under the runner's current privileges and times out
 /// after five seconds. Returns `false` when the command exits unsuccessfully,
-/// cannot be started, or times out.
+/// execution fails, or the operation times out.
 pub(in crate::executor) async fn check_host_oom(pid: u32) -> bool {
     let result = tokio::time::timeout(Duration::from_secs(5), async {
         tokio::process::Command::new("dmesg").output().await
@@ -38,12 +38,12 @@ pub(in crate::executor) async fn check_host_oom(pid: u32) -> bool {
 }
 
 /// Returns `true` when host `dmesg` output contains the case-sensitive
-/// `oom-kill` marker and an exact `task=firecracker,pid=<pid>` token.
+/// `oom-kill` marker and the `task=firecracker,pid=<pid>` substring.
 ///
-/// The marker and task token are searched independently across the output, so
-/// this does not validate a memory-cgroup constraint. The character after the
-/// PID must not be a digit, avoiding prefix matches such as `pid=1234` matching
-/// `pid=12345`.
+/// The two substrings are searched independently across the full output and
+/// need not occur in the same log record. The predicate does not require a
+/// memory-cgroup constraint marker. The character after the PID must not be a
+/// digit, avoiding prefix matches such as `pid=1234` matching `pid=12345`.
 pub(in crate::executor) fn host_dmesg_indicates_oom(dmesg: &str, pid: u32) -> bool {
     if !dmesg.contains("oom-kill") {
         return false;
