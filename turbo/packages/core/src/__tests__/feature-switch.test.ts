@@ -247,7 +247,7 @@ describe("user-overridable switches", () => {
     expect(getUserOverridableFeatureSwitchKeys()).not.toContain(
       FeatureSwitchKey.StrapiIntegration,
     );
-    expect(getUserOverridableFeatureSwitchKeys()).not.toContain(
+    expect(getUserOverridableFeatureSwitchKeys()).toContain(
       FeatureSwitchKey.StructuredPromptInlineTemplates,
     );
     expect(getUserOverridableFeatureSwitchKeys()).toContain(
@@ -276,6 +276,7 @@ describe("user-overridable switches", () => {
       [FeatureSwitchKey.ZeroBrowser]: true,
       [FeatureSwitchKey.ComposerConnectorPermissions]: true,
       [FeatureSwitchKey.Dummy]: false,
+      [FeatureSwitchKey.StructuredPromptInlineTemplates]: true,
     });
   });
 
