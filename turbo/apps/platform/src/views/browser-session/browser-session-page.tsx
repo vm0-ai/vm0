@@ -1,10 +1,12 @@
 import { IconBrowserOff } from "@tabler/icons-react";
 import { useGet } from "ccstate-react";
+import { useTranslation } from "react-i18next";
 
 import { browserSessionPageSignals$ } from "../../signals/browser-session/browser-session-page-state.ts";
 import { BrowserSessionPanel } from "../zero-page/browser-session-panel.tsx";
 
 export function BrowserSessionPage() {
+  const { t } = useTranslation();
   const signals = useGet(browserSessionPageSignals$);
   return (
     <main className="fixed inset-0 flex min-h-0 flex-col bg-background p-3 sm:p-5">
@@ -17,7 +19,9 @@ export function BrowserSessionPage() {
           <div className="flex flex-col items-center gap-2 text-center">
             <IconBrowserOff size={28} className="text-muted-foreground" />
             <p className="text-sm font-medium text-foreground">
-              Invalid browser link
+              {t(($) => {
+                return $.browserSession.invalidLink;
+              })}
             </p>
           </div>
         </div>

@@ -23,12 +23,12 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@vm0/ui";
+import { useTranslation } from "react-i18next";
 import {
   MODEL_PROVIDER_TYPES,
   type ModelProviderType,
 } from "@vm0/api-contracts/contracts/model-providers";
 import { RUN_ERROR_GUIDANCE } from "@vm0/api-contracts/contracts/errors";
-import type { SandboxReuseResult } from "@vm0/api-contracts/contracts/webhooks";
 import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import { featureSwitch$ } from "../../signals/external/feature-switch.ts";
 import { fetchDownloadExtra$ } from "../../signals/activity-page/activity-download.ts";
@@ -72,30 +72,135 @@ import { ContextContent } from "./components/context-content.tsx";
 import { NetworkContent } from "./components/network-content.tsx";
 import { Markdown } from "../components/markdown.tsx";
 import { ZeroNoPermissionIllustration } from "./components/zero-no-permission-illustration.tsx";
+import { formatAppNumber } from "../../i18n/format.ts";
 
 // ---------------------------------------------------------------------------
 // Error Banner
 // ---------------------------------------------------------------------------
 
 function getErrorGuidance(error: string) {
-  for (const [, guidance] of Object.entries(RUN_ERROR_GUIDANCE)) {
+  for (const [code, guidance] of Object.entries(RUN_ERROR_GUIDANCE)) {
     if (error.toLowerCase().includes(guidance.title.toLowerCase())) {
-      return guidance;
+      return { code, guidance };
     }
   }
   return null;
 }
 
 function RunErrorBanner({ error }: { error: string }) {
-  const guidance = getErrorGuidance(error);
-  if (guidance) {
+  const { t } = useTranslation();
+  const match = getErrorGuidance(error);
+  if (match) {
+    let localized = {
+      title: match.guidance.title,
+      guidance: match.guidance.guidance,
+    };
+    switch (match.code) {
+      case "COMPUTER_USE_AUTHORIZATION_REQUIRED": {
+        localized = {
+          title: t(($) => {
+            return $.activity.detail.errorGuidance
+              .computerUseAuthorizationRequired.title;
+          }),
+          guidance: t(($) => {
+            return $.activity.detail.errorGuidance
+              .computerUseAuthorizationRequired.guidance;
+          }),
+        };
+        break;
+      }
+      case "NO_MODEL_PROVIDER": {
+        localized = {
+          title: t(($) => {
+            return $.activity.detail.errorGuidance.noModelProvider.title;
+          }),
+          guidance: t(($) => {
+            return $.activity.detail.errorGuidance.noModelProvider.guidance;
+          }),
+        };
+        break;
+      }
+      case "INSUFFICIENT_CREDITS": {
+        localized = {
+          title: t(($) => {
+            return $.activity.detail.errorGuidance.creditsDepleted.title;
+          }),
+          guidance: t(($) => {
+            return $.activity.detail.errorGuidance.creditsDepleted.guidance;
+          }),
+        };
+        break;
+      }
+      case "PRO_REQUIRED": {
+        localized = {
+          title: t(($) => {
+            return $.activity.detail.errorGuidance.paidPlanRequired.title;
+          }),
+          guidance: t(($) => {
+            return $.activity.detail.errorGuidance.paidPlanRequired.guidance;
+          }),
+        };
+        break;
+      }
+      case "PROVIDER_INCOMPATIBLE": {
+        localized = {
+          title: t(($) => {
+            return $.activity.detail.errorGuidance.providerIncompatible.title;
+          }),
+          guidance: t(($) => {
+            return $.activity.detail.errorGuidance.providerIncompatible
+              .guidance;
+          }),
+        };
+        break;
+      }
+      case "PROVIDER_UNAVAILABLE": {
+        localized = {
+          title: t(($) => {
+            return $.activity.detail.errorGuidance
+              .providerTemporarilyUnavailable.title;
+          }),
+          guidance: t(($) => {
+            return $.activity.detail.errorGuidance
+              .providerTemporarilyUnavailable.guidance;
+          }),
+        };
+        break;
+      }
+      case "PROVIDER_DELETED": {
+        localized = {
+          title: t(($) => {
+            return $.activity.detail.errorGuidance.modelProviderUnavailable
+              .title;
+          }),
+          guidance: t(($) => {
+            return $.activity.detail.errorGuidance.modelProviderUnavailable
+              .guidance;
+          }),
+        };
+        break;
+      }
+      case "TOO_MANY_REQUESTS": {
+        localized = {
+          title: t(($) => {
+            return $.activity.detail.errorGuidance.concurrentRunLimitReached
+              .title;
+          }),
+          guidance: t(($) => {
+            return $.activity.detail.errorGuidance.concurrentRunLimitReached
+              .guidance;
+          }),
+        };
+        break;
+      }
+    }
     return (
       <div className="mt-2 rounded-lg bg-destructive/10 px-3 py-2 text-sm text-destructive">
-        <div className="font-medium">{guidance.title}</div>
-        <div className="mt-1 text-destructive/80">{guidance.guidance}</div>
-        {guidance.cliHint && (
+        <div className="font-medium">{localized.title}</div>
+        <div className="mt-1 text-destructive/80">{localized.guidance}</div>
+        {match.guidance.cliHint && (
           <div className="mt-1 font-mono text-xs text-destructive/60">
-            $ {guidance.cliHint}
+            $ {match.guidance.cliHint}
           </div>
         )}
       </div>
@@ -113,18 +218,22 @@ function RunErrorBanner({ error }: { error: string }) {
 // ---------------------------------------------------------------------------
 
 function ActivityBreadcrumbLink() {
+  const { t } = useTranslation();
   return (
     <Link
       pathname="/activities"
       className="inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 hover:bg-muted hover:text-foreground transition-colors no-underline text-inherit"
     >
       <IconChartLine size={14} stroke={1.5} className="shrink-0" />
-      Activity
+      {t(($) => {
+        return $.activity.detail.activity;
+      })}
     </Link>
   );
 }
 
 function ActivityNotFound() {
+  const { t } = useTranslation();
   const features = useLastResolved(featureSwitch$);
   return (
     <div className="h-full flex flex-col min-h-0">
@@ -136,21 +245,30 @@ function ActivityNotFound() {
           </>
         )}
         <span className="rounded-md px-1.5 py-0.5 text-foreground font-medium">
-          Log
+          {t(($) => {
+            return $.activity.detail.log;
+          })}
         </span>
       </nav>
       <div className="flex-1 flex flex-col items-center justify-center gap-3 pb-20">
         <ZeroNoPermissionIllustration />
-        <h2 className="text-lg font-semibold text-foreground">Log not found</h2>
+        <h2 className="text-lg font-semibold text-foreground">
+          {t(($) => {
+            return $.activity.detail.notFound.title;
+          })}
+        </h2>
         <p className="text-sm text-muted-foreground text-center max-w-sm">
-          This log doesn&apos;t exist or you don&apos;t have permission to view
-          it in the current workspace.
+          {t(($) => {
+            return $.activity.detail.notFound.description;
+          })}
         </p>
         <Link
           pathname="/activities"
           className="zero-btn-morandi mt-2 inline-flex items-center justify-center rounded-md border px-3 py-1.5 text-sm font-medium no-underline text-inherit hover:bg-accent"
         >
-          Back to activity
+          {t(($) => {
+            return $.activity.detail.notFound.back;
+          })}
         </Link>
       </div>
     </div>
@@ -188,6 +306,7 @@ export function ActivityHeaderCard({
   showModelDetail: boolean;
   onDownload?: () => void;
 }) {
+  const { t } = useTranslation();
   return (
     <div className="zero-card shrink-0 px-4 py-3">
       <div className="flex flex-col gap-1.5">
@@ -198,7 +317,11 @@ export function ActivityHeaderCard({
         </div>
         <div className="flex flex-wrap items-center gap-y-1 text-sm">
           <div className="flex items-center gap-1.5 pr-3">
-            <span className="text-muted-foreground shrink-0">Status</span>
+            <span className="text-muted-foreground shrink-0">
+              {t(($) => {
+                return $.activity.detail.fields.status;
+              })}
+            </span>
             <StatusBadge status={status} zeroStyle />
           </div>
           <span
@@ -208,7 +331,11 @@ export function ActivityHeaderCard({
           {triggerSource && (
             <>
               <div className="flex items-center gap-1.5 px-3">
-                <span className="text-muted-foreground shrink-0">Source</span>
+                <span className="text-muted-foreground shrink-0">
+                  {t(($) => {
+                    return $.activity.detail.fields.source;
+                  })}
+                </span>
                 <span className="text-foreground whitespace-nowrap">
                   {getTriggerSourceLabel(triggerSource, triggerAgentName)}
                 </span>
@@ -222,7 +349,11 @@ export function ActivityHeaderCard({
           {(detail.modelProvider || detail.framework) && (
             <>
               <div className="flex items-center gap-1.5 px-3">
-                <span className="text-muted-foreground shrink-0">Model</span>
+                <span className="text-muted-foreground shrink-0">
+                  {t(($) => {
+                    return $.activity.detail.fields.model;
+                  })}
+                </span>
                 {showModelDetail && detail.selectedModel ? (
                   <TooltipProvider>
                     <Tooltip>
@@ -232,12 +363,19 @@ export function ActivityHeaderCard({
                         </span>
                       </TooltipTrigger>
                       <TooltipContent>
-                        {detail.selectedModel} provided by{" "}
-                        {detail.modelProvider
-                          ? (MODEL_PROVIDER_TYPES[
-                              detail.modelProvider as ModelProviderType
-                            ]?.label ?? detail.modelProvider)
-                          : detail.framework}
+                        {t(
+                          ($) => {
+                            return $.activity.detail.modelProvidedBy;
+                          },
+                          {
+                            model: detail.selectedModel,
+                            provider: detail.modelProvider
+                              ? (MODEL_PROVIDER_TYPES[
+                                  detail.modelProvider as ModelProviderType
+                                ]?.label ?? detail.modelProvider)
+                              : detail.framework,
+                          },
+                        )}
                       </TooltipContent>
                     </Tooltip>
                   </TooltipProvider>
@@ -258,7 +396,11 @@ export function ActivityHeaderCard({
             </>
           )}
           <div className="flex items-center gap-1.5 px-3">
-            <span className="text-muted-foreground shrink-0">Duration</span>
+            <span className="text-muted-foreground shrink-0">
+              {t(($) => {
+                return $.activity.detail.fields.duration;
+              })}
+            </span>
             <span className="text-foreground whitespace-nowrap">
               {duration ?? "—"}
             </span>
@@ -268,7 +410,11 @@ export function ActivityHeaderCard({
             aria-hidden
           />
           <div className="flex items-center gap-1.5 px-3">
-            <span className="text-muted-foreground shrink-0">Time</span>
+            <span className="text-muted-foreground shrink-0">
+              {t(($) => {
+                return $.activity.detail.fields.time;
+              })}
+            </span>
             <span className="text-foreground whitespace-nowrap">{time}</span>
           </div>
           <div className="ml-auto flex items-center gap-1 shrink-0">
@@ -279,7 +425,9 @@ export function ActivityHeaderCard({
                     <Button
                       variant="ghost"
                       size="sm"
-                      aria-label="Download raw data"
+                      aria-label={t(($) => {
+                        return $.activity.detail.downloadRawData;
+                      })}
                       className="h-7 w-7 shrink-0 rounded-lg text-muted-foreground hover:text-foreground p-0"
                       onClick={() => {
                         if (onDownload) {
@@ -293,7 +441,11 @@ export function ActivityHeaderCard({
                     </Button>
                   </TooltipTrigger>
                   <TooltipContent side="left">
-                    <p className="text-xs">Download raw data</p>
+                    <p className="text-xs">
+                      {t(($) => {
+                        return $.activity.detail.downloadRawData;
+                      })}
+                    </p>
                   </TooltipContent>
                 </Tooltip>
               </TooltipProvider>
@@ -333,49 +485,15 @@ function prepareRenderData(
 function resolveDisplayName(
   detail: { displayName: string | null; agentId: string | null } | null,
   isStale: boolean,
+  fallback: string,
 ): string {
   if (!detail || isStale) {
-    return "Agent";
+    return fallback;
   }
-  return detail.displayName ?? detail.agentId ?? "Agent";
+  return detail.displayName ?? detail.agentId ?? fallback;
 }
 
 type ActivityTab = "steps" | "context" | "runner" | "network";
-
-const SANDBOX_REUSE_LABELS = {
-  reused: {
-    label: "Reused",
-    description: "Sandbox was unparked from the idle pool.",
-  },
-  featureDisabled: {
-    label: "Not reused",
-    description: "Sandbox reuse is disabled for this run.",
-  },
-  noSessionId: {
-    label: "Not reused",
-    description: "No session ID available to match against the idle pool.",
-  },
-  poolMiss: {
-    label: "Not reused",
-    description: "No matching sandbox found in the idle pool.",
-  },
-  profileMismatch: {
-    label: "Not reused",
-    description: "Idle pool entry exists but its profile does not match.",
-  },
-  deviceLimitMismatch: {
-    label: "Not reused",
-    description:
-      "Idle pool entry exists but its device rate limiter state does not match.",
-  },
-  unparkFailed: {
-    label: "Not reused",
-    description: "Unpark attempt failed; a fresh sandbox was provisioned.",
-  },
-} as const satisfies Record<
-  SandboxReuseResult,
-  { label: string; description: string }
->;
 
 function ActivityStepsContent({
   detail,
@@ -384,6 +502,7 @@ function ActivityStepsContent({
   detail: LogDetail;
   features: Record<FeatureSwitchKey, boolean> | undefined;
 }) {
+  const { t } = useTranslation();
   const stepSearch = useGet(zeroActivityStepSearch$);
   const setStepSearch = useSet(setZeroActivityStepSearch$);
   const visibleGroupsLoadable = useLastLoadable(zeroActivityVisibleGroups$);
@@ -412,19 +531,36 @@ function ActivityStepsContent({
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
         <div className="flex items-center gap-3">
           <span className="text-base font-medium text-foreground whitespace-nowrap">
-            Steps
+            {t(($) => {
+              return $.activity.detail.steps.title;
+            })}
           </span>
           <span className="text-sm text-muted-foreground whitespace-nowrap">
             {stepSearch.trim()
-              ? `(${groups.length}/${visibleGroups.length} matched)`
-              : `${visibleGroups.length} total`}
+              ? t(
+                  ($) => {
+                    return $.activity.detail.steps.matched;
+                  },
+                  {
+                    matched: formatAppNumber(groups.length),
+                    total: formatAppNumber(visibleGroups.length),
+                  },
+                )
+              : t(
+                  ($) => {
+                    return $.activity.detail.steps.total;
+                  },
+                  { total: formatAppNumber(visibleGroups.length) },
+                )}
           </span>
         </div>
         <div className="flex items-center gap-2 sm:gap-3">
           <div className="relative flex-1 sm:flex-none sm:w-44">
             <IconSearch className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
             <Input
-              placeholder="Search steps"
+              placeholder={t(($) => {
+                return $.activity.detail.steps.search;
+              })}
               value={stepSearch}
               onChange={(e) => {
                 return setStepSearch(e.target.value);
@@ -448,6 +584,7 @@ function ActivityStepsContent({
 }
 
 function ActivityContextTab({ detailId }: { detailId: string }) {
+  const { t } = useTranslation();
   const contextLoadable = useLastLoadable(zeroActivityContext$);
 
   if (
@@ -475,11 +612,14 @@ function ActivityContextTab({ detailId }: { detailId: string }) {
     return (
       <div className="flex flex-col items-center justify-center gap-3 py-12">
         <h2 className="text-lg font-semibold text-foreground">
-          Context not available
+          {t(($) => {
+            return $.activity.detail.contextUnavailable.title;
+          })}
         </h2>
         <p className="text-sm text-muted-foreground text-center max-w-sm">
-          Execution context is not available for this run. It may be an older
-          run created before context snapshots were enabled.
+          {t(($) => {
+            return $.activity.detail.contextUnavailable.description;
+          })}
         </p>
       </div>
     );
@@ -489,6 +629,7 @@ function ActivityContextTab({ detailId }: { detailId: string }) {
 }
 
 function ActivityRunnerTab({ detailId }: { detailId: string }) {
+  const { t } = useTranslation();
   const runnerLoadable = useLastLoadable(zeroActivityRunner$);
 
   if (
@@ -507,12 +648,86 @@ function ActivityRunnerTab({ detailId }: { detailId: string }) {
 
   const runner = runnerLoadable.data?.runner ?? null;
   const reuse = runner?.sandboxReuseResult ?? null;
-  const info = reuse ? SANDBOX_REUSE_LABELS[reuse] : null;
+  const notReused = t(($) => {
+    return $.activity.detail.runner.notReused;
+  });
+  const info = (() => {
+    switch (reuse) {
+      case "reused": {
+        return {
+          label: t(($) => {
+            return $.activity.detail.runner.reused;
+          }),
+          description: t(($) => {
+            return $.activity.detail.runner.reusedDescription;
+          }),
+        };
+      }
+      case "featureDisabled": {
+        return {
+          label: notReused,
+          description: t(($) => {
+            return $.activity.detail.runner.featureDisabled;
+          }),
+        };
+      }
+      case "noSessionId": {
+        return {
+          label: notReused,
+          description: t(($) => {
+            return $.activity.detail.runner.noSessionId;
+          }),
+        };
+      }
+      case "poolMiss": {
+        return {
+          label: notReused,
+          description: t(($) => {
+            return $.activity.detail.runner.poolMiss;
+          }),
+        };
+      }
+      case "profileMismatch": {
+        return {
+          label: notReused,
+          description: t(($) => {
+            return $.activity.detail.runner.profileMismatch;
+          }),
+        };
+      }
+      case "deviceLimitMismatch": {
+        return {
+          label: notReused,
+          description: t(($) => {
+            return $.activity.detail.runner.deviceLimitMismatch;
+          }),
+        };
+      }
+      case "unparkFailed": {
+        return {
+          label: notReused,
+          description: t(($) => {
+            return $.activity.detail.runner.unparkFailed;
+          }),
+        };
+      }
+      case null: {
+        return null;
+      }
+    }
+  })() satisfies {
+    label: string;
+    description: string;
+  } | null;
 
   return (
     <div className="flex flex-col gap-6 pb-8">
       <section>
-        <h3 className="text-sm font-semibold text-foreground mb-2">Sandbox</h3>
+        <h3 className="text-sm font-semibold text-foreground mb-2">
+          {t(($) => {
+            return $.activity.detail.runner.sandbox;
+          })}
+        </h3>
         {info ? (
           <div className="flex items-center gap-2">
             <span className="inline-flex items-center rounded-md border bg-muted/50 px-2 py-0.5 text-xs font-medium">
@@ -524,8 +739,9 @@ function ActivityRunnerTab({ detailId }: { detailId: string }) {
           </div>
         ) : (
           <p className="text-sm text-muted-foreground">
-            Unknown (older run, recorded before sandbox reuse tracking was
-            added).
+            {t(($) => {
+              return $.activity.detail.runner.unknown;
+            })}
           </p>
         )}
       </section>
@@ -534,6 +750,7 @@ function ActivityRunnerTab({ detailId }: { detailId: string }) {
 }
 
 function ActivityNetworkTab({ detailId }: { detailId: string }) {
+  const { t } = useTranslation();
   const logsLoadable = useLastLoadable(zeroActivityNetworkLogs$);
   const loadNextPage = useSet(loadNetworkLogsNextPage$);
   const pageSignal = useGet(pageSignal$);
@@ -562,10 +779,14 @@ function ActivityNetworkTab({ detailId }: { detailId: string }) {
     return (
       <div className="flex flex-col items-center justify-center gap-3 py-12">
         <h2 className="text-lg font-semibold text-foreground">
-          No network logs
+          {t(($) => {
+            return $.activity.detail.networkEmpty.title;
+          })}
         </h2>
         <p className="text-sm text-muted-foreground text-center max-w-sm">
-          No network traffic was recorded for this run.
+          {t(($) => {
+            return $.activity.detail.networkEmpty.description;
+          })}
         </p>
       </div>
     );
@@ -617,6 +838,7 @@ function ActivityDetailContent({
   eventsData: AgentEvent[];
   features: Record<FeatureSwitchKey, boolean> | undefined;
 }) {
+  const { t } = useTranslation();
   const params = useGet(searchParams$);
   const updateParams = useSet(updateSearchParams$);
   const showDebugTabs = features?.[FeatureSwitchKey.ZeroDebug] ?? false;
@@ -694,10 +916,26 @@ function ActivityDetailContent({
                 }}
               >
                 <TabsList>
-                  <TabsTrigger value="steps">Steps</TabsTrigger>
-                  <TabsTrigger value="context">Context</TabsTrigger>
-                  <TabsTrigger value="runner">Runner</TabsTrigger>
-                  <TabsTrigger value="network">Network</TabsTrigger>
+                  <TabsTrigger value="steps">
+                    {t(($) => {
+                      return $.activity.detail.tabs.steps;
+                    })}
+                  </TabsTrigger>
+                  <TabsTrigger value="context">
+                    {t(($) => {
+                      return $.activity.detail.tabs.context;
+                    })}
+                  </TabsTrigger>
+                  <TabsTrigger value="runner">
+                    {t(($) => {
+                      return $.activity.detail.tabs.runner;
+                    })}
+                  </TabsTrigger>
+                  <TabsTrigger value="network">
+                    {t(($) => {
+                      return $.activity.detail.tabs.network;
+                    })}
+                  </TabsTrigger>
                 </TabsList>
               </Tabs>
             </div>
@@ -717,6 +955,7 @@ function ActivityDetailContent({
 }
 
 export function ZeroActivityDetailPage() {
+  const { t } = useTranslation();
   const currentRunId = useGet(currentRunId$);
   const detailLoadable = useLastLoadable(zeroActivityDetail$);
   const eventsLoadable = useLastLoadable(zeroActivityEvents$);
@@ -725,7 +964,13 @@ export function ZeroActivityDetailPage() {
     detailLoadable.state === "hasData" ? detailLoadable.data : null;
   // Detect stale detail from previous navigation (useLastLoadable keeps old data)
   const isStale = detail !== null && detail.id !== currentRunId;
-  const displayName = resolveDisplayName(detail, isStale);
+  const displayName = resolveDisplayName(
+    detail,
+    isStale,
+    t(($) => {
+      return $.activity.detail.fallbackAgent;
+    }),
+  );
 
   const features = useLastResolved(featureSwitch$);
   const eventsData =
@@ -830,6 +1075,7 @@ export function StepsList({
   isLoading: boolean;
   startedAt?: string | null;
 }) {
+  const { t } = useTranslation();
   const normalizedStepSearch = stepSearch.trim();
   const hasSystemPrompt = appendSystemPrompt.trim().length > 0;
   const hasPrompt = prompt.trim().length > 0;
@@ -838,14 +1084,18 @@ export function StepsList({
     <div className="min-w-0">
       {hasSystemPrompt && (
         <PromptCard
-          label="System Prompt"
+          label={t(($) => {
+            return $.activity.detail.steps.systemPrompt;
+          })}
           prompt={appendSystemPrompt}
           showConnector={hasPrompt || groups.length > 0}
         />
       )}
       {hasPrompt && (
         <PromptCard
-          label="Prompt"
+          label={t(($) => {
+            return $.activity.detail.steps.userPrompt;
+          })}
           prompt={prompt}
           showConnector={groups.length > 0}
         />
@@ -860,7 +1110,9 @@ export function StepsList({
         </div>
       ) : groups.length === 0 && !hasContent ? (
         <div className="py-8 text-center text-muted-foreground">
-          No events available
+          {t(($) => {
+            return $.activity.detail.steps.noEvents;
+          })}
         </div>
       ) : (
         groups.map((group, index) => {
@@ -964,7 +1216,7 @@ function summarizePrompt(prompt: string): string {
 }
 
 function PromptCard({
-  label = "Prompt",
+  label,
   prompt,
   showConnector,
 }: {
