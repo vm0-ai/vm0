@@ -93,8 +93,18 @@ interface UsageRecordIntermediateRow extends UsageRecordRow {
 interface UsageRecordBreakdownSqlRow {
   readonly rowKey: string;
   readonly kind: UsageRecordKind;
+  readonly usageKind: string;
   readonly provider: string;
   readonly credits: number;
+}
+
+interface UsageRecordProviderAccumulator {
+  readonly provider: string;
+  credits: number;
+  readonly usageKinds: {
+    readonly kind: string;
+    readonly credits: number;
+  }[];
 }
 
 function tokenExpr(usage: FinalizedUsageRelation) {
@@ -462,6 +472,7 @@ async function queryUsageRecordBreakdown(
         runId: usage.runId,
         userId: usage.userId,
         kind: usageKindExpr(usage).as("kind"),
+        usageKind: sql`${usage.kind}`.mapWith(pgTextDecoder).as("usage_kind"),
         provider: sql`COALESCE(NULLIF(${usage.provider}, ''), 'unknown')`
           .mapWith(pgTextDecoder)
           .as("provider"),
@@ -495,6 +506,7 @@ async function queryUsageRecordBreakdown(
       .select({
         rowKey: rowKey.as("row_key"),
         kind: usageRows.kind,
+        usageKind: usageRows.usageKind,
         provider: usageRows.provider,
         credits: usageRows.credits,
       })
@@ -505,6 +517,7 @@ async function queryUsageRecordBreakdown(
     .select({
       rowKey: keyed.rowKey,
       kind: keyed.kind,
+      usageKind: keyed.usageKind,
       provider: keyed.provider,
       credits: sql`${sum(keyed.credits)}::bigint`
         .mapWith(pgInt8ToSafeIntegerDecoder)
@@ -512,20 +525,34 @@ async function queryUsageRecordBreakdown(
     })
     .from(keyed)
     .where(inArray(keyed.rowKey, [...rowKeys]))
-    .groupBy(keyed.rowKey, keyed.kind, keyed.provider)
+    .groupBy(keyed.rowKey, keyed.kind, keyed.usageKind, keyed.provider)
     .having(gt(sum(keyed.credits), sql`0`))
-    .orderBy(asc(keyed.rowKey), asc(keyed.kind), asc(keyed.provider));
+    .orderBy(
+      asc(keyed.rowKey),
+      asc(keyed.kind),
+      asc(keyed.provider),
+      asc(keyed.usageKind),
+    );
 
   const byRow = new Map<
     string,
-    Map<UsageRecordKind, UsageRecordBreakdownSqlRow[]>
+    Map<UsageRecordKind, Map<string, UsageRecordProviderAccumulator>>
   >();
   for (const row of rows) {
-    const kind = row.kind;
     const kinds = byRow.get(row.rowKey) ?? new Map();
-    const providers = kinds.get(kind) ?? [];
-    providers.push(row);
-    kinds.set(kind, providers);
+    const providers = kinds.get(row.kind) ?? new Map();
+    const provider = providers.get(row.provider) ?? {
+      provider: row.provider,
+      credits: 0,
+      usageKinds: [],
+    };
+    provider.credits += row.credits;
+    provider.usageKinds.push({
+      kind: row.usageKind,
+      credits: row.credits,
+    });
+    providers.set(row.provider, provider);
+    kinds.set(row.kind, providers);
     byRow.set(row.rowKey, kinds);
   }
 
@@ -539,16 +566,10 @@ async function queryUsageRecordBreakdown(
       "connector",
       "other",
     ] as const) {
-      const providerRows = kindMap.get(kind) ?? [];
-      if (providerRows.length === 0) {
+      const providers = Array.from(kindMap.get(kind)?.values() ?? []);
+      if (providers.length === 0) {
         continue;
       }
-      const providers = providerRows.map((row) => {
-        return {
-          provider: row.provider,
-          credits: row.credits,
-        };
-      });
       breakdown.push({
         kind,
         credits: providers.reduce((sum, provider) => {

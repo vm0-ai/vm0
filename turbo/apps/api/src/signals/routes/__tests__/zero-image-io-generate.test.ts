@@ -994,7 +994,11 @@ describe("POST /api/zero/image-io/generate", () => {
               kind: "image",
               credits: creditsCharged,
               providers: [
-                { provider: IMAGE_IO_MODEL, credits: creditsCharged },
+                {
+                  provider: IMAGE_IO_MODEL,
+                  credits: creditsCharged,
+                  usageKinds: [{ kind: "image", credits: creditsCharged }],
+                },
               ],
             },
           ],
