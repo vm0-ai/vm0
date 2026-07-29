@@ -241,7 +241,7 @@ describe("usage event compaction cron", () => {
   });
 
   it("retains unstable hours and explicit diagnostic holds", async () => {
-    const fixture = await seedFixture();
+    const heldFixture = await seedFixture();
     const currentHour = nowDate();
     currentHour.setUTCMinutes(0, 0, 0);
     const previousHour = new Date(currentHour.getTime() - 60 * 60 * 1000);
@@ -249,7 +249,7 @@ describe("usage event compaction cron", () => {
     await store.set(
       insertUsageEvent$,
       {
-        ...fixture,
+        ...heldFixture,
         status: "processed",
         processedAt: new Date("0399-01-01T00:15:00.000Z"),
         billingError: "missing_pricing",
@@ -259,7 +259,7 @@ describe("usage event compaction cron", () => {
     await store.set(
       insertUsageEvent$,
       {
-        ...fixture,
+        ...heldFixture,
         status: "pending",
         processedAt: new Date("0400-01-01T00:15:00.000Z"),
       },
@@ -268,7 +268,7 @@ describe("usage event compaction cron", () => {
     await store.set(
       insertUsageEvent$,
       {
-        ...fixture,
+        ...heldFixture,
         status: "processed",
         processedAt: previousHour,
       },
@@ -277,22 +277,23 @@ describe("usage event compaction cron", () => {
     await store.set(
       insertUsageEvent$,
       {
-        ...fixture,
+        ...heldFixture,
         status: "processed",
         processedAt: new Date(currentHour.getTime() + 1000),
       },
       context.signal,
     );
+    const eligibleFixture = await seedFixture();
     await store.set(
       insertUsageEvent$,
       {
-        ...fixture,
+        ...eligibleFixture,
         status: "processed",
         processedAt: new Date("0400-01-01T00:30:00.000Z"),
       },
       context.signal,
     );
-    await seedZeroUsageEvents(fixture, {
+    await seedZeroUsageEvents(eligibleFixture, {
       processedAt: new Date("0400-01-01T00:30:00.000Z"),
       count: 99,
     });
@@ -304,8 +305,12 @@ describe("usage event compaction cron", () => {
       hourlyRowsInserted: 1,
       billingErrorHeldRows: 1,
     });
-    await expect(readStorage(fixture)).resolves.toStrictEqual({
+    await expect(readStorage(heldFixture)).resolves.toStrictEqual({
       raw: 4,
+      hourly: 0,
+    });
+    await expect(readStorage(eligibleFixture)).resolves.toStrictEqual({
+      raw: 0,
       hourly: 1,
     });
   });
