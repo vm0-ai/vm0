@@ -1,5 +1,21 @@
 # Changelog
 
+## [1.340.0](https://github.com/vm0-ai/vm0/compare/api-v1.339.0...api-v1.340.0) (2026-07-29)
+
+
+### Features
+
+* **platform:** support brazilian portuguese locale ([#23515](https://github.com/vm0-ai/vm0/issues/23515)) ([a242a1d](https://github.com/vm0-ai/vm0/commit/a242a1dbb984ce339a39f9496ea389b54057a8ea))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.243.0
+    * @vm0/core bumped to 8.484.0
+    * @vm0/db bumped to 1.150.3
+
 ## [1.339.0](https://github.com/vm0-ai/vm0/compare/api-v1.338.2...api-v1.339.0) (2026-07-29)
 
 

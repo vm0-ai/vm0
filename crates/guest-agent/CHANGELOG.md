@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.58.6](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.58.5...guest-agent-v0.58.6) (2026-07-29)
+
+
+### Refactoring
+
+* **guest-agent:** split checkpoint pipelines ([#23600](https://github.com/vm0-ai/vm0/issues/23600)) ([859fb3b](https://github.com/vm0-ai/vm0/commit/859fb3b537a842d78b7bebb7dc483b3c1eaea160))
+
 ## [0.58.5](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.58.4...guest-agent-v0.58.5) (2026-07-28)
 
 ## [0.58.4](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.58.3...guest-agent-v0.58.4) (2026-07-28)
