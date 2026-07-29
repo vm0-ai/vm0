@@ -1475,14 +1475,19 @@ describe("connectors page", () => {
   });
 
   it.each([
+    ["airtable", "Airtable"],
+    ["asana", "Asana"],
+    ["gumroad", "Gumroad"],
     ["hubspot", "HubSpot"],
     ["intervals-icu", "Intervals.icu"],
     ["linear", "Linear"],
     ["mercury", "Mercury"],
+    ["monday", "monday.com"],
     ["notion", "Notion"],
     ["sentry", "Sentry"],
     ["server-authored-oauth", "Server-authored OAuth"],
     ["strava", "Strava"],
+    ["todoist", "Todoist"],
     ["vercel", "Vercel"],
   ] as const)(
     "starts %s OAuth with the app callback",
