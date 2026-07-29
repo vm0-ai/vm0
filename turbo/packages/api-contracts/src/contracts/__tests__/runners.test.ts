@@ -1,6 +1,7 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { describe, expect, it } from "vitest";
+import { z } from "zod";
 
 import {
   compatibleStoredExecutionContextSchema,
@@ -9,7 +10,6 @@ import {
   heartbeatBodySchema,
   heldSessionStateSchema,
   jobSchema,
-  legacyStorageManifestSchema,
   RUNNER_BUILTIN_FIREWALL_RESOLVE_NAMES_MAX,
   RUNNER_POLL_EXCLUDED_RUN_IDS_MAX,
   SESSION_HISTORY_DOWNLOAD_SOURCE_CONFIGURED_PUBLIC_ENDPOINT,
@@ -209,46 +209,48 @@ describe("runner poll response contract", () => {
 });
 
 describe("runner storage manifest contract", () => {
-  it("preserves stored context compatibility while preparing field removal", () => {
-    const context = {
-      storageMounts: [],
-      environment: null,
-      secretValueEnvironmentKeys: null,
-      resumeSession: null,
-      encryptedSecrets: null,
-      cliAgentType: "codex",
-    };
-    const legacyManifest = { storages: [], artifacts: [] };
-    const previousStoredExecutionContextSchema =
+  const storedContext = {
+    storageMounts: [],
+    environment: null,
+    secretValueEnvironmentKeys: null,
+    resumeSession: null,
+    encryptedSecrets: null,
+    cliAgentType: "codex",
+  };
+
+  it("keeps prepared readers compatible with omitted stored fields", () => {
+    const preparedStoredExecutionContextSchema =
       storedExecutionContextSchema.extend({
-        storageManifest: legacyStorageManifestSchema.nullable(),
+        storageManifest: z.unknown().nullable().optional(),
       });
 
+    expect(preparedStoredExecutionContextSchema.parse(storedContext)).toEqual(
+      storedContext,
+    );
+    expect(storedExecutionContextSchema.parse(storedContext)).toEqual(
+      storedContext,
+    );
+  });
+
+  it("requires canonical mounts while ignoring previous stored fields", () => {
     expect(
-      previousStoredExecutionContextSchema.safeParse({
-        ...context,
+      compatibleStoredExecutionContextSchema.parse({
+        ...storedContext,
         storageManifest: null,
-      }).success,
-    ).toBe(true);
+      }),
+    ).toEqual(storedContext);
     expect(
-      previousStoredExecutionContextSchema.safeParse(context).success,
-    ).toBe(false);
+      compatibleStoredExecutionContextSchema.parse({
+        ...storedContext,
+        storageManifest: {
+          storages: [{ futureLegacyField: true }],
+          artifacts: [],
+        },
+      }),
+    ).toEqual(storedContext);
     expect(
-      storedExecutionContextSchema.safeParse({
-        ...context,
-        storageManifest: legacyManifest,
-      }).success,
-    ).toBe(true);
-    expect(
-      storedExecutionContextSchema.safeParse({
-        ...context,
-        storageManifest: null,
-      }).success,
-    ).toBe(true);
-    expect(storedExecutionContextSchema.safeParse(context).success).toBe(true);
-    expect(
-      storedExecutionContextSchema.safeParse({
-        ...context,
+      compatibleStoredExecutionContextSchema.safeParse({
+        ...storedContext,
         storageMounts: undefined,
       }).success,
     ).toBe(false);
@@ -358,257 +360,6 @@ describe("runner storage manifest contract", () => {
         storageMounts: [mount, { ...mount, name: "replacement" }],
       }).success,
     ).toBe(false);
-  });
-
-  it("accepts the stored legacy manifest shape", () => {
-    expect(
-      legacyStorageManifestSchema.parse({
-        storages: [
-          {
-            name: "workspace",
-            mountPath: "/workspace",
-            vasStorageName: "workspace-volume",
-            vasVersionId: "version-1",
-            archiveUrl: "https://storage.example/archive.tar.gz",
-          },
-        ],
-        artifacts: [
-          {
-            mountPath: "/home/user/.claude/projects/project",
-            vasStorageName: "memory",
-            vasStorageId: "storage-id-1",
-            vasVersionId: "version-2",
-            archiveUrl: "https://storage.example/artifact.tar.gz",
-          },
-        ],
-      }),
-    ).toEqual({
-      storages: [
-        {
-          name: "workspace",
-          mountPath: "/workspace",
-          vasStorageName: "workspace-volume",
-          vasVersionId: "version-1",
-          archiveUrl: "https://storage.example/archive.tar.gz",
-        },
-      ],
-      artifacts: [
-        {
-          mountPath: "/home/user/.claude/projects/project",
-          vasStorageName: "memory",
-          vasStorageId: "storage-id-1",
-          vasVersionId: "version-2",
-          archiveUrl: "https://storage.example/artifact.tar.gz",
-        },
-      ],
-    });
-  });
-
-  it("strips legacy artifact manifest urls", () => {
-    expect(
-      legacyStorageManifestSchema.parse({
-        storages: [],
-        artifacts: [
-          {
-            mountPath: "/home/user/.claude/projects/project",
-            vasStorageName: "memory",
-            vasStorageId: "storage-id-1",
-            vasVersionId: "version-2",
-            archiveUrl: "https://storage.example/artifact.tar.gz",
-            manifestUrl: "https://storage.example/manifest.json",
-          },
-        ],
-      }),
-    ).toEqual({
-      storages: [],
-      artifacts: [
-        {
-          mountPath: "/home/user/.claude/projects/project",
-          vasStorageName: "memory",
-          vasStorageId: "storage-id-1",
-          vasVersionId: "version-2",
-          archiveUrl: "https://storage.example/artifact.tar.gz",
-        },
-      ],
-    });
-  });
-
-  it("accepts explicit empty artifact entries with compatibility archive urls", () => {
-    const manifest = legacyStorageManifestSchema.parse({
-      storages: [],
-      artifacts: [
-        {
-          mountPath: "/home/user/.claude/projects/project",
-          vasStorageName: "memory",
-          vasStorageId: "storage-id-1",
-          vasVersionId: "version-2",
-          archiveUrl: "https://storage.example/artifact.tar.gz",
-          empty: true,
-        },
-      ],
-    });
-
-    expect(manifest.artifacts[0]).toMatchObject({
-      archiveUrl: "https://storage.example/artifact.tar.gz",
-      empty: true,
-    });
-  });
-
-  it("accepts explicit empty artifact entries without archive urls", () => {
-    const manifest = legacyStorageManifestSchema.parse({
-      storages: [],
-      artifacts: [
-        {
-          mountPath: "/home/user/.claude/projects/project",
-          vasStorageName: "memory",
-          vasStorageId: "storage-id-1",
-          vasVersionId: "version-2",
-          empty: true,
-        },
-      ],
-    });
-
-    expect(manifest.artifacts[0]).toMatchObject({
-      empty: true,
-    });
-    expect(manifest.artifacts[0]?.archiveUrl).toBeUndefined();
-  });
-
-  it("rejects non-empty artifact entries without archive urls", () => {
-    const result = legacyStorageManifestSchema.safeParse({
-      storages: [],
-      artifacts: [
-        {
-          mountPath: "/home/user/.claude/projects/project",
-          vasStorageName: "memory",
-          vasStorageId: "storage-id-1",
-          vasVersionId: "version-2",
-        },
-      ],
-    });
-
-    expect(result.success).toBe(false);
-  });
-
-  it("rejects guest-download-only nullable archive urls", () => {
-    const result = legacyStorageManifestSchema.safeParse({
-      storages: [
-        {
-          name: "workspace",
-          mountPath: "/workspace",
-          vasStorageName: "workspace-volume",
-          vasVersionId: "version-1",
-          archiveUrl: null,
-        },
-      ],
-      artifacts: [],
-    });
-
-    expect(result.success).toBe(false);
-  });
-
-  it("rejects nullable artifact archive urls even for explicit empty artifacts", () => {
-    const result = legacyStorageManifestSchema.safeParse({
-      storages: [],
-      artifacts: [
-        {
-          mountPath: "/home/user/.claude/projects/project",
-          vasStorageName: "memory",
-          vasStorageId: "storage-id-1",
-          vasVersionId: "version-2",
-          archiveUrl: null,
-          empty: true,
-        },
-      ],
-    });
-
-    expect(result.success).toBe(false);
-  });
-
-  it("accepts preserve-parent missing-root policy on artifact entries", () => {
-    const manifest = legacyStorageManifestSchema.parse({
-      storages: [],
-      artifacts: [
-        {
-          mountPath: "/home/user/.claude/projects/-home-user-workspace/memory",
-          vasStorageName: "memory",
-          vasStorageId: "storage-id-1",
-          vasVersionId: "version-2",
-          archiveUrl: "https://storage.example/artifact.tar.gz",
-          missingRootPolicy: "preserveParentVersion",
-        },
-      ],
-    });
-
-    expect(manifest.artifacts[0]?.missingRootPolicy).toBe(
-      "preserveParentVersion",
-    );
-  });
-
-  it("accepts explicit fail missing-root policy on artifact entries", () => {
-    const manifest = legacyStorageManifestSchema.parse({
-      storages: [],
-      artifacts: [
-        {
-          mountPath: "/home/user/.claude/projects/-home-user-workspace/memory",
-          vasStorageName: "memory",
-          vasStorageId: "storage-id-1",
-          vasVersionId: "version-2",
-          archiveUrl: "https://storage.example/artifact.tar.gz",
-          missingRootPolicy: "fail",
-        },
-      ],
-    });
-
-    expect(manifest.artifacts[0]?.missingRootPolicy).toBe("fail");
-  });
-
-  it("rejects unknown artifact missing-root policies", () => {
-    const result = legacyStorageManifestSchema.safeParse({
-      storages: [],
-      artifacts: [
-        {
-          mountPath: "/home/user/.claude/projects/-home-user-workspace/memory",
-          vasStorageName: "memory",
-          vasStorageId: "storage-id-1",
-          vasVersionId: "version-2",
-          archiveUrl: "https://storage.example/artifact.tar.gz",
-          missingRootPolicy: "ignore",
-        },
-      ],
-    });
-
-    expect(result.success).toBe(false);
-  });
-
-  it("strips fields outside the stored legacy schema", () => {
-    const manifest = legacyStorageManifestSchema.parse({
-      storages: [
-        {
-          name: "workspace",
-          mountPath: "/workspace",
-          vasStorageName: "workspace-volume",
-          vasVersionId: "version-1",
-          archiveUrl: "https://storage.example/archive.tar.gz",
-          cached: true,
-        },
-      ],
-      artifacts: [],
-      cleanupPaths: ["/workspace"],
-    });
-
-    expect(manifest).toEqual({
-      storages: [
-        {
-          name: "workspace",
-          mountPath: "/workspace",
-          vasStorageName: "workspace-volume",
-          vasVersionId: "version-1",
-          archiveUrl: "https://storage.example/archive.tar.gz",
-        },
-      ],
-      artifacts: [],
-    });
   });
 });
 

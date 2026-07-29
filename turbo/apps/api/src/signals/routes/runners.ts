@@ -1701,7 +1701,6 @@ async function buildClaimResponseBody(args: {
       const {
         connectorPermissionBaseline: _connectorPermissionBaseline,
         secretValueEnvironmentKeys: _secretValueEnvironmentKeys,
-        storageManifest: _legacyStorageManifest,
         storageMounts: _storedStorageMounts,
         ...runnerStoredContext
       } = args.storedContext;
