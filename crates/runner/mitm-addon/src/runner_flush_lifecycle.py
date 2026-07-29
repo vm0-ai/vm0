@@ -141,8 +141,7 @@ def _stop_runner_jsonl_flush_worker() -> None:
             return
         _jsonl_flush_stop.set()
 
-    if worker is not threading.current_thread():
-        worker.join()
+    worker.join()
 
     with _jsonl_flush_worker_lock:
         if _jsonl_flush_worker is worker:
