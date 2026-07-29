@@ -2,6 +2,8 @@ import { command, computed, state } from "ccstate";
 import { onRef, resetSignal, setLoop } from "./utils.ts";
 import { getAvatarPresets } from "../views/zero-page/zero-avatars.ts";
 import { captureFirstSkeletonHide$ } from "../lib/posthog.ts";
+import { i18n } from "../i18n/index.ts";
+import { locale$ } from "./locale.ts";
 
 // ---------------------------------------------------------------------------
 // Visibility
@@ -84,19 +86,10 @@ export const skeletonAvatarConfig$ = computed((get) => {
 // Message cycling
 // ---------------------------------------------------------------------------
 
-const LOADING_COPY = [
-  "Warming up the neurons...",
-  "Brewing some ideas...",
-  "Getting things ready...",
-  "Almost there...",
-  "Loading your workspace...",
-  "Tuning the instruments...",
-  "Connecting the dots...",
-  "Spinning up the team...",
-] as const;
+const LOADING_COPY_COUNT = 8;
 
 const skeletonCopyIndex$ = state(
-  Math.floor(Math.random() * LOADING_COPY.length),
+  Math.floor(Math.random() * LOADING_COPY_COUNT),
 );
 
 const skeletonFirstCycle$ = state(true);
@@ -104,11 +97,41 @@ const skeletonFirstCycle$ = state(true);
 const resetSkeletonCycling$ = resetSignal();
 
 export const skeletonCopy$ = computed((get) => {
+  get(locale$);
+  const loadingCopy = [
+    i18n.t(($) => {
+      return $.appShell.loading.messages.warmingNeurons;
+    }),
+    i18n.t(($) => {
+      return $.appShell.loading.messages.brewingIdeas;
+    }),
+    i18n.t(($) => {
+      return $.appShell.loading.messages.gettingReady;
+    }),
+    i18n.t(($) => {
+      return $.appShell.loading.messages.almostThere;
+    }),
+    i18n.t(($) => {
+      return $.appShell.loading.messages.loadingWorkspace;
+    }),
+    i18n.t(($) => {
+      return $.appShell.loading.messages.tuningInstruments;
+    }),
+    i18n.t(($) => {
+      return $.appShell.loading.messages.connectingDots;
+    }),
+    i18n.t(($) => {
+      return $.appShell.loading.messages.spinningTeam;
+    }),
+  ];
   const i = get(skeletonCopyIndex$);
-  const len = LOADING_COPY.length;
+  const len = loadingCopy.length;
   return {
-    staticCopy: LOADING_COPY[i % len],
-    typewriterCopy: LOADING_COPY[(i + 1) % len],
+    ariaLabel: i18n.t(($) => {
+      return $.appShell.loading.ariaLabel;
+    }),
+    staticCopy: loadingCopy[i % len],
+    typewriterCopy: loadingCopy[(i + 1) % len],
     isFirst: get(skeletonFirstCycle$),
     cycle: i,
   };
