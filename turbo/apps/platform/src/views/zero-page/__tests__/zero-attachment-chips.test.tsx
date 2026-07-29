@@ -95,7 +95,7 @@ function setupHostedSiteArtifactPreview({
   });
   mockChatLifecycle(context, {
     threadId: THREAD_ID,
-    chatMessages: [
+    chatEvents: [
       {
         id: `msg-${runId}`,
         role: "assistant",
@@ -749,7 +749,7 @@ describe("zero attachment chips", () => {
     const imageUrl = "https://cdn.vm7.io/artifacts/test/photo/photo.png";
     mockChatLifecycle(context, {
       threadId: THREAD_ID,
-      chatMessages: [
+      chatEvents: [
         {
           id: "msg-image-then-text",
           role: "user",
@@ -788,7 +788,7 @@ describe("zero attachment chips", () => {
     const assetId = "a0000000-0000-4000-a000-000000000051";
     mockChatLifecycle(context, {
       threadId: THREAD_ID,
-      chatMessages: [
+      chatEvents: [
         {
           id: "msg-canonical-slack-input",
           role: "user",
@@ -831,7 +831,7 @@ describe("zero attachment chips", () => {
     const assetId = "a0000000-0000-4000-a000-000000000052";
     mockChatLifecycle(context, {
       threadId: THREAD_ID,
-      chatMessages: [
+      chatEvents: [
         {
           id: "msg-failed-slack-input",
           role: "user",
@@ -884,7 +884,7 @@ describe("zero attachment chips", () => {
     const assetId = "a0000000-0000-4000-a000-000000000053";
     mockChatLifecycle(context, {
       threadId: THREAD_ID,
-      chatMessages: [
+      chatEvents: [
         {
           id: "msg-canonical-agent-output-completed",
           role: "assistant",
@@ -924,7 +924,7 @@ describe("zero attachment chips", () => {
     const videoUrl = "https://cdn.vm7.io/artifacts/test/media/screencast.mp4";
     mockChatLifecycle(context, {
       threadId: THREAD_ID,
-      chatMessages: [
+      chatEvents: [
         {
           id: "msg-image-video-attachments",
           role: "user",
@@ -988,7 +988,7 @@ describe("zero attachment chips", () => {
     });
     mockChatLifecycle(context, {
       threadId: THREAD_ID,
-      chatMessages: [
+      chatEvents: [
         {
           id: "msg-attachments",
           role: "user",
@@ -1093,7 +1093,7 @@ describe("zero attachment chips", () => {
     });
     mockChatLifecycle(context, {
       threadId: THREAD_ID,
-      chatMessages: [
+      chatEvents: [
         {
           id: "msg-document-previews",
           role: "user",
@@ -1241,7 +1241,7 @@ describe("zero attachment chips", () => {
     });
     mockChatLifecycle(context, {
       threadId: THREAD_ID,
-      chatMessages: [
+      chatEvents: [
         {
           id: "msg-image-navigation",
           role: "user",
@@ -1363,7 +1363,7 @@ describe("zero attachment chips", () => {
     });
     mockChatLifecycle(context, {
       threadId: THREAD_ID,
-      chatMessages: [
+      chatEvents: [
         {
           id: "msg-body-image-navigation",
           role: "assistant",
@@ -1447,7 +1447,7 @@ describe("zero attachment chips", () => {
     });
     mockChatLifecycle(context, {
       threadId: THREAD_ID,
-      chatMessages: [
+      chatEvents: [
         {
           id: "msg-body-image-ordered-navigation",
           role: "assistant",
@@ -1524,7 +1524,7 @@ describe("zero attachment chips", () => {
     });
     mockChatLifecycle(context, {
       threadId: THREAD_ID,
-      chatMessages: [
+      chatEvents: [
         {
           id: "msg-body-image-link-navigation",
           role: "assistant",
@@ -1583,7 +1583,7 @@ describe("zero attachment chips", () => {
     });
     mockChatLifecycle(context, {
       threadId: THREAD_ID,
-      chatMessages: [
+      chatEvents: [
         {
           id: "msg-user-image-navigation",
           role: "user",
@@ -1677,7 +1677,7 @@ describe("zero attachment chips", () => {
     });
     mockChatLifecycle(context, {
       threadId: THREAD_ID,
-      chatMessages: [
+      chatEvents: [
         {
           id: "msg-fullscreen-navigation",
           role: "user",
@@ -1750,7 +1750,7 @@ describe("zero attachment chips", () => {
     });
     mockChatLifecycle(context, {
       threadId: THREAD_ID,
-      chatMessages: [
+      chatEvents: [
         {
           id: "msg-presentation-artifact",
           role: "assistant",
@@ -1878,7 +1878,7 @@ describe("zero attachment chips", () => {
     });
     mockChatLifecycle(context, {
       threadId: THREAD_ID,
-      chatMessages: [
+      chatEvents: [
         {
           id: "msg-video-thumbnail-soft-switch",
           role: "assistant",
@@ -1975,7 +1975,7 @@ describe("zero attachment chips", () => {
     });
     mockChatLifecycle(context, {
       threadId: THREAD_ID,
-      chatMessages: [
+      chatEvents: [
         {
           id: "msg-body-preview-links",
           role: "assistant",
@@ -2155,7 +2155,7 @@ describe("zero attachment chips", () => {
     const imageUrl = "https://cdn.vm7.io/artifacts/test/body-image/chart.png";
     mockChatLifecycle(context, {
       threadId: THREAD_ID,
-      chatMessages: [
+      chatEvents: [
         {
           id: "msg-stable-image-preview",
           role: "assistant",
@@ -2244,7 +2244,7 @@ describe("zero attachment chips", () => {
       "https://cdn.vm7.io/artifacts/test/user-markdown-image/kitten-1280x720.png";
     mockChatLifecycle(context, {
       threadId: THREAD_ID,
-      chatMessages: [
+      chatEvents: [
         {
           id: "msg-user-markdown-image",
           role: "user",
@@ -2285,7 +2285,7 @@ describe("zero attachment chips", () => {
     });
     mockChatLifecycle(context, {
       threadId: THREAD_ID,
-      chatMessages: [
+      chatEvents: [
         {
           id: "msg-text-previews",
           role: "user",

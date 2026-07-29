@@ -1,9 +1,9 @@
 import { IconCheck, IconCircleDashed, IconLoader } from "@tabler/icons-react";
 import { Markdown } from "../../../components/markdown.tsx";
 import {
-  groupedMessageKey,
+  eventGroupKey,
   isTaskEventData,
-  type GroupedMessage,
+  type EventGroup,
   type ToolOperation,
 } from "./log-detail-utils.ts";
 import { ToolSummary } from "./tool-summary.tsx";
@@ -14,8 +14,8 @@ import {
 } from "./event-card.tsx";
 import { StatusDot } from "./status-dot.tsx";
 
-interface GroupedMessageCardProps {
-  message: GroupedMessage;
+interface EventGroupCardProps {
+  group: EventGroup;
   searchTerm?: string;
   currentMatchIndex?: number;
   matchStartIndex?: number;
@@ -24,7 +24,7 @@ interface GroupedMessageCardProps {
 }
 
 // Layout constants
-const MESSAGE_SPACING = "py-2";
+const GROUP_SPACING = "py-2";
 
 function MarkdownContent({ text }: { text: string }) {
   return <Markdown source={text} />;
@@ -102,7 +102,7 @@ function ThinkingSummary({
   );
 
   return (
-    <div className={`${MESSAGE_SPACING} relative`}>
+    <div className={`${GROUP_SPACING} relative`}>
       {showConnector && <Connector isDashed={isDashed} />}
       <details className="group" open={hasSearchMatch}>
         <summary className="cursor-pointer list-none w-full text-left">
@@ -144,7 +144,7 @@ function AssistantSection({
   isDashed: boolean;
 }) {
   return (
-    <div className={`${MESSAGE_SPACING} relative`}>
+    <div className={`${GROUP_SPACING} relative`}>
       {showConnector && <Connector isDashed={isDashed} />}
       <div className="flex gap-2 items-start relative">
         <StatusDot variant="neutral" className="mt-1.5" />
@@ -164,19 +164,19 @@ function AssistantSection({
   );
 }
 
-export function GroupedMessageCard({
-  message,
+export function EventGroupCard({
+  group,
   searchTerm,
   currentMatchIndex,
   matchStartIndex = 0,
   showConnector = false,
   startedAt,
-}: GroupedMessageCardProps) {
+}: EventGroupCardProps) {
   // System event
-  if (message.type === "system") {
+  if (group.type === "system") {
     return (
-      <SystemMessageCard
-        message={message}
+      <SystemEventGroupCard
+        group={group}
         searchTerm={searchTerm}
         showConnector={showConnector}
         startedAt={startedAt}
@@ -185,10 +185,10 @@ export function GroupedMessageCard({
   }
 
   // Result event
-  if (message.type === "result") {
+  if (group.type === "result") {
     return (
-      <ResultMessageCard
-        message={message}
+      <ResultEventGroupCard
+        group={group}
         showConnector={showConnector}
         startedAt={startedAt}
       />
@@ -196,10 +196,10 @@ export function GroupedMessageCard({
   }
 
   // Todo card (standalone)
-  if (message.type === "todo") {
+  if (group.type === "todo") {
     return (
       <TodoCard
-        message={message}
+        group={group}
         searchTerm={searchTerm}
         showConnector={showConnector}
         startedAt={startedAt}
@@ -207,10 +207,10 @@ export function GroupedMessageCard({
     );
   }
 
-  // Assistant message
+  // Assistant group
   return (
-    <AssistantMessageCard
-      message={message}
+    <AssistantEventGroupCard
+      group={group}
       searchTerm={searchTerm}
       currentMatchIndex={currentMatchIndex}
       matchStartIndex={matchStartIndex}
@@ -220,20 +220,18 @@ export function GroupedMessageCard({
   );
 }
 
-function TaskMessageCard({
-  message,
+function TaskEventGroupCard({
+  group,
   searchTerm,
   showConnector = false,
   startedAt,
 }: {
-  message: GroupedMessage;
+  group: EventGroup;
   searchTerm?: string;
   showConnector?: boolean;
   startedAt?: string | null;
 }) {
-  const taskData = isTaskEventData(message.eventData)
-    ? message.eventData
-    : null;
+  const taskData = isTaskEventData(group.eventData) ? group.eventData : null;
   const description =
     stringValue(taskData?.description) ??
     stringValue(taskData?.task_summary) ??
@@ -241,18 +239,18 @@ function TaskMessageCard({
   const taskStatus = stringValue(taskData?.task_status);
   const isFailed = isFailedTaskStatus(taskStatus);
   const isRunning = !taskStatus;
-  const timestamp = formatEventTime(message.createdAt, startedAt);
-  const children = message.childMessages ?? [];
+  const timestamp = formatEventTime(group.createdAt, startedAt);
+  const children = group.childGroups ?? [];
   const hasChildren = children.length > 0;
 
-  // Count tool operations across child messages
+  // Count tool operations across child groups
   const toolCount = children.reduce((sum, child) => {
     return sum + (child.toolOperations?.length ?? 0);
   }, 0);
 
   if (!hasChildren) {
     return (
-      <div className={`${MESSAGE_SPACING} relative`}>
+      <div className={`${GROUP_SPACING} relative`}>
         {showConnector && (
           <div
             className="absolute left-[3px] top-6 bottom-[-8px] w-[1px] bg-border/70"
@@ -326,9 +324,9 @@ function TaskMessageCard({
         <div className="mt-1">
           {children.map((child, i) => {
             return (
-              <GroupedMessageCard
-                key={groupedMessageKey(child)}
-                message={child}
+              <EventGroupCard
+                key={eventGroupKey(child)}
+                group={child}
                 searchTerm={searchTerm}
                 showConnector={i < children.length - 1}
                 startedAt={startedAt}
@@ -341,26 +339,26 @@ function TaskMessageCard({
   );
 }
 
-function SystemMessageCard({
-  message,
+function SystemEventGroupCard({
+  group,
   searchTerm,
   showConnector = false,
   startedAt,
 }: {
-  message: GroupedMessage;
+  group: EventGroup;
   searchTerm?: string;
   showConnector?: boolean;
   startedAt?: string | null;
 }) {
-  const eventData = isRecord(message.eventData) ? message.eventData : {};
+  const eventData = isRecord(group.eventData) ? group.eventData : {};
   const subtype =
     typeof eventData.subtype === "string" ? eventData.subtype : undefined;
 
-  // Task events are rendered by TaskMessageCard
+  // Task events are rendered by TaskEventGroupCard
   if (subtype === "task_started" || subtype === "task_notification") {
     return (
-      <TaskMessageCard
-        message={message}
+      <TaskEventGroupCard
+        group={group}
         searchTerm={searchTerm}
         showConnector={showConnector}
         startedAt={startedAt}
@@ -368,9 +366,9 @@ function SystemMessageCard({
     );
   }
 
-  const timestamp = formatEventTime(message.createdAt, startedAt);
+  const timestamp = formatEventTime(group.createdAt, startedAt);
   return (
-    <div className={`${MESSAGE_SPACING} relative`}>
+    <div className={`${GROUP_SPACING} relative`}>
       {showConnector && (
         <div
           className="absolute left-[3px] top-6 bottom-[-8px] w-[1px] bg-border/70"
@@ -396,17 +394,17 @@ function SystemMessageCard({
   );
 }
 
-function ResultMessageCard({
-  message,
+function ResultEventGroupCard({
+  group,
   showConnector = false,
   startedAt,
 }: {
-  message: GroupedMessage;
+  group: EventGroup;
   showConnector?: boolean;
   startedAt?: string | null;
 }) {
-  const eventData = isRecord(message.eventData) ? message.eventData : {};
-  const timestamp = formatEventTime(message.createdAt, startedAt);
+  const eventData = isRecord(group.eventData) ? group.eventData : {};
+  const timestamp = formatEventTime(group.createdAt, startedAt);
   const isError = eventData.is_error === true || eventData.success === false;
   return (
     <div className="relative">
@@ -469,12 +467,12 @@ function isSubtask(content: string): boolean {
   return /^\s{2,}|^\s*[-*]\s/.test(content);
 }
 
-function getTodoOperationErrors(message: GroupedMessage): {
+function getTodoOperationErrors(group: EventGroup): {
   content: string;
   key: string;
 }[] {
   const keyCounts = new Map<string, number>();
-  return (message.toolOperations ?? []).flatMap((operation) => {
+  return (group.toolOperations ?? []).flatMap((operation) => {
     if (!operation.result?.isError) {
       return [];
     }
@@ -491,18 +489,18 @@ function getTodoOperationErrors(message: GroupedMessage): {
 }
 
 function TodoCard({
-  message,
+  group,
   searchTerm,
   showConnector = false,
   startedAt,
 }: {
-  message: GroupedMessage;
+  group: EventGroup;
   searchTerm?: string;
   showConnector?: boolean;
   startedAt?: string | null;
 }) {
-  const todoItems = message.todoState ?? [];
-  const operationErrors = getTodoOperationErrors(message);
+  const todoItems = group.todoState ?? [];
+  const operationErrors = getTodoOperationErrors(group);
   // Filter out subtasks for count - only count top-level tasks
   const topLevelTodos = todoItems.filter((t) => {
     return !isSubtask(t.content);
@@ -527,10 +525,10 @@ function TodoCard({
       })),
   );
 
-  const timestamp = formatEventTime(message.createdAt, startedAt);
+  const timestamp = formatEventTime(group.createdAt, startedAt);
   const todoKeyCounts = new Map<string, number>();
   return (
-    <div className={`${MESSAGE_SPACING} relative`}>
+    <div className={`${GROUP_SPACING} relative`}>
       {showConnector && (
         <div
           className="absolute left-[3px] top-6 bottom-[-8px] w-[1px] bg-border/70"
@@ -614,15 +612,15 @@ function TodoCard({
 }
 
 /**
- * Determine if a connector should be shown for an element within an assistant message.
+ * Determine if a connector should be shown for an element within an assistant group.
  * Returns an object with showConnector and isDashed properties.
  */
 function shouldShowAssistantConnector(params: {
-  isLastElementInMessage: boolean;
-  showConnectorToNextMessage: boolean;
+  isLastElementInGroup: boolean;
+  showConnectorToNextGroup: boolean;
 }): { showConnector: boolean; isDashed: boolean } {
-  const { isLastElementInMessage, showConnectorToNextMessage } = params;
-  const showConnector = !isLastElementInMessage || showConnectorToNextMessage;
+  const { isLastElementInGroup, showConnectorToNextGroup } = params;
+  const showConnector = !isLastElementInGroup || showConnectorToNextGroup;
   // Default to solid lines - dashed lines only for same tool types
   const isDashed = false;
   return { showConnector, isDashed };
@@ -714,7 +712,7 @@ function CollapsedToolGroup({
   const operationKeyCounts = new Map<string, number>();
 
   return (
-    <div className={`${MESSAGE_SPACING} relative`}>
+    <div className={`${GROUP_SPACING} relative`}>
       {showConnector && <Connector isDashed={isDashed} />}
       <div className="relative">
         <details className="group">
@@ -783,8 +781,8 @@ function renderToolElements(params: {
     const isLastGroup = gi === toolGroups.length - 1;
     const isLastElement = isLastGroup && !textAfter;
     const { showConnector: showConnectorHere } = shouldShowAssistantConnector({
-      isLastElementInMessage: isLastElement,
-      showConnectorToNextMessage: showConnector,
+      isLastElementInGroup: isLastElement,
+      showConnectorToNextGroup: showConnector,
     });
     const nextGroup = toolGroups[gi + 1];
     const isDashed = nextGroup ? nextGroup.toolName === group.toolName : false;
@@ -794,7 +792,7 @@ function renderToolElements(params: {
       elements.push(
         <div
           key={nextOccurrenceKey(elementKeyCounts, `tool-${op.toolUseId}`)}
-          className={`${MESSAGE_SPACING} relative`}
+          className={`${GROUP_SPACING} relative`}
         >
           {showConnectorHere && <Connector isDashed={isDashed} />}
           <div className="relative">
@@ -830,36 +828,36 @@ function renderToolElements(params: {
   return elements;
 }
 
-function AssistantMessageCard({
-  message,
+function AssistantEventGroupCard({
+  group,
   searchTerm,
   currentMatchIndex,
   matchStartIndex,
   showConnector = false,
   startedAt,
 }: {
-  message: GroupedMessage;
+  group: EventGroup;
   searchTerm?: string;
   currentMatchIndex?: number;
   matchStartIndex?: number;
   showConnector?: boolean;
   startedAt?: string | null;
 }) {
-  const { thinkingBlocks, textBefore, textAfter, toolOperations } = message;
+  const { thinkingBlocks, textBefore, textAfter, toolOperations } = group;
   const thinkingText = thinkingBlocks?.join("\n\n");
   const hasTools = toolOperations && toolOperations.length > 0;
   const currentOffset = matchStartIndex ?? 0;
   const textBeforeMatches = countMatches(textBefore, searchTerm);
   const thinkingMatches = countMatches(thinkingText, searchTerm);
   const elements: React.ReactNode[] = [];
-  const timestamp = formatEventTime(message.createdAt, startedAt);
+  const timestamp = formatEventTime(group.createdAt, startedAt);
 
   if (thinkingText) {
     const isLastElement = !textBefore && !hasTools && !textAfter;
     const { showConnector: showConnectorHere, isDashed } =
       shouldShowAssistantConnector({
-        isLastElementInMessage: isLastElement,
-        showConnectorToNextMessage: showConnector,
+        isLastElementInGroup: isLastElement,
+        showConnectorToNextGroup: showConnector,
       });
 
     elements.push(
@@ -878,8 +876,8 @@ function AssistantMessageCard({
     const isLastElement = !hasTools && !textAfter;
     const { showConnector: showConnectorHere, isDashed } =
       shouldShowAssistantConnector({
-        isLastElementInMessage: isLastElement,
-        showConnectorToNextMessage: showConnector,
+        isLastElementInGroup: isLastElement,
+        showConnectorToNextGroup: showConnector,
       });
 
     elements.push(
@@ -913,8 +911,8 @@ function AssistantMessageCard({
     const isLastElement = true;
     const { showConnector: showConnectorHere, isDashed } =
       shouldShowAssistantConnector({
-        isLastElementInMessage: isLastElement,
-        showConnectorToNextMessage: showConnector,
+        isLastElementInGroup: isLastElement,
+        showConnectorToNextGroup: showConnector,
       });
 
     elements.push(

@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.148.30](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.148.29...runner-rs-v0.148.30) (2026-07-29)
+
+
+### Bug Fixes
+
+* **mitm-addon:** report retained counts after failed flushes ([#23663](https://github.com/vm0-ai/vm0/issues/23663)) ([8c63675](https://github.com/vm0-ai/vm0/commit/8c6367586e0c6e19dbfa32328df345e62c2da6f2))
+
+## [0.148.29](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.148.28...runner-rs-v0.148.29) (2026-07-29)
+
+
+### Bug Fixes
+
+* **runner:** bound decoded websocket messages ([#23652](https://github.com/vm0-ai/vm0/issues/23652)) ([79c3534](https://github.com/vm0-ai/vm0/commit/79c3534187a23cd73f770832ec280d731301791e))
+* **runner:** prevent jsonl flush acknowledgement starvation ([#23643](https://github.com/vm0-ai/vm0/issues/23643)) ([50757f1](https://github.com/vm0-ai/vm0/commit/50757f1fc1d9245fc7063a83fa7178f278f2c975))
+
 ## [0.148.28](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.148.27...runner-rs-v0.148.28) (2026-07-29)
 
 

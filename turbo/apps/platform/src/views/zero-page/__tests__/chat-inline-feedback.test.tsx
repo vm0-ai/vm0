@@ -231,7 +231,7 @@ describe("chat inline feedback", () => {
     mockChatLifecycle(context, {
       threadId: FEEDBACK_THREAD_ID,
       threadTitle: "Template feedback",
-      chatMessages: [
+      chatEvents: [
         {
           id: "msg-template-feedback-user",
           role: "user",
@@ -315,7 +315,7 @@ describe("chat inline feedback", () => {
     mockChatLifecycle(context, {
       threadId: FEEDBACK_THREAD_ID,
       threadTitle: "Feedback review",
-      chatMessages: [
+      chatEvents: [
         {
           id: "msg-feedback-user",
           role: "user",
@@ -421,7 +421,7 @@ describe("chat inline feedback", () => {
     mockChatLifecycle(context, {
       threadId,
       threadTitle: "Legacy feedback",
-      chatMessages: [
+      chatEvents: [
         {
           id: "msg-legacy-feedback-user",
           role: "user",
@@ -477,7 +477,7 @@ describe("chat inline feedback", () => {
     const threadId = "b0000000-0000-4000-a000-000000000706";
     const assistantReply = "The rollout plan needs a clearer owner.";
     const template = PRESENTATION_TEMPLATE_PICKER_ITEMS[0]!;
-    const queuedMessages: RunCreateCapture[] = [];
+    const queuedEvents: RunCreateCapture[] = [];
     const draftPatches: Record<string, unknown>[] = [];
 
     context.mocks.data.orgModelPolicies([
@@ -499,7 +499,7 @@ describe("chat inline feedback", () => {
       threadId,
       threadTitle: "Queued feedback",
       selectedModel: "claude-sonnet-4-6",
-      chatMessages: [
+      chatEvents: [
         {
           id: "msg-queued-feedback-user",
           role: "user",
@@ -516,8 +516,8 @@ describe("chat inline feedback", () => {
         },
       ],
       activeRunIds: ["run-queued-feedback"],
-      onQueuedMessageAppend: (body) => {
-        queuedMessages.push(body);
+      onQueuedEventAppend: (body) => {
+        queuedEvents.push(body);
       },
     });
     context.mocks.api(chatThreadByIdContract.patch, ({ body, respond }) => {
@@ -553,9 +553,9 @@ describe("chat inline feedback", () => {
     await user.click(screen.getByLabelText("Send"));
 
     await waitFor(() => {
-      expect(queuedMessages).toHaveLength(1);
+      expect(queuedEvents).toHaveLength(1);
     });
-    expect(queuedMessages[0]?.userMessage).toStrictEqual({
+    expect(queuedEvents[0]?.userMessage).toStrictEqual({
       version: 1,
       parts: [
         {
@@ -608,7 +608,7 @@ describe("chat inline feedback", () => {
           "Feedback on this part of your reply:\n\n" +
           `> ${assistantReply}\n\n` +
           "Name the owner and explain the complete result.",
-        draftUserMessage: queuedMessages[0]?.userMessage,
+        draftUserMessage: queuedEvents[0]?.userMessage,
         draftAttachments: null,
       });
     });
@@ -642,7 +642,7 @@ describe("chat inline feedback", () => {
       mockChatLifecycle(context, {
         threadId,
         threadTitle: "Mail feedback",
-        chatMessages: [
+        chatEvents: [
           {
             id: "msg-mail-feedback-assistant",
             role: "assistant",
@@ -736,7 +736,7 @@ describe("chat inline feedback", () => {
     mockChatLifecycle(context, {
       threadId: FEEDBACK_THREAD_ID,
       threadTitle: "Feedback review",
-      chatMessages: [
+      chatEvents: [
         {
           id: "msg-feedback-slash-user",
           role: "user",
@@ -785,7 +785,7 @@ describe("chat inline feedback", () => {
       threadId: FEEDBACK_THREAD_ID,
       threadTitle: "Feedback review",
       selectedModel: "claude-sonnet-4-6",
-      chatMessages: [
+      chatEvents: [
         {
           id: "msg-feedback-unavailable-model-user",
           role: "user",
@@ -861,7 +861,7 @@ describe("chat inline feedback", () => {
       threadId: FEEDBACK_THREAD_ID,
       threadTitle: "Feedback review",
       selectedModel: policy.model,
-      chatMessages: [
+      chatEvents: [
         {
           id: "msg-feedback-loading-user",
           role: "user",
@@ -912,7 +912,7 @@ describe("chat inline feedback", () => {
     mockChatLifecycle(context, {
       threadId: FEEDBACK_THREAD_ID,
       threadTitle: "Feedback review",
-      chatMessages: [
+      chatEvents: [
         {
           id: "msg-feedback-composition-user",
           role: "user",
@@ -966,7 +966,7 @@ describe("chat inline feedback", () => {
     mockChatLifecycle(context, {
       threadId: FEEDBACK_THREAD_ID,
       threadTitle: "Feedback review",
-      chatMessages: [
+      chatEvents: [
         {
           id: "msg-feedback-ime-send-user",
           role: "user",
@@ -1033,7 +1033,7 @@ describe("chat inline feedback", () => {
     mockChatLifecycle(context, {
       threadId: FEEDBACK_THREAD_ID,
       threadTitle: "Feedback review",
-      chatMessages: [
+      chatEvents: [
         {
           id: "msg-feedback-mouse-selection-user",
           role: "user",
@@ -1081,7 +1081,7 @@ describe("chat inline feedback", () => {
     mockChatLifecycle(context, {
       threadId: FEEDBACK_THREAD_ID,
       threadTitle: "Feedback review",
-      chatMessages: [
+      chatEvents: [
         {
           id: "msg-feedback-late-selection-user",
           role: "user",
@@ -1129,7 +1129,7 @@ describe("chat inline feedback", () => {
     mockChatLifecycle(context, {
       threadId: FEEDBACK_THREAD_ID,
       threadTitle: "Feedback review",
-      chatMessages: [
+      chatEvents: [
         {
           id: "msg-feedback-composer-focus-user",
           role: "user",
@@ -1177,7 +1177,7 @@ describe("chat inline feedback", () => {
     mockChatLifecycle(context, {
       threadId: FEEDBACK_THREAD_ID,
       threadTitle: "Feedback review",
-      chatMessages: [
+      chatEvents: [
         {
           id: "msg-feedback-copy-shortcut-user",
           role: "user",
@@ -1227,7 +1227,7 @@ describe("chat inline feedback", () => {
     mockChatLifecycle(context, {
       threadId: FEEDBACK_THREAD_ID,
       threadTitle: "Feedback review",
-      chatMessages: [
+      chatEvents: [
         {
           id: "msg-feedback-shortcut-user",
           role: "user",
@@ -1276,7 +1276,7 @@ describe("chat inline feedback", () => {
     mockChatLifecycle(context, {
       threadId: FEEDBACK_THREAD_ID,
       threadTitle: "Feedback review",
-      chatMessages: [
+      chatEvents: [
         {
           id: "msg-feedback-multiline-user",
           role: "user",
@@ -1318,7 +1318,7 @@ describe("chat inline feedback", () => {
     mockChatLifecycle(context, {
       threadId: FEEDBACK_THREAD_ID,
       threadTitle: "Feedback review",
-      chatMessages: [
+      chatEvents: [
         {
           id: "msg-feedback-dismiss-user",
           role: "user",
@@ -1382,7 +1382,7 @@ describe("chat inline feedback", () => {
       threadId: FEEDBACK_THREAD_ID,
       threadTitle: "Feedback review",
       selectedModel: "claude-sonnet-4-6",
-      chatMessages: [
+      chatEvents: [
         {
           id: "msg-feedback-attachment-user",
           role: "user",
@@ -1503,7 +1503,7 @@ describe("chat inline feedback", () => {
     mockChatLifecycle(context, {
       threadId: FEEDBACK_THREAD_ID,
       threadTitle: "Feedback review",
-      chatMessages: [
+      chatEvents: [
         {
           id: "msg-feedback-summary-user",
           role: "user",
@@ -1571,7 +1571,7 @@ describe("chat inline feedback", () => {
     mockChatLifecycle(context, {
       threadId: FEEDBACK_THREAD_ID,
       threadTitle: "Feedback review",
-      chatMessages: [
+      chatEvents: [
         {
           id: "msg-feedback-edit-user",
           role: "user",

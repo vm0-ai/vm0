@@ -2547,7 +2547,7 @@ describe("chat composer templates", () => {
     let queuedUserMessageTemplate: GenerationTemplateRequest | undefined;
     mockChatLifecycle(context, {
       threadId: THREAD_ID,
-      chatMessages: [
+      chatEvents: [
         {
           id: "msg-template-active-user",
           role: "user",
@@ -2582,7 +2582,7 @@ describe("chat composer templates", () => {
         },
       ],
       activeRunIds: ["run-template-active"],
-      onQueuedMessageAppend: (body) => {
+      onQueuedEventAppend: (body) => {
         queuedGenerationTemplate = body.generationTemplate;
         const templatePart = body.userMessage?.parts.find((part) => {
           return part.type === "template";

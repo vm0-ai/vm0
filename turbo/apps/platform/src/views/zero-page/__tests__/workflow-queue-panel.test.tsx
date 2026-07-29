@@ -73,7 +73,7 @@ async function setupWorkflowQueuePage({
   mockChatLifecycle(context, {
     threadId: THREAD_ID,
     threadTitle: "Workflow queue thread",
-    chatMessages: [
+    chatEvents: [
       {
         id: "msg-workflow-running-user",
         role: "user",

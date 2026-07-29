@@ -24,10 +24,10 @@ import {
   shouldExcludeVisualAttachmentsForModel,
 } from "./resolve-draft-attachments.ts";
 import {
-  appendOptimisticChatMessage$,
-  createOptimisticChatMessageEntry,
-  type OptimisticChatMessageInput,
-} from "./optimistic-chat-messages.ts";
+  appendOptimisticChatEvent$,
+  createOptimisticChatEventEntry,
+  type OptimisticChatEventInput,
+} from "./optimistic-chat-events.ts";
 import { sendChatEvent } from "./chat-event-api.ts";
 import {
   applyCodexFastModeDefault,
@@ -117,7 +117,7 @@ function userMessageForNewThread(
   return userMessage;
 }
 
-function createNewThreadOptimisticMessageEntry({
+function createNewThreadOptimisticEventEntry({
   threadId,
   clientEventId,
   prepared,
@@ -129,11 +129,11 @@ function createNewThreadOptimisticMessageEntry({
   prepared: PreparedNewThreadPayload;
   generationTemplate: GenerationTemplateRequest | undefined;
   userMessage: UserMessageDocument;
-}): OptimisticChatMessageInput {
+}): OptimisticChatEventInput {
   return {
     threadId,
     optimisticUserMessageAssociation: "run",
-    message: {
+    event: {
       id: clientEventId,
       threadId,
       eventType: "input.prompt",
@@ -512,9 +512,9 @@ const sendNewThreadMessage$ = command(
     const clientEventId = crypto.randomUUID();
     const chatThreadEventId = crypto.randomUUID();
     set(
-      appendOptimisticChatMessage$,
-      createOptimisticChatMessageEntry(
-        createNewThreadOptimisticMessageEntry({
+      appendOptimisticChatEvent$,
+      createOptimisticChatEventEntry(
+        createNewThreadOptimisticEventEntry({
           threadId,
           clientEventId,
           prepared,

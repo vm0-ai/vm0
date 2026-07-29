@@ -4,13 +4,14 @@ const MANAGED_USAGE_KIND_DISPLAY_NAMES: Readonly<Record<string, string>> = {
   scrape: "Web Fetch",
   maps: "Maps",
   "web-search": "Web Search",
+  "people-search": "People Search",
   finance: "Finance",
   weather: "Weather",
 };
 
-// Chat usage keeps the managed usage kind, while Settings currently groups
-// these kinds under `other` and only retains the provider. Keep the provider
-// aliases here so both surfaces show the same product-facing capability name.
+// Current Settings responses retain raw usage kinds inside each provider.
+// Keep provider aliases for older APIs that only return the provider so app
+// and API promotions can serve different versions safely.
 const MANAGED_USAGE_PROVIDER_DISPLAY_NAMES: Readonly<Record<string, string>> = {
   firecrawl: "Web Fetch",
   "google-maps": "Maps",
