@@ -154,12 +154,6 @@ export const chatThreads = pgTable(
     })
       .default(0)
       .notNull(),
-    /**
-     * Legacy workflow-queue pause projection retained until Phase 2 cleanup.
-     * Runtime state folds queue.automation_paused/resumed events instead.
-     */
-    queuePausedAt: timestamp("queue_paused_at"),
-    pauseReason: text("pause_reason"),
     createdAt: timestamp("created_at").defaultNow().notNull(),
     updatedAt: timestamp("updated_at").defaultNow().notNull(),
   },
