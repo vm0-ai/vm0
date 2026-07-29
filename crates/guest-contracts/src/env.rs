@@ -70,6 +70,14 @@ pub const RESUME_SESSION_ID_ENV: &str = "VM0_RESUME_SESSION_ID";
 /// The runner emits an empty string when the timestamp is unavailable.
 pub const API_START_TIME_ENV: &str = "VM0_API_START_TIME";
 
+/// Maximum agent execution duration in seconds.
+///
+/// The runner owns this fixed lifecycle budget. Guest-agent uses it to stop
+/// the CLI before the later sandbox supervisor deadline, leaving time for
+/// recovery checkpointing and final telemetry. It is intentionally not a
+/// local user-tuning key.
+pub const AGENT_EXECUTION_TIMEOUT_SECS_ENV: &str = "VM0_AGENT_EXECUTION_TIMEOUT_SECS";
+
 /// Logical run-payload field name for sensitive values used by the guest-agent
 /// masker.
 ///
@@ -410,6 +418,10 @@ mod tests {
         assert_eq!(API_URL_ENV, "VM0_API_BACKEND_URL");
         assert_eq!(RUN_ID_ENV, "VM0_RUN_ID");
         assert_eq!(CLI_AGENT_TYPE_ENV, "CLI_AGENT_TYPE");
+        assert_eq!(
+            AGENT_EXECUTION_TIMEOUT_SECS_ENV,
+            "VM0_AGENT_EXECUTION_TIMEOUT_SECS"
+        );
         assert_eq!(USER_ENV_FILE_ENV, "VM0_USER_ENV_FILE");
         assert_eq!(USER_ENV_PRIVATE_DIR_NAME, "user-env");
         assert_eq!(USER_ENV_FILENAME, "env.json");
