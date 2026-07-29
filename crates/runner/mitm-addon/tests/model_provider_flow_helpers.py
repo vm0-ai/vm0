@@ -41,7 +41,7 @@ def signed_raw_usage_pricing_headers(pricing: str) -> dict[str, str]:
 def signed_usage_pricing_headers(
     unit_prices: dict[str, object] | None = None,
     *,
-    unit_size: int = 1_000_000,
+    unit_size: object = 1_000_000,
     issued_at: object | None = None,
 ) -> dict[str, str]:
     if unit_prices is None:
