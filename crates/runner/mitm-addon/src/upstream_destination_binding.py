@@ -100,28 +100,28 @@ def _connection_id(connection: object) -> str | None:
     return None
 
 
-def _endpoint_matches(
-    left: connection_endpoints.ConnectedIpEndpoint,
-    right: tuple[str, int],
+def _connected_endpoint_matches_address(
+    connected_endpoint: connection_endpoints.ConnectedIpEndpoint,
+    binding_address: tuple[str, int],
 ) -> bool:
-    if left.address == right:
+    if connected_endpoint.address == binding_address:
         return True
-    right_host, right_port = right
-    if left.address[1] != right_port:
+    binding_host, binding_port = binding_address
+    if connected_endpoint.address[1] != binding_port:
         return False
     try:
-        right_ip = ipaddress.ip_address(right_host)
+        binding_ip = ipaddress.ip_address(binding_host)
     except ValueError:
         return False
-    return left.ip == right_ip
+    return connected_endpoint.parsed_ip == binding_ip
 
 
-def _endpoint_matches_any(
-    endpoint: connection_endpoints.ConnectedIpEndpoint,
+def _connected_endpoint_matches_any_binding(
+    connected_endpoint: connection_endpoints.ConnectedIpEndpoint,
     bindings: tuple[UpstreamDestinationBinding, ...],
 ) -> bool:
     return any(
-        _endpoint_matches(endpoint, binding.original_address)
+        _connected_endpoint_matches_address(connected_endpoint, binding.original_address)
         for binding in bindings
         if binding.original_address is not None
     )
@@ -335,7 +335,10 @@ def _server_binding_matches_current_destination(
         return (
             binding.original_address is not None
             and connected_endpoint is not None
-            and _endpoint_matches(connected_endpoint, binding.original_address)
+            and _connected_endpoint_matches_address(
+                connected_endpoint,
+                binding.original_address,
+            )
         )
     return _address_matches(binding.host, binding.port, getattr(server, "address", None))
 
@@ -375,7 +378,10 @@ def _client_binding_connected_endpoint(
         port=port,
         extra_endpoints=(connection_endpoints.connection_sockname(client),),
     )
-    if connected_endpoint is None or not _endpoint_matches_any(connected_endpoint, bindings):
+    if connected_endpoint is None or not _connected_endpoint_matches_any_binding(
+        connected_endpoint,
+        bindings,
+    ):
         return None
     return connected_endpoint.address
 

@@ -15,7 +15,7 @@ class ConnectedIpEndpoint:
     """
 
     address: tuple[str, int]
-    ip: ipaddress.IPv4Address | ipaddress.IPv6Address
+    parsed_ip: ipaddress.IPv4Address | ipaddress.IPv6Address
 
 
 def server_address(server: object) -> tuple[str, int] | None:
@@ -66,7 +66,7 @@ def authoritative_connected_endpoint(endpoint: object) -> ConnectedIpEndpoint | 
         return None
     if endpoint_ip.is_loopback or endpoint_ip.is_unspecified:
         return None
-    return ConnectedIpEndpoint(address=endpoint_pair, ip=endpoint_ip)
+    return ConnectedIpEndpoint(address=endpoint_pair, parsed_ip=endpoint_ip)
 
 
 def connected_ip_destination_endpoint(
