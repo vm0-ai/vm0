@@ -1357,14 +1357,24 @@ def event_type(record):
     return record.get("payload", {}).get("type")
 
 
-def normalize_probe_root(value, root):
+def normalize_probe_input(value, root):
     if isinstance(value, str):
         return value.replace(str(root), "$PROBE_ROOT")
     if isinstance(value, list):
-        return [normalize_probe_root(item, root) for item in value]
+        return [normalize_probe_input(item, root) for item in value]
     if isinstance(value, dict):
+        # Synthetic context messages receive fresh IDs on each resume.
+        # Preserve the field while ignoring its non-semantic random value.
         return {
-            key: normalize_probe_root(item, root)
+            key: (
+                "$MESSAGE_ID"
+                if (
+                    key == "id"
+                    and isinstance(item, str)
+                    and item.startswith("msg_")
+                )
+                else normalize_probe_input(item, root)
+            )
             for key, item in value.items()
         }
     return value
@@ -1428,8 +1438,8 @@ def probe_current_codex(
         session_id,
         port,
     )
-    full_input = normalize_probe_root(full_request["input"], full_root)
-    candidate_input = normalize_probe_root(
+    full_input = normalize_probe_input(full_request["input"], full_root)
+    candidate_input = normalize_probe_input(
         candidate_request["input"],
         candidate_root,
     )

@@ -242,23 +242,29 @@ function UsageBreakdownBar({ row, max }: { row: UsageRecordRow; max: number }) {
                   {meta.label} - {segment.credits.toLocaleString()}
                 </div>
                 <div className="mt-1 flex flex-col gap-0.5">
-                  {segment.providers.map((provider) => {
-                    return (
-                      <div
-                        key={provider.provider}
-                        className="flex min-w-0 justify-between gap-3 text-xs text-muted-foreground"
-                      >
-                        <span className="truncate">
-                          {getCreditUsageDisplayName(
-                            segment.kind,
-                            provider.provider,
-                          )}
-                        </span>
-                        <span className="shrink-0 tabular-nums">
-                          {provider.credits.toLocaleString()}
-                        </span>
-                      </div>
-                    );
+                  {segment.providers.flatMap((provider) => {
+                    const usageKinds =
+                      provider.usageKinds && provider.usageKinds.length > 0
+                        ? provider.usageKinds
+                        : [{ kind: segment.kind, credits: provider.credits }];
+                    return usageKinds.map((usageKind) => {
+                      return (
+                        <div
+                          key={`${provider.provider}:${usageKind.kind}`}
+                          className="flex min-w-0 justify-between gap-3 text-xs text-muted-foreground"
+                        >
+                          <span className="truncate">
+                            {getCreditUsageDisplayName(
+                              usageKind.kind,
+                              provider.provider,
+                            )}
+                          </span>
+                          <span className="shrink-0 tabular-nums">
+                            {usageKind.credits.toLocaleString()}
+                          </span>
+                        </div>
+                      );
+                    });
                   })}
                 </div>
               </TooltipContent>

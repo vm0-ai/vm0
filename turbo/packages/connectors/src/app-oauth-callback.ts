@@ -12,7 +12,6 @@ const LEGACY_CALLBACK_CONNECTOR_REFS: ReadonlySet<string> = new Set([
   "outlook-calendar",
   "outlook-mail",
   "slack",
-  "strava",
   "todoist",
   "xero",
 ]);

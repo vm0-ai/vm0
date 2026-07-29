@@ -364,6 +364,27 @@ class TestTrustedAuthorityRejection:
             ),
             pytest.param(
                 443,
+                "\u05d0a\u05d0.example",
+                "invalid_authority",
+                "https://api.github.com/repos",
+                id="rtl-ltr-rtl",
+            ),
+            pytest.param(
+                443,
+                "\u05d01\u0662.example",
+                "invalid_authority",
+                "https://api.github.com/repos",
+                id="rtl-european-arabic-number-mixing",
+            ),
+            pytest.param(
+                443,
+                "\u05d0-.example",
+                "invalid_authority",
+                "https://api.github.com/repos",
+                id="rtl-invalid-terminal-class",
+            ),
+            pytest.param(
+                443,
                 "\u0754\u3d20.example",
                 "invalid_authority",
                 "https://api.github.com/repos",

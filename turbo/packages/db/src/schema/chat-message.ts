@@ -104,7 +104,6 @@ export const chatMessages = pgTable(
     // Persistent-secret encrypted queue parameters. This field never leaves
     // the API and remains only on the original pending input event.
     encryptedParams: text("encrypted_params"),
-    role: text("role"),
     content: text("content"),
     /**
      * Rollout bridge for API versions that still write structured_prompt.

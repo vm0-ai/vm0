@@ -1,5 +1,5 @@
 {
-  "id": "2689f164-4ded-42ad-8e2f-92dc1e853555",
+  "id": "427748c0-76c0-4ab0-9ca5-05f125051aa9",
   "prevId": "f1029fd5-1b94-49d4-9ade-782a2bfd1997",
   "version": "7",
   "dialect": "postgresql",
@@ -4054,12 +4054,6 @@
           "primaryKey": false,
           "notNull": false
         },
-        "role": {
-          "name": "role",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
         "content": {
           "name": "content",
           "type": "text",
@@ -4068,12 +4062,6 @@
         },
         "structured_prompt": {
           "name": "structured_prompt",
-          "type": "jsonb",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "user_message": {
-          "name": "user_message",
           "type": "jsonb",
           "primaryKey": false,
           "notNull": false
@@ -4877,12 +4865,6 @@
         },
         "draft_structured_prompt": {
           "name": "draft_structured_prompt",
-          "type": "jsonb",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "draft_user_message": {
-          "name": "draft_user_message",
           "type": "jsonb",
           "primaryKey": false,
           "notNull": false
@@ -21249,12 +21231,6 @@
         },
         "draft_structured_prompt": {
           "name": "draft_structured_prompt",
-          "type": "jsonb",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "draft_user_message": {
-          "name": "draft_user_message",
           "type": "jsonb",
           "primaryKey": false,
           "notNull": false

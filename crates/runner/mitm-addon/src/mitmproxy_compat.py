@@ -1,27 +1,42 @@
 """Version-locked bridges for mitmproxy state that public hooks omit."""
 
+import wsproto
 from mitmproxy import http, version
 from mitmproxy.proxy import layer
 from mitmproxy.proxy.layers.http import HttpStream
 from mitmproxy.proxy.layers.http._events import RequestHeaders
 from mitmproxy.proxy.layers.http._hooks import HttpRequestHeadersHook
 
+import websocket_framing
+
 # Keep this synchronized with ``crates/runner/src/deps.rs`` and the Python
-# test dependencies. Re-audit the private imports and generator behavior before
-# accepting another version.
+# test dependencies. Re-audit the private imports, generators, and WebSocket
+# extension behavior before accepting another version.
 _SUPPORTED_MITMPROXY_VERSION = "12.2.3"
+_SUPPORTED_WSPROTO_VERSION = "1.3.2"
 _BRIDGE_MARKER_ATTRIBUTE = "_vm0_request_end_stream_bridge"
 _REQUEST_END_STREAM_METADATA = "_vm0_request_end_stream"
 
 
-def install_request_end_stream_bridge() -> None:
-    """Expose RequestHeaders.end_stream to the matching public hook once."""
+def install_runtime_compatibility() -> None:
+    """Install all exact-version mitmproxy compatibility adaptations."""
     if version.VERSION != _SUPPORTED_MITMPROXY_VERSION:
         raise RuntimeError(
-            "VM0's request framing bridge requires mitmproxy "
+            "VM0's runtime compatibility layer requires mitmproxy "
             f"{_SUPPORTED_MITMPROXY_VERSION}; found {version.VERSION}"
         )
+    if wsproto.__version__ != _SUPPORTED_WSPROTO_VERSION:
+        raise RuntimeError(
+            "VM0's runtime compatibility layer requires wsproto "
+            f"{_SUPPORTED_WSPROTO_VERSION}; found {wsproto.__version__}"
+        )
 
+    _install_request_end_stream_bridge()
+    websocket_framing.install_websocket_framing()
+
+
+def _install_request_end_stream_bridge() -> None:
+    """Expose RequestHeaders.end_stream to the matching public hook once."""
     current_handler = HttpStream.state_wait_for_request_headers
     if hasattr(current_handler, _BRIDGE_MARKER_ATTRIBUTE):
         return
