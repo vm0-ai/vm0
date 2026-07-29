@@ -782,6 +782,12 @@ describe("zero people-search route", () => {
         {
           provider: "perplexity",
           credits: 20,
+          usageKinds: [
+            {
+              kind: "people-search",
+              credits: 20,
+            },
+          ],
         },
       ],
     });

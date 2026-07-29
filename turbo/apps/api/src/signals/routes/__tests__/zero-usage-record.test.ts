@@ -19,6 +19,7 @@ import { createRunsApi } from "./helpers/api-bdd-runs";
 import { createWebhookCallbackApi } from "./helpers/api-bdd-webhooks";
 import { createZeroRouteMocks } from "./helpers/zero-route-test";
 import {
+  insertUsageEvent$,
   materializeHourlyUsage$,
   readUsageStorageCounts$,
 } from "./helpers/zero-usage-insight";
@@ -409,7 +410,13 @@ describe("GET /api/zero/usage/record", () => {
       {
         kind: "connector",
         credits: 250,
-        providers: [{ provider: connectorProvider, credits: 250 }],
+        providers: [
+          {
+            provider: connectorProvider,
+            credits: 250,
+            usageKinds: [{ kind: "connector", credits: 250 }],
+          },
+        ],
       },
     ]);
     expect(response.body.rows[0]?.member).toBeNull();
@@ -424,7 +431,13 @@ describe("GET /api/zero/usage/record", () => {
       {
         kind: "model",
         credits: 50,
-        providers: [{ provider: model, credits: 50 }],
+        providers: [
+          {
+            provider: model,
+            credits: 50,
+            usageKinds: [{ kind: "model", credits: 50 }],
+          },
+        ],
       },
     ]);
 
@@ -489,12 +502,24 @@ describe("GET /api/zero/usage/record", () => {
           {
             kind: "model",
             credits: 50,
-            providers: [{ provider: model, credits: 50 }],
+            providers: [
+              {
+                provider: model,
+                credits: 50,
+                usageKinds: [{ kind: "model", credits: 50 }],
+              },
+            ],
           },
           {
             kind: "connector",
             credits: 20,
-            providers: [{ provider: connectorProvider, credits: 20 }],
+            providers: [
+              {
+                provider: connectorProvider,
+                credits: 20,
+                usageKinds: [{ kind: "connector", credits: 20 }],
+              },
+            ],
           },
         ],
       }),
@@ -616,12 +641,24 @@ describe("GET /api/zero/usage/record", () => {
       {
         kind: "image",
         credits: 30,
-        providers: [{ provider: imageProvider, credits: 30 }],
+        providers: [
+          {
+            provider: imageProvider,
+            credits: 30,
+            usageKinds: [{ kind: "image", credits: 30 }],
+          },
+        ],
       },
       {
         kind: "connector",
         credits: 100,
-        providers: [{ provider: connectorProvider, credits: 100 }],
+        providers: [
+          {
+            provider: connectorProvider,
+            credits: 100,
+            usageKinds: [{ kind: "connector", credits: 100 }],
+          },
+        ],
       },
     ]);
 
@@ -825,17 +862,96 @@ describe("GET /api/zero/usage/record", () => {
       {
         kind: "model",
         credits: 150,
-        providers: [{ provider: model, credits: 150 }],
+        providers: [
+          {
+            provider: model,
+            credits: 150,
+            usageKinds: [{ kind: "model", credits: 150 }],
+          },
+        ],
       },
       {
         kind: "image",
         credits: 120,
-        providers: [{ provider: imageProvider, credits: 120 }],
+        providers: [
+          {
+            provider: imageProvider,
+            credits: 120,
+            usageKinds: [{ kind: "image", credits: 120 }],
+          },
+        ],
       },
       {
         kind: "connector",
         credits: 20,
-        providers: [{ provider: connectorProvider, credits: 20 }],
+        providers: [
+          {
+            provider: connectorProvider,
+            credits: 20,
+            usageKinds: [{ kind: "connector", credits: 20 }],
+          },
+        ],
+      },
+    ]);
+  });
+
+  it("preserves raw usage kinds that share a provider", async () => {
+    const fixture = await entitledRecordActor();
+    if (!fixture.actor.orgId) {
+      throw new Error("Expected an org-scoped actor");
+    }
+    const run = await createUnthreadedRun(fixture.actor, {
+      prompt: "Use People Search and Web Search",
+      triggerSource: "cli",
+    });
+    const processedAt = nowDate();
+
+    for (const [kind, creditsCharged] of [
+      ["people-search", 20],
+      ["web-search", 5],
+    ] as const) {
+      await store.set(
+        insertUsageEvent$,
+        {
+          orgId: fixture.actor.orgId,
+          userId: fixture.actor.userId,
+          runId: run.runId,
+          kind,
+          provider: "perplexity",
+          category: "request",
+          quantity: 1,
+          status: "processed",
+          creditsCharged,
+          processedAt,
+        },
+        context.signal,
+      );
+    }
+
+    mocks.clerk.session(fixture.actor.userId, fixture.actor.orgId);
+    const response = await accept(
+      apiClient().get({
+        query: { range: "7d", tz: "UTC" },
+        headers: authHeaders(),
+      }),
+      [200],
+    );
+
+    expect(response.body.rows).toHaveLength(1);
+    expect(response.body.rows[0]?.breakdown).toStrictEqual([
+      {
+        kind: "other",
+        credits: 25,
+        providers: [
+          {
+            provider: "perplexity",
+            credits: 25,
+            usageKinds: [
+              { kind: "people-search", credits: 20 },
+              { kind: "web-search", credits: 5 },
+            ],
+          },
+        ],
       },
     ]);
   });
@@ -911,7 +1027,13 @@ describe("GET /api/zero/usage/record", () => {
       {
         kind: "other",
         credits: 6,
-        providers: [{ provider: "google-maps", credits: 6 }],
+        providers: [
+          {
+            provider: "google-maps",
+            credits: 6,
+            usageKinds: [{ kind: "maps", credits: 6 }],
+          },
+        ],
       },
     ]);
   });
