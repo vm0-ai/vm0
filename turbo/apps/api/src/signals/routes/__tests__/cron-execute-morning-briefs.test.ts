@@ -1280,7 +1280,8 @@ describe("cron execute morning briefs", () => {
     const strandedEvent = queuedEvents.find((event) => {
       return (
         event.eventType === "input.prompt" &&
-        event.content === `Generate my Morning Brief for ${BRIEF_DATE}.` &&
+        chatEventDisplayText(event) ===
+          `Generate my Morning Brief for ${BRIEF_DATE}.` &&
         event.runId === undefined
       );
     });
