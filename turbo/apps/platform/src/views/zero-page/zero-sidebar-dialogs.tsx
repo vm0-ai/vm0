@@ -16,6 +16,7 @@ import {
   Input,
   RunningIndicator,
 } from "@vm0/ui";
+import { useTranslation } from "react-i18next";
 import {
   chatListQuery$,
   setChatListQuery$,
@@ -68,6 +69,8 @@ export function AgentDialogSearch({
   readonly query: string;
   readonly setQuery: (query: string) => void;
 }) {
+  const { t } = useTranslation("agents");
+
   return (
     <div className="px-5 pb-3">
       <div className="relative w-full">
@@ -82,7 +85,9 @@ export function AgentDialogSearch({
           onChange={(e) => {
             return setQuery(e.target.value);
           }}
-          placeholder="Search agents..."
+          placeholder={t(($) => {
+            return $.sidebar.searchAgents;
+          })}
           className={`pl-9 ${query ? "pr-9" : ""}`}
         />
         {query && (
@@ -92,7 +97,9 @@ export function AgentDialogSearch({
               return setQuery("");
             }}
             className="absolute right-1.5 top-1/2 flex h-7 w-7 shrink-0 -translate-y-1/2 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
-            aria-label="Clear search"
+            aria-label={t(($) => {
+              return $.sidebar.clearSearch;
+            })}
           >
             <IconX size={14} stroke={2} />
           </button>
@@ -167,6 +174,8 @@ function AgentCommandSearch({
   readonly setQuery: (query: string) => void;
   readonly placeholder: string;
 }) {
+  const { t } = useTranslation("agents");
+
   return (
     <div className="px-5 pb-3">
       <div className="relative w-full">
@@ -183,7 +192,9 @@ function AgentCommandSearch({
               return setQuery("");
             }}
             className="absolute right-1.5 top-1/2 flex h-7 w-7 shrink-0 -translate-y-1/2 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
-            aria-label="Clear search"
+            aria-label={t(($) => {
+              return $.sidebar.clearSearch;
+            })}
           >
             <IconX size={14} stroke={2} />
           </button>
@@ -262,33 +273,24 @@ function setHasId(
   return id ? (set?.has(id) ?? false) : false;
 }
 
-function agentListDialogDescription(unifiedSearchEnabled: boolean): string {
-  if (unifiedSearchEnabled) {
-    return "Pick an agent or jump to a chat.";
-  }
-  return "Pick an agent to start a conversation.";
-}
-
-function agentListDialogSearchPlaceholder(
-  unifiedSearchEnabled: boolean,
-): string {
-  if (unifiedSearchEnabled) {
-    return "Search agents and chats...";
-  }
-  return "Search agents...";
-}
-
 function ChatThreadCommandIndicator({
   indicator,
 }: {
   readonly indicator: AgentListDialogChatThread["indicator"];
 }) {
+  const { t } = useTranslation("agents");
+
   if (indicator === "running") {
     return <RunningIndicator />;
   }
   if (indicator === "unread") {
     return (
-      <span aria-label="Unread" className="h-2 w-2 rounded-full bg-sky-600" />
+      <span
+        aria-label={t(($) => {
+          return $.status.unread;
+        })}
+        className="h-2 w-2 rounded-full bg-sky-600"
+      />
     );
   }
   return null;
@@ -362,6 +364,8 @@ function PinnedAgentCommandItem({
   disabled?: boolean;
   hasUnread: boolean;
 }) {
+  const { t } = useTranslation("agents");
+
   return (
     <CommandItem
       value={agent.id}
@@ -374,7 +378,9 @@ function PinnedAgentCommandItem({
           <AgentRowSideActions
             hasUnread={hasUnread}
             action={{
-              label: "Unpin",
+              label: t(($) => {
+                return $.sidebar.unpin;
+              }),
               disabled,
               icon: <IconPinnedOff size={16} stroke={2} />,
               onSelect: onUnpin,
@@ -401,11 +407,17 @@ function LeadAgentCommandSection({
   readonly unreadAgentIds: ReadonlySet<string> | undefined;
   readonly onChat: () => void;
 }) {
+  const { t } = useTranslation("agents");
+
   if (!show) {
     return null;
   }
   return (
-    <AgentCommandSection label="Lead">
+    <AgentCommandSection
+      label={t(($) => {
+        return $.sidebar.sections.lead;
+      })}
+    >
       <CommandItem
         value="lead"
         onSelect={onChat}
@@ -420,7 +432,9 @@ function LeadAgentCommandSection({
               className="h-8 w-8 shrink-0 rounded-lg object-cover object-top"
             />
           }
-          subtitle="Your lead assistant, always here for you"
+          subtitle={t(($) => {
+            return $.sidebar.leadDescription;
+          })}
         />
         <AgentCommandSideActions>
           <AgentRowSideActions
@@ -445,11 +459,17 @@ function PinnedAgentsCommandSection({
   readonly onChat: (agentId: string) => void;
   readonly onTogglePin: (agentId: string) => void;
 }) {
+  const { t } = useTranslation("agents");
+
   if (agents.length === 0) {
     return null;
   }
   return (
-    <AgentCommandSection label="Pinned">
+    <AgentCommandSection
+      label={t(($) => {
+        return $.sidebar.pinned;
+      })}
+    >
       {agents.map((agent) => {
         return (
           <PinnedAgentCommandItem
@@ -483,11 +503,18 @@ function UnpinnedAgentsCommandSection({
   readonly onChat: (agentId: string) => void;
   readonly onTogglePin: (agentId: string) => void;
 }) {
+  const { t } = useTranslation("agents");
+
   if (agents.length === 0) {
     return null;
   }
   return (
-    <AgentCommandSection label="Others" className="pb-3">
+    <AgentCommandSection
+      label={t(($) => {
+        return $.sidebar.sections.others;
+      })}
+      className="pb-3"
+    >
       {agents.map((agent) => {
         return (
           <CommandItem
@@ -503,7 +530,9 @@ function UnpinnedAgentsCommandSection({
               <AgentRowSideActions
                 hasUnread={setHasId(unreadAgentIds, agent.id)}
                 action={{
-                  label: "Pin to sidebar",
+                  label: t(($) => {
+                    return $.sidebar.pin;
+                  }),
                   disabled,
                   icon: <IconPin size={16} stroke={2} />,
                   onSelect: () => {
@@ -526,11 +555,18 @@ function ChatThreadCommandSection({
   readonly threads: readonly AgentListDialogChatThread[];
   readonly onSelect: (threadId: string) => void;
 }) {
+  const { t } = useTranslation("agents");
+
   if (threads.length === 0) {
     return null;
   }
   return (
-    <AgentCommandSection label="Chats" className="pb-3">
+    <AgentCommandSection
+      label={t(($) => {
+        return $.sidebar.sections.chats;
+      })}
+      className="pb-3"
+    >
       {threads.map((thread) => {
         return (
           <ChatThreadCommandItem
@@ -581,6 +617,7 @@ function ChatThreadCommandSectionContainer({
   readonly onSelect: (threadId: string) => void;
   readonly showCombinedEmpty: boolean;
 }) {
+  const { t } = useTranslation("agents");
   const result = useLastResolved(agentListDialogChatThreads$, {
     equalityFn: equalAgentListDialogChatThreadResults,
   });
@@ -593,7 +630,9 @@ function ChatThreadCommandSectionContainer({
       {showCombinedEmpty && currentResult && threads.length === 0 ? (
         <div className="px-5 pb-5">
           <p className="text-xs text-muted-foreground px-1 py-2">
-            No results found
+            {t(($) => {
+              return $.sidebar.noResults;
+            })}
           </p>
         </div>
       ) : null}
@@ -608,19 +647,25 @@ function AgentDialogEmptyStates({
   readonly subagents: readonly SubagentInfo[];
   readonly showAgentEmpty: boolean;
 }) {
+  const { t } = useTranslation("agents");
+
   return (
     <>
       {subagents.length === 0 && (
         <div className="px-5 pb-5">
           <p className="text-xs text-muted-foreground px-1 py-2">
-            No sub-agents available yet.
+            {t(($) => {
+              return $.sidebar.noSubagents;
+            })}
           </p>
         </div>
       )}
       {showAgentEmpty && (
         <div className="px-5 pb-5">
           <p className="text-xs text-muted-foreground px-1 py-2">
-            No agents found
+            {t(($) => {
+              return $.sidebar.noAgents;
+            })}
           </p>
         </div>
       )}
@@ -643,6 +688,7 @@ export function AgentListDialog({
   onSelectChatAgent?: (agentId: string | null) => void;
   onSelectChatThread?: (threadId: string) => void;
 }) {
+  const { t } = useTranslation("agents");
   const zeroAvatarUrl = useLastResolved(leadAgentAvatarUrl$) ?? null;
   const defaultAgentId = useLastResolved(defaultAgentId$);
   const query = useGet(chatListQuery$);
@@ -703,23 +749,42 @@ export function AgentListDialog({
     <CommandDialog
       open={open}
       onOpenChange={onOpenChange}
+      closeLabel={t(($) => {
+        return $.actions.close;
+      })}
       className="zero-app sm:max-w-xl w-[calc(100vw-2rem)] gap-0"
       commandClassName="gap-0"
       commandProps={{ shouldFilter: false, loop: true }}
     >
       <DialogHeader className="px-5 pt-5 pb-3">
-        <DialogTitle className="text-base font-semibold">Talk to</DialogTitle>
+        <DialogTitle className="text-base font-semibold">
+          {t(($) => {
+            return $.sidebar.talkTo;
+          })}
+        </DialogTitle>
         <DialogDescription className="text-sm text-muted-foreground mt-1">
-          {agentListDialogDescription(chatThreadUnifiedSearchEnabled)}
+          {chatThreadUnifiedSearchEnabled
+            ? t(($) => {
+                return $.sidebar.descriptionWithChats;
+              })
+            : t(($) => {
+                return $.sidebar.description;
+              })}
         </DialogDescription>
       </DialogHeader>
 
       <AgentCommandSearch
         query={query}
         setQuery={setQuery}
-        placeholder={agentListDialogSearchPlaceholder(
-          chatThreadUnifiedSearchEnabled,
-        )}
+        placeholder={
+          chatThreadUnifiedSearchEnabled
+            ? t(($) => {
+                return $.sidebar.searchAgentsAndChats;
+              })
+            : t(($) => {
+                return $.sidebar.searchAgents;
+              })
+        }
       />
 
       <CommandList>

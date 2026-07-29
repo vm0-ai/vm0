@@ -6,7 +6,7 @@
 use crate::env;
 use crate::events;
 use std::collections::HashMap;
-use std::time::Instant;
+use tokio::time::Instant;
 
 /// Summary of Claude Code's terminal `type=result` event.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

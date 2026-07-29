@@ -16,7 +16,7 @@ import {
 import type { FeatureSwitchContext } from "@vm0/core/feature-switch";
 import { modelProviders } from "@vm0/db/schema/model-provider";
 import { secrets } from "@vm0/db/schema/secret";
-import { and, eq, inArray, sql } from "drizzle-orm";
+import { and, eq, inArray, isNull, sql } from "drizzle-orm";
 
 import { db$, writeDb$, type Db } from "../external/db";
 import { badRequestMessage, notFound } from "../../lib/error";
@@ -544,6 +544,7 @@ async function upsertMultiAuthSecret(
     })
     .onConflictDoUpdate({
       target: [secrets.orgId, secrets.userId, secrets.name, secrets.type],
+      targetWhere: isNull(secrets.connectorId),
       set: {
         encryptedValue: args.encryptedValue,
         description: args.description,
@@ -625,6 +626,7 @@ export const upsertUserModelProvider$ = command(
       })
       .onConflictDoUpdate({
         target: [secrets.orgId, secrets.userId, secrets.name, secrets.type],
+        targetWhere: isNull(secrets.connectorId),
         set: { encryptedValue, updatedAt: nowDate() },
       })
       .returning();

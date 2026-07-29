@@ -117,10 +117,23 @@ interface TiptapInstructionsEditorProps {
   footerHint?: string | null;
   /** Visual surface for embedding the editor in either a card or a full-page canvas. */
   surface?: "card" | "canvas";
+  toolbarLabels?: Partial<ToolbarLabels>;
 }
 
 const ICON_SIZE = 18;
 const ICON_STROKE = 1.5;
+interface ToolbarLabels {
+  bold: string;
+  italic: string;
+  strikethrough: string;
+  inlineCode: string;
+  heading1: string;
+  heading2: string;
+  heading3: string;
+  bulletList: string;
+  orderedList: string;
+  blockquote: string;
+}
 
 function ToolbarButton({
   onAction,
@@ -200,8 +213,42 @@ export function TiptapInstructionsEditor({
   placeholder,
   footerHint,
   surface = "card",
+  toolbarLabels,
 }: TiptapInstructionsEditorProps) {
   const { t } = useTranslation();
+  const labels: ToolbarLabels = {
+    bold: t(($) => {
+      return $.workflows.editor.toolbar.bold;
+    }),
+    italic: t(($) => {
+      return $.workflows.editor.toolbar.italic;
+    }),
+    strikethrough: t(($) => {
+      return $.workflows.editor.toolbar.strikethrough;
+    }),
+    inlineCode: t(($) => {
+      return $.workflows.editor.toolbar.inlineCode;
+    }),
+    heading1: t(($) => {
+      return $.workflows.editor.toolbar.heading1;
+    }),
+    heading2: t(($) => {
+      return $.workflows.editor.toolbar.heading2;
+    }),
+    heading3: t(($) => {
+      return $.workflows.editor.toolbar.heading3;
+    }),
+    bulletList: t(($) => {
+      return $.workflows.editor.toolbar.bulletList;
+    }),
+    orderedList: t(($) => {
+      return $.workflows.editor.toolbar.orderedList;
+    }),
+    blockquote: t(($) => {
+      return $.workflows.editor.toolbar.blockquote;
+    }),
+    ...toolbarLabels,
+  };
   const resolvedAriaLabel =
     ariaLabel ??
     t(($) => {
@@ -261,9 +308,7 @@ export function TiptapInstructionsEditor({
             }}
             active={editor.isActive("bold")}
             disabled={disabled}
-            title={t(($) => {
-              return $.workflows.editor.toolbar.bold;
-            })}
+            title={labels.bold}
           >
             <IconBold size={ICON_SIZE} stroke={ICON_STROKE} />
           </ToolbarButton>
@@ -273,9 +318,7 @@ export function TiptapInstructionsEditor({
             }}
             active={editor.isActive("italic")}
             disabled={disabled}
-            title={t(($) => {
-              return $.workflows.editor.toolbar.italic;
-            })}
+            title={labels.italic}
           >
             <IconItalic size={ICON_SIZE} stroke={ICON_STROKE} />
           </ToolbarButton>
@@ -285,9 +328,7 @@ export function TiptapInstructionsEditor({
             }}
             active={editor.isActive("strike")}
             disabled={disabled}
-            title={t(($) => {
-              return $.workflows.editor.toolbar.strikethrough;
-            })}
+            title={labels.strikethrough}
           >
             <IconStrikethrough size={ICON_SIZE} stroke={ICON_STROKE} />
           </ToolbarButton>
@@ -297,9 +338,7 @@ export function TiptapInstructionsEditor({
             }}
             active={editor.isActive("code")}
             disabled={disabled}
-            title={t(($) => {
-              return $.workflows.editor.toolbar.inlineCode;
-            })}
+            title={labels.inlineCode}
           >
             <IconCode size={ICON_SIZE} stroke={ICON_STROKE} />
           </ToolbarButton>
@@ -312,9 +351,7 @@ export function TiptapInstructionsEditor({
             }}
             active={editor.isActive("heading", { level: 1 })}
             disabled={disabled}
-            title={t(($) => {
-              return $.workflows.editor.toolbar.heading1;
-            })}
+            title={labels.heading1}
           >
             <IconH1 size={ICON_SIZE} stroke={ICON_STROKE} />
           </ToolbarButton>
@@ -324,9 +361,7 @@ export function TiptapInstructionsEditor({
             }}
             active={editor.isActive("heading", { level: 2 })}
             disabled={disabled}
-            title={t(($) => {
-              return $.workflows.editor.toolbar.heading2;
-            })}
+            title={labels.heading2}
           >
             <IconH2 size={ICON_SIZE} stroke={ICON_STROKE} />
           </ToolbarButton>
@@ -336,9 +371,7 @@ export function TiptapInstructionsEditor({
             }}
             active={editor.isActive("heading", { level: 3 })}
             disabled={disabled}
-            title={t(($) => {
-              return $.workflows.editor.toolbar.heading3;
-            })}
+            title={labels.heading3}
           >
             <IconH3 size={ICON_SIZE} stroke={ICON_STROKE} />
           </ToolbarButton>
@@ -351,9 +384,7 @@ export function TiptapInstructionsEditor({
             }}
             active={editor.isActive("bulletList")}
             disabled={disabled}
-            title={t(($) => {
-              return $.workflows.editor.toolbar.bulletList;
-            })}
+            title={labels.bulletList}
           >
             <IconList size={ICON_SIZE} stroke={ICON_STROKE} />
           </ToolbarButton>
@@ -363,9 +394,7 @@ export function TiptapInstructionsEditor({
             }}
             active={editor.isActive("orderedList")}
             disabled={disabled}
-            title={t(($) => {
-              return $.workflows.editor.toolbar.orderedList;
-            })}
+            title={labels.orderedList}
           >
             <IconListNumbers size={ICON_SIZE} stroke={ICON_STROKE} />
           </ToolbarButton>
@@ -375,9 +404,7 @@ export function TiptapInstructionsEditor({
             }}
             active={editor.isActive("blockquote")}
             disabled={disabled}
-            title={t(($) => {
-              return $.workflows.editor.toolbar.blockquote;
-            })}
+            title={labels.blockquote}
           >
             <IconBlockquote size={ICON_SIZE} stroke={ICON_STROKE} />
           </ToolbarButton>

@@ -147,6 +147,17 @@ describe("auth tokens", () => {
     expect(verifyZeroToken(token)?.capabilities).toContain("chat-thread:write");
   });
 
+  it("grants chat message read and write independently of prompt discovery", () => {
+    const token = generateZeroToken("user_zero", "run_zero", "org_zero", {
+      [FeatureSwitchKey.ZeroChatMessaging]: false,
+    });
+
+    expect(verifyZeroToken(token)?.capabilities).toContain("chat-message:read");
+    expect(verifyZeroToken(token)?.capabilities).toContain(
+      "chat-message:write",
+    );
+  });
+
   it("gates banking capability behind the banking feature switch", () => {
     const defaultToken = generateZeroToken("user_zero", "run_zero", "org_zero");
     const enabledToken = generateZeroToken(

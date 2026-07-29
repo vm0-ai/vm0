@@ -14,6 +14,7 @@ import { orgMembersMetadata } from "@vm0/db/schema/org-members-metadata";
 import { userCache } from "@vm0/db/schema/user-cache";
 import { userConnectors } from "@vm0/db/schema/user-connector";
 import { userCustomConnectors } from "@vm0/db/schema/user-custom-connector";
+import { orgCustomConnectors } from "@vm0/db/schema/org-custom-connector";
 import { userFeatureSwitches } from "@vm0/db/schema/user-feature-switches";
 import { userPermissionGrants } from "@vm0/db/schema/user-permission-grant";
 import { zeroWorkflows } from "@vm0/db/schema/zero-workflow";
@@ -162,6 +163,42 @@ function zeroRunTriggerAgentMetadataQuery(
     .where(triggerRunId ? eq(agentRuns.id, triggerRunId) : sql`FALSE`);
 }
 
+function zeroRunCustomConnectorMetadataQuery(
+  db: ReadonlyDb,
+  args: ZeroRunBootstrapSnapshotArgs,
+) {
+  return db
+    .select({
+      kind: sql`'custom_connector'`
+        .mapWith(bootstrapMetadataRowKindDecoder)
+        .as("kind"),
+      ...emptyBootstrapMetadataFields(),
+      id: sql`${userCustomConnectors.customConnectorId}::text`
+        .mapWith(nullableTextDecoder)
+        .as("id"),
+    })
+    .from(userCustomConnectors)
+    .innerJoin(
+      orgCustomConnectors,
+      and(
+        eq(orgCustomConnectors.id, userCustomConnectors.customConnectorId),
+        eq(orgCustomConnectors.orgId, userCustomConnectors.orgId),
+        eq(
+          orgCustomConnectors.revision,
+          userCustomConnectors.connectorRevision,
+        ),
+      ),
+    )
+    .where(
+      and(
+        eq(userCustomConnectors.orgId, args.orgId),
+        eq(userCustomConnectors.userId, args.userId),
+        eq(userCustomConnectors.agentId, args.agentId),
+        eq(orgCustomConnectors.enabled, true),
+      ),
+    );
+}
+
 async function queryZeroRunBootstrapMetadataSnapshot(
   db: ReadonlyDb,
   args: ZeroRunBootstrapSnapshotArgs,
@@ -226,24 +263,7 @@ async function queryZeroRunBootstrapMetadataSnapshot(
         eq(userConnectors.agentId, args.agentId),
       ),
     );
-  const customConnectorQuery = db
-    .select({
-      kind: sql`'custom_connector'`
-        .mapWith(bootstrapMetadataRowKindDecoder)
-        .as("kind"),
-      ...emptyBootstrapMetadataFields(),
-      id: sql`${userCustomConnectors.customConnectorId}::text`
-        .mapWith(nullableTextDecoder)
-        .as("id"),
-    })
-    .from(userCustomConnectors)
-    .where(
-      and(
-        eq(userCustomConnectors.orgId, args.orgId),
-        eq(userCustomConnectors.userId, args.userId),
-        eq(userCustomConnectors.agentId, args.agentId),
-      ),
-    );
+  const customConnectorQuery = zeroRunCustomConnectorMetadataQuery(db, args);
   const permissionGrantQuery = db
     .select({
       kind: sql`'permission_grant'`

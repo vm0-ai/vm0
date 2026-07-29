@@ -2,6 +2,7 @@
 // oxlint-disable max-lines-per-function
 import { useGet, useSet, useLastLoadable } from "ccstate-react";
 import { useLoadableSet } from "ccstate-react/experimental";
+import { useTranslation } from "react-i18next";
 import {
   IconExternalLink,
   IconCrown,
@@ -73,62 +74,25 @@ import {
   setLockedTarget$,
   setSelectedTarget$,
 } from "../../../../signals/zero-page/settings/workspace-settings-state.ts";
+import { currentLocale, i18n } from "../../../../i18n/index.ts";
+import { formatLocalizedNumber, formatUsd } from "../../../../i18n/format.ts";
 
 const PLANS = [
   {
     tier: "free" as const,
-    name: "Free",
-    price: "$0",
-    period: "/month",
-    description: "Legacy free access for existing workspaces.",
-    cta: "Current plan",
+    monthlyPriceUsd: 0,
     image: planFreeImg,
-    features: [
-      "Existing free credits only",
-      "1 concurrent run",
-      "Unlimited total agents",
-      "Bring your own LLM keys",
-      "Voice input (10 lifetime uses per member)",
-      "Community support",
-    ],
   },
   {
     tier: "pro" as const,
-    name: "Pro",
-    price: "$20",
-    period: "/month",
-    description: "More power and seamless collaboration for your team.",
-    cta: "Upgrade to Pro",
+    monthlyPriceUsd: 20,
     primary: true,
-    badge: "Popular",
     image: planProImg,
-    features: [
-      "20,000 credits / month",
-      "Pay as you go after that",
-      "2 concurrent runs",
-      "Unlimited total agents",
-      "Bring your own LLM keys",
-      "Voice input",
-      "Email support",
-    ],
   },
   {
     tier: "team" as const,
-    name: "Team",
-    price: "$200",
-    period: "/month",
-    description: "Scale fast with zero friction and full flexibility.",
-    cta: "Upgrade to Team",
+    monthlyPriceUsd: 200,
     image: planTeamImg,
-    features: [
-      "120,000 credits / month",
-      "Pay as you go after that",
-      "10 concurrent runs",
-      "Unlimited total agents",
-      "Bring your own LLM keys",
-      "Voice input",
-      "Priority support",
-    ],
   },
 ] as const;
 
@@ -139,15 +103,133 @@ const COMPARE_PLANS = PLANS.filter((plan) => {
 type ScheduledBillingChange = BillingStatusResponse["scheduledChange"];
 type BillingPlan = (typeof PLANS)[number];
 
+function planName(tier: BillingPlan["tier"] | BillingTier): string {
+  if (tier === "pro") {
+    return i18n.t(($) => {
+      return $.billing.plans.pro.name;
+    });
+  }
+  if (tier === "team") {
+    return i18n.t(($) => {
+      return $.billing.plans.team.name;
+    });
+  }
+  if (tier === "custom") {
+    return i18n.t(($) => {
+      return $.billing.plans.custom.name;
+    });
+  }
+  if (tier === "limited-free-1") {
+    return i18n.t(($) => {
+      return $.billing.plans.limitedFree.name;
+    });
+  }
+  if (tier === "pro-suspend") {
+    return i18n.t(($) => {
+      return $.billing.plans.noPlan.name;
+    });
+  }
+  return i18n.t(($) => {
+    return $.billing.plans.free.name;
+  });
+}
+
+function planDescription(tier: BillingPlan["tier"]): string {
+  if (tier === "pro") {
+    return i18n.t(($) => {
+      return $.billing.plans.pro.description;
+    });
+  }
+  if (tier === "team") {
+    return i18n.t(($) => {
+      return $.billing.plans.team.description;
+    });
+  }
+  return i18n.t(($) => {
+    return $.billing.plans.free.description;
+  });
+}
+
+function planFeatures(tier: BillingPlan["tier"]): string[] {
+  const unlimitedAgents = i18n.t(($) => {
+    return $.billing.plans.features.unlimitedAgents;
+  });
+  const byok = i18n.t(($) => {
+    return $.billing.plans.features.byok;
+  });
+  const voiceInput = i18n.t(($) => {
+    return $.billing.plans.features.voiceInput;
+  });
+  if (tier === "free") {
+    return [
+      i18n.t(($) => {
+        return $.billing.plans.features.existingCredits;
+      }),
+      i18n.t(($) => {
+        return $.billing.plans.features.oneConcurrentRun;
+      }),
+      unlimitedAgents,
+      byok,
+      i18n.t(($) => {
+        return $.billing.plans.features.voiceInputLifetime;
+      }),
+      i18n.t(($) => {
+        return $.billing.plans.features.communitySupport;
+      }),
+    ];
+  }
+  const credits =
+    tier === "pro"
+      ? i18n.t(
+          ($) => {
+            return $.billing.plans.features.monthlyCredits;
+          },
+          { value: formatLocalizedNumber(20_000) },
+        )
+      : i18n.t(
+          ($) => {
+            return $.billing.plans.features.monthlyCredits;
+          },
+          { value: formatLocalizedNumber(120_000) },
+        );
+  return [
+    credits,
+    i18n.t(($) => {
+      return $.billing.plans.features.payAsYouGo;
+    }),
+    tier === "pro"
+      ? i18n.t(($) => {
+          return $.billing.plans.features.twoConcurrentRuns;
+        })
+      : i18n.t(($) => {
+          return $.billing.plans.features.tenConcurrentRuns;
+        }),
+    unlimitedAgents,
+    byok,
+    voiceInput,
+    tier === "pro"
+      ? i18n.t(($) => {
+          return $.billing.plans.features.emailSupport;
+        })
+      : i18n.t(($) => {
+          return $.billing.plans.features.prioritySupport;
+        }),
+  ];
+}
+
 function getPlanPrice(tier: string): string {
   const plan = PLANS.find((p) => {
     return p.tier === tier;
   });
-  return plan ? `${plan.price}${plan.period}` : "";
+  return plan
+    ? i18n.t(
+        ($) => {
+          return $.billing.plans.pricePerMonth;
+        },
+        { price: formatUsd(plan.monthlyPriceUsd, 0) },
+      )
+    : "";
 }
-
-const proPlanPrice = getPlanPrice("pro");
-const freePlanPrice = getPlanPrice("free");
 
 function tierRank(t: BillingTier): number {
   if (t === "free" || t === "limited-free-1" || t === "pro-suspend") {
@@ -175,7 +257,7 @@ function isNoActivePlanTier(tier: BillingTier): boolean {
 }
 
 function formatBillingDate(value: string): string {
-  return new Date(value).toLocaleDateString("en-US", {
+  return new Date(value).toLocaleDateString(currentLocale(), {
     month: "short",
     day: "numeric",
     year: "numeric",
@@ -191,7 +273,9 @@ function scheduledEffectiveDate(
 
 function scheduledTargetLabel(scheduledChange: ScheduledBillingChange): string {
   if (!scheduledChange?.targetTier) {
-    return "the selected plan";
+    return i18n.t(($) => {
+      return $.billing.plans.selectedPlan;
+    });
   }
   return formatTierLabel(scheduledChange.targetTier);
 }
@@ -215,26 +299,38 @@ function billingScheduledChange(
   return null;
 }
 
-function planButtonLabel(plan: BillingPlan, currentTier: BillingTier): string {
+type PlanCardAction =
+  | "current"
+  | "unavailable"
+  | "manage-subscription"
+  | "upgrade"
+  | "manage"
+  | "restore"
+  | "downgrade-pro";
+
+function planButtonAction(
+  plan: BillingPlan,
+  currentTier: BillingTier,
+): PlanCardAction {
   if (plan.tier === currentTier) {
-    return "Current plan";
+    return "current";
   }
   if (isCustomTier(currentTier)) {
-    return "Unavailable";
+    return "unavailable";
   }
   if (
     plan.tier === "free" &&
     (currentTier === "limited-free-1" || currentTier === "pro-suspend")
   ) {
-    return "Unavailable";
+    return "unavailable";
   }
   if (plan.tier === "free") {
-    return "Manage subscription";
+    return "manage-subscription";
   }
   if (tierRank(plan.tier) > tierRank(currentTier)) {
-    return plan.cta;
+    return "upgrade";
   }
-  return "Manage";
+  return "manage";
 }
 
 function isPlanDowngradeTarget(
@@ -271,14 +367,14 @@ function canRestoreCurrentPlan(args: {
   );
 }
 
-function planCardLabel(args: {
+function planCardAction(args: {
   plan: BillingPlan;
   currentTier: BillingTier;
   scheduledChange: ScheduledBillingChange;
   restoreCurrentPlan: boolean;
-}): string {
+}): PlanCardAction {
   if (args.restoreCurrentPlan) {
-    return "Restore plan";
+    return "restore";
   }
   if (
     canReplaceCancellationWithPro(
@@ -287,21 +383,63 @@ function planCardLabel(args: {
       args.scheduledChange,
     )
   ) {
-    return "Downgrade to Pro";
+    return "downgrade-pro";
   }
-  return planButtonLabel(args.plan, args.currentTier);
+  return planButtonAction(args.plan, args.currentTier);
+}
+
+function planCardLabel(action: PlanCardAction, plan: BillingPlan): string {
+  if (action === "current") {
+    return i18n.t(($) => {
+      return $.billing.plans.currentPlan;
+    });
+  }
+  if (action === "unavailable") {
+    return i18n.t(($) => {
+      return $.billing.common.unavailable;
+    });
+  }
+  if (action === "manage-subscription") {
+    return i18n.t(($) => {
+      return $.billing.plans.manageSubscription;
+    });
+  }
+  if (action === "upgrade") {
+    return i18n.t(
+      ($) => {
+        return $.billing.plans.upgradeTo;
+      },
+      { plan: planName(plan.tier) },
+    );
+  }
+  if (action === "restore") {
+    return i18n.t(($) => {
+      return $.billing.plans.restorePlan;
+    });
+  }
+  if (action === "downgrade-pro") {
+    return i18n.t(
+      ($) => {
+        return $.billing.plans.downgradeTo;
+      },
+      { plan: planName("pro") },
+    );
+  }
+  return i18n.t(($) => {
+    return $.billing.common.manage;
+  });
 }
 
 function planCardButtonVariant(args: {
   plan: BillingPlan;
   isCurrent: boolean;
-  label: string;
+  action: PlanCardAction;
   restoreCurrentPlan: boolean;
 }): React.ComponentProps<typeof Button>["variant"] {
   if (args.restoreCurrentPlan) {
     return "default";
   }
-  if (args.isCurrent || args.label === "Manage") {
+  if (args.isCurrent || args.action === "manage") {
     return "outline";
   }
   if ("primary" in args.plan && args.plan.primary) {
@@ -312,18 +450,17 @@ function planCardButtonVariant(args: {
 
 function planCardButtonDisabled(args: {
   loading: boolean;
-  label: string;
-  unavailable: boolean;
+  action: PlanCardAction;
   isCurrent: boolean;
   restoreCurrentPlan: boolean;
 }): boolean {
   if (args.loading) {
     return true;
   }
-  if (args.restoreCurrentPlan || args.label === "Manage") {
+  if (args.restoreCurrentPlan || args.action === "manage") {
     return false;
   }
-  return args.isCurrent || args.unavailable;
+  return args.isCurrent || args.action === "unavailable";
 }
 
 function PlanScheduleNotice({
@@ -347,22 +484,43 @@ function PlanScheduleNotice({
 
   if (scheduledChange?.type === "cancel" && isCurrent) {
     return (
-      <p className={noticeClassName}>Ends on {formatBillingDate(changeDate)}</p>
+      <p className={noticeClassName}>
+        {i18n.t(
+          ($) => {
+            return $.billing.plans.endsOn;
+          },
+          { date: formatBillingDate(changeDate) },
+        )}
+      </p>
     );
   }
   if (scheduledChange?.type === "downgrade" && isCurrent) {
     return (
       <p className={noticeClassName}>
-        Downgrades to {scheduledTargetLabel(scheduledChange)} on{" "}
-        {formatBillingDate(changeDate)}
+        {i18n.t(
+          ($) => {
+            return $.billing.plans.downgradesOn;
+          },
+          {
+            plan: scheduledTargetLabel(scheduledChange),
+            date: formatBillingDate(changeDate),
+          },
+        )}
       </p>
     );
   }
   if (isDowngradeTarget) {
     return (
       <p className={noticeClassName}>
-        Downgrades to {formatTierLabel(plan.tier)} on{" "}
-        {formatBillingDate(changeDate)}
+        {i18n.t(
+          ($) => {
+            return $.billing.plans.downgradesOn;
+          },
+          {
+            plan: formatTierLabel(plan.tier),
+            date: formatBillingDate(changeDate),
+          },
+        )}
       </p>
     );
   }
@@ -393,61 +551,64 @@ function PlanCard({
     scheduledChange,
     isCurrent,
   });
-  const label = planCardLabel({
+  const action = planCardAction({
     plan,
     currentTier,
     scheduledChange,
     restoreCurrentPlan,
   });
-  const unavailable = label === "Unavailable";
+  const label = planCardLabel(action, plan);
   const changeDate = scheduledEffectiveDate(scheduledChange, periodEnd);
   const buttonVariant = planCardButtonVariant({
     plan,
     isCurrent,
-    label,
+    action,
     restoreCurrentPlan,
   });
   const buttonDisabled = planCardButtonDisabled({
     loading,
-    label,
-    unavailable,
+    action,
     isCurrent,
     restoreCurrentPlan,
   });
 
   return (
     <div className="relative flex flex-col rounded-xl transition-transform duration-200 hover:-translate-y-0.5 zero-border px-6 py-7">
-      {"badge" in plan && plan.badge && (
+      {plan.tier === "pro" && (
         <span className="absolute top-3 right-3 inline-flex items-center gap-1 rounded-lg px-2 py-0.5 text-xs font-medium text-muted-foreground zero-badge">
           <IconCrown size={12} stroke={1.8} className="text-amber-500" />
-          {plan.badge}
+          {i18n.t(($) => {
+            return $.billing.plans.popular;
+          })}
         </span>
       )}
 
       {plan.image && (
         <img
           src={plan.image}
-          alt={plan.name}
+          alt={planName(plan.tier)}
           loading="lazy"
           className="h-20 w-20 object-contain mb-2"
         />
       )}
 
       <h3 className="text-sm font-semibold uppercase tracking-wider text-[#D27939] font-mono">
-        {plan.name}
+        {planName(plan.tier)}
       </h3>
 
       <div className="mt-3 mb-1">
         <span className="text-3xl font-light tracking-tight text-foreground">
-          {plan.price}
+          {formatUsd(plan.monthlyPriceUsd, 0)}
         </span>
         <span className="ml-1.5 text-sm font-light text-muted-foreground">
-          {plan.period}
+          {i18n.t(($) => {
+            return $.billing.plans.perMonth;
+          })}
         </span>
       </div>
 
       <p className="text-[13px] font-light text-muted-foreground leading-relaxed mb-5 min-h-[42px]">
-        {plan.description}
+        {planDescription(plan.tier)}
       </p>
 
       <PlanScheduleNotice
@@ -459,7 +620,7 @@ function PlanCard({
       />
 
       <ul className="mb-6 flex flex-col gap-2.5">
-        {plan.features.map((feature) => {
+        {planFeatures(plan.tier).map((feature) => {
           return (
             <li key={feature} className="flex items-center gap-2">
               <svg
@@ -576,22 +737,36 @@ function PricingPage({
                 type="button"
                 onClick={onBack}
                 className="flex h-7 w-7 items-center justify-center rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-colors"
-                aria-label="Back"
+                aria-label={i18n.t(($) => {
+                  return $.billing.common.back;
+                })}
               >
                 <IconArrowLeft size={16} stroke={1.8} />
               </button>
             </TooltipTrigger>
             <TooltipContent side="bottom">
-              <p className="text-xs">Back</p>
+              <p className="text-xs">
+                {i18n.t(($) => {
+                  return $.billing.common.back;
+                })}
+              </p>
             </TooltipContent>
           </Tooltip>
         </TooltipProvider>
         <div>
-          <h3 className="text-sm font-medium text-foreground">Compare plans</h3>
+          <h3 className="text-sm font-medium text-foreground">
+            {i18n.t(($) => {
+              return $.billing.plans.compare;
+            })}
+          </h3>
           <p className="text-[13px] text-muted-foreground">
             {isCustomTier(currentTier)
-              ? "Custom workspaces cannot switch to Pro or Team checkout."
-              : "Upgrade or downgrade anytime."}
+              ? i18n.t(($) => {
+                  return $.billing.plans.customCheckoutUnavailable;
+                })
+              : i18n.t(($) => {
+                  return $.billing.plans.changeAnytime;
+                })}
           </p>
         </div>
       </div>
@@ -617,16 +792,7 @@ function PricingPage({
 }
 
 function formatTierLabel(tier: BillingTier): string {
-  if (tier === "limited-free-1") {
-    return "Limited free";
-  }
-  if (tier === "pro-suspend") {
-    return "No plan";
-  }
-  if (tier === "custom") {
-    return "Custom";
-  }
-  return tier.charAt(0).toUpperCase() + tier.slice(1);
+  return planName(tier);
 }
 
 function DowngradeConfirmDialog({ currentTier }: { currentTier: BillingTier }) {
@@ -648,6 +814,8 @@ function DowngradeConfirmDialog({ currentTier }: { currentTier: BillingTier }) {
   const isLockedTarget = lockedTarget !== null;
   const downgradeTarget = isTeam ? selectedTarget : "limited-free-1";
   const targetLabel = formatTierLabel(downgradeTarget);
+  const proPlanPrice = getPlanPrice("pro");
+  const freePlanPrice = getPlanPrice("free");
 
   const handleConfirm = () => {
     detach(confirm(downgradeTarget, pageSignal), Reason.DomCallback);
@@ -666,28 +834,45 @@ function DowngradeConfirmDialog({ currentTier }: { currentTier: BillingTier }) {
     >
       <DialogContent className="sm:max-w-[440px]">
         <DialogHeader>
-          <DialogTitle>Downgrade plan</DialogTitle>
+          <DialogTitle>
+            {i18n.t(($) => {
+              return $.billing.downgrade.title;
+            })}
+          </DialogTitle>
           <DialogDescription>
             {isTeam && isLockedTarget
-              ? `Downgrade to ${targetLabel}?`
+              ? i18n.t(
+                  ($) => {
+                    return $.billing.downgrade.confirmTarget;
+                  },
+                  { plan: targetLabel },
+                )
               : isTeam
-                ? "Choose which plan to downgrade to."
-                : "Are you sure you want to cancel your Pro plan?"}
+                ? i18n.t(($) => {
+                    return $.billing.downgrade.chooseTarget;
+                  })
+                : i18n.t(($) => {
+                    return $.billing.downgrade.confirmProCancellation;
+                  })}
           </DialogDescription>
         </DialogHeader>
 
         {isTeam && isLockedTarget && (
           <p className="text-sm text-amber-600 dark:text-amber-400 mt-2">
-            Your Team access remains active until the current billing period
-            ends. After that, this workspace moves to {targetLabel}.
+            {i18n.t(
+              ($) => {
+                return $.billing.downgrade.teamWarning;
+              },
+              { plan: targetLabel },
+            )}
           </p>
         )}
 
         {!isTeam && (
           <p className="text-sm text-amber-600 dark:text-amber-400 mt-2">
-            Your Pro access remains active until the current billing period
-            ends. After that, this workspace moves to No plan and agents cannot
-            run until you upgrade again.
+            {i18n.t(($) => {
+              return $.billing.downgrade.proWarning;
+            })}
           </p>
         )}
 
@@ -706,7 +891,7 @@ function DowngradeConfirmDialog({ currentTier }: { currentTier: BillingTier }) {
             >
               <div>
                 <span className="text-sm font-semibold text-foreground">
-                  Pro
+                  {planName("pro")}
                 </span>
                 <span className="ml-2 text-sm text-muted-foreground">
                   {proPlanPrice}
@@ -727,7 +912,7 @@ function DowngradeConfirmDialog({ currentTier }: { currentTier: BillingTier }) {
             >
               <div>
                 <span className="text-sm font-semibold text-foreground">
-                  No plan
+                  {planName("pro-suspend")}
                 </span>
                 <span className="ml-2 text-sm text-muted-foreground">
                   {freePlanPrice}
@@ -748,7 +933,9 @@ function DowngradeConfirmDialog({ currentTier }: { currentTier: BillingTier }) {
             }}
             disabled={loading}
           >
-            Cancel
+            {i18n.t(($) => {
+              return $.billing.common.cancel;
+            })}
           </Button>
           <Button
             variant="destructive"
@@ -756,11 +943,20 @@ function DowngradeConfirmDialog({ currentTier }: { currentTier: BillingTier }) {
             disabled={loading}
           >
             {loading
-              ? "Downgrading..."
+              ? i18n.t(($) => {
+                  return $.billing.downgrade.inProgress;
+                })
               : downgradeTarget === "limited-free-1" ||
                   downgradeTarget === "pro-suspend"
-                ? "Cancel subscription"
-                : `Downgrade to ${targetLabel}`}
+                ? i18n.t(($) => {
+                    return $.billing.downgrade.cancelSubscription;
+                  })
+                : i18n.t(
+                    ($) => {
+                      return $.billing.plans.downgradeTo;
+                    },
+                    { plan: targetLabel },
+                  )}
           </Button>
         </div>
       </DialogContent>
@@ -786,15 +982,30 @@ function RestorePlanConfirmDialog({
     restoreLoadable.state === "hasError" ? String(restoreLoadable.error) : null;
   const planLabel = formatTierLabel(currentTier);
   const changeDate = scheduledEffectiveDate(scheduledChange, periodEnd);
-  const periodText = changeDate
-    ? ` It will renew on ${formatBillingDate(changeDate)}.`
-    : "";
   const description =
     scheduledChange?.type === "downgrade"
-      ? `This will cancel the scheduled downgrade to ${scheduledTargetLabel(
-          scheduledChange,
-        )}. Your ${planLabel} plan will continue renewing.`
-      : `This will undo the scheduled cancellation for your ${planLabel} plan.${periodText}`;
+      ? i18n.t(
+          ($) => {
+            return $.billing.restore.downgradeDescription;
+          },
+          {
+            target: scheduledTargetLabel(scheduledChange),
+            plan: planLabel,
+          },
+        )
+      : changeDate
+        ? i18n.t(
+            ($) => {
+              return $.billing.restore.cancellationDescriptionDate;
+            },
+            { plan: planLabel, date: formatBillingDate(changeDate) },
+          )
+        : i18n.t(
+            ($) => {
+              return $.billing.restore.cancellationDescription;
+            },
+            { plan: planLabel },
+          );
 
   const handleConfirm = () => {
     detach(restore(pageSignal), Reason.DomCallback);
@@ -809,7 +1020,14 @@ function RestorePlanConfirmDialog({
     >
       <DialogContent className="sm:max-w-[440px]">
         <DialogHeader>
-          <DialogTitle>Restore {planLabel} plan?</DialogTitle>
+          <DialogTitle>
+            {i18n.t(
+              ($) => {
+                return $.billing.restore.title;
+              },
+              { plan: planLabel },
+            )}
+          </DialogTitle>
           <DialogDescription>{description}</DialogDescription>
         </DialogHeader>
 
@@ -823,10 +1041,18 @@ function RestorePlanConfirmDialog({
             }}
             disabled={loading}
           >
-            Cancel
+            {i18n.t(($) => {
+              return $.billing.common.cancel;
+            })}
           </Button>
           <Button onClick={handleConfirm} disabled={loading}>
-            {loading ? "Restoring..." : "Restore plan"}
+            {loading
+              ? i18n.t(($) => {
+                  return $.billing.restore.inProgress;
+                })
+              : i18n.t(($) => {
+                  return $.billing.plans.restorePlan;
+                })}
           </Button>
         </div>
       </DialogContent>
@@ -867,7 +1093,9 @@ function PlanActionButtons({
           disabled={loading}
           onClick={onRestore}
         >
-          Restore plan
+          {i18n.t(($) => {
+            return $.billing.plans.restorePlan;
+          })}
         </Button>
       )}
       {showUpgrade && (
@@ -877,7 +1105,9 @@ function PlanActionButtons({
           disabled={loading}
           onClick={onUpgrade}
         >
-          Upgrade
+          {i18n.t(($) => {
+            return $.billing.plans.upgrade;
+          })}
         </Button>
       )}
       {showDowngrade && (
@@ -888,7 +1118,9 @@ function PlanActionButtons({
           disabled={loading}
           onClick={onDowngrade}
         >
-          Downgrade
+          {i18n.t(($) => {
+            return $.billing.plans.downgrade;
+          })}
         </Button>
       )}
     </div>
@@ -897,9 +1129,16 @@ function PlanActionButtons({
 
 function currentPlanNameLabel(currentTier: BillingTier): string {
   if (isNoActivePlanTier(currentTier)) {
-    return "No active plan";
+    return i18n.t(($) => {
+      return $.billing.plans.noActivePlan;
+    });
   }
-  return `${formatTierLabel(currentTier)} plan`;
+  return i18n.t(
+    ($) => {
+      return $.billing.plans.namedPlan;
+    },
+    { plan: formatTierLabel(currentTier) },
+  );
 }
 
 function currentPlanStatusLabel(
@@ -907,9 +1146,19 @@ function currentPlanStatusLabel(
   periodLabel: string | null,
 ): string {
   if (isCustomTier(currentTier)) {
-    return "Custom access with 10 concurrent runs";
+    return i18n.t(
+      ($) => {
+        return $.billing.plans.customAccess;
+      },
+      { value: formatLocalizedNumber(10) },
+    );
   }
-  return periodLabel ?? "No active subscription";
+  return (
+    periodLabel ??
+    i18n.t(($) => {
+      return $.billing.plans.noActiveSubscription;
+    })
+  );
 }
 
 function billingPeriodLabel(args: {
@@ -929,12 +1178,27 @@ function billingPeriodLabel(args: {
 
   const date = formatBillingDate(changeDate);
   if (scheduledChange?.type === "cancel") {
-    return `Ends on ${date}`;
+    return i18n.t(
+      ($) => {
+        return $.billing.plans.endsOn;
+      },
+      { date },
+    );
   }
   if (scheduledChange?.type === "downgrade") {
-    return `Downgrades to ${scheduledTargetLabel(scheduledChange)} on ${date}`;
+    return i18n.t(
+      ($) => {
+        return $.billing.plans.downgradesOn;
+      },
+      { plan: scheduledTargetLabel(scheduledChange), date },
+    );
   }
-  return `Renews ${date}`;
+  return i18n.t(
+    ($) => {
+      return $.billing.plans.renews;
+    },
+    { date },
+  );
 }
 
 const HIDDEN_BILLING_CONTROLS = Object.freeze({
@@ -958,21 +1222,41 @@ function billingControlCapabilities(
 function cancellationNoticeText(tier: BillingTier, changeDate: string): string {
   const formattedDate = formatBillingDate(changeDate);
   if (tier === "custom") {
-    return `Your custom plan will end on ${formattedDate}.`;
+    return i18n.t(
+      ($) => {
+        return $.billing.plans.customCancellationNotice;
+      },
+      { date: formattedDate },
+    );
   }
-  return `Your ${formatTierLabel(
-    tier,
-  )} plan has been cancelled and will end on ${formattedDate}.`;
+  return i18n.t(
+    ($) => {
+      return $.billing.plans.cancellationNotice;
+    },
+    { plan: formatTierLabel(tier), date: formattedDate },
+  );
 }
 
 const CONCURRENCY_SLOT_MONTHLY_PRICE_USD = 100;
 
 function slotCountLabel(count: number): string {
-  return `${count} slot${count === 1 ? "" : "s"}`;
+  return i18n.t(
+    ($) => {
+      return $.billing.concurrency.slot;
+    },
+    { count, value: formatLocalizedNumber(count) },
+  );
 }
 
 function concurrencyMonthlyPrice(quantity: number): string {
-  return `$${quantity * CONCURRENCY_SLOT_MONTHLY_PRICE_USD}/month`;
+  return i18n.t(
+    ($) => {
+      return $.billing.plans.pricePerMonth;
+    },
+    {
+      price: formatUsd(quantity * CONCURRENCY_SLOT_MONTHLY_PRICE_USD, 0),
+    },
+  );
 }
 
 type ConcurrencySubscription =
@@ -983,11 +1267,29 @@ function concurrencySubscriptionPeriodLabel(
   canceled: boolean,
 ): string {
   if (!subscription.currentPeriodEnd) {
-    return canceled ? "Cancellation scheduled" : "Billed monthly";
+    return canceled
+      ? i18n.t(($) => {
+          return $.billing.concurrency.cancellationScheduled;
+        })
+      : i18n.t(($) => {
+          return $.billing.concurrency.billedMonthly;
+        });
   }
 
   const date = formatBillingDate(subscription.currentPeriodEnd);
-  return canceled ? `Active until ${date}` : `Renews ${date}`;
+  return canceled
+    ? i18n.t(
+        ($) => {
+          return $.billing.concurrency.activeUntil;
+        },
+        { date },
+      )
+    : i18n.t(
+        ($) => {
+          return $.billing.plans.renews;
+        },
+        { date },
+      );
 }
 
 function ConcurrencyQuantityControl({
@@ -1007,7 +1309,9 @@ function ConcurrencyQuantityControl({
       <div className="flex h-8 items-center rounded-lg border border-border/70 bg-background">
         <button
           type="button"
-          aria-label="Decrease additional concurrency quantity"
+          aria-label={i18n.t(($) => {
+            return $.billing.concurrency.decreaseAria;
+          })}
           disabled={
             quantity <= CONCURRENCY_SUBSCRIPTION_QUANTITY_MIN || disabled
           }
@@ -1019,11 +1323,13 @@ function ConcurrencyQuantityControl({
           <IconMinus size={13} stroke={2} />
         </button>
         <span className="flex h-8 w-11 items-center justify-center border-x border-border/70 text-sm font-medium tabular-nums text-foreground">
-          {quantity}
+          {formatLocalizedNumber(quantity)}
         </span>
         <button
           type="button"
-          aria-label="Increase additional concurrency quantity"
+          aria-label={i18n.t(($) => {
+            return $.billing.concurrency.increaseAria;
+          })}
           disabled={
             quantity >= CONCURRENCY_SUBSCRIPTION_QUANTITY_MAX || disabled
           }
@@ -1076,7 +1382,17 @@ function ConcurrencySubscriptionRow({
           onAction(action, subscription.id);
         }}
       >
-        {changing ? "Updating..." : canceled ? "Restore" : "Cancel"}
+        {changing
+          ? i18n.t(($) => {
+              return $.billing.common.updating;
+            })
+          : canceled
+            ? i18n.t(($) => {
+                return $.billing.common.restore;
+              })
+            : i18n.t(($) => {
+                return $.billing.common.cancel;
+              })}
       </Button>
     </div>
   );
@@ -1097,12 +1413,20 @@ function ConcurrencyConfirmDialog() {
   const action = dialog?.action ?? "cancel";
   const title =
     action === "cancel"
-      ? "Cancel concurrency subscription?"
-      : "Restore concurrency subscription?";
+      ? i18n.t(($) => {
+          return $.billing.concurrency.cancelTitle;
+        })
+      : i18n.t(($) => {
+          return $.billing.concurrency.restoreTitle;
+        });
   const description =
     action === "cancel"
-      ? "This stops renewal at the end of the current billing period. Existing slots stay active until then."
-      : "This resumes renewal for this concurrency subscription.";
+      ? i18n.t(($) => {
+          return $.billing.concurrency.cancelDescription;
+        })
+      : i18n.t(($) => {
+          return $.billing.concurrency.restoreDescription;
+        });
 
   const handleConfirm = () => {
     if (!dialog) {
@@ -1134,7 +1458,9 @@ function ConcurrencyConfirmDialog() {
               return close();
             }}
           >
-            Cancel
+            {i18n.t(($) => {
+              return $.billing.common.cancel;
+            })}
           </Button>
           <Button
             variant={action === "cancel" ? "destructive" : "default"}
@@ -1142,10 +1468,16 @@ function ConcurrencyConfirmDialog() {
             onClick={handleConfirm}
           >
             {loading
-              ? "Updating..."
+              ? i18n.t(($) => {
+                  return $.billing.common.updating;
+                })
               : action === "cancel"
-                ? "Cancel subscription"
-                : "Restore subscription"}
+                ? i18n.t(($) => {
+                    return $.billing.downgrade.cancelSubscription;
+                  })
+                : i18n.t(($) => {
+                    return $.billing.concurrency.restoreSubscription;
+                  })}
           </Button>
         </div>
       </DialogContent>
@@ -1165,8 +1497,15 @@ function ConcurrencyPurchaseDialog() {
   const checkoutLoading = checkoutLoadable.state === "loading";
   const quantity = quantityOverride ?? CONCURRENCY_SUBSCRIPTION_QUANTITY_MIN;
   const actionLabel = checkoutLoading
-    ? "Redirecting..."
-    : `Buy ${concurrencyMonthlyPrice(quantity)}`;
+    ? i18n.t(($) => {
+        return $.billing.common.redirecting;
+      })
+    : i18n.t(
+        ($) => {
+          return $.billing.concurrency.buyAmount;
+        },
+        { amount: concurrencyMonthlyPrice(quantity) },
+      );
 
   return (
     <Dialog
@@ -1177,16 +1516,24 @@ function ConcurrencyPurchaseDialog() {
     >
       <DialogContent className="sm:max-w-[420px]">
         <DialogHeader>
-          <DialogTitle>Buy concurrency</DialogTitle>
+          <DialogTitle>
+            {i18n.t(($) => {
+              return $.billing.concurrency.buyTitle;
+            })}
+          </DialogTitle>
           <DialogDescription>
-            Add a monthly subscription for more concurrent runs.
+            {i18n.t(($) => {
+              return $.billing.concurrency.buyDescription;
+            })}
           </DialogDescription>
         </DialogHeader>
 
         <div className="mt-2 flex flex-col gap-4">
           <ConcurrencyQuantityControl
             disabled={checkoutLoading}
-            label="Slots"
+            label={i18n.t(($) => {
+              return $.billing.concurrency.slots;
+            })}
             onQuantityChange={setQuantity}
             quantity={quantity}
           />
@@ -1203,7 +1550,9 @@ function ConcurrencyPurchaseDialog() {
               return close();
             }}
           >
-            Cancel
+            {i18n.t(($) => {
+              return $.billing.common.cancel;
+            })}
           </Button>
           <Button
             disabled={checkoutLoading}
@@ -1236,19 +1585,35 @@ function ConcurrencyBillingSection({
   return (
     <section className="flex flex-col gap-3">
       <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
-        <h3 className="text-sm font-medium text-foreground">Concurrency</h3>
+        <h3 className="text-sm font-medium text-foreground">
+          {i18n.t(($) => {
+            return $.billing.concurrency.title;
+          })}
+        </h3>
         <p className="text-[13px] text-muted-foreground">
-          {concurrencyLimit} concurrent run{concurrencyLimit === 1 ? "" : "s"}
+          {i18n.t(
+            ($) => {
+              return $.billing.concurrency.concurrentRun;
+            },
+            {
+              count: concurrencyLimit,
+              value: formatLocalizedNumber(concurrencyLimit),
+            },
+          )}
         </p>
       </div>
       <div className="overflow-hidden rounded-xl bg-card zero-border">
         {subscriptions.length === 0 ? (
           <div className="px-5 py-4">
             <p className="text-sm font-medium text-foreground">
-              No concurrency subscriptions
+              {i18n.t(($) => {
+                return $.billing.concurrency.emptyTitle;
+              })}
             </p>
             <p className="text-[13px] text-muted-foreground mt-0.5">
-              Buy additional concurrent runs for this workspace.
+              {i18n.t(($) => {
+                return $.billing.concurrency.emptyDescription;
+              })}
             </p>
           </div>
         ) : (
@@ -1275,7 +1640,9 @@ function ConcurrencyBillingSection({
             className="h-9 px-4 text-sm font-medium"
             onClick={openPurchaseDialog}
           >
-            Buy concurrent
+            {i18n.t(($) => {
+              return $.billing.concurrency.buyButton;
+            })}
           </Button>
         </div>
       </div>
@@ -1285,6 +1652,7 @@ function ConcurrencyBillingSection({
   );
 }
 export function OrgBillingTab() {
+  const { t } = useTranslation();
   const pricingOpen = useGet(billingSubPage$);
   const setBillingSubPage = useSet(setBillingSubPage$);
   const buyCreditsScrollRef = useSet(buyCreditsScrollRef$);
@@ -1364,7 +1732,11 @@ export function OrgBillingTab() {
   return (
     <div className="flex flex-col gap-8">
       <section className="flex flex-col gap-3">
-        <h3 className="text-sm font-medium text-foreground">Plan</h3>
+        <h3 className="text-sm font-medium text-foreground">
+          {t(($) => {
+            return $.billing.plans.sectionTitle;
+          })}
+        </h3>
         <div className="overflow-hidden rounded-xl bg-card zero-border">
           {statusLoading && !status ? (
             <div className="flex items-center justify-between gap-4 px-5 py-4">
@@ -1377,7 +1749,9 @@ export function OrgBillingTab() {
           ) : statusError ? (
             <div className="px-5 py-6 text-center">
               <p className="text-sm text-muted-foreground mb-3">
-                Could not load billing status.
+                {t(($) => {
+                  return $.billing.plans.loadError;
+                })}
               </p>
               <Button
                 size="sm"
@@ -1386,7 +1760,9 @@ export function OrgBillingTab() {
                   return reloadBilling();
                 }}
               >
-                Retry
+                {t(($) => {
+                  return $.billing.common.retry;
+                })}
               </Button>
             </div>
           ) : (
@@ -1427,9 +1803,16 @@ export function OrgBillingTab() {
                   <div className="h-0 zero-border-t mx-5" />
                   <div className="px-5 py-3">
                     <p className="text-[13px] text-amber-600 dark:text-amber-400">
-                      Your {formatTierLabel(currentTier)} plan will downgrade to{" "}
-                      {scheduledTargetLabel(scheduledChange)} on{" "}
-                      {formatBillingDate(changeDate)}.
+                      {t(
+                        ($) => {
+                          return $.billing.plans.downgradeNotice;
+                        },
+                        {
+                          currentPlan: formatTierLabel(currentTier),
+                          targetPlan: scheduledTargetLabel(scheduledChange),
+                          date: formatBillingDate(changeDate),
+                        },
+                      )}
                     </p>
                   </div>
                 </>
@@ -1440,10 +1823,14 @@ export function OrgBillingTab() {
                   <div className="flex items-center justify-between gap-4 px-5 py-4">
                     <div className="min-w-0">
                       <p className="text-sm font-medium text-foreground">
-                        Manage billing
+                        {t(($) => {
+                          return $.billing.manage.title;
+                        })}
                       </p>
                       <p className="text-[13px] text-muted-foreground mt-0.5">
-                        Subscription, payment method, and invoices in Stripe.
+                        {t(($) => {
+                          return $.billing.manage.description;
+                        })}
                       </p>
                     </div>
                     <Button
@@ -1453,7 +1840,9 @@ export function OrgBillingTab() {
                       disabled={loading}
                       onClick={openBillingPortal}
                     >
-                      Manage
+                      {t(($) => {
+                        return $.billing.common.manage;
+                      })}
                       <IconExternalLink size={13} stroke={1.5} />
                     </Button>
                   </div>
@@ -1468,7 +1857,9 @@ export function OrgBillingTab() {
                 }}
               >
                 <span className="inline-flex items-center gap-2 text-sm font-medium text-foreground">
-                  Compare all plans
+                  {t(($) => {
+                    return $.billing.plans.compareAll;
+                  })}
                   <IconCoins
                     size={14}
                     stroke={1.5}

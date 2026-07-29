@@ -132,8 +132,6 @@ class _UsageBufferState:
                     kind=event["kind"],
                     provider=event["provider"],
                     category=event["category"],
-                    billing_unit_price=event.get("billingUnitPrice"),
-                    billing_unit_size=event.get("billingUnitSize"),
                 )
                 bucket = buckets.setdefault(aggregate_key, _AggregateBucket())
                 bucket.quantity += event["quantity"]
@@ -656,8 +654,6 @@ class _UsageBufferState:
                 item.kind,
                 item.provider,
                 item.category,
-                item.billing_unit_price if item.billing_unit_price is not None else -1,
-                item.billing_unit_size if item.billing_unit_size is not None else -1,
             ),
         ):
             bucket = buckets[aggregate_key]
@@ -674,13 +670,6 @@ class _UsageBufferState:
             )
             if destination.include_kind:
                 event.payload["kind"] = aggregate_key.kind
-            gross_credits = _gross_credits(
-                bucket.quantity,
-                aggregate_key.billing_unit_price,
-                aggregate_key.billing_unit_size,
-            )
-            if gross_credits is not None:
-                event.payload["grossCredits"] = gross_credits
             events_by_run.setdefault(aggregate_key.run_id, []).append(event)
         return events_by_run
 
@@ -702,16 +691,6 @@ class _UsageBufferState:
                 aggregate_key.kind,
                 aggregate_key.provider,
                 aggregate_key.category,
-                str(
-                    aggregate_key.billing_unit_price
-                    if aggregate_key.billing_unit_price is not None
-                    else ""
-                ),
-                str(
-                    aggregate_key.billing_unit_size
-                    if aggregate_key.billing_unit_size is not None
-                    else ""
-                ),
             ),
         )
 
@@ -776,18 +755,13 @@ def _copy_observation(
 
 
 def _copy_event(event: UsageEvent) -> UsageEvent:
-    copied: UsageEvent = {
+    return {
         "idempotencyKey": event["idempotencyKey"],
         "kind": event["kind"],
         "provider": event["provider"],
         "category": event["category"],
         "quantity": event["quantity"],
     }
-    if "billingUnitPrice" in event:
-        copied["billingUnitPrice"] = event["billingUnitPrice"]
-    if "billingUnitSize" in event:
-        copied["billingUnitSize"] = event["billingUnitSize"]
-    return copied
 
 
 def _source_event_payload(destination: _DestinationKey, event: UsageEvent) -> dict:
@@ -799,24 +773,7 @@ def _source_event_payload(destination: _DestinationKey, event: UsageEvent) -> di
     }
     if destination.include_kind:
         payload["kind"] = event["kind"]
-    gross_credits = _gross_credits(
-        event["quantity"],
-        event.get("billingUnitPrice"),
-        event.get("billingUnitSize"),
-    )
-    if gross_credits is not None:
-        payload["grossCredits"] = gross_credits
     return payload
-
-
-def _gross_credits(
-    quantity: int,
-    unit_price: int | None,
-    unit_size: int | None,
-) -> int | None:
-    if unit_price is None or unit_size is None:
-        return None
-    return (quantity * unit_price + unit_size - 1) // unit_size
 
 
 def _flush_batch_sort_key(batch: _FlushBatch) -> tuple[object, ...]:

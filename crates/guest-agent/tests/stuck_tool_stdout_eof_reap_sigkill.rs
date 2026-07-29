@@ -22,15 +22,31 @@ async fn stuck_tool_reap_survives_stdout_eof_before_child_exit()
 
     let masker = guest_agent::masker::SecretMasker::from_raw("");
     let heartbeat = common::spawn_dummy_heartbeat();
+    let checkpoints = [
+        common::VirtualTimeCheckpoint {
+            file: runtime.paths.agent_log_file(),
+            needle: common::MOCK_TERMINATION_READY_EVENT,
+            advance: Duration::from_secs(5),
+        },
+        common::VirtualTimeCheckpoint {
+            file: runtime.paths.system_log_file(),
+            needle: "Tool timeout: WebFetch stuck for",
+            advance: runtime.config.post_result_sigkill_grace,
+        },
+    ];
 
-    // Budget: stdout EOF after tool_use + stuck-tool check interval (5s)
-    // + sigkill grace (1s, unignorable) + slack.
+    // The mock fence proves WebFetch is tracked before stdout closes and the
+    // watchdog jumps. The timeout log proves SIGTERM armed the SIGKILL
+    // deadline. Keep the outer timeout as a real subprocess/reaping bound.
     let result = tokio::time::timeout(
         Duration::from_secs(15),
-        common::execute_cli_for_runtime(&runtime, &masker, heartbeat),
+        common::execute_with_virtual_time_checkpoints(
+            common::execute_cli_for_runtime(&runtime, &masker, heartbeat),
+            &checkpoints,
+        ),
     )
     .await
-    .expect("execute_cli did not return within 15s - stdout EOF forced reap likely broken");
+    .expect("execute_cli did not return within 15s - stdout EOF forced reap likely broken")?;
 
     assert!(
         tmp.path().join(".vm0-mock-sigterm-ignored").exists(),

@@ -17,6 +17,7 @@ from mitmproxy import http
 
 import auth_base_forwarder as forwarder
 from tests.auth_base_forwarder_helpers import (
+    FakeResponseFile,
     FakeSocket,
     fake_forwarder_upstream,
     forwarder_concurrency_harness,
@@ -54,6 +55,21 @@ class _BlockingConnectSocket(FakeSocket):
     def shutdown(self, how: int) -> None:
         super().shutdown(how)
         self._release.set()
+
+
+class _RecordingSocket(forwarder.socket.socket):
+    def __init__(self) -> None:
+        super().__init__()
+        self.close_count = 0
+        self.shutdown_calls: list[int] = []
+
+    def shutdown(self, how: int) -> None:
+        self.shutdown_calls.append(how)
+
+    def close(self) -> None:
+        if self.fileno() != -1:
+            self.close_count += 1
+        super().close()
 
 
 def _run_blocked_forward_then_shutdown_wait_false() -> None:
@@ -956,6 +972,56 @@ class TestAuthBaseForwarderResourceCleanup:
         assert upstream.socket.closed
 
 
+class TestForwardRequestAbortHandle:
+    def test_deadline_before_async_cancel_registration_cancels_and_preserves_error(self):
+        abort_handle = forwarder._ForwardRequestAbortHandle(MagicMock())
+        cancel = MagicMock()
+
+        assert abort_handle.abort_for_deadline()
+        with pytest.raises(
+            forwarder.AuthBaseForwardingDeadlineExceededError,
+            match=r"auth\.base forwarding deadline exceeded",
+        ):
+            abort_handle.register_async_cancel(cancel)
+
+        cancel.assert_called_once_with()
+
+    def test_shutdown_before_socket_registration_aborts_and_preserves_error(self):
+        abort_handle = forwarder._ForwardRequestAbortHandle(MagicMock())
+        socket = _RecordingSocket()
+        try:
+            assert abort_handle.abort_for_shutdown()
+            with pytest.raises(RuntimeError, match=r"auth\.base forwarding workers are shut down"):
+                abort_handle.register_socket(socket)
+
+            assert socket.shutdown_calls == [forwarder.socket.SHUT_RDWR]
+            assert socket.close_count == 1
+        finally:
+            socket.close()
+
+    def test_deadline_before_socket_replacement_aborts_both_and_preserves_error(self):
+        abort_handle = forwarder._ForwardRequestAbortHandle(MagicMock())
+        raw_socket = _RecordingSocket()
+        tls_socket = _RecordingSocket()
+        try:
+            abort_handle.register_socket(raw_socket)
+
+            assert abort_handle.abort_for_deadline()
+            with pytest.raises(
+                forwarder.AuthBaseForwardingDeadlineExceededError,
+                match=r"auth\.base forwarding deadline exceeded",
+            ):
+                abort_handle.replace_socket(raw_socket, tls_socket)
+
+            assert raw_socket.shutdown_calls == [forwarder.socket.SHUT_RDWR]
+            assert raw_socket.close_count == 1
+            assert tls_socket.shutdown_calls == [forwarder.socket.SHUT_RDWR]
+            assert tls_socket.close_count == 1
+        finally:
+            raw_socket.close()
+            tls_socket.close()
+
+
 class TestForwardRequestAsyncWrapper:
     def test_shutdown_wait_false_does_not_keep_process_alive_with_blocked_forward(self):
         process = multiprocessing.get_context("spawn").Process(
@@ -1385,6 +1451,90 @@ class TestForwardRequestAsyncWrapper:
         assert upstream.socket.shutdown_calls == []
         with forwarder._forward_request_active_handles_lock:
             assert not forwarder._forward_request_active_handles
+
+    async def test_worker_rejects_result_after_deadline_before_timer_callback(self):
+        class ControlledTime:
+            def __init__(self) -> None:
+                self._lock = threading.Lock()
+                self._now = 0.0
+
+            def monotonic(self) -> float:
+                with self._lock:
+                    return self._now
+
+            def advance_past_deadline(self) -> None:
+                with self._lock:
+                    self._now = 11.0
+
+        class UnscheduledDeadlineHandle:
+            def __init__(self) -> None:
+                self.cancel_count = 0
+
+            def cancel(self) -> None:
+                self.cancel_count += 1
+
+        clock = ControlledTime()
+        deadline_handle = UnscheduledDeadlineHandle()
+
+        class DeadlineCrossingSocket(FakeSocket):
+            def makefile(self, *_args, **_kwargs) -> FakeResponseFile:
+                self.response_file = FakeResponseFile(
+                    http_response(),
+                    on_action=clock.advance_past_deadline,
+                )
+                return self.response_file
+
+        loop = asyncio.get_running_loop()
+        with patch.object(forwarder, "MAX_CONCURRENT_AUTH_BASE_FORWARDS", 1):
+            with (
+                patch.object(
+                    forwarder,
+                    "AUTH_BASE_FORWARD_DEADLINE_SECONDS",
+                    10,
+                ),
+                patch.object(forwarder, "time", clock),
+                patch.object(
+                    loop,
+                    "call_later",
+                    return_value=deadline_handle,
+                ),
+                fake_forwarder_upstream(
+                    socket_factory=lambda: DeadlineCrossingSocket(http_response())
+                ),
+                pytest.raises(
+                    forwarder.AuthBaseForwardingDeadlineExceededError,
+                    match=r"auth\.base forwarding deadline exceeded",
+                ),
+            ):
+                await forwarder.forward_request(
+                    "https://example.com",
+                    "GET",
+                    [],
+                    None,
+                )
+
+            assert deadline_handle.cancel_count == 1
+            assert forwarder.forward_request_admission_state_for_tests() == (0, 0)
+            with forwarder._forward_request_active_handles_lock:
+                assert not forwarder._forward_request_active_handles
+
+            semaphore = forwarder._get_forward_request_admission_semaphore()
+            await semaphore.acquire()
+            try:
+                assert semaphore.locked()
+            finally:
+                semaphore.release()
+
+            with fake_forwarder_upstream():
+                status, body, _headers = await forwarder.forward_request(
+                    "https://example.com",
+                    "GET",
+                    [],
+                    None,
+                )
+
+        assert status == 200
+        assert body == b"ok"
 
     def test_shutdown_before_worker_start_cancels_pending_forward(self):
         future: Future[tuple[int, bytes, http.Headers]] = Future()

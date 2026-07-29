@@ -5118,6 +5118,27 @@
       "when": 1785322216165,
       "tag": "0730_switch-canonical-user-message-constraints",
       "breakpoints": true
+    },
+    {
+      "idx": 731,
+      "version": "7",
+      "when": 1785322216166,
+      "tag": "0731_prefix_custom_connector_slugs",
+      "breakpoints": true
+    },
+    {
+      "idx": 732,
+      "version": "7",
+      "when": 1785322216167,
+      "tag": "0732_custom_connector_oauth_schema",
+      "breakpoints": true
+    },
+    {
+      "idx": 733,
+      "version": "7",
+      "when": 1785322216168,
+      "tag": "0733_enforce_custom_connector_oauth_mode",
+      "breakpoints": true
     }
   ]
 }

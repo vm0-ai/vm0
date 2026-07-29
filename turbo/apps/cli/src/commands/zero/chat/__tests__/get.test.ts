@@ -15,6 +15,7 @@ import { server } from "../../../../mocks/server";
 import { zeroChatCommand } from "../index";
 
 const THREAD_ID = "00000000-0000-4000-8000-000000000001";
+const AGENT_ID = "00000000-0000-4000-8000-000000000010";
 const GET_URL = `http://localhost:3000/api/zero/chat-threads/${THREAD_ID}/metadata`;
 
 describe("zero chat get command", () => {
@@ -48,6 +49,7 @@ describe("zero chat get command", () => {
         );
         return HttpResponse.json({
           id: THREAD_ID,
+          agentId: AGENT_ID,
           title: "Launch plan",
           selectedModel: "claude-sonnet-5",
         });
@@ -59,6 +61,7 @@ describe("zero chat get command", () => {
     const output = mockConsoleLog.mock.calls.flat().join("\n");
     expect(output).toContain("Chat thread loaded");
     expect(output).toContain(`Thread: ${THREAD_ID}`);
+    expect(output).toContain(`Agent:  ${AGENT_ID}`);
     expect(output).toContain("Title:  Launch plan");
     expect(output).toContain("Model:  claude-sonnet-5");
   });
@@ -68,6 +71,7 @@ describe("zero chat get command", () => {
       http.get(GET_URL, () => {
         return HttpResponse.json({
           id: THREAD_ID,
+          agentId: AGENT_ID,
           title: "Launch plan",
           selectedModel: "claude-sonnet-5",
         });
@@ -79,6 +83,7 @@ describe("zero chat get command", () => {
     expect(JSON.parse(String(mockConsoleLog.mock.calls[0]?.[0]))).toStrictEqual(
       {
         id: THREAD_ID,
+        agentId: AGENT_ID,
         title: "Launch plan",
         selectedModel: "claude-sonnet-5",
       },
@@ -90,6 +95,7 @@ describe("zero chat get command", () => {
       http.get(GET_URL, () => {
         return HttpResponse.json({
           id: THREAD_ID,
+          agentId: AGENT_ID,
           title: null,
           selectedModel: null,
         });

@@ -730,6 +730,230 @@
       "wouldLike": "Gostaria de"
     }
   },
+  "billing": {
+    "autoRecharge": {
+      "amountAria": "Quantidade de créditos da recarga automática",
+      "amountTitle": "Valor da recarga",
+      "automaticTopUps": "Recargas automáticas",
+      "description": "Compre créditos quando o saldo ficar abaixo de um limite.",
+      "enableAria": "Ativar recarga automática",
+      "thresholdAria": "Limite de créditos para recarga automática",
+      "thresholdDescription": "Faça uma compra quando o saldo de créditos ficar abaixo deste número.",
+      "thresholdPlaceholder": "ex.: 2000",
+      "thresholdTitle": "Quando os créditos ficarem abaixo de",
+      "title": "Recarga automática"
+    },
+    "common": {
+      "back": "Voltar",
+      "cancel": "Cancelar",
+      "credits": "créditos",
+      "manage": "Gerenciar",
+      "redirecting": "Redirecionando...",
+      "restore": "Restaurar",
+      "retry": "Tentar novamente",
+      "unavailable": "Indisponível",
+      "updating": "Atualizando..."
+    },
+    "concurrency": {
+      "activeUntil": "Ativa até {{date}}",
+      "billedMonthly": "Cobrança mensal",
+      "buyAmount": "Comprar por {{amount}}",
+      "buyButton": "Comprar simultaneidade",
+      "buyDescription": "Adicione uma assinatura mensal para ter mais execuções simultâneas.",
+      "buyTitle": "Comprar simultaneidade",
+      "cancelDescription": "Isso interrompe a renovação no fim do período de cobrança atual. As vagas existentes continuam ativas até lá.",
+      "cancellationScheduled": "Cancelamento agendado",
+      "cancelTitle": "Cancelar assinatura de simultaneidade?",
+      "concurrentRun_one": "{{value}} execução simultânea",
+      "concurrentRun_many": "{{value}} execuções simultâneas",
+      "concurrentRun_other": "{{value}} execuções simultâneas",
+      "decreaseAria": "Diminuir a quantidade adicional de simultaneidade",
+      "emptyDescription": "Compre execuções simultâneas adicionais para este workspace.",
+      "emptyTitle": "Nenhuma assinatura de simultaneidade",
+      "increaseAria": "Aumentar a quantidade adicional de simultaneidade",
+      "restoreDescription": "Isso retoma a renovação desta assinatura de simultaneidade.",
+      "restoreSubscription": "Restaurar assinatura",
+      "restoreTitle": "Restaurar assinatura de simultaneidade?",
+      "slot_one": "{{value}} vaga",
+      "slot_many": "{{value}} vagas",
+      "slot_other": "{{value}} vagas",
+      "slots": "Vagas",
+      "title": "Simultaneidade"
+    },
+    "credits": {
+      "amount": "Valor",
+      "amountRangeError": "Insira um valor entre {{minimum}} e {{maximum}}",
+      "anyAmount": "Qualquer valor",
+      "custom": "Personalizado",
+      "customAmountAria": "Valor personalizado em dólares",
+      "exchangeRate": "Os créditos nunca expiram. 1 USD = {{credits}} créditos.",
+      "quickBuy": "Compra rápida",
+      "quickBuyAmount": "Compra rápida de {{amount}}",
+      "title": "Comprar créditos"
+    },
+    "downgrade": {
+      "cancelSubscription": "Cancelar assinatura",
+      "chooseTarget": "Escolha o plano para o qual deseja fazer downgrade.",
+      "confirmProCancellation": "Tem certeza de que deseja cancelar seu plano Pro?",
+      "confirmTarget": "Fazer downgrade para {{plan}}?",
+      "inProgress": "Fazendo downgrade...",
+      "proWarning": "Seu acesso Pro permanece ativo até o fim do período de cobrança atual. Depois disso, este workspace ficará Sem plano e os agentes não poderão ser executados até que você faça upgrade novamente.",
+      "teamWarning": "Seu acesso Team permanece ativo até o fim do período de cobrança atual. Depois disso, este workspace passará para {{plan}}.",
+      "title": "Fazer downgrade do plano"
+    },
+    "invoices": {
+      "amount": "Valor",
+      "date": "Data",
+      "downloadDescription": "Escolha até 3 meses consecutivos. Os PDFs dos recibos desse período serão reunidos em um arquivo ZIP.",
+      "downloadInvoice": "Baixar fatura de {{month}}",
+      "downloadReceipts": "Baixar recibos",
+      "downloadZip": "Baixar ZIP",
+      "empty": "Ainda não há faturas.",
+      "from": "De",
+      "invoice": "Fatura",
+      "loading": "Carregando faturas",
+      "monthAria": "Mês de {{label}}",
+      "preparingReceipts": "Preparando recibos...",
+      "rangeError": "Selecione um período de no máximo 3 meses consecutivos.",
+      "selectMonth": "Selecionar mês",
+      "to": "Até"
+    },
+    "manage": {
+      "description": "Assinatura, forma de pagamento e faturas no Stripe.",
+      "title": "Gerenciar cobrança"
+    },
+    "plans": {
+      "cancellationNotice": "Seu plano {{plan}} foi cancelado e terminará em {{date}}.",
+      "changeAnytime": "Faça upgrade ou downgrade a qualquer momento.",
+      "compare": "Comparar planos",
+      "compareAll": "Comparar todos os planos",
+      "currentPlan": "Plano atual",
+      "custom": {
+        "name": "Personalizado"
+      },
+      "customAccess": "Acesso personalizado com {{value}} execuções simultâneas",
+      "customCancellationNotice": "Seu plano personalizado terminará em {{date}}.",
+      "customCheckoutUnavailable": "Workspaces personalizados não podem mudar para o checkout Pro ou Team.",
+      "downgrade": "Fazer downgrade",
+      "downgradeNotice": "Seu plano {{currentPlan}} passará para {{targetPlan}} em {{date}}.",
+      "downgradesOn": "Passa para {{plan}} em {{date}}",
+      "downgradeTo": "Fazer downgrade para {{plan}}",
+      "endsOn": "Termina em {{date}}",
+      "features": {
+        "byok": "Use suas próprias chaves de LLM",
+        "communitySupport": "Suporte da comunidade",
+        "emailSupport": "Suporte por e-mail",
+        "existingCredits": "Somente os créditos gratuitos existentes",
+        "monthlyCredits": "{{value}} créditos / mês",
+        "oneConcurrentRun": "1 execução simultânea",
+        "payAsYouGo": "Pagamento conforme o uso depois disso",
+        "prioritySupport": "Suporte prioritário",
+        "tenConcurrentRuns": "10 execuções simultâneas",
+        "twoConcurrentRuns": "2 execuções simultâneas",
+        "unlimitedAgents": "Total ilimitado de agentes",
+        "voiceInput": "Entrada por voz",
+        "voiceInputLifetime": "Entrada por voz (10 usos vitalícios por membro)"
+      },
+      "free": {
+        "description": "Acesso gratuito legado para workspaces existentes.",
+        "name": "Grátis"
+      },
+      "limitedFree": {
+        "name": "Grátis limitado"
+      },
+      "loadError": "Não foi possível carregar o status de cobrança.",
+      "manageSubscription": "Gerenciar assinatura",
+      "namedPlan": "Plano {{plan}}",
+      "noActivePlan": "Nenhum plano ativo",
+      "noActiveSubscription": "Nenhuma assinatura ativa",
+      "noPlan": {
+        "name": "Sem plano"
+      },
+      "perMonth": "/mês",
+      "popular": "Popular",
+      "pricePerMonth": "{{price}}/mês",
+      "pro": {
+        "description": "Mais capacidade e colaboração fluida para sua equipe.",
+        "name": "Pro"
+      },
+      "renews": "Renova em {{date}}",
+      "restorePlan": "Restaurar plano",
+      "sectionTitle": "Plano",
+      "selectedPlan": "o plano selecionado",
+      "team": {
+        "description": "Escale rapidamente, sem atrito e com flexibilidade total.",
+        "name": "Team"
+      },
+      "upgrade": "Fazer upgrade",
+      "upgradeTo": "Fazer upgrade para {{plan}}"
+    },
+    "restore": {
+      "cancellationDescription": "Isso desfará o cancelamento agendado do seu plano {{plan}}.",
+      "cancellationDescriptionDate": "Isso desfará o cancelamento agendado do seu plano {{plan}}. Ele será renovado em {{date}}.",
+      "downgradeDescription": "Isso cancelará o downgrade agendado para {{target}}. Seu plano {{plan}} continuará sendo renovado.",
+      "inProgress": "Restaurando...",
+      "title": "Restaurar o plano {{plan}}?"
+    },
+    "sidebar": {
+      "description": "Mais créditos e execuções simultâneas",
+      "getPlan": "Obter {{plan}}"
+    },
+    "toasts": {
+      "autoRechargeUpdated": "Recarga automática atualizada",
+      "cancellationScheduledDate": "Cancelamento agendado. Seu plano atual permanece ativo até {{date}}.",
+      "cancellationScheduledPeriod": "Cancelamento agendado. Seu plano atual permanece ativo até o fim do período de cobrança.",
+      "checkoutCompleted": "Checkout do plano {{plan}} concluído. Os créditos serão adicionados após o pagamento da fatura.",
+      "concurrencyAdded": "Simultaneidade adicionada. Suas novas vagas ficarão disponíveis após o Stripe confirmar a assinatura.",
+      "concurrencyCanceled": "Assinatura de simultaneidade cancelada.",
+      "concurrencyCanceledDate": "Assinatura de simultaneidade cancelada. As vagas permanecem ativas até {{date}}.",
+      "concurrencyRestored": "Assinatura de simultaneidade restaurada.",
+      "creditsAdded": "Créditos adicionados. Você pode continuar conversando com o Zero.",
+      "downgradeScheduledDate": "Downgrade agendado. Seu plano atual permanece ativo até {{date}}.",
+      "downgradeScheduledPeriod": "Downgrade agendado. Seu plano atual permanece ativo até o fim do período de cobrança.",
+      "planRestored": "Plano restaurado. Sua assinatura será renovada normalmente.",
+      "preparingReceiptDownload": "Preparando o download dos recibos...",
+      "receiptDownloadFailed": "Não foi possível baixar os recibos",
+      "receiptsDownloaded": "Recibos baixados"
+    },
+    "usage": {
+      "added": "Adicionado em {{date}}",
+      "allowance": {
+        "day": "{{value}}d",
+        "hour": "{{value}}h",
+        "minute": "{{value}}min",
+        "remaining": "{{remaining}} / {{total}} créditos",
+        "remainingAria": "Saldo restante da franquia de uso de {{label}}",
+        "resets": "Reinicia em {{date}}",
+        "resetsRaw": "Reinicia em {{value}}",
+        "title": "Franquia de uso",
+        "week": "{{value}} sem."
+      },
+      "breakdown": {
+        "currentPlanDescription": "Créditos mensais do plano, reiniciados a cada ciclo de cobrança",
+        "freeDescription": "Créditos iniciais, disponíveis até acabarem",
+        "freePlan": "Plano grátis",
+        "payAsYouGo": "Pagamento conforme o uso",
+        "payAsYouGoDescription": "Créditos de recarga automática, nunca expiram",
+        "previousPlanDescription": "Créditos restantes do plano anterior",
+        "promotional": "Promocionais",
+        "promotionalDescription": "Créditos de campanha, expiram após um período definido",
+        "proPlan": "Plano Pro",
+        "teamPlan": "Plano Team"
+      },
+      "creditAdditions": "Adições de créditos",
+      "creditsRemaining_one": "{{value}} crédito restante",
+      "creditsRemaining_many": "{{value}} créditos restantes",
+      "creditsRemaining_other": "{{value}} créditos restantes",
+      "expires": "Expira em {{date}}",
+      "left": "{{value}} restantes",
+      "member": "Membro",
+      "neverExpires": "Nunca expira",
+      "unavailable": "Saldo de créditos indisponível.",
+      "upgradeDescription": "O Pro inclui créditos mensais e libera outras opções de créditos.",
+      "upgradeTitle": "Faça upgrade para o Pro e obtenha mais créditos",
+      "used": "Usado"
+    }
+  },
   "browserSession": {
     "cardTitle": "Navegador na nuvem",
     "close": "Fechar navegador ao vivo",
@@ -790,6 +1014,7 @@
       "deleting": "Excluindo…",
       "disconnect": "Desconectar",
       "disconnecting": "Desconectando...",
+      "edit": "Editar",
       "grant": "Conceder",
       "reconnect": "Reconectar",
       "rename": "Renomear",
@@ -973,6 +1198,9 @@
       "delete": {
         "description": "Isso remove o conector e o segredo armazenado de cada membro. Os agentes autorizados para este conector perderão o acesso imediatamente. Esta ação não pode ser desfeita.",
         "title": "Excluir {{connector}}?"
+      },
+      "edit": {
+        "title": "Editar conector personalizado"
       },
       "emptyAdmin": "Ainda não há conectores personalizados. Crie um para registrar uma API que todos os membros possam usar.",
       "emptyMember": "Sua organização ainda não registrou conectores personalizados.",
@@ -1443,6 +1671,112 @@
     },
     "realtime": {
       "degraded": "As atualizações em tempo real encontraram um problema. Atualize a página."
+    }
+  },
+  "insights": {
+    "calendar": {
+      "nextMonth": "Próximo mês",
+      "previousMonth": "Mês anterior"
+    },
+    "cards": {
+      "agents": "Agentes",
+      "agentsRan_one": "{{agents}} executou {{runs}}",
+      "agentsRan_many": "{{agents}} executaram {{runs}}",
+      "agentsRan_other": "{{agents}} executaram {{runs}}",
+      "allowed": "Permitidas",
+      "allowedSummary_one": "{{calls}} feitas com {{permissions}} permissão concedida",
+      "allowedSummary_many": "{{calls}} feitas com {{permissions}} permissões concedidas",
+      "allowedSummary_other": "{{calls}} feitas com {{permissions}} permissões concedidas",
+      "automations": "Automações",
+      "automationsUsed_one": "{{automations}} usou {{credits}}",
+      "automationsUsed_many": "{{automations}} usaram {{credits}}",
+      "automationsUsed_other": "{{automations}} usaram {{credits}}",
+      "balance": "Saldo",
+      "byAgent": "por {{agent}}",
+      "chats": "Conversas",
+      "chatsUsed_one": "{{chats}} usou {{credits}}",
+      "chatsUsed_many": "{{chats}} usaram {{credits}}",
+      "chatsUsed_other": "{{chats}} usaram {{credits}}",
+      "clickToOpen": "Clique para abrir",
+      "consumedToday": "consumidos hoje",
+      "moreAutomations_one": "+mais {{value}} automação",
+      "moreAutomations_many": "+{{value}} automações",
+      "moreAutomations_other": "+mais {{value}} automações",
+      "moreChats_one": "+mais {{value}} conversa",
+      "moreChats_many": "+mais {{value}} conversas",
+      "moreChats_other": "+mais {{value}} conversas",
+      "protected": "Protegidas",
+      "protectedSummary_one": "{{calls}} protegidas em {{permissions}} permissão",
+      "protectedSummary_many": "{{calls}} protegidas em {{permissions}} permissões",
+      "protectedSummary_other": "{{calls}} protegidas em {{permissions}} permissões",
+      "rejected_one": "{{value}} rejeitada",
+      "rejected_many": "{{value}} rejeitadas",
+      "rejected_other": "{{value}} rejeitadas",
+      "rejectedOf": "{{denied}} de {{total}} rejeitadas",
+      "services": "Serviços",
+      "servicesReceived_one": "{{services}} recebeu {{calls}}",
+      "servicesReceived_many": "{{services}} receberam {{calls}}",
+      "servicesReceived_other": "{{services}} receberam {{calls}}",
+      "team": "Equipe",
+      "teamCreditUsage": "Uso de créditos da equipe",
+      "untitled": "(sem título)",
+      "yourCreditUsage": "Seu uso de créditos"
+    },
+    "common": {
+      "loadMore": "Carregar mais",
+      "showLess": "Mostrar menos"
+    },
+    "page": {
+      "description": "Monitore o que seus agentes acessam, como os créditos são gastos, quais permissões usam e identifique qualquer atividade incomum.",
+      "documentTitle": "Insights e uso",
+      "empty": "Execute um agente para ver insights aqui.",
+      "emptyRange": "Nenhuma atividade neste período.",
+      "lastUpdated": "Última atualização — {{date}}",
+      "loadError": "Não foi possível carregar a atividade da rede.",
+      "title": "Insights"
+    },
+    "range": {
+      "custom": "Período personalizado",
+      "last28Days": "Últimos 28 dias",
+      "last30Days": "Últimos 30 dias",
+      "last7Days": "Últimos 7 dias",
+      "today": "Hoje",
+      "yesterday": "Ontem"
+    },
+    "summary": {
+      "activityCaption": "{{first}} · {{second}}",
+      "blocked_one": "{{blocked}} solicitação foi bloqueada pelas suas regras de permissão. Revise-a para garantir que nada importante esteja sendo impedido.",
+      "blocked_many": "{{blocked}} solicitações foram bloqueadas pelas suas regras de permissão. Revise-as para garantir que nada importante esteja sendo impedido.",
+      "blocked_other": "{{blocked}} solicitações foram bloqueadas pelas suas regras de permissão. Revise-as para garantir que nada importante esteja sendo impedido.",
+      "blockedCaption": "{{calls}} · {{blocked}} bloqueadas",
+      "busy_one": "Um dia movimentado — {{agents}} concluiu {{runs}}. Sua rede está trabalhando bastante.",
+      "busy_many": "Um dia movimentado — {{agents}} concluíram {{runs}}. Sua rede está trabalhando bastante.",
+      "busy_other": "Um dia movimentado — {{agents}} concluíram {{runs}}. Sua rede está trabalhando bastante.",
+      "distributed_one": "{{agents}} ativo, usando {{credits}} no total. Uma carga de trabalho bem distribuída.",
+      "distributed_many": "{{agents}} ativos, usando {{credits}} no total. Uma carga de trabalho bem distribuída.",
+      "distributed_other": "{{agents}} ativos, usando {{credits}} no total. Uma carga de trabalho bem distribuída.",
+      "highTraffic_one": "{{calls}} em {{services}}. Dia de tráfego intenso.",
+      "highTraffic_many": "{{calls}} em {{services}}. Dia de tráfego intenso.",
+      "highTraffic_other": "{{calls}} em {{services}}. Dia de tráfego intenso.",
+      "light_one": "Atividade leve — apenas {{runs}} e {{calls}}. Um dia tranquilo.",
+      "light_many": "Atividade leve — apenas {{runs}} e {{calls}}. Um dia tranquilo.",
+      "light_other": "Atividade leve — apenas {{runs}} e {{calls}}. Um dia tranquilo.",
+      "quietCaption": "{{runs}} · um dia tranquilo",
+      "smooth": "{{runs}} e {{calls}} hoje. Tudo funcionando perfeitamente."
+    },
+    "units": {
+      "agent_one": "{{value}} agente",
+      "agent_many": "{{value}} agentes",
+      "agent_other": "{{value}} agentes",
+      "call_one": "{{value}} chamada",
+      "call_many": "{{value}} chamadas",
+      "call_other": "{{value}} chamadas",
+      "run_one": "{{value}} execução",
+      "run_many": "{{value}} execuções",
+      "run_other": "{{value}} execuções",
+      "service_one": "{{value}} serviço",
+      "service_many": "{{value}} serviços",
+      "service_other": "{{value}} serviços"
     }
   },
   "lifecycle": {
@@ -3306,6 +3640,100 @@
     "notFound": {
       "description": "A página que você procura não existe.",
       "title": "Página não encontrada"
+    }
+  },
+  "usage": {
+    "automations": {
+      "empty": "Nenhuma automação usada neste período",
+      "more_one": "+mais {{value}} automação",
+      "more_many": "+mais {{value}} automações",
+      "more_other": "+mais {{value}} automações",
+      "summary_one": "{{automations}} usou {{credits}}",
+      "summary_many": "{{automations}} usaram {{credits}}",
+      "summary_other": "{{automations}} usaram {{credits}}",
+      "title": "Automações"
+    },
+    "chart": {
+      "ariaLabel": "Totais de créditos",
+      "credits": "créditos",
+      "groupBy": {
+        "agent": "Agente",
+        "source": "Origem"
+      },
+      "noUsage": "Sem uso",
+      "showDetails": "Mostrar detalhes de uso de {{date}}"
+    },
+    "chats": {
+      "clickToOpen": "Clique para abrir",
+      "empty": "Nenhuma conversa neste período",
+      "more_one": "+mais {{value}} conversa",
+      "more_many": "+mais {{value}} conversas",
+      "more_other": "+mais {{value}} conversas",
+      "summary_one": "{{chats}} usou {{credits}}",
+      "summary_many": "{{chats}} usaram {{credits}}",
+      "summary_other": "{{chats}} usaram {{credits}}",
+      "title": "Conversas",
+      "untitled": "(sem título)"
+    },
+    "kinds": {
+      "connector": "Conectores",
+      "image": "Imagens",
+      "model": "Modelos",
+      "other": "Outros",
+      "video": "Vídeos"
+    },
+    "page": {
+      "description": "Seu consumo de créditos em conversas, automações e canais.",
+      "loadError": "Não foi possível carregar os insights de uso. Tente novamente mais tarde.",
+      "title": "Uso"
+    },
+    "range": {
+      "ariaLabel": "Período do uso",
+      "billingPeriod": "Período de cobrança",
+      "last24Hours": "Últimas 24 horas",
+      "last28Days": "Últimos 28 dias",
+      "last30Days": "Últimos 30 dias",
+      "last7Days": "Últimos 7 dias",
+      "selectedDay": "Dia selecionado",
+      "today": "Hoje",
+      "yesterday": "Ontem"
+    },
+    "records": {
+      "emptyBillingPeriod": "Nenhum uso neste período de cobrança.",
+      "emptyRange": "Nenhum uso neste período.",
+      "loadError": "Não foi possível carregar seu uso.",
+      "loadMore": "Carregar mais",
+      "myUsage": "Meu uso",
+      "noActiveBillingPeriod": "Nenhum período de cobrança ativo.",
+      "teamLoadError": "Não foi possível carregar o uso da equipe.",
+      "teamUsage": "Uso da equipe",
+      "untitled": "(sem título)"
+    },
+    "sources": {
+      "agent": "Agente",
+      "automation": "Automação",
+      "chat": "Conversa",
+      "cli": "CLI",
+      "email": "E-mail",
+      "github": "GitHub",
+      "other": "Outro",
+      "others": "Outros",
+      "phone": "Telefone",
+      "slack": "Slack",
+      "teams": "Microsoft Teams",
+      "telegram": "Telegram",
+      "unknown": "Desconhecido"
+    },
+    "units": {
+      "automation_one": "{{value}} automação",
+      "automation_many": "{{value}} automações",
+      "automation_other": "{{value}} automações",
+      "chat_one": "{{value}} conversa",
+      "chat_many": "{{value}} conversas",
+      "chat_other": "{{value}} conversas",
+      "credit_one": "{{value}} crédito",
+      "credit_many": "{{value}} créditos",
+      "credit_other": "{{value}} créditos"
     }
   },
   "workflows": {

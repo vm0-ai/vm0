@@ -14,15 +14,7 @@ from tests.jsonl_log_helpers import (
     jsonl_exists_after_flush,
     read_jsonl_entries_after_flush,
 )
-from tests.model_provider_flow_helpers import signed_usage_pricing_headers
 from tests.usage_helpers import compact_observation_quantities
-
-_MODEL_USAGE_UNIT_PRICES: dict[str, object] = {
-    "tokens.input": 7,
-    "tokens.output": 13,
-    "tokens.cache_read": 11,
-    "tokens.cache_creation": 17,
-}
 
 
 class TestReportModelProviderUsage:
@@ -90,110 +82,6 @@ class TestReportModelProviderUsage:
         }
         for event in body["events"]:
             uuid.UUID(event["idempotencyKey"])
-
-    def test_reports_signed_model_pricing_as_gross_credits(self, real_flow, usage_webhook_api):
-        flow = real_flow(with_response=False, host="model.vm0.ai")
-        flow.metadata[metadata_keys.FIREWALL_NAME] = "model-provider:vm0-model"
-        flow.metadata[metadata_keys.FIREWALL_BILLABLE] = True
-        flow.metadata[metadata_keys.VM_SANDBOX_AUTH_KEY] = "tok-xyz"
-        flow.metadata[metadata_keys.MODEL_USAGE_PROVIDER] = "gpt-5.6-luna"
-        flow.metadata[metadata_keys.MODEL_PROVIDER_USAGE] = {
-            "tokens.input": 100,
-            "tokens.output": 50,
-            "tokens.cache_read": 25,
-            "tokens.cache_creation": 10,
-        }
-        flow.request.headers["authorization"] = "Bearer proxy-secret"
-        flow.response = tutils.tresp(
-            status_code=200,
-            headers=header_map(
-                signed_usage_pricing_headers(_MODEL_USAGE_UNIT_PRICES, unit_size=100)
-            ),
-        )
-
-        mitm_addon.responseheaders(flow)
-
-        with usage_webhook_api() as webhook:
-            usage.report_model_provider_usage(flow, "run-abc-123")
-            usage.flush_usage_events(trigger="test")
-
-        events = webhook.requests[0].json_body()["events"]
-        assert {event["category"]: event["grossCredits"] for event in events} == {
-            "tokens.input": 7,
-            "tokens.output": 7,
-            "tokens.cache_read": 3,
-            "tokens.cache_creation": 2,
-        }
-
-    @pytest.mark.parametrize(
-        ("unit_size", "unit_prices"),
-        [
-            (
-                100,
-                {
-                    category: price
-                    for category, price in _MODEL_USAGE_UNIT_PRICES.items()
-                    if category != "tokens.output"
-                },
-            ),
-            (100, {**_MODEL_USAGE_UNIT_PRICES, "tokens.unknown": 19}),
-            (100, {**_MODEL_USAGE_UNIT_PRICES, "tokens.output": True}),
-            (0, _MODEL_USAGE_UNIT_PRICES),
-            (-1, _MODEL_USAGE_UNIT_PRICES),
-            (True, _MODEL_USAGE_UNIT_PRICES),
-            ("100", _MODEL_USAGE_UNIT_PRICES),
-        ],
-        ids=[
-            "partial-prices",
-            "extra-price",
-            "invalid-price",
-            "zero-unit-size",
-            "negative-unit-size",
-            "boolean-unit-size",
-            "numeric-string-unit-size",
-        ],
-    )
-    def test_rejects_malformed_model_pricing_atomically(
-        self,
-        real_flow,
-        usage_webhook_api,
-        unit_size: object,
-        unit_prices: dict[str, object],
-    ):
-        flow = real_flow(with_response=False, host="model.vm0.ai")
-        flow.metadata[metadata_keys.FIREWALL_NAME] = "model-provider:vm0-model"
-        flow.metadata[metadata_keys.FIREWALL_BILLABLE] = True
-        flow.metadata[metadata_keys.VM_SANDBOX_AUTH_KEY] = "tok-xyz"
-        flow.metadata[metadata_keys.MODEL_USAGE_PROVIDER] = "gpt-5.6-luna"
-        flow.metadata[metadata_keys.MODEL_PROVIDER_USAGE] = {
-            "tokens.input": 100,
-            "tokens.output": 50,
-            "tokens.cache_read": 25,
-            "tokens.cache_creation": 10,
-        }
-        flow.request.headers["authorization"] = "Bearer proxy-secret"
-        flow.response = tutils.tresp(
-            status_code=200,
-            headers=header_map(signed_usage_pricing_headers(unit_prices, unit_size=unit_size)),
-        )
-
-        mitm_addon.responseheaders(flow)
-
-        assert metadata_keys.MODEL_USAGE_PRICING not in flow.metadata
-
-        # Exercise the primitive metadata boundary independently of signed ingestion.
-        flow.metadata[metadata_keys.MODEL_USAGE_PRICING] = {
-            "unitSize": unit_size,
-            "unitPrices": unit_prices,
-        }
-
-        with usage_webhook_api() as webhook:
-            usage.report_model_provider_usage(flow, "run-abc-123")
-            usage.flush_usage_events(trigger="test")
-
-        events = webhook.requests[0].json_body()["events"]
-        assert {event["category"] for event in events} == set(_MODEL_USAGE_UNIT_PRICES)
-        assert all("grossCredits" not in event for event in events)
 
     def test_falls_back_to_response_model_then_unknown(self, real_flow, usage_webhook_api):
         """Provider falls back only when selected vm0 model metadata is absent."""

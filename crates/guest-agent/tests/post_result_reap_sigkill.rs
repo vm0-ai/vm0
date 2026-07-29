@@ -33,15 +33,36 @@ async fn post_result_reap_escalates_to_sigkill_when_sigterm_ignored()
 
     let masker = guest_agent::masker::SecretMasker::from_raw("");
     let heartbeat = common::spawn_dummy_heartbeat();
+    let execution_timeout = runtime
+        .config
+        .agent_execution_timeout
+        .expect("test config should set an execution timeout");
+    let checkpoints = [
+        common::VirtualTimeCheckpoint {
+            file: runtime.paths.agent_log_file(),
+            needle: common::MOCK_TERMINATION_READY_EVENT,
+            advance: execution_timeout,
+        },
+        common::VirtualTimeCheckpoint {
+            file: runtime.paths.system_log_file(),
+            needle: "Agent execution deadline reached during post-result cleanup",
+            advance: runtime.config.post_result_sigkill_grace,
+        },
+    ];
 
-    // Without execution-deadline acceleration, the configured 60s
-    // post-result grace would exceed this bound.
+    // The mock fence proves result ingestion armed cleanup before the
+    // execution-deadline jump. The transition log proves that deadline
+    // advanced cleanup and armed SIGKILL. Without that acceleration, the
+    // configured 60s post-result grace would exceed this real bound.
     let result = tokio::time::timeout(
         Duration::from_secs(10),
-        common::execute_cli_for_runtime(&runtime, &masker, heartbeat),
+        common::execute_with_virtual_time_checkpoints(
+            common::execute_cli_for_runtime(&runtime, &masker, heartbeat),
+            &checkpoints,
+        ),
     )
     .await
-    .expect("execute_cli did not return within 10s — deadline acceleration likely broken");
+    .expect("execute_cli did not return within 10s — deadline acceleration likely broken")?;
 
     let result = result.expect("execute_cli returned Err");
     let exit_code = result.exit_code;
@@ -66,5 +87,10 @@ async fn post_result_reap_escalates_to_sigkill_when_sigterm_ignored()
     assert_eq!(termination.signal_sent, Some(CliTerminationSignal::Sigkill));
     assert!(termination.escalated);
     assert_eq!(termination.observed_exit_code, Some(common::SIGKILL_EXIT));
+    let system_log = std::fs::read_to_string(runtime.paths.system_log_file())?;
+    assert!(
+        system_log.contains("meaningful events 0"),
+        "the skipped mock fence must not refresh post-result activity: {system_log}"
+    );
     Ok(())
 }

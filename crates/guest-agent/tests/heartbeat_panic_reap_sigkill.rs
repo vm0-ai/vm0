@@ -29,14 +29,23 @@ async fn heartbeat_panic_reap_escalates_to_sigkill_when_sigterm_ignored()
         panic!("heartbeat panic for reap test")
     });
 
-    // Budget: marker wait (up to 5s) + sigterm grace (1s, ignored)
-    // + sigkill grace (1s, unignorable) + stdout drain (5s) + slack.
+    let checkpoints = [common::VirtualTimeCheckpoint {
+        file: runtime.paths.system_log_file(),
+        needle: "Heartbeat task panicked, SIGTERM",
+        advance: runtime.config.post_result_sigkill_grace,
+    }];
+
+    // The transition log and SIGKILL deadline are committed in one poll.
+    // Keep the outer timeout as a real subprocess/reaping regression bound.
     let result = tokio::time::timeout(
         Duration::from_secs(15),
-        common::execute_cli_for_runtime(&runtime, &masker, heartbeat),
+        common::execute_with_virtual_time_checkpoints(
+            common::execute_cli_for_runtime(&runtime, &masker, heartbeat),
+            &checkpoints,
+        ),
     )
     .await
-    .expect("execute_cli did not return within 15s - heartbeat panic reap likely broken");
+    .expect("execute_cli did not return within 15s - heartbeat panic reap likely broken")?;
 
     let result = result.expect("execute_cli returned Err before collecting controlled termination");
     let err = result

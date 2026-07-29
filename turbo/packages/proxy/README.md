@@ -27,8 +27,8 @@ Marketing      App            API
 Cloudflare www tunnel
   ↓
 Caddy tunnel ingress (HTTP: 3043)
-  ├─ legacy Auto route → Marketing (port 3042)
-  └─ all other paths                       → API (port 3001)
+  ↓
+API (port 3001)
 ```
 
 ## Quick Start
@@ -91,8 +91,7 @@ The `Caddyfile` defines:
 | api.vm7.ai:8443 | 8443 | localhost:3001 (Hono API)   |
 | vm7.ai:8443     | 8443 | Redirect to www.vm7.ai:8443 |
 
-The public `tunnel-*-www.vm7.ai` development tunnel points to Caddy on port 3043. Caddy temporarily preserves the retired Auto proxy path for old API
-claims and uses the API as the fallback for every other path.
+The public `tunnel-*-www.vm7.ai` development tunnel points to Caddy on port 3043, which proxies every request to the API.
 
 ## Scripts
 

@@ -156,7 +156,7 @@ class TestOpenAIResponsesSseUsageExtractor:
 
         assert (
             openai_responses._classify_responses_event_type(
-                large_delta[: openai_responses._RESPONSES_EVENTLESS_SSE_PREFILTER_MAX_BYTES]
+                large_delta[: openai_responses._RESPONSES_EVENT_PREFILTER_MAX_BYTES]
             )
             == openai_responses._RESPONSES_EVENT_KNOWN_NON_USAGE
         )
@@ -234,7 +234,7 @@ class TestOpenAIResponsesSseUsageExtractor:
         parse, usage = create_openai_responses_sse_usage_extractor()
         parse(
             b'data: {"padding":"'
-            + b"x" * (openai_responses._RESPONSES_EVENTLESS_SSE_PREFILTER_MAX_BYTES + 1)
+            + b"x" * (openai_responses._RESPONSES_EVENT_PREFILTER_MAX_BYTES + 1)
             + b'","type":"response.output_text.delta",'
             + b'"response":{"model":"gpt-5.6","usage":{"input_tokens":9,"output_tokens":4}}}'
             + b"\n\n"
@@ -247,7 +247,7 @@ class TestOpenAIResponsesSseUsageExtractor:
         parse(
             b"event: response.completed\n"
             b'data: {"padding":"'
-            + b"x" * (openai_responses._RESPONSES_EVENTLESS_SSE_PREFILTER_MAX_BYTES + 1)
+            + b"x" * (openai_responses._RESPONSES_EVENT_PREFILTER_MAX_BYTES + 1)
             + b'","type":"response.output_text.delta",'
             + b'"response":{"model":"gpt-5.6","usage":{"input_tokens":9,"output_tokens":4}}}'
             + b"\n\n"
@@ -303,7 +303,7 @@ class TestOpenAIResponsesSseUsageExtractor:
 
         assert (
             openai_responses._classify_responses_event_type(
-                delta_payload[: openai_responses._RESPONSES_EVENTLESS_SSE_PREFILTER_MAX_BYTES]
+                delta_payload[: openai_responses._RESPONSES_EVENT_PREFILTER_MAX_BYTES]
             )
             == openai_responses._RESPONSES_EVENT_KNOWN_NON_USAGE
         )
@@ -360,7 +360,7 @@ class TestOpenAIResponsesSseUsageExtractor:
             + b',"type":"response.completed","response":{"model":"gpt-5.6",'
             + b'"usage":{"output_tokens":17}}}'
         )
-        assert len(payload) < openai_responses._RESPONSES_EVENTLESS_SSE_PREFILTER_MAX_BYTES
+        assert len(payload) < openai_responses._RESPONSES_EVENT_PREFILTER_MAX_BYTES
 
         real_classify = openai_responses._classify_responses_event_type
         classified_prefixes: list[bytes] = []
@@ -428,7 +428,7 @@ class TestOpenAIResponsesSseUsageExtractor:
         )
         parse(
             b'data: {"padding":"'
-            + b"x" * (openai_responses._RESPONSES_EVENTLESS_SSE_PREFILTER_MAX_BYTES + 1)
+            + b"x" * (openai_responses._RESPONSES_EVENT_PREFILTER_MAX_BYTES + 1)
             + b'","type":"response.completed","response":{"model":"gpt'
         )
         parse.finish()
@@ -451,7 +451,7 @@ class TestOpenAIResponsesSseUsageExtractor:
         )
         parse(
             b'data: {"padding":"'
-            + b"x" * (openai_responses._RESPONSES_EVENTLESS_SSE_PREFILTER_MAX_BYTES + 1)
+            + b"x" * (openai_responses._RESPONSES_EVENT_PREFILTER_MAX_BYTES + 1)
             + b'","type":"response.output_text.delta","delta":"hello'
         )
         parse.finish()
@@ -480,7 +480,7 @@ class TestOpenAIResponsesSseUsageExtractor:
         parse, usage = create_openai_responses_sse_usage_extractor()
         parse(
             b'data: {"padding":"'
-            + b"x" * (openai_responses._RESPONSES_EVENTLESS_SSE_PREFILTER_MAX_BYTES + 1)
+            + b"x" * (openai_responses._RESPONSES_EVENT_PREFILTER_MAX_BYTES + 1)
             + b'","type":"response.completed","response":{"model":"gpt-5.4",'
             + b'"usage":{"output_tokens":8}}}\n\n'
         )

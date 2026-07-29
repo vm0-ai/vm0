@@ -1,7 +1,8 @@
 import { zeroBillingInvoicesContract } from "@vm0/api-contracts/contracts/zero-billing";
+import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 
 import {
   detachedSetupPage,
@@ -9,8 +10,14 @@ import {
 } from "../../../__tests__/page-helper.ts";
 import { unixSecondsFromIso } from "../../../__tests__/time.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
+import { i18n } from "../../../i18n/index.ts";
 
 const context = testContext();
+
+afterEach(async () => {
+  await i18n.changeLanguage("en-US");
+  document.documentElement.lang = "en-US";
+});
 
 function buttonByText(text: string): HTMLElement {
   const element = queryAllByRoleFast("button").find((candidate) => {
@@ -123,6 +130,34 @@ describe("organization invoices settings", () => {
         invoicesReady.resolve();
       }
     }
+  });
+
+  it("localizes invoice presentation while preserving provider values", async () => {
+    mockInvoicesStory();
+    context.mocks.data.userPreferences({ locale: "pt-BR" });
+
+    detachedSetupPage({
+      context,
+      path: "/?settings=invoices",
+      featureSwitches: {
+        [FeatureSwitchKey.LanguagePreference]: true,
+      },
+    });
+
+    const date = new Date(
+      unixSecondsFromIso("2026-03-15T00:00:00.000Z") * 1000,
+    ).toLocaleDateString("pt-BR");
+
+    await waitFor(() => {
+      expect(document.documentElement.lang).toBe("pt-BR");
+      expect(screen.getByText("Fatura")).toBeInTheDocument();
+      expect(screen.getByText("Data")).toBeInTheDocument();
+      expect(screen.getByText("Valor")).toBeInTheDocument();
+      expect(screen.getByText("INV-2026-0001")).toBeInTheDocument();
+      expect(screen.getAllByText("Paid").length).toBeGreaterThan(0);
+      expect(screen.getByText(/US\$\s+20,00/u)).toBeInTheDocument();
+      expect(screen.getByText(date)).toBeInTheDocument();
+    });
   });
 
   it("hides ZIP downloads while an older API deployment is active", async () => {

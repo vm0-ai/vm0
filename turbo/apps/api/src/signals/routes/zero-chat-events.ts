@@ -3457,7 +3457,7 @@ export const zeroChatEventsRoutes: readonly RouteEntry[] = [
       {
         requireOrganization: true,
         missingOrganizationStatus: 401,
-        requiredCapability: "agent-run:write",
+        requiredCapability: "chat-message:write",
       },
       sendChatEventInner$,
     ),

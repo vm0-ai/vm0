@@ -44,29 +44,6 @@ def test_flush_aggregates_same_bucket_and_dedupes_source_key(tmp_path):
     assert enqueue.last_call.proxy_log_path == proxy_log_path
 
 
-def test_flush_calculates_gross_credits_after_aggregation(tmp_path):
-    enqueue = RecordingEnqueue()
-    usage.reset_usage_buffer_for_tests(enqueue_webhook=enqueue)
-
-    first = event(source_key="source-1", quantity=1)
-    first["billingUnitPrice"] = 3
-    first["billingUnitSize"] = 2
-    second = event(source_key="source-2", quantity=1)
-    second["billingUnitPrice"] = 3
-    second["billingUnitSize"] = 2
-    usage.buffer_usage_events(
-        "https://api.test/api/webhooks/agent/usage-event",
-        "token-a",
-        "run-1",
-        [first, second],
-        str(tmp_path / "proxy.jsonl"),
-    )
-
-    assert usage.flush_usage_events(trigger="test") == 1
-    assert enqueue.last_call.payload["events"][0]["quantity"] == 2
-    assert enqueue.last_call.payload["events"][0]["grossCredits"] == 3
-
-
 def test_model_usage_observation_buffer_uses_model_event_shape(tmp_path):
     enqueue = RecordingEnqueue()
     usage.reset_usage_buffer_for_tests(enqueue_webhook=enqueue)

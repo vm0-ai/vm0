@@ -10,8 +10,7 @@ import { writeDb$ } from "../external/db";
 import { nowDate } from "../external/time";
 import { notFound } from "../../lib/error";
 import {
-  normaliseCustomConnectorRow,
-  serialiseCustomConnector,
+  getCustomConnectorResponse,
   validateDisplayName,
 } from "../services/zero-custom-connector.service";
 import type { RouteEntry } from "../route-entry";
@@ -74,13 +73,18 @@ const patchInner$ = command(async ({ get, set }, signal: AbortSignal) => {
     return notFound("Custom connector not found");
   }
 
-  return {
-    status: 200 as const,
-    body: serialiseCustomConnector({
-      row: normaliseCustomConnectorRow(row),
-      valueMarkers: [],
+  const connector = await get(
+    getCustomConnectorResponse({
+      orgId: auth.orgId,
+      userId: auth.userId,
+      connectorId: row.id,
     }),
-  };
+  );
+  signal.throwIfAborted();
+  if (!connector) {
+    return notFound("Custom connector not found");
+  }
+  return { status: 200 as const, body: connector };
 });
 
 export const zeroCustomConnectorsPatchRoutes: readonly RouteEntry[] = [

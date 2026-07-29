@@ -152,7 +152,7 @@ export const preferDrizzleApis = createRule({
       scalarCteQueryBuilder:
         "Use Drizzle $with(...), select(), and joins for this complete scalar CTE projection.",
       structuredScalarQuery:
-        "Use a Drizzle query builder or joined relation instead of a complete raw scalar query in a structured result field.",
+        "Use a Drizzle select builder for this complete raw scalar query.",
       typedApi: "Use Drizzle {{helper}}(...) for this equivalent SQL-tag leaf.",
       unnestUpdateQueryBuilder:
         "Use Drizzle update(...).set(...).from(...).where(...) for this complete unnest-backed update query.",
@@ -171,6 +171,8 @@ export const preferDrizzleApis = createRule({
       services,
     );
     const sourceLocalCandidates: TSESTree.TaggedTemplateExpression[] = [];
+    const deferredSourceLocalCandidates: TSESTree.TaggedTemplateExpression[] =
+      [];
     const structuralCallInspections: Array<() => void> = [];
     const structuredScalarCandidates =
       new Set<TSESTree.TaggedTemplateExpression>();
@@ -181,6 +183,7 @@ export const preferDrizzleApis = createRule({
       TSESTree.Node,
       Set<string>
     >();
+    const coveredSourceFindings = new Set<string>();
     const reportedSourceLocalFindings = new Set<string>();
     const resolvedCallSignatureCache = new WeakMap<
       TSESTree.CallExpression,
@@ -309,11 +312,22 @@ export const preferDrizzleApis = createRule({
       sourceLocal = false,
     ): void {
       for (const finding of findings) {
+        if (finding.kind === "query-builder") {
+          for (const sourceKey of finding.coveredSourceKeys ?? []) {
+            coveredSourceFindings.add(sourceKey);
+          }
+        }
         const sourceKey =
           finding.kind === "helper" || finding.kind === "existence-predicate"
             ? `${finding.kind}:${finding.helper}:${finding.sourceKey}`
-            : undefined;
+            : finding.kind === "query-builder" &&
+                finding.sourceKey !== undefined
+              ? `${finding.kind}:${finding.capability}:${finding.sourceKey}`
+              : undefined;
         if (sourceKey !== undefined) {
+          if (sourceLocal && coveredSourceFindings.has(sourceKey)) {
+            continue;
+          }
           if (sourceLocal) {
             reportedSourceLocalFindings.add(sourceKey);
           } else if (reportedSourceLocalFindings.has(sourceKey)) {
@@ -322,7 +336,7 @@ export const preferDrizzleApis = createRule({
         }
         const key =
           finding.kind === "query-builder"
-            ? finding.kind
+            ? `${finding.kind}:${finding.capability}:${finding.sourceKey ?? ""}`
             : finding.kind === "empty-fragment"
               ? finding.kind
               : `${finding.kind}:${finding.helper}`;
@@ -1834,7 +1848,22 @@ export const preferDrizzleApis = createRule({
           (firstQuasi.value.cooked ?? firstQuasi.value.raw) === "";
         if (!isExactEmpty) {
           if (sqlTagMightContainHelper(node)) {
-            sourceLocalCandidates.push(node);
+            const hasSelect = /\bSELECT\b/iu.test(literalSource);
+            const leadingLiteral =
+              node.quasi.quasis[0]?.value.cooked ??
+              node.quasi.quasis[0]?.value.raw ??
+              "";
+            const isStatement =
+              /^\s*(?:DELETE|INSERT|SELECT|UPDATE|WITH)\b/iu.test(
+                leadingLiteral,
+              );
+            // Conventional scalar fragments are also analyzed at their typed
+            // predicate use site. Defer their local leaves so the complete
+            // query diagnostic can suppress only the descendants it owns.
+            (hasSelect && !isStatement
+              ? deferredSourceLocalCandidates
+              : sourceLocalCandidates
+            ).push(node);
           }
           return;
         }
@@ -1846,25 +1875,32 @@ export const preferDrizzleApis = createRule({
         });
       },
       "Program:exit"(): void {
-        for (const node of sourceLocalCandidates) {
-          if (!isDrizzleSqlTag(checker, services, node.tag)) {
-            continue;
+        function reportSourceLocal(
+          nodes: readonly TSESTree.TaggedTemplateExpression[],
+        ): void {
+          for (const node of nodes) {
+            if (!isDrizzleSqlTag(checker, services, node.tag)) {
+              continue;
+            }
+            reportStructuralFindings(
+              analyzeSqlSource(
+                node,
+                checker,
+                services,
+                sqlSourceComposer,
+                sqlCapabilityChecks,
+              ),
+              true,
+            );
           }
-          reportStructuralFindings(
-            analyzeSqlSource(
-              node,
-              checker,
-              services,
-              sqlSourceComposer,
-              sqlCapabilityChecks,
-            ),
-            true,
-          );
         }
+
+        reportSourceLocal(sourceLocalCandidates);
         for (const inspect of structuralCallInspections) {
           inspect();
         }
         inspectStructuredSelections();
+        reportSourceLocal(deferredSourceLocalCandidates);
       },
     };
   },

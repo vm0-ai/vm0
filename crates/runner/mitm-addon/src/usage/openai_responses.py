@@ -30,7 +30,11 @@ import body_decoding
 from body_limits import LARGE_RESPONSE_DECOMPRESS_LIMIT
 
 from .json_probe import TopLevelStringFieldProbeResult, probe_top_level_string_field
-from .json_selective import JsonSelectiveExtractor, ScalarField
+from .json_selective import (
+    JSON_WORK_LIMIT_EXCEEDED,
+    JsonSelectiveExtractor,
+    ScalarField,
+)
 from .model_tokens import (
     MODEL_USAGE_CATEGORY_CACHE_CREATION,
     MODEL_USAGE_CATEGORY_CACHE_READ,
@@ -119,10 +123,12 @@ _RESPONSES_EVENT_UNRESOLVED: _ResponsesEventTypeClassification = "unresolved"
 _RESPONSES_EVENT_PENDING: _ResponsesEventTypeClassification = "pending"
 _JSON_PREFILTER_MAX_DEPTH = 256
 _JSON_PREFILTER_MAX_STRING_BYTES = 1024
-# Eventless SSE frames normally expose ``type`` near the top of the JSON body.
-# After this bounded prefix, fall back to the full streaming extractor so rare
-# terminal frames with late ``type`` fields still report usage.
-_RESPONSES_EVENTLESS_SSE_PREFILTER_MAX_BYTES = 4096
+# Responses events normally expose ``type`` near the top of the JSON body.
+# After this bounded prefix, fall back to the full selective extractor so rare
+# terminal events with late ``type`` fields still report usage.
+_RESPONSES_EVENT_PREFILTER_MAX_BYTES = 4096
+_RESPONSES_WEBSOCKET_MAX_WORK_UNITS = 65_536
+_RESPONSES_WEBSOCKET_WORK_LIMIT_ERROR = "work_limit_exceeded"
 
 
 @dataclass(frozen=True)
@@ -173,7 +179,7 @@ def inspect_openai_responses_event_json(body: bytes) -> OpenAIResponsesEvent:
 
 def _probe_responses_event_type(body: bytes) -> TopLevelStringFieldProbeResult:
     return probe_top_level_string_field(
-        body,
+        body[:_RESPONSES_EVENT_PREFILTER_MAX_BYTES],
         "type",
         max_depth=_JSON_PREFILTER_MAX_DEPTH,
         max_string_bytes=_JSON_PREFILTER_MAX_STRING_BYTES,
@@ -589,15 +595,12 @@ class _OpenAIResponsesSseUsageHandler:
         if prefix is None:
             return
 
-        remaining = max(_RESPONSES_EVENTLESS_SSE_PREFILTER_MAX_BYTES - len(prefix), 0)
+        remaining = max(_RESPONSES_EVENT_PREFILTER_MAX_BYTES - len(prefix), 0)
         captured_len = min(len(chunk), remaining)
         if captured_len:
             prefix.extend(chunk[:captured_len])
 
-        if (
-            captured_len == len(chunk)
-            and len(prefix) < _RESPONSES_EVENTLESS_SSE_PREFILTER_MAX_BYTES
-        ):
+        if captured_len == len(chunk) and len(prefix) < _RESPONSES_EVENT_PREFILTER_MAX_BYTES:
             return
 
         prefix_bytes = bytes(prefix)
@@ -616,15 +619,12 @@ class _OpenAIResponsesSseUsageHandler:
         if prefix is None:
             return
 
-        remaining = max(_RESPONSES_EVENTLESS_SSE_PREFILTER_MAX_BYTES - len(prefix), 0)
+        remaining = max(_RESPONSES_EVENT_PREFILTER_MAX_BYTES - len(prefix), 0)
         captured_len = min(len(chunk), remaining)
         if captured_len:
             prefix.extend(chunk[:captured_len])
 
-        if (
-            captured_len == len(chunk)
-            and len(prefix) < _RESPONSES_EVENTLESS_SSE_PREFILTER_MAX_BYTES
-        ):
+        if captured_len == len(chunk) and len(prefix) < _RESPONSES_EVENT_PREFILTER_MAX_BYTES:
             return
 
         prefix_bytes = bytes(prefix)
@@ -725,11 +725,11 @@ def extract_openai_responses_usage_with_error_from_json(
 
 def extract_openai_responses_usage_from_event(
     event: OpenAIResponsesEvent,
-) -> dict | None:
-    """Extract usage from a previously inspected Responses WebSocket event."""
+) -> tuple[dict | None, str | None]:
+    """Extract usage and inspection error from one Responses WebSocket event."""
     event_type = event._classification
     if event_type == _RESPONSES_EVENT_KNOWN_NON_USAGE:
-        return None
+        return None, None
 
     data_event_type = _resolved_data_event_type(event_type)
     scalar_fields = (
@@ -737,11 +737,19 @@ def extract_openai_responses_usage_from_event(
         if data_event_type is None
         else _RESPONSES_SSE_RESPONSE_SCALAR_FIELDS
     )
-    extractor = JsonSelectiveExtractor(scalar_fields=scalar_fields)
+    extractor = JsonSelectiveExtractor(
+        scalar_fields=scalar_fields,
+        max_work_units=_RESPONSES_WEBSOCKET_MAX_WORK_UNITS,
+    )
     extractor.feed(event._body)
     result = extractor.finish()
     if not result.complete:
-        return None
+        error = (
+            _RESPONSES_WEBSOCKET_WORK_LIMIT_ERROR
+            if result.error == JSON_WORK_LIMIT_EXCEEDED
+            else None
+        )
+        return None, error
 
     usage: dict = {}
     _store_sse_result_values(
@@ -751,5 +759,5 @@ def extract_openai_responses_usage_from_event(
         data_event_type=data_event_type,
     )
     if not any(category in usage for category in _OPENAI_RESPONSES_USAGE_CATEGORIES):
-        return None
-    return usage
+        return None, None
+    return usage, None
