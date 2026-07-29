@@ -14,6 +14,7 @@ const TEST_DATA_KEY = Buffer.from("0123456789abcdef0123456789abcdef", "utf8");
 
 interface SecretKmsProbe {
   readonly generateDataKeyCalls: number;
+  readonly decryptCalls: number;
 }
 
 export function generateDataKeyOutput(
@@ -30,13 +31,22 @@ export function generateDataKeyOutput(
   };
 }
 
+export function decryptDataKeyOutput(): DecryptCommandOutput {
+  return { $metadata: {}, Plaintext: TEST_DATA_KEY };
+}
+
 export function useSecretKmsProbe(
   overrideGenerateDataKey?: (
     command: GenerateDataKeyCommand,
     callNumber: number,
   ) => Promise<GenerateDataKeyCommandOutput> | undefined,
+  overrideDecrypt?: (
+    command: DecryptCommand,
+    callNumber: number,
+  ) => Promise<DecryptCommandOutput> | undefined,
 ): SecretKmsProbe {
   let generateDataKeyCalls = 0;
+  let decryptCalls = 0;
 
   function send(
     command: GenerateDataKeyCommand,
@@ -54,7 +64,9 @@ export function useSecretKmsProbe(
       return overridden ?? Promise.resolve(generateDataKeyOutput(command));
     }
 
-    return Promise.resolve({ $metadata: {}, Plaintext: TEST_DATA_KEY });
+    decryptCalls += 1;
+    const overridden = overrideDecrypt?.(command, decryptCalls);
+    return overridden ?? Promise.resolve(decryptDataKeyOutput());
   }
 
   const client: SecretKmsClient = { send };
@@ -62,6 +74,9 @@ export function useSecretKmsProbe(
   return {
     get generateDataKeyCalls() {
       return generateDataKeyCalls;
+    },
+    get decryptCalls() {
+      return decryptCalls;
     },
   };
 }

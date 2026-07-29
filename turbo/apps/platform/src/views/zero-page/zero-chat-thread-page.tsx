@@ -2617,7 +2617,9 @@ function isGoalUserMessage(
 ): event is EnrichedChatEvent & ChatInputEvent {
   return (
     isInputChatEvent(event) &&
-    event.isGoalRun === true &&
+    (event.isGoalRun === true ||
+      (event.eventType === "input.rejected" &&
+        event.goalSnapshot !== undefined)) &&
     !hasWorkflowMessageMetadata(event) &&
     goalUserMessageBrief(event) !== null
   );

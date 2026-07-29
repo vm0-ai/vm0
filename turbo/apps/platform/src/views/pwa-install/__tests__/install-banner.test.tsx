@@ -13,7 +13,40 @@ function mockIOSSafariUA(isIOS: boolean): void {
   context.mocks.browser.userAgent(ua);
 }
 
+function usePortugueseLocale(): void {
+  document.documentElement.lang = "pt-BR";
+  context.mocks.data.userPreferences({ locale: "pt-BR" });
+  context.signal.addEventListener(
+    "abort",
+    () => {
+      document.documentElement.lang = "en-US";
+    },
+    { once: true },
+  );
+}
+
 describe("install banner", () => {
+  it("renders the iOS install flow in Brazilian Portuguese", async () => {
+    usePortugueseLocale();
+    context.mocks.browser.standaloneDisplayMode(false);
+    mockIOSSafariUA(true);
+    detachedSetupPage({ context, path: "/" });
+
+    const installButton = await screen.findByLabelText("Instalar aplicativo");
+    expect(
+      screen.getByText("Instale o Zero para uma experiência melhor"),
+    ).toBeVisible();
+    click(installButton);
+
+    await expect(
+      screen.findByRole("heading", { name: "Instalar Zero" }),
+    ).resolves.toBeInTheDocument();
+    expect(
+      screen.getByText("No Safari, toque no botão Compartilhar."),
+    ).toBeVisible();
+    expect(screen.getByText("Escolha Adicionar à Tela Inicial.")).toBeVisible();
+  });
+
   it("lets an iOS Safari user open or dismiss the install prompt", async () => {
     context.mocks.browser.standaloneDisplayMode(false);
     mockIOSSafariUA(true);

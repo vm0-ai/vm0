@@ -22,10 +22,7 @@ import { z } from "zod";
 
 import { executeRawRows } from "../../lib/db-raw-rows";
 import type { Db } from "../external/db";
-import {
-  chatEventTypeIn,
-  chatEventTypeSql,
-} from "./zero-chat-event-type.service";
+import { chatEventTypeIn } from "./zero-chat-event-type.service";
 import { visibleChatEventCondition } from "./zero-chat-message-shared.service";
 import {
   projectUserMessage,
@@ -172,12 +169,12 @@ function afterSuccessfulRunBoundary(threadId: string, successfulRunId: string) {
     sql`COALESCE(
       (
         SELECT MAX(boundary_message.seq_id)
-        FROM chat_messages boundary_message
+        FROM chat_events boundary_message
         WHERE boundary_message.chat_thread_id = ${threadId}
           AND boundary_message.run_id = ${successfulRunId}
           AND NOT EXISTS (
             SELECT 1
-            FROM chat_messages boundary_revoker
+            FROM chat_events boundary_revoker
             WHERE boundary_revoker.revokes_message_id = boundary_message.id
           )
       ),
@@ -204,7 +201,7 @@ async function loadSelectedIncompleteRounds(
   const rows = await db
     .select({
       runId: chatMessages.runId,
-      eventType: chatEventTypeSql().as("event_type"),
+      eventType: chatMessages.eventType,
       content: chatMessages.content,
       userMessage: chatMessages.userMessage,
       attachFiles: chatMessages.attachFiles,

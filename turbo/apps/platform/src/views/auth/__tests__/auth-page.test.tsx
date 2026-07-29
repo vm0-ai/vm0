@@ -6,6 +6,8 @@ import { mockedClerk } from "../../../__tests__/mock-auth.ts";
 import { platformVm0LogoDarkImg } from "../../../lib/static-assets.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { createDeferredPromise } from "../../../signals/utils.ts";
+import { i18n } from "../../../i18n/index.ts";
+import { getClerkLocalization } from "../clerk-localization.ts";
 
 const context = testContext();
 
@@ -13,7 +15,43 @@ function setBrowserUrl(url: string): void {
   window.location.href = url;
 }
 
+function usePortugueseLocale(): void {
+  document.documentElement.lang = "pt-BR";
+  context.mocks.data.userPreferences({ locale: "pt-BR" });
+  context.signal.addEventListener(
+    "abort",
+    () => {
+      document.documentElement.lang = "en-US";
+    },
+    { once: true },
+  );
+}
+
 describe("app auth pages", () => {
+  it("localizes the app auth shell and Clerk resources in Brazilian Portuguese", async () => {
+    usePortugueseLocale();
+    setBrowserUrl("https://app.vm0.ai/sign-up");
+
+    const authComponent = context.mocks.clerk.deferAuthComponentMount();
+    detachedSetupPage({ context, path: "/sign-up" });
+
+    await expect(
+      screen.findByText("Carregando autenticação"),
+    ).resolves.toBeInTheDocument();
+    expect(screen.getByLabelText("Alternar tema")).toBeInTheDocument();
+    expect(document.title).toBe("Criar conta | VM0");
+
+    const localization = getClerkLocalization("VM0", "pt-BR", i18n.t);
+    expect(localization.signIn?.start?.actionLink).toBe("Registre-se");
+    expect(localization.unstable__errors?.not_allowed_access).toBe(
+      "Acesso não permitido.",
+    );
+
+    act(() => {
+      authComponent.mount();
+    });
+  });
+
   it("mounts the Clerk sign-up route before Clerk finishes loading", async () => {
     setBrowserUrl("https://app.vm0.ai/sign-up");
 

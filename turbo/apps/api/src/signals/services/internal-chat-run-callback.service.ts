@@ -135,10 +135,7 @@ import {
   resolveModelFirstProviderAdmission,
   type ModelFirstPin,
 } from "./zero-model-selection.service";
-import {
-  chatEventTypeIn,
-  chatEventTypeSql,
-} from "./zero-chat-event-type.service";
+import { chatEventTypeIn } from "./zero-chat-event-type.service";
 
 const log = logger("callback:chat");
 const AGENT_RUN_EVENTS_DATASET = "agent-run-events";
@@ -224,7 +221,7 @@ export class ChatCallbackPreCreateTimingCollector {
 
   flush(
     runId: string,
-    triggerSource: "web" | "slack" | "feishu" | "teams" = "web",
+    triggerSource: QueuedUserMessage["triggerSource"] = "web",
   ): void {
     if (this.flushed) {
       return;
@@ -255,7 +252,7 @@ export class ChatCallbackPreCreateTimingCollector {
 function flushChatCallbackTimingOnRejection(args: {
   readonly timing: ChatCallbackPreCreateTimingCollector;
   readonly getRunId: () => string | null;
-  readonly triggerSource: "web" | "slack" | "feishu" | "teams";
+  readonly triggerSource: QueuedUserMessage["triggerSource"];
 }): (error: unknown) => void {
   return () => {
     const runId = args.getRunId();
@@ -526,7 +523,7 @@ interface CreateQueuedChatRunInput {
     readonly hostId: string;
     readonly displayName: string;
   } | null;
-  readonly triggerSource: "web" | "slack" | "feishu" | "teams";
+  readonly triggerSource: QueuedUserMessage["triggerSource"];
   readonly realAgentInPreview?: boolean;
   readonly slackDelivery?: {
     readonly channelId: string;
@@ -535,6 +532,12 @@ interface CreateQueuedChatRunInput {
   };
   readonly feishuDelivery?: FeishuDeliveryTarget;
   readonly teamsDelivery?: TeamsDeliveryTarget;
+  readonly morningBriefDelivery?: {
+    readonly deliveryId: string;
+    readonly internalKind: "morning-brief:email";
+    readonly secret: string;
+    readonly payload: unknown;
+  };
   readonly apiStartTime?: number;
   readonly userInfoExtras?: {
     readonly slackDisplayName?: string;
@@ -641,6 +644,15 @@ function buildQueuedCreateZeroRunArgs(
     selectedModelOverride: input.modelPin.selectedModel ?? undefined,
     codexServiceTier: input.codexServiceTier,
     callbacks: [
+      ...(input.morningBriefDelivery
+        ? [
+            {
+              internalKind: input.morningBriefDelivery.internalKind,
+              secret: input.morningBriefDelivery.secret,
+              payload: input.morningBriefDelivery.payload,
+            },
+          ]
+        : []),
       {
         internalKind: "chat" as const,
         secret: generateCallbackSecret(),
@@ -673,20 +685,6 @@ function buildQueuedCreateZeroRunArgs(
             },
           ]
         : []),
-      ...(input.teamsDelivery
-        ? [
-            {
-              internalKind: "teams:org" as const,
-              secret: generateCallbackSecret(),
-              payload: {
-                ...input.teamsDelivery,
-                agentId: input.agentId,
-                existingSessionId: null,
-                canonicalChatDelivery: true,
-              },
-            },
-          ]
-        : []),
     ],
     triggerSource: input.triggerSource,
     zeroPreCreateSource: "chat_callback_auto_send" as const,
@@ -697,6 +695,11 @@ function buildQueuedCreateZeroRunArgs(
       kind: "user_message" as const,
       threadId: input.threadId,
       messageId: input.queuedMessage.id,
+      ...(input.morningBriefDelivery
+        ? {
+            morningBriefDeliveryId: input.morningBriefDelivery.deliveryId,
+          }
+        : {}),
     },
     zeroRunModelPin: {
       modelProvider: input.effectiveModelProvider ?? null,
@@ -1927,7 +1930,7 @@ function formatPriorRunMessage(
 
 function buildChatPriorRunsContext(
   runs: readonly PriorRun[],
-  triggerSource: "web" | "slack" | "feishu" | "teams",
+  triggerSource: QueuedUserMessage["triggerSource"],
   inlineTemplatesEnabled: boolean,
 ): string {
   if (runs.length === 0) {
@@ -1961,7 +1964,9 @@ function buildChatPriorRunsContext(
           ? "Feishu"
           : triggerSource === "teams"
             ? "Microsoft Teams"
-            : "Web Chat"
+            : triggerSource === "workflow-schedule"
+              ? "Morning Brief"
+              : "Web Chat"
     } Run Context`,
     "The current CLI session is fresh, so recent visible chat rounds are provided here for continuity.",
     "Use these messages as context for the user's current request.",
@@ -1975,7 +1980,7 @@ function buildChatPriorRunsContext(
 async function getLatestRunsByThreadId(
   db: Db,
   threadId: string,
-  triggerSource: "web" | "slack" | "feishu" | "teams",
+  triggerSource: QueuedUserMessage["triggerSource"],
   limit: number,
 ): Promise<PriorRun[]> {
   const runRows = await db
@@ -2010,7 +2015,7 @@ async function getLatestRunsByThreadId(
   const messageRows = await db
     .select({
       runId: chatMessages.runId,
-      eventType: chatEventTypeSql().as("event_type"),
+      eventType: chatMessages.eventType,
       content: chatMessages.content,
       userMessage: chatMessages.userMessage,
       attachFiles: chatMessages.attachFiles,
@@ -2130,7 +2135,7 @@ async function buildQueuedPriorContext(args: {
   readonly threadId: string;
   readonly startNewSession: boolean;
   readonly incompleteContext: string;
-  readonly triggerSource: "web" | "slack" | "feishu" | "teams";
+  readonly triggerSource: QueuedUserMessage["triggerSource"];
   readonly inlineTemplatesEnabled: boolean;
 }): Promise<string> {
   if (!args.startNewSession || args.incompleteContext.length > 0) {
@@ -2515,7 +2520,10 @@ async function buildCreateQueuedChatRunInput(
       });
     },
   );
-  const prompt = userMessageProjection.agentPrompt;
+  const prompt =
+    args.queuedMessage.triggerSource === "workflow-schedule"
+      ? (sourceParams?.prompt ?? userMessageProjection.agentPrompt)
+      : userMessageProjection.agentPrompt;
 
   return {
     orgId: args.agent.orgId,
@@ -2541,6 +2549,7 @@ async function buildCreateQueuedChatRunInput(
     slackDelivery: sourceParams?.slackDelivery,
     feishuDelivery: sourceParams?.feishuDelivery,
     teamsDelivery: sourceParams?.teamsDelivery,
+    morningBriefDelivery: sourceParams?.morningBriefDelivery,
     apiStartTime: sourceParams?.apiStartTime,
     userInfoExtras: sourceParams?.userInfoExtras,
   };

@@ -10,7 +10,6 @@ import { eq, isNotNull, sql } from "drizzle-orm";
 
 import type { Db } from "../external/db";
 import { nowDate } from "../external/time";
-import { chatEventTypeSql } from "./zero-chat-event-type.service";
 
 type ChatEventInsert = typeof chatMessages.$inferInsert;
 type ChatEventWriteTransaction = Parameters<
@@ -62,6 +61,7 @@ type InputGoalEvent = ChatEventIdentity & {
   readonly eventType: "input.goal";
   readonly content?: null;
   readonly encryptedParams: string;
+  readonly goalSnapshot: NonNullable<ChatEventInsert["goalSnapshot"]>;
 };
 
 type InputRejectedEvent = ChatEventIdentity &
@@ -385,7 +385,7 @@ export async function replaceChatEvent(
     .select({
       chatThreadId: chatMessages.chatThreadId,
       createdAt: chatMessages.createdAt,
-      eventType: chatEventTypeSql(),
+      eventType: chatMessages.eventType,
     })
     .from(chatMessages)
     .where(eq(chatMessages.id, eventId))

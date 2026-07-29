@@ -1,6 +1,7 @@
 import { IconMoon, IconSun } from "@tabler/icons-react";
 import { useGet, useSet } from "ccstate-react";
 import type { ReactNode } from "react";
+import { useTranslation } from "react-i18next";
 import {
   platformCheckmarkPrimaryImg,
   platformVm0LogoDarkImg,
@@ -351,6 +352,7 @@ interface AuthLayoutProps {
 }
 
 export function AuthLayout({ children }: AuthLayoutProps) {
+  const { t } = useTranslation();
   const theme = useGet(theme$);
   const setTheme = useSet(setTheme$);
 
@@ -382,7 +384,9 @@ export function AuthLayout({ children }: AuthLayoutProps) {
             setTheme(theme === "dark" ? "light" : "dark");
           }}
           className="fixed right-[calc(1.5rem+var(--sar))] top-[calc(1.5rem+var(--sat))] z-50 flex h-8 w-8 items-center justify-center rounded-lg border border-border bg-card text-foreground transition-colors hover:bg-muted"
-          aria-label="Toggle theme"
+          aria-label={t(($) => {
+            return $.auth.toggleTheme;
+          })}
         >
           {theme === "dark" ? (
             <IconSun size={16} stroke={2} />

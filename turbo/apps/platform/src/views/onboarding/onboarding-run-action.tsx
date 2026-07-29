@@ -1,5 +1,6 @@
 import { useGet, useLastLoadable } from "ccstate-react";
 import { useLoadableSet } from "ccstate-react/experimental";
+import { useTranslation } from "react-i18next";
 import { billingStatusAsync$ } from "../../signals/zero-page/billing.ts";
 import {
   completeOnboarding$,
@@ -18,7 +19,7 @@ export function OnboardingRunAction({
   templateSlug,
   requiresPaidPlan = false,
   disabled = false,
-  runLabel = "Run now",
+  runLabel,
   onBack,
 }: {
   readonly prompt: string;
@@ -30,6 +31,7 @@ export function OnboardingRunAction({
   readonly runLabel?: string;
   readonly onBack: () => void;
 }) {
+  const { t } = useTranslation();
   const pageSignal = useGet(pageSignal$);
   const searchParams = useGet(searchParams$);
   const billingLoadable = useLastLoadable(billingStatusAsync$);
@@ -47,11 +49,20 @@ export function OnboardingRunAction({
     completeLoadable.state === "loading" || videoLoadable.state === "loading";
   const label = requiresPaidPlan
     ? billingLoadable.state === "loading"
-      ? "Checking plan"
+      ? t(($) => {
+          return $.onboarding.runAction.checkingPlan;
+        })
       : paidPlan || redeemCode
-        ? "Run now"
-        : "Upgrade Pro to run"
-    : runLabel;
+        ? t(($) => {
+            return $.onboarding.runAction.runNow;
+          })
+        : t(($) => {
+            return $.onboarding.runAction.upgradePro;
+          })
+    : (runLabel ??
+      t(($) => {
+        return $.onboarding.runAction.runNow;
+      }));
 
   const completeAndRun = async (): Promise<void> => {
     await complete(redeemCode, pageSignal);

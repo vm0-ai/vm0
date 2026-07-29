@@ -1479,6 +1479,7 @@ describe("connectors page", () => {
   it.each([
     ["airtable", "Airtable"],
     ["asana", "Asana"],
+    ["cloudflare", "Cloudflare"],
     ["gumroad", "Gumroad"],
     ["hubspot", "HubSpot"],
     ["intervals-icu", "Intervals.icu"],
@@ -1544,8 +1545,8 @@ describe("connectors page", () => {
     mockConnectors([]);
     mockPublicConnectorStatus([
       publicStatusItem({
-        connectorSlug: "cloudflare",
-        label: "Cloudflare",
+        connectorSlug: "slack",
+        label: "Slack",
         authMethods: [
           {
             id: "oauth",
@@ -1564,21 +1565,21 @@ describe("connectors page", () => {
     context.mocks.api(
       zeroConnectorOauthStartContract.start,
       ({ body, params, respond }) => {
-        expect(params.type).toBe("cloudflare");
+        expect(params.type).toBe("slack");
         expect(body.callbackTarget).toBeUndefined();
         return respond(200, {
-          authorizationUrl: "https://oauth.test/cloudflare/authorize",
+          authorizationUrl: "https://oauth.test/slack/authorize",
         });
       },
     );
 
     detachedSetupPage({ context, path: "/connectors" });
 
-    click(await screen.findByLabelText("Connect Cloudflare"));
+    click(await screen.findByLabelText("Connect Slack"));
 
     await waitFor(() => {
       expect(authWindow.location.href).toBe(
-        "https://oauth.test/cloudflare/authorize",
+        "https://oauth.test/slack/authorize",
       );
     });
   });

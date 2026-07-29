@@ -181,6 +181,8 @@ async function rejectGoalEvent(
   const rejected = await rejectGoalQueueEvent(db, {
     chatThreadId: event.chatThreadId,
     eventId: event.id,
+    orgId: event.orgId,
+    userId: event.userId,
     reason,
   });
   signal.throwIfAborted();
@@ -268,6 +270,8 @@ const launchQueuedGoal$ = command(
           eventId: args.event.id,
           prompt,
           goalId: normalizedGoal.goalId,
+          orgId: normalizedGoal.orgId,
+          userId: normalizedGoal.userId,
           objectiveBrief: goalSnapshot.objectiveBrief,
         },
         zeroRunModelPin: {
@@ -323,11 +327,24 @@ export const drainGoalQueueForThread$ = command(
       );
       signal.throwIfAborted();
       if (!decrypted.ok || !decrypted.value) {
+        const paused = await pauseActiveGoalForThread(db, {
+          orgId: event.orgId,
+          userId: event.userId,
+          threadId: event.chatThreadId,
+        });
+        signal.throwIfAborted();
         await rejectGoalEvent(
           db,
           event,
           GOAL_PAYLOAD_UNREADABLE_REASON,
           signal,
+        );
+        log.warn(
+          "Goal queue event payload could not be decrypted; goal paused",
+          {
+            eventId: event.id,
+            pauseResult: paused.kind,
+          },
         );
         continue;
       }

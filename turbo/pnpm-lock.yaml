@@ -511,6 +511,9 @@ importers:
       '@clerk/clerk-js':
         specifier: ^6.25.8
         version: 6.25.8(@solana/web3.js@1.98.4(bufferutil@4.1.0)(encoding@0.1.13)(typescript@6.0.3)(utf-8-validate@6.0.6))(@types/react@19.2.14)(bs58@6.0.0)(bufferutil@4.1.0)(fastestsmallesttextencoderdecoder@1.0.22)(react-dom@19.2.6(react@19.2.6))(react@19.2.6)(typescript@6.0.3)(use-sync-external-store@1.6.0(react@19.2.6))(utf-8-validate@6.0.6)(zod@4.3.6)
+      '@clerk/localizations':
+        specifier: ^4.13.8
+        version: 4.13.8(react-dom@19.2.6(react@19.2.6))(react@19.2.6)
       '@clerk/react':
         specifier: ^6.12.8
         version: 6.12.8(react-dom@19.2.6(react@19.2.6))(react@19.2.6)
