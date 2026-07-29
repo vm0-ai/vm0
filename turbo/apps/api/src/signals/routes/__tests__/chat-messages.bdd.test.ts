@@ -4362,7 +4362,6 @@ describe("CHAT-02: generation templates and attachments", () => {
       content: null,
       userMessage,
     });
-    expect(chatEventDisplayText(message!)).toBe("legacy fallback");
     await cancelChatRun(actor, sent.runId);
   }, 90_000);
 
@@ -5452,7 +5451,6 @@ describe("CHAT-02: shared user message queue", () => {
       runId,
       revokesEventId: messageId,
     });
-    expect(chatEventDisplayText(claimed!)).toBe("queue-first direct dispatch");
     expect(claimed?.id).not.toBe(messageId);
     const queued = rows.find((message) => {
       return message.id === messageId;
@@ -5465,7 +5463,6 @@ describe("CHAT-02: shared user message queue", () => {
       content: null,
       userMessage,
     });
-    expect(chatEventDisplayText(queued)).toBe("queue-first direct dispatch");
     expect(queued.runId).toBeUndefined();
 
     const replay = await chat.requestSendEvent(

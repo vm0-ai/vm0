@@ -4205,7 +4205,7 @@
           "isUnique": false,
           "with": {},
           "method": "btree",
-          "where": "\"chat_messages\".\"run_lifecycle_event\" IS NOT NULL",
+          "where": "\"chat_events\".\"run_lifecycle_event\" IS NOT NULL",
           "concurrently": false
         },
         "idx_chat_events_run_id": {
@@ -4236,7 +4236,7 @@
           "isUnique": false,
           "with": {},
           "method": "btree",
-          "where": "\"chat_messages\".\"usage_payload\" IS NOT NULL",
+          "where": "\"chat_events\".\"usage_payload\" IS NOT NULL",
           "concurrently": false
         },
         "chat_events_revokes_message_id_unique": {
@@ -4282,7 +4282,7 @@
           "isUnique": false,
           "with": {},
           "method": "btree",
-          "where": "\"chat_messages\".\"run_group_id\" IS NOT NULL",
+          "where": "\"chat_events\".\"run_group_id\" IS NOT NULL",
           "concurrently": false
         },
         "chat_events_input_automation_idx": {
@@ -4298,7 +4298,7 @@
           "isUnique": false,
           "with": {},
           "method": "btree",
-          "where": "\"chat_messages\".\"event_type\" = 'input.automation'",
+          "where": "\"chat_events\".\"event_type\" = 'input.automation'",
           "concurrently": false
         },
         "chat_events_pending_queue_idx": {
@@ -4326,7 +4326,7 @@
           "isUnique": false,
           "with": {},
           "method": "btree",
-          "where": "\"chat_messages\".\"run_id\" IS NULL AND \"chat_messages\".\"event_type\" IN ('input.prompt', 'input.automation')",
+          "where": "\"chat_events\".\"run_id\" IS NULL AND \"chat_events\".\"event_type\" IN ('input.prompt', 'input.automation')",
           "concurrently": false
         },
         "chat_events_automation_pause_idx": {
@@ -4348,7 +4348,7 @@
           "isUnique": false,
           "with": {},
           "method": "btree",
-          "where": "\"chat_messages\".\"event_type\" IN ('queue.automation_paused', 'queue.automation_resumed')",
+          "where": "\"chat_events\".\"event_type\" IN ('queue.automation_paused', 'queue.automation_resumed')",
           "concurrently": false
         },
         "chat_events_run_seq_unique": {
@@ -4406,7 +4406,7 @@
           "isUnique": true,
           "with": {},
           "method": "btree",
-          "where": "\"chat_messages\".\"run_lifecycle_event\" IS NOT NULL",
+          "where": "\"chat_events\".\"run_lifecycle_event\" IS NOT NULL",
           "concurrently": false
         },
         "chat_events_run_thinking_unique": {
@@ -4422,14 +4422,14 @@
           "isUnique": true,
           "with": {},
           "method": "btree",
-          "where": "\"chat_messages\".\"thinking\" IS NOT NULL",
+          "where": "\"chat_events\".\"thinking\" IS NOT NULL",
           "concurrently": false
         }
       },
       "foreignKeys": {
-        "chat_messages_chat_thread_id_chat_threads_id_fk": {
-          "name": "chat_messages_chat_thread_id_chat_threads_id_fk",
-          "tableFrom": "chat_messages",
+        "chat_events_chat_thread_id_chat_threads_id_fk": {
+          "name": "chat_events_chat_thread_id_chat_threads_id_fk",
+          "tableFrom": "chat_events",
           "columnsFrom": [
             "chat_thread_id"
           ],
@@ -4440,13 +4440,13 @@
           "onUpdate": "no action",
           "onDelete": "cascade"
         },
-        "chat_messages_revokes_message_id_chat_messages_id_fk": {
-          "name": "chat_messages_revokes_message_id_chat_messages_id_fk",
-          "tableFrom": "chat_messages",
+        "chat_events_revokes_message_id_chat_events_id_fk": {
+          "name": "chat_events_revokes_message_id_chat_events_id_fk",
+          "tableFrom": "chat_events",
           "columnsFrom": [
             "revokes_message_id"
           ],
-          "tableTo": "chat_messages",
+          "tableTo": "chat_events",
           "columnsTo": [
             "id"
           ],
@@ -15176,7 +15176,7 @@
           "columnsFrom": [
             "chat_message_id"
           ],
-          "tableTo": "chat_messages",
+          "tableTo": "chat_events",
           "columnsTo": [
             "id"
           ],
