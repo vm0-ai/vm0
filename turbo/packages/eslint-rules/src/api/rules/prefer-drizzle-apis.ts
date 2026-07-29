@@ -130,7 +130,7 @@ export const preferDrizzleApis = createRule({
       crossJoinLateral:
         "Use Drizzle crossJoinLateral(...) for this equivalent lateral join.",
       composedCteQueryBuilder:
-        "Use Drizzle $with(...), select(), joins, grouping, ordering, and set-operation builders for this complete locally composed read query.",
+        "Use Drizzle $with(...), select(), joins, grouping, ordering, and set-operation builders for this complete read CTE query.",
       deleteQueryBuilder:
         "Use Drizzle delete(...).where(...) for this complete schema-backed delete query.",
       emptyFragment:
