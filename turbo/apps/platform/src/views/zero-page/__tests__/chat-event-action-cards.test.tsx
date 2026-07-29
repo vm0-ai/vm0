@@ -3712,7 +3712,8 @@ describe("chat event action cards", () => {
     });
   });
 
-  it("renders trusted browser universal links as fixed cards that open the live sidebar", async () => {
+  it("renders trusted browser universal links as compact cards with an open action", async () => {
+    const user = userEvent.setup({ delay: null });
     const threadId = "c0000000-0000-4000-a000-000000000080";
     const browserId = "c0000000-0000-4000-a000-000000000081";
     const liveUrl =
@@ -3775,18 +3776,29 @@ describe("chat event action cards", () => {
     // heavy and would resize the transcript as pages load.
     const cards = await waitFor(() => {
       const found = Array.from(
-        document.querySelectorAll<HTMLButtonElement>(
-          "[data-browser-session-card]",
-        ),
+        document.querySelectorAll<HTMLElement>("[data-browser-session-card]"),
       );
       expect(found).toHaveLength(2);
+      for (const card of found) {
+        expect(card).toHaveTextContent("Cloud browser");
+        expect(card).toHaveTextContent("Live");
+        expect(card).not.toHaveTextContent("credits charged");
+        expect(buttonByText("Open", card)).toHaveAttribute(
+          "aria-label",
+          "Open booking browser",
+        );
+      }
       return found;
     });
     expect(
       document.querySelector('iframe[title="Live browser: booking"]'),
     ).toBeNull();
 
-    cards[0]?.click();
+    const firstCard = cards.at(0);
+    if (!firstCard) {
+      throw new Error("Expected a browser session card");
+    }
+    await user.click(buttonByText("Open", firstCard));
 
     const frame = await screen.findByTitle("Live browser: booking");
     expect(frame).toHaveAttribute("src", liveUrl);
@@ -3816,6 +3828,8 @@ describe("chat event action cards", () => {
           "data-browser-session-status",
           "suspended",
         );
+        expect(card).toHaveTextContent("Stopped");
+        expect(card).not.toHaveTextContent("credits charged");
       }
       expect(screen.getByText("Browser suspended")).toBeInTheDocument();
       expect(
@@ -3839,6 +3853,7 @@ describe("chat event action cards", () => {
     await waitFor(() => {
       for (const card of cards) {
         expect(card).toHaveAttribute("data-browser-session-status", "active");
+        expect(card).toHaveTextContent("Live");
       }
       expect(screen.getByTitle("Live browser: booking")).toHaveAttribute(
         "src",

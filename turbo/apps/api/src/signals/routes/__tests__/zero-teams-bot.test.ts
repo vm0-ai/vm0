@@ -1499,13 +1499,7 @@ describe("POST /api/zero/teams/bot", () => {
     );
     expect(threadEventsPage.body.events).toContainEqual(
       expect.objectContaining({
-        content: [
-          "please inspect this",
-          "",
-          "[Teams file] spec.png (image/png)",
-          "   [Teams attachment ID] channel-attachment-1",
-          `   [ID] ${fileId}`,
-        ].join("\n"),
+        content: null,
         userMessage: {
           version: 1,
           parts: [

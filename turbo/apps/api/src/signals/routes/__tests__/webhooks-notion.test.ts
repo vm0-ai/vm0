@@ -16,6 +16,7 @@ import {
   createWorkflowsBddApi,
   mockNotionConnectorOAuth,
 } from "./helpers/api-bdd-workflows";
+import { chatEventDisplayText } from "./helpers/chat-event";
 import { updateFeatureSwitchesForUser } from "./helpers/zero-feature-switches";
 import { createZeroRouteMocks } from "./helpers/zero-route-test";
 
@@ -863,7 +864,7 @@ describe("POST /api/webhooks/notion", () => {
     const workflowMessage = messages.find((message) => {
       return (
         message.eventType === "input.prompt" &&
-        message.content === `/${WORKFLOW_NAME}`
+        chatEventDisplayText(message) === `/${WORKFLOW_NAME}`
       );
     });
     if (!workflowMessage?.runId) {

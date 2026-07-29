@@ -43,7 +43,7 @@ type ChatEventOutputSequence = Pick<
 type InputPromptEvent = ChatEventIdentity &
   ChatEventInputPayload & {
     readonly eventType: "input.prompt";
-    readonly content: string | null;
+    readonly content?: null;
     readonly triggerSource?: TriggerSource;
     readonly encryptedParams?: string | null;
   };
@@ -68,7 +68,7 @@ type InputRejectedEvent = ChatEventIdentity &
   ChatEventInputPayload &
   Pick<ChatEventInsert, "sequenceNumber"> & {
     readonly eventType: "input.rejected";
-    readonly content: string | null;
+    readonly content?: null;
     readonly error: string;
     readonly automationId?: string;
     readonly triggerSource?: TriggerSource;
@@ -231,7 +231,9 @@ function persistedChatEventValues(values: NewChatEvent): PersistedChatEvent {
   }
   return {
     ...values,
-    ...(values.eventType === "input.automation" ||
+    ...(values.eventType === "input.prompt" ||
+    values.eventType === "input.rejected" ||
+    values.eventType === "input.automation" ||
     values.eventType === "input.goal" ||
     values.eventType === "queue.automation_resumed"
       ? { content: null }

@@ -32,7 +32,7 @@ const chatEvents = [
     seqId: 1,
     threadId: THREAD_ID,
     eventType: "input.prompt",
-    content: "Run the task",
+    content: null,
     userMessage: {
       version: 1,
       parts: [{ type: "text", text: "Run the task" }],
@@ -55,7 +55,7 @@ const chatEvents = [
     seqId: 3,
     threadId: THREAD_ID,
     eventType: "input.rejected",
-    content: "Run the task",
+    content: null,
     userMessage: {
       version: 1,
       parts: [{ type: "text", text: "Run the task" }],
@@ -278,6 +278,12 @@ describe("ChatEvent catalog", () => {
       chatEventSchema.safeParse({
         ...prompt,
         encryptedParams: "must-stay-server-side",
+      }).success,
+    ).toBe(false);
+    expect(
+      chatEventSchema.safeParse({
+        ...prompt,
+        content: "retired input projection",
       }).success,
     ).toBe(false);
     const automation = chatEvents[1];

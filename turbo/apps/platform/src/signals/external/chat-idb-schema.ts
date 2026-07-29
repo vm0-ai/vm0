@@ -11,7 +11,10 @@ const CHAT_IDB_THREAD_EVENT_SEQ_ID_RESET_VERSION = 22;
 // Rebuild every chat event cache so documents written by older App bundles
 // cannot reintroduce content-only events after the server migration.
 const CHAT_IDB_USER_MESSAGE_READ_CUTOVER_VERSION = 23;
-const CHAT_IDB_SCHEMA_VERSION = CHAT_IDB_USER_MESSAGE_READ_CUTOVER_VERSION;
+// input.prompt and input.rejected now require content=null. Rebuild persisted
+// event caches so strict reads cannot encounter the retired input projection.
+const CHAT_IDB_INPUT_CONTENT_REMOVAL_VERSION = 24;
+const CHAT_IDB_SCHEMA_VERSION = CHAT_IDB_INPUT_CONTENT_REMOVAL_VERSION;
 const LEGACY_CHAT_THREAD_META_STORE = "chat_thread_agents";
 const LEGACY_ARTIFACT_ITEMS_STORE = "artifact_items";
 const LEGACY_ARTIFACT_SYNC_STORE = "artifact_sync";
@@ -88,6 +91,11 @@ export function upgradeChatIdb(db: IDBPDatabase, oldVersion: number): void {
   }
 
   if (oldVersion < CHAT_IDB_USER_MESSAGE_READ_CUTOVER_VERSION) {
+    deleteObjectStoreIfExists(db, CHAT_MESSAGES_STORE);
+    deleteChatThreadEventStores(db);
+  }
+
+  if (oldVersion < CHAT_IDB_INPUT_CONTENT_REMOVAL_VERSION) {
     deleteObjectStoreIfExists(db, CHAT_MESSAGES_STORE);
     deleteChatThreadEventStores(db);
   }

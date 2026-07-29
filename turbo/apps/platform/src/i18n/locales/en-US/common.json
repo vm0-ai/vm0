@@ -715,11 +715,13 @@
     }
   },
   "browserSession": {
+    "cardTitle": "Cloud browser",
     "close": "Close live browser",
     "documentTitle": "Live browser",
     "iframeTitle": "Live browser: {{name}}",
     "invalidLink": "Invalid browser link",
     "open": "Open {{name}} browser",
+    "openAction": "Open",
     "openNewPage": "Open this browser in a new page",
     "panel": {
       "notLive": "Browser not live",
@@ -731,11 +733,9 @@
     "reclaimHint_one": "Zero keeps this browser while this panel is open, and reclaims it after {{formattedCount}} idle minute.",
     "reclaimHint_other": "Zero keeps this browser while this panel is open, and reclaims it after {{formattedCount}} idle minutes.",
     "status": {
-      "error": "Error",
       "live": "Live",
       "starting": "Starting",
-      "stopping": "Stopping",
-      "suspended": "Suspended"
+      "stopped": "Stopped"
     },
     "title": "Live browser",
     "unavailable": {

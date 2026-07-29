@@ -304,8 +304,6 @@ describe("CHAT-02 chat messages and visible validation", () => {
         },
       ],
     };
-    const expectedContent = "Build a launch-plan presentation";
-
     const sent = await api.requestSendEvent(
       actor,
       {
@@ -360,13 +358,13 @@ describe("CHAT-02 chat messages and visible validation", () => {
 
     expect(queuedMessage).toMatchObject({
       eventType: "input.prompt",
-      content: expectedContent,
+      content: null,
       userMessage: expectedUserMessage,
     });
     expect(queuedMessage).not.toHaveProperty("error");
     expect(rejectedUserMessage).toMatchObject({
       eventType: "input.rejected",
-      content: expectedContent,
+      content: null,
       userMessage: expectedUserMessage,
       error: "insufficient_credits",
       revokesEventId: clientEventId,
