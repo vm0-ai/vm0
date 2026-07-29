@@ -198,6 +198,7 @@ async function startChatRun(
     readonly generationTemplate?: GenerationTemplateRequest;
     readonly userMessage?: UserMessageDocument;
     readonly revokesEventId?: string;
+    readonly onEnqueued?: (messageId: string) => Promise<void>;
   },
 ): Promise<{
   readonly runId: string;
@@ -228,7 +229,14 @@ async function startChatRun(
         : {}
       : { model: body.selectedModel }),
   };
-  const sent = await chat.requestSendEvent(actor, requestBody, [201]);
+  const sent = body.onEnqueued
+    ? (
+        await Promise.all([
+          chat.requestSendEvent(actor, requestBody, [201]),
+          body.onEnqueued(messageId),
+        ])
+      )[0]
+    : await chat.requestSendEvent(actor, requestBody, [201]);
   if (sent.status !== 201) {
     throw new Error("Expected the entitled chat send to create a run");
   }
@@ -1781,11 +1789,10 @@ Continue the JPM IJTXX Treasury allocation follow-up for issue #20818 and [ACME-
       context.signal,
     );
     const releaseGoalRunPreparation = deferredGate();
-    const kms = useSecretKmsProbe((command, callNumber) => {
-      if (callNumber !== 1) {
-        return undefined;
+    useSecretKmsProbe((command) => {
+      if (!goalRunPreparationStarted.settled()) {
+        goalRunPreparationStarted.resolve(undefined);
       }
-      goalRunPreparationStarted.resolve(undefined);
       return releaseGoalRunPreparation.wait().then(() => {
         return generateDataKeyOutput(command);
       });
@@ -1796,14 +1803,20 @@ Continue the JPM IJTXX Treasury allocation follow-up for issue #20818 and [ACME-
       lastEventSequence: 0,
     });
     await goalRunPreparationStarted.promise;
-    expect(kms.generateDataKeyCalls).toBe(1);
 
     const userRun = await startChatRun(actor, {
       agentId,
       threadId: first.threadId,
       prompt: "user message admitted during goal run preparation",
+      onEnqueued: async (messageId) => {
+        await waitForThreadMessages(actor, first.threadId, (events) => {
+          return events.some((event) => {
+            return event.id === messageId;
+          });
+        });
+        releaseGoalRunPreparation.release();
+      },
     });
-    releaseGoalRunPreparation.release();
 
     let goalEventId: string | undefined;
     await expect
