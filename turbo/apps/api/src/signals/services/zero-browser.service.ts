@@ -3,7 +3,10 @@ import { randomUUID } from "node:crypto";
 import {
   ZERO_BROWSER_DEFAULT_MAX_CREDITS,
   ZERO_BROWSER_IDLE_LEASE_MINUTES,
+  ZERO_BROWSER_MAX_SCREEN_HEIGHT,
+  ZERO_BROWSER_MIN_SCREEN_HEIGHT,
   ZERO_BROWSER_PROVIDER_TIMEOUT_MINUTES,
+  ZERO_BROWSER_SCREEN_WIDTH,
   type ZeroBrowserSession,
   type ZeroBrowserSuspensionReason,
 } from "@vm0/api-contracts/contracts/zero-browser";
@@ -45,6 +48,7 @@ import {
   createBrowserUseSession,
   deleteBrowserUseProfile,
   getBrowserUseSession,
+  resizeBrowserUseSession,
   stopBrowserUseSession,
   type BrowserUseSession,
 } from "./browser-use.service";
@@ -165,6 +169,11 @@ interface ClaimedBrowserInstance {
 
 interface BrowserReleaseResult {
   readonly released: number;
+}
+
+interface BrowserResizeResult {
+  readonly screenWidth: typeof ZERO_BROWSER_SCREEN_WIDTH;
+  readonly screenHeight: number;
 }
 
 interface BrowserReconcileResult {
@@ -307,6 +316,16 @@ function publicBrowser(
 
 function nextIdleDeadline(): Date {
   return new Date(nowDate().getTime() + IDLE_LEASE_MS);
+}
+
+function browserScreenHeightForAspectRatio(aspectRatio: number): number {
+  return Math.min(
+    Math.max(
+      Math.round(ZERO_BROWSER_SCREEN_WIDTH / aspectRatio),
+      ZERO_BROWSER_MIN_SCREEN_HEIGHT,
+    ),
+    ZERO_BROWSER_MAX_SCREEN_HEIGHT,
+  );
 }
 
 // Extending the lease is unconditional and fixed-length: every toucher gets the
@@ -2181,6 +2200,83 @@ export const leaseZeroBrowserById$ = command(
       return context;
     }
     return await set(leaseInstanceForBrowser$, browser, signal);
+  },
+);
+
+export const resizeZeroBrowserById$ = command(
+  async (
+    { set },
+    access: BrowserSessionAccess & { readonly aspectRatio: number },
+    signal: AbortSignal,
+  ): Promise<BrowserServiceResult<BrowserResizeResult>> => {
+    const db = set(writeDb$);
+    const browser = await loadOwnedBrowser(db, access);
+    signal.throwIfAborted();
+    if (!browser) {
+      return notFound();
+    }
+    const context = await resolveViewerContext(db, browser);
+    signal.throwIfAborted();
+    if (context.kind === "error") {
+      return context;
+    }
+    if (browser.status !== "active") {
+      return conflict(
+        "This managed browser is no longer live; resume it before resizing it",
+        "BROWSER_NOT_LIVE",
+      );
+    }
+    const instance = await loadActiveInstance(db, browser.id);
+    signal.throwIfAborted();
+    if (!instance) {
+      return conflict(
+        "This managed browser is no longer live; resume it before resizing it",
+        "BROWSER_NOT_LIVE",
+      );
+    }
+    const touched = await touchInstanceLease(
+      db,
+      instance.providerSessionId,
+      signal,
+    );
+    if (!touched) {
+      return conflict(
+        "This managed browser is no longer live; resume it before resizing it",
+        "BROWSER_NOT_LIVE",
+      );
+    }
+    const provider = await providerCall(
+      getBrowserUseSession(instance.providerSessionId, signal),
+    );
+    signal.throwIfAborted();
+    if (provider.kind === "error") {
+      return provider;
+    }
+    if (provider.value.status !== "active" || !provider.value.cdpUrl) {
+      return conflict(
+        "This managed browser is no longer live; resume it before resizing it",
+        "BROWSER_NOT_LIVE",
+      );
+    }
+    const screenHeight = browserScreenHeightForAspectRatio(access.aspectRatio);
+    const resized = await providerCall(
+      resizeBrowserUseSession(
+        provider.value.cdpUrl,
+        ZERO_BROWSER_SCREEN_WIDTH,
+        screenHeight,
+        signal,
+      ),
+    );
+    signal.throwIfAborted();
+    return resized.kind === "error"
+      ? resized
+      : {
+          kind: "ok",
+          value: {
+            screenWidth: ZERO_BROWSER_SCREEN_WIDTH,
+            screenHeight,
+          },
+        };
   },
 );
 

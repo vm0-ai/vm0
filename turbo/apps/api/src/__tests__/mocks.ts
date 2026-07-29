@@ -1,6 +1,8 @@
 import type StripeSDK from "stripe";
 import { computed } from "ccstate";
+import { ws } from "msw";
 import { vi, type Mock } from "vitest";
+import { z } from "zod";
 
 import { mockStripeClient } from "../signals/external/stripe-client";
 
@@ -12,6 +14,14 @@ type SignalTimerDelayMock = Mock<
 >;
 type SyncMock = Mock<(...args: unknown[]) => void>;
 type UnknownMock = Mock<(...args: unknown[]) => unknown>;
+interface BrowserUseCdpCommand {
+  readonly id: number;
+  readonly method: string;
+  readonly params: Record<string, unknown>;
+}
+type BrowserUseCdpCommandMock = Mock<
+  (command: BrowserUseCdpCommand) => unknown
+>;
 type LookupCallback = (
   error: Error | null,
   address: string,
@@ -81,6 +91,10 @@ export interface ApiTestMocks {
     readonly m2m: {
       readonly createToken: AsyncMock;
     };
+  };
+  readonly browserUseCdp: {
+    readonly connect: Mock<(url: string) => void>;
+    readonly command: BrowserUseCdpCommandMock;
   };
   readonly s3: {
     readonly send: AsyncMock;
@@ -385,6 +399,10 @@ const apiTestMocks: ApiTestMocks = vi.hoisted((): ApiTestMocks => {
     },
     axiom,
     axiomLogging,
+    browserUseCdp: {
+      connect: vi.fn<(url: string) => void>(),
+      command: vi.fn<(command: BrowserUseCdpCommand) => unknown>(),
+    },
     clerk,
     s3: {
       send: vi.fn<(...args: unknown[]) => Promise<unknown>>(),
@@ -430,6 +448,39 @@ const apiTestMocks: ApiTestMocks = vi.hoisted((): ApiTestMocks => {
     },
   };
 });
+
+const browserUseCdpCommandSchema = z.object({
+  id: z.number().int(),
+  method: z.string(),
+  params: z.record(z.string(), z.unknown()),
+});
+
+function defaultBrowserUseCdpResult(command: BrowserUseCdpCommand): unknown {
+  if (command.method === "Target.getTargets") {
+    return { targetInfos: [{ targetId: "page-target", type: "page" }] };
+  }
+  if (command.method === "Browser.getWindowForTarget") {
+    return { windowId: 7 };
+  }
+  return {};
+}
+
+export function browserUseCdpHandler(url: string) {
+  const cdp = ws.link(url);
+  return cdp.addEventListener("connection", ({ client }) => {
+    apiTestMocks.browserUseCdp.connect(url);
+    client.addEventListener("message", (event) => {
+      if (typeof event.data !== "string") {
+        throw new Error("Expected a text CDP command");
+      }
+      const command = browserUseCdpCommandSchema.parse(JSON.parse(event.data));
+      const result =
+        apiTestMocks.browserUseCdp.command(command) ??
+        defaultBrowserUseCdpResult(command);
+      client.send(JSON.stringify({ id: command.id, result }));
+    });
+  });
+}
 
 vi.mock("@aws-sdk/client-s3", () => {
   class AbortMultipartUploadCommand {
@@ -958,6 +1009,8 @@ export function resetApiTestMocks(): void {
   apiTestMocks.axiomLogging.warn.mockReset();
   apiTestMocks.axiomLogging.error.mockReset();
   apiTestMocks.axiomLogging.flush.mockReset();
+  apiTestMocks.browserUseCdp.connect.mockReset();
+  apiTestMocks.browserUseCdp.command.mockReset();
   apiTestMocks.clerk.authenticateRequest.mockReset();
   apiTestMocks.clerk.verifyWebhook.mockReset();
   apiTestMocks.clerk.organizations.createOrganizationInvitation.mockReset();

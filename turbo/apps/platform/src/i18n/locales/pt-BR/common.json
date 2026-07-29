@@ -372,6 +372,7 @@
     "creditsCharged_many": "{{formattedCount}} créditos cobrados",
     "creditsCharged_other": "{{formattedCount}} créditos cobrados",
     "documentTitle": "Navegador ao vivo",
+    "fitWindow": "Ajustar navegador à janela",
     "iframeTitle": "Navegador ao vivo: {{name}}",
     "invalidLink": "Link de navegador inválido",
     "open": "Abrir o navegador {{name}}",

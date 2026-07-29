@@ -13,6 +13,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { z } from "zod";
 
 import { createApp } from "../../../app-factory";
+import { browserUseCdpHandler } from "../../../__tests__/mocks";
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
 import { mockEnv } from "../../../lib/env";
 import { clearMockNow, mockNow } from "../../../lib/time";
@@ -502,7 +503,8 @@ describe("zero browser route", () => {
   });
 
   it("isolates profiles across concurrent thread browser sessions", async () => {
-    const { runs, chat, webhooks, actor, agent } = await setupBrowserScenario();
+    const { routeMocks, runs, chat, webhooks, actor, agent } =
+      await setupBrowserScenario();
     const first = await createClaimedChatRun(
       chat,
       runs,
@@ -630,7 +632,7 @@ describe("zero browser route", () => {
             timeout: z.literal(240),
             browserScreenWidth: z.literal(1440),
             browserScreenHeight: z.literal(900),
-            allowResizing: z.literal(false),
+            allowResizing: z.literal(true),
             enableRecording: z.literal(false),
           })
           .parse(body).profileId;
@@ -663,6 +665,59 @@ describe("zero browser route", () => {
       ).size,
     ).toBe(1);
     expect([...profileIds]).toContain(previousApiRows[0]?.providerProfileId);
+
+    const createdProviderId = new URL(created.body.cdpUrl).hostname.split(
+      ".",
+    )[0];
+    if (!createdProviderId) {
+      throw new Error("Expected a Browser Use provider ID");
+    }
+    const cdpWebSocketUrl = `wss://${createdProviderId}.cdp.browser-use.com/devtools/browser/test`;
+    server.use(
+      http.get(
+        `https://${createdProviderId}.cdp.browser-use.com/json/version`,
+        () => {
+          return HttpResponse.json({
+            webSocketDebuggerUrl: cdpWebSocketUrl,
+          });
+        },
+      ),
+      browserUseCdpHandler(cdpWebSocketUrl),
+    );
+    routeMocks.clerk.session(actor.userId, actor.orgId, actor.orgRole);
+    const resized = await accept(
+      client().resizeById({
+        headers: { authorization: "Bearer clerk-session" },
+        params: { browserId: created.body.browser.id },
+        body: { aspectRatio: 0.75 },
+      }),
+      [200],
+    );
+    expect(resized.body).toStrictEqual({
+      screenWidth: 1440,
+      screenHeight: 1920,
+    });
+    expect(context.mocks.browserUseCdp.connect).toHaveBeenCalledTimes(1);
+    expect(context.mocks.browserUseCdp.connect).toHaveBeenCalledWith(
+      cdpWebSocketUrl,
+    );
+    expect(
+      context.mocks.browserUseCdp.command.mock.calls.map(([command]) => {
+        return command;
+      }),
+    ).toStrictEqual([
+      { id: 1, method: "Target.getTargets", params: {} },
+      {
+        id: 2,
+        method: "Browser.getWindowForTarget",
+        params: { targetId: "page-target" },
+      },
+      {
+        id: 3,
+        method: "Browser.setContentsSize",
+        params: { windowId: 7, width: 1440, height: 1920 },
+      },
+    ]);
 
     const copiedToAnotherThread = await createApp({
       signal: context.signal,

@@ -12,6 +12,10 @@ export const ZERO_BROWSER_PROVIDER_TIMEOUT_MINUTES = 240;
 export const ZERO_BROWSER_IDLE_LEASE_MINUTES = 10;
 export const ZERO_BROWSER_DEFAULT_MAX_CREDITS = 500;
 export const ZERO_BROWSER_MAX_CREDITS = 100_000;
+export const ZERO_BROWSER_SCREEN_WIDTH = 1440;
+export const ZERO_BROWSER_INITIAL_SCREEN_HEIGHT = 900;
+export const ZERO_BROWSER_MIN_SCREEN_HEIGHT = 320;
+export const ZERO_BROWSER_MAX_SCREEN_HEIGHT = 3456;
 
 export const zeroBrowserStatusSchema = z.enum([
   "creating",
@@ -91,6 +95,19 @@ const browserGetQuerySchema = z.object({
 
 const browserResponseSchema = z.object({
   browser: zeroBrowserSessionSchema,
+});
+
+const browserResizeRequestSchema = z.object({
+  aspectRatio: z.number().positive().finite(),
+});
+
+const browserResizeResponseSchema = z.object({
+  screenWidth: z.literal(ZERO_BROWSER_SCREEN_WIDTH),
+  screenHeight: z
+    .number()
+    .int()
+    .min(ZERO_BROWSER_MIN_SCREEN_HEIGHT)
+    .max(ZERO_BROWSER_MAX_SCREEN_HEIGHT),
 });
 
 const browserAuthorizationRequestTokenPathParamsSchema = z.object({
@@ -199,6 +216,18 @@ export const zeroBrowserContract = c.router({
       ...commonErrorResponses,
     },
     summary: "Resume a suspended browser from its viewer and start billing it",
+  },
+  resizeById: {
+    method: "POST",
+    path: "/api/zero/browsers/:browserId/resize",
+    headers: authHeadersSchema,
+    pathParams: browserIdParamsSchema,
+    body: browserResizeRequestSchema,
+    responses: {
+      200: browserResizeResponseSchema,
+      ...commonErrorResponses,
+    },
+    summary: "Resize a live browser to match a viewer aspect ratio",
   },
   current: {
     method: "GET",

@@ -22,7 +22,7 @@ import {
 import { zeroConnectorCatalogContract } from "@vm0/api-contracts/contracts/zero-connector-catalog";
 import { zeroMailContract } from "@vm0/api-contracts/contracts/zero-mail";
 import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import {
   click,
@@ -748,6 +748,11 @@ describe("thread-owned utility sidebar", () => {
     context.mocks.api(zeroBrowserContract.leaseById, ({ respond }) => {
       return respond(200, { browser });
     });
+    const resizeAspectRatios: number[] = [];
+    context.mocks.api(zeroBrowserContract.resizeById, ({ body, respond }) => {
+      resizeAspectRatios.push(body.aspectRatio);
+      return respond(200, { screenWidth: 1440, screenHeight: 1800 });
+    });
     setupChatThread({
       autoOpenEnabled: true,
       messages: [
@@ -765,6 +770,34 @@ describe("thread-owned utility sidebar", () => {
     const frame = await screen.findByTitle("Live browser: Auto-open browser");
     expect(frame).toHaveAttribute("src", liveUrl);
     expect(frame.closest("[data-browser-session-sidebar]")).not.toBeNull();
+    expect(Number.parseFloat(frame.style.aspectRatio)).toBe(1.6);
+    expect(resizeAspectRatios).toStrictEqual([]);
+
+    const viewport = frame.closest("[data-browser-session-viewport]");
+    if (!(viewport instanceof HTMLDivElement)) {
+      throw new Error("Expected a live browser viewport");
+    }
+    expect(viewport).toHaveClass("items-center", "justify-center");
+    expect(frame).toHaveClass("max-h-full", "max-w-full");
+    vi.spyOn(viewport, "getBoundingClientRect").mockReturnValue(
+      DOMRect.fromRect({
+        width: 720,
+        height: 900,
+      }),
+    );
+    const fitWindow = queryAllByRoleFast("button").find((button) => {
+      return button.getAttribute("aria-label") === "Fit browser to window";
+    });
+    if (!(fitWindow instanceof HTMLButtonElement)) {
+      throw new Error("Expected the fit browser button");
+    }
+    expect(fitWindow).toBeEnabled();
+    click(fitWindow);
+
+    await waitFor(() => {
+      expect(resizeAspectRatios).toStrictEqual([0.8]);
+      expect(Number.parseFloat(frame.style.aspectRatio)).toBe(0.8);
+    });
   });
 
   it("falls back to the latest successful run and ignores failed and cancelled runs", async () => {
