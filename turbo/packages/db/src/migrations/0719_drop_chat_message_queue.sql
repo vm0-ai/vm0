@@ -12,6 +12,27 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;--> statement-breakpoint
 DROP TABLE "chat_message_queue";--> statement-breakpoint
+-- The currently deployed bridge-bearing API can still issue cleanup DELETEs
+-- while this migration runs before the bridge-free API is promoted. Pre-cutover
+-- APIs that INSERT legacy queue rows have already drained. Keep a zero-row,
+-- DELETE-only compatibility relation for one release so those cleanup
+-- transactions remain successful without retaining legacy storage.
+CREATE VIEW "chat_message_queue" AS
+SELECT
+  NULL::uuid AS "id",
+  NULL::uuid AS "chat_thread_id",
+  NULL::uuid AS "chat_message_id",
+  NULL::text AS "item_type"
+WHERE FALSE;--> statement-breakpoint
+CREATE FUNCTION "ignore_legacy_chat_message_queue_delete_0719"() RETURNS trigger AS $$
+BEGIN
+  RETURN OLD;
+END;
+$$ LANGUAGE plpgsql;--> statement-breakpoint
+CREATE TRIGGER "ignore_legacy_chat_message_queue_delete_0719"
+INSTEAD OF DELETE ON "chat_message_queue"
+FOR EACH ROW
+EXECUTE FUNCTION "ignore_legacy_chat_message_queue_delete_0719"();--> statement-breakpoint
 ALTER TABLE "chat_threads" DROP COLUMN "queue_paused_at";--> statement-breakpoint
 ALTER TABLE "chat_threads" DROP COLUMN "pause_reason";--> statement-breakpoint
 DROP TYPE "public"."chat_message_queue_item_type";

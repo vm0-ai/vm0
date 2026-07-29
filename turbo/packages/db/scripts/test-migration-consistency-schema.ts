@@ -2800,18 +2800,40 @@ async function validateChatEventQueueContraction(): Promise<void> {
       );
 
       const retiredSchema = await client.query<{
+        compatibilityDeleteFunction: string | null;
+        compatibilityRelationKind: string | null;
+        compatibilityView: string | null;
         legacyColumnCount: number;
         legacyDeleteFunction: string | null;
         legacyEnum: string | null;
         legacyInsertFunction: string | null;
         legacyPauseFunction: string | null;
         legacyPauseProjectionFunction: string | null;
-        legacyTable: string | null;
+        legacyTableCount: number;
       }>(`
         SELECT
-          to_regclass('public.chat_message_queue')::text AS "legacyTable",
+          to_regclass('public.chat_message_queue')::text
+            AS "compatibilityView",
+          (
+            SELECT relation.relkind::text
+            FROM pg_class AS relation
+            INNER JOIN pg_namespace AS namespace
+              ON namespace.oid = relation.relnamespace
+            WHERE namespace.nspname = 'public'
+              AND relation.relname = 'chat_message_queue'
+          ) AS "compatibilityRelationKind",
+          to_regprocedure(
+            'ignore_legacy_chat_message_queue_delete_0719()'
+          )::text AS "compatibilityDeleteFunction",
           to_regtype('public.chat_message_queue_item_type')::text
             AS "legacyEnum",
+          (
+            SELECT COUNT(*)::integer
+            FROM information_schema.tables
+            WHERE table_schema = 'public'
+              AND table_name = 'chat_message_queue'
+              AND table_type = 'BASE TABLE'
+          ) AS "legacyTableCount",
           (
             SELECT COUNT(*)::integer
             FROM information_schema.columns
@@ -2834,15 +2856,48 @@ async function validateChatEventQueueContraction(): Promise<void> {
       `);
       assert.deepEqual(retiredSchema.rows, [
         {
+          compatibilityDeleteFunction:
+            "ignore_legacy_chat_message_queue_delete_0719()",
+          compatibilityRelationKind: "v",
+          compatibilityView: "chat_message_queue",
           legacyColumnCount: 0,
           legacyDeleteFunction: null,
           legacyEnum: null,
           legacyInsertFunction: null,
           legacyPauseFunction: null,
           legacyPauseProjectionFunction: null,
-          legacyTable: null,
+          legacyTableCount: 0,
         },
       ]);
+
+      const legacyUserDelete = await client.query(
+        `
+          DELETE FROM "chat_message_queue"
+          WHERE "chat_thread_id" = $1
+            AND "chat_message_id" = $2
+            AND "item_type" IN ($3, $4, $5, $6)
+        `,
+        [
+          threadId,
+          promptId,
+          "user_message",
+          "slack_user_message",
+          "feishu_user_message",
+          "teams_user_message",
+        ],
+      );
+      assert.equal(legacyUserDelete.rowCount, 0);
+
+      const legacyWorkflowDelete = await client.query(
+        `
+          DELETE FROM "chat_message_queue"
+          WHERE "id" = $1
+            AND "chat_thread_id" = $2
+            AND "item_type" = $3
+        `,
+        [legacyQueueId, threadId, "workflow_event"],
+      );
+      assert.equal(legacyWorkflowDelete.rowCount, 0);
 
       const canonicalEvents = await client.query<{
         content: string | null;
@@ -2890,7 +2945,7 @@ async function validateChatEventQueueContraction(): Promise<void> {
   }
 
   console.log(
-    "   ✅ Canonical queue events survive while the legacy table, enum, pause columns, bridge functions, and hydration exception retire together\n",
+    "   ✅ Canonical queue events survive while legacy storage retires and the one-release DELETE compatibility view accepts old API cleanup\n",
   );
 }
 
