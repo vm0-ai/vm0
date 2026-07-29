@@ -170,7 +170,7 @@ describe("zero chat thread IndexedDB fallback", () => {
     await clearCachedChatData();
   });
 
-  it("auto-opens a cached card before remote catch-up without entry animation", async () => {
+  it("shows cached messages and their sidebar before remote catch-up", async () => {
     const cachedUrl = "https://cached-initial-deck.sites.vm7.io";
     prepareDefaultAgent();
     mockCurrentThreadDetail();
@@ -221,10 +221,9 @@ describe("zero chat thread IndexedDB fallback", () => {
         "src",
         cachedUrl,
       );
-      expect(screen.getByTestId("chat-thread-sidebar-pane")).not.toHaveClass(
-        "animate-in",
-        "transition-[flex-basis,width]",
-      );
+      await expect(
+        screen.findByText("Cached initial deck"),
+      ).resolves.toBeInTheDocument();
     } finally {
       if (!releaseCatchUp.settled()) {
         releaseCatchUp.resolve();

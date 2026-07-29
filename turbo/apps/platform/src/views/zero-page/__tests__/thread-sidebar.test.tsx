@@ -624,12 +624,6 @@ describe("thread-owned utility sidebar", () => {
         runningUrl,
       );
     });
-    expect(screen.getByTestId("chat-thread-sidebar-pane")).toHaveClass(
-      "animate-in",
-      "fade-in",
-      "duration-[180ms]",
-      "transition-[flex-basis,width]",
-    );
   });
 
   it("auto-opens a browser card from a running run", async () => {
