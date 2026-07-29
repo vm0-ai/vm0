@@ -259,7 +259,7 @@ export function createRunsApi(context: TestContext) {
   const applyUserPermissionGrantRequestBody = (
     body: {
       readonly agentId: string;
-      readonly connectorRef: string;
+      readonly connectorSlug: string;
     } & ApplyUserPermissionGrant,
   ): ApplyUserPermissionGrantsRequest => {
     const grant: ApplyUserPermissionGrant =
@@ -275,7 +275,7 @@ export function createRunsApi(context: TestContext) {
           };
     return {
       agentId: body.agentId,
-      connectorRef: body.connectorRef,
+      connectorRef: body.connectorSlug,
       mode: "patch",
       grants: [grant],
     };
@@ -442,19 +442,19 @@ export function createRunsApi(context: TestContext) {
       return response.body;
     },
 
-    async refreshRunnerNetworkPolicy(runId: string, connectorRef: string) {
+    async refreshRunnerNetworkPolicy(runId: string, connectorSlug: string) {
       const response = await accept(
         runApp(context)(runnersNetworkPolicyRefreshContract).refresh({
           headers: runnerHeaders(true),
           params: { runId },
-          body: { connectorRefs: [connectorRef] },
+          body: { connectorRefs: [connectorSlug] },
         }),
         [200],
       );
       const [refresh] = response.body.refreshes;
       if (!refresh) {
         throw new Error(
-          `Expected refreshed network policy for ${connectorRef}`,
+          `Expected refreshed network policy for ${connectorSlug}`,
         );
       }
       return refresh;
@@ -463,14 +463,14 @@ export function createRunsApi(context: TestContext) {
     async requestRefreshRunnerNetworkPolicyAs(
       authorization: string | undefined,
       runId: string,
-      connectorRef: string,
+      connectorSlug: string,
       statuses: readonly (200 | 400 | 401 | 403 | 404 | 500)[],
     ) {
       return await accept(
         runApp(context)(runnersNetworkPolicyRefreshContract).refresh({
           headers: authorization === undefined ? {} : { authorization },
           params: { runId },
-          body: { connectorRefs: [connectorRef] },
+          body: { connectorRefs: [connectorSlug] },
         }),
         statuses,
       );
@@ -654,7 +654,7 @@ export function createRunsApi(context: TestContext) {
       actor: ApiTestUser,
       body: {
         readonly agentId: string;
-        readonly connectorRef: string;
+        readonly connectorSlug: string;
       } & ApplyUserPermissionGrant,
     ): Promise<UserPermissionGrantResponse> {
       const response = await accept(
@@ -675,7 +675,7 @@ export function createRunsApi(context: TestContext) {
       actor: ApiTestUser,
       body: {
         readonly agentId: string;
-        readonly connectorRef: string;
+        readonly connectorSlug: string;
       } & ApplyUserPermissionGrant,
       statuses: readonly (200 | 400 | 401 | 403 | 404 | 500)[],
     ) {
@@ -692,7 +692,7 @@ export function createRunsApi(context: TestContext) {
       actor: ApiTestUser,
       body: {
         readonly agentId: string;
-        readonly connectorRef: string;
+        readonly connectorSlug: string;
         readonly grants: readonly ApplyUserPermissionGrant[];
       },
     ): Promise<readonly UserPermissionGrantResponse[]> {
@@ -701,7 +701,7 @@ export function createRunsApi(context: TestContext) {
           headers: authenticate(context, actor),
           body: {
             agentId: body.agentId,
-            connectorRef: body.connectorRef,
+            connectorRef: body.connectorSlug,
             mode: "replace",
             grants: [...body.grants],
           },
@@ -726,19 +726,19 @@ export function createRunsApi(context: TestContext) {
     },
 
     /**
-     * Replaces the caller's enabled connector types for an agent through
+     * Replaces the caller's enabled connector slugs for an agent through
      * PUT /api/zero/agents/:id/user-connectors and returns the visible set.
      */
     async enableAgentConnectors(
       actor: ApiTestUser,
       agentId: string,
-      connectorTypes: readonly string[],
+      connectorSlugs: readonly string[],
     ): Promise<readonly string[]> {
       const response = await accept(
         runApp(context)(zeroUserConnectorsContract).update({
           headers: authenticate(context, actor),
           params: { id: agentId },
-          body: { enabledTypes: [...connectorTypes] },
+          body: { enabledTypes: [...connectorSlugs] },
         }),
         [200],
       );

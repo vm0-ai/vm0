@@ -22,10 +22,7 @@ import { z } from "zod";
 
 import { executeRawRows } from "../../lib/db-raw-rows";
 import type { Db } from "../external/db";
-import {
-  chatEventTypeIn,
-  chatEventTypeSql,
-} from "./zero-chat-event-type.service";
+import { chatEventTypeIn } from "./zero-chat-event-type.service";
 import { visibleChatEventCondition } from "./zero-chat-message-shared.service";
 import {
   projectUserMessage,
@@ -204,7 +201,7 @@ async function loadSelectedIncompleteRounds(
   const rows = await db
     .select({
       runId: chatMessages.runId,
-      eventType: chatEventTypeSql().as("event_type"),
+      eventType: chatMessages.eventType,
       content: chatMessages.content,
       userMessage: chatMessages.userMessage,
       attachFiles: chatMessages.attachFiles,

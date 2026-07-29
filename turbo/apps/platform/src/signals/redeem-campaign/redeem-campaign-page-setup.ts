@@ -1,5 +1,6 @@
 import { command } from "ccstate";
 import { createElement } from "react";
+import { i18n } from "../../i18n/index.ts";
 import { zeroBillingRedeemContract } from "@vm0/api-contracts/contracts/zero-billing";
 import { RedeemCampaignPage } from "../../views/redeem-campaign-page/redeem-campaign-page.tsx";
 import { updateDocumentTitle$ } from "../document-title.ts";
@@ -31,7 +32,12 @@ export const setupRedeemCampaignPage$ = command(
     }
 
     set(updatePage$, createElement(RedeemCampaignPage), "minimal");
-    set(updateDocumentTitle$, "Claim your credits");
+    set(
+      updateDocumentTitle$,
+      i18n.t(($) => {
+        return $.lifecycle.redeemCampaign.documentTitle;
+      }),
+    );
 
     const params = get(pathParams$);
     const campaign =

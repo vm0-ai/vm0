@@ -636,7 +636,7 @@ describe("FW-4: connector refresh and replacement snapshots", () => {
     await setConnectorCredentialStorageState(context, {
       orgId: actor.orgId ?? "",
       userId: actor.userId,
-      connectorRef: "test-oauth",
+      connectorSlug: "test-oauth",
       storageVersion: 2,
     });
     let providerCalls = 0;
@@ -839,7 +839,7 @@ describe("FW-4: connector refresh and replacement snapshots", () => {
       "X-AWS-Session-Token": oldCredentials.sessionToken,
     });
 
-    await connectors.deleteConnectorByType(actor, "aws");
+    await connectors.deleteConnectorBySlug(actor, "aws");
     await connectors.deleteFeatureSwitches(actor);
   });
 
@@ -879,7 +879,7 @@ describe("FW-4: connector refresh and replacement snapshots", () => {
     await connectorsApi.updateFeatureSwitches(actor, {
       [FeatureSwitchKey.TestOauthConnector]: true,
     });
-    const failedConnector = await connectorsApi.readConnectorByType(
+    const failedConnector = await connectorsApi.readConnectorBySlug(
       actor,
       "test-oauth",
     );
@@ -901,7 +901,7 @@ describe("FW-4: connector refresh and replacement snapshots", () => {
     expect(recovered.body.headers.Authorization).toBe(
       "Bearer recovered-access",
     );
-    const recoveredConnector = await connectorsApi.readConnectorByType(
+    const recoveredConnector = await connectorsApi.readConnectorBySlug(
       actor,
       "test-oauth",
     );
@@ -950,7 +950,7 @@ describe("FW-4: connector refresh and replacement snapshots", () => {
     await connectorsApi.updateFeatureSwitches(actor, {
       [FeatureSwitchKey.TestOauthConnector]: true,
     });
-    const connector = await connectorsApi.readConnectorByType(
+    const connector = await connectorsApi.readConnectorBySlug(
       actor,
       "test-oauth",
     );
@@ -968,7 +968,7 @@ describe("FW-4: connector refresh and replacement snapshots", () => {
       throw new Error("Expected temporary refresh failure to fail with 502");
     }
     expect(transientFailure.body.error.failureReason).toBe("upstream_provider");
-    const preservedConnector = await connectorsApi.readConnectorByType(
+    const preservedConnector = await connectorsApi.readConnectorBySlug(
       actor,
       "test-oauth",
     );
@@ -1031,7 +1031,7 @@ describe("FW-4: connector refresh and replacement snapshots", () => {
     await connectorsApi.updateFeatureSwitches(actor, {
       [FeatureSwitchKey.TestOauthConnector]: true,
     });
-    const connector = await connectorsApi.readConnectorByType(
+    const connector = await connectorsApi.readConnectorBySlug(
       actor,
       "test-oauth",
     );
@@ -1207,7 +1207,7 @@ describe("FW-4: connector refresh and replacement snapshots", () => {
     await connectorsApi.updateFeatureSwitches(actor, {
       [FeatureSwitchKey.TestOauthConnector]: true,
     });
-    const connector = await connectorsApi.readConnectorByType(
+    const connector = await connectorsApi.readConnectorBySlug(
       actor,
       "test-oauth",
     );
@@ -1603,7 +1603,7 @@ describe("FW-8: static access tokens and unavailable sources", () => {
     expect(synced.body.expiresAt).toBeNull();
   });
 
-  it("reports aliases for never-connected connector types as not configured", async () => {
+  it("reports aliases for never-connected connector slugs as not configured", async () => {
     const fw = createFirewallApi(context);
     const { headers } = await firewallRun();
 

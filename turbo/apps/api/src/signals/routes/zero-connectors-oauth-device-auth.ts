@@ -36,7 +36,7 @@ const startConnectorOauthDeviceAuthSessionInner$ = command(
         userId: auth.userId,
         agentId: body.data.agentId,
         authorizeAgent: body.data.authorizeAgent,
-        type: params.type,
+        connectorSlug: params.type,
         authMethod: body.data.authMethod,
         options: body.data.options,
       },
@@ -64,7 +64,7 @@ const pollConnectorOauthDeviceAuthSessionInner$ = command(
       {
         orgId: auth.orgId,
         userId: auth.userId,
-        type: params.type,
+        connectorSlug: params.type,
         sessionId: params.sessionId,
         sessionToken: body.data.sessionToken,
       },

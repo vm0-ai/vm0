@@ -23,7 +23,7 @@ import {
 } from "./chat-composer-test-helpers.ts";
 
 function connectorStatus({
-  connectorRef,
+  connectorRef: connectorSlug,
   label,
   authMethods,
   singleAuthCodeAuthMethodId = null,
@@ -34,11 +34,11 @@ function connectorStatus({
   readonly singleAuthCodeAuthMethodId?: string | null;
 }): PublicConnectorCatalogStatusItem {
   return {
-    connectorRef,
+    connectorRef: connectorSlug,
     label,
     description: `Connect ${label}`,
     icon: {
-      url: `https://icons.example.test/${connectorRef}.svg`,
+      url: `https://icons.example.test/${connectorSlug}.svg`,
       invertInDarkMode: false,
     },
     category: "data-automation-infrastructure",

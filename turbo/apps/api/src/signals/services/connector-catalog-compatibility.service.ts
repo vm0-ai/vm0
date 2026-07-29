@@ -68,8 +68,8 @@ function compareStrings(left: string, right: string): number {
   return left < right ? -1 : left > right ? 1 : 0;
 }
 
-function registrationKey(connectorRef: string, authMethodId: string): string {
-  return `${connectorRef}\0${authMethodId}`;
+function registrationKey(connectorSlug: string, authMethodId: string): string {
+  return `${connectorSlug}\0${authMethodId}`;
 }
 
 export function connectorCatalogExecutableCapabilityState(): ExecutableCapabilityState {

@@ -20,10 +20,7 @@ import {
 import { alias } from "drizzle-orm/pg-core";
 
 import type { Db } from "../external/db";
-import {
-  chatEventTypeIn,
-  chatEventTypeSql,
-} from "./zero-chat-event-type.service";
+import { chatEventTypeIn } from "./zero-chat-event-type.service";
 
 type ChatQueueReadDb = Pick<Db, "select">;
 type ChatQueueDistinctReadDb = Pick<Db, "select" | "selectDistinct">;
@@ -38,7 +35,7 @@ const laterAutomationPauseEvent = alias(
 interface PendingChatQueueEvent {
   readonly id: string;
   readonly chatThreadId: string;
-  readonly eventType: "input.prompt" | "input.automation";
+  readonly eventType: "input.prompt" | "input.automation" | "input.goal";
   readonly createdAt: Date;
 }
 
@@ -58,8 +55,9 @@ function unrevokedQueueEventCondition(db: ChatQueueReadDb) {
 
 /**
  * Fold one thread's immutable input events into its pending queue. User input
- * keeps absolute priority over automation input, then each class is FIFO by
- * the original event timestamp and id.
+ * keeps absolute priority over automation input, automation stays ahead of
+ * goal continuation, then each class is FIFO by the original event timestamp
+ * and id.
  */
 export async function listPendingChatQueueEvents(
   db: ChatQueueReadDb,
@@ -70,7 +68,7 @@ export async function listPendingChatQueueEvents(
     .select({
       id: chatMessages.id,
       chatThreadId: chatMessages.chatThreadId,
-      eventType: chatEventTypeSql().as("event_type"),
+      eventType: chatMessages.eventType,
       runId: chatMessages.runId,
       createdAt: chatMessages.createdAt,
     })
@@ -78,7 +76,7 @@ export async function listPendingChatQueueEvents(
     .where(
       and(
         eq(chatMessages.chatThreadId, chatThreadId),
-        chatEventTypeIn(["input.prompt", "input.automation"]),
+        chatEventTypeIn(["input.prompt", "input.automation", "input.goal"]),
         isNull(chatMessages.runId),
         createdBefore ? lt(chatMessages.createdAt, createdBefore) : undefined,
         unrevokedQueueEventCondition(db),
@@ -97,7 +95,8 @@ export async function listPendingChatQueueEvents(
   return folded.flatMap((event) => {
     if (
       event.eventType !== "input.prompt" &&
-      event.eventType !== "input.automation"
+      event.eventType !== "input.automation" &&
+      event.eventType !== "input.goal"
     ) {
       return [];
     }
@@ -123,7 +122,7 @@ export async function loadPendingChatQueueEvent(
     .select({
       id: chatMessages.id,
       chatThreadId: chatMessages.chatThreadId,
-      eventType: chatEventTypeSql().as("event_type"),
+      eventType: chatMessages.eventType,
       createdAt: chatMessages.createdAt,
     })
     .from(chatMessages)
@@ -131,7 +130,7 @@ export async function loadPendingChatQueueEvent(
       and(
         eq(chatMessages.id, args.eventId),
         eq(chatMessages.chatThreadId, args.chatThreadId),
-        chatEventTypeIn(["input.prompt", "input.automation"]),
+        chatEventTypeIn(["input.prompt", "input.automation", "input.goal"]),
         isNull(chatMessages.runId),
         unrevokedQueueEventCondition(db),
       ),
@@ -140,7 +139,8 @@ export async function loadPendingChatQueueEvent(
   if (
     !event ||
     (event.eventType !== "input.prompt" &&
-      event.eventType !== "input.automation")
+      event.eventType !== "input.automation" &&
+      event.eventType !== "input.goal")
   ) {
     return null;
   }
@@ -173,7 +173,7 @@ export async function loadChatAutomationIntakePause(
 ): Promise<ChatAutomationIntakePause | null> {
   const rows = await db
     .select({
-      eventType: chatEventTypeSql().as("event_type"),
+      eventType: chatMessages.eventType,
       createdAt: chatMessages.createdAt,
       pauseReason: chatMessages.error,
     })
@@ -270,12 +270,13 @@ export async function staleChatEventQueueThreadIds(
     .from(chatMessages)
     .where(
       and(
-        chatEventTypeIn(["input.prompt", "input.automation"]),
+        chatEventTypeIn(["input.prompt", "input.automation", "input.goal"]),
         isNull(chatMessages.runId),
         lt(chatMessages.createdAt, args.staleBefore),
         unrevokedQueueEventCondition(db),
         or(
           eq(chatMessages.eventType, "input.prompt" satisfies ChatEventType),
+          eq(chatMessages.eventType, "input.goal" satisfies ChatEventType),
           and(
             eq(
               chatMessages.eventType,

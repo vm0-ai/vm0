@@ -4,8 +4,8 @@ import type {
   ZeroWorkflowConnectorReadinessStatus,
 } from "@vm0/api-contracts/contracts/zero-workflows";
 import {
-  connectorRefSchema,
-  type ConnectorRef,
+  connectorSlugSchema,
+  type ConnectorSlug,
 } from "@vm0/api-contracts/contracts/connector-identity";
 import type { getAllFeatureStates } from "@vm0/core/feature-switch";
 import {
@@ -56,7 +56,7 @@ type DetectWorkflowConnectorReadinessResult =
     };
 
 interface AutomationConnectorDependency {
-  readonly connectorRef: ConnectorRef;
+  readonly connectorSlug: ConnectorSlug;
   readonly reason: string;
 }
 
@@ -67,7 +67,7 @@ function automationConnectorDependency(
     case "gmail-new-message":
     case "gmail-label-applied": {
       return {
-        connectorRef: "gmail",
+        connectorSlug: "gmail",
         reason: "This workflow has a Gmail event automation.",
       };
     }
@@ -78,7 +78,7 @@ function automationConnectorDependency(
     case "github-workflow-job-completed":
     case "github-workflow-run-completed": {
       return {
-        connectorRef: "github",
+        connectorSlug: "github",
         reason: "This workflow has a GitHub event automation.",
       };
     }
@@ -86,13 +86,13 @@ function automationConnectorDependency(
     case "google-calendar-event-updated":
     case "google-calendar-event-cancelled": {
       return {
-        connectorRef: "google-calendar",
+        connectorSlug: "google-calendar",
         reason: "This workflow has a Google Calendar event automation.",
       };
     }
     case "google-meet-transcript-generated": {
       return {
-        connectorRef: "google-meet",
+        connectorSlug: "google-meet",
         reason: "This workflow has a Google Meet event automation.",
       };
     }
@@ -100,7 +100,7 @@ function automationConnectorDependency(
     case "notion-database-item-created":
     case "notion-page-content-updated": {
       return {
-        connectorRef: "notion",
+        connectorSlug: "notion",
         reason: "This workflow has a Notion event automation.",
       };
     }
@@ -112,7 +112,8 @@ function automationConnectorDependency(
 
 const modelConnectorSchema = z
   .object({
-    connectorRef: connectorRefSchema,
+    // TODO(#23619): Rename this model response field with the prompt contract.
+    connectorRef: connectorSlugSchema,
     reason: z.string().trim().min(1).max(280),
   })
   .strict();
@@ -138,7 +139,7 @@ async function loadAutomationConnectorDependencies(
     readonly userId: string;
     readonly workflowId: string;
   },
-): Promise<ReadonlyMap<ConnectorRef, AutomationConnectorDependency>> {
+): Promise<ReadonlyMap<ConnectorSlug, AutomationConnectorDependency>> {
   const automations = await db
     .select({ eventType: zeroWorkflowAutomations.eventType })
     .from(zeroWorkflowAutomations)
@@ -150,21 +151,22 @@ async function loadAutomationConnectorDependencies(
       ),
     );
 
-  const dependencies = new Map<ConnectorRef, AutomationConnectorDependency>();
+  const dependencies = new Map<ConnectorSlug, AutomationConnectorDependency>();
   for (const automation of automations) {
     if (!automation.eventType) {
       continue;
     }
     const dependency = automationConnectorDependency(automation.eventType);
-    if (dependency && !dependencies.has(dependency.connectorRef)) {
-      dependencies.set(dependency.connectorRef, dependency);
+    if (dependency && !dependencies.has(dependency.connectorSlug)) {
+      dependencies.set(dependency.connectorSlug, dependency);
     }
   }
   return dependencies;
 }
 
 interface ModelCatalogEntry {
-  readonly connectorRef: ConnectorRef;
+  // TODO(#23619): Keep the model prompt payload aligned with its response schema.
+  readonly connectorRef: ConnectorSlug;
   readonly label: string;
   readonly description: string;
 }
@@ -173,7 +175,7 @@ async function detectModelConnectorDependencies(args: {
   readonly workflow: WorkflowConnectorReadinessInput;
   readonly catalog: readonly ModelCatalogEntry[];
   readonly signal: AbortSignal;
-}): Promise<ReadonlyMap<ConnectorRef, string>> {
+}): Promise<ReadonlyMap<ConnectorSlug, string>> {
   const signal = AbortSignal.any([
     args.signal,
     AbortSignal.timeout(CONNECTOR_READINESS_TIMEOUT_MS),
@@ -212,14 +214,14 @@ async function detectModelConnectorDependencies(args: {
     throw new Error("OpenRouter is not configured");
   }
   const modelResult = modelResultSchema.parse(safeJsonParse(content));
-  const catalogRefs = new Set(
+  const catalogSlugs = new Set(
     args.catalog.map((entry) => {
       return entry.connectorRef;
     }),
   );
-  const dependencies = new Map<ConnectorRef, string>();
+  const dependencies = new Map<ConnectorSlug, string>();
   for (const connector of modelResult.connectors) {
-    if (!catalogRefs.has(connector.connectorRef)) {
+    if (!catalogSlugs.has(connector.connectorRef)) {
       throw new Error(
         `OpenRouter returned unavailable connector ref: ${connector.connectorRef}`,
       );
@@ -300,12 +302,12 @@ export const detectWorkflowConnectorReadiness$ = command(
       db,
       featureStates: args.featureStates,
       connectors: connectorState.connectors,
-      referenceConnectorRefs: [...automationDependencies.keys()],
+      referenceConnectorSlugs: [...automationDependencies.keys()],
     });
     signal.throwIfAborted();
     const statusCatalog = catalogRead.status;
 
-    const statusByRef = new Map(
+    const statusBySlug = new Map(
       statusCatalog.connectors.map((connector) => {
         return [connector.connectorRef, connector];
       }),
@@ -327,28 +329,30 @@ export const detectWorkflowConnectorReadiness$ = command(
     signal.throwIfAborted();
     const automationFallbackMetadata = new Map(
       catalogRead.referenceMetadata.map((connector) => {
-        return [connector.connectorRef, connector];
+        return [connector.connectorSlug, connector];
       }),
     );
-    const enabledForAgent = new Set<ConnectorRef>(
-      agentScope.allowedConnectorTypes,
+    const enabledForAgent = new Set<ConnectorSlug>(
+      agentScope.allowedConnectorSlugs,
     );
-    const mergedDependencies = new Map<ConnectorRef, string>(modelDependencies);
+    const mergedDependencies = new Map<ConnectorSlug, string>(
+      modelDependencies,
+    );
     for (const dependency of automationDependencies.values()) {
-      mergedDependencies.set(dependency.connectorRef, dependency.reason);
+      mergedDependencies.set(dependency.connectorSlug, dependency.reason);
     }
     const connectors: ZeroWorkflowConnectorReadinessEntry[] = [];
-    for (const [connectorRef, reason] of mergedDependencies) {
-      const catalogEntry = statusByRef.get(connectorRef);
+    for (const [connectorSlug, reason] of mergedDependencies) {
+      const catalogEntry = statusBySlug.get(connectorSlug);
       if (!catalogEntry) {
-        const fallbackMetadata = automationFallbackMetadata.get(connectorRef);
+        const fallbackMetadata = automationFallbackMetadata.get(connectorSlug);
         if (!fallbackMetadata) {
           throw new Error(
-            `Missing connector catalog metadata: ${connectorRef}`,
+            `Missing connector catalog metadata: ${connectorSlug}`,
           );
         }
         connectors.push({
-          connectorRef,
+          connectorRef: connectorSlug,
           label: fallbackMetadata.label,
           icon: fallbackMetadata.icon,
           reason,
@@ -357,13 +361,13 @@ export const detectWorkflowConnectorReadiness$ = command(
         continue;
       }
       connectors.push({
-        connectorRef,
+        connectorRef: connectorSlug,
         label: catalogEntry.label,
         icon: catalogEntry.icon,
         reason,
         status: readinessStatus({
           connectionStatus: catalogEntry.connectionStatus,
-          enabledForAgent: enabledForAgent.has(connectorRef),
+          enabledForAgent: enabledForAgent.has(connectorSlug),
         }),
       });
     }

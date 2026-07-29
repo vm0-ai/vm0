@@ -14,10 +14,10 @@ export const setupDirectedConnectPage$ = command(
     }
 
     const params = get(pathParams$);
-    const type = typeof params?.type === "string" ? params.type : "";
+    const connectorSlug = typeof params?.type === "string" ? params.type : "";
 
     set(updatePage$, createElement(ZeroDirectedConnectPage), "minimal");
-    set(updateDocumentTitle$, `Connect ${type}`);
+    set(updateDocumentTitle$, `Connect ${connectorSlug}`);
     await set(hideAppSkeleton$, signal);
   },
 );

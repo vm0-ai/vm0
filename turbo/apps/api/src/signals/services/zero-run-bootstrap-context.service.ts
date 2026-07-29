@@ -31,7 +31,7 @@ import type { ReadonlyDb } from "../external/db";
 import {
   agentConnectorScopeFromRows,
   type AgentConnectorScope,
-  type AgentConnectorTypeRow,
+  type AgentConnectorSlugRow,
   type AgentCustomConnectorRow,
 } from "./agent-connector-scope.service";
 import {
@@ -333,7 +333,7 @@ export function materializeZeroRunBootstrapContext(
     timezone: null,
   };
   const featureSwitchRows: UserFeatureSwitchOverrideRow[] = [];
-  const connectorRows: AgentConnectorTypeRow[] = [];
+  const connectorRows: AgentConnectorSlugRow[] = [];
   const customConnectorRows: AgentCustomConnectorRow[] = [];
   const permissionGrants: FirewallPermissionGrant[] = [];
   let triggerAgentId: string | undefined;
@@ -362,7 +362,7 @@ export function materializeZeroRunBootstrapContext(
         if (row.name === null) {
           throw new Error("Invalid Zero bootstrap metadata connector row");
         }
-        connectorRows.push({ connectorType: row.name });
+        connectorRows.push({ connectorSlug: row.name });
         break;
       }
       case "custom_connector": {
@@ -381,6 +381,7 @@ export function materializeZeroRunBootstrapContext(
           );
         }
         permissionGrants.push({
+          // TODO(#23619): Rename with the runner permission-grant payload.
           connectorRef: row.name,
           permission: row.detail,
           action: row.action,

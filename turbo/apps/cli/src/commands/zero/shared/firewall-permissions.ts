@@ -7,7 +7,7 @@ import type {
 import { getZeroConnectorCatalogPermissions } from "../../../lib/api";
 
 export interface ConnectorPermissionInfo {
-  readonly type: string;
+  readonly connectorSlug: string;
   readonly hasPermissions: boolean;
   readonly hasPolicyEntry: boolean;
   readonly permissions: readonly PublicConnectorCatalogPermissionDetail["permissions"][number][];
@@ -17,31 +17,34 @@ export interface ConnectorPermissionInfo {
   readonly total: number;
 }
 
-type PermissionMetadataByType = Map<
+type PermissionMetadataBySlug = Map<
   string,
   PublicConnectorCatalogPermissionDetail | null
 >;
 
-async function loadPermissionMetadataByType(
-  types: readonly string[],
-): Promise<PermissionMetadataByType> {
-  const uniqueTypes = [...new Set(types)];
+async function loadPermissionMetadataBySlug(
+  connectorSlugs: readonly string[],
+): Promise<PermissionMetadataBySlug> {
+  const uniqueConnectorSlugs = [...new Set(connectorSlugs)];
   const entries = await Promise.all(
-    uniqueTypes.map(async (type) => {
-      return [type, await getZeroConnectorCatalogPermissions(type)] as const;
+    uniqueConnectorSlugs.map(async (connectorSlug) => {
+      return [
+        connectorSlug,
+        await getZeroConnectorCatalogPermissions(connectorSlug),
+      ] as const;
     }),
   );
   return new Map(entries);
 }
 
 function connectorPermissionInfo(args: {
-  readonly type: string;
+  readonly connectorSlug: string;
   readonly metadata: PublicConnectorCatalogPermissionDetail | null;
   readonly resolvedPolicies: FirewallPolicies | null;
 }): ConnectorPermissionInfo {
   if (!args.metadata) {
     return {
-      type: args.type,
+      connectorSlug: args.connectorSlug,
       hasPermissions: false,
       hasPolicyEntry: false,
       permissions: [],
@@ -52,10 +55,10 @@ function connectorPermissionInfo(args: {
     };
   }
 
-  const refPolicy = args.resolvedPolicies?.[args.metadata.connectorRef];
+  const connectorPolicy = args.resolvedPolicies?.[args.metadata.connectorRef];
   const policies =
-    refPolicy && Object.keys(refPolicy.policies).length > 0
-      ? refPolicy.policies
+    connectorPolicy && Object.keys(connectorPolicy.policies).length > 0
+      ? connectorPolicy.policies
       : null;
   const total = args.metadata.permissions.length;
   const allowed = policies
@@ -65,39 +68,41 @@ function connectorPermissionInfo(args: {
     : 0;
 
   return {
-    type: args.type,
+    connectorSlug: args.connectorSlug,
     hasPermissions: true,
-    hasPolicyEntry: refPolicy !== undefined,
+    hasPolicyEntry: connectorPolicy !== undefined,
     permissions: args.metadata.permissions,
     policies,
-    unknownPolicy: refPolicy?.unknownPolicy ?? "allow",
+    unknownPolicy: connectorPolicy?.unknownPolicy ?? "allow",
     allowed,
     total,
   };
 }
 
 export async function loadConnectorPermissionInfos(args: {
-  readonly displayTypes: readonly string[];
-  readonly defaultPolicyTypes: readonly string[];
+  readonly displayConnectorSlugs: readonly string[];
+  readonly defaultPolicyConnectorSlugs: readonly string[];
   readonly storedPolicies: FirewallPolicies | null;
 }): Promise<ConnectorPermissionInfo[]> {
-  const metadataByType = await loadPermissionMetadataByType([
-    ...args.displayTypes,
-    ...args.defaultPolicyTypes,
+  const metadataBySlug = await loadPermissionMetadataBySlug([
+    ...args.displayConnectorSlugs,
+    ...args.defaultPolicyConnectorSlugs,
   ]);
-  const defaultPolicyMetadata = args.defaultPolicyTypes.flatMap((type) => {
-    const metadata = metadataByType.get(type);
-    return metadata ? [metadata] : [];
-  });
+  const defaultPolicyMetadata = args.defaultPolicyConnectorSlugs.flatMap(
+    (connectorSlug) => {
+      const metadata = metadataBySlug.get(connectorSlug);
+      return metadata ? [metadata] : [];
+    },
+  );
   const resolvedPolicies = resolveFirewallMetadataPolicies(
     args.storedPolicies,
     defaultPolicyMetadata,
   );
 
-  return args.displayTypes.map((type) => {
+  return args.displayConnectorSlugs.map((connectorSlug) => {
     return connectorPermissionInfo({
-      type,
-      metadata: metadataByType.get(type) ?? null,
+      connectorSlug,
+      metadata: metadataBySlug.get(connectorSlug) ?? null,
       resolvedPolicies,
     });
   });

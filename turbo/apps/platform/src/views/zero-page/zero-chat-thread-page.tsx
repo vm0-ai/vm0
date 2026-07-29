@@ -4285,7 +4285,7 @@ type ApplyUserPermissionGrantFn = (
   params: {
     agentId?: string;
     workflowId?: string;
-    connectorRef: string;
+    connectorSlug: string;
     permission: string;
     action: PermissionAction;
     expiresIn?: UserPermissionGrantExpiresIn;
@@ -4510,7 +4510,7 @@ function permissionActionUserGrant(
   }
   return grants.find((grant) => {
     return (
-      grant.connectorRef === block.connectorRef &&
+      grant.connectorRef === block.connectorSlug &&
       grant.permission === block.permission &&
       grant.action === block.action
     );
@@ -4681,7 +4681,7 @@ function createPermissionActionHandler(params: {
             await params.applyGrant(
               {
                 agentId: params.block.agentId,
-                connectorRef: params.block.connectorRef,
+                connectorSlug: params.block.connectorSlug,
                 permission: permissionName,
                 action: params.block.action,
                 ...(params.expirationAvailable
@@ -4856,7 +4856,7 @@ function PermissionActionCardForTarget({
     <PermissionActionCardContent
       signals={signals}
       icon={permissionMetadata?.icon}
-      connectorLabel={permissionMetadata?.label ?? signals.connectorRef}
+      connectorLabel={permissionMetadata?.label ?? signals.connectorSlug}
       actionLabel={actionState.actionLabel}
       permissionName={actionState.focusedPermission?.name ?? signals.permission}
       status={actionState.status}

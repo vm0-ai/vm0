@@ -3,30 +3,21 @@ import { randomBytes } from "node:crypto";
 import { agentRuns } from "@vm0/db/schema/agent-run";
 import { zeroRuns } from "@vm0/db/schema/zero-run";
 import { command } from "ccstate";
-import { and, eq, inArray } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 
 import { logger } from "../../lib/log";
-import { writeDb$, type Db } from "../external/db";
-import { now } from "../external/time";
+import type { Db } from "../external/db";
+import { settle } from "../utils";
 import type { DispatchFailedRunCallbacks } from "./agent-run-create.service";
-import type { InternalRunCallbackKind } from "./internal-run-callback";
+import { admitGoalQueueEvent } from "./chat-goal-queue.service";
+import { drainChatThreadQueueForThread$ } from "./chat-thread-queue-drain.service";
 import {
-  postRunUserMessage,
-  resolveRunChatThreadModelContext,
-} from "./zero-chat-run-message.service";
-import { hasUnclaimedQueuedUserMessage } from "./zero-chat-queued-message.service";
-import {
-  pauseActiveGoalForThread,
   loadActiveGoalForThread,
+  pauseActiveGoalForThread,
   type GoalBootstrap,
 } from "./zero-goal.service";
-import { normalizeGoalObjectiveBrief } from "./zero-goal-objective-brief-normalization.service";
-import type { ModelFirstPin } from "./zero-model-selection.service";
-import { createZeroRun$ } from "./zero-runs-create.service";
 
 const log = logger("api:zero-goal-continuation");
-
-const ACTIVE_RUN_STATUSES = ["queued", "pending", "running"] as const;
 
 type TerminalRunStatus = "completed" | "failed" | "timeout" | "cancelled";
 
@@ -38,47 +29,23 @@ interface TerminatingRunContext {
   readonly chatThreadId: string | null;
 }
 
-type GoalContinuationResult =
-  | { readonly kind: "skipped"; readonly reason: string }
-  | { readonly kind: "continued"; readonly runId: string }
-  | { readonly kind: "paused"; readonly goalId: string }
+type GoalEnqueueResult =
+  | {
+      readonly kind: "enqueued";
+      readonly goalId: string;
+      readonly eventId: string;
+    }
+  | { readonly kind: "coalesced"; readonly goalId: string }
   | {
       readonly kind: "failed-to-enqueue";
       readonly goalId: string;
       readonly error: string;
     };
 
-type RunGoalResult =
-  | { readonly kind: "ok"; readonly runId: string }
-  | { readonly kind: "conflict"; readonly message: string }
-  | {
-      readonly kind: "run_error";
-      readonly response: {
-        readonly status: number;
-        readonly body: {
-          readonly error: { readonly message: string; readonly code: string };
-        };
-      };
-    };
-
-interface InternalRunCallbackInput {
-  readonly internalKind: InternalRunCallbackKind;
-  readonly secret: string;
-  readonly payload: unknown;
-}
-
-type ModelContext =
-  | {
-      readonly ok: true;
-      readonly modelPin: ModelFirstPin;
-      readonly effectiveModelProvider: string | null | undefined;
-      readonly cliAgentType: string | null;
-      readonly codexServiceTier: "fast" | undefined;
-    }
-  | {
-      readonly ok: false;
-      readonly failure: Exclude<RunGoalResult, { kind: "ok" }>;
-    };
+type GoalContinuationResult =
+  | { readonly kind: "skipped"; readonly reason: string }
+  | GoalEnqueueResult
+  | { readonly kind: "paused"; readonly goalId: string };
 
 function generateCallbackSecret(): string {
   return randomBytes(32).toString("hex");
@@ -93,45 +60,8 @@ function isTerminalStatus(status: string): status is TerminalRunStatus {
   );
 }
 
-function failureMessage(error: RunGoalResult): string {
-  if (error.kind === "conflict") {
-    return error.message;
-  }
-  if (error.kind === "run_error") {
-    return `${error.response.status} ${error.response.body.error.code}: ${error.response.body.error.message}`;
-  }
-  return `Unexpected successful run result: ${error.runId}`;
-}
-
-function buildGoalContinuationPrompt(goal: {
-  readonly objective: string;
-  readonly objectiveBrief: string;
-}): string {
-  const lines = [
-    "# Current context",
-    "You are autonomously continuing a persistent goal on this web chat thread.",
-    "Everything you output is shown to the user in this thread.",
-    "",
-    "# Active thread goal",
-    "",
-    goal.objective,
-  ];
-  if (goal.objectiveBrief !== goal.objective) {
-    lines.push("", "# User-visible objective brief", "", goal.objectiveBrief);
-  }
-  lines.push(
-    "",
-    "# How to operate",
-    "",
-    "- Make concrete progress this turn, then end the turn. The goal automatically continues on the next idle.",
-    "- Persist all progress to durable external state (commits, PRs, uploaded artifacts, connectors).",
-    "- When the objective is verifiably done, audit it requirement-by-requirement against the current external state; only then run `zero goal complete`.",
-    "- If the same blocker stops you for 3 consecutive turns, run `zero goal block` and explain why.",
-    "- Inspect goal state anytime with `zero goal get`.",
-    "- Do not create, edit, pause, resume, or clear goals from an autonomous goal continuation run.",
-    "- Do not stop to ask the user and wait; act on the best available information.",
-  );
-  return lines.join("\n");
+function errorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
 }
 
 async function loadTerminatingRun(
@@ -154,189 +84,65 @@ async function loadTerminatingRun(
   return row ?? null;
 }
 
-async function threadIsIdle(db: Db, chatThreadId: string): Promise<boolean> {
-  if (await hasUnclaimedQueuedUserMessage(db, chatThreadId)) {
-    return false;
-  }
-
-  const [activeRun] = await db
-    .select({ id: zeroRuns.id })
-    .from(zeroRuns)
-    .innerJoin(agentRuns, eq(agentRuns.id, zeroRuns.id))
-    .where(
-      and(
-        eq(zeroRuns.chatThreadId, chatThreadId),
-        inArray(agentRuns.status, ACTIVE_RUN_STATUSES),
-      ),
-    )
-    .limit(1);
-
-  return activeRun === undefined;
-}
-
-function buildGoalChatCallbacks(args: {
-  readonly threadId: string;
-  readonly agentId: string;
-}): readonly InternalRunCallbackInput[] {
-  return [
-    {
-      internalKind: "chat",
-      secret: generateCallbackSecret(),
-      payload: {
-        threadId: args.threadId,
-        agentId: args.agentId,
-        isGoalRun: true,
-      },
-    },
-  ];
-}
-
-async function resolveModelContext(args: {
-  readonly db: Db;
-  readonly orgId: string;
-  readonly userId: string;
-  readonly chatThreadId: string;
-  readonly signal: AbortSignal;
-}): Promise<ModelContext> {
-  const threadModelContext = await resolveRunChatThreadModelContext({
-    db: args.db,
-    orgId: args.orgId,
-    userId: args.userId,
-    threadId: args.chatThreadId,
-  });
-  args.signal.throwIfAborted();
-  if ("status" in threadModelContext) {
-    return {
-      ok: false,
-      failure: {
-        kind: "run_error",
-        response: {
-          status: threadModelContext.status,
-          body: threadModelContext.body,
-        },
-      },
-    };
-  }
-
-  const { pin, providerAdmission, runCodexServiceTier } = threadModelContext;
-  args.signal.throwIfAborted();
-  if (providerAdmission.error) {
-    return {
-      ok: false,
-      failure: { kind: "run_error", response: providerAdmission.error },
-    };
-  }
-
-  return {
-    ok: true,
-    modelPin: pin,
-    effectiveModelProvider: providerAdmission.effectiveModelProvider,
-    cliAgentType: providerAdmission.cliAgentType,
-    codexServiceTier: runCodexServiceTier,
-  };
-}
-
-const runGoalNow$ = command(
+const enqueueGoalContinuation$ = command(
   async (
     { set },
     args: {
+      readonly db: Db;
       readonly goal: GoalBootstrap;
       readonly dispatchFailedCallbacks: DispatchFailedRunCallbacks;
     },
     signal: AbortSignal,
-  ): Promise<RunGoalResult> => {
-    const db = set(writeDb$);
-    const goal = args.goal;
-
-    const modelContext = await resolveModelContext({
-      db,
-      orgId: goal.orgId,
-      userId: goal.userId,
-      chatThreadId: goal.threadId,
-      signal,
-    });
-    if (!modelContext.ok) {
-      return modelContext.failure;
-    }
-    const { modelPin, effectiveModelProvider, cliAgentType, codexServiceTier } =
-      modelContext;
-
-    const normalizedGoal = {
-      ...goal,
-      objectiveBrief: normalizeGoalObjectiveBrief({
-        objective: goal.objective,
-        objectiveBrief: goal.objectiveBrief,
+  ): Promise<GoalEnqueueResult> => {
+    const admission = await settle(
+      admitGoalQueueEvent(args.db, {
+        chatThreadId: args.goal.threadId,
+        orgId: args.goal.orgId,
+        userId: args.goal.userId,
+        params: {
+          goalId: args.goal.goalId,
+          callbackSecret: generateCallbackSecret(),
+        },
       }),
-    };
-    const prompt = buildGoalContinuationPrompt(normalizedGoal);
-    const result = await set(
-      createZeroRun$,
+    );
+    signal.throwIfAborted();
+    if (!admission.ok) {
+      const paused = await pauseActiveGoalForThread(args.db, {
+        orgId: args.goal.orgId,
+        userId: args.goal.userId,
+        threadId: args.goal.threadId,
+      });
+      signal.throwIfAborted();
+      const message = errorMessage(admission.error);
+      log.warn("Goal continuation enqueue failed; goal paused", {
+        goalId: args.goal.goalId,
+        error: message,
+        pauseResult: paused.kind,
+      });
+      return {
+        kind: "failed-to-enqueue",
+        goalId: args.goal.goalId,
+        error: message,
+      };
+    }
+
+    await set(
+      drainChatThreadQueueForThread$,
       {
-        auth: {
-          orgId: goal.orgId,
-          orgRole: "member",
-          userId: goal.userId,
-          tokenType: "session",
-        },
-        body: {
-          prompt,
-          agentId: goal.agentId,
-          ...(effectiveModelProvider
-            ? { modelProvider: effectiveModelProvider }
-            : {}),
-        },
-        apiStartTime: now(),
-        triggerSource: "workflow-event",
-        chatThreadId: goal.threadId,
-        modelProviderId: modelPin.modelProviderId ?? undefined,
-        modelProviderCredentialScope:
-          modelPin.modelProviderCredentialScope ?? undefined,
-        selectedModelOverride: modelPin.selectedModel ?? undefined,
-        threadSessionRoute: {
-          selectedModel: modelPin.selectedModel,
-          modelProvider: effectiveModelProvider ?? null,
-          cliAgentType,
-        },
-        codexServiceTier,
-        callbacks: buildGoalChatCallbacks({
-          threadId: goal.threadId,
-          agentId: goal.agentId,
-        }),
-        zeroRunMetadata: { goalId: goal.goalId, runGroupId: goal.goalId },
+        chatThreadId: args.goal.threadId,
         dispatchFailedCallbacks: args.dispatchFailedCallbacks,
       },
       signal,
     );
     signal.throwIfAborted();
 
-    if (result.status !== 201) {
-      return { kind: "run_error", response: result };
-    }
-
-    await postRunUserMessage({
-      db,
-      threadId: goal.threadId,
-      userId: goal.userId,
-      runId: result.body.runId,
-      prompt,
-      appendQueueMarker: result.body.status === "queued",
-      runGroupId: goal.goalId,
-      goalSnapshot: { objectiveBrief: normalizedGoal.objectiveBrief },
-    });
-    signal.throwIfAborted();
-
-    await db
-      .update(zeroRuns)
-      .set({
-        modelProvider: effectiveModelProvider,
-        modelProviderId: modelPin.modelProviderId,
-        modelProviderCredentialScope: modelPin.modelProviderCredentialScope,
-        selectedModel: modelPin.selectedModel,
-      })
-      .where(eq(zeroRuns.id, result.body.runId));
-    signal.throwIfAborted();
-
-    return { kind: "ok", runId: result.body.runId };
+    return admission.value.kind === "inserted"
+      ? {
+          kind: "enqueued",
+          goalId: args.goal.goalId,
+          eventId: admission.value.eventId,
+        }
+      : { kind: "coalesced", goalId: args.goal.goalId };
   },
 );
 
@@ -350,8 +156,7 @@ export const continueGoalIfIdle$ = command(
     },
     signal: AbortSignal,
   ): Promise<GoalContinuationResult> => {
-    const db = args.db;
-    const run = await loadTerminatingRun(db, args.runId);
+    const run = await loadTerminatingRun(args.db, args.runId);
     signal.throwIfAborted();
     if (!run?.chatThreadId) {
       return { kind: "skipped", reason: "run-not-linked-to-chat-thread" };
@@ -359,7 +164,7 @@ export const continueGoalIfIdle$ = command(
     if (!isTerminalStatus(run.status)) {
       return { kind: "skipped", reason: "run-not-terminal" };
     }
-    const goal = await loadActiveGoalForThread(db, {
+    const goal = await loadActiveGoalForThread(args.db, {
       orgId: run.orgId,
       threadId: run.chatThreadId,
     });
@@ -373,7 +178,7 @@ export const continueGoalIfIdle$ = command(
       run.status === "failed" ||
       run.status === "timeout"
     ) {
-      const paused = await pauseActiveGoalForThread(db, {
+      const paused = await pauseActiveGoalForThread(args.db, {
         orgId: run.orgId,
         userId: run.userId,
         threadId: run.chatThreadId,
@@ -385,54 +190,20 @@ export const continueGoalIfIdle$ = command(
       return { kind: "paused", goalId: goal.id };
     }
 
-    if (!(await threadIsIdle(db, run.chatThreadId))) {
-      return { kind: "skipped", reason: "thread-not-idle" };
-    }
-    signal.throwIfAborted();
-
-    const runResult = await set(
-      runGoalNow$,
+    return await set(
+      enqueueGoalContinuation$,
       {
+        db: args.db,
         goal: {
           goalId: goal.id,
           orgId: goal.orgId,
           userId: goal.ownerUserId,
           threadId: goal.chatThreadId,
-          agentId: goal.agentId,
-          objective: goal.objective,
-          objectiveBrief: goal.objectiveBrief,
         },
         dispatchFailedCallbacks: args.dispatchFailedCallbacks,
       },
       signal,
     );
-    signal.throwIfAborted();
-
-    if (runResult.kind === "ok") {
-      return { kind: "continued", runId: runResult.runId };
-    }
-    if (runResult.kind === "conflict") {
-      return { kind: "skipped", reason: "previous-run-active" };
-    }
-
-    const paused = await pauseActiveGoalForThread(db, {
-      orgId: run.orgId,
-      userId: run.userId,
-      threadId: run.chatThreadId,
-    });
-    signal.throwIfAborted();
-    const error = failureMessage(runResult);
-    log.warn("Goal continuation enqueue failed; goal paused", {
-      goalId: goal.id,
-      runId: run.runId,
-      error,
-      pauseResult: paused.kind,
-    });
-    return {
-      kind: "failed-to-enqueue",
-      goalId: goal.id,
-      error,
-    };
   },
 );
 
@@ -440,18 +211,12 @@ export const bootstrapGoalRun$ = command(
   async (
     { set },
     args: {
+      readonly db: Db;
       readonly goal: GoalBootstrap;
       readonly dispatchFailedCallbacks: DispatchFailedRunCallbacks;
     },
     signal: AbortSignal,
-  ): Promise<RunGoalResult> => {
-    return await set(
-      runGoalNow$,
-      {
-        goal: args.goal,
-        dispatchFailedCallbacks: args.dispatchFailedCallbacks,
-      },
-      signal,
-    );
+  ): Promise<GoalEnqueueResult> => {
+    return await set(enqueueGoalContinuation$, args, signal);
   },
 );

@@ -19,10 +19,10 @@ import {
   stubConnectorCatalogStatus,
 } from "../../__tests__/helpers/connector-catalog";
 
-function connectorResponse(type: string, authMethod = "api-token") {
+function connectorResponse(connectorSlug: string, authMethod = "api-token") {
   return {
     id: "00000000-0000-4000-8000-000000000001",
-    type,
+    type: connectorSlug,
     authMethod,
     externalId: null,
     externalUsername: null,
@@ -125,14 +125,14 @@ describe("zero connector connect command", () => {
   });
 
   it("uses server-authored connector and auth method identities", async () => {
-    const connectorRef = "server-authored-connector";
+    const connectorSlug = "server-authored-connector";
     const authMethod = "partner-token";
     let receivedType: string | undefined;
     let receivedBody: unknown;
     server.use(
       stubConnectorCatalogStatus([
         catalogStatusItem({
-          connectorRef,
+          connectorSlug,
           label: "Partner Connector",
           authMethods: [manualAuthMethod(authMethod)],
         }),
@@ -142,7 +142,9 @@ describe("zero connector connect command", () => {
         async ({ params, request }) => {
           receivedType = String(params.type);
           receivedBody = await request.json();
-          return HttpResponse.json(connectorResponse(connectorRef, authMethod));
+          return HttpResponse.json(
+            connectorResponse(connectorSlug, authMethod),
+          );
         },
       ),
     );
@@ -150,12 +152,12 @@ describe("zero connector connect command", () => {
     await connectCommand.parseAsync([
       "node",
       "cli",
-      connectorRef,
+      connectorSlug,
       "--value",
       "apiKey=secret-token",
     ]);
 
-    expect(receivedType).toBe(connectorRef);
+    expect(receivedType).toBe(connectorSlug);
     expect(receivedBody).toStrictEqual({
       authMethod,
       values: { apiKey: "secret-token" },

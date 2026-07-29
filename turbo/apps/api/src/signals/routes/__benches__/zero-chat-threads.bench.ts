@@ -110,13 +110,13 @@ interface BenchChatThreadFixture {
 }
 
 function benchCatalogConnector(args: {
-  readonly connectorRef: string;
+  readonly connectorSlug: string;
   readonly label: string;
   readonly iconKey: string;
   readonly secretName: string;
 }): ConnectorCatalogArtifactConnector {
   return {
-    connectorRef: args.connectorRef,
+    connectorRef: args.connectorSlug,
     label: args.label,
     description: `${args.label} connector used by the API benchmark`,
     category: "benchmark",
@@ -181,21 +181,21 @@ const BENCH_CONNECTOR_CATALOG = {
   },
   connectors: [
     benchCatalogConnector({
-      connectorRef: "benchmark-github",
+      connectorSlug: "benchmark-github",
       label: "GitHub",
       iconKey:
         "views/zero-page/components/settings/icons/github-4a739019d805.svg",
       secretName: "GITHUB_TOKEN",
     }),
     benchCatalogConnector({
-      connectorRef: "benchmark-notion",
+      connectorSlug: "benchmark-notion",
       label: "Notion",
       iconKey:
         "views/zero-page/components/settings/icons/notion-beeb509915a9.svg",
       secretName: "NOTION_TOKEN",
     }),
     benchCatalogConnector({
-      connectorRef: "benchmark-slack",
+      connectorSlug: "benchmark-slack",
       label: "Slack",
       iconKey:
         "views/zero-page/components/settings/icons/slack-198390069136.svg",
@@ -829,21 +829,21 @@ const ensureSeeded: () => Promise<BenchChatThreadFixture> = (() => {
           `connector sanity check failed: status=${String(connectorSanity.status)} body=${JSON.stringify(connectorSanity.body)}`,
         );
       }
-      const listedConnectorRefs = new Set(
+      const listedConnectorSlugs = new Set(
         connectorSanity.body.connectors.map((connector) => {
           return connector.type;
         }),
       );
-      const missingConnectorRefs = BENCH_CONNECTOR_CATALOG.connectors
+      const missingConnectorSlugs = BENCH_CONNECTOR_CATALOG.connectors
         .map((connector) => {
           return connector.connectorRef;
         })
-        .filter((connectorRef) => {
-          return !listedConnectorRefs.has(connectorRef);
+        .filter((connectorSlug) => {
+          return !listedConnectorSlugs.has(connectorSlug);
         });
-      if (missingConnectorRefs.length > 0) {
+      if (missingConnectorSlugs.length > 0) {
         throw new Error(
-          `connector sanity check omitted seeded connectors: ${missingConnectorRefs.join(", ")}`,
+          `connector sanity check omitted seeded connectors: ${missingConnectorSlugs.join(", ")}`,
         );
       }
       return seeded;

@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 import { useGet, useSet } from "ccstate-react";
 import { IconLoader2 } from "@tabler/icons-react";
+import { useTranslation } from "react-i18next";
 import {
   Dialog,
   DialogContent,
@@ -37,10 +38,17 @@ function OnboardingProgress({
   readonly current: number;
   readonly total: number;
 }) {
+  const { t } = useTranslation();
+
   return (
     <div
       className="flex h-1 w-full gap-1.5"
-      aria-label={`Step ${current} of ${total}`}
+      aria-label={t(
+        ($) => {
+          return $.onboarding.common.stepProgress;
+        },
+        { current, total },
+      )}
     >
       {Array.from({ length: total }, (_, index) => {
         return (
@@ -72,6 +80,8 @@ export function OnboardingFooter({
   readonly primaryDisabled?: boolean;
   readonly busy?: boolean;
 }) {
+  const { t } = useTranslation();
+
   return (
     <div className="flex w-full items-center justify-between gap-3 pl-16 sm:pl-0">
       {onBack ? (
@@ -80,7 +90,9 @@ export function OnboardingFooter({
           className="h-10 border-0 bg-transparent px-0 text-sm font-medium text-primary hover:text-[hsl(var(--primary-800))]"
           onClick={onBack}
         >
-          Back
+          {t(($) => {
+            return $.onboarding.common.back;
+          })}
         </button>
       ) : (
         <span />
@@ -114,6 +126,8 @@ export function OnboardingDialog({
   readonly footer?: ReactNode;
   readonly onClose: () => void;
 }) {
+  const { t } = useTranslation();
+
   return (
     <Dialog
       open
@@ -138,7 +152,12 @@ export function OnboardingDialog({
               </DialogDescription>
             ) : (
               <DialogDescription className="sr-only">
-                {title} preview
+                {t(
+                  ($) => {
+                    return $.onboarding.common.dialogPreview;
+                  },
+                  { title },
+                )}
               </DialogDescription>
             )}
           </div>

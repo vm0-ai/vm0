@@ -331,12 +331,16 @@ export async function publishCancelToRunnerGroup(
 export async function publishNetworkPolicyRefreshToRunnerGroup(
   group: string,
   runId: string,
-  connectorRef: string,
+  connectorSlug: string,
 ): Promise<void> {
   const channel = ablyClient().channels.get(`runner-group:${group}`);
-  await channel.publish("network-policy-refresh", { runId, connectorRef });
+  // TODO(#23619): Rename with the runner realtime notification contract.
+  await channel.publish("network-policy-refresh", {
+    runId,
+    connectorRef: connectorSlug,
+  });
   L.debug(
-    `Published network policy refresh ${runId}/${connectorRef} to runner-group:${group}`,
+    `Published network policy refresh ${runId}/${connectorSlug} to runner-group:${group}`,
   );
 }
 

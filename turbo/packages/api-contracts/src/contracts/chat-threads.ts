@@ -1,6 +1,9 @@
 import { z } from "zod";
 import { authHeadersSchema, initContract } from "./base";
-import { chatEventTypeSchema } from "./chat-events";
+import {
+  MATERIALIZED_CHAT_EVENT_TYPES,
+  chatEventTypeSchema,
+} from "./chat-events";
 import { apiErrorSchema } from "./errors";
 import { requireUserMessageForNonEmptyDraft } from "./draft-user-message";
 import { hostedArtifactKindSchema } from "./zero-host";
@@ -624,8 +627,13 @@ const chatEventSchema = z.discriminatedUnion("eventType", [
 
 const chatEventResponseSchema = chatEventSchema;
 
-if (chatEventTypeSchema.options.length !== chatEventSchema.options.length) {
-  throw new Error("ChatEvent schema must cover the complete event catalog");
+if (
+  MATERIALIZED_CHAT_EVENT_TYPES.length !== chatEventSchema.options.length ||
+  !chatEventTypeSchema.options.includes("input.goal")
+) {
+  throw new Error(
+    "ChatEvent schema must cover every materialized event catalog leaf",
+  );
 }
 
 const chatThreadDetailSchema = z.object({

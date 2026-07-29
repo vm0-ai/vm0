@@ -801,17 +801,17 @@ describe("GET /api/zero/connector-catalog", () => {
     mocks.clerk.session(userId, orgId);
 
     const client = setupApp({ context })(zeroConnectorCatalogContract);
-    const connectorRef = "x".repeat(65);
+    const connectorSlug = "x".repeat(65);
     const detailResponse = await accept(
       client.get({
-        params: { connectorRef },
+        params: { connectorRef: connectorSlug },
         headers: { authorization: "Bearer clerk-session" },
       }),
       [400],
     );
     const permissionResponse = await accept(
       client.permissions({
-        params: { connectorRef },
+        params: { connectorRef: connectorSlug },
         headers: { authorization: "Bearer clerk-session" },
       }),
       [400],

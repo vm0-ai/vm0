@@ -3433,6 +3433,110 @@ async function validateChatEventTableRename(): Promise<void> {
   );
 }
 
+const CHAT_INPUT_GOAL_PREVIOUS_MIGRATION = 723;
+const CHAT_INPUT_GOAL_MIGRATION = 724;
+
+async function validateChatInputGoalEvent(): Promise<void> {
+  console.log("=== Validate dedicated input.goal queue event ===\n");
+
+  const testDb = "migration_chat_input_goal_event_test";
+  const testDbUrl = createTestDbUrl(testDb);
+  const composeId = "96000000-0000-4000-8000-000000000001";
+  const threadId = "96000000-0000-4000-8000-000000000002";
+
+  await createDatabase(testDb);
+  try {
+    await runMigrationsUpTo(testDbUrl, CHAT_INPUT_GOAL_PREVIOUS_MIGRATION);
+    const client = new Client({ connectionString: testDbUrl });
+    await client.connect();
+    try {
+      await client.query(
+        `
+          INSERT INTO "agent_composes" ("id", "user_id", "name", "org_id")
+          VALUES (
+            $1,
+            'chat-input-goal-event-user',
+            'chat-input-goal-event',
+            'chat-input-goal-event-org'
+          )
+        `,
+        [composeId],
+      );
+      await client.query(
+        `
+          INSERT INTO "chat_threads" (
+            "id",
+            "user_id",
+            "agent_compose_id"
+          )
+          VALUES (
+            $1,
+            'chat-input-goal-event-user',
+            $2
+          )
+        `,
+        [threadId, composeId],
+      );
+
+      await expectDatabaseError(client, {
+        code: "23514",
+        query: `
+          INSERT INTO "chat_events" (
+            "chat_thread_id",
+            "event_type",
+            "encrypted_params"
+          )
+          VALUES ($1, 'input.goal', 'pre-migration-goal-params')
+        `,
+        values: [threadId],
+      });
+
+      await applyMigrationsUpToInTransaction(client, CHAT_INPUT_GOAL_MIGRATION);
+
+      const goalEvent = await client.query<{ id: string }>(
+        `
+          INSERT INTO "chat_events" (
+            "chat_thread_id",
+            "event_type",
+            "encrypted_params"
+          )
+          VALUES ($1, 'input.goal', 'post-migration-goal-params')
+          RETURNING "id"
+        `,
+        [threadId],
+      );
+      const goalEventId = goalEvent.rows[0]?.id;
+      assert.ok(goalEventId);
+
+      const queueIndex = await client.query<{ indexDefinition: string }>(`
+        SELECT indexdef AS "indexDefinition"
+        FROM pg_catalog.pg_indexes
+        WHERE schemaname = 'public'
+          AND tablename = 'chat_events'
+          AND indexname = 'chat_events_pending_queue_idx'
+      `);
+      assert.equal(queueIndex.rows.length, 1);
+      assert.ok(
+        queueIndex.rows[0]?.indexDefinition.includes("'input.goal'::text"),
+      );
+
+      await expectAppendOnlyUpdateRejected(client, {
+        tableName: "chat_events",
+        query: `UPDATE "chat_events" SET "content" = 'mutated' WHERE "id" = $1`,
+        rowId: goalEventId,
+      });
+    } finally {
+      await client.end();
+    }
+  } finally {
+    await dropDatabase(testDb);
+  }
+
+  console.log(
+    "   ✅ input.goal is admitted only after migration 0724, remains queue-indexed, and preserves append-only protection\n",
+  );
+}
+
 const SESSION_STORAGE_BACKFILL_PREVIOUS_MIGRATION = 653;
 const SESSION_STORAGE_BACKFILL_MIGRATION = 654;
 
@@ -5713,6 +5817,7 @@ async function main(): Promise<void> {
     await validateChatEventQueueContraction();
     await validateChatMessageRoleContraction();
     await validateChatEventTableRename();
+    await validateChatInputGoalEvent();
 
     // Step 1.5: Validate latest snapshot accuracy (NEW)
     await validateLatestSnapshotAccuracy();

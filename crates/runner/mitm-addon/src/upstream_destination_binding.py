@@ -100,32 +100,28 @@ def _connection_id(connection: object) -> str | None:
     return None
 
 
-def _endpoint_ip_key(host: str) -> str | None:
+def _connected_endpoint_matches_address(
+    connected_endpoint: connection_endpoints.ConnectedIpEndpoint,
+    binding_address: tuple[str, int],
+) -> bool:
+    if connected_endpoint.address == binding_address:
+        return True
+    binding_host, binding_port = binding_address
+    if connected_endpoint.address[1] != binding_port:
+        return False
     try:
-        return str(ipaddress.ip_address(host))
+        binding_ip = ipaddress.ip_address(binding_host)
     except ValueError:
-        return None
-
-
-def _endpoint_matches(left: object, right: tuple[str, int]) -> bool:
-    left_pair = connection_endpoints.address_pair(left)
-    if left_pair is None:
         return False
-    left_host, left_port = left_pair
-    right_host, right_port = right
-    if left_port != right_port:
-        return False
-    left_key = _endpoint_ip_key(left_host)
-    right_key = _endpoint_ip_key(right_host)
-    return left_key is not None and left_key == right_key
+    return connected_endpoint.parsed_ip == binding_ip
 
 
-def _endpoint_matches_any(
-    endpoint: object,
+def _connected_endpoint_matches_any_binding(
+    connected_endpoint: connection_endpoints.ConnectedIpEndpoint,
     bindings: tuple[UpstreamDestinationBinding, ...],
 ) -> bool:
     return any(
-        _endpoint_matches(endpoint, binding.original_address)
+        _connected_endpoint_matches_address(connected_endpoint, binding.original_address)
         for binding in bindings
         if binding.original_address is not None
     )
@@ -243,15 +239,15 @@ def refresh_server_binding_connected_address_if_matching(
         return False
     if binding.host != destination.host or binding.port != destination.port:
         return False
-    connected_pair = connection_endpoints.authoritative_connected_endpoint(connected_address)
-    if connected_pair is None:
+    connected_endpoint = connection_endpoints.authoritative_connected_endpoint(connected_address)
+    if connected_endpoint is None:
         return False
 
     refreshed_binding = UpstreamDestinationBinding(
         host=binding.host,
         port=binding.port,
         kinds=binding.kinds | frozenset((kind,)),
-        original_address=connected_pair,
+        original_address=connected_endpoint.address,
     )
     _bindings_by_server_id[server_id] = refreshed_binding
     _associate_server_with_client(server_id, client)
@@ -339,7 +335,10 @@ def _server_binding_matches_current_destination(
         return (
             binding.original_address is not None
             and connected_endpoint is not None
-            and _endpoint_matches(connected_endpoint, binding.original_address)
+            and _connected_endpoint_matches_address(
+                connected_endpoint,
+                binding.original_address,
+            )
         )
     return _address_matches(binding.host, binding.port, getattr(server, "address", None))
 
@@ -379,9 +378,12 @@ def _client_binding_connected_endpoint(
         port=port,
         extra_endpoints=(connection_endpoints.connection_sockname(client),),
     )
-    if connected_endpoint is None or not _endpoint_matches_any(connected_endpoint, bindings):
+    if connected_endpoint is None or not _connected_endpoint_matches_any_binding(
+        connected_endpoint,
+        bindings,
+    ):
         return None
-    return connected_endpoint
+    return connected_endpoint.address
 
 
 def diagnostic_snapshot_for_flow(
