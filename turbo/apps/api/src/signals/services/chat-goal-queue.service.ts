@@ -1,4 +1,7 @@
-import { chatMessages } from "@vm0/db/schema/chat-message";
+import {
+  chatMessages,
+  type ChatMessageGoalSnapshot,
+} from "@vm0/db/schema/chat-message";
 import { chatThreads } from "@vm0/db/schema/chat-thread";
 import { threadGoals } from "@vm0/db/schema/thread-goal";
 import { zeroAgents } from "@vm0/db/schema/zero-agent";
@@ -119,6 +122,7 @@ async function attemptGoalQueueAdmission(
   args: {
     readonly chatThreadId: string;
     readonly encryptedParams: string | undefined;
+    readonly goalSnapshot: ChatMessageGoalSnapshot;
   },
 ): Promise<GoalQueueAdmissionAttempt> {
   return await db.transaction(async (tx) => {
@@ -137,6 +141,7 @@ async function attemptGoalQueueAdmission(
       content: null,
       runId: null,
       encryptedParams: args.encryptedParams,
+      goalSnapshot: args.goalSnapshot,
     });
     if (!inserted) {
       throw new Error("Goal queue event insert returned no row");
@@ -152,12 +157,17 @@ export async function admitGoalQueueEvent(
     readonly chatThreadId: string;
     readonly orgId: string;
     readonly userId: string;
+    readonly objectiveBrief: string;
     readonly params: GoalQueueEventParams;
   },
 ): Promise<GoalQueueAdmission> {
+  const goalSnapshot: ChatMessageGoalSnapshot = {
+    objectiveBrief: args.objectiveBrief,
+  };
   const initial = await attemptGoalQueueAdmission(db, {
     chatThreadId: args.chatThreadId,
     encryptedParams: undefined,
+    goalSnapshot,
   });
   if (initial.kind !== "payload-required") {
     return initial;
@@ -173,6 +183,7 @@ export async function admitGoalQueueEvent(
     const retryWithoutPayload = await attemptGoalQueueAdmission(db, {
       chatThreadId: args.chatThreadId,
       encryptedParams: undefined,
+      goalSnapshot,
     });
     if (retryWithoutPayload.kind !== "payload-required") {
       return retryWithoutPayload;
@@ -183,6 +194,7 @@ export async function admitGoalQueueEvent(
   const final = await attemptGoalQueueAdmission(db, {
     chatThreadId: args.chatThreadId,
     encryptedParams: encrypted.value,
+    goalSnapshot,
   });
   if (final.kind === "payload-required") {
     throw new Error("Goal queue admission still required encrypted params");
@@ -322,6 +334,8 @@ export async function goalQueueEventMatchesActiveGoal(
     readonly chatThreadId: string;
     readonly goalId: string;
     readonly eventId: string;
+    readonly orgId: string;
+    readonly userId: string;
   },
 ): Promise<boolean> {
   const [goal] = await db
@@ -340,6 +354,8 @@ export async function goalQueueEventMatchesActiveGoal(
       and(
         eq(threadGoals.id, args.goalId),
         eq(threadGoals.chatThreadId, args.chatThreadId),
+        eq(threadGoals.orgId, args.orgId),
+        eq(threadGoals.ownerUserId, args.userId),
         noGoalChangeAfterQueueEvent(db),
       ),
     )
@@ -361,6 +377,8 @@ export async function rejectGoalQueueEvent(
   args: {
     readonly chatThreadId: string;
     readonly eventId: string;
+    readonly orgId: string;
+    readonly userId: string;
     readonly reason: string;
   },
 ): Promise<boolean> {
@@ -371,13 +389,42 @@ export async function rejectGoalQueueEvent(
     if (!(await pendingGoalEventStillExists(tx, args))) {
       return false;
     }
+    const [payload] = await tx
+      .select({
+        goalSnapshot: chatMessages.goalSnapshot,
+        currentGoalObjectiveBrief: threadGoals.objectiveBrief,
+      })
+      .from(chatMessages)
+      .leftJoin(
+        threadGoals,
+        and(
+          eq(threadGoals.chatThreadId, chatMessages.chatThreadId),
+          eq(threadGoals.orgId, args.orgId),
+          eq(threadGoals.ownerUserId, args.userId),
+        ),
+      )
+      .where(
+        and(
+          eq(chatMessages.id, args.eventId),
+          eq(chatMessages.chatThreadId, args.chatThreadId),
+        ),
+      )
+      .limit(1);
+    if (!payload) {
+      return false;
+    }
+    const objectiveBrief =
+      payload.goalSnapshot?.objectiveBrief ??
+      payload.currentGoalObjectiveBrief ??
+      "Goal";
     const rejected = await replaceChatEvent(tx, args.eventId, {
       chatThreadId: args.chatThreadId,
       eventType: "input.rejected",
-      content: args.reason,
-      userMessage: createUserMessageDocument({ text: args.reason }),
+      content: objectiveBrief,
+      userMessage: createUserMessageDocument({ text: objectiveBrief }),
       runId: null,
       error: args.reason,
+      goalSnapshot: { objectiveBrief },
     });
     return rejected !== null;
   });
