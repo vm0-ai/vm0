@@ -1104,14 +1104,22 @@ describe("cron execute morning briefs", () => {
       }),
     );
     const events = await readMorningBriefThreadEvents(scenario, threadId);
-    expect(
-      events.some((event) => {
-        return (
-          event.eventType === "input.prompt" &&
-          event.content === `Generate my Morning Brief for ${BRIEF_DATE}.`
-        );
+    const rejectedBrief = events.find((event) => {
+      return (
+        event.eventType === "input.prompt" &&
+        event.content === `Generate my Morning Brief for ${BRIEF_DATE}.` &&
+        event.runId === undefined
+      );
+    });
+    if (!rejectedBrief) {
+      throw new Error("Expected the rejected Morning Brief input event");
+    }
+    expect(events).toContainEqual(
+      expect.objectContaining({
+        eventType: "control.revoke",
+        revokesEventId: rejectedBrief.id,
       }),
-    ).toBeFalsy();
+    );
 
     await api.ensureOrgModelProvider(scenario.actor);
     const userMessage = await chat.requestSendEvent(
