@@ -802,15 +802,17 @@ async function readAllowanceWindowState(
         ),
       ),
   ]);
-  if (!shortWindow || !weeklyWindow) {
-    throw new Error("readAllowanceWindowState: allowance window not found");
+  if (!shortWindow || !weeklyWindow || !raw || !hourly) {
+    throw new Error(
+      "readAllowanceWindowState: state query returned incomplete results",
+    );
   }
   return {
     shortWindowConsumedUnits: String(shortWindow.consumedUnits),
     weeklyWindowConsumedUnits: String(weeklyWindow.consumedUnits),
-    rawAllowanceUnits: raw?.allowanceUnits ?? "0",
-    hourlyAllowanceUnits: hourly?.allowanceUnits ?? "0",
-    allocationCount: raw?.allocationCount ?? 0,
+    rawAllowanceUnits: raw.allowanceUnits ?? "0",
+    hourlyAllowanceUnits: hourly.allowanceUnits ?? "0",
+    allocationCount: raw.allocationCount,
   };
 }
 

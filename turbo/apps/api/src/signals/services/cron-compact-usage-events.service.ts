@@ -545,13 +545,13 @@ async function loadHoldProbe(
     `,
     holdProbeRowSchema,
   );
-  return (
-    rows[0] ?? {
-      probedRawRows: 0,
-      browserHeldRows: 0,
-      billingErrorHeldRows: 0,
-    }
-  );
+  const probe = rows[0];
+  if (!probe) {
+    throw new Error(
+      "Usage event compaction hold probe returned no summary row",
+    );
+  }
+  return probe;
 }
 
 async function hasRemainingRawUsage(
@@ -570,7 +570,13 @@ async function hasRemainingRawUsage(
     `,
     remainingRawRowSchema,
   );
-  return rows[0]?.hasMoreRaw ?? false;
+  const remaining = rows[0];
+  if (!remaining) {
+    throw new Error(
+      "Usage event compaction remaining probe returned no summary row",
+    );
+  }
+  return remaining.hasMoreRaw;
 }
 
 async function compactUsageEventBatch(
