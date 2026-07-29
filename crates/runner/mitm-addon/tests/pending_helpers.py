@@ -25,8 +25,9 @@ def assert_pending(
     with the same names.  ``flows`` is the number of admitted in-flight usage
     flows, including billable model-provider and connector flows plus
     non-billable observable model-provider flows.  ``buffered`` is the number
-    of usage source events still counted as pending by the usage buffer, and
-    ``reports`` is the number of pending webhook report deliveries.
+    of unadmitted addon work units, including usage source events and retained
+    provider timing reports, and ``reports`` is the number of pending webhook
+    report deliveries.
 
     When ``flush_request_id`` is provided, the snapshot must include a matching
     ``flushRequestId`` field.  When it is omitted, ``flushRequestId`` must be

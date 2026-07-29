@@ -7,6 +7,7 @@ import {
 import { zeroClient$ } from "../api-client.ts";
 import { accept } from "../../lib/accept.ts";
 import { setAblyLoop$ } from "../realtime.ts";
+import { i18n } from "../../i18n/index.ts";
 
 const internalReload$ = state(0);
 const internalTeamsStatus$ = state<TeamsConnectStatus | null>(null);
@@ -40,22 +41,42 @@ function toastTeamsStatusChange(
   next: TeamsConnectStatus,
 ): void {
   if (next.isConnected && !previous.isConnected) {
-    toast.success("Microsoft Teams connected successfully");
+    toast.success(
+      i18n.t(($) => {
+        return $.connectors.providerSettings.toasts.teamsConnected;
+      }),
+    );
     return;
   }
   if (next.isInstalled && !previous.isInstalled) {
-    toast.success("Microsoft Teams installed successfully");
+    toast.success(
+      i18n.t(($) => {
+        return $.connectors.providerSettings.toasts.teamsInstalled;
+      }),
+    );
     return;
   }
   if (!next.isInstalled && previous.isInstalled) {
-    toast.success("Microsoft Teams integration uninstalled");
+    toast.success(
+      i18n.t(($) => {
+        return $.connectors.providerSettings.toasts.teamsUninstalled;
+      }),
+    );
     return;
   }
   if (!next.isConnected && previous.isConnected) {
-    toast.success("Disconnected from Microsoft Teams");
+    toast.success(
+      i18n.t(($) => {
+        return $.connectors.providerSettings.toasts.teamsDisconnected;
+      }),
+    );
     return;
   }
-  toast.success("Microsoft Teams updated");
+  toast.success(
+    i18n.t(($) => {
+      return $.connectors.providerSettings.toasts.teamsUpdated;
+    }),
+  );
 }
 
 const showTeamsUninstallDialogState$ = state(false);

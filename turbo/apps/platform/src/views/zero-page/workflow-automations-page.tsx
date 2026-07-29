@@ -34,7 +34,9 @@ import {
   DialogTitle,
 } from "@vm0/ui/components/ui/dialog";
 import { Skeleton } from "@vm0/ui/components/ui/skeleton";
+import { useTranslation } from "react-i18next";
 
+import { i18n } from "../../i18n/index.ts";
 import { agents$ } from "../../signals/agent.ts";
 import {
   selectedWorkflowAutomationAgentId$,
@@ -70,6 +72,7 @@ import { AvatarFromUrl } from "./zero-sidebar-shared.tsx";
 import {
   agentLabel,
   formatWorkflowIntervalSeconds,
+  githubAutomationFilterValueLabel,
   gmailAutomationSummary,
   gmailAutomationTitle,
   workflowTitle,
@@ -81,10 +84,59 @@ export { CREATE_WORKFLOW_WITH_CHAT_PROMPT };
 const CREATE_AUTOMATION_CHAT_PROMPT =
   "Help me create a workflow automation for this agent. Use the workflow-setup skill, then ask me for the desired outcome, automation, and action before creating the workflow and automation.";
 
+function currentLocale(): string {
+  return i18n.resolvedLanguage ?? "en-US";
+}
+
 function formatClockTime(hour: number, minute: number): string {
-  const ampm = hour >= 12 ? "PM" : "AM";
-  const h12 = hour === 0 ? 12 : hour > 12 ? hour - 12 : hour;
-  return `${h12}:${String(minute).padStart(2, "0")} ${ampm}`;
+  return new Intl.DateTimeFormat(currentLocale(), {
+    hour: "numeric",
+    minute: "2-digit",
+    timeZone: "UTC",
+  }).format(new Date(Date.UTC(2000, 0, 1, hour, minute)));
+}
+
+function formatDateInTimezone(value: string, timezone: string): string {
+  return new Intl.DateTimeFormat(currentLocale(), {
+    dateStyle: "medium",
+    timeZone: timezone,
+  }).format(new Date(value));
+}
+
+function weekdayName(day: number): string {
+  return new Intl.DateTimeFormat(currentLocale(), {
+    weekday: "long",
+    timeZone: "UTC",
+  }).format(new Date(Date.UTC(2024, 0, 7 + day)));
+}
+
+function shiftedCronWeekdays(
+  dayOfWeek: string,
+  dayOffset: number,
+): readonly number[] | null {
+  const sourceDays =
+    dayOfWeek === "1-5"
+      ? [1, 2, 3, 4, 5]
+      : dayOfWeek.split(",").map((day) => {
+          return Number(day);
+        });
+  if (
+    sourceDays.length === 0 ||
+    sourceDays.some((day) => {
+      return !Number.isInteger(day) || day < 0 || day > 6;
+    })
+  ) {
+    return null;
+  }
+  return [
+    ...new Set(
+      sourceDays.map((day) => {
+        return (day + dayOffset + 7) % 7;
+      }),
+    ),
+  ].sort((left, right) => {
+    return left - right;
+  });
 }
 
 function cronRuleLabel(
@@ -107,31 +159,58 @@ function cronRuleLabel(
   );
   const time = formatClockTime(converted.hour, converted.minute);
   if (dayOfMonth !== "*") {
-    return `Every month on day ${dayOfMonth} at ${time}`;
+    const numericDay = Number(dayOfMonth);
+    const shiftedDay = numericDay + converted.dayOffset;
+    const displayDay =
+      Number.isInteger(numericDay) && shiftedDay >= 1 && shiftedDay <= 31
+        ? String(shiftedDay)
+        : dayOfMonth;
+    return i18n.t(
+      ($) => {
+        return $.workflows.automations.schedule.everyMonthAt;
+      },
+      { day: displayDay, time },
+    );
   }
-  if (dayOfWeek === "1-5") {
-    return `Every weekday at ${time}`;
+  const shiftedDays =
+    dayOfWeek === "*"
+      ? null
+      : shiftedCronWeekdays(dayOfWeek, converted.dayOffset);
+  if (
+    shiftedDays?.length === 5 &&
+    shiftedDays.every((day, index) => {
+      return day === index + 1;
+    })
+  ) {
+    return i18n.t(
+      ($) => {
+        return $.workflows.automations.schedule.everyWeekdayAt;
+      },
+      { time },
+    );
   }
   if (dayOfWeek !== "*") {
-    const dayNames: Readonly<Record<string, string>> = {
-      "0": "Sunday",
-      "1": "Monday",
-      "2": "Tuesday",
-      "3": "Wednesday",
-      "4": "Thursday",
-      "5": "Friday",
-      "6": "Saturday",
-    };
-    const days = dayOfWeek
-      .split(",")
-      .map((day) => {
-        return dayNames[day];
-      })
-      .filter(Boolean)
-      .join(", ");
-    return days ? `Every week on ${days} at ${time}` : `Every week at ${time}`;
+    const days = shiftedDays?.map(weekdayName).join(", ") ?? "";
+    return days
+      ? i18n.t(
+          ($) => {
+            return $.workflows.automations.schedule.everyWeekOn;
+          },
+          { days, time },
+        )
+      : i18n.t(
+          ($) => {
+            return $.workflows.automations.schedule.everyWeekAt;
+          },
+          { time },
+        );
   }
-  return `Every day at ${time}`;
+  return i18n.t(
+    ($) => {
+      return $.workflows.automations.schedule.everyDayAt;
+    },
+    { time },
+  );
 }
 
 function quote(value: string): string {
@@ -147,14 +226,28 @@ function notionReadableAutomationRuleLabel(
   if (automation.eventType === "notion-child-page-created") {
     const title = automation.eventConfig.parentPage.title;
     return title
-      ? `When Notion child page is created under ${quote(title)}`
-      : "When a Notion child page is created";
+      ? i18n.t(
+          ($) => {
+            return $.workflows.automations.notion.childPageRule;
+          },
+          { title: quote(title) },
+        )
+      : i18n.t(($) => {
+          return $.workflows.automations.notion.childPageRuleGeneric;
+        });
   }
   if (automation.eventType === "notion-database-item-created") {
     const title = automation.eventConfig.dataSource.title;
     return title
-      ? `When Notion database ${quote(title)} gets a new item`
-      : "When a Notion database gets a new item";
+      ? i18n.t(
+          ($) => {
+            return $.workflows.automations.notion.databaseItemRule;
+          },
+          { title: quote(title) },
+        )
+      : i18n.t(($) => {
+          return $.workflows.automations.notion.databaseItemRuleGeneric;
+        });
   }
   if (automation.eventType !== "notion-page-content-updated") {
     return null;
@@ -162,13 +255,27 @@ function notionReadableAutomationRuleLabel(
   if (automation.eventConfig.scope.type === "page") {
     const title = automation.eventConfig.scope.page.title;
     return title
-      ? `When Notion page ${quote(title)} content is updated`
-      : "When a Notion page content is updated";
+      ? i18n.t(
+          ($) => {
+            return $.workflows.automations.notion.pageUpdatedRule;
+          },
+          { title: quote(title) },
+        )
+      : i18n.t(($) => {
+          return $.workflows.automations.notion.pageUpdatedRuleGeneric;
+        });
   }
   const title = automation.eventConfig.scope.dataSource.title;
   return title
-    ? `When Notion database ${quote(title)} item content is updated`
-    : "When Notion database item content is updated";
+    ? i18n.t(
+        ($) => {
+          return $.workflows.automations.notion.databaseUpdatedRule;
+        },
+        { title: quote(title) },
+      )
+    : i18n.t(($) => {
+        return $.workflows.automations.notion.databaseUpdatedRuleGeneric;
+      });
 }
 
 function githubAutomationRuleLabel(
@@ -178,25 +285,71 @@ function githubAutomationRuleLabel(
   >,
 ): string | null {
   if (automation.eventType === "github-label-applied") {
-    return `When GitHub label ${quote(automation.eventConfig.labelName)} is applied`;
+    return i18n.t(
+      ($) => {
+        return $.workflows.automations.github.labelAppliedRule;
+      },
+      { label: quote(automation.eventConfig.labelName) },
+    );
   }
   if (automation.eventType === "github-workflow-run-completed") {
     const workflows = automation.eventConfig.filters.workflows;
     const conclusions = automation.eventConfig.filters.conclusions;
-    return `When ${workflows ? workflows.join(", ") : "a GitHub workflow"} completes${conclusions ? ` with ${conclusions.join(", ")}` : ""}`;
+    const conclusionText = conclusions
+      ? i18n.t(
+          ($) => {
+            return $.workflows.automations.github.withConclusions;
+          },
+          {
+            values: conclusions
+              .map(githubAutomationFilterValueLabel)
+              .join(", "),
+          },
+        )
+      : "";
+    return i18n.t(
+      ($) => {
+        return $.workflows.automations.github.workflowRunRule;
+      },
+      {
+        workflows:
+          workflows?.join(", ") ??
+          i18n.t(($) => {
+            return $.workflows.automations.github.aWorkflow;
+          }),
+        conclusions: conclusionText,
+      },
+    );
   }
   if (automation.eventType === "github-workflow-job-completed") {
     const jobs = automation.eventConfig.filters.jobs;
-    return `When ${jobs ? jobs.join(", ") : "a GitHub workflow job"} completes`;
+    return i18n.t(
+      ($) => {
+        return $.workflows.automations.github.workflowJobRule;
+      },
+      {
+        jobs:
+          jobs?.join(", ") ??
+          i18n.t(($) => {
+            return $.workflows.automations.github.aJob;
+          }),
+      },
+    );
   }
   if (automation.eventType === "github-pull-request-review-submitted") {
-    return "When a matching GitHub pull request review is submitted";
+    return i18n.t(($) => {
+      return $.workflows.automations.github.reviewRule;
+    });
   }
   if (automation.eventType === "github-deployment-status-created") {
-    return "When a matching GitHub deployment status is created";
+    return i18n.t(($) => {
+      return $.workflows.automations.github.deploymentStatusRule;
+    });
   }
   if (automation.eventType === "github-issue-comment-created") {
-    return "When a matching GitHub issue or pull request comment is created";
+    return i18n.t(($) => {
+      return $.workflows.automations.github.issueCommentRule;
+    });
   }
   return null;
 }
@@ -210,19 +363,36 @@ export function humanReadableAutomationRuleLabel(
     automation.eventType === "webhook-received" &&
     automation.disabledReason === "paid_plan_required"
   ) {
-    return "Disabled — paid plan required";
+    return i18n.t(($) => {
+      return $.workflows.automations.common.disabledPaidPlan;
+    });
   }
   if (automation.kind === "schedule") {
     const schedule = automation.schedule;
     if (schedule.type === "loop") {
-      return `Every ${formatWorkflowIntervalSeconds(schedule.intervalSeconds)}`;
+      return i18n.t(
+        ($) => {
+          return $.workflows.automations.schedule.repeatEvery;
+        },
+        {
+          interval: formatWorkflowIntervalSeconds(schedule.intervalSeconds),
+        },
+      );
     }
     if (schedule.type === "once") {
-      const { date, hour, minute } = atTimeInTimezone(
+      const { hour, minute } = atTimeInTimezone(
         schedule.atTime,
         displayTimezone,
       );
-      return `Once on ${date} at ${formatClockTime(hour, minute)}`;
+      return i18n.t(
+        ($) => {
+          return $.workflows.automations.schedule.onceOn;
+        },
+        {
+          date: formatDateInTimezone(schedule.atTime, displayTimezone),
+          time: formatClockTime(hour, minute),
+        },
+      );
     }
     return cronRuleLabel(
       schedule.cronExpression,
@@ -233,35 +403,74 @@ export function humanReadableAutomationRuleLabel(
 
   if (automation.eventType === "gmail-new-message") {
     const summary = gmailAutomationSummary(automation);
-    return summary && summary !== "all inbound messages"
-      ? `When Gmail message matches ${summary}`
-      : "When any Gmail message arrives";
+    const allInboundMessages = i18n.t(($) => {
+      return $.workflows.automations.gmail.allInboundMessages;
+    });
+    return summary && summary !== allInboundMessages
+      ? i18n.t(
+          ($) => {
+            return $.workflows.automations.gmail.messageMatchesRule;
+          },
+          { summary },
+        )
+      : i18n.t(($) => {
+          return $.workflows.automations.gmail.anyMessageRule;
+        });
   }
   if (automation.eventType === "gmail-label-applied") {
-    return `When Gmail label ${quote(automation.eventConfig.labelName)} is applied`;
+    return i18n.t(
+      ($) => {
+        return $.workflows.automations.gmail.labelAppliedRule;
+      },
+      { label: quote(automation.eventConfig.labelName) },
+    );
   }
   const githubLabel = githubAutomationRuleLabel(automation);
   if (githubLabel) {
     return githubLabel;
   }
   if (automation.eventType === "google-calendar-event-created") {
-    return `When calendar ${quote(automation.eventConfig.calendarId)} gets a new event`;
+    return i18n.t(
+      ($) => {
+        return $.workflows.automations.calendar.createdRule;
+      },
+      { calendar: quote(automation.eventConfig.calendarId) },
+    );
   }
   if (automation.eventType === "google-calendar-event-updated") {
-    return `When calendar ${quote(automation.eventConfig.calendarId)} event is updated`;
+    return i18n.t(
+      ($) => {
+        return $.workflows.automations.calendar.updatedRule;
+      },
+      { calendar: quote(automation.eventConfig.calendarId) },
+    );
   }
   if (automation.eventType === "google-calendar-event-cancelled") {
-    return `When calendar ${quote(automation.eventConfig.calendarId)} event is cancelled`;
+    return i18n.t(
+      ($) => {
+        return $.workflows.automations.calendar.cancelledRule;
+      },
+      { calendar: quote(automation.eventConfig.calendarId) },
+    );
   }
   if (automation.eventType === "google-meet-transcript-generated") {
-    return "When Google Meet finishes generating a transcript";
+    return i18n.t(($) => {
+      return $.workflows.automations.meet.rule;
+    });
   }
   const notionLabel = notionReadableAutomationRuleLabel(automation);
   if (notionLabel) {
     return notionLabel;
   }
   if (automation.eventType === "webhook-received") {
-    return "When an inbound webhook is received";
+    return i18n.t(($) => {
+      return $.workflows.automations.rules.inboundWebhook;
+    });
+  }
+  if (automation.eventType === "strapi-entry-published") {
+    return i18n.t(($) => {
+      return $.workflows.automations.strapi.rule;
+    });
   }
   return gmailAutomationTitle(automation);
 }
@@ -270,7 +479,9 @@ export function automationTypeLabel(
   automation: ZeroWorkflowAutomationSummary,
 ): string {
   if (automation.kind === "schedule") {
-    return "Schedule";
+    return i18n.t(($) => {
+      return $.workflows.automations.common.schedule;
+    });
   }
   if (
     automation.eventType === "gmail-new-message" ||
@@ -308,7 +519,12 @@ export function automationTypeLabel(
   if (automation.eventType === "webhook-received") {
     return "Webhook";
   }
-  return "Automation";
+  if (automation.eventType === "strapi-entry-published") {
+    return "Strapi";
+  }
+  return i18n.t(($) => {
+    return $.workflows.automations.common.automation;
+  });
 }
 
 function agentInitials(label: string): string {
@@ -427,6 +643,7 @@ export function WorkflowAutomationEnabledSwitch({
   const [enabledLoadable, setEnabled] = useLoadableSet(
     setWorkflowAutomationEnabled$,
   );
+  const { t } = useTranslation();
   const busy = enabledLoadable.state === "loading";
   const title = workflowTitle(entry.workflow);
 
@@ -435,7 +652,21 @@ export function WorkflowAutomationEnabledSwitch({
       checked={entry.automation.enabled}
       disabled={busy || !entry.workflow.canManage}
       size={size}
-      aria-label={`${entry.automation.enabled ? "Disable" : "Enable"} ${title}`}
+      aria-label={
+        entry.automation.enabled
+          ? t(
+              ($) => {
+                return $.workflows.automations.common.disable;
+              },
+              { title },
+            )
+          : t(
+              ($) => {
+                return $.workflows.automations.common.enable;
+              },
+              { title },
+            )
+      }
       className="data-[state=checked]:bg-primary data-[state=unchecked]:bg-muted"
       onCheckedChange={(enabled) => {
         detach(
@@ -463,6 +694,8 @@ function WorkflowSelectionStep({
   readonly onSelectWorkflow: (workflow: ZeroWorkflowSummary) => void;
   readonly onCreateWorkflow: () => void;
 }) {
+  const { t } = useTranslation();
+
   if (loading) {
     return (
       <div className="grid gap-2 px-5 pb-4">
@@ -493,10 +726,14 @@ function WorkflowSelectionStep({
         </span>
         <span className="min-w-0">
           <span className="block text-sm font-medium text-foreground">
-            Create in chat
+            {t(($) => {
+              return $.workflows.createDialog.createInChat;
+            })}
           </span>
           <span className="mt-0.5 block text-sm text-muted-foreground">
-            Start from a conversation when no workflow fits yet.
+            {t(($) => {
+              return $.workflows.createDialog.createInChatDescription;
+            })}
           </span>
         </span>
       </button>
@@ -544,7 +781,9 @@ function WorkflowSelectionStep({
         </div>
       ) : (
         <p className="px-1 py-2 text-sm text-muted-foreground">
-          No workflows yet. Create one in chat to continue.
+          {t(($) => {
+            return $.workflows.createDialog.noWorkflows;
+          })}
         </p>
       )}
     </div>
@@ -558,6 +797,7 @@ function AgentSelectionStep({
   readonly agents: readonly TeamComposeItem[];
   readonly onSelectAgent: (agentId: string) => void;
 }) {
+  const { t } = useTranslation();
   const query = useGet(workflowAutomationAgentQuery$);
   const setQuery = useSet(setWorkflowAutomationAgentQuery$);
   const pinnedIds = useLastResolved(pinnedAgentIds$) ?? [];
@@ -586,7 +826,9 @@ function AgentSelectionStep({
         <AgentDialogSearch query={query} setQuery={setQuery} />
         <div className="min-h-0 flex-1 overflow-y-auto px-5 pb-4">
           <p className="px-1 py-2 text-xs text-muted-foreground">
-            No agents yet
+            {t(($) => {
+              return $.workflows.createDialog.noAgents;
+            })}
           </p>
         </div>
       </div>
@@ -598,7 +840,11 @@ function AgentSelectionStep({
       <AgentDialogSearch query={query} setQuery={setQuery} />
       <div className="min-h-0 flex-1 overflow-y-auto pb-2">
         {filteredPinned.length > 0 ? (
-          <AgentDialogSection label="Pinned">
+          <AgentDialogSection
+            label={t(($) => {
+              return $.workflows.common.pinned;
+            })}
+          >
             {filteredPinned.map((agent) => {
               return (
                 <div
@@ -619,7 +865,15 @@ function AgentSelectionStep({
 
         {filteredUnpinned.length > 0 ? (
           <AgentDialogSection
-            label={filteredPinned.length > 0 ? "Others" : "Agents"}
+            label={
+              filteredPinned.length > 0
+                ? t(($) => {
+                    return $.workflows.common.others;
+                  })
+                : t(($) => {
+                    return $.workflows.common.agents;
+                  })
+            }
             className="pb-3"
           >
             {filteredUnpinned.map((agent) => {
@@ -645,7 +899,9 @@ function AgentSelectionStep({
         filteredUnpinned.length === 0 ? (
           <div className="px-5 pb-5">
             <p className="px-1 py-2 text-xs text-muted-foreground">
-              No agents found
+              {t(($) => {
+                return $.workflows.createDialog.noAgentsFound;
+              })}
             </p>
           </div>
         ) : null}
@@ -659,16 +915,20 @@ function WorkflowAutomationDialogFooter({
 }: {
   readonly onCancel: () => void;
 }) {
+  const { t } = useTranslation();
   return (
     <DialogFooter className="shrink-0 border-t border-border/60 bg-card px-5 py-4">
       <Button type="button" variant="outline" onClick={onCancel}>
-        Cancel
+        {t(($) => {
+          return $.workflows.common.cancel;
+        })}
       </Button>
     </DialogFooter>
   );
 }
 
 export function CreateWorkflowAutomationDialog() {
+  const { t } = useTranslation();
   const agentsLoadable = useLastLoadable(agents$);
   const agents = agentsLoadable.state === "hasData" ? agentsLoadable.data : [];
   const workflowsLoadable = useLastLoadable(allVisibleWorkflows$);
@@ -724,17 +984,29 @@ export function CreateWorkflowAutomationDialog() {
         <DialogHeader className="shrink-0 px-5 pb-3 pt-5">
           <DialogTitle className="text-base font-semibold">
             {creatingAutomationInChat
-              ? "Create Automation"
+              ? t(($) => {
+                  return $.workflows.createDialog.createAutomation;
+                })
               : creatingWorkflow
-                ? "Create workflow"
-                : "Add automation"}
+                ? t(($) => {
+                    return $.workflows.createDialog.createWorkflow;
+                  })
+                : t(($) => {
+                    return $.workflows.createDialog.addAutomation;
+                  })}
           </DialogTitle>
           <DialogDescription className="mt-1 text-sm text-muted-foreground">
             {selectingExistingWorkflow
-              ? "Choose a workflow to automate, or create one in chat."
+              ? t(($) => {
+                  return $.workflows.createDialog.chooseWorkflow;
+                })
               : creatingAutomationInChat
-                ? "Choose the agent for this automation"
-                : "Choose the agent for this workflow."}
+                ? t(($) => {
+                    return $.workflows.createDialog.chooseAgentAutomation;
+                  })
+                : t(($) => {
+                    return $.workflows.createDialog.chooseAgentWorkflow;
+                  })}
           </DialogDescription>
         </DialogHeader>
 

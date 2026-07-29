@@ -22,6 +22,7 @@ import {
   IconCode,
 } from "@tabler/icons-react";
 import { cn } from "@vm0/ui";
+import { useTranslation } from "react-i18next";
 import "highlight.js/styles/github.css";
 
 function getLowlight() {
@@ -121,19 +122,18 @@ interface TiptapInstructionsEditorProps {
 
 const ICON_SIZE = 18;
 const ICON_STROKE = 1.5;
-const DEFAULT_TOOLBAR_LABELS = {
-  bold: "Bold",
-  italic: "Italic",
-  strikethrough: "Strikethrough",
-  inlineCode: "Inline code",
-  heading1: "Heading 1",
-  heading2: "Heading 2",
-  heading3: "Heading 3",
-  bulletList: "Bullet list",
-  orderedList: "Ordered list",
-  blockquote: "Blockquote",
-} as const;
-type ToolbarLabels = Record<keyof typeof DEFAULT_TOOLBAR_LABELS, string>;
+interface ToolbarLabels {
+  bold: string;
+  italic: string;
+  strikethrough: string;
+  inlineCode: string;
+  heading1: string;
+  heading2: string;
+  heading3: string;
+  bulletList: string;
+  orderedList: string;
+  blockquote: string;
+}
 
 function ToolbarButton({
   onAction,
@@ -209,13 +209,62 @@ export function TiptapInstructionsEditor({
   initialContent,
   onChange,
   disabled = false,
-  ariaLabel = "Instructions editor",
-  placeholder = "Write instructions for your agent...",
-  footerHint = "Edit the instructions directly to customize your agent's behavior.",
+  ariaLabel,
+  placeholder,
+  footerHint,
   surface = "card",
   toolbarLabels,
 }: TiptapInstructionsEditorProps) {
-  const labels = { ...DEFAULT_TOOLBAR_LABELS, ...toolbarLabels };
+  const { t } = useTranslation();
+  const labels: ToolbarLabels = {
+    bold: t(($) => {
+      return $.workflows.editor.toolbar.bold;
+    }),
+    italic: t(($) => {
+      return $.workflows.editor.toolbar.italic;
+    }),
+    strikethrough: t(($) => {
+      return $.workflows.editor.toolbar.strikethrough;
+    }),
+    inlineCode: t(($) => {
+      return $.workflows.editor.toolbar.inlineCode;
+    }),
+    heading1: t(($) => {
+      return $.workflows.editor.toolbar.heading1;
+    }),
+    heading2: t(($) => {
+      return $.workflows.editor.toolbar.heading2;
+    }),
+    heading3: t(($) => {
+      return $.workflows.editor.toolbar.heading3;
+    }),
+    bulletList: t(($) => {
+      return $.workflows.editor.toolbar.bulletList;
+    }),
+    orderedList: t(($) => {
+      return $.workflows.editor.toolbar.orderedList;
+    }),
+    blockquote: t(($) => {
+      return $.workflows.editor.toolbar.blockquote;
+    }),
+    ...toolbarLabels,
+  };
+  const resolvedAriaLabel =
+    ariaLabel ??
+    t(($) => {
+      return $.workflows.editor.aria;
+    });
+  const resolvedPlaceholder =
+    placeholder ??
+    t(($) => {
+      return $.workflows.editor.placeholder;
+    });
+  const resolvedFooterHint =
+    footerHint === undefined
+      ? t(($) => {
+          return $.workflows.editor.footer;
+        })
+      : footerHint;
   const editorClassName = cn(
     EDITOR_CLASSES,
     surface === "canvas" ? "min-h-[calc(100vh-10rem)] px-0 py-3" : "",
@@ -233,8 +282,8 @@ export function TiptapInstructionsEditor({
     editorProps: {
       attributes: {
         class: editorClassName,
-        "aria-label": ariaLabel,
-        "data-placeholder": placeholder,
+        "aria-label": resolvedAriaLabel,
+        "data-placeholder": resolvedPlaceholder,
       },
     },
   });
@@ -362,9 +411,9 @@ export function TiptapInstructionsEditor({
         </BubbleMenu>
       )}
       <EditorContent editor={editor} />
-      {footerHint ? (
+      {resolvedFooterHint ? (
         <p className="mx-4 zero-border-t pt-2 pb-3 text-xs text-muted-foreground">
-          {footerHint}
+          {resolvedFooterHint}
         </p>
       ) : null}
     </div>

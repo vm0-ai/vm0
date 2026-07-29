@@ -11,7 +11,7 @@ use uuid::Uuid;
 
 use crate::error::{RunnerError, RunnerResult};
 
-/// Maximum time to wait for buffered and pending usage reports before stopping.
+/// Maximum time to wait for buffered work and pending reports before stopping.
 ///
 /// The runner writes `{addon_dir}/usage-flush-request`, signals the Python
 /// addon, then polls `{addon_dir}/usage-pending` until the addon acknowledges
@@ -387,12 +387,12 @@ fn validate_flush_state_core(
     }
 }
 
-/// Wait for all pending proxy usage reports to be delivered.
+/// Wait for all pending proxy webhook work to be delivered.
 ///
 /// The runner writes a request marker, signals the Python addon, and then waits
 /// for JSON in `{addon_dir}/usage-pending` that acknowledges that request with
 /// the current mitmdump usage-state identity plus in-flight flow, buffered
-/// event, and report counters. A successful drain requires current valid state
+/// work, and report counters. A successful drain requires current valid state
 /// with the active `flushRequestId` and `flows == 0`, `buffered == 0`, and
 /// `reports == 0`. Missing, unreadable, stale, wrong state id, wrong request
 /// id, or invalid state is treated as not ready and waits until timeout. The

@@ -4,6 +4,7 @@ import {
   rewritePlatformHostname,
 } from "../../signals/api-base.ts";
 import { resolvePublicArtifactsBaseUrl } from "../../lib/platform-host.ts";
+import { i18n } from "../../i18n/index.ts";
 import { logger } from "../../signals/log.ts";
 import { writeToClipboard } from "../../signals/zero-page/clipboard.ts";
 
@@ -246,7 +247,11 @@ async function fetchBlobForDownload(
   } catch (error) {
     signal.throwIfAborted();
     log.warn("downloadUrl: fetch failed", error);
-    toast.error("Download failed");
+    toast.error(
+      i18n.t(($) => {
+        return $.artifacts.toasts.downloadFailed;
+      }),
+    );
     return null;
   }
 }
@@ -267,8 +272,16 @@ export async function copyAttachmentLinkToClipboard(
 ): Promise<void> {
   const copied = await writeToClipboard(publicAttachmentUrl(url));
   if (copied) {
-    toast.success("Link copied");
+    toast.success(
+      i18n.t(($) => {
+        return $.artifacts.toasts.linkCopied;
+      }),
+    );
     return;
   }
-  toast.error("Failed to copy link");
+  toast.error(
+    i18n.t(($) => {
+      return $.artifacts.toasts.copyLinkFailed;
+    }),
+  );
 }

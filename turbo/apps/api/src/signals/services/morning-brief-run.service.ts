@@ -1,4 +1,4 @@
-import { randomBytes } from "node:crypto";
+import { randomBytes, randomUUID } from "node:crypto";
 
 import { isFeatureEnabled } from "@vm0/core/feature-switch";
 import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
@@ -8,7 +8,7 @@ import {
 } from "@vm0/db/schema/morning-brief";
 import { orgMembersMetadata } from "@vm0/db/schema/org-members-metadata";
 import { command } from "ccstate";
-import { and, asc, eq, isNotNull, lte } from "drizzle-orm";
+import { and, asc, eq, isNotNull, isNull, lte, ne, or } from "drizzle-orm";
 
 import { env } from "../../lib/env";
 import { logger } from "../../lib/log";
@@ -38,7 +38,10 @@ import {
 } from "./morning-brief-schedule.service";
 import { insertChatEvent } from "./zero-chat-event.service";
 import { touchChatThreadLastMessageAt } from "./zero-chat-message-shared.service";
-import { encryptQueuedUserMessageRunParams } from "./zero-chat-queued-message.service";
+import {
+  discardUnclaimedUserMessage,
+  encryptQueuedUserMessageRunParams,
+} from "./zero-chat-queued-message.service";
 import { createUserMessageDocument } from "./zero-chat-user-message.service";
 import { resolveDefaultAgent } from "./zero-email-common.service";
 import { createAutomationChatThread } from "./zero-workflow-user-automation-thread.service";
@@ -49,7 +52,7 @@ const CLAIM_LIMIT = 50;
 const PROCESS_CONCURRENCY = 5;
 const MAX_LOOKBACK_MS = 72 * 60 * 60 * 1000;
 const MIN_LOOKBACK_MS = 24 * 60 * 60 * 1000;
-const SIGNED_URL_TTL_SECONDS = 30 * 60;
+const SIGNED_URL_TTL_SECONDS = 24 * 60 * 60;
 const MORNING_BRIEF_THREAD_TITLE = "Morning Brief";
 
 interface ExecuteMorningBriefsResult {
@@ -406,7 +409,7 @@ async function persistMorningBriefQueueEvent(
   const { claimed, staged } = args;
   await db.transaction(async (tx) => {
     const inserted = await insertChatEvent(tx, {
-      id: claimed.deliveryId,
+      id: randomUUID(),
       chatThreadId: args.chatThreadId,
       eventType: "input.prompt",
       content: args.chatMessage,
@@ -428,6 +431,7 @@ async function persistMorningBriefQueueEvent(
     const [delivery] = await tx
       .update(morningBriefDeliveries)
       .set({
+        status: "queued",
         inputKey: staged.inputKey,
         outputKey: staged.outputKey,
         updatedAt: claimed.currentTime,
@@ -446,7 +450,6 @@ const startMorningBriefRun$ = command(
     args: {
       readonly claimed: ClaimedMorningBrief;
       readonly staged: StagedMorningBriefInput;
-      readonly apiStartTime: number;
     },
     signal: AbortSignal,
   ): Promise<{ readonly runId: string | null } | "skipped"> => {
@@ -499,7 +502,6 @@ const startMorningBriefRun$ = command(
           secret: generateCallbackSecret(),
           payload: { deliveryId },
         },
-        apiStartTime: args.apiStartTime,
       },
       { orgId: row.orgId, userId: row.userId },
     );
@@ -529,11 +531,17 @@ const startMorningBriefRun$ = command(
     signal.throwIfAborted();
 
     const [delivery] = await db
-      .select({ runId: morningBriefDeliveries.runId })
+      .select({
+        status: morningBriefDeliveries.status,
+        runId: morningBriefDeliveries.runId,
+      })
       .from(morningBriefDeliveries)
       .where(eq(morningBriefDeliveries.id, deliveryId))
       .limit(1);
     signal.throwIfAborted();
+    if (!delivery || delivery.status === "failed") {
+      return "skipped";
+    }
     return { runId: delivery?.runId ?? null };
   },
 );
@@ -544,7 +552,6 @@ const processDueMorningBrief$ = command(
     args: {
       readonly row: DueMorningBriefRow;
       readonly currentTime: Date;
-      readonly apiStartTime: number;
     },
     signal: AbortSignal,
   ): Promise<"executed" | "skipped"> => {
@@ -566,7 +573,7 @@ const processDueMorningBrief$ = command(
 
     const started = await set(
       startMorningBriefRun$,
-      { claimed, staged, apiStartTime: args.apiStartTime },
+      { claimed, staged },
       signal,
     );
     return started === "skipped" ? "skipped" : "executed";
@@ -579,9 +586,126 @@ type ManualMorningBriefAdmission =
       readonly kind: "duplicate";
       readonly runId: string | null;
       readonly briefDate: string;
+      readonly queued: boolean;
     }
   | { readonly kind: "forbidden" }
   | { readonly kind: "bad_request"; readonly message: string };
+
+type ManualMorningBriefDeliveryAdmission =
+  | { readonly kind: "ok"; readonly deliveryId: string }
+  | Extract<ManualMorningBriefAdmission, { readonly kind: "duplicate" }>;
+
+async function admitManualMorningBriefDelivery(
+  db: Db,
+  args: {
+    readonly orgId: string;
+    readonly userId: string;
+    readonly briefDate: string;
+    readonly chatThreadId: string | null;
+    readonly currentTime: Date;
+  },
+  signal: AbortSignal,
+): Promise<ManualMorningBriefDeliveryAdmission> {
+  let [delivery] = await db
+    .insert(morningBriefDeliveries)
+    .values({
+      orgId: args.orgId,
+      userId: args.userId,
+      briefDate: args.briefDate,
+      status: "collecting",
+      createdAt: args.currentTime,
+      updatedAt: args.currentTime,
+    })
+    .onConflictDoNothing()
+    .returning({ id: morningBriefDeliveries.id });
+  signal.throwIfAborted();
+  if (delivery) {
+    return { kind: "ok", deliveryId: delivery.id };
+  }
+
+  const [existing] = await db
+    .select({
+      id: morningBriefDeliveries.id,
+      status: morningBriefDeliveries.status,
+      runId: morningBriefDeliveries.runId,
+      updatedAt: morningBriefDeliveries.updatedAt,
+    })
+    .from(morningBriefDeliveries)
+    .where(
+      and(
+        eq(morningBriefDeliveries.orgId, args.orgId),
+        eq(morningBriefDeliveries.userId, args.userId),
+        eq(morningBriefDeliveries.briefDate, args.briefDate),
+      ),
+    )
+    .limit(1);
+  if (!existing) {
+    throw new Error("Expected the existing morning brief delivery");
+  }
+  if (existing.status === "queued") {
+    return {
+      kind: "duplicate",
+      runId: null,
+      briefDate: args.briefDate,
+      queued: true,
+    };
+  }
+  if (existing.runId && existing.status !== "failed") {
+    return {
+      kind: "duplicate",
+      runId: existing.runId,
+      briefDate: args.briefDate,
+      queued: false,
+    };
+  }
+  if (args.chatThreadId) {
+    await discardUnclaimedUserMessage(db, {
+      threadId: args.chatThreadId,
+      messageId: existing.id,
+    });
+    signal.throwIfAborted();
+  }
+  [delivery] = await db
+    .update(morningBriefDeliveries)
+    .set({
+      status: "collecting",
+      runId: null,
+      inputKey: null,
+      outputKey: null,
+      error: null,
+      updatedAt: args.currentTime,
+    })
+    .where(
+      and(
+        eq(morningBriefDeliveries.id, existing.id),
+        eq(morningBriefDeliveries.updatedAt, existing.updatedAt),
+        or(
+          eq(morningBriefDeliveries.status, "failed"),
+          and(
+            isNull(morningBriefDeliveries.runId),
+            ne(morningBriefDeliveries.status, "queued"),
+          ),
+        ),
+      ),
+    )
+    .returning({ id: morningBriefDeliveries.id });
+  signal.throwIfAborted();
+  if (delivery) {
+    return { kind: "ok", deliveryId: delivery.id };
+  }
+
+  const [current] = await db
+    .select({ runId: morningBriefDeliveries.runId })
+    .from(morningBriefDeliveries)
+    .where(eq(morningBriefDeliveries.id, existing.id))
+    .limit(1);
+  return {
+    kind: "duplicate",
+    runId: current?.runId ?? null,
+    briefDate: args.briefDate,
+    queued: current?.runId === null,
+  };
+}
 
 async function admitManualMorningBrief(
   db: Db,
@@ -649,36 +773,19 @@ async function admitManualMorningBrief(
   signal.throwIfAborted();
 
   const briefDate = morningBriefLocalDate(timezone, currentTime);
-  const [delivery] = await db
-    .insert(morningBriefDeliveries)
-    .values({
+  const delivery = await admitManualMorningBriefDelivery(
+    db,
+    {
       orgId: args.orgId,
       userId: args.userId,
       briefDate,
-      status: "collecting",
-      createdAt: currentTime,
-      updatedAt: currentTime,
-    })
-    .onConflictDoNothing()
-    .returning({ id: morningBriefDeliveries.id });
-  signal.throwIfAborted();
-  if (!delivery) {
-    const [existing] = await db
-      .select({ runId: morningBriefDeliveries.runId })
-      .from(morningBriefDeliveries)
-      .where(
-        and(
-          eq(morningBriefDeliveries.orgId, args.orgId),
-          eq(morningBriefDeliveries.userId, args.userId),
-          eq(morningBriefDeliveries.briefDate, briefDate),
-        ),
-      )
-      .limit(1);
-    return {
-      kind: "duplicate",
-      runId: existing?.runId ?? null,
-      briefDate,
-    };
+      chatThreadId: schedule?.chatThreadId ?? null,
+      currentTime,
+    },
+    signal,
+  );
+  if (delivery.kind === "duplicate") {
+    return delivery;
   }
 
   return {
@@ -695,21 +802,27 @@ async function admitManualMorningBrief(
       },
       timezone,
       briefDate,
-      deliveryId: delivery.id,
+      deliveryId: delivery.deliveryId,
       currentTime,
     },
   };
 }
 
 type TriggerMorningBriefResult =
-  | { readonly kind: "ok"; readonly runId: string; readonly briefDate: string }
+  | {
+      readonly kind: "ok";
+      readonly runId: string | null;
+      readonly briefDate: string;
+      readonly queued: boolean;
+    }
   | { readonly kind: "forbidden" }
   | { readonly kind: "bad_request"; readonly message: string };
 
 /**
  * Testing entry point behind the manualMorningBrief feature switch: runs the
- * full collect → queue pipeline for the caller immediately. The same
- * once-per-local-date delivery guard used by cron deduplicates repeats.
+ * full collect → queue pipeline for the caller immediately. Active and
+ * completed deliveries deduplicate; failed or interrupted collection attempts
+ * reset today's delivery so the member can retry.
  */
 export const triggerMorningBriefNow$ = command(
   async (
@@ -717,7 +830,6 @@ export const triggerMorningBriefNow$ = command(
     args: {
       readonly orgId: string;
       readonly userId: string;
-      readonly apiStartTime: number;
     },
     signal: AbortSignal,
   ): Promise<TriggerMorningBriefResult> => {
@@ -731,16 +843,12 @@ export const triggerMorningBriefNow$ = command(
       signal,
     );
     if (admission.kind === "duplicate") {
-      return admission.runId
-        ? {
-            kind: "ok",
-            runId: admission.runId,
-            briefDate: admission.briefDate,
-          }
-        : {
-            kind: "bad_request",
-            message: "Morning brief is already queued for today",
-          };
+      return {
+        kind: "ok",
+        runId: admission.runId,
+        briefDate: admission.briefDate,
+        queued: admission.queued,
+      };
     }
     if (admission.kind !== "ok") {
       return admission;
@@ -757,27 +865,29 @@ export const triggerMorningBriefNow$ = command(
 
     const started = await set(
       startMorningBriefRun$,
-      { claimed, staged, apiStartTime: args.apiStartTime },
+      { claimed, staged },
       signal,
     );
-    if (started === "skipped" || !started.runId) {
+    if (started === "skipped") {
       return {
         kind: "bad_request",
-        message:
-          started === "skipped"
-            ? "Morning brief run could not be started"
-            : "Morning brief is queued behind another message",
+        message: "Morning brief run could not be started",
       };
     }
 
-    return { kind: "ok", runId: started.runId, briefDate: claimed.briefDate };
+    return {
+      kind: "ok",
+      runId: started.runId,
+      briefDate: claimed.briefDate,
+      queued: started.runId === null,
+    };
   },
 );
 
 export const executeDueMorningBriefs$ = command(
   async (
     { set },
-    args: { readonly currentTime: Date; readonly apiStartTime: number },
+    args: { readonly currentTime: Date },
     signal: AbortSignal,
   ): Promise<ExecuteMorningBriefsResult> => {
     const db = set(writeDb$);
@@ -829,11 +939,7 @@ export const executeDueMorningBriefs$ = command(
             continue;
           }
           const outcome = await settle(
-            set(
-              processDueMorningBrief$,
-              { row, currentTime, apiStartTime: args.apiStartTime },
-              signal,
-            ),
+            set(processDueMorningBrief$, { row, currentTime }, signal),
             signal,
           );
           if (outcome.ok && outcome.value === "executed") {

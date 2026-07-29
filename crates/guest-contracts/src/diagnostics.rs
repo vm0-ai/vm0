@@ -5,6 +5,9 @@ use serde::{Deserialize, Serialize};
 /// Current JSON schema version for failure diagnostics.
 pub const FAILURE_DIAGNOSTIC_SCHEMA_VERSION: u8 = 1;
 
+/// Process exit code used for the runner-owned agent execution timeout.
+pub const AGENT_EXECUTION_TIMEOUT_EXIT_CODE: i32 = 124;
+
 // These are stable Unix signal numbers in the serialized diagnostic contract.
 const UNIX_SIGHUP_SIGNAL_NUMBER: i32 = 1;
 const UNIX_SIGINT_SIGNAL_NUMBER: i32 = 2;
@@ -323,6 +326,8 @@ impl CliTerminationInitiator {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum CliTerminationReason {
+    /// The runner-owned agent execution budget elapsed.
+    ExecutionTimeout,
     /// The guest agent reaped the process after receiving a final result.
     PostResultReap,
     /// The stuck-tool watchdog terminated the process.
@@ -346,6 +351,7 @@ impl CliTerminationReason {
     #[must_use]
     pub const fn as_str(self) -> &'static str {
         match self {
+            Self::ExecutionTimeout => "execution_timeout",
             Self::PostResultReap => "post_result_reap",
             Self::StuckToolWatchdog => "stuck_tool_watchdog",
             Self::CodexResumeStartupTimeout => "codex_resume_startup_timeout",
@@ -709,6 +715,22 @@ mod tests {
         );
         assert_eq!(
             serde_json::from_value::<CliTerminationReason>(serde_json::json!("stdout_ingestion"))
+                .unwrap(),
+            reason
+        );
+    }
+
+    #[test]
+    fn execution_timeout_reason_has_stable_serialization_and_exit_code() {
+        let reason = CliTerminationReason::ExecutionTimeout;
+        assert_eq!(AGENT_EXECUTION_TIMEOUT_EXIT_CODE, 124);
+        assert_eq!(reason.as_str(), "execution_timeout");
+        assert_eq!(
+            serde_json::to_value(reason).unwrap(),
+            serde_json::json!("execution_timeout")
+        );
+        assert_eq!(
+            serde_json::from_value::<CliTerminationReason>(serde_json::json!("execution_timeout"))
                 .unwrap(),
             reason
         );

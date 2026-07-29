@@ -60,7 +60,7 @@ function sensitiveStringValues(): SensitiveStringValues {
         }
       }
     }
-    valuesByConnector.set(connector.connectorRef, values);
+    valuesByConnector.set(connector.slug, values);
   }
 
   return {

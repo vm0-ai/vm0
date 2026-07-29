@@ -58,14 +58,22 @@ describe("zero GitHub connect page", () => {
     await waitFor(() => {
       expect(screen.getByText("Connect to GitHub")).toBeInTheDocument();
     });
-    expect(screen.getByText("@octo-dev")).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        "Link your VM0 account to @octo-dev so GitHub mentions can run your agents from issues and pull requests.",
+      ),
+    ).toBeInTheDocument();
 
     click(buttonByText("Connect"));
 
     await waitFor(() => {
       expect(screen.getByText("Connected to GitHub!")).toBeInTheDocument();
     });
-    expect(screen.getByText("@octo-dev")).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        "You're connected as @octo-dev. Mention your agent in GitHub issues or pull requests to start chatting.",
+      ),
+    ).toBeInTheDocument();
     expect(screen.getByText("Back to workflows")).toBeInTheDocument();
   });
 });

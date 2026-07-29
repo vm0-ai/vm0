@@ -5,6 +5,8 @@ import { Button } from "@vm0/ui/components/ui/button";
 import { Input } from "@vm0/ui/components/ui/input";
 import { toast } from "@vm0/ui/components/ui/sonner";
 import { IconCheck, IconLoader2, IconPackage } from "@tabler/icons-react";
+import { useTranslation } from "react-i18next";
+import { i18n } from "../../i18n/index.ts";
 import {
   customConnectorProposalAgentName$,
   customConnectorProposalCanSave$,
@@ -66,10 +68,13 @@ function ConnectorDefinitionPreview({
   prefixes: readonly string[];
   notes: string | undefined;
 }) {
+  const { t } = useTranslation();
   return (
     <div className="flex flex-col gap-2 rounded-[10px] bg-muted/50 px-3 py-3 text-left">
       <div className="text-xs font-medium uppercase text-muted-foreground">
-        Request scope
+        {t(($) => {
+          return $.connectors.customProposal.requestScope;
+        })}
       </div>
       <div className="flex flex-col gap-1">
         {prefixes.map((prefix) => {
@@ -103,7 +108,59 @@ function ProposalStatusCard({ message }: { message: string }) {
   );
 }
 
+function ProposalSaveControl({
+  saved,
+  saving,
+  canSave,
+  onSave,
+}: {
+  saved: boolean;
+  saving: boolean;
+  canSave: boolean;
+  onSave: () => void;
+}) {
+  const { t } = useTranslation();
+  return (
+    <>
+      <div className="flex w-full items-center justify-center">
+        {saved ? (
+          <div className="inline-flex h-9 items-center justify-center gap-1.5 text-sm font-medium text-emerald-600">
+            <IconCheck size={16} />
+            {t(($) => {
+              return $.connectors.customProposal.saved;
+            })}
+          </div>
+        ) : (
+          <Button
+            className="min-w-[140px]"
+            onClick={onSave}
+            disabled={!canSave}
+          >
+            {saving && <IconLoader2 size={14} className="animate-spin" />}
+            {saving
+              ? t(($) => {
+                  return $.connectors.actions.saving;
+                })
+              : t(($) => {
+                  return $.connectors.actions.save;
+                })}
+          </Button>
+        )}
+      </div>
+
+      {saved && (
+        <p className="w-72 max-w-full text-xs leading-relaxed text-muted-foreground">
+          {t(($) => {
+            return $.connectors.customProposal.returnToChat;
+          })}
+        </p>
+      )}
+    </>
+  );
+}
+
 function CustomConnectorProposalCard() {
+  const { t } = useTranslation();
   const params = useGet(customConnectorProposalParams$);
   const agentNameLoadable = useLastLoadable(customConnectorProposalAgentName$);
   const valueMap = useGet(customConnectorProposalValueMap$);
@@ -117,7 +174,11 @@ function CustomConnectorProposalCard() {
 
   if (!params) {
     return (
-      <ProposalStatusCard message="This custom connector proposal link is invalid or expired." />
+      <ProposalStatusCard
+        message={t(($) => {
+          return $.connectors.customProposal.invalid;
+        })}
+      />
     );
   }
 
@@ -125,13 +186,25 @@ function CustomConnectorProposalCard() {
   const agentName =
     agentNameLoadable.state === "hasData" && agentNameLoadable.data
       ? agentNameLoadable.data
-      : "this agent";
+      : t(($) => {
+          return $.connectors.customProposal.targetFallback;
+        });
   const saving = saveLoadable.state === "loading";
   const canSave = !saving && hasRequiredFields;
   const title =
     proposal.operation === "create"
-      ? `Configure ${proposal.displayName}`
-      : `Update ${proposal.displayName}`;
+      ? t(
+          ($) => {
+            return $.connectors.customProposal.configure;
+          },
+          { connector: proposal.displayName },
+        )
+      : t(
+          ($) => {
+            return $.connectors.customProposal.update;
+          },
+          { connector: proposal.displayName },
+        );
 
   const onSave = () => {
     if (!canSave) {
@@ -140,7 +213,14 @@ function CustomConnectorProposalCard() {
     detach(
       (async () => {
         const result = await saveProposal(pageSignal);
-        toast.success(`${result.connector.displayName} saved`);
+        toast.success(
+          i18n.t(
+            ($) => {
+              return $.connectors.customProposal.savedToast;
+            },
+            { connector: result.connector.displayName },
+          ),
+        );
       })(),
       Reason.DomCallback,
     );
@@ -158,8 +238,15 @@ function CustomConnectorProposalCard() {
             <h1 className="text-lg font-medium text-foreground">{title}</h1>
             <p className="mx-auto w-72 max-w-full text-sm text-muted-foreground">
               {agentId
-                ? `Saving will connect your values and authorize ${agentName}.`
-                : "Saving will connect this custom connector for your account."}
+                ? t(
+                    ($) => {
+                      return $.connectors.customProposal.descriptionAgent;
+                    },
+                    { agent: agentName },
+                  )
+                : t(($) => {
+                    return $.connectors.customProposal.descriptionUser;
+                  })}
             </p>
           </div>
         </div>
@@ -187,30 +274,12 @@ function CustomConnectorProposalCard() {
           </div>
         </div>
 
-        <div className="flex w-full items-center justify-center">
-          {saved ? (
-            <div className="inline-flex h-9 items-center justify-center gap-1.5 text-sm font-medium text-emerald-600">
-              <IconCheck size={16} />
-              Saved
-            </div>
-          ) : (
-            <Button
-              className="min-w-[140px]"
-              onClick={onSave}
-              disabled={!canSave}
-            >
-              {saving && <IconLoader2 size={14} className="animate-spin" />}
-              {saving ? "Saving..." : "Save"}
-            </Button>
-          )}
-        </div>
-
-        {saved && (
-          <p className="w-72 max-w-full text-xs leading-relaxed text-muted-foreground">
-            Return to the chat and reply ACK so the agent can verify the
-            connector.
-          </p>
-        )}
+        <ProposalSaveControl
+          saved={saved}
+          saving={saving}
+          canSave={canSave}
+          onSave={onSave}
+        />
       </div>
     </div>
   );
