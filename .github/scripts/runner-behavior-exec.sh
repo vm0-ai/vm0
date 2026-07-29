@@ -1707,14 +1707,27 @@ tls_check "php"       "php -r \"file_get_contents('$TLS_URL');\""
 tls_check "cargo"     "env CARGO_HOME=/tmp/cargo-test cargo search --limit 1 serde" 30
 tls_check "chromium"  "chromium --headless --disable-gpu --no-sandbox --dump-dom $TLS_URL >/dev/null" 30
 
-# Java and Go need multi-line scripts — write temp files then run
+# Java and Go need multi-line scripts.
 sudo "$BIN_DIR/runner" exec --sandbox "$SANDBOX_ID" -- sh -c "printf '%s\n' 'import java.net.*;import java.net.http.*;' 'var c=HttpClient.newHttpClient();' 'var r=HttpRequest.newBuilder(URI.create(\"$TLS_URL\")).build();' 'c.send(r,HttpResponse.BodyHandlers.discarding());' '/exit' | timeout 30 jshell -" \
   || fail "HTTPS java"
 echo "  HTTPS java: ok"
 
-sudo "$BIN_DIR/runner" exec --sandbox "$SANDBOX_ID" -- sh -c "cd /tmp && printf '%s\n' 'package main' 'import (' '\"net/http\"' '\"os\"' ')' 'func main(){r,e:=http.Get(os.Args[1]);if e!=nil{panic(e)};r.Body.Close()}' > tls.go && timeout 30 go run tls.go $TLS_URL" \
-  || fail "HTTPS go"
-echo "  HTTPS go: ok"
+# Keep cold Go compilation outside the request budget so a slow build cannot
+# masquerade as a proxy or CA failure.
+GO_BUILD_TIMEOUT=60
+GO_REQUEST_TIMEOUT=15
+echo "  Go HTTPS helper build timeout: guest ${GO_BUILD_TIMEOUT}s, runner $((GO_BUILD_TIMEOUT + 10))s"
+if GO_BUILD_OUTPUT=$(sudo "$BIN_DIR/runner" exec \
+  --timeout "$((GO_BUILD_TIMEOUT + 10))" \
+  --sandbox "$SANDBOX_ID" -- sh -c \
+  "printf '%s\n' 'package main' 'import (' '\"net/http\"' '\"os\"' ')' 'func main(){r,e:=http.Get(os.Args[1]);if e!=nil{panic(e)};defer r.Body.Close();if r.StatusCode>=http.StatusBadRequest{panic(r.Status)}}' > /tmp/vm0_tls_check.go && timeout --kill-after=5s $GO_BUILD_TIMEOUT go build -o /tmp/vm0-tls-check-go /tmp/vm0_tls_check.go" 2>&1); then
+  echo "  Go HTTPS helper build: ok"
+else
+  GO_BUILD_STATUS=$?
+  fail "Go HTTPS helper build failed with exit code $GO_BUILD_STATUS: ${GO_BUILD_OUTPUT:-no output}"
+fi
+echo "  Go HTTPS request timeout: guest ${GO_REQUEST_TIMEOUT}s, runner $((GO_REQUEST_TIMEOUT + 10))s"
+tls_check "go" "/tmp/vm0-tls-check-go $TLS_URL" "$GO_REQUEST_TIMEOUT"
 echo "PASS: HTTPS through proxy"
 
 # Test 12: verify DNS resolution works inside sandbox
