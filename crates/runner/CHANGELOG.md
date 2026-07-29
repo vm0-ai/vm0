@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.148.30](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.148.29...runner-rs-v0.148.30) (2026-07-29)
+
+
+### Bug Fixes
+
+* **mitm-addon:** report retained counts after failed flushes ([#23663](https://github.com/vm0-ai/vm0/issues/23663)) ([8c63675](https://github.com/vm0-ai/vm0/commit/8c6367586e0c6e19dbfa32328df345e62c2da6f2))
+
 ## [0.148.29](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.148.28...runner-rs-v0.148.29) (2026-07-29)
 
 

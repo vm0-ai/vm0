@@ -1,5 +1,31 @@
 # Changelog
 
+## [0.652.0](https://github.com/vm0-ai/vm0/compare/app-v0.651.4...app-v0.652.0) (2026-07-29)
+
+
+### Features
+
+* **connectors:** route strava oauth through the app callback ([#23664](https://github.com/vm0-ai/vm0/issues/23664)) ([8cbc534](https://github.com/vm0-ai/vm0/commit/8cbc5344a163155d657eab0cb6d91673e6814b86))
+
+
+### Bug Fixes
+
+* **usage:** distinguish people search from web search ([#23635](https://github.com/vm0-ai/vm0/issues/23635)) ([c3f3bd1](https://github.com/vm0-ai/vm0/commit/c3f3bd1be60c48bf2ceae5a0a46a1a901ab2a5ec))
+
+
+### Refactoring
+
+* **platform:** rename chat frontend to ChatEvent ([#23667](https://github.com/vm0-ai/vm0/issues/23667)) ([ea9d66f](https://github.com/vm0-ai/vm0/commit/ea9d66fa54fbe0560c02a96d5a6b60922fa59710))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.243.3
+    * @vm0/connectors bumped to 1.200.0
+    * @vm0/core bumped to 8.484.3
+
 ## [0.651.4](https://github.com/vm0-ai/vm0/compare/app-v0.651.3...app-v0.651.4) (2026-07-29)
 
 
