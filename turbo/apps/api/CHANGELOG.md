@@ -1,5 +1,22 @@
 # Changelog
 
+## [1.340.1](https://github.com/vm0-ai/vm0/compare/api-v1.340.0...api-v1.340.1) (2026-07-29)
+
+
+### Refactoring
+
+* **api:** build model rankings with drizzle ctes ([#23607](https://github.com/vm0-ai/vm0/issues/23607)) ([162f64f](https://github.com/vm0-ai/vm0/commit/162f64f20dbd232009695331449c5d02adf252ee))
+* **api:** remove legacy queue storage manifest state ([#23606](https://github.com/vm0-ai/vm0/issues/23606)) ([8c45c71](https://github.com/vm0-ai/vm0/commit/8c45c7103894f66a0a5abafe09998fc5790bda8b))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.243.1
+    * @vm0/core bumped to 8.484.1
+    * @vm0/db bumped to 1.150.4
+
 ## [1.340.0](https://github.com/vm0-ai/vm0/compare/api-v1.339.0...api-v1.340.0) (2026-07-29)
 
 
