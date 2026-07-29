@@ -529,6 +529,22 @@ async function completeMorningBriefRun(
   };
 }
 
+async function primeMorningBriefThread(scenario: Scenario): Promise<void> {
+  mockNow(AFTER_SEVEN_LOCAL - DAY_MS);
+  routeMocks.clerk.session(scenario.actor.userId, scenario.actor.orgId);
+  const previous = await accept(
+    morningBriefTriggerClient().trigger({
+      headers: actorHeaders(),
+      body: {},
+    }),
+    [200],
+  );
+  if (!previous.body.runId) {
+    throw new Error("Expected the previous-day Morning Brief run");
+  }
+  await completeMorningBriefRun(scenario, previous.body.runId, 1);
+}
+
 async function drainOutbox(): Promise<void> {
   await accept(drainOutboxClient().drain({ headers: cronHeaders() }), [200]);
 }
@@ -1008,9 +1024,9 @@ describe("cron execute morning briefs", () => {
     await updateFeatureSwitchesForUser(context, scenario.actor, {
       [FeatureSwitchKey.ManualMorningBrief]: true,
     });
-    useSecretKmsProbe(undefined, (_command, callNumber) => {
+    useSecretKmsProbe((_command, callNumber) => {
       return callNumber === 2
-        ? Promise.reject(new Error("Morning Brief launch decryption failed"))
+        ? Promise.reject(new Error("Morning Brief launch encryption failed"))
         : undefined;
     });
 
@@ -1034,7 +1050,7 @@ describe("cron execute morning briefs", () => {
       expect.objectContaining({
         status: "failed",
         runId: expect.any(String),
-        error: expect.stringContaining("launch decryption failed"),
+        error: expect.stringContaining("launch encryption failed"),
       }),
     );
     if (!delivery?.runId) {
@@ -1051,6 +1067,7 @@ describe("cron execute morning briefs", () => {
     await updateFeatureSwitchesForUser(context, scenario.actor, {
       [FeatureSwitchKey.ManualMorningBrief]: true,
     });
+    await primeMorningBriefThread(scenario);
     routeMocks.clerk.session(scenario.actor.userId, scenario.actor.orgId);
     await accept(
       modelProvidersByTypeClient().delete({
@@ -1118,6 +1135,7 @@ describe("cron execute morning briefs", () => {
     await updateFeatureSwitchesForUser(context, scenario.actor, {
       [FeatureSwitchKey.ManualMorningBrief]: true,
     });
+    await primeMorningBriefThread(scenario);
     routeMocks.clerk.session(scenario.actor.userId, scenario.actor.orgId);
     await accept(
       modelProvidersByTypeClient().delete({
