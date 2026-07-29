@@ -8631,9 +8631,6 @@ describe("RUN-01: zero runner context, queue promotion, and skills", () => {
     await bdd.readMe(actor);
     await api.grantProEntitlement(actor);
     await api.ensureOrgModelProvider(actor);
-    await connectors.updateFeatureSwitches(actor, {
-      [FeatureSwitchKey.ZeroFinance]: true,
-    });
     const agent = await bdd.createAgent(actor, {
       displayName: "Research Bot",
       description: "Finds release details",
