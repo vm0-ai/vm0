@@ -6,6 +6,7 @@ import {
 } from "@vm0/api-contracts/contracts/zero-people-search";
 import { zeroBillingStatusContract } from "@vm0/api-contracts/contracts/zero-billing";
 import { zeroUsageRecordContract } from "@vm0/api-contracts/contracts/zero-usage-record";
+import { zeroWebSearchContract } from "@vm0/api-contracts/contracts/zero-web-search";
 import { HttpResponse, http, type JsonBodyType } from "msw";
 import { describe, expect, it } from "vitest";
 
@@ -24,6 +25,7 @@ import { now } from "../../external/time";
 import type { RouteEntry } from "../../route-entry";
 import { zeroBillingStatusRoutes } from "../zero-billing-status";
 import { zeroPeopleSearchRoutes } from "../zero-people-search";
+import { zeroWebSearchRoutes } from "../zero-web-search";
 import {
   createBddApi,
   expectApiError,
@@ -34,6 +36,7 @@ import { createZeroRouteMocks } from "./helpers/zero-route-test";
 
 const context = testContext();
 const PERPLEXITY_AGENT_URL = "https://api.perplexity.ai/v1/agent";
+const PERPLEXITY_SEARCH_URL = "https://api.perplexity.ai/search";
 const MAX_PROVIDER_RESPONSE_BYTES = 512 * 1024;
 
 const peopleSearchRoutes: readonly RouteEntry[] = [
@@ -68,6 +71,10 @@ function client() {
   return setupAppWithRoutes({ context, routes: peopleSearchRoutes });
 }
 
+function webSearchClient() {
+  return setupAppWithRoutes({ context, routes: zeroWebSearchRoutes });
+}
+
 async function bootstrapOnboarding(actor: ApiTestUser): Promise<void> {
   const completed = await createBddApi(context).completeOnboarding(actor);
   expect(completed.status).toBe(200);
@@ -95,6 +102,18 @@ async function seedPeopleSearchPricing(): Promise<void> {
       provider: "perplexity",
       category: "request",
       unitPrice: 20,
+      unitSize: 1,
+    },
+  ]);
+}
+
+async function seedWebSearchPricing(): Promise<void> {
+  await seedUsagePricingRows([
+    {
+      kind: "web-search",
+      provider: "perplexity",
+      category: "request",
+      unitPrice: 5,
       unitSize: 1,
     },
   ]);
@@ -196,6 +215,22 @@ function providerResponse(args?: {
         search_people: { invocation: args?.invocation ?? 1 },
       },
     },
+  };
+}
+
+function webSearchProviderResponse() {
+  return {
+    id: "search-request-id",
+    server_time: "2026-07-14T10:00:00Z",
+    results: [
+      {
+        title: "AI regulation update",
+        url: "https://example.com/update",
+        snippet: "A relevant public-web excerpt.",
+        date: "2026-07-13",
+        last_updated: "2026-07-14",
+      },
+    ],
   };
 }
 
@@ -717,7 +752,7 @@ describe("zero people-search route", () => {
     expect(afterCredits).toBe(beforeCredits);
   });
 
-  it("attributes usage to a run", async () => {
+  it("preserves People Search and Web Search attribution for one run", async () => {
     const actor = createBddApi(context).user();
     const bdd = createBddApi(context);
     const api = createRunsApi(context);
@@ -728,6 +763,7 @@ describe("zero people-search route", () => {
     await api.ensureOrgModelProvider(actor);
     await fundActor(actor);
     await seedPeopleSearchPricing();
+    await seedWebSearchPricing();
     configureProvider();
     const compose = await api.createCompose(actor, {
       version: "1.0",
@@ -744,10 +780,14 @@ describe("zero people-search route", () => {
     });
     const token = api.zeroTokenForRunWithCapabilities(actor, run.runId, [
       "people-search:read",
+      "web-search:read",
     ]);
     server.use(
       http.post(PERPLEXITY_AGENT_URL, () => {
         return HttpResponse.json(providerResponse());
+      }),
+      http.post(PERPLEXITY_SEARCH_URL, () => {
+        return HttpResponse.json(webSearchProviderResponse());
       }),
     );
 
@@ -755,6 +795,13 @@ describe("zero people-search route", () => {
       client()(zeroPeopleSearchContract).search({
         headers: { authorization: `Bearer ${token}` },
         body: defaultRequest(),
+      }),
+      [200],
+    );
+    await accept(
+      webSearchClient()(zeroWebSearchContract).search({
+        headers: { authorization: `Bearer ${token}` },
+        body: { query: "latest AI regulation", limit: 5 },
       }),
       [200],
     );
@@ -777,15 +824,19 @@ describe("zero people-search route", () => {
 
     expect(usageRow?.breakdown).toContainEqual({
       kind: "other",
-      credits: 20,
+      credits: 25,
       providers: [
         {
           provider: "perplexity",
-          credits: 20,
+          credits: 25,
           usageKinds: [
             {
               kind: "people-search",
               credits: 20,
+            },
+            {
+              kind: "web-search",
+              credits: 5,
             },
           ],
         },
