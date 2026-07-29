@@ -46,59 +46,54 @@ import { nowDate } from "../../../../lib/time.ts";
 import { getCreditUsageDisplayName } from "../../../../lib/credit-usage-display.ts";
 import { Link } from "../../../router/link.tsx";
 import { MemberUsageTable } from "../org-manage/org-usage-tab.tsx";
+import { useTranslation } from "react-i18next";
+import { currentLocale, i18n } from "../../../../i18n/index.ts";
+import {
+  formatCompactNumber,
+  formatLocalizedNumber,
+} from "../../../../i18n/format.ts";
 
 const CARD_BORDER = "0.7px solid hsl(var(--gray-400))";
 
-const SOURCE_META = {
-  chat: { label: "Chat", Icon: IconMessageCircle },
-  automation: { label: "Automation", Icon: IconClock },
-  slack: { label: "Slack", Icon: IconBrandSlack },
-  teams: { label: "Teams", Icon: IconMessageCircle },
-  telegram: { label: "Telegram", Icon: IconBrandTelegram },
-  email: { label: "Email", Icon: IconMail },
-  agentphone: { label: "Phone", Icon: IconPhone },
-  github: { label: "GitHub", Icon: IconBrandGithub },
-  cli: { label: "CLI", Icon: IconTerminal2 },
-  agent: { label: "Agent", Icon: IconRobot },
-  other: { label: "Other", Icon: IconRobot },
-} as const satisfies Record<
-  UsageRecordSource,
-  { label: string; Icon: typeof IconMessageCircle }
->;
+const SOURCE_ICONS = {
+  chat: IconMessageCircle,
+  automation: IconClock,
+  slack: IconBrandSlack,
+  teams: IconMessageCircle,
+  telegram: IconBrandTelegram,
+  email: IconMail,
+  agentphone: IconPhone,
+  github: IconBrandGithub,
+  cli: IconTerminal2,
+  agent: IconRobot,
+  other: IconRobot,
+} as const satisfies Record<UsageRecordSource, typeof IconMessageCircle>;
 
 const KIND_META = {
   model: {
-    label: "LLM models",
     color: "bg-usage-kind-model",
   },
   image: {
-    label: "Image models",
     color: "bg-usage-kind-image",
   },
   video: {
-    label: "Video models",
     color: "bg-usage-kind-video",
   },
   connector: {
-    label: "Connectors",
     color: "bg-usage-kind-connector",
   },
   other: {
-    label: "Other",
     color: "bg-usage-kind-other",
   },
-} as const satisfies Record<UsageRecordKind, { label: string; color: string }>;
+} as const satisfies Record<UsageRecordKind, { color: string }>;
 
 const RANGE_OPTIONS = [
-  { value: "today", label: "Today" },
-  { value: "yesterday", label: "Yesterday" },
-  { value: "24h", label: "Last 24 hours" },
-  { value: "7d", label: "Last 7 days" },
-  { value: "billingPeriod", label: "Billing period" },
-] as const satisfies readonly {
-  value: UsageRecordRange;
-  label: string;
-}[];
+  "today",
+  "yesterday",
+  "24h",
+  "7d",
+  "billingPeriod",
+] as const satisfies readonly UsageRecordRange[];
 
 // Row divider is an inset hairline (pseudo-element with horizontal margin) so
 // it doesn't run edge-to-edge into the card border. The row itself is no longer
@@ -128,19 +123,13 @@ type UsageMembersLoadable =
   | { readonly state: "hasData"; readonly data: UsageMembersResponse };
 
 function formatCredits(n: number): string {
-  if (n >= 1_000_000) {
-    return `${(n / 1_000_000).toFixed(1)}M`;
-  }
-  if (n >= 1000) {
-    return `${(n / 1000).toFixed(1)}K`;
-  }
-  return n.toLocaleString();
+  return formatCompactNumber(n);
 }
 
 function formatDate(iso: string): string {
   const date = new Date(iso);
   const sameYear = date.getFullYear() === nowDate().getFullYear();
-  return new Intl.DateTimeFormat("en-US", {
+  return new Intl.DateTimeFormat(currentLocale(), {
     month: "short",
     day: "numeric",
     ...(sameYear ? {} : { year: "numeric" }),
@@ -148,11 +137,123 @@ function formatDate(iso: string): string {
 }
 
 function rangeLabel(range: UsageRecordRange): string {
-  return (
-    RANGE_OPTIONS.find((option) => {
-      return option.value === range;
-    })?.label ?? "Today"
-  );
+  switch (range) {
+    case "today": {
+      return i18n.t(($) => {
+        return $.usage.range.today;
+      });
+    }
+    case "yesterday": {
+      return i18n.t(($) => {
+        return $.usage.range.yesterday;
+      });
+    }
+    case "24h": {
+      return i18n.t(($) => {
+        return $.usage.range.last24Hours;
+      });
+    }
+    case "7d": {
+      return i18n.t(($) => {
+        return $.usage.range.last7Days;
+      });
+    }
+    case "billingPeriod": {
+      return i18n.t(($) => {
+        return $.usage.range.billingPeriod;
+      });
+    }
+  }
+}
+
+function sourceLabel(source: UsageRecordSource): string {
+  switch (source) {
+    case "chat": {
+      return i18n.t(($) => {
+        return $.usage.sources.chat;
+      });
+    }
+    case "automation": {
+      return i18n.t(($) => {
+        return $.usage.sources.automation;
+      });
+    }
+    case "slack": {
+      return i18n.t(($) => {
+        return $.usage.sources.slack;
+      });
+    }
+    case "teams": {
+      return i18n.t(($) => {
+        return $.usage.sources.teams;
+      });
+    }
+    case "telegram": {
+      return i18n.t(($) => {
+        return $.usage.sources.telegram;
+      });
+    }
+    case "email": {
+      return i18n.t(($) => {
+        return $.usage.sources.email;
+      });
+    }
+    case "agentphone": {
+      return i18n.t(($) => {
+        return $.usage.sources.phone;
+      });
+    }
+    case "github": {
+      return i18n.t(($) => {
+        return $.usage.sources.github;
+      });
+    }
+    case "cli": {
+      return i18n.t(($) => {
+        return $.usage.sources.cli;
+      });
+    }
+    case "agent": {
+      return i18n.t(($) => {
+        return $.usage.sources.agent;
+      });
+    }
+    case "other": {
+      return i18n.t(($) => {
+        return $.usage.sources.other;
+      });
+    }
+  }
+}
+
+function kindLabel(kind: UsageRecordKind): string {
+  switch (kind) {
+    case "model": {
+      return i18n.t(($) => {
+        return $.usage.kinds.model;
+      });
+    }
+    case "image": {
+      return i18n.t(($) => {
+        return $.usage.kinds.image;
+      });
+    }
+    case "video": {
+      return i18n.t(($) => {
+        return $.usage.kinds.video;
+      });
+    }
+    case "connector": {
+      return i18n.t(($) => {
+        return $.usage.kinds.connector;
+      });
+    }
+    case "other": {
+      return i18n.t(($) => {
+        return $.usage.kinds.other;
+      });
+    }
+  }
 }
 
 function usageRowKey(row: UsageRecordRow): string {
@@ -166,6 +267,7 @@ export function UsageRangeSelect({
   value: UsageRecordRange;
   onChange: (range: UsageRecordRange) => void;
 }) {
+  useTranslation();
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
@@ -186,12 +288,12 @@ export function UsageRangeSelect({
         {RANGE_OPTIONS.map((option) => {
           return (
             <DropdownMenuItem
-              key={option.value}
+              key={option}
               onClick={() => {
-                onChange(option.value);
+                onChange(option);
               }}
             >
-              {option.label}
+              {rangeLabel(option)}
             </DropdownMenuItem>
           );
         })}
@@ -239,7 +341,8 @@ function UsageBreakdownBar({ row, max }: { row: UsageRecordRow; max: number }) {
                 className="max-w-64 border shadow-md"
               >
                 <div className="font-medium text-foreground">
-                  {meta.label} - {segment.credits.toLocaleString()}
+                  {kindLabel(segment.kind)} -{" "}
+                  {formatLocalizedNumber(segment.credits)}
                 </div>
                 <div className="mt-1 flex flex-col gap-0.5">
                   {segment.providers.flatMap((provider) => {
@@ -260,7 +363,7 @@ function UsageBreakdownBar({ row, max }: { row: UsageRecordRow; max: number }) {
                             )}
                           </span>
                           <span className="shrink-0 tabular-nums">
-                            {usageKind.credits.toLocaleString()}
+                            {formatLocalizedNumber(usageKind.credits)}
                           </span>
                         </div>
                       );
@@ -277,9 +380,16 @@ function UsageBreakdownBar({ row, max }: { row: UsageRecordRow; max: number }) {
 }
 
 function UsageRow({ row, max }: { row: UsageRecordRow; max: number }) {
+  const { t } = useTranslation();
   const closeSettings = useSet(closeSettingsModal$);
-  const { label, Icon } = SOURCE_META[row.source];
-  const title = row.title && row.title.length > 0 ? row.title : "Untitled";
+  const Icon = SOURCE_ICONS[row.source];
+  const label = sourceLabel(row.source);
+  const title =
+    row.title && row.title.length > 0
+      ? row.title
+      : t(($) => {
+          return $.usage.records.untitled;
+        });
 
   const closeOnNavigate = (e: MouseEvent<HTMLAnchorElement>) => {
     if (e.metaKey || e.ctrlKey || e.shiftKey) {
@@ -384,9 +494,13 @@ function UsageRecordSkeleton() {
 
 function emptyMessage(range: UsageRecordRange): string {
   if (range === "billingPeriod") {
-    return "No billing period usage yet.";
+    return i18n.t(($) => {
+      return $.usage.records.emptyBillingPeriod;
+    });
   }
-  return "No usage for this range yet.";
+  return i18n.t(($) => {
+    return $.usage.records.emptyRange;
+  });
 }
 
 // Summary + type legend above the list. The credit total is range-wide (from
@@ -398,14 +512,33 @@ function UsageRecordSummary({
   count: number;
   totalCredits: number;
 }) {
+  const { t } = useTranslation();
   const kinds = Object.keys(KIND_META) as UsageRecordKind[];
+  const chats = t(
+    ($) => {
+      return $.usage.units.chat;
+    },
+    {
+      count,
+      value: formatLocalizedNumber(count),
+    },
+  );
+  const credits = t(
+    ($) => {
+      return $.usage.units.credit;
+    },
+    {
+      count: totalCredits,
+      value: formatCredits(totalCredits),
+    },
+  );
   return (
     <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2 px-5 py-3.5">
       <p className="text-sm text-muted-foreground">
         <span className="font-medium text-foreground tabular-nums">
-          {count} {count === 1 ? "chat" : "chats"}
+          {chats}
         </span>{" "}
-        · {formatCredits(totalCredits)} credits
+        · {credits}
       </p>
       <div className="flex flex-wrap items-center gap-x-3.5 gap-y-1.5">
         {kinds.map((kind) => {
@@ -417,7 +550,7 @@ function UsageRecordSummary({
               <span
                 className={`${KIND_META[kind].color} h-2 w-2 shrink-0 rounded-full`}
               />
-              {KIND_META[kind].label}
+              {kindLabel(kind)}
             </span>
           );
         })}
@@ -433,6 +566,7 @@ function UsageRecordList({
   data: UsageRecordResponse;
   scope: UsageRecordScope;
 }) {
+  const { t } = useTranslation();
   const loadMore = useSet(loadMoreUsageRecord$);
   const maxCredits = Math.max(
     1,
@@ -470,7 +604,9 @@ function UsageRecordList({
               loadMore(scope);
             }}
           >
-            Load more
+            {t(($) => {
+              return $.usage.records.loadMore;
+            })}
           </Button>
         </div>
       )}
@@ -487,12 +623,15 @@ function UsageRecordContent({
   range: UsageRecordRange;
   scope: UsageRecordScope;
 }) {
+  const { t } = useTranslation();
   return (
     <section className="flex flex-col gap-4">
       {loadable.state === "loading" && <UsageRecordSkeleton />}
       {loadable.state === "hasError" && (
         <p className="text-sm text-muted-foreground" role="alert">
-          Couldn&apos;t load usage. Please try again later.
+          {t(($) => {
+            return $.usage.records.loadError;
+          })}
         </p>
       )}
       {loadable.state === "hasData" &&
@@ -512,6 +651,7 @@ function TeamMemberUsageContent({
   loadable: UsageMembersLoadable;
   range: UsageRecordRange;
 }) {
+  const { t } = useTranslation();
   const membersLoadable = useLoadable(orgMembers$);
   const orgMembersList =
     membersLoadable.state === "hasData" ? membersLoadable.data : [];
@@ -526,13 +666,17 @@ function TeamMemberUsageContent({
       {loadable.state === "loading" && <UsageRecordSkeleton />}
       {loadable.state === "hasError" && (
         <p className="text-sm text-muted-foreground" role="alert">
-          Couldn&apos;t load team usage. Please try again later.
+          {t(($) => {
+            return $.usage.records.teamLoadError;
+          })}
         </p>
       )}
       {loadable.state === "hasData" &&
         (!loadable.data.period ? (
           <p className="text-sm text-muted-foreground">
-            No active billing period. Team usage is available on paid plans.
+            {t(($) => {
+              return $.usage.records.noActiveBillingPeriod;
+            })}
           </p>
         ) : loadable.data.members.length === 0 ? (
           <p className="text-sm text-muted-foreground">{emptyMessage(range)}</p>

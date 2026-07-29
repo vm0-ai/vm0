@@ -8,6 +8,7 @@ import {
   zeroConnectorCatalogContract,
   type PublicConnectorCatalogStatusItem,
 } from "@vm0/api-contracts/contracts/zero-connector-catalog";
+import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import { beforeEach, describe, expect, it } from "vitest";
 
 import { click, detachedSetupPage } from "../../../__tests__/page-helper.ts";
@@ -651,6 +652,38 @@ describe("network insights page", () => {
       expect(
         screen.getByText(/3 runs and 40 service calls today/u),
       ).toBeInTheDocument();
+    });
+  });
+
+  it("localizes insight narratives, ranges, and credit totals in Portuguese", async () => {
+    const data = insightsResponse();
+    context.mocks.data.userPreferences({ locale: "pt-BR" });
+    context.mocks.api(zeroInsightsContract.get, ({ respond }) => {
+      return respond(200, data);
+    });
+
+    detachedSetupPage({
+      context,
+      path: "/insights",
+      featureSwitches: {
+        [FeatureSwitchKey.LanguagePreference]: true,
+      },
+    });
+
+    await waitFor(() => {
+      expect(document.documentElement.lang).toBe("pt-BR");
+      expect(
+        screen.getByRole("heading", { level: 1, name: "Insights" }),
+      ).toBeInTheDocument();
+      expect(screen.getByText("Ontem")).toBeInTheDocument();
+      expect(screen.getByText("Últimos 7 dias")).toBeInTheDocument();
+      expect(
+        screen.getByText(
+          /3 solicitações foram bloqueadas pelas suas regras de permissão/u,
+        ),
+      ).toBeInTheDocument();
+      expect(screen.getByText(/1,6\s+mil/u)).toBeInTheDocument();
+      expect(screen.getByText("Research Bot")).toBeInTheDocument();
     });
   });
 });
