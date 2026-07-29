@@ -750,8 +750,17 @@ describe("thread-owned utility sidebar", () => {
       await releaseResponse.promise;
       return respond(200, { browser });
     });
+    let leaseRequests = 0;
     context.mocks.api(zeroBrowserContract.leaseById, ({ respond }) => {
-      return respond(200, { browser });
+      leaseRequests += 1;
+      return respond(200, {
+        browser: {
+          ...browser,
+          // The production lease endpoint extends the instance without
+          // returning its provider live URL.
+          liveUrl: null,
+        },
+      });
     });
     const resizeAspectRatios: number[] = [];
     context.mocks.api(zeroBrowserContract.resizeById, ({ body, respond }) => {
@@ -810,8 +819,12 @@ describe("thread-owned utility sidebar", () => {
     click(fitWindow);
 
     await waitFor(() => {
+      expect(leaseRequests).toBeGreaterThan(0);
       expect(resizeAspectRatios).toStrictEqual([0.8]);
       expect(fitWindow).toBeEnabled();
+      expect(
+        screen.getByTitle("Live browser: Auto-open browser"),
+      ).toHaveAttribute("src", liveUrl);
     });
   });
 

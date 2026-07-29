@@ -201,7 +201,19 @@ export function createBrowserSessionSignals(
               [200, 404, 409],
             );
             if (response.status === 200) {
-              set(sessionOverride$, response.body.browser);
+              const currentSession = await get(session$);
+              signal.throwIfAborted();
+              set(
+                sessionOverride$,
+                currentSession
+                  ? {
+                      ...response.body.browser,
+                      // Lease responses intentionally omit the provider live
+                      // URL, so retain the one loaded by the viewer endpoint.
+                      liveUrl: currentSession.liveUrl,
+                    }
+                  : response.body.browser,
+              );
               return false;
             }
             // The browser was reclaimed while the panel was hidden or idle. Stop
