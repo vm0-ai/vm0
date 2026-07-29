@@ -1498,6 +1498,7 @@ def _release_terminal_flow_state(
     flow: http.HTTPFlow,
     *,
     release_tracking: bool,
+    release_aws_sigv4_body_admission: bool = True,
 ) -> None:
     if release_tracking:
         websocket_retention.release_terminal_messages(flow)
@@ -1511,7 +1512,8 @@ def _release_terminal_flow_state(
     codex_model_catalog_cache.release_flow_state(flow)
     response_streaming.release_response_stream_state(flow)
     auth_base_forwarder.release_forward_request_admission_from_flow(flow)
-    aws_sigv4_body_admission.release_from_flow(flow)
+    if release_aws_sigv4_body_admission:
+        aws_sigv4_body_admission.release_from_flow(flow)
     if flow.error is not None:
         upstream_admission.forget_server_binding(flow.server_conn)
     if release_tracking:
@@ -1534,7 +1536,11 @@ def response(flow: http.HTTPFlow) -> None:
         _handle_response(flow)
         release_tracking = not response_streaming.is_model_websocket_usage_enabled(flow)
     finally:
-        _release_terminal_flow_state(flow, release_tracking=release_tracking)
+        _release_terminal_flow_state(
+            flow,
+            release_tracking=release_tracking,
+            release_aws_sigv4_body_admission=flow.websocket is None,
+        )
 
 
 def _handle_response(flow: http.HTTPFlow) -> None:

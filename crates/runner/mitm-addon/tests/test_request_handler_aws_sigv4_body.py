@@ -4,10 +4,12 @@ import asyncio
 import hashlib
 import json
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
 
 import pytest
-from mitmproxy import http
+from mitmproxy import connection, http
+from mitmproxy.websocket import WebSocketData
 
 import auth
 import aws_sigv4_body_admission
@@ -24,8 +26,13 @@ from tests.aws_sigv4_helpers import (
     resolved_aws_sigv4_credentials,
 )
 from tests.firewall_aws_sigv4_helpers import aws_api_entry
+from tests.firewall_helpers import cancel_pending_task
 from tests.request_handler_helpers import _single_firewall_vm, _write_registry
-from tests.requestheaders_helpers import await_requestheaders_result
+from tests.requestheaders_helpers import (
+    _assert_no_request_stream,
+    await_requestheaders_result,
+)
+from tests.upstream_connection_helpers import mark_connected_tls_upstream
 
 _CLIENT_IP = "10.200.0.5"
 _AWS_PERMISSION = "aws-request"
@@ -185,6 +192,80 @@ async def test_payload_independent_large_fixed_length_bypasses_buffer_limit(
     assert flow.error is None
 
 
+async def test_payload_independent_sigv4_disconnect_during_auth_falls_back_without_credentials(
+    tmp_path,
+    real_flow,
+    headers,
+    mitm_ctx,
+) -> None:
+    registry_path = _write_aws_registry(tmp_path)
+    flow = real_flow(
+        with_response=False,
+        client_ip=_CLIENT_IP,
+        host="93.184.216.34",
+        sni=STS_HOST,
+        method="POST",
+        path="/",
+        request_headers=headers(
+            *aws_sigv4_header_auth_headers(
+                authorization=aws_sigv4_authorization(
+                    signed_headers="host;x-amz-content-sha256;x-amz-date",
+                ),
+                extra_headers=[
+                    ("Content-Length", "4"),
+                    ("X-Amz-Content-Sha256", "UNSIGNED-PAYLOAD"),
+                ],
+            )
+        ),
+    )
+    mark_connected_tls_upstream(
+        flow,
+        sni=STS_HOST,
+        server_address=("93.184.216.34", 443),
+        peername=("93.184.216.34", 443),
+    )
+    original_headers = flow.request.headers.fields
+    original_url = flow.request.url
+    auth_resolution_entered = asyncio.Event()
+    release_auth_resolution = asyncio.Event()
+
+    async def resolve_auth(*_args, **_kwargs):
+        auth_resolution_entered.set()
+        await release_auth_resolution.wait()
+        return _resolved_token_meta()
+
+    get_headers = AsyncMock(side_effect=resolve_auth)
+
+    with (
+        mitm_ctx(registry_path=str(registry_path), api_url="https://api.vm0.ai"),
+        patch.object(auth, "get_firewall_headers", get_headers),
+    ):
+        requestheaders_task = asyncio.create_task(
+            await_requestheaders_result(mitm_addon.requestheaders(flow))
+        )
+        try:
+            await asyncio.wait_for(auth_resolution_entered.wait(), timeout=1)
+            flow.server_conn.state = connection.ConnectionState.CLOSED
+            mitm_addon.server_disconnected(SimpleNamespace(server=flow.server_conn))
+            release_auth_resolution.set()
+            await requestheaders_task
+        finally:
+            release_auth_resolution.set()
+            await cancel_pending_task(requestheaders_task)
+
+        assert flow.request.stream is False
+        assert metadata_keys.REQUEST_STREAM_BUFFER not in flow.metadata
+        assert metadata_keys.REQUEST_STREAM_BUFFER_STATE not in flow.metadata
+        assert flow.request.headers.fields == original_headers
+        assert flow.request.url == original_url
+        assert RESOLVED_AWS_ACCESS_KEY_ID not in flow.request.url
+        assert aws_sigv4_body_admission.state_for_tests() == (1, 4)
+        mitm_addon.error(flow)
+
+    get_headers.assert_awaited_once()
+    assert aws_sigv4_body_admission.state_for_tests() == (0, 0)
+
+
 async def test_payload_dependent_sigv4_holds_admission_until_terminal_cleanup(
     tmp_path,
     real_flow,
@@ -215,6 +296,54 @@ async def test_payload_dependent_sigv4_holds_admission_until_terminal_cleanup(
 
         flow.response = http.Response.make(200, b"ok")
         mitm_addon.response(flow)
+
+    get_headers.assert_awaited_once()
+    assert aws_sigv4_body_admission.state_for_tests() == (0, 0)
+    assert metadata_keys.AWS_SIGV4_BODY_ADMISSION not in flow.metadata
+
+
+async def test_payload_dependent_sigv4_holds_admission_until_websocket_end(
+    tmp_path,
+    real_flow,
+    headers,
+    mitm_ctx,
+) -> None:
+    registry_path = _write_aws_registry(tmp_path)
+    body = b"body"
+    flow = _header_auth_flow(
+        real_flow,
+        headers,
+        body=body,
+        content_length=str(len(body)),
+    )
+    flow.request.headers["Connection"] = "Upgrade"
+    flow.request.headers["Upgrade"] = "websocket"
+    flow.request.headers["Sec-WebSocket-Key"] = "MDEyMzQ1Njc4OWFiY2RlZg=="
+    flow.request.headers["Sec-WebSocket-Version"] = "13"
+    get_headers = AsyncMock(return_value=_resolved_token_meta())
+
+    with (
+        mitm_ctx(registry_path=str(registry_path), api_url="https://api.vm0.ai"),
+        patch.object(auth, "get_firewall_headers", get_headers),
+    ):
+        assert mitm_addon.requestheaders(flow) is None
+        await mitm_addon.request(flow)
+
+        flow.response = http.Response.make(
+            101,
+            b"",
+            {
+                "Connection": "Upgrade",
+                "Upgrade": "websocket",
+            },
+        )
+        flow.websocket = WebSocketData()
+        mitm_addon.response(flow)
+
+        assert aws_sigv4_body_admission.state_for_tests() == (1, len(body))
+        assert metadata_keys.AWS_SIGV4_BODY_ADMISSION in flow.metadata
+
+        mitm_addon.websocket_end(flow)
 
     get_headers.assert_awaited_once()
     assert aws_sigv4_body_admission.state_for_tests() == (0, 0)
@@ -311,11 +440,21 @@ def test_malformed_sigv4_placeholder_uses_bounded_fallback(
     )
 
 
+@pytest.mark.parametrize(
+    ("limit_name", "limit_value"),
+    [
+        ("MAX_ADMITTED_AWS_SIGV4_REQUESTS", 0),
+        ("MAX_ADMITTED_AWS_SIGV4_REQUEST_BODY_BYTES", 3),
+    ],
+    ids=["request-count", "body-bytes"],
+)
 def test_payload_dependent_sigv4_rejects_saturated_admission_before_auth(
     tmp_path,
     real_flow,
     headers,
     mitm_ctx,
+    limit_name: str,
+    limit_value: int,
 ) -> None:
     registry_path = _write_aws_registry(tmp_path)
     flow = _header_auth_flow(
@@ -324,20 +463,13 @@ def test_payload_dependent_sigv4_rejects_saturated_admission_before_auth(
         content_length="4",
     )
     get_headers = AsyncMock()
-    admissions = [
-        aws_sigv4_body_admission.reserve(0)
-        for _index in range(aws_sigv4_body_admission.MAX_ADMITTED_AWS_SIGV4_REQUESTS)
-    ]
 
-    try:
-        with (
-            mitm_ctx(registry_path=str(registry_path), api_url="https://api.vm0.ai"),
-            patch.object(auth, "get_firewall_headers", get_headers),
-        ):
-            assert mitm_addon.requestheaders(flow) is None
-    finally:
-        for admission in admissions:
-            aws_sigv4_body_admission.release(admission)
+    with (
+        mitm_ctx(registry_path=str(registry_path), api_url="https://api.vm0.ai"),
+        patch.object(aws_sigv4_body_admission, limit_name, limit_value),
+        patch.object(auth, "get_firewall_headers", get_headers),
+    ):
+        assert mitm_addon.requestheaders(flow) is None
 
     get_headers.assert_not_called()
     assert flow.error is not None
@@ -469,29 +601,44 @@ async def test_presigned_s3_request_signs_before_streaming(
     assert metadata_keys.AWS_SIGV4_BODY_ADMISSION not in flow.metadata
 
 
-def test_sigv4_admission_enforces_count_and_aggregate_byte_limits() -> None:
-    with pytest.raises(ValueError, match="cannot be negative"):
-        aws_sigv4_body_admission.reserve(-1)
+def test_public_destination_presigned_s3_uses_bounded_fallback(
+    tmp_path,
+    real_flow,
+    headers,
+    mitm_ctx,
+) -> None:
+    host = "bucket.s3.amazonaws.com"
+    registry_path = _write_aws_registry(
+        tmp_path,
+        base=f"https://{host}",
+        host_policy={"kind": "publicDestination"},
+    )
+    flow = real_flow(
+        with_response=False,
+        client_ip=_CLIENT_IP,
+        host=host,
+        method="GET",
+        path=aws_sigv4_presigned_query_path(
+            service="s3",
+            leading_query="",
+        ),
+        request_headers=headers(
+            ("Host", host),
+            ("Transfer-Encoding", "chunked"),
+        ),
+    )
+    get_headers = AsyncMock()
 
-    count_admissions = [
-        aws_sigv4_body_admission.reserve(0)
-        for _index in range(aws_sigv4_body_admission.MAX_ADMITTED_AWS_SIGV4_REQUESTS)
-    ]
-    with pytest.raises(aws_sigv4_body_admission.AwsSigV4BodyAdmissionSaturatedError):
-        aws_sigv4_body_admission.reserve(0)
-    for admission in count_admissions:
-        aws_sigv4_body_admission.release(admission)
+    with (
+        mitm_ctx(registry_path=str(registry_path), api_url="https://api.vm0.ai"),
+        patch.object(auth, "get_firewall_headers", get_headers),
+    ):
+        assert mitm_addon.requestheaders(flow) is None
 
-    byte_admissions = [
-        aws_sigv4_body_admission.reserve(aws_sigv4_body_admission.MAX_AWS_SIGV4_REQUEST_BODY_BYTES)
-        for _index in range(
-            aws_sigv4_body_admission.MAX_ADMITTED_AWS_SIGV4_REQUEST_BODY_BYTES
-            // aws_sigv4_body_admission.MAX_AWS_SIGV4_REQUEST_BODY_BYTES
-        )
-    ]
-    with pytest.raises(aws_sigv4_body_admission.AwsSigV4BodyAdmissionSaturatedError):
-        aws_sigv4_body_admission.reserve(1)
-    for admission in byte_admissions:
-        aws_sigv4_body_admission.release(admission)
-
-    assert aws_sigv4_body_admission.state_for_tests() == (0, 0)
+    get_headers.assert_not_called()
+    _assert_no_request_stream(flow)
+    assert flow.error is not None
+    assert (
+        flow.metadata[metadata_keys.FIREWALL_ERROR]
+        == auth.AWS_SIGV4_REQUEST_BODY_LENGTH_REQUIRED_ERROR
+    )
