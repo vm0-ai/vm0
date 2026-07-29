@@ -3272,6 +3272,7 @@ function builderRelation(
 const BUILDER_READ_SELECT_KEYS = new Set([
   "fromClause",
   "groupClause",
+  "havingClause",
   "limitCount",
   "limitOption",
   "op",
@@ -3391,7 +3392,7 @@ function isBuilderReadCte(
       !isBuilderReadSelect(
         body,
         markers,
-        false,
+        true,
         false,
         hasLocalExpansion ? undefined : directRelationPolicy,
       )
