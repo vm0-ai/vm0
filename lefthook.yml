@@ -4,7 +4,9 @@ commit-msg:
       run: ./turbo/node_modules/.bin/commitlint --config commitlint.config.mjs --edit "{1}"
 
 pre-commit:
-  parallel: true
+  # Keep memory-heavy Turbo and Rust checks from competing for the same
+  # constrained development container.
+  parallel: false
   jobs:
     - name: turbo
       group:
