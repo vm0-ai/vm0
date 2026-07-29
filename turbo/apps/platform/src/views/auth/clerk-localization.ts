@@ -1,12 +1,27 @@
+import { enUS, ptBR } from "@clerk/localizations";
+import type { TFunction } from "i18next";
+import type { SupportedLocale } from "../../i18n/resources.ts";
 import type { BrandName } from "../../signals/branding.ts";
 
-const CLERK_NOT_ALLOWED_ACCESS_ERROR_TEXT = "Access is not allowed.";
-
-export function getClerkLocalization(brandName: BrandName) {
+export function getClerkLocalization(
+  brandName: BrandName,
+  locale: SupportedLocale,
+  t: TFunction<"common">,
+) {
+  const localization = locale === "pt-BR" ? ptBR : enUS;
   return {
+    ...localization,
     unstable__errors: {
-      not_allowed_access: CLERK_NOT_ALLOWED_ACCESS_ERROR_TEXT,
-      user_banned: `Account access suspended because activity on this account violated the ${brandName} Terms of Use. If you have questions, contact support@vm0.ai.`,
+      ...localization.unstable__errors,
+      not_allowed_access: t(($) => {
+        return $.auth.clerk.accessNotAllowed;
+      }),
+      user_banned: t(
+        ($) => {
+          return $.auth.clerk.userBanned;
+        },
+        { brandName },
+      ),
     },
   };
 }
