@@ -1611,8 +1611,8 @@
           "authorizationCode": "Authorization code",
           "codePlaceholder": "Paste code from Claude",
           "codeRequired": "Paste the Claude Code authorization code to continue.",
-          "connectTitle": "Connect Claude Code",
           "connectedToast": "Claude Code connected",
+          "connectTitle": "Connect Claude Code",
           "error": "Claude Code connection failed. Start again to retry.",
           "expired": "Claude Code connection session expired. Start again to retry.",
           "instructions": "First click Open Claude approval page. Then approve {{brandName}} in Claude and copy the authorization code shown after approval. Finally paste that code here and click Connect.",
@@ -1627,8 +1627,8 @@
           "approvalOpened": "Approval page opened. Copy the device code before approving.",
           "codeCopied": "Device code copied. Waiting for approval...",
           "codeCopiedRetry": "Device code copied. Try opening the approval page again.",
-          "connectTitle": "Connect Codex",
           "connectedToast": "ChatGPT connected",
+          "connectTitle": "Connect Codex",
           "copyAndOpen": "Copy code and open approval page",
           "copyAndOpenError": "Could not copy the device code or open the approval page. Copy the code manually and try again.",
           "copyError": "Approval page opened, but the device code was not copied. Copy it manually before approving.",
@@ -1694,9 +1694,9 @@
       "reset": {
         "confirmDescription": "Use one Codex reset to reset your current usage windows. You have {{remaining}}.",
         "progress": "Resetting...",
-        "remainingUnavailable": "Resets left unavailable",
         "remaining_one": "{{count}} reset left",
         "remaining_other": "{{count}} resets left",
+        "remainingUnavailable": "Resets left unavailable",
         "title": "Reset Codex usage?"
       },
       "stale": {
@@ -1722,11 +1722,11 @@
         "inHoursMinutes": "in {{hours}}h {{minutes}}m",
         "inLessThanMinute": "in <1m",
         "inMinutes": "in {{minutes}}m",
-        "resetTimePassed": "reset time passed",
-        "resetTimePassedTitle": "Reset time passed",
         "resetsAt": "resets {{date}}",
         "resetsRaw": "resets {{value}}",
-        "resetsRelative": "Resets {{relative}}"
+        "resetsRelative": "Resets {{relative}}",
+        "resetTimePassed": "reset time passed",
+        "resetTimePassedTitle": "Reset time passed"
       }
     },
     "preferences": {
@@ -1766,8 +1766,8 @@
         "nextEmail": "Next email: {{date}}",
         "nextEmailInTimezone": "Next email: {{date}} ({{timezone}})",
         "notScheduled": "Next email: not scheduled yet — turn the switch off and on to reschedule",
-        "sendNow": "Send now",
         "sending": "Sending...",
+        "sendNow": "Send now",
         "title": "Morning Brief",
         "triggeredToast": "Morning Brief triggered, the email arrives shortly"
       },
@@ -1869,8 +1869,8 @@
           "send": "Send invitation",
           "title": "Invite member"
         },
-        "joinRequests": "Join requests",
         "joined": "Joined",
+        "joinRequests": "Join requests",
         "member": "Member",
         "membershipRequest": {
           "acceptTitle": "Accept request",

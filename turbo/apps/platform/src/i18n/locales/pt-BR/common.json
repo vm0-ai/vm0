@@ -1611,8 +1611,8 @@
           "authorizationCode": "Código de autorização",
           "codePlaceholder": "Cole o código do Claude",
           "codeRequired": "Cole o código de autorização do Claude Code para continuar.",
-          "connectTitle": "Conectar o Claude Code",
           "connectedToast": "Claude Code conectado",
+          "connectTitle": "Conectar o Claude Code",
           "error": "Falha na conexão com o Claude Code. Inicie novamente para tentar de novo.",
           "expired": "A sessão de conexão com o Claude Code expirou. Inicie novamente para tentar de novo.",
           "instructions": "Primeiro, clique em Abrir página de aprovação do Claude. Depois, aprove o {{brandName}} no Claude e copie o código de autorização exibido após a aprovação. Por fim, cole o código aqui e clique em Conectar.",
@@ -1627,8 +1627,8 @@
           "approvalOpened": "Página de aprovação aberta. Copie o código do dispositivo antes de aprovar.",
           "codeCopied": "Código do dispositivo copiado. Aguardando aprovação...",
           "codeCopiedRetry": "Código do dispositivo copiado. Tente abrir a página de aprovação novamente.",
-          "connectTitle": "Conectar o Codex",
           "connectedToast": "ChatGPT conectado",
+          "connectTitle": "Conectar o Codex",
           "copyAndOpen": "Copiar código e abrir página de aprovação",
           "copyAndOpenError": "Não foi possível copiar o código do dispositivo nem abrir a página de aprovação. Copie o código manualmente e tente de novo.",
           "copyError": "A página de aprovação foi aberta, mas o código do dispositivo não foi copiado. Copie-o manualmente antes de aprovar.",
@@ -1694,10 +1694,10 @@
       "reset": {
         "confirmDescription": "Use uma redefinição do Codex para redefinir suas janelas de uso atuais. Você tem {{remaining}}.",
         "progress": "Redefinindo...",
-        "remainingUnavailable": "Redefinições restantes indisponíveis",
-        "remaining_many": "{{count}} redefinições restantes",
         "remaining_one": "{{count}} redefinição restante",
+        "remaining_many": "{{count}} redefinições restantes",
         "remaining_other": "{{count}} redefinições restantes",
+        "remainingUnavailable": "Redefinições restantes indisponíveis",
         "title": "Redefinir o uso do Codex?"
       },
       "stale": {
@@ -1723,11 +1723,11 @@
         "inHoursMinutes": "em {{hours}}h {{minutes}}min",
         "inLessThanMinute": "em menos de 1min",
         "inMinutes": "em {{minutes}}min",
-        "resetTimePassed": "o horário de redefinição já passou",
-        "resetTimePassedTitle": "O horário de redefinição já passou",
         "resetsAt": "redefine em {{date}}",
         "resetsRaw": "redefine {{value}}",
-        "resetsRelative": "Redefine {{relative}}"
+        "resetsRelative": "Redefine {{relative}}",
+        "resetTimePassed": "o horário de redefinição já passou",
+        "resetTimePassedTitle": "O horário de redefinição já passou"
       }
     },
     "preferences": {
@@ -1750,8 +1750,8 @@
         "capture": {
           "description": "Capture nomes de cabeçalhos HTTP, valores seguros selecionados e corpos nos logs de rede para depuração.",
           "disabled": "Desativado",
-          "enabled_many": "Ativado por mais {{count}} execuções",
           "enabled_one": "Ativado por mais {{count}} execução",
+          "enabled_many": "Ativado por mais {{count}} execuções",
           "enabled_other": "Ativado por mais {{count}} execuções",
           "title": "Capturar corpos das requisições de rede"
         },
@@ -1768,8 +1768,8 @@
         "nextEmail": "Próximo e-mail: {{date}}",
         "nextEmailInTimezone": "Próximo e-mail: {{date}} ({{timezone}})",
         "notScheduled": "Próximo e-mail: ainda não agendado — desative e ative novamente para reagendar",
-        "sendNow": "Enviar agora",
         "sending": "Enviando...",
+        "sendNow": "Enviar agora",
         "title": "Resumo matinal",
         "triggeredToast": "Resumo matinal acionado; o e-mail chegará em breve"
       },
@@ -1871,8 +1871,8 @@
           "send": "Enviar convite",
           "title": "Convidar membro"
         },
-        "joinRequests": "Solicitações de entrada",
         "joined": "Data de entrada",
+        "joinRequests": "Solicitações de entrada",
         "member": "Membro",
         "membershipRequest": {
           "acceptTitle": "Aceitar solicitação",
