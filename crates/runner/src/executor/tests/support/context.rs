@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 
 use crate::ids::RunId;
-use crate::test_fixtures::execution_context_for_test;
+use crate::test_fixtures::execution_context::execution_context_for_test;
 use crate::types::ExecutionContext;
 
 pub(in crate::executor::tests) fn minimal_context() -> ExecutionContext {

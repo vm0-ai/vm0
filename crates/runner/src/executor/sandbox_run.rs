@@ -1597,7 +1597,8 @@ mod tests {
 
     #[test]
     fn active_connector_refs_only_include_builtin_connectors_with_network_policy() {
-        let mut context = crate::test_fixtures::execution_context_for_test(RunId::nil());
+        let mut context =
+            crate::test_fixtures::execution_context::execution_context_for_test(RunId::nil());
         context.firewalls = Some(vec![
             FirewallEntry::Builtin {
                 name: "github".to_string(),

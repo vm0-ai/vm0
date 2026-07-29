@@ -1178,7 +1178,9 @@ mod tests {
     use tokio::io::{AsyncBufReadExt, BufReader};
 
     use super::*;
-    use crate::test_fixtures::{ignored_child_test_env_guard_enabled, run_ignored_child_test};
+    use crate::test_fixtures::ignored_child::{
+        ignored_child_test_env_guard_enabled, run_ignored_child_test,
+    };
 
     const ORPHAN_KILL_CHILD_ENV: &str = "VM0_RUNNER_ORPHAN_KILL_TEST_CHILD";
     const ORPHAN_KILL_READY_LINE: &str = "vm0 orphan kill test ready";
