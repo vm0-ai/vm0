@@ -354,6 +354,122 @@
       }
     }
   },
+  "appShell": {
+    "browserUpgrade": {
+      "browser": {
+        "action": "Atualizar navegador",
+        "description": "O Zero não oferece suporte à versão atual do seu navegador. Atualize o navegador para continuar.",
+        "title": "Atualize seu navegador para continuar"
+      },
+      "chrome": {
+        "action": "Atualizar Chrome",
+        "description": "O Zero não oferece suporte à versão atual do seu navegador. Atualize o Chrome para continuar.",
+        "title": "Atualize o Chrome para continuar"
+      },
+      "chromium": {
+        "action": "Atualizar Chromium",
+        "description": "O Zero não oferece suporte à versão atual do seu navegador. Atualize o Chromium para continuar.",
+        "title": "Atualize o Chromium para continuar"
+      },
+      "ios": {
+        "action": "Atualizar iOS",
+        "description": "O Zero não oferece suporte à versão atual do seu navegador. Atualize o iOS para continuar.",
+        "title": "Atualize o iOS para continuar"
+      },
+      "safari": {
+        "action": "Atualizar Safari",
+        "description": "O Zero não oferece suporte à versão atual do seu navegador. Atualize o Safari para continuar.",
+        "title": "Atualize o Safari para continuar"
+      }
+    },
+    "loading": {
+      "ariaLabel": "Carregando seu espaço de trabalho",
+      "messages": {
+        "almostThere": "Quase lá...",
+        "brewingIdeas": "Preparando algumas ideias...",
+        "connectingDots": "Ligando os pontos...",
+        "gettingReady": "Preparando tudo...",
+        "loadingWorkspace": "Carregando seu espaço de trabalho...",
+        "spinningTeam": "Reunindo a equipe...",
+        "tuningInstruments": "Ajustando os instrumentos...",
+        "warmingNeurons": "Aquecendo os neurônios..."
+      }
+    },
+    "metadata": {
+      "description": "Zero é seu colega de IA da vm0. Envie uma mensagem para o Zero ou converse pela web — pesquise, envie e-mails, crie documentos e use Slack, GitHub, Notion e mais de 100 ferramentas.",
+      "title": "Zero — Seu colega de IA da vm0"
+    },
+    "shortcutHelp": {
+      "close": "Fechar atalhos de teclado",
+      "description": "Atalhos disponíveis nesta página",
+      "sections": {
+        "composer": "Composição",
+        "global": "Global",
+        "messages": "Mensagens"
+      },
+      "shortcuts": {
+        "blurComposer": "Tirar o foco do campo de mensagem",
+        "changeIcon": "Alterar ícone",
+        "clearIcon": "Remover ícone",
+        "newChat": "Novo chat",
+        "nextAgent": "Próximo agente",
+        "nextThread": "Próxima conversa",
+        "openAgentList": "Abrir lista de agentes",
+        "openFirstThread": "Abrir primeira conversa",
+        "previousAgent": "Agente anterior",
+        "previousThread": "Conversa anterior",
+        "renameChat": "Renomear chat",
+        "scrollBottom": "Rolar para o final",
+        "scrollTop": "Rolar para o topo",
+        "sendMessage": "Enviar mensagem",
+        "setIcon": "Definir ícone (Ctrl+Shift+1-9)",
+        "showShortcuts": "Mostrar atalhos",
+        "toggleSidebar": "Alternar barra lateral"
+      },
+      "title": "Atalhos de teclado"
+    },
+    "sidebar": {
+      "ariaLabel": "Barra lateral",
+      "chat": "Chat",
+      "collapse": "Recolher barra lateral",
+      "expand": "Expandir barra lateral",
+      "manage": "Gerenciar",
+      "mobile": {
+        "invite": "Convidar",
+        "openArtifacts": "Abrir artefatos no celular",
+        "openAutomations": "Abrir automações no celular",
+        "openMenu": "Abrir menu",
+        "overlay": "Sobreposição da barra lateral"
+      },
+      "navigation": {
+        "activity": "Logs de atividade",
+        "agents": "Agentes",
+        "artifacts": "Artefatos",
+        "connectors": "Conectores",
+        "insights": "Insights",
+        "insightsAndUsage": "Insights e uso",
+        "newChat": "Novo chat",
+        "settings": "Configurações",
+        "workflows": "Fluxos de trabalho",
+        "works": "Onde {{agentName}} trabalha"
+      },
+      "rail": {
+        "activity": "Atividade",
+        "new": "Novo",
+        "workflows": "Fluxos",
+        "works": "Trabalha"
+      },
+      "searchConversations": "Buscar conversas",
+      "workspaceSwitcher": {
+        "create": "Criar espaço de trabalho",
+        "creating": "Criando…",
+        "join": "Entrar",
+        "joining": "Entrando…",
+        "organizationFallback": "Organização",
+        "switch": "Trocar de espaço de trabalho"
+      }
+    }
+  },
   "artifacts": {
     "actions": {
       "backToAll": "Voltar para todos os artefatos",
@@ -1319,6 +1435,14 @@
     "toasts": {
       "connected": "{{connector}} conectado",
       "disconnected": "{{connector}} desconectado"
+    }
+  },
+  "global": {
+    "errors": {
+      "requestFailed": "Falha na solicitação"
+    },
+    "realtime": {
+      "degraded": "As atualizações em tempo real encontraram um problema. Atualize a página."
     }
   },
   "lifecycle": {
@@ -3164,6 +3288,24 @@
         "logoTooLarge": "O logo é muito grande ({{width}}×{{height}}px). O tamanho máximo é {{maximum}}×{{maximum}}px.",
         "logoTooSmall": "O logo é muito pequeno ({{width}}×{{height}}px). O tamanho mínimo é {{minimum}}×{{minimum}}px."
       }
+    }
+  },
+  "shared": {
+    "breadcrumb": "Navegação estrutural",
+    "errorBoundary": {
+      "contactSupport": "suporte",
+      "description": "Tente novamente ou fale com o",
+      "help": "Estamos aqui para ajudar",
+      "title": "Ops! Algo deu errado"
+    },
+    "forceUpgrade": {
+      "action": "Atualizar",
+      "description": "Esta versão do {{brandName}} não é mais compatível. Atualize a página para carregar a versão mais recente.",
+      "title": "Atualização necessária"
+    },
+    "notFound": {
+      "description": "A página que você procura não existe.",
+      "title": "Página não encontrada"
     }
   },
   "workflows": {

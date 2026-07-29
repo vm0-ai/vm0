@@ -36,7 +36,8 @@ const skeletonCSS = `
  */
 export function AppSkeleton({ visible = true }: { visible?: boolean }) {
   const skeletonConfig = useGet(skeletonAvatarConfig$);
-  const { staticCopy, typewriterCopy, isFirst, cycle } = useGet(skeletonCopy$);
+  const { ariaLabel, staticCopy, typewriterCopy, isFirst, cycle } =
+    useGet(skeletonCopy$);
   const visibleEventRef = useSet(appSkeletonVisibleEventRef$);
   const charCount = typewriterCopy.length;
 
@@ -45,6 +46,9 @@ export function AppSkeleton({ visible = true }: { visible?: boolean }) {
       ref={visible ? visibleEventRef : undefined}
       data-testid="app-skeleton"
       aria-hidden={visible ? undefined : true}
+      aria-label={ariaLabel}
+      aria-live="polite"
+      role="status"
       className={`fixed inset-0 z-50 flex items-center justify-center bg-background ${
         visible
           ? "opacity-100"
