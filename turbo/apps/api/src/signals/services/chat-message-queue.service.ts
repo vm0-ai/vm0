@@ -393,7 +393,6 @@ export async function rejectWorkflowQueueEvent(
     const rejected = await replaceChatEvent(tx, args.eventId, {
       chatThreadId: args.chatThreadId,
       eventType: "input.rejected",
-      content: rejectionMessage,
       userMessage: createUserMessageDocument({ text: rejectionMessage }),
       runId: null,
       error: args.reason,
@@ -434,7 +433,6 @@ export async function failWorkflowQueueEventAfterRunFailure(
     const rejected = await replaceChatEvent(tx, args.eventId, {
       chatThreadId: args.chatThreadId,
       eventType: "input.rejected",
-      content: rejectionMessage,
       userMessage: createUserMessageDocument({ text: rejectionMessage }),
       runId: null,
       error: args.pauseReason,

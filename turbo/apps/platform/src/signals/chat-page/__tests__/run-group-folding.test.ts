@@ -19,7 +19,7 @@ function userMessage(params: {
     id: params.id,
     threadId: THREAD_ID,
     eventType: "input.prompt" as const,
-    content,
+    content: null,
     userMessage: {
       version: 1,
       parts: [{ type: "text", text: content }],

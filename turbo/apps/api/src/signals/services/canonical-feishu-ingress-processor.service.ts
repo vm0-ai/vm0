@@ -320,7 +320,6 @@ async function persistCanonicalFeishuIngress(args: {
         id: args.ingress.ingressId,
         chatThreadId: route.chatThreadId,
         eventType: "input.prompt",
-        content: args.message.text,
         userMessage: feishuInboundUserMessage(args.message),
         runId: null,
         triggerSource: "feishu",

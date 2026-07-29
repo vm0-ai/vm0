@@ -1808,12 +1808,7 @@ describe("Feishu integration", () => {
     );
     expect(threadEventsPage.body.events).toContainEqual(
       expect.objectContaining({
-        content: [
-          "[Feishu file] quarterly-report.pdf",
-          "   [MESSAGE_ID] om_file_message",
-          `   [FILE_KEY] ${fileId}`,
-          "   [TYPE] file",
-        ].join("\n"),
+        content: null,
         userMessage: {
           version: 1,
           parts: [
@@ -1983,7 +1978,11 @@ describe("Feishu integration", () => {
     );
     expect(threadMessages.body.events).toContainEqual(
       expect.objectContaining({
-        content: "do the Feishu task",
+        content: null,
+        userMessage: {
+          version: 1,
+          parts: [{ type: "text", text: "do the Feishu task" }],
+        },
         feishuChatOpenUrl:
           "https://applink.feishu.cn/client/chat/open?openChatId=oc_feishu_dm",
       }),

@@ -1874,7 +1874,7 @@ async function persistTelegramChatMessage(args: {
         id: chatMessageId,
         chatThreadId: binding.chatThreadId,
         eventType: "input.prompt",
-        content: args.prompt,
+        content: null,
         userMessage: createUserMessageDocument({ text: args.prompt }),
         runId: null,
         triggerSource: "telegram",

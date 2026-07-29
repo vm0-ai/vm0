@@ -502,7 +502,7 @@ describe("chat lifecycle", () => {
                 id: "msg-running-user",
                 threadId: RUNNING_THREAD_ID,
                 eventType: "input.prompt" as const,
-                content: "Active task prompt",
+                content: null,
                 userMessage: {
                   version: 1,
                   parts: [{ type: "text", text: "Active task prompt" }],
@@ -530,7 +530,7 @@ describe("chat lifecycle", () => {
               id: "msg-completed-user",
               threadId: COMPLETED_THREAD_ID,
               eventType: "input.prompt" as const,
-              content: "Done task",
+              content: null,
               userMessage: {
                 version: 1,
                 parts: [{ type: "text", text: "Done task" }],

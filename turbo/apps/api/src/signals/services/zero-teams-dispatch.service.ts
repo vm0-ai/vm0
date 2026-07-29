@@ -1680,7 +1680,6 @@ async function persistTeamsChatMessage(args: {
         id: chatMessageId,
         chatThreadId: route.chatThreadId,
         eventType: "input.prompt",
-        content: prompt,
         userMessage: createUserMessageDocument({
           text: args.activity.text,
           files: args.promptFiles.map((file) => {
