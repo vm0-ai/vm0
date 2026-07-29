@@ -1,8 +1,21 @@
 """Read-only helpers for mitmproxy connection endpoint shapes."""
 
 import ipaddress
+from dataclasses import dataclass
 
 _ADDRESS_PAIR_LENGTH = 2
+
+
+@dataclass(frozen=True, slots=True)
+class ConnectedIpEndpoint:
+    """Parsed connected IP with its original endpoint text.
+
+    This value records IP screening performed by this module. It is not proof of TLS identity,
+    destination ownership, authorization, or public routability.
+    """
+
+    address: tuple[str, int]
+    ip: ipaddress.IPv4Address | ipaddress.IPv6Address
 
 
 def server_address(server: object) -> tuple[str, int] | None:
@@ -33,15 +46,15 @@ def address_pair(address: object) -> tuple[str, int] | None:
     return host, port
 
 
-def authoritative_connected_endpoint(endpoint: object) -> tuple[str, int] | None:
-    """Return an endpoint that supplies acceptable connected IP evidence.
+def authoritative_connected_endpoint(endpoint: object) -> ConnectedIpEndpoint | None:
+    """Return parsed evidence from an acceptable connected IP endpoint.
 
     The endpoint must have an ``address_pair`` shape and its host must parse as an IPv4 or IPv6
     literal. DNS names, malformed endpoints, loopback addresses, and unspecified addresses return
     ``None``. Other parsed IP address categories are not filtered: ``authoritative`` describes
-    connected endpoint evidence, not public routability. Accepted inputs return their first
-    ``(host, port)`` pair. Additional tuple elements are discarded, while the host and port values
-    themselves are not normalized.
+    connected endpoint evidence, not public routability. Accepted inputs retain their first
+    original ``(host, port)`` pair alongside the parsed IP. Additional tuple elements are
+    discarded, while the host and port values themselves are not normalized.
     """
     endpoint_pair = address_pair(endpoint)
     if endpoint_pair is None:
@@ -53,7 +66,7 @@ def authoritative_connected_endpoint(endpoint: object) -> tuple[str, int] | None
         return None
     if endpoint_ip.is_loopback or endpoint_ip.is_unspecified:
         return None
-    return endpoint_pair
+    return ConnectedIpEndpoint(address=endpoint_pair, ip=endpoint_ip)
 
 
 def connected_ip_destination_endpoint(
@@ -61,7 +74,7 @@ def connected_ip_destination_endpoint(
     *,
     port: int,
     extra_endpoints: tuple[tuple[str, int] | None, ...] = (),
-) -> tuple[str, int] | None:
+) -> ConnectedIpEndpoint | None:
     """Resolve connected IP evidence for ``port`` using fail-closed precedence.
 
     Check ``server.peername`` and then ``server.address``. The first authoritative primary
@@ -75,15 +88,15 @@ def connected_ip_destination_endpoint(
     """
     peername = authoritative_connected_endpoint(server_peername(server))
     if peername is not None:
-        return peername if peername[1] == port else None
+        return peername if peername.address[1] == port else None
 
     address = authoritative_connected_endpoint(server_address(server))
     if address is not None:
-        return address if address[1] == port else None
+        return address if address.address[1] == port else None
 
     for extra_endpoint in extra_endpoints:
         endpoint = authoritative_connected_endpoint(extra_endpoint)
-        if endpoint is not None and endpoint[1] == port:
+        if endpoint is not None and endpoint.address[1] == port:
             return endpoint
 
     return None

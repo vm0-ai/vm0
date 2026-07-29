@@ -100,11 +100,12 @@ def _connected_verified_tls_destination_endpoint(
     # mitmproxy verifies the upstream certificate against server.sni when
     # ssl_insecure is false. At this point the connected IP is authenticated as
     # the same host we plan to bind, so CDN/Anycast DNS drift does not matter.
-    return connection_endpoints.connected_ip_destination_endpoint(
+    connected_endpoint = connection_endpoints.connected_ip_destination_endpoint(
         server,
         port=port,
         extra_endpoints=extra_endpoints,
     )
+    return connected_endpoint.address if connected_endpoint is not None else None
 
 
 def _request_has_platform_test_endpoint_bypass(flow: http.HTTPFlow) -> bool:

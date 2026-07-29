@@ -100,28 +100,24 @@ def _connection_id(connection: object) -> str | None:
     return None
 
 
-def _endpoint_ip_key(host: str) -> str | None:
-    try:
-        return str(ipaddress.ip_address(host))
-    except ValueError:
-        return None
-
-
-def _endpoint_matches(left: object, right: tuple[str, int]) -> bool:
-    left_pair = connection_endpoints.address_pair(left)
-    if left_pair is None:
-        return False
-    left_host, left_port = left_pair
+def _endpoint_matches(
+    left: connection_endpoints.ConnectedIpEndpoint,
+    right: tuple[str, int],
+) -> bool:
+    if left.address == right:
+        return True
     right_host, right_port = right
-    if left_port != right_port:
+    if left.address[1] != right_port:
         return False
-    left_key = _endpoint_ip_key(left_host)
-    right_key = _endpoint_ip_key(right_host)
-    return left_key is not None and left_key == right_key
+    try:
+        right_ip = ipaddress.ip_address(right_host)
+    except ValueError:
+        return False
+    return left.ip == right_ip
 
 
 def _endpoint_matches_any(
-    endpoint: object,
+    endpoint: connection_endpoints.ConnectedIpEndpoint,
     bindings: tuple[UpstreamDestinationBinding, ...],
 ) -> bool:
     return any(
@@ -243,15 +239,15 @@ def refresh_server_binding_connected_address_if_matching(
         return False
     if binding.host != destination.host or binding.port != destination.port:
         return False
-    connected_pair = connection_endpoints.authoritative_connected_endpoint(connected_address)
-    if connected_pair is None:
+    connected_endpoint = connection_endpoints.authoritative_connected_endpoint(connected_address)
+    if connected_endpoint is None:
         return False
 
     refreshed_binding = UpstreamDestinationBinding(
         host=binding.host,
         port=binding.port,
         kinds=binding.kinds | frozenset((kind,)),
-        original_address=connected_pair,
+        original_address=connected_endpoint.address,
     )
     _bindings_by_server_id[server_id] = refreshed_binding
     _associate_server_with_client(server_id, client)
@@ -381,7 +377,7 @@ def _client_binding_connected_endpoint(
     )
     if connected_endpoint is None or not _endpoint_matches_any(connected_endpoint, bindings):
         return None
-    return connected_endpoint
+    return connected_endpoint.address
 
 
 def diagnostic_snapshot_for_flow(
