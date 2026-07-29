@@ -28,7 +28,8 @@ struct NetworkLogPayload {
     network_logs: Vec<NetworkLog>,
 }
 
-const NETWORK_LOG_UPLOAD_MAX_BATCH_ENTRIES: usize = 500;
+const NETWORK_LOG_UPLOAD_MAX_BATCH_ENTRIES: usize = 10_000;
+const NETWORK_LOG_UPLOAD_INITIAL_BATCH_CAPACITY: usize = 500;
 const NETWORK_LOG_UPLOAD_MAX_BATCH_BYTES: usize = 1024 * 1024;
 const NETWORK_LOG_UPLOAD_PAYLOAD_OVERHEAD_BYTES: usize = 64;
 const NETWORK_LOG_UPLOAD_ENTRY_OVERHEAD_BYTES: usize = 1;
@@ -303,7 +304,7 @@ impl<'a> NetworkLogBatchUploader<'a> {
             http,
             run_id,
             sandbox_token,
-            batch: Vec::with_capacity(NETWORK_LOG_UPLOAD_MAX_BATCH_ENTRIES),
+            batch: Vec::with_capacity(NETWORK_LOG_UPLOAD_INITIAL_BATCH_CAPACITY),
             batch_bytes: empty_batch_estimated_bytes(&run_id),
             progress: NetworkLogUploadProgress::default(),
         }
@@ -455,7 +456,7 @@ impl<'a> NetworkLogBatchUploader<'a> {
         let batch_index = self.progress.attempted_batches;
         let logs = std::mem::replace(
             &mut self.batch,
-            Vec::with_capacity(NETWORK_LOG_UPLOAD_MAX_BATCH_ENTRIES),
+            Vec::with_capacity(NETWORK_LOG_UPLOAD_INITIAL_BATCH_CAPACITY),
         );
         let batch_bytes = self.batch_bytes;
         self.batch_bytes = empty_batch_estimated_bytes(&self.run_id);
@@ -596,8 +597,9 @@ fn truncate_log_field(value: String) -> String {
 
 #[cfg(test)]
 mod tests {
-    use std::sync::Arc;
+    use std::fmt::Write as _;
     use std::sync::atomic::{AtomicUsize, Ordering};
+    use std::sync::{Arc, Mutex};
 
     use httpmock::prelude::*;
     use serde_json::json;
@@ -630,6 +632,28 @@ mod tests {
             .collect::<Vec<_>>()
             .join("\n")
             + "\n"
+    }
+
+    fn one_entry_per_batch_logs(count: usize) -> Vec<serde_json::Value> {
+        let body = "x".repeat(NETWORK_LOG_UPLOAD_MAX_BATCH_BYTES / 2);
+        (0..count)
+            .map(|sequence| {
+                json!({
+                    "sequence": sequence,
+                    "body": &body,
+                })
+            })
+            .collect()
+    }
+
+    fn estimated_batch_bytes(run_id: &RunId, logs: &[serde_json::Value]) -> usize {
+        logs.iter().fold(
+            empty_batch_estimated_bytes(run_id),
+            |estimated_bytes, log| {
+                estimated_bytes
+                    .saturating_add(estimated_entry_bytes(&serde_json::to_string(log).unwrap()))
+            },
+        )
     }
 
     async fn capture_async_log_events<F>(future: F) -> (F::Output, Vec<CapturedEvent>)
@@ -674,7 +698,7 @@ mod tests {
         })
     }
 
-    async fn read_http_request(stream: &mut tokio::net::TcpStream) {
+    async fn read_http_request_body(stream: &mut tokio::net::TcpStream) -> Vec<u8> {
         let mut request = Vec::new();
         let mut chunk = [0_u8; 8192];
 
@@ -699,8 +723,9 @@ mod tests {
                     }
                 })
                 .expect("request must include content-length");
-            if request.len() >= header_end + 4 + content_length {
-                return;
+            let body_start = header_end + 4;
+            if request.len() >= body_start + content_length {
+                return request[body_start..body_start + content_length].to_vec();
             }
         }
     }
@@ -878,10 +903,7 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let path = network_log_file(&dir);
         let run_id = RunId::nil();
-        let log_count = NETWORK_LOG_UPLOAD_MAX_BATCH_ENTRIES * NETWORK_LOG_UPLOAD_MAX_BATCHES;
-        let logs: Vec<_> = (0..log_count)
-            .map(|sequence| json!({ "sequence": sequence }))
-            .collect();
+        let logs = one_entry_per_batch_logs(NETWORK_LOG_UPLOAD_MAX_BATCHES);
         tokio::fs::write(&path, network_log_content(&logs))
             .await
             .unwrap();
@@ -905,21 +927,101 @@ mod tests {
         assert!(!has_captured_event(&events, "network log upload truncated"));
     }
 
+    #[tokio::test(start_paused = true)]
+    async fn upload_network_logs_completes_incident_sized_file_within_batch_budget() {
+        const INCIDENT_SOURCE_BYTES: usize = 15_175_970;
+        const INCIDENT_ENTRY_COUNT: usize = 48_060;
+        const INCIDENT_BODY_BYTES: usize = 252;
+
+        let dir = tempfile::tempdir().unwrap();
+        let path = network_log_file(&dir);
+        let run_id = RunId::nil();
+        let body = "x".repeat(INCIDENT_BODY_BYTES);
+        let mut content = String::with_capacity(INCIDENT_SOURCE_BYTES);
+        for sequence in 0..INCIDENT_ENTRY_COUNT {
+            writeln!(
+                &mut content,
+                r#"{{"timestamp":"2026-02-15T10:00:00Z","sequence":{sequence},"body":"{body}"}}"#
+            )
+            .unwrap();
+        }
+        assert!(content.len().abs_diff(INCIDENT_SOURCE_BYTES) <= 1024);
+        tokio::fs::write(&path, &content).await.unwrap();
+
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let api_url = format!("http://{}", listener.local_addr().unwrap());
+        let received_batches = Arc::new(Mutex::new(Vec::new()));
+        let server_batches = received_batches.clone();
+        let stop_server = Arc::new(tokio::sync::Notify::new());
+        let server_stop = stop_server.clone();
+        let server_task = tokio::spawn(async move {
+            loop {
+                let (mut stream, _) = tokio::select! {
+                    () = server_stop.notified() => break,
+                    accepted = listener.accept() => accepted.unwrap(),
+                };
+                let request_body = read_http_request_body(&mut stream).await;
+                let payload: serde_json::Value = serde_json::from_slice(&request_body).unwrap();
+                let logs = payload["networkLogs"].as_array().unwrap();
+                let estimated_bytes = estimated_batch_bytes(&run_id, logs);
+                assert!(logs.len() <= NETWORK_LOG_UPLOAD_MAX_BATCH_ENTRIES);
+                assert!(estimated_bytes <= NETWORK_LOG_UPLOAD_MAX_BATCH_BYTES);
+                server_batches.lock().unwrap().push(logs.len());
+                stream
+                    .write_all(
+                        b"HTTP/1.1 200 OK\r\nContent-Length: 2\r\nConnection: close\r\n\r\n{}",
+                    )
+                    .await
+                    .unwrap();
+            }
+        });
+
+        let http = HttpClient::new(HttpClientConfig {
+            api_url,
+            vercel_bypass: None,
+            client_session_id: "runner-session-test".to_string(),
+        })
+        .unwrap();
+        let clock_guard = tokio::spawn(async {
+            loop {
+                tokio::task::yield_now().await;
+            }
+        });
+        let (_, events) =
+            capture_async_log_events(upload_network_logs(&http, run_id, SANDBOX_TOKEN, &path))
+                .await;
+        clock_guard.abort();
+        let _ = clock_guard.await;
+        stop_server.notify_one();
+        server_task.await.unwrap();
+
+        let (received_batch_count, received_entry_count) = {
+            let received_batches = received_batches.lock().unwrap();
+            (
+                received_batches.len(),
+                received_batches.iter().sum::<usize>(),
+            )
+        };
+        assert!(received_batch_count > 0);
+        assert!(received_batch_count <= NETWORK_LOG_UPLOAD_MAX_BATCHES);
+        assert_eq!(received_entry_count, INCIDENT_ENTRY_COUNT);
+        let uploaded = captured_event(&events, "uploaded network logs");
+        assert_event_field(uploaded, "batches", &received_batch_count.to_string());
+        assert_event_field(uploaded, "count", &INCIDENT_ENTRY_COUNT.to_string());
+        assert!(!has_captured_event(&events, "network log upload truncated"));
+        assert_eq!(
+            tokio::fs::metadata(&path).await.unwrap().len(),
+            content.len() as u64
+        );
+    }
+
     #[tokio::test]
     async fn upload_network_logs_stops_at_batch_budget() {
         let dir = tempfile::tempdir().unwrap();
         let path = network_log_file(&dir);
         let run_id = RunId::nil();
         let uploaded_count = NETWORK_LOG_UPLOAD_MAX_BATCHES;
-        let large_value = "x".repeat(NETWORK_LOG_UPLOAD_MAX_BATCH_BYTES / 2);
-        let logs: Vec<_> = (0..(uploaded_count + 2))
-            .map(|sequence| {
-                json!({
-                    "sequence": sequence,
-                    "body": &large_value,
-                })
-            })
-            .collect();
+        let logs = one_entry_per_batch_logs(uploaded_count + 2);
         let content = network_log_content(&logs);
         let dropped_entry_bytes =
             estimated_entry_bytes(&serde_json::to_string(&logs[uploaded_count]).unwrap());
@@ -1216,15 +1318,7 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let path = network_log_file(&dir);
         let run_id = RunId::nil();
-        let logs: Vec<_> = (0..(NETWORK_LOG_UPLOAD_MAX_BATCH_ENTRIES * 2 + 1))
-            .map(|idx| {
-                json!({
-                    "timestamp": "2026-02-15T10:00:00Z",
-                    "host": format!("host-{idx}.example"),
-                    "sequence": idx,
-                })
-            })
-            .collect();
+        let logs = one_entry_per_batch_logs(3);
         tokio::fs::write(&path, network_log_content(&logs))
             .await
             .unwrap();
@@ -1232,15 +1326,15 @@ mod tests {
         let server = MockServer::start_async().await;
         let first_expected = json!({
             "runId": run_id.to_string(),
-            "networkLogs": logs[..NETWORK_LOG_UPLOAD_MAX_BATCH_ENTRIES].to_vec(),
+            "networkLogs": logs[..1].to_vec(),
         });
         let second_expected = json!({
             "runId": run_id.to_string(),
-            "networkLogs": logs[NETWORK_LOG_UPLOAD_MAX_BATCH_ENTRIES..NETWORK_LOG_UPLOAD_MAX_BATCH_ENTRIES * 2].to_vec(),
+            "networkLogs": logs[1..2].to_vec(),
         });
         let third_expected = json!({
             "runId": run_id.to_string(),
-            "networkLogs": logs[NETWORK_LOG_UPLOAD_MAX_BATCH_ENTRIES * 2..].to_vec(),
+            "networkLogs": logs[2..].to_vec(),
         });
         let first_upload = server
             .mock_async(move |when, then| {
@@ -1349,9 +1443,7 @@ mod tests {
     async fn upload_network_logs_uses_one_absolute_deadline() {
         let dir = tempfile::tempdir().unwrap();
         let path = network_log_file(&dir);
-        let logs: Vec<_> = (0..=NETWORK_LOG_UPLOAD_MAX_BATCH_ENTRIES)
-            .map(|sequence| json!({ "sequence": sequence }))
-            .collect();
+        let logs = one_entry_per_batch_logs(3);
         tokio::fs::write(&path, network_log_content(&logs))
             .await
             .unwrap();
@@ -1367,7 +1459,7 @@ mod tests {
             let second_received = second_received.clone();
             tokio::spawn(async move {
                 let (mut first, _) = listener.accept().await.unwrap();
-                read_http_request(&mut first).await;
+                let _ = read_http_request_body(&mut first).await;
                 first_received.notify_one();
                 release_first.notified().await;
                 first
@@ -1379,7 +1471,7 @@ mod tests {
                 drop(first);
 
                 let (mut second, _) = listener.accept().await.unwrap();
-                read_http_request(&mut second).await;
+                let _ = read_http_request_body(&mut second).await;
                 second_received.notify_one();
                 let hold_second = tokio::sync::Notify::new();
                 hold_second.notified().await;
@@ -1428,25 +1520,13 @@ mod tests {
         assert_event_field(truncation, "reason", "deadline");
         assert_event_field(truncation, "attempted_batches", "2");
         assert_event_field(truncation, "successful_batches", "1");
-        assert_event_field(
-            truncation,
-            "attempted_entries",
-            &(NETWORK_LOG_UPLOAD_MAX_BATCH_ENTRIES + 1).to_string(),
-        );
-        assert_event_field(
-            truncation,
-            "uploaded_entries",
-            &NETWORK_LOG_UPLOAD_MAX_BATCH_ENTRIES.to_string(),
-        );
+        assert_event_field(truncation, "attempted_entries", "2");
+        assert_event_field(truncation, "uploaded_entries", "1");
         assert_event_field(truncation, "unconfirmed_entries", "1");
         assert_event_field(truncation, "remaining_source_bytes", "0");
         let uploaded = captured_event(&events, "uploaded network logs");
         assert_event_field(uploaded, "batches", "1");
-        assert_event_field(
-            uploaded,
-            "count",
-            &NETWORK_LOG_UPLOAD_MAX_BATCH_ENTRIES.to_string(),
-        );
+        assert_event_field(uploaded, "count", "1");
         assert!(!has_captured_event(&events, "network logs upload failed"));
     }
 
