@@ -12,7 +12,7 @@
 //! run, replacing older tasks for the same connector and coalescing nearby due
 //! connectors for that same run before enqueueing work. The worker drains a
 //! bounded queue, deduplicates active connector slugs, splits API requests by
-//! `NETWORK_POLICY_REFRESH_CONNECTOR_REFS_MAX`, validates each API response
+//! `NETWORK_POLICY_REFRESH_CONNECTOR_SLUGS_MAX`, validates each API response
 //! against the requested active connector set, patches the proxy registry, and
 //! replaces the next schedule from the returned `nextRefreshAt`.
 //!
@@ -45,7 +45,7 @@ use std::collections::{HashMap, HashSet};
 use std::sync::{Arc, Mutex as StdMutex};
 use std::time::Duration;
 
-use api_contracts::generated::constants::runners::NETWORK_POLICY_REFRESH_CONNECTOR_REFS_MAX;
+use api_contracts::generated::constants::runners::NETWORK_POLICY_REFRESH_CONNECTOR_SLUGS_MAX;
 use chrono::{DateTime, Utc};
 use tokio::sync::{
     Mutex, mpsc,
@@ -60,7 +60,7 @@ use crate::proxy::ProxyRegistryHandle;
 use crate::types::{NetworkPolicy, NetworkPolicyRefresh};
 
 const REFRESH_REQUEST_QUEUE_CAPACITY: usize = 256;
-const NETWORK_POLICY_REFRESH_BATCH_MAX: usize = NETWORK_POLICY_REFRESH_CONNECTOR_REFS_MAX as usize;
+const NETWORK_POLICY_REFRESH_BATCH_MAX: usize = NETWORK_POLICY_REFRESH_CONNECTOR_SLUGS_MAX as usize;
 const EXPIRED_REFRESH_DEADLINE_RETRY_DELAY: Duration = Duration::from_millis(250);
 const SCHEDULED_REFRESH_COALESCE_WINDOW: Duration = Duration::from_millis(100);
 
@@ -435,8 +435,7 @@ impl NetworkPolicyRefreshCore {
         let mut responses_by_connector = HashMap::new();
         let mut duplicate_connector_slugs = HashSet::new();
         for refresh in response.refreshes {
-            // TODO(#23619): Rename this generated field with the runner wire contract.
-            let response_connector_slug = refresh.connector_ref.clone();
+            let response_connector_slug = refresh.connector_slug.clone();
             if !requested_connector_slugs.contains(response_connector_slug.as_str()) {
                 warn!(
                     run_id = %run_id,
@@ -993,6 +992,23 @@ mod tests {
         );
         assert_eq!(policy["ask"], json!([]));
         assert_eq!(policy["unknownPolicy"], json!("deny"));
+    }
+
+    fn network_policy_refresh_response(mut identity: serde_json::Value) -> serde_json::Value {
+        let refresh = identity
+            .as_object_mut()
+            .expect("network policy refresh identity fixture should be an object");
+        refresh.insert(
+            "networkPolicy".to_string(),
+            json!({
+                "allow": ["chat:write", "files:write"],
+                "deny": [],
+                "ask": ["channels:read"],
+                "unknownPolicy": "allow",
+            }),
+        );
+        refresh.insert("nextRefreshAt".to_string(), serde_json::Value::Null);
+        json!({ "refreshes": [identity] })
     }
 
     fn active_run_network_policy_state(
@@ -1593,6 +1609,102 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn compatible_network_policy_refresh_identities_apply_policy() {
+        for (case, identity) in [
+            (
+                "canonical only",
+                json!({
+                    "connectorSlug": "slack",
+                }),
+            ),
+            (
+                "legacy only",
+                json!({
+                    "connectorRef": "slack",
+                }),
+            ),
+            (
+                "matching dual identities",
+                json!({
+                    "connectorSlug": "slack",
+                    "connectorRef": "slack",
+                }),
+            ),
+        ] {
+            let server = MockServer::start();
+            let run_id = RunId::nil();
+            let refresh_mock = server.mock(|when, then| {
+                when.method(POST)
+                    .path(format!("/api/runners/runs/{run_id}/network-policy-refresh"));
+                then.status(200)
+                    .header("content-type", "application/json")
+                    .json_body(network_policy_refresh_response(identity));
+            });
+            let harness = NetworkPolicyRefreshHarness::new(&server, run_id).await;
+
+            harness.refresh_slack().await;
+
+            refresh_mock.assert_calls(1);
+            let policy = harness.slack_policy().await;
+            assert_eq!(
+                policy["allow"],
+                json!(["chat:write", "files:write"]),
+                "{case}"
+            );
+            assert_eq!(policy["deny"], json!([]), "{case}");
+            assert_eq!(policy["ask"], json!(["channels:read"]), "{case}");
+            assert_eq!(policy["unknownPolicy"], json!("allow"), "{case}");
+            harness.shutdown().await;
+        }
+    }
+
+    #[tokio::test]
+    async fn malformed_network_policy_refresh_identities_fail_closed() {
+        for (_, identity) in [
+            (
+                "conflicting identities",
+                json!({
+                    "connectorSlug": "slack",
+                    "connectorRef": "github",
+                }),
+            ),
+            ("missing identity", json!({})),
+            (
+                "invalid canonical identity with valid legacy identity",
+                json!({
+                    "connectorSlug": null,
+                    "connectorRef": "slack",
+                }),
+            ),
+            (
+                "empty legacy identity with valid canonical identity",
+                json!({
+                    "connectorSlug": "slack",
+                    "connectorRef": "",
+                }),
+            ),
+        ] {
+            let server = MockServer::start();
+            let run_id = RunId::nil();
+            let refresh_mock = server.mock(|when, then| {
+                when.method(POST)
+                    .path(format!("/api/runners/runs/{run_id}/network-policy-refresh"));
+                then.status(200)
+                    .header("content-type", "application/json")
+                    .json_body(network_policy_refresh_response(identity));
+            });
+            let harness = NetworkPolicyRefreshHarness::new(&server, run_id).await;
+
+            harness.refresh_slack().await;
+
+            refresh_mock.assert_calls(1);
+            let policy = harness.slack_policy().await;
+            assert_fail_closed_policy(&policy);
+            harness.shutdown().await;
+        }
+    }
+
+    #[tokio::test]
     async fn duplicate_network_policy_refresh_fails_closed() {
         let server = MockServer::start();
         let run_id = RunId::nil();
@@ -1710,7 +1822,10 @@ mod tests {
         let first_mock = server.mock(|when, then| {
             when.method(POST)
                 .path(format!("/api/runners/runs/{run_id}/network-policy-refresh"))
-                .json_body(json!({ "connectorRefs": first_batch }));
+                .json_body(json!({
+                    "connectorSlugs": first_batch,
+                    "connectorRefs": first_batch,
+                }));
             then.status(500)
                 .header("content-type", "application/json")
                 .json_body(json!({
@@ -1723,7 +1838,10 @@ mod tests {
         let second_mock = server.mock(|when, then| {
             when.method(POST)
                 .path(format!("/api/runners/runs/{run_id}/network-policy-refresh"))
-                .json_body(json!({ "connectorRefs": second_batch }));
+                .json_body(json!({
+                    "connectorSlugs": second_batch,
+                    "connectorRefs": second_batch,
+                }));
             then.status(500)
                 .header("content-type", "application/json")
                 .json_body(json!({

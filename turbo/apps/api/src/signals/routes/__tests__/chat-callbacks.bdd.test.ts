@@ -192,20 +192,20 @@ async function startChatRun(
   body: {
     readonly agentId: string;
     readonly prompt: string;
+    readonly clientEventId?: string;
     readonly threadId?: string;
     readonly selectedModel?: string;
     readonly attachFiles?: readonly AttachFile[];
     readonly generationTemplate?: GenerationTemplateRequest;
     readonly userMessage?: UserMessageDocument;
     readonly revokesEventId?: string;
-    readonly onEnqueued?: (messageId: string) => Promise<void>;
   },
 ): Promise<{
   readonly runId: string;
   readonly threadId: string;
   readonly messageId: string;
 }> {
-  const messageId = randomUUID();
+  const messageId = body.clientEventId ?? randomUUID();
   const requestBody = {
     agentId: body.agentId,
     prompt: body.prompt,
@@ -229,14 +229,7 @@ async function startChatRun(
         : {}
       : { model: body.selectedModel }),
   };
-  const sent = body.onEnqueued
-    ? (
-        await Promise.all([
-          chat.requestSendEvent(actor, requestBody, [201]),
-          body.onEnqueued(messageId),
-        ])
-      )[0]
-    : await chat.requestSendEvent(actor, requestBody, [201]);
+  const sent = await chat.requestSendEvent(actor, requestBody, [201]);
   if (sent.status !== 201) {
     throw new Error("Expected the entitled chat send to create a run");
   }
@@ -1804,19 +1797,24 @@ Continue the JPM IJTXX Treasury allocation follow-up for issue #20818 and [ACME-
     });
     await goalRunPreparationStarted.promise;
 
-    const userRun = await startChatRun(actor, {
-      agentId,
-      threadId: first.threadId,
-      prompt: "user message admitted during goal run preparation",
-      onEnqueued: async (messageId) => {
-        await waitForThreadMessages(actor, first.threadId, (events) => {
-          return events.some((event) => {
-            return event.id === messageId;
-          });
+    const userMessageId = randomUUID();
+    const [userRun] = await Promise.all([
+      startChatRun(actor, {
+        agentId,
+        threadId: first.threadId,
+        prompt: "user message admitted during goal run preparation",
+        clientEventId: userMessageId,
+      }),
+      waitForThreadMessages(actor, first.threadId, (events) => {
+        return events.some((event) => {
+          return (
+            event.id === userMessageId && event.eventType === "input.prompt"
+          );
         });
+      }).finally(() => {
         releaseGoalRunPreparation.release();
-      },
-    });
+      }),
+    ]);
 
     let goalEventId: string | undefined;
     await expect

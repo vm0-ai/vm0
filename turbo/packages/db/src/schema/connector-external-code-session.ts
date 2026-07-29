@@ -1,5 +1,6 @@
 import {
   boolean,
+  check,
   index,
   pgEnum,
   pgTable,
@@ -9,6 +10,7 @@ import {
   uuid,
   varchar,
 } from "drizzle-orm/pg-core";
+import { sql } from "drizzle-orm";
 
 export const connectorExternalCodeSessionStatusEnum = pgEnum(
   "connector_external_code_session_status",
@@ -23,8 +25,9 @@ export const connectorExternalCodeSessions = pgTable(
     userId: text("user_id").notNull(),
     agentId: uuid("agent_id"),
     authorizeAgent: boolean("authorize_agent").default(false).notNull(),
-    // TODO(#23619): Rename the property and column in the persistence phase.
+    // Legacy rollout bridge. Switch in #23793 and remove in #23794.
     connectorType: varchar("connector_type", { length: 64 }).notNull(),
+    connectorSlug: varchar("connector_slug", { length: 64 }),
     authMethod: varchar("auth_method", { length: 50 }).notNull(),
     status: connectorExternalCodeSessionStatusEnum("status")
       .default("pending")
@@ -51,9 +54,21 @@ export const connectorExternalCodeSessions = pgTable(
         table.authMethod,
         table.status,
       ),
+      index("idx_connector_external_code_sessions_owner_slug_status").on(
+        table.orgId,
+        table.userId,
+        table.connectorSlug,
+        table.authMethod,
+        table.status,
+      ),
       index("idx_connector_external_code_sessions_expiration").on(
         table.status,
         table.expiresAt,
+      ),
+      check(
+        "chk_connector_external_code_sessions_slug_matches_type",
+        sql`${table.connectorSlug} IS NOT NULL
+          AND ${table.connectorSlug} = ${table.connectorType}`,
       ),
     ];
   },

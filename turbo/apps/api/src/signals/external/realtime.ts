@@ -333,9 +333,10 @@ export async function publishNetworkPolicyRefreshToRunnerGroup(
   connectorSlug: string,
 ): Promise<void> {
   const channel = ablyClient().channels.get(`runner-group:${group}`);
-  // TODO(#23619): Rename with the runner realtime notification contract.
   await channel.publish("network-policy-refresh", {
     runId,
+    connectorSlug,
+    // TODO(#23827): Remove after every pre-bridge runner has drained.
     connectorRef: connectorSlug,
   });
   L.debug(

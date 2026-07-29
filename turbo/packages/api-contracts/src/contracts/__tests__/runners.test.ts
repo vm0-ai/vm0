@@ -17,6 +17,7 @@ import {
   resumeSessionSchema,
   runnersBuiltinFirewallsResolveContract,
   runnersJobClaimContract,
+  runnersNetworkPolicyRefreshContract,
   runnersPollContract,
   storageMountEntrySchema,
   storageManifestSchema,
@@ -880,6 +881,53 @@ describe("runner poll request contract", () => {
     });
 
     expect(body.telemetry).toEqual({});
+  });
+});
+
+describe("runner network policy refresh contract", () => {
+  const bodySchema = runnersNetworkPolicyRefreshContract.refresh.body;
+
+  it.each([
+    [
+      "canonical",
+      { connectorSlugs: ["slack", "github", "slack"] },
+      ["slack", "github"],
+    ],
+    [
+      "legacy",
+      { connectorRefs: ["slack", "github", "slack"] },
+      ["slack", "github"],
+    ],
+    [
+      "matching dual",
+      {
+        connectorSlugs: ["github", "slack", "github"],
+        connectorRefs: ["slack", "github"],
+      },
+      ["github", "slack"],
+    ],
+  ])(
+    "normalizes %s input to canonical connector slugs",
+    (_, body, expected) => {
+      expect(bodySchema.parse(body)).toEqual({ connectorSlugs: expected });
+    },
+  );
+
+  it.each([
+    ["missing both fields", {}],
+    [
+      "different connector sets",
+      { connectorSlugs: ["slack"], connectorRefs: ["github"] },
+    ],
+    [
+      "different connector counts",
+      {
+        connectorSlugs: ["slack", "github"],
+        connectorRefs: ["slack"],
+      },
+    ],
+  ])("rejects %s", (_, body) => {
+    expect(bodySchema.safeParse(body).success).toBe(false);
   });
 });
 
