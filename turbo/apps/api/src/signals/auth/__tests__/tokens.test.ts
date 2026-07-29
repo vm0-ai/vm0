@@ -244,29 +244,6 @@ describe("auth tokens", () => {
     });
   });
 
-  it("keeps MCP capabilities disabled behind rollout and run access", () => {
-    const defaultToken = generateZeroToken("user_zero", "run_zero", "org_zero");
-    const resourceEnabledToken = generateZeroToken(
-      "user_zero",
-      "run_zero",
-      "org_zero",
-      undefined,
-      { mcpServerAccessEnabled: true },
-    );
-    const overrideToken = generateZeroToken(
-      "user_zero",
-      "run_zero",
-      "org_zero",
-      { [FeatureSwitchKey.ZeroMcp]: true },
-      { mcpServerAccessEnabled: true },
-    );
-
-    for (const token of [defaultToken, resourceEnabledToken, overrideToken]) {
-      expect(verifyZeroToken(token)?.capabilities).not.toContain("mcp:read");
-      expect(verifyZeroToken(token)?.capabilities).not.toContain("mcp:write");
-    }
-  });
-
   it("grants all goal capabilities", () => {
     const defaultToken = generateZeroToken("user_zero", "run_zero", "org_zero");
 

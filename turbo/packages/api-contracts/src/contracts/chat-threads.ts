@@ -8,10 +8,6 @@ import { runStatusSchema } from "./runs";
 import { zeroGoalEventSchema } from "./zero-goals";
 import { triggerSourceSchema } from "./logs";
 import { requestedRunModelSchema } from "./model-providers";
-import {
-  normalizePrecedingDraftStructuredPrompt,
-  normalizePrecedingStructuredPrompt,
-} from "./user-message-rollout";
 
 const c = initContract();
 export const MODEL_FIRST_SELECTION_PROVIDER_ID =
@@ -626,10 +622,7 @@ const chatEventSchema = z.discriminatedUnion("eventType", [
   usageRecordedEventSchema,
 ]);
 
-const chatEventResponseSchema = z.preprocess(
-  normalizePrecedingStructuredPrompt,
-  chatEventSchema,
-);
+const chatEventResponseSchema = chatEventSchema;
 
 if (chatEventTypeSchema.options.length !== chatEventSchema.options.length) {
   throw new Error("ChatEvent schema must cover the complete event catalog");
@@ -649,16 +642,13 @@ const chatThreadMetadataSchema = z.object({
   selectedModel: z.string().nullable(),
 });
 
-const chatThreadDraftSchema = z.preprocess(
-  normalizePrecedingDraftStructuredPrompt,
-  z
-    .object({
-      draftContent: z.string().nullable(),
-      draftUserMessage: userMessageDocumentSchema.nullable(),
-      draftAttachments: z.array(persistedAttachmentSchema).nullable(),
-    })
-    .superRefine(requireUserMessageForNonEmptyDraft),
-);
+const chatThreadDraftSchema = z
+  .object({
+    draftContent: z.string().nullable(),
+    draftUserMessage: userMessageDocumentSchema.nullable(),
+    draftAttachments: z.array(persistedAttachmentSchema).nullable(),
+  })
+  .superRefine(requireUserMessageForNonEmptyDraft);
 
 const selectedModelRequestSchema = requestedRunModelSchema;
 

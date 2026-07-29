@@ -9,7 +9,6 @@ import type {
   PersistedAttachment,
   UserMessageDocument,
 } from "@vm0/api-contracts/contracts/chat-threads";
-import { withPrecedingDraftStructuredPrompt } from "@vm0/api-contracts/contracts/user-message-rollout";
 import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import { accept } from "../../lib/accept.ts";
 import { currentChatAgentRecordId$ } from "../agent-chat.ts";
@@ -52,18 +51,6 @@ interface RestoredAgentDraftState {
 }
 
 const agentDraftCache$ = state(new Map<string, AgentDraftEntry>());
-
-function legacyAgentDraftState(args: {
-  readonly draftContent: string | null;
-  readonly draftAttachments: PersistedAttachment[] | null;
-}): RestoredAgentDraftState {
-  return {
-    content: args.draftContent ?? "",
-    userMessage: null,
-    generationTemplate: undefined,
-    attachments: args.draftAttachments ?? [],
-  };
-}
 
 function userMessageAgentDraftAttachments(
   document: UserMessageDocument,
@@ -132,11 +119,11 @@ function createAgentDraftSync(agentId: string, draft: DraftSignals) {
       await accept(
         client.patch({
           params: { id: agentId },
-          body: withPrecedingDraftStructuredPrompt({
+          body: {
             draftContent: payload.content,
             draftUserMessage: payload.userMessage,
             draftAttachments: payload.attachments,
-          }),
+          },
           fetchOptions: { signal },
         }),
         [200, 204],
@@ -250,9 +237,13 @@ export const loadAgentDraft$ = command(
     const features = get(featureSwitch$);
     const inlineTemplatesEnabled =
       features[FeatureSwitchKey.StructuredPromptInlineTemplates] ?? false;
-    const restoredDraft =
-      userMessageAgentDraftState(response, inlineTemplatesEnabled) ??
-      legacyAgentDraftState(response);
+    const restoredDraft = userMessageAgentDraftState(
+      response,
+      inlineTemplatesEnabled,
+    );
+    if (!restoredDraft) {
+      return;
+    }
     const hasServerDraft =
       restoredDraft.content.length > 0 ||
       restoredDraft.userMessage !== null ||

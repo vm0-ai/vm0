@@ -4,6 +4,7 @@ import { command, createStore } from "ccstate";
 import {
   CHAT_EVENT_TYPES,
   chatEventCompatibilityRole,
+  type ChatEventType,
 } from "@vm0/api-contracts/contracts/chat-events";
 import { formatRunErrorForExternalSurface } from "@vm0/api-contracts/contracts/errors";
 import { modelProviderCredentialScopeSchema } from "@vm0/api-contracts/contracts/model-providers";
@@ -89,8 +90,6 @@ import { saveRunSummary, saveRunSummary$ } from "./run-summary.service";
 import {
   insertAssistantEventMessages,
   insertAssistantEventMessages$,
-  resolveAttachFileMetadataUrls,
-  resolveAttachFileUrls,
   runGroupIdForRun,
   touchChatThreadLastMessageAt,
   visibleChatEventCondition,
@@ -98,7 +97,10 @@ import {
 import { insertChatEvent } from "./zero-chat-event.service";
 import { loadWebChatIncompleteContext } from "./zero-chat-incomplete-context.service";
 import { chatThreadAdmissionBlocked } from "./zero-chat-active-run.service";
-import { projectUserMessage } from "./zero-chat-user-message.service";
+import {
+  projectUserMessage,
+  requiredUserMessageForEvent,
+} from "./zero-chat-user-message.service";
 import { appendQueuedRunAssistantMarker } from "./zero-chat-queue-marker.service";
 import {
   integrationCompletionFallbackMessageIdForRun,
@@ -371,8 +373,9 @@ interface CompletedChatOutputLoad {
 }
 
 interface PriorRunMessage {
+  readonly eventType: ChatEventType;
   readonly role: "user" | "assistant";
-  readonly content: string;
+  readonly content: string | null;
   readonly userMessage: ChatMessageUserMessage | null;
   readonly attachFiles: readonly string[] | null;
   readonly generationTemplate: ChatMessageGenerationTemplate | null;
@@ -389,19 +392,6 @@ interface AgentForAutoSend {
   readonly id: string;
   readonly orgId: string;
 }
-
-interface ResolvedAttachFile {
-  readonly id: string;
-  readonly filename: string;
-  readonly contentType: string;
-  readonly size: number;
-  readonly url: string;
-}
-
-type ResolveAttachFiles = (
-  userId: string,
-  fileIds: readonly string[],
-) => Promise<readonly ResolvedAttachFile[]>;
 
 type CreatedQueuedRun = {
   readonly runId: string;
@@ -443,7 +433,6 @@ interface ChatCallbackDependencies {
     },
     signal: AbortSignal,
   ) => Promise<string>;
-  readonly getResolvedAttachFiles: ResolveAttachFiles;
   readonly dispatchSlackDelivery: (
     callbackId: string,
     signal: AbortSignal,
@@ -1861,20 +1850,6 @@ function buildWebChatPrompt(): string {
   ].join("\n\n");
 }
 
-function buildWebAttachFilesPrompt(
-  files: readonly {
-    readonly id: string;
-    readonly filename: string;
-    readonly contentType: string;
-  }[],
-): string {
-  return files
-    .map((file) => {
-      return `[Web file] ${file.filename} (${file.contentType})\n   [ID] ${file.id}`;
-    })
-    .join("\n");
-}
-
 function buildAppendSystemPrompt(
   integrationPrompt: string,
   incompleteContext: string,
@@ -1931,13 +1906,21 @@ function formatPriorRunMessage(
   inlineTemplatesEnabled: boolean,
 ): string {
   const roleLabel = message.role === "user" ? "User" : "Assistant";
-  if (message.role === "user" && message.userMessage) {
-    const prompt = projectUserMessage(message.userMessage, {
+  const userMessage = requiredUserMessageForEvent(
+    message.eventType,
+    message.userMessage,
+  );
+  if (userMessage) {
+    const prompt = projectUserMessage(userMessage, {
       inlineTemplates: inlineTemplatesEnabled,
     }).agentPrompt;
     return `${roleLabel}: ${truncatePrior(prompt) || "[empty message]"}`;
   }
-  const body = `${roleLabel}: ${truncatePrior(message.content) || "[empty message]"}`;
+  const body = `${roleLabel}: ${
+    message.content === null
+      ? "[empty message]"
+      : truncatePrior(message.content) || "[empty message]"
+  }`;
   const attach = formatAttachFileIds(message.attachFiles);
   return attach ? `${body}\n${attach}` : body;
 }
@@ -2039,7 +2022,16 @@ async function getLatestRunsByThreadId(
     .where(
       and(
         eq(chatMessages.chatThreadId, threadId),
-        isNotNull(chatMessages.content),
+        or(
+          and(
+            chatEventTypeIn(["input.prompt", "input.rejected"]),
+            isNotNull(chatMessages.userMessage),
+          ),
+          and(
+            not(chatEventTypeIn(["input.prompt", "input.rejected"])),
+            isNotNull(chatMessages.content),
+          ),
+        ),
         inArray(chatMessages.runId, runIds),
         chatEventTypeIn(CHAT_EVENT_TYPES),
         visibleChatEventCondition(db),
@@ -2049,11 +2041,12 @@ async function getLatestRunsByThreadId(
 
   const messagesByRunId = new Map<string, PriorRunMessage[]>();
   for (const row of messageRows) {
-    if (row.runId === null || row.content === null) {
+    if (row.runId === null) {
       continue;
     }
     const existing = messagesByRunId.get(row.runId) ?? [];
     existing.push({
+      eventType: row.eventType,
       role: chatEventCompatibilityRole(row.eventType),
       content: row.content,
       userMessage: row.userMessage,
@@ -2132,20 +2125,6 @@ async function chatThreadExists(db: Db, threadId: string): Promise<boolean> {
   return thread !== undefined;
 }
 
-function fallbackAttachFiles(
-  ids: readonly string[] | null,
-): readonly ResolvedAttachFile[] {
-  return (ids ?? []).map((id) => {
-    return {
-      id,
-      filename: id,
-      contentType: "application/octet-stream",
-      size: 0,
-      url: "",
-    };
-  });
-}
-
 async function buildQueuedPriorContext(args: {
   readonly db: Db;
   readonly threadId: string;
@@ -2167,88 +2146,6 @@ async function buildQueuedPriorContext(args: {
     args.triggerSource,
     args.inlineTemplatesEnabled,
   );
-}
-
-function resolveQueuedAttachFiles(args: {
-  readonly getResolvedAttachFiles: ResolveAttachFiles;
-  readonly queuedMessage: QueuedUserMessage;
-  readonly userId: string;
-}): Promise<readonly ResolvedAttachFile[]> {
-  if (
-    args.queuedMessage.attachFileMetadata &&
-    args.queuedMessage.attachFileMetadata.length > 0
-  ) {
-    return Promise.resolve(
-      resolveAttachFileMetadataUrls(args.queuedMessage.attachFileMetadata),
-    );
-  }
-  if (
-    args.queuedMessage.attachFiles &&
-    args.queuedMessage.attachFiles.length > 0
-  ) {
-    return args.getResolvedAttachFiles(
-      args.userId,
-      args.queuedMessage.attachFiles,
-    );
-  }
-  return Promise.resolve([]);
-}
-
-async function buildQueuedFullPrompt(args: {
-  readonly getResolvedAttachFiles: ResolveAttachFiles;
-  readonly queuedMessage: QueuedUserMessage;
-  readonly userId: string;
-  readonly timing?: ChatCallbackPreCreateTimingCollector;
-}): Promise<string> {
-  const resolvedAttachFiles = await measureChatCallbackPreCreateTiming(
-    args.timing,
-    "api_dispatch_pre_create_zero_chat_callback_auto_send_resolve_attachments",
-    "nested",
-    () => {
-      return resolveQueuedAttachFiles(args);
-    },
-  );
-  const attachFiles =
-    resolvedAttachFiles.length > 0
-      ? resolvedAttachFiles
-      : fallbackAttachFiles(args.queuedMessage.attachFiles);
-  const content = args.queuedMessage.content ?? "";
-  if (attachFiles.length === 0) {
-    return content;
-  }
-  return `${content}\n\n${buildWebAttachFilesPrompt(attachFiles)}`;
-}
-
-async function resolveQueuedRuntimePrompt(args: {
-  readonly getResolvedAttachFiles: ResolveAttachFiles;
-  readonly queuedMessage: QueuedUserMessage;
-  readonly sourcePrompt: string | undefined;
-  readonly userMessageProjection:
-    | ReturnType<typeof projectUserMessage>
-    | undefined;
-  readonly userId: string;
-  readonly timing?: ChatCallbackPreCreateTimingCollector;
-}): Promise<string> {
-  if (args.sourcePrompt !== undefined) {
-    return args.sourcePrompt;
-  }
-  if (args.userMessageProjection) {
-    return args.userMessageProjection.agentPrompt;
-  }
-  const canonicalPrompt = await measureChatCallbackPreCreateTiming(
-    args.timing,
-    "api_dispatch_pre_create_zero_chat_callback_auto_send_build_prompt",
-    "nested",
-    () => {
-      return buildQueuedFullPrompt({
-        getResolvedAttachFiles: args.getResolvedAttachFiles,
-        queuedMessage: args.queuedMessage,
-        userId: args.userId,
-        timing: args.timing,
-      });
-    },
-  );
-  return canonicalPrompt;
 }
 
 interface QueuedMessageModelRoute {
@@ -2401,7 +2298,6 @@ async function resolveQueuedMessageModelRoute(args: {
 
 interface CreateQueuedChatRunInputArgs {
   readonly db: Db;
-  readonly getResolvedAttachFiles: ResolveAttachFiles;
   readonly threadId: string;
   readonly userId: string;
   readonly agent: AgentForAutoSend;
@@ -2570,11 +2466,16 @@ async function buildCreateQueuedChatRunInput(
     FeatureSwitchKey.StructuredPromptInlineTemplates,
     featureSwitchContext,
   );
-  const userMessageProjection = args.queuedMessage.userMessage
-    ? projectUserMessage(args.queuedMessage.userMessage, {
-        inlineTemplates: inlineTemplatesEnabled,
-      })
-    : undefined;
+  const queuedUserMessage = requiredUserMessageForEvent(
+    "input.prompt",
+    args.queuedMessage.userMessage,
+  );
+  if (!queuedUserMessage) {
+    throw new Error("Queued input event is missing userMessage");
+  }
+  const userMessageProjection = projectUserMessage(queuedUserMessage, {
+    inlineTemplates: inlineTemplatesEnabled,
+  });
   const incompleteContext = startNewSession ? "" : loadedIncompleteContext;
   const priorContext = await measureChatCallbackPreCreateTiming(
     args.timing,
@@ -2614,14 +2515,7 @@ async function buildCreateQueuedChatRunInput(
       });
     },
   );
-  const prompt = await resolveQueuedRuntimePrompt({
-    getResolvedAttachFiles: args.getResolvedAttachFiles,
-    queuedMessage: args.queuedMessage,
-    sourcePrompt: sourceParams?.prompt,
-    userMessageProjection,
-    userId: args.userId,
-    timing: args.timing,
-  });
+  const prompt = userMessageProjection.agentPrompt;
 
   return {
     orgId: args.agent.orgId,
@@ -2895,7 +2789,6 @@ async function handleQueuedMessageAdmissionFailure(args: {
  * half, preserving user-message priority.
  */
 async function autoSendQueuedMessageForThread(args: {
-  readonly getResolvedAttachFiles: ResolveAttachFiles;
   readonly createRun: (
     input: CreateQueuedChatRunInput,
   ) => Promise<CreatedQueuedRun | null>;
@@ -2951,7 +2844,6 @@ async function autoSendQueuedMessageForThread(args: {
     () => {
       return buildCreateQueuedChatRunInput({
         db: args.db,
-        getResolvedAttachFiles: args.getResolvedAttachFiles,
         threadId,
         userId,
         agent,
@@ -3574,7 +3466,6 @@ function withoutQueuedRunDependency(
     insertAssistantItems: dependencies.insertAssistantItems,
     saveRunSummary: dependencies.saveRunSummary,
     formatRunError: dependencies.formatRunError,
-    getResolvedAttachFiles: dependencies.getResolvedAttachFiles,
     dispatchSlackDelivery: dependencies.dispatchSlackDelivery,
     clearSlackThreadStatusIfIdle: dependencies.clearSlackThreadStatusIfIdle,
     refreshSlackThreadStatus: dependencies.refreshSlackThreadStatus,
@@ -3782,9 +3673,6 @@ export async function handleChatInternalCallbackWithoutCcstate(
           }),
         );
       },
-      getResolvedAttachFiles: (_userId, fileIds) => {
-        return Promise.resolve(fallbackAttachFiles(fileIds));
-      },
       dispatchSlackDelivery: (callbackId, inputSignal) => {
         return dispatchSlackChatDeliveryOnce(db, callbackId, inputSignal);
       },
@@ -3822,7 +3710,7 @@ export async function handleChatInternalCallbackWithoutCcstate(
 
 const buildChatCallbackDependencies$ = command(
   (
-    { get, set },
+    { set },
     input: {
       readonly db: Db;
       readonly drainThreadQueue?: ChatCallbackDependencies["drainThreadQueue"];
@@ -3850,9 +3738,6 @@ const buildChatCallbackDependencies$ = command(
       },
       formatRunError: (params, inputSignal) => {
         return set(formatRunErrorForRunOwner$, params, inputSignal);
-      },
-      getResolvedAttachFiles: (userId, fileIds) => {
-        return get(resolveAttachFileUrls(userId, fileIds));
       },
       dispatchSlackDelivery: (callbackId, inputSignal) => {
         return dispatchSlackChatDeliveryOnce(db, callbackId, inputSignal);
@@ -3990,7 +3875,6 @@ export const drainQueuedUserMessagesForThread$ = command(
       agentId: thread.agentId,
       queueItemCreatedBefore: args.queueItemCreatedBefore,
       timing: args.timing ?? new ChatCallbackPreCreateTimingCollector(),
-      getResolvedAttachFiles: dependencies.getResolvedAttachFiles,
       signal,
       formatIntegrationRunError: dependencies.formatIntegrationRunError,
       deliverSlackAdmissionFailure: dependencies.deliverSlackAdmissionFailure,

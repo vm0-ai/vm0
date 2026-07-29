@@ -4,6 +4,10 @@ import type {
   UserMessageDocument,
   UserMessagePart,
 } from "@vm0/api-contracts/contracts/chat-threads";
+import {
+  isChatUserMessageEventType,
+  type ChatEventType,
+} from "@vm0/api-contracts/contracts/chat-events";
 
 interface UserMessageProjection {
   readonly agentPrompt: string;
@@ -17,6 +21,19 @@ interface UserMessageFile {
   readonly id: string;
   readonly filename: string;
   readonly contentType: string;
+}
+
+export function requiredUserMessageForEvent(
+  eventType: ChatEventType,
+  document: UserMessageDocument | null,
+): UserMessageDocument | null {
+  if (!isChatUserMessageEventType(eventType)) {
+    return null;
+  }
+  if (document === null) {
+    throw new Error(`${eventType} chat event is missing userMessage`);
+  }
+  return document;
 }
 
 export function maybeCreateUserMessageDocument(args: {

@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.148.26](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.148.25...runner-rs-v0.148.26) (2026-07-29)
+
+
+### Documentation
+
+* **runner:** document storage plan action semantics ([#23610](https://github.com/vm0-ai/vm0/issues/23610)) ([a28aac0](https://github.com/vm0-ai/vm0/commit/a28aac07e0d63502e1db1a53ac9f5591f63c9560))
+
 ## [0.148.25](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.148.24...runner-rs-v0.148.25) (2026-07-29)
 
 

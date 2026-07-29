@@ -919,7 +919,7 @@ describe("zero attachment chips", () => {
     ).resolves.toBeInTheDocument();
   });
 
-  it("renders user video attachments at the same size as image attachments", async () => {
+  it("renders canonical user video attachments at the same size as image attachments", async () => {
     const imageUrl = "https://cdn.vm7.io/artifacts/test/media/photo.png";
     const videoUrl = "https://cdn.vm7.io/artifacts/test/media/screencast.mp4";
     mockChatLifecycle(context, {
@@ -974,7 +974,7 @@ describe("zero attachment chips", () => {
     expect(screen.getByText("this is the screencast")).toBeInTheDocument();
   });
 
-  it("opens persisted audio, video, and document attachments from chat history", async () => {
+  it("opens persisted canonical audio, video, and document attachments", async () => {
     const audioUrl =
       "https://cdn.vm7.io/artifacts/test/attachment-audio/briefing.mp3";
     const videoUrl =
@@ -1079,7 +1079,7 @@ describe("zero attachment chips", () => {
     });
   });
 
-  it("opens persisted csv, pdf, and html document previews from chat history", async () => {
+  it("opens persisted canonical csv, pdf, and html document previews", async () => {
     const csvUrl =
       "https://cdn.vm7.io/artifacts/test/attachment-csv/launch-metrics.csv";
     const pdfUrl =
@@ -2239,7 +2239,7 @@ describe("zero attachment chips", () => {
     expect(image).toHaveClass("h-full", "w-full", "object-contain");
   });
 
-  it("renders user markdown images without preview controls", async () => {
+  it("renders canonical user markdown image syntax literally", async () => {
     const imageUrl =
       "https://cdn.vm7.io/artifacts/test/user-markdown-image/kitten-1280x720.png";
     mockChatLifecycle(context, {
@@ -2256,16 +2256,13 @@ describe("zero attachment chips", () => {
 
     detachedSetupPage({ context, path: `/chats/${THREAD_ID}` });
 
-    const image = await screen.findByAltText("1280x720");
-    expect(image).toHaveAttribute("src", imageUrl);
-    expect(image.closest("button")).toBeNull();
-    expect(image).not.toHaveAttribute("data-image-load-key");
-    expect(
-      screen.queryByTestId("markdown-image-preview-loading"),
-    ).not.toBeInTheDocument();
+    await expect(
+      screen.findByText(`![1280x720](${imageUrl})`),
+    ).resolves.toBeInTheDocument();
+    expect(screen.queryByAltText("1280x720")).toBeNull();
   });
 
-  it("opens markdown and text previews, shares a document link, and reports download failures", async () => {
+  it("opens canonical markdown and text previews, shares a document link, and reports download failures", async () => {
     const releaseNotesUrl =
       "https://cdn.vm7.io/artifacts/test/attachment-markdown/release-notes.md";
     const transcriptUrl =

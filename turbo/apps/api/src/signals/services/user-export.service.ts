@@ -68,7 +68,10 @@ import {
   gunzipSessionHistoryBufferWithMaxBytes,
   unzstdSessionHistoryBufferWithMaxBytes,
 } from "./session-history-decompression";
-import { projectUserMessage } from "./zero-chat-user-message.service";
+import {
+  projectUserMessage,
+  requiredUserMessageForEvent,
+} from "./zero-chat-user-message.service";
 import {
   chatEventTypeIn,
   chatEventTypeSql,
@@ -766,7 +769,8 @@ async function collectConversationMessages(
     const messages: ExportTextMessage[] = rows.flatMap((message) => {
       const role = chatEventCompatibilityRole(message.eventType);
       const userMessage =
-        role === "user" ? (message.userMessage ?? undefined) : undefined;
+        requiredUserMessageForEvent(message.eventType, message.userMessage) ??
+        undefined;
       const content = userMessage
         ? projectUserMessage(userMessage).displayText
         : message.content;

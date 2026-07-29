@@ -7,7 +7,6 @@ import {
   chatThreadComputerUseHostContract,
   chatThreadModelSelectionContract,
 } from "@vm0/api-contracts/contracts/chat-threads";
-import { withPrecedingDraftStructuredPrompt } from "@vm0/api-contracts/contracts/user-message-rollout";
 import { accept } from "../../lib/accept.ts";
 import { nowDate } from "../../lib/time.ts";
 import { zeroClient$ } from "../api-client.ts";
@@ -58,11 +57,11 @@ const patchDraft$ = command(
     await accept(
       client.patch({
         params: { id: threadId },
-        body: withPrecedingDraftStructuredPrompt({
+        body: {
           draftContent: content,
           draftUserMessage: userMessage,
           draftAttachments: attachments,
-        }),
+        },
         fetchOptions: { signal },
       }),
       [200, 204],

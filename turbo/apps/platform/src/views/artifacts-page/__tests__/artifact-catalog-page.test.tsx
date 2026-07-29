@@ -556,4 +556,19 @@ describe("artifact catalog page", () => {
       screen.findByText("No artifacts found"),
     ).resolves.toBeInTheDocument();
   });
+
+  it("announces an alert when the catalog fails to load", async () => {
+    context.mocks.api(artifactCatalogContract.list, ({ respond }) => {
+      return respond(403, {
+        error: { code: "FORBIDDEN", message: "Transient catalog failure" },
+      });
+    });
+
+    setupArtifactCatalogPage();
+
+    const alert = await screen.findByRole("alert");
+    expect(alert).toHaveTextContent(
+      "Could not load artifacts. Try again later.",
+    );
+  });
 });

@@ -812,7 +812,7 @@ describe("chat message action cards", () => {
     });
   });
 
-  it("keeps user links and renders assistant actions on alternate origins", async () => {
+  it("renders canonical user text literally and assistant actions on alternate origins", async () => {
     const previousUrl = window.location.href;
     const threadId = `${THREAD_ID}-alternate-production-origin`;
     window.location.href = `https://app.okou.ai/chats/${threadId}`;
@@ -861,10 +861,14 @@ describe("chat message action cards", () => {
     const connectorCard = await screen.findByTestId("connector-action-card");
     expect(within(connectorCard).getByText("Slack")).toBeInTheDocument();
     expect(screen.getAllByTestId("connector-action-card")).toHaveLength(1);
-    const userConnectorLink = queryAllByRoleFast("link").find((link) => {
-      return link.textContent === "User connector link";
-    });
-    expect(userConnectorLink).toHaveAttribute("href", canonicalUrl);
+    expect(
+      screen.getByText(`[User connector link](${canonicalUrl})`),
+    ).toBeInTheDocument();
+    expect(
+      queryAllByRoleFast("link").find((link) => {
+        return link.textContent === "User connector link";
+      }),
+    ).toBeUndefined();
     const untrustedLink = queryAllByRoleFast("link").find((link) => {
       return link.textContent === "Untrusted connector";
     });

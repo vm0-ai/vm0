@@ -6,23 +6,19 @@ import {
 } from "../zero-agents";
 
 describe("zero agent draft contract", () => {
-  it("normalizes the preceding agent draft response", () => {
+  it("rejects agent drafts that only carry the retired rich-input field", () => {
     const userMessage = {
       version: 1 as const,
       parts: [{ type: "text" as const, text: "Resume agent work" }],
     };
 
     expect(
-      zeroAgentDraftResponseSchema.parse({
+      zeroAgentDraftResponseSchema.safeParse({
         draftContent: "Resume agent work",
         draftStructuredPrompt: userMessage,
         draftAttachments: null,
-      }),
-    ).toStrictEqual({
-      draftContent: "Resume agent work",
-      draftUserMessage: userMessage,
-      draftAttachments: null,
-    });
+      }).success,
+    ).toBe(false);
   });
 
   it("requires userMessage for non-empty agent drafts", () => {
