@@ -1,4 +1,5 @@
 import type StripeSDK from "stripe";
+import type { LookupFunction } from "node:net";
 import { computed } from "ccstate";
 import { vi, type Mock } from "vitest";
 
@@ -12,20 +13,11 @@ type SignalTimerDelayMock = Mock<
 >;
 type SyncMock = Mock<(...args: unknown[]) => void>;
 type UnknownMock = Mock<(...args: unknown[]) => unknown>;
-type LookupCallback = (
-  error: Error | null,
-  address: string,
-  family: number,
-) => void;
-
 interface RequestOptionsLike {
+  readonly family?: number;
   readonly headers?: HeadersInit;
   readonly method?: string;
-  readonly lookup?: (
-    hostname: string,
-    options: unknown,
-    callback: LookupCallback,
-  ) => void;
+  readonly lookup?: LookupFunction;
 }
 
 type PinnedRequestCallback = (
@@ -607,12 +599,41 @@ async function mockPinnedRequestModule<TModule extends object>(
     req.end = (requestBody?: string) => {
       queueMicrotask(() => {
         void (async () => {
-          options.lookup?.(url.hostname, {}, (error, address) => {
-            if (error) {
-              throw error;
-            }
-            apiTestMocks.nodeRequest.pinnedAddresses.push(address);
-          });
+          if (options.family === 4 || options.family === 6) {
+            options.lookup?.(
+              url.hostname,
+              { family: options.family },
+              (error, address) => {
+                if (error) {
+                  throw error;
+                }
+                if (typeof address !== "string") {
+                  throw new TypeError("Expected a single pinned IP address");
+                }
+                apiTestMocks.nodeRequest.pinnedAddresses.push(address);
+              },
+            );
+          } else {
+            options.lookup?.(
+              url.hostname,
+              { all: true },
+              (error, addresses) => {
+                if (error) {
+                  throw error;
+                }
+                if (!Array.isArray(addresses)) {
+                  throw new TypeError(
+                    "Expected an array of pinned IP addresses",
+                  );
+                }
+                for (const address of addresses) {
+                  apiTestMocks.nodeRequest.pinnedAddresses.push(
+                    address.address,
+                  );
+                }
+              },
+            );
+          }
           const fetched = await fetch(url, {
             method: options.method,
             headers: options.headers,

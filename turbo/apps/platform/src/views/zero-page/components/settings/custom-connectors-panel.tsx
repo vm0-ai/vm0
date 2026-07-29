@@ -1,4 +1,9 @@
-import { useGet, useLastResolved, useSet } from "ccstate-react";
+import {
+  useGet,
+  useLastLoadable,
+  useLastResolved,
+  useSet,
+} from "ccstate-react";
 import { IconDotsVertical } from "@tabler/icons-react";
 import { useTranslation } from "react-i18next";
 import {
@@ -9,10 +14,12 @@ import {
   DropdownMenuTrigger,
 } from "@vm0/ui";
 import type { CustomConnectorResponse } from "@vm0/api-contracts/contracts/zero-custom-connectors";
+import type { TeamComposeItem } from "@vm0/api-contracts/contracts/zero-team";
 import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import {
   clearCustomConnectorSecret$,
   connectCustomConnectorOAuth2$,
+  customConnectorAuthorizedAgentsById$,
   customConnectorDialog$,
   customConnectors$,
   openCustomConnectorConnectDialog$,
@@ -33,6 +40,9 @@ import { CustomConnectorDeleteConfirm } from "./custom-connector-delete-confirm.
 import { DropdownMenuModalItem } from "../../../components/dropdown-menu-modal-item.tsx";
 import { noConnectorImg } from "../../platform-assets.ts";
 
+const CUSTOM_CONNECTOR_AGENT_NAME_LIMIT = 2;
+const CUSTOM_CONNECTOR_AGENT_NAME_MAX_CHARS = 12;
+
 function connectsDirectlyWithOAuth(
   connector: CustomConnectorResponse,
   oauth2Enabled: boolean,
@@ -40,8 +50,73 @@ function connectsDirectlyWithOAuth(
   return oauth2Enabled && connector.authMode === "oauth";
 }
 
+function customConnectorAgentName(agent: TeamComposeItem): string {
+  return agent.displayName ?? "Unnamed";
+}
+
+function truncateCustomConnectorAgentName(name: string): string {
+  if (name.length <= CUSTOM_CONNECTOR_AGENT_NAME_MAX_CHARS) {
+    return name;
+  }
+  return `${name.slice(0, CUSTOM_CONNECTOR_AGENT_NAME_MAX_CHARS - 1)}…`;
+}
+
+function CustomConnectorAgentUsage({
+  agents,
+  loading,
+}: {
+  readonly agents: readonly TeamComposeItem[];
+  readonly loading: boolean;
+}) {
+  if (loading) {
+    return <span className="block h-3 w-20 animate-pulse rounded bg-muted" />;
+  }
+  if (agents.length === 0) {
+    return (
+      <span
+        className="truncate text-xs text-muted-foreground"
+        data-testid="custom-connector-card-agent-usage"
+      >
+        Not used by any agents
+      </span>
+    );
+  }
+
+  const visibleNames = agents
+    .slice(0, CUSTOM_CONNECTOR_AGENT_NAME_LIMIT)
+    .map((agent) => {
+      return truncateCustomConnectorAgentName(customConnectorAgentName(agent));
+    });
+  const overflowCount = agents.length - visibleNames.length;
+  return (
+    <span
+      className="min-w-0 truncate text-xs text-muted-foreground"
+      data-testid="custom-connector-card-agent-usage"
+      title={agents.map(customConnectorAgentName).join(", ")}
+    >
+      Used by {visibleNames.join(", ")}
+      {overflowCount > 0 ? ` +${overflowCount}` : ""}
+    </span>
+  );
+}
+
+interface CustomConnectorRowProps {
+  readonly connector: CustomConnectorResponse;
+  readonly authorizedAgents: readonly TeamComposeItem[];
+  readonly authorizedAgentsLoading: boolean;
+  readonly isAdmin: boolean;
+  readonly onConnect: () => void;
+  readonly onDisconnect: () => void;
+  readonly onEdit: () => void;
+  readonly onRename: () => void;
+  readonly fullEditingEnabled: boolean;
+  readonly onDelete: () => void;
+}
+
 function CustomConnectorRow({
   connector,
+  authorizedAgents,
+  authorizedAgentsLoading,
   isAdmin,
   onConnect,
   onDisconnect,
@@ -49,18 +124,9 @@ function CustomConnectorRow({
   onRename,
   fullEditingEnabled,
   onDelete,
-}: {
-  connector: CustomConnectorResponse;
-  isAdmin: boolean;
-  onConnect: () => void;
-  onDisconnect: () => void;
-  onEdit: () => void;
-  onRename: () => void;
-  fullEditingEnabled: boolean;
-  onDelete: () => void;
-}) {
+}: CustomConnectorRowProps) {
   const { t } = useTranslation();
-  const hasActions = connector.hasSecret || isAdmin;
+  const hasActions = connector.connected || isAdmin;
   const directOAuth = connectsDirectlyWithOAuth(connector, fullEditingEnabled);
   const cardContent = (
     <>
@@ -70,37 +136,46 @@ function CustomConnectorRow({
           displayName={connector.displayName}
           size={20}
         />
-        <span className="min-w-0 flex-1 text-sm font-medium text-foreground truncate">
+        <span
+          data-testid="connector-card-label"
+          className="min-w-0 flex-1 text-sm font-medium text-foreground truncate"
+        >
           {connector.displayName}
         </span>
       </div>
       <div
-        className={`flex h-11 items-center border-t border-border/50 pl-5 ${
+        className={`flex h-11 items-center justify-between gap-2 border-t border-border/50 pl-5 ${
           hasActions ? "pr-12" : "pr-5"
         }`}
       >
-        <div className="flex items-center gap-2 min-w-0">
-          {connector.hasSecret && (
-            <span className="flex items-center gap-2 text-xs text-muted-foreground truncate">
-              <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 shrink-0" />
+        {connector.connected ? (
+          <>
+            <span className="flex shrink-0 items-center gap-2 truncate text-xs text-muted-foreground">
+              <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-emerald-500" />
               {t(($) => {
                 return $.connectors.custom.statusConnected;
               })}
             </span>
-          )}
-          {connector.prefixes[0] && (
-            <span className="truncate text-xs text-muted-foreground/60 font-mono">
-              {connector.prefixes[0]}
-            </span>
-          )}
-        </div>
+            <CustomConnectorAgentUsage
+              agents={authorizedAgents}
+              loading={authorizedAgentsLoading}
+            />
+          </>
+        ) : (
+          <span
+            className="min-w-0 truncate font-mono text-xs text-muted-foreground/60"
+            title={connector.prefixes[0]}
+          >
+            {connector.prefixes[0]}
+          </span>
+        )}
       </div>
     </>
   );
 
   return (
     <div className="relative">
-      {connector.hasSecret ? (
+      {connector.connected ? (
         <div className="zero-card flex flex-col">{cardContent}</div>
       ) : (
         <button
@@ -133,21 +208,21 @@ function CustomConnectorRow({
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="w-44">
-              {!connector.hasSecret && directOAuth && (
+              {!connector.connected && directOAuth && (
                 <DropdownMenuItem onClick={onConnect}>
                   {t(($) => {
                     return $.connectors.actions.connect;
                   })}
                 </DropdownMenuItem>
               )}
-              {!connector.hasSecret && !directOAuth && (
+              {!connector.connected && !directOAuth && (
                 <DropdownMenuModalItem onModalSelect={onConnect}>
                   {t(($) => {
                     return $.connectors.actions.connect;
                   })}
                 </DropdownMenuModalItem>
               )}
-              {connector.hasSecret && (
+              {connector.connected && (
                 <DropdownMenuItem onClick={onDisconnect}>
                   {t(($) => {
                     return $.connectors.actions.disconnect;
@@ -188,6 +263,15 @@ function CustomConnectorRow({
 export function CustomConnectorsPanel() {
   const { t } = useTranslation();
   const connectors = useLastResolved(customConnectors$);
+  const authorizedAgentsByIdLoadable = useLastLoadable(
+    customConnectorAuthorizedAgentsById$,
+  );
+  const authorizedAgentsById =
+    authorizedAgentsByIdLoadable.state === "hasData"
+      ? authorizedAgentsByIdLoadable.data
+      : new Map<string, readonly TeamComposeItem[]>();
+  const authorizedAgentsLoading =
+    authorizedAgentsByIdLoadable.state === "loading";
   const isAdmin = useLastResolved(isOrgAdmin$) ?? false;
   const featureSwitches = useGet(featureSwitch$);
   const fullEditingEnabled =
@@ -249,6 +333,8 @@ export function CustomConnectorsPanel() {
               <CustomConnectorRow
                 key={c.id}
                 connector={c}
+                authorizedAgents={authorizedAgentsById.get(c.id) ?? []}
+                authorizedAgentsLoading={authorizedAgentsLoading}
                 isAdmin={isAdmin}
                 onConnect={() => {
                   return handleConnect(c);

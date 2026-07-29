@@ -1,6 +1,6 @@
 import { command, computed, type Computed } from "ccstate";
 import { randomUUID } from "node:crypto";
-import { and, eq, inArray } from "drizzle-orm";
+import { and, eq, inArray, sql } from "drizzle-orm";
 import type {
   CreateCustomConnectorBody,
   CustomConnectorAuthMode,
@@ -42,11 +42,6 @@ import {
 } from "./crypto.utils";
 import { userFeatureSwitchContext } from "./feature-switches.service";
 import { addUserCustomConnector } from "./user-connectors.service";
-import {
-  loadConnectorRuntimeSnapshot,
-  type ConnectorRuntimeSnapshot,
-} from "./connector-catalog-runtime.service";
-import type { ConnectorServerFirewallCatalog } from "./connector-server-firewall-catalog.service";
 
 const L = logger("CustomConnectorService");
 
@@ -69,6 +64,7 @@ const CUSTOM_CONNECTOR_OAUTH_ACCESS_TOKEN_REFERENCE = "oauth.access_token";
 
 type BadRequestResponse = ReturnType<typeof badRequestMessage>;
 type NotFoundResponse = ReturnType<typeof notFound>;
+type DbTransaction = Parameters<Parameters<Db["transaction"]>[0]>[0];
 
 export interface CustomConnectorOAuthConfigRow {
   readonly connectorId: string;
@@ -627,6 +623,23 @@ function templateWithPlaceholders(template: string): string {
   );
 }
 
+function customConnectorPrefixTemplateIdentity(raw: string): string {
+  const trimmed = raw.trim();
+  const normalized = trimmed.endsWith("/") ? trimmed : `${trimmed}/`;
+  const canonicalPrefix = canonicalizeFirewallBaseUrl(
+    expandHostWildcardsInBaseUrl(templateWithPlaceholders(normalized)),
+    "custom connector",
+  );
+  const schemeEnd = canonicalPrefix.indexOf("://");
+  const normalizedSchemePrefix =
+    canonicalPrefix.slice(0, schemeEnd).toLowerCase() +
+    canonicalPrefix.slice(schemeEnd);
+  const references = extractTemplateReferences(normalized).map((reference) => {
+    return `${reference.namespace}.${reference.key}`;
+  });
+  return JSON.stringify([normalizedSchemePrefix, references]);
+}
+
 function prefixContainsPathVariable(raw: string): boolean {
   if (!raw.startsWith("https://")) {
     return false;
@@ -642,7 +655,6 @@ function prefixContainsPathVariable(raw: string): boolean {
 function validateAndNormalizePrefixTemplate(args: {
   readonly raw: string;
   readonly fields: readonly CustomConnectorField[];
-  readonly serverFirewalls: ConnectorServerFirewallCatalog;
 }): string | BadRequestResponse {
   const trimmed = args.raw.trim();
   if (trimmed.length === 0) {
@@ -684,22 +696,6 @@ function validateAndNormalizePrefixTemplate(args: {
   const scheme = canonicalPrefix.slice(0, schemeEnd).toLowerCase();
   if (scheme !== "https") {
     return badRequestMessage(`Prefix must use https://: ${args.raw}`);
-  }
-
-  if (!normalised.includes("{{")) {
-    const authorityStart = schemeEnd + 3;
-    const authorityEnd = canonicalPrefix.indexOf("/", authorityStart);
-    const host = canonicalPrefix.slice(authorityStart, authorityEnd);
-    const builtinOwner = args.serverFirewalls.getFixedHostOwner(host);
-    if (builtinOwner) {
-      const rawAuthority = normalised.slice(
-        "https://".length,
-        normalised.indexOf("/", "https://".length),
-      );
-      return badRequestMessage(
-        `Host "${rawAuthority}" is already managed by the ${builtinOwner.label} connector`,
-      );
-    }
   }
 
   return normalised;
@@ -962,7 +958,6 @@ function validateOAuthConfigUpdate(args: {
 
 function validateDefinition(
   input: DefinitionInput,
-  serverFirewalls: ConnectorServerFirewallCatalog,
 ): ValidatedDefinition | BadRequestResponse {
   const displayName = validateDisplayName(input.displayName);
   if (isBadRequest(displayName)) {
@@ -990,7 +985,6 @@ function validateDefinition(
     const normalized = validateAndNormalizePrefixTemplate({
       raw,
       fields,
-      serverFirewalls,
     });
     if (isBadRequest(normalized)) {
       return normalized;
@@ -999,10 +993,11 @@ function validateDefinition(
   }
   const seenPrefixes = new Set<string>();
   for (const prefix of prefixTemplates) {
-    if (seenPrefixes.has(prefix)) {
+    const identity = customConnectorPrefixTemplateIdentity(prefix);
+    if (seenPrefixes.has(identity)) {
       return badRequestMessage(`Duplicate prefix template: ${prefix}`);
     }
-    seenPrefixes.add(prefix);
+    seenPrefixes.add(identity);
   }
 
   const headerInjections = validateHeaderInjections({
@@ -1156,6 +1151,55 @@ function randomShortId(): string {
   return randomUUID().replace(/-/g, "").slice(0, 6);
 }
 
+async function findCustomConnectorPrefixConflict(
+  tx: DbTransaction,
+  args: {
+    readonly orgId: string;
+    readonly prefixTemplates: readonly string[];
+    readonly excludeConnectorId?: string;
+  },
+): Promise<BadRequestResponse | null> {
+  await tx.execute(
+    sql`SELECT pg_advisory_xact_lock(hashtextextended(${`custom_connector_prefixes:${args.orgId}`}, 0))`,
+  );
+  const existingConnectors = await tx
+    .select({
+      id: orgCustomConnectors.id,
+      displayName: orgCustomConnectors.displayName,
+      prefixes: orgCustomConnectors.prefixes,
+      prefixTemplates: orgCustomConnectors.prefixTemplates,
+    })
+    .from(orgCustomConnectors)
+    .where(eq(orgCustomConnectors.orgId, args.orgId));
+  const requestedPrefixes = new Map(
+    args.prefixTemplates.map((prefix) => {
+      return [customConnectorPrefixTemplateIdentity(prefix), prefix] as const;
+    }),
+  );
+
+  for (const connector of existingConnectors) {
+    if (connector.id === args.excludeConnectorId) {
+      continue;
+    }
+    const storedPrefixTemplates = stringArray(connector.prefixTemplates);
+    const prefixes =
+      storedPrefixTemplates.length > 0
+        ? storedPrefixTemplates
+        : stringArray(connector.prefixes);
+    for (const prefix of prefixes) {
+      const requestedPrefix = requestedPrefixes.get(
+        customConnectorPrefixTemplateIdentity(prefix),
+      );
+      if (requestedPrefix) {
+        return badRequestMessage(
+          `Prefix "${requestedPrefix}" is already used by custom connector "${connector.displayName}"`,
+        );
+      }
+    }
+  }
+  return null;
+}
+
 async function loadConnectorValueMarkers(args: {
   readonly db: ReadonlyDb;
   readonly orgId: string;
@@ -1249,7 +1293,6 @@ export const createCustomConnector$ = command(
       readonly orgId: string;
       readonly userId: string;
       readonly input: CreateCustomConnectorBody;
-      readonly connectorCatalogSnapshot?: ConnectorRuntimeSnapshot;
     },
     signal: AbortSignal,
   ): Promise<CustomConnectorRow | BadRequestResponse> => {
@@ -1258,14 +1301,7 @@ export const createCustomConnector$ = command(
       return canonicalInput;
     }
     const writeDb = set(writeDb$);
-    const connectorCatalogSnapshot =
-      args.connectorCatalogSnapshot ??
-      (await loadConnectorRuntimeSnapshot(writeDb));
-    signal.throwIfAborted();
-    const v = validateDefinition(
-      canonicalInput,
-      connectorCatalogSnapshot.serverFirewalls,
-    );
+    const v = validateDefinition(canonicalInput);
     if (isBadRequest(v)) {
       return v;
     }
@@ -1299,6 +1335,13 @@ export const createCustomConnector$ = command(
     L.debug("creating custom connector", { orgId: args.orgId, slug });
 
     const created = await writeDb.transaction(async (tx) => {
+      const prefixConflict = await findCustomConnectorPrefixConflict(tx, {
+        orgId: args.orgId,
+        prefixTemplates: v.prefixTemplates,
+      });
+      if (prefixConflict) {
+        return prefixConflict;
+      }
       const [row] = await tx
         .insert(orgCustomConnectors)
         .values({
@@ -1337,6 +1380,9 @@ export const createCustomConnector$ = command(
       return { row, oauthConfig };
     });
     signal.throwIfAborted();
+    if (isBadRequest(created)) {
+      return created;
+    }
 
     return normaliseCustomConnectorRow(created.row, created.oauthConfig);
   },
@@ -1408,12 +1454,24 @@ async function persistCustomConnectorUpdate(
     readonly grantConfigurationChanged: boolean;
     readonly oauthConfigurationChanged: boolean;
   },
-): Promise<{
-  readonly row: typeof orgCustomConnectors.$inferSelect;
-  readonly oauthConfig: CustomConnectorOAuthConfigRow | null;
-} | null> {
+): Promise<
+  | {
+      readonly row: typeof orgCustomConnectors.$inferSelect;
+      readonly oauthConfig: CustomConnectorOAuthConfigRow | null;
+    }
+  | BadRequestResponse
+  | null
+> {
   const legacy = legacyColumns(args.definition);
   return await db.transaction(async (tx) => {
+    const prefixConflict = await findCustomConnectorPrefixConflict(tx, {
+      orgId: args.orgId,
+      prefixTemplates: args.definition.prefixTemplates,
+      excludeConnectorId: args.id,
+    });
+    if (prefixConflict) {
+      return prefixConflict;
+    }
     const [updated] = await tx
       .update(orgCustomConnectors)
       .set({
@@ -1498,7 +1556,6 @@ export const updateCustomConnectorDefinition$ = command(
       readonly userId: string;
       readonly id: string;
       readonly input: UpdateCustomConnectorBody;
-      readonly connectorCatalogSnapshot?: ConnectorRuntimeSnapshot;
     },
     signal: AbortSignal,
   ): Promise<CustomConnectorRow | BadRequestResponse | NotFoundResponse> => {
@@ -1508,13 +1565,8 @@ export const updateCustomConnectorDefinition$ = command(
     if (!existingConnector) {
       return notFound("Custom connector not found");
     }
-    const connectorCatalogSnapshot =
-      args.connectorCatalogSnapshot ??
-      (await loadConnectorRuntimeSnapshot(writeDb));
-    signal.throwIfAborted();
     const v = validateDefinition(
       definitionFromUpdateInput(args.input, existingConnector.authMode),
-      connectorCatalogSnapshot.serverFirewalls,
     );
     if (isBadRequest(v)) {
       return v;
@@ -1567,6 +1619,9 @@ export const updateCustomConnectorDefinition$ = command(
       oauthConfigurationChanged,
     });
     signal.throwIfAborted();
+    if (isBadRequest(result)) {
+      return result;
+    }
     if (!result) {
       return notFound("Custom connector not found");
     }
@@ -2318,9 +2373,7 @@ function proposalUpdateInput(
 const saveProposalDefinition$ = command(
   async (
     { set },
-    args: SaveCustomConnectorProposalArgs & {
-      readonly connectorCatalogSnapshot: ConnectorRuntimeSnapshot;
-    },
+    args: SaveCustomConnectorProposalArgs,
     signal: AbortSignal,
   ): Promise<
     | CustomConnectorRow
@@ -2339,7 +2392,6 @@ const saveProposalDefinition$ = command(
           orgId: args.orgId,
           userId: args.userId,
           input: updateInput,
-          connectorCatalogSnapshot: args.connectorCatalogSnapshot,
         },
         signal,
       );
@@ -2357,7 +2409,6 @@ const saveProposalDefinition$ = command(
         userId: args.userId,
         id: args.proposal.connectorId,
         input: updateInput,
-        connectorCatalogSnapshot: args.connectorCatalogSnapshot,
       },
       signal,
     );
@@ -2405,13 +2456,8 @@ export const saveCustomConnectorProposal$ = command(
     args: SaveCustomConnectorProposalArgs,
     signal: AbortSignal,
   ): Promise<SaveCustomConnectorProposalResult> => {
-    const connectorCatalogSnapshot = await loadConnectorRuntimeSnapshot(
-      get(db$),
-    );
-    signal.throwIfAborted();
     const proposalDefinition = validateDefinition(
       definitionFromUpdateInput(proposalUpdateInput(args.proposal)),
-      connectorCatalogSnapshot.serverFirewalls,
     );
     if (isBadRequest(proposalDefinition)) {
       return proposalDefinition;
@@ -2425,11 +2471,7 @@ export const saveCustomConnectorProposal$ = command(
       return proposalValues;
     }
 
-    const connector = await set(
-      saveProposalDefinition$,
-      { ...args, connectorCatalogSnapshot },
-      signal,
-    );
+    const connector = await set(saveProposalDefinition$, args, signal);
     signal.throwIfAborted();
     if ("status" in connector) {
       return connector;

@@ -7112,7 +7112,7 @@ describe("RUN-02: stored connector injection into claimed runs", () => {
 });
 
 describe("RUN-02: custom connectors, grants, and network policies", () => {
-  it("preserves global fixed-host ownership after selected firewall metadata is used", async () => {
+  it("lets an enabled custom connector override a connected built-in connector", async () => {
     const api = createRunsApi(context);
     const connectors = createConnectorBddApi(context);
     const { actor, agentId, runnerGroup } = await entitledRunActor();
@@ -7128,35 +7128,93 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
     );
     await api.enableAgentConnectors(actor, agentId, ["figma"]);
 
+    const custom = await connectors.createCustomConnector(actor, {
+      slug: `_figma-override-${randomUUID().slice(0, 8)}`,
+      displayName: "Custom Figma",
+      prefixes: ["https://api.figma.com/"],
+      headerName: "Authorization",
+      headerTemplate: "Bearer {{secret}}",
+    });
+    await connectors.setCustomConnectorSecret(
+      actor,
+      custom.id,
+      "custom-figma-token",
+    );
+    await connectors.updateAgentCustomConnectors(actor, agentId, [custom.id]);
+
     const run = await api.createRun(actor, {
       agentId,
-      prompt: "use selected connector metadata before a global lookup",
+      prompt: "use the custom connector instead of the built-in connector",
       modelProvider: "anthropic-api-key",
     });
     await api.heartbeatRunner(runnerGroup);
     const claim = await api.claimRunnerJob(run.runId);
+    const internalName = `custom_connector_${custom.id.replaceAll("-", "")}`;
+    expect(findFirewallEntry(claim.firewalls, "figma")).toBeUndefined();
+    expect(inlineFirewallApis(claim.firewalls, internalName)).toMatchObject([
+      {
+        base: "https://api.figma.com/",
+      },
+    ]);
+    expect(claim.networkPolicies ?? {}).not.toHaveProperty("figma");
+    expect(claim.networkPolicies?.[internalName]?.unknownPolicy).toBe("allow");
+
+    await api.requestCancelRun(actor, run.runId, [200]);
+    expect((await api.readRun(actor, run.runId)).status).toBe("cancelled");
+    await connectors.deleteCustomConnector(actor, custom.id);
+  });
+
+  it("keeps a built-in connector when a custom connector only overrides a narrower path", async () => {
+    const api = createRunsApi(context);
+    const connectors = createConnectorBddApi(context);
+    const { actor, agentId, runnerGroup } = await entitledRunActor();
+
+    await connectors.connectManualGrant(
+      actor,
+      "figma",
+      "api-token",
+      {
+        accessToken: "selected-figma-token",
+      },
+      agentId,
+    );
+    await api.enableAgentConnectors(actor, agentId, ["figma"]);
+
+    const custom = await connectors.createCustomConnector(actor, {
+      slug: `_figma-files-${randomUUID().slice(0, 8)}`,
+      displayName: "Custom Figma Files",
+      prefixes: ["https://api.figma.com/v1/files/"],
+      headerName: "Authorization",
+      headerTemplate: "Bearer {{secret}}",
+    });
+    await connectors.setCustomConnectorSecret(
+      actor,
+      custom.id,
+      "custom-figma-files-token",
+    );
+    await connectors.updateAgentCustomConnectors(actor, agentId, [custom.id]);
+
+    const run = await api.createRun(actor, {
+      agentId,
+      prompt: "use custom auth for Figma files and built-in auth elsewhere",
+      modelProvider: "anthropic-api-key",
+    });
+    await api.heartbeatRunner(runnerGroup);
+    const claim = await api.claimRunnerJob(run.runId);
+    const internalName = `custom_connector_${custom.id.replaceAll("-", "")}`;
     expect(findFirewallEntry(claim.firewalls, "figma")).toMatchObject({
       kind: "builtin",
       name: "figma",
     });
-
-    const collision = await connectors.requestCreateCustomConnector(
-      actor,
+    expect(inlineFirewallApis(claim.firewalls, internalName)).toMatchObject([
       {
-        slug: `_lazy-global-${randomUUID().slice(0, 8)}`,
-        displayName: "Lazy Global Collision",
-        prefixes: ["https://api.github.com/v3/"],
-        headerName: "Authorization",
-        headerTemplate: "Bearer {{secret}}",
+        base: "https://api.figma.com/v1/files/",
       },
-      [400],
-    );
-    expectApiError(collision.body);
-    expect(collision.body.error.message).toContain("api.github.com");
-    expect(collision.body.error.message).toContain("GitHub");
+    ]);
 
     await api.requestCancelRun(actor, run.runId, [200]);
     expect((await api.readRun(actor, run.runId)).status).toBe("cancelled");
+    await connectors.deleteCustomConnector(actor, custom.id);
   });
 
   it("injects enabled custom connector firewalls with resolvable org secrets", async () => {

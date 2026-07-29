@@ -13,7 +13,6 @@ import {
 } from "@vm0/connectors/firewall-metadata/policy";
 import {
   extractSecretNamesFromApis,
-  normalizeFirewallFixedHost,
   UNKNOWN_PERMISSION_GRANT,
   type FirewallBaseHostPolicy,
   type FirewallPolicies,

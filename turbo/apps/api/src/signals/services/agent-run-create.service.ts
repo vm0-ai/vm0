@@ -52,6 +52,7 @@ import {
   type FirewallPolicies,
   type FirewallPolicy,
   type NetworkPolicies,
+  normalizeFirewallFixedHost,
 } from "@vm0/connectors/firewall-types";
 import {
   type CreateRunResponse,
@@ -3874,6 +3875,81 @@ interface BuiltinConnectorManifestSource {
   readonly permissionIndex: ConnectorServerFirewallPermissionIndex;
 }
 
+interface FixedFirewallBaseParts {
+  readonly protocol: string;
+  readonly authority: string;
+  readonly pathPrefix: string;
+}
+
+function fixedFirewallBaseParts(base: string): FixedFirewallBaseParts | null {
+  const schemeEnd = base.indexOf("://");
+  if (schemeEnd === -1) {
+    return null;
+  }
+  const authorityStart = schemeEnd + 3;
+  const authorityEnd = base.indexOf("/", authorityStart);
+  const rawAuthority = base.slice(
+    authorityStart,
+    authorityEnd === -1 ? base.length : authorityEnd,
+  );
+  if (/[${}*]/u.test(rawAuthority)) {
+    return null;
+  }
+  const parsed = safeSync(() => {
+    return new URL(base);
+  });
+  if ("error" in parsed) {
+    return null;
+  }
+  const authority = normalizeFirewallFixedHost(parsed.ok.host);
+  if (!authority) {
+    return null;
+  }
+  const pathname = parsed.ok.pathname.endsWith("/")
+    ? parsed.ok.pathname
+    : `${parsed.ok.pathname}/`;
+  return {
+    protocol: parsed.ok.protocol.toLowerCase(),
+    authority,
+    pathPrefix: pathname,
+  };
+}
+
+function customFirewallCoversBuiltinBase(
+  customBase: string,
+  builtinBase: string,
+): boolean {
+  const custom = fixedFirewallBaseParts(customBase);
+  const builtin = fixedFirewallBaseParts(builtinBase);
+  return (
+    custom !== null &&
+    builtin !== null &&
+    custom.protocol === builtin.protocol &&
+    custom.authority === builtin.authority &&
+    builtin.pathPrefix.startsWith(custom.pathPrefix)
+  );
+}
+
+function builtinConnectorOverriddenByCustomFirewalls(args: {
+  readonly snapshot: ConnectorRuntimeSnapshot;
+  readonly connectorSlug: ConnectorSlug;
+  readonly customFirewalls: readonly ExpandedFirewallConfig[];
+}): boolean {
+  const metadata = args.snapshot.serverFirewalls.getRoutingIndexMetadata(
+    args.connectorSlug,
+  );
+  if (!metadata) {
+    return false;
+  }
+  return metadata.apis.some((builtinApi) => {
+    return args.customFirewalls.some((customFirewall) => {
+      return customFirewall.apis.some((customApi) => {
+        return customFirewallCoversBuiltinBase(customApi.base, builtinApi.base);
+      });
+    });
+  });
+}
+
 function buildConnectorPermissionBaseline(
   snapshot: ConnectorRuntimeSnapshot,
   sources: readonly BuiltinConnectorManifestSource[],
@@ -3984,8 +4060,18 @@ async function buildPermissionManifest(args: {
       return args.connectorCatalogSnapshot.serverFirewalls.has(connectorSlug);
     });
   const connectorBaseUrlVars = mergeRecords(args.vars, args.connectorVars);
+  const customConnectorFirewalls = args.customConnectorFirewalls ?? [];
+  // Narrower custom bases already win by base specificity. Remove a built-in
+  // only when a custom base covers it, which avoids equal/broader ambiguity.
   const builtinConnectorSlugs = connectorSlugs.filter((connectorSlug) => {
-    return args.connectorCatalogSnapshot.serverFirewalls.has(connectorSlug);
+    return (
+      args.connectorCatalogSnapshot.serverFirewalls.has(connectorSlug) &&
+      !builtinConnectorOverriddenByCustomFirewalls({
+        snapshot: args.connectorCatalogSnapshot,
+        connectorSlug,
+        customFirewalls: customConnectorFirewalls,
+      })
+    );
   });
 
   const builtinSources = await measureApiDispatchTiming(
@@ -4030,7 +4116,7 @@ async function buildPermissionManifest(args: {
     () => {
       return Promise.resolve(
         applyConnectorPolicies(
-          args.customConnectorFirewalls ?? [],
+          customConnectorFirewalls,
           args.permissionPolicies,
           inlineFirewallEntry,
           (_firewall, permissionNames) => {
@@ -4075,9 +4161,7 @@ async function buildPermissionManifest(args: {
         environmentSecretPlaceholders: mergeRecords(
           providerManifest?.environmentSecretPlaceholders,
           connectorManifest.environmentSecretPlaceholders,
-          firewallSecretPlaceholdersFromFirewalls(
-            args.customConnectorFirewalls,
-          ),
+          firewallSecretPlaceholdersFromFirewalls(customConnectorFirewalls),
         ),
         billableFirewalls: [
           ...(providerManifest?.billableFirewalls ?? []),

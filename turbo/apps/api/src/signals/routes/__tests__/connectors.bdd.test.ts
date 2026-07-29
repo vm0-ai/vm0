@@ -1,10 +1,9 @@
 /**
  * helper gap:
  * - Expired OAuth states, stale/hidden legacy connector rows, stale OAuth scope
- *   rows, duplicate custom connector storage conflicts, sandbox/CLI token
- *   capability cases, and simultaneous callback races do not have a stable
- *   public API constructor/assertion path. They are intentionally not rebuilt
- *   with direct database fixtures here.
+ *   rows, sandbox/CLI token capability cases, and simultaneous callback races
+ *   do not have a stable public API constructor/assertion path. They are
+ *   intentionally not rebuilt with direct database fixtures here.
  * - Feature switch overrides are configured only through
  *   /api/zero/feature-switches.
  */
@@ -1627,6 +1626,9 @@ describe("CONN-03: custom connectors and connector-owned secrets", () => {
     );
     expect(provider.tokenBodies[0]?.get("client_secret")).toBe(clientSecret);
     expect(provider.authorizationHeaders).toStrictEqual([null]);
+    expect(context.mocks.nodeRequest.pinnedAddresses).toContain(
+      "93.184.216.34",
+    );
 
     const oauthConnected = await connectorsApi.listCustomConnectors(member);
     expect(
@@ -2455,6 +2457,21 @@ describe("CONN-03: custom connectors and connector-owned secrets", () => {
     expect(autoSlug.prefixes).toStrictEqual([`https://api.${host}/v1/`]);
     expect(autoSlug.hasSecret).toBeFalsy();
 
+    const duplicateAutoSlug = await connectorsApi.requestCreateCustomConnector(
+      admin,
+      {
+        displayName: "BDD Duplicate Auto Slug",
+        prefixes: [`https://api.${host}/v1`],
+        headerName: "Authorization",
+        headerTemplate: "Bearer {{secret}}",
+      },
+      [400],
+    );
+    expectApiError(duplicateAutoSlug.body);
+    expect(duplicateAutoSlug.body.error.message).toContain(
+      `"${autoSlug.displayName}"`,
+    );
+
     const wildcard = await connectorsApi.createCustomConnector(admin, {
       displayName: "BDD Wildcard",
       prefixes: [`https://*.${host}/v1`],
@@ -2479,36 +2496,31 @@ describe("CONN-03: custom connectors and connector-owned secrets", () => {
     expectApiError(missingPlaceholder.body);
     expect(missingPlaceholder.body.error.message).toContain("{{secret}}");
 
-    const builtinCollision = await connectorsApi.requestCreateCustomConnector(
-      admin,
-      {
-        displayName: "Fake GitHub",
-        prefixes: ["https://api.github.com/v3/"],
-        headerName: "Authorization",
-        headerTemplate: "Bearer {{secret}}",
-      },
-      [400],
-    );
-    expectApiError(builtinCollision.body);
-    expect(builtinCollision.body.error.message).toContain("api.github.com");
-    expect(builtinCollision.body.error.message).toContain("GitHub");
+    const builtinOverlap = await connectorsApi.createCustomConnector(admin, {
+      displayName: "Custom GitHub",
+      prefixes: ["https://api.github.com/v3/"],
+      headerName: "Authorization",
+      headerTemplate: "Bearer {{secret}}",
+    });
+    expect(builtinOverlap.prefixes).toStrictEqual([
+      "https://api.github.com/v3/",
+    ]);
 
-    const builtinTrailingDotCollision =
+    const builtinTrailingDotOverlap =
       await connectorsApi.requestCreateCustomConnector(
         admin,
         {
-          displayName: "Fake GitHub Trailing Dot",
+          displayName: "Custom GitHub Trailing Dot",
           prefixes: ["https://api.github.com./v3/"],
           headerName: "Authorization",
           headerTemplate: "Bearer {{secret}}",
         },
         [400],
       );
-    expectApiError(builtinTrailingDotCollision.body);
-    expect(builtinTrailingDotCollision.body.error.message).toContain(
-      "api.github.com.",
+    expectApiError(builtinTrailingDotOverlap.body);
+    expect(builtinTrailingDotOverlap.body.error.message).toContain(
+      `"${builtinOverlap.displayName}"`,
     );
-    expect(builtinTrailingDotCollision.body.error.message).toContain("GitHub");
 
     const listed = await connectorsApi.listCustomConnectors(admin);
     expect(
@@ -2517,13 +2529,104 @@ describe("CONN-03: custom connectors and connector-owned secrets", () => {
           return connector.id;
         })
         .sort(),
-    ).toStrictEqual([autoSlug.id, wildcard.id].sort());
+    ).toStrictEqual([autoSlug.id, wildcard.id, builtinOverlap.id].sort());
 
     await connectorsApi.deleteCustomConnector(admin, autoSlug.id);
     await connectorsApi.deleteCustomConnector(admin, wildcard.id);
+    await connectorsApi.deleteCustomConnector(admin, builtinOverlap.id);
     await expect(
       connectorsApi.listCustomConnectors(admin),
     ).resolves.toStrictEqual([]);
+  });
+
+  it("rejects prefix collisions introduced by edits", async () => {
+    const admin = createBddApi(context).user();
+    await connectorsApi.updateFeatureSwitches(admin, {
+      [FeatureSwitchKey.CustomConnectorOAuth2]: true,
+    });
+    const original = await connectorsApi.createCustomConnector(admin, {
+      ...customConnectorBody(uniqueSlug("bdd-prefix-original")),
+      displayName: "BDD Prefix Original",
+    });
+    const editable = await connectorsApi.createCustomConnector(admin, {
+      ...customConnectorBody(uniqueSlug("bdd-prefix-editable")),
+      displayName: "BDD Prefix Editable",
+    });
+    const originalPrefix = original.prefixTemplates[0];
+    if (!originalPrefix) {
+      throw new Error("Expected the original connector to have a prefix");
+    }
+
+    const collision = await connectorsApi.requestUpdateCustomConnector(
+      admin,
+      editable.id,
+      {
+        displayName: editable.displayName,
+        prefixTemplates: [originalPrefix.slice(0, -1)],
+        fields: editable.fields,
+        headerInjections: editable.headerInjections,
+        queryInjections: editable.queryInjections,
+        authMode: editable.authMode,
+      },
+      [400],
+    );
+    expectApiError(collision.body);
+    expect(collision.body.error.message).toContain(`"${original.displayName}"`);
+    expect(
+      (await connectorsApi.listCustomConnectors(admin)).find((connector) => {
+        return connector.id === editable.id;
+      })?.prefixTemplates,
+    ).toStrictEqual(editable.prefixTemplates);
+
+    await connectorsApi.deleteCustomConnector(admin, original.id);
+    await connectorsApi.deleteCustomConnector(admin, editable.id);
+  });
+
+  it("serializes concurrent creates for the same normalized prefix", async () => {
+    const admin = createBddApi(context).user();
+    const rand = randomUUID().replace(/-/g, "").slice(0, 8);
+    const prefix = `https://concurrent-${rand}.example.test/v1/`;
+    const responses = await Promise.all([
+      connectorsApi.requestCreateCustomConnector(
+        admin,
+        {
+          ...customConnectorBody(uniqueSlug("bdd-prefix-concurrent-a")),
+          displayName: "BDD Concurrent Prefix A",
+          prefixes: [prefix],
+        },
+        [201, 400],
+      ),
+      connectorsApi.requestCreateCustomConnector(
+        admin,
+        {
+          ...customConnectorBody(uniqueSlug("bdd-prefix-concurrent-b")),
+          displayName: "BDD Concurrent Prefix B",
+          prefixes: [prefix.slice(0, -1)],
+        },
+        [201, 400],
+      ),
+    ]);
+
+    expect(
+      responses
+        .map((response) => {
+          return response.status;
+        })
+        .sort(),
+    ).toStrictEqual([201, 400]);
+    const created = responses.find((response) => {
+      return response.status === 201;
+    });
+    const rejected = responses.find((response) => {
+      return response.status === 400;
+    });
+    if (created?.status !== 201 || rejected?.status !== 400) {
+      throw new Error("Expected one created and one rejected connector");
+    }
+    expectApiError(rejected.body);
+    expect(rejected.body.error.message).toContain("is already used");
+
+    await connectorsApi.deleteCustomConnector(admin, created.body.id);
   });
 
   it("scopes custom connector rename and delete to org admins and same-org ids", async () => {

@@ -9,14 +9,19 @@ import {
   type CustomConnectorResponse,
   type UpdateCustomConnectorBody,
 } from "@vm0/api-contracts/contracts/zero-custom-connectors";
+import { zeroAgentCustomConnectorsContract } from "@vm0/api-contracts/contracts/zero-agent-custom-connectors";
+import type { TeamComposeItem } from "@vm0/api-contracts/contracts/zero-team";
 import { IN_VITEST } from "../../../env.ts";
 import { i18n } from "../../../i18n/index.ts";
 import { accept } from "../../../lib/accept.ts";
 import { zeroClient$ } from "../../api-client.ts";
+import { agents$ } from "../../agent.ts";
+import { searchParams$, updateSearchParams$ } from "../../route.ts";
 import { setLoop, withCleanup } from "../../utils.ts";
 import { sanitizeTokenInput } from "./token-input.ts";
 
 const internalReload$ = state(0);
+const internalAuthorizedAgentsReload$ = state(0);
 
 export type CustomConnectorAuthMethodType = "api" | "oauth2";
 
@@ -24,15 +29,25 @@ export type CustomConnectorAuthMethodType = "api" | "oauth2";
 // Active tab on the Connectors settings page
 // ---------------------------------------------------------------------------
 
-const internalTab$ = state<"builtin" | "custom">("builtin");
+type ConnectorsPageTab = "builtin" | "custom";
+
+function normalizeConnectorsPageTab(value: string | null): ConnectorsPageTab {
+  return value === "custom" ? "custom" : "builtin";
+}
+
 export const connectorsPageTab$ = computed((get) => {
-  return get(internalTab$);
+  return normalizeConnectorsPageTab(get(searchParams$).get("tab"));
 });
-export const setConnectorsPageTab$ = command(
-  ({ set }, tab: "builtin" | "custom") => {
-    set(internalTab$, tab);
-  },
-);
+export const setConnectorsPageTab$ = command(({ get, set }, value: string) => {
+  const tab = normalizeConnectorsPageTab(value);
+  const next = new URLSearchParams(get(searchParams$));
+  if (tab === "builtin") {
+    next.delete("tab");
+  } else {
+    next.set("tab", tab);
+  }
+  set(updateSearchParams$, next);
+});
 
 /**
  * List of org custom connectors (with per-caller `hasSecret` flag).
@@ -48,11 +63,87 @@ export const customConnectors$ = computed(
   },
 );
 
+export const customConnectorAuthorizedAgentsById$ = computed(
+  async (get): Promise<ReadonlyMap<string, readonly TeamComposeItem[]>> => {
+    get(internalAuthorizedAgentsReload$);
+    const connectors = await get(customConnectors$);
+    if (
+      !connectors.some((connector) => {
+        return connector.connected;
+      })
+    ) {
+      return new Map();
+    }
+
+    const allAgents = await get(agents$);
+    const client = get(zeroClient$)(zeroAgentCustomConnectorsContract);
+    const rows = await Promise.all(
+      allAgents.map(async (agent) => {
+        const result = await accept(
+          client.get({ params: { id: agent.id } }),
+          [200, 404],
+        );
+        return result.status === 404
+          ? null
+          : { agent, enabledIds: result.body.enabledIds };
+      }),
+    );
+    const agentsByConnectorId = new Map<string, TeamComposeItem[]>();
+    for (const row of rows) {
+      if (!row) {
+        continue;
+      }
+      for (const connectorId of row.enabledIds) {
+        const authorizedAgents = agentsByConnectorId.get(connectorId) ?? [];
+        authorizedAgents.push(row.agent);
+        agentsByConnectorId.set(connectorId, authorizedAgents);
+      }
+    }
+    return agentsByConnectorId;
+  },
+);
+
+export const reloadCustomConnectorAuthorizedAgents$ = command(({ set }) => {
+  set(internalAuthorizedAgentsReload$, (value) => {
+    return value + 1;
+  });
+});
+
 const bumpReload$ = command(({ set }) => {
   set(internalReload$, (v) => {
     return v + 1;
   });
 });
+
+const authorizeCustomConnectorForVisibleAgents$ = command(
+  async (
+    { get, set },
+    connectorId: string,
+    signal: AbortSignal,
+  ): Promise<void> => {
+    const visibleAgents = await get(agents$);
+    signal.throwIfAborted();
+    const client = get(zeroClient$)(zeroAgentCustomConnectorsContract);
+    await withCleanup(
+      Promise.all(
+        visibleAgents.map(async (agent) => {
+          await accept(
+            client.update({
+              params: { id: agent.id },
+              body: { enabledIds: [connectorId], operation: "add" },
+              fetchOptions: { signal },
+            }),
+            [200, 404],
+          );
+        }),
+      ),
+      () => {
+        set(reloadCustomConnectorAuthorizedAgents$);
+      },
+    );
+    signal.throwIfAborted();
+  },
+);
 
 export const createCustomConnector$ = command(
   async (
@@ -162,7 +253,7 @@ export const setCustomConnectorSecret$ = command(
   async (
     { get, set },
     args: { id: string; value: string },
-    _signal: AbortSignal,
+    signal: AbortSignal,
   ): Promise<void> => {
     const createClient = get(zeroClient$);
     const client = createClient(zeroCustomConnectorSecretContract);
@@ -170,11 +261,13 @@ export const setCustomConnectorSecret$ = command(
       client.set({
         params: { id: args.id },
         body: { value: sanitizeTokenInput(args.value) },
-        fetchOptions: { signal: _signal },
+        fetchOptions: { signal },
       }),
       [204],
     );
+    signal.throwIfAborted();
     set(bumpReload$);
+    await set(authorizeCustomConnectorForVisibleAgents$, args.id, signal);
     toast.success(
       i18n.t(($) => {
         return $.connectors.custom.toasts.connected;
@@ -249,6 +342,15 @@ export const connectCustomConnectorOAuth2$ = command(
     );
     signal.throwIfAborted();
     set(bumpReload$);
+    const connectors = await get(customConnectors$);
+    signal.throwIfAborted();
+    if (
+      connectors.some((connector) => {
+        return connector.id === id && connector.connected;
+      })
+    ) {
+      await set(authorizeCustomConnectorForVisibleAgents$, id, signal);
+    }
   },
 );
 
@@ -384,7 +486,7 @@ const CREATE_FORM_DEFAULTS = {
   prefixesRaw: "",
   headerName: "Authorization",
   headerTemplate: "Bearer {{secret}}",
-  authMethodTypes: ["api"],
+  authMethodTypes: [],
   ...OAUTH_CREATE_FORM_DEFAULTS,
 } as const satisfies CustomConnectorCreateForm;
 

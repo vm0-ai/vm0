@@ -1,6 +1,6 @@
 import type { FormEvent } from "react";
 
-import { IconPlus, IconTrash } from "@tabler/icons-react";
+import { IconChevronRight, IconPlus, IconTrash } from "@tabler/icons-react";
 import type {
   CreateCustomConnectorBody,
   CustomConnectorResponse,
@@ -9,6 +9,7 @@ import type {
 import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import {
   Button,
+  CopyButton,
   Dialog,
   DialogContent,
   DialogFooter,
@@ -304,6 +305,7 @@ function OAuth2ClientFields({
 }
 
 function OAuth2RedirectUrlField() {
+  const redirectUrl = customConnectorOAuthCallbackUrl();
   return (
     <div className="flex flex-col gap-2">
       <label
@@ -315,72 +317,89 @@ function OAuth2RedirectUrlField() {
           (Register this URL in the provider&apos;s OAuth application.)
         </span>
       </label>
-      <Input
-        id="cc-oauth-callback-url"
-        value={customConnectorOAuthCallbackUrl()}
-        readOnly
-        className="font-mono text-xs"
-      />
+      <div className="relative">
+        <Input
+          id="cc-oauth-callback-url"
+          value={redirectUrl}
+          readOnly
+          className="pr-10 font-mono text-xs"
+        />
+        <CopyButton
+          type="button"
+          text={redirectUrl}
+          aria-label="Copy Redirect URL"
+          className="absolute top-1/2 right-1 -translate-y-1/2 p-1.5 hover:bg-accent"
+        />
+      </div>
     </div>
   );
 }
 
 function OAuth2AdvancedFields({ form, setField }: CreateFormFieldProps) {
   return (
-    <>
-      <div className="flex flex-col gap-2">
-        <label className="text-sm font-medium text-foreground">PKCE</label>
-        <Select
-          value={form.oauthPkceMethod}
-          onValueChange={(value) => {
-            setField("oauthPkceMethod", value);
-          }}
-        >
-          <SelectTrigger aria-label="PKCE">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="none">None</SelectItem>
-            <SelectItem value="S256">S256</SelectItem>
-          </SelectContent>
-        </Select>
-      </div>
-      <div className="flex flex-col gap-2">
-        <div>
-          <p className="text-sm font-medium text-foreground">
-            Authorization parameters
-          </p>
-          <p className="text-xs text-muted-foreground">
-            Add only the parameters your provider requires.
-          </p>
+    <details className="group rounded-lg border border-border">
+      <summary className="flex cursor-pointer list-none items-center gap-2 px-3 py-2.5 text-sm font-medium text-foreground">
+        <IconChevronRight
+          size={16}
+          className="shrink-0 text-muted-foreground transition-transform group-open:rotate-90"
+        />
+        <span>Advanced settings</span>
+      </summary>
+      <div className="flex flex-col gap-4 border-t border-border px-3 py-4">
+        <div className="flex flex-col gap-2">
+          <label className="text-sm font-medium text-foreground">PKCE</label>
+          <Select
+            value={form.oauthPkceMethod}
+            onValueChange={(value) => {
+              setField("oauthPkceMethod", value);
+            }}
+          >
+            <SelectTrigger aria-label="PKCE">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="none">None</SelectItem>
+              <SelectItem value="S256">S256</SelectItem>
+            </SelectContent>
+          </Select>
         </div>
-        <div className="grid gap-3 sm:grid-cols-2">
-          {OAUTH_AUTHORIZATION_PARAM_FIELDS.map((parameter) => {
-            return (
-              <div key={parameter.field} className="flex flex-col gap-2">
-                <label
-                  htmlFor={`cc-${parameter.field}`}
-                  className="text-sm font-medium text-foreground"
-                >
-                  {parameter.label}
-                  <span className="text-muted-foreground font-normal ml-1">
-                    (optional)
-                  </span>
-                </label>
-                <Input
-                  id={`cc-${parameter.field}`}
-                  value={form[parameter.field]}
-                  onChange={(event) => {
-                    setField(parameter.field, event.target.value);
-                  }}
-                  placeholder={parameter.placeholder}
-                />
-              </div>
-            );
-          })}
+        <div className="flex flex-col gap-2">
+          <div>
+            <p className="text-sm font-medium text-foreground">
+              Authorization parameters
+            </p>
+            <p className="text-xs text-muted-foreground">
+              Add only the parameters your provider requires.
+            </p>
+          </div>
+          <div className="grid gap-3 sm:grid-cols-2">
+            {OAUTH_AUTHORIZATION_PARAM_FIELDS.map((parameter) => {
+              return (
+                <div key={parameter.field} className="flex flex-col gap-2">
+                  <label
+                    htmlFor={`cc-${parameter.field}`}
+                    className="text-sm font-medium text-foreground"
+                  >
+                    {parameter.label}
+                    <span className="text-muted-foreground font-normal ml-1">
+                      (optional)
+                    </span>
+                  </label>
+                  <Input
+                    id={`cc-${parameter.field}`}
+                    value={form[parameter.field]}
+                    onChange={(event) => {
+                      setField(parameter.field, event.target.value);
+                    }}
+                    placeholder={parameter.placeholder}
+                  />
+                </div>
+              );
+            })}
+          </div>
         </div>
       </div>
-    </>
+    </details>
   );
 }
 
@@ -489,8 +508,8 @@ function OAuth2AuthenticationFields({
           </SelectContent>
         </Select>
       </div>
-      <OAuth2AdvancedFields form={form} setField={setField} />
       <OAuth2RedirectUrlField />
+      <OAuth2AdvancedFields form={form} setField={setField} />
       {editing && (
         <p className="text-xs text-muted-foreground">
           Changing OAuth settings or client credentials disconnects existing
