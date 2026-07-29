@@ -4021,56 +4021,78 @@ function wrapThinkingTextForWidth(args: {
   if (args.graphemes.length === 0) {
     return [];
   }
+
+  const hardLines: ThinkingTypewriterLine[] = [];
+  let startIndex = 0;
+
+  for (let index = 0; index <= args.graphemes.length; index++) {
+    const grapheme = args.graphemes[index]!;
+    const isHardBreak =
+      index === args.graphemes.length || grapheme === "\n" || grapheme === "\r";
+    if (!isHardBreak) {
+      continue;
+    }
+
+    const text = args.graphemes.slice(startIndex, index).join("");
+    if (text.trim().length > 0) {
+      hardLines.push({
+        startIndex,
+        endIndex: index,
+        text,
+      });
+    }
+    startIndex = index + 1;
+  }
+
   if (!Number.isFinite(args.width) || args.width <= 0) {
-    return [
-      {
-        startIndex: 0,
-        endIndex: args.graphemes.length,
-        text: args.graphemes.join(""),
-      },
-    ];
+    return hardLines;
   }
 
   const maxWidth = Math.max(1, args.width - THINKING_TYPEWRITER_WIDTH_GUARD_PX);
   const lines: ThinkingTypewriterLine[] = [];
-  let startIndex = 0;
-  let current: string[] = [];
 
-  for (let index = 0; index < args.graphemes.length; index++) {
-    const grapheme = args.graphemes[index]!;
-    const candidate = [...current, grapheme];
-    const candidateText = candidate.join("");
-    const measured = args.measureText(candidateText);
-    if (measured === undefined) {
-      return [
-        {
-          startIndex: 0,
-          endIndex: args.graphemes.length,
-          text: args.graphemes.join(""),
-        },
-      ];
+  for (const hardLine of hardLines) {
+    const wrappedLines: ThinkingTypewriterLine[] = [];
+    let wrappedStartIndex = hardLine.startIndex;
+    let current: string[] = [];
+    let measurementFailed = false;
+
+    for (let index = hardLine.startIndex; index < hardLine.endIndex; index++) {
+      const grapheme = args.graphemes[index]!;
+      const candidate = [...current, grapheme];
+      const measured = args.measureText(candidate.join(""));
+      if (measured === undefined) {
+        measurementFailed = true;
+        break;
+      }
+
+      if (measured <= maxWidth || current.length === 0) {
+        current = candidate;
+        continue;
+      }
+
+      wrappedLines.push({
+        startIndex: wrappedStartIndex,
+        endIndex: index,
+        text: current.join(""),
+      });
+      wrappedStartIndex = index;
+      current = [grapheme];
     }
 
-    if (measured <= maxWidth || current.length === 0) {
-      current = candidate;
+    if (measurementFailed) {
+      lines.push(hardLine);
       continue;
     }
 
-    lines.push({
-      startIndex,
-      endIndex: index,
-      text: current.join(""),
-    });
-    startIndex = index;
-    current = [grapheme];
-  }
-
-  if (current.length > 0) {
-    lines.push({
-      startIndex,
-      endIndex: args.graphemes.length,
-      text: current.join(""),
-    });
+    if (current.length > 0) {
+      wrappedLines.push({
+        startIndex: wrappedStartIndex,
+        endIndex: hardLine.endIndex,
+        text: current.join(""),
+      });
+    }
+    lines.push(...wrappedLines);
   }
 
   return lines;
