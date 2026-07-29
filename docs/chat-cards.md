@@ -296,6 +296,10 @@ Once an instance is reclaimed the card shows the suspended state and keeps the
 stable `/browsers/:browserId` link. The viewer's resume action, and
 `zero browser use` in a later run, start a new provider instance from the saved
 profile: cookies and storage come back, the previous pages and tabs do not.
+Resume and reclamation publish a user-scoped realtime event carrying the
+logical browser ID. Each open thread subscribes once and reloads only the
+matching shared card signals, so repeated cards and the sidebar move between
+live and suspended state together.
 Logical browsers remain scoped to their chat threads, while every thread for the
 same user in the same organization uses one shared login profile. Multiple
 threads may run provider instances with that profile in parallel. The API

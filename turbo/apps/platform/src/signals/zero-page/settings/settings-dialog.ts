@@ -93,6 +93,15 @@ export const openSettingsUserProfile$ = command(
     }
     const props = {
       apiKeysProps: { hide: true },
+      appearance: {
+        elements: {
+          modalBackdrop: {
+            position: "absolute",
+            width: "100%",
+            height: "100%",
+          },
+        },
+      },
       getContainer: () => {
         return container;
       },

@@ -667,6 +667,15 @@ describe("zero sidebar account menu", () => {
       expect(clerkProfileModals).toHaveLength(1);
       expect(mockedClerk.openUserProfile).toHaveBeenCalledWith({
         apiKeysProps: { hide: true },
+        appearance: {
+          elements: {
+            modalBackdrop: {
+              position: "absolute",
+              width: "100%",
+              height: "100%",
+            },
+          },
+        },
         getContainer: expect.any(Function),
       });
     });

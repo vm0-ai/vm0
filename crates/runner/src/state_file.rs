@@ -291,7 +291,9 @@ fn chmod_private_file_fd<Fd: std::os::fd::AsRawFd>(file: &Fd, path: &Path) -> Ru
 #[cfg(unix)]
 mod tests {
     use super::*;
-    use crate::test_fixtures::{ignored_child_test_env_guard_enabled, run_ignored_child_test};
+    use crate::test_fixtures::ignored_child::{
+        ignored_child_test_env_guard_enabled, run_ignored_child_test,
+    };
     use std::ffi::CString;
     use std::os::unix::fs::{PermissionsExt, symlink};
     use std::path::PathBuf;

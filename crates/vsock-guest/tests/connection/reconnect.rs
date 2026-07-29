@@ -81,8 +81,9 @@ fn run_resets_reconnect_attempts_after_real_host_work() {
     assert_eq!(ack.msg_type, MSG_SHUTDOWN_ACK);
     assert_eq!(ack.seq, 10);
 
-    let report = done_rx.recv_timeout(Duration::from_secs(2)).unwrap();
+    assert_run_still_running(&done_rx, EXPECTED_RECONNECT_ATTEMPTS + 1);
     drop(shutdown_stream);
+    let report = done_rx.recv_timeout(Duration::from_secs(2)).unwrap();
     drop(listener);
     assert_eq!(report, Ok(()));
     handle.join().unwrap().unwrap();

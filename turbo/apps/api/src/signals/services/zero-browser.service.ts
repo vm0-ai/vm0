@@ -36,6 +36,7 @@ import { z } from "zod";
 import { env } from "../../lib/env";
 import { logger } from "../../lib/log";
 import { writeDb$, type Db } from "../external/db";
+import { publishBrowserSessionChangedSafely } from "../external/realtime";
 import { nowDate } from "../external/time";
 import { settle } from "../utils";
 import {
@@ -762,7 +763,7 @@ async function markBrowserResumableIfSettled(
   if ((pending?.count ?? 0) !== 0) {
     return;
   }
-  await db
+  const [suspended] = await db
     .update(browserSessions)
     .set({
       status: "suspended",
@@ -774,7 +775,14 @@ async function markBrowserResumableIfSettled(
         eq(browserSessions.id, browserId),
         eq(browserSessions.status, "stopping"),
       ),
-    );
+    )
+    .returning({
+      id: browserSessions.id,
+      userId: browserSessions.userId,
+    });
+  if (suspended) {
+    await publishBrowserSessionChangedSafely(suspended.userId, suspended.id);
+  }
   signal.throwIfAborted();
 }
 
@@ -1239,7 +1247,7 @@ async function claimStartedProviderInstance(
     readonly pricing: BrowserPricing;
   },
 ) {
-  return await db.transaction(async (tx) => {
+  const claimed = await db.transaction(async (tx) => {
     await lockBrowserThread(tx, args.context.chatThreadId);
     const [current] = await tx
       .select()
@@ -1294,6 +1302,13 @@ async function claimStartedProviderInstance(
       .where(eq(browserSessions.id, current.id));
     return { kind: "active" as const, instance };
   });
+  if (claimed.kind === "active" && args.browser.status === "resuming") {
+    await publishBrowserSessionChangedSafely(
+      args.browser.userId,
+      args.browser.id,
+    );
+  }
+  return claimed;
 }
 
 async function createAndClaimProviderInstance(

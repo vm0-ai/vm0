@@ -72,7 +72,7 @@ export type {
  * them in real-time from the telemetry/logs endpoint for active runs.
  */
 export const chatMessages = pgTable(
-  "chat_messages",
+  "chat_events",
   {
     id: uuid("id").defaultRandom().primaryKey(),
     chatThreadId: uuid("chat_thread_id")
@@ -139,55 +139,55 @@ export const chatMessages = pgTable(
   },
   (table) => {
     return [
-      index("idx_chat_messages_thread_created").on(
+      index("idx_chat_events_thread_created").on(
         table.chatThreadId,
         table.createdAt,
       ),
-      index("idx_chat_messages_thread_run_finish_created")
+      index("idx_chat_events_thread_run_finish_created")
         .on(table.chatThreadId, table.createdAt.desc())
         .where(sql`${table.runLifecycleEvent} IS NOT NULL`),
-      index("idx_chat_messages_run_id").on(table.runId),
-      index("chat_messages_usage_run_id_idx")
+      index("idx_chat_events_run_id").on(table.runId),
+      index("chat_events_usage_run_id_idx")
         .on(table.runId)
         .where(sql`${table.usagePayload} IS NOT NULL`),
-      uniqueIndex("chat_messages_revokes_message_id_unique").on(
+      uniqueIndex("chat_events_revokes_message_id_unique").on(
         table.revokesEventId,
       ),
-      uniqueIndex("chat_messages_interrupts_run_id_unique").on(
+      uniqueIndex("chat_events_interrupts_run_id_unique").on(
         table.interruptsRunId,
       ),
-      index("idx_chat_messages_run_group_id")
+      index("idx_chat_events_run_group_id")
         .on(table.runGroupId)
         .where(sql`${table.runGroupId} IS NOT NULL`),
-      index("chat_messages_input_automation_idx")
+      index("chat_events_input_automation_idx")
         .on(table.automationId)
         .where(sql`${table.eventType} = 'input.automation'`),
-      index("chat_messages_pending_queue_idx")
+      index("chat_events_pending_queue_idx")
         .on(table.chatThreadId, table.createdAt, table.id)
         .where(
           sql`${table.runId} IS NULL AND ${table.eventType} IN ('input.prompt', 'input.automation')`,
         ),
-      index("chat_messages_automation_pause_idx")
+      index("chat_events_automation_pause_idx")
         .on(table.chatThreadId, table.seqId.desc())
         .where(
           sql`${table.eventType} IN ('queue.automation_paused', 'queue.automation_resumed')`,
         ),
-      uniqueIndex("chat_messages_run_seq_unique").on(
+      uniqueIndex("chat_events_run_seq_unique").on(
         table.runId,
         table.sequenceNumber,
       ),
-      uniqueIndex("chat_messages_thread_seq_unique").on(
+      uniqueIndex("chat_events_thread_seq_unique").on(
         table.chatThreadId,
         table.seqId,
       ),
-      uniqueIndex("chat_messages_run_lifecycle_unique")
+      uniqueIndex("chat_events_run_lifecycle_unique")
         .on(table.runId)
         .where(sql`${table.runLifecycleEvent} IS NOT NULL`),
-      uniqueIndex("chat_messages_run_thinking_unique")
+      uniqueIndex("chat_events_run_thinking_unique")
         .on(table.runId)
         .where(sql`${table.thinking} IS NOT NULL`),
       check(
-        "chat_messages_event_type_check",
+        "chat_events_event_type_check",
         sql`${table.eventType} IN (
           'input.prompt',
           'input.automation',
@@ -210,12 +210,12 @@ export const chatMessages = pgTable(
         )`,
       ),
       check(
-        "chat_messages_input_user_message_check",
+        "chat_events_input_user_message_check",
         sql`${table.eventType} NOT IN ('input.prompt', 'input.rejected')
           OR ${table.userMessage} IS NOT NULL`,
       ),
       check(
-        "chat_messages_input_content_check",
+        "chat_events_input_content_check",
         sql`${table.eventType} NOT IN ('input.prompt', 'input.rejected')
           OR ${table.content} IS NULL`,
       ),

@@ -1,6 +1,6 @@
 -- Block writes while canonical columns are backfilled and the rolling-deploy
 -- bridges are installed.
-LOCK TABLE "chat_messages", "chat_threads", "zero_agent_drafts"
+LOCK TABLE "chat_events", "chat_threads", "zero_agent_drafts"
 IN SHARE ROW EXCLUSIVE MODE;--> statement-breakpoint
 
 -- Keep append-only protection installed throughout the chat event backfill.
@@ -8,7 +8,7 @@ IN SHARE ROW EXCLUSIVE MODE;--> statement-breakpoint
 -- legacy input content projection.
 CREATE OR REPLACE FUNCTION "reject_chat_event_source_update"() RETURNS trigger AS $$
 BEGIN
-  IF TG_TABLE_NAME = 'chat_messages'
+  IF TG_TABLE_NAME = 'chat_events'
     AND (to_jsonb(NEW) - 'user_message' - 'content')
       = (to_jsonb(OLD) - 'user_message' - 'content')
   THEN
@@ -19,7 +19,7 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;--> statement-breakpoint
 
-UPDATE "chat_messages"
+UPDATE "chat_events"
 SET
   "user_message" = "structured_prompt",
   "content" = CASE
@@ -44,7 +44,7 @@ DO $$
 BEGIN
   IF EXISTS (
     SELECT 1
-    FROM "chat_messages"
+    FROM "chat_events"
     WHERE "user_message" IS DISTINCT FROM "structured_prompt"
       OR (
         "event_type" IN ('input.prompt', 'input.rejected')
@@ -80,7 +80,7 @@ $$ LANGUAGE plpgsql;--> statement-breakpoint
 -- Old API versions write structured_prompt while the new API writes
 -- user_message. Mirror the insert in both directions until the old API has
 -- drained, and strip the retired input content projection for either writer.
-CREATE FUNCTION "bridge_chat_user_message_0724"() RETURNS trigger AS $$
+CREATE FUNCTION "bridge_chat_user_message_0725"() RETURNS trigger AS $$
 BEGIN
   IF NEW."user_message" IS NULL THEN
     NEW."user_message" := NEW."structured_prompt";
@@ -98,14 +98,14 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;--> statement-breakpoint
 
-CREATE TRIGGER "bridge_chat_user_message_0724"
-BEFORE INSERT ON "chat_messages"
+CREATE TRIGGER "bridge_chat_user_message_0725"
+BEFORE INSERT ON "chat_events"
 FOR EACH ROW
-EXECUTE FUNCTION "bridge_chat_user_message_0724"();--> statement-breakpoint
+EXECUTE FUNCTION "bridge_chat_user_message_0725"();--> statement-breakpoint
 
 -- Drafts are mutable, so detect which side an API version changed and mirror
 -- that value, including explicit clears.
-CREATE FUNCTION "bridge_draft_user_message_0724"() RETURNS trigger AS $$
+CREATE FUNCTION "bridge_draft_user_message_0725"() RETURNS trigger AS $$
 BEGIN
   IF TG_OP = 'INSERT' THEN
     IF NEW."draft_user_message" IS NULL THEN
@@ -140,12 +140,12 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;--> statement-breakpoint
 
-CREATE TRIGGER "bridge_chat_thread_draft_user_message_0724"
+CREATE TRIGGER "bridge_chat_thread_draft_user_message_0725"
 BEFORE INSERT OR UPDATE ON "chat_threads"
 FOR EACH ROW
-EXECUTE FUNCTION "bridge_draft_user_message_0724"();--> statement-breakpoint
+EXECUTE FUNCTION "bridge_draft_user_message_0725"();--> statement-breakpoint
 
-CREATE TRIGGER "bridge_agent_draft_user_message_0724"
+CREATE TRIGGER "bridge_agent_draft_user_message_0725"
 BEFORE INSERT OR UPDATE ON "zero_agent_drafts"
 FOR EACH ROW
-EXECUTE FUNCTION "bridge_draft_user_message_0724"();
+EXECUTE FUNCTION "bridge_draft_user_message_0725"();

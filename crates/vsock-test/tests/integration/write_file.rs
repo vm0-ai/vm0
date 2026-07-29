@@ -197,15 +197,28 @@ async fn shutdown_cancels_blocked_write_helper_before_connection_exit() {
     assert_eq!(ack.msg_type, MSG_SHUTDOWN_ACK);
     assert_eq!(ack.seq, 21);
 
-    join_raw_guest_connection(guest);
-    let mut trailing = [0u8; 1];
-    assert_eq!(
-        stream
-            .read(&mut trailing)
-            .expect("read shutdown stream EOF"),
-        0,
-        "no write result may follow shutdown acknowledgement"
+    tokio::time::timeout(Duration::from_secs(5), async {
+        while pid_alive(pid) {
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+    })
+    .await
+    .expect("shutdown helper should be reaped before host disconnect");
+    assert!(
+        !guest.is_finished(),
+        "guest connection should remain active until host disconnect"
     );
+
+    stream.set_nonblocking(true).unwrap();
+    let mut trailing = [0u8; 1];
+    let trailing_read = stream.read(&mut trailing);
+    assert!(
+        matches!(&trailing_read, Err(error) if error.kind() == std::io::ErrorKind::WouldBlock),
+        "no write result or connection close may follow shutdown acknowledgement: {trailing_read:?}"
+    );
+
+    drop(stream);
+    join_raw_guest_connection(guest);
     assert!(
         !pid_alive(pid),
         "shutdown helper pid {pid} should be reaped"

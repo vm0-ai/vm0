@@ -127,7 +127,7 @@ function databaseErrorCode(error: unknown): string | undefined {
 async function expectAppendOnlyUpdateRejected(
   client: Client,
   args: {
-    readonly tableName: "chat_messages" | "chat_thread_events";
+    readonly tableName: "chat_events" | "chat_messages" | "chat_thread_events";
     readonly query: string;
     readonly rowId: string;
   },
@@ -471,7 +471,7 @@ async function validateChatEventSourcesAreAppendOnly(
     assert.equal(advancedSnapshot.rows[0]?.latestSeqId, "2");
 
     await expectAppendOnlyUpdateRejected(client, {
-      tableName: "chat_messages",
+      tableName: "chat_events",
       query: `UPDATE "chat_messages" SET "content" = 'mutated' WHERE "id" = $1`,
       rowId: messageId,
     });
@@ -481,7 +481,7 @@ async function validateChatEventSourcesAreAppendOnly(
       rowId: eventId,
     });
 
-    console.log("   ✅ chat_messages rejects UPDATE");
+    console.log("   ✅ chat_messages compatibility view rejects UPDATE");
     console.log("   ✅ chat_thread_events rejects UPDATE\n");
     console.log(
       "   ✅ previous API writes receive database-allocated seq_ids\n",
@@ -3258,6 +3258,317 @@ async function validateChatMessageRoleContraction(): Promise<void> {
   );
 }
 
+const CHAT_EVENT_TABLE_RENAME_PREVIOUS_MIGRATION = 722;
+const CHAT_EVENT_TABLE_RENAME_MIGRATION = 723;
+
+async function validateChatEventTableRename(): Promise<void> {
+  console.log(
+    "=== Validate populated chat event table rename and compatibility view ===\n",
+  );
+
+  const testDb = "migration_chat_event_table_rename_test";
+  const testDbUrl = createTestDbUrl(testDb);
+  const composeId = "95000000-0000-4000-8000-000000000001";
+  const threadId = "95000000-0000-4000-8000-000000000002";
+
+  await createDatabase(testDb);
+  try {
+    await runMigrationsUpTo(
+      testDbUrl,
+      CHAT_EVENT_TABLE_RENAME_PREVIOUS_MIGRATION,
+    );
+    const client = new Client({ connectionString: testDbUrl });
+    await client.connect();
+    try {
+      await client.query(
+        `
+          INSERT INTO "agent_composes" ("id", "user_id", "name", "org_id")
+          VALUES (
+            $1,
+            'chat-event-table-rename-user',
+            'chat-event-table-rename',
+            'chat-event-table-rename-org'
+          )
+        `,
+        [composeId],
+      );
+      await client.query(
+        `
+          INSERT INTO "chat_threads" (
+            "id",
+            "user_id",
+            "agent_compose_id"
+          )
+          VALUES (
+            $1,
+            'chat-event-table-rename-user',
+            $2
+          )
+        `,
+        [threadId, composeId],
+      );
+      const historicalEvent = await client.query<{ id: string }>(
+        `
+          INSERT INTO "chat_messages" (
+            "chat_thread_id",
+            "event_type",
+            "content"
+          )
+          VALUES ($1, 'output.message', 'historical response')
+          RETURNING "id"
+        `,
+        [threadId],
+      );
+      const historicalEventId = historicalEvent.rows[0]?.id;
+      assert.ok(historicalEventId);
+
+      await expectAppendOnlyUpdateRejected(client, {
+        tableName: "chat_messages",
+        query: `UPDATE "chat_messages" SET "content" = 'mutated' WHERE "id" = $1`,
+        rowId: historicalEventId,
+      });
+
+      await applyMigrationsUpToInTransaction(
+        client,
+        CHAT_EVENT_TABLE_RENAME_MIGRATION,
+      );
+
+      const relations = await client.query<{
+        relationKind: string;
+        relationName: string;
+      }>(`
+        SELECT
+          "relname" AS "relationName",
+          "relkind"::text AS "relationKind"
+        FROM "pg_class"
+        INNER JOIN "pg_namespace"
+          ON "pg_namespace"."oid" = "pg_class"."relnamespace"
+        WHERE "pg_namespace"."nspname" = 'public'
+          AND "pg_class"."relname" IN ('chat_events', 'chat_messages')
+        ORDER BY "pg_class"."relname"
+      `);
+      assert.deepEqual(relations.rows, [
+        { relationKind: "r", relationName: "chat_events" },
+        { relationKind: "v", relationName: "chat_messages" },
+      ]);
+
+      const compatibilityView = await client.query<{
+        isInsertableInto: string;
+        isUpdatable: string;
+      }>(`
+        SELECT
+          "is_insertable_into" AS "isInsertableInto",
+          "is_updatable" AS "isUpdatable"
+        FROM "information_schema"."views"
+        WHERE "table_schema" = 'public'
+          AND "table_name" = 'chat_messages'
+      `);
+      assert.deepEqual(compatibilityView.rows, [
+        { isInsertableInto: "YES", isUpdatable: "YES" },
+      ]);
+
+      const renamedObjects = await client.query<{
+        assetForeignKey: string | null;
+        eventTypeCheck: string | null;
+        primaryKeyIndex: string | null;
+        queueIndex: string | null;
+        rejectUpdateTrigger: string | null;
+        threadForeignKey: string | null;
+      }>(`
+        SELECT
+          to_regclass('public.chat_events_pkey')::text AS "primaryKeyIndex",
+          to_regclass('public.chat_events_pending_queue_idx')::text
+            AS "queueIndex",
+          (
+            SELECT "conname"
+            FROM "pg_constraint"
+            WHERE "conname" = 'chat_events_chat_thread_id_chat_threads_id_fk'
+          ) AS "threadForeignKey",
+          (
+            SELECT "conname"
+            FROM "pg_constraint"
+            WHERE "conname" = 'chat_events_event_type_check'
+          ) AS "eventTypeCheck",
+          (
+            SELECT "conname"
+            FROM "pg_constraint"
+            WHERE "conname" =
+              'chat_message_asset_refs_chat_message_id_chat_events_id_fk'
+          ) AS "assetForeignKey",
+          (
+            SELECT "tgname"
+            FROM "pg_trigger"
+            WHERE "tgname" = 'chat_events_reject_update'
+              AND NOT "tgisinternal"
+          ) AS "rejectUpdateTrigger"
+      `);
+      assert.deepEqual(renamedObjects.rows, [
+        {
+          assetForeignKey:
+            "chat_message_asset_refs_chat_message_id_chat_events_id_fk",
+          eventTypeCheck: "chat_events_event_type_check",
+          primaryKeyIndex: "chat_events_pkey",
+          queueIndex: "chat_events_pending_queue_idx",
+          rejectUpdateTrigger: "chat_events_reject_update",
+          threadForeignKey: "chat_events_chat_thread_id_chat_threads_id_fk",
+        },
+      ]);
+
+      const oldPhysicalObjectNames = await client.query<{ name: string }>(`
+        SELECT "name"
+        FROM (
+          SELECT "indexname" AS "name"
+          FROM "pg_indexes"
+          WHERE "schemaname" = 'public'
+          UNION ALL
+          SELECT "conname" AS "name"
+          FROM "pg_constraint"
+          WHERE "contype" <> 'n'
+          UNION ALL
+          SELECT "tgname" AS "name"
+          FROM "pg_trigger"
+          WHERE NOT "tgisinternal"
+          UNION ALL
+          SELECT "proname" AS "name"
+          FROM "pg_proc"
+          INNER JOIN "pg_namespace"
+            ON "pg_namespace"."oid" = "pg_proc"."pronamespace"
+          WHERE "pg_namespace"."nspname" = 'public'
+        ) AS "physical_objects"
+        WHERE "name" LIKE '%chat_messages%'
+        ORDER BY "name"
+      `);
+      assert.deepEqual(oldPhysicalObjectNames.rows, []);
+
+      const historicalRows = await client.query<{
+        content: string;
+        eventType: string;
+        id: string;
+      }>(
+        `
+          SELECT
+            "id",
+            "event_type" AS "eventType",
+            "content"
+          FROM "chat_messages"
+          WHERE "chat_thread_id" = $1
+        `,
+        [threadId],
+      );
+      assert.deepEqual(historicalRows.rows, [
+        {
+          content: "historical response",
+          eventType: "output.message",
+          id: historicalEventId,
+        },
+      ]);
+
+      const previousApiInsert = await client.query<{
+        chatThreadId: string;
+        content: string;
+        eventType: string;
+        id: string;
+        seqId: string;
+      }>(
+        `
+          INSERT INTO "chat_messages" (
+            "chat_thread_id",
+            "event_type",
+            "content"
+          )
+          VALUES ($1, 'output.message', 'previous API response')
+          RETURNING
+            "id",
+            "chat_thread_id" AS "chatThreadId",
+            "event_type" AS "eventType",
+            "content",
+            "seq_id" AS "seqId"
+        `,
+        [threadId],
+      );
+      const previousApiEventId = previousApiInsert.rows[0]?.id;
+      assert.ok(previousApiEventId);
+      assert.deepEqual(previousApiInsert.rows, [
+        {
+          chatThreadId: threadId,
+          content: "previous API response",
+          eventType: "output.message",
+          id: previousApiEventId,
+          seqId: "2",
+        },
+      ]);
+
+      const currentApiInsert = await client.query<{
+        id: string;
+        seqId: string;
+      }>(
+        `
+          INSERT INTO "chat_events" (
+            "chat_thread_id",
+            "event_type",
+            "content"
+          )
+          VALUES ($1, 'output.message', 'current API response')
+          RETURNING "id", "seq_id" AS "seqId"
+        `,
+        [threadId],
+      );
+      assert.ok(currentApiInsert.rows[0]?.id);
+      assert.equal(currentApiInsert.rows[0]?.seqId, "3");
+
+      const compatibilityRows = await client.query<{
+        content: string;
+        seqId: string;
+      }>(
+        `
+          SELECT "content", "seq_id" AS "seqId"
+          FROM "chat_messages"
+          WHERE "chat_thread_id" = $1
+          ORDER BY "seq_id"
+        `,
+        [threadId],
+      );
+      const physicalRows = await client.query<{
+        content: string;
+        seqId: string;
+      }>(
+        `
+          SELECT "content", "seq_id" AS "seqId"
+          FROM "chat_events"
+          WHERE "chat_thread_id" = $1
+          ORDER BY "seq_id"
+        `,
+        [threadId],
+      );
+      assert.deepEqual(compatibilityRows.rows, [
+        { content: "historical response", seqId: "1" },
+        { content: "previous API response", seqId: "2" },
+        { content: "current API response", seqId: "3" },
+      ]);
+      assert.deepEqual(physicalRows.rows, compatibilityRows.rows);
+
+      await expectAppendOnlyUpdateRejected(client, {
+        tableName: "chat_events",
+        query: `UPDATE "chat_messages" SET "content" = 'mutated' WHERE "id" = $1`,
+        rowId: historicalEventId,
+      });
+      await expectAppendOnlyUpdateRejected(client, {
+        tableName: "chat_events",
+        query: `UPDATE "chat_events" SET "content" = 'mutated' WHERE "id" = $1`,
+        rowId: historicalEventId,
+      });
+    } finally {
+      await client.end();
+    }
+  } finally {
+    await dropDatabase(testDb);
+  }
+
+  console.log(
+    "   ✅ Historical rows survive, previous-API SELECT/INSERT RETURNING remains compatible, physical objects are renamed, and append-only protection holds through the rename\n",
+  );
+}
+
 const SESSION_STORAGE_BACKFILL_PREVIOUS_MIGRATION = 653;
 const SESSION_STORAGE_BACKFILL_MIGRATION = 654;
 
@@ -5537,6 +5848,7 @@ async function main(): Promise<void> {
     await validateUserMessageBackfillAndContract();
     await validateChatEventQueueContraction();
     await validateChatMessageRoleContraction();
+    await validateChatEventTableRename();
 
     // Step 1.5: Validate latest snapshot accuracy (NEW)
     await validateLatestSnapshotAccuracy();

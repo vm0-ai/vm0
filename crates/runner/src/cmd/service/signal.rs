@@ -84,7 +84,9 @@ mod tests {
     use std::time::Duration;
 
     use super::*;
-    use crate::test_fixtures::{ignored_child_test_env_guard_enabled, run_ignored_child_test};
+    use crate::test_fixtures::ignored_child::{
+        ignored_child_test_env_guard_enabled, run_ignored_child_test,
+    };
 
     const SCENARIO_ENV: &str = "VM0_RUN_SERVICE_SIGNAL_SCENARIO";
     const SIGNAL_ENV: &str = "VM0_RUN_SERVICE_SIGNAL_NAME";

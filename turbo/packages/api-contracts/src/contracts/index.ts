@@ -745,7 +745,9 @@ export {
 
 export {
   ablyTokenRequestSchema,
+  browserSessionChangedPayloadSchema,
   connectorChangedPayloadSchema,
+  type BrowserSessionChangedPayload,
   type ConnectorChangedPayload,
   runnerRealtimeTokenContract,
   type RunnerRealtimeTokenContract,
