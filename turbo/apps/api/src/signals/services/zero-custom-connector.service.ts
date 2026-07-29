@@ -1,29 +1,37 @@
 import { command, computed, type Computed } from "ccstate";
 import { randomUUID } from "node:crypto";
 import { and, eq, inArray } from "drizzle-orm";
-import {
-  CUSTOM_CONNECTOR_OAUTH_AUTHORIZATION_FIELD_KEY,
-  type CreateCustomConnectorBody,
-  type CustomConnectorAuthMethod,
-  type CustomConnectorField,
-  type CustomConnectorFieldKind,
-  type CustomConnectorHeaderInjection,
-  type CustomConnectorOAuth2AuthMethod,
-  type CustomConnectorProposal,
-  type CustomConnectorQueryInjection,
-  type CustomConnectorResponse,
-  type CustomConnectorValueInput,
-  type UpdateCustomConnectorBody,
+import type {
+  CreateCustomConnectorBody,
+  CustomConnectorAuthMode,
+  CustomConnectorField,
+  CustomConnectorFieldKind,
+  CustomConnectorHeaderInjection,
+  CustomConnectorOAuthConfig,
+  CustomConnectorOAuthConfigInput,
+  CustomConnectorProposal,
+  CustomConnectorQueryInjection,
+  CustomConnectorResponse,
+  CustomConnectorValueInput,
+  UpdateCustomConnectorBody,
 } from "@vm0/api-contracts/contracts/zero-custom-connectors";
 import {
   canonicalizeFirewallBaseUrl,
   expandHostWildcardsInBaseUrl,
 } from "@vm0/connectors/firewall-types";
+import { connectors } from "@vm0/db/schema/connector";
+import {
+  orgCustomConnectorOauthConfigs,
+  type OrgCustomConnectorOAuthPkceMethod,
+  type OrgCustomConnectorOAuthProviderAdapter,
+  type OrgCustomConnectorOAuthTokenEndpointAuthMethod,
+} from "@vm0/db/schema/org-custom-connector-oauth-config";
 import { orgCustomConnectors } from "@vm0/db/schema/org-custom-connector";
 import { orgCustomConnectorSecrets } from "@vm0/db/schema/org-custom-connector-secret";
 import { orgCustomConnectorValues } from "@vm0/db/schema/org-custom-connector-value";
+import { secrets } from "@vm0/db/schema/secret";
 
-import { db$, writeDb$, type ReadonlyDb } from "../external/db";
+import { db$, writeDb$, type Db, type ReadonlyDb } from "../external/db";
 import { badRequestMessage, notFound } from "../../lib/error";
 import { logger } from "../../lib/log";
 import { nowDate } from "../../lib/time";
@@ -45,25 +53,38 @@ const L = logger("CustomConnectorService");
 const LEGACY_SECRET_PLACEHOLDER = "{{secret}}";
 const LEGACY_SECRET_KEY = "secret";
 const FIELD_KEY_REGEX = /^[a-z][a-z0-9_]{0,63}$/;
-const SLUG_REGEX = /^[a-z0-9][a-z0-9-]{1,62}[a-z0-9]$/;
+const SLUG_REGEX = /^_[a-z0-9][a-z0-9-]{0,60}[a-z0-9]$/;
 const HEADER_NAME_REGEX = /^[A-Za-z][A-Za-z0-9-]*$/;
 const TEMPLATE_REFERENCE_REGEX =
-  /\{\{\s*(secrets|variables)\.([a-z][a-z0-9_]*)\s*\}\}/g;
+  /\{\{\s*(secrets|variables|oauth)\.([a-z][a-z0-9_]*)\s*\}\}/g;
 const VARIABLE_REFERENCE_REGEX = /\{\{\s*variables\.[a-z][a-z0-9_]*\s*\}\}/;
 const TEMPLATE_PLACEHOLDER_VALUE = "placeholder";
 const HOST_TEMPLATE_VALUE_UNSAFE_REGEX = /[/?#\\@:]/;
-export const CUSTOM_CONNECTOR_OAUTH_AUTHORIZATION_KEY =
-  CUSTOM_CONNECTOR_OAUTH_AUTHORIZATION_FIELD_KEY;
-export const CUSTOM_CONNECTOR_OAUTH_REFRESH_TOKEN_KEY = "__oauth_refresh_token";
-export const CUSTOM_CONNECTOR_OAUTH_EXPIRES_AT_KEY = "__oauth_expires_at";
-export const CUSTOM_CONNECTOR_OAUTH_VALUE_KEYS = [
-  CUSTOM_CONNECTOR_OAUTH_AUTHORIZATION_KEY,
-  CUSTOM_CONNECTOR_OAUTH_REFRESH_TOKEN_KEY,
-  CUSTOM_CONNECTOR_OAUTH_EXPIRES_AT_KEY,
-] as const;
+export const CUSTOM_CONNECTOR_OAUTH_ACCESS_TOKEN_SECRET_NAME = "access_token";
+export const CUSTOM_CONNECTOR_OAUTH_REFRESH_TOKEN_SECRET_NAME = "refresh_token";
+export const CUSTOM_CONNECTOR_OAUTH_ID_TOKEN_SECRET_NAME = "id_token";
+export const CUSTOM_CONNECTOR_OAUTH_ACCESS_TOKEN_RUNTIME_KEY =
+  "__oauth_access_token";
+const CUSTOM_CONNECTOR_OAUTH_ACCESS_TOKEN_REFERENCE = "oauth.access_token";
 
 type BadRequestResponse = ReturnType<typeof badRequestMessage>;
 type NotFoundResponse = ReturnType<typeof notFound>;
+
+export interface CustomConnectorOAuthConfigRow {
+  readonly connectorId: string;
+  readonly orgId: string;
+  readonly providerAdapter: OrgCustomConnectorOAuthProviderAdapter;
+  readonly clientId: string;
+  readonly encryptedClientSecret: string;
+  readonly authorizationUrl: string;
+  readonly tokenUrl: string;
+  readonly tokenEndpointAuthMethod: OrgCustomConnectorOAuthTokenEndpointAuthMethod;
+  readonly pkceMethod: OrgCustomConnectorOAuthPkceMethod;
+  readonly scopes: readonly string[];
+  readonly authorizationParams: Readonly<Record<string, string>>;
+  readonly createdAt: Date;
+  readonly updatedAt: Date;
+}
 
 export interface CustomConnectorRow {
   readonly id: string;
@@ -77,9 +98,9 @@ export interface CustomConnectorRow {
   readonly fields: readonly CustomConnectorField[];
   readonly headerInjections: readonly CustomConnectorHeaderInjection[];
   readonly queryInjections: readonly CustomConnectorQueryInjection[];
-  readonly authMethods: readonly CustomConnectorAuthMethod[];
-  readonly encryptedOauthClientId: string | null;
-  readonly encryptedOauthClientSecret: string | null;
+  readonly authMode: CustomConnectorAuthMode;
+  readonly oauthConfig: CustomConnectorOAuthConfigRow | null;
+  readonly revision: number;
   readonly createdBy: string;
   readonly createdAt: Date;
   readonly updatedAt: Date;
@@ -91,7 +112,7 @@ interface DefinitionInput {
   readonly fields: readonly CustomConnectorField[];
   readonly headerInjections: readonly CustomConnectorHeaderInjection[];
   readonly queryInjections: readonly CustomConnectorQueryInjection[];
-  readonly authMethods?: readonly CustomConnectorAuthMethod[];
+  readonly authMode?: CustomConnectorAuthMode;
   readonly slug?: string;
 }
 
@@ -101,21 +122,17 @@ interface ValidatedDefinition {
   readonly fields: readonly CustomConnectorField[];
   readonly headerInjections: readonly CustomConnectorHeaderInjection[];
   readonly queryInjections: readonly CustomConnectorQueryInjection[];
-  readonly authMethods: readonly CustomConnectorAuthMethod[];
+  readonly authMode: CustomConnectorAuthMode;
   readonly slug: string | undefined;
 }
 
-interface OAuthClientCredentials {
-  readonly clientId: string;
-  readonly clientSecret: string;
-}
-
-type OAuthClientCredentialsUpdate =
-  | { readonly kind: "preserve" }
-  | { readonly kind: "remove" }
+type ValidatedOAuthConfigUpdate =
+  | { readonly kind: "none" }
+  | { readonly kind: "preserve"; readonly config: CustomConnectorOAuthConfigRow }
   | {
-      readonly kind: "replace";
-      readonly credentials: OAuthClientCredentials;
+      readonly kind: "upsert";
+      readonly config: CustomConnectorOAuthConfig;
+      readonly clientSecret: string | null;
     };
 
 interface ValueMarker {
@@ -226,39 +243,6 @@ function queryInjectionArray(
   });
 }
 
-function authMethodArray(value: unknown): readonly CustomConnectorAuthMethod[] {
-  if (!Array.isArray(value)) {
-    return [];
-  }
-  return value.filter((item): item is CustomConnectorAuthMethod => {
-    if (typeof item !== "object" || item === null || !("type" in item)) {
-      return false;
-    }
-    if (item.type === "api") {
-      return true;
-    }
-    if (
-      item.type !== "oauth2" ||
-      !("authorizationUrl" in item) ||
-      !("tokenUrl" in item) ||
-      !("scopes" in item) ||
-      !("clientAuthentication" in item)
-    ) {
-      return false;
-    }
-    return (
-      typeof item.authorizationUrl === "string" &&
-      typeof item.tokenUrl === "string" &&
-      Array.isArray(item.scopes) &&
-      item.scopes.every((scope: unknown) => {
-        return typeof scope === "string";
-      }) &&
-      (item.clientAuthentication === "client_secret_basic" ||
-        item.clientAuthentication === "client_secret_post")
-    );
-  });
-}
-
 function canonicalFieldsFromLegacy(): readonly CustomConnectorField[] {
   return [
     {
@@ -270,6 +254,7 @@ function canonicalFieldsFromLegacy(): readonly CustomConnectorField[] {
     },
   ];
 }
+
 
 function canonicalHeaderTemplateFromLegacy(template: string): string {
   return template.replaceAll(
@@ -287,16 +272,9 @@ function legacyHeaderTemplateFromCanonical(template: string): string {
 
 export function normaliseCustomConnectorRow(
   row: typeof orgCustomConnectors.$inferSelect,
+  oauthConfig: CustomConnectorOAuthConfigRow | null = null,
 ): CustomConnectorRow {
   const prefixTemplates = stringArray(row.prefixTemplates);
-  const storedAuthMethods = authMethodArray(row.authMethods);
-  const authMethods =
-    storedAuthMethods.length > 0
-      ? storedAuthMethods
-      : [{ type: "api" as const }];
-  const supportsApi = authMethods.some((method) => {
-    return method.type === "api";
-  });
   const storedFields = fieldArray(row.fields);
   const storedHeaderInjections = headerInjectionArray(row.headerInjections);
   const queryInjections = queryInjectionArray(row.queryInjections);
@@ -309,13 +287,13 @@ export function normaliseCustomConnectorRow(
     fields:
       storedFields.length > 0
         ? storedFields
-        : supportsApi
+        : row.authMode === "manual"
           ? canonicalFieldsFromLegacy()
           : [],
     headerInjections:
       storedHeaderInjections.length > 0
         ? storedHeaderInjections
-        : supportsApi
+        : row.authMode === "manual"
           ? [
               {
                 name: row.headerName,
@@ -326,38 +304,75 @@ export function normaliseCustomConnectorRow(
             ]
           : [],
     queryInjections,
-    authMethods,
+    oauthConfig,
   };
 }
 
-export function customConnectorOAuth2AuthMethod(
-  connector: Pick<CustomConnectorRow, "authMethods">,
-): CustomConnectorOAuth2AuthMethod | null {
-  return (
-    connector.authMethods.find(
-      (method): method is CustomConnectorOAuth2AuthMethod => {
-        return method.type === "oauth2";
-      },
-    ) ?? null
-  );
-}
-
-function oauth2AuthMethodsEqual(
-  left: CustomConnectorOAuth2AuthMethod | null,
-  right: CustomConnectorOAuth2AuthMethod | null,
+function oauthConfigsEqual(
+  left: CustomConnectorOAuthConfigRow | null,
+  right: CustomConnectorOAuthConfigRow | null,
 ): boolean {
   if (!left || !right) {
     return left === right;
   }
   return (
+    left.providerAdapter === right.providerAdapter &&
+    left.clientId === right.clientId &&
+    left.encryptedClientSecret === right.encryptedClientSecret &&
     left.authorizationUrl === right.authorizationUrl &&
     left.tokenUrl === right.tokenUrl &&
-    left.clientAuthentication === right.clientAuthentication &&
+    left.tokenEndpointAuthMethod === right.tokenEndpointAuthMethod &&
+    left.pkceMethod === right.pkceMethod &&
     left.scopes.length === right.scopes.length &&
     left.scopes.every((scope, index) => {
       return scope === right.scopes[index];
-    })
+    }) &&
+    JSON.stringify(left.authorizationParams) ===
+      JSON.stringify(right.authorizationParams)
   );
+}
+
+function jsonValuesEqual(left: unknown, right: unknown): boolean {
+  return JSON.stringify(left) === JSON.stringify(right);
+}
+
+function grantConfigurationChanged(args: {
+  readonly existing: CustomConnectorRow;
+  readonly definition: ValidatedDefinition;
+  readonly nextOAuthConfig: CustomConnectorOAuthConfigRow | null;
+}): boolean {
+  return (
+    args.existing.authMode !== args.definition.authMode ||
+    !jsonValuesEqual(
+      args.existing.prefixTemplates,
+      args.definition.prefixTemplates,
+    ) ||
+    !jsonValuesEqual(args.existing.fields, args.definition.fields) ||
+    !jsonValuesEqual(
+      args.existing.headerInjections,
+      args.definition.headerInjections,
+    ) ||
+    !jsonValuesEqual(
+      args.existing.queryInjections,
+      args.definition.queryInjections,
+    ) ||
+    !oauthConfigsEqual(args.existing.oauthConfig, args.nextOAuthConfig)
+  );
+}
+
+function serialiseOAuthConfig(
+  config: CustomConnectorOAuthConfigRow,
+): CustomConnectorOAuthConfig {
+  return {
+    providerAdapter: config.providerAdapter,
+    clientId: config.clientId,
+    authorizationUrl: config.authorizationUrl,
+    tokenUrl: config.tokenUrl,
+    tokenEndpointAuthMethod: config.tokenEndpointAuthMethod,
+    pkceMethod: config.pkceMethod,
+    scopes: [...config.scopes],
+    authorizationParams: { ...config.authorizationParams },
+  };
 }
 
 export function customConnectorValueMarkerKey(marker: {
@@ -413,6 +428,7 @@ function computeMissingRequiredFields(args: {
 export function serialiseCustomConnector(args: {
   readonly row: CustomConnectorRow;
   readonly valueMarkers: readonly ValueMarker[];
+  readonly oauthConnected?: boolean;
 }): CustomConnectorResponse {
   const connectorMarkers = args.valueMarkers.filter((marker) => {
     return marker.connectorId === args.row.id;
@@ -425,31 +441,14 @@ export function serialiseCustomConnector(args: {
     fields: args.row.fields,
     markers: connectorMarkers,
   });
-  const supportsApi = args.row.authMethods.some((method) => {
-    return method.type === "api";
-  });
-  const supportsOAuth2 = args.row.authMethods.some((method) => {
-    return method.type === "oauth2";
-  });
-  const oauth2Connected =
-    supportsOAuth2 &&
-    connectorMarkers.some((marker) => {
-      return (
-        marker.kind === "secret" &&
-        marker.key === CUSTOM_CONNECTOR_OAUTH_AUTHORIZATION_KEY
-      );
-    });
-  const apiConnected = supportsApi && missingRequiredFields.length === 0;
-  const connectedAuthMethod = oauth2Connected
-    ? ("oauth2" as const)
-    : apiConnected
-      ? ("api" as const)
-      : null;
-  const responseMissingRequiredFields = connectedAuthMethod
-    ? []
-    : supportsApi
-      ? missingRequiredFields
-      : ["oauth2"];
+  const oauthConnected = args.oauthConnected ?? false;
+  const connected =
+    missingRequiredFields.length === 0 &&
+    (args.row.authMode === "manual" || oauthConnected);
+  const responseMissingRequiredFields = [
+    ...missingRequiredFields,
+    ...(args.row.authMode === "oauth" && !oauthConnected ? ["oauth"] : []),
+  ];
   return {
     id: args.row.id,
     slug: args.row.slug,
@@ -463,14 +462,17 @@ export function serialiseCustomConnector(args: {
     fields: [...args.row.fields],
     headerInjections: [...args.row.headerInjections],
     queryInjections: [...args.row.queryInjections],
-    authMethods: [...args.row.authMethods],
-    connectedAuthMethod,
-    connected: connectedAuthMethod !== null,
+    authMode: args.row.authMode,
+    ...(args.row.oauthConfig
+      ? { oauthConfig: serialiseOAuthConfig(args.row.oauthConfig) }
+      : {}),
+    revision: args.row.revision,
+    connected,
     missingRequiredFields: [...responseMissingRequiredFields],
     configuredFieldKeys: [...configured],
     createdAt: args.row.createdAt.toISOString(),
     updatedAt: args.row.updatedAt.toISOString(),
-    hasSecret: connectedAuthMethod !== null,
+    hasSecret: connected,
   };
 }
 
@@ -493,7 +495,7 @@ function validateOptionalSlug(
   }
   if (!SLUG_REGEX.test(slug)) {
     return badRequestMessage(
-      "Slug must be 3-64 chars, lowercase alphanumeric, and may contain internal hyphens",
+      "Slug must start with _, be 3-64 chars, and use lowercase alphanumeric characters or internal hyphens",
     );
   }
   return slug;
@@ -523,12 +525,20 @@ function declaredFieldsByNamespace(fields: readonly CustomConnectorField[]) {
 }
 
 function extractTemplateReferences(template: string): readonly {
-  readonly namespace: "secrets" | "variables";
+  readonly namespace: "secrets" | "variables" | "oauth";
   readonly key: string;
 }[] {
   return [...template.matchAll(TEMPLATE_REFERENCE_REGEX)].map((match) => {
+    const namespace = match[1];
+    if (
+      namespace !== "secrets" &&
+      namespace !== "variables" &&
+      namespace !== "oauth"
+    ) {
+      throw new Error("Invalid custom connector template namespace");
+    }
     return {
-      namespace: match[1] === "secrets" ? "secrets" : "variables",
+      namespace,
       key: match[2]!,
     };
   });
@@ -570,6 +580,7 @@ function validateTemplateReferences(args: {
   readonly template: string;
   readonly fields: readonly CustomConnectorField[];
   readonly allowSecrets: boolean;
+  readonly allowOAuth: boolean;
   readonly allowLegacySecret: boolean;
   readonly context: string;
 }): BadRequestResponse | null {
@@ -584,6 +595,17 @@ function validateTemplateReferences(args: {
   for (const ref of extractTemplateReferences(args.template)) {
     if (ref.namespace === "secrets" && !args.allowSecrets) {
       return badRequestMessage(`${args.context} must not reference secrets`);
+    }
+    if (ref.namespace === "oauth") {
+      if (
+        !args.allowOAuth ||
+        ref.key !== CUSTOM_CONNECTOR_OAUTH_ACCESS_TOKEN_SECRET_NAME
+      ) {
+        return badRequestMessage(
+          `${args.context} uses unsupported oauth.${ref.key} placeholder`,
+        );
+      }
+      continue;
     }
     const allowed =
       ref.namespace === "secrets" ? declared.secrets : declared.variables;
@@ -633,6 +655,7 @@ function validateAndNormalizePrefixTemplate(args: {
     template: trimmed,
     fields: args.fields,
     allowSecrets: false,
+    allowOAuth: false,
     allowLegacySecret: false,
     context: "Prefix template",
   });
@@ -727,6 +750,7 @@ function validateHeaderName(raw: string): string | BadRequestResponse {
 function validateHeaderInjections(args: {
   readonly raw: readonly CustomConnectorHeaderInjection[];
   readonly fields: readonly CustomConnectorField[];
+  readonly authMode: CustomConnectorAuthMode;
 }): readonly CustomConnectorHeaderInjection[] | BadRequestResponse {
   const seen = new Set<string>();
   const headers: CustomConnectorHeaderInjection[] = [];
@@ -743,8 +767,9 @@ function validateHeaderInjections(args: {
     const templateError = validateTemplateReferences({
       template: injection.valueTemplate,
       fields: args.fields,
-      allowSecrets: true,
-      allowLegacySecret: true,
+      allowSecrets: args.authMode === "manual",
+      allowOAuth: args.authMode === "oauth",
+      allowLegacySecret: args.authMode === "manual",
       context: `Header ${name}`,
     });
     if (templateError) {
@@ -758,6 +783,7 @@ function validateHeaderInjections(args: {
 function validateQueryInjections(args: {
   readonly raw: readonly CustomConnectorQueryInjection[];
   readonly fields: readonly CustomConnectorField[];
+  readonly authMode: CustomConnectorAuthMode;
 }): readonly CustomConnectorQueryInjection[] | BadRequestResponse {
   const seen = new Set<string>();
   const queries: CustomConnectorQueryInjection[] = [];
@@ -773,8 +799,9 @@ function validateQueryInjections(args: {
     const templateError = validateTemplateReferences({
       template: injection.valueTemplate,
       fields: args.fields,
-      allowSecrets: true,
-      allowLegacySecret: true,
+      allowSecrets: args.authMode === "manual",
+      allowOAuth: args.authMode === "oauth",
+      allowLegacySecret: args.authMode === "manual",
       context: `Query ${name}`,
     });
     if (templateError) {
@@ -804,24 +831,29 @@ function validateOAuth2Endpoint(
   return url;
 }
 
-function validateOAuth2AuthMethod(
-  method: CustomConnectorOAuth2AuthMethod,
-): CustomConnectorOAuth2AuthMethod | BadRequestResponse {
+function validateOAuthConfigInput(
+  config: CustomConnectorOAuthConfigInput,
+): CustomConnectorOAuthConfigInput | BadRequestResponse {
+  if (config.providerAdapter !== "standard") {
+    return badRequestMessage(
+      "Only the standard OAuth provider adapter is supported",
+    );
+  }
   const authorizationUrl = validateOAuth2Endpoint(
-    method.authorizationUrl.trim(),
+    config.authorizationUrl.trim(),
     "OAuth authorization URL",
   );
   if (isBadRequest(authorizationUrl)) {
     return authorizationUrl;
   }
   const tokenUrl = validateOAuth2Endpoint(
-    method.tokenUrl.trim(),
+    config.tokenUrl.trim(),
     "OAuth token URL",
   );
   if (isBadRequest(tokenUrl)) {
     return tokenUrl;
   }
-  const scopes = method.scopes.map((scope) => {
+  const scopes = config.scopes.map((scope) => {
     return scope.trim();
   });
   if (
@@ -836,151 +868,94 @@ function validateOAuth2AuthMethod(
   if (new Set(scopes).size !== scopes.length) {
     return badRequestMessage("OAuth scopes must be unique");
   }
-  return {
-    type: "oauth2",
-    authorizationUrl: authorizationUrl.toString(),
-    tokenUrl: tokenUrl.toString(),
-    scopes,
-    clientAuthentication: method.clientAuthentication,
-  };
-}
-
-function validateAuthMethods(
-  raw: readonly CustomConnectorAuthMethod[] | undefined,
-): readonly CustomConnectorAuthMethod[] | BadRequestResponse {
-  const methods = raw ?? [{ type: "api" as const }];
-  if (methods.length === 0 || methods.length > 2) {
-    return badRequestMessage(
-      "Custom connector requires one or two authentication methods",
-    );
-  }
-  const seen = new Set<CustomConnectorAuthMethod["type"]>();
-  const result: CustomConnectorAuthMethod[] = [];
-  for (const method of methods) {
-    if (seen.has(method.type)) {
-      return badRequestMessage(
-        `Duplicate custom connector authentication method: ${method.type}`,
-      );
-    }
-    seen.add(method.type);
-    if (method.type === "oauth2") {
-      const validated = validateOAuth2AuthMethod(method);
-      if (isBadRequest(validated)) {
-        return validated;
-      }
-      result.push(validated);
-    } else {
-      result.push({ type: "api" });
-    }
-  }
-  return result;
-}
-
-function validateOAuthClientCredentialValues(args: {
-  readonly clientId: string;
-  readonly clientSecret: string;
-  readonly oauthMethod: CustomConnectorOAuth2AuthMethod;
-}): OAuthClientCredentials | BadRequestResponse {
-  const clientId = args.clientId.trim();
-  const clientSecret = args.clientSecret;
-  if (clientId.length === 0 || clientSecret.trim().length === 0) {
-    return badRequestMessage("OAuth client ID and client secret are required");
-  }
-  if (clientId.length > 2048 || clientSecret.length > 4096) {
-    return badRequestMessage(
-      "OAuth client ID or client secret exceeds the maximum length",
-    );
+  const clientId = config.clientId.trim();
+  if (clientId.length === 0 || clientId.length > 255) {
+    return badRequestMessage("OAuth client ID is invalid");
   }
   if (
-    args.oauthMethod.clientAuthentication === "client_secret_basic" &&
+    config.tokenEndpointAuthMethod === "client_secret_basic" &&
     clientId.includes(":")
   ) {
     return badRequestMessage(
       "OAuth client ID must not contain a colon when using HTTP Basic authentication",
     );
   }
-  return { clientId, clientSecret };
-}
-
-function validateOAuthClientCredentials(
-  input: CreateCustomConnectorBody,
-  authMethods: readonly CustomConnectorAuthMethod[],
-): OAuthClientCredentials | null | BadRequestResponse {
-  const oauthMethod = authMethods.find(
-    (method): method is CustomConnectorOAuth2AuthMethod => {
-      return method.type === "oauth2";
-    },
-  );
-  if (!oauthMethod) {
-    if (
-      input.oauthClientId !== undefined ||
-      input.oauthClientSecret !== undefined
-    ) {
+  const clientSecret = config.clientSecret;
+  if (
+    clientSecret !== undefined &&
+    (clientSecret.trim().length === 0 || clientSecret.length > 4096)
+  ) {
+    return badRequestMessage("OAuth client secret is invalid");
+  }
+  const authorizationParams: Record<string, string> = {};
+  const allowedAuthorizationParamNames = new Set([
+    "resource",
+    "audience",
+    "access_type",
+    "prompt",
+  ]);
+  for (const [name, rawValue] of Object.entries(
+    config.authorizationParams,
+  ).sort(([left], [right]) => {
+    return left.localeCompare(right);
+  })) {
+    if (!allowedAuthorizationParamNames.has(name)) {
       return badRequestMessage(
-        "OAuth client credentials require an OAuth 2.0 authentication method",
+        `OAuth authorization parameter is not supported: ${name}`,
       );
     }
-    return null;
-  }
-  return validateOAuthClientCredentialValues({
-    clientId: input.oauthClientId ?? "",
-    clientSecret: input.oauthClientSecret ?? "",
-    oauthMethod,
-  });
-}
-
-function validateOAuthClientCredentialsUpdate(args: {
-  readonly input: UpdateCustomConnectorBody;
-  readonly existing: CustomConnectorRow;
-  readonly authMethods: readonly CustomConnectorAuthMethod[];
-}): OAuthClientCredentialsUpdate | BadRequestResponse {
-  const oauthMethod = args.authMethods.find(
-    (method): method is CustomConnectorOAuth2AuthMethod => {
-      return method.type === "oauth2";
-    },
-  );
-  const hasClientId = args.input.oauthClientId !== undefined;
-  const hasClientSecret = args.input.oauthClientSecret !== undefined;
-  if (!oauthMethod) {
-    if (hasClientId || hasClientSecret) {
+    const value = rawValue.trim();
+    if (value.length === 0 || value.length > 2048) {
       return badRequestMessage(
-        "OAuth client credentials require an OAuth 2.0 authentication method",
+        `OAuth authorization parameter is invalid: ${name}`,
       );
     }
-    return { kind: "remove" };
+    authorizationParams[name] = value;
   }
-  if (hasClientId !== hasClientSecret) {
-    return badRequestMessage(
-      "OAuth client ID and client secret must be provided together",
-    );
-  }
-  if (hasClientId && hasClientSecret) {
-    const credentials = validateOAuthClientCredentialValues({
-      clientId: args.input.oauthClientId ?? "",
-      clientSecret: args.input.oauthClientSecret ?? "",
-      oauthMethod,
-    });
-    if (isBadRequest(credentials)) {
-      return credentials;
+  return {
+    providerAdapter: config.providerAdapter,
+    clientId,
+    authorizationUrl: authorizationUrl.toString(),
+    tokenUrl: tokenUrl.toString(),
+    tokenEndpointAuthMethod: config.tokenEndpointAuthMethod,
+    pkceMethod: config.pkceMethod,
+    scopes,
+    authorizationParams,
+    ...(clientSecret === undefined ? {} : { clientSecret }),
+  };
+}
+
+function validateOAuthConfigUpdate(args: {
+  readonly authMode: CustomConnectorAuthMode;
+  readonly input: CustomConnectorOAuthConfigInput | undefined;
+  readonly existingConfig: CustomConnectorOAuthConfigRow | null;
+}): ValidatedOAuthConfigUpdate | BadRequestResponse {
+  if (args.authMode === "manual") {
+    if (args.input !== undefined) {
+      return badRequestMessage(
+        "OAuth configuration requires OAuth authentication mode",
+      );
     }
-    return { kind: "replace", credentials };
+    return { kind: "none" };
   }
-  if (
-    !args.existing.encryptedOauthClientId ||
-    !args.existing.encryptedOauthClientSecret
-  ) {
-    return badRequestMessage("OAuth client ID and client secret are required");
+  if (args.input === undefined) {
+    return args.existingConfig
+      ? { kind: "preserve", config: args.existingConfig }
+      : badRequestMessage("OAuth configuration is required");
   }
-  const existingOAuthMethod = customConnectorOAuth2AuthMethod(args.existing);
-  if (
-    oauthMethod.clientAuthentication === "client_secret_basic" &&
-    existingOAuthMethod?.clientAuthentication !== "client_secret_basic"
-  ) {
-    return badRequestMessage(
-      "OAuth client ID and client secret are required when changing token endpoint authentication",
-    );
+  const config = validateOAuthConfigInput(args.input);
+  if (isBadRequest(config)) {
+    return config;
   }
-  return { kind: "preserve" };
+  if (config.clientSecret === undefined && !args.existingConfig) {
+    return badRequestMessage("OAuth client secret is required");
+  }
+  const { clientSecret, ...publicConfig } = config;
+  return {
+    kind: "upsert",
+    config: publicConfig,
+    clientSecret: clientSecret ?? null,
+  };
 }
 
 function validateDefinition(
@@ -995,9 +970,14 @@ function validateDefinition(
   if (isBadRequest(fields)) {
     return fields;
   }
-  const authMethods = validateAuthMethods(input.authMethods);
-  if (isBadRequest(authMethods)) {
-    return authMethods;
+  const authMode = input.authMode ?? "manual";
+  if (
+    authMode === "oauth" &&
+    fields.some((field) => {
+      return field.kind === "secret";
+    })
+  ) {
+    return badRequestMessage("OAuth custom connector fields must be variables");
   }
 
   const prefixTemplates: string[] = [];
@@ -1026,6 +1006,7 @@ function validateDefinition(
   const headerInjections = validateHeaderInjections({
     raw: input.headerInjections,
     fields,
+    authMode,
   });
   if (isBadRequest(headerInjections)) {
     return headerInjections;
@@ -1033,30 +1014,31 @@ function validateDefinition(
   const queryInjections = validateQueryInjections({
     raw: input.queryInjections,
     fields,
+    authMode,
   });
   if (isBadRequest(queryInjections)) {
     return queryInjections;
   }
-  const supportsApi = authMethods.some((method) => {
-    return method.type === "api";
-  });
-  if (
-    supportsApi &&
-    headerInjections.length === 0 &&
-    queryInjections.length === 0
-  ) {
+  if (headerInjections.length === 0 && queryInjections.length === 0) {
     return badRequestMessage(
       "At least one header or query injection is required",
     );
   }
   if (
-    !supportsApi &&
-    (fields.length > 0 ||
-      headerInjections.length > 0 ||
-      queryInjections.length > 0)
+    authMode === "oauth" &&
+    ![...headerInjections, ...queryInjections].some((injection) => {
+      return extractTemplateReferences(injection.valueTemplate).some(
+        (reference) => {
+          return (
+            reference.namespace === "oauth" &&
+            reference.key === CUSTOM_CONNECTOR_OAUTH_ACCESS_TOKEN_SECRET_NAME
+          );
+        },
+      );
+    })
   ) {
     return badRequestMessage(
-      "API fields and injections require an API authentication method",
+      `OAuth custom connector injections must reference {{${CUSTOM_CONNECTOR_OAUTH_ACCESS_TOKEN_REFERENCE}}}`,
     );
   }
   const slug = validateOptionalSlug(input.slug);
@@ -1070,7 +1052,7 @@ function validateDefinition(
     fields,
     headerInjections,
     queryInjections,
-    authMethods,
+    authMode,
     slug,
   };
 }
@@ -1083,7 +1065,8 @@ function definitionFromCreateInput(
     input.fields !== undefined ||
     input.headerInjections !== undefined ||
     input.queryInjections !== undefined ||
-    input.authMethods !== undefined;
+    input.authMode !== undefined ||
+    input.oauthConfig !== undefined;
   if (usesCanonical) {
     return {
       displayName: input.displayName,
@@ -1091,7 +1074,7 @@ function definitionFromCreateInput(
       fields: input.fields ?? [],
       headerInjections: input.headerInjections ?? [],
       queryInjections: input.queryInjections ?? [],
-      authMethods: input.authMethods,
+      authMode: input.authMode,
       slug: input.slug,
     };
   }
@@ -1116,14 +1099,14 @@ function definitionFromCreateInput(
       },
     ],
     queryInjections: [],
-    authMethods: [{ type: "api" }],
+    authMode: "manual",
     slug: input.slug,
   };
 }
 
 function definitionFromUpdateInput(
   input: UpdateCustomConnectorBody,
-  authMethods?: readonly CustomConnectorAuthMethod[],
+  authMode: CustomConnectorAuthMode = "manual",
 ): DefinitionInput {
   return {
     displayName: input.displayName,
@@ -1131,7 +1114,7 @@ function definitionFromUpdateInput(
     fields: input.fields,
     headerInjections: input.headerInjections,
     queryInjections: input.queryInjections,
-    authMethods: input.authMethods ?? authMethods,
+    authMode: input.authMode ?? authMode,
   };
 }
 
@@ -1227,6 +1210,36 @@ async function loadConnectorValueMarkers(args: {
   return markers;
 }
 
+async function loadConnectedOAuthConnectorIds(args: {
+  readonly db: ReadonlyDb;
+  readonly orgId: string;
+  readonly userId: string;
+}): Promise<ReadonlySet<string>> {
+  const rows = await args.db
+    .select({ customConnectorId: connectors.customConnectorId })
+    .from(connectors)
+    .innerJoin(
+      secrets,
+      and(
+        eq(secrets.connectorId, connectors.id),
+        eq(secrets.name, CUSTOM_CONNECTOR_OAUTH_ACCESS_TOKEN_SECRET_NAME),
+      ),
+    )
+    .where(
+      and(
+        eq(connectors.orgId, args.orgId),
+        eq(connectors.userId, args.userId),
+        eq(connectors.authMethod, "oauth"),
+        eq(connectors.needsReconnect, false),
+      ),
+    );
+  return new Set(
+    rows.flatMap((row) => {
+      return row.customConnectorId ? [row.customConnectorId] : [];
+    }),
+  );
+}
+
 export const createCustomConnector$ = command(
   async (
     { get, set },
@@ -1254,63 +1267,226 @@ export const createCustomConnector$ = command(
     if (isBadRequest(v)) {
       return v;
     }
-    const oauthCredentials = validateOAuthClientCredentials(
-      args.input,
-      v.authMethods,
-    );
-    if (isBadRequest(oauthCredentials)) {
-      return oauthCredentials;
+    const oauthConfigUpdate = validateOAuthConfigUpdate({
+      authMode: v.authMode,
+      input: args.input.oauthConfig,
+      existingConfig: null,
+    });
+    if (isBadRequest(oauthConfigUpdate)) {
+      return oauthConfigUpdate;
     }
     signal.throwIfAborted();
 
-    let encryptedOauthClientId: string | null = null;
-    let encryptedOauthClientSecret: string | null = null;
-    if (oauthCredentials) {
+    let encryptedClientSecret: string | null = null;
+    if (oauthConfigUpdate.kind === "upsert" && oauthConfigUpdate.clientSecret) {
       const featureContext = await get(
         userFeatureSwitchContext(args.orgId, args.userId),
       );
       signal.throwIfAborted();
-      [encryptedOauthClientId, encryptedOauthClientSecret] = await Promise.all([
-        encryptStoredSecretValue(oauthCredentials.clientId, featureContext),
-        encryptStoredSecretValue(oauthCredentials.clientSecret, featureContext),
-      ]);
+      encryptedClientSecret = await encryptStoredSecretValue(
+        oauthConfigUpdate.clientSecret,
+        featureContext,
+      );
     }
     signal.throwIfAborted();
 
     const slug =
       v.slug ??
-      `${hostSlugFromPrefixTemplate(v.prefixTemplates[0]!)}-${randomShortId()}`;
+      `_${hostSlugFromPrefixTemplate(v.prefixTemplates[0]!)}-${randomShortId()}`;
     const legacy = legacyColumns(v);
     L.debug("creating custom connector", { orgId: args.orgId, slug });
 
-    const [row] = await writeDb
-      .insert(orgCustomConnectors)
-      .values({
-        orgId: args.orgId,
-        slug,
-        displayName: v.displayName,
+    const created = await writeDb.transaction(async (tx) => {
+      const [row] = await tx
+        .insert(orgCustomConnectors)
+        .values({
+          orgId: args.orgId,
+          slug,
+          displayName: v.displayName,
+          prefixes: [...legacy.prefixes],
+          headerName: legacy.headerName,
+          headerTemplate: legacy.headerTemplate,
+          prefixTemplates: [...v.prefixTemplates],
+          fields: [...v.fields],
+          headerInjections: [...v.headerInjections],
+          queryInjections: [...v.queryInjections],
+          authMode: v.authMode,
+          createdBy: args.userId,
+        })
+        .returning();
+      if (!row) {
+        throw new Error("Expected insert to return a row");
+      }
+      if (oauthConfigUpdate.kind !== "upsert" || !encryptedClientSecret) {
+        return { row, oauthConfig: null };
+      }
+      const [oauthConfig] = await tx
+        .insert(orgCustomConnectorOauthConfigs)
+        .values({
+          connectorId: row.id,
+          orgId: args.orgId,
+          ...oauthConfigUpdate.config,
+          encryptedClientSecret,
+        })
+        .returning();
+      if (!oauthConfig) {
+        throw new Error("Expected OAuth config insert to return a row");
+      }
+      return { row, oauthConfig };
+    });
+    signal.throwIfAborted();
+
+    return normaliseCustomConnectorRow(created.row, created.oauthConfig);
+  },
+);
+
+async function loadCustomConnectorForUpdate(
+  db: ReadonlyDb,
+  args: { readonly orgId: string; readonly id: string },
+): Promise<CustomConnectorRow | null> {
+  const [result] = await db
+    .select({
+      connector: orgCustomConnectors,
+      oauthConfig: orgCustomConnectorOauthConfigs,
+    })
+    .from(orgCustomConnectors)
+    .leftJoin(
+      orgCustomConnectorOauthConfigs,
+      and(
+        eq(orgCustomConnectorOauthConfigs.connectorId, orgCustomConnectors.id),
+        eq(orgCustomConnectorOauthConfigs.orgId, orgCustomConnectors.orgId),
+      ),
+    )
+    .where(
+      and(
+        eq(orgCustomConnectors.id, args.id),
+        eq(orgCustomConnectors.orgId, args.orgId),
+      ),
+    )
+    .limit(1);
+  return result
+    ? normaliseCustomConnectorRow(result.connector, result.oauthConfig)
+    : null;
+}
+
+function nextOAuthConfigForUpdate(args: {
+  readonly connector: CustomConnectorRow;
+  readonly orgId: string;
+  readonly update: ValidatedOAuthConfigUpdate;
+  readonly encryptedClientSecret: string | null;
+}): CustomConnectorOAuthConfigRow | null {
+  if (args.update.kind === "none") {
+    return null;
+  }
+  if (args.update.kind === "preserve") {
+    return args.update.config;
+  }
+  if (!args.encryptedClientSecret) {
+    return null;
+  }
+  return {
+    connectorId: args.connector.id,
+    orgId: args.orgId,
+    ...args.update.config,
+    encryptedClientSecret: args.encryptedClientSecret,
+    createdAt: args.connector.oauthConfig?.createdAt ?? nowDate(),
+    updatedAt: nowDate(),
+  };
+}
+
+async function persistCustomConnectorUpdate(
+  db: Db,
+  args: {
+    readonly orgId: string;
+    readonly id: string;
+    readonly definition: ValidatedDefinition;
+    readonly existing: CustomConnectorRow;
+    readonly oauthConfigUpdate: ValidatedOAuthConfigUpdate;
+    readonly encryptedClientSecret: string | null;
+    readonly grantConfigurationChanged: boolean;
+    readonly oauthConfigurationChanged: boolean;
+  },
+): Promise<{
+  readonly row: typeof orgCustomConnectors.$inferSelect;
+  readonly oauthConfig: CustomConnectorOAuthConfigRow | null;
+} | null> {
+  const legacy = legacyColumns(args.definition);
+  return await db.transaction(async (tx) => {
+    const [updated] = await tx
+      .update(orgCustomConnectors)
+      .set({
+        displayName: args.definition.displayName,
         prefixes: [...legacy.prefixes],
         headerName: legacy.headerName,
         headerTemplate: legacy.headerTemplate,
-        prefixTemplates: [...v.prefixTemplates],
-        fields: [...v.fields],
-        headerInjections: [...v.headerInjections],
-        queryInjections: [...v.queryInjections],
-        authMethods: [...v.authMethods],
-        encryptedOauthClientId,
-        encryptedOauthClientSecret,
-        createdBy: args.userId,
+        prefixTemplates: [...args.definition.prefixTemplates],
+        fields: [...args.definition.fields],
+        headerInjections: [...args.definition.headerInjections],
+        queryInjections: [...args.definition.queryInjections],
+        authMode: args.definition.authMode,
+        revision: args.grantConfigurationChanged
+          ? args.existing.revision + 1
+          : args.existing.revision,
+        updatedAt: nowDate(),
       })
+      .where(
+        and(
+          eq(orgCustomConnectors.id, args.id),
+          eq(orgCustomConnectors.orgId, args.orgId),
+        ),
+      )
       .returning();
-    signal.throwIfAborted();
-
-    if (!row) {
-      throw new Error("Expected insert to return a row");
+    if (!updated) {
+      return null;
     }
-
-    return normaliseCustomConnectorRow(row);
-  },
-);
+    let storedOAuthConfig: CustomConnectorOAuthConfigRow | null = null;
+    if (args.oauthConfigUpdate.kind === "none") {
+      await tx
+        .delete(orgCustomConnectorOauthConfigs)
+        .where(
+          and(
+            eq(orgCustomConnectorOauthConfigs.connectorId, args.id),
+            eq(orgCustomConnectorOauthConfigs.orgId, args.orgId),
+          ),
+        );
+    } else if (args.oauthConfigUpdate.kind === "preserve") {
+      storedOAuthConfig = args.oauthConfigUpdate.config;
+    } else {
+      if (!args.encryptedClientSecret) {
+        throw new Error("Expected encrypted OAuth client secret");
+      }
+      const [upserted] = await tx
+        .insert(orgCustomConnectorOauthConfigs)
+        .values({
+          connectorId: args.id,
+          orgId: args.orgId,
+          ...args.oauthConfigUpdate.config,
+          encryptedClientSecret: args.encryptedClientSecret,
+        })
+        .onConflictDoUpdate({
+          target: orgCustomConnectorOauthConfigs.connectorId,
+          set: {
+            ...args.oauthConfigUpdate.config,
+            encryptedClientSecret: args.encryptedClientSecret,
+            updatedAt: nowDate(),
+          },
+        })
+        .returning();
+      storedOAuthConfig = upserted ?? null;
+    }
+    if (args.oauthConfigurationChanged) {
+      await tx
+        .delete(connectors)
+        .where(
+          and(
+            eq(connectors.customConnectorId, args.id),
+            eq(connectors.orgId, args.orgId),
+          ),
+        );
+    }
+    return { row: updated, oauthConfig: storedOAuthConfig };
+  });
+}
 
 export const updateCustomConnectorDefinition$ = command(
   async (
@@ -1325,120 +1501,74 @@ export const updateCustomConnectorDefinition$ = command(
     signal: AbortSignal,
   ): Promise<CustomConnectorRow | BadRequestResponse | NotFoundResponse> => {
     const writeDb = set(writeDb$);
-    const [existing] = await writeDb
-      .select()
-      .from(orgCustomConnectors)
-      .where(
-        and(
-          eq(orgCustomConnectors.id, args.id),
-          eq(orgCustomConnectors.orgId, args.orgId),
-        ),
-      )
-      .limit(1);
+    const existingConnector = await loadCustomConnectorForUpdate(writeDb, args);
     signal.throwIfAborted();
-    if (!existing) {
+    if (!existingConnector) {
       return notFound("Custom connector not found");
     }
-    const existingConnector = normaliseCustomConnectorRow(existing);
     const connectorCatalogSnapshot =
       args.connectorCatalogSnapshot ??
       (await loadConnectorRuntimeSnapshot(writeDb));
     signal.throwIfAborted();
     const v = validateDefinition(
-      definitionFromUpdateInput(args.input, existingConnector.authMethods),
+      definitionFromUpdateInput(args.input, existingConnector.authMode),
       connectorCatalogSnapshot.serverFirewalls,
     );
     if (isBadRequest(v)) {
       return v;
     }
-    const oauthCredentialsUpdate = validateOAuthClientCredentialsUpdate({
-      input: args.input,
-      existing: existingConnector,
-      authMethods: v.authMethods,
+    const oauthConfigUpdate = validateOAuthConfigUpdate({
+      authMode: v.authMode,
+      input: args.input.oauthConfig,
+      existingConfig: existingConnector.oauthConfig,
     });
-    if (isBadRequest(oauthCredentialsUpdate)) {
-      return oauthCredentialsUpdate;
+    if (isBadRequest(oauthConfigUpdate)) {
+      return oauthConfigUpdate;
     }
 
-    let encryptedOauthClientId = existing.encryptedOauthClientId;
-    let encryptedOauthClientSecret = existing.encryptedOauthClientSecret;
-    if (oauthCredentialsUpdate.kind === "remove") {
-      encryptedOauthClientId = null;
-      encryptedOauthClientSecret = null;
-    }
-    if (oauthCredentialsUpdate.kind === "replace") {
+    let encryptedClientSecret =
+      existingConnector.oauthConfig?.encryptedClientSecret ?? null;
+    if (oauthConfigUpdate.kind === "upsert" && oauthConfigUpdate.clientSecret) {
       const featureContext = await get(
         userFeatureSwitchContext(args.orgId, args.userId),
       );
       signal.throwIfAborted();
-      [encryptedOauthClientId, encryptedOauthClientSecret] = await Promise.all([
-        encryptStoredSecretValue(
-          oauthCredentialsUpdate.credentials.clientId,
-          featureContext,
-        ),
-        encryptStoredSecretValue(
-          oauthCredentialsUpdate.credentials.clientSecret,
-          featureContext,
-        ),
-      ]);
+      encryptedClientSecret = await encryptStoredSecretValue(
+        oauthConfigUpdate.clientSecret,
+        featureContext,
+      );
       signal.throwIfAborted();
     }
 
+    const nextOAuthConfig = nextOAuthConfigForUpdate({
+      connector: existingConnector,
+      orgId: args.orgId,
+      update: oauthConfigUpdate,
+      encryptedClientSecret,
+    });
     const oauthConfigurationChanged =
-      oauthCredentialsUpdate.kind === "replace" ||
-      !oauth2AuthMethodsEqual(
-        customConnectorOAuth2AuthMethod(existingConnector),
-        customConnectorOAuth2AuthMethod({ authMethods: v.authMethods }),
-      );
-    const legacy = legacyColumns(v);
-    const row = await writeDb.transaction(async (tx) => {
-      const [updated] = await tx
-        .update(orgCustomConnectors)
-        .set({
-          displayName: v.displayName,
-          prefixes: [...legacy.prefixes],
-          headerName: legacy.headerName,
-          headerTemplate: legacy.headerTemplate,
-          prefixTemplates: [...v.prefixTemplates],
-          fields: [...v.fields],
-          headerInjections: [...v.headerInjections],
-          queryInjections: [...v.queryInjections],
-          authMethods: [...v.authMethods],
-          encryptedOauthClientId,
-          encryptedOauthClientSecret,
-          updatedAt: nowDate(),
-        })
-        .where(
-          and(
-            eq(orgCustomConnectors.id, args.id),
-            eq(orgCustomConnectors.orgId, args.orgId),
-          ),
-        )
-        .returning();
-      if (!updated) {
-        return null;
-      }
-      if (oauthConfigurationChanged) {
-        await tx
-          .delete(orgCustomConnectorValues)
-          .where(
-            and(
-              eq(orgCustomConnectorValues.connectorId, args.id),
-              eq(orgCustomConnectorValues.orgId, args.orgId),
-              eq(orgCustomConnectorValues.kind, "secret"),
-              inArray(orgCustomConnectorValues.key, [
-                ...CUSTOM_CONNECTOR_OAUTH_VALUE_KEYS,
-              ]),
-            ),
-          );
-      }
-      return updated;
+      existingConnector.authMode !== v.authMode ||
+      !oauthConfigsEqual(existingConnector.oauthConfig, nextOAuthConfig);
+    const connectorGrantConfigurationChanged = grantConfigurationChanged({
+      existing: existingConnector,
+      definition: v,
+      nextOAuthConfig,
+    });
+    const result = await persistCustomConnectorUpdate(writeDb, {
+      orgId: args.orgId,
+      id: args.id,
+      definition: v,
+      existing: existingConnector,
+      oauthConfigUpdate,
+      encryptedClientSecret,
+      grantConfigurationChanged: connectorGrantConfigurationChanged,
+      oauthConfigurationChanged,
     });
     signal.throwIfAborted();
-    if (!row) {
+    if (!result) {
       return notFound("Custom connector not found");
     }
-    return normaliseCustomConnectorRow(row);
+    return normaliseCustomConnectorRow(result.row, result.oauthConfig);
   },
 );
 
@@ -1494,9 +1624,22 @@ export function getCustomConnectorById(args: {
 }): Computed<Promise<CustomConnectorRow | null>> {
   return computed(async (get): Promise<CustomConnectorRow | null> => {
     const db = get(db$);
-    const [row] = await db
-      .select()
+    const [result] = await db
+      .select({
+        connector: orgCustomConnectors,
+        oauthConfig: orgCustomConnectorOauthConfigs,
+      })
       .from(orgCustomConnectors)
+      .leftJoin(
+        orgCustomConnectorOauthConfigs,
+        and(
+          eq(
+            orgCustomConnectorOauthConfigs.connectorId,
+            orgCustomConnectors.id,
+          ),
+          eq(orgCustomConnectorOauthConfigs.orgId, orgCustomConnectors.orgId),
+        ),
+      )
       .where(
         and(
           eq(orgCustomConnectors.id, args.connectorId),
@@ -1504,10 +1647,10 @@ export function getCustomConnectorById(args: {
         ),
       )
       .limit(1);
-    if (!row) {
+    if (!result) {
       return null;
     }
-    return normaliseCustomConnectorRow(row);
+    return normaliseCustomConnectorRow(result.connector, result.oauthConfig);
   });
 }
 
@@ -1527,12 +1670,23 @@ export function getCustomConnectorResponse(args: {
     if (!connector) {
       return null;
     }
-    const markers = await loadConnectorValueMarkers({
-      db,
-      orgId: args.orgId,
-      userId: args.userId,
+    const [markers, oauthConnections] = await Promise.all([
+      loadConnectorValueMarkers({
+        db,
+        orgId: args.orgId,
+        userId: args.userId,
+      }),
+      loadConnectedOAuthConnectorIds({
+        db,
+        orgId: args.orgId,
+        userId: args.userId,
+      }),
+    ]);
+    return serialiseCustomConnector({
+      row: connector,
+      valueMarkers: markers,
+      oauthConnected: oauthConnections.has(connector.id),
     });
-    return serialiseCustomConnector({ row: connector, valueMarkers: markers });
   });
 }
 
@@ -1643,13 +1797,9 @@ export const setCustomConnectorValues$ = command(
     if (!connector) {
       return notFound("Custom connector not found");
     }
-    if (
-      !connector.authMethods.some((method) => {
-        return method.type === "api";
-      })
-    ) {
+    if (connector.authMode !== "manual") {
       return badRequestMessage(
-        "Custom connector does not support API authentication",
+        "OAuth custom connectors must be connected through OAuth",
       );
     }
     const values = validateValueInputs({ connector, values: args.values });
@@ -1661,22 +1811,6 @@ export const setCustomConnectorValues$ = command(
     );
     signal.throwIfAborted();
     const writeDb = set(writeDb$);
-    if (values.length > 0) {
-      await writeDb
-        .delete(orgCustomConnectorValues)
-        .where(
-          and(
-            eq(orgCustomConnectorValues.connectorId, args.connectorId),
-            eq(orgCustomConnectorValues.userId, args.userId),
-            eq(orgCustomConnectorValues.orgId, args.orgId),
-            eq(orgCustomConnectorValues.kind, "secret"),
-            inArray(orgCustomConnectorValues.key, [
-              ...CUSTOM_CONNECTOR_OAUTH_VALUE_KEYS,
-            ]),
-          ),
-        );
-      signal.throwIfAborted();
-    }
     for (const value of values) {
       const encryptedValue = await encryptStoredSecretValue(
         value.value,
@@ -1766,30 +1900,36 @@ export const disconnectCustomConnector$ = command(
       return notFound("Custom connector not found");
     }
     const writeDb = set(writeDb$);
-    await writeDb
-      .delete(orgCustomConnectorValues)
-      .where(
-        and(
-          eq(orgCustomConnectorValues.connectorId, args.connectorId),
-          eq(orgCustomConnectorValues.userId, args.userId),
-          eq(orgCustomConnectorValues.orgId, args.orgId),
-          eq(orgCustomConnectorValues.kind, "secret"),
-          inArray(orgCustomConnectorValues.key, [
-            LEGACY_SECRET_KEY,
-            ...CUSTOM_CONNECTOR_OAUTH_VALUE_KEYS,
-          ]),
-        ),
-      );
-    signal.throwIfAborted();
-    await writeDb
-      .delete(orgCustomConnectorSecrets)
-      .where(
-        and(
-          eq(orgCustomConnectorSecrets.connectorId, args.connectorId),
-          eq(orgCustomConnectorSecrets.userId, args.userId),
-          eq(orgCustomConnectorSecrets.orgId, args.orgId),
-        ),
-      );
+    await writeDb.transaction(async (tx) => {
+      await tx
+        .delete(orgCustomConnectorValues)
+        .where(
+          and(
+            eq(orgCustomConnectorValues.connectorId, args.connectorId),
+            eq(orgCustomConnectorValues.userId, args.userId),
+            eq(orgCustomConnectorValues.orgId, args.orgId),
+            eq(orgCustomConnectorValues.kind, "secret"),
+          ),
+        );
+      await tx
+        .delete(orgCustomConnectorSecrets)
+        .where(
+          and(
+            eq(orgCustomConnectorSecrets.connectorId, args.connectorId),
+            eq(orgCustomConnectorSecrets.userId, args.userId),
+            eq(orgCustomConnectorSecrets.orgId, args.orgId),
+          ),
+        );
+      await tx
+        .delete(connectors)
+        .where(
+          and(
+            eq(connectors.customConnectorId, args.connectorId),
+            eq(connectors.userId, args.userId),
+            eq(connectors.orgId, args.orgId),
+          ),
+        );
+    });
     signal.throwIfAborted();
     return undefined;
   },
@@ -1922,6 +2062,23 @@ export function renderTemplateForRuntime(args: {
     if (!namespace || !key) {
       continue;
     }
+    if (
+      namespace === "oauth" &&
+      key === CUSTOM_CONNECTOR_OAUTH_ACCESS_TOKEN_SECRET_NAME
+    ) {
+      if (
+        args.configuredValueMarkers &&
+        !args.configuredValueMarkers.has(
+          customConnectorValueMarkerKey({
+            kind: "secret",
+            key: CUSTOM_CONNECTOR_OAUTH_ACCESS_TOKEN_RUNTIME_KEY,
+          }),
+        )
+      ) {
+        return null;
+      }
+      continue;
+    }
     const field = fieldByReference.get(`${namespace}.${key}`);
     if (!field) {
       return null;
@@ -1946,6 +2103,16 @@ export function renderTemplateForRuntime(args: {
     .replaceAll(
       TEMPLATE_REFERENCE_REGEX,
       (_match, namespace: string, key: string) => {
+        if (
+          namespace === "oauth" &&
+          key === CUSTOM_CONNECTOR_OAUTH_ACCESS_TOKEN_SECRET_NAME
+        ) {
+          return `\${{ secrets.${customConnectorSecretKey({
+            connectorId: args.connectorId,
+            kind: "secret",
+            key: CUSTOM_CONNECTOR_OAUTH_ACCESS_TOKEN_RUNTIME_KEY,
+          })} }}`;
+        }
         const field = fieldByReference.get(`${namespace}.${key}`);
         if (!field) {
           return TEMPLATE_PLACEHOLDER_VALUE;
@@ -2041,27 +2208,47 @@ export async function loadCustomConnectorRuntimeData(
     ) => {
       return await operation();
     });
-  const connectors = await measure("connectorRows", async () => {
+  const connectorRows = await measure("connectorRows", async () => {
     return await db
-      .select()
+      .select({
+        connector: orgCustomConnectors,
+        oauthConfig: orgCustomConnectorOauthConfigs,
+      })
       .from(orgCustomConnectors)
+      .leftJoin(
+        orgCustomConnectorOauthConfigs,
+        and(
+          eq(
+            orgCustomConnectorOauthConfigs.connectorId,
+            orgCustomConnectors.id,
+          ),
+          eq(orgCustomConnectorOauthConfigs.orgId, orgCustomConnectors.orgId),
+        ),
+      )
       .where(
         args.connectorIds
           ? and(
               eq(orgCustomConnectors.orgId, args.orgId),
+              eq(orgCustomConnectors.enabled, true),
               inArray(orgCustomConnectors.id, [...args.connectorIds]),
             )
-          : eq(orgCustomConnectors.orgId, args.orgId),
+          : and(
+              eq(orgCustomConnectors.orgId, args.orgId),
+              eq(orgCustomConnectors.enabled, true),
+            ),
       );
   });
-  if (connectors.length === 0) {
+  if (connectorRows.length === 0) {
     return [];
   }
 
   return await measure("connectorValueRows", async () => {
     return await Promise.all(
-      connectors.map(async (row) => {
-        const connector = normaliseCustomConnectorRow(row);
+      connectorRows.map(async (row) => {
+        const connector = normaliseCustomConnectorRow(
+          row.connector,
+          row.oauthConfig,
+        );
         const values = await loadStoredValuesForConnector({
           db,
           orgId: args.orgId,

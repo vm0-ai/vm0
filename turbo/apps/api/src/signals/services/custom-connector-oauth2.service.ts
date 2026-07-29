@@ -1,15 +1,17 @@
 import { Buffer } from "node:buffer";
+import { createHash, randomBytes } from "node:crypto";
 import { isIP } from "node:net";
 import { request as httpsRequest } from "node:https";
 
 import { command } from "ccstate";
-import { and, eq, inArray } from "drizzle-orm";
+import { and, eq, isNotNull } from "drizzle-orm";
 import { z } from "zod";
-import type { CustomConnectorOAuth2AuthMethod } from "@vm0/api-contracts/contracts/zero-custom-connectors";
 import type { FeatureSwitchContext } from "@vm0/core/feature-switch";
 import { connectorOauthStates } from "@vm0/db/schema/connector-oauth-state";
-import { orgCustomConnectorSecrets } from "@vm0/db/schema/org-custom-connector-secret";
-import { orgCustomConnectorValues } from "@vm0/db/schema/org-custom-connector-value";
+import { connectors } from "@vm0/db/schema/connector";
+import { orgCustomConnectorOauthConfigs } from "@vm0/db/schema/org-custom-connector-oauth-config";
+import { orgCustomConnectors } from "@vm0/db/schema/org-custom-connector";
+import { secrets } from "@vm0/db/schema/secret";
 
 import {
   fetchHostHasBlockedAddress,
@@ -28,32 +30,25 @@ import {
   decryptStoredSecretValue,
   encryptStoredSecretValue,
 } from "./crypto.utils";
-import { userFeatureSwitchContext } from "./feature-switches.service";
 import {
-  CUSTOM_CONNECTOR_OAUTH_AUTHORIZATION_KEY,
-  CUSTOM_CONNECTOR_OAUTH_EXPIRES_AT_KEY,
-  CUSTOM_CONNECTOR_OAUTH_REFRESH_TOKEN_KEY,
-  CUSTOM_CONNECTOR_OAUTH_VALUE_KEYS,
-  customConnectorOAuth2AuthMethod,
+  CUSTOM_CONNECTOR_OAUTH_ACCESS_TOKEN_RUNTIME_KEY,
+  CUSTOM_CONNECTOR_OAUTH_ACCESS_TOKEN_SECRET_NAME,
+  CUSTOM_CONNECTOR_OAUTH_ID_TOKEN_SECRET_NAME,
+  CUSTOM_CONNECTOR_OAUTH_REFRESH_TOKEN_SECRET_NAME,
   getCustomConnectorById,
+  normaliseCustomConnectorRow,
+  type CustomConnectorOAuthConfigRow,
   type CustomConnectorRow,
   type StoredValueRow,
 } from "./zero-custom-connector.service";
 
-const CUSTOM_CONNECTOR_OAUTH_STATE_PREFIX = "custom:";
 const CUSTOM_CONNECTOR_OAUTH_METHOD_ID = "oauth2";
 const MAX_TOKEN_RESPONSE_BYTES = 64 * 1024;
 const TOKEN_REFRESH_LEEWAY_MS = 60 * 1000;
 
 const customConnectorOAuthStateContextSchema = z.object({
   connectorId: z.string().uuid(),
-  method: z.object({
-    type: z.literal("oauth2"),
-    authorizationUrl: z.string(),
-    tokenUrl: z.string(),
-    scopes: z.array(z.string()),
-    clientAuthentication: z.enum(["client_secret_basic", "client_secret_post"]),
-  }),
+  connectorRevision: z.number().int().positive(),
 });
 
 type CustomConnectorOAuthStateContext = z.infer<
@@ -63,14 +58,16 @@ type CustomConnectorOAuthStateContext = z.infer<
 const oauthTokenResponseSchema = z.object({
   access_token: z.string().min(1),
   refresh_token: z.string().min(1).nullable().optional(),
+  id_token: z.string().min(1).nullable().optional(),
   token_type: z.string().min(1).optional(),
   expires_in: z.union([z.number(), z.string()]).optional(),
 });
 
 interface OAuthTokenResult {
-  readonly authorization: string;
+  readonly accessToken: string;
   readonly refreshToken: string | null;
-  readonly expiresAt: string | null;
+  readonly idToken: string | null;
+  readonly expiresAt: Date | null;
 }
 
 interface OAuthClientCredentials {
@@ -82,15 +79,6 @@ interface PublicHttpsResponse {
   readonly status: number;
   readonly contentType: string;
   readonly body: string;
-}
-
-interface StoredPlainValue {
-  readonly key: string;
-  readonly value: string;
-}
-
-function customConnectorOAuthStateType(connectorId: string): string {
-  return `${CUSTOM_CONNECTOR_OAUTH_STATE_PREFIX}${connectorId}`;
 }
 
 function internalHostname(hostname: string): boolean {
@@ -244,56 +232,46 @@ function tokenResult(response: PublicHttpsResponse): OAuthTokenResult {
   if (!parsed.success) {
     throw new Error("OAuth token response is invalid");
   }
-  const tokenType = parsed.data.token_type ?? "Bearer";
-  if (
-    !/^[A-Za-z][A-Za-z0-9._~-]*$/u.test(tokenType) ||
-    hasHttpHeaderControlCharacter(parsed.data.access_token)
-  ) {
+  if (hasHttpHeaderControlCharacter(parsed.data.access_token)) {
     throw new Error("OAuth token response contains an invalid access token");
   }
   const expiresIn = expiresInSeconds(parsed.data.expires_in);
   return {
-    authorization: `${tokenType} ${parsed.data.access_token}`,
+    accessToken: parsed.data.access_token,
     refreshToken: parsed.data.refresh_token ?? null,
+    idToken: parsed.data.id_token ?? null,
     expiresAt:
       expiresIn === null
         ? null
-        : new Date(nowDate().getTime() + expiresIn * 1000).toISOString(),
+        : new Date(nowDate().getTime() + expiresIn * 1000),
   };
 }
 
 function tokenRequestAuthentication(args: {
-  readonly method: CustomConnectorOAuth2AuthMethod;
-  readonly clientId: string;
+  readonly config: CustomConnectorOAuthConfigRow;
   readonly clientSecret: string;
   readonly form: URLSearchParams;
 }): string | undefined {
-  if (args.method.clientAuthentication === "client_secret_post") {
-    args.form.set("client_id", args.clientId);
+  if (args.config.tokenEndpointAuthMethod === "client_secret_post") {
+    args.form.set("client_id", args.config.clientId);
     args.form.set("client_secret", args.clientSecret);
     return undefined;
   }
-  if (args.clientId.includes(":")) {
-    throw new Error(
-      "OAuth client ID must not contain a colon when using HTTP Basic authentication",
-    );
-  }
   return `Basic ${Buffer.from(
-    `${args.clientId}:${args.clientSecret}`,
+    `${args.config.clientId}:${args.clientSecret}`,
     "utf8",
   ).toString("base64")}`;
 }
 
 async function requestToken(args: {
-  readonly method: CustomConnectorOAuth2AuthMethod;
-  readonly clientId: string;
+  readonly config: CustomConnectorOAuthConfigRow;
   readonly clientSecret: string;
   readonly form: URLSearchParams;
   readonly signal: AbortSignal;
 }): Promise<OAuthTokenResult> {
   const authorization = tokenRequestAuthentication(args);
   const response = await postPublicHttpsForm(
-    new URL(args.method.tokenUrl),
+    new URL(args.config.tokenUrl),
     args.form,
     authorization,
     args.signal,
@@ -303,10 +281,10 @@ async function requestToken(args: {
 }
 
 export async function exchangeCustomConnectorOAuth2Code(args: {
-  readonly method: CustomConnectorOAuth2AuthMethod;
-  readonly clientId: string;
+  readonly config: CustomConnectorOAuthConfigRow;
   readonly clientSecret: string;
   readonly code: string;
+  readonly codeVerifier: string | null;
   readonly redirectUri: string;
   readonly signal: AbortSignal;
 }): Promise<OAuthTokenResult> {
@@ -315,12 +293,14 @@ export async function exchangeCustomConnectorOAuth2Code(args: {
     code: args.code,
     redirect_uri: args.redirectUri,
   });
+  if (args.codeVerifier) {
+    form.set("code_verifier", args.codeVerifier);
+  }
   return await requestToken({ ...args, form });
 }
 
 async function refreshCustomConnectorOAuth2Token(args: {
-  readonly method: CustomConnectorOAuth2AuthMethod;
-  readonly clientId: string;
+  readonly config: CustomConnectorOAuthConfigRow;
   readonly clientSecret: string;
   readonly refreshToken: string;
   readonly signal: AbortSignal;
@@ -332,21 +312,36 @@ async function refreshCustomConnectorOAuth2Token(args: {
   return await requestToken({ ...args, form });
 }
 
+function createPkceVerifier(): string {
+  return randomBytes(32).toString("base64url");
+}
+
+function pkceChallenge(verifier: string): string {
+  return createHash("sha256").update(verifier).digest("base64url");
+}
+
 function buildCustomConnectorOAuth2AuthorizationUrl(args: {
-  readonly method: CustomConnectorOAuth2AuthMethod;
-  readonly clientId: string;
+  readonly config: CustomConnectorOAuthConfigRow;
   readonly redirectUri: string;
   readonly state: string;
+  readonly codeVerifier: string | null;
 }): string {
-  const url = new URL(args.method.authorizationUrl);
+  const url = new URL(args.config.authorizationUrl);
+  for (const [name, value] of Object.entries(args.config.authorizationParams)) {
+    url.searchParams.set(name, value);
+  }
   url.searchParams.set("response_type", "code");
-  url.searchParams.set("client_id", args.clientId);
+  url.searchParams.set("client_id", args.config.clientId);
   url.searchParams.set("redirect_uri", args.redirectUri);
   url.searchParams.set("state", args.state);
-  if (args.method.scopes.length > 0) {
-    url.searchParams.set("scope", args.method.scopes.join(" "));
+  if (args.config.scopes.length > 0) {
+    url.searchParams.set("scope", args.config.scopes.join(" "));
   } else {
     url.searchParams.delete("scope");
+  }
+  if (args.codeVerifier) {
+    url.searchParams.set("code_challenge", pkceChallenge(args.codeVerifier));
+    url.searchParams.set("code_challenge_method", "S256");
   }
   return url.toString();
 }
@@ -372,51 +367,45 @@ export const startCustomConnectorOAuth2$ = command(
     if (!connector) {
       return notFound("Custom connector not found");
     }
-    const method = customConnectorOAuth2AuthMethod(connector);
-    if (!method) {
+    if (connector.authMode !== "oauth" || !connector.oauthConfig) {
       return badRequestMessage(
         "Custom connector does not support OAuth 2.0 authentication",
       );
     }
-    const featureContext = await get(
-      userFeatureSwitchContext(args.orgId, args.userId),
-    );
-    signal.throwIfAborted();
-    const credentials = await decryptCustomConnectorOAuth2Credentials(
-      connector,
-      featureContext,
-    );
-    signal.throwIfAborted();
-    if (!credentials) {
-      return badRequestMessage(
-        "Custom connector OAuth client credentials are not configured",
-      );
+    if (connector.oauthConfig.providerAdapter !== "standard") {
+      return badRequestMessage("OAuth provider adapter is not supported");
     }
     const state = generateConnectorOAuthState();
+    const codeVerifier =
+      connector.oauthConfig.pkceMethod === "S256" ? createPkceVerifier() : null;
     const authorizationUrl = buildCustomConnectorOAuth2AuthorizationUrl({
-      method,
-      clientId: credentials.clientId,
+      config: connector.oauthConfig,
       redirectUri: args.redirectUri,
       state,
+      codeVerifier,
     });
     const context: CustomConnectorOAuthStateContext = {
       connectorId: connector.id,
-      method,
+      connectorRevision: connector.revision,
     };
-    const writeDb = set(writeDb$);
-    await writeDb.insert(connectorOauthStates).values({
-      state,
-      type: customConnectorOAuthStateType(connector.id),
-      authMethod: CUSTOM_CONNECTOR_OAUTH_METHOD_ID,
-      userId: args.userId,
-      orgId: args.orgId,
-      redirectUri: args.redirectUri,
-      authorizationUrl,
-      oauthContext: JSON.stringify(context),
-      expiresAt: new Date(
-        nowDate().getTime() + CONNECTOR_OAUTH_COOKIE_MAX_AGE_SECONDS * 1000,
-      ),
-    });
+    await set(writeDb$)
+      .insert(connectorOauthStates)
+      .values({
+        state,
+        type: null,
+        customConnectorId: connector.id,
+        connectorRevision: connector.revision,
+        authMethod: CUSTOM_CONNECTOR_OAUTH_METHOD_ID,
+        userId: args.userId,
+        orgId: args.orgId,
+        redirectUri: args.redirectUri,
+        authorizationUrl,
+        codeVerifier,
+        oauthContext: JSON.stringify(context),
+        expiresAt: new Date(
+          nowDate().getTime() + CONNECTOR_OAUTH_COOKIE_MAX_AGE_SECONDS * 1000,
+        ),
+      });
     signal.throwIfAborted();
     return { authorizationUrl };
   },
@@ -434,158 +423,128 @@ export function parseCustomConnectorOAuthStateContext(
   return parsed.success ? parsed.data : null;
 }
 
-export function customConnectorOAuthMethodMatchesState(
-  method: CustomConnectorOAuth2AuthMethod,
-  stateMethod: CustomConnectorOAuth2AuthMethod,
-): boolean {
-  return (
-    method.authorizationUrl === stateMethod.authorizationUrl &&
-    method.tokenUrl === stateMethod.tokenUrl &&
-    method.clientAuthentication === stateMethod.clientAuthentication &&
-    method.scopes.length === stateMethod.scopes.length &&
-    method.scopes.every((scope, index) => {
-      return scope === stateMethod.scopes[index];
-    })
-  );
-}
-
 export async function decryptCustomConnectorOAuth2Credentials(
-  connector: Pick<
-    CustomConnectorRow,
-    "encryptedOauthClientId" | "encryptedOauthClientSecret"
-  >,
+  connector: Pick<CustomConnectorRow, "oauthConfig">,
   featureContext: FeatureSwitchContext,
 ): Promise<OAuthClientCredentials | null> {
-  if (
-    !connector.encryptedOauthClientId ||
-    !connector.encryptedOauthClientSecret
-  ) {
+  if (!connector.oauthConfig) {
     return null;
   }
-  const [clientId, clientSecret] = await Promise.all([
-    decryptStoredSecretValue(connector.encryptedOauthClientId, featureContext),
-    decryptStoredSecretValue(
-      connector.encryptedOauthClientSecret,
+  return {
+    clientId: connector.oauthConfig.clientId,
+    clientSecret: await decryptStoredSecretValue(
+      connector.oauthConfig.encryptedClientSecret,
       featureContext,
     ),
-  ]);
-  return { clientId, clientSecret };
+  };
 }
 
-async function encryptedStoredValues(
-  values: readonly StoredPlainValue[],
-  featureContext: FeatureSwitchContext,
-): Promise<
-  readonly {
-    readonly key: string;
-    readonly encryptedValue: string;
-  }[]
-> {
-  return await Promise.all(
-    values.map(async (value) => {
-      return {
-        key: value.key,
-        encryptedValue: await encryptStoredSecretValue(
-          value.value,
-          featureContext,
-        ),
-      };
-    }),
-  );
-}
-
-function plainOAuthValues(args: {
+async function encryptTokenValues(args: {
   readonly token: OAuthTokenResult;
   readonly fallbackRefreshToken?: string;
-}): readonly StoredPlainValue[] {
+  readonly fallbackEncryptedIdToken?: string;
+  readonly featureContext: FeatureSwitchContext;
+}): Promise<{
+  readonly accessToken: string;
+  readonly refreshToken: string | null;
+  readonly idToken: string | null;
+}> {
   const refreshToken = args.token.refreshToken ?? args.fallbackRefreshToken;
+  const [accessToken, encryptedRefreshToken, encryptedIdToken] =
+    await Promise.all([
+      encryptStoredSecretValue(args.token.accessToken, args.featureContext),
+      refreshToken
+        ? encryptStoredSecretValue(refreshToken, args.featureContext)
+        : Promise.resolve(null),
+      args.token.idToken
+        ? encryptStoredSecretValue(args.token.idToken, args.featureContext)
+        : Promise.resolve(args.fallbackEncryptedIdToken ?? null),
+    ]);
+  return {
+    accessToken,
+    refreshToken: encryptedRefreshToken,
+    idToken: encryptedIdToken,
+  };
+}
+
+function connectionTokenRows(args: {
+  readonly connectionId: string;
+  readonly orgId: string;
+  readonly userId: string;
+  readonly encrypted: Awaited<ReturnType<typeof encryptTokenValues>>;
+}): (typeof secrets.$inferInsert)[] {
   return [
     {
-      key: CUSTOM_CONNECTOR_OAUTH_AUTHORIZATION_KEY,
-      value: args.token.authorization,
+      name: CUSTOM_CONNECTOR_OAUTH_ACCESS_TOKEN_SECRET_NAME,
+      encryptedValue: args.encrypted.accessToken,
+      type: "connector",
+      connectorId: args.connectionId,
+      userId: args.userId,
+      orgId: args.orgId,
     },
-    ...(refreshToken
+    ...(args.encrypted.refreshToken
       ? [
           {
-            key: CUSTOM_CONNECTOR_OAUTH_REFRESH_TOKEN_KEY,
-            value: refreshToken,
+            name: CUSTOM_CONNECTOR_OAUTH_REFRESH_TOKEN_SECRET_NAME,
+            encryptedValue: args.encrypted.refreshToken,
+            type: "connector" as const,
+            connectorId: args.connectionId,
+            userId: args.userId,
+            orgId: args.orgId,
           },
         ]
       : []),
-    ...(args.token.expiresAt
+    ...(args.encrypted.idToken
       ? [
           {
-            key: CUSTOM_CONNECTOR_OAUTH_EXPIRES_AT_KEY,
-            value: args.token.expiresAt,
+            name: CUSTOM_CONNECTOR_OAUTH_ID_TOKEN_SECRET_NAME,
+            encryptedValue: args.encrypted.idToken,
+            type: "connector" as const,
+            connectorId: args.connectionId,
+            userId: args.userId,
+            orgId: args.orgId,
           },
         ]
       : []),
   ];
 }
 
-async function replaceCustomConnectorOAuthValues(args: {
+async function replaceConnectionTokens(args: {
   readonly db: Db;
+  readonly connectionId: string;
   readonly orgId: string;
   readonly userId: string;
-  readonly connectorId: string;
-  readonly values: readonly StoredPlainValue[];
+  readonly token: OAuthTokenResult;
+  readonly fallbackRefreshToken?: string;
+  readonly fallbackEncryptedIdToken?: string;
   readonly featureContext: FeatureSwitchContext;
-  readonly clearApiValues: boolean;
-}): Promise<readonly StoredValueRow[]> {
-  const encrypted = await encryptedStoredValues(
-    args.values,
-    args.featureContext,
-  );
+}): Promise<string> {
+  const encrypted = await encryptTokenValues(args);
   await args.db.transaction(async (tx) => {
     await tx
-      .delete(orgCustomConnectorValues)
+      .update(connectors)
+      .set({
+        tokenExpiresAt: args.token.expiresAt,
+        needsReconnect: false,
+        reconnectReason: null,
+        updatedAt: nowDate(),
+      })
       .where(
         and(
-          eq(orgCustomConnectorValues.connectorId, args.connectorId),
-          eq(orgCustomConnectorValues.userId, args.userId),
-          eq(orgCustomConnectorValues.orgId, args.orgId),
-          eq(orgCustomConnectorValues.kind, "secret"),
-          ...(args.clearApiValues
-            ? []
-            : [
-                inArray(orgCustomConnectorValues.key, [
-                  ...CUSTOM_CONNECTOR_OAUTH_VALUE_KEYS,
-                ]),
-              ]),
+          eq(connectors.id, args.connectionId),
+          eq(connectors.orgId, args.orgId),
+          eq(connectors.userId, args.userId),
         ),
       );
-    if (args.clearApiValues) {
-      await tx
-        .delete(orgCustomConnectorSecrets)
-        .where(
-          and(
-            eq(orgCustomConnectorSecrets.connectorId, args.connectorId),
-            eq(orgCustomConnectorSecrets.userId, args.userId),
-            eq(orgCustomConnectorSecrets.orgId, args.orgId),
-          ),
-        );
-    }
-    await tx.insert(orgCustomConnectorValues).values(
-      encrypted.map((value) => {
-        return {
-          connectorId: args.connectorId,
-          userId: args.userId,
-          orgId: args.orgId,
-          kind: "secret",
-          key: value.key,
-          encryptedValue: value.encryptedValue,
-        };
+    await tx.delete(secrets).where(eq(secrets.connectorId, args.connectionId));
+    await tx.insert(secrets).values(
+      connectionTokenRows({
+        ...args,
+        encrypted,
       }),
     );
   });
-  return encrypted.map((value) => {
-    return {
-      connectorId: args.connectorId,
-      kind: "secret",
-      key: value.key,
-      encryptedValue: value.encryptedValue,
-    };
-  });
+  return encrypted.accessToken;
 }
 
 export async function storeCustomConnectorOAuth2Connection(args: {
@@ -596,63 +555,207 @@ export async function storeCustomConnectorOAuth2Connection(args: {
   readonly token: OAuthTokenResult;
   readonly featureContext: FeatureSwitchContext;
 }): Promise<void> {
-  await replaceCustomConnectorOAuthValues({
-    ...args,
-    values: plainOAuthValues(args),
-    clearApiValues: true,
+  const encrypted = await encryptTokenValues(args);
+  await args.db.transaction(async (tx) => {
+    const [connection] = await tx
+      .insert(connectors)
+      .values({
+        type: null,
+        customConnectorId: args.connectorId,
+        authMethod: "oauth",
+        storageVersion: 1,
+        tokenExpiresAt: args.token.expiresAt,
+        userId: args.userId,
+        orgId: args.orgId,
+      })
+      .onConflictDoUpdate({
+        target: [
+          connectors.orgId,
+          connectors.userId,
+          connectors.customConnectorId,
+        ],
+        targetWhere: isNotNull(connectors.customConnectorId),
+        set: {
+          tokenExpiresAt: args.token.expiresAt,
+          needsReconnect: false,
+          reconnectReason: null,
+          updatedAt: nowDate(),
+        },
+      })
+      .returning({ id: connectors.id });
+    if (!connection) {
+      throw new Error("Expected custom connector OAuth connection");
+    }
+    await tx.delete(secrets).where(eq(secrets.connectorId, connection.id));
+    await tx.insert(secrets).values(
+      connectionTokenRows({
+        ...args,
+        connectionId: connection.id,
+        encrypted,
+      }),
+    );
   });
 }
 
-function encryptedValueByKey(
-  values: readonly StoredValueRow[],
-  key: string,
-): string | null {
-  return (
-    values.find((value) => {
-      return value.kind === "secret" && value.key === key;
-    })?.encryptedValue ?? null
-  );
+interface StoredConnection {
+  readonly id: string;
+  readonly tokenExpiresAt: Date | null;
+  readonly needsReconnect: boolean;
+  readonly encryptedAccessToken: string | null;
+  readonly encryptedRefreshToken: string | null;
+  readonly encryptedIdToken: string | null;
 }
 
-async function decryptRequiredOAuthValue(args: {
-  readonly values: readonly StoredValueRow[];
-  readonly key: string;
-  readonly featureContext: FeatureSwitchContext;
-}): Promise<string | null> {
-  const encrypted = encryptedValueByKey(args.values, args.key);
-  return encrypted
-    ? await decryptStoredSecretValue(encrypted, args.featureContext)
-    : null;
-}
-
-async function clearStoredCustomConnectorOAuthValues(args: {
+async function loadConnection(args: {
   readonly db: Db;
   readonly orgId: string;
   readonly userId: string;
   readonly connectorId: string;
-}): Promise<void> {
-  await args.db
-    .delete(orgCustomConnectorValues)
+}): Promise<StoredConnection | null> {
+  const rows = await args.db
+    .select({
+      id: connectors.id,
+      tokenExpiresAt: connectors.tokenExpiresAt,
+      needsReconnect: connectors.needsReconnect,
+      secretName: secrets.name,
+      encryptedValue: secrets.encryptedValue,
+    })
+    .from(connectors)
+    .leftJoin(secrets, eq(secrets.connectorId, connectors.id))
     .where(
       and(
-        eq(orgCustomConnectorValues.connectorId, args.connectorId),
-        eq(orgCustomConnectorValues.userId, args.userId),
-        eq(orgCustomConnectorValues.orgId, args.orgId),
-        eq(orgCustomConnectorValues.kind, "secret"),
-        inArray(orgCustomConnectorValues.key, [
-          ...CUSTOM_CONNECTOR_OAUTH_VALUE_KEYS,
-        ]),
+        eq(connectors.customConnectorId, args.connectorId),
+        eq(connectors.orgId, args.orgId),
+        eq(connectors.userId, args.userId),
+        eq(connectors.authMethod, "oauth"),
       ),
     );
+  const first = rows[0];
+  if (!first) {
+    return null;
+  }
+  return {
+    id: first.id,
+    tokenExpiresAt: first.tokenExpiresAt,
+    needsReconnect: first.needsReconnect,
+    encryptedAccessToken:
+      rows.find((row) => {
+        return (
+          row.secretName === CUSTOM_CONNECTOR_OAUTH_ACCESS_TOKEN_SECRET_NAME
+        );
+      })?.encryptedValue ?? null,
+    encryptedRefreshToken:
+      rows.find((row) => {
+        return (
+          row.secretName === CUSTOM_CONNECTOR_OAUTH_REFRESH_TOKEN_SECRET_NAME
+        );
+      })?.encryptedValue ?? null,
+    encryptedIdToken:
+      rows.find((row) => {
+        return row.secretName === CUSTOM_CONNECTOR_OAUTH_ID_TOKEN_SECRET_NAME;
+      })?.encryptedValue ?? null,
+  };
 }
 
-function withoutOAuthValues(
+function withoutRuntimeOAuthToken(
   values: readonly StoredValueRow[],
 ): readonly StoredValueRow[] {
-  const oauthKeys = new Set<string>(CUSTOM_CONNECTOR_OAUTH_VALUE_KEYS);
   return values.filter((value) => {
-    return value.kind !== "secret" || !oauthKeys.has(value.key);
+    return !(
+      value.kind === "secret" &&
+      value.key === CUSTOM_CONNECTOR_OAUTH_ACCESS_TOKEN_RUNTIME_KEY
+    );
   });
+}
+
+function withRuntimeOAuthToken(
+  values: readonly StoredValueRow[],
+  connectorId: string,
+  encryptedValue: string,
+): readonly StoredValueRow[] {
+  return [
+    ...withoutRuntimeOAuthToken(values),
+    {
+      connectorId,
+      kind: "secret",
+      key: CUSTOM_CONNECTOR_OAUTH_ACCESS_TOKEN_RUNTIME_KEY,
+      encryptedValue,
+    },
+  ];
+}
+
+async function resolveCustomConnectorOAuth2AccessToken(args: {
+  readonly db: Db;
+  readonly orgId: string;
+  readonly userId: string;
+  readonly connector: CustomConnectorRow;
+  readonly featureContext: FeatureSwitchContext;
+  readonly signal: AbortSignal;
+}): Promise<string | null> {
+  if (args.connector.authMode !== "oauth" || !args.connector.oauthConfig) {
+    return null;
+  }
+  const connection = await loadConnection({
+    db: args.db,
+    orgId: args.orgId,
+    userId: args.userId,
+    connectorId: args.connector.id,
+  });
+  args.signal.throwIfAborted();
+  if (!connection?.encryptedAccessToken || connection.needsReconnect) {
+    return null;
+  }
+  if (
+    !connection.tokenExpiresAt ||
+    connection.tokenExpiresAt.getTime() >
+      nowDate().getTime() + TOKEN_REFRESH_LEEWAY_MS
+  ) {
+    return connection.encryptedAccessToken;
+  }
+  if (!connection.encryptedRefreshToken) {
+    await args.db
+      .update(connectors)
+      .set({
+        needsReconnect: true,
+        reconnectReason: "missing_refresh_token",
+        updatedAt: nowDate(),
+      })
+      .where(eq(connectors.id, connection.id));
+    return null;
+  }
+  const [credentials, refreshToken] = await Promise.all([
+    decryptCustomConnectorOAuth2Credentials(
+      args.connector,
+      args.featureContext,
+    ),
+    decryptStoredSecretValue(
+      connection.encryptedRefreshToken,
+      args.featureContext,
+    ),
+  ]);
+  args.signal.throwIfAborted();
+  if (!credentials) {
+    return null;
+  }
+  const token = await refreshCustomConnectorOAuth2Token({
+    config: args.connector.oauthConfig,
+    clientSecret: credentials.clientSecret,
+    refreshToken,
+    signal: args.signal,
+  });
+  args.signal.throwIfAborted();
+  const encryptedAccessToken = await replaceConnectionTokens({
+    db: args.db,
+    connectionId: connection.id,
+    orgId: args.orgId,
+    userId: args.userId,
+    token,
+    fallbackRefreshToken: refreshToken,
+    fallbackEncryptedIdToken: connection.encryptedIdToken ?? undefined,
+    featureContext: args.featureContext,
+  });
+  args.signal.throwIfAborted();
+  return encryptedAccessToken;
 }
 
 export async function refreshCustomConnectorOAuth2ValuesIfNeeded(args: {
@@ -664,72 +767,71 @@ export async function refreshCustomConnectorOAuth2ValuesIfNeeded(args: {
   readonly featureContext: FeatureSwitchContext;
   readonly signal: AbortSignal;
 }): Promise<readonly StoredValueRow[]> {
-  const method = customConnectorOAuth2AuthMethod(args.connector);
-  const authorization = encryptedValueByKey(
-    args.values,
-    CUSTOM_CONNECTOR_OAUTH_AUTHORIZATION_KEY,
-  );
-  if (!method || !authorization) {
+  if (args.connector.authMode !== "oauth") {
     return args.values;
   }
-  const expiresAtValue = await decryptRequiredOAuthValue({
-    values: args.values,
-    key: CUSTOM_CONNECTOR_OAUTH_EXPIRES_AT_KEY,
-    featureContext: args.featureContext,
+  const encryptedAccessToken =
+    await resolveCustomConnectorOAuth2AccessToken(args);
+  return encryptedAccessToken
+    ? withRuntimeOAuthToken(
+        args.values,
+        args.connector.id,
+        encryptedAccessToken,
+      )
+    : withoutRuntimeOAuthToken(args.values);
+}
+
+async function loadLiveCustomConnector(args: {
+  readonly db: Db;
+  readonly orgId: string;
+  readonly connectorId: string;
+}): Promise<CustomConnectorRow | null> {
+  const [row] = await args.db
+    .select({
+      connector: orgCustomConnectors,
+      oauthConfig: orgCustomConnectorOauthConfigs,
+    })
+    .from(orgCustomConnectors)
+    .leftJoin(
+      orgCustomConnectorOauthConfigs,
+      and(
+        eq(orgCustomConnectorOauthConfigs.connectorId, orgCustomConnectors.id),
+        eq(orgCustomConnectorOauthConfigs.orgId, orgCustomConnectors.orgId),
+      ),
+    )
+    .where(
+      and(
+        eq(orgCustomConnectors.id, args.connectorId),
+        eq(orgCustomConnectors.orgId, args.orgId),
+        eq(orgCustomConnectors.enabled, true),
+      ),
+    )
+    .limit(1);
+  return row
+    ? normaliseCustomConnectorRow(row.connector, row.oauthConfig)
+    : null;
+}
+
+export async function resolveLiveCustomConnectorOAuth2AccessToken(args: {
+  readonly db: Db;
+  readonly orgId: string;
+  readonly userId: string;
+  readonly connectorId: string;
+  readonly connectorRevision: number;
+  readonly featureContext: FeatureSwitchContext;
+  readonly signal: AbortSignal;
+}): Promise<string | null> {
+  const connector = await loadLiveCustomConnector(args);
+  args.signal.throwIfAborted();
+  if (
+    !connector ||
+    connector.revision !== args.connectorRevision ||
+    connector.authMode !== "oauth"
+  ) {
+    return null;
+  }
+  return await resolveCustomConnectorOAuth2AccessToken({
+    ...args,
+    connector,
   });
-  args.signal.throwIfAborted();
-  if (!expiresAtValue) {
-    return args.values;
-  }
-  const expiresAt = new Date(expiresAtValue);
-  if (Number.isNaN(expiresAt.getTime())) {
-    throw new Error("Stored custom connector OAuth expiration is invalid");
-  }
-  if (expiresAt.getTime() > nowDate().getTime() + TOKEN_REFRESH_LEEWAY_MS) {
-    return args.values;
-  }
-  const [credentials, refreshToken] = await Promise.all([
-    decryptCustomConnectorOAuth2Credentials(
-      args.connector,
-      args.featureContext,
-    ),
-    decryptRequiredOAuthValue({
-      values: args.values,
-      key: CUSTOM_CONNECTOR_OAUTH_REFRESH_TOKEN_KEY,
-      featureContext: args.featureContext,
-    }),
-  ]);
-  args.signal.throwIfAborted();
-  if (!credentials || !refreshToken) {
-    await clearStoredCustomConnectorOAuthValues({
-      db: args.db,
-      orgId: args.orgId,
-      userId: args.userId,
-      connectorId: args.connector.id,
-    });
-    args.signal.throwIfAborted();
-    return withoutOAuthValues(args.values);
-  }
-  const token = await refreshCustomConnectorOAuth2Token({
-    method,
-    clientId: credentials.clientId,
-    clientSecret: credentials.clientSecret,
-    refreshToken,
-    signal: args.signal,
-  });
-  args.signal.throwIfAborted();
-  const refreshed = await replaceCustomConnectorOAuthValues({
-    db: args.db,
-    orgId: args.orgId,
-    userId: args.userId,
-    connectorId: args.connector.id,
-    values: plainOAuthValues({
-      token,
-      fallbackRefreshToken: refreshToken,
-    }),
-    featureContext: args.featureContext,
-    clearApiValues: false,
-  });
-  args.signal.throwIfAborted();
-  return [...withoutOAuthValues(args.values), ...refreshed];
 }

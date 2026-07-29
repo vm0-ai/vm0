@@ -49,14 +49,14 @@ const connectorsApi = createConnectorBddApi(context);
 const authOrgApi = createAuthOrgAgentsBddApi(context);
 
 function uniqueSlug(prefix: string): string {
-  return `${prefix}-${randomUUID().replace(/-/g, "").slice(0, 12)}`;
+  return `_${prefix}-${randomUUID().replace(/-/g, "").slice(0, 12)}`;
 }
 
 function customConnectorBody(slug: string) {
   return {
     slug,
     displayName: "BDD Custom Connector",
-    prefixes: [`https://${slug}.example.test/v1/`],
+    prefixes: [`https://${slug.slice(1)}.example.test/v1/`],
     headerName: "Authorization",
     headerTemplate: "Bearer {{secret}}",
   };
@@ -1509,7 +1509,7 @@ describe("CONN-02: external-code authorization", () => {
 });
 
 describe("CONN-03: custom connectors and connector-owned secrets", () => {
-  it("stores OAuth app credentials at creation and lets members authorize", async () => {
+  it("stores an OAuth app config and lets members authorize", async () => {
     mockEnv("APP_URL", "https://app.vm0.test");
     const provider = mockCustomConnectorOAuth2Provider(context);
     const bdd = createBddApi(context);
@@ -1522,35 +1522,28 @@ describe("CONN-03: custom connectors and connector-owned secrets", () => {
     const clientId = "bdd-custom-oauth-client-id";
     const clientSecret = "bdd-custom-oauth-client-secret";
     const connectorBody = {
-      displayName: "BDD Multi Auth Connector",
+      displayName: "BDD OAuth Connector",
       prefixTemplates: ["https://multi-auth.example.test/v1/"],
-      fields: [
-        {
-          key: "secret",
-          label: "Secret",
-          kind: "secret" as const,
-          required: true,
-        },
-      ],
+      fields: [],
       headerInjections: [
         {
           name: "Authorization",
-          valueTemplate: "Bearer {{secrets.secret}}",
+          valueTemplate: "Bearer {{oauth.access_token}}",
         },
       ],
       queryInjections: [],
-      authMethods: [
-        { type: "api" as const },
-        {
-          type: "oauth2" as const,
-          authorizationUrl: provider.authorizationUrl,
-          tokenUrl: provider.tokenUrl,
-          scopes: ["read", "write"],
-          clientAuthentication: "client_secret_post" as const,
-        },
-      ],
-      oauthClientId: clientId,
-      oauthClientSecret: clientSecret,
+      authMode: "oauth" as const,
+      oauthConfig: {
+        providerAdapter: "standard" as const,
+        clientId,
+        clientSecret,
+        authorizationUrl: provider.authorizationUrl,
+        tokenUrl: provider.tokenUrl,
+        tokenEndpointAuthMethod: "client_secret_post" as const,
+        pkceMethod: "none" as const,
+        scopes: ["read", "write"],
+        authorizationParams: {},
+      },
     };
 
     const disabled = await connectorsApi.requestCreateCustomConnector(
@@ -1571,25 +1564,29 @@ describe("CONN-03: custom connectors and connector-owned secrets", () => {
       admin,
       {
         ...connectorBody,
-        oauthClientId: undefined,
-        oauthClientSecret: undefined,
+        oauthConfig: {
+          ...connectorBody.oauthConfig,
+          clientSecret: undefined,
+        },
       },
       [400],
     );
     expectApiError(missingCredentials.body);
     expect(missingCredentials.body.error.message).toContain(
-      "client ID and client secret are required",
+      "client secret is required",
     );
     const created = await connectorsApi.createCustomConnector(
       admin,
       connectorBody,
     );
     expect(created).toMatchObject({
-      authMethods: connectorBody.authMethods,
+      authMode: "oauth",
+      oauthConfig: {
+        clientId,
+        scopes: ["read", "write"],
+      },
       connected: false,
-      connectedAuthMethod: null,
     });
-    expectNoVisibleSecret(created, clientId);
     expectNoVisibleSecret(created, clientSecret);
 
     const authorizationUrl = await connectorsApi.startCustomConnectorOAuth2(
@@ -1638,39 +1635,13 @@ describe("CONN-03: custom connectors and connector-owned secrets", () => {
       }),
     ).toMatchObject({
       connected: true,
-      connectedAuthMethod: "oauth2",
       hasSecret: true,
     });
     expectNoVisibleSecret(oauthConnected, clientSecret);
     expectNoVisibleSecret(oauthConnected, "custom-oauth-initial-access-token");
     expectNoVisibleSecret(oauthConnected, "custom-oauth-refresh-token");
 
-    await connectorsApi.setCustomConnectorSecret(
-      admin,
-      created.id,
-      "bdd-api-secret",
-    );
-    const apiConnected = await connectorsApi.listCustomConnectors(admin);
-    expect(
-      apiConnected.find((connector) => {
-        return connector.id === created.id;
-      }),
-    ).toMatchObject({
-      connected: true,
-      connectedAuthMethod: "api",
-      hasSecret: true,
-    });
-    expectNoVisibleSecret(apiConnected, "bdd-api-secret");
-
-    const agent = await bdd.createAgent(admin, {
-      displayName: "BDD Multi Auth Agent",
-    });
-    await connectorsApi.updateAgentCustomConnectors(admin, agent.agentId, [
-      created.id,
-    ]);
-
     await connectorsApi.deleteCustomConnector(admin, created.id);
-    await bdd.deleteAgent(admin, agent.agentId);
   });
 
   it("updates OAuth settings, preserves stored client credentials, and clears member OAuth grants", async () => {
@@ -1694,19 +1665,25 @@ describe("CONN-03: custom connectors and connector-owned secrets", () => {
       displayName: "BDD Editable OAuth Connector",
       prefixTemplates: ["https://editable-oauth.example.test/v1/"],
       fields: [],
-      headerInjections: [],
-      queryInjections: [],
-      authMethods: [
+      headerInjections: [
         {
-          type: "oauth2",
-          authorizationUrl: provider.authorizationUrl,
-          tokenUrl: provider.tokenUrl,
-          scopes: ["read"],
-          clientAuthentication: "client_secret_post",
+          name: "Authorization",
+          valueTemplate: "Bearer {{oauth.access_token}}",
         },
       ],
-      oauthClientId: clientId,
-      oauthClientSecret: clientSecret,
+      queryInjections: [],
+      authMode: "oauth",
+      oauthConfig: {
+        providerAdapter: "standard",
+        clientId,
+        clientSecret,
+        authorizationUrl: provider.authorizationUrl,
+        tokenUrl: provider.tokenUrl,
+        tokenEndpointAuthMethod: "client_secret_post",
+        pkceMethod: "none",
+        scopes: ["read"],
+        authorizationParams: {},
+      },
     });
 
     const initialAuthorizationUrl =
@@ -1722,24 +1699,25 @@ describe("CONN-03: custom connectors and connector-owned secrets", () => {
       }),
     ).toMatchObject({
       connected: true,
-      connectedAuthMethod: "oauth2",
     });
 
     const updateBody = {
       displayName: "BDD Edited OAuth Connector",
       prefixTemplates: ["https://editable-oauth.example.test/v2/"],
       fields: [],
-      headerInjections: [],
+      headerInjections: created.headerInjections,
       queryInjections: [],
-      authMethods: [
-        {
-          type: "oauth2" as const,
-          authorizationUrl: provider.authorizationUrl,
-          tokenUrl: provider.tokenUrl,
-          scopes: ["read", "write"],
-          clientAuthentication: "client_secret_post" as const,
-        },
-      ],
+      authMode: "oauth" as const,
+      oauthConfig: {
+        providerAdapter: "standard" as const,
+        clientId,
+        authorizationUrl: provider.authorizationUrl,
+        tokenUrl: provider.tokenUrl,
+        tokenEndpointAuthMethod: "client_secret_post" as const,
+        pkceMethod: "none" as const,
+        scopes: ["read", "write"],
+        authorizationParams: {},
+      },
     };
     const memberUpdate = await connectorsApi.requestUpdateCustomConnector(
       member,
@@ -1750,21 +1728,6 @@ describe("CONN-03: custom connectors and connector-owned secrets", () => {
     expectApiError(memberUpdate.body);
     expect(memberUpdate.body.error.message).toContain("Only org admins");
 
-    const incompleteCredentials =
-      await connectorsApi.requestUpdateCustomConnector(
-        admin,
-        created.id,
-        {
-          ...updateBody,
-          oauthClientId: "replacement-client-id",
-        },
-        [400],
-      );
-    expectApiError(incompleteCredentials.body);
-    expect(incompleteCredentials.body.error.message).toContain(
-      "must be provided together",
-    );
-
     const updated = await connectorsApi.updateCustomConnector(
       admin,
       created.id,
@@ -1773,9 +1736,12 @@ describe("CONN-03: custom connectors and connector-owned secrets", () => {
     expect(updated).toMatchObject({
       displayName: "BDD Edited OAuth Connector",
       prefixes: ["https://editable-oauth.example.test/v2/"],
-      authMethods: updateBody.authMethods,
+      authMode: "oauth",
+      oauthConfig: {
+        clientId,
+        scopes: ["read", "write"],
+      },
     });
-    expectNoVisibleSecret(updated, clientId);
     expectNoVisibleSecret(updated, clientSecret);
 
     const disconnected = await connectorsApi.listCustomConnectors(member);
@@ -1785,8 +1751,7 @@ describe("CONN-03: custom connectors and connector-owned secrets", () => {
       }),
     ).toMatchObject({
       connected: false,
-      connectedAuthMethod: null,
-      missingRequiredFields: ["oauth2"],
+      missingRequiredFields: ["oauth"],
     });
 
     const nextAuthorizationUrl = await connectorsApi.startCustomConnectorOAuth2(
@@ -1810,19 +1775,25 @@ describe("CONN-03: custom connectors and connector-owned secrets", () => {
       displayName: "BDD OAuth Only Connector",
       prefixTemplates: ["https://oauth-only.example.test/v1/"],
       fields: [],
-      headerInjections: [],
-      queryInjections: [],
-      authMethods: [
+      headerInjections: [
         {
-          type: "oauth2",
-          authorizationUrl: provider.authorizationUrl,
-          tokenUrl: provider.tokenUrl,
-          scopes: ["read"],
-          clientAuthentication: "client_secret_post",
+          name: "Authorization",
+          valueTemplate: "Bearer {{oauth.access_token}}",
         },
       ],
-      oauthClientId: "oauth-only-client-id",
-      oauthClientSecret: "oauth-only-client-secret",
+      queryInjections: [],
+      authMode: "oauth",
+      oauthConfig: {
+        providerAdapter: "standard",
+        clientId: "oauth-only-client-id",
+        clientSecret: "oauth-only-client-secret",
+        authorizationUrl: provider.authorizationUrl,
+        tokenUrl: provider.tokenUrl,
+        tokenEndpointAuthMethod: "client_secret_post",
+        pkceMethod: "none",
+        scopes: ["read"],
+        authorizationParams: {},
+      },
     });
 
     const rejected = await connectorsApi.requestSaveCustomConnectorProposal(
@@ -1860,9 +1831,7 @@ describe("CONN-03: custom connectors and connector-owned secrets", () => {
       [400],
     );
     expectApiError(rejected.body);
-    expect(rejected.body.error.message).toContain(
-      "require an API authentication method",
-    );
+    expect(rejected.body.error.message).toContain("must be variables");
 
     const listed = await connectorsApi.listCustomConnectors(admin);
     expect(listed).toContainEqual(original);
@@ -1911,7 +1880,7 @@ describe("CONN-03: custom connectors and connector-owned secrets", () => {
     ).toMatchObject({
       slug,
       displayName: "BDD Custom Connector",
-      prefixes: [`https://${slug}.example.test/v1/`],
+      prefixes: [`https://${slug.slice(1)}.example.test/v1/`],
       headerName: "Authorization",
       headerTemplate: "Bearer {{secret}}",
       hasSecret: false,
@@ -1932,11 +1901,11 @@ describe("CONN-03: custom connectors and connector-owned secrets", () => {
 
     const definitionUpdateBody = {
       displayName: "BDD Custom Connector Updated",
-      prefixTemplates: [`https://${slug}.example.test/v2/`],
+      prefixTemplates: [`https://${slug.slice(1)}.example.test/v2/`],
       fields: created.fields,
       headerInjections: created.headerInjections,
       queryInjections: created.queryInjections,
-      authMethods: created.authMethods,
+      authMode: created.authMode,
     };
     const disabledUpdate = await connectorsApi.requestUpdateCustomConnector(
       admin,
@@ -1957,9 +1926,9 @@ describe("CONN-03: custom connectors and connector-owned secrets", () => {
     );
     expect(updated).toMatchObject({
       displayName: "BDD Custom Connector Updated",
-      prefixes: [`https://${slug}.example.test/v2/`],
+      prefixes: [`https://${slug.slice(1)}.example.test/v2/`],
+      revision: 2,
       connected: true,
-      connectedAuthMethod: "api",
       hasSecret: true,
     });
 
@@ -1990,6 +1959,20 @@ describe("CONN-03: custom connectors and connector-owned secrets", () => {
     await expect(
       connectorsApi.readAgentCustomConnectors(admin, agent.agentId),
     ).resolves.toStrictEqual([created.id]);
+
+    const securityUpdated = await connectorsApi.updateCustomConnector(
+      admin,
+      created.id,
+      {
+        ...definitionUpdateBody,
+        displayName: "BDD Custom Connector Renamed",
+        prefixTemplates: [`https://${slug.slice(1)}.example.test/v3/`],
+      },
+    );
+    expect(securityUpdated.revision).toBe(3);
+    await expect(
+      connectorsApi.readAgentCustomConnectors(admin, agent.agentId),
+    ).resolves.toStrictEqual([]);
 
     const otherAdmin = bdd.user({ orgRole: "org:admin" });
     const otherConnector = await connectorsApi.createCustomConnector(
@@ -2284,7 +2267,7 @@ describe("CONN-03: custom connectors and connector-owned secrets", () => {
 
     expect(connector.prefixes).toStrictEqual([rawPrefix]);
     expect(connector.prefixTemplates).toStrictEqual([rawPrefix]);
-    expect(connector.slug).toMatch(/^xn-mnich-kva-example-[a-z0-9]{6}$/);
+    expect(connector.slug).toMatch(/^_xn-mnich-kva-example-[a-z0-9]{6}$/);
 
     await connectorsApi.deleteCustomConnector(admin, connector.id);
     await expect(
@@ -2467,7 +2450,7 @@ describe("CONN-03: custom connectors and connector-owned secrets", () => {
       headerTemplate: "Bearer {{secret}}",
     });
     expect(autoSlug.slug).toMatch(
-      new RegExp(`^api-bdd${rand}-example-test-[a-z0-9]{6}$`),
+      new RegExp(`^_api-bdd${rand}-example-test-[a-z0-9]{6}$`),
     );
     expect(autoSlug.prefixes).toStrictEqual([`https://api.${host}/v1/`]);
     expect(autoSlug.hasSecret).toBeFalsy();
@@ -2479,7 +2462,7 @@ describe("CONN-03: custom connectors and connector-owned secrets", () => {
       headerTemplate: "Bearer {{secret}}",
     });
     expect(wildcard.slug).toMatch(
-      new RegExp(`^bdd${rand}-example-test-[a-z0-9]{6}$`),
+      new RegExp(`^_bdd${rand}-example-test-[a-z0-9]{6}$`),
     );
     expect(wildcard.prefixes).toStrictEqual([`https://*.${host}/v1/`]);
 

@@ -50,6 +50,7 @@ import { ROUTES } from "../../../signals/route-paths.ts";
 import { resetSignal } from "../../../signals/utils.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { submitManualGrant$ } from "../../../signals/zero-page/settings/connectors.ts";
+import { customConnectorCreateForm$ } from "../../../signals/zero-page/settings/custom-connectors.ts";
 
 const context = testContext();
 const resetAfterManualGrantConnectSignal$ = resetSignal();
@@ -287,6 +288,13 @@ function customConnector(
   };
 }
 
+function publicCustomConnectorOAuthConfig(
+  config: NonNullable<CreateCustomConnectorBody["oauthConfig"]>,
+) {
+  const { clientSecret: _clientSecret, ...publicConfig } = config;
+  return publicConfig;
+}
+
 function publicStatusItem(args: {
   readonly connectorSlug: ConnectorSlug;
   readonly label: string;
@@ -421,7 +429,12 @@ function mockCustomConnectorStory(): void {
           fields: body.fields,
           headerInjections: body.headerInjections,
           queryInjections: body.queryInjections,
-          ...(body.authMethods ? { authMethods: body.authMethods } : {}),
+          authMode: body.authMode ?? connector.authMode,
+          ...(body.oauthConfig
+            ? {
+                oauthConfig: publicCustomConnectorOAuthConfig(body.oauthConfig),
+              }
+            : {}),
           headerName: firstHeader?.name ?? connector.headerName,
           headerTemplate:
             firstHeader?.valueTemplate.replaceAll(
@@ -3212,8 +3225,12 @@ describe("connectors page", () => {
           fields: body.fields ?? [],
           headerInjections: body.headerInjections ?? [],
           queryInjections: body.queryInjections ?? [],
-          ...(body.authMethods ? { authMethods: body.authMethods } : {}),
-          connectedAuthMethod: null,
+          authMode: body.authMode,
+          ...(body.oauthConfig
+            ? {
+                oauthConfig: publicCustomConnectorOAuthConfig(body.oauthConfig),
+              }
+            : {}),
         });
         return respond(201, connector);
       },
@@ -3234,7 +3251,12 @@ describe("connectors page", () => {
           fields: body.fields,
           headerInjections: body.headerInjections,
           queryInjections: body.queryInjections,
-          ...(body.authMethods ? { authMethods: body.authMethods } : {}),
+          authMode: body.authMode ?? connector.authMode,
+          ...(body.oauthConfig
+            ? {
+                oauthConfig: publicCustomConnectorOAuthConfig(body.oauthConfig),
+              }
+            : {}),
         };
         return respond(200, connector);
       },
@@ -3251,7 +3273,6 @@ describe("connectors page", () => {
         connector = {
           ...connector,
           connected: true,
-          connectedAuthMethod: "oauth2",
           hasSecret: true,
           missingRequiredFields: [],
         };
@@ -3283,17 +3304,12 @@ describe("connectors page", () => {
     );
 
     click(buttonByText("Add authentication", createDialog));
-    click(menuItemByText("API authentication"));
-    expect(
-      within(createDialog).getByText("API authentication"),
-    ).toBeInTheDocument();
-
-    click(buttonByText("Add authentication", createDialog));
     click(menuItemByText("OAuth 2.0"));
-    await fill(
-      within(createDialog).getByLabelText("Authorization URL"),
-      "https://oauth.acme.test/authorize",
-    );
+    await waitFor(() => {
+      expect(
+        context.store.get(customConnectorCreateForm$).authMethodTypes,
+      ).toStrictEqual(["oauth2"]);
+    });
     await fill(
       within(createDialog).getByLabelText("Token URL"),
       "https://oauth.acme.test/token",
@@ -3310,6 +3326,10 @@ describe("connectors page", () => {
       within(createDialog).getByLabelText(/Scopes/u),
       "search.read search.write",
     );
+    await fill(
+      within(createDialog).getByLabelText("Authorization URL"),
+      "https://oauth.acme.test/authorize",
+    );
     const redirectUrlInput =
       within(createDialog).getByLabelText("Redirect URL");
     if (!(redirectUrlInput instanceof HTMLInputElement)) {
@@ -3319,7 +3339,21 @@ describe("connectors page", () => {
     expect(redirectUrl.origin).toBe(window.location.origin);
     expect(redirectUrl.pathname).toBe("/connectors/custom/callback");
 
-    click(buttonByText("Create", createDialog));
+    const createButton = buttonByText("Create", createDialog);
+    expect(context.store.get(customConnectorCreateForm$)).toMatchObject({
+      displayName: "Acme API",
+      prefixesRaw: "https://api.acme.test/v1/",
+      authMethodTypes: ["oauth2"],
+      oauthAuthorizationUrl: "https://oauth.acme.test/authorize",
+      oauthTokenUrl: "https://oauth.acme.test/token",
+      oauthClientId: "connector-oauth-client-id",
+      oauthClientSecret: "connector-oauth-client-secret",
+    });
+    expect(createButton).toBeEnabled();
+    click(createButton);
+    await waitFor(() => {
+      expect(createdBodies).toHaveLength(1);
+    });
     await waitFor(() => {
       expect(screen.getByText("Acme API")).toBeInTheDocument();
     });
@@ -3327,31 +3361,25 @@ describe("connectors page", () => {
     expect(createdBodies[0]).toMatchObject({
       displayName: "Acme API",
       prefixTemplates: ["https://api.acme.test/v1/"],
-      fields: [
-        {
-          key: "secret",
-          kind: "secret",
-          required: true,
-        },
-      ],
+      fields: [],
       headerInjections: [
         {
           name: "Authorization",
-          valueTemplate: "Bearer {{secrets.secret}}",
+          valueTemplate: "Bearer {{oauth.access_token}}",
         },
       ],
-      authMethods: [
-        { type: "api" },
-        {
-          type: "oauth2",
-          authorizationUrl: "https://oauth.acme.test/authorize",
-          tokenUrl: "https://oauth.acme.test/token",
-          scopes: ["search.read", "search.write"],
-          clientAuthentication: "client_secret_post",
-        },
-      ],
-      oauthClientId: "connector-oauth-client-id",
-      oauthClientSecret: "connector-oauth-client-secret",
+      authMode: "oauth",
+      oauthConfig: {
+        providerAdapter: "standard",
+        clientId: "connector-oauth-client-id",
+        clientSecret: "connector-oauth-client-secret",
+        authorizationUrl: "https://oauth.acme.test/authorize",
+        tokenUrl: "https://oauth.acme.test/token",
+        scopes: ["search.read", "search.write"],
+        tokenEndpointAuthMethod: "client_secret_post",
+        pkceMethod: "none",
+        authorizationParams: {},
+      },
     });
 
     click(screen.getByLabelText("More options"));
@@ -3362,11 +3390,12 @@ describe("connectors page", () => {
     expect(within(editDialog).getByLabelText("Authorization URL")).toHaveValue(
       "https://oauth.acme.test/authorize",
     );
-    expect(within(editDialog).getByLabelText("New client ID")).toHaveValue("");
+    expect(within(editDialog).getByLabelText("Client ID")).toHaveValue(
+      "connector-oauth-client-id",
+    );
     expect(within(editDialog).getByLabelText("New client secret")).toHaveValue(
       "",
     );
-    click(within(editDialog).getByLabelText("Remove API authentication"));
     await fill(
       within(editDialog).getByLabelText(/Prefixes/u),
       "https://api.acme.test/v2/",
@@ -3394,18 +3423,19 @@ describe("connectors page", () => {
     expect(updatedBodies[0]).toMatchObject({
       displayName: "Acme API",
       prefixTemplates: ["https://api.acme.test/v2/"],
-      authMethods: [
-        {
-          type: "oauth2",
-          authorizationUrl: "https://oauth.acme.test/authorize",
-          tokenUrl: "https://oauth.acme.test/token",
-          scopes: ["search.read", "calendar.write"],
-          clientAuthentication: "client_secret_post",
-        },
-      ],
+      authMode: "oauth",
+      oauthConfig: {
+        providerAdapter: "standard",
+        clientId: "connector-oauth-client-id",
+        authorizationUrl: "https://oauth.acme.test/authorize",
+        tokenUrl: "https://oauth.acme.test/token",
+        scopes: ["search.read", "calendar.write"],
+        tokenEndpointAuthMethod: "client_secret_post",
+        pkceMethod: "none",
+        authorizationParams: {},
+      },
     });
-    expect(updatedBodies[0]).not.toHaveProperty("oauthClientId");
-    expect(updatedBodies[0]).not.toHaveProperty("oauthClientSecret");
+    expect(updatedBodies[0]?.oauthConfig).not.toHaveProperty("clientSecret");
 
     const connectorCardButton = buttonByAriaLabel("Connect Acme API");
     expect(

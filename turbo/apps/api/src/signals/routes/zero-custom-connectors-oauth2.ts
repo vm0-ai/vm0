@@ -14,7 +14,6 @@ import {
   type StoredOAuthState,
 } from "../services/connector-oauth-state.service";
 import {
-  customConnectorOAuthMethodMatchesState,
   decryptCustomConnectorOAuth2Credentials,
   exchangeCustomConnectorOAuth2Code,
   parseCustomConnectorOAuthStateContext,
@@ -22,10 +21,7 @@ import {
   storeCustomConnectorOAuth2Connection,
 } from "../services/custom-connector-oauth2.service";
 import { userFeatureSwitchContext } from "../services/feature-switches.service";
-import {
-  customConnectorOAuth2AuthMethod,
-  getCustomConnectorById,
-} from "../services/zero-custom-connector.service";
+import { getCustomConnectorById } from "../services/zero-custom-connector.service";
 import { tapError } from "../utils";
 import type { RouteEntry } from "../route-entry";
 import {
@@ -138,7 +134,9 @@ function validateClaimedState(storedState: StoredOAuthState):
   );
   if (
     !context ||
-    storedState.type !== `custom:${context.connectorId}` ||
+    storedState.type !== null ||
+    storedState.customConnectorId !== context.connectorId ||
+    storedState.connectorRevision !== context.connectorRevision ||
     storedState.authMethod !== "oauth2"
   ) {
     return { ok: false };
@@ -180,19 +178,18 @@ const completeOAuth2Callback$ = command(
       }),
     );
     signal.throwIfAborted();
-    const method = connector
-      ? customConnectorOAuth2AuthMethod(connector)
-      : null;
     if (
       !connector ||
-      !method ||
-      !customConnectorOAuthMethodMatchesState(method, state.context.method)
+      connector.authMode !== "oauth" ||
+      !connector.oauthConfig ||
+      connector.revision !== state.context.connectorRevision
     ) {
       return callbackError(
         origin,
         "Custom connector OAuth configuration changed - please try again",
       );
     }
+    const oauthConfig = connector.oauthConfig;
     const featureContext = await get(
       userFeatureSwitchContext(claimed.state.orgId, claimed.state.userId),
     );
@@ -207,10 +204,10 @@ const completeOAuth2Callback$ = command(
     const completed = await tapError(
       (async () => {
         const token = await exchangeCustomConnectorOAuth2Code({
-          method,
-          clientId: credentials.clientId,
+          config: oauthConfig,
           clientSecret: credentials.clientSecret,
           code: authorizationCode,
+          codeVerifier: claimed.state.codeVerifier,
           redirectUri: claimed.state.redirectUri,
           signal,
         });

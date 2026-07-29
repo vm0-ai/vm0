@@ -37,11 +37,7 @@ const createInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   if (!bodyResult.ok) {
     return bodyResult.response;
   }
-  if (
-    bodyResult.data.authMethods?.some((method) => {
-      return method.type === "oauth2";
-    })
-  ) {
+  if (bodyResult.data.authMode === "oauth") {
     const featureContext = await get(
       userFeatureSwitchContext(auth.orgId, auth.userId),
     );

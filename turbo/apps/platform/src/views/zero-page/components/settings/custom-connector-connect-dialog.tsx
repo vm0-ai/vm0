@@ -1,9 +1,6 @@
 import type { FormEvent } from "react";
 
-import type {
-  CustomConnectorAuthMethod,
-  CustomConnectorResponse,
-} from "@vm0/api-contracts/contracts/zero-custom-connectors";
+import type { CustomConnectorResponse } from "@vm0/api-contracts/contracts/zero-custom-connectors";
 import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import {
   Button,
@@ -31,6 +28,8 @@ import {
 import { hasTokenInputValue } from "../../../../signals/zero-page/settings/token-input.ts";
 import { detach, Reason } from "../../../../signals/utils.ts";
 import { CustomConnectorIcon } from "./custom-connector-icon.tsx";
+
+type CustomConnectorAuthMethod = { readonly type: "api" | "oauth2" };
 
 function AuthenticationMethodChoice({
   methods,
@@ -200,10 +199,10 @@ export function CustomConnectorConnectDialog({
   const featureSwitches = useGet(featureSwitch$);
   const oauth2Enabled =
     featureSwitches[FeatureSwitchKey.CustomConnectorOAuth2] ?? false;
-  const methods =
-    oauth2Enabled && connector.authMethods
-      ? connector.authMethods
-      : [{ type: "api" as const }];
+  const methods: readonly CustomConnectorAuthMethod[] =
+    connector.authMode === "oauth" && oauth2Enabled
+      ? [{ type: "oauth2" }]
+      : [{ type: "api" }];
   const selectedMethod =
     methods.find((method) => {
       return method.type === form.authMethod;

@@ -153,6 +153,7 @@ export function mockCustomConnectorOAuth2Provider(
       return HttpResponse.json({
         access_token: "custom-oauth-initial-access-token",
         refresh_token: "custom-oauth-refresh-token",
+        id_token: "custom-oauth-id-token",
         token_type: "Bearer",
         expires_in: 0,
       });

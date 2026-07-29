@@ -5,9 +5,6 @@ import { apiErrorSchema } from "./errors";
 
 const c = initContract();
 
-export const CUSTOM_CONNECTOR_OAUTH_AUTHORIZATION_FIELD_KEY =
-  "__oauth_authorization";
-
 export const customConnectorFieldKindSchema = z.enum(["secret", "variable"]);
 export type CustomConnectorFieldKind = z.infer<
   typeof customConnectorFieldKindSchema
@@ -38,33 +35,42 @@ export type CustomConnectorQueryInjection = z.infer<
   typeof customConnectorQueryInjectionSchema
 >;
 
-export const customConnectorApiAuthMethodSchema = z.object({
-  type: z.literal("api"),
-});
+export const customConnectorAuthModeSchema = z.enum(["manual", "oauth"]);
+export type CustomConnectorAuthMode = z.infer<
+  typeof customConnectorAuthModeSchema
+>;
 
-export const customConnectorOAuth2AuthMethodSchema = z.object({
-  type: z.literal("oauth2"),
+export const customConnectorOAuthProviderAdapterSchema = z.enum([
+  "standard",
+  "feishu",
+]);
+export const customConnectorOAuthTokenEndpointAuthMethodSchema = z.enum([
+  "client_secret_basic",
+  "client_secret_post",
+]);
+export const customConnectorOAuthPkceMethodSchema = z.enum(["none", "S256"]);
+
+export const customConnectorOAuthConfigSchema = z.object({
+  providerAdapter: customConnectorOAuthProviderAdapterSchema,
+  clientId: z.string().min(1).max(255),
   authorizationUrl: z.string().url().max(2048),
   tokenUrl: z.string().url().max(2048),
+  tokenEndpointAuthMethod: customConnectorOAuthTokenEndpointAuthMethodSchema,
+  pkceMethod: customConnectorOAuthPkceMethodSchema,
   scopes: z.array(z.string().min(1).max(256)).max(100),
-  clientAuthentication: z.enum(["client_secret_basic", "client_secret_post"]),
+  authorizationParams: z.record(z.string(), z.string()),
 });
-
-export const customConnectorAuthMethodSchema = z.discriminatedUnion("type", [
-  customConnectorApiAuthMethodSchema,
-  customConnectorOAuth2AuthMethodSchema,
-]);
-export type CustomConnectorAuthMethod = z.infer<
-  typeof customConnectorAuthMethodSchema
->;
-export type CustomConnectorOAuth2AuthMethod = z.infer<
-  typeof customConnectorOAuth2AuthMethodSchema
+export type CustomConnectorOAuthConfig = z.infer<
+  typeof customConnectorOAuthConfigSchema
 >;
 
-export const customConnectorAuthMethodsSchema = z
-  .array(customConnectorAuthMethodSchema)
-  .min(1)
-  .max(2);
+export const customConnectorOAuthConfigInputSchema =
+  customConnectorOAuthConfigSchema.extend({
+    clientSecret: z.string().min(1).max(4096).optional(),
+  });
+export type CustomConnectorOAuthConfigInput = z.infer<
+  typeof customConnectorOAuthConfigInputSchema
+>;
 
 /**
  * Custom connector response — safe to return to any org member.
@@ -81,8 +87,9 @@ export const customConnectorResponseSchema = z.object({
   fields: z.array(customConnectorFieldSchema),
   headerInjections: z.array(customConnectorHeaderInjectionSchema),
   queryInjections: z.array(customConnectorQueryInjectionSchema),
-  authMethods: customConnectorAuthMethodsSchema.optional(),
-  connectedAuthMethod: z.enum(["api", "oauth2"]).nullable().optional(),
+  authMode: customConnectorAuthModeSchema.optional(),
+  oauthConfig: customConnectorOAuthConfigSchema.optional(),
+  revision: z.number().int().positive().optional(),
   connected: z.boolean(),
   missingRequiredFields: z.array(z.string()),
   configuredFieldKeys: z.array(z.string()),
@@ -107,9 +114,8 @@ export const createCustomConnectorBodySchema = z.object({
   fields: z.array(customConnectorFieldSchema).optional(),
   headerInjections: z.array(customConnectorHeaderInjectionSchema).optional(),
   queryInjections: z.array(customConnectorQueryInjectionSchema).optional(),
-  authMethods: customConnectorAuthMethodsSchema.optional(),
-  oauthClientId: z.string().min(1).max(2048).optional(),
-  oauthClientSecret: z.string().min(1).max(4096).optional(),
+  authMode: customConnectorAuthModeSchema.optional(),
+  oauthConfig: customConnectorOAuthConfigInputSchema.optional(),
   slug: z.string().optional(),
 });
 export type CreateCustomConnectorBody = z.infer<
@@ -122,9 +128,8 @@ export const updateCustomConnectorBodySchema = z.object({
   fields: z.array(customConnectorFieldSchema),
   headerInjections: z.array(customConnectorHeaderInjectionSchema),
   queryInjections: z.array(customConnectorQueryInjectionSchema),
-  authMethods: customConnectorAuthMethodsSchema.optional(),
-  oauthClientId: z.string().min(1).max(2048).optional(),
-  oauthClientSecret: z.string().min(1).max(4096).optional(),
+  authMode: customConnectorAuthModeSchema.optional(),
+  oauthConfig: customConnectorOAuthConfigInputSchema.optional(),
 });
 export type UpdateCustomConnectorBody = z.infer<
   typeof updateCustomConnectorBodySchema

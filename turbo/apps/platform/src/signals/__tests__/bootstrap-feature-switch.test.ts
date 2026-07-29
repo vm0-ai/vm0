@@ -35,7 +35,6 @@ describe("bootstrap feature switch hydration", () => {
         effectiveSwitches: {
           [FeatureSwitchKey.CustomConnectorOAuth2]: true,
         },
-        supportsStructuredFeedbackParts: true,
         supportsStructuredInlineTemplates: true,
       });
     });

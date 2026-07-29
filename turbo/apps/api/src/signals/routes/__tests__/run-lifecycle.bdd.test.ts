@@ -7143,7 +7143,7 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
     const collision = await connectors.requestCreateCustomConnector(
       actor,
       {
-        slug: `lazy-global-${randomUUID().slice(0, 8)}`,
+        slug: `_lazy-global-${randomUUID().slice(0, 8)}`,
         displayName: "Lazy Global Collision",
         prefixes: ["https://api.github.com/v3/"],
         headerName: "Authorization",
@@ -7165,7 +7165,7 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
     const fw = createFirewallApi(context);
     const { actor, agentId, runnerGroup } = await entitledRunActor();
 
-    const slug = `bdd-internal-${randomUUID().slice(0, 8)}`;
+    const slug = `_bdd-internal-${randomUUID().slice(0, 8)}`;
     const custom = await connectors.createCustomConnector(actor, {
       slug,
       displayName: "BDD Internal API",
@@ -7251,19 +7251,25 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
       displayName: "BDD OAuth 2.0 Runtime API",
       prefixTemplates: ["https://oauth-runtime.example.test/api/"],
       fields: [],
-      headerInjections: [],
-      queryInjections: [],
-      authMethods: [
+      headerInjections: [
         {
-          type: "oauth2",
-          authorizationUrl: provider.authorizationUrl,
-          tokenUrl: provider.tokenUrl,
-          scopes: ["read"],
-          clientAuthentication: "client_secret_basic",
+          name: "Authorization",
+          valueTemplate: "Bearer {{oauth.access_token}}",
         },
       ],
-      oauthClientId: "runtime-client-id",
-      oauthClientSecret: "runtime-client-secret",
+      queryInjections: [],
+      authMode: "oauth",
+      oauthConfig: {
+        providerAdapter: "standard",
+        clientId: "runtime-client-id",
+        clientSecret: "runtime-client-secret",
+        authorizationUrl: provider.authorizationUrl,
+        tokenUrl: provider.tokenUrl,
+        tokenEndpointAuthMethod: "client_secret_basic",
+        pkceMethod: "none",
+        scopes: ["read"],
+        authorizationParams: {},
+      },
     });
     const authorizationUrl = await connectors.startCustomConnectorOAuth2(
       actor,
@@ -7305,11 +7311,11 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
     await api.heartbeatRunner(runnerGroup);
     const claim = await api.claimRunnerJob(run.runId);
     const internalName = `custom_connector_${custom.id.replaceAll("-", "")}`;
-    const secretKey = `CUSTOM_${custom.id.replaceAll("-", "")}_S___OAUTH_AUTHORIZATION`;
+    const secretKey = `CUSTOM_${custom.id.replaceAll("-", "")}_S___OAUTH_ACCESS_TOKEN`;
     const customApis = inlineFirewallApis(claim.firewalls, internalName);
     expect(customApis).toHaveLength(1);
     expect(customApis[0]?.auth?.headers?.Authorization).toBe(
-      `\${{ secrets.${secretKey} }}`,
+      `Bearer \${{ secrets.${secretKey} }}`,
     );
     expect(claim.secretValues).not.toContain(
       "Bearer custom-oauth-refreshed-access-token",
@@ -7320,7 +7326,7 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
       {
         encryptedSecrets: fw.encryptedSecretsBody({}),
         authHeaders: {
-          Authorization: `\${{ secrets.${secretKey} }}`,
+          Authorization: `Bearer \${{ secrets.${secretKey} }}`,
         },
       },
       [200],
@@ -7482,7 +7488,7 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
     const connectors = createConnectorBddApi(context);
     const { actor, agentId, runnerGroup } = await zeroBackedDirectRunActor();
 
-    const allowedSlug = `bdd-direct-internal-${randomUUID().slice(0, 8)}`;
+    const allowedSlug = `_bdd-direct-internal-${randomUUID().slice(0, 8)}`;
     const allowed = await connectors.createCustomConnector(actor, {
       slug: allowedSlug,
       displayName: "BDD Direct Internal API",
@@ -7496,7 +7502,7 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
       "direct-custom-secret-value",
     );
 
-    const blockedSlug = `bdd-direct-blocked-${randomUUID().slice(0, 8)}`;
+    const blockedSlug = `_bdd-direct-blocked-${randomUUID().slice(0, 8)}`;
     const blocked = await connectors.createCustomConnector(actor, {
       slug: blockedSlug,
       displayName: "BDD Direct Blocked API",
@@ -7822,7 +7828,7 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
     const { actor, agentId } = await entitledRunActor();
     const secret = "legacy-invalid-host-secret";
     const custom = await connectors.createCustomConnector(actor, {
-      slug: `bdd-legacy-host-${randomUUID().slice(0, 8)}`,
+      slug: `_bdd-legacy-host-${randomUUID().slice(0, 8)}`,
       displayName: "BDD Legacy Invalid Host",
       prefixes: ["https://valid.example.test/v1/"],
       headerName: "Authorization",
@@ -7869,7 +7875,7 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
     });
 
     // Built-in connector-owned vars must not leak into custom connector bases.
-    const slug = `bdd-vars-${randomUUID().slice(0, 8)}`;
+    const slug = `_bdd-vars-${randomUUID().slice(0, 8)}`;
     const custom = await connectors.createCustomConnector(actor, {
       slug,
       displayName: "BDD Vars Custom",
@@ -8754,7 +8760,7 @@ describe("RUN-01: zero runner context, queue promotion, and skills", () => {
       action: "allow",
     });
     const customConnector = await connectors.createCustomConnector(actor, {
-      slug: `bdd-context-${randomUUID().slice(0, 8)}`,
+      slug: `_bdd-context-${randomUUID().slice(0, 8)}`,
       displayName: "BDD Context API",
       prefixes: ["https://context.example.com/api/"],
       headerName: "Authorization",

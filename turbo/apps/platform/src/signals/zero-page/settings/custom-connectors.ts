@@ -6,7 +6,6 @@ import {
   zeroCustomConnectorSecretContract,
   zeroCustomConnectorsContract,
   type CreateCustomConnectorBody,
-  type CustomConnectorAuthMethod,
   type CustomConnectorResponse,
   type UpdateCustomConnectorBody,
 } from "@vm0/api-contracts/contracts/zero-custom-connectors";
@@ -18,6 +17,8 @@ import { setLoop, withCleanup } from "../../utils.ts";
 import { sanitizeTokenInput } from "./token-input.ts";
 
 const internalReload$ = state(0);
+
+export type CustomConnectorAuthMethodType = "api" | "oauth2";
 
 // ---------------------------------------------------------------------------
 // Active tab on the Connectors settings page
@@ -309,10 +310,9 @@ export const openCustomConnectorRenameDialog$ = command(
 );
 export const openCustomConnectorConnectDialog$ = command(
   ({ set }, connector: CustomConnectorResponse) => {
-    const methods = connector.authMethods ?? [{ type: "api" as const }];
     set(internalConnectForm$, {
       ...CONNECT_FORM_DEFAULTS,
-      authMethod: methods.length === 1 ? methods[0]!.type : null,
+      authMethod: connector.authMode === "oauth" ? "oauth2" : "api",
     });
     set(internalDialog$, { kind: "connect", connector });
   },
@@ -336,11 +336,16 @@ export interface CustomConnectorCreateForm {
   prefixesRaw: string;
   headerName: string;
   headerTemplate: string;
-  authMethodTypes: readonly CustomConnectorAuthMethod["type"][];
+  authMethodTypes: readonly CustomConnectorAuthMethodType[];
   oauthAuthorizationUrl: string;
   oauthTokenUrl: string;
   oauthScopesRaw: string;
   oauthClientAuthentication: "client_secret_basic" | "client_secret_post";
+  oauthPkceMethod: "none" | "S256";
+  oauthResource: string;
+  oauthAudience: string;
+  oauthAccessType: string;
+  oauthPrompt: string;
   oauthClientId: string;
   oauthClientSecret: string;
 }
@@ -350,11 +355,16 @@ const CREATE_FORM_DEFAULTS = {
   prefixesRaw: "",
   headerName: "Authorization",
   headerTemplate: "Bearer {{secret}}",
-  authMethodTypes: [],
+  authMethodTypes: ["api"],
   oauthAuthorizationUrl: "",
   oauthTokenUrl: "",
   oauthScopesRaw: "",
   oauthClientAuthentication: "client_secret_post",
+  oauthPkceMethod: "none",
+  oauthResource: "",
+  oauthAudience: "",
+  oauthAccessType: "",
+  oauthPrompt: "",
   oauthClientId: "",
   oauthClientSecret: "",
 } as const satisfies CustomConnectorCreateForm;
@@ -362,28 +372,24 @@ const CREATE_FORM_DEFAULTS = {
 function createFormFromConnector(
   connector: CustomConnectorResponse,
 ): CustomConnectorCreateForm {
-  const authMethods = connector.authMethods ?? [{ type: "api" as const }];
-  const oauthMethod = authMethods.find((method) => {
-    return method.type === "oauth2";
-  });
+  const oauthConfig = connector.oauthConfig;
   return {
     displayName: connector.displayName,
     prefixesRaw: connector.prefixTemplates.join("\n"),
     headerName: connector.headerName,
     headerTemplate: connector.headerTemplate,
-    authMethodTypes: authMethods.map((method) => {
-      return method.type;
-    }),
-    oauthAuthorizationUrl:
-      oauthMethod?.type === "oauth2" ? oauthMethod.authorizationUrl : "",
-    oauthTokenUrl: oauthMethod?.type === "oauth2" ? oauthMethod.tokenUrl : "",
-    oauthScopesRaw:
-      oauthMethod?.type === "oauth2" ? oauthMethod.scopes.join(" ") : "",
+    authMethodTypes: [connector.authMode === "oauth" ? "oauth2" : "api"],
+    oauthAuthorizationUrl: oauthConfig?.authorizationUrl ?? "",
+    oauthTokenUrl: oauthConfig?.tokenUrl ?? "",
+    oauthScopesRaw: oauthConfig?.scopes.join(" ") ?? "",
     oauthClientAuthentication:
-      oauthMethod?.type === "oauth2"
-        ? oauthMethod.clientAuthentication
-        : "client_secret_post",
-    oauthClientId: "",
+      oauthConfig?.tokenEndpointAuthMethod ?? "client_secret_post",
+    oauthPkceMethod: oauthConfig?.pkceMethod ?? "none",
+    oauthResource: oauthConfig?.authorizationParams.resource ?? "",
+    oauthAudience: oauthConfig?.authorizationParams.audience ?? "",
+    oauthAccessType: oauthConfig?.authorizationParams.access_type ?? "",
+    oauthPrompt: oauthConfig?.authorizationParams.prompt ?? "",
+    oauthClientId: oauthConfig?.clientId ?? "",
     oauthClientSecret: "",
   };
 }
@@ -404,19 +410,19 @@ export const setCustomConnectorCreateField$ = command(
   },
 );
 export const addCustomConnectorAuthMethod$ = command(
-  ({ get, set }, type: CustomConnectorAuthMethod["type"]) => {
+  ({ get, set }, type: CustomConnectorAuthMethodType) => {
     const form = get(internalCreateForm$);
     if (form.authMethodTypes.includes(type)) {
       return;
     }
     set(internalCreateForm$, {
       ...form,
-      authMethodTypes: [...form.authMethodTypes, type],
+      authMethodTypes: [type],
     });
   },
 );
 export const removeCustomConnectorAuthMethod$ = command(
-  ({ get, set }, type: CustomConnectorAuthMethod["type"]) => {
+  ({ get, set }, type: CustomConnectorAuthMethodType) => {
     const form = get(internalCreateForm$);
     set(internalCreateForm$, {
       ...form,
@@ -449,7 +455,7 @@ export const setCustomConnectorRenameInput$ = command(
 // ---------------------------------------------------------------------------
 
 interface CustomConnectorConnectForm {
-  readonly authMethod: CustomConnectorAuthMethod["type"] | null;
+  readonly authMethod: CustomConnectorAuthMethodType | null;
   readonly apiSecret: string;
 }
 

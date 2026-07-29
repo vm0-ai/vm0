@@ -1,6 +1,6 @@
 import type { ConnectorSlug } from "@vm0/api-contracts/contracts/connector-identity";
 import { connectorOauthStates } from "@vm0/db/schema/connector-oauth-state";
-import { and, eq, gt, isNull, like } from "drizzle-orm";
+import { and, eq, gt, isNotNull, isNull } from "drizzle-orm";
 
 import { nowDate } from "../../lib/time";
 import type { Db, ReadonlyDb } from "../external/db";
@@ -144,7 +144,8 @@ export async function claimCustomConnectorOAuthState(
     .where(
       and(
         eq(connectorOauthStates.state, args.state),
-        like(connectorOauthStates.type, "custom:%"),
+        isNull(connectorOauthStates.type),
+        isNotNull(connectorOauthStates.customConnectorId),
         eq(connectorOauthStates.authMethod, "oauth2"),
         isNull(connectorOauthStates.consumedAt),
         gt(connectorOauthStates.expiresAt, claimedAt),

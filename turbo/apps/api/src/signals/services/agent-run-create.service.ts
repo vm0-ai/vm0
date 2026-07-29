@@ -101,13 +101,14 @@ import { vm0ApiKeys } from "@vm0/db/schema/vm0-api-key";
 import { variables } from "@vm0/db/schema/variable";
 import { zeroRuns } from "@vm0/db/schema/zero-run";
 import type { PersistedStorageMount } from "@vm0/db/types";
-import { and, count, eq, inArray, or, sql } from "drizzle-orm";
+import { and, count, eq, inArray, isNotNull, or, sql } from "drizzle-orm";
 import { z } from "zod";
 
 import { env, optionalEnv } from "../../lib/env";
 import {
   pgInt8ToBigIntDecoder,
   pgNullDecoder,
+  pgTextDecoder,
   zodDriverValueDecoder,
   zodEnumDriverValueDecoder,
 } from "../../lib/db-structured-result";
@@ -139,7 +140,7 @@ import {
   encryptPersistentSecretsMap,
 } from "./crypto.utils";
 import {
-  CUSTOM_CONNECTOR_OAUTH_AUTHORIZATION_KEY,
+  CUSTOM_CONNECTOR_OAUTH_ACCESS_TOKEN_RUNTIME_KEY,
   CustomConnectorRuntimePrefixError,
   customConnectorInternalName,
   customConnectorPrefixTemplateVariableKeys,
@@ -443,9 +444,10 @@ type CustomConnectorAuthRefKind = "secret" | "variable";
 interface CustomConnectorAuthRef {
   readonly secretName: string;
   readonly connectorId: string;
+  readonly connectorRevision: number;
   readonly kind: CustomConnectorAuthRefKind;
   readonly key: string;
-  readonly encryptedValue: string;
+  readonly encryptedValue: string | null;
 }
 
 interface PreparedRunnerLaunch {
@@ -757,6 +759,7 @@ interface CustomConnectorRuntimeContext {
 
 function customConnectorAuthRefsForApis(args: {
   readonly connectorId: string;
+  readonly connectorRevision: number;
   readonly values: readonly {
     readonly connectorId: string;
     readonly kind: CustomConnectorAuthRefKind;
@@ -781,9 +784,13 @@ function customConnectorAuthRefsForApis(args: {
           {
             secretName,
             connectorId: value.connectorId,
+            connectorRevision: args.connectorRevision,
             kind: value.kind,
             key: value.key,
-            encryptedValue: value.encryptedValue,
+            encryptedValue:
+              value.key === CUSTOM_CONNECTOR_OAUTH_ACCESS_TOKEN_RUNTIME_KEY
+                ? null
+                : value.encryptedValue,
           },
         ]
       : [];
@@ -3008,7 +3015,9 @@ function storedConnectorSnapshotQuery(
     db
       .select({
         connectorId: connectors.id,
-        connectorSlug: connectors.type,
+        connectorSlug: sql`${connectors.type}`
+          .mapWith(pgTextDecoder)
+          .as("connector_slug"),
         authMethod: connectors.authMethod,
         connectorStateRevision: sql`(
             EXTRACT(EPOCH FROM ${connectors.updatedAt})
@@ -3027,6 +3036,7 @@ function storedConnectorSnapshotQuery(
         and(
           eq(connectors.orgId, args.orgId),
           eq(connectors.userId, args.userId),
+          isNotNull(connectors.type),
           args.allowedConnectorSlugs
             ? inArray(connectors.type, args.allowedConnectorSlugs)
             : undefined,
@@ -3425,23 +3435,10 @@ class CustomConnectorRuntimeBuildStats {
 function customConnectorRuntimeAuth(args: {
   readonly connector: CustomConnectorRuntimeDataRows[number]["connector"];
   readonly valueMarkers: ReadonlySet<string>;
-  readonly oauth2Connected: boolean;
 }): {
   readonly headers: Record<string, string>;
   readonly query: Record<string, string>;
 } {
-  if (args.oauth2Connected) {
-    return {
-      headers: {
-        Authorization: `\${{ secrets.${customConnectorSecretKey({
-          connectorId: args.connector.id,
-          kind: "secret",
-          key: CUSTOM_CONNECTOR_OAUTH_AUTHORIZATION_KEY,
-        })} }}`,
-      },
-      query: {},
-    };
-  }
   return {
     headers: Object.fromEntries(
       args.connector.headerInjections.flatMap((header) => {
@@ -3484,24 +3481,20 @@ async function buildCustomConnectorRuntimeContext(args: {
         return customConnectorValueMarkerKey(value);
       }),
     );
-    const oauth2Connected = valueMarkers.has(
+    const oauthConnected = valueMarkers.has(
       customConnectorValueMarkerKey({
         kind: "secret",
-        key: CUSTOM_CONNECTOR_OAUTH_AUTHORIZATION_KEY,
+        key: CUSTOM_CONNECTOR_OAUTH_ACCESS_TOKEN_RUNTIME_KEY,
       }),
     );
-    const supportsApi = row.connector.authMethods.some((method) => {
-      return method.type === "api";
-    });
     const missingRequired =
-      !oauth2Connected &&
-      (!supportsApi ||
-        row.connector.fields.some((field) => {
-          return (
-            field.required &&
-            !valueMarkers.has(customConnectorValueMarkerKey(field))
-          );
-        }));
+      (row.connector.authMode === "oauth" && !oauthConnected) ||
+      row.connector.fields.some((field) => {
+        return (
+          field.required &&
+          !valueMarkers.has(customConnectorValueMarkerKey(field))
+        );
+      });
     stats.recordPhaseDuration("assembleFirewalls", missingRequiredStartedAt);
     if (missingRequired) {
       stats.recordMissingRequiredConnector();
@@ -3512,7 +3505,6 @@ async function buildCustomConnectorRuntimeContext(args: {
     const { headers, query } = customConnectorRuntimeAuth({
       connector: row.connector,
       valueMarkers,
-      oauth2Connected,
     });
     stats.recordPhaseDuration("renderAuthTemplates", authTemplateStartedAt);
     if (Object.keys(headers).length === 0 && Object.keys(query).length === 0) {
@@ -3568,6 +3560,7 @@ async function buildCustomConnectorRuntimeContext(args: {
     });
     const rowAuthRefs = customConnectorAuthRefsForApis({
       connectorId: row.connector.id,
+      connectorRevision: row.connector.revision,
       values: row.values,
       apis,
     });
@@ -5480,6 +5473,7 @@ async function persistRunCustomConnectorAuthRefs(
         runId: args.runId,
         secretName: ref.secretName,
         connectorId: ref.connectorId,
+        connectorRevision: ref.connectorRevision,
         kind: ref.kind,
         key: ref.key,
         encryptedValue: ref.encryptedValue,

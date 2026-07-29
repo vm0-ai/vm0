@@ -37,11 +37,7 @@ function connectsDirectlyWithOAuth(
   connector: CustomConnectorResponse,
   oauth2Enabled: boolean,
 ): boolean {
-  return (
-    oauth2Enabled &&
-    connector.authMethods?.length === 1 &&
-    connector.authMethods[0]?.type === "oauth2"
-  );
+  return oauth2Enabled && connector.authMode === "oauth";
 }
 
 function CustomConnectorRow({

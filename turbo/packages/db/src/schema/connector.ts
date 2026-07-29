@@ -9,21 +9,26 @@ import {
   boolean,
   uniqueIndex,
   index,
+  foreignKey,
 } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
+
+import { orgCustomConnectors } from "./org-custom-connector";
 
 /**
  * Connectors table
  * Stores metadata for connected third-party services (GitHub, etc.)
  * Actual secrets stored in secrets table with type="connector"
- * Linked by (orgId, userId, type) unique index
+ * A connection belongs to either one built-in connector type or one
+ * organization-defined custom connector.
  */
 export const connectors = pgTable(
   "connectors",
   {
     id: uuid("id").defaultRandom().primaryKey(),
     // TODO(#23619): Rename the property and column in the persistence phase.
-    type: varchar("type", { length: 64 }).notNull(), // "github"
+    type: varchar("type", { length: 64 }), // "github"
+    customConnectorId: uuid("custom_connector_id"),
     authMethod: varchar("auth_method", { length: 50 }).notNull(), // "oauth"
     storageVersion: bigint("storage_version", { mode: "number" }).notNull(),
 
@@ -45,10 +50,25 @@ export const connectors = pgTable(
   (table) => {
     return [
       index("idx_connectors_org").on(table.orgId),
-      uniqueIndex("idx_connectors_org_user_type").on(
+      uniqueIndex("idx_connectors_org_user_type")
+        .on(table.orgId, table.userId, table.type)
+        .where(sql`${table.type} IS NOT NULL`),
+      uniqueIndex("idx_connectors_org_user_custom_connector")
+        .on(table.orgId, table.userId, table.customConnectorId)
+        .where(sql`${table.customConnectorId} IS NOT NULL`),
+      uniqueIndex("idx_connectors_id_org_user").on(
+        table.id,
         table.orgId,
         table.userId,
-        table.type,
+      ),
+      foreignKey({
+        name: "fk_connectors_custom_connector",
+        columns: [table.customConnectorId, table.orgId],
+        foreignColumns: [orgCustomConnectors.id, orgCustomConnectors.orgId],
+      }).onDelete("cascade"),
+      check(
+        "chk_connectors_identity",
+        sql`num_nonnulls(${table.type}, ${table.customConnectorId}) = 1`,
       ),
       check(
         "chk_connectors_storage_version_positive",

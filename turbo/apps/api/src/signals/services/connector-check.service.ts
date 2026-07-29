@@ -19,9 +19,10 @@ import { getAllFeatureStates } from "@vm0/core/feature-switch";
 import { connectors } from "@vm0/db/schema/connector";
 import { variables } from "@vm0/db/schema/variable";
 import { command } from "ccstate";
-import { and, eq, sql } from "drizzle-orm";
+import { and, eq, isNotNull, sql } from "drizzle-orm";
 
 import { type Db, writeDb$ } from "../external/db";
+import { pgTextDecoder } from "../../lib/db-structured-result";
 import {
   buildConnectorDiagnosticBaseCandidates,
   loadConnectorDiagnosticCatalogView,
@@ -262,7 +263,9 @@ async function loadStoredRuntimeState(
     const connectorRows = await tx
       .select({
         connectorId: connectors.id,
-        connectorSlug: connectors.type,
+        connectorSlug: sql`${connectors.type}`
+          .mapWith(pgTextDecoder)
+          .as("connector_slug"),
         authMethod: connectors.authMethod,
         storageVersion: connectors.storageVersion,
       })
@@ -271,6 +274,7 @@ async function loadStoredRuntimeState(
         and(
           eq(connectors.orgId, args.orgId),
           eq(connectors.userId, args.userId),
+          isNotNull(connectors.type),
         ),
       );
 

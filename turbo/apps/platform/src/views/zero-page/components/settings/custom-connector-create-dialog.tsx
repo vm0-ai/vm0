@@ -3,8 +3,6 @@ import type { FormEvent } from "react";
 import { IconPlus, IconTrash } from "@tabler/icons-react";
 import type {
   CreateCustomConnectorBody,
-  CustomConnectorAuthMethod,
-  CustomConnectorOAuth2AuthMethod,
   CustomConnectorResponse,
   UpdateCustomConnectorBody,
 } from "@vm0/api-contracts/contracts/zero-custom-connectors";
@@ -45,6 +43,7 @@ import {
   removeCustomConnectorAuthMethod$,
   resetCustomConnectorCreateForm$,
   setCustomConnectorCreateField$,
+  type CustomConnectorAuthMethodType,
   type CustomConnectorCreateForm,
   updateCustomConnector$,
 } from "../../../../signals/zero-page/settings/custom-connectors.ts";
@@ -79,6 +78,33 @@ function parseScopes(raw: string): string[] {
       return scope.length > 0;
     });
 }
+
+const OAUTH_AUTHORIZATION_PARAM_FIELDS = [
+  {
+    field: "oauthResource",
+    label: "Resource",
+    placeholder: "https://api.provider.example",
+  },
+  {
+    field: "oauthAudience",
+    label: "Audience",
+    placeholder: "https://api.provider.example",
+  },
+  {
+    field: "oauthAccessType",
+    label: "Access type",
+    placeholder: "offline",
+  },
+  {
+    field: "oauthPrompt",
+    label: "Prompt",
+    placeholder: "consent",
+  },
+] as const satisfies readonly {
+  readonly field: CreateField;
+  readonly label: string;
+  readonly placeholder: string;
+}[];
 
 function BaseFields({ form, setField }: CreateFormFieldProps) {
   const { t } = useTranslation();
@@ -241,7 +267,7 @@ function OAuth2ClientFields({
           htmlFor="cc-oauth-client-id"
           className="text-sm font-medium text-foreground"
         >
-          {editing ? "New client ID" : "Client ID"}
+          Client ID
         </label>
         <Input
           id="cc-oauth-client-id"
@@ -249,7 +275,6 @@ function OAuth2ClientFields({
           onChange={(event) => {
             setField("oauthClientId", event.target.value);
           }}
-          placeholder={editing ? "Leave blank to keep current" : undefined}
         />
       </div>
       <div className="flex flex-col gap-2">
@@ -271,7 +296,7 @@ function OAuth2ClientFields({
       </div>
       {editing && (
         <p className="text-xs text-muted-foreground">
-          Leave both fields blank to keep the stored OAuth client credentials.
+          Leave the client secret blank to keep the stored value.
         </p>
       )}
     </>
@@ -297,6 +322,65 @@ function OAuth2RedirectUrlField() {
         Register this URL in the provider&apos;s OAuth application.
       </p>
     </div>
+  );
+}
+
+function OAuth2AdvancedFields({ form, setField }: CreateFormFieldProps) {
+  return (
+    <>
+      <div className="flex flex-col gap-2">
+        <label className="text-sm font-medium text-foreground">PKCE</label>
+        <Select
+          value={form.oauthPkceMethod}
+          onValueChange={(value) => {
+            setField("oauthPkceMethod", value);
+          }}
+        >
+          <SelectTrigger aria-label="PKCE">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="none">None</SelectItem>
+            <SelectItem value="S256">S256</SelectItem>
+          </SelectContent>
+        </Select>
+      </div>
+      <div className="flex flex-col gap-2">
+        <div>
+          <p className="text-sm font-medium text-foreground">
+            Authorization parameters
+          </p>
+          <p className="text-xs text-muted-foreground">
+            Add only the parameters your provider requires.
+          </p>
+        </div>
+        <div className="grid gap-3 sm:grid-cols-2">
+          {OAUTH_AUTHORIZATION_PARAM_FIELDS.map((parameter) => {
+            return (
+              <div key={parameter.field} className="flex flex-col gap-2">
+                <label
+                  htmlFor={`cc-${parameter.field}`}
+                  className="text-sm font-medium text-foreground"
+                >
+                  {parameter.label}
+                  <span className="text-muted-foreground font-normal ml-1">
+                    (optional)
+                  </span>
+                </label>
+                <Input
+                  id={`cc-${parameter.field}`}
+                  value={form[parameter.field]}
+                  onChange={(event) => {
+                    setField(parameter.field, event.target.value);
+                  }}
+                  placeholder={parameter.placeholder}
+                />
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    </>
   );
 }
 
@@ -403,6 +487,7 @@ function OAuth2AuthenticationFields({
           </SelectContent>
         </Select>
       </div>
+      <OAuth2AdvancedFields form={form} setField={setField} />
       <OAuth2RedirectUrlField />
       {editing && (
         <p className="text-xs text-muted-foreground">
@@ -418,22 +503,13 @@ function LegacyApiFields(props: CreateFormFieldProps) {
   return <ApiAuthenticationFields {...props} removable={false} />;
 }
 
-function connectorAuthMethods(
-  connector: CustomConnectorResponse,
-): readonly CustomConnectorAuthMethod[] {
-  return connector.authMethods ?? [{ type: "api" }];
-}
-
 function connectorHasSimpleApiDefinition(
   connector: CustomConnectorResponse,
 ): boolean {
-  const supportsApi = connectorAuthMethods(connector).some((method) => {
-    return method.type === "api";
-  });
   const field = connector.fields[0];
   const injection = connector.headerInjections[0];
   return (
-    supportsApi &&
+    (connector.authMode ?? "manual") === "manual" &&
     connector.fields.length === 1 &&
     field?.key === "secret" &&
     field.kind === "secret" &&
@@ -444,67 +520,134 @@ function connectorHasSimpleApiDefinition(
   );
 }
 
-function authMethodsFromForm(
+interface CustomConnectorDefinitionParts {
+  readonly fields: CustomConnectorResponse["fields"];
+  readonly headerInjections: CustomConnectorResponse["headerInjections"];
+  readonly queryInjections: CustomConnectorResponse["queryInjections"];
+}
+
+function manualDefinitionFromForm(
   form: CustomConnectorCreateForm,
-): CustomConnectorAuthMethod[] {
-  return form.authMethodTypes.map((type) => {
-    return type === "api"
-      ? { type }
-      : {
-          type,
-          authorizationUrl: form.oauthAuthorizationUrl.trim(),
-          tokenUrl: form.oauthTokenUrl.trim(),
-          scopes: parseScopes(form.oauthScopesRaw),
-          clientAuthentication: form.oauthClientAuthentication,
-        };
-  });
+  connector?: CustomConnectorResponse,
+): CustomConnectorDefinitionParts {
+  const preserveAdvancedDefinition =
+    connector !== undefined &&
+    (connector.authMode ?? "manual") === "manual" &&
+    !connectorHasSimpleApiDefinition(connector);
+  if (preserveAdvancedDefinition) {
+    return {
+      fields: connector.fields,
+      headerInjections: connector.headerInjections,
+      queryInjections: connector.queryInjections,
+    };
+  }
+  return {
+    fields: [
+      {
+        key: "secret",
+        label: "Secret",
+        kind: "secret",
+        required: true,
+        description: "API credential",
+      },
+    ],
+    headerInjections: [
+      {
+        name: form.headerName.trim(),
+        valueTemplate: form.headerTemplate.replaceAll(
+          "{{secret}}",
+          "{{secrets.secret}}",
+        ),
+      },
+    ],
+    queryInjections: [],
+  };
+}
+
+function oauthDefinitionFromConnector(
+  connector?: CustomConnectorResponse,
+): CustomConnectorDefinitionParts {
+  if (connector?.authMode === "oauth") {
+    return {
+      fields: connector.fields,
+      headerInjections: connector.headerInjections,
+      queryInjections: connector.queryInjections,
+    };
+  }
+  return {
+    fields: [],
+    headerInjections: [
+      {
+        name: "Authorization",
+        valueTemplate: "Bearer {{oauth.access_token}}",
+      },
+    ],
+    queryInjections: [],
+  };
+}
+
+function oauthAuthorizationParamsFromForm(
+  form: CustomConnectorCreateForm,
+  connector?: CustomConnectorResponse,
+): Readonly<Record<string, string>> {
+  const authorizationParams = {
+    ...(connector?.oauthConfig?.authorizationParams ?? {}),
+  };
+  const formParams = [
+    ["resource", form.oauthResource],
+    ["audience", form.oauthAudience],
+    ["access_type", form.oauthAccessType],
+    ["prompt", form.oauthPrompt],
+  ] as const;
+  for (const [name, rawValue] of formParams) {
+    const value = rawValue.trim();
+    if (value) {
+      authorizationParams[name] = value;
+    } else {
+      delete authorizationParams[name];
+    }
+  }
+  return authorizationParams;
+}
+
+function oauthConfigFromForm(
+  form: CustomConnectorCreateForm,
+  connector?: CustomConnectorResponse,
+): NonNullable<UpdateCustomConnectorBody["oauthConfig"]> {
+  return {
+    providerAdapter: connector?.oauthConfig?.providerAdapter ?? "standard",
+    clientId: form.oauthClientId.trim(),
+    authorizationUrl: form.oauthAuthorizationUrl.trim(),
+    tokenUrl: form.oauthTokenUrl.trim(),
+    tokenEndpointAuthMethod: form.oauthClientAuthentication,
+    pkceMethod: form.oauthPkceMethod,
+    scopes: parseScopes(form.oauthScopesRaw),
+    authorizationParams: oauthAuthorizationParamsFromForm(form, connector),
+    ...(form.oauthClientSecret.trim().length > 0
+      ? { clientSecret: form.oauthClientSecret }
+      : {}),
+  };
 }
 
 function canonicalDefinitionFromForm(
   form: CustomConnectorCreateForm,
   connector?: CustomConnectorResponse,
 ): UpdateCustomConnectorBody {
-  const supportsApi = form.authMethodTypes.includes("api");
-  const preserveAdvancedApiDefinition =
-    connector !== undefined &&
-    connectorAuthMethods(connector).some((method) => {
-      return method.type === "api";
-    }) &&
-    !connectorHasSimpleApiDefinition(connector);
+  const authMode = form.authMethodTypes.includes("oauth2")
+    ? ("oauth" as const)
+    : ("manual" as const);
+  const definition =
+    authMode === "manual"
+      ? manualDefinitionFromForm(form, connector)
+      : oauthDefinitionFromConnector(connector);
   return {
     displayName: form.displayName.trim(),
     prefixTemplates: parsePrefixLines(form.prefixesRaw),
-    fields: supportsApi
-      ? preserveAdvancedApiDefinition
-        ? (connector?.fields ?? [])
-        : [
-            {
-              key: "secret",
-              label: "Secret",
-              kind: "secret",
-              required: true,
-              description: "API credential",
-            },
-          ]
-      : [],
-    headerInjections: supportsApi
-      ? preserveAdvancedApiDefinition
-        ? (connector?.headerInjections ?? [])
-        : [
-            {
-              name: form.headerName.trim(),
-              valueTemplate: form.headerTemplate.replaceAll(
-                "{{secret}}",
-                "{{secrets.secret}}",
-              ),
-            },
-          ]
-      : [],
-    queryInjections:
-      supportsApi && preserveAdvancedApiDefinition
-        ? (connector?.queryInjections ?? [])
-        : [],
-    authMethods: authMethodsFromForm(form),
+    ...definition,
+    authMode,
+    ...(authMode === "oauth"
+      ? { oauthConfig: oauthConfigFromForm(form, connector) }
+      : {}),
   };
 }
 
@@ -522,83 +665,39 @@ function buildCreateBody(
     };
   }
   const definition = canonicalDefinitionFromForm(form);
-  const supportsOAuth2 = form.authMethodTypes.includes("oauth2");
-  return {
-    ...definition,
-    ...(supportsOAuth2
-      ? {
-          oauthClientId: form.oauthClientId.trim(),
-          oauthClientSecret: form.oauthClientSecret,
-        }
-      : {}),
-  };
+  return definition;
 }
 
 function buildUpdateBody(
   form: CustomConnectorCreateForm,
   connector: CustomConnectorResponse,
 ): UpdateCustomConnectorBody {
-  const definition = canonicalDefinitionFromForm(form, connector);
-  const replacingOAuthCredentials =
-    form.authMethodTypes.includes("oauth2") &&
-    form.oauthClientId.trim().length > 0 &&
-    form.oauthClientSecret.trim().length > 0;
-  return {
-    ...definition,
-    ...(replacingOAuthCredentials
-      ? {
-          oauthClientId: form.oauthClientId.trim(),
-          oauthClientSecret: form.oauthClientSecret,
-        }
-      : {}),
-  };
-}
-
-function oauth2Method(
-  authMethods: readonly CustomConnectorAuthMethod[],
-): CustomConnectorOAuth2AuthMethod | null {
-  return (
-    authMethods.find((method): method is CustomConnectorOAuth2AuthMethod => {
-      return method.type === "oauth2";
-    }) ?? null
-  );
-}
-
-function oauth2MethodsEqual(
-  left: CustomConnectorOAuth2AuthMethod | null,
-  right: CustomConnectorOAuth2AuthMethod | null,
-): boolean {
-  if (!left || !right) {
-    return left === right;
-  }
-  return (
-    left.authorizationUrl === right.authorizationUrl &&
-    left.tokenUrl === right.tokenUrl &&
-    left.clientAuthentication === right.clientAuthentication &&
-    left.scopes.length === right.scopes.length &&
-    left.scopes.every((scope, index) => {
-      return scope === right.scopes[index];
-    })
-  );
+  return canonicalDefinitionFromForm(form, connector);
 }
 
 function updateDisconnectsOAuthConnections(
   connector: CustomConnectorResponse,
   body: UpdateCustomConnectorBody,
 ): boolean {
-  const existingOAuthMethod = oauth2Method(connectorAuthMethods(connector));
-  if (!existingOAuthMethod) {
+  if (connector.authMode !== "oauth") {
     return false;
   }
-  if (
-    body.oauthClientId !== undefined ||
-    body.oauthClientSecret !== undefined
-  ) {
+  if (body.authMode !== "oauth" || !body.oauthConfig) {
     return true;
   }
-  return !oauth2MethodsEqual(
-    existingOAuthMethod,
-    oauth2Method(body.authMethods ?? connectorAuthMethods(connector)),
+  const existing = connector.oauthConfig;
+  return (
+    body.oauthConfig.clientSecret !== undefined ||
+    !existing ||
+    existing.clientId !== body.oauthConfig.clientId ||
+    existing.authorizationUrl !== body.oauthConfig.authorizationUrl ||
+    existing.tokenUrl !== body.oauthConfig.tokenUrl ||
+    existing.tokenEndpointAuthMethod !==
+      body.oauthConfig.tokenEndpointAuthMethod ||
+    existing.pkceMethod !== body.oauthConfig.pkceMethod ||
+    existing.scopes.join("\n") !== body.oauthConfig.scopes.join("\n") ||
+    JSON.stringify(existing.authorizationParams) !==
+      JSON.stringify(body.oauthConfig.authorizationParams)
   );
 }
 
@@ -606,21 +705,10 @@ function oauthCredentialsCanSubmit(
   form: CustomConnectorCreateForm,
   connector?: CustomConnectorResponse,
 ): boolean {
-  const existingOAuthMethod = connector
-    ? connectorAuthMethods(connector).find((method) => {
-        return method.type === "oauth2";
-      })
-    : undefined;
-  const credentialsRequired =
-    !existingOAuthMethod ||
-    (existingOAuthMethod.type === "oauth2" &&
-      existingOAuthMethod.clientAuthentication !==
-        form.oauthClientAuthentication);
+  const credentialsRequired = !connector?.oauthConfig;
   const hasClientId = form.oauthClientId.trim().length > 0;
   const hasClientSecret = form.oauthClientSecret.trim().length > 0;
-  return credentialsRequired
-    ? hasClientId && hasClientSecret
-    : hasClientId === hasClientSecret;
+  return hasClientId && (!credentialsRequired || hasClientSecret);
 }
 
 function formCanSubmit(
@@ -645,9 +733,7 @@ function formCanSubmit(
   }
   const advancedApiDefinition =
     connector !== undefined &&
-    connectorAuthMethods(connector).some((method) => {
-      return method.type === "api";
-    }) &&
+    (connector.authMode ?? "manual") === "manual" &&
     !connectorHasSimpleApiDefinition(connector);
   if (
     form.authMethodTypes.includes("api") &&
@@ -673,8 +759,8 @@ interface AuthenticationFieldsProps extends CreateFormFieldProps {
   readonly oauth2Enabled: boolean;
   readonly editing: boolean;
   readonly advancedApiDefinition: boolean;
-  readonly addAuthMethod: (type: CustomConnectorAuthMethod["type"]) => void;
-  readonly removeAuthMethod: (type: CustomConnectorAuthMethod["type"]) => void;
+  readonly addAuthMethod: (type: CustomConnectorAuthMethodType) => void;
+  readonly removeAuthMethod: (type: CustomConnectorAuthMethodType) => void;
 }
 
 function AuthenticationFields({
@@ -852,9 +938,7 @@ export function CustomConnectorCreateDialog({
     !submitting && formCanSubmit(form, oauth2Enabled, connector);
   const advancedApiDefinition =
     connector !== undefined &&
-    connectorAuthMethods(connector).some((method) => {
-      return method.type === "api";
-    }) &&
+    (connector.authMode ?? "manual") === "manual" &&
     !connectorHasSimpleApiDefinition(connector);
 
   const close = () => {

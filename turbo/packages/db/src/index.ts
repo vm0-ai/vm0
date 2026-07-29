@@ -97,6 +97,7 @@ import * as chatThreadSnapshotSchema from "./schema/chat-thread-snapshot";
 import * as chatOutputMaterializationSchema from "./schema/chat-output-materialization";
 import * as agentRunCustomConnectorAuthRefSchema from "./schema/agent-run-custom-connector-auth-ref";
 import * as orgCustomConnectorSchema from "./schema/org-custom-connector";
+import * as orgCustomConnectorOauthConfigSchema from "./schema/org-custom-connector-oauth-config";
 import * as orgCustomConnectorSecretSchema from "./schema/org-custom-connector-secret";
 import * as orgCustomConnectorValueSchema from "./schema/org-custom-connector-value";
 import * as hostedSiteSchema from "./schema/hosted-site";
@@ -214,6 +215,7 @@ export const schema = {
   ...chatOutputMaterializationSchema,
   ...agentRunCustomConnectorAuthRefSchema,
   ...orgCustomConnectorSchema,
+  ...orgCustomConnectorOauthConfigSchema,
   ...orgCustomConnectorSecretSchema,
   ...orgCustomConnectorValueSchema,
   ...hostedSiteSchema,
