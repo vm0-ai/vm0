@@ -130,7 +130,7 @@ class _AuthBaseBodyCheck:
 
 def load(loader: Loader) -> None:
     """Register custom options for the addon."""
-    mitmproxy_compat.install_request_end_stream_bridge()
+    mitmproxy_compat.install_runtime_compatibility()
     signal.signal(
         runner_flush_lifecycle.RUNNER_USAGE_FLUSH_SIGNAL,
         runner_flush_lifecycle.handle_runner_usage_flush_signal,
