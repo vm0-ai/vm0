@@ -1,4 +1,1349 @@
 {
+  "auth": {
+    "clerk": {
+      "accessNotAllowed": "Acesso não permitido.",
+      "userBanned": "Acesso à conta suspenso porque a atividade nesta conta violou os Termos de Uso do {{brandName}}. Se você tiver dúvidas, entre em contato pelo support@vm0.ai."
+    },
+    "documentTitles": {
+      "signIn": "Entrar",
+      "signUp": "Criar conta"
+    },
+    "loading": "Carregando autenticação",
+    "toggleTheme": "Alternar tema"
+  },
+  "lifecycle": {
+    "emailUnsubscribe": {
+      "action": "Cancelar inscrição",
+      "body": "Você não receberá mais notificações por e-mail iniciadas pelo sistema do {{brandName}}.",
+      "confirmTitle": "Cancelar o recebimento de notificações por e-mail?",
+      "documentTitle": "Cancelar inscrição",
+      "doneTitle": "Inscrição cancelada",
+      "errorBody": "Este link de cancelamento de inscrição é inválido ou expirou. Você pode gerenciar as notificações por e-mail nas Configurações.",
+      "errorTitle": "Algo deu errado"
+    },
+    "morningBriefUnsubscribe": {
+      "documentTitle": "Morning Brief",
+      "doneBody": "Você não receberá mais o e-mail diário do Morning Brief. Você pode reativá-lo a qualquer momento nas Configurações.",
+      "doneTitle": "Morning Brief desativado",
+      "errorBody": "O link de cancelamento de inscrição é inválido ou incompleto. Abra o último e-mail do Morning Brief e use seu link de cancelamento de inscrição, ou gerencie a preferência nas Configurações.",
+      "errorTitle": "Este link é inválido",
+      "loadingLabel": "Carregando status de cancelamento de inscrição",
+      "managePreferences": "Gerenciar preferências"
+    },
+    "pwaInstall": {
+      "banner": "Instale o Zero para uma experiência melhor",
+      "description": "Adicione o Zero à sua Tela Inicial para acesso rápido.",
+      "dismiss": "Fechar banner de instalação",
+      "gotIt": "Entendi",
+      "install": "Instalar",
+      "installApp": "Instalar aplicativo",
+      "stepOne": "No Safari, toque no botão Compartilhar.",
+      "stepThree": "Confirme que o nome é Zero e toque em Adicionar.",
+      "stepTwo": "Escolha Adicionar à Tela Inicial.",
+      "title": "Instalar Zero"
+    },
+    "redeemCampaign": {
+      "actions": {
+        "back": "Voltar para {{brandName}}",
+        "redeem": "Resgatar créditos"
+      },
+      "documentTitle": "Resgatar seus créditos",
+      "organizationFallback": "sua organização",
+      "states": {
+        "adminRequired": {
+          "body": "Apenas administradores da organização podem resgatar créditos de campanha para {{orgName}}. Peça a um administrador em sua organização para abrir o link em vez disso.",
+          "title": "Acesso de administrador necessário"
+        },
+        "alreadyGranted": {
+          "body": "Seus créditos já estão na conta de {{orgName}}. Volte para o aplicativo para começar a usá-los.",
+          "title": "Você já resgatou esta oferta"
+        },
+        "billingUnavailable": {
+          "body": "Nosso sistema de pagamento não está disponível no momento. Por favor, tente novamente em alguns minutos.",
+          "title": "Cobrança temporariamente indisponível"
+        },
+        "broken": {
+          "body": "Não conseguimos completar seu resgate. Por favor, tente novamente ou entre em contato com o suporte.",
+          "title": "Algo deu errado"
+        },
+        "campaignUnavailable": {
+          "body": "O código promocional pode ter expirado, atingido seu limite de resgate ou sido removido. Se você acredita que isso é um erro, entre em contato com o suporte.",
+          "title": "Esta oferta não está disponível"
+        },
+        "paymentSuccessful": {
+          "body": "Seus créditos estão a caminho de {{orgName}}. Abra o painel para ver seu novo saldo.",
+          "title": "Pagamento bem-sucedido"
+        },
+        "processing": {
+          "body": "Estamos aplicando seus créditos a {{orgName}} agora. Isso geralmente leva alguns segundos — atualize em um momento para ver o saldo atualizado.",
+          "title": "Pagamento recebido"
+        },
+        "ready": {
+          "body": "Complete a finalização da compra para adicionar esses créditos ao saldo de {{orgName}}.",
+          "title": "Resgatar seus créditos"
+        }
+      }
+    }
+  },
+  "onboarding": {
+    "categories": {
+      "ceo": {
+        "description": "Briefings e a visão geral",
+        "title": "CEO"
+      },
+      "data": {
+        "description": "Painéis, métricas, consultas",
+        "title": "Dados"
+      },
+      "engineering": {
+        "description": "Enviar, depurar, automatizar código",
+        "title": "Engenharia"
+      },
+      "everyone": {
+        "description": "E-mail, calendário, reuniões",
+        "title": "Todos"
+      },
+      "marketing": {
+        "description": "Conteúdo, SEO, campanhas",
+        "title": "Marketing"
+      },
+      "operations": {
+        "description": "Projetos, agendamento, sincronização",
+        "title": "Operações"
+      },
+      "product": {
+        "description": "Especificações, lançamentos, feedback",
+        "title": "Produto"
+      },
+      "sales": {
+        "description": "Pipeline e prospecção",
+        "title": "Vendas"
+      },
+      "support": {
+        "description": "Tickets e ajuda ao cliente",
+        "title": "Suporte"
+      }
+    },
+    "common": {
+      "back": "Voltar",
+      "continue": "Continuar",
+      "dialogPreview": "Prévia de {{title}}",
+      "gotIt": "Entendi",
+      "next": "Próximo",
+      "noConnectorRequired": "Nenhum conector necessário",
+      "previewWorkflowDetails": "Prévia dos detalhes do fluxo de trabalho",
+      "selectTemplate": "Selecionar este modelo",
+      "selectThisTemplate": "Selecionar este modelo",
+      "stepProgress": "Passo {{current}} de {{total}}"
+    },
+    "documentTitles": {
+      "chooseImage": "Escolha um estilo de imagem",
+      "choosePresentation": "Escolha um modelo de apresentação",
+      "chooseVideo": "Escolha um estilo de vídeo",
+      "chooseWorkflow": "Escolha um fluxo de trabalho",
+      "make": "Bem-vindo ao {{brandName}}",
+      "runImage": "Crie sua primeira imagem",
+      "runPresentation": "Crie sua primeira apresentação",
+      "runVideo": "Crie seu primeiro vídeo",
+      "runWorkflow": "Execute seu primeiro fluxo de trabalho"
+    },
+    "make": {
+      "description": "Escolha um ponto de partida, você pode fazer o resto depois.",
+      "options": {
+        "explore": {
+          "description": "Apenas conectar minhas ferramentas",
+          "title": "Explorar por conta própria"
+        },
+        "images": {
+          "description": "Crie visuais de alta qualidade",
+          "title": "Gerar imagens"
+        },
+        "presentation": {
+          "description": "Gerar slides e notas do apresentador",
+          "title": "Gerar uma apresentação"
+        },
+        "video": {
+          "description": "Transforme suas ideias em vídeo",
+          "title": "Produção de vídeo"
+        },
+        "workflow": {
+          "description": "Explore a partir de modelos pré-definidos",
+          "title": "Automação de fluxo de trabalho"
+        }
+      },
+      "projectTypeLabel": "Tipo de primeiro projeto",
+      "promptDescription": "Ajuste abaixo ou execute como está. O Zero cuida do resto. Suas ferramentas permanecem isoladas e nada sai do seu espaço de trabalho.",
+      "promptLabel": "Prompt de onboarding",
+      "promptTitle": "Experimente este prompt",
+      "title": "O que você quer fazer primeiro"
+    },
+    "runAction": {
+      "checkingPlan": "Verificando plano",
+      "runNow": "Executar agora",
+      "upgradePro": "Atualizar para Pro para executar"
+    },
+    "templatePicker": {
+      "image": {
+        "description": "Use-o como referência para a imagem que você deseja criar.",
+        "selectTemplate": "Selecionar modelo de ilustração {{title}}",
+        "showVariant": "Mostrar variante {{title}} {{variant}}",
+        "title": "Escolha um modelo de ilustração para começar"
+      },
+      "presentation": {
+        "description": "Use-o como referência para o deck que você deseja criar.",
+        "nextSlide": "Mostrar próximo slide",
+        "previousSlide": "Mostrar slide anterior",
+        "selectTemplate": "Selecionar modelo de apresentação {{title}}",
+        "showSlide": "Mostrar slide {{slide}}",
+        "slideAlt": "Slide {{title}} {{slide}}",
+        "title": "Escolha um modelo de apresentação para começar",
+        "viewTemplate": "Ver apresentação {{title}}"
+      },
+      "video": {
+        "description": "Use-o como referência para o vídeo que você deseja criar.",
+        "selectTemplate": "Selecionar modelo de vídeo {{title}}",
+        "title": "Escolha um modelo de vídeo para começar"
+      }
+    },
+    "templateRun": {
+      "image": {
+        "noteLabel": "Cena de ilustração personalizada",
+        "notePlaceholder": "Adicione sua cena personalizada para remixar com sua própria ilustração",
+        "previewLabel": "Prévia do modelo de ilustração",
+        "title": "Selecione uma automação que você gostaria de experimentar"
+      },
+      "presentation": {
+        "noteLabel": "Conteúdo e instruções da apresentação",
+        "notePlaceholder": "Adicione o conteúdo e as instruções da sua apresentação",
+        "previewLabel": "Prévia do modelo de apresentação",
+        "title": "Complete sua apresentação"
+      },
+      "video": {
+        "noteLabel": "Prompt de vídeo personalizado",
+        "notePlaceholder": "Adicione seu prompt personalizado para remixar com seu próprio vídeo",
+        "previewLabel": "Prévia do modelo de vídeo",
+        "title": "Personalize seu vídeo"
+      }
+    },
+    "templates": {
+      "illustration": {
+        "cozy-parlor": "Sala Aconchegante",
+        "crowd-ink": "Tinta da Multidão",
+        "editorial-flatfolk": "Folk Editorial",
+        "endpaper": "Contracapa",
+        "flat-poster": "Pôster Plano",
+        "folk-muse": "Muse Folk",
+        "folk-storybook": "Livro de Histórias Folk",
+        "grain-poster": "Pôster Granulado",
+        "grainy-duotone": "Duotone Granulado",
+        "iberian-vignette": "Vignette Ibérica",
+        "ink-mascot": "Mascote de Tinta",
+        "ink-storefront": "Loja de Tinta",
+        "inkdab": "Inkdab",
+        "inkstomp": "Inkstomp",
+        "iso-scene": "Cena Iso",
+        "jade-blockprint": "Impressão em Bloco de Jade",
+        "light-pop-portrait": "Retrato Pop Leve",
+        "loose-contour": "Contorno Solto",
+        "mellow-pop": "Pop Suave",
+        "mosaic-still-life": "Natureza Morta Mosaic",
+        "notion-illustration": "Ilustração Notion",
+        "op-ed-cover": "Capa de Opinião",
+        "painterly-botanical": "Botânico Pintado",
+        "papernook": "Ninho de Papel",
+        "postcard-illustration": "Ilustração de Cartão Postal",
+        "riso-relic": "Relíquia Riso",
+        "shadow-pop": "Pop de Sombra",
+        "soft-vector": "Vetorial Suave",
+        "sticker-sheet": "Folha de Adesivos",
+        "sunlit-gouache": "Gouache Iluminado pelo Sol",
+        "tiny-wanderer": "Pequeno Viajante"
+      },
+      "presentation": {
+        "botane-organic-deck": "Deck Botane Orgânico",
+        "business-data-presentation": "Dados de Negócios",
+        "crayon-learning-deck": "Deck de Aprendizado Crayon",
+        "creative-agency-presentation": "Apresentação de Agência Criativa",
+        "data-report-presentation": "Relatório de Dados",
+        "editorial-magazine-deck": "Deck de Revista Editorial",
+        "landing-consulting-deck": "Deck de Consultoria de Landing",
+        "lumina-creative-studio": "Estúdio Criativo Lumina",
+        "mosaic-geometric-pitch": "Pitch Geométrico Mosaic",
+        "playful-launch-presentation": "Lançamento divertido",
+        "playful-pop-deck": "Deck Pop Divertido"
+      },
+      "video": {
+        "chinese-ink-art": "Arte em Tinta Chinesa",
+        "cyberpunk-anime": "Anime Cyberpunk",
+        "epic-grandeur": "Grandeza Épica",
+        "fashion-editorial": "Editorial de Moda",
+        "gourmet-documentary": "Documentário Gourmet",
+        "hand-drawn-fantasy-anime": "Anime de Fantasia Desenhado à Mão",
+        "japanese-wabi-sabi": "Wabi-Sabi Japonês",
+        "luxury-product": "Produto de Luxo Macro",
+        "shortform-viral": "Viral de Formato Curto",
+        "sports-performance-ad": "Anúncio de Performance Esportiva"
+      }
+    },
+    "workflowDiagram": {
+      "preparedDescription": "O Zero prepara o próximo passo a partir de suas ferramentas.",
+      "preparedTitle": "Fluxo de trabalho preparado",
+      "reviewDescription": "O Zero completa o fluxo de trabalho e retorna o resultado.",
+      "reviewTitle": "Pronto para revisão",
+      "source": "Fonte"
+    },
+    "workflowPicker": {
+      "categoryDescription": "Configurações prontas para uso que você pode adaptar às suas ferramentas e objetivos.",
+      "categoryTitle": "Fluxos de trabalho de {{category}}",
+      "customDescription": "Descreva o que você quer e o Zero constrói com você.",
+      "customTitle": "Falar com o Zero e criar meu próprio fluxo",
+      "description": "Escolha um papel para ver os fluxos de trabalho que se encaixam. Você pode mudar a qualquer momento.",
+      "title": "Em que você está trabalhando?",
+      "workflowCardLabel": "{{title}} {{description}}"
+    },
+    "workflowPreview": {
+      "howItWorks": "Como funciona",
+      "whatItDoes": "O que faz"
+    },
+    "workflowRun": {
+      "continueWithZero": "Continuar com o Zero",
+      "createDraft": "Criar rascunho",
+      "customNoteLabel": "Descreva seu fluxo de trabalho",
+      "customNotePlaceholder": "Descreva o que você quer que o Zero construa",
+      "customTitle": "Descreva seu fluxo de trabalho",
+      "noteLabel": "Algo mais que você gostaria de adicionar?",
+      "notePlaceholder": "Algo mais que você gostaria de adicionar?",
+      "reviewTitle": "Revise o rascunho do seu fluxo de trabalho"
+    },
+    "workflows": {
+      "alert-metric-moves-slack": {
+        "description": "Monitore suas métricas-chave e avise o Slack quando uma mudar drasticamente.",
+        "scenario": "Quando um problema de métrica aparece na revisão semanal, já está desatualizado. O Zero monitora uma métrica chave a cada hora e avisa o Slack no momento em que ela sai da faixa normal.",
+        "steps": {
+          "one": {
+            "description": "Zero lê a métrica a cada hora.",
+            "title": "Zero verifica a métrica"
+          },
+          "three": {
+            "description": "Zero publica um alerta com a divergência.",
+            "title": "Alerta publicado no Slack"
+          },
+          "two": {
+            "description": "Zero sinaliza valores fora da faixa esperada.",
+            "title": "Comparado à faixa normal"
+          }
+        },
+        "title": "Alerta quando uma métrica muda"
+      },
+      "auto-merge-github-prs": {
+        "description": "Revise PRs rotulados como prontos para mesclar, aguarde o CI, depois mescle e publique no Slack.",
+        "scenario": "Mesclar um PR significa monitorar o CI, reexaminar a diferença e lembrar de publicar que foi enviado. O Zero observa o rótulo pronto para mesclar, revisa a alteração, aguarda os testes ficarem verdes, mescla e informa o canal.",
+        "steps": {
+          "one": {
+            "description": "O Zero pega pull requests assim que eles têm seu rótulo de mesclagem.",
+            "title": "Um PR é rotulado como pronto para mesclar"
+          },
+          "three": {
+            "description": "O Zero mescla o PR e publica o resultado no seu canal.",
+            "title": "Mesclado e publicado no Slack"
+          },
+          "two": {
+            "description": "O Zero lê a diferença e aguarda até que todos os testes obrigatórios sejam aprovados.",
+            "title": "Zero revisa e aguarda o CI"
+          }
+        },
+        "title": "Mesclar PRs do GitHub automaticamente"
+      },
+      "blog-posts-to-x": {
+        "description": "Todo dia, o Zero transforma novos posts de blog publicados em variantes sociais e as coloca em fila no X através do Buffer.",
+        "scenario": "Um post de blog pode ser dez posts sociais, mas ninguém tem tempo para cortá-los. O Zero identifica novos posts publicados, elabora um conjunto de variantes para o X e as coloca em fila no Buffer para aprovação.",
+        "steps": {
+          "one": {
+            "description": "Zero detecta novos posts publicados no Strapi.",
+            "title": "Zero encontra novos posts"
+          },
+          "three": {
+            "description": "Zero agenda as variantes para revisão.",
+            "title": "Colocado em fila no Buffer"
+          },
+          "two": {
+            "description": "Zero elabora vários posts para o X de cada artigo.",
+            "title": "Cortado em variantes sociais"
+          }
+        },
+        "title": "Transformar posts de blog em posts sociais"
+      },
+      "build-weekly-deck-gamma": {
+        "description": "Transforme as métricas da semana em um deck pronto para apresentação no Gamma.",
+        "scenario": "O deck de métricas semanal é o mesmo slide com novos números toda vez. O Zero puxa os dados, constrói o deck no Gamma e publica no Slack para que a revisão esteja pronta antes da reunião.",
+        "steps": {
+          "one": {
+            "description": "Zero lê as métricas das planilhas e análises.",
+            "title": "Zero coleta os números"
+          },
+          "three": {
+            "description": "Zero compartilha o deck finalizado.",
+            "title": "Publicado no Slack"
+          },
+          "two": {
+            "description": "Zero monta o deck de métricas recorrentes.",
+            "title": "Deck construído no Gamma"
+          }
+        },
+        "title": "Criar o deck semanal no Gamma"
+      },
+      "business-review-gamma": {
+        "description": "Transforme as métricas do mês em uma apresentação de revisão de negócios no Gamma.",
+        "scenario": "A revisão semanal de negócios é uma apresentação recorrente que alguém reconstrói manualmente. O Zero puxa receita e crescimento, monta a apresentação no Gamma e a deixa pronta antes da reunião.",
+        "steps": {
+          "one": {
+            "description": "O Zero lê MRR, burn e crescimento do Stripe e Clerk.",
+            "title": "O Zero puxa os números"
+          },
+          "three": {
+            "description": "O Zero compartilha a apresentação finalizada.",
+            "title": "Pronto para apresentar"
+          },
+          "two": {
+            "description": "O Zero monta a revisão de negócios recorrente.",
+            "title": "Apresentação construída no Gamma"
+          }
+        },
+        "title": "Construir a revisão de negócios no Gamma"
+      },
+      "catch-calendar-conflicts": {
+        "description": "Verifique seu calendário em busca de reservas duplas e alerte você com antecedência.",
+        "scenario": "Reservas duplas só são descobertas quando duas reuniões começam ao mesmo tempo. O Zero verifica cada novo evento em relação ao seu calendário e à disponibilidade do Cal.com e alerta você sobre conflitos antes que eles ocorram.",
+        "steps": {
+          "one": {
+            "description": "Zero é acionado quando um novo evento chega ao seu calendário.",
+            "title": "Um evento é criado"
+          },
+          "three": {
+            "description": "Zero alerta você sobre o conflito e opções.",
+            "title": "Conflito sinalizado no Slack"
+          },
+          "two": {
+            "description": "Zero compara com eventos existentes e disponibilidade.",
+            "title": "Verificado para conflitos"
+          }
+        },
+        "title": "Identificar conflitos no Google Calendar"
+      },
+      "catch-leads-gmail": {
+        "description": "Identifique sinais de compra em novos e-mails e registre os leads qualificados.",
+        "scenario": "Leads quentes se escondem em uma caixa de entrada movimentada e esfriam. O Zero lê os e-mails recebidos em busca de sinais de compra, enriquece o remetente com Apollo, registra o lead em uma planilha e sugere o próximo passo no Slack.",
+        "steps": {
+          "one": {
+            "description": "Zero lê o Gmail recebido em busca de sinais de compra.",
+            "title": "Zero escaneia novos e-mails"
+          },
+          "three": {
+            "description": "Zero publica o lead e um próximo passo recomendado no Slack.",
+            "title": "Próximo passo sugerido"
+          },
+          "two": {
+            "description": "Zero enriquece com Apollo e adiciona uma linha à sua planilha.",
+            "title": "Lead enriquecido e registrado"
+          }
+        },
+        "title": "Capturar leads do Gmail"
+      },
+      "chase-overdue-asana-tasks": {
+        "description": "Encontre tarefas do Asana em atraso e lembre seus responsáveis no Slack.",
+        "scenario": "Tarefas em atraso precisam de alguém para cobrá-las, e essa pessoa está sempre ocupada. O Zero verifica o Asana diariamente em busca de tarefas vencidas e lembra cada responsável no Slack.",
+        "steps": {
+          "one": {
+            "description": "Zero lê as tarefas que estão além da data de vencimento.",
+            "title": "Zero verifica o Asana"
+          },
+          "three": {
+            "description": "Zero envia mensagens diretas a cada responsável com sua lista de tarefas em atraso.",
+            "title": "Lembretes enviados no Slack"
+          },
+          "two": {
+            "description": "Zero agrupa o trabalho em atraso por responsável.",
+            "title": "Responsáveis identificados"
+          }
+        },
+        "title": "Cobrar tarefas do Asana em atraso"
+      },
+      "check-posthog-signup-funnel": {
+        "description": "Acompanhe o funil de inscrição e envie a maior queda para o Slack.",
+        "scenario": "Funis só ajudam se alguém os executar. O Zero roda o funil de inscrição semanalmente, encontra a etapa que perde mais pessoas e publica no Slack para que a equipe saiba onde focar.",
+        "steps": {
+          "one": {
+            "description": "Zero executa o funil de inscrição no PostHog durante a semana.",
+            "title": "Zero roda o funil"
+          },
+          "three": {
+            "description": "Zero publica a perda e a tendência.",
+            "title": "Publicado no Slack"
+          },
+          "two": {
+            "description": "Zero encontra a etapa com a maior queda.",
+            "title": "Maior queda identificada"
+          }
+        },
+        "title": "Verificar o funil de inscrição do PostHog"
+      },
+      "compare-google-ads-last-month": {
+        "description": "Todo dia, o Zero compara gastos do Google Ads e Meta Ads, CPA e ROAS em relação ao período anterior e sinaliza anomalias no Slack.",
+        "scenario": "Problemas de pacing em anúncios custam dinheiro a cada dia que passam despercebidos. O Zero compara gastos, CPA e ROAS com o período anterior diariamente e sinaliza qualquer desvio no Slack.",
+        "steps": {
+          "one": {
+            "description": "Zero puxa gastos, CPA e conversões do Google e Meta Ads.",
+            "title": "Zero lê o desempenho dos anúncios"
+          },
+          "three": {
+            "description": "Zero publica a comparação e destaca desvios.",
+            "title": "Anomalias sinalizadas no Slack"
+          },
+          "two": {
+            "description": "Zero calcula as variações e o pacing.",
+            "title": "Comparado ao período anterior"
+          }
+        },
+        "title": "Comparar Google Ads com o mês passado"
+      },
+      "daily-company-brief-slack": {
+        "description": "Reúna dados de produto, crescimento e receita em um resumo diário no Slack.",
+        "scenario": "A visão completa está em cinco ferramentas que ninguém verifica juntas. O Zero reúne crescimento, receita, saúde do produto e engenharia todas as manhãs e publica um pulso da empresa no Slack: conquistas, riscos e o que precisa de atenção.",
+        "steps": {
+          "one": {
+            "description": "O Zero lê crescimento, receita, erros e entregas em toda a sua stack.",
+            "title": "O Zero coleta os sinais"
+          },
+          "three": {
+            "description": "O Zero publica o resumo diário da empresa.",
+            "title": "Publicado no Slack"
+          },
+          "two": {
+            "description": "O Zero escreve conquistas, riscos e o que precisa de atenção.",
+            "title": "Montado em um pulso"
+          }
+        },
+        "title": "Publicar um resumo diário da empresa no Slack"
+      },
+      "daily-industry-news-slack": {
+        "description": "Reúna as notícias relevantes do dia da indústria em um resumo no Slack.",
+        "scenario": "Manter-se atualizado significa uma dúzia de abas que você nunca abre. O Zero escaneia as últimas 24 horas de notícias sobre IA e concorrentes todos os dias e publica um breve resumo no Slack para que você possa ler um resumo em vez de várias fontes.",
+        "steps": {
+          "one": {
+            "description": "O Zero pesquisa a cobertura de IA e concorrentes do último dia com Exa.",
+            "title": "O Zero escaneia as notícias"
+          },
+          "three": {
+            "description": "O Zero publica o resumo diário de notícias.",
+            "title": "Publicado no Slack"
+          },
+          "two": {
+            "description": "O Zero resume o que realmente importa.",
+            "title": "Destilado em um resumo"
+          }
+        },
+        "title": "Publicar notícias diárias da indústria no Slack"
+      },
+      "draft-github-release-notes-notion": {
+        "description": "Transforme os PRs mesclados desde o último lançamento em notas limpas no Notion.",
+        "scenario": "Escrever notas de lançamento significa rolar o histórico de PRs e traduzir commits em linguagem simples. O Zero faz isso quando você rotula um PR como enviado: ele reúne tudo que foi mesclado desde a última tag e rascunha notas legíveis no Notion.",
+        "steps": {
+          "one": {
+            "description": "O Zero é acionado pelo seu rótulo de lançamento.",
+            "title": "Um PR é rotulado como enviado"
+          },
+          "three": {
+            "description": "O Zero rascunha notas de lançamento limpas e agrupadas em uma página do Notion.",
+            "title": "Notas de lançamento salvas no Notion"
+          },
+          "two": {
+            "description": "O Zero coleta tudo que foi mesclado desde a última tag de lançamento.",
+            "title": "Zero reúne PRs mesclados"
+          }
+        },
+        "title": "Rascunhar notas de lançamento do GitHub no Notion"
+      },
+      "draft-newsletter-mailchimp": {
+        "description": "Todo mês, o Zero monta uma newsletter a partir de recursos lançados e prepara um rascunho no Mailchimp.",
+        "scenario": "A newsletter mensal sempre começa a partir de uma página em branco. O Zero reúne o que foi lançado no GitHub, elabora a edição e a prepara no Mailchimp para que você edite em vez de criar.",
+        "steps": {
+          "one": {
+            "description": "Zero lê os recursos mesclados e destaques do GitHub.",
+            "title": "Zero reúne o que foi lançado"
+          },
+          "three": {
+            "description": "Zero cria uma campanha de rascunho pronta para edição.",
+            "title": "Preparado no Mailchimp"
+          },
+          "two": {
+            "description": "Zero escreve a edição na sua voz.",
+            "title": "Newsletter rascunhada"
+          }
+        },
+        "title": "Rascunhar a newsletter no Mailchimp"
+      },
+      "draft-replies-notion-faq": {
+        "description": "Redija respostas para tickets com base na sua FAQ do Notion.",
+        "scenario": "A maioria das perguntas já está respondida na documentação. O Zero lê a pergunta recebida, consulta a FAQ no Notion e redige uma resposta baseada na sua própria documentação para que um agente aprove.",
+        "steps": {
+          "one": {
+            "description": "O Zero lê a nova conversa no Intercom ou Gmail.",
+            "title": "Uma pergunta chega"
+          },
+          "three": {
+            "description": "O Zero prepara uma resposta alinhada à marca.",
+            "title": "Resposta redigida para revisão"
+          },
+          "two": {
+            "description": "O Zero encontra a resposta relevante na sua documentação.",
+            "title": "O Zero verifica a FAQ do Notion"
+          }
+        },
+        "title": "Redigir respostas da sua FAQ do Notion"
+      },
+      "file-gmail-invoices-drive": {
+        "description": "Arquive e-mails de faturas no Drive e registre cada um em uma planilha.",
+        "scenario": "As faturas se acumulam na caixa de entrada e a conciliação é uma correria. O Zero arquiva cada fatura rotulada na pasta correta do Drive e registra o valor e a data de vencimento na sua planilha de despesas à medida que chega.",
+        "steps": {
+          "one": {
+            "description": "Zero é acionado pela sua etiqueta de Faturas no Gmail.",
+            "title": "Uma fatura é rotulada"
+          },
+          "three": {
+            "description": "Zero registra o valor e a data de vencimento na planilha de despesas.",
+            "title": "Registrada em uma planilha"
+          },
+          "two": {
+            "description": "Zero salva o anexo na pasta correta.",
+            "title": "Arquivada no Google Drive"
+          }
+        },
+        "title": "Arquivar faturas do Gmail no Google Drive"
+      },
+      "file-sentry-crashes-github": {
+        "description": "Classifique novos erros do Sentry por impacto no usuário e registre os piores como problemas do GitHub.",
+        "scenario": "Novas falhas ficam ocultas no Sentry até que alguém procure. O Zero verifica a cada hora, classifica os erros pelo número de usuários afetados, abre um problema no GitHub para os que importam e avisa quem é o responsável pelo código.",
+        "steps": {
+          "one": {
+            "description": "O Zero lê erros não resolvidos e suas contagens de eventos da última hora.",
+            "title": "Zero puxa novos erros do Sentry"
+          },
+          "three": {
+            "description": "O Zero abre um problema no GitHub com o stack trace e notifica o responsável no Slack.",
+            "title": "Problemas registrados e responsável notificado"
+          },
+          "two": {
+            "description": "O Zero classifica por usuários afetados e filtra ruídos de baixo impacto.",
+            "title": "Classificados por impacto no usuário"
+          }
+        },
+        "title": "Registrar falhas do Sentry como problemas do GitHub"
+      },
+      "fixes-to-notion-help-docs": {
+        "description": "Quando um ticket é marcado como resolvido, o Zero transforma a correção em um artigo de ajuda reutilizável no Notion.",
+        "scenario": "A mesma pergunta volta porque a correção nunca foi documentada. O Zero transforma cada ticket resolvido em um artigo de ajuda limpo e reutilizável no Notion para que a resposta exista na próxima vez.",
+        "steps": {
+          "one": {
+            "description": "O Zero é acionado quando um ticket é fechado.",
+            "title": "Um ticket é resolvido"
+          },
+          "three": {
+            "description": "O Zero adiciona o artigo ao seu centro de ajuda.",
+            "title": "Salvo no Notion"
+          },
+          "two": {
+            "description": "O Zero redige um guia claro a partir da resolução.",
+            "title": "Correção redigida"
+          }
+        },
+        "title": "Transformar correções em documentos de ajuda no Notion"
+      },
+      "flag-figma-designs-no-task": {
+        "description": "Sinalizar designs do Figma que ainda não têm uma tarefa vinculada ao Linear.",
+        "scenario": "Designs terminam silenciosamente sem nunca se tornarem tickets de construção. O Zero verifica o Figma diariamente em busca de quadros marcados como prontos que não têm uma tarefa vinculada ao Linear e sinaliza as lacunas no Slack antes que elas escapem.",
+        "steps": {
+          "one": {
+            "description": "O Zero lê quadros e suas tarefas vinculadas.",
+            "title": "Zero verifica quadros do Figma"
+          },
+          "three": {
+            "description": "O Zero lista os designs não vinculados no seu canal.",
+            "title": "Lacunas publicadas no Slack"
+          },
+          "two": {
+            "description": "O Zero sinaliza designs prontos que estão faltando um ticket de construção.",
+            "title": "Encontra quadros sem uma tarefa"
+          }
+        },
+        "title": "Sinalizar designs do Figma sem uma tarefa"
+      },
+      "flagged-gmail-todoist-tasks": {
+        "description": "Transforme os e-mails que você sinaliza em tarefas do Todoist automaticamente.",
+        "scenario": "Sinalizar um e-mail apenas adia a decisão. O Zero pega a sinalização, pesquisa o tópico e a conversa anterior, e registra uma tarefa no Todoist com o contexto já anexado.",
+        "steps": {
+          "one": {
+            "description": "Zero é acionado pela sua etiqueta de tarefas no Gmail.",
+            "title": "Você sinaliza um e-mail"
+          },
+          "three": {
+            "description": "Zero cria uma tarefa pronta para fazer com links.",
+            "title": "Tarefa registrada no Todoist"
+          },
+          "two": {
+            "description": "Zero coleta o contexto da conversa anterior e informações da web com a Exa.",
+            "title": "Zero pesquisa"
+          }
+        },
+        "title": "Transformar e-mails sinalizados do Gmail em tarefas do Todoist"
+      },
+      "github-idea-to-notion-spec": {
+        "description": "Expanda um problema rotulado do GitHub em uma especificação de produto estruturada no Notion.",
+        "scenario": "Uma ideia de uma linha em um problema não é uma especificação. O Zero pega o rótulo precisa-especificação e expande o problema em um PRD estruturado no Notion com problema, usuários, requisitos e critérios de aceitação prontos para refinar.",
+        "steps": {
+          "one": {
+            "description": "O Zero é acionado pelo rótulo e lê o problema.",
+            "title": "Um problema é rotulado como precisa-especificação"
+          },
+          "three": {
+            "description": "O Zero cria a página PRD estruturada no Notion.",
+            "title": "Salvo no Notion"
+          },
+          "two": {
+            "description": "O Zero rascunha problema, usuários, requisitos e critérios de aceitação.",
+            "title": "Zero expande para um PRD"
+          }
+        },
+        "title": "Transformar uma ideia do GitHub em uma especificação do Notion"
+      },
+      "gmail-followups-auto": {
+        "description": "Encontre contatos que não responderam e elabore o próximo follow-up.",
+        "scenario": "O follow-up é onde os negócios são fechados e onde são esquecidos. O Zero avança suas sequências diariamente e elabora o próximo contato para cada não-resposta, para que nada fique esquecido.",
+        "steps": {
+          "one": {
+            "description": "Zero lê quem não respondeu no Instantly e Apollo.",
+            "title": "Zero verifica o status da sequência"
+          },
+          "three": {
+            "description": "Zero prepara os rascunhos para sua aprovação.",
+            "title": "Pronto no Gmail"
+          },
+          "two": {
+            "description": "Zero escreve o follow-up para cada contato.",
+            "title": "Próximo contato elaborado"
+          }
+        },
+        "title": "Enviar follow-ups do Gmail automaticamente"
+      },
+      "gmail-reconnect-reminders": {
+        "description": "Destaque contatos importantes com quem você não enviou e-mail há um tempo.",
+        "scenario": "Relacionamentos se desvanecem quando você está focado. O Zero revisa sua caixa de entrada e calendário semanalmente, destaca contatos significativos com quem você não se comunicou recentemente e sugere uma abertura natural para reconectar.",
+        "steps": {
+          "one": {
+            "description": "O Zero lê o histórico recente de e-mails e calendário.",
+            "title": "O Zero revisa seus contatos"
+          },
+          "three": {
+            "description": "O Zero publica cada contato com uma abertura sugerida.",
+            "title": "Aberturas sugeridas"
+          },
+          "two": {
+            "description": "O Zero encontra contatos significativos com quem você não se comunicou ultimamente.",
+            "title": "Relacionamentos silenciosos destacados"
+          }
+        },
+        "title": "Receber lembretes de reconexão do Gmail"
+      },
+      "highlight-key-emails-gmail": {
+        "description": "Destaque os poucos e-mails que realmente precisam da sua atenção.",
+        "scenario": "Uma caixa de entrada cheia entope os três e-mails que importam. O Zero lê seu e-mail todas as manhãs e destaca apenas aqueles que realmente precisam de você, publicados no Slack.",
+        "steps": {
+          "one": {
+            "description": "O Zero escaneia os e-mails da noite no Gmail.",
+            "title": "O Zero lê a caixa de entrada"
+          },
+          "three": {
+            "description": "O Zero publica a lista com o motivo de cada um ser importante.",
+            "title": "Publicado no Slack"
+          },
+          "two": {
+            "description": "O Zero filtra os poucos que precisam da sua atenção.",
+            "title": "Prioridades identificadas"
+          }
+        },
+        "title": "Destacar e-mails importantes no Gmail"
+      },
+      "investor-update-google-docs": {
+        "description": "Monte métricas e destaques em uma atualização para investidores no Docs.",
+        "scenario": "A atualização mensal para investidores sempre começa tarde e do zero. O Zero reúne os KPIs e destaques e redige a atualização no Google Docs para que você refine em vez de montar.",
+        "steps": {
+          "one": {
+            "description": "O Zero puxa receita e crescimento do Stripe e Sheets.",
+            "title": "O Zero reúne KPIs"
+          },
+          "three": {
+            "description": "O Zero deixa um rascunho pronto para edição.",
+            "title": "Editável no Google Docs"
+          },
+          "two": {
+            "description": "O Zero escreve a narrativa e as métricas.",
+            "title": "Atualização redigida"
+          }
+        },
+        "title": "Redigir a atualização para investidores no Google Docs"
+      },
+      "log-gong-calls-hubspot": {
+        "description": "Puxe notas e próximos passos de uma chamada do Gong para o negócio no HubSpot.",
+        "scenario": "As notas da chamada nunca vão para o CRM enquanto estão frescas. O Zero lê a transcrição do Gong após cada chamada e escreve o resumo e os próximos passos automaticamente no negócio do HubSpot.",
+        "steps": {
+          "one": {
+            "description": "Após a chamada, o Zero puxa as notas da gravação do Gong.",
+            "title": "O Zero lê a transcrição"
+          },
+          "three": {
+            "description": "O Zero escreve as notas no registro do negócio.",
+            "title": "Registrado no HubSpot"
+          },
+          "two": {
+            "description": "O Zero extrai decisões e follow-ups.",
+            "title": "Resumo e próximos passos redigidos"
+          }
+        },
+        "title": "Registrar chamadas do Gong no HubSpot"
+      },
+      "meeting-notes-asana-tasks": {
+        "description": "Transforme notas de reunião em tarefas atribuídas e com prazo no Asana.",
+        "scenario": "Os itens de ação morrem nas notas da reunião. O Zero lê a transcrição após cada reunião, extrai as tarefas e cria tarefas atribuídas no Asana para que as decisões realmente se tornem trabalho.",
+        "steps": {
+          "one": {
+            "description": "Após a reunião, o Zero puxa as notas do Fireflies.",
+            "title": "Zero lê a transcrição"
+          },
+          "three": {
+            "description": "Zero registra as tarefas atribuídas com prazos.",
+            "title": "Tarefas criadas no Asana"
+          },
+          "two": {
+            "description": "Zero identifica as tarefas e os responsáveis.",
+            "title": "Itens de ação extraídos"
+          }
+        },
+        "title": "Transformar notas de reunião em tarefas do Asana"
+      },
+      "meeting-recaps-slack": {
+        "description": "Compartilhe um resumo com decisões e itens de ação após cada reunião.",
+        "scenario": "Os detalhes de uma reunião se perdem até a próxima. O Zero lê a transcrição depois e envia um resumo claro das decisões e itens de ação para que nada se perca.",
+        "steps": {
+          "one": {
+            "description": "Após a reunião, o Zero puxa as notas do Fireflies.",
+            "title": "Zero lê a transcrição"
+          },
+          "three": {
+            "description": "Zero entrega o resumo no Gmail ou Slack.",
+            "title": "Enviado para você"
+          },
+          "two": {
+            "description": "Zero resume as decisões e itens de ação.",
+            "title": "Resumo escrito"
+          }
+        },
+        "title": "Receber resumos de reuniões no Slack"
+      },
+      "morning-brief-slack": {
+        "description": "Todas as manhãs, o Zero envia um resumo com sua agenda e os e-mails que precisam de você, e publica no Slack.",
+        "scenario": "Os primeiros dez minutos do dia são gastos tentando entender o que o dia realmente é. O Zero monta sua agenda e os e-mails que precisam de você e publica um resumo matinal no Slack antes de você se sentar.",
+        "steps": {
+          "one": {
+            "description": "Zero puxa o calendário de hoje e os e-mails prioritários.",
+            "title": "Zero lê seu dia"
+          },
+          "three": {
+            "description": "Zero envia o resumo matinal.",
+            "title": "Publicado no Slack"
+          },
+          "two": {
+            "description": "Zero escreve sua agenda e o que precisa de atenção.",
+            "title": "Resumo montado"
+          }
+        },
+        "title": "Receber um resumo matinal no Slack"
+      },
+      "new-gmail-contacts-hubspot": {
+        "description": "Adicione e enriqueça remetentes de e-mail desconhecidos como contatos do HubSpot.",
+        "scenario": "Contatos se perdem quando ninguém os registra. O Zero nota um e-mail de alguém que ainda não está no HubSpot, cria o registro e o enriquece com Apollo para que o CRM permaneça completo sem entrada manual.",
+        "steps": {
+          "one": {
+            "description": "Zero verifica os e-mails recebidos em relação ao CRM.",
+            "title": "Zero identifica um remetente desconhecido"
+          },
+          "three": {
+            "description": "Zero registra o contato e a fonte na linha do tempo.",
+            "title": "Registrado para acompanhamento"
+          },
+          "two": {
+            "description": "Zero adiciona a pessoa ao HubSpot e enriquece com Apollo.",
+            "title": "Contato criado e enriquecido"
+          }
+        },
+        "title": "Adicionar novos contatos do Gmail ao HubSpot"
+      },
+      "onboard-new-hires-asana": {
+        "description": "Crie a lista de verificação de tarefas de integração para cada novo contratado no Asana.",
+        "scenario": "A integração é a mesma lista de verificação toda vez, feita manualmente. O Zero detecta um novo contratado, cria o projeto de integração no Asana e configura seus documentos iniciais no Drive.",
+        "steps": {
+          "one": {
+            "description": "Zero detecta o novo registro no Deel.",
+            "title": "Um novo contratado é adicionado"
+          },
+          "three": {
+            "description": "Zero configura documentos iniciais no Google Drive.",
+            "title": "Documentos provisionados"
+          },
+          "two": {
+            "description": "Zero inicia o projeto de integração com tarefas atribuídas.",
+            "title": "Lista de verificação criada no Asana"
+          }
+        },
+        "title": "Integrar novos contratados no Asana"
+      },
+      "post-daily-metrics-slack": {
+        "description": "Publicar visitantes diários, inscrições e números de ativação no Slack.",
+        "scenario": "Verificar três painéis antes do café não é o ritual favorito de ninguém. O Zero puxa visitantes, inscrições e ativações todas as manhãs e publica os números no Slack para que o dia comece com os KPIs já no canal.",
+        "steps": {
+          "one": {
+            "description": "O Zero lê tráfego, inscrições e ativações das suas ferramentas de análise.",
+            "title": "Zero puxa as métricas"
+          },
+          "three": {
+            "description": "O Zero publica a atualização matinal de KPI.",
+            "title": "Publicado no Slack"
+          },
+          "two": {
+            "description": "O Zero formata os números-chave com contexto dia a dia.",
+            "title": "Montado em um instantâneo de KPI"
+          }
+        },
+        "title": "Publicar métricas diárias no Slack"
+      },
+      "post-github-updates-slack": {
+        "description": "Toda manhã de dia útil, o Zero compila seu trabalho mesclado e em andamento do GitHub e Linear em uma atualização de progresso para o Slack.",
+        "scenario": "As reuniões diárias consomem tempo e metade delas é apenas relembrar o que você fez. O Zero compila seus PRs mesclados e tickets em andamento do Linear todas as manhãs e publica uma atualização de progresso organizada para que a reunião assíncrona se escreva sozinha.",
+        "steps": {
+          "one": {
+            "description": "O Zero lê seu trabalho mesclado e aberto do GitHub e Linear.",
+            "title": "Zero coleta sua atividade"
+          },
+          "three": {
+            "description": "O Zero publica a atualização no seu canal de reunião diária toda manhã de dia útil.",
+            "title": "Publicado no Slack"
+          },
+          "two": {
+            "description": "O Zero escreve um resumo de progresso curto e legível.",
+            "title": "Resumido em uma atualização"
+          }
+        },
+        "title": "Publicar atualizações do GitHub no Slack"
+      },
+      "post-release-notes-slack": {
+        "description": "Rascunhe um changelog do trabalho recentemente enviado e publique no Slack.",
+        "scenario": "O changelog que os usuários veem é diferente do log de commits. O Zero é acionado pelo rótulo de lançamento, rascunha um resumo amigável voltado para o usuário do que foi enviado e publica no Slack e Notion.",
+        "steps": {
+          "one": {
+            "description": "O Zero é acionado pelo rótulo de lançamento.",
+            "title": "Um PR é rotulado como lançamento"
+          },
+          "three": {
+            "description": "O Zero compartilha o anúncio em ambos os lugares.",
+            "title": "Publicado no Slack e Notion"
+          },
+          "two": {
+            "description": "O Zero escreve um resumo voltado para o usuário do que mudou.",
+            "title": "Zero rascunha o changelog"
+          }
+        },
+        "title": "Publicar notas de lançamento no Slack"
+      },
+      "prep-google-calendar-meetings": {
+        "description": "Pesquise participantes externos e envie um resumo antes das reuniões.",
+        "scenario": "Entrar em uma chamada sem preparação significa improvisar. O Zero identifica novas reuniões externas, pesquisa o participante e a empresa com Apollo, puxa o contexto de chamadas anteriores do Gong e te envia um resumo de uma página antes de começar.",
+        "steps": {
+          "one": {
+            "description": "O Zero é acionado quando um participante externo entra no seu calendário.",
+            "title": "Uma reunião é adicionada"
+          },
+          "three": {
+            "description": "O Zero te envia um dossiê de uma página antes da chamada.",
+            "title": "Resumo enviado para o Slack"
+          },
+          "two": {
+            "description": "O Zero enriquece a pessoa e a empresa com Apollo e Gong.",
+            "title": "Participante pesquisado"
+          }
+        },
+        "title": "Preparar reuniões do Google Calendar"
+      },
+      "publish-scheduled-posts-buffer": {
+        "description": "Todo dia, o Zero publica o conteúdo agendado para hoje do calendário do Notion no Strapi e coloca os posts sociais em fila no Buffer.",
+        "scenario": "Um calendário de conteúdo só funciona se alguém clicar em publicar. O Zero lê os itens agendados para hoje no Notion, publica no Strapi e coloca os posts sociais correspondentes em fila no Buffer.",
+        "steps": {
+          "one": {
+            "description": "Zero puxa os itens agendados para hoje do Notion.",
+            "title": "Zero lê o calendário de hoje"
+          },
+          "three": {
+            "description": "Zero agenda os posts promocionais no Buffer.",
+            "title": "Social agendado no Buffer"
+          },
+          "two": {
+            "description": "Zero publica o conteúdo no Strapi.",
+            "title": "Publicado no CMS"
+          }
+        },
+        "title": "Publicar posts agendados no Buffer"
+      },
+      "report-ai-model-costs-slack": {
+        "description": "Todos os dias, o Zero reporta gastos de tokens LLM e latência p95 por modelo e rota do Langfuse para o Slack.",
+        "scenario": "Os gastos com modelos aumentam silenciosamente entre rotas e modelos. O Zero lê o Langfuse todos os dias e publica uma análise de gastos de tokens e latência p95 por modelo e rota para que surpresas de custo nunca esperem até a fatura.",
+        "steps": {
+          "one": {
+            "description": "O Zero puxa gastos de tokens e rastros de latência do dia.",
+            "title": "Zero lê o Langfuse"
+          },
+          "three": {
+            "description": "O Zero publica o relatório diário de custos e latência.",
+            "title": "Publicado no Slack"
+          },
+          "two": {
+            "description": "O Zero agrega gastos e p95 por modelo e por rota.",
+            "title": "Dividido por modelo e rota"
+          }
+        },
+        "title": "Relatar custos de modelos de IA no Slack"
+      },
+      "research-calendar-meetings": {
+        "description": "Pesquise as pessoas que você vai encontrar antes de cada evento no calendário.",
+        "scenario": "Chegar preparado significa fazer pesquisas que você raramente tem tempo. O Zero nota novas reuniões, pesquisa os participantes e suas empresas, e envia um dossiê de uma página antes que comece.",
+        "steps": {
+          "one": {
+            "description": "Zero é acionado em novos eventos do calendário.",
+            "title": "Uma reunião é adicionada"
+          },
+          "three": {
+            "description": "Zero envia um resumo de uma página no Slack antes da chamada.",
+            "title": "Dossiê entregue"
+          },
+          "two": {
+            "description": "Zero pesquisa as pessoas e a empresa com a Exa.",
+            "title": "Participantes pesquisados"
+          }
+        },
+        "title": "Pesquise suas reuniões no calendário"
+      },
+      "research-new-signups-apollo": {
+        "description": "Pesquise cada nova inscrição e publique um rápido resumo.",
+        "scenario": "Uma nova inscrição é uma oportunidade apenas se alguém notar a tempo. O Zero verifica o Clerk a cada hora, pesquisa cada novo usuário e sua empresa com Apollo e publica um resumo de fundo no Slack.",
+        "steps": {
+          "one": {
+            "description": "Zero puxa novos usuários do Clerk a cada hora.",
+            "title": "Zero lê novas inscrições"
+          },
+          "three": {
+            "description": "Zero publica o perfil de cada inscrição no canal.",
+            "title": "Resumo publicado no Slack"
+          },
+          "two": {
+            "description": "Zero enriquece o contexto de fundo e da empresa.",
+            "title": "Pesquisado com Apollo"
+          }
+        },
+        "title": "Pesquisar novas inscrições"
+      },
+      "run-daily-query-sheets": {
+        "description": "Execute sua SQL salva em um cronograma e anexe os resultados a uma planilha.",
+        "scenario": "O relatório que você reconstrói todas as manhãs é a mesma consulta e o mesmo colar em uma planilha. O Zero executa a consulta para você todos os dias e escreve os resultados formatados diretamente no Google Sheets.",
+        "steps": {
+          "one": {
+            "description": "O Zero executa sua consulta salva como somente leitura contra o armazém.",
+            "title": "Zero executa a consulta"
+          },
+          "three": {
+            "description": "O Zero anexa os resultados à sua planilha de acompanhamento.",
+            "title": "Escrito no Google Sheets"
+          },
+          "two": {
+            "description": "O Zero organiza a saída em colunas limpas.",
+            "title": "Resultados formatados"
+          }
+        },
+        "title": "Executar uma consulta diária no Google Sheets"
+      },
+      "send-bugs-github-slack": {
+        "description": "Registre relatórios marcados como bugs como problemas no GitHub e avise a equipe no Slack.",
+        "scenario": "Um relatório de bug só é útil para os engenheiros se estiver completo. O Zero identifica o rótulo de bug, monta os passos de reprodução e o impacto no cliente, registra de forma organizada e publica no canal de engenharia.",
+        "steps": {
+          "one": {
+            "description": "O Zero é acionado pelo rótulo de bug.",
+            "title": "Um problema é rotulado como bug"
+          },
+          "three": {
+            "description": "O Zero publica o relatório estruturado no Slack.",
+            "title": "Enviado para engenharia"
+          },
+          "two": {
+            "description": "O Zero monta os passos, impacto e contexto.",
+            "title": "Reprodução e impacto organizados"
+          }
+        },
+        "title": "Enviar bugs para GitHub e Slack"
+      },
+      "sort-gmail-draft-replies": {
+        "description": "Classifique sua caixa de entrada e rascunhe respostas para os e-mails que precisam delas.",
+        "scenario": "Uma caixa de entrada cheia é um trabalho em tempo integral. O Zero classifica os e-mails recebidos por urgência e rascunha respostas na sua voz para que você possa revisar e aprovar em vez de digitar do zero.",
+        "steps": {
+          "one": {
+            "description": "Zero verifica as mensagens recebidas no Gmail.",
+            "title": "Zero lê novos e-mails"
+          },
+          "three": {
+            "description": "Zero prepara respostas para sua aprovação.",
+            "title": "Respostas rascunhadas"
+          },
+          "two": {
+            "description": "Zero rotula o que precisa de atenção agora versus depois.",
+            "title": "Classificado por urgência"
+          }
+        },
+        "title": "Classificar Gmail e rascunhar respostas"
+      },
+      "sort-route-zendesk-tickets": {
+        "description": "Quando um ticket de suporte chega, o Zero define sua gravidade, o direciona para a equipe certa e redige uma primeira resposta.",
+        "scenario": "Todo ticket precisa de triagem antes de ser respondido. O Zero lê cada novo ticket, atribui gravidade, o direciona para a fila correta e redige uma primeira resposta para que os agentes comecem a partir de um rascunho, não de uma caixa em branco.",
+        "steps": {
+          "one": {
+            "description": "O Zero lê o novo ticket do Zendesk.",
+            "title": "Um ticket chega"
+          },
+          "three": {
+            "description": "O Zero prepara uma resposta inicial alinhada à marca.",
+            "title": "Primeira resposta redigida"
+          },
+          "two": {
+            "description": "O Zero classifica a urgência e envia para a equipe certa.",
+            "title": "Gravidade definida e direcionada"
+          }
+        },
+        "title": "Classificar e direcionar tickets do Zendesk"
+      },
+      "spot-churn-risk-stripe-zendesk": {
+        "description": "Marque contas em risco de churn e redija um e-mail de recuperação.",
+        "scenario": "O churn é óbvio apenas depois que acontece. O Zero verifica diariamente o Stripe e o Zendesk em busca de problemas de cobrança ou picos de tickets, marca as contas em risco e redige um e-mail de recuperação para que alguém possa intervir cedo.",
+        "steps": {
+          "one": {
+            "description": "O Zero lê o status de cobrança do Stripe e o volume de tickets do Zendesk.",
+            "title": "O Zero escaneia contas"
+          },
+          "three": {
+            "description": "O Zero redige um e-mail de contato para revisão.",
+            "title": "E-mail de recuperação redigido"
+          },
+          "two": {
+            "description": "O Zero destaca contas que mostram sinais de churn.",
+            "title": "Contas em risco marcadas"
+          }
+        },
+        "title": "Identificar risco de churn no Stripe e Zendesk"
+      },
+      "summarize-gmail-newsletters": {
+        "description": "Resuma as newsletters na sua caixa de entrada em um breve resumo.",
+        "scenario": "Você se inscreve em vinte newsletters e não lê nenhuma. O Zero coleta tudo que você rotulou como newsletter e publica um resumo semanal organizado para que você receba as informações sem a pilha.",
+        "steps": {
+          "one": {
+            "description": "Zero lê mensagens sob sua etiqueta de Newsletters.",
+            "title": "Zero coleta newsletters"
+          },
+          "three": {
+            "description": "Zero envia o resumo semanal.",
+            "title": "Publicado no Slack"
+          },
+          "two": {
+            "description": "Zero extrai os pontos principais de cada uma.",
+            "title": "Resumido em um resumo"
+          }
+        },
+        "title": "Resumir newsletters do Gmail"
+      },
+      "summarize-user-feedback-notion": {
+        "description": "Toda semana, o Zero coleta feedback do Productlane, Typeform, Intercom e GitHub, agrupa em temas e classifica no Notion.",
+        "scenario": "O feedback está espalhado por quatro ferramentas e ninguém tem tempo para ler tudo. O Zero puxa de cada fonte semanalmente, agrupa os comentários em temas e escreve um resumo classificado no Notion para que os principais pedidos sejam óbvios.",
+        "steps": {
+          "one": {
+            "description": "O Zero lê novos feedbacks do Productlane, Typeform, Intercom e GitHub.",
+            "title": "Zero puxa feedback"
+          },
+          "three": {
+            "description": "O Zero escreve o resumo classificado em uma página do Notion.",
+            "title": "Resumo salvo no Notion"
+          },
+          "two": {
+            "description": "O Zero agrupa feedbacks relacionados e classifica temas por frequência.",
+            "title": "Agrupado em temas"
+          }
+        },
+        "title": "Resumir feedback de usuários no Notion"
+      },
+      "summarize-zendesk-tickets-daily": {
+        "description": "Resuma o último dia de tickets do Zendesk e publique no Slack.",
+        "scenario": "O backlog de suporte é difícil de ver até que se torne um incêndio. O Zero resume o último dia de tickets por gravidade e idade todas as manhãs e publica no Slack para que nada fique sem atenção.",
+        "steps": {
+          "one": {
+            "description": "O Zero puxa as últimas 24 horas de tickets do Zendesk.",
+            "title": "O Zero lê a fila"
+          },
+          "three": {
+            "description": "O Zero publica o resumo diário de suporte.",
+            "title": "Publicado no Slack"
+          },
+          "two": {
+            "description": "O Zero organiza os tickets abertos e sinaliza os antigos.",
+            "title": "Agrupados por gravidade e idade"
+          }
+        },
+        "title": "Resumir tickets do Zendesk diariamente"
+      },
+      "sync-asana-projects-notion": {
+        "description": "Consolide o status dos projetos do Asana em um único quadro no Notion.",
+        "scenario": "O status está no Asana, mas a liderança lê o Notion. O Zero consolida o status das tarefas diariamente em um quadro do Notion e publica um resumo para que todos vejam a mesma situação sem uma reunião de status.",
+        "steps": {
+          "one": {
+            "description": "Zero puxa o status das tarefas e projetos entre as equipes.",
+            "title": "Zero lê o Asana"
+          },
+          "three": {
+            "description": "Zero publica um resumo no Slack.",
+            "title": "Resumo publicado"
+          },
+          "two": {
+            "description": "Zero atualiza um único quadro de status no Notion.",
+            "title": "Consolidado em um quadro"
+          }
+        },
+        "title": "Sincronizar projetos do Asana com o Notion"
+      },
+      "sync-linear-roadmap-notion": {
+        "description": "Mantenha um roadmap no Notion em sincronia com o status dos seus problemas do Linear.",
+        "scenario": "Roadmaps ficam desatualizados no momento em que os tickets se movem. O Zero sincroniza o status do Linear em um quadro Agora / Próximo / Depois no Notion todos os dias para que os stakeholders do roadmap leiam sempre a realidade.",
+        "steps": {
+          "one": {
+            "description": "O Zero puxa os estados atuais dos tickets e marcos.",
+            "title": "Zero lê o status do Linear"
+          },
+          "three": {
+            "description": "O Zero atualiza o quadro do roadmap no Notion.",
+            "title": "Quadro atualizado no Notion"
+          },
+          "two": {
+            "description": "O Zero organiza o trabalho em colunas do roadmap.",
+            "title": "Mapeado para Agora / Próximo / Depois"
+          }
+        },
+        "title": "Sincronizar o roadmap do Linear com o Notion"
+      },
+      "track-feature-usage-posthog": {
+        "description": "Identifique as maiores mudanças semanais no uso de recursos a partir do PostHog.",
+        "scenario": "Ninguém percebe um recurso perdendo uso silenciosamente até que se torne um problema. O Zero verifica o PostHog semanalmente e publica quais recursos estão subindo ou caindo para que a equipe veja as mudanças de adoção cedo.",
+        "steps": {
+          "one": {
+            "description": "O Zero puxa o uso de recursos da semana.",
+            "title": "Zero lê o PostHog"
+          },
+          "three": {
+            "description": "O Zero publica as mudanças de adoção no seu canal.",
+            "title": "Mudanças publicadas no Slack"
+          },
+          "two": {
+            "description": "O Zero encontra os maiores aumentos e quedas.",
+            "title": "Comparado semana a semana"
+          }
+        },
+        "title": "Rastrear uso de recursos com PostHog"
+      },
+      "track-keyword-ranks-ahrefs": {
+        "description": "Toda semana, o Zero rastreia as classificações de palavras-chave-alvo no Ahrefs e relata os movimentos no Notion.",
+        "scenario": "O rastreamento de classificações é uma tarefa manual de exportação e comparação. O Zero puxa suas palavras-chave-alvo semanalmente, compara posições e escreve os maiores movimentos no Notion para que as vitórias e quedas de SEO sejam óbvias.",
+        "steps": {
+          "one": {
+            "description": "Zero puxa as classificações atuais do Ahrefs.",
+            "title": "Zero lê as posições das palavras-chave"
+          },
+          "three": {
+            "description": "Zero escreve os movimentos e a tendência no Notion.",
+            "title": "Relatado no Notion"
+          },
+          "two": {
+            "description": "Zero compara com a semana passada e encontra as maiores mudanças.",
+            "title": "Movimentos identificados"
+          }
+        },
+        "title": "Rastrear posições de palavras-chave com Ahrefs"
+      },
+      "track-signup-sources-sheets": {
+        "description": "Atribua cada nova inscrição à sua fonte em uma planilha de rastreamento.",
+        "scenario": "Saber de onde vêm as inscrições significa conectar o Clerk à análise manualmente. O Zero atribui cada nova inscrição ao seu canal e campanha diariamente e registra em uma planilha do Google que você pode pivotar.",
+        "steps": {
+          "one": {
+            "description": "Zero puxa novos usuários do Clerk.",
+            "title": "Zero lê novas inscrições"
+          },
+          "three": {
+            "description": "Zero adiciona as linhas atribuídas à sua planilha.",
+            "title": "Registrado no Google Sheets"
+          },
+          "two": {
+            "description": "Zero combina cada inscrição à sua fonte e campanha via Plausible.",
+            "title": "Atribuído a um canal"
+          }
+        },
+        "title": "Rastrear fontes de inscrição no Google Sheets"
+      },
+      "watch-brand-mentions": {
+        "description": "A cada hora, o Zero busca na web, Hacker News e X por menções ao seu produto e as publica no Slack.",
+        "scenario": "Quando você encontra o tópico sobre seu produto, a conversa já avançou. O Zero busca na web, Reddit e X a cada hora e publica menções frescas no Slack para que você possa intervir enquanto está ao vivo.",
+        "steps": {
+          "one": {
+            "description": "Zero escaneia a web, Reddit e X com o Exa.",
+            "title": "Zero busca por menções"
+          },
+          "three": {
+            "description": "Zero publica cada menção com um link e contexto.",
+            "title": "Publicado no Slack"
+          },
+          "two": {
+            "description": "Zero mantém apenas os resultados frescos e relevantes.",
+            "title": "Novas menções filtradas"
+          }
+        },
+        "title": "Monitorar HN e X por menções à marca"
+      },
+      "watch-sentry-after-release": {
+        "description": "Após cada lançamento, o Zero compara a taxa de ausência de falhas da nova versão com a linha de base e sinaliza uma regressão com uma sugestão de rollback.",
+        "scenario": "A janela mais arriscada é logo após um deploy. O Zero monitora a taxa de ausência de falhas e de erros do novo lançamento em comparação com a linha de base anterior, e se as coisas piorarem, sinaliza a regressão e sugere um rollback.",
+        "steps": {
+          "one": {
+            "description": "Após um deploy, o Zero acompanha a taxa de ausência de falhas e de erros no Sentry.",
+            "title": "Zero monitora o novo lançamento"
+          },
+          "three": {
+            "description": "Se o lançamento regredir, o Zero alerta o Slack e sugere um rollback.",
+            "title": "Regressão sinalizada com uma dica de rollback"
+          },
+          "two": {
+            "description": "O Zero compara os números ao vivo com a linha de base do lançamento anterior.",
+            "title": "Comparado com a linha de base"
+          }
+        },
+        "title": "Monitorar Sentry após um lançamento"
+      }
+    }
+  },
   "settings": {
     "accountMenu": {
       "addAccount": "Adicionar conta",

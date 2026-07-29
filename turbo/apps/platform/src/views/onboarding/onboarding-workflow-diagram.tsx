@@ -1,5 +1,6 @@
 import type { CSSProperties, ReactNode } from "react";
 import { useLastLoadable } from "ccstate-react";
+import { useTranslation } from "react-i18next";
 import type { OnboardingWorkflow } from "./onboarding-data.ts";
 import { connectorCatalogStatusByRef$ } from "../../signals/external/connectors.ts";
 import { ConnectorIcon } from "../zero-page/components/settings/connector-icons.tsx";
@@ -161,6 +162,7 @@ interface WorkflowDiagramModel {
 
 function buildWorkflowDiagramModel(
   workflow: OnboardingWorkflow,
+  sourceFallback: string,
 ): WorkflowDiagramModel {
   const allConnectors = uniqueWorkflowConnectors(workflow.connectors);
   const sourceCandidates = uniqueWorkflowConnectors([
@@ -196,7 +198,7 @@ function buildWorkflowDiagramModel(
   ]);
   const primaryLabel = sourceConnectors[0]
     ? connectorLabel(sourceConnectors[0])
-    : "Source";
+    : sourceFallback;
   const sourceLabel =
     sourceConnectors.length > 1
       ? `${primaryLabel} + ${sourceConnectors.length - 1}`
@@ -281,7 +283,13 @@ export function WorkflowPreviewDiagram({
 }: {
   readonly workflow: OnboardingWorkflow;
 }) {
-  const diagram = buildWorkflowDiagramModel(workflow);
+  const { t } = useTranslation();
+  const diagram = buildWorkflowDiagramModel(
+    workflow,
+    t(($) => {
+      return $.onboarding.workflowDiagram.source;
+    }),
+  );
   const firstStep = workflow.detailSteps[1] ?? workflow.detailSteps[0];
   const lastStep = workflow.detailSteps.at(-1) ?? firstStep;
   const destinationCurvePath =
@@ -359,18 +367,32 @@ export function WorkflowPreviewDiagram({
           />
         ) : null}
         <WorkflowDiagramAction
-          title={firstStep?.title ?? "Workflow prepared"}
+          title={
+            firstStep?.title ??
+            t(($) => {
+              return $.onboarding.workflowDiagram.preparedTitle;
+            })
+          }
           description={
             firstStep?.description ??
-            "Zero prepares the next step from your tools."
+            t(($) => {
+              return $.onboarding.workflowDiagram.preparedDescription;
+            })
           }
           className="owf-diagram-action-one"
         />
         <WorkflowDiagramAction
-          title={lastStep?.title ?? "Ready for review"}
+          title={
+            lastStep?.title ??
+            t(($) => {
+              return $.onboarding.workflowDiagram.reviewTitle;
+            })
+          }
           description={
             lastStep?.description ??
-            "Zero completes the workflow and returns the result."
+            t(($) => {
+              return $.onboarding.workflowDiagram.reviewDescription;
+            })
           }
           className="owf-diagram-action-two"
         />

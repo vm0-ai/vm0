@@ -1,5 +1,6 @@
 import { command } from "ccstate";
 import { createElement } from "react";
+import { i18n } from "../../i18n/index.ts";
 import { EmailUnsubscribePage } from "../../views/email-unsubscribe/email-unsubscribe-page.tsx";
 import { hideAppSkeleton$ } from "../app-skeleton.ts";
 import { updateDocumentTitle$ } from "../document-title.ts";
@@ -13,7 +14,12 @@ export const setupEmailUnsubscribePage$ = command(
     set(setPageSignal$, signal);
     set(resetEmailUnsubscribeState$);
     set(updatePage$, createElement(EmailUnsubscribePage));
-    set(updateDocumentTitle$, "Unsubscribe");
+    set(
+      updateDocumentTitle$,
+      i18n.t(($) => {
+        return $.lifecycle.emailUnsubscribe.documentTitle;
+      }),
+    );
     await set(hideAppSkeleton$, signal);
   },
 );
