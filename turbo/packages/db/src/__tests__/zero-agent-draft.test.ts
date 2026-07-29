@@ -1,12 +1,12 @@
 import { getTableConfig } from "drizzle-orm/pg-core";
 import { describe, expect, it } from "vitest";
 
-import { chatThreads } from "../schema/chat-thread";
+import { zeroAgentDrafts } from "../schema/zero-agent-draft";
 
-describe("chatThreads schema", () => {
+describe("zeroAgentDrafts schema", () => {
   it("keeps canonical and rollout-bridge draft columns nullable", () => {
     const columns = new Map(
-      getTableConfig(chatThreads).columns.map((column) => {
+      getTableConfig(zeroAgentDrafts).columns.map((column) => {
         return [column.name, column.notNull] as const;
       }),
     );

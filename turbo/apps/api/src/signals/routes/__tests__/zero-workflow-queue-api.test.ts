@@ -14,6 +14,7 @@ import type { ApiTestUser } from "./helpers/api-bdd";
 import { createRunsApi } from "./helpers/api-bdd-runs";
 import { createWebhookCallbackApi } from "./helpers/api-bdd-webhooks";
 import { createWorkflowsBddApi } from "./helpers/api-bdd-workflows";
+import { chatEventDisplayText } from "./helpers/chat-event";
 import { createZeroRouteMocks } from "./helpers/zero-route-test";
 
 const context = testContext();
@@ -172,7 +173,7 @@ async function workflowRunIds(threadId: string): Promise<readonly string[]> {
   return messages.flatMap((message) => {
     if (
       message.eventType !== "input.prompt" ||
-      message.content !== `/${WORKFLOW_NAME}` ||
+      chatEventDisplayText(message) !== `/${WORKFLOW_NAME}` ||
       !message.runId
     ) {
       return [];
@@ -498,7 +499,8 @@ describe("workflow queue API", () => {
     const messages = await wf.readThreadEvents(automation.threadId);
     const claimedUserMessage = messages.find((message) => {
       return (
-        message.content === "queued user message before manual Run now" &&
+        chatEventDisplayText(message) ===
+          "queued user message before manual Run now" &&
         typeof message.runId === "string"
       );
     });

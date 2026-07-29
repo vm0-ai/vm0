@@ -52,6 +52,7 @@ import {
 } from "./helpers/api-bdd-connectors";
 import { createRunsApi } from "./helpers/api-bdd-runs";
 import { createWebhookCallbackApi } from "./helpers/api-bdd-webhooks";
+import { chatEventDisplayText } from "./helpers/chat-event";
 import {
   deleteVm0ManagedDefaultModelKey,
   seedVm0ManagedDefaultModelKey,
@@ -881,7 +882,9 @@ describe("CHAT-01 thread detail, create, and delete cascades", () => {
     });
     await waitForThreadMessages(actor, run.threadId, (messages) => {
       return userMessages(messages).some((message) => {
-        return message.content === "move this thread when I send it";
+        return (
+          chatEventDisplayText(message) === "move this thread when I send it"
+        );
       });
     });
     await flushWaitUntilForTest();
@@ -1663,12 +1666,20 @@ describe("CHAT-01 chat thread read state", () => {
         return [event.eventType, event.content] as const;
       }),
     ).toStrictEqual([
-      ["input.prompt", "cursor round one"],
-      ["input.rejected", "cursor round one"],
+      ["input.prompt", null],
+      ["input.rejected", null],
       ["output.error", expect.stringContaining("Insufficient credits")],
-      ["input.prompt", "cursor round two"],
-      ["input.rejected", "cursor round two"],
+      ["input.prompt", null],
+      ["input.rejected", null],
       ["output.error", expect.stringContaining("Insufficient credits")],
+    ]);
+    expect(full.events.map(chatEventDisplayText)).toStrictEqual([
+      "cursor round one",
+      "cursor round one",
+      expect.stringContaining("Insufficient credits"),
+      "cursor round two",
+      "cursor round two",
+      expect.stringContaining("Insufficient credits"),
     ]);
     const seqIds = full.events.map((message) => {
       return message.seqId;
@@ -1812,7 +1823,8 @@ describe("CHAT-01 chat thread read state", () => {
     expect(
       beforeCommit.events.some((message) => {
         return (
-          message.content === firstContent || message.content === secondContent
+          chatEventDisplayText(message) === firstContent ||
+          chatEventDisplayText(message) === secondContent
         );
       }),
     ).toBeFalsy();

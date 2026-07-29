@@ -250,7 +250,7 @@ describe("zero chat thread IndexedDB fallback", () => {
             id: "00000000-0000-4000-8000-000000000101",
             threadId: THREAD_ID,
             eventType: "input.prompt" as const,
-            content: USER_MESSAGE,
+            content: null,
             userMessage: {
               version: 1,
               parts: [{ type: "text", text: USER_MESSAGE }],

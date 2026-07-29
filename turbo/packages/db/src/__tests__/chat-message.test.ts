@@ -4,7 +4,7 @@ import { describe, expect, it } from "vitest";
 import { chatMessages } from "../schema/chat-message";
 
 describe("chatMessages schema", () => {
-  it("keeps physical userMessage storage nullable for non-input events", () => {
+  it("keeps canonical and rollout-bridge userMessage columns nullable", () => {
     const columns = new Map(
       getTableConfig(chatMessages).columns.map((column) => {
         return [column.name, column.notNull] as const;
@@ -12,6 +12,7 @@ describe("chatMessages schema", () => {
     );
 
     expect(columns.get("structured_prompt")).toBe(false);
+    expect(columns.get("user_message")).toBe(false);
   });
 
   it("keeps run references after runs are deleted", () => {

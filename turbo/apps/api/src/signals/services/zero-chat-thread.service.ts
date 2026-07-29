@@ -798,25 +798,6 @@ function workflowSnapshotFromRow(
   };
 }
 
-function chatEventContent(
-  row: ChatEventRow,
-  canonicalAttachmentCount: number,
-): string | null {
-  if (
-    (row.eventType !== "input.prompt" && row.eventType !== "input.rejected") ||
-    canonicalAttachmentCount === 0 ||
-    !row.slackMessagePermalink
-  ) {
-    return row.content;
-  }
-  return (row.content ?? "")
-    .split(/\n{2,}/)
-    .filter((block) => {
-      return !block.trimStart().startsWith("[Slack file] ");
-    })
-    .join("\n\n");
-}
-
 function baseChatEventFromRow(
   row: ChatEventRow,
   workflowSnapshot: NonNullable<ChatEvent["workflowSnapshot"]> | undefined,
@@ -854,6 +835,7 @@ const chatEventBuilders = {
     return {
       ...event,
       eventType: "input.prompt",
+      content: null,
       userMessage: requiredChatEventField(
         row.userMessage,
         row.eventType,
@@ -885,6 +867,7 @@ const chatEventBuilders = {
     return {
       ...event,
       eventType: "input.rejected",
+      content: null,
       userMessage: requiredChatEventField(
         row.userMessage,
         row.eventType,
@@ -1060,11 +1043,7 @@ function toChatEvent(
     );
     const event = chatEventBuilders[row.eventType](
       row,
-      baseChatEventFromRow(
-        row,
-        workflowSnapshotFromRow(row),
-        chatEventContent(row, canonicalAttachments.length),
-      ),
+      baseChatEventFromRow(row, workflowSnapshotFromRow(row), row.content),
       attachFiles,
     );
     return chatEventResponse(event);

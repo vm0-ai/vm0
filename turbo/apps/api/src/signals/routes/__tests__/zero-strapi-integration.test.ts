@@ -11,6 +11,7 @@ import { mockEnv } from "../../../lib/env";
 import { clearMockNow, mockNow, now } from "../../../lib/time";
 import { createRunsApi } from "./helpers/api-bdd-runs";
 import { createWorkflowsBddApi } from "./helpers/api-bdd-workflows";
+import { chatEventDisplayText } from "./helpers/chat-event";
 import { useSecretKmsProbe } from "./helpers/secret-kms-probe";
 import { createZeroRouteMocks } from "./helpers/zero-route-test";
 
@@ -464,7 +465,7 @@ describe("Strapi integration", () => {
     const runsForAutomation = events.filter((event) => {
       return (
         event.eventType === "input.prompt" &&
-        event.content === `/${WORKFLOW_NAME}` &&
+        chatEventDisplayText(event) === `/${WORKFLOW_NAME}` &&
         event.workflowSnapshot?.automationId === automation.body.id
       );
     });

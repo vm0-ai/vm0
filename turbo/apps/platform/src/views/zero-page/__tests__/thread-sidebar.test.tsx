@@ -1005,6 +1005,13 @@ describe("thread-owned utility sidebar", () => {
     await expect(
       within(browserSidebar).findByText("Browser unavailable"),
     ).resolves.toBeInTheDocument();
+    await expect(
+      screen.findByText("Cloud browser"),
+    ).resolves.toBeInTheDocument();
+    await expect(screen.findByText("Stopped")).resolves.toBeInTheDocument();
+    await expect(
+      screen.findByLabelText("Browser unavailable"),
+    ).resolves.toBeDisabled();
   });
 
   it("auto-opens a background-synced sidebar card before mark-read completes", async () => {

@@ -42,7 +42,7 @@ describe("chat message response contract", () => {
       id: "message-1",
       threadId: "thread-1",
       eventType: "input.prompt",
-      content: "Run the workflow",
+      content: null,
       userMessage: {
         version: 1,
         parts: [{ type: "text", text: "Run the workflow" }],
@@ -66,7 +66,7 @@ describe("chat message response contract", () => {
       id: "message-1",
       threadId: "thread-1",
       eventType: "input.prompt",
-      content: "Run the workflow",
+      content: null,
       createdAt: "2026-07-13T00:00:00.000Z",
     });
 
@@ -78,7 +78,7 @@ describe("chat message response contract", () => {
       id: "message-1",
       threadId: "thread-1",
       eventType: "input.prompt",
-      content: "Run the workflow",
+      content: null,
       userMessage: {
         version: 1,
         parts: [{ type: "text", text: "Run the workflow" }],
@@ -107,7 +107,7 @@ describe("chat message response contract", () => {
       id: "message-1",
       threadId: "thread-1",
       eventType: "input.prompt",
-      content: "Run the task",
+      content: null,
       userMessage,
       seqId: 1,
       createdAt: "2026-07-13T00:00:00.000Z",
