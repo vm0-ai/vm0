@@ -1321,9 +1321,6 @@ function HeaderWorkflowAutomationEditDialog({
   );
 }
 
-const HEADER_AUTOMATION_FIELD_CLASS =
-  "h-9 w-full rounded-md border border-border/60 bg-background px-2.5 text-sm outline-none transition-colors focus:border-primary disabled:opacity-60";
-
 function localDateTimeInputValue(value: string): string {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) {
@@ -1427,13 +1424,12 @@ function HeaderScheduleAutomationEditForm({
       {schedule.type === "once" ? (
         <label className="flex flex-col gap-1 text-xs text-muted-foreground">
           Run at
-          <input
+          <Input
             name="atTime"
             aria-label="Run at"
             type="datetime-local"
             defaultValue={localDateTimeInputValue(schedule.atTime)}
             disabled={saving}
-            className={HEADER_AUTOMATION_FIELD_CLASS}
           />
           <span>Displays in {displayTimezone}</span>
         </label>
@@ -1441,12 +1437,11 @@ function HeaderScheduleAutomationEditForm({
       {schedule.type === "cron" ? (
         <label className="flex flex-col gap-1 text-xs text-muted-foreground">
           Cron expression
-          <input
+          <Input
             name="cronExpression"
             aria-label="Cron expression"
             defaultValue={schedule.cronExpression}
             disabled={saving}
-            className={HEADER_AUTOMATION_FIELD_CLASS}
           />
           <span>Runs in {schedule.timezone}</span>
         </label>
@@ -1548,25 +1543,24 @@ function HeaderGmailNewMessageAutomationEditForm({
     >
       {automation.eventConfig.threadId ? (
         <div className="grid grid-cols-3 gap-2">
-          <input
+          <Input
             aria-label="Thread ID field"
             value="Thread ID"
             readOnly
-            className={HEADER_AUTOMATION_FIELD_CLASS}
+            disabled
           />
-          <input
+          <Input
             aria-label="Thread ID operator"
             value="Is"
             readOnly
-            className={HEADER_AUTOMATION_FIELD_CLASS}
+            disabled
           />
-          <input
+          <Input
             name="threadId"
             aria-label="Thread ID value"
             defaultValue={automation.eventConfig.threadId}
             disabled={saving}
             required
-            className={HEADER_AUTOMATION_FIELD_CLASS}
           />
         </div>
       ) : null}
@@ -1574,7 +1568,7 @@ function HeaderGmailNewMessageAutomationEditForm({
         {GMAIL_TEXT_FIELDS.map(({ field, label }) => {
           return (
             <div key={field} className="grid grid-cols-3 gap-2">
-              <input
+              <Input
                 name={`${field}Contains`}
                 aria-label={`${label} contains`}
                 defaultValue={gmailMatcherDefaultValue(
@@ -1584,9 +1578,8 @@ function HeaderGmailNewMessageAutomationEditForm({
                 )}
                 disabled={saving}
                 placeholder={`${label} contains`}
-                className={HEADER_AUTOMATION_FIELD_CLASS}
               />
-              <input
+              <Input
                 name={`${field}ContainsAny`}
                 aria-label={`${label} contains any`}
                 defaultValue={gmailMatcherDefaultValue(
@@ -1596,9 +1589,8 @@ function HeaderGmailNewMessageAutomationEditForm({
                 )}
                 disabled={saving}
                 placeholder={`${label} contains any`}
-                className={HEADER_AUTOMATION_FIELD_CLASS}
               />
-              <input
+              <Input
                 name={`${field}DoesNotContain`}
                 aria-label={`${label} does not contain`}
                 defaultValue={gmailMatcherDefaultValue(
@@ -1608,7 +1600,6 @@ function HeaderGmailNewMessageAutomationEditForm({
                 )}
                 disabled={saving}
                 placeholder={`${label} does not contain`}
-                className={HEADER_AUTOMATION_FIELD_CLASS}
               />
             </div>
           );
@@ -1676,14 +1667,13 @@ function HeaderGmailLabelAutomationEditForm({
     >
       <label className="flex flex-col gap-1 text-xs text-muted-foreground">
         Label name
-        <input
+        <Input
           name="labelName"
           aria-label="Label name"
           required
           defaultValue={automation.eventConfig.labelName}
           disabled={saving}
           placeholder="Support"
-          className={HEADER_AUTOMATION_FIELD_CLASS}
         />
       </label>
       <DialogFooter>
