@@ -1549,12 +1549,7 @@ function HeaderGmailNewMessageAutomationEditForm({
             readOnly
             disabled
           />
-          <Input
-            aria-label="Thread ID operator"
-            value="Is"
-            readOnly
-            disabled
-          />
+          <Input aria-label="Thread ID operator" value="Is" readOnly disabled />
           <Input
             name="threadId"
             aria-label="Thread ID value"
