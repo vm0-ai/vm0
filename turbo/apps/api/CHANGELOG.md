@@ -1,5 +1,39 @@
 # Changelog
 
+## [1.345.0](https://github.com/vm0-ai/vm0/compare/api-v1.344.0...api-v1.345.0) (2026-07-29)
+
+
+### Features
+
+* add manual fit-window control to browser sidebar ([#23778](https://github.com/vm0-ai/vm0/issues/23778)) ([5e83d19](https://github.com/vm0-ai/vm0/commit/5e83d193d95d34895ec1855467dbeba602314e0a))
+* **browser:** enforce org concurrency without credit billing ([#23796](https://github.com/vm0-ai/vm0/issues/23796)) ([e42df26](https://github.com/vm0-ai/vm0/commit/e42df26c5958f17ab3d76c0c1a82e5e333893cfe))
+
+
+### Bug Fixes
+
+* bridge network policy connector slug fields ([#23828](https://github.com/vm0-ai/vm0/issues/23828)) ([ce1a3bb](https://github.com/vm0-ai/vm0/commit/ce1a3bb8d32e5049e3916af9f7233447ed3f5790))
+* **chat:** return the complete redacted event stream ([#23815](https://github.com/vm0-ai/vm0/issues/23815)) ([816b9f2](https://github.com/vm0-ai/vm0/commit/816b9f205ab913fca3249b0828d8c362dd2eb207))
+* derive automation queue rows from chat events ([#23810](https://github.com/vm0-ai/vm0/issues/23810)) ([9611ed8](https://github.com/vm0-ai/vm0/commit/9611ed8e92f1c3dc57a9c598f0d426b49b08221f))
+* **slack:** preserve terminal callbacks on realtime failure ([#23836](https://github.com/vm0-ai/vm0/issues/23836)) ([72cf017](https://github.com/vm0-ai/vm0/commit/72cf017631d599f09d2acc91baf61f19aa92fc3f))
+* **telegram:** harden canonical cutover invariants ([#23825](https://github.com/vm0-ai/vm0/issues/23825)) ([74b7e64](https://github.com/vm0-ai/vm0/commit/74b7e6491ed69180cb5071843b5a71282c65cc7a))
+
+
+### Refactoring
+
+* **api:** replace raw scalar subquery ([#23808](https://github.com/vm0-ai/vm0/issues/23808)) ([82809f2](https://github.com/vm0-ai/vm0/commit/82809f2a8ed9038457fe53596bead978c19630b0))
+* **db:** expand connector slug columns ([#23813](https://github.com/vm0-ai/vm0/issues/23813)) ([c85213a](https://github.com/vm0-ai/vm0/commit/c85213aa8c495687d85842c2ae8f6a17eb71fcd5))
+* retire signed model pricing protocol ([#23811](https://github.com/vm0-ai/vm0/issues/23811)) ([918a5ef](https://github.com/vm0-ai/vm0/commit/918a5ef92aeccf84ebfbf78a745d1f6062a4d55e))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.247.0
+    * @vm0/connectors bumped to 1.202.1
+    * @vm0/core bumped to 8.486.1
+    * @vm0/db bumped to 1.153.0
+
 ## [1.344.0](https://github.com/vm0-ai/vm0/compare/api-v1.343.0...api-v1.344.0) (2026-07-29)
 
 

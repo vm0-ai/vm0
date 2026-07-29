@@ -1,5 +1,26 @@
 # Changelog
 
+## [9.266.0](https://github.com/vm0-ai/vm0/compare/cli-v9.265.0...cli-v9.266.0) (2026-07-29)
+
+
+### Features
+
+* **browser:** enforce org concurrency without credit billing ([#23796](https://github.com/vm0-ai/vm0/issues/23796)) ([e42df26](https://github.com/vm0-ai/vm0/commit/e42df26c5958f17ab3d76c0c1a82e5e333893cfe))
+
+
+### Bug Fixes
+
+* derive automation queue rows from chat events ([#23810](https://github.com/vm0-ai/vm0/issues/23810)) ([9611ed8](https://github.com/vm0-ai/vm0/commit/9611ed8e92f1c3dc57a9c598f0d426b49b08221f))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/api-contracts bumped to 1.247.0
+    * @vm0/connectors bumped to 1.202.1
+    * @vm0/core bumped to 8.486.1
+
 ## [9.265.0](https://github.com/vm0-ai/vm0/compare/cli-v9.264.9...cli-v9.265.0) (2026-07-29)
 
 
