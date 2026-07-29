@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.650.0](https://github.com/vm0-ai/vm0/compare/app-v0.649.2...app-v0.650.0) (2026-07-29)
+
+
+### Features
+
+* **platform:** enable chat history backfill progress globally ([#23575](https://github.com/vm0-ai/vm0/issues/23575)) ([de38e8f](https://github.com/vm0-ai/vm0/commit/de38e8f94cf489f0e38fd23130357cbd7fc075bf))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.483.0
+
 ## [0.649.2](https://github.com/vm0-ai/vm0/compare/app-v0.649.1...app-v0.649.2) (2026-07-28)
 
 
