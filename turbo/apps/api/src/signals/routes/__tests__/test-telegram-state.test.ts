@@ -111,7 +111,7 @@ function mockClerkTestUser(args: {
   });
 }
 
-function mockTelegramTyping(): void {
+function mockTelegramDelivery(): void {
   server.use(
     ...[
       `https://api.telegram.org/bot${TELEGRAM_TEST_BOT_TOKEN}/sendChatAction`,
@@ -119,6 +119,17 @@ function mockTelegramTyping(): void {
     ].map((url) => {
       return http.post(url, () => {
         return HttpResponse.json({ ok: true, result: true });
+      });
+    }),
+    ...[
+      `https://api.telegram.org/bot${TELEGRAM_TEST_BOT_TOKEN}/sendMessage`,
+      `${TELEGRAM_TEST_API_BASE_URL}${TELEGRAM_TEST_BOT_TOKEN}/sendMessage`,
+    ].map((url) => {
+      return http.post(url, () => {
+        return HttpResponse.json({
+          ok: true,
+          result: { message_id: 7001, chat: { id: 900_100_200 } },
+        });
       });
     }),
   );
@@ -257,7 +268,7 @@ async function dispatchTelegramMessage(args: {
   mockOptionalEnv("VM0_API_BACKEND_URL", "http://localhost:3000");
   mockOptionalEnv("VM0_WEB_URL", "http://localhost:3000");
   mockEnv("APP_URL", "http://localhost:3002");
-  mockTelegramTyping();
+  mockTelegramDelivery();
   const response = await requestApp(TELEGRAM_DISPATCH_PROBE_ROUTE, {
     method: "POST",
     headers: { "content-type": "application/json" },
@@ -357,11 +368,13 @@ describe("GET /api/test/telegram-state", () => {
       dmWelcomeSent: false,
     });
     expect(body.message_count).toBe(1);
-    expect(recentRuns(body.recent_runs)).toStrictEqual(
+    expect(recentRuns(body.recent_runs)).toStrictEqual([]);
+    expect(body.chat_thread_routes).toStrictEqual(
       expect.arrayContaining([
         expect.objectContaining({
-          triggerSource: "telegram",
-          promptPreview: "telegram state diagnostic run",
+          chatId,
+          rootMessageId: "dm",
+          lastProcessedMessageId: null,
         }),
       ]),
     );

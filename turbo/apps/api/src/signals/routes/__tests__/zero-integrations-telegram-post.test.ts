@@ -351,6 +351,7 @@ interface TelegramZeroRunSnapshot {
   readonly triggerSource: string | null;
   readonly modelProvider: string | null;
   readonly selectedModel: string | null;
+  readonly chatThreadId: string | null;
 }
 
 interface TelegramCallbackSnapshot {
@@ -397,6 +398,7 @@ function zeroRunSnapshot(value: unknown): TelegramZeroRunSnapshot | null {
     triggerSource: nullableStringField(record, "triggerSource"),
     modelProvider: nullableStringField(record, "modelProvider"),
     selectedModel: nullableStringField(record, "selectedModel"),
+    chatThreadId: nullableStringField(record, "chatThreadId"),
   };
 }
 
@@ -1112,10 +1114,14 @@ describe("POST /api/telegram/webhook/:telegramBotId", () => {
 
     const runState = await telegramPostRunState(fixture);
     expect(runState.zeroRun?.triggerSource).toBe("telegram");
-    expect(runState.callbacks[0]).toMatchObject({
-      url: null,
-      internalKind: "telegram",
-    });
+    expect(runState.callbacks).toStrictEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          url: null,
+          internalKind: "telegram",
+        }),
+      ]),
+    );
     expect(runState.jobExists).toBeTruthy();
     const timingEvents = sandboxOperationEventsForRun(run!.id).filter(
       (event) => {
@@ -1197,10 +1203,14 @@ describe("POST /api/telegram/webhook/:telegramBotId", () => {
 
     const runState = await telegramPostRunState(fixture);
     expect(runState.run).toBeDefined();
-    expect(runState.callbacks[0]).toMatchObject({
-      url: null,
-      internalKind: "telegram",
-    });
+    expect(runState.callbacks).toStrictEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          url: null,
+          internalKind: "telegram",
+        }),
+      ]),
+    );
   });
 
   it("formats generic failed callback errors for Telegram replies", async () => {
@@ -1914,7 +1924,7 @@ describe("POST /api/telegram/webhook/:telegramBotId", () => {
     });
   });
 
-  it("starts a new official DM session when the selected model changed", async () => {
+  it("reuses the canonical official DM session within one model family", async () => {
     configureOfficialBotEnv();
     const fixture = await trackFixture(
       seedTelegramPostFixture({
@@ -1963,12 +1973,24 @@ describe("POST /api/telegram/webhook/:telegramBotId", () => {
       "model changed telegram session",
     );
     expect(run?.prompt).toBe("model changed telegram session");
-    expect(run?.continuedFromSessionId).toBeNull();
-    expect(run?.sessionId).not.toBe(previousSessionId);
+    expect(run?.continuedFromSessionId).toBe(previousSessionId);
+    expect(run?.sessionId).toBe(previousSessionId);
     await expect(latestZeroRunForFixture(fixture)).resolves.toStrictEqual(
       expect.objectContaining({
         selectedModel: "claude-opus-4-7",
+        chatThreadId: expect.any(String),
       }),
+    );
+    expect((await telegramPostRunState(fixture)).callbacks).toStrictEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          internalKind: "telegram",
+          payload: expect.objectContaining({
+            canonicalChatDelivery: true,
+            userLinkKind: "official",
+          }),
+        }),
+      ]),
     );
   });
 

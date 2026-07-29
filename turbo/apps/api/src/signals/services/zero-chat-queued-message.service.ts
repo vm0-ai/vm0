@@ -37,6 +37,7 @@ import {
 import { goalQueueEventMatchesActiveGoal } from "./chat-goal-queue.service";
 import { feishuOrgCallbackFileSchema } from "./feishu-org-callback-payload";
 import { teamsDeliveryTargetSchema } from "./teams-chat-callback-payload";
+import { telegramDeliveryTargetSchema } from "./telegram-chat-callback-payload";
 import { createUserMessageDocument } from "./zero-chat-user-message.service";
 
 type DbTransaction = Parameters<Parameters<Db["transaction"]>[0]>[0];
@@ -47,6 +48,7 @@ const queuedUserMessageTriggerSourceSchema = z.enum([
   "slack",
   "feishu",
   "teams",
+  "telegram",
   "workflow-schedule",
 ]);
 
@@ -75,6 +77,7 @@ const queuedUserMessageRunParamsSchema = z.object({
     })
     .optional(),
   teamsDelivery: teamsDeliveryTargetSchema.optional(),
+  telegramDelivery: telegramDeliveryTargetSchema.optional(),
   morningBriefDelivery: z
     .object({
       deliveryId: z.string(),
@@ -93,6 +96,10 @@ const queuedUserMessageRunParamsSchema = z.object({
       teamsUserDisplayName: z.string().optional(),
       teamsUserPrincipalName: z.string().optional(),
       teamsUserId: z.string().optional(),
+      telegramDisplayName: z.string().optional(),
+      telegramUsername: z.string().optional(),
+      telegramUserId: z.string().optional(),
+      telegramLanguage: z.string().optional(),
     })
     .optional(),
 });
@@ -123,6 +130,7 @@ export interface QueuedUserMessage {
     | "slack"
     | "feishu"
     | "teams"
+    | "telegram"
     | "workflow-schedule";
   readonly encryptedParams: string | null;
 }

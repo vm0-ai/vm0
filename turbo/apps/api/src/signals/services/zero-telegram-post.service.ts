@@ -13,7 +13,6 @@ import {
   zeroIntegrationsTelegramContract,
 } from "@vm0/api-contracts/contracts/zero-integrations-telegram";
 import { agentComposes } from "@vm0/db/schema/agent-compose";
-import { agentSessions } from "@vm0/db/schema/agent-session";
 import { orgMetadata } from "@vm0/db/schema/org-metadata";
 import {
   telegramMessages,
@@ -21,23 +20,25 @@ import {
 } from "@vm0/db/schema/telegram-message";
 import { telegramInstallations } from "@vm0/db/schema/telegram-installation";
 import { telegramOfficialUserLinks } from "@vm0/db/schema/telegram-official-user-link";
+import { telegramChatThreadRoutes } from "@vm0/db/schema/telegram-chat-thread-route";
 import { telegramThreadSessions } from "@vm0/db/schema/telegram-thread-session";
 import { telegramUserAgentPreferences } from "@vm0/db/schema/telegram-user-agent-preference";
 import { telegramUserLinks } from "@vm0/db/schema/telegram-user-link";
 import { zeroAgents } from "@vm0/db/schema/zero-agent";
 import { and, desc, eq } from "drizzle-orm";
 
-import {
-  buildTelegramErrorResponse,
-  escapeHtml,
-} from "../../lib/telegram-format";
+import { escapeHtml } from "../../lib/telegram-format";
 import { env } from "../../lib/env";
 import { logger } from "../../lib/log";
 import { bodyResultOf, pathParamsOf } from "../context/request";
 import { request$ } from "../context/hono";
 import { waitUntil } from "../context/wait-until";
 import { writeDb$, type Db } from "../external/db";
-import { publishOrgSignal } from "../external/realtime";
+import {
+  publishChatThreadMessageCreatedSafely,
+  publishOrgSignal,
+  publishThreadListChanged,
+} from "../external/realtime";
 import { checkTelegramDomain } from "../external/telegram-domain";
 import {
   getMe,
@@ -58,15 +59,14 @@ import {
   decryptPersistentSecretValue,
   encryptPersistentSecretValue,
 } from "./crypto.utils";
-import {
-  resolveIntegrationModelRouteForUser$,
-  type IntegrationModelRoutePin,
-} from "./integration-model-route.service";
-import { canReuseIntegrationSessionForModelRoute } from "./integration-session-model-compatibility.service";
-import { formatIntegrationRunError$ } from "./integration-run-errors.service";
+import { resolveIntegrationModelRouteForUser$ } from "./integration-model-route.service";
 import { listOrgModelPolicies$ } from "./zero-model-policy.service";
 import { dispatchFailedRunCallbacks } from "./agent-run-callback.service";
-import { createZeroRun$ } from "./zero-runs-create.service";
+import { drainChatThreadQueueForThread$ } from "./chat-thread-queue-drain.service";
+import {
+  admitTelegramChatMessage,
+  telegramChatMessageIsQueued,
+} from "./telegram-chat-admission.service";
 import { telegramIntegrationBotStatus } from "./zero-telegram-data.service";
 import {
   formatTelegramUserDisplayName,
@@ -78,7 +78,7 @@ import {
   userModelPreference,
 } from "./zero-user-data.service";
 import { userFeatureSwitchContext } from "./feature-switches.service";
-import type { ApiOrgRole, AuthContext, AuthTokenType } from "../../types/auth";
+import type { ApiOrgRole, AuthTokenType } from "../../types/auth";
 
 const log = logger("api:telegram:post");
 const MAX_CONTEXT_MESSAGES = 10;
@@ -92,7 +92,6 @@ interface OrganizationAuth {
   readonly orgId: string;
   readonly orgRole?: ApiOrgRole;
 }
-type ZeroRunAuth = AuthContext & { readonly orgId: string };
 type TelegramInstallation = typeof telegramInstallations.$inferSelect;
 type TelegramUserLink = typeof telegramUserLinks.$inferSelect;
 type OfficialTelegramUserLink = typeof telegramOfficialUserLinks.$inferSelect;
@@ -227,47 +226,11 @@ interface WorkspaceAgent {
   readonly displayName: string | null;
 }
 
-interface RunAgentParams {
-  readonly auth: ZeroRunAuth;
-  readonly agentId: string;
-  readonly sessionId: string | undefined;
-  readonly prompt: string;
-  readonly appendSystemPrompt: string | undefined;
-  readonly userInfoExtras: TelegramUserInfoExtras;
-  readonly callbackPayload: TelegramCallbackPayload;
-  readonly apiStartTime: number;
-  readonly modelRoute: ModelRoutePin | undefined;
-}
-
-type ModelRoutePin = IntegrationModelRoutePin;
-
-interface TelegramCallbackPayload {
-  readonly installationId: string;
-  readonly chatId: string;
-  readonly messageId: string;
-  readonly rootMessageId: string | null;
-  readonly userLinkId: string;
-  readonly agentId: string;
-  readonly existingSessionId: string | null;
-  readonly isDM: boolean;
-}
-
 interface TelegramUserInfoExtras {
   readonly telegramDisplayName?: string;
   readonly telegramUsername?: string;
   readonly telegramUserId?: string;
   readonly telegramLanguage?: string;
-}
-
-interface RunAgentResult {
-  readonly status: "accepted" | "queued" | "failed";
-  readonly response?: string;
-  readonly runId?: string;
-}
-
-interface TelegramThreadLookupResult {
-  readonly existingSessionId: string | undefined;
-  readonly lastProcessedMessageId: string | undefined;
 }
 
 function apiError<Status extends 400 | 403 | 404 | 409 | 500 | 502>(
@@ -1472,77 +1435,6 @@ async function sendConnectPrompt(args: {
   });
 }
 
-async function lookupTelegramThreadSession(args: {
-  readonly db: Db;
-  readonly chatId: string;
-  readonly rootMessageId: string;
-  readonly userLinkId: string;
-  readonly userLinkKind: "custom" | "official";
-  readonly userId: string;
-  readonly composeId: string;
-  readonly modelRoute: ModelRoutePin | undefined;
-}): Promise<{
-  readonly existingSessionId: string | undefined;
-  readonly lastProcessedMessageId: string | undefined;
-}> {
-  const [thread] = await args.db
-    .select({
-      agentSessionId: telegramThreadSessions.agentSessionId,
-      lastProcessedMessageId: telegramThreadSessions.lastProcessedMessageId,
-    })
-    .from(telegramThreadSessions)
-    .where(
-      and(
-        args.userLinkKind === "custom"
-          ? eq(telegramThreadSessions.telegramUserLinkId, args.userLinkId)
-          : eq(
-              telegramThreadSessions.telegramOfficialUserLinkId,
-              args.userLinkId,
-            ),
-        eq(telegramThreadSessions.chatId, args.chatId),
-        eq(telegramThreadSessions.rootMessageId, args.rootMessageId),
-      ),
-    )
-    .limit(1);
-
-  if (!thread) {
-    return { existingSessionId: undefined, lastProcessedMessageId: undefined };
-  }
-
-  const [session] = await args.db
-    .select({ agentComposeId: agentSessions.agentComposeId })
-    .from(agentSessions)
-    .where(
-      and(
-        eq(agentSessions.id, thread.agentSessionId),
-        eq(agentSessions.userId, args.userId),
-      ),
-    )
-    .limit(1);
-  if (session?.agentComposeId !== args.composeId) {
-    return { existingSessionId: undefined, lastProcessedMessageId: undefined };
-  }
-
-  if (args.modelRoute) {
-    const canReuseSession = await canReuseIntegrationSessionForModelRoute({
-      db: args.db,
-      sessionId: thread.agentSessionId,
-      modelRoute: args.modelRoute,
-    });
-    if (!canReuseSession) {
-      return {
-        existingSessionId: undefined,
-        lastProcessedMessageId: undefined,
-      };
-    }
-  }
-
-  return {
-    existingSessionId: thread.agentSessionId,
-    lastProcessedMessageId: thread.lastProcessedMessageId ?? undefined,
-  };
-}
-
 function formatContextMessage(args: {
   readonly row: {
     readonly fromUsername: string | null;
@@ -1724,84 +1616,6 @@ function buildTelegramPrompt(
   return [headerParts.join("\n"), threadContext].filter(Boolean).join("\n\n");
 }
 
-const runAgentForTelegram$ = command(
-  async (
-    { set },
-    args: RunAgentParams,
-    signal: AbortSignal,
-  ): Promise<RunAgentResult> => {
-    const result = await set(
-      createZeroRun$,
-      {
-        auth: args.auth,
-        body: {
-          prompt: args.prompt,
-          agentId: args.agentId,
-          sessionId: args.sessionId,
-          ...(args.modelRoute?.modelProviderType
-            ? { modelProvider: args.modelRoute.modelProviderType }
-            : {}),
-        },
-        apiStartTime: args.apiStartTime,
-        triggerSource: "telegram",
-        appendSystemPrompt: args.appendSystemPrompt,
-        userInfoExtras: args.userInfoExtras,
-        modelProviderId: args.modelRoute?.modelProviderId ?? undefined,
-        modelProviderCredentialScope:
-          args.modelRoute?.modelProviderCredentialScope,
-        selectedModelOverride: args.modelRoute?.selectedModel,
-        dispatchFailedCallbacks: dispatchFailedRunCallbacks,
-        callbacks: [
-          {
-            internalKind: "telegram",
-            secret: generateCallbackSecret(),
-            payload: args.callbackPayload,
-          },
-        ],
-      },
-      signal,
-    );
-    signal.throwIfAborted();
-
-    if (result.status === 201) {
-      return {
-        status: result.body.status === "queued" ? "queued" : "accepted",
-        runId: result.body.runId,
-      };
-    }
-
-    return {
-      status: "failed",
-      response: await set(
-        formatIntegrationRunError$,
-        {
-          orgId: args.auth.orgId,
-          userId: args.auth.userId,
-          code: result.body.error.code,
-          message: result.body.error.message,
-        },
-        signal,
-      ),
-    };
-  },
-);
-
-async function sendRunFailure(args: {
-  readonly botToken: string;
-  readonly chatId: string;
-  readonly response: string | undefined;
-  readonly replyToMessageId?: number;
-}): Promise<void> {
-  await postTelegramMessage({
-    botToken: args.botToken,
-    chatId: args.chatId,
-    text: buildTelegramErrorResponse(
-      args.response ?? "An unexpected error occurred. Please try again later.",
-    ),
-    replyToMessageId: args.replyToMessageId,
-  });
-}
-
 function agentMessageScope(args: {
   readonly userLinkKind: "custom" | "official";
   readonly botId: string;
@@ -1830,31 +1644,6 @@ function rootMessageIdForAgentMessage(args: {
     : undefined;
 }
 
-async function lookupAgentThreadSession(args: {
-  readonly db: Db;
-  readonly chatId: string;
-  readonly rootMessageId: string | undefined;
-  readonly userLinkId: string;
-  readonly userLinkKind: "custom" | "official";
-  readonly userId: string;
-  readonly composeId: string;
-  readonly modelRoute: ModelRoutePin | undefined;
-}): Promise<TelegramThreadLookupResult> {
-  if (args.rootMessageId === undefined) {
-    return { existingSessionId: undefined, lastProcessedMessageId: undefined };
-  }
-  return await lookupTelegramThreadSession({
-    db: args.db,
-    chatId: args.chatId,
-    rootMessageId: args.rootMessageId,
-    userLinkId: args.userLinkId,
-    userLinkKind: args.userLinkKind,
-    userId: args.userId,
-    composeId: args.composeId,
-    modelRoute: args.modelRoute,
-  });
-}
-
 function buildTelegramAgentPrompt(args: {
   readonly message: TelegramMessage;
   readonly botId: string;
@@ -1879,55 +1668,6 @@ function buildTelegramAgentPrompt(args: {
       args.botId,
     ),
     userInfoExtras: enriched.userInfoExtras,
-  };
-}
-
-function buildRunAgentParams(args: {
-  readonly source: TelegramAgentMessageArgs;
-  readonly agent: WorkspaceAgent;
-  readonly chatId: string;
-  readonly rootMessageId: string | undefined;
-  readonly session: TelegramThreadLookupResult;
-  readonly context: string;
-  readonly prompt: string;
-  readonly userInfoExtras: TelegramUserInfoExtras;
-  readonly modelRoute: ModelRoutePin | undefined;
-}): RunAgentParams {
-  return {
-    auth: {
-      tokenType: "session",
-      userId: args.source.userLink.vm0UserId,
-      orgId: args.source.orgId,
-      orgRole: "member",
-    },
-    agentId: args.agent.agentId,
-    sessionId: args.session.existingSessionId,
-    prompt: args.prompt,
-    appendSystemPrompt: buildTelegramPrompt(
-      {
-        botId: args.source.botId,
-        botUsername: args.source.botUsername,
-        chatId: args.chatId,
-        chatType: args.source.message.chat.type,
-        messageId: String(args.source.message.message_id),
-        rootMessageId: args.rootMessageId ?? null,
-        messageThreadId: args.source.message.message_thread_id,
-      },
-      args.context,
-    ),
-    userInfoExtras: args.userInfoExtras,
-    callbackPayload: {
-      installationId: args.source.botId,
-      chatId: args.chatId,
-      messageId: String(args.source.message.message_id),
-      rootMessageId: args.rootMessageId ?? null,
-      userLinkId: args.source.userLink.id,
-      agentId: args.source.composeId,
-      existingSessionId: args.session.existingSessionId ?? null,
-      isDM: args.source.isDM,
-    },
-    apiStartTime: args.source.apiStartTime,
-    modelRoute: args.modelRoute,
   };
 }
 
@@ -1994,18 +1734,6 @@ const handleTelegramAgentMessage$ = command(
       signal,
     );
     signal.throwIfAborted();
-    const session = await lookupAgentThreadSession({
-      db: args.db,
-      chatId,
-      rootMessageId,
-      userLinkId: args.userLink.id,
-      userLinkKind: args.userLinkKind,
-      userId: args.userLink.vm0UserId,
-      composeId: args.composeId,
-      modelRoute,
-    });
-    signal.throwIfAborted();
-
     const context = await fetchTelegramContext({
       db: args.db,
       scope,
@@ -2016,24 +1744,65 @@ const handleTelegramAgentMessage$ = command(
     signal.throwIfAborted();
 
     const runPrompt = buildTelegramAgentPrompt(args);
-    const result = await set(
-      runAgentForTelegram$,
-      buildRunAgentParams({
-        source: args,
-        agent,
-        chatId,
-        rootMessageId,
-        session,
+    const rawText = args.message.text ?? args.message.caption ?? "";
+    const displayText = args.isDM
+      ? rawText
+      : stripBotMention(rawText, args.botUsername);
+    const admitted = await admitTelegramChatMessage({
+      db: args.db,
+      owner: {
+        userLinkKind: args.userLinkKind,
+        userLinkId: args.userLink.id,
+      },
+      orgId: args.orgId,
+      userId: args.userLink.vm0UserId,
+      composeId: args.composeId,
+      agentId: agent.agentId,
+      selectedModel: modelRoute?.selectedModel ?? null,
+      installationId: args.botId,
+      chatId,
+      messageId: String(args.message.message_id),
+      rootMessageId,
+      isDM: args.isDM,
+      displayText,
+      prompt: runPrompt.prompt,
+      appendSystemPrompt: buildTelegramPrompt(
+        {
+          botId: args.botId,
+          botUsername: args.botUsername,
+          chatId,
+          chatType: args.message.chat.type,
+          messageId: String(args.message.message_id),
+          rootMessageId: rootMessageId ?? null,
+          messageThreadId: args.message.message_thread_id,
+        },
         context,
-        prompt: runPrompt.prompt,
-        userInfoExtras: runPrompt.userInfoExtras,
-        modelRoute,
-      }),
+      ),
+      userInfoExtras: runPrompt.userInfoExtras,
+      apiStartTime: args.apiStartTime,
+      signal,
+    });
+    signal.throwIfAborted();
+    if (!admitted.inserted) {
+      return;
+    }
+    await publishChatThreadMessageCreatedSafely(
+      args.userLink.vm0UserId,
+      admitted.chatThreadId,
+    );
+    signal.throwIfAborted();
+    await publishThreadListChanged(args.userLink.vm0UserId);
+    signal.throwIfAborted();
+    await set(
+      drainChatThreadQueueForThread$,
+      {
+        chatThreadId: admitted.chatThreadId,
+        dispatchFailedCallbacks: dispatchFailedRunCallbacks,
+      },
       signal,
     );
     signal.throwIfAborted();
-
-    if (result.status === "queued") {
+    if (await telegramChatMessageIsQueued(args.db, admitted)) {
       await postTelegramMessage({
         botToken: args.botToken,
         chatId,
@@ -2041,15 +1810,6 @@ const handleTelegramAgentMessage$ = command(
         replyToMessageId: args.isDM ? undefined : args.message.message_id,
       });
       signal.throwIfAborted();
-      return;
-    }
-    if (result.status === "failed") {
-      await sendRunFailure({
-        botToken: args.botToken,
-        chatId,
-        response: result.response,
-        replyToMessageId: args.isDM ? undefined : args.message.message_id,
-      });
     }
   },
 );
@@ -2247,6 +2007,44 @@ function formatTelegramModelOptionsMessage(
   ].join("\n");
 }
 
+async function deleteTelegramDirectMessageRoute(args: {
+  readonly db: Db;
+  readonly userLinkId: string;
+  readonly userLinkKind: "custom" | "official";
+  readonly chatId: string;
+}): Promise<void> {
+  await args.db.transaction(async (tx) => {
+    await tx
+      .delete(telegramThreadSessions)
+      .where(
+        and(
+          args.userLinkKind === "custom"
+            ? eq(telegramThreadSessions.telegramUserLinkId, args.userLinkId)
+            : eq(
+                telegramThreadSessions.telegramOfficialUserLinkId,
+                args.userLinkId,
+              ),
+          eq(telegramThreadSessions.chatId, args.chatId),
+          eq(telegramThreadSessions.rootMessageId, "dm"),
+        ),
+      );
+    await tx
+      .delete(telegramChatThreadRoutes)
+      .where(
+        and(
+          args.userLinkKind === "custom"
+            ? eq(telegramChatThreadRoutes.telegramUserLinkId, args.userLinkId)
+            : eq(
+                telegramChatThreadRoutes.telegramOfficialUserLinkId,
+                args.userLinkId,
+              ),
+          eq(telegramChatThreadRoutes.chatId, args.chatId),
+          eq(telegramChatThreadRoutes.rootMessageId, "dm"),
+        ),
+      );
+  });
+}
+
 interface CustomCommandArgs {
   readonly db: Db;
   readonly installation: TelegramInstallation;
@@ -2357,15 +2155,12 @@ const handleCustomCommand$ = command(
       if (args.message.chat.type !== "private") {
         return;
       }
-      await args.db
-        .delete(telegramThreadSessions)
-        .where(
-          and(
-            eq(telegramThreadSessions.telegramUserLinkId, userLink.id),
-            eq(telegramThreadSessions.chatId, chatId),
-            eq(telegramThreadSessions.rootMessageId, "dm"),
-          ),
-        );
+      await deleteTelegramDirectMessageRoute({
+        db: args.db,
+        userLinkId: userLink.id,
+        userLinkKind: "custom",
+        chatId,
+      });
       signal.throwIfAborted();
       await reply(formatTelegramCommandSuccess("New session started."), signal);
       return;
@@ -2522,15 +2317,12 @@ const handleOfficialCommand$ = command(
       if (args.message.chat.type !== "private") {
         return;
       }
-      await args.db
-        .delete(telegramThreadSessions)
-        .where(
-          and(
-            eq(telegramThreadSessions.telegramOfficialUserLinkId, userLink.id),
-            eq(telegramThreadSessions.chatId, chatId),
-            eq(telegramThreadSessions.rootMessageId, "dm"),
-          ),
-        );
+      await deleteTelegramDirectMessageRoute({
+        db: args.db,
+        userLinkId: userLink.id,
+        userLinkKind: "official",
+        chatId,
+      });
       signal.throwIfAborted();
       await reply(formatTelegramCommandSuccess("New session started."), signal);
       return;

@@ -59,6 +59,8 @@ function parseProbeBody(value: unknown): TestTelegramDispatchProbeBody | null {
     message_id: optionalNumber(value.message_id),
     chat_type: optionalChatType(value.chat_type),
     bot_username: optionalString(value.bot_username),
+    reply_to_message_id: optionalNumber(value.reply_to_message_id),
+    reply_to_bot_username: optionalString(value.reply_to_bot_username),
   };
 }
 
@@ -80,6 +82,19 @@ function buildMessage(
       type: chatType,
     },
     text,
+    ...(body.reply_to_message_id === undefined
+      ? {}
+      : {
+          reply_to_message: {
+            message_id: body.reply_to_message_id,
+            from: {
+              id: 987_654_321,
+              is_bot: true,
+              username:
+                body.reply_to_bot_username ?? body.bot_username ?? "probe_bot",
+            },
+          },
+        }),
   };
 
   const mentionOffset = body.bot_username

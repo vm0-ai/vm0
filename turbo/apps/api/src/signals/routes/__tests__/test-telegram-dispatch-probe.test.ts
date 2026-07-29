@@ -1,4 +1,4 @@
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 
 import { http, HttpResponse } from "msw";
 import {
@@ -19,6 +19,11 @@ import { runnersRoutes } from "../runners";
 import { testTelegramDispatchProbeRoutes } from "../test-telegram-dispatch-probe";
 import { testTelegramStateRoutes } from "../test-telegram-state";
 import { createFixtureTracker } from "./helpers/zero-route-test";
+import { createWebhookCallbackApi } from "./helpers/api-bdd-webhooks";
+import { createChatFilesBddApi } from "./helpers/api-bdd-chat-files";
+import { createChatCallbacksApi } from "./helpers/api-bdd-chat-callbacks";
+import type { ApiTestUser } from "./helpers/api-bdd";
+import { flushWaitUntilForTest } from "../../context/wait-until";
 
 const context = testContext();
 const ROUTE = "/api/test/telegram-dispatch-probe";
@@ -32,6 +37,7 @@ interface TelegramProbeFixture {
   readonly userId: string;
   readonly botId: string;
   readonly telegramUserId: string;
+  readonly userLinkId: string;
   readonly defaultAgentId: string;
 }
 
@@ -40,7 +46,23 @@ interface TelegramRecentRun {
   readonly status: string;
   readonly triggerSource: string | null;
   readonly promptPreview: string | null;
+  readonly sessionId: string;
+  readonly chatThreadId: string | null;
 }
+
+interface TelegramChatThreadRoute {
+  readonly id: string;
+  readonly telegramUserLinkId: string;
+  readonly chatId: string;
+  readonly rootMessageId: string;
+  readonly chatThreadId: string;
+  readonly agentSessionId: string | null;
+  readonly lastProcessedMessageId: string | null;
+}
+
+const webhooksApi = createWebhookCallbackApi(context);
+const chatApi = createChatFilesBddApi(context);
+const chatCallbacks = createChatCallbacksApi(context);
 
 function requestApp(path: string, init?: RequestInit): Promise<Response> {
   const app = createAppWithRoutes({
@@ -140,17 +162,28 @@ async function seedTelegramProbeFixture(): Promise<TelegramProbeFixture> {
     userId: body.vm0_user_id,
     botId: body.bot_id,
     telegramUserId,
+    userLinkId:
+      body.user_link_id ??
+      (() => {
+        throw new Error("Expected seeded Telegram user link");
+      })(),
     defaultAgentId: body.default_agent_id,
   };
 }
 
 async function seedFixture(): Promise<TelegramProbeFixture> {
   const fixture = await trackFixture(seedTelegramProbeFixture());
-  context.mocks.s3.send.mockResolvedValue({});
+  chatCallbacks.acceptChatObjectStorage();
   mockOptionalEnv("RUNNER_DEFAULT_GROUP", "vm0/test");
   mockOptionalEnv("VM0_API_BACKEND_URL", "http://localhost:3000");
   mockOptionalEnv("VM0_WEB_URL", "http://localhost:3000");
   mockEnv("APP_URL", "http://localhost:3002");
+  await requestTelegramStateAction({
+    action: "seed-model-policies",
+    org_id: fixture.orgId,
+    user_id: fixture.userId,
+    compose_id: fixture.defaultAgentId,
+  });
   return fixture;
 }
 
@@ -232,9 +265,138 @@ function recentTelegramRuns(
       typeof run.id === "string" &&
       typeof run.status === "string" &&
       (typeof run.triggerSource === "string" || run.triggerSource === null) &&
-      (typeof run.promptPreview === "string" || run.promptPreview === null)
+      (typeof run.promptPreview === "string" || run.promptPreview === null) &&
+      typeof run.sessionId === "string" &&
+      (typeof run.chatThreadId === "string" || run.chatThreadId === null)
     );
   });
+}
+
+function telegramChatThreadRoutes(
+  state: TestTelegramStateResponse,
+): TelegramChatThreadRoute[] {
+  return state.chat_thread_routes.filter(
+    (route): route is TelegramChatThreadRoute => {
+      return (
+        isRecord(route) &&
+        typeof route.id === "string" &&
+        typeof route.telegramUserLinkId === "string" &&
+        typeof route.chatId === "string" &&
+        typeof route.rootMessageId === "string" &&
+        typeof route.chatThreadId === "string" &&
+        (typeof route.agentSessionId === "string" ||
+          route.agentSessionId === null) &&
+        (typeof route.lastProcessedMessageId === "string" ||
+          route.lastProcessedMessageId === null)
+      );
+    },
+  );
+}
+
+function actorForFixture(fixture: TelegramProbeFixture): ApiTestUser {
+  return {
+    userId: fixture.userId,
+    orgId: fixture.orgId,
+    orgRole: "org:admin",
+    email: `${fixture.userId}@example.test`,
+  };
+}
+
+function mockTelegramCompletionDelivery(): Record<string, unknown>[] {
+  let nextMessageId = 7000;
+  const bodies: Record<string, unknown>[] = [];
+  server.use(
+    http.post(
+      `https://api.telegram.org/bot${TELEGRAM_TEST_BOT_TOKEN}/sendMessage`,
+      async ({ request }) => {
+        nextMessageId += 1;
+        bodies.push({
+          ...((await request.json()) as Record<string, unknown>),
+          mock_result_message_id: nextMessageId,
+        });
+        return HttpResponse.json({
+          ok: true,
+          result: {
+            message_id: nextMessageId,
+            chat: { id: 900_100_200 },
+          },
+        });
+      },
+    ),
+  );
+  return bodies;
+}
+
+async function completeClaimedRun(
+  claim: Awaited<ReturnType<typeof claimRunnerJob>>,
+  cliSessionId: string,
+): Promise<void> {
+  const authorization = `Bearer ${claim.sandboxToken}`;
+  chatCallbacks.mockChatOutputEvents([
+    {
+      eventType: "assistant",
+      sequenceNumber: 0,
+      eventData: {
+        message: {
+          content: [{ type: "text", text: "Telegram canonical reply" }],
+        },
+      },
+    },
+  ]);
+  const historyHash = createHash("sha256")
+    .update(`bdd chat session history ${claim.runId}`)
+    .digest("hex");
+  await webhooksApi.requestAgentCheckpoint(
+    {
+      runId: claim.runId,
+      cliAgentType: "claude-code",
+      cliAgentSessionId: cliSessionId,
+      cliAgentSessionHistoryHash: historyHash,
+    },
+    { authorization },
+    [200],
+  );
+  await webhooksApi.requestAgentComplete(
+    { runId: claim.runId, exitCode: 0 },
+    { authorization },
+    [200],
+  );
+  await flushWaitUntilForTest();
+}
+
+async function dispatchPrivateMessage(
+  fixture: TelegramProbeFixture,
+  args: { readonly text: string; readonly messageId: number },
+): Promise<Response> {
+  return await requestApp(ROUTE, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({
+      bot_id: fixture.botId,
+      chat_id: "900100200",
+      telegram_user_id: fixture.telegramUserId,
+      message_text: args.text,
+      message_id: args.messageId,
+    }),
+  });
+}
+
+async function requestTelegramStateAction(
+  body: Record<string, unknown>,
+): Promise<Record<string, unknown>> {
+  const response = await requestTelegramState(
+    `${TELEGRAM_STATE_ROUTE}/action`,
+    {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(body),
+    },
+  );
+  const result = await readJson<Record<string, unknown>>(response);
+  if (response.status !== 200) {
+    throw new Error(`Telegram state action failed: ${JSON.stringify(result)}`);
+  }
+  return result;
 }
 
 async function claimTelegramRunnerJob(
@@ -295,6 +457,7 @@ describe("POST /api/test/telegram-dispatch-probe", () => {
     mockEnv("ENV", "development");
     const fixture = await seedFixture();
     const typingBodies = mockTelegramTyping();
+    mockTelegramCompletionDelivery();
 
     const response = await requestApp(ROUTE, {
       method: "POST",
@@ -342,7 +505,8 @@ describe("POST /api/test/telegram-dispatch-probe", () => {
           op_type: "api_dispatch_pre_create_agent_run",
           span_kind: "top_level",
           trigger_source: "telegram",
-          zero_run_origin: "zero_integration",
+          zero_run_origin: "zero_run",
+          zero_pre_create_source: "chat_callback_auto_send",
         }),
         expect.objectContaining({
           op_type: "api_dispatch_pre_create_zero_entrypoint_gap",
@@ -383,10 +547,190 @@ describe("POST /api/test/telegram-dispatch-probe", () => {
     );
   });
 
+  it("serializes Telegram admission and shares one canonical application session with web", async () => {
+    mockEnv("ENV", "development");
+    const fixture = await seedFixture();
+    mockTelegramTyping();
+    const sentMessages = mockTelegramCompletionDelivery();
+
+    expect(
+      (
+        await dispatchPrivateMessage(fixture, {
+          text: "canonical first",
+          messageId: 601,
+        })
+      ).status,
+    ).toBe(200);
+    const first = await claimTelegramRunnerJob(fixture, "canonical first");
+
+    expect(
+      (
+        await dispatchPrivateMessage(fixture, {
+          text: "canonical second",
+          messageId: 602,
+        })
+      ).status,
+    ).toBe(200);
+    expect(
+      (
+        await dispatchPrivateMessage(fixture, {
+          text: "canonical second",
+          messageId: 602,
+        })
+      ).status,
+    ).toBe(200);
+    let state = await readTelegramState(fixture);
+    expect(state.message_count).toBe(2);
+    expect(
+      recentTelegramRuns(state).filter((run) => {
+        return run.promptPreview?.includes("canonical second");
+      }),
+    ).toHaveLength(0);
+    const activeRoute = telegramChatThreadRoutes(state).find((candidate) => {
+      return candidate.chatId === "900100200";
+    });
+    if (!activeRoute) {
+      throw new Error("Expected the canonical Telegram DM route");
+    }
+    const admittedEvents = await chatApi.listThreadEvents(
+      actorForFixture(fixture),
+      activeRoute.chatThreadId,
+    );
+    expect(admittedEvents.events).toStrictEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          eventType: "input.prompt",
+          content: "canonical second",
+          userMessage: {
+            version: 1,
+            parts: [{ type: "text", text: "canonical second" }],
+          },
+        }),
+      ]),
+    );
+
+    await completeClaimedRun(first, "telegram-cli-first");
+    expect(sentMessages.at(-1)).not.toHaveProperty("reply_parameters");
+    state = await readTelegramState(fixture);
+    const route = telegramChatThreadRoutes(state).find((candidate) => {
+      return candidate.chatId === "900100200";
+    });
+    expect(route).toMatchObject({
+      rootMessageId: "dm",
+      lastProcessedMessageId: "601",
+    });
+    expect(route?.agentSessionId).toBeTruthy();
+    expect(state.thread_sessions).toStrictEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          rootMessageId: "dm",
+          agentSessionId: route?.agentSessionId,
+        }),
+      ]),
+    );
+
+    const second = await claimTelegramRunnerJob(fixture, "canonical second");
+    state = await readTelegramState(fixture);
+    const firstRun = recentTelegramRuns(state).find((run) => {
+      return run.id === first.runId;
+    });
+    const secondRun = recentTelegramRuns(state).find((run) => {
+      return run.id === second.runId;
+    });
+    expect(secondRun).toMatchObject({
+      chatThreadId: route?.chatThreadId,
+      sessionId: firstRun?.sessionId,
+    });
+    await completeClaimedRun(second, "telegram-cli-second");
+
+    const web = await chatApi.requestSendEvent(
+      actorForFixture(fixture),
+      {
+        agentId: fixture.defaultAgentId,
+        threadId: route?.chatThreadId ?? "",
+        prompt: "web continuation",
+      },
+      [201],
+    );
+    expect(web.status).toBe(201);
+    if (!("runId" in web.body) || !web.body.runId) {
+      throw new Error(`Expected web continuation run: ${JSON.stringify(web)}`);
+    }
+    const webRunId = web.body.runId;
+    state = await readTelegramState(fixture);
+    const webRun = recentTelegramRuns(state).find((run) => {
+      return run.id === webRunId;
+    });
+    expect(webRun).toMatchObject({
+      chatThreadId: route?.chatThreadId,
+      sessionId: firstRun?.sessionId,
+    });
+  });
+
+  it("seeds the canonical thread from legacy and keeps the compatibility dual-write", async () => {
+    mockEnv("ENV", "development");
+    const fixture = await seedFixture();
+    mockTelegramTyping();
+    mockTelegramCompletionDelivery();
+    const seeded = await requestTelegramStateAction({
+      action: "seed-thread-session",
+      chat_id: "900100200",
+      root_message_id: "dm",
+      user_link_id: fixture.userLinkId,
+      org_id: fixture.orgId,
+      user_id: fixture.userId,
+      compose_id: fixture.defaultAgentId,
+    });
+    expect(seeded.agent_session_id).toStrictEqual(expect.any(String));
+
+    expect(
+      (
+        await dispatchPrivateMessage(fixture, {
+          text: "legacy continuity",
+          messageId: 603,
+        })
+      ).status,
+    ).toBe(200);
+    const claim = await claimTelegramRunnerJob(fixture, "legacy continuity");
+    const stateBeforeCompletion = await readTelegramState(fixture);
+    const run = recentTelegramRuns(stateBeforeCompletion).find((candidate) => {
+      return candidate.id === claim.runId;
+    });
+    expect(run?.sessionId).toBe(seeded.agent_session_id);
+    expect(telegramChatThreadRoutes(stateBeforeCompletion)).toStrictEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          rootMessageId: "dm",
+          agentSessionId: seeded.agent_session_id,
+        }),
+      ]),
+    );
+
+    await completeClaimedRun(claim, "telegram-cli-legacy");
+    const stateAfterCompletion = await readTelegramState(fixture);
+    expect(stateAfterCompletion.thread_sessions).toStrictEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          rootMessageId: "dm",
+          agentSessionId: seeded.agent_session_id,
+        }),
+      ]),
+    );
+    expect(telegramChatThreadRoutes(stateAfterCompletion)).toStrictEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          lastProcessedMessageId: "603",
+          agentSessionId: seeded.agent_session_id,
+        }),
+      ]),
+    );
+  });
+
   it("dispatches group mentions with mention stripping and Telegram metadata", async () => {
     mockEnv("ENV", "development");
     const fixture = await seedFixture();
     mockTelegramTyping();
+    mockTelegramCompletionDelivery();
 
     const response = await requestApp(ROUTE, {
       method: "POST",
@@ -419,6 +763,113 @@ describe("POST /api/test/telegram-dispatch-probe", () => {
         expect.objectContaining({
           id: claim.runId,
           triggerSource: "telegram",
+        }),
+      ]),
+    );
+  });
+
+  it("keeps reply-chain anchors and outbound reply targets on canonical callbacks", async () => {
+    mockEnv("ENV", "development");
+    const fixture = await seedFixture();
+    mockTelegramTyping();
+    const sentMessages = mockTelegramCompletionDelivery();
+
+    const firstResponse = await requestApp(ROUTE, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        bot_id: fixture.botId,
+        chat_id: "900100201",
+        telegram_user_id: fixture.telegramUserId,
+        message_text: "@probe_bot start a reply chain",
+        message_id: 701,
+        chat_type: "group",
+        bot_username: "probe_bot",
+      }),
+    });
+    expect(firstResponse.status).toBe(200);
+    const first = await claimTelegramRunnerJob(fixture, "start a reply chain");
+    const firstRunState = await requestTelegramStateAction({
+      action: "get-post-run-state",
+      org_id: fixture.orgId,
+      user_id: fixture.userId,
+      run_id: first.runId,
+    });
+    expect(firstRunState.callbacks).toStrictEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          internalKind: "telegram",
+          payload: expect.objectContaining({
+            messageId: "701",
+            isDM: false,
+            rootMessageId: null,
+          }),
+        }),
+      ]),
+    );
+    await completeClaimedRun(first, "telegram-cli-group-first");
+
+    const firstCompletion = sentMessages.at(-1);
+    expect(firstCompletion).toBeDefined();
+    expect(firstCompletion?.reply_parameters).toStrictEqual({
+      message_id: 701,
+    });
+    const firstBotMessageId = firstCompletion?.mock_result_message_id;
+    expect(firstBotMessageId).toStrictEqual(expect.any(Number));
+    let state = await readTelegramState(fixture);
+    const route = telegramChatThreadRoutes(state).find((candidate) => {
+      return candidate.chatId === "900100201";
+    });
+    expect(route).toMatchObject({
+      rootMessageId: String(firstBotMessageId),
+      lastProcessedMessageId: "701",
+    });
+
+    const secondResponse = await requestApp(ROUTE, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        bot_id: fixture.botId,
+        chat_id: "900100201",
+        telegram_user_id: fixture.telegramUserId,
+        message_text: "continue the chain",
+        message_id: 702,
+        chat_type: "group",
+        bot_username: "probe_bot",
+        reply_to_message_id: firstBotMessageId,
+        reply_to_bot_username: "probe_bot",
+      }),
+    });
+    expect(secondResponse.status).toBe(200);
+    const second = await claimTelegramRunnerJob(fixture, "continue the chain");
+    state = await readTelegramState(fixture);
+    const firstRun = recentTelegramRuns(state).find((candidate) => {
+      return candidate.id === first.runId;
+    });
+    const secondRun = recentTelegramRuns(state).find((candidate) => {
+      return candidate.id === second.runId;
+    });
+    expect(secondRun).toMatchObject({
+      chatThreadId: route?.chatThreadId,
+      sessionId: firstRun?.sessionId,
+    });
+
+    const messagesBeforeSecondCompletion = sentMessages.length;
+    await completeClaimedRun(second, "telegram-cli-group-second");
+    expect(sentMessages).toHaveLength(messagesBeforeSecondCompletion + 1);
+    const secondCompletion = sentMessages.at(-1);
+    expect(secondCompletion?.reply_parameters).toStrictEqual({
+      message_id: 702,
+    });
+    expect(
+      telegramChatThreadRoutes(await readTelegramState(fixture)),
+    ).toStrictEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          chatId: "900100201",
+          rootMessageId: String(secondCompletion?.mock_result_message_id),
+          lastProcessedMessageId: "702",
+          chatThreadId: route?.chatThreadId,
         }),
       ]),
     );

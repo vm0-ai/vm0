@@ -1,5 +1,6 @@
-import { and, eq } from "drizzle-orm";
+import { and, eq, isNull, lt, or, sql } from "drizzle-orm";
 import { telegramMessages } from "@vm0/db/schema/telegram-message";
+import { telegramChatThreadRoutes } from "@vm0/db/schema/telegram-chat-thread-route";
 import { telegramThreadSessions } from "@vm0/db/schema/telegram-thread-session";
 
 import { nowDate } from "../external/time";
@@ -124,4 +125,105 @@ export async function saveTelegramThreadSession(args: {
         ),
       );
   }
+}
+
+export async function saveCanonicalTelegramThreadCompatibility(args: {
+  readonly db: Db;
+  readonly routeId: string;
+  readonly chatThreadId: string;
+  readonly userLinkId: string;
+  readonly userLinkKind: "custom" | "official";
+  readonly chatId: string;
+  readonly rootMessageId: string;
+  readonly previousRootMessageId: string | undefined;
+  readonly routeCreated: boolean;
+  readonly seededFromLegacy: boolean;
+  readonly sessionId: string;
+  readonly messageId: string;
+  readonly runStatus: "completed" | "failed";
+}): Promise<void> {
+  const isInitialReply =
+    args.previousRootMessageId === undefined ||
+    (args.routeCreated && !args.seededFromLegacy);
+  const shouldAdvanceRoot = isInitialReply || args.runStatus === "completed";
+  const currentTime = nowDate();
+  await args.db.transaction(async (tx) => {
+    let advancedCanonicalRoute = false;
+    if (shouldAdvanceRoot) {
+      const updated = await tx
+        .update(telegramChatThreadRoutes)
+        .set({
+          rootMessageId: args.rootMessageId,
+          lastProcessedMessageId: args.messageId,
+          updatedAt: currentTime,
+        })
+        .where(
+          and(
+            eq(telegramChatThreadRoutes.id, args.routeId),
+            eq(telegramChatThreadRoutes.chatThreadId, args.chatThreadId),
+            or(
+              isNull(telegramChatThreadRoutes.lastProcessedMessageId),
+              lt(
+                sql`${telegramChatThreadRoutes.lastProcessedMessageId}::bigint`,
+                sql`${args.messageId}::bigint`,
+              ),
+            ),
+          ),
+        )
+        .returning({ id: telegramChatThreadRoutes.id });
+      advancedCanonicalRoute = updated.length > 0;
+    }
+
+    if (!advancedCanonicalRoute) {
+      return;
+    }
+    const legacyRootMessageId =
+      args.previousRootMessageId ?? args.rootMessageId;
+    const updated = await tx
+      .update(telegramThreadSessions)
+      .set({
+        rootMessageId: args.rootMessageId,
+        agentSessionId: args.sessionId,
+        lastProcessedMessageId: args.messageId,
+        updatedAt: currentTime,
+      })
+      .where(
+        and(
+          args.userLinkKind === "custom"
+            ? eq(telegramThreadSessions.telegramUserLinkId, args.userLinkId)
+            : eq(
+                telegramThreadSessions.telegramOfficialUserLinkId,
+                args.userLinkId,
+              ),
+          eq(telegramThreadSessions.chatId, args.chatId),
+          eq(telegramThreadSessions.rootMessageId, legacyRootMessageId),
+          or(
+            isNull(telegramThreadSessions.lastProcessedMessageId),
+            lt(
+              sql`${telegramThreadSessions.lastProcessedMessageId}::bigint`,
+              sql`${args.messageId}::bigint`,
+            ),
+          ),
+        ),
+      )
+      .returning({ id: telegramThreadSessions.id });
+    if (updated.length > 0) {
+      return;
+    }
+    await tx
+      .insert(telegramThreadSessions)
+      .values({
+        telegramUserLinkId:
+          args.userLinkKind === "custom" ? args.userLinkId : null,
+        telegramOfficialUserLinkId:
+          args.userLinkKind === "official" ? args.userLinkId : null,
+        chatId: args.chatId,
+        rootMessageId: args.rootMessageId,
+        agentSessionId: args.sessionId,
+        lastProcessedMessageId: args.messageId,
+        createdAt: currentTime,
+        updatedAt: currentTime,
+      })
+      .onConflictDoNothing();
+  });
 }

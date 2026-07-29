@@ -73,6 +73,7 @@ export const testTelegramStateResponseSchema = z.object({
   messages: z.array(z.unknown()),
   official_messages: z.array(z.unknown()),
   thread_sessions: z.array(z.unknown()),
+  chat_thread_routes: z.array(z.unknown()),
 });
 
 export const testTelegramStateDeleteResponseSchema = z.object({

@@ -12,6 +12,8 @@ export const testTelegramDispatchProbeBodySchema = z.object({
   message_id: z.number().optional(),
   chat_type: z.enum(["private", "group", "supergroup"]).optional(),
   bot_username: z.string().optional(),
+  reply_to_message_id: z.number().optional(),
+  reply_to_bot_username: z.string().optional(),
 });
 
 export const testTelegramDispatchProbeSuccessSchema = z.object({

@@ -68,11 +68,7 @@ import { expandConnectorServerFirewallPolicies } from "./connector-server-firewa
 import type { QueueFirstRunAssociation } from "./zero-chat-queued-message.service";
 
 type ZeroRunCreateBody = z.infer<(typeof zeroRunsMainContract.create)["body"]>;
-type ZeroRunOrigin =
-  | "zero_run"
-  | "workflow_automation"
-  | "goal_continuation"
-  | "zero_integration";
+type ZeroRunOrigin = "zero_run" | "workflow_automation" | "goal_continuation";
 export type ZeroPreCreateSource =
   | "chat_callback_auto_send"
   | "workflow_slash_command";
@@ -193,34 +189,6 @@ interface CreateQueueFirstZeroRunCommandArgs extends Omit<
 type AnyCreateZeroRunCommandArgs =
   | CreateZeroRunCommandArgs
   | CreateQueueFirstZeroRunCommandArgs;
-
-interface CreateZeroIntegrationRunCommandArgs {
-  readonly userId: string;
-  readonly orgId: string;
-  readonly agentId: string;
-  readonly sessionId?: string;
-  readonly prompt: string;
-  readonly appendSystemPrompt?: string;
-  readonly triggerSource: TriggerSource;
-  readonly callbacks?: readonly RunCallback[];
-  readonly apiStartTime: number;
-  readonly userInfoExtras?: Pick<
-    UserInfo,
-    | "slackDisplayName"
-    | "slackUserId"
-    | "feishuDisplayName"
-    | "feishuOpenId"
-    | "teamsUserDisplayName"
-    | "teamsUserPrincipalName"
-    | "teamsUserId"
-    | "telegramDisplayName"
-    | "telegramUsername"
-    | "telegramUserId"
-    | "telegramLanguage"
-    | "agentphoneHandle"
-  >;
-  readonly dispatchFailedCallbacks?: DispatchFailedRunCallbacks;
-}
 
 function forbidden(message: string) {
   return {
@@ -474,17 +442,6 @@ function buildAppendSystemPrompt(args: {
     .join("\n\n");
 }
 
-function mergeAppendSystemPrompt(
-  base: string,
-  appendSystemPrompt: string | undefined,
-): string {
-  return [base, appendSystemPrompt]
-    .filter((part): part is string => {
-      return Boolean(part);
-    })
-    .join("\n\n");
-}
-
 async function inferAgentIdFromSession(
   db: Db,
   args: {
@@ -705,39 +662,6 @@ function createRunBody(args: {
         return Boolean(part);
       })
       .join("\n\n"),
-    disallowedTools: [...DISALLOWED_TOOLS],
-    vars: { ZERO_AGENT_ID: args.agent.id },
-  };
-}
-
-function createIntegrationRunBody(args: {
-  readonly prompt: string;
-  readonly sessionId: string | undefined;
-  readonly agent: ZeroAgentRunRecord;
-  readonly featureSwitchContext: FeatureSwitchContext;
-  readonly userInfo: UserInfo;
-  readonly zeroFinanceEnabled: boolean;
-  readonly permissionPolicies: FirewallPolicies | null | undefined;
-  readonly triggerSource: TriggerSource;
-  readonly appendSystemPrompt: string | undefined;
-}) {
-  return {
-    prompt: args.prompt,
-    agentComposeId: args.agent.id,
-    sessionId: args.sessionId,
-    permissionPolicies: args.permissionPolicies ?? undefined,
-    triggerSource: args.triggerSource,
-    appendSystemPrompt: mergeAppendSystemPrompt(
-      buildAppendSystemPrompt({
-        agent: args.agent,
-        featureSwitchContext: args.featureSwitchContext,
-        userInfo: args.userInfo,
-        triggerSource: args.triggerSource,
-        zeroFinanceEnabled: args.zeroFinanceEnabled,
-        cloudBrowserEnabled: undefined,
-      }),
-      args.appendSystemPrompt,
-    ),
     disallowedTools: [...DISALLOWED_TOOLS],
     vars: { ZERO_AGENT_ID: args.agent.id },
   };
@@ -966,58 +890,6 @@ function buildZeroCreateAgentRunArgs(args: {
   };
 }
 
-function buildZeroIntegrationCreateAgentRunArgs(args: {
-  readonly command: CreateZeroIntegrationRunCommandArgs;
-  readonly agent: ZeroAgentRunRecord;
-  readonly featureSwitchContext: FeatureSwitchContext;
-  readonly userInfo: UserInfo;
-  readonly zeroFinanceEnabled: boolean;
-  readonly runPermissionPolicies: FirewallPolicies | null | undefined;
-  readonly workflows: readonly RunWorkflowRef[];
-  readonly allowedConnectorSlugs: readonly ConnectorSlug[];
-  readonly allowedCustomConnectorIds: readonly string[];
-  readonly timing: ApiDispatchTimingCollector;
-}): CreateAgentRunArgs {
-  const command = args.command;
-  return {
-    userId: command.userId,
-    orgId: command.orgId,
-    body: createIntegrationRunBody({
-      prompt: command.prompt,
-      sessionId: command.sessionId,
-      agent: args.agent,
-      featureSwitchContext: args.featureSwitchContext,
-      userInfo: { ...args.userInfo, ...command.userInfoExtras },
-      zeroFinanceEnabled: args.zeroFinanceEnabled,
-      permissionPolicies: args.runPermissionPolicies,
-      triggerSource: command.triggerSource,
-      appendSystemPrompt: command.appendSystemPrompt,
-    }),
-    apiStartTime: command.apiStartTime,
-    modelProviderId: optionalAgentSetting(args.agent.modelProviderId),
-    selectedModelOverride: optionalAgentSetting(args.agent.selectedModel),
-    extraEnvironment: buildZeroRunExtraEnvironment({
-      agentId: args.agent.id,
-      chatThreadId: undefined,
-      codexServiceTier: undefined,
-    }),
-    callbacks: command.callbacks,
-    includeZeroTokenSecret: true,
-    enforceVm0Credits: true,
-    queueOnConcurrencyLimit: true,
-    injectSkillVolumes: { workflows: args.workflows },
-    connectorScope: {
-      allowedConnectorSlugs: args.allowedConnectorSlugs,
-      allowedCustomConnectorIds: args.allowedCustomConnectorIds,
-      source: "zero_agent",
-    },
-    validateEnvironmentReferences: false,
-    dispatchFailedCallbacks: command.dispatchFailedCallbacks,
-    timing: args.timing,
-    timingDimensions: zeroRunTimingDimensions({ origin: "zero_integration" }),
-  };
-}
-
 interface ZeroRunAfterPreCreateBase {
   readonly agent: ZeroAgentRunRecord;
   readonly userInfo: UserInfo;
@@ -1039,29 +911,13 @@ interface RegularZeroRunAfterPreCreate extends ZeroRunAfterPreCreateBase {
   readonly threadSessionResolution?: ChatThreadSessionResolution;
 }
 
-interface IntegrationZeroRunAfterPreCreate extends ZeroRunAfterPreCreateBase {
-  readonly kind: "integration";
-  readonly command: CreateZeroIntegrationRunCommandArgs;
-}
-
-type ZeroRunAfterPreCreate =
-  | RegularZeroRunAfterPreCreate
-  | IntegrationZeroRunAfterPreCreate;
-
-function buildZeroCreateAgentRunArgsForKind(
-  input: ZeroRunAfterPreCreate,
-): CreateAgentRunArgs {
-  if (input.kind === "regular") {
-    return buildZeroCreateAgentRunArgs(input);
-  }
-  return buildZeroIntegrationCreateAgentRunArgs(input);
-}
+type ZeroRunAfterPreCreate = RegularZeroRunAfterPreCreate;
 
 async function resolveThreadSessionForZeroRun(
   db: Db,
   input: ZeroRunAfterPreCreate,
 ): Promise<ZeroRunAfterPreCreate> {
-  if (input.kind === "integration" || !input.command.chatThreadId) {
+  if (!input.command.chatThreadId) {
     return input;
   }
   if (!input.command.threadSessionRoute) {
@@ -1104,7 +960,7 @@ const createAgentRunAfterZeroPreCreate$ = command(
         input.timing,
         "api_dispatch_pre_create_zero_build_create_run_args",
         () => {
-          return buildZeroCreateAgentRunArgsForKind(attemptInput);
+          return buildZeroCreateAgentRunArgs(attemptInput);
         },
       );
       signal.throwIfAborted();
@@ -1144,80 +1000,6 @@ const createAgentRunAfterZeroPreCreate$ = command(
       signal.throwIfAborted();
     }
     throw new Error("Chat thread session changed during every run preparation");
-  },
-);
-
-export const createZeroIntegrationRun$ = command(
-  async (
-    { set },
-    args: CreateZeroIntegrationRunCommandArgs,
-    signal: AbortSignal,
-  ) => {
-    const timing = zeroServiceEntryTiming({
-      apiStartTime: args.apiStartTime,
-    });
-    const db = set(writeDb$);
-    const agent = await measureZeroPreCreate(
-      timing,
-      "api_dispatch_pre_create_zero_load_agent",
-      async () => {
-        return await loadZeroAgent(db, args.agentId);
-      },
-    );
-    signal.throwIfAborted();
-    if (!agent || agent.orgId !== args.orgId) {
-      return notFound("Agent not found");
-    }
-
-    if (agent.visibility === "private" && agent.owner !== args.userId) {
-      return forbidden("Only the private agent owner can run this agent");
-    }
-
-    const {
-      userInfo,
-      featureSwitchContext,
-      zeroFinanceEnabled,
-      allowedConnectorSlugs,
-      allowedCustomConnectorIds,
-      workflows,
-      runPermissionPolicies,
-      connectorCatalogSnapshot,
-    } = await loadZeroRunPostAuthorizationContext(
-      db,
-      {
-        userId: args.userId,
-        orgId: args.orgId,
-        agentId: agent.id,
-        triggerRunId: undefined,
-        apiStartTime: args.apiStartTime,
-        timing,
-      },
-      signal,
-    );
-
-    const result = await set(
-      createAgentRunAfterZeroPreCreate$,
-      {
-        kind: "integration",
-        command: args,
-        agent,
-        userInfo,
-        featureSwitchContext,
-        zeroFinanceEnabled,
-        runPermissionPolicies,
-        connectorCatalogSnapshot,
-        workflows,
-        allowedConnectorSlugs,
-        allowedCustomConnectorIds,
-        timing,
-        cloudBrowserEnabled: undefined,
-      },
-      signal,
-    );
-    if (isQueueFirstRunClaimLost(result)) {
-      throw new Error("Integration run unexpectedly lost a queue-first claim");
-    }
-    return result;
   },
 );
 

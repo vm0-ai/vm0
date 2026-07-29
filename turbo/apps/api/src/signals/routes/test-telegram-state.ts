@@ -18,6 +18,7 @@ import {
 import { agentRunCallbacks } from "@vm0/db/schema/agent-run-callback";
 import { agentRuns } from "@vm0/db/schema/agent-run";
 import { agentSessions } from "@vm0/db/schema/agent-session";
+import { chatThreads } from "@vm0/db/schema/chat-thread";
 import { creditExpiresRecord } from "@vm0/db/schema/credit-expires-record";
 import { e2eTelegramMockCallLog } from "@vm0/db/schema/e2e-telegram-mock-call-log";
 import { modelProviders } from "@vm0/db/schema/model-provider";
@@ -28,6 +29,7 @@ import { runnerJobQueue } from "@vm0/db/schema/runner-job-queue";
 import { telegramInstallations } from "@vm0/db/schema/telegram-installation";
 import { telegramMessages } from "@vm0/db/schema/telegram-message";
 import { telegramOfficialUserLinks } from "@vm0/db/schema/telegram-official-user-link";
+import { telegramChatThreadRoutes } from "@vm0/db/schema/telegram-chat-thread-route";
 import { telegramThreadSessions } from "@vm0/db/schema/telegram-thread-session";
 import { telegramUserAgentPreferences } from "@vm0/db/schema/telegram-user-agent-preference";
 import { telegramUserLinks } from "@vm0/db/schema/telegram-user-link";
@@ -157,6 +159,8 @@ function loadRecentRuns(db: ReadonlyDb, orgId: string | undefined) {
       promptPreview: sql`substring(${agentRuns.prompt}, 1, 200)`.mapWith(
         pgTextDecoder,
       ),
+      sessionId: agentRuns.sessionId,
+      chatThreadId: zeroRuns.chatThreadId,
     })
     .from(agentRuns)
     .leftJoin(zeroRuns, eq(agentRuns.id, zeroRuns.id))
@@ -291,6 +295,31 @@ function loadThreadSessions(db: ReadonlyDb, botId: string) {
     .innerJoin(
       telegramUserLinks,
       eq(telegramUserLinks.id, telegramThreadSessions.telegramUserLinkId),
+    )
+    .where(eq(telegramUserLinks.installationId, botId));
+}
+
+function loadChatThreadRoutes(db: ReadonlyDb, botId: string) {
+  return db
+    .select({
+      id: telegramChatThreadRoutes.id,
+      telegramUserLinkId: telegramChatThreadRoutes.telegramUserLinkId,
+      telegramOfficialUserLinkId:
+        telegramChatThreadRoutes.telegramOfficialUserLinkId,
+      chatId: telegramChatThreadRoutes.chatId,
+      rootMessageId: telegramChatThreadRoutes.rootMessageId,
+      chatThreadId: telegramChatThreadRoutes.chatThreadId,
+      agentSessionId: chatThreads.agentSessionId,
+      lastProcessedMessageId: telegramChatThreadRoutes.lastProcessedMessageId,
+    })
+    .from(telegramChatThreadRoutes)
+    .innerJoin(
+      telegramUserLinks,
+      eq(telegramUserLinks.id, telegramChatThreadRoutes.telegramUserLinkId),
+    )
+    .innerJoin(
+      chatThreads,
+      eq(chatThreads.id, telegramChatThreadRoutes.chatThreadId),
     )
     .where(eq(telegramUserLinks.installationId, botId));
 }
@@ -1244,6 +1273,7 @@ async function getTelegramPostRunStateForAction(
         triggerSource: zeroRuns.triggerSource,
         modelProvider: zeroRuns.modelProvider,
         selectedModel: zeroRuns.selectedModel,
+        chatThreadId: zeroRuns.chatThreadId,
       })
       .from(zeroRuns)
       .where(eq(zeroRuns.id, run.id))
@@ -1371,6 +1401,7 @@ async function insertAgentSessionForAction(
       orgId: args.orgId,
       userId: args.userId,
       agentComposeId: args.composeId,
+      storageMounts: [],
     })
     .returning({ id: agentSessions.id });
   signal.throwIfAborted();
@@ -1920,6 +1951,7 @@ const getTestTelegramState$ = computed(async (get) => {
     messages,
     officialMessages,
     threadSessions,
+    chatThreadRoutes,
   ] = await Promise.all([
     loadLinks(db, query.bot_id),
     loadRecentRuns(db, installation?.orgId),
@@ -1930,6 +1962,7 @@ const getTestTelegramState$ = computed(async (get) => {
     loadMessages(db, query.bot_id),
     loadOfficialMessages(db, installation?.orgId),
     loadThreadSessions(db, query.bot_id),
+    loadChatThreadRoutes(db, query.bot_id),
   ]);
   const [composeVersion, mockCalls] = await Promise.all([
     loadComposeVersion(db, compose?.headVersionId),
@@ -1959,6 +1992,7 @@ const getTestTelegramState$ = computed(async (get) => {
       messages,
       official_messages: officialMessages,
       thread_sessions: threadSessions,
+      chat_thread_routes: chatThreadRoutes,
     },
   };
 });
