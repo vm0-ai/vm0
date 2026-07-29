@@ -71,9 +71,9 @@ async function activeChatRunExists(
   return run !== undefined;
 }
 
-// A managed browser now outlives the run that opened it and the next run simply
-// attaches to the same live instance, so an unsettled browser must not hold up
-// the thread's next run.
+// A managed browser outlives the run that opened it and the next run simply
+// attaches to the same live instance, so it must not hold up the thread's next
+// run.
 export async function chatThreadAdmissionBlocked(
   db: Pick<Db, "select">,
   args: {

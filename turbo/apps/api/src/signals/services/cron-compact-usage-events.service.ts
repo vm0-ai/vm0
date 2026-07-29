@@ -1,4 +1,3 @@
-import { browserSessionInstances } from "@vm0/db/schema/browser-session";
 import { usageAllowanceAllocations } from "@vm0/db/schema/org-usage-allowance";
 import { usageEvent } from "@vm0/db/schema/usage-event";
 import { usageEventHourlyRollup } from "@vm0/db/schema/usage-event-hourly-rollup";
@@ -26,7 +25,6 @@ interface UsageEventCompactionStats {
   readonly seededRawRows: number;
   readonly selectedGrains: number;
   readonly probedRawRows: number;
-  readonly browserHeldRows: number;
   readonly billingErrorHeldRows: number;
   readonly rawRowsCompacted: number;
   readonly hourlyRowsDeleted: number;
@@ -50,7 +48,6 @@ const cutoffRowSchema = z.object({
 
 const holdProbeRowSchema = z.object({
   probedRawRows: z.int(),
-  browserHeldRows: z.int(),
   billingErrorHeldRows: z.int(),
 });
 
@@ -82,12 +79,6 @@ function eligibleRawPredicate(cutoff: string): SQL {
     AND event.processed_at IS NOT NULL
     AND event.processed_at < ${cutoff}::timestamp
     AND event.billing_error IS NULL
-    AND NOT EXISTS (
-      SELECT 1
-      FROM ${browserSessionInstances} browser
-      WHERE browser.provider_session_id = event.idempotency_key
-        AND browser.settled_at IS NULL
-    )
   `;
 }
 
@@ -523,14 +514,7 @@ async function loadHoldProbe(
     db,
     sql`
       WITH probed AS MATERIALIZED (
-        SELECT
-          event.billing_error,
-          EXISTS (
-            SELECT 1
-            FROM ${browserSessionInstances} browser
-            WHERE browser.provider_session_id = event.idempotency_key
-              AND browser.settled_at IS NULL
-          ) AS browser_held
+        SELECT event.billing_error
         FROM ${usageEvent} event
         WHERE event.status = 'processed'
           AND event.processed_at IS NOT NULL
@@ -540,7 +524,6 @@ async function loadHoldProbe(
       )
       SELECT
         ${count()}::int AS "probedRawRows",
-        ${count()} FILTER (WHERE browser_held)::int AS "browserHeldRows",
         ${count()} FILTER (WHERE billing_error IS NOT NULL)::int
           AS "billingErrorHeldRows"
       FROM probed
@@ -626,7 +609,6 @@ async function compactUsageEventBatch(
       seededRawRows: compacted.seededRawRows,
       selectedGrains: compacted.selectedGrains,
       probedRawRows: holdProbe.probedRawRows,
-      browserHeldRows: holdProbe.browserHeldRows,
       billingErrorHeldRows: holdProbe.billingErrorHeldRows,
       rawRowsCompacted: compacted.rawRowsCompacted,
       hourlyRowsDeleted: compacted.hourlyRowsDeleted,

@@ -1,6 +1,6 @@
 {
-  "id": "ad22f09c-24b2-45ee-8b8d-aae522bc1ddd",
-  "prevId": "35fa186c-9687-4f8c-914d-3c0a7cfb33b5",
+  "id": "bfb66f0d-2c16-4a44-b476-d6746433623e",
+  "prevId": "6dae0176-1be1-4be2-844c-53b87334327b",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -2984,9 +2984,9 @@
             }
           ],
           "isUnique": false,
-          "concurrently": false,
+          "with": {},
           "method": "btree",
-          "with": {}
+          "concurrently": false
         },
         "idx_browser_session_instances_run_status": {
           "name": "idx_browser_session_instances_run_status",
@@ -3005,9 +3005,9 @@
             }
           ],
           "isUnique": false,
-          "concurrently": false,
+          "with": {},
           "method": "btree",
-          "with": {}
+          "concurrently": false
         },
         "idx_browser_session_instances_reconcile": {
           "name": "idx_browser_session_instances_reconcile",
@@ -3026,9 +3026,9 @@
             }
           ],
           "isUnique": false,
-          "concurrently": false,
+          "with": {},
           "method": "btree",
-          "with": {}
+          "concurrently": false
         },
         "uq_browser_session_instances_thread_owned": {
           "name": "uq_browser_session_instances_thread_owned",
@@ -3041,38 +3041,38 @@
             }
           ],
           "isUnique": true,
-          "where": "\"browser_session_instances\".\"status\" IN ('active', 'stopping')",
-          "concurrently": false,
+          "with": {},
           "method": "btree",
-          "with": {}
+          "where": "\"browser_session_instances\".\"status\" IN ('active', 'stopping')",
+          "concurrently": false
         }
       },
       "foreignKeys": {
         "browser_session_instances_browser_session_id_browser_sessions_id_fk": {
           "name": "browser_session_instances_browser_session_id_browser_sessions_id_fk",
           "tableFrom": "browser_session_instances",
-          "tableTo": "browser_sessions",
           "columnsFrom": [
             "browser_session_id"
           ],
+          "tableTo": "browser_sessions",
           "columnsTo": [
             "id"
           ],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
+          "onUpdate": "no action",
+          "onDelete": "cascade"
         },
         "browser_session_instances_usage_event_id_usage_event_id_fk": {
           "name": "browser_session_instances_usage_event_id_usage_event_id_fk",
           "tableFrom": "browser_session_instances",
-          "tableTo": "usage_event",
           "columnsFrom": [
             "usage_event_id"
           ],
+          "tableTo": "usage_event",
           "columnsTo": [
             "id"
           ],
-          "onDelete": "set null",
-          "onUpdate": "no action"
+          "onUpdate": "no action",
+          "onDelete": "set null"
         }
       },
       "compositePrimaryKeys": {},
@@ -3218,9 +3218,9 @@
             }
           ],
           "isUnique": false,
-          "concurrently": false,
+          "with": {},
           "method": "btree",
-          "with": {}
+          "concurrently": false
         },
         "idx_browser_sessions_owner_created": {
           "name": "idx_browser_sessions_owner_created",
@@ -3245,9 +3245,9 @@
             }
           ],
           "isUnique": false,
-          "concurrently": false,
+          "with": {},
           "method": "btree",
-          "with": {}
+          "concurrently": false
         },
         "idx_browser_sessions_reconcile": {
           "name": "idx_browser_sessions_reconcile",
@@ -3266,9 +3266,9 @@
             }
           ],
           "isUnique": false,
-          "concurrently": false,
+          "with": {},
           "method": "btree",
-          "with": {}
+          "concurrently": false
         },
         "uq_browser_sessions_thread_owned": {
           "name": "uq_browser_sessions_thread_owned",
@@ -3281,51 +3281,51 @@
             }
           ],
           "isUnique": true,
-          "where": "\"browser_sessions\".\"status\" IN ('creating', 'active', 'resuming', 'stopping')",
-          "concurrently": false,
+          "with": {},
           "method": "btree",
-          "with": {}
+          "where": "\"browser_sessions\".\"status\" IN ('creating', 'active', 'resuming', 'stopping')",
+          "concurrently": false
         }
       },
       "foreignKeys": {
         "browser_sessions_run_id_agent_runs_id_fk": {
           "name": "browser_sessions_run_id_agent_runs_id_fk",
           "tableFrom": "browser_sessions",
-          "tableTo": "agent_runs",
           "columnsFrom": [
             "run_id"
           ],
+          "tableTo": "agent_runs",
           "columnsTo": [
             "id"
           ],
-          "onDelete": "set null",
-          "onUpdate": "no action"
+          "onUpdate": "no action",
+          "onDelete": "set null"
         },
         "browser_sessions_browser_profile_id_browser_profiles_id_fk": {
           "name": "browser_sessions_browser_profile_id_browser_profiles_id_fk",
           "tableFrom": "browser_sessions",
-          "tableTo": "browser_profiles",
           "columnsFrom": [
             "browser_profile_id"
           ],
+          "tableTo": "browser_profiles",
           "columnsTo": [
             "id"
           ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
+          "onUpdate": "no action",
+          "onDelete": "no action"
         },
         "browser_sessions_browser_thread_profile_id_browser_thread_profiles_id_fk": {
           "name": "browser_sessions_browser_thread_profile_id_browser_thread_profiles_id_fk",
           "tableFrom": "browser_sessions",
-          "tableTo": "browser_thread_profiles",
           "columnsFrom": [
             "browser_thread_profile_id"
           ],
+          "tableTo": "browser_thread_profiles",
           "columnsTo": [
             "id"
           ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
+          "onUpdate": "no action",
+          "onDelete": "no action"
         }
       },
       "compositePrimaryKeys": {},

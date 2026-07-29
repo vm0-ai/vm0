@@ -26,7 +26,6 @@ import {
   seedRun$,
   seedUsageOverflowGrain$,
   seedUsageInsightFixture$,
-  setBrowserUsageHold$,
   type UsageInsightFixture,
 } from "./helpers/zero-usage-insight";
 
@@ -231,7 +230,6 @@ describe("usage event compaction cron", () => {
       "affectedWeeklyWindows",
       "allowanceUnits",
       "billingErrorHeldRows",
-      "browserHeldRows",
       "creditsCharged",
       "cutoff",
       "durationMs",
@@ -349,74 +347,6 @@ describe("usage event compaction cron", () => {
       hourly: 0,
     });
     await expect(readStorage(eligibleFixture)).resolves.toStrictEqual({
-      raw: RAW_SEED_LIMIT,
-      processedRaw: 0,
-      compactedRaw: RAW_SEED_LIMIT,
-      hourly: 1,
-    });
-  });
-
-  it("protects the browser pre-reference crash window until settlement", async () => {
-    const fixture = await seedFixture();
-    const run = await seedRunContext(fixture);
-    const idempotencyKey = randomUUID();
-    await store.set(
-      insertUsageEvent$,
-      {
-        ...fixture,
-        runId: run.runId,
-        idempotencyKey,
-        status: "processed",
-        processedAt: new Date("0300-01-01T00:15:00.000Z"),
-      },
-      context.signal,
-    );
-    await store.set(
-      setBrowserUsageHold$,
-      {
-        ...fixture,
-        ...run,
-        idempotencyKey,
-        settled: false,
-      },
-      context.signal,
-    );
-    await seedCompactionBatch(new Date("0300-01-01T01:15:00.000Z"), 30_001);
-
-    const held = await compactUsage();
-    expect(held.body).toMatchObject({
-      browserHeldRows: 1,
-      rawRowsCompacted: RAW_SEED_LIMIT,
-      quantity: "30001",
-    });
-    await expect(readStorage(fixture)).resolves.toStrictEqual({
-      raw: 1,
-      processedRaw: 1,
-      compactedRaw: 0,
-      hourly: 0,
-    });
-
-    await seedZeroUsageEvents(fixture, {
-      runId: run.runId,
-      processedAt: new Date("0300-01-01T00:15:00.000Z"),
-      count: RAW_SEED_LIMIT - 1,
-    });
-    await store.set(
-      setBrowserUsageHold$,
-      {
-        ...fixture,
-        ...run,
-        idempotencyKey,
-        settled: true,
-      },
-      context.signal,
-    );
-    const released = await compactUsage();
-    expect(released.body).toMatchObject({
-      rawRowsCompacted: RAW_SEED_LIMIT,
-      hourlyRowsInserted: 1,
-    });
-    await expect(readStorage(fixture)).resolves.toStrictEqual({
       raw: RAW_SEED_LIMIT,
       processedRaw: 0,
       compactedRaw: RAW_SEED_LIMIT,
