@@ -7,6 +7,7 @@ import {
   useLastResolved,
 } from "ccstate-react";
 import { useLoadableSet } from "ccstate-react/experimental";
+import { useTranslation } from "react-i18next";
 import { pageSignal$ } from "../../signals/page-signal.ts";
 import { detach, Reason } from "../../signals/utils.ts";
 import { Input, Switch } from "@vm0/ui";
@@ -23,6 +24,7 @@ import {
   saveAutoRecharge$,
 } from "../../signals/zero-page/billing.ts";
 import { UnsavedBar } from "./components/org-manage/unsaved-bar.tsx";
+import { formatUsd } from "../../i18n/format.ts";
 
 const CREDITS_PER_DOLLAR = 1000;
 
@@ -37,6 +39,7 @@ export function AutoRechargeSection({
   allowed: boolean;
   loading?: boolean;
 }) {
+  const { t } = useTranslation();
   const pageSignal = useGet(pageSignal$);
   const configLoadable = useLastLoadable(autoRechargeConfig$);
   const config =
@@ -65,8 +68,9 @@ export function AutoRechargeSection({
   const displayEnabled = pendingEnabled !== null ? pendingEnabled : enabled;
   const amountNum = Number(amountValue);
   const amountParsed = Number.isFinite(amountNum) ? amountNum : 0;
-  const dollarAmount =
-    amountParsed > 0 ? (amountParsed / CREDITS_PER_DOLLAR).toFixed(2) : "0.00";
+  const dollarAmount = formatUsd(
+    amountParsed > 0 ? amountParsed / CREDITS_PER_DOLLAR : 0,
+  );
 
   const parseFormNumbers = () => {
     const tVal = Number(thresholdValue);
@@ -108,7 +112,11 @@ export function AutoRechargeSection({
   return (
     <>
       <section className="flex flex-col gap-3">
-        <h3 className="text-sm font-medium text-foreground">Auto-recharge</h3>
+        <h3 className="text-sm font-medium text-foreground">
+          {t(($) => {
+            return $.billing.autoRecharge.title;
+          })}
+        </h3>
         <div
           className="overflow-hidden rounded-xl bg-card"
           style={settingsCardBorder}
@@ -116,10 +124,14 @@ export function AutoRechargeSection({
           <div className="flex items-center justify-between gap-4 px-5 py-4">
             <div className="min-w-0">
               <p className="text-sm font-medium text-foreground">
-                Automatic top-ups
+                {t(($) => {
+                  return $.billing.autoRecharge.automaticTopUps;
+                })}
               </p>
               <p className="text-[13px] text-muted-foreground mt-0.5">
-                Purchase credits when your balance falls below a threshold.
+                {t(($) => {
+                  return $.billing.autoRecharge.description;
+                })}
               </p>
             </div>
             <Switch
@@ -129,7 +141,9 @@ export function AutoRechargeSection({
               }}
               disabled={loading || saving}
               className="shrink-0"
-              aria-label="Enable auto-recharge"
+              aria-label={t(($) => {
+                return $.billing.autoRecharge.enableAria;
+              })}
             />
           </div>
           {displayEnabled && (
@@ -138,11 +152,14 @@ export function AutoRechargeSection({
               <div className="flex items-center justify-between gap-4 px-5 py-4">
                 <div className="min-w-0">
                   <p className="text-sm font-medium text-foreground">
-                    When credits drop below
+                    {t(($) => {
+                      return $.billing.autoRecharge.thresholdTitle;
+                    })}
                   </p>
                   <p className="text-[13px] text-muted-foreground mt-0.5">
-                    Trigger a purchase when your credit balance goes under this
-                    number.
+                    {t(($) => {
+                      return $.billing.autoRecharge.thresholdDescription;
+                    })}
                   </p>
                 </div>
                 <Input
@@ -156,19 +173,25 @@ export function AutoRechargeSection({
                     }
                     setThreshold(v);
                   }}
-                  placeholder="e.g. 2000"
+                  placeholder={t(($) => {
+                    return $.billing.autoRecharge.thresholdPlaceholder;
+                  })}
                   className={inputRowClass}
-                  aria-label="Credit threshold for auto-recharge"
+                  aria-label={t(($) => {
+                    return $.billing.autoRecharge.thresholdAria;
+                  })}
                 />
               </div>
               <div className="h-0 zero-border-t mx-5" />
               <div className="flex items-center justify-between gap-4 px-5 py-4">
                 <div className="min-w-0 flex flex-col gap-1">
                   <span className="text-xl font-semibold tabular-nums tracking-tight text-foreground">
-                    ${dollarAmount}
+                    {dollarAmount}
                   </span>
                   <p className="text-[13px] font-normal text-muted-foreground">
-                    Recharge amount
+                    {t(($) => {
+                      return $.billing.autoRecharge.amountTitle;
+                    })}
                   </p>
                 </div>
                 <div className="relative w-[200px] shrink-0">
@@ -185,13 +208,17 @@ export function AutoRechargeSection({
                     }}
                     placeholder="100000"
                     className={`${inputRowClass} pr-[4.25rem] tabular-nums`}
-                    aria-label="Auto-recharge credit amount in credits"
+                    aria-label={t(($) => {
+                      return $.billing.autoRecharge.amountAria;
+                    })}
                   />
                   <span
                     className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-[13px] text-muted-foreground"
                     aria-hidden
                   >
-                    credits
+                    {t(($) => {
+                      return $.billing.common.credits;
+                    })}
                   </span>
                 </div>
               </div>
