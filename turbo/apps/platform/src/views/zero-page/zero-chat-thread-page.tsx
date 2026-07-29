@@ -30,7 +30,7 @@ import {
   IconHandStop,
   IconPhoto,
   IconChartLine,
-  IconBrowser,
+  IconWorld,
   IconPlayerPlay,
   IconVideo,
   IconCopy,
@@ -477,7 +477,7 @@ function BrowserMenuButton({ thread }: { thread: ChatThreadSignals }) {
               openBrowserSidebar(browserSession.browserId);
             }}
           >
-            <IconBrowser size={18} />
+            <IconWorld size={18} stroke={1.5} />
           </button>
         </TooltipTrigger>
         <TooltipContent side="bottom">Open browser</TooltipContent>
