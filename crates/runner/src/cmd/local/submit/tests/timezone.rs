@@ -1,7 +1,9 @@
 use std::time::Duration;
 
 use super::super::detect_system_timezone;
-use crate::test_fixtures::{ignored_child_test_env_guard_enabled, run_ignored_child_test};
+use crate::test_fixtures::ignored_child::{
+    ignored_child_test_env_guard_enabled, run_ignored_child_test,
+};
 
 const TIMEZONE_CHILD_SCENARIO: &str = "VM0_RUNNER_TIMEZONE_TEST_SCENARIO";
 const TIMEZONE_CHILD_TEST: &str =

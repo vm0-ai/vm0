@@ -612,7 +612,7 @@ impl JobProvider for MockJobProvider {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::test_fixtures::execution_context_for_test;
+    use crate::test_fixtures::execution_context::execution_context_for_test;
 
     fn minimal_context(run_id: RunId) -> ExecutionContext {
         execution_context_for_test(run_id)

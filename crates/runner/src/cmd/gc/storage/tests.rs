@@ -7,7 +7,9 @@ use crate::cmd::gc::test_support::{
     assert_is_symlink, old_gc_time, set_soft_nofile_limit_for_child, test_home,
 };
 use crate::lock;
-use crate::test_fixtures::{ignored_child_test_env_guard_enabled, run_ignored_child_test};
+use crate::test_fixtures::ignored_child::{
+    ignored_child_test_env_guard_enabled, run_ignored_child_test,
+};
 
 fn make_storage_entry_at(dir: PathBuf, archive_bytes: &[u8], mtime: SystemTime) -> PathBuf {
     std::fs::create_dir_all(&dir).unwrap();

@@ -806,7 +806,9 @@ fn normalize_path_lexically(path: &Path) -> PathBuf {
 #[cfg(unix)]
 mod tests {
     use super::*;
-    use crate::test_fixtures::{ignored_child_test_env_guard_enabled, run_ignored_child_test};
+    use crate::test_fixtures::ignored_child::{
+        ignored_child_test_env_guard_enabled, run_ignored_child_test,
+    };
     use std::ffi::CString;
     use std::os::unix::ffi::OsStrExt;
     use std::os::unix::fs::{MetadataExt, PermissionsExt, symlink};

@@ -10,7 +10,9 @@ use crate::cmd::gc::versions::{
     analyze_version_gc, analyze_version_gc_with_injected_config_scan_error,
     analyze_version_gc_with_injected_scan_error,
 };
-use crate::test_fixtures::{ignored_child_test_env_guard_enabled, run_ignored_child_test};
+use crate::test_fixtures::ignored_child::{
+    ignored_child_test_env_guard_enabled, run_ignored_child_test,
+};
 
 const ENABLED_SERVICE_SCENARIO_ENV: &str = "VM0_RUN_GC_ENABLED_SERVICE_SCENARIO";
 const ENABLED_SERVICE_CONFIG_ENV: &str = "VM0_RUN_GC_ENABLED_SERVICE_CONFIG";
