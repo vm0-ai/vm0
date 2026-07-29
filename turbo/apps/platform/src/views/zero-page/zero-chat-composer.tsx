@@ -109,7 +109,7 @@ import type { Command, Computed } from "ccstate";
 import {
   composerFileInput$ as singletonComposerFileInput$,
   setComposerFileInput$ as singletonSetComposerFileInput$,
-} from "../../signals/chat-page/chat-message.ts";
+} from "../../signals/chat-page/chat-event.ts";
 import type {
   GenerationTemplateRequest,
   PersistedAttachment,

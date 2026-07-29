@@ -22,7 +22,7 @@ import {
   messageDocumentToPrompt,
 } from "../zero-page/user-message-document-codec.ts";
 import { createChatThreadSignals, ensureDraft$ } from "./create-chat-thread.ts";
-import { createOptimisticChatMessagesForThread } from "./optimistic-chat-messages.ts";
+import { createOptimisticChatEventsForThread } from "./optimistic-chat-events.ts";
 import type { ChatThreadSignals } from "./chat-thread-signals.ts";
 import {
   currentLeftThread$,
@@ -237,7 +237,7 @@ const setupPaneThread$ = command(
     const { draft, isNew } = set(ensureDraft$, threadId);
     const dataSource = createRemoteChatThreadDataSource(threadId);
     const initialOptimisticEntries = get(
-      createOptimisticChatMessagesForThread(threadId),
+      createOptimisticChatEventsForThread(threadId),
     );
     const features = get(featureSwitch$);
     const inlineTemplatesEnabled =

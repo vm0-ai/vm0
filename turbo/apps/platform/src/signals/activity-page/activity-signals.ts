@@ -9,10 +9,7 @@ import { zeroClient$ } from "../api-client.ts";
 import { createRunLoop } from "../zero-page/polling.ts";
 import { delay } from "signal-timers";
 import { accept } from "../../lib/accept.ts";
-import {
-  groupVisibleMessages,
-  type GroupedMessage,
-} from "./log-detail-utils.ts";
+import { groupVisibleGroups, type EventGroup } from "./log-detail-utils.ts";
 import {
   autoScrollActivityDetail$,
   scrollToBottomActivityDetail$,
@@ -342,12 +339,12 @@ export const zeroActivityEvents$ = computed(async (get) => {
   } satisfies ZeroActivityEvents;
 });
 
-interface ZeroActivityVisibleMessages {
+interface ZeroActivityVisibleGroups {
   runId: string | null;
-  messages: GroupedMessage[];
+  groups: EventGroup[];
 }
 
-export const zeroActivityVisibleMessages$ = computed(async (get) => {
+export const zeroActivityVisibleGroups$ = computed(async (get) => {
   const [detail, events] = await Promise.all([
     get(zeroActivityDetail$),
     get(zeroActivityEvents$),
@@ -355,15 +352,15 @@ export const zeroActivityVisibleMessages$ = computed(async (get) => {
   if (!detail || !events || events.runId !== detail.id) {
     return {
       runId: events?.runId ?? null,
-      messages: [],
-    } satisfies ZeroActivityVisibleMessages;
+      groups: [],
+    } satisfies ZeroActivityVisibleGroups;
   }
   return {
     runId: detail.id,
-    messages: groupVisibleMessages(events.events, {
+    groups: groupVisibleGroups(events.events, {
       framework: detail.framework,
     }),
-  } satisfies ZeroActivityVisibleMessages;
+  } satisfies ZeroActivityVisibleGroups;
 });
 
 // ---------------------------------------------------------------------------

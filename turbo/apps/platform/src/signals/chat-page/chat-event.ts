@@ -16,22 +16,22 @@ import { zeroClient$ } from "../api-client.ts";
 import type { BodyRenderBlock } from "./parse-body-blocks.ts";
 import { nowDate } from "../../lib/time.ts";
 import { registerOptimisticChatThreadEvent$ } from "./chat-thread-event-sourcing.ts";
-import type { ChatMessage } from "./chat-message-types.ts";
+import type { ChatEvent } from "./chat-event-types.ts";
 import type { OptimisticChatThreadEvent } from "./chat-thread-event-types.ts";
 
 export { type ZeroChatAttachment } from "../zero-page/chat-draft.ts";
 
-export type EnrichedChatMessage = ChatMessage & {
+export type EnrichedChatEvent = ChatEvent & {
   blocks: BodyRenderBlock[];
   isQueued: boolean;
   isOptimisticRun: boolean;
 };
 
-/** A group of consecutive messages with the same role. */
-export interface GroupedChatMessageGroup {
-  beginMessageId: string;
+/** A group of consecutive events with the same role. */
+export interface ChatEventGroup {
+  beginEventId: string;
   role: "user" | "assistant";
-  messages: EnrichedChatMessage[];
+  events: EnrichedChatEvent[];
   usage?: ChatMessageUsagePayload;
 }
 

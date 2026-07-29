@@ -29,7 +29,7 @@ describe("chat lifecycle", () => {
       "https://vm0.slack.com/archives/C12345678/p1753257600000100";
     mockChatLifecycle(context, {
       threadId,
-      chatMessages: [
+      chatEvents: [
         {
           id: "msg-slack-origin",
           role: "user",
@@ -82,7 +82,7 @@ describe("chat lifecycle", () => {
       "https://applink.feishu.cn/client/chat/open?openChatId=oc_feishu_chat";
     mockChatLifecycle(context, {
       threadId,
-      chatMessages: [
+      chatEvents: [
         {
           id: "msg-feishu-origin",
           role: "user",
@@ -132,7 +132,7 @@ describe("chat lifecycle", () => {
     const threadId = "b0000000-0000-4000-a000-000000000990";
     mockChatLifecycle(context, {
       threadId,
-      chatMessages: [
+      chatEvents: [
         {
           id: "message-pwa-keyboard-layout",
           role: "assistant",
@@ -351,7 +351,7 @@ describe("chat lifecycle", () => {
       threadId,
       threadTitle: "Long thread",
       sendGate: sendGate.promise,
-      chatMessages: [
+      chatEvents: [
         {
           id: "msg-existing-user",
           role: "user",
@@ -543,7 +543,7 @@ describe("chat lifecycle", () => {
     const threadId = "thread-user-html-like-text";
     mockChatLifecycle(context, {
       threadId,
-      chatMessages: [
+      chatEvents: [
         {
           role: "user",
           content: "<span> 123 </span>",
@@ -569,7 +569,7 @@ describe("chat lifecycle", () => {
   it("ignores usage-only pages for rendering and thinking state", async () => {
     mockChatLifecycle(context, {
       threadId: "thread-usage-only",
-      chatMessages: [
+      chatEvents: [
         {
           id: "msg-usage-only",
           role: "assistant",
@@ -607,7 +607,7 @@ describe("chat lifecycle", () => {
     mockChatLifecycle(context, {
       threadId: "thread-message-list-thinking",
       activeRunIds: [],
-      chatMessages: [
+      chatEvents: [
         {
           id: "msg-message-list-assistant",
           role: "assistant",
@@ -638,7 +638,7 @@ describe("chat lifecycle", () => {
       threadId: "thread-message-list-thinking-pending-metadata",
       activeRunIds: ["run-message-list-thinking-pending-metadata"],
       threadGate: threadGate.promise,
-      chatMessages: [
+      chatEvents: [
         {
           id: "msg-message-list-assistant-pending-metadata",
           role: "assistant",
@@ -669,7 +669,7 @@ describe("chat lifecycle", () => {
     mockChatLifecycle(context, {
       threadId: "thread-message-list-completed",
       activeRunIds: ["run-message-list-completed"],
-      chatMessages: [
+      chatEvents: [
         {
           id: "msg-message-list-completed-assistant",
           role: "assistant",
@@ -704,7 +704,7 @@ describe("chat lifecycle", () => {
     mockChatLifecycle(context, {
       threadId: "thread-stale-run-before-completed-latest-run",
       activeRunIds: [],
-      chatMessages: [
+      chatEvents: [
         {
           id: "msg-stale-run-user",
           role: "user",
@@ -772,7 +772,7 @@ describe("chat lifecycle", () => {
     mockChatLifecycle(context, {
       threadId: "thread-stale-lifecycle-thinking",
       activeRunIds: ["run-r2"],
-      chatMessages: [
+      chatEvents: [
         {
           id: "msg-stale-usage-r1",
           role: "assistant",
@@ -842,7 +842,7 @@ describe("chat lifecycle", () => {
     mockChatLifecycle(context, {
       threadId: "thread-stale-lifecycle-thinking-active-later",
       activeRunIds: ["run-r2"],
-      chatMessages: [
+      chatEvents: [
         {
           id: "msg-stale-active-later-usage-r1",
           role: "assistant",
@@ -922,7 +922,7 @@ describe("chat lifecycle", () => {
     mockChatLifecycle(context, {
       threadId: COMPLETED_MARKER_ONLY_THREAD_ID,
       activeRunIds: [],
-      chatMessages: [
+      chatEvents: [
         {
           id: "msg-marker-only-stale-user",
           role: "user",
@@ -976,7 +976,7 @@ describe("chat lifecycle", () => {
     mockChatLifecycle(context, {
       threadId,
       activeRunIds: ["run-window-older-active"],
-      chatMessages: [
+      chatEvents: [
         {
           id: "msg-window-completed-activity",
           role: "assistant",
@@ -1022,7 +1022,7 @@ describe("chat lifecycle", () => {
     mockChatLifecycle(context, {
       threadId: "thread-concurrent-run-completed-later",
       activeRunIds: ["run-concurrent-active"],
-      chatMessages: [
+      chatEvents: [
         {
           id: "msg-concurrent-active-user",
           role: "user",
@@ -1082,7 +1082,7 @@ describe("chat lifecycle", () => {
     mockChatLifecycle(context, {
       threadId: "thread-concurrent-run-active-later",
       activeRunIds: ["run-concurrent-active"],
-      chatMessages: [
+      chatEvents: [
         {
           id: "msg-concurrent-active-later-user",
           role: "user",
@@ -1152,7 +1152,7 @@ describe("chat lifecycle", () => {
     mockChatLifecycle(context, {
       threadId: "thread-active-run-outside-loaded-window",
       activeRunIds: ["run-active-outside-window"],
-      chatMessages: [
+      chatEvents: [
         {
           id: "msg-window-completed-marker",
           role: "assistant",
@@ -1178,7 +1178,7 @@ describe("chat lifecycle", () => {
   it("keeps interleaved run messages grouped by run turn", async () => {
     mockChatLifecycle(context, {
       threadId: "thread-interleaved-run-turns",
-      chatMessages: [
+      chatEvents: [
         {
           id: "msg-run-a-user",
           role: "user",
@@ -1255,7 +1255,7 @@ describe("chat lifecycle", () => {
     mockChatLifecycle(context, {
       threadId: "thread-message-list-latest-user",
       activeRunIds: [],
-      chatMessages: [
+      chatEvents: [
         {
           id: "msg-message-list-latest-user",
           role: "user",
@@ -1283,7 +1283,7 @@ describe("chat lifecycle", () => {
     mockChatLifecycle(context, {
       threadId: "thread-message-list-cancelled",
       activeRunIds: ["run-message-list-cancelled"],
-      chatMessages: [
+      chatEvents: [
         {
           id: "msg-message-list-cancelled-assistant",
           role: "assistant",

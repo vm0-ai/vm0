@@ -27,7 +27,7 @@ describe("user messages", () => {
     mockChatLifecycle(context, {
       threadId,
       threadTitle: "Inline template rendering",
-      chatMessages: [
+      chatEvents: [
         {
           id: "00000000-0000-4000-8000-000000000748",
           role: "user",
@@ -118,7 +118,7 @@ describe("user messages", () => {
     mockChatLifecycle(context, {
       threadId,
       threadTitle: "Structured message rendering",
-      chatMessages: [
+      chatEvents: [
         {
           id: "00000000-0000-4000-8000-000000000741",
           role: "user",
@@ -275,7 +275,7 @@ describe("user messages", () => {
     mockChatLifecycle(context, {
       threadId,
       threadTitle: "Structured feedback group",
-      chatMessages: [
+      chatEvents: [
         {
           id: "00000000-0000-4000-8000-000000000746",
           role: "user",

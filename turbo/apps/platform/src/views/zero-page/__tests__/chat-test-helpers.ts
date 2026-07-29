@@ -2,7 +2,7 @@ import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { expect } from "vitest";
 import {
-  createChatMessage,
+  createChatEvent,
   createChatRun,
   updateChatRun,
 } from "../../../mocks/mock-helpers.ts";
@@ -204,10 +204,10 @@ export async function sendQueuedMessage(
 
 export async function expectQueuedMessages(contents: string[]): Promise<void> {
   await waitFor(() => {
-    const queuedMessages = screen.getAllByLabelText("Queued message");
-    expect(queuedMessages).toHaveLength(contents.length);
+    const queuedEvents = screen.getAllByLabelText("Queued message");
+    expect(queuedEvents).toHaveLength(contents.length);
     for (const [index, content] of contents.entries()) {
-      expect(queuedMessages[index]).toHaveTextContent(content);
+      expect(queuedEvents[index]).toHaveTextContent(content);
     }
   });
 }
@@ -261,8 +261,8 @@ interface MockLifecycleControl {
 
 type MockChatEvent = MockChatEventInput;
 
-function cloneMockChatEvent<T extends MockChatEventInput>(message: T): T {
-  return structuredClone(message);
+function cloneMockChatEvent<T extends MockChatEventInput>(event: T): T {
+  return structuredClone(event);
 }
 
 function isRecallEventBody(body: {
@@ -284,15 +284,15 @@ function isInterruptEventBody(body: { interruptsRunId?: string }): body is {
   return body.interruptsRunId !== undefined;
 }
 
-function appendSeedChatMessages(args: {
+function appendSeedChatEvents(args: {
   pagedEvents: (MockChatEvent & { id: string })[];
-  chatMessages: MockChatEvent[];
+  chatEvents: MockChatEvent[];
   activeRunIds: readonly string[];
 }) {
   const completionCandidateRuns = new Map<string, string>();
   const terminalRunIds = new Set<string>();
-  for (let i = 0; i < args.chatMessages.length; i++) {
-    const seed = args.chatMessages[i]!;
+  for (let i = 0; i < args.chatEvents.length; i++) {
+    const seed = args.chatEvents[i]!;
     const runId = "runId" in seed ? seed.runId : MOCK_RUN_ID;
     collectSeedRunState({
       seed,
@@ -390,14 +390,14 @@ export function mockChatLifecycle(
   options?: {
     threadId?: string;
     historyEvents?: MockChatEvent[];
-    chatMessages?: MockChatEvent[];
+    chatEvents?: MockChatEvent[];
     threadTitle?: string | null;
     selectedModel?: string | null;
     codexServiceTier?: CodexServiceTier | null;
     computerUseHostId?: string | null;
     cloudBrowserEnabled?: boolean;
     activeRunIds?: string[];
-    onQueuedMessageAppend?: (body: {
+    onQueuedEventAppend?: (body: {
       content?: string;
       hasTextContent?: boolean;
       attachments?: PersistedAttachment[];
@@ -407,11 +407,11 @@ export function mockChatLifecycle(
       modelSelection?: ModelSelectionRequest | null;
       runOptions?: ChatRunOptionsRequest;
     }) => void;
-    onRecallMessageAppend?: (body: {
+    onRecallEventAppend?: (body: {
       revokesEventId: string;
       clientEventId: string;
     }) => void;
-    onInterruptMessageAppend?: (body: {
+    onInterruptEventAppend?: (body: {
       interruptsRunId: string;
       clientEventId: string;
     }) => void;
@@ -431,15 +431,15 @@ export function mockChatLifecycle(
     sendGate?: Promise<void>;
     /**
      * Promise the paged history handler awaits before responding to beforeSeqId.
-     * Lets tests prove the latest-message view renders before silent backfill.
+     * Lets tests prove the latest-event view renders before silent backfill.
      */
     beforeHistoryGate?: Promise<void>;
     /**
      * Promise the thread metadata handler awaits before responding. Lets tests
-     * prove message-derived UI does not wait for activeRunIds metadata.
+     * prove event-derived UI does not wait for activeRunIds metadata.
      */
     threadGate?: Promise<void>;
-    afterInitialMessagesList?: () => void;
+    afterInitialEventsList?: () => void;
     onRunCreate?: (body: {
       prompt?: string;
       clientEventId?: string;
@@ -484,7 +484,7 @@ export function mockChatLifecycle(
 ): MockLifecycleControl {
   let threadId = options?.threadId ?? "b0000000-0000-4000-a000-000000000900";
   const historyEvents = options?.historyEvents ?? [];
-  const chatMessages = options?.chatMessages ?? [];
+  const chatEvents = options?.chatEvents ?? [];
 
   let runStatus: RunStatus = "running";
   let runError: string | null = null;
@@ -504,10 +504,10 @@ export function mockChatLifecycle(
   let cloudBrowserEnabled = options?.cloudBrowserEnabled ?? false;
   let latestThreadEventId: string | null = null;
   let latestThreadEventSeqId: number | null = null;
-  const queuedMessages: MockChatEvent[] = [];
+  const queuedEvents: MockChatEvent[] = [];
   const optionActiveRunIds = options?.activeRunIds ?? [];
   // Version counter: bumped whenever the run reaches a terminal state so
-  // subsequent polls discover a "new" assistant message row (simulating the
+  // subsequent polls discover a "new" assistant event row (simulating the
   // real server inserting event-backed rows on run completion).
   let assistantVersion = 0;
   let lastDeliveredVersion = -1;
@@ -526,7 +526,7 @@ export function mockChatLifecycle(
     runError = "Run cancelled";
     assistantVersion++;
     updateChatRun(threadId);
-    createChatMessage(threadId);
+    createChatEvent(threadId);
   };
 
   const appendRecallControlEvent = (body: {
@@ -536,11 +536,11 @@ export function mockChatLifecycle(
   }) => {
     const clientEventId = body.clientEventId ?? crypto.randomUUID();
     const now = nowIso();
-    options?.onRecallMessageAppend?.({
+    options?.onRecallEventAppend?.({
       revokesEventId: body.revokesEventId,
       clientEventId,
     });
-    queuedMessages.push({
+    queuedEvents.push({
       id: clientEventId,
       role: "user" as const,
       content: null,
@@ -557,11 +557,11 @@ export function mockChatLifecycle(
   }) => {
     const clientEventId = body.clientEventId ?? crypto.randomUUID();
     const now = nowIso();
-    options?.onInterruptMessageAppend?.({
+    options?.onInterruptEventAppend?.({
       interruptsRunId: body.interruptsRunId,
       clientEventId,
     });
-    queuedMessages.push({
+    queuedEvents.push({
       id: clientEventId,
       role: "user" as const,
       content: null,
@@ -612,39 +612,39 @@ export function mockChatLifecycle(
     seqId: number;
   })[] => {
     const assistantId = `msg-assistant-run-v${assistantVersion}`;
-    const historicalEvents = historyEvents.map((message, i) => {
+    const historicalEvents = historyEvents.map((event, i) => {
       return {
         id: `msg-history-${i}`,
-        ...message,
+        ...event,
       };
     });
 
     const pagedEvents: (MockChatEvent & { id: string })[] = [];
 
-    for (const message of historicalEvents) {
-      pagedEvents.push(message);
+    for (const event of historicalEvents) {
+      pagedEvents.push(event);
     }
 
-    // Seed with pre-existing chatMessages (e.g. history on resume). Seeded
-    // entries represent historical messages, so default `runId` to the mock
-    // run when the test didn't include the key — without it, user messages
+    // Seed with pre-existing chatEvents (e.g. history on resume). Seeded
+    // entries represent historical events, so default `runId` to the mock
+    // run when the test didn't include the key — without it, user events
     // would look "unassociated" (runId === undefined) and be treated as
     // queued. Tests that *want* a queued seed should explicitly pass
     // `runId: undefined`, which we respect via the `in` check.
-    appendSeedChatMessages({
+    appendSeedChatEvents({
       pagedEvents,
-      chatMessages,
+      chatEvents,
       activeRunIds: optionActiveRunIds,
     });
 
-    for (const message of queuedMessages) {
+    for (const event of queuedEvents) {
       pagedEvents.push({
-        id: message.id ?? `queued-${pagedEvents.length}`,
-        ...message,
+        id: event.id ?? `queued-${pagedEvents.length}`,
+        ...event,
       });
     }
 
-    // After a run is associated, append user + assistant messages.
+    // After a run is associated, append user + assistant events.
     if (runAssociated) {
       pagedEvents.push({
         id: runUserEventId,
@@ -678,8 +678,8 @@ export function mockChatLifecycle(
       }
     }
 
-    return pagedEvents.map((message, index) => {
-      return { ...message, seqId: index + 1 };
+    return pagedEvents.map((event, index) => {
+      return { ...event, seqId: index + 1 };
     });
   };
 
@@ -706,7 +706,7 @@ export function mockChatLifecycle(
       };
     });
     const modelSelection = modelSelectionFromBody(body);
-    options?.onQueuedMessageAppend?.({
+    options?.onQueuedEventAppend?.({
       content: body.prompt,
       hasTextContent: body.hasTextContent,
       attachments: attachFiles,
@@ -720,7 +720,7 @@ export function mockChatLifecycle(
       await options.appendGate;
     }
     const now = nowIso();
-    queuedMessages.push({
+    queuedEvents.push({
       id: clientEventId,
       role: "user" as const,
       content: body.prompt ?? "",
@@ -771,7 +771,7 @@ export function mockChatLifecycle(
     codexServiceTier = body.runOptions?.codexServiceTier ?? null;
     runAssociated = true;
     createChatRun(threadId);
-    createChatMessage(threadId);
+    createChatEvent(threadId);
     return {
       runId: MOCK_RUN_ID,
       threadId,
@@ -780,7 +780,7 @@ export function mockChatLifecycle(
     };
   };
 
-  // Paged messages endpoint — cursor-aware, version-aware mock.
+  // Paged events endpoint — cursor-aware, version-aware mock.
   context.mocks.api(chatThreadEventsContract.list, ({ query, respond }) => {
     const sinceSeqId = query.sinceSeqId;
     const beforeSeqId = query.beforeSeqId;
@@ -790,8 +790,8 @@ export function mockChatLifecycle(
 
     if (beforeSeqId) {
       return beforeHistoryGate.then(() => {
-        const beforeIndex = pagedEvents.findIndex((message) => {
-          return message.seqId === beforeSeqId;
+        const beforeIndex = pagedEvents.findIndex((event) => {
+          return event.seqId === beforeSeqId;
         });
         if (beforeIndex <= 0) {
           return respond(200, { events: [], hasHistoryBefore: false });
@@ -808,8 +808,8 @@ export function mockChatLifecycle(
     }
 
     if (sinceSeqId) {
-      const appendedEvents = pagedEvents.filter((message) => {
-        return message.seqId > sinceSeqId;
+      const appendedEvents = pagedEvents.filter((event) => {
+        return event.seqId > sinceSeqId;
       });
       if (appendedEvents.length > 0) {
         return respond(200, {
@@ -819,16 +819,16 @@ export function mockChatLifecycle(
         });
       }
       // If the assistant version bumped since the client's cursor, return
-      // the updated assistant message as a "new" row. Otherwise return
+      // the updated assistant event as a "new" row. Otherwise return
       // empty to avoid duplicate keys.
       if (assistantVersion > lastDeliveredVersion && runAssociated) {
         lastDeliveredVersion = assistantVersion;
-        const messages =
+        const events =
           runStatus === "completed"
             ? pagedEvents.slice(Math.max(0, pagedEvents.length - 2))
             : [pagedEvents[pagedEvents.length - 1]!];
         return respond(200, {
-          events: normalizeMockChatEvents(messages.map(cloneMockChatEvent)),
+          events: normalizeMockChatEvents(events.map(cloneMockChatEvent)),
         });
       }
       return respond(200, { events: [] });
@@ -844,7 +844,7 @@ export function mockChatLifecycle(
       ),
       hasHistoryBefore: historyEvents.length > 0 || latestEvents.length > limit,
     };
-    options?.afterInitialMessagesList?.();
+    options?.afterInitialEventsList?.();
     return respond(200, body);
   });
   context.mocks.api(chatThreadByIdContract.get, async ({ respond }) => {
@@ -1059,14 +1059,14 @@ export function mockChatLifecycle(
         ];
       }
       updateChatRun(threadId);
-      createChatMessage(threadId);
+      createChatEvent(threadId);
     },
     failRun: (error: string) => {
       runStatus = "failed";
       runError = error;
       assistantVersion++;
       updateChatRun(threadId);
-      createChatMessage(threadId);
+      createChatEvent(threadId);
     },
     cancelRun: () => {
       markRunCancelled();

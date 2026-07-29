@@ -129,7 +129,7 @@ describe("user-message writes", () => {
     mockChatLifecycle(context, {
       threadId: THREAD_ID,
       appendGate: appendGate.promise,
-      chatMessages: [
+      chatEvents: [
         {
           id: "msg-active-user",
           role: "user",
@@ -146,7 +146,7 @@ describe("user-message writes", () => {
         },
       ],
       activeRunIds: ["run-active"],
-      onQueuedMessageAppend: (body) => {
+      onQueuedEventAppend: (body) => {
         queued = body;
       },
     });
