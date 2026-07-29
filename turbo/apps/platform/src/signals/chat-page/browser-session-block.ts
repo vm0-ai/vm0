@@ -3,11 +3,13 @@ import {
   zeroBrowserContract,
   type ZeroBrowserSession,
 } from "@vm0/api-contracts/contracts/zero-browser";
+import { browserSessionChangedPayloadSchema } from "@vm0/api-contracts/contracts/realtime";
 import { command, computed, state, type Command, type Computed } from "ccstate";
 
 import { accept } from "../../lib/accept.ts";
 import { zeroClient$, type ZeroClientFactory } from "../api-client.ts";
 import { pageSignal$ } from "../page-signal.ts";
+import { setAblyPayloadLoop$ } from "../realtime.ts";
 import { onRef, settle, setLoop } from "../utils.ts";
 import {
   getOrCreateCardSignals,
@@ -31,6 +33,7 @@ export interface BrowserSessionSignals extends BrowserSessionDescriptor {
   readonly session$: Computed<Promise<ZeroBrowserSession | null>>;
   readonly panelSession$: Computed<Promise<ZeroBrowserSession | null>>;
   readonly resuming$: Computed<boolean>;
+  readonly reload$: Command<void, []>;
   readonly reloadPanel$: Command<void, []>;
   readonly resume$: Command<Promise<void>, [AbortSignal]>;
   // Attach to the visible panel container: the lease heartbeat lives exactly as
@@ -45,6 +48,7 @@ export interface BrowserSessionCardSignalsRegistry {
   register(descriptor: BrowserSessionDescriptor): BrowserSessionSignals;
   resolve(resourceKey: string): BrowserSessionSignals;
   entries(): ReadonlyMap<string, BrowserSessionSignals>;
+  readonly subscribe$: Command<Promise<void>, [AbortSignal]>;
 }
 
 export function parseBrowserSessionUrl(
@@ -100,33 +104,20 @@ export function createBrowserSessionSignals(
   descriptor: BrowserSessionDescriptor,
 ): BrowserSessionSignals {
   const target = { browserId: descriptor.browserId, chatThreadId: threadId };
-
-  // The card state is loaded once. Only the panel follows the live session,
-  // because only the panel can act on it.
-  const session$ = computed(async (get) => {
-    return await fetchBrowserSession(
-      get(zeroClient$),
-      target,
-      get(pageSignal$),
-    );
-  });
-
-  const panelReloadVersion$ = state(0);
-  const panelOverride$ = state<ZeroBrowserSession | null | undefined>(
+  const reloadVersion$ = state(0);
+  const sessionOverride$ = state<ZeroBrowserSession | null | undefined>(
     undefined,
   );
-  const panelSession$ = computed(
-    async (get): Promise<ZeroBrowserSession | null> => {
-      get(panelReloadVersion$);
-      const override = get(panelOverride$);
-      return override === undefined
-        ? await fetchBrowserSession(get(zeroClient$), target, get(pageSignal$))
-        : override;
-    },
-  );
-  const reloadPanel$ = command(({ set }) => {
-    set(panelOverride$, undefined);
-    set(panelReloadVersion$, (version) => {
+  const session$ = computed(async (get): Promise<ZeroBrowserSession | null> => {
+    get(reloadVersion$);
+    const override = get(sessionOverride$);
+    return override === undefined
+      ? await fetchBrowserSession(get(zeroClient$), target, get(pageSignal$))
+      : override;
+  });
+  const reload$ = command(({ set }) => {
+    set(sessionOverride$, undefined);
+    set(reloadVersion$, (version) => {
       return version + 1;
     });
   });
@@ -150,10 +141,10 @@ export function createBrowserSessionSignals(
     );
     set(resumingState$, false);
     if (resumed.ok) {
-      set(panelOverride$, resumed.value.body.browser);
+      set(sessionOverride$, resumed.value.body.browser);
       return;
     }
-    set(reloadPanel$);
+    set(reload$);
   });
 
   const keepAliveRef$ = onRef(
@@ -177,7 +168,7 @@ export function createBrowserSessionSignals(
             }
             // The browser was reclaimed while the panel was hidden or idle. Stop
             // the heartbeat and let the panel offer a resume instead.
-            set(reloadPanel$);
+            set(reload$);
             return true;
           },
           LEASE_HEARTBEAT_INTERVAL_MS,
@@ -191,11 +182,12 @@ export function createBrowserSessionSignals(
     ...descriptor,
     threadId,
     session$,
-    panelSession$,
+    panelSession$: session$,
     resuming$: computed((get) => {
       return get(resumingState$);
     }),
-    reloadPanel$,
+    reload$,
+    reloadPanel$: reload$,
     resume$,
     keepAliveRef$,
   };
@@ -214,6 +206,39 @@ export function createBrowserSessionCardSignalsRegistry(
 ): BrowserSessionCardSignalsRegistry {
   const signalsByResourceKey = new Map<string, BrowserSessionSignals>();
   const signalsByBrowserId = new Map<string, BrowserSessionSignals>();
+  const reloadAll$ = command(({ set }, _signal: AbortSignal): boolean => {
+    for (const signals of signalsByBrowserId.values()) {
+      set(signals.reload$);
+    }
+    return false;
+  });
+  const onBrowserSessionChanged$ = command(
+    ({ set }, payload: unknown, _signal: AbortSignal): boolean => {
+      const parsed = browserSessionChangedPayloadSchema.safeParse(payload);
+      if (!parsed.success) {
+        return false;
+      }
+      const signals = signalsByBrowserId.get(parsed.data.browserId);
+      if (signals) {
+        set(signals.reload$);
+      }
+      return false;
+    },
+  );
+  const subscribe$ = command(
+    async ({ set }, signal: AbortSignal): Promise<void> => {
+      await set(
+        setAblyPayloadLoop$,
+        {
+          topic: "browserSessionChanged",
+          loopCommand$: onBrowserSessionChanged$,
+          catchUpCommand$: reloadAll$,
+          options: { runOnSubscribe: true },
+        },
+        signal,
+      );
+    },
+  );
   return {
     register(descriptor) {
       const shared = getOrCreateCardSignals(
@@ -237,5 +262,6 @@ export function createBrowserSessionCardSignalsRegistry(
     entries() {
       return signalsByBrowserId;
     },
+    subscribe$,
   };
 }

@@ -1,4 +1,5 @@
 import Ably from "ably";
+import type { BrowserSessionChangedPayload } from "@vm0/api-contracts/contracts/realtime";
 import type { SessionAffinityResource } from "@vm0/api-contracts/contracts/runners";
 import type { ZeroBuiltInGenerationRealtimeSubscription } from "@vm0/api-contracts/contracts/zero-built-in-generation";
 
@@ -212,6 +213,29 @@ export async function publishConnectorPermissionUpdatedSafely(
     publishUserSignal([userId], "connectorPermissionUpdated"),
     (error) => {
       L.warn("Failed to publish connector permission updated signal", {
+        error,
+      });
+    },
+  );
+}
+
+/**
+ * Notify the user's open chat surfaces that one managed browser changed
+ * lifecycle state. The payload identifies the logical browser so each
+ * thread-scoped card registry only reloads the matching shared signals.
+ *
+ * Best-effort: a failed publish must not fail browser resume or reclamation.
+ */
+export async function publishBrowserSessionChangedSafely(
+  userId: string,
+  browserId: string,
+): Promise<void> {
+  const payload: BrowserSessionChangedPayload = { browserId };
+  await tapError(
+    publishUserSignal([userId], "browserSessionChanged", payload),
+    (error) => {
+      L.warn("Failed to publish browser session changed signal", {
+        browserId,
         error,
       });
     },
