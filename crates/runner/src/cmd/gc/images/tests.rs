@@ -139,14 +139,6 @@ async fn gc_nested_images_empty_dir_returns_zero() {
     assert_eq!(freed, 0);
 }
 
-#[test]
-fn template_warm_hash_accepts_only_current_names() {
-    assert_eq!(template_warm_hash("template-warm-abc123"), Some("abc123"));
-    assert_eq!(template_warm_hash("template-abc123.warm.tmp"), None);
-    assert_eq!(template_warm_hash("template-warm-"), None);
-    assert_eq!(template_warm_hash("rootfs-hash"), None);
-}
-
 #[tokio::test]
 async fn gc_nested_images_keeps_locked_current_template_warm_dir() {
     use std::fs::FileTimes;
@@ -170,6 +162,34 @@ async fn gc_nested_images_keeps_locked_current_template_warm_dir() {
 
     assert_eq!(freed, 0);
     assert!(warm_dir.exists(), "active warm rootfs dir must survive GC");
+}
+
+#[tokio::test]
+async fn gc_nested_images_does_not_treat_legacy_name_as_template_warm_dir() {
+    use std::fs::FileTimes;
+
+    let dir = tempfile::tempdir().unwrap();
+    let home = test_home(dir.path());
+    let legacy_dir = home.images_dir().join("template-abc123.warm.tmp");
+    std::fs::create_dir_all(&legacy_dir).unwrap();
+    std::fs::write(legacy_dir.join("template.ext4"), b"partial").unwrap();
+
+    let old_time = SystemTime::UNIX_EPOCH + Duration::from_secs(1_000_000);
+    std::fs::File::open(&legacy_dir)
+        .unwrap()
+        .set_times(FileTimes::new().set_modified(old_time))
+        .unwrap();
+
+    let lock_file = lock::open_lock_file(&home.template_lock("abc123")).unwrap();
+    let _held = Flock::lock(lock_file, FlockArg::LockExclusive).unwrap();
+
+    let freed = gc_nested_images(&home, Some(0), false).await.unwrap();
+
+    assert!(
+        !legacy_dir.exists(),
+        "the retired name must not be protected by the template lock"
+    );
+    assert!(freed > 0);
 }
 
 #[tokio::test]
