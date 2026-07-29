@@ -345,7 +345,7 @@ async fn shared_cache_is_scoped_by_runner_group() {
 }
 
 #[tokio::test]
-async fn cache_hit_checkout_does_not_require_copy_headroom() {
+async fn cache_hit_checkout_and_same_filesystem_promotion_do_not_require_copy_headroom() {
     let dir = tempfile::tempdir().unwrap();
     let paths = RunnerPaths::new(dir.path().join("runner"));
     tokio::fs::create_dir_all(paths.base_dir()).await.unwrap();
@@ -442,12 +442,11 @@ async fn cache_hit_checkout_does_not_require_copy_headroom() {
     tokio::fs::create_dir_all(paths.workspace_dir(&sandbox_id))
         .await
         .unwrap();
-    tokio::fs::rename(&current, paths.active_workspace_image(&sandbox_id))
-        .await
-        .unwrap();
+    let active_image = paths.active_workspace_image(&sandbox_id);
+    tokio::fs::rename(&current, &active_image).await.unwrap();
 
     assert!(
-        !lease
+        lease
             .promote(
                 run_id,
                 None,
@@ -457,11 +456,15 @@ async fn cache_hit_checkout_does_not_require_copy_headroom() {
             )
             .await
             .unwrap(),
-        "checkout does not need copy headroom, but publishing an independent cache copy still does"
+        "same-filesystem ownership transfer must not require duplicate-copy headroom"
     );
     assert!(
-        !tokio::fs::try_exists(&current).await.unwrap(),
-        "failed copy promotion must not publish reusable metadata for the consumed cache hit"
+        tokio::fs::try_exists(&current).await.unwrap(),
+        "same-filesystem promotion must publish the moved image"
+    );
+    assert!(
+        !tokio::fs::try_exists(&active_image).await.unwrap(),
+        "same-filesystem promotion must consume the active image"
     );
 }
 

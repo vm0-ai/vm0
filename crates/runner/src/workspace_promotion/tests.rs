@@ -331,6 +331,30 @@ async fn active_workspace_promotion_exports_session_history_sidecar() {
     .await;
 
     assert!(promoted);
+    let promotion_event = captured_event(&events, "workspace image cache promoted");
+    assert_eq!(
+        promotion_event
+            .fields
+            .get("transfer_mode")
+            .map(String::as_str),
+        Some("rename")
+    );
+    assert_eq!(
+        promotion_event.fields.get("outcome").map(String::as_str),
+        Some("promoted")
+    );
+    assert_eq!(
+        promotion_event
+            .fields
+            .get("logical_image_size_bytes")
+            .and_then(|value| value.parse::<u64>().ok()),
+        Some(TEST_WORKSPACE_IMAGE_SIZE_BYTES)
+    );
+    for field in ["transfer_ms", "promotion_ms"] {
+        promotion_event.fields[field]
+            .parse::<u64>()
+            .unwrap_or_else(|error| panic!("invalid {field}: {error}; event={promotion_event:#?}"));
+    }
     let exec_calls = sandbox.exec_calls();
     assert_eq!(exec_calls.len(), 3);
     assert!(exec_calls[0].cmd.contains("export-session-history-sidecar"));

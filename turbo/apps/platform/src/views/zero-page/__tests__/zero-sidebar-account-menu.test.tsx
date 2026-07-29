@@ -869,6 +869,33 @@ describe("zero sidebar account menu", () => {
     });
   });
 
+  it("preserves satellite session sync after signing out", async () => {
+    prepareDefaultAgent();
+    window.location.href = "https://app.okou.ai/";
+
+    detachedSetupPage({
+      context,
+      path: `/agents/${AGENT_ID}/chat`,
+      user: {
+        id: "test-user-123",
+        fullName: "Alex Rivera",
+        email: "alex.rivera@example.test",
+      },
+    });
+
+    const menu = await openAccountMenu();
+    click(within(menu).getByText("Sign out"));
+
+    await waitFor(() => {
+      expect(mockedClerk.signOut).toHaveBeenCalledWith(
+        expect.objectContaining({
+          sessionId: "test-session-id",
+          redirectUrl: expect.stringMatching(/__clerk_synced%3Dfalse/),
+        }),
+      );
+    });
+  });
+
   it("retries auth recovery network failures before replaying the request", async () => {
     mockAdminAccountSidebar();
     const provider = connectedPersonalCodexProvider();

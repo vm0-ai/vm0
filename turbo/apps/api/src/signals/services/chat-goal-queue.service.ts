@@ -7,52 +7,31 @@ import { threadGoals } from "@vm0/db/schema/thread-goal";
 import { zeroAgents } from "@vm0/db/schema/zero-agent";
 import { and, eq, gt, isNull, notExists } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
-import { z } from "zod";
 
 import type { Db } from "../external/db";
-import { settle } from "../utils";
 import {
   listPendingChatQueueEvents,
   loadPendingChatQueueEvent,
   lockChatQueueThread,
 } from "./chat-event-queue.service";
-import {
-  decryptPersistentSecretsMap,
-  encryptPersistentSecretsMap,
-} from "./crypto.utils";
 import { insertChatEvent, replaceChatEvent } from "./zero-chat-event.service";
 import { chatThreadAdmissionBlocked } from "./zero-chat-active-run.service";
 import { chatEventTypeIn } from "./zero-chat-event-type.service";
 import { createUserMessageDocument } from "./zero-chat-user-message.service";
 
-const GOAL_QUEUE_EVENT_PARAMS_KEY = "__goal_queue_event_params__";
 const goalEventRevoker = alias(chatMessages, "goal_event_revoker");
 const laterGoalChange = alias(chatMessages, "later_goal_change");
-
-const goalQueueEventParamsSchema = z.object({
-  goalId: z.string().uuid(),
-  callbackSecret: z.string().min(1),
-});
-
-interface GoalQueueEventParams {
-  readonly goalId: string;
-  readonly callbackSecret: string;
-}
 
 export type GoalQueueAdmission =
   | { readonly kind: "inserted"; readonly eventId: string }
   | { readonly kind: "coalesced" };
-
-type GoalQueueAdmissionAttempt =
-  | GoalQueueAdmission
-  | { readonly kind: "payload-required" };
 
 export interface PendingGoalQueueEvent {
   readonly id: string;
   readonly chatThreadId: string;
   readonly userId: string;
   readonly orgId: string;
-  readonly encryptedParams: string;
+  readonly goalId: string;
   readonly createdAt: Date;
 }
 
@@ -64,32 +43,6 @@ export interface GoalQueueTarget {
   readonly agentId: string;
   readonly objective: string;
   readonly objectiveBrief: string;
-}
-
-async function encryptGoalQueueEventParams(
-  params: GoalQueueEventParams,
-  ctx: { readonly userId: string; readonly orgId: string },
-): Promise<string> {
-  const encrypted = await encryptPersistentSecretsMap(
-    { [GOAL_QUEUE_EVENT_PARAMS_KEY]: JSON.stringify(params) },
-    ctx,
-  );
-  if (!encrypted) {
-    throw new Error("Failed to encrypt goal queue event params");
-  }
-  return encrypted;
-}
-
-export async function decryptGoalQueueEventParams(
-  encryptedParams: string,
-  ctx: { readonly userId: string; readonly orgId: string },
-): Promise<GoalQueueEventParams | null> {
-  const decrypted = await decryptPersistentSecretsMap(encryptedParams, ctx);
-  const raw = decrypted?.[GOAL_QUEUE_EVENT_PARAMS_KEY];
-  if (!raw) {
-    return null;
-  }
-  return goalQueueEventParamsSchema.parse(JSON.parse(raw) as unknown);
 }
 
 async function pendingGoalEventExists(
@@ -116,14 +69,18 @@ async function pendingGoalEventExists(
   return event !== undefined;
 }
 
-async function attemptGoalQueueAdmission(
+/** Persist one coalesced goal continuation trigger without preparing its run. */
+export async function admitGoalQueueEvent(
   db: Db,
   args: {
     readonly chatThreadId: string;
-    readonly encryptedParams: string | undefined;
-    readonly goalSnapshot: ChatMessageGoalSnapshot;
+    readonly goalId: string;
+    readonly objectiveBrief: string;
   },
-): Promise<GoalQueueAdmissionAttempt> {
+): Promise<GoalQueueAdmission> {
+  const goalSnapshot: ChatMessageGoalSnapshot = {
+    objectiveBrief: args.objectiveBrief,
+  };
   return await db.transaction(async (tx) => {
     if (!(await lockChatQueueThread(tx, args.chatThreadId))) {
       throw new Error("Goal chat thread no longer exists");
@@ -131,74 +88,19 @@ async function attemptGoalQueueAdmission(
     if (await pendingGoalEventExists(tx, args.chatThreadId)) {
       return { kind: "coalesced" };
     }
-    if (args.encryptedParams === undefined) {
-      return { kind: "payload-required" };
-    }
     const inserted = await insertChatEvent(tx, {
       chatThreadId: args.chatThreadId,
       eventType: "input.goal",
       content: null,
       runId: null,
-      encryptedParams: args.encryptedParams,
-      goalSnapshot: args.goalSnapshot,
+      runGroupId: args.goalId,
+      goalSnapshot,
     });
     if (!inserted) {
       throw new Error("Goal queue event insert returned no row");
     }
     return { kind: "inserted", eventId: inserted.id };
   });
-}
-
-/** Persist one coalesced goal continuation trigger without preparing its run. */
-export async function admitGoalQueueEvent(
-  db: Db,
-  args: {
-    readonly chatThreadId: string;
-    readonly orgId: string;
-    readonly userId: string;
-    readonly objectiveBrief: string;
-    readonly params: GoalQueueEventParams;
-  },
-): Promise<GoalQueueAdmission> {
-  const goalSnapshot: ChatMessageGoalSnapshot = {
-    objectiveBrief: args.objectiveBrief,
-  };
-  const initial = await attemptGoalQueueAdmission(db, {
-    chatThreadId: args.chatThreadId,
-    encryptedParams: undefined,
-    goalSnapshot,
-  });
-  if (initial.kind !== "payload-required") {
-    return initial;
-  }
-
-  const encrypted = await settle(
-    encryptGoalQueueEventParams(args.params, {
-      orgId: args.orgId,
-      userId: args.userId,
-    }),
-  );
-  if (!encrypted.ok) {
-    const retryWithoutPayload = await attemptGoalQueueAdmission(db, {
-      chatThreadId: args.chatThreadId,
-      encryptedParams: undefined,
-      goalSnapshot,
-    });
-    if (retryWithoutPayload.kind !== "payload-required") {
-      return retryWithoutPayload;
-    }
-    throw encrypted.error;
-  }
-
-  const final = await attemptGoalQueueAdmission(db, {
-    chatThreadId: args.chatThreadId,
-    encryptedParams: encrypted.value,
-    goalSnapshot,
-  });
-  if (final.kind === "payload-required") {
-    throw new Error("Goal queue admission still required encrypted params");
-  }
-  return final;
 }
 
 function noGoalChangeAfterQueueEvent(db: Pick<Db, "select">) {
@@ -245,7 +147,7 @@ export async function loadNextGoalQueueEvent(
         chatThreadId: chatMessages.chatThreadId,
         userId: chatThreads.userId,
         orgId: zeroAgents.orgId,
-        encryptedParams: chatMessages.encryptedParams,
+        goalId: chatMessages.runGroupId,
         createdAt: chatMessages.createdAt,
       })
       .from(chatMessages)
@@ -256,17 +158,16 @@ export async function loadNextGoalQueueEvent(
     if (!event) {
       return null;
     }
-    if (!event.encryptedParams) {
-      throw new Error(`Goal queue event ${event.id} is missing its payload`);
+    if (!event.goalId) {
+      throw new Error(`Goal queue event ${event.id} is missing its goal id`);
     }
-    return { ...event, encryptedParams: event.encryptedParams };
+    return { ...event, goalId: event.goalId };
   });
 }
 
 export async function loadGoalQueueTarget(
   db: Pick<Db, "select">,
   event: PendingGoalQueueEvent,
-  goalId: string,
 ): Promise<GoalQueueTarget | null> {
   const [goal] = await db
     .select({
@@ -289,7 +190,7 @@ export async function loadGoalQueueTarget(
     )
     .where(
       and(
-        eq(threadGoals.id, goalId),
+        eq(threadGoals.id, event.goalId),
         eq(threadGoals.chatThreadId, event.chatThreadId),
         eq(threadGoals.orgId, event.orgId),
         eq(threadGoals.ownerUserId, event.userId),

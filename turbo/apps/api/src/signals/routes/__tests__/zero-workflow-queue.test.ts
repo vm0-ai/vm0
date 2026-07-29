@@ -342,7 +342,6 @@ describe("workflow queue", () => {
       agentId: scenario.agentId,
       objective: "finish after the workflow event",
       objectiveBrief: "Finish after the workflow event",
-      callbackSecret: "goal-priority-callback-secret",
     });
 
     const workflowRunId = await expectAcceptedRunId(

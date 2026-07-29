@@ -205,6 +205,12 @@ function isGoalMarkerEvent(
   return event.eventType === "goal.changed";
 }
 
+function isGoalQueueEvent(
+  event: ChatEvent,
+): event is Extract<ChatEvent, { eventType: "input.goal" }> {
+  return event.eventType === "input.goal";
+}
+
 function isUsageEvent(
   event: ChatEvent,
 ): event is Extract<ChatEvent, { eventType: "usage.recorded" }> {
@@ -1320,6 +1326,7 @@ function skipsEventBodyRendering(event: ChatEvent): boolean {
     isInterruptControlEvent(event) ||
     isRecallControlEvent(event) ||
     isQueueMarkerEvent(event) ||
+    isGoalQueueEvent(event) ||
     isGoalMarkerEvent(event)
   );
 }
@@ -1543,6 +1550,7 @@ function semanticTranscriptEventsFromRaw(
     if (
       isRecallControlEvent(event) ||
       isQueueMarkerEvent(event) ||
+      isGoalQueueEvent(event) ||
       isGoalMarkerEvent(event) ||
       isInterruptedAssistantCancellation(event, interruptedRunIds) ||
       recalledIds.has(event.id) ||
@@ -2135,14 +2143,12 @@ function createSyncRemoteEventsCommand({
   threadId,
   persistentEvents$,
   hasReachedOldestEvent$,
-  hasServerConfirmedOldestEvent$,
   mergePersistentEvents$,
   dataSource,
 }: {
   threadId: string;
   persistentEvents$: PersistentChatEvents$;
   hasReachedOldestEvent$: Computed<boolean>;
-  hasServerConfirmedOldestEvent$: State<boolean>;
   mergePersistentEvents$: Command<void, [PersistedChatEvent[]]>;
   dataSource: ChatThreadRemote;
 }): Command<Promise<void>, [AbortSignal]> {
@@ -2152,9 +2158,7 @@ function createSyncRemoteEventsCommand({
     let mergedEventCount = 0;
     const latestPersistentEvent = persistentEvents.at(-1);
     let sinceSeqId = latestPersistentEvent?.event.seqId;
-    const startedWithoutCursor = latestPersistentEvent === undefined;
     let initialPageOldestEvent: PersistedChatEvent | undefined;
-    let initialHasHistoryBefore: boolean | undefined;
 
     async function syncEventsAfter(): Promise<void> {
       const requestedSinceSeqId = sinceSeqId;
@@ -2170,10 +2174,6 @@ function createSyncRemoteEventsCommand({
         sinceSeqId: requestedSinceSeqId ?? null,
         gotCount: result.events.length,
       });
-
-      if (isInitialPage) {
-        initialHasHistoryBefore = result.hasHistoryBefore;
-      }
 
       if (result.events.length === 0) {
         return;
@@ -2205,14 +2205,7 @@ function createSyncRemoteEventsCommand({
         persistentEvents[0]?.event ??
         initialPageOldestEvent ??
         accumulatedEvents[0];
-      if (
-        (startedWithoutCursor && initialHasHistoryBefore === false) ||
-        oldestEvent === undefined
-      ) {
-        if (initialHasHistoryBefore === false) {
-          set(hasServerConfirmedOldestEvent$, true);
-        }
-      } else {
+      if (oldestEvent !== undefined) {
         let beforeSeqId = oldestEvent.seqId;
         async function syncEventsBefore(): Promise<void> {
           const result = await set(
@@ -2253,7 +2246,6 @@ function createSyncRemoteEventsCommand({
           }
 
           if (!result.hasHistoryBefore) {
-            set(hasServerConfirmedOldestEvent$, true);
             return;
           }
 
@@ -2539,12 +2531,8 @@ function createPagedEvents(
     registerEventAttachments(entry.event, artifactCardSignals);
   }
   const persistentChatEvents$ = state<RegisteredChatEvent[]>([]);
-  const hasServerConfirmedOldestEvent$ = state(false);
   const hasReachedOldestEvent$ = computed((get): boolean => {
-    return (
-      get(hasServerConfirmedOldestEvent$) ||
-      get(persistentChatEvents$)[0]?.event.seqId === 1
-    );
+    return get(persistentChatEvents$)[0]?.event.seqId === 1;
   });
   const optimisticEvents$ = createOptimisticChatEventsForThread(threadId);
   const appendOptimisticEvent$ = command(
@@ -2575,8 +2563,8 @@ function createPagedEvents(
   );
   const eventSync = createEventSyncSignals(semanticSignals.hasEvents$);
 
-  // The thread's active goal, folded from the (goal-marker) event stream so
-  // the composer reads it without polling a separate resource. Reads rawEvents$
+  // The thread's active goal, folded from lifecycle control events so the
+  // composer reads it without polling a separate resource. Reads rawEvents$
   // because goal markers are control rows, not transcript rows.
   const activeGoalObjective$ = createActiveGoalObjectiveComputed(rawEvents$);
 
@@ -2610,7 +2598,6 @@ function createPagedEvents(
     threadId,
     persistentEvents$: persistentChatEvents$,
     hasReachedOldestEvent$,
-    hasServerConfirmedOldestEvent$,
     mergePersistentEvents$,
     dataSource,
   });

@@ -28,6 +28,7 @@ const SECOND_THREAD_ID = "b0000000-0000-4000-a000-000000000732";
 const FIRST_EVENT_ID = "00000000-0000-4000-8000-000000000731";
 const FIRST_EVENT_CONTENT = "Persist this remote response for thread re-entry";
 const STRUCTURED_EVENT_ID = "00000000-0000-4000-8000-000000000733";
+const GOAL_QUEUE_EVENT_ID = "00000000-0000-4000-8000-000000000734";
 const STRUCTURED_REFERENCE_TITLE = "Archived IndexedDB source";
 function userMessageFixture(): UserMessageDocument {
   return {
@@ -104,6 +105,17 @@ describe("chat event persistence", () => {
           return respond(200, {
             events: [
               {
+                id: GOAL_QUEUE_EVENT_ID,
+                threadId: FIRST_THREAD_ID,
+                eventType: "input.goal" as const,
+                content: null,
+                goalSnapshot: {
+                  objectiveBrief: "Persist this goal queue marker",
+                },
+                createdAt: "2026-06-09T09:59:00Z",
+                seqId: 1,
+              },
+              {
                 id: STRUCTURED_EVENT_ID,
                 threadId: FIRST_THREAD_ID,
                 eventType: "input.prompt" as const,
@@ -111,7 +123,7 @@ describe("chat event persistence", () => {
                 runId: "d0000000-0000-4000-a000-000000000731",
                 userMessage,
                 createdAt: "2026-06-09T10:00:00Z",
-                seqId: 1,
+                seqId: 2,
               },
               {
                 id: FIRST_EVENT_ID,
@@ -120,7 +132,7 @@ describe("chat event persistence", () => {
                 content: FIRST_EVENT_CONTENT,
                 runId: "d0000000-0000-4000-a000-000000000731",
                 createdAt: "2026-06-09T10:01:00Z",
-                seqId: 2,
+                seqId: 3,
               },
             ],
             hasHistoryBefore: false,
@@ -165,10 +177,23 @@ describe("chat event persistence", () => {
           `a[aria-label="Open chat ${STRUCTURED_REFERENCE_TITLE}"]`,
         );
         expect(reference).toHaveAttribute("href", `/chats/${FIRST_THREAD_ID}`);
+        expect(document.querySelectorAll('[data-role="user"]')).toHaveLength(1);
       });
       await waitFor(async () => {
         const testDb = await openChatIdb("idb-reentry-user", "idb-reentry-org");
         try {
+          const goalQueueEvent: unknown = await testDb.get(
+            CHAT_MESSAGES_STORE,
+            GOAL_QUEUE_EVENT_ID,
+          );
+          expect(goalQueueEvent).toMatchObject({
+            eventType: "input.goal",
+            goalSnapshot: {
+              objectiveBrief: "Persist this goal queue marker",
+            },
+            seqId: 1,
+            threadId: FIRST_THREAD_ID,
+          });
           const userMessageElement: unknown = await testDb.get(
             CHAT_MESSAGES_STORE,
             STRUCTURED_EVENT_ID,

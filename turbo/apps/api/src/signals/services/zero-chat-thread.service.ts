@@ -1,7 +1,7 @@
 import { command, computed, type Computed } from "ccstate";
 import {
+  CHAT_EVENT_TYPES,
   chatEventCompatibilityRole,
-  MATERIALIZED_CHAT_EVENT_TYPES,
   type ChatEventType,
 } from "@vm0/api-contracts/contracts/chat-events";
 import {
@@ -864,6 +864,21 @@ const chatEventBuilders = {
       triggerBrief: row.triggerBrief,
     };
   },
+  "input.goal": (row, event) => {
+    return {
+      id: event.id,
+      threadId: event.threadId,
+      eventType: "input.goal",
+      content: null,
+      goalSnapshot: requiredChatEventField(
+        row.goalSnapshot,
+        row.eventType,
+        "goalSnapshot",
+      ),
+      seqId: event.seqId,
+      createdAt: event.createdAt,
+    };
+  },
   "input.rejected": (row, event, attachFiles) => {
     return {
       ...event,
@@ -1021,9 +1036,6 @@ function toChatEvent(
   canonicalAttachments: readonly ResolvedAttachFile[],
 ): Computed<Promise<ChatEventResponse>> {
   return computed(async (get): Promise<ChatEventResponse> => {
-    if (row.eventType === "input.goal") {
-      throw new Error("Pending goal queue events cannot be materialized");
-    }
     const attachFiles = await get(
       chatMessageAttachFiles(userId, row, canonicalAttachments),
     );
@@ -2194,7 +2206,7 @@ export function zeroChatThreadEventsPage(args: {
       args.beforeSeqId ?? (args.beforeId ? legacyCursor?.seqId : undefined);
     const threadFilter = and(
       eq(chatMessages.chatThreadId, args.threadId),
-      chatEventTypeIn(MATERIALIZED_CHAT_EVENT_TYPES),
+      chatEventTypeIn(CHAT_EVENT_TYPES),
     );
     let rows: ChatEventRow[];
     let hasHistoryBefore = false;
@@ -2271,7 +2283,7 @@ export function zeroChatThreadEventById(args: {
         and(
           eq(chatMessages.id, args.eventId),
           eq(chatMessages.chatThreadId, args.threadId),
-          chatEventTypeIn(MATERIALIZED_CHAT_EVENT_TYPES),
+          chatEventTypeIn(CHAT_EVENT_TYPES),
         ),
       )
       .limit(1);

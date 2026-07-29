@@ -60,7 +60,7 @@ type InputAutomationEvent = ChatEventIdentity & {
 type InputGoalEvent = ChatEventIdentity & {
   readonly eventType: "input.goal";
   readonly content?: null;
-  readonly encryptedParams: string;
+  readonly runGroupId: string;
   readonly goalSnapshot: NonNullable<ChatEventInsert["goalSnapshot"]>;
 };
 
@@ -242,6 +242,22 @@ async function reserveChatEventSeqIds(
   return thread.lastSeqId - count + 1;
 }
 
+async function releaseChatEventSeqId(
+  tx: ChatEventWriteTransaction,
+  chatThreadId: string,
+): Promise<void> {
+  const [thread] = await tx
+    .update(chatThreads)
+    .set({
+      lastChatMessageSeqId: sql`${chatThreads.lastChatMessageSeqId} - 1`,
+    })
+    .where(eq(chatThreads.id, chatThreadId))
+    .returning({ id: chatThreads.id });
+  if (!thread) {
+    throw new Error(`Chat thread ${chatThreadId} not found`);
+  }
+}
+
 async function addSeqIdsToEvents(
   tx: ChatEventWriteTransaction,
   values: readonly PersistedChatEvent[],
@@ -317,6 +333,11 @@ export async function insertChatEvent(
               seqId: chatMessages.seqId,
             });
 
+  if (rows.length === 0) {
+    // A rejected idempotent write is not part of the canonical stream, so it
+    // must not consume the thread's next cursor.
+    await releaseChatEventSeqId(tx, values.chatThreadId);
+  }
   return rows[0] ?? null;
 }
 
