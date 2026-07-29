@@ -1,38 +1,38 @@
 import { useGet, useLastResolved, useSet } from "ccstate-react";
 
-import { connectorCatalogStatusByRef$ } from "../../signals/external/connectors.ts";
+import { connectorCatalogStatusBySlug$ } from "../../signals/external/connectors.ts";
 import { pageSignal$ } from "../../signals/page-signal.ts";
 import {
   connectConnectorOAuthAuthCodeAndSettle$,
-  connectFlowConnectorRef$,
+  connectFlowConnectorSlug$,
   getOnlyAvailableStatusBrowserAuthMethodDetail,
 } from "../../signals/zero-page/settings/connectors.ts";
 import { detach, Reason } from "../../signals/utils.ts";
 
 export function useGmailReconnect(onSuccess: () => void | Promise<void>) {
-  const catalogByRef = useLastResolved(connectorCatalogStatusByRef$);
-  const connectFlowConnectorRef = useGet(connectFlowConnectorRef$);
+  const catalogBySlug = useLastResolved(connectorCatalogStatusBySlug$);
+  const connectFlowConnectorSlug = useGet(connectFlowConnectorSlug$);
   const connect = useSet(connectConnectorOAuthAuthCodeAndSettle$);
   const signal = useGet(pageSignal$);
-  const connector = catalogByRef?.get("gmail");
+  const connector = catalogBySlug?.get("gmail");
   const authMethod = connector
     ? getOnlyAvailableStatusBrowserAuthMethodDetail(connector)
     : null;
-  const reconnecting = connectFlowConnectorRef === "gmail";
+  const reconnecting = connectFlowConnectorSlug === "gmail";
 
   return {
     connectorIcon: connector?.icon,
     reconnecting,
     reconnectDisabled:
-      !connector || !authMethod || connectFlowConnectorRef !== null,
+      !connector || !authMethod || connectFlowConnectorSlug !== null,
     reconnect() {
-      if (!connector || !authMethod || connectFlowConnectorRef !== null) {
+      if (!connector || !authMethod || connectFlowConnectorSlug !== null) {
         return;
       }
       detach(
         connect(
           {
-            connectorRef: "gmail",
+            connectorSlug: "gmail",
             method: authMethod,
             onSuccess,
             options: {

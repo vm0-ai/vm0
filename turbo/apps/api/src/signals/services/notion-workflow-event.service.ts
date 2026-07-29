@@ -475,7 +475,7 @@ async function resolveNotionAccess(args: {
     snapshot,
     orgId: args.orgId,
     userId: args.userId,
-    connectorRef: "notion",
+    connectorSlug: "notion",
     ...(args.connectorId === undefined
       ? {}
       : { connectorId: args.connectorId }),

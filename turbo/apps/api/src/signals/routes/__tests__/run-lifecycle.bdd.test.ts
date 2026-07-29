@@ -455,14 +455,17 @@ function modelProviderPlaceholder(
   return placeholder;
 }
 
-function connectorPlaceholder(type: string, secretName: string): string {
+function connectorPlaceholder(
+  connectorSlug: string,
+  secretName: string,
+): string {
   const firewall = API_TEST_CONNECTOR_FIREWALL_CONFIGS.find((candidate) => {
-    return candidate.name === type;
+    return candidate.name === connectorSlug;
   });
   const placeholder = firewall?.placeholders?.[secretName];
   if (!placeholder) {
     throw new Error(
-      `Missing accepted connector placeholder for ${type}.${secretName}`,
+      `Missing accepted connector placeholder for ${connectorSlug}.${secretName}`,
     );
   }
   return placeholder;
@@ -6441,7 +6444,7 @@ describe("RUN-02: stored connector injection into claimed runs", () => {
     await api.requestCancelRun(actor, compatibleRun.runId, [200]);
 
     await setConnectorCredentialStorageState(context, {
-      connectorRef: "test-oauth",
+      connectorSlug: "test-oauth",
       orgId: actor.orgId ?? "",
       storageVersion: 2,
       userId: actor.userId,
@@ -7846,7 +7849,7 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
 
     await api.applyUserPermissionGrant(actor, {
       agentId,
-      connectorRef: "slack",
+      connectorSlug: "slack",
       permission: "chat:write",
       action: "allow",
       expiresIn: "1h",
@@ -7867,7 +7870,7 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
 
     await api.applyUserPermissionGrant(actor, {
       agentId,
-      connectorRef: "slack",
+      connectorSlug: "slack",
       permission: "chat:write",
       action: "allow",
     });
@@ -7879,7 +7882,7 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
     await expect(
       api.replaceUserPermissionGrants(actor, {
         agentId,
-        connectorRef: "slack",
+        connectorSlug: "slack",
         grants: [],
       }),
     ).resolves.toStrictEqual([]);
@@ -8042,28 +8045,28 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
     // Grants across every expiry arm; the list API shows the stored expiry.
     await api.applyUserPermissionGrant(actor, {
       agentId,
-      connectorRef: "slack",
+      connectorSlug: "slack",
       permission: "chat:write",
       action: "allow",
       expiresIn: "1h",
     });
     await api.applyUserPermissionGrant(actor, {
       agentId,
-      connectorRef: "slack",
+      connectorSlug: "slack",
       permission: "files:read",
       action: "allow",
       expiresIn: "24h",
     });
     await api.applyUserPermissionGrant(actor, {
       agentId,
-      connectorRef: "slack",
+      connectorSlug: "slack",
       permission: "search:read",
       action: "allow",
       expiresIn: "7d",
     });
     await api.applyUserPermissionGrant(actor, {
       agentId,
-      connectorRef: "slack",
+      connectorSlug: "slack",
       permission: "conversations:read",
       action: "allow",
     });
@@ -8088,7 +8091,7 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
     const member = bdd.user({ orgId: actor.orgId, orgRole: "org:member" });
     await api.applyUserPermissionGrant(member, {
       agentId,
-      connectorRef: "slack",
+      connectorSlug: "slack",
       permission: "files:write",
       action: "allow",
     });
@@ -8128,7 +8131,7 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
     // Unknown-permission grants flip only the unknown policy.
     await api.applyUserPermissionGrant(actor, {
       agentId,
-      connectorRef: "slack",
+      connectorSlug: "slack",
       permission: UNKNOWN_PERMISSION_GRANT,
       action: "deny",
     });
@@ -8141,7 +8144,7 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
     // made after creation are visible before the sandbox starts.
     await api.applyUserPermissionGrant(actor, {
       agentId,
-      connectorRef: "slack",
+      connectorSlug: "slack",
       permission: "chat:write",
       action: "allow",
     });
@@ -8152,7 +8155,7 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
     });
     await api.applyUserPermissionGrant(actor, {
       agentId,
-      connectorRef: "slack",
+      connectorSlug: "slack",
       permission: "chat:write",
       action: "deny",
     });
@@ -8192,7 +8195,7 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
     context.mocks.ably.publish.mockClear();
     await api.applyUserPermissionGrant(actor, {
       agentId,
-      connectorRef: "slack",
+      connectorSlug: "slack",
       permission: "files:write",
       action: "allow",
     });
@@ -8216,7 +8219,7 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
       actor,
       {
         agentId,
-        connectorRef: "slack",
+        connectorSlug: "slack",
         permission: "files:write",
         action: "deny",
       },
@@ -8389,13 +8392,13 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
 
     await api.applyUserPermissionGrant(foreignActor, {
       agentId: foreignAgentId,
-      connectorRef: "slack",
+      connectorSlug: "slack",
       permission: "files:write",
       action: "allow",
     });
     await api.applyUserPermissionGrant(actor, {
       agentId,
-      connectorRef: "slack",
+      connectorSlug: "slack",
       permission: "chat:write",
       action: "allow",
     });
@@ -8432,7 +8435,7 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
     context.mocks.ably.publish.mockClear();
     await api.applyUserPermissionGrant(actor, {
       agentId,
-      connectorRef: "slack",
+      connectorSlug: "slack",
       permission: "files:write",
       action: "allow",
     });
@@ -8529,7 +8532,7 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
 
     await api.applyUserPermissionGrant(actor, {
       agentId,
-      connectorRef: "cloudflare",
+      connectorSlug: "cloudflare",
       permission: UNKNOWN_PERMISSION_GRANT,
       action: "allow",
     });
@@ -8631,9 +8634,6 @@ describe("RUN-01: zero runner context, queue promotion, and skills", () => {
     await bdd.readMe(actor);
     await api.grantProEntitlement(actor);
     await api.ensureOrgModelProvider(actor);
-    await connectors.updateFeatureSwitches(actor, {
-      [FeatureSwitchKey.ZeroFinance]: true,
-    });
     const agent = await bdd.createAgent(actor, {
       displayName: "Research Bot",
       description: "Finds release details",
@@ -8648,7 +8648,7 @@ describe("RUN-01: zero runner context, queue promotion, and skills", () => {
     await api.enableAgentConnectors(actor, agent.agentId, ["slack"]);
     await api.applyUserPermissionGrant(actor, {
       agentId: agent.agentId,
-      connectorRef: "slack",
+      connectorSlug: "slack",
       permission: "chat:write",
       action: "allow",
     });
@@ -8878,7 +8878,7 @@ describe("RUN-01: zero runner context, queue promotion, and skills", () => {
       EXPECTED_ZERO_RUN_DISALLOWED_TOOLS,
     );
     expect(claim.appendSystemPrompt ?? "").toContain("zero web-search --help");
-    expect(claim.appendSystemPrompt ?? "").not.toContain("zero finance --help");
+    expect(claim.appendSystemPrompt ?? "").toContain("zero finance --help");
     expect(claim.appendSystemPrompt ?? "").toContain("zero scrape --help");
     expect(claim.appendSystemPrompt ?? "").toContain(
       "zero people-search <query>",

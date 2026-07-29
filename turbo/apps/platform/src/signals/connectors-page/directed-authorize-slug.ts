@@ -1,7 +1,7 @@
 import { command, computed, state } from "ccstate";
 import {
-  connectorRefSchema,
-  type ConnectorRef,
+  connectorSlugSchema,
+  type ConnectorSlug,
 } from "@vm0/api-contracts/contracts/connector-identity";
 import { zeroUserConnectorsContract } from "@vm0/api-contracts/contracts/user-connectors";
 import { accept } from "../../lib/accept.ts";
@@ -15,13 +15,13 @@ import {
 } from "../zero-page/agent-connector-authorizations.ts";
 
 /**
- * Connector ref extracted from `/connectors/:type/authorize` route params.
+ * Connector slug extracted from `/connectors/:type/authorize` route params.
  */
-export const directedAuthorizeRef$ = computed((get): ConnectorRef | null => {
+export const directedAuthorizeSlug$ = computed((get): ConnectorSlug | null => {
   const params = get(pathParams$);
-  const routeType = params?.type;
-  const parsed = connectorRefSchema.safeParse(
-    typeof routeType === "string" ? routeType.toLowerCase() : null,
+  const connectorSlug = params?.type;
+  const parsed = connectorSlugSchema.safeParse(
+    typeof connectorSlug === "string" ? connectorSlug.toLowerCase() : null,
   );
   return parsed.success ? parsed.data : null;
 });
@@ -46,23 +46,23 @@ export const directedAuthorizeAgentName$ = computed(async (get) => {
   return { agentId, displayName: agent?.displayName ?? null };
 });
 
-/** Fetch enabled connector types for the agent from the API. */
-export const agentEnabledTypes$ = computed(async (get) => {
+/** Fetch enabled connector slugs for the agent from the API. */
+export const agentEnabledConnectorSlugs$ = computed(async (get) => {
   const agentId = get(directedAuthorizeAgentId$);
   if (!agentId) {
-    return { agentId: null, enabledTypes: [] };
+    return { agentId: null, enabledConnectorSlugs: [] };
   }
   const authorizations = await get(
     agentConnectorAuthorizations({ agentId, missing: "null" }),
   );
   return {
     agentId,
-    enabledTypes: [...(authorizations?.enabledTypes ?? [])],
+    enabledConnectorSlugs: [...(authorizations?.enabledConnectorSlugs ?? [])],
   };
 });
 
 export type DirectedAuthorizeConnectModalKey = {
-  readonly connectorRef: ConnectorRef;
+  readonly connectorSlug: ConnectorSlug;
   readonly agentId: string;
   readonly signal: AbortSignal;
 };
@@ -79,10 +79,10 @@ export const setDirectedAuthorizeConnectModalKey$ = command(
 );
 
 function connectorAgentAuthorizationKey(args: {
-  readonly connectorRef: ConnectorRef;
+  readonly connectorSlug: ConnectorSlug;
   readonly agentId: string;
 }): string {
-  return `${args.agentId}:${args.connectorRef}`;
+  return `${args.agentId}:${args.connectorSlug}`;
 }
 
 const internalAuthorized$ = state<Set<string>>(new Set());
@@ -96,7 +96,7 @@ export const justAuthorizedConnectorAgentKeys$ = computed((get) => {
 export const authorizeConnector$ = command(
   async (
     { get, set },
-    connectorRef: ConnectorRef,
+    connectorSlug: ConnectorSlug,
     agentId: string,
     signal: AbortSignal,
   ) => {
@@ -107,7 +107,7 @@ export const authorizeConnector$ = command(
       accept(
         client.update({
           params: { id: agentId },
-          body: { enabledTypes: [connectorRef], operation: "add" },
+          body: { enabledTypes: [connectorSlug], operation: "add" },
           fetchOptions: { signal },
         }),
         [200],
@@ -122,7 +122,7 @@ export const authorizeConnector$ = command(
     set(internalAuthorized$, (prev) => {
       return new Set([
         ...prev,
-        connectorAgentAuthorizationKey({ connectorRef, agentId }),
+        connectorAgentAuthorizationKey({ connectorSlug, agentId }),
       ]);
     });
   },
@@ -131,7 +131,7 @@ export const authorizeConnector$ = command(
 export function isJustAuthorizedConnectorAgent(
   justAuthorizedKeys: ReadonlySet<string>,
   args: {
-    readonly connectorRef: ConnectorRef;
+    readonly connectorSlug: ConnectorSlug;
     readonly agentId: string;
   },
 ): boolean {

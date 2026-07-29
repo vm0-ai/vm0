@@ -7,7 +7,7 @@ import type {
 } from "@vm0/api-contracts/contracts/zero-connector-catalog";
 import type {
   ConnectorAuthMethodId,
-  ConnectorRef,
+  ConnectorSlug,
 } from "@vm0/api-contracts/contracts/connector-identity";
 import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 
@@ -19,7 +19,7 @@ interface TestConnectorAuthMethod {
 }
 
 export interface TestConnectorCatalogDefinition {
-  readonly connectorRef: ConnectorRef;
+  readonly connectorSlug: ConnectorSlug;
   readonly label: string;
   readonly description: string;
   readonly icon: PublicConnectorCatalogIcon;
@@ -38,10 +38,10 @@ const NO_PERMISSIONS = {
   hasDefaultPolicyOverrides: false,
 } satisfies PublicConnectorCatalogPermissionSummary;
 
-function icon(connectorRef: ConnectorRef): PublicConnectorCatalogIcon {
+function icon(connectorSlug: ConnectorSlug): PublicConnectorCatalogIcon {
   return {
-    url: `https://icons.example.test/${connectorRef}.svg`,
-    invertInDarkMode: connectorRef === "github",
+    url: `https://icons.example.test/${connectorSlug}.svg`,
+    invertInDarkMode: connectorSlug === "github",
   };
 }
 
@@ -108,7 +108,7 @@ function externalCodeMethod(args: {
 }
 
 function oauthConnector(args: {
-  readonly connectorRef: ConnectorRef;
+  readonly connectorSlug: ConnectorSlug;
   readonly label: string;
   readonly description: string;
   readonly category: string;
@@ -118,10 +118,10 @@ function oauthConnector(args: {
   readonly permissionDetail?: PublicConnectorCatalogPermissionDetail;
 }): TestConnectorCatalogDefinition {
   return {
-    connectorRef: args.connectorRef,
+    connectorSlug: args.connectorSlug,
     label: args.label,
     description: args.description,
-    icon: icon(args.connectorRef),
+    icon: icon(args.connectorSlug),
     category: args.category,
     generation: [],
     tags: args.tags ?? [],
@@ -272,7 +272,7 @@ const youtubePermissions = {
 } satisfies PublicConnectorCatalogPermissionDetail;
 
 export const testConnectorPermissionDetails = new Map<
-  ConnectorRef,
+  ConnectorSlug,
   PublicConnectorCatalogPermissionDetail
 >([
   ["axiom", axiomPermissions],
@@ -307,7 +307,7 @@ const tokenField = [
 export const testConnectorCatalogDefinitions = (
   [
     {
-      connectorRef: "ahrefs",
+      connectorSlug: "ahrefs",
       label: "Ahrefs",
       description: "Access SEO data, backlink analysis, and keyword research.",
       icon: icon("ahrefs"),
@@ -329,13 +329,13 @@ export const testConnectorCatalogDefinitions = (
       connectNotice: null,
     },
     oauthConnector({
-      connectorRef: "openai",
+      connectorSlug: "openai",
       label: "OpenAI",
       description: "Access OpenAI models and APIs.",
       category: "ai-general-models",
     }),
     {
-      connectorRef: "base44",
+      connectorSlug: "base44",
       label: "Base44",
       description: "Access and manage Base44 apps.",
       icon: icon("base44"),
@@ -360,7 +360,7 @@ export const testConnectorCatalogDefinitions = (
       connectNotice: null,
     },
     oauthConnector({
-      connectorRef: "slack",
+      connectorSlug: "slack",
       label: "Slack",
       description: "Send messages and read channels.",
       category: "communication-collaboration",
@@ -368,62 +368,62 @@ export const testConnectorCatalogDefinitions = (
       permissionDetail: slackPermissions,
     }),
     oauthConnector({
-      connectorRef: "gmail",
+      connectorSlug: "gmail",
       label: "Gmail",
       description: "Read and manage Gmail messages.",
       category: "communication-collaboration",
       permissionDetail: gmailPermissions,
     }),
     oauthConnector({
-      connectorRef: "cal-com",
+      connectorSlug: "cal-com",
       label: "Cal.com",
       description: "Manage Cal.com bookings and schedules.",
       category: "meetings-scheduling",
     }),
     oauthConnector({
-      connectorRef: "google-calendar",
+      connectorSlug: "google-calendar",
       label: "Google Calendar",
       description: "Manage Google Calendar events.",
       category: "meetings-scheduling",
     }),
     oauthConnector({
-      connectorRef: "zoom",
+      connectorSlug: "zoom",
       label: "Zoom",
       description: "Manage Zoom meetings and recordings.",
       category: "meetings-scheduling",
     }),
     oauthConnector({
-      connectorRef: "box",
+      connectorSlug: "box",
       label: "Box",
       description: "Access and manage Box files.",
       category: "docs-files-knowledge",
     }),
     oauthConnector({
-      connectorRef: "dropbox",
+      connectorSlug: "dropbox",
       label: "Dropbox",
       description: "Access and manage Dropbox files.",
       category: "docs-files-knowledge",
     }),
     oauthConnector({
-      connectorRef: "google-drive",
+      connectorSlug: "google-drive",
       label: "Google Drive",
       description: "Access Google Drive files and presentations.",
       category: "docs-files-knowledge",
     }),
     oauthConnector({
-      connectorRef: "google-sheets",
+      connectorSlug: "google-sheets",
       label: "Google Sheets",
       description: "Read and update Google Sheets.",
       category: "docs-files-knowledge",
     }),
     oauthConnector({
-      connectorRef: "notion",
+      connectorSlug: "notion",
       label: "Notion",
       description: "Access Notion pages and databases.",
       category: "docs-files-knowledge",
     }),
     oauthConnector({
-      connectorRef: "github",
+      connectorSlug: "github",
       label: "GitHub",
       description:
         "Connect your GitHub account to access repositories and GitHub features.",
@@ -431,51 +431,51 @@ export const testConnectorCatalogDefinitions = (
       tags: ["gh", "git", "vcs", "scm", "repos"],
     }),
     oauthConnector({
-      connectorRef: "asana",
+      connectorSlug: "asana",
       label: "Asana",
       description:
         "Connect your Asana account to manage projects, tasks, and team workflows.",
       category: "engineering-team-execution",
     }),
     oauthConnector({
-      connectorRef: "cloudflare",
+      connectorSlug: "cloudflare",
       label: "Cloudflare",
       description: "Manage Cloudflare infrastructure.",
       category: "engineering-team-execution",
       permissionDetail: cloudflarePermissions,
     }),
     oauthConnector({
-      connectorRef: "datadog",
+      connectorSlug: "datadog",
       label: "Datadog",
       description: "Access Datadog observability data.",
       category: "engineering-team-execution",
     }),
     oauthConnector({
-      connectorRef: "sentry",
+      connectorSlug: "sentry",
       label: "Sentry",
       description: "Access error tracking and project data.",
       category: "engineering-team-execution",
     }),
     oauthConnector({
-      connectorRef: "linear",
+      connectorSlug: "linear",
       label: "Linear",
       description: "Manage Linear issues and projects.",
       category: "engineering-team-execution",
     }),
     oauthConnector({
-      connectorRef: "hubspot",
+      connectorSlug: "hubspot",
       label: "HubSpot",
       description: "Manage HubSpot CRM data.",
       category: "sales-crm-business-operations",
     }),
     oauthConnector({
-      connectorRef: "quickbooks",
+      connectorSlug: "quickbooks",
       label: "QuickBooks",
       description: "Access QuickBooks accounting data.",
       category: "sales-crm-business-operations",
     }),
     oauthConnector({
-      connectorRef: "google-ads",
+      connectorSlug: "google-ads",
       label: "Google Ads",
       description: "Manage Google Ads campaigns and reports.",
       category: "marketing-content-growth",
@@ -487,33 +487,33 @@ export const testConnectorCatalogDefinitions = (
       ],
     }),
     oauthConnector({
-      connectorRef: "mailchimp",
+      connectorSlug: "mailchimp",
       label: "Mailchimp",
       description: "Manage Mailchimp audiences and campaigns.",
       category: "marketing-content-growth",
     }),
     oauthConnector({
-      connectorRef: "meta-ads",
+      connectorSlug: "meta-ads",
       label: "Meta Ads",
       description: "Manage Meta Ads campaigns and audiences.",
       category: "marketing-content-growth",
       featureSwitch: FeatureSwitchKey.MetaAdsConnector,
     }),
     oauthConnector({
-      connectorRef: "tiktok-ads",
+      connectorSlug: "tiktok-ads",
       label: "TikTok Ads",
       description: "Manage TikTok Ads campaigns.",
       category: "marketing-content-growth",
     }),
     oauthConnector({
-      connectorRef: "youtube",
+      connectorSlug: "youtube",
       label: "YouTube",
       description: "Manage YouTube channels and videos.",
       category: "marketing-content-growth",
       permissionDetail: youtubePermissions,
     }),
     {
-      connectorRef: "axiom",
+      connectorSlug: "axiom",
       label: "Axiom",
       description: "Query logs and manage observability data.",
       icon: icon("axiom"),
@@ -525,7 +525,7 @@ export const testConnectorCatalogDefinitions = (
       connectNotice: null,
     },
     {
-      connectorRef: "aws",
+      connectorSlug: "aws",
       label: "AWS",
       description: "Connect a temporary AWS session.",
       icon: icon("aws"),
@@ -545,7 +545,7 @@ export const testConnectorCatalogDefinitions = (
       connectNotice: null,
     },
     {
-      connectorRef: "cloudinary",
+      connectorSlug: "cloudinary",
       label: "Cloudinary",
       description: "Manage Cloudinary media assets.",
       icon: icon("cloudinary"),
@@ -581,13 +581,13 @@ export const testConnectorCatalogDefinitions = (
       connectNotice: null,
     },
     oauthConnector({
-      connectorRef: "google-maps",
+      connectorSlug: "google-maps",
       label: "Google Maps",
       description: "Access Google Maps Platform APIs.",
       category: "data-automation-infrastructure",
     }),
     {
-      connectorRef: "plausible",
+      connectorSlug: "plausible",
       label: "Plausible",
       description: "Access website traffic analytics and visitor stats.",
       icon: icon("plausible"),
@@ -609,7 +609,7 @@ export const testConnectorCatalogDefinitions = (
       connectNotice: null,
     },
     {
-      connectorRef: "revenuecat",
+      connectorSlug: "revenuecat",
       label: "RevenueCat",
       description: "Access subscriptions, purchases, and customer data.",
       icon: icon("revenuecat"),
@@ -631,7 +631,7 @@ export const testConnectorCatalogDefinitions = (
       connectNotice: null,
     },
     {
-      connectorRef: "playstation",
+      connectorSlug: "playstation",
       label: "PlayStation",
       description: "Access PlayStation Network player data.",
       icon: icon("playstation"),
@@ -649,7 +649,7 @@ export const testConnectorCatalogDefinitions = (
       connectNotice: null,
     },
     {
-      connectorRef: "steam",
+      connectorSlug: "steam",
       label: "Steam",
       description: "Access Steam player and game data.",
       icon: icon("steam"),
@@ -674,7 +674,7 @@ export const testConnectorCatalogDefinitions = (
       connectNotice: null,
     },
     {
-      connectorRef: "stripe",
+      connectorSlug: "stripe",
       label: "Stripe",
       description: "Manage payments, customers, and subscriptions.",
       icon: icon("stripe"),
@@ -714,7 +714,7 @@ export const testConnectorCatalogDefinitions = (
     },
   ] satisfies TestConnectorCatalogDefinition[]
 ).sort((left, right) => {
-  return left.connectorRef.localeCompare(right.connectorRef);
+  return left.connectorSlug.localeCompare(right.connectorSlug);
 });
 
 export const testConnectorCatalogCategoryMetadata = {
@@ -777,13 +777,13 @@ export const testConnectorCatalogCategoryMetadata = {
   groups: [{ id: "ai", label: "AI", menuLabel: "AI" }],
 } satisfies PublicConnectorCatalogCategoryMetadata;
 
-export const testConnectorRefs = testConnectorCatalogDefinitions.map(
+export const testConnectorSlugs = testConnectorCatalogDefinitions.map(
   (definition) => {
-    return definition.connectorRef;
+    return definition.connectorSlug;
   },
 );
 
-export const composerOverflowConnectorRefs = [
+export const composerOverflowConnectorSlugs = [
   "asana",
   "box",
   "cal-com",
@@ -805,4 +805,4 @@ export const composerOverflowConnectorRefs = [
   "tiktok-ads",
   "youtube",
   "zoom",
-] satisfies readonly ConnectorRef[];
+] satisfies readonly ConnectorSlug[];

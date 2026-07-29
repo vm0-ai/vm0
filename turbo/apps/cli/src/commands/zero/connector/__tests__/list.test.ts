@@ -36,7 +36,7 @@ const connectedGithub = {
 
 function statusItemFromConnector(connector: Record<string, unknown>) {
   return catalogStatusItem({
-    connectorRef: connector.type as string,
+    connectorSlug: connector.type as string,
     authMethods: [authCodeMethod(connector.authMethod as string)],
     connection: {
       authMethod: connector.authMethod as string,
@@ -52,22 +52,22 @@ function statusItemFromConnector(connector: Record<string, unknown>) {
 }
 
 function stubConnectors(connectors: Array<Record<string, unknown>>) {
-  const connectedByType = new Map(
+  const connectedBySlug = new Map(
     connectors.map((connector) => {
       return [connector.type as string, statusItemFromConnector(connector)];
     }),
   );
-  const visibleTypes = new Set([
+  const visibleConnectorSlugs = new Set([
     "github",
     "mercury",
-    ...connectedByType.keys(),
+    ...connectedBySlug.keys(),
   ]);
   return stubConnectorCatalogStatus(
-    [...visibleTypes].map((type) => {
+    [...visibleConnectorSlugs].map((connectorSlug) => {
       return (
-        connectedByType.get(type) ??
+        connectedBySlug.get(connectorSlug) ??
         catalogStatusItem({
-          connectorRef: type,
+          connectorSlug,
           authMethods: [authCodeMethod("oauth")],
         })
       );
@@ -88,20 +88,20 @@ function stubAgent(id: string, displayName: string | null) {
   });
 }
 
-function stubUserConnectors(id: string, enabledTypes: string[]) {
+function stubUserConnectors(id: string, enabledConnectorSlugs: string[]) {
   return http.get(
     `http://localhost:3000/api/zero/agents/${id}/user-connectors`,
     () => {
-      return HttpResponse.json({ enabledTypes });
+      return HttpResponse.json({ enabledTypes: enabledConnectorSlugs });
     },
   );
 }
 
-function stubAvailableConnectors(types: string[]) {
+function stubAvailableConnectors(connectorSlugs: string[]) {
   return stubConnectorCatalogStatus(
-    types.map((type) => {
+    connectorSlugs.map((connectorSlug) => {
       return catalogStatusItem({
-        connectorRef: type,
+        connectorSlug,
         authMethods: [authCodeMethod("oauth")],
       });
     }),

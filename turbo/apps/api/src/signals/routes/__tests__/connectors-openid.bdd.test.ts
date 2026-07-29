@@ -1,10 +1,10 @@
 import { randomUUID } from "node:crypto";
 
-import { connectorsTypeCallbackContract } from "@vm0/api-contracts/contracts/connectors-type-callback";
+import { connectorsSlugCallbackContract } from "@vm0/api-contracts/contracts/connectors-slug-callback";
 import {
   zeroConnectorOpenIdStartContract,
   zeroConnectorOauthContinueContract,
-  zeroConnectorsByTypeContract,
+  zeroConnectorsBySlugContract,
 } from "@vm0/api-contracts/contracts/zero-connectors";
 import { zeroConnectorCatalogContract } from "@vm0/api-contracts/contracts/zero-connector-catalog";
 import { zeroSteamPlayerContract } from "@vm0/api-contracts/contracts/zero-steam-player";
@@ -127,11 +127,11 @@ function redirectLocation(response: RedirectResponseLike): URL {
 
 function expectConnectorErrorRedirect(
   response: RedirectResponseLike,
-  args: { readonly type: string; readonly message: string },
+  args: { readonly connectorSlug: string; readonly message: string },
 ): void {
   const url = redirectLocation(response);
   expect(url.pathname).toBe("/connector/error");
-  expect(url.searchParams.get("type")).toBe(args.type);
+  expect(url.searchParams.get("type")).toBe(args.connectorSlug);
   expect(url.searchParams.get("message")).toBe(args.message);
 }
 
@@ -140,7 +140,7 @@ async function completeSteamOpenIdCallback(
 ): Promise<void> {
   mockSteamOpenIdVerification();
   await accept(
-    setupApp({ context })(connectorsTypeCallbackContract).callback({
+    setupApp({ context })(connectorsSlugCallbackContract).callback({
       params: { type: "steam" },
       query: steamCallbackQuery(authorizationUrl),
       headers: {},
@@ -366,7 +366,7 @@ describe("Steam OpenID connector", () => {
 
     mockSession(actor);
     const connector = await accept(
-      setupApp({ context })(zeroConnectorsByTypeContract).get({
+      setupApp({ context })(zeroConnectorsBySlugContract).get({
         params: { type: "steam" },
         headers: authHeaders(),
       }),
@@ -388,7 +388,7 @@ describe("Steam OpenID connector", () => {
     mockSteamOpenIdVerification(false);
 
     const response = await accept(
-      setupApp({ context })(connectorsTypeCallbackContract).callback({
+      setupApp({ context })(connectorsSlugCallbackContract).callback({
         params: { type: "steam" },
         query: steamCallbackQuery(authorizationUrl),
         headers: {},
@@ -397,13 +397,13 @@ describe("Steam OpenID connector", () => {
     );
 
     expectConnectorErrorRedirect(response, {
-      type: "steam",
+      connectorSlug: "steam",
       message: "OpenID authorization failed. Please try again.",
     });
 
     mockSession(actor);
     const connector = await accept(
-      setupApp({ context })(zeroConnectorsByTypeContract).get({
+      setupApp({ context })(zeroConnectorsBySlugContract).get({
         params: { type: "steam" },
         headers: authHeaders(),
       }),

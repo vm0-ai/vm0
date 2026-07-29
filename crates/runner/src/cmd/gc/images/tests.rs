@@ -139,17 +139,6 @@ async fn gc_nested_images_empty_dir_returns_zero() {
     assert_eq!(freed, 0);
 }
 
-#[test]
-fn template_warm_hash_accepts_current_and_legacy_names() {
-    assert_eq!(template_warm_hash("template-warm-abc123"), Some("abc123"));
-    assert_eq!(
-        template_warm_hash("template-abc123.warm.tmp"),
-        Some("abc123")
-    );
-    assert_eq!(template_warm_hash("template-warm-"), None);
-    assert_eq!(template_warm_hash("rootfs-hash"), None);
-}
-
 #[tokio::test]
 async fn gc_nested_images_keeps_locked_current_template_warm_dir() {
     use std::fs::FileTimes;
@@ -176,17 +165,17 @@ async fn gc_nested_images_keeps_locked_current_template_warm_dir() {
 }
 
 #[tokio::test]
-async fn gc_nested_images_keeps_locked_template_warm_dir() {
+async fn gc_nested_images_does_not_treat_legacy_name_as_template_warm_dir() {
     use std::fs::FileTimes;
 
     let dir = tempfile::tempdir().unwrap();
     let home = test_home(dir.path());
-    let warm_dir = home.images_dir().join("template-abc123.warm.tmp");
-    std::fs::create_dir_all(&warm_dir).unwrap();
-    std::fs::write(warm_dir.join("template.ext4"), b"partial").unwrap();
+    let legacy_dir = home.images_dir().join("template-abc123.warm.tmp");
+    std::fs::create_dir_all(&legacy_dir).unwrap();
+    std::fs::write(legacy_dir.join("template.ext4"), b"partial").unwrap();
 
     let old_time = SystemTime::UNIX_EPOCH + Duration::from_secs(1_000_000);
-    std::fs::File::open(&warm_dir)
+    std::fs::File::open(&legacy_dir)
         .unwrap()
         .set_times(FileTimes::new().set_modified(old_time))
         .unwrap();
@@ -196,25 +185,11 @@ async fn gc_nested_images_keeps_locked_template_warm_dir() {
 
     let freed = gc_nested_images(&home, Some(0), false).await.unwrap();
 
-    assert_eq!(freed, 0);
-    assert!(warm_dir.exists(), "active warm rootfs dir must survive GC");
-}
-
-#[tokio::test]
-async fn gc_nested_images_keeps_recent_template_warm_dir() {
-    let dir = tempfile::tempdir().unwrap();
-    let home = test_home(dir.path());
-    let warm_dir = home.images_dir().join("template-abc123.warm.tmp");
-    std::fs::create_dir_all(&warm_dir).unwrap();
-    std::fs::write(warm_dir.join("template.ext4"), b"partial").unwrap();
-
-    let freed = gc_nested_images(&home, Some(0), false).await.unwrap();
-
-    assert_eq!(freed, 0);
     assert!(
-        warm_dir.exists(),
-        "recent warm rootfs dir must survive the GC grace window"
+        !legacy_dir.exists(),
+        "the retired name must not be protected by the template lock"
     );
+    assert!(freed > 0);
 }
 
 #[tokio::test]
@@ -232,31 +207,6 @@ async fn gc_nested_images_keeps_recent_current_template_warm_dir() {
         warm_dir.exists(),
         "recent warm rootfs dir must survive the GC grace window"
     );
-}
-
-#[tokio::test]
-async fn gc_nested_images_removes_stale_template_warm_dir() {
-    use std::fs::FileTimes;
-
-    let dir = tempfile::tempdir().unwrap();
-    let home = test_home(dir.path());
-    let warm_dir = home.images_dir().join("template-abc123.warm.tmp");
-    std::fs::create_dir_all(&warm_dir).unwrap();
-    std::fs::write(warm_dir.join("template.ext4"), b"partial").unwrap();
-
-    let old_time = SystemTime::UNIX_EPOCH + Duration::from_secs(1_000_000);
-    std::fs::File::open(&warm_dir)
-        .unwrap()
-        .set_times(FileTimes::new().set_modified(old_time))
-        .unwrap();
-
-    let freed = gc_nested_images(&home, Some(0), false).await.unwrap();
-
-    assert!(
-        !warm_dir.exists(),
-        "stale warm rootfs dir should be removed"
-    );
-    assert!(freed > 0);
 }
 
 #[tokio::test]
@@ -282,6 +232,34 @@ async fn gc_nested_images_removes_stale_current_template_warm_dir() {
         "stale warm rootfs dir should be removed"
     );
     assert!(freed > 0);
+}
+
+#[tokio::test]
+async fn gc_nested_images_dry_run_reports_stale_current_template_warm_dir() {
+    use std::fs::FileTimes;
+
+    let dir = tempfile::tempdir().unwrap();
+    let home = test_home(dir.path());
+    let warm_dir = home.images_dir().join("template-warm-abc123");
+    std::fs::create_dir_all(&warm_dir).unwrap();
+    std::fs::write(warm_dir.join("attempt-old.tmp"), b"partial").unwrap();
+
+    let old_time = SystemTime::UNIX_EPOCH + Duration::from_secs(1_000_000);
+    std::fs::File::open(&warm_dir)
+        .unwrap()
+        .set_times(FileTimes::new().set_modified(old_time))
+        .unwrap();
+
+    let (expected_size, _) = dir_stats(&warm_dir).await;
+    assert!(expected_size > 0, "test fixture must have non-zero size");
+
+    let freed = gc_nested_images(&home, Some(0), true).await.unwrap();
+
+    assert!(
+        warm_dir.exists(),
+        "dry-run must preserve the warm directory"
+    );
+    assert_eq!(freed, expected_size);
 }
 
 #[tokio::test]

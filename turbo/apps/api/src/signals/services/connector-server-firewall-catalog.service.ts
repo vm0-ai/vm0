@@ -1,6 +1,6 @@
 import { isDeepStrictEqual } from "node:util";
 
-import type { ConnectorRef } from "@vm0/api-contracts/contracts/connector-identity";
+import type { ConnectorSlug } from "@vm0/api-contracts/contracts/connector-identity";
 import {
   connectorAuthMethodRuntimeMetadata,
   type ConnectorRuntimeBindingEntry,
@@ -44,7 +44,7 @@ type AcceptedGeneratedFirewall = Extract<
 >;
 
 interface AcceptedServerFirewall {
-  readonly connectorRef: ConnectorRef;
+  readonly connectorSlug: ConnectorSlug;
   readonly label: string;
   readonly billable: boolean;
   readonly firewall: AcceptedFirewallConfig;
@@ -53,7 +53,7 @@ interface AcceptedServerFirewall {
 }
 
 export interface ConnectorServerFirewallPermissionIndex {
-  readonly connectorRef: ConnectorRef;
+  readonly connectorSlug: ConnectorSlug;
   readonly label: string;
   readonly permissionNames: ReadonlySet<string>;
   readonly permissionDescriptions: ReadonlyMap<string, string>;
@@ -71,7 +71,7 @@ export interface ConnectorServerFirewallExecutionBaseUrlTemplate {
 }
 
 export interface ConnectorServerFirewallExecutionMetadata {
-  readonly connectorRef: ConnectorRef;
+  readonly connectorSlug: ConnectorSlug;
   readonly billable: boolean;
   readonly baseUrlVarNames: readonly string[];
   readonly baseUrlTemplates: readonly ConnectorServerFirewallExecutionBaseUrlTemplate[];
@@ -80,36 +80,36 @@ export interface ConnectorServerFirewallExecutionMetadata {
 }
 
 export interface ConnectorServerFirewallRoutingIndexMetadata {
-  readonly connectorRef: ConnectorRef;
+  readonly connectorSlug: ConnectorSlug;
   readonly label: string;
   readonly apis: readonly FirewallRoutingIndexApiMetadata[];
 }
 
 export interface ConnectorServerFirewallRoutingMetadata {
-  readonly connectorRef: ConnectorRef;
+  readonly connectorSlug: ConnectorSlug;
   readonly label: string;
   readonly apis: readonly FirewallRoutingApiMetadata[];
 }
 
 export interface ConnectorServerFirewallHostOwner {
-  readonly connectorRef: ConnectorRef;
+  readonly connectorSlug: ConnectorSlug;
   readonly label: string;
 }
 
 export interface ConnectorServerFirewallCatalog {
-  readonly connectorRefs: readonly ConnectorRef[];
-  has(connectorRef: string): boolean;
+  readonly connectorSlugs: readonly ConnectorSlug[];
+  has(connectorSlug: string): boolean;
   getExecutionMetadata(
-    connectorRef: string,
+    connectorSlug: string,
   ): ConnectorServerFirewallExecutionMetadata | null;
   loadPermissionIndex(
-    connectorRef: string,
+    connectorSlug: string,
   ): Promise<ConnectorServerFirewallPermissionIndex | null>;
   getRoutingIndexMetadata(
-    connectorRef: string,
+    connectorSlug: string,
   ): ConnectorServerFirewallRoutingIndexMetadata | null;
   loadRoutingMetadata(
-    connectorRef: string,
+    connectorSlug: string,
   ): Promise<ConnectorServerFirewallRoutingMetadata | null>;
   getFixedHostOwner(host: string): ConnectorServerFirewallHostOwner | null;
 }
@@ -245,7 +245,7 @@ function acceptedPermissionIndex(
   });
   const permissionNameSet = new Set(permissionNames);
   return {
-    connectorRef: firewall.connectorRef,
+    connectorSlug: firewall.connectorSlug,
     label: firewall.label,
     permissionNames: permissionNameSet,
     permissionDescriptions,
@@ -342,7 +342,7 @@ function acceptedBaseUrlTemplates(args: {
       !isDeepStrictEqual(existing.hostPolicy, template.hostPolicy)
     ) {
       throw new Error(
-        `Accepted connector server firewall base URL host policies conflict: ${args.firewall.connectorRef} (${template.base})`,
+        `Accepted connector server firewall base URL host policies conflict: ${args.firewall.connectorSlug} (${template.base})`,
       );
     }
     templates.set(template.base, {
@@ -368,7 +368,7 @@ function acceptedExecutionMetadata(args: {
     methods: args.methods,
   });
   return {
-    connectorRef: args.firewall.connectorRef,
+    connectorSlug: args.firewall.connectorSlug,
     billable: args.firewall.billable,
     baseUrlVarNames: args.routing.baseUrlVarNames,
     baseUrlTemplates: acceptedBaseUrlTemplates({
@@ -385,7 +385,7 @@ function acceptedRoutingIndexMetadata(args: {
   readonly routing: ConnectorCatalogFirewallRouting;
 }): ConnectorServerFirewallRoutingIndexMetadata {
   return {
-    connectorRef: args.firewall.connectorRef,
+    connectorSlug: args.firewall.connectorSlug,
     label: args.firewall.label,
     apis: args.routing.apis.map((api) => {
       return { base: api.base };
@@ -398,7 +398,7 @@ function acceptedRoutingMetadata(args: {
   readonly routing: ConnectorCatalogFirewallRouting;
 }): ConnectorServerFirewallRoutingMetadata {
   return {
-    connectorRef: args.firewall.connectorRef,
+    connectorSlug: args.firewall.connectorSlug,
     label: args.firewall.label,
     apis: args.routing.apis.map((api) => {
       return {
@@ -412,12 +412,15 @@ function acceptedRoutingMetadata(args: {
 
 function acceptedEntries(args: {
   readonly artifact: ConnectorCatalogArtifact;
-  readonly runtimeMethodsByRef: ReadonlyMap<
-    ConnectorRef,
+  readonly runtimeMethodsBySlug: ReadonlyMap<
+    ConnectorSlug,
     readonly ConnectorAuthMethodRuntimeConfig[]
   >;
-}): ReadonlyMap<ConnectorRef, AcceptedConnectorServerFirewallEntry> {
-  const entries = new Map<ConnectorRef, AcceptedConnectorServerFirewallEntry>();
+}): ReadonlyMap<ConnectorSlug, AcceptedConnectorServerFirewallEntry> {
+  const entries = new Map<
+    ConnectorSlug,
+    AcceptedConnectorServerFirewallEntry
+  >();
   for (const connector of args.artifact.connectors) {
     if (connector.firewall.kind === "none") {
       continue;
@@ -427,7 +430,7 @@ function acceptedEntries(args: {
         `Duplicate accepted connector server firewall: ${connector.connectorRef}`,
       );
     }
-    const methods = args.runtimeMethodsByRef.get(connector.connectorRef);
+    const methods = args.runtimeMethodsBySlug.get(connector.connectorRef);
     if (!methods) {
       throw new Error(
         `Accepted connector server firewall runtime is missing: ${connector.connectorRef}`,
@@ -461,7 +464,7 @@ function acceptedEntryFirewall(
     );
   }
   const accepted = {
-    connectorRef: connector.connectorRef,
+    connectorSlug: connector.connectorRef,
     label: connector.label,
     billable: connector.firewall.billable,
     firewall,
@@ -550,18 +553,18 @@ function acceptedFixedHostOwners(
       const host = normalizeFirewallFixedHost(rawHost);
       if (!host) {
         throw new Error(
-          `Accepted connector server firewall fixed host is invalid: ${firewall.connectorRef}`,
+          `Accepted connector server firewall fixed host is invalid: ${firewall.connectorSlug}`,
         );
       }
       const existing = owners.get(host);
       if (
         existing &&
-        compareStrings(existing.connectorRef, firewall.connectorRef) <= 0
+        compareStrings(existing.connectorSlug, firewall.connectorSlug) <= 0
       ) {
         continue;
       }
       owners.set(host, {
-        connectorRef: firewall.connectorRef,
+        connectorSlug: firewall.connectorSlug,
         label: firewall.label,
       });
     }
@@ -571,40 +574,40 @@ function acceptedFixedHostOwners(
 
 export function createAcceptedConnectorServerFirewallCatalog(args: {
   readonly artifact: ConnectorCatalogArtifact;
-  readonly runtimeMethodsByRef: ReadonlyMap<
-    ConnectorRef,
+  readonly runtimeMethodsBySlug: ReadonlyMap<
+    ConnectorSlug,
     readonly ConnectorAuthMethodRuntimeConfig[]
   >;
 }): ConnectorServerFirewallCatalog {
   const entries = acceptedEntries({
     artifact: args.artifact,
-    runtimeMethodsByRef: args.runtimeMethodsByRef,
+    runtimeMethodsBySlug: args.runtimeMethodsBySlug,
   });
-  const connectorRefs = [...entries.keys()].sort(compareStrings);
+  const connectorSlugs = [...entries.keys()].sort(compareStrings);
   let fixedHostOwners:
     | ReadonlyMap<string, ConnectorServerFirewallHostOwner>
     | undefined;
   return {
-    connectorRefs,
-    has: (connectorRef) => {
-      return entries.has(connectorRef);
+    connectorSlugs,
+    has: (connectorSlug) => {
+      return entries.has(connectorSlug);
     },
-    getExecutionMetadata: (connectorRef) => {
-      const entry = entries.get(connectorRef);
+    getExecutionMetadata: (connectorSlug) => {
+      const entry = entries.get(connectorSlug);
       return entry ? acceptedEntryExecutionMetadata(entry) : null;
     },
-    loadPermissionIndex: (connectorRef) => {
-      const entry = entries.get(connectorRef);
+    loadPermissionIndex: (connectorSlug) => {
+      const entry = entries.get(connectorSlug);
       return Promise.resolve(
         entry ? acceptedEntryPermissionIndex(entry) : null,
       );
     },
-    getRoutingIndexMetadata: (connectorRef) => {
-      const entry = entries.get(connectorRef);
+    getRoutingIndexMetadata: (connectorSlug) => {
+      const entry = entries.get(connectorSlug);
       return entry ? acceptedEntryRoutingIndexMetadata(entry) : null;
     },
-    loadRoutingMetadata: (connectorRef) => {
-      const entry = entries.get(connectorRef);
+    loadRoutingMetadata: (connectorSlug) => {
+      const entry = entries.get(connectorSlug);
       return Promise.resolve(
         entry ? acceptedEntryRoutingMetadata(entry) : null,
       );
@@ -623,11 +626,11 @@ export function createAcceptedConnectorServerFirewallCatalog(args: {
 export async function expandConnectorServerFirewallPolicies(args: {
   readonly catalog: ConnectorServerFirewallCatalog;
   readonly stored: FirewallPolicies | null;
-  readonly connectorRefs: readonly string[];
+  readonly connectorSlugs: readonly string[];
 }): Promise<FirewallPolicies | null> {
   const indexes = await Promise.all(
-    args.connectorRefs.map((connectorRef) => {
-      return args.catalog.loadPermissionIndex(connectorRef);
+    args.connectorSlugs.map((connectorSlug) => {
+      return args.catalog.loadPermissionIndex(connectorSlug);
     }),
   );
   let resolved = args.stored;
@@ -640,10 +643,10 @@ export async function expandConnectorServerFirewallPolicies(args: {
         return [permission, index.policyResolver.permission(permission)];
       }),
     );
-    const existing = resolved?.[index.connectorRef];
+    const existing = resolved?.[index.connectorSlug];
     resolved = {
       ...resolved,
-      [index.connectorRef]: {
+      [index.connectorSlug]: {
         policies: { ...policies, ...existing?.policies },
         ...(existing?.unknownPolicy !== undefined
           ? { unknownPolicy: existing.unknownPolicy }

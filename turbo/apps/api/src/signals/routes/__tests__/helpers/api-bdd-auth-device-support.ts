@@ -1,6 +1,6 @@
 import type { ConnectorResponse } from "@vm0/api-contracts/contracts/connector-schemas";
-import type { ConnectorRef } from "@vm0/api-contracts/contracts/connector-identity";
-import { zeroConnectorsByTypeContract } from "@vm0/api-contracts/contracts/zero-connectors";
+import type { ConnectorSlug } from "@vm0/api-contracts/contracts/connector-identity";
+import { zeroConnectorsBySlugContract } from "@vm0/api-contracts/contracts/zero-connectors";
 import { zeroFeatureSwitchesContract } from "@vm0/api-contracts/contracts/zero-feature-switches";
 import {
   zeroPersonalModelProvidersByTypeContract,
@@ -128,13 +128,13 @@ export function createAuthDeviceSupportApi(context: TestContext) {
       return response.body.switches;
     },
 
-    async readConnectorByType(
+    async readConnectorBySlug(
       actor: ApiTestUser,
-      type: ConnectorRef,
+      connectorSlug: ConnectorSlug,
     ): Promise<ConnectorResponse> {
       const response = await accept(
-        authDeviceSupportApp(context)(zeroConnectorsByTypeContract).get({
-          params: { type },
+        authDeviceSupportApp(context)(zeroConnectorsBySlugContract).get({
+          params: { type: connectorSlug },
           headers: authenticate(context, actor),
         }),
         [200],

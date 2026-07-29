@@ -7,6 +7,7 @@ import { emailUnsubscribeContract } from "@vm0/api-contracts/contracts/email-uns
 import { pushSubscriptionsContract } from "@vm0/api-contracts/contracts/push-subscriptions";
 import { userExportContract } from "@vm0/api-contracts/contracts/user-export";
 import type {
+  ModelProviderType,
   OrgModelPoliciesResponse,
   UpsertModelProviderRequest,
 } from "@vm0/api-contracts/contracts/model-providers";
@@ -468,6 +469,20 @@ export function createMiscRoutesApi(context: TestContext) {
         setupApp({ context })(zeroModelProvidersByTypeContract).delete({
           headers: authenticate(context, actor),
           params: { type: "vm0" },
+        }),
+        statuses,
+      );
+    },
+
+    async deleteOrgModelProvider(
+      actor: ApiTestUser,
+      type: ModelProviderType,
+      statuses: readonly (204 | 401 | 403 | 404 | 500)[],
+    ) {
+      return await accept(
+        setupApp({ context })(zeroModelProvidersByTypeContract).delete({
+          headers: authenticate(context, actor),
+          params: { type },
         }),
         statuses,
       );

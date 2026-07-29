@@ -126,23 +126,39 @@ class TestReportModelProviderUsage:
         }
 
     @pytest.mark.parametrize(
-        "unit_prices",
+        ("unit_size", "unit_prices"),
         [
-            {
-                category: price
-                for category, price in _MODEL_USAGE_UNIT_PRICES.items()
-                if category != "tokens.output"
-            },
-            {**_MODEL_USAGE_UNIT_PRICES, "tokens.unknown": 19},
-            {**_MODEL_USAGE_UNIT_PRICES, "tokens.output": True},
+            (
+                100,
+                {
+                    category: price
+                    for category, price in _MODEL_USAGE_UNIT_PRICES.items()
+                    if category != "tokens.output"
+                },
+            ),
+            (100, {**_MODEL_USAGE_UNIT_PRICES, "tokens.unknown": 19}),
+            (100, {**_MODEL_USAGE_UNIT_PRICES, "tokens.output": True}),
+            (0, _MODEL_USAGE_UNIT_PRICES),
+            (-1, _MODEL_USAGE_UNIT_PRICES),
+            (True, _MODEL_USAGE_UNIT_PRICES),
+            ("100", _MODEL_USAGE_UNIT_PRICES),
         ],
-        ids=["partial", "extra", "invalid"],
+        ids=[
+            "partial-prices",
+            "extra-price",
+            "invalid-price",
+            "zero-unit-size",
+            "negative-unit-size",
+            "boolean-unit-size",
+            "numeric-string-unit-size",
+        ],
     )
     def test_rejects_malformed_model_pricing_atomically(
         self,
         real_flow,
         usage_webhook_api,
-        unit_prices,
+        unit_size: object,
+        unit_prices: dict[str, object],
     ):
         flow = real_flow(with_response=False, host="model.vm0.ai")
         flow.metadata[metadata_keys.FIREWALL_NAME] = "model-provider:vm0-model"
@@ -158,7 +174,7 @@ class TestReportModelProviderUsage:
         flow.request.headers["authorization"] = "Bearer proxy-secret"
         flow.response = tutils.tresp(
             status_code=200,
-            headers=header_map(signed_usage_pricing_headers(unit_prices, unit_size=100)),
+            headers=header_map(signed_usage_pricing_headers(unit_prices, unit_size=unit_size)),
         )
 
         mitm_addon.responseheaders(flow)
@@ -167,7 +183,7 @@ class TestReportModelProviderUsage:
 
         # Exercise the primitive metadata boundary independently of signed ingestion.
         flow.metadata[metadata_keys.MODEL_USAGE_PRICING] = {
-            "unitSize": 100,
+            "unitSize": unit_size,
             "unitPrices": unit_prices,
         }
 

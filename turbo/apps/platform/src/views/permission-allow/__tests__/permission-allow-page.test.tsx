@@ -27,12 +27,18 @@ function catalogPermissionDetail(
       "connectorRef" | "label" | "permissions"
     >,
 ): PublicConnectorCatalogPermissionDetail {
-  const { connectorRef, label, permissions, icon, ...rest } = overrides;
+  const {
+    connectorRef: connectorSlug,
+    label,
+    permissions,
+    icon,
+    ...rest
+  } = overrides;
   return {
-    connectorRef,
+    connectorRef: connectorSlug,
     label,
     icon: icon ?? {
-      url: `https://icons.example.test/${connectorRef}.svg`,
+      url: `https://icons.example.test/${connectorSlug}.svg`,
       invertInDarkMode: false,
     },
     permissionCount: permissions.length,

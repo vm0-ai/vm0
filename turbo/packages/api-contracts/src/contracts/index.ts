@@ -287,9 +287,9 @@ export {
   type EmailMorningBriefUnsubscribeContract,
 } from "./email-morning-brief-unsubscribe";
 export {
-  connectorsTypeCallbackContract,
-  type ConnectorsTypeCallbackContract,
-} from "./connectors-type-callback";
+  connectorsSlugCallbackContract,
+  type ConnectorsSlugCallbackContract,
+} from "./connectors-slug-callback";
 export {
   testOAuthProviderAuthorizeContract,
   testOAuthProviderAuthorizeErrorSchema,
@@ -1004,8 +1004,8 @@ export {
 } from "./zero-workflows";
 export {
   zeroUserConnectorsContract,
-  userConnectorEnabledTypesSchema,
-  type UserConnectorEnabledTypes,
+  userConnectorEnabledSlugsSchema,
+  type UserConnectorEnabledSlugs,
   type ZeroUserConnectorsContract,
 } from "./user-connectors";
 export {
@@ -1028,14 +1028,14 @@ export {
 } from "./zero-user-permission-grants";
 export {
   zeroConnectorsMainContract,
-  zeroConnectorsByTypeContract,
+  zeroConnectorsBySlugContract,
   zeroConnectorScopeDiffContract,
   zeroConnectorManualGrantContract,
   zeroConnectorNoAuthGrantContract,
   zeroConnectorOauthDeviceAuthSessionContract,
   zeroConnectorsSearchContract,
   type ZeroConnectorsMainContract,
-  type ZeroConnectorsByTypeContract,
+  type ZeroConnectorsBySlugContract,
   type ZeroConnectorScopeDiffContract,
   type ZeroConnectorManualGrantContract,
   type ZeroConnectorNoAuthGrantContract,
@@ -1075,9 +1075,9 @@ export {
 } from "./zero-connector-check";
 export {
   connectorAuthMethodIdSchema,
-  connectorRefSchema,
+  connectorSlugSchema,
   type ConnectorAuthMethodId,
-  type ConnectorRef,
+  type ConnectorSlug,
 } from "./connector-identity";
 export {
   codexDeviceAuthScopeSchema,

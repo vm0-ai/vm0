@@ -45,7 +45,7 @@ interface ConnectedFixture {
 
 const trackConnectedFixture = createFixtureTracker<ConnectedFixture>(
   async (fixture) => {
-    await connectorsApi.deleteConnectorByType(fixture.actor, fixture.type);
+    await connectorsApi.deleteConnectorBySlug(fixture.actor, fixture.type);
   },
 );
 const trackOrgMembershipFixture = createFixtureTracker<OrgMembershipFixture>(
@@ -557,7 +557,7 @@ describe("POST /api/zero/connectors/diagnostics/check", () => {
     expect(serialized).not.toContain("reap-test-api-key");
 
     await setConnectorCredentialStorageState(context, {
-      connectorRef: "reap",
+      connectorSlug: "reap",
       orgId,
       storageVersion: 2,
       userId: owner.userId,
@@ -568,7 +568,7 @@ describe("POST /api/zero/connectors/diagnostics/check", () => {
       connector: { connectorRef: "reap" },
     });
     await setConnectorCredentialStorageState(context, {
-      connectorRef: "reap",
+      connectorSlug: "reap",
       orgId,
       storageVersion: 1,
       userId: owner.userId,
@@ -579,7 +579,7 @@ describe("POST /api/zero/connectors/diagnostics/check", () => {
 
     const foreignConnectorId = await seedConnectorStorageRow(context, {
       authMethod: "oauth",
-      connectorRef: "github",
+      connectorSlug: "github",
       orgId,
       storageVersion: 1,
       userId: owner.userId,

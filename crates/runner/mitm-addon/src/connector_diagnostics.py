@@ -241,7 +241,7 @@ def maybe_make_firewall_allow_local_response(
     flow_metadata.start_request_timing(flow.metadata)
     _set_failure_metadata(flow, candidate)
     flow.metadata[_CONNECTOR_DIAGNOSTIC_OWNERSHIP_REASON] = resolution.reason
-    flow.metadata[_CONNECTOR_DIAGNOSTIC_OWNERSHIP_CANDIDATES] = resolution.candidate_connector_types
+    flow.metadata[_CONNECTOR_DIAGNOSTIC_OWNERSHIP_CANDIDATES] = resolution.candidate_connector_slugs
     flow.metadata[_CONNECTOR_DIAGNOSTIC_OWNERSHIP_HINT_STATUS] = resolution.hint_status
     flow_metadata.set_firewall_decision(flow.metadata, "ALLOW")
     flow.response = http.Response.make(
@@ -429,12 +429,12 @@ def _candidate_from_flow(
     flow: http.HTTPFlow,
 ) -> builtin_connector_diagnostics.ConnectorDiagnosticCandidate | None:
     meta = flow.metadata
-    connector_type = meta.get(metadata_keys.CONNECTOR_DIAGNOSTIC_TYPE)
+    connector_slug = meta.get(metadata_keys.CONNECTOR_DIAGNOSTIC_TYPE)
     reason = meta.get(metadata_keys.CONNECTOR_DIAGNOSTIC_REASON)
     base = meta.get(metadata_keys.CONNECTOR_DIAGNOSTIC_BASE)
     if not (
-        isinstance(connector_type, str)
-        and connector_type
+        isinstance(connector_slug, str)
+        and connector_slug
         and isinstance(reason, str)
         and reason
         and isinstance(base, str)
@@ -448,7 +448,7 @@ def _candidate_from_flow(
         meta.get(_CONNECTOR_DIAGNOSTIC_AUTH_QUERY_PARAM_NAMES)
     )
     return builtin_connector_diagnostics.ConnectorDiagnosticCandidate(
-        connector_type=connector_type,
+        connector_slug=connector_slug,
         reason=reason,
         env_names=env_names,
         base=base,
@@ -557,12 +557,12 @@ def _set_failure_metadata(
     flow.metadata[_CONNECTOR_DIAGNOSTIC_AUTH_HEADER_NAMES] = candidate.auth_header_names
     flow.metadata[_CONNECTOR_DIAGNOSTIC_AUTH_QUERY_PARAM_NAMES] = candidate.auth_query_param_names
     flow.metadata[metadata_keys.FIREWALL_BASE] = candidate.base
-    flow.metadata[metadata_keys.FIREWALL_NAME] = candidate.connector_type
+    flow.metadata[metadata_keys.FIREWALL_NAME] = candidate.connector_slug
     flow.metadata[metadata_keys.FIREWALL_PERMISSION] = ""
     flow.metadata[metadata_keys.FIREWALL_RULE_MATCH] = ""
     flow.metadata[metadata_keys.FIREWALL_BILLABLE] = False
     flow.metadata[metadata_keys.FIREWALL_ERROR] = "connector_not_configured_for_run"
-    flow.metadata[metadata_keys.CONNECTOR_DIAGNOSTIC_TYPE] = candidate.connector_type
+    flow.metadata[metadata_keys.CONNECTOR_DIAGNOSTIC_TYPE] = candidate.connector_slug
     flow.metadata[metadata_keys.CONNECTOR_DIAGNOSTIC_REASON] = candidate.reason
     flow.metadata[metadata_keys.CONNECTOR_DIAGNOSTIC_ENV_NAMES] = list(candidate.env_names)
     flow.metadata[metadata_keys.CONNECTOR_DIAGNOSTIC_BASE] = candidate.base
@@ -575,7 +575,7 @@ def _response_body(
 ) -> bytes:
     body = {
         "error": "connector_not_configured_for_run",
-        "connector": candidate.connector_type,
+        "connector": candidate.connector_slug,
         "reason": candidate.reason,
         "message": _message(candidate),
         "envNames": list(candidate.env_names),
@@ -590,13 +590,13 @@ def _message(
 ) -> str:
     if not candidate.env_names:
         return (
-            f"{candidate.connector_type} is not configured for this run. "
+            f"{candidate.connector_slug} is not configured for this run. "
             "Credentials cannot be injected."
         )
     env_names = ", ".join(candidate.env_names)
     verb = "is" if len(candidate.env_names) == 1 else "are"
     return (
-        f"{candidate.connector_type} is not configured for this run. "
+        f"{candidate.connector_slug} is not configured for this run. "
         f"{env_names} {verb} unavailable, so credentials cannot be injected."
     )
 
@@ -709,9 +709,9 @@ def _log_proxy_entry(
     log_proxy_entry(
         flow_metadata.proxy_log_path(flow.metadata),
         "warn",
-        f"{candidate.connector_type} is not configured for this run: {safe_url}",
+        f"{candidate.connector_slug} is not configured for this run: {safe_url}",
         type="connector_diagnostic",
-        connector=candidate.connector_type,
+        connector=candidate.connector_slug,
         reason=candidate.reason,
         upstream_status=upstream_status,
         url=original_url,

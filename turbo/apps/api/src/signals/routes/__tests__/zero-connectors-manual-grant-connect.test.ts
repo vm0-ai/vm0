@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 
 import {
   zeroConnectorManualGrantContract,
-  zeroConnectorsByTypeContract,
+  zeroConnectorsBySlugContract,
   zeroConnectorsMainContract,
 } from "@vm0/api-contracts/contracts/zero-connectors";
 import { zeroFeatureSwitchesContract } from "@vm0/api-contracts/contracts/zero-feature-switches";
@@ -26,7 +26,7 @@ interface AuthenticatedFixture {
   readonly userId: string;
 }
 
-const CONNECTOR_TYPES_TO_CLEAN_UP = [
+const CONNECTOR_SLUGS_TO_CLEAN_UP = [
   "openai",
   "zendesk",
   "insforge",
@@ -80,12 +80,12 @@ async function deleteFeatureSwitches(
 
 async function deleteConnector(
   fixture: AuthenticatedFixture,
-  type: (typeof CONNECTOR_TYPES_TO_CLEAN_UP)[number],
+  connectorSlug: (typeof CONNECTOR_SLUGS_TO_CLEAN_UP)[number],
 ): Promise<void> {
   mocks.clerk.session(fixture.userId, fixture.orgId);
   await accept(
-    setupApp({ context })(zeroConnectorsByTypeContract).delete({
-      params: { type },
+    setupApp({ context })(zeroConnectorsBySlugContract).delete({
+      params: { type: connectorSlug },
       headers: authHeaders(),
     }),
     [204, 404],
@@ -94,19 +94,19 @@ async function deleteConnector(
 
 async function cleanupFixture(fixture: AuthenticatedFixture): Promise<void> {
   await deleteFeatureSwitches(fixture);
-  for (const type of CONNECTOR_TYPES_TO_CLEAN_UP) {
-    await deleteConnector(fixture, type);
+  for (const connectorSlug of CONNECTOR_SLUGS_TO_CLEAN_UP) {
+    await deleteConnector(fixture, connectorSlug);
   }
 }
 
 async function readConnector(
   fixture: AuthenticatedFixture,
-  type: (typeof CONNECTOR_TYPES_TO_CLEAN_UP)[number],
+  connectorSlug: (typeof CONNECTOR_SLUGS_TO_CLEAN_UP)[number],
 ) {
   mocks.clerk.session(fixture.userId, fixture.orgId);
   return await accept(
-    setupApp({ context })(zeroConnectorsByTypeContract).get({
-      params: { type },
+    setupApp({ context })(zeroConnectorsBySlugContract).get({
+      params: { type: connectorSlug },
       headers: authHeaders(),
     }),
     [200],
@@ -182,13 +182,13 @@ describe("POST /api/zero/connectors/:type/manual-grant", () => {
 
   it("accepts server-authored identity syntax before catalog rejection", async () => {
     await seedFixture();
-    const connectorRef = "server-authored-connector";
+    const connectorSlug = "server-authored-connector";
     const authMethod = "server-authored-method";
     const client = setupApp({ context })(zeroConnectorManualGrantContract);
 
     const response = await accept(
       client.connect({
-        params: { type: connectorRef },
+        params: { type: connectorSlug },
         body: { authMethod, values: { apiKey: "secret" } },
         headers: authHeaders(),
       }),
@@ -196,7 +196,7 @@ describe("POST /api/zero/connectors/:type/manual-grant", () => {
     );
 
     expect(response.body.error).toStrictEqual({
-      message: `${connectorRef} connector is not supported`,
+      message: `${connectorSlug} connector is not supported`,
       code: "BAD_REQUEST",
     });
     const list = await accept(
@@ -206,7 +206,7 @@ describe("POST /api/zero/connectors/:type/manual-grant", () => {
       [200],
     );
     expect(list.body.connectors).not.toContainEqual(
-      expect.objectContaining({ type: connectorRef }),
+      expect.objectContaining({ type: connectorSlug }),
     );
   });
 
@@ -291,7 +291,7 @@ describe("POST /api/zero/connectors/:type/manual-grant", () => {
     const storageState = await readConnectorCredentialStorageState(context, {
       orgId: fixture.orgId,
       userId: fixture.userId,
-      connectorRef: "zendesk",
+      connectorSlug: "zendesk",
       secretNames: ["ZENDESK_API_TOKEN"],
       variableNames: ["ZENDESK_EMAIL", "ZENDESK_SUBDOMAIN"],
     });
@@ -336,7 +336,7 @@ describe("POST /api/zero/connectors/:type/manual-grant", () => {
     const storageState = await readConnectorCredentialStorageState(context, {
       orgId: fixture.orgId,
       userId: fixture.userId,
-      connectorRef: "zendesk",
+      connectorSlug: "zendesk",
       secretNames: ["ZENDESK_API_TOKEN"],
       variableNames: ["ZENDESK_EMAIL", "ZENDESK_SUBDOMAIN"],
     });
@@ -350,7 +350,7 @@ describe("POST /api/zero/connectors/:type/manual-grant", () => {
     const ownerId = await seedOwnedConnectorSecret(context, {
       orgId: fixture.orgId,
       userId: fixture.userId,
-      connectorRef: "github",
+      connectorSlug: "github",
       authMethod: "oauth",
       storageVersion: 1,
       name: "OPENAI_TOKEN",
@@ -360,7 +360,7 @@ describe("POST /api/zero/connectors/:type/manual-grant", () => {
     await seedConnectorStorageRow(context, {
       orgId: fixture.orgId,
       userId: fixture.userId,
-      connectorRef: "openai",
+      connectorSlug: "openai",
       authMethod: "api-token",
       storageVersion: 1,
     });
@@ -384,7 +384,7 @@ describe("POST /api/zero/connectors/:type/manual-grant", () => {
     const storageState = await readConnectorCredentialStorageState(context, {
       orgId: fixture.orgId,
       userId: fixture.userId,
-      connectorRef: "openai",
+      connectorSlug: "openai",
       secretNames: ["OPENAI_TOKEN"],
     });
     expect(storageState.secrets?.[0]).toStrictEqual({
@@ -401,7 +401,7 @@ describe("POST /api/zero/connectors/:type/manual-grant", () => {
       {
         orgId: fixture.orgId,
         userId: fixture.userId,
-        connectorRef: "github",
+        connectorSlug: "github",
         secretNames: ["OPENAI_TOKEN"],
       },
     );

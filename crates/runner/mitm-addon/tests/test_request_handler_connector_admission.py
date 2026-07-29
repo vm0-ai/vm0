@@ -20,6 +20,7 @@ from tests.upstream_connection_helpers import (
     bind_flow_upstream,
     mark_connected_tls_upstream,
     seed_server_binding,
+    track_normalized_binding_ip_parses,
 )
 
 
@@ -242,7 +243,7 @@ async def test_matching_sni_and_host_blocks_connected_firewall_auth_when_upstrea
 
 
 async def test_matching_sni_and_host_allows_connected_firewall_auth_with_early_binding(
-    tmp_path, real_flow, mitm_ctx, fake_firewall_headers, headers
+    tmp_path, real_flow, mitm_ctx, fake_firewall_headers, headers, monkeypatch
 ):
     reg_path = _write_github_firewall_registry(tmp_path)
     flow = real_flow(
@@ -263,6 +264,7 @@ async def test_matching_sni_and_host_allows_connected_firewall_auth_with_early_b
         kinds=frozenset(("connector_auth",)),
         original_address=("140.82.112.5", 443),
     )
+    binding_ip_parses = track_normalized_binding_ip_parses(monkeypatch)
 
     with (
         mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
@@ -275,6 +277,7 @@ async def test_matching_sni_and_host_allows_connected_firewall_auth_with_early_b
     assert flow.server_conn.address == ("140.82.112.5", 443)
     assert flow.metadata[metadata_keys.FIREWALL_BASE] == "https://api.github.com"
     assert flow.request.headers["Authorization"] == "Bearer x"
+    assert binding_ip_parses == [("140.82.112.5",)]
 
 
 async def test_matching_sni_and_host_allows_connected_firewall_auth_after_retargeting(

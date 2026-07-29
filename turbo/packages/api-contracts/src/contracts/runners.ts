@@ -7,7 +7,7 @@ import {
   networkPolicySchema,
   networkPoliciesSchema,
 } from "@vm0/connectors/firewall-types";
-import { connectorRefSchema } from "./connector-identity";
+import { connectorSlugSchema } from "./connector-identity";
 import { apiErrorSchema } from "./errors";
 import { modelProviderCodexRuntimeConfigSchema } from "./model-providers";
 
@@ -35,6 +35,8 @@ export const SESSION_HISTORY_DOWNLOAD_SOURCE_CONFIGURED_PUBLIC_ENDPOINT =
 export const SESSION_HISTORY_DOWNLOAD_SOURCE_DEFAULT_R2_ENDPOINT =
   "default_r2_endpoint";
 export const SESSION_HISTORY_GZIP_MIN_BYTES = 64 * 1024;
+// TODO(#23619): Rename with the generated runner constant in a compatible
+// runner/API rollout.
 export const NETWORK_POLICY_REFRESH_CONNECTOR_REFS_MAX = 256;
 export const RUNNER_BUILTIN_FIREWALL_RESOLVE_NAMES_MAX = 512;
 export const sessionHistoryEncodingSchema = z.enum([
@@ -201,7 +203,7 @@ export const storedConnectorPermissionBaselineSchema = z
       })
       .strict(),
     connectors: z.record(
-      connectorRefSchema,
+      connectorSlugSchema,
       connectorPermissionBaselineEntrySchema,
     ),
   })
@@ -545,6 +547,8 @@ export const storedExecutionContextSchema = z.object({
   encryptedSecrets: z.string().nullable(),
   // Maps firewall auth secret env aliases (the `NAME` in `${{ secrets.NAME }}`) to
   // their connector or provider owner. Keys are env aliases, not storage secret names.
+  // TODO(#23619): Split connector slugs from provider keys before renaming this
+  // persisted runner field.
   secretConnectorMap: z.record(z.string(), z.string()).nullable().optional(),
   // Same keys as secretConnectorMap; adds source details when the owner alone
   // is not enough to locate access storage (for example, personal model providers).
@@ -630,6 +634,8 @@ export const executionContextSchema = z.object({
   encryptedSecrets: z.string().nullable(),
   // Maps firewall auth secret env aliases (the `NAME` in `${{ secrets.NAME }}`) to
   // their connector or provider owner. Keys are env aliases, not storage secret names.
+  // TODO(#23619): Split connector slugs from provider keys before renaming this
+  // runner wire field.
   secretConnectorMap: z.record(z.string(), z.string()).nullable().optional(),
   // Same keys as secretConnectorMap; adds source details when the owner alone
   // is not enough to locate access storage (for example, personal model providers).
@@ -712,8 +718,9 @@ export const runnersNetworkPolicyRefreshContract = c.router({
       runId: z.uuid(),
     }),
     body: z.object({
+      // TODO(#23619): Rename runner wire fields in a compatibility-safe rollout.
       connectorRefs: z
-        .array(connectorRefSchema)
+        .array(connectorSlugSchema)
         .min(1)
         .max(NETWORK_POLICY_REFRESH_CONNECTOR_REFS_MAX),
     }),
@@ -721,7 +728,8 @@ export const runnersNetworkPolicyRefreshContract = c.router({
       200: z.object({
         refreshes: z.array(
           z.object({
-            connectorRef: connectorRefSchema,
+            // TODO(#23619): Keep the response aligned with the request rollout.
+            connectorRef: connectorSlugSchema,
             networkPolicy: networkPolicySchema,
             nextRefreshAt: z.string().datetime({ offset: true }).nullable(),
           }),

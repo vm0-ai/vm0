@@ -58,6 +58,12 @@ type InputAutomationEvent = ChatEventIdentity & {
   readonly encryptedParams: string;
 };
 
+type InputGoalEvent = ChatEventIdentity & {
+  readonly eventType: "input.goal";
+  readonly content?: null;
+  readonly encryptedParams: string;
+};
+
 type InputRejectedEvent = ChatEventIdentity &
   ChatEventInputPayload &
   Pick<ChatEventInsert, "sequenceNumber"> & {
@@ -171,6 +177,7 @@ type UsageRecordedEvent = ChatEventIdentity & {
 export type NewChatEvent =
   | InputPromptEvent
   | InputAutomationEvent
+  | InputGoalEvent
   | InputRejectedEvent
   | OutputMessageEvent
   | OutputErrorEvent
@@ -225,6 +232,7 @@ function persistedChatEventValues(values: NewChatEvent): PersistedChatEvent {
   return {
     ...values,
     ...(values.eventType === "input.automation" ||
+    values.eventType === "input.goal" ||
     values.eventType === "queue.automation_resumed"
       ? { content: null }
       : {}),
