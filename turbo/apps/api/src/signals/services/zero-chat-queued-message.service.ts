@@ -616,6 +616,37 @@ export async function recordQueueFirstClaimedRun(
 }
 
 /**
+ * A failed queue-first launch still owns the queue claim and run foreign key,
+ * but must never make the Morning Brief delivery look active.
+ */
+export async function recordQueueFirstFailedRun(
+  db: DbTransaction,
+  args: {
+    readonly claim: Extract<
+      QueueFirstRunClaimResult,
+      { readonly kind: "claimed" }
+    >;
+    readonly runId: string;
+  },
+): Promise<void> {
+  if (!args.claim.morningBriefDeliveryId) {
+    return;
+  }
+  const [delivery] = await db
+    .update(morningBriefDeliveries)
+    .set({
+      status: "failed",
+      runId: args.runId,
+      updatedAt: sql`now()`,
+    })
+    .where(eq(morningBriefDeliveries.id, args.claim.morningBriefDeliveryId))
+    .returning({ id: morningBriefDeliveries.id });
+  if (!delivery) {
+    throw new Error("Failed to record the failed morning brief run");
+  }
+}
+
+/**
  * Discard a queue-first user message that never dispatched by appending a
  * tombstone. The revoke edge removes it from both queue and visible history.
  */

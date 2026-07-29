@@ -28,7 +28,7 @@ use super::super::{
     AGENT_ABNORMAL_EXIT_DIAGNOSTIC_TIMEOUT, EXIT_SIGKILL, ExecutionFailureKind, JOB_TIMEOUT,
     JobParams, NewSandboxDispatch, ResourceFailureKind, STDOUT_STREAM_LIMIT_MARKER,
     STDOUT_STREAM_OVERFLOW_MARKER, SandboxPreparedNotifier, USER_ENV_FILE_ENV_KEY, execute_job,
-    execute_job_reuse, job_terminal_wait_timeout,
+    execute_job_reuse, job_supervisor_timeout, job_terminal_wait_timeout,
 };
 use super::support::{
     CapturedEvent, CapturedEvents, DestroyPanicFactory, QueuedCopyFileSandbox, api_artifact,

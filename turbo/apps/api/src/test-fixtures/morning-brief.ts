@@ -25,6 +25,7 @@ export async function readMorningBriefDeliveryFixture(args: {
       runId: morningBriefDeliveries.runId,
       inputKey: morningBriefDeliveries.inputKey,
       outputKey: morningBriefDeliveries.outputKey,
+      error: morningBriefDeliveries.error,
     })
     .from(morningBriefDeliveries)
     .where(
@@ -36,6 +37,28 @@ export async function readMorningBriefDeliveryFixture(args: {
     )
     .limit(1);
   return delivery ?? null;
+}
+
+export async function readMorningBriefQueuedParamsForDeliveryFixture(args: {
+  readonly deliveryId: string;
+  readonly threadId: string;
+  readonly orgId: string;
+  readonly userId: string;
+}) {
+  const messages = await db()
+    .select({ encryptedParams: chatMessages.encryptedParams })
+    .from(chatMessages)
+    .where(eq(chatMessages.chatThreadId, args.threadId));
+  for (const message of messages) {
+    const params = await decryptQueuedUserMessageRunParams(
+      message.encryptedParams,
+      { orgId: args.orgId, userId: args.userId },
+    );
+    if (params?.morningBriefDelivery?.deliveryId === args.deliveryId) {
+      return params;
+    }
+  }
+  return null;
 }
 
 export async function readMorningBriefQueuedParamsFixture(args: {
@@ -117,6 +140,7 @@ export async function insertOldFormatQueuedUserMessageFixture(args: {
   readonly content: string;
   readonly prompt: string;
   readonly appendSystemPrompt: string;
+  readonly apiStartTime?: number;
 }): Promise<string> {
   const messageId = randomUUID();
   const encryptedParams = await encryptQueuedUserMessageRunParams(
@@ -124,6 +148,7 @@ export async function insertOldFormatQueuedUserMessageFixture(args: {
       version: 1,
       prompt: args.prompt,
       appendSystemPrompt: args.appendSystemPrompt,
+      apiStartTime: args.apiStartTime,
     },
     { orgId: args.orgId, userId: args.userId },
   );

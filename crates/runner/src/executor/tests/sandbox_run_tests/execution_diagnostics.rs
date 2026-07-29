@@ -554,7 +554,7 @@ async fn execute_inner_guest_process_timeout_waits_for_terminal_grace_and_copies
 
     let start_calls = overrides.start_process_calls();
     assert_eq!(start_calls.len(), 1);
-    assert_eq!(start_calls[0].timeout, JOB_TIMEOUT);
+    assert_eq!(start_calls[0].timeout, job_supervisor_timeout());
 
     let wait_calls = overrides.wait_process_calls();
     assert_eq!(wait_calls.len(), 1);
@@ -643,6 +643,45 @@ async fn execute_inner_ordinary_124_timeout_text_is_generic_failure() {
     assert_eq!(failure.exit_code, 124);
     assert_eq!(failure.error, "Timeout");
     assert_eq!(failure.kind, ExecutionFailureKind::Generic);
+}
+
+#[tokio::test]
+async fn execute_inner_structured_guest_execution_timeout_marks_failure_kind() {
+    let dir = tempfile::tempdir().unwrap();
+    let config = test_executor_config(dir.path()).await;
+    let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::new());
+    overrides.push_wait_process_exit(ProcessExit::new(1, 124, Vec::new(), Vec::new()));
+    let diagnostic = FailureDiagnostic::new(
+        FailureClass::CliExecutionError,
+        AgentFramework::ClaudeCode,
+        PromptMetadata::from_prompt("/help"),
+    )
+    .with_cli_exit_code(143)
+    .with_cli_termination(guest_contracts::diagnostics::CliTerminationDiagnostic::new(
+        guest_contracts::diagnostics::CliTerminationReason::ExecutionTimeout,
+    ));
+    overrides.push_read_file_result(Ok(Some(serde_json::to_vec(&diagnostic).unwrap())));
+    overrides.push_read_file_result(Ok(Some(b"Agent execution timed out".to_vec())));
+    let factory = sandbox_mock::MockSandboxFactory::with_overrides(overrides);
+    let ctx = minimal_context();
+    let outcome = run_new_sandbox_outcome(&factory, &ctx, &config, &default_params())
+        .await
+        .unwrap();
+
+    let failure = outcome.failure.as_ref().expect("expected failure");
+    assert_eq!(failure.exit_code, 124);
+    assert_eq!(failure.error, "Agent execution timed out");
+    match failure.kind {
+        ExecutionFailureKind::RunnerJobTimeout {
+            timeout_ms,
+            elapsed_ms: _,
+            guest_duration_ms,
+        } => {
+            assert_eq!(timeout_ms, JOB_TIMEOUT.as_millis());
+            assert_eq!(guest_duration_ms, None);
+        }
+        ExecutionFailureKind::Generic => panic!("expected runner job timeout failure kind"),
+    }
 }
 
 #[tokio::test]

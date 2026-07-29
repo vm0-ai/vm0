@@ -3,8 +3,9 @@
 //! → SigkillPending → Done, which the main `post_result_reap` test
 //! never reaches (default SIGTERM handler terminates its mock).
 //!
-//! This is the only coverage for the SigkillPending match arm and the
-//! process-group SIGKILL escalation path in `cli`.
+//! This specifically covers execution-deadline acceleration before SIGTERM;
+//! the adjacent execution-deadline boundary test covers the later
+//! SigkillPending window.
 //!
 //! See: https://github.com/vm0-ai/vm0/issues/10879
 
@@ -19,8 +20,13 @@ async fn post_result_reap_escalates_to_sigkill_when_sigterm_ignored()
     let mock = common::build_and_locate_mock()?;
     let tmp = tempfile::tempdir()?;
     unsafe {
-        // 1s sigterm (ignored by mock) + 1s sigkill (unignorable) → ~2s total.
-        common::setup_env(&mock, tmp.path(), "@hang-after-result-deaf", 1, 1)?;
+        // The 1s execution deadline expires after the terminal result but
+        // before the 60s post-result SIGTERM. It must advance the existing
+        // reaper without reclassifying semantic completion as an execution
+        // timeout. SIGTERM is ignored, then the 1s SIGKILL grace completes
+        // within the outer test bound.
+        common::setup_env(&mock, tmp.path(), "@hang-after-result-deaf", 60, 1)?;
+        std::env::set_var(guest_contracts::env::AGENT_EXECUTION_TIMEOUT_SECS_ENV, "1");
     }
 
     let runtime = common::guest_runtime_from_process_env()?;
@@ -28,14 +34,14 @@ async fn post_result_reap_escalates_to_sigkill_when_sigterm_ignored()
     let masker = guest_agent::masker::SecretMasker::from_raw("");
     let heartbeat = common::spawn_dummy_heartbeat();
 
-    // Budget: sigterm (1s, ignored) + sigkill (1s, unignorable) +
-    // stdout drain (5s) + slack = 15s.
+    // Without execution-deadline acceleration, the configured 60s
+    // post-result grace would exceed this bound.
     let result = tokio::time::timeout(
-        Duration::from_secs(15),
+        Duration::from_secs(10),
         common::execute_cli_for_runtime(&runtime, &masker, heartbeat),
     )
     .await
-    .expect("execute_cli did not return within 15s — sigkill escalation likely broken");
+    .expect("execute_cli did not return within 10s — deadline acceleration likely broken");
 
     let result = result.expect("execute_cli returned Err");
     let exit_code = result.exit_code;
