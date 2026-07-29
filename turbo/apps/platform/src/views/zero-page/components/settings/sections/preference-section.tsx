@@ -1,5 +1,6 @@
 import { useGet, useSet, useLoadable } from "ccstate-react";
 import { useLoadableSet } from "ccstate-react/experimental";
+import { useTranslation } from "react-i18next";
 import {
   IconSun,
   IconMoon,
@@ -33,15 +34,15 @@ import { LanguageSettings } from "../language-settings.tsx";
 
 const THEME_OPTIONS: readonly {
   value: ThemePreference;
-  label: string;
   icon: typeof IconSun;
 }[] = [
-  { value: "light", label: "Light", icon: IconSun },
-  { value: "dark", label: "Dark", icon: IconMoon },
-  { value: "system", label: "System", icon: IconDeviceDesktop },
+  { value: "light", icon: IconSun },
+  { value: "dark", icon: IconMoon },
+  { value: "system", icon: IconDeviceDesktop },
 ];
 
 function AppearanceBlock() {
+  const { t } = useTranslation();
   const prefLoadable = useLoadable(themePreference$);
   const current =
     prefLoadable.state === "hasData" ? prefLoadable.data : "system";
@@ -61,15 +62,33 @@ function AppearanceBlock() {
             </div>
           </div>
           <div className="flex flex-1 flex-col gap-1 min-w-0">
-            <div className="text-sm font-medium text-foreground">Theme</div>
+            <div className="text-sm font-medium text-foreground">
+              {t(($) => {
+                return $.settings.preferences.appearance.theme.title;
+              })}
+            </div>
             <div className="text-sm text-muted-foreground">
-              Your preferred color scheme
+              {t(($) => {
+                return $.settings.preferences.appearance.theme.description;
+              })}
             </div>
           </div>
         </div>
         <div className="flex flex-wrap gap-2 shrink-0">
-          {THEME_OPTIONS.map(({ value, label, icon: Icon }) => {
+          {THEME_OPTIONS.map(({ value, icon: Icon }) => {
             const isActive = current === value;
+            const label =
+              value === "light"
+                ? t(($) => {
+                    return $.settings.preferences.appearance.theme.light;
+                  })
+                : value === "dark"
+                  ? t(($) => {
+                      return $.settings.preferences.appearance.theme.dark;
+                    })
+                  : t(($) => {
+                      return $.settings.preferences.appearance.theme.system;
+                    });
             return (
               <button
                 key={value}
@@ -96,12 +115,10 @@ function AppearanceBlock() {
   );
 }
 
-const SEND_OPTIONS: readonly { value: SendMode; label: string }[] = [
-  { value: "enter", label: "Enter" },
-  { value: "cmd-enter", label: "⌘ Enter" },
-];
+const SEND_OPTIONS: readonly SendMode[] = ["enter", "cmd-enter"];
 
 function EnterBlock() {
+  const { t } = useTranslation();
   const prefsLoadable = useLoadable(sendMode$);
   const current: SendMode =
     prefsLoadable.state === "hasData" ? prefsLoadable.data : "enter";
@@ -131,19 +148,33 @@ function EnterBlock() {
           </div>
           <div className="flex flex-1 flex-col gap-1 min-w-0">
             <div className="text-sm font-medium text-foreground">
-              Send message with
+              {t(($) => {
+                return $.settings.preferences.send.title;
+              })}
             </div>
             <div className="text-sm text-muted-foreground">
               {effective === "enter"
-                ? "Press Enter to send, Shift+Enter for new line"
-                : "Press ⌘/Ctrl+Enter to send, Enter for new line"}
+                ? t(($) => {
+                    return $.settings.preferences.send.enterDescription;
+                  })
+                : t(($) => {
+                    return $.settings.preferences.send.cmdEnterDescription;
+                  })}
             </div>
           </div>
         </div>
         <div className="flex flex-wrap gap-2 shrink-0">
-          {SEND_OPTIONS.map(({ value, label }) => {
+          {SEND_OPTIONS.map((value) => {
             const isActive =
               saving === value ? true : saving === null && current === value;
+            const label =
+              value === "enter"
+                ? t(($) => {
+                    return $.settings.preferences.send.enter;
+                  })
+                : t(($) => {
+                    return $.settings.preferences.send.cmdEnter;
+                  });
             return (
               <button
                 key={value}
@@ -175,6 +206,7 @@ function EnterBlock() {
 }
 
 export function PreferenceSection() {
+  const { t } = useTranslation();
   const features = useGet(featureSwitch$);
   const showLanguagePreference =
     features[FeatureSwitchKey.LanguagePreference] ?? false;
@@ -182,14 +214,22 @@ export function PreferenceSection() {
   return (
     <div className="flex flex-col gap-8">
       <section className="flex flex-col gap-3">
-        <SettingsSectionHeading title="Account & Security" />
+        <SettingsSectionHeading
+          title={t(($) => {
+            return $.settings.preferences.account.sectionTitle;
+          })}
+        />
         <AccountSection />
       </section>
 
       <section className="flex flex-col gap-3">
         <SettingsSectionHeading
-          title="Appearance"
-          description="Choose how the interface looks."
+          title={t(($) => {
+            return $.settings.preferences.appearance.sectionTitle;
+          })}
+          description={t(($) => {
+            return $.settings.preferences.appearance.description;
+          })}
         />
         <AppearanceBlock />
         {showLanguagePreference && <LanguageSettings />}
@@ -197,16 +237,24 @@ export function PreferenceSection() {
 
       <section className="flex flex-col gap-3">
         <SettingsSectionHeading
-          title="Enter"
-          description="Choose how to send messages in chat."
+          title={t(($) => {
+            return $.settings.preferences.send.sectionTitle;
+          })}
+          description={t(($) => {
+            return $.settings.preferences.send.description;
+          })}
         />
         <EnterBlock />
       </section>
 
       <section className="flex flex-col gap-3">
         <SettingsSectionHeading
-          title="Time Zone"
-          description="Times shown to you and used for automation runs."
+          title={t(($) => {
+            return $.settings.preferences.timezone.sectionTitle;
+          })}
+          description={t(($) => {
+            return $.settings.preferences.timezone.description;
+          })}
         />
         <TimezoneSettings />
         <MorningBriefSettings />

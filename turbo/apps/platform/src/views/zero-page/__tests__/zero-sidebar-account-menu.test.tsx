@@ -1070,4 +1070,69 @@ describe("zero sidebar account menu", () => {
       expect(mockedClerk.redirectToSignIn).toHaveBeenCalledWith();
     });
   });
+
+  it("localizes account actions without changing account data or routes", async () => {
+    mockAdminAccountSidebar();
+    context.mocks.data.userPreferences({
+      locale: "pt-BR",
+      supportedLocales: ["en-US", "pt-BR"],
+    });
+    const openMock = context.mocks.browser.open(null);
+
+    detachedSetupPage({
+      context,
+      path: `/agents/${AGENT_ID}/chat`,
+      user: {
+        id: "test-user-123",
+        fullName: "Alex Rivera",
+        email: "alex.rivera@example.test",
+        clientSessions: [
+          {
+            id: "test-session-id",
+            status: "active",
+            user: {
+              fullName: "Alex Rivera",
+              primaryEmailAddress: {
+                emailAddress: "alex.rivera@example.test",
+              },
+            },
+          },
+          {
+            id: "session-jamie",
+            status: "active",
+            user: {
+              fullName: "Jamie Chen",
+              primaryEmailAddress: {
+                emailAddress: "jamie.chen@example.test",
+              },
+            },
+          },
+        ],
+      },
+      featureSwitches: { [FeatureSwitchKey.LanguagePreference]: true },
+    });
+
+    let menu = await openAccountMenu();
+    expect(within(menu).getByText("Alex Rivera")).toBeVisible();
+    expect(within(menu).getByText("alex.rivera@example.test")).toBeVisible();
+    expect(within(menu).getByText("Configurações")).toBeVisible();
+    expect(within(menu).getByText("Trocar de conta")).toBeVisible();
+    expect(within(menu).getByText("Exportar dados")).toBeVisible();
+    expect(within(menu).getByText("Sair")).toBeVisible();
+
+    click(within(menu).getByText("Exportar dados"));
+    await waitFor(() => {
+      expect(
+        openMock.calls.some((call) => {
+          return call.url?.endsWith("/export") ?? false;
+        }),
+      ).toBeTruthy();
+    });
+
+    menu = await openAccountMenu();
+    click(within(menu).getByText("Trocar de conta"));
+    expect(screen.getByText("Jamie Chen")).toBeVisible();
+    expect(screen.getByText("jamie.chen@example.test")).toBeVisible();
+    expect(screen.getByText("Adicionar conta")).toBeVisible();
+  });
 });

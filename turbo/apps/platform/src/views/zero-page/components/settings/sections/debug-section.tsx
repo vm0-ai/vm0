@@ -1,5 +1,6 @@
 import { useGet, useLoadable } from "ccstate-react";
 import { useLoadableSet } from "ccstate-react/experimental";
+import { useTranslation } from "react-i18next";
 import { IconBug } from "@tabler/icons-react";
 import { Switch } from "@vm0/ui/components/ui/switch";
 
@@ -15,6 +16,7 @@ import { ConnectorCatalogDiagnosticsBlock } from "../connector-catalog-diagnosti
 const CAPTURE_RUN_COUNT = 3;
 
 function CaptureNetworkBodiesBlock() {
+  const { t } = useTranslation();
   const remainingLoadable = useLoadable(captureNetworkBodiesRemaining$);
   const remaining =
     remainingLoadable.state === "hasData" ? remainingLoadable.data : 0;
@@ -42,12 +44,23 @@ function CaptureNetworkBodiesBlock() {
         </div>
         <div className="flex flex-1 flex-col gap-1 min-w-0">
           <div className="text-sm font-medium text-foreground">
-            Capture network bodies
+            {t(($) => {
+              return $.settings.preferences.debug.capture.title;
+            })}
           </div>
           <div className="text-sm text-muted-foreground">
             {enabled
-              ? `Enabled for the next ${remaining} run${remaining === 1 ? "" : "s"}`
-              : "Disabled"}
+              ? t(
+                  ($) => {
+                    return $.settings.preferences.debug.capture.enabled;
+                  },
+                  {
+                    count: remaining,
+                  },
+                )
+              : t(($) => {
+                  return $.settings.preferences.debug.capture.disabled;
+                })}
           </div>
         </div>
         <Switch

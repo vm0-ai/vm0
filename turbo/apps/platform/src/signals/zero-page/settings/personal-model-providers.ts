@@ -9,6 +9,7 @@ import {
   personalModelProviders$,
   resetPersonalCodexSubscriptionUsage$ as resetPersonalCodexSubscriptionUsageRequest$,
 } from "../../external/personal-model-providers.ts";
+import { i18n } from "../../../i18n/index.ts";
 
 // ---------------------------------------------------------------------------
 // Action promise (loading state)
@@ -67,7 +68,16 @@ export const disconnectPersonalOAuthCredential$ = command(
     const promise = (async () => {
       await set(deletePersonalModelProvider$, providerType, signal);
       signal.throwIfAborted();
-      toast.success(`${providerLabel} disconnected`);
+      toast.success(
+        i18n.t(
+          ($) => {
+            return $.settings.models.toasts.disconnected;
+          },
+          {
+            provider: providerLabel,
+          },
+        ),
+      );
     })();
 
     set(internalPersonalActionPromise$, promise);
@@ -94,19 +104,35 @@ export const resetPersonalCodexSubscriptionUsage$ = command(
 
       switch (result.outcome) {
         case "reset": {
-          toast.success("Codex usage reset");
+          toast.success(
+            i18n.t(($) => {
+              return $.settings.models.toasts.reset;
+            }),
+          );
           break;
         }
         case "nothingToReset": {
-          toast.info("Codex usage does not need a reset right now");
+          toast.info(
+            i18n.t(($) => {
+              return $.settings.models.toasts.resetUnneeded;
+            }),
+          );
           break;
         }
         case "noCredit": {
-          toast.error("No Codex usage resets available");
+          toast.error(
+            i18n.t(($) => {
+              return $.settings.models.toasts.resetUnavailable;
+            }),
+          );
           break;
         }
         case "alreadyRedeemed": {
-          toast.success("Codex usage reset");
+          toast.success(
+            i18n.t(($) => {
+              return $.settings.models.toasts.reset;
+            }),
+          );
           break;
         }
       }
