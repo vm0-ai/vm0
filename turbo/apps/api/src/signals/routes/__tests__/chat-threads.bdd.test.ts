@@ -1666,12 +1666,20 @@ describe("CHAT-01 chat thread read state", () => {
         return [event.eventType, event.content] as const;
       }),
     ).toStrictEqual([
-      ["input.prompt", "cursor round one"],
-      ["input.rejected", "cursor round one"],
+      ["input.prompt", null],
+      ["input.rejected", null],
       ["output.error", expect.stringContaining("Insufficient credits")],
-      ["input.prompt", "cursor round two"],
-      ["input.rejected", "cursor round two"],
+      ["input.prompt", null],
+      ["input.rejected", null],
       ["output.error", expect.stringContaining("Insufficient credits")],
+    ]);
+    expect(full.events.map(chatEventDisplayText)).toStrictEqual([
+      "cursor round one",
+      "cursor round one",
+      expect.stringContaining("Insufficient credits"),
+      "cursor round two",
+      "cursor round two",
+      expect.stringContaining("Insufficient credits"),
     ]);
     const seqIds = full.events.map((message) => {
       return message.seqId;
