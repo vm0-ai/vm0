@@ -1,6 +1,7 @@
 """Tests for mitm addon configuration hooks."""
 
 import importlib.util
+import json
 import sys
 import uuid
 from collections.abc import Sequence
@@ -11,6 +12,7 @@ from unittest.mock import patch
 import pytest
 from mitmproxy.addonmanager import Loader
 
+import logging_utils
 import mitm_addon
 import platform_api
 import runner_flush_lifecycle
@@ -145,21 +147,44 @@ class TestAddonConfiguration:
         state = assert_pending(pending_path, flows=0, buffered=0, reports=0)
         assert state["usageStateId"] == "runner-usage-state-id"
 
-    def test_configure_writes_addon_ready_marker_with_usage_state_id(self, tmp_path):
+    def test_configure_starts_jsonl_watcher_before_addon_ready(self, tmp_path):
         ready_path = tmp_path / "addon-ready"
+        log_path = tmp_path / "network.jsonl"
+        (tmp_path / "jsonl-flush-request").write_text(
+            json.dumps(
+                {
+                    "usageStateId": "runner-usage-state-id",
+                    "flushRequestId": "jsonl-request-1",
+                    "requestedAtMs": 1_770_000_000_000,
+                    "path": str(log_path),
+                }
+            )
+        )
 
         with (
             patch.object(mitm_addon, "__file__", _addon_file_path(tmp_path)),
+            patch.object(runner_flush_lifecycle, "__file__", str(tmp_path / "runner_flush.py")),
             patch.object(
                 mitm_addon.ctx,
                 "options",
                 _Options(addon_ready_path=str(ready_path)),
                 create=True,
             ),
+            patch.object(logging_utils, "flush_log_path", return_value=True) as flush_log_path,
         ):
             mitm_addon.configure({"vm0_addon_ready_path", "vm0_usage_state_id"})
+            mitm_addon.configure({"vm0_addon_ready_path", "vm0_usage_state_id"})
+            runner_flush_lifecycle.stop_runner_jsonl_flush_worker_for_tests()
 
         assert ready_path.read_text(encoding="utf-8") == "runner-usage-state-id"
+        state = json.loads((tmp_path / "jsonl-flush-state").read_text())
+        assert state["flushRequestId"] == "jsonl-request-1"
+        assert state["path"] == str(log_path)
+        assert state["pending"] == 0
+        flush_log_path.assert_called_once_with(
+            str(log_path),
+            timeout=runner_flush_lifecycle.RUNNER_JSONL_FLUSH_TIMEOUT_SECONDS,
+        )
 
     def test_configure_writes_fallback_pending_state_id_when_usage_state_id_is_empty(
         self, tmp_path
