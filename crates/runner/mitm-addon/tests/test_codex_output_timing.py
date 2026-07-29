@@ -10,6 +10,7 @@ from unittest.mock import patch
 import pytest
 from mitmproxy import http
 
+import codex_output_timing
 import flow_metadata_keys as metadata_keys
 import mitm_addon
 import usage
@@ -21,8 +22,13 @@ from tests.model_provider_websocket_helpers import (
     feed_websocket_server_message,
     set_websocket_message,
 )
+from tests.pending_helpers import assert_current_pending, assert_pending
 from tests.usage_helpers import CapturedWebhookRequest, UsageWebhookServer
-from tests.webhook_test_helpers import QueuedUsageExecutor
+from tests.webhook_test_helpers import (
+    QueuedUsageExecutor,
+    install_runner_usage_flush_request,
+    request_runner_usage_flush,
+)
 from usage import json_probe
 
 _TELEMETRY_PATH = "/api/webhooks/agent/telemetry"
@@ -224,7 +230,53 @@ def test_server_websocket_event_type_is_probed_once(
     assert probe_calls == 1
 
 
-def test_saturated_delivery_retries_with_original_observation_times(
+def test_eviction_and_reset_release_retained_buffered_report(
+    tmp_path: Path,
+    real_flow,
+    mitm_ctx,
+) -> None:
+    pending_path = tmp_path / "usage-pending"
+    usage.set_pending_path(str(pending_path))
+
+    with (
+        mitm_ctx(api_url="https://api.test"),
+        patch.object(
+            usage.webhook,
+            "enqueue_webhook_delivery",
+            return_value=False,
+        ),
+        patch.object(codex_output_timing, "_MAX_TRACKED_RUNS", 1),
+    ):
+        first_flow = make_openai_responses_websocket_flow(real_flow, tmp_path)
+        first_flow.metadata[metadata_keys.VM_RUN_ID] = "run-first"
+        mitm_addon.responseheaders(first_flow)
+        _feed_generated_response(first_flow, include_text=False)
+
+        second_flow = make_openai_responses_websocket_flow(real_flow, tmp_path)
+        second_flow.metadata[metadata_keys.VM_RUN_ID] = "run-second"
+        mitm_addon.responseheaders(second_flow)
+        _feed_generated_response(second_flow, include_text=False)
+
+        assert_current_pending(
+            pending_path,
+            flows=0,
+            buffered=1,
+            reports=0,
+            flush_request_id="after-eviction",
+        )
+
+        codex_output_timing.reset_for_tests()
+
+    assert_current_pending(
+        pending_path,
+        flows=0,
+        buffered=0,
+        reports=0,
+        flush_request_id="after-reset",
+    )
+
+
+def test_repeated_runner_flush_retries_saturated_timing_after_websocket_end(
     tmp_path: Path,
     real_flow,
     mitm_ctx,
@@ -232,6 +284,8 @@ def test_saturated_delivery_retries_with_original_observation_times(
 ) -> None:
     flow = make_openai_responses_websocket_flow(real_flow, tmp_path)
     executor = QueuedUsageExecutor()
+    pending_path = install_runner_usage_flush_request(tmp_path)
+    secret = "provider-secret-that-must-not-be-reported"
 
     with (
         mitm_ctx(api_url=usage_webhook_server.api_url),
@@ -247,21 +301,40 @@ def test_saturated_delivery_retries_with_original_observation_times(
                 "usage_event",
             )
 
-        feed_websocket_server_message(flow, _event("response.created"))
-        feed_websocket_server_message(flow, _event("response.output_item.added"))
+        _feed_generated_response(flow, secret=secret)
+        feed_websocket_server_message(flow, _event("response.completed", secret=secret))
+        mitm_addon.websocket_end(flow)
         assert _timing_requests(usage_webhook_server) == []
 
-        first_delivery, first_args, first_kwargs = executor.submissions.pop(0)
-        assert callable(first_delivery)
-        first_delivery(*first_args, **first_kwargs)
-        retry_started_at = datetime.now(UTC)
-        feed_websocket_server_message(flow, _event("response.output_text.delta"))
+        first_flush_started_at = datetime.now(UTC)
+        request_runner_usage_flush()
+        assert_pending(
+            pending_path,
+            flows=0,
+            buffered=1,
+            reports=usage.webhook.MAX_PENDING_WEBHOOK_PAYLOADS,
+            flush_request_id="request-1",
+        )
 
-        submissions = list(executor.submissions)
-        executor.submissions.clear()
-        for delivery, args, kwargs in submissions:
-            assert callable(delivery)
-            delivery(*args, **kwargs)
+        executor.run_next()
+        request_runner_usage_flush()
+        assert_pending(
+            pending_path,
+            flows=0,
+            buffered=0,
+            reports=usage.webhook.MAX_PENDING_WEBHOOK_PAYLOADS,
+            flush_request_id="request-1",
+        )
+
+        executor.run_all()
+        request_runner_usage_flush()
+        assert_pending(
+            pending_path,
+            flows=0,
+            buffered=0,
+            reports=0,
+            flush_request_id="request-1",
+        )
 
     [request] = _timing_requests(usage_webhook_server)
     operations = _operations([request])
@@ -273,5 +346,6 @@ def test_saturated_delivery_retries_with_original_observation_times(
     created_at = datetime.fromisoformat(str(operations[0]["ts"]))
     output_at = datetime.fromisoformat(str(operations[1]["ts"]))
     text_at = datetime.fromisoformat(str(operations[2]["ts"]))
-    assert created_at <= output_at <= retry_started_at <= text_at
+    assert created_at <= output_at <= text_at <= first_flush_started_at
+    assert secret.encode() not in request.body
     assert usage.webhook.pending_delivery_payload_count_for_tests() == 0

@@ -24,6 +24,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@vm0/ui";
+import { useTranslation } from "react-i18next";
 import type { ArtifactRef } from "../../signals/chat-page/thread-sidebar.ts";
 import {
   CsvPreviewTable,
@@ -231,6 +232,7 @@ function ArtifactSidebarContent({
   text$,
   threadId,
 }: ArtifactSidebarContentProps) {
+  useTranslation();
   const fullscreen = fullscreenState.active;
   const toggleFullscreen = fullscreenState.toggle;
   const resetZoomableImageCanvasZoom = useSet(resetZoomableImageCanvasZoom$);
@@ -540,16 +542,23 @@ function ArtifactSidebarHeader({
   onToggleFullscreen: () => void;
   onClose: () => void;
 }) {
+  const { t } = useTranslation();
   const compactActions = onBack !== undefined;
 
   return (
     <div className="flex min-h-14 shrink-0 items-center gap-3 border-b border-border/60 px-4 py-2">
       {onBack && (
-        <ArtifactActionTooltip label="Back to all artifacts">
+        <ArtifactActionTooltip
+          label={t(($) => {
+            return $.artifacts.actions.backToAll;
+          })}
+        >
           <button
             type="button"
             onClick={onBack}
-            aria-label="Back to all artifacts"
+            aria-label={t(($) => {
+              return $.artifacts.actions.backToAll;
+            })}
             className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted/60 hover:text-foreground"
           >
             <IconArrowLeft size={16} />
@@ -639,12 +648,20 @@ function ArtifactSidebarPreviewActions({
   title: string;
   url: string;
 }) {
+  const { t } = useTranslation();
   return (
     <>
       {kind === "html" && <ArtifactOpenExternalAction url={url} />}
-      <ArtifactShareButton ariaLabel="Share artifact" url={url} />
+      <ArtifactShareButton
+        ariaLabel={t(($) => {
+          return $.artifacts.actions.shareArtifact;
+        })}
+        url={url}
+      />
       <ArtifactDownloadMenu
-        ariaLabel="Download artifact"
+        ariaLabel={t(($) => {
+          return $.artifacts.actions.downloadArtifact;
+        })}
         artifactKind={artifactKind}
         filename={title}
         menuInstanceKey="artifact-sidebar"
@@ -657,13 +674,20 @@ function ArtifactSidebarPreviewActions({
 }
 
 function ArtifactOpenExternalAction({ url }: { url: string }) {
+  const { t } = useTranslation();
   return (
-    <ArtifactActionTooltip label="Open in new tab">
+    <ArtifactActionTooltip
+      label={t(($) => {
+        return $.artifacts.actions.openNewTab;
+      })}
+    >
       <a
         href={publicAttachmentUrl(url)}
         target="_blank"
         rel="noopener noreferrer"
-        aria-label="Open in new tab"
+        aria-label={t(($) => {
+          return $.artifacts.actions.openNewTab;
+        })}
         data-testid="artifact-sidebar-open-external"
         className="inline-flex h-8 w-8 items-center justify-center rounded-md text-muted-foreground hover:bg-muted/60 hover:text-foreground"
       >
@@ -680,14 +704,20 @@ function ArtifactFullscreenAction({
   fullscreen: boolean;
   onToggleFullscreen: () => void;
 }) {
+  const { t } = useTranslation();
+  const label = fullscreen
+    ? t(($) => {
+        return $.artifacts.actions.exitFullscreen;
+      })
+    : t(($) => {
+        return $.artifacts.actions.enterFullscreen;
+      });
   return (
-    <ArtifactActionTooltip
-      label={fullscreen ? "Exit fullscreen" : "Enter fullscreen"}
-    >
+    <ArtifactActionTooltip label={label}>
       <button
         type="button"
         onClick={onToggleFullscreen}
-        aria-label={fullscreen ? "Exit fullscreen" : "Enter fullscreen"}
+        aria-label={label}
         data-testid="artifact-sidebar-fullscreen-toggle"
         className="hidden xl:inline-flex h-8 w-8 items-center justify-center rounded-md text-muted-foreground hover:bg-muted/60 hover:text-foreground"
       >
@@ -702,13 +732,20 @@ function ArtifactFullscreenAction({
 }
 
 function ArtifactMoreActions({ onClose }: { onClose: () => void }) {
+  const { t } = useTranslation();
   return (
     <DropdownMenu>
-      <ArtifactActionTooltip label="More artifact actions">
+      <ArtifactActionTooltip
+        label={t(($) => {
+          return $.artifacts.actions.more;
+        })}
+      >
         <DropdownMenuTrigger asChild>
           <button
             type="button"
-            aria-label="More artifact actions"
+            aria-label={t(($) => {
+              return $.artifacts.actions.more;
+            })}
             className="inline-flex h-8 w-8 items-center justify-center rounded-md text-muted-foreground hover:bg-muted/60 hover:text-foreground"
           >
             <IconDots size={16} />
@@ -716,19 +753,30 @@ function ArtifactMoreActions({ onClose }: { onClose: () => void }) {
         </DropdownMenuTrigger>
       </ArtifactActionTooltip>
       <DropdownMenuContent align="end">
-        <DropdownMenuItem onClick={onClose}>Close preview</DropdownMenuItem>
+        <DropdownMenuItem onClick={onClose}>
+          {t(($) => {
+            return $.artifacts.actions.closePreviewMenu;
+          })}
+        </DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>
   );
 }
 
 function ArtifactCloseAction({ onClose }: { onClose: () => void }) {
+  const { t } = useTranslation();
   return (
-    <ArtifactActionTooltip label="Close artifact">
+    <ArtifactActionTooltip
+      label={t(($) => {
+        return $.artifacts.actions.closeArtifact;
+      })}
+    >
       <button
         type="button"
         onClick={onClose}
-        aria-label="Close artifact"
+        aria-label={t(($) => {
+          return $.artifacts.actions.closeArtifact;
+        })}
         data-testid="artifact-sidebar-close"
         className="inline-flex h-8 w-8 items-center justify-center rounded-full text-muted-foreground hover:bg-muted/60 hover:text-foreground"
       >
@@ -755,25 +803,38 @@ function ArtifactBody({
   fullscreen: boolean;
   text$?: TextPreviewComputed;
 }) {
+  const { t } = useTranslation();
   if (kind === "markdown") {
     return text$ ? (
       <ArtifactMarkdownBody text$={text$} />
     ) : (
-      <ArtifactBodyError message="Preview unavailable." />
+      <ArtifactBodyError
+        message={t(($) => {
+          return $.artifacts.preview.genericUnavailable;
+        })}
+      />
     );
   }
   if (kind === "text" || kind === "json") {
     return text$ ? (
       <ArtifactPlainTextBody kind={kind} text$={text$} />
     ) : (
-      <ArtifactBodyError message="Preview unavailable." />
+      <ArtifactBodyError
+        message={t(($) => {
+          return $.artifacts.preview.genericUnavailable;
+        })}
+      />
     );
   }
   if (kind === "csv") {
     return text$ ? (
       <ArtifactCsvBody text$={text$} />
     ) : (
-      <ArtifactBodyError message="Preview unavailable." />
+      <ArtifactBodyError
+        message={t(($) => {
+          return $.artifacts.preview.genericUnavailable;
+        })}
+      />
     );
   }
   if (kind === "image") {
@@ -881,6 +942,7 @@ function ArtifactStageCard({
 }
 
 function ArtifactMarkdownBody({ text$ }: { text$: TextPreviewComputed }) {
+  const { t } = useTranslation();
   return (
     <TextPreviewLoader text$={text$}>
       {({ status, text }) => {
@@ -897,7 +959,18 @@ function ArtifactMarkdownBody({ text$ }: { text$: TextPreviewComputed }) {
           return (
             <ArtifactStageShell>
               <ArtifactStageCard>
-                <ArtifactBodyError message="Markdown preview unavailable." />
+                <ArtifactBodyError
+                  message={t(
+                    ($) => {
+                      return $.artifacts.preview.unavailable;
+                    },
+                    {
+                      kind: t(($) => {
+                        return $.artifacts.kinds.markdown;
+                      }),
+                    },
+                  )}
+                />
               </ArtifactStageCard>
             </ArtifactStageShell>
           );
@@ -923,6 +996,7 @@ function ArtifactPlainTextBody({
   kind: "text" | "json";
   text$: TextPreviewComputed;
 }) {
+  const { t } = useTranslation();
   return (
     <TextPreviewLoader text$={text$}>
       {({ status, text }) => {
@@ -942,8 +1016,26 @@ function ArtifactPlainTextBody({
                 <ArtifactBodyError
                   message={
                     kind === "json"
-                      ? "JSON preview unavailable."
-                      : "Text preview unavailable."
+                      ? t(
+                          ($) => {
+                            return $.artifacts.preview.unavailable;
+                          },
+                          {
+                            kind: t(($) => {
+                              return $.artifacts.kinds.json;
+                            }),
+                          },
+                        )
+                      : t(
+                          ($) => {
+                            return $.artifacts.preview.unavailable;
+                          },
+                          {
+                            kind: t(($) => {
+                              return $.artifacts.kinds.text;
+                            }),
+                          },
+                        )
                   }
                 />
               </ArtifactStageCard>
@@ -977,6 +1069,7 @@ function formatBodyText(kind: "text" | "json", text: string): string {
 }
 
 function ArtifactCsvBody({ text$ }: { text$: TextPreviewComputed }) {
+  const { t } = useTranslation();
   return (
     <TextPreviewLoader text$={text$}>
       {({ status, text }) => {
@@ -993,7 +1086,18 @@ function ArtifactCsvBody({ text$ }: { text$: TextPreviewComputed }) {
           return (
             <ArtifactStageShell>
               <ArtifactStageCard>
-                <ArtifactBodyError message="CSV preview unavailable." />
+                <ArtifactBodyError
+                  message={t(
+                    ($) => {
+                      return $.artifacts.preview.unavailable;
+                    },
+                    {
+                      kind: t(($) => {
+                        return $.artifacts.kinds.csv;
+                      }),
+                    },
+                  )}
+                />
               </ArtifactStageCard>
             </ArtifactStageShell>
           );
@@ -1003,7 +1107,11 @@ function ArtifactCsvBody({ text$ }: { text$: TextPreviewComputed }) {
           return (
             <ArtifactStageShell>
               <ArtifactStageCard>
-                <ArtifactBodyError message="Empty CSV." />
+                <ArtifactBodyError
+                  message={t(($) => {
+                    return $.artifacts.preview.emptyCsv;
+                  })}
+                />
               </ArtifactStageCard>
             </ArtifactStageShell>
           );
@@ -1071,6 +1179,7 @@ function ArtifactImageNavigationControls({
 }: {
   navigation?: ArtifactImageNavigationActions;
 }) {
+  const { t } = useTranslation();
   if (!navigation?.onPrevious && !navigation?.onNext) {
     return null;
   }
@@ -1081,8 +1190,12 @@ function ArtifactImageNavigationControls({
         <button
           type="button"
           onClick={navigation.onPrevious}
-          aria-label="Previous image artifact"
-          title="Previous image artifact"
+          aria-label={t(($) => {
+            return $.artifacts.actions.previousImage;
+          })}
+          title={t(($) => {
+            return $.artifacts.actions.previousImage;
+          })}
           data-testid="artifact-sidebar-previous-image"
           className="absolute left-4 top-1/2 z-20 flex h-10 w-10 -translate-y-1/2 items-center justify-center rounded-full border border-border/60 bg-background/90 text-foreground shadow-lg backdrop-blur-sm transition-colors hover:bg-muted"
         >
@@ -1093,8 +1206,12 @@ function ArtifactImageNavigationControls({
         <button
           type="button"
           onClick={navigation.onNext}
-          aria-label="Next image artifact"
-          title="Next image artifact"
+          aria-label={t(($) => {
+            return $.artifacts.actions.nextImage;
+          })}
+          title={t(($) => {
+            return $.artifacts.actions.nextImage;
+          })}
           data-testid="artifact-sidebar-next-image"
           className="absolute right-4 top-1/2 z-20 flex h-10 w-10 -translate-y-1/2 items-center justify-center rounded-full border border-border/60 bg-background/90 text-foreground shadow-lg backdrop-blur-sm transition-colors hover:bg-muted"
         >
@@ -1110,6 +1227,7 @@ function ArtifactImageZoomControls({
 }: {
   controls: ZoomableImageControls;
 }) {
+  const { t } = useTranslation();
   return (
     <div
       className="absolute right-4 top-4 z-10 flex items-center gap-2 rounded-lg bg-background/95 px-2.5 py-1.5 text-muted-foreground shadow-sm backdrop-blur-sm"
@@ -1120,8 +1238,12 @@ function ArtifactImageZoomControls({
         onClick={controls.zoomOut}
         disabled={!controls.canZoomOut}
         className="flex h-5 w-5 items-center justify-center rounded-md text-sm leading-none transition-colors hover:bg-muted/70 hover:text-foreground disabled:pointer-events-none disabled:opacity-40"
-        aria-label="Zoom out"
-        title="Zoom out"
+        aria-label={t(($) => {
+          return $.artifacts.actions.zoomOut;
+        })}
+        title={t(($) => {
+          return $.artifacts.actions.zoomOut;
+        })}
         data-testid="artifact-sidebar-image-zoom-out"
       >
         -
@@ -1137,8 +1259,12 @@ function ArtifactImageZoomControls({
         onClick={controls.zoomIn}
         disabled={!controls.canZoomIn}
         className="flex h-5 w-5 items-center justify-center rounded-md text-sm leading-none transition-colors hover:bg-muted/70 hover:text-foreground disabled:pointer-events-none disabled:opacity-40"
-        aria-label="Zoom in"
-        title="Zoom in"
+        aria-label={t(($) => {
+          return $.artifacts.actions.zoomIn;
+        })}
+        title={t(($) => {
+          return $.artifacts.actions.zoomIn;
+        })}
         data-testid="artifact-sidebar-image-zoom-in"
       >
         +
@@ -1147,8 +1273,12 @@ function ArtifactImageZoomControls({
         type="button"
         onClick={controls.resetZoom}
         className="flex h-5 w-5 items-center justify-center rounded-md transition-colors hover:bg-muted/70 hover:text-foreground"
-        aria-label="Reset zoom"
-        title="Reset zoom"
+        aria-label={t(($) => {
+          return $.artifacts.actions.resetZoom;
+        })}
+        title={t(($) => {
+          return $.artifacts.actions.resetZoom;
+        })}
         data-testid="artifact-sidebar-image-reset-zoom"
       >
         <IconZoomReset size={15} stroke={1.8} />
@@ -1164,6 +1294,7 @@ function ArtifactVideoBody({
   url: string;
   filename: string;
 }) {
+  const { t } = useTranslation();
   return (
     <ArtifactStageShell centered>
       <div
@@ -1175,7 +1306,12 @@ function ArtifactVideoBody({
           controls
           playsInline
           className="block aspect-video w-full bg-black object-contain"
-          aria-label={`Video preview for ${filename}`}
+          aria-label={t(
+            ($) => {
+              return $.artifacts.preview.videoLabel;
+            },
+            { filename },
+          )}
           data-testid="artifact-sidebar-body-video"
         />
       </div>
@@ -1190,6 +1326,7 @@ function ArtifactAudioBody({
   url: string;
   filename: string;
 }) {
+  const { t } = useTranslation();
   return (
     <ArtifactStageShell centered>
       <div className="flex w-full max-w-[520px] flex-col items-center gap-4 rounded-xl border border-border/70 bg-background p-6 shadow-sm">
@@ -1199,7 +1336,12 @@ function ArtifactAudioBody({
           controls
           preload="metadata"
           className="w-full"
-          aria-label={`Audio preview for ${filename}`}
+          aria-label={t(
+            ($) => {
+              return $.artifacts.preview.audioLabel;
+            },
+            { filename },
+          )}
           data-testid="artifact-sidebar-body-audio"
         />
       </div>
@@ -1220,6 +1362,7 @@ function ArtifactIframeBody({
   artifactKind?: ChatThreadArtifactFile["artifactKind"];
   fullscreen: boolean;
 }) {
+  const { t } = useTranslation();
   // PDF Open Parameters: #navpanes=0 hides Chromium's built-in left rail
   // (thumbnails / bookmarks) so the embedded preview shows just the page
   // and toolbar by default. Firefox/PDF.js silently ignores it.
@@ -1234,7 +1377,12 @@ function ArtifactIframeBody({
           focusKey={`${publicUrl}:${fullscreen ? "fullscreen" : "sidebar"}`}
           focusOnMount={fullscreen && !isPresentationHtml}
           src={publicUrl}
-          title={`${filename} preview`}
+          title={t(
+            ($) => {
+              return $.artifacts.preview.dialogLabel;
+            },
+            { filename },
+          )}
           sandbox="allow-same-origin allow-scripts"
           tabIndex={isPresentationHtml ? -1 : undefined}
           className="h-full w-full border-0 bg-background"
@@ -1249,7 +1397,12 @@ function ArtifactIframeBody({
       <div className="flex h-full min-h-0 w-full flex-1 overflow-hidden rounded-xl border border-border/70 bg-background shadow-sm">
         <iframe
           src={src}
-          title={`${filename} preview`}
+          title={t(
+            ($) => {
+              return $.artifacts.preview.dialogLabel;
+            },
+            { filename },
+          )}
           className="h-full min-h-0 w-full border-0 bg-background"
           data-testid={`artifact-sidebar-body-${kind}`}
         />
@@ -1259,10 +1412,15 @@ function ArtifactIframeBody({
 }
 
 function ArtifactGenericBody({ filename }: { filename: string }) {
+  const { t } = useTranslation();
   return (
     <ArtifactStageShell centered>
       <div className="flex w-full max-w-md flex-col items-center justify-center gap-3 rounded-xl border border-border/70 bg-background p-6 text-center text-muted-foreground shadow-sm">
-        <p className="text-sm">No inline preview available for this file.</p>
+        <p className="text-sm">
+          {t(($) => {
+            return $.artifacts.preview.noInline;
+          })}
+        </p>
         <p className="text-xs">{filename}</p>
       </div>
     </ArtifactStageShell>

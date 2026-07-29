@@ -2337,8 +2337,8 @@ async function validateUserMessageBackfillAndContract(): Promise<void> {
   );
 }
 
-const CANONICAL_USER_MESSAGE_PREVIOUS_MIGRATION = 726;
-const CANONICAL_USER_MESSAGE_CONTRACT_MIGRATION = 729;
+const CANONICAL_USER_MESSAGE_PREVIOUS_MIGRATION = 727;
+const CANONICAL_USER_MESSAGE_CONTRACT_MIGRATION = 730;
 
 async function validateCanonicalUserMessageRolloutCompatibility(): Promise<void> {
   console.log("=== Validate canonical userMessage rollout compatibility ===\n");

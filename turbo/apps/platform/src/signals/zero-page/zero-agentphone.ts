@@ -8,6 +8,7 @@ import {
 import { zeroClient$ } from "../api-client.ts";
 import { accept } from "../../lib/accept.ts";
 import { setAblyLoop$ } from "../realtime.ts";
+import { i18n } from "../../i18n/index.ts";
 
 const internalReload$ = state(0);
 const internalPhoneForm$ = state("");
@@ -53,7 +54,9 @@ export const agentPhonePhoneFormError$ = computed((get) => {
   }
   return isValidAgentPhoneHandle(get(agentPhonePhoneFormNormalized$))
     ? null
-    : "Enter a phone number with country code, like +1 555 555 1212.";
+    : i18n.t(($) => {
+        return $.connectors.providerSettings.errors.agentphonePhone;
+      });
 });
 
 export const setAgentPhonePhoneForm$ = command(({ set }, value: string) => {
@@ -113,11 +116,19 @@ function toastAgentPhoneStatusChange(
   next: AgentPhoneLinkStatusResponse,
 ): void {
   if (next.linked && !previous.linked) {
-    toast.success("AgentPhone connected");
+    toast.success(
+      i18n.t(($) => {
+        return $.connectors.providerSettings.toasts.agentphoneConnected;
+      }),
+    );
     return;
   }
   if (!next.linked && previous.linked) {
-    toast.success("AgentPhone disconnected");
+    toast.success(
+      i18n.t(($) => {
+        return $.connectors.providerSettings.toasts.agentphoneDisconnected;
+      }),
+    );
   }
 }
 
@@ -165,7 +176,9 @@ export const startAgentPhoneLink$ = command(
     const phoneHandle = get(agentPhonePhoneFormNormalized$);
     if (!isValidAgentPhoneHandle(phoneHandle)) {
       throw new Error(
-        "Enter a phone number with country code, like +1 555 555 1212.",
+        i18n.t(($) => {
+          return $.connectors.providerSettings.errors.agentphonePhone;
+        }),
       );
     }
 
@@ -182,7 +195,11 @@ export const startAgentPhoneLink$ = command(
     );
     signal.throwIfAborted();
     set(reloadAgentPhoneLinkStatus$);
-    toast.success("Verification text sent");
+    toast.success(
+      i18n.t(($) => {
+        return $.connectors.providerSettings.toasts.agentphoneVerificationSent;
+      }),
+    );
     return { phoneHandle, verificationSent: true };
   },
 );

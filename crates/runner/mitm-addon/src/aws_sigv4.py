@@ -139,16 +139,9 @@ def sign_request(
     _validate_credentials(credentials)
     _validate_headers(headers)
     context, signing_url = _classify_request(url, headers)
-    if context.algorithm == _ASYMMETRIC_ALGORITHM:
-        raise AwsSigV4SigningError("SigV4A is not supported by this runner")
-    if context.algorithm != _HMAC_ALGORITHM:
-        raise AwsSigV4SigningError("Unsupported AWS signing algorithm")
+    _validate_signing_context(context)
     if context.source_access_key_id == credentials.access_key_id:
         raise AwsSigV4SigningError("AWS request must use a placeholder access key ID")
-    if context.scope.region == "*":
-        raise AwsSigV4SigningError("Wildcard AWS signing region requires SigV4A")
-    if context.scope.service == _UNSUPPORTED_S3_EXPRESS_SIGNING_NAME:
-        raise AwsSigV4SigningError("S3 Express signing is not supported by this runner")
 
     is_s3 = context.scope.service in _S3_SIGNING_NAMES
     if context.location is _AuthLocation.QUERY:
@@ -170,6 +163,33 @@ def sign_request(
         context=context,
         is_s3=is_s3,
     )
+
+
+def request_requires_body_for_signing(
+    *,
+    url: str,
+    headers: list[tuple[str, str]],
+) -> bool:
+    """Return whether re-signing must hash the request body bytes."""
+    _validate_headers(headers)
+    context, _signing_url = _classify_request(url, headers)
+    _validate_signing_context(context)
+    if _content_hash_header_value(headers) is not None:
+        return False
+    return not (
+        context.location is _AuthLocation.QUERY and context.scope.service in _S3_SIGNING_NAMES
+    )
+
+
+def _validate_signing_context(context: _SigningContext) -> None:
+    if context.algorithm == _ASYMMETRIC_ALGORITHM:
+        raise AwsSigV4SigningError("SigV4A is not supported by this runner")
+    if context.algorithm != _HMAC_ALGORITHM:
+        raise AwsSigV4SigningError("Unsupported AWS signing algorithm")
+    if context.scope.region == "*":
+        raise AwsSigV4SigningError("Wildcard AWS signing region requires SigV4A")
+    if context.scope.service == _UNSUPPORTED_S3_EXPRESS_SIGNING_NAME:
+        raise AwsSigV4SigningError("S3 Express signing is not supported by this runner")
 
 
 def _classify_request(

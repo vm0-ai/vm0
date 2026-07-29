@@ -1,8 +1,9 @@
-"""Shared capped request streaming state for capture logging and X billing.
+"""Shared request streaming state for size, capture logging, and X billing.
 
-The pass-through buffer is consumed by network capture and X connector billing
-refinement. Terminal response and error handling retain its metadata through
-applicable connector usage reporting, then release it.
+The callback always counts pass-through bytes. Capture-enabled callers also
+retain a capped prefix consumed by network capture and X connector billing
+refinement. Terminal response and error handling retain the applicable metadata
+through connector usage reporting, then release it.
 """
 
 from typing import NamedTuple
@@ -20,8 +21,12 @@ class CapturedRequestStreamBody(NamedTuple):
     truncated: bool
 
 
-def configure_request_stream(flow: http.HTTPFlow) -> None:
-    """Enable capped shared body observation without modifying forwarded chunks."""
+def configure_request_stream(
+    flow: http.HTTPFlow,
+    *,
+    capture_body: bool = True,
+) -> None:
+    """Enable request-size observation and optional capped body capture."""
     if callable(flow.request.stream):
         return
 
@@ -31,7 +36,7 @@ def configure_request_stream(flow: http.HTTPFlow) -> None:
 
     def stream_and_buffer(chunk: bytes) -> bytes:
         state["total_bytes"] += len(chunk)
-        if not state["truncated"]:
+        if capture_body and not state["truncated"]:
             remaining = buf_limit - len(buf)
             if len(chunk) <= remaining:
                 buf.extend(chunk)
@@ -41,7 +46,8 @@ def configure_request_stream(flow: http.HTTPFlow) -> None:
         return chunk
 
     flow.request.stream = stream_and_buffer
-    flow.metadata[metadata_keys.REQUEST_STREAM_BUFFER] = buf
+    if capture_body:
+        flow.metadata[metadata_keys.REQUEST_STREAM_BUFFER] = buf
     flow.metadata[metadata_keys.REQUEST_STREAM_BUFFER_STATE] = state
     flow.metadata[_REQUEST_STREAM_CALLBACK] = stream_and_buffer
 

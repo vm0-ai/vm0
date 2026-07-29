@@ -30,7 +30,7 @@ import type {
 import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { HttpResponse } from "msw";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 
 import {
   click,
@@ -38,6 +38,8 @@ import {
   fill,
   queryAllByRoleFast,
 } from "../../../__tests__/page-helper.ts";
+import { initializeI18n } from "../../../i18n/index.ts";
+import { DEFAULT_LOCALE } from "../../../i18n/resources.ts";
 import { search } from "../../../signals/location.ts";
 import { setFeatureSwitch$ } from "../../../signals/external/feature-switch.ts";
 import { detachedNavigateTo$ } from "../../../signals/route.ts";
@@ -48,6 +50,11 @@ import { submitManualGrant$ } from "../../../signals/zero-page/settings/connecto
 
 const context = testContext();
 const resetAfterManualGrantConnectSignal$ = resetSignal();
+
+afterEach(async () => {
+  document.documentElement.lang = DEFAULT_LOCALE;
+  await initializeI18n(DEFAULT_LOCALE);
+});
 
 function createMockAuthWindow(): Window {
   const authWindow = context.mocks.browser.authWindow();
@@ -455,6 +462,154 @@ describe("connectors page", () => {
       aiGroup.compareDocumentPosition(engineeringGroup) &
         Node.DOCUMENT_POSITION_FOLLOWING,
     ).toBeTruthy();
+  });
+
+  it("localizes the catalog, reconnect state, and access management in Portuguese", async () => {
+    document.documentElement.lang = "pt-BR";
+    const researchAgentId = "c0000000-0000-4000-a000-000000000001";
+    mockConnectors([
+      { connectorSlug: "github", externalUsername: "octocat" },
+      {
+        connectorSlug: "meta-ads",
+        connectionStatus: "reconnect-required",
+        reconnectReason: "authorization_expired_or_revoked",
+      },
+    ]);
+    context.mocks.data.team([teamAgent(researchAgentId, "Research Agent")]);
+    context.mocks.api(zeroUserConnectorsContract.get, ({ respond }) => {
+      return respond(200, { enabledTypes: ["github"] });
+    });
+    context.mocks.api(zeroUserPermissionGrantsContract.list, ({ respond }) => {
+      return respond(200, []);
+    });
+
+    detachedSetupPage({
+      context,
+      path: "/connectors",
+      featureSwitches: { [FeatureSwitchKey.MetaAdsConnector]: true },
+    });
+
+    await expect(
+      screen.findByRole("heading", { name: "Conectores" }),
+    ).resolves.toBeInTheDocument();
+    expect(
+      screen.getByPlaceholderText("Buscar conectores"),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText("Engenharia e execução da equipe"),
+    ).toBeInTheDocument();
+
+    const metaAdsCard = connectorCardByLabel("Meta Ads");
+    expect(
+      within(metaAdsCard).getByText("A conexão expirou"),
+    ).toBeInTheDocument();
+    click(within(metaAdsCard).getByLabelText("Mais opções"));
+    await waitFor(() => {
+      expect(menuItemByText("Reconectar")).toBeInTheDocument();
+    });
+
+    click(
+      within(connectorCardByLabel("GitHub")).getByLabelText(
+        "Gerenciar acesso ao GitHub",
+      ),
+    );
+    const dialog = await screen.findByRole("dialog", {
+      name: "Gerenciar acesso ao GitHub",
+    });
+    expect(
+      within(dialog).getByText(
+        "Escolha quais agentes podem usar este conector.",
+      ),
+    ).toBeInTheDocument();
+    expect(
+      within(dialog).getByLabelText(
+        "Revogar acesso ao GitHub para Research Agent",
+      ),
+    ).toBeInTheDocument();
+  });
+
+  it("localizes the AI catalog subcategories in Portuguese", async () => {
+    document.documentElement.lang = "pt-BR";
+    mockConnectors([]);
+    mockPublicConnectorStatus(
+      [
+        publicStatusItem({
+          connectorSlug: "openai",
+          label: "OpenAI",
+          category: "ai-image-video",
+          authMethods: [],
+        }),
+        publicStatusItem({
+          connectorSlug: "elevenlabs",
+          label: "ElevenLabs",
+          category: "ai-voice-audio",
+          authMethods: [],
+        }),
+        publicStatusItem({
+          connectorSlug: "langfuse",
+          label: "Langfuse",
+          category: "ai-memory-tracing-eval",
+          authMethods: [],
+        }),
+        publicStatusItem({
+          connectorSlug: "axiom",
+          label: "Axiom",
+          category: "engineering-team-execution",
+          authMethods: [],
+        }),
+      ],
+      {
+        categories: [
+          {
+            id: "ai-image-video",
+            label: "Image / Video Generation",
+            menuLabel: "Image / Video",
+            groupId: "ai",
+          },
+          {
+            id: "ai-voice-audio",
+            label: "Voice / Audio",
+            menuLabel: "Voice / Audio",
+            groupId: "ai",
+          },
+          {
+            id: "ai-memory-tracing-eval",
+            label: "Memory / Tracing / Evaluation",
+            menuLabel: "Memory / Tracing",
+            groupId: "ai",
+          },
+          {
+            id: "engineering-team-execution",
+            label: "Engineering / Team Execution",
+            menuLabel: "Engineering",
+            groupId: null,
+          },
+        ],
+        groups: [{ id: "ai", label: "AI", menuLabel: "AI" }],
+      },
+    );
+
+    detachedSetupPage({ context, path: "/connectors" });
+
+    await expect(
+      screen.findByRole("heading", {
+        name: "Geração de imagens e vídeos",
+      }),
+    ).resolves.toBeInTheDocument();
+    expect(
+      screen.getByRole("heading", { name: "Voz e áudio" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("heading", {
+        name: "Memória, rastreamento e avaliação",
+      }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByTestId("connector-category-menu-ai-image-video"),
+    ).toHaveTextContent("Imagens e vídeos");
+    expect(
+      screen.getByTestId("connector-category-menu-ai-memory-tracing-eval"),
+    ).toHaveTextContent("Memória e avaliação");
   });
 
   it("renders connector icons from server-authored catalog descriptors", async () => {
@@ -1495,6 +1650,7 @@ describe("connectors page", () => {
     ["strava", "Strava"],
     ["todoist", "Todoist"],
     ["vercel", "Vercel"],
+    ["xero", "Xero"],
   ] as const)(
     "starts %s OAuth with the app callback",
     async (connectorSlug, label) => {

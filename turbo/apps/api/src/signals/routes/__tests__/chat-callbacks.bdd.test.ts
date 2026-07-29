@@ -1758,10 +1758,15 @@ Continue the JPM IJTXX Treasury allocation follow-up for issue #20818 and [ACME-
     const runPreparationStarted = createDeferredPromise<void>(context.signal);
     const releaseRunPreparation = deferredGate();
     useSecretKmsProbe((command, callNumber) => {
-      if (callNumber !== 2) {
+      if (callNumber === 1) {
         return undefined;
       }
-      runPreparationStarted.resolve(undefined);
+      // The terminal callback drain and the goal enqueue drain may both prepare
+      // this queued run. Hold every preparation so neither can win the final
+      // claim before the goal is paused.
+      if (!runPreparationStarted.settled()) {
+        runPreparationStarted.resolve(undefined);
+      }
       return releaseRunPreparation.wait().then(() => {
         return generateDataKeyOutput(command);
       });

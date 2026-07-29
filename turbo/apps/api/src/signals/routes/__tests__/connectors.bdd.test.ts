@@ -111,14 +111,18 @@ const CONNECTOR_OAUTH_COOKIE_CLEARS = [
 ] as const;
 
 describe("CONN-01 and CHAIN-CONNECTOR: connector discovery and manual grant lifecycle", () => {
-  it("authorizes a manual-grant connector for the requested agent in the connect request", async () => {
+  it("keeps a manual-grant connection and authorization when realtime publishing fails", async () => {
     const bdd = createBddApi(context);
     const actor = bdd.user();
     const agent = await authOrgApi.createAgent(actor, {
       displayName: "Manual Connector Agent",
     });
+    const publishError = new Error("Ably channel rate limit exceeded");
+    context.mocks.ably.publish
+      .mockRejectedValueOnce(publishError)
+      .mockRejectedValueOnce(publishError);
 
-    await connectorsApi.connectManualGrant(
+    const connected = await connectorsApi.connectManualGrant(
       actor,
       "openai",
       "api-token",
@@ -126,6 +130,13 @@ describe("CONN-01 and CHAIN-CONNECTOR: connector discovery and manual grant life
       agent.agentId,
     );
 
+    await expect(
+      connectorsApi.readConnectorBySlug(actor, "openai"),
+    ).resolves.toMatchObject({
+      id: connected.id,
+      type: "openai",
+      connectionStatus: "connected",
+    });
     await expect(
       authOrgApi.readEnabledConnectorSlugs(actor, agent.agentId),
     ).resolves.toContain("openai");

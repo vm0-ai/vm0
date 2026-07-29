@@ -2,8 +2,10 @@ import { connectorsSlugCallbackContract } from "@vm0/api-contracts/contracts/con
 import type { PublicConnectorCatalogIcon } from "@vm0/api-contracts/contracts/zero-connector-catalog";
 import { CONNECTOR_APP_OAUTH_CALLBACK_METADATA_STORAGE_KEY } from "@vm0/connectors/app-oauth-callback";
 import { screen, waitFor } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
+import { initializeI18n } from "../../../i18n/index.ts";
+import { DEFAULT_LOCALE } from "../../../i18n/resources.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { localStorageSignals } from "../../../signals/external/local-storage.ts";
 import { pathname, search } from "../../../signals/location.ts";
@@ -12,6 +14,11 @@ const context = testContext();
 const { set$: setConnectorAppOauthCallbackMetadata$ } = localStorageSignals(
   CONNECTOR_APP_OAUTH_CALLBACK_METADATA_STORAGE_KEY,
 );
+
+afterEach(async () => {
+  document.documentElement.lang = DEFAULT_LOCALE;
+  await initializeI18n(DEFAULT_LOCALE);
+});
 
 describe("connector callback page", () => {
   it("forwards provider parameters and renders a durable success page", async () => {
@@ -51,8 +58,9 @@ describe("connector callback page", () => {
       throw new Error("GitHub connector icon not found");
     }
     expect(connectorIcon).toHaveAttribute("src", githubIcon.url);
-    expect(screen.getByText("octocat")).toBeInTheDocument();
-    expect(screen.getByText(/You can close this window\./)).toBeInTheDocument();
+    expect(
+      screen.getByText("Connected as octocat. You can close this window."),
+    ).toBeInTheDocument();
     expect(observedQuery).toMatchObject({
       code: "oauth-code",
       state: "oauth-state",
@@ -104,6 +112,36 @@ describe("connector callback page", () => {
       expect(pathname()).toBe("/connectors/notion/callback/error");
     });
     expect(search()).toBe("?message=Provider+denied+access");
+  });
+
+  it("localizes connection failures in Portuguese while preserving provider errors", async () => {
+    document.documentElement.lang = "pt-BR";
+    context.mocks.api(
+      connectorsSlugCallbackContract.callback,
+      ({ respond }) => {
+        return respond(200, {
+          status: "error",
+          message: "Provider denied access",
+        });
+      },
+    );
+
+    detachedSetupPage({
+      context,
+      path: "/connectors/notion/callback?error=access_denied",
+      user: null,
+      session: null,
+    });
+
+    await expect(
+      screen.findByRole("heading", {
+        name: "Não foi possível conectar NOTION",
+      }),
+    ).resolves.toBeInTheDocument();
+    expect(screen.getByText(/Provider denied access/)).toBeInTheDocument();
+    expect(
+      screen.getByText(/Feche esta janela e tente novamente\./),
+    ).toBeInTheDocument();
   });
 
   it("restores a completed result page without replaying the callback", async () => {

@@ -2,8 +2,17 @@
 import type {
   GmailLabelAppliedEventConfig,
   GmailNewMessageEventConfig,
+  GithubDeploymentState,
+  GithubPullRequestReviewState,
+  GithubWorkflowRunConclusion,
   ZeroWorkflowAutomationSummary,
 } from "@vm0/api-contracts/contracts/zero-workflows";
+
+import { i18n } from "../../i18n/index.ts";
+
+function currentLocale(): string {
+  return i18n.resolvedLanguage ?? "en-US";
+}
 
 export function workflowTitle(workflow: {
   readonly name: string;
@@ -45,24 +54,145 @@ export function getWorkflowIntervalSecondOptions(
 export function formatWorkflowIntervalSeconds(seconds: number): string {
   if (seconds % 3600 === 0) {
     const hours = seconds / 3600;
-    return `${hours} ${hours === 1 ? "hour" : "hours"}`;
+    return i18n.t(
+      ($) => {
+        return $.workflows.automations.duration.hour;
+      },
+      { count: hours },
+    );
   }
   if (seconds % 60 === 0) {
     const minutes = seconds / 60;
-    return `${minutes} ${minutes === 1 ? "minute" : "minutes"}`;
+    return i18n.t(
+      ($) => {
+        return $.workflows.automations.duration.minute;
+      },
+      { count: minutes },
+    );
   }
-  return `${seconds} ${seconds === 1 ? "second" : "seconds"}`;
+  return i18n.t(
+    ($) => {
+      return $.workflows.automations.duration.second;
+    },
+    { count: seconds },
+  );
 }
 
 export function automationKindLabel(
   automation: ZeroWorkflowAutomationSummary,
 ): string {
   if (automation.kind === "schedule") {
-    return "Schedule automation";
+    return i18n.t(($) => {
+      return $.workflows.automations.common.scheduleAutomation;
+    });
   }
   return automation.eventType === "webhook-received"
-    ? "Webhook automation"
-    : "Event automation";
+    ? i18n.t(($) => {
+        return $.workflows.automations.common.webhookAutomation;
+      })
+    : i18n.t(($) => {
+        return $.workflows.automations.common.eventAutomation;
+      });
+}
+
+export function githubAutomationFilterValueLabel(
+  value:
+    | GithubDeploymentState
+    | GithubPullRequestReviewState
+    | GithubWorkflowRunConclusion,
+): string {
+  switch (value) {
+    case "success": {
+      return i18n.t(($) => {
+        return $.workflows.automations.github.option.success;
+      });
+    }
+    case "failure": {
+      return i18n.t(($) => {
+        return $.workflows.automations.github.option.failure;
+      });
+    }
+    case "cancelled": {
+      return i18n.t(($) => {
+        return $.workflows.automations.github.option.cancelled;
+      });
+    }
+    case "timed_out": {
+      return i18n.t(($) => {
+        return $.workflows.automations.github.option.timedOut;
+      });
+    }
+    case "action_required": {
+      return i18n.t(($) => {
+        return $.workflows.automations.github.option.actionRequired;
+      });
+    }
+    case "neutral": {
+      return i18n.t(($) => {
+        return $.workflows.automations.github.option.neutral;
+      });
+    }
+    case "skipped": {
+      return i18n.t(($) => {
+        return $.workflows.automations.github.option.skipped;
+      });
+    }
+    case "stale": {
+      return i18n.t(($) => {
+        return $.workflows.automations.github.option.stale;
+      });
+    }
+    case "startup_failure": {
+      return i18n.t(($) => {
+        return $.workflows.automations.github.option.startupFailure;
+      });
+    }
+    case "approved": {
+      return i18n.t(($) => {
+        return $.workflows.automations.github.option.approved;
+      });
+    }
+    case "changes_requested": {
+      return i18n.t(($) => {
+        return $.workflows.automations.github.option.changesRequested;
+      });
+    }
+    case "commented": {
+      return i18n.t(($) => {
+        return $.workflows.automations.github.option.commented;
+      });
+    }
+    case "error": {
+      return i18n.t(($) => {
+        return $.workflows.automations.github.option.error;
+      });
+    }
+    case "pending": {
+      return i18n.t(($) => {
+        return $.workflows.automations.github.option.pending;
+      });
+    }
+    case "in_progress": {
+      return i18n.t(($) => {
+        return $.workflows.automations.github.option.inProgress;
+      });
+    }
+    case "queued": {
+      return i18n.t(($) => {
+        return $.workflows.automations.github.option.queued;
+      });
+    }
+    case "waiting": {
+      return i18n.t(($) => {
+        return $.workflows.automations.github.option.waiting;
+      });
+    }
+    case "inactive": {
+      return i18n.t(($) => {
+        return $.workflows.automations.github.option.inactive;
+      });
+    }
+  }
 }
 
 type GmailMatchRules = NonNullable<GmailNewMessageEventConfig["match"]>;
@@ -73,11 +203,46 @@ export const GMAIL_TEXT_FIELDS: readonly {
   readonly field: GmailTextField;
   readonly label: string;
 }[] = [
-  { field: "from", label: "From" },
-  { field: "subject", label: "Subject" },
-  { field: "body", label: "Body" },
-  { field: "to", label: "To" },
-  { field: "cc", label: "Cc" },
+  {
+    field: "from",
+    get label() {
+      return i18n.t(($) => {
+        return $.workflows.automations.gmail.field.from;
+      });
+    },
+  },
+  {
+    field: "subject",
+    get label() {
+      return i18n.t(($) => {
+        return $.workflows.automations.gmail.field.subject;
+      });
+    },
+  },
+  {
+    field: "body",
+    get label() {
+      return i18n.t(($) => {
+        return $.workflows.automations.gmail.field.body;
+      });
+    },
+  },
+  {
+    field: "to",
+    get label() {
+      return i18n.t(($) => {
+        return $.workflows.automations.gmail.field.to;
+      });
+    },
+  },
+  {
+    field: "cc",
+    get label() {
+      return i18n.t(($) => {
+        return $.workflows.automations.gmail.field.cc;
+      });
+    },
+  },
 ];
 
 function formTextValue(form: FormData, name: string): string | undefined {
@@ -172,18 +337,51 @@ function textMatcherParts(
   matcher: GmailTextMatcher,
 ): string[] {
   const parts: string[] = [];
+  const fieldOption = GMAIL_TEXT_FIELDS.find((candidate) => {
+    return candidate.field === field;
+  });
+  if (!fieldOption) {
+    throw new Error(`Unknown Gmail text field: ${field}`);
+  }
+  const fieldLabel = fieldOption.label.toLocaleLowerCase(currentLocale());
   if (matcher.contains) {
-    parts.push(`${field} contains ${quote(matcher.contains)}`);
+    parts.push(
+      i18n.t(
+        ($) => {
+          return $.workflows.automations.gmail.summary.contains;
+        },
+        { field: fieldLabel, value: quote(matcher.contains) },
+      ),
+    );
   }
   if (matcher.containsAny) {
-    parts.push(`${field} contains any of ${quoteList(matcher.containsAny)}`);
+    parts.push(
+      i18n.t(
+        ($) => {
+          return $.workflows.automations.gmail.summary.containsAny;
+        },
+        { field: fieldLabel, value: quoteList(matcher.containsAny) },
+      ),
+    );
   }
   if (matcher.doesNotContain) {
-    parts.push(`${field} does not contain ${quote(matcher.doesNotContain)}`);
+    parts.push(
+      i18n.t(
+        ($) => {
+          return $.workflows.automations.gmail.summary.doesNotContain;
+        },
+        { field: fieldLabel, value: quote(matcher.doesNotContain) },
+      ),
+    );
   }
   if (matcher.doesNotContainAny) {
     parts.push(
-      `${field} does not contain any of ${quoteList(matcher.doesNotContainAny)}`,
+      i18n.t(
+        ($) => {
+          return $.workflows.automations.gmail.summary.doesNotContainAny;
+        },
+        { field: fieldLabel, value: quoteList(matcher.doesNotContainAny) },
+      ),
     );
   }
   return parts;
@@ -191,7 +389,14 @@ function textMatcherParts(
 
 function formatGmailMatchSummary(config: GmailNewMessageEventConfig): string {
   const parts: string[] = config.threadId
-    ? [`Thread ID is ${quote(config.threadId)}`]
+    ? [
+        i18n.t(
+          ($) => {
+            return $.workflows.automations.gmail.summary.threadId;
+          },
+          { value: quote(config.threadId) },
+        ),
+      ]
     : [];
   const match = config.match;
   if (match) {
@@ -202,7 +407,11 @@ function formatGmailMatchSummary(config: GmailNewMessageEventConfig): string {
       }
     }
   }
-  return parts.length > 0 ? parts.join("; ") : "all inbound messages";
+  return parts.length > 0
+    ? parts.join("; ")
+    : i18n.t(($) => {
+        return $.workflows.automations.gmail.allInboundMessages;
+      });
 }
 
 export function gmailAutomationTitle(
@@ -212,51 +421,88 @@ export function gmailAutomationTitle(
     return automation.scheduleSummary;
   }
   if (automation.eventType === "gmail-label-applied") {
-    return "Gmail label applied";
+    return i18n.t(($) => {
+      return $.workflows.automations.gmail.labelAppliedTitle;
+    });
   }
   if (automation.eventType === "gmail-new-message") {
-    return "Gmail new message";
+    return i18n.t(($) => {
+      return $.workflows.automations.gmail.newMessageTitle;
+    });
   }
   if (automation.eventType === "github-label-applied") {
-    return "GitHub label applied";
+    return i18n.t(($) => {
+      return $.workflows.automations.github.labelAppliedTitle;
+    });
   }
   if (automation.eventType === "github-workflow-job-completed") {
-    return "GitHub workflow job completed";
+    return i18n.t(($) => {
+      return $.workflows.automations.github.workflowJobTitle;
+    });
   }
   if (automation.eventType === "github-pull-request-review-submitted") {
-    return "GitHub pull request review submitted";
+    return i18n.t(($) => {
+      return $.workflows.automations.github.reviewTitle;
+    });
   }
   if (automation.eventType === "github-deployment-status-created") {
-    return "GitHub deployment status created";
+    return i18n.t(($) => {
+      return $.workflows.automations.github.deploymentStatusTitle;
+    });
   }
   if (automation.eventType === "github-issue-comment-created") {
-    return "GitHub issue comment created";
+    return i18n.t(($) => {
+      return $.workflows.automations.github.issueCommentTitle;
+    });
   }
   if (automation.eventType === "github-workflow-run-completed") {
-    return "GitHub workflow completed";
+    return i18n.t(($) => {
+      return $.workflows.automations.github.workflowRunTitle;
+    });
   }
   if (automation.eventType === "google-calendar-event-created") {
-    return "Google Calendar event created";
+    return i18n.t(($) => {
+      return $.workflows.automations.calendar.createdTitle;
+    });
   }
   if (automation.eventType === "google-calendar-event-updated") {
-    return "Google Calendar event updated";
+    return i18n.t(($) => {
+      return $.workflows.automations.calendar.updatedTitle;
+    });
   }
   if (automation.eventType === "google-calendar-event-cancelled") {
-    return "Google Calendar event cancelled";
+    return i18n.t(($) => {
+      return $.workflows.automations.calendar.cancelledTitle;
+    });
   }
   if (automation.eventType === "google-meet-transcript-generated") {
-    return "Google Meet transcript ready";
+    return i18n.t(($) => {
+      return $.workflows.automations.meet.transcriptReadyTitle;
+    });
   }
   if (automation.eventType === "notion-child-page-created") {
-    return "New Notion child page";
+    return i18n.t(($) => {
+      return $.workflows.automations.notion.childPageTitle;
+    });
   }
   if (automation.eventType === "notion-database-item-created") {
-    return "New Notion database item";
+    return i18n.t(($) => {
+      return $.workflows.automations.notion.databaseItemTitle;
+    });
   }
   if (automation.eventType === "notion-page-content-updated") {
-    return "Notion page content updated";
+    return i18n.t(($) => {
+      return $.workflows.automations.notion.contentUpdatedTitle;
+    });
   }
-  return "Webhook automation";
+  if (automation.eventType === "strapi-entry-published") {
+    return i18n.t(($) => {
+      return $.workflows.automations.strapi.entryPublishedTitle;
+    });
+  }
+  return i18n.t(($) => {
+    return $.workflows.automations.common.webhookAutomation;
+  });
 }
 
 function githubAutomationSummary(
@@ -267,29 +513,50 @@ function githubAutomationSummary(
 ): string | null {
   switch (automation.eventType) {
     case "github-label-applied": {
-      return `Label ${quote(automation.eventConfig.labelName)}`;
+      return i18n.t(
+        ($) => {
+          return $.workflows.automations.github.labelOnlySummary;
+        },
+        { label: quote(automation.eventConfig.labelName) },
+      );
     }
     case "github-workflow-run-completed":
     case "github-workflow-job-completed": {
       return (
-        automation.eventConfig.filters.conclusions?.join(", ") ?? "Any result"
+        automation.eventConfig.filters.conclusions
+          ?.map(githubAutomationFilterValueLabel)
+          .join(", ") ??
+        i18n.t(($) => {
+          return $.workflows.automations.github.anyResult;
+        })
       );
     }
     case "github-pull-request-review-submitted": {
       return (
-        automation.eventConfig.filters.reviewStates?.join(", ") ?? "Any review"
+        automation.eventConfig.filters.reviewStates
+          ?.map(githubAutomationFilterValueLabel)
+          .join(", ") ??
+        i18n.t(($) => {
+          return $.workflows.automations.github.anyReview;
+        })
       );
     }
     case "github-deployment-status-created": {
       return (
-        automation.eventConfig.filters.states?.join(", ") ??
-        "Any deployment state"
+        automation.eventConfig.filters.states
+          ?.map(githubAutomationFilterValueLabel)
+          .join(", ") ??
+        i18n.t(($) => {
+          return $.workflows.automations.github.anyDeploymentState;
+        })
       );
     }
     case "github-issue-comment-created": {
       return (
         automation.eventConfig.filters.commentPrefixes?.join(", ") ??
-        "Any comment"
+        i18n.t(($) => {
+          return $.workflows.automations.github.anyComment;
+        })
       );
     }
     default: {
@@ -305,7 +572,12 @@ export function gmailAutomationSummary(
     return null;
   }
   if (automation.eventType === "gmail-label-applied") {
-    return `Label ${quote(automation.eventConfig.labelName)}`;
+    return i18n.t(
+      ($) => {
+        return $.workflows.automations.gmail.labelSummary;
+      },
+      { label: quote(automation.eventConfig.labelName) },
+    );
   }
   if (automation.eventType === "gmail-new-message") {
     return formatGmailMatchSummary(automation.eventConfig);
@@ -319,26 +591,69 @@ export function gmailAutomationSummary(
     automation.eventType === "google-calendar-event-updated" ||
     automation.eventType === "google-calendar-event-cancelled"
   ) {
-    return `Calendar ${quote(automation.eventConfig.calendarId)}`;
+    return i18n.t(
+      ($) => {
+        return $.workflows.automations.calendar.summary;
+      },
+      { calendar: quote(automation.eventConfig.calendarId) },
+    );
   }
   if (automation.eventType === "google-meet-transcript-generated") {
-    return "Meetings you organize";
+    return i18n.t(($) => {
+      return $.workflows.automations.meet.summary;
+    });
   }
   if (automation.eventType === "notion-child-page-created") {
     const title = automation.eventConfig.parentPage.title;
-    return title ? `Parent page ${quote(title)}` : "Configured parent page";
+    return title
+      ? i18n.t(
+          ($) => {
+            return $.workflows.automations.notion.parentPageSummary;
+          },
+          { title: quote(title) },
+        )
+      : i18n.t(($) => {
+          return $.workflows.automations.notion.configuredParentPage;
+        });
   }
   if (automation.eventType === "notion-database-item-created") {
     const title = automation.eventConfig.dataSource.title;
-    return title ? `Database ${quote(title)}` : "Configured database";
+    return title
+      ? i18n.t(
+          ($) => {
+            return $.workflows.automations.notion.databaseSummary;
+          },
+          { title: quote(title) },
+        )
+      : i18n.t(($) => {
+          return $.workflows.automations.notion.configuredDatabase;
+        });
   }
   if (automation.eventType === "notion-page-content-updated") {
     if (automation.eventConfig.scope.type === "page") {
       const title = automation.eventConfig.scope.page.title;
-      return title ? `Page ${quote(title)}` : "Configured page";
+      return title
+        ? i18n.t(
+            ($) => {
+              return $.workflows.automations.notion.pageSummary;
+            },
+            { title: quote(title) },
+          )
+        : i18n.t(($) => {
+            return $.workflows.automations.notion.configuredPage;
+          });
     }
     const title = automation.eventConfig.scope.dataSource.title;
-    return title ? `Database ${quote(title)}` : "Configured database";
+    return title
+      ? i18n.t(
+          ($) => {
+            return $.workflows.automations.notion.databaseSummary;
+          },
+          { title: quote(title) },
+        )
+      : i18n.t(($) => {
+          return $.workflows.automations.notion.configuredDatabase;
+        });
   }
   return null;
 }

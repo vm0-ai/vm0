@@ -380,13 +380,35 @@ fn live_pids_for_wait(pid: u32) -> Vec<u32> {
     pids
 }
 
+fn exact_pid_has_exited(pid: u32) -> bool {
+    match proc_stat(pid) {
+        Some(stat) => stat.state == 'Z',
+        None => {
+            // SAFETY: `kill` with sig=0 is a no-op existence check.
+            let result = unsafe { libc::kill(pid as libc::pid_t, 0) };
+            result < 0 && std::io::Error::last_os_error().raw_os_error() == Some(libc::ESRCH)
+        }
+    }
+}
+
+fn pidfd_open_error_means_exited(pid: u32, err: &std::io::Error) -> bool {
+    match err.raw_os_error() {
+        Some(libc::ESRCH) => true,
+        // Older kernels can return EINVAL when the process is reaped between
+        // discovery in /proc and pidfd_open. Preserve EINVAL for live or
+        // uncertain PIDs so invalid pidfd calls still fail the test.
+        Some(libc::EINVAL) => exact_pid_has_exited(pid),
+        _ => false,
+    }
+}
+
 fn open_pidfd_if_live(pid: u32) -> Option<std::io::Result<OwnedFd>> {
     // SAFETY: `pidfd_open` does not dereference user pointers and returns a
     // new file descriptor for the requested PID on success.
     let fd = unsafe { libc::syscall(libc::SYS_pidfd_open, pid as libc::pid_t, 0) };
     if fd < 0 {
         let err = std::io::Error::last_os_error();
-        if err.raw_os_error() == Some(libc::ESRCH) {
+        if pidfd_open_error_means_exited(pid, &err) {
             return None;
         }
         return Some(Err(err));
@@ -477,6 +499,44 @@ mod tests {
         );
         kill_pid_group(pid);
         wait_for_pid_exit(pid, "test cleanup for reaped leader live group");
+        group_guard.disarm();
+    }
+
+    #[test]
+    fn pidfd_einval_requires_exact_pid_exit() {
+        use std::os::unix::process::CommandExt;
+
+        let pid_path = unique_pid_path("pidfd-einval-exact-pid");
+        let mut group_guard = ProcessGroupFileGuard::new(pid_path.as_str());
+        let mut child = std::process::Command::new("sh")
+            .arg("-c")
+            .arg(format!(
+                "printf '%s' \"$$\" > '{}'; exec sleep 30",
+                pid_path.as_str()
+            ))
+            .process_group(0)
+            .spawn()
+            .unwrap();
+        let pid = group_guard.read_pid();
+
+        let einval = std::io::Error::from_raw_os_error(libc::EINVAL);
+        assert!(
+            !pidfd_open_error_means_exited(pid, &einval),
+            "EINVAL must remain an error while the exact PID is live"
+        );
+        let esrch = std::io::Error::from_raw_os_error(libc::ESRCH);
+        assert!(
+            pidfd_open_error_means_exited(pid, &esrch),
+            "ESRCH must continue to mean the PID disappeared"
+        );
+
+        kill_pid_group(pid);
+        child.wait().unwrap();
+
+        assert!(
+            pidfd_open_error_means_exited(pid, &einval),
+            "EINVAL should mean exit once the exact PID is reaped"
+        );
         group_guard.disarm();
     }
 

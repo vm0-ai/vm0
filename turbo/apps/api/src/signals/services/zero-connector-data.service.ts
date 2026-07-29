@@ -9,7 +9,6 @@ import {
 } from "@vm0/api-contracts/contracts/connector-schemas";
 import type { ConnectorSlug } from "@vm0/api-contracts/contracts/connector-identity";
 import type { ConnectorSearchItem } from "@vm0/api-contracts/contracts/zero-connectors";
-import type { ConnectorChangedPayload } from "@vm0/api-contracts/contracts/realtime";
 import {
   connectorAuthMethodGrantMetadata,
   connectorAuthMethodOwnedSecretNames,
@@ -36,7 +35,7 @@ import { z } from "zod";
 import { optionalEnv } from "../../lib/env";
 import { nowDate } from "../../lib/time";
 import { db$, type Db, type ReadonlyDb, writeDb$ } from "../external/db";
-import { publishUserSignal } from "../external/realtime";
+import { publishConnectorChangedForUserSafely } from "../external/realtime";
 import { bestEffort } from "../utils";
 import {
   decryptStoredSecretValue,
@@ -288,9 +287,7 @@ async function finalizeConnectorStateChangeAfterCommit(args: {
     }
   }
 
-  await publishUserSignal([args.userId], "connector:changed", {
-    connectorRef: args.connectorSlug,
-  } satisfies ConnectorChangedPayload);
+  await publishConnectorChangedForUserSafely(args.userId, args.connectorSlug);
   if (args.signal.aborted) {
     postCommitAbort ??= args.signal.reason;
   }
