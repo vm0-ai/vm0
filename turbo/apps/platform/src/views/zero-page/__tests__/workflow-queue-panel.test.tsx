@@ -1,8 +1,4 @@
 import { screen, waitFor, within } from "@testing-library/react";
-import {
-  zeroWorkflowQueueContract,
-  type WorkflowQueueResponse,
-} from "@vm0/api-contracts/contracts/zero-workflow-queue";
 import { describe, expect, it } from "vitest";
 
 import {
@@ -23,38 +19,6 @@ const THREAD_ID = "d0000000-0000-4000-a000-0000000000aa";
 const EVENT_ID_1 = "f0000001-0000-4000-a000-000000000001";
 const EVENT_ID_2 = "f0000002-0000-4000-a000-000000000002";
 
-function queueResponse(
-  overrides?: Partial<WorkflowQueueResponse>,
-): WorkflowQueueResponse {
-  return {
-    running: {
-      runId: "run-workflow-1",
-      status: "running",
-      triggerBrief: "Webhook event busy",
-      createdAt: "2026-07-10T01:00:00Z",
-    },
-    pending: [
-      {
-        id: EVENT_ID_1,
-        automationId: "e0000001-0000-4000-a000-000000000001",
-        triggerSource: "workflow-event",
-        triggerBrief: null,
-        createdAt: "2026-07-10T01:01:00Z",
-      },
-      {
-        id: EVENT_ID_2,
-        automationId: "e0000001-0000-4000-a000-000000000001",
-        triggerSource: "workflow-event",
-        triggerBrief: "Webhook event third",
-        createdAt: "2026-07-10T01:02:00Z",
-      },
-    ],
-    pausedAt: null,
-    pauseReason: null,
-    ...overrides,
-  };
-}
-
 function buttonByLabel(label: string): HTMLElement {
   const button = queryAllByRoleFast("button").find((candidate) => {
     return candidate.getAttribute("aria-label") === label;
@@ -65,11 +29,14 @@ function buttonByLabel(label: string): HTMLElement {
   return button;
 }
 
-async function setupWorkflowQueuePage({
-  openSidebar = false,
+function setupWorkflowQueuePage({
+  onRecallEventAppend,
 }: {
-  openSidebar?: boolean;
-} = {}): Promise<void> {
+  onRecallEventAppend?: (body: {
+    revokesEventId: string;
+    clientEventId: string;
+  }) => void;
+} = {}): void {
   mockChatLifecycle(context, {
     threadId: THREAD_ID,
     threadTitle: "Workflow queue thread",
@@ -107,8 +74,29 @@ async function setupWorkflowQueuePage({
         },
         createdAt: "2026-07-10T01:00:01Z",
       },
+      {
+        id: EVENT_ID_1,
+        eventType: "input.automation",
+        content: null,
+        automationId: "e0000001-0000-4000-a000-000000000001",
+        triggerSource: "workflow-event",
+        triggerBrief: null,
+        runId: undefined,
+        createdAt: "2026-07-10T01:01:00Z",
+      },
+      {
+        id: EVENT_ID_2,
+        eventType: "input.automation",
+        content: null,
+        automationId: "e0000001-0000-4000-a000-000000000001",
+        triggerSource: "workflow-event",
+        triggerBrief: "Webhook event third",
+        runId: undefined,
+        createdAt: "2026-07-10T01:02:00Z",
+      },
     ],
     activeRunIds: ["run-workflow-1"],
+    onRecallEventAppend,
   });
   setMockWorkflowAutomations([
     createMockWorkflowAutomation({
@@ -122,26 +110,11 @@ async function setupWorkflowQueuePage({
     context,
     path: `/chats/${THREAD_ID}`,
   });
-
-  if (!openSidebar) {
-    return;
-  }
-  await waitFor(() => {
-    expect(buttonByLabel("Automations")).toBeInTheDocument();
-  });
-  click(buttonByLabel("Automations"));
-  await waitFor(() => {
-    expect(screen.getByTestId("automation-sidebar")).toBeInTheDocument();
-  });
 }
 
 describe("workflow queue panel", () => {
   it("shows messages, automation events, and the active goal in one bottom queue", async () => {
-    context.mocks.api(zeroWorkflowQueueContract.get, ({ respond }) => {
-      return respond(200, queueResponse());
-    });
-
-    await setupWorkflowQueuePage();
+    setupWorkflowQueuePage();
 
     await waitFor(() => {
       expect(
@@ -165,6 +138,13 @@ describe("workflow queue panel", () => {
       "Pending automation event",
       "Active goal",
     ]);
+    expect(screen.getAllByLabelText("Queued message")).toHaveLength(1);
+    expect(
+      screen.queryByLabelText("Pause automation events"),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByLabelText("Automation event queue actions"),
+    ).not.toBeInTheDocument();
     expect(
       screen.queryByTestId("workflow-queue-badge"),
     ).not.toBeInTheDocument();
@@ -180,23 +160,12 @@ describe("workflow queue panel", () => {
   });
 
   it("skips a single pending event", async () => {
-    let skippedEventId: string | null = null;
-    let pending = queueResponse().pending;
-    context.mocks.api(zeroWorkflowQueueContract.get, ({ respond }) => {
-      return respond(200, queueResponse({ pending }));
-    });
-    context.mocks.api(
-      zeroWorkflowQueueContract.skipEvent,
-      ({ params, respond }) => {
-        skippedEventId = params.id;
-        pending = pending.filter((event) => {
-          return event.id !== params.id;
-        });
-        return respond(200, queueResponse({ pending }));
+    let recall: { revokesEventId: string; clientEventId: string } | undefined;
+    setupWorkflowQueuePage({
+      onRecallEventAppend: (body) => {
+        recall = body;
       },
-    );
-
-    await setupWorkflowQueuePage();
+    });
     await waitFor(() => {
       expect(screen.getByText("Nightly sync")).toBeInTheDocument();
     });
@@ -208,39 +177,12 @@ describe("workflow queue panel", () => {
     click(skipButtons[0]!);
 
     await waitFor(() => {
-      expect(skippedEventId).toBe(EVENT_ID_1);
+      expect(recall?.revokesEventId).toBe(EVENT_ID_1);
+      expect(recall?.clientEventId).toMatch(
+        /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/,
+      );
       expect(screen.queryByText("Nightly sync")).not.toBeInTheDocument();
       expect(screen.getByText("Webhook event third")).toBeInTheDocument();
-    });
-  });
-
-  it("pauses the queue and shows the paused banner", async () => {
-    let paused = false;
-    context.mocks.api(zeroWorkflowQueueContract.get, ({ respond }) => {
-      return respond(
-        200,
-        queueResponse(
-          paused ? { pausedAt: "2026-07-10T01:03:00Z", pauseReason: null } : {},
-        ),
-      );
-    });
-    context.mocks.api(zeroWorkflowQueueContract.pause, ({ respond }) => {
-      paused = true;
-      return respond(
-        200,
-        queueResponse({ pausedAt: "2026-07-10T01:03:00Z", pauseReason: null }),
-      );
-    });
-
-    await setupWorkflowQueuePage();
-    await waitFor(() => {
-      expect(buttonByLabel("Pause automation events")).toBeInTheDocument();
-    });
-    click(buttonByLabel("Pause automation events"));
-
-    await waitFor(() => {
-      expect(screen.getByText(/Automation events paused/)).toBeInTheDocument();
-      expect(buttonByLabel("Resume automation events")).toBeInTheDocument();
     });
   });
 });

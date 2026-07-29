@@ -1732,7 +1732,7 @@ async function appendAssociatedUserMessage(params: {
   });
 }
 
-function appendRecallUserMessage(params: {
+function appendRecallChatEvent(params: {
   readonly db: Db;
   readonly threadId: string;
   readonly revokesEventId: string;
@@ -1744,7 +1744,9 @@ function appendRecallUserMessage(params: {
       chatThreadId: params.threadId,
       eventId: params.revokesEventId,
     });
-    const wasPending = pendingTarget?.eventType === "input.prompt";
+    const wasPending =
+      pendingTarget?.eventType === "input.prompt" ||
+      pendingTarget?.eventType === "input.automation";
 
     const [existingRevoker] = await tx
       .select({
@@ -1783,7 +1785,11 @@ function appendRecallUserMessage(params: {
         and(
           eq(chatMessages.id, params.revokesEventId),
           eq(chatMessages.chatThreadId, params.threadId),
-          chatEventTypeIn(["input.prompt", "input.rejected"]),
+          chatEventTypeIn([
+            "input.prompt",
+            "input.automation",
+            "input.rejected",
+          ]),
         ),
       )
       .limit(1);
@@ -2019,7 +2025,7 @@ const handleRecallSend$ = command(
       return ownership;
     }
 
-    const message = await appendRecallUserMessage({
+    const message = await appendRecallChatEvent({
       db,
       threadId: args.body.threadId,
       revokesEventId: args.body.revokesEventId,

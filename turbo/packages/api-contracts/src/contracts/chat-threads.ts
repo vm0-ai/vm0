@@ -558,21 +558,6 @@ const runCancelledEventSchema = chatEventBaseSchema
   })
   .strict();
 
-const queueAutomationPausedEventSchema = chatEventBaseSchema
-  .extend({
-    eventType: z.literal("queue.automation_paused"),
-    content: z.null(),
-    pauseReason: z.string().nullable(),
-  })
-  .strict();
-
-const queueAutomationResumedEventSchema = chatEventBaseSchema
-  .extend({
-    eventType: z.literal("queue.automation_resumed"),
-    content: z.null(),
-  })
-  .strict();
-
 const controlInterruptEventSchema = chatEventBaseSchema
   .extend({
     eventType: z.literal("control.interrupt"),
@@ -619,8 +604,6 @@ const chatEventSchema = z.discriminatedUnion("eventType", [
   runCompletedEventSchema,
   runFailedEventSchema,
   runCancelledEventSchema,
-  queueAutomationPausedEventSchema,
-  queueAutomationResumedEventSchema,
   controlInterruptEventSchema,
   controlRevokeEventSchema,
   goalChangedEventSchema,

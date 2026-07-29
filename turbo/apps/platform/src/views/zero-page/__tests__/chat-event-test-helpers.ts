@@ -206,15 +206,6 @@ const mockChatEventOverrides = {
       runLifecycleEvent: "cancelled",
     };
   },
-  "queue.automation_paused": (message) => {
-    return {
-      content: null,
-      pauseReason: message.pauseReason ?? null,
-    };
-  },
-  "queue.automation_resumed": () => {
-    return { content: null };
-  },
   "control.interrupt": (message, id) => {
     return {
       content: null,

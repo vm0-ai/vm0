@@ -8,7 +8,6 @@ import {
   admitGoalQueueEvent,
   type GoalQueueAdmission,
 } from "../signals/services/chat-goal-queue.service";
-import { insertChatEvent } from "../signals/services/zero-chat-event.service";
 
 interface GoalQueueAdmissionFixtureArgs {
   readonly threadId: string;
@@ -143,23 +142,4 @@ export async function createActiveGoalQueueEventFixture(args: {
     throw new Error("Expected the goal fixture event to be inserted");
   }
   return { goalId: goal.id, eventId: admission.eventId };
-}
-
-/**
- * Append an automation-intake pause without inducing a provider failure. This
- * isolates the contract that automation pause never gates goal continuation.
- */
-export async function appendAutomationPauseFixture(args: {
-  readonly threadId: string;
-  readonly reason: string;
-}): Promise<void> {
-  await db().transaction(async (tx) => {
-    await insertChatEvent(tx, {
-      chatThreadId: args.threadId,
-      eventType: "queue.automation_paused",
-      content: null,
-      runId: null,
-      pauseReason: args.reason,
-    });
-  });
 }

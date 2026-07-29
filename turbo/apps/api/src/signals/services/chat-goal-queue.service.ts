@@ -13,7 +13,6 @@ import type { Db } from "../external/db";
 import { settle } from "../utils";
 import {
   listPendingChatQueueEvents,
-  loadChatAutomationIntakePause,
   loadPendingChatQueueEvent,
   lockChatQueueThread,
 } from "./chat-event-queue.service";
@@ -202,17 +201,6 @@ export async function admitGoalQueueEvent(
   return final;
 }
 
-function runnableGoalHead(
-  pending: Awaited<ReturnType<typeof listPendingChatQueueEvents>>,
-  automationPaused: boolean,
-) {
-  return automationPaused
-    ? pending.find((event) => {
-        return event.eventType !== "input.automation";
-      })
-    : pending[0];
-}
-
 function noGoalChangeAfterQueueEvent(db: Pick<Db, "select">) {
   return notExists(
     db
@@ -228,7 +216,7 @@ function noGoalChangeAfterQueueEvent(db: Pick<Db, "select">) {
   );
 }
 
-/** Load the next runnable goal trigger without letting automation pause gate it. */
+/** Load the next runnable goal trigger. */
 export async function loadNextGoalQueueEvent(
   db: Db,
   chatThreadId: string,
@@ -246,11 +234,7 @@ export async function loadNextGoalQueueEvent(
       chatThreadId,
       queueItemCreatedBefore,
     );
-    const automationPause = await loadChatAutomationIntakePause(
-      tx,
-      chatThreadId,
-    );
-    const head = runnableGoalHead(pending, automationPause !== null);
+    const head = pending[0];
     if (!head || head.eventType !== "input.goal") {
       return null;
     }
