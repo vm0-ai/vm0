@@ -269,16 +269,13 @@ fn wait_for_live_pids_exit(pid: u32, timeout: Duration) -> std::io::Result<bool>
     }
 
     let mut watcher = PidfdExitWatcher::new()?;
-    let mut pidfds = Vec::with_capacity(pids.len());
     for pid in pids {
         let Some(pidfd) = open_pidfd_if_live(pid) else {
             continue;
         };
-        let pidfd = pidfd?;
-        watcher.add(&pidfd)?;
-        pidfds.push(pidfd);
+        watcher.add(pidfd?)?;
     }
-    if pidfds.is_empty() {
+    if watcher.is_empty() {
         return Ok(true);
     }
 
@@ -287,7 +284,7 @@ fn wait_for_live_pids_exit(pid: u32, timeout: Duration) -> std::io::Result<bool>
 
 struct PidfdExitWatcher {
     fd: OwnedFd,
-    registrations: usize,
+    pidfds: Vec<OwnedFd>,
 }
 
 impl PidfdExitWatcher {
@@ -302,11 +299,11 @@ impl PidfdExitWatcher {
         let fd = unsafe { OwnedFd::from_raw_fd(fd) };
         Ok(Self {
             fd,
-            registrations: 0,
+            pidfds: Vec::new(),
         })
     }
 
-    fn add(&mut self, pidfd: &OwnedFd) -> std::io::Result<()> {
+    fn add(&mut self, pidfd: OwnedFd) -> std::io::Result<()> {
         let mut event = libc::epoll_event {
             events: (libc::EPOLLIN | libc::EPOLLONESHOT) as u32,
             u64: 0,
@@ -324,14 +321,18 @@ impl PidfdExitWatcher {
         if result < 0 {
             return Err(std::io::Error::last_os_error());
         }
-        self.registrations += 1;
+        self.pidfds.push(pidfd);
         Ok(())
+    }
+
+    fn is_empty(&self) -> bool {
+        self.pidfds.is_empty()
     }
 
     fn wait(&self, timeout: Duration) -> std::io::Result<bool> {
         let deadline = Instant::now() + timeout;
         let mut event = libc::epoll_event { events: 0, u64: 0 };
-        for _ in 0..self.registrations {
+        for _ in &self.pidfds {
             loop {
                 let remaining = deadline.saturating_duration_since(Instant::now());
                 if remaining.is_zero() {
@@ -521,7 +522,8 @@ mod tests {
             unsafe { OwnedFd::from_raw_fd(fd) }
         });
         let mut watcher = PidfdExitWatcher::new().unwrap();
-        for pidfd in &pidfds {
+        let poll_fd = pidfds[0].as_raw_fd();
+        for pidfd in pidfds {
             watcher.add(pidfd).unwrap();
         }
         let mut original = libc::rlimit {
@@ -549,7 +551,7 @@ mod tests {
             std::io::Error::last_os_error()
         );
         let pollfd = libc::pollfd {
-            fd: pidfds[0].as_raw_fd(),
+            fd: poll_fd,
             events: libc::POLLIN,
             revents: 0,
         };
