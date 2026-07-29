@@ -833,7 +833,11 @@ async function requestSendEventRaw(
 /** Chat send authenticated by a run-scoped sandbox bearer token. */
 async function requestSendEventWithBearer(
   token: string,
-  body: { readonly agentId: string; readonly prompt: string },
+  body: {
+    readonly agentId: string;
+    readonly prompt: string;
+    readonly threadId?: string;
+  },
   statuses: readonly (201 | 401 | 403)[],
 ) {
   return await accept(
@@ -5147,7 +5151,11 @@ describe("CHAT-02/FILE-03: computer-use host grants", () => {
     expect(deniedCommand.status).toBe(403);
     const nestedSend = await requestSendEventWithBearer(
       plainToken,
-      { agentId, prompt: "run tokens can send chat messages" },
+      {
+        agentId,
+        threadId: plain.threadId,
+        prompt: "run tokens can send chat messages",
+      },
       [201],
     );
     expect(nestedSend.status).toBe(201);
