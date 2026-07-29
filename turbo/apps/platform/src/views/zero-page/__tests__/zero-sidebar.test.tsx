@@ -15,6 +15,10 @@ import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import { zeroAgentsByIdContract } from "@vm0/api-contracts/contracts/zero-agents";
 
 import {
+  createMockWorkflowAutomation,
+  setMockWorkflowAutomations,
+} from "../../../mocks/handlers/workflow-automations-store.ts";
+import {
   click,
   detachedSetupPage,
   fill,
@@ -2408,6 +2412,14 @@ describe("zero sidebar", () => {
 
   it("localizes desktop and mobile shell navigation and shortcut help", async () => {
     prepareDefaultAgent();
+    mockSidebarThreadStory([
+      createThread(EXISTING_THREAD_ID, "Localized conversation"),
+    ]);
+    setMockWorkflowAutomations([
+      createMockWorkflowAutomation({
+        chatThreadId: EXISTING_THREAD_ID,
+      }),
+    ]);
     context.mocks.data.userPreferences({
       locale: "pt-BR",
       supportedLocales: ["en-US", "pt-BR"],
@@ -2415,7 +2427,7 @@ describe("zero sidebar", () => {
 
     setupSidebarPage({
       context,
-      path: `/agents/${AGENT_ID}/chat`,
+      path: `/chats/${EXISTING_THREAD_ID}`,
       featureSwitches: {
         [FeatureSwitchKey.Artifacts]: true,
         [FeatureSwitchKey.LanguagePreference]: true,
@@ -2437,6 +2449,12 @@ describe("zero sidebar", () => {
       within(rail).getByLabelText("Onde Zero trabalha"),
     ).toBeInTheDocument();
     expect(screen.getByLabelText("Abrir menu")).toBeInTheDocument();
+    expect(
+      screen.getByLabelText("Abrir artefatos no celular"),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByLabelText("Abrir automações no celular"),
+    ).toBeInTheDocument();
     expect(screen.getByLabelText("Recolher barra lateral")).toBeInTheDocument();
 
     fireEvent.keyDown(document.body, { key: "?", shiftKey: true });
