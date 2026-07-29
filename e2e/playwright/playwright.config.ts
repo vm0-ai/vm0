@@ -87,5 +87,14 @@ export default defineConfig({
         storageState: STORAGE_STATE,
       },
     },
+    {
+      name: "webkit-focus",
+      testMatch: "chat-focus-webkit.spec.ts",
+      dependencies: ["setup"],
+      use: {
+        ...devices["Desktop Safari"],
+        storageState: STORAGE_STATE,
+      },
+    },
   ],
 });

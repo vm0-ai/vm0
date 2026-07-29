@@ -1801,7 +1801,7 @@ jobs:
       - name: Run Playwright fixture integration tests
         run: cd e2e && pnpm test
       - name: Install Playwright browsers
-        run: cd e2e && pnpm exec playwright install --with-deps chromium
+        run: cd e2e && pnpm exec playwright install --with-deps chromium webkit
       - name: Start Stripe webhook forwarding
         # Staging receives webhooks from the Dashboard endpoint; PR previews use
         # the long-running listener from deploy-stripe-listener.
