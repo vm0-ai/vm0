@@ -20,10 +20,11 @@ async fn post_result_reap_escalates_to_sigkill_when_sigterm_ignored()
     let tmp = tempfile::tempdir()?;
     unsafe {
         // The 1s execution deadline expires after the terminal result but
-        // before the 2s post-result SIGTERM. It must not reclassify semantic
-        // completion as an execution timeout. SIGTERM is ignored, then the
-        // 1s SIGKILL grace makes the total runtime ~3s.
-        common::setup_env(&mock, tmp.path(), "@hang-after-result-deaf", 2, 1)?;
+        // before the 60s post-result SIGTERM. It must advance the existing
+        // reaper without reclassifying semantic completion as an execution
+        // timeout. SIGTERM is ignored, then the 1s SIGKILL grace completes
+        // within the outer test bound.
+        common::setup_env(&mock, tmp.path(), "@hang-after-result-deaf", 60, 1)?;
         std::env::set_var(guest_contracts::env::AGENT_EXECUTION_TIMEOUT_SECS_ENV, "1");
     }
 
@@ -32,14 +33,14 @@ async fn post_result_reap_escalates_to_sigkill_when_sigterm_ignored()
     let masker = guest_agent::masker::SecretMasker::from_raw("");
     let heartbeat = common::spawn_dummy_heartbeat();
 
-    // Budget: sigterm (2s, ignored) + sigkill (1s, unignorable) +
-    // stdout drain (5s) + slack = 15s.
+    // Without execution-deadline acceleration, the configured 60s
+    // post-result grace would exceed this bound.
     let result = tokio::time::timeout(
-        Duration::from_secs(15),
+        Duration::from_secs(10),
         common::execute_cli_for_runtime(&runtime, &masker, heartbeat),
     )
     .await
-    .expect("execute_cli did not return within 15s — sigkill escalation likely broken");
+    .expect("execute_cli did not return within 10s — deadline acceleration likely broken");
 
     let result = result.expect("execute_cli returned Err");
     let exit_code = result.exit_code;

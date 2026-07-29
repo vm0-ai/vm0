@@ -907,10 +907,14 @@ async fn execute_cli_inner(
                     CliExitObservation::ExitedAndStdoutClosed => break Ok(()),
                 }
                 agent_execution_deadline_armed = false;
-                if termination_runtime.has_post_result_cleanup() {
+                if termination_runtime
+                    .expedite_post_result_cleanup_for_execution_deadline(
+                        termination_deadline.as_mut(),
+                    )
+                {
                     // A terminal result already ended semantic execution.
-                    // Its bounded reaper now belongs to finalization and must
-                    // retain the result's success or failure classification.
+                    // Advance its bounded reaper without changing the result's
+                    // success or failure classification.
                     continue;
                 }
                 active_input_controller.close_terminal();
