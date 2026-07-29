@@ -24,6 +24,7 @@ const prepareResponseSchema = z.object({
 const commitResponseSchema = z.object({
   success: z.literal(true),
   versionId: z.string(),
+  headVersionId: z.string(),
   storageName: z.string(),
   size: z.number(),
   fileCount: z.number(),
