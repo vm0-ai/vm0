@@ -1728,11 +1728,35 @@ mod tests {
             serde_json::json!(["search", "calendar.create"])
         );
         assert_eq!(round_trip["apis"][0]["suppressBodyCapture"], true);
+
+        let all_tools_firewall: Firewall = serde_json::from_value(serde_json::json!({
+            "name": "remote-mcp",
+            "apis": [{
+                "base": "https://mcp.example.com/v1/mcp",
+                "hostPolicy": {"kind": "publicDestination"},
+                "auth": {},
+                "mcp": {"toolPolicy": {"kind": "all"}},
+                "suppressBodyCapture": true
+            }]
+        }))
+        .unwrap();
+        all_tools_firewall.validate_for_cache().unwrap();
     }
 
     #[test]
     fn firewall_mcp_validation_fails_closed_on_unsafe_entries() {
-        let invalid_apis = [
+        use api_contracts::generated::constants::firewall::{
+            MCP_TOOL_NAME_MAX_LENGTH, MCP_TOOL_POLICY_MAX_EXACT_NAMES,
+        };
+
+        let invalid_apis = vec![
+            serde_json::json!({
+                "base": "not a URL",
+                "hostPolicy": {"kind": "publicDestination"},
+                "auth": {},
+                "mcp": {"toolPolicy": {"kind": "all"}},
+                "suppressBodyCapture": true
+            }),
             serde_json::json!({
                 "base": "http://mcp.example.com/v1/mcp",
                 "hostPolicy": {"kind": "publicDestination"},
@@ -1774,6 +1798,46 @@ mod tests {
                 "hostPolicy": {"kind": "publicDestination"},
                 "auth": {},
                 "mcp": {"toolPolicy": {"kind": "exact", "toolNames": ["search", "search"]}},
+                "suppressBodyCapture": true
+            }),
+            serde_json::json!({
+                "base": "https://mcp.example.com/v1/mcp",
+                "hostPolicy": {"kind": "publicDestination"},
+                "auth": {},
+                "mcp": {"toolPolicy": {"kind": "exact", "toolNames": []}},
+                "suppressBodyCapture": true
+            }),
+            serde_json::json!({
+                "base": "https://mcp.example.com/v1/mcp",
+                "hostPolicy": {"kind": "publicDestination"},
+                "auth": {},
+                "mcp": {
+                    "toolPolicy": {
+                        "kind": "exact",
+                        "toolNames": (0..=MCP_TOOL_POLICY_MAX_EXACT_NAMES)
+                            .map(|index| format!("tool-{index}"))
+                            .collect::<Vec<_>>()
+                    }
+                },
+                "suppressBodyCapture": true
+            }),
+            serde_json::json!({
+                "base": "https://mcp.example.com/v1/mcp",
+                "hostPolicy": {"kind": "publicDestination"},
+                "auth": {},
+                "mcp": {"toolPolicy": {"kind": "exact", "toolNames": [" "]}},
+                "suppressBodyCapture": true
+            }),
+            serde_json::json!({
+                "base": "https://mcp.example.com/v1/mcp",
+                "hostPolicy": {"kind": "publicDestination"},
+                "auth": {},
+                "mcp": {
+                    "toolPolicy": {
+                        "kind": "exact",
+                        "toolNames": ["x".repeat(MCP_TOOL_NAME_MAX_LENGTH as usize + 1)]
+                    }
+                },
                 "suppressBodyCapture": true
             }),
         ];
