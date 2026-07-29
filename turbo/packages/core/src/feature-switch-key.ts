@@ -42,6 +42,7 @@ export enum FeatureSwitchKey {
   SpotifyConnector = "spotifyConnector",
   ZeroDebug = "zeroDebug",
   LanguagePreference = "languagePreference",
+  BrazilianPortugueseLocale = "brazilianPortugueseLocale",
   ZeroFinance = "zeroFinance",
   ZeroBrowser = "zeroBrowser",
   ZeroMcp = "zeroMcp",

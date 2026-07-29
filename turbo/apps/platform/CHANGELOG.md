@@ -1,5 +1,30 @@
 # Changelog
 
+## [0.651.0](https://github.com/vm0-ai/vm0/compare/app-v0.650.0...app-v0.651.0) (2026-07-29)
+
+
+### Features
+
+* **platform:** support brazilian portuguese locale ([#23515](https://github.com/vm0-ai/vm0/issues/23515)) ([a242a1d](https://github.com/vm0-ai/vm0/commit/a242a1dbb984ce339a39f9496ea389b54057a8ea))
+
+
+### Bug Fixes
+
+* **chat:** hide one-hour permission expiry text ([#23579](https://github.com/vm0-ai/vm0/issues/23579)) ([5b73957](https://github.com/vm0-ai/vm0/commit/5b73957eaa96d5b71acb471144c78572c9ce51d8))
+
+
+### Refactoring
+
+* **platform:** retire chat history backfill progress switch ([#23598](https://github.com/vm0-ai/vm0/issues/23598)) ([273542a](https://github.com/vm0-ai/vm0/commit/273542adc6d0fa27be1f01a4eae84a30c3aac41d))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.243.0
+    * @vm0/core bumped to 8.484.0
+
 ## [0.650.0](https://github.com/vm0-ai/vm0/compare/app-v0.649.2...app-v0.650.0) (2026-07-29)
 
 

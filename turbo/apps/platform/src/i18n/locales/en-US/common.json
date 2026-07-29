@@ -1,1 +1,11 @@
-{}
+{
+  "settings": {
+    "preferences": {
+      "language": {
+        "description": "Choose your preferred language for the {{brandName}} interface",
+        "label": "Language",
+        "title": "Language"
+      }
+    }
+  }
+}

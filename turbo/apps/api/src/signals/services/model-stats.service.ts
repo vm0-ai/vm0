@@ -1,5 +1,17 @@
 import { command } from "ccstate";
-import { and, eq, gt, gte, inArray, lt, or, sql, sum } from "drizzle-orm";
+import {
+  and,
+  desc,
+  eq,
+  gt,
+  gte,
+  inArray,
+  lt,
+  or,
+  sql,
+  sum,
+  type SQLWrapper,
+} from "drizzle-orm";
 import { CRON_AGGREGATE_MODEL_STATS_MAX_HOURS } from "@vm0/api-contracts/contracts/cron";
 import { modelStat } from "@vm0/db/schema/model-stat";
 import { modelUsageObservation } from "@vm0/db/schema/model-usage-observation";
@@ -7,12 +19,11 @@ import {
   VM0_MODEL_ALIAS_TO_MODEL,
   VM0_MODEL_TO_PROVIDER,
 } from "@vm0/api-contracts/contracts/model-providers";
-import { z } from "zod";
 
 import {
-  executeRawRows,
-  pgInt8ToSafeIntegerSchema,
-} from "../../lib/db-raw-rows";
+  pgInt8ToSafeIntegerDecoder,
+  pgTextDecoder,
+} from "../../lib/db-structured-result";
 import { type Db, writeDb$ } from "../external/db";
 import { nowDate } from "../external/time";
 
@@ -38,24 +49,6 @@ interface ModelRankingResult {
   readonly windowEnd: Date;
   readonly rows: readonly ModelRankingRow[];
 }
-
-const modelRankingSqlRowSchema = z
-  .object({
-    model: z.string(),
-    input_tokens: pgInt8ToSafeIntegerSchema,
-    output_tokens: pgInt8ToSafeIntegerSchema,
-    total_tokens: pgInt8ToSafeIntegerSchema,
-    previous_total_tokens: pgInt8ToSafeIntegerSchema,
-  })
-  .transform((row): ModelRankingRow => {
-    return {
-      model: row.model,
-      inputTokens: row.input_tokens,
-      outputTokens: row.output_tokens,
-      totalTokens: row.total_tokens,
-      previousTotalTokens: row.previous_total_tokens,
-    };
-  });
 
 function getModelAliasEntries() {
   return Object.entries(VM0_MODEL_ALIAS_TO_MODEL);
@@ -146,7 +139,19 @@ function modelStatModelExpression() {
       return sql`WHEN ${eq(modelColumn, alias)} THEN ${model}`;
     }),
     sql` `,
-  )} ELSE ${modelColumn} END`;
+  )} ELSE ${sql`${modelColumn}`} END`.mapWith(pgTextDecoder);
+}
+
+function modelStatWindowSum(value: SQLWrapper, start: string, end: string) {
+  return sql`COALESCE(
+    ${sum(value)} FILTER (
+      WHERE ${and(
+        gte(modelStat.hourStart, sql`${start}::timestamp`),
+        lt(modelStat.hourStart, sql`${end}::timestamp`),
+      )}
+    ),
+    0
+  )::bigint`.mapWith(pgInt8ToSafeIntegerDecoder);
 }
 
 async function replaceModelStats(
@@ -273,51 +278,55 @@ async function selectModelRankings(
   const previousStartParam = utcTimestampParam(previousStart);
   const previousEndParam = utcTimestampParam(previousEnd);
 
-  const rows = await executeRawRows(
-    db,
-    sql`
-      WITH current_period AS (
-      SELECT
-        ${modelExpr} AS model,
-        COALESCE(${sum(
+  const rankingPeriods = db.$with("ranking_periods").as(
+    db
+      .select({
+        model: modelExpr.as("ranking_model"),
+        inputTokens: modelStatWindowSum(
           sql`${modelStat.inputTokens} + ${modelStat.cacheReadInputTokens} + ${modelStat.cacheCreationInputTokens}`,
-        )}, 0)::bigint AS input_tokens,
-        COALESCE(${sum(modelStat.outputTokens)}, 0)::bigint AS output_tokens,
-        COALESCE(${sum(modelStat.totalTokens)}, 0)::bigint AS total_tokens
-      FROM ${modelStat}
-      WHERE ${and(
-        gte(modelStat.hourStart, sql`${windowStartParam}::timestamp`),
-        lt(modelStat.hourStart, sql`${windowEndParam}::timestamp`),
-        inArray(modelStat.model, modelStatsModelIds),
-      )}
-      GROUP BY 1
-    ),
-    previous_period AS (
-      SELECT
-        ${modelExpr} AS model,
-        COALESCE(${sum(modelStat.totalTokens)}, 0)::bigint AS previous_total_tokens
-      FROM ${modelStat}
-      WHERE ${and(
-        gte(modelStat.hourStart, sql`${previousStartParam}::timestamp`),
-        lt(modelStat.hourStart, sql`${previousEndParam}::timestamp`),
-        inArray(modelStat.model, modelStatsModelIds),
-      )}
-      GROUP BY 1
-    )
-    SELECT
-      current_period.model,
-      current_period.input_tokens,
-      current_period.output_tokens,
-      current_period.total_tokens,
-      COALESCE(previous_period.previous_total_tokens, 0)::bigint AS previous_total_tokens
-    FROM current_period
-    LEFT JOIN previous_period ON previous_period.model = current_period.model
-    WHERE current_period.total_tokens > 0
-    ORDER BY current_period.total_tokens DESC
-      LIMIT 50
-    `,
-    modelRankingSqlRowSchema,
+          windowStartParam,
+          windowEndParam,
+        ).as("input_tokens"),
+        outputTokens: modelStatWindowSum(
+          modelStat.outputTokens,
+          windowStartParam,
+          windowEndParam,
+        ).as("output_tokens"),
+        totalTokens: modelStatWindowSum(
+          modelStat.totalTokens,
+          windowStartParam,
+          windowEndParam,
+        ).as("total_tokens"),
+        previousTotalTokens: modelStatWindowSum(
+          modelStat.totalTokens,
+          previousStartParam,
+          previousEndParam,
+        ).as("previous_total_tokens"),
+      })
+      .from(modelStat)
+      .where(
+        and(
+          gte(modelStat.hourStart, sql`${previousStartParam}::timestamp`),
+          lt(modelStat.hourStart, sql`${windowEndParam}::timestamp`),
+          inArray(modelStat.model, modelStatsModelIds),
+        ),
+      )
+      .groupBy(sql`1`),
   );
+
+  const rows: ModelRankingRow[] = await db
+    .with(rankingPeriods)
+    .select({
+      model: rankingPeriods.model,
+      inputTokens: rankingPeriods.inputTokens,
+      outputTokens: rankingPeriods.outputTokens,
+      totalTokens: rankingPeriods.totalTokens,
+      previousTotalTokens: rankingPeriods.previousTotalTokens,
+    })
+    .from(rankingPeriods)
+    .where(gt(rankingPeriods.totalTokens, sql`0`))
+    .orderBy(desc(rankingPeriods.totalTokens))
+    .limit(50);
 
   return {
     period,

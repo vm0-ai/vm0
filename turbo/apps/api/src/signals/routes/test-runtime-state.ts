@@ -500,16 +500,8 @@ async function readRunnerJobStorageState(
     .record(z.string(), z.unknown())
     .parse(job.executionContext);
   const context = compatibleStoredExecutionContextSchema.parse(rawContext);
-  let legacyManifestState: "missing" | "null" | "object";
-  if (!Object.hasOwn(rawContext, "storageManifest")) {
-    legacyManifestState = "missing";
-  } else if (rawContext.storageManifest === null) {
-    legacyManifestState = "null";
-  } else {
-    legacyManifestState = "object";
-  }
   return {
-    legacy_manifest_state: legacyManifestState,
+    has_stored_storage_manifest: Object.hasOwn(rawContext, "storageManifest"),
     canonical_mount_count: context.storageMounts.length,
     has_run_context_storage: Object.hasOwn(rawContext, "runContextStorage"),
   };

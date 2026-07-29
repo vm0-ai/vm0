@@ -1,11 +1,16 @@
 import { createHmac, randomUUID } from "node:crypto";
 
 import { describe, expect, it } from "vitest";
+import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 
-import { env } from "../../../lib/env";
+import { env, mockOptionalEnv } from "../../../lib/env";
 import { testContext } from "../../../__tests__/test-context";
 import { createBddApi, expectApiError } from "./helpers/api-bdd";
-import { createMiscRoutesApi } from "./helpers/api-bdd-misc";
+import {
+  BRAZILIAN_PORTUGUESE_CLIENT_VERSION,
+  createMiscRoutesApi,
+} from "./helpers/api-bdd-misc";
+import { updateFeatureSwitchesForUser } from "./helpers/zero-feature-switches";
 
 const context = testContext();
 
@@ -105,7 +110,7 @@ describe("MISC-02: preferences, push subscription, user export, and empty logs",
     );
     expect(updatedPreferences.body).toMatchObject({
       timezone: "UTC",
-      locale: "zh-CN",
+      locale: "en-US",
       pinnedAgentIds: [firstPinnedAgentId, secondPinnedAgentId],
       sendMode: "cmd-enter",
       captureNetworkBodiesRemaining: 3,
@@ -217,6 +222,101 @@ describe("MISC-02: preferences, push subscription, user export, and empty logs",
     expectApiError(invalidSearchRunId.body);
     const missingLog = await api.readLog(admin, randomUUID(), [404]);
     expectApiError(missingLog.body);
+  });
+
+  it("negotiates Brazilian Portuguese across old and new clients", async () => {
+    const { api, admin } = testActors();
+
+    const guarded = await api.readPreferences(
+      admin,
+      BRAZILIAN_PORTUGUESE_CLIENT_VERSION,
+    );
+    expect(guarded.body).toMatchObject({
+      locale: null,
+      supportedLocales: ["en-US"],
+    });
+
+    const rejected = await api.updatePreferences(
+      admin,
+      { locale: "pt-BR" },
+      [400],
+      BRAZILIAN_PORTUGUESE_CLIENT_VERSION,
+    );
+    expectApiError(rejected.body);
+
+    const legacyUpdate = await api.updatePreferences(
+      admin,
+      { locale: "zh-CN" },
+      [200],
+    );
+    expect(legacyUpdate.body.locale).toBe("en-US");
+    expect(legacyUpdate.body.supportedLocales).toBeUndefined();
+
+    const orgId = admin.orgId;
+    if (orgId === null) {
+      throw new Error("Expected an organization-scoped test actor");
+    }
+    await updateFeatureSwitchesForUser(
+      context,
+      {
+        userId: admin.userId,
+        orgId,
+        ...(admin.orgRole && { orgRole: admin.orgRole }),
+      },
+      {
+        [FeatureSwitchKey.BrazilianPortugueseLocale]: true,
+      },
+    );
+
+    const publicOverrideRejected = await api.updatePreferences(
+      admin,
+      { locale: "pt-BR" },
+      [400],
+      BRAZILIAN_PORTUGUESE_CLIENT_VERSION,
+    );
+    expectApiError(publicOverrideRejected.body);
+
+    mockOptionalEnv("BRAZILIAN_PORTUGUESE_LOCALE_ROLLOUT_ENABLED", "true");
+
+    const unsupportedClient = await api.updatePreferences(
+      admin,
+      { locale: "pt-BR" },
+      [400],
+    );
+    expectApiError(unsupportedClient.body);
+
+    const english = await api.updatePreferences(
+      admin,
+      { locale: "en-US" },
+      [200],
+      BRAZILIAN_PORTUGUESE_CLIENT_VERSION,
+    );
+    expect(english.body).toMatchObject({
+      locale: "en-US",
+      supportedLocales: ["en-US", "pt-BR"],
+    });
+
+    const portuguese = await api.updatePreferences(
+      admin,
+      { locale: "pt-BR" },
+      [200],
+      BRAZILIAN_PORTUGUESE_CLIENT_VERSION,
+    );
+    expect(portuguese.body).toMatchObject({
+      locale: "pt-BR",
+      supportedLocales: ["en-US", "pt-BR"],
+    });
+
+    const oldClientRead = await api.readPreferences(admin);
+    expect(oldClientRead.body.locale).toBe("en-US");
+    expect(oldClientRead.body.supportedLocales).toBeUndefined();
+
+    await api.updatePreferences(admin, { timezone: "UTC" }, [200]);
+    const capableReread = await api.readPreferences(
+      admin,
+      BRAZILIAN_PORTUGUESE_CLIENT_VERSION,
+    );
+    expect(capableReread.body.locale).toBe("pt-BR");
   });
 });
 

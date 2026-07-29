@@ -1,6 +1,7 @@
 import { useGet, useLoadable } from "ccstate-react";
 import { useLoadableSet } from "ccstate-react/experimental";
 import { IconWorld } from "@tabler/icons-react";
+import { useTranslation } from "react-i18next";
 import {
   Select,
   SelectContent,
@@ -19,6 +20,7 @@ import {
 import { detach, Reason } from "../../../../signals/utils.ts";
 
 export function LanguageSettings() {
+  const { t } = useTranslation();
   const supportLoadable = useLoadable(localePreferenceSupported$);
   const brandName = useGet(brandName$);
   const locale = useGet(locale$);
@@ -34,7 +36,7 @@ export function LanguageSettings() {
   const saving = updateLoadable.state === "loading";
 
   const handleChange = (value: string) => {
-    if (value !== "en-US" && value !== "zh-CN") {
+    if (value !== "en-US" && value !== "pt-BR") {
       throw new Error(`Unsupported locale: ${value}`);
     }
     detach(updateLocale(value, pageSignal), Reason.DomCallback);
@@ -53,19 +55,33 @@ export function LanguageSettings() {
           </div>
         </div>
         <div className="flex flex-1 flex-col gap-1 min-w-0">
-          <div className="text-sm font-medium text-foreground">Language</div>
+          <div className="text-sm font-medium text-foreground">
+            {t(($) => {
+              return $.settings.preferences.language.title;
+            })}
+          </div>
           <div className="text-sm text-muted-foreground">
-            Choose your preferred language for the {brandName} interface
+            {t(
+              ($) => {
+                return $.settings.preferences.language.description;
+              },
+              { brandName },
+            )}
           </div>
         </div>
         <div className="w-40 shrink-0">
           <Select value={locale} disabled={saving} onValueChange={handleChange}>
-            <SelectTrigger aria-label="Language" className="zero-btn-morandi">
+            <SelectTrigger
+              aria-label={t(($) => {
+                return $.settings.preferences.language.label;
+              })}
+              className="zero-btn-morandi"
+            >
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="en-US">English</SelectItem>
-              <SelectItem value="zh-CN">简体中文</SelectItem>
+              <SelectItem value="pt-BR">Português (Brasil)</SelectItem>
             </SelectContent>
           </Select>
         </div>

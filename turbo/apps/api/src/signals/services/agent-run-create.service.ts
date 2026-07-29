@@ -4,8 +4,8 @@ import {
   CANONICAL_CODEX_MEMORY_MOUNT_PATH,
   CANONICAL_CLAUDE_MEMORY_MOUNT_PATH,
   DEFAULT_PROFILE,
-  type ArtifactEntry,
   type SecretConnectorMetadata,
+  type StorageMountEntry,
   type StoredConnectorPermissionBaseline,
   type StoredExecutionContext,
 } from "@vm0/api-contracts/contracts/runners";
@@ -230,7 +230,7 @@ import {
 const PENDING_RUN_TTL_MS = 15 * 60 * 1000;
 const AUTO_MEMORY_ARTIFACT_NAME = MEMORY_ARTIFACT_NAME;
 type ArtifactMissingRootPolicy = NonNullable<
-  ArtifactEntry["missingRootPolicy"]
+  StorageMountEntry["missingRootPolicy"]
 >;
 const AUTO_MEMORY_MISSING_ROOT_POLICY: ArtifactMissingRootPolicy =
   "preserveParentVersion";
@@ -642,10 +642,7 @@ type BuiltStoredExecutionContextDraft = Omit<
   BuiltStoredExecutionContext,
   "context" | "persistedStorageMounts" | "runContextStorage"
 > & {
-  readonly context: Omit<
-    StoredExecutionContext,
-    "storageManifest" | "storageMounts"
-  >;
+  readonly context: Omit<StoredExecutionContext, "storageMounts">;
 };
 
 type ApiErrorResponse<Status extends number, Code extends string> = {
@@ -4844,7 +4841,6 @@ async function resolveBuiltStoredExecutionContext(
     runContextStorage: preparedStorageResult.value.runContextStorage,
     context: {
       ...builtContextDraftResult.value.context,
-      storageManifest: null,
       storageMounts: [...preparedStorageResult.value.storageMounts],
     },
   };

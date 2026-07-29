@@ -325,53 +325,14 @@ export const runnersPollContract = c.router({
   },
 });
 
-/**
- * Storage entry in manifest
- */
 const archiveSizeSchema = z.number().int().min(1).max(Number.MAX_SAFE_INTEGER);
 
-export const storageEntrySchema = z.object({
-  name: z.string(),
-  mountPath: z.string(),
-  vasStorageName: z.string(),
-  vasVersionId: z.string(),
-  instructionsTargetFilename: z.string().optional(),
-  archiveUrl: z.string(),
-  archiveSize: archiveSizeSchema.optional(),
-});
-
-/**
- * Artifact entry in manifest
- */
 // Optional internal checkpoint behavior for a missing artifact root. Absence
 // is equivalent to "fail".
 export const artifactMissingRootPolicySchema = z.enum([
   "fail",
   "preserveParentVersion",
 ]);
-
-export const artifactEntrySchema = z
-  .object({
-    mountPath: z.string(),
-    vasStorageName: z.string(),
-    vasStorageId: z.string(),
-    vasVersionId: z.string(),
-    archiveUrl: z.string().optional(),
-    archiveSize: archiveSizeSchema.optional(),
-    empty: z.boolean().optional(),
-    missingRootPolicy: artifactMissingRootPolicySchema.optional(),
-  })
-  .superRefine((artifact, ctx) => {
-    if (artifact.empty === true || artifact.archiveUrl !== undefined) {
-      return;
-    }
-
-    ctx.addIssue({
-      code: z.ZodIssueCode.custom,
-      path: ["archiveUrl"],
-      message: "archiveUrl is required unless empty is true",
-    });
-  });
 
 /**
  * Canonical resolved Storage mount emitted to runners.
@@ -433,14 +394,6 @@ export const storageMountEntrySchema = z
 export const storedStorageMountEntrySchema = storageMountEntrySchema.extend({
   orgId: z.string(),
   userId: z.string(),
-});
-
-/**
- * Legacy Storage manifest with presigned URLs for download.
- */
-export const legacyStorageManifestSchema = z.object({
-  storages: z.array(storageEntrySchema),
-  artifacts: z.array(artifactEntrySchema),
 });
 
 function uniqueStorageMountPaths<T extends { readonly mountPath: string }>(
@@ -573,10 +526,6 @@ export const secretConnectorMetadataMapSchema = z.record(
  * Secrets are encrypted with AES-256-GCM before storage
  */
 export const storedExecutionContextSchema = z.object({
-  // Compatibility projection for the previous API version and rollback. The
-  // API writes null while storageMounts drive every claim. Omission is accepted
-  // for the final contraction after rollback-eligible APIs and queues drain.
-  storageManifest: legacyStorageManifestSchema.nullable().optional(),
   storageMounts: z
     .array(storedStorageMountEntrySchema)
     .superRefine(uniqueStorageMountPaths),
@@ -895,13 +844,10 @@ export type RunnerBuiltinFirewallsResolveResponse = z.infer<
 export type SecretConnectorMetadata = z.infer<
   typeof secretConnectorMetadataSchema
 >;
-export type StorageEntry = z.infer<typeof storageEntrySchema>;
-export type ArtifactEntry = z.infer<typeof artifactEntrySchema>;
 export type StorageMountEntry = z.infer<typeof storageMountEntrySchema>;
 export type StoredStorageMountEntry = z.infer<
   typeof storedStorageMountEntrySchema
 >;
-export type LegacyStorageManifest = z.infer<typeof legacyStorageManifestSchema>;
 export type StorageManifest = z.infer<typeof storageManifestSchema>;
 export type CanonicalStorageManifest = StorageManifest;
 export type StoredResumeSession = z.infer<typeof storedResumeSessionSchema>;

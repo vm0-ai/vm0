@@ -86,7 +86,6 @@ import * as storageVersionLineageSchema from "./schema/storage-version-lineage";
 import * as runUploadedFileSchema from "./schema/run-uploaded-file";
 import * as vm0ApiKeySchema from "./schema/vm0-api-key";
 import * as zeroWorkflowSchema from "./schema/zero-workflow";
-import * as chatMessageQueueSchema from "./schema/chat-message-queue";
 import * as morningBriefSchema from "./schema/morning-brief";
 import * as computerUseHostSchema from "./schema/computer-use-host";
 import * as insightsDailySchema from "./schema/insights-daily";
@@ -206,7 +205,6 @@ export const schema = {
   ...runUploadedFileSchema,
   ...vm0ApiKeySchema,
   ...zeroWorkflowSchema,
-  ...chatMessageQueueSchema,
   ...morningBriefSchema,
   ...computerUseHostSchema,
   ...insightsDailySchema,

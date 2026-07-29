@@ -5034,6 +5034,13 @@
       "when": 1785239466820,
       "tag": "0718_require_user_messages",
       "breakpoints": true
+    },
+    {
+      "idx": 719,
+      "version": "7",
+      "when": 1785289414902,
+      "tag": "0719_drop_chat_message_queue",
+      "breakpoints": true
     }
   ]
 }

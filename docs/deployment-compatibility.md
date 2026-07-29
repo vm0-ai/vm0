@@ -163,6 +163,32 @@ For frontend/backend API changes:
 - Test missing new response fields or old response shapes when frontend code can
   receive them during rollout.
 
+### Brazilian Portuguese locale rollout
+
+The `en-US` / `pt-BR` locale transition uses a receiver-first rollout because
+Platform and API promotion are independent and locale preferences are shared
+persisted state:
+
+1. Deploy the API and Platform receivers with
+   `BrazilianPortugueseLocale` disabled. The API continues to accept legacy
+   `zh-CN` requests as `en-US`, projects stored `pt-BR` to `en-US` for old
+   clients, and advertises writable locales only to a client carrying the
+   `pt-br-locale-v1` capability.
+2. Verify that every API reader which rejects stored `pt-BR` values, including
+   rollback candidates, has drained.
+3. Enable `BRAZILIAN_PORTUGUESE_LOCALE_ROLLOUT_ENABLED` only after that
+   verification. The corresponding `BrazilianPortugueseLocale` switch is
+   API-controlled and cannot be set through user feature-switch overrides. A
+   capable API then advertises both `en-US` and `pt-BR`; Platform keeps
+   synchronization and the selector hidden until it receives that handshake.
+4. Remove the legacy request normalization, old-client response projection,
+   capability handshake, and rollout switch only after stale browser clients
+   and rollback windows have closed and persisted `zh-CN` rows have migrated.
+   Cleanup is tracked by #23508.
+
+Do not enable the persistence guard during step 1. A stored `pt-BR` value is not
+readable by the API release that preceded this receiver change.
+
 For runner/backend API changes:
 
 - Test old runner requests against the new backend handler.
@@ -195,19 +221,21 @@ accessed them had drained, the physical legacy run, session, and checkpoint
 columns were removed.
 
 The short-lived direct and delayed runner queues use a separate expand/contract
-sequence. Preparation-release readers accept the previous full
-`storageManifest`, `null`, or omission while still requiring canonical
-`storageMounts`. New writers explicitly store `storageManifest: null`; the
-preceding API reader already accepts that value, so rollback remains safe
-without serializing a second set of presigned URLs. Run-context volume and
-artifact observations are created before persistence and are not part of queue
-or Runner state.
+sequence. The preparation release made readers accept the previous full
+`storageManifest`, `null`, or omission while requiring canonical
+`storageMounts`, and made writers store the nullable sentinel. The contraction
+release omits the field and removes its private schema. Its reader still accepts
+queued rows written by the preparation release because unrelated object fields
+are ignored and canonical `storageMounts` remain required. The preparation
+release already accepts omission, so these two releases can overlap during a
+rolling deployment. Rolling back to an API older than the preparation release
+is intentionally unsupported; no database-clock cutoff or queue-drain gate is
+required for that discarded rollback boundary.
 
-Do not omit the queue field until every active and rollback-eligible API has the
-tolerant reader and null writer, the database-clock cutoff for the last
-full-object writer is recorded, more than the two-hour queue TTL has elapsed,
-and neither queue contains an unexpired row predating that cutoff. The backend
-field and legacy schema remain until this queue gate passes.
+The similarly named Runner claim field is distinct and remains the canonical
+`{ storageMounts }` transport envelope. Run-context volume and artifact
+observations are derived from the same prepared mount entries before
+persistence and are not part of queue or Runner state.
 
 Phase 4A contracts the migration denominator to the latest state used by
 session continuation. Every session continuation head must have canonical
@@ -227,8 +255,7 @@ Runner and guest binaries ship together, so both the API-to-Runner and
 Runner-to-guest runtime readers now require `storageMounts`. Both boundaries
 reject exact duplicate `mountPath` values while continuing to ignore unrelated
 unknown fields for forward compatibility. The backend's stored queue context
-still accepts its legacy nullable field until the independent queue gate above
-passes.
+contains only canonical `storageMounts`.
 
 ### Firewall hostname policy
 

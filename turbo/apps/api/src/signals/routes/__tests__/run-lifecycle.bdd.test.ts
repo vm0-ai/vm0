@@ -2107,7 +2107,7 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
       context,
       created.runId,
     );
-    expect(directStorageState.legacy_manifest_state).toBe("null");
+    expect(directStorageState.has_stored_storage_manifest).toBeFalsy();
     expect(directStorageState.canonical_mount_count).toBeGreaterThan(0);
     expect(directStorageState.has_run_context_storage).toBeFalsy();
 
@@ -4405,7 +4405,7 @@ describe("RUN-01: admission boundaries beyond request validation", () => {
       context,
       third.runId,
     );
-    expect(promotedStorageState.legacy_manifest_state).toBe("null");
+    expect(promotedStorageState.has_stored_storage_manifest).toBeFalsy();
     expect(promotedStorageState.canonical_mount_count).toBeGreaterThan(0);
     expect(promotedStorageState.has_run_context_storage).toBeFalsy();
     const decryptCountBeforeClaim = await readFakeKmsDecryptCallCount(context);

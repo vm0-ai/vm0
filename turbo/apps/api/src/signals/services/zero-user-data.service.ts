@@ -60,8 +60,12 @@ function parseSendMode(value: unknown): SendMode {
 }
 
 function parseUserLocale(value: unknown): UserLocale | null {
-  if (value === null || value === "en-US" || value === "zh-CN") {
+  if (value === null || value === "en-US" || value === "pt-BR") {
     return value;
+  }
+  // TODO(#23508): remove after persisted legacy values are migrated.
+  if (value === "zh-CN") {
+    return "en-US";
   }
   throw new Error(`Unexpected user locale: ${String(value)}`);
 }
@@ -174,6 +178,7 @@ export function userModelPreference({
 
 interface UpdateUserPreferencesArgs extends UserScopedQuery {
   readonly preferences: UpdateUserPreferencesRequest;
+  readonly allowBrazilianPortuguese?: boolean;
 }
 
 type UpdateUserPreferencesResult =
@@ -187,6 +192,15 @@ export const updateUserPreferences$ = command(
     signal: AbortSignal,
   ): Promise<UpdateUserPreferencesResult> => {
     const preferences = args.preferences;
+    if (
+      preferences.locale === "pt-BR" &&
+      args.allowBrazilianPortuguese !== true
+    ) {
+      return {
+        ok: false,
+        message: "Invalid request",
+      };
+    }
     if (
       preferences.timezone !== undefined &&
       !isValidTimeZone(preferences.timezone)

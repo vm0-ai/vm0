@@ -1952,7 +1952,7 @@ pub(super) async fn run_in_sandbox_with_process_cancel_timeouts(
     let exit = match result {
         Ok(exit) => exit,
         Err(e) => {
-            // Sandbox crashed — check host dmesg for cgroup OOM kill of the
+            // Sandbox crashed — check host dmesg for OOM evidence naming the
             // firecracker process before propagating a generic error.
             if let Some(host_process_pid) = sandbox.host_process_pid()
                 && check_host_oom(host_process_pid).await
@@ -1962,9 +1962,7 @@ pub(super) async fn run_in_sandbox_with_process_cancel_timeouts(
                     pid = host_process_pid,
                     "host OOM kill detected for firecracker"
                 );
-                let error = "Firecracker VM killed by host OOM killer \
-                             (cgroup memory limit exceeded)"
-                    .to_string();
+                let error = "Firecracker VM killed by host OOM killer".to_string();
                 telemetry.record("agent_execute", t.elapsed(), false, Some(&error));
                 return Ok(AgentExecutionResult::failure(1, error, None)
                     .with_resource_failure_kind(ResourceFailureKind::HostMemoryOomKilled));

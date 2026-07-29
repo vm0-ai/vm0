@@ -264,7 +264,6 @@ async function seedRunnerJobForAction(
     runnerGroup: readOptionalString(body, "runner_group") ?? "vm0/test",
     profile: readOptionalString(body, "profile") ?? "vm0/default",
     executionContext: {
-      storageManifest: null,
       storageMounts: [],
       environment: null,
       resumeSession: null,

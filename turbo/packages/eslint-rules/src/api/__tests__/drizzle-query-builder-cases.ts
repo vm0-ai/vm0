@@ -1465,6 +1465,43 @@ const queryBuilderCases = {
   ],
   readValid: [
     {
+      code: `${rawRowsImport}${schemaPreamble}
+        import { sql } from "drizzle-orm";
+        await executeRawRows(
+          db,
+          sql\`
+            WITH ranking_periods AS (
+              SELECT id
+              FROM literal_model_stats
+            )
+            SELECT id
+            FROM ranking_periods
+            LIMIT 50
+          \`,
+          rowSchema,
+        );
+      `,
+    },
+    {
+      code: `${rawRowsImport}${schemaPreamble}
+        import { sql, type SQL } from "drizzle-orm";
+        declare const modelStatsRelation: SQL;
+        await executeRawRows(
+          db,
+          sql\`
+            WITH ranking_periods AS (
+              SELECT id
+              FROM \${modelStatsRelation}
+            )
+            SELECT id
+            FROM ranking_periods
+            LIMIT 50
+          \`,
+          rowSchema,
+        );
+      `,
+    },
+    {
       code: `${schemaPreamble}
         import { eq, sql } from "drizzle-orm";
         async function executeRawRows(...args: unknown[]) { return args; }
@@ -2242,6 +2279,48 @@ const queryBuilderCases = {
     },
   ],
   readInvalid: [
+    {
+      code: `${rawRowsImport}${schemaPreamble}
+        import { gte, sql, sum } from "drizzle-orm";
+        await executeRawRows(
+          db,
+          sql\`
+            WITH ranking_periods AS (
+              SELECT
+                \${runs.threadId} AS thread_id,
+                COALESCE(\${sum(runs.id)}, 0)::bigint AS total
+              FROM \${runs}
+              WHERE \${gte(runs.id, 0)}
+              GROUP BY 1
+            ),
+            previous_period AS (
+              SELECT
+                \${runs.threadId} AS thread_id,
+                COALESCE(\${sum(runs.id)}, 0)::bigint AS previous_total
+              FROM \${runs}
+              WHERE \${gte(runs.id, 0)}
+              GROUP BY 1
+            ),
+            visible_rankings AS (
+              SELECT thread_id, total
+              FROM ranking_periods
+              WHERE total > 0
+            )
+            SELECT
+              visible_rankings.thread_id,
+              visible_rankings.total,
+              previous_period.previous_total
+            FROM visible_rankings
+            LEFT JOIN previous_period
+              ON previous_period.thread_id = visible_rankings.thread_id
+            ORDER BY visible_rankings.total DESC
+            LIMIT 50
+          \`,
+          rowSchema,
+        );
+      `,
+      errors: [{ messageId: "composedCteQueryBuilder" }],
+    },
     {
       code: `${rawRowsImport}${schemaPreamble}
         import { eq, sql } from "drizzle-orm";
