@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.340.2](https://github.com/vm0-ai/vm0/compare/api-v1.340.1...api-v1.340.2) (2026-07-29)
+
+
+### Bug Fixes
+
+* **browser:** log bounded provider cost diagnostics ([#23613](https://github.com/vm0-ai/vm0/issues/23613)) ([a32f0bb](https://github.com/vm0-ai/vm0/commit/a32f0bbe87fc0a79f7fc36ec1d65d4b3057eadaf))
+
 ## [1.340.1](https://github.com/vm0-ai/vm0/compare/api-v1.340.0...api-v1.340.1) (2026-07-29)
 
 

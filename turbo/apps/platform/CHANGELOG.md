@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.651.3](https://github.com/vm0-ai/vm0/compare/app-v0.651.2...app-v0.651.3) (2026-07-29)
+
+
+### Bug Fixes
+
+* **platform:** prevent manual PWA root scrolling ([#23633](https://github.com/vm0-ai/vm0/issues/23633)) ([79369af](https://github.com/vm0-ai/vm0/commit/79369af9207edc0009a2dbf08a2eaa38b73ceb54))
+
 ## [0.651.2](https://github.com/vm0-ai/vm0/compare/app-v0.651.1...app-v0.651.2) (2026-07-29)
 
 
