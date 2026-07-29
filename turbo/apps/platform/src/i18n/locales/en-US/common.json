@@ -355,6 +355,86 @@
     "loading": "Loading authentication",
     "toggleTheme": "Toggle theme"
   },
+  "authorization": {
+    "browser": {
+      "description": "Zero will use an isolated cloud browser profile for this chat thread. Enabling it disconnects Computer Use for the thread.",
+      "enable": "Enable for this thread",
+      "enabled": "Cloud browser enabled",
+      "linkExpires": "Link expires {{date}}.",
+      "title": "Enable cloud browser",
+      "unavailableDescription": "This cloud browser authorization link is invalid, expired, or not available for this workspace.",
+      "unavailableTitle": "Authorization link unavailable"
+    },
+    "computerUse": {
+      "authorize": "Authorize",
+      "authorized": "Authorized",
+      "checkingCompatibility": "Checking compatibility",
+      "description": "Choose an online computer for Zero to use in {{source}}.",
+      "downloadMac": "Download for macOS",
+      "lastSeen": "Last seen {{date}}",
+      "linkExpires": "Link expires {{date}}.",
+      "macRequirement": "Requires an Apple silicon Mac with macOS 14 or newer. Intel Macs aren't supported.",
+      "noHostsDescription": "Open Zero Computer Use on your Mac and refresh this page when it comes online.",
+      "noHostsTitle": "No online computers",
+      "sources": {
+        "chat": "this chat thread",
+        "slack": "this Slack thread",
+        "teams": "this Teams thread"
+      },
+      "title": "Authorize computer use",
+      "unavailableDescription": "This Computer Use authorization link is invalid, expired, or not available for this workspace.",
+      "unavailableTitle": "Authorization link unavailable",
+      "unsupportedIntelMac": "Requires an Apple silicon Mac"
+    },
+    "permission": {
+      "confirm": "Confirm",
+      "duration": "Duration",
+      "durationLabel": "Permission duration",
+      "durationOptions": {
+        "always": "Always",
+        "oneHour": "1 hour",
+        "sevenDays": "7 days",
+        "twentyFourHours": "24 hours"
+      },
+      "errors": {
+        "agentNotFound": "Agent not found",
+        "loadAgent": "Failed to load agent",
+        "loadGrants": "Failed to load permission grants",
+        "loadMetadata": "Failed to load permission metadata",
+        "missingAgentId": "Missing agent ID in URL parameters",
+        "missingPermission": "Missing permission in URL parameters",
+        "unknownAction": "Unknown permission action: {{action}}",
+        "unknownConnector": "Unknown connector: {{connector}}",
+        "unknownPermission": "Unknown permission: {{permission}}",
+        "updateFailed": "Couldn't update permissions"
+      },
+      "expiration": {
+        "expired": "Expired",
+        "inDays_one": "Expires in {{count}} day",
+        "inDays_other": "Expires in {{count}} days",
+        "inHours_one": "Expires in {{count}} hour",
+        "inHours_other": "Expires in {{count}} hours",
+        "lessThanHour": "Expires in less than 1 hour",
+        "lessThanHourShort": "< 1 hour",
+        "prefix": "Expires in "
+      },
+      "greeting": "Hey {{userName}}, you're updating your permissions for {{targetName}}.",
+      "result": {
+        "alreadyAllowedDescription": "Your connector permission grant is already allowed",
+        "alreadyAllowedTitle": "Already allowed",
+        "alreadyDeniedDescription": "Your connector permission grant is already denied",
+        "alreadyDeniedTitle": "Already denied",
+        "deniedDescription": "Your connector permission grant has been denied",
+        "deniedTitle": "Permissions denied",
+        "updatedDescription": "Your connector permission grant has been updated",
+        "updatedTitle": "Permissions updated"
+      },
+      "saving": "Saving...",
+      "unknownEndpoints": "Unknown endpoints",
+      "userFallback": "there",
+      "wouldLike": "Would like to"
+    }
+  },
   "browserSession": {
     "close": "Close live browser",
     "creditsCharged_one": "{{formattedCount}} credit charged",
@@ -384,6 +464,680 @@
     "unavailable": {
       "description": "This browser does not belong to this chat or has been removed.",
       "title": "Browser unavailable"
+    }
+  },
+  "connectors": {
+    "access": {
+      "accessFor": "{{action}} {{connector}} access for {{agent}}",
+      "accessUpdated": "{{connector}} access updated",
+      "clearSearch": "Clear agent search",
+      "description": "Choose which agents can use this connector.",
+      "loading": "Loading agents...",
+      "managePermissions": "Manage permissions",
+      "managePermissionsFor": "Manage {{connector}} permissions for {{agent}}",
+      "noAgents": "No agents found",
+      "noMatchingAgents": "No agents matching \"{{search}}\"",
+      "permissionsUpdated": "Permissions updated",
+      "search": "Find agents",
+      "title": "Manage {{connector}} access",
+      "unnamedAgent": "Unnamed"
+    },
+    "actions": {
+      "apply": "Apply",
+      "authorize": "Authorize",
+      "cancel": "Cancel",
+      "close": "Close",
+      "closeWindow": "Close window",
+      "connect": "Connect",
+      "connecting": "Connecting...",
+      "create": "Create",
+      "creating": "Creating…",
+      "delete": "Delete",
+      "deleting": "Deleting…",
+      "disconnect": "Disconnect",
+      "disconnecting": "Disconnecting...",
+      "grant": "Grant",
+      "reconnect": "Reconnect",
+      "rename": "Rename",
+      "revoke": "Revoke",
+      "save": "Save",
+      "saving": "Saving...",
+      "savingEllipsis": "Saving…",
+      "tryAgain": "Try again",
+      "uninstall": "Uninstall",
+      "uninstalling": "Uninstalling..."
+    },
+    "callback": {
+      "connected": "{{connector}} connected",
+      "connectedAs": "Connected as {{username}}. You can close this window.",
+      "connectedDescription": "Your account has been connected. You can close this window.",
+      "connecting": "Connecting {{connector}}…",
+      "connectingDescription": "Please wait while we finish connecting your account.",
+      "errorDescription": "{{error}} Close this window and try again.",
+      "errorFallback": "An error occurred during connection.",
+      "failed": "Connection failed",
+      "failedTitle": "Couldn’t connect {{connector}}",
+      "finishing": "Finishing the secure connection",
+      "success": "Connected"
+    },
+    "card": {
+      "accessFor": "{{action}} {{connector}} access",
+      "authorized": "Authorized",
+      "connectAria": "Connect {{connector}}",
+      "connected": "Connected",
+      "connecting": "Connecting…",
+      "connectionExpired": "Connection expired",
+      "connectToContinue": "Connect this account to continue",
+      "managePermissions": "Manage permissions",
+      "managePermissionsFor": "Manage {{connector}} permissions",
+      "optional": "Optional",
+      "required": "Required",
+      "reviewPermissions": "Review permissions",
+      "updatePermissions": "Update permissions"
+    },
+    "catalog": {
+      "access": {
+        "add": "Add access",
+        "manage": "Manage {{connector}} access",
+        "usedBy": "Used by "
+      },
+      "categories": {
+        "ai": {
+          "label": "AI",
+          "menu": "AI"
+        },
+        "aiAgentApps": {
+          "label": "Agent Platforms and AI Apps",
+          "menu": "Agent Platforms"
+        },
+        "aiGeneralModels": {
+          "label": "General Models and Reasoning",
+          "menu": "General Models"
+        },
+        "aiImageVideo": {
+          "label": "Image / Video Generation",
+          "menu": "Image / Video"
+        },
+        "aiMemoryTracingEval": {
+          "label": "Memory / Tracing / Evaluation",
+          "menu": "Memory / Tracing"
+        },
+        "aiVoiceAudio": {
+          "label": "Voice / Audio",
+          "menu": "Voice / Audio"
+        },
+        "communicationCollaboration": {
+          "label": "Communication and Collaboration",
+          "menu": "Communication"
+        },
+        "dataAutomationInfrastructure": {
+          "label": "Data, Automation, and Infrastructure",
+          "menu": "Data and Automation"
+        },
+        "docsFilesKnowledge": {
+          "label": "Docs, Files, and Knowledge",
+          "menu": "Documents"
+        },
+        "engineeringTeamExecution": {
+          "label": "Engineering and Team Execution",
+          "menu": "Engineering"
+        },
+        "marketingContentGrowth": {
+          "label": "Marketing, Content, and Growth",
+          "menu": "Marketing"
+        },
+        "meetingsScheduling": {
+          "label": "Meetings and Scheduling",
+          "menu": "Meetings"
+        },
+        "salesCrmBusinessOperations": {
+          "label": "Sales, CRM, and Business Operations",
+          "menu": "Sales and Business"
+        }
+      },
+      "categoriesAria": "Connector categories",
+      "description": "Connect third-party services for your agents to use.",
+      "empty": {
+        "agent": "No connectors for this agent",
+        "connected": "No connected connectors",
+        "matching": "{{message}} matching \"{{search}}\"",
+        "notConnected": "No connectors left to connect",
+        "search": "No connectors matching \"{{search}}\""
+      },
+      "filters": {
+        "agents": "Agents",
+        "all": "All",
+        "aria": "Filter connectors",
+        "connected": "Connected",
+        "notConnected": "Not connected",
+        "status": "Status"
+      },
+      "iconUnavailable": "Connector icon unavailable",
+      "newConnector": "New connector",
+      "noConnectorsAlt": "No connectors",
+      "otherCategory": "Other",
+      "search": "Find connectors",
+      "tabs": {
+        "builtin": "Built-in",
+        "custom": "Custom"
+      },
+      "title": "Connectors",
+      "unnamedAgent": "Unnamed"
+    },
+    "connectDialog": {
+      "connectedAs": "Connected as {{username}}",
+      "device": {
+        "checking": "Checking for approval...",
+        "connect": "Connect {{connector}}",
+        "copyThenOpen": "Copy this code, then open the verification page to approve access.",
+        "description": "Open the provider's verification page, then enter this verification code to approve access.",
+        "intro": "Connect to get a verification code, then use it on the provider's verification page to approve access.",
+        "openPage": "Open verification page",
+        "selectOption": "Select {{option}}",
+        "starting": "Starting...",
+        "startingConnection": "Starting connection...",
+        "verificationCode": "Verification code",
+        "waiting": "Waiting for approval. Keep this dialog open."
+      },
+      "external": {
+        "code": "Code",
+        "complete": "Complete connection",
+        "description": "Open {{connector}} sign-in, then paste the code displayed by {{connector}}.",
+        "open": "Open {{connector}} sign-in",
+        "start": "Start {{connector}} sign-in"
+      },
+      "noAuth": {
+        "enable": "Enable {{connector}}",
+        "enabling": "Enabling..."
+      },
+      "noMethod": "No connection method is available.",
+      "or": "or",
+      "progress": {
+        "connecting": "Connecting...",
+        "savingPermissions": "Saving permissions..."
+      },
+      "unavailable": {
+        "description": "This connector has available connection methods, but none of them can be configured from this dialog yet.",
+        "title": "Connection methods unavailable"
+      }
+    },
+    "custom": {
+      "connect": {
+        "description": "Your secret is encrypted at rest and injected into outbound requests by the firewall. It's never exposed to the agent as an environment variable.",
+        "secret": "Secret",
+        "title": "Connect {{connector}}"
+      },
+      "create": {
+        "displayName": "Display name",
+        "headerName": "Header name",
+        "headerTemplate": "Header template",
+        "headerTemplateHint": "(must contain {{placeholder}})",
+        "prefixes": "Prefixes",
+        "prefixesHint": "(one per line, https only)",
+        "title": "New custom connector"
+      },
+      "delete": {
+        "description": "This removes the connector and every member's stored secret for it. Agents authorized for this connector will lose access immediately. This can't be undone.",
+        "title": "Delete {{connector}}?"
+      },
+      "emptyAdmin": "No custom connectors yet. Create one to register an API for every member to use.",
+      "emptyMember": "Your org hasn't registered any custom connectors yet.",
+      "moreOptions": "More options",
+      "rename": {
+        "displayName": "Display name",
+        "title": "Rename custom connector"
+      },
+      "statusConnected": "Connected",
+      "toasts": {
+        "connected": "Connected",
+        "created": "Created \"{{connector}}\"",
+        "deleted": "Custom connector deleted",
+        "disconnected": "Disconnected",
+        "renamed": "Renamed to \"{{connector}}\""
+      }
+    },
+    "customProposal": {
+      "configure": "Configure {{connector}}",
+      "descriptionAgent": "Saving will connect your values and authorize {{agent}}.",
+      "descriptionUser": "Saving will connect this custom connector for your account.",
+      "invalid": "This custom connector proposal link is invalid or expired.",
+      "requestScope": "Request scope",
+      "returnToChat": "Return to the chat and reply ACK so the agent can verify the connector.",
+      "saved": "Saved",
+      "savedToast": "{{connector}} saved",
+      "targetFallback": "this agent",
+      "update": "Update {{connector}}"
+    },
+    "directed": {
+      "authorizeAgent": "Authorize {{agent}}",
+      "authorized": "{{connector}} authorized",
+      "connected": "{{connector}} connected",
+      "needsConnector": "{{agent}} needs {{connector}} to proceed",
+      "reconnecting": "Reconnecting..."
+    },
+    "expiration": {
+      "inDays_one": "Expires in {{count}} day",
+      "inDays_other": "Expires in {{count}} days",
+      "inHours_one": "Expires in {{count}} hour",
+      "inHours_other": "Expires in {{count}} hours",
+      "lessThanHour": "Expires in less than 1 hour"
+    },
+    "permissions": {
+      "actions": {
+        "allow": "Allow",
+        "deny": "Deny",
+        "mixed": "Mixed"
+      },
+      "allowDuration": {
+        "always": "Allow always",
+        "oneHour": "Allow for 1h",
+        "sevenDays": "Allow for 7d",
+        "twentyFourHours": "Allow for 24h"
+      },
+      "allowOptions": "{{permission}} allow options",
+      "always": "Always",
+      "clearSearch": "Clear permission search",
+      "descriptionAgent": "Configure which actions this agent is allowed to perform via this connector.",
+      "descriptionWorkflow": "Configure which actions this workflow is allowed to perform via this connector.",
+      "find": "Find permissions",
+      "findPlaceholder": "Find permissions...",
+      "forTarget": "for {{target}}",
+      "loadError": "Failed to load permission metadata",
+      "loading": "Loading permissions...",
+      "metadataMissing": "No permission metadata found for {{connector}}",
+      "noResults": "No results for “{{search}}”",
+      "otherEndpoints": "Other endpoints",
+      "otherEndpointsDescription": "API endpoints not matched by any permission above",
+      "permissions": "Permissions",
+      "restore": "Restore",
+      "scopeReview": {
+        "added": "New permissions",
+        "description": "The required permissions for this connector have changed. Please review and reconnect to apply the update.",
+        "failed": "Failed to load scope changes.",
+        "loading": "Loading scope changes...",
+        "removed": "Removed permissions",
+        "title": "{{connector}} permissions update"
+      },
+      "selectAll": "Select all",
+      "showMore_one": "Show more ({{count}})",
+      "showMore_other": "Show more ({{count}})",
+      "title": "{{connector}} permissions"
+    },
+    "providerConnect": {
+      "agentphone": {
+        "back": "Back to {{brandName}}",
+        "connectDescription": "Link this phone number to your {{brandName}} account so you can interact with Zero from text messages.",
+        "connectTitle": "Connect phone number",
+        "errorFallback": "We couldn't connect this phone number. Try again from your text messages.",
+        "incompleteDescription": "Open a fresh /connect link from your text messages.",
+        "incompleteTitle": "Connect link is incomplete",
+        "invalidSignature": "The signature on this link is not valid.",
+        "invalidTimestamp": "The timestamp on this link is not valid.",
+        "invalidTitle": "Connect link is invalid",
+        "risk": "SMS and MMS replies may not be delivered reliably. For the most reliable experience, use iMessage with this AgentPhone number.",
+        "successDescription": "{{phone}} is connected. Send a text message to start chatting with Zero.",
+        "successTitle": "Phone number connected"
+      },
+      "common": {
+        "backToSettings": "Back to settings",
+        "checkingTitle": "Checking account status...",
+        "connectionFailed": "Connection failed",
+        "invalidLink": "Invalid link",
+        "verifying": "Please wait while we verify your connection."
+      },
+      "feishu": {
+        "back": "Back to Feishu settings",
+        "checkingTitle": "Checking account status…",
+        "connectDescription": "Link your {{brandName}} account to this Feishu bot so you can work with your agent directly from Feishu.",
+        "connectTitle": "Connect to Feishu",
+        "errorFallback": "We couldn't connect Feishu. Open a fresh connect link and try again.",
+        "invalidDescription": "Open a fresh connect link from Feishu and try again.",
+        "open": "Open Feishu",
+        "successDescription": "You're connected. Send a message in Feishu to start chatting.",
+        "successDescriptionNamed": "You're connected to {{bot}}. Send a message in Feishu to start chatting.",
+        "successTitle": "Connected to Feishu!"
+      },
+      "github": {
+        "accountFallback": "this GitHub account",
+        "alreadyDescription": "You're already connected as {{account}}. Mention your agent in GitHub issues or pull requests to start chatting.",
+        "alreadyTitle": "Already connected to GitHub",
+        "back": "Back to workflows",
+        "checkingConnectionDescription": "Please wait while we check your GitHub connection.",
+        "checkingConnectionTitle": "Checking connection...",
+        "checkingSession": "Please wait while we verify your {{brandName}} session.",
+        "connectDescription": "Link your {{brandName}} account to {{account}} so GitHub mentions can run your agents from issues and pull requests.",
+        "connectTitle": "Connect to GitHub",
+        "errorFallback": "We couldn't connect GitHub. Try again from GitHub.",
+        "invalidInstallation": "The GitHub installation on this link is not valid.",
+        "invalidSignature": "The signature on this link is not valid.",
+        "invalidTimestamp": "The timestamp on this link is not valid.",
+        "invalidTitle": "Connect link is invalid",
+        "invalidUser": "The GitHub user on this link is not valid.",
+        "invalidUsername": "The GitHub username on this link is not valid.",
+        "linkIncomplete": "Open a fresh GitHub connect link and try again.",
+        "linkIncompleteTitle": "Connect link is incomplete",
+        "notInstalledDescription": "Ask an organization admin to install GitHub before connecting your account.",
+        "notInstalledTitle": "GitHub is not installed",
+        "refresh": "Refresh this page and try again.",
+        "signInButton": "Sign in to {{brandName}}",
+        "signInCheckFailed": "Couldn't check sign-in",
+        "signInDescription": "Use your {{brandName}} account before connecting this GitHub user.",
+        "signInTitle": "Sign in to continue",
+        "successDescription": "You're connected as {{account}}. Mention your agent in GitHub issues or pull requests to start chatting.",
+        "successTitle": "Connected to GitHub!",
+        "wrongOrganizationDescription": "Your active organization doesn't match this GitHub installation. Switch to the correct organization and open the link again.",
+        "wrongOrganizationTitle": "Switch organization"
+      },
+      "slack": {
+        "connectDescription": "Link your account to this Slack workspace so you can interact with your agent directly from Slack.",
+        "connectTitle": "Connect to Slack",
+        "invalidDescription": "This page is meant to be opened from a Slack connect link.",
+        "open": "Open Slack",
+        "successDescription": "Mention @Zero in any channel or send a DM to start chatting.",
+        "successDescriptionWorkspace": "You're connected to {{workspace}}. Mention @Zero in any channel or send a DM to start chatting.",
+        "successTitle": "Connected to Slack!"
+      },
+      "teams": {
+        "connectDescription": "Link your Teams account so you can interact with your agent directly from Microsoft Teams.",
+        "connectDescriptionNamed": "{{displayName}}, link your Teams account so you can interact with your agent directly from Microsoft Teams.",
+        "connectTitle": "Connect Microsoft Teams",
+        "invalidDescription": "This page is meant to be opened from a Microsoft Teams connect link.",
+        "open": "Open Teams",
+        "successDescription": "You are connected to {{team}}. Mention @Zero in Teams to start chatting.",
+        "successTitle": "Connected to Microsoft Teams"
+      },
+      "telegram": {
+        "alreadyDescription": "You're already connected. Send a message in Telegram to start chatting.",
+        "alreadyDescriptionNamed": "You're already connected to {{bot}}. Send a message in Telegram to start chatting.",
+        "alreadyTitle": "Already connected to Telegram",
+        "back": "Back to Telegram settings",
+        "botFallback": "this bot",
+        "checkingConnectionDescription": "Please wait while we check your Telegram connection.",
+        "checkingConnectionTitle": "Checking connection...",
+        "checkingDomain": "Checking domain status...",
+        "checkingSession": "Please wait while we verify your {{brandName}} session.",
+        "connectDescription": "Link your account to this Telegram bot so you can interact with your agent directly from Telegram.",
+        "connectTitle": "Connect to Telegram",
+        "continue": "Continue with Telegram",
+        "domainDescription": "Telegram web login is not enabled for {{bot}}.",
+        "domainIn": "In ",
+        "domainInstructionsAfter": ", choose the bot, then set the domain to:",
+        "domainKeepOpen": "Keep this page open after saving the domain. You can also connect from Telegram with /connect.",
+        "domainSend": ", send ",
+        "domainTitle": "Set Telegram login domain",
+        "errorFallback": "We couldn't connect Telegram. Try again from Telegram.",
+        "invalidSignature": "The signature on this link is not valid.",
+        "invalidTimestamp": "The timestamp on this link is not valid.",
+        "invalidTitle": "Connect link is invalid",
+        "invalidUser": "The Telegram user on this link is not valid.",
+        "invalidUsername": "The Telegram username on this link is not valid.",
+        "linkIncomplete": "Open a fresh /connect link from Telegram and try again.",
+        "linkIncompleteTitle": "Connect link is incomplete",
+        "open": "Open Telegram",
+        "openBotFather": "Open BotFather",
+        "refresh": "Refresh this page and try again.",
+        "signInButton": "Sign in to {{brandName}}",
+        "signInCheckFailed": "Couldn't check sign-in",
+        "signInDescription": "Use your {{brandName}} account before connecting this Telegram user.",
+        "signInTitle": "Sign in to continue",
+        "successDescription": "You're connected to {{bot}}. Send a message in Telegram to start chatting.",
+        "successTitle": "Connected to Telegram!"
+      }
+    },
+    "providerSettings": {
+      "agentphone": {
+        "authorizedSender": "Authorized sender",
+        "connectAria": "Connect phone",
+        "connectDescription": "Enter your phone number. We will text a verification link that connects this workspace.",
+        "connectTitle": "Connect phone",
+        "copyAria": "Copy {{phone}}",
+        "copyError": "Failed to copy phone number",
+        "copySuccess": "Phone number copied",
+        "description": "Text-message access to Zero",
+        "destination": "iMessage or SMS to",
+        "normalized": "We will text {{phone}}.",
+        "options": "Phone options",
+        "phoneLabel": "Phone",
+        "phoneNumber": "Phone number",
+        "risk": "SMS and MMS replies may not be delivered reliably. For the most reliable experience, use iMessage with this AgentPhone number.",
+        "sending": "Sending...",
+        "sendVerification": "Send verification",
+        "verificationSent": "Verification text sent to {{phone}}. Open the link in that text to finish connecting."
+      },
+      "errors": {
+        "agentphonePhone": "Enter a phone number with country code, like +1 555 555 1212.",
+        "githubAuthorizationWindow": "Failed to open authorization window",
+        "telegramDomain": "Domain is not visible to Telegram yet. Check BotFather and try again.",
+        "telegramPrivacy": "Privacy mode still appears to be on. Turn it off in BotFather, then try again."
+      },
+      "feishu": {
+        "addBot": "Add bot",
+        "addDialogDescription": "Create an enterprise custom app, enable its bot, and complete these steps in the Feishu developer console.",
+        "addDialogTitle": "Add a Feishu bot",
+        "agentDescription": "Choose the agent that should handle messages sent to this bot.",
+        "backToIntegrations": "Back to integrations",
+        "botFallback": "Feishu bot",
+        "botIconAlt": "{{bot}} bot icon",
+        "bots": "Feishu bots",
+        "callbackStatusVerified": "Callback verified",
+        "callbackStatusWaiting": "Waiting for callback",
+        "configured": "Configured",
+        "copied": "{{label}} copied",
+        "copy": "Copy",
+        "create": {
+          "descriptionAfter": ", create an enterprise custom app named {{brandName}}, upload the {{brandName}} icon, then add the Bot capability.",
+          "descriptionBefore": "In the ",
+          "downloadIcon": "Download the {{brandName}} icon",
+          "iconAlt": "{{brandName}} app icon",
+          "iconHint": ", or use any icon you prefer.",
+          "iconTitle": "{{brandName}} app icon",
+          "imageAlt": "Feishu app creation form with the app name, icon, and Create button highlighted",
+          "title": "Create an enterprise custom app"
+        },
+        "credentials": {
+          "description": "Copy the App ID and App Secret from Credentials & Basic Information.",
+          "imageAlt": "Feishu app creation result showing where to find the App ID and App Secret",
+          "title": "Add the app credentials"
+        },
+        "defaultAgent": "Default agent",
+        "defaultAgentAria": "Default agent for {{appId}}",
+        "dialogAdminRequired": "An organization admin must configure the app. You can connect your own account from the Feishu bot list after setup is complete.",
+        "emptyAdmin": "Add a custom app to route Feishu messages to an agent.",
+        "emptyMember": "Ask an organization admin to add a Feishu bot.",
+        "emptyTitle": "No Feishu bots yet",
+        "events": {
+          "callbackLabel": "Callback URL",
+          "continue": "Continue after Feishu verifies the callback URL and the message event is subscribed.",
+          "description": "Open Event Configuration. Under Subscription mode, select “Send notifications to developer's server”. Then open Callback Configuration and paste the callback URL. After Feishu verifies it, add the “Receive message v1” event.",
+          "requestAlt": "Feishu Event Configuration screen with the Request URL field highlighted",
+          "requestLabel": "Add the callback request URL",
+          "subscriptionAlt": "Feishu Event Configuration screen with the subscription mode edit control highlighted",
+          "subscriptionLabel": "Select the event subscription mode",
+          "title": "Configure event delivery"
+        },
+        "faq": {
+          "approvalAnswer": "If availability is set to All members, a Feishu administrator must approve the release. Feishu sends the approval request to an administrator in a direct message, and the app remains pending until an administrator completes the review.",
+          "approvalQuestion": "Why is publishing the app waiting for approval?",
+          "challengeAnswer": "This usually means the Encrypt Key or Verification Token saved during the Tokens step is incorrect. Return to the Tokens step, enter both values from Event Configuration → Encryption Strategy again, save them, and retry the Request URL.",
+          "challengeQuestion": "Why does Feishu show \"Challenge code didn't get a response\"?",
+          "title": "Setup FAQ"
+        },
+        "guide": {
+          "next": "Show next Feishu guide image",
+          "previous": "Show previous Feishu guide image",
+          "show": "Show Feishu guide image {{number}}"
+        },
+        "loadError": "Couldn't load Feishu settings.",
+        "manage": "Manage",
+        "manageDialogTitle": "Manage Feishu bot",
+        "moreOptions": "More options for {{bot}}",
+        "pageDescription": "Manage bot routing for this workspace",
+        "publish": {
+          "allMembersAlt": "Feishu availability settings with All members selected",
+          "allMembersLabel": "Make the app available to all members",
+          "createVersionAlt": "Feishu Version Management page with the Create a version button highlighted",
+          "createVersionLabel": "Create an app version",
+          "description": "Create and publish an app version, then edit its availability settings and select All members. The app can only be used by other members of your organization after you grant them access.",
+          "editAvailabilityAlt": "Feishu version details page with the availability settings edit action highlighted",
+          "editAvailabilityLabel": "Edit the availability settings",
+          "title": "Publish the app"
+        },
+        "redirect": {
+          "descriptionAfter": ", open Development Configuration → Security Settings. Add the URL below under Redirect URLs so workspace members can connect their Feishu account to {{brandName}}.",
+          "descriptionBefore": "In the ",
+          "imageAlt": "Feishu Security Settings page showing where to add an OAuth redirect URL",
+          "label": "OAuth redirect URL",
+          "title": "Configure the OAuth redirect URL"
+        },
+        "reviewGuide": "Review guide",
+        "reviewGuideDescription": "Review the completed setup steps for this Feishu bot.",
+        "reviewGuideTitle": "Feishu review guide",
+        "routeDescription": "Route Feishu messages to agents",
+        "selectAgent": "Select an agent",
+        "setupIncomplete": "Setup incomplete",
+        "steps": {
+          "back": "Back",
+          "checking": "Checking…",
+          "close": "Close",
+          "create": "Create",
+          "credentials": "Credentials",
+          "done": "Done",
+          "events": "Events",
+          "next": "Next",
+          "publish": "Publish",
+          "redirect": "Redirect",
+          "tokens": "Tokens",
+          "verify": "Verify and continue",
+          "verifying": "Verifying…",
+          "waiting": "Waiting for callback"
+        },
+        "tokens": {
+          "descriptionAfter": ", select the app you just created, and enter its configuration page. Open Event Configuration → Encryption Strategy, then copy the Encrypt Key and Verification Token.",
+          "descriptionBefore": "Open the ",
+          "imageAlt": "Feishu Encryption Strategy screen showing the Encrypt Key and Verification Token",
+          "title": "Add the event verification tokens"
+        },
+        "uninstallDescription": "This uninstalls {{bot}} from the workspace and disconnects every {{brandName}} account using it. This action cannot be undone.",
+        "uninstallTargetFallback": "this bot",
+        "uninstallTitle": "Uninstall Feishu bot?"
+      },
+      "telegram": {
+        "addBot": "Add bot",
+        "addDescription": "Complete each BotFather step, then create the workspace bot.",
+        "adding": "Adding...",
+        "addTitle": "Add Telegram bot",
+        "agentAria": "Default agent for {{bot}}",
+        "backToIntegrations": "Back to integrations",
+        "botFallback": "Telegram bot",
+        "bots": "Telegram bots",
+        "botToken": "Bot token",
+        "checking": "Checking...",
+        "copied": "copied!",
+        "copyAria": "Copy {{value}}",
+        "copyTitle": "Click to copy",
+        "create": {
+          "description": "{{brandName}} will register this bot and configure its webhook. After setup, mention the bot in a group or send it a DM to talk with the selected agent.",
+          "descriptionNamed": "{{brandName}} will register {{bot}} and configure its webhook. After setup, mention the bot in a group or send it a DM to talk with the selected agent.",
+          "title": "Ready to create the integration"
+        },
+        "defaultAgent": "Default agent",
+        "disconnectAria": "Disconnect {{bot}}",
+        "domain": {
+          "detected": "Domain detected",
+          "instructionAfter": ", choose this bot, and set the domain to ",
+          "instructionEnd": ". Telegram uses this domain to allow the connect flow for this bot.",
+          "instructionStart": "In {{botFather}}, send ",
+          "title": "Set the Telegram login domain"
+        },
+        "emptyDescription": "Add a bot token to start routing Telegram messages to an agent.",
+        "emptyTitle": "No Telegram bots yet",
+        "invalidTokenDescription": "Reinstall the bot with a fresh token from BotFather.",
+        "loadError": "Couldn't load Telegram settings.",
+        "moreOptions": "More options for {{bot}}",
+        "newBotToken": "New bot token",
+        "notConnected": "Not connected",
+        "officialBot": "Zero official bot",
+        "officialDescription": "Official bot provided by {{brandName}}.",
+        "officialMissing": "Official bot configuration is missing.",
+        "pageDescription": "Manage bot routing for this workspace",
+        "privacy": {
+          "instructionAfter": ", choose this bot, then disable privacy mode. This lets the agent read group context around mentions and replies.",
+          "instructionStart": "In {{botFather}}, send ",
+          "off": "Privacy mode is off",
+          "title": "Optional: turn off privacy mode"
+        },
+        "registerAria": "Register Telegram bot",
+        "reinstall": "Reinstall",
+        "reinstallDescription": "Paste the fresh BotFather token for {{bot}}. The token must belong to this same bot.",
+        "reinstalling": "Reinstalling...",
+        "reinstallTargetFallback": "this bot",
+        "reinstallTitle": "Reinstall Telegram bot",
+        "selectAgent": "Select agent",
+        "steps": {
+          "back": "Back",
+          "create": "Create",
+          "domain": "Domain",
+          "next": "Next",
+          "privacy": "Privacy",
+          "token": "Token"
+        },
+        "token": {
+          "instructionAfter": ", choose a name and username, then paste the token below.",
+          "open": "Open ",
+          "send": ", send ",
+          "title": "Create a bot token in BotFather",
+          "verified": "Token verified"
+        },
+        "tokenInvalid": "Token invalid",
+        "uninstallAria": "Uninstall {{bot}}",
+        "uninstallDescription": "This removes {{bot}} from the workspace and disconnects Telegram access for users who use it. This action cannot be undone.",
+        "uninstallTargetFallback": "this bot",
+        "uninstallTitle": "Uninstall Telegram bot?"
+      },
+      "toasts": {
+        "agentphoneConnected": "AgentPhone connected",
+        "agentphoneDisconnected": "AgentPhone disconnected",
+        "agentphoneVerificationSent": "Verification text sent",
+        "feishuBotInstalled": "Feishu bot installed successfully",
+        "feishuBotUninstalled": "Feishu bot uninstalled",
+        "feishuConnected": "Feishu connected successfully",
+        "feishuDisconnected": "Disconnected from Feishu",
+        "slackConnected": "Slack connected successfully",
+        "slackDisconnected": "Disconnected from Slack",
+        "slackInstalled": "Slack installed successfully",
+        "slackPermissionsUpdated": "Permissions updated",
+        "slackUninstalled": "Slack workspace uninstalled",
+        "slackUpdated": "Slack updated",
+        "teamsConnected": "Microsoft Teams connected successfully",
+        "teamsDisconnected": "Disconnected from Microsoft Teams",
+        "teamsInstalled": "Microsoft Teams installed successfully",
+        "teamsUninstalled": "Microsoft Teams integration uninstalled",
+        "teamsUpdated": "Microsoft Teams updated",
+        "telegramAgentUpdated": "Default agent updated",
+        "telegramBotAdded": "Telegram bot added",
+        "telegramBotReinstalled": "Telegram bot reinstalled",
+        "telegramBotUninstalled": "Telegram bot uninstalled",
+        "telegramDisconnected": "Telegram account disconnected",
+        "telegramUpdatingAgent": "Updating default agent..."
+      },
+      "works": {
+        "connected": "Connected",
+        "connectedDetail": "Connected ({{detail}})"
+      }
+    },
+    "redirect": {
+      "back": "Back to {{brandName}}",
+      "errorDescription": "Return to {{brandName}} and try connecting again.",
+      "errorStatus": "Unable to start the connection",
+      "errorTitle": "Couldn’t open {{connector}}",
+      "mobileWarning": "The {{connector}} app may not support this OAuth link. Please complete this connection in the {{brandName}} web app on a computer.",
+      "preparing": "Preparing a secure connection",
+      "redirectDescription": "You’ll continue on {{connector}} to authorize {{brandName}}.",
+      "redirectTitle": "Redirecting to {{connector}}…"
+    },
+    "toasts": {
+      "connected": "{{connector}} connected",
+      "disconnected": "{{connector}} disconnected"
     }
   },
   "lifecycle": {

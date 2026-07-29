@@ -1,5 +1,6 @@
 import { useGet, useSet } from "ccstate-react";
 import { useLoadableSet } from "ccstate-react/experimental";
+import { useTranslation } from "react-i18next";
 import { detach, Reason } from "../../../../signals/utils.ts";
 import { pageSignal$ } from "../../../../signals/page-signal.ts";
 import {
@@ -46,6 +47,7 @@ function CreateFormFields({
     value: string,
   ) => void;
 }) {
+  const { t } = useTranslation();
   return (
     <div className="flex flex-col gap-4">
       <div className="flex flex-col gap-2">
@@ -53,7 +55,9 @@ function CreateFormFields({
           htmlFor="cc-display-name"
           className="text-sm font-medium text-foreground"
         >
-          Display name
+          {t(($) => {
+            return $.connectors.custom.create.displayName;
+          })}
         </label>
         <Input
           id="cc-display-name"
@@ -69,9 +73,13 @@ function CreateFormFields({
           htmlFor="cc-prefixes"
           className="text-sm font-medium text-foreground"
         >
-          Prefixes
+          {t(($) => {
+            return $.connectors.custom.create.prefixes;
+          })}
           <span className="text-muted-foreground font-normal ml-1">
-            (one per line, https only)
+            {t(($) => {
+              return $.connectors.custom.create.prefixesHint;
+            })}
           </span>
         </label>
         <textarea
@@ -90,7 +98,9 @@ function CreateFormFields({
           htmlFor="cc-header-name"
           className="text-sm font-medium text-foreground"
         >
-          Header name
+          {t(($) => {
+            return $.connectors.custom.create.headerName;
+          })}
         </label>
         <Input
           id="cc-header-name"
@@ -106,9 +116,16 @@ function CreateFormFields({
           htmlFor="cc-header-template"
           className="text-sm font-medium text-foreground"
         >
-          Header template
+          {t(($) => {
+            return $.connectors.custom.create.headerTemplate;
+          })}
           <span className="text-muted-foreground font-normal ml-1">
-            (must contain {`{{secret}}`})
+            {t(
+              ($) => {
+                return $.connectors.custom.create.headerTemplateHint;
+              },
+              { placeholder: "{{secret}}" },
+            )}
           </span>
         </label>
         <Input
@@ -125,6 +142,7 @@ function CreateFormFields({
 }
 
 export function CustomConnectorCreateDialog() {
+  const { t } = useTranslation();
   const form = useGet(customConnectorCreateForm$);
   const setField = useSet(setCustomConnectorCreateField$);
   const closeDialog = useSet(closeCustomConnectorDialog$);
@@ -177,7 +195,11 @@ export function CustomConnectorCreateDialog() {
     >
       <DialogContent className="max-w-lg" aria-describedby={undefined}>
         <DialogHeader>
-          <DialogTitle>New custom connector</DialogTitle>
+          <DialogTitle>
+            {t(($) => {
+              return $.connectors.custom.create.title;
+            })}
+          </DialogTitle>
         </DialogHeader>
         <form className="flex flex-col gap-4" onSubmit={onSubmit}>
           <CreateFormFields form={form} setField={setField} />
@@ -188,10 +210,18 @@ export function CustomConnectorCreateDialog() {
               onClick={close}
               disabled={submitting}
             >
-              Cancel
+              {t(($) => {
+                return $.connectors.actions.cancel;
+              })}
             </Button>
             <Button type="submit" disabled={!canSubmit}>
-              {submitting ? "Creating…" : "Create"}
+              {submitting
+                ? t(($) => {
+                    return $.connectors.actions.creating;
+                  })
+                : t(($) => {
+                    return $.connectors.actions.create;
+                  })}
             </Button>
           </DialogFooter>
         </form>

@@ -9,6 +9,7 @@ import {
 import { accept } from "../../../lib/accept.ts";
 import { zeroClient$ } from "../../api-client.ts";
 import { sanitizeTokenInput } from "./token-input.ts";
+import { i18n } from "../../../i18n/index.ts";
 
 const internalReload$ = state(0);
 
@@ -67,7 +68,14 @@ export const createCustomConnector$ = command(
       [201],
     );
     set(bumpReload$);
-    toast.success(`Created "${result.body.displayName}"`);
+    toast.success(
+      i18n.t(
+        ($) => {
+          return $.connectors.custom.toasts.created;
+        },
+        { connector: result.body.displayName },
+      ),
+    );
     return result.body;
   },
 );
@@ -84,7 +92,11 @@ export const deleteCustomConnector$ = command(
       [204],
     );
     set(bumpReload$);
-    toast.success("Custom connector deleted");
+    toast.success(
+      i18n.t(($) => {
+        return $.connectors.custom.toasts.deleted;
+      }),
+    );
   },
 );
 
@@ -105,7 +117,14 @@ export const renameCustomConnector$ = command(
       [200],
     );
     set(bumpReload$);
-    toast.success(`Renamed to "${result.body.displayName}"`);
+    toast.success(
+      i18n.t(
+        ($) => {
+          return $.connectors.custom.toasts.renamed;
+        },
+        { connector: result.body.displayName },
+      ),
+    );
     return result.body;
   },
 );
@@ -127,7 +146,11 @@ export const setCustomConnectorSecret$ = command(
       [204],
     );
     set(bumpReload$);
-    toast.success("Connected");
+    toast.success(
+      i18n.t(($) => {
+        return $.connectors.custom.toasts.connected;
+      }),
+    );
   },
 );
 
@@ -143,7 +166,11 @@ export const clearCustomConnectorSecret$ = command(
       [204],
     );
     set(bumpReload$);
-    toast.success("Disconnected");
+    toast.success(
+      i18n.t(($) => {
+        return $.connectors.custom.toasts.disconnected;
+      }),
+    );
   },
 );
 
