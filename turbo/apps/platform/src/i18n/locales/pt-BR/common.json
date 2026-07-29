@@ -366,6 +366,88 @@
     "loading": "Carregando autenticação",
     "toggleTheme": "Alternar tema"
   },
+  "authorization": {
+    "browser": {
+      "description": "O Zero usará um perfil isolado de navegador na nuvem para esta conversa. Ao ativá-lo, o Computer Use será desconectado da conversa.",
+      "enable": "Ativar para esta conversa",
+      "enabled": "Navegador na nuvem ativado",
+      "linkExpires": "O link expira em {{date}}.",
+      "title": "Ativar navegador na nuvem",
+      "unavailableDescription": "Este link de autorização do navegador na nuvem é inválido, expirou ou não está disponível para este workspace.",
+      "unavailableTitle": "Link de autorização indisponível"
+    },
+    "computerUse": {
+      "authorize": "Autorizar",
+      "authorized": "Autorizado",
+      "checkingCompatibility": "Verificando compatibilidade",
+      "description": "Escolha um computador online para o Zero usar {{source}}.",
+      "downloadMac": "Baixar para macOS",
+      "lastSeen": "Visto pela última vez em {{date}}",
+      "linkExpires": "O link expira em {{date}}.",
+      "macRequirement": "Requer um Mac com Apple silicon e macOS 14 ou mais recente. Macs com Intel não são compatíveis.",
+      "noHostsDescription": "Abra o Zero Computer Use no Mac e atualize esta página quando ele ficar online.",
+      "noHostsTitle": "Nenhum computador online",
+      "sources": {
+        "chat": "nesta conversa",
+        "slack": "nesta conversa do Slack",
+        "teams": "nesta conversa do Teams"
+      },
+      "title": "Autorizar uso do computador",
+      "unavailableDescription": "Este link de autorização do Computer Use é inválido, expirou ou não está disponível para este workspace.",
+      "unavailableTitle": "Link de autorização indisponível",
+      "unsupportedIntelMac": "Requer um Mac com Apple silicon"
+    },
+    "permission": {
+      "confirm": "Confirmar",
+      "duration": "Duração",
+      "durationLabel": "Duração da permissão",
+      "durationOptions": {
+        "always": "Sempre",
+        "oneHour": "1 hora",
+        "sevenDays": "7 dias",
+        "twentyFourHours": "24 horas"
+      },
+      "errors": {
+        "agentNotFound": "Agente não encontrado",
+        "loadAgent": "Não foi possível carregar o agente",
+        "loadGrants": "Não foi possível carregar as concessões de permissão",
+        "loadMetadata": "Não foi possível carregar os metadados de permissão",
+        "missingAgentId": "O ID do agente não está nos parâmetros da URL",
+        "missingPermission": "A permissão não está nos parâmetros da URL",
+        "unknownAction": "Ação de permissão desconhecida: {{action}}",
+        "unknownConnector": "Conector desconhecido: {{connector}}",
+        "unknownPermission": "Permissão desconhecida: {{permission}}",
+        "updateFailed": "Não foi possível atualizar as permissões"
+      },
+      "expiration": {
+        "expired": "Expirada",
+        "inDays_one": "Expira em {{count}} dia",
+        "inDays_many": "Expira em {{count}} dias",
+        "inDays_other": "Expira em {{count}} dias",
+        "inHours_one": "Expira em {{count}} hora",
+        "inHours_many": "Expira em {{count}} horas",
+        "inHours_other": "Expira em {{count}} horas",
+        "lessThanHour": "Expira em menos de 1 hora",
+        "lessThanHourShort": "< 1 hora",
+        "prefix": "Expira em "
+      },
+      "greeting": "Olá, {{userName}}. Você está atualizando suas permissões para {{targetName}}.",
+      "result": {
+        "alreadyAllowedDescription": "Sua concessão de permissão do conector já está permitida",
+        "alreadyAllowedTitle": "Já permitido",
+        "alreadyDeniedDescription": "Sua concessão de permissão do conector já está negada",
+        "alreadyDeniedTitle": "Já negado",
+        "deniedDescription": "Sua concessão de permissão do conector foi negada",
+        "deniedTitle": "Permissões negadas",
+        "updatedDescription": "Sua concessão de permissão do conector foi atualizada",
+        "updatedTitle": "Permissões atualizadas"
+      },
+      "saving": "Salvando...",
+      "unknownEndpoints": "Endpoints desconhecidos",
+      "userFallback": "você",
+      "wouldLike": "Gostaria de"
+    }
+  },
   "browserSession": {
     "close": "Fechar navegador ao vivo",
     "creditsCharged_one": "{{formattedCount}} crédito cobrado",
@@ -398,6 +480,683 @@
     "unavailable": {
       "description": "Este navegador não pertence a este chat ou foi removido.",
       "title": "Navegador indisponível"
+    }
+  },
+  "connectors": {
+    "access": {
+      "accessFor": "{{action}} acesso ao {{connector}} para {{agent}}",
+      "accessUpdated": "Acesso ao {{connector}} atualizado",
+      "clearSearch": "Limpar busca de agentes",
+      "description": "Escolha quais agentes podem usar este conector.",
+      "loading": "Carregando agentes...",
+      "managePermissions": "Gerenciar permissões",
+      "managePermissionsFor": "Gerenciar permissões do {{connector}} para {{agent}}",
+      "noAgents": "Nenhum agente encontrado",
+      "noMatchingAgents": "Nenhum agente correspondente a \"{{search}}\"",
+      "permissionsUpdated": "Permissões atualizadas",
+      "search": "Buscar agentes",
+      "title": "Gerenciar acesso ao {{connector}}",
+      "unnamedAgent": "Sem nome"
+    },
+    "actions": {
+      "apply": "Aplicar",
+      "authorize": "Autorizar",
+      "cancel": "Cancelar",
+      "close": "Fechar",
+      "closeWindow": "Fechar janela",
+      "connect": "Conectar",
+      "connecting": "Conectando...",
+      "create": "Criar",
+      "creating": "Criando…",
+      "delete": "Excluir",
+      "deleting": "Excluindo…",
+      "disconnect": "Desconectar",
+      "disconnecting": "Desconectando...",
+      "grant": "Conceder",
+      "reconnect": "Reconectar",
+      "rename": "Renomear",
+      "revoke": "Revogar",
+      "save": "Salvar",
+      "saving": "Salvando...",
+      "savingEllipsis": "Salvando…",
+      "tryAgain": "Tentar novamente",
+      "uninstall": "Desinstalar",
+      "uninstalling": "Desinstalando..."
+    },
+    "callback": {
+      "connected": "{{connector}} conectado",
+      "connectedAs": "Conectado como {{username}}. Você pode fechar esta janela.",
+      "connectedDescription": "Sua conta foi conectada. Você pode fechar esta janela.",
+      "connecting": "Conectando {{connector}}…",
+      "connectingDescription": "Aguarde enquanto terminamos de conectar sua conta.",
+      "errorDescription": "{{error}} Feche esta janela e tente novamente.",
+      "errorFallback": "Ocorreu um erro durante a conexão.",
+      "failed": "Falha na conexão",
+      "failedTitle": "Não foi possível conectar {{connector}}",
+      "finishing": "Finalizando a conexão segura",
+      "success": "Conectado"
+    },
+    "card": {
+      "accessFor": "{{action}} acesso ao {{connector}}",
+      "authorized": "Autorizado",
+      "connectAria": "Conectar {{connector}}",
+      "connected": "Conectado",
+      "connecting": "Conectando…",
+      "connectionExpired": "A conexão expirou",
+      "connectToContinue": "Conecte esta conta para continuar",
+      "managePermissions": "Gerenciar permissões",
+      "managePermissionsFor": "Gerenciar permissões do {{connector}}",
+      "optional": "Opcional",
+      "required": "Obrigatório",
+      "reviewPermissions": "Revisar permissões",
+      "updatePermissions": "Atualizar permissões"
+    },
+    "catalog": {
+      "access": {
+        "add": "Adicionar acesso",
+        "manage": "Gerenciar acesso ao {{connector}}",
+        "usedBy": "Usado por "
+      },
+      "categories": {
+        "ai": {
+          "label": "IA",
+          "menu": "IA"
+        },
+        "aiAgentApps": {
+          "label": "Plataformas de agentes e apps de IA",
+          "menu": "Plataformas de agentes"
+        },
+        "aiGeneralModels": {
+          "label": "Modelos gerais e raciocínio",
+          "menu": "Modelos gerais"
+        },
+        "aiImageVideo": {
+          "label": "Geração de imagens e vídeos",
+          "menu": "Imagens e vídeos"
+        },
+        "aiMemoryTracingEval": {
+          "label": "Memória, rastreamento e avaliação",
+          "menu": "Memória e avaliação"
+        },
+        "aiVoiceAudio": {
+          "label": "Voz e áudio",
+          "menu": "Voz e áudio"
+        },
+        "communicationCollaboration": {
+          "label": "Comunicação e colaboração",
+          "menu": "Comunicação"
+        },
+        "dataAutomationInfrastructure": {
+          "label": "Dados, automação e infraestrutura",
+          "menu": "Dados e automação"
+        },
+        "docsFilesKnowledge": {
+          "label": "Documentos, arquivos e conhecimento",
+          "menu": "Documentos"
+        },
+        "engineeringTeamExecution": {
+          "label": "Engenharia e execução da equipe",
+          "menu": "Engenharia"
+        },
+        "marketingContentGrowth": {
+          "label": "Marketing, conteúdo e crescimento",
+          "menu": "Marketing"
+        },
+        "meetingsScheduling": {
+          "label": "Reuniões e agendamento",
+          "menu": "Reuniões"
+        },
+        "salesCrmBusinessOperations": {
+          "label": "Vendas, CRM e operações de negócios",
+          "menu": "Vendas e negócios"
+        }
+      },
+      "categoriesAria": "Categorias de conectores",
+      "description": "Conecte serviços de terceiros para seus agentes usarem.",
+      "empty": {
+        "agent": "Nenhum conector para este agente",
+        "connected": "Nenhum conector conectado",
+        "matching": "{{message}} correspondente a \"{{search}}\"",
+        "notConnected": "Não há mais conectores para conectar",
+        "search": "Nenhum conector correspondente a \"{{search}}\""
+      },
+      "filters": {
+        "agents": "Agentes",
+        "all": "Todos",
+        "aria": "Filtrar conectores",
+        "connected": "Conectados",
+        "notConnected": "Não conectados",
+        "status": "Status"
+      },
+      "iconUnavailable": "Ícone do conector indisponível",
+      "newConnector": "Novo conector",
+      "noConnectorsAlt": "Nenhum conector",
+      "otherCategory": "Outros",
+      "search": "Buscar conectores",
+      "tabs": {
+        "builtin": "Integrados",
+        "custom": "Personalizados"
+      },
+      "title": "Conectores",
+      "unnamedAgent": "Sem nome"
+    },
+    "connectDialog": {
+      "connectedAs": "Conectado como {{username}}",
+      "device": {
+        "checking": "Verificando a aprovação...",
+        "connect": "Conectar {{connector}}",
+        "copyThenOpen": "Copie este código e abra a página de verificação para aprovar o acesso.",
+        "description": "Abra a página de verificação do provedor e insira este código para aprovar o acesso.",
+        "intro": "Conecte-se para obter um código de verificação e use-o na página de verificação do provedor para aprovar o acesso.",
+        "openPage": "Abrir página de verificação",
+        "selectOption": "Selecionar {{option}}",
+        "starting": "Iniciando...",
+        "startingConnection": "Iniciando conexão...",
+        "verificationCode": "Código de verificação",
+        "waiting": "Aguardando aprovação. Mantenha esta caixa de diálogo aberta."
+      },
+      "external": {
+        "code": "Código",
+        "complete": "Concluir conexão",
+        "description": "Abra o login do {{connector}} e cole o código exibido pelo {{connector}}.",
+        "open": "Abrir login do {{connector}}",
+        "start": "Iniciar login do {{connector}}"
+      },
+      "noAuth": {
+        "enable": "Ativar {{connector}}",
+        "enabling": "Ativando..."
+      },
+      "noMethod": "Nenhum método de conexão está disponível.",
+      "or": "ou",
+      "progress": {
+        "connecting": "Conectando...",
+        "savingPermissions": "Salvando permissões..."
+      },
+      "unavailable": {
+        "description": "Este conector tem métodos de conexão disponíveis, mas nenhum deles pode ser configurado nesta caixa de diálogo.",
+        "title": "Métodos de conexão indisponíveis"
+      }
+    },
+    "custom": {
+      "connect": {
+        "description": "Seu segredo é criptografado em repouso e injetado nas solicitações de saída pelo firewall. Ele nunca é exposto ao agente como uma variável de ambiente.",
+        "secret": "Segredo",
+        "title": "Conectar {{connector}}"
+      },
+      "create": {
+        "displayName": "Nome de exibição",
+        "headerName": "Nome do header",
+        "headerTemplate": "Modelo do header",
+        "headerTemplateHint": "(deve conter {{placeholder}})",
+        "prefixes": "Prefixos",
+        "prefixesHint": "(um por linha, somente https)",
+        "title": "Novo conector personalizado"
+      },
+      "delete": {
+        "description": "Isso remove o conector e o segredo armazenado de cada membro. Os agentes autorizados para este conector perderão o acesso imediatamente. Esta ação não pode ser desfeita.",
+        "title": "Excluir {{connector}}?"
+      },
+      "emptyAdmin": "Ainda não há conectores personalizados. Crie um para registrar uma API que todos os membros possam usar.",
+      "emptyMember": "Sua organização ainda não registrou conectores personalizados.",
+      "moreOptions": "Mais opções",
+      "rename": {
+        "displayName": "Nome de exibição",
+        "title": "Renomear conector personalizado"
+      },
+      "statusConnected": "Conectado",
+      "toasts": {
+        "connected": "Conectado",
+        "created": "\"{{connector}}\" criado",
+        "deleted": "Conector personalizado excluído",
+        "disconnected": "Desconectado",
+        "renamed": "Renomeado para \"{{connector}}\""
+      }
+    },
+    "customProposal": {
+      "configure": "Configurar {{connector}}",
+      "descriptionAgent": "Ao salvar, seus valores serão conectados e {{agent}} será autorizado.",
+      "descriptionUser": "Ao salvar, este conector personalizado será conectado à sua conta.",
+      "invalid": "Este link de proposta de conector personalizado é inválido ou expirou.",
+      "requestScope": "Escopo da solicitação",
+      "returnToChat": "Volte ao chat e responda ACK para que o agente possa verificar o conector.",
+      "saved": "Salvo",
+      "savedToast": "{{connector}} salvo",
+      "targetFallback": "este agente",
+      "update": "Atualizar {{connector}}"
+    },
+    "directed": {
+      "authorizeAgent": "Autorizar {{agent}}",
+      "authorized": "{{connector}} autorizado",
+      "connected": "{{connector}} conectado",
+      "needsConnector": "{{agent}} precisa de {{connector}} para continuar",
+      "reconnecting": "Reconectando..."
+    },
+    "expiration": {
+      "inDays_one": "Expira em {{count}} dia",
+      "inDays_many": "Expira em {{count}} dias",
+      "inDays_other": "Expira em {{count}} dias",
+      "inHours_one": "Expira em {{count}} hora",
+      "inHours_many": "Expira em {{count}} horas",
+      "inHours_other": "Expira em {{count}} horas",
+      "lessThanHour": "Expira em menos de 1 hora"
+    },
+    "permissions": {
+      "actions": {
+        "allow": "Permitir",
+        "deny": "Negar",
+        "mixed": "Misto"
+      },
+      "allowDuration": {
+        "always": "Permitir sempre",
+        "oneHour": "Permitir por 1 h",
+        "sevenDays": "Permitir por 7 dias",
+        "twentyFourHours": "Permitir por 24 h"
+      },
+      "allowOptions": "Opções de permissão para {{permission}}",
+      "always": "Sempre",
+      "clearSearch": "Limpar busca de permissões",
+      "descriptionAgent": "Configure quais ações este agente pode realizar por meio deste conector.",
+      "descriptionWorkflow": "Configure quais ações este fluxo de trabalho pode realizar por meio deste conector.",
+      "find": "Buscar permissões",
+      "findPlaceholder": "Buscar permissões...",
+      "forTarget": "para {{target}}",
+      "loadError": "Falha ao carregar os metadados de permissões",
+      "loading": "Carregando permissões...",
+      "metadataMissing": "Nenhum metadado de permissão encontrado para {{connector}}",
+      "noResults": "Nenhum resultado para “{{search}}”",
+      "otherEndpoints": "Outros endpoints",
+      "otherEndpointsDescription": "Endpoints de API que não correspondem a nenhuma permissão acima",
+      "permissions": "Permissões",
+      "restore": "Restaurar",
+      "scopeReview": {
+        "added": "Novas permissões",
+        "description": "As permissões necessárias para este conector mudaram. Revise-as e reconecte para aplicar a atualização.",
+        "failed": "Falha ao carregar as alterações de escopo.",
+        "loading": "Carregando alterações de escopo...",
+        "removed": "Permissões removidas",
+        "title": "Atualização das permissões de {{connector}}"
+      },
+      "selectAll": "Selecionar tudo",
+      "showMore_one": "Mostrar mais ({{count}})",
+      "showMore_many": "Mostrar mais ({{count}})",
+      "showMore_other": "Mostrar mais ({{count}})",
+      "title": "Permissões de {{connector}}"
+    },
+    "providerConnect": {
+      "agentphone": {
+        "back": "Voltar para {{brandName}}",
+        "connectDescription": "Vincule este número de telefone à sua conta do {{brandName}} para interagir com o Zero por mensagens de texto.",
+        "connectTitle": "Conectar número de telefone",
+        "errorFallback": "Não foi possível conectar este número de telefone. Tente novamente pelas suas mensagens de texto.",
+        "incompleteDescription": "Abra um novo link /connect nas suas mensagens de texto.",
+        "incompleteTitle": "O link de conexão está incompleto",
+        "invalidSignature": "A assinatura deste link não é válida.",
+        "invalidTimestamp": "O carimbo de data e hora deste link não é válido.",
+        "invalidTitle": "O link de conexão não é válido",
+        "risk": "As respostas por SMS e MMS podem não ser entregues de forma confiável. Para uma experiência mais confiável, use o iMessage com este número do AgentPhone.",
+        "successDescription": "{{phone}} está conectado. Envie uma mensagem de texto para começar a conversar com o Zero.",
+        "successTitle": "Número de telefone conectado"
+      },
+      "common": {
+        "backToSettings": "Voltar para as configurações",
+        "checkingTitle": "Verificando o status da conta...",
+        "connectionFailed": "Falha na conexão",
+        "invalidLink": "Link inválido",
+        "verifying": "Aguarde enquanto verificamos sua conexão."
+      },
+      "feishu": {
+        "back": "Voltar para as configurações do Feishu",
+        "checkingTitle": "Verificando o status da conta…",
+        "connectDescription": "Vincule sua conta do {{brandName}} a este bot do Feishu para trabalhar com seu agente diretamente pelo Feishu.",
+        "connectTitle": "Conectar ao Feishu",
+        "errorFallback": "Não foi possível conectar o Feishu. Abra um novo link de conexão e tente novamente.",
+        "invalidDescription": "Abra um novo link de conexão no Feishu e tente novamente.",
+        "open": "Abrir Feishu",
+        "successDescription": "Você está conectado. Envie uma mensagem no Feishu para começar a conversar.",
+        "successDescriptionNamed": "Você está conectado a {{bot}}. Envie uma mensagem no Feishu para começar a conversar.",
+        "successTitle": "Conectado ao Feishu!"
+      },
+      "github": {
+        "accountFallback": "esta conta do GitHub",
+        "alreadyDescription": "Você já está conectado como {{account}}. Mencione seu agente em issues ou pull requests do GitHub para começar a conversar.",
+        "alreadyTitle": "Já conectado ao GitHub",
+        "back": "Voltar para fluxos de trabalho",
+        "checkingConnectionDescription": "Aguarde enquanto verificamos sua conexão com o GitHub.",
+        "checkingConnectionTitle": "Verificando a conexão...",
+        "checkingSession": "Aguarde enquanto verificamos sua sessão do {{brandName}}.",
+        "connectDescription": "Vincule sua conta do {{brandName}} a {{account}} para que menções no GitHub possam executar seus agentes em issues e pull requests.",
+        "connectTitle": "Conectar ao GitHub",
+        "errorFallback": "Não foi possível conectar o GitHub. Tente novamente pelo GitHub.",
+        "invalidInstallation": "A instalação do GitHub neste link não é válida.",
+        "invalidSignature": "A assinatura deste link não é válida.",
+        "invalidTimestamp": "O carimbo de data e hora deste link não é válido.",
+        "invalidTitle": "O link de conexão não é válido",
+        "invalidUser": "O usuário do GitHub neste link não é válido.",
+        "invalidUsername": "O nome de usuário do GitHub neste link não é válido.",
+        "linkIncomplete": "Abra um novo link de conexão do GitHub e tente novamente.",
+        "linkIncompleteTitle": "O link de conexão está incompleto",
+        "notInstalledDescription": "Peça a um administrador da organização para instalar o GitHub antes de conectar sua conta.",
+        "notInstalledTitle": "O GitHub não está instalado",
+        "refresh": "Atualize esta página e tente novamente.",
+        "signInButton": "Entrar no {{brandName}}",
+        "signInCheckFailed": "Não foi possível verificar o login",
+        "signInDescription": "Entre com sua conta do {{brandName}} antes de conectar este usuário do GitHub.",
+        "signInTitle": "Entre para continuar",
+        "successDescription": "Você está conectado como {{account}}. Mencione seu agente em issues ou pull requests do GitHub para começar a conversar.",
+        "successTitle": "Conectado ao GitHub!",
+        "wrongOrganizationDescription": "Sua organização ativa não corresponde a esta instalação do GitHub. Mude para a organização correta e abra o link novamente.",
+        "wrongOrganizationTitle": "Mudar de organização"
+      },
+      "slack": {
+        "connectDescription": "Vincule sua conta a este workspace do Slack para interagir com seu agente diretamente pelo Slack.",
+        "connectTitle": "Conectar ao Slack",
+        "invalidDescription": "Esta página deve ser aberta por um link de conexão do Slack.",
+        "open": "Abrir Slack",
+        "successDescription": "Mencione @Zero em qualquer canal ou envie uma DM para começar a conversar.",
+        "successDescriptionWorkspace": "Você está conectado a {{workspace}}. Mencione @Zero em qualquer canal ou envie uma DM para começar a conversar.",
+        "successTitle": "Conectado ao Slack!"
+      },
+      "teams": {
+        "connectDescription": "Vincule sua conta do Teams para interagir com seu agente diretamente pelo Microsoft Teams.",
+        "connectDescriptionNamed": "{{displayName}}, vincule sua conta do Teams para interagir com seu agente diretamente pelo Microsoft Teams.",
+        "connectTitle": "Conectar o Microsoft Teams",
+        "invalidDescription": "Esta página deve ser aberta por um link de conexão do Microsoft Teams.",
+        "open": "Abrir Teams",
+        "successDescription": "Você está conectado a {{team}}. Mencione @Zero no Teams para começar a conversar.",
+        "successTitle": "Conectado ao Microsoft Teams"
+      },
+      "telegram": {
+        "alreadyDescription": "Você já está conectado. Envie uma mensagem no Telegram para começar a conversar.",
+        "alreadyDescriptionNamed": "Você já está conectado a {{bot}}. Envie uma mensagem no Telegram para começar a conversar.",
+        "alreadyTitle": "Já conectado ao Telegram",
+        "back": "Voltar para as configurações do Telegram",
+        "botFallback": "este bot",
+        "checkingConnectionDescription": "Aguarde enquanto verificamos sua conexão com o Telegram.",
+        "checkingConnectionTitle": "Verificando a conexão...",
+        "checkingDomain": "Verificando o status do domínio...",
+        "checkingSession": "Aguarde enquanto verificamos sua sessão do {{brandName}}.",
+        "connectDescription": "Vincule sua conta a este bot do Telegram para interagir com seu agente diretamente pelo Telegram.",
+        "connectTitle": "Conectar ao Telegram",
+        "continue": "Continuar com o Telegram",
+        "domainDescription": "O login web do Telegram não está ativado para {{bot}}.",
+        "domainIn": "No ",
+        "domainInstructionsAfter": ", escolha o bot e defina o domínio como:",
+        "domainKeepOpen": "Mantenha esta página aberta depois de salvar o domínio. Você também pode se conectar pelo Telegram com /connect.",
+        "domainSend": ", envie ",
+        "domainTitle": "Definir domínio de login do Telegram",
+        "errorFallback": "Não foi possível conectar o Telegram. Tente novamente pelo Telegram.",
+        "invalidSignature": "A assinatura deste link não é válida.",
+        "invalidTimestamp": "O carimbo de data e hora deste link não é válido.",
+        "invalidTitle": "O link de conexão não é válido",
+        "invalidUser": "O usuário do Telegram neste link não é válido.",
+        "invalidUsername": "O nome de usuário do Telegram neste link não é válido.",
+        "linkIncomplete": "Abra um novo link /connect no Telegram e tente novamente.",
+        "linkIncompleteTitle": "O link de conexão está incompleto",
+        "open": "Abrir Telegram",
+        "openBotFather": "Abrir BotFather",
+        "refresh": "Atualize esta página e tente novamente.",
+        "signInButton": "Entrar no {{brandName}}",
+        "signInCheckFailed": "Não foi possível verificar o login",
+        "signInDescription": "Entre com sua conta do {{brandName}} antes de conectar este usuário do Telegram.",
+        "signInTitle": "Entre para continuar",
+        "successDescription": "Você está conectado a {{bot}}. Envie uma mensagem no Telegram para começar a conversar.",
+        "successTitle": "Conectado ao Telegram!"
+      }
+    },
+    "providerSettings": {
+      "agentphone": {
+        "authorizedSender": "Remetente autorizado",
+        "connectAria": "Conectar telefone",
+        "connectDescription": "Digite seu número de telefone. Enviaremos por mensagem um link de verificação que conecta este workspace.",
+        "connectTitle": "Conectar telefone",
+        "copyAria": "Copiar {{phone}}",
+        "copyError": "Falha ao copiar o número de telefone",
+        "copySuccess": "Número de telefone copiado",
+        "description": "Acesso ao Zero por mensagens de texto",
+        "destination": "iMessage ou SMS para",
+        "normalized": "Enviaremos uma mensagem para {{phone}}.",
+        "options": "Opções do telefone",
+        "phoneLabel": "Telefone",
+        "phoneNumber": "Número de telefone",
+        "risk": "As respostas por SMS e MMS podem não ser entregues de forma confiável. Para uma experiência mais confiável, use o iMessage com este número do AgentPhone.",
+        "sending": "Enviando...",
+        "sendVerification": "Enviar verificação",
+        "verificationSent": "Mensagem de verificação enviada para {{phone}}. Abra o link dessa mensagem para concluir a conexão."
+      },
+      "errors": {
+        "agentphonePhone": "Digite um número de telefone com código do país, como +1 555 555 1212.",
+        "githubAuthorizationWindow": "Falha ao abrir a janela de autorização",
+        "telegramDomain": "O domínio ainda não está visível para o Telegram. Verifique o BotFather e tente novamente.",
+        "telegramPrivacy": "O modo de privacidade ainda parece estar ativado. Desative-o no BotFather e tente novamente."
+      },
+      "feishu": {
+        "addBot": "Adicionar bot",
+        "addDialogDescription": "Crie um app personalizado empresarial, ative o bot e conclua estas etapas no console de desenvolvedor do Feishu.",
+        "addDialogTitle": "Adicionar um bot do Feishu",
+        "agentDescription": "Escolha o agente que deve processar as mensagens enviadas a este bot.",
+        "backToIntegrations": "Voltar para integrações",
+        "botFallback": "Bot do Feishu",
+        "botIconAlt": "Ícone do bot {{bot}}",
+        "bots": "Bots do Feishu",
+        "callbackStatusVerified": "Callback verificado",
+        "callbackStatusWaiting": "Aguardando callback",
+        "configured": "Configurado",
+        "copied": "{{label}} copiado",
+        "copy": "Copiar",
+        "create": {
+          "descriptionAfter": ", crie um app personalizado empresarial chamado {{brandName}}, envie o ícone do {{brandName}} e adicione o recurso Bot.",
+          "descriptionBefore": "No ",
+          "downloadIcon": "Baixar o ícone do {{brandName}}",
+          "iconAlt": "Ícone do app {{brandName}}",
+          "iconHint": " ou use qualquer ícone de sua preferência.",
+          "iconTitle": "Ícone do app {{brandName}}",
+          "imageAlt": "Formulário de criação de app do Feishu com o nome, o ícone e o botão Criar destacados",
+          "title": "Criar um app personalizado empresarial"
+        },
+        "credentials": {
+          "description": "Copie o App ID e o App Secret de Credentials & Basic Information.",
+          "imageAlt": "Resultado da criação do app do Feishu mostrando onde encontrar o App ID e o App Secret",
+          "title": "Adicionar as credenciais do app"
+        },
+        "defaultAgent": "Agente padrão",
+        "defaultAgentAria": "Agente padrão para {{appId}}",
+        "dialogAdminRequired": "Um administrador da organização deve configurar o app. Você poderá conectar sua própria conta pela lista de bots do Feishu após a conclusão da configuração.",
+        "emptyAdmin": "Adicione um app personalizado para encaminhar mensagens do Feishu a um agente.",
+        "emptyMember": "Peça a um administrador da organização para adicionar um bot do Feishu.",
+        "emptyTitle": "Ainda não há bots do Feishu",
+        "events": {
+          "callbackLabel": "URL de callback",
+          "continue": "Continue depois que o Feishu verificar a URL de callback e o evento de mensagem estiver inscrito.",
+          "description": "Abra Event Configuration. Em Subscription mode, selecione “Send notifications to developer's server”. Depois, abra Callback Configuration e cole a URL de callback. Após a verificação do Feishu, adicione o evento “Receive message v1”.",
+          "requestAlt": "Tela Event Configuration do Feishu com o campo Request URL destacado",
+          "requestLabel": "Adicionar a URL de solicitação de callback",
+          "subscriptionAlt": "Tela Event Configuration do Feishu com o controle de edição do modo de inscrição destacado",
+          "subscriptionLabel": "Selecionar o modo de inscrição de eventos",
+          "title": "Configurar a entrega de eventos"
+        },
+        "faq": {
+          "approvalAnswer": "Se a disponibilidade estiver definida como All members, um administrador do Feishu deverá aprovar a versão. O Feishu envia a solicitação de aprovação a um administrador por mensagem direta, e o app permanece pendente até a conclusão da revisão.",
+          "approvalQuestion": "Por que a publicação do app está aguardando aprovação?",
+          "challengeAnswer": "Isso geralmente significa que o Encrypt Key ou o Verification Token salvo na etapa Tokens está incorreto. Volte à etapa Tokens, insira novamente os dois valores de Event Configuration → Encryption Strategy, salve-os e tente a Request URL outra vez.",
+          "challengeQuestion": "Por que o Feishu mostra \"Challenge code didn't get a response\"?",
+          "title": "Perguntas frequentes sobre a configuração"
+        },
+        "guide": {
+          "next": "Mostrar a próxima imagem do guia do Feishu",
+          "previous": "Mostrar a imagem anterior do guia do Feishu",
+          "show": "Mostrar a imagem {{number}} do guia do Feishu"
+        },
+        "loadError": "Não foi possível carregar as configurações do Feishu.",
+        "manage": "Gerenciar",
+        "manageDialogTitle": "Gerenciar bot do Feishu",
+        "moreOptions": "Mais opções para {{bot}}",
+        "pageDescription": "Gerencie o encaminhamento dos bots neste workspace",
+        "publish": {
+          "allMembersAlt": "Configurações de disponibilidade do Feishu com All members selecionado",
+          "allMembersLabel": "Disponibilizar o app para todos os membros",
+          "createVersionAlt": "Página Version Management do Feishu com o botão Create a version destacado",
+          "createVersionLabel": "Criar uma versão do app",
+          "description": "Crie e publique uma versão do app, edite as configurações de disponibilidade e selecione All members. Outros membros da organização só poderão usar o app depois que você conceder acesso.",
+          "editAvailabilityAlt": "Página de detalhes da versão do Feishu com a ação de editar as configurações de disponibilidade destacada",
+          "editAvailabilityLabel": "Editar as configurações de disponibilidade",
+          "title": "Publicar o app"
+        },
+        "redirect": {
+          "descriptionAfter": ", abra Development Configuration → Security Settings. Adicione a URL abaixo em Redirect URLs para que os membros do workspace conectem suas contas do Feishu ao {{brandName}}.",
+          "descriptionBefore": "No ",
+          "imageAlt": "Página Security Settings do Feishu mostrando onde adicionar uma URL de redirecionamento OAuth",
+          "label": "URL de redirecionamento OAuth",
+          "title": "Configurar a URL de redirecionamento OAuth"
+        },
+        "reviewGuide": "Revisar guia",
+        "reviewGuideDescription": "Revise as etapas concluídas da configuração deste bot do Feishu.",
+        "reviewGuideTitle": "Guia de revisão do Feishu",
+        "routeDescription": "Encaminhe mensagens do Feishu para agentes",
+        "selectAgent": "Selecionar um agente",
+        "setupIncomplete": "Configuração incompleta",
+        "steps": {
+          "back": "Voltar",
+          "checking": "Verificando…",
+          "close": "Fechar",
+          "create": "Criar",
+          "credentials": "Credenciais",
+          "done": "Concluído",
+          "events": "Eventos",
+          "next": "Avançar",
+          "publish": "Publicar",
+          "redirect": "Redirecionar",
+          "tokens": "Tokens",
+          "verify": "Verificar e continuar",
+          "verifying": "Verificando…",
+          "waiting": "Aguardando callback"
+        },
+        "tokens": {
+          "descriptionAfter": ", selecione o app que você acabou de criar e abra sua página de configuração. Acesse Event Configuration → Encryption Strategy e copie o Encrypt Key e o Verification Token.",
+          "descriptionBefore": "Abra o ",
+          "imageAlt": "Tela Encryption Strategy do Feishu mostrando o Encrypt Key e o Verification Token",
+          "title": "Adicionar os tokens de verificação de eventos"
+        },
+        "uninstallDescription": "Isso desinstala {{bot}} do workspace e desconecta todas as contas do {{brandName}} que o utilizam. Esta ação não pode ser desfeita.",
+        "uninstallTargetFallback": "este bot",
+        "uninstallTitle": "Desinstalar o bot do Feishu?"
+      },
+      "telegram": {
+        "addBot": "Adicionar bot",
+        "addDescription": "Conclua cada etapa no BotFather e crie o bot do workspace.",
+        "adding": "Adicionando...",
+        "addTitle": "Adicionar bot do Telegram",
+        "agentAria": "Agente padrão para {{bot}}",
+        "backToIntegrations": "Voltar para integrações",
+        "botFallback": "Bot do Telegram",
+        "bots": "Bots do Telegram",
+        "botToken": "Token do bot",
+        "checking": "Verificando...",
+        "copied": "copiado!",
+        "copyAria": "Copiar {{value}}",
+        "copyTitle": "Clique para copiar",
+        "create": {
+          "description": "O {{brandName}} registrará este bot e configurará seu webhook. Após a configuração, mencione o bot em um grupo ou envie uma DM para conversar com o agente selecionado.",
+          "descriptionNamed": "O {{brandName}} registrará {{bot}} e configurará seu webhook. Após a configuração, mencione o bot em um grupo ou envie uma DM para conversar com o agente selecionado.",
+          "title": "Tudo pronto para criar a integração"
+        },
+        "defaultAgent": "Agente padrão",
+        "disconnectAria": "Desconectar {{bot}}",
+        "domain": {
+          "detected": "Domínio detectado",
+          "instructionAfter": ", escolha este bot e defina o domínio como ",
+          "instructionEnd": ". O Telegram usa este domínio para permitir o fluxo de conexão deste bot.",
+          "instructionStart": "No {{botFather}}, envie ",
+          "title": "Definir o domínio de login do Telegram"
+        },
+        "emptyDescription": "Adicione um token de bot para encaminhar mensagens do Telegram a um agente.",
+        "emptyTitle": "Ainda não há bots do Telegram",
+        "invalidTokenDescription": "Reinstale o bot com um novo token do BotFather.",
+        "loadError": "Não foi possível carregar as configurações do Telegram.",
+        "moreOptions": "Mais opções para {{bot}}",
+        "newBotToken": "Novo token do bot",
+        "notConnected": "Não conectado",
+        "officialBot": "Bot oficial do Zero",
+        "officialDescription": "Bot oficial fornecido pelo {{brandName}}.",
+        "officialMissing": "A configuração do bot oficial está ausente.",
+        "pageDescription": "Gerencie o encaminhamento dos bots neste workspace",
+        "privacy": {
+          "instructionAfter": ", escolha este bot e desative o modo de privacidade. Isso permite que o agente leia o contexto do grupo em torno de menções e respostas.",
+          "instructionStart": "No {{botFather}}, envie ",
+          "off": "O modo de privacidade está desativado",
+          "title": "Opcional: desativar o modo de privacidade"
+        },
+        "registerAria": "Registrar bot do Telegram",
+        "reinstall": "Reinstalar",
+        "reinstallDescription": "Cole o novo token do BotFather para {{bot}}. O token deve pertencer a este mesmo bot.",
+        "reinstalling": "Reinstalando...",
+        "reinstallTargetFallback": "este bot",
+        "reinstallTitle": "Reinstalar bot do Telegram",
+        "selectAgent": "Selecionar agente",
+        "steps": {
+          "back": "Voltar",
+          "create": "Criar",
+          "domain": "Domínio",
+          "next": "Avançar",
+          "privacy": "Privacidade",
+          "token": "Token"
+        },
+        "token": {
+          "instructionAfter": ", escolha um nome e um nome de usuário e cole o token abaixo.",
+          "open": "Abra ",
+          "send": ", envie ",
+          "title": "Criar um token de bot no BotFather",
+          "verified": "Token verificado"
+        },
+        "tokenInvalid": "Token inválido",
+        "uninstallAria": "Desinstalar {{bot}}",
+        "uninstallDescription": "Isso remove {{bot}} do workspace e desconecta o acesso ao Telegram dos usuários que o utilizam. Esta ação não pode ser desfeita.",
+        "uninstallTargetFallback": "este bot",
+        "uninstallTitle": "Desinstalar o bot do Telegram?"
+      },
+      "toasts": {
+        "agentphoneConnected": "AgentPhone conectado",
+        "agentphoneDisconnected": "AgentPhone desconectado",
+        "agentphoneVerificationSent": "Mensagem de verificação enviada",
+        "feishuBotInstalled": "Bot do Feishu instalado com sucesso",
+        "feishuBotUninstalled": "Bot do Feishu desinstalado",
+        "feishuConnected": "Feishu conectado com sucesso",
+        "feishuDisconnected": "Desconectado do Feishu",
+        "slackConnected": "Slack conectado com sucesso",
+        "slackDisconnected": "Desconectado do Slack",
+        "slackInstalled": "Slack instalado com sucesso",
+        "slackPermissionsUpdated": "Permissões atualizadas",
+        "slackUninstalled": "Workspace do Slack desinstalado",
+        "slackUpdated": "Slack atualizado",
+        "teamsConnected": "Microsoft Teams conectado com sucesso",
+        "teamsDisconnected": "Desconectado do Microsoft Teams",
+        "teamsInstalled": "Microsoft Teams instalado com sucesso",
+        "teamsUninstalled": "Integração do Microsoft Teams desinstalada",
+        "teamsUpdated": "Microsoft Teams atualizado",
+        "telegramAgentUpdated": "Agente padrão atualizado",
+        "telegramBotAdded": "Bot do Telegram adicionado",
+        "telegramBotReinstalled": "Bot do Telegram reinstalado",
+        "telegramBotUninstalled": "Bot do Telegram desinstalado",
+        "telegramDisconnected": "Conta do Telegram desconectada",
+        "telegramUpdatingAgent": "Atualizando o agente padrão..."
+      },
+      "works": {
+        "connected": "Conectado",
+        "connectedDetail": "Conectado ({{detail}})"
+      }
+    },
+    "redirect": {
+      "back": "Voltar para {{brandName}}",
+      "errorDescription": "Volte para {{brandName}} e tente conectar novamente.",
+      "errorStatus": "Não foi possível iniciar a conexão",
+      "errorTitle": "Não foi possível abrir {{connector}}",
+      "mobileWarning": "O app {{connector}} pode não aceitar este link OAuth. Conclua esta conexão no app web do {{brandName}} em um computador.",
+      "preparing": "Preparando uma conexão segura",
+      "redirectDescription": "Você continuará no {{connector}} para autorizar o {{brandName}}.",
+      "redirectTitle": "Redirecionando para {{connector}}…"
+    },
+    "toasts": {
+      "connected": "{{connector}} conectado",
+      "disconnected": "{{connector}} desconectado"
     }
   },
   "lifecycle": {

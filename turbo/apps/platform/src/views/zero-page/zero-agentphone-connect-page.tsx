@@ -8,12 +8,13 @@ import {
   IconLoader2,
 } from "@tabler/icons-react";
 import { Button } from "@vm0/ui";
+import { useTranslation } from "react-i18next";
+import { i18n } from "../../i18n/index.ts";
 import { brandName$ } from "../../signals/branding.ts";
 import { pageSignal$ } from "../../signals/page-signal.ts";
 import { searchParams$ } from "../../signals/route.ts";
 import { connectAgentPhoneAccount$ } from "../../signals/zero-page/agentphone-connect-signals.ts";
 import {
-  AGENTPHONE_SMS_MMS_CONNECT_RISK_MESSAGE,
   isUnreliableAgentPhoneConnectChannel,
   parseAgentPhoneConnectParams,
 } from "../../signals/zero-page/agentphone-connect-params.ts";
@@ -25,6 +26,7 @@ const imessageIconImg = settingsIconAssetUrl("imessage");
 
 function BackLink() {
   const brandName = useGet(brandName$);
+  const { t } = useTranslation();
 
   return (
     <Link
@@ -32,7 +34,12 @@ function BackLink() {
       className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors no-underline"
     >
       <IconArrowLeft size={14} />
-      Back to {brandName}
+      {t(
+        ($) => {
+          return $.connectors.providerConnect.agentphone.back;
+        },
+        { brandName },
+      )}
     </Link>
   );
 }
@@ -100,13 +107,16 @@ function InvalidState({ title, message }: { title: string; message: string }) {
 }
 
 function SmsMmsRiskNotice({ channel }: { channel: string | null }) {
+  const { t } = useTranslation();
   if (!isUnreliableAgentPhoneConnectChannel(channel)) {
     return null;
   }
 
   return (
     <div className="w-full rounded-lg border border-amber-500/30 bg-amber-500/10 p-3 text-sm text-amber-800 dark:text-amber-200">
-      {AGENTPHONE_SMS_MMS_CONNECT_RISK_MESSAGE}
+      {t(($) => {
+        return $.connectors.providerConnect.agentphone.risk;
+      })}
     </div>
   );
 }
@@ -114,10 +124,13 @@ function SmsMmsRiskNotice({ channel }: { channel: string | null }) {
 function getAgentPhoneConnectErrorMessage(error: unknown): string {
   return error instanceof Error
     ? error.message
-    : "We couldn't connect this phone number. Try again from your text messages.";
+    : i18n.t(($) => {
+        return $.connectors.providerConnect.agentphone.errorFallback;
+      });
 }
 
 export function ZeroAgentPhoneConnectPage(): JSX.Element {
+  const { t } = useTranslation();
   const brandName = useGet(brandName$);
   const params = useGet(searchParams$);
   const parsed = parseAgentPhoneConnectParams(params);
@@ -134,9 +147,28 @@ export function ZeroAgentPhoneConnectPage(): JSX.Element {
       : null;
 
   if (!parsed.ok) {
-    return (
-      <InvalidState title={parsed.error.title} message={parsed.error.message} />
-    );
+    const invalidTitle =
+      parsed.error.code === "incomplete"
+        ? t(($) => {
+            return $.connectors.providerConnect.agentphone.incompleteTitle;
+          })
+        : t(($) => {
+            return $.connectors.providerConnect.agentphone.invalidTitle;
+          });
+    const invalidMessage =
+      parsed.error.code === "incomplete"
+        ? t(($) => {
+            return $.connectors.providerConnect.agentphone
+              .incompleteDescription;
+          })
+        : parsed.error.code === "invalid_timestamp"
+          ? t(($) => {
+              return $.connectors.providerConnect.agentphone.invalidTimestamp;
+            })
+          : t(($) => {
+              return $.connectors.providerConnect.agentphone.invalidSignature;
+            });
+    return <InvalidState title={invalidTitle} message={invalidMessage} />;
   }
 
   if (success) {
@@ -144,13 +176,15 @@ export function ZeroAgentPhoneConnectPage(): JSX.Element {
       <PageShell>
         <MessageMark state="success" />
         <CenterText
-          title="Phone number connected"
-          body={
-            <>
-              <span className="font-medium">{success.phoneHandle}</span> is
-              connected. Send a text message to start chatting with Zero.
-            </>
-          }
+          title={t(($) => {
+            return $.connectors.providerConnect.agentphone.successTitle;
+          })}
+          body={t(
+            ($) => {
+              return $.connectors.providerConnect.agentphone.successDescription;
+            },
+            { phone: success.phoneHandle },
+          )}
         />
         <SmsMmsRiskNotice channel={parsed.channel} />
         <BackLink />
@@ -162,8 +196,15 @@ export function ZeroAgentPhoneConnectPage(): JSX.Element {
     <PageShell>
       <MessageMark state={connecting ? "loading" : "idle"} />
       <CenterText
-        title="Connect phone number"
-        body={`Link this phone number to your ${brandName} account so you can interact with Zero from text messages.`}
+        title={t(($) => {
+          return $.connectors.providerConnect.agentphone.connectTitle;
+        })}
+        body={t(
+          ($) => {
+            return $.connectors.providerConnect.agentphone.connectDescription;
+          },
+          { brandName },
+        )}
       />
       <SmsMmsRiskNotice channel={parsed.channel} />
       {error ? (
@@ -185,7 +226,13 @@ export function ZeroAgentPhoneConnectPage(): JSX.Element {
           {connecting ? (
             <IconLoader2 size={16} className="animate-spin" />
           ) : null}
-          {connecting ? "Connecting..." : "Connect"}
+          {connecting
+            ? t(($) => {
+                return $.connectors.actions.connecting;
+              })
+            : t(($) => {
+                return $.connectors.actions.connect;
+              })}
         </Button>
         <div className="flex justify-center">
           <BackLink />

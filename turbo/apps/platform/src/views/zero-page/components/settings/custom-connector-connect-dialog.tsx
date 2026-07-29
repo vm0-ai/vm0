@@ -1,5 +1,6 @@
 import { useGet, useSet } from "ccstate-react";
 import { useLoadableSet } from "ccstate-react/experimental";
+import { useTranslation } from "react-i18next";
 import { detach, Reason } from "../../../../signals/utils.ts";
 import { pageSignal$ } from "../../../../signals/page-signal.ts";
 import {
@@ -29,6 +30,7 @@ export function CustomConnectorConnectDialog({
   id: string;
   displayName: string;
 }) {
+  const { t } = useTranslation();
   const value = useGet(customConnectorConnectInput$);
   const setValue = useSet(setCustomConnectorConnectInput$);
   const resetValue = useSet(resetCustomConnectorConnectInput$);
@@ -69,13 +71,20 @@ export function CustomConnectorConnectDialog({
         <DialogHeader>
           <div className="flex items-center gap-3">
             <CustomConnectorIcon id={id} displayName={displayName} size={20} />
-            <DialogTitle>Connect {displayName}</DialogTitle>
+            <DialogTitle>
+              {t(
+                ($) => {
+                  return $.connectors.custom.connect.title;
+                },
+                { connector: displayName },
+              )}
+            </DialogTitle>
           </div>
         </DialogHeader>
         <p className="text-sm text-muted-foreground">
-          Your secret is encrypted at rest and injected into outbound requests
-          by the firewall. It&apos;s never exposed to the agent as an
-          environment variable.
+          {t(($) => {
+            return $.connectors.custom.connect.description;
+          })}
         </p>
         <form className="flex flex-col gap-4" onSubmit={onSubmit}>
           <div className="flex flex-col gap-2">
@@ -83,7 +92,9 @@ export function CustomConnectorConnectDialog({
               htmlFor="cc-connect-secret"
               className="text-sm font-medium text-foreground"
             >
-              Secret
+              {t(($) => {
+                return $.connectors.custom.connect.secret;
+              })}
             </label>
             <Input
               id="cc-connect-secret"
@@ -102,10 +113,18 @@ export function CustomConnectorConnectDialog({
               onClick={close}
               disabled={submitting}
             >
-              Cancel
+              {t(($) => {
+                return $.connectors.actions.cancel;
+              })}
             </Button>
             <Button type="submit" disabled={!canSubmit}>
-              {submitting ? "Saving…" : "Save"}
+              {submitting
+                ? t(($) => {
+                    return $.connectors.actions.savingEllipsis;
+                  })
+                : t(($) => {
+                    return $.connectors.actions.save;
+                  })}
             </Button>
           </DialogFooter>
         </form>

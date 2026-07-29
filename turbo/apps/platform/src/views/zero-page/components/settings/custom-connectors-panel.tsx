@@ -1,5 +1,6 @@
 import { useGet, useLastResolved, useSet } from "ccstate-react";
 import { IconDotsVertical } from "@tabler/icons-react";
+import { useTranslation } from "react-i18next";
 import {
   Button,
   DropdownMenu,
@@ -43,6 +44,7 @@ function CustomConnectorRow({
   onRename: () => void;
   onDelete: () => void;
 }) {
+  const { t } = useTranslation();
   const hasActions = connector.hasSecret || isAdmin;
 
   return (
@@ -62,7 +64,9 @@ function CustomConnectorRow({
           {connector.hasSecret ? (
             <span className="flex items-center gap-2 text-xs text-muted-foreground truncate">
               <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 shrink-0" />
-              Connected
+              {t(($) => {
+                return $.connectors.custom.statusConnected;
+              })}
             </span>
           ) : (
             <button
@@ -70,7 +74,9 @@ function CustomConnectorRow({
               onClick={onConnect}
               className="text-xs font-medium text-muted-foreground hover:text-foreground transition-colors"
             >
-              Connect
+              {t(($) => {
+                return $.connectors.actions.connect;
+              })}
             </button>
           )}
           {connector.prefixes[0] && (
@@ -86,7 +92,9 @@ function CustomConnectorRow({
                 variant="ghost"
                 size="icon"
                 className="h-7 w-7 shrink-0 rounded-lg text-muted-foreground hover:text-foreground"
-                aria-label="More options"
+                aria-label={t(($) => {
+                  return $.connectors.custom.moreOptions;
+                })}
               >
                 <IconDotsVertical size={14} stroke={1.5} />
               </Button>
@@ -94,24 +102,32 @@ function CustomConnectorRow({
             <DropdownMenuContent align="end" className="w-44">
               {!connector.hasSecret && (
                 <DropdownMenuModalItem onModalSelect={onConnect}>
-                  Connect
+                  {t(($) => {
+                    return $.connectors.actions.connect;
+                  })}
                 </DropdownMenuModalItem>
               )}
               {connector.hasSecret && (
                 <DropdownMenuItem onClick={onDisconnect}>
-                  Disconnect
+                  {t(($) => {
+                    return $.connectors.actions.disconnect;
+                  })}
                 </DropdownMenuItem>
               )}
               {isAdmin && (
                 <>
                   <DropdownMenuModalItem onModalSelect={onRename}>
-                    Rename
+                    {t(($) => {
+                      return $.connectors.actions.rename;
+                    })}
                   </DropdownMenuModalItem>
                   <DropdownMenuModalItem
                     onModalSelect={onDelete}
                     className="text-destructive focus:text-destructive"
                   >
-                    Delete
+                    {t(($) => {
+                      return $.connectors.actions.delete;
+                    })}
                   </DropdownMenuModalItem>
                 </>
               )}
@@ -124,6 +140,7 @@ function CustomConnectorRow({
 }
 
 export function CustomConnectorsPanel() {
+  const { t } = useTranslation();
   const connectors = useLastResolved(customConnectors$);
   const isAdmin = useLastResolved(isOrgAdmin$) ?? false;
   const dialog = useGet(customConnectorDialog$);
@@ -149,13 +166,19 @@ export function CustomConnectorsPanel() {
         <div className="zero-card py-12 flex flex-col items-center gap-3">
           <img
             src={noConnectorImg}
-            alt="No connectors"
+            alt={t(($) => {
+              return $.connectors.catalog.noConnectorsAlt;
+            })}
             className="h-20 w-20 object-contain opacity-80"
           />
           <p className="text-sm text-muted-foreground text-center">
             {isAdmin
-              ? "No custom connectors yet. Create one to register an API for every member to use."
-              : "Your org hasn't registered any custom connectors yet."}
+              ? t(($) => {
+                  return $.connectors.custom.emptyAdmin;
+                })
+              : t(($) => {
+                  return $.connectors.custom.emptyMember;
+                })}
           </p>
         </div>
       )}
