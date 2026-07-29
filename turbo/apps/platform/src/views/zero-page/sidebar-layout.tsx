@@ -5,6 +5,7 @@ import {
   useLastLoadable,
   useLastResolved,
 } from "ccstate-react";
+import { useTranslation } from "react-i18next";
 import { IconMenu2, IconPackage, IconUserPlus } from "@tabler/icons-react";
 import type { RouteKey } from "../../signals/route-paths.ts";
 import { cn } from "@vm0/ui";
@@ -64,6 +65,7 @@ function InviteButtonLeaf() {
   const isAdmin = isAdminLoadable.state === "hasData" && isAdminLoadable.data;
   const openSettings = useSet(openSettingsDialogAt$);
   const pageSignal = useGet(pageSignal$);
+  const { t } = useTranslation();
   if (!isAdmin) {
     return null;
   }
@@ -76,7 +78,9 @@ function InviteButtonLeaf() {
       className="flex items-center gap-1.5 h-8 px-3 rounded-lg text-sm text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-colors shrink-0"
     >
       <IconUserPlus size={14} stroke={1.5} />
-      Invite
+      {t(($) => {
+        return $.appShell.sidebar.mobile.invite;
+      })}
     </button>
   );
 }
@@ -148,6 +152,7 @@ function MobileTopBarActions({ activeId }: { activeId: RouteKey | null }) {
 
 function MobileTopBar() {
   const setExpanded = useSet(setSidebarExpanded$);
+  const { t } = useTranslation();
 
   const breadcrumbLoadable = useLastLoadable(mobileBreadcrumb$);
   const breadcrumb =
@@ -163,7 +168,9 @@ function MobileTopBar() {
           setExpanded(true);
         }}
         className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-colors"
-        aria-label="Open menu"
+        aria-label={t(($) => {
+          return $.appShell.sidebar.mobile.openMenu;
+        })}
       >
         <IconMenu2 size={18} stroke={1.8} />
       </button>
@@ -216,6 +223,7 @@ function SettingsDialogMount() {
 function SidebarLayoutInner({ children }: { children: ReactNode }) {
   const expanded = useGet(sidebarExpanded$);
   const setExpanded = useSet(setSidebarExpanded$);
+  const { t } = useTranslation();
 
   return (
     <div className="zero-app zero-viewport-shell flex w-full bg-background">
@@ -226,7 +234,9 @@ function SidebarLayoutInner({ children }: { children: ReactNode }) {
       <div
         data-sidebar-expanded={expanded || undefined}
         className="zero-pwa-fixed-cover fixed inset-0 z-30 bg-black/40 hidden data-[sidebar-expanded]:max-md:block"
-        aria-label="Sidebar overlay"
+        aria-label={t(($) => {
+          return $.appShell.sidebar.mobile.overlay;
+        })}
         onClick={() => {
           return setExpanded(false);
         }}

@@ -13,6 +13,7 @@ import {
   SelectValue,
   cn,
 } from "@vm0/ui";
+import { useTranslation } from "react-i18next";
 
 const ROWS_PER_PAGE_OPTIONS = [10, 20, 50, 100] as const;
 
@@ -34,6 +35,85 @@ interface PaginationProps {
   onRowsPerPageChange: (limit: number) => void;
 }
 
+interface PaginationNavigationProps {
+  readonly buttonClassName?: string;
+  readonly canGoBackTwo: boolean;
+  readonly hasNext: boolean;
+  readonly hasPrev: boolean;
+  readonly isLoading: boolean;
+  readonly onBackTwoPages: () => void;
+  readonly onForwardTwoPages: () => void;
+  readonly onNextPage: () => void;
+  readonly onPrevPage: () => void;
+}
+
+function PaginationNavigation({
+  buttonClassName,
+  canGoBackTwo,
+  hasNext,
+  hasPrev,
+  isLoading,
+  onBackTwoPages,
+  onForwardTwoPages,
+  onNextPage,
+  onPrevPage,
+}: PaginationNavigationProps) {
+  const { t } = useTranslation();
+
+  return (
+    <div className="flex items-center gap-2">
+      <Button
+        aria-label={t(($) => {
+          return $.shared.pagination.backTwo;
+        })}
+        variant="outline"
+        size="icon"
+        className={cn("h-8 w-8 bg-card", buttonClassName)}
+        onClick={onBackTwoPages}
+        disabled={!canGoBackTwo}
+      >
+        <IconChevronsLeft className="size-4" />
+      </Button>
+      <Button
+        aria-label={t(($) => {
+          return $.shared.pagination.previous;
+        })}
+        variant="outline"
+        size="icon"
+        className={cn("h-8 w-8 bg-card", buttonClassName)}
+        onClick={onPrevPage}
+        disabled={!hasPrev}
+      >
+        <IconChevronLeft className="size-4" />
+      </Button>
+      <Button
+        aria-label={t(($) => {
+          return $.shared.pagination.next;
+        })}
+        variant="outline"
+        size="icon"
+        className={cn("h-8 w-8 bg-card", buttonClassName)}
+        onClick={onNextPage}
+        disabled={!hasNext || isLoading}
+      >
+        <IconChevronRight className="size-4" />
+      </Button>
+      <Button
+        aria-label={t(($) => {
+          return $.shared.pagination.forwardTwo;
+        })}
+        variant="outline"
+        size="icon"
+        className={cn("h-8 w-8 bg-card", buttonClassName)}
+        onClick={onForwardTwoPages}
+        disabled={!hasNext || isLoading}
+      >
+        <IconChevronsRight className="size-4" />
+      </Button>
+    </div>
+  );
+}
+
 export function Pagination({
   currentPage,
   totalPages,
@@ -49,7 +129,12 @@ export function Pagination({
   onBackTwoPages,
   onRowsPerPageChange,
 }: PaginationProps) {
+  const { i18n, t } = useTranslation();
   const canGoBackTwo = currentPage > 1;
+  const locale = i18n.resolvedLanguage ?? i18n.language;
+  const formatNumber = (value: number): string => {
+    return value.toLocaleString(locale);
+  };
 
   const handleRowsPerPageChange = (value: string) => {
     const limit = Number.parseInt(value, 10);
@@ -66,14 +151,18 @@ export function Pagination({
             labelClassName,
           )}
         >
-          Rows per page
+          {t(($) => {
+            return $.shared.pagination.rowsPerPage;
+          })}
         </span>
         <Select
           value={String(rowsPerPage)}
           onValueChange={handleRowsPerPageChange}
         >
           <SelectTrigger
-            aria-label="Rows per page"
+            aria-label={t(($) => {
+              return $.shared.pagination.rowsPerPage;
+            })}
             className="zero-btn-morandi h-8 w-[72px]"
           >
             <SelectValue />
@@ -82,7 +171,7 @@ export function Pagination({
             {ROWS_PER_PAGE_OPTIONS.map((option) => {
               return (
                 <SelectItem key={option} value={String(option)}>
-                  {option}
+                  {formatNumber(option)}
                 </SelectItem>
               );
             })}
@@ -97,57 +186,35 @@ export function Pagination({
           labelClassName,
         )}
       >
-        Page {currentPage}
-        {totalPages !== undefined ? ` of ${totalPages}` : ""}
+        {totalPages === undefined
+          ? t(
+              ($) => {
+                return $.shared.pagination.page;
+              },
+              { currentPage: formatNumber(currentPage) },
+            )
+          : t(
+              ($) => {
+                return $.shared.pagination.pageOf;
+              },
+              {
+                currentPage: formatNumber(currentPage),
+                totalPages: formatNumber(totalPages),
+              },
+            )}
       </span>
 
-      {/* Navigation buttons */}
-      <div className="flex items-center gap-2">
-        {/* Back two pages */}
-        <Button
-          aria-label="Back 2 pages"
-          variant="outline"
-          size="icon"
-          className={cn("h-8 w-8 bg-card", buttonClassName)}
-          onClick={onBackTwoPages}
-          disabled={!canGoBackTwo}
-        >
-          <IconChevronsLeft className="size-4" />
-        </Button>
-        {/* Previous page */}
-        <Button
-          aria-label="Previous page"
-          variant="outline"
-          size="icon"
-          className={cn("h-8 w-8 bg-card", buttonClassName)}
-          onClick={onPrevPage}
-          disabled={!hasPrev}
-        >
-          <IconChevronLeft className="size-4" />
-        </Button>
-        {/* Next page */}
-        <Button
-          aria-label="Next page"
-          variant="outline"
-          size="icon"
-          className={cn("h-8 w-8 bg-card", buttonClassName)}
-          onClick={onNextPage}
-          disabled={!hasNext || isLoading}
-        >
-          <IconChevronRight className="size-4" />
-        </Button>
-        {/* Forward two pages */}
-        <Button
-          aria-label="Forward 2 pages"
-          variant="outline"
-          size="icon"
-          className={cn("h-8 w-8 bg-card", buttonClassName)}
-          onClick={onForwardTwoPages}
-          disabled={!hasNext || isLoading}
-        >
-          <IconChevronsRight className="size-4" />
-        </Button>
-      </div>
+      <PaginationNavigation
+        buttonClassName={buttonClassName}
+        canGoBackTwo={canGoBackTwo}
+        hasNext={hasNext}
+        hasPrev={hasPrev}
+        isLoading={isLoading}
+        onBackTwoPages={onBackTwoPages}
+        onForwardTwoPages={onForwardTwoPages}
+        onNextPage={onNextPage}
+        onPrevPage={onPrevPage}
+      />
     </div>
   );
 }

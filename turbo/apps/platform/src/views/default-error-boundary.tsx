@@ -1,4 +1,5 @@
 import type { ErrorInfo } from "react";
+import { useTranslation } from "react-i18next";
 
 interface ErrorFallbackProps {
   error: Error;
@@ -7,25 +8,34 @@ interface ErrorFallbackProps {
 
 export function DefaultErrorFallback({ error }: ErrorFallbackProps) {
   void error;
+  const { t } = useTranslation();
 
   return (
     <div className="flex h-full items-center justify-center bg-white">
       <div className="flex flex-col items-center">
         <div className="mt-12">
           <div className="w-80 text-center text-base font-semibold text-gray-900">
-            Oops! Something went sideways
+            {t(($) => {
+              return $.shared.errorBoundary.title;
+            })}
           </div>
 
           <div className="mt-2 w-80 text-center text-sm text-gray-500">
-            Give it another try or reach out{" "}
+            {t(($) => {
+              return $.shared.errorBoundary.description;
+            })}{" "}
             <a
               href="mailto:contact@vm0.ai"
               className="text-blue-500 hover:underline"
             >
-              support
+              {t(($) => {
+                return $.shared.errorBoundary.contactSupport;
+              })}
             </a>
             <br />
-            We&apos;re here to help
+            {t(($) => {
+              return $.shared.errorBoundary.help;
+            })}
           </div>
         </div>
       </div>
