@@ -2611,6 +2611,7 @@ function createPagedEvents(
     mailDraftCardSignalsById$,
     reloadMailDrafts$: mailDraftCardSignals.reload$,
     browserSessionCardSignalsById$,
+    subscribeBrowserSessions$: browserSessionCardSignals.subscribe$,
     artifactSignalsForUrl: (url: string): ArtifactSignals | undefined => {
       return artifactCardSignals.find(url);
     },
@@ -2770,6 +2771,7 @@ interface RunTrackingDeps {
   settleEventSync$: Command<Promise<void>, []>;
   reloadArtifacts$: Command<void, []>;
   reloadMailDrafts$: Command<void, []>;
+  subscribeBrowserSessions$: Command<Promise<void>, [AbortSignal]>;
   reloadComposerWorkflows$: Command<Promise<void>, [AbortSignal]>;
   autoScroll$: Command<void, []>;
   automationSignals: Pick<
@@ -3044,6 +3046,7 @@ function createRunTracking({
   settleEventSync$,
   reloadArtifacts$,
   reloadMailDrafts$,
+  subscribeBrowserSessions$,
   reloadComposerWorkflows$,
   autoScroll$,
   automationSignals,
@@ -3104,6 +3107,7 @@ function createRunTracking({
     await Promise.all([
       set(markThreadReadIfNeeded$, signal),
       set(subscribeComputerUseHostsChanged$, signal),
+      set(subscribeBrowserSessions$, signal),
       set(
         dataSource.subscribeRealtime$,
         {
@@ -4450,6 +4454,7 @@ export function createChatThreadSignals(
     settleEventSync$: events.settleEventSync$,
     reloadArtifacts$: artifact.reloadArtifacts$,
     reloadMailDrafts$: events.reloadMailDrafts$,
+    subscribeBrowserSessions$: events.subscribeBrowserSessions$,
     reloadComposerWorkflows$: composer.workflowComposer.reloadWorkflows$,
     autoScroll$: scrollSignals.autoScroll$,
     automationSignals: threadOwned,
