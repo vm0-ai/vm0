@@ -748,6 +748,64 @@ describe("thread-owned utility sidebar", () => {
     });
   });
 
+  it("does not auto-open a card from an older completed run when the latest completed run has no card", async () => {
+    const olderCompletedUrl = "https://older-completed-deck.sites.vm7.io";
+    context.mocks.browser.matchMedia((query) => {
+      return query === CHAT_THREAD_SIDEBAR_SPLIT_VIEW_MEDIA_QUERY;
+    });
+
+    setupChatThread({
+      autoOpenEnabled: true,
+      messages: [
+        {
+          id: "msg-older-completed-card",
+          role: "assistant",
+          content: `[Older completed deck](${olderCompletedUrl})`,
+          runId: "run-older-completed",
+          seqId: 1,
+          createdAt: "2026-03-10T00:00:00Z",
+        },
+        {
+          id: "msg-older-completed-finish",
+          role: "assistant",
+          content: null,
+          runId: "run-older-completed",
+          runLifecycleEvent: "completed",
+          seqId: 2,
+          createdAt: "2026-03-10T00:00:01Z",
+        },
+        {
+          id: "msg-latest-completed-user",
+          role: "user",
+          content: "Summarize the completed work",
+          runId: "run-latest-completed",
+          seqId: 3,
+          createdAt: "2026-03-10T00:00:02Z",
+        },
+        {
+          id: "msg-latest-completed-response",
+          role: "assistant",
+          content: "Latest run completed without a sidebar card.",
+          runId: "run-latest-completed",
+          seqId: 4,
+          createdAt: "2026-03-10T00:00:03Z",
+        },
+        {
+          id: "msg-latest-completed-finish",
+          role: "assistant",
+          content: null,
+          runId: "run-latest-completed",
+          runLifecycleEvent: "completed",
+          seqId: 5,
+          createdAt: "2026-03-10T00:00:04Z",
+        },
+      ],
+    });
+
+    await screen.findByText("Latest run completed without a sidebar card.");
+    expect(screen.queryByTestId("artifact-sidebar")).not.toBeInTheDocument();
+  });
+
   it("skips deleted, reconnect-required, and unavailable cards before falling back", async () => {
     const completedUrl = "https://openable-fallback.sites.vm7.io";
     const deletedDraftId = "c0000000-0000-4000-a000-000000000061";

@@ -55,6 +55,14 @@ export interface ThreadSidebarSignals {
   readonly target$: Computed<ThreadSidebarTarget | null>;
   readonly open$: Command<void, [ThreadSidebarTarget]>;
   readonly close$: Command<void, []>;
+  /**
+   * Whether the current sidebar session should animate into the split layout.
+   * The first local-message auto-open captures `false`; later opens capture
+   * `true` after that initial decision completes.
+   */
+  readonly animateEntry$: Computed<boolean>;
+  readonly initialAutoOpenDecisionCompleted$: Computed<Promise<void>>;
+  readonly enableEntryAnimations$: Command<void, []>;
   readonly editingAutomationId$: Computed<string | null>;
   readonly setEditingAutomationId$: Command<void, [string | null]>;
   /**
@@ -88,9 +96,12 @@ export function createThreadSidebarSignals(
   threadId: string,
 ): ThreadSidebarSignals {
   const internalTarget$ = state<ThreadSidebarTarget | null>(null);
+  const internalEntryAnimationsEnabled$ = state(false);
+  const internalAnimateEntry$ = state(false);
   const internalFullscreen$ = state(false);
   const internalEditingAutomationId$ = state<string | null>(null);
   const internalClaimedAutoOpenCandidateKey$ = state<string | null>(null);
+  const initialAutoOpenDecision = Promise.withResolvers<void>();
   const resetSession$ = resetSignal();
 
   const artifactCatalog = createArtifactCatalogSignals({
@@ -112,6 +123,9 @@ export function createThreadSidebarSignals(
 
   const open$ = command(({ get, set }, target: ThreadSidebarTarget) => {
     const current = get(internalTarget$);
+    if (current === null) {
+      set(internalAnimateEntry$, get(internalEntryAnimationsEnabled$));
+    }
     if (current?.type !== target.type) {
       set(internalFullscreen$, false);
     }
@@ -126,6 +140,7 @@ export function createThreadSidebarSignals(
     // while keeping the cached catalog pages for the next open.
     set(resetSession$);
     set(internalTarget$, null);
+    set(internalAnimateEntry$, false);
     set(internalFullscreen$, false);
     set(internalEditingAutomationId$, null);
   });
@@ -154,6 +169,16 @@ export function createThreadSidebarSignals(
     }),
     open$,
     close$,
+    animateEntry$: computed((get) => {
+      return get(internalAnimateEntry$);
+    }),
+    initialAutoOpenDecisionCompleted$: computed(() => {
+      return initialAutoOpenDecision.promise;
+    }),
+    enableEntryAnimations$: command(({ set }) => {
+      set(internalEntryAnimationsEnabled$, true);
+      initialAutoOpenDecision.resolve(undefined);
+    }),
     editingAutomationId$: computed((get) => {
       return get(internalEditingAutomationId$);
     }),

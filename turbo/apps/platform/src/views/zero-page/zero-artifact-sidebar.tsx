@@ -435,7 +435,6 @@ function ArtifactSidebarSurface({
               ARTIFACT_FULLSCREEN_DEFAULT_LAYER_CLASSNAME,
             )
           : "flex h-full w-full min-h-0 flex-col border-l border-border/60 bg-background xl:border-l-0",
-        "animate-in fade-in duration-[180ms] ease",
       )}
       data-testid="artifact-sidebar"
     >

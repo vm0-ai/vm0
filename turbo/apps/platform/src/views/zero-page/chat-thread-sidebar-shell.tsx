@@ -18,6 +18,7 @@ import { pageSignal$ } from "../../signals/page-signal.ts";
 function chatThreadSidebarLayout(
   width: number | null,
   resizing: boolean,
+  animateEntry: boolean,
 ): { style: CSSProperties; transition: string } {
   const widthValue =
     width === null
@@ -25,9 +26,10 @@ function chatThreadSidebarLayout(
       : `clamp(${CHAT_THREAD_SIDEBAR_MIN_WIDTH}px, ${width}px, calc(100% - ${CHAT_THREAD_SIDEBAR_MIN_THREAD_WIDTH}px))`;
   return {
     style: { "--chat-thread-sidebar-width": widthValue } as CSSProperties,
-    transition: resizing
-      ? ""
-      : "transition-[flex-basis,width] duration-[240ms] ease",
+    transition:
+      resizing || !animateEntry
+        ? ""
+        : "transition-[flex-basis,width] duration-[240ms] ease",
   };
 }
 
@@ -62,16 +64,19 @@ function ChatThreadSidebarResizeHandle() {
 
 export function ChatThreadSidebarShell({
   children,
+  animateEntry,
   open,
   sidebar,
 }: {
   readonly children: ReactNode;
+  readonly animateEntry: boolean;
   readonly open: boolean;
   readonly sidebar: ReactNode;
 }) {
   const { style, transition } = chatThreadSidebarLayout(
     useGet(chatThreadSidebarWidth$),
     useGet(chatThreadSidebarResizing$),
+    animateEntry,
   );
 
   return (
@@ -89,9 +94,11 @@ export function ChatThreadSidebarShell({
       </div>
       {open && <ChatThreadSidebarResizeHandle />}
       <div
+        data-testid="chat-thread-sidebar-pane"
         className={cn(
           "flex min-h-0 min-w-0 overflow-hidden",
           transition,
+          open && animateEntry && "animate-in fade-in duration-[180ms] ease",
           open
             ? "flex-1 basis-0 xl:w-[var(--chat-thread-sidebar-width)] xl:flex-none xl:basis-[var(--chat-thread-sidebar-width)]"
             : "pointer-events-none w-0 flex-none basis-0",
