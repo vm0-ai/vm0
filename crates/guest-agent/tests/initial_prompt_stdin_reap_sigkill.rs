@@ -15,8 +15,8 @@ async fn initial_prompt_stdin_failure_reap_escalates_to_sigkill()
     std::fs::write(
         &mock,
         r#"#!/bin/sh
-exec 0<&-
 trap '' TERM
+exec 0<&-
 tail -f /dev/null
 "#,
     )?;
@@ -32,12 +32,23 @@ tail -f /dev/null
     let runtime = common::guest_runtime_from_process_env()?;
 
     let masker = SecretMasker::from_raw("");
+    let checkpoints = [common::VirtualTimeCheckpoint {
+        file: runtime.paths.system_log_file(),
+        needle: "Claude stdin writer failed, SIGTERM",
+        advance: runtime.config.post_result_sigkill_grace,
+    }];
+
+    // The write-failure log and SIGKILL deadline are committed in one poll.
+    // Keep the outer timeout as a real subprocess/reaping regression bound.
     let result = tokio::time::timeout(
         Duration::from_secs(15),
-        common::execute_cli_for_runtime(&runtime, &masker, common::spawn_dummy_heartbeat()),
+        common::execute_with_virtual_time_checkpoints(
+            common::execute_cli_for_runtime(&runtime, &masker, common::spawn_dummy_heartbeat()),
+            &checkpoints,
+        ),
     )
     .await
-    .expect("execute_cli did not return within 15s - stdin failure reap likely broken");
+    .expect("execute_cli did not return within 15s - stdin failure reap likely broken")?;
 
     let result = result.expect("execute_cli returned Err before collecting controlled termination");
     let err = result

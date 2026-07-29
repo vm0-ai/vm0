@@ -20,26 +20,6 @@ const BROWSER_USE_CDP_REQUEST_TIMEOUT_MS = 15_000;
 const MAX_BROWSER_USE_RESPONSE_BYTES = 512 * 1024;
 const MAX_BROWSER_USE_CDP_RESPONSE_BYTES = 64 * 1024;
 const MAX_BROWSER_USE_ERROR_MESSAGE_CHARS = 2048;
-const MAX_BROWSER_USE_DECIMAL_CHARS = 64;
-const browserUseDecimalSchema = z
-  .string()
-  .max(MAX_BROWSER_USE_DECIMAL_CHARS + 1)
-  .regex(/^\+?(?:\d+(?:\.\d*)?|\.\d+)$/u)
-  .transform((value) => {
-    const unsigned = value.startsWith("+") ? value.slice(1) : value;
-    const withIntegerPart = unsigned.startsWith(".")
-      ? `0${unsigned}`
-      : unsigned;
-    return withIntegerPart.endsWith(".")
-      ? withIntegerPart.slice(0, -1)
-      : withIntegerPart;
-  })
-  .pipe(z.string().max(MAX_BROWSER_USE_DECIMAL_CHARS));
-const browserUseDecimalWithDefaultSchema = browserUseDecimalSchema
-  .nullish()
-  .transform((value) => {
-    return value ?? "0";
-  });
 const browserUseLiveUrlSchema = z.url().refine((value) => {
   return new URL(value).origin === "https://live.browser-use.com";
 });
@@ -112,9 +92,6 @@ const browserUseSessionSchema = z.object({
     .transform((value) => {
       return value ?? null;
     }),
-  proxyUsedMb: browserUseDecimalWithDefaultSchema,
-  proxyCost: browserUseDecimalWithDefaultSchema,
-  browserCost: browserUseDecimalWithDefaultSchema,
 });
 
 export type BrowserUseSession = z.infer<typeof browserUseSessionSchema>;

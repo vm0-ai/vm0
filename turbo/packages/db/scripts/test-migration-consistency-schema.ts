@@ -117,6 +117,388 @@ async function runMigrations(dbUrl: string): Promise<void> {
   });
 }
 
+async function validateCurrentBrowserApiBeforeBillingMigration(): Promise<void> {
+  console.log(
+    "=== Phase 1.95: Validate current browser API before billing migration ===\n",
+  );
+  const testDb = "migration_current_browser_api_pre_billing_test";
+  const testDbUrl = createTestDbUrl(testDb);
+  const agentComposeId = "00000000-0000-4000-8000-000000073301";
+  const agentSessionId = "00000000-0000-4000-8000-000000073302";
+  const runId = "00000000-0000-4000-8000-000000073303";
+  const browserProfileId = "00000000-0000-4000-8000-000000073304";
+  const providerProfileId = "00000000-0000-4000-8000-000000073305";
+  const browserThreadProfileId = "00000000-0000-4000-8000-000000073306";
+  const threadProviderProfileId = "00000000-0000-4000-8000-000000073307";
+  const browserSessionId = "00000000-0000-4000-8000-000000073308";
+  const providerSessionId = "00000000-0000-4000-8000-000000073309";
+  const chatThreadId = "00000000-0000-4000-8000-000000073310";
+
+  await createDatabase(testDb);
+  try {
+    await runMigrationsUpTo(testDbUrl, 733);
+    const client = new Client({ connectionString: testDbUrl });
+    await client.connect();
+
+    try {
+      const legacyDefaults = await client.query<{
+        columnDefault: string | null;
+        columnName: string;
+        tableName: string;
+      }>(
+        `
+          SELECT
+            "table_name" AS "tableName",
+            "column_name" AS "columnName",
+            "column_default" AS "columnDefault"
+          FROM "information_schema"."columns"
+          WHERE (
+            "table_name" = 'browser_sessions'
+            AND "column_name" = 'max_credits'
+          ) OR (
+            "table_name" = 'browser_session_instances'
+            AND "column_name" IN ('pricing_unit_price', 'pricing_unit_size')
+          )
+        `,
+      );
+      assert.equal(legacyDefaults.rows.length, 3);
+      for (const column of legacyDefaults.rows) {
+        assert.equal(
+          column.columnDefault,
+          null,
+          `${column.tableName}.${column.columnName} unexpectedly has a pre-0734 default`,
+        );
+      }
+
+      await client.query(
+        `
+          INSERT INTO "agent_composes" ("id", "user_id", "name", "org_id")
+          VALUES (
+            $1,
+            'browser-current-user',
+            'current-browser-api-pre-migration',
+            'browser-current-org'
+          )
+        `,
+        [agentComposeId],
+      );
+      await client.query(
+        `
+          INSERT INTO "agent_sessions" (
+            "id",
+            "user_id",
+            "org_id",
+            "agent_compose_id"
+          )
+          VALUES (
+            $1,
+            'browser-current-user',
+            'browser-current-org',
+            $2
+          )
+        `,
+        [agentSessionId, agentComposeId],
+      );
+      await client.query(
+        `
+          INSERT INTO "agent_runs" (
+            "id",
+            "user_id",
+            "session_id",
+            "status",
+            "prompt",
+            "org_id"
+          )
+          VALUES (
+            $1,
+            'browser-current-user',
+            $2,
+            'running',
+            'browser migration compatibility test',
+            'browser-current-org'
+          )
+        `,
+        [runId, agentSessionId],
+      );
+      await client.query(
+        `
+          INSERT INTO "browser_profiles" (
+            "id",
+            "org_id",
+            "user_id",
+            "provider_profile_id"
+          )
+          VALUES (
+            $1,
+            'browser-current-org',
+            'browser-current-user',
+            $2
+          )
+        `,
+        [browserProfileId, providerProfileId],
+      );
+      await client.query(
+        `
+          INSERT INTO "browser_thread_profiles" (
+            "id",
+            "chat_thread_id",
+            "org_id",
+            "user_id",
+            "provider_profile_id"
+          )
+          VALUES (
+            $1,
+            $2,
+            'browser-current-org',
+            'browser-current-user',
+            $3
+          )
+        `,
+        [browserThreadProfileId, chatThreadId, threadProviderProfileId],
+      );
+
+      // These are the current API's transitional statement shapes. The three
+      // legacy billing columns are explicit because migration 0734 has not run.
+      const browser = await client.query<{ maxCredits: number }>(
+        `
+          INSERT INTO "browser_sessions" (
+            "id",
+            "chat_thread_id",
+            "run_id",
+            "org_id",
+            "user_id",
+            "name",
+            "browser_profile_id",
+            "browser_thread_profile_id",
+            "status",
+            "proxy_country_code",
+            "timeout_minutes",
+            "max_credits"
+          )
+          VALUES (
+            $1,
+            $2,
+            $3,
+            'browser-current-org',
+            'browser-current-user',
+            'current-api-start',
+            $4,
+            $5,
+            'creating',
+            NULL,
+            240,
+            1
+          )
+          RETURNING "max_credits" AS "maxCredits"
+        `,
+        [
+          browserSessionId,
+          chatThreadId,
+          runId,
+          browserProfileId,
+          browserThreadProfileId,
+        ],
+      );
+      assert.deepEqual(browser.rows, [{ maxCredits: 1 }]);
+
+      const instance = await client.query<{
+        pricingUnitPrice: string;
+        pricingUnitSize: string;
+      }>(
+        `
+          INSERT INTO "browser_session_instances" (
+            "provider_session_id",
+            "browser_session_id",
+            "chat_thread_id",
+            "run_id",
+            "status",
+            "pricing_unit_price",
+            "pricing_unit_size",
+            "timeout_at",
+            "started_at",
+            "last_touched_at",
+            "idle_expires_at",
+            "stop_requested_at",
+            "finished_at"
+          )
+          VALUES (
+            $1,
+            $2,
+            $3,
+            $4,
+            'active',
+            0,
+            1,
+            now() + interval '240 minutes',
+            now(),
+            now(),
+            now() + interval '10 minutes',
+            NULL,
+            NULL
+          )
+          RETURNING
+            "pricing_unit_price"::text AS "pricingUnitPrice",
+            "pricing_unit_size"::text AS "pricingUnitSize"
+        `,
+        [providerSessionId, browserSessionId, chatThreadId, runId],
+      );
+      assert.deepEqual(instance.rows, [
+        { pricingUnitPrice: "0", pricingUnitSize: "1" },
+      ]);
+      console.log(
+        "   ✅ current API browser create/start writes work before migration 0734\n",
+      );
+    } finally {
+      await client.end();
+    }
+  } finally {
+    await dropDatabase(testDb);
+  }
+}
+
+async function validatePreviousBrowserApiAfterBillingMigration(
+  dbUrl: string,
+): Promise<void> {
+  console.log(
+    "=== Phase 2.4: Validate previous browser API after billing migration ===\n",
+  );
+  const client = new Client({ connectionString: dbUrl });
+  await client.connect();
+
+  const browserProfileId = "00000000-0000-4000-8000-000000073501";
+  const providerProfileId = "00000000-0000-4000-8000-000000073502";
+  const browserSessionId = "00000000-0000-4000-8000-000000073503";
+  const providerSessionId = "00000000-0000-4000-8000-000000073504";
+  const chatThreadId = "00000000-0000-4000-8000-000000073505";
+  const runId = "00000000-0000-4000-8000-000000073506";
+
+  try {
+    // This is the lookup shape used by the previous API before every provider
+    // create or resume.
+    const pricing = await client.query<{
+      unitPrice: string;
+      unitSize: string;
+    }>(
+      `
+        SELECT
+          "unit_price"::text AS "unitPrice",
+          "unit_size"::text AS "unitSize"
+        FROM "usage_pricing"
+        WHERE "kind" = 'browser'
+          AND "provider" = 'browser-use'
+          AND "category" = 'provider_cost_usd_micros'
+        LIMIT 1
+      `,
+    );
+    assert.deepEqual(pricing.rows, [{ unitPrice: "0", unitSize: "1" }]);
+    const pricingRow = pricing.rows[0];
+    if (!pricingRow) {
+      throw new Error("Previous browser API pricing lookup returned no row");
+    }
+
+    await client.query(
+      `
+        INSERT INTO "browser_profiles" (
+          "id",
+          "org_id",
+          "user_id",
+          "provider_profile_id"
+        )
+        VALUES ($1, 'browser-drain-org', 'browser-drain-user', $2)
+      `,
+      [browserProfileId, providerProfileId],
+    );
+    await client.query(
+      `
+        INSERT INTO "browser_sessions" (
+          "id",
+          "chat_thread_id",
+          "run_id",
+          "org_id",
+          "user_id",
+          "name",
+          "browser_profile_id",
+          "status",
+          "proxy_country_code",
+          "timeout_minutes",
+          "max_credits"
+        )
+        VALUES (
+          $1,
+          $2,
+          NULL,
+          'browser-drain-org',
+          'browser-drain-user',
+          'previous-api-start',
+          $3,
+          'creating',
+          NULL,
+          240,
+          500
+        )
+      `,
+      [browserSessionId, chatThreadId, browserProfileId],
+    );
+    const started = await client.query<{
+      pricingUnitPrice: string;
+      pricingUnitSize: string;
+    }>(
+      `
+        INSERT INTO "browser_session_instances" (
+          "provider_session_id",
+          "browser_session_id",
+          "chat_thread_id",
+          "run_id",
+          "status",
+          "pricing_unit_price",
+          "pricing_unit_size",
+          "timeout_at",
+          "started_at",
+          "last_touched_at",
+          "idle_expires_at"
+        )
+        VALUES (
+          $1,
+          $2,
+          $3,
+          $4,
+          'active',
+          $5::bigint,
+          $6::bigint,
+          now() + interval '240 minutes',
+          now(),
+          now(),
+          now() + interval '10 minutes'
+        )
+        RETURNING
+          "pricing_unit_price"::text AS "pricingUnitPrice",
+          "pricing_unit_size"::text AS "pricingUnitSize"
+      `,
+      [
+        providerSessionId,
+        browserSessionId,
+        chatThreadId,
+        runId,
+        pricingRow.unitPrice,
+        pricingRow.unitSize,
+      ],
+    );
+    assert.deepEqual(started.rows, [
+      { pricingUnitPrice: "0", pricingUnitSize: "1" },
+    ]);
+    console.log("   ✅ previous API pricing lookup returns a zero-priced row");
+    console.log("   ✅ previous API provider-start write remains valid\n");
+  } finally {
+    await client.query(`DELETE FROM "browser_sessions" WHERE "id" = $1`, [
+      browserSessionId,
+    ]);
+    await client.query(`DELETE FROM "browser_profiles" WHERE "id" = $1`, [
+      browserProfileId,
+    ]);
+    await client.end();
+  }
+}
+
 function databaseErrorCode(error: unknown): string | undefined {
   if (typeof error !== "object" || error === null || !("code" in error)) {
     return undefined;
@@ -6615,8 +6997,8 @@ async function validateModelObservationContractCleanup(): Promise<void> {
   }
 }
 
-const BROWSER_RESIZE_STATE_PREVIOUS_MIGRATION = 733;
-const BROWSER_RESIZE_STATE_MIGRATION = 734;
+const BROWSER_RESIZE_STATE_PREVIOUS_MIGRATION = 735;
+const BROWSER_RESIZE_STATE_MIGRATION = 736;
 
 const browserResizeRolloutFixture = {
   orgId: "browser-resize-rollout-org",
@@ -6665,7 +7047,7 @@ async function seedBrowserResizeRolloutSessions(client: Client): Promise<void> {
          "id", "chat_thread_id", "org_id", "user_id", "name",
          "browser_profile_id", "status", "timeout_minutes", "max_credits"
        )
-       VALUES ($1, $2, $3, $4, 'resize-rollout', $5, 'active', 240, 500)`,
+       VALUES ($1, $2, $3, $4, 'resize-rollout', $5, 'active', 240, 1)`,
       [
         instance.browserSessionId,
         instance.chatThreadId,
@@ -6684,17 +7066,13 @@ async function insertBrowserInstanceWithPreviousApiShape(
   const inserted = await client.query<{ providerSessionId: string }>(
     `INSERT INTO "browser_session_instances" (
        "provider_session_id", "browser_session_id", "chat_thread_id", "run_id",
-       "billing_run_id", "status", "browser_cost_microusd",
-       "proxy_cost_microusd", "proxy_used_mb", "pricing_unit_price",
-       "pricing_unit_size", "gross_credits", "credits_charged", "usage_event_id",
-       "timeout_at", "started_at", "last_touched_at", "idle_expires_at",
-       "stop_requested_at", "finished_at", "settled_at", "created_at",
-       "updated_at"
+       "status", "pricing_unit_price", "pricing_unit_size", "timeout_at",
+       "started_at", "last_touched_at", "idle_expires_at", "stop_requested_at",
+       "finished_at"
      )
      VALUES (
-       $1, $2, $3, $4, NULL, 'active', DEFAULT, DEFAULT, DEFAULT, 1, 1,
-       DEFAULT, NULL, NULL, NOW() + INTERVAL '4 hours', NOW(), NOW(),
-       NOW() + INTERVAL '10 minutes', NULL, NULL, NULL, DEFAULT, DEFAULT
+       $1, $2, $3, $4, 'active', 0, 1, NOW() + INTERVAL '4 hours', NOW(),
+       NOW(), NOW() + INTERVAL '10 minutes', NULL, NULL
      )
      RETURNING "provider_session_id" AS "providerSessionId"`,
     [
@@ -6796,7 +7174,7 @@ async function validateBrowserResizeStateRolloutCompatibility(): Promise<void> {
     await dropDatabase(testDb);
   }
   console.log(
-    "   ✅ Current API tolerates pre-0734 schema, previous API inserts after 0734, and only current post-migration instances gain resize state\n",
+    "   ✅ Current API tolerates pre-0736 schema, previous API inserts after 0736, and only current post-migration instances gain resize state\n",
   );
 }
 
@@ -6991,6 +7369,7 @@ async function main(): Promise<void> {
     await validateChatInputGoalEvent();
     await validateChatEventAssetRefTableRename();
     await validateBrowserResizeStateRolloutCompatibility();
+    await validateCurrentBrowserApiBeforeBillingMigration();
 
     // Step 1.5: Validate latest snapshot accuracy (NEW)
     await validateLatestSnapshotAccuracy();
@@ -7002,6 +7381,7 @@ async function main(): Promise<void> {
     await runMigrations(dbUrl1);
     console.log("   ✅ Migrations applied successfully\n");
 
+    await validatePreviousBrowserApiAfterBillingMigration(dbUrl1);
     await validateChatEventSourcesAreAppendOnly(dbUrl1);
     await validateConnectorCatalogFinalConstraints(dbUrl1);
     await validateCustomConnectorOauthModeConstraints(dbUrl1);
@@ -7032,6 +7412,12 @@ async function main(): Promise<void> {
       console.log("   ✅ Snapshot chain is intact (id/prevId references)");
       console.log("   ✅ Journal timestamps are strictly increasing");
       console.log("   ✅ Latest snapshot accurately reflects final DB state");
+      console.log(
+        "   ✅ Previous browser API can start after billing migration",
+      );
+      console.log(
+        "   ✅ Current browser API can start before billing migration",
+      );
       console.log("   ✅ Chat event source tables reject UPDATE");
       console.log(
         "   ✅ Final connector catalog constraints reject invalid state",

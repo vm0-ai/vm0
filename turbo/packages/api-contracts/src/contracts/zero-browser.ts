@@ -10,8 +10,6 @@ const c = initContract();
 // can never cut a browser short while somebody is still using it.
 export const ZERO_BROWSER_PROVIDER_TIMEOUT_MINUTES = 240;
 export const ZERO_BROWSER_IDLE_LEASE_MINUTES = 10;
-export const ZERO_BROWSER_DEFAULT_MAX_CREDITS = 500;
-export const ZERO_BROWSER_MAX_CREDITS = 100_000;
 export const ZERO_BROWSER_SCREEN_WIDTH = 1440;
 export const ZERO_BROWSER_INITIAL_SCREEN_HEIGHT = 900;
 export const ZERO_BROWSER_MIN_SCREEN_HEIGHT = 320;
@@ -31,6 +29,7 @@ export const zeroBrowserSuspensionReasonSchema = z.enum([
   "run_end",
   "idle",
   "timeout",
+  // Historical reason kept for rows written before browser billing was removed.
   "budget",
   "provider",
   "reconcile",
@@ -54,6 +53,9 @@ export const zeroBrowserSessionSchema = z.object({
   liveUrl: z.url().nullable(),
   proxyCountryCode: z.string().length(2).nullable(),
   timeoutMinutes: z.number().int().positive(),
+  // Deprecated compatibility fields for clients deployed before browser
+  // billing moved to organization concurrency. Remove after that client
+  // version has drained.
   maxCredits: z.number().int().positive(),
   grossCredits: z.number().int().nonnegative(),
   creditsCharged: z.number().int().nonnegative(),
@@ -86,12 +88,6 @@ export const zeroBrowserCreateRequestSchema = z.object({
     })
     .nullable()
     .default(null),
-  maxCredits: z
-    .number()
-    .int()
-    .min(1)
-    .max(ZERO_BROWSER_MAX_CREDITS)
-    .default(ZERO_BROWSER_DEFAULT_MAX_CREDITS),
 });
 
 export type ZeroBrowserCreateRequest = z.infer<
@@ -141,7 +137,6 @@ const browserConnectionResponseSchema = browserResponseSchema.extend({
 const commonErrorResponses = {
   400: apiErrorSchema,
   401: apiErrorSchema,
-  402: apiErrorSchema,
   403: apiErrorSchema,
   404: apiErrorSchema,
   409: apiErrorSchema,
@@ -219,7 +214,7 @@ export const zeroBrowserContract = c.router({
       200: browserResponseSchema,
       ...commonErrorResponses,
     },
-    summary: "Resume a suspended browser from its viewer and start billing it",
+    summary: "Resume a suspended browser from its viewer",
   },
   resizeById: {
     method: "POST",

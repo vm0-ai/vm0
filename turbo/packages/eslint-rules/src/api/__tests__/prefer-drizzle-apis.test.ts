@@ -663,6 +663,112 @@ ruleTester.run("prefer-drizzle-apis", preferDrizzleApis, {
         db.select({ name: sql\`\${lookalike}\` }).from(users);
       `,
     },
+    {
+      name: "scalar select builders inside retained predicates remain valid",
+      code: `${drizzlePreamble}
+        import { and, eq, max, notExists, sql } from "drizzle-orm";
+        import { alias } from "drizzle-orm/pg-core";
+        const boundaryEvent = alias(users, "boundary_event");
+        const boundaryRevoker = alias(users, "boundary_revoker");
+        const boundary = db
+          .select({ id: max(boundaryEvent.id) })
+          .from(boundaryEvent)
+          .where(
+            and(
+              eq(boundaryEvent.name, users.name),
+              notExists(
+                db
+                  .select({ id: boundaryRevoker.id })
+                  .from(boundaryRevoker)
+                  .where(eq(boundaryRevoker.id, boundaryEvent.id)),
+              ),
+            ),
+          );
+        db
+          .select()
+          .from(users)
+          .where(sql\`\${users.id} > COALESCE(\${boundary}, 0)\`);
+      `,
+    },
+    {
+      name: "unproven scalar relations and unsupported clauses remain valid",
+      code: `${drizzlePreamble}
+        import { asc, eq, max, sql, type SQL } from "drizzle-orm";
+        import { alias } from "drizzle-orm/pg-core";
+        const boundaryEvent = alias(users, "boundary_event");
+        declare const unresolvedRelation: SQL;
+        const literalRelation = sql\`COALESCE((
+          SELECT \${max(boundaryEvent.id)}
+          FROM users AS boundary_event
+          WHERE \${eq(boundaryEvent.name, users.name)}
+        ), 0)\`;
+        const unresolved = sql\`COALESCE((
+          SELECT \${max(boundaryEvent.id)}
+          FROM \${unresolvedRelation}
+          WHERE \${eq(boundaryEvent.name, users.name)}
+        ), 0)\`;
+        const ordered = sql\`COALESCE((
+          SELECT \${max(boundaryEvent.id)}
+          FROM \${boundaryEvent}
+          WHERE \${eq(boundaryEvent.name, users.name)}
+          ORDER BY \${asc(boundaryEvent.id)}
+        ), 0)\`;
+        db
+          .select()
+          .from(users)
+          .where(
+            sql\`boundary_matches(
+              \${literalRelation},
+              \${unresolved},
+              \${ordered}
+            )\`,
+          );
+      `,
+    },
+    {
+      name: "predicate scalar capability stays out of other SQL contexts",
+      code: `${drizzlePreamble}
+        import { eq, max, sql } from "drizzle-orm";
+        import { alias } from "drizzle-orm/pg-core";
+        const boundaryEvent = alias(users, "boundary_event");
+        const scalar = sql\`COALESCE((
+          SELECT \${max(boundaryEvent.id)}
+          FROM \${boundaryEvent}
+          WHERE \${eq(boundaryEvent.name, users.name)}
+        ), 0)\`;
+        db.select({ value: scalar }).from(users);
+        db.select().from(users).orderBy(scalar);
+        db.update(users).set({ id: scalar });
+      `,
+    },
+    {
+      name: "scalar branch disagreement and opaque flow stay conservative",
+      code: `${drizzlePreamble}
+        import { eq, max, sql, type SQL } from "drizzle-orm";
+        import { alias } from "drizzle-orm/pg-core";
+        const boundaryEvent = alias(users, "boundary_event");
+        declare const chooseScalar: boolean;
+        function opaque(value: SQL): SQL {
+          return value;
+        }
+        const conditional = chooseScalar
+          ? sql\`COALESCE((
+              SELECT \${max(boundaryEvent.id)}
+              FROM \${boundaryEvent}
+              WHERE \${eq(boundaryEvent.name, users.name)}
+            ), 0)\`
+          : sql\`COALESCE(\${users.id}, 0)\`;
+        const hidden = opaque(sql\`COALESCE((
+          SELECT \${max(boundaryEvent.id)}
+          FROM \${boundaryEvent}
+          WHERE \${eq(boundaryEvent.name, users.name)}
+        ), 0)\`);
+        db
+          .select()
+          .from(users)
+          .where(sql\`boundary_matches(\${conditional}, \${hidden})\`);
+      `,
+    },
   ],
   invalid: [
     {
@@ -2712,6 +2818,103 @@ ruleTester.run("prefer-drizzle-apis source-local analysis", preferDrizzleApis, {
         )\`;
       `,
       errors: [{ messageId: "typedApi", data: { helper: "gt" } }],
+    },
+    {
+      name: "schema-backed scalar subquery is the maximal predicate finding",
+      code: `${drizzlePreamble}
+        import { sql } from "drizzle-orm";
+        import { alias } from "drizzle-orm/pg-core";
+        const boundaryEvent = alias(users, "boundary_event");
+        const boundaryRevoker = alias(users, "boundary_revoker");
+        db
+          .select()
+          .from(users)
+          .where(sql\`boundary_matches(COALESCE(
+            (
+              SELECT MAX(\${boundaryEvent.id})
+              FROM \${boundaryEvent}
+              WHERE \${boundaryEvent.name} = \${users.name}
+                AND NOT EXISTS (
+                  SELECT 1
+                  FROM \${boundaryRevoker}
+                  WHERE \${boundaryRevoker.id} = \${boundaryEvent.id}
+                )
+            ),
+            0
+          ))\`);
+      `,
+      errors: [{ messageId: "structuredScalarQuery" }],
+    },
+    {
+      name: "independent scalar subqueries retain independent findings",
+      code: `${drizzlePreamble}
+        import { eq, max, sql } from "drizzle-orm";
+        import { alias } from "drizzle-orm/pg-core";
+        const firstBoundary = alias(users, "first_boundary");
+        const secondBoundary = alias(users, "second_boundary");
+        db
+          .select()
+          .from(users)
+          .where(sql\`
+            COALESCE((
+              SELECT \${max(firstBoundary.id)}
+              FROM \${firstBoundary}
+              WHERE \${eq(firstBoundary.name, users.name)}
+            ), 0)
+            >
+            COALESCE((
+              SELECT \${max(secondBoundary.id)}
+              FROM \${secondBoundary}
+              WHERE \${eq(secondBoundary.name, users.name)}
+            ), 0)
+          \`);
+      `,
+      errors: [
+        { messageId: "structuredScalarQuery" },
+        { messageId: "structuredScalarQuery" },
+      ],
+    },
+    {
+      name: "scalar query remains maximal in an optional predicate argument",
+      code: `${drizzlePreamble}
+        import { and, eq, max, sql } from "drizzle-orm";
+        import { alias } from "drizzle-orm/pg-core";
+        const boundaryEvent = alias(users, "boundary_event");
+        const boundary = sql\`COALESCE((
+          SELECT \${max(boundaryEvent.id)}
+          FROM \${boundaryEvent}
+          WHERE \${and(
+            eq(boundaryEvent.name, users.name),
+            eq(boundaryEvent.id, users.id),
+          )}
+        ), 0)\`;
+        db
+          .select()
+          .from(users)
+          .where(and(sql\`boundary_matches(\${boundary})\`, eq(users.id, 1)));
+      `,
+      errors: [{ messageId: "structuredScalarQuery" }],
+    },
+    {
+      name: "unsupported scalar shape still exposes supported descendants",
+      code: `${drizzlePreamble}
+        import { sql } from "drizzle-orm";
+        import { alias } from "drizzle-orm/pg-core";
+        const boundaryEvent = alias(users, "boundary_event");
+        db
+          .select()
+          .from(users)
+          .where(sql\`boundary_matches(COALESCE((
+            SELECT MAX(\${boundaryEvent.id})
+            FROM \${boundaryEvent}
+            WHERE \${boundaryEvent.name} = \${users.name}
+            GROUP BY \${boundaryEvent.name}
+          ), 0))\`);
+      `,
+      errors: [
+        { messageId: "typedApi", data: { helper: "max" } },
+        { messageId: "typedApi", data: { helper: "eq" } },
+      ],
     },
     {
       name: "nested hand-built existence leaves remain source-local",

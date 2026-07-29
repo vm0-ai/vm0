@@ -37,7 +37,6 @@ from ..idempotency import (
     USAGE_OBSERVATION_NAMESPACE_MODEL,
     derive_usage_idempotency_key,
 )
-from ..model_pricing import ModelUsagePricing, from_flow_metadata
 from ..model_tokens import (
     MODEL_USAGE_CATEGORIES,
     MODEL_USAGE_CATEGORY_CACHE_CREATION,
@@ -105,7 +104,6 @@ def report_model_provider_usage(flow: http.HTTPFlow, run_id: str) -> bool:
         flow,
         run_id,
         USAGE_EVENT_NAMESPACE_MODEL,
-        billing_pricing=_model_usage_pricing(flow),
     )
     if not events:
         return False
@@ -177,7 +175,6 @@ def report_model_provider_usage_source(
             provider,
             source_usage,
             USAGE_EVENT_NAMESPACE_MODEL,
-            billing_pricing=_model_usage_pricing(flow),
         )
     if can_report_observation:
         observations = _build_model_usage_observations(
@@ -351,8 +348,6 @@ def _build_model_provider_usage_events(
     flow: http.HTTPFlow,
     run_id: str,
     namespace: uuid.UUID,
-    *,
-    billing_pricing: ModelUsagePricing | None,
 ) -> list[UsageEvent]:
     events: list[UsageEvent] = []
     for source_id, usage in _iter_model_provider_usage_sources(flow):
@@ -364,7 +359,6 @@ def _build_model_provider_usage_events(
                 provider,
                 usage,
                 namespace,
-                billing_pricing=billing_pricing,
             )
         )
     return events
@@ -454,8 +448,6 @@ def _build_usage_events(
     provider: str,
     usage: dict,
     namespace: uuid.UUID,
-    *,
-    billing_pricing: ModelUsagePricing | None,
 ) -> list[UsageEvent]:
     events: list[UsageEvent] = []
     for category in MODEL_USAGE_CATEGORIES:
@@ -472,17 +464,8 @@ def _build_usage_events(
             "category": category,
             "quantity": quantity,
         }
-        if billing_pricing is not None:
-            event["billingUnitPrice"] = billing_pricing.unit_prices[category]
-            event["billingUnitSize"] = billing_pricing.unit_size
         events.append(event)
     return events
-
-
-def _model_usage_pricing(
-    flow: http.HTTPFlow,
-) -> ModelUsagePricing | None:
-    return from_flow_metadata(flow.metadata)
 
 
 def _reported_model(flow: http.HTTPFlow, usage: dict) -> str:

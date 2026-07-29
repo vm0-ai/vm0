@@ -45,6 +45,7 @@ def test_rejects_invalid_scalar_field_config_value():
         ("max_key_bytes", 0),
         ("max_number_bytes", 0),
         ("max_wildcard_keys", 0),
+        ("max_work_units", 0),
     ],
 )
 def test_rejects_invalid_extractor_bounds(bound, value):
@@ -59,6 +60,7 @@ def test_rejects_invalid_extractor_bounds(bound, value):
         ("max_key_bytes", "1024"),
         ("max_number_bytes", 128.0),
         ("max_wildcard_keys", None),
+        ("max_work_units", True),
     ],
 )
 def test_rejects_non_integer_extractor_bounds(bound, value):

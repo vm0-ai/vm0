@@ -246,6 +246,56 @@ class TestModelProviderWebSocketUsage:
             ],
         )
 
+    def test_model_websocket_work_limit_warns_and_later_frame_reports(
+        self,
+        tmp_path,
+        real_flow,
+    ):
+        flow = make_openai_responses_websocket_flow(real_flow, tmp_path)
+        mitm_addon.responseheaders(flow)
+        proxy_log = Path(flow.metadata[metadata_keys.VM_PROXY_LOG_PATH])
+        over_budget_frame = (
+            b'{"type":"response.completed","response":{"id":"resp_partial",'
+            b'"model":"gpt-5.5","usage":{"input_tokens":100,"output_tokens":40}},'
+            b'"padding":[' + b",".join([b"0"] * 40_000) + b"]}"
+        )
+
+        with self._usage_webhook_api() as webhook:
+            feed_websocket_server_message(flow, over_budget_frame)
+
+            assert flow.websocket is not None
+            assert flow.websocket.messages[-1].content == over_budget_frame
+            assert flow.metadata[metadata_keys.MODEL_PROVIDER_USAGE] == {}
+            assert model_provider_usage_sources(flow) == {}
+
+            feed_websocket_server_message(
+                flow,
+                openai_websocket_usage_frame(
+                    "resp_after_limit",
+                    input_tokens=7,
+                    output_tokens=3,
+                ),
+            )
+            usage.flush_usage_events(trigger="test")
+
+        warning_entries = [
+            entry
+            for entry in read_jsonl_entries_after_flush(proxy_log)
+            if entry.get("message") == "Model provider WebSocket usage extraction failed"
+        ]
+        [warning] = warning_entries
+        assert warning["level"] == "warn"
+        assert warning["type"] == "usage_event"
+        assert warning["usage_protocol"] == "openai_responses_websocket"
+        assert warning["error"] == "work_limit_exceeded"
+        assert model_provider_usage_sources(flow) == {}
+        expected_rows = [
+            ("gpt-5.5", "tokens.input", 7),
+            ("gpt-5.5", "tokens.output", 3),
+        ]
+        _assert_usage_event_rows(webhook.usage_events(), "provider", expected_rows)
+        _assert_usage_event_rows(webhook.model_usage_observation_events(), "model", expected_rows)
+
     def test_full_pipeline_model_websocket_reports_multiple_response_ids(self, tmp_path, real_flow):
         flow = make_openai_responses_websocket_flow(real_flow, tmp_path)
         mitm_addon.responseheaders(flow)
