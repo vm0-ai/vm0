@@ -6,6 +6,7 @@ import {
   timestamp,
   uniqueIndex,
   index,
+  foreignKey,
 } from "drizzle-orm/pg-core";
 import { orgCustomConnectors } from "./org-custom-connector";
 
@@ -21,14 +22,7 @@ export const orgCustomConnectorValues = pgTable(
   "org_custom_connector_values",
   {
     id: uuid("id").defaultRandom().primaryKey(),
-    connectorId: uuid("connector_id")
-      .notNull()
-      .references(
-        () => {
-          return orgCustomConnectors.id;
-        },
-        { onDelete: "cascade" },
-      ),
+    connectorId: uuid("connector_id").notNull(),
     userId: text("user_id").notNull(),
     orgId: text("org_id").notNull(),
     kind: varchar("kind", { length: 16 }).notNull(),
@@ -47,6 +41,11 @@ export const orgCustomConnectorValues = pgTable(
         table.kind,
         table.key,
       ),
+      foreignKey({
+        name: "fk_org_custom_connector_values_connector",
+        columns: [table.connectorId, table.orgId],
+        foreignColumns: [orgCustomConnectors.id, orgCustomConnectors.orgId],
+      }).onDelete("cascade"),
     ];
   },
 );

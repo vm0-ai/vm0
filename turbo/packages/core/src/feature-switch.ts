@@ -500,6 +500,13 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     enabled: false,
     userOverridable: true,
   },
+  [FeatureSwitchKey.CustomConnectorOAuth2]: {
+    maintainer: "liangyou@vm0.ai",
+    description:
+      "Allow org admins to add OAuth 2.0 authentication to custom connectors.",
+    enabled: false,
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+  },
 };
 
 interface ResolvedHashes {

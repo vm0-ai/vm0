@@ -29,10 +29,11 @@ import {
 import { connectors } from "@vm0/db/schema/connector";
 import { secrets } from "@vm0/db/schema/secret";
 import { variables } from "@vm0/db/schema/variable";
-import { and, eq, sql } from "drizzle-orm";
+import { and, eq, isNotNull, sql } from "drizzle-orm";
 import { z } from "zod";
 
 import { optionalEnv } from "../../lib/env";
+import { pgTextDecoder } from "../../lib/db-structured-result";
 import { nowDate } from "../../lib/time";
 import { db$, type Db, type ReadonlyDb, writeDb$ } from "../external/db";
 import { publishConnectorChangedForUserSafely } from "../external/realtime";
@@ -403,7 +404,7 @@ export function zeroConnectorList(args: {
     const storedRowsPromise = db
       .select({
         id: connectors.id,
-        type: connectors.type,
+        type: sql`${connectors.type}`.mapWith(pgTextDecoder).as("type"),
         authMethod: connectors.authMethod,
         externalId: connectors.externalId,
         externalUsername: connectors.externalUsername,
@@ -421,6 +422,7 @@ export function zeroConnectorList(args: {
         and(
           eq(connectors.orgId, args.orgId),
           eq(connectors.userId, args.userId),
+          isNotNull(connectors.type),
         ),
       );
     const featureStatesPromise = (async () => {
@@ -824,6 +826,7 @@ async function upsertLocalConnectorRow(
     })
     .onConflictDoUpdate({
       target: [connectors.orgId, connectors.userId, connectors.type],
+      targetWhere: isNotNull(connectors.type),
       set: {
         authMethod: args.authMethod,
         storageVersion: args.storageVersion,
@@ -1656,6 +1659,7 @@ async function upsertConnectorTokenConnectionRow(
     })
     .onConflictDoUpdate({
       target: [connectors.orgId, connectors.userId, connectors.type],
+      targetWhere: isNotNull(connectors.type),
       set: {
         authMethod: args.authMethod,
         storageVersion: args.storageVersion,

@@ -345,7 +345,7 @@ describe("POST /api/zero/connectors/:type/manual-grant", () => {
     expect(storageState.variables).toStrictEqual([]);
   });
 
-  it("preserves a foreign-owned credential when reconnecting an existing connector", async () => {
+  it("stores colliding secret names under their owning connectors", async () => {
     const fixture = await seedFixture();
     const ownerId = await seedOwnedConnectorSecret(context, {
       orgId: fixture.orgId,
@@ -365,21 +365,17 @@ describe("POST /api/zero/connectors/:type/manual-grant", () => {
       storageVersion: 1,
     });
 
-    const response = await createApp({ signal: context.signal }).request(
-      "/api/zero/connectors/openai/manual-grant",
-      {
-        method: "POST",
-        headers: {
-          authorization: "Bearer clerk-session",
-          "content-type": "application/json",
-        },
-        body: JSON.stringify({
+    const response = await accept(
+      setupApp({ context })(zeroConnectorManualGrantContract).connect({
+        params: { type: "openai" },
+        headers: authHeaders(),
+        body: {
           authMethod: "api-token",
           values: { apiKey: "replacement" },
-        }),
-      },
+        },
+      }),
+      [200],
     );
-    expect(response.status).toBe(500);
 
     const storageState = await readConnectorCredentialStorageState(context, {
       orgId: fixture.orgId,
@@ -387,13 +383,25 @@ describe("POST /api/zero/connectors/:type/manual-grant", () => {
       connectorSlug: "openai",
       secretNames: ["OPENAI_TOKEN"],
     });
-    expect(storageState.secrets?.[0]).toStrictEqual({
-      name: "OPENAI_TOKEN",
-      connector_id: ownerId,
-      encrypted_value: "owner-value",
-      description: "owner description",
+    expect(storageState.connector).toStrictEqual({
+      id: response.body.id,
+      storage_version: 1,
     });
-    expect(storageState.connector?.storage_version).toBe(1);
+    expect(storageState.secrets).toHaveLength(2);
+    expect(storageState.secrets).toStrictEqual(
+      expect.arrayContaining([
+        {
+          name: "OPENAI_TOKEN",
+          connector_id: ownerId,
+          encrypted_value: "owner-value",
+          description: "owner description",
+        },
+        expect.objectContaining({
+          name: "OPENAI_TOKEN",
+          connector_id: response.body.id,
+        }),
+      ]),
+    );
 
     await deleteConnector(fixture, "openai");
     const stateAfterDelete = await readConnectorCredentialStorageState(

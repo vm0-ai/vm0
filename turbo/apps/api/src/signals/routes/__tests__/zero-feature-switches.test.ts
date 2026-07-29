@@ -45,6 +45,7 @@ describe("/api/zero/feature-switches", () => {
     expect(current.body.switches).toStrictEqual({
       [FeatureSwitchKey.StructuredPromptInlineTemplates]: true,
     });
+    expect(current.body.supportsCustomConnectorOAuth2).toBeTruthy();
     expect(
       current.body.effectiveSwitches[
         FeatureSwitchKey.StructuredPromptInlineTemplates

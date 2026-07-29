@@ -25,6 +25,7 @@ export function setMockFeatureSwitches(
         switches: sanitized,
         effectiveSwitches: sanitized,
         supportsStructuredInlineTemplates: true,
+        supportsCustomConnectorOAuth2: true,
       });
     }),
   );

@@ -160,6 +160,7 @@ async function fetchImportImage(
   const req = request(
     url,
     {
+      family: address.family,
       headers: { accept: "image/*" },
       lookup: (_hostname, _options, callback) => {
         callback(null, address.address, address.family);

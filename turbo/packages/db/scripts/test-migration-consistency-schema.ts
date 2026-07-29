@@ -1365,6 +1365,192 @@ async function validateConnectorCatalogFinalConstraints(
   );
 }
 
+async function expectDeferredDatabaseError(
+  client: Client,
+  args: {
+    readonly code: string;
+    readonly messageIncludes?: string;
+    readonly statements: readonly {
+      readonly query: string;
+      readonly values?: readonly string[];
+    }[];
+  },
+): Promise<void> {
+  await client.query("BEGIN");
+  try {
+    for (const statement of args.statements) {
+      await client.query(
+        statement.query,
+        statement.values ? [...statement.values] : undefined,
+      );
+    }
+    await client.query("COMMIT");
+  } catch (error) {
+    await client.query("ROLLBACK");
+    assert.equal(databaseErrorCode(error), args.code);
+    if (args.messageIncludes !== undefined) {
+      assert.ok(error instanceof Error);
+      assert.ok(error.message.includes(args.messageIncludes));
+    }
+    return;
+  }
+  throw new Error(`Expected deferred database error ${args.code}`);
+}
+
+async function validateCustomConnectorOauthModeConstraints(
+  dbUrl: string,
+): Promise<void> {
+  console.log(
+    "=== Phase 2.7: Validate custom connector OAuth mode constraints ===\n",
+  );
+  const fixture = {
+    orgId: "migration-custom-connector-oauth-org",
+    createdBy: "migration-custom-connector-oauth-user",
+    manualConnectorId: "72000000-0000-4000-8000-000000000001",
+    oauthConnectorId: "72000000-0000-4000-8000-000000000002",
+    invalidOauthConnectorId: "72000000-0000-4000-8000-000000000003",
+  } as const;
+  const insertConnector = `
+    INSERT INTO "org_custom_connectors" (
+      "id",
+      "org_id",
+      "slug",
+      "display_name",
+      "prefixes",
+      "header_name",
+      "header_template",
+      "auth_mode",
+      "created_by"
+    )
+    VALUES ($1, $2, $3, $4, '[]'::jsonb, 'Authorization', 'Bearer {{secret}}', $5, $6)
+  `;
+  const insertOauthConfig = `
+    INSERT INTO "org_custom_connector_oauth_configs" (
+      "connector_id",
+      "org_id",
+      "provider_adapter",
+      "client_id",
+      "encrypted_client_secret",
+      "authorization_url",
+      "token_url",
+      "token_endpoint_auth_method",
+      "pkce_method"
+    )
+    VALUES (
+      $1,
+      $2,
+      'standard',
+      'migration-client',
+      'migration-encrypted-secret',
+      'https://oauth.example.test/authorize',
+      'https://oauth.example.test/token',
+      'client_secret_basic',
+      'none'
+    )
+  `;
+  const client = new Client({ connectionString: dbUrl });
+  await client.connect();
+
+  try {
+    await client.query(insertConnector, [
+      fixture.manualConnectorId,
+      fixture.orgId,
+      "_migration_manual",
+      "Migration Manual Connector",
+      "manual",
+      fixture.createdBy,
+    ]);
+
+    await client.query("BEGIN");
+    await client.query(insertConnector, [
+      fixture.oauthConnectorId,
+      fixture.orgId,
+      "_migration_oauth",
+      "Migration OAuth Connector",
+      "oauth",
+      fixture.createdBy,
+    ]);
+    await client.query(insertOauthConfig, [
+      fixture.oauthConnectorId,
+      fixture.orgId,
+    ]);
+    await client.query("COMMIT");
+
+    await expectDeferredDatabaseError(client, {
+      code: "23514",
+      messageIncludes:
+        "custom connector auth mode and OAuth config do not match",
+      statements: [
+        {
+          query: insertConnector,
+          values: [
+            fixture.invalidOauthConnectorId,
+            fixture.orgId,
+            "_migration_invalid_oauth",
+            "Migration Invalid OAuth Connector",
+            "oauth",
+            fixture.createdBy,
+          ],
+        },
+      ],
+    });
+    await expectDeferredDatabaseError(client, {
+      code: "23514",
+      messageIncludes:
+        "custom connector auth mode and OAuth config do not match",
+      statements: [
+        {
+          query: insertOauthConfig,
+          values: [fixture.manualConnectorId, fixture.orgId],
+        },
+      ],
+    });
+    await expectDeferredDatabaseError(client, {
+      code: "23514",
+      messageIncludes:
+        "custom connector auth mode and OAuth config do not match",
+      statements: [
+        {
+          query: `
+            UPDATE "org_custom_connectors"
+            SET "auth_mode" = 'manual'
+            WHERE "id" = $1
+          `,
+          values: [fixture.oauthConnectorId],
+        },
+      ],
+    });
+    await expectDeferredDatabaseError(client, {
+      code: "23514",
+      messageIncludes:
+        "custom connector auth mode and OAuth config do not match",
+      statements: [
+        {
+          query: `
+            DELETE FROM "org_custom_connector_oauth_configs"
+            WHERE "connector_id" = $1
+          `,
+          values: [fixture.oauthConnectorId],
+        },
+      ],
+    });
+
+    await client.query(
+      `
+        DELETE FROM "org_custom_connectors"
+        WHERE "id" IN ($1, $2)
+      `,
+      [fixture.manualConnectorId, fixture.oauthConnectorId],
+    );
+  } finally {
+    await client.end();
+  }
+
+  console.log(
+    "   ✅ Deferred constraints accept complete modes and reject mismatched OAuth configuration\n",
+  );
+}
+
 async function validateConnectorCredentialOwnershipContraction(): Promise<void> {
   console.log(
     "=== Phase 1.5: Validate connector credential ownership contraction ===\n",
@@ -6632,6 +6818,7 @@ async function main(): Promise<void> {
 
     await validateChatEventSourcesAreAppendOnly(dbUrl1);
     await validateConnectorCatalogFinalConstraints(dbUrl1);
+    await validateCustomConnectorOauthModeConstraints(dbUrl1);
 
     // Step 2: Backup and regenerate migrations
     console.log("=== Phase 3: Test regenerated migrations ===\n");
@@ -6662,6 +6849,9 @@ async function main(): Promise<void> {
       console.log("   ✅ Chat event source tables reject UPDATE");
       console.log(
         "   ✅ Final connector catalog constraints reject invalid state",
+      );
+      console.log(
+        "   ✅ Custom connector OAuth mode constraints reject mismatched configuration",
       );
       console.log("   ✅ Schemas are functionally equivalent");
       console.log("   ✅ All migrations match the schema definitions");

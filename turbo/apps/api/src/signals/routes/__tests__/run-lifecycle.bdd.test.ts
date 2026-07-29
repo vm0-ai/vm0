@@ -60,7 +60,10 @@ import { createChatCallbacksApi } from "./helpers/api-bdd-chat-callbacks";
 import { createChatFilesBddApi } from "./helpers/api-bdd-chat-files";
 import { createComposesBddApi } from "./helpers/api-bdd-composes";
 import { createComputerUseBddApi } from "./helpers/api-bdd-computer-use";
-import { createConnectorBddApi } from "./helpers/api-bdd-connectors";
+import {
+  createConnectorBddApi,
+  mockCustomConnectorOAuth2Provider,
+} from "./helpers/api-bdd-connectors";
 import { createFirewallApi } from "./helpers/api-bdd-firewall";
 import { createMiscRoutesApi } from "./helpers/api-bdd-misc";
 import { createRunReadsApi } from "./helpers/api-bdd-run-reads";
@@ -7118,7 +7121,7 @@ describe("RUN-02: stored connector injection into claimed runs", () => {
 });
 
 describe("RUN-02: custom connectors, grants, and network policies", () => {
-  it("preserves global fixed-host ownership after selected firewall metadata is used", async () => {
+  it("lets an enabled custom connector override a connected built-in connector", async () => {
     const api = createRunsApi(context);
     const connectors = createConnectorBddApi(context);
     const { actor, agentId, runnerGroup } = await entitledRunActor();
@@ -7134,35 +7137,93 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
     );
     await api.enableAgentConnectors(actor, agentId, ["figma"]);
 
+    const custom = await connectors.createCustomConnector(actor, {
+      slug: `_figma-override-${randomUUID().slice(0, 8)}`,
+      displayName: "Custom Figma",
+      prefixes: ["https://api.figma.com/"],
+      headerName: "Authorization",
+      headerTemplate: "Bearer {{secret}}",
+    });
+    await connectors.setCustomConnectorSecret(
+      actor,
+      custom.id,
+      "custom-figma-token",
+    );
+    await connectors.updateAgentCustomConnectors(actor, agentId, [custom.id]);
+
     const run = await api.createRun(actor, {
       agentId,
-      prompt: "use selected connector metadata before a global lookup",
+      prompt: "use the custom connector instead of the built-in connector",
       modelProvider: "anthropic-api-key",
     });
     await api.heartbeatRunner(runnerGroup);
     const claim = await api.claimRunnerJob(run.runId);
+    const internalName = `custom_connector_${custom.id.replaceAll("-", "")}`;
+    expect(findFirewallEntry(claim.firewalls, "figma")).toBeUndefined();
+    expect(inlineFirewallApis(claim.firewalls, internalName)).toMatchObject([
+      {
+        base: "https://api.figma.com/",
+      },
+    ]);
+    expect(claim.networkPolicies ?? {}).not.toHaveProperty("figma");
+    expect(claim.networkPolicies?.[internalName]?.unknownPolicy).toBe("allow");
+
+    await api.requestCancelRun(actor, run.runId, [200]);
+    expect((await api.readRun(actor, run.runId)).status).toBe("cancelled");
+    await connectors.deleteCustomConnector(actor, custom.id);
+  });
+
+  it("keeps a built-in connector when a custom connector only overrides a narrower path", async () => {
+    const api = createRunsApi(context);
+    const connectors = createConnectorBddApi(context);
+    const { actor, agentId, runnerGroup } = await entitledRunActor();
+
+    await connectors.connectManualGrant(
+      actor,
+      "figma",
+      "api-token",
+      {
+        accessToken: "selected-figma-token",
+      },
+      agentId,
+    );
+    await api.enableAgentConnectors(actor, agentId, ["figma"]);
+
+    const custom = await connectors.createCustomConnector(actor, {
+      slug: `_figma-files-${randomUUID().slice(0, 8)}`,
+      displayName: "Custom Figma Files",
+      prefixes: ["https://api.figma.com/v1/files/"],
+      headerName: "Authorization",
+      headerTemplate: "Bearer {{secret}}",
+    });
+    await connectors.setCustomConnectorSecret(
+      actor,
+      custom.id,
+      "custom-figma-files-token",
+    );
+    await connectors.updateAgentCustomConnectors(actor, agentId, [custom.id]);
+
+    const run = await api.createRun(actor, {
+      agentId,
+      prompt: "use custom auth for Figma files and built-in auth elsewhere",
+      modelProvider: "anthropic-api-key",
+    });
+    await api.heartbeatRunner(runnerGroup);
+    const claim = await api.claimRunnerJob(run.runId);
+    const internalName = `custom_connector_${custom.id.replaceAll("-", "")}`;
     expect(findFirewallEntry(claim.firewalls, "figma")).toMatchObject({
       kind: "builtin",
       name: "figma",
     });
-
-    const collision = await connectors.requestCreateCustomConnector(
-      actor,
+    expect(inlineFirewallApis(claim.firewalls, internalName)).toMatchObject([
       {
-        slug: `lazy-global-${randomUUID().slice(0, 8)}`,
-        displayName: "Lazy Global Collision",
-        prefixes: ["https://api.github.com/v3/"],
-        headerName: "Authorization",
-        headerTemplate: "Bearer {{secret}}",
+        base: "https://api.figma.com/v1/files/",
       },
-      [400],
-    );
-    expectApiError(collision.body);
-    expect(collision.body.error.message).toContain("api.github.com");
-    expect(collision.body.error.message).toContain("GitHub");
+    ]);
 
     await api.requestCancelRun(actor, run.runId, [200]);
     expect((await api.readRun(actor, run.runId)).status).toBe("cancelled");
+    await connectors.deleteCustomConnector(actor, custom.id);
   });
 
   it("injects enabled custom connector firewalls with resolvable org secrets", async () => {
@@ -7171,7 +7232,7 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
     const fw = createFirewallApi(context);
     const { actor, agentId, runnerGroup } = await entitledRunActor();
 
-    const slug = `bdd-internal-${randomUUID().slice(0, 8)}`;
+    const slug = `_bdd-internal-${randomUUID().slice(0, 8)}`;
     const custom = await connectors.createCustomConnector(actor, {
       slug,
       displayName: "BDD Internal API",
@@ -7241,6 +7302,227 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
     await api.requestCancelRun(actor, run.runId, [200]);
     const cancelled = await api.readRun(actor, run.runId);
     expect(cancelled.status).toBe("cancelled");
+  });
+
+  it("serializes and injects custom connector OAuth 2.0 refreshes", async () => {
+    const provider = mockCustomConnectorOAuth2Provider(context, {
+      initialExpiresIn: 3600,
+      refreshResponse: (attempt) => {
+        if (attempt > 1) {
+          return HttpResponse.json({ error: "invalid_grant" }, { status: 400 });
+        }
+        return HttpResponse.json({
+          access_token: "custom-oauth-refreshed-access-token",
+          refresh_token: "custom-oauth-rotated-refresh-token",
+          token_type: "Bearer",
+          expires_in: 3600,
+        });
+      },
+    });
+    const api = createRunsApi(context);
+    const connectors = createConnectorBddApi(context);
+    const fw = createFirewallApi(context);
+    const { actor, agentId, runnerGroup } = await entitledRunActor();
+
+    await connectors.updateFeatureSwitches(actor, {
+      [FeatureSwitchKey.CustomConnectorOAuth2]: true,
+    });
+    const custom = await connectors.createCustomConnector(actor, {
+      displayName: "BDD OAuth 2.0 Runtime API",
+      prefixTemplates: ["https://oauth-runtime.example.test/api/"],
+      fields: [],
+      headerInjections: [
+        {
+          name: "Authorization",
+          valueTemplate: "Bearer {{oauth.access_token}}",
+        },
+      ],
+      queryInjections: [],
+      authMode: "oauth",
+      oauthConfig: {
+        providerAdapter: "standard",
+        clientId: "runtime-client-id",
+        clientSecret: "runtime-client-secret",
+        authorizationUrl: provider.authorizationUrl,
+        tokenUrl: provider.tokenUrl,
+        tokenEndpointAuthMethod: "client_secret_basic",
+        pkceMethod: "none",
+        scopes: ["read"],
+        authorizationParams: {},
+      },
+    });
+    const authorizationUrl = await connectors.startCustomConnectorOAuth2(
+      actor,
+      custom.id,
+    );
+    const state = new URL(authorizationUrl).searchParams.get("state");
+    if (!state) {
+      throw new Error("Expected custom connector OAuth state");
+    }
+    await connectors.completeCustomConnectorOAuth2Callback({
+      code: "runtime-authorization-code",
+      state,
+    });
+    await connectors.updateAgentCustomConnectors(actor, agentId, [custom.id]);
+
+    const run = await api.createRun(actor, {
+      agentId,
+      prompt: "use the OAuth custom connector",
+      modelProvider: "anthropic-api-key",
+    });
+    const expectedBasicAuthorization = `Basic ${Buffer.from(
+      "runtime-client-id:runtime-client-secret",
+      "utf8",
+    ).toString("base64")}`;
+    expect(provider.tokenBodies).toHaveLength(1);
+    expect(provider.authorizationHeaders).toStrictEqual([
+      expectedBasicAuthorization,
+    ]);
+
+    await api.heartbeatRunner(runnerGroup);
+    const claim = await api.claimRunnerJob(run.runId);
+    const internalName = `custom_connector_${custom.id.replaceAll("-", "")}`;
+    const secretKey = `CUSTOM_${custom.id.replaceAll("-", "")}_S___OAUTH_ACCESS_TOKEN`;
+    const customApis = inlineFirewallApis(claim.firewalls, internalName);
+    expect(customApis).toHaveLength(1);
+    expect(customApis[0]?.auth?.headers?.Authorization).toBe(
+      `Bearer \${{ secrets.${secretKey} }}`,
+    );
+    expect(claim.secretValues).not.toContain(
+      "Bearer custom-oauth-initial-access-token",
+    );
+
+    mockNow(now() + 2 * 3_600_000);
+    onTestFinished(() => {
+      clearMockNow();
+    });
+    const [firstResolved, secondResolved] = await Promise.all([
+      fw.requestFirewallAuth(
+        { authorization: `Bearer ${claim.sandboxToken}` },
+        {
+          encryptedSecrets: fw.encryptedSecretsBody({}),
+          authHeaders: {
+            Authorization: `Bearer \${{ secrets.${secretKey} }}`,
+          },
+        },
+        [200],
+      ),
+      fw.requestFirewallAuth(
+        { authorization: `Bearer ${claim.sandboxToken}` },
+        {
+          encryptedSecrets: fw.encryptedSecretsBody({}),
+          authHeaders: {
+            Authorization: `Bearer \${{ secrets.${secretKey} }}`,
+          },
+        },
+        [200],
+      ),
+    ]);
+    for (const resolved of [firstResolved, secondResolved]) {
+      if (resolved.status !== 200) {
+        throw new Error("Expected custom OAuth firewall auth to resolve");
+      }
+      expect(resolved.body.headers).toStrictEqual({
+        Authorization: "Bearer custom-oauth-refreshed-access-token",
+      });
+    }
+    expect(
+      provider.tokenBodies.map((body) => {
+        return body.get("grant_type");
+      }),
+    ).toStrictEqual(["authorization_code", "refresh_token"]);
+    expect(provider.tokenBodies[1]?.get("refresh_token")).toBe(
+      "custom-oauth-refresh-token",
+    );
+    expect(provider.authorizationHeaders).toStrictEqual([
+      expectedBasicAuthorization,
+      expectedBasicAuthorization,
+    ]);
+
+    await api.requestCancelRun(actor, run.runId, [200]);
+  });
+
+  it("marks a custom OAuth connection for reconnect after invalid_grant", async () => {
+    const provider = mockCustomConnectorOAuth2Provider(context, {
+      refreshResponse: () => {
+        return HttpResponse.json({ error: "invalid_grant" }, { status: 400 });
+      },
+    });
+    const api = createRunsApi(context);
+    const connectors = createConnectorBddApi(context);
+    const { actor, agentId } = await entitledRunActor();
+
+    await connectors.updateFeatureSwitches(actor, {
+      [FeatureSwitchKey.CustomConnectorOAuth2]: true,
+    });
+    const custom = await connectors.createCustomConnector(actor, {
+      displayName: "BDD Revoked OAuth 2.0 Runtime API",
+      prefixTemplates: ["https://revoked-oauth.example.test/api/"],
+      fields: [],
+      headerInjections: [
+        {
+          name: "Authorization",
+          valueTemplate: "Bearer {{oauth.access_token}}",
+        },
+      ],
+      queryInjections: [],
+      authMode: "oauth",
+      oauthConfig: {
+        providerAdapter: "standard",
+        clientId: "revoked-runtime-client-id",
+        clientSecret: "revoked-runtime-client-secret",
+        authorizationUrl: provider.authorizationUrl,
+        tokenUrl: provider.tokenUrl,
+        tokenEndpointAuthMethod: "client_secret_basic",
+        pkceMethod: "none",
+        scopes: ["read"],
+        authorizationParams: {},
+      },
+    });
+    const authorizationUrl = await connectors.startCustomConnectorOAuth2(
+      actor,
+      custom.id,
+    );
+    const state = new URL(authorizationUrl).searchParams.get("state");
+    if (!state) {
+      throw new Error("Expected custom connector OAuth state");
+    }
+    await connectors.completeCustomConnectorOAuth2Callback({
+      code: "revoked-runtime-authorization-code",
+      state,
+    });
+    await connectors.updateAgentCustomConnectors(actor, agentId, [custom.id]);
+
+    const firstRun = await api.createRun(actor, {
+      agentId,
+      prompt: "use the revoked OAuth custom connector",
+      modelProvider: "anthropic-api-key",
+    });
+    expect(
+      provider.tokenBodies.map((body) => {
+        return body.get("grant_type");
+      }),
+    ).toStrictEqual(["authorization_code", "refresh_token"]);
+
+    const customConnectors = await connectors.listCustomConnectors(actor);
+    expect(
+      customConnectors.find((connector) => {
+        return connector.id === custom.id;
+      }),
+    ).toMatchObject({
+      connected: false,
+      missingRequiredFields: ["oauth"],
+    });
+
+    const secondRun = await api.createRun(actor, {
+      agentId,
+      prompt: "do not retry the revoked OAuth custom connector",
+      modelProvider: "anthropic-api-key",
+    });
+    expect(provider.tokenBodies).toHaveLength(2);
+
+    await api.requestCancelRun(actor, firstRun.runId, [200]);
+    await api.requestCancelRun(actor, secondRun.runId, [200]);
   });
 
   it("resolves custom connector auth from run-scoped refs when encrypted secrets omit aliases", async () => {
@@ -7390,7 +7672,7 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
     const connectors = createConnectorBddApi(context);
     const { actor, agentId, runnerGroup } = await zeroBackedDirectRunActor();
 
-    const allowedSlug = `bdd-direct-internal-${randomUUID().slice(0, 8)}`;
+    const allowedSlug = `_bdd-direct-internal-${randomUUID().slice(0, 8)}`;
     const allowed = await connectors.createCustomConnector(actor, {
       slug: allowedSlug,
       displayName: "BDD Direct Internal API",
@@ -7404,7 +7686,7 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
       "direct-custom-secret-value",
     );
 
-    const blockedSlug = `bdd-direct-blocked-${randomUUID().slice(0, 8)}`;
+    const blockedSlug = `_bdd-direct-blocked-${randomUUID().slice(0, 8)}`;
     const blocked = await connectors.createCustomConnector(actor, {
       slug: blockedSlug,
       displayName: "BDD Direct Blocked API",
@@ -7730,7 +8012,7 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
     const { actor, agentId } = await entitledRunActor();
     const secret = "legacy-invalid-host-secret";
     const custom = await connectors.createCustomConnector(actor, {
-      slug: `bdd-legacy-host-${randomUUID().slice(0, 8)}`,
+      slug: `_bdd-legacy-host-${randomUUID().slice(0, 8)}`,
       displayName: "BDD Legacy Invalid Host",
       prefixes: ["https://valid.example.test/v1/"],
       headerName: "Authorization",
@@ -7777,7 +8059,7 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
     });
 
     // Built-in connector-owned vars must not leak into custom connector bases.
-    const slug = `bdd-vars-${randomUUID().slice(0, 8)}`;
+    const slug = `_bdd-vars-${randomUUID().slice(0, 8)}`;
     const custom = await connectors.createCustomConnector(actor, {
       slug,
       displayName: "BDD Vars Custom",
@@ -8662,7 +8944,7 @@ describe("RUN-01: zero runner context, queue promotion, and skills", () => {
       action: "allow",
     });
     const customConnector = await connectors.createCustomConnector(actor, {
-      slug: `bdd-context-${randomUUID().slice(0, 8)}`,
+      slug: `_bdd-context-${randomUUID().slice(0, 8)}`,
       displayName: "BDD Context API",
       prefixes: ["https://context.example.com/api/"],
       headerName: "Authorization",
