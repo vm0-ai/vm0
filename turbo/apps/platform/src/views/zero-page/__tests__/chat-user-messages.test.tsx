@@ -246,7 +246,7 @@ describe("user messages", () => {
     ).toBeTruthy();
     expect(
       userMessageElement.querySelector(
-        'button[aria-label="Download original-report.pdf"]',
+        'button[aria-label="Open pdf preview for original-report.pdf"]',
       ),
     ).toBeInTheDocument();
     expect(screen.getByLabelText("File deleted-notes.txt")).toBeInTheDocument();
