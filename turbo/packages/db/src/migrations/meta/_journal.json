@@ -5153,6 +5153,13 @@
       "when": 1785326650784,
       "tag": "0735_remove_browser_usage_pricing",
       "breakpoints": true
+    },
+    {
+      "idx": 736,
+      "version": "7",
+      "when": 1785336324333,
+      "tag": "0736_drop_chat_messages_compatibility_view",
+      "breakpoints": true
     }
   ]
 }
