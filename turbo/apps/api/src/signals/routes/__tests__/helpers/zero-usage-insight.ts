@@ -61,6 +61,18 @@ interface UsageStorageCounts {
   readonly hourly: number;
 }
 
+interface UsageCompactionStorageCounts {
+  readonly raw: number;
+  readonly processedRaw: number;
+  readonly compactedRaw: number;
+  readonly hourly: number;
+}
+
+interface UsageEventState {
+  readonly id: string;
+  readonly status: string;
+}
+
 interface UsageAllowanceWindowPair {
   readonly shortWindowId: string;
   readonly weeklyWindowId: string;
@@ -375,6 +387,26 @@ export const readAllowanceWindowState$ = command(
   },
 );
 
+export const readUsageEventState$ = command(
+  async (
+    _,
+    idempotencyKey: string,
+    signal: AbortSignal,
+  ): Promise<UsageEventState> => {
+    const response = await postAction(signal, {
+      action: "read-usage-event-state",
+      idempotency_key: idempotencyKey,
+    });
+    if (!response.usage_event_id || !response.usage_event_status) {
+      throw new Error("readUsageEventState$: response missing event state");
+    }
+    return {
+      id: response.usage_event_id,
+      status: response.usage_event_status,
+    };
+  },
+);
+
 export const deleteRun$ = command(
   async (_, runId: string, signal: AbortSignal): Promise<void> => {
     await postAction(signal, { action: "delete-run", run_id: runId });
@@ -447,6 +479,39 @@ export const readUsageStorageCounts$ = command(
     }
     return {
       raw: response.raw_count,
+      hourly: response.hourly_count,
+    };
+  },
+);
+
+export const readUsageCompactionStorageCounts$ = command(
+  async (
+    _,
+    args: {
+      readonly scope: "organization" | "user";
+      readonly id: string;
+    },
+    signal: AbortSignal,
+  ): Promise<UsageCompactionStorageCounts> => {
+    const response = await postAction(signal, {
+      action: "read-usage-storage-counts",
+      scope: args.scope,
+      id: args.id,
+    });
+    if (
+      response.raw_count === undefined ||
+      response.processed_raw_count === undefined ||
+      response.compacted_raw_count === undefined ||
+      response.hourly_count === undefined
+    ) {
+      throw new Error(
+        "readUsageCompactionStorageCounts$: response missing storage counts",
+      );
+    }
+    return {
+      raw: response.raw_count,
+      processedRaw: response.processed_raw_count,
+      compactedRaw: response.compacted_raw_count,
       hourly: response.hourly_count,
     };
   },

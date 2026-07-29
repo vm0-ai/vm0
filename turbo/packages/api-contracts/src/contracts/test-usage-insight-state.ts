@@ -114,6 +114,10 @@ export const testUsageInsightStateActionBodySchema = z.discriminatedUnion(
       weekly_window_id: z.string(),
     }),
     z.object({
+      action: z.literal("read-usage-event-state"),
+      idempotency_key: z.string(),
+    }),
+    z.object({
       action: z.literal("delete-run"),
       run_id: z.string(),
     }),
@@ -155,7 +159,10 @@ export const testUsageInsightStateActionResponseSchema = z.object({
   run_id: z.string().optional(),
   chat_thread_id: z.string().optional(),
   usage_event_id: z.string().optional(),
+  usage_event_status: z.string().optional(),
   raw_count: z.number().optional(),
+  processed_raw_count: z.number().optional(),
+  compacted_raw_count: z.number().optional(),
   hourly_count: z.number().optional(),
   short_window_id: z.string().optional(),
   weekly_window_id: z.string().optional(),

@@ -51,6 +51,10 @@ import { agentRuns } from "./agent-run";
  * `idempotencyKey` is a caller-provided UUID for exactly-once semantics.
  * Writers must keep the same UUID across retries of the same logical
  * event; the UNIQUE index blocks duplicate insertions.
+ *
+ * Healthy usage follows `pending -> processed -> compacted`. `compacted`
+ * means that the settled event remains stored here while its finalized facts
+ * are represented in `usage_event_hourly_rollup`.
  */
 export const usageEvent = pgTable(
   "usage_event",

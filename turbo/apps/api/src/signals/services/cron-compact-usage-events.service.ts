@@ -28,7 +28,7 @@ interface UsageEventCompactionStats {
   readonly probedRawRows: number;
   readonly browserHeldRows: number;
   readonly billingErrorHeldRows: number;
-  readonly rawRowsDeleted: number;
+  readonly rawRowsCompacted: number;
   readonly hourlyRowsDeleted: number;
   readonly hourlyRowsInserted: number;
   readonly quantity: string;
@@ -57,7 +57,7 @@ const holdProbeRowSchema = z.object({
 const compactionRowSchema = z.object({
   seededRawRows: z.int(),
   selectedGrains: z.int(),
-  rawRowsDeleted: z.int(),
+  rawRowsCompacted: z.int(),
   hourlyRowsDeleted: z.int(),
   hourlyRowsInserted: z.int(),
   quantity: integerTextSchema,
@@ -327,10 +327,12 @@ function mutationCtes(): SQL {
         credits_charged,
         allowance_units
     ),
-    deleted_raw AS (
-      DELETE FROM ${usageEvent} event
-      USING locked_raw
+    compacted_raw AS (
+      UPDATE ${usageEvent} event
+      SET status = 'compacted'
+      FROM locked_raw
       WHERE event.id = locked_raw.id
+        AND event.status = 'processed'
       RETURNING event.id
     )
   `;
@@ -344,7 +346,7 @@ function rowCountCte(): SQL {
         (SELECT ${count()}::int FROM selected_grains) AS selected_grains,
         (SELECT ${count()}::int FROM locked_raw) AS locked_raw_rows,
         (SELECT ${count()}::int FROM locked_hourly) AS locked_hourly_rows,
-        (SELECT ${count()}::int FROM deleted_raw) AS raw_rows_deleted,
+        (SELECT ${count()}::int FROM compacted_raw) AS raw_rows_compacted,
         (SELECT ${count()}::int FROM deleted_hourly) AS hourly_rows_deleted,
         (SELECT ${count()}::int FROM inserted_hourly) AS hourly_rows_inserted
     )
@@ -453,7 +455,7 @@ function compactionSummarySelect(): SQL {
     SELECT
       row_counts.seeded_raw_rows AS "seededRawRows",
       row_counts.selected_grains AS "selectedGrains",
-      row_counts.raw_rows_deleted AS "rawRowsDeleted",
+      row_counts.raw_rows_compacted AS "rawRowsCompacted",
       row_counts.hourly_rows_deleted AS "hourlyRowsDeleted",
       row_counts.hourly_rows_inserted AS "hourlyRowsInserted",
       source_totals.quantity::text AS "quantity",
@@ -466,7 +468,7 @@ function compactionSummarySelect(): SQL {
         AND source_totals.credits_charged = inserted_totals.credits_charged
         AND source_totals.allowance_units = inserted_totals.allowance_units
         AND window_reconciliation.reconciled
-        AND row_counts.locked_raw_rows = row_counts.raw_rows_deleted
+        AND row_counts.locked_raw_rows = row_counts.raw_rows_compacted
         AND row_counts.locked_hourly_rows = row_counts.hourly_rows_deleted
         AND row_counts.selected_grains = row_counts.hourly_rows_inserted
       ) AS "reconciled"
@@ -608,7 +610,7 @@ async function compactUsageEventBatch(
         rawSeedLimit,
         seededRawRows: compacted.seededRawRows,
         selectedGrains: compacted.selectedGrains,
-        rawRowsDeleted: compacted.rawRowsDeleted,
+        rawRowsCompacted: compacted.rawRowsCompacted,
         hourlyRowsDeleted: compacted.hourlyRowsDeleted,
         hourlyRowsInserted: compacted.hourlyRowsInserted,
       });
@@ -626,7 +628,7 @@ async function compactUsageEventBatch(
       probedRawRows: holdProbe.probedRawRows,
       browserHeldRows: holdProbe.browserHeldRows,
       billingErrorHeldRows: holdProbe.billingErrorHeldRows,
-      rawRowsDeleted: compacted.rawRowsDeleted,
+      rawRowsCompacted: compacted.rawRowsCompacted,
       hourlyRowsDeleted: compacted.hourlyRowsDeleted,
       hourlyRowsInserted: compacted.hourlyRowsInserted,
       quantity: compacted.quantity,
@@ -649,14 +651,14 @@ export const compactUsageEvents$ = command(
       ...result,
       durationMs: Math.round(performance.now() - startedAt),
     };
-    const sourceRows = stats.rawRowsDeleted + stats.hourlyRowsDeleted;
+    const logicalInputRows = stats.rawRowsCompacted + stats.hourlyRowsDeleted;
     L.debug("usage event compaction completed", {
       ...stats,
-      sourceRows,
-      compressionRatio:
+      logicalInputRows,
+      logicalCompressionRatio:
         stats.hourlyRowsInserted === 0
           ? null
-          : sourceRows / stats.hourlyRowsInserted,
+          : logicalInputRows / stats.hourlyRowsInserted,
     });
     return stats;
   },

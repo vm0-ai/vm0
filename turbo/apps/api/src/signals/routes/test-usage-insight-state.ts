@@ -115,6 +115,7 @@ type UsageInsightEventWriteAction = UsageInsightAction<
   | "set-browser-usage-hold"
   | "attach-usage-allowance"
   | "read-allowance-window-state"
+  | "read-usage-event-state"
 >;
 
 type UsageInsightEventMaterializationAction = UsageInsightAction<
@@ -1002,7 +1003,12 @@ async function readUsageStorageCounts(
     readonly scope: "organization" | "user";
     readonly id: string;
   },
-): Promise<{ readonly raw: number; readonly hourly: number }> {
+): Promise<{
+  readonly raw: number;
+  readonly processedRaw: number;
+  readonly compactedRaw: number;
+  readonly hourly: number;
+}> {
   const rawPredicate =
     args.scope === "organization"
       ? eq(usageEvent.orgId, args.id)
@@ -1011,8 +1017,16 @@ async function readUsageStorageCounts(
     args.scope === "organization"
       ? eq(usageEventHourlyRollup.orgId, args.id)
       : eq(usageEventHourlyRollup.userId, args.id);
-  const [[raw], [hourly]] = await Promise.all([
+  const [[raw], [processedRaw], [compactedRaw], [hourly]] = await Promise.all([
     db.select({ value: count() }).from(usageEvent).where(rawPredicate),
+    db
+      .select({ value: count() })
+      .from(usageEvent)
+      .where(and(rawPredicate, eq(usageEvent.status, "processed"))),
+    db
+      .select({ value: count() })
+      .from(usageEvent)
+      .where(and(rawPredicate, eq(usageEvent.status, "compacted"))),
     db
       .select({ value: count() })
       .from(usageEventHourlyRollup)
@@ -1020,8 +1034,25 @@ async function readUsageStorageCounts(
   ]);
   return {
     raw: raw?.value ?? 0,
+    processedRaw: processedRaw?.value ?? 0,
+    compactedRaw: compactedRaw?.value ?? 0,
     hourly: hourly?.value ?? 0,
   };
+}
+
+async function readUsageEventState(
+  db: Db,
+  idempotencyKey: string,
+): Promise<{ readonly id: string; readonly status: string }> {
+  const [event] = await db
+    .select({ id: usageEvent.id, status: usageEvent.status })
+    .from(usageEvent)
+    .where(eq(usageEvent.idempotencyKey, idempotencyKey))
+    .limit(1);
+  if (!event) {
+    throw new Error("readUsageEventState: usage event not found");
+  }
+  return event;
 }
 
 async function deleteUsageData(
@@ -1239,6 +1270,18 @@ async function mutateUsageInsightEventWriteState(
         },
       };
     }
+    case "read-usage-event-state": {
+      const event = await readUsageEventState(db, body.idempotency_key);
+      signal.throwIfAborted();
+      return {
+        status: 200 as const,
+        body: {
+          ok: true as const,
+          usage_event_id: event.id,
+          usage_event_status: event.status,
+        },
+      };
+    }
   }
 }
 
@@ -1295,6 +1338,8 @@ async function mutateUsageInsightEventMaterializationState(
         body: {
           ok: true as const,
           raw_count: counts.raw,
+          processed_raw_count: counts.processedRaw,
+          compacted_raw_count: counts.compactedRaw,
           hourly_count: counts.hourly,
         },
       };
@@ -1335,7 +1380,8 @@ async function mutateUsageInsightState(
     case "insert-usage-event":
     case "set-browser-usage-hold":
     case "attach-usage-allowance":
-    case "read-allowance-window-state": {
+    case "read-allowance-window-state":
+    case "read-usage-event-state": {
       return await mutateUsageInsightEventWriteState(db, body, signal);
     }
     case "delete-run":

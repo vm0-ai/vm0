@@ -77,7 +77,7 @@ const cronCompactUsageEventsResponseSchema = z.object({
   probedRawRows: z.number().int().nonnegative(),
   browserHeldRows: z.number().int().nonnegative(),
   billingErrorHeldRows: z.number().int().nonnegative(),
-  rawRowsDeleted: z.number().int().nonnegative(),
+  rawRowsCompacted: z.number().int().nonnegative(),
   hourlyRowsDeleted: z.number().int().nonnegative(),
   hourlyRowsInserted: z.number().int().nonnegative(),
   quantity: z.string().regex(/^-?\d+$/),
