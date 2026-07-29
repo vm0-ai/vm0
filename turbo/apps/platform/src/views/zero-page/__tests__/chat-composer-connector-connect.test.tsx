@@ -125,7 +125,7 @@ describe("chat composer connector connection", () => {
     context.mocks.api(
       zeroConnectorOauthStartContract.start,
       ({ body, params, respond }) => {
-        expect(params.type).toBe("google-analytics");
+        expect(params.connectorSlug).toBe("google-analytics");
         expect(body.agentId).toBe(AGENT_ID);
         return respond(200, {
           authorizationUrl: "https://accounts.google.test/analytics/authorize",
@@ -174,7 +174,7 @@ describe("chat composer connector connection", () => {
       zeroConnectorNoAuthGrantContract.connect,
       ({ body, params, respond }) => {
         connectCount += 1;
-        expect(params.type).toBe("stripe");
+        expect(params.connectorSlug).toBe("stripe");
         expect(body).toStrictEqual({
           authMethod: "api",
           agentId: AGENT_ID,
@@ -182,7 +182,7 @@ describe("chat composer connector connection", () => {
         });
         return respond(200, {
           id: crypto.randomUUID(),
-          type: params.type,
+          type: params.connectorSlug,
           authMethod: body.authMethod,
           externalId: null,
           externalUsername: null,

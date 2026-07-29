@@ -24,8 +24,9 @@ const agentPermissionGrantScopeSchema = z.object({
 export const userPermissionGrantScopeSchema = agentPermissionGrantScopeSchema;
 
 const userPermissionGrantResponseBaseSchema = z.object({
-  // TODO(#23619): Rename permission-grant wire fields with the DB migration.
+  // TODO(#23821): Remove this legacy wire field after clients migrate.
   connectorRef: connectorSlugSchema,
+  connectorSlug: connectorSlugSchema.optional(),
   permission: permissionSchema,
   action: userPermissionGrantActionSchema,
   expiresAt: z.string().nullable(),
@@ -55,15 +56,46 @@ export const applyUserPermissionGrantSchema = z.discriminatedUnion("action", [
   }),
 ]);
 
-export const applyUserPermissionGrantsRequestSchema =
-  userPermissionGrantScopeSchema.and(
-    z.object({
-      // TODO(#23619): Rename with the response and persisted grant field.
-      connectorRef: connectorSlugSchema,
-      mode: userPermissionGrantApplyModeSchema,
-      grants: z.array(applyUserPermissionGrantSchema),
-    }),
-  );
+export const applyUserPermissionGrantsRequestSchema = z
+  .object({
+    agentId: agentIdSchema,
+    // TODO(#23821): Remove this legacy wire field after clients migrate.
+    connectorRef: connectorSlugSchema.optional(),
+    connectorSlug: connectorSlugSchema.optional(),
+    mode: userPermissionGrantApplyModeSchema,
+    grants: z.array(applyUserPermissionGrantSchema),
+  })
+  .superRefine((request, ctx) => {
+    if (
+      request.connectorRef === undefined &&
+      request.connectorSlug === undefined
+    ) {
+      ctx.addIssue({
+        code: "custom",
+        message: "connectorRef or connectorSlug is required",
+        path: ["connectorSlug"],
+      });
+    }
+    if (
+      request.connectorRef !== undefined &&
+      request.connectorSlug !== undefined &&
+      request.connectorRef !== request.connectorSlug
+    ) {
+      ctx.addIssue({
+        code: "custom",
+        message: "connectorRef and connectorSlug must match",
+        path: ["connectorSlug"],
+      });
+    }
+  })
+  .transform(({ connectorRef, connectorSlug, ...request }) => {
+    const normalizedConnectorSlug = connectorSlug ?? connectorRef ?? "";
+    return {
+      ...request,
+      connectorRef: normalizedConnectorSlug,
+      connectorSlug: normalizedConnectorSlug,
+    };
+  });
 
 export const zeroUserPermissionGrantsContract = c.router({
   list: {
@@ -116,7 +148,10 @@ export type ListUserPermissionGrantsQuery = z.infer<
 export type ApplyUserPermissionGrant = z.infer<
   typeof applyUserPermissionGrantSchema
 >;
-export type ApplyUserPermissionGrantsRequest = z.infer<
+export type ApplyUserPermissionGrantsRequest = z.input<
+  typeof applyUserPermissionGrantsRequestSchema
+>;
+export type NormalizedApplyUserPermissionGrantsRequest = z.output<
   typeof applyUserPermissionGrantsRequestSchema
 >;
 export type ZeroUserPermissionGrantsContract =

@@ -13,8 +13,9 @@ const connectorCheckUrlRequestSchema = z
     mode: z.literal("url"),
     method: z.string().min(1).max(16),
     url: z.string().min(1).max(8192),
-    // TODO(#23619): Rename connector-check wire fields after clients migrate.
+    // TODO(#23821): Remove this legacy wire field after clients migrate.
     connectorRef: connectorSlugSchema.optional(),
+    connectorSlug: connectorSlugSchema.optional(),
     environmentName: boundedNameSchema.optional(),
   })
   .strict();
@@ -27,17 +28,52 @@ const connectorCheckEnvironmentRequestSchema = z
   })
   .strict();
 
-export const connectorCheckRequestSchema = z.discriminatedUnion("mode", [
-  connectorCheckUrlRequestSchema,
-  connectorCheckEnvironmentRequestSchema,
-]);
+export const connectorCheckRequestSchema = z
+  .discriminatedUnion("mode", [
+    connectorCheckUrlRequestSchema,
+    connectorCheckEnvironmentRequestSchema,
+  ])
+  .superRefine((request, ctx) => {
+    if (
+      request.mode === "url" &&
+      request.connectorRef !== undefined &&
+      request.connectorSlug !== undefined &&
+      request.connectorRef !== request.connectorSlug
+    ) {
+      ctx.addIssue({
+        code: "custom",
+        message: "connectorRef and connectorSlug must match",
+        path: ["connectorSlug"],
+      });
+    }
+  })
+  .transform((request) => {
+    if (request.mode === "environment") {
+      return request;
+    }
+    const { connectorRef, connectorSlug, ...rest } = request;
+    const normalizedConnectorSlug = connectorSlug ?? connectorRef;
+    return {
+      ...rest,
+      ...(normalizedConnectorSlug === undefined
+        ? {}
+        : {
+            connectorRef: normalizedConnectorSlug,
+            connectorSlug: normalizedConnectorSlug,
+          }),
+    };
+  });
 
-export type ConnectorCheckRequest = z.infer<typeof connectorCheckRequestSchema>;
+export type ConnectorCheckRequest = z.input<typeof connectorCheckRequestSchema>;
+export type NormalizedConnectorCheckRequest = z.output<
+  typeof connectorCheckRequestSchema
+>;
 
 const connectorCheckIdentitySchema = z
   .object({
-    // TODO(#23619): Rename with the connector-check response contract.
+    // TODO(#23821): Remove this legacy response field after clients migrate.
     connectorRef: connectorSlugSchema,
+    connectorSlug: connectorSlugSchema.optional(),
     label: z.string().min(1),
     visibility: z.enum(["available", "unavailable"]),
     credentialResolution: z.enum(["network-boundary", "none"]),
@@ -46,8 +82,9 @@ const connectorCheckIdentitySchema = z
 
 const connectorCheckCandidateSchema = z
   .object({
-    // TODO(#23619): Rename with the connector-check response contract.
+    // TODO(#23821): Remove this legacy response field after clients migrate.
     connectorRef: connectorSlugSchema,
+    connectorSlug: connectorSlugSchema.optional(),
     label: z.string().min(1),
   })
   .strict();

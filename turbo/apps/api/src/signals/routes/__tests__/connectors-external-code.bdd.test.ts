@@ -315,6 +315,7 @@ describe("CONN-02: external-code session lifecycle", () => {
     const session = await connectorsApi.startExternalCode(actor, "aws", "cli");
     expect(session).toMatchObject({
       type: "aws",
+      connectorSlug: "aws",
       status: "pending",
       expiresIn: 600,
     });
@@ -377,6 +378,7 @@ describe("CONN-02: external-code session lifecycle", () => {
     });
     expect(complete.connector).toMatchObject({
       type: "aws",
+      slug: "aws",
       authMethod: "cli",
       externalId: "123456789012",
       externalUsername:

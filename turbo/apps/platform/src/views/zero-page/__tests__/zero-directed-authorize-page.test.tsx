@@ -126,7 +126,7 @@ function mockConnectorOauthStart(): { readonly authWindow: Window } {
         callbackTarget: "app",
       });
       return respond(200, {
-        authorizationUrl: `https://oauth.test/${params.type}/authorize`,
+        authorizationUrl: `https://oauth.test/${params.connectorSlug}/authorize`,
       });
     },
   );
@@ -154,7 +154,7 @@ function mockConnectorOpenIdStart(args?: { readonly onStart?: () => void }): {
       });
       args?.onStart?.();
       return respond(200, {
-        authorizationUrl: `https://openid.test/${params.type}/authorize`,
+        authorizationUrl: `https://openid.test/${params.connectorSlug}/authorize`,
       });
     },
   );
@@ -344,7 +344,7 @@ describe("directed connector authorize page", () => {
     context.mocks.api(
       zeroConnectorManualGrantContract.connect,
       ({ body, params, respond }) => {
-        expect(params.type).toBe("axiom");
+        expect(params.connectorSlug).toBe("axiom");
         expect(body.agentId).toBe(AGENT_ID);
         expect(body.authorizeAgent).toBeTruthy();
         submittedValues = body.values;
@@ -404,7 +404,7 @@ describe("directed connector authorize page", () => {
       ({ params, respond }) => {
         startCalls += 1;
         return respond(200, {
-          authorizationUrl: `https://oauth.test/${params.type}/authorize`,
+          authorizationUrl: `https://oauth.test/${params.connectorSlug}/authorize`,
         });
       },
     );
@@ -522,7 +522,7 @@ describe("directed connector authorize page", () => {
       zeroConnectorNoAuthGrantContract.connect,
       ({ body, params, respond }) => {
         connectCalls += 1;
-        expect(params.type).toBe("stripe");
+        expect(params.connectorSlug).toBe("stripe");
         expect(body).toStrictEqual({
           authMethod: "api",
           agentId: AGENT_ID,

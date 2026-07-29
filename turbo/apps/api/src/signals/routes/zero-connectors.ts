@@ -185,7 +185,7 @@ const getConnectorBySlugInner$ = computed(async (get) => {
   const params = get(pathParamsOf(zeroConnectorsBySlugContract.get));
   const resolver = await get(connectorActionResolver());
   const resolved = await resolver.resolveSlug({
-    connectorSlug: params.type,
+    connectorSlug: params.connectorSlug,
     requireExecutable: false,
   });
   if (!resolved.ok) {
@@ -213,7 +213,7 @@ const deleteConnectorBySlugInner$ = command(
     const resolver = await get(connectorActionResolver());
     signal.throwIfAborted();
     const resolved = await resolver.resolveSlug({
-      connectorSlug: params.type,
+      connectorSlug: params.connectorSlug,
       requireExecutable: false,
     });
     signal.throwIfAborted();
@@ -245,7 +245,7 @@ const getScopeDiffInner$ = computed(async (get) => {
   const params = get(pathParamsOf(zeroConnectorScopeDiffContract.getScopeDiff));
   const resolver = await get(connectorActionResolver());
   const resolved = await resolver.resolveSlug({
-    connectorSlug: params.type,
+    connectorSlug: params.connectorSlug,
     requireExecutable: false,
   });
   if (!resolved.ok) {
@@ -320,14 +320,14 @@ const connectManualGrantConnectorInner$ = command(
     const resolver = await get(connectorActionResolver());
     signal.throwIfAborted();
     const resolved = await resolver.resolveNewActionMethod({
-      connectorSlug: params.type,
+      connectorSlug: params.connectorSlug,
       authMethodId: bodyResult.data.authMethod,
       expectedGrantKind: "manual",
     });
     signal.throwIfAborted();
     if (!resolved.ok) {
       return connectorMethodResolutionError(resolved, {
-        connectorSlug: params.type,
+        connectorSlug: params.connectorSlug,
         authMethodId: bodyResult.data.authMethod,
         expectedGrantKind: "manual",
         expectedGrantLabel: "a manual grant",
@@ -399,14 +399,14 @@ const connectNoAuthConnectorInner$ = command(
     const resolver = await get(connectorActionResolver());
     signal.throwIfAborted();
     const resolved = await resolver.resolveNewActionMethod({
-      connectorSlug: params.type,
+      connectorSlug: params.connectorSlug,
       authMethodId: bodyResult.data.authMethod,
       expectedGrantKind: "none",
     });
     signal.throwIfAborted();
     if (!resolved.ok) {
       return connectorMethodResolutionError(resolved, {
-        connectorSlug: params.type,
+        connectorSlug: params.connectorSlug,
         authMethodId: bodyResult.data.authMethod,
         expectedGrantKind: "none",
         expectedGrantLabel: "a no-auth grant",
@@ -457,7 +457,7 @@ const startConnectorOauthInner$ = command(
     }
     const request = get(request$).raw;
     const auth = get(authContext$);
-    const connectorSlug = params.type;
+    const connectorSlug = params.connectorSlug;
 
     if (!auth.orgId) {
       return badRequestMessage(
@@ -576,7 +576,7 @@ const continueConnectorOauthInner$ = command(
     const query = get(queryOf(zeroConnectorOauthContinueContract.continue));
     const resolution = await getConnectorOAuthAuthorizationUrl(
       get(db$),
-      { state: query.state, connectorSlug: params.type },
+      { state: query.state, connectorSlug: params.connectorSlug },
       signal,
     );
 
@@ -604,7 +604,7 @@ const startConnectorOpenIdInner$ = command(
     }
     const request = get(request$).raw;
     const auth = get(authContext$);
-    const connectorSlug = params.type;
+    const connectorSlug = params.connectorSlug;
 
     if (!auth.orgId) {
       return badRequestMessage(

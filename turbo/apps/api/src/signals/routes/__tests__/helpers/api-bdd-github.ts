@@ -407,7 +407,7 @@ export function createGithubBddApi(context: TestContext) {
       const response = await accept(
         client.get({
           headers: authenticate(actor),
-          params: { type: "github" },
+          params: { connectorSlug: "github" },
         }),
         [200],
       );

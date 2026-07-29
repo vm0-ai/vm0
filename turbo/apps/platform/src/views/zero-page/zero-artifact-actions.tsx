@@ -198,7 +198,7 @@ function startGoogleDriveConnectAndRun(params: {
   detach(
     (async () => {
       const request = {
-        params: { type: params.connector.connectorRef },
+        params: { connectorSlug: params.connector.connectorRef },
         body: {
           authMethod: params.authMethod.id,
           agentId,

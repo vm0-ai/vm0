@@ -160,7 +160,7 @@ const getConnectorCatalogInner$ = command(
     const connector = await settleConnectorCatalogRead(
       getPublicConnectorCatalogDetail({
         db: context.db,
-        connectorSlug: params.connectorRef,
+        connectorSlug: params.connectorSlug,
         featureStates: context.featureStates,
       }),
       signal,
@@ -185,7 +185,7 @@ const getConnectorCatalogPermissionsInner$ = command(
     const permissions = await settleConnectorCatalogRead(
       getPublicConnectorCatalogPermissionDetail({
         db: context.db,
-        connectorSlug: params.connectorRef,
+        connectorSlug: params.connectorSlug,
         featureStates: context.featureStates,
       }),
       signal,

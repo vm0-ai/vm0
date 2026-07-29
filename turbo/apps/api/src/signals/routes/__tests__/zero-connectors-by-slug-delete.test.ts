@@ -43,7 +43,7 @@ async function connectOpenai(fixture: AuthenticatedFixture): Promise<void> {
   mocks.clerk.session(fixture.userId, fixture.orgId);
   await accept(
     setupApp({ context })(zeroConnectorManualGrantContract).connect({
-      params: { type: "openai" },
+      params: { connectorSlug: "openai" },
       body: {
         authMethod: "api-token",
         values: { apiKey: "sk-test-token" },
@@ -58,7 +58,7 @@ async function connectGitlab(fixture: AuthenticatedFixture): Promise<void> {
   mocks.clerk.session(fixture.userId, fixture.orgId);
   await accept(
     setupApp({ context })(zeroConnectorManualGrantContract).connect({
-      params: { type: "gitlab" },
+      params: { connectorSlug: "gitlab" },
       body: {
         authMethod: "api-token",
         values: {
@@ -79,7 +79,7 @@ async function readExistingConnector(
   mocks.clerk.session(fixture.userId, fixture.orgId);
   return await accept(
     setupApp({ context })(zeroConnectorsBySlugContract).get({
-      params: { type: connectorSlug },
+      params: { connectorSlug },
       headers: authHeaders(),
     }),
     [200],
@@ -93,7 +93,7 @@ async function readMissingConnector(
   mocks.clerk.session(fixture.userId, fixture.orgId);
   return await accept(
     setupApp({ context })(zeroConnectorsBySlugContract).get({
-      params: { type: connectorSlug },
+      params: { connectorSlug },
       headers: authHeaders(),
     }),
     [404],
@@ -108,7 +108,7 @@ async function deleteConnector(
   mocks.clerk.session(fixture.userId, fixture.orgId);
   return await accept(
     setupApp({ context })(zeroConnectorsBySlugContract).delete({
-      params: { type: connectorSlug },
+      params: { connectorSlug },
       headers: authHeaders(),
     }),
     statuses,
@@ -121,13 +121,13 @@ async function cleanupFixture(fixture: AuthenticatedFixture): Promise<void> {
   }
 }
 
-describe("DELETE /api/zero/connectors/:type", () => {
+describe("DELETE /api/zero/connectors/:connectorSlug", () => {
   const track = createFixtureTracker<AuthenticatedFixture>(cleanupFixture);
 
   it("returns 401 when not authenticated", async () => {
     const client = setupApp({ context })(zeroConnectorsBySlugContract);
     const response = await accept(
-      client.delete({ params: { type: "github" }, headers: {} }),
+      client.delete({ params: { connectorSlug: "github" }, headers: {} }),
       [401],
     );
 
@@ -142,7 +142,7 @@ describe("DELETE /api/zero/connectors/:type", () => {
     const client = setupApp({ context })(zeroConnectorsBySlugContract);
     const response = await accept(
       client.delete({
-        params: { type: "github" },
+        params: { connectorSlug: "github" },
         headers: authHeaders(),
       }),
       [401],

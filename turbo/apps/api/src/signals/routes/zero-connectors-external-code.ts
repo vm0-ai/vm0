@@ -36,7 +36,7 @@ const startConnectorExternalCodeSessionInner$ = command(
         userId: auth.userId,
         agentId: body.data.agentId,
         authorizeAgent: body.data.authorizeAgent,
-        connectorSlug: params.type,
+        connectorSlug: params.connectorSlug,
         authMethod: body.data.authMethod,
       },
       signal,
@@ -63,7 +63,7 @@ const completeConnectorExternalCodeSessionInner$ = command(
       {
         orgId: auth.orgId,
         userId: auth.userId,
-        connectorSlug: params.type,
+        connectorSlug: params.connectorSlug,
         sessionId: params.sessionId,
         sessionToken: body.data.sessionToken,
         code: body.data.code,

@@ -261,7 +261,11 @@ describe("POST /api/zero/connectors/diagnostics/check", () => {
     expect(allowed.body).toMatchObject({
       outcome: "resolved",
       mode: "url",
-      connector: { connectorRef: "slack", label: "Slack" },
+      connector: {
+        connectorRef: "slack",
+        connectorSlug: "slack",
+        label: "Slack",
+      },
       run: { status: "configured" },
       permission: {
         kind: "matched",
@@ -337,6 +341,54 @@ describe("POST /api/zero/connectors/diagnostics/check", () => {
     });
   });
 
+  it("accepts canonical and matching dual connector identities but rejects conflicts", async () => {
+    const actor = bdd.user();
+    const base = {
+      mode: "url" as const,
+      method: "GET",
+      url: "https://api.github.com/repos/vm0-ai/vm0",
+    };
+
+    const canonical = await checkWithSession(actor, {
+      ...base,
+      connectorSlug: "github",
+    });
+    expect(canonical.body).toMatchObject({
+      outcome: "resolved",
+      connector: {
+        connectorRef: "github",
+        connectorSlug: "github",
+      },
+    });
+
+    const dual = await checkWithSession(actor, {
+      ...base,
+      connectorRef: "github",
+      connectorSlug: "github",
+    });
+    expect(dual.body).toMatchObject({
+      outcome: "resolved",
+      connector: {
+        connectorRef: "github",
+        connectorSlug: "github",
+      },
+    });
+
+    mocks.clerk.session(actor.userId, actor.orgId, actor.orgRole);
+    const conflicting = await accept(
+      client().check({
+        headers: { authorization: "Bearer clerk-session" },
+        body: {
+          ...base,
+          connectorRef: "github",
+          connectorSlug: "slack",
+        },
+      }),
+      [400],
+    );
+    expect(conflicting.body.error.code).toBe("BAD_REQUEST");
+  });
+
   it("supports a real PAT and resolves hidden server-authored metadata without private refs", async () => {
     const actor = bdd.user();
     const token = await issueDevicePat(actor);
@@ -405,6 +457,7 @@ describe("POST /api/zero/connectors/diagnostics/check", () => {
       mode: "environment",
       connector: {
         connectorRef: "github",
+        connectorSlug: "github",
         label: "GitHub",
         visibility: "available",
         credentialResolution: "network-boundary",
@@ -441,9 +494,14 @@ describe("POST /api/zero/connectors/diagnostics/check", () => {
     expect(ambiguous.body).toStrictEqual({
       outcome: "ambiguous",
       candidates: [
-        { connectorRef: "nintendo-store", label: "Nintendo Store" },
+        {
+          connectorRef: "nintendo-store",
+          connectorSlug: "nintendo-store",
+          label: "Nintendo Store",
+        },
         {
           connectorRef: "nintendo-switch-parental-controls",
+          connectorSlug: "nintendo-switch-parental-controls",
           label: "Nintendo Switch Parental Controls",
         },
       ],
@@ -496,6 +554,7 @@ describe("POST /api/zero/connectors/diagnostics/check", () => {
       outcome: "environment-not-used",
       connector: {
         connectorRef: "nintendo-switch-parental-controls",
+        connectorSlug: "nintendo-switch-parental-controls",
         label: "Nintendo Switch Parental Controls",
         visibility: "available",
         credentialResolution: "network-boundary",

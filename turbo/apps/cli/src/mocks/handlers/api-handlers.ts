@@ -281,36 +281,36 @@ export const apiHandlers = [
     );
   }),
   http.post(
-    "http://localhost:3000/api/zero/connectors/:type/manual-grant",
+    "http://localhost:3000/api/zero/connectors/:connectorSlug/manual-grant",
     async ({ params, request }) => {
       const body: unknown = await request.json();
       return HttpResponse.json(
         connectorManualGrantResponse(
-          String(params.type),
+          String(params.connectorSlug),
           manualGrantAuthMethodFromBody(body),
         ),
       );
     },
   ),
   http.post(
-    "https://app.vm0.ai/api/zero/connectors/:type/manual-grant",
+    "https://app.vm0.ai/api/zero/connectors/:connectorSlug/manual-grant",
     async ({ params, request }) => {
       const body: unknown = await request.json();
       return HttpResponse.json(
         connectorManualGrantResponse(
-          String(params.type),
+          String(params.connectorSlug),
           manualGrantAuthMethodFromBody(body),
         ),
       );
     },
   ),
   http.post(
-    "https://www.vm0.ai/api/zero/connectors/:type/manual-grant",
+    "https://www.vm0.ai/api/zero/connectors/:connectorSlug/manual-grant",
     async ({ params, request }) => {
       const body: unknown = await request.json();
       return HttpResponse.json(
         connectorManualGrantResponse(
-          String(params.type),
+          String(params.connectorSlug),
           manualGrantAuthMethodFromBody(body),
         ),
       );
