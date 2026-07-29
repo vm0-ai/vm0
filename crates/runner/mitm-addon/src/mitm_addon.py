@@ -8,7 +8,7 @@ This addon runs on the runner HOST (not inside VMs) and:
 3. Injects auth headers for configured firewall rules (proxy-side token replacement)
 4. Logs network activity per-run to JSONL files
 5. Reports model-provider and connector usage
-6. Participates in runner-triggered usage drain before proxy shutdown
+6. Participates in runner-triggered webhook delivery drain before proxy shutdown
 """
 
 import asyncio
@@ -1730,11 +1730,12 @@ def _handle_error(flow: http.HTTPFlow) -> None:
 def done():
     """Flush pending usage reports and forwarding workers before mitmproxy exits.
 
-    The runner flush lifecycle waits for any active SIGUSR1 usage worker,
-    drains accepted usage requests, and closes admission before this hook shuts
-    down the usage executor. It also performs a final JSONL marker observation
-    and joins the marker watcher before the JSONL writer stops. Any retryable
-    usage outcome retained by completed workers is then retried synchronously.
+    The runner flush lifecycle waits for any active SIGUSR1 delivery worker,
+    retries buffered usage and provider-output timing reports, drains accepted
+    requests, and closes admission before this hook shuts down the usage
+    executor. It also performs a final JSONL marker observation and joins the
+    marker watcher before the JSONL writer stops. Any retryable usage outcome
+    retained by completed workers is then retried synchronously.
     Auth.base forwarding does not need to finish running work during shutdown,
     so its worker shutdown stops new forwards and best-effort closes active
     upstream sockets without waiting for slow upstream responses. JSONL writer
