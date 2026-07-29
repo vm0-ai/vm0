@@ -191,6 +191,7 @@ describe("model-first canonical catalog", () => {
           defaultProviderType: "vm0",
           credentialScope: "org",
           modelProviderId: null,
+          modelProviderSurfaceId: null,
         },
       ],
     });
@@ -231,6 +232,7 @@ describe("model-first canonical catalog", () => {
           defaultProviderType: "vm0",
           credentialScope: "org",
           modelProviderId: null,
+          modelProviderSurfaceId: null,
         },
         {
           model: DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL,
@@ -238,6 +240,7 @@ describe("model-first canonical catalog", () => {
           defaultProviderType: "vm0",
           credentialScope: "org",
           modelProviderId: null,
+          modelProviderSurfaceId: null,
         },
       ],
     });

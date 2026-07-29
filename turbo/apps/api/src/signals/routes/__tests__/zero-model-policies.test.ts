@@ -821,7 +821,7 @@ describe("GET/PUT /api/zero/model-policies", () => {
               authHeaderName: "Authorization",
               authHeaderTemplate: "Bearer {{secret}}",
               modelMappings: {
-                "claude-sonnet-4-6": "company-sonnet-production",
+                "claude-sonnet-5": "company-sonnet-production",
               },
             },
           ],
@@ -837,7 +837,7 @@ describe("GET/PUT /api/zero/model-policies", () => {
     const client = apiClient();
     const listed = await accept(client.list({ headers: authHeaders() }), [200]);
     const updates = toUpdate(listed.body).map((policy) => {
-      return policy.model === "claude-sonnet-4-6"
+      return policy.model === "claude-sonnet-5"
         ? {
             ...policy,
             defaultProviderType: "vercel-ai-gateway" as const,
@@ -856,7 +856,7 @@ describe("GET/PUT /api/zero/model-policies", () => {
       [200],
     );
     const sonnet = updated.body.policies.find((policy) => {
-      return policy.model === "claude-sonnet-4-6";
+      return policy.model === "claude-sonnet-5";
     });
 
     expect(sonnet).toMatchObject({

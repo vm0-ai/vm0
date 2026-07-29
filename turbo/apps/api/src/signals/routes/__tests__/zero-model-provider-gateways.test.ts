@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 
+import { MODEL_PROVIDER_ENV_PLACEHOLDERS } from "@vm0/api-contracts/contracts/model-providers";
 import {
   zeroModelProviderConnectionsByIdContract,
   zeroModelProviderConnectionsMainContract,
@@ -8,11 +9,15 @@ import {
 
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
 import { createBddApi } from "./helpers/api-bdd";
+import { createChatCallbacksApi } from "./helpers/api-bdd-chat-callbacks";
+import { createChatFilesBddApi } from "./helpers/api-bdd-chat-files";
 import { createRunsApi } from "./helpers/api-bdd-runs";
 import { createZeroRouteMocks } from "./helpers/zero-route-test";
 
 const context = testContext();
 const mocks = createZeroRouteMocks(context);
+const chatCallbacks = createChatCallbacksApi(context);
+const chat = createChatFilesBddApi(context);
 
 function authHeaders() {
   return { authorization: "Bearer clerk-session" };
@@ -259,6 +264,8 @@ describe("custom model provider gateway routes", () => {
       throw new Error("Expected an organization-scoped actor");
     }
     bdd.acceptAgentStorageWrites();
+    chatCallbacks.acceptChatObjectStorage();
+    chatCallbacks.disableVapid();
     runs.acceptStorageDownloads();
     runs.acceptTelemetryIngest();
     const runnerGroup = runs.configureRunnerGroup();
@@ -282,7 +289,7 @@ describe("custom model provider gateway routes", () => {
               authHeaderName: "Authorization",
               authHeaderTemplate: "Bearer {{secret}}",
               modelMappings: {
-                "claude-sonnet-4-6": "company-sonnet-production",
+                "claude-sonnet-5": "company-sonnet-production",
               },
             },
             {
@@ -310,7 +317,7 @@ describe("custom model provider gateway routes", () => {
     }
     await runs.updateOrgModelPolicies(actor, [
       {
-        model: "claude-sonnet-4-6",
+        model: "claude-sonnet-5",
         isDefault: true,
         defaultProviderType: "vercel-ai-gateway",
         credentialScope: "org",
@@ -319,12 +326,25 @@ describe("custom model provider gateway routes", () => {
       },
     ]);
 
-    const run = await runs.createRun(actor, {
-      agentId: agent.agentId,
-      prompt: "exercise the custom gateway",
-    });
+    const sent = await chat.requestSendEvent(
+      actor,
+      {
+        clientEventId: randomUUID(),
+        agentId: agent.agentId,
+        prompt: "exercise the custom gateway",
+        model: "claude-sonnet-5",
+      },
+      [201],
+    );
+    if ("error" in sent.body) {
+      throw new Error("Expected the custom gateway chat send to succeed");
+    }
+    const runId = sent.body.runId;
+    if (!runId) {
+      throw new Error("Expected the custom gateway chat send to create a run");
+    }
     await runs.heartbeatRunner(runnerGroup);
-    const claim = await runs.claimRunnerJob(run.runId);
+    const claim = await runs.claimRunnerJob(runId);
 
     expect(claim.cliAgentType).toBe("claude-code");
     expect(claim.environment).toMatchObject({
@@ -354,7 +374,7 @@ describe("custom model provider gateway routes", () => {
     });
     expect(claim.secretValues).not.toContain("runtime-gateway-secret");
 
-    await runs.requestCancelRun(actor, run.runId, [200]);
+    await runs.requestCancelRun(actor, runId, [200]);
 
     await runs.updateOrgModelPolicies(actor, [
       {
@@ -366,12 +386,29 @@ describe("custom model provider gateway routes", () => {
         modelProviderSurfaceId: responsesSurface.id,
       },
     ]);
-    const codexRun = await runs.createRun(actor, {
-      agentId: agent.agentId,
-      prompt: "exercise the custom Responses gateway",
-    });
+    const codexSent = await chat.requestSendEvent(
+      actor,
+      {
+        clientEventId: randomUUID(),
+        agentId: agent.agentId,
+        prompt: "exercise the custom Responses gateway",
+        model: "gpt-5.5",
+      },
+      [201],
+    );
+    if ("error" in codexSent.body) {
+      throw new Error(
+        "Expected the custom Responses gateway chat send to succeed",
+      );
+    }
+    const codexRunId = codexSent.body.runId;
+    if (!codexRunId) {
+      throw new Error(
+        "Expected the custom Responses gateway chat send to create a run",
+      );
+    }
     await runs.heartbeatRunner(runnerGroup);
-    const codexClaim = await runs.claimRunnerJob(codexRun.runId);
+    const codexClaim = await runs.claimRunnerJob(codexRunId);
 
     expect(codexClaim.cliAgentType).toBe("codex");
     expect(codexClaim.environment).toMatchObject({
@@ -383,11 +420,14 @@ describe("custom model provider gateway routes", () => {
       baseUrl: "https://gateway.example.com/openai/v1",
       envKey: "OPENAI_API_KEY",
       httpHeaders: {
-        "x-api-key": "__VM0_OPENAI_API_KEY_PLACEHOLDER__",
+        "x-api-key": MODEL_PROVIDER_ENV_PLACEHOLDERS.OPENAI_API_KEY,
       },
       requiresOpenaiAuth: false,
       wireApi: "responses",
     });
+    expect(codexClaim.environment?.OPENAI_API_KEY).toBe(
+      MODEL_PROVIDER_ENV_PLACEHOLDERS.OPENAI_API_KEY,
+    );
     const responsesFirewallName = `model-provider-surface:${responsesSurface.id}`;
     expect(
       codexClaim.firewalls?.find((entry) => {
@@ -414,6 +454,6 @@ describe("custom model provider gateway routes", () => {
     });
     expect(codexClaim.secretValues).not.toContain("runtime-gateway-secret");
 
-    await runs.requestCancelRun(actor, codexRun.runId, [200]);
+    await runs.requestCancelRun(actor, codexRunId, [200]);
   });
 });
