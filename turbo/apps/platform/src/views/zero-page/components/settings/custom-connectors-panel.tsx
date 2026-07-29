@@ -54,9 +54,8 @@ function CustomConnectorRow({
 }) {
   const { t } = useTranslation();
   const hasActions = connector.hasSecret || isAdmin;
-
-  return (
-    <div className="zero-card flex flex-col">
+  const cardContent = (
+    <>
       <div className="flex h-14 items-center gap-2.5 px-5">
         <CustomConnectorIcon
           id={connector.id}
@@ -67,7 +66,11 @@ function CustomConnectorRow({
           {connector.displayName}
         </span>
       </div>
-      <div className="flex h-11 items-center justify-between border-t border-border/50 pl-5 pr-2">
+      <div
+        className={`flex h-11 items-center border-t border-border/50 pl-5 ${
+          hasActions ? "pr-12" : "pr-5"
+        }`}
+      >
         <div className="flex items-center gap-2 min-w-0">
           {connector.hasSecret ? (
             <span className="flex items-center gap-2 text-xs text-muted-foreground truncate">
@@ -77,15 +80,11 @@ function CustomConnectorRow({
               })}
             </span>
           ) : (
-            <button
-              type="button"
-              onClick={onConnect}
-              className="text-xs font-medium text-muted-foreground hover:text-foreground transition-colors"
-            >
+            <span className="text-xs font-medium text-muted-foreground">
               {t(($) => {
                 return $.connectors.actions.connect;
               })}
-            </button>
+            </span>
           )}
           {connector.prefixes[0] && (
             <span className="truncate text-xs text-muted-foreground/60 font-mono">
@@ -93,7 +92,31 @@ function CustomConnectorRow({
             </span>
           )}
         </div>
-        {hasActions && (
+      </div>
+    </>
+  );
+
+  return (
+    <div className="relative">
+      {connector.hasSecret ? (
+        <div className="zero-card flex flex-col">{cardContent}</div>
+      ) : (
+        <button
+          type="button"
+          aria-label={t(
+            ($) => {
+              return $.connectors.card.connectAria;
+            },
+            { connector: connector.displayName },
+          )}
+          className="zero-card flex w-full cursor-pointer flex-col text-left"
+          onClick={onConnect}
+        >
+          {cardContent}
+        </button>
+      )}
+      {hasActions && (
+        <div className="absolute bottom-2 right-2">
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button
@@ -147,8 +170,8 @@ function CustomConnectorRow({
               )}
             </DropdownMenuContent>
           </DropdownMenu>
-        )}
-      </div>
+        </div>
+      )}
     </div>
   );
 }

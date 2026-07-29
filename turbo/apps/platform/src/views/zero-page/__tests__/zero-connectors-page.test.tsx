@@ -3393,7 +3393,13 @@ describe("connectors page", () => {
     expect(updatedBodies[0]).not.toHaveProperty("oauthClientId");
     expect(updatedBodies[0]).not.toHaveProperty("oauthClientSecret");
 
-    click(screen.getByText("Connect"));
+    const connectorCardButton = queryAllByRoleFast("button").find((button) => {
+      return button.getAttribute("aria-label") === "Connect Acme API";
+    });
+    if (!connectorCardButton) {
+      throw new Error("Connect Acme API card button not found");
+    }
+    click(connectorCardButton);
     const connectDialog = await screen.findByRole("dialog", {
       name: "Connect Acme API",
     });
