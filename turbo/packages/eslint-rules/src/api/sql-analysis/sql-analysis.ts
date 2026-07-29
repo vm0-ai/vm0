@@ -3232,18 +3232,27 @@ function isScalarCteProjection(
   return hasGuaranteedOneRow && referenced.size === ctes.size;
 }
 
+interface BuilderRelationPolicy {
+  readonly allowedLiteralRelations?: ReadonlySet<string>;
+  readonly requireTableMarkers: boolean;
+}
+
 function builderRelation(
   value: unknown,
   markers: ReadonlyMap<string, SqlMarker>,
-  requireTableMarkers = false,
+  policy?: BuilderRelationPolicy,
 ): boolean {
   const range = rangeVarPayload(value);
   if (range !== undefined) {
     const marker = markers.get(range.relname);
     return (
       validRelationAlias(range.alias) &&
-      (marker === undefined ||
-        (requireTableMarkers ? marker.isTable : marker.isWrapper))
+      (marker === undefined
+        ? policy?.allowedLiteralRelations === undefined ||
+          policy.allowedLiteralRelations.has(range.relname)
+        : policy?.requireTableMarkers === true
+          ? marker.isTable
+          : marker.isWrapper)
     );
   }
   const join = recordProperty(value, "JoinExpr");
@@ -3254,9 +3263,9 @@ function builderRelation(
     join.rarg !== undefined &&
     join.quals !== undefined &&
     hasOnlyKeys(join, new Set(["jointype", "larg", "quals", "rarg"])) &&
-    builderRelation(join.larg, markers, requireTableMarkers) &&
+    builderRelation(join.larg, markers, policy) &&
     rangeVarPayload(join.rarg) !== undefined &&
-    builderRelation(join.rarg, markers, requireTableMarkers)
+    builderRelation(join.rarg, markers, policy)
   );
 }
 
@@ -3277,6 +3286,7 @@ function isBuilderReadSelect(
   markers: ReadonlyMap<string, SqlMarker>,
   allowUnionAll: boolean,
   allowWithClause: boolean,
+  relationPolicy?: BuilderRelationPolicy,
 ): boolean {
   if (select.op === "SETOP_UNION") {
     if (
@@ -3308,8 +3318,8 @@ function isBuilderReadSelect(
       return false;
     }
     return (
-      isBuilderReadSelect(select.larg, markers, true, false) &&
-      isBuilderReadSelect(select.rarg, markers, true, false)
+      isBuilderReadSelect(select.larg, markers, true, false, relationPolicy) &&
+      isBuilderReadSelect(select.rarg, markers, true, false, relationPolicy)
     );
   }
   if (
@@ -3328,7 +3338,7 @@ function isBuilderReadSelect(
     targetValues(select) === undefined ||
     !Array.isArray(select.fromClause) ||
     select.fromClause.length !== 1 ||
-    !builderRelation(select.fromClause[0], markers)
+    !builderRelation(select.fromClause[0], markers, relationPolicy)
   ) {
     return false;
   }
@@ -3350,13 +3360,12 @@ function isBuilderReadSelect(
         isSupportedNumericLimit(select.limitCount, markers);
 }
 
-function isComposedReadCte(
+function isBuilderReadCte(
   select: Record<string, unknown>,
   markers: ReadonlyMap<string, SqlMarker>,
   hasLocalExpansion: boolean,
 ): boolean {
   if (
-    !hasLocalExpansion ||
     ![...markers.values()].every((marker) => {
       return marker.isBoundScalar || marker.isWrapper;
     })
@@ -3368,6 +3377,10 @@ function isComposedReadCte(
     return false;
   }
   const names = new Set<string>();
+  const directRelationPolicy: BuilderRelationPolicy = {
+    allowedLiteralRelations: names,
+    requireTableMarkers: true,
+  };
   for (const item of withClause.ctes) {
     const cte = commonTableExpression(item);
     const body = recordProperty(cte?.ctequery, "SelectStmt");
@@ -3375,13 +3388,25 @@ function isComposedReadCte(
       cte === undefined ||
       body === undefined ||
       names.has(cte.ctename) ||
-      !isBuilderReadSelect(body, markers, false, false)
+      !isBuilderReadSelect(
+        body,
+        markers,
+        false,
+        false,
+        hasLocalExpansion ? undefined : directRelationPolicy,
+      )
     ) {
       return false;
     }
     names.add(cte.ctename);
   }
-  return isBuilderReadSelect(select, markers, true, true);
+  return isBuilderReadSelect(
+    select,
+    markers,
+    true,
+    true,
+    hasLocalExpansion ? undefined : directRelationPolicy,
+  );
 }
 
 function isStructuredScalarSelect(
@@ -3421,7 +3446,9 @@ function isStructuredScalarSelect(
     targetValues(inner) !== undefined &&
     Array.isArray(inner.fromClause) &&
     inner.fromClause.length === 1 &&
-    builderRelation(inner.fromClause[0], markers, true) &&
+    builderRelation(inner.fromClause[0], markers, {
+      requireTableMarkers: true,
+    }) &&
     inner.whereClause !== undefined &&
     isLimitOne(inner.limitCount)
   );
@@ -3444,7 +3471,7 @@ function readQueryCapability(
   if (context !== "statement") {
     return undefined;
   }
-  if (isComposedReadCte(select, parsed.markers, hasLocalExpansion)) {
+  if (isBuilderReadCte(select, parsed.markers, hasLocalExpansion)) {
     return "composed-cte";
   }
   if (isScalarCteProjection(select, parsed.markers)) {
