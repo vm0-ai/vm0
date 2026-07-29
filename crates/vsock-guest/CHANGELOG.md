@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.19.49](https://github.com/vm0-ai/vm0/compare/vsock-guest-v0.19.48...vsock-guest-v0.19.49) (2026-07-29)
+
+
+### Bug Fixes
+
+* **vsock-guest:** avoid multi-pidfd poll limit race ([#23628](https://github.com/vm0-ai/vm0/issues/23628)) ([efc19df](https://github.com/vm0-ai/vm0/commit/efc19df29d94fdda299f848089c01f955d191094))
+
 ## [0.19.48](https://github.com/vm0-ai/vm0/compare/vsock-guest-v0.19.47...vsock-guest-v0.19.48) (2026-07-28)
 
 ## [0.19.47](https://github.com/vm0-ai/vm0/compare/vsock-guest-v0.19.46...vsock-guest-v0.19.47) (2026-07-28)
