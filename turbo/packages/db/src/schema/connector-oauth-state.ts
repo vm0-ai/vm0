@@ -20,8 +20,9 @@ export const connectorOauthStates = pgTable(
   {
     id: uuid("id").defaultRandom().primaryKey(),
     state: text("state").notNull(),
-    // TODO(#23619): Rename the property and column in the persistence phase.
+    // Legacy built-in rollout bridge. Switch in #23793 and remove in #23794.
     type: varchar("type", { length: 64 }),
+    connectorSlug: varchar("connector_slug", { length: 64 }),
     customConnectorId: uuid("custom_connector_id"),
     connectorRevision: integer("connector_revision"),
     authMethod: varchar("auth_method", { length: 50 }).notNull(),
@@ -63,6 +64,10 @@ export const connectorOauthStates = pgTable(
           ${table.customConnectorId} IS NOT NULL
           AND ${table.connectorRevision} IS NOT NULL
         )`,
+      ),
+      check(
+        "chk_connector_oauth_states_slug_matches_type",
+        sql`${table.connectorSlug} IS NOT DISTINCT FROM ${table.type}`,
       ),
     ];
   },

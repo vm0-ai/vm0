@@ -59,7 +59,30 @@ const SUPERSEDED_SESSION_ERROR_MESSAGE =
 const PROVIDER_STATE_MAX_BYTES = 16 * 1024;
 const COMPLETING_SESSION_STALE_AFTER_MS = 30 * 60 * 1000;
 
-type ExternalCodeSessionRow = typeof connectorExternalCodeSessions.$inferSelect;
+const externalCodeSessionSelection = Object.freeze({
+  id: connectorExternalCodeSessions.id,
+  orgId: connectorExternalCodeSessions.orgId,
+  userId: connectorExternalCodeSessions.userId,
+  agentId: connectorExternalCodeSessions.agentId,
+  authorizeAgent: connectorExternalCodeSessions.authorizeAgent,
+  connectorType: connectorExternalCodeSessions.connectorType,
+  authMethod: connectorExternalCodeSessions.authMethod,
+  status: connectorExternalCodeSessions.status,
+  sessionTokenHash: connectorExternalCodeSessions.sessionTokenHash,
+  encryptedProviderState: connectorExternalCodeSessions.encryptedProviderState,
+  authorizationUrl: connectorExternalCodeSessions.authorizationUrl,
+  errorCode: connectorExternalCodeSessions.errorCode,
+  errorMessage: connectorExternalCodeSessions.errorMessage,
+  createdAt: connectorExternalCodeSessions.createdAt,
+  updatedAt: connectorExternalCodeSessions.updatedAt,
+  expiresAt: connectorExternalCodeSessions.expiresAt,
+  completedAt: connectorExternalCodeSessions.completedAt,
+});
+
+type ExternalCodeSessionRow = Omit<
+  typeof connectorExternalCodeSessions.$inferSelect,
+  "connectorSlug"
+>;
 
 type ExternalCodeSessionOwner = {
   readonly connectorSlug: ConnectorSlug;
@@ -251,7 +274,7 @@ async function loadOwnedSession(args: {
   readonly signal: AbortSignal;
 }): Promise<ExternalCodeSessionRow | null> {
   const [session] = await args.writeDb
-    .select()
+    .select(externalCodeSessionSelection)
     .from(connectorExternalCodeSessions)
     .where(
       and(
@@ -350,7 +373,7 @@ async function claimSession(args: {
         eq(connectorExternalCodeSessions.status, "pending"),
       ),
     )
-    .returning();
+    .returning(externalCodeSessionSelection);
   args.signal.throwIfAborted();
   return claimedSession ?? null;
 }

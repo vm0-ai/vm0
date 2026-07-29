@@ -61,7 +61,23 @@ import {
   currentConnectorCatalogValidatorIdentity,
 } from "./connector-catalog-validator-authority";
 
-type UserPermissionGrantRow = typeof userPermissionGrants.$inferSelect;
+const userPermissionGrantSelection = Object.freeze({
+  id: userPermissionGrants.id,
+  orgId: userPermissionGrants.orgId,
+  userId: userPermissionGrants.userId,
+  agentId: userPermissionGrants.agentId,
+  connectorRef: userPermissionGrants.connectorRef,
+  permission: userPermissionGrants.permission,
+  action: userPermissionGrants.action,
+  expiresAt: userPermissionGrants.expiresAt,
+  createdAt: userPermissionGrants.createdAt,
+  updatedAt: userPermissionGrants.updatedAt,
+});
+
+type UserPermissionGrantRow = Omit<
+  typeof userPermissionGrants.$inferSelect,
+  "connectorSlug"
+>;
 type StoredPermissionGrantRow = UserPermissionGrantRow;
 type ResolvedPermissionGrant = Pick<
   UserPermissionGrantRow,
@@ -611,7 +627,7 @@ async function loadActiveUserPermissionGrants(
   checkedAt: Date = nowDate(),
 ): Promise<readonly StoredPermissionGrantRow[]> {
   return await db
-    .select()
+    .select(userPermissionGrantSelection)
     .from(userPermissionGrants)
     .where(
       and(
@@ -634,7 +650,7 @@ async function loadActiveUserPermissionGrantsForConnectorSlugs(
   checkedAt: Date,
 ): Promise<readonly StoredPermissionGrantRow[]> {
   return await db
-    .select()
+    .select(userPermissionGrantSelection)
     .from(userPermissionGrants)
     .where(
       and(
@@ -759,7 +775,7 @@ async function applyVisibleAgentGrantRows(
       args.apply.mode === "replace"
         ? []
         : await tx
-            .select()
+            .select(userPermissionGrantSelection)
             .from(userPermissionGrants)
             .where(connectorScopeCondition)
             .for("update");
@@ -794,7 +810,7 @@ async function applyVisibleAgentGrantRows(
                 eq(userPermissionGrants.permission, grant.permission),
               ),
             )
-            .returning()
+            .returning(userPermissionGrantSelection)
         : await tx
             .insert(userPermissionGrants)
             .values({
@@ -808,7 +824,7 @@ async function applyVisibleAgentGrantRows(
               createdAt: timestamp,
               updatedAt: timestamp,
             })
-            .returning();
+            .returning(userPermissionGrantSelection);
       if (!row) {
         throw new Error("User permission grant apply did not return a row");
       }

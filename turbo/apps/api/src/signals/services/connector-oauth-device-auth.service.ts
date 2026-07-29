@@ -66,8 +66,35 @@ const SUPERSEDED_SESSION_ERROR_CODE = "session_superseded";
 const SUPERSEDED_SESSION_ERROR_MESSAGE =
   "OAuth device authorization session was superseded";
 
-type DeviceAuthSessionRow =
-  typeof connectorOauthDeviceAuthorizationSessions.$inferSelect;
+const deviceAuthSessionSelection = Object.freeze({
+  id: connectorOauthDeviceAuthorizationSessions.id,
+  orgId: connectorOauthDeviceAuthorizationSessions.orgId,
+  userId: connectorOauthDeviceAuthorizationSessions.userId,
+  agentId: connectorOauthDeviceAuthorizationSessions.agentId,
+  authorizeAgent: connectorOauthDeviceAuthorizationSessions.authorizeAgent,
+  connectorType: connectorOauthDeviceAuthorizationSessions.connectorType,
+  authMethod: connectorOauthDeviceAuthorizationSessions.authMethod,
+  status: connectorOauthDeviceAuthorizationSessions.status,
+  sessionTokenHash: connectorOauthDeviceAuthorizationSessions.sessionTokenHash,
+  encryptedProviderState:
+    connectorOauthDeviceAuthorizationSessions.encryptedProviderState,
+  userCode: connectorOauthDeviceAuthorizationSessions.userCode,
+  verificationUri: connectorOauthDeviceAuthorizationSessions.verificationUri,
+  verificationUriComplete:
+    connectorOauthDeviceAuthorizationSessions.verificationUriComplete,
+  intervalSeconds: connectorOauthDeviceAuthorizationSessions.intervalSeconds,
+  errorCode: connectorOauthDeviceAuthorizationSessions.errorCode,
+  errorMessage: connectorOauthDeviceAuthorizationSessions.errorMessage,
+  createdAt: connectorOauthDeviceAuthorizationSessions.createdAt,
+  updatedAt: connectorOauthDeviceAuthorizationSessions.updatedAt,
+  expiresAt: connectorOauthDeviceAuthorizationSessions.expiresAt,
+  completedAt: connectorOauthDeviceAuthorizationSessions.completedAt,
+});
+
+type DeviceAuthSessionRow = Omit<
+  typeof connectorOauthDeviceAuthorizationSessions.$inferSelect,
+  "connectorSlug"
+>;
 
 type PendingPollBody = Extract<
   ConnectorOauthDeviceAuthSessionPollResponse,
@@ -428,7 +455,7 @@ async function loadOwnedSession(args: {
   readonly signal: AbortSignal;
 }): Promise<DeviceAuthSessionRow | null> {
   const [session] = await args.writeDb
-    .select()
+    .select(deviceAuthSessionSelection)
     .from(connectorOauthDeviceAuthorizationSessions)
     .where(
       and(
@@ -477,7 +504,7 @@ async function expireSession(args: {
         ),
       ),
     )
-    .returning();
+    .returning(deviceAuthSessionSelection);
   args.signal.throwIfAborted();
 
   if (!expiredSession) {
@@ -520,7 +547,7 @@ async function claimSession(args: {
         ),
       ),
     )
-    .returning();
+    .returning(deviceAuthSessionSelection);
   args.signal.throwIfAborted();
   return claimedSession ?? null;
 }
@@ -573,7 +600,7 @@ async function claimNoLongerCurrentResponse(args: {
   readonly signal: AbortSignal;
 }): Promise<PollSuccess> {
   const [currentSession] = await args.writeDb
-    .select()
+    .select(deviceAuthSessionSelection)
     .from(connectorOauthDeviceAuthorizationSessions)
     .where(eq(connectorOauthDeviceAuthorizationSessions.id, args.session.id))
     .limit(1);
@@ -619,7 +646,7 @@ async function markClaimTerminal(args: {
         ),
       ),
     )
-    .returning();
+    .returning(deviceAuthSessionSelection);
   args.signal.throwIfAborted();
 
   if (!terminalSession) {
@@ -653,7 +680,7 @@ async function markClaimComplete(args: {
         ),
       ),
     )
-    .returning();
+    .returning(deviceAuthSessionSelection);
   args.signal.throwIfAborted();
 
   if (!completedSession) {
