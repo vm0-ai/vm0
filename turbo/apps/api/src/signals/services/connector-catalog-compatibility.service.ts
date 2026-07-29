@@ -259,7 +259,7 @@ function evaluateConnectorCatalogCompatibility(args: {
       const reasons = evaluateMethod({
         method,
         registration: registrations.get(
-          registrationKey(connector.connectorRef, method.id),
+          registrationKey(connector.slug, method.id),
         ),
         configuredNames: args.capability.configuredNames,
       });
@@ -267,7 +267,7 @@ function evaluateConnectorCatalogCompatibility(args: {
         ? []
         : [
             {
-              connectorRef: connector.connectorRef,
+              connectorRef: connector.slug,
               authMethodId: method.id,
               reasons,
             },

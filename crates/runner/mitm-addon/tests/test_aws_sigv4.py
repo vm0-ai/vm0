@@ -5,7 +5,12 @@ from unittest.mock import patch
 
 import pytest
 
-from aws_sigv4 import AwsSigV4Credentials, AwsSigV4SigningError, sign_request
+from aws_sigv4 import (
+    AwsSigV4Credentials,
+    AwsSigV4SigningError,
+    request_requires_body_for_signing,
+    sign_request,
+)
 from tests.aws_sigv4_helpers import (
     DEFAULT_SIGV4_TIMESTAMP,
     STS_HOST,
@@ -104,6 +109,101 @@ def _presigned_url(
     timestamp: str = DEFAULT_SIGV4_TIMESTAMP,
 ) -> str:
     return aws_sigv4_presigned_url(host, date=timestamp[:8], timestamp=timestamp)
+
+
+@pytest.mark.parametrize(
+    ("url", "headers", "requires_body"),
+    [
+        pytest.param(
+            f"https://{STS_HOST}/",
+            _header_auth_headers(),
+            True,
+            id="header-body-hash",
+        ),
+        pytest.param(
+            f"https://{STS_HOST}/",
+            _header_auth_headers_with_content_hash(_AWS_S3_EMPTY_PAYLOAD_HASH),
+            False,
+            id="header-explicit-digest",
+        ),
+        pytest.param(
+            f"https://{STS_HOST}/",
+            _header_auth_headers_with_content_hash("UNSIGNED-PAYLOAD"),
+            False,
+            id="header-unsigned",
+        ),
+        pytest.param(
+            _presigned_url(STS_HOST),
+            [("Host", STS_HOST)],
+            True,
+            id="presigned-non-s3",
+        ),
+        pytest.param(
+            aws_sigv4_presigned_url(
+                _AWS_S3_EXAMPLE_HOST,
+                service="s3",
+                date="20130524",
+                timestamp=_AWS_S3_EXAMPLE_TIMESTAMP,
+            ),
+            [("Host", _AWS_S3_EXAMPLE_HOST)],
+            False,
+            id="presigned-s3",
+        ),
+    ],
+)
+def test_request_requires_body_for_signing_matches_payload_semantics(
+    url: str,
+    headers: list[tuple[str, str]],
+    requires_body: bool,
+) -> None:
+    assert request_requires_body_for_signing(url=url, headers=headers) is requires_body
+
+
+@pytest.mark.parametrize(
+    ("headers", "error"),
+    [
+        pytest.param(
+            _header_auth_headers_with_content_hash(
+                "STREAMING-AWS4-HMAC-SHA256-PAYLOAD",
+            ),
+            "AWS streaming payload signing is not supported",
+            id="streaming-payload",
+        ),
+        pytest.param(
+            [
+                (
+                    "Authorization",
+                    aws_sigv4_authorization(
+                        algorithm="AWS4-ECDSA-P256-SHA256",
+                        region="*",
+                    ),
+                ),
+                ("X-Amz-Date", DEFAULT_SIGV4_TIMESTAMP),
+                ("Host", STS_HOST),
+            ],
+            "SigV4A is not supported",
+            id="sigv4a",
+        ),
+        pytest.param(
+            [
+                ("Authorization", "malformed"),
+                ("X-Amz-Date", DEFAULT_SIGV4_TIMESTAMP),
+                ("Host", STS_HOST),
+            ],
+            "Malformed AWS authorization header",
+            id="malformed",
+        ),
+    ],
+)
+def test_request_requires_body_for_signing_preserves_signer_errors(
+    headers: list[tuple[str, str]],
+    error: str,
+) -> None:
+    with pytest.raises(AwsSigV4SigningError, match=error):
+        request_requires_body_for_signing(
+            url=f"https://{STS_HOST}/",
+            headers=headers,
+        )
 
 
 @pytest.mark.parametrize(

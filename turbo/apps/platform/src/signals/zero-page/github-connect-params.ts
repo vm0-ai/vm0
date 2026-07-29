@@ -7,6 +7,13 @@ export interface GithubConnectParams {
 }
 
 interface GithubConnectParamError {
+  code:
+    | "incomplete"
+    | "invalid_installation"
+    | "invalid_signature"
+    | "invalid_timestamp"
+    | "invalid_user"
+    | "invalid_username";
   title: string;
   message: string;
 }
@@ -65,6 +72,7 @@ export function parseGithubConnectParams(
       ok: false,
       returnPath: "/github/connect",
       error: {
+        code: "incomplete",
         title: "Connect link is incomplete",
         message: "Open a fresh GitHub connect link and try again.",
       },
@@ -76,6 +84,7 @@ export function parseGithubConnectParams(
       ok: false,
       returnPath: "/github/connect",
       error: {
+        code: "invalid_installation",
         title: "Connect link is invalid",
         message: "The GitHub installation on this link is not valid.",
       },
@@ -87,6 +96,7 @@ export function parseGithubConnectParams(
       ok: false,
       returnPath: "/github/connect",
       error: {
+        code: "invalid_user",
         title: "Connect link is invalid",
         message: "The GitHub user on this link is not valid.",
       },
@@ -98,6 +108,7 @@ export function parseGithubConnectParams(
       ok: false,
       returnPath: "/github/connect",
       error: {
+        code: "invalid_timestamp",
         title: "Connect link is invalid",
         message: "The timestamp on this link is not valid.",
       },
@@ -110,6 +121,7 @@ export function parseGithubConnectParams(
       ok: false,
       returnPath: "/github/connect",
       error: {
+        code: "invalid_timestamp",
         title: "Connect link is invalid",
         message: "The timestamp on this link is not valid.",
       },
@@ -121,6 +133,7 @@ export function parseGithubConnectParams(
       ok: false,
       returnPath: "/github/connect",
       error: {
+        code: "invalid_signature",
         title: "Connect link is invalid",
         message: "The signature on this link is not valid.",
       },
@@ -132,6 +145,7 @@ export function parseGithubConnectParams(
       ok: false,
       returnPath: "/github/connect",
       error: {
+        code: "invalid_username",
         title: "Connect link is invalid",
         message: "The GitHub username on this link is not valid.",
       },

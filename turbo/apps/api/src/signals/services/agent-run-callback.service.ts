@@ -195,6 +195,12 @@ const dispatchInternalCallback$ = command(
           error: "Teams chat delivery callbacks are inline-only",
         };
       }
+      case "telegram:chat": {
+        return {
+          success: false,
+          error: "Telegram chat delivery callbacks are inline-only",
+        };
+      }
       case "telegram": {
         return await set(
           handleTelegramInternalCallback$,
@@ -326,6 +332,7 @@ async function dispatchRunCallbacks(
             "slack:chat",
             "feishu:chat",
             "teams:chat",
+            "telegram:chat",
             "slack:org",
           ]),
         ),
@@ -403,6 +410,7 @@ export const dispatchRunCallbacks$ = command(
               "slack:chat",
               "feishu:chat",
               "teams:chat",
+              "telegram:chat",
               "slack:org",
             ]),
           ),
@@ -574,6 +582,12 @@ async function dispatchInternalCallbackWithoutCcstate(
       return {
         success: false,
         error: "Teams chat delivery callbacks are inline-only",
+      };
+    }
+    case "telegram:chat": {
+      return {
+        success: false,
+        error: "Telegram chat delivery callbacks are inline-only",
       };
     }
     case "telegram": {

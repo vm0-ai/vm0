@@ -1,5 +1,6 @@
 import { useGet, useSet } from "ccstate-react";
 import { useLoadableSet } from "ccstate-react/experimental";
+import { useTranslation } from "react-i18next";
 import { detach, Reason } from "../../../../signals/utils.ts";
 import { pageSignal$ } from "../../../../signals/page-signal.ts";
 import {
@@ -22,6 +23,7 @@ export function CustomConnectorDeleteConfirm({
   id: string;
   displayName: string;
 }) {
+  const { t } = useTranslation();
   const closeDialog = useSet(closeCustomConnectorDialog$);
   const [loadable, submit] = useLoadableSet(deleteCustomConnector$);
   const signal = useGet(pageSignal$);
@@ -46,23 +48,38 @@ export function CustomConnectorDeleteConfirm({
     >
       <DialogContent className="max-w-md" aria-describedby={undefined}>
         <DialogHeader>
-          <DialogTitle>Delete {displayName}?</DialogTitle>
+          <DialogTitle>
+            {t(
+              ($) => {
+                return $.connectors.custom.delete.title;
+              },
+              { connector: displayName },
+            )}
+          </DialogTitle>
         </DialogHeader>
         <p className="text-sm text-muted-foreground">
-          This removes the connector and every member&apos;s stored secret for
-          it. Agents authorized for this connector will lose access immediately.
-          This can&apos;t be undone.
+          {t(($) => {
+            return $.connectors.custom.delete.description;
+          })}
         </p>
         <DialogFooter>
           <Button variant="outline" onClick={closeDialog} disabled={submitting}>
-            Cancel
+            {t(($) => {
+              return $.connectors.actions.cancel;
+            })}
           </Button>
           <Button
             variant="destructive"
             onClick={onConfirm}
             disabled={submitting}
           >
-            {submitting ? "Deleting…" : "Delete"}
+            {submitting
+              ? t(($) => {
+                  return $.connectors.actions.deleting;
+                })
+              : t(($) => {
+                  return $.connectors.actions.delete;
+                })}
           </Button>
         </DialogFooter>
       </DialogContent>

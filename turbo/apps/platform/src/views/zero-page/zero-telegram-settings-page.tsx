@@ -108,6 +108,8 @@ import {
 } from "../../signals/utils.ts";
 import { Link } from "../router/link.tsx";
 import { settingsIconAssetUrl } from "./components/settings/settings-icon-assets.ts";
+import { useTranslation } from "react-i18next";
+import { i18n } from "../../i18n/index.ts";
 
 const telegramIconImg = settingsIconAssetUrl("telegram");
 
@@ -234,11 +236,14 @@ function telegramConnectedUserLabel(bot: TelegramBot): string | null {
 }
 
 function TelegramStatusBadge({ bot }: { bot: TelegramBot }) {
+  const { t } = useTranslation();
   if (bot.tokenStatus === "invalid") {
     return (
       <span className="inline-flex items-center gap-1.5 rounded-lg border border-destructive/20 bg-destructive/10 px-2 py-1 text-xs font-medium text-destructive">
         <IconAlertTriangle className="h-3.5 w-3.5" />
-        Token invalid
+        {t(($) => {
+          return $.connectors.providerSettings.telegram.tokenInvalid;
+        })}
       </span>
     );
   }
@@ -247,8 +252,15 @@ function TelegramStatusBadge({ bot }: { bot: TelegramBot }) {
   if (connected) {
     const connectedUserLabel = telegramConnectedUserLabel(bot);
     const connectedLabel = connectedUserLabel
-      ? `Connected (${connectedUserLabel})`
-      : "Connected";
+      ? t(
+          ($) => {
+            return $.connectors.providerSettings.works.connectedDetail;
+          },
+          { detail: connectedUserLabel },
+        )
+      : t(($) => {
+          return $.connectors.providerSettings.works.connected;
+        });
     return (
       <span className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-background px-2 py-1 text-xs font-medium text-secondary-foreground">
         <IconCircleCheck className="h-3.5 w-3.5 text-green-600" />
@@ -265,7 +277,9 @@ function TelegramStatusBadge({ bot }: { bot: TelegramBot }) {
   return (
     <span className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-background px-2 py-1 text-xs font-medium text-muted-foreground">
       <IconAlertTriangle className="h-3.5 w-3.5 text-amber-500" />
-      Not connected
+      {t(($) => {
+        return $.connectors.providerSettings.telegram.notConnected;
+      })}
     </span>
   );
 }
@@ -334,6 +348,7 @@ function getTelegramLoginOrigin(): string {
 }
 
 function CopyableTelegramValue({ value }: { value: string }) {
+  const { t } = useTranslation();
   const copiedValue = useGet(telegramCopiedValue$);
   const copyValueCommand = useSet(copyTelegramValue$);
   const pageSignal = useGet(pageSignal$);
@@ -346,11 +361,22 @@ function CopyableTelegramValue({ value }: { value: string }) {
     <button
       type="button"
       className={TELEGRAM_COMMAND_CLASS}
-      aria-label={`Copy ${value}`}
-      title="Click to copy"
+      aria-label={t(
+        ($) => {
+          return $.connectors.providerSettings.telegram.copyAria;
+        },
+        { value },
+      )}
+      title={t(($) => {
+        return $.connectors.providerSettings.telegram.copyTitle;
+      })}
       onClick={copyValue}
     >
-      {copiedValue === value ? "copied!" : value}
+      {copiedValue === value
+        ? t(($) => {
+            return $.connectors.providerSettings.telegram.copied;
+          })
+        : value}
     </button>
   );
 }
@@ -363,19 +389,18 @@ type AddTelegramStep = TelegramAddSetupStep;
 type SetupCheckTarget = TelegramSetupCheckTarget;
 
 const ADD_TELEGRAM_STEPS = [
-  { key: "token", label: "Token" },
-  { key: "domain", label: "Domain" },
-  { key: "privacy", label: "Privacy" },
-  { key: "create", label: "Create" },
-] as const satisfies readonly { key: AddTelegramStep; label: string }[];
+  "token",
+  "domain",
+  "privacy",
+  "create",
+] as const satisfies readonly AddTelegramStep[];
 
 function telegramStepIndex(step: AddTelegramStep): number {
-  return ADD_TELEGRAM_STEPS.findIndex((item) => {
-    return item.key === step;
-  });
+  return ADD_TELEGRAM_STEPS.indexOf(step);
 }
 
 function AddTelegramBotProgress({ step }: { step: AddTelegramStep }) {
+  const { t } = useTranslation();
   const currentIndex = telegramStepIndex(step);
   return (
     <div className="space-y-3">
@@ -385,7 +410,7 @@ function AddTelegramBotProgress({ step }: { step: AddTelegramStep }) {
           const complete = index < currentIndex;
           return (
             <div
-              key={item.key}
+              key={item}
               className={
                 complete || active
                   ? "h-1 flex-1 rounded-full bg-foreground"
@@ -401,14 +426,16 @@ function AddTelegramBotProgress({ step }: { step: AddTelegramStep }) {
           const complete = index < currentIndex;
           return (
             <div
-              key={item.key}
+              key={item}
               className={
                 active || complete
                   ? "truncate font-medium text-foreground"
                   : "truncate text-muted-foreground"
               }
             >
-              {item.label}
+              {t(($) => {
+                return $.connectors.providerSettings.telegram.steps[item];
+              })}
             </div>
           );
         })}
@@ -422,6 +449,7 @@ function TelegramSetupStatusLine({
 }: {
   setupStatus: TelegramSetupStatus | null;
 }) {
+  const { t } = useTranslation();
   if (!setupStatus) {
     return null;
   }
@@ -430,7 +458,9 @@ function TelegramSetupStatusLine({
     <div className="flex flex-wrap items-center gap-2 rounded-lg border border-border bg-muted/30 px-3 py-2 text-sm text-muted-foreground">
       <span className="inline-flex items-center gap-1.5 font-medium text-foreground">
         <IconCircleCheck className="h-4 w-4 text-green-600" />
-        Token verified
+        {t(($) => {
+          return $.connectors.providerSettings.telegram.token.verified;
+        })}
       </span>
       <span>
         {setupStatus.username ? `@${setupStatus.username}` : setupStatus.id}
@@ -448,13 +478,16 @@ function AddTelegramBotTokenField({
   disabled: boolean;
   onBotTokenChange: (value: string) => void;
 }) {
+  const { t } = useTranslation();
   return (
     <div>
       <label
         htmlFor="telegram-bot-token"
         className="mb-2 block text-sm font-medium text-foreground"
       >
-        Bot token
+        {t(($) => {
+          return $.connectors.providerSettings.telegram.botToken;
+        })}
       </label>
       <div className="relative">
         <IconKey
@@ -493,13 +526,16 @@ function AddTelegramBotAgentField({
   disabled: boolean;
   onAgentChange: (value: string) => void;
 }) {
+  const { t } = useTranslation();
   return (
     <div className="min-w-0">
       <label
         htmlFor="telegram-new-bot-agent"
         className="mb-2 block text-sm font-medium text-foreground"
       >
-        Default agent
+        {t(($) => {
+          return $.connectors.providerSettings.telegram.defaultAgent;
+        })}
       </label>
       <Select
         value={agentId ?? ""}
@@ -549,14 +585,19 @@ function AddTelegramTokenStep({
   setupError: string | null;
   onBotTokenChange: (value: string) => void;
 }) {
+  const { t } = useTranslation();
   return (
     <div className="space-y-4">
       <div className="rounded-lg border border-border bg-muted/30 p-4 text-sm text-muted-foreground">
         <div className="mb-2 font-medium text-foreground">
-          Create a bot token in BotFather
+          {t(($) => {
+            return $.connectors.providerSettings.telegram.token.title;
+          })}
         </div>
         <div className="leading-relaxed">
-          Open{" "}
+          {t(($) => {
+            return $.connectors.providerSettings.telegram.token.open;
+          })}
           <a
             href="https://t.me/BotFather"
             target="_blank"
@@ -566,8 +607,14 @@ function AddTelegramTokenStep({
             {BOT_FATHER_HANDLE}
             <IconExternalLink className="h-3.5 w-3.5" />
           </a>
-          , send <TelegramCommand command="/newbot" />, choose a name and
-          username, then paste the token below.
+          {t(($) => {
+            return $.connectors.providerSettings.telegram.token.send;
+          })}
+          <TelegramCommand command="/newbot" />
+          {t(($) => {
+            return $.connectors.providerSettings.telegram.token
+              .instructionAfter;
+          })}
         </div>
       </div>
       <AddTelegramBotTokenField
@@ -590,23 +637,40 @@ function AddTelegramDomainStep({
   confirmed: boolean;
   setupError: string | null;
 }) {
+  const { t } = useTranslation();
   return (
     <div className="space-y-4">
       <div className="rounded-lg border border-border bg-muted/30 p-4 text-sm text-muted-foreground">
         <div className="mb-2 font-medium text-foreground">
-          Set the Telegram login domain
+          {t(($) => {
+            return $.connectors.providerSettings.telegram.domain.title;
+          })}
         </div>
         <div className="leading-relaxed">
-          In {BOT_FATHER_HANDLE}, send <TelegramCommand command="/setdomain" />,
-          choose this bot, and set the domain to{" "}
-          <CopyableTelegramValue value={domain} />. Telegram uses this domain to
-          allow the connect flow for this bot.
+          {t(
+            ($) => {
+              return $.connectors.providerSettings.telegram.domain
+                .instructionStart;
+            },
+            { botFather: BOT_FATHER_HANDLE },
+          )}
+          <TelegramCommand command="/setdomain" />
+          {t(($) => {
+            return $.connectors.providerSettings.telegram.domain
+              .instructionAfter;
+          })}
+          <CopyableTelegramValue value={domain} />
+          {t(($) => {
+            return $.connectors.providerSettings.telegram.domain.instructionEnd;
+          })}
         </div>
       </div>
       {confirmed ? (
         <div className="flex items-center gap-2 rounded-lg border border-green-600/20 bg-green-600/10 px-3 py-2 text-sm text-green-700 dark:text-green-300">
           <IconCircleCheck className="h-4 w-4" />
-          Domain detected
+          {t(($) => {
+            return $.connectors.providerSettings.telegram.domain.detected;
+          })}
         </div>
       ) : null}
       <SetupError message={setupError} />
@@ -621,23 +685,36 @@ function AddTelegramPrivacyStep({
   confirmed: boolean;
   setupError: string | null;
 }) {
+  const { t } = useTranslation();
   return (
     <div className="space-y-4">
       <div className="rounded-lg border border-border bg-muted/30 p-4 text-sm text-muted-foreground">
         <div className="mb-2 font-medium text-foreground">
-          Optional: turn off privacy mode
+          {t(($) => {
+            return $.connectors.providerSettings.telegram.privacy.title;
+          })}
         </div>
         <div className="leading-relaxed">
-          In {BOT_FATHER_HANDLE}, send <TelegramCommand command="/setprivacy" />
-          , choose this bot, then{" "}
-          <strong className="font-medium">disable</strong> privacy mode. This
-          lets the agent read group context around mentions and replies.
+          {t(
+            ($) => {
+              return $.connectors.providerSettings.telegram.privacy
+                .instructionStart;
+            },
+            { botFather: BOT_FATHER_HANDLE },
+          )}
+          <TelegramCommand command="/setprivacy" />
+          {t(($) => {
+            return $.connectors.providerSettings.telegram.privacy
+              .instructionAfter;
+          })}
         </div>
       </div>
       {confirmed ? (
         <div className="flex items-center gap-2 rounded-lg border border-green-600/20 bg-green-600/10 px-3 py-2 text-sm text-green-700 dark:text-green-300">
           <IconCircleCheck className="h-4 w-4" />
-          Privacy mode is off
+          {t(($) => {
+            return $.connectors.providerSettings.telegram.privacy.off;
+          })}
         </div>
       ) : null}
       <SetupError message={setupError} />
@@ -663,19 +740,32 @@ function AddTelegramCreateStep({
   onAgentChange: (value: string) => void;
 }) {
   const brandName = useGet(brandName$);
+  const { t } = useTranslation();
 
   return (
     <div className="space-y-4">
       <div className="rounded-lg border border-border bg-muted/30 p-4 text-sm text-muted-foreground">
         <div className="mb-2 font-medium text-foreground">
-          Ready to create the integration
+          {t(($) => {
+            return $.connectors.providerSettings.telegram.create.title;
+          })}
         </div>
         <div>
           {setupStatus?.username
-            ? `${brandName} will register @${setupStatus.username} and configure its webhook.`
-            : `${brandName} will register this bot and configure its webhook.`}{" "}
-          After setup, mention the bot in a group or send it a DM to talk with
-          the selected agent.
+            ? t(
+                ($) => {
+                  return $.connectors.providerSettings.telegram.create
+                    .descriptionNamed;
+                },
+                { bot: `@${setupStatus.username}`, brandName },
+              )
+            : t(
+                ($) => {
+                  return $.connectors.providerSettings.telegram.create
+                    .description;
+                },
+                { brandName },
+              )}
         </div>
       </div>
       <AddTelegramBotAgentField
@@ -722,7 +812,10 @@ function getSelectedAddTelegramAgent({
     agentId: selectedAgent?.id,
     selectedAgentLabel: selectedAgent
       ? agentLabel(selectedAgent, defaultAgent)
-      : (defaultAgent.displayName ?? "Select agent"),
+      : (defaultAgent.displayName ??
+        i18n.t(($) => {
+          return $.connectors.providerSettings.telegram.selectAgent;
+        })),
   };
 }
 
@@ -890,24 +983,35 @@ function AddTelegramBotDialogFrame({
   onCancel,
   onAgentChange,
 }: AddTelegramBotDialogFrameProps) {
+  const { t } = useTranslation();
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogTrigger asChild>
         <Button type="button" size="sm" disabled={disabled}>
           <IconPlus size={16} />
-          Add bot
+          {t(($) => {
+            return $.connectors.providerSettings.telegram.addBot;
+          })}
         </Button>
       </DialogTrigger>
       <DialogContent className="sm:max-w-[640px]">
         <DialogHeader>
-          <DialogTitle>Add Telegram bot</DialogTitle>
+          <DialogTitle>
+            {t(($) => {
+              return $.connectors.providerSettings.telegram.addTitle;
+            })}
+          </DialogTitle>
           <DialogDescription>
-            Complete each BotFather step, then create the workspace bot.
+            {t(($) => {
+              return $.connectors.providerSettings.telegram.addDescription;
+            })}
           </DialogDescription>
         </DialogHeader>
         <form
           className="flex flex-col gap-4"
-          aria-label="Register Telegram bot"
+          aria-label={t(($) => {
+            return $.connectors.providerSettings.telegram.registerAria;
+          })}
           onSubmit={(event) => {
             event.preventDefault();
           }}
@@ -1169,6 +1273,7 @@ function AddTelegramBotDialogFooter({
   onNext: () => void;
   onAddBot: () => void;
 }) {
+  const { t } = useTranslation();
   const isTokenStep = step === "token";
   const isCreateStep = step === "create";
 
@@ -1181,11 +1286,15 @@ function AddTelegramBotDialogFooter({
         onClick={isTokenStep ? onCancel : onBack}
       >
         {isTokenStep ? (
-          "Cancel"
+          t(($) => {
+            return $.connectors.actions.cancel;
+          })
         ) : (
           <span className="inline-flex items-center gap-2">
             <IconArrowLeft size={16} />
-            Back
+            {t(($) => {
+              return $.connectors.providerSettings.telegram.steps.back;
+            })}
           </span>
         )}
       </Button>
@@ -1201,7 +1310,13 @@ function AddTelegramBotDialogFooter({
           ) : (
             <IconPlus size={16} />
           )}
-          {adding ? "Adding..." : "Add bot"}
+          {adding
+            ? t(($) => {
+                return $.connectors.providerSettings.telegram.adding;
+              })
+            : t(($) => {
+                return $.connectors.providerSettings.telegram.addBot;
+              })}
         </Button>
       ) : (
         <Button
@@ -1213,11 +1328,15 @@ function AddTelegramBotDialogFooter({
           {checkingTarget ? (
             <>
               <IconLoader2 size={16} className="animate-spin" />
-              Checking...
+              {t(($) => {
+                return $.connectors.providerSettings.telegram.checking;
+              })}
             </>
           ) : (
             <>
-              Next
+              {t(($) => {
+                return $.connectors.providerSettings.telegram.steps.next;
+              })}
               <IconArrowRight size={16} />
             </>
           )}
@@ -1292,6 +1411,7 @@ function TelegramBotAgentSelect({
   defaultAgent: DefaultAgentLabel;
   disabled: boolean;
 }) {
+  const { t } = useTranslation();
   const setSavingBotId = useSet(setTelegramSavingBotId$);
   const pageSignal = useGet(pageSignal$);
   const [, updateBotAgent] = useLoadableSet(updateTelegramBotAgent$);
@@ -1319,10 +1439,19 @@ function TelegramBotAgentSelect({
       })}
     >
       <SelectTrigger
-        aria-label={`Default agent for ${bot.username ?? bot.id}`}
+        aria-label={t(
+          ($) => {
+            return $.connectors.providerSettings.telegram.agentAria;
+          },
+          { bot: bot.username ?? bot.id },
+        )}
         className="h-9"
       >
-        <SelectValue placeholder="Select agent" />
+        <SelectValue
+          placeholder={t(($) => {
+            return $.connectors.providerSettings.telegram.selectAgent;
+          })}
+        />
       </SelectTrigger>
       <SelectContent>
         {options.map((agent) => {
@@ -1348,6 +1477,7 @@ function TelegramReinstallAction({
   disabled: boolean;
   reinstalling: boolean;
 }) {
+  const { t } = useTranslation();
   const setReinstallDialogBotId = useSet(setTelegramReinstallDialogBotId$);
   const isOfficial = isOfficialTelegramBot(bot);
   const tokenInvalid = !isOfficial && bot.tokenStatus === "invalid";
@@ -1372,7 +1502,13 @@ function TelegramReinstallAction({
       ) : (
         <IconRefresh size={15} />
       )}
-      {reinstalling ? "Reinstalling..." : "Reinstall"}
+      {reinstalling
+        ? t(($) => {
+            return $.connectors.providerSettings.telegram.reinstalling;
+          })
+        : t(($) => {
+            return $.connectors.providerSettings.telegram.reinstall;
+          })}
     </Button>
   );
 }
@@ -1384,6 +1520,7 @@ function TelegramConnectAction({
   bot: TelegramBot;
   disabled: boolean;
 }) {
+  const { t } = useTranslation();
   if (bot.isConnected) {
     return null;
   }
@@ -1397,7 +1534,9 @@ function TelegramConnectAction({
         disabled
         className="h-9 justify-center"
       >
-        Connect
+        {t(($) => {
+          return $.connectors.actions.connect;
+        })}
       </Button>
     );
   }
@@ -1410,7 +1549,9 @@ function TelegramConnectAction({
           searchParams: new URLSearchParams({ bot: bot.id }),
         }}
       >
-        Connect
+        {t(($) => {
+          return $.connectors.actions.connect;
+        })}
       </Link>
     </Button>
   );
@@ -1431,6 +1572,7 @@ function TelegramMoreActions({
   unlinking: boolean;
   uninstalling: boolean;
 }) {
+  const { t } = useTranslation();
   const setUnlinkingBotId = useSet(setTelegramUnlinkingBotId$);
   const setUninstallDialogBotId = useSet(setTelegramUninstallDialogBotId$);
   const pageSignal = useGet(pageSignal$);
@@ -1449,7 +1591,12 @@ function TelegramMoreActions({
           type="button"
           disabled={disabled}
           className="shrink-0 rounded p-2 text-muted-foreground hover:bg-muted hover:text-foreground transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50"
-          aria-label={`More options for ${botLabel}`}
+          aria-label={t(
+            ($) => {
+              return $.connectors.providerSettings.telegram.moreOptions;
+            },
+            { bot: botLabel },
+          )}
         >
           <IconDotsVertical size={16} stroke={1.5} />
         </button>
@@ -1458,7 +1605,12 @@ function TelegramMoreActions({
         {bot.isConnected ? (
           <button
             type="button"
-            aria-label={`Disconnect ${botLabel}`}
+            aria-label={t(
+              ($) => {
+                return $.connectors.providerSettings.telegram.disconnectAria;
+              },
+              { bot: botLabel },
+            )}
             disabled={unlinking}
             className="flex w-full items-center gap-2 rounded-md px-3 py-2 text-left text-sm transition-colors hover:bg-accent hover:text-accent-foreground disabled:pointer-events-none disabled:opacity-50"
             onClick={onDomEventFn(async () => {
@@ -1467,20 +1619,37 @@ function TelegramMoreActions({
               setUnlinkingBotId(null);
             })}
           >
-            {unlinking ? "Disconnecting..." : "Disconnect"}
+            {unlinking
+              ? t(($) => {
+                  return $.connectors.actions.disconnecting;
+                })
+              : t(($) => {
+                  return $.connectors.actions.disconnect;
+                })}
           </button>
         ) : null}
         {canUninstall ? (
           <button
             type="button"
-            aria-label={`Uninstall ${botLabel}`}
+            aria-label={t(
+              ($) => {
+                return $.connectors.providerSettings.telegram.uninstallAria;
+              },
+              { bot: botLabel },
+            )}
             disabled={uninstalling}
             className="flex w-full items-center gap-2 rounded-md px-3 py-2 text-left text-sm text-destructive transition-colors hover:bg-accent hover:text-accent-foreground disabled:pointer-events-none disabled:opacity-50"
             onClick={() => {
               setUninstallDialogBotId(bot.id);
             }}
           >
-            {uninstalling ? "Uninstalling..." : "Uninstall"}
+            {uninstalling
+              ? t(($) => {
+                  return $.connectors.actions.uninstalling;
+                })
+              : t(($) => {
+                  return $.connectors.actions.uninstall;
+                })}
           </button>
         ) : null}
       </PopoverContent>
@@ -1503,7 +1672,12 @@ function TelegramBotActions({
   uninstalling: boolean;
   reinstalling: boolean;
 }) {
-  const botLabel = bot.username ? `@${bot.username}` : "Telegram bot";
+  const { t } = useTranslation();
+  const botLabel = bot.username
+    ? `@${bot.username}`
+    : t(($) => {
+        return $.connectors.providerSettings.telegram.botFallback;
+      });
   const isOfficial = isOfficialTelegramBot(bot);
   const tokenInvalid = !isOfficial && bot.tokenStatus === "invalid";
   const connectDisabled =
@@ -1546,6 +1720,7 @@ function TelegramBotRow({
   disabled: boolean;
 }) {
   const brandName = useGet(brandName$);
+  const { t } = useTranslation();
   const savingBotId = useGet(telegramSavingBotId$);
   const unlinkingBotId = useGet(telegramUnlinkingBotId$);
   const uninstallingBotId = useGet(telegramUninstallingBotId$);
@@ -1563,10 +1738,14 @@ function TelegramBotRow({
   const botTitle = isOfficial
     ? bot.username
       ? `@${bot.username}`
-      : "Zero official bot"
+      : t(($) => {
+          return $.connectors.providerSettings.telegram.officialBot;
+        })
     : bot.username
       ? `@${bot.username}`
-      : "Telegram bot";
+      : t(($) => {
+          return $.connectors.providerSettings.telegram.botFallback;
+        });
 
   return (
     <div className="flex flex-col gap-4 px-4 py-4 sm:flex-row sm:items-center sm:px-5">
@@ -1581,16 +1760,27 @@ function TelegramBotRow({
           </div>
           {isOfficial ? (
             <div className="mt-1 text-sm text-muted-foreground">
-              Official bot provided by {brandName}.
+              {t(
+                ($) => {
+                  return $.connectors.providerSettings.telegram
+                    .officialDescription;
+                },
+                { brandName },
+              )}
             </div>
           ) : bot.tokenStatus === "invalid" ? (
             <div className="mt-1 text-sm text-muted-foreground">
-              Reinstall the bot with a fresh token from BotFather.
+              {t(($) => {
+                return $.connectors.providerSettings.telegram
+                  .invalidTokenDescription;
+              })}
             </div>
           ) : null}
           {isOfficial && bot.official?.configured === false ? (
             <div className="mt-1 text-sm text-muted-foreground">
-              Official bot configuration is missing.
+              {t(($) => {
+                return $.connectors.providerSettings.telegram.officialMissing;
+              })}
             </div>
           ) : null}
         </div>
@@ -1625,6 +1815,7 @@ function TelegramBotRow({
 }
 
 function TelegramReinstallDialog({ bot }: { bot: TelegramBot | null }) {
+  const { t } = useTranslation();
   const token = useGet(telegramReinstallTokenForm$);
   const reinstallingBotId = useGet(telegramReinstallingBotId$);
   const setToken = useSet(setTelegramReinstallTokenForm$);
@@ -1634,7 +1825,11 @@ function TelegramReinstallDialog({ bot }: { bot: TelegramBot | null }) {
   const [, reinstallBot] = useLoadableSet(reinstallTelegramBot$);
   const reinstalling = !!bot && reinstallingBotId === bot.id;
   const canSubmit = !!bot && token.trim().length > 0 && !reinstalling;
-  const botLabel = bot?.username ? `@${bot.username}` : "this bot";
+  const botLabel = bot?.username
+    ? `@${bot.username}`
+    : t(($) => {
+        return $.connectors.providerSettings.telegram.reinstallTargetFallback;
+      });
 
   return (
     <Dialog
@@ -1647,10 +1842,19 @@ function TelegramReinstallDialog({ bot }: { bot: TelegramBot | null }) {
     >
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>Reinstall Telegram bot</DialogTitle>
+          <DialogTitle>
+            {t(($) => {
+              return $.connectors.providerSettings.telegram.reinstallTitle;
+            })}
+          </DialogTitle>
           <DialogDescription>
-            Paste the fresh BotFather token for {botLabel}. The token must
-            belong to this same bot.
+            {t(
+              ($) => {
+                return $.connectors.providerSettings.telegram
+                  .reinstallDescription;
+              },
+              { bot: botLabel },
+            )}
           </DialogDescription>
         </DialogHeader>
         <form
@@ -1681,7 +1885,9 @@ function TelegramReinstallDialog({ bot }: { bot: TelegramBot | null }) {
               htmlFor="telegram-reinstall-token"
               className="mb-2 block text-sm font-medium text-foreground"
             >
-              New bot token
+              {t(($) => {
+                return $.connectors.providerSettings.telegram.newBotToken;
+              })}
             </label>
             <div className="relative">
               <IconKey
@@ -1711,7 +1917,9 @@ function TelegramReinstallDialog({ bot }: { bot: TelegramBot | null }) {
                 setReinstallDialogBotId(null);
               }}
             >
-              Cancel
+              {t(($) => {
+                return $.connectors.actions.cancel;
+              })}
             </Button>
             <Button type="submit" disabled={!canSubmit} className="gap-2">
               {reinstalling ? (
@@ -1719,7 +1927,13 @@ function TelegramReinstallDialog({ bot }: { bot: TelegramBot | null }) {
               ) : (
                 <IconRefresh size={16} />
               )}
-              {reinstalling ? "Reinstalling..." : "Reinstall"}
+              {reinstalling
+                ? t(($) => {
+                    return $.connectors.providerSettings.telegram.reinstalling;
+                  })
+                : t(($) => {
+                    return $.connectors.providerSettings.telegram.reinstall;
+                  })}
             </Button>
           </DialogFooter>
         </form>
@@ -1729,6 +1943,7 @@ function TelegramReinstallDialog({ bot }: { bot: TelegramBot | null }) {
 }
 
 function TelegramUninstallDialog({ bot }: { bot: TelegramBot | null }) {
+  const { t } = useTranslation();
   const setUninstallDialogBotId = useSet(setTelegramUninstallDialogBotId$);
   const setUninstallingBotId = useSet(setTelegramUninstallingBotId$);
   const uninstallingBotId = useGet(telegramUninstallingBotId$);
@@ -1747,11 +1962,26 @@ function TelegramUninstallDialog({ bot }: { bot: TelegramBot | null }) {
     >
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>Uninstall Telegram bot?</DialogTitle>
+          <DialogTitle>
+            {t(($) => {
+              return $.connectors.providerSettings.telegram.uninstallTitle;
+            })}
+          </DialogTitle>
           <DialogDescription>
-            This removes {bot?.username ? `@${bot.username}` : "this bot"} from
-            the workspace and disconnects Telegram access for users who use it.
-            This action cannot be undone.
+            {t(
+              ($) => {
+                return $.connectors.providerSettings.telegram
+                  .uninstallDescription;
+              },
+              {
+                bot: bot?.username
+                  ? `@${bot.username}`
+                  : t(($) => {
+                      return $.connectors.providerSettings.telegram
+                        .uninstallTargetFallback;
+                    }),
+              },
+            )}
           </DialogDescription>
         </DialogHeader>
         <DialogFooter>
@@ -1762,7 +1992,9 @@ function TelegramUninstallDialog({ bot }: { bot: TelegramBot | null }) {
               setUninstallDialogBotId(null);
             }}
           >
-            Cancel
+            {t(($) => {
+              return $.connectors.actions.cancel;
+            })}
           </Button>
           <Button
             variant="destructive"
@@ -1781,7 +2013,13 @@ function TelegramUninstallDialog({ bot }: { bot: TelegramBot | null }) {
               setUninstallingBotId(null);
             })}
           >
-            {uninstalling ? "Uninstalling..." : "Uninstall"}
+            {uninstalling
+              ? t(($) => {
+                  return $.connectors.actions.uninstalling;
+                })
+              : t(($) => {
+                  return $.connectors.actions.uninstall;
+                })}
           </Button>
         </DialogFooter>
       </DialogContent>
@@ -1802,6 +2040,7 @@ function TelegramBotList({
   isAdmin: boolean;
   agentsLoading: boolean;
 }) {
+  const { t } = useTranslation();
   if (bots.length === 0) {
     return (
       <div className="px-6 py-12 text-center">
@@ -1809,10 +2048,14 @@ function TelegramBotList({
           <img src={telegramIconImg} alt="" className="h-8 w-8" />
         </div>
         <div className="text-sm font-medium text-foreground">
-          No Telegram bots yet
+          {t(($) => {
+            return $.connectors.providerSettings.telegram.emptyTitle;
+          })}
         </div>
         <div className="mt-1 text-sm text-muted-foreground">
-          Add a bot token to start routing Telegram messages to an agent.
+          {t(($) => {
+            return $.connectors.providerSettings.telegram.emptyDescription;
+          })}
         </div>
       </div>
     );
@@ -1858,10 +2101,15 @@ function TelegramBotsCard({
   loading: boolean;
   hasError: boolean;
 }) {
+  const { t } = useTranslation();
   return (
     <section className="zero-card overflow-hidden">
       <div className="flex items-center justify-between gap-3 border-b border-border/50 px-4 py-3">
-        <h2 className="text-sm font-medium text-foreground">Telegram bots</h2>
+        <h2 className="text-sm font-medium text-foreground">
+          {t(($) => {
+            return $.connectors.providerSettings.telegram.bots;
+          })}
+        </h2>
         {!hasError && loading ? (
           <AddTelegramBotButtonSkeleton />
         ) : !hasError ? (
@@ -1884,6 +2132,7 @@ function TelegramBotsCard({
 }
 
 export function ZeroTelegramSettingsPage() {
+  const { t } = useTranslation();
   const botsLoadable = useLastLoadable(telegramBots$);
   const agentsLoadable = useLastLoadable(sortedAgents$);
   const defaultAgentIdLoadable = useLastLoadable(defaultAgentId$);
@@ -1930,9 +2179,18 @@ export function ZeroTelegramSettingsPage() {
               size="sm"
               className="h-8 gap-2 px-2 text-muted-foreground hover:text-foreground"
             >
-              <Link pathname={ROUTES.works} title="Back to integrations">
+              <Link
+                pathname={ROUTES.works}
+                title={t(($) => {
+                  return $.connectors.providerSettings.telegram
+                    .backToIntegrations;
+                })}
+              >
                 <IconArrowLeft size={17} stroke={1.8} />
-                Back to integrations
+                {t(($) => {
+                  return $.connectors.providerSettings.telegram
+                    .backToIntegrations;
+                })}
               </Link>
             </Button>
           </div>
@@ -1948,7 +2206,10 @@ export function ZeroTelegramSettingsPage() {
                   </h1>
                 </div>
                 <p className="mt-0.5 text-sm text-muted-foreground">
-                  Manage bot routing for this workspace
+                  {t(($) => {
+                    return $.connectors.providerSettings.telegram
+                      .pageDescription;
+                  })}
                 </p>
               </div>
             </div>
@@ -1960,7 +2221,9 @@ export function ZeroTelegramSettingsPage() {
         <div className="mx-auto flex max-w-[900px] flex-col gap-4">
           {hasError ? (
             <div className="zero-card px-6 py-10 text-center text-sm text-destructive">
-              Couldn&apos;t load Telegram settings.
+              {t(($) => {
+                return $.connectors.providerSettings.telegram.loadError;
+              })}
             </div>
           ) : loading ? (
             <TelegramSettingsSkeleton />

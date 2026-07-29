@@ -234,6 +234,32 @@ impl CandidateState {
 /// source is never modified. Files at or below 64 MiB are left unchanged. For
 /// larger files, selection reads only the canonical first record and the final
 /// bounded window that can still produce an accepted candidate.
+///
+/// # Selection contract
+///
+/// An eligible candidate contains the exact canonical first metadata record,
+/// followed by the exact raw records from the native turn containing the newest
+/// `compacted` record through the EOF observed during selection. The compacting
+/// turn and every retained later turn must preserve a real user-message
+/// boundary, compatible turn context, and a native delimiter. Either a matching
+/// turn completion or the next turn start can delimit a turn.
+///
+/// Every newer `compacted` record supersedes the preceding candidate. If the
+/// newest boundary is invalid, selection fails closed instead of falling back
+/// to an older generation. Retained rollbacks, unsupported rollout or
+/// response-item shapes, inconsistent turn relationships, and changes to the
+/// observed EOF or source length likewise make the source
+/// [`CodexHistorySelection::Ineligible`].
+///
+/// `Ineligible` is an expected eligibility or compatibility outcome that lets
+/// the caller use its ordinary checkpoint path. The selector only chooses an
+/// in-memory candidate: staging, checkpoint commit, and live-file reconciliation
+/// remain the caller's responsibility.
+///
+/// # Errors
+///
+/// Returns an [`io::Error`] when an underlying file metadata, seek, or read
+/// operation fails.
 pub fn select_codex_compact_generation(
     source: &mut File,
     expected_thread_id: &str,
