@@ -47,7 +47,7 @@ describe("organization general settings", () => {
       return respond(200, {
         id: "org_1",
         name: "New Name",
-        slug: "new-slug",
+        slug: "old-slug",
         role: "admin",
       });
     });
@@ -62,23 +62,20 @@ describe("organization general settings", () => {
     });
 
     await fill(await screen.findByDisplayValue("Old Name"), "New Name");
-    await fill(screen.getByDisplayValue("old-slug"), "new-slug");
+    expect(screen.queryByText("Slug")).not.toBeInTheDocument();
+    expect(screen.queryByDisplayValue("old-slug")).not.toBeInTheDocument();
     expect(screen.getByText("Save changes")).toBeInTheDocument();
     expect(screen.getByText("Discard")).toBeInTheDocument();
 
     click(screen.getByText("Discard"));
     expect(screen.getByDisplayValue("Old Name")).toBeInTheDocument();
-    expect(screen.getByDisplayValue("old-slug")).toBeInTheDocument();
 
     await fill(screen.getByDisplayValue("Old Name"), "New Name");
-    await fill(screen.getByDisplayValue("old-slug"), "new-slug");
     click(screen.getByText("Save changes"));
 
     await waitFor(() => {
       expect(capturedBody).toStrictEqual({
         name: "New Name",
-        slug: "new-slug",
-        force: true,
       });
     });
   });
@@ -91,22 +88,22 @@ describe("organization general settings", () => {
       role: "admin",
     });
     context.mocks.api(zeroOrgContract.update, ({ respond }) => {
-      return respond(409, {
+      return respond(500, {
         error: {
-          code: "ORG_SLUG_TAKEN",
-          message: "Workspace slug is already taken",
+          code: "INTERNAL_SERVER_ERROR",
+          message: "Could not update workspace",
         },
       });
     });
 
     await openGeneralTab();
 
-    await fill(screen.getByDisplayValue("old-slug"), "taken-slug");
+    await fill(screen.getByDisplayValue("Old Name"), "New Name");
     click(screen.getByText("Save changes"));
 
     await waitFor(() => {
       expect(
-        screen.getByText("Workspace slug is already taken"),
+        screen.getByText("Could not update workspace"),
       ).toBeInTheDocument();
       expect(screen.getByText("Save changes")).toBeInTheDocument();
     });

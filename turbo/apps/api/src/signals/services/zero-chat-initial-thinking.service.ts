@@ -25,10 +25,7 @@ import {
   visibleChatEventCondition,
 } from "./zero-chat-message-shared.service";
 import { insertChatEvent } from "./zero-chat-event.service";
-import {
-  chatEventTypeIn,
-  chatEventTypeSql,
-} from "./zero-chat-event-type.service";
+import { chatEventTypeIn } from "./zero-chat-event-type.service";
 import { queuedUserMessageExists } from "./zero-chat-queued-message.service";
 import {
   projectUserMessage,
@@ -86,7 +83,7 @@ async function loadThinkingContextMessages(args: {
 }): Promise<ThinkingContextMessage[]> {
   const rows = await args.db
     .select({
-      eventType: chatEventTypeSql().as("event_type"),
+      eventType: chatMessages.eventType,
       content: chatMessages.content,
       userMessage: chatMessages.userMessage,
       createdAt: chatMessages.createdAt,

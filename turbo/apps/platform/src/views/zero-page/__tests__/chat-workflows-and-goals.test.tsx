@@ -44,6 +44,46 @@ import {
 } from "./chat-lifecycle-test-helpers.ts";
 
 describe("chat lifecycle", () => {
+  it("renders a rejected goal continuation as a goal artifact without exposing its machine reason", async () => {
+    const threadId = "thread-rejected-goal-artifact";
+    const objectiveBrief = "Keep the launch moving";
+    const machineReason = "internal provider credential id abc123 is invalid";
+    mockChatLifecycle(context, {
+      threadId,
+      threadTitle: "Rejected goal artifact",
+      chatEvents: [
+        {
+          id: "msg-rejected-goal",
+          role: "user",
+          eventType: "input.rejected",
+          content: objectiveBrief,
+          userMessage: {
+            version: 1,
+            parts: [{ type: "text", text: objectiveBrief }],
+          },
+          error: machineReason,
+          goalSnapshot: { objectiveBrief },
+          createdAt: "2026-07-29T10:00:00Z",
+        },
+      ],
+    });
+
+    detachedSetupPage({ context, path: `/chats/${threadId}` });
+
+    await waitFor(() => {
+      expect(screen.getByLabelText("Goal")).toBeInTheDocument();
+      expect(screen.getByText(objectiveBrief)).toBeInTheDocument();
+    });
+    expect(screen.queryByText(machineReason)).not.toBeInTheDocument();
+    const goalArtifact = screen
+      .getByText(objectiveBrief)
+      .closest('[data-role="user"]');
+    if (!(goalArtifact instanceof HTMLElement)) {
+      throw new Error("Expected the rejected goal artifact");
+    }
+    expect(within(goalArtifact).getByLabelText("Goal")).toBeInTheDocument();
+  });
+
   it("opens run logs from assistant message actions", async () => {
     const user = userEvent.setup({ delay: null });
     const threadId = "message-run-logs-thread";

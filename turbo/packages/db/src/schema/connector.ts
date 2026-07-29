@@ -22,6 +22,7 @@ export const connectors = pgTable(
   "connectors",
   {
     id: uuid("id").defaultRandom().primaryKey(),
+    // TODO(#23619): Rename the property and column in the persistence phase.
     type: varchar("type", { length: 64 }).notNull(), // "github"
     authMethod: varchar("auth_method", { length: 50 }).notNull(), // "oauth"
     storageVersion: bigint("storage_version", { mode: "number" }).notNull(),

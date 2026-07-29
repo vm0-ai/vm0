@@ -1,7 +1,7 @@
 import { connectorAuthMethodIdSchema } from "@vm0/api-contracts/contracts/connector-identity";
 import { z } from "zod";
 import {
-  connectorRefSchema,
+  connectorSlugSchema,
   connectorCatalogVersionSchema,
   privateNameSchema,
 } from "./common";
@@ -53,7 +53,8 @@ const categorySourceSchema = z
 export const catalogSourceSchema = z
   .object({
     catalogVersion: connectorCatalogVersionSchema,
-    connectorRefs: z.array(connectorRefSchema).min(1),
+    // TODO(#23619): Rename only with the external catalog source format.
+    connectorRefs: z.array(connectorSlugSchema).min(1),
     categoryMetadata: z
       .object({
         categories: z.array(categorySourceSchema).min(1),
@@ -261,7 +262,8 @@ const connectorAuthMethodSourceSchema = z
 
 export const connectorSourceSchema = z
   .object({
-    ref: connectorRefSchema,
+    // TODO(#23619): Rename only with the external connector source format.
+    ref: connectorSlugSchema,
     label: z.string().min(1),
     description: z.string().min(1),
     category: connectorCategoryIdSchema,
@@ -502,10 +504,10 @@ function validateRefreshableSecrets(
 }
 
 function validateAuthMethodSemantics(args: {
-  readonly connectorRef: string;
+  readonly connectorSlug: string;
   readonly authMethod: ConnectorAuthMethodSource;
 }): void {
-  const methodRef = `${args.connectorRef}/${args.authMethod.id}`;
+  const methodRef = `${args.connectorSlug}/${args.authMethod.id}`;
   const storage = authStorageSets(args.authMethod);
   validateStorageDeclarations(methodRef, args.authMethod, storage);
   validateManualGrant(methodRef, args.authMethod, storage);
@@ -525,7 +527,7 @@ export function validateConnectorSourceSemantics(
     label: `${source.ref} auth method id`,
   });
   for (const authMethod of source.authMethods) {
-    validateAuthMethodSemantics({ connectorRef: source.ref, authMethod });
+    validateAuthMethodSemantics({ connectorSlug: source.ref, authMethod });
   }
 }
 

@@ -23,7 +23,7 @@ describe("usage insight test state", () => {
     );
     await seedOwnedConnectorSecret(context, {
       ...fixture,
-      connectorRef: "fixture-connector",
+      connectorSlug: "fixture-connector",
       authMethod: "api-token",
       storageVersion: 1,
       name: "FIXTURE_CONNECTOR_TOKEN",

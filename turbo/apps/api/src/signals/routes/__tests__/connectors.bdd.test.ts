@@ -61,7 +61,7 @@ function customConnectorBody(slug: string) {
   };
 }
 
-function connectorByType(
+function connectorBySlug(
   connectors: readonly ConnectorResponse[],
   type: ConnectorResponse["type"],
 ): ConnectorResponse | undefined {
@@ -96,11 +96,11 @@ function redirectLocation(response: RedirectResponseLike): URL {
 
 function expectConnectorErrorRedirect(
   response: RedirectResponseLike,
-  args: { readonly type: string; readonly message: string },
+  args: { readonly connectorSlug: string; readonly message: string },
 ): void {
   const url = redirectLocation(response);
   expect(url.pathname).toBe("/connector/error");
-  expect(url.searchParams.get("type")).toBe(args.type);
+  expect(url.searchParams.get("type")).toBe(args.connectorSlug);
   expect(url.searchParams.get("message")).toBe(args.message);
 }
 
@@ -127,7 +127,7 @@ describe("CONN-01 and CHAIN-CONNECTOR: connector discovery and manual grant life
     );
 
     await expect(
-      authOrgApi.readEnabledConnectorTypes(actor, agent.agentId),
+      authOrgApi.readEnabledConnectorSlugs(actor, agent.agentId),
     ).resolves.toContain("openai");
   });
 
@@ -144,7 +144,7 @@ describe("CONN-01 and CHAIN-CONNECTOR: connector discovery and manual grant life
     });
 
     await expect(
-      authOrgApi.readEnabledConnectorTypes(actor, body.agentId),
+      authOrgApi.readEnabledConnectorSlugs(actor, body.agentId),
     ).resolves.toContain("openai");
   });
 
@@ -178,7 +178,7 @@ describe("CONN-01 and CHAIN-CONNECTOR: connector discovery and manual grant life
     });
     expect(openaiSearch?.authMethods).toStrictEqual(["api-token"]);
 
-    const missingOpenAi = await connectorsApi.requestReadConnectorByType(
+    const missingOpenAi = await connectorsApi.requestReadConnectorBySlug(
       actor,
       "openai",
       [404],
@@ -210,7 +210,7 @@ describe("CONN-01 and CHAIN-CONNECTOR: connector discovery and manual grant life
     expect(typeof connected.id).toBe("string");
     expectNoVisibleSecret(connected, "sk-bdd-manual-secret");
 
-    const readBack = await connectorsApi.readConnectorByType(actor, "openai");
+    const readBack = await connectorsApi.readConnectorBySlug(actor, "openai");
     expect(readBack).toMatchObject({
       type: "openai",
       authMethod: "api-token",
@@ -221,7 +221,7 @@ describe("CONN-01 and CHAIN-CONNECTOR: connector discovery and manual grant life
     expectNoVisibleSecret(readBack, "sk-bdd-manual-secret");
 
     const listAfterConnect = await connectorsApi.listConnectors(actor);
-    expect(connectorByType(listAfterConnect.connectors, "openai")?.id).toBe(
+    expect(connectorBySlug(listAfterConnect.connectors, "openai")?.id).toBe(
       connected.id,
     );
     expect(listAfterConnect.connectorProvidedBindings).toContainEqual(
@@ -249,7 +249,7 @@ describe("CONN-01 and CHAIN-CONNECTOR: connector discovery and manual grant life
 
     const foreignConnectorId = await seedConnectorStorageRow(context, {
       authMethod: "oauth",
-      connectorRef: "github",
+      connectorSlug: "github",
       orgId: actor.orgId ?? "",
       storageVersion: 1,
       userId: actor.userId,
@@ -282,9 +282,9 @@ describe("CONN-01 and CHAIN-CONNECTOR: connector discovery and manual grant life
       storedScopes: [],
     });
 
-    await connectorsApi.deleteConnectorByType(actor, "openai");
+    await connectorsApi.deleteConnectorBySlug(actor, "openai");
 
-    const deleted = await connectorsApi.requestReadConnectorByType(
+    const deleted = await connectorsApi.requestReadConnectorBySlug(
       actor,
       "openai",
       [404],
@@ -335,7 +335,7 @@ describe("CONN-02: OAuth start and callback", () => {
       expect.arrayContaining([...CONNECTOR_OAUTH_COOKIE_CLEARS]),
     );
     await expect(
-      connectorsApi.readConnectorByType(actor, "github"),
+      connectorsApi.readConnectorBySlug(actor, "github"),
     ).resolves.toMatchObject({
       type: "github",
       externalUsername: "bdd-github-user",
@@ -374,7 +374,7 @@ describe("CONN-02: OAuth start and callback", () => {
       status: "error",
       message: "Provider denied access",
     });
-    const failedConnector = await connectorsApi.requestReadConnectorByType(
+    const failedConnector = await connectorsApi.requestReadConnectorBySlug(
       failedActor,
       "github",
       [404],
@@ -404,7 +404,7 @@ describe("CONN-02: OAuth start and callback", () => {
       state,
     });
 
-    const connected = await connectorsApi.readConnectorByType(actor, "github");
+    const connected = await connectorsApi.readConnectorBySlug(actor, "github");
     expect(connected).toMatchObject({
       type: "github",
       authMethod: "oauth",
@@ -429,7 +429,7 @@ describe("CONN-02: OAuth start and callback", () => {
       code: "github-replay-code",
       state,
     });
-    const afterReplay = await connectorsApi.readConnectorByType(
+    const afterReplay = await connectorsApi.readConnectorBySlug(
       actor,
       "github",
     );
@@ -448,7 +448,7 @@ describe("CONN-02: OAuth start and callback", () => {
       error_description: "Provider denied access",
       state: failedState,
     });
-    const failedConnector = await connectorsApi.requestReadConnectorByType(
+    const failedConnector = await connectorsApi.requestReadConnectorBySlug(
       failedActor,
       "github",
       [404],
@@ -486,7 +486,7 @@ describe("CONN-02: OAuth start and callback", () => {
     expect(codeVerifier).toStrictEqual(expect.any(String));
     expect(codeVerifier?.length).toBeGreaterThanOrEqual(43);
 
-    const connected = await connectorsApi.readConnectorByType(actor, "datadog");
+    const connected = await connectorsApi.readConnectorBySlug(actor, "datadog");
     expect(connected).toMatchObject({
       type: "datadog",
       authMethod: "oauth",
@@ -606,18 +606,18 @@ describe("CONN-02: OAuth device authorization", () => {
       oauthScopes: ["read"],
     });
 
-    const readBack = await connectorsApi.readConnectorByType(
+    const readBack = await connectorsApi.readConnectorBySlug(
       actor,
       "test-oauth-device",
     );
     expect(readBack.id).toBe(poll.connector.id);
 
     const listed = await connectorsApi.listConnectors(actor);
-    expect(connectorByType(listed.connectors, "test-oauth-device")?.id).toBe(
+    expect(connectorBySlug(listed.connectors, "test-oauth-device")?.id).toBe(
       poll.connector.id,
     );
 
-    await connectorsApi.deleteConnectorByType(actor, "test-oauth-device");
+    await connectorsApi.deleteConnectorBySlug(actor, "test-oauth-device");
     await connectorsApi.deleteFeatureSwitches(actor);
   });
 
@@ -676,7 +676,7 @@ describe("CONN-02: OAuth device authorization", () => {
     clearMockNow();
 
     const listed = await connectorsApi.listConnectors(actor);
-    expect(connectorByType(listed.connectors, "stripe")?.id).toBe(
+    expect(connectorBySlug(listed.connectors, "stripe")?.id).toBe(
       poll.connector.id,
     );
     expect(listed.connectorProvidedBindings).toContainEqual(
@@ -688,7 +688,7 @@ describe("CONN-02: OAuth device authorization", () => {
       }),
     );
 
-    await connectorsApi.deleteConnectorByType(actor, "stripe");
+    await connectorsApi.deleteConnectorBySlug(actor, "stripe");
     await connectorsApi.deleteFeatureSwitches(actor);
   });
 
@@ -916,7 +916,7 @@ describe("CONN-02: OAuth device authorization", () => {
       "test-device:test-oauth-device-api-client:read:test",
     );
 
-    await connectorsApi.deleteConnectorByType(actor, "test-oauth-device");
+    await connectorsApi.deleteConnectorBySlug(actor, "test-oauth-device");
 
     const completed = await connectorsApi.pollDeviceAuth(
       actor,
@@ -938,13 +938,13 @@ describe("CONN-02: OAuth device authorization", () => {
     });
     expect(JSON.stringify(completed)).not.toContain("test-device-access");
 
-    const readBack = await connectorsApi.readConnectorByType(
+    const readBack = await connectorsApi.readConnectorBySlug(
       actor,
       "test-oauth-device",
     );
     expect(readBack.id).toBe(completed.connector.id);
     const listed = await connectorsApi.listConnectors(actor);
-    expect(connectorByType(listed.connectors, "test-oauth-device")?.id).toBe(
+    expect(connectorBySlug(listed.connectors, "test-oauth-device")?.id).toBe(
       completed.connector.id,
     );
 
@@ -964,7 +964,7 @@ describe("CONN-02: OAuth device authorization", () => {
     expect(rePoll.connector.id).toBe(completed.connector.id);
     expect(provider.tokenBodies).toHaveLength(tokenCallsBeforeRePoll);
 
-    await connectorsApi.deleteConnectorByType(actor, "test-oauth-device");
+    await connectorsApi.deleteConnectorBySlug(actor, "test-oauth-device");
     await connectorsApi.deleteFeatureSwitches(actor);
   });
 
@@ -1177,7 +1177,7 @@ describe("CONN-02: OAuth device authorization", () => {
     });
     expect(deferred.calls()).toBe(1);
 
-    const nothingPersisted = await connectorsApi.requestReadConnectorByType(
+    const nothingPersisted = await connectorsApi.requestReadConnectorBySlug(
       actor,
       "test-oauth-device",
       [404],
@@ -1296,7 +1296,7 @@ describe("CONN-02: OAuth device authorization", () => {
       "Bearer base44-access-token",
     ]);
 
-    const base44Connector = await connectorsApi.readConnectorByType(
+    const base44Connector = await connectorsApi.readConnectorBySlug(
       actor,
       "base44",
     );
@@ -1312,7 +1312,7 @@ describe("CONN-02: OAuth device authorization", () => {
     expect(JSON.stringify(base44Connector)).not.toContain(
       "base44-access-token",
     );
-    await connectorsApi.deleteConnectorByType(actor, "base44");
+    await connectorsApi.deleteConnectorBySlug(actor, "base44");
 
     const slockProvider = mockSlockOAuthProvider();
     const slockSession = await connectorsApi.startDeviceAuth(
@@ -1345,7 +1345,7 @@ describe("CONN-02: OAuth device authorization", () => {
     expect(JSON.stringify(slockPoll)).not.toContain(slockProvider.accessToken);
     expect(JSON.stringify(slockPoll)).not.toContain("slock-refresh-token");
 
-    const slockConnector = await connectorsApi.readConnectorByType(
+    const slockConnector = await connectorsApi.readConnectorBySlug(
       actor,
       "slock",
     );
@@ -1364,7 +1364,7 @@ describe("CONN-02: OAuth device authorization", () => {
     const slockExpiryMs = Date.parse(slockConnector.tokenExpiresAt);
     expect(slockExpiryMs).toBeGreaterThan(now() + 850_000);
     expect(slockExpiryMs).toBeLessThanOrEqual(now() + 900_000);
-    await connectorsApi.deleteConnectorByType(actor, "slock");
+    await connectorsApi.deleteConnectorBySlug(actor, "slock");
 
     mockSlockOAuthProvider({ deviceCode: "userinfo-error" });
     const failing = await connectorsApi.startDeviceAuth(
@@ -2344,7 +2344,7 @@ describe("CONN-02: OAuth callback validation and state claiming", () => {
       state: "state-123",
     });
     expectConnectorErrorRedirect(unknownType, {
-      type: "invalid",
+      connectorSlug: "invalid",
       message: "Unknown connector type",
     });
 
@@ -2353,7 +2353,7 @@ describe("CONN-02: OAuth callback validation and state claiming", () => {
       state: "state-123",
     });
     expectConnectorErrorRedirect(manualOnly, {
-      type: "cloudinary",
+      connectorSlug: "cloudinary",
       message: "cloudinary connector does not use an auth-code grant",
     });
 
@@ -2362,7 +2362,7 @@ describe("CONN-02: OAuth callback validation and state claiming", () => {
       { code: "code-123", state: "state-123" },
     );
     expectConnectorErrorRedirect(deviceOnly, {
-      type: "test-oauth-device",
+      connectorSlug: "test-oauth-device",
       message: "test-oauth-device connector does not use an auth-code grant",
     });
 
@@ -2371,7 +2371,7 @@ describe("CONN-02: OAuth callback validation and state claiming", () => {
       state: "bdd-never-stored-state",
     });
     expectConnectorErrorRedirect(unclaimable, {
-      type: "github",
+      connectorSlug: "github",
       message: "Invalid state - please try again",
     });
     expect(unclaimable.headers.getSetCookie()).toStrictEqual(
@@ -2382,7 +2382,7 @@ describe("CONN-02: OAuth callback validation and state claiming", () => {
       code: "code-123",
     });
     expectConnectorErrorRedirect(missingState, {
-      type: "github",
+      connectorSlug: "github",
       message: "Missing state parameter",
     });
 
@@ -2394,7 +2394,7 @@ describe("CONN-02: OAuth callback validation and state claiming", () => {
       state,
     });
     expectConnectorErrorRedirect(crossType, {
-      type: "linear",
+      connectorSlug: "linear",
       message: "Invalid state - please try again",
     });
 
@@ -2407,14 +2407,14 @@ describe("CONN-02: OAuth callback validation and state claiming", () => {
     expect(successUrl.searchParams.get("type")).toBe("github");
     expect(successUrl.searchParams.get("username")).toBe("bdd-github-user");
 
-    const connected = await connectorsApi.readConnectorByType(actor, "github");
+    const connected = await connectorsApi.readConnectorBySlug(actor, "github");
     expect(connected).toMatchObject({
       type: "github",
       authMethod: "oauth",
       connectionStatus: "connected",
     });
 
-    const linearMissing = await connectorsApi.requestReadConnectorByType(
+    const linearMissing = await connectorsApi.requestReadConnectorBySlug(
       actor,
       "linear",
       [404],
@@ -2436,7 +2436,7 @@ describe("CONN-02: OAuth callback validation and state claiming", () => {
       state,
     });
     expectConnectorErrorRedirect(missingCode, {
-      type: "github",
+      connectorSlug: "github",
       message: "Missing authorization code",
     });
     expect(missingCode.headers.getSetCookie()).toStrictEqual(
@@ -2447,7 +2447,7 @@ describe("CONN-02: OAuth callback validation and state claiming", () => {
       state: "bdd-unknown-state",
     });
     expectConnectorErrorRedirect(unknownState, {
-      type: "github",
+      connectorSlug: "github",
       message: "Invalid state - please try again",
     });
 
@@ -2459,14 +2459,14 @@ describe("CONN-02: OAuth callback validation and state claiming", () => {
     expect(successUrl.pathname).toBe("/connector/success");
     expect(successUrl.searchParams.get("username")).toBe("bdd-github-user");
 
-    const connected = await connectorsApi.readConnectorByType(actor, "github");
+    const connected = await connectorsApi.readConnectorBySlug(actor, "github");
 
     const consumedWithoutCode = await connectorsApi.completeOauthCallback(
       "github",
       { state },
     );
     expectConnectorErrorRedirect(consumedWithoutCode, {
-      type: "github",
+      connectorSlug: "github",
       message: "Invalid state - please try again",
     });
 
@@ -2479,11 +2479,11 @@ describe("CONN-02: OAuth callback validation and state claiming", () => {
       },
     );
     expectConnectorErrorRedirect(consumedProviderError, {
-      type: "github",
+      connectorSlug: "github",
       message: "Invalid state - please try again",
     });
 
-    const stable = await connectorsApi.readConnectorByType(actor, "github");
+    const stable = await connectorsApi.readConnectorBySlug(actor, "github");
     expect(stable.id).toBe(connected.id);
     expect(stable.externalUsername).toBe("bdd-github-user");
 
@@ -2501,12 +2501,12 @@ describe("CONN-02: OAuth callback validation and state claiming", () => {
       state: expiringState,
     });
     expectConnectorErrorRedirect(expired, {
-      type: "github",
+      connectorSlug: "github",
       message: "Invalid state - please try again",
     });
     clearMockNow();
 
-    const afterExpiry = await connectorsApi.requestReadConnectorByType(
+    const afterExpiry = await connectorsApi.requestReadConnectorBySlug(
       actor,
       "github",
       [404],
@@ -2520,7 +2520,7 @@ describe("CONN-02: OAuth callback validation and state claiming", () => {
 
     const canonical = await requestOauthCallbackRaw(context, {
       origin: "https://api.vm0.ai",
-      type: "github",
+      connectorSlug: "github",
       query: { code: "code-123", state: "state-123" },
     });
     expect(canonical.status).toBe(307);
@@ -2530,7 +2530,7 @@ describe("CONN-02: OAuth callback validation and state claiming", () => {
 
     const trustedHeader = await requestOauthCallbackRaw(context, {
       origin: "https://api.vm0.ai",
-      type: "github",
+      connectorSlug: "github",
       query: { code: "code-123" },
       headers: { "x-vm0-web-origin": "https://www.vm0.ai" },
     });
@@ -2538,20 +2538,20 @@ describe("CONN-02: OAuth callback validation and state claiming", () => {
     const trustedUrl = redirectLocation(trustedHeader);
     expect(trustedUrl.origin).toBe("https://app.vm0.test");
     expectConnectorErrorRedirect(trustedHeader, {
-      type: "github",
+      connectorSlug: "github",
       message: "Missing state parameter",
     });
 
     const nonApiHost = await requestOauthCallbackRaw(context, {
       origin: "https://app.vm0.test",
-      type: "github",
+      connectorSlug: "github",
       query: { code: "code-123" },
     });
     expect(nonApiHost.status).toBe(307);
     const nonApiUrl = redirectLocation(nonApiHost);
     expect(nonApiUrl.origin).toBe("https://app.vm0.test");
     expectConnectorErrorRedirect(nonApiHost, {
-      type: "github",
+      connectorSlug: "github",
       message: "Missing state parameter",
     });
   });
@@ -2593,7 +2593,7 @@ describe("CONN-02: test-oauth auth-code journey", () => {
       inputVariable: "bdd-input-variable",
       tenantId: "bdd-manual-tenant",
     });
-    const manual = await connectorsApi.readConnectorByType(actor, "test-oauth");
+    const manual = await connectorsApi.readConnectorBySlug(actor, "test-oauth");
     expect(manual.authMethod).toBe("api-token");
 
     const success = await connectorsApi.completeOauthCallback("test-oauth", {
@@ -2615,7 +2615,7 @@ describe("CONN-02: test-oauth auth-code journey", () => {
       "https://api.vm0.ai/api/connectors/test-oauth/callback",
     );
 
-    const oauthConnector = await connectorsApi.readConnectorByType(
+    const oauthConnector = await connectorsApi.readConnectorBySlug(
       actor,
       "test-oauth",
     );
@@ -2630,7 +2630,7 @@ describe("CONN-02: test-oauth auth-code journey", () => {
     });
     expectNoVisibleSecret(oauthConnector, "bdd-test-oauth-access-token");
     await expect(
-      authOrgApi.readEnabledConnectorTypes(actor, agent.agentId),
+      authOrgApi.readEnabledConnectorSlugs(actor, agent.agentId),
     ).resolves.toContain("test-oauth");
 
     const listed = await connectorsApi.listConnectors(actor);
@@ -2687,7 +2687,7 @@ describe("CONN-02: test-oauth auth-code journey", () => {
     });
     expect(apiProvider.tokenBodies).toHaveLength(1);
 
-    const apiConnector = await connectorsApi.readConnectorByType(
+    const apiConnector = await connectorsApi.readConnectorBySlug(
       actor,
       "test-oauth",
     );
@@ -2708,7 +2708,7 @@ describe("CONN-02: test-oauth auth-code journey", () => {
     );
     expectNoVisibleSecret(apiListed, "bdd-test-oauth-api-access-token");
 
-    await connectorsApi.deleteConnectorByType(actor, "test-oauth");
+    await connectorsApi.deleteConnectorBySlug(actor, "test-oauth");
     await connectorsApi.deleteFeatureSwitches(actor);
   });
 
@@ -2734,7 +2734,7 @@ describe("CONN-02: test-oauth auth-code journey", () => {
       state: stateFromAuthorizationUrl(explicitStart.authorizationUrl),
     });
     const explicitAfter = now();
-    const explicitExpiry = await connectorsApi.readConnectorByType(
+    const explicitExpiry = await connectorsApi.readConnectorBySlug(
       actor,
       "test-oauth",
     );
@@ -2762,7 +2762,7 @@ describe("CONN-02: test-oauth auth-code journey", () => {
       state: stateFromAuthorizationUrl(defaultStart.authorizationUrl),
     });
     const defaultAfter = now();
-    const defaultExpiry = await connectorsApi.readConnectorByType(
+    const defaultExpiry = await connectorsApi.readConnectorBySlug(
       actor,
       "test-oauth",
     );
@@ -2781,7 +2781,7 @@ describe("CONN-02: test-oauth auth-code journey", () => {
       code: "bdd-slack-code",
       state: stateFromAuthorizationUrl(slackStart.authorizationUrl),
     });
-    const slackConnector = await connectorsApi.readConnectorByType(
+    const slackConnector = await connectorsApi.readConnectorBySlug(
       actor,
       "slack",
     );
@@ -2806,13 +2806,13 @@ describe("CONN-02: test-oauth auth-code journey", () => {
       state: stateFromAuthorizationUrl(tokenFailStart.authorizationUrl),
     });
     expectConnectorErrorRedirect(tokenFail, {
-      type: "test-oauth",
+      connectorSlug: "test-oauth",
       message: "OAuth authorization failed. Please try again.",
     });
     expect(tokenFail.headers.getSetCookie()).toStrictEqual(
       expect.arrayContaining([...CONNECTOR_OAUTH_COOKIE_CLEARS]),
     );
-    const afterTokenFail = await connectorsApi.requestReadConnectorByType(
+    const afterTokenFail = await connectorsApi.requestReadConnectorBySlug(
       actor,
       "test-oauth",
       [404],
@@ -2834,10 +2834,10 @@ describe("CONN-02: test-oauth auth-code journey", () => {
       },
     );
     expectConnectorErrorRedirect(userinfoFail, {
-      type: "test-oauth",
+      connectorSlug: "test-oauth",
       message: "OAuth authorization failed. Please try again.",
     });
-    const afterUserinfoFail = await connectorsApi.requestReadConnectorByType(
+    const afterUserinfoFail = await connectorsApi.requestReadConnectorBySlug(
       actor,
       "test-oauth",
       [404],
@@ -2845,7 +2845,7 @@ describe("CONN-02: test-oauth auth-code journey", () => {
     expectApiError(afterUserinfoFail.body);
     expect(afterUserinfoFail.body.error.code).toBe("NOT_FOUND");
 
-    await connectorsApi.deleteConnectorByType(actor, "slack");
+    await connectorsApi.deleteConnectorBySlug(actor, "slack");
     await connectorsApi.deleteFeatureSwitches(actor);
   });
 });
@@ -2908,7 +2908,7 @@ describe("CONN-02: device-auth method switching", () => {
     }
     expect(oauthPoll.connector.authMethod).toBe("oauth");
 
-    const readBack = await connectorsApi.readConnectorByType(
+    const readBack = await connectorsApi.readConnectorBySlug(
       actor,
       "test-oauth-device",
     );
@@ -2933,7 +2933,7 @@ describe("CONN-02: device-auth method switching", () => {
       }),
     );
 
-    await connectorsApi.deleteConnectorByType(actor, "test-oauth-device");
+    await connectorsApi.deleteConnectorBySlug(actor, "test-oauth-device");
     await connectorsApi.deleteFeatureSwitches(actor);
   });
 });
@@ -2987,6 +2987,6 @@ describe("CONN-02: GitHub installation link after connector OAuth", () => {
       null,
     );
 
-    await connectorsApi.deleteConnectorByType(admin, "github");
+    await connectorsApi.deleteConnectorBySlug(admin, "github");
   });
 });

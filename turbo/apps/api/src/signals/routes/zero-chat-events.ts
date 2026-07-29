@@ -128,10 +128,7 @@ import {
 import { loadUserFeatureSwitchContext } from "../services/feature-switches.service";
 import { resolveChatThreadSession } from "../services/chat-session-continuity.service";
 import { loadOrgPlanCapabilities } from "../services/org-plan-entitlement-read.service";
-import {
-  chatEventTypeIn,
-  chatEventTypeSql,
-} from "../services/zero-chat-event-type.service";
+import { chatEventTypeIn } from "../services/zero-chat-event-type.service";
 import { bestEffort, tapError } from "../utils";
 import { isFeatureEnabled } from "@vm0/core/feature-switch";
 import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
@@ -469,7 +466,7 @@ async function resolveClientEventId(
     .select({
       chatThreadId: chatMessages.chatThreadId,
       threadUserId: chatThreads.userId,
-      eventType: chatEventTypeSql().as("event_type"),
+      eventType: chatMessages.eventType,
       content: chatMessages.content,
       runId: chatMessages.runId,
       revokesEventId: chatMessages.revokesEventId,
@@ -826,7 +823,7 @@ async function getLatestRunsByThreadId(
   const messageRows = await db
     .select({
       runId: chatMessages.runId,
-      eventType: chatEventTypeSql().as("event_type"),
+      eventType: chatMessages.eventType,
       content: chatMessages.content,
       userMessage: chatMessages.userMessage,
       attachFiles: chatMessages.attachFiles,
@@ -1628,7 +1625,7 @@ function appendUnassociatedUserMessage(params: {
       .select({
         chatThreadId: chatMessages.chatThreadId,
         threadUserId: chatThreads.userId,
-        eventType: chatEventTypeSql().as("event_type"),
+        eventType: chatMessages.eventType,
         content: chatMessages.content,
         runId: chatMessages.runId,
         revokesEventId: chatMessages.revokesEventId,
@@ -1753,7 +1750,7 @@ function appendRecallUserMessage(params: {
 
     const [existingRevoker] = await tx
       .select({
-        eventType: chatEventTypeSql().as("event_type"),
+        eventType: chatMessages.eventType,
         content: chatMessages.content,
         createdAt: chatMessages.createdAt,
       })
@@ -1905,7 +1902,7 @@ function appendInterruptUserMessage(params: {
   return params.db.transaction(async (tx) => {
     const [existingInterrupter] = await tx
       .select({
-        eventType: chatEventTypeSql().as("event_type"),
+        eventType: chatMessages.eventType,
         content: chatMessages.content,
         createdAt: chatMessages.createdAt,
       })

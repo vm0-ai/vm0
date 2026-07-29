@@ -1,13 +1,14 @@
 import { z } from "zod";
 import { authHeadersSchema, initContract } from "./base";
-import { connectorRefSchema } from "./connector-identity";
+import { connectorSlugSchema } from "./connector-identity";
 import { apiErrorSchema } from "./errors";
 import { runnerGroupSchema } from "./runners";
 
 const c = initContract();
 
 export const connectorChangedPayloadSchema = z.object({
-  connectorRef: connectorRefSchema,
+  // TODO(#23619): Rename this realtime field after all deployed clients migrate.
+  connectorRef: connectorSlugSchema,
 });
 
 export type ConnectorChangedPayload = z.infer<

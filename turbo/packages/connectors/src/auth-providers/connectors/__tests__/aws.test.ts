@@ -25,7 +25,7 @@ const {
   refreshConnectorAuthProviderAccessToken,
   startConnectorExternalCodeAuthorization,
 } = providerOperationFixture({
-  connectorRef: "aws",
+  connectorSlug: "aws",
   authMethodId: "cli",
   method: AWS_PROVIDER_METHOD,
 });
@@ -234,7 +234,7 @@ function mockAwsTokenEndpoint(
 describe("AWS external-code provider", () => {
   it("starts AWS remote sign-in with cross-device PKCE parameters", async () => {
     const result = await startConnectorExternalCodeAuthorization({
-      type: "aws",
+      connectorSlug: "aws",
       authMethod: "cli",
       authClient: awsAuthClient(),
     });
@@ -265,14 +265,14 @@ describe("AWS external-code provider", () => {
   it("exchanges the pasted code, preserves expiresIn, and maps STS identity", async () => {
     mockAwsTokenEndpoint({ responseShape: "tokenOutput" });
     const start = await startConnectorExternalCodeAuthorization({
-      type: "aws",
+      connectorSlug: "aws",
       authMethod: "cli",
       authClient: awsAuthClient(),
     });
 
     const providerState = parseProviderState(start.providerState);
     const result = await completeConnectorExternalCodeAuthorization({
-      type: "aws",
+      connectorSlug: "aws",
       authMethod: "cli",
       authClient: awsAuthClient(),
       code: awsVerificationCode({ providerState }),
@@ -313,14 +313,14 @@ describe("AWS external-code provider", () => {
   it("accepts AWS token metadata that the AWS CLI does not validate", async () => {
     mockAwsTokenEndpoint({ expiresIn: 3600, tokenType: "Bearer" });
     const start = await startConnectorExternalCodeAuthorization({
-      type: "aws",
+      connectorSlug: "aws",
       authMethod: "cli",
       authClient: awsAuthClient(),
     });
     const providerState = parseProviderState(start.providerState);
 
     const result = await completeConnectorExternalCodeAuthorization({
-      type: "aws",
+      connectorSlug: "aws",
       authMethod: "cli",
       authClient: awsAuthClient(),
       code: awsVerificationCode({ providerState }),
@@ -335,7 +335,7 @@ describe("AWS external-code provider", () => {
   it("aborts AWS code exchange without sending the token request", async () => {
     mockAwsTokenEndpoint();
     const start = await startConnectorExternalCodeAuthorization({
-      type: "aws",
+      connectorSlug: "aws",
       authMethod: "cli",
       authClient: awsAuthClient(),
     });
@@ -345,7 +345,7 @@ describe("AWS external-code provider", () => {
 
     await expect(
       completeConnectorExternalCodeAuthorization({
-        type: "aws",
+        connectorSlug: "aws",
         authMethod: "cli",
         authClient: awsAuthClient(),
         code: awsVerificationCode({ providerState }),
@@ -382,7 +382,7 @@ describe("AWS external-code provider", () => {
       }),
     );
     const start = await startConnectorExternalCodeAuthorization({
-      type: "aws",
+      connectorSlug: "aws",
       authMethod: "cli",
       authClient: awsAuthClient(),
     });
@@ -390,7 +390,7 @@ describe("AWS external-code provider", () => {
     const controller = new AbortController();
 
     const complete = completeConnectorExternalCodeAuthorization({
-      type: "aws",
+      connectorSlug: "aws",
       authMethod: "cli",
       authClient: awsAuthClient(),
       code: awsVerificationCode({ providerState }),
@@ -416,7 +416,7 @@ describe("AWS external-code provider", () => {
 
   it("reports invalid AWS token response shape without leaking token values", async () => {
     const start = await startConnectorExternalCodeAuthorization({
-      type: "aws",
+      connectorSlug: "aws",
       authMethod: "cli",
       authClient: awsAuthClient(),
     });
@@ -438,7 +438,7 @@ describe("AWS external-code provider", () => {
 
     await expect(
       completeConnectorExternalCodeAuthorization({
-        type: "aws",
+        connectorSlug: "aws",
         authMethod: "cli",
         authClient: awsAuthClient(),
         code: awsVerificationCode({ providerState }),
@@ -463,7 +463,7 @@ describe("AWS external-code provider", () => {
 
     await expect(
       refreshConnectorAuthProviderAccessToken({
-        type: "aws",
+        connectorSlug: "aws",
         authMethod: "cli",
         authClient: awsAuthClient(),
         inputs: awsRefreshInputs(),
@@ -491,7 +491,7 @@ describe("AWS external-code provider", () => {
   it("rejects AWS verification codes with a mismatched state before token exchange", async () => {
     mockAwsTokenEndpoint();
     const start = await startConnectorExternalCodeAuthorization({
-      type: "aws",
+      connectorSlug: "aws",
       authMethod: "cli",
       authClient: awsAuthClient(),
     });
@@ -499,7 +499,7 @@ describe("AWS external-code provider", () => {
 
     await expect(
       completeConnectorExternalCodeAuthorization({
-        type: "aws",
+        connectorSlug: "aws",
         authMethod: "cli",
         authClient: awsAuthClient(),
         code: awsVerificationCode({
@@ -534,7 +534,7 @@ describe("AWS external-code provider", () => {
 
     await expect(
       refreshConnectorAuthProviderAccessToken({
-        type: "aws",
+        connectorSlug: "aws",
         authMethod: "cli",
         authClient: awsAuthClient(),
         inputs: awsRefreshInputs(),
@@ -551,7 +551,7 @@ describe("AWS external-code provider", () => {
 
   it("redacts AWS token exchange sensitive values from provider errors", async () => {
     const start = await startConnectorExternalCodeAuthorization({
-      type: "aws",
+      connectorSlug: "aws",
       authMethod: "cli",
       authClient: awsAuthClient(),
     });
@@ -580,7 +580,7 @@ describe("AWS external-code provider", () => {
 
     await expect(
       completeConnectorExternalCodeAuthorization({
-        type: "aws",
+        connectorSlug: "aws",
         authMethod: "cli",
         authClient: awsAuthClient(),
         code: awsVerificationCode({ providerState }),
@@ -614,7 +614,7 @@ describe("AWS external-code provider", () => {
 
     await expect(
       refreshConnectorAuthProviderAccessToken({
-        type: "aws",
+        connectorSlug: "aws",
         authMethod: "cli",
         authClient: awsAuthClient(),
         inputs: awsRefreshInputs(),
@@ -640,7 +640,7 @@ describe("AWS external-code provider", () => {
 
     await expect(
       refreshConnectorAuthProviderAccessToken({
-        type: "aws",
+        connectorSlug: "aws",
         authMethod: "cli",
         authClient: awsAuthClient(),
         inputs: awsRefreshInputs(),

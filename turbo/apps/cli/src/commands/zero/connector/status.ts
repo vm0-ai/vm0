@@ -5,7 +5,7 @@ import { withErrorHandler } from "../../../lib/command";
 import { resolveAgentContext } from "./agent-context";
 import { getPlatformOrigin } from "../doctor/platform-url";
 import {
-  availableConnectorRefs,
+  availableConnectorSlugs,
   findConnectorStatusItem,
   type PublicConnectorStatus,
 } from "./public-catalog";
@@ -65,8 +65,8 @@ async function printAgentAction(
   connector: PublicConnectorStatus,
   agentCtx: AgentContext,
 ): Promise<void> {
-  const connectorRef = connector.connectorRef;
-  const authorized = agentCtx.authorizedTypes.has(connectorRef);
+  const connectorSlug = connector.connectorRef;
+  const authorized = agentCtx.authorizedConnectorSlugs.has(connectorSlug);
   const isConnected = connector.connected;
   const needsReconnect = connector.connectionStatus === "reconnect-required";
   const agentLabel =
@@ -79,55 +79,55 @@ async function printAgentAction(
     const origin = await getPlatformOrigin();
     const url = connectorActionUrl({
       origin,
-      path: `/connectors/${connectorRef}/connect`,
+      path: `/connectors/${connectorSlug}/connect`,
       agentId: agentCtx.agentId,
     });
     console.log(
-      `The ${connectorRef} connector is connected but needs to be reconnected before agent ${agentLabel} can use it.`,
+      `The ${connectorSlug} connector is connected but needs to be reconnected before agent ${agentLabel} can use it.`,
     );
-    console.log(`Reconnect it at: [Reconnect ${connectorRef}](${url})`);
+    console.log(`Reconnect it at: [Reconnect ${connectorSlug}](${url})`);
     printCallbackActionUrlExample(url, agentCtx.agentId);
   } else if (authorized && !isConnected) {
     const origin = await getPlatformOrigin();
     const url = connectorActionUrl({
       origin,
-      path: `/connectors/${connectorRef}/connect`,
+      path: `/connectors/${connectorSlug}/connect`,
       agentId: agentCtx.agentId,
     });
     console.log(
-      `The ${connectorRef} connector is authorized for agent ${agentLabel}, but it is not connected.`,
+      `The ${connectorSlug} connector is authorized for agent ${agentLabel}, but it is not connected.`,
     );
-    console.log(`Connect it at: [Connect ${connectorRef}](${url})`);
+    console.log(`Connect it at: [Connect ${connectorSlug}](${url})`);
     printCallbackActionUrlExample(url, agentCtx.agentId);
   } else if (authorized) {
     console.log(
-      `The ${connectorRef} connector is authorized for agent ${agentLabel}.`,
+      `The ${connectorSlug} connector is authorized for agent ${agentLabel}.`,
     );
   } else if (!isConnected) {
     const origin = await getPlatformOrigin();
     const url = connectorActionUrl({
       origin,
-      path: `/connectors/${connectorRef}/connect`,
+      path: `/connectors/${connectorSlug}/connect`,
       agentId: agentCtx.agentId,
     });
     console.log(
-      `The ${connectorRef} connector is not connected. Once connected, it will be authorized for agent ${agentLabel}.`,
+      `The ${connectorSlug} connector is not connected. Once connected, it will be authorized for agent ${agentLabel}.`,
     );
     console.log(
-      `Connect and authorize it at: [Connect ${connectorRef}](${url})`,
+      `Connect and authorize it at: [Connect ${connectorSlug}](${url})`,
     );
     printCallbackActionUrlExample(url, agentCtx.agentId);
   } else {
     const origin = await getPlatformOrigin();
     const url = connectorActionUrl({
       origin,
-      path: `/connectors/${connectorRef}/authorize`,
+      path: `/connectors/${connectorSlug}/authorize`,
       agentId: agentCtx.agentId,
     });
     console.log(
-      `The ${connectorRef} connector is not authorized for agent ${agentLabel}.`,
+      `The ${connectorSlug} connector is not authorized for agent ${agentLabel}.`,
     );
-    console.log(`Authorize it at: [Authorize ${connectorRef}](${url})`);
+    console.log(`Authorize it at: [Authorize ${connectorSlug}](${url})`);
     printCallbackActionUrlExample(url, agentCtx.agentId);
   }
 }
@@ -135,7 +135,7 @@ async function printAgentAction(
 async function printStandaloneAction(
   connector: PublicConnectorStatus,
 ): Promise<void> {
-  const connectorRef = connector.connectorRef;
+  const connectorSlug = connector.connectorRef;
   if (
     connector.connectionStatus === "connected" ||
     connector.connectionStatus === "scope-mismatch"
@@ -148,44 +148,53 @@ async function printStandaloneAction(
   if (connector.connectionStatus === "reconnect-required") {
     const url = `${origin}/connectors`;
     console.log(
-      `The ${connectorRef} connector is connected but needs to be reconnected.`,
+      `The ${connectorSlug} connector is connected but needs to be reconnected.`,
     );
-    console.log(`Reconnect it at: [Reconnect ${connectorRef}](${url})`);
+    console.log(`Reconnect it at: [Reconnect ${connectorSlug}](${url})`);
   } else {
-    const url = `${origin}/connectors/${connectorRef}/connect`;
-    console.log(`Connect it at: [Connect ${connectorRef}](${url})`);
+    const url = `${origin}/connectors/${connectorSlug}/connect`;
+    console.log(`Connect it at: [Connect ${connectorSlug}](${url})`);
   }
 }
 
 export const statusCommand = new Command()
   .name("status")
   .description("Show detailed status of a connector")
+  // TODO(#23619): Rename this stable CLI argument label in the CLI rollout.
   .argument("<type>", "Connector type (e.g., github)")
   .option("--agent <id>", "Show authorization state for the given agent")
   .action(
-    withErrorHandler(async (type: string, options: { agent?: string }) => {
-      const [catalog, agentCtx] = await Promise.all([
-        listZeroConnectorCatalogStatus(),
-        resolveAgentContext(options.agent),
-      ]);
-      const connector = findConnectorStatusItem(catalog.connectors, type);
-      if (!connector) {
-        throw new Error(`Unknown or unavailable connector: ${type}`, {
-          cause: new Error(
-            `Available connectors: ${availableConnectorRefs(catalog.connectors)}`,
-          ),
-        });
-      }
+    withErrorHandler(
+      async (connectorSlug: string, options: { agent?: string }) => {
+        const [catalog, agentCtx] = await Promise.all([
+          listZeroConnectorCatalogStatus(),
+          resolveAgentContext(options.agent),
+        ]);
+        const connector = findConnectorStatusItem(
+          catalog.connectors,
+          connectorSlug,
+        );
+        if (!connector) {
+          throw new Error(
+            `Unknown or unavailable connector: ${connectorSlug}`,
+            {
+              cause: new Error(
+                `Available connectors: ${availableConnectorSlugs(catalog.connectors)}`,
+              ),
+            },
+          );
+        }
 
-      console.log(`Connector: ${chalk.cyan(connector.connectorRef)}`);
-      console.log();
+        console.log(`Connector: ${chalk.cyan(connector.connectorRef)}`);
+        console.log();
 
-      printConnectorDetails(connector);
+        printConnectorDetails(connector);
 
-      if (agentCtx) {
-        await printAgentAction(connector, agentCtx);
-      } else {
-        await printStandaloneAction(connector);
-      }
-    }),
+        if (agentCtx) {
+          await printAgentAction(connector, agentCtx);
+        } else {
+          await printStandaloneAction(connector);
+        }
+      },
+    ),
   );

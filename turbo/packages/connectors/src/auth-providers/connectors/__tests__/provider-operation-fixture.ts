@@ -11,34 +11,34 @@ import {
 } from "../../connector-auth";
 
 interface ProviderMethodFixture {
-  readonly connectorRef: string;
+  readonly connectorSlug: string;
   readonly authMethodId: string;
   readonly method: ConnectorAuthMethodRuntimeConfig;
 }
 
 function assertFixtureSelection(
   fixture: ProviderMethodFixture,
-  args: { readonly type: string; readonly authMethod: string },
+  args: { readonly connectorSlug: string; readonly authMethod: string },
 ): void {
   if (
-    args.type !== fixture.connectorRef ||
+    args.connectorSlug !== fixture.connectorSlug ||
     args.authMethod !== fixture.authMethodId
   ) {
     throw new Error(
-      `Expected provider fixture ${fixture.connectorRef}:${fixture.authMethodId}`,
+      `Expected provider fixture ${fixture.connectorSlug}:${fixture.authMethodId}`,
     );
   }
 }
 
 export function providerOperationFixture(fixture: ProviderMethodFixture) {
   const selection = {
-    connectorRef: fixture.connectorRef,
+    connectorSlug: fixture.connectorSlug,
     authMethodId: fixture.authMethodId,
     method: fixture.method,
   };
   return {
     startConnectorExternalCodeAuthorization(args: {
-      readonly type: string;
+      readonly connectorSlug: string;
       readonly authMethod: string;
       readonly authClient: ConnectorAuthClient;
     }) {
@@ -49,7 +49,7 @@ export function providerOperationFixture(fixture: ProviderMethodFixture) {
       });
     },
     completeConnectorExternalCodeAuthorization(args: {
-      readonly type: string;
+      readonly connectorSlug: string;
       readonly authMethod: string;
       readonly authClient: ConnectorAuthClient;
       readonly code: string;
@@ -66,7 +66,7 @@ export function providerOperationFixture(fixture: ProviderMethodFixture) {
       });
     },
     refreshConnectorAuthProviderAccessToken(args: {
-      readonly type: string;
+      readonly connectorSlug: string;
       readonly authMethod: string;
       readonly authClient?: ConnectorAuthClient;
       readonly inputs: Readonly<Record<string, string>>;
@@ -83,7 +83,7 @@ export function providerOperationFixture(fixture: ProviderMethodFixture) {
       });
     },
     revokeConnectorAuthMethodAccessToken(args: {
-      readonly type: string;
+      readonly connectorSlug: string;
       readonly authMethod: string;
       readonly readEnv: ConnectorEnvReader;
       readonly signal: AbortSignal;

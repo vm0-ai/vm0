@@ -7,7 +7,7 @@ import { resolveAgentContext } from "../connector/agent-context";
 import { findConnectorStatusItem } from "../connector/public-catalog";
 import { getPlatformOrigin } from "../doctor/platform-url";
 import {
-  MAIL_CONNECTOR_REF,
+  MAIL_CONNECTOR_SLUG_BY_PROVIDER,
   currentAgentId,
   parseMailProvider,
 } from "./shared";
@@ -25,7 +25,7 @@ export const connectCommand = new Command()
     withErrorHandler(async (providerValue: string, options: ConnectOptions) => {
       const provider = parseMailProvider(providerValue);
       const agentId = currentAgentId();
-      const connectorRef = MAIL_CONNECTOR_REF[provider];
+      const connectorSlug = MAIL_CONNECTOR_SLUG_BY_PROVIDER[provider];
       const [{ connectors }, agent, origin] = await Promise.all([
         listZeroConnectorCatalogStatus(),
         resolveAgentContext(agentId),
@@ -34,12 +34,12 @@ export const connectCommand = new Command()
       if (!agent) {
         throw new Error("Agent context could not be loaded");
       }
-      const connector = findConnectorStatusItem(connectors, connectorRef);
+      const connector = findConnectorStatusItem(connectors, connectorSlug);
       if (!connector) {
         throw new Error(`${provider} is not available`);
       }
 
-      const authorized = agent.authorizedTypes.has(connectorRef);
+      const authorized = agent.authorizedConnectorSlugs.has(connectorSlug);
       const action =
         connector.connectionStatus === "reconnect-required" ||
         connector.connectionStatus === "scope-mismatch"
@@ -52,12 +52,12 @@ export const connectCommand = new Command()
       const url =
         action === "reconnect"
           ? connector.connectionStatus === "scope-mismatch"
-            ? `${origin}/connectors/${connectorRef}/connect?agentId=${agentId}`
+            ? `${origin}/connectors/${connectorSlug}/connect?agentId=${agentId}`
             : `${origin}/connectors`
           : action === "authorize"
-            ? `${origin}/connectors/${connectorRef}/authorize?agentId=${agentId}`
+            ? `${origin}/connectors/${connectorSlug}/authorize?agentId=${agentId}`
             : action === "connect"
-              ? `${origin}/connectors/${connectorRef}/connect?agentId=${agentId}`
+              ? `${origin}/connectors/${connectorSlug}/connect?agentId=${agentId}`
               : null;
 
       if (options.json) {

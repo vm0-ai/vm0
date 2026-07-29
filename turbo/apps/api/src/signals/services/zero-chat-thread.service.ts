@@ -119,10 +119,7 @@ import {
   projectUserMessage,
   requiredUserMessageForEvent,
 } from "./zero-chat-user-message.service";
-import {
-  chatEventTypeIn,
-  chatEventTypeSql,
-} from "./zero-chat-event-type.service";
+import { chatEventTypeIn } from "./zero-chat-event-type.service";
 
 export { insertAssistantEventMessages$ };
 
@@ -299,7 +296,7 @@ function effectiveChatMessageRunId() {
 const eventColumns = {
   id: chatMessages.id,
   chatThreadId: chatMessages.chatThreadId,
-  eventType: chatEventTypeSql().as("event_type"),
+  eventType: chatMessages.eventType,
   content: chatMessages.content,
   userMessage: chatMessages.userMessage,
   thinking: chatMessages.thinking,
@@ -463,7 +460,7 @@ function selectChatEventsWithMetadata(db: Pick<Db, "select">) {
 const searchMessageColumns = {
   messageId: chatMessages.id,
   chatThreadId: chatMessages.chatThreadId,
-  eventType: chatEventTypeSql().as("event_type"),
+  eventType: chatMessages.eventType,
   content: chatMessages.content,
   userMessage: chatMessages.userMessage,
   createdAt: chatMessages.createdAt,
@@ -474,7 +471,9 @@ const searchMessageColumns = {
 
 const searchContextMessageColumns = {
   ...searchMessageColumns,
-  eventType: chatEventTypeSql().as("context_event_type"),
+  eventType: sql`${chatMessages.eventType}`
+    .mapWith(chatMessages.eventType)
+    .as("context_event_type"),
 } as const;
 
 function escapeLikePattern(value: string): string {

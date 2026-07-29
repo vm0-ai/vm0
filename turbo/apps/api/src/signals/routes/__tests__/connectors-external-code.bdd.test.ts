@@ -393,7 +393,7 @@ describe("CONN-02: external-code session lifecycle", () => {
     expectNoVisibleSecret(complete, "aws-login-refresh-token");
     expectNoVisibleSecret(complete, "aws-session-token");
 
-    const readBack = await connectorsApi.readConnectorByType(actor, "aws");
+    const readBack = await connectorsApi.readConnectorBySlug(actor, "aws");
     expect(readBack.id).toBe(complete.connector.id);
     expect(readBack.connectionStatus).toBe("connected");
 
@@ -459,8 +459,8 @@ describe("CONN-02: external-code session lifecycle", () => {
     });
     expect(provider.tokenRequests).toHaveLength(1);
 
-    await connectorsApi.deleteConnectorByType(actor, "aws");
-    const afterDelete = await connectorsApi.requestReadConnectorByType(
+    await connectorsApi.deleteConnectorBySlug(actor, "aws");
+    const afterDelete = await connectorsApi.requestReadConnectorBySlug(
       actor,
       "aws",
       [404],
@@ -528,10 +528,10 @@ describe("CONN-02: external-code session lifecycle", () => {
     });
     expect(provider.tokenRequests).toHaveLength(2);
 
-    const readBack = await connectorsApi.readConnectorByType(actor, "aws");
+    const readBack = await connectorsApi.readConnectorBySlug(actor, "aws");
     expect(readBack.id).toBe(retried.connector.id);
 
-    await connectorsApi.deleteConnectorByType(actor, "aws");
+    await connectorsApi.deleteConnectorBySlug(actor, "aws");
     await connectorsApi.deleteFeatureSwitches(actor);
   });
 
@@ -687,7 +687,7 @@ describe("CONN-02: external-code session lifecycle", () => {
     expectNoVisibleSecret(secretList, "bdd-nintendo-session-token");
     expectNoVisibleSecret(secretList, "bdd-nintendo-access-token");
 
-    await connectorsApi.deleteConnectorByType(actor, "nintendo-store");
+    await connectorsApi.deleteConnectorBySlug(actor, "nintendo-store");
   });
 
   it("replaces the remote Nintendo registration and keeps local deletion resilient", async () => {
@@ -849,7 +849,7 @@ describe("CONN-02: external-code session lifecycle", () => {
     ]);
 
     provider.failLogout();
-    await connectorsApi.deleteConnectorByType(
+    await connectorsApi.deleteConnectorBySlug(
       actor,
       "nintendo-switch-parental-controls",
     );
@@ -871,7 +871,7 @@ describe("CONN-02: external-code session lifecycle", () => {
       { smartDeviceId: provider.federatedSmartDeviceIds[0] },
       { smartDeviceId: provider.federatedSmartDeviceIds[1] },
     ]);
-    const afterDelete = await connectorsApi.requestReadConnectorByType(
+    const afterDelete = await connectorsApi.requestReadConnectorBySlug(
       actor,
       "nintendo-switch-parental-controls",
       [404],
@@ -954,7 +954,7 @@ describe("CONN-02: external-code session lifecycle", () => {
     expect(secondComplete.connector.type).toBe("aws");
     expect(provider.tokenRequests).toHaveLength(2);
 
-    await connectorsApi.deleteConnectorByType(actor, "aws");
+    await connectorsApi.deleteConnectorBySlug(actor, "aws");
     await connectorsApi.deleteFeatureSwitches(actor);
   });
 
@@ -1074,7 +1074,7 @@ describe("CONN-02: external-code session lifecycle", () => {
     expect(terminal.body.error.message).toContain("STS");
     expect(provider.tokenRequests).toHaveLength(1);
 
-    const nothingPersisted = await connectorsApi.requestReadConnectorByType(
+    const nothingPersisted = await connectorsApi.requestReadConnectorBySlug(
       actor,
       "aws",
       [404],

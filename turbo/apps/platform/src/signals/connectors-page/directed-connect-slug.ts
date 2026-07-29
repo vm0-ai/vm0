@@ -1,19 +1,19 @@
 import { command, computed, state } from "ccstate";
 import {
-  connectorRefSchema,
-  type ConnectorRef,
+  connectorSlugSchema,
+  type ConnectorSlug,
 } from "@vm0/api-contracts/contracts/connector-identity";
 import { pathParams$, searchParams$ } from "../route.ts";
 import { agents$ } from "../agent.ts";
 
 /**
- * Connector ref extracted from `/connectors/:type/connect` route params.
+ * Connector slug extracted from `/connectors/:type/connect` route params.
  */
-export const directedConnectRef$ = computed((get): ConnectorRef | null => {
+export const directedConnectSlug$ = computed((get): ConnectorSlug | null => {
   const params = get(pathParams$);
-  const routeType = params?.type;
-  const parsed = connectorRefSchema.safeParse(
-    typeof routeType === "string" ? routeType.toLowerCase() : null,
+  const connectorSlug = params?.type;
+  const parsed = connectorSlugSchema.safeParse(
+    typeof connectorSlug === "string" ? connectorSlug.toLowerCase() : null,
   );
   return parsed.success ? parsed.data : null;
 });
@@ -40,13 +40,13 @@ export const directedConnectAgentName$ = computed(async (get) => {
 });
 
 export type DirectedConnectManualGrantDialogKey = {
-  readonly connectorRef: ConnectorRef;
+  readonly connectorSlug: ConnectorSlug;
   readonly agentId: string | null;
   readonly signal: AbortSignal;
 };
 
 export type DirectedConnectModalKey = {
-  readonly connectorRef: ConnectorRef;
+  readonly connectorSlug: ConnectorSlug;
   readonly agentId: string | null;
   readonly signal: AbortSignal;
 };

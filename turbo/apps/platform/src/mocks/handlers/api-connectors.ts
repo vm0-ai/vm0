@@ -1,6 +1,6 @@
 import type {
   ConnectorAuthMethodId,
-  ConnectorRef,
+  ConnectorSlug,
 } from "@vm0/api-contracts/contracts/connector-identity";
 import type {
   ConnectorExternalCodeSessionStartResponse,
@@ -21,7 +21,7 @@ import {
   zeroConnectorManualGrantContract,
   zeroConnectorNoAuthGrantContract,
   zeroConnectorOauthDeviceAuthSessionContract,
-  zeroConnectorsByTypeContract,
+  zeroConnectorsBySlugContract,
   zeroConnectorScopeDiffContract,
   zeroConnectorsMainContract,
 } from "@vm0/api-contracts/contracts/zero-connectors";
@@ -32,7 +32,7 @@ import {
   testConnectorCatalogCategoryMetadata,
   testConnectorCatalogDefinitions,
   testConnectorPermissionDetails,
-  testConnectorRefs,
+  testConnectorSlugs,
   type TestConnectorCatalogDefinition,
 } from "./connector-catalog-fixtures.ts";
 
@@ -55,15 +55,15 @@ let mockExternalCodeSessionStartResponse:
   | undefined;
 
 function createMockOauthDeviceAuthConnector(
-  type: ConnectorRef,
+  connectorSlug: ConnectorSlug,
 ): ConnectorResponse {
   const now = "2026-01-01T00:00:00Z";
   return {
     id: crypto.randomUUID(),
-    type,
+    type: connectorSlug,
     authMethod: "oauth",
-    externalId: `mock-${type}-external-id`,
-    externalUsername: `mock-${type}`,
+    externalId: `mock-${connectorSlug}-external-id`,
+    externalUsername: `mock-${connectorSlug}`,
     externalEmail: null,
     oauthScopes: ["read"],
     connectionStatus: "connected",
@@ -75,28 +75,28 @@ function createMockOauthDeviceAuthConnector(
 }
 
 function defaultOauthDeviceAuthSessionStartResponse(
-  type: ConnectorRef,
+  connectorSlug: ConnectorSlug,
 ): ConnectorOauthDeviceAuthSessionStartResponse {
   return {
     sessionId: "00000000-0000-4000-8000-000000000001",
-    sessionToken: `mock-${type}-oauth-device-session-token`,
-    type,
+    sessionToken: `mock-${connectorSlug}-oauth-device-session-token`,
+    type: connectorSlug,
     status: "pending",
     userCode: "VM0-DEVICE",
-    verificationUri: `https://oauth.test/${type}/device`,
-    verificationUriComplete: `https://oauth.test/${type}/device?user_code=VM0-DEVICE`,
+    verificationUri: `https://oauth.test/${connectorSlug}/device`,
+    verificationUriComplete: `https://oauth.test/${connectorSlug}/device?user_code=VM0-DEVICE`,
     expiresIn: 300,
     interval: 1,
   };
 }
 
 function createMockLocalGrantConnector(
-  type: ConnectorRef,
+  connectorSlug: ConnectorSlug,
   authMethod: ConnectorAuthMethodId,
 ): ConnectorResponse {
   return {
     id: crypto.randomUUID(),
-    type,
+    type: connectorSlug,
     authMethod,
     externalId: null,
     externalUsername: null,
@@ -111,16 +111,16 @@ function createMockLocalGrantConnector(
 }
 
 function createMockExternalCodeConnector(
-  type: ConnectorRef,
+  connectorSlug: ConnectorSlug,
   authMethod: ConnectorAuthMethodId,
 ): ConnectorResponse {
   const now = "2026-01-01T00:00:00.000Z";
   return {
     id: crypto.randomUUID(),
-    type,
+    type: connectorSlug,
     authMethod,
-    externalId: `mock-${type}-account`,
-    externalUsername: `arn:aws:iam::000000000000:user/mock-${type}`,
+    externalId: `mock-${connectorSlug}-account`,
+    externalUsername: `arn:aws:iam::000000000000:user/mock-${connectorSlug}`,
     externalEmail: null,
     oauthScopes: ["openid"],
     connectionStatus: "connected",
@@ -132,14 +132,14 @@ function createMockExternalCodeConnector(
 }
 
 function defaultExternalCodeSessionStartResponse(
-  type: ConnectorRef,
+  connectorSlug: ConnectorSlug,
 ): ConnectorExternalCodeSessionStartResponse {
   return {
     sessionId: "00000000-0000-4000-8000-000000000002",
-    sessionToken: `mock-${type}-external-code-session-token`,
-    type,
+    sessionToken: `mock-${connectorSlug}-external-code-session-token`,
+    type: connectorSlug,
     status: "pending",
-    authorizationUrl: `https://oauth.test/${type}/external-code`,
+    authorizationUrl: `https://oauth.test/${connectorSlug}/external-code`,
     expiresIn: 600,
   };
 }
@@ -176,9 +176,9 @@ function mockFeatureStates(): Readonly<Record<string, boolean>> {
 }
 
 function mockPermissionDetail(
-  connectorRef: string,
+  connectorSlug: string,
 ): PublicConnectorCatalogPermissionDetail | null {
-  return testConnectorPermissionDetails.get(connectorRef) ?? null;
+  return testConnectorPermissionDetails.get(connectorSlug) ?? null;
 }
 
 function mockConnectionForCatalogStatus(
@@ -256,7 +256,7 @@ function mockConnectorCatalogStatusItem(
   }
 
   return {
-    connectorRef: definition.connectorRef,
+    connectorRef: definition.connectorSlug,
     label: definition.label,
     description: definition.description,
     icon: definition.icon,
@@ -279,7 +279,7 @@ function mockConnectorCatalogStatusItem(
 }
 
 function mockConnectorCatalogStatus(): PublicConnectorCatalogStatusItem[] {
-  const connectorsByType = new Map(
+  const connectorsBySlug = new Map(
     mockConnectors.map((connector) => {
       return [connector.type, connector];
     }),
@@ -299,7 +299,7 @@ function mockConnectorCatalogStatus(): PublicConnectorCatalogStatusItem[] {
       mockConnectorCatalogStatusItem(
         definition,
         authMethods,
-        connectorsByType.get(definition.connectorRef) ?? null,
+        connectorsBySlug.get(definition.connectorSlug) ?? null,
       ),
     ];
   });
@@ -309,7 +309,7 @@ export const apiConnectorsHandlers = [
   mockApi(zeroConnectorsMainContract.list, ({ respond }) => {
     return respond(200, {
       connectors: mockConnectors,
-      configuredTypes: [...testConnectorRefs],
+      configuredTypes: [...testConnectorSlugs],
       connectorProvidedBindings: [],
     });
   }),
@@ -374,10 +374,10 @@ export const apiConnectorsHandlers = [
     return respond(200, { permissions });
   }),
 
-  mockApi(zeroConnectorsByTypeContract.delete, ({ params, respond }) => {
-    const type = params.type;
+  mockApi(zeroConnectorsBySlugContract.delete, ({ params, respond }) => {
+    const connectorSlug = params.type;
     const existing = mockConnectors.find((c) => {
-      return c.type === type;
+      return c.type === connectorSlug;
     });
 
     if (!existing) {
@@ -387,7 +387,7 @@ export const apiConnectorsHandlers = [
     }
 
     mockConnectors = mockConnectors.filter((c) => {
-      return c.type !== type;
+      return c.type !== connectorSlug;
     });
     return respond(204);
   }),

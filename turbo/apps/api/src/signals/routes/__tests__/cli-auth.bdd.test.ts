@@ -493,7 +493,7 @@ describe("CLI-TEST: test-connector", () => {
       orgId: actor.orgId,
     });
 
-    const oauthState = await support.readConnectorByType(actor, "test-oauth");
+    const oauthState = await support.readConnectorBySlug(actor, "test-oauth");
     expect(oauthState).toMatchObject({
       authMethod: "oauth",
       externalUsername: "e2e-test-oauth",
@@ -518,7 +518,7 @@ describe("CLI-TEST: test-connector", () => {
       connectorType: "test-oauth",
       orgId: actor.orgId,
     });
-    const apiState = await support.readConnectorByType(actor, "test-oauth");
+    const apiState = await support.readConnectorBySlug(actor, "test-oauth");
     expect(apiState.authMethod).toBe("api");
 
     await authDevice.requestTestConnector(

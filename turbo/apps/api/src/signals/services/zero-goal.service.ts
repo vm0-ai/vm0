@@ -35,6 +35,7 @@ export interface GoalBootstrap {
   readonly orgId: string;
   readonly userId: string;
   readonly threadId: string;
+  readonly objectiveBrief: string;
 }
 
 export type GoalResult =
@@ -371,6 +372,7 @@ export async function createGoalForCurrentThread(
             orgId: args.orgId,
             userId: args.userId,
             threadId: created.threadId,
+            objectiveBrief: created.goal.objectiveBrief,
           },
         }
       : {}),

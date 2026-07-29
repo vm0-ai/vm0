@@ -86,7 +86,7 @@ def test_classifies_static_connector_without_permission_method_enforcement():
     )
 
     assert candidate == builtin_connector_diagnostics.ConnectorDiagnosticCandidate(
-        connector_type="catalog-connector",
+        connector_slug="catalog-connector",
         reason="not_configured_for_run",
         env_names=("SERVICE_TOKEN", "TENANT_ID"),
         base="https://service.example.com/api",
@@ -129,7 +129,7 @@ def test_classifies_static_base_with_literal_unbalanced_brace():
     )
 
     assert candidate is not None
-    assert candidate.connector_type == "literal-brace"
+    assert candidate.connector_slug == "literal-brace"
     assert candidate.env_names == ("LITERAL_BRACE_TOKEN",)
 
 
@@ -309,7 +309,7 @@ def test_model_provider_route_excludes_connector_on_same_host():
 
     assert excluded is None
     assert connector is not None
-    assert connector.connector_type == "catalog-connector"
+    assert connector.connector_slug == "catalog-connector"
 
 
 def test_find_candidate_suppresses_shared_base_only_candidates():
@@ -354,7 +354,7 @@ def test_literal_only_connector_does_not_create_shared_base_ambiguity():
     )
 
     assert candidate is not None
-    assert candidate.connector_type == "credentialed"
+    assert candidate.connector_slug == "credentialed"
     assert candidate.env_names == ("REAL_TOKEN",)
 
 
@@ -386,7 +386,7 @@ def test_find_candidate_selects_unique_shared_base_route_owner():
     )
 
     assert candidate == builtin_connector_diagnostics.ConnectorDiagnosticCandidate(
-        connector_type="inactive",
+        connector_slug="inactive",
         reason="not_configured_for_run",
         env_names=("INACTIVE_HEADER_TOKEN", "INACTIVE_QUERY_TOKEN"),
         base="https://shared.example.com",
@@ -449,7 +449,7 @@ def test_shared_base_ownership_selects_route_specific_inactive_sibling():
     assert resolution.reason == "route_owner"
     assert resolution.hint_status == "absent"
     assert resolution.candidate is not None
-    assert resolution.candidate.connector_type == "inactive"
+    assert resolution.candidate.connector_slug == "inactive"
 
 
 def test_shared_base_ownership_suppresses_base_only_candidate():
@@ -494,7 +494,7 @@ def test_shared_base_ownership_uses_intent_inside_candidate_set():
     assert resolution.reason == "hint_owner"
     assert resolution.hint_status == "used"
     assert resolution.candidate is not None
-    assert resolution.candidate.connector_type == "inactive"
+    assert resolution.candidate.connector_slug == "inactive"
 
 
 def test_shared_base_ownership_ignores_intent_outside_candidate_set():
@@ -576,4 +576,4 @@ def test_shared_base_ownership_normalizes_static_base_keys():
     assert resolution is not None
     assert resolution.reason == "route_owner"
     assert resolution.candidate is not None
-    assert resolution.candidate.connector_type == "inactive"
+    assert resolution.candidate.connector_slug == "inactive"

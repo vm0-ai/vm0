@@ -15,6 +15,7 @@ interface GoalQueueAdmissionFixtureArgs {
   readonly orgId: string;
   readonly userId: string;
   readonly goalId: string;
+  readonly objectiveBrief: string;
   readonly callbackSecret: string;
 }
 
@@ -30,6 +31,7 @@ export async function admitGoalQueueEventFixture(
     chatThreadId: args.threadId,
     orgId: args.orgId,
     userId: args.userId,
+    objectiveBrief: args.objectiveBrief,
     params: {
       goalId: args.goalId,
       callbackSecret: args.callbackSecret,
@@ -134,6 +136,7 @@ export async function createActiveGoalQueueEventFixture(args: {
     orgId: args.orgId,
     userId: args.userId,
     goalId: goal.id,
+    objectiveBrief: args.objectiveBrief,
     callbackSecret: args.callbackSecret,
   });
   if (admission.kind !== "inserted") {

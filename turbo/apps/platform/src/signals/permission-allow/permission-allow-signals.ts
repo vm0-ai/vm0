@@ -32,7 +32,8 @@ export const permissionAllowAgentId$ = computed((get) => {
   return typeof agentId === "string" ? agentId : null;
 });
 
-export const permissionAllowRef$ = computed((get) => {
+export const permissionAllowConnectorSlug$ = computed((get) => {
+  // TODO(#23619): Rename this serialized chat-action query parameter.
   return get(searchParams$).get("ref") ?? null;
 });
 
@@ -177,11 +178,11 @@ export const currentAgentUserPermissionGrants$ = computed(async (get) => {
 /** Firewall metadata selected by the permission-allow route. */
 export const permissionAllowFirewallPermissionMetadata$ = computed(
   async (get) => {
-    const connectorRef = get(permissionAllowRef$);
-    if (!connectorRef) {
+    const connectorSlug = get(permissionAllowConnectorSlug$);
+    if (!connectorSlug) {
       return null;
     }
-    return await get(firewallPermissionMetadataByConnector({ connectorRef }));
+    return await get(firewallPermissionMetadataByConnector({ connectorSlug }));
   },
 );
 
@@ -190,7 +191,7 @@ export const applyUserPermissionGrants$ = command(
     { get, set },
     params: {
       agentId?: string;
-      connectorRef: string;
+      connectorSlug: string;
       mode: UserPermissionGrantApplyMode;
       grants: readonly ApplyUserPermissionGrant[];
     },
@@ -204,7 +205,7 @@ export const applyUserPermissionGrants$ = command(
       client.apply({
         body: {
           agentId: params.agentId,
-          connectorRef: params.connectorRef,
+          connectorRef: params.connectorSlug,
           mode: params.mode,
           grants: [...params.grants],
         },
@@ -229,7 +230,7 @@ export const applyUserPermissionGrant$ = command(
     { set },
     params: {
       agentId?: string;
-      connectorRef: string;
+      connectorSlug: string;
       permission: string;
       action: UserPermissionGrantAction;
       expiresIn?: UserPermissionGrantExpiresIn;
@@ -240,7 +241,7 @@ export const applyUserPermissionGrant$ = command(
       applyUserPermissionGrants$,
       {
         agentId: params.agentId,
-        connectorRef: params.connectorRef,
+        connectorSlug: params.connectorSlug,
         mode: "patch",
         grants: [
           params.action === "allow"

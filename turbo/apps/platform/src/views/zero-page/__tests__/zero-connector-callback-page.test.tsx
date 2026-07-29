@@ -1,4 +1,4 @@
-import { connectorsTypeCallbackContract } from "@vm0/api-contracts/contracts/connectors-type-callback";
+import { connectorsSlugCallbackContract } from "@vm0/api-contracts/contracts/connectors-slug-callback";
 import type { PublicConnectorCatalogIcon } from "@vm0/api-contracts/contracts/zero-connector-catalog";
 import { CONNECTOR_APP_OAUTH_CALLBACK_METADATA_STORAGE_KEY } from "@vm0/connectors/app-oauth-callback";
 import { screen, waitFor } from "@testing-library/react";
@@ -25,7 +25,7 @@ describe("connector callback page", () => {
     );
     let observedQuery: Readonly<Record<string, string | undefined>> = {};
     context.mocks.api(
-      connectorsTypeCallbackContract.callback,
+      connectorsSlugCallbackContract.callback,
       ({ params, query, respond }) => {
         expect(params.type).toBe("github");
         observedQuery = query;
@@ -74,7 +74,7 @@ describe("connector callback page", () => {
 
   it("renders the API failure result without retaining OAuth parameters", async () => {
     context.mocks.api(
-      connectorsTypeCallbackContract.callback,
+      connectorsSlugCallbackContract.callback,
       ({ query, respond }) => {
         expect(query).toMatchObject({
           error: "access_denied",
@@ -107,7 +107,7 @@ describe("connector callback page", () => {
   });
 
   it("restores a completed result page without replaying the callback", async () => {
-    context.mocks.api(connectorsTypeCallbackContract.callback, ({ never }) => {
+    context.mocks.api(connectorsSlugCallbackContract.callback, ({ never }) => {
       return never();
     });
 

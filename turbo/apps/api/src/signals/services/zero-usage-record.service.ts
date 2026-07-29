@@ -213,9 +213,7 @@ function threadedUsageRecordWith(db: Db, runs: UsageRecordRuns) {
         runId: sql`NULL::text`
           .mapWith(nullableDriverValueDecoder(pgTextDecoder))
           .as("run_id"),
-        title: sql`${chatThreads.title}`
-          .mapWith(nullableDriverValueDecoder(pgTextDecoder))
-          .as("title"),
+        title: chatThreads.title,
         credits: safeIntegerSum(runs.credits).as("credits"),
         tokens: safeIntegerSum(runs.tokens).as("tokens"),
         lastActivity: max(runs.createdAt)
