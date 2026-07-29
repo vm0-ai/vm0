@@ -38,7 +38,12 @@ export const monitorChatMessageQueue$ = command(
             ),
             and(
               chatEventTypeIn(["input.prompt"]),
-              inArray(chatMessages.triggerSource, ["slack", "feishu", "teams"]),
+              inArray(chatMessages.triggerSource, [
+                "slack",
+                "feishu",
+                "teams",
+                "telegram",
+              ]),
               isNull(chatMessages.encryptedParams),
             ),
           ),
