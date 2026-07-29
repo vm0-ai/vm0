@@ -1776,12 +1776,11 @@ describe("Feishu integration", () => {
     await runsApi.heartbeatRunner(runnerGroup);
     const claim = await runsApi.claimRunnerJob(run.id);
     expect(claim.prompt).toContain(canonicalFilePrompt);
-    const fileId = claim.prompt.match(/ {3}\[FILE_KEY\] ([^\n]+)/u)?.[1];
+    const fileId = claim.prompt.match(/ {3}\[ID\] ([^\n]+)/u)?.[1];
     expect(fileId).toMatch(/^feishu_file_[A-Za-z0-9_-]{22}$/u);
     expect(fileId?.length).toBeLessThan(64);
     expect(claim.prompt).not.toContain(fileKey);
-    expect(claim.prompt).toContain("   [MESSAGE_ID] om_file_message");
-    expect(claim.prompt).toContain("   [TYPE] file");
+    expect(claim.prompt).toContain(`   [ID] ${fileId}`);
     expect(claim.appendSystemPrompt).toContain("zero feishu download-file -h");
     expect(claim.appendSystemPrompt).toContain("zero feishu upload-file -h");
 
