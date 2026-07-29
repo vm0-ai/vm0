@@ -54,7 +54,7 @@ const listSecretsInner$ = computed(async (get): Promise<unknown> => {
       ),
   ]);
   const connectorAccesses = connectorRows.flatMap((row) => {
-    if (!row.connectorRef) {
+    if (!row.connectorSlug) {
       return [];
     }
     const result = resolveConnectorCredentialAccess({

@@ -8,6 +8,7 @@ import {
   text,
   jsonb,
   timestamp,
+  unique,
   uniqueIndex,
   index,
 } from "drizzle-orm/pg-core";
@@ -85,7 +86,7 @@ export const orgCustomConnectors = pgTable(
         table.orgId,
         table.slug,
       ),
-      uniqueIndex("idx_org_custom_connectors_id_org").on(table.id, table.orgId),
+      unique("idx_org_custom_connectors_id_org").on(table.id, table.orgId),
       check(
         "chk_org_custom_connectors_slug",
         sql`left(${table.slug}, 1) = '_'`,

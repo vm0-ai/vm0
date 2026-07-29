@@ -23,11 +23,9 @@ describe("custom connector auth storage schema", () => {
     expect(orgCustomConnectors.authMode.notNull).toBe(true);
     expect(orgCustomConnectors.enabled.notNull).toBe(true);
     expect(orgCustomConnectors.revision.notNull).toBe(true);
-    expect(
-      connectorConfig.indexes.map((index) => {
-        return index.config.name;
-      }),
-    ).toContain("idx_org_custom_connectors_id_org");
+    expect(names(connectorConfig.uniqueConstraints)).toContain(
+      "idx_org_custom_connectors_id_org",
+    );
     expect(names(connectorConfig.checks)).toEqual(
       expect.arrayContaining([
         "chk_org_custom_connectors_slug",
@@ -65,8 +63,10 @@ describe("custom connector auth storage schema", () => {
       expect.arrayContaining([
         "idx_connectors_org_user_type",
         "idx_connectors_org_user_custom_connector",
-        "idx_connectors_id_org_user",
       ]),
+    );
+    expect(names(connectorConfig.uniqueConstraints)).toContain(
+      "idx_connectors_id_org_user",
     );
     expect(
       connectorConfig.indexes.find((index) => {

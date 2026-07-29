@@ -78,8 +78,8 @@ WHERE secret_row."connector_id" = connector."id"
 		secret_row."org_id" IS DISTINCT FROM connector."org_id"
 		OR secret_row."user_id" IS DISTINCT FROM connector."user_id"
 	);--> statement-breakpoint
-CREATE UNIQUE INDEX "idx_connectors_id_org_user" ON "connectors" USING btree ("id","org_id","user_id");--> statement-breakpoint
-CREATE UNIQUE INDEX "idx_org_custom_connectors_id_org" ON "org_custom_connectors" USING btree ("id","org_id");--> statement-breakpoint
+ALTER TABLE "connectors" ADD CONSTRAINT "idx_connectors_id_org_user" UNIQUE("id","org_id","user_id");--> statement-breakpoint
+ALTER TABLE "org_custom_connectors" ADD CONSTRAINT "idx_org_custom_connectors_id_org" UNIQUE("id","org_id");--> statement-breakpoint
 ALTER TABLE "org_custom_connector_oauth_configs" ADD CONSTRAINT "fk_org_custom_connector_oauth_configs_connector" FOREIGN KEY ("connector_id","org_id") REFERENCES "public"."org_custom_connectors"("id","org_id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "connector_oauth_states" ADD CONSTRAINT "fk_connector_oauth_states_custom_connector" FOREIGN KEY ("custom_connector_id","org_id") REFERENCES "public"."org_custom_connectors"("id","org_id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "connectors" ADD CONSTRAINT "fk_connectors_custom_connector" FOREIGN KEY ("custom_connector_id","org_id") REFERENCES "public"."org_custom_connectors"("id","org_id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint

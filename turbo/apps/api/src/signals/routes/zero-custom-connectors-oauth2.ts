@@ -2,7 +2,7 @@ import { command } from "ccstate";
 import { isFeatureEnabled } from "@vm0/core/feature-switch";
 import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import { zeroCustomConnectorOAuth2Contract } from "@vm0/api-contracts/contracts/zero-custom-connectors";
-import type { ConnectorOauthCallbackResult } from "@vm0/api-contracts/contracts/connectors-type-callback";
+import type { ConnectorOauthCallbackResult } from "@vm0/api-contracts/contracts/connectors-slug-callback";
 
 import { organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";

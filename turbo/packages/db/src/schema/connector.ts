@@ -7,6 +7,7 @@ import {
   text,
   timestamp,
   boolean,
+  unique,
   uniqueIndex,
   index,
   foreignKey,
@@ -56,7 +57,7 @@ export const connectors = pgTable(
       uniqueIndex("idx_connectors_org_user_custom_connector")
         .on(table.orgId, table.userId, table.customConnectorId)
         .where(sql`${table.customConnectorId} IS NOT NULL`),
-      uniqueIndex("idx_connectors_id_org_user").on(
+      unique("idx_connectors_id_org_user").on(
         table.id,
         table.orgId,
         table.userId,

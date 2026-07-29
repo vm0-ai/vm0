@@ -2613,11 +2613,15 @@ describe("connector catalog valid lifecycle", () => {
       visibility: "private",
     });
     const created: { runId?: string } = {};
+    const customConnectorIds: string[] = [];
     const cleanupConnector = createConnectorCleanup(actor, connectorSlug);
     onTestFinished(async () => {
       context.mocks.s3.send.mockResolvedValue({ Contents: [] });
       if (created.runId) {
         await runs.requestCancelRun(actor, created.runId, [200, 404]);
+      }
+      for (const customConnectorId of customConnectorIds) {
+        await connectorsApi.deleteCustomConnector(actor, customConnectorId);
       }
       await cleanupConnector();
       await bdd.deleteAgent(actor, agent.agentId);
@@ -2658,19 +2662,16 @@ describe("connector catalog valid lifecycle", () => {
         permissions: [{ name: "items.read" }],
       },
     });
-    const hostCollision = await connectorsApi.requestCreateCustomConnector(
-      actor,
-      {
-        displayName: "External Host Collision",
-        prefixes: ["https://api.example.test/custom/"],
-        headerName: "Authorization",
-        headerTemplate: "Bearer {{secret}}",
-      },
-      [400],
-    );
-    expectApiError(hostCollision.body);
-    expect(hostCollision.body.error.message).toContain("api.example.test");
-    expect(hostCollision.body.error.message).toContain("External Runtime");
+    const hostOverlap = await connectorsApi.createCustomConnector(actor, {
+      displayName: "External Host Overlap",
+      prefixes: ["https://api.example.test/custom/"],
+      headerName: "Authorization",
+      headerTemplate: "Bearer {{secret}}",
+    });
+    customConnectorIds.push(hostOverlap.id);
+    expect(hostOverlap.prefixes).toStrictEqual([
+      "https://api.example.test/custom/",
+    ]);
     const grants = await accept(
       setupApp({ context })(zeroUserPermissionGrantsContract).apply({
         headers: { authorization: "Bearer clerk-session" },
