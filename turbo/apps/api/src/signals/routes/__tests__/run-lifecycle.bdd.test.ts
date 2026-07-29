@@ -11392,7 +11392,7 @@ describe("RUN-03: sandbox completion reports against missing checkpoints and set
     expect(expiredTelemetry.body.error.code).toBe("UNAUTHORIZED");
   });
 
-  it("continues from a recovery checkpoint after timeout completion", async () => {
+  it("continues from a recovery checkpoint posted after timeout completion", async () => {
     const api = createRunsApi(context);
     const webhooks = createWebhookCallbackApi(context);
     const { actor, agentId } = await entitledRunActor();
@@ -11411,16 +11411,6 @@ describe("RUN-03: sandbox completion reports against missing checkpoints and set
       authorization: `Bearer ${sourceClaim.sandboxToken}`,
     };
 
-    await webhooks.requestAgentCheckpoint(
-      {
-        runId: source.runId,
-        cliAgentType: "claude-code",
-        cliAgentSessionId: cliSessionId,
-        cliAgentSessionHistoryHash: historyHash,
-      },
-      sandboxHeaders,
-      [200],
-    );
     const completion = await webhooks.requestAgentComplete(
       {
         runId: source.runId,
@@ -11435,6 +11425,17 @@ describe("RUN-03: sandbox completion reports against missing checkpoints and set
     const failed = await api.readRun(actor, source.runId);
     expect(failed.status).toBe("failed");
     expect(failed.error).toBe("Agent execution timed out after 7200 seconds");
+
+    await webhooks.requestAgentCheckpoint(
+      {
+        runId: source.runId,
+        cliAgentType: "claude-code",
+        cliAgentSessionId: cliSessionId,
+        cliAgentSessionHistoryHash: historyHash,
+      },
+      sandboxHeaders,
+      [200],
+    );
 
     const continued = await api.createRun(actor, {
       agentId,
