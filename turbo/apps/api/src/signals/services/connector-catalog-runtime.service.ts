@@ -1,6 +1,6 @@
 import type {
   ConnectorAuthMethodId,
-  ConnectorRef,
+  ConnectorSlug,
 } from "@vm0/api-contracts/contracts/connector-identity";
 import type {
   PublicConnectorCatalogAuthMethodDetail,
@@ -41,7 +41,7 @@ import type {
 import {
   acceptedConnectorCatalogMethodIsCompatible,
   getAcceptedConnectorCatalogResolutionDetail,
-  listAcceptedConnectorCatalogAvailableRefs,
+  listAcceptedConnectorCatalogAvailableSlugs,
   loadAcceptedConnectorCatalogSnapshot,
   type AcceptedConnectorCatalogSnapshot,
   type ExternalCatalogIdentity,
@@ -54,7 +54,7 @@ import {
 } from "./connector-server-firewall-catalog.service";
 
 export interface ConnectorRuntimeMethod {
-  readonly connectorRef: ConnectorRef;
+  readonly connectorSlug: ConnectorSlug;
   readonly authMethodId: ConnectorAuthMethodId;
   readonly catalogMethod: PublicConnectorCatalogAuthMethodDetail;
   readonly method: ConnectorAuthMethodRuntimeConfig;
@@ -63,7 +63,7 @@ export interface ConnectorRuntimeMethod {
 }
 
 export interface ConnectorRuntimeConnector {
-  readonly connectorRef: ConnectorRef;
+  readonly connectorSlug: ConnectorSlug;
   readonly catalogConnector: PublicConnectorCatalogDetail;
   readonly methods: ReadonlyMap<ConnectorAuthMethodId, ConnectorRuntimeMethod>;
   readonly authoredVisibleMethodIds: ReadonlySet<ConnectorAuthMethodId>;
@@ -72,12 +72,12 @@ export interface ConnectorRuntimeConnector {
 
 export interface ConnectorRuntimeSnapshot {
   readonly acceptedSnapshot: AcceptedConnectorCatalogSnapshot;
-  readonly connectors: ReadonlyMap<ConnectorRef, ConnectorRuntimeConnector>;
+  readonly connectors: ReadonlyMap<ConnectorSlug, ConnectorRuntimeConnector>;
   readonly serverFirewalls: ConnectorServerFirewallCatalog;
 }
 
-function methodKey(connectorRef: string, authMethodId: string): string {
-  return `${connectorRef}\0${authMethodId}`;
+function methodKey(connectorSlug: string, authMethodId: string): string {
+  return `${connectorSlug}\0${authMethodId}`;
 }
 
 const providerRegistrations = singleton(() => {
@@ -92,11 +92,11 @@ const providerRegistrations = singleton(() => {
 });
 
 function providerRegistrationFor(
-  connectorRef: string,
+  connectorSlug: string,
   authMethodId: string,
 ): ConnectorAuthProviderRegistrationCapability | null {
   return (
-    providerRegistrations().get(methodKey(connectorRef, authMethodId)) ?? null
+    providerRegistrations().get(methodKey(connectorSlug, authMethodId)) ?? null
   );
 }
 
@@ -424,16 +424,16 @@ function runtimeMethod(
 }
 
 function runtimeMethodEntry(args: {
-  readonly connectorRef: ConnectorRef;
+  readonly connectorSlug: ConnectorSlug;
   readonly catalogMethod: PublicConnectorCatalogAuthMethodDetail;
   readonly method: ConnectorAuthMethodRuntimeConfig;
 }): ConnectorRuntimeMethod {
   const registration = providerRegistrationFor(
-    args.connectorRef,
+    args.connectorSlug,
     args.catalogMethod.id,
   );
   return {
-    connectorRef: args.connectorRef,
+    connectorSlug: args.connectorSlug,
     authMethodId: args.catalogMethod.id,
     catalogMethod: args.catalogMethod,
     method: args.method,
@@ -447,13 +447,14 @@ function runtimeMethodEntry(args: {
 
 function runtimeConnectors(
   acceptedSnapshot: AcceptedConnectorCatalogSnapshot,
-): ReadonlyMap<ConnectorRef, ConnectorRuntimeConnector> {
-  const connectors = new Map<ConnectorRef, ConnectorRuntimeConnector>();
+): ReadonlyMap<ConnectorSlug, ConnectorRuntimeConnector> {
+  const connectors = new Map<ConnectorSlug, ConnectorRuntimeConnector>();
 
   for (const connector of acceptedSnapshot.artifact.connectors) {
+    const connectorSlug = connector.connectorRef;
     const catalogConnector = getAcceptedConnectorCatalogResolutionDetail({
       snapshot: acceptedSnapshot,
-      connectorRef: connector.connectorRef,
+      connectorSlug,
     });
     if (catalogConnector === null) {
       throw new Error("Accepted connector runtime relationship is incomplete");
@@ -472,7 +473,7 @@ function runtimeConnectors(
       if (
         !acceptedConnectorCatalogMethodIsCompatible({
           snapshot: acceptedSnapshot,
-          connectorRef: connector.connectorRef,
+          connectorSlug,
           authMethodId: method.id,
         })
       ) {
@@ -487,14 +488,14 @@ function runtimeConnectors(
       methods.set(
         method.id,
         runtimeMethodEntry({
-          connectorRef: connector.connectorRef,
+          connectorSlug,
           catalogMethod,
           method: runtimeMethod(method),
         }),
       );
     }
-    connectors.set(connector.connectorRef, {
-      connectorRef: connector.connectorRef,
+    connectors.set(connectorSlug, {
+      connectorSlug,
       catalogConnector,
       methods,
       authoredVisibleMethodIds,
@@ -533,12 +534,12 @@ function runtimeSnapshot(
 
 function runtimeServerFirewalls(
   acceptedSnapshot: AcceptedConnectorCatalogSnapshot,
-  connectors: ReadonlyMap<ConnectorRef, ConnectorRuntimeConnector>,
+  connectors: ReadonlyMap<ConnectorSlug, ConnectorRuntimeConnector>,
 ): ConnectorServerFirewallCatalog {
-  const runtimeMethodsByRef = new Map(
-    [...connectors.entries()].map(([connectorRef, connector]) => {
+  const runtimeMethodsBySlug = new Map(
+    [...connectors.entries()].map(([connectorSlug, connector]) => {
       return [
-        connectorRef,
+        connectorSlug,
         [...connector.methods.values()].map((method) => {
           return method.method;
         }),
@@ -547,7 +548,7 @@ function runtimeServerFirewalls(
   );
   return createAcceptedConnectorServerFirewallCatalog({
     artifact: acceptedSnapshot.artifact,
-    runtimeMethodsByRef,
+    runtimeMethodsBySlug,
   });
 }
 
@@ -616,19 +617,19 @@ export async function loadConnectorRuntimeSnapshot(
 
 export function getConnectorRuntimeConnector(
   snapshot: ConnectorRuntimeSnapshot,
-  connectorRef: string,
+  connectorSlug: string,
 ): ConnectorRuntimeConnector | undefined {
-  return snapshot.connectors.get(connectorRef);
+  return snapshot.connectors.get(connectorSlug);
 }
 
 export function getConnectorRuntimeMethod(args: {
   readonly snapshot: ConnectorRuntimeSnapshot;
-  readonly connectorRef: string;
+  readonly connectorSlug: string;
   readonly authMethodId: string;
   readonly requireExecutable?: boolean;
 }): ConnectorRuntimeMethod | undefined {
   const method = args.snapshot.connectors
-    .get(args.connectorRef)
+    .get(args.connectorSlug)
     ?.methods.get(args.authMethodId);
   if (args.requireExecutable === true && method?.executable !== true) {
     return undefined;
@@ -680,11 +681,11 @@ export function getConnectorRuntimeStoredSecretDisplayInfo(
   return null;
 }
 
-export function listConnectorRuntimeVisibleRefs(args: {
+export function listConnectorRuntimeVisibleSlugs(args: {
   readonly snapshot: ConnectorRuntimeSnapshot;
   readonly featureStates: ConnectorFeatureStates;
-}): readonly ConnectorRef[] {
-  return listAcceptedConnectorCatalogAvailableRefs({
+}): readonly ConnectorSlug[] {
+  return listAcceptedConnectorCatalogAvailableSlugs({
     snapshot: args.snapshot.acceptedSnapshot,
     featureStates: args.featureStates,
   });

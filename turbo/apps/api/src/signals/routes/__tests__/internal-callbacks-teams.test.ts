@@ -607,7 +607,7 @@ afterEach(async () => {
   context.mocks.axiom.query.mockReset();
 });
 
-describe("Teams org internal callbacks", () => {
+describe("Teams chat callbacks", () => {
   it("forks personal message threads without replacing the main session", async () => {
     const teams = await setupConnectedTeamsActor();
     const teamsApi = teamsApiMocks({ serviceUrl: teams.fixture.serviceUrl });
@@ -727,7 +727,7 @@ describe("Teams org internal callbacks", () => {
     );
   });
 
-  it("posts completed run replies and persists Teams thread sessions", async () => {
+  it("posts completed run replies and persists canonical Teams thread sessions", async () => {
     const teams = await setupConnectedTeamsActor({ zeroDebug: true });
     const teamsApi = teamsApiMocks({ serviceUrl: teams.fixture.serviceUrl });
     mockOptionalEnv("OPENROUTER_API_KEY", "teams-summary-key");

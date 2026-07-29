@@ -34,7 +34,7 @@ import {
 export interface ConnectorCredentialAccess {
   readonly authMethodId: string;
   readonly connectorId: string;
-  readonly connectorRef: string;
+  readonly connectorSlug: string;
   readonly orgId: string;
   readonly runtimeMethod: ConnectorRuntimeMethod;
   readonly storageVersion: number;
@@ -49,7 +49,7 @@ type ConnectorCredentialAccessResult =
 interface ConnectorCredentialStoredIdentity {
   readonly authMethodId: string;
   readonly connectorId: string;
-  readonly connectorRef: string;
+  readonly connectorSlug: string;
   readonly orgId: string;
   readonly storageVersion: number;
   readonly userId: string;
@@ -83,7 +83,7 @@ export function resolveConnectorCredentialAccess(args: {
 }): ConnectorCredentialAccessResult {
   const runtimeMethod = getConnectorRuntimeMethod({
     snapshot: args.snapshot,
-    connectorRef: args.stored.connectorRef,
+    connectorSlug: args.stored.connectorSlug,
     authMethodId: args.stored.authMethodId,
     requireExecutable: true,
   });
@@ -103,7 +103,7 @@ export function resolveConnectorCredentialAccess(args: {
     access: {
       authMethodId: args.stored.authMethodId,
       connectorId: args.stored.connectorId,
-      connectorRef: args.stored.connectorRef,
+      connectorSlug: args.stored.connectorSlug,
       orgId: args.stored.orgId,
       runtimeMethod,
       storageVersion: runtimeMethod.method.storage.version,
@@ -145,7 +145,7 @@ function connectorIdentityExists(
           eq(credentialAccessConnector.id, access.connectorId),
           eq(credentialAccessConnector.orgId, access.orgId),
           eq(credentialAccessConnector.userId, access.userId),
-          eq(credentialAccessConnector.type, access.connectorRef),
+          eq(credentialAccessConnector.type, access.connectorSlug),
           eq(credentialAccessConnector.authMethod, access.authMethodId),
           eq(credentialAccessConnector.storageVersion, access.storageVersion),
           connectorStateRevision === undefined
@@ -241,7 +241,7 @@ export function connectorCredentialStoredSecretDisplayInfo(args: {
   ) {
     return null;
   }
-  const connector = args.snapshot.connectors.get(args.access.connectorRef);
+  const connector = args.snapshot.connectors.get(args.access.connectorSlug);
   if (connector === undefined) {
     return null;
   }

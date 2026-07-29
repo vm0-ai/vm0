@@ -1,4 +1,5 @@
--- Enforce canonical user-message constraints after the compatibility bridge.
+-- Migration 0728: enforce canonical user-message constraints after the
+-- compatibility bridge.
 ALTER TABLE "chat_events" DROP CONSTRAINT "chat_events_input_user_message_check";--> statement-breakpoint
 ALTER TABLE "chat_threads" DROP CONSTRAINT "chat_threads_draft_user_message_check";--> statement-breakpoint
 ALTER TABLE "zero_agent_drafts" DROP CONSTRAINT "zero_agent_drafts_draft_user_message_check";--> statement-breakpoint

@@ -62,7 +62,7 @@ _SHARED_BASE_MIN_CANDIDATES: Final = 2
 
 @dataclass(frozen=True)
 class ConnectorDiagnosticCandidate:
-    connector_type: str
+    connector_slug: str
     reason: str
     env_names: tuple[str, ...]
     base: str
@@ -91,7 +91,7 @@ SharedBaseOwnershipHintStatus = Literal[
 class SharedBaseOwnershipResolution:
     candidate: ConnectorDiagnosticCandidate | None
     reason: SharedBaseOwnershipReason
-    candidate_connector_types: tuple[str, ...]
+    candidate_connector_slugs: tuple[str, ...]
     hint_status: SharedBaseOwnershipHintStatus
 
 
@@ -242,7 +242,7 @@ def _find_shared_base_candidate(
         return _SharedBaseDiagnosticResolution(candidate=None)
 
     selected = route_matches[0].candidate
-    if selected.connector_type in active_firewall_names:
+    if selected.connector_slug in active_firewall_names:
         return _SharedBaseDiagnosticResolution(candidate=None)
     return _SharedBaseDiagnosticResolution(candidate=selected)
 
@@ -298,41 +298,41 @@ def resolve_shared_base_ownership(
     matches = _ownership_matches(url, method, catalog)
     if len(matches) < _SHARED_BASE_MIN_CANDIDATES:
         return None
-    if not any(match.candidate.connector_type == matched_firewall_name for match in matches):
+    if not any(match.candidate.connector_slug == matched_firewall_name for match in matches):
         return None
 
-    candidate_connector_types = tuple(sorted(match.candidate.connector_type for match in matches))
+    candidate_connector_slugs = tuple(sorted(match.candidate.connector_slug for match in matches))
     route_matches = [match for match in matches if match.route_specific]
     if len(route_matches) == 1:
         selected = route_matches[0].candidate
-        if selected.connector_type in active_firewall_names:
+        if selected.connector_slug in active_firewall_names:
             return SharedBaseOwnershipResolution(
                 candidate=None,
                 reason="active_route_owner",
-                candidate_connector_types=candidate_connector_types,
+                candidate_connector_slugs=candidate_connector_slugs,
                 hint_status=_hint_status(connector_intent, matches, used=False),
             )
         return SharedBaseOwnershipResolution(
             candidate=selected,
             reason="route_owner",
-            candidate_connector_types=candidate_connector_types,
+            candidate_connector_slugs=candidate_connector_slugs,
             hint_status=_hint_status(connector_intent, matches, used=False),
         )
 
     hint_match = _hint_match(connector_intent, matches)
     if hint_match is not None:
         selected = hint_match.candidate
-        if selected.connector_type in active_firewall_names:
+        if selected.connector_slug in active_firewall_names:
             return SharedBaseOwnershipResolution(
                 candidate=None,
                 reason="active_hint_owner",
-                candidate_connector_types=candidate_connector_types,
+                candidate_connector_slugs=candidate_connector_slugs,
                 hint_status="used",
             )
         return SharedBaseOwnershipResolution(
             candidate=selected,
             reason="hint_owner",
-            candidate_connector_types=candidate_connector_types,
+            candidate_connector_slugs=candidate_connector_slugs,
             hint_status="used",
         )
 
@@ -340,7 +340,7 @@ def resolve_shared_base_ownership(
     return SharedBaseOwnershipResolution(
         candidate=None,
         reason=reason,
-        candidate_connector_types=candidate_connector_types,
+        candidate_connector_slugs=candidate_connector_slugs,
         hint_status=_hint_status(connector_intent, matches, used=False),
     )
 
@@ -382,7 +382,7 @@ def _hint_match(
     if connector_intent is None:
         return None
     for match in matches:
-        if match.candidate.connector_type == connector_intent:
+        if match.candidate.connector_slug == connector_intent:
             return match
     return None
 
@@ -408,7 +408,7 @@ def _candidate_from_match(
     candidate = match.api_entry.get(_DIAGNOSTIC_CANDIDATE_KEY)
     if not isinstance(candidate, ConnectorDiagnosticCandidate):
         return None
-    if candidate.connector_type != match.name or candidate.base != match.api_entry.get("base"):
+    if candidate.connector_slug != match.name or candidate.base != match.api_entry.get("base"):
         return None
     return candidate
 
@@ -635,7 +635,7 @@ def project_diagnostic_catalog(firewalls: dict[str, dict]) -> DiagnosticCatalogP
         for api in raw_apis:
             projected_api = _project_connector_api(
                 api,
-                connector_type=raw_name,
+                connector_slug=raw_name,
                 shared_base_keys=shared_base_keys,
             )
             if projected_api is not None:
@@ -653,7 +653,7 @@ def project_diagnostic_catalog(firewalls: dict[str, dict]) -> DiagnosticCatalogP
 def _project_connector_api(
     api: dict,
     *,
-    connector_type: str,
+    connector_slug: str,
     shared_base_keys: frozenset[str],
 ) -> dict | None:
     raw_base = api.get("base")
@@ -669,7 +669,7 @@ def _project_connector_api(
         return None
 
     candidate = ConnectorDiagnosticCandidate(
-        connector_type=connector_type,
+        connector_slug=connector_slug,
         reason="not_configured_for_run",
         env_names=env_names,
         base=raw_base,

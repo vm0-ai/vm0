@@ -2718,7 +2718,7 @@ describe("CHAT-03 thread artifacts and google drive status", () => {
       code: "drive-ok",
       state: stateFromAuthorizationUrl(start.authorizationUrl),
     });
-    const connected = await connectorsApi.readConnectorByType(
+    const connected = await connectorsApi.readConnectorBySlug(
       actor,
       "google-drive",
     );

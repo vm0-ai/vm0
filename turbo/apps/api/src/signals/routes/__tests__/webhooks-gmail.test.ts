@@ -466,7 +466,7 @@ async function connectGmail(
     code: "gmail-code",
     state,
   });
-  const connector = await connectorsApi.readConnectorByType(actor, "gmail");
+  const connector = await connectorsApi.readConnectorBySlug(actor, "gmail");
   expect(connector).toMatchObject({
     authMethod: "oauth",
     externalEmail: gmailEmail,

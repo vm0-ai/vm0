@@ -4,12 +4,18 @@ import { zeroGoalsContract } from "@vm0/api-contracts/contracts/zero-goals";
 
 import { mockOptionalEnv } from "../../../lib/env";
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
+import {
+  admitGoalQueueEventFixture,
+  readGoalQueueStateFixture,
+  readGoalThreadFixture,
+} from "../../../test-fixtures/goal-queue";
 import { signSandboxJwtForTests } from "../../auth/tokens";
 import { now } from "../../external/time";
-import { createBddApi } from "./helpers/api-bdd";
+import { createBddApi, type ApiTestUser } from "./helpers/api-bdd";
 import { createChatFilesBddApi } from "./helpers/api-bdd-chat-files";
 import { createRunsApi } from "./helpers/api-bdd-runs";
 import { createZeroRouteMocks } from "./helpers/zero-route-test";
+import { useSecretKmsProbe } from "./helpers/secret-kms-probe";
 
 const context = testContext();
 const mocks = createZeroRouteMocks(context);
@@ -20,12 +26,16 @@ const ALL_GOAL_CAPABILITIES = [
   "goal:user-control:write",
 ] as const satisfies readonly ZeroCapability[];
 
-interface GoalApiFixture {
+interface GoalApiAuthFixture {
   readonly orgId: string;
   readonly userId: string;
   readonly runId: string;
   readonly threadId: string;
   readonly agentId: string;
+}
+
+interface GoalApiFixture extends GoalApiAuthFixture {
+  readonly actor: ApiTestUser;
 }
 
 function currentSecond(): number {
@@ -37,7 +47,7 @@ function goalsClient() {
 }
 
 function zeroToken(
-  fixture: GoalApiFixture,
+  fixture: GoalApiAuthFixture,
   capabilities: readonly ZeroCapability[],
 ): string {
   const seconds = currentSecond();
@@ -53,7 +63,7 @@ function zeroToken(
 }
 
 function headers(
-  fixture: GoalApiFixture,
+  fixture: GoalApiAuthFixture,
   capabilities: readonly ZeroCapability[] = ALL_GOAL_CAPABILITIES,
 ) {
   return { authorization: `Bearer ${zeroToken(fixture, capabilities)}` };
@@ -90,6 +100,7 @@ async function seedGoalApiFixture(): Promise<GoalApiFixture> {
     throw new Error("Expected the chat send to create a thread-linked run");
   }
   return {
+    actor,
     orgId: actor.orgId,
     userId: actor.userId,
     runId: sent.body.runId,
@@ -181,6 +192,171 @@ describe("zero goals", () => {
     await expect(readCurrentGoal(fixture)).resolves.toMatchObject({
       body: { status: "complete" },
     });
+  });
+
+  it("bootstraps a provisioned goal thread through a claimed input.goal event", async () => {
+    const bdd = createBddApi(context);
+    const api = createRunsApi(context);
+    const chat = createChatFilesBddApi(context);
+    const actor = bdd.user();
+    if (!actor.orgId) {
+      throw new Error("Goal bootstrap requires an org-scoped actor");
+    }
+    bdd.acceptAgentStorageWrites();
+    api.acceptStorageDownloads();
+    api.acceptTelemetryIngest();
+    api.configureRunnerGroup();
+    await api.grantProEntitlement(actor);
+    await api.ensureOrgModelProvider(actor);
+    const agent = await bdd.createAgent(actor, {
+      displayName: "Goal Bootstrap Agent",
+      visibility: "private",
+    });
+    const origin = await api.createRun(actor, {
+      agentId: agent.agentId,
+      prompt: "create a goal outside chat",
+      modelProvider: "anthropic-api-key",
+    });
+
+    const created = await accept(
+      goalsClient().create({
+        headers: headers({
+          orgId: actor.orgId,
+          userId: actor.userId,
+          runId: origin.runId,
+          threadId: "",
+          agentId: agent.agentId,
+        }),
+        body: { objective: "bootstrap autonomously" },
+      }),
+      [201],
+    );
+    expect(created.body.status).toBe("active");
+
+    const goal = await readGoalThreadFixture({
+      orgId: actor.orgId,
+      userId: actor.userId,
+      agentId: agent.agentId,
+    });
+    if (!goal) {
+      throw new Error("Expected the provisioned thread goal");
+    }
+
+    let goalRunId: string | undefined;
+    await expect
+      .poll(async () => {
+        const state = await readGoalQueueStateFixture(goal.threadId);
+        goalRunId = state.runIds[0];
+        return goalRunId;
+      })
+      .toBeDefined();
+    if (!goalRunId) {
+      throw new Error("Expected the bootstrapped goal run");
+    }
+
+    const state = await readGoalQueueStateFixture(goal.threadId);
+    const goalEventId = state.eventIds[0];
+    if (!goalEventId) {
+      throw new Error("Expected the bootstrap input.goal source event");
+    }
+
+    const page = await chat.listThreadEvents(actor, goal.threadId);
+    expect(
+      page.events.map((event) => {
+        return event.id;
+      }),
+    ).not.toContain(goalEventId);
+    expect(page.events).toContainEqual(
+      expect.objectContaining({
+        eventType: "input.prompt",
+        runId: goalRunId,
+        revokesEventId: goalEventId,
+        isGoalRun: true,
+        goalSnapshot: { objectiveBrief: "bootstrap autonomously" },
+      }),
+    );
+    expect(state.runIds).toHaveLength(1);
+
+    await api.requestCancelRun(actor, goalRunId, [200]);
+    await api.requestCancelRun(actor, origin.runId, [200]);
+  }, 60_000);
+
+  it("coalesces repeated goal queue admission to one unclaimed event per thread", async () => {
+    const fixture = await seedGoalApiFixture();
+    await createGoal(fixture, "coalesce goal triggers");
+    const goal = await readGoalThreadFixture({
+      orgId: fixture.orgId,
+      userId: fixture.userId,
+      threadId: fixture.threadId,
+    });
+    if (!goal) {
+      throw new Error("Expected the active goal");
+    }
+    const kms = useSecretKmsProbe();
+
+    const first = await admitGoalQueueEventFixture({
+      threadId: fixture.threadId,
+      orgId: fixture.orgId,
+      userId: fixture.userId,
+      goalId: goal.goalId,
+      objectiveBrief: "coalesce goal triggers",
+      callbackSecret: "first-callback-secret",
+    });
+    const second = await admitGoalQueueEventFixture({
+      threadId: fixture.threadId,
+      orgId: fixture.orgId,
+      userId: fixture.userId,
+      goalId: goal.goalId,
+      objectiveBrief: "coalesce goal triggers",
+      callbackSecret: "second-callback-secret",
+    });
+
+    expect(first.kind).toBe("inserted");
+    expect(second).toStrictEqual({ kind: "coalesced" });
+    expect(kms.generateDataKeyCalls).toBe(1);
+    const state = await readGoalQueueStateFixture(fixture.threadId);
+    expect(state.eventIds).toHaveLength(1);
+  });
+
+  it("keeps an unclaimed input.goal event out of materialized thread messages", async () => {
+    const fixture = await seedGoalApiFixture();
+    const objectiveBrief = "keep pending goal triggers internal";
+    await createGoal(fixture, objectiveBrief);
+    const goal = await readGoalThreadFixture({
+      orgId: fixture.orgId,
+      userId: fixture.userId,
+      threadId: fixture.threadId,
+    });
+    if (!goal) {
+      throw new Error("Expected the active goal");
+    }
+    useSecretKmsProbe();
+
+    const admission = await admitGoalQueueEventFixture({
+      threadId: fixture.threadId,
+      orgId: fixture.orgId,
+      userId: fixture.userId,
+      goalId: goal.goalId,
+      objectiveBrief,
+      callbackSecret: "pending-goal-callback-secret",
+    });
+    if (admission.kind !== "inserted") {
+      throw new Error("Expected an unclaimed goal queue event");
+    }
+
+    const chat = createChatFilesBddApi(context);
+    const page = await chat.listThreadEvents(fixture.actor, fixture.threadId);
+    expect(
+      page.events.map((event) => {
+        return event.id;
+      }),
+    ).not.toContain(admission.eventId);
+    expect(page.events).not.toContainEqual(
+      expect.objectContaining({
+        eventType: "input.goal",
+        goalSnapshot: { objectiveBrief },
+      }),
+    );
   });
 
   it("edits a blocked goal back to active and replaces a completed goal", async () => {

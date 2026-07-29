@@ -42,8 +42,8 @@ interface FirewallPermissionPolicyMetadataBase {
 
 export type FirewallPermissionPolicyMetadata =
   FirewallPermissionPolicyMetadataBase &
-    (
-      | { readonly connectorRef: string; readonly type?: string }
+    // TODO(#23619): Rename with the catalog artifact metadata contract.
+    (| { readonly connectorRef: string; readonly type?: string }
       | { readonly connectorRef?: undefined; readonly type: string }
     );
 
@@ -58,12 +58,13 @@ export type FirewallPermissionGrantAction = Extract<
 >;
 
 export interface FirewallPermissionGrant {
+  // TODO(#23619): Rename with the permission-grant wire and storage fields.
   readonly connectorRef: string;
   readonly permission: string;
   readonly action: FirewallPermissionGrantAction;
 }
 
-function metadataConnectorRef(
+function metadataConnectorSlug(
   metadata: FirewallPermissionPolicyMetadata,
 ): string {
   return metadata.connectorRef ?? metadata.type;
@@ -136,12 +137,12 @@ export function resolveFirewallMetadataPolicies(
 ): FirewallPolicies | null {
   let resolved: FirewallPolicies | null = stored;
   for (const detail of metadata) {
-    const connectorRef = metadataConnectorRef(detail);
+    const connectorSlug = metadataConnectorSlug(detail);
     const defaults = expandFirewallMetadataDefaultPolicy(detail);
-    const existing = resolved?.[connectorRef];
+    const existing = resolved?.[connectorSlug];
     resolved = {
       ...resolved,
-      [connectorRef]: {
+      [connectorSlug]: {
         policies: { ...defaults.policies, ...existing?.policies },
         ...(existing?.unknownPolicy !== undefined
           ? { unknownPolicy: existing.unknownPolicy }

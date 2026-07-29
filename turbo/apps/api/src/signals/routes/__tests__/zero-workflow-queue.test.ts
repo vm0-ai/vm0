@@ -18,6 +18,10 @@ import { createApp } from "../../../app-factory";
 import { computeHmacSignature } from "../../../lib/event-consumer/hmac";
 import { mockEnv, mockOptionalEnv } from "../../../lib/env";
 import { mockNow, now } from "../../../lib/time";
+import {
+  createActiveGoalQueueEventFixture,
+  readGoalQueueStateFixture,
+} from "../../../test-fixtures/goal-queue";
 import { flushWaitUntilForTest } from "../../context/wait-until";
 import { createDeferredPromise } from "../../utils";
 import type { ApiTestUser } from "./helpers/api-bdd";
@@ -315,6 +319,30 @@ async function expectSweepLeftQueueUntouched(
 }
 
 describe("workflow queue", () => {
+  it("runs a pending workflow event before an older goal continuation on the same thread", async () => {
+    const scenario = await setup();
+    const automation = await createWebhookAutomation(scenario);
+    const goal = await createActiveGoalQueueEventFixture({
+      threadId: automation.threadId,
+      orgId: scenario.orgId,
+      userId: scenario.userId,
+      agentId: scenario.agentId,
+      objective: "finish after the workflow event",
+      objectiveBrief: "Finish after the workflow event",
+      callbackSecret: "goal-priority-callback-secret",
+    });
+
+    const workflowRunId = await expectAcceptedRunId(
+      await postWorkflowWebhook(automation, "workflow wins queue priority"),
+      automation.threadId,
+    );
+    const goalQueue = await readGoalQueueStateFixture(automation.threadId);
+    expect(goalQueue.runIds).toHaveLength(0);
+    expect(goalQueue.eventIds).toContain(goal.eventId);
+
+    await runsApi.requestCancelRun(scenario.actor, workflowRunId, [200]);
+  });
+
   it("does not let the stale sweep race a newly admitted workflow event", async () => {
     mockNow(Date.UTC(2020, 0, 1));
     const scenario = await setup();

@@ -994,11 +994,11 @@ impl ApiClient {
     pub(super) async fn refresh_network_policies(
         &self,
         run_id: RunId,
-        connector_refs: &[String],
+        connector_slugs: &[String],
     ) -> RunnerResult<NetworkPolicyRefreshBatchResponse> {
         let run_id = run_id.to_string();
         let resp = send_api(
-            self.network_policy_refresh_request(&run_id, connector_refs),
+            self.network_policy_refresh_request(&run_id, connector_slugs),
             "network policy refresh",
         )
         .await?;
@@ -1010,7 +1010,7 @@ impl ApiClient {
     fn network_policy_refresh_request(
         &self,
         run_id: &str,
-        connector_refs: &[String],
+        connector_slugs: &[String],
     ) -> ApiRequestBuilder {
         self.http
             .request_resolved_route(
@@ -1020,7 +1020,8 @@ impl ApiClient {
                 &self.token,
             )
             .timeout(NETWORK_POLICY_REFRESH_TIMEOUT)
-            .json(&serde_json::json!({ "connectorRefs": connector_refs }))
+            // TODO(#23619): Rename this key with the runner API wire contract.
+            .json(&serde_json::json!({ "connectorRefs": connector_slugs }))
     }
 
     pub(super) async fn resolve_builtin_firewall_catalog(

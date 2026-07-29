@@ -1,6 +1,5 @@
 import { chatThreads } from "@vm0/db/schema/chat-thread";
 import { teamsChatThreadRoutes } from "@vm0/db/schema/teams-chat-thread-route";
-import { teamsOrgThreadSessions } from "@vm0/db/schema/teams-org-thread-session";
 import { and, eq } from "drizzle-orm";
 
 import type { Db } from "../external/db";
@@ -64,27 +63,6 @@ async function loadRoute(
   return route;
 }
 
-async function loadLegacyThreadBinding(
-  db: Pick<Db, "select">,
-  key: TeamsChatThreadRouteKey,
-) {
-  const [binding] = await db
-    .select({
-      agentSessionId: teamsOrgThreadSessions.agentSessionId,
-      computerUseHostId: teamsOrgThreadSessions.computerUseHostId,
-    })
-    .from(teamsOrgThreadSessions)
-    .where(
-      and(
-        eq(teamsOrgThreadSessions.connectionId, key.connectionId),
-        eq(teamsOrgThreadSessions.teamsConversationId, key.conversationId),
-        eq(teamsOrgThreadSessions.teamsThreadId, key.threadId),
-      ),
-    )
-    .limit(1);
-  return binding;
-}
-
 async function createCanonicalTeamsChatThread(
   tx: TeamsChatThreadTransaction,
   args: TeamsChatThreadRouteKey & {
@@ -93,18 +71,14 @@ async function createCanonicalTeamsChatThread(
     readonly selectedModel: string | null;
     readonly currentTime: Date;
   },
-  state: {
-    readonly agentSessionId?: string | null;
-    readonly computerUseHostId?: string | null;
-  },
+  computerUseHostId: string | null = null,
 ) {
   const [thread] = await tx
     .insert(chatThreads)
     .values({
       userId: args.userId,
       agentComposeId: args.agentComposeId,
-      agentSessionId: state.agentSessionId,
-      computerUseHostId: state.computerUseHostId,
+      computerUseHostId,
       selectedModel: args.selectedModel,
       title: null,
       lastReadAt: args.currentTime,
@@ -153,9 +127,11 @@ async function reconcileExistingRoute(
   existing: LoadedTeamsChatThreadRoute,
 ): Promise<TeamsChatThreadRouteBinding> {
   if (existing.agentComposeId !== args.agentComposeId) {
-    const thread = await createCanonicalTeamsChatThread(tx, args, {
-      computerUseHostId: existing.computerUseHostId,
-    });
+    const thread = await createCanonicalTeamsChatThread(
+      tx,
+      args,
+      existing.computerUseHostId,
+    );
     const [route] = await tx
       .update(teamsChatThreadRoutes)
       .set({ chatThreadId: thread.id })
@@ -228,11 +204,7 @@ export async function ensureTeamsChatThreadRoute(
       return await reconcileExistingRoute(tx, args, existing);
     }
 
-    const legacyBinding = await loadLegacyThreadBinding(tx, args);
-    const thread = await createCanonicalTeamsChatThread(tx, args, {
-      agentSessionId: legacyBinding?.agentSessionId,
-      computerUseHostId: legacyBinding?.computerUseHostId,
-    });
+    const thread = await createCanonicalTeamsChatThread(tx, args);
 
     const [route] = await tx
       .insert(teamsChatThreadRoutes)
@@ -272,12 +244,7 @@ export async function ensureTeamsChatThreadRoute(
       return await reconcileExistingRoute(tx, args, conflicted);
     }
 
-    await appendCanonicalTeamsChatThreadCreatedEvent(
-      tx,
-      args,
-      thread,
-      legacyBinding?.computerUseHostId,
-    );
+    await appendCanonicalTeamsChatThreadCreatedEvent(tx, args, thread, null);
     return route;
   });
 }

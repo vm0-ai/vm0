@@ -6,7 +6,7 @@ import {
   IconLoader2,
   IconPlus,
 } from "@tabler/icons-react";
-import type { ConnectorRef } from "@vm0/api-contracts/contracts/connector-identity";
+import type { ConnectorSlug } from "@vm0/api-contracts/contracts/connector-identity";
 import type { PublicConnectorCatalogStatusItem } from "@vm0/api-contracts/contracts/zero-connector-catalog";
 import {
   Button,
@@ -53,7 +53,7 @@ type ConnectionConnectorCardProps = {
 
 type OnboardingConnectorCardProps = {
   readonly variant: "onboarding";
-  readonly connectorRef: ConnectorRef;
+  readonly connectorSlug: ConnectorSlug;
   readonly connector: PublicConnectorCatalogStatusItem | undefined;
   readonly connected: boolean;
   readonly busy: boolean;
@@ -317,7 +317,7 @@ function onboardingHelpText(helpText: string | undefined): string {
 }
 
 function OnboardingConnectorCard({
-  connectorRef,
+  connectorSlug,
   connector,
   connected,
   busy,
@@ -326,7 +326,7 @@ function OnboardingConnectorCard({
   required,
   connect,
 }: OnboardingConnectorCardProps) {
-  const label = connector?.label ?? connectorRef;
+  const label = connector?.label ?? connectorSlug;
   return (
     <div
       className={cn(

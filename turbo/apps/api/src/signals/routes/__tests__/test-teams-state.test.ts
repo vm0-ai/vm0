@@ -266,18 +266,37 @@ describe("GET /api/test/teams-state", () => {
         }),
       ]),
     );
+    const teamsRun = body.recent_runs.find((run) => {
+      return run.promptPreview === "hello from teams diagnostics";
+    });
+    if (!teamsRun?.chatThreadId) {
+      throw new Error("Expected the Teams run to use a canonical chat thread");
+    }
+    expect(body.routes).toStrictEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          connectionId: fixture.connectionId,
+          conversationId: "19:e2e-dm@thread.v2",
+          userId: fixture.userId,
+          chatThreadId: teamsRun.chatThreadId,
+        }),
+      ]),
+    );
     expect(body.recent_callbacks).toStrictEqual(
       expect.arrayContaining([
         expect.objectContaining({
           status: "pending",
-          internalKind: "teams:org",
+          internalKind: "chat",
           attempts: 0,
           lastError: null,
           payload: expect.objectContaining({
-            tenantId: fixture.tenantId,
-            conversationId: "19:e2e-dm@thread.v2",
-            activityId: "activity-e2e",
-            connectionId: fixture.connectionId,
+            threadId: teamsRun.chatThreadId,
+            teamsDelivery: expect.objectContaining({
+              tenantId: fixture.tenantId,
+              conversationId: "19:e2e-dm@thread.v2",
+              activityId: "activity-e2e",
+              connectionId: fixture.connectionId,
+            }),
           }),
         }),
       ]),

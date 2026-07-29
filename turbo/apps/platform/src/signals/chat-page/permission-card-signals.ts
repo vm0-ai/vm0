@@ -42,7 +42,7 @@ function createPermissionSignals(
     agent$: agentById(descriptor.agentId),
     grants$: userPermissionGrantsByAgent({ agentId: descriptor.agentId }),
     metadata$: firewallPermissionMetadataByConnector({
-      connectorRef: descriptor.connectorRef,
+      connectorSlug: descriptor.connectorSlug,
     }),
   };
 }

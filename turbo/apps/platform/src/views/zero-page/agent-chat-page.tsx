@@ -35,7 +35,7 @@ import { openSettingsDialogAt$ } from "../../signals/zero-page/settings/settings
 import { ZeroChatComposer } from "./zero-chat-composer.tsx";
 import { ReplaceComposerDraftDialog } from "./replace-composer-draft-dialog.tsx";
 import { CREATE_WORKFLOW_WITH_CHAT_PROMPT } from "./workflow-chat-prompts.ts";
-import { connectorCatalogStatusByRef$ } from "../../signals/external/connectors.ts";
+import { connectorCatalogStatusBySlug$ } from "../../signals/external/connectors.ts";
 import {
   replaceWorkflowPromptDraftTarget$,
   setReplaceWorkflowPromptDraftTarget$,
@@ -271,19 +271,19 @@ interface SuggestedPrompt {
 
 function SuggestedPromptButton({
   item,
-  connectorStatusByRef,
+  connectorStatusBySlug,
   onSelectPrompt,
 }: {
   item: SuggestedPrompt;
-  connectorStatusByRef:
+  connectorStatusBySlug:
     | ReadonlyMap<string, PublicConnectorCatalogStatusItem>
     | undefined;
   onSelectPrompt: (prompt: string) => void;
 }) {
   const connectors =
-    item.connectors?.flatMap((connectorRef) => {
-      const connector = connectorStatusByRef?.get(connectorRef);
-      return connector ? [{ connectorRef, icon: connector.icon }] : [];
+    item.connectors?.flatMap((connectorSlug) => {
+      const connector = connectorStatusBySlug?.get(connectorSlug);
+      return connector ? [{ connectorSlug, icon: connector.icon }] : [];
     }) ?? [];
   return (
     <button
@@ -307,7 +307,7 @@ function SuggestedPromptButton({
           {connectors.map((connector) => {
             return (
               <span
-                key={connector.connectorRef}
+                key={connector.connectorSlug}
                 className="flex h-7 w-7 items-center justify-center rounded-md border border-border/60 bg-background"
               >
                 <ConnectorIcon icon={connector.icon} size={14} />
@@ -363,7 +363,7 @@ function SuggestedPromptsGrid({
 }: {
   onSelectPrompt: (prompt: string) => void;
 }) {
-  const connectorStatusByRef = useLastResolved(connectorCatalogStatusByRef$);
+  const connectorStatusBySlug = useLastResolved(connectorCatalogStatusBySlug$);
   const unfilteredSuggestedPrompts =
     useLastResolved(unfilteredSuggestedPrompts$) ?? [];
   const suggestedPromptsLoadable = useLoadable(suggestedPrompts$);
@@ -381,7 +381,7 @@ function SuggestedPromptsGrid({
           <SuggestedPromptButton
             key={item.title}
             item={item}
-            connectorStatusByRef={connectorStatusByRef}
+            connectorStatusBySlug={connectorStatusBySlug}
             onSelectPrompt={onSelectPrompt}
           />
         );

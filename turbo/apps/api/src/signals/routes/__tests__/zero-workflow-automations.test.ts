@@ -368,7 +368,7 @@ describe("zero workflow automations", () => {
   async function connectGmail(scenario: AutomationScenario): Promise<string> {
     mockGmailConnectorOAuth({ email: GMAIL_EMAIL });
     await wf.connectConnector(scenario.actor, "gmail");
-    const connector = await connectorsApi.readConnectorByType(
+    const connector = await connectorsApi.readConnectorBySlug(
       scenario.actor,
       "gmail",
     );
@@ -385,7 +385,7 @@ describe("zero workflow automations", () => {
   ): Promise<string> {
     mockGoogleCalendarConnectorOAuth({ email: GOOGLE_CALENDAR_EMAIL });
     await wf.connectConnector(scenario.actor, "google-calendar");
-    const connector = await connectorsApi.readConnectorByType(
+    const connector = await connectorsApi.readConnectorBySlug(
       scenario.actor,
       "google-calendar",
     );
@@ -400,7 +400,7 @@ describe("zero workflow automations", () => {
   async function connectNotion(scenario: AutomationScenario): Promise<string> {
     mockNotionConnectorOAuth();
     await wf.connectConnector(scenario.actor, "notion");
-    const connector = await connectorsApi.readConnectorByType(
+    const connector = await connectorsApi.readConnectorBySlug(
       scenario.actor,
       "notion",
     );

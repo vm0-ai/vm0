@@ -119,10 +119,7 @@ import {
   projectUserMessage,
   requiredUserMessageForEvent,
 } from "./zero-chat-user-message.service";
-import {
-  chatEventTypeIn,
-  chatEventTypeSql,
-} from "./zero-chat-event-type.service";
+import { chatEventTypeIn } from "./zero-chat-event-type.service";
 
 export { insertAssistantEventMessages$ };
 
@@ -299,7 +296,7 @@ function effectiveChatMessageRunId() {
 const eventColumns = {
   id: chatMessages.id,
   chatThreadId: chatMessages.chatThreadId,
-  eventType: chatEventTypeSql().as("event_type"),
+  eventType: chatMessages.eventType,
   content: chatMessages.content,
   userMessage: chatMessages.userMessage,
   thinking: chatMessages.thinking,
@@ -463,7 +460,7 @@ function selectChatEventsWithMetadata(db: Pick<Db, "select">) {
 const searchMessageColumns = {
   messageId: chatMessages.id,
   chatThreadId: chatMessages.chatThreadId,
-  eventType: chatEventTypeSql().as("event_type"),
+  eventType: chatMessages.eventType,
   content: chatMessages.content,
   userMessage: chatMessages.userMessage,
   createdAt: chatMessages.createdAt,
@@ -474,7 +471,9 @@ const searchMessageColumns = {
 
 const searchContextMessageColumns = {
   ...searchMessageColumns,
-  eventType: chatEventTypeSql().as("context_event_type"),
+  eventType: sql`${chatMessages.eventType}`
+    .mapWith(chatMessages.eventType)
+    .as("context_event_type"),
 } as const;
 
 function escapeLikePattern(value: string): string {
@@ -1028,7 +1027,7 @@ const chatEventBuilders = {
       ),
     };
   },
-} satisfies Record<ChatEventType, ChatEventBuilder>;
+} satisfies Record<ChatEvent["eventType"], ChatEventBuilder>;
 
 function toChatEvent(
   userId: string,
@@ -1036,6 +1035,9 @@ function toChatEvent(
   canonicalAttachments: readonly ResolvedAttachFile[],
 ): Computed<Promise<ChatEventResponse>> {
   return computed(async (get): Promise<ChatEventResponse> => {
+    if (row.eventType === "input.goal") {
+      throw new Error("Pending goal queue events cannot be materialized");
+    }
     const attachFiles = await get(
       chatMessageAttachFiles(userId, row, canonicalAttachments),
     );
@@ -2204,7 +2206,10 @@ export function zeroChatThreadEventsPage(args: {
       args.sinceSeqId ?? (args.sinceId ? legacyCursor?.seqId : undefined);
     const beforeSeqId =
       args.beforeSeqId ?? (args.beforeId ? legacyCursor?.seqId : undefined);
-    const threadFilter = eq(chatMessages.chatThreadId, args.threadId);
+    const threadFilter = and(
+      eq(chatMessages.chatThreadId, args.threadId),
+      not(chatEventTypeIn(["input.goal"])),
+    );
     let rows: ChatEventRow[];
     let hasHistoryBefore = false;
 
@@ -2280,6 +2285,7 @@ export function zeroChatThreadEventById(args: {
         and(
           eq(chatMessages.id, args.eventId),
           eq(chatMessages.chatThreadId, args.threadId),
+          not(chatEventTypeIn(["input.goal"])),
         ),
       )
       .limit(1);

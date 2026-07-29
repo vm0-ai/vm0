@@ -792,7 +792,7 @@ def _public_destination_connected_runtime_hosts(
     )
     return (
         _public_destination_runtime_host_classification(
-            connected_endpoint[0] if connected_endpoint is not None else None,
+            connected_endpoint.address[0] if connected_endpoint is not None else None,
             classifications,
         ),
     )

@@ -1,5 +1,5 @@
 import { fireEvent, screen, waitFor, within } from "@testing-library/react";
-import type { ConnectorRef } from "@vm0/api-contracts/contracts/connector-identity";
+import type { ConnectorSlug } from "@vm0/api-contracts/contracts/connector-identity";
 import type { ConnectorResponse } from "@vm0/api-contracts/contracts/connector-schemas";
 import {
   zeroConnectorCatalogContract,
@@ -72,8 +72,8 @@ function applyUserConnectorUpdate(
     return Array.from(new Set([...current, ...body.enabledTypes]));
   }
   if (body.operation === "remove") {
-    return current.filter((type) => {
-      return !body.enabledTypes.includes(type);
+    return current.filter((connectorSlug) => {
+      return !body.enabledTypes.includes(connectorSlug);
     });
   }
   return [...body.enabledTypes];
@@ -145,14 +145,14 @@ function createWorkflowSummary({
 }
 
 function createConnector(
-  type: ConnectorRef,
+  connectorSlug: ConnectorSlug,
   externalUsername: string,
 ): ConnectorResponse {
   return {
     id: crypto.randomUUID(),
-    type,
+    type: connectorSlug,
     authMethod: "oauth",
-    externalId: `${type}-external-id`,
+    externalId: `${connectorSlug}-external-id`,
     externalUsername,
     externalEmail: null,
     oauthScopes: ["read"],
@@ -351,13 +351,13 @@ async function openAxiomPermissionsDialog(): Promise<HTMLElement> {
 }
 
 function connectorCategoryLabel(
-  connectorRef: ConnectorRef,
+  connectorSlug: ConnectorSlug,
   category: string,
 ): string {
-  const metadata = testConnectorPermissionDetails.get(connectorRef);
+  const metadata = testConnectorPermissionDetails.get(connectorSlug);
   const categoryData = metadata?.categories;
   if (!categoryData) {
-    throw new Error(`${connectorRef} categories not found`);
+    throw new Error(`${connectorSlug} categories not found`);
   }
 
   const count = Object.values(categoryData.categories).filter((value) => {
@@ -382,22 +382,22 @@ function mockTeamAPIs({
     createConnector("axiom", "workspace"),
     createConnector("slack", "ops"),
   ]);
-  const enabledTypesByAgent = new Map<string, string[]>();
+  const enabledConnectorSlugsByAgent = new Map<string, string[]>();
   const enabledCustomConnectorIdsByAgent = new Map<string, string[]>();
   context.mocks.api(zeroUserConnectorsContract.get, ({ params, respond }) => {
     return respond(200, {
-      enabledTypes: enabledTypesByAgent.get(params.id) ?? [],
+      enabledTypes: enabledConnectorSlugsByAgent.get(params.id) ?? [],
     });
   });
   context.mocks.api(
     zeroUserConnectorsContract.update,
     ({ body, params, respond }) => {
-      const enabledTypes = applyUserConnectorUpdate(
-        enabledTypesByAgent.get(params.id) ?? [],
+      const enabledConnectorSlugs = applyUserConnectorUpdate(
+        enabledConnectorSlugsByAgent.get(params.id) ?? [],
         body,
       );
-      enabledTypesByAgent.set(params.id, enabledTypes);
-      return respond(200, { enabledTypes });
+      enabledConnectorSlugsByAgent.set(params.id, enabledConnectorSlugs);
+      return respond(200, { enabledTypes: enabledConnectorSlugs });
     },
   );
   context.mocks.api(zeroCustomConnectorsContract.list, ({ respond }) => {

@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   CHAT_EVENT_TYPES,
+  MATERIALIZED_CHAT_EVENT_TYPES,
   foldActiveChatGoalObjective,
   foldChatAutomationIntakePause,
   foldChatRunStates,
@@ -248,6 +249,11 @@ const queueFoldFixture = [
     pauseReason: "Provider unavailable",
     createdAt: "2026-07-23T00:03:00.000Z",
   },
+  {
+    id: "goal-oldest",
+    eventType: "input.goal",
+    createdAt: "2026-07-22T23:59:00.000Z",
+  },
 ] as const;
 
 describe("ChatEvent catalog", () => {
@@ -256,7 +262,7 @@ describe("ChatEvent catalog", () => {
       chatEvents.map((event) => {
         return event.eventType;
       }),
-    ).toStrictEqual([...CHAT_EVENT_TYPES]);
+    ).toStrictEqual([...MATERIALIZED_CHAT_EVENT_TYPES]);
     for (const event of chatEvents) {
       expect(chatEventSchema.parse(event)).toStrictEqual(event);
     }
@@ -316,12 +322,15 @@ describe("ChatEvent revocation rules", () => {
   const validPairs = new Set([
     "input.prompt->input.prompt",
     "input.prompt->input.automation",
+    "input.prompt->input.goal",
     "input.prompt->output.followups",
     "input.rejected->input.prompt",
     "input.rejected->input.automation",
+    "input.rejected->input.goal",
     "input.rejected->output.followups",
     "control.revoke->input.prompt",
     "control.revoke->input.automation",
+    "control.revoke->input.goal",
     "control.revoke->input.rejected",
     "run.dequeued->run.queued",
   ]);
@@ -420,7 +429,7 @@ describe("ChatEvent folds", () => {
       foldPendingChatQueueEvents(queueFoldFixture).map((event) => {
         return event.id;
       }),
-    ).toStrictEqual(["prompt-newer", "automation-oldest"]);
+    ).toStrictEqual(["prompt-newer", "automation-oldest", "goal-oldest"]);
   });
 
   it("folds automation intake pause without blocking pending user messages", () => {
@@ -432,7 +441,7 @@ describe("ChatEvent folds", () => {
       foldRunnableChatQueueEvents(queueFoldFixture).map((event) => {
         return event.id;
       }),
-    ).toStrictEqual(["prompt-newer"]);
+    ).toStrictEqual(["prompt-newer", "goal-oldest"]);
 
     const resumed = [
       ...queueFoldFixture,
@@ -447,7 +456,7 @@ describe("ChatEvent folds", () => {
       foldRunnableChatQueueEvents(resumed).map((event) => {
         return event.id;
       }),
-    ).toStrictEqual(["prompt-newer", "automation-oldest"]);
+    ).toStrictEqual(["prompt-newer", "automation-oldest", "goal-oldest"]);
   });
 });
 

@@ -28,9 +28,9 @@ const context = testContext();
 const AGENT_ID = "00000000-0000-0000-0000-000000000001";
 const SECOND_AGENT_ID = "00000000-0000-0000-0000-000000000002";
 
-function connectorIcon(connectorRef: string) {
+function connectorIcon(connectorSlug: string) {
   return {
-    url: `https://icons.example.test/${connectorRef}.svg`,
+    url: `https://icons.example.test/${connectorSlug}.svg`,
     invertInDarkMode: false,
   };
 }
@@ -614,7 +614,7 @@ describe("directed connector connect page", () => {
     });
   });
 
-  it("does not reuse an open manual grant dialog across routed connector types", async () => {
+  it("does not reuse an open manual grant dialog across routed connector slugs", async () => {
     mockPublicConnectorStatuses([
       publicManualTokenConnectorStatus({
         connectorRef: "axiom",

@@ -30,6 +30,7 @@ from tests.requestheaders_helpers import (
 from tests.upstream_connection_helpers import (
     mark_connected_tls_upstream,
     seed_server_binding,
+    track_normalized_binding_ip_parses,
 )
 
 
@@ -601,6 +602,60 @@ async def test_firewall_allow_prior_client_binding_endpoint_mismatch_blocks(
         ]
         is False
     )
+
+
+async def test_firewall_allow_prior_client_binding_scan_parses_live_endpoint_once(
+    tmp_path, real_flow, mitm_ctx, fake_firewall_headers, headers, monkeypatch
+):
+    reg_path = _write_github_firewall_registry(
+        tmp_path,
+        vm_fields={"captureNetworkBodies": True},
+    )
+    flow = real_flow(
+        with_response=False,
+        client_ip="10.200.0.5",
+        host="203.0.113.99",
+        sni="api.github.com",
+        method="POST",
+        path="/repos/octocat/hello",
+        request_headers=headers(
+            ("Host", "api.github.com"),
+            ("Content-Length", str(STREAM_BUFFER_LIMIT + 1)),
+        ),
+    )
+    flow.server_conn.peername = ("203.0.113.99", 443)
+    flow.server_conn.address = ("api.github.com", 443)
+    flow.server_conn.state = connection.ConnectionState.OPEN
+    for index in range(8):
+        prior_server = connection.Server(address=(f"198.18.20.{index + 1}", 443))
+        seed_server_binding(
+            prior_server,
+            client=flow.client_conn,
+            host="api.github.com",
+            port=443,
+            kinds=frozenset(("connector_auth",)),
+            original_address=prior_server.address,
+        )
+    binding_ip_parses = track_normalized_binding_ip_parses(monkeypatch)
+
+    with (
+        mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
+        fake_firewall_headers(headers={"Authorization": "Bearer resolved"}) as auth_fetch,
+    ):
+        requestheaders_result = mitm_addon.requestheaders(flow)
+        await await_requestheaders_result(requestheaders_result)
+        _assert_no_request_stream(flow)
+
+        await mitm_addon.request(flow)
+
+    auth_fetch.assert_not_called()
+    assert flow.response is not None
+    assert flow.response.status_code == 403
+    assert flow.metadata[metadata_keys.FIREWALL_ERROR] == "upstream_destination_unbound"
+    assert binding_ip_parses
+    for parses in binding_ip_parses:
+        assert len(parses) == 9
+        assert parses.count("203.0.113.99") == 1
 
 
 async def test_firewall_allow_prior_client_binding_endpoint_match_still_requires_tls(

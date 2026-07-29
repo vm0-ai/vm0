@@ -7,13 +7,16 @@ import {
   morningBriefSchedules,
 } from "@vm0/db/schema/morning-brief";
 import { orgMembersMetadata } from "@vm0/db/schema/org-members-metadata";
-import { zeroRuns } from "@vm0/db/schema/zero-run";
 import { command } from "ccstate";
 import { and, asc, eq, isNotNull, lte } from "drizzle-orm";
 
 import { env } from "../../lib/env";
 import { logger } from "../../lib/log";
 import { writeDb$, type Db } from "../external/db";
+import {
+  publishChatThreadMessageCreatedSafely,
+  publishThreadListChanged,
+} from "../external/realtime";
 import { nowDate } from "../external/time";
 import {
   generatePresignedGetUrl,
@@ -21,9 +24,9 @@ import {
   putS3Object,
 } from "../external/s3";
 import { dispatchFailedRunCallbacks } from "./agent-run-callback.service";
+import { drainChatThreadQueueForThread$ } from "./chat-thread-queue-drain.service";
 import { settle } from "../utils";
 import { loadUserFeatureSwitchContext } from "./feature-switches.service";
-import type { InternalRunCallbackKind } from "./internal-run-callback";
 import {
   collectMorningBriefInput,
   type MorningBriefInput,
@@ -33,13 +36,11 @@ import {
   morningBriefLocalDate,
   nextMorningBriefRunAt,
 } from "./morning-brief-schedule.service";
+import { insertChatEvent } from "./zero-chat-event.service";
+import { touchChatThreadLastMessageAt } from "./zero-chat-message-shared.service";
+import { encryptQueuedUserMessageRunParams } from "./zero-chat-queued-message.service";
+import { createUserMessageDocument } from "./zero-chat-user-message.service";
 import { resolveDefaultAgent } from "./zero-email-common.service";
-import {
-  postRunUserMessage,
-  resolveRunChatThreadModelContext,
-} from "./zero-chat-run-message.service";
-import type { ModelFirstPin } from "./zero-model-selection.service";
-import { createZeroRun$ } from "./zero-runs-create.service";
 import { createAutomationChatThread } from "./zero-workflow-user-automation-thread.service";
 
 const log = logger("api:morning-brief");
@@ -392,98 +393,50 @@ async function ensureMorningBriefChatThread(
   });
 }
 
-interface MorningBriefModelContext {
-  readonly modelPin: ModelFirstPin;
-  readonly effectiveModelProvider: string | null | undefined;
-  readonly cliAgentType: string | null;
-  readonly codexServiceTier: "fast" | undefined;
-}
-
-async function resolveMorningBriefModelContext(
-  db: Db,
-  claimed: ClaimedMorningBrief,
-  chatThreadId: string,
-): Promise<MorningBriefModelContext | null> {
-  const { row, deliveryId, currentTime } = claimed;
-  const modelContext = await resolveRunChatThreadModelContext({
-    db,
-    orgId: row.orgId,
-    userId: row.userId,
-    threadId: chatThreadId,
-  });
-  if ("status" in modelContext) {
-    // Credit / provider admission problems skip silently by design; the
-    // schedule already points at tomorrow 7:00.
-    await markDeliveryFailed(
-      db,
-      deliveryId,
-      modelContext.body.error.message,
-      currentTime,
-    );
-    return null;
-  }
-  const { pin, providerAdmission, runCodexServiceTier } = modelContext;
-  if (providerAdmission.error) {
-    await markDeliveryFailed(
-      db,
-      deliveryId,
-      providerAdmission.error.body.error.message,
-      currentTime,
-    );
-    return null;
-  }
-  return {
-    modelPin: pin,
-    effectiveModelProvider: providerAdmission.effectiveModelProvider,
-    cliAgentType: providerAdmission.cliAgentType,
-    codexServiceTier: runCodexServiceTier,
-  };
-}
-
-async function recordMorningBriefRunStart(
+async function persistMorningBriefQueueEvent(
   db: Db,
   args: {
     readonly claimed: ClaimedMorningBrief;
     readonly staged: StagedMorningBriefInput;
-    readonly model: MorningBriefModelContext;
     readonly chatThreadId: string;
-    readonly runId: string;
-    readonly runStatus: string;
     readonly chatMessage: string;
+    readonly encryptedParams: string;
   },
 ): Promise<void> {
-  const { claimed, staged, model } = args;
-  // The thread shows the member-facing line; the run-facts prompt with its
-  // signed URLs stays on the run.
-  await postRunUserMessage({
-    db,
-    threadId: args.chatThreadId,
-    userId: claimed.row.userId,
-    runId: args.runId,
-    prompt: args.chatMessage,
-    appendQueueMarker: args.runStatus === "queued",
+  const { claimed, staged } = args;
+  await db.transaction(async (tx) => {
+    const inserted = await insertChatEvent(tx, {
+      id: claimed.deliveryId,
+      chatThreadId: args.chatThreadId,
+      eventType: "input.prompt",
+      userMessage: createUserMessageDocument({ text: args.chatMessage }),
+      runId: null,
+      triggerSource: "workflow-schedule",
+      encryptedParams: args.encryptedParams,
+      createdAt: claimed.currentTime,
+    });
+    if (!inserted) {
+      throw new Error("Failed to enqueue the morning brief message");
+    }
+    await touchChatThreadLastMessageAt(
+      tx,
+      args.chatThreadId,
+      inserted.createdAt,
+      inserted.id,
+    );
+    const [delivery] = await tx
+      .update(morningBriefDeliveries)
+      .set({
+        inputKey: staged.inputKey,
+        outputKey: staged.outputKey,
+        updatedAt: claimed.currentTime,
+      })
+      .where(eq(morningBriefDeliveries.id, claimed.deliveryId))
+      .returning({ id: morningBriefDeliveries.id });
+    if (!delivery) {
+      throw new Error("Morning brief delivery disappeared before enqueue");
+    }
   });
-
-  await db
-    .update(zeroRuns)
-    .set({
-      modelProvider: model.effectiveModelProvider,
-      modelProviderId: model.modelPin.modelProviderId,
-      modelProviderCredentialScope: model.modelPin.modelProviderCredentialScope,
-      selectedModel: model.modelPin.selectedModel,
-    })
-    .where(eq(zeroRuns.id, args.runId));
-
-  await db
-    .update(morningBriefDeliveries)
-    .set({
-      status: "running",
-      runId: args.runId,
-      inputKey: staged.inputKey,
-      outputKey: staged.outputKey,
-      updatedAt: claimed.currentTime,
-    })
-    .where(eq(morningBriefDeliveries.id, claimed.deliveryId));
 }
 
 const startMorningBriefRun$ = command(
@@ -495,7 +448,7 @@ const startMorningBriefRun$ = command(
       readonly apiStartTime: number;
     },
     signal: AbortSignal,
-  ): Promise<{ readonly runId: string } | "skipped"> => {
+  ): Promise<{ readonly runId: string | null } | "skipped"> => {
     const db = set(writeDb$);
     const { claimed, staged } = args;
     const { row, timezone, briefDate, deliveryId, currentTime } = claimed;
@@ -520,16 +473,6 @@ const startMorningBriefRun$ = command(
     );
     signal.throwIfAborted();
 
-    const model = await resolveMorningBriefModelContext(
-      db,
-      claimed,
-      chatThreadId,
-    );
-    signal.throwIfAborted();
-    if (!model) {
-      return "skipped";
-    }
-
     const chatMessage = buildMorningBriefChatMessage(briefDate);
     const runPrompt = buildMorningBriefRunPrompt({
       briefDate,
@@ -539,88 +482,58 @@ const startMorningBriefRun$ = command(
       inputUrl: staged.inputUrl,
       outputUrl: staged.outputUrl,
     });
-    const callbacks: {
-      readonly internalKind: InternalRunCallbackKind;
-      readonly secret: string;
-      readonly payload: unknown;
-    }[] = [
+    const encryptedParams = await encryptQueuedUserMessageRunParams(
       {
-        internalKind: "morning-brief:email",
-        secret: generateCallbackSecret(),
-        payload: { deliveryId },
-      },
-      {
-        internalKind: "chat",
-        secret: generateCallbackSecret(),
-        payload: { threadId: chatThreadId, agentId },
-      },
-    ];
-
-    const result = await set(
-      createZeroRun$,
-      {
-        auth: {
-          orgId: row.orgId,
-          orgRole: "member",
-          userId: row.userId,
-          tokenType: "session",
-        },
-        body: {
-          prompt: runPrompt,
-          agentId,
-          ...(model.effectiveModelProvider
-            ? { modelProvider: model.effectiveModelProvider }
-            : {}),
-        },
-        apiStartTime: args.apiStartTime,
-        triggerSource: "workflow-schedule",
-        chatThreadId,
-        modelProviderId: model.modelPin.modelProviderId ?? undefined,
-        modelProviderCredentialScope:
-          model.modelPin.modelProviderCredentialScope ?? undefined,
-        selectedModelOverride: model.modelPin.selectedModel ?? undefined,
-        threadSessionRoute: {
-          selectedModel: model.modelPin.selectedModel,
-          modelProvider: model.effectiveModelProvider ?? null,
-          cliAgentType: model.cliAgentType,
-        },
-        codexServiceTier: model.codexServiceTier,
+        version: 1,
+        prompt: runPrompt,
         appendSystemPrompt: buildMorningBriefAppendSystemPrompt({
           briefDate,
           timezone,
           inputUrl: staged.inputUrl,
           outputUrl: staged.outputUrl,
         }),
-        callbacks,
+        morningBriefDelivery: {
+          deliveryId,
+          internalKind: "morning-brief:email",
+          secret: generateCallbackSecret(),
+          payload: { deliveryId },
+        },
+        apiStartTime: args.apiStartTime,
+      },
+      { orgId: row.orgId, userId: row.userId },
+    );
+    signal.throwIfAborted();
+
+    await persistMorningBriefQueueEvent(db, {
+      claimed,
+      staged,
+      chatThreadId,
+      chatMessage,
+      encryptedParams,
+    });
+    signal.throwIfAborted();
+    await publishChatThreadMessageCreatedSafely(row.userId, chatThreadId);
+    signal.throwIfAborted();
+    await publishThreadListChanged(row.userId);
+    signal.throwIfAborted();
+
+    await set(
+      drainChatThreadQueueForThread$,
+      {
+        chatThreadId,
         dispatchFailedCallbacks: dispatchFailedRunCallbacks,
       },
       signal,
     );
     signal.throwIfAborted();
 
-    if (result.status !== 201) {
-      await markDeliveryFailed(
-        db,
-        deliveryId,
-        result.body.error.message,
-        currentTime,
-      );
-      signal.throwIfAborted();
-      return "skipped";
-    }
-
-    await recordMorningBriefRunStart(db, {
-      claimed,
-      staged,
-      model,
-      chatThreadId,
-      runId: result.body.runId,
-      runStatus: result.body.status,
-      chatMessage,
-    });
+    const [delivery] = await db
+      .select({ runId: morningBriefDeliveries.runId })
+      .from(morningBriefDeliveries)
+      .where(eq(morningBriefDeliveries.id, deliveryId))
+      .limit(1);
     signal.throwIfAborted();
-
-    return { runId: result.body.runId };
+    return { runId: delivery?.runId ?? null };
   },
 );
 
@@ -661,6 +574,11 @@ const processDueMorningBrief$ = command(
 
 type ManualMorningBriefAdmission =
   | { readonly kind: "ok"; readonly claimed: ClaimedMorningBrief }
+  | {
+      readonly kind: "duplicate";
+      readonly runId: string | null;
+      readonly briefDate: string;
+    }
   | { readonly kind: "forbidden" }
   | { readonly kind: "bad_request"; readonly message: string };
 
@@ -740,23 +658,26 @@ async function admitManualMorningBrief(
       createdAt: currentTime,
       updatedAt: currentTime,
     })
-    .onConflictDoUpdate({
-      target: [
-        morningBriefDeliveries.orgId,
-        morningBriefDeliveries.userId,
-        morningBriefDeliveries.briefDate,
-      ],
-      set: {
-        status: "collecting",
-        runId: null,
-        error: null,
-        updatedAt: currentTime,
-      },
-    })
+    .onConflictDoNothing()
     .returning({ id: morningBriefDeliveries.id });
   signal.throwIfAborted();
   if (!delivery) {
-    throw new Error("Expected the morning brief delivery upsert to return");
+    const [existing] = await db
+      .select({ runId: morningBriefDeliveries.runId })
+      .from(morningBriefDeliveries)
+      .where(
+        and(
+          eq(morningBriefDeliveries.orgId, args.orgId),
+          eq(morningBriefDeliveries.userId, args.userId),
+          eq(morningBriefDeliveries.briefDate, briefDate),
+        ),
+      )
+      .limit(1);
+    return {
+      kind: "duplicate",
+      runId: existing?.runId ?? null,
+      briefDate,
+    };
   }
 
   return {
@@ -786,8 +707,8 @@ type TriggerMorningBriefResult =
 
 /**
  * Testing entry point behind the manualMorningBrief feature switch: runs the
- * full collect → run pipeline for the caller immediately, reusing (and
- * resetting) today's delivery row so repeated manual triggers work.
+ * full collect → queue pipeline for the caller immediately. The same
+ * once-per-local-date delivery guard used by cron deduplicates repeats.
  */
 export const triggerMorningBriefNow$ = command(
   async (
@@ -808,6 +729,18 @@ export const triggerMorningBriefNow$ = command(
       currentTime,
       signal,
     );
+    if (admission.kind === "duplicate") {
+      return admission.runId
+        ? {
+            kind: "ok",
+            runId: admission.runId,
+            briefDate: admission.briefDate,
+          }
+        : {
+            kind: "bad_request",
+            message: "Morning brief is already queued for today",
+          };
+    }
     if (admission.kind !== "ok") {
       return admission;
     }
@@ -826,10 +759,13 @@ export const triggerMorningBriefNow$ = command(
       { claimed, staged, apiStartTime: args.apiStartTime },
       signal,
     );
-    if (started === "skipped") {
+    if (started === "skipped" || !started.runId) {
       return {
         kind: "bad_request",
-        message: "Morning brief run could not be started",
+        message:
+          started === "skipped"
+            ? "Morning brief run could not be started"
+            : "Morning brief is queued behind another message",
       };
     }
 

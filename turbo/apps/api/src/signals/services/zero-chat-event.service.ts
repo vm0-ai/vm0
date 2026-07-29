@@ -10,7 +10,6 @@ import { eq, isNotNull, sql } from "drizzle-orm";
 
 import type { Db } from "../external/db";
 import { nowDate } from "../external/time";
-import { chatEventTypeSql } from "./zero-chat-event-type.service";
 
 type ChatEventInsert = typeof chatMessages.$inferInsert;
 type ChatEventWriteTransaction = Parameters<
@@ -56,6 +55,13 @@ type InputAutomationEvent = ChatEventIdentity & {
   readonly triggerSource: TriggerSource;
   readonly triggerBrief: string | null;
   readonly encryptedParams: string;
+};
+
+type InputGoalEvent = ChatEventIdentity & {
+  readonly eventType: "input.goal";
+  readonly content?: null;
+  readonly encryptedParams: string;
+  readonly goalSnapshot: NonNullable<ChatEventInsert["goalSnapshot"]>;
 };
 
 type InputRejectedEvent = ChatEventIdentity &
@@ -171,6 +177,7 @@ type UsageRecordedEvent = ChatEventIdentity & {
 export type NewChatEvent =
   | InputPromptEvent
   | InputAutomationEvent
+  | InputGoalEvent
   | InputRejectedEvent
   | OutputMessageEvent
   | OutputErrorEvent
@@ -227,6 +234,7 @@ function persistedChatEventValues(values: NewChatEvent): PersistedChatEvent {
     ...(values.eventType === "input.prompt" ||
     values.eventType === "input.rejected" ||
     values.eventType === "input.automation" ||
+    values.eventType === "input.goal" ||
     values.eventType === "queue.automation_resumed"
       ? { content: null }
       : {}),
@@ -379,7 +387,7 @@ export async function replaceChatEvent(
     .select({
       chatThreadId: chatMessages.chatThreadId,
       createdAt: chatMessages.createdAt,
-      eventType: chatEventTypeSql(),
+      eventType: chatMessages.eventType,
     })
     .from(chatMessages)
     .where(eq(chatMessages.id, eventId))

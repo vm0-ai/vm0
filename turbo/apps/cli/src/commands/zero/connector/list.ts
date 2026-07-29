@@ -17,14 +17,14 @@ export const listCommand = new Command()
         resolveAgentContext(options.agent),
       ]);
 
-      const allTypes = connectors.map((connector) => {
+      const connectorSlugs = connectors.map((connector) => {
         return connector.connectorRef;
       });
 
-      const typeWidth = Math.max(
+      const connectorSlugWidth = Math.max(
         4,
-        ...allTypes.map((t) => {
-          return t.length;
+        ...connectorSlugs.map((connectorSlug) => {
+          return connectorSlug.length;
         }),
       );
 
@@ -45,20 +45,20 @@ export const listCommand = new Command()
 
       // Print header
       const headerParts = [
-        "TYPE".padEnd(typeWidth),
+        "TYPE".padEnd(connectorSlugWidth),
         connectedAsHeader.padEnd(connectedAsWidth),
       ];
       if (authorizedHeader) headerParts.push(authorizedHeader);
       console.log(chalk.dim(headerParts.join("  ")));
 
       // Print rows
-      for (let i = 0; i < allTypes.length; i++) {
-        const type = allTypes[i]!;
+      for (let i = 0; i < connectorSlugs.length; i++) {
+        const connectorSlug = connectorSlugs[i]!;
         const connectedCell = padEndAnsi(connectedCells[i]!, connectedAsWidth);
-        const parts = [type.padEnd(typeWidth), connectedCell];
+        const parts = [connectorSlug.padEnd(connectorSlugWidth), connectedCell];
         if (agentCtx) {
           parts.push(
-            agentCtx.authorizedTypes.has(type)
+            agentCtx.authorizedConnectorSlugs.has(connectorSlug)
               ? chalk.green("✓")
               : chalk.dim("-"),
           );
