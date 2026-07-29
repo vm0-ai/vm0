@@ -286,6 +286,18 @@ class JsonSelectiveExtractor:
         if self._error:
             return
         i = 0
+        if self.max_work_units is None:
+            while i < len(chunk) and not self._error:
+                if self._string is not None:
+                    i = self._consume_string(chunk, i)
+                elif self._number is not None:
+                    i = self._consume_number(chunk, i)
+                elif self._literal is not None:
+                    i = self._consume_literal(chunk, i)
+                else:
+                    i = self._consume_main(chunk, i)
+            return
+
         while i < len(chunk) and not self._error:
             if self._string is not None:
                 i = self._consume_string(chunk, i)
@@ -294,6 +306,8 @@ class JsonSelectiveExtractor:
             elif self._literal is not None:
                 i = self._consume_literal(chunk, i)
             else:
+                if not self._consume_work_unit():
+                    return
                 i = self._consume_main(chunk, i)
 
     def observed_scalar_for_diagnostics(self, path: Path) -> object | None:
@@ -338,8 +352,6 @@ class JsonSelectiveExtractor:
         )
 
     def _consume_main(self, chunk: bytes, i: int) -> int:
-        if not self._consume_work_unit():
-            return i
         b = chunk[i]
         if b in b" \t\r\n":
             return i + 1
@@ -610,6 +622,7 @@ class JsonSelectiveExtractor:
         if state is None:
             self._error = "missing string parser state"
             return i
+        work_limited = self.max_work_units is not None
         if (
             state.raw is None
             and not state.escape
@@ -617,18 +630,20 @@ class JsonSelectiveExtractor:
             and not state.utf8_remaining
             and _is_discarded_ascii_string_byte(chunk[i])
         ):
-            end = self._discarded_ascii_work_span_end(len(chunk), i)
+            end = self._discarded_ascii_work_span_end(len(chunk), i) if work_limited else len(chunk)
             if self._error:
                 return i
             match = _DISCARDED_STRING_STATE_BYTE_RE.search(chunk, i, end)
             if match is None:
-                self._record_discarded_ascii_work(end - i)
+                if work_limited:
+                    self._discarded_ascii_work_bytes_remaining -= end - i
                 return end
             skipped = match.start() - i
-            self._record_discarded_ascii_work(skipped)
+            if work_limited:
+                self._discarded_ascii_work_bytes_remaining -= skipped
             return i + skipped
 
-        end = self._slow_work_span_end(len(chunk), i)
+        end = self._slow_work_span_end(len(chunk), i) if work_limited else len(chunk)
         if self._error:
             return i
         start = i
@@ -679,7 +694,8 @@ class JsonSelectiveExtractor:
                 if self._error:
                     return i
         finally:
-            self._record_slow_work(i - start)
+            if work_limited:
+                self._slow_work_bytes_remaining -= i - start
         return i
 
     def _accept_string_byte(self, state: _StringState, b: int) -> None:
@@ -769,7 +785,8 @@ class JsonSelectiveExtractor:
         if state is None:
             self._error = "missing number parser state"
             return i
-        end = self._slow_work_span_end(len(chunk), i)
+        work_limited = self.max_work_units is not None
+        end = self._slow_work_span_end(len(chunk), i) if work_limited else len(chunk)
         if self._error:
             return i
         start = i
@@ -783,7 +800,8 @@ class JsonSelectiveExtractor:
                 i += 1
                 break
             i += 1
-        self._record_slow_work(i - start)
+        if work_limited:
+            self._slow_work_bytes_remaining -= i - start
         return i
 
     def _accept_number_byte(self, state: _NumberState, b: int) -> None:
@@ -893,7 +911,8 @@ class JsonSelectiveExtractor:
         if state is None:
             self._error = "missing literal parser state"
             return i
-        end = self._slow_work_span_end(len(chunk), i)
+        work_limited = self.max_work_units is not None
+        end = self._slow_work_span_end(len(chunk), i) if work_limited else len(chunk)
         if self._error:
             return i
         start = i
@@ -904,7 +923,8 @@ class JsonSelectiveExtractor:
                 break
             i += 1
             state.offset += 1
-        self._record_slow_work(i - start)
+        if work_limited:
+            self._slow_work_bytes_remaining -= i - start
         if not self._error and state.offset == len(state.literal):
             self._literal = None
             self._value_complete()
@@ -936,14 +956,6 @@ class JsonSelectiveExtractor:
                 return i
             self._discarded_ascii_work_bytes_remaining = _DISCARDED_ASCII_BYTES_PER_WORK_UNIT
         return min(chunk_len, i + self._discarded_ascii_work_bytes_remaining)
-
-    def _record_slow_work(self, byte_count: int) -> None:
-        if self.max_work_units is not None:
-            self._slow_work_bytes_remaining -= byte_count
-
-    def _record_discarded_ascii_work(self, byte_count: int) -> None:
-        if self.max_work_units is not None:
-            self._discarded_ascii_work_bytes_remaining -= byte_count
 
 
 def _is_hex_byte(b: int) -> bool:
