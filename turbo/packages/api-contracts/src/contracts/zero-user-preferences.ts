@@ -10,8 +10,17 @@ const c = initContract();
 export const sendModeSchema = z.enum(["enter", "cmd-enter"]);
 export type SendMode = z.infer<typeof sendModeSchema>;
 
-export const userLocaleSchema = z.enum(["en-US", "zh-CN"]);
+export const SUPPORTED_USER_LOCALES = ["en-US", "pt-BR"] as const;
+export const userLocaleSchema = z.enum(SUPPORTED_USER_LOCALES);
 export type UserLocale = z.infer<typeof userLocaleSchema>;
+
+// TODO(#23508): remove the legacy value after the app/API rollback window
+// closes and existing workspace preferences have converged to a supported locale.
+const compatibleUserLocaleSchema = z
+  .union([userLocaleSchema, z.literal("zh-CN")])
+  .transform((locale): UserLocale => {
+    return locale === "zh-CN" ? "en-US" : locale;
+  });
 
 export const userPreferencesResponseSchema = z.object({
   timezone: z.string().nullable(),
@@ -19,7 +28,12 @@ export const userPreferencesResponseSchema = z.object({
    * Optional during rollout so the new frontend can distinguish an older API
    * (field absent) from a user who has not selected a language yet (null).
    */
-  locale: userLocaleSchema.nullable().optional(),
+  locale: compatibleUserLocaleSchema.nullable().optional(),
+  /**
+   * Optional capability handshake. Older APIs omit this field, so clients must
+   * not submit a locale that is absent from this list.
+   */
+  supportedLocales: z.array(userLocaleSchema).optional(),
   // Pinned agents are exposed as membership only. The API returns a stable
   // canonical order and ignores client-provided order on writes.
   pinnedAgentIds: z.array(z.string()),
@@ -40,7 +54,7 @@ export type UserPreferencesResponse = z.infer<
 export const updateUserPreferencesRequestSchema = z
   .object({
     timezone: z.string().min(1).optional(),
-    locale: userLocaleSchema.optional(),
+    locale: compatibleUserLocaleSchema.optional(),
     // Membership update only; request order is not used for display ordering.
     pinnedAgentIds: z.array(z.string()).optional(),
     sendMode: sendModeSchema.optional(),

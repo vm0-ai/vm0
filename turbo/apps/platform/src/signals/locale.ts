@@ -29,7 +29,10 @@ export const locale$ = computed((get) => {
 
 export const localePreferenceSupported$ = computed(async (get) => {
   const preferences = await get(userPreferences$);
-  return preferences.locale !== undefined;
+  return (
+    preferences.locale !== undefined &&
+    preferences.supportedLocales?.includes("pt-BR") === true
+  );
 });
 
 export const initLocale$ = command(async ({ set }, signal: AbortSignal) => {
@@ -71,7 +74,10 @@ export const syncLocalePreference$ = command(
 
     const preferences = await get(userPreferences$);
     signal.throwIfAborted();
-    if (preferences.locale === undefined) {
+    if (
+      preferences.locale === undefined ||
+      preferences.supportedLocales?.includes("pt-BR") !== true
+    ) {
       return;
     }
 

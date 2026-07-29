@@ -3,6 +3,7 @@ import { zeroFeatureSwitchesContract } from "@vm0/api-contracts/contracts/zero-f
 import { getAllFeatureStates } from "@vm0/core/feature-switch";
 import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 
+import { isBrazilianPortugueseLocaleRolloutEnabled } from "../../lib/brazilian-portuguese-locale-rollout";
 import { isZeroMailReplyFollowUpRolloutEnabled } from "../../lib/zero-mail-reply-follow-up-rollout";
 import { organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
@@ -32,6 +33,8 @@ function featureSwitchResponseBody(params: {
   });
   effectiveSwitches[FeatureSwitchKey.ZeroMailReplyFollowUp] =
     isZeroMailReplyFollowUpRolloutEnabled();
+  effectiveSwitches[FeatureSwitchKey.BrazilianPortugueseLocale] =
+    isBrazilianPortugueseLocaleRolloutEnabled();
 
   return {
     switches: params.switches,

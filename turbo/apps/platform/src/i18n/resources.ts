@@ -1,17 +1,21 @@
+import {
+  SUPPORTED_USER_LOCALES,
+  type UserLocale,
+} from "@vm0/api-contracts/contracts/zero-user-preferences";
 import enUSCommon from "./locales/en-US/common.json";
-import zhCNCommon from "./locales/zh-CN/common.json";
+import ptBRCommon from "./locales/pt-BR/common.json";
 
 export const DEFAULT_LOCALE = "en-US";
 export const DEFAULT_NAMESPACE = "common";
-export const SUPPORTED_LOCALES = ["en-US", "zh-CN"] as const;
+export const SUPPORTED_LOCALES = SUPPORTED_USER_LOCALES;
 
-export type SupportedLocale = (typeof SUPPORTED_LOCALES)[number];
+export type SupportedLocale = UserLocale;
 
 export const resources = {
   "en-US": {
     common: enUSCommon,
   },
-  "zh-CN": {
-    common: zhCNCommon,
+  "pt-BR": {
+    common: ptBRCommon,
   },
 } as const;

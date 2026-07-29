@@ -62,7 +62,7 @@ afterEach(() => {
 
 describe("bootstrap locale", () => {
   it("ignores the browser language and supports changing to a bundled locale", async () => {
-    context.mocks.browser.language("zh-CN");
+    context.mocks.browser.language("pt-BR");
     sessionStorage.setItem(ACTIVE_ORG_STORAGE_KEY, TEST_ORG_ID);
     context.store.set(testLocaleStorage.clear$);
     executeLocaleEntrypoint();
@@ -81,20 +81,20 @@ describe("bootstrap locale", () => {
     expect(i18n.language).toBe(DEFAULT_LOCALE);
     expect(document.documentElement.lang).toBe(DEFAULT_LOCALE);
     expect(i18n.hasResourceBundle("en-US", "common")).toBeTruthy();
-    expect(i18n.hasResourceBundle("zh-CN", "common")).toBeTruthy();
+    expect(i18n.hasResourceBundle("pt-BR", "common")).toBeTruthy();
 
-    await context.store.set(setLocale$, "zh-CN", context.signal);
+    await context.store.set(setLocale$, "pt-BR", context.signal);
 
-    expect(context.store.get(locale$)).toBe("zh-CN");
-    expect(i18n.language).toBe("zh-CN");
-    expect(document.documentElement.lang).toBe("zh-CN");
+    expect(context.store.get(locale$)).toBe("pt-BR");
+    expect(i18n.language).toBe("pt-BR");
+    expect(document.documentElement.lang).toBe("pt-BR");
 
     await context.store.set(setLocale$, DEFAULT_LOCALE, context.signal);
   });
 
   it("initializes i18next from the cached locale selected by the inline script", async () => {
     sessionStorage.setItem(ACTIVE_ORG_STORAGE_KEY, TEST_ORG_ID);
-    context.store.set(testLocaleStorage.set$, "zh-CN");
+    context.store.set(testLocaleStorage.set$, "pt-BR");
     executeLocaleEntrypoint();
 
     await setupPage({
@@ -104,9 +104,19 @@ describe("bootstrap locale", () => {
       withoutRender: true,
     });
 
-    expect(context.store.get(locale$)).toBe("zh-CN");
-    expect(i18n.language).toBe("zh-CN");
+    expect(context.store.get(locale$)).toBe("pt-BR");
+    expect(i18n.language).toBe("pt-BR");
 
     await context.store.set(setLocale$, DEFAULT_LOCALE, context.signal);
+  });
+
+  it("normalizes a legacy cached locale to English before bundle render", () => {
+    sessionStorage.setItem(ACTIVE_ORG_STORAGE_KEY, TEST_ORG_ID);
+    context.store.set(testLocaleStorage.set$, "zh-CN");
+
+    executeLocaleEntrypoint();
+
+    expect(document.documentElement.lang).toBe(DEFAULT_LOCALE);
+    expect(context.store.get(testLocaleStorage.get$)).toBe(DEFAULT_LOCALE);
   });
 });

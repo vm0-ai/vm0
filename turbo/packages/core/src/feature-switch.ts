@@ -234,6 +234,13 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
       "Enable workspace language bootstrap, persistence, and the Settings preference entry.",
     enabled: false,
   },
+  [FeatureSwitchKey.BrazilianPortugueseLocale]: {
+    maintainer: "yuma@vm0.ai",
+    description:
+      "Allow pt-BR preference writes after incompatible API readers and rollback candidates have drained.",
+    enabled: false,
+    userOverridable: false,
+  },
   [FeatureSwitchKey.ZeroFinance]: {
     maintainer: "ethan@vm0.ai",
     description:
