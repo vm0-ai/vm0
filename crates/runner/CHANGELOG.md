@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.148.28](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.148.27...runner-rs-v0.148.28) (2026-07-29)
+
+
+### Documentation
+
+* **python:** correct x includes fallback contract ([#23597](https://github.com/vm0-ai/vm0/issues/23597)) ([6bfa077](https://github.com/vm0-ai/vm0/commit/6bfa07708fc868ed5494afd178787bb8e0f45d07))
+
 ## [0.148.27](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.148.26...runner-rs-v0.148.27) (2026-07-29)
 
 ## [0.148.26](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.148.25...runner-rs-v0.148.26) (2026-07-29)
