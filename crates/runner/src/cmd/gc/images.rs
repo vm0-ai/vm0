@@ -91,11 +91,6 @@ async fn try_delete_orphan_rootfs(
     Some(rootfs_size)
 }
 
-fn template_warm_hash(name: &str) -> Option<&str> {
-    name.strip_prefix(TEMPLATE_WARM_DIR_PREFIX)
-        .filter(|hash| !hash.is_empty())
-}
-
 /// Try to delete an abandoned `runner build --warm-rootfs-cache` working dir.
 ///
 /// The directory intentionally lives under `images/` so the warm download/build
@@ -456,7 +451,10 @@ async fn gc_nested_images_with_protected_refs_and_readers(
             }
         }
 
-        if let Some(template_hash) = template_warm_hash(&rootfs_hash) {
+        if let Some(template_hash) = rootfs_hash
+            .strip_prefix(TEMPLATE_WARM_DIR_PREFIX)
+            .filter(|hash| !hash.is_empty())
+        {
             if let Some(freed_bytes) =
                 gc_template_warm_dir(home, &rootfs_path, &rootfs_hash, template_hash, dry_run).await
             {
