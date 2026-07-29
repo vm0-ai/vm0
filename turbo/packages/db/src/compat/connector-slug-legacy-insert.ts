@@ -17,7 +17,7 @@ import type { UserPermissionGrantAction } from "../schema/user-permission-grant"
  * Temporary insert-only table projections for the connector_slug expansion.
  *
  * They intentionally omit connector_slug so this API build can insert into both
- * the migration-0736 schema and the expanded schema. Migration 0737 triggers
+ * the migration-0737 schema and the expanded schema. Migration 0738 triggers
  * populate connector_slug after the column exists. Switch writes in #23793 and
  * delete these projections in #23794.
  */
