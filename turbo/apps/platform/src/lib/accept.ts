@@ -1,5 +1,6 @@
 import { toast } from "@vm0/ui/components/ui/sonner";
 import { isAbortError, onRejection } from "../signals/utils.ts";
+import { isNetworkRequestError } from "./network-error.ts";
 
 class ApiError extends Error {
   readonly code: string;
@@ -39,22 +40,14 @@ function requestErrorMessage(error: unknown): string {
   return error instanceof Error ? error.message : "Request failed";
 }
 
-function isNetworkRequestError(error: unknown): boolean {
-  return (
-    error instanceof TypeError &&
-    (error.message === "Failed to fetch" ||
-      error.message === "Load failed" ||
-      error.message.startsWith("NetworkError"))
-  );
-}
-
 interface AcceptOptions {
   readonly showErrorToast?: boolean;
 }
 
 /**
  * Awaits a typed API response and returns it if the status code is in `codes`.
- * Otherwise throws an `ApiError` and, by default, shows a toast.
+ * Otherwise throws an `ApiError` and, by default, shows a toast. A 401 is
+ * never toasted because the authenticated clients own sign-in recovery.
  *
  * Browser network failures propagate without showing their raw error message.
  *
@@ -86,7 +79,7 @@ async function accept<
     return result as Extract<T, { status: S }>;
   }
   const { message, code } = extractError(result.body, result.status);
-  if (showErrorToast) {
+  if (showErrorToast && result.status !== 401) {
     toast.error(message);
   }
   throw new ApiError(message, code, result.status);

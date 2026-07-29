@@ -18,6 +18,7 @@ import {
 } from "./api-base.ts";
 import { createAuthedContractClient } from "./api-client-base.ts";
 import { unauthorizedRedirectSuppressionUntil$ } from "./auth-retry.ts";
+import { rootSignal$ } from "./root-signal.ts";
 
 /**
  * Type alias for the factory function returned by `get(zeroClient$)`.
@@ -74,6 +75,9 @@ export const zeroClient$ = computed((get) => {
       baseUrl: resolveApiBase(),
       getClerk: () => {
         return get(clerk$);
+      },
+      getRootSignal: () => {
+        return get(rootSignal$);
       },
       getUnauthorizedRedirectSuppressionUntil: () => {
         return get(unauthorizedRedirectSuppressionUntil$);

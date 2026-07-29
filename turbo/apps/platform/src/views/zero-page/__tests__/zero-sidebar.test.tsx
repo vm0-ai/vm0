@@ -2257,7 +2257,7 @@ describe("zero sidebar", () => {
     });
   });
 
-  it("collapses and reopens the manage navigation section", async () => {
+  it("uses CSS hover for the scrollbar and toggles the manage section", async () => {
     prepareDefaultAgent();
 
     setupSidebarPage({ context, path: `/agents/${AGENT_ID}/chat` });
@@ -2292,14 +2292,31 @@ describe("zero sidebar", () => {
     if (!scrollWrapper) {
       throw new Error("Sidebar scroll wrapper not found");
     }
+    const scrollbarTrack = scrollArea.nextElementSibling;
+    if (!(scrollbarTrack instanceof HTMLElement)) {
+      throw new Error("Sidebar scrollbar track not found");
+    }
+
+    expect(scrollWrapper).toHaveClass("group/sidebar-scroll");
+    expect(scrollbarTrack).toHaveClass(
+      "opacity-0",
+      "transition-opacity",
+      "duration-150",
+      "group-hover/sidebar-scroll:opacity-100",
+    );
+    expect(scrollbarTrack.style.opacity).toBe("");
     fireEvent.mouseEnter(scrollWrapper);
     fireEvent.mouseLeave(scrollWrapper);
+    expect(scrollbarTrack.style.opacity).toBe("");
 
     Object.defineProperty(scrollArea, "scrollHeight", {
       configurable: true,
       value: 200,
     });
     fireEvent.scroll(scrollArea);
+    expect(scrollbarTrack).not.toHaveClass(
+      "group-hover/sidebar-scroll:opacity-100",
+    );
 
     click(within(nav).getByText("Manage"));
 
