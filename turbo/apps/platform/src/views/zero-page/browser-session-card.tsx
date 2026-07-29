@@ -1,10 +1,4 @@
-import {
-  IconBrowser,
-  IconChevronRight,
-  IconLoader2,
-} from "@tabler/icons-react";
-import type { ZeroBrowserStatus } from "@vm0/api-contracts/contracts/zero-browser";
-import { cn } from "@vm0/ui";
+import { Button, cn } from "@vm0/ui";
 import { useGet, useLastLoadable, useSet } from "ccstate-react";
 import { useTranslation } from "react-i18next";
 
@@ -13,54 +7,25 @@ import {
   activeSidebarBrowserSessionId$,
   openThreadBrowserSession$,
 } from "../../signals/chat-page/thread-sidebar-coordinator.ts";
-import { i18n } from "../../i18n/index.ts";
-import { formatAppNumber } from "../../i18n/format.ts";
 
 interface BrowserSessionCardProps {
   readonly signals: BrowserSessionSignals;
 }
 
-function statusLabel(status: ZeroBrowserStatus): string {
-  switch (status) {
-    case "active": {
-      return i18n.t(($) => {
-        return $.browserSession.status.live;
-      });
-    }
-    case "suspended": {
-      return i18n.t(($) => {
-        return $.browserSession.status.suspended;
-      });
-    }
-    case "creating":
-    case "resuming": {
-      return i18n.t(($) => {
-        return $.browserSession.status.starting;
-      });
-    }
-    case "stopping": {
-      return i18n.t(($) => {
-        return $.browserSession.status.stopping;
-      });
-    }
-    case "error": {
-      return i18n.t(($) => {
-        return $.browserSession.status.error;
-      });
-    }
-  }
-}
+const BROWSER_SESSION_CARD_CLASS =
+  "flex h-12 w-[268px] max-w-full items-center gap-2 rounded-[var(--zero-card-radius)] border bg-card py-1.5 pl-3 pr-1.5";
 
 function BrowserSessionCardSkeleton() {
   return (
-    <div className="flex min-h-[76px] w-full max-w-xl items-center gap-3 rounded-[var(--zero-card-radius)] border border-border/70 bg-card px-4 py-3">
-      <span className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-muted/60">
-        <IconLoader2 className="animate-spin text-muted-foreground" size={16} />
-      </span>
-      <div className="min-w-0 flex-1 space-y-2">
-        <div className="h-4 w-2/3 rounded bg-muted/70" />
-        <div className="h-3 w-1/3 rounded bg-muted/60" />
-      </div>
+    <div
+      className={cn(
+        BROWSER_SESSION_CARD_CLASS,
+        "animate-pulse border-border/70",
+      )}
+    >
+      <span className="h-4 w-24 rounded bg-muted/70" />
+      <span className="h-3 w-10 rounded bg-muted/60" />
+      <span className="ml-auto h-9 w-[58px] rounded-lg bg-muted/70" />
     </div>
   );
 }
@@ -71,23 +36,34 @@ function BrowserSessionUnavailable() {
     <div
       data-browser-session-card
       data-browser-session-status="unavailable"
-      className="flex min-h-[76px] w-full max-w-xl items-center gap-3 rounded-[var(--zero-card-radius)] border border-border/60 bg-card px-4 py-3 opacity-70"
+      className={cn(BROWSER_SESSION_CARD_CLASS, "border-border/60 opacity-70")}
     >
-      <span className="flex size-10 shrink-0 items-center justify-center rounded-lg border border-border/50 bg-background">
-        <IconBrowser size={22} className="text-muted-foreground" />
-      </span>
-      <span className="min-w-0 flex-1">
-        <span className="block truncate text-sm font-medium leading-5 text-foreground">
+      <span className="flex min-w-0 flex-1 items-center gap-2">
+        <span className="truncate text-sm font-medium text-foreground">
           {t(($) => {
-            return $.browserSession.unavailable.title;
+            return $.browserSession.cardTitle;
           })}
         </span>
-        <span className="mt-0.5 block truncate text-xs text-muted-foreground">
+        <span className="inline-flex shrink-0 items-center gap-1.5 text-[11px] font-medium text-muted-foreground">
+          <span className="size-1.5 rounded-full bg-muted-foreground/50" />
           {t(($) => {
-            return $.browserSession.unavailable.description;
+            return $.browserSession.status.stopped;
           })}
         </span>
       </span>
+      <Button
+        type="button"
+        size="sm"
+        disabled
+        aria-label={t(($) => {
+          return $.browserSession.unavailable.title;
+        })}
+        className="min-w-[58px] bg-foreground px-2.5 text-xs text-background hover:bg-foreground/90 active:bg-foreground/80"
+      >
+        {t(($) => {
+          return $.browserSession.openAction;
+        })}
+      </Button>
     </div>
   );
 }
@@ -109,61 +85,63 @@ export function BrowserSessionCard({ signals }: BrowserSessionCardProps) {
 
   const session = sessionLoadable.data;
   const selected = selectedBrowserId === signals.browserId;
+  const live = session.status === "active";
   return (
-    <button
-      type="button"
-      aria-label={t(
-        ($) => {
-          return $.browserSession.open;
-        },
-        { name: session.name },
-      )}
+    <div
       data-browser-session-card
       data-browser-session-status={session.status}
-      onClick={() => {
-        openSidebar(signals.browserId);
-      }}
       className={cn(
-        "flex min-h-[76px] w-full max-w-xl items-center gap-3 rounded-[var(--zero-card-radius)] border bg-card px-4 py-3 text-left transition-colors hover:bg-muted/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50",
+        BROWSER_SESSION_CARD_CLASS,
         selected ? "border-ring/60 bg-muted/20" : "border-border/70",
       )}
     >
-      <span className="flex size-10 shrink-0 items-center justify-center rounded-lg border border-border/50 bg-background">
-        <IconBrowser size={22} className="text-foreground" />
-      </span>
-      <span className="min-w-0 flex-1">
-        <span className="block truncate text-sm font-medium leading-5 text-foreground">
-          {session.name}
+      <span className="flex min-w-0 flex-1 items-center gap-2">
+        <span className="truncate text-sm font-medium text-foreground">
+          {t(($) => {
+            return $.browserSession.cardTitle;
+          })}
         </span>
-        <span className="mt-0.5 block truncate text-xs text-muted-foreground">
-          {t(
-            ($) => {
-              return $.browserSession.creditsCharged;
-            },
-            {
-              count: session.creditsCharged,
-              formattedCount: formatAppNumber(session.creditsCharged),
-            },
-          )}
-        </span>
-      </span>
-      <span className="flex shrink-0 items-center gap-1.5 self-center">
         <span
           className={cn(
-            "rounded-full px-2 py-1 text-[11px] font-medium",
-            session.status === "active" &&
-              "bg-emerald-500/10 text-emerald-700 dark:text-emerald-300",
-            session.status === "suspended" &&
-              "bg-amber-500/10 text-amber-700 dark:text-amber-300",
-            session.status !== "active" &&
-              session.status !== "suspended" &&
-              "bg-muted text-muted-foreground",
+            "inline-flex shrink-0 items-center gap-1.5 text-[11px] font-medium",
+            live
+              ? "text-emerald-700 dark:text-emerald-300"
+              : "text-muted-foreground",
           )}
         >
-          {statusLabel(session.status)}
+          <span
+            className={cn(
+              "size-1.5 rounded-full",
+              live ? "bg-emerald-500" : "bg-muted-foreground/50",
+            )}
+          />
+          {live
+            ? t(($) => {
+                return $.browserSession.status.live;
+              })
+            : t(($) => {
+                return $.browserSession.status.stopped;
+              })}
         </span>
-        <IconChevronRight size={16} className="text-muted-foreground" />
       </span>
-    </button>
+      <Button
+        type="button"
+        size="sm"
+        aria-label={t(
+          ($) => {
+            return $.browserSession.open;
+          },
+          { name: session.name },
+        )}
+        onClick={() => {
+          openSidebar(signals.browserId);
+        }}
+        className="min-w-[58px] bg-foreground px-2.5 text-xs text-background hover:bg-foreground/90 active:bg-foreground/80"
+      >
+        {t(($) => {
+          return $.browserSession.openAction;
+        })}
+      </Button>
+    </div>
   );
 }
