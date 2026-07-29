@@ -2337,6 +2337,231 @@ async function validateUserMessageBackfillAndContract(): Promise<void> {
   );
 }
 
+const CANONICAL_USER_MESSAGE_PREVIOUS_MIGRATION = 726;
+const CANONICAL_USER_MESSAGE_CONTRACT_MIGRATION = 729;
+
+async function validateCanonicalUserMessageRolloutCompatibility(): Promise<void> {
+  console.log("=== Validate canonical userMessage rollout compatibility ===\n");
+
+  const testDb = "migration_canonical_user_message_rollout_test";
+  const testDbUrl = createTestDbUrl(testDb);
+  const fixture = {
+    agentIds: {
+      historical: "93000000-0000-4000-8000-000000000001",
+      upsert: "93000000-0000-4000-8000-000000000002",
+    },
+    orgId: "canonical-user-message-rollout-org",
+    userId: "canonical-user-message-rollout-user",
+  } as const;
+  const historicalDocument = {
+    version: 1,
+    parts: [{ type: "text", text: "historical agent draft" }],
+  };
+  const legacyInsertDocument = {
+    version: 1,
+    parts: [{ type: "text", text: "legacy API insert" }],
+  };
+  const legacyUpdateDocument = {
+    version: 1,
+    parts: [{ type: "text", text: "legacy API conflict update" }],
+  };
+  const canonicalUpdateDocument = {
+    version: 1,
+    parts: [{ type: "text", text: "canonical API conflict update" }],
+  };
+
+  await createDatabase(testDb);
+  try {
+    await runMigrationsUpTo(
+      testDbUrl,
+      CANONICAL_USER_MESSAGE_PREVIOUS_MIGRATION,
+    );
+
+    const client = new Client({ connectionString: testDbUrl });
+    await client.connect();
+    try {
+      await client.query(
+        `INSERT INTO "agent_composes" ("id", "user_id", "name", "org_id")
+         VALUES
+           ($1, $4, 'canonical-user-message-historical', $3),
+           ($2, $4, 'canonical-user-message-upsert', $3)`,
+        [
+          fixture.agentIds.historical,
+          fixture.agentIds.upsert,
+          fixture.orgId,
+          fixture.userId,
+        ],
+      );
+      await client.query(
+        `INSERT INTO "zero_agents" ("id", "org_id", "owner", "name")
+         VALUES
+           ($1, $3, $4, 'canonical-user-message-historical'),
+           ($2, $3, $4, 'canonical-user-message-upsert')`,
+        [
+          fixture.agentIds.historical,
+          fixture.agentIds.upsert,
+          fixture.orgId,
+          fixture.userId,
+        ],
+      );
+      await client.query(
+        `INSERT INTO "zero_agent_drafts" (
+           "user_id",
+           "org_id",
+           "agent_id",
+           "draft_content",
+           "draft_structured_prompt"
+         )
+         VALUES ($1, $2, $3, 'historical agent draft', $4::jsonb)`,
+        [
+          fixture.userId,
+          fixture.orgId,
+          fixture.agentIds.historical,
+          JSON.stringify(historicalDocument),
+        ],
+      );
+
+      await applyMigrationsUpToInTransaction(
+        client,
+        CANONICAL_USER_MESSAGE_CONTRACT_MIGRATION,
+      );
+
+      const historicalDraft = await client.query<{
+        draftUserMessage: unknown;
+        legacyDraftUserMessage: unknown;
+      }>(
+        `SELECT
+           "draft_structured_prompt" AS "legacyDraftUserMessage",
+           "draft_user_message" AS "draftUserMessage"
+         FROM "zero_agent_drafts"
+         WHERE "user_id" = $1
+           AND "org_id" = $2
+           AND "agent_id" = $3`,
+        [fixture.userId, fixture.orgId, fixture.agentIds.historical],
+      );
+      assert.deepEqual(historicalDraft.rows, [
+        {
+          draftUserMessage: historicalDocument,
+          legacyDraftUserMessage: historicalDocument,
+        },
+      ]);
+
+      const legacyInsert = await client.query<{
+        draftUserMessage: unknown;
+        legacyDraftUserMessage: unknown;
+      }>(
+        `INSERT INTO "zero_agent_drafts" (
+           "user_id",
+           "org_id",
+           "agent_id",
+           "draft_content",
+           "draft_structured_prompt",
+           "updated_at"
+         )
+         VALUES ($1, $2, $3, 'legacy API insert', $4::jsonb, NOW())
+         ON CONFLICT ("user_id", "org_id", "agent_id") DO UPDATE
+         SET
+           "draft_content" = EXCLUDED."draft_content",
+           "draft_structured_prompt" = EXCLUDED."draft_structured_prompt",
+           "updated_at" = EXCLUDED."updated_at"
+         RETURNING
+           "draft_structured_prompt" AS "legacyDraftUserMessage",
+           "draft_user_message" AS "draftUserMessage"`,
+        [
+          fixture.userId,
+          fixture.orgId,
+          fixture.agentIds.upsert,
+          JSON.stringify(legacyInsertDocument),
+        ],
+      );
+      assert.deepEqual(legacyInsert.rows, [
+        {
+          draftUserMessage: legacyInsertDocument,
+          legacyDraftUserMessage: legacyInsertDocument,
+        },
+      ]);
+
+      const legacyUpdate = await client.query<{
+        draftUserMessage: unknown;
+        legacyDraftUserMessage: unknown;
+      }>(
+        `INSERT INTO "zero_agent_drafts" (
+           "user_id",
+           "org_id",
+           "agent_id",
+           "draft_content",
+           "draft_structured_prompt",
+           "updated_at"
+         )
+         VALUES ($1, $2, $3, 'legacy API conflict update', $4::jsonb, NOW())
+         ON CONFLICT ("user_id", "org_id", "agent_id") DO UPDATE
+         SET
+           "draft_content" = EXCLUDED."draft_content",
+           "draft_structured_prompt" = EXCLUDED."draft_structured_prompt",
+           "updated_at" = EXCLUDED."updated_at"
+         RETURNING
+           "draft_structured_prompt" AS "legacyDraftUserMessage",
+           "draft_user_message" AS "draftUserMessage"`,
+        [
+          fixture.userId,
+          fixture.orgId,
+          fixture.agentIds.upsert,
+          JSON.stringify(legacyUpdateDocument),
+        ],
+      );
+      assert.deepEqual(legacyUpdate.rows, [
+        {
+          draftUserMessage: legacyUpdateDocument,
+          legacyDraftUserMessage: legacyUpdateDocument,
+        },
+      ]);
+
+      const canonicalUpdate = await client.query<{
+        draftUserMessage: unknown;
+        legacyDraftUserMessage: unknown;
+      }>(
+        `INSERT INTO "zero_agent_drafts" (
+           "user_id",
+           "org_id",
+           "agent_id",
+           "draft_content",
+           "draft_user_message",
+           "updated_at"
+         )
+         VALUES ($1, $2, $3, 'canonical API conflict update', $4::jsonb, NOW())
+         ON CONFLICT ("user_id", "org_id", "agent_id") DO UPDATE
+         SET
+           "draft_content" = EXCLUDED."draft_content",
+           "draft_user_message" = EXCLUDED."draft_user_message",
+           "updated_at" = EXCLUDED."updated_at"
+         RETURNING
+           "draft_structured_prompt" AS "legacyDraftUserMessage",
+           "draft_user_message" AS "draftUserMessage"`,
+        [
+          fixture.userId,
+          fixture.orgId,
+          fixture.agentIds.upsert,
+          JSON.stringify(canonicalUpdateDocument),
+        ],
+      );
+      assert.deepEqual(canonicalUpdate.rows, [
+        {
+          draftUserMessage: canonicalUpdateDocument,
+          legacyDraftUserMessage: canonicalUpdateDocument,
+        },
+      ]);
+    } finally {
+      await client.end();
+    }
+  } finally {
+    await dropDatabase(testDb);
+  }
+
+  console.log(
+    "   ✅ Historical agent drafts are backfilled and legacy/canonical upserts remain synchronized\n",
+  );
+}
+
 const CHAT_EVENT_TYPE_PREVIOUS_MIGRATION = 696;
 const CHAT_EVENT_TYPE_ADDITIVE_MIGRATION = 697;
 const CHAT_EVENT_TYPE_BACKFILL_MIGRATION = 698;
@@ -6388,6 +6613,7 @@ async function main(): Promise<void> {
     await validateChatEventTypeBackfillAndContract();
     await validateStructuredPromptDraftBackfill();
     await validateUserMessageBackfillAndContract();
+    await validateCanonicalUserMessageRolloutCompatibility();
     await validateChatEventQueueContraction();
     await validateChatMessageRoleContraction();
     await validateChatEventTableRename();
