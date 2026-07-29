@@ -22,6 +22,7 @@ import {
   IconCode,
 } from "@tabler/icons-react";
 import { cn } from "@vm0/ui";
+import { useTranslation } from "react-i18next";
 import "highlight.js/styles/github.css";
 
 function getLowlight() {
@@ -195,11 +196,28 @@ export function TiptapInstructionsEditor({
   initialContent,
   onChange,
   disabled = false,
-  ariaLabel = "Instructions editor",
-  placeholder = "Write instructions for your agent...",
-  footerHint = "Edit the instructions directly to customize your agent's behavior.",
+  ariaLabel,
+  placeholder,
+  footerHint,
   surface = "card",
 }: TiptapInstructionsEditorProps) {
+  const { t } = useTranslation();
+  const resolvedAriaLabel =
+    ariaLabel ??
+    t(($) => {
+      return $.workflows.editor.aria;
+    });
+  const resolvedPlaceholder =
+    placeholder ??
+    t(($) => {
+      return $.workflows.editor.placeholder;
+    });
+  const resolvedFooterHint =
+    footerHint === undefined
+      ? t(($) => {
+          return $.workflows.editor.footer;
+        })
+      : footerHint;
   const editorClassName = cn(
     EDITOR_CLASSES,
     surface === "canvas" ? "min-h-[calc(100vh-10rem)] px-0 py-3" : "",
@@ -217,8 +235,8 @@ export function TiptapInstructionsEditor({
     editorProps: {
       attributes: {
         class: editorClassName,
-        "aria-label": ariaLabel,
-        "data-placeholder": placeholder,
+        "aria-label": resolvedAriaLabel,
+        "data-placeholder": resolvedPlaceholder,
       },
     },
   });
@@ -243,7 +261,9 @@ export function TiptapInstructionsEditor({
             }}
             active={editor.isActive("bold")}
             disabled={disabled}
-            title="Bold"
+            title={t(($) => {
+              return $.workflows.editor.toolbar.bold;
+            })}
           >
             <IconBold size={ICON_SIZE} stroke={ICON_STROKE} />
           </ToolbarButton>
@@ -253,7 +273,9 @@ export function TiptapInstructionsEditor({
             }}
             active={editor.isActive("italic")}
             disabled={disabled}
-            title="Italic"
+            title={t(($) => {
+              return $.workflows.editor.toolbar.italic;
+            })}
           >
             <IconItalic size={ICON_SIZE} stroke={ICON_STROKE} />
           </ToolbarButton>
@@ -263,7 +285,9 @@ export function TiptapInstructionsEditor({
             }}
             active={editor.isActive("strike")}
             disabled={disabled}
-            title="Strikethrough"
+            title={t(($) => {
+              return $.workflows.editor.toolbar.strikethrough;
+            })}
           >
             <IconStrikethrough size={ICON_SIZE} stroke={ICON_STROKE} />
           </ToolbarButton>
@@ -273,7 +297,9 @@ export function TiptapInstructionsEditor({
             }}
             active={editor.isActive("code")}
             disabled={disabled}
-            title="Inline code"
+            title={t(($) => {
+              return $.workflows.editor.toolbar.inlineCode;
+            })}
           >
             <IconCode size={ICON_SIZE} stroke={ICON_STROKE} />
           </ToolbarButton>
@@ -286,7 +312,9 @@ export function TiptapInstructionsEditor({
             }}
             active={editor.isActive("heading", { level: 1 })}
             disabled={disabled}
-            title="Heading 1"
+            title={t(($) => {
+              return $.workflows.editor.toolbar.heading1;
+            })}
           >
             <IconH1 size={ICON_SIZE} stroke={ICON_STROKE} />
           </ToolbarButton>
@@ -296,7 +324,9 @@ export function TiptapInstructionsEditor({
             }}
             active={editor.isActive("heading", { level: 2 })}
             disabled={disabled}
-            title="Heading 2"
+            title={t(($) => {
+              return $.workflows.editor.toolbar.heading2;
+            })}
           >
             <IconH2 size={ICON_SIZE} stroke={ICON_STROKE} />
           </ToolbarButton>
@@ -306,7 +336,9 @@ export function TiptapInstructionsEditor({
             }}
             active={editor.isActive("heading", { level: 3 })}
             disabled={disabled}
-            title="Heading 3"
+            title={t(($) => {
+              return $.workflows.editor.toolbar.heading3;
+            })}
           >
             <IconH3 size={ICON_SIZE} stroke={ICON_STROKE} />
           </ToolbarButton>
@@ -319,7 +351,9 @@ export function TiptapInstructionsEditor({
             }}
             active={editor.isActive("bulletList")}
             disabled={disabled}
-            title="Bullet list"
+            title={t(($) => {
+              return $.workflows.editor.toolbar.bulletList;
+            })}
           >
             <IconList size={ICON_SIZE} stroke={ICON_STROKE} />
           </ToolbarButton>
@@ -329,7 +363,9 @@ export function TiptapInstructionsEditor({
             }}
             active={editor.isActive("orderedList")}
             disabled={disabled}
-            title="Ordered list"
+            title={t(($) => {
+              return $.workflows.editor.toolbar.orderedList;
+            })}
           >
             <IconListNumbers size={ICON_SIZE} stroke={ICON_STROKE} />
           </ToolbarButton>
@@ -339,16 +375,18 @@ export function TiptapInstructionsEditor({
             }}
             active={editor.isActive("blockquote")}
             disabled={disabled}
-            title="Blockquote"
+            title={t(($) => {
+              return $.workflows.editor.toolbar.blockquote;
+            })}
           >
             <IconBlockquote size={ICON_SIZE} stroke={ICON_STROKE} />
           </ToolbarButton>
         </BubbleMenu>
       )}
       <EditorContent editor={editor} />
-      {footerHint ? (
+      {resolvedFooterHint ? (
         <p className="mx-4 zero-border-t pt-2 pb-3 text-xs text-muted-foreground">
-          {footerHint}
+          {resolvedFooterHint}
         </p>
       ) : null}
     </div>

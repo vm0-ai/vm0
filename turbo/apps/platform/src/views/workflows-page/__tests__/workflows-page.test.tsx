@@ -40,6 +40,7 @@ import {
   createDefaultMockGithubIntegration,
   setMockGithubIntegration,
 } from "../../../mocks/handlers/api-integrations-github.ts";
+import { i18n } from "../../../i18n/index.ts";
 
 const context = testContext();
 const CURRENT_USER_ID = "test-user-123";
@@ -1445,6 +1446,96 @@ describe("workflows routes", () => {
     expect(linkByAriaLabel("Open Ops Playbook")).toBeInTheDocument();
     expect(linkByAriaLabel("Open Support Intake")).toBeInTheDocument();
   });
+});
+
+describe("workflow localization", () => {
+  afterEach(async () => {
+    await i18n.changeLanguage("en-US");
+    document.documentElement.lang = "en-US";
+  });
+
+  const localeCases = [
+    {
+      locale: "en-US",
+      listTitle: "Workflows",
+      detailTitle: "Workflow",
+      openWorkflow: "Open Sales Research",
+      automationsTab: "Automations",
+      scheduleTitle: "Every weekday at 6:00 AM",
+      eventTitle: "Gmail new message",
+      eventSummary:
+        'from contains "@acme.com"; subject does not contain "newsletter"',
+      last: "Last",
+      next: "Next",
+    },
+    {
+      locale: "pt-BR",
+      listTitle: "Fluxos de trabalho",
+      detailTitle: "Fluxo de trabalho",
+      openWorkflow: "Abrir Sales Research",
+      automationsTab: "Automações",
+      scheduleTitle: "A cada dia útil às 6:00",
+      eventTitle: "Nova mensagem do Gmail",
+      eventSummary: 'de contém "@acme.com"; assunto não contém "newsletter"',
+      last: "Última",
+      next: "Próxima",
+    },
+  ] as const;
+
+  it.each(localeCases)(
+    "localizes representative list, detail, schedule, and event UI in $locale",
+    async (localeCase) => {
+      const workflow = {
+        ...salesResearch(),
+        automations: [weekdayWorkflowAutomation(), gmailWorkflowAutomation()],
+      };
+      context.mocks.data.userPreferences({
+        locale: localeCase.locale,
+        timezone: "America/Sao_Paulo",
+      });
+      mockBillingTier("team");
+      mockWorkflowApis([workflow]);
+      mockConnectedAutomationConnectors();
+
+      detachedSetupPage({
+        context,
+        path: "/workflows",
+        featureSwitches: {
+          [FeatureSwitchKey.LanguagePreference]: true,
+        },
+      });
+
+      await waitFor(() => {
+        expect(
+          screen.getByRole("heading", { name: localeCase.listTitle }),
+        ).toBeInTheDocument();
+        expect(document.title.split(" | ")[0]).toBe(localeCase.listTitle);
+      });
+      expect(screen.getByText("Sales Research")).toBeInTheDocument();
+
+      click(screen.getByLabelText(localeCase.openWorkflow));
+      await waitFor(() => {
+        expect(pathname()).toBe(workflowDetailPath("automations"));
+        expect(screen.getByText(localeCase.scheduleTitle)).toBeInTheDocument();
+        expect(document.title.split(" | ")[0]).toBe(localeCase.detailTitle);
+      });
+
+      expect(tabByName(localeCase.automationsTab)).toBeInTheDocument();
+      expect(screen.getByText(localeCase.eventTitle)).toBeInTheDocument();
+      expect(screen.getByText(localeCase.eventSummary)).toBeInTheDocument();
+      expect(screen.getAllByText(localeCase.last)).not.toHaveLength(0);
+      expect(screen.getAllByText(localeCase.next)).not.toHaveLength(0);
+
+      const expectedLastRun = new Date(
+        "2026-06-18T01:00:00.000Z",
+      ).toLocaleString(localeCase.locale, {
+        dateStyle: "medium",
+        timeStyle: "short",
+        timeZone: "America/Sao_Paulo",
+      });
+      expect(screen.getByText(expectedLastRun)).toBeInTheDocument();
+    },
+  );
 });
 
 describe("workflow detail page", () => {
