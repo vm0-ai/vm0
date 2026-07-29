@@ -47,6 +47,13 @@
 //! because unrelated traffic may make an otherwise valid counter window noisy; their reason names
 //! the first failed exact-correlation condition, not a proven packet-loss location.
 //!
+//! The non-comparable-window reasons remain distinct in serialized output: `zero_attempts` means
+//! there was no readiness-attempt window, `baseline_unavailable` or `terminal_unavailable` means a
+//! complete before or after snapshot was unavailable, `identity_mismatch` means the target or veth
+//! identities cannot be compared, and `counter_reset` means at least one captured counter
+//! decreased. All are inconclusive states; none proves that traffic stopped at a particular
+//! boundary.
+//!
 //! # Aggregate classification and independent observations
 //!
 //! The aggregate `classification` and `reason` answer whether every exact condition above holds.
