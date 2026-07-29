@@ -9,7 +9,7 @@ import { agentSessions } from "@vm0/db/schema/agent-session";
 import { chatThreads } from "@vm0/db/schema/chat-thread";
 import { conversations } from "@vm0/db/schema/conversation";
 import { zeroRuns } from "@vm0/db/schema/zero-run";
-import { and, desc, eq, sql } from "drizzle-orm";
+import { and, desc, eq, ne, or, sql } from "drizzle-orm";
 
 import type { Db, ReadonlyDb } from "../external/db";
 
@@ -35,12 +35,14 @@ export interface ChatThreadSessionSnapshot {
 export interface ChatThreadSessionResolution {
   readonly sessionId: string | undefined;
   readonly action: ChatThreadSessionResolutionAction;
+  readonly resumableHistoryAvailable: boolean;
   readonly expected: ChatThreadSessionSnapshot;
 }
 
 interface HistoricalThreadSession {
   readonly sessionId: string;
   readonly conversationId: string | null;
+  readonly resumableHistoryAvailable: boolean;
   readonly route: ChatThreadSessionRoute;
 }
 
@@ -122,6 +124,10 @@ async function latestHistoricalThreadSession(args: {
     .select({
       sessionId: agentSessions.id,
       conversationId: agentSessions.conversationId,
+      resumableHistoryAvailable: sql`${or(
+        ne(conversations.cliAgentSessionHistoryHash, ""),
+        ne(conversations.cliAgentSessionHistory, ""),
+      )}`.mapWith(Boolean),
       selectedModel: zeroRuns.selectedModel,
       modelProvider: zeroRuns.modelProvider,
       cliAgentType: conversations.cliAgentType,
@@ -151,6 +157,7 @@ async function latestHistoricalThreadSession(args: {
   return {
     sessionId: row.sessionId,
     conversationId: row.conversationId,
+    resumableHistoryAvailable: row.resumableHistoryAvailable,
     route: {
       selectedModel: row.selectedModel,
       modelProvider: row.modelProvider,
@@ -208,6 +215,10 @@ export async function resolveChatThreadSession(args: {
       modelProvider: zeroRuns.modelProvider,
       routeRunId: zeroRuns.id,
       cliAgentType: conversations.cliAgentType,
+      resumableHistoryAvailable: sql`${or(
+        ne(conversations.cliAgentSessionHistoryHash, ""),
+        ne(conversations.cliAgentSessionHistory, ""),
+      )}`.mapWith(Boolean),
     })
     .from(chatThreads)
     .leftJoin(
@@ -258,6 +269,7 @@ export async function resolveChatThreadSession(args: {
     return {
       sessionId: rotate ? undefined : thread.sessionId,
       action: rotate ? "rotated" : "reused",
+      resumableHistoryAvailable: !rotate && thread.resumableHistoryAvailable,
       expected,
     };
   }
@@ -267,6 +279,7 @@ export async function resolveChatThreadSession(args: {
     return {
       sessionId: undefined,
       action: "initialized",
+      resumableHistoryAvailable: false,
       expected: {
         agentSessionId: thread.agentSessionId,
         agentSessionRunId: thread.agentSessionRunId,
@@ -283,6 +296,7 @@ export async function resolveChatThreadSession(args: {
   return {
     sessionId: rotate ? undefined : historical.sessionId,
     action: rotate ? "rotated" : "adopted",
+    resumableHistoryAvailable: !rotate && historical.resumableHistoryAvailable,
     expected: {
       agentSessionId: thread.agentSessionId,
       agentSessionRunId: thread.agentSessionRunId,

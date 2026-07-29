@@ -343,12 +343,13 @@ export async function loadChatRunContext(
   args: {
     readonly threadId: string;
     readonly resolutionAction: ChatThreadSessionResolutionAction;
+    readonly resumableHistoryAvailable: boolean;
     readonly request: ChatRunContextRequest;
   },
 ): Promise<string> {
   if (
-    args.resolutionAction === "reused" ||
-    args.resolutionAction === "adopted"
+    args.resumableHistoryAvailable &&
+    (args.resolutionAction === "reused" || args.resolutionAction === "adopted")
   ) {
     if (args.request.triggerSource === "web") {
       const incompleteContext = await loadWebChatIncompleteContext(

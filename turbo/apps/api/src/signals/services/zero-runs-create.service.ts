@@ -1100,6 +1100,7 @@ async function resolveThreadSessionForZeroRun(
           const context = await loadChatRunContext(db, {
             threadId,
             resolutionAction: resolution.action,
+            resumableHistoryAvailable: resolution.resumableHistoryAvailable,
             request: chatAppendSystemPrompt.contextRequest,
           });
           return [

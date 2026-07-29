@@ -1239,7 +1239,8 @@ describe("CHAT-02: interrupting active chat runs", () => {
       "clientEventId is already in use",
     );
 
-    // Both cancelled rounds surface as incomplete context for the next run.
+    // Neither cancelled run produced resumable CLI history, so the retained
+    // application-session binding must not suppress the full chat fallback.
     const third = await sendChatRun(actor, {
       agentId,
       threadId: first.threadId,
@@ -1247,10 +1248,10 @@ describe("CHAT-02: interrupting active chat runs", () => {
     });
     const thirdRun = await api.readRun(actor, third.runId);
     const appended = thirdRun.appendSystemPrompt ?? "";
-    expect(appended).toContain("# Incomplete Rounds Context");
+    expect(appended).toContain("# Web Chat Run Context");
     expect(appended).toContain("RUN_STATUS: cancelled");
     expect(appended).toContain("User: long task to interrupt");
-    expect(appended).not.toContain("# Web Chat Run Context");
+    expect(appended).not.toContain("# Incomplete Rounds Context");
     await cancelChatRun(actor, third.runId);
   }, 90_000);
 });
@@ -3893,7 +3894,7 @@ describe("CHAT-02: run-level model overrides", () => {
 });
 
 describe("CHAT-02: incomplete-round context", () => {
-  it("injects incomplete rounds and truncates old content chronologically", async () => {
+  it("falls back to bounded full context when failed runs have no resumable history", async () => {
     const { actor, agentId, runnerGroup } = await entitledChatActor();
     chatCallbacks.failIfChatCallbackRouteIsFetched();
 
@@ -3941,8 +3942,8 @@ describe("CHAT-02: incomplete-round context", () => {
     });
     const thirdRun = await api.readRun(actor, third.runId);
     const appended = thirdRun.appendSystemPrompt ?? "";
-    expect(appended).toContain("# Incomplete Rounds Context");
-    expect(appended).not.toContain("# Web Chat Run Context");
+    expect(appended).toContain("# Web Chat Run Context");
+    expect(appended).not.toContain("# Incomplete Rounds Context");
     expect(appended.split("RUN_STATUS: failed")).toHaveLength(3);
     expect(appended).toContain("User: first incomplete");
     expect(appended.indexOf("User: first incomplete")).toBeLessThan(
@@ -3950,6 +3951,8 @@ describe("CHAT-02: incomplete-round context", () => {
     );
     expect(appended).toContain("...[truncated]");
     expect(appended).not.toContain("retry after two failures");
+    const thirdClaim = await claimChatRun(runnerGroup, third.runId);
+    expect(thirdClaim.claim.resumeSession).toBeNull();
     await cancelChatRun(actor, third.runId);
   }, 90_000);
 });
@@ -4855,9 +4858,10 @@ describe("CHAT-02: generation templates and attachments", () => {
     expect(workflowPrompt).not.toContain("Before creating anything");
     expect(workflowPrompt).toContain("Gmail label-applied automation");
     expect(workflowPrompt).not.toContain("# Artifact Template Context");
-    // The illustration run was cancelled, so only its message text is replayed
-    // via "# Incomplete Rounds Context"; the style id is not.
-    expect(workflowPrompt).toContain("# Incomplete Rounds Context");
+    // The illustration run was cancelled before producing resumable history,
+    // so its message is replayed via the bounded full-context fallback.
+    expect(workflowPrompt).toContain("# Web Chat Run Context");
+    expect(workflowPrompt).not.toContain("# Incomplete Rounds Context");
     expect(workflowPrompt).not.toContain(style.illustrationStyleId);
     await cancelChatRun(actor, workflow.runId);
 
@@ -4869,14 +4873,13 @@ describe("CHAT-02: generation templates and attachments", () => {
     const followUpPrompt = (await api.readRun(actor, followUp.runId))
       .appendSystemPrompt;
     // No explicit selection this turn, so there is no live block for either
-    // type. Both earlier runs were cancelled, so authoritative reused-session
-    // context selects the incomplete rounds instead of the general full
-    // "# Web Chat Run Context".
+    // type. Both earlier runs were cancelled without resumable history, so the
+    // full context remains authoritative.
     expect(followUpPrompt).not.toContain("# Workflow Template Context");
     expect(followUpPrompt).not.toContain(workflowTemplate.id);
     expect(followUpPrompt).not.toContain("# Artifact Template Context");
-    expect(followUpPrompt).not.toContain("# Web Chat Run Context");
-    expect(followUpPrompt).toContain("# Incomplete Rounds Context");
+    expect(followUpPrompt).toContain("# Web Chat Run Context");
+    expect(followUpPrompt).not.toContain("# Incomplete Rounds Context");
     expect(followUpPrompt).not.toContain("Selected a template");
     expect(followUpPrompt).not.toContain(style.illustrationStyleId);
     await cancelChatRun(actor, followUp.runId);
