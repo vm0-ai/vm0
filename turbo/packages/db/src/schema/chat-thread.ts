@@ -74,13 +74,6 @@ export const chatThreads = pgTable(
      * Persisted with local-first sync: local state takes precedence on first visit.
      */
     draftContent: text("draft_content"),
-    /**
-     * Rollout bridge for API versions that still write
-     * draft_structured_prompt.
-     */
-    legacyDraftUserMessage: jsonb(
-      "draft_structured_prompt",
-    ).$type<ChatThreadDraftUserMessage>(),
     /** Canonical rich document for the thread composer's saved draft. */
     draftUserMessage:
       jsonb("draft_user_message").$type<ChatThreadDraftUserMessage>(),

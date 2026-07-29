@@ -531,18 +531,17 @@ async function expectAppendOnlyUpdateRejected(
   throw new Error(`${args.tableName} accepted an UPDATE`);
 }
 
-async function validateCanonicalChatMessageCompatibility(
+async function validateCanonicalChatMessageStorage(
   client: Client,
   threadId: string,
 ): Promise<string> {
-  const legacyUserMessage = {
+  const userMessage = {
     version: 1,
-    parts: [{ type: "text", text: "append-only migration test" }],
+    parts: [{ type: "text", text: "canonical API migration test" }],
   };
   const message = await client.query<{
     content: string | null;
     id: string;
-    legacyUserMessage: unknown;
     seqId: string;
     userMessage: unknown;
   }>(
@@ -551,22 +550,21 @@ async function validateCanonicalChatMessageCompatibility(
         "chat_thread_id",
         "content",
         "event_type",
-        "structured_prompt"
+        "user_message"
       )
       VALUES (
         $1,
-        'append-only migration test',
+        NULL,
         'input.prompt',
-        '{"version":1,"parts":[{"type":"text","text":"append-only migration test"}]}'::jsonb
+        $2::jsonb
       )
       RETURNING
         "id",
         "seq_id" AS "seqId",
         "content",
-        "structured_prompt" AS "legacyUserMessage",
         "user_message" AS "userMessage"
     `,
-    [threadId],
+    [threadId, JSON.stringify(userMessage)],
   );
   const messageRow = message.rows[0];
   if (!messageRow) {
@@ -574,8 +572,7 @@ async function validateCanonicalChatMessageCompatibility(
   }
   assert.equal(messageRow.seqId, "1");
   assert.equal(messageRow.content, null);
-  assert.deepEqual(messageRow.legacyUserMessage, legacyUserMessage);
-  assert.deepEqual(messageRow.userMessage, legacyUserMessage);
+  assert.deepEqual(messageRow.userMessage, userMessage);
 
   const nextMessage = await client.query<{ seqId: string }>(
     `
@@ -595,46 +592,6 @@ async function validateCanonicalChatMessageCompatibility(
   );
   assert.equal(nextMessage.rows[0]?.seqId, "2");
 
-  const canonicalUserMessage = {
-    version: 1,
-    parts: [{ type: "text", text: "canonical API migration test" }],
-  };
-  const canonicalMessage = await client.query<{
-    content: string | null;
-    legacyUserMessage: unknown;
-    seqId: string;
-    userMessage: unknown;
-  }>(
-    `
-      INSERT INTO "chat_events" (
-        "chat_thread_id",
-        "content",
-        "event_type",
-        "user_message"
-      )
-      VALUES (
-        $1,
-        'retired canonical input content',
-        'input.prompt',
-        $2::jsonb
-      )
-      RETURNING
-        "seq_id" AS "seqId",
-        "content",
-        "structured_prompt" AS "legacyUserMessage",
-        "user_message" AS "userMessage"
-    `,
-    [threadId, JSON.stringify(canonicalUserMessage)],
-  );
-  const canonicalMessageRow = canonicalMessage.rows[0];
-  assert.equal(canonicalMessageRow?.seqId, "3");
-  assert.equal(canonicalMessageRow?.content, null);
-  assert.deepEqual(
-    canonicalMessageRow?.legacyUserMessage,
-    canonicalUserMessage,
-  );
-  assert.deepEqual(canonicalMessageRow?.userMessage, canonicalUserMessage);
-
   const sequenceState = await client.query<{ lastSeqId: string }>(
     `
       SELECT "last_chat_message_seq_id" AS "lastSeqId"
@@ -643,51 +600,21 @@ async function validateCanonicalChatMessageCompatibility(
     `,
     [threadId],
   );
-  assert.equal(sequenceState.rows[0]?.lastSeqId, "3");
+  assert.equal(sequenceState.rows[0]?.lastSeqId, "2");
 
   return messageRow.id;
 }
 
-async function validateCanonicalDraftCompatibility(
+async function validateCanonicalDraftStorage(
   client: Client,
   threadId: string,
 ): Promise<void> {
-  const legacyDraftUserMessage = {
-    version: 1,
-    parts: [{ type: "text", text: "legacy API draft" }],
-  };
-  const legacyDraft = await client.query<{
-    draftUserMessage: unknown;
-    legacyDraftUserMessage: unknown;
-  }>(
-    `
-      UPDATE "chat_threads"
-      SET
-        "draft_content" = 'legacy API draft',
-        "draft_structured_prompt" = $2::jsonb
-      WHERE "id" = $1
-      RETURNING
-        "draft_structured_prompt" AS "legacyDraftUserMessage",
-        "draft_user_message" AS "draftUserMessage"
-    `,
-    [threadId, JSON.stringify(legacyDraftUserMessage)],
-  );
-  assert.deepEqual(
-    legacyDraft.rows[0]?.legacyDraftUserMessage,
-    legacyDraftUserMessage,
-  );
-  assert.deepEqual(
-    legacyDraft.rows[0]?.draftUserMessage,
-    legacyDraftUserMessage,
-  );
-
-  const canonicalDraftUserMessage = {
+  const draftUserMessage = {
     version: 1,
     parts: [{ type: "text", text: "canonical API draft" }],
   };
   const canonicalDraft = await client.query<{
     draftUserMessage: unknown;
-    legacyDraftUserMessage: unknown;
   }>(
     `
       UPDATE "chat_threads"
@@ -696,19 +623,11 @@ async function validateCanonicalDraftCompatibility(
         "draft_user_message" = $2::jsonb
       WHERE "id" = $1
       RETURNING
-        "draft_structured_prompt" AS "legacyDraftUserMessage",
         "draft_user_message" AS "draftUserMessage"
     `,
-    [threadId, JSON.stringify(canonicalDraftUserMessage)],
+    [threadId, JSON.stringify(draftUserMessage)],
   );
-  assert.deepEqual(
-    canonicalDraft.rows[0]?.legacyDraftUserMessage,
-    canonicalDraftUserMessage,
-  );
-  assert.deepEqual(
-    canonicalDraft.rows[0]?.draftUserMessage,
-    canonicalDraftUserMessage,
-  );
+  assert.deepEqual(canonicalDraft.rows[0]?.draftUserMessage, draftUserMessage);
 }
 
 async function validateChatEventSourcesAreAppendOnly(
@@ -752,11 +671,8 @@ async function validateChatEventSourcesAreAppendOnly(
 
     // Insert through the canonical table without seq_id and rely on the
     // database allocator.
-    messageId = await validateCanonicalChatMessageCompatibility(
-      client,
-      threadId,
-    );
-    await validateCanonicalDraftCompatibility(client, threadId);
+    messageId = await validateCanonicalChatMessageStorage(client, threadId);
+    await validateCanonicalDraftStorage(client, threadId);
 
     const event = await client.query<{ id: string; seqId: string }>(
       `
@@ -2904,6 +2820,8 @@ async function validateUserMessageBackfillAndContract(): Promise<void> {
 
 const CANONICAL_USER_MESSAGE_PREVIOUS_MIGRATION = 727;
 const CANONICAL_USER_MESSAGE_CONTRACT_MIGRATION = 730;
+const CANONICAL_USER_MESSAGE_CLEANUP_PREVIOUS_MIGRATION = 736;
+const CANONICAL_USER_MESSAGE_CLEANUP_MIGRATION = 737;
 
 async function validateCanonicalUserMessageRolloutCompatibility(): Promise<void> {
   console.log("=== Validate canonical userMessage rollout compatibility ===\n");
@@ -3124,6 +3042,100 @@ async function validateCanonicalUserMessageRolloutCompatibility(): Promise<void>
 
   console.log(
     "   ✅ Historical agent drafts are backfilled and legacy/canonical upserts remain synchronized\n",
+  );
+}
+
+async function validateCanonicalUserMessageContraction(): Promise<void> {
+  console.log("=== Validate canonical userMessage contraction ===\n");
+
+  const testDb = "migration_canonical_user_message_contraction_test";
+  const testDbUrl = createTestDbUrl(testDb);
+  await createDatabase(testDb);
+
+  const blocker = new Client({ connectionString: testDbUrl });
+  const migrationClient = new Client({ connectionString: testDbUrl });
+  let blockerOpen = false;
+
+  try {
+    await runMigrationsUpTo(
+      testDbUrl,
+      CANONICAL_USER_MESSAGE_CLEANUP_PREVIOUS_MIGRATION,
+    );
+    await blocker.connect();
+    await migrationClient.connect();
+
+    await blocker.query("BEGIN");
+    blockerOpen = true;
+    await blocker.query(`LOCK TABLE "chat_events" IN ACCESS SHARE MODE`);
+
+    try {
+      await applyMigrationsUpToInTransaction(
+        migrationClient,
+        CANONICAL_USER_MESSAGE_CLEANUP_MIGRATION,
+      );
+      assert.fail("Canonical userMessage cleanup waited for a table lock");
+    } catch (error) {
+      assert.equal(databaseErrorCode(error), "55P03");
+    }
+
+    await blocker.query("ROLLBACK");
+    blockerOpen = false;
+
+    await applyMigrationsUpToInTransaction(
+      migrationClient,
+      CANONICAL_USER_MESSAGE_CLEANUP_MIGRATION,
+    );
+
+    const legacyColumns = await migrationClient.query<{
+      column_name: string;
+      table_name: string;
+    }>(`
+      SELECT table_name, column_name
+      FROM information_schema.columns
+      WHERE table_schema = 'public'
+        AND (
+          (table_name = 'chat_events' AND column_name = 'structured_prompt')
+          OR (
+            table_name IN ('chat_threads', 'zero_agent_drafts')
+            AND column_name = 'draft_structured_prompt'
+          )
+        )
+    `);
+    assert.deepEqual(legacyColumns.rows, []);
+
+    const bridgeTriggers = await migrationClient.query<{ name: string }>(`
+      SELECT tgname AS name
+      FROM pg_trigger
+      WHERE tgname IN (
+        'bridge_chat_user_message_0727',
+        'bridge_chat_thread_draft_user_message_0727',
+        'bridge_agent_draft_user_message_0727'
+      )
+    `);
+    assert.deepEqual(bridgeTriggers.rows, []);
+
+    const bridgeFunctions = await migrationClient.query<{
+      chatBridge: string | null;
+      draftBridge: string | null;
+    }>(`
+      SELECT
+        to_regprocedure('bridge_chat_user_message_0727()')::text AS "chatBridge",
+        to_regprocedure('bridge_draft_user_message_0727()')::text AS "draftBridge"
+    `);
+    assert.deepEqual(bridgeFunctions.rows, [
+      { chatBridge: null, draftBridge: null },
+    ]);
+  } finally {
+    if (blockerOpen) {
+      await blocker.query("ROLLBACK");
+    }
+    await blocker.end();
+    await migrationClient.end();
+    await dropDatabase(testDb);
+  }
+
+  console.log(
+    "   ✅ Cleanup fails fast on lock contention and removes only legacy userMessage storage\n",
   );
 }
 
@@ -7275,6 +7287,7 @@ async function main(): Promise<void> {
     await validateStructuredPromptDraftBackfill();
     await validateUserMessageBackfillAndContract();
     await validateCanonicalUserMessageRolloutCompatibility();
+    await validateCanonicalUserMessageContraction();
     await validateChatEventQueueContraction();
     await validateChatMessageRoleContraction();
     await validateChatEventTableRename();

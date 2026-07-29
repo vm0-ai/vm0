@@ -4,14 +4,14 @@ import { describe, expect, it } from "vitest";
 import { chatMessages } from "../schema/chat-message";
 
 describe("chatMessages schema", () => {
-  it("keeps canonical and rollout-bridge userMessage columns nullable", () => {
+  it("exposes only canonical userMessage storage", () => {
     const columns = new Map(
       getTableConfig(chatMessages).columns.map((column) => {
         return [column.name, column.notNull] as const;
       }),
     );
 
-    expect(columns.get("structured_prompt")).toBe(false);
+    expect(columns.has("structured_prompt")).toBe(false);
     expect(columns.get("user_message")).toBe(false);
   });
 
