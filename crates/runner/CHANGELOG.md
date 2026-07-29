@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.148.32](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.148.31...runner-rs-v0.148.32) (2026-07-29)
+
+
+### Refactoring
+
+* **connectors:** adopt slug terminology internally ([#23697](https://github.com/vm0-ai/vm0/issues/23697)) ([ffa2a39](https://github.com/vm0-ai/vm0/commit/ffa2a39c3624c85ceed4d3b6bed32bc652ed4feb))
+* **runner:** retire legacy template warm naming ([#23708](https://github.com/vm0-ai/vm0/issues/23708)) ([2e71090](https://github.com/vm0-ai/vm0/commit/2e71090edebd5e2d6077e54276e2e2b74c877bc6))
+
+
+### Performance Improvements
+
+* **python:** reuse connected endpoint ip evidence ([#23710](https://github.com/vm0-ai/vm0/issues/23710)) ([920f35e](https://github.com/vm0-ai/vm0/commit/920f35e8474e56571a8d5d3011a03fe39d286aca))
+
 ## [0.148.31](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.148.30...runner-rs-v0.148.31) (2026-07-29)
 
 
