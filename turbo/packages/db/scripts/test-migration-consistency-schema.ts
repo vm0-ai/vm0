@@ -2774,6 +2774,7 @@ async function validateChatEventTypeBackfillAndContract(): Promise<void> {
 
 const CHAT_EVENT_QUEUE_CONTRACTION_PREVIOUS_MIGRATION = 718;
 const CHAT_EVENT_QUEUE_CONTRACTION_MIGRATION = 719;
+const CHAT_EVENT_QUEUE_COMPATIBILITY_VIEW_DROP_MIGRATION = 721;
 
 async function validateChatEventQueueContraction(): Promise<void> {
   console.log("=== Validate ChatEvent queue schema contraction ===\n");
@@ -3037,6 +3038,37 @@ async function validateChatEventQueueContraction(): Promise<void> {
       );
       assert.equal(legacyWorkflowDelete.rowCount, 0);
 
+      await applyMigrationsUpToInTransaction(
+        client,
+        CHAT_EVENT_QUEUE_COMPATIBILITY_VIEW_DROP_MIGRATION,
+      );
+
+      const retiredCompatibilityView = await client.query<{
+        compatibilityDeleteFunction: string | null;
+        compatibilityTriggerCount: number;
+        compatibilityView: string | null;
+      }>(`
+        SELECT
+          to_regclass('public.chat_message_queue')::text
+            AS "compatibilityView",
+          to_regprocedure(
+            'ignore_legacy_chat_message_queue_delete_0719()'
+          )::text AS "compatibilityDeleteFunction",
+          (
+            SELECT COUNT(*)::integer
+            FROM pg_trigger
+            WHERE tgname = 'ignore_legacy_chat_message_queue_delete_0719'
+              AND NOT tgisinternal
+          ) AS "compatibilityTriggerCount"
+      `);
+      assert.deepEqual(retiredCompatibilityView.rows, [
+        {
+          compatibilityDeleteFunction: null,
+          compatibilityTriggerCount: 0,
+          compatibilityView: null,
+        },
+      ]);
+
       const canonicalEvents = await client.query<{
         content: string | null;
         encryptedParams: string | null;
@@ -3083,7 +3115,7 @@ async function validateChatEventQueueContraction(): Promise<void> {
   }
 
   console.log(
-    "   ✅ Canonical queue events survive while legacy storage retires and the one-release DELETE compatibility view accepts old API cleanup\n",
+    "   ✅ Canonical queue events survive while one-release DELETE compatibility is verified and then fully retired\n",
   );
 }
 

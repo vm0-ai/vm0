@@ -149,11 +149,6 @@ class TestDoneHook:
                 "_flush_usage_for_runner_request",
                 side_effect=flush_usage_for_runner_request,
             ),
-            patch.object(
-                runner_flush_lifecycle,
-                "_flush_jsonl_for_runner_request",
-                side_effect=lambda: calls.append("flush:jsonl"),
-            ),
             patch.object(usage.webhook, "usage_executor", mock_executor),
             patch.object(
                 mitm_addon.auth_base_forwarder,
@@ -167,9 +162,7 @@ class TestDoneHook:
         assert calls == [
             "flush:shutdown",
             "flush:runner",
-            "flush:jsonl",
             "flush:runner",
-            "flush:jsonl",
             "shutdown:True",
             "auth-base:shutdown:False",
             "jsonl:shutdown",
@@ -211,10 +204,6 @@ class TestDoneHook:
                 runner_flush_lifecycle,
                 "_flush_usage_for_runner_request",
             ) as flush_runner_usage,
-            patch.object(
-                runner_flush_lifecycle,
-                "_flush_jsonl_for_runner_request",
-            ) as flush_runner_jsonl,
             patch.object(usage.webhook, "usage_executor", mock_executor),
             patch.object(
                 mitm_addon.auth_base_forwarder,
@@ -227,7 +216,6 @@ class TestDoneHook:
 
         flush_usage_events.assert_called_once_with(trigger="shutdown")
         flush_runner_usage.assert_called_once_with()
-        flush_runner_jsonl.assert_called_once_with()
         mock_executor.shutdown.assert_called_once_with(wait=True)
         shutdown_forward_request_workers.assert_called_once_with(wait=False)
         shutdown_log_writer.assert_called_once_with()

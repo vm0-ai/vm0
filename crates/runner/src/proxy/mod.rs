@@ -46,8 +46,8 @@
 //!
 //! Addon-side details live in `crates/runner/mitm-addon/src/mitm_addon.py`
 //! (mitmproxy hook orchestration),
-//! `crates/runner/mitm-addon/src/runner_flush_lifecycle.py` (SIGUSR1 worker and
-//! request handling),
+//! `crates/runner/mitm-addon/src/runner_flush_lifecycle.py` (SIGUSR1 usage
+//! worker and JSONL marker watcher),
 //! `crates/runner/mitm-addon/src/usage/counters.py` (`usage-pending`),
 //! `crates/runner/mitm-addon/src/registry.py` (registry loading), and
 //! `crates/runner/mitm-addon/src/jsonl_writer.py` (accepted-write flush

@@ -52,9 +52,9 @@ def _reset_module_state() -> Iterator[None]:
     lookups in module-level dicts.  Without a reset, earlier tests leak
     entries that change later tests' behaviour.
 
-    The usage buffer owns a background timer in production, and the runner
-    flush signal owns a background worker that can touch usage and JSONL state,
-    so tests reset them around each case to avoid cross-test callbacks.
+    The usage buffer owns a background timer in production, while runner flush
+    handling owns a usage signal worker and a JSONL marker watcher, so tests
+    reset them around each case to avoid cross-test callbacks.
     """
     auth_base_forwarder.reset_forward_request_state_for_tests()
     builtin_connector_diagnostics.reset_cache_for_tests()
