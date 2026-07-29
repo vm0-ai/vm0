@@ -186,9 +186,9 @@ impl CacheBudget {
     }
 }
 
+/// A non-blocking, best-effort snapshot of the workspace image cache.
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
-/// A non-blocking, best-effort snapshot of the workspace image cache.
 pub(crate) struct WorkspaceImageCacheInspection {
     pub(crate) cache_dir: String,
     pub(crate) lock_dir: String,
@@ -198,14 +198,14 @@ pub(crate) struct WorkspaceImageCacheInspection {
     pub(crate) entries: Vec<WorkspaceImageCacheInspectionEntry>,
 }
 
-#[derive(Debug, Clone, Default, Serialize, PartialEq, Eq)]
-#[serde(rename_all = "camelCase")]
-/// Aggregates measured from entries whose locks were available.
+/// Aggregates from a non-blocking, best-effort cache scan.
 ///
 /// When `locked_entries` is nonzero, reusable, invalid, stale, and temporary
 /// entry counts and temporary-path and size totals exclude locked entry
 /// contents and are lower bounds. `total_entries` and `locked_entries` remain
 /// observed values.
+#[derive(Debug, Clone, Default, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
 pub(crate) struct WorkspaceImageCacheInspectionSummary {
     pub(crate) total_entries: usize,
     pub(crate) reusable_entries: usize,
@@ -219,13 +219,13 @@ pub(crate) struct WorkspaceImageCacheInspectionSummary {
     pub(crate) temporary_allocated_bytes: u64,
 }
 
-#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
-#[serde(rename_all = "camelCase")]
 /// A best-effort per-entry inspection record.
 ///
 /// A locked record skips metadata, image-size, temporary-path, storage, and
-/// artifact inspection. Its absent and zero-valued fields mean unavailable,
-/// not measured zero.
+/// artifact inspection. Its `None` metadata fields and zero-valued size/count
+/// fields mean unavailable, not measured zero.
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
 pub(crate) struct WorkspaceImageCacheInspectionEntry {
     pub(crate) cache_key: String,
     pub(crate) status: WorkspaceImageCacheInspectionStatus,

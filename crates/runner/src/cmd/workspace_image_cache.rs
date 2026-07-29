@@ -26,9 +26,10 @@ enum WorkspaceImageCacheCommand {
     /// List entries from a non-blocking, best-effort cache snapshot
     ///
     /// Locked entries skip metadata, image-size, temporary-path, storage, and
-    /// artifact inspection. In JSON, zero and absent fields on locked entries
-    /// mean unavailable rather than measured zero. Entry-derived summary values
-    /// are lower bounds when `lockedEntries` is greater than zero.
+    /// artifact inspection. In JSON, zero measurements and null metadata fields
+    /// on locked entries mean unavailable rather than measured zero.
+    /// Status-category, temporary-path, and size summary values are lower bounds
+    /// when `lockedEntries` is greater than zero.
     List(WorkspaceImageCacheListArgs),
     /// Clean up session workspace image cache entries
     Gc(WorkspaceImageCacheGcArgs),
@@ -185,7 +186,7 @@ fn format_info_text(inspection: &WorkspaceImageCacheInspection) -> String {
     format!(
         "\
 Workspace image cache
-  Snapshot: non-blocking, best effort
+  Snapshot: non-blocking, best-effort
   Cache dir: {cache_dir}
   Lock dir: {lock_dir}
   Filesystem: total {fs_total}, available {fs_available}
@@ -224,7 +225,7 @@ Preview cleanup:
 
 fn format_list_text(output: &WorkspaceImageCacheListOutput) -> String {
     let mut text = format!(
-        "Workspace image cache entries ({shown} shown, {total} total)\n  Snapshot: non-blocking, best effort\n  Cache dir: {cache_dir}\n",
+        "Workspace image cache entries ({shown} shown, {total} total)\n  Snapshot: non-blocking, best-effort\n  Cache dir: {cache_dir}\n",
         shown = output.entries.len(),
         total = output.summary.total_entries,
         cache_dir = output.cache_dir,
@@ -466,7 +467,7 @@ mod tests {
     fn text_info_contains_summary_and_next_actions() {
         let text = format_info_text(&test_inspection());
         assert!(text.contains("Workspace image cache"));
-        assert!(text.contains("Snapshot: non-blocking, best effort"));
+        assert!(text.contains("Snapshot: non-blocking, best-effort"));
         assert!(text.contains("Entries: total 2, reusable 1, invalid 1"));
         assert!(text.contains("Temporary paths: 1"));
         assert!(!text.contains("Lower bounds:"));
@@ -488,7 +489,7 @@ mod tests {
     fn text_list_respects_limit_and_prioritizes_invalid_entries() {
         let text = format_list_text(&list_output(test_inspection(), Some(1)));
         assert!(text.contains("1 shown, 2 total"));
-        assert!(text.contains("Snapshot: non-blocking, best effort"));
+        assert!(text.contains("Snapshot: non-blocking, best-effort"));
         assert!(text.contains("invalid "));
         assert!(text.contains("tempPaths=0"));
         assert!(text.contains("reason=missing metadata"));

@@ -459,10 +459,10 @@ mod tests {
             .join(" ");
         assert!(list_help.contains("non-blocking, best-effort"));
         assert!(list_help.contains(
-            "zero and absent fields on locked entries mean unavailable rather than measured zero"
+            "zero measurements and null metadata fields on locked entries mean unavailable rather than measured zero"
         ));
         assert!(list_help.contains(
-            "Entry-derived summary values are lower bounds when `lockedEntries` is greater than zero."
+            "Status-category, temporary-path, and size summary values are lower bounds when `lockedEntries` is greater than zero."
         ));
     }
 
