@@ -28,13 +28,6 @@ export const zeroAgentDrafts = pgTable(
         { onDelete: "cascade" },
       ),
     draftContent: text("draft_content"),
-    /**
-     * Rollout bridge for API versions that still write
-     * draft_structured_prompt.
-     */
-    legacyDraftUserMessage: jsonb(
-      "draft_structured_prompt",
-    ).$type<ZeroAgentDraftUserMessage>(),
     /** Canonical rich document for the agent composer's saved draft. */
     draftUserMessage:
       jsonb("draft_user_message").$type<ZeroAgentDraftUserMessage>(),
