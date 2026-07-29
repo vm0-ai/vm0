@@ -4731,7 +4731,10 @@ function PermissionActionCardContent({
     ? permissionGrantExpiryText(expiresAt)
     : null;
   const expiryText =
-    rawExpiryText === "Expires in less than 1 hour" ? null : rawExpiryText;
+    rawExpiryText === "Expires in less than 1 hour" ||
+    rawExpiryText === "Expires in 1 hour"
+      ? null
+      : rawExpiryText;
   const showDurationSelect =
     expirationAvailable &&
     (status.kind === "ready" ||
