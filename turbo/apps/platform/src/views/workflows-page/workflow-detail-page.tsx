@@ -241,8 +241,6 @@ import { emptyAutomationsImg } from "../zero-page/platform-assets.ts";
 import { ConnectorIcon } from "../zero-page/components/settings/connector-icons.tsx";
 import { WorkflowWebhookUpgradeDialog } from "./workflow-webhook-upgrade-dialog.tsx";
 
-const FIELD_CLASS =
-  "h-9 w-full rounded-md border border-border/60 bg-background px-2.5 text-sm outline-none focus:border-primary";
 const AUTOMATION_FIELD_CLASS =
   "h-8 w-full rounded-md border border-border/60 bg-background px-2 text-xs";
 const WORKFLOW_EDIT_TEXTAREA_CLASS =
@@ -4329,13 +4327,12 @@ function CreateNotionDatabaseItemAutomationDialog({
         >
           <label className="flex flex-col gap-1 text-xs text-muted-foreground">
             Database URL
-            <input
+            <Input
               name="databaseUrl"
               aria-label="Database URL"
               required
               disabled={creating}
               placeholder="https://www.notion.so/..."
-              className={FIELD_CLASS}
             />
           </label>
           <DialogFooter>
@@ -4420,25 +4417,23 @@ function NotionPageContentUpdatedScopeFields({
       {scope === "page" ? (
         <label className="flex flex-col gap-1 text-xs text-muted-foreground">
           Page URL
-          <input
+          <Input
             name="pageUrl"
             aria-label="Page URL"
             required
             disabled={creating}
             placeholder="https://www.notion.so/workspace/Page-title-..."
-            className={FIELD_CLASS}
           />
         </label>
       ) : (
         <label className="flex flex-col gap-1 text-xs text-muted-foreground">
           Database URL
-          <input
+          <Input
             name="databaseUrl"
             aria-label="Database URL"
             required
             disabled={creating}
             placeholder="https://www.notion.so/..."
-            className={FIELD_CLASS}
           />
         </label>
       )}
@@ -4587,13 +4582,12 @@ function CreateNotionChildPageAutomationDialog({
         >
           <label className="flex flex-col gap-1 text-xs text-muted-foreground">
             Parent page URL
-            <input
+            <Input
               name="parentPageUrl"
               aria-label="Parent page URL"
               required
               disabled={creating}
               placeholder="https://www.notion.so/workspace/Page-title-..."
-              className={FIELD_CLASS}
             />
           </label>
           <DialogFooter>
@@ -4911,13 +4905,12 @@ function ScheduleAutomationFields({
     return (
       <label className="flex flex-col gap-1 text-xs text-muted-foreground">
         Run at
-        <input
+        <Input
           name="atTime"
           aria-label="Run at"
           type="datetime-local"
           defaultValue={defaultAtTime}
           disabled={disabled}
-          className={FIELD_CLASS}
         />
         <span className="text-xs text-muted-foreground">
           Displays in {displayTimezone}.
@@ -5090,12 +5083,11 @@ function WorkflowCustomCronField({
   return (
     <label className="flex flex-col gap-1 text-xs text-muted-foreground">
       Cron expression
-      <input
+      <Input
         aria-label="Cron expression"
         value={value}
         disabled={disabled}
         placeholder="0 9 * * *"
-        className={FIELD_CLASS}
         onChange={(event) => {
           onChange(event.currentTarget.value);
         }}
@@ -5613,13 +5605,12 @@ function CreateGmailLabelAppliedAutomationDialog({
         >
           <label className="flex flex-col gap-1 text-xs text-muted-foreground">
             Label name
-            <input
+            <Input
               name="labelName"
               aria-label="Label name"
               required
               disabled={creating}
               placeholder="Support"
-              className={FIELD_CLASS}
             />
           </label>
           <DialogFooter>
@@ -5661,14 +5652,13 @@ function GithubLabelAutomationFields({
     <div className="flex flex-col gap-3">
       <label className="flex flex-col gap-1 text-xs text-muted-foreground">
         Label name
-        <input
+        <Input
           name="labelName"
           aria-label="GitHub label name"
           required
           disabled={disabled}
           defaultValue={defaultConfig?.labelName ?? ""}
           placeholder="triage"
-          className={FIELD_CLASS}
         />
       </label>
       <label className="flex flex-col gap-1 text-xs text-muted-foreground">
@@ -5778,13 +5768,12 @@ function GithubWorkflowRunAutomationFields({
             className="flex flex-col gap-1 text-xs text-muted-foreground"
           >
             {field.label}
-            <input
+            <Input
               name={field.name}
               aria-label={field.label}
               disabled={disabled}
               defaultValue={field.defaultValues?.join(", ") ?? ""}
               placeholder={field.placeholder}
-              className={FIELD_CLASS}
             />
           </label>
         );
@@ -5835,13 +5824,12 @@ function GithubFilterInput({
   return (
     <label className="flex flex-col gap-1 text-xs text-muted-foreground">
       {label}
-      <input
+      <Input
         name={name}
         aria-label={label}
         disabled={disabled}
         defaultValue={defaultValues?.join(", ") ?? ""}
         placeholder={placeholder}
-        className={FIELD_CLASS}
       />
     </label>
   );
@@ -6685,13 +6673,12 @@ function CreateGoogleCalendarEventAutomationDialog({
         >
           <label className="flex flex-col gap-1 text-xs text-muted-foreground">
             Calendar ID
-            <input
+            <Input
               name="calendarId"
               aria-label="Calendar ID"
               disabled={creating}
               defaultValue="primary"
               placeholder="primary"
-              className={FIELD_CLASS}
             />
           </label>
           <DialogFooter>
@@ -6861,7 +6848,7 @@ function WebhookReadonlyField({
 }) {
   return (
     <div className="flex min-w-0 gap-2">
-      <input readOnly value={value} className={cn(FIELD_CLASS, "min-w-0")} />
+      <Input readOnly value={value} className="min-w-0" />
       <Button type="button" variant="outline" onClick={onCopy}>
         <IconCopy size={14} />
         Copy
