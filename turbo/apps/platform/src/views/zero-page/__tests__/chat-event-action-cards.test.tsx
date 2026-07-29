@@ -3708,7 +3708,7 @@ describe("chat event action cards", () => {
     const browserId = "c0000000-0000-4000-a000-000000000081";
     const liveUrl =
       "https://live.browser-use.com/?wss=test-browser-session-token";
-    const browser: ZeroBrowserSession = {
+    let browser: ZeroBrowserSession = {
       id: browserId,
       name: "booking",
       status: "active",
@@ -3788,6 +3788,58 @@ describe("chat event action cards", () => {
     expect(frame.closest("[data-browser-session-sidebar]")).not.toBeNull();
     await waitFor(() => {
       expect(leaseRequests).toBeGreaterThan(0);
+    });
+    await waitFor(() => {
+      expect(hasSubscription("browserSessionChanged")).toBeTruthy();
+    });
+
+    browser = {
+      ...browser,
+      status: "suspended",
+      liveUrl: null,
+      creditsCharged: 12,
+      idleExpiresAt: null,
+      suspendedAt: "2026-07-24T10:12:00.000Z",
+      suspensionReason: "idle",
+      updatedAt: "2026-07-24T10:12:00.000Z",
+    };
+    triggerAblyEvent("browserSessionChanged", { browserId });
+
+    await waitFor(() => {
+      for (const card of cards) {
+        expect(card).toHaveAttribute(
+          "data-browser-session-status",
+          "suspended",
+        );
+        expect(card).toHaveTextContent("12 credits charged");
+      }
+      expect(screen.getByText("Browser suspended")).toBeInTheDocument();
+      expect(
+        document.querySelector('iframe[title="Live browser: booking"]'),
+      ).toBeNull();
+    });
+
+    const resumedLiveUrl =
+      "https://live.browser-use.com/?wss=resumed-browser-session-token";
+    browser = {
+      ...browser,
+      status: "active",
+      liveUrl: resumedLiveUrl,
+      idleExpiresAt: "2026-07-24T10:22:00.000Z",
+      suspendedAt: null,
+      suspensionReason: null,
+      updatedAt: "2026-07-24T10:12:01.000Z",
+    };
+    triggerAblyEvent("browserSessionChanged", { browserId });
+
+    await waitFor(() => {
+      for (const card of cards) {
+        expect(card).toHaveAttribute("data-browser-session-status", "active");
+      }
+      expect(screen.getByTitle("Live browser: booking")).toHaveAttribute(
+        "src",
+        resumedLiveUrl,
+      );
     });
     expect(
       queryAllByRoleFast("link").find((link) => {

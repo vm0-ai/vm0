@@ -29,6 +29,10 @@ fn write_base_dir_lock(home: &HomePaths, base_dir: &Path) -> PathBuf {
     lock_path
 }
 
+fn failing_remove_dir_all(_path: &Path) -> RemoveDirAllFuture<'_> {
+    Box::pin(async { Err(std::io::Error::other("injected workspace removal failure")) })
+}
+
 fn firecracker_with_base_dir(
     pid: u32,
     sandbox_id: &str,
@@ -315,6 +319,61 @@ async fn gc_workspace_orphans_deletes_old_orphan() {
     assert_eq!(summary.workspaces_cleaned, 1);
     assert!(summary.bytes_freed > 0 || cfg!(target_os = "macos"));
     assert_eq!(summary.base_dir_locks_removed, 1);
+}
+
+#[tokio::test]
+async fn gc_workspace_orphans_retries_after_workspace_removal_failure() {
+    let dir = tempfile::tempdir().unwrap();
+    let home = test_home(dir.path());
+    std::fs::create_dir_all(home.locks_dir()).unwrap();
+
+    let base_dir = dir.path().join("runner-data");
+    let workspace = base_dir.join("workspaces").join("run-old");
+    std::fs::create_dir_all(&workspace).unwrap();
+    std::fs::write(workspace.join("cow.img"), vec![0u8; 4096]).unwrap();
+    set_mtime(&workspace, old_gc_time());
+    let lock_path = write_base_dir_lock(&home, &base_dir);
+
+    let failed = gc_workspace_orphans_with_candidates_and_remove(
+        discover_base_dir_lock_candidates(&home),
+        &[],
+        &HashSet::new(),
+        false,
+        SystemTime::now(),
+        false,
+        failing_remove_dir_all,
+    )
+    .await
+    .unwrap();
+
+    assert!(workspace.exists(), "failed cleanup must keep the workspace");
+    assert_eq!(failed.workspaces_cleaned, 0);
+    assert_eq!(failed.bytes_freed, 0);
+    assert_eq!(failed.base_dir_locks_removed, 0);
+    assert!(
+        lock_path.exists(),
+        "failed cleanup must keep the retry lock"
+    );
+
+    let retried = gc_workspace_orphans_with_candidates(
+        discover_base_dir_lock_candidates(&home),
+        &[],
+        &HashSet::new(),
+        false,
+        SystemTime::now(),
+        false,
+    )
+    .await
+    .unwrap();
+
+    assert_eq!(retried.workspaces_cleaned, 1);
+    assert!(retried.bytes_freed > 0 || cfg!(target_os = "macos"));
+    assert_eq!(retried.base_dir_locks_removed, 1);
+    assert!(
+        !workspace.exists(),
+        "retry should remove the orphaned workspace"
+    );
+    assert!(!lock_path.exists(), "retry should remove the base-dir lock");
 }
 
 #[tokio::test]
