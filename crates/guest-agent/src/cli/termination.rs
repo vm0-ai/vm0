@@ -387,10 +387,23 @@ impl CliTerminationRuntime {
         }
     }
 
-    pub(super) fn expedite_post_result_cleanup_for_execution_deadline(
+    /// Returns true when a terminal result already owns process cleanup.
+    ///
+    /// Before SIGTERM, the execution deadline advances that cleanup. During
+    /// the SIGKILL grace, the existing state machine already has the shortest
+    /// remaining bound, so only the result classification needs preserving.
+    pub(super) fn preserve_post_result_cleanup_at_execution_deadline(
         &mut self,
         termination_deadline: Pin<&mut Sleep>,
     ) -> bool {
+        if matches!(
+            self.state,
+            TerminationState::SigkillPending {
+                reason: TerminationReason::PostResult
+            }
+        ) {
+            return true;
+        }
         if !matches!(
             self.state,
             TerminationState::SigtermPending {

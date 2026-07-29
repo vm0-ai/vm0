@@ -908,13 +908,13 @@ async fn execute_cli_inner(
                 }
                 agent_execution_deadline_armed = false;
                 if termination_runtime
-                    .expedite_post_result_cleanup_for_execution_deadline(
+                    .preserve_post_result_cleanup_at_execution_deadline(
                         termination_deadline.as_mut(),
                     )
                 {
                     // A terminal result already ended semantic execution.
-                    // Advance its bounded reaper without changing the result's
-                    // success or failure classification.
+                    // Preserve its classification and, when SIGTERM has not
+                    // already been sent, advance its bounded reaper.
                     continue;
                 }
                 active_input_controller.close_terminal();
