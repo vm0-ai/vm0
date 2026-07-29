@@ -1,6 +1,12 @@
 //! Mitmdump stderr parsing and re-emission.
 
-use tracing::{error, warn};
+use tracing::{error, info, warn};
+
+const NON_POSITIVE_PEER_CERTIFICATE_SERIAL_DEPRECATION: &str = concat!(
+    "CryptographyDeprecationWarning: Parsed a serial number which wasn't positive ",
+    "(i.e., it was negative or zero), which is disallowed by RFC 5280. Loading this ",
+    "certificate will cause an exception in a future release of cryptography."
+);
 
 #[derive(Debug, PartialEq, Eq)]
 struct MitmdumpUsageUnderbillingStderr<'a> {
@@ -73,6 +79,11 @@ fn parse_mitmdump_usage_underbilling_stderr(
     })
 }
 
+fn is_non_positive_peer_certificate_serial_deprecation(line: &str) -> bool {
+    line.strip_suffix(NON_POSITIVE_PEER_CERTIFICATE_SERIAL_DEPRECATION)
+        .is_some_and(|source| source.ends_with(": "))
+}
+
 pub(super) fn log_mitmdump_stderr_line(line: &str) {
     if let Some(signal) = parse_mitmdump_usage_underbilling_stderr(line) {
         if let Some(counter) = signal.counter {
@@ -97,6 +108,16 @@ pub(super) fn log_mitmdump_stderr_line(line: &str) {
                 "mitmdump usage underbilling signal"
             );
         }
+        return;
+    }
+
+    if is_non_positive_peer_certificate_serial_deprecation(line) {
+        info!(
+            target: "mitmdump",
+            reason = "non_positive_peer_certificate_serial_deprecation",
+            mitmdump_stderr = %line,
+            "mitmdump peer certificate serial deprecation"
+        );
         return;
     }
 
@@ -269,5 +290,62 @@ mod tests {
         assert_event_field(&event, "component", "mitm_addon");
         assert_event_field(&event, "counter", "reports");
         assert_event_field(&event, "mitmdump_stderr", line);
+    }
+
+    #[test]
+    fn non_positive_peer_certificate_serial_deprecation_reemits_structured_info() {
+        for source in ["OpenSSL/crypto.py:1231", "OpenSSL/crypto.py:984"] {
+            let line = format!("{source}: {NON_POSITIVE_PEER_CERTIFICATE_SERIAL_DEPRECATION}");
+
+            let event = capture_mitmdump_stderr_log(&line);
+
+            assert_eq!(event.level, Level::INFO);
+            assert_event_field(
+                &event,
+                "message",
+                "mitmdump peer certificate serial deprecation",
+            );
+            assert_event_field(
+                &event,
+                "reason",
+                "non_positive_peer_certificate_serial_deprecation",
+            );
+            assert_event_field(&event, "mitmdump_stderr", &line);
+        }
+    }
+
+    #[test]
+    fn related_certificate_stderr_remains_warning() {
+        let lines = [
+            NON_POSITIVE_PEER_CERTIFICATE_SERIAL_DEPRECATION.replacen(
+                "CryptographyDeprecationWarning",
+                "UserWarning",
+                1,
+            ),
+            NON_POSITIVE_PEER_CERTIFICATE_SERIAL_DEPRECATION
+                .strip_suffix('.')
+                .unwrap()
+                .to_owned(),
+            "ValueError: Failed to parse peer certificate serial number".to_owned(),
+        ];
+
+        for warning in lines {
+            let line = format!("OpenSSL/crypto.py:984: {warning}");
+
+            let event = capture_mitmdump_stderr_log(&line);
+
+            assert_eq!(event.level, Level::WARN);
+            assert_event_field(&event, "message", &format!("stderr: {line}"));
+        }
+    }
+
+    #[test]
+    fn ordinary_mitmdump_stderr_remains_warning() {
+        let line = "ordinary mitmdump warning";
+
+        let event = capture_mitmdump_stderr_log(line);
+
+        assert_eq!(event.level, Level::WARN);
+        assert_event_field(&event, "message", "stderr: ordinary mitmdump warning");
     }
 }
