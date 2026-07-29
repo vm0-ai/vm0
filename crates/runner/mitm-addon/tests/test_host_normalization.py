@@ -5,7 +5,6 @@ from unittest.mock import patch
 import pytest
 
 import host_normalization
-from host_normalization import normalize_idna_hostname, normalize_idna_label
 
 
 def test_ascii_hostname_bypasses_unicode_pipeline():
@@ -26,7 +25,7 @@ def test_ascii_hostname_bypasses_unicode_pipeline():
             wraps=host_normalization.bidirectional,
         ) as unicode_bidirectional,
     ):
-        normalized = normalize_idna_hostname("API.GITHUB.COM")
+        normalized = host_normalization.normalize_idna_hostname("API.GITHUB.COM")
 
     assert normalized == "api.github.com"
     unicode_normalize.assert_not_called()
@@ -48,7 +47,7 @@ def test_ascii_hostname_bypasses_unicode_pipeline():
     ],
 )
 def test_ascii_label_contract(label, expected):
-    assert normalize_idna_label(label) == expected
+    assert host_normalization.normalize_idna_label(label) == expected
 
 
 @pytest.mark.parametrize(
@@ -68,7 +67,7 @@ def test_ascii_label_contract(label, expected):
 )
 def test_rejects_invalid_ascii_label(label, expected_message):
     with pytest.raises(UnicodeError) as exc_info:
-        normalize_idna_label(label)
+        host_normalization.normalize_idna_label(label)
 
     assert type(exc_info.value) is UnicodeError
     assert str(exc_info.value) == expected_message
