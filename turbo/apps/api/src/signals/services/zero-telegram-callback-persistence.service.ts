@@ -1,4 +1,4 @@
-import { and, eq } from "drizzle-orm";
+import { and, eq, gte, isNotNull, isNull, lt, or, sql } from "drizzle-orm";
 import { telegramMessages } from "@vm0/db/schema/telegram-message";
 import { telegramThreadSessions } from "@vm0/db/schema/telegram-thread-session";
 
@@ -153,6 +153,16 @@ function telegramThreadSessionOwnerValues(args: {
       };
 }
 
+function telegramMessageIdIsNewer(messageId: string) {
+  return or(
+    isNull(telegramThreadSessions.lastProcessedMessageId),
+    lt(
+      sql`${telegramThreadSessions.lastProcessedMessageId}::bigint`,
+      sql`${messageId}::bigint`,
+    ),
+  );
+}
+
 async function upsertCanonicalTelegramThreadSession(args: {
   readonly db: Db;
   readonly userLinkId: string;
@@ -163,13 +173,10 @@ async function upsertCanonicalTelegramThreadSession(args: {
   readonly messageId: string;
   readonly updateLastProcessed: boolean;
 }): Promise<void> {
-  const updated = await args.db
+  const [updated] = await args.db
     .update(telegramThreadSessions)
     .set({
       agentSessionId: args.agentSessionId,
-      ...(args.updateLastProcessed
-        ? { lastProcessedMessageId: args.messageId }
-        : {}),
       updatedAt: nowDate(),
     })
     .where(
@@ -180,7 +187,21 @@ async function upsertCanonicalTelegramThreadSession(args: {
       ),
     )
     .returning({ id: telegramThreadSessions.id });
-  if (updated.length > 0) {
+  if (updated) {
+    if (args.updateLastProcessed) {
+      await args.db
+        .update(telegramThreadSessions)
+        .set({
+          lastProcessedMessageId: args.messageId,
+          updatedAt: nowDate(),
+        })
+        .where(
+          and(
+            eq(telegramThreadSessions.id, updated.id),
+            telegramMessageIdIsNewer(args.messageId),
+          ),
+        );
+    }
     return;
   }
 
@@ -259,12 +280,40 @@ export async function saveCanonicalTelegramThreadSession(args: {
         telegramThreadSessionOwnerWhere(args),
         eq(telegramThreadSessions.chatId, args.chatId),
         eq(telegramThreadSessions.rootMessageId, args.previousRootMessageId),
+        telegramMessageIdIsNewer(args.messageId),
       ),
     )
     .returning({ id: telegramThreadSessions.id });
   if (updated.length > 0) {
     return;
   }
+
+  const [newerSessionRow] = await args.db
+    .select({ id: telegramThreadSessions.id })
+    .from(telegramThreadSessions)
+    .where(
+      and(
+        telegramThreadSessionOwnerWhere(args),
+        eq(telegramThreadSessions.chatId, args.chatId),
+        or(
+          eq(
+            telegramThreadSessions.rootMessageId,
+            args.previousRootMessageId,
+          ),
+          eq(telegramThreadSessions.agentSessionId, args.agentSessionId),
+        ),
+        isNotNull(telegramThreadSessions.lastProcessedMessageId),
+        gte(
+          sql`${telegramThreadSessions.lastProcessedMessageId}::bigint`,
+          sql`${args.messageId}::bigint`,
+        ),
+      ),
+    )
+    .limit(1);
+  if (newerSessionRow) {
+    return;
+  }
+
   await upsertCanonicalTelegramThreadSession({
     ...args,
     rootMessageId: args.botReplyMessageId,
