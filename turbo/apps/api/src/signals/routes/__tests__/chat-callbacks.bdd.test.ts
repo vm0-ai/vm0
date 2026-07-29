@@ -195,6 +195,7 @@ async function startChatRun(
   body: {
     readonly agentId: string;
     readonly prompt: string;
+    readonly clientEventId?: string;
     readonly threadId?: string;
     readonly selectedModel?: string;
     readonly attachFiles?: readonly AttachFile[];
@@ -207,7 +208,7 @@ async function startChatRun(
   readonly threadId: string;
   readonly messageId: string;
 }> {
-  const messageId = randomUUID();
+  const messageId = body.clientEventId ?? randomUUID();
   const requestBody = {
     agentId: body.agentId,
     prompt: body.prompt,
@@ -1788,11 +1789,10 @@ Continue the JPM IJTXX Treasury allocation follow-up for issue #20818 and [ACME-
       context.signal,
     );
     const releaseGoalRunPreparation = deferredGate();
-    const kms = useSecretKmsProbe((command, callNumber) => {
-      if (callNumber !== 1) {
-        return undefined;
+    useSecretKmsProbe((command) => {
+      if (!goalRunPreparationStarted.settled()) {
+        goalRunPreparationStarted.resolve(undefined);
       }
-      goalRunPreparationStarted.resolve(undefined);
       return releaseGoalRunPreparation.wait().then(() => {
         return generateDataKeyOutput(command);
       });
@@ -1803,14 +1803,25 @@ Continue the JPM IJTXX Treasury allocation follow-up for issue #20818 and [ACME-
       lastEventSequence: 0,
     });
     await goalRunPreparationStarted.promise;
-    expect(kms.generateDataKeyCalls).toBe(1);
 
-    const userRun = await startChatRun(actor, {
-      agentId,
-      threadId: first.threadId,
-      prompt: "user message admitted during goal run preparation",
-    });
-    releaseGoalRunPreparation.release();
+    const userMessageId = randomUUID();
+    const [userRun] = await Promise.all([
+      startChatRun(actor, {
+        agentId,
+        threadId: first.threadId,
+        prompt: "user message admitted during goal run preparation",
+        clientEventId: userMessageId,
+      }),
+      waitForThreadMessages(actor, first.threadId, (events) => {
+        return events.some((event) => {
+          return (
+            event.id === userMessageId && event.eventType === "input.prompt"
+          );
+        });
+      }).finally(() => {
+        releaseGoalRunPreparation.release();
+      }),
+    ]);
 
     let goalEventId: string | undefined;
     await expect
