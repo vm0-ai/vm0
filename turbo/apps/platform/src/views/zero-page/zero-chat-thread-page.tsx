@@ -30,6 +30,7 @@ import {
   IconHandStop,
   IconPhoto,
   IconChartLine,
+  IconBrowser,
   IconPlayerPlay,
   IconVideo,
   IconCopy,
@@ -194,6 +195,7 @@ import { pauseChatThreadGoal$ } from "../../signals/chat-page/chat-goal.ts";
 import {
   activeThreadSidebar$,
   openThreadAutomations$,
+  openThreadBrowserSession$,
 } from "../../signals/chat-page/thread-sidebar-coordinator.ts";
 import type { ThreadSidebarSignals } from "../../signals/chat-page/thread-sidebar.ts";
 import {
@@ -444,6 +446,46 @@ export function AutomationMenuButton({
     </TooltipProvider>
   );
 }
+
+function BrowserMenuButton({ thread }: { thread: ChatThreadSignals }) {
+  const browserSession = useGet(thread.latestBrowserSessionSignals$);
+  const sidebarTarget = useGet(thread.sidebar.target$);
+  const openBrowserSidebar = useSet(openThreadBrowserSession$);
+
+  if (!browserSession) {
+    return null;
+  }
+
+  const open =
+    sidebarTarget?.type === "browser" &&
+    sidebarTarget.browserSessionId === browserSession.browserId;
+  return (
+    <TooltipProvider delayDuration={300}>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <button
+            type="button"
+            className={cn(
+              "inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md transition-colors duration-150",
+              open
+                ? "bg-primary/10 text-primary"
+                : "text-muted-foreground/70 hover:bg-accent hover:text-foreground",
+            )}
+            aria-label="Open browser"
+            aria-pressed={open}
+            onClick={() => {
+              openBrowserSidebar(browserSession.browserId);
+            }}
+          >
+            <IconBrowser size={18} />
+          </button>
+        </TooltipTrigger>
+        <TooltipContent side="bottom">Open browser</TooltipContent>
+      </Tooltip>
+    </TooltipProvider>
+  );
+}
+
 function ChatThreadHeader({ thread }: { thread: ChatThreadSignals }) {
   const threadTitle = useGet(thread.threadTitle$)?.trim() ?? "";
   const threadTitleEmoji = useGet(thread.threadTitleEmoji$);
@@ -480,6 +522,7 @@ function ChatThreadHeader({ thread }: { thread: ChatThreadSignals }) {
       </div>
       <div className="hidden sm:flex items-center gap-0.5">
         <AutomationMenuButton key={thread.threadId} thread={thread} />
+        <BrowserMenuButton thread={thread} />
         <ArtifactsButton thread={thread} />
       </div>
     </header>

@@ -2100,9 +2100,29 @@ function createLatestEventSignals(
       );
     },
   );
+  const latestBrowserSessionSignals$ = computed(
+    (get): BrowserSessionSignals | null => {
+      const events = get(rawEvents$);
+      for (let eventIndex = events.length - 1; eventIndex >= 0; eventIndex--) {
+        const blocks = events[eventIndex]!.blocks;
+        for (
+          let blockIndex = blocks.length - 1;
+          blockIndex >= 0;
+          blockIndex--
+        ) {
+          const block = blocks[blockIndex]!;
+          if (block.type === "browser-session") {
+            return block.signals;
+          }
+        }
+      }
+      return null;
+    },
+  );
   return {
     latestRunFinishCreatedAt$,
     latestAssistantTextCreatedAt$,
+    latestBrowserSessionSignals$,
   };
 }
 
@@ -4338,6 +4358,7 @@ function publicChatThreadEventSignals(
     artifactSignalsForUrl: events.artifactSignalsForUrl,
     mailDraftCardSignalsById$: events.mailDraftCardSignalsById$,
     browserSessionCardSignalsById$: events.browserSessionCardSignalsById$,
+    latestBrowserSessionSignals$: events.latestBrowserSessionSignals$,
     hasEvents$: events.hasEvents$,
     hasNewEvents$: events.hasNewEvents$,
     hasQueuedEvents$: events.hasQueuedEvents$,

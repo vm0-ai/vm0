@@ -165,6 +165,7 @@ export interface ChatThreadSignals {
   browserSessionCardSignalsById$: Computed<
     ReadonlyMap<string, BrowserSessionSignals>
   >;
+  latestBrowserSessionSignals$: Computed<BrowserSessionSignals | null>;
   hasEvents$: Computed<Promise<boolean>>;
   hasNewEvents$: Computed<Promise<boolean>>;
   hasQueuedEvents$: Computed<Promise<boolean>>;
