@@ -1,5 +1,5 @@
 import { fireEvent, screen, waitFor, within } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 
 import {
   chatThreadByIdContract,
@@ -31,8 +31,14 @@ import {
   getChatThreadVirtualListScrollMargin,
 } from "../../../signals/zero-page/zero-sidebar-state.ts";
 import { PLACEHOLDER } from "./chat-test-helpers.ts";
+import { i18n } from "../../../i18n/index.ts";
 
 const context = testContext();
+
+afterEach(async () => {
+  await i18n.changeLanguage("en-US");
+  document.documentElement.lang = "en-US";
+});
 
 const AGENT_ID = "c0000000-0000-4000-a000-000000000001";
 const RESEARCH_AGENT_ID = "c0000000-0000-4000-a000-000000000002";
@@ -2259,6 +2265,54 @@ describe("zero sidebar", () => {
       expect(screen.queryByLabelText("Expand sidebar")).not.toBeInTheDocument();
       expect(screen.getByLabelText("Collapse sidebar")).toBeInTheDocument();
     });
+  });
+
+  it("localizes agent navigation and the conversation dialog in Brazilian Portuguese", async () => {
+    prepareAgentTeam();
+    context.mocks.data.userPreferences({
+      locale: "pt-BR",
+      supportedLocales: ["en-US", "pt-BR"],
+    });
+
+    setupSidebarPage({
+      context,
+      path: `/agents/${AGENT_ID}/chat`,
+      featureSwitches: {
+        [FeatureSwitchKey.LanguagePreference]: true,
+      },
+    });
+
+    const nav = await screen.findByRole("navigation", {
+      name: "Barra lateral",
+    });
+    expect(within(nav).getByText("Agentes")).toBeInTheDocument();
+
+    click(within(nav).getByLabelText("Abrir uma conversa"));
+
+    const dialog = await screen.findByRole("dialog", {
+      name: "Conversar com",
+    });
+    expect(within(dialog).getByLabelText("Fechar")).toBeInTheDocument();
+  });
+
+  it("localizes agent navigation in the three-column rail", async () => {
+    prepareDefaultAgent();
+    context.mocks.data.userPreferences({
+      locale: "pt-BR",
+      supportedLocales: ["en-US", "pt-BR"],
+    });
+
+    setupSidebarPage({
+      context,
+      path: `/agents/${AGENT_ID}/chat`,
+      featureSwitches: {
+        [FeatureSwitchKey.LanguagePreference]: true,
+        [FeatureSwitchKey.ThreeColumnNav]: true,
+      },
+    });
+
+    const rail = await screen.findByTestId("labeled-nav-rail");
+    expect(within(rail).getByText("Agentes")).toBeInTheDocument();
   });
 
   it("uses CSS hover for the scrollbar and toggles the manage section", async () => {
