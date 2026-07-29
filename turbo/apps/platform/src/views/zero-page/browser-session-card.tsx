@@ -6,12 +6,15 @@ import {
 import type { ZeroBrowserStatus } from "@vm0/api-contracts/contracts/zero-browser";
 import { cn } from "@vm0/ui";
 import { useGet, useLastLoadable, useSet } from "ccstate-react";
+import { useTranslation } from "react-i18next";
 
 import type { BrowserSessionSignals } from "../../signals/chat-page/browser-session-block.ts";
 import {
   activeSidebarBrowserSessionId$,
   openThreadBrowserSession$,
 } from "../../signals/chat-page/thread-sidebar-coordinator.ts";
+import { i18n } from "../../i18n/index.ts";
+import { formatAppNumber } from "../../i18n/format.ts";
 
 interface BrowserSessionCardProps {
   readonly signals: BrowserSessionSignals;
@@ -20,20 +23,30 @@ interface BrowserSessionCardProps {
 function statusLabel(status: ZeroBrowserStatus): string {
   switch (status) {
     case "active": {
-      return "Live";
+      return i18n.t(($) => {
+        return $.browserSession.status.live;
+      });
     }
     case "suspended": {
-      return "Suspended";
+      return i18n.t(($) => {
+        return $.browserSession.status.suspended;
+      });
     }
     case "creating":
     case "resuming": {
-      return "Starting";
+      return i18n.t(($) => {
+        return $.browserSession.status.starting;
+      });
     }
     case "stopping": {
-      return "Stopping";
+      return i18n.t(($) => {
+        return $.browserSession.status.stopping;
+      });
     }
     case "error": {
-      return "Error";
+      return i18n.t(($) => {
+        return $.browserSession.status.error;
+      });
     }
   }
 }
@@ -53,6 +66,7 @@ function BrowserSessionCardSkeleton() {
 }
 
 function BrowserSessionUnavailable() {
+  const { t } = useTranslation();
   return (
     <div
       data-browser-session-card
@@ -64,10 +78,14 @@ function BrowserSessionUnavailable() {
       </span>
       <span className="min-w-0 flex-1">
         <span className="block truncate text-sm font-medium leading-5 text-foreground">
-          Browser unavailable
+          {t(($) => {
+            return $.browserSession.unavailable.title;
+          })}
         </span>
         <span className="mt-0.5 block truncate text-xs text-muted-foreground">
-          This browser does not belong to this chat or has been removed.
+          {t(($) => {
+            return $.browserSession.unavailable.description;
+          })}
         </span>
       </span>
     </div>
@@ -77,6 +95,7 @@ function BrowserSessionUnavailable() {
 // A fixed-height entry point. The live view is heavy and resizes as pages load,
 // so it lives in the right sidebar instead of inside the message stream.
 export function BrowserSessionCard({ signals }: BrowserSessionCardProps) {
+  const { t } = useTranslation();
   const sessionLoadable = useLastLoadable(signals.session$);
   const selectedBrowserId = useGet(activeSidebarBrowserSessionId$);
   const openSidebar = useSet(openThreadBrowserSession$);
@@ -93,7 +112,12 @@ export function BrowserSessionCard({ signals }: BrowserSessionCardProps) {
   return (
     <button
       type="button"
-      aria-label={`Open ${session.name} browser`}
+      aria-label={t(
+        ($) => {
+          return $.browserSession.open;
+        },
+        { name: session.name },
+      )}
       data-browser-session-card
       data-browser-session-status={session.status}
       onClick={() => {
@@ -112,7 +136,15 @@ export function BrowserSessionCard({ signals }: BrowserSessionCardProps) {
           {session.name}
         </span>
         <span className="mt-0.5 block truncate text-xs text-muted-foreground">
-          {session.creditsCharged} credits charged
+          {t(
+            ($) => {
+              return $.browserSession.creditsCharged;
+            },
+            {
+              count: session.creditsCharged,
+              formattedCount: formatAppNumber(session.creditsCharged),
+            },
+          )}
         </span>
       </span>
       <span className="flex shrink-0 items-center gap-1.5 self-center">

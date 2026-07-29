@@ -1761,8 +1761,8 @@ describe("activity detail polling", () => {
     ).not.toHaveLength(0);
     expect(screen.getByText("Initialize")).toBeInTheDocument();
     expect(screen.getByText("2 tools")).toBeInTheDocument();
-    expect(screen.getByText("1 agents")).toBeInTheDocument();
-    expect(screen.getByText("1 commands")).toBeInTheDocument();
+    expect(screen.getByText("1 agent")).toBeInTheDocument();
+    expect(screen.getByText("1 command")).toBeInTheDocument();
     expect(
       screen.getByText("I will inspect the checkout failure."),
     ).toBeInTheDocument();
@@ -2471,8 +2471,8 @@ describe("activity detail polling", () => {
       screen.getByText("add src/billing/retry.test.ts"),
     ).toBeInTheDocument();
     expect(screen.getByText(/Codex unknown_item/u)).toBeInTheDocument();
-    expect(screen.getByText("1 turns")).toBeInTheDocument();
-    expect(screen.getByText("1 models")).toBeInTheDocument();
+    expect(screen.getByText("1 turn")).toBeInTheDocument();
+    expect(screen.getByText("1 model")).toBeInTheDocument();
 
     await fill(
       screen.getByPlaceholderText("Search steps"),
@@ -3289,7 +3289,7 @@ describe("activity detail polling", () => {
     });
 
     expect(screen.getByText("Initialize")).toBeInTheDocument();
-    expect(screen.getByText("1 agents")).toBeInTheDocument();
+    expect(screen.getByText("1 agent")).toBeInTheDocument();
     expect(screen.getAllByText("Recover malformed todo")).not.toHaveLength(0);
     expect(
       screen.getByText("Survived malformed payloads."),

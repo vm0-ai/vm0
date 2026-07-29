@@ -49,6 +49,8 @@ import { AgentPhoneCard } from "./agentphone-card.tsx";
 import { featureSwitch$ } from "../../signals/external/feature-switch.ts";
 import { settingsIconAssetUrl } from "./components/settings/settings-icon-assets.ts";
 import { FeishuCard } from "./feishu-card.tsx";
+import { useTranslation } from "react-i18next";
+import { i18n } from "../../i18n/index.ts";
 
 const slackIconImg = settingsIconAssetUrl("slack");
 const teamsIconImg = settingsIconAssetUrl("teams");
@@ -64,6 +66,37 @@ function openFreshOAuth(url: string) {
   }
   fresh.searchParams.set("_t", String(now()));
   window.open(fresh.toString(), "_blank");
+}
+
+function ConnectedIndicator({
+  testId,
+  connectedDetail,
+}: {
+  testId: string;
+  connectedDetail?: string | null;
+}) {
+  const { t } = useTranslation();
+
+  return (
+    <span
+      data-testid={testId}
+      className="inline-flex min-w-0 max-w-52 shrink-0 items-center gap-1.5 rounded-lg border border-border bg-background px-1.5 py-1 text-xs font-medium text-secondary-foreground"
+    >
+      <IconCircleCheck className="h-3 w-3 text-green-600" />
+      <span className="min-w-0 truncate" title={connectedDetail ?? ""}>
+        {connectedDetail
+          ? t(
+              ($) => {
+                return $.works.connectedWithDetail;
+              },
+              { detail: connectedDetail },
+            )
+          : t(($) => {
+              return $.works.connected;
+            })}
+      </span>
+    </span>
+  );
 }
 
 function SlackCardActions({
@@ -87,18 +120,14 @@ function SlackCardActions({
   onUninstall: () => void;
   disconnecting: boolean;
 }) {
+  const { t } = useTranslation();
   return (
     <>
       {isConnected ? (
-        <span
-          data-testid="slack-connected-indicator"
-          className="inline-flex min-w-0 max-w-52 shrink-0 items-center gap-1.5 rounded-lg border border-border bg-background px-1.5 py-1 text-xs font-medium text-secondary-foreground"
-        >
-          <IconCircleCheck className="h-3 w-3 text-green-600" />
-          <span className="min-w-0 truncate" title={connectedDetail ?? ""}>
-            {connectedDetail ? `Connected (${connectedDetail})` : "Connected"}
-          </span>
-        </span>
+        <ConnectedIndicator
+          testId="slack-connected-indicator"
+          connectedDetail={connectedDetail}
+        />
       ) : null}
       {!isInstalled && isAdmin && installUrl && (
         <Button
@@ -111,7 +140,9 @@ function SlackCardActions({
           }}
         >
           <IconDownload size={14} stroke={1.5} />
-          Install to Slack
+          {t(($) => {
+            return $.works.slack.install;
+          })}
         </Button>
       )}
       {isInstalled && !isConnected && connectUrl && (
@@ -123,7 +154,9 @@ function SlackCardActions({
             return openFreshOAuth(connectUrl);
           }}
         >
-          Connect
+          {t(($) => {
+            return $.works.actions.connect;
+          })}
         </Button>
       )}
       {isInstalled && (isConnected || isAdmin) && (
@@ -132,7 +165,9 @@ function SlackCardActions({
             <button
               type="button"
               className="shrink-0 rounded p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
-              aria-label="More options"
+              aria-label={t(($) => {
+                return $.works.actions.moreOptions;
+              })}
             >
               <IconDotsVertical size={16} stroke={1.5} />
             </button>
@@ -144,22 +179,34 @@ function SlackCardActions({
             {isConnected && (
               <button
                 type="button"
-                aria-label="Disconnect"
+                aria-label={t(($) => {
+                  return $.works.actions.disconnect;
+                })}
                 disabled={disconnecting}
                 className="flex w-full items-center gap-2 rounded-md px-3 py-2 text-sm text-left hover:bg-accent hover:text-accent-foreground transition-colors disabled:opacity-50 disabled:pointer-events-none"
                 onClick={onDisconnect}
               >
-                {disconnecting ? "Disconnecting…" : "Disconnect"}
+                {disconnecting
+                  ? t(($) => {
+                      return $.works.actions.disconnecting;
+                    })
+                  : t(($) => {
+                      return $.works.actions.disconnect;
+                    })}
               </button>
             )}
             {isAdmin && (
               <button
                 type="button"
-                aria-label="Uninstall"
+                aria-label={t(($) => {
+                  return $.works.actions.uninstall;
+                })}
                 className="flex w-full items-center gap-2 rounded-md px-3 py-2 text-sm text-left text-destructive hover:bg-accent hover:text-accent-foreground transition-colors"
                 onClick={onUninstall}
               >
-                Uninstall
+                {t(($) => {
+                  return $.works.actions.uninstall;
+                })}
               </button>
             )}
           </PopoverContent>
@@ -169,7 +216,42 @@ function SlackCardActions({
   );
 }
 
+function SlackPermissionWarning({
+  reinstallUrl,
+}: {
+  reinstallUrl: string | null | undefined;
+}) {
+  const { t } = useTranslation();
+  if (!reinstallUrl) {
+    return null;
+  }
+
+  return (
+    <div className="flex items-center gap-3 border-t border-border/50 px-4 py-3">
+      <IconAlertTriangle size={16} className="shrink-0 text-amber-500" />
+      <span className="flex-1 text-sm text-amber-600 dark:text-amber-400">
+        {t(($) => {
+          return $.works.slack.permissionsUpdated;
+        })}
+      </span>
+      <Button
+        variant="outline"
+        size="sm"
+        className="h-7 shrink-0 text-xs"
+        onClick={() => {
+          return openFreshOAuth(reinstallUrl);
+        }}
+      >
+        {t(($) => {
+          return $.works.actions.updatePermissions;
+        })}
+      </Button>
+    </div>
+  );
+}
+
 function SlackCard({ displayName }: { displayName: string }) {
+  const { t } = useTranslation();
   // useLastLoadable keeps the prior resolved value during the polling refetch
   // so the card text doesn't flicker back to defaults on every poll cycle.
   const slackDataLoadable = useLastLoadable(slackOrgData$);
@@ -201,8 +283,12 @@ function SlackCard({ displayName }: { displayName: string }) {
             <div className="text-sm font-medium text-foreground">Slack</div>
             <div className="text-sm text-muted-foreground">
               {!isInstalled && !isAdmin
-                ? "Ask your admin to install the Slack integration"
-                : "Team communication and collaboration"}
+                ? t(($) => {
+                    return $.works.slack.adminInstall;
+                  })
+                : t(($) => {
+                    return $.works.slack.description;
+                  })}
             </div>
           </div>
           <SlackCardActions
@@ -222,24 +308,9 @@ function SlackCard({ displayName }: { displayName: string }) {
           />
         </div>
 
-        {scopeMismatch && isAdmin && reinstallUrl && (
-          <div className="flex items-center gap-3 border-t border-border/50 px-4 py-3">
-            <IconAlertTriangle size={16} className="shrink-0 text-amber-500" />
-            <span className="flex-1 text-sm text-amber-600 dark:text-amber-400">
-              Slack permissions have been updated
-            </span>
-            <Button
-              variant="outline"
-              size="sm"
-              className="h-7 shrink-0 text-xs"
-              onClick={() => {
-                return openFreshOAuth(reinstallUrl);
-              }}
-            >
-              Update Permissions
-            </Button>
-          </div>
-        )}
+        <SlackPermissionWarning
+          reinstallUrl={scopeMismatch && isAdmin ? reinstallUrl : null}
+        />
       </div>
 
       <Dialog
@@ -252,12 +323,18 @@ function SlackCard({ displayName }: { displayName: string }) {
       >
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Uninstall Slack integration?</DialogTitle>
+            <DialogTitle>
+              {t(($) => {
+                return $.works.slack.uninstallTitle;
+              })}
+            </DialogTitle>
             <DialogDescription>
-              This will remove the Slack integration for your entire workspace.
-              All connected users will be disconnected and {displayName} will no
-              longer respond to messages or mentions in Slack. This action
-              cannot be undone.
+              {t(
+                ($) => {
+                  return $.works.slack.uninstallDescription;
+                },
+                { displayName },
+              )}
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
@@ -268,7 +345,9 @@ function SlackCard({ displayName }: { displayName: string }) {
                 return setShowUninstallDialog(false);
               }}
             >
-              Cancel
+              {t(($) => {
+                return $.works.actions.cancel;
+              })}
             </Button>
             <Button
               variant="destructive"
@@ -283,7 +362,13 @@ function SlackCard({ displayName }: { displayName: string }) {
                 );
               }}
             >
-              {uninstalling ? "Uninstalling…" : "Uninstall"}
+              {uninstalling
+                ? t(($) => {
+                    return $.works.actions.uninstalling;
+                  })
+                : t(($) => {
+                    return $.works.actions.uninstall;
+                  })}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -298,15 +383,10 @@ function TeamsConnectedIndicator({
   connectedDetail?: string | null;
 }) {
   return (
-    <span
-      data-testid="teams-connected-indicator"
-      className="inline-flex min-w-0 max-w-52 shrink-0 items-center gap-1.5 rounded-lg border border-border bg-background px-1.5 py-1 text-xs font-medium text-secondary-foreground"
-    >
-      <IconCircleCheck className="h-3 w-3 text-green-600" />
-      <span className="min-w-0 truncate" title={connectedDetail ?? ""}>
-        {connectedDetail ? `Connected (${connectedDetail})` : "Connected"}
-      </span>
-    </span>
+    <ConnectedIndicator
+      testId="teams-connected-indicator"
+      connectedDetail={connectedDetail}
+    />
   );
 }
 
@@ -331,6 +411,7 @@ function TeamsCardActions({
   onUninstall: () => void;
   disconnecting: boolean;
 }) {
+  const { t } = useTranslation();
   const installActionUrl = connectUrl ?? installUrl;
   return (
     <>
@@ -348,7 +429,9 @@ function TeamsCardActions({
           }}
         >
           <IconDownload size={14} stroke={1.5} />
-          Install in Teams
+          {t(($) => {
+            return $.works.teams.install;
+          })}
         </Button>
       )}
       {isInstalled && !isConnected && connectUrl && (
@@ -361,7 +444,9 @@ function TeamsCardActions({
             return openFreshOAuth(connectUrl);
           }}
         >
-          Connect
+          {t(($) => {
+            return $.works.actions.connect;
+          })}
         </Button>
       )}
       {isInstalled && (isConnected || isAdmin) && (
@@ -370,7 +455,9 @@ function TeamsCardActions({
             <button
               type="button"
               className="shrink-0 rounded p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
-              aria-label="More Microsoft Teams options"
+              aria-label={t(($) => {
+                return $.works.teams.moreOptions;
+              })}
             >
               <IconDotsVertical size={16} stroke={1.5} />
             </button>
@@ -382,22 +469,34 @@ function TeamsCardActions({
             {isConnected && (
               <button
                 type="button"
-                aria-label="Disconnect Microsoft Teams"
+                aria-label={t(($) => {
+                  return $.works.teams.disconnect;
+                })}
                 disabled={disconnecting}
                 className="flex w-full items-center gap-2 rounded-md px-3 py-2 text-sm text-left hover:bg-accent hover:text-accent-foreground transition-colors disabled:opacity-50 disabled:pointer-events-none"
                 onClick={onDisconnect}
               >
-                {disconnecting ? "Disconnecting..." : "Disconnect"}
+                {disconnecting
+                  ? t(($) => {
+                      return $.works.actions.disconnecting;
+                    })
+                  : t(($) => {
+                      return $.works.actions.disconnect;
+                    })}
               </button>
             )}
             {isAdmin && (
               <button
                 type="button"
-                aria-label="Uninstall Microsoft Teams"
+                aria-label={t(($) => {
+                  return $.works.teams.uninstall;
+                })}
                 className="flex w-full items-center gap-2 rounded-md px-3 py-2 text-sm text-left text-destructive hover:bg-accent hover:text-accent-foreground transition-colors"
                 onClick={onUninstall}
               >
-                Uninstall
+                {t(($) => {
+                  return $.works.actions.uninstall;
+                })}
               </button>
             )}
           </PopoverContent>
@@ -423,6 +522,7 @@ function TeamsPermissionWarning({
 }: {
   reinstallUrl: string | null;
 }) {
+  const { t } = useTranslation();
   if (!reinstallUrl) {
     return null;
   }
@@ -431,7 +531,9 @@ function TeamsPermissionWarning({
     <div className="flex items-center gap-3 border-t border-border/50 px-4 py-3">
       <IconAlertTriangle size={16} className="shrink-0 text-amber-500" />
       <span className="flex-1 text-sm text-amber-600 dark:text-amber-400">
-        Microsoft Teams permissions have been updated
+        {t(($) => {
+          return $.works.teams.permissionsUpdated;
+        })}
       </span>
       <Button
         variant="outline"
@@ -441,7 +543,9 @@ function TeamsPermissionWarning({
           return openFreshOAuth(reinstallUrl);
         }}
       >
-        Update Permissions
+        {t(($) => {
+          return $.works.actions.updatePermissions;
+        })}
       </Button>
     </div>
   );
@@ -459,18 +563,27 @@ function teamsCardDescription(args: {
   isAdmin: boolean;
 }): string {
   if (!args.isInstalled && !args.isAdmin) {
-    return "Ask your admin to install the Microsoft Teams integration";
+    return i18n.t(($) => {
+      return $.works.teams.adminInstall;
+    });
   }
   if (!args.isInstalled && args.isAdmin) {
-    return "Connect your Microsoft account, then install the Teams app";
+    return i18n.t(($) => {
+      return $.works.teams.connectThenInstall;
+    });
   }
   if (args.isInstalled && !args.isConnected) {
-    return "Connect your Microsoft account to finish setup";
+    return i18n.t(($) => {
+      return $.works.teams.connectAccount;
+    });
   }
-  return "Team communication and collaboration";
+  return i18n.t(($) => {
+    return $.works.teams.description;
+  });
 }
 
 function TeamsCard({ displayName }: { displayName: string }) {
+  const { t } = useTranslation();
   const brandName = useGet(brandName$);
   const teamsDataLoadable = useLastLoadable(teamsOrgData$);
   const teamsData =
@@ -543,12 +656,18 @@ function TeamsCard({ displayName }: { displayName: string }) {
       >
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Uninstall Microsoft Teams integration?</DialogTitle>
+            <DialogTitle>
+              {t(($) => {
+                return $.works.teams.uninstallTitle;
+              })}
+            </DialogTitle>
             <DialogDescription>
-              This removes the Microsoft Teams integration from {brandName} for
-              your workspace. All connected users will be disconnected and{" "}
-              {displayName} will no longer respond to Teams messages for this
-              workspace until an admin reconnects it.
+              {t(
+                ($) => {
+                  return $.works.teams.uninstallDescription;
+                },
+                { brandName, displayName },
+              )}
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
@@ -559,7 +678,9 @@ function TeamsCard({ displayName }: { displayName: string }) {
                 return setShowUninstallDialog(false);
               }}
             >
-              Cancel
+              {t(($) => {
+                return $.works.actions.cancel;
+              })}
             </Button>
             <Button
               variant="destructive"
@@ -574,7 +695,13 @@ function TeamsCard({ displayName }: { displayName: string }) {
                 );
               }}
             >
-              {uninstalling ? "Uninstalling..." : "Uninstall"}
+              {uninstalling
+                ? t(($) => {
+                    return $.works.actions.uninstalling;
+                  })
+                : t(($) => {
+                    return $.works.actions.uninstall;
+                  })}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -584,11 +711,14 @@ function TeamsCard({ displayName }: { displayName: string }) {
 }
 
 function TelegramCard() {
+  const { t } = useTranslation();
   return (
     <Link
       pathname={ROUTES.settingsTelegram}
       className="zero-card flex flex-col text-inherit no-underline transition-colors hover:bg-muted/30"
-      aria-label="Open Telegram settings"
+      aria-label={t(($) => {
+        return $.works.telegram.openSettings;
+      })}
     >
       <div className="flex items-center gap-4 p-4">
         <div className="shrink-0 inline-flex h-7 w-7 items-center justify-center overflow-hidden">
@@ -601,12 +731,16 @@ function TelegramCard() {
             </div>
           </div>
           <div className="truncate text-sm text-muted-foreground">
-            Route Telegram messages to agents
+            {t(($) => {
+              return $.works.telegram.description;
+            })}
           </div>
         </div>
         <span className="shrink-0 inline-flex h-8 items-center gap-1.5 rounded-lg border border-border bg-background px-2.5 text-xs font-medium text-secondary-foreground">
           <IconSettings size={14} stroke={1.5} />
-          Manage
+          {t(($) => {
+            return $.works.actions.manage;
+          })}
         </span>
       </div>
     </Link>
@@ -614,6 +748,7 @@ function TelegramCard() {
 }
 
 function StrapiCard() {
+  const { t } = useTranslation();
   return (
     <Link
       pathname={ROUTES.settingsStrapi}
@@ -628,12 +763,16 @@ function StrapiCard() {
             Strapi
           </div>
           <div className="truncate text-sm text-muted-foreground">
-            Automate work when entries are published
+            {t(($) => {
+              return $.works.strapi.description;
+            })}
           </div>
         </div>
         <span className="inline-flex h-8 shrink-0 items-center gap-1.5 rounded-lg border border-border bg-background px-2.5 text-xs font-medium text-secondary-foreground">
           <IconSettings size={14} stroke={1.5} />
-          Manage
+          {t(($) => {
+            return $.works.actions.manage;
+          })}
         </span>
       </div>
     </Link>
@@ -641,6 +780,7 @@ function StrapiCard() {
 }
 
 export function ZeroWorksPage() {
+  const { t } = useTranslation();
   const features = useGet(featureSwitch$);
   const teamsEnabled = features[FeatureSwitchKey.TeamsIntegration] ?? false;
   const feishuEnabled = features[FeatureSwitchKey.FeishuIntegration] ?? false;
@@ -656,10 +796,20 @@ export function ZeroWorksPage() {
       <header className="hidden md:block shrink-0 bg-transparent px-4 sm:px-6 pt-10 pb-3">
         <div className="mx-auto max-w-[900px]">
           <h1 className="hidden md:block text-lg font-semibold tracking-tight text-foreground">
-            Where {displayName} works
+            {t(
+              ($) => {
+                return $.works.header.title;
+              },
+              { displayName },
+            )}
           </h1>
           <p className="hidden md:block mt-0.5 text-sm text-muted-foreground">
-            Connect with {displayName} through these channels
+            {t(
+              ($) => {
+                return $.works.header.description;
+              },
+              { displayName },
+            )}
           </p>
         </div>
       </header>
