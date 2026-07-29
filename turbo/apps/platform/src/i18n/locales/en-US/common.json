@@ -343,6 +343,285 @@
       }
     }
   },
+  "appShell": {
+    "browserUpgrade": {
+      "browser": {
+        "action": "Update browser",
+        "description": "Zero does not support your current browser version. Update your browser to continue.",
+        "title": "Update your browser to continue"
+      },
+      "chrome": {
+        "action": "Update Chrome",
+        "description": "Zero does not support your current browser version. Update Chrome to continue.",
+        "title": "Update Chrome to continue"
+      },
+      "chromium": {
+        "action": "Update Chromium",
+        "description": "Zero does not support your current browser version. Update Chromium to continue.",
+        "title": "Update Chromium to continue"
+      },
+      "ios": {
+        "action": "Update iOS",
+        "description": "Zero does not support your current browser version. Update iOS to continue.",
+        "title": "Update iOS to continue"
+      },
+      "safari": {
+        "action": "Update Safari",
+        "description": "Zero does not support your current browser version. Update Safari to continue.",
+        "title": "Update Safari to continue"
+      }
+    },
+    "loading": {
+      "ariaLabel": "Loading your workspace",
+      "messages": {
+        "almostThere": "Almost there...",
+        "brewingIdeas": "Brewing some ideas...",
+        "connectingDots": "Connecting the dots...",
+        "gettingReady": "Getting things ready...",
+        "loadingWorkspace": "Loading your workspace...",
+        "spinningTeam": "Spinning up the team...",
+        "tuningInstruments": "Tuning the instruments...",
+        "warmingNeurons": "Warming up the neurons..."
+      }
+    },
+    "metadata": {
+      "description": "Zero is your AI coworker from vm0. Text Zero or chat on the web — research, email, docs, Slack, GitHub, Notion, and 100+ tools.",
+      "title": "Zero — Your AI coworker from vm0"
+    },
+    "shortcutHelp": {
+      "close": "Close keyboard shortcuts",
+      "description": "Available shortcuts on this page",
+      "sections": {
+        "composer": "Composer",
+        "global": "Global",
+        "messages": "Messages"
+      },
+      "shortcuts": {
+        "blurComposer": "Blur composer",
+        "changeIcon": "Change icon",
+        "clearIcon": "Clear icon",
+        "newChat": "New chat",
+        "nextAgent": "Next agent",
+        "nextThread": "Next thread",
+        "openAgentList": "Open agent list",
+        "openFirstThread": "Open first thread",
+        "previousAgent": "Previous agent",
+        "previousThread": "Previous thread",
+        "renameChat": "Rename chat",
+        "scrollBottom": "Scroll to bottom",
+        "scrollTop": "Scroll to top",
+        "sendMessage": "Send message",
+        "setIcon": "Set icon (Ctrl+Shift+1-9)",
+        "showShortcuts": "Show shortcuts",
+        "toggleSidebar": "Toggle sidebar"
+      },
+      "title": "Keyboard Shortcuts"
+    },
+    "sidebar": {
+      "ariaLabel": "Sidebar",
+      "chat": "Chat",
+      "collapse": "Collapse sidebar",
+      "expand": "Expand sidebar",
+      "manage": "Manage",
+      "mobile": {
+        "invite": "Invite",
+        "openArtifacts": "Open mobile artifacts",
+        "openAutomations": "Open mobile automations",
+        "openMenu": "Open menu",
+        "overlay": "Sidebar overlay"
+      },
+      "navigation": {
+        "activity": "Activity logs",
+        "agents": "Agents",
+        "artifacts": "Artifacts",
+        "connectors": "Connectors",
+        "insights": "Insights",
+        "insightsAndUsage": "Insights & Usage",
+        "newChat": "New chat",
+        "settings": "Settings",
+        "workflows": "Workflows",
+        "works": "Where {{agentName}} works"
+      },
+      "rail": {
+        "activity": "Activity",
+        "new": "New",
+        "workflows": "Workflows",
+        "works": "Works"
+      },
+      "searchConversations": "Search conversations",
+      "workspaceSwitcher": {
+        "create": "Create workspace",
+        "creating": "Creating…",
+        "join": "Join",
+        "joining": "Joining…",
+        "organizationFallback": "Organization",
+        "switch": "Switch workspace"
+      }
+    }
+  },
+  "artifacts": {
+    "actions": {
+      "backToAll": "Back to all artifacts",
+      "backToArtifacts": "Back to artifacts",
+      "close": "Close",
+      "closeArtifact": "Close artifact",
+      "closeDownloadMenu": "Close download menu",
+      "closeNamed": "Close {{title}}",
+      "closePreviewMenu": "Close preview menu",
+      "download": "Download",
+      "downloadArtifact": "Download artifact",
+      "downloadOptions": "Download options",
+      "enterFullscreen": "Enter fullscreen",
+      "exitFullscreen": "Exit fullscreen",
+      "more": "More artifact actions",
+      "nextImage": "Next image artifact",
+      "openNewTab": "Open in new tab",
+      "openSplitView": "Open in split view",
+      "previousImage": "Previous image artifact",
+      "resetZoom": "Reset zoom",
+      "share": "Share",
+      "shareArtifact": "Share artifact",
+      "zoomIn": "Zoom in",
+      "zoomOut": "Zoom out"
+    },
+    "attachments": {
+      "cancelUpload": "Cancel upload {{filename}}",
+      "download": "Download {{filename}}",
+      "openImagePreview": "Open image preview for {{filename}}",
+      "remove": "Remove {{filename}}"
+    },
+    "catalog": {
+      "cardPreview": "Preview {{title}}",
+      "description": "Browse everything you have created here.",
+      "emptyDescription": "Artifacts will appear here when they are available.",
+      "emptyTitle": "No artifacts found",
+      "error": "Could not load artifacts. Try again later.",
+      "filters": {
+        "file": "Files",
+        "fileAria": "Show file artifacts",
+        "image": "Images",
+        "imageAria": "Show image artifacts",
+        "label": "Artifact kind filters",
+        "presentation": "Presentations",
+        "presentationAria": "Show presentation artifacts",
+        "video": "Videos",
+        "videoAria": "Show video artifacts",
+        "website": "Websites",
+        "websiteAria": "Show website artifacts"
+      },
+      "kindIcon": "{{kind}} artifact",
+      "loading": "Loading artifacts"
+    },
+    "googleDrive": {
+      "agentLoading": "Agent is still loading",
+      "connect": "Connect Google Drive",
+      "connectTooltip": "Connect Google Drive to upload artifacts",
+      "failedToOpenConnect": "Failed to open Google Drive connection page",
+      "noArtifacts": "No artifacts to sync",
+      "partial_one": "Synced {{synced}} of {{count}} file to Google Drive",
+      "partial_other": "Synced {{synced}} of {{count}} files to Google Drive",
+      "synced": "Synced to Google Drive",
+      "syncedFiles_one": "Synced to Google Drive",
+      "syncedFiles_other": "Synced {{count}} files to Google Drive",
+      "syncFailed": "Failed to sync to Google Drive",
+      "syncingArtifact": "Syncing artifact...",
+      "syncingFiles_one": "Syncing {{count}} file...",
+      "syncingFiles_other": "Syncing {{count}} files...",
+      "syncingNamed": "Syncing {{filename}}...",
+      "upload": "Upload to Google Drive"
+    },
+    "kinds": {
+      "audio": "Audio",
+      "code": "Code",
+      "csv": "CSV",
+      "data": "Data",
+      "document": "Document",
+      "file": "File",
+      "hostedSite": "Hosted site",
+      "image": "Image",
+      "json": "JSON",
+      "markdown": "Markdown",
+      "presentation": "Presentation",
+      "text": "Text",
+      "video": "Video"
+    },
+    "metadata": {
+      "generated": "Generated {{date}}"
+    },
+    "preview": {
+      "audioLabel": "Audio preview for {{filename}}",
+      "badge": "Preview",
+      "dialogLabel": "{{filename}} preview",
+      "emptyCsv": "Empty CSV.",
+      "genericUnavailable": "Preview unavailable.",
+      "noInline": "No inline preview available for this file.",
+      "openKind": "Open {{kind}} preview for {{filename}}",
+      "openKinds": {
+        "audio": "audio",
+        "csv": "csv",
+        "html": "html",
+        "json": "json",
+        "markdown": "markdown",
+        "pdf": "pdf",
+        "text": "text",
+        "video": "video"
+      },
+      "siteLabel": "Site preview for {{title}}",
+      "unavailable": "{{kind}} preview unavailable.",
+      "videoLabel": "Video preview for {{filename}}"
+    },
+    "sidebar": {
+      "panelTitle": "Artifacts",
+      "singularTitle": "Artifact",
+      "unavailable": "This artifact is no longer available."
+    },
+    "templates": {
+      "activeHtmlPreview": "{{title}} active HTML preview",
+      "all": "All",
+      "categories": "Template categories",
+      "category": "Template category",
+      "fullPreview": "{{title}} website full preview",
+      "htmlPreview": "{{title}} HTML preview",
+      "illustration": "Illustration",
+      "illustrationPreview": "{{title}} illustration preview",
+      "multiAccent": "Multi-accent",
+      "nextSlide": "Preview next slide",
+      "noMatches": "No matches",
+      "placeholder": "{{title}} website preview placeholder",
+      "playVideo": "Play video template preview {{title}}",
+      "previewCurrentSlide": "Preview {{title}} at current slide",
+      "previewSlide": "Preview slide {{slideNumber}}",
+      "previewWebsite": "Preview website template {{title}}",
+      "previousHtmlPreview": "{{title}} previous HTML preview",
+      "previousSlide": "Preview previous slide",
+      "searchConnector": "Search connector...",
+      "searchConnectors": "Search connectors",
+      "selected": "Template: {{title}}",
+      "selectStyle": "Select style {{style}}",
+      "selectTemplate": "Select template {{title}}",
+      "selectVideo": "Select video template {{title}}",
+      "selectWebsite": "Select website template {{title}}",
+      "selectWorkflow": "Select workflow template {{title}}",
+      "showVariant": "Show variant {{variantNumber}}",
+      "singleAccent": "Single-accent",
+      "slidePreview": "{{title}} slide preview",
+      "slideThumbnail": "{{title}} slide {{slideNumber}} preview",
+      "template": "Template",
+      "theme": "Theme",
+      "tryDifferentSearch": "Try a different search.",
+      "use": "Use",
+      "useThisTemplate": "Use this template",
+      "website": "Website",
+      "websitePreview": "{{title}} website template preview",
+      "workflow": "Workflow"
+    },
+    "title": "Artifacts",
+    "toasts": {
+      "copyLinkFailed": "Failed to copy link",
+      "downloadFailed": "Download failed",
+      "linkCopied": "Link copied"
+    }
+  },
   "auth": {
     "clerk": {
       "accessNotAllowed": "Access is not allowed.",
@@ -435,14 +714,235 @@
       "wouldLike": "Would like to"
     }
   },
+  "billing": {
+    "autoRecharge": {
+      "amountAria": "Auto-recharge credit amount in credits",
+      "amountTitle": "Recharge amount",
+      "automaticTopUps": "Automatic top-ups",
+      "description": "Purchase credits when your balance falls below a threshold.",
+      "enableAria": "Enable auto-recharge",
+      "thresholdAria": "Credit threshold for auto-recharge",
+      "thresholdDescription": "Trigger a purchase when your credit balance goes under this number.",
+      "thresholdPlaceholder": "e.g. 2000",
+      "thresholdTitle": "When credits drop below",
+      "title": "Auto-recharge"
+    },
+    "common": {
+      "back": "Back",
+      "cancel": "Cancel",
+      "credits": "credits",
+      "manage": "Manage",
+      "redirecting": "Redirecting...",
+      "restore": "Restore",
+      "retry": "Retry",
+      "unavailable": "Unavailable",
+      "updating": "Updating..."
+    },
+    "concurrency": {
+      "activeUntil": "Active until {{date}}",
+      "billedMonthly": "Billed monthly",
+      "buyAmount": "Buy {{amount}}",
+      "buyButton": "Buy concurrent",
+      "buyDescription": "Add a monthly subscription for more concurrent runs.",
+      "buyTitle": "Buy concurrency",
+      "cancelDescription": "This stops renewal at the end of the current billing period. Existing slots stay active until then.",
+      "cancellationScheduled": "Cancellation scheduled",
+      "cancelTitle": "Cancel concurrency subscription?",
+      "concurrentRun_one": "{{value}} concurrent run",
+      "concurrentRun_other": "{{value}} concurrent runs",
+      "decreaseAria": "Decrease additional concurrency quantity",
+      "emptyDescription": "Buy additional concurrent runs for this workspace.",
+      "emptyTitle": "No concurrency subscriptions",
+      "increaseAria": "Increase additional concurrency quantity",
+      "restoreDescription": "This resumes renewal for this concurrency subscription.",
+      "restoreSubscription": "Restore subscription",
+      "restoreTitle": "Restore concurrency subscription?",
+      "slot_one": "{{value}} slot",
+      "slot_other": "{{value}} slots",
+      "slots": "Slots",
+      "title": "Concurrency"
+    },
+    "credits": {
+      "amount": "Amount",
+      "amountRangeError": "Enter between {{minimum}} and {{maximum}}",
+      "anyAmount": "Any amount",
+      "custom": "Custom",
+      "customAmountAria": "Custom dollar amount",
+      "exchangeRate": "Credits never expire. 1 USD = {{credits}} credits.",
+      "quickBuy": "Quick buy",
+      "quickBuyAmount": "Quick buy {{amount}}",
+      "title": "Buy credits"
+    },
+    "downgrade": {
+      "cancelSubscription": "Cancel subscription",
+      "chooseTarget": "Choose which plan to downgrade to.",
+      "confirmProCancellation": "Are you sure you want to cancel your Pro plan?",
+      "confirmTarget": "Downgrade to {{plan}}?",
+      "inProgress": "Downgrading...",
+      "proWarning": "Your Pro access remains active until the current billing period ends. After that, this workspace moves to No plan and agents cannot run until you upgrade again.",
+      "teamWarning": "Your Team access remains active until the current billing period ends. After that, this workspace moves to {{plan}}.",
+      "title": "Downgrade plan"
+    },
+    "invoices": {
+      "amount": "Amount",
+      "date": "Date",
+      "downloadDescription": "Choose up to 3 consecutive months. Receipt PDFs in that range will be bundled into one ZIP file.",
+      "downloadInvoice": "Download {{month}} invoice",
+      "downloadReceipts": "Download receipts",
+      "downloadZip": "Download ZIP",
+      "empty": "No invoices yet.",
+      "from": "From",
+      "invoice": "Invoice",
+      "loading": "Loading invoices",
+      "monthAria": "{{label}} month",
+      "preparingReceipts": "Preparing receipts...",
+      "rangeError": "Select a range of no more than 3 consecutive months.",
+      "selectMonth": "Select month",
+      "to": "To"
+    },
+    "manage": {
+      "description": "Subscription, payment method, and invoices in Stripe.",
+      "title": "Manage billing"
+    },
+    "plans": {
+      "cancellationNotice": "Your {{plan}} plan has been cancelled and will end on {{date}}.",
+      "changeAnytime": "Upgrade or downgrade anytime.",
+      "compare": "Compare plans",
+      "compareAll": "Compare all plans",
+      "currentPlan": "Current plan",
+      "custom": {
+        "name": "Custom"
+      },
+      "customAccess": "Custom access with {{value}} concurrent runs",
+      "customCancellationNotice": "Your custom plan will end on {{date}}.",
+      "customCheckoutUnavailable": "Custom workspaces cannot switch to Pro or Team checkout.",
+      "downgrade": "Downgrade",
+      "downgradeNotice": "Your {{currentPlan}} plan will downgrade to {{targetPlan}} on {{date}}.",
+      "downgradesOn": "Downgrades to {{plan}} on {{date}}",
+      "downgradeTo": "Downgrade to {{plan}}",
+      "endsOn": "Ends on {{date}}",
+      "features": {
+        "byok": "Bring your own LLM keys",
+        "communitySupport": "Community support",
+        "emailSupport": "Email support",
+        "existingCredits": "Existing free credits only",
+        "monthlyCredits": "{{value}} credits / month",
+        "oneConcurrentRun": "1 concurrent run",
+        "payAsYouGo": "Pay as you go after that",
+        "prioritySupport": "Priority support",
+        "tenConcurrentRuns": "10 concurrent runs",
+        "twoConcurrentRuns": "2 concurrent runs",
+        "unlimitedAgents": "Unlimited total agents",
+        "voiceInput": "Voice input",
+        "voiceInputLifetime": "Voice input (10 lifetime uses per member)"
+      },
+      "free": {
+        "description": "Legacy free access for existing workspaces.",
+        "name": "Free"
+      },
+      "limitedFree": {
+        "name": "Limited free"
+      },
+      "loadError": "Could not load billing status.",
+      "manageSubscription": "Manage subscription",
+      "namedPlan": "{{plan}} plan",
+      "noActivePlan": "No active plan",
+      "noActiveSubscription": "No active subscription",
+      "noPlan": {
+        "name": "No plan"
+      },
+      "perMonth": "/month",
+      "popular": "Popular",
+      "pricePerMonth": "{{price}}/month",
+      "pro": {
+        "description": "More power and seamless collaboration for your team.",
+        "name": "Pro"
+      },
+      "renews": "Renews {{date}}",
+      "restorePlan": "Restore plan",
+      "sectionTitle": "Plan",
+      "selectedPlan": "the selected plan",
+      "team": {
+        "description": "Scale fast with zero friction and full flexibility.",
+        "name": "Team"
+      },
+      "upgrade": "Upgrade",
+      "upgradeTo": "Upgrade to {{plan}}"
+    },
+    "restore": {
+      "cancellationDescription": "This will undo the scheduled cancellation for your {{plan}} plan.",
+      "cancellationDescriptionDate": "This will undo the scheduled cancellation for your {{plan}} plan. It will renew on {{date}}.",
+      "downgradeDescription": "This will cancel the scheduled downgrade to {{target}}. Your {{plan}} plan will continue renewing.",
+      "inProgress": "Restoring...",
+      "title": "Restore {{plan}} plan?"
+    },
+    "sidebar": {
+      "description": "More credits & concurrent runs",
+      "getPlan": "Get {{plan}}"
+    },
+    "toasts": {
+      "autoRechargeUpdated": "Auto-recharge updated",
+      "cancellationScheduledDate": "Cancellation scheduled. Your current plan stays active until {{date}}.",
+      "cancellationScheduledPeriod": "Cancellation scheduled. Your current plan stays active until the billing period ends.",
+      "checkoutCompleted": "{{plan}} checkout completed. Credits will be added after the invoice is paid.",
+      "concurrencyAdded": "Concurrency added. Your new slots will become available after Stripe confirms the subscription.",
+      "concurrencyCanceled": "Concurrency subscription canceled.",
+      "concurrencyCanceledDate": "Concurrency subscription canceled. Slots stay active until {{date}}.",
+      "concurrencyRestored": "Concurrency subscription restored.",
+      "creditsAdded": "Credits added. You can continue chatting with Zero.",
+      "downgradeScheduledDate": "Downgrade scheduled. Your current plan stays active until {{date}}.",
+      "downgradeScheduledPeriod": "Downgrade scheduled. Your current plan stays active until the billing period ends.",
+      "planRestored": "Plan restored. Your subscription will renew normally.",
+      "preparingReceiptDownload": "Preparing receipt download...",
+      "receiptDownloadFailed": "Failed to download receipts",
+      "receiptsDownloaded": "Receipts downloaded"
+    },
+    "usage": {
+      "added": "Added {{date}}",
+      "allowance": {
+        "day": "{{value}}d",
+        "hour": "{{value}}h",
+        "minute": "{{value}}m",
+        "remaining": "{{remaining}} / {{total}} credits",
+        "remainingAria": "Usage allowance {{label}} remaining",
+        "resets": "Resets {{date}}",
+        "resetsRaw": "Resets {{value}}",
+        "title": "Usage allowance",
+        "week": "{{value}}w"
+      },
+      "breakdown": {
+        "currentPlanDescription": "Monthly plan credits, resets each billing cycle",
+        "freeDescription": "Starter credits, use until depleted",
+        "freePlan": "Free plan",
+        "payAsYouGo": "Pay as you go",
+        "payAsYouGoDescription": "Auto-recharge credits, never expire",
+        "previousPlanDescription": "Leftover credits from previous plan",
+        "promotional": "Promotional",
+        "promotionalDescription": "Campaign credits, expires after a set period",
+        "proPlan": "Pro plan",
+        "teamPlan": "Team plan"
+      },
+      "creditAdditions": "Credit additions",
+      "creditsRemaining_one": "{{value}} credit remaining",
+      "creditsRemaining_other": "{{value}} credits remaining",
+      "expires": "Expires {{date}}",
+      "left": "{{value}} left",
+      "member": "Member",
+      "neverExpires": "Never expires",
+      "unavailable": "Credit balance unavailable.",
+      "upgradeDescription": "Pro includes monthly credits and unlocks additional credit options.",
+      "upgradeTitle": "Upgrade to Pro to get more credits",
+      "used": "Used"
+    }
+  },
   "browserSession": {
+    "cardTitle": "Cloud browser",
     "close": "Close live browser",
-    "creditsCharged_one": "{{formattedCount}} credit charged",
-    "creditsCharged_other": "{{formattedCount}} credits charged",
     "documentTitle": "Live browser",
     "iframeTitle": "Live browser: {{name}}",
     "invalidLink": "Invalid browser link",
     "open": "Open {{name}} browser",
+    "openAction": "Open",
     "openNewPage": "Open this browser in a new page",
     "panel": {
       "notLive": "Browser not live",
@@ -454,11 +954,9 @@
     "reclaimHint_one": "Zero keeps this browser while this panel is open, and reclaims it after {{formattedCount}} idle minute.",
     "reclaimHint_other": "Zero keeps this browser while this panel is open, and reclaims it after {{formattedCount}} idle minutes.",
     "status": {
-      "error": "Error",
       "live": "Live",
       "starting": "Starting",
-      "stopping": "Stopping",
-      "suspended": "Suspended"
+      "stopped": "Stopped"
     },
     "title": "Live browser",
     "unavailable": {
@@ -496,6 +994,7 @@
       "deleting": "Deleting…",
       "disconnect": "Disconnect",
       "disconnecting": "Disconnecting...",
+      "edit": "Edit",
       "grant": "Grant",
       "reconnect": "Reconnect",
       "rename": "Rename",
@@ -679,6 +1178,9 @@
       "delete": {
         "description": "This removes the connector and every member's stored secret for it. Agents authorized for this connector will lose access immediately. This can't be undone.",
         "title": "Delete {{connector}}?"
+      },
+      "edit": {
+        "title": "Edit custom connector"
       },
       "emptyAdmin": "No custom connectors yet. Create one to register an API for every member to use.",
       "emptyMember": "Your org hasn't registered any custom connectors yet.",
@@ -1138,6 +1640,102 @@
     "toasts": {
       "connected": "{{connector}} connected",
       "disconnected": "{{connector}} disconnected"
+    }
+  },
+  "global": {
+    "errors": {
+      "requestFailed": "Request failed"
+    },
+    "realtime": {
+      "degraded": "Live updates ran into a problem. Please refresh the page."
+    }
+  },
+  "insights": {
+    "calendar": {
+      "nextMonth": "Next month",
+      "previousMonth": "Previous month"
+    },
+    "cards": {
+      "agents": "Agents",
+      "agentsRan_one": "{{agents}} ran {{runs}}",
+      "agentsRan_other": "{{agents}} ran {{runs}}",
+      "allowed": "Allowed",
+      "allowedSummary_one": "{{calls}} made within {{permissions}} granted permission",
+      "allowedSummary_other": "{{calls}} made within {{permissions}} granted permissions",
+      "automations": "Automations",
+      "automationsUsed_one": "{{automations}} used {{credits}}",
+      "automationsUsed_other": "{{automations}} used {{credits}}",
+      "balance": "Balance",
+      "byAgent": "by {{agent}}",
+      "chats": "Chats",
+      "chatsUsed_one": "{{chats}} used {{credits}}",
+      "chatsUsed_other": "{{chats}} used {{credits}}",
+      "clickToOpen": "Click to open",
+      "consumedToday": "consumed today",
+      "moreAutomations_one": "+{{value}} more automation",
+      "moreAutomations_other": "+{{value}} more automations",
+      "moreChats_one": "+{{value}} more chat",
+      "moreChats_other": "+{{value}} more chats",
+      "protected": "Protected",
+      "protectedSummary_one": "{{calls}} protected across {{permissions}} permission",
+      "protectedSummary_other": "{{calls}} protected across {{permissions}} permissions",
+      "rejected_one": "{{value}} rejected",
+      "rejected_other": "{{value}} rejected",
+      "rejectedOf": "{{denied}} of {{total}} rejected",
+      "services": "Services",
+      "servicesReceived_one": "{{services}} received {{calls}}",
+      "servicesReceived_other": "{{services}} received {{calls}}",
+      "team": "Team",
+      "teamCreditUsage": "Team Credit Usage",
+      "untitled": "(untitled)",
+      "yourCreditUsage": "Your Credit Usage"
+    },
+    "common": {
+      "loadMore": "Load more",
+      "showLess": "Show less"
+    },
+    "page": {
+      "description": "Monitor what your agents access, how credits are spent, which permissions they use, and spot anything unusual.",
+      "documentTitle": "Insights & Usage",
+      "empty": "Run an agent to see insights here.",
+      "emptyRange": "No activity in this time range.",
+      "lastUpdated": "Last updated — {{date}}",
+      "loadError": "Could not load network activity.",
+      "title": "Insights"
+    },
+    "range": {
+      "custom": "Custom Range",
+      "last28Days": "Last 28 Days",
+      "last30Days": "Last 30 Days",
+      "last7Days": "Last 7 Days",
+      "today": "Today",
+      "yesterday": "Yesterday"
+    },
+    "summary": {
+      "activityCaption": "{{first}} · {{second}}",
+      "blocked_one": "{{blocked}} request was blocked by your permission rules. Review it to make sure nothing important is being held back.",
+      "blocked_other": "{{blocked}} requests were blocked by your permission rules. Review them to make sure nothing important is being held back.",
+      "blockedCaption": "{{calls}} · {{blocked}} blocked",
+      "busy_one": "A busy day — {{agentCount}} agents completed {{runs}}. Your network is working hard.",
+      "busy_other": "A busy day — {{agentCount}} agents completed {{runs}}. Your network is working hard.",
+      "distributed_one": "{{agents}} active, using {{credits}} total. A well-distributed workload.",
+      "distributed_other": "{{agents}} active, using {{credits}} total. A well-distributed workload.",
+      "highTraffic_one": "{{callCount}} service calls across {{services}}. High traffic day.",
+      "highTraffic_other": "{{callCount}} service calls across {{services}}. High traffic day.",
+      "light_one": "Light activity — only {{runs}} and {{calls}}. A quiet day.",
+      "light_other": "Light activity — only {{runs}} and {{calls}}. A quiet day.",
+      "quietCaption": "{{runs}} · a quiet day",
+      "smooth": "{{runs}} and {{callCount}} service calls today. Everything running smoothly."
+    },
+    "units": {
+      "agent_one": "{{value}} agent",
+      "agent_other": "{{value}} agents",
+      "call_one": "{{value}} call",
+      "call_other": "{{value}} calls",
+      "run_one": "{{value}} run",
+      "run_other": "{{value}} runs",
+      "service_one": "{{value}} service",
+      "service_other": "{{value}} services"
     }
   },
   "lifecycle": {
@@ -2981,6 +3579,674 @@
         "logoTooLarge": "Logo is too large ({{width}}×{{height}}px). Maximum size is {{maximum}}×{{maximum}}px.",
         "logoTooSmall": "Logo is too small ({{width}}×{{height}}px). Minimum size is {{minimum}}×{{minimum}}px."
       }
+    }
+  },
+  "shared": {
+    "breadcrumb": "Breadcrumb",
+    "errorBoundary": {
+      "contactSupport": "support",
+      "description": "Give it another try or reach out",
+      "help": "We're here to help",
+      "title": "Oops! Something went sideways"
+    },
+    "forceUpgrade": {
+      "action": "Refresh",
+      "description": "This version of {{brandName}} is no longer supported. Refresh to load the latest version.",
+      "title": "Update required"
+    },
+    "notFound": {
+      "description": "The page you are looking for does not exist.",
+      "title": "Page not found"
+    }
+  },
+  "usage": {
+    "automations": {
+      "empty": "No automations used in this period",
+      "more_one": "+{{value}} more automation",
+      "more_other": "+{{value}} more automations",
+      "summary_one": "{{automations}} used {{credits}}",
+      "summary_other": "{{automations}} used {{credits}}",
+      "title": "Automations"
+    },
+    "chart": {
+      "ariaLabel": "Credits totals",
+      "credits": "credits",
+      "groupBy": {
+        "agent": "Agent",
+        "source": "Source"
+      },
+      "noUsage": "No usage",
+      "showDetails": "Show usage details for {{date}}"
+    },
+    "chats": {
+      "clickToOpen": "Click to open",
+      "empty": "No chats in this period",
+      "more_one": "+{{value}} more chat",
+      "more_other": "+{{value}} more chats",
+      "summary_one": "{{chats}} used {{credits}}",
+      "summary_other": "{{chats}} used {{credits}}",
+      "title": "Chats",
+      "untitled": "(untitled)"
+    },
+    "kinds": {
+      "connector": "Connectors",
+      "image": "Images",
+      "model": "Models",
+      "other": "Other",
+      "video": "Videos"
+    },
+    "page": {
+      "description": "Your credit consumption across chats, automations, and channels.",
+      "loadError": "Failed to load usage insights. Please try again later.",
+      "title": "Usage"
+    },
+    "range": {
+      "ariaLabel": "Date range",
+      "billingPeriod": "Billing period",
+      "last24Hours": "Last 24 hours",
+      "last28Days": "Last 28 days",
+      "last30Days": "Last 30 days",
+      "last7Days": "Last 7 days",
+      "selectedDay": "Selected day",
+      "today": "Today",
+      "yesterday": "Yesterday"
+    },
+    "records": {
+      "emptyBillingPeriod": "No usage in this billing period.",
+      "emptyRange": "No usage in this time range.",
+      "loadError": "Could not load your usage.",
+      "loadMore": "Load more",
+      "myUsage": "My usage",
+      "noActiveBillingPeriod": "No active billing period.",
+      "teamLoadError": "Could not load team usage.",
+      "teamUsage": "Team usage",
+      "untitled": "(untitled)"
+    },
+    "sources": {
+      "agent": "Agent",
+      "automation": "Automation",
+      "chat": "Chat",
+      "cli": "CLI",
+      "email": "Email",
+      "github": "GitHub",
+      "other": "Other",
+      "others": "Others",
+      "phone": "Phone",
+      "slack": "Slack",
+      "teams": "Microsoft Teams",
+      "telegram": "Telegram",
+      "unknown": "Unknown"
+    },
+    "units": {
+      "automation_one": "{{value}} automation",
+      "automation_other": "{{value}} automations",
+      "chat_one": "{{value}} chat",
+      "chat_other": "{{value}} chats",
+      "credit_one": "{{value}} credit",
+      "credit_other": "{{value}} credits"
+    }
+  },
+  "workflows": {
+    "automations": {
+      "calendar": {
+        "addAction": "Add Calendar automation",
+        "addAria": "Add Google Calendar automation",
+        "addDescriptionCancelled": "Run this workflow when a Google Calendar event is cancelled.",
+        "addDescriptionCreated": "Run this workflow when a new Google Calendar event is created.",
+        "addDescriptionUpdated": "Run this workflow when a Google Calendar event is updated.",
+        "addTitle": "Add Google Calendar automation",
+        "calendarId": "Calendar ID",
+        "cancelledDescription": "Run when a calendar event is cancelled.",
+        "cancelledRule": "When calendar {{calendar}} event is cancelled",
+        "cancelledTitle": "Google Calendar event cancelled",
+        "createdDescription": "Run when a calendar event is created.",
+        "createdRule": "When calendar {{calendar}} gets a new event",
+        "createdTitle": "Google Calendar event created",
+        "summary": "Calendar {{calendar}}",
+        "updatedDescription": "Run when a calendar event is updated.",
+        "updatedRule": "When calendar {{calendar}} event is updated",
+        "updatedTitle": "Google Calendar event updated"
+      },
+      "common": {
+        "addAutomation": "Add automation",
+        "automation": "Automation",
+        "cancel": "Cancel",
+        "chooseAutomation": "Choose an automation to start this workflow.",
+        "deleteAutomation": "Delete automation",
+        "disable": "Disable {{title}}",
+        "disabledPaidPlan": "Disabled — paid plan required",
+        "done": "Done",
+        "editAutomation": "Edit automation",
+        "enable": "Enable {{title}}",
+        "eventAutomation": "Event automation",
+        "moreActions": "More actions",
+        "noAutomations": "No automations",
+        "noAutomationsDescription": "Add an automation to run this workflow whenever its automation fires.",
+        "runNow": "Run now",
+        "schedule": "Schedule",
+        "scheduleAutomation": "Schedule automation",
+        "updateDescription": "Update this automation.",
+        "webhookAutomation": "Webhook automation"
+      },
+      "duration": {
+        "hour_one": "{{count}} hour",
+        "hour_other": "{{count}} hours",
+        "minute_one": "{{count}} minute",
+        "minute_other": "{{count}} minutes",
+        "second_one": "{{count}} second",
+        "second_other": "{{count}} seconds"
+      },
+      "github": {
+        "accountConnect": "Connect GitHub",
+        "accountRequired": "Connect your GitHub account to use Me.",
+        "actorAnyone": "Anyone",
+        "actorMe": "Me",
+        "actors": "Actors",
+        "addLabelAction": "Add label automation",
+        "addLabelAria": "Add GitHub label automation",
+        "addLabelDescription": "Run this workflow when a GitHub label is applied.",
+        "addLabelTitle": "Add GitHub label automation",
+        "addWebhookAction": "Add automation",
+        "addWebhookAria": "Add {{title}} automation",
+        "addWebhookDescription": "Run this workflow when a matching GitHub webhook event arrives.",
+        "addWorkflowAction": "Add workflow automation",
+        "addWorkflowAria": "Add GitHub workflow automation",
+        "addWorkflowDescription": "Run this workflow when a matching GitHub Actions workflow run completes.",
+        "addWorkflowTitle": "Add GitHub workflow automation",
+        "aJob": "a GitHub workflow job",
+        "any": "Any",
+        "anyAuthor": "Any author",
+        "anyComment": "Any comment",
+        "anyConclusion": "Any conclusion",
+        "anyDeploymentState": "Any deployment state",
+        "anyEnvironment": "Any environment",
+        "anyJob": "Any job",
+        "anyRepository": "Any repository",
+        "anyResult": "Any result",
+        "anyReview": "Any review",
+        "anyReviewState": "Any review state",
+        "anyWorkflow": "Any workflow",
+        "apps": "GitHub Apps",
+        "authorsSummary": "Authors {{values}}",
+        "aWorkflow": "a GitHub workflow",
+        "baseBranches": "Base branches",
+        "branches": "Branches",
+        "commentPrefixes": "Comment prefixes",
+        "conclusions": "Conclusions",
+        "conclusionsSummary": "Conclusions {{values}}",
+        "creators": "Creators",
+        "deploymentStates": "Deployment states",
+        "deploymentStatesSummary": "Deployment states {{values}}",
+        "deploymentStatusDescription": "Run when a matching deployment status is created.",
+        "deploymentStatusRule": "When a matching GitHub deployment status is created",
+        "deploymentStatusTitle": "GitHub deployment status created",
+        "editLabel": "Edit label",
+        "editWebhookFilters": "Edit {{title}} filters",
+        "editWorkflowFilters": "Edit GitHub workflow filters",
+        "environments": "Environments",
+        "environmentsSummary": "Environments {{values}}",
+        "events": "Triggering events",
+        "filterHelp": "Leave a filter empty to match any value. Separate multiple values with commas.",
+        "headBranches": "Head branches",
+        "installedRequired": "GitHub is not installed for this workspace.",
+        "issueCommentDescription": "Run when a matching issue or PR comment is created.",
+        "issueCommentRule": "When a matching GitHub issue or pull request comment is created",
+        "issueCommentTitle": "GitHub issue comment created",
+        "issuesAndPullRequests": "Issues and pull requests",
+        "issuesOnly": "Issues only",
+        "jobs": "Jobs",
+        "jobsSummary": "Jobs {{values}}",
+        "labelAppliedDescription": "Run when an issue or pull request gets a label.",
+        "labelAppliedRule": "When GitHub label {{label}} is applied",
+        "labelAppliedTitle": "GitHub label applied",
+        "labelName": "Label name",
+        "labelOnlySummary": "Label {{label}}",
+        "labelSummary": "Label {{label}} · {{subject}} · Actor {{actor}}",
+        "loadError": "GitHub settings could not be loaded.",
+        "nonProductionOnly": "Non-production only",
+        "option": {
+          "actionRequired": "Action required",
+          "approved": "Approved",
+          "cancelled": "Cancelled",
+          "changesRequested": "Changes requested",
+          "commented": "Commented",
+          "error": "Error",
+          "failure": "Failure",
+          "inactive": "Inactive",
+          "inProgress": "In progress",
+          "neutral": "Neutral",
+          "pending": "Pending",
+          "queued": "Queued",
+          "skipped": "Skipped",
+          "stale": "Stale",
+          "startupFailure": "Startup failure",
+          "success": "Success",
+          "timedOut": "Timed out",
+          "waiting": "Waiting"
+        },
+        "productionEnvironment": "Production environment",
+        "productionOnly": "Production only",
+        "pullRequestsOnly": "Pull requests only",
+        "refs": "Refs",
+        "repositories": "Repositories",
+        "repositoriesSummary": "Repositories {{values}}",
+        "reviewDescription": "Run when a matching review is submitted.",
+        "reviewRule": "When a matching GitHub pull request review is submitted",
+        "reviewStates": "Review states",
+        "reviewTitle": "GitHub pull request review submitted",
+        "runnerGroups": "Runner groups",
+        "runnerLabels": "Runner labels",
+        "saveFilters": "Save filters",
+        "selectNoneAny": "Select none to match any value.",
+        "selectNoneConclusion": "Select none to match any completed conclusion.",
+        "startedBy": "Started by",
+        "subject": "Subject",
+        "trustedAuthors": "Trusted authors",
+        "updateLabelAria": "Update GitHub label automation",
+        "updateWebhookAria": "Update {{title}} automation",
+        "updateWorkflowAria": "Update GitHub workflow automation",
+        "withConclusions": " with {{values}}",
+        "workflowJobDescription": "Run when a matching Actions job completes.",
+        "workflowJobRule": "When {{jobs}} completes",
+        "workflowJobTitle": "GitHub workflow job completed",
+        "workflowRunDescription": "Run when a matching Actions workflow run completes.",
+        "workflowRunRule": "When {{workflows}} completes{{conclusions}}",
+        "workflowRunTitle": "GitHub workflow completed",
+        "workflows": "GitHub workflows",
+        "workflowsSummary": "Workflows {{values}}"
+      },
+      "gmail": {
+        "addCondition": "Add condition",
+        "addLabelAction": "Add label automation",
+        "addLabelAria": "Add Gmail label automation",
+        "addLabelDescription": "Run this workflow when a named Gmail label is applied.",
+        "addLabelTitle": "Add Gmail label automation",
+        "addMessageAction": "Add Gmail automation",
+        "addMessageAria": "Add Gmail automation",
+        "addMessageDescription": "Run this workflow when a matching message arrives.",
+        "addMessageTitle": "Add Gmail automation",
+        "allInboundMessages": "all inbound messages",
+        "anyMessageRule": "When any Gmail message arrives",
+        "conditionField": "Condition {{number}} field",
+        "conditionOperator": "Condition {{number}} operator",
+        "editLabel": "Edit label",
+        "editMatch": "Edit match",
+        "enterValue": "Enter a value",
+        "field": {
+          "body": "Body",
+          "cc": "Cc",
+          "from": "From",
+          "subject": "Subject",
+          "threadId": "Thread ID",
+          "to": "To"
+        },
+        "labelAppliedRule": "When Gmail label {{label}} is applied",
+        "labelAppliedTitle": "Gmail label applied",
+        "labelName": "Label name",
+        "labelSummary": "Label {{label}}",
+        "messageMatchesRule": "When Gmail message matches {{summary}}",
+        "newMessageDescription": "Run this workflow from matching email.",
+        "newMessageTitle": "Gmail new message",
+        "operator": {
+          "contains": "Contains",
+          "containsAny": "Contains any",
+          "doesNotContain": "Does not contain",
+          "is": "Is"
+        },
+        "removeCondition": "Remove condition {{number}}",
+        "saveLabel": "Save label",
+        "saveMatch": "Save match",
+        "summary": {
+          "contains": "{{field}} contains {{value}}",
+          "containsAny": "{{field}} contains any of {{value}}",
+          "doesNotContain": "{{field}} does not contain {{value}}",
+          "doesNotContainAny": "{{field}} does not contain any of {{value}}",
+          "threadId": "Thread ID is {{value}}"
+        },
+        "updateLabelAria": "Update Gmail label automation",
+        "updateMessageAria": "Update Gmail new message automation"
+      },
+      "meet": {
+        "addAction": "Add Meet automation",
+        "addAria": "Add Google Meet transcript automation",
+        "addDescription": "Run this workflow when Google Meet finishes generating a transcript for a meeting organized by the connected Google Meet account.",
+        "addTitle": "Add Google Meet automation",
+        "rule": "When Google Meet finishes generating a transcript",
+        "summary": "Meetings you organize",
+        "transcriptHint": "Transcription must be enabled for the meeting. If Meet does not create a transcript, this automation will not run.",
+        "transcriptReadyDescription": "Run when Meet finishes generating a transcript.",
+        "transcriptReadyTitle": "Google Meet transcript ready"
+      },
+      "notion": {
+        "addAction": "Add Notion automation",
+        "childPageAddAria": "Add Notion child page automation",
+        "childPageDescription": "Run when a direct child page is created.",
+        "childPageDialogDescription": "Run this workflow when a direct child page is created under a Notion page.",
+        "childPageRule": "When Notion child page is created under {{title}}",
+        "childPageRuleGeneric": "When a Notion child page is created",
+        "childPageTitle": "New Notion child page",
+        "configuredDatabase": "Configured database",
+        "configuredPage": "Configured page",
+        "configuredParentPage": "Configured parent page",
+        "contentUpdatedAddAria": "Add Notion page content updated automation",
+        "contentUpdatedDescription": "Run when a page or database item content changes.",
+        "contentUpdatedDialogDescription": "Run this workflow when a Notion page content update settles.",
+        "contentUpdatedTitle": "Notion page content updated",
+        "database": "Database",
+        "databaseItemAddAria": "Add Notion database item automation",
+        "databaseItemDescription": "Run when a page is added to a Notion database.",
+        "databaseItemDialogDescription": "Run this workflow when a page is added to a Notion database.",
+        "databaseItemRule": "When Notion database {{title}} gets a new item",
+        "databaseItemRuleGeneric": "When a Notion database gets a new item",
+        "databaseItemTitle": "New Notion database item",
+        "databaseSummary": "Database {{title}}",
+        "databaseUpdatedRule": "When Notion database {{title}} item content is updated",
+        "databaseUpdatedRuleGeneric": "When Notion database item content is updated",
+        "databaseUrl": "Database URL",
+        "page": "Page",
+        "pageSummary": "Page {{title}}",
+        "pageUpdatedRule": "When Notion page {{title}} content is updated",
+        "pageUpdatedRuleGeneric": "When a Notion page content is updated",
+        "pageUrl": "Page URL",
+        "parentPageSummary": "Parent page {{title}}",
+        "parentPageUrl": "Parent page URL",
+        "scope": "Scope"
+      },
+      "picker": {
+        "calendar": "Calendar",
+        "email": "Email",
+        "integrations": "Integrations",
+        "notion": "Notion",
+        "schedule": "Schedule"
+      },
+      "rules": {
+        "inboundWebhook": "When an inbound webhook is received"
+      },
+      "schedule": {
+        "addIntervalAction": "Add interval",
+        "addIntervalAria": "Add interval automation",
+        "addIntervalDescription": "Choose how often this workflow should run.",
+        "addIntervalTitle": "Add interval automation",
+        "addOnceAction": "Add one-time run",
+        "addOnceAria": "Add one-time automation",
+        "addOnceDescription": "Choose the date and time for this workflow to run once.",
+        "addOnceTitle": "Add one-time automation",
+        "addScheduleAction": "Add schedule",
+        "addScheduleAria": "Add schedule automation",
+        "addScheduleDescription": "Choose when this workflow should run.",
+        "addScheduleTitle": "Add schedule automation",
+        "cronExpression": "Cron expression",
+        "customCron": "Custom cron",
+        "dayOfMonth": "Day of month",
+        "dayOfWeek": "Day of week",
+        "displaysIn": "Displays in {{timezone}}",
+        "editSchedule": "Edit schedule",
+        "every": "Every",
+        "everyDay": "Every day",
+        "everyDayAt": "Every day at {{time}}",
+        "everyMonth": "Every month",
+        "everyMonthAt": "Every month on day {{day}} at {{time}}",
+        "everyWeek": "Every week",
+        "everyWeekAt": "Every week at {{time}}",
+        "everyWeekday": "Every weekday",
+        "everyWeekdayAt": "Every weekday at {{time}}",
+        "everyWeekOn": "Every week on {{days}} at {{time}}",
+        "frequencyIntervalDescription": "Run this workflow on a fixed interval.",
+        "frequencyIntervalTitle": "Interval",
+        "frequencyOnceDescription": "Run this workflow once at a date and time.",
+        "frequencyOnceTitle": "One-time run",
+        "frequencyScheduleDescription": "Run this workflow from a time rule.",
+        "frequencyScheduleTitle": "Scheduled time",
+        "hour": "Hour",
+        "last": "Last",
+        "minute": "Minute",
+        "next": "Next",
+        "noRunsYet": "No runs yet",
+        "noUpcomingRun": "No upcoming run",
+        "onceOn": "Once on {{date}} at {{time}}",
+        "repeatEvery": "Every {{interval}}",
+        "repeats": "Repeats",
+        "runAt": "Run at",
+        "saveSchedule": "Save schedule",
+        "time": "Time ({{timezone}})",
+        "updateScheduleAria": "Update schedule automation"
+      },
+      "strapi": {
+        "addAction": "Add Strapi automation",
+        "addAria": "Add Strapi entry published automation",
+        "addDescription": "Run this workflow after matching localized publish events settle.",
+        "addTitle": "Add Strapi automation",
+        "configure": "Configure Strapi",
+        "connectFirst": "Connect a Strapi instance before creating this automation.",
+        "contentType": "Content type UID (optional)",
+        "contentTypeAny": "Any content type",
+        "entryPublishedDescription": "Run after a matching Strapi entry is published.",
+        "entryPublishedTitle": "Strapi entry published",
+        "instance": "Strapi instance",
+        "locale": "Locale (optional)",
+        "localeAny": "Any locale",
+        "localeHint": "Leave locale blank to combine all localized publish events for the same document into one workflow run.",
+        "localeSummary": "Locale {{locale}}",
+        "rule": "When a matching Strapi entry is published"
+      },
+      "webhook": {
+        "addDescription": "Create a signed endpoint for this workflow.",
+        "addTitle": "Add webhook automation",
+        "copy": "Copy",
+        "create": "Create webhook",
+        "createDescription": "Run this workflow from a signed POST.",
+        "createTitle": "Webhook",
+        "hidden": "Webhook URL hidden",
+        "paidBadge": "Team",
+        "reveal": "Reveal secret",
+        "revealDescription": "Reveal the signed endpoint and secret ending in {{suffix}}",
+        "revealTitle": "View webhook secret",
+        "secret": "Signing secret",
+        "secretHiddenHint": "Secret values are hidden from the automation list. Reveal them only when you need to configure or test this webhook.",
+        "secretOneTimeHint": "The signing secret is shown only after creation.",
+        "signedCurl": "Signed curl",
+        "upgrade": {
+          "adminHint": "Ask a workspace admin to upgrade.",
+          "benefitDescription": "Create signed endpoints that start workflows from external systems.",
+          "benefitTitle": "Secure inbound workflow automation",
+          "description": "Webhook automations require a Team or Custom workspace.",
+          "title": "Upgrade for webhook automations",
+          "upgradeAction": "Upgrade to Team"
+        },
+        "url": "Webhook URL"
+      }
+    },
+    "common": {
+      "agents": "Agents",
+      "cancel": "Cancel",
+      "close": "Close",
+      "copyWorkflow": "Copy workflow",
+      "delete": "Delete",
+      "deleteWorkflow": "Delete workflow",
+      "instructions": "Instructions",
+      "manual": "Manual",
+      "others": "Others",
+      "pinned": "Pinned",
+      "private": "Private",
+      "public": "Public",
+      "settings": "Settings",
+      "view": "View",
+      "workflow": "Workflow",
+      "workflows": "Workflows"
+    },
+    "composer": {
+      "nextMessage": "Type your next message…",
+      "placeholder": "Ask me to automate workflows, manage tasks..."
+    },
+    "createDialog": {
+      "addAutomation": "Add automation",
+      "chooseAgentAutomation": "Choose the agent for this automation",
+      "chooseAgentWorkflow": "Choose the agent for this workflow.",
+      "chooseWorkflow": "Choose a workflow to automate, or create one in chat.",
+      "createAutomation": "Create Automation",
+      "createInChat": "Create in chat",
+      "createInChatDescription": "Start from a conversation when no workflow fits yet.",
+      "createWorkflow": "Create workflow",
+      "noAgents": "No agents yet",
+      "noAgentsFound": "No agents found",
+      "noWorkflows": "No workflows yet. Create one in chat to continue."
+    },
+    "detail": {
+      "connectors": {
+        "action": {
+          "connect": "Connect",
+          "enable": "Enable for agent",
+          "reconnect": "Reconnect",
+          "reviewPermissions": "Review permissions"
+        },
+        "aria": "Connector readiness",
+        "check": "Check connectors",
+        "checkAgain": "Check again",
+        "checking": "Checking...",
+        "description": "See which built-in connectors this workflow may need and whether they're ready.",
+        "empty": "No required connectors detected",
+        "error": {
+          "inputTooLong": "This workflow is too long to check. Keep the name, description, and instructions within 100,000 characters.",
+          "retry": "We couldn't check connectors. Try again.",
+          "timeout": "The connector check timed out. Try again."
+        },
+        "saveFirst": "Save your changes before checking connectors.",
+        "status": {
+          "connected": "Connected",
+          "notConnected": "Not connected",
+          "notEnabled": "Not enabled for this agent",
+          "reconnect": "Reconnect required",
+          "scopeMismatch": "Update permissions",
+          "unavailable": "Currently unavailable"
+        },
+        "title": "Connector readiness"
+      },
+      "copy": {
+        "agentFallback": "the agent",
+        "copied": "Copied to {{agent}}",
+        "copyAndRemove": "Copy and remove",
+        "description": "Copy this workflow to another agent as a new private workflow.",
+        "moved": "Moved to {{agent}}",
+        "moveDescription": "Original removed from {{agent}}.",
+        "noAgents": "No other agents yet",
+        "privateReady": "A private copy is ready.",
+        "removalAlert": "This deletes the original",
+        "removalNoAutomations": "This workflow is deleted from {{agent}}.",
+        "removalWithAutomations_one": "{{count}} automation is paused on {{agent}} and this workflow is deleted.",
+        "removalWithAutomations_other": "{{count}} automations are paused on {{agent}} and this workflow is deleted.",
+        "removeOriginal": "Remove the original from {{agent}} after copying",
+        "selectAgent": "Choose an agent",
+        "title": "Copy workflow",
+        "to": "Copy to"
+      },
+      "delete": {
+        "confirm": "{{title}} and all bound automations will be deleted.",
+        "dangerDescription": "Delete this workflow and its automations. This action cannot be undone.",
+        "dangerTitle": "Danger zone",
+        "description": "This is a dangerous operation. Deleting this workflow also deletes every automation bound to it, including automations other users created.",
+        "title": "Delete workflow"
+      },
+      "files": {
+        "aria": "Workflow files",
+        "deleteAria": "Delete {{path}}",
+        "deleteSelected": "Delete selected file",
+        "fileContent": "Workflow file content",
+        "filePlaceholder": "Edit this markdown file...",
+        "instruction": "Workflow instruction",
+        "instructionPlaceholder": "Write workflow instructions...",
+        "instructions": "instructions",
+        "noContent": "No content available for this file.",
+        "upload": "Upload text files",
+        "uploadAria": "Upload workflow files"
+      },
+      "info": {
+        "copyDescription": "Copy this workflow to another agent.",
+        "copyTitle": "Copy workflow"
+      },
+      "metadata": {
+        "agent": "Agent",
+        "agentDescription": "This workflow belongs to this agent.",
+        "aria": "Workflow metadata",
+        "description": "Description",
+        "descriptionHelp": "Tell the agent when to use this workflow.",
+        "name": "Name",
+        "nameHelp": "Shown in workflow lists and when choosing a workflow.",
+        "namePlaceholder": "Workflow name",
+        "saved": "Workflow saved",
+        "slug": "Slug",
+        "slugHelp": "Lowercase letters, numbers, and - only. Use {{command}} in chat to use this workflow.",
+        "slugTitle": "Use lowercase letters, numbers, and hyphens only",
+        "visibility": "Visibility",
+        "visibilityHelp": "Choose how this workflow is shared inside your workspace."
+      },
+      "notFound": "Workflow not found.",
+      "refineWith": "Refine with {{agent}}",
+      "shadow": {
+        "end": "for you. This workflow is shadowed by the same-slug priority rule.",
+        "resolvesTo": "currently resolves to"
+      },
+      "visibility": {
+        "adminRequired": "Publishing a workflow under an agent you do not own requires org admin permissions.",
+        "automationWarning": "Automations will stop",
+        "confirmDescription": "This is a dangerous operation. While this workflow is private, automations other members built on it stop running.",
+        "confirmTitle": "Make this workflow private?",
+        "makePrivate": "Make private",
+        "publishAria": "Make workflow public",
+        "workflowHidden": "{{title}} will be hidden from other members and their automations will stop."
+      }
+    },
+    "editor": {
+      "aria": "Instructions editor",
+      "footer": "Edit the instructions directly to customize your agent's behavior.",
+      "placeholder": "Write instructions for your agent...",
+      "toolbar": {
+        "blockquote": "Blockquote",
+        "bold": "Bold",
+        "bulletList": "Bullet list",
+        "heading1": "Heading 1",
+        "heading2": "Heading 2",
+        "heading3": "Heading 3",
+        "inlineCode": "Inline code",
+        "italic": "Italic",
+        "orderedList": "Ordered list",
+        "strikethrough": "Strikethrough"
+      }
+    },
+    "list": {
+      "agentEmpty": "No workflows run as this agent yet.",
+      "all": "All",
+      "allAgents": "All agents",
+      "automated": "Automated",
+      "automations": "Automations",
+      "createdBy": "Created by",
+      "createInChat": "Create in chat",
+      "description": "A reusable SOP for a task. Write one from scratch or distill it from your daily work, then run, edit, or automate it.",
+      "empty": {
+        "all": "Create a workflow from chat or save one from a useful run.",
+        "automated": "Add an automation to a workflow and it shows up here.",
+        "private": "No private workflows yet.",
+        "public": "No public workflows yet.",
+        "without": "Every workflow here runs on a schedule or event."
+      },
+      "noWorkflows": "No workflows",
+      "open": "Open {{title}}",
+      "runsAs": "Runs as",
+      "runsAsAria": "Runs as {{agent}}",
+      "section": {
+        "event": "On automation",
+        "later": "Later",
+        "manual": "Manual",
+        "today": "Runs today",
+        "week": "This week"
+      },
+      "sort": {
+        "alphabetical": "Alphabetical",
+        "created": "Created time",
+        "label": "Next run",
+        "nextRun": "Next run"
+      },
+      "title": "Workflows",
+      "viewAutomations": "View automations"
     }
   },
   "works": {

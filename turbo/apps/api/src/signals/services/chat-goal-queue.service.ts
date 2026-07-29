@@ -420,7 +420,6 @@ export async function rejectGoalQueueEvent(
     const rejected = await replaceChatEvent(tx, args.eventId, {
       chatThreadId: args.chatThreadId,
       eventType: "input.rejected",
-      content: objectiveBrief,
       userMessage: createUserMessageDocument({ text: objectiveBrief }),
       runId: null,
       error: args.reason,

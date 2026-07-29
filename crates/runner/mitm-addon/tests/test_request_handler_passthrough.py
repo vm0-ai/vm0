@@ -14,7 +14,6 @@ from tests.auth_state_helpers import auth_cache_key, has_auth_state
 from tests.jsonl_log_helpers import read_jsonl_entries_after_flush
 from tests.pending_helpers import assert_pending
 from tests.request_handler_helpers import _single_firewall_vm, _write_registry
-from tests.upstream_connection_helpers import seed_server_binding
 
 _BROWSER_USER_AGENT = (
     "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 "
@@ -331,74 +330,6 @@ async def test_vm0_api_test_paths_skip_auto_allow(
     )
     binding = upstream_destination_binding.binding_snapshot_for_tests()[flow.server_conn.id]
     assert binding.kinds == frozenset(("connector_auth",))
-
-
-async def test_vm0_model_proxy_path_on_vm0_api_host_uses_firewall_auth(
-    tmp_path, real_flow, mitm_ctx, fake_firewall_headers
-):
-    reg_path = _write_registry(
-        tmp_path,
-        client_ip="10.200.0.1",
-        vm_info=_single_firewall_vm(
-            tmp_path,
-            run_id="run-vm0-model",
-            sandbox_marker="tok-vm0-model",
-            firewall_name="model-provider:vm0-model",
-            api_entry={
-                "base": "https://api.vm0.ai/api/internal/vm0-model/v1/responses",
-                "auth": {
-                    "headers": {
-                        "Authorization": "Bearer ${{ secrets.OPENAI_API_KEY }}",
-                        "X-VM0-Upstream-Authorization": (
-                            "Bearer ${{ secrets.VM0_MODEL_UPSTREAM_API_KEY }}"
-                        ),
-                    }
-                },
-                "permissions": [],
-            },
-            network_policy=None,
-        ),
-    )
-    flow = real_flow(
-        with_response=False,
-        client_ip="10.200.0.1",
-        host="api.vm0.ai",
-        method="POST",
-        path="/api/internal/vm0-model/v1/responses",
-    )
-    seed_server_binding(
-        flow.server_conn,
-        client=flow.client_conn,
-        host="api.vm0.ai",
-        port=443,
-        kinds=frozenset(("api_allow",)),
-        original_address=("api.vm0.ai", 443),
-    )
-
-    with (
-        mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
-        fake_firewall_headers(
-            headers={
-                "Authorization": "Bearer resolved-proxy-token",
-                "X-VM0-Upstream-Authorization": "Bearer resolved-upstream-token",
-            }
-        ) as auth_fetch,
-    ):
-        mitm_addon.requestheaders(flow)
-        await mitm_addon.request(flow)
-
-    auth_fetch.assert_awaited_once()
-    assert flow.response is None
-    assert flow.metadata[metadata_keys.FIREWALL_ACTION] == "ALLOW"
-    assert flow.metadata[metadata_keys.FIREWALL_NAME] == "model-provider:vm0-model"
-    assert (
-        flow.metadata[metadata_keys.FIREWALL_BASE]
-        == "https://api.vm0.ai/api/internal/vm0-model/v1/responses"
-    )
-    assert flow.request.headers["Authorization"] == "Bearer resolved-proxy-token"
-    assert flow.request.headers["X-VM0-Upstream-Authorization"] == "Bearer resolved-upstream-token"
-    binding = upstream_destination_binding.binding_snapshot_for_tests()[flow.server_conn.id]
-    assert binding.kinds == frozenset(("api_allow", "connector_auth"))
 
 
 async def test_vm0_api_non_test_paths_auto_allow_before_firewall_auth(

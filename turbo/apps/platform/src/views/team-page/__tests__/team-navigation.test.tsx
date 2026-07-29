@@ -816,7 +816,7 @@ describe("team page navigation", () => {
                     id: firstMessageId,
                     threadId: firstThreadId,
                     eventType: "input.prompt" as const,
-                    content: "First shortcut thread message",
+                    content: null,
                     userMessage: {
                       version: 1,
                       parts: [

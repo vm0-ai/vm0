@@ -3,6 +3,9 @@ import type { CustomConnectorResponse } from "@vm0/api-contracts/contracts/zero-
 import { orgCustomConnectorSecrets } from "@vm0/db/schema/org-custom-connector-secret";
 import { orgCustomConnectorValues } from "@vm0/db/schema/org-custom-connector-value";
 import { orgCustomConnectors } from "@vm0/db/schema/org-custom-connector";
+import { orgCustomConnectorOauthConfigs } from "@vm0/db/schema/org-custom-connector-oauth-config";
+import { connectors as connectorConnections } from "@vm0/db/schema/connector";
+import { secrets } from "@vm0/db/schema/secret";
 import { and, eq } from "drizzle-orm";
 
 import { db$ } from "../external/db";
@@ -21,35 +24,72 @@ export function zeroCustomConnectorList(args: {
 }): Computed<Promise<readonly CustomConnectorResponse[]>> {
   return computed(async (get): Promise<readonly CustomConnectorResponse[]> => {
     const db = get(db$);
-    const [connectors, valueRows, legacySecretRows] = await Promise.all([
-      db
-        .select()
-        .from(orgCustomConnectors)
-        .where(eq(orgCustomConnectors.orgId, args.orgId))
-        .orderBy(orgCustomConnectors.displayName),
-      db
-        .select({
-          connectorId: orgCustomConnectorValues.connectorId,
-          kind: orgCustomConnectorValues.kind,
-          key: orgCustomConnectorValues.key,
-        })
-        .from(orgCustomConnectorValues)
-        .where(
-          and(
-            eq(orgCustomConnectorValues.orgId, args.orgId),
-            eq(orgCustomConnectorValues.userId, args.userId),
+    const [connectorRows, valueRows, legacySecretRows, oauthRows] =
+      await Promise.all([
+        db
+          .select({
+            connector: orgCustomConnectors,
+            oauthConfig: orgCustomConnectorOauthConfigs,
+          })
+          .from(orgCustomConnectors)
+          .leftJoin(
+            orgCustomConnectorOauthConfigs,
+            and(
+              eq(
+                orgCustomConnectorOauthConfigs.connectorId,
+                orgCustomConnectors.id,
+              ),
+              eq(
+                orgCustomConnectorOauthConfigs.orgId,
+                orgCustomConnectors.orgId,
+              ),
+            ),
+          )
+          .where(eq(orgCustomConnectors.orgId, args.orgId))
+          .orderBy(orgCustomConnectors.displayName),
+        db
+          .select({
+            connectorId: orgCustomConnectorValues.connectorId,
+            kind: orgCustomConnectorValues.kind,
+            key: orgCustomConnectorValues.key,
+          })
+          .from(orgCustomConnectorValues)
+          .where(
+            and(
+              eq(orgCustomConnectorValues.orgId, args.orgId),
+              eq(orgCustomConnectorValues.userId, args.userId),
+            ),
           ),
-        ),
-      db
-        .select({ connectorId: orgCustomConnectorSecrets.connectorId })
-        .from(orgCustomConnectorSecrets)
-        .where(
-          and(
-            eq(orgCustomConnectorSecrets.orgId, args.orgId),
-            eq(orgCustomConnectorSecrets.userId, args.userId),
+        db
+          .select({ connectorId: orgCustomConnectorSecrets.connectorId })
+          .from(orgCustomConnectorSecrets)
+          .where(
+            and(
+              eq(orgCustomConnectorSecrets.orgId, args.orgId),
+              eq(orgCustomConnectorSecrets.userId, args.userId),
+            ),
           ),
-        ),
-    ]);
+        db
+          .select({
+            customConnectorId: connectorConnections.customConnectorId,
+          })
+          .from(connectorConnections)
+          .innerJoin(
+            secrets,
+            and(
+              eq(secrets.connectorId, connectorConnections.id),
+              eq(secrets.name, "access_token"),
+            ),
+          )
+          .where(
+            and(
+              eq(connectorConnections.orgId, args.orgId),
+              eq(connectorConnections.userId, args.userId),
+              eq(connectorConnections.authMethod, "oauth"),
+              eq(connectorConnections.needsReconnect, false),
+            ),
+          ),
+      ]);
 
     const markers = valueRows
       .filter((row) => {
@@ -81,10 +121,16 @@ export function zeroCustomConnectorList(args: {
       }
     }
 
-    return connectors.map((connector) => {
+    const oauthConnected = new Set(
+      oauthRows.flatMap((row) => {
+        return row.customConnectorId ? [row.customConnectorId] : [];
+      }),
+    );
+    return connectorRows.map((row) => {
       return serialiseCustomConnector({
-        row: normaliseCustomConnectorRow(connector),
+        row: normaliseCustomConnectorRow(row.connector, row.oauthConfig),
         valueMarkers: markers,
+        oauthConnected: oauthConnected.has(row.connector.id),
       });
     });
   });

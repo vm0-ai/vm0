@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.58.9](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.58.8...guest-agent-v0.58.9) (2026-07-29)
+
+
+### Bug Fixes
+
+* **runner:** checkpoint sessions before job timeout ([#23734](https://github.com/vm0-ai/vm0/issues/23734)) ([15f44cc](https://github.com/vm0-ai/vm0/commit/15f44cc68e1387d5b18f604fea9c964a1557561d))
+
 ## [0.58.8](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.58.7...guest-agent-v0.58.8) (2026-07-29)
 
 

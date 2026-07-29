@@ -24,6 +24,8 @@ use std::time::Duration;
 
 const REAPABLE_HANG_DURATION: Duration = Duration::from_secs(3600);
 const ACTIVE_INPUT_READY_RESULT: &str = "READY_FOR_ACTIVE_INPUT";
+const TERMINATION_READY_EVENT: &str =
+    r#"{"type":"stream_event","event":{"type":"vm0_mock_termination_ready"}}"#;
 const STREAM_JSON_SHELL_OUTPUT_LIMIT_BYTES: usize = 1024 * 1024;
 const STREAM_JSON_SHELL_READ_BUFFER_BYTES: usize = 8 * 1024;
 // Integration contract with guest-agent's ordinary stdout framing policy.
@@ -394,6 +396,14 @@ fn ignore_sigterm() {
     }
 }
 
+fn emit_termination_ready_fence() {
+    if let Ok(home) = std::env::var("HOME") {
+        let _ = std::fs::write(format!("{home}/.vm0-mock-sigterm-ignored"), b"");
+    }
+    println!("{TERMINATION_READY_EVENT}");
+    let _ = std::io::stdout().flush();
+}
+
 fn hang_until_reaped() {
     std::thread::sleep(REAPABLE_HANG_DURATION);
 }
@@ -457,13 +467,13 @@ fn run_stdout_record_boundaries_scenario(output_format: &str) -> ExitCode {
 
 fn run_stuck_tool_scenario(output_format: &str, deaf: bool, close_stdout: bool) -> ExitCode {
     if output_format == "stream-json" {
+        if deaf {
+            ignore_sigterm();
+        }
         emit_stuck_tool_events();
 
         if deaf {
-            ignore_sigterm();
-            if let Ok(home) = std::env::var("HOME") {
-                let _ = std::fs::write(format!("{home}/.vm0-mock-sigterm-ignored"), b"");
-            }
+            emit_termination_ready_fence();
         }
 
         if close_stdout {
@@ -483,12 +493,15 @@ fn run_stuck_tool_scenario(output_format: &str, deaf: bool, close_stdout: bool) 
 
 fn run_hang_after_result_scenario(output_format: &str, deaf: bool) -> ExitCode {
     if output_format == "stream-json" {
-        emit_post_result_pair();
         if deaf {
             // Ignore SIGTERM so only SIGKILL can terminate this process.
             // Exercises the SigtermPending -> SigkillPending -> Done escalation
             // branch of the reap FSM.
             ignore_sigterm();
+        }
+        emit_post_result_pair();
+        if deaf {
+            emit_termination_ready_fence();
         }
         // Hang this process forever. guest-agent's post-result reap SIGTERMs
         // it within POST_RESULT_SIGTERM_GRACE_SECS unless SIGTERM is ignored.

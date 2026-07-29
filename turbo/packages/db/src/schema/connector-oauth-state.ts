@@ -1,6 +1,9 @@
 import {
   boolean,
+  check,
+  foreignKey,
   index,
+  integer,
   pgTable,
   text,
   timestamp,
@@ -8,6 +11,9 @@ import {
   uuid,
   varchar,
 } from "drizzle-orm/pg-core";
+import { sql } from "drizzle-orm";
+
+import { orgCustomConnectors } from "./org-custom-connector";
 
 export const connectorOauthStates = pgTable(
   "connector_oauth_states",
@@ -15,7 +21,9 @@ export const connectorOauthStates = pgTable(
     id: uuid("id").defaultRandom().primaryKey(),
     state: text("state").notNull(),
     // TODO(#23619): Rename the property and column in the persistence phase.
-    type: varchar("type", { length: 64 }).notNull(),
+    type: varchar("type", { length: 64 }),
+    customConnectorId: uuid("custom_connector_id"),
+    connectorRevision: integer("connector_revision"),
     authMethod: varchar("auth_method", { length: 50 }).notNull(),
     userId: text("user_id").notNull(),
     orgId: text("org_id").notNull(),
@@ -37,6 +45,25 @@ export const connectorOauthStates = pgTable(
         table.orgId,
       ),
       index("idx_connector_oauth_states_expires_at").on(table.expiresAt),
+      foreignKey({
+        name: "fk_connector_oauth_states_custom_connector",
+        columns: [table.customConnectorId, table.orgId],
+        foreignColumns: [orgCustomConnectors.id, orgCustomConnectors.orgId],
+      }).onDelete("cascade"),
+      check(
+        "chk_connector_oauth_states_identity",
+        sql`num_nonnulls(${table.type}, ${table.customConnectorId}) = 1`,
+      ),
+      check(
+        "chk_connector_oauth_states_custom_revision",
+        sql`(
+          ${table.customConnectorId} IS NULL
+          AND ${table.connectorRevision} IS NULL
+        ) OR (
+          ${table.customConnectorId} IS NOT NULL
+          AND ${table.connectorRevision} IS NOT NULL
+        )`,
+      ),
     ];
   },
 );

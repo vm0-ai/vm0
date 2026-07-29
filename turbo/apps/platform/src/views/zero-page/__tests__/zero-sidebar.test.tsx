@@ -1,5 +1,5 @@
 import { fireEvent, screen, waitFor, within } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 
 import {
   chatThreadByIdContract,
@@ -15,6 +15,10 @@ import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import { zeroAgentsByIdContract } from "@vm0/api-contracts/contracts/zero-agents";
 
 import {
+  createMockWorkflowAutomation,
+  setMockWorkflowAutomations,
+} from "../../../mocks/handlers/workflow-automations-store.ts";
+import {
   click,
   detachedSetupPage,
   fill,
@@ -27,8 +31,14 @@ import {
   getChatThreadVirtualListScrollMargin,
 } from "../../../signals/zero-page/zero-sidebar-state.ts";
 import { PLACEHOLDER } from "./chat-test-helpers.ts";
+import { i18n } from "../../../i18n/index.ts";
 
 const context = testContext();
+
+afterEach(async () => {
+  await i18n.changeLanguage("en-US");
+  document.documentElement.lang = "en-US";
+});
 
 const AGENT_ID = "c0000000-0000-4000-a000-000000000001";
 const RESEARCH_AGENT_ID = "c0000000-0000-4000-a000-000000000002";
@@ -2257,6 +2267,54 @@ describe("zero sidebar", () => {
     });
   });
 
+  it("localizes agent navigation and the conversation dialog in Brazilian Portuguese", async () => {
+    prepareAgentTeam();
+    context.mocks.data.userPreferences({
+      locale: "pt-BR",
+      supportedLocales: ["en-US", "pt-BR"],
+    });
+
+    setupSidebarPage({
+      context,
+      path: `/agents/${AGENT_ID}/chat`,
+      featureSwitches: {
+        [FeatureSwitchKey.LanguagePreference]: true,
+      },
+    });
+
+    const nav = await screen.findByRole("navigation", {
+      name: "Barra lateral",
+    });
+    expect(within(nav).getByText("Agentes")).toBeInTheDocument();
+
+    click(within(nav).getByLabelText("Abrir uma conversa"));
+
+    const dialog = await screen.findByRole("dialog", {
+      name: "Conversar com",
+    });
+    expect(within(dialog).getByLabelText("Fechar")).toBeInTheDocument();
+  });
+
+  it("localizes agent navigation in the three-column rail", async () => {
+    prepareDefaultAgent();
+    context.mocks.data.userPreferences({
+      locale: "pt-BR",
+      supportedLocales: ["en-US", "pt-BR"],
+    });
+
+    setupSidebarPage({
+      context,
+      path: `/agents/${AGENT_ID}/chat`,
+      featureSwitches: {
+        [FeatureSwitchKey.LanguagePreference]: true,
+        [FeatureSwitchKey.ThreeColumnNav]: true,
+      },
+    });
+
+    const rail = await screen.findByTestId("labeled-nav-rail");
+    expect(within(rail).getByText("Agentes")).toBeInTheDocument();
+  });
+
   it("uses CSS hover for the scrollbar and toggles the manage section", async () => {
     prepareDefaultAgent();
 
@@ -2404,5 +2462,102 @@ describe("zero sidebar", () => {
 
     expect(screen.queryByTestId("labeled-nav-rail")).not.toBeInTheDocument();
     expect(screen.queryByTestId("chat-list-column")).not.toBeInTheDocument();
+  });
+
+  it("localizes desktop and mobile shell navigation and shortcut help", async () => {
+    prepareDefaultAgent();
+    mockSidebarThreadStory([
+      createThread(EXISTING_THREAD_ID, "Localized conversation"),
+    ]);
+    setMockWorkflowAutomations([
+      createMockWorkflowAutomation({
+        chatThreadId: EXISTING_THREAD_ID,
+      }),
+    ]);
+    context.mocks.data.userPreferences({
+      locale: "pt-BR",
+      supportedLocales: ["en-US", "pt-BR"],
+    });
+
+    setupSidebarPage({
+      context,
+      path: `/chats/${EXISTING_THREAD_ID}`,
+      featureSwitches: {
+        [FeatureSwitchKey.Artifacts]: true,
+        [FeatureSwitchKey.LanguagePreference]: true,
+        [FeatureSwitchKey.ThreeColumnNav]: true,
+        [FeatureSwitchKey.ZeroDebug]: true,
+      },
+    });
+
+    const rail = await screen.findByTestId("labeled-nav-rail");
+    expect(
+      within(rail).getByRole("navigation", { name: "Barra lateral" }),
+    ).toBeInTheDocument();
+    expect(within(rail).getByText("Agentes")).toBeInTheDocument();
+    expect(within(rail).getByText("Fluxos")).toBeInTheDocument();
+    expect(within(rail).getByText("Conectores")).toBeInTheDocument();
+    expect(within(rail).getByText("Artefatos")).toBeInTheDocument();
+    expect(within(rail).getByText("Atividade")).toBeInTheDocument();
+    expect(
+      within(rail).getByLabelText("Onde Zero trabalha"),
+    ).toBeInTheDocument();
+    expect(screen.getByLabelText("Abrir menu")).toBeInTheDocument();
+    expect(
+      screen.getByLabelText("Abrir artefatos no celular"),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByLabelText("Abrir automações no celular"),
+    ).toBeInTheDocument();
+    expect(screen.getByLabelText("Recolher barra lateral")).toBeInTheDocument();
+
+    fireEvent.keyDown(document.body, { key: "?", shiftKey: true });
+
+    const dialog = await screen.findByRole("dialog", {
+      name: "Atalhos de teclado",
+    });
+    expect(
+      within(dialog).getByText("Atalhos disponíveis nesta página"),
+    ).toBeInTheDocument();
+    expect(within(dialog).getByText("Mostrar atalhos")).toBeInTheDocument();
+    expect(
+      within(dialog).getByLabelText("Fechar atalhos de teclado"),
+    ).toBeInTheDocument();
+  });
+
+  it("keeps localized navigation accessible while collapsing and expanding", async () => {
+    prepareDefaultAgent();
+    context.mocks.data.userPreferences({
+      locale: "pt-BR",
+      supportedLocales: ["en-US", "pt-BR"],
+    });
+
+    setupSidebarPage({
+      context,
+      path: `/agents/${AGENT_ID}/chat`,
+      featureSwitches: {
+        [FeatureSwitchKey.LanguagePreference]: true,
+        [FeatureSwitchKey.ZeroDebug]: true,
+      },
+    });
+
+    const nav = await screen.findByRole("navigation", {
+      name: "Barra lateral",
+    });
+    expect(within(nav).getByText("Gerenciar")).toBeInTheDocument();
+    expect(within(nav).getByText("Fluxos de trabalho")).toBeInTheDocument();
+    expect(within(nav).getByText("Logs de atividade")).toBeInTheDocument();
+
+    click(screen.getByLabelText("Recolher barra lateral"));
+
+    const expandButton = await screen.findByLabelText("Expandir barra lateral");
+    expect(
+      screen.getAllByRole("navigation", { name: "Barra lateral" }).length,
+    ).toBeGreaterThan(0);
+    expect(screen.getByLabelText("Agentes")).toBeInTheDocument();
+    expect(screen.getByLabelText("Logs de atividade")).toBeInTheDocument();
+
+    click(expandButton);
+    await screen.findByLabelText("Recolher barra lateral");
   });
 });

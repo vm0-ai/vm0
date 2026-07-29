@@ -53,6 +53,7 @@ import { createFirewallApi, secretTemplate } from "./helpers/api-bdd-firewall";
 import { createMiscRoutesApi } from "./helpers/api-bdd-misc";
 import { createRunsApi } from "./helpers/api-bdd-runs";
 import { createWebhookCallbackApi } from "./helpers/api-bdd-webhooks";
+import { chatEventDisplayText } from "./helpers/chat-event";
 import {
   clearThreadSessionBinding,
   deleteVm0ManagedDefaultModelKey,
@@ -532,7 +533,9 @@ async function waitForRunUserMessage(
 ): Promise<void> {
   await waitForThreadMessages(actor, threadId, (items) => {
     return userMessages(items).some((message) => {
-      return message.runId === runId && message.content === content;
+      return (
+        message.runId === runId && chatEventDisplayText(message) === content
+      );
     });
   });
 }
@@ -849,7 +852,12 @@ async function requestSendEventRaw(
 /** Chat send authenticated by a run-scoped sandbox bearer token. */
 async function requestSendEventWithBearer(
   token: string,
-  body: { readonly agentId: string; readonly prompt: string },
+  body: {
+    readonly agentId: string;
+    readonly clientEventId?: string;
+    readonly prompt: string;
+    readonly threadId?: string;
+  },
   statuses: readonly (201 | 401 | 403)[],
 ) {
   return await accept(
@@ -983,12 +991,12 @@ describe("CHAT-02: web chat send and client ids", () => {
     expect(userRows).toContainEqual(
       expect.objectContaining({
         id: clientEventId,
-        content: prompt,
+        content: null,
       }),
     );
     expect(userRows).toContainEqual(
       expect.objectContaining({
-        content: prompt,
+        content: null,
         runId,
         revokesEventId: clientEventId,
       }),
@@ -1000,7 +1008,7 @@ describe("CHAT-02: web chat send and client ids", () => {
       id: clientEventId,
       threadId: clientThreadId,
       eventType: "input.prompt",
-      content: prompt,
+      content: null,
     });
     expect(original?.runId).toBeUndefined();
     expect(original).not.toHaveProperty("revokesEventId");
@@ -1014,7 +1022,7 @@ describe("CHAT-02: web chat send and client ids", () => {
       id: clientEventId,
       threadId: clientThreadId,
       eventType: "input.prompt",
-      content: prompt,
+      content: null,
     });
     expect(originalById).not.toHaveProperty("revokesEventId");
 
@@ -1033,7 +1041,7 @@ describe("CHAT-02: web chat send and client ids", () => {
       id: clientEventId,
       threadId: clientThreadId,
       eventType: "input.prompt",
-      content: prompt,
+      content: null,
     });
     await expect(
       accept(
@@ -1472,7 +1480,10 @@ describe("CHAT-02: queueing and recalling messages", () => {
     if (!promoted?.runId) {
       throw new Error("Expected the original queued message to create a run");
     }
-    expect(promoted.content).toBe("must remain queued in the original thread");
+    expect(promoted.content).toBeNull();
+    expect(chatEventDisplayText(promoted)).toBe(
+      "must remain queued in the original thread",
+    );
     await cancelChatRun(actor, promoted.runId);
   }, 90_000);
 });
@@ -1609,14 +1620,20 @@ describe("CHAT-02: org queue markers", () => {
       return message.runId === queuedRun.body.runId;
     });
     expect(queuedRunMessage).toMatchObject({
-      content: "wait behind the active run",
+      content: null,
       runId: queuedRun.body.runId,
     });
+    expect(chatEventDisplayText(queuedRunMessage!)).toBe(
+      "wait behind the active run",
+    );
     expect(queuedRunMessage?.revokesEventId).toBeDefined();
     const queuedRunOriginal = queuedRunUserRows.find((message) => {
       return message.id === queuedRunMessage?.revokesEventId;
     });
-    expect(queuedRunOriginal?.content).toBe("wait behind the active run");
+    expect(queuedRunOriginal?.content).toBeNull();
+    expect(chatEventDisplayText(queuedRunOriginal!)).toBe(
+      "wait behind the active run",
+    );
     expect(queuedRunOriginal?.runId).toBeUndefined();
     const marker = assistantMessages(beforeDequeue.events).find((message) => {
       return message.runEventId === "queue:queued";
@@ -1803,11 +1820,19 @@ describe("CHAT-02: dispatch failure", () => {
     expect(failedMarker.error).toStrictEqual(expect.any(String));
     expect(userMessages(messages.events)).toContainEqual(
       expect.objectContaining({
-        content: "fail before worker start",
+        content: null,
         revokesEventId: messageId,
         runId: sent.body.runId,
       }),
     );
+    expect(
+      userMessages(messages.events).some((message) => {
+        return (
+          message.revokesEventId === messageId &&
+          chatEventDisplayText(message) === "fail before worker start"
+        );
+      }),
+    ).toBeTruthy();
     const replay = await chat.requestSendEvent(
       actor,
       {
@@ -1893,8 +1918,9 @@ describe("CHAT-02: admission without spendable credits", () => {
       throw new Error("Expected the original queued user message");
     }
     expect(queuedUser).toMatchObject({
-      content: "blocked by suspended plan",
+      content: null,
     });
+    expect(chatEventDisplayText(queuedUser)).toBe("blocked by suspended plan");
     expect(queuedUser.runId).toBeUndefined();
     const blockedUser = blockedUsers.find((message) => {
       return (
@@ -1906,10 +1932,11 @@ describe("CHAT-02: admission without spendable credits", () => {
       throw new Error("Expected an insufficient-credits replacement message");
     }
     expect(blockedUser).toMatchObject({
-      content: "blocked by suspended plan",
+      content: null,
       error: "insufficient_credits",
       revokesEventId: clientEventId,
     });
+    expect(chatEventDisplayText(blockedUser)).toBe("blocked by suspended plan");
     expect(blockedUser.runId).toBeUndefined();
     const guidance = assistantMessages(messages.events).find((message) => {
       return message.eventType === "output.error";
@@ -3476,6 +3503,10 @@ describe("CHAT-02: run-level model overrides", () => {
       await expect
         .poll(conversationChanges.blockedWaiterCount)
         .toBeGreaterThanOrEqual(1);
+      if (attempt + 1 < preparationAttempts) {
+        conversationChanges.queueNextChange();
+        await expect.poll(conversationChanges.queuedChangeIsBlocked).toBe(true);
+      }
       conversationChanges.release();
       if (attempt + 1 < preparationAttempts) {
         await expect
@@ -4255,7 +4286,7 @@ describe("CHAT-02: generation templates and attachments", () => {
       },
     );
     expect(message).toMatchObject({
-      content: prompt,
+      content: null,
       userMessage,
     });
     await cancelChatRun(actor, sent.runId);
@@ -4364,7 +4395,7 @@ describe("CHAT-02: generation templates and attachments", () => {
     );
     expect(message?.generationTemplate).toStrictEqual(illustrationTemplate);
     expect(message).toMatchObject({
-      content: "legacy fallback",
+      content: null,
       userMessage,
     });
     await cancelChatRun(actor, sent.runId);
@@ -4421,7 +4452,7 @@ describe("CHAT-02: generation templates and attachments", () => {
         return message.runId === sent.runId;
       }),
     ).toMatchObject({
-      content: "plain API attachment",
+      content: null,
       userMessage: {
         version: 1,
         parts: [
@@ -4435,6 +4466,13 @@ describe("CHAT-02: generation templates and attachments", () => {
         ],
       },
     });
+    expect(
+      chatEventDisplayText(
+        userMessages(messages.events).find((message) => {
+          return message.runId === sent.runId;
+        })!,
+      ),
+    ).toBe("plain API attachment");
     await cancelChatRun(actor, sent.runId);
   }, 60_000);
 
@@ -5123,7 +5161,8 @@ describe("CHAT-02: queued attachments on auto-send", () => {
     if (!promoted?.runId) {
       throw new Error("Expected the queued message to auto-send into a run");
     }
-    expect(promoted.content).toBe("queued with attachment");
+    expect(promoted.content).toBeNull();
+    expect(chatEventDisplayText(promoted)).toBe("queued with attachment");
     expect(promoted.attachFiles?.[0]).toMatchObject({
       id: fileId,
       filename: "notes.txt",
@@ -5139,8 +5178,9 @@ describe("CHAT-02: queued attachments on auto-send", () => {
     }
     expect(original).toMatchObject({
       id: queuedId,
-      content: "queued with attachment",
+      content: null,
     });
+    expect(chatEventDisplayText(original)).toBe("queued with attachment");
     expect(original.runId).toBeUndefined();
 
     const followUp = await api.readRun(actor, promoted.runId);
@@ -5159,8 +5199,8 @@ describe("CHAT-02/FILE-03: computer-use host grants", () => {
 
     // The thread's sticky host is not exposed by any read route, so the
     // grant is observed through the run token issued to each claim: a
-    // granted token can create write commands on the host, an ungranted
-    // token cannot, and no run token can ever post chat sends.
+    // granted token can create write commands on the host, while an
+    // ungranted token cannot. Chat messaging remains available independently.
     const plain = await sendChatRun(actor, {
       agentId,
       prompt: "no computer use selected",
@@ -5172,13 +5212,32 @@ describe("CHAT-02/FILE-03: computer-use host grants", () => {
       [403],
     );
     expect(deniedCommand.status).toBe(403);
-    const deniedSend = await requestSendEventWithBearer(
+    const nestedEventId = randomUUID();
+    const nestedSend = await requestSendEventWithBearer(
       plainToken,
-      { agentId, prompt: "sandbox tokens cannot chat" },
-      [403],
+      {
+        agentId,
+        clientEventId: nestedEventId,
+        threadId: plain.threadId,
+        prompt: "run tokens can send chat messages",
+      },
+      [201],
     );
-    expectApiError(deniedSend.body);
-    expect(deniedSend.body.error.message).toContain("agent-run:write");
+    expect(nestedSend.status).toBe(201);
+    expect(nestedSend.body).toMatchObject({ runId: null });
+    const recalled = await accept(
+      chatEventsClient().send({
+        headers: { authorization: `Bearer ${plainToken}` },
+        body: {
+          agentId,
+          threadId: plain.threadId,
+          revokesEventId: nestedEventId,
+          clientEventId: randomUUID(),
+        },
+      }),
+      [201],
+    );
+    expect(recalled.body.runId).toBeNull();
     await cancelChatRun(actor, plain.runId);
 
     // Selecting an online host pins it to the thread and grants the run
@@ -5442,7 +5501,7 @@ describe("CHAT-02: shared user message queue", () => {
       return message.revokesEventId === messageId;
     });
     expect(claimed).toMatchObject({
-      content: "queue-first direct dispatch",
+      content: null,
       userMessage,
       runId,
       revokesEventId: messageId,
@@ -5456,7 +5515,7 @@ describe("CHAT-02: shared user message queue", () => {
     }
     expect(queued).toMatchObject({
       id: messageId,
-      content: "queue-first direct dispatch",
+      content: null,
       userMessage,
     });
     expect(queued.runId).toBeUndefined();
@@ -5659,11 +5718,12 @@ describe("CHAT-02: shared user message queue", () => {
       .filter((message) => {
         return (
           !replacedIds.has(message.id) &&
-          (message.content === firstPrompt || message.content === secondPrompt)
+          (chatEventDisplayText(message) === firstPrompt ||
+            chatEventDisplayText(message) === secondPrompt)
         );
       })
       .map((message) => {
-        return message.content;
+        return chatEventDisplayText(message);
       });
     expect(visibleQueuedPrompts).toStrictEqual([secondPrompt, firstPrompt]);
 
@@ -6087,7 +6147,10 @@ describe("CHAT-02: shared user message queue", () => {
       throw new Error("Expected the original queued message");
     }
     expect(original.runId).toBeUndefined();
-    expect(claimed.content).toBe("recall races the appended claim");
+    expect(claimed.content).toBeNull();
+    expect(chatEventDisplayText(claimed)).toBe(
+      "recall races the appended claim",
+    );
 
     await cancelChatRun(actor, claimed.runId);
   }, 90_000);
@@ -6426,7 +6489,10 @@ describe("CHAT-02: shared user message queue", () => {
     if (!promoted?.runId) {
       throw new Error("Expected the queued message to append a replacement");
     }
-    expect(promoted.content).toBe("queue-first waits for the anchor");
+    expect(promoted.content).toBeNull();
+    expect(chatEventDisplayText(promoted)).toBe(
+      "queue-first waits for the anchor",
+    );
     const original = userMessages(messages.events).find((message) => {
       return message.id === queuedId;
     });
@@ -6509,7 +6575,8 @@ describe("CHAT-02: shared user message queue", () => {
     if (!fired?.runId) {
       throw new Error("Expected the queued message to fire after cancel");
     }
-    expect(fired.content).toBe("queue-first fires after cancel");
+    expect(fired.content).toBeNull();
+    expect(chatEventDisplayText(fired)).toBe("queue-first fires after cancel");
     const original = userMessages(messages.events).find((message) => {
       return message.id === queuedId;
     });

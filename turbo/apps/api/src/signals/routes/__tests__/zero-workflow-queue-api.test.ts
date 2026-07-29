@@ -1,4 +1,4 @@
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 
 import { chatEventsContract } from "@vm0/api-contracts/contracts/chat-threads";
 import { zeroWorkflowQueueContract } from "@vm0/api-contracts/contracts/zero-workflow-queue";
@@ -14,6 +14,7 @@ import type { ApiTestUser } from "./helpers/api-bdd";
 import { createRunsApi } from "./helpers/api-bdd-runs";
 import { createWebhookCallbackApi } from "./helpers/api-bdd-webhooks";
 import { createWorkflowsBddApi } from "./helpers/api-bdd-workflows";
+import { chatEventDisplayText } from "./helpers/chat-event";
 import { createZeroRouteMocks } from "./helpers/zero-route-test";
 
 const context = testContext();
@@ -172,7 +173,7 @@ async function workflowRunIds(threadId: string): Promise<readonly string[]> {
   return messages.flatMap((message) => {
     if (
       message.eventType !== "input.prompt" ||
-      message.content !== `/${WORKFLOW_NAME}` ||
+      chatEventDisplayText(message) !== `/${WORKFLOW_NAME}` ||
       !message.runId
     ) {
       return [];
@@ -277,6 +278,47 @@ describe("workflow queue API", () => {
     expect(runIds).toHaveLength(2);
     await completeRunThroughSandbox(scenario, runIds[1]!);
     await expect(workflowRunIds(automation.threadId)).resolves.toHaveLength(2);
+  });
+
+  it("recalls one pending automation through the chat event control route", async () => {
+    const { scenario, automation } = await busyQueueFixture(1);
+    const before = await accept(
+      queueClient().get({
+        headers: authHeaders(),
+        params: { threadId: automation.threadId },
+      }),
+      [200],
+    );
+    const pendingEventId = before.body.pending[0]?.id;
+    if (!pendingEventId) {
+      throw new Error("Expected one pending automation event");
+    }
+
+    const recalled = await accept(
+      chatMessagesClient().send({
+        headers: authHeaders(),
+        body: {
+          agentId: scenario.agentId,
+          threadId: automation.threadId,
+          revokesEventId: pendingEventId,
+          clientEventId: randomUUID(),
+        },
+      }),
+      [201],
+    );
+    expect(recalled.body).toMatchObject({
+      runId: null,
+      threadId: automation.threadId,
+    });
+
+    const after = await accept(
+      queueClient().get({
+        headers: authHeaders(),
+        params: { threadId: automation.threadId },
+      }),
+      [200],
+    );
+    expect(after.body.pending).toStrictEqual([]);
   });
 
   it("clears all pending events", async () => {
@@ -498,7 +540,8 @@ describe("workflow queue API", () => {
     const messages = await wf.readThreadEvents(automation.threadId);
     const claimedUserMessage = messages.find((message) => {
       return (
-        message.content === "queued user message before manual Run now" &&
+        chatEventDisplayText(message) ===
+          "queued user message before manual Run now" &&
         typeof message.runId === "string"
       );
     });

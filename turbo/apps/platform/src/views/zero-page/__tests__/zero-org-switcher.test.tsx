@@ -1,4 +1,5 @@
 import { screen, waitFor } from "@testing-library/react";
+import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import { describe, expect, it } from "vitest";
 
 import {
@@ -17,6 +18,16 @@ function buttonByText(text: string): HTMLElement {
   });
   if (!button) {
     throw new Error(`${text} button not found`);
+  }
+  return button;
+}
+
+function buttonByLabel(label: string): HTMLElement {
+  const button = queryAllByRoleFast("button").find((candidate) => {
+    return candidate.getAttribute("aria-label") === label;
+  });
+  if (!button) {
+    throw new Error(`${label} button not found`);
   }
   return button;
 }
@@ -266,5 +277,67 @@ describe("zero org switcher", () => {
     expect(scrollRegion).toHaveClass("overflow-y-auto");
     expect(screen.getByText("Workspace 12")).toBeInTheDocument();
     expect(screen.getByText(longWorkspaceName)).toBeInTheDocument();
+  });
+
+  it("localizes workspace switcher actions without translating workspace names", async () => {
+    context.mocks.data.userPreferences({
+      locale: "pt-BR",
+      supportedLocales: ["en-US", "pt-BR"],
+    });
+    context.mocks.data.org({
+      id: "org_current",
+      name: "Acme",
+      slug: "acme",
+      role: "admin",
+    });
+
+    detachedSetupPage({
+      context,
+      path: "/",
+      featureSwitches: { [FeatureSwitchKey.LanguagePreference]: true },
+      user: {
+        id: "test-user-123",
+        fullName: "Alex Rivera",
+        email: "alex.rivera@example.test",
+        createOrganizationEnabled: true,
+      },
+      org: {
+        activeOrg: {
+          id: "org_current",
+          name: "Acme",
+          slug: "acme",
+        },
+        memberships: [
+          {
+            id: "membership_current",
+            organization: {
+              id: "org_current",
+              name: "Acme",
+            },
+          },
+        ],
+        pendingInvitations: [
+          {
+            id: "invitation_pt",
+            publicOrganizationData: {
+              id: "org_invited",
+              name: "Design Org",
+              imageUrl: "https://cdn.vm0.test/orgs/design.png",
+            },
+            accept: async () => {},
+          },
+        ],
+      },
+    });
+
+    await screen.findByText("Acme");
+    const switcher = buttonByLabel("Trocar de espaço de trabalho");
+    click(switcher);
+
+    await waitFor(() => {
+      expect(screen.getByText("Design Org")).toBeInTheDocument();
+      expect(screen.getByText("Entrar")).toBeInTheDocument();
+      expect(screen.getByText("Criar espaço de trabalho")).toBeInTheDocument();
+    });
   });
 });

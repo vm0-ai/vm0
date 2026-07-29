@@ -1,6 +1,7 @@
 import { command } from "ccstate";
 import { createElement } from "react";
 import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
+import { i18n } from "../../i18n/index.ts";
 
 import { ArtifactCatalogPage } from "../../views/artifacts-page/artifact-catalog-page.tsx";
 import { hideAppSkeleton$ } from "../app-skeleton.ts";
@@ -30,7 +31,12 @@ export const setupArtifactsPage$ = command(
     set(setArtifactCatalogKind$, "presentation");
     set(reloadArtifactCatalog$);
     set(updatePage$, createElement(ArtifactCatalogPage), "sidebar");
-    set(updateDocumentTitle$, "Artifacts");
+    set(
+      updateDocumentTitle$,
+      i18n.t(($) => {
+        return $.artifacts.title;
+      }),
+    );
     await set(hideAppSkeleton$, signal);
 
     await set(onboardGuard$, signal);

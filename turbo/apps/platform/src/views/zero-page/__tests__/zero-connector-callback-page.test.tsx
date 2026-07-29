@@ -1,4 +1,5 @@
 import { connectorsSlugCallbackContract } from "@vm0/api-contracts/contracts/connectors-slug-callback";
+import { zeroCustomConnectorOAuth2Contract } from "@vm0/api-contracts/contracts/zero-custom-connectors";
 import type { PublicConnectorCatalogIcon } from "@vm0/api-contracts/contracts/zero-connector-catalog";
 import { CONNECTOR_APP_OAUTH_CALLBACK_METADATA_STORAGE_KEY } from "@vm0/connectors/app-oauth-callback";
 import { screen, waitFor } from "@testing-library/react";
@@ -21,6 +22,41 @@ afterEach(async () => {
 });
 
 describe("connector callback page", () => {
+  it("completes a custom connector callback through the API", async () => {
+    let observedQuery: Readonly<Record<string, string | undefined>> = {};
+    context.mocks.api(
+      zeroCustomConnectorOAuth2Contract.callback,
+      ({ query, respond }) => {
+        observedQuery = query;
+        return respond(200, {
+          status: "success",
+          username: null,
+        });
+      },
+    );
+
+    detachedSetupPage({
+      context,
+      path: "/connectors/custom/callback?code=oauth-code&state=oauth-state",
+      user: null,
+      session: null,
+    });
+
+    await expect(
+      screen.findByRole("heading", {
+        name: "Custom connector connected",
+      }),
+    ).resolves.toBeInTheDocument();
+    expect(observedQuery).toMatchObject({
+      code: "oauth-code",
+      state: "oauth-state",
+      responseMode: "json",
+    });
+    await waitFor(() => {
+      expect(pathname()).toBe("/connectors/custom/callback/success");
+    });
+  });
+
   it("forwards provider parameters and renders a durable success page", async () => {
     const githubIcon: PublicConnectorCatalogIcon = {
       url: "https://icons.example.test/github.svg",

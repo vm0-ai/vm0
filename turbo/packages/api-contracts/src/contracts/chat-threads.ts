@@ -454,6 +454,7 @@ const chatMessageRecommendedFollowupsSchema = z.preprocess((value) => {
 const inputPromptEventSchema = chatEventBaseSchema
   .extend({
     eventType: z.literal("input.prompt"),
+    content: z.null(),
     userMessage: userMessageDocumentSchema,
     attachFiles: z.array(resolvedAttachFileSchema).optional(),
     generationTemplate: generationTemplateRequestSchema.optional(),
@@ -473,6 +474,7 @@ const inputAutomationEventSchema = chatEventBaseSchema
 const inputRejectedEventSchema = chatEventBaseSchema
   .extend({
     eventType: z.literal("input.rejected"),
+    content: z.null(),
     userMessage: userMessageDocumentSchema,
     error: z.string(),
     automationId: z.string().uuid().optional(),
@@ -646,6 +648,9 @@ const chatThreadDetailSchema = z.object({
 
 const chatThreadMetadataSchema = z.object({
   id: z.string(),
+  // Optional during API/CLI rollout so a newer CLI can fall back to the
+  // compact thread snapshot when it reaches an older API.
+  agentId: z.string().uuid().optional(),
   title: z.string().nullable(),
   selectedModel: z.string().nullable(),
 });
@@ -1349,6 +1354,7 @@ export const chatThreadEventsContract = c.router({
       }),
       400: apiErrorSchema,
       401: apiErrorSchema,
+      403: apiErrorSchema,
       404: apiErrorSchema,
     },
     summary: "Get paginated chat events for a thread",

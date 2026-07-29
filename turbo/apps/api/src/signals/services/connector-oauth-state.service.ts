@@ -1,6 +1,6 @@
 import type { ConnectorSlug } from "@vm0/api-contracts/contracts/connector-identity";
 import { connectorOauthStates } from "@vm0/db/schema/connector-oauth-state";
-import { and, eq, gt, isNull } from "drizzle-orm";
+import { and, eq, gt, isNotNull, isNull } from "drizzle-orm";
 
 import { nowDate } from "../../lib/time";
 import type { Db, ReadonlyDb } from "../external/db";
@@ -110,6 +110,43 @@ export async function claimConnectorOAuthState(
       and(
         eq(connectorOauthStates.state, args.state),
         eq(connectorOauthStates.type, args.connectorSlug),
+        isNull(connectorOauthStates.consumedAt),
+        gt(connectorOauthStates.expiresAt, claimedAt),
+      ),
+    )
+    .returning();
+  signal.throwIfAborted();
+
+  if (claimedState) {
+    return { kind: "usable", state: claimedState };
+  }
+
+  const [existingState] = await db
+    .select({ id: connectorOauthStates.id })
+    .from(connectorOauthStates)
+    .where(eq(connectorOauthStates.state, args.state))
+    .limit(1);
+  signal.throwIfAborted();
+
+  return existingState ? { kind: "invalid" } : { kind: "missing" };
+}
+
+export async function claimCustomConnectorOAuthState(
+  db: Db,
+  args: {
+    readonly state: string;
+  },
+  signal: AbortSignal,
+): Promise<ConnectorOAuthStateClaimResult> {
+  const claimedAt = nowDate();
+  const [claimedState] = await db
+    .delete(connectorOauthStates)
+    .where(
+      and(
+        eq(connectorOauthStates.state, args.state),
+        isNull(connectorOauthStates.type),
+        isNotNull(connectorOauthStates.customConnectorId),
+        eq(connectorOauthStates.authMethod, "oauth2"),
         isNull(connectorOauthStates.consumedAt),
         gt(connectorOauthStates.expiresAt, claimedAt),
       ),

@@ -414,7 +414,6 @@ async function persistMorningBriefQueueEvent(
       id: randomUUID(),
       chatThreadId: args.chatThreadId,
       eventType: "input.prompt",
-      content: args.chatMessage,
       userMessage: createUserMessageDocument({ text: args.chatMessage }),
       runId: null,
       triggerSource: "workflow-schedule",

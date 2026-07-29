@@ -1589,7 +1589,6 @@ function appendUnassociatedUserMessage(params: {
       ...(explicitId ? { id: explicitId } : {}),
       chatThreadId: params.threadId,
       eventType: "input.prompt",
-      content: params.prompt,
       userMessage: params.userMessage,
       runId: null,
       triggerSource: "web",
@@ -1704,7 +1703,6 @@ async function appendAssociatedUserMessage(params: {
       ...(explicitId ? { id: explicitId } : {}),
       chatThreadId: params.threadId,
       eventType: "input.prompt",
-      content: params.prompt,
       userMessage: params.userMessage,
       runId: params.runId,
       attachFiles: fileIds,
@@ -1745,7 +1743,9 @@ function appendRecallUserMessage(params: {
       chatThreadId: params.threadId,
       eventId: params.revokesEventId,
     });
-    const wasPending = pendingTarget?.eventType === "input.prompt";
+    const wasPending =
+      pendingTarget?.eventType === "input.prompt" ||
+      pendingTarget?.eventType === "input.automation";
 
     const [existingRevoker] = await tx
       .select({
@@ -1784,7 +1784,11 @@ function appendRecallUserMessage(params: {
         and(
           eq(chatMessages.id, params.revokesEventId),
           eq(chatMessages.chatThreadId, params.threadId),
-          chatEventTypeIn(["input.prompt", "input.rejected"]),
+          chatEventTypeIn([
+            "input.prompt",
+            "input.automation",
+            "input.rejected",
+          ]),
         ),
       )
       .limit(1);
@@ -2725,7 +2729,6 @@ async function appendQueueFirstInsufficientCreditsMessages(params: {
     }
     const [queuedMessage] = await tx
       .select({
-        content: chatMessages.content,
         userMessage: chatMessages.userMessage,
         attachFiles: chatMessages.attachFiles,
         attachFileMetadata: chatMessages.attachFileMetadata,
@@ -2757,7 +2760,6 @@ async function appendQueueFirstInsufficientCreditsMessages(params: {
     const replacement = await replaceChatEvent(tx, params.messageId, {
       chatThreadId: params.prepared.thread.threadId,
       eventType: "input.rejected",
-      content: queuedMessage.content,
       userMessage: queuedMessage.userMessage,
       runId: null,
       error: INSUFFICIENT_CREDITS_MARKER,
@@ -2847,7 +2849,6 @@ async function appendInsufficientCreditsMessages(params: {
       ...(explicitId ? { id: explicitId } : {}),
       chatThreadId: params.prepared.thread.threadId,
       eventType: "input.rejected",
-      content: params.body.prompt,
       userMessage: params.body.userMessage,
       runId: null,
       error: INSUFFICIENT_CREDITS_MARKER,
@@ -3435,7 +3436,7 @@ export const zeroChatEventsRoutes: readonly RouteEntry[] = [
       {
         requireOrganization: true,
         missingOrganizationStatus: 401,
-        requiredCapability: "agent-run:write",
+        requiredCapability: "chat-message:write",
       },
       sendChatEventInner$,
     ),

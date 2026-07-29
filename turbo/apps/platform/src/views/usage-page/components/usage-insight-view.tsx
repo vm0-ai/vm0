@@ -6,8 +6,10 @@ import {
 import { UsageInsightBarChart } from "./usage-insight-bar-chart.tsx";
 import { UsageInsightAutomationsTable } from "./usage-insight-automations-table.tsx";
 import { UsageInsightChatsTable } from "./usage-insight-chats-table.tsx";
+import { useTranslation } from "react-i18next";
 
 export function UsageInsightView() {
+  const { t } = useTranslation();
   const range = useGet(range$);
   const loadable = useLastLoadable(usageInsightAsync$);
 
@@ -24,7 +26,9 @@ export function UsageInsightView() {
           className="rounded-[20px] bg-card px-5 py-8 text-center text-sm text-muted-foreground border border-border/40"
           role="alert"
         >
-          Failed to load usage insights. Please try again later.
+          {t(($) => {
+            return $.usage.page.loadError;
+          })}
         </div>
       )}
       {data && <UsageInsightBarChart data={data} range={range} />}

@@ -1,9 +1,13 @@
 import {
   zeroCustomConnectorByIdContract,
+  zeroCustomConnectorOAuth2Contract,
   zeroCustomConnectorSecretContract,
   zeroCustomConnectorsContract,
+  type CreateCustomConnectorBody,
   type CustomConnectorResponse,
+  type UpdateCustomConnectorBody,
 } from "@vm0/api-contracts/contracts/zero-custom-connectors";
+import { zeroAgentCustomConnectorsContract } from "@vm0/api-contracts/contracts/zero-agent-custom-connectors";
 import {
   zeroConnectorExternalCodeSessionContract,
   zeroConnectorOpenIdStartContract,
@@ -47,6 +51,7 @@ import { ROUTES } from "../../../signals/route-paths.ts";
 import { resetSignal } from "../../../signals/utils.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { submitManualGrant$ } from "../../../signals/zero-page/settings/connectors.ts";
+import { customConnectorCreateForm$ } from "../../../signals/zero-page/settings/custom-connectors.ts";
 
 const context = testContext();
 const resetAfterManualGrantConnectSignal$ = resetSignal();
@@ -87,6 +92,19 @@ function queryButtonByText(
   );
 }
 
+function buttonByAriaLabel(
+  label: string,
+  container: ParentNode = document.body,
+): HTMLElement {
+  const button = queryAllByRoleFast("button", container).find((candidate) => {
+    return candidate.getAttribute("aria-label") === label;
+  });
+  if (!button) {
+    throw new Error(`${label} button not found`);
+  }
+  return button;
+}
+
 function queryMenuItemByText(text: string): HTMLElement | null {
   return (
     queryAllByRoleFast("menuitem").find((candidate) => {
@@ -101,6 +119,16 @@ function menuItemByText(text: string): HTMLElement {
     throw new Error(`${text} menu item not found`);
   }
   return menuItem;
+}
+
+function tabByText(text: string): HTMLElement {
+  const tab = queryAllByRoleFast("tab").find((candidate) => {
+    return candidate.textContent === text;
+  });
+  if (!tab) {
+    throw new Error(`${text} tab not found`);
+  }
+  return tab;
 }
 
 function queryConnectorCardByLabel(label: string): HTMLElement | null {
@@ -271,6 +299,13 @@ function customConnector(
   };
 }
 
+function publicCustomConnectorOAuthConfig(
+  config: NonNullable<CreateCustomConnectorBody["oauthConfig"]>,
+) {
+  const { clientSecret: _clientSecret, ...publicConfig } = config;
+  return publicConfig;
+}
+
 function publicStatusItem(args: {
   readonly connectorSlug: ConnectorSlug;
   readonly label: string;
@@ -353,7 +388,13 @@ function mockCustomConnectorStory(): void {
     ({ params, respond }) => {
       connectors = connectors.map((connector) => {
         return connector.id === params.id
-          ? { ...connector, hasSecret: true }
+          ? {
+              ...connector,
+              connected: true,
+              missingRequiredFields: [],
+              configuredFieldKeys: ["secret"],
+              hasSecret: true,
+            }
           : connector;
       });
       return respond(204);
@@ -364,7 +405,13 @@ function mockCustomConnectorStory(): void {
     ({ params, respond }) => {
       connectors = connectors.map((connector) => {
         return connector.id === params.id
-          ? { ...connector, hasSecret: false }
+          ? {
+              ...connector,
+              connected: false,
+              missingRequiredFields: ["secret"],
+              configuredFieldKeys: [],
+              hasSecret: false,
+            }
           : connector;
       });
       return respond(204);
@@ -384,6 +431,43 @@ function mockCustomConnectorStory(): void {
         return renamed;
       });
       return respond(200, renamed ?? customConnector({}));
+    },
+  );
+  context.mocks.api(
+    zeroCustomConnectorByIdContract.update,
+    ({ params, body, respond }) => {
+      let updated = connectors.find((connector) => {
+        return connector.id === params.id;
+      });
+      connectors = connectors.map((connector) => {
+        if (connector.id !== params.id) {
+          return connector;
+        }
+        const firstHeader = body.headerInjections[0];
+        updated = {
+          ...connector,
+          displayName: body.displayName,
+          prefixes: body.prefixTemplates,
+          prefixTemplates: body.prefixTemplates,
+          fields: body.fields,
+          headerInjections: body.headerInjections,
+          queryInjections: body.queryInjections,
+          authMode: body.authMode ?? connector.authMode,
+          ...(body.oauthConfig
+            ? {
+                oauthConfig: publicCustomConnectorOAuthConfig(body.oauthConfig),
+              }
+            : {}),
+          headerName: firstHeader?.name ?? connector.headerName,
+          headerTemplate:
+            firstHeader?.valueTemplate.replaceAll(
+              "{{secrets.secret}}",
+              "{{secret}}",
+            ) ?? connector.headerTemplate,
+        };
+        return updated;
+      });
+      return respond(200, updated ?? customConnector({}));
     },
   );
   context.mocks.api(
@@ -432,6 +516,30 @@ async function expectConnectorCardsVisible(expected: {
 }
 
 describe("connectors page", () => {
+  it("syncs the active connector tab with the URL query", async () => {
+    mockCustomConnectorStory();
+
+    detachedSetupPage({ context, path: "/connectors?tab=custom" });
+
+    await waitFor(() => {
+      expect(tabByText("Custom")).toHaveAttribute("aria-selected", "true");
+    });
+    const customTab = tabByText("Custom");
+    expect(new URLSearchParams(search()).get("tab")).toBe("custom");
+
+    click(tabByText("Built-in"));
+    await waitFor(() => {
+      expect(new URLSearchParams(search()).has("tab")).toBeFalsy();
+      expect(tabByText("Built-in")).toHaveAttribute("aria-selected", "true");
+    });
+
+    click(customTab);
+    await waitFor(() => {
+      expect(new URLSearchParams(search()).get("tab")).toBe("custom");
+      expect(customTab).toHaveAttribute("aria-selected", "true");
+    });
+  });
+
   it("lets users browse connectors by grouped categories", async () => {
     mockConnectors([{ connectorSlug: "github", externalUsername: "octocat" }]);
 
@@ -1650,6 +1758,7 @@ describe("connectors page", () => {
     ["strava", "Strava"],
     ["todoist", "Todoist"],
     ["vercel", "Vercel"],
+    ["xero", "Xero"],
   ] as const)(
     "starts %s OAuth with the app callback",
     async (connectorSlug, label) => {
@@ -3135,8 +3244,401 @@ describe("connectors page", () => {
     ).toBeInTheDocument();
   });
 
+  it("shows connection status and authorized agents on custom connector cards", async () => {
+    const researchAgentId = "c0000000-0000-4000-a000-000000000031";
+    const supportAgentId = "c0000000-0000-4000-a000-000000000032";
+    const connector = customConnector({
+      connected: true,
+      missingRequiredFields: [],
+      configuredFieldKeys: ["secret"],
+      hasSecret: true,
+    });
+    context.mocks.data.org({
+      id: "org_1",
+      slug: "test-org",
+      name: "Test Org",
+      role: "admin",
+    });
+    context.mocks.data.team([
+      teamAgent(researchAgentId, "Research"),
+      teamAgent(supportAgentId, "Support"),
+    ]);
+    context.mocks.api(zeroCustomConnectorsContract.list, ({ respond }) => {
+      return respond(200, { connectors: [connector] });
+    });
+    context.mocks.api(
+      zeroAgentCustomConnectorsContract.get,
+      ({ params, respond }) => {
+        return respond(200, {
+          enabledIds: params.id === researchAgentId ? [connector.id] : [],
+        });
+      },
+    );
+
+    detachedSetupPage({ context, path: "/connectors?tab=custom" });
+
+    await waitFor(() => {
+      const card = connectorCardByLabel("Acme Search");
+      expect(within(card).getByText("Connected")).toBeInTheDocument();
+      expect(
+        within(card).getByTestId("custom-connector-card-agent-usage"),
+      ).toHaveTextContent("Used by Research");
+    });
+    expect(
+      screen.queryByText("https://api.acme.test/v1/"),
+    ).not.toBeInTheDocument();
+  });
+
+  it("configures OAuth app credentials at creation and authorizes on connect", async () => {
+    const defaultAgentId = "c0000000-0000-4000-a000-000000000001";
+    const researchAgentId = "c0000000-0000-4000-a000-000000000041";
+    context.mocks.data.org({
+      id: "org_1",
+      slug: "test-org",
+      name: "Test Org",
+      role: "admin",
+    });
+    context.mocks.data.team([
+      teamAgent(defaultAgentId, "Zero"),
+      teamAgent(researchAgentId, "Research"),
+    ]);
+    const createdBodies: CreateCustomConnectorBody[] = [];
+    const updatedBodies: UpdateCustomConnectorBody[] = [];
+    let oauthStartCount = 0;
+    let connector: CustomConnectorResponse | null = null;
+    const authWindow = createMockAuthWindow();
+    const browserOpen = context.mocks.browser.open(authWindow);
+    const clipboard = context.mocks.browser.clipboardWriteText();
+
+    context.mocks.api(zeroCustomConnectorsContract.list, ({ respond }) => {
+      return respond(200, { connectors: connector ? [connector] : [] });
+    });
+    context.mocks.api(
+      zeroCustomConnectorsContract.create,
+      ({ body, respond }) => {
+        createdBodies.push(body);
+        connector = customConnector({
+          displayName: body.displayName,
+          prefixes: body.prefixTemplates ?? [],
+          prefixTemplates: body.prefixTemplates ?? [],
+          fields: body.fields ?? [],
+          headerInjections: body.headerInjections ?? [],
+          queryInjections: body.queryInjections ?? [],
+          authMode: body.authMode,
+          ...(body.oauthConfig
+            ? {
+                oauthConfig: publicCustomConnectorOAuthConfig(body.oauthConfig),
+              }
+            : {}),
+        });
+        return respond(201, connector);
+      },
+    );
+    context.mocks.api(
+      zeroCustomConnectorByIdContract.update,
+      ({ params, body, respond }) => {
+        expect(params.id).toBe(connector?.id);
+        updatedBodies.push(body);
+        if (!connector) {
+          throw new Error("Expected custom connector to exist");
+        }
+        connector = {
+          ...connector,
+          displayName: body.displayName,
+          prefixes: body.prefixTemplates,
+          prefixTemplates: body.prefixTemplates,
+          fields: body.fields,
+          headerInjections: body.headerInjections,
+          queryInjections: body.queryInjections,
+          authMode: body.authMode ?? connector.authMode,
+          ...(body.oauthConfig
+            ? {
+                oauthConfig: publicCustomConnectorOAuthConfig(body.oauthConfig),
+              }
+            : {}),
+        };
+        return respond(200, connector);
+      },
+    );
+    context.mocks.api(
+      zeroCustomConnectorOAuth2Contract.start,
+      ({ params, body, respond }) => {
+        expect(params.id).toBe(connector?.id);
+        expect(body).toStrictEqual({});
+        oauthStartCount += 1;
+        if (!connector) {
+          throw new Error("Expected custom connector to exist");
+        }
+        connector = {
+          ...connector,
+          connected: true,
+          hasSecret: true,
+          missingRequiredFields: [],
+        };
+        authWindow.close();
+        return respond(200, {
+          authorizationUrl: "https://oauth.acme.test/authorize?state=ui-test",
+        });
+      },
+    );
+
+    detachedSetupPage({
+      context,
+      path: "/connectors",
+      featureSwitches: {
+        [FeatureSwitchKey.CustomConnectorOAuth2]: true,
+      },
+    });
+
+    click(await screen.findByText("Custom"));
+    click(await screen.findByText("New connector"));
+
+    const createDialog = await screen.findByRole("dialog", {
+      name: "New custom connector",
+    });
+    await fill(within(createDialog).getByLabelText("Display name"), "Acme API");
+    await fill(
+      within(createDialog).getByLabelText(/Prefixes/u),
+      "https://api.acme.test/v1/",
+    );
+
+    expect(
+      context.store.get(customConnectorCreateForm$).authMethodTypes,
+    ).toStrictEqual([]);
+    expect(
+      within(createDialog).queryByText("API authentication"),
+    ).not.toBeInTheDocument();
+    expect(buttonByText("Create", createDialog)).toBeDisabled();
+
+    click(buttonByText("Add authentication", createDialog));
+    click(menuItemByText("OAuth 2.0"));
+    await waitFor(() => {
+      expect(
+        context.store.get(customConnectorCreateForm$).authMethodTypes,
+      ).toStrictEqual(["oauth2"]);
+    });
+    await fill(
+      within(createDialog).getByLabelText("Token URL"),
+      "https://oauth.acme.test/token",
+    );
+    await fill(
+      within(createDialog).getByLabelText("Client ID"),
+      "connector-oauth-client-id",
+    );
+    await fill(
+      within(createDialog).getByLabelText("Client secret"),
+      "connector-oauth-client-secret",
+    );
+    await fill(
+      within(createDialog).getByLabelText(/Scopes/u),
+      "search.read\nsearch.write",
+    );
+    const advancedSettingsLabel =
+      within(createDialog).getByText("Advanced settings");
+    const advancedSettings = advancedSettingsLabel.closest("details");
+    if (!(advancedSettings instanceof HTMLDetailsElement)) {
+      throw new Error("Expected OAuth advanced settings disclosure");
+    }
+    expect(advancedSettings.open).toBeFalsy();
+    click(advancedSettingsLabel);
+    expect(advancedSettings.open).toBeTruthy();
+    click(within(createDialog).getByLabelText("PKCE"));
+    click(await screen.findByRole("option", { name: "S256" }));
+    await waitFor(() => {
+      expect(screen.queryByRole("listbox")).not.toBeInTheDocument();
+    });
+    await fill(
+      within(createDialog).getByLabelText(/Resource/u),
+      "https://api.acme.test",
+    );
+    await fill(within(createDialog).getByLabelText(/Audience/u), "acme-api");
+    await fill(within(createDialog).getByLabelText(/Access type/u), "offline");
+    await fill(within(createDialog).getByLabelText(/Prompt/u), "consent");
+    await fill(
+      within(createDialog).getByLabelText("Authorization URL"),
+      "https://oauth.acme.test/authorize",
+    );
+    const redirectUrlInput = within(createDialog).getByLabelText(
+      /^Redirect URL/u,
+      {
+        selector: "input",
+      },
+    );
+    if (!(redirectUrlInput instanceof HTMLInputElement)) {
+      throw new Error("Expected custom connector redirect URL input");
+    }
+    const redirectUrl = new URL(redirectUrlInput.value);
+    expect(redirectUrl.origin).toBe(window.location.origin);
+    expect(redirectUrl.pathname).toBe("/connectors/custom/callback");
+    click(within(createDialog).getByLabelText("Copy Redirect URL"));
+    await waitFor(() => {
+      expect(clipboard.writes).toStrictEqual([redirectUrlInput.value]);
+    });
+
+    const createButton = buttonByText("Create", createDialog);
+    expect(context.store.get(customConnectorCreateForm$)).toMatchObject({
+      displayName: "Acme API",
+      prefixesRaw: "https://api.acme.test/v1/",
+      authMethodTypes: ["oauth2"],
+      oauthAuthorizationUrl: "https://oauth.acme.test/authorize",
+      oauthTokenUrl: "https://oauth.acme.test/token",
+      oauthClientId: "connector-oauth-client-id",
+      oauthClientSecret: "connector-oauth-client-secret",
+      oauthPkceMethod: "S256",
+      oauthResource: "https://api.acme.test",
+      oauthAudience: "acme-api",
+      oauthAccessType: "offline",
+      oauthPrompt: "consent",
+    });
+    expect(createButton).toBeEnabled();
+    click(createButton);
+    await waitFor(() => {
+      expect(createdBodies).toHaveLength(1);
+    });
+    await waitFor(() => {
+      expect(screen.getByText("Acme API")).toBeInTheDocument();
+    });
+    expect(createdBodies).toHaveLength(1);
+    expect(createdBodies[0]).toMatchObject({
+      displayName: "Acme API",
+      prefixTemplates: ["https://api.acme.test/v1/"],
+      fields: [],
+      headerInjections: [
+        {
+          name: "Authorization",
+          valueTemplate: "Bearer {{oauth.access_token}}",
+        },
+      ],
+      authMode: "oauth",
+      oauthConfig: {
+        providerAdapter: "standard",
+        clientId: "connector-oauth-client-id",
+        clientSecret: "connector-oauth-client-secret",
+        authorizationUrl: "https://oauth.acme.test/authorize",
+        tokenUrl: "https://oauth.acme.test/token",
+        scopes: ["search.read", "search.write"],
+        tokenEndpointAuthMethod: "client_secret_post",
+        pkceMethod: "S256",
+        authorizationParams: {
+          resource: "https://api.acme.test",
+          audience: "acme-api",
+          access_type: "offline",
+          prompt: "consent",
+        },
+      },
+    });
+
+    click(screen.getByLabelText("More options"));
+    click(await screen.findByText("Edit"));
+    const editDialog = await screen.findByRole("dialog", {
+      name: "Edit custom connector",
+    });
+    expect(within(editDialog).getByLabelText("Authorization URL")).toHaveValue(
+      "https://oauth.acme.test/authorize",
+    );
+    expect(within(editDialog).getByLabelText("Client ID")).toHaveValue(
+      "connector-oauth-client-id",
+    );
+    expect(within(editDialog).getByLabelText("New client secret")).toHaveValue(
+      "",
+    );
+    expect(within(editDialog).getByLabelText(/Scopes/u)).toHaveValue(
+      "search.read\nsearch.write",
+    );
+    expect(within(editDialog).getByLabelText("PKCE")).toHaveTextContent("S256");
+    expect(within(editDialog).getByLabelText(/Resource/u)).toHaveValue(
+      "https://api.acme.test",
+    );
+    expect(within(editDialog).getByLabelText(/Audience/u)).toHaveValue(
+      "acme-api",
+    );
+    expect(within(editDialog).getByLabelText(/Access type/u)).toHaveValue(
+      "offline",
+    );
+    expect(within(editDialog).getByLabelText(/Prompt/u)).toHaveValue("consent");
+    await fill(
+      within(editDialog).getByLabelText(/Prefixes/u),
+      "https://api.acme.test/v2/",
+    );
+    await fill(
+      within(editDialog).getByLabelText(/Scopes/u),
+      "search.read\ncalendar.write",
+    );
+    click(buttonByText("Save", editDialog));
+    const confirmationDialog = await screen.findByRole("dialog", {
+      name: "Disconnect existing OAuth connections?",
+    });
+    expect(updatedBodies).toHaveLength(0);
+    expect(
+      within(confirmationDialog).getByText(
+        /disconnect every member currently connected with OAuth/u,
+      ),
+    ).toBeInTheDocument();
+    expect(editDialog).toBeInTheDocument();
+    click(buttonByText("Save and disconnect", confirmationDialog));
+    await waitFor(() => {
+      expect(updatedBodies).toHaveLength(1);
+    });
+    expect(screen.getByText("https://api.acme.test/v2/")).toBeInTheDocument();
+    expect(updatedBodies[0]).toMatchObject({
+      displayName: "Acme API",
+      prefixTemplates: ["https://api.acme.test/v2/"],
+      authMode: "oauth",
+      oauthConfig: {
+        providerAdapter: "standard",
+        clientId: "connector-oauth-client-id",
+        authorizationUrl: "https://oauth.acme.test/authorize",
+        tokenUrl: "https://oauth.acme.test/token",
+        scopes: ["search.read", "calendar.write"],
+        tokenEndpointAuthMethod: "client_secret_post",
+        pkceMethod: "S256",
+        authorizationParams: {
+          resource: "https://api.acme.test",
+          audience: "acme-api",
+          access_type: "offline",
+          prompt: "consent",
+        },
+      },
+    });
+    expect(updatedBodies[0]?.oauthConfig).not.toHaveProperty("clientSecret");
+
+    const connectorCardButton = buttonByAriaLabel("Connect Acme API");
+    expect(
+      within(connectorCardButton).queryByText("Connect"),
+    ).not.toBeInTheDocument();
+    click(connectorCardButton);
+    expect(document.querySelector('[role="dialog"]')).not.toBeInTheDocument();
+
+    await waitFor(() => {
+      expect(authWindow.location.href).toBe(
+        "https://oauth.acme.test/authorize?state=ui-test",
+      );
+      const card = connectorCardByLabel("Acme API");
+      expect(within(card).getByText("Connected")).toBeInTheDocument();
+      expect(
+        within(card).getByTestId("custom-connector-card-agent-usage"),
+      ).toHaveTextContent("Used by Zero, Research");
+    });
+    expect(browserOpen.calls).toStrictEqual([
+      {
+        url: "about:blank",
+        target: "_blank",
+        features: "width=600,height=700",
+      },
+    ]);
+    expect(oauthStartCount).toBe(1);
+  });
+
   it("manages a custom connector from creation through deletion", async () => {
+    const defaultAgentId = "c0000000-0000-4000-a000-000000000001";
+    const researchAgentId = "c0000000-0000-4000-a000-000000000051";
+    const supportAgentId = "c0000000-0000-4000-a000-000000000052";
     mockCustomConnectorStory();
+    context.mocks.data.team([
+      teamAgent(defaultAgentId, "Zero"),
+      teamAgent(researchAgentId, "Research"),
+      teamAgent(supportAgentId, "Support"),
+    ]);
 
     detachedSetupPage({ context, path: "/connectors" });
 
@@ -3162,11 +3664,18 @@ describe("connectors page", () => {
     click(buttonByText("Create", createDialog));
 
     await waitFor(() => {
-      expect(screen.getByText("Acme API")).toBeInTheDocument();
-      expect(screen.getByText("https://api.acme.test/v1/")).toBeInTheDocument();
+      const card = connectorCardByLabel("Acme API");
+      expect(
+        within(card).getByText("https://api.acme.test/v1/"),
+      ).toBeInTheDocument();
+      expect(within(card).queryByText("Not connected")).not.toBeInTheDocument();
     });
 
-    click(screen.getByText("Connect"));
+    const connectorCardButton = buttonByAriaLabel("Connect Acme API");
+    expect(
+      within(connectorCardButton).queryByText("Connect"),
+    ).not.toBeInTheDocument();
+    click(connectorCardButton);
 
     const connectDialog = await screen.findByRole("dialog");
     expect(
@@ -3176,8 +3685,20 @@ describe("connectors page", () => {
     click(buttonByText("Save", connectDialog));
 
     await waitFor(() => {
-      expect(screen.getByText("Connected")).toBeInTheDocument();
+      const card = connectorCardByLabel("Acme API");
+      expect(within(card).getByText("Connected")).toBeInTheDocument();
+      expect(
+        within(card).getByTestId("custom-connector-card-agent-usage"),
+      ).toHaveTextContent("Used by Zero, Research +1");
     });
+    expect(
+      within(connectorCardByLabel("Acme API")).getByTestId(
+        "custom-connector-card-agent-usage",
+      ),
+    ).toHaveAttribute("title", "Zero, Research, Support");
+    expect(
+      screen.queryByText("https://api.acme.test/v1/"),
+    ).not.toBeInTheDocument();
 
     click(screen.getByLabelText("More options"));
     click(await screen.findByText("Rename"));
@@ -3200,7 +3721,7 @@ describe("connectors page", () => {
     click(await screen.findByText("Disconnect"));
 
     await waitFor(() => {
-      expect(screen.getByText("Connect")).toBeInTheDocument();
+      expect(buttonByAriaLabel("Connect Acme Billing API")).toBeInTheDocument();
     });
 
     click(screen.getByLabelText("More options"));

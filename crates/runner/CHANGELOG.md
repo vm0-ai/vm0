@@ -1,5 +1,22 @@
 # Changelog
 
+## [0.148.34](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.148.33...runner-rs-v0.148.34) (2026-07-29)
+
+
+### Refactoring
+
+* **python:** retire auto model routing exception ([#23805](https://github.com/vm0-ai/vm0/issues/23805)) ([dacbaee](https://github.com/vm0-ai/vm0/commit/dacbaee367d03939e811a52bfbafa4870fac5927))
+
+## [0.148.33](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.148.32...runner-rs-v0.148.33) (2026-07-29)
+
+
+### Bug Fixes
+
+* **runner:** bound aws sigv4 request body buffering ([#23751](https://github.com/vm0-ai/vm0/issues/23751)) ([cdb3c0d](https://github.com/vm0-ai/vm0/commit/cdb3c0d67ff00d76c51be1a41a99694d95c46b29))
+* **runner:** checkpoint sessions before job timeout ([#23734](https://github.com/vm0-ai/vm0/issues/23734)) ([15f44cc](https://github.com/vm0-ai/vm0/commit/15f44cc68e1387d5b18f604fea9c964a1557561d))
+* **runner:** clarify locked workspace cache inspection totals ([#23747](https://github.com/vm0-ai/vm0/issues/23747)) ([b6ecaa8](https://github.com/vm0-ai/vm0/commit/b6ecaa80678bec63c37a0da5066f3aea5991dd5d))
+* **runner:** drain retained provider timings before shutdown ([#23782](https://github.com/vm0-ai/vm0/issues/23782)) ([ffd34ef](https://github.com/vm0-ai/vm0/commit/ffd34ef64f3efb66346f90dcc5e0279aef24705f))
+
 ## [0.148.32](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.148.31...runner-rs-v0.148.32) (2026-07-29)
 
 

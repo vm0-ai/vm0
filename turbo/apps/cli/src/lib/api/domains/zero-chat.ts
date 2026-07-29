@@ -1,5 +1,9 @@
 import { initClient } from "@vm0/api-contracts/contracts/trpc-contract";
 import {
+  type ChatEvent,
+  type ChatEventSendBody,
+  chatEventsContract,
+  chatThreadEventsContract,
   chatThreadsContract,
   type ChatThreadEvent,
   chatThreadMetadataContract,
@@ -21,6 +25,18 @@ export interface ZeroChatThreadSnapshot {
 export type ZeroChatThreadEvent = Omit<ChatThreadEvent, "seqId"> & {
   readonly seqId?: number;
 };
+
+interface ZeroChatEventsPage {
+  readonly events: readonly ChatEvent[];
+  readonly hasHistoryBefore: boolean;
+}
+
+interface ZeroChatEventSendResult {
+  readonly runId: string | null;
+  readonly threadId: string;
+  readonly status?: string;
+  readonly createdAt?: string;
+}
 
 type ZeroChatThreadEventsResult =
   | {
@@ -123,6 +139,63 @@ export async function getZeroChatThread(options: {
     return result.body;
   }
   handleError(result, "Failed to get chat thread");
+}
+
+export async function getZeroChatThreadAgentId(options: {
+  threadId: string;
+}): Promise<string> {
+  const thread = await getZeroChatThread(options);
+  if (thread.agentId) {
+    return thread.agentId;
+  }
+
+  // Compatibility fallback for an API version that predates agentId on the
+  // narrow metadata response.
+  const snapshot = await getZeroChatThreadSnapshot();
+  const projection = snapshot.chatThreads.find((candidate) => {
+    return candidate.id === options.threadId;
+  });
+  if (!projection) {
+    throw new Error(
+      `Chat thread "${options.threadId}" was not found in the thread snapshot`,
+    );
+  }
+  return projection.agentId;
+}
+
+export async function sendZeroChatEvent(
+  body: ChatEventSendBody,
+): Promise<ZeroChatEventSendResult> {
+  const config = await getClientConfig();
+  const client = initClient(chatEventsContract, config);
+  const result = await client.send({ body });
+  if (result.status === 201) {
+    return result.body;
+  }
+  handleError(result, "Failed to send chat event");
+}
+
+export async function listZeroChatEvents(options: {
+  threadId: string;
+  beforeSeqId?: number;
+  limit?: number;
+}): Promise<ZeroChatEventsPage> {
+  const config = await getClientConfig();
+  const client = initClient(chatThreadEventsContract, config);
+  const result = await client.list({
+    params: { threadId: options.threadId },
+    query: {
+      beforeSeqId: options.beforeSeqId,
+      limit: options.limit,
+    },
+  });
+  if (result.status === 200) {
+    return {
+      events: result.body.events,
+      hasHistoryBefore: result.body.hasHistoryBefore ?? false,
+    };
+  }
+  handleError(result, "Failed to list chat events");
 }
 
 export async function updateZeroChatThreadModelSelection(options: {

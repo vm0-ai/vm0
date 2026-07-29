@@ -1,10 +1,9 @@
 /**
  * helper gap:
  * - Expired OAuth states, stale/hidden legacy connector rows, stale OAuth scope
- *   rows, duplicate custom connector storage conflicts, sandbox/CLI token
- *   capability cases, and simultaneous callback races do not have a stable
- *   public API constructor/assertion path. They are intentionally not rebuilt
- *   with direct database fixtures here.
+ *   rows, sandbox/CLI token capability cases, and simultaneous callback races
+ *   do not have a stable public API constructor/assertion path. They are
+ *   intentionally not rebuilt with direct database fixtures here.
  * - Feature switch overrides are configured only through
  *   /api/zero/feature-switches.
  */
@@ -27,6 +26,7 @@ import { createAuthOrgAgentsBddApi } from "./helpers/api-bdd-auth-org";
 import {
   createConnectorBddApi,
   mockBase44OAuthProvider,
+  mockCustomConnectorOAuth2Provider,
   mockDatadogConnectorOAuth,
   mockDeferredTestOAuthTokenEndpoint,
   mockGitHubConnectorOAuth,
@@ -48,14 +48,14 @@ const connectorsApi = createConnectorBddApi(context);
 const authOrgApi = createAuthOrgAgentsBddApi(context);
 
 function uniqueSlug(prefix: string): string {
-  return `${prefix}-${randomUUID().replace(/-/g, "").slice(0, 12)}`;
+  return `_${prefix}-${randomUUID().replace(/-/g, "").slice(0, 12)}`;
 }
 
 function customConnectorBody(slug: string) {
   return {
     slug,
     displayName: "BDD Custom Connector",
-    prefixes: [`https://${slug}.example.test/v1/`],
+    prefixes: [`https://${slug.slice(1)}.example.test/v1/`],
     headerName: "Authorization",
     headerTemplate: "Bearer {{secret}}",
   };
@@ -1508,6 +1508,340 @@ describe("CONN-02: external-code authorization", () => {
 });
 
 describe("CONN-03: custom connectors and connector-owned secrets", () => {
+  it("stores an OAuth app config and lets members authorize", async () => {
+    mockEnv("APP_URL", "https://app.vm0.test");
+    const provider = mockCustomConnectorOAuth2Provider(context);
+    const bdd = createBddApi(context);
+    bdd.acceptAgentStorageWrites();
+    const admin = bdd.user({ orgRole: "org:admin" });
+    const member = bdd.user({
+      orgId: admin.orgId,
+      orgRole: "org:member",
+    });
+    const clientId = "bdd-custom-oauth-client-id";
+    const clientSecret = "bdd-custom-oauth-client-secret";
+    const connectorBody = {
+      displayName: "BDD OAuth Connector",
+      prefixTemplates: ["https://multi-auth.example.test/v1/"],
+      fields: [],
+      headerInjections: [
+        {
+          name: "Authorization",
+          valueTemplate: "Bearer {{oauth.access_token}}",
+        },
+      ],
+      queryInjections: [],
+      authMode: "oauth" as const,
+      oauthConfig: {
+        providerAdapter: "standard" as const,
+        clientId,
+        clientSecret,
+        authorizationUrl: provider.authorizationUrl,
+        tokenUrl: provider.tokenUrl,
+        tokenEndpointAuthMethod: "client_secret_post" as const,
+        pkceMethod: "none" as const,
+        scopes: ["read", "write"],
+        authorizationParams: {},
+      },
+    };
+
+    const disabled = await connectorsApi.requestCreateCustomConnector(
+      admin,
+      connectorBody,
+      [403],
+    );
+    expectApiError(disabled.body);
+    expect(disabled.body.error.message).toContain("not enabled");
+
+    await connectorsApi.updateFeatureSwitches(admin, {
+      [FeatureSwitchKey.CustomConnectorOAuth2]: true,
+    });
+    await connectorsApi.updateFeatureSwitches(member, {
+      [FeatureSwitchKey.CustomConnectorOAuth2]: true,
+    });
+    const missingCredentials = await connectorsApi.requestCreateCustomConnector(
+      admin,
+      {
+        ...connectorBody,
+        oauthConfig: {
+          ...connectorBody.oauthConfig,
+          clientSecret: undefined,
+        },
+      },
+      [400],
+    );
+    expectApiError(missingCredentials.body);
+    expect(missingCredentials.body.error.message).toContain(
+      "client secret is required",
+    );
+    const created = await connectorsApi.createCustomConnector(
+      admin,
+      connectorBody,
+    );
+    expect(created).toMatchObject({
+      authMode: "oauth",
+      oauthConfig: {
+        clientId,
+        scopes: ["read", "write"],
+      },
+      connected: false,
+    });
+    expectNoVisibleSecret(created, clientSecret);
+
+    const authorizationUrl = await connectorsApi.startCustomConnectorOAuth2(
+      member,
+      created.id,
+    );
+    const authorization = new URL(authorizationUrl);
+    expect(authorization.origin + authorization.pathname).toBe(
+      provider.authorizationUrl,
+    );
+    expect(authorization.searchParams.get("response_type")).toBe("code");
+    expect(authorization.searchParams.get("client_id")).toBe(clientId);
+    expect(authorization.searchParams.get("scope")).toBe("read write");
+    const redirectUri = authorization.searchParams.get("redirect_uri");
+    if (!redirectUri) {
+      throw new Error("Expected custom connector OAuth redirect URI");
+    }
+    expect(redirectUri).toBe("https://app.vm0.test/connectors/custom/callback");
+    expectNoVisibleSecret(authorizationUrl, clientSecret);
+
+    const callback =
+      await connectorsApi.completeCustomConnectorOAuth2CallbackResult({
+        code: "bdd-custom-oauth-code",
+        state: stateFromAuthorizationUrl(authorizationUrl),
+      });
+    expect(callback.body).toStrictEqual({
+      status: "success",
+      username: null,
+    });
+    expect(callback.headers.get("cache-control")).toBe("no-store");
+    expect(provider.tokenBodies).toHaveLength(1);
+    expect(provider.tokenBodies[0]?.get("grant_type")).toBe(
+      "authorization_code",
+    );
+    expect(provider.tokenBodies[0]?.get("code")).toBe("bdd-custom-oauth-code");
+    expect(provider.tokenBodies[0]?.get("client_id")).toBe(
+      "bdd-custom-oauth-client-id",
+    );
+    expect(provider.tokenBodies[0]?.get("client_secret")).toBe(clientSecret);
+    expect(provider.authorizationHeaders).toStrictEqual([null]);
+    expect(context.mocks.nodeRequest.pinnedAddresses).toContain(
+      "93.184.216.34",
+    );
+
+    const oauthConnected = await connectorsApi.listCustomConnectors(member);
+    expect(
+      oauthConnected.find((connector) => {
+        return connector.id === created.id;
+      }),
+    ).toMatchObject({
+      connected: true,
+      hasSecret: true,
+    });
+    expectNoVisibleSecret(oauthConnected, clientSecret);
+    expectNoVisibleSecret(oauthConnected, "custom-oauth-initial-access-token");
+    expectNoVisibleSecret(oauthConnected, "custom-oauth-refresh-token");
+
+    await connectorsApi.deleteCustomConnector(admin, created.id);
+  });
+
+  it("updates OAuth settings, preserves stored client credentials, and clears member OAuth grants", async () => {
+    const provider = mockCustomConnectorOAuth2Provider(context);
+    const bdd = createBddApi(context);
+    const admin = bdd.user({ orgRole: "org:admin" });
+    const member = bdd.user({
+      orgId: admin.orgId,
+      orgRole: "org:member",
+    });
+    await connectorsApi.updateFeatureSwitches(admin, {
+      [FeatureSwitchKey.CustomConnectorOAuth2]: true,
+    });
+    await connectorsApi.updateFeatureSwitches(member, {
+      [FeatureSwitchKey.CustomConnectorOAuth2]: true,
+    });
+
+    const clientId = "bdd-edit-oauth-client-id";
+    const clientSecret = "bdd-edit-oauth-client-secret";
+    const created = await connectorsApi.createCustomConnector(admin, {
+      displayName: "BDD Editable OAuth Connector",
+      prefixTemplates: ["https://editable-oauth.example.test/v1/"],
+      fields: [],
+      headerInjections: [
+        {
+          name: "Authorization",
+          valueTemplate: "Bearer {{oauth.access_token}}",
+        },
+      ],
+      queryInjections: [],
+      authMode: "oauth",
+      oauthConfig: {
+        providerAdapter: "standard",
+        clientId,
+        clientSecret,
+        authorizationUrl: provider.authorizationUrl,
+        tokenUrl: provider.tokenUrl,
+        tokenEndpointAuthMethod: "client_secret_post",
+        pkceMethod: "none",
+        scopes: ["read"],
+        authorizationParams: {},
+      },
+    });
+
+    const initialAuthorizationUrl =
+      await connectorsApi.startCustomConnectorOAuth2(member, created.id);
+    await connectorsApi.completeCustomConnectorOAuth2Callback({
+      code: "bdd-edit-oauth-code",
+      state: stateFromAuthorizationUrl(initialAuthorizationUrl),
+    });
+    const connected = await connectorsApi.listCustomConnectors(member);
+    expect(
+      connected.find((connector) => {
+        return connector.id === created.id;
+      }),
+    ).toMatchObject({
+      connected: true,
+    });
+
+    const updateBody = {
+      displayName: "BDD Edited OAuth Connector",
+      prefixTemplates: ["https://editable-oauth.example.test/v2/"],
+      fields: [],
+      headerInjections: created.headerInjections,
+      queryInjections: [],
+      authMode: "oauth" as const,
+      oauthConfig: {
+        providerAdapter: "standard" as const,
+        clientId,
+        authorizationUrl: provider.authorizationUrl,
+        tokenUrl: provider.tokenUrl,
+        tokenEndpointAuthMethod: "client_secret_post" as const,
+        pkceMethod: "none" as const,
+        scopes: ["read", "write"],
+        authorizationParams: {},
+      },
+    };
+    const memberUpdate = await connectorsApi.requestUpdateCustomConnector(
+      member,
+      created.id,
+      updateBody,
+      [403],
+    );
+    expectApiError(memberUpdate.body);
+    expect(memberUpdate.body.error.message).toContain("Only org admins");
+
+    const updated = await connectorsApi.updateCustomConnector(
+      admin,
+      created.id,
+      updateBody,
+    );
+    expect(updated).toMatchObject({
+      displayName: "BDD Edited OAuth Connector",
+      prefixes: ["https://editable-oauth.example.test/v2/"],
+      authMode: "oauth",
+      oauthConfig: {
+        clientId,
+        scopes: ["read", "write"],
+      },
+    });
+    expectNoVisibleSecret(updated, clientSecret);
+
+    const disconnected = await connectorsApi.listCustomConnectors(member);
+    expect(
+      disconnected.find((connector) => {
+        return connector.id === created.id;
+      }),
+    ).toMatchObject({
+      connected: false,
+      missingRequiredFields: ["oauth"],
+    });
+
+    const nextAuthorizationUrl = await connectorsApi.startCustomConnectorOAuth2(
+      member,
+      created.id,
+    );
+    const nextAuthorization = new URL(nextAuthorizationUrl);
+    expect(nextAuthorization.searchParams.get("client_id")).toBe(clientId);
+    expect(nextAuthorization.searchParams.get("scope")).toBe("read write");
+
+    await connectorsApi.deleteCustomConnector(admin, created.id);
+  });
+
+  it("rejects API definition updates for an OAuth-only connector without changing it", async () => {
+    const provider = mockCustomConnectorOAuth2Provider(context);
+    const admin = createBddApi(context).user({ orgRole: "org:admin" });
+    await connectorsApi.updateFeatureSwitches(admin, {
+      [FeatureSwitchKey.CustomConnectorOAuth2]: true,
+    });
+    const original = await connectorsApi.createCustomConnector(admin, {
+      displayName: "BDD OAuth Only Connector",
+      prefixTemplates: ["https://oauth-only.example.test/v1/"],
+      fields: [],
+      headerInjections: [
+        {
+          name: "Authorization",
+          valueTemplate: "Bearer {{oauth.access_token}}",
+        },
+      ],
+      queryInjections: [],
+      authMode: "oauth",
+      oauthConfig: {
+        providerAdapter: "standard",
+        clientId: "oauth-only-client-id",
+        clientSecret: "oauth-only-client-secret",
+        authorizationUrl: provider.authorizationUrl,
+        tokenUrl: provider.tokenUrl,
+        tokenEndpointAuthMethod: "client_secret_post",
+        pkceMethod: "none",
+        scopes: ["read"],
+        authorizationParams: {},
+      },
+    });
+
+    const rejected = await connectorsApi.requestSaveCustomConnectorProposal(
+      admin,
+      {
+        proposal: {
+          operation: "update",
+          connectorId: original.id,
+          displayName: "BDD OAuth Connector With API Fields",
+          prefixTemplates: ["https://oauth-only.example.test/v2/"],
+          fields: [
+            {
+              key: "api_key",
+              label: "API key",
+              kind: "secret",
+              required: true,
+            },
+          ],
+          headerInjections: [
+            {
+              name: "Authorization",
+              valueTemplate: "Bearer {{secrets.api_key}}",
+            },
+          ],
+          queryInjections: [],
+        },
+        values: [
+          {
+            key: "api_key",
+            kind: "secret",
+            value: "must-not-be-stored",
+          },
+        ],
+      },
+      [400],
+    );
+    expectApiError(rejected.body);
+    expect(rejected.body.error.message).toContain("must be variables");
+
+    const listed = await connectorsApi.listCustomConnectors(admin);
+    expect(listed).toContainEqual(original);
+    expectNoVisibleSecret(listed, "must-not-be-stored");
+
+    await connectorsApi.deleteCustomConnector(admin, original.id);
+  });
+
   it("creates, patches, secrets, enables for an agent, rejects cross-org ids, and deletes through APIs", async () => {
     const bdd = createBddApi(context);
     bdd.acceptAgentStorageWrites();
@@ -1548,7 +1882,7 @@ describe("CONN-03: custom connectors and connector-owned secrets", () => {
     ).toMatchObject({
       slug,
       displayName: "BDD Custom Connector",
-      prefixes: [`https://${slug}.example.test/v1/`],
+      prefixes: [`https://${slug.slice(1)}.example.test/v1/`],
       headerName: "Authorization",
       headerTemplate: "Bearer {{secret}}",
       hasSecret: false,
@@ -1566,6 +1900,39 @@ describe("CONN-03: custom connectors and connector-owned secrets", () => {
       })?.hasSecret,
     ).toBeTruthy();
     expectNoVisibleSecret(afterSecret, secretValue);
+
+    const definitionUpdateBody = {
+      displayName: "BDD Custom Connector Updated",
+      prefixTemplates: [`https://${slug.slice(1)}.example.test/v2/`],
+      fields: created.fields,
+      headerInjections: created.headerInjections,
+      queryInjections: created.queryInjections,
+      authMode: created.authMode,
+    };
+    const disabledUpdate = await connectorsApi.requestUpdateCustomConnector(
+      admin,
+      created.id,
+      definitionUpdateBody,
+      [403],
+    );
+    expectApiError(disabledUpdate.body);
+    expect(disabledUpdate.body.error.message).toContain("not enabled");
+
+    await connectorsApi.updateFeatureSwitches(admin, {
+      [FeatureSwitchKey.CustomConnectorOAuth2]: true,
+    });
+    const updated = await connectorsApi.updateCustomConnector(
+      admin,
+      created.id,
+      definitionUpdateBody,
+    );
+    expect(updated).toMatchObject({
+      displayName: "BDD Custom Connector Updated",
+      prefixes: [`https://${slug.slice(1)}.example.test/v2/`],
+      revision: 2,
+      connected: true,
+      hasSecret: true,
+    });
 
     await connectorsApi.patchCustomConnector(admin, created.id, {
       displayName: "BDD Custom Connector Renamed",
@@ -1594,6 +1961,20 @@ describe("CONN-03: custom connectors and connector-owned secrets", () => {
     await expect(
       connectorsApi.readAgentCustomConnectors(admin, agent.agentId),
     ).resolves.toStrictEqual([created.id]);
+
+    const securityUpdated = await connectorsApi.updateCustomConnector(
+      admin,
+      created.id,
+      {
+        ...definitionUpdateBody,
+        displayName: "BDD Custom Connector Renamed",
+        prefixTemplates: [`https://${slug.slice(1)}.example.test/v3/`],
+      },
+    );
+    expect(securityUpdated.revision).toBe(3);
+    await expect(
+      connectorsApi.readAgentCustomConnectors(admin, agent.agentId),
+    ).resolves.toStrictEqual([]);
 
     const otherAdmin = bdd.user({ orgRole: "org:admin" });
     const otherConnector = await connectorsApi.createCustomConnector(
@@ -1888,7 +2269,7 @@ describe("CONN-03: custom connectors and connector-owned secrets", () => {
 
     expect(connector.prefixes).toStrictEqual([rawPrefix]);
     expect(connector.prefixTemplates).toStrictEqual([rawPrefix]);
-    expect(connector.slug).toMatch(/^xn-mnich-kva-example-[a-z0-9]{6}$/);
+    expect(connector.slug).toMatch(/^_xn-mnich-kva-example-[a-z0-9]{6}$/);
 
     await connectorsApi.deleteCustomConnector(admin, connector.id);
     await expect(
@@ -2043,6 +2424,14 @@ describe("CONN-03: custom connectors and connector-owned secrets", () => {
         );
       expectApiError(secretDelete.body);
       expect(secretDelete.body.error.code).toBe("UNAUTHORIZED");
+
+      const oauthStart = await connectorsApi.requestStartCustomConnectorOAuth2(
+        actor,
+        connectorId,
+        [401],
+      );
+      expectApiError(oauthStart.body);
+      expect(oauthStart.body.error.code).toBe("UNAUTHORIZED");
     }
   });
 
@@ -2063,10 +2452,25 @@ describe("CONN-03: custom connectors and connector-owned secrets", () => {
       headerTemplate: "Bearer {{secret}}",
     });
     expect(autoSlug.slug).toMatch(
-      new RegExp(`^api-bdd${rand}-example-test-[a-z0-9]{6}$`),
+      new RegExp(`^_api-bdd${rand}-example-test-[a-z0-9]{6}$`),
     );
     expect(autoSlug.prefixes).toStrictEqual([`https://api.${host}/v1/`]);
     expect(autoSlug.hasSecret).toBeFalsy();
+
+    const duplicateAutoSlug = await connectorsApi.requestCreateCustomConnector(
+      admin,
+      {
+        displayName: "BDD Duplicate Auto Slug",
+        prefixes: [`https://api.${host}/v1`],
+        headerName: "Authorization",
+        headerTemplate: "Bearer {{secret}}",
+      },
+      [400],
+    );
+    expectApiError(duplicateAutoSlug.body);
+    expect(duplicateAutoSlug.body.error.message).toContain(
+      `"${autoSlug.displayName}"`,
+    );
 
     const wildcard = await connectorsApi.createCustomConnector(admin, {
       displayName: "BDD Wildcard",
@@ -2075,7 +2479,7 @@ describe("CONN-03: custom connectors and connector-owned secrets", () => {
       headerTemplate: "Bearer {{secret}}",
     });
     expect(wildcard.slug).toMatch(
-      new RegExp(`^bdd${rand}-example-test-[a-z0-9]{6}$`),
+      new RegExp(`^_bdd${rand}-example-test-[a-z0-9]{6}$`),
     );
     expect(wildcard.prefixes).toStrictEqual([`https://*.${host}/v1/`]);
 
@@ -2092,36 +2496,31 @@ describe("CONN-03: custom connectors and connector-owned secrets", () => {
     expectApiError(missingPlaceholder.body);
     expect(missingPlaceholder.body.error.message).toContain("{{secret}}");
 
-    const builtinCollision = await connectorsApi.requestCreateCustomConnector(
-      admin,
-      {
-        displayName: "Fake GitHub",
-        prefixes: ["https://api.github.com/v3/"],
-        headerName: "Authorization",
-        headerTemplate: "Bearer {{secret}}",
-      },
-      [400],
-    );
-    expectApiError(builtinCollision.body);
-    expect(builtinCollision.body.error.message).toContain("api.github.com");
-    expect(builtinCollision.body.error.message).toContain("GitHub");
+    const builtinOverlap = await connectorsApi.createCustomConnector(admin, {
+      displayName: "Custom GitHub",
+      prefixes: ["https://api.github.com/v3/"],
+      headerName: "Authorization",
+      headerTemplate: "Bearer {{secret}}",
+    });
+    expect(builtinOverlap.prefixes).toStrictEqual([
+      "https://api.github.com/v3/",
+    ]);
 
-    const builtinTrailingDotCollision =
+    const builtinTrailingDotOverlap =
       await connectorsApi.requestCreateCustomConnector(
         admin,
         {
-          displayName: "Fake GitHub Trailing Dot",
+          displayName: "Custom GitHub Trailing Dot",
           prefixes: ["https://api.github.com./v3/"],
           headerName: "Authorization",
           headerTemplate: "Bearer {{secret}}",
         },
         [400],
       );
-    expectApiError(builtinTrailingDotCollision.body);
-    expect(builtinTrailingDotCollision.body.error.message).toContain(
-      "api.github.com.",
+    expectApiError(builtinTrailingDotOverlap.body);
+    expect(builtinTrailingDotOverlap.body.error.message).toContain(
+      `"${builtinOverlap.displayName}"`,
     );
-    expect(builtinTrailingDotCollision.body.error.message).toContain("GitHub");
 
     const listed = await connectorsApi.listCustomConnectors(admin);
     expect(
@@ -2130,13 +2529,104 @@ describe("CONN-03: custom connectors and connector-owned secrets", () => {
           return connector.id;
         })
         .sort(),
-    ).toStrictEqual([autoSlug.id, wildcard.id].sort());
+    ).toStrictEqual([autoSlug.id, wildcard.id, builtinOverlap.id].sort());
 
     await connectorsApi.deleteCustomConnector(admin, autoSlug.id);
     await connectorsApi.deleteCustomConnector(admin, wildcard.id);
+    await connectorsApi.deleteCustomConnector(admin, builtinOverlap.id);
     await expect(
       connectorsApi.listCustomConnectors(admin),
     ).resolves.toStrictEqual([]);
+  });
+
+  it("rejects prefix collisions introduced by edits", async () => {
+    const admin = createBddApi(context).user();
+    await connectorsApi.updateFeatureSwitches(admin, {
+      [FeatureSwitchKey.CustomConnectorOAuth2]: true,
+    });
+    const original = await connectorsApi.createCustomConnector(admin, {
+      ...customConnectorBody(uniqueSlug("bdd-prefix-original")),
+      displayName: "BDD Prefix Original",
+    });
+    const editable = await connectorsApi.createCustomConnector(admin, {
+      ...customConnectorBody(uniqueSlug("bdd-prefix-editable")),
+      displayName: "BDD Prefix Editable",
+    });
+    const originalPrefix = original.prefixTemplates[0];
+    if (!originalPrefix) {
+      throw new Error("Expected the original connector to have a prefix");
+    }
+
+    const collision = await connectorsApi.requestUpdateCustomConnector(
+      admin,
+      editable.id,
+      {
+        displayName: editable.displayName,
+        prefixTemplates: [originalPrefix.slice(0, -1)],
+        fields: editable.fields,
+        headerInjections: editable.headerInjections,
+        queryInjections: editable.queryInjections,
+        authMode: editable.authMode,
+      },
+      [400],
+    );
+    expectApiError(collision.body);
+    expect(collision.body.error.message).toContain(`"${original.displayName}"`);
+    expect(
+      (await connectorsApi.listCustomConnectors(admin)).find((connector) => {
+        return connector.id === editable.id;
+      })?.prefixTemplates,
+    ).toStrictEqual(editable.prefixTemplates);
+
+    await connectorsApi.deleteCustomConnector(admin, original.id);
+    await connectorsApi.deleteCustomConnector(admin, editable.id);
+  });
+
+  it("serializes concurrent creates for the same normalized prefix", async () => {
+    const admin = createBddApi(context).user();
+    const rand = randomUUID().replace(/-/g, "").slice(0, 8);
+    const prefix = `https://concurrent-${rand}.example.test/v1/`;
+    const responses = await Promise.all([
+      connectorsApi.requestCreateCustomConnector(
+        admin,
+        {
+          ...customConnectorBody(uniqueSlug("bdd-prefix-concurrent-a")),
+          displayName: "BDD Concurrent Prefix A",
+          prefixes: [prefix],
+        },
+        [201, 400],
+      ),
+      connectorsApi.requestCreateCustomConnector(
+        admin,
+        {
+          ...customConnectorBody(uniqueSlug("bdd-prefix-concurrent-b")),
+          displayName: "BDD Concurrent Prefix B",
+          prefixes: [prefix.slice(0, -1)],
+        },
+        [201, 400],
+      ),
+    ]);
+
+    expect(
+      responses
+        .map((response) => {
+          return response.status;
+        })
+        .sort(),
+    ).toStrictEqual([201, 400]);
+    const created = responses.find((response) => {
+      return response.status === 201;
+    });
+    const rejected = responses.find((response) => {
+      return response.status === 400;
+    });
+    if (created?.status !== 201 || rejected?.status !== 400) {
+      throw new Error("Expected one created and one rejected connector");
+    }
+    expectApiError(rejected.body);
+    expect(rejected.body.error.message).toContain("is already used");
+
+    await connectorsApi.deleteCustomConnector(admin, created.body.id);
   });
 
   it("scopes custom connector rename and delete to org admins and same-org ids", async () => {

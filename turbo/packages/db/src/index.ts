@@ -39,6 +39,7 @@ import * as telegramOfficialUserLinkSchema from "./schema/telegram-official-user
 import * as telegramUserLinkSchema from "./schema/telegram-user-link";
 import * as telegramUserAgentPreferenceSchema from "./schema/telegram-user-agent-preference";
 import * as telegramThreadSessionSchema from "./schema/telegram-thread-session";
+import * as telegramChatThreadRouteSchema from "./schema/telegram-chat-thread-route";
 import * as telegramMessageSchema from "./schema/telegram-message";
 import * as agentphoneUserLinkSchema from "./schema/agentphone-user-link";
 import * as agentphoneUserAgentPreferenceSchema from "./schema/agentphone-user-agent-preference";
@@ -96,6 +97,7 @@ import * as chatThreadSnapshotSchema from "./schema/chat-thread-snapshot";
 import * as chatOutputMaterializationSchema from "./schema/chat-output-materialization";
 import * as agentRunCustomConnectorAuthRefSchema from "./schema/agent-run-custom-connector-auth-ref";
 import * as orgCustomConnectorSchema from "./schema/org-custom-connector";
+import * as orgCustomConnectorOauthConfigSchema from "./schema/org-custom-connector-oauth-config";
 import * as orgCustomConnectorSecretSchema from "./schema/org-custom-connector-secret";
 import * as orgCustomConnectorValueSchema from "./schema/org-custom-connector-value";
 import * as hostedSiteSchema from "./schema/hosted-site";
@@ -173,6 +175,7 @@ export const schema = {
   ...telegramUserLinkSchema,
   ...telegramUserAgentPreferenceSchema,
   ...telegramThreadSessionSchema,
+  ...telegramChatThreadRouteSchema,
   ...telegramMessageSchema,
   ...agentphoneUserLinkSchema,
   ...agentphoneUserAgentPreferenceSchema,
@@ -212,6 +215,7 @@ export const schema = {
   ...chatOutputMaterializationSchema,
   ...agentRunCustomConnectorAuthRefSchema,
   ...orgCustomConnectorSchema,
+  ...orgCustomConnectorOauthConfigSchema,
   ...orgCustomConnectorSecretSchema,
   ...orgCustomConnectorValueSchema,
   ...hostedSiteSchema,

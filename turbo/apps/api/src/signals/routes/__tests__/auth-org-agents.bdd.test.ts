@@ -779,7 +779,7 @@ describe("AGENT-01 and AGENT-02", () => {
     expectApiError(crossOrgRead.body);
     expect(crossOrgRead.body.error.code).toBe("NOT_FOUND");
 
-    const connectorSlug = slug("bdd-connector");
+    const connectorSlug = `_${slug("bdd-connector")}`;
     const connector = await api.createCustomConnector(admin, {
       displayName: "BDD Custom Connector",
       prefixes: [`https://${connectorSlug}.example.test/api/`],

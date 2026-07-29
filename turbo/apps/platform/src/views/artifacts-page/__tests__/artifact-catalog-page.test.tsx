@@ -5,13 +5,15 @@ import {
 } from "@vm0/api-contracts/contracts/artifact-catalog";
 import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import { HttpResponse } from "msw";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 
 import {
   click,
   detachedSetupPage,
   queryAllByRoleFast,
 } from "../../../__tests__/page-helper.ts";
+import { i18n, initializeI18n } from "../../../i18n/index.ts";
+import { DEFAULT_LOCALE } from "../../../i18n/resources.ts";
 import { pathname } from "../../../signals/location.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 
@@ -56,7 +58,14 @@ function buttonByLabel(label: string): HTMLElement | undefined {
 
 async function findCard(title: string): Promise<HTMLElement> {
   return await waitFor(() => {
-    const card = buttonByLabel(`Preview ${title}`);
+    const card = buttonByLabel(
+      i18n.t(
+        ($) => {
+          return $.artifacts.catalog.cardPreview;
+        },
+        { title },
+      ),
+    );
     if (!card) {
       throw new Error(`Expected a catalog card for ${title}`);
     }
@@ -65,6 +74,11 @@ async function findCard(title: string): Promise<HTMLElement> {
 }
 
 describe("artifact catalog page", () => {
+  afterEach(async () => {
+    document.documentElement.lang = DEFAULT_LOCALE;
+    await initializeI18n(DEFAULT_LOCALE);
+  });
+
   it("renders artifacts with their kind and resized thumbnails", async () => {
     context.mocks.api(artifactCatalogContract.list, ({ respond }) => {
       return respond(200, {
@@ -137,6 +151,56 @@ describe("artifact catalog page", () => {
     const imageFilter = buttonByLabel("Show image artifacts");
     if (!imageFilter) {
       throw new Error("Expected an image kind filter");
+    }
+    await click(imageFilter);
+
+    await findCard("generated.png");
+    expect(requestedKinds).toStrictEqual(["presentation", "image"]);
+  });
+
+  it("localizes the catalog and filters without changing artifact titles", async () => {
+    document.documentElement.lang = "pt-BR";
+    const requestedKinds: (string | undefined)[] = [];
+    context.mocks.api(artifactCatalogContract.list, ({ query, respond }) => {
+      requestedKinds.push(query.kind);
+      return respond(200, {
+        artifacts: [
+          artifact({
+            kind: query.kind === "image" ? "image" : "presentation",
+            title: query.kind === "image" ? "generated.png" : "launch-deck",
+          }),
+        ],
+        nextCursor: null,
+      });
+    });
+
+    setupArtifactCatalogPage();
+
+    await findCard("launch-deck");
+    await expect(
+      screen.findByRole("heading", { name: "Artefatos" }),
+    ).resolves.toBeInTheDocument();
+    expect(
+      screen.getByLabelText("Filtros de tipo de artefato").textContent,
+    ).toContain("Apresentações");
+    expect(
+      queryAllByRoleFast(
+        "button",
+        screen.getByLabelText("Filtros de tipo de artefato"),
+      ).map((button) => {
+        return button.textContent;
+      }),
+    ).toStrictEqual([
+      "Apresentações",
+      "Sites",
+      "Imagens",
+      "Vídeos",
+      "Arquivos",
+    ]);
+
+    const imageFilter = buttonByLabel("Mostrar artefatos de imagem");
+    if (!imageFilter) {
+      throw new Error("Expected a localized image kind filter");
     }
     await click(imageFilter);
 

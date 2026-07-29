@@ -15,17 +15,12 @@ USAGE_EVENT_BATCH_SIZE = 100
 MAX_RETAINED_USAGE_BATCH_RETRIES = 20
 
 
-class _RequiredUsageEvent(TypedDict):
+class UsageEvent(TypedDict):
     idempotencyKey: str
     kind: str
     provider: str
     category: str
     quantity: int
-
-
-class UsageEvent(_RequiredUsageEvent, total=False):
-    billingUnitPrice: int
-    billingUnitSize: int
 
 
 class ModelUsageObservation(TypedDict):
@@ -57,8 +52,6 @@ class _AggregateKey:
     kind: str
     provider: str
     category: str
-    billing_unit_price: int | None
-    billing_unit_size: int | None
 
 
 @dataclass

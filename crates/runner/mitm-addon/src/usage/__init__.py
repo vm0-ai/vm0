@@ -45,6 +45,8 @@ from .buffer import (
     reset_usage_buffer_for_tests,
 )
 from .counters import (
+    BufferedReportLease,
+    admit_buffered_report,
     current_usage_state_id,
     decrement_in_flight_flows,
     increment_in_flight_flows,
@@ -77,7 +79,9 @@ from .providers.model_provider import (
 
 __all__ = [
     "DEFAULT_FLUSH_INTERVAL_SECONDS",
+    "BufferedReportLease",
     "OpenAIResponsesEvent",
+    "admit_buffered_report",
     "buffer_model_usage_observations",
     "buffer_source_model_usage_observations",
     "buffer_source_usage_events",

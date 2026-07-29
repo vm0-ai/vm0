@@ -23,6 +23,7 @@ use nix::sys::inotify::{AddWatchFlags, InitFlags, Inotify};
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
 use std::collections::HashMap;
+use std::future::Future;
 use std::io;
 use std::os::fd::{AsFd, AsRawFd, OwnedFd};
 use std::path::{Path, PathBuf};
@@ -50,6 +51,8 @@ pub const SIGKILL_EXIT: i32 = 137;
 
 /// Normal clean exit. Reap should never fire on this path.
 pub const CLEAN_EXIT: i32 = 0;
+
+pub const MOCK_TERMINATION_READY_EVENT: &str = "vm0_mock_termination_ready";
 
 /// Documented maximum number of stderr lines returned in
 /// `guest_agent::cli::CliExecutionResult`.
@@ -958,6 +961,59 @@ pub async fn execute_cli_with_active_input_for_runtime(
         &runtime.paths,
     )
     .await
+}
+
+pub struct VirtualTimeCheckpoint<'a> {
+    pub file: &'a str,
+    pub needle: &'a str,
+    pub advance: Duration,
+}
+
+pub async fn execute_with_virtual_time_checkpoints<F>(
+    future: F,
+    checkpoints: &[VirtualTimeCheckpoint<'_>],
+) -> Result<F::Output, String>
+where
+    F: Future,
+{
+    for checkpoint in checkpoints {
+        guest_agent::paths::ensure_parent_dir(checkpoint.file).map_err(|error| {
+            format!(
+                "prepare parent directory for virtual-time checkpoint {}: {error}",
+                checkpoint.file
+            )
+        })?;
+    }
+
+    tokio::pin!(future);
+    for checkpoint in checkpoints {
+        tokio::select! {
+            _ = &mut future => {
+                return Err(format!(
+                    "CLI execution completed before {:?} appeared in {}",
+                    checkpoint.needle, checkpoint.file
+                ));
+            }
+            ready = wait_for_file_contains(
+                Path::new(checkpoint.file),
+                checkpoint.needle,
+                Duration::from_secs(5),
+            ) => {
+                ready.map_err(|error| {
+                    format!(
+                        "wait for {:?} in {} before advancing time: {error}",
+                        checkpoint.needle, checkpoint.file
+                    )
+                })?;
+            }
+        }
+
+        tokio::time::pause();
+        tokio::time::advance(checkpoint.advance).await;
+        tokio::time::resume();
+    }
+
+    Ok(future.await)
 }
 
 pub async fn wait_for_path(path: &Path, timeout: Duration) -> io::Result<()> {

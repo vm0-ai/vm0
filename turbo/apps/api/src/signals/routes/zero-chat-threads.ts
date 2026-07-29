@@ -330,7 +330,10 @@ export const zeroChatThreadRoutes: readonly RouteEntry[] = [
   },
   {
     route: chatThreadEventsContract.list,
-    handler: authRoute({}, listChatEventsInner$),
+    handler: authRoute(
+      { requiredCapability: "chat-message:read" },
+      listChatEventsInner$,
+    ),
   },
   {
     route: chatThreadEventsContract.get,

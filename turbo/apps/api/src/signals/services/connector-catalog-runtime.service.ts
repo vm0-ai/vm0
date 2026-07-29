@@ -451,7 +451,7 @@ function runtimeConnectors(
   const connectors = new Map<ConnectorSlug, ConnectorRuntimeConnector>();
 
   for (const connector of acceptedSnapshot.artifact.connectors) {
-    const connectorSlug = connector.connectorRef;
+    const connectorSlug = connector.slug;
     const catalogConnector = getAcceptedConnectorCatalogResolutionDetail({
       snapshot: acceptedSnapshot,
       connectorSlug,

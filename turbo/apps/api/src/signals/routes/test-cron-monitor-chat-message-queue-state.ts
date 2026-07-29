@@ -120,7 +120,6 @@ async function seedFixture(
   const message = await db.transaction(async (tx) => {
     const baseEvent = {
       chatThreadId: thread.id,
-      content: "orphan monitor fixture",
       userMessage: createUserMessageDocument({
         text: "orphan monitor fixture",
       }),
@@ -148,7 +147,6 @@ async function seedFixture(
       await replaceChatEvent(tx, message.id, {
         chatThreadId: thread.id,
         eventType: "input.prompt",
-        content: "claimed orphan monitor fixture",
         userMessage: createUserMessageDocument({
           text: "claimed orphan monitor fixture",
         }),

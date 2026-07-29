@@ -37,6 +37,7 @@ import {
 import { goalQueueEventMatchesActiveGoal } from "./chat-goal-queue.service";
 import { feishuOrgCallbackFileSchema } from "./feishu-org-callback-payload";
 import { teamsDeliveryTargetSchema } from "./teams-chat-callback-payload";
+import { telegramDeliveryTargetSchema } from "./telegram-chat-callback-payload";
 import { createUserMessageDocument } from "./zero-chat-user-message.service";
 
 type DbTransaction = Parameters<Parameters<Db["transaction"]>[0]>[0];
@@ -47,6 +48,7 @@ const queuedUserMessageTriggerSourceSchema = z.enum([
   "slack",
   "feishu",
   "teams",
+  "telegram",
   "workflow-schedule",
 ]);
 
@@ -75,6 +77,7 @@ const queuedUserMessageRunParamsSchema = z.object({
     })
     .optional(),
   teamsDelivery: teamsDeliveryTargetSchema.optional(),
+  telegramDelivery: telegramDeliveryTargetSchema.optional(),
   morningBriefDelivery: z
     .object({
       deliveryId: z.string(),
@@ -93,6 +96,10 @@ const queuedUserMessageRunParamsSchema = z.object({
       teamsUserDisplayName: z.string().optional(),
       teamsUserPrincipalName: z.string().optional(),
       teamsUserId: z.string().optional(),
+      telegramDisplayName: z.string().optional(),
+      telegramUsername: z.string().optional(),
+      telegramUserId: z.string().optional(),
+      telegramLanguage: z.string().optional(),
     })
     .optional(),
 });
@@ -109,7 +116,6 @@ const queuedChatMessageRevoker = alias(
 
 export interface QueuedUserMessage {
   readonly id: string;
-  readonly content: string | null;
   readonly userMessage: ChatMessageUserMessage;
   readonly attachFiles: readonly string[] | null;
   readonly attachFileMetadata: readonly ChatMessageAttachFileMetadata[] | null;
@@ -123,6 +129,7 @@ export interface QueuedUserMessage {
     | "slack"
     | "feishu"
     | "teams"
+    | "telegram"
     | "workflow-schedule";
   readonly encryptedParams: string | null;
 }
@@ -247,7 +254,6 @@ export async function loadNextUnclaimedQueuedUserMessage(
   const [message] = await db
     .select({
       id: chatMessages.id,
-      content: chatMessages.content,
       userMessage: chatMessages.userMessage,
       attachFiles: chatMessages.attachFiles,
       attachFileMetadata: chatMessages.attachFileMetadata,
@@ -332,7 +338,6 @@ async function appendClaimedUserMessage(
   }
   const [queued] = await db
     .select({
-      content: chatMessages.content,
       userMessage: chatMessages.userMessage,
       attachFiles: chatMessages.attachFiles,
       attachFileMetadata: chatMessages.attachFileMetadata,
@@ -360,7 +365,6 @@ async function appendClaimedUserMessage(
   const claimed = await replaceChatEvent(db, args.messageId, {
     chatThreadId: args.threadId,
     eventType: "input.prompt",
-    content: queued.content,
     userMessage: queued.userMessage,
     runId: args.runId,
     attachFiles: queued.attachFiles ? [...queued.attachFiles] : null,
@@ -414,7 +418,6 @@ async function claimGoalQueueFirstRunAssociation(
   const claimed = await replaceChatEvent(db, args.eventId, {
     chatThreadId: args.threadId,
     eventType: "input.prompt",
-    content: args.prompt,
     userMessage: createUserMessageDocument({ text: args.prompt }),
     runId: args.runId,
     runGroupId: args.goalId,
@@ -498,7 +501,6 @@ export async function claimQueueFirstRunAssociation(
         const claimed = await replaceChatEvent(db, args.eventId, {
           chatThreadId: args.threadId,
           eventType: "input.prompt",
-          content: args.prompt,
           userMessage: createUserMessageDocument({ text: args.prompt }),
           runId: args.runId,
           runGroupId: args.runGroupId,
@@ -710,7 +712,6 @@ export async function failQueuedUserMessage(
 
     const [queued] = await tx
       .select({
-        content: chatMessages.content,
         userMessage: chatMessages.userMessage,
         attachFiles: chatMessages.attachFiles,
         attachFileMetadata: chatMessages.attachFileMetadata,
@@ -737,7 +738,6 @@ export async function failQueuedUserMessage(
     const replacement = await replaceChatEvent(tx, args.messageId, {
       chatThreadId: args.threadId,
       eventType: "input.rejected",
-      content: queued.content,
       userMessage: queued.userMessage,
       attachFiles: queued.attachFiles ? [...queued.attachFiles] : null,
       attachFileMetadata: queued.attachFileMetadata

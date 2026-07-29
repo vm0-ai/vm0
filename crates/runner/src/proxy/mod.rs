@@ -4,7 +4,7 @@
 //! extracts the embedded Python addon into the runner's `mitm-addon`
 //! directory, starts `mitmdump` with runner-specific options, publishes VM
 //! metadata through the proxy registry, and coordinates crash notification,
-//! restart, usage drain, JSONL log flush, and graceful stop behavior.
+//! restart, webhook delivery drain, JSONL log flush, and graceful stop behavior.
 //!
 //! The Rust/Python boundary is intentionally file- and option-based:
 //!
@@ -28,8 +28,8 @@
 //! the addon never consumes partial JSON. Flush acknowledgements must match the
 //! active usage state and request id; missing, stale, invalid, or mismatched
 //! addon state is treated as "not ready" until the bounded wait times out.
-//! Usage drain is a shutdown path for billing and usage reports, while JSONL
-//! flush is a per-upload network-log path.
+//! Webhook delivery drain is a shutdown path for billing, usage, and timing
+//! reports, while JSONL flush is a per-upload network-log path.
 //!
 //! `MitmProxy::new` exclusively locks the runner-local proxy runtime, removes
 //! stale private launch directories after terminating their marked processes,

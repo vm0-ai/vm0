@@ -13,6 +13,8 @@ import { zeroActivityDetail$ } from "../../signals/activity-page/activity-signal
 import { featureSwitch$ } from "../external/feature-switch.ts";
 import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import { currentWorkflowDetail$ } from "../workflows-page/workflows-signals.ts";
+import { i18n } from "../../i18n/index.ts";
+import { locale$ } from "../locale.ts";
 
 interface MobileBreadcrumb {
   section: string;
@@ -38,6 +40,10 @@ const CHAT_PATH = "/" as RoutePath;
 
 const teamDetailBreadcrumb$ = computed(
   async (get): Promise<MobileBreadcrumb> => {
+    get(locale$);
+    const section = i18n.t(($) => {
+      return $.appShell.sidebar.navigation.agents;
+    });
     const params = get(pathParams$) as Params;
     const agentId = getStringParam(params, "agentId");
     if (agentId) {
@@ -47,18 +53,22 @@ const teamDetailBreadcrumb$ = computed(
       });
       if (agent) {
         return {
-          section: "Agents",
+          section,
           sectionPath: ROUTES.agents,
           name: agent.displayName ?? undefined,
         };
       }
     }
-    return { section: "Agents", sectionPath: ROUTES.agents };
+    return { section, sectionPath: ROUTES.agents };
   },
 );
 
 const activityDetailBreadcrumb$ = computed(
   async (get): Promise<MobileBreadcrumb | null> => {
+    get(locale$);
+    const section = i18n.t(($) => {
+      return $.appShell.sidebar.navigation.activity;
+    });
     const features = await get(featureSwitch$);
     if (!features?.[FeatureSwitchKey.ZeroDebug]) {
       return null;
@@ -69,19 +79,22 @@ const activityDetailBreadcrumb$ = computed(
       const detail = await get(zeroActivityDetail$);
       if (detail && detail.id === activityRunId) {
         return {
-          section: "Activity logs",
+          section,
           sectionPath: ROUTES.activities,
           name: detail.displayName ?? undefined,
         };
       }
     }
-    return { section: "Activity logs", sectionPath: ROUTES.activities };
+    return { section, sectionPath: ROUTES.activities };
   },
 );
 
 const workflowsBreadcrumb$ = computed(
   async (get): Promise<MobileBreadcrumb> => {
-    const section = "Workflows";
+    get(locale$);
+    const section = i18n.t(($) => {
+      return $.appShell.sidebar.navigation.workflows;
+    });
     const params = get(pathParams$) as Params;
     const workflowId = getStringParam(params, "workflowId");
     if (workflowId) {
@@ -139,6 +152,7 @@ const chatBreadcrumb$ = computed(async (get): Promise<MobileBreadcrumb> => {
  */
 export const mobileBreadcrumb$ = computed(
   async (get): Promise<MobileBreadcrumb | null> => {
+    get(locale$);
     const route = get(activeRoute$);
 
     if (route === "workflows" || isWorkflowDetailRouteKey(route)) {
@@ -160,7 +174,12 @@ export const mobileBreadcrumb$ = computed(
     if (route === "works") {
       const displayName = await get(currentChatAgentDisplayName$);
       return {
-        section: `Where ${displayName ?? "Zero"} works`,
+        section: i18n.t(
+          ($) => {
+            return $.appShell.sidebar.navigation.works;
+          },
+          { agentName: displayName ?? "Zero" },
+        ),
         sectionPath: ROUTES.works,
       };
     }
@@ -169,8 +188,18 @@ export const mobileBreadcrumb$ = computed(
     const nonChatSections: Partial<
       Record<string, { label: string; path: RoutePath }>
     > = {
-      settings: { label: "Settings", path: ROUTES.settings },
-      connectors: { label: "Connectors", path: ROUTES.connectors },
+      settings: {
+        label: i18n.t(($) => {
+          return $.appShell.sidebar.navigation.settings;
+        }),
+        path: ROUTES.settings,
+      },
+      connectors: {
+        label: i18n.t(($) => {
+          return $.appShell.sidebar.navigation.connectors;
+        }),
+        path: ROUTES.connectors,
+      },
     };
     if (route) {
       const nonChatSection = nonChatSections[route];

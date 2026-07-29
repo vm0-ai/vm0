@@ -1,13 +1,19 @@
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { StoreProvider } from "ccstate-react";
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
+import { initializeI18n } from "../../../i18n/index.ts";
+import { DEFAULT_LOCALE } from "../../../i18n/resources.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { forceUpgradeDialogOpen$ } from "../../../signals/force-upgrade.ts";
 import { ForceUpgradeDialog } from "../force-upgrade-dialog.tsx";
 
 const context = testContext();
+
+beforeEach(async () => {
+  await initializeI18n(DEFAULT_LOCALE);
+});
 
 describe("force upgrade dialog", () => {
   it("stays hidden when the client does not need a force upgrade", async () => {

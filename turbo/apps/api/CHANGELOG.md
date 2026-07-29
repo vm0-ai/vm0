@@ -1,5 +1,60 @@
 # Changelog
 
+## [1.344.0](https://github.com/vm0-ai/vm0/compare/api-v1.343.0...api-v1.344.0) (2026-07-29)
+
+
+### Features
+
+* **cli:** add chat send, queue, and cancel commands ([#23798](https://github.com/vm0-ai/vm0/issues/23798)) ([acae822](https://github.com/vm0-ai/vm0/commit/acae82290bcd72aaf2af292f405db86a05821226))
+
+
+### Refactoring
+
+* **chat:** retire legacy input content storage ([#23658](https://github.com/vm0-ai/vm0/issues/23658)) ([dcbe985](https://github.com/vm0-ai/vm0/commit/dcbe985bf518c6bf745f8714417df2e9a92576de))
+* **connectors:** align custom oauth storage with organization model ([#23521](https://github.com/vm0-ai/vm0/issues/23521)) ([ab3e118](https://github.com/vm0-ai/vm0/commit/ab3e118690a3d7346dadb571ffb38bf9e5d40bbf))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.246.0
+    * @vm0/core bumped to 8.486.0
+    * @vm0/db bumped to 1.152.1
+
+## [1.343.0](https://github.com/vm0-ai/vm0/compare/api-v1.342.0...api-v1.343.0) (2026-07-29)
+
+
+### Features
+
+* **connectors:** route cloudflare oauth through the app callback ([#23739](https://github.com/vm0-ai/vm0/issues/23739)) ([8fc2316](https://github.com/vm0-ai/vm0/commit/8fc23165b7b813b7c1227f724d7975197baab1ae))
+* **telegram:** route reply chains through canonical chat threads ([#23785](https://github.com/vm0-ai/vm0/issues/23785)) ([f55813b](https://github.com/vm0-ai/vm0/commit/f55813b5a07b8b3388510cc84f85afe0036e35dc))
+
+
+### Bug Fixes
+
+* **api:** harden morning brief failure paths ([#23758](https://github.com/vm0-ai/vm0/issues/23758)) ([2769085](https://github.com/vm0-ai/vm0/commit/2769085d188d83c1468a4bda4e447bf107bff92f))
+* **api:** use custom plan periods for team usage ([#23787](https://github.com/vm0-ai/vm0/issues/23787)) ([e7ea364](https://github.com/vm0-ai/vm0/commit/e7ea364061e463087fa2a0cd6c17dc85e5df641a))
+* **connectors:** preserve committed mutations on realtime failure ([#23779](https://github.com/vm0-ai/vm0/issues/23779)) ([a4abdee](https://github.com/vm0-ai/vm0/commit/a4abdee3caa2f7e837a3919f6ecf66cc895e54e2))
+* **runner:** checkpoint sessions before job timeout ([#23734](https://github.com/vm0-ai/vm0/issues/23734)) ([15f44cc](https://github.com/vm0-ai/vm0/commit/15f44cc68e1387d5b18f604fea9c964a1557561d))
+* separate cloud browser viewer access from agent authorization ([#23752](https://github.com/vm0-ai/vm0/issues/23752)) ([3f431f7](https://github.com/vm0-ai/vm0/commit/3f431f721fcb7b7137465c2259dfa15792820a83))
+
+
+### Refactoring
+
+* **api:** use chat_events in raw sql ([#23760](https://github.com/vm0-ai/vm0/issues/23760)) ([f12b968](https://github.com/vm0-ai/vm0/commit/f12b968bdac602761be42ccfd497f2281be64645))
+* **connectors:** consume catalog v2 slug identity ([#23786](https://github.com/vm0-ai/vm0/issues/23786)) ([e9dc374](https://github.com/vm0-ai/vm0/commit/e9dc3740a661f3d549b7e8062e5cb15ea58e017d))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.245.0
+    * @vm0/connectors bumped to 1.202.0
+    * @vm0/core bumped to 8.485.1
+    * @vm0/db bumped to 1.152.0
+
 ## [1.342.0](https://github.com/vm0-ai/vm0/compare/api-v1.341.0...api-v1.342.0) (2026-07-29)
 
 

@@ -5,6 +5,7 @@ import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import { setupClerk$, watchOrgSwitch$ } from "./auth.ts";
 import { initTheme$ } from "./theme.ts";
 import { initLocale$, syncLocalePreference$ } from "./locale.ts";
+import { i18n } from "../i18n/index.ts";
 import { setRootSignal$ } from "./root-signal.ts";
 import {
   initRoutes$,
@@ -479,23 +480,39 @@ const handleBillingRedirect$ = command(({ set }) => {
   window.history.replaceState(null, "", url.toString());
 
   if (billing === "pro" || billing === "team") {
-    const label = billing === "pro" ? "Pro" : "Team";
+    const label =
+      billing === "pro"
+        ? i18n.t(($) => {
+            return $.billing.plans.pro.name;
+          })
+        : i18n.t(($) => {
+            return $.billing.plans.team.name;
+          });
     showSuccessToastAfterMount(
-      `${label} checkout completed. Credits will be added after the invoice is paid.`,
+      i18n.t(
+        ($) => {
+          return $.billing.toasts.checkoutCompleted;
+        },
+        { plan: label },
+      ),
     );
     set(reloadBillingStatus$);
   }
 
   if (credits === "purchased") {
     showSuccessToastAfterMount(
-      "Credits added. You can continue chatting with Zero.",
+      i18n.t(($) => {
+        return $.billing.toasts.creditsAdded;
+      }),
     );
     set(reloadBillingStatus$);
   }
 
   if (concurrency === "purchased") {
     showSuccessToastAfterMount(
-      "Concurrency added. Your new slots will become available after Stripe confirms the subscription.",
+      i18n.t(($) => {
+        return $.billing.toasts.concurrencyAdded;
+      }),
     );
     set(reloadBillingStatus$);
   }

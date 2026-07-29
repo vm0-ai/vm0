@@ -1,4 +1,5 @@
 import { useGet, useSet, useLastLoadable } from "ccstate-react";
+import { useTranslation } from "react-i18next";
 import {
   IconChevronDown,
   IconChevronLeft,
@@ -50,8 +51,12 @@ import { isOrgAdmin$ } from "../../signals/org.ts";
 import { user$ } from "../../signals/auth.ts";
 import type { PublicConnectorCatalogStatusItem } from "@vm0/api-contracts/contracts/zero-connector-catalog";
 import { connectorCatalogStatusBySlug$ } from "../../signals/external/connectors.ts";
-import { formatCredits } from "../../lib/format-credits.ts";
 import { getCardPalette } from "../../lib/card-palette.ts";
+import { currentLocale, i18n } from "../../i18n/index.ts";
+import {
+  formatCompactNumber,
+  formatLocalizedNumber,
+} from "../../i18n/format.ts";
 
 type ConnectorCatalogStatusBySlug = ReadonlyMap<
   string,
@@ -92,13 +97,19 @@ function daysAgoIso(n: number, tz: string): string {
 function dateRangeLabel(range: DateRange): string {
   switch (range) {
     case "last7": {
-      return "Last 7 Days";
+      return i18n.t(($) => {
+        return $.insights.range.last7Days;
+      });
     }
     case "last28": {
-      return "Last 28 Days";
+      return i18n.t(($) => {
+        return $.insights.range.last28Days;
+      });
     }
     case "last30": {
-      return "Last 30 Days";
+      return i18n.t(($) => {
+        return $.insights.range.last30Days;
+      });
     }
     default: {
       return formatDateShort(range);
@@ -114,12 +125,19 @@ function formatDateShort(iso: string): string {
   const diff = now.getTime() - d.getTime();
   const dayMs = 86_400_000;
   if (diff < dayMs) {
-    return "Today";
+    return i18n.t(($) => {
+      return $.insights.range.today;
+    });
   }
   if (diff < dayMs * 2) {
-    return "Yesterday";
+    return i18n.t(($) => {
+      return $.insights.range.yesterday;
+    });
   }
-  return d.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+  return d.toLocaleDateString(currentLocale(), {
+    month: "short",
+    day: "numeric",
+  });
 }
 
 /** Filter days that fall within the selected range or match a specific date. */
@@ -159,7 +177,11 @@ function CalendarMonth({
   hasData: Set<string>;
   onSelect: (iso: string) => void;
 }) {
-  const weekdays = ["Su", "Mo", "Tu", "We", "Th", "Fr", "Sa"];
+  const weekdays = Array.from({ length: 7 }, (_, index) => {
+    return new Intl.DateTimeFormat(currentLocale(), {
+      weekday: "short",
+    }).format(new Date(2026, 0, 4 + index));
+  });
   const first = new Date(year, month, 1);
   const startDay = first.getDay();
   const daysInMonth = new Date(year, month + 1, 0).getDate();
@@ -236,7 +258,7 @@ function CustomRangePicker({
   const setViewMonth = useSet(setInsightsCalendarMonth$);
 
   const monthLabel = new Date(viewYear, viewMonth, 1).toLocaleDateString(
-    "en-US",
+    currentLocale(),
     { month: "long", year: "numeric" },
   );
 
@@ -268,7 +290,9 @@ function CustomRangePicker({
             !isPreset(value) ? "font-semibold" : ""
           }`}
         >
-          Custom Range
+          {i18n.t(($) => {
+            return $.insights.range.custom;
+          })}
         </button>
       </PopoverTrigger>
       <PopoverContent
@@ -281,6 +305,9 @@ function CustomRangePicker({
           <button
             type="button"
             onClick={prevMonth}
+            aria-label={i18n.t(($) => {
+              return $.insights.calendar.previousMonth;
+            })}
             className="h-7 w-7 inline-flex items-center justify-center rounded-md hover:bg-muted transition-colors"
           >
             <IconChevronLeft size={14} stroke={1.5} />
@@ -289,6 +316,9 @@ function CustomRangePicker({
           <button
             type="button"
             onClick={nextMonth}
+            aria-label={i18n.t(($) => {
+              return $.insights.calendar.nextMonth;
+            })}
             className="h-7 w-7 inline-flex items-center justify-center rounded-md hover:bg-muted transition-colors"
           >
             <IconChevronRight size={14} stroke={1.5} />
@@ -357,7 +387,9 @@ function DateRangeFilter({
               !isPreset(value) && value === yesterday ? "font-semibold" : ""
             }
           >
-            Yesterday
+            {i18n.t(($) => {
+              return $.insights.range.yesterday;
+            })}
           </DropdownMenuItem>
         )}
         {availableDates.includes(yesterday) && <DropdownMenuSeparator />}
@@ -401,40 +433,185 @@ function dayHash(date: string, poolSize: number): number {
   return Math.abs(h) % poolSize;
 }
 
+function formatRuns(count: number): string {
+  return i18n.t(
+    ($) => {
+      return $.insights.units.run;
+    },
+    { count, value: formatLocalizedNumber(count) },
+  );
+}
+
+function formatAgents(count: number): string {
+  return i18n.t(
+    ($) => {
+      return $.insights.units.agent;
+    },
+    { count, value: formatLocalizedNumber(count) },
+  );
+}
+
+function formatCalls(count: number): string {
+  return i18n.t(
+    ($) => {
+      return $.insights.units.call;
+    },
+    { count, value: formatLocalizedNumber(count) },
+  );
+}
+
+function formatServices(count: number): string {
+  return i18n.t(
+    ($) => {
+      return $.insights.units.service;
+    },
+    { count, value: formatLocalizedNumber(count) },
+  );
+}
+
+function formatInsightCredits(count: number): string {
+  return i18n.t(
+    ($) => {
+      return $.usage.units.credit;
+    },
+    { count, value: formatCompactNumber(count) },
+  );
+}
+
+function summaryTotals(day: DayInsight) {
+  return {
+    totalRuns: day.agents.reduce((sum, agent) => {
+      return sum + agent.runs;
+    }, 0),
+    totalCalls: day.services.reduce((sum, service) => {
+      return sum + service.calls;
+    }, 0),
+    blocked: day.permissions.reduce((sum, permission) => {
+      return sum + permission.denied;
+    }, 0),
+  };
+}
+
 function buildSummaryQuote(day: DayInsight): {
   quote: string;
   caption: string;
 } {
-  const totalRuns = day.agents.reduce((s, a) => {
-    return s + a.runs;
-  }, 0);
-  const totalCalls = day.services.reduce((s, svc) => {
-    return s + svc.calls;
-  }, 0);
-  const blocked = day.permissions.reduce((s, p) => {
-    return s + p.denied;
-  }, 0);
+  const { totalRuns, totalCalls, blocked } = summaryTotals(day);
   let quote: string;
   let caption: string;
 
   if (blocked > 0) {
-    quote = `${blocked} requests were blocked by your permission rules. Review them to make sure nothing important is being held back.`;
-    caption = `${totalCalls} calls · ${blocked} blocked`;
+    quote = i18n.t(
+      ($) => {
+        return $.insights.summary.blocked;
+      },
+      { count: blocked, blocked: formatLocalizedNumber(blocked) },
+    );
+    caption = i18n.t(
+      ($) => {
+        return $.insights.summary.blockedCaption;
+      },
+      {
+        calls: formatCalls(totalCalls),
+        blocked: formatLocalizedNumber(blocked),
+      },
+    );
   } else if (totalRuns > 8) {
-    quote = `A busy day — ${day.agents.length} agents completed ${totalRuns} runs. Your network is working hard.`;
-    caption = `${totalRuns} runs · ${day.agents.length} agents`;
+    quote = i18n.t(
+      ($) => {
+        return $.insights.summary.busy;
+      },
+      {
+        count: day.agents.length,
+        agentCount: formatLocalizedNumber(day.agents.length),
+        agents: formatAgents(day.agents.length),
+        runs: formatRuns(totalRuns),
+      },
+    );
+    caption = i18n.t(
+      ($) => {
+        return $.insights.summary.activityCaption;
+      },
+      {
+        first: formatRuns(totalRuns),
+        second: formatAgents(day.agents.length),
+      },
+    );
   } else if (totalCalls > 100) {
-    quote = `${totalCalls} service calls across ${day.services.length} services. High traffic day.`;
-    caption = `${totalCalls} calls · ${day.services.length} services`;
+    quote = i18n.t(
+      ($) => {
+        return $.insights.summary.highTraffic;
+      },
+      {
+        count: day.services.length,
+        callCount: formatLocalizedNumber(totalCalls),
+        calls: formatCalls(totalCalls),
+        services: formatServices(day.services.length),
+      },
+    );
+    caption = i18n.t(
+      ($) => {
+        return $.insights.summary.activityCaption;
+      },
+      {
+        first: formatCalls(totalCalls),
+        second: formatServices(day.services.length),
+      },
+    );
   } else if (day.agents.length >= 4) {
-    quote = `${day.agents.length} agents active, using ${formatCredits(day.creditsUsed)} credits total. A well-distributed workload.`;
-    caption = `${day.agents.length} agents · ${formatCredits(day.creditsUsed)} credits`;
+    quote = i18n.t(
+      ($) => {
+        return $.insights.summary.distributed;
+      },
+      {
+        count: day.agents.length,
+        agents: formatAgents(day.agents.length),
+        credits: formatInsightCredits(day.creditsUsed),
+      },
+    );
+    caption = i18n.t(
+      ($) => {
+        return $.insights.summary.activityCaption;
+      },
+      {
+        first: formatAgents(day.agents.length),
+        second: formatInsightCredits(day.creditsUsed),
+      },
+    );
   } else if (totalRuns <= 2 && totalCalls < 30) {
-    quote = `Light activity — ${totalRuns === 0 ? "no runs" : `only ${totalRuns} ${totalRuns === 1 ? "run" : "runs"}`} and ${totalCalls} calls. A quiet day.`;
-    caption = `${totalRuns} ${totalRuns === 1 ? "run" : "runs"} · a quiet day`;
+    quote = i18n.t(
+      ($) => {
+        return $.insights.summary.light;
+      },
+      {
+        count: totalRuns,
+        runs: formatRuns(totalRuns),
+        calls: formatCalls(totalCalls),
+      },
+    );
+    caption = i18n.t(
+      ($) => {
+        return $.insights.summary.quietCaption;
+      },
+      { runs: formatRuns(totalRuns) },
+    );
   } else {
-    quote = `${totalRuns} runs and ${totalCalls} service calls today. Everything running smoothly.`;
-    caption = `${totalRuns} runs · ${totalCalls} calls`;
+    quote = i18n.t(
+      ($) => {
+        return $.insights.summary.smooth;
+      },
+      {
+        runs: formatRuns(totalRuns),
+        callCount: formatLocalizedNumber(totalCalls),
+        calls: formatCalls(totalCalls),
+      },
+    );
+    caption = i18n.t(
+      ($) => {
+        return $.insights.summary.activityCaption;
+      },
+      { first: formatRuns(totalRuns), second: formatCalls(totalCalls) },
+    );
   }
 
   return { quote, caption };
@@ -510,7 +687,9 @@ function AgentsCard({
         className="text-xs font-semibold uppercase tracking-widest mb-3"
         style={{ color: accent }}
       >
-        Agents
+        {i18n.t(($) => {
+          return $.insights.cards.agents;
+        })}
       </p>
       <div className="flex items-center mb-3">
         <span className="text-3xl font-black tabular-nums font-serif">
@@ -518,8 +697,16 @@ function AgentsCard({
         </span>
       </div>
       <p className="text-sm opacity-60">
-        {day.agents.length === 1 ? "agent" : "agents"} ran {totalRuns}{" "}
-        {totalRuns === 1 ? "time" : "times"}
+        {i18n.t(
+          ($) => {
+            return $.insights.cards.agentsRan;
+          },
+          {
+            count: day.agents.length,
+            agents: formatAgents(day.agents.length),
+            runs: formatRuns(totalRuns),
+          },
+        )}
       </p>
       <div className="flex flex-col gap-2 mt-3">
         {day.agents.map((a) => {
@@ -542,7 +729,7 @@ function AgentsCard({
                 {a.agentName}
               </span>
               <span className="text-xs opacity-60 tabular-nums shrink-0">
-                {a.runs} {a.runs === 1 ? "run" : "runs"}
+                {formatRuns(a.runs)}
               </span>
             </div>
           );
@@ -591,27 +778,40 @@ function TeamCreditUsageCard({
         className="text-xs font-semibold uppercase tracking-widest mb-3"
         style={{ color: accent }}
       >
-        Team Credit Usage
+        {i18n.t(($) => {
+          return $.insights.cards.teamCreditUsage;
+        })}
       </p>
       <p
         className="text-5xl font-black leading-none tabular-nums font-serif transition-all duration-150"
-        title={displayCredits.toLocaleString()}
+        title={formatLocalizedNumber(displayCredits)}
       >
-        {formatCredits(displayCredits)}
+        {formatCompactNumber(displayCredits)}
       </p>
       <p className="text-sm opacity-60 mt-2">
         {hoveredAgentData
-          ? `by ${hoveredAgentData.agentName}`
-          : "consumed today"}
+          ? i18n.t(
+              ($) => {
+                return $.insights.cards.byAgent;
+              },
+              { agent: hoveredAgentData.agentName },
+            )
+          : i18n.t(($) => {
+              return $.insights.cards.consumedToday;
+            })}
       </p>
 
       <div className="flex items-center justify-between mt-4">
-        <span className="text-sm opacity-60">Balance</span>
+        <span className="text-sm opacity-60">
+          {i18n.t(($) => {
+            return $.insights.cards.balance;
+          })}
+        </span>
         <span
           className="text-sm font-semibold tabular-nums"
-          title={day.creditBalance.toLocaleString()}
+          title={formatLocalizedNumber(day.creditBalance)}
         >
-          {formatCredits(day.creditBalance)}
+          {formatCompactNumber(day.creditBalance)}
         </span>
       </div>
 
@@ -621,7 +821,9 @@ function TeamCreditUsageCard({
             className="text-xs font-semibold uppercase tracking-widest mb-3"
             style={{ color: accent }}
           >
-            Team
+            {i18n.t(($) => {
+              return $.insights.cards.team;
+            })}
           </p>
           <div className="flex flex-col gap-2">
             {sorted.map((m) => {
@@ -653,9 +855,9 @@ function TeamCreditUsageCard({
                   </div>
                   <span
                     className="text-xs opacity-60 w-10 text-right shrink-0 tabular-nums"
-                    title={memberCredits.toLocaleString()}
+                    title={formatLocalizedNumber(memberCredits)}
                   >
-                    {formatCredits(memberCredits)}
+                    {formatCompactNumber(memberCredits)}
                   </span>
                 </div>
               );
@@ -704,18 +906,27 @@ function YourCreditUsageCard({
         className="text-xs font-semibold uppercase tracking-widest mb-3"
         style={{ color: accent }}
       >
-        Your Credit Usage
+        {i18n.t(($) => {
+          return $.insights.cards.yourCreditUsage;
+        })}
       </p>
       <p
         className="text-5xl font-black leading-none tabular-nums font-serif transition-all duration-150"
-        title={displayCredits.toLocaleString()}
+        title={formatLocalizedNumber(displayCredits)}
       >
-        {formatCredits(displayCredits)}
+        {formatCompactNumber(displayCredits)}
       </p>
       <p className="text-sm opacity-60 mt-2">
         {hoveredAgentData
-          ? `by ${hoveredAgentData.agentName}`
-          : "consumed today"}
+          ? i18n.t(
+              ($) => {
+                return $.insights.cards.byAgent;
+              },
+              { agent: hoveredAgentData.agentName },
+            )
+          : i18n.t(($) => {
+              return $.insights.cards.consumedToday;
+            })}
       </p>
     </Card>
   );
@@ -799,14 +1010,24 @@ function ServicesCard({
         className="text-xs font-semibold uppercase tracking-widest mb-3"
         style={{ color: accent }}
       >
-        Services
+        {i18n.t(($) => {
+          return $.insights.cards.services;
+        })}
       </p>
       <p className="text-5xl font-black leading-none tabular-nums font-serif">
         {day.services.length}
       </p>
       <p className="text-sm opacity-60 mt-2">
-        {day.services.length === 1 ? "service" : "services"} received{" "}
-        {totalCalls} {totalCalls === 1 ? "call" : "calls"}
+        {i18n.t(
+          ($) => {
+            return $.insights.cards.servicesReceived;
+          },
+          {
+            count: day.services.length,
+            services: formatServices(day.services.length),
+            calls: formatCalls(totalCalls),
+          },
+        )}
       </p>
       <div className="flex flex-col gap-2.5 mt-4">
         {sorted.map((s) => {
@@ -828,7 +1049,7 @@ function ServicesCard({
                 />
               </div>
               <span className="text-xs opacity-60 w-8 text-right shrink-0 tabular-nums">
-                {s.calls}
+                {formatLocalizedNumber(s.calls)}
               </span>
             </div>
           );
@@ -880,14 +1101,24 @@ function PermissionsAllowedCard({
         className="text-xs font-semibold uppercase tracking-widest mb-3"
         style={{ color: accent }}
       >
-        Allowed
+        {i18n.t(($) => {
+          return $.insights.cards.allowed;
+        })}
       </p>
       <p className="text-5xl font-black leading-none tabular-nums font-serif">
         {totalAllowed}
       </p>
       <p className="text-sm opacity-60 mt-2">
-        calls made within {allowed.length} granted{" "}
-        {allowed.length === 1 ? "permission" : "permissions"}
+        {i18n.t(
+          ($) => {
+            return $.insights.cards.allowedSummary;
+          },
+          {
+            count: allowed.length,
+            calls: formatCalls(totalAllowed),
+            permissions: formatLocalizedNumber(allowed.length),
+          },
+        )}
       </p>
       <div className="flex flex-col gap-3 mt-4">
         {visible.map((p) => {
@@ -904,7 +1135,7 @@ function PermissionsAllowedCard({
                   {connectorLabel(p.connectorType ?? p.label, statusBySlug)}
                 </span>
                 <span className="text-xs opacity-60 tabular-nums shrink-0">
-                  {p.allowed} {p.allowed === 1 ? "call" : "calls"}
+                  {formatCalls(p.allowed)}
                 </span>
               </div>
               {hasDescription && (
@@ -925,7 +1156,13 @@ function PermissionsAllowedCard({
           className="text-xs font-medium mt-3"
           style={{ color: accent }}
         >
-          {expanded ? "Show less" : "Load more"}
+          {expanded
+            ? i18n.t(($) => {
+                return $.insights.common.showLess;
+              })
+            : i18n.t(($) => {
+                return $.insights.common.loadMore;
+              })}
         </button>
       )}
     </Card>
@@ -961,14 +1198,24 @@ function PermissionsBlockedCard({
         className="text-xs font-semibold uppercase tracking-widest mb-3"
         style={{ color: accent }}
       >
-        Protected
+        {i18n.t(($) => {
+          return $.insights.cards.protected;
+        })}
       </p>
       <p className="text-5xl font-black leading-none tabular-nums font-serif">
         {totalBlocked}
       </p>
       <p className="text-sm opacity-60 mt-2">
-        calls protected across {blocked.length}{" "}
-        {blocked.length === 1 ? "permission" : "permissions"}
+        {i18n.t(
+          ($) => {
+            return $.insights.cards.protectedSummary;
+          },
+          {
+            count: blocked.length,
+            calls: formatCalls(totalBlocked),
+            permissions: formatLocalizedNumber(blocked.length),
+          },
+        )}
       </p>
       <div className="flex flex-col gap-2 mt-4">
         {blocked.map((p) => {
@@ -985,8 +1232,24 @@ function PermissionsBlockedCard({
               </span>
               <span className="text-xs tabular-nums shrink-0 opacity-70">
                 {fullyBlocked
-                  ? `${p.denied} rejected`
-                  : `${p.denied} of ${p.allowed + p.denied} rejected`}
+                  ? i18n.t(
+                      ($) => {
+                        return $.insights.cards.rejected;
+                      },
+                      {
+                        count: p.denied,
+                        value: formatLocalizedNumber(p.denied),
+                      },
+                    )
+                  : i18n.t(
+                      ($) => {
+                        return $.insights.cards.rejectedOf;
+                      },
+                      {
+                        denied: formatLocalizedNumber(p.denied),
+                        total: formatLocalizedNumber(p.allowed + p.denied),
+                      },
+                    )}
               </span>
             </div>
           );
@@ -1008,13 +1271,17 @@ function formatDate(iso: string): string {
   const dayMs = 86_400_000;
 
   if (diff < dayMs) {
-    return "Today";
+    return i18n.t(($) => {
+      return $.insights.range.today;
+    });
   }
   if (diff < dayMs * 2) {
-    return "Yesterday";
+    return i18n.t(($) => {
+      return $.insights.range.yesterday;
+    });
   }
 
-  return d.toLocaleDateString("en-US", {
+  return d.toLocaleDateString(currentLocale(), {
     weekday: "long",
     month: "short",
     day: "numeric",
@@ -1026,13 +1293,7 @@ function formatDate(iso: string): string {
 // ---------------------------------------------------------------------------
 
 function formatCardValue(n: number): string {
-  if (n >= 1_000_000) {
-    return `${(n / 1_000_000).toFixed(1)}M`;
-  }
-  if (n >= 1000) {
-    return `${(n / 1000).toFixed(1)}K`;
-  }
-  return n.toLocaleString();
+  return formatCompactNumber(n);
 }
 
 function DayAutomationsCard({
@@ -1069,7 +1330,9 @@ function DayAutomationsCard({
         className="text-xs font-semibold uppercase tracking-widest mb-3"
         style={{ color: accent }}
       >
-        Automations
+        {i18n.t(($) => {
+          return $.insights.cards.automations;
+        })}
       </p>
       <div className="flex items-center mb-3">
         <span className="text-3xl font-black tabular-nums font-serif">
@@ -1077,9 +1340,24 @@ function DayAutomationsCard({
         </span>
       </div>
       <p className="text-sm opacity-60">
-        {automations.length === 1 ? "automation" : "automations"} used{" "}
-        {formatCardValue(totalCredits)}{" "}
-        {totalCredits === 1 ? "credit" : "credits"}
+        {i18n.t(
+          ($) => {
+            return $.insights.cards.automationsUsed;
+          },
+          {
+            count: automations.length,
+            automations: i18n.t(
+              ($) => {
+                return $.usage.units.automation;
+              },
+              {
+                count: automations.length,
+                value: formatLocalizedNumber(automations.length),
+              },
+            ),
+            credits: formatInsightCredits(totalCredits),
+          },
+        )}
       </p>
       <TooltipProvider delayDuration={300}>
         <ul className="flex flex-col gap-2 mt-3">
@@ -1129,8 +1407,18 @@ function DayAutomationsCard({
                 className="w-full text-left text-xs font-medium text-muted-foreground hover:text-foreground transition-colors -mx-1.5 px-1.5 py-1 rounded-md hover:bg-foreground/5"
               >
                 {showAll
-                  ? "Show less"
-                  : `+${overflow} more ${overflow === 1 ? "automation" : "automations"}`}
+                  ? i18n.t(($) => {
+                      return $.insights.common.showLess;
+                    })
+                  : i18n.t(
+                      ($) => {
+                        return $.insights.cards.moreAutomations;
+                      },
+                      {
+                        count: overflow,
+                        value: formatLocalizedNumber(overflow),
+                      },
+                    )}
               </button>
             </li>
           )}
@@ -1143,6 +1431,59 @@ function DayAutomationsCard({
 // ---------------------------------------------------------------------------
 // Per-day Chats card
 // ---------------------------------------------------------------------------
+
+function DayChatRow({
+  row,
+  maxValue,
+  accent,
+}: {
+  row: DayChat;
+  maxValue: number;
+  accent: string;
+}) {
+  const fullTitle =
+    row.threadTitle ??
+    i18n.t(($) => {
+      return $.insights.cards.untitled;
+    });
+  const pct = (row.credits / maxValue) * 100;
+
+  return (
+    <li>
+      <Link
+        pathname="/chats/:threadId"
+        options={{ pathParams: { threadId: row.threadId } }}
+        className="flex items-center gap-2 -mx-1.5 px-1.5 py-0.5 rounded-md hover:bg-foreground/5 transition-colors"
+      >
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <span className="text-sm font-medium flex-1 truncate decoration-dotted underline decoration-foreground/40 decoration-[1px] underline-offset-2">
+              {fullTitle}
+            </span>
+          </TooltipTrigger>
+          <TooltipContent side="top" sideOffset={4} className="max-w-xs">
+            <p className="text-xs whitespace-normal break-words">{fullTitle}</p>
+            <p className="text-[11px] mt-1.5 pt-1.5 border-t border-white/15 opacity-80">
+              {i18n.t(($) => {
+                return $.insights.cards.clickToOpen;
+              })}{" "}
+              →
+            </p>
+          </TooltipContent>
+        </Tooltip>
+        <div className="w-16 h-1.5 rounded-full bg-foreground/10 overflow-hidden shrink-0">
+          <div
+            className="h-full rounded-full"
+            style={{ width: `${pct}%`, backgroundColor: accent }}
+          />
+        </div>
+        <span className="text-xs opacity-60 tabular-nums shrink-0">
+          {formatCardValue(row.credits)}
+        </span>
+      </Link>
+    </li>
+  );
+}
 
 function DayChatsCard({
   dayDate,
@@ -1178,7 +1519,9 @@ function DayChatsCard({
         className="text-xs font-semibold uppercase tracking-widest mb-3"
         style={{ color: accent }}
       >
-        Chats
+        {i18n.t(($) => {
+          return $.insights.cards.chats;
+        })}
       </p>
       <div className="flex items-center mb-3">
         <span className="text-3xl font-black tabular-nums font-serif">
@@ -1186,52 +1529,35 @@ function DayChatsCard({
         </span>
       </div>
       <p className="text-sm opacity-60">
-        {chats.length === 1 ? "chat" : "chats"} used{" "}
-        {formatCardValue(totalCredits)}{" "}
-        {totalCredits === 1 ? "credit" : "credits"}
+        {i18n.t(
+          ($) => {
+            return $.insights.cards.chatsUsed;
+          },
+          {
+            count: chats.length,
+            chats: i18n.t(
+              ($) => {
+                return $.usage.units.chat;
+              },
+              {
+                count: chats.length,
+                value: formatLocalizedNumber(chats.length),
+              },
+            ),
+            credits: formatInsightCredits(totalCredits),
+          },
+        )}
       </p>
       <TooltipProvider delayDuration={300}>
         <ul className="flex flex-col gap-2 mt-3">
           {visible.map((row) => {
-            const fullTitle = row.threadTitle ?? "(untitled)";
-            const pct = (row.credits / maxValue) * 100;
             return (
-              <li key={row.threadId}>
-                <Link
-                  pathname="/chats/:threadId"
-                  options={{ pathParams: { threadId: row.threadId } }}
-                  className="flex items-center gap-2 -mx-1.5 px-1.5 py-0.5 rounded-md hover:bg-foreground/5 transition-colors"
-                >
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <span className="text-sm font-medium flex-1 truncate decoration-dotted underline decoration-foreground/40 decoration-[1px] underline-offset-2">
-                        {fullTitle}
-                      </span>
-                    </TooltipTrigger>
-                    <TooltipContent
-                      side="top"
-                      sideOffset={4}
-                      className="max-w-xs"
-                    >
-                      <p className="text-xs whitespace-normal break-words">
-                        {fullTitle}
-                      </p>
-                      <p className="text-[11px] mt-1.5 pt-1.5 border-t border-white/15 opacity-80">
-                        Click to open →
-                      </p>
-                    </TooltipContent>
-                  </Tooltip>
-                  <div className="w-16 h-1.5 rounded-full bg-foreground/10 overflow-hidden shrink-0">
-                    <div
-                      className="h-full rounded-full"
-                      style={{ width: `${pct}%`, backgroundColor: accent }}
-                    />
-                  </div>
-                  <span className="text-xs opacity-60 tabular-nums shrink-0">
-                    {formatCardValue(row.credits)}
-                  </span>
-                </Link>
-              </li>
+              <DayChatRow
+                key={row.threadId}
+                row={row}
+                maxValue={maxValue}
+                accent={accent}
+              />
             );
           })}
           {(overflow > 0 || showAll) && (
@@ -1244,8 +1570,18 @@ function DayChatsCard({
                 className="w-full text-left text-xs font-medium text-muted-foreground hover:text-foreground transition-colors -mx-1.5 px-1.5 py-1 rounded-md hover:bg-foreground/5"
               >
                 {showAll
-                  ? "Show less"
-                  : `+${overflow} more ${overflow === 1 ? "chat" : "chats"}`}
+                  ? i18n.t(($) => {
+                      return $.insights.common.showLess;
+                    })
+                  : i18n.t(
+                      ($) => {
+                        return $.insights.cards.moreChats;
+                      },
+                      {
+                        count: overflow,
+                        value: formatLocalizedNumber(overflow),
+                      },
+                    )}
               </button>
             </li>
           )}
@@ -1333,7 +1669,7 @@ function DaySection({
 
 /** Format an ISO timestamp as a locale-aware absolute time. */
 function formatAbsoluteTime(iso: string): string {
-  return new Date(iso).toLocaleString("en-US", {
+  return new Date(iso).toLocaleString(currentLocale(), {
     month: "short",
     day: "numeric",
     hour: "numeric",
@@ -1376,10 +1712,15 @@ function InsightsContent({ data }: { data: NetworkInsightsData }) {
         <div>
           <div className="flex items-start justify-between gap-4">
             <div>
-              <h1 className="text-xl font-semibold">Insights</h1>
+              <h1 className="text-xl font-semibold">
+                {i18n.t(($) => {
+                  return $.insights.page.title;
+                })}
+              </h1>
               <p className="text-sm text-muted-foreground mt-1">
-                Monitor what your agents access, how credits are spent, which
-                permissions they use, and spot anything unusual.
+                {i18n.t(($) => {
+                  return $.insights.page.description;
+                })}
               </p>
             </div>
             {data.days.length > 0 && (
@@ -1396,7 +1737,12 @@ function InsightsContent({ data }: { data: NetworkInsightsData }) {
           {data.lastUpdated && (
             <div className="mt-6 flex items-center gap-4">
               <span className="text-xs italic text-muted-foreground whitespace-nowrap">
-                Last updated — {formatAbsoluteTime(data.lastUpdated)}
+                {i18n.t(
+                  ($) => {
+                    return $.insights.page.lastUpdated;
+                  },
+                  { date: formatAbsoluteTime(data.lastUpdated) },
+                )}
               </span>
               <span className="flex-1 h-px bg-border" />
             </div>
@@ -1412,8 +1758,12 @@ function InsightsContent({ data }: { data: NetworkInsightsData }) {
             />
             <p className="text-sm text-muted-foreground max-w-xs">
               {data.days.length === 0
-                ? "Run an agent to see insights here."
-                : "No activity in this time range."}
+                ? i18n.t(($) => {
+                    return $.insights.page.empty;
+                  })
+                : i18n.t(($) => {
+                    return $.insights.page.emptyRange;
+                  })}
             </p>
           </div>
         ) : (
@@ -1462,12 +1812,25 @@ function InsightsSkeleton() {
 // ---------------------------------------------------------------------------
 
 export function NetworkInsightsPage() {
+  const { t } = useTranslation();
   const dataLoadable = useLastLoadable(networkInsightsData$);
 
-  if (dataLoadable.state === "loading" || dataLoadable.state === "hasError") {
+  if (dataLoadable.state === "loading") {
     return (
       <div className="h-full overflow-auto">
         <InsightsSkeleton />
+      </div>
+    );
+  }
+
+  if (dataLoadable.state === "hasError") {
+    return (
+      <div className="h-full flex items-center justify-center text-muted-foreground">
+        <p className="text-sm" role="alert">
+          {t(($) => {
+            return $.insights.page.loadError;
+          })}
+        </p>
       </div>
     );
   }
@@ -1476,7 +1839,11 @@ export function NetworkInsightsPage() {
   if (!data) {
     return (
       <div className="h-full flex items-center justify-center text-muted-foreground">
-        <p className="text-sm">Could not load network activity.</p>
+        <p className="text-sm">
+          {t(($) => {
+            return $.insights.page.loadError;
+          })}
+        </p>
       </div>
     );
   }

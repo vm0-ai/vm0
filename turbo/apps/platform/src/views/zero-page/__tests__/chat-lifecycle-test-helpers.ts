@@ -294,7 +294,7 @@ export function makeEvent(
     id,
     threadId,
     eventType: "input.prompt",
-    content: text,
+    content: null,
     userMessage: {
       version: 1,
       parts: [{ type: "text", text }],

@@ -35,6 +35,7 @@ import {
 import { createChatCallbacksApi } from "./helpers/api-bdd-chat-callbacks";
 import { createRunsApi } from "./helpers/api-bdd-runs";
 import { createWebhookCallbackApi } from "./helpers/api-bdd-webhooks";
+import { chatEventDisplayText } from "./helpers/chat-event";
 import { mockGoogleCalendarConnectorOAuth } from "./helpers/api-bdd-workflows";
 import { updateFeatureSwitchesForUser } from "./helpers/zero-feature-switches";
 import { createZeroRouteMocks } from "./helpers/zero-route-test";
@@ -410,13 +411,17 @@ async function findMorningBriefThreadOrNull(scenario: Scenario): Promise<{
   const runMessage = messages.find((message) => {
     return message.eventType === "input.prompt" && message.runId !== undefined;
   });
-  if (!runMessage?.runId || runMessage.content === null) {
+  if (!runMessage?.runId) {
     throw new Error("Expected the Morning Brief run message");
+  }
+  const chatMessage = chatEventDisplayText(runMessage);
+  if (chatMessage === null) {
+    throw new Error("Expected the Morning Brief run message display text");
   }
   return {
     threadId,
     runId: runMessage.runId,
-    chatMessage: runMessage.content,
+    chatMessage,
   };
 }
 
@@ -687,7 +692,7 @@ describe("cron execute morning briefs", () => {
       threadMessages.filter((message) => {
         return (
           message.eventType === "input.prompt" &&
-          message.content === chatMessage &&
+          chatEventDisplayText(message) === chatMessage &&
           message.runId !== undefined
         );
       }),
@@ -1011,7 +1016,8 @@ describe("cron execute morning briefs", () => {
       events.filter((event) => {
         return (
           event.eventType === "input.prompt" &&
-          event.content === `Generate my Morning Brief for ${BRIEF_DATE}.` &&
+          chatEventDisplayText(event) ===
+            `Generate my Morning Brief for ${BRIEF_DATE}.` &&
           event.runId !== undefined
         );
       }),
@@ -1107,7 +1113,8 @@ describe("cron execute morning briefs", () => {
     const rejectedBrief = events.find((event) => {
       return (
         event.eventType === "input.prompt" &&
-        event.content === `Generate my Morning Brief for ${BRIEF_DATE}.` &&
+        chatEventDisplayText(event) ===
+          `Generate my Morning Brief for ${BRIEF_DATE}.` &&
         event.runId === undefined
       );
     });
@@ -1386,7 +1393,8 @@ describe("cron execute morning briefs", () => {
         return events.some((event) => {
           return (
             event.eventType === "input.prompt" &&
-            event.content === `Generate my Morning Brief for ${BRIEF_DATE}.` &&
+            chatEventDisplayText(event) ===
+              `Generate my Morning Brief for ${BRIEF_DATE}.` &&
             event.runId === undefined
           );
         });
@@ -1407,7 +1415,8 @@ describe("cron execute morning briefs", () => {
         );
         return events.some((event) => {
           return (
-            event.eventType === "input.prompt" && event.content === userPrompt
+            event.eventType === "input.prompt" &&
+            chatEventDisplayText(event) === userPrompt
           );
         });
       })
@@ -1436,16 +1445,17 @@ describe("cron execute morning briefs", () => {
           return (
             event.eventType === "input.prompt" &&
             event.runId !== undefined &&
-            (event.content === `Generate my Morning Brief for ${BRIEF_DATE}.` ||
-              event.content === userPrompt)
+            (chatEventDisplayText(event) ===
+              `Generate my Morning Brief for ${BRIEF_DATE}.` ||
+              chatEventDisplayText(event) === userPrompt)
           );
         });
         userRunId =
           claimed.find((event) => {
-            return event.content === userPrompt;
+            return chatEventDisplayText(event) === userPrompt;
           })?.runId ?? null;
         return claimed.map((event) => {
-          return event.content;
+          return chatEventDisplayText(event);
         });
       })
       .toStrictEqual([
@@ -1593,7 +1603,7 @@ describe("cron execute morning briefs", () => {
     const claimed = events.find((event) => {
       return (
         event.eventType === "input.prompt" &&
-        event.content === displayContent &&
+        chatEventDisplayText(event) === displayContent &&
         event.runId !== undefined
       );
     });

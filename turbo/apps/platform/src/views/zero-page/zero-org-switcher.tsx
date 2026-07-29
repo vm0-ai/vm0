@@ -4,6 +4,7 @@ import {
   useLastResolved,
   useSet,
 } from "ccstate-react";
+import { useTranslation } from "react-i18next";
 import {
   DropdownMenu,
   DropdownMenuTrigger,
@@ -79,6 +80,7 @@ function InvitationRow({
   const setAcceptingId = useSet(setAcceptingInvitationId$);
   const refreshInvitations = useSet(refreshUserInvitations$);
   const isAccepting = acceptingId === invitation.id;
+  const { t } = useTranslation();
 
   const handleAccept = onDomEventFn(async () => {
     setAcceptingId(invitation.id);
@@ -111,7 +113,13 @@ function InvitationRow({
         className="shrink-0 flex items-center gap-1 px-2 h-7 rounded-md text-xs font-medium text-muted-foreground border border-border hover:text-foreground hover:bg-accent transition-colors disabled:opacity-50 disabled:pointer-events-none"
       >
         <IconMail size={13} />
-        {isAccepting ? "Joining…" : "Join"}
+        {isAccepting
+          ? t(($) => {
+              return $.appShell.sidebar.workspaceSwitcher.joining;
+            })
+          : t(($) => {
+              return $.appShell.sidebar.workspaceSwitcher.join;
+            })}
       </button>
     </div>
   );
@@ -122,6 +130,7 @@ function CreateWorkspaceItem() {
   const clerk = clerkLoadable.state === "hasData" ? clerkLoadable.data : null;
   const creatingOrg = useGet(creatingOrg$);
   const setCreating = useSet(setCreatingOrg$);
+  const { t } = useTranslation();
 
   const handleCreateOrg = onDomEventFn(async () => {
     if (!clerk) {
@@ -151,7 +160,15 @@ function CreateWorkspaceItem() {
           stroke={1.5}
           className="shrink-0 text-muted-foreground"
         />
-        <span>{creatingOrg ? "Creating…" : "Create workspace"}</span>
+        <span>
+          {creatingOrg
+            ? t(($) => {
+                return $.appShell.sidebar.workspaceSwitcher.creating;
+              })
+            : t(($) => {
+                return $.appShell.sidebar.workspaceSwitcher.create;
+              })}
+        </span>
       </DropdownMenuItem>
     </>
   );
@@ -206,9 +223,14 @@ function OrgDropdownContent() {
   const orgData = useLastResolved(org$);
   const pendingInvitations = useLastResolved(userInvitations$);
   const currentOrg = useLastResolved(currentOrgInfo$);
+  const { t } = useTranslation();
 
   const clerk = clerkLoadable.state === "hasData" ? clerkLoadable.data : null;
-  const orgName = currentOrg?.name ?? "Organization";
+  const orgName =
+    currentOrg?.name ??
+    t(($) => {
+      return $.appShell.sidebar.workspaceSwitcher.organizationFallback;
+    });
   const orgSlug = orgData?.slug;
   const memberships = clerk?.user?.organizationMemberships ?? [];
   const currentOrgId = clerk?.organization?.id;
@@ -292,14 +314,21 @@ function PendingInvitationsBadge() {
 
 export function ZeroOrgSwitcherCompact() {
   const currentOrg = useLastResolved(currentOrgInfo$);
-  const orgName = currentOrg?.name ?? "Organization";
+  const { t } = useTranslation();
+  const orgName =
+    currentOrg?.name ??
+    t(($) => {
+      return $.appShell.sidebar.workspaceSwitcher.organizationFallback;
+    });
 
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
         <button
           type="button"
-          aria-label="Switch workspace"
+          aria-label={t(($) => {
+            return $.appShell.sidebar.workspaceSwitcher.switch;
+          })}
           className="relative flex h-9 w-9 items-center justify-center rounded-lg text-sidebar-foreground transition-colors hover:bg-sidebar-accent"
         >
           <OrgAvatar name={orgName} imageUrl={currentOrg?.imageUrl} />
@@ -313,7 +342,12 @@ export function ZeroOrgSwitcherCompact() {
 
 export function ZeroOrgSwitcher() {
   const currentOrg = useLastResolved(currentOrgInfo$);
-  const orgName = currentOrg?.name ?? "Organization";
+  const { t } = useTranslation();
+  const orgName =
+    currentOrg?.name ??
+    t(($) => {
+      return $.appShell.sidebar.workspaceSwitcher.organizationFallback;
+    });
 
   return (
     <div>
@@ -321,6 +355,9 @@ export function ZeroOrgSwitcher() {
         <DropdownMenuTrigger asChild>
           <button
             type="button"
+            aria-label={t(($) => {
+              return $.appShell.sidebar.workspaceSwitcher.switch;
+            })}
             className="w-full flex items-center gap-2.5 px-2 py-2 rounded-lg hover:bg-sidebar-accent text-sidebar-foreground transition-colors"
           >
             <span className="relative shrink-0">

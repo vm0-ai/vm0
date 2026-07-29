@@ -1,4 +1,5 @@
 import { useGet, useLoadable, useSet } from "ccstate-react";
+import { useTranslation } from "react-i18next";
 import { Tabs, TabsList, TabsTrigger } from "@vm0/ui";
 import { CreditBalanceCard } from "../../org-manage/org-usage-tab.tsx";
 import {
@@ -20,6 +21,7 @@ import {
 } from "../../../../../signals/zero-page/settings/personal-usage-record.ts";
 
 export function CreditBalanceSection() {
+  const { t } = useTranslation();
   const setActiveSection = useSet(setSettingsActiveSection$);
   const setBillingSubPage = useSet(setBillingSubPage$);
   const isAdminLoadable = useLoadable(isOrgAdmin$);
@@ -70,8 +72,16 @@ export function CreditBalanceSection() {
             }}
           >
             <TabsList>
-              <TabsTrigger value="mine">My usage</TabsTrigger>
-              <TabsTrigger value="team">Team usage</TabsTrigger>
+              <TabsTrigger value="mine">
+                {t(($) => {
+                  return $.usage.records.myUsage;
+                })}
+              </TabsTrigger>
+              <TabsTrigger value="team">
+                {t(($) => {
+                  return $.usage.records.teamUsage;
+                })}
+              </TabsTrigger>
             </TabsList>
           </Tabs>
           <UsageRangeSelect value={activeRange} onChange={setActiveRange} />
