@@ -90,7 +90,7 @@ describe("platform entrypoint safe area behavior", () => {
       /#root\s*{[\s\S]*box-sizing:\s*border-box;[\s\S]*background-color:\s*hsl\(var\(--background\)\);[\s\S]*padding:\s*var\(--sat\)\s+var\(--sar\)\s+var\(--sab-raw\)\s+var\(--sal\);/,
     );
     expect(globalCss).toMatch(
-      /@media\s*\(display-mode:\s*standalone\)\s*{[\s\S]*#root\s*{\s*position:\s*absolute;\s*overflow-y:\s*auto;\s*}/,
+      /@media\s*\(display-mode:\s*standalone\)\s*{[\s\S]*#root\s*{\s*position:\s*absolute;\s*overflow-y:\s*hidden;\s*}/,
     );
     expect(globalCss.indexOf("position: absolute;")).toBeGreaterThan(
       globalCss.indexOf("position: fixed;"),
