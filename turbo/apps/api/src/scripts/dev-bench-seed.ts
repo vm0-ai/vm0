@@ -31,7 +31,7 @@ type Database = ReturnType<typeof db>;
 type AgentRunInsert = typeof agentRuns.$inferInsert;
 type ZeroRunInsert = typeof zeroRuns.$inferInsert;
 type ChatMessageInsert = typeof chatMessages.$inferInsert;
-type SeedChatMessageRow = Omit<ChatMessageInsert, "seqId"> & {
+type SeedChatMessageRow = Omit<ChatMessageInsert, "role" | "seqId"> & {
   id: string;
   createdAt: Date;
   sequenceNumber?: number | null;
@@ -651,7 +651,6 @@ function appendRunMessages(
     chatThreadId: args.threadId,
     runId,
     eventType: "input.prompt",
-    role: "user",
     content: prompt,
     userMessage: { version: 1, parts: [{ type: "text", text: prompt }] },
     createdAt: baseCreatedAt,

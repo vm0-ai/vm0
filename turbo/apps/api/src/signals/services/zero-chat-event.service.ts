@@ -1,6 +1,5 @@
 /** Typed append-only commands for the canonical ChatEvent stream. */
 import {
-  chatEventCompatibilityRole,
   chatEventRunLifecycle,
   isValidChatEventRevocation,
 } from "@vm0/api-contracts/contracts/chat-events";
@@ -210,7 +209,7 @@ interface ChatEventBatchCommandResult {
 type InsertChatEventConflict = "none" | "any" | "id" | "run-lifecycle";
 type InsertChatEventsConflict = "any" | "run-sequence";
 
-type PersistedChatEvent = Omit<ChatEventInsert, "seqId">;
+type PersistedChatEvent = Omit<ChatEventInsert, "role" | "seqId">;
 
 function persistedChatEventValues(values: NewChatEvent): PersistedChatEvent {
   const runLifecycleEvent = chatEventRunLifecycle(values.eventType);
@@ -221,7 +220,6 @@ function persistedChatEventValues(values: NewChatEvent): PersistedChatEvent {
       content: null,
       error: pauseReason,
       eventType: event.eventType,
-      role: chatEventCompatibilityRole(event.eventType),
     };
   }
   return {
@@ -231,7 +229,6 @@ function persistedChatEventValues(values: NewChatEvent): PersistedChatEvent {
       ? { content: null }
       : {}),
     eventType: values.eventType,
-    role: chatEventCompatibilityRole(values.eventType),
     ...(runLifecycleEvent === null ? {} : { runLifecycleEvent }),
   };
 }

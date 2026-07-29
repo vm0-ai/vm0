@@ -64,6 +64,11 @@ describe("dev bench seed profile rows", () => {
       expect(rows.zeroRunRows).toHaveLength(expected.runs);
       expect(rows.messageRows).toHaveLength(expected.messages);
       expect(
+        rows.messageRows.some((row) => {
+          return "role" in row;
+        }),
+      ).toBeFalsy();
+      expect(
         countWhere(rows.messageRows, (row) => {
           return chatEventCompatibilityRole(row.eventType) === "user";
         }),
