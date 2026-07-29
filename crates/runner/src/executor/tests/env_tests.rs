@@ -207,6 +207,21 @@ fn execution_context_validation_enforces_inline_mcp_firewall_policy() {
         validate_context_for_test(&ctx).unwrap_err(),
         "firewall remote-mcp apis[0]: MCP firewall requires body capture suppression"
     );
+
+    let Some(FirewallEntry::Inline { firewall }) = ctx
+        .firewalls
+        .as_mut()
+        .and_then(|entries| entries.first_mut())
+    else {
+        panic!("expected inline firewall");
+    };
+    firewall.apis[0].suppress_body_capture = true;
+    firewall.apis[0].permissions = Some(Vec::new());
+
+    assert_eq!(
+        validate_context_for_test(&ctx).unwrap_err(),
+        "firewall remote-mcp apis[0]: MCP firewall does not support route permissions"
+    );
 }
 
 #[test]

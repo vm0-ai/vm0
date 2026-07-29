@@ -285,6 +285,9 @@ impl FirewallApi {
         if self.host_policy != Some(FirewallBaseHostPolicy::PublicDestination) {
             return Err("MCP firewall requires publicDestination hostPolicy".to_string());
         }
+        if self.permissions.is_some() {
+            return Err("MCP firewall does not support route permissions".to_string());
+        }
         if !self.auth.headers.is_empty()
             || self.auth.base.is_some()
             || self
@@ -1748,6 +1751,14 @@ mod tests {
                 "base": "https://mcp.example.com/v1/mcp",
                 "hostPolicy": {"kind": "providerOwned", "exactHosts": ["mcp.example.com"]},
                 "auth": {},
+                "mcp": {"toolPolicy": {"kind": "all"}},
+                "suppressBodyCapture": true
+            }),
+            serde_json::json!({
+                "base": "https://mcp.example.com/v1/mcp",
+                "hostPolicy": {"kind": "publicDestination"},
+                "auth": {},
+                "permissions": [],
                 "mcp": {"toolPolicy": {"kind": "all"}},
                 "suppressBodyCapture": true
             }),

@@ -32,6 +32,7 @@ describe("MCP firewall API contract", () => {
     { base: "https://mcp.example.com/v1/mcp?tenant=1" },
     { base: "https://${{ vars.HOST }}/v1/mcp" },
     { hostPolicy: { kind: "providerOwned", exactHosts: ["mcp.example.com"] } },
+    { permissions: [] },
     { auth: { headers: { Authorization: "Bearer token" } } },
     { suppressBodyCapture: undefined },
     {

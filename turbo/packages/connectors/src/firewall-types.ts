@@ -274,6 +274,13 @@ export const firewallApiSchema = z
         message: "MCP firewall requires publicDestination host policy",
       });
     }
+    if (api.permissions !== undefined) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["permissions"],
+        message: "MCP firewall does not support route permissions",
+      });
+    }
     if (
       api.auth.base !== undefined ||
       api.auth.awsSigv4 !== undefined ||
