@@ -1,6 +1,7 @@
 import { useGet, useSet } from "ccstate-react";
 import { useLoadableSet } from "ccstate-react/experimental";
 import { cn } from "@vm0/ui";
+import { useTranslation } from "react-i18next";
 import { completeOnboarding$ } from "../../signals/onboarding/onboarding-actions.ts";
 import {
   onboardingDraft$,
@@ -12,7 +13,7 @@ import { ROUTES } from "../../signals/route-paths.ts";
 import { searchParams$ } from "../../signals/route.ts";
 import { detach, Reason } from "../../signals/utils.ts";
 import { OnboardingConnectorSetup } from "./onboarding-connectors.tsx";
-import { ONBOARDING_MAKE_OPTIONS } from "./onboarding-data.ts";
+import { onboardingMakeOptions } from "./onboarding-data.ts";
 import { useOnboardingNavigation } from "./onboarding-navigation.ts";
 import { OnboardingFooter, OnboardingShell } from "./onboarding-shell.tsx";
 
@@ -47,6 +48,7 @@ function choicePath(choice: OnboardingChoice) {
 }
 
 function PromptOnboarding() {
+  const { t } = useTranslation();
   const draft = useGet(onboardingDraft$);
   const setDraft = useSet(updateOnboardingDraft$);
   const [completeLoadable, complete] = useLoadableSet(completeOnboarding$);
@@ -73,12 +75,18 @@ function PromptOnboarding() {
     <OnboardingShell
       currentStep={1}
       totalSteps={1}
-      title="Try this prompt"
-      description="Tweak it below or run it as-is. Zero takes it from here. Your tools stay sandboxed and nothing leaves your workspace."
+      title={t(($) => {
+        return $.onboarding.make.promptTitle;
+      })}
+      description={t(($) => {
+        return $.onboarding.make.promptDescription;
+      })}
       footer={
         <OnboardingFooter
           onPrimary={handleRun}
-          primaryLabel="Next"
+          primaryLabel={t(($) => {
+            return $.onboarding.common.next;
+          })}
           primaryDisabled={!draft.prompt.trim()}
           busy={completeLoadable.state === "loading"}
         />
@@ -87,7 +95,9 @@ function PromptOnboarding() {
       <OnboardingConnectorSetup connectorIds={connectors} variant="prompt" />
       <textarea
         id="onboarding-prompt"
-        aria-label="Onboarding prompt"
+        aria-label={t(($) => {
+          return $.onboarding.make.promptLabel;
+        })}
         value={draft.prompt}
         onChange={(event) => {
           setDraft({ prompt: event.target.value });
@@ -99,12 +109,14 @@ function PromptOnboarding() {
 }
 
 export function OnboardingMakePage() {
+  const { t } = useTranslation();
   const draft = useGet(onboardingDraft$);
   const setDraft = useSet(updateOnboardingDraft$);
   const [completeLoadable, complete] = useLoadableSet(completeOnboarding$);
   const searchParams = useGet(searchParams$);
   const pageSignal = useGet(pageSignal$);
   const { navigateTo } = useOnboardingNavigation();
+  const makeOptions = onboardingMakeOptions(t);
 
   if (searchParams.has("prompt")) {
     return <PromptOnboarding />;
@@ -133,12 +145,18 @@ export function OnboardingMakePage() {
     <OnboardingShell
       currentStep={1}
       totalSteps={3}
-      title="What do you want to make first"
-      description="Pick a starting point, you can do everything else later."
+      title={t(($) => {
+        return $.onboarding.make.title;
+      })}
+      description={t(($) => {
+        return $.onboarding.make.description;
+      })}
       footer={
         <OnboardingFooter
           onPrimary={handleContinue}
-          primaryLabel="Continue"
+          primaryLabel={t(($) => {
+            return $.onboarding.common.continue;
+          })}
           primaryDisabled={!draft.choice}
           busy={completeLoadable.state === "loading"}
         />
@@ -147,9 +165,11 @@ export function OnboardingMakePage() {
       <div
         className="grid grid-cols-1 gap-3 sm:grid-cols-2"
         role="radiogroup"
-        aria-label="First project type"
+        aria-label={t(($) => {
+          return $.onboarding.make.projectTypeLabel;
+        })}
       >
-        {ONBOARDING_MAKE_OPTIONS.map((option) => {
+        {makeOptions.map((option) => {
           const selected = draft.choice === option.id;
           return (
             <button

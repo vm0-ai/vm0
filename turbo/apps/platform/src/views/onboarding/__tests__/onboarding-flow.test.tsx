@@ -43,6 +43,18 @@ function mockOnboardingNeeded(): void {
   });
 }
 
+function usePortugueseLocale(): void {
+  document.documentElement.lang = "pt-BR";
+  context.mocks.data.userPreferences({ locale: "pt-BR" });
+  context.signal.addEventListener(
+    "abort",
+    () => {
+      document.documentElement.lang = "en-US";
+    },
+    { once: true },
+  );
+}
+
 function mockGithubCatalogItem(
   icon: PublicConnectorCatalogStatusItem["icon"],
 ): void {
@@ -163,6 +175,77 @@ function chooseTemplate(
 }
 
 describe("onboarding flow", () => {
+  it("renders the workflow catalog and preview in Brazilian Portuguese", async () => {
+    usePortugueseLocale();
+    mockOnboardingNeeded();
+    detachedSetupPage({ context, path: "/onboarding" });
+
+    await expect(
+      screen.findByRole("heading", {
+        name: "O que você quer fazer primeiro",
+      }),
+    ).resolves.toBeInTheDocument();
+    expect(document.title).toBe("Bem-vindo ao VM0 | VM0");
+
+    click(
+      screen.getByRole("radio", {
+        name: /Automação de fluxo de trabalho/u,
+      }),
+    );
+    click(buttonByText("Continuar"));
+
+    await expect(
+      screen.findByRole("heading", {
+        name: "Em que você está trabalhando?",
+      }),
+    ).resolves.toBeInTheDocument();
+    click(buttonByText("Engenharia"));
+
+    await expect(
+      screen.findByRole("heading", {
+        name: "Fluxos de trabalho de Engenharia",
+      }),
+    ).resolves.toBeInTheDocument();
+    expect(
+      queryAllByRoleFast("button").some((candidate) => {
+        return candidate
+          .getAttribute("aria-label")
+          ?.startsWith("Mesclar PRs do GitHub automaticamente");
+      }),
+    ).toBeTruthy();
+
+    click(buttonByAriaLabel("Prévia dos detalhes do fluxo de trabalho"));
+    const preview = await screen.findByRole("dialog", {
+      name: "Mesclar PRs do GitHub automaticamente",
+    });
+    expect(within(preview).getByText("Como funciona")).toBeVisible();
+    expect(
+      within(preview).getByText("Zero revisa e aguarda o CI"),
+    ).toBeVisible();
+  });
+
+  it("renders localized onboarding template titles in Brazilian Portuguese", async () => {
+    usePortugueseLocale();
+    mockOnboardingNeeded();
+    detachedSetupPage({
+      context,
+      path: "/onboarding/presentation-template?choice=presentation",
+    });
+
+    await expect(
+      screen.findByRole("heading", {
+        name: "Escolha um modelo de apresentação para começar",
+      }),
+    ).resolves.toBeInTheDocument();
+    expect(screen.getByText("Lançamento divertido")).toBeVisible();
+    expect(
+      buttonByAriaLabel(
+        "Selecionar modelo de apresentação Lançamento divertido",
+      ),
+    ).toBeInTheDocument();
+    expect(document.title).toBe("Escolha um modelo de apresentação | VM0");
+  });
+
   it("exposes the workspace switcher in the onboarding shell", async () => {
     mockOnboardingNeeded();
     detachedSetupPage({

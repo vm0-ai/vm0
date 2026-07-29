@@ -113,12 +113,1357 @@
       }
     }
   },
+  "auth": {
+    "clerk": {
+      "accessNotAllowed": "Access is not allowed.",
+      "userBanned": "Account access suspended because activity on this account violated the {{brandName}} Terms of Use. If you have questions, contact support@vm0.ai."
+    },
+    "documentTitles": {
+      "signIn": "Sign in",
+      "signUp": "Sign up"
+    },
+    "loading": "Loading authentication",
+    "toggleTheme": "Toggle theme"
+  },
   "global": {
     "errors": {
       "requestFailed": "Request failed"
     },
     "realtime": {
       "degraded": "Live updates ran into a problem. Please refresh the page."
+    }
+  },
+  "lifecycle": {
+    "emailUnsubscribe": {
+      "action": "Unsubscribe",
+      "body": "You will no longer receive system-initiated email notifications from {{brandName}}.",
+      "confirmTitle": "Unsubscribe from email notifications?",
+      "documentTitle": "Unsubscribe",
+      "doneTitle": "Unsubscribed",
+      "errorBody": "This unsubscribe link is invalid or expired. You can manage email notifications in Settings.",
+      "errorTitle": "Something went wrong"
+    },
+    "morningBriefUnsubscribe": {
+      "documentTitle": "Morning Brief",
+      "doneBody": "You will no longer receive the daily Morning Brief email. You can turn it back on any time in Settings.",
+      "doneTitle": "Morning Brief turned off",
+      "errorBody": "The unsubscribe link is invalid or incomplete. Open the latest Morning Brief email and use its unsubscribe link, or manage the preference in Settings.",
+      "errorTitle": "This link is invalid",
+      "loadingLabel": "Loading unsubscribe status",
+      "managePreferences": "Manage preferences"
+    },
+    "pwaInstall": {
+      "banner": "Install Zero for a better experience",
+      "description": "Add Zero to your Home Screen for quick access.",
+      "dismiss": "Dismiss install banner",
+      "gotIt": "Got it",
+      "install": "Install",
+      "installApp": "Install app",
+      "stepOne": "In Safari, tap the Share button.",
+      "stepThree": "Confirm the name is Zero and tap Add.",
+      "stepTwo": "Choose Add to Home Screen.",
+      "title": "Install Zero"
+    },
+    "redeemCampaign": {
+      "actions": {
+        "back": "Back to {{brandName}}",
+        "redeem": "Redeem credits"
+      },
+      "documentTitle": "Claim your credits",
+      "organizationFallback": "your organization",
+      "states": {
+        "adminRequired": {
+          "body": "Only organization admins can redeem campaign credits for {{orgName}}. Ask an admin in your org to open the link instead.",
+          "title": "Admin access required"
+        },
+        "alreadyGranted": {
+          "body": "Your credits are already in {{orgName}}'s account. Head back to the app to start using them.",
+          "title": "You've already redeemed this offer"
+        },
+        "billingUnavailable": {
+          "body": "Our payment system isn't available right now. Please try again in a few minutes.",
+          "title": "Billing is temporarily unavailable"
+        },
+        "broken": {
+          "body": "We couldn't complete your redemption. Please try again or contact support.",
+          "title": "Something went wrong"
+        },
+        "campaignUnavailable": {
+          "body": "The promo code may have expired, reached its redemption limit, or been removed. If you believe this is a mistake, contact support.",
+          "title": "This offer isn't available"
+        },
+        "paymentSuccessful": {
+          "body": "Your credits are on the way to {{orgName}}. Open the dashboard to see your new balance.",
+          "title": "Payment successful"
+        },
+        "processing": {
+          "body": "We're applying your credits to {{orgName}} now. This usually takes a few seconds — refresh in a moment to see the updated balance.",
+          "title": "Payment received"
+        },
+        "ready": {
+          "body": "Complete checkout to add these credits to {{orgName}}'s balance.",
+          "title": "Claim your credits"
+        }
+      }
+    }
+  },
+  "onboarding": {
+    "categories": {
+      "ceo": {
+        "description": "Briefings and the big picture",
+        "title": "CEO"
+      },
+      "data": {
+        "description": "Dashboards, metrics, queries",
+        "title": "Data"
+      },
+      "engineering": {
+        "description": "Ship, debug, automate code",
+        "title": "Engineer"
+      },
+      "everyone": {
+        "description": "Email, calendar, meetings",
+        "title": "Everyone"
+      },
+      "marketing": {
+        "description": "Content, SEO, campaigns",
+        "title": "Marketing"
+      },
+      "operations": {
+        "description": "Projects, scheduling, sync",
+        "title": "Operations"
+      },
+      "product": {
+        "description": "Specs, releases, feedback",
+        "title": "Product"
+      },
+      "sales": {
+        "description": "Pipeline and outreach",
+        "title": "Sales"
+      },
+      "support": {
+        "description": "Tickets and customer help",
+        "title": "Support"
+      }
+    },
+    "common": {
+      "back": "Back",
+      "continue": "Continue",
+      "dialogPreview": "{{title}} preview",
+      "gotIt": "Got it",
+      "next": "Next",
+      "noConnectorRequired": "No connector required",
+      "previewWorkflowDetails": "Preview workflow details",
+      "selectTemplate": "Select this template",
+      "selectThisTemplate": "Select this template",
+      "stepProgress": "Step {{current}} of {{total}}"
+    },
+    "documentTitles": {
+      "chooseImage": "Choose an image style",
+      "choosePresentation": "Choose a presentation template",
+      "chooseVideo": "Choose a video style",
+      "chooseWorkflow": "Choose a workflow",
+      "make": "Welcome to {{brandName}}",
+      "runImage": "Create your first image",
+      "runPresentation": "Create your first presentation",
+      "runVideo": "Create your first video",
+      "runWorkflow": "Run your first workflow"
+    },
+    "make": {
+      "description": "Pick a starting point, you can do everything else later.",
+      "options": {
+        "explore": {
+          "description": "Just connect with my tools",
+          "title": "I will explore on my own"
+        },
+        "images": {
+          "description": "Create high-quality visuals",
+          "title": "Generate images"
+        },
+        "presentation": {
+          "description": "Generate slides and speaker",
+          "title": "Generate a presentation"
+        },
+        "video": {
+          "description": "Turn your ideas into video",
+          "title": "Video production"
+        },
+        "workflow": {
+          "description": "Explore from preset templates",
+          "title": "Workflow automation"
+        }
+      },
+      "projectTypeLabel": "First project type",
+      "promptDescription": "Tweak it below or run it as-is. Zero takes it from here. Your tools stay sandboxed and nothing leaves your workspace.",
+      "promptLabel": "Onboarding prompt",
+      "promptTitle": "Try this prompt",
+      "title": "What do you want to make first"
+    },
+    "runAction": {
+      "checkingPlan": "Checking plan",
+      "runNow": "Run now",
+      "upgradePro": "Upgrade Pro to run"
+    },
+    "templatePicker": {
+      "image": {
+        "description": "Use it as a reference for the image you want to create.",
+        "selectTemplate": "Select {{title}} illustration template",
+        "showVariant": "Show {{title}} variant {{variant}}",
+        "title": "Pick an illustration template to start from"
+      },
+      "presentation": {
+        "description": "Use it as a reference for the deck you want to create.",
+        "nextSlide": "Show next slide",
+        "previousSlide": "Show previous slide",
+        "selectTemplate": "Select {{title}} presentation template",
+        "showSlide": "Show slide {{slide}}",
+        "slideAlt": "{{title}} slide {{slide}}",
+        "title": "Pick a presentation template to start from",
+        "viewTemplate": "View {{title}} presentation"
+      },
+      "video": {
+        "description": "Use it as a reference for the video you want to create.",
+        "selectTemplate": "Select {{title}} video template",
+        "title": "Pick a video template to start from"
+      }
+    },
+    "templateRun": {
+      "image": {
+        "noteLabel": "Custom illustration scene",
+        "notePlaceholder": "Add your custom scene to remix with your own illustration",
+        "previewLabel": "Illustration template preview",
+        "title": "Select one automation you would like to have a try"
+      },
+      "presentation": {
+        "noteLabel": "Presentation content and instruction",
+        "notePlaceholder": "Add your presentation's content and instruction",
+        "previewLabel": "Presentation template preview",
+        "title": "Fulfil your presentation"
+      },
+      "video": {
+        "noteLabel": "Custom video prompt",
+        "notePlaceholder": "Add your custom prompt to remix with your own video",
+        "previewLabel": "Video template preview",
+        "title": "Customize your video"
+      }
+    },
+    "templates": {
+      "illustration": {
+        "cozy-parlor": "Cozy Parlor",
+        "crowd-ink": "Crowd Ink",
+        "editorial-flatfolk": "Editorial Flatfolk",
+        "endpaper": "Endpaper",
+        "flat-poster": "Flat Poster",
+        "folk-muse": "Folk Muse",
+        "folk-storybook": "Folk Storybook",
+        "grain-poster": "Grain Poster",
+        "grainy-duotone": "Grainy Duotone",
+        "iberian-vignette": "Iberian Vignette",
+        "ink-mascot": "Ink Mascot",
+        "ink-storefront": "Ink Storefront",
+        "inkdab": "Inkdab",
+        "inkstomp": "Inkstomp",
+        "iso-scene": "Iso Scene",
+        "jade-blockprint": "Jade Blockprint",
+        "light-pop-portrait": "Light Pop Portrait",
+        "loose-contour": "Loose Contour",
+        "mellow-pop": "Mellow Pop",
+        "mosaic-still-life": "Mosaic Still Life",
+        "notion-illustration": "Notion Illustration",
+        "op-ed-cover": "Op-Ed Cover",
+        "painterly-botanical": "Painterly Botanical",
+        "papernook": "Papernook",
+        "postcard-illustration": "Postcard Illustration",
+        "riso-relic": "Riso Relic",
+        "shadow-pop": "Shadow Pop",
+        "soft-vector": "Soft Vector",
+        "sticker-sheet": "Sticker Sheet",
+        "sunlit-gouache": "Sunlit Gouache",
+        "tiny-wanderer": "Tiny Wanderer"
+      },
+      "presentation": {
+        "botane-organic-deck": "Botane organic",
+        "business-data-presentation": "Business data",
+        "crayon-learning-deck": "Crayon learning",
+        "creative-agency-presentation": "Creative agency",
+        "data-report-presentation": "Data report",
+        "editorial-magazine-deck": "Editorial magazine",
+        "landing-consulting-deck": "Landing consulting",
+        "lumina-creative-studio": "Lumina creative studio",
+        "mosaic-geometric-pitch": "Mosaic geometric pitch",
+        "playful-launch-presentation": "Playful launch",
+        "playful-pop-deck": "Playful pop"
+      },
+      "video": {
+        "chinese-ink-art": "Chinese Ink Painting",
+        "cyberpunk-anime": "Cyberpunk Anime",
+        "epic-grandeur": "Epic Grandeur",
+        "fashion-editorial": "Fashion Editorial",
+        "gourmet-documentary": "Gourmet Documentary",
+        "hand-drawn-fantasy-anime": "Hand Drawn Fantasy Anime",
+        "japanese-wabi-sabi": "Japanese Wabi-Sabi",
+        "luxury-product": "Luxury Product Macro",
+        "shortform-viral": "Shortform Viral",
+        "sports-performance-ad": "Sports Performance Ad"
+      }
+    },
+    "workflowDiagram": {
+      "preparedDescription": "Zero prepares the next step from your tools.",
+      "preparedTitle": "Workflow prepared",
+      "reviewDescription": "Zero completes the workflow and returns the result.",
+      "reviewTitle": "Ready for review",
+      "source": "Source"
+    },
+    "workflowPicker": {
+      "categoryDescription": "Ready-to-run setups you can adapt to your tools and goals.",
+      "categoryTitle": "{{category}} workflows",
+      "customDescription": "Describe what you want and Zero builds it with you.",
+      "customTitle": "Talk to Zero and make my own",
+      "description": "Pick a role to see the workflows that fit. You can switch anytime.",
+      "title": "What do you work on?",
+      "workflowCardLabel": "{{title}} {{description}}"
+    },
+    "workflowPreview": {
+      "howItWorks": "How it works",
+      "whatItDoes": "What it does"
+    },
+    "workflowRun": {
+      "continueWithZero": "Continue with Zero",
+      "createDraft": "Create draft",
+      "customNoteLabel": "Describe your workflow",
+      "customNotePlaceholder": "Describe what you want Zero to build",
+      "customTitle": "Describe your workflow",
+      "noteLabel": "Anything else you would like to add?",
+      "notePlaceholder": "Anything else you would like to add?",
+      "reviewTitle": "Review your workflow draft"
+    },
+    "workflows": {
+      "alert-metric-moves-slack": {
+        "description": "Watch your key metrics and alert Slack when one moves sharply.",
+        "scenario": "By the time a metric problem shows on the weekly review, it's days old. Zero watches a key metric every hour and pings Slack the moment it moves outside its normal range.",
+        "steps": {
+          "one": {
+            "description": "Zero reads the metric every hour.",
+            "title": "Zero checks the metric"
+          },
+          "three": {
+            "description": "Zero posts an alert with the deviation.",
+            "title": "Alert posted to Slack"
+          },
+          "two": {
+            "description": "Zero flags values outside the expected band.",
+            "title": "Compared to normal range"
+          }
+        },
+        "title": "Alert when a metric moves"
+      },
+      "auto-merge-github-prs": {
+        "description": "Review PRs labeled ready-to-merge, wait for CI, then merge and post to Slack.",
+        "scenario": "Merging a PR means babysitting CI, re-checking the diff, and remembering to post that it shipped. Zero watches for the ready-to-merge label, reviews the change, waits for checks to go green, merges, and tells the channel.",
+        "steps": {
+          "one": {
+            "description": "Zero picks up pull requests as soon as they carry your merge label.",
+            "title": "A PR is labeled ready-to-merge"
+          },
+          "three": {
+            "description": "Zero merges the PR and posts the outcome to your channel.",
+            "title": "Merged and posted to Slack"
+          },
+          "two": {
+            "description": "Zero reads the diff and holds until every required check passes.",
+            "title": "Zero reviews and waits on CI"
+          }
+        },
+        "title": "Auto-merge GitHub PRs"
+      },
+      "blog-posts-to-x": {
+        "description": "Every day Zero turns newly published blog posts into social variants and queues them to X through Buffer.",
+        "scenario": "One blog post can be ten social posts, but nobody has time to cut them up. Zero spots newly published posts, drafts a set of X variants, and queues them through Buffer for approval.",
+        "steps": {
+          "one": {
+            "description": "Zero detects newly published posts in Strapi.",
+            "title": "Zero finds new posts"
+          },
+          "three": {
+            "description": "Zero schedules the variants for review.",
+            "title": "Queued in Buffer"
+          },
+          "two": {
+            "description": "Zero drafts several X posts from each article.",
+            "title": "Cut into social variants"
+          }
+        },
+        "title": "Turn blog posts into social posts"
+      },
+      "build-weekly-deck-gamma": {
+        "description": "Turn the week's metrics into a ready-to-present deck in Gamma.",
+        "scenario": "The weekly metrics deck is the same slides with new numbers every time. Zero pulls the data, builds the deck in Gamma, and posts it to Slack so the review is ready before the meeting.",
+        "steps": {
+          "one": {
+            "description": "Zero reads metrics from Sheets and analytics.",
+            "title": "Zero gathers the numbers"
+          },
+          "three": {
+            "description": "Zero shares the finished deck.",
+            "title": "Posted to Slack"
+          },
+          "two": {
+            "description": "Zero assembles the recurring metrics deck.",
+            "title": "Deck built in Gamma"
+          }
+        },
+        "title": "Build the weekly deck in Gamma"
+      },
+      "business-review-gamma": {
+        "description": "Turn the month's metrics into a business review deck in Gamma.",
+        "scenario": "The weekly business review is a recurring deck someone rebuilds by hand. Zero pulls revenue and growth, builds the deck in Gamma, and has it ready before the meeting.",
+        "steps": {
+          "one": {
+            "description": "Zero reads MRR, burn, and growth from Stripe and Clerk.",
+            "title": "Zero pulls the numbers"
+          },
+          "three": {
+            "description": "Zero shares the finished deck.",
+            "title": "Ready to present"
+          },
+          "two": {
+            "description": "Zero assembles the recurring business review.",
+            "title": "Deck built in Gamma"
+          }
+        },
+        "title": "Build the business review in Gamma"
+      },
+      "catch-calendar-conflicts": {
+        "description": "Scan your calendar for double-bookings and alert you early.",
+        "scenario": "Double-bookings are only discovered when two meetings start at once. Zero checks each new event against your calendar and Cal.com availability and alerts you to conflicts before they land.",
+        "steps": {
+          "one": {
+            "description": "Zero triggers when a new event hits your calendar.",
+            "title": "An event is created"
+          },
+          "three": {
+            "description": "Zero alerts you with the clash and options.",
+            "title": "Conflict flagged in Slack"
+          },
+          "two": {
+            "description": "Zero compares against existing events and availability.",
+            "title": "Checked for conflicts"
+          }
+        },
+        "title": "Catch Google Calendar conflicts"
+      },
+      "catch-leads-gmail": {
+        "description": "Spot buying signals in new email and log the qualified leads.",
+        "scenario": "Warm leads hide in a busy inbox and go cold. Zero reads incoming mail for buying signals, enriches the sender with Apollo, logs the lead to a sheet, and suggests the next move in Slack.",
+        "steps": {
+          "one": {
+            "description": "Zero reads incoming Gmail for buying signals.",
+            "title": "Zero scans new mail"
+          },
+          "three": {
+            "description": "Zero posts the lead and a recommended next step to Slack.",
+            "title": "Next step suggested"
+          },
+          "two": {
+            "description": "Zero enriches with Apollo and adds a row to your sheet.",
+            "title": "Lead enriched and logged"
+          }
+        },
+        "title": "Catch leads from Gmail"
+      },
+      "chase-overdue-asana-tasks": {
+        "description": "Find overdue Asana tasks and nudge their owners on Slack.",
+        "scenario": "Overdue tasks need someone to chase them, and that someone is always busy. Zero scans Asana daily for anything past due and nudges each owner in Slack.",
+        "steps": {
+          "one": {
+            "description": "Zero reads tasks that are past their due date.",
+            "title": "Zero scans Asana"
+          },
+          "three": {
+            "description": "Zero DMs each owner their overdue list.",
+            "title": "Nudges sent in Slack"
+          },
+          "two": {
+            "description": "Zero groups overdue work by assignee.",
+            "title": "Owners identified"
+          }
+        },
+        "title": "Chase overdue Asana tasks"
+      },
+      "check-posthog-signup-funnel": {
+        "description": "Track the signup funnel and post the biggest drop-off to Slack.",
+        "scenario": "Funnels only help if someone runs them. Zero runs the signup funnel weekly, finds the step losing the most people, and posts it to Slack so the team knows where to focus.",
+        "steps": {
+          "one": {
+            "description": "Zero executes the signup funnel in PostHog for the week.",
+            "title": "Zero runs the funnel"
+          },
+          "three": {
+            "description": "Zero posts the leak and the trend.",
+            "title": "Posted to Slack"
+          },
+          "two": {
+            "description": "Zero finds the step with the largest fall-off.",
+            "title": "Biggest drop-off identified"
+          }
+        },
+        "title": "Check the PostHog signup funnel"
+      },
+      "compare-google-ads-last-month": {
+        "description": "Every day Zero compares Google Ads and Meta Ads spend, CPA, and ROAS against the prior period and flags anomalies in Slack.",
+        "scenario": "Ad pacing problems cost money for every day they go unnoticed. Zero compares spend, CPA, and ROAS to the prior period daily and flags anything drifting in Slack.",
+        "steps": {
+          "one": {
+            "description": "Zero pulls spend, CPA, and conversions from Google and Meta Ads.",
+            "title": "Zero reads ad performance"
+          },
+          "three": {
+            "description": "Zero posts the comparison and highlights drift.",
+            "title": "Anomalies flagged in Slack"
+          },
+          "two": {
+            "description": "Zero computes the deltas and pacing.",
+            "title": "Compared to prior period"
+          }
+        },
+        "title": "Compare Google Ads vs last month"
+      },
+      "daily-company-brief-slack": {
+        "description": "Pull product, growth, and revenue into a daily brief on Slack.",
+        "scenario": "The full picture lives in five tools nobody checks together. Zero pulls growth, revenue, product health, and engineering each morning and posts one company pulse to Slack: wins, risks, and what needs attention.",
+        "steps": {
+          "one": {
+            "description": "Zero reads growth, revenue, errors, and shipping across your stack.",
+            "title": "Zero gathers the signals"
+          },
+          "three": {
+            "description": "Zero posts the daily company brief.",
+            "title": "Posted to Slack"
+          },
+          "two": {
+            "description": "Zero writes wins, risks, and what needs attention.",
+            "title": "Assembled into a pulse"
+          }
+        },
+        "title": "Post a daily company brief to Slack"
+      },
+      "daily-industry-news-slack": {
+        "description": "Round up the day's relevant industry news into a Slack brief.",
+        "scenario": "Staying current means a dozen tabs you never open. Zero scans the last 24 hours of AI and competitor news each day and posts a short brief to Slack so you skim one summary instead.",
+        "steps": {
+          "one": {
+            "description": "Zero searches AI and competitor coverage from the last day with Exa.",
+            "title": "Zero scans the news"
+          },
+          "three": {
+            "description": "Zero posts the daily news brief.",
+            "title": "Posted to Slack"
+          },
+          "two": {
+            "description": "Zero summarizes what actually matters.",
+            "title": "Distilled into a brief"
+          }
+        },
+        "title": "Post daily industry news to Slack"
+      },
+      "draft-github-release-notes-notion": {
+        "description": "Turn the PRs merged since the last release into clean notes in Notion.",
+        "scenario": "Writing release notes means scrolling the PR history and translating commits into plain language. Zero does it when you label a PR shipped: it gathers everything merged since the last tag and drafts readable notes in Notion.",
+        "steps": {
+          "one": {
+            "description": "Zero triggers on your release label.",
+            "title": "A PR is labeled shipped"
+          },
+          "three": {
+            "description": "Zero drafts clean, grouped release notes on a Notion page.",
+            "title": "Release notes saved to Notion"
+          },
+          "two": {
+            "description": "Zero collects everything merged since the last release tag.",
+            "title": "Zero gathers merged PRs"
+          }
+        },
+        "title": "Draft GitHub release notes in Notion"
+      },
+      "draft-newsletter-mailchimp": {
+        "description": "Every month Zero assembles a newsletter from shipped features and stages a draft in Mailchimp.",
+        "scenario": "The monthly newsletter always starts from a blank page. Zero gathers what shipped from GitHub, drafts the issue, and stages it in Mailchimp so you edit instead of author.",
+        "steps": {
+          "one": {
+            "description": "Zero reads merged features and highlights from GitHub.",
+            "title": "Zero gathers what shipped"
+          },
+          "three": {
+            "description": "Zero creates a ready-to-edit draft campaign.",
+            "title": "Staged in Mailchimp"
+          },
+          "two": {
+            "description": "Zero writes the issue in your voice.",
+            "title": "Newsletter drafted"
+          }
+        },
+        "title": "Draft the newsletter in Mailchimp"
+      },
+      "draft-replies-notion-faq": {
+        "description": "Draft ticket replies grounded in your Notion FAQ.",
+        "scenario": "Most questions are already answered in the docs. Zero reads the incoming question, looks up the FAQ in Notion, and drafts a reply grounded in your own docs for an agent to approve.",
+        "steps": {
+          "one": {
+            "description": "Zero reads the new conversation in Intercom or Gmail.",
+            "title": "A question arrives"
+          },
+          "three": {
+            "description": "Zero stages an on-brand response.",
+            "title": "Reply drafted for review"
+          },
+          "two": {
+            "description": "Zero finds the relevant answer in your docs.",
+            "title": "Zero checks the Notion FAQ"
+          }
+        },
+        "title": "Draft replies from your Notion FAQ"
+      },
+      "file-gmail-invoices-drive": {
+        "description": "File invoice emails to Drive and log each one in a Sheet.",
+        "scenario": "Invoices pile up in the inbox and reconciliation is a scramble. Zero files each labeled invoice to the right Drive folder and logs the amount and due date in your expense sheet as it arrives.",
+        "steps": {
+          "one": {
+            "description": "Zero triggers on your Invoices label in Gmail.",
+            "title": "An invoice is labeled"
+          },
+          "three": {
+            "description": "Zero records amount and due date in the expense sheet.",
+            "title": "Logged in a sheet"
+          },
+          "two": {
+            "description": "Zero saves the attachment to the correct folder.",
+            "title": "Filed to Google Drive"
+          }
+        },
+        "title": "File Gmail invoices to Google Drive"
+      },
+      "file-sentry-crashes-github": {
+        "description": "Rank new Sentry errors by user impact and file the worst as GitHub issues.",
+        "scenario": "New crashes hide in Sentry until someone goes looking. Zero checks every hour, ranks errors by how many users they hit, opens a GitHub issue for the ones that matter, and pings whoever owns that code.",
+        "steps": {
+          "one": {
+            "description": "Zero reads unresolved errors and their event counts for the last hour.",
+            "title": "Zero pulls new Sentry errors"
+          },
+          "three": {
+            "description": "Zero opens a GitHub issue with the stack trace and notifies the owner in Slack.",
+            "title": "Issues filed and owner pinged"
+          },
+          "two": {
+            "description": "Zero sorts by affected users and filters out low-impact noise.",
+            "title": "Ranked by user impact"
+          }
+        },
+        "title": "File Sentry crashes as GitHub issues"
+      },
+      "fixes-to-notion-help-docs": {
+        "description": "When a ticket is marked resolved, Zero turns the fix into a reusable help article in Notion.",
+        "scenario": "The same question comes back because the fix never got documented. Zero turns each resolved ticket into a clean, reusable help article in Notion so the answer exists next time.",
+        "steps": {
+          "one": {
+            "description": "Zero triggers when a ticket is closed.",
+            "title": "A ticket is resolved"
+          },
+          "three": {
+            "description": "Zero adds the article to your help center.",
+            "title": "Saved to Notion"
+          },
+          "two": {
+            "description": "Zero drafts a clear how-to from the resolution.",
+            "title": "Fix written up"
+          }
+        },
+        "title": "Turn fixes into Notion help docs"
+      },
+      "flag-figma-designs-no-task": {
+        "description": "Flag Figma designs that have no linked Linear task yet.",
+        "scenario": "Designs quietly finish without ever becoming build tickets. Zero scans Figma daily for frames marked ready that have no linked Linear task and flags the gaps in Slack before they slip.",
+        "steps": {
+          "one": {
+            "description": "Zero reads frames and their linked tasks.",
+            "title": "Zero scans Figma frames"
+          },
+          "three": {
+            "description": "Zero lists the unlinked designs in your channel.",
+            "title": "Gaps posted to Slack"
+          },
+          "two": {
+            "description": "Zero flags ready designs missing a build ticket.",
+            "title": "Finds frames without a task"
+          }
+        },
+        "title": "Flag Figma designs without a task"
+      },
+      "flagged-gmail-todoist-tasks": {
+        "description": "Turn the emails you flag into Todoist tasks automatically.",
+        "scenario": "Flagging an email just moves the decision later. Zero picks up the flag, researches the topic and prior thread, and files a Todoist task with the context already attached.",
+        "steps": {
+          "one": {
+            "description": "Zero triggers on your to-do label in Gmail.",
+            "title": "You flag an email"
+          },
+          "three": {
+            "description": "Zero creates a ready-to-do task with links.",
+            "title": "Task filed in Todoist"
+          },
+          "two": {
+            "description": "Zero gathers prior thread context and web info with Exa.",
+            "title": "Zero researches it"
+          }
+        },
+        "title": "Turn flagged Gmail into Todoist tasks"
+      },
+      "github-idea-to-notion-spec": {
+        "description": "Expand a labeled GitHub issue into a structured product spec in Notion.",
+        "scenario": "A one-line idea in an issue isn't a spec. Zero picks up the needs-spec label and expands the issue into a structured PRD in Notion with problem, users, requirements, and acceptance criteria ready to refine.",
+        "steps": {
+          "one": {
+            "description": "Zero triggers on the label and reads the issue.",
+            "title": "An issue is labeled needs-spec"
+          },
+          "three": {
+            "description": "Zero creates the structured PRD page in Notion.",
+            "title": "Saved to Notion"
+          },
+          "two": {
+            "description": "Zero drafts problem, users, requirements, and acceptance criteria.",
+            "title": "Zero expands it into a PRD"
+          }
+        },
+        "title": "Turn a GitHub idea into a Notion spec"
+      },
+      "gmail-followups-auto": {
+        "description": "Find contacts who didn't reply and draft the next follow-up.",
+        "scenario": "Follow-up is where deals are won and where they're forgotten. Zero advances your sequences daily and drafts the next touch for every non-reply so nothing goes stale.",
+        "steps": {
+          "one": {
+            "description": "Zero reads who hasn't replied in Instantly and Apollo.",
+            "title": "Zero checks sequence status"
+          },
+          "three": {
+            "description": "Zero stages the drafts for your approval.",
+            "title": "Ready in Gmail"
+          },
+          "two": {
+            "description": "Zero writes the follow-up for each contact.",
+            "title": "Next touch drafted"
+          }
+        },
+        "title": "Send Gmail follow-ups automatically"
+      },
+      "gmail-reconnect-reminders": {
+        "description": "Surface important contacts you haven't emailed in a while.",
+        "scenario": "Relationships fade when you're heads-down. Zero reviews your inbox and calendar weekly, surfaces meaningful contacts you've gone quiet with, and suggests a natural opener to reconnect.",
+        "steps": {
+          "one": {
+            "description": "Zero reads recent email and calendar history.",
+            "title": "Zero reviews your contacts"
+          },
+          "three": {
+            "description": "Zero posts each contact with a suggested opener.",
+            "title": "Openers suggested"
+          },
+          "two": {
+            "description": "Zero finds meaningful contacts you haven't touched lately.",
+            "title": "Quiet relationships surfaced"
+          }
+        },
+        "title": "Get Gmail reconnect reminders"
+      },
+      "highlight-key-emails-gmail": {
+        "description": "Surface the few emails that actually need your attention.",
+        "scenario": "An overflowing inbox buries the three emails that matter. Zero reads your mail each morning and surfaces only the ones that genuinely need you, posted to Slack.",
+        "steps": {
+          "one": {
+            "description": "Zero scans overnight mail in Gmail.",
+            "title": "Zero reads the inbox"
+          },
+          "three": {
+            "description": "Zero posts the shortlist with why each matters.",
+            "title": "Posted to Slack"
+          },
+          "two": {
+            "description": "Zero filters to the few that need your attention.",
+            "title": "Priorities identified"
+          }
+        },
+        "title": "Highlight key emails in Gmail"
+      },
+      "investor-update-google-docs": {
+        "description": "Assemble metrics and highlights into an investor update in Docs.",
+        "scenario": "The monthly investor update always starts late and from scratch. Zero gathers the KPIs and highlights and drafts the update in Google Docs so you refine instead of assemble.",
+        "steps": {
+          "one": {
+            "description": "Zero pulls revenue and growth from Stripe and Sheets.",
+            "title": "Zero gathers KPIs"
+          },
+          "three": {
+            "description": "Zero leaves a ready-to-edit draft.",
+            "title": "Editable in Google Docs"
+          },
+          "two": {
+            "description": "Zero writes the narrative and metrics.",
+            "title": "Update drafted"
+          }
+        },
+        "title": "Draft the investor update in Google Docs"
+      },
+      "log-gong-calls-hubspot": {
+        "description": "Pull notes and next steps from a Gong call into the HubSpot deal.",
+        "scenario": "Call notes never make it into the CRM while they're fresh. Zero reads the Gong transcript after each call and writes the summary and next steps onto the HubSpot deal automatically.",
+        "steps": {
+          "one": {
+            "description": "After the call, Zero pulls the recording notes from Gong.",
+            "title": "Zero reads the transcript"
+          },
+          "three": {
+            "description": "Zero writes the notes onto the deal record.",
+            "title": "Logged to HubSpot"
+          },
+          "two": {
+            "description": "Zero extracts decisions and follow-ups.",
+            "title": "Summary and next steps drafted"
+          }
+        },
+        "title": "Log Gong calls to HubSpot"
+      },
+      "meeting-notes-asana-tasks": {
+        "description": "Turn meeting notes into assigned, due-dated tasks in Asana.",
+        "scenario": "Action items die in meeting notes. Zero reads the transcript after each meeting, pulls out the to-dos, and creates assigned Asana tasks so decisions actually turn into work.",
+        "steps": {
+          "one": {
+            "description": "After the meeting, Zero pulls notes from Fireflies.",
+            "title": "Zero reads the transcript"
+          },
+          "three": {
+            "description": "Zero files assigned tasks with due dates.",
+            "title": "Tasks created in Asana"
+          },
+          "two": {
+            "description": "Zero identifies to-dos and owners.",
+            "title": "Action items extracted"
+          }
+        },
+        "title": "Turn meeting notes into Asana tasks"
+      },
+      "meeting-recaps-slack": {
+        "description": "Share a recap with decisions and action items after each meeting.",
+        "scenario": "The details of a meeting fade by the next one. Zero reads the transcript afterward and sends a clean recap of decisions and action items so nothing gets lost.",
+        "steps": {
+          "one": {
+            "description": "After the meeting, Zero pulls notes from Fireflies.",
+            "title": "Zero reads the transcript"
+          },
+          "three": {
+            "description": "Zero delivers the recap to Gmail or Slack.",
+            "title": "Sent to you"
+          },
+          "two": {
+            "description": "Zero summarizes decisions and action items.",
+            "title": "Recap written"
+          }
+        },
+        "title": "Get meeting recaps in Slack"
+      },
+      "morning-brief-slack": {
+        "description": "Every morning Zero sends a brief with your schedule and the emails that need you, and posts it to Slack.",
+        "scenario": "The first ten minutes of the day go to figuring out what the day even is. Zero assembles your schedule and the emails that need you and posts a morning brief to Slack before you sit down.",
+        "steps": {
+          "one": {
+            "description": "Zero pulls today's calendar and priority email.",
+            "title": "Zero reads your day"
+          },
+          "three": {
+            "description": "Zero sends the morning brief.",
+            "title": "Posted to Slack"
+          },
+          "two": {
+            "description": "Zero writes your schedule and what needs attention.",
+            "title": "Brief assembled"
+          }
+        },
+        "title": "Get a morning brief in Slack"
+      },
+      "new-gmail-contacts-hubspot": {
+        "description": "Add and enrich unknown email senders as HubSpot contacts.",
+        "scenario": "Contacts slip through when nobody logs them. Zero notices email from someone not yet in HubSpot, creates the record, and enriches it with Apollo so the CRM stays complete without manual entry.",
+        "steps": {
+          "one": {
+            "description": "Zero checks incoming mail against the CRM.",
+            "title": "Zero spots an unknown sender"
+          },
+          "three": {
+            "description": "Zero records the contact and source on the timeline.",
+            "title": "Logged for follow-up"
+          },
+          "two": {
+            "description": "Zero adds the person to HubSpot and enriches with Apollo.",
+            "title": "Contact created and enriched"
+          }
+        },
+        "title": "Add new Gmail contacts to HubSpot"
+      },
+      "onboard-new-hires-asana": {
+        "description": "Create the onboarding task checklist for each new hire in Asana.",
+        "scenario": "Onboarding is the same checklist every time, done manually every time. Zero detects a new hire, spins up the onboarding project in Asana, and sets up their starter docs in Drive.",
+        "steps": {
+          "one": {
+            "description": "Zero detects the new record in Deel.",
+            "title": "A new hire is added"
+          },
+          "three": {
+            "description": "Zero sets up starter documents in Google Drive.",
+            "title": "Docs provisioned"
+          },
+          "two": {
+            "description": "Zero fires the onboarding project with assigned tasks.",
+            "title": "Checklist created in Asana"
+          }
+        },
+        "title": "Onboard new hires in Asana"
+      },
+      "post-daily-metrics-slack": {
+        "description": "Post daily visitors, signups, and activation numbers to Slack.",
+        "scenario": "Checking three dashboards before coffee is nobody's favorite ritual. Zero pulls visitors, signups, and activation each morning and posts the numbers to Slack so the day starts with the KPIs already in the channel.",
+        "steps": {
+          "one": {
+            "description": "Zero reads traffic, signups, and activation from your analytics tools.",
+            "title": "Zero pulls the metrics"
+          },
+          "three": {
+            "description": "Zero posts the morning KPI update.",
+            "title": "Posted to Slack"
+          },
+          "two": {
+            "description": "Zero formats the key numbers with day-over-day context.",
+            "title": "Assembled into a KPI snapshot"
+          }
+        },
+        "title": "Post daily metrics to Slack"
+      },
+      "post-github-updates-slack": {
+        "description": "Every weekday morning Zero compiles your merged and in-progress work from GitHub and Linear into a progress update for Slack.",
+        "scenario": "Standups eat time and half of it is just recalling what you did. Zero compiles your merged PRs and in-progress Linear tickets each morning and posts a tidy progress update so the async standup writes itself.",
+        "steps": {
+          "one": {
+            "description": "Zero reads your merged and open work from GitHub and Linear.",
+            "title": "Zero collects your activity"
+          },
+          "three": {
+            "description": "Zero posts the update to your standup channel every weekday.",
+            "title": "Posted to Slack"
+          },
+          "two": {
+            "description": "Zero writes a short, readable progress summary.",
+            "title": "Summarized into an update"
+          }
+        },
+        "title": "Post GitHub updates to Slack"
+      },
+      "post-release-notes-slack": {
+        "description": "Draft a changelog from recently shipped work and post it to Slack.",
+        "scenario": "The changelog users see is different from the commit log. Zero triggers on the release label, drafts a friendly user-facing summary of what shipped, and posts it to Slack and Notion.",
+        "steps": {
+          "one": {
+            "description": "Zero triggers on the release label.",
+            "title": "A PR is labeled release"
+          },
+          "three": {
+            "description": "Zero shares the announcement in both places.",
+            "title": "Posted to Slack and Notion"
+          },
+          "two": {
+            "description": "Zero writes a user-facing summary of what changed.",
+            "title": "Zero drafts the changelog"
+          }
+        },
+        "title": "Post release notes to Slack"
+      },
+      "prep-google-calendar-meetings": {
+        "description": "Research external attendees and send a prep brief before meetings.",
+        "scenario": "Walking into a call cold means winging it. Zero notices new external meetings, researches the attendee and company with Apollo, pulls prior call context from Gong, and DMs you a one-page brief before it starts.",
+        "steps": {
+          "one": {
+            "description": "Zero triggers when an external attendee joins your calendar.",
+            "title": "A meeting is added"
+          },
+          "three": {
+            "description": "Zero DMs you a one-page dossier before the call.",
+            "title": "Prep brief sent to Slack"
+          },
+          "two": {
+            "description": "Zero enriches the person and company with Apollo and Gong.",
+            "title": "Attendee researched"
+          }
+        },
+        "title": "Prep for Google Calendar meetings"
+      },
+      "publish-scheduled-posts-buffer": {
+        "description": "Every day Zero publishes the content scheduled for today from the Notion calendar to Strapi and queues the social posts in Buffer.",
+        "scenario": "A content calendar only works if someone hits publish. Zero reads today's scheduled items from Notion, publishes them to Strapi, and queues the matching social posts in Buffer.",
+        "steps": {
+          "one": {
+            "description": "Zero pulls the items scheduled for today from Notion.",
+            "title": "Zero reads today's calendar"
+          },
+          "three": {
+            "description": "Zero schedules the promo posts in Buffer.",
+            "title": "Social queued in Buffer"
+          },
+          "two": {
+            "description": "Zero pushes the content live in Strapi.",
+            "title": "Published to the CMS"
+          }
+        },
+        "title": "Publish scheduled posts to Buffer"
+      },
+      "report-ai-model-costs-slack": {
+        "description": "Every day Zero reports LLM token spend and p95 latency per model and route from Langfuse to Slack.",
+        "scenario": "Model spend creeps up quietly across routes and models. Zero reads Langfuse every day and posts a breakdown of token spend and p95 latency per model and route so cost surprises never wait until the invoice.",
+        "steps": {
+          "one": {
+            "description": "Zero pulls token spend and latency traces for the day.",
+            "title": "Zero reads Langfuse"
+          },
+          "three": {
+            "description": "Zero posts the daily cost and latency report.",
+            "title": "Posted to Slack"
+          },
+          "two": {
+            "description": "Zero aggregates spend and p95 per model and per route.",
+            "title": "Broken down by model and route"
+          }
+        },
+        "title": "Report AI model costs to Slack"
+      },
+      "research-calendar-meetings": {
+        "description": "Research the people you're meeting before each calendar event.",
+        "scenario": "Showing up prepared means research you rarely have time for. Zero notices new meetings, looks up the attendees and their company, and sends you a one-page dossier before it starts.",
+        "steps": {
+          "one": {
+            "description": "Zero triggers on new calendar events.",
+            "title": "A meeting is added"
+          },
+          "three": {
+            "description": "Zero sends a one-page brief to Slack before the call.",
+            "title": "Dossier delivered"
+          },
+          "two": {
+            "description": "Zero looks up the people and company with Exa.",
+            "title": "Attendees researched"
+          }
+        },
+        "title": "Research your calendar meetings"
+      },
+      "research-new-signups-apollo": {
+        "description": "Research each new signup and post a quick snapshot.",
+        "scenario": "A new signup is an opportunity only if someone notices in time. Zero checks Clerk hourly, researches each new user and their company with Apollo, and posts a background snapshot to Slack.",
+        "steps": {
+          "one": {
+            "description": "Zero pulls new users from Clerk each hour.",
+            "title": "Zero reads new signups"
+          },
+          "three": {
+            "description": "Zero posts each signup's profile to the channel.",
+            "title": "Snapshot posted to Slack"
+          },
+          "two": {
+            "description": "Zero enriches background and company context.",
+            "title": "Researched with Apollo"
+          }
+        },
+        "title": "Research new signups"
+      },
+      "run-daily-query-sheets": {
+        "description": "Run your saved SQL on a schedule and append the results to a Sheet.",
+        "scenario": "The report you rebuild every morning is the same query and the same paste into a sheet. Zero runs the query for you each day and writes the formatted results straight into Google Sheets.",
+        "steps": {
+          "one": {
+            "description": "Zero executes your saved read-only query against the warehouse.",
+            "title": "Zero runs the query"
+          },
+          "three": {
+            "description": "Zero appends the results to your tracking sheet.",
+            "title": "Written to Google Sheets"
+          },
+          "two": {
+            "description": "Zero shapes the output into clean columns.",
+            "title": "Results formatted"
+          }
+        },
+        "title": "Run a daily query into Google Sheets"
+      },
+      "send-bugs-github-slack": {
+        "description": "File bug-tagged reports as GitHub issues and alert the team on Slack.",
+        "scenario": "A bug report is only useful to engineers if it's complete. Zero picks up the bug label, assembles repro steps and customer impact, files it cleanly, and posts it to the engineering channel.",
+        "steps": {
+          "one": {
+            "description": "Zero triggers on the bug label.",
+            "title": "An issue is labeled bug"
+          },
+          "three": {
+            "description": "Zero posts the structured report to Slack.",
+            "title": "Sent to engineering"
+          },
+          "two": {
+            "description": "Zero assembles steps, impact, and context.",
+            "title": "Repro and impact packaged"
+          }
+        },
+        "title": "Send bugs to GitHub and Slack"
+      },
+      "sort-gmail-draft-replies": {
+        "description": "Sort your inbox and draft replies to the emails that need them.",
+        "scenario": "A full inbox is a full-time job. Zero sorts incoming mail by urgency and drafts replies in your voice so you skim and approve instead of typing from scratch.",
+        "steps": {
+          "one": {
+            "description": "Zero scans incoming Gmail messages.",
+            "title": "Zero reads new mail"
+          },
+          "three": {
+            "description": "Zero stages responses for your approval.",
+            "title": "Replies drafted"
+          },
+          "two": {
+            "description": "Zero labels what needs you now versus later.",
+            "title": "Sorted by urgency"
+          }
+        },
+        "title": "Sort Gmail and draft replies"
+      },
+      "sort-route-zendesk-tickets": {
+        "description": "When a support ticket arrives, Zero sets its severity, routes it to the right team, and drafts a first reply.",
+        "scenario": "Every ticket needs triage before it can be answered. Zero reads each new ticket, assigns severity, routes it to the right queue, and drafts a first reply so agents start from a draft, not a blank box.",
+        "steps": {
+          "one": {
+            "description": "Zero reads the new Zendesk ticket.",
+            "title": "A ticket arrives"
+          },
+          "three": {
+            "description": "Zero stages an on-brand first response.",
+            "title": "First reply drafted"
+          },
+          "two": {
+            "description": "Zero classifies urgency and sends it to the right team.",
+            "title": "Severity set and routed"
+          }
+        },
+        "title": "Sort and route Zendesk tickets"
+      },
+      "spot-churn-risk-stripe-zendesk": {
+        "description": "Flag accounts at risk of churn and draft a recovery email.",
+        "scenario": "Churn is obvious only after it happens. Zero checks Stripe and Zendesk daily for billing trouble or ticket spikes, flags the at-risk accounts, and drafts a recovery email so someone can step in early.",
+        "steps": {
+          "one": {
+            "description": "Zero reads billing status from Stripe and ticket volume from Zendesk.",
+            "title": "Zero scans accounts"
+          },
+          "three": {
+            "description": "Zero drafts an outreach email for review.",
+            "title": "Recovery email drafted"
+          },
+          "two": {
+            "description": "Zero surfaces accounts showing churn signals.",
+            "title": "At-risk accounts flagged"
+          }
+        },
+        "title": "Spot churn risk in Stripe and Zendesk"
+      },
+      "summarize-gmail-newsletters": {
+        "description": "Digest the newsletters in your inbox into one short summary.",
+        "scenario": "You subscribe to twenty newsletters and read none. Zero collects everything you've labeled as a newsletter and posts one tidy weekly digest so you get the signal without the pile.",
+        "steps": {
+          "one": {
+            "description": "Zero reads messages under your Newsletters label.",
+            "title": "Zero collects newsletters"
+          },
+          "three": {
+            "description": "Zero sends the weekly digest.",
+            "title": "Posted to Slack"
+          },
+          "two": {
+            "description": "Zero pulls the key points from each.",
+            "title": "Digested into one summary"
+          }
+        },
+        "title": "Summarize Gmail newsletters"
+      },
+      "summarize-user-feedback-notion": {
+        "description": "Every week Zero gathers feedback from Productlane, Typeform, Intercom, and GitHub, clusters it into themes, and ranks it in Notion.",
+        "scenario": "Feedback is scattered across four tools and nobody has time to read it all. Zero pulls from each source weekly, clusters the comments into themes, and writes a ranked summary in Notion so the top asks are obvious.",
+        "steps": {
+          "one": {
+            "description": "Zero reads new feedback from Productlane, Typeform, Intercom, and GitHub.",
+            "title": "Zero pulls feedback"
+          },
+          "three": {
+            "description": "Zero writes the ranked digest to a Notion page.",
+            "title": "Summary saved to Notion"
+          },
+          "two": {
+            "description": "Zero groups related feedback and ranks themes by frequency.",
+            "title": "Clustered into themes"
+          }
+        },
+        "title": "Summarize user feedback in Notion"
+      },
+      "summarize-zendesk-tickets-daily": {
+        "description": "Summarize the last day of Zendesk tickets and post it to Slack.",
+        "scenario": "The support backlog is hard to see until it's a fire. Zero summarizes the last day of tickets by severity and age each morning and posts it to Slack so nothing rots unseen.",
+        "steps": {
+          "one": {
+            "description": "Zero pulls the last 24 hours of Zendesk tickets.",
+            "title": "Zero reads the queue"
+          },
+          "three": {
+            "description": "Zero posts the daily support digest.",
+            "title": "Posted to Slack"
+          },
+          "two": {
+            "description": "Zero organizes open tickets and flags stale ones.",
+            "title": "Grouped by severity and age"
+          }
+        },
+        "title": "Summarize Zendesk tickets daily"
+      },
+      "sync-asana-projects-notion": {
+        "description": "Roll up Asana project status into a single board in Notion.",
+        "scenario": "Status lives in Asana but leadership reads Notion. Zero rolls up task status daily into one Notion board and posts a digest so everyone sees the same picture without a status meeting.",
+        "steps": {
+          "one": {
+            "description": "Zero pulls task and project status across teams.",
+            "title": "Zero reads Asana"
+          },
+          "three": {
+            "description": "Zero posts a summary to Slack.",
+            "title": "Digest posted"
+          },
+          "two": {
+            "description": "Zero updates a single Notion status board.",
+            "title": "Rolled into one board"
+          }
+        },
+        "title": "Sync Asana projects to Notion"
+      },
+      "sync-linear-roadmap-notion": {
+        "description": "Keep a Notion roadmap in sync with your Linear issue status.",
+        "scenario": "Roadmaps go stale the moment tickets move. Zero syncs Linear status into a Now / Next / Later board in Notion every day so the roadmap stakeholders read always matches reality.",
+        "steps": {
+          "one": {
+            "description": "Zero pulls current ticket states and milestones.",
+            "title": "Zero reads Linear status"
+          },
+          "three": {
+            "description": "Zero updates the Notion roadmap board.",
+            "title": "Board updated in Notion"
+          },
+          "two": {
+            "description": "Zero buckets work into roadmap columns.",
+            "title": "Mapped to Now / Next / Later"
+          }
+        },
+        "title": "Sync the Linear roadmap to Notion"
+      },
+      "track-feature-usage-posthog": {
+        "description": "Surface the biggest weekly shifts in feature usage from PostHog.",
+        "scenario": "Nobody notices a feature quietly losing usage until it's a problem. Zero checks PostHog weekly and posts which features are climbing or slipping so the team sees adoption shifts early.",
+        "steps": {
+          "one": {
+            "description": "Zero pulls feature usage for the week.",
+            "title": "Zero reads PostHog"
+          },
+          "three": {
+            "description": "Zero posts the adoption changes to your channel.",
+            "title": "Shifts posted to Slack"
+          },
+          "two": {
+            "description": "Zero finds the biggest risers and fallers.",
+            "title": "Compared week over week"
+          }
+        },
+        "title": "Track feature usage with PostHog"
+      },
+      "track-keyword-ranks-ahrefs": {
+        "description": "Every week Zero tracks target keyword rankings in Ahrefs and reports the movers in Notion.",
+        "scenario": "Rank tracking is a manual export-and-compare chore. Zero pulls your target keywords weekly, compares positions, and writes the biggest movers to Notion so SEO wins and slips are obvious.",
+        "steps": {
+          "one": {
+            "description": "Zero pulls current rankings from Ahrefs.",
+            "title": "Zero reads keyword positions"
+          },
+          "three": {
+            "description": "Zero writes the movers and trend to Notion.",
+            "title": "Reported in Notion"
+          },
+          "two": {
+            "description": "Zero compares to last week and finds the biggest changes.",
+            "title": "Movers identified"
+          }
+        },
+        "title": "Track keyword ranks with Ahrefs"
+      },
+      "track-signup-sources-sheets": {
+        "description": "Attribute each new signup to its source in a tracking Sheet.",
+        "scenario": "Knowing where signups come from means stitching Clerk to analytics by hand. Zero attributes each new signup to its channel and campaign daily and logs it to a Google Sheet you can pivot.",
+        "steps": {
+          "one": {
+            "description": "Zero pulls new users from Clerk.",
+            "title": "Zero reads new signups"
+          },
+          "three": {
+            "description": "Zero appends the attributed rows to your sheet.",
+            "title": "Logged to Google Sheets"
+          },
+          "two": {
+            "description": "Zero matches each signup to its source and campaign via Plausible.",
+            "title": "Attributed to a channel"
+          }
+        },
+        "title": "Track signup sources in Google Sheets"
+      },
+      "watch-brand-mentions": {
+        "description": "Every hour Zero searches the web, Hacker News, and X for mentions of your product and posts them to Slack.",
+        "scenario": "By the time you find the thread about your product, the conversation has moved on. Zero searches the web, Reddit, and X every hour and posts fresh mentions to Slack so you can jump in while it's live.",
+        "steps": {
+          "one": {
+            "description": "Zero scans the web, Reddit, and X with Exa.",
+            "title": "Zero searches for mentions"
+          },
+          "three": {
+            "description": "Zero posts each mention with a link and context.",
+            "title": "Posted to Slack"
+          },
+          "two": {
+            "description": "Zero keeps only fresh, relevant hits.",
+            "title": "New mentions filtered"
+          }
+        },
+        "title": "Watch HN and X for brand mentions"
+      },
+      "watch-sentry-after-release": {
+        "description": "After each release Zero compares the new version's crash-free rate against baseline and flags a regression with a rollback suggestion.",
+        "scenario": "The riskiest window is right after a deploy. Zero watches the new release's crash-free and error rates against the prior baseline, and if things get worse it flags the regression and suggests rolling back.",
+        "steps": {
+          "one": {
+            "description": "After a deploy, Zero tracks the release's crash-free and error rate in Sentry.",
+            "title": "Zero watches the new release"
+          },
+          "three": {
+            "description": "If the release regresses, Zero alerts Slack and suggests a rollback.",
+            "title": "Regression flagged with a rollback tip"
+          },
+          "two": {
+            "description": "Zero compares live numbers to the previous release's baseline.",
+            "title": "Compared against baseline"
+          }
+        },
+        "title": "Watch Sentry after a release"
+      }
     }
   },
   "settings": {
@@ -266,8 +1611,8 @@
           "authorizationCode": "Authorization code",
           "codePlaceholder": "Paste code from Claude",
           "codeRequired": "Paste the Claude Code authorization code to continue.",
-          "connectedToast": "Claude Code connected",
           "connectTitle": "Connect Claude Code",
+          "connectedToast": "Claude Code connected",
           "error": "Claude Code connection failed. Start again to retry.",
           "expired": "Claude Code connection session expired. Start again to retry.",
           "instructions": "First click Open Claude approval page. Then approve {{brandName}} in Claude and copy the authorization code shown after approval. Finally paste that code here and click Connect.",
@@ -282,8 +1627,8 @@
           "approvalOpened": "Approval page opened. Copy the device code before approving.",
           "codeCopied": "Device code copied. Waiting for approval...",
           "codeCopiedRetry": "Device code copied. Try opening the approval page again.",
-          "connectedToast": "ChatGPT connected",
           "connectTitle": "Connect Codex",
+          "connectedToast": "ChatGPT connected",
           "copyAndOpen": "Copy code and open approval page",
           "copyAndOpenError": "Could not copy the device code or open the approval page. Copy the code manually and try again.",
           "copyError": "Approval page opened, but the device code was not copied. Copy it manually before approving.",
@@ -349,9 +1694,9 @@
       "reset": {
         "confirmDescription": "Use one Codex reset to reset your current usage windows. You have {{remaining}}.",
         "progress": "Resetting...",
+        "remainingUnavailable": "Resets left unavailable",
         "remaining_one": "{{count}} reset left",
         "remaining_other": "{{count}} resets left",
-        "remainingUnavailable": "Resets left unavailable",
         "title": "Reset Codex usage?"
       },
       "stale": {
@@ -377,11 +1722,11 @@
         "inHoursMinutes": "in {{hours}}h {{minutes}}m",
         "inLessThanMinute": "in <1m",
         "inMinutes": "in {{minutes}}m",
+        "resetTimePassed": "reset time passed",
+        "resetTimePassedTitle": "Reset time passed",
         "resetsAt": "resets {{date}}",
         "resetsRaw": "resets {{value}}",
-        "resetsRelative": "Resets {{relative}}",
-        "resetTimePassed": "reset time passed",
-        "resetTimePassedTitle": "Reset time passed"
+        "resetsRelative": "Resets {{relative}}"
       }
     },
     "preferences": {
@@ -421,8 +1766,8 @@
         "nextEmail": "Next email: {{date}}",
         "nextEmailInTimezone": "Next email: {{date}} ({{timezone}})",
         "notScheduled": "Next email: not scheduled yet — turn the switch off and on to reschedule",
-        "sending": "Sending...",
         "sendNow": "Send now",
+        "sending": "Sending...",
         "title": "Morning Brief",
         "triggeredToast": "Morning Brief triggered, the email arrives shortly"
       },
@@ -524,8 +1869,8 @@
           "send": "Send invitation",
           "title": "Invite member"
         },
-        "joined": "Joined",
         "joinRequests": "Join requests",
+        "joined": "Joined",
         "member": "Member",
         "membershipRequest": {
           "acceptTitle": "Accept request",

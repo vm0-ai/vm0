@@ -18,13 +18,23 @@ import { agentRuns } from "@vm0/db/schema/agent-run";
 import { creditExpiresRecord } from "@vm0/db/schema/credit-expires-record";
 import { e2eTeamsMockCallLog } from "@vm0/db/schema/e2e-teams-mock-call-log";
 import { orgMetadata } from "@vm0/db/schema/org-metadata";
+import { teamsChatThreadRoutes } from "@vm0/db/schema/teams-chat-thread-route";
 import { teamsOrgConnections } from "@vm0/db/schema/teams-org-connection";
 import { teamsOrgInstallations } from "@vm0/db/schema/teams-org-installation";
 import { teamsUserAgentPreferences } from "@vm0/db/schema/teams-user-agent-preference";
 import { vm0ApiKeys } from "@vm0/db/schema/vm0-api-key";
 import { zeroAgents } from "@vm0/db/schema/zero-agent";
 import { zeroRuns } from "@vm0/db/schema/zero-run";
-import { and, desc, eq, inArray, isNull, sql } from "drizzle-orm";
+import {
+  and,
+  desc,
+  eq,
+  inArray,
+  isNotNull,
+  isNull,
+  or,
+  sql,
+} from "drizzle-orm";
 
 import { pgTextDecoder } from "../../lib/db-structured-result";
 import { optionalEnv } from "../../lib/env";
@@ -546,6 +556,24 @@ function teamsConnections(db: ReadonlyDb, tenantId: string) {
     .where(eq(teamsOrgConnections.teamsTenantId, tenantId));
 }
 
+function teamsRoutes(db: ReadonlyDb, connectionIds: readonly string[]) {
+  if (connectionIds.length === 0) {
+    return [];
+  }
+  return db
+    .select({
+      id: teamsChatThreadRoutes.id,
+      connectionId: teamsChatThreadRoutes.connectionId,
+      conversationId: teamsChatThreadRoutes.conversationId,
+      threadId: teamsChatThreadRoutes.threadId,
+      userId: teamsChatThreadRoutes.userId,
+      chatThreadId: teamsChatThreadRoutes.chatThreadId,
+      createdAt: teamsChatThreadRoutes.createdAt,
+    })
+    .from(teamsChatThreadRoutes)
+    .where(inArray(teamsChatThreadRoutes.connectionId, [...connectionIds]));
+}
+
 function recentTeamsRuns(db: ReadonlyDb, orgId: string | null | undefined) {
   if (!orgId) {
     return [];
@@ -556,6 +584,7 @@ function recentTeamsRuns(db: ReadonlyDb, orgId: string | null | undefined) {
       status: agentRuns.status,
       createdAt: agentRuns.createdAt,
       triggerSource: zeroRuns.triggerSource,
+      chatThreadId: zeroRuns.chatThreadId,
       userId: agentRuns.userId,
       error: agentRuns.error,
       promptPreview: sql`substring(${agentRuns.prompt}, 1, 200)`.mapWith(
@@ -594,7 +623,13 @@ function recentTeamsCallbacks(
     .where(
       and(
         eq(agentRuns.orgId, orgId),
-        eq(agentRunCallbacks.internalKind, "teams:org"),
+        or(
+          eq(agentRunCallbacks.internalKind, "teams:chat"),
+          and(
+            eq(agentRunCallbacks.internalKind, "chat"),
+            isNotNull(sql`${agentRunCallbacks.payload}->'teamsDelivery'`),
+          ),
+        ),
       ),
     )
     .orderBy(desc(agentRunCallbacks.createdAt))
@@ -726,6 +761,12 @@ const getTeamsState$ = computed(async (get) => {
   const connections = query.tenant_id
     ? await teamsConnections(db, query.tenant_id)
     : [];
+  const routes = await teamsRoutes(
+    db,
+    connections.map((connection) => {
+      return connection.id;
+    }),
+  );
   const stateOrgId = query.org_id ?? installationRow?.orgId;
   const recentRuns = await recentTeamsRuns(db, stateOrgId);
   const orgMeta = await orgMetaFor(db, stateOrgId);
@@ -749,6 +790,9 @@ const getTeamsState$ = computed(async (get) => {
         : null,
       connections: connections.map((connection) => {
         return { ...connection, createdAt: isoString(connection.createdAt) };
+      }),
+      routes: routes.map((route) => {
+        return { ...route, createdAt: isoString(route.createdAt) };
       }),
       recent_runs: recentRuns.map((run) => {
         return { ...run, createdAt: isoString(run.createdAt) };

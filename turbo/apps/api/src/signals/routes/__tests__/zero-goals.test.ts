@@ -11,7 +11,7 @@ import {
 } from "../../../test-fixtures/goal-queue";
 import { signSandboxJwtForTests } from "../../auth/tokens";
 import { now } from "../../external/time";
-import { createBddApi } from "./helpers/api-bdd";
+import { createBddApi, type ApiTestUser } from "./helpers/api-bdd";
 import { createChatFilesBddApi } from "./helpers/api-bdd-chat-files";
 import { createRunsApi } from "./helpers/api-bdd-runs";
 import { createZeroRouteMocks } from "./helpers/zero-route-test";
@@ -26,12 +26,16 @@ const ALL_GOAL_CAPABILITIES = [
   "goal:user-control:write",
 ] as const satisfies readonly ZeroCapability[];
 
-interface GoalApiFixture {
+interface GoalApiAuthFixture {
   readonly orgId: string;
   readonly userId: string;
   readonly runId: string;
   readonly threadId: string;
   readonly agentId: string;
+}
+
+interface GoalApiFixture extends GoalApiAuthFixture {
+  readonly actor: ApiTestUser;
 }
 
 function currentSecond(): number {
@@ -43,7 +47,7 @@ function goalsClient() {
 }
 
 function zeroToken(
-  fixture: GoalApiFixture,
+  fixture: GoalApiAuthFixture,
   capabilities: readonly ZeroCapability[],
 ): string {
   const seconds = currentSecond();
@@ -59,7 +63,7 @@ function zeroToken(
 }
 
 function headers(
-  fixture: GoalApiFixture,
+  fixture: GoalApiAuthFixture,
   capabilities: readonly ZeroCapability[] = ALL_GOAL_CAPABILITIES,
 ) {
   return { authorization: `Bearer ${zeroToken(fixture, capabilities)}` };
@@ -96,6 +100,7 @@ async function seedGoalApiFixture(): Promise<GoalApiFixture> {
     throw new Error("Expected the chat send to create a thread-linked run");
   }
   return {
+    actor,
     orgId: actor.orgId,
     userId: actor.userId,
     runId: sent.body.runId,
@@ -294,6 +299,7 @@ describe("zero goals", () => {
       orgId: fixture.orgId,
       userId: fixture.userId,
       goalId: goal.goalId,
+      objectiveBrief: "coalesce goal triggers",
       callbackSecret: "first-callback-secret",
     });
     const second = await admitGoalQueueEventFixture({
@@ -301,6 +307,7 @@ describe("zero goals", () => {
       orgId: fixture.orgId,
       userId: fixture.userId,
       goalId: goal.goalId,
+      objectiveBrief: "coalesce goal triggers",
       callbackSecret: "second-callback-secret",
     });
 
@@ -309,6 +316,47 @@ describe("zero goals", () => {
     expect(kms.generateDataKeyCalls).toBe(1);
     const state = await readGoalQueueStateFixture(fixture.threadId);
     expect(state.eventIds).toHaveLength(1);
+  });
+
+  it("keeps an unclaimed input.goal event out of materialized thread messages", async () => {
+    const fixture = await seedGoalApiFixture();
+    const objectiveBrief = "keep pending goal triggers internal";
+    await createGoal(fixture, objectiveBrief);
+    const goal = await readGoalThreadFixture({
+      orgId: fixture.orgId,
+      userId: fixture.userId,
+      threadId: fixture.threadId,
+    });
+    if (!goal) {
+      throw new Error("Expected the active goal");
+    }
+    useSecretKmsProbe();
+
+    const admission = await admitGoalQueueEventFixture({
+      threadId: fixture.threadId,
+      orgId: fixture.orgId,
+      userId: fixture.userId,
+      goalId: goal.goalId,
+      objectiveBrief,
+      callbackSecret: "pending-goal-callback-secret",
+    });
+    if (admission.kind !== "inserted") {
+      throw new Error("Expected an unclaimed goal queue event");
+    }
+
+    const chat = createChatFilesBddApi(context);
+    const page = await chat.listThreadEvents(fixture.actor, fixture.threadId);
+    expect(
+      page.events.map((event) => {
+        return event.id;
+      }),
+    ).not.toContain(admission.eventId);
+    expect(page.events).not.toContainEqual(
+      expect.objectContaining({
+        eventType: "input.goal",
+        goalSnapshot: { objectiveBrief },
+      }),
+    );
   });
 
   it("edits a blocked goal back to active and replaces a completed goal", async () => {

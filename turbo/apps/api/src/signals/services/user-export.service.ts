@@ -72,10 +72,7 @@ import {
   projectUserMessage,
   requiredUserMessageForEvent,
 } from "./zero-chat-user-message.service";
-import {
-  chatEventTypeIn,
-  chatEventTypeSql,
-} from "./zero-chat-event-type.service";
+import { chatEventTypeIn } from "./zero-chat-event-type.service";
 import { loadWorkflowVolumeFiles } from "./zero-workflow-volume.service";
 
 const RATE_LIMIT_MS = 24 * 60 * 60 * 1000;
@@ -751,7 +748,7 @@ async function collectConversationMessages(
   for (const thread of threads) {
     const rows = await runtime.db
       .select({
-        eventType: chatEventTypeSql().as("event_type"),
+        eventType: chatMessages.eventType,
         content: chatMessages.content,
         userMessage: chatMessages.userMessage,
         createdAt: chatMessages.createdAt,
