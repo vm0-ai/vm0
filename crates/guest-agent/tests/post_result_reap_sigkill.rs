@@ -3,8 +3,9 @@
 //! → SigkillPending → Done, which the main `post_result_reap` test
 //! never reaches (default SIGTERM handler terminates its mock).
 //!
-//! This is the only coverage for the SigkillPending match arm and the
-//! process-group SIGKILL escalation path in `cli`.
+//! This specifically covers execution-deadline acceleration before SIGTERM;
+//! the adjacent execution-deadline boundary test covers the later
+//! SigkillPending window.
 //!
 //! See: https://github.com/vm0-ai/vm0/issues/10879
 
