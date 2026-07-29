@@ -120,6 +120,7 @@ export function visibleChatEventCondition(db: Pick<Db, "select">) {
   ]);
   return sql.join(
     [
+      not(chatEventTypeIn(["input.goal"])),
       notExists(
         db
           .select({ id: revoker.id })
