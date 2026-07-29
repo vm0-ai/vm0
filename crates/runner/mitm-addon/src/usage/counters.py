@@ -1,10 +1,11 @@
-"""Pending counters for in-flight flows, buffered usage, and pending reports.
+"""Pending counters for in-flight flows, buffered work, and pending reports.
 
 The runner reads the pending-count file before sending SIGTERM so it can
-wait until flows are processed, buffered usage is enqueued, and reports are
-delivered. Counter mutations update memory only; runner-requested snapshots
-are JSON written atomically (tmp + ``Path.replace``) so the runner can reject
-stale state from an old mitmproxy process or old flush request.
+wait until flows are processed, buffered usage and retained reports are
+enqueued, and admitted reports are delivered. Counter mutations update memory
+only; runner-requested snapshots are JSON written atomically (tmp +
+``Path.replace``) so the runner can reject stale state from an old mitmproxy
+process or old flush request.
 """
 
 import json
@@ -22,6 +23,7 @@ _counter_lock = threading.Lock()
 _pending_write_lock = threading.Lock()
 _in_flight_flows = 0
 _buffered_usage_events = 0
+_buffered_reports = 0
 _pending_reports = 0
 _pending_path = ""
 _usage_state_id = str(uuid.uuid4())
@@ -37,17 +39,19 @@ _counter_underflow_logged: set[str] = set()
 # leading key=value fields and re-emits them as structured tracing fields.
 _pending_write_error_logged = False
 _FLUSH_REQUEST_FILE = "usage-flush-request"
+_COUNTER_BUFFERED_REPORTS = "buffered_reports"
 _COUNTER_FLOWS = "flows"
 _COUNTER_REPORTS = "reports"
 
 
 def reset_for_tests() -> None:
     """Reset mutable counter state between tests."""
-    global _in_flight_flows, _buffered_usage_events, _pending_reports
+    global _in_flight_flows, _buffered_reports, _buffered_usage_events, _pending_reports
     global _pending_path, _usage_state_id, _pending_write_error_logged
     with _counter_lock:
         _in_flight_flows = 0
         _buffered_usage_events = 0
+        _buffered_reports = 0
         _pending_reports = 0
         _pending_path = ""
         _usage_state_id = str(uuid.uuid4())
@@ -78,7 +82,7 @@ def _pending_snapshot_locked(flush_request_id: str | None = None) -> tuple[str, 
         "usageStateId": _usage_state_id,
         "updatedAtMs": int(time.time() * 1000),
         "flows": _in_flight_flows,
-        "buffered": _buffered_usage_events,
+        "buffered": _buffered_usage_events + _buffered_reports,
         "reports": _pending_reports,
     }
     if flush_request_id:
@@ -181,7 +185,7 @@ def increment_pending_reports() -> None:
 
 
 class PendingReportLease:
-    """One-shot ownership token for an admitted pending usage report."""
+    """One-shot ownership token for an admitted pending webhook report."""
 
     def __init__(self) -> None:
         self._released = False
@@ -218,6 +222,52 @@ def decrement_pending_reports() -> None:
             should_log = _mark_counter_underflow_locked(_COUNTER_REPORTS)
     if should_log:
         _log_counter_underflow(_COUNTER_REPORTS)
+
+
+def increment_buffered_reports() -> None:
+    global _buffered_reports
+    with _counter_lock:
+        _buffered_reports += 1
+
+
+class BufferedReportLease:
+    """One-shot ownership token for a retained, unadmitted webhook report."""
+
+    def __init__(self) -> None:
+        self._released = False
+        self._lock = threading.Lock()
+
+    def release(self) -> None:
+        should_release = False
+        should_log = False
+        with self._lock:
+            if self._released:
+                should_log = True
+            else:
+                self._released = True
+                should_release = True
+
+        if should_release:
+            decrement_buffered_reports()
+        if should_log and _mark_counter_underflow(_COUNTER_BUFFERED_REPORTS):
+            _log_counter_underflow(_COUNTER_BUFFERED_REPORTS)
+
+
+def admit_buffered_report() -> BufferedReportLease:
+    increment_buffered_reports()
+    return BufferedReportLease()
+
+
+def decrement_buffered_reports() -> None:
+    global _buffered_reports
+    should_log = False
+    with _counter_lock:
+        if _buffered_reports > 0:
+            _buffered_reports -= 1
+        else:
+            should_log = _mark_counter_underflow_locked(_COUNTER_BUFFERED_REPORTS)
+    if should_log:
+        _log_counter_underflow(_COUNTER_BUFFERED_REPORTS)
 
 
 def set_buffered_usage_events(count: int) -> None:

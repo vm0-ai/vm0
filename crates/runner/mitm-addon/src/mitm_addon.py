@@ -1528,11 +1528,12 @@ def _handle_error(flow: http.HTTPFlow) -> None:
 def done():
     """Flush pending usage reports and forwarding workers before mitmproxy exits.
 
-    The runner flush lifecycle waits for any active SIGUSR1 usage worker,
-    drains accepted usage requests, and closes admission before this hook shuts
-    down the usage executor. It also performs a final JSONL marker observation
-    and joins the marker watcher before the JSONL writer stops. Any retryable
-    usage outcome retained by completed workers is then retried synchronously.
+    The runner flush lifecycle waits for any active SIGUSR1 delivery worker,
+    retries buffered usage and provider-output timing reports, drains accepted
+    requests, and closes admission before this hook shuts down the usage
+    executor. It also performs a final JSONL marker observation and joins the
+    marker watcher before the JSONL writer stops. Any retryable usage outcome
+    retained by completed workers is then retried synchronously.
     Auth.base forwarding does not need to finish running work during shutdown,
     so its worker shutdown stops new forwards and best-effort closes active
     upstream sockets without waiting for slow upstream responses. JSONL writer

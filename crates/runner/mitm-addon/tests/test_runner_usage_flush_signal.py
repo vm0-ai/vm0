@@ -201,6 +201,31 @@ class _InstrumentedFlushOwnerLock:
 class TestRunnerUsageFlushSignal:
     """Tests for runner-triggered usage buffer flush requests."""
 
+    def test_signal_flushes_usage_before_provider_timings(self) -> None:
+        calls: list[str] = []
+
+        with (
+            patch.object(
+                usage,
+                "flush_usage_events",
+                side_effect=lambda *, trigger: calls.append(f"usage:{trigger}"),
+            ),
+            patch.object(
+                runner_flush_lifecycle.claude_output_timing,
+                "retry_all_pending",
+                side_effect=lambda: calls.append("claude"),
+            ),
+            patch.object(
+                runner_flush_lifecycle.codex_output_timing,
+                "retry_all_pending",
+                side_effect=lambda: calls.append("codex"),
+            ),
+        ):
+            runner_flush_lifecycle.handle_runner_usage_flush_signal(0, None)
+            wait_for_usage_flush_worker_to_stop()
+
+        assert calls == ["usage:runner", "claude", "codex"]
+
     def test_real_signal_during_request_consumption_drains_acknowledgement(
         self, tmp_path: Path
     ) -> None:
