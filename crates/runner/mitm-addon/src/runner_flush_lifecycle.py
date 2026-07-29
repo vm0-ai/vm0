@@ -22,10 +22,10 @@ _DeliveryFlushTrigger = Literal["runner", "shutdown"]
 # Runner-triggered flush protocols:
 # - Rust writes `usage-flush-request` with the active usageStateId and a fresh
 #   flushRequestId, then sends SIGUSR1 to this addon process.
-# - This addon flushes buffered usage and writes `usage-pending` with the
+# - This addon flushes buffered delivery work and writes `usage-pending` with the
 #   matching flushRequestId so the runner can observe a fresh snapshot.
 # - Rust performs a bounded wait for the acknowledged snapshot to have zero
-#   flows, buffered events, and reports before stopping the proxy.
+#   flows, buffered work, and reports before stopping the proxy.
 # - Rust may also write `jsonl-flush-request` for a concrete network log path.
 #   An addon-owned watcher independently drains accepted JSONL writes for that
 #   path and acknowledges with `jsonl-flush-state` before Rust uploads the file.

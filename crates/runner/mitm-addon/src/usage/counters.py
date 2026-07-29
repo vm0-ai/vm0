@@ -136,7 +136,7 @@ def _write_pending_state(pending_path: str, state: dict[str, Any]) -> None:
             with suppress(OSError):
                 tmp.unlink()
             # Best-effort: the runner polls this file to wait for in-flight
-            # flows, buffered usage, and pending reports to drain before
+            # flows, buffered work, and pending reports to drain before
             # SIGTERM. Transient write failures are upper-bounded by the
             # runner's drain timeout and mitmdump stop timeout.
             if not _pending_write_error_logged:
@@ -224,7 +224,7 @@ def decrement_pending_reports() -> None:
         _log_counter_underflow(_COUNTER_REPORTS)
 
 
-def increment_buffered_reports() -> None:
+def _increment_buffered_reports() -> None:
     global _buffered_reports
     with _counter_lock:
         _buffered_reports += 1
@@ -248,17 +248,17 @@ class BufferedReportLease:
                 should_release = True
 
         if should_release:
-            decrement_buffered_reports()
+            _decrement_buffered_reports()
         if should_log and _mark_counter_underflow(_COUNTER_BUFFERED_REPORTS):
             _log_counter_underflow(_COUNTER_BUFFERED_REPORTS)
 
 
 def admit_buffered_report() -> BufferedReportLease:
-    increment_buffered_reports()
+    _increment_buffered_reports()
     return BufferedReportLease()
 
 
-def decrement_buffered_reports() -> None:
+def _decrement_buffered_reports() -> None:
     global _buffered_reports
     should_log = False
     with _counter_lock:

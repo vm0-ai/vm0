@@ -19,6 +19,7 @@ from tests.flow_helpers import response_stream
 from tests.jsonl_log_helpers import read_jsonl_text_after_flush
 from tests.model_provider_flow_helpers import make_model_provider_sse_flow
 from tests.pending_helpers import assert_current_pending, assert_pending
+from tests.usage_buffer_helpers import event as usage_event
 from tests.usage_helpers import CapturedWebhookRequest, UsageWebhookServer
 from tests.webhook_test_helpers import (
     QueuedUsageExecutor,
@@ -421,17 +422,34 @@ def test_repeated_runner_flush_retries_saturated_timing_after_terminal(
         else:
             mitm_addon.response(flow)
 
+        usage.buffer_usage_events(
+            usage_webhook_server.url("/usage-priority"),
+            "tok-xyz",
+            f"usage-priority-{terminal_hook}",
+            [usage_event(source_key=f"source-{terminal_hook}")],
+            str(tmp_path / "proxy.jsonl"),
+        )
         first_flush_started_at = datetime.now(UTC)
         request_runner_usage_flush()
         assert_pending(
             pending_path,
             flows=0,
-            buffered=1,
+            buffered=2,
             reports=usage.webhook.MAX_PENDING_WEBHOOK_PAYLOADS,
             flush_request_id="request-1",
         )
 
         executor.run_next()
+        request_runner_usage_flush()
+        assert_pending(
+            pending_path,
+            flows=0,
+            buffered=2,
+            reports=usage.webhook.MAX_PENDING_WEBHOOK_PAYLOADS,
+            flush_request_id="request-1",
+        )
+
+        executor.run_last()
         request_runner_usage_flush()
         assert_pending(
             pending_path,
@@ -456,6 +474,9 @@ def test_repeated_runner_flush_retries_saturated_timing_after_terminal(
     assert operation["action_type"] == _FIRST_MESSAGE_START
     assert datetime.fromisoformat(str(operation["ts"])) <= first_flush_started_at
     assert secret.encode() not in request.body
+    assert [
+        captured.path for captured in usage_webhook_server.requests if captured.path != "/filler"
+    ] == ["/usage-priority", _TELEMETRY_PATH]
     assert usage.webhook.pending_delivery_payload_count_for_tests() == 0
     assert flow.response is not None
     assert flow.response.stream is False

@@ -8,7 +8,7 @@ This addon runs on the runner HOST (not inside VMs) and:
 3. Injects auth headers for configured firewall rules (proxy-side token replacement)
 4. Logs network activity per-run to JSONL files
 5. Reports model-provider and connector usage
-6. Participates in runner-triggered usage drain before proxy shutdown
+6. Participates in runner-triggered webhook delivery drain before proxy shutdown
 """
 
 import asyncio

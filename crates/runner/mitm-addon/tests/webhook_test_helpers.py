@@ -32,6 +32,11 @@ class QueuedUsageExecutor:
         assert callable(delivery)
         delivery(*args, **kwargs)
 
+    def run_last(self) -> None:
+        delivery, args, kwargs = self.submissions.pop()
+        assert callable(delivery)
+        delivery(*args, **kwargs)
+
     def run_all(self) -> None:
         while self.submissions:
             self.run_next()

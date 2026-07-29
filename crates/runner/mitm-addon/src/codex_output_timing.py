@@ -119,10 +119,11 @@ def observe_server_event(flow: http.HTTPFlow, event_type: str | None) -> None:
 
 
 def retry_all_pending() -> None:
-    """Retry retained reports during a runner-triggered pre-stop flush."""
+    """Retry retained reports until admission capacity is saturated."""
     with _state_lock:
         for run_id, state in _run_states.items():
-            _admit_retained_locked(run_id, state)
+            if not _admit_retained_locked(run_id, state):
+                return
 
 
 def _observation_time() -> str:
@@ -164,10 +165,10 @@ def _admit_pending_locked(
     _admit_retained_locked(run_id, state)
 
 
-def _admit_retained_locked(run_id: str, state: _RunTimingState) -> None:
+def _admit_retained_locked(run_id: str, state: _RunTimingState) -> bool:
     context = state.pending_context
     if not state.pending_operations or context is None:
-        return
+        return True
     operations = [
         {
             "ts": observed_at,
@@ -181,20 +182,23 @@ def _admit_retained_locked(run_id: str, state: _RunTimingState) -> None:
         "runId": run_id,
         "sandboxOperations": operations,
     }
-    if usage.webhook.enqueue_webhook_delivery(
+    if not usage.webhook.enqueue_webhook_delivery(
         context.telemetry_url(),
         context.sandbox_token,
         payload,
         context.proxy_log_path,
         _LOG_TYPE,
     ):
-        lease = state.buffered_report
-        if lease is None:
-            raise RuntimeError("admitted Codex timing report had no buffered owner")
-        state.pending_operations.clear()
-        state.pending_context = None
-        state.buffered_report = None
-        lease.release()
+        return False
+
+    lease = state.buffered_report
+    if lease is None:
+        raise RuntimeError("admitted Codex timing report had no buffered owner")
+    state.pending_operations.clear()
+    state.pending_context = None
+    state.buffered_report = None
+    lease.release()
+    return True
 
 
 def _release_buffered_report_locked(state: _RunTimingState) -> None:
