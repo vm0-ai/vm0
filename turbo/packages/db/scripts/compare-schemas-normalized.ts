@@ -32,6 +32,29 @@ interface ConstraintInfo {
   constraint_def: string;
 }
 
+// Browser billing is in the first half of a two-release column contraction:
+// current code no longer declares these columns, but the physical columns must
+// remain until the previous API version drains. Remove this allowlist together
+// with the physical columns in the follow-up contraction migration.
+const TRANSITIONAL_BROWSER_BILLING_COLUMNS = new Set([
+  "browser_sessions.max_credits",
+  "browser_sessions.gross_credits",
+  "browser_sessions.credits_charged",
+  "browser_session_instances.billing_run_id",
+  "browser_session_instances.browser_cost_microusd",
+  "browser_session_instances.proxy_cost_microusd",
+  "browser_session_instances.proxy_used_mb",
+  "browser_session_instances.pricing_unit_price",
+  "browser_session_instances.pricing_unit_size",
+  "browser_session_instances.gross_credits",
+  "browser_session_instances.credits_charged",
+  "browser_session_instances.usage_event_id",
+  "browser_session_instances.settled_at",
+]);
+const TRANSITIONAL_BROWSER_BILLING_CONSTRAINTS = new Set([
+  "browser_session_instances.browser_session_instances_usage_event_id_usage_event_id_fk",
+]);
+
 // Get database URLs from command line args
 const db1Url = process.argv[2];
 const db2Url = process.argv[3];
@@ -60,7 +83,11 @@ async function getTableColumns(client: Client): Promise<TableColumn[]> {
       AND t.table_type = 'BASE TABLE'
     ORDER BY c.table_name, c.column_name
   `);
-  return result.rows;
+  return result.rows.filter((column) => {
+    return !TRANSITIONAL_BROWSER_BILLING_COLUMNS.has(
+      `${column.table_name}.${column.column_name}`,
+    );
+  });
 }
 
 async function getIndexes(client: Client): Promise<IndexInfo[]> {
@@ -102,7 +129,11 @@ async function getConstraints(client: Client): Promise<ConstraintInfo[]> {
       catalog_constraint.contype,
       catalog_constraint.conname
   `);
-  return result.rows;
+  return result.rows.filter((constraint) => {
+    return !TRANSITIONAL_BROWSER_BILLING_CONSTRAINTS.has(
+      `${constraint.table_name}.${constraint.constraint_name}`,
+    );
+  });
 }
 
 function normalizeColumnDefault(def: string | null): string | null {

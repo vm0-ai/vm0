@@ -357,8 +357,6 @@
   },
   "browserSession": {
     "close": "Close live browser",
-    "creditsCharged_one": "{{formattedCount}} credit charged",
-    "creditsCharged_other": "{{formattedCount}} credits charged",
     "documentTitle": "Live browser",
     "iframeTitle": "Live browser: {{name}}",
     "invalidLink": "Invalid browser link",

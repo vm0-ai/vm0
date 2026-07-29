@@ -10,8 +10,6 @@ const c = initContract();
 // can never cut a browser short while somebody is still using it.
 export const ZERO_BROWSER_PROVIDER_TIMEOUT_MINUTES = 240;
 export const ZERO_BROWSER_IDLE_LEASE_MINUTES = 10;
-export const ZERO_BROWSER_DEFAULT_MAX_CREDITS = 500;
-export const ZERO_BROWSER_MAX_CREDITS = 100_000;
 
 export const zeroBrowserStatusSchema = z.enum([
   "creating",
@@ -27,6 +25,7 @@ export const zeroBrowserSuspensionReasonSchema = z.enum([
   "run_end",
   "idle",
   "timeout",
+  // Historical reason kept for rows written before browser billing was removed.
   "budget",
   "provider",
   "reconcile",
@@ -40,9 +39,6 @@ export const zeroBrowserSessionSchema = z.object({
   liveUrl: z.url().nullable(),
   proxyCountryCode: z.string().length(2).nullable(),
   timeoutMinutes: z.number().int().positive(),
-  maxCredits: z.number().int().positive(),
-  grossCredits: z.number().int().nonnegative(),
-  creditsCharged: z.number().int().nonnegative(),
   // When Zero reclaims the live provider instance unless somebody leases it
   // again. Null once no provider instance is running.
   idleExpiresAt: z.iso.datetime().nullable(),
@@ -69,12 +65,6 @@ export const zeroBrowserCreateRequestSchema = z.object({
     })
     .nullable()
     .default(null),
-  maxCredits: z
-    .number()
-    .int()
-    .min(1)
-    .max(ZERO_BROWSER_MAX_CREDITS)
-    .default(ZERO_BROWSER_DEFAULT_MAX_CREDITS),
 });
 
 export type ZeroBrowserCreateRequest = z.infer<
@@ -120,7 +110,6 @@ const browserConnectionResponseSchema = browserResponseSchema.extend({
 const commonErrorResponses = {
   400: apiErrorSchema,
   401: apiErrorSchema,
-  402: apiErrorSchema,
   403: apiErrorSchema,
   404: apiErrorSchema,
   409: apiErrorSchema,
@@ -198,7 +187,7 @@ export const zeroBrowserContract = c.router({
       200: browserResponseSchema,
       ...commonErrorResponses,
     },
-    summary: "Resume a suspended browser from its viewer and start billing it",
+    summary: "Resume a suspended browser from its viewer",
   },
   current: {
     method: "GET",

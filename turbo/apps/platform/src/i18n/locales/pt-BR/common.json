@@ -368,9 +368,6 @@
   },
   "browserSession": {
     "close": "Fechar navegador ao vivo",
-    "creditsCharged_one": "{{formattedCount}} crédito cobrado",
-    "creditsCharged_many": "{{formattedCount}} créditos cobrados",
-    "creditsCharged_other": "{{formattedCount}} créditos cobrados",
     "documentTitle": "Navegador ao vivo",
     "iframeTitle": "Navegador ao vivo: {{name}}",
     "invalidLink": "Link de navegador inválido",

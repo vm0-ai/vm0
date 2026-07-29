@@ -3725,9 +3725,6 @@ describe("chat event action cards", () => {
       liveUrl,
       proxyCountryCode: null,
       timeoutMinutes: 240,
-      maxCredits: 500,
-      grossCredits: 0,
-      creditsCharged: 0,
       idleExpiresAt: "2026-07-24T10:10:00.000Z",
       suspendedAt: null,
       suspensionReason: null,
@@ -3806,7 +3803,6 @@ describe("chat event action cards", () => {
       ...browser,
       status: "suspended",
       liveUrl: null,
-      creditsCharged: 12,
       idleExpiresAt: null,
       suspendedAt: "2026-07-24T10:12:00.000Z",
       suspensionReason: "idle",
@@ -3820,7 +3816,6 @@ describe("chat event action cards", () => {
           "data-browser-session-status",
           "suspended",
         );
-        expect(card).toHaveTextContent("12 credits charged");
       }
       expect(screen.getByText("Browser suspended")).toBeInTheDocument();
       expect(

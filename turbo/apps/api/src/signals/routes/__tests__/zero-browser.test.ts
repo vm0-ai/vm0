@@ -7,7 +7,6 @@ import {
   type ZeroBrowserCreateRequest,
 } from "@vm0/api-contracts/contracts/zero-browser";
 import { chatThreadsContract } from "@vm0/api-contracts/contracts/chat-threads";
-import { zeroUsageRunsContract } from "@vm0/api-contracts/contracts/zero-usage-daily";
 import { HttpResponse, http } from "msw";
 import { afterEach, describe, expect, it } from "vitest";
 import { z } from "zod";
@@ -17,7 +16,6 @@ import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
 import { mockEnv } from "../../../lib/env";
 import { clearMockNow, mockNow } from "../../../lib/time";
 import { server } from "../../../mocks/server";
-import { seedUsagePricingRows } from "../../../test-fixtures/system-config-seeds";
 import { flushWaitUntilForTest } from "../../context/wait-until";
 import { createBddApi, type ApiTestUser } from "./helpers/api-bdd";
 import { createChatCallbacksApi } from "./helpers/api-bdd-chat-callbacks";
@@ -58,10 +56,6 @@ function cronClient() {
   return setupApp({ context })(cronBrowserReconcileContract);
 }
 
-function usageClient() {
-  return setupApp({ context })(zeroUsageRunsContract);
-}
-
 async function requestBrowserCreate(
   headers: Readonly<Record<string, string>>,
   body: ZeroBrowserCreateRequest,
@@ -99,9 +93,6 @@ function providerBrowser(
   id: string,
   args: {
     readonly status?: "active" | "stopped";
-    readonly browserCost?: string;
-    readonly proxyCost?: string;
-    readonly proxyUsedMb?: string;
   } = {},
 ) {
   const status = args.status ?? "active";
@@ -118,18 +109,6 @@ function providerBrowser(
     timeoutAt: isoAt(240 * MINUTE_MS),
     startedAt: isoAt(0),
     finishedAt: status === "stopped" ? isoAt(10 * MINUTE_MS) : null,
-    // These defaults mirror Browser Use v3 active and stopped responses.
-    proxyUsedMb:
-      args.proxyUsedMb ??
-      (status === "active" ? "0" : "4.98114681243896440625"),
-    proxyCost:
-      args.proxyCost ??
-      (status === "active" ? "0" : "0.000972880236804485235595703125"),
-    browserCost:
-      args.browserCost ??
-      (status === "active"
-        ? "0.001666666666666666666666666666"
-        : "0.005333333333333333333333333333"),
     agentSessionId: null,
     recordingUrl: null,
   };
@@ -175,15 +154,6 @@ async function setupBrowserScenario() {
   mockEnv("ZERO_BROWSER_USE_API_KEY", "test-browser-use-key");
   mockEnv("APP_URL", "https://app.vm0.ai");
   mockEnv("CRON_SECRET", CRON_SECRET);
-  await seedUsagePricingRows([
-    {
-      kind: "browser",
-      provider: "browser-use",
-      category: "provider_cost_usd_micros",
-      unitPrice: 1200,
-      unitSize: 1_000_000,
-    },
-  ]);
 
   const bdd = createBddApi(context);
   const routeMocks = createZeroRouteMocks(context);
@@ -404,103 +374,6 @@ describe("zero browser route", () => {
     );
   });
 
-  it("logs bounded cost diagnostics without exposing other provider values", async () => {
-    const { runs, chat, actor, agent } = await setupBrowserScenario();
-    const sent = await chat.requestSendEvent(
-      actor,
-      {
-        agentId: agent.agentId,
-        prompt: "Open a managed browser with an invalid provider response",
-        cloudBrowserEnabled: true,
-      },
-      [201],
-    );
-    if (sent.status !== 201 || sent.body.runId === null) {
-      throw new Error("Expected a browser test run");
-    }
-    const browserHeaders = {
-      authorization: `Bearer ${runs.zeroTokenForRunWithCapabilities(
-        actor,
-        sent.body.runId,
-        ["browser:read", "browser:write"],
-      )}`,
-    };
-    const invalidBrowserCost = "-0.001";
-    const oversizedProxyCost = "1".repeat(160);
-    const privateProviderValue =
-      "https://provider.invalid/private-provider-value";
-    server.use(
-      http.post(`${BROWSER_USE_API_URL}/profiles`, async ({ request }) => {
-        const body = z
-          .strictObject({ name: z.string() })
-          .parse(await request.json());
-        return HttpResponse.json(providerProfile(randomUUID(), body.name), {
-          status: 201,
-        });
-      }),
-      http.post(`${BROWSER_USE_API_URL}/browsers`, () => {
-        return HttpResponse.json(
-          {
-            ...providerBrowser(randomUUID(), {
-              browserCost: invalidBrowserCost,
-              proxyCost: oversizedProxyCost,
-            }),
-            liveUrl: privateProviderValue,
-          },
-          { status: 201 },
-        );
-      }),
-    );
-
-    context.mocks.axiomLogging.warn.mockClear();
-    const rejected = await requestBrowserCreate(browserHeaders, {
-      name: "invalid-provider-response",
-      proxyCountryCode: null,
-      maxCredits: 150,
-    });
-
-    expect(rejected.status).toBe(502);
-    await expect(rejected.json()).resolves.toMatchObject({
-      error: {
-        code: "BROWSER_USE_INVALID_RESPONSE",
-        message: "Managed browser provider returned an invalid response",
-      },
-    });
-    expect(context.mocks.axiomLogging.warn).toHaveBeenCalledWith(
-      "Managed browser provider returned an invalid response",
-      expect.objectContaining({
-        validationIssueCount: 3,
-        validationIssues: expect.arrayContaining([
-          expect.objectContaining({
-            path: "browserCost",
-            code: "invalid_format",
-            message: expect.any(String),
-            providerValueType: "string",
-            providerValueLength: invalidBrowserCost.length,
-            providerValuePreview: invalidBrowserCost,
-          }),
-          expect.objectContaining({
-            path: "proxyCost",
-            code: "too_big",
-            message: expect.any(String),
-            providerValueType: "string",
-            providerValueLength: oversizedProxyCost.length,
-            providerValuePreview: oversizedProxyCost.slice(0, 128),
-          }),
-          expect.objectContaining({
-            path: "liveUrl",
-            code: "custom",
-            message: expect.any(String),
-          }),
-        ]),
-        validationIssuesOmitted: 0,
-      }),
-    );
-    const logged = JSON.stringify(context.mocks.axiomLogging.warn.mock.calls);
-    expect(logged).not.toContain(oversizedProxyCost);
-    expect(logged).not.toContain(privateProviderValue);
-  });
-
   it("isolates profiles across concurrent thread browser sessions", async () => {
     const { runs, chat, webhooks, actor, agent } = await setupBrowserScenario();
     const first = await createClaimedChatRun(
@@ -584,7 +457,6 @@ describe("zero browser route", () => {
       body: {
         name: "booking",
         proxyCountryCode: null,
-        maxCredits: 150,
       },
     });
     const otherCreateRequest = client().create({
@@ -592,7 +464,6 @@ describe("zero browser route", () => {
       body: {
         name: "research",
         proxyCountryCode: null,
-        maxCredits: 150,
       },
     });
     const [created, createdInOtherThread] = await Promise.all([
@@ -602,7 +473,6 @@ describe("zero browser route", () => {
     expect(created.body.browser).toMatchObject({
       name: "booking",
       status: "active",
-      maxCredits: 150,
       // Zero always requests the provider's longest lifetime and manages
       // reclamation through the idle lease instead.
       timeoutMinutes: 240,
@@ -677,7 +547,6 @@ describe("zero browser route", () => {
       {
         name: "another",
         proxyCountryCode: null,
-        maxCredits: 150,
       },
     );
     expect(duplicateNew.status).toBe(409);
@@ -723,23 +592,22 @@ describe("zero browser route", () => {
       idleExpiresAt: isoAt(12 * MINUTE_MS),
     });
 
-    // Nobody can reach a deleted thread's browser, so the reconciler reclaims
-    // both of them without waiting for their leases.
+    // Thread deletion releases both local slots and requests provider cleanup
+    // without waiting for Browser Use.
     await chat.deleteThread(actor, first.threadId);
     await chat.deleteThread(actor, other.threadId);
     await flushWaitUntilForTest();
-    const reclaimed = await reconcileBrowsers();
-    expect(reclaimed.body).toMatchObject({
-      checked: 2,
-      stopped: 2,
-      settled: 2,
+    expect(providerStops).toBe(2);
+    const reconciled = await reconcileBrowsers();
+    expect(reconciled.body).toMatchObject({
+      checked: 0,
+      stopped: 0,
       errors: 0,
     });
-    expect(providerStops).toBe(2);
     expect(deletedProfiles).toStrictEqual([]);
   }, 120_000);
 
-  it("rejects browser admission past the credit and concurrency limits", async () => {
+  it("reclaims the earliest idle lease before starting past org concurrency", async () => {
     const { runs, chat, actor, agent } = await setupBrowserScenario();
     const first = await createClaimedChatRun(
       chat,
@@ -783,14 +651,9 @@ describe("zero browser route", () => {
       };
     }
 
-    const providerIds = [
-      randomUUID(),
-      randomUUID(),
-      randomUUID(),
-      randomUUID(),
-    ] as const;
+    const providerIds = [randomUUID(), randomUUID(), randomUUID()] as const;
     let providerCreates = 0;
-    let providerStops = 0;
+    const providerStopAttempts: string[] = [];
     server.use(
       http.post(`${BROWSER_USE_API_URL}/profiles`, async ({ request }) => {
         const body = z
@@ -815,9 +678,16 @@ describe("zero browser route", () => {
         return HttpResponse.json(providerBrowser(String(params.id)));
       }),
       http.patch(`${BROWSER_USE_API_URL}/browsers/:id`, ({ params }) => {
-        providerStops += 1;
+        const providerId = String(params.id);
+        providerStopAttempts.push(providerId);
+        if (providerId === providerIds[0]) {
+          return HttpResponse.json(
+            { detail: "temporary Browser Use outage" },
+            { status: 503 },
+          );
+        }
         return HttpResponse.json(
-          providerBrowser(String(params.id), { status: "stopped" }),
+          providerBrowser(providerId, { status: "stopped" }),
         );
       }),
     );
@@ -825,119 +695,85 @@ describe("zero browser route", () => {
     await accept(
       client().create({
         headers: first.claim.browserHeaders,
-        body: { name: "booking", proxyCountryCode: null, maxCredits: 150 },
+        body: { name: "booking", proxyCountryCode: null },
       }),
       [201],
     );
     await accept(
       client().create({
         headers: other.claim.browserHeaders,
-        body: { name: "research", proxyCountryCode: null, maxCredits: 150 },
+        body: { name: "research", proxyCountryCode: null },
       }),
       [201],
     );
     expect(providerCreates).toBe(2);
 
-    const creditCandidates = await Promise.all([
-      createCandidate("Race for the last browser credit reservation A"),
-      createCandidate("Race for the last browser credit reservation B"),
-    ]);
-    const creditAdmissionResults = await Promise.all(
-      creditCandidates.map((candidate) => {
-        return requestBrowserCreate(candidate.browserHeaders, {
-          name: "credit-race",
-          proxyCountryCode: null,
-          maxCredits: 19_700,
-        });
+    mockNow(STARTED_AT_MS + MINUTE_MS);
+    await accept(
+      client().lease({
+        headers: other.claim.browserHeaders,
+        body: {},
       }),
+      [200],
     );
-    expect(
-      creditAdmissionResults
-        .map((result) => {
-          return result.status;
-        })
-        .sort(),
-    ).toStrictEqual([201, 402]);
-    const creditRejection = creditAdmissionResults.find((result) => {
-      return result.status === 402;
+    const candidate = await createCandidate(
+      "Start past the managed browser concurrency limit",
+    );
+    const admitted = await requestBrowserCreate(candidate.browserHeaders, {
+      name: "concurrency-replacement",
+      proxyCountryCode: null,
     });
-    if (!creditRejection) {
-      throw new Error("Expected one browser credit admission rejection");
-    }
-    await expect(creditRejection.json()).resolves.toMatchObject({
-      error: { code: "INSUFFICIENT_CREDITS" },
-    });
-    const creditWinnerIndex = creditAdmissionResults.findIndex((result) => {
-      return result.status === 201;
-    });
-    if (creditWinnerIndex === -1) {
-      throw new Error("Expected one browser credit admission winner");
-    }
-    const creditWinner = creditCandidates[creditWinnerIndex];
-    const creditLoser = creditCandidates[creditWinnerIndex === 0 ? 1 : 0];
-    if (!creditWinner || !creditLoser) {
-      throw new Error("Expected both browser credit admission candidates");
-    }
-    expect(providerCreates).toBe(3);
-
-    // Ending a run no longer frees its browser slot. Deleting the thread does,
-    // once the reconciler has settled the instance.
-    await chat.deleteThread(actor, creditWinner.threadId);
+    expect(admitted.status).toBe(201);
     await flushWaitUntilForTest();
-    const freedSlot = await reconcileBrowsers();
-    expect(freedSlot.body).toMatchObject({
-      stopped: 1,
-      settled: 1,
-      errors: 0,
-    });
-    expect(providerStops).toBe(1);
+    expect(providerCreates).toBe(3);
+    expect(providerStopAttempts).toStrictEqual([providerIds[0]]);
 
-    const concurrencyCandidate = await createCandidate(
-      "Race for the last browser concurrency slot",
-    );
-    const concurrencyCandidates = [creditLoser, concurrencyCandidate] as const;
-    const concurrencyAdmissionResults = await Promise.all(
-      concurrencyCandidates.map((candidate) => {
-        return requestBrowserCreate(candidate.browserHeaders, {
-          name: "concurrency-race",
-          proxyCountryCode: null,
-          maxCredits: 100,
-        });
+    const reclaimed = await accept(
+      client().get({
+        headers: first.claim.browserHeaders,
+        params: {
+          browserId: (
+            await accept(
+              client().current({
+                headers: first.claim.browserHeaders,
+              }),
+              [200],
+            )
+          ).body.browser.id,
+        },
+        query: { chatThreadId: first.threadId },
       }),
+      [200],
     );
-    expect(
-      concurrencyAdmissionResults
-        .map((result) => {
-          return result.status;
-        })
-        .sort(),
-    ).toStrictEqual([201, 409]);
-    const concurrencyRejection = concurrencyAdmissionResults.find((result) => {
-      return result.status === 409;
+    expect(reclaimed.body.browser).toMatchObject({
+      status: "suspended",
+      suspensionReason: "reconcile",
     });
-    if (!concurrencyRejection) {
-      throw new Error("Expected one browser concurrency admission rejection");
-    }
-    await expect(concurrencyRejection.json()).resolves.toMatchObject({
-      error: { code: "BROWSER_CONCURRENCY_LIMIT" },
+    const healthy = await reconcileBrowsers();
+    expect(healthy.body).toMatchObject({
+      checked: 2,
+      stopped: 0,
+      errors: 0,
+      healthy: 2,
     });
-    expect(providerCreates).toBe(4);
+    expect(providerStopAttempts).toStrictEqual([providerIds[0]]);
 
-    // The reconciler is global, so leave nothing unsettled for other tests.
     for (const threadId of [
       first.threadId,
       other.threadId,
-      creditLoser.threadId,
-      concurrencyCandidate.threadId,
+      candidate.threadId,
     ]) {
       await chat.deleteThread(actor, threadId);
     }
     await flushWaitUntilForTest();
-    await reconcileBrowsers();
-    expect(providerStops).toBe(4);
+    expect(providerStopAttempts).toStrictEqual([
+      providerIds[0],
+      providerIds[1],
+      providerIds[2],
+    ]);
   }, 120_000);
 
-  it("keeps the browser live across runs and bills the last run when the idle lease expires", async () => {
+  it("keeps the browser live across runs and reclaims its idle lease without retrying provider stop", async () => {
     const { routeMocks, runs, chat, webhooks, actor, runnerGroup, agent } =
       await setupBrowserScenario();
     const first = await createClaimedChatRun(
@@ -991,12 +827,7 @@ describe("zero browser route", () => {
           }
           providerStops += 1;
           return HttpResponse.json(
-            providerBrowser(providerId, {
-              status: "stopped",
-              browserCost: providerId === providerIds[0] ? "+0.00333" : "0.1",
-              proxyCost: providerId === providerIds[0] ? ".1" : "0.",
-              proxyUsedMb: providerId === providerIds[0] ? "20" : "0",
-            }),
+            providerBrowser(providerId, { status: "stopped" }),
           );
         },
       ),
@@ -1080,32 +911,32 @@ describe("zero browser route", () => {
     expect(healthy.body).toMatchObject({
       checked: 1,
       stopped: 0,
-      settled: 0,
       errors: 0,
       healthy: 1,
     });
     expect(providerStops).toBe(0);
 
     mockNow(STARTED_AT_MS + 16 * MINUTE_MS);
-    const providerOutage = await reconcileBrowsers();
-    expect(providerOutage.body).toMatchObject({
-      stopped: 0,
-      settled: 0,
-      errors: 1,
-    });
     context.mocks.ably.publish.mockClear();
     const reclaimed = await reconcileBrowsers();
     expect(reclaimed.body).toMatchObject({
       stopped: 1,
-      settled: 1,
       errors: 0,
     });
-    expect(providerStops).toBe(1);
     expect(context.mocks.ably.publish).toHaveBeenCalledWith(
       "browserSessionChanged",
       { browserId },
     );
     await flushWaitUntilForTest();
+    expect(firstStopFailures).toBe(1);
+    expect(providerStops).toBe(0);
+    const afterFailedStop = await reconcileBrowsers();
+    expect(afterFailedStop.body).toMatchObject({
+      checked: 0,
+      stopped: 0,
+      errors: 0,
+    });
+    expect(firstStopFailures).toBe(1);
 
     routeMocks.clerk.session(actor.userId, actor.orgId, actor.orgRole);
     const suspended = await accept(
@@ -1120,49 +951,8 @@ describe("zero browser route", () => {
       id: browserId,
       status: "suspended",
       suspensionReason: "idle",
-      grossCredits: 124,
       idleExpiresAt: null,
     });
-
-    // The whole instance is billed to the run that last used it, not to the run
-    // that opened it.
-    context.mocks.clerk.users.getUserList.mockResolvedValue({
-      data: [
-        {
-          id: actor.userId,
-          primaryEmailAddressId: `email_${actor.userId}`,
-          emailAddresses: [
-            {
-              id: `email_${actor.userId}`,
-              emailAddress: `${actor.userId}@example.com`,
-            },
-          ],
-        },
-      ],
-    });
-    const followupUsage = await accept(
-      usageClient().get({
-        headers: { authorization: "Bearer clerk-session" },
-        query: { runId: followupRunId },
-      }),
-      [200],
-    );
-    expect(followupUsage.body.runs[0]).toMatchObject({
-      runId: followupRunId,
-      creditsCharged: 124,
-    });
-    const firstRunUsage = await accept(
-      usageClient().get({
-        headers: { authorization: "Bearer clerk-session" },
-        query: { runId: first.runId },
-      }),
-      [200],
-    );
-    expect(
-      firstRunUsage.body.runs.find((run) => {
-        return run.runId === first.runId;
-      })?.creditsCharged ?? 0,
-    ).toBe(0);
 
     // The viewer can restore a reclaimed browser without a live run.
     context.mocks.ably.publish.mockClear();
@@ -1177,7 +967,6 @@ describe("zero browser route", () => {
     expect(resumed.body.browser).toMatchObject({
       id: browserId,
       status: "active",
-      grossCredits: 124,
       idleExpiresAt: isoAt(26 * MINUTE_MS),
     });
     expect(providerCreates).toBe(2);
@@ -1202,19 +991,12 @@ describe("zero browser route", () => {
 
     await chat.deleteThread(actor, first.threadId);
     await flushWaitUntilForTest();
-    const afterThreadDelete = await reconcileBrowsers();
-    expect(afterThreadDelete.body).toMatchObject({
-      stopped: 1,
-      settled: 1,
-      errors: 0,
-    });
-    expect(providerStops).toBe(2);
+    expect(providerStops).toBe(1);
 
-    const settledEverything = await reconcileBrowsers();
-    expect(settledEverything.body).toMatchObject({
+    const reconciled = await reconcileBrowsers();
+    expect(reconciled.body).toMatchObject({
       checked: 0,
       stopped: 0,
-      settled: 0,
       errors: 0,
     });
   }, 120_000);
@@ -1258,15 +1040,9 @@ describe("zero browser route", () => {
       }),
       http.patch(`${BROWSER_USE_API_URL}/browsers/:id`, ({ params }) => {
         providerStops += 1;
-        return HttpResponse.json({
-          id: String(params.id),
-          status: "stopped",
-          timeoutAt: isoAt(240 * MINUTE_MS),
-          startedAt: isoAt(0),
-          proxyUsedMb: null,
-          proxyCost: null,
-          browserCost: null,
-        });
+        return HttpResponse.json(
+          providerBrowser(String(params.id), { status: "stopped" }),
+        );
       }),
     );
 
@@ -1281,14 +1057,14 @@ describe("zero browser route", () => {
     const reclaimed = await reconcileBrowsers();
     expect(reclaimed.body).toMatchObject({
       stopped: 1,
-      settled: 1,
       errors: 0,
     });
+    await flushWaitUntilForTest();
     expect(providerStops).toBe(1);
     const replacement = await accept(
       client().create({
         headers: first.claim.browserHeaders,
-        body: { name: "replacement", proxyCountryCode: null, maxCredits: 100 },
+        body: { name: "replacement", proxyCountryCode: null },
       }),
       [201],
     );
@@ -1329,7 +1105,6 @@ describe("zero browser route", () => {
 
     await chat.deleteThread(actor, first.threadId);
     await flushWaitUntilForTest();
-    await reconcileBrowsers();
     expect(providerStops).toBe(2);
   }, 120_000);
 });

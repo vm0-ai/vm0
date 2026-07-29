@@ -1,13 +1,12 @@
 import { randomUUID } from "node:crypto";
 
 import { agentRuns } from "@vm0/db/schema/agent-run";
-import { browserSessions } from "@vm0/db/schema/browser-session";
 import { creditExpiresRecord } from "@vm0/db/schema/credit-expires-record";
 import { orgMetadata } from "@vm0/db/schema/org-metadata";
 import { usageEvent } from "@vm0/db/schema/usage-event";
 import { usagePricing } from "@vm0/db/schema/usage-pricing";
 import { command } from "ccstate";
-import { and, eq, gt, inArray, lte, sql, sum } from "drizzle-orm";
+import { and, eq, gt, lte, sql, sum } from "drizzle-orm";
 
 import {
   nullableDriverValueDecoder,
@@ -118,39 +117,15 @@ export async function checkCreditAmountForLockedOrg(
         ),
       ),
   );
-  const reserved = writeDb.$with("reserved").as(
-    writeDb
-      .select({
-        total: sql`COALESCE(${sum(
-          sql`GREATEST(${browserSessions.maxCredits} - ${browserSessions.grossCredits}, 0)`,
-        )}, 0)::bigint`
-          .mapWith(pgInt8ToBigIntDecoder)
-          .as("reserved_total"),
-      })
-      .from(browserSessions)
-      .where(
-        and(
-          eq(browserSessions.orgId, args.orgId),
-          inArray(browserSessions.status, [
-            "creating",
-            "active",
-            "resuming",
-            "stopping",
-          ]),
-        ),
-      ),
-  );
   const rows = await writeDb
-    .with(expired, reserved)
+    .with(expired)
     .select({
       credits: sql`${orgMetadata.credits}`.mapWith(
         nullableDriverValueDecoder(pgInt8ToBigIntDecoder),
       ),
       unsettledExpired: expired.total,
-      reservedCredits: reserved.total,
     })
     .from(expired)
-    .crossJoin(reserved)
     .leftJoin(orgMetadata, eq(orgMetadata.orgId, args.orgId));
   signal.throwIfAborted();
 
@@ -159,8 +134,7 @@ export async function checkCreditAmountForLockedOrg(
     return insufficientCredits();
   }
 
-  const spendableCredits =
-    row.credits - row.unsettledExpired - row.reservedCredits;
+  const spendableCredits = row.credits - row.unsettledExpired;
   if (spendableCredits >= BigInt(args.requiredCredits)) {
     return null;
   }
@@ -235,36 +209,13 @@ export const checkManagedCredits$ = command(
           ),
         ),
     );
-    const reserved = writeDb.$with("reserved").as(
-      writeDb
-        .select({
-          total: sql`COALESCE(${sum(
-            sql`GREATEST(${browserSessions.maxCredits} - ${browserSessions.grossCredits}, 0)`,
-          )}, 0)::bigint`
-            .mapWith(pgInt8ToBigIntDecoder)
-            .as("reserved_total"),
-        })
-        .from(browserSessions)
-        .where(
-          and(
-            eq(browserSessions.orgId, args.orgId),
-            inArray(browserSessions.status, [
-              "creating",
-              "active",
-              "resuming",
-              "stopping",
-            ]),
-          ),
-        ),
-    );
     const rows = await writeDb
-      .with(expired, reserved)
+      .with(expired)
       .select({
         credits: sql`${orgMetadata.credits}`.mapWith(
           nullableDriverValueDecoder(pgInt8ToBigIntDecoder),
         ),
         unsettledExpired: expired.total,
-        reservedCredits: reserved.total,
         unitPrice: sql`${usagePricing.unitPrice}`.mapWith(
           nullableDriverValueDecoder(pgInt8ToBigIntDecoder),
         ),
@@ -273,7 +224,6 @@ export const checkManagedCredits$ = command(
         ),
       })
       .from(expired)
-      .crossJoin(reserved)
       .leftJoin(orgMetadata, eq(orgMetadata.orgId, args.orgId))
       .leftJoin(
         usagePricing,
@@ -301,8 +251,7 @@ export const checkManagedCredits$ = command(
       row.unitSize,
       quantity,
     );
-    const spendableCredits =
-      credits - row.unsettledExpired - row.reservedCredits;
+    const spendableCredits = credits - row.unsettledExpired;
     if (spendableCredits >= requiredCredits) {
       return null;
     }

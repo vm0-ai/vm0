@@ -51,9 +51,6 @@ function browser(status: "active" | "suspended" = "active") {
         : null,
     proxyCountryCode: null,
     timeoutMinutes: 240,
-    maxCredits: 500,
-    grossCredits: 0,
-    creditsCharged: 0,
     idleExpiresAt: status === "active" ? "2026-07-24T10:10:00.000Z" : null,
     suspendedAt: status === "suspended" ? "2026-07-24T10:05:00.000Z" : null,
     suspensionReason: status === "suspended" ? ("idle" as const) : null,
@@ -135,7 +132,6 @@ describe("zero browser command", () => {
     expect(requestBody).toStrictEqual({
       name: "booking",
       proxyCountryCode: null,
-      maxCredits: 500,
     });
     expect(authorization).toBe("Bearer test-zero-token");
     expect(spawnSyncMock).toHaveBeenCalledWith(

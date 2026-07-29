@@ -5083,6 +5083,20 @@
       "when": 1785315790679,
       "tag": "0725_rename_chat_message_asset_refs_to_chat_event_asset_refs",
       "breakpoints": true
+    },
+    {
+      "idx": 726,
+      "version": "7",
+      "when": 1785324585522,
+      "tag": "0726_prepare_browser_billing_removal",
+      "breakpoints": true
+    },
+    {
+      "idx": 727,
+      "version": "7",
+      "when": 1785324615243,
+      "tag": "0727_remove_browser_usage_pricing",
+      "breakpoints": true
     }
   ]
 }

@@ -14,7 +14,6 @@ import {
   openThreadBrowserSession$,
 } from "../../signals/chat-page/thread-sidebar-coordinator.ts";
 import { i18n } from "../../i18n/index.ts";
-import { formatAppNumber } from "../../i18n/format.ts";
 
 interface BrowserSessionCardProps {
   readonly signals: BrowserSessionSignals;
@@ -134,17 +133,6 @@ export function BrowserSessionCard({ signals }: BrowserSessionCardProps) {
       <span className="min-w-0 flex-1">
         <span className="block truncate text-sm font-medium leading-5 text-foreground">
           {session.name}
-        </span>
-        <span className="mt-0.5 block truncate text-xs text-muted-foreground">
-          {t(
-            ($) => {
-              return $.browserSession.creditsCharged;
-            },
-            {
-              count: session.creditsCharged,
-              formattedCount: formatAppNumber(session.creditsCharged),
-            },
-          )}
         </span>
       </span>
       <span className="flex shrink-0 items-center gap-1.5 self-center">
