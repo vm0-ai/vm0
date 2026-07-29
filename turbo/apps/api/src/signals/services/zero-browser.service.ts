@@ -48,6 +48,9 @@ const PROVIDER_START_LIFECYCLE_TIMEOUT_MS = 90_000;
 const STRANDED_START_GRACE_MS = 60_000;
 const MAX_PROVIDER_VALIDATION_ISSUES_TO_LOG = 10;
 const IDLE_LEASE_MS = ZERO_BROWSER_IDLE_LEASE_MINUTES * 60_000;
+const LEGACY_BROWSER_MAX_CREDITS = 1;
+const LEGACY_BROWSER_PRICING_UNIT_PRICE = 0;
+const LEGACY_BROWSER_PRICING_UNIT_SIZE = 1;
 const OWNED_BROWSER_STATUSES = [
   "creating",
   "active",
@@ -217,7 +220,7 @@ function publicBrowser(
     timeoutMinutes: row.timeoutMinutes,
     // The previous CLI requires these response fields. They no longer control
     // admission or settlement and can be removed after that client drains.
-    maxCredits: 1,
+    maxCredits: LEGACY_BROWSER_MAX_CREDITS,
     grossCredits: 0,
     creditsCharged: 0,
     idleExpiresAt: idleExpiresAt?.toISOString() ?? null,
@@ -895,22 +898,50 @@ async function claimStartedProviderInstance(
     ) {
       return { kind: "rejected" as const };
     }
+    const status = cleanupAfterStart ? "stopped" : "active";
+    const stopRequestedAt = cleanupAfterStart ? nowDate() : null;
+    const finishedAt = cleanupAfterStart ? nowDate() : null;
+    // These pricing columns are intentionally absent from the current Drizzle
+    // schema but remain NOT NULL until the follow-up physical contraction.
+    // Write zero-priced compatibility values explicitly so this API can start
+    // before migration 0734 adds defaults for them.
+    await tx.execute(sql`
+      INSERT INTO ${browserSessionInstances} (
+        "provider_session_id",
+        "browser_session_id",
+        "chat_thread_id",
+        "run_id",
+        "status",
+        "pricing_unit_price",
+        "pricing_unit_size",
+        "timeout_at",
+        "started_at",
+        "last_touched_at",
+        "idle_expires_at",
+        "stop_requested_at",
+        "finished_at"
+      )
+      VALUES (
+        ${args.provider.id},
+        ${current.id},
+        ${current.chatThreadId},
+        ${args.context.runId},
+        ${status},
+        ${LEGACY_BROWSER_PRICING_UNIT_PRICE},
+        ${LEGACY_BROWSER_PRICING_UNIT_SIZE},
+        ${new Date(args.provider.timeoutAt)},
+        ${new Date(args.provider.startedAt)},
+        ${nowDate()},
+        ${nextIdleDeadline()},
+        ${stopRequestedAt},
+        ${finishedAt}
+      )
+    `);
     const [instance] = await tx
-      .insert(browserSessionInstances)
-      .values({
-        providerSessionId: args.provider.id,
-        browserSessionId: current.id,
-        chatThreadId: current.chatThreadId,
-        runId: args.context.runId,
-        status: cleanupAfterStart ? "stopped" : "active",
-        timeoutAt: new Date(args.provider.timeoutAt),
-        startedAt: new Date(args.provider.startedAt),
-        lastTouchedAt: nowDate(),
-        idleExpiresAt: nextIdleDeadline(),
-        stopRequestedAt: cleanupAfterStart ? nowDate() : null,
-        finishedAt: cleanupAfterStart ? nowDate() : null,
-      })
-      .returning();
+      .select()
+      .from(browserSessionInstances)
+      .where(eq(browserSessionInstances.providerSessionId, args.provider.id))
+      .limit(1);
     if (!instance) {
       throw new Error("Failed to persist managed browser provider instance");
     }
@@ -1115,24 +1146,45 @@ async function claimFreshBrowser(
         "BROWSER_THREAD_ACTIVE",
       );
     }
+    // max_credits is intentionally absent from the current Drizzle schema but
+    // remains NOT NULL until the follow-up physical contraction. Write the
+    // compatibility sentinel explicitly so this API can start before migration
+    // 0734 adds a default for the column.
+    await tx.execute(sql`
+      INSERT INTO ${browserSessions} (
+        "id",
+        "chat_thread_id",
+        "run_id",
+        "org_id",
+        "user_id",
+        "name",
+        "browser_profile_id",
+        "browser_thread_profile_id",
+        "status",
+        "proxy_country_code",
+        "timeout_minutes",
+        "max_credits"
+      )
+      VALUES (
+        ${args.browserId},
+        ${context.chatThreadId},
+        ${context.runId},
+        ${context.orgId},
+        ${context.userId},
+        ${args.name},
+        ${args.browserProfileId},
+        ${args.browserThreadProfileId},
+        'creating',
+        ${args.proxyCountryCode},
+        ${ZERO_BROWSER_PROVIDER_TIMEOUT_MINUTES},
+        ${LEGACY_BROWSER_MAX_CREDITS}
+      )
+    `);
     const [browser] = await tx
-      .insert(browserSessions)
-      .values({
-        id: args.browserId,
-        chatThreadId: context.chatThreadId,
-        runId: context.runId,
-        orgId: context.orgId,
-        userId: context.userId,
-        name: args.name,
-        browserProfileId: args.browserProfileId,
-        browserThreadProfileId: args.browserThreadProfileId,
-        status: "creating",
-        proxyCountryCode: args.proxyCountryCode,
-        // Records the provider's hard lifetime cap; Zero's own idle lease is
-        // what normally ends a browser well before it.
-        timeoutMinutes: ZERO_BROWSER_PROVIDER_TIMEOUT_MINUTES,
-      })
-      .returning();
+      .select()
+      .from(browserSessions)
+      .where(eq(browserSessions.id, args.browserId))
+      .limit(1);
     if (!browser) {
       throw new Error("Failed to create managed browser");
     }
