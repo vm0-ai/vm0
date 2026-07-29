@@ -2,10 +2,7 @@ import type { ChatMessageGoalSnapshot } from "@vm0/db/schema/chat-message";
 import { command } from "ccstate";
 
 import { logger } from "../../lib/log";
-import {
-  publishChatThreadMessageCreatedSafely,
-  publishChatThreadWorkflowQueueChangedSafely,
-} from "../external/realtime";
+import { publishChatThreadMessageCreatedSafely } from "../external/realtime";
 import { writeDb$, type Db } from "../external/db";
 import { now } from "../external/time";
 import {
@@ -156,11 +153,6 @@ async function publishGoalQueueChanged(
   event: PendingGoalQueueEvent,
   signal: AbortSignal,
 ): Promise<void> {
-  await publishChatThreadWorkflowQueueChangedSafely(
-    event.userId,
-    event.chatThreadId,
-  );
-  signal.throwIfAborted();
   await publishChatThreadMessageCreatedSafely(event.userId, event.chatThreadId);
   signal.throwIfAborted();
 }

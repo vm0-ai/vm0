@@ -1,5 +1,6 @@
 import { command, computed, type Computed } from "ccstate";
 import {
+  CHAT_EVENT_TYPES,
   chatEventCompatibilityRole,
   type ChatEventType,
 } from "@vm0/api-contracts/contracts/chat-events";
@@ -976,21 +977,6 @@ const chatEventBuilders = {
       runId: requiredChatEventField(row.runId, row.eventType, "runId"),
       error: row.error ?? undefined,
       runLifecycleEvent: "cancelled",
-    };
-  },
-  "queue.automation_paused": (row, event) => {
-    return {
-      ...event,
-      eventType: "queue.automation_paused",
-      content: null,
-      pauseReason: row.error,
-    };
-  },
-  "queue.automation_resumed": (_row, event) => {
-    return {
-      ...event,
-      eventType: "queue.automation_resumed",
-      content: null,
     };
   },
   "control.interrupt": (row, event) => {
@@ -2218,7 +2204,10 @@ export function zeroChatThreadEventsPage(args: {
       args.sinceSeqId ?? (args.sinceId ? legacyCursor?.seqId : undefined);
     const beforeSeqId =
       args.beforeSeqId ?? (args.beforeId ? legacyCursor?.seqId : undefined);
-    const threadFilter = eq(chatMessages.chatThreadId, args.threadId);
+    const threadFilter = and(
+      eq(chatMessages.chatThreadId, args.threadId),
+      chatEventTypeIn(CHAT_EVENT_TYPES),
+    );
     let rows: ChatEventRow[];
     let hasHistoryBefore = false;
 
@@ -2294,6 +2283,7 @@ export function zeroChatThreadEventById(args: {
         and(
           eq(chatMessages.id, args.eventId),
           eq(chatMessages.chatThreadId, args.threadId),
+          chatEventTypeIn(CHAT_EVENT_TYPES),
         ),
       )
       .limit(1);

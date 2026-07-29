@@ -24,9 +24,8 @@ export const workflowQueueRunningRunSchema = z.object({
 });
 
 /**
- * Snapshot of a chat thread's workflow queue: the in-flight automation run (if
- * any), the pending events in FIFO order, and the pause state. Mutations
- * return the same shape so the client can render without a follow-up fetch.
+ * @deprecated Previous-frontend compatibility only. New clients derive pending
+ * automation rows from canonical ChatEvents.
  */
 export const workflowQueueResponseSchema = z.object({
   running: workflowQueueRunningRunSchema.nullable(),
@@ -36,6 +35,10 @@ export const workflowQueueResponseSchema = z.object({
 });
 export type WorkflowQueueResponse = z.infer<typeof workflowQueueResponseSchema>;
 
+/**
+ * @deprecated Keep these routes for the previous frontend during the rolling
+ * deployment window. New clients use the canonical ChatEvent endpoints.
+ */
 export const zeroWorkflowQueueContract = c.router({
   get: {
     method: "GET",
@@ -48,7 +51,7 @@ export const zeroWorkflowQueueContract = c.router({
       403: apiErrorSchema,
       404: apiErrorSchema,
     },
-    summary: "Read the chat thread's workflow queue state",
+    summary: "Read the legacy workflow queue projection",
   },
   skipEvent: {
     method: "DELETE",
@@ -62,7 +65,7 @@ export const zeroWorkflowQueueContract = c.router({
       403: apiErrorSchema,
       404: apiErrorSchema,
     },
-    summary: "Remove one pending event from its workflow queue",
+    summary: "Revoke one pending event through the legacy queue API",
   },
   clear: {
     method: "DELETE",
@@ -76,7 +79,7 @@ export const zeroWorkflowQueueContract = c.router({
       403: apiErrorSchema,
       404: apiErrorSchema,
     },
-    summary: "Remove all pending events from the thread's workflow queue",
+    summary: "Revoke pending events through the legacy queue API",
   },
   pause: {
     method: "POST",
@@ -90,7 +93,8 @@ export const zeroWorkflowQueueContract = c.router({
       403: apiErrorSchema,
       404: apiErrorSchema,
     },
-    summary: "Pause the thread's workflow queue (events keep enqueueing)",
+    summary:
+      "Accept the removed pause action for previous-client compatibility",
   },
   resume: {
     method: "POST",
@@ -104,6 +108,7 @@ export const zeroWorkflowQueueContract = c.router({
       403: apiErrorSchema,
       404: apiErrorSchema,
     },
-    summary: "Resume the thread's workflow queue and drain it",
+    summary:
+      "Accept the removed resume action for previous-client compatibility",
   },
 });

@@ -3,7 +3,6 @@ import { describe, expect, it } from "vitest";
 import {
   CHAT_EVENT_TYPES,
   foldActiveChatGoalObjective,
-  foldChatAutomationIntakePause,
   foldChatRunStates,
   foldLatestChatUsageByRunId,
   foldPendingChatQueueEvents,
@@ -161,25 +160,8 @@ const chatEvents = [
     createdAt: CREATED_AT,
   },
   {
-    id: "queue-automation-paused",
-    seqId: 14,
-    threadId: THREAD_ID,
-    eventType: "queue.automation_paused",
-    content: null,
-    pauseReason: "Model provider unavailable",
-    createdAt: "2026-07-23T00:01:00.000Z",
-  },
-  {
-    id: "queue-automation-resumed",
-    seqId: 15,
-    threadId: THREAD_ID,
-    eventType: "queue.automation_resumed",
-    content: null,
-    createdAt: "2026-07-23T00:02:00.000Z",
-  },
-  {
     id: "control-interrupt",
-    seqId: 16,
+    seqId: 14,
     threadId: THREAD_ID,
     eventType: "control.interrupt",
     content: null,
@@ -188,7 +170,7 @@ const chatEvents = [
   },
   {
     id: "control-revoke",
-    seqId: 17,
+    seqId: 15,
     threadId: THREAD_ID,
     eventType: "control.revoke",
     content: null,
@@ -197,7 +179,7 @@ const chatEvents = [
   },
   {
     id: "goal-changed",
-    seqId: 18,
+    seqId: 16,
     threadId: THREAD_ID,
     eventType: "goal.changed",
     content: null,
@@ -210,7 +192,7 @@ const chatEvents = [
   },
   {
     id: "usage-recorded",
-    seqId: 19,
+    seqId: 17,
     threadId: THREAD_ID,
     eventType: "usage.recorded",
     runId: "run-1",
@@ -252,12 +234,6 @@ const queueFoldFixture = [
     eventType: "control.revoke",
     revokesEventId: "automation-revoked",
     createdAt: "2026-07-23T00:02:00.000Z",
-  },
-  {
-    id: "automation-paused",
-    eventType: "queue.automation_paused",
-    pauseReason: "Provider unavailable",
-    createdAt: "2026-07-23T00:03:00.000Z",
   },
   {
     id: "goal-oldest",
@@ -329,6 +305,34 @@ describe("ChatEvent catalog", () => {
       const response = chatEventResponse(event);
       expect(response).toStrictEqual(event);
       expect(chatEventResponseSchema.parse(response)).toStrictEqual(response);
+    }
+  });
+
+  it("accepts retired automation pause markers only as read responses", () => {
+    const legacyMarkers = [
+      {
+        id: "legacy-automation-pause",
+        seqId: 18,
+        threadId: THREAD_ID,
+        eventType: "queue.automation_paused",
+        content: null,
+        pauseReason: "Previous frontend request",
+        createdAt: CREATED_AT,
+      },
+      {
+        id: "legacy-automation-resume",
+        seqId: 19,
+        threadId: THREAD_ID,
+        eventType: "queue.automation_resumed",
+        content: null,
+        createdAt: CREATED_AT,
+      },
+    ] as const;
+
+    for (const marker of legacyMarkers) {
+      expect(chatEventResponseSchema.parse(marker)).toStrictEqual(marker);
+      expect(chatEventSchema.safeParse(marker).success).toBe(false);
+      expect(CHAT_EVENT_TYPES).not.toContain(marker.eventType);
     }
   });
 
@@ -468,28 +472,9 @@ describe("ChatEvent folds", () => {
     ).toStrictEqual(["prompt-newer", "automation-oldest", "goal-oldest"]);
   });
 
-  it("folds automation intake pause without blocking pending user messages", () => {
-    expect(foldChatAutomationIntakePause(queueFoldFixture)).toStrictEqual({
-      pausedAt: "2026-07-23T00:03:00.000Z",
-      pauseReason: "Provider unavailable",
-    });
+  it("returns every pending queue event as runnable", () => {
     expect(
       foldRunnableChatQueueEvents(queueFoldFixture).map((event) => {
-        return event.id;
-      }),
-    ).toStrictEqual(["prompt-newer", "goal-oldest"]);
-
-    const resumed = [
-      ...queueFoldFixture,
-      {
-        id: "automation-resumed",
-        eventType: "queue.automation_resumed" as const,
-        createdAt: "2026-07-23T00:04:00.000Z",
-      },
-    ];
-    expect(foldChatAutomationIntakePause(resumed)).toBeNull();
-    expect(
-      foldRunnableChatQueueEvents(resumed).map((event) => {
         return event.id;
       }),
     ).toStrictEqual(["prompt-newer", "automation-oldest", "goal-oldest"]);

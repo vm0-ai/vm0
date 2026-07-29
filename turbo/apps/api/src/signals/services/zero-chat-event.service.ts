@@ -137,17 +137,6 @@ type RunCancelledEvent = ChatEventIdentity & {
   readonly error?: string;
 };
 
-type QueueAutomationPausedEvent = ChatEventIdentity & {
-  readonly eventType: "queue.automation_paused";
-  readonly content?: null;
-  readonly pauseReason: string | null;
-};
-
-type QueueAutomationResumedEvent = ChatEventIdentity & {
-  readonly eventType: "queue.automation_resumed";
-  readonly content?: null;
-};
-
 type ControlInterruptEvent = ChatEventIdentity & {
   readonly eventType: "control.interrupt";
   readonly content?: null;
@@ -188,8 +177,6 @@ export type NewChatEvent =
   | RunCompletedEvent
   | RunFailedEvent
   | RunCancelledEvent
-  | QueueAutomationPausedEvent
-  | QueueAutomationResumedEvent
   | ControlInterruptEvent
   | ControlRevokeEvent
   | GoalChangedEvent
@@ -220,22 +207,12 @@ type PersistedChatEvent = Omit<ChatEventInsert, "role" | "seqId">;
 
 function persistedChatEventValues(values: NewChatEvent): PersistedChatEvent {
   const runLifecycleEvent = chatEventRunLifecycle(values.eventType);
-  if (values.eventType === "queue.automation_paused") {
-    const { pauseReason, ...event } = values;
-    return {
-      ...event,
-      content: null,
-      error: pauseReason,
-      eventType: event.eventType,
-    };
-  }
   return {
     ...values,
     ...(values.eventType === "input.prompt" ||
     values.eventType === "input.rejected" ||
     values.eventType === "input.automation" ||
-    values.eventType === "input.goal" ||
-    values.eventType === "queue.automation_resumed"
+    values.eventType === "input.goal"
       ? { content: null }
       : {}),
     eventType: values.eventType,

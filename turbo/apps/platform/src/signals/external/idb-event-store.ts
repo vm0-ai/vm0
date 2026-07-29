@@ -1,6 +1,7 @@
 import type { IDBPDatabase } from "idb";
 import {
-  chatEventSchema,
+  chatEventResponseSchema,
+  isCanonicalChatEventResponse,
   type ChatEvent,
 } from "@vm0/api-contracts/contracts/chat-threads";
 import { logger } from "../log.ts";
@@ -32,8 +33,9 @@ interface ChatEventWriteStore {
   ): Promise<void>;
 }
 
-function validateEvent(raw: unknown): ChatEvent {
-  return chatEventSchema.parse(raw);
+function canonicalStoredEvent(raw: unknown): ChatEvent | null {
+  const event = chatEventResponseSchema.parse(raw);
+  return isCanonicalChatEventResponse(event) ? event : null;
 }
 
 function storedEvent(threadId: string, event: ChatEvent): StoredChatEvent {
@@ -61,15 +63,25 @@ function createEventReadStore(
       const tx = db.transaction(storeName, "readonly");
       const index = tx.store.index(CHAT_MESSAGES_ORDER_INDEX);
       const range = threadOrderRange(threadId);
-      const [firstCursor, lastCursor] = await Promise.all([
-        index.openCursor(range, "next"),
-        index.openCursor(range, "prev"),
+      const readCanonicalBound = async (
+        direction: IDBCursorDirection,
+      ): Promise<ChatEvent | null> => {
+        let cursor = await index.openCursor(range, direction);
+        while (cursor) {
+          const event = canonicalStoredEvent(cursor.value);
+          if (event) {
+            return event;
+          }
+          cursor = await cursor.continue();
+        }
+        return null;
+      };
+      const [first, last] = await Promise.all([
+        readCanonicalBound("next"),
+        readCanonicalBound("prev"),
       ]);
       signal?.throwIfAborted();
-      const bounds = {
-        first: firstCursor ? validateEvent(firstCursor.value) : null,
-        last: lastCursor ? validateEvent(lastCursor.value) : null,
-      };
+      const bounds = { first, last };
       L.debug("readBounds:done", {
         threadId,
         firstId: bounds.first?.id ?? null,
@@ -86,7 +98,10 @@ function createEventReadStore(
       const range = threadOrderRange(threadId);
       const storedEvents = await index.getAll(range);
       signal?.throwIfAborted();
-      const events = storedEvents.map(validateEvent);
+      const events = storedEvents.flatMap((raw) => {
+        const event = canonicalStoredEvent(raw);
+        return event ? [event] : [];
+      });
       L.debug("readLatest:done", { threadId, count: events.length });
       return events;
     },

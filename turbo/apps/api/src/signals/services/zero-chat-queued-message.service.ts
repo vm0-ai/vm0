@@ -17,7 +17,6 @@ import type { Db } from "../external/db";
 import {
   hasPendingUserChatQueueEvent,
   listPendingChatQueueEvents,
-  loadChatAutomationIntakePause,
   loadPendingChatQueueEvent,
   lockChatQueueThread,
 } from "./chat-event-queue.service";
@@ -390,10 +389,6 @@ async function claimGoalQueueFirstRunAssociation(
   args: GoalQueueFirstRunAssociation,
 ): Promise<QueueFirstRunClaimResult> {
   const pending = await listPendingChatQueueEvents(db, args.threadId);
-  const automationPause = await loadChatAutomationIntakePause(
-    db,
-    args.threadId,
-  );
   const goalMatches = await goalQueueEventMatchesActiveGoal(db, {
     chatThreadId: args.threadId,
     goalId: args.goalId,
@@ -401,12 +396,7 @@ async function claimGoalQueueFirstRunAssociation(
     orgId: args.orgId,
     userId: args.userId,
   });
-  const head =
-    automationPause === null
-      ? pending[0]
-      : pending.find((event) => {
-          return event.eventType !== "input.automation";
-        });
+  const head = pending[0];
   if (
     head?.eventType !== "input.goal" ||
     head.id !== args.eventId ||
@@ -471,10 +461,7 @@ export async function claimQueueFirstRunAssociation(
       }
 
       if (args.kind === "workflow_event") {
-        if (
-          (await loadChatAutomationIntakePause(db, args.threadId)) ||
-          (await hasUnclaimedQueuedUserMessage(db, args.threadId))
-        ) {
+        if (await hasUnclaimedQueuedUserMessage(db, args.threadId)) {
           outcome = "lost";
           return { kind: "lost" };
         }

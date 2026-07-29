@@ -4,6 +4,7 @@ import {
   type ChatEventSendBody,
   chatEventsContract,
   chatThreadEventsContract,
+  isCanonicalChatEventResponse,
   chatThreadsContract,
   type ChatThreadEvent,
   chatThreadMetadataContract,
@@ -191,7 +192,7 @@ export async function listZeroChatEvents(options: {
   });
   if (result.status === 200) {
     return {
-      events: result.body.events,
+      events: result.body.events.filter(isCanonicalChatEventResponse),
       hasHistoryBefore: result.body.hasHistoryBefore ?? false,
     };
   }
