@@ -8,7 +8,7 @@ import { zeroRunAgentEventsContract } from "@vm0/api-contracts/contracts/zero-ru
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { click, detachedSetupPage } from "../../../__tests__/page-helper.ts";
-import { initializeI18n } from "../../../i18n/index.ts";
+import { i18n, initializeI18n } from "../../../i18n/index.ts";
 import { DEFAULT_LOCALE } from "../../../i18n/resources.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { setLocale$ } from "../../../signals/locale.ts";
@@ -17,8 +17,6 @@ import type {
   LogEntry,
   LogDetail,
 } from "../../../signals/zero-page/log-types.ts";
-import { i18n } from "../../../i18n/index.ts";
-
 const context = testContext();
 
 beforeEach(async () => {

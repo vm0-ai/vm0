@@ -89,6 +89,7 @@ function MobileArtifactsButtonInner({ thread }: { thread: ChatThreadSignals }) {
   const sidebarTarget = useGet(thread.sidebar.target$);
   const reloadArtifacts = useSet(thread.reloadArtifacts$);
   const openThreadArtifacts = useOpenThreadArtifacts(thread);
+  const { t } = useTranslation();
   const open = sidebarTarget?.type === "artifacts";
 
   return (
@@ -104,7 +105,9 @@ function MobileArtifactsButtonInner({ thread }: { thread: ChatThreadSignals }) {
           ? "bg-primary/10 text-primary"
           : "text-muted-foreground hover:bg-muted/50 hover:text-foreground",
       )}
-      aria-label="Open mobile artifacts"
+      aria-label={t(($) => {
+        return $.appShell.sidebar.mobile.openArtifacts;
+      })}
       aria-pressed={open}
     >
       <IconPackage size={16} stroke={1.5} />
@@ -127,6 +130,7 @@ function MobileArtifactsButtonLeaf() {
 function MobileAutomationButtonLeaf() {
   const leftThread = useGet(currentLeftThread$);
   const rightThread = useGet(currentRightThread$);
+  const { t } = useTranslation();
   const thread = leftThread ?? rightThread;
 
   if (!thread) {
@@ -134,7 +138,12 @@ function MobileAutomationButtonLeaf() {
   }
 
   return (
-    <AutomationMenuButton thread={thread} ariaLabel="Open mobile automations" />
+    <AutomationMenuButton
+      thread={thread}
+      ariaLabel={t(($) => {
+        return $.appShell.sidebar.mobile.openAutomations;
+      })}
+    />
   );
 }
 
