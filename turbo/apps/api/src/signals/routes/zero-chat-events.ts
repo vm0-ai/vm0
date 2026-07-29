@@ -112,7 +112,6 @@ import { chatThreadAdmissionBlocked } from "../services/zero-chat-active-run.ser
 import { projectUserMessage } from "../services/zero-chat-user-message.service";
 import { appendQueuedRunAssistantMarker } from "../services/zero-chat-queue-marker.service";
 import {
-  deleteLegacyUserMessageQueueItem,
   discardUnclaimedUserMessage,
   encryptQueuedUserMessageRunParams,
   loadNextUnclaimedQueuedUserMessageId,
@@ -1748,10 +1747,6 @@ function appendRecallUserMessage(params: {
         existingRevoker.eventType === "control.revoke" &&
         existingRevoker.content === null
       ) {
-        await deleteLegacyUserMessageQueueItem(tx, {
-          threadId: params.threadId,
-          messageId: params.revokesEventId,
-        });
         return { ok: true, createdAt: existingRevoker.createdAt };
       }
       return {
@@ -1811,10 +1806,6 @@ function appendRecallUserMessage(params: {
       runId: null,
     });
     if (inserted) {
-      await deleteLegacyUserMessageQueueItem(tx, {
-        threadId: params.threadId,
-        messageId: params.revokesEventId,
-      });
       return { ok: true, createdAt: inserted.createdAt };
     }
     const [resolved] = await tx
@@ -1836,10 +1827,6 @@ function appendRecallUserMessage(params: {
       }
       return { ok: false, message: "Failed to insert recall user message" };
     }
-    await deleteLegacyUserMessageQueueItem(tx, {
-      threadId: params.threadId,
-      messageId: params.revokesEventId,
-    });
     return { ok: true, createdAt: resolved.createdAt };
   });
 }
@@ -2777,10 +2764,6 @@ async function appendQueueFirstInsufficientCreditsMessages(params: {
     } else {
       throw new Error("Failed to append insufficient-credits replacement");
     }
-    await deleteLegacyUserMessageQueueItem(tx, {
-      threadId: params.prepared.thread.threadId,
-      messageId: params.messageId,
-    });
     return queuedMessage.createdAt;
   });
   await publishChatMessageCreated(

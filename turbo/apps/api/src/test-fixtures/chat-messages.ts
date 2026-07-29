@@ -3,14 +3,12 @@ import { agentRuns } from "@vm0/db/schema/agent-run";
 import { agentSessions } from "@vm0/db/schema/agent-session";
 import { chatThreads } from "@vm0/db/schema/chat-thread";
 import { chatMessages } from "@vm0/db/schema/chat-message";
-import { chatMessageQueue } from "@vm0/db/schema/chat-message-queue";
 import { and, count, eq, isNull, like, or, sql } from "drizzle-orm";
 import { z } from "zod";
 
 import { db } from "../lib/db";
 import { executeRawRows } from "../lib/db-raw-rows";
 import { nowDate } from "../lib/time";
-import { encryptPersistentSecretsMap } from "../signals/services/crypto.utils";
 import { insertChatEvent } from "../signals/services/zero-chat-event.service";
 import { createDeferredPromise, onRejection } from "../signals/utils";
 
@@ -25,48 +23,6 @@ const VM0_BDD_API_KEY_PREFIXES = [
 ] as const;
 const databasePidRowSchema = z.object({ pid: z.int() });
 const waiterCountRowSchema = z.object({ waiterCount: z.int() });
-
-/**
- * Seed one queue row through the previous API's persisted shape after the
- * cutover migration. Migration-owned compatibility triggers mirror it into the
- * immutable event stream so the current reader can claim it.
- */
-export async function insertLegacyWorkflowQueueRowFixture(args: {
-  readonly orgId: string;
-  readonly userId: string;
-  readonly threadId: string;
-  readonly automationId: string;
-}): Promise<string> {
-  const encryptedParams = await encryptPersistentSecretsMap(
-    {
-      __workflow_queue_event_params__: JSON.stringify({
-        version: 1,
-        activePreviousRunPolicy: "allow",
-      }),
-    },
-    { orgId: args.orgId, userId: args.userId },
-  );
-  if (!encryptedParams) {
-    throw new Error("Failed to encrypt legacy workflow queue fixture");
-  }
-  const [inserted] = await db()
-    .insert(chatMessageQueue)
-    .values({
-      orgId: args.orgId,
-      userId: args.userId,
-      chatThreadId: args.threadId,
-      itemType: "workflow_event",
-      automationId: args.automationId,
-      triggerSource: "workflow-event",
-      triggerBrief: "legacy cutover window",
-      encryptedParams,
-    })
-    .returning({ id: chatMessageQueue.id });
-  if (!inserted) {
-    throw new Error("Failed to insert legacy workflow queue fixture");
-  }
-  return inserted.id;
-}
 
 /**
  * Move one exact workflow event into historical state without waiting for real

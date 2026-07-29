@@ -1,6 +1,5 @@
 import type { TriggerSource } from "@vm0/api-contracts/contracts/logs";
 import { agentRuns } from "@vm0/db/schema/agent-run";
-import { chatMessageQueue } from "@vm0/db/schema/chat-message-queue";
 import { chatMessages } from "@vm0/db/schema/chat-message";
 import { chatThreads } from "@vm0/db/schema/chat-thread";
 import { zeroRuns } from "@vm0/db/schema/zero-run";
@@ -103,30 +102,10 @@ export async function decryptWorkflowQueueEventParams(
 }
 
 function chatEventQueueAdmissionLock(chatThreadId: string) {
-  const key = `chat_message_queue:${chatThreadId}`;
-  return sql`SELECT pg_advisory_xact_lock(hashtext(${key}))`;
-}
-
-/**
- * Remove the previous API's queue row after this API version has appended its
- * canonical revoker. Native ChatEvent admissions have no matching row.
- */
-async function deleteLegacyWorkflowQueueItem(
-  db: Db,
-  args: {
-    readonly chatThreadId: string;
-    readonly eventId: string;
-  },
-): Promise<void> {
-  await db
-    .delete(chatMessageQueue)
-    .where(
-      and(
-        eq(chatMessageQueue.id, args.eventId),
-        eq(chatMessageQueue.chatThreadId, args.chatThreadId),
-        eq(chatMessageQueue.itemType, "workflow_event"),
-      ),
-    );
+  // Keep the advisory namespace stable while API revisions overlap. This is
+  // only a lock identifier; the contracted queue table is never accessed.
+  const compatibilityKey = `chat_message_queue:${chatThreadId}`;
+  return sql`SELECT pg_advisory_xact_lock(hashtext(${compatibilityKey}))`;
 }
 
 /** Any active thread-bound run preserves strict per-thread serialization. */
@@ -422,9 +401,6 @@ export async function rejectWorkflowQueueEvent(
       triggerSource: payload.triggerSource,
       triggerBrief: payload.triggerBrief,
     });
-    if (rejected) {
-      await deleteLegacyWorkflowQueueItem(tx, args);
-    }
     return rejected !== null;
   });
 }
@@ -469,7 +445,6 @@ export async function failWorkflowQueueEventAfterRunFailure(
     if (!rejected) {
       return false;
     }
-    await deleteLegacyWorkflowQueueItem(tx, args);
     const pause = await insertChatEvent(tx, {
       chatThreadId: args.chatThreadId,
       eventType: "queue.automation_paused",
@@ -665,12 +640,6 @@ export async function deleteWorkflowQueueEventById(
       eventType: "control.revoke",
       runId: null,
     });
-    if (revoked) {
-      await deleteLegacyWorkflowQueueItem(tx, {
-        chatThreadId: owned.chatThreadId,
-        eventId: args.eventId,
-      });
-    }
     return revoked ? { chatThreadId: owned.chatThreadId } : null;
   });
 }
@@ -692,10 +661,6 @@ export async function clearWorkflowQueueEvents(
         chatThreadId: thread.chatThreadId,
         eventType: "control.revoke",
         runId: null,
-      });
-      await deleteLegacyWorkflowQueueItem(tx, {
-        chatThreadId: thread.chatThreadId,
-        eventId: event.id,
       });
     }
   });

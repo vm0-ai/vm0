@@ -1898,8 +1898,6 @@ async function validateUserMessageBackfillAndContract(): Promise<void> {
   const testDb = "migration_user_message_backfill_test";
   const testDbUrl = createTestDbUrl(testDb);
   const composeId = "92000000-0000-4000-8000-000000000001";
-  const overlapEventId = "92000000-0000-4000-8000-000000000006";
-  const overlapQueueId = "92000000-0000-4000-8000-000000000007";
   const threadIds = {
     events: "92000000-0000-4000-8000-000000000002",
     draft: "92000000-0000-4000-8000-000000000003",
@@ -2103,67 +2101,6 @@ async function validateUserMessageBackfillAndContract(): Promise<void> {
       );
       assert.deepEqual(agentDraft.rows, [
         { draftUserMessage: synthesizedDocument },
-      ]);
-
-      await client.query(
-        `INSERT INTO "chat_messages" (
-           "id",
-           "chat_thread_id",
-           "run_id",
-           "role",
-           "content",
-           "event_type",
-           "structured_prompt"
-         )
-         VALUES ($1, $2, NULL, 'user', 'overlap prompt', 'input.prompt', $3::jsonb)`,
-        [
-          overlapEventId,
-          threadIds.events,
-          JSON.stringify({
-            version: 1,
-            parts: [{ type: "text", text: "overlap prompt" }],
-          }),
-        ],
-      );
-      await client.query(
-        `INSERT INTO "chat_message_queue" (
-           "id",
-           "org_id",
-           "user_id",
-           "chat_thread_id",
-           "item_type",
-           "chat_message_id",
-           "trigger_source",
-           "encrypted_params"
-         )
-         VALUES (
-           $1,
-           'user-message-backfill-org',
-           'user-message-backfill-user',
-           $2,
-           'slack_user_message',
-           $3,
-           'slack',
-           'overlap-user-ciphertext'
-         )`,
-        [overlapQueueId, threadIds.events, overlapEventId],
-      );
-      const overlapEvent = await client.query<{
-        encryptedParams: string;
-        triggerSource: string;
-      }>(
-        `SELECT
-           "trigger_source" AS "triggerSource",
-           "encrypted_params" AS "encryptedParams"
-         FROM "chat_messages"
-         WHERE "id" = $1`,
-        [overlapEventId],
-      );
-      assert.deepEqual(overlapEvent.rows, [
-        {
-          encryptedParams: "overlap-user-ciphertext",
-          triggerSource: "slack",
-        },
       ]);
 
       await expectAppendOnlyUpdateRejected(client, {
@@ -2697,294 +2634,57 @@ async function validateChatEventTypeBackfillAndContract(): Promise<void> {
   );
 }
 
-const CHAT_EVENT_QUEUE_PREVIOUS_MIGRATION = 710;
-const CHAT_EVENT_QUEUE_CUTOVER_MIGRATION = 714;
+const CHAT_EVENT_QUEUE_CONTRACTION_PREVIOUS_MIGRATION = 718;
+const CHAT_EVENT_QUEUE_CONTRACTION_MIGRATION = 719;
 
-const chatEventQueueCutoverFixture = {
-  orgId: "chat-event-queue-cutover-org",
-  userId: "chat-event-queue-cutover-user",
-  composeId: "81000000-0000-4000-8000-000000000001",
-  threadId: "81000000-0000-4000-8000-000000000002",
-  workflowId: "81000000-0000-4000-8000-000000000003",
-  automationId: "81000000-0000-4000-8000-000000000004",
-  userEventId: "81000000-0000-4000-8000-000000000005",
-  userQueueId: "81000000-0000-4000-8000-000000000006",
-  automationQueueId: "81000000-0000-4000-8000-000000000007",
-  malformedQueueId: "81000000-0000-4000-8000-000000000008",
-  overlapUserEventId: "81000000-0000-4000-8000-000000000009",
-  overlapUserQueueId: "81000000-0000-4000-8000-000000000010",
-  overlapAutomationQueueId: "81000000-0000-4000-8000-000000000011",
-} as const;
+async function validateChatEventQueueContraction(): Promise<void> {
+  console.log("=== Validate ChatEvent queue schema contraction ===\n");
 
-async function validateChatEventQueueCutover(): Promise<void> {
-  console.log("=== Validate ChatEvent queue cutover ===\n");
-
-  const testDb = "migration_chat_event_queue_cutover_test";
+  const testDb = "migration_chat_event_queue_contraction_test";
   const testDbUrl = createTestDbUrl(testDb);
-  const fixture = chatEventQueueCutoverFixture;
+  const composeId = "93000000-0000-4000-8000-000000000001";
+  const threadId = "93000000-0000-4000-8000-000000000002";
+  const promptId = "93000000-0000-4000-8000-000000000003";
+  const legacyQueueId = "93000000-0000-4000-8000-000000000004";
 
   await createDatabase(testDb);
   try {
-    await runMigrationsUpTo(testDbUrl, CHAT_EVENT_QUEUE_PREVIOUS_MIGRATION);
+    await runMigrationsUpTo(
+      testDbUrl,
+      CHAT_EVENT_QUEUE_CONTRACTION_PREVIOUS_MIGRATION,
+    );
     const client = new Client({ connectionString: testDbUrl });
     await client.connect();
     try {
       await client.query(
         `
-          WITH compose AS (
-            INSERT INTO "agent_composes" (
-              "id",
-              "user_id",
-              "name",
-              "org_id"
-            )
-            VALUES ($1, $2, 'chat-event-queue-cutover', $3)
-            RETURNING "id"
-          ), agent AS (
-            INSERT INTO "zero_agents" (
-              "id",
-              "org_id",
-              "owner",
-              "name",
-              "visibility"
-            )
-            SELECT
-              compose."id",
-              $3,
-              $2,
-              'chat-event-queue-cutover',
-              'private'
-            FROM compose
-            RETURNING "id"
-          ), thread AS (
-            INSERT INTO "chat_threads" (
-              "id",
-              "user_id",
-              "agent_compose_id",
-              "last_chat_message_seq_id",
-              "queue_paused_at",
-              "pause_reason"
-            )
-            SELECT
-              $4,
-              $2,
-              compose."id",
-              1,
-              TIMESTAMP '2026-07-27 00:30:00',
-              'cutover fixture pause'
-            FROM compose
-            RETURNING "id"
-          ), workflow AS (
-            INSERT INTO "zero_workflows" (
-              "id",
-              "org_id",
-              "agent_id",
-              "name",
-              "owner_user_id",
-              "created_by",
-              "updated_by"
-            )
-            SELECT
-              $5,
-              $3,
-              agent."id",
-              'chat-event-queue-cutover',
-              $2,
-              $2,
-              $2
-            FROM agent
-            RETURNING "id"
-          ), automation AS (
-            INSERT INTO "zero_workflow_automations" (
-              "id",
-              "org_id",
-              "workflow_id",
-              "owner_user_id",
-              "kind",
-              "schedule_type",
-              "interval_seconds"
-            )
-            SELECT $6, $3, workflow."id", $2, 'schedule', 'loop', 3600
-            FROM workflow
-            RETURNING "id", "workflow_id"
-          ), binding AS (
-            INSERT INTO "workflow_user_automation_threads" (
-              "org_id",
-              "user_id",
-              "workflow_id",
-              "chat_thread_id"
-            )
-            SELECT $3, $2, automation."workflow_id", thread."id"
-            FROM automation
-            CROSS JOIN thread
-            RETURNING "chat_thread_id"
-          ), user_event AS (
-            INSERT INTO "chat_messages" (
-              "id",
-              "chat_thread_id",
-              "run_id",
-              "event_type",
-              "role",
-              "content",
-              "seq_id",
-              "created_at"
-            )
-            SELECT
-              $7,
-              binding."chat_thread_id",
-              NULL,
-              'input.prompt',
-              'user',
-              'legacy pending user',
-              1,
-              TIMESTAMP '2026-07-27 01:00:00'
-            FROM binding
-            RETURNING "id", "chat_thread_id"
-          ), queue_rows AS (
-            INSERT INTO "chat_message_queue" (
-              "id",
-              "org_id",
-              "user_id",
-              "chat_thread_id",
-              "item_type",
-              "chat_message_id",
-              "automation_id",
-              "trigger_source",
-              "trigger_brief",
-              "encrypted_params",
-              "created_at"
-            )
-            SELECT
-              $8::uuid,
-              $3,
-              $2,
-              user_event."chat_thread_id",
-              'user_message'::chat_message_queue_item_type,
-              user_event."id",
-              NULL,
-              NULL,
-              NULL,
-              NULL,
-              TIMESTAMP '2026-07-27 01:00:00'
-            FROM user_event
-
-            UNION ALL
-
-            SELECT
-              $9::uuid,
-              $3,
-              $2,
-              user_event."chat_thread_id",
-              'workflow_event'::chat_message_queue_item_type,
-              NULL,
-              automation."id",
-              'workflow-event',
-              'cutover automation',
-              'encrypted-cutover-params',
-              TIMESTAMP '2026-07-27 02:00:00'
-            FROM user_event
-            CROSS JOIN automation
-            RETURNING "id"
+          INSERT INTO "agent_composes" ("id", "user_id", "name", "org_id")
+          VALUES (
+            $1,
+            'chat-event-queue-contraction-user',
+            'chat-event-queue-contraction',
+            'chat-event-queue-contraction-org'
           )
-          SELECT COUNT(*) FROM queue_rows
         `,
-        [
-          fixture.composeId,
-          fixture.userId,
-          fixture.orgId,
-          fixture.threadId,
-          fixture.workflowId,
-          fixture.automationId,
-          fixture.userEventId,
-          fixture.userQueueId,
-          fixture.automationQueueId,
-        ],
+        [composeId],
       );
-
-      await applyMigrationsUpToInTransaction(
-        client,
-        CHAT_EVENT_QUEUE_CUTOVER_MIGRATION,
-      );
-
-      const cutoverState = await client.query<{
-        automationId: string;
-        automationTriggerSource: string;
-        encryptedParams: string;
-        lastSeqId: number;
-        legacyQueueRows: number;
-        maxSeqId: number;
-        pauseReason: string;
-        triggerBrief: string;
-        userEncryptedParams: string | null;
-        userTriggerSource: string;
-      }>(
-        `
-          SELECT
-            (SELECT COUNT(*)::integer FROM "chat_message_queue")
-              AS "legacyQueueRows",
-            user_event."trigger_source" AS "userTriggerSource",
-            user_event."encrypted_params" AS "userEncryptedParams",
-            automation_event."automation_id" AS "automationId",
-            automation_event."trigger_source" AS "automationTriggerSource",
-            automation_event."trigger_brief" AS "triggerBrief",
-            automation_event."encrypted_params" AS "encryptedParams",
-            pause_event."error" AS "pauseReason",
-            thread."last_chat_message_seq_id"::integer AS "lastSeqId",
-            (
-              SELECT MAX(event."seq_id")::integer
-              FROM "chat_messages" AS event
-              WHERE event."chat_thread_id" = thread."id"
-            ) AS "maxSeqId"
-          FROM "chat_threads" AS thread
-          INNER JOIN "chat_messages" AS user_event ON user_event."id" = $1
-          INNER JOIN "chat_messages" AS automation_event
-            ON automation_event."id" = $2
-            AND automation_event."event_type" = 'input.automation'
-          INNER JOIN LATERAL (
-            SELECT transition."error"
-            FROM "chat_messages" AS transition
-            WHERE transition."chat_thread_id" = thread."id"
-              AND transition."event_type" = 'queue.automation_paused'
-            ORDER BY transition."seq_id" DESC
-            LIMIT 1
-          ) AS pause_event ON true
-          WHERE thread."id" = $3
-        `,
-        [fixture.userEventId, fixture.automationQueueId, fixture.threadId],
-      );
-      assert.deepEqual(cutoverState.rows, [
-        {
-          automationId: fixture.automationId,
-          automationTriggerSource: "workflow-event",
-          encryptedParams: "encrypted-cutover-params",
-          lastSeqId: 3,
-          legacyQueueRows: 0,
-          maxSeqId: 3,
-          pauseReason: "cutover fixture pause",
-          triggerBrief: "cutover automation",
-          userEncryptedParams: null,
-          userTriggerSource: "web",
-        },
-      ]);
-
-      await expectAppendOnlyUpdateRejected(client, {
-        tableName: "chat_messages",
-        query: `UPDATE "chat_messages" SET "content" = 'mutated' WHERE "id" = $1`,
-        rowId: fixture.userEventId,
-      });
-
-      // The production migration completes before the new API is promoted.
-      // Emulate writes from the still-serving previous API and verify the
-      // migration-owned compatibility triggers keep ChatEvents authoritative.
       await client.query(
         `
-          WITH next_seq AS (
-            UPDATE "chat_threads"
-            SET "last_chat_message_seq_id" =
-              "last_chat_message_seq_id" + 1
-            WHERE "id" = $1
-            RETURNING "last_chat_message_seq_id"
+          INSERT INTO "chat_threads" (
+            "id",
+            "user_id",
+            "agent_compose_id"
           )
+          VALUES (
+            $1,
+            'chat-event-queue-contraction-user',
+            $2
+          )
+        `,
+        [threadId, composeId],
+      );
+      await client.query(
+        `
           INSERT INTO "chat_messages" (
             "id",
             "chat_thread_id",
@@ -2992,21 +2692,24 @@ async function validateChatEventQueueCutover(): Promise<void> {
             "event_type",
             "role",
             "content",
-            "seq_id",
-            "created_at"
+            "structured_prompt"
           )
-          SELECT
-            $2,
+          VALUES (
             $1,
+            $2,
             NULL,
             'input.prompt',
             'user',
-            'overlap user input',
-            next_seq."last_chat_message_seq_id",
-            TIMESTAMP '2026-07-27 03:00:00'
-          FROM next_seq
+            'pending canonical prompt',
+            '{
+              "version": 1,
+              "parts": [
+                {"type": "text", "text": "pending canonical prompt"}
+              ]
+            }'::jsonb
+          )
         `,
-        [fixture.threadId, fixture.overlapUserEventId],
+        [promptId, threadId],
       );
       await client.query(
         `
@@ -3017,229 +2720,168 @@ async function validateChatEventQueueCutover(): Promise<void> {
             "chat_thread_id",
             "item_type",
             "chat_message_id",
-            "trigger_source",
-            "encrypted_params",
-            "created_at"
+            "encrypted_params"
           )
           VALUES (
             $1,
+            'chat-event-queue-contraction-org',
+            'chat-event-queue-contraction-user',
             $2,
-            $3,
-            $4,
             'slack_user_message',
-            $5,
-            'slack',
-            'overlap-user-ciphertext',
-            TIMESTAMP '2026-07-27 03:00:00'
-          )
-        `,
-        [
-          fixture.overlapUserQueueId,
-          fixture.orgId,
-          fixture.userId,
-          fixture.threadId,
-          fixture.overlapUserEventId,
-        ],
-      );
-      await client.query(
-        `
-          INSERT INTO "chat_message_queue" (
-            "id",
-            "org_id",
-            "user_id",
-            "chat_thread_id",
-            "item_type",
-            "automation_id",
-            "trigger_source",
-            "trigger_brief",
-            "encrypted_params",
-            "created_at"
-          )
-          VALUES (
-            $1,
-            $2,
             $3,
-            $4,
-            'workflow_event',
-            $5,
-            'workflow-event',
-            'overlap automation',
-            'overlap-automation-ciphertext',
-            TIMESTAMP '2026-07-27 04:00:00'
+            'legacy-overlap-ciphertext'
           )
         `,
-        [
-          fixture.overlapAutomationQueueId,
-          fixture.orgId,
-          fixture.userId,
-          fixture.threadId,
-          fixture.automationId,
-        ],
+        [legacyQueueId, threadId, promptId],
       );
-
-      const overlapAdmission = await client.query<{
-        automationEventCount: number;
-        lastSeqId: number;
-        userEncryptedParams: string;
-        userTriggerSource: string;
+      const mirroredPayload = await client.query<{
+        encryptedParams: string;
+        triggerSource: string;
       }>(
         `
           SELECT
-            user_event."trigger_source" AS "userTriggerSource",
-            user_event."encrypted_params" AS "userEncryptedParams",
-            (
-              SELECT COUNT(*)::integer
-              FROM "chat_messages" AS automation_event
-              WHERE automation_event."id" = $2
-                AND automation_event."event_type" = 'input.automation'
-                AND automation_event."automation_id" = $3
-                AND automation_event."trigger_source" = 'workflow-event'
-                AND automation_event."encrypted_params" =
-                  'overlap-automation-ciphertext'
-            ) AS "automationEventCount",
-            thread."last_chat_message_seq_id"::integer AS "lastSeqId"
-          FROM "chat_messages" AS user_event
-          INNER JOIN "chat_threads" AS thread
-            ON thread."id" = user_event."chat_thread_id"
-          WHERE user_event."id" = $1
+            "encrypted_params" AS "encryptedParams",
+            "trigger_source" AS "triggerSource"
+          FROM "chat_messages"
+          WHERE "id" = $1
         `,
-        [
-          fixture.overlapUserEventId,
-          fixture.overlapAutomationQueueId,
-          fixture.automationId,
-        ],
+        [promptId],
       );
-      assert.deepEqual(overlapAdmission.rows, [
+      assert.deepEqual(mirroredPayload.rows, [
         {
-          automationEventCount: 1,
-          lastSeqId: 5,
-          userEncryptedParams: "overlap-user-ciphertext",
-          userTriggerSource: "slack",
+          encryptedParams: "legacy-overlap-ciphertext",
+          triggerSource: "slack",
+        },
+      ]);
+      await client.query(
+        `
+          INSERT INTO "chat_messages" (
+            "chat_thread_id",
+            "run_id",
+            "event_type",
+            "role",
+            "content",
+            "error"
+          )
+          VALUES (
+            $1,
+            NULL,
+            'queue.automation_paused',
+            'assistant',
+            NULL,
+            'contraction fixture pause'
+          )
+        `,
+        [threadId],
+      );
+
+      const projectedPause = await client.query<{
+        pauseReason: string;
+        queuePausedAt: Date;
+      }>(
+        `
+          SELECT
+            "queue_paused_at" AS "queuePausedAt",
+            "pause_reason" AS "pauseReason"
+          FROM "chat_threads"
+          WHERE "id" = $1
+        `,
+        [threadId],
+      );
+      assert.equal(
+        projectedPause.rows[0]?.pauseReason,
+        "contraction fixture pause",
+      );
+      assert.ok(projectedPause.rows[0]?.queuePausedAt instanceof Date);
+
+      await applyMigrationsUpToInTransaction(
+        client,
+        CHAT_EVENT_QUEUE_CONTRACTION_MIGRATION,
+      );
+
+      const retiredSchema = await client.query<{
+        legacyColumnCount: number;
+        legacyDeleteFunction: string | null;
+        legacyEnum: string | null;
+        legacyInsertFunction: string | null;
+        legacyPauseFunction: string | null;
+        legacyPauseProjectionFunction: string | null;
+        legacyTable: string | null;
+      }>(`
+        SELECT
+          to_regclass('public.chat_message_queue')::text AS "legacyTable",
+          to_regtype('public.chat_message_queue_item_type')::text
+            AS "legacyEnum",
+          (
+            SELECT COUNT(*)::integer
+            FROM information_schema.columns
+            WHERE table_schema = 'public'
+              AND table_name = 'chat_threads'
+              AND column_name IN ('queue_paused_at', 'pause_reason')
+          ) AS "legacyColumnCount",
+          to_regprocedure(
+            'mirror_legacy_chat_queue_insert_0714()'
+          )::text AS "legacyInsertFunction",
+          to_regprocedure(
+            'mirror_legacy_chat_queue_delete_0714()'
+          )::text AS "legacyDeleteFunction",
+          to_regprocedure(
+            'project_chat_queue_pause_event_0714()'
+          )::text AS "legacyPauseProjectionFunction",
+          to_regprocedure(
+            'mirror_legacy_chat_queue_pause_0714()'
+          )::text AS "legacyPauseFunction"
+      `);
+      assert.deepEqual(retiredSchema.rows, [
+        {
+          legacyColumnCount: 0,
+          legacyDeleteFunction: null,
+          legacyEnum: null,
+          legacyInsertFunction: null,
+          legacyPauseFunction: null,
+          legacyPauseProjectionFunction: null,
+          legacyTable: null,
+        },
+      ]);
+
+      const canonicalEvents = await client.query<{
+        content: string | null;
+        encryptedParams: string | null;
+        eventType: string;
+        triggerSource: string | null;
+      }>(
+        `
+          SELECT
+            "content",
+            "encrypted_params" AS "encryptedParams",
+            "event_type" AS "eventType",
+            "trigger_source" AS "triggerSource"
+          FROM "chat_messages"
+          WHERE "chat_thread_id" = $1
+          ORDER BY "seq_id"
+        `,
+        [threadId],
+      );
+      assert.deepEqual(canonicalEvents.rows, [
+        {
+          content: "pending canonical prompt",
+          encryptedParams: "legacy-overlap-ciphertext",
+          eventType: "input.prompt",
+          triggerSource: "slack",
+        },
+        {
+          content: null,
+          encryptedParams: null,
+          eventType: "queue.automation_paused",
+          triggerSource: null,
         },
       ]);
 
       await expectAppendOnlyUpdateRejected(client, {
         tableName: "chat_messages",
-        query: `UPDATE "chat_messages" SET "trigger_source" = 'feishu' WHERE "id" = $1`,
-        rowId: fixture.overlapUserEventId,
+        query: `UPDATE "chat_messages" SET "trigger_source" = 'slack' WHERE "id" = $1`,
+        rowId: promptId,
       });
-
-      await client.query(
-        `
-          DELETE FROM "chat_message_queue"
-          WHERE "id" = $1
-        `,
-        [fixture.overlapAutomationQueueId],
-      );
-      const mirroredConsumption = await client.query<{
-        queueRows: number;
-        revokers: number;
-      }>(
-        `
-          SELECT
-            (
-              SELECT COUNT(*)::integer
-              FROM "chat_message_queue"
-              WHERE "id" = $1
-            ) AS "queueRows",
-            (
-              SELECT COUNT(*)::integer
-              FROM "chat_messages"
-              WHERE "revokes_message_id" = $1
-            ) AS "revokers"
-        `,
-        [fixture.overlapAutomationQueueId],
-      );
-      assert.deepEqual(mirroredConsumption.rows, [
-        { queueRows: 0, revokers: 1 },
-      ]);
-
-      await client.query(
-        `
-          UPDATE "chat_threads"
-          SET
-            "queue_paused_at" = NULL,
-            "pause_reason" = NULL,
-            "updated_at" = TIMESTAMP '2026-07-27 05:00:00'
-          WHERE "id" = $1
-        `,
-        [fixture.threadId],
-      );
-      const mirroredResume = await client.query<{
-        eventType: string;
-        lastSeqId: number;
-      }>(
-        `
-          SELECT
-            transition."event_type" AS "eventType",
-            thread."last_chat_message_seq_id"::integer AS "lastSeqId"
-          FROM "chat_threads" AS thread
-          INNER JOIN LATERAL (
-            SELECT event."event_type"
-            FROM "chat_messages" AS event
-            WHERE event."chat_thread_id" = thread."id"
-              AND event."event_type" IN (
-                'queue.automation_paused',
-                'queue.automation_resumed'
-              )
-            ORDER BY event."seq_id" DESC
-            LIMIT 1
-          ) AS transition ON true
-          WHERE thread."id" = $1
-        `,
-        [fixture.threadId],
-      );
-      assert.deepEqual(mirroredResume.rows, [
-        { eventType: "queue.automation_resumed", lastSeqId: 7 },
-      ]);
-
-      await client.query(
-        `
-          INSERT INTO "chat_message_queue" (
-            "id",
-            "org_id",
-            "user_id",
-            "chat_thread_id",
-            "item_type"
-          )
-          VALUES ($1, $2, $3, $4, 'user_message')
-        `,
-        [
-          fixture.malformedQueueId,
-          fixture.orgId,
-          fixture.userId,
-          fixture.threadId,
-        ],
-      );
-
-      const migrationSql = await fs.readFile(
-        path.join(MIGRATIONS_DIR, "0714_chat_event_queue_cutover.sql"),
-        "utf-8",
-      );
-      let rejectedMalformedState = false;
-      await client.query("BEGIN");
-      try {
-        await client.query(migrationSql);
-      } catch (error) {
-        rejectedMalformedState = true;
-        assert.equal(databaseErrorCode(error), "P0001");
-        assert.ok(error instanceof Error);
-        assert.ok(error.message.includes("1 unclassifiable rows"));
-        assert.ok(error.message.includes(fixture.malformedQueueId));
-      } finally {
-        await client.query("ROLLBACK");
-      }
-      assert.equal(rejectedMalformedState, true);
-
-      const preservedMalformedRow = await client.query<{ count: number }>(
-        `
-          SELECT COUNT(*)::integer AS "count"
-          FROM "chat_message_queue"
-          WHERE "id" = $1
-        `,
-        [fixture.malformedQueueId],
-      );
-      assert.deepEqual(preservedMalformedRow.rows, [{ count: 1 }]);
     } finally {
       await client.end();
     }
@@ -3248,7 +2890,7 @@ async function validateChatEventQueueCutover(): Promise<void> {
   }
 
   console.log(
-    "   ✅ Legacy user, automation, and pause state migrate atomically; overlap writes mirror into ChatEvents; unclassifiable rows abort without data loss\n",
+    "   ✅ Canonical queue events survive while the legacy table, enum, pause columns, bridge functions, and hydration exception retire together\n",
   );
 }
 
@@ -5528,8 +5170,8 @@ async function main(): Promise<void> {
     await validateModelObservationContractCleanup();
     await validateChatEventTypeBackfillAndContract();
     await validateStructuredPromptDraftBackfill();
-    await validateChatEventQueueCutover();
     await validateUserMessageBackfillAndContract();
+    await validateChatEventQueueContraction();
 
     // Step 1.5: Validate latest snapshot accuracy (NEW)
     await validateLatestSnapshotAccuracy();
