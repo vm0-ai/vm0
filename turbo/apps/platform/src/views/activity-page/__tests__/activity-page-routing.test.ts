@@ -5,7 +5,7 @@ import {
 } from "@vm0/api-contracts/contracts/logs";
 import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import { zeroRunAgentEventsContract } from "@vm0/api-contracts/contracts/zero-runs";
-import { beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { click, detachedSetupPage } from "../../../__tests__/page-helper.ts";
 import { initializeI18n } from "../../../i18n/index.ts";
@@ -17,12 +17,18 @@ import type {
   LogEntry,
   LogDetail,
 } from "../../../signals/zero-page/log-types.ts";
+import { i18n } from "../../../i18n/index.ts";
 
 const context = testContext();
 
 beforeEach(async () => {
   await initializeI18n(DEFAULT_LOCALE);
   await context.store.set(setLocale$, DEFAULT_LOCALE, context.signal);
+});
+
+afterEach(async () => {
+  await i18n.changeLanguage("en-US");
+  document.documentElement.lang = "en-US";
 });
 
 function mockActivityAPIs(
@@ -141,28 +147,58 @@ function makeActivityRow(
 }
 
 describe("activity page routing", () => {
-  it("opens an activity detail from the list and returns by breadcrumb", async () => {
-    mockActivityAPIs();
+  it.each([
+    {
+      locale: "en-US",
+      listTitle: "Activity",
+      statusFilter: "Status filter",
+      steps: "Steps",
+      duration: "3.0s",
+    },
+    {
+      locale: "pt-BR",
+      listTitle: "Atividade",
+      statusFilter: "Filtro de status",
+      steps: "Etapas",
+      duration: "3,0s",
+    },
+  ] as const)(
+    "opens an activity detail from the list in $locale",
+    async ({ locale, listTitle, statusFilter, steps, duration }) => {
+      context.mocks.data.userPreferences({ locale });
+      mockActivityAPIs();
 
-    detachedSetupPage({ context, path: "/activities" });
+      detachedSetupPage({
+        context,
+        path: "/activities",
+        featureSwitches: { [FeatureSwitchKey.LanguagePreference]: true },
+      });
 
-    await waitFor(() => {
-      expect(screen.getByText("Test Agent")).toBeInTheDocument();
-    });
+      await waitFor(() => {
+        expect(
+          screen.getByRole("heading", { name: listTitle }),
+        ).toBeInTheDocument();
+        expect(
+          screen.getByRole("combobox", { name: statusFilter }),
+        ).toBeInTheDocument();
+        expect(screen.getByText("Test Agent")).toBeInTheDocument();
+      });
 
-    const row = screen.getByText("Test Agent").closest("a");
-    expect(row).not.toBeNull();
-    click(row!);
+      const row = screen.getByText("Test Agent").closest("a");
+      expect(row).not.toBeNull();
+      click(row!);
 
-    await waitFor(() => {
-      expect(
-        screen.getByRole("heading", { name: "Test Agent" }),
-      ).toBeInTheDocument();
-    });
-    expect(screen.getByText("3.0s")).toBeInTheDocument();
+      await waitFor(() => {
+        expect(
+          screen.getByRole("heading", { name: "Test Agent" }),
+        ).toBeInTheDocument();
+      });
+      expect(screen.getByText(duration)).toBeInTheDocument();
+      expect(screen.getByText(steps)).toBeInTheDocument();
 
-    expect(screen.getByText("Summary done.")).toBeInTheDocument();
-  });
+      expect(screen.getByText("Summary done.")).toBeInTheDocument();
+    },
+  );
 
   it("identifies delegated activity with the parent agent source", async () => {
     context.mocks.data.composesList([

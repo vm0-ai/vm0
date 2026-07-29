@@ -18,6 +18,7 @@ import {
   TableRow,
 } from "@vm0/ui";
 import type { NetworkLogEntry } from "@vm0/api-contracts/contracts/runs";
+import { useTranslation } from "react-i18next";
 import { type BadgeColor, formatSize, InlineBadge } from "./network-badge.tsx";
 import { CapturedBodySections } from "./captured-body-sections.tsx";
 import {
@@ -28,21 +29,16 @@ import {
   setNetworkLogTypeFilter$,
   toggleNetworkLogRowExpanded$,
 } from "../../../signals/zero-page/network-log-ui.ts";
+import { i18n } from "../../../i18n/index.ts";
+import { formatAppNumber } from "../../../i18n/format.ts";
+import { formatActivityClockTime } from "../../../signals/activity-page/activity-time.ts";
 
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
 
 function formatTime(timestamp: string): string {
-  const d = new Date(timestamp);
-  if (Number.isNaN(d.getTime())) {
-    return timestamp.trim().length > 0 ? timestamp : "—";
-  }
-  const h = String(d.getHours()).padStart(2, "0");
-  const m = String(d.getMinutes()).padStart(2, "0");
-  const s = String(d.getSeconds()).padStart(2, "0");
-  const ms = String(d.getMilliseconds()).padStart(3, "0");
-  return `${h}:${m}:${s}.${ms}`;
+  return formatActivityClockTime(timestamp);
 }
 
 function formatLatency(ms: number | undefined | null): string {
@@ -50,9 +46,16 @@ function formatLatency(ms: number | undefined | null): string {
     return "—";
   }
   if (ms < 1000) {
-    return `${ms}ms`;
+    return `${formatAppNumber(ms, {
+      maximumFractionDigits: 0,
+      useGrouping: false,
+    })}ms`;
   }
-  return `${(ms / 1000).toFixed(1)}s`;
+  return `${formatAppNumber(ms / 1000, {
+    maximumFractionDigits: 1,
+    minimumFractionDigits: 1,
+    useGrouping: false,
+  })}s`;
 }
 
 function entryType(entry: NetworkLogEntry): string {
@@ -76,7 +79,12 @@ function networkTarget(entry: NetworkLogEntry, isHttp: boolean): string {
   if (isHttp) {
     return nonEmptyLogField(entry.url) ?? hostPortTarget(entry) ?? "—";
   }
-  return `${nonEmptyLogField(entry.host) ?? "unknown"}:${entry.port ?? 0}`;
+  return `${
+    nonEmptyLogField(entry.host) ??
+    i18n.t(($) => {
+      return $.activity.network.unknown;
+    })
+  }:${entry.port ?? 0}`;
 }
 
 function typeBadgeColor(type: string): BadgeColor {
@@ -218,16 +226,33 @@ function toggleSelectedType(
 
 function typeFilterLabel(typeFilter: NetworkLogTypeFilter): string {
   if (typeFilter.mode === "all") {
-    return "All types";
+    return i18n.t(($) => {
+      return $.activity.network.filter.allTypes;
+    });
   }
   const selectedTypes = typeFilter.types;
   if (selectedTypes.length === 0) {
-    return "All types";
+    return i18n.t(($) => {
+      return $.activity.network.filter.allTypes;
+    });
   }
   if (selectedTypes.length === 1) {
-    return selectedTypes[0] ?? "All types";
+    return (
+      selectedTypes[0] ??
+      i18n.t(($) => {
+        return $.activity.network.filter.allTypes;
+      })
+    );
   }
-  return `${selectedTypes.length} types`;
+  return i18n.t(
+    ($) => {
+      return $.activity.network.filter.selectedTypes;
+    },
+    {
+      count: selectedTypes.length,
+      formattedCount: formatAppNumber(selectedTypes.length),
+    },
+  );
 }
 
 function TypeFilter({
@@ -239,6 +264,7 @@ function TypeFilter({
   typeFilter: NetworkLogTypeFilter;
   onChange: (filter: NetworkLogTypeFilter) => void;
 }) {
+  const { t } = useTranslation();
   const selectedTypes = selectedTypeValues(typeFilter, typeOptions);
   const selectedSet = new Set(selectedTypes);
 
@@ -247,7 +273,9 @@ function TypeFilter({
       <DropdownMenuTrigger asChild>
         <button
           type="button"
-          aria-label="Type filter"
+          aria-label={t(($) => {
+            return $.activity.network.filter.type;
+          })}
           className="flex h-8 min-w-[140px] items-center justify-between gap-1.5 rounded-md border border-border bg-input px-3 text-xs text-foreground outline-none transition-colors hover:bg-accent focus:border-primary focus:ring-[3px] focus:ring-primary/10"
         >
           <span className="flex items-center gap-1.5">
@@ -272,7 +300,9 @@ function TypeFilter({
           <span className="flex h-4 w-4 items-center justify-center">
             {typeFilter.mode === "all" && <IconCheck size={14} />}
           </span>
-          All types
+          {t(($) => {
+            return $.activity.network.filter.allTypes;
+          })}
         </DropdownMenuItem>
         {typeOptions.map((type) => {
           const selected = selectedSet.has(type);
@@ -303,7 +333,16 @@ function formatValue(value: unknown): string {
     return "—";
   }
   if (typeof value === "boolean") {
-    return value ? "Yes" : "No";
+    return value
+      ? i18n.t(($) => {
+          return $.activity.network.yes;
+        })
+      : i18n.t(($) => {
+          return $.activity.network.no;
+        });
+  }
+  if (typeof value === "number") {
+    return formatAppNumber(value, { useGrouping: false });
   }
   if (Array.isArray(value)) {
     return value.length > 0 ? value.join(", ") : "—";
@@ -340,6 +379,320 @@ function hasValue(value: unknown): boolean {
     return Object.keys(value).length > 0;
   }
   return true;
+}
+
+const NETWORK_DETAIL_LABELS: Readonly<Record<string, () => string>> =
+  Object.freeze({
+    Action: () => {
+      return i18n.t(($) => {
+        return $.activity.network.details.action;
+      });
+    },
+    "Cache Hit": () => {
+      return i18n.t(($) => {
+        return $.activity.network.details.authCacheHit;
+      });
+    },
+    "Refreshed Connectors": () => {
+      return i18n.t(($) => {
+        return $.activity.network.details.authRefreshedConnectors;
+      });
+    },
+    "Refreshed Secrets": () => {
+      return i18n.t(($) => {
+        return $.activity.network.details.authRefreshedSecrets;
+      });
+    },
+    "Resolved Secrets": () => {
+      return i18n.t(($) => {
+        return $.activity.network.details.authResolvedSecrets;
+      });
+    },
+    "URL Rewrite": () => {
+      return i18n.t(($) => {
+        return $.activity.network.details.authUrlRewrite;
+      });
+    },
+    "Base URL": () => {
+      return i18n.t(($) => {
+        return $.activity.network.details.baseUrl;
+      });
+    },
+    Billable: () => {
+      return i18n.t(($) => {
+        return $.activity.network.details.billable;
+      });
+    },
+    "Browser User-Agent": () => {
+      return i18n.t(($) => {
+        return $.activity.network.details.browserUserAgent;
+      });
+    },
+    "Connector Base URL": () => {
+      return i18n.t(($) => {
+        return $.activity.network.details.connectorBaseUrl;
+      });
+    },
+    "Connector Diagnostic": () => {
+      return i18n.t(($) => {
+        return $.activity.network.details.connectorDiagnostic;
+      });
+    },
+    "Connector Env Names": () => {
+      return i18n.t(($) => {
+        return $.activity.network.details.connectorEnvNames;
+      });
+    },
+    "Connector Reason": () => {
+      return i18n.t(($) => {
+        return $.activity.network.details.connectorReason;
+      });
+    },
+    "Connector Route Candidates": () => {
+      return i18n.t(($) => {
+        return $.activity.network.details.connectorRouteCandidates;
+      });
+    },
+    "Connector Route Reason": () => {
+      return i18n.t(($) => {
+        return $.activity.network.details.connectorRouteReason;
+      });
+    },
+    "DNS Event": () => {
+      return i18n.t(($) => {
+        return $.activity.network.details.dnsEvent;
+      });
+    },
+    "DNS Query Type": () => {
+      return i18n.t(($) => {
+        return $.activity.network.details.dnsQueryType;
+      });
+    },
+    "DNS Result": () => {
+      return i18n.t(($) => {
+        return $.activity.network.details.dnsResult;
+      });
+    },
+    "DNS Serial": () => {
+      return i18n.t(($) => {
+        return $.activity.network.details.dnsSerial;
+      });
+    },
+    Error: () => {
+      return i18n.t(($) => {
+        return $.activity.network.details.error;
+      });
+    },
+    Firewall: () => {
+      return i18n.t(($) => {
+        return $.activity.network.details.firewall;
+      });
+    },
+    Host: () => {
+      return i18n.t(($) => {
+        return $.activity.network.details.host;
+      });
+    },
+    Latency: () => {
+      return i18n.t(($) => {
+        return $.activity.network.details.latency;
+      });
+    },
+    Method: () => {
+      return i18n.t(($) => {
+        return $.activity.network.details.method;
+      });
+    },
+    "Model Catalog Cache Bypass Reason": () => {
+      return i18n.t(($) => {
+        return $.activity.network.details.modelCatalogCacheBypassReason;
+      });
+    },
+    "Model Catalog Cache Entry Age": () => {
+      return i18n.t(($) => {
+        return $.activity.network.details.modelCatalogCacheEntryAge;
+      });
+    },
+    "Model Catalog Cache Eviction Count": () => {
+      return i18n.t(($) => {
+        return $.activity.network.details.modelCatalogCacheEvictionCount;
+      });
+    },
+    "Model Catalog Cache Status": () => {
+      return i18n.t(($) => {
+        return $.activity.network.details.modelCatalogCacheStatus;
+      });
+    },
+    "Model Catalog Cache Validation Latency": () => {
+      return i18n.t(($) => {
+        return $.activity.network.details.modelCatalogCacheValidationLatency;
+      });
+    },
+    "Model Catalog Prefetch Role": () => {
+      return i18n.t(($) => {
+        return $.activity.network.details.modelCatalogPrefetchRole;
+      });
+    },
+    "Model Catalog Upstream Encoding": () => {
+      return i18n.t(($) => {
+        return $.activity.network.details.modelCatalogUpstreamEncoding;
+      });
+    },
+    Params: () => {
+      return i18n.t(($) => {
+        return $.activity.network.details.params;
+      });
+    },
+    Permission: () => {
+      return i18n.t(($) => {
+        return $.activity.network.details.permission;
+      });
+    },
+    "Permission Error": () => {
+      return i18n.t(($) => {
+        return $.activity.network.details.permissionError;
+      });
+    },
+    Port: () => {
+      return i18n.t(($) => {
+        return $.activity.network.details.port;
+      });
+    },
+    "Request Size": () => {
+      return i18n.t(($) => {
+        return $.activity.network.details.requestSize;
+      });
+    },
+    "Response Size": () => {
+      return i18n.t(($) => {
+        return $.activity.network.details.responseSize;
+      });
+    },
+    "Rule Match": () => {
+      return i18n.t(($) => {
+        return $.activity.network.details.ruleMatch;
+      });
+    },
+    Status: () => {
+      return i18n.t(($) => {
+        return $.activity.network.details.status;
+      });
+    },
+    Timestamp: () => {
+      return i18n.t(($) => {
+        return $.activity.network.details.timestamp;
+      });
+    },
+    Type: () => {
+      return i18n.t(($) => {
+        return $.activity.network.details.type;
+      });
+    },
+    "Upstream Client Binding Count": () => {
+      return i18n.t(($) => {
+        return $.activity.network.details.upstreamBindingClientBindingCount;
+      });
+    },
+    "Upstream Client Binding Endpoint Match": () => {
+      return i18n.t(($) => {
+        return $.activity.network.details
+          .upstreamBindingClientBindingEndpointMatch;
+      });
+    },
+    "Upstream Client Binding Hosts": () => {
+      return i18n.t(($) => {
+        return $.activity.network.details.upstreamBindingClientBindingHosts;
+      });
+    },
+    "Upstream Client Binding Match": () => {
+      return i18n.t(($) => {
+        return $.activity.network.details.upstreamBindingClientBindingMatch;
+      });
+    },
+    "Upstream Binding Client ID": () => {
+      return i18n.t(($) => {
+        return $.activity.network.details.upstreamBindingClientId;
+      });
+    },
+    "Upstream Binding Client Sockname": () => {
+      return i18n.t(($) => {
+        return $.activity.network.details.upstreamBindingClientSockname;
+      });
+    },
+    "Upstream Direct Binding Host": () => {
+      return i18n.t(($) => {
+        return $.activity.network.details.upstreamBindingDirectBindingHost;
+      });
+    },
+    "Upstream Direct Binding Kinds": () => {
+      return i18n.t(($) => {
+        return $.activity.network.details.upstreamBindingDirectBindingKinds;
+      });
+    },
+    "Upstream Direct Binding Port": () => {
+      return i18n.t(($) => {
+        return $.activity.network.details.upstreamBindingDirectBindingPort;
+      });
+    },
+    "Upstream Direct Binding Present": () => {
+      return i18n.t(($) => {
+        return $.activity.network.details.upstreamBindingDirectBindingPresent;
+      });
+    },
+    "Upstream Binding Reason": () => {
+      return i18n.t(($) => {
+        return $.activity.network.details.upstreamBindingReason;
+      });
+    },
+    "Upstream Binding Request Host": () => {
+      return i18n.t(($) => {
+        return $.activity.network.details.upstreamBindingRequestHost;
+      });
+    },
+    "Upstream Binding Request Port": () => {
+      return i18n.t(($) => {
+        return $.activity.network.details.upstreamBindingRequestPort;
+      });
+    },
+    "Upstream Binding Server Address": () => {
+      return i18n.t(($) => {
+        return $.activity.network.details.upstreamBindingServerAddress;
+      });
+    },
+    "Upstream Binding Server Connected": () => {
+      return i18n.t(($) => {
+        return $.activity.network.details.upstreamBindingServerConnected;
+      });
+    },
+    "Upstream Binding Server ID": () => {
+      return i18n.t(($) => {
+        return $.activity.network.details.upstreamBindingServerId;
+      });
+    },
+    "Upstream Binding Server Peername": () => {
+      return i18n.t(($) => {
+        return $.activity.network.details.upstreamBindingServerPeername;
+      });
+    },
+    "Upstream Binding Server Sockname": () => {
+      return i18n.t(($) => {
+        return $.activity.network.details.upstreamBindingServerSockname;
+      });
+    },
+    "Upstream Binding Trusted Host": () => {
+      return i18n.t(($) => {
+        return $.activity.network.details.upstreamBindingTrustedHost;
+      });
+    },
+    URL: () => {
+      return i18n.t(($) => {
+        return $.activity.network.details.url;
+      });
+    },
+  });
+
+function localizeNetworkDetailLabel(label: string): string {
+  return NETWORK_DETAIL_LABELS[label]?.() ?? label;
 }
 
 function addField(
@@ -564,7 +917,7 @@ function collectDetails(entry: NetworkLogEntry): [string, string][] {
     if (descriptor) {
       addField(
         out,
-        descriptor.label,
+        localizeNetworkDetailLabel(descriptor.label),
         descriptor.value(entry),
         descriptor.format(entry),
       );
@@ -612,6 +965,7 @@ function NetworkLogRow({
   entry: NetworkLogEntry;
   rowKey: string;
 }) {
+  const { t } = useTranslation();
   const expandedRows = useGet(networkLogExpandedRows$);
   const toggleExpanded = useSet(toggleNetworkLogRowExpanded$);
   const expanded = expandedRows.has(rowKey);
@@ -659,7 +1013,9 @@ function NetworkLogRow({
             ) : null}
             {entry.browser_user_agent ? (
               <span className="shrink-0 font-mono text-muted-foreground">
-                browser
+                {t(($) => {
+                  return $.activity.network.browser;
+                })}
               </span>
             ) : null}
           </div>
@@ -685,6 +1041,7 @@ export function NetworkContent({
   loading?: boolean;
   onLoadMore?: () => void;
 }) {
+  const { t } = useTranslation();
   const typeFilter = useGet(networkLogTypeFilter$);
   const setTypeFilter = useSet(setNetworkLogTypeFilter$);
   const typeOptions = networkTypeOptions(networkLogs, typeFilter);
@@ -709,13 +1066,41 @@ export function NetworkContent({
       <Table>
         <TableHeader>
           <TableRow>
-            <TableHead className="w-[100px]">Time</TableHead>
-            <TableHead className="w-[60px]">Type</TableHead>
-            <TableHead className="w-[60px]">Method</TableHead>
-            <TableHead>URL / Host</TableHead>
-            <TableHead className="w-[60px]">Status</TableHead>
-            <TableHead className="w-[80px]">Latency</TableHead>
-            <TableHead className="w-[160px]">Permission</TableHead>
+            <TableHead className="w-[100px]">
+              {t(($) => {
+                return $.activity.network.headers.time;
+              })}
+            </TableHead>
+            <TableHead className="w-[60px]">
+              {t(($) => {
+                return $.activity.network.headers.type;
+              })}
+            </TableHead>
+            <TableHead className="w-[60px]">
+              {t(($) => {
+                return $.activity.network.headers.method;
+              })}
+            </TableHead>
+            <TableHead>
+              {t(($) => {
+                return $.activity.network.headers.urlHost;
+              })}
+            </TableHead>
+            <TableHead className="w-[60px]">
+              {t(($) => {
+                return $.activity.network.headers.status;
+              })}
+            </TableHead>
+            <TableHead className="w-[80px]">
+              {t(($) => {
+                return $.activity.network.headers.latency;
+              })}
+            </TableHead>
+            <TableHead className="w-[160px]">
+              {t(($) => {
+                return $.activity.network.headers.permission;
+              })}
+            </TableHead>
           </TableRow>
         </TableHeader>
         <TableBody>
@@ -725,7 +1110,9 @@ export function NetworkContent({
                 colSpan={7}
                 className="h-24 text-center text-sm text-muted-foreground"
               >
-                No matching logs in loaded results
+                {t(($) => {
+                  return $.activity.network.noMatchingLogs;
+                })}
               </td>
             </TableRow>
           ) : (
@@ -746,7 +1133,9 @@ export function NetworkContent({
               className="text-sm text-muted-foreground hover:text-foreground transition-colors"
               onClick={onLoadMore}
             >
-              Load more
+              {t(($) => {
+                return $.activity.network.loadMore;
+              })}
             </button>
           )}
         </div>

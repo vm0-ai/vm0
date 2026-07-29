@@ -14,6 +14,7 @@ import {
   cn,
 } from "@vm0/ui";
 import { useTranslation } from "react-i18next";
+import { formatAppNumber } from "../../i18n/format.ts";
 
 const ROWS_PER_PAGE_OPTIONS = [10, 20, 50, 100] as const;
 
@@ -64,7 +65,7 @@ function PaginationNavigation({
     <div className="flex items-center gap-2">
       <Button
         aria-label={t(($) => {
-          return $.shared.pagination.backTwo;
+          return $.activity.pagination.backTwo;
         })}
         variant="outline"
         size="icon"
@@ -76,7 +77,7 @@ function PaginationNavigation({
       </Button>
       <Button
         aria-label={t(($) => {
-          return $.shared.pagination.previous;
+          return $.activity.pagination.previous;
         })}
         variant="outline"
         size="icon"
@@ -88,7 +89,7 @@ function PaginationNavigation({
       </Button>
       <Button
         aria-label={t(($) => {
-          return $.shared.pagination.next;
+          return $.activity.pagination.next;
         })}
         variant="outline"
         size="icon"
@@ -100,7 +101,7 @@ function PaginationNavigation({
       </Button>
       <Button
         aria-label={t(($) => {
-          return $.shared.pagination.forwardTwo;
+          return $.activity.pagination.forwardTwo;
         })}
         variant="outline"
         size="icon"
@@ -110,6 +111,55 @@ function PaginationNavigation({
       >
         <IconChevronsRight className="size-4" />
       </Button>
+    </div>
+  );
+}
+
+function RowsPerPageSelect({
+  rowsPerPage,
+  labelClassName,
+  onRowsPerPageChange,
+}: Pick<
+  PaginationProps,
+  "rowsPerPage" | "labelClassName" | "onRowsPerPageChange"
+>) {
+  const { t } = useTranslation();
+  const label = t(($) => {
+    return $.activity.pagination.rowsPerPage;
+  });
+
+  return (
+    <div className="flex items-center gap-2">
+      <span
+        className={cn(
+          "pr-2 text-sm font-medium text-foreground whitespace-nowrap",
+          labelClassName,
+        )}
+      >
+        {label}
+      </span>
+      <Select
+        value={String(rowsPerPage)}
+        onValueChange={(value) => {
+          onRowsPerPageChange(Number.parseInt(value, 10));
+        }}
+      >
+        <SelectTrigger
+          aria-label={label}
+          className="zero-btn-morandi h-8 w-[72px]"
+        >
+          <SelectValue />
+        </SelectTrigger>
+        <SelectContent>
+          {ROWS_PER_PAGE_OPTIONS.map((option) => {
+            return (
+              <SelectItem key={option} value={String(option)}>
+                {formatAppNumber(option)}
+              </SelectItem>
+            );
+          })}
+        </SelectContent>
+      </Select>
     </div>
   );
 }
@@ -129,55 +179,19 @@ export function Pagination({
   onBackTwoPages,
   onRowsPerPageChange,
 }: PaginationProps) {
-  const { i18n, t } = useTranslation();
+  const { t } = useTranslation();
   const canGoBackTwo = currentPage > 1;
-  const locale = i18n.resolvedLanguage ?? i18n.language;
-  const formatNumber = (value: number): string => {
-    return value.toLocaleString(locale);
-  };
-
-  const handleRowsPerPageChange = (value: string) => {
-    const limit = Number.parseInt(value, 10);
-    onRowsPerPageChange(limit);
-  };
+  const formattedCurrentPage = formatAppNumber(currentPage);
+  const formattedTotalPages =
+    totalPages === undefined ? undefined : formatAppNumber(totalPages);
 
   return (
     <div className="flex flex-wrap items-center justify-end gap-4 sm:gap-8">
-      {/* Rows per page selector */}
-      <div className="flex items-center gap-2">
-        <span
-          className={cn(
-            "pr-2 text-sm font-medium text-foreground whitespace-nowrap",
-            labelClassName,
-          )}
-        >
-          {t(($) => {
-            return $.shared.pagination.rowsPerPage;
-          })}
-        </span>
-        <Select
-          value={String(rowsPerPage)}
-          onValueChange={handleRowsPerPageChange}
-        >
-          <SelectTrigger
-            aria-label={t(($) => {
-              return $.shared.pagination.rowsPerPage;
-            })}
-            className="zero-btn-morandi h-8 w-[72px]"
-          >
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            {ROWS_PER_PAGE_OPTIONS.map((option) => {
-              return (
-                <SelectItem key={option} value={String(option)}>
-                  {formatNumber(option)}
-                </SelectItem>
-              );
-            })}
-          </SelectContent>
-        </Select>
-      </div>
+      <RowsPerPageSelect
+        rowsPerPage={rowsPerPage}
+        labelClassName={labelClassName}
+        onRowsPerPageChange={onRowsPerPageChange}
+      />
 
       {/* Page indicator */}
       <span
@@ -186,20 +200,20 @@ export function Pagination({
           labelClassName,
         )}
       >
-        {totalPages === undefined
+        {formattedTotalPages === undefined
           ? t(
               ($) => {
-                return $.shared.pagination.page;
+                return $.activity.pagination.page;
               },
-              { currentPage: formatNumber(currentPage) },
+              { current: formattedCurrentPage },
             )
           : t(
               ($) => {
-                return $.shared.pagination.pageOf;
+                return $.activity.pagination.pageOf;
               },
               {
-                currentPage: formatNumber(currentPage),
-                totalPages: formatNumber(totalPages),
+                current: formattedCurrentPage,
+                total: formattedTotalPages,
               },
             )}
       </span>
