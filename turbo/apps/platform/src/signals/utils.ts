@@ -374,23 +374,30 @@ export async function retryWithFibonacciBackoff<T>(
   shouldRetry: (error: unknown) => boolean,
   signal: AbortSignal,
 ): Promise<T> {
-  let retryIndex = 0;
-  while (true) {
-    if (IN_VITEST && retryIndex > MAX_LOOP_COUNT_IN_TEST) {
-      throw new Error(
-        `retryWithFibonacciBackoff: infinite retry detected — exceeded ${MAX_LOOP_COUNT_IN_TEST} attempts in test`,
-      );
-    }
-    const result = await settle(runRetriedLoad(operation), signal);
-    if (result.ok) {
-      return result.value;
-    }
-    if (!shouldRetry(result.error)) {
-      throw result.error;
-    }
-    await waitForFibonacciRetry(retryIndex, signal);
-    retryIndex++;
+  const completion: { result?: { readonly value: T } } = {};
+  await setLoop(
+    async (loopSignal) => {
+      const result = await settle(runRetriedLoad(operation), loopSignal);
+      if (!result.ok) {
+        throw result.error;
+      }
+      completion.result = result;
+      return true;
+    },
+    0,
+    signal,
+    {
+      shouldRetryError: shouldRetry,
+      logTransientErrors: false,
+    },
+  );
+
+  const completed = completion.result;
+  if (!completed) {
+    signal.throwIfAborted();
+    throw new Error("Retry loop ended before the operation completed");
   }
+  return completed.value;
 }
 
 /**
@@ -402,7 +409,11 @@ export async function setLoop(
   loopBody: (signal: AbortSignal) => Promise<boolean> | boolean,
   interval: number,
   signal: AbortSignal,
-  options: { retryTransientErrors?: boolean } = {},
+  options: {
+    retryTransientErrors?: boolean;
+    shouldRetryError?: (error: unknown) => boolean;
+    logTransientErrors?: boolean;
+  } = {},
 ): Promise<void> {
   let fibIndex = 0;
   let loopCount = 0;
@@ -433,14 +444,20 @@ export async function setLoop(
         : delay(interval, { signal }));
     } catch (error) {
       throwIfAbort(error);
-      if (options.retryTransientErrors === false) {
+      if (
+        options.retryTransientErrors === false ||
+        (options.shouldRetryError !== undefined &&
+          !options.shouldRetryError(error))
+      ) {
         throw error;
       }
       const backoff = fibonacciRetryDelayMs(fibIndex);
-      L.warn(
-        `setLoop: transient error (attempt ${fibIndex + 1}), retrying in ${backoff}ms`,
-        error,
-      );
+      if (options.logTransientErrors !== false) {
+        L.warn(
+          `setLoop: transient error (attempt ${fibIndex + 1}), retrying in ${backoff}ms`,
+          error,
+        );
+      }
       await waitForFibonacciRetry(fibIndex, signal);
       fibIndex++;
     }
