@@ -1116,7 +1116,7 @@ async fn promote_removes_current_image_when_metadata_write_fails() {
 }
 
 #[tokio::test]
-async fn promote_removes_stale_temporary_directory_before_copy() {
+async fn promote_removes_stale_temporary_directory_before_transfer() {
     let (_dir, paths, cache) = local_cache().await;
     let run_id = RunId::new_v4();
     let sandbox_id = sandbox::SandboxId::new_v4();
