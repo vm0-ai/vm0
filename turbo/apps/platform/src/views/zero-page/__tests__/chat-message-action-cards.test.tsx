@@ -2127,7 +2127,11 @@ describe("chat message action cards", () => {
             connectorRef: body.connectorRef,
             permission: grant.permission,
             action: grant.action,
-            expiresAt: isoFromNowMs(30 * 60 * 1000),
+            expiresAt: isoFromNowMs(
+              grant.permission === "spreadsheets.create"
+                ? 30 * 60 * 1000
+                : 60 * 60 * 1000,
+            ),
             createdAt: "2026-06-09T11:00:00Z",
             updatedAt: "2026-06-09T11:01:00Z",
           },
@@ -2193,7 +2197,7 @@ describe("chat message action cards", () => {
       ).toBeInTheDocument();
     });
     expect(
-      within(writeCard).queryByText("Expires in less than 1 hour"),
+      within(writeCard).queryByText("Expires in 1 hour"),
     ).not.toBeInTheDocument();
 
     expect(capturedPermissionGrantBodies).toStrictEqual([

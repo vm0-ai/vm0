@@ -2773,11 +2773,8 @@ function ChatHistoryBackfillSkeleton({
 }: {
   thread: ChatThreadSignals;
 }) {
-  const featureSwitches = useGet(featureSwitch$);
-  const enabled =
-    featureSwitches[FeatureSwitchKey.ChatHistoryBackfillProgress] ?? false;
   const progress = useLastResolved(thread.historyBackfillProgress$);
-  if (!enabled || progress === null || progress === undefined) {
+  if (progress === null || progress === undefined) {
     return null;
   }
   return (
@@ -4721,7 +4718,10 @@ function PermissionActionCardContent({
     ? permissionGrantExpiryText(expiresAt)
     : null;
   const expiryText =
-    rawExpiryText === "Expires in less than 1 hour" ? null : rawExpiryText;
+    rawExpiryText === "Expires in less than 1 hour" ||
+    rawExpiryText === "Expires in 1 hour"
+      ? null
+      : rawExpiryText;
   const showDurationSelect =
     expirationAvailable &&
     (status.kind === "ready" ||
