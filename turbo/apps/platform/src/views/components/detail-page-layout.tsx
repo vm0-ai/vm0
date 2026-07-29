@@ -1,5 +1,6 @@
 import type { CSSProperties, ReactNode } from "react";
 import { cn } from "@vm0/ui";
+import { useTranslation } from "react-i18next";
 
 const DETAIL_PAGE_CONTENT_CLASS = "mx-auto w-full max-w-[900px]";
 
@@ -35,9 +36,12 @@ export function DetailPageBreadcrumbBar({
   readonly children: ReactNode;
   readonly className?: string;
 }) {
+  const { t } = useTranslation();
   return (
     <nav
-      aria-label="Breadcrumb"
+      aria-label={t(($) => {
+        return $.shared.breadcrumb;
+      })}
       className={cn(
         "hidden shrink-0 items-center gap-1 px-4 pt-4 text-sm text-muted-foreground md:flex",
         className,
