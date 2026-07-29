@@ -4658,8 +4658,6 @@ describe("WHCB-08: Clerk deletion webhooks tear down account state", () => {
         }),
       );
     });
-    await waitForExpectation(async () => {});
-
     // An org without a live subscription skips the Stripe update.
     const updateCalls =
       context.mocks.stripe.subscriptions.update.mock.calls.length;
