@@ -5139,6 +5139,20 @@
       "when": 1785322216168,
       "tag": "0733_enforce_custom_connector_oauth_mode",
       "breakpoints": true
+    },
+    {
+      "idx": 734,
+      "version": "7",
+      "when": 1785326636355,
+      "tag": "0734_prepare_browser_billing_removal",
+      "breakpoints": true
+    },
+    {
+      "idx": 735,
+      "version": "7",
+      "when": 1785326650784,
+      "tag": "0735_remove_browser_usage_pricing",
+      "breakpoints": true
     }
   ]
 }

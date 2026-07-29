@@ -297,7 +297,7 @@ async function refreshUsageAllowanceEntitlementFromStripe(
   };
 }
 
-export async function lockUsageAllowanceOrg(
+async function lockUsageAllowanceOrg(
   tx: UsageAllowanceStore,
   orgId: string,
 ): Promise<void> {
@@ -621,7 +621,7 @@ async function resolveUsageAllowanceAvailabilityInTransaction(
   return await resolveUsageAllowanceAvailabilityForLockedOrg(tx, orgId);
 }
 
-export async function resolveUsageAllowanceAvailabilityForLockedOrg(
+async function resolveUsageAllowanceAvailabilityForLockedOrg(
   tx: UsageAllowanceStore,
   orgId: string,
 ): Promise<UsageAllowanceAvailability | null> {

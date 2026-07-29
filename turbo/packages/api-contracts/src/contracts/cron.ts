@@ -75,7 +75,6 @@ const cronCompactUsageEventsResponseSchema = z.object({
   seededRawRows: z.number().int().nonnegative(),
   selectedGrains: z.number().int().nonnegative(),
   probedRawRows: z.number().int().nonnegative(),
-  browserHeldRows: z.number().int().nonnegative(),
   billingErrorHeldRows: z.number().int().nonnegative(),
   rawRowsCompacted: z.number().int().nonnegative(),
   hourlyRowsDeleted: z.number().int().nonnegative(),
@@ -116,7 +115,6 @@ const cronComputerUseScreenshotCleanupResponseSchema = z.object({
 const cronBrowserReconcileResponseSchema = z.object({
   checked: z.number().int().nonnegative(),
   stopped: z.number().int().nonnegative(),
-  settled: z.number().int().nonnegative(),
   errors: z.number().int().nonnegative(),
   healthy: z.number().int().nonnegative(),
 });
@@ -341,7 +339,7 @@ export const cronBrowserReconcileContract = c.router({
       200: cronBrowserReconcileResponseSchema,
       401: apiErrorSchema,
     },
-    summary: "Reconcile terminal managed browsers and final billing",
+    summary: "Reconcile managed browser idle leases and provider state",
   },
 });
 
