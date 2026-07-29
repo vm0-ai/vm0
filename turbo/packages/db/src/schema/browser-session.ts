@@ -212,3 +212,29 @@ export const browserSessionInstances = pgTable(
     ];
   },
 );
+
+/**
+ * Resize capability and persisted dimensions for provider instances created
+ * by APIs that support manual window fitting.
+ *
+ * Keeping this state in a companion table preserves the statement shape of
+ * browser_session_instances while the previous API and migration 0737 may
+ * deploy in either order. Row absence means the instance is not resizable.
+ */
+export const browserSessionResizeStates = pgTable(
+  "browser_session_resize_states",
+  {
+    providerSessionId: uuid("provider_session_id")
+      .primaryKey()
+      .references(
+        () => {
+          return browserSessionInstances.providerSessionId;
+        },
+        { onDelete: "cascade" },
+      ),
+    screenWidth: integer("screen_width").notNull(),
+    screenHeight: integer("screen_height").notNull(),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    updatedAt: timestamp("updated_at").defaultNow().notNull(),
+  },
+);

@@ -5160,6 +5160,13 @@
       "when": 1785336324333,
       "tag": "0736_drop_chat_messages_compatibility_view",
       "breakpoints": true
+    },
+    {
+      "idx": 737,
+      "version": "7",
+      "when": 1785341952944,
+      "tag": "0737_browser_session_resize_state",
+      "breakpoints": true
     }
   ]
 }
