@@ -1650,6 +1650,7 @@ describe("connectors page", () => {
     ["strava", "Strava"],
     ["todoist", "Todoist"],
     ["vercel", "Vercel"],
+    ["xero", "Xero"],
   ] as const)(
     "starts %s OAuth with the app callback",
     async (connectorSlug, label) => {
