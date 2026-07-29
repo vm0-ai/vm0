@@ -18,12 +18,8 @@ TLS_ADMISSION_VALID_REGISTRY_VM: Final = "valid_registry_vm"
 TLS_ADMISSION_INVALID_REGISTRY_VM: Final = "invalid_registry_vm"
 TLS_ADMISSION_REGISTRY_UNAVAILABLE: Final = "registry_unavailable"
 
+_TEST_ENDPOINT_PATH_PREFIX: Final = "/api/test/"
 _TEST_ENDPOINT_BYPASS_HEADER: Final = "x-vm0-test-endpoint-bypass"
-_PLATFORM_FIREWALL_PATH_PREFIXES: Final = (
-    "/api/test/",
-    "/api/internal/vm0-model/v1/",
-)
-_VM0_MODEL_PROXY_PATH_PREFIX: Final = "/api/internal/vm0-model/v1/"
 _UPSTREAM_BINDING_DIAGNOSTICS = "_upstream_binding_diagnostics"
 
 TlsAdmissionKind = Literal[
@@ -109,7 +105,7 @@ def _connected_verified_tls_destination_endpoint(
 
 
 def _request_has_platform_test_endpoint_bypass(flow: http.HTTPFlow) -> bool:
-    if not flow.request.path.startswith("/api/test/"):
+    if not flow.request.path.startswith(_TEST_ENDPOINT_PATH_PREFIX):
         return False
     expected_bypass = os.environ.get("VERCEL_AUTOMATION_BYPASS_SECRET", "")
     if not expected_bypass:
@@ -118,17 +114,7 @@ def _request_has_platform_test_endpoint_bypass(flow: http.HTTPFlow) -> bool:
 
 
 def request_path_uses_platform_firewall(path: str) -> bool:
-    return path.startswith(_PLATFORM_FIREWALL_PATH_PREFIXES)
-
-
-def _request_allows_platform_connector_auth(flow: http.HTTPFlow) -> bool:
-    if flow.request.path.startswith(_VM0_MODEL_PROXY_PATH_PREFIX):
-        return True
-    # Synthetic test providers live on the platform API preview host but
-    # intentionally exercise connector auth injection instead of API auto-allow.
-    # Keep this path limited to test endpoints gated by the same internal
-    # bypass secret that the API route validates.
-    return _request_has_platform_test_endpoint_bypass(flow)
+    return path.startswith(_TEST_ENDPOINT_PATH_PREFIX)
 
 
 def api_destination_matches(api_url: str, hostname: str, port: int) -> bool:
@@ -504,6 +490,10 @@ def ensure_bound_destination(
         return False
 
     api_destination = _api_destination(api_url) if kind == "connector_auth" else None
+    # Synthetic test providers live on the platform API preview host but
+    # intentionally exercise connector auth injection instead of API auto-allow.
+    # Keep this path limited to test endpoints gated by the same internal
+    # bypass secret that the API route validates.
     if (
         api_destination is not None
         and _hostname_port_matches_api_destination(
@@ -511,7 +501,7 @@ def ensure_bound_destination(
             port=destination.port,
             api_destination=api_destination,
         )
-        and not _request_allows_platform_connector_auth(flow)
+        and not _request_has_platform_test_endpoint_bypass(flow)
     ):
         return False
 
