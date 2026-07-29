@@ -23,7 +23,7 @@ import {
   permissionAllowAgentId$,
   permissionAllowExpiresIn$,
   permissionAllowPermission$,
-  permissionAllowRef$,
+  permissionAllowConnectorSlug$,
   permissionAllowUserPermissionGrants$,
   permissionAllowFirewallPermissionMetadata$,
   resolveUserPermissionGrantPolicy,
@@ -274,13 +274,13 @@ function permissionAllowLoadErrorMessage({
 
 function resolveExistingPermissionGrantResult({
   action,
-  connectorRef,
+  connectorSlug,
   focusedPermission,
   grants,
   metadata,
 }: {
   action: "allow" | "deny";
-  connectorRef: string;
+  connectorSlug: string;
   focusedPermission: Permission;
   grants: readonly UserPermissionGrantResponse[];
   metadata: PublicConnectorCatalogPermissionDetail;
@@ -292,7 +292,7 @@ function resolveExistingPermissionGrantResult({
   );
   const explicitGrant = grants.find((grant) => {
     return (
-      grant.connectorRef === connectorRef &&
+      grant.connectorRef === connectorSlug &&
       grant.permission === focusedPermission.name &&
       grant.action === action
     );
@@ -312,7 +312,7 @@ function resolveExistingPermissionGrantResult({
 interface ConfirmGrantCardProps {
   target: PermissionGrantTarget;
   icon: PublicConnectorCatalogPermissionDetail["icon"];
-  connectorRef: string;
+  connectorSlug: string;
   connectorLabel: string;
   permission: Permission;
   action: "allow" | "deny";
@@ -322,7 +322,7 @@ interface ConfirmGrantCardProps {
   applyGrant: (
     params: {
       agentId: string;
-      connectorRef: string;
+      connectorSlug: string;
       permission: string;
       action: "allow" | "deny";
       expiresIn?: UserPermissionGrantExpiresIn;
@@ -335,7 +335,7 @@ interface ConfirmGrantCardProps {
 function ConfirmGrantCard({
   target,
   icon,
-  connectorRef,
+  connectorSlug,
   connectorLabel,
   permission,
   action,
@@ -346,7 +346,7 @@ function ConfirmGrantCard({
   actionCallback,
 }: ConfirmGrantCardProps) {
   const pageSignal = useGet(pageSignal$);
-  const durationScope = `agent\u0000${target.id}\u0000${connectorRef}\u0000${permission.name}\u0000${action}\u0000${initialExpiresIn ?? ""}`;
+  const durationScope = `agent\u0000${target.id}\u0000${connectorSlug}\u0000${permission.name}\u0000${action}\u0000${initialExpiresIn ?? ""}`;
   const expiresInByScope = useGet(permissionGrantExpiresInByScope$);
   const setExpiresInForScope = useSet(setPermissionGrantExpiresIn$);
   const expiresIn =
@@ -364,7 +364,7 @@ function ConfirmGrantCard({
         await applyGrant(
           {
             agentId: target.id,
-            connectorRef,
+            connectorSlug,
             permission: permission.name,
             action,
             ...(expirationAvailable ? { expiresIn } : {}),
@@ -450,14 +450,14 @@ function ConfirmGrantCard({
 
 function PermissionAllowDoctorPage({
   agentId,
-  ref,
+  connectorSlug,
   permission,
   action,
   initialExpiresIn,
   actionCallback,
 }: {
   agentId: string;
-  ref: string;
+  connectorSlug: string;
   permission: string;
   action: "allow" | "deny";
   initialExpiresIn: UserPermissionGrantExpiresIn | null;
@@ -505,7 +505,7 @@ function PermissionAllowDoctorPage({
   const metadata =
     metadataLoadable.state === "hasData" ? metadataLoadable.data : null;
   if (!metadata) {
-    return <ErrorMessage message={`Unknown connector: ${ref}`} />;
+    return <ErrorMessage message={`Unknown connector: ${connectorSlug}`} />;
   }
 
   const focusedPermission = findPermissionInMetadata(metadata, permission);
@@ -525,7 +525,7 @@ function PermissionAllowDoctorPage({
 
   const existingGrantResult = resolveExistingPermissionGrantResult({
     action,
-    connectorRef: ref,
+    connectorSlug,
     focusedPermission,
     grants,
     metadata,
@@ -547,7 +547,7 @@ function PermissionAllowDoctorPage({
     <ConfirmGrantCard
       target={targetResult.target}
       icon={metadata.icon}
-      connectorRef={ref}
+      connectorSlug={connectorSlug}
       connectorLabel={metadata.label}
       permission={focusedPermission}
       action={action}
@@ -562,7 +562,7 @@ function PermissionAllowDoctorPage({
 
 export function PermissionAllowPage() {
   const agentId = useGet(permissionAllowAgentId$);
-  const ref = useGet(permissionAllowRef$);
+  const connectorSlug = useGet(permissionAllowConnectorSlug$);
   const permission = useGet(permissionAllowPermission$);
   const actionParam = useGet(permissionAllowActionParam$);
   const action = useGet(permissionAllowAction$);
@@ -573,7 +573,7 @@ export function PermissionAllowPage() {
     return <ErrorMessage message="Missing agent ID in URL parameters" />;
   }
 
-  if (!ref || !permission) {
+  if (!connectorSlug || !permission) {
     return <ErrorMessage message="Missing permission in URL parameters" />;
   }
 
@@ -586,7 +586,7 @@ export function PermissionAllowPage() {
   return (
     <PermissionAllowDoctorPage
       agentId={agentId}
-      ref={ref}
+      connectorSlug={connectorSlug}
       permission={permission}
       action={action ?? "allow"}
       initialExpiresIn={expiresIn}

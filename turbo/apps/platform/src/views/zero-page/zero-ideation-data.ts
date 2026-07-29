@@ -1,12 +1,12 @@
 import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 
-type IdeationConnectorRef = string;
+type IdeationConnectorSlug = string;
 
 interface UseCase {
   readonly title: string;
   readonly description: string;
   readonly prompt: string;
-  readonly connectors?: readonly IdeationConnectorRef[];
+  readonly connectors?: readonly IdeationConnectorSlug[];
   readonly featureFlag?: FeatureSwitchKey;
 }
 
@@ -18,7 +18,7 @@ interface Category {
 
 interface IdeationFilterOptions {
   readonly features?: Partial<Record<FeatureSwitchKey, boolean>>;
-  readonly visibleConnectorRefs?: ReadonlySet<string>;
+  readonly visibleConnectorSlugs?: ReadonlySet<string>;
 }
 
 const categories: readonly Category[] = [
@@ -667,7 +667,7 @@ function filterUseCase(
   useCase: UseCase,
   options: IdeationFilterOptions,
 ): UseCase | null {
-  const visibleConnectorRefs = options.visibleConnectorRefs;
+  const visibleConnectorSlugs = options.visibleConnectorSlugs;
   if (!isEnabled(useCase, options.features)) {
     return null;
   }
@@ -675,13 +675,13 @@ function filterUseCase(
   if (
     !useCase.connectors ||
     useCase.connectors.length === 0 ||
-    !visibleConnectorRefs
+    !visibleConnectorSlugs
   ) {
     return useCase;
   }
 
-  const allConnectorsVisible = useCase.connectors.every((connectorRef) => {
-    return visibleConnectorRefs.has(connectorRef);
+  const allConnectorsVisible = useCase.connectors.every((connectorSlug) => {
+    return visibleConnectorSlugs.has(connectorSlug);
   });
   if (!allConnectorsVisible) {
     return null;

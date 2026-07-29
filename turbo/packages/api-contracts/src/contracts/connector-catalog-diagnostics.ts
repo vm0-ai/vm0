@@ -2,7 +2,7 @@ import { z } from "zod";
 
 import {
   connectorAuthMethodIdSchema,
-  connectorRefSchema,
+  connectorSlugSchema,
 } from "./connector-identity";
 
 export const connectorCatalogSyncFailureCodeSchema = z.enum([
@@ -28,7 +28,8 @@ export const connectorCatalogCompatibilityReasonSchema = z.enum([
 ]);
 
 export const connectorCatalogFilteredAuthMethodSchema = z.object({
-  connectorRef: connectorRefSchema,
+  // TODO(#23619): Rename this diagnostics wire field after clients migrate.
+  connectorRef: connectorSlugSchema,
   authMethodId: connectorAuthMethodIdSchema,
   reasons: z.array(connectorCatalogCompatibilityReasonSchema).min(1),
 });

@@ -19,6 +19,7 @@ const insightServiceSchema = z.object({
 
 const insightPermissionSchema = z.object({
   label: z.string(),
+  // TODO(#23619): Rename this analytics wire field with its stored aggregates.
   connectorType: z.string().optional(),
   allowed: z.number(),
   denied: z.number(),

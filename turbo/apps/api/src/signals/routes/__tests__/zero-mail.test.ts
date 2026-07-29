@@ -530,7 +530,7 @@ describe("POST /api/zero/mail/drafts/link", () => {
     const gmail = mockGmailDraftApi();
     const linked = await linkDraft(fixture);
 
-    await connectors.deleteConnectorByType(fixture.actor, "gmail");
+    await connectors.deleteConnectorBySlug(fixture.actor, "gmail");
     const start = await connectors.startOauth(fixture.actor, "gmail", "oauth");
     const state = new URL(start.authorizationUrl).searchParams.get("state");
     if (!state) {
@@ -599,7 +599,7 @@ describe("POST /api/zero/mail/drafts/link", () => {
     await setConnectorCredentialStorageState(context, {
       orgId: fixture.actor.orgId ?? "",
       userId: fixture.actor.userId,
-      connectorRef: "gmail",
+      connectorSlug: "gmail",
       storageVersion: 2,
       tokenExpiresAt: "2020-01-01T00:00:00.000Z",
     });
@@ -636,7 +636,7 @@ describe("POST /api/zero/mail/drafts/link", () => {
     const foreignConnectorId = await seedConnectorStorageRow(context, {
       orgId: fixture.actor.orgId ?? "",
       userId: fixture.actor.userId,
-      connectorRef: "github",
+      connectorSlug: "github",
       authMethod: "oauth",
       storageVersion: 1,
     });

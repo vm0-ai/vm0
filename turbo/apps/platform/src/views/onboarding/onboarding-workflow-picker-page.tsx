@@ -23,7 +23,7 @@ import {
   updateOnboardingUi$,
 } from "../../signals/onboarding/onboarding-state.ts";
 import { completeOnboarding$ } from "../../signals/onboarding/onboarding-actions.ts";
-import { connectorCatalogStatusByRef$ } from "../../signals/external/connectors.ts";
+import { connectorCatalogStatusBySlug$ } from "../../signals/external/connectors.ts";
 import { pageSignal$ } from "../../signals/page-signal.ts";
 import { ROUTES } from "../../signals/route-paths.ts";
 import { searchParams$ } from "../../signals/route.ts";
@@ -58,16 +58,16 @@ const CATEGORY_ICONS: Readonly<Record<OnboardingWorkflowCategoryId, Icon>> = {
 };
 
 function WorkflowConnectorIcon({
-  connectorRef,
+  connectorSlug,
   size,
 }: {
-  readonly connectorRef: string;
+  readonly connectorSlug: string;
   readonly size: number;
 }) {
-  const catalogByRefLoadable = useLastLoadable(connectorCatalogStatusByRef$);
+  const catalogBySlugLoadable = useLastLoadable(connectorCatalogStatusBySlug$);
   const icon =
-    catalogByRefLoadable.state === "hasData"
-      ? catalogByRefLoadable.data.get(connectorRef)?.icon
+    catalogBySlugLoadable.state === "hasData"
+      ? catalogBySlugLoadable.data.get(connectorSlug)?.icon
       : undefined;
   return <ConnectorIcon icon={icon} size={size} />;
 }
@@ -92,7 +92,7 @@ export function WorkflowConnectorPills({
             key={connectorId}
             className="inline-flex h-7 w-7 items-center justify-center rounded-md border border-border bg-muted/30"
           >
-            <WorkflowConnectorIcon connectorRef={connectorId} size={14} />
+            <WorkflowConnectorIcon connectorSlug={connectorId} size={14} />
           </span>
         );
       })}

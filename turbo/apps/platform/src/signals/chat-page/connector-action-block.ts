@@ -1,21 +1,21 @@
 import { command, computed, state, type Command, type Computed } from "ccstate";
 import {
-  connectorRefSchema,
-  type ConnectorRef,
+  connectorSlugSchema,
+  type ConnectorSlug,
 } from "@vm0/api-contracts/contracts/connector-identity";
 import { customConnectorProposalSchema } from "@vm0/api-contracts/contracts/zero-custom-connectors";
 import type { PublicConnectorCatalogStatusItem } from "@vm0/api-contracts/contracts/zero-connector-catalog";
-import { connectorCatalogStatusByRef$ } from "../external/connectors.ts";
+import { connectorCatalogStatusBySlug$ } from "../external/connectors.ts";
 import {
   allConnectorCatalogItems$,
   connectConnectorNoAuth$,
   connectConnectorOAuthAuthCode$,
   connectorCurrentConnectionStatus,
   getConnectorStatusDirectConnectMethod,
-  setSelectedConnectorRef$,
+  setSelectedConnectorSlug$,
 } from "../zero-page/settings/connectors.ts";
 import { resolvePlatformOriginForTarget } from "../api-base.ts";
-import { authorizeConnector$ as authorizeDirectedConnector$ } from "../connectors-page/directed-authorize-ref.ts";
+import { authorizeConnector$ as authorizeDirectedConnector$ } from "../connectors-page/directed-authorize-slug.ts";
 import { isAgentConnectorAuthorized } from "../zero-page/agent-connector-authorizations.ts";
 import { jsonParseBase64UrlOr } from "../utils.ts";
 import {
@@ -29,7 +29,7 @@ import {
 } from "./card-signal-map.ts";
 
 export interface ConnectorActionDescriptor {
-  connectorRef: ConnectorRef;
+  connectorSlug: ConnectorSlug;
   agentId: string;
   originalUrl: string;
   callbackPrompt: ChatActionCallback["callbackPrompt"];
@@ -73,7 +73,7 @@ export const activeChatConnectorAction$ = computed((get) => {
 
 export const closeChatConnectorActionConnectDialog$ = command(({ set }) => {
   set(activeChatConnectorActionState$, null);
-  set(setSelectedConnectorRef$, null);
+  set(setSelectedConnectorSlug$, null);
 });
 
 export function parseConnectorAuthorizeUrl(
@@ -92,15 +92,15 @@ export function parseConnectorAuthorizeUrl(
   const match = url.pathname.match(
     /^\/connectors\/([^/]+)\/(?:authorize|connect)$/,
   );
-  const connectorRef = match?.[1]?.toLowerCase();
+  const connectorSlug = match?.[1]?.toLowerCase();
   const agentId = url.searchParams.get("agentId");
-  const parsedConnectorRef = connectorRefSchema.safeParse(connectorRef);
-  if (!parsedConnectorRef.success || !agentId) {
+  const parsedConnectorSlug = connectorSlugSchema.safeParse(connectorSlug);
+  if (!parsedConnectorSlug.success || !agentId) {
     return null;
   }
 
   return {
-    connectorRef: parsedConnectorRef.data,
+    connectorSlug: parsedConnectorSlug.data,
     agentId,
     originalUrl: value,
     ...chatActionCallbackFromUrl(url),
@@ -170,7 +170,7 @@ function createConnectorActivation(
     if (connected && !reconnectRequired) {
       await set(
         authorizeDirectedConnector$,
-        descriptor.connectorRef,
+        descriptor.connectorSlug,
         descriptor.agentId,
         signal,
       );
@@ -191,7 +191,7 @@ function createConnectorActivation(
     const connectorCatalogItems = await get(allConnectorCatalogItems$);
     signal.throwIfAborted();
     const connector = connectorCatalogItems.find((item) => {
-      return item.connectorRef === descriptor.connectorRef;
+      return item.connectorRef === descriptor.connectorSlug;
     });
     if (!connector) {
       return;
@@ -201,7 +201,7 @@ function createConnectorActivation(
       getConnectorStatusDirectConnectMethod(connector);
     if (!directConnectMethod) {
       set(activeChatConnectorActionState$, descriptor);
-      set(setSelectedConnectorRef$, descriptor.connectorRef);
+      set(setSelectedConnectorSlug$, descriptor.connectorSlug);
       return;
     }
 
@@ -214,7 +214,7 @@ function createConnectorActivation(
       directConnectMethod.kind === "browser-auth"
         ? await set(
             connectConnectorOAuthAuthCode$,
-            descriptor.connectorRef,
+            descriptor.connectorSlug,
             directConnectMethod.authMethod,
             connectOptions,
             signal,
@@ -222,7 +222,7 @@ function createConnectorActivation(
         : await set(
             connectConnectorNoAuth$,
             {
-              connectorRef: descriptor.connectorRef,
+              connectorSlug: descriptor.connectorSlug,
               authMethod: directConnectMethod.authMethod,
               options: connectOptions,
             },
@@ -250,8 +250,8 @@ function createConnectorSignals(
   descriptor: ConnectorActionDescriptor,
 ): ConnectorSignals {
   const catalogItem$ = computed(async (get) => {
-    const statusByRef = await get(connectorCatalogStatusByRef$);
-    return statusByRef.get(descriptor.connectorRef) ?? null;
+    const statusBySlug = await get(connectorCatalogStatusBySlug$);
+    return statusBySlug.get(descriptor.connectorSlug) ?? null;
   });
 
   const available$ = computed(async (get): Promise<boolean> => {
@@ -260,15 +260,15 @@ function createConnectorSignals(
   });
 
   const connected$ = computed(async (get): Promise<boolean> => {
-    const statusByRef = await get(connectorCatalogStatusByRef$);
-    return statusByRef.get(descriptor.connectorRef)?.connected ?? false;
+    const statusBySlug = await get(connectorCatalogStatusBySlug$);
+    return statusBySlug.get(descriptor.connectorSlug)?.connected ?? false;
   });
 
   const authorized$ = computed(async (get): Promise<boolean> => {
     return await get(
       isAgentConnectorAuthorized({
         agentId: descriptor.agentId,
-        connectorRef: descriptor.connectorRef,
+        connectorSlug: descriptor.connectorSlug,
       }),
     );
   });

@@ -48,12 +48,18 @@ function catalogPermissionDetail(
       "connectorRef" | "label" | "permissions"
     >,
 ): PublicConnectorCatalogPermissionDetail {
-  const { connectorRef, label, permissions, icon, ...rest } = overrides;
+  const {
+    connectorRef: connectorSlug,
+    label,
+    permissions,
+    icon,
+    ...rest
+  } = overrides;
   return {
-    connectorRef,
+    connectorRef: connectorSlug,
     label,
     icon: icon ?? {
-      url: `https://icons.example.test/${connectorRef}.svg`,
+      url: `https://icons.example.test/${connectorSlug}.svg`,
       invertInDarkMode: false,
     },
     permissionCount: permissions.length,
@@ -78,8 +84,8 @@ function applyUserConnectorUpdate(
     return Array.from(new Set([...current, ...body.enabledTypes]));
   }
   if (body.operation === "remove") {
-    return current.filter((type) => {
-      return !body.enabledTypes.includes(type);
+    return current.filter((connectorSlug) => {
+      return !body.enabledTypes.includes(connectorSlug);
     });
   }
   return [...body.enabledTypes];
@@ -108,13 +114,13 @@ function publicConnectorStatusItem(
   overrides: Partial<PublicConnectorCatalogStatusItem> &
     Pick<PublicConnectorCatalogStatusItem, "connectorRef" | "label">,
 ): PublicConnectorCatalogStatusItem {
-  const { connectorRef, label, icon, ...rest } = overrides;
+  const { connectorRef: connectorSlug, label, icon, ...rest } = overrides;
   return {
-    connectorRef,
+    connectorRef: connectorSlug,
     label,
     description: `${label} public help text`,
     icon: icon ?? {
-      url: `https://icons.example.test/${connectorRef}.svg`,
+      url: `https://icons.example.test/${connectorSlug}.svg`,
       invertInDarkMode: false,
     },
     category: "data-automation-infrastructure",
@@ -148,15 +154,18 @@ function mockConnectorCatalogStatus(
 }
 
 function mockAgentConnectorAuthorizations(
-  initialTypes: readonly string[],
+  initialConnectorSlugs: readonly string[],
 ): void {
-  let enabledTypes: string[] = [...initialTypes];
+  let enabledConnectorSlugs: string[] = [...initialConnectorSlugs];
   context.mocks.api(zeroUserConnectorsContract.get, ({ respond }) => {
-    return respond(200, { enabledTypes });
+    return respond(200, { enabledTypes: enabledConnectorSlugs });
   });
   context.mocks.api(zeroUserConnectorsContract.update, ({ body, respond }) => {
-    enabledTypes = applyUserConnectorUpdate(enabledTypes, body);
-    return respond(200, { enabledTypes });
+    enabledConnectorSlugs = applyUserConnectorUpdate(
+      enabledConnectorSlugs,
+      body,
+    );
+    return respond(200, { enabledTypes: enabledConnectorSlugs });
   });
 }
 

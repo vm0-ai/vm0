@@ -2,7 +2,7 @@ import { z } from "zod";
 
 import {
   connectorAuthMethodIdSchema,
-  connectorRefSchema,
+  connectorSlugSchema,
 } from "./connector-identity";
 
 /**
@@ -29,7 +29,8 @@ export type ConnectorReconnectReason = z.infer<
 
 export const connectorResponseSchema = z.object({
   id: z.uuid(),
-  type: connectorRefSchema,
+  // TODO(#23619): Rename this legacy wire field after API clients migrate.
+  type: connectorSlugSchema,
   authMethod: connectorAuthMethodIdSchema,
   externalId: z.string().nullable(),
   externalUsername: z.string().nullable(),
@@ -64,7 +65,8 @@ export const connectorProvidedBindingSourceSchema = z.discriminatedUnion(
 );
 
 export const connectorProvidedBindingSchema = z.object({
-  connectorType: connectorRefSchema,
+  // TODO(#23619): Rename this legacy wire field after API clients migrate.
+  connectorType: connectorSlugSchema,
   authMethod: connectorAuthMethodIdSchema,
   namespace: connectorProvidedBindingNamespaceSchema,
   name: z.string(),
@@ -102,7 +104,8 @@ export function guaranteedConnectorProvidedBindingNames(args: {
  */
 export const connectorListResponseSchema = z.object({
   connectors: z.array(connectorResponseSchema),
-  configuredTypes: z.array(connectorRefSchema),
+  // TODO(#23619): Rename this legacy wire field after API clients migrate.
+  configuredTypes: z.array(connectorSlugSchema),
   connectorProvidedBindings: z
     .array(connectorProvidedBindingSchema)
     .default([]),
@@ -133,7 +136,8 @@ export type ConnectorOauthStartResponse = z.infer<
 export const connectorOauthDeviceAuthSessionStartResponseSchema = z.object({
   sessionId: z.uuid(),
   sessionToken: z.string(),
-  type: connectorRefSchema,
+  // TODO(#23619): Rename this legacy wire field after API clients migrate.
+  type: connectorSlugSchema,
   status: z.literal("pending"),
   userCode: z.string(),
   verificationUri: z.string(),
@@ -188,7 +192,8 @@ export type ConnectorOauthDeviceAuthSessionPollResponse = z.infer<
 export const connectorExternalCodeSessionStartResponseSchema = z.object({
   sessionId: z.uuid(),
   sessionToken: z.string(),
-  type: connectorRefSchema,
+  // TODO(#23619): Rename this legacy wire field after API clients migrate.
+  type: connectorSlugSchema,
   status: z.literal("pending"),
   authorizationUrl: z.string(),
   expiresIn: z.number(),

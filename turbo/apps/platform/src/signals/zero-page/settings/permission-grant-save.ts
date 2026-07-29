@@ -23,7 +23,7 @@ import {
 export type ApplyUserPermissionGrants = (
   params: {
     agentId: string;
-    connectorRef: string;
+    connectorSlug: string;
     mode: "patch" | "replace";
     grants: readonly ApplyUserPermissionGrant[];
   },
@@ -127,19 +127,19 @@ function addUnknownPolicyChange({
 
 function addExpirationOnlyChanges({
   changes,
-  connectorRef,
+  connectorSlug,
   initialGrants,
   current,
   expiresInByPermission,
 }: {
   changes: Map<string, ChangedUserGrantPolicy>;
-  connectorRef: string;
+  connectorSlug: string;
   initialGrants: readonly UserPermissionGrantResponse[];
   current: FirewallPolicies[string] | undefined;
   expiresInByPermission: GrantExpirationSelections;
 }): void {
   for (const grant of initialGrants) {
-    if (grant.connectorRef !== connectorRef || changes.has(grant.permission)) {
+    if (grant.connectorRef !== connectorSlug || changes.has(grant.permission)) {
       continue;
     }
     const expiresIn = expiresInByPermission[grant.permission];
@@ -167,13 +167,13 @@ function addExpirationOnlyChanges({
 
 function addDefaultAllowExpirationChanges({
   changes,
-  connectorRef,
+  connectorSlug,
   initialGrants,
   current,
   expiresInByPermission,
 }: {
   changes: Map<string, ChangedUserGrantPolicy>;
-  connectorRef: string;
+  connectorSlug: string;
   initialGrants: readonly UserPermissionGrantResponse[];
   current: FirewallPolicies[string] | undefined;
   expiresInByPermission: GrantExpirationSelections;
@@ -181,7 +181,7 @@ function addDefaultAllowExpirationChanges({
   const initialGrantPermissions = new Set(
     initialGrants
       .filter((grant) => {
-        return grant.connectorRef === connectorRef;
+        return grant.connectorRef === connectorSlug;
       })
       .map((grant) => {
         return grant.permission;
@@ -215,14 +215,14 @@ function addDefaultAllowExpirationChanges({
 }
 
 function changedUserGrantPolicies({
-  connectorRef,
+  connectorSlug,
   metadata,
   initialPolicies,
   initialGrants,
   policies,
   expiresInByPermission,
 }: {
-  connectorRef: string;
+  connectorSlug: string;
   metadata: PublicConnectorCatalogPermissionDetail;
   initialPolicies: FirewallPolicies;
   initialGrants: readonly UserPermissionGrantResponse[];
@@ -231,8 +231,8 @@ function changedUserGrantPolicies({
 }): ChangedUserGrantPolicy[] {
   const initial = resolveFirewallMetadataPolicies(initialPolicies, [
     metadata,
-  ])?.[connectorRef];
-  const current = policies[connectorRef];
+  ])?.[connectorSlug];
+  const current = policies[connectorSlug];
   const changes = new Map<string, ChangedUserGrantPolicy>();
 
   addNamedPolicyChanges({
@@ -250,14 +250,14 @@ function changedUserGrantPolicies({
 
   addExpirationOnlyChanges({
     changes,
-    connectorRef,
+    connectorSlug,
     initialGrants,
     current,
     expiresInByPermission,
   });
   addDefaultAllowExpirationChanges({
     changes,
-    connectorRef,
+    connectorSlug,
     initialGrants,
     current,
     expiresInByPermission,
@@ -287,7 +287,7 @@ function applyGrantFromChangedPolicy(
 }
 
 function buildAppliedUserGrantPolicies({
-  connectorRef,
+  connectorSlug,
   metadata,
   initialPolicies,
   initialGrants,
@@ -295,7 +295,7 @@ function buildAppliedUserGrantPolicies({
   expiresInByPermission,
   resetPending,
 }: {
-  connectorRef: string;
+  connectorSlug: string;
   metadata: PublicConnectorCatalogPermissionDetail;
   initialPolicies: FirewallPolicies;
   initialGrants: readonly UserPermissionGrantResponse[];
@@ -308,7 +308,7 @@ function buildAppliedUserGrantPolicies({
     : initialPolicies;
   const baseGrants = resetPending ? [] : initialGrants;
   return changedUserGrantPolicies({
-    connectorRef,
+    connectorSlug,
     metadata,
     initialPolicies: basePolicies,
     initialGrants: baseGrants,
@@ -319,7 +319,7 @@ function buildAppliedUserGrantPolicies({
 
 async function saveUserGrantPolicies({
   scope,
-  connectorRef,
+  connectorSlug,
   metadata,
   initialPolicies,
   initialGrants,
@@ -330,7 +330,7 @@ async function saveUserGrantPolicies({
   applyGrantPolicies,
 }: {
   scope: { agentId: string };
-  connectorRef: string;
+  connectorSlug: string;
   metadata: PublicConnectorCatalogPermissionDetail;
   initialPolicies: FirewallPolicies;
   initialGrants: readonly UserPermissionGrantResponse[];
@@ -343,10 +343,10 @@ async function saveUserGrantPolicies({
   await applyGrantPolicies(
     {
       ...scope,
-      connectorRef,
+      connectorSlug,
       mode: resetPending ? "replace" : "patch",
       grants: buildAppliedUserGrantPolicies({
-        connectorRef,
+        connectorSlug,
         metadata,
         initialPolicies,
         initialGrants,
@@ -361,7 +361,7 @@ async function saveUserGrantPolicies({
 
 export async function savePermissionDraftPolicies({
   scope,
-  connectorRef,
+  connectorSlug,
   metadata,
   initialPolicies,
   initialGrants,
@@ -370,7 +370,7 @@ export async function savePermissionDraftPolicies({
   applyGrantPolicies,
 }: {
   scope: { agentId: string };
-  connectorRef: string;
+  connectorSlug: string;
   metadata: PublicConnectorCatalogPermissionDetail;
   initialPolicies: FirewallPolicies;
   initialGrants: readonly UserPermissionGrantResponse[];
@@ -386,7 +386,7 @@ export async function savePermissionDraftPolicies({
     });
   await saveUserGrantPolicies({
     scope,
-    connectorRef,
+    connectorSlug,
     metadata,
     initialPolicies,
     initialGrants,

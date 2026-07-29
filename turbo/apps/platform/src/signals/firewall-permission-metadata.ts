@@ -1,5 +1,5 @@
 import { computed, type Computed } from "ccstate";
-import { connectorRefSchema } from "@vm0/api-contracts/contracts/connector-identity";
+import { connectorSlugSchema } from "@vm0/api-contracts/contracts/connector-identity";
 import {
   zeroConnectorCatalogContract,
   type PublicConnectorCatalogPermissionDetail,
@@ -10,15 +10,15 @@ import { connectorsReloadVersion$ } from "./external/connectors.ts";
 import { featureSwitch$ } from "./external/feature-switch.ts";
 
 interface FirewallPermissionMetadataParams {
-  readonly connectorRef: string;
+  readonly connectorSlug: string;
 }
 
 export function firewallPermissionMetadataByConnector(
   params: FirewallPermissionMetadataParams,
 ): Computed<Promise<PublicConnectorCatalogPermissionDetail | null>> {
-  const key = params.connectorRef;
+  const key = params.connectorSlug;
   return computed(async (get) => {
-    if (!connectorRefSchema.safeParse(key).success) {
+    if (!connectorSlugSchema.safeParse(key).success) {
       return null;
     }
     get(connectorsReloadVersion$);

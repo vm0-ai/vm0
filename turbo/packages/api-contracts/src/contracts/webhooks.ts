@@ -377,6 +377,8 @@ export const webhookFirewallAuthContract = c.router({
       authAwsSigv4: firewallAwsSigv4AuthSchema.optional(),
       // Maps firewall auth secret env aliases (the `NAME` in `${{ secrets.NAME }}`)
       // to the connector or provider owner that can refresh/resolve access.
+      // TODO(#23619): Split connector slugs from provider keys before renaming
+      // this firewall-auth wire field.
       secretConnectorMap: z.record(z.string(), z.string()).optional(),
       // Same keys as secretConnectorMap; adds source details when the owner
       // alone is not enough to locate access storage.

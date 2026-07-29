@@ -6,7 +6,7 @@ import {
   codexFastModeEnabled$,
   featureSwitch$,
 } from "../external/feature-switch.ts";
-import { connectorCatalogStatusByRef$ } from "../external/connectors.ts";
+import { connectorCatalogStatusBySlug$ } from "../external/connectors.ts";
 import { orgModelPolicies$ } from "../external/org-model-policies.ts";
 import { userModelPreference$ } from "../external/user-model-preference.ts";
 import {
@@ -65,10 +65,10 @@ export const unfilteredSuggestedPrompts$ = computed((get) => {
 
 export const suggestedPrompts$ = computed(async (get) => {
   const features = await get(featureSwitch$);
-  const connectorStatusByRef = await get(connectorCatalogStatusByRef$);
+  const connectorStatusBySlug = await get(connectorCatalogStatusBySlug$);
   return getRandomPrompts(2, {
     features,
-    visibleConnectorRefs: new Set(connectorStatusByRef.keys()),
+    visibleConnectorSlugs: new Set(connectorStatusBySlug.keys()),
   });
 });
 
