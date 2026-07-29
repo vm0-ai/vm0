@@ -148,6 +148,165 @@ Compatibility code should be temporary and explicit. Include a short comment
 with the rollout reason and the condition for deletion, or track the cleanup in
 a follow-up issue when the deletion cannot happen in the same PR.
 
+### Treat Deploy-before-migrate Windows as a First-class Risk
+
+Schema changes have two independent compatibility directions:
+
+- **Old code after migration**: the migration has changed the schema while
+  previous API instances are still serving or draining. Every statement the old
+  API can issue must remain legal, including columns that an ORM adds to
+  `SELECT` or `RETURNING` lists even when application logic does not otherwise
+  read them.
+- **New code before migration**: the new API is serving before the migration is
+  visible to it. New readers and writers must not require the new column, enum
+  value, relation, constraint, or function until the migration is complete.
+
+The production workflow must continue to order required migrations before API
+traffic promotion, but intended ordering is not a substitute for compatibility.
+Promotion drift, rollback, draining instances, and other environments can expose
+either direction. A compatibility object that protects old code after migration
+does not by itself protect new code before migration.
+
+The ChatEvent schema-contraction releases from July 27-29, 2026 provide concrete
+examples:
+
+- [PR #23148](https://github.com/vm0-ai/vm0/pull/23148), migration `0697`,
+  added `event_type`. From about 09:11 to 10:52 UTC on July 27 (102 minutes),
+  new App reads, crons, and the automation poller queried it before the migration
+  ran and received PostgreSQL error `42703` (`column does not exist`). An
+  additive column still breaks a new reader when code wins the race.
+- The [PR #23252](https://github.com/vm0-ai/vm0/pull/23252)-era migration
+  `0700` added the `teams_user_message` enum value. From about 00:38 to 00:47 UTC
+  on July 28 (10 minutes), new code used the value before the migration ran and
+  received `22P02` (`invalid input value for enum`), including a 57% failure
+  spike on `/chat-threads/:threadId/events`. Enum additions are schema changes,
+  not data changes.
+- [PR #23656](https://github.com/vm0-ai/vm0/pull/23656), migration `0722`,
+  dropped `chat_messages.role`. From about 06:55 to 06:57 UTC on July 29 (two
+  minutes), the draining previous API still included the declared column in
+  `INSERT ... RETURNING` and received `42703`. Read-never and write-never are
+  insufficient while the old ORM schema can still generate the column name.
+- [PR #23451](https://github.com/vm0-ai/vm0/pull/23451), migration `0714`,
+  at 12:42 UTC on July 28 and
+  [PR #23741](https://github.com/vm0-ai/vm0/pull/23741), migration `0725`, at
+  09:34 UTC on July 29 produced zero-incident releases. They used in-place
+  renames with same-name auto-updatable compatibility views, including column
+  aliasing in `0725`. Temporary no-op or mirror triggers from `0714` and
+  [PR #23594](https://github.com/vm0-ai/vm0/pull/23594), migration `0719`, kept
+  both versions' statements legal during the transition.
+- [PR #23696](https://github.com/vm0-ai/vm0/pull/23696), migration `0723`,
+  renamed the table. Its compatibility view protected old code after migration,
+  but new crons queried `chat_events` before migration from about 08:42 to 08:53
+  UTC on July 29 (12 minutes) and received `42P01` (`relation does not exist`).
+  User chat routes remained clean. Migration-before-promotion ordering, or
+  explicitly tolerant new code, is still required for the other direction.
+
+Use one of the following proven schema-transition patterns. Keep each
+compatibility layer only until the release it protects has fully drained.
+
+#### Nullable Transition Column, Then Backfill and Contract
+
+**When to use:** A new required field must be populated for existing rows. Add
+the nullable column before any code requires it, backfill it in a later release,
+and add the constraint only after both old and new writers populate it. The
+`0697` -> `0698` -> `0701` sequence followed these three phases; the `0697`
+incident also shows why new readers cannot precede the first migration.
+
+```sql
+-- Release 1: expand.
+ALTER TABLE messages ADD COLUMN event_type text;
+
+-- Release 2: backfill while the column remains nullable.
+UPDATE messages
+SET event_type = 'message'
+WHERE event_type IS NULL;
+
+-- Release 3: contract after every writer supplies the value.
+ALTER TABLE messages ALTER COLUMN event_type SET NOT NULL;
+```
+
+#### Drop a Column as a Two-release Contract
+
+**When to use:** A physical column is no longer needed. In the first release,
+remove it from the ORM schema declaration and from every explicit reader and
+writer. Wait for the preceding API version to drain. Only a later release may
+drop the physical column. Migration `0722` violated this rule because the
+previous Drizzle declaration still changed the generated `RETURNING` shape.
+
+```sql
+-- Release 1 changes code only; the physical column remains.
+
+-- Release 2, after the previous API has drained:
+ALTER TABLE messages DROP COLUMN legacy_role;
+```
+
+#### Rename in Place and Preserve the Old Name with a View
+
+**When to use:** A table or column needs a canonical name while old API
+instances still use the old name. Rename the base object in place and create a
+simple same-name view over it in the same migration. A single-table view with
+direct column references remains auto-updatable; aliases can expose old column
+names. Drop the view in a later release after old code drains. Migrations `0723`
+and `0725` used this pattern.
+
+```sql
+ALTER TABLE old_messages RENAME TO messages;
+
+CREATE VIEW old_messages AS
+SELECT
+  id,
+  event_type AS legacy_type
+FROM messages;
+
+-- A later release, after old code drains:
+DROP VIEW old_messages;
+```
+
+This pattern protects old code after migration. It does not make `messages`
+exist for new code before the rename migration, so migration ordering or a
+separate new-code fallback must protect that direction.
+
+#### Build Temporary Compatibility Objects in the Migration
+
+**When to use:** The outgoing release issues a narrow statement that a normal
+rename view cannot satisfy, or temporarily writes both the legacy and canonical
+shape. Create the smallest trigger or zero-row view that preserves that exact
+statement. Mirror triggers can keep transition columns synchronized; a zero-row
+view plus an `INSTEAD OF` trigger can retain a retired write target without
+persisting the obsolete row. Migrations `0714` and `0719` used temporary no-op
+and mirror triggers.
+
+```sql
+CREATE FUNCTION mirror_legacy_type() RETURNS trigger AS $$
+BEGIN
+  NEW.event_type := COALESCE(NEW.event_type, NEW.legacy_type);
+  NEW.legacy_type := COALESCE(NEW.legacy_type, NEW.event_type);
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER mirror_legacy_type
+BEFORE INSERT OR UPDATE ON messages
+FOR EACH ROW EXECUTE FUNCTION mirror_legacy_type();
+
+CREATE VIEW retired_messages AS
+SELECT id FROM messages WHERE false;
+
+CREATE FUNCTION ignore_retired_message() RETURNS trigger AS $$
+BEGIN
+  RETURN NULL;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER ignore_retired_message
+INSTEAD OF INSERT ON retired_messages
+FOR EACH ROW EXECUTE FUNCTION ignore_retired_message();
+```
+
+These objects are contracts, not generic fallbacks. Verify the exact outgoing
+SQL against them, record the release they protect, and remove the functions,
+triggers, and views after that release drains.
+
 ## Testing Expectations
 
 Tests should cover cross-version behavior when a change touches a deployment
@@ -173,6 +332,10 @@ For persisted state changes:
 - Test reading rows or payloads written by the previous version.
 - Test old backend behavior against the migrated schema when the migration runs
   before code promotion.
+- Populate the pre-migration schema, upgrade it, and exercise the previous API's
+  real statement shapes through every compatibility view or trigger. Include
+  `INSERT ... RETURNING` and `INSERT ... ON CONFLICT` paths, plus ORM-generated
+  column lists; testing only handwritten reads missed the `0722` failure mode.
 - Test that new writes do not break the previous deployed reader during the
   rollout window, or document why the old reader cannot observe the new data.
 
