@@ -48,7 +48,7 @@ import {
   pinChatThread$,
   unpinChatThread$,
   renameChatThread$,
-} from "../../signals/chat-page/chat-message.ts";
+} from "../../signals/chat-page/chat-event.ts";
 import { openRenameChatThreadDialogForThreadId$ } from "../../signals/chat-page/chat-thread-rename.ts";
 import {
   SIDEBAR_PARAM,

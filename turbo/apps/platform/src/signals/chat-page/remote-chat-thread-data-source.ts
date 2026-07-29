@@ -40,7 +40,7 @@ import type {
 import type { OptimisticChatThreadEvent } from "./chat-thread-event-types.ts";
 
 const L = logger("ChatThread");
-export const CHAT_MESSAGES_PAGE_LIMIT = 50;
+export const CHAT_EVENTS_PAGE_LIMIT = 50;
 
 type ChatRealtimeSubscription = {
   readonly topic: string;
@@ -236,7 +236,7 @@ export const listEventsAfter$ = command(
     const result = await listChatEvents(
       get(zeroClient$),
       threadId,
-      { sinceSeqId, limit: CHAT_MESSAGES_PAGE_LIMIT },
+      { sinceSeqId, limit: CHAT_EVENTS_PAGE_LIMIT },
       signal,
     );
     signal.throwIfAborted();

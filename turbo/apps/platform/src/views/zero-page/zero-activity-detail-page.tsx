@@ -46,7 +46,7 @@ import { StatusBadge } from "./components/log-views/status-badge.tsx";
 import {
   zeroActivityDetail$,
   zeroActivityEvents$,
-  zeroActivityVisibleMessages$,
+  zeroActivityVisibleGroups$,
   zeroActivityStepSearch$,
   setZeroActivityStepSearch$,
   formatLogTime,
@@ -54,11 +54,11 @@ import {
   currentRunId$,
 } from "../../signals/activity-page/activity-signals.ts";
 import {
-  groupedMessageKey,
-  groupedMessageMatchesSearch,
-  type GroupedMessage,
+  eventGroupKey,
+  eventGroupMatchesSearch,
+  type EventGroup,
 } from "./components/log-views/log-detail-utils.ts";
-import { GroupedMessageCard } from "./components/log-views/grouped-message-card.tsx";
+import { EventGroupCard } from "./components/log-views/event-group-card.tsx";
 import { StatusDot } from "./components/log-views/status-dot.tsx";
 import { zeroActivityContext$ } from "../../signals/activity-page/activity-context-signals.ts";
 import { zeroActivityRunner$ } from "../../signals/activity-page/activity-runner-signals.ts";
@@ -386,25 +386,25 @@ function ActivityStepsContent({
 }) {
   const stepSearch = useGet(zeroActivityStepSearch$);
   const setStepSearch = useSet(setZeroActivityStepSearch$);
-  const visibleMessagesLoadable = useLastLoadable(zeroActivityVisibleMessages$);
-  const visibleMessagesData =
-    visibleMessagesLoadable.state === "hasData" &&
-    visibleMessagesLoadable.data.runId === detail.id
-      ? visibleMessagesLoadable.data
+  const visibleGroupsLoadable = useLastLoadable(zeroActivityVisibleGroups$);
+  const visibleGroupsData =
+    visibleGroupsLoadable.state === "hasData" &&
+    visibleGroupsLoadable.data.runId === detail.id
+      ? visibleGroupsLoadable.data
       : null;
-  const visibleMessages =
-    visibleMessagesData === null ? [] : visibleMessagesData.messages;
-  const visibleMessagesLoading =
-    visibleMessagesLoadable.state === "loading" ||
-    (visibleMessagesLoadable.state === "hasData" &&
-      visibleMessagesLoadable.data.runId !== detail.id);
+  const visibleGroups =
+    visibleGroupsData === null ? [] : visibleGroupsData.groups;
+  const visibleGroupsLoading =
+    visibleGroupsLoadable.state === "loading" ||
+    (visibleGroupsLoadable.state === "hasData" &&
+      visibleGroupsLoadable.data.runId !== detail.id);
   const { prompt, showSystemPrompt, appendSystemPrompt } = prepareRenderData(
     detail,
     features,
   );
   const searchTerm = stepSearch.trim();
-  const messages = visibleMessages.filter((message) => {
-    return groupedMessageMatchesSearch(message, searchTerm);
+  const groups = visibleGroups.filter((group) => {
+    return eventGroupMatchesSearch(group, searchTerm);
   });
 
   return (
@@ -416,8 +416,8 @@ function ActivityStepsContent({
           </span>
           <span className="text-sm text-muted-foreground whitespace-nowrap">
             {stepSearch.trim()
-              ? `(${messages.length}/${visibleMessages.length} matched)`
-              : `${visibleMessages.length} total`}
+              ? `(${groups.length}/${visibleGroups.length} matched)`
+              : `${visibleGroups.length} total`}
           </span>
         </div>
         <div className="flex items-center gap-2 sm:gap-3">
@@ -438,9 +438,9 @@ function ActivityStepsContent({
       <StepsList
         prompt={prompt}
         appendSystemPrompt={showSystemPrompt ? appendSystemPrompt : ""}
-        messages={messages}
+        groups={groups}
         stepSearch={stepSearch}
-        isLoading={visibleMessagesLoading}
+        isLoading={visibleGroupsLoading}
         startedAt={detail.startedAt}
       />
     </div>
@@ -818,14 +818,14 @@ function ActivitySkeleton() {
 export function StepsList({
   prompt,
   appendSystemPrompt,
-  messages,
+  groups,
   stepSearch,
   isLoading,
   startedAt,
 }: {
   prompt: string;
   appendSystemPrompt: string;
-  messages: GroupedMessage[];
+  groups: EventGroup[];
   stepSearch: string;
   isLoading: boolean;
   startedAt?: string | null;
@@ -833,21 +833,21 @@ export function StepsList({
   const normalizedStepSearch = stepSearch.trim();
   const hasSystemPrompt = appendSystemPrompt.trim().length > 0;
   const hasPrompt = prompt.trim().length > 0;
-  const hasContent = hasSystemPrompt || hasPrompt || messages.length > 0;
+  const hasContent = hasSystemPrompt || hasPrompt || groups.length > 0;
   return (
     <div className="min-w-0">
       {hasSystemPrompt && (
         <PromptCard
           label="System Prompt"
           prompt={appendSystemPrompt}
-          showConnector={hasPrompt || messages.length > 0}
+          showConnector={hasPrompt || groups.length > 0}
         />
       )}
       {hasPrompt && (
         <PromptCard
           label="Prompt"
           prompt={prompt}
-          showConnector={messages.length > 0}
+          showConnector={groups.length > 0}
         />
       )}
       {isLoading ? (
@@ -858,18 +858,18 @@ export function StepsList({
             className="animate-spin text-muted-foreground"
           />
         </div>
-      ) : messages.length === 0 && !hasContent ? (
+      ) : groups.length === 0 && !hasContent ? (
         <div className="py-8 text-center text-muted-foreground">
           No events available
         </div>
       ) : (
-        messages.map((message, index) => {
+        groups.map((group, index) => {
           return (
-            <GroupedMessageCard
-              key={groupedMessageKey(message)}
-              message={message}
+            <EventGroupCard
+              key={eventGroupKey(group)}
+              group={group}
               searchTerm={normalizedStepSearch}
-              showConnector={index < messages.length - 1}
+              showConnector={index < groups.length - 1}
               startedAt={startedAt}
             />
           );

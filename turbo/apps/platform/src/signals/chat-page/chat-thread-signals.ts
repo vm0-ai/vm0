@@ -13,7 +13,7 @@ import type { ChatClipboardPayload } from "../zero-page/clipboard.ts";
 import type { DraftSignals } from "../zero-page/chat-draft.ts";
 import type { WorkflowComposerSignals } from "../zero-page/tiptap-workflow-composer.ts";
 import type { BodyRenderBlock } from "./parse-body-blocks.ts";
-import type { GroupedChatMessageGroup } from "./chat-message.ts";
+import type { ChatEventGroup } from "./chat-event.ts";
 import type { ThreadMeta } from "./chat-thread-event-sourcing.ts";
 import type { HeaderAutomationSignals } from "./header-automation-menu.ts";
 import type { WorkflowQueueSignals } from "./workflow-queue.ts";
@@ -30,11 +30,11 @@ type RecommendedFollowup = NonNullable<
 >[number];
 
 export interface RecommendedFollowupSource {
-  readonly messageId: string;
+  readonly eventId: string;
   readonly followups: readonly RecommendedFollowup[];
 }
 
-export interface QueuedChatMessageItem {
+export interface QueuedChatEventItem {
   readonly id: string;
   readonly text: string;
 }
@@ -49,8 +49,8 @@ export type ThinkingIndicatorMode =
 
 export type ComposerSendButtonStatus = "idle" | "sending";
 
-export interface MessageImageGroupProjection {
-  readonly messages: readonly {
+export interface EventImageGroupProjection {
+  readonly events: readonly {
     readonly attachFiles?: ChatPromptEvent["attachFiles"];
     readonly blocks: readonly BodyRenderBlock[];
   }[];
@@ -118,7 +118,7 @@ export interface ChatThreadSignals {
   containerEl$: Computed<HTMLElement | null>;
   setContainerRef$: Command<(() => void) | undefined, [HTMLElement | null]>;
   setMainContainerRef$: Command<(() => void) | undefined, [HTMLElement | null]>;
-  // True when the message list is scrolled away from the bottom - drives the
+  // True when the event list is scrolled away from the bottom - drives the
   // feature-gated scroll-to-bottom button. Read-only outside scroll signals.
   awayFromBottom$: Computed<boolean>;
   draft: DraftSignals;
@@ -141,8 +141,8 @@ export interface ChatThreadSignals {
   // -- Per-thread UI state --------------------------------------------------
   timelineExpandedIds$: Computed<Set<string>>;
   toggleTimelineExpanded$: Command<void, [string]>;
-  copiedMessageId$: Computed<string | null>;
-  copyMessage$: Command<
+  copiedEventId$: Computed<string | null>;
+  copyEvent$: Command<
     Promise<void>,
     [string, ChatClipboardPayload, AbortSignal]
   >;
@@ -150,34 +150,34 @@ export interface ChatThreadSignals {
   focusInput$: Command<void, []>;
   // -- Draft sync -----------------------------------------------------------
   queueDraftSync$: Command<Promise<void>, [AbortSignal]>;
-  // -- Paged messages (sole rendering path) --------------------------------
+  // -- Paged events (sole rendering path) ----------------------------------
   latestRunFinishCreatedAt$: Computed<Promise<string | undefined>>;
   latestAssistantTextCreatedAt$: Computed<Promise<string | undefined>>;
-  indexedDbMessagesInitialized$: Computed<Promise<void>>;
-  visibleRenderedChatGroups$: Computed<Promise<GroupedChatMessageGroup[]>>;
+  indexedDbEventsInitialized$: Computed<Promise<void>>;
+  visibleRenderedChatGroups$: Computed<Promise<ChatEventGroup[]>>;
   visibleRenderedChatGroupsReady$: Computed<Promise<boolean>>;
   sidebarAutoOpenCandidate$: Computed<
     Promise<ThreadSidebarAutoOpenCandidate | null>
   >;
-  messageImageGroups$: Computed<Promise<MessageImageGroupProjection[]>>;
+  eventImageGroups$: Computed<Promise<EventImageGroupProjection[]>>;
   artifactSignalsForUrl: (url: string) => ArtifactSignals | undefined;
   mailDraftCardSignalsById$: Computed<ReadonlyMap<string, MailDraftSignals>>;
   browserSessionCardSignalsById$: Computed<
     ReadonlyMap<string, BrowserSessionSignals>
   >;
-  hasMessages$: Computed<Promise<boolean>>;
-  hasNewMessages$: Computed<Promise<boolean>>;
-  hasQueuedMessages$: Computed<Promise<boolean>>;
-  queuedMessageItems$: Computed<Promise<readonly QueuedChatMessageItem[]>>;
-  emptyQueuedMessageItems$: Computed<Promise<readonly QueuedChatMessageItem[]>>;
+  hasEvents$: Computed<Promise<boolean>>;
+  hasNewEvents$: Computed<Promise<boolean>>;
+  hasQueuedEvents$: Computed<Promise<boolean>>;
+  queuedEventItems$: Computed<Promise<readonly QueuedChatEventItem[]>>;
+  emptyQueuedEventItems$: Computed<Promise<readonly QueuedChatEventItem[]>>;
   thinkingIndicatorMode$: Computed<Promise<ThinkingIndicatorMode>>;
-  thinkingMessageId$: Computed<Promise<string | null>>;
+  thinkingEventId$: Computed<Promise<string | null>>;
   thinkingText$: Computed<Promise<string | null>>;
   recommendedFollowupSource$: Computed<
     Promise<RecommendedFollowupSource | null>
   >;
   // Approximate history backfill progress in [0, 1]; null when there is no
-  // backfill to show (no messages loaded yet or history fully loaded).
+  // backfill to show (no events loaded yet or history fully loaded).
   historyBackfillProgress$: Computed<Promise<number | null>>;
   activeGoalObjective$: Computed<Promise<string | null>>;
   loadMoreRenderedChatGroups$: Command<Promise<boolean>, [AbortSignal]>;

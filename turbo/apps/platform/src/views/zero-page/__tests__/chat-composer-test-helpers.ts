@@ -469,7 +469,7 @@ export function mockComposerThreadSnapshot(
 export function mockActiveTemplateThread(): void {
   mockChatLifecycle(context, {
     threadId: THREAD_ID,
-    chatMessages: [
+    chatEvents: [
       {
         id: "msg-template-active-user",
         role: "user",

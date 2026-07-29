@@ -103,7 +103,7 @@ function mockActiveRunThread(
   options?: {
     readonly selectedModel?: string;
     readonly codexServiceTier?: "fast";
-    readonly onQueuedMessageAppend?: (body: QueuedMessageCapture) => void;
+    readonly onQueuedEventAppend?: (body: QueuedMessageCapture) => void;
   },
 ): void {
   mockChatLifecycle(context, {
@@ -112,7 +112,7 @@ function mockActiveRunThread(
     ...(options?.codexServiceTier
       ? { codexServiceTier: options.codexServiceTier }
       : {}),
-    chatMessages: [
+    chatEvents: [
       {
         id: `${threadId}-active-user`,
         role: "user",
@@ -129,8 +129,8 @@ function mockActiveRunThread(
       },
     ],
     activeRunIds: ["run-active"],
-    ...(options?.onQueuedMessageAppend
-      ? { onQueuedMessageAppend: options.onQueuedMessageAppend }
+    ...(options?.onQueuedEventAppend
+      ? { onQueuedEventAppend: options.onQueuedEventAppend }
       : {}),
   });
 }
@@ -139,7 +139,7 @@ describe("chat run queue", () => {
   it("labels a queued message from its userMessage projection", async () => {
     mockChatLifecycle(context, {
       threadId: THREAD_ID,
-      chatMessages: [
+      chatEvents: [
         {
           id: `${THREAD_ID}-active-user`,
           role: "user",
@@ -239,7 +239,7 @@ describe("chat run queue", () => {
     const queuedBodies: QueuedMessageCapture[] = [];
     mockChatLifecycle(context, {
       sendGate: sendGate.promise,
-      onQueuedMessageAppend: (body) => {
+      onQueuedEventAppend: (body) => {
         queuedBodies.push(body);
       },
     });
@@ -319,7 +319,7 @@ describe("chat run queue", () => {
     mockChatLifecycle(context, {
       threadId: THREAD_ID,
       selectedModel: "claude-sonnet-4-6",
-      chatMessages: [
+      chatEvents: [
         {
           id: `${THREAD_ID}-active-user`,
           role: "user",
@@ -336,7 +336,7 @@ describe("chat run queue", () => {
         },
       ],
       activeRunIds: ["run-active"],
-      onQueuedMessageAppend: (body) => {
+      onQueuedEventAppend: (body) => {
         queuedBodies.push(body);
       },
     });
@@ -358,7 +358,7 @@ describe("chat run queue", () => {
   it("queues the committed composer text after IME composition ends", async () => {
     const queuedBodies: QueuedMessageCapture[] = [];
     mockActiveRunThread(THREAD_ID, {
-      onQueuedMessageAppend: (body) => {
+      onQueuedEventAppend: (body) => {
         queuedBodies.push(body);
       },
     });
@@ -400,7 +400,7 @@ describe("chat run queue", () => {
     context.mocks.data.orgModelPolicies([]);
     mockActiveRunThread(THREAD_ID, {
       selectedModel: "gpt-5.5",
-      onQueuedMessageAppend: (body) => {
+      onQueuedEventAppend: (body) => {
         queuedBodies.push(body);
       },
     });
@@ -447,7 +447,7 @@ describe("chat run queue", () => {
     mockActiveRunThread(THREAD_ID, {
       selectedModel: "gpt-5.5",
       codexServiceTier: "fast",
-      onQueuedMessageAppend: (body) => {
+      onQueuedEventAppend: (body) => {
         queuedBodies.push(body);
       },
     });
@@ -478,7 +478,7 @@ describe("chat run queue", () => {
 
     mockChatLifecycle(context, {
       threadId,
-      chatMessages: [
+      chatEvents: [
         {
           id: "msg-active-attachment-user",
           role: "user",
@@ -495,7 +495,7 @@ describe("chat run queue", () => {
         },
       ],
       activeRunIds: ["run-active"],
-      onQueuedMessageAppend: (body) => {
+      onQueuedEventAppend: (body) => {
         queuedBody = body;
       },
     });

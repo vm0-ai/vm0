@@ -1,7 +1,7 @@
 import { computed, type Computed } from "ccstate";
 
 import { settle } from "../utils.ts";
-import type { GroupedChatMessageGroup } from "./chat-message.ts";
+import type { ChatEventGroup } from "./chat-event.ts";
 import type { BodyRenderBlock } from "./parse-body-blocks.ts";
 
 export type ThreadSidebarAutoOpenCandidate =
@@ -33,22 +33,22 @@ type ThreadSidebarAutoOpenCandidateSource =
       >["signals"];
     };
 
-function runGroupState(group: GroupedChatMessageGroup): RunGroupState {
+function runGroupState(group: ChatEventGroup): RunGroupState {
   if (group.role !== "assistant") {
     return null;
   }
 
   let hasRun = false;
   let completed = false;
-  for (const message of group.messages) {
-    hasRun ||= message.runId !== undefined;
+  for (const event of group.events) {
+    hasRun ||= event.runId !== undefined;
     if (
-      message.eventType === "run.failed" ||
-      message.eventType === "run.cancelled"
+      event.eventType === "run.failed" ||
+      event.eventType === "run.cancelled"
     ) {
       return null;
     }
-    if (message.eventType === "run.completed") {
+    if (event.eventType === "run.completed") {
       completed = true;
     }
   }
@@ -92,24 +92,24 @@ function autoOpenCandidateFromBlock(
 }
 
 function autoOpenCandidatesInGroup(
-  group: GroupedChatMessageGroup,
+  group: ChatEventGroup,
 ): ThreadSidebarAutoOpenCandidateSource[] {
   const candidates: ThreadSidebarAutoOpenCandidateSource[] = [];
   for (
-    let messageIndex = group.messages.length - 1;
-    messageIndex >= 0;
-    messageIndex--
+    let eventIndex = group.events.length - 1;
+    eventIndex >= 0;
+    eventIndex--
   ) {
-    const message = group.messages[messageIndex];
-    if (!message) {
+    const event = group.events[eventIndex];
+    if (!event) {
       continue;
     }
     for (
-      let blockIndex = message.blocks.length - 1;
+      let blockIndex = event.blocks.length - 1;
       blockIndex >= 0;
       blockIndex--
     ) {
-      const block = message.blocks[blockIndex];
+      const block = event.blocks[blockIndex];
       if (!block) {
         continue;
       }
@@ -123,7 +123,7 @@ function autoOpenCandidatesInGroup(
 }
 
 function orderedThreadSidebarAutoOpenCandidates(
-  groups: readonly GroupedChatMessageGroup[],
+  groups: readonly ChatEventGroup[],
 ): ThreadSidebarAutoOpenCandidateSource[] {
   const running: ThreadSidebarAutoOpenCandidateSource[] = [];
   let latestCompleted: ThreadSidebarAutoOpenCandidateSource[] | undefined;
@@ -160,7 +160,7 @@ function candidateFromSource(
  * one, fall back to the newest openable card in a successfully completed run.
  */
 export function createThreadSidebarAutoOpenCandidate(
-  allRenderedChatGroups$: Computed<Promise<GroupedChatMessageGroup[]>>,
+  allRenderedChatGroups$: Computed<Promise<ChatEventGroup[]>>,
 ): Computed<Promise<ThreadSidebarAutoOpenCandidate | null>> {
   return computed(async (get) => {
     const sources = orderedThreadSidebarAutoOpenCandidates(

@@ -5,10 +5,7 @@ import type { AgentEvent } from "../zero-page/log-types.ts";
 import { parseInspectLog, type InspectLogMeta } from "./inspect-log-parser.ts";
 import { logger } from "../log.ts";
 import { tapError } from "../utils.ts";
-import {
-  groupVisibleMessages,
-  type GroupedMessage,
-} from "./log-detail-utils.ts";
+import { groupVisibleGroups, type EventGroup } from "./log-detail-utils.ts";
 
 const L = logger("InspectLogSignals");
 const MAX_INSPECT_LOG_FILE_SIZE_BYTES = 25 * 1024 * 1024;
@@ -45,12 +42,12 @@ function inspectLogFramework(meta: InspectLogMeta | null): string | null {
   return typeof meta?.framework === "string" ? meta.framework : null;
 }
 
-export const inspectVisibleMessages$ = computed((get) => {
+export const inspectVisibleGroups$ = computed((get) => {
   const data = get(internalInspectLogData$);
   if (!data) {
-    return [] as GroupedMessage[];
+    return [] as EventGroup[];
   }
-  return groupVisibleMessages(data.events, {
+  return groupVisibleGroups(data.events, {
     framework: inspectLogFramework(data.meta),
   });
 });

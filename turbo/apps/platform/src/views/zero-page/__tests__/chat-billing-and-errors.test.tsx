@@ -629,7 +629,7 @@ describe("initial thinking indicator", () => {
     const threadId = "thread-initial-thinking";
     mockChatLifecycle(context, {
       threadId,
-      chatMessages: [
+      chatEvents: [
         {
           id: "msg-thinking-user",
           eventType: "input.prompt" as const,
@@ -667,7 +667,7 @@ describe("initial thinking indicator", () => {
     mockChatLifecycle(context, {
       threadId,
       threadGate: threadGate.promise,
-      chatMessages: [
+      chatEvents: [
         {
           id: "msg-thinking-detail-gated-user",
           eventType: "input.prompt" as const,
@@ -735,7 +735,7 @@ describe("initial thinking indicator", () => {
     );
     mockChatLifecycle(context, {
       threadId,
-      chatMessages: [
+      chatEvents: [
         {
           id: "msg-thinking-rollover-user",
           eventType: "input.prompt" as const,
@@ -813,7 +813,7 @@ describe("initial thinking indicator", () => {
     );
     mockChatLifecycle(context, {
       threadId,
-      chatMessages: [
+      chatEvents: [
         {
           id: "msg-thinking-multiline-user",
           eventType: "input.prompt" as const,
@@ -866,7 +866,7 @@ describe("initial thinking indicator", () => {
     const threadId = "thread-initial-thinking-with-queue";
     mockChatLifecycle(context, {
       threadId,
-      chatMessages: [
+      chatEvents: [
         {
           id: "msg-thinking-queued-user",
           eventType: "input.prompt" as const,
@@ -911,7 +911,7 @@ describe("initial thinking indicator", () => {
     const threadId = "thread-initial-thinking-answer";
     mockChatLifecycle(context, {
       threadId,
-      chatMessages: [
+      chatEvents: [
         {
           id: "msg-thinking-answer-user",
           eventType: "input.prompt" as const,

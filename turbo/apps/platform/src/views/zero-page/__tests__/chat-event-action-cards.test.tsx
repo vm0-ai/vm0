@@ -342,7 +342,7 @@ function mailFollowUpScenario(args: {
   mockChatLifecycle(context, {
     threadId,
     threadTitle: "Mail follow-up",
-    chatMessages: [
+    chatEvents: [
       {
         id: `${mailDraftId}-message`,
         role: "assistant",
@@ -384,7 +384,7 @@ function selectMailText(element: HTMLElement): void {
   element.dispatchEvent(new MouseEvent("mouseup", { bubbles: true }));
 }
 
-describe("chat message action cards", () => {
+describe("chat event action cards", () => {
   it("opens a shared mail draft without reloading and refreshes after sending", async () => {
     const user = userEvent.setup({ delay: null });
     const clipboard = context.mocks.browser.clipboardWriteText();
@@ -402,9 +402,9 @@ describe("chat message action cards", () => {
       nativeRevokeObjectUrl(url);
     });
     const threadId = "c0000000-0000-4000-a000-000000000010";
-    const messageId = "c0000000-0000-4000-a000-000000000011";
-    const secondMessageId = "c0000000-0000-4000-a000-000000000013";
-    const untrustedMessageId = "c0000000-0000-4000-a000-000000000017";
+    const eventId = "c0000000-0000-4000-a000-000000000011";
+    const secondEventId = "c0000000-0000-4000-a000-000000000013";
+    const untrustedEventId = "c0000000-0000-4000-a000-000000000017";
     const mailDraftId = "c0000000-0000-4000-a000-000000000012";
     const runId = "d0000000-0000-4000-a000-000000000020";
     const createdAt = "2026-07-14T10:00:00.000Z";
@@ -571,23 +571,23 @@ describe("chat message action cards", () => {
     mockChatLifecycle(context, {
       threadId,
       threadTitle: "Mail card",
-      chatMessages: [
+      chatEvents: [
         {
-          id: messageId,
+          id: eventId,
           role: "assistant",
           content: mailDraftUrl,
           runId,
           createdAt,
         },
         {
-          id: secondMessageId,
+          id: secondEventId,
           role: "assistant",
           content: `[Review email](/mail/drafts/${mailDraftId})`,
           runId,
           createdAt: "2026-07-14T10:00:01.000Z",
         },
         {
-          id: untrustedMessageId,
+          id: untrustedEventId,
           role: "assistant",
           content: `[Untrusted email](https://evil.test/mail/drafts/${mailDraftId})`,
           runId,
@@ -835,7 +835,7 @@ describe("chat message action cards", () => {
     mockChatLifecycle(context, {
       threadId,
       threadTitle: "Alternate production origin",
-      chatMessages: [
+      chatEvents: [
         {
           id: "msg-user-alternate-production-origin",
           role: "user",
@@ -1098,7 +1098,7 @@ describe("chat message action cards", () => {
     mockChatLifecycle(context, {
       threadId: leftThreadId,
       threadTitle: "Left chat",
-      chatMessages: [],
+      chatEvents: [],
     });
     context.mocks.api(
       chatThreadEventsContract.list,
@@ -1204,7 +1204,7 @@ describe("chat message action cards", () => {
     mockChatLifecycle(context, {
       threadId,
       threadTitle: "Switch mail drafts",
-      chatMessages: [
+      chatEvents: [
         {
           id: "c0000000-0000-4000-a000-000000000026",
           role: "assistant",
@@ -1352,7 +1352,7 @@ describe("chat message action cards", () => {
     mockChatLifecycle(context, {
       threadId,
       threadTitle: "Reconnect connector",
-      chatMessages: [
+      chatEvents: [
         {
           id: "msg-user-reconnect",
           role: "user",
@@ -1472,7 +1472,7 @@ describe("chat message action cards", () => {
     mockChatLifecycle(context, {
       threadId,
       threadTitle: "Direct OAuth connector",
-      chatMessages: [
+      chatEvents: [
         {
           id: "msg-user-direct-oauth",
           role: "user",
@@ -1567,7 +1567,7 @@ describe("chat message action cards", () => {
     mockChatLifecycle(context, {
       threadId,
       threadTitle: "Direct no-auth connector",
-      chatMessages: [
+      chatEvents: [
         {
           id: "msg-user-direct-no-auth",
           role: "user",
@@ -1648,7 +1648,7 @@ describe("chat message action cards", () => {
     mockChatLifecycle(context, {
       threadId,
       threadTitle: "Delete mail card",
-      chatMessages: [
+      chatEvents: [
         {
           id: "c0000000-0000-4000-a000-00000000001a",
           role: "assistant",
@@ -1789,7 +1789,7 @@ describe("chat message action cards", () => {
     mockChatLifecycle(context, {
       threadId,
       threadTitle: "Reconnect Gmail",
-      chatMessages: [
+      chatEvents: [
         {
           id: "c0000000-0000-4000-a000-00000000001d",
           role: "assistant",
@@ -1892,7 +1892,7 @@ describe("chat message action cards", () => {
     mockChatLifecycle(context, {
       threadId,
       threadTitle: "Deleted email card",
-      chatMessages: [
+      chatEvents: [
         {
           id: "c0000000-0000-4000-a000-000000000016",
           role: "assistant",
@@ -1916,7 +1916,7 @@ describe("chat message action cards", () => {
     expect(screen.queryByTestId("mail-draft-sidebar")).toBeNull();
   });
 
-  it("shares connector state across assistant messages and confirms permissions", async () => {
+  it("shares connector state across assistant events and confirms permissions", async () => {
     mockNow();
     const user = userEvent.setup({ delay: null });
     const connectorAuthorizeUrl = `${window.location.origin}/connectors/github/authorize?agentId=${AGENT_ID}`;
@@ -1992,7 +1992,7 @@ describe("chat message action cards", () => {
     mockChatLifecycle(context, {
       threadId: THREAD_ID,
       threadTitle: "Action cards",
-      chatMessages: [
+      chatEvents: [
         {
           id: "msg-user-action-request",
           role: "user",
@@ -2084,7 +2084,7 @@ describe("chat message action cards", () => {
     });
   });
 
-  it("renders and confirms multiple permission cards from one assistant message", async () => {
+  it("renders and confirms multiple permission cards from one assistant event", async () => {
     mockNow();
     const user = userEvent.setup({ delay: null });
     const createPermissionUrl = `https://app.vm0.ai/agents/${AGENT_ID}/permissions?ref=google-sheets&permission=spreadsheets.create&action=allow&expiresIn=1h`;
@@ -2141,7 +2141,7 @@ describe("chat message action cards", () => {
     mockChatLifecycle(context, {
       threadId: `${THREAD_ID}-multiple-permissions`,
       threadTitle: "Multiple permission cards",
-      chatMessages: [
+      chatEvents: [
         {
           id: "msg-user-multiple-permissions",
           role: "user",
@@ -2280,7 +2280,7 @@ describe("chat message action cards", () => {
     mockChatLifecycle(context, {
       threadId,
       threadTitle: "Permission callback",
-      chatMessages: [
+      chatEvents: [
         {
           id: "msg-user-single-permission",
           role: "user",
@@ -2359,7 +2359,7 @@ describe("chat message action cards", () => {
     mockChatLifecycle(context, {
       threadId,
       threadTitle: "Connector callback",
-      chatMessages: [
+      chatEvents: [
         {
           id: "msg-user-single-connector",
           role: "user",
@@ -2407,7 +2407,7 @@ describe("chat message action cards", () => {
     mockChatLifecycle(context, {
       threadId: `${THREAD_ID}-hidden-connector-metadata`,
       threadTitle: "Hidden connector metadata",
-      chatMessages: [
+      chatEvents: [
         {
           id: "msg-user-hidden-connector",
           role: "user",
@@ -2508,7 +2508,7 @@ describe("chat message action cards", () => {
     mockChatLifecycle(context, {
       threadId: `${THREAD_ID}-future-connector`,
       threadTitle: "Future connector",
-      chatMessages: [
+      chatEvents: [
         {
           id: "msg-user-future-connector",
           role: "user",
@@ -2577,7 +2577,7 @@ describe("chat message action cards", () => {
     mockChatLifecycle(context, {
       threadId: `${THREAD_ID}-hidden-permission-metadata`,
       threadTitle: "Hidden permission metadata",
-      chatMessages: [
+      chatEvents: [
         {
           id: "msg-user-hidden-permission",
           role: "user",
@@ -2639,7 +2639,7 @@ describe("chat message action cards", () => {
     mockChatLifecycle(context, {
       threadId: `${THREAD_ID}-already-allowed-permission`,
       threadTitle: "Permission already allowed",
-      chatMessages: [
+      chatEvents: [
         {
           id: "msg-user-already-allowed-permission",
           role: "user",
@@ -2714,7 +2714,7 @@ describe("chat message action cards", () => {
     mockChatLifecycle(context, {
       threadId: `${THREAD_ID}-expired-allowed-permission`,
       threadTitle: "Expired permission allow",
-      chatMessages: [
+      chatEvents: [
         {
           id: "msg-user-expired-allowed-permission",
           role: "user",
@@ -2781,7 +2781,7 @@ describe("chat message action cards", () => {
     mockChatLifecycle(context, {
       threadId: `${THREAD_ID}-already-denied-permission`,
       threadTitle: "Permission already denied",
-      chatMessages: [
+      chatEvents: [
         {
           id: "msg-user-already-denied-permission",
           role: "user",
@@ -2844,7 +2844,7 @@ describe("chat message action cards", () => {
     mockChatLifecycle(context, {
       threadId: `${THREAD_ID}-permission-updated-event`,
       threadTitle: "Permission updated event",
-      chatMessages: [
+      chatEvents: [
         {
           id: "msg-user-permission-updated-event",
           role: "user",
@@ -2922,7 +2922,7 @@ describe("chat message action cards", () => {
     mockChatLifecycle(context, {
       threadId: `${THREAD_ID}-custom-connector`,
       threadTitle: "Custom connector card",
-      chatMessages: [
+      chatEvents: [
         {
           id: "msg-user-custom-connector",
           role: "user",
@@ -2965,7 +2965,7 @@ describe("chat message action cards", () => {
     mockChatLifecycle(context, {
       threadId: `${THREAD_ID}-computer-use-authorization`,
       threadTitle: "Computer Use authorization card",
-      chatMessages: [
+      chatEvents: [
         {
           id: "msg-user-computer-use-authorization",
           role: "user",
@@ -3017,7 +3017,7 @@ describe("chat message action cards", () => {
     mockChatLifecycle(context, {
       threadId: `${THREAD_ID}-plan-upgrade`,
       threadTitle: "Plan upgrade cards",
-      chatMessages: [
+      chatEvents: [
         {
           id: "msg-user-plan-upgrade",
           role: "user",
@@ -3106,7 +3106,7 @@ describe("chat message action cards", () => {
     mockChatLifecycle(context, {
       threadId: `${THREAD_ID}-permission-load-retry`,
       threadTitle: "Permission load retry",
-      chatMessages: [
+      chatEvents: [
         {
           id: "msg-user-permission-load-retry",
           role: "user",
@@ -3186,7 +3186,7 @@ describe("chat message action cards", () => {
     mockChatLifecycle(context, {
       threadId: `${THREAD_ID}-permission-status-loading`,
       threadTitle: "Permission status loading",
-      chatMessages: [
+      chatEvents: [
         {
           id: "msg-user-permission-status-loading",
           role: "user",
@@ -3248,7 +3248,7 @@ describe("chat message action cards", () => {
     mockChatLifecycle(context, {
       threadId: `${THREAD_ID}-permission-load-forbidden`,
       threadTitle: "Permission load forbidden",
-      chatMessages: [
+      chatEvents: [
         {
           id: "msg-user-permission-load-forbidden",
           role: "user",
@@ -3308,7 +3308,7 @@ describe("chat message action cards", () => {
     mockChatLifecycle(context, {
       threadId: `${THREAD_ID}-permission-save-error`,
       threadTitle: "Permission save error",
-      chatMessages: [
+      chatEvents: [
         {
           id: "msg-user-permission-save-error",
           role: "user",
@@ -3402,7 +3402,7 @@ describe("chat message action cards", () => {
     mockChatLifecycle(context, {
       threadId: `${THREAD_ID}-permission-save-reload`,
       threadTitle: "Permission save reload",
-      chatMessages: [
+      chatEvents: [
         {
           id: "msg-user-permission-save-reload",
           role: "user",
@@ -3478,7 +3478,7 @@ describe("chat message action cards", () => {
     mockChatLifecycle(context, {
       threadId: `${THREAD_ID}-duration`,
       threadTitle: "Permission duration",
-      chatMessages: [
+      chatEvents: [
         {
           id: "msg-user-permission-duration-request",
           role: "user",
@@ -3533,7 +3533,7 @@ describe("chat message action cards", () => {
     });
   });
 
-  it("lets users confirm unknown endpoint permissions from assistant messages", async () => {
+  it("lets users confirm unknown endpoint permissions from assistant events", async () => {
     mockNow();
     const user = userEvent.setup({ delay: null });
     const permissionAuthorizeUrl = `https://app.vm0.ai/agents/${AGENT_ID}/permissions?ref=cloudflare&permission=${UNKNOWN_PERMISSION_GRANT}&action=allow&expiresIn=1h`;
@@ -3565,7 +3565,7 @@ describe("chat message action cards", () => {
     mockChatLifecycle(context, {
       threadId: `${THREAD_ID}-unknown-permission`,
       threadTitle: "Unknown permission",
-      chatMessages: [
+      chatEvents: [
         {
           id: "msg-user-unknown-permission-request",
           role: "user",
@@ -3619,7 +3619,7 @@ describe("chat message action cards", () => {
     });
   });
 
-  it("lets users deny a permission request from an assistant message", async () => {
+  it("lets users deny a permission request from an assistant event", async () => {
     const user = userEvent.setup({ delay: null });
     const permissionDenyUrl = `https://app.vm0.ai/agents/${AGENT_ID}/permissions?ref=slack&permission=admin.analytics%3Aread&action=deny`;
     let grants: UserPermissionGrantResponse[] = [
@@ -3661,7 +3661,7 @@ describe("chat message action cards", () => {
     mockChatLifecycle(context, {
       threadId: `${THREAD_ID}-deny`,
       threadTitle: "Permission action",
-      chatMessages: [
+      chatEvents: [
         {
           id: "msg-user-permission-block-request",
           role: "user",
@@ -3742,7 +3742,7 @@ describe("chat message action cards", () => {
     mockChatLifecycle(context, {
       threadId,
       threadTitle: "Managed browser card",
-      chatMessages: [
+      chatEvents: [
         {
           id: "c0000000-0000-4000-a000-000000000082",
           role: "assistant",
