@@ -252,8 +252,8 @@ impl CandidateState {
 /// [`CodexHistorySelection::Ineligible`].
 ///
 /// `Ineligible` is an expected eligibility or compatibility outcome that lets
-/// the caller use its ordinary checkpoint path. The selector only returns the
-/// candidate bytes: staging, checkpoint commit, and live-file reconciliation
+/// the caller use its ordinary checkpoint path. The selector only chooses an
+/// in-memory candidate: staging, checkpoint commit, and live-file reconciliation
 /// remain the caller's responsibility.
 ///
 /// # Errors
