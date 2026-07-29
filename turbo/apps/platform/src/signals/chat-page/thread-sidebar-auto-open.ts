@@ -27,10 +27,6 @@ type ThreadSidebarAutoOpenCandidateSource =
   | {
       readonly type: "browser";
       readonly resourceKey: string;
-      readonly signals: Extract<
-        BodyRenderBlock,
-        { type: "browser-session" }
-      >["signals"];
     };
 
 function runGroupState(group: ChatEventGroup): RunGroupState {
@@ -77,7 +73,6 @@ function autoOpenCandidateFromBlock(
       return {
         type: "browser",
         resourceKey: block.signals.browserId,
-        signals: block.signals,
       };
     }
     case "markdown":
@@ -167,7 +162,7 @@ export function createThreadSidebarAutoOpenCandidate(
       await get(allRenderedChatGroups$),
     );
     for (const source of sources) {
-      if (source.type === "artifact") {
+      if (source.type === "artifact" || source.type === "browser") {
         return candidateFromSource(source);
       }
       if (source.type === "email-draft") {
@@ -181,10 +176,6 @@ export function createThreadSidebarAutoOpenCandidate(
           return candidateFromSource(source);
         }
         continue;
-      }
-      const session = await settle(get(source.signals.session$));
-      if (session.ok && session.value !== null) {
-        return candidateFromSource(source);
       }
     }
     return null;

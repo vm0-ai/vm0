@@ -6,7 +6,10 @@ import {
   zeroBrowserContract,
   type ZeroBrowserCreateRequest,
 } from "@vm0/api-contracts/contracts/zero-browser";
-import { chatThreadsContract } from "@vm0/api-contracts/contracts/chat-threads";
+import {
+  chatThreadComputerUseHostContract,
+  chatThreadsContract,
+} from "@vm0/api-contracts/contracts/chat-threads";
 import { zeroUsageRunsContract } from "@vm0/api-contracts/contracts/zero-usage-daily";
 import { HttpResponse, http } from "msw";
 import { afterEach, describe, expect, it } from "vitest";
@@ -52,6 +55,10 @@ function authorizationClient() {
 
 function chatThreadsClient() {
   return setupApp({ context })(chatThreadsContract);
+}
+
+function chatThreadComputerUseHostClient() {
+  return setupApp({ context })(chatThreadComputerUseHostContract);
 }
 
 function cronClient() {
@@ -937,7 +944,7 @@ describe("zero browser route", () => {
     expect(providerStops).toBe(4);
   }, 120_000);
 
-  it("keeps the browser live across runs and bills the last run when the idle lease expires", async () => {
+  it("keeps the browser across runs and lets its viewer resume after agent access is disabled", async () => {
     const { routeMocks, runs, chat, webhooks, actor, runnerGroup, agent } =
       await setupBrowserScenario();
     const first = await createClaimedChatRun(
@@ -1108,6 +1115,30 @@ describe("zero browser route", () => {
     await flushWaitUntilForTest();
 
     routeMocks.clerk.session(actor.userId, actor.orgId, actor.orgRole);
+    await accept(
+      chatThreadComputerUseHostClient().update({
+        headers: { authorization: "Bearer clerk-session" },
+        params: { id: first.threadId },
+        body: {
+          computerUseHostId: null,
+          cloudBrowserEnabled: false,
+        },
+      }),
+      [204],
+    );
+
+    const agentRead = await accept(
+      client().get({
+        headers: followupClaim.browserHeaders,
+        params: { browserId },
+        query: { chatThreadId: first.threadId },
+      }),
+      [403],
+    );
+    expect(agentRead.body.error).toMatchObject({
+      code: "BROWSER_AUTHORIZATION_REQUIRED",
+    });
+
     const suspended = await accept(
       client().get({
         headers: { authorization: "Bearer clerk-session" },
