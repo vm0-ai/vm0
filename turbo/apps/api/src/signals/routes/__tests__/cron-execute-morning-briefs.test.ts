@@ -34,6 +34,7 @@ import {
 import { createChatCallbacksApi } from "./helpers/api-bdd-chat-callbacks";
 import { createRunsApi } from "./helpers/api-bdd-runs";
 import { createWebhookCallbackApi } from "./helpers/api-bdd-webhooks";
+import { chatEventDisplayText } from "./helpers/chat-event";
 import { mockGoogleCalendarConnectorOAuth } from "./helpers/api-bdd-workflows";
 import { updateFeatureSwitchesForUser } from "./helpers/zero-feature-switches";
 import { createZeroRouteMocks } from "./helpers/zero-route-test";
@@ -367,13 +368,17 @@ async function findMorningBriefThreadOrNull(scenario: Scenario): Promise<{
   const runMessage = messages.body.events.find((message) => {
     return message.eventType === "input.prompt" && message.runId !== undefined;
   });
-  if (!runMessage?.runId || runMessage.content === null) {
+  if (!runMessage?.runId) {
     throw new Error("Expected the Morning Brief run message");
+  }
+  const chatMessage = chatEventDisplayText(runMessage);
+  if (chatMessage === null) {
+    throw new Error("Expected the Morning Brief run message display text");
   }
   return {
     threadId: thread.chatThreadId,
     runId: runMessage.runId,
-    chatMessage: runMessage.content,
+    chatMessage,
   };
 }
 
