@@ -8,6 +8,9 @@ import type { Editor } from "@tiptap/core";
 import type { Node as ProseMirrorNode } from "@tiptap/pm/model";
 import { Popover, PopoverAnchor, type KeyboardEventLike } from "@vm0/ui";
 import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
+import { useTranslation } from "react-i18next";
+
+import { i18n } from "../../i18n/index.ts";
 import type { ComposerChatThreadSuggestion } from "../../signals/zero-page/chat-thread-suggestion-domain.ts";
 import { featureSwitch$ } from "../../signals/external/feature-switch.ts";
 import type { WorkflowComposerSignals } from "../../signals/zero-page/tiptap-workflow-composer.ts";
@@ -128,8 +131,12 @@ function ComposerSuggestionCaretAnchor({
 
 function workflowComposerPlaceholder(sending: boolean | undefined): string {
   return sending
-    ? "Type your next message…"
-    : "Ask me to automate workflows, manage tasks...";
+    ? i18n.t(($) => {
+        return $.workflows.composer.nextMessage;
+      })
+    : i18n.t(($) => {
+        return $.workflows.composer.placeholder;
+      });
 }
 
 function WorkflowComposerPlaceholder({
@@ -139,6 +146,7 @@ function WorkflowComposerPlaceholder({
   composer: WorkflowComposerSignals;
   sending: boolean | undefined;
 }) {
+  useTranslation();
   const hasInput = useGet(composer.hasInput$);
   const hasTemplateAttachment = useGet(composer.hasTemplateAttachment$);
   if (hasInput) {

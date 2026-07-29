@@ -1,0 +1,708 @@
+import { agentRunCallbacks } from "@vm0/db/schema/agent-run-callback";
+import { agentRuns } from "@vm0/db/schema/agent-run";
+import { chatMessages } from "@vm0/db/schema/chat-message";
+import { chatThreads } from "@vm0/db/schema/chat-thread";
+import { telegramChatThreadRoutes } from "@vm0/db/schema/telegram-chat-thread-route";
+import { telegramInstallations } from "@vm0/db/schema/telegram-installation";
+import { telegramOfficialUserLinks } from "@vm0/db/schema/telegram-official-user-link";
+import { telegramUserLinks } from "@vm0/db/schema/telegram-user-link";
+import { zeroRuns } from "@vm0/db/schema/zero-run";
+import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
+import { isFeatureEnabled } from "@vm0/core/feature-switch";
+import { and, eq, isNotNull } from "drizzle-orm";
+import { delay } from "signal-timers";
+
+import { env } from "../../lib/env";
+import { logger } from "../../lib/log";
+import { buildTelegramResponse, splitMessage } from "../../lib/telegram-format";
+import type { Db } from "../external/db";
+import { recordSandboxOperation } from "../external/sandbox-op-log";
+import {
+  deleteMessage,
+  sendChatAction,
+  sendMessage,
+  type SendTelegramMessageResult,
+} from "../external/telegram-client";
+import {
+  getOfficialTelegramBotConfig,
+  isOfficialTelegramBotId,
+} from "../external/telegram-official";
+import { now, nowDate } from "../external/time";
+import { bestEffort, settleIncludingAbort } from "../utils";
+import { decryptPersistentSecretValue } from "./crypto.utils";
+import { loadUserFeatureSwitchContext } from "./feature-switches.service";
+import {
+  telegramChatCallbackPayloadSchema,
+  type TelegramDeliveryTarget,
+} from "./telegram-chat-callback-payload";
+import {
+  persistTelegramReplyChainRoute,
+  type TelegramOwnerLink,
+} from "./telegram-chat-ingress.service";
+import { chatEventTypeIn } from "./zero-chat-event-type.service";
+import {
+  saveCanonicalTelegramThreadSession,
+  storeTelegramBotMessage,
+} from "./zero-telegram-callback-persistence.service";
+import { resolveTelegramAgentReplyFooterText } from "./zero-telegram-footer.service";
+
+const L = logger("InternalCallbacksTelegramChat");
+const TELEGRAM_COMPLETION_CHUNK_THROTTLE_MS = 1100;
+
+interface ClaimedTelegramChatDelivery {
+  readonly runId: string;
+  readonly payload: unknown;
+}
+
+interface TelegramChatRunContext {
+  readonly userId: string;
+  readonly orgId: string;
+  readonly sessionId: string;
+  readonly chatThreadId: string;
+  readonly agentId: string;
+}
+
+interface TelegramOwnerBinding {
+  readonly botToken: string;
+  readonly ownerLink: TelegramOwnerLink;
+}
+
+async function markDelivered(db: Db, callbackId: string): Promise<void> {
+  await db
+    .update(agentRunCallbacks)
+    .set({ status: "delivered", deliveredAt: nowDate() })
+    .where(eq(agentRunCallbacks.id, callbackId));
+}
+
+async function markFailed(
+  db: Db,
+  callbackId: string,
+  error: string,
+): Promise<void> {
+  await db
+    .update(agentRunCallbacks)
+    .set({ status: "failed", lastError: error.slice(0, 4000) })
+    .where(eq(agentRunCallbacks.id, callbackId));
+}
+
+function recordDelivery(args: {
+  readonly runId: string;
+  readonly startedAt: number;
+  readonly success: boolean;
+  readonly outcome: "delivered" | "failed" | "skipped_revoked";
+}): void {
+  recordSandboxOperation({
+    sandboxType: "chat",
+    actionType: "telegram_chat_delivery",
+    durationMs: Math.max(0, now() - args.startedAt),
+    success: args.success,
+    runId: args.runId,
+    dimensions: { outcome: args.outcome },
+  });
+}
+
+async function claimTelegramChatDelivery(
+  db: Db,
+  callbackId: string,
+): Promise<ClaimedTelegramChatDelivery | undefined> {
+  const [callback] = await db
+    .update(agentRunCallbacks)
+    .set({ attempts: 1, lastAttemptAt: nowDate() })
+    .where(
+      and(
+        eq(agentRunCallbacks.id, callbackId),
+        eq(agentRunCallbacks.internalKind, "telegram:chat"),
+        eq(agentRunCallbacks.status, "pending"),
+        eq(agentRunCallbacks.attempts, 0),
+      ),
+    )
+    .returning({
+      runId: agentRunCallbacks.runId,
+      payload: agentRunCallbacks.payload,
+    });
+  return callback;
+}
+
+function telegramOwnerWhere(ownerLink: TelegramOwnerLink) {
+  return ownerLink.kind === "custom"
+    ? eq(telegramChatThreadRoutes.telegramUserLinkId, ownerLink.id)
+    : eq(telegramChatThreadRoutes.telegramOfficialUserLinkId, ownerLink.id);
+}
+
+async function loadTelegramOwnerBinding(args: {
+  readonly db: Db;
+  readonly target: TelegramDeliveryTarget;
+  readonly userId: string;
+  readonly orgId: string;
+  readonly signal: AbortSignal;
+}): Promise<TelegramOwnerBinding | undefined> {
+  if (args.target.userLinkKind === "official") {
+    if (!isOfficialTelegramBotId(args.target.installationId)) {
+      return undefined;
+    }
+    const [link] = await args.db
+      .select({ id: telegramOfficialUserLinks.id })
+      .from(telegramOfficialUserLinks)
+      .where(
+        and(
+          eq(telegramOfficialUserLinks.id, args.target.userLinkId),
+          eq(telegramOfficialUserLinks.vm0UserId, args.userId),
+          eq(telegramOfficialUserLinks.orgId, args.orgId),
+        ),
+      )
+      .limit(1);
+    args.signal.throwIfAborted();
+    const botToken = getOfficialTelegramBotConfig().botToken;
+    return link && botToken
+      ? {
+          botToken,
+          ownerLink: { kind: "official", id: link.id },
+        }
+      : undefined;
+  }
+
+  if (isOfficialTelegramBotId(args.target.installationId)) {
+    return undefined;
+  }
+  const [binding] = await args.db
+    .select({
+      id: telegramUserLinks.id,
+      encryptedBotToken: telegramInstallations.encryptedBotToken,
+      ownerUserId: telegramInstallations.ownerUserId,
+    })
+    .from(telegramUserLinks)
+    .innerJoin(
+      telegramInstallations,
+      eq(telegramInstallations.telegramBotId, telegramUserLinks.installationId),
+    )
+    .where(
+      and(
+        eq(telegramUserLinks.id, args.target.userLinkId),
+        eq(telegramUserLinks.vm0UserId, args.userId),
+        eq(telegramUserLinks.installationId, args.target.installationId),
+        eq(telegramInstallations.orgId, args.orgId),
+      ),
+    )
+    .limit(1);
+  args.signal.throwIfAborted();
+  if (!binding) {
+    return undefined;
+  }
+  return {
+    botToken: await decryptPersistentSecretValue(
+      binding.encryptedBotToken,
+      await loadUserFeatureSwitchContext(
+        args.db,
+        args.orgId,
+        binding.ownerUserId,
+      ),
+    ),
+    ownerLink: { kind: "custom", id: binding.id },
+  };
+}
+
+async function routeStillBindsRun(args: {
+  readonly db: Db;
+  readonly target: TelegramDeliveryTarget;
+  readonly ownerLink: TelegramOwnerLink;
+  readonly chatThreadId: string;
+}): Promise<boolean> {
+  if (args.target.rootMessageId === null) {
+    return true;
+  }
+  const [route] = await args.db
+    .select({ id: telegramChatThreadRoutes.id })
+    .from(telegramChatThreadRoutes)
+    .where(
+      and(
+        telegramOwnerWhere(args.ownerLink),
+        eq(telegramChatThreadRoutes.chatId, args.target.chatId),
+        eq(telegramChatThreadRoutes.rootMessageId, args.target.rootMessageId),
+        eq(telegramChatThreadRoutes.chatThreadId, args.chatThreadId),
+      ),
+    )
+    .limit(1);
+  return route !== undefined;
+}
+
+async function loadTelegramChatDeliveryContext(args: {
+  readonly db: Db;
+  readonly callback: ClaimedTelegramChatDelivery;
+  readonly signal: AbortSignal;
+}) {
+  const payload = telegramChatCallbackPayloadSchema.parse(
+    args.callback.payload,
+  );
+  const [run] = await args.db
+    .select({
+      userId: agentRuns.userId,
+      orgId: agentRuns.orgId,
+      sessionId: agentRuns.sessionId,
+      chatThreadId: zeroRuns.chatThreadId,
+      agentId: chatThreads.agentComposeId,
+    })
+    .from(agentRuns)
+    .innerJoin(zeroRuns, eq(zeroRuns.id, agentRuns.id))
+    .innerJoin(chatThreads, eq(chatThreads.id, zeroRuns.chatThreadId))
+    .where(
+      and(
+        eq(agentRuns.id, args.callback.runId),
+        eq(zeroRuns.triggerSource, "telegram"),
+      ),
+    )
+    .limit(1);
+  args.signal.throwIfAborted();
+  if (!run?.chatThreadId) {
+    throw new Error("Telegram chat delivery run context is unavailable");
+  }
+  const runContext: TelegramChatRunContext = {
+    userId: run.userId,
+    orgId: run.orgId,
+    sessionId: run.sessionId,
+    chatThreadId: run.chatThreadId,
+    agentId: run.agentId,
+  };
+
+  const [message] = await args.db
+    .select({ content: chatMessages.content })
+    .from(chatMessages)
+    .where(
+      and(
+        eq(chatMessages.id, payload.chatMessageId),
+        eq(chatMessages.runId, args.callback.runId),
+        eq(chatMessages.chatThreadId, run.chatThreadId),
+        chatEventTypeIn([
+          "output.message",
+          "output.error",
+          "run.failed",
+          "run.cancelled",
+        ]),
+        isNotNull(chatMessages.content),
+      ),
+    )
+    .limit(1);
+  args.signal.throwIfAborted();
+  if (!message?.content) {
+    throw new Error("Telegram chat delivery message is unavailable");
+  }
+
+  const binding = await loadTelegramOwnerBinding({
+    db: args.db,
+    target: payload,
+    userId: runContext.userId,
+    orgId: runContext.orgId,
+    signal: args.signal,
+  });
+  args.signal.throwIfAborted();
+  if (
+    binding &&
+    !(await routeStillBindsRun({
+      db: args.db,
+      target: payload,
+      ownerLink: binding.ownerLink,
+      chatThreadId: runContext.chatThreadId,
+    }))
+  ) {
+    return { payload, run: runContext, messageContent: message.content };
+  }
+  return {
+    payload,
+    run: runContext,
+    messageContent: message.content,
+    binding,
+  };
+}
+
+async function waitForTelegramSendDelay(
+  delayMs: number,
+  signal: AbortSignal,
+): Promise<void> {
+  signal.throwIfAborted();
+  if (delayMs > 0) {
+    await delay(delayMs, { signal });
+  }
+  signal.throwIfAborted();
+}
+
+function telegramSendRetryDelayMs(attempt: number): number | undefined {
+  switch (attempt) {
+    case 0:
+    case 1: {
+      return 1000;
+    }
+    case 2: {
+      return 2000;
+    }
+    case 3: {
+      return 3000;
+    }
+    case 4: {
+      return 5000;
+    }
+    default: {
+      return undefined;
+    }
+  }
+}
+
+async function sendMessageWithTelegramRateLimitRetry(args: {
+  readonly botToken: string;
+  readonly chatId: string;
+  readonly text: string;
+  readonly replyToMessageId: number | undefined;
+  readonly messageThreadId: number | undefined;
+  readonly signal: AbortSignal;
+}): Promise<SendTelegramMessageResult> {
+  for (let attempt = 0; ; attempt++) {
+    const result = await sendMessage(args.botToken, args.chatId, args.text, {
+      ...(args.replyToMessageId !== undefined
+        ? { replyToMessageId: args.replyToMessageId }
+        : {}),
+      ...(args.messageThreadId !== undefined
+        ? { messageThreadId: args.messageThreadId }
+        : {}),
+    });
+    args.signal.throwIfAborted();
+    if (result.kind !== "telegram-error" || result.status !== 429) {
+      return result;
+    }
+    const retryDelayMs = telegramSendRetryDelayMs(attempt);
+    if (retryDelayMs === undefined) {
+      return result;
+    }
+    L.warn("Canonical Telegram sendMessage rate limited; retrying", {
+      attempt: attempt + 1,
+      retryDelayMs,
+    });
+    await waitForTelegramSendDelay(retryDelayMs, args.signal);
+  }
+}
+
+async function sendTelegramCompletionMessages(args: {
+  readonly botToken: string;
+  readonly target: TelegramDeliveryTarget;
+  readonly htmlOutput: string;
+  readonly signal: AbortSignal;
+}): Promise<
+  | { readonly kind: "ok"; readonly firstMessageId: number | undefined }
+  | Extract<SendTelegramMessageResult, { kind: "telegram-error" }>
+> {
+  let firstMessageId: number | undefined;
+  const chunks = splitMessage(args.htmlOutput);
+  for (const [index, chunk] of chunks.entries()) {
+    if (index > 0) {
+      await waitForTelegramSendDelay(
+        TELEGRAM_COMPLETION_CHUNK_THROTTLE_MS,
+        args.signal,
+      );
+    }
+    const sent = await sendMessageWithTelegramRateLimitRetry({
+      botToken: args.botToken,
+      chatId: args.target.chatId,
+      text: chunk,
+      replyToMessageId: args.target.isDM
+        ? undefined
+        : Number(args.target.messageId),
+      messageThreadId: args.target.messageThreadId,
+      signal: args.signal,
+    });
+    if (sent.kind === "telegram-error") {
+      return sent;
+    }
+    firstMessageId ??= sent.messageId;
+  }
+  return { kind: "ok", firstMessageId };
+}
+
+async function resolveTelegramPresentation(args: {
+  readonly db: Db;
+  readonly run: TelegramChatRunContext;
+  readonly runId: string;
+  readonly installationId: string;
+  readonly signal: AbortSignal;
+}): Promise<{
+  readonly logsUrl: string | undefined;
+  readonly footerText: string | undefined;
+}> {
+  const [featureContext, footerText] = await Promise.all([
+    loadUserFeatureSwitchContext(args.db, args.run.orgId, args.run.userId),
+    resolveTelegramAgentReplyFooterText({
+      db: args.db,
+      orgId: args.run.orgId,
+      runId: args.runId,
+      installationId: args.installationId,
+      agentId: args.run.agentId,
+    }),
+  ]);
+  args.signal.throwIfAborted();
+  return {
+    logsUrl: isFeatureEnabled(FeatureSwitchKey.ZeroDebug, featureContext)
+      ? `${env("APP_URL")}/activities/${encodeURIComponent(args.runId)}`
+      : undefined,
+    footerText,
+  };
+}
+
+async function deleteThinkingMessageIfPresent(args: {
+  readonly botToken: string;
+  readonly target: TelegramDeliveryTarget;
+}): Promise<void> {
+  if (!args.target.thinkingMessageId) {
+    return;
+  }
+  await bestEffort(
+    deleteMessage(
+      args.botToken,
+      args.target.chatId,
+      Number(args.target.thinkingMessageId),
+    ),
+  );
+}
+
+async function persistTelegramChatDelivery(args: {
+  readonly db: Db;
+  readonly run: TelegramChatRunContext;
+  readonly target: TelegramDeliveryTarget;
+  readonly ownerLink: TelegramOwnerLink;
+  readonly botReplyMessageId: number;
+  readonly responseText: string | undefined;
+  readonly status: "completed" | "failed";
+}): Promise<void> {
+  await storeTelegramBotMessage({
+    db: args.db,
+    scope:
+      args.target.userLinkKind === "official"
+        ? {
+            kind: "official",
+            orgId: args.run.orgId,
+            userLinkId: args.target.userLinkId,
+          }
+        : {
+            kind: "custom",
+            installationId: args.target.installationId,
+          },
+    chatId: args.target.chatId,
+    messageId: args.botReplyMessageId,
+    text: args.responseText,
+  });
+  await persistTelegramReplyChainRoute({
+    db: args.db,
+    ownerLink: args.ownerLink,
+    chatId: args.target.chatId,
+    previousRootMessageId: args.target.rootMessageId,
+    botReplyMessageId: String(args.botReplyMessageId),
+    chatThreadId: args.run.chatThreadId,
+    runStatus: args.status,
+    currentTime: nowDate(),
+  });
+  await saveCanonicalTelegramThreadSession({
+    db: args.db,
+    userLinkId: args.target.userLinkId,
+    userLinkKind: args.target.userLinkKind,
+    chatId: args.target.chatId,
+    previousRootMessageId: args.target.rootMessageId,
+    botReplyMessageId: String(args.botReplyMessageId),
+    agentSessionId: args.run.sessionId,
+    messageId: args.target.messageId,
+    runStatus: args.status,
+    isDM: args.target.isDM,
+  });
+}
+
+async function deliverClaimedTelegramChatCallback(args: {
+  readonly db: Db;
+  readonly callback: ClaimedTelegramChatDelivery;
+  readonly status: "completed" | "failed";
+  readonly signal: AbortSignal;
+}): Promise<"delivered" | "skipped_revoked"> {
+  const { payload, run, messageContent, binding } =
+    await loadTelegramChatDeliveryContext(args);
+  if (!binding) {
+    return "skipped_revoked";
+  }
+
+  await deleteThinkingMessageIfPresent({
+    botToken: binding.botToken,
+    target: payload,
+  });
+  args.signal.throwIfAborted();
+  await bestEffort(
+    sendChatAction(binding.botToken, payload.chatId, "typing"),
+    args.signal,
+  );
+  const presentation = await resolveTelegramPresentation({
+    db: args.db,
+    run,
+    runId: args.callback.runId,
+    installationId: payload.installationId,
+    signal: args.signal,
+  });
+  const responseText = args.status === "completed" ? messageContent : undefined;
+  const sent = await sendTelegramCompletionMessages({
+    botToken: binding.botToken,
+    target: payload,
+    htmlOutput: buildTelegramResponse(
+      messageContent,
+      presentation.logsUrl,
+      presentation.footerText,
+    ),
+    signal: args.signal,
+  });
+  if (sent.kind === "telegram-error") {
+    throw new Error(
+      `Telegram API error: ${sent.description ?? `HTTP ${sent.status}`}`,
+    );
+  }
+  if (sent.firstMessageId !== undefined) {
+    await persistTelegramChatDelivery({
+      db: args.db,
+      run,
+      target: payload,
+      ownerLink: binding.ownerLink,
+      botReplyMessageId: sent.firstMessageId,
+      responseText,
+      status: args.status,
+    });
+  }
+  return "delivered";
+}
+
+export async function dispatchTelegramChatDeliveryOnce(
+  db: Db,
+  callbackId: string,
+  status: "completed" | "failed",
+  signal: AbortSignal,
+): Promise<void> {
+  const startedAt = now();
+  signal.throwIfAborted();
+  const callback = await claimTelegramChatDelivery(db, callbackId);
+  if (!callback) {
+    return;
+  }
+  const delivery = await settleIncludingAbort(
+    deliverClaimedTelegramChatCallback({
+      db,
+      callback,
+      status,
+      signal,
+    }),
+  );
+  if (!delivery.ok) {
+    const message =
+      delivery.error instanceof Error
+        ? delivery.error.message
+        : "Unknown error";
+    await markFailed(db, callbackId, message);
+    recordDelivery({
+      runId: callback.runId,
+      startedAt,
+      success: false,
+      outcome: "failed",
+    });
+    L.warn("Canonical Telegram delivery failed", {
+      callbackId,
+      runId: callback.runId,
+      error: delivery.error,
+    });
+    return;
+  }
+  await markDelivered(db, callbackId);
+  recordDelivery({
+    runId: callback.runId,
+    startedAt,
+    success: true,
+    outcome: delivery.value,
+  });
+}
+
+interface TelegramChatAdmissionFailureArgs {
+  readonly db: Db;
+  readonly chatThreadId: string;
+  readonly userId: string;
+  readonly orgId: string;
+  readonly target: TelegramDeliveryTarget;
+  readonly chatMessageId: string;
+  readonly signal: AbortSignal;
+}
+
+export async function deliverTelegramChatAdmissionFailure(
+  args: TelegramChatAdmissionFailureArgs,
+): Promise<void> {
+  const [message] = await args.db
+    .select({ content: chatMessages.content })
+    .from(chatMessages)
+    .where(
+      and(
+        eq(chatMessages.id, args.chatMessageId),
+        eq(chatMessages.chatThreadId, args.chatThreadId),
+        chatEventTypeIn(["output.error"]),
+        isNotNull(chatMessages.content),
+      ),
+    )
+    .limit(1);
+  args.signal.throwIfAborted();
+  if (!message?.content) {
+    return;
+  }
+  const binding = await loadTelegramOwnerBinding({
+    db: args.db,
+    target: args.target,
+    userId: args.userId,
+    orgId: args.orgId,
+    signal: args.signal,
+  });
+  if (!binding) {
+    return;
+  }
+  if (
+    !(await routeStillBindsRun({
+      db: args.db,
+      target: args.target,
+      ownerLink: binding.ownerLink,
+      chatThreadId: args.chatThreadId,
+    }))
+  ) {
+    return;
+  }
+  const sent = await sendTelegramCompletionMessages({
+    botToken: binding.botToken,
+    target: args.target,
+    htmlOutput: buildTelegramResponse(message.content),
+    signal: args.signal,
+  });
+  if (sent.kind === "telegram-error") {
+    throw new Error(
+      `Telegram API error: ${sent.description ?? `HTTP ${sent.status}`}`,
+    );
+  }
+  if (sent.firstMessageId === undefined) {
+    return;
+  }
+  await storeTelegramBotMessage({
+    db: args.db,
+    scope:
+      args.target.userLinkKind === "official"
+        ? {
+            kind: "official",
+            orgId: args.orgId,
+            userLinkId: args.target.userLinkId,
+          }
+        : {
+            kind: "custom",
+            installationId: args.target.installationId,
+          },
+    chatId: args.target.chatId,
+    messageId: sent.firstMessageId,
+    text: undefined,
+  });
+  await persistTelegramReplyChainRoute({
+    db: args.db,
+    ownerLink: binding.ownerLink,
+    chatId: args.target.chatId,
+    previousRootMessageId: args.target.rootMessageId,
+    botReplyMessageId: String(sent.firstMessageId),
+    chatThreadId: args.chatThreadId,
+    runStatus: "failed",
+    currentTime: nowDate(),
+  });
+}

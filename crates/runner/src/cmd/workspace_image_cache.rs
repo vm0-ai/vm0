@@ -17,9 +17,19 @@ pub struct WorkspaceImageCacheArgs {
 
 #[derive(Subcommand)]
 enum WorkspaceImageCacheCommand {
-    /// Show workspace image cache summary information
+    /// Show a non-blocking, best-effort workspace image cache summary
+    ///
+    /// Locked entries skip metadata, image-size, temporary-path, storage, and
+    /// artifact inspection. When any entries are locked, status-category,
+    /// temporary-path, and size values are lower bounds.
     Info(WorkspaceImageCacheInfoArgs),
-    /// List workspace image cache entries
+    /// List entries from a non-blocking, best-effort cache snapshot
+    ///
+    /// Locked entries skip metadata, image-size, temporary-path, storage, and
+    /// artifact inspection. In JSON, zero measurements and null metadata fields
+    /// on locked entries mean unavailable rather than measured zero.
+    /// Status-category, temporary-path, and size summary values are lower bounds
+    /// when `lockedEntries` is greater than zero.
     List(WorkspaceImageCacheListArgs),
     /// Clean up session workspace image cache entries
     Gc(WorkspaceImageCacheGcArgs),
@@ -168,9 +178,15 @@ fn format_info_text(inspection: &WorkspaceImageCacheInspection) -> String {
     let summary = &inspection.summary;
     let fs = inspection.fs_stats;
     let budget = inspection.budget;
+    let lower_bound_note = if summary.locked_entries > 0 {
+        "  Lower bounds: status-category counts, temporary-path counts/bytes, and allocated/logical size totals exclude locked entry contents.\n"
+    } else {
+        ""
+    };
     format!(
         "\
 Workspace image cache
+  Snapshot: non-blocking, best-effort
   Cache dir: {cache_dir}
   Lock dir: {lock_dir}
   Filesystem: total {fs_total}, available {fs_available}
@@ -178,7 +194,7 @@ Workspace image cache
   Entries: total {total}, reusable {reusable}, invalid {invalid}, stale {stale}, temporary-only {temporary}, locked {locked}
   Temporary paths: {temporary_paths} ({temporary_allocated})
   Size: allocated {allocated}, logical {logical}
-
+{lower_bound_note}
 List entries:
   runner workspace-image-cache list --limit 50
 
@@ -203,12 +219,13 @@ Preview cleanup:
         temporary_allocated = human_bytes(summary.temporary_allocated_bytes),
         allocated = human_bytes(summary.total_allocated_bytes),
         logical = human_bytes(summary.total_logical_image_bytes),
+        lower_bound_note = lower_bound_note,
     )
 }
 
 fn format_list_text(output: &WorkspaceImageCacheListOutput) -> String {
     let mut text = format!(
-        "Workspace image cache entries ({shown} shown, {total} total)\n  Cache dir: {cache_dir}\n",
+        "Workspace image cache entries ({shown} shown, {total} total)\n  Snapshot: non-blocking, best-effort\n  Cache dir: {cache_dir}\n",
         shown = output.entries.len(),
         total = output.summary.total_entries,
         cache_dir = output.cache_dir,
@@ -224,18 +241,30 @@ fn format_list_text(output: &WorkspaceImageCacheListOutput) -> String {
     for entry in &output.entries {
         text.push('\n');
         text.push_str(&format!(
-            "{status} {key}\n  allocated={allocated} logical={logical} tempPaths={temp_paths} tempAllocated={temp_allocated} storages={storages} artifacts={artifacts}\n",
+            "{status} {key}\n",
             status = entry.status.as_str(),
             key = entry.cache_key,
-            allocated = human_bytes(entry.allocated_bytes),
-            logical = human_bytes(entry.logical_image_size_bytes),
-            temp_paths = entry.temporary_path_count,
-            temp_allocated = human_bytes(entry.temporary_allocated_bytes),
-            storages = entry.storage_count,
-            artifacts = entry.artifact_count,
         ));
+        if entry.status == WorkspaceImageCacheInspectionStatus::Locked {
+            text.push_str(
+                "  Measurements unavailable: metadata, image size, temporary paths, storage, and artifacts were not inspected.\n",
+            );
+        } else {
+            text.push_str(&format!(
+                "  allocated={allocated} logical={logical} tempPaths={temp_paths} tempAllocated={temp_allocated} storages={storages} artifacts={artifacts}\n",
+                allocated = human_bytes(entry.allocated_bytes),
+                logical = human_bytes(entry.logical_image_size_bytes),
+                temp_paths = entry.temporary_path_count,
+                temp_allocated = human_bytes(entry.temporary_allocated_bytes),
+                storages = entry.storage_count,
+                artifacts = entry.artifact_count,
+            ));
+        }
         if let Some(reason) = &entry.reason {
             text.push_str(&format!("  reason={reason}\n"));
+        }
+        if entry.status == WorkspaceImageCacheInspectionStatus::Locked {
+            continue;
         }
         text.push_str(&format!(
             "  scope={} profile={} workingDir={}\n",
@@ -363,6 +392,30 @@ mod tests {
         }
     }
 
+    fn test_inspection_with_locked_entry() -> WorkspaceImageCacheInspection {
+        let mut inspection = test_inspection();
+        inspection.summary.total_entries += 1;
+        inspection.summary.locked_entries = 1;
+        inspection.entries.push(WorkspaceImageCacheInspectionEntry {
+            cache_key: "c".repeat(64),
+            status: WorkspaceImageCacheInspectionStatus::Locked,
+            reason: Some("entry lock is held".into()),
+            cache_scope: None,
+            profile_name: None,
+            working_dir: None,
+            last_completed_at: None,
+            last_used_at: None,
+            last_terminal_status: None,
+            allocated_bytes: 0,
+            logical_image_size_bytes: 0,
+            temporary_path_count: 0,
+            temporary_allocated_bytes: 0,
+            storage_count: 0,
+            artifact_count: 0,
+        });
+        inspection
+    }
+
     #[test]
     fn info_json_omits_entries() {
         let value = serde_json::to_value(info_output(&test_inspection())).unwrap();
@@ -389,23 +442,71 @@ mod tests {
     }
 
     #[test]
+    fn list_json_preserves_locked_entry_placeholders() {
+        let output = list_output(test_inspection_with_locked_entry(), Some(1));
+        let value = serde_json::to_value(&output).unwrap();
+        let entry = &value["entries"][0];
+        assert_eq!(value["summary"]["lockedEntries"], 1);
+        assert_eq!(entry["status"], "locked");
+        assert_eq!(entry["reason"], "entry lock is held");
+        assert_eq!(entry["allocatedBytes"], 0);
+        assert_eq!(entry["logicalImageSizeBytes"], 0);
+        assert_eq!(entry["temporaryPathCount"], 0);
+        assert_eq!(entry["temporaryAllocatedBytes"], 0);
+        assert_eq!(entry["storageCount"], 0);
+        assert_eq!(entry["artifactCount"], 0);
+        assert!(entry.get("cacheScope").unwrap().is_null());
+        assert!(entry.get("profileName").unwrap().is_null());
+        assert!(entry.get("workingDir").unwrap().is_null());
+        assert!(entry.get("lastCompletedAt").unwrap().is_null());
+        assert!(entry.get("lastUsedAt").unwrap().is_null());
+        assert!(entry.get("lastTerminalStatus").unwrap().is_null());
+    }
+
+    #[test]
     fn text_info_contains_summary_and_next_actions() {
         let text = format_info_text(&test_inspection());
         assert!(text.contains("Workspace image cache"));
+        assert!(text.contains("Snapshot: non-blocking, best-effort"));
         assert!(text.contains("Entries: total 2, reusable 1, invalid 1"));
         assert!(text.contains("Temporary paths: 1"));
+        assert!(!text.contains("Lower bounds:"));
         assert!(text.contains("runner workspace-image-cache list --limit 50"));
         assert!(text.contains("runner workspace-image-cache gc --dry-run"));
+    }
+
+    #[test]
+    fn text_info_marks_locked_entry_derived_values_as_lower_bounds() {
+        let text = format_info_text(&test_inspection_with_locked_entry());
+        assert!(text.contains("Entries: total 3, reusable 1, invalid 1"));
+        assert!(text.contains("locked 1"));
+        assert!(text.contains(
+            "Lower bounds: status-category counts, temporary-path counts/bytes, and allocated/logical size totals exclude locked entry contents."
+        ));
     }
 
     #[test]
     fn text_list_respects_limit_and_prioritizes_invalid_entries() {
         let text = format_list_text(&list_output(test_inspection(), Some(1)));
         assert!(text.contains("1 shown, 2 total"));
+        assert!(text.contains("Snapshot: non-blocking, best-effort"));
         assert!(text.contains("invalid "));
         assert!(text.contains("tempPaths=0"));
         assert!(text.contains("reason=missing metadata"));
         assert!(!text.contains("reusable "));
+    }
+
+    #[test]
+    fn text_list_marks_locked_measurements_unavailable() {
+        let text = format_list_text(&list_output(test_inspection_with_locked_entry(), Some(1)));
+        assert!(text.contains("1 shown, 3 total"));
+        assert!(text.contains("locked "));
+        assert!(text.contains(
+            "Measurements unavailable: metadata, image size, temporary paths, storage, and artifacts were not inspected."
+        ));
+        assert!(text.contains("reason=entry lock is held"));
+        assert!(!text.contains("allocated=0 B"));
+        assert!(!text.contains("scope=-"));
     }
 
     #[test]

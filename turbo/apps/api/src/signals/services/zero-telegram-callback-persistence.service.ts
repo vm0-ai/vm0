@@ -125,3 +125,149 @@ export async function saveTelegramThreadSession(args: {
       );
   }
 }
+
+function telegramThreadSessionOwnerWhere(args: {
+  readonly userLinkId: string;
+  readonly userLinkKind: "custom" | "official";
+}) {
+  return args.userLinkKind === "custom"
+    ? eq(telegramThreadSessions.telegramUserLinkId, args.userLinkId)
+    : eq(telegramThreadSessions.telegramOfficialUserLinkId, args.userLinkId);
+}
+
+function telegramThreadSessionOwnerValues(args: {
+  readonly userLinkId: string;
+  readonly userLinkKind: "custom" | "official";
+}): {
+  readonly telegramUserLinkId: string | null;
+  readonly telegramOfficialUserLinkId: string | null;
+} {
+  return args.userLinkKind === "custom"
+    ? {
+        telegramUserLinkId: args.userLinkId,
+        telegramOfficialUserLinkId: null,
+      }
+    : {
+        telegramUserLinkId: null,
+        telegramOfficialUserLinkId: args.userLinkId,
+      };
+}
+
+async function upsertCanonicalTelegramThreadSession(args: {
+  readonly db: Db;
+  readonly userLinkId: string;
+  readonly userLinkKind: "custom" | "official";
+  readonly chatId: string;
+  readonly rootMessageId: string;
+  readonly agentSessionId: string;
+  readonly messageId: string;
+  readonly updateLastProcessed: boolean;
+}): Promise<void> {
+  const updated = await args.db
+    .update(telegramThreadSessions)
+    .set({
+      agentSessionId: args.agentSessionId,
+      ...(args.updateLastProcessed
+        ? { lastProcessedMessageId: args.messageId }
+        : {}),
+      updatedAt: nowDate(),
+    })
+    .where(
+      and(
+        telegramThreadSessionOwnerWhere(args),
+        eq(telegramThreadSessions.chatId, args.chatId),
+        eq(telegramThreadSessions.rootMessageId, args.rootMessageId),
+      ),
+    )
+    .returning({ id: telegramThreadSessions.id });
+  if (updated.length > 0) {
+    return;
+  }
+
+  await args.db
+    .insert(telegramThreadSessions)
+    .values({
+      ...telegramThreadSessionOwnerValues(args),
+      chatId: args.chatId,
+      rootMessageId: args.rootMessageId,
+      agentSessionId: args.agentSessionId,
+      lastProcessedMessageId: args.messageId,
+    })
+    .onConflictDoNothing();
+}
+
+/**
+ * Dual-write the canonical Telegram reply chain into the legacy session table
+ * so rollback-eligible API versions continue from the canonical session.
+ */
+export async function saveCanonicalTelegramThreadSession(args: {
+  readonly db: Db;
+  readonly userLinkId: string;
+  readonly userLinkKind: "custom" | "official";
+  readonly chatId: string;
+  readonly previousRootMessageId: string | null;
+  readonly botReplyMessageId: string;
+  readonly agentSessionId: string;
+  readonly messageId: string;
+  readonly runStatus: "completed" | "failed";
+  readonly isDM: boolean;
+}): Promise<void> {
+  if (args.isDM) {
+    const [existing] = await args.db
+      .select({ agentSessionId: telegramThreadSessions.agentSessionId })
+      .from(telegramThreadSessions)
+      .where(
+        and(
+          telegramThreadSessionOwnerWhere(args),
+          eq(telegramThreadSessions.chatId, args.chatId),
+          eq(telegramThreadSessions.rootMessageId, "dm"),
+        ),
+      )
+      .limit(1);
+    await upsertCanonicalTelegramThreadSession({
+      ...args,
+      rootMessageId: "dm",
+      updateLastProcessed:
+        args.runStatus === "completed" ||
+        existing?.agentSessionId !== args.agentSessionId,
+    });
+    return;
+  }
+
+  if (args.previousRootMessageId === null) {
+    await upsertCanonicalTelegramThreadSession({
+      ...args,
+      rootMessageId: args.botReplyMessageId,
+      updateLastProcessed: true,
+    });
+    return;
+  }
+
+  if (args.runStatus !== "completed") {
+    return;
+  }
+  const updated = await args.db
+    .update(telegramThreadSessions)
+    .set({
+      rootMessageId: args.botReplyMessageId,
+      agentSessionId: args.agentSessionId,
+      lastProcessedMessageId: args.messageId,
+      updatedAt: nowDate(),
+    })
+    .where(
+      and(
+        telegramThreadSessionOwnerWhere(args),
+        eq(telegramThreadSessions.chatId, args.chatId),
+        eq(telegramThreadSessions.rootMessageId, args.previousRootMessageId),
+      ),
+    )
+    .returning({ id: telegramThreadSessions.id });
+  if (updated.length > 0) {
+    return;
+  }
+  await upsertCanonicalTelegramThreadSession({
+    ...args,
+    rootMessageId: args.botReplyMessageId,
+    updateLastProcessed: true,
+  });
+}

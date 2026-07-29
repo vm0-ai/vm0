@@ -78,7 +78,11 @@ describe("zero Telegram connect page", () => {
     await waitFor(() => {
       expect(screen.getByText("Connected to Telegram!")).toBeInTheDocument();
     });
-    expect(screen.getByText("@agent_bot")).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        "You're connected to @agent_bot. Send a message in Telegram to start chatting.",
+      ),
+    ).toBeInTheDocument();
     expect(screen.getByText("Open Telegram")).toBeInTheDocument();
     expect(screen.getByText("Back to Telegram settings")).toBeInTheDocument();
   });
