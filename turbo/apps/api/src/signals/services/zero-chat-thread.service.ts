@@ -1045,7 +1045,7 @@ const chatEventBuilders = {
       ),
     };
   },
-} satisfies Record<ChatEventType, ChatEventBuilder>;
+} satisfies Record<ChatEvent["eventType"], ChatEventBuilder>;
 
 function toChatEvent(
   userId: string,
@@ -1053,6 +1053,9 @@ function toChatEvent(
   canonicalAttachments: readonly ResolvedAttachFile[],
 ): Computed<Promise<ChatEventResponse>> {
   return computed(async (get): Promise<ChatEventResponse> => {
+    if (row.eventType === "input.goal") {
+      throw new Error("Pending goal queue events cannot be materialized");
+    }
     const attachFiles = await get(
       chatMessageAttachFiles(userId, row, canonicalAttachments),
     );
@@ -2225,7 +2228,10 @@ export function zeroChatThreadEventsPage(args: {
       args.sinceSeqId ?? (args.sinceId ? legacyCursor?.seqId : undefined);
     const beforeSeqId =
       args.beforeSeqId ?? (args.beforeId ? legacyCursor?.seqId : undefined);
-    const threadFilter = eq(chatMessages.chatThreadId, args.threadId);
+    const threadFilter = and(
+      eq(chatMessages.chatThreadId, args.threadId),
+      not(chatEventTypeIn(["input.goal"])),
+    );
     let rows: ChatEventRow[];
     let hasHistoryBefore = false;
 
@@ -2301,6 +2307,7 @@ export function zeroChatThreadEventById(args: {
         and(
           eq(chatMessages.id, args.eventId),
           eq(chatMessages.chatThreadId, args.threadId),
+          not(chatEventTypeIn(["input.goal"])),
         ),
       )
       .limit(1);

@@ -85,7 +85,7 @@ export const chatMessages = pgTable(
       )
       .notNull(),
     // Attribution only: identifies the run that consumed or produced this row.
-    // A null value on an unrevoked input.prompt/input.automation is pending.
+    // A null value on an unrevoked input.prompt/input.automation/input.goal is pending.
     runId: uuid("run_id"),
     usagePayload: jsonb("usage_payload").$type<ChatMessageUsagePayload>(),
     revokesEventId: uuid("revokes_message_id").references(
@@ -160,7 +160,7 @@ export const chatMessages = pgTable(
       index("chat_events_pending_queue_idx")
         .on(table.chatThreadId, table.createdAt, table.id)
         .where(
-          sql`${table.runId} IS NULL AND ${table.eventType} IN ('input.prompt', 'input.automation')`,
+          sql`${table.runId} IS NULL AND ${table.eventType} IN ('input.prompt', 'input.automation', 'input.goal')`,
         ),
       index("chat_events_automation_pause_idx")
         .on(table.chatThreadId, table.seqId.desc())
@@ -186,6 +186,7 @@ export const chatMessages = pgTable(
         sql`${table.eventType} IN (
           'input.prompt',
           'input.automation',
+          'input.goal',
           'input.rejected',
           'output.message',
           'output.error',
