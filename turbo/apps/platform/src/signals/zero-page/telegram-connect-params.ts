@@ -10,6 +10,12 @@ export interface TelegramConnectParams {
 }
 
 interface TelegramConnectParamError {
+  code:
+    | "incomplete"
+    | "invalid_signature"
+    | "invalid_timestamp"
+    | "invalid_user"
+    | "invalid_username";
   title: string;
   message: string;
 }
@@ -101,6 +107,7 @@ export function parseTelegramConnectParams(
       ok: false,
       returnPath: "/telegram/connect",
       error: {
+        code: "incomplete",
         title: "Connect link is incomplete",
         message: "Open a fresh /connect link from Telegram and try again.",
       },
@@ -121,6 +128,7 @@ export function parseTelegramConnectParams(
       ok: false,
       returnPath: "/telegram/connect",
       error: {
+        code: "incomplete",
         title: "Connect link is incomplete",
         message: "Open a fresh /connect link from Telegram and try again.",
       },
@@ -132,6 +140,7 @@ export function parseTelegramConnectParams(
       ok: false,
       returnPath: "/telegram/connect",
       error: {
+        code: "invalid_user",
         title: "Connect link is invalid",
         message: "The Telegram user on this link is not valid.",
       },
@@ -143,6 +152,7 @@ export function parseTelegramConnectParams(
       ok: false,
       returnPath: "/telegram/connect",
       error: {
+        code: "invalid_timestamp",
         title: "Connect link is invalid",
         message: "The timestamp on this link is not valid.",
       },
@@ -155,6 +165,7 @@ export function parseTelegramConnectParams(
       ok: false,
       returnPath: "/telegram/connect",
       error: {
+        code: "invalid_timestamp",
         title: "Connect link is invalid",
         message: "The timestamp on this link is not valid.",
       },
@@ -166,6 +177,7 @@ export function parseTelegramConnectParams(
       ok: false,
       returnPath: "/telegram/connect",
       error: {
+        code: "invalid_signature",
         title: "Connect link is invalid",
         message: "The signature on this link is not valid.",
       },
@@ -177,6 +189,7 @@ export function parseTelegramConnectParams(
       ok: false,
       returnPath: "/telegram/connect",
       error: {
+        code: "invalid_username",
         title: "Connect link is invalid",
         message: "The Telegram username on this link is not valid.",
       },

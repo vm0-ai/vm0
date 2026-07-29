@@ -116,7 +116,7 @@ function benchCatalogConnector(args: {
   readonly secretName: string;
 }): ConnectorCatalogArtifactConnector {
   return {
-    connectorRef: args.connectorSlug,
+    slug: args.connectorSlug,
     label: args.label,
     description: `${args.label} connector used by the API benchmark`,
     category: "benchmark",
@@ -773,7 +773,7 @@ async function logPlannerDiagnostic(
       zero_runs,
       agent_runs,
       chat_threads,
-      chat_messages,
+      chat_events,
       connectors,
       org_metadata,
       org_members_metadata,
@@ -836,7 +836,7 @@ const ensureSeeded: () => Promise<BenchChatThreadFixture> = (() => {
       );
       const missingConnectorSlugs = BENCH_CONNECTOR_CATALOG.connectors
         .map((connector) => {
-          return connector.connectorRef;
+          return connector.slug;
         })
         .filter((connectorSlug) => {
           return !listedConnectorSlugs.has(connectorSlug);

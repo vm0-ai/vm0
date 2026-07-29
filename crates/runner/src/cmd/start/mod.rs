@@ -1831,7 +1831,7 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
 
     shutdown_runtime(runtime.as_mut(), Some(&teardown)).await;
 
-    // Wait for buffered and pending usage reports before stopping the proxy.
+    // Wait for buffered and pending proxy webhook work before stopping the proxy.
     // The runner writes a shutdown request marker, then the addon replies with
     // fresh pending snapshots after SIGUSR1-triggered flush requests. This
     // remains bounded best-effort, and timeout is the abnormal data-loss path.

@@ -1,4 +1,4 @@
-import { screen, waitFor } from "@testing-library/react";
+import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import {
   artifactCatalogContract,
@@ -716,6 +716,8 @@ describe("thread-owned utility sidebar", () => {
   it("auto-opens a browser card from a running run", async () => {
     const browserId = "c0000000-0000-4000-a000-000000000051";
     const liveUrl = "https://live.browser-use.com/?wss=auto-open-browser";
+    const requestStarted = context.mocks.deferred<void>();
+    const releaseResponse = context.mocks.deferred<void>();
     const browser: ZeroBrowserSession = {
       id: browserId,
       name: "Auto-open browser",
@@ -733,7 +735,9 @@ describe("thread-owned utility sidebar", () => {
     context.mocks.browser.matchMedia((query) => {
       return query === CHAT_THREAD_SIDEBAR_SPLIT_VIEW_MEDIA_QUERY;
     });
-    context.mocks.api(zeroBrowserContract.get, ({ respond }) => {
+    context.mocks.api(zeroBrowserContract.get, async ({ respond }) => {
+      requestStarted.resolve();
+      await releaseResponse.promise;
       return respond(200, { browser });
     });
     context.mocks.api(zeroBrowserContract.leaseById, ({ respond }) => {
@@ -753,6 +757,14 @@ describe("thread-owned utility sidebar", () => {
       ],
     });
 
+    await requestStarted.promise;
+    const sidebar = await screen.findByLabelText("Live browser");
+    expect(sidebar).toHaveAttribute("data-browser-session-sidebar");
+    expect(
+      screen.queryByTitle("Live browser: Auto-open browser"),
+    ).not.toBeInTheDocument();
+
+    releaseResponse.resolve();
     const frame = await screen.findByTitle("Live browser: Auto-open browser");
     expect(frame).toHaveAttribute("src", liveUrl);
     expect(frame.closest("[data-browser-session-sidebar]")).not.toBeNull();
@@ -890,7 +902,7 @@ describe("thread-owned utility sidebar", () => {
     expect(screen.queryByTestId("artifact-sidebar")).not.toBeInTheDocument();
   });
 
-  it("skips deleted, reconnect-required, and unavailable cards before falling back", async () => {
+  it("opens browser cards without an availability preflight and marks unusable mail drafts", async () => {
     const completedUrl = "https://openable-fallback.sites.vm7.io";
     const deletedDraftId = "c0000000-0000-4000-a000-000000000061";
     const reconnectDraftId = "c0000000-0000-4000-a000-000000000062";
@@ -970,12 +982,9 @@ describe("thread-owned utility sidebar", () => {
       ],
     });
 
-    await waitFor(() => {
-      expect(screen.getByTestId("artifact-sidebar-body-html")).toHaveAttribute(
-        "src",
-        completedUrl,
-      );
-    });
+    const browserSidebar = await screen.findByLabelText("Live browser");
+    expect(browserSidebar).toHaveAttribute("data-browser-session-sidebar");
+    expect(screen.queryByTestId("artifact-sidebar")).not.toBeInTheDocument();
     await expect(
       screen.findByLabelText("Deleted email: Deleted draft"),
     ).resolves.toHaveAttribute("aria-disabled", "true");
@@ -985,7 +994,7 @@ describe("thread-owned utility sidebar", () => {
       ),
     ).resolves.toBeInTheDocument();
     await expect(
-      screen.findByText("Browser unavailable"),
+      within(browserSidebar).findByText("Browser unavailable"),
     ).resolves.toBeInTheDocument();
   });
 

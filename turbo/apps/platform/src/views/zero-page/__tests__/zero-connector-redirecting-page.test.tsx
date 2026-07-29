@@ -1,9 +1,11 @@
 import { screen } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 import {
   detachedSetupPage,
   queryAllByRoleFast,
 } from "../../../__tests__/page-helper.ts";
+import { initializeI18n } from "../../../i18n/index.ts";
+import { DEFAULT_LOCALE } from "../../../i18n/resources.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 
 const context = testContext();
@@ -11,6 +13,11 @@ const MOBILE_WARNING =
   "The GitHub app may not support this OAuth link. Please complete this connection in the VM0 web app on a computer.";
 const IPHONE_USER_AGENT =
   "Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 Version/18.0 Mobile/15E148 Safari/604.1";
+
+afterEach(async () => {
+  document.documentElement.lang = DEFAULT_LOCALE;
+  await initializeI18n(DEFAULT_LOCALE);
+});
 
 function backToBrandLink(brandName: "VM0" | "Okou"): HTMLElement {
   const link = queryAllByRoleFast("link").find((candidate) => {
@@ -119,6 +126,25 @@ describe("connector redirecting page", () => {
       screen.getByText("Return to VM0 and try connecting again."),
     ).toBeInTheDocument();
     expect(backToBrandLink("VM0")).toHaveAttribute("href", "/");
+  });
+
+  it("localizes OAuth start failures in Portuguese", async () => {
+    document.documentElement.lang = "pt-BR";
+    detachedSetupPage({
+      context,
+      path: "/connectors/github/redirecting?label=GitHub&status=error",
+      user: null,
+      session: null,
+    });
+
+    await expect(
+      screen.findByRole("heading", {
+        name: "Não foi possível abrir GitHub",
+      }),
+    ).resolves.toBeInTheDocument();
+    expect(
+      screen.getByText("Volte para VM0 e tente conectar novamente."),
+    ).toBeInTheDocument();
   });
 
   it("uses Okou copy on an Okou host", async () => {

@@ -68,6 +68,7 @@ import { sanitizeTokenInputRecord } from "./token-input.ts";
 import { IN_VITEST } from "../../../env.ts";
 import { connectorRedirectingPath } from "../../connectors-page/connector-redirecting.ts";
 import { isConnectorChangedPayloadFor } from "../../connector-change.ts";
+import { i18n } from "../../../i18n/index.ts";
 
 // TODO(#23619): Rename only with the persisted browser storage key.
 const HIDDEN_CONNECTIONS_STORAGE_KEY = "vm0.connections.hiddenTypes";
@@ -330,10 +331,6 @@ export function connectorCurrentConnectionStatus(
   return connector.connectionStatus;
 }
 
-function formatExpiryCountdown(value: number, unit: "day" | "hour"): string {
-  return `Expires in ${value} ${unit}${value === 1 ? "" : "s"}`;
-}
-
 export function connectorExpiryCountdownText(
   connector: PublicConnectorCatalogStatusItem,
   nowMs = now(),
@@ -350,12 +347,24 @@ export function connectorExpiryCountdownText(
   }
   const remainingMs = tokenExpiresAtMs - nowMs;
   if (remainingMs >= DAY_MS) {
-    return formatExpiryCountdown(Math.ceil(remainingMs / DAY_MS), "day");
+    return i18n.t(
+      ($) => {
+        return $.connectors.expiration.inDays;
+      },
+      { count: Math.ceil(remainingMs / DAY_MS) },
+    );
   }
   if (remainingMs < HOUR_MS) {
-    return "Expires in less than 1 hour";
+    return i18n.t(($) => {
+      return $.connectors.expiration.lessThanHour;
+    });
   }
-  return formatExpiryCountdown(Math.ceil(remainingMs / HOUR_MS), "hour");
+  return i18n.t(
+    ($) => {
+      return $.connectors.expiration.inHours;
+    },
+    { count: Math.ceil(remainingMs / HOUR_MS) },
+  );
 }
 
 /**
@@ -869,7 +878,12 @@ const finishConnectorConnection$ = command(
     if (options.toastMessage !== null) {
       toast.success(
         options.toastMessage ??
-          `${options.connectorLabel ?? connectorSlug} connected`,
+          i18n.t(
+            ($) => {
+              return $.connectors.toasts.connected;
+            },
+            { connector: options.connectorLabel ?? connectorSlug },
+          ),
         {
           id: `connector-connected-${connectorSlug}`,
         },
@@ -1134,9 +1148,17 @@ export const disconnectConnector$ = command(
       next.delete(connectorSlug);
       return next;
     });
-    toast.success(`${connectorLabel} disconnected`, {
-      id: `connector-disconnected-${connectorSlug}`,
-    });
+    toast.success(
+      i18n.t(
+        ($) => {
+          return $.connectors.toasts.disconnected;
+        },
+        { connector: connectorLabel },
+      ),
+      {
+        id: `connector-disconnected-${connectorSlug}`,
+      },
+    );
   },
 );
 

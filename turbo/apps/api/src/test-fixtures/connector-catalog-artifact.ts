@@ -506,7 +506,7 @@ interface ConnectorArgs {
 
 function connector(args: ConnectorArgs): ConnectorCatalogArtifactConnector {
   return {
-    connectorRef: args.connectorSlug,
+    slug: args.connectorSlug,
     label: args.label,
     description:
       args.description ?? `${args.label} accepted-catalog test fixture.`,
@@ -1734,8 +1734,8 @@ const connectors = [
 ] satisfies readonly ConnectorCatalogArtifactConnector[];
 
 export const API_TEST_CONNECTOR_CATALOG_ARTIFACT = {
-  artifactSchemaVersion: 1,
-  catalogVersion: "api-test-v1",
+  artifactSchemaVersion: 2,
+  catalogVersion: "api-test-v2",
   categoryMetadata: {
     categories: [
       {

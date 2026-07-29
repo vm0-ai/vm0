@@ -425,18 +425,18 @@ function acceptedEntries(args: {
     if (connector.firewall.kind === "none") {
       continue;
     }
-    if (entries.has(connector.connectorRef)) {
+    if (entries.has(connector.slug)) {
       throw new Error(
-        `Duplicate accepted connector server firewall: ${connector.connectorRef}`,
+        `Duplicate accepted connector server firewall: ${connector.slug}`,
       );
     }
-    const methods = args.runtimeMethodsBySlug.get(connector.connectorRef);
+    const methods = args.runtimeMethodsBySlug.get(connector.slug);
     if (!methods) {
       throw new Error(
-        `Accepted connector server firewall runtime is missing: ${connector.connectorRef}`,
+        `Accepted connector server firewall runtime is missing: ${connector.slug}`,
       );
     }
-    entries.set(connector.connectorRef, {
+    entries.set(connector.slug, {
       connector,
       methods,
       firewall: undefined,
@@ -460,11 +460,11 @@ function acceptedEntryFirewall(
   const firewall = connectorCatalogFirewallConfig(connector);
   if (firewall === null || connector.firewall.kind === "none") {
     throw new Error(
-      `Accepted connector server firewall is missing: ${connector.connectorRef}`,
+      `Accepted connector server firewall is missing: ${connector.slug}`,
     );
   }
   const accepted = {
-    connectorSlug: connector.connectorRef,
+    connectorSlug: connector.slug,
     label: connector.label,
     billable: connector.firewall.billable,
     firewall,
