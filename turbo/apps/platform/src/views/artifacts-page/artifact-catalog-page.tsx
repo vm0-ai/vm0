@@ -13,7 +13,8 @@ import {
 } from "@tabler/icons-react";
 import { r2ImageTransformUrl } from "@vm0/core";
 import { useGet, useLoadable, useSet } from "ccstate-react";
-import { Alert, AlertDescription, cn } from "@vm0/ui";
+import { cn } from "@vm0/ui";
+import { Alert, AlertDescription } from "@vm0/ui/components/ui/alert";
 
 import {
   artifactCatalog$,
