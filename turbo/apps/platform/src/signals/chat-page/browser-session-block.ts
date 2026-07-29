@@ -4,7 +4,14 @@ import {
   type ZeroBrowserSession,
 } from "@vm0/api-contracts/contracts/zero-browser";
 import { browserSessionChangedPayloadSchema } from "@vm0/api-contracts/contracts/realtime";
-import { command, computed, state, type Command, type Computed } from "ccstate";
+import {
+  command,
+  computed,
+  state,
+  type Command,
+  type Computed,
+  type State,
+} from "ccstate";
 
 import { formatAppNumber } from "../../i18n/format.ts";
 import { i18n } from "../../i18n/index.ts";
@@ -103,30 +110,10 @@ async function fetchBrowserSession(
   return response.status === 200 ? response.body.browser : null;
 }
 
-export function createBrowserSessionSignals(
-  threadId: string | null,
+function createFitWindowSignals(
   descriptor: BrowserSessionDescriptor,
-): BrowserSessionSignals {
-  const target = { browserId: descriptor.browserId, chatThreadId: threadId };
-  const reloadVersion$ = state(0);
-  const sessionOverride$ = state<ZeroBrowserSession | null | undefined>(
-    undefined,
-  );
-  const session$ = computed(async (get): Promise<ZeroBrowserSession | null> => {
-    get(reloadVersion$);
-    const override = get(sessionOverride$);
-    return override === undefined
-      ? await fetchBrowserSession(get(zeroClient$), target, get(pageSignal$))
-      : override;
-  });
-  const reload$ = command(({ set }) => {
-    set(sessionOverride$, undefined);
-    set(reloadVersion$, (version) => {
-      return version + 1;
-    });
-  });
-
-  const resumingState$ = state(false);
+  sessionOverride$: State<ZeroBrowserSession | null | undefined>,
+): Pick<BrowserSessionSignals, "fittingWindow$" | "fitWindow$"> {
   const fittingWindowState$ = state(false);
   const fitWindow$ = command(
     async (
@@ -159,6 +146,42 @@ export function createBrowserSessionSignals(
         set(sessionOverride$, fitted.value.body.browser);
       }
     },
+  );
+  return {
+    fittingWindow$: computed((get) => {
+      return get(fittingWindowState$);
+    }),
+    fitWindow$,
+  };
+}
+
+export function createBrowserSessionSignals(
+  threadId: string | null,
+  descriptor: BrowserSessionDescriptor,
+): BrowserSessionSignals {
+  const target = { browserId: descriptor.browserId, chatThreadId: threadId };
+  const reloadVersion$ = state(0);
+  const sessionOverride$ = state<ZeroBrowserSession | null | undefined>(
+    undefined,
+  );
+  const session$ = computed(async (get): Promise<ZeroBrowserSession | null> => {
+    get(reloadVersion$);
+    const override = get(sessionOverride$);
+    return override === undefined
+      ? await fetchBrowserSession(get(zeroClient$), target, get(pageSignal$))
+      : override;
+  });
+  const reload$ = command(({ set }) => {
+    set(sessionOverride$, undefined);
+    set(reloadVersion$, (version) => {
+      return version + 1;
+    });
+  });
+
+  const resumingState$ = state(false);
+  const { fittingWindow$, fitWindow$ } = createFitWindowSignals(
+    descriptor,
+    sessionOverride$,
   );
   // accept() reports a failed resume through the app's toast surface, so the
   // panel only has to stop showing a pending state and reload what is real.
@@ -236,9 +259,7 @@ export function createBrowserSessionSignals(
     resuming$: computed((get) => {
       return get(resumingState$);
     }),
-    fittingWindow$: computed((get) => {
-      return get(fittingWindowState$);
-    }),
+    fittingWindow$,
     reload$,
     reloadPanel$: reload$,
     resume$,
