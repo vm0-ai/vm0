@@ -714,6 +714,227 @@
       "wouldLike": "Would like to"
     }
   },
+  "billing": {
+    "autoRecharge": {
+      "amountAria": "Auto-recharge credit amount in credits",
+      "amountTitle": "Recharge amount",
+      "automaticTopUps": "Automatic top-ups",
+      "description": "Purchase credits when your balance falls below a threshold.",
+      "enableAria": "Enable auto-recharge",
+      "thresholdAria": "Credit threshold for auto-recharge",
+      "thresholdDescription": "Trigger a purchase when your credit balance goes under this number.",
+      "thresholdPlaceholder": "e.g. 2000",
+      "thresholdTitle": "When credits drop below",
+      "title": "Auto-recharge"
+    },
+    "common": {
+      "back": "Back",
+      "cancel": "Cancel",
+      "credits": "credits",
+      "manage": "Manage",
+      "redirecting": "Redirecting...",
+      "restore": "Restore",
+      "retry": "Retry",
+      "unavailable": "Unavailable",
+      "updating": "Updating..."
+    },
+    "concurrency": {
+      "activeUntil": "Active until {{date}}",
+      "billedMonthly": "Billed monthly",
+      "buyAmount": "Buy {{amount}}",
+      "buyButton": "Buy concurrent",
+      "buyDescription": "Add a monthly subscription for more concurrent runs.",
+      "buyTitle": "Buy concurrency",
+      "cancelDescription": "This stops renewal at the end of the current billing period. Existing slots stay active until then.",
+      "cancellationScheduled": "Cancellation scheduled",
+      "cancelTitle": "Cancel concurrency subscription?",
+      "concurrentRun_one": "{{value}} concurrent run",
+      "concurrentRun_other": "{{value}} concurrent runs",
+      "decreaseAria": "Decrease additional concurrency quantity",
+      "emptyDescription": "Buy additional concurrent runs for this workspace.",
+      "emptyTitle": "No concurrency subscriptions",
+      "increaseAria": "Increase additional concurrency quantity",
+      "restoreDescription": "This resumes renewal for this concurrency subscription.",
+      "restoreSubscription": "Restore subscription",
+      "restoreTitle": "Restore concurrency subscription?",
+      "slot_one": "{{value}} slot",
+      "slot_other": "{{value}} slots",
+      "slots": "Slots",
+      "title": "Concurrency"
+    },
+    "credits": {
+      "amount": "Amount",
+      "amountRangeError": "Enter between {{minimum}} and {{maximum}}",
+      "anyAmount": "Any amount",
+      "custom": "Custom",
+      "customAmountAria": "Custom dollar amount",
+      "exchangeRate": "Credits never expire. 1 USD = {{credits}} credits.",
+      "quickBuy": "Quick buy",
+      "quickBuyAmount": "Quick buy {{amount}}",
+      "title": "Buy credits"
+    },
+    "downgrade": {
+      "cancelSubscription": "Cancel subscription",
+      "chooseTarget": "Choose which plan to downgrade to.",
+      "confirmProCancellation": "Are you sure you want to cancel your Pro plan?",
+      "confirmTarget": "Downgrade to {{plan}}?",
+      "inProgress": "Downgrading...",
+      "proWarning": "Your Pro access remains active until the current billing period ends. After that, this workspace moves to No plan and agents cannot run until you upgrade again.",
+      "teamWarning": "Your Team access remains active until the current billing period ends. After that, this workspace moves to {{plan}}.",
+      "title": "Downgrade plan"
+    },
+    "invoices": {
+      "amount": "Amount",
+      "date": "Date",
+      "downloadDescription": "Choose up to 3 consecutive months. Receipt PDFs in that range will be bundled into one ZIP file.",
+      "downloadInvoice": "Download {{month}} invoice",
+      "downloadReceipts": "Download receipts",
+      "downloadZip": "Download ZIP",
+      "empty": "No invoices yet.",
+      "from": "From",
+      "invoice": "Invoice",
+      "loading": "Loading invoices",
+      "monthAria": "{{label}} month",
+      "preparingReceipts": "Preparing receipts...",
+      "rangeError": "Select a range of no more than 3 consecutive months.",
+      "selectMonth": "Select month",
+      "to": "To"
+    },
+    "manage": {
+      "description": "Subscription, payment method, and invoices in Stripe.",
+      "title": "Manage billing"
+    },
+    "plans": {
+      "cancellationNotice": "Your {{plan}} plan has been cancelled and will end on {{date}}.",
+      "changeAnytime": "Upgrade or downgrade anytime.",
+      "compare": "Compare plans",
+      "compareAll": "Compare all plans",
+      "currentPlan": "Current plan",
+      "custom": {
+        "name": "Custom"
+      },
+      "customAccess": "Custom access with {{value}} concurrent runs",
+      "customCancellationNotice": "Your custom plan will end on {{date}}.",
+      "customCheckoutUnavailable": "Custom workspaces cannot switch to Pro or Team checkout.",
+      "downgrade": "Downgrade",
+      "downgradeNotice": "Your {{currentPlan}} plan will downgrade to {{targetPlan}} on {{date}}.",
+      "downgradesOn": "Downgrades to {{plan}} on {{date}}",
+      "downgradeTo": "Downgrade to {{plan}}",
+      "endsOn": "Ends on {{date}}",
+      "features": {
+        "byok": "Bring your own LLM keys",
+        "communitySupport": "Community support",
+        "emailSupport": "Email support",
+        "existingCredits": "Existing free credits only",
+        "monthlyCredits": "{{value}} credits / month",
+        "oneConcurrentRun": "1 concurrent run",
+        "payAsYouGo": "Pay as you go after that",
+        "prioritySupport": "Priority support",
+        "tenConcurrentRuns": "10 concurrent runs",
+        "twoConcurrentRuns": "2 concurrent runs",
+        "unlimitedAgents": "Unlimited total agents",
+        "voiceInput": "Voice input",
+        "voiceInputLifetime": "Voice input (10 lifetime uses per member)"
+      },
+      "free": {
+        "description": "Legacy free access for existing workspaces.",
+        "name": "Free"
+      },
+      "limitedFree": {
+        "name": "Limited free"
+      },
+      "loadError": "Could not load billing status.",
+      "manageSubscription": "Manage subscription",
+      "namedPlan": "{{plan}} plan",
+      "noActivePlan": "No active plan",
+      "noActiveSubscription": "No active subscription",
+      "noPlan": {
+        "name": "No plan"
+      },
+      "perMonth": "/month",
+      "popular": "Popular",
+      "pricePerMonth": "{{price}}/month",
+      "pro": {
+        "description": "More power and seamless collaboration for your team.",
+        "name": "Pro"
+      },
+      "renews": "Renews {{date}}",
+      "restorePlan": "Restore plan",
+      "sectionTitle": "Plan",
+      "selectedPlan": "the selected plan",
+      "team": {
+        "description": "Scale fast with zero friction and full flexibility.",
+        "name": "Team"
+      },
+      "upgrade": "Upgrade",
+      "upgradeTo": "Upgrade to {{plan}}"
+    },
+    "restore": {
+      "cancellationDescription": "This will undo the scheduled cancellation for your {{plan}} plan.",
+      "cancellationDescriptionDate": "This will undo the scheduled cancellation for your {{plan}} plan. It will renew on {{date}}.",
+      "downgradeDescription": "This will cancel the scheduled downgrade to {{target}}. Your {{plan}} plan will continue renewing.",
+      "inProgress": "Restoring...",
+      "title": "Restore {{plan}} plan?"
+    },
+    "sidebar": {
+      "description": "More credits & concurrent runs",
+      "getPlan": "Get {{plan}}"
+    },
+    "toasts": {
+      "autoRechargeUpdated": "Auto-recharge updated",
+      "cancellationScheduledDate": "Cancellation scheduled. Your current plan stays active until {{date}}.",
+      "cancellationScheduledPeriod": "Cancellation scheduled. Your current plan stays active until the billing period ends.",
+      "checkoutCompleted": "{{plan}} checkout completed. Credits will be added after the invoice is paid.",
+      "concurrencyAdded": "Concurrency added. Your new slots will become available after Stripe confirms the subscription.",
+      "concurrencyCanceled": "Concurrency subscription canceled.",
+      "concurrencyCanceledDate": "Concurrency subscription canceled. Slots stay active until {{date}}.",
+      "concurrencyRestored": "Concurrency subscription restored.",
+      "creditsAdded": "Credits added. You can continue chatting with Zero.",
+      "downgradeScheduledDate": "Downgrade scheduled. Your current plan stays active until {{date}}.",
+      "downgradeScheduledPeriod": "Downgrade scheduled. Your current plan stays active until the billing period ends.",
+      "planRestored": "Plan restored. Your subscription will renew normally.",
+      "preparingReceiptDownload": "Preparing receipt download...",
+      "receiptDownloadFailed": "Failed to download receipts",
+      "receiptsDownloaded": "Receipts downloaded"
+    },
+    "usage": {
+      "added": "Added {{date}}",
+      "allowance": {
+        "day": "{{value}}d",
+        "hour": "{{value}}h",
+        "minute": "{{value}}m",
+        "remaining": "{{remaining}} / {{total}} credits",
+        "remainingAria": "Usage allowance {{label}} remaining",
+        "resets": "Resets {{date}}",
+        "resetsRaw": "Resets {{value}}",
+        "title": "Usage allowance",
+        "week": "{{value}}w"
+      },
+      "breakdown": {
+        "currentPlanDescription": "Monthly plan credits, resets each billing cycle",
+        "freeDescription": "Starter credits, use until depleted",
+        "freePlan": "Free plan",
+        "payAsYouGo": "Pay as you go",
+        "payAsYouGoDescription": "Auto-recharge credits, never expire",
+        "previousPlanDescription": "Leftover credits from previous plan",
+        "promotional": "Promotional",
+        "promotionalDescription": "Campaign credits, expires after a set period",
+        "proPlan": "Pro plan",
+        "teamPlan": "Team plan"
+      },
+      "creditAdditions": "Credit additions",
+      "creditsRemaining_one": "{{value}} credit remaining",
+      "creditsRemaining_other": "{{value}} credits remaining",
+      "expires": "Expires {{date}}",
+      "left": "{{value}} left",
+      "member": "Member",
+      "neverExpires": "Never expires",
+      "unavailable": "Credit balance unavailable.",
+      "upgradeDescription": "Pro includes monthly credits and unlocks additional credit options.",
+      "upgradeTitle": "Upgrade to Pro to get more credits",
+      "used": "Used"
+    }
+  },
   "browserSession": {
     "cardTitle": "Cloud browser",
     "close": "Close live browser",
@@ -1427,6 +1648,94 @@
     },
     "realtime": {
       "degraded": "Live updates ran into a problem. Please refresh the page."
+    }
+  },
+  "insights": {
+    "calendar": {
+      "nextMonth": "Next month",
+      "previousMonth": "Previous month"
+    },
+    "cards": {
+      "agents": "Agents",
+      "agentsRan_one": "{{agents}} ran {{runs}}",
+      "agentsRan_other": "{{agents}} ran {{runs}}",
+      "allowed": "Allowed",
+      "allowedSummary_one": "{{calls}} made within {{permissions}} granted permission",
+      "allowedSummary_other": "{{calls}} made within {{permissions}} granted permissions",
+      "automations": "Automations",
+      "automationsUsed_one": "{{automations}} used {{credits}}",
+      "automationsUsed_other": "{{automations}} used {{credits}}",
+      "balance": "Balance",
+      "byAgent": "by {{agent}}",
+      "chats": "Chats",
+      "chatsUsed_one": "{{chats}} used {{credits}}",
+      "chatsUsed_other": "{{chats}} used {{credits}}",
+      "clickToOpen": "Click to open",
+      "consumedToday": "consumed today",
+      "moreAutomations_one": "+{{value}} more automation",
+      "moreAutomations_other": "+{{value}} more automations",
+      "moreChats_one": "+{{value}} more chat",
+      "moreChats_other": "+{{value}} more chats",
+      "protected": "Protected",
+      "protectedSummary_one": "{{calls}} protected across {{permissions}} permission",
+      "protectedSummary_other": "{{calls}} protected across {{permissions}} permissions",
+      "rejected_one": "{{value}} rejected",
+      "rejected_other": "{{value}} rejected",
+      "rejectedOf": "{{denied}} of {{total}} rejected",
+      "services": "Services",
+      "servicesReceived_one": "{{services}} received {{calls}}",
+      "servicesReceived_other": "{{services}} received {{calls}}",
+      "team": "Team",
+      "teamCreditUsage": "Team Credit Usage",
+      "untitled": "(untitled)",
+      "yourCreditUsage": "Your Credit Usage"
+    },
+    "common": {
+      "loadMore": "Load more",
+      "showLess": "Show less"
+    },
+    "page": {
+      "description": "Monitor what your agents access, how credits are spent, which permissions they use, and spot anything unusual.",
+      "documentTitle": "Insights & Usage",
+      "empty": "Run an agent to see insights here.",
+      "emptyRange": "No activity in this time range.",
+      "lastUpdated": "Last updated — {{date}}",
+      "loadError": "Could not load network activity.",
+      "title": "Insights"
+    },
+    "range": {
+      "custom": "Custom Range",
+      "last28Days": "Last 28 Days",
+      "last30Days": "Last 30 Days",
+      "last7Days": "Last 7 Days",
+      "today": "Today",
+      "yesterday": "Yesterday"
+    },
+    "summary": {
+      "activityCaption": "{{first}} · {{second}}",
+      "blocked_one": "{{blocked}} request was blocked by your permission rules. Review it to make sure nothing important is being held back.",
+      "blocked_other": "{{blocked}} requests were blocked by your permission rules. Review them to make sure nothing important is being held back.",
+      "blockedCaption": "{{calls}} · {{blocked}} blocked",
+      "busy_one": "A busy day — {{agentCount}} agents completed {{runs}}. Your network is working hard.",
+      "busy_other": "A busy day — {{agentCount}} agents completed {{runs}}. Your network is working hard.",
+      "distributed_one": "{{agents}} active, using {{credits}} total. A well-distributed workload.",
+      "distributed_other": "{{agents}} active, using {{credits}} total. A well-distributed workload.",
+      "highTraffic_one": "{{callCount}} service calls across {{services}}. High traffic day.",
+      "highTraffic_other": "{{callCount}} service calls across {{services}}. High traffic day.",
+      "light_one": "Light activity — only {{runs}} and {{calls}}. A quiet day.",
+      "light_other": "Light activity — only {{runs}} and {{calls}}. A quiet day.",
+      "quietCaption": "{{runs}} · a quiet day",
+      "smooth": "{{runs}} and {{callCount}} service calls today. Everything running smoothly."
+    },
+    "units": {
+      "agent_one": "{{value}} agent",
+      "agent_other": "{{value}} agents",
+      "call_one": "{{value}} call",
+      "call_other": "{{value}} calls",
+      "run_one": "{{value}} run",
+      "run_other": "{{value}} runs",
+      "service_one": "{{value}} service",
+      "service_other": "{{value}} services"
     }
   },
   "lifecycle": {
@@ -3288,6 +3597,93 @@
     "notFound": {
       "description": "The page you are looking for does not exist.",
       "title": "Page not found"
+    }
+  },
+  "usage": {
+    "automations": {
+      "empty": "No automations used in this period",
+      "more_one": "+{{value}} more automation",
+      "more_other": "+{{value}} more automations",
+      "summary_one": "{{automations}} used {{credits}}",
+      "summary_other": "{{automations}} used {{credits}}",
+      "title": "Automations"
+    },
+    "chart": {
+      "ariaLabel": "Credits totals",
+      "credits": "credits",
+      "groupBy": {
+        "agent": "Agent",
+        "source": "Source"
+      },
+      "noUsage": "No usage",
+      "showDetails": "Show usage details for {{date}}"
+    },
+    "chats": {
+      "clickToOpen": "Click to open",
+      "empty": "No chats in this period",
+      "more_one": "+{{value}} more chat",
+      "more_other": "+{{value}} more chats",
+      "summary_one": "{{chats}} used {{credits}}",
+      "summary_other": "{{chats}} used {{credits}}",
+      "title": "Chats",
+      "untitled": "(untitled)"
+    },
+    "kinds": {
+      "connector": "Connectors",
+      "image": "Images",
+      "model": "Models",
+      "other": "Other",
+      "video": "Videos"
+    },
+    "page": {
+      "description": "Your credit consumption across chats, automations, and channels.",
+      "loadError": "Failed to load usage insights. Please try again later.",
+      "title": "Usage"
+    },
+    "range": {
+      "ariaLabel": "Date range",
+      "billingPeriod": "Billing period",
+      "last24Hours": "Last 24 hours",
+      "last28Days": "Last 28 days",
+      "last30Days": "Last 30 days",
+      "last7Days": "Last 7 days",
+      "selectedDay": "Selected day",
+      "today": "Today",
+      "yesterday": "Yesterday"
+    },
+    "records": {
+      "emptyBillingPeriod": "No usage in this billing period.",
+      "emptyRange": "No usage in this time range.",
+      "loadError": "Could not load your usage.",
+      "loadMore": "Load more",
+      "myUsage": "My usage",
+      "noActiveBillingPeriod": "No active billing period.",
+      "teamLoadError": "Could not load team usage.",
+      "teamUsage": "Team usage",
+      "untitled": "(untitled)"
+    },
+    "sources": {
+      "agent": "Agent",
+      "automation": "Automation",
+      "chat": "Chat",
+      "cli": "CLI",
+      "email": "Email",
+      "github": "GitHub",
+      "other": "Other",
+      "others": "Others",
+      "phone": "Phone",
+      "slack": "Slack",
+      "teams": "Microsoft Teams",
+      "telegram": "Telegram",
+      "unknown": "Unknown"
+    },
+    "units": {
+      "automation_one": "{{value}} automation",
+      "automation_other": "{{value}} automations",
+      "chat_one": "{{value}} chat",
+      "chat_other": "{{value}} chats",
+      "credit_one": "{{value}} credit",
+      "credit_other": "{{value}} credits"
     }
   },
   "workflows": {

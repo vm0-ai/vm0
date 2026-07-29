@@ -10,8 +10,9 @@ import {
   zeroBillingStatusContract,
   type BillingStatusResponse,
 } from "@vm0/api-contracts/contracts/zero-billing";
+import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import { screen, waitFor, within } from "@testing-library/react";
-import { describe, expect, it, vi, type Mock } from "vitest";
+import { afterEach, describe, expect, it, vi, type Mock } from "vitest";
 
 import {
   click,
@@ -21,8 +22,14 @@ import {
 } from "../../../__tests__/page-helper.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { createDeferredPromise } from "../../../signals/utils.ts";
+import { i18n } from "../../../i18n/index.ts";
 
 const context = testContext();
+
+afterEach(async () => {
+  await i18n.changeLanguage("en-US");
+  document.documentElement.lang = "en-US";
+});
 
 function buttonByText(
   text: string,
@@ -227,6 +234,53 @@ async function waitForAnimationFrame(): Promise<void> {
 }
 
 describe("organization billing settings", () => {
+  it("localizes plans, credit purchases, and currency in Portuguese", async () => {
+    context.mocks.data.org({
+      id: "org_1",
+      slug: "localized-org",
+      name: "Localized Org",
+      role: "admin",
+    });
+    context.mocks.data.userPreferences({ locale: "pt-BR" });
+    context.mocks.api(zeroBillingStatusContract.get, ({ respond }) => {
+      return respond(200, {
+        ...activeProBillingStatus(),
+        canBuyCredits: true,
+        autoRechargeAllowed: true,
+      });
+    });
+
+    detachedSetupPage({
+      context,
+      path: "/?settings=billing",
+      featureSwitches: {
+        [FeatureSwitchKey.LanguagePreference]: true,
+      },
+    });
+
+    await waitFor(() => {
+      expect(document.documentElement.lang).toBe("pt-BR");
+      expect(
+        screen.getByRole("heading", { name: "Plano" }),
+      ).toBeInTheDocument();
+      expect(screen.getByText("Plano Pro")).toBeInTheDocument();
+      expect(screen.getByText("Gerenciar cobrança")).toBeInTheDocument();
+      expect(
+        screen.getByRole("heading", { name: "Comprar créditos" }),
+      ).toBeInTheDocument();
+      expect(buttonByText("Compra rápida de US$ 20,00")).toBeInTheDocument();
+    });
+
+    click(buttonByText("Comparar todos os planos"));
+    await waitFor(() => {
+      expect(
+        screen.getByRole("heading", { name: "Comparar planos" }),
+      ).toBeInTheDocument();
+      expect(screen.getByText("20.000 créditos / mês")).toBeInTheDocument();
+      expect(screen.getAllByText("/mês").length).toBeGreaterThan(0);
+    });
+  });
+
   it("scrolls to buy credits from the credits billing deep link", async () => {
     const scrollIntoView = installScrollIntoViewMock();
     context.mocks.data.org({

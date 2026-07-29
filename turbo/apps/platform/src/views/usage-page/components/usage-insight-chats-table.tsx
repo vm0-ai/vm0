@@ -12,15 +12,75 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@vm0/ui";
+import { useTranslation } from "react-i18next";
+import {
+  formatCompactNumber,
+  formatLocalizedNumber,
+} from "../../../i18n/format.ts";
 
-function formatValue(n: number): string {
-  if (n >= 1_000_000) {
-    return `${(n / 1_000_000).toFixed(1)}M`;
-  }
-  if (n >= 1000) {
-    return `${(n / 1000).toFixed(1)}K`;
-  }
-  return n.toLocaleString();
+function ChatUsageRow({
+  row,
+  maxValue,
+  accent,
+}: {
+  row: UsageInsightResponse["chats"][number];
+  maxValue: number;
+  accent: string;
+}) {
+  const { t } = useTranslation();
+  const hoveredId = useGet(hoveredChatId$);
+  const setHoveredId = useSet(setHoveredChatId$);
+  const value = row.credits;
+  const pct = (value / maxValue) * 100;
+  const isActive = hoveredId === null || hoveredId === row.threadId;
+  const fullTitle =
+    row.threadTitle ??
+    t(($) => {
+      return $.usage.chats.untitled;
+    });
+
+  return (
+    <li>
+      <Link
+        pathname="/chats/:threadId"
+        options={{ pathParams: { threadId: row.threadId } }}
+        className={`grid grid-cols-[minmax(0,2fr)_minmax(0,3fr)_3rem] items-center gap-3 -mx-1.5 px-1.5 py-1 rounded-md transition-all duration-150 ${
+          hoveredId === row.threadId ? "bg-foreground/5" : ""
+        } ${isActive ? "opacity-100" : "opacity-30"}`}
+        onMouseEnter={() => {
+          setHoveredId(row.threadId);
+        }}
+        onMouseLeave={() => {
+          setHoveredId(null);
+        }}
+      >
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <span className="text-sm font-medium truncate decoration-dotted underline decoration-foreground/40 decoration-[1px] underline-offset-2">
+              {fullTitle}
+            </span>
+          </TooltipTrigger>
+          <TooltipContent side="top" sideOffset={4} className="max-w-xs">
+            <p className="text-xs whitespace-normal break-words">{fullTitle}</p>
+            <p className="text-[11px] mt-1.5 pt-1.5 border-t border-white/15 opacity-80">
+              {t(($) => {
+                return $.usage.chats.clickToOpen;
+              })}
+            </p>
+          </TooltipContent>
+        </Tooltip>
+        <div className="h-1.5 rounded-full bg-foreground/10 overflow-hidden">
+          <div
+            className="h-full rounded-full"
+            style={{ width: `${pct}%`, backgroundColor: accent }}
+          />
+        </div>
+        <span className="text-xs tabular-nums opacity-70 text-right">
+          {formatCompactNumber(value)}
+        </span>
+      </Link>
+    </li>
+  );
 }
 
 export function UsageInsightChatsTable({
@@ -28,10 +88,10 @@ export function UsageInsightChatsTable({
 }: {
   data: UsageInsightResponse;
 }) {
+  const { t } = useTranslation();
   const { chats, chatOtherCount, chatOtherCredits } = data;
   const { accent } = getCardPalette(5);
   const hoveredId = useGet(hoveredChatId$);
-  const setHoveredId = useSet(setHoveredChatId$);
 
   if (chats.length === 0 && chatOtherCount === 0) {
     return (
@@ -40,9 +100,15 @@ export function UsageInsightChatsTable({
           className="text-xs font-semibold uppercase tracking-widest mb-3"
           style={{ color: accent }}
         >
-          Chats
+          {t(($) => {
+            return $.usage.chats.title;
+          })}
         </p>
-        <p className="text-sm text-muted-foreground">No chats in this period</p>
+        <p className="text-sm text-muted-foreground">
+          {t(($) => {
+            return $.usage.chats.empty;
+          })}
+        </p>
       </section>
     );
   }
@@ -57,6 +123,24 @@ export function UsageInsightChatsTable({
       return c.credits;
     }),
   );
+  const chatCount = t(
+    ($) => {
+      return $.usage.units.chat;
+    },
+    {
+      count: totalCount,
+      value: formatLocalizedNumber(totalCount),
+    },
+  );
+  const creditCount = t(
+    ($) => {
+      return $.usage.units.credit;
+    },
+    {
+      count: totalCredits,
+      value: formatCompactNumber(totalCredits),
+    },
+  );
 
   return (
     <section className="bg-gray-50 rounded-[20px] p-6 border border-border/40 break-inside-avoid">
@@ -64,67 +148,35 @@ export function UsageInsightChatsTable({
         className="text-xs font-semibold uppercase tracking-widest mb-3"
         style={{ color: accent }}
       >
-        Chats
+        {t(($) => {
+          return $.usage.chats.title;
+        })}
       </p>
       <p className="text-5xl font-black leading-none tabular-nums font-serif">
         {totalCount}
       </p>
       <p className="text-sm opacity-60 mt-2">
-        {totalCount === 1 ? "chat" : "chats"} used {formatValue(totalCredits)}{" "}
-        {totalCredits === 1 ? "credit" : "credits"}
+        {t(
+          ($) => {
+            return $.usage.chats.summary;
+          },
+          {
+            count: totalCount,
+            chats: chatCount,
+            credits: creditCount,
+          },
+        )}
       </p>
       <TooltipProvider delayDuration={300}>
         <ul className="flex flex-col gap-2.5 mt-4">
           {chats.map((row) => {
-            const value = row.credits;
-            const pct = (value / maxValue) * 100;
-            const isActive = hoveredId === null || hoveredId === row.threadId;
-            const fullTitle = row.threadTitle ?? "(untitled)";
             return (
-              <li key={row.threadId}>
-                <Link
-                  pathname="/chats/:threadId"
-                  options={{ pathParams: { threadId: row.threadId } }}
-                  className={`grid grid-cols-[minmax(0,2fr)_minmax(0,3fr)_3rem] items-center gap-3 -mx-1.5 px-1.5 py-1 rounded-md transition-all duration-150 ${
-                    hoveredId === row.threadId ? "bg-foreground/5" : ""
-                  } ${isActive ? "opacity-100" : "opacity-30"}`}
-                  onMouseEnter={() => {
-                    setHoveredId(row.threadId);
-                  }}
-                  onMouseLeave={() => {
-                    setHoveredId(null);
-                  }}
-                >
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <span className="text-sm font-medium truncate decoration-dotted underline decoration-foreground/40 decoration-[1px] underline-offset-2">
-                        {fullTitle}
-                      </span>
-                    </TooltipTrigger>
-                    <TooltipContent
-                      side="top"
-                      sideOffset={4}
-                      className="max-w-xs"
-                    >
-                      <p className="text-xs whitespace-normal break-words">
-                        {fullTitle}
-                      </p>
-                      <p className="text-[11px] mt-1.5 pt-1.5 border-t border-white/15 opacity-80">
-                        Click to open →
-                      </p>
-                    </TooltipContent>
-                  </Tooltip>
-                  <div className="h-1.5 rounded-full bg-foreground/10 overflow-hidden">
-                    <div
-                      className="h-full rounded-full"
-                      style={{ width: `${pct}%`, backgroundColor: accent }}
-                    />
-                  </div>
-                  <span className="text-xs tabular-nums opacity-70 text-right">
-                    {formatValue(value)}
-                  </span>
-                </Link>
-              </li>
+              <ChatUsageRow
+                key={row.threadId}
+                row={row}
+                maxValue={maxValue}
+                accent={accent}
+              />
             );
           })}
           {chatOtherCount > 0 && (
@@ -134,10 +186,18 @@ export function UsageInsightChatsTable({
               }`}
             >
               <span className="text-sm text-muted-foreground truncate col-span-2">
-                +{chatOtherCount} more {chatOtherCount === 1 ? "chat" : "chats"}
+                {t(
+                  ($) => {
+                    return $.usage.chats.more;
+                  },
+                  {
+                    count: chatOtherCount,
+                    value: formatLocalizedNumber(chatOtherCount),
+                  },
+                )}
               </span>
               <span className="text-xs tabular-nums text-muted-foreground text-right">
-                {formatValue(chatOtherCredits)}
+                {formatCompactNumber(chatOtherCredits)}
               </span>
             </li>
           )}
