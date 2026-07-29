@@ -206,7 +206,7 @@ impl MitmdumpRuntime {
                 for process in &snapshot.processes {
                     signal_stable_process(process.identity).await?;
                 }
-                wait_for_process_exit(target, &snapshot).await?;
+                wait_for_processes_exit(target, &snapshot).await?;
             }
             tokio::time::sleep(PROCESS_EXIT_POLL_INTERVAL).await;
         }
@@ -302,9 +302,6 @@ fn scan_marked_processes(root: &Path, exact_path: Option<&Path>) -> RunnerResult
         if runtime_marker(&rechecked_environ) != Some(marker) {
             continue;
         }
-        let Some(command) = read_process_comm(pid)? else {
-            continue;
-        };
         let after = match crate::process::read_process_stat_checked_blocking(pid) {
             ProcessStatRead::Found(stat) if process_stat_is_live(&stat) => stat,
             ProcessStatRead::Found(_) | ProcessStatRead::Missing => continue,
@@ -323,6 +320,7 @@ fn scan_marked_processes(root: &Path, exact_path: Option<&Path>) -> RunnerResult
         if !same_process(&before, &after) || !seen.insert((pid, after.starttime)) {
             continue;
         }
+        let command = read_process_comm(pid);
         processes.push(ProcessObservation {
             identity: ProcessIdentity {
                 pid,
@@ -362,21 +360,14 @@ fn process_comm_is_mitmdump(pid: u32) -> RunnerResult<bool> {
     }
 }
 
-fn read_process_comm(pid: u32) -> RunnerResult<Option<String>> {
+fn read_process_comm(pid: u32) -> String {
     let path = format!("/proc/{pid}/comm");
     match std::fs::read(&path) {
         Ok(comm) => {
             let comm = comm.strip_suffix(b"\n").unwrap_or(&comm);
-            let command = String::from_utf8_lossy(comm)
-                .chars()
-                .flat_map(char::escape_default)
-                .collect();
-            Ok(Some(command))
+            String::from_utf8_lossy(comm).into_owned()
         }
-        Err(error) if process_disappeared(&error) => Ok(None),
-        Err(error) => Err(RunnerError::Internal(format!(
-            "read {path} for mitmdump runtime owner: {error}"
-        ))),
+        Err(_) => "<unavailable>".to_string(),
     }
 }
 
@@ -424,7 +415,7 @@ fn log_process_snapshot(target: &Path, snapshot: &ProcessSnapshot) {
     }
 }
 
-async fn wait_for_process_exit(target: &Path, snapshot: &ProcessSnapshot) -> RunnerResult<()> {
+async fn wait_for_processes_exit(target: &Path, snapshot: &ProcessSnapshot) -> RunnerResult<()> {
     let deadline = tokio::time::Instant::now() + PROCESS_EXIT_TIMEOUT;
     let mut remaining = snapshot.processes.clone();
     loop {

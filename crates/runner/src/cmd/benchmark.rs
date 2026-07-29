@@ -236,8 +236,17 @@ pub async fn run_benchmark(
         guest_restore_ms,
         exec_ms,
     } = timing;
-    match (&result, &proxy_stop_result) {
-        (Ok(exec_result), Ok(())) => {
+    let proxy_stop_would_be_primary = match &result {
+        Ok(exec_result) => benchmark_exit_code(exec_result) == 0,
+        Err(_) => false,
+    };
+    let primary_proxy_stop_error = if proxy_stop_would_be_primary {
+        proxy_stop_result.as_ref().err()
+    } else {
+        None
+    };
+    match (&result, primary_proxy_stop_error) {
+        (Ok(exec_result), None) => {
             let exit_code = benchmark_exit_code(exec_result);
             info!(
                 proxy_ms,
@@ -252,13 +261,11 @@ pub async fn run_benchmark(
                 "benchmark complete"
             );
         }
-        (Ok(_), Err(e)) | (Err(e), _) => {
+        (Ok(_), Some(e)) | (Err(e), _) => {
             info!(proxy_ms, factory_ms, boot_ms = ?boot_ms, workspace_mount_ms = ?workspace_mount_ms, guest_restore_ms = ?guest_restore_ms, exec_ms = ?exec_ms, total_ms, error = %e, "benchmark failed");
         }
     }
-    if result.is_err()
-        && let Err(e) = &proxy_stop_result
-    {
+    if !proxy_stop_would_be_primary && let Err(e) = &proxy_stop_result {
         warn!(error = %e, "proxy stop also failed after benchmark execution failure");
     }
 
@@ -270,8 +277,11 @@ pub async fn run_benchmark(
     write_benchmark_exec_output(&mut stdout.lock(), &mut stderr.lock(), &exec_result);
 
     // 7. Propagate cleanup failure before a successful guest exit code
-    proxy_stop_result?;
-    Ok(ExitCode::from(benchmark_exit_code(&exec_result)))
+    let exit_code = benchmark_exit_code(&exec_result);
+    if exit_code == 0 {
+        proxy_stop_result?;
+    }
+    Ok(ExitCode::from(exit_code))
 }
 
 fn benchmark_exit_code(exec_result: &ExecResult) -> u8 {
