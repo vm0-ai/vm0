@@ -1,5 +1,12 @@
 # Changelog
 
+## [8.483.0](https://github.com/vm0-ai/vm0/compare/core-v8.482.1...core-v8.483.0) (2026-07-29)
+
+
+### Features
+
+* **platform:** enable chat history backfill progress globally ([#23575](https://github.com/vm0-ai/vm0/issues/23575)) ([de38e8f](https://github.com/vm0-ai/vm0/commit/de38e8f94cf489f0e38fd23130357cbd7fc075bf))
+
 ## [8.482.1](https://github.com/vm0-ai/vm0/compare/core-v8.482.0...core-v8.482.1) (2026-07-28)
 
 
