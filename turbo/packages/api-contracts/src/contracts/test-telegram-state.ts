@@ -49,6 +49,7 @@ export const testTelegramStateActionBodySchema = z
       "update-run",
       "get-run",
       "find-thread-session",
+      "find-chat-thread-route",
       "delete-fixture",
     ]),
   })
@@ -73,6 +74,7 @@ export const testTelegramStateResponseSchema = z.object({
   messages: z.array(z.unknown()),
   official_messages: z.array(z.unknown()),
   thread_sessions: z.array(z.unknown()),
+  routes: z.array(z.unknown()),
 });
 
 export const testTelegramStateDeleteResponseSchema = z.object({
