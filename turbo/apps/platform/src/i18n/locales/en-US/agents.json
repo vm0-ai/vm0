@@ -87,7 +87,8 @@
       "authorization": "Authorization",
       "instructions": "Instructions",
       "profile": "Profile"
-    }
+    },
+    "viewProfile": "View agent profile"
   },
   "errors": {
     "unknown": "Unknown error"
@@ -467,6 +468,11 @@
     },
     "chat": "Chat",
     "description": "Click any card to start a conversation. It could become an on-demand task, a recurring workflow, or a subagent.",
+    "entry": {
+      "description": "Browse use cases across all connectors",
+      "title": "Ideas & use cases",
+      "viewAll": "View all"
+    },
     "search": {
       "accessibilityLabel": "Search use cases",
       "empty": "No use cases match your search.",

@@ -749,6 +749,9 @@ export function AgentListDialog({
     <CommandDialog
       open={open}
       onOpenChange={onOpenChange}
+      closeLabel={t(($) => {
+        return $.actions.close;
+      })}
       className="zero-app sm:max-w-xl w-[calc(100vw-2rem)] gap-0"
       commandClassName="gap-0"
       commandProps={{ shouldFilter: false, loop: true }}

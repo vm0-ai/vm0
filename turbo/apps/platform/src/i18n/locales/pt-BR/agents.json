@@ -87,7 +87,8 @@
       "authorization": "Autorização",
       "instructions": "Instruções",
       "profile": "Perfil"
-    }
+    },
+    "viewProfile": "Ver perfil do agente"
   },
   "errors": {
     "unknown": "Erro desconhecido"
@@ -467,6 +468,11 @@
     },
     "chat": "Conversar",
     "description": "Clique em qualquer cartão para iniciar uma conversa. Ela pode virar uma tarefa sob demanda, um workflow recorrente ou um subagente.",
+    "entry": {
+      "description": "Explore casos de uso em todos os conectores",
+      "title": "Ideias e casos de uso",
+      "viewAll": "Ver todos"
+    },
     "search": {
       "accessibilityLabel": "Buscar casos de uso",
       "empty": "Nenhum caso de uso corresponde à sua busca.",

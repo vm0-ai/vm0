@@ -13,6 +13,7 @@ import { IconArrowUpRight, IconPin, IconUserPlus } from "@tabler/icons-react";
 import { isSupportedRunModel } from "@vm0/api-contracts/contracts/model-providers";
 import type { GenerationTemplateRequest } from "@vm0/api-contracts/contracts/chat-threads";
 import type { PublicConnectorCatalogStatusItem } from "@vm0/api-contracts/contracts/zero-connector-catalog";
+import { useTranslation } from "react-i18next";
 import {
   Button,
   Tooltip,
@@ -87,6 +88,10 @@ import { PersonalCodexDeviceAuthDialog } from "./components/settings/codex-devic
 import { queueCurrentAgentDraftSync$ } from "../../signals/zero-page/agent-draft.ts";
 import type { EditorDocumentSnapshot } from "../../signals/zero-page/user-message-document-codec.ts";
 import { zeroBrowserEnabled$ } from "../../signals/external/feature-switch.ts";
+import {
+  localizeIdeationUseCase,
+  type IdeationCatalogCopy,
+} from "./zero-ideation-localization.ts";
 
 function getTagline(
   agentName: string,
@@ -182,6 +187,7 @@ function InviteButton({ pageSignal }: { pageSignal: AbortSignal }) {
 }
 
 function PinPill() {
+  const { t } = useTranslation("agents");
   const currentChatAgentId = useLastResolved(currentChatAgentId$);
   const pinnedStatus = useLastResolved(currentChatAgentPinned$);
   const [pinLoadable, saveAgentPinned] = useLoadableSet(setAgentPinned$);
@@ -208,13 +214,19 @@ function PinPill() {
             onClick={handlePin}
             disabled={pinSaving}
             className="absolute -top-0.5 -right-0.5 flex h-6 w-6 items-center justify-center rounded-full zero-border bg-background text-muted-foreground shadow-sm transition-colors hover:bg-accent hover:text-foreground hover:shadow-md cursor-pointer disabled:cursor-not-allowed disabled:opacity-50"
-            aria-label="Pin to sidebar"
+            aria-label={t(($) => {
+              return $.sidebar.pin;
+            })}
           >
             <IconPin size={12} stroke={2} />
           </button>
         </TooltipTrigger>
         <TooltipContent side="bottom">
-          <p className="text-xs">Pin to sidebar</p>
+          <p className="text-xs">
+            {t(($) => {
+              return $.sidebar.pin;
+            })}
+          </p>
         </TooltipContent>
       </Tooltip>
     </TooltipProvider>
@@ -222,6 +234,8 @@ function PinPill() {
 }
 
 function ChatAgentAvatar({ agentId }: { agentId: string | null | undefined }) {
+  const { t } = useTranslation("agents");
+
   return (
     <div className="relative shrink-0">
       {agentId ? (
@@ -233,7 +247,9 @@ function ChatAgentAvatar({ agentId }: { agentId: string | null | undefined }) {
                 options={{
                   pathParams: { agentId },
                 }}
-                aria-label="View agent profile"
+                aria-label={t(($) => {
+                  return $.detail.viewProfile;
+                })}
                 className="h-14 w-14 shrink-0 sm:h-16 sm:w-16 flex items-center justify-center overflow-hidden rounded-xl transition-colors duration-150 hover:bg-accent cursor-pointer"
               >
                 <AgentAvatarImg
@@ -244,7 +260,11 @@ function ChatAgentAvatar({ agentId }: { agentId: string | null | undefined }) {
               </Link>
             </TooltipTrigger>
             <TooltipContent side="bottom">
-              <p className="text-xs">View agent profile</p>
+              <p className="text-xs">
+                {t(($) => {
+                  return $.detail.viewProfile;
+                })}
+              </p>
             </TooltipContent>
           </Tooltip>
         </TooltipProvider>
@@ -321,6 +341,7 @@ function SuggestedPromptButton({
 }
 
 function IdeasUseCasesButton() {
+  const { t } = useTranslation("agents");
   const currentChatAgentId = useLastResolved(currentChatAgentId$);
   const navigate = useSet(detachedNavigateTo$);
 
@@ -345,13 +366,21 @@ function IdeasUseCasesButton() {
         className="absolute top-4 right-4 text-muted-foreground/0 group-hover:text-muted-foreground transition-colors"
       />
       <p className="text-sm font-semibold text-foreground pr-5">
-        Ideas &amp; use cases
+        {t(($) => {
+          return $.ideation.entry.title;
+        })}
       </p>
       <p className="text-sm text-muted-foreground mt-1.5 leading-relaxed">
-        Browse use cases across all connectors
+        {t(($) => {
+          return $.ideation.entry.description;
+        })}
       </p>
       <div className="flex items-center gap-1.5 mt-auto pt-2.5 text-sm font-medium text-primary">
-        <span>View all</span>
+        <span>
+          {t(($) => {
+            return $.ideation.entry.viewAll;
+          })}
+        </span>
         <IconArrowUpRight size={14} stroke={2} />
       </div>
     </button>
@@ -363,6 +392,7 @@ function SuggestedPromptsGrid({
 }: {
   onSelectPrompt: (prompt: string) => void;
 }) {
+  const { t } = useTranslation("agents");
   const connectorStatusBySlug = useLastResolved(connectorCatalogStatusBySlug$);
   const unfilteredSuggestedPrompts =
     useLastResolved(unfilteredSuggestedPrompts$) ?? [];
@@ -374,9 +404,18 @@ function SuggestedPromptsGrid({
       : suggestedPromptsLoadable.state === "loading"
         ? (lastSuggestedPrompts ?? unfilteredSuggestedPrompts)
         : [];
+  const catalogCopy: IdeationCatalogCopy = t(
+    ($) => {
+      return $.ideation.catalog;
+    },
+    { returnObjects: true },
+  );
+  const localizedSuggestedPrompts = suggestedPrompts.map((item) => {
+    return localizeIdeationUseCase(item, catalogCopy);
+  });
   return (
     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 w-full">
-      {suggestedPrompts.map((item) => {
+      {localizedSuggestedPrompts.map((item) => {
         return (
           <SuggestedPromptButton
             key={item.title}

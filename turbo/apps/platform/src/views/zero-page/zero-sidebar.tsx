@@ -14,6 +14,7 @@ import {
   IconSearch,
 } from "@tabler/icons-react";
 import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
+import { useTranslation } from "react-i18next";
 import {
   Tooltip,
   TooltipContent,
@@ -63,7 +64,7 @@ interface ManageNavItem {
   readonly id: SidebarNavId;
   readonly activeKeys: readonly RouteKey[];
   readonly pathname: string;
-  readonly label: string;
+  readonly label: string | null;
   readonly icon: NavIcon;
   readonly featureGate?: FeatureSwitchKey;
 }
@@ -73,7 +74,7 @@ const MANAGE_NAV: readonly ManageNavItem[] = [
     id: "agents",
     activeKeys: ["agents", "agentDetail", "agentPermissions"],
     pathname: "/agents",
-    label: "Agents",
+    label: null,
     icon: IconUsers as NavIcon,
   },
   {
@@ -138,6 +139,7 @@ const FOOTER_NAV = [
 // signals via these instead of receiving anything from a parent through props.
 
 function useResolvedNavItems() {
+  const { t } = useTranslation("agents");
   const features = useLastResolved(featureSwitch$);
   const defaultDisplayName = useLastResolved(defaultAgentName$) ?? "Zero";
   const manageNav = MANAGE_NAV.filter((item) => {
@@ -145,6 +147,15 @@ function useResolvedNavItems() {
       return false;
     }
     return true;
+  }).map((item) => {
+    return {
+      ...item,
+      label:
+        item.label ??
+        t(($) => {
+          return $.list.title;
+        }),
+    };
   });
   const footerNav = FOOTER_NAV.map((item) => {
     return {

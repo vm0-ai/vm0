@@ -328,6 +328,48 @@ describe("zero ideation page", () => {
     ).not.toBeInTheDocument();
   });
 
+  it("localizes agent chat ideas without changing the selected prompt", async () => {
+    mockConnectorCatalogStatus(["agentmail"]);
+    context.mocks.data.userPreferences({
+      locale: "pt-BR",
+      supportedLocales: ["en-US", "pt-BR"],
+    });
+    context.mocks.data.onboardingStatus({ defaultAgentId: null });
+    await context.store.set(setLocale$, "pt-BR", context.signal);
+
+    detachedSetupPage({
+      context,
+      path: `/agents/${agentId}/chat`,
+    });
+
+    await expect(
+      screen.findByText("Ideias e casos de uso"),
+    ).resolves.toBeInTheDocument();
+    await expect(
+      screen.findByLabelText("Fixar na barra lateral"),
+    ).resolves.toBeInTheDocument();
+    await expect(
+      screen.findByLabelText("Ver perfil do agente"),
+    ).resolves.toBeInTheDocument();
+    expect(
+      screen.getByText("Explore casos de uso em todos os conectores"),
+    ).toBeInTheDocument();
+    expect(screen.getByText("Ver todos")).toBeInTheDocument();
+    await expect(
+      screen.findByText("Caixa de entrada do AgentMail"),
+    ).resolves.toBeInTheDocument();
+    expect(screen.queryByText("AgentMail inbox")).not.toBeInTheDocument();
+
+    click(screen.getByText("Caixa de entrada do AgentMail"));
+
+    const composer = (await screen.findByPlaceholderText(
+      PLACEHOLDER,
+    )) as HTMLTextAreaElement;
+    expect(composer).toHaveTextContent(
+      "Create a new AgentMail inbox and set up email forwarding rules",
+    );
+  });
+
   it("localizes the ideas catalog without changing the selected prompt", async () => {
     mockConnectorCatalogStatus([]);
     context.mocks.data.userPreferences({

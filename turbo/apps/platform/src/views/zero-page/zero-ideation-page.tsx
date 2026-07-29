@@ -20,45 +20,10 @@ import {
   ideationSearchQuery$,
   setIdeationSearchQuery$,
 } from "../../signals/zero-page/zero-ideation.ts";
-
-interface IdeationUseCaseCopy {
-  readonly title: string;
-  readonly description: string;
-}
-
-interface IdeationCategoryCopy {
-  readonly title: string;
-  readonly cases: Readonly<Record<string, IdeationUseCaseCopy>>;
-}
-
-type IdeationCatalogCopy = Readonly<Record<string, IdeationCategoryCopy>>;
-
-function localizeCategories(
-  categories: ReturnType<typeof getCategories>,
-  catalogCopy: IdeationCatalogCopy,
-) {
-  return categories.map((category) => {
-    const categoryCopy = catalogCopy[category.id];
-    if (!categoryCopy) {
-      throw new Error(`Missing ideation category copy: ${category.id}`);
-    }
-    return {
-      ...category,
-      title: categoryCopy.title,
-      cases: category.cases.map((useCase) => {
-        const useCaseCopy = categoryCopy.cases[useCase.title];
-        if (!useCaseCopy) {
-          throw new Error(`Missing ideation use case copy: ${useCase.title}`);
-        }
-        return {
-          ...useCase,
-          title: useCaseCopy.title,
-          description: useCaseCopy.description,
-        };
-      }),
-    };
-  });
-}
+import {
+  localizeIdeationCategories,
+  type IdeationCatalogCopy,
+} from "./zero-ideation-localization.ts";
 
 export function ZeroIdeationPage() {
   const { t } = useTranslation("agents");
@@ -85,7 +50,7 @@ export function ZeroIdeationPage() {
     },
     { returnObjects: true },
   );
-  const categories = localizeCategories(
+  const categories = localizeIdeationCategories(
     getCategories({ features, visibleConnectorSlugs }).slice(0, 8),
     catalogCopy,
   );
