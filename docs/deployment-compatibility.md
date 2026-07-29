@@ -25,12 +25,9 @@ Frontend deployments publish new browser assets, but users who already have an
 app page open keep running the JavaScript that page loaded until the page
 navigates, refreshes, or the app forces a reload.
 
-The platform app also registers a service worker for static assets, navigation
-fallback, and push notifications. The current service worker treats API
-requests as network-only, while navigation requests are network-first with a
-cached fallback for offline cold-open. Service-worker code is still a browser
-resident deployable surface. Changes to service-worker behavior should also
-account for old controlled clients during rollout.
+The platform app also registers a service worker. Service-worker code is a
+browser-resident deployable surface, so changes to its behavior must account for
+old controlled clients during rollout.
 
 The backend must therefore tolerate requests from the previous frontend version
 after a backend deployment. When changing an API used by the frontend, keep the
@@ -163,32 +160,6 @@ For frontend/backend API changes:
 - Test missing new response fields or old response shapes when frontend code can
   receive them during rollout.
 
-### Brazilian Portuguese locale rollout
-
-The `en-US` / `pt-BR` locale transition uses a receiver-first rollout because
-Platform and API promotion are independent and locale preferences are shared
-persisted state:
-
-1. Deploy the API and Platform receivers with
-   `BrazilianPortugueseLocale` disabled. The API continues to accept legacy
-   `zh-CN` requests as `en-US`, projects stored `pt-BR` to `en-US` for old
-   clients, and advertises writable locales only to a client carrying the
-   `pt-br-locale-v1` capability.
-2. Verify that every API reader which rejects stored `pt-BR` values, including
-   rollback candidates, has drained.
-3. Enable `BRAZILIAN_PORTUGUESE_LOCALE_ROLLOUT_ENABLED` only after that
-   verification. The corresponding `BrazilianPortugueseLocale` switch is
-   API-controlled and cannot be set through user feature-switch overrides. A
-   capable API then advertises both `en-US` and `pt-BR`; Platform keeps
-   synchronization and the selector hidden until it receives that handshake.
-4. Remove the legacy request normalization, old-client response projection,
-   capability handshake, and rollout switch only after stale browser clients
-   and rollback windows have closed and persisted `zh-CN` rows have migrated.
-   Cleanup is tracked by #23508.
-
-Do not enable the persistence guard during step 1. A stored `pt-BR` value is not
-readable by the API release that preceded this receiver change.
-
 For runner/backend API changes:
 
 - Test old runner requests against the new backend handler.
@@ -197,88 +168,6 @@ For runner/backend API changes:
 - Include poll, claim, heartbeat, completion, artifact, and session-resume paths
   when those protocols change.
 
-### Storage mount manifest rollout
-
-The runtime Storage unification used a receiver-first Runner rollout. During
-the expansion phase, Runners accepted exactly one of these response shapes:
-
-- canonical `storageMounts`
-- legacy `storages` plus `artifacts`
-
-Mixed, incomplete, and representation-free manifests are invalid. The initial
-receiver release left backend output unchanged. After that receiver fleet was
-deployed, the API selected `storageMounts` through the temporary
-`storage-mounts-v1` capability. Once production claim traffic and live Runner
-state showed only receiver-capable versions, the API began sending
-`storageMounts` to every Runner and the active capability was retired.
-
-New run, session, and checkpoint writers persist canonical Storage mounts only.
-After the latest session continuation heads were backfilled and verified,
-application readers require canonical run, session, and checkpoint persistence.
-Legacy API response shapes are still projected from canonical mounts. After the
-detached API release was healthy and every rollback-eligible API version that
-accessed them had drained, the physical legacy run, session, and checkpoint
-columns were removed.
-
-The short-lived direct and delayed runner queues use a separate expand/contract
-sequence. The preparation release made readers accept the previous full
-`storageManifest`, `null`, or omission while requiring canonical
-`storageMounts`, and made writers store the nullable sentinel. The contraction
-release omits the field and removes its private schema. Its reader still accepts
-queued rows written by the preparation release because unrelated object fields
-are ignored and canonical `storageMounts` remain required. The preparation
-release already accepts omission, so these two releases can overlap during a
-rolling deployment. Rolling back to an API older than the preparation release
-is intentionally unsupported; no database-clock cutoff or queue-drain gate is
-required for that discarded rollback boundary.
-
-The similarly named Runner claim field is distinct and remains the canonical
-`{ storageMounts }` transport envelope. Run-context volume and artifact
-observations are derived from the same prepared mount entries before
-persistence and are not part of queue or Runner state.
-
-Phase 4A contracts the migration denominator to the latest state used by
-session continuation. Every session continuation head must have canonical
-writeback mounts, and projecting those mounts back to the legacy artifact shape
-must be lossless. Omitted and `latest` version declarations retain their
-dynamic-HEAD behavior. Historical run and checkpoint rows are not converted
-into resumable snapshots: arbitrary checkpoint resume has been retired, while
-a successful session continuation naturally emits a fully resolved canonical
-run and checkpoint.
-
-The physical-column contraction was gated on verification finding zero legacy
-writes, zero unmigrated session continuation heads, and no lossy session
-conversion. Malformed, ambiguous, or unresolvable latest session state blocked
-contraction rather than being silently rewritten.
-
-Runner and guest binaries ship together, so both the API-to-Runner and
-Runner-to-guest runtime readers now require `storageMounts`. Both boundaries
-reject exact duplicate `mountPath` values while continuing to ignore unrelated
-unknown fields for forward compatibility. The backend's stored queue context
-contains only canonical `storageMounts`.
-
-### Firewall hostname policy
-
-The backend is the single owner of firewall configuration hostname policy.
-Generated firewall definitions must already contain canonical lowercase ASCII
-hostname literals; catalog tests enforce that invariant, and dispatch forwards
-those static definitions without rewriting them. The backend converts rendered
-custom connector hostnames and hostname-bearing built-in variable values to the
-same canonical identity before putting them into existing runner payload
-fields. Raw custom connector definitions and encrypted variable values remain
-unchanged in storage.
-
-Runner validation remains unchanged and fail closed. It defensively validates
-configuration received from old and new backends, resolved credential-bearing
-targets, and untrusted request authorities. The fixed backend policy must emit
-only canonical ASCII identities accepted unchanged by draining old runners; a
-policy upgrade requires deliberate compatibility analysis before deployment.
-
-A fully dynamic secret-backed `auth.base` remains runner-validated because the
-existing auth request has no policy/capability marker that can distinguish old
-and new runs. Changing that path requires an explicit backward-compatible
-protocol design rather than silently tightening old in-flight runs.
-
 For persisted state changes:
 
 - Test reading rows or payloads written by the previous version.
@@ -286,28 +175,6 @@ For persisted state changes:
   before code promotion.
 - Test that new writes do not break the previous deployed reader during the
   rollout window, or document why the old reader cannot observe the new data.
-
-### Connector credential ownership contraction
-
-The final connector credential ownership contraction may run only after every
-active and rollback-eligible API version writes a positive storage version,
-and assigns each connector credential to its stable connector id. Drain older
-API instances that lack either guarantee, then require the protected production
-readiness counts to be zero before applying the migration.
-
-The contraction reruns its immutable reconciliation and validates aggregate
-invariant counts in the same transaction as the hard constraints. An unresolved
-row aborts the migration without retaining reconciliation changes; remediate
-the data and retry. After success, connector storage versions are required,
-connector credential ownership is exact, and deleting a connector cascades to
-its owned secrets and variables so cleanup remains atomic across every deletion
-path. Application disconnect and replacement flows still delete owned
-credentials explicitly; the cascade is the final data-integrity guarantee, not
-a replacement for domain cleanup or provider revocation.
-
-After contraction, do not roll back directly to an API version that lacks the
-required write guarantees. Recovery must roll forward or restore the nullable
-schema before promoting that older API.
 
 Do not add broad defensive fallbacks just to hide incompatibility. The goal is a
 specific compatibility contract for the rollout window, with clear deletion
