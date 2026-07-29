@@ -3670,6 +3670,36 @@ where
     (output, captured.entries())
 }
 
+async fn capture_balloon_timeout_after_sample<F>(future: F) -> (F::Output, Vec<CapturedEvent>)
+where
+    F: Future,
+{
+    let captured = CapturedEvents::default();
+    let subscriber = tracing_subscriber::registry().with(captured.clone());
+    let guard = tracing::subscriber::set_default(subscriber);
+    tracing::callsite::rebuild_interest_cache();
+    tokio::pin!(future);
+
+    loop {
+        if has_captured_event(&captured.entries(), "waiting for balloon") {
+            break;
+        }
+        tokio::select! {
+            _ = &mut future => {
+                panic!("balloon operation completed before a deficient sample was observed");
+            }
+            () = tokio::task::yield_now() => {}
+        }
+    }
+
+    tokio::time::pause();
+    tokio::time::advance(BALLOON_SETTLE_TIMEOUT).await;
+    tokio::time::resume();
+    let output = future.await;
+    drop(guard);
+    (output, captured.entries())
+}
+
 fn captured_event<'a>(events: &'a [CapturedEvent], message: &str) -> &'a CapturedEvent {
     events
         .iter()
@@ -3940,7 +3970,8 @@ async fn wait_for_balloon_timeout_logs_actual_stalled_reason() {
     let client = ApiClient::new(api.socket_path()).unwrap();
 
     let (outcome, events) =
-        capture_async_log_events(wait_for_balloon(&client, target_mib, "stalled")).await;
+        capture_balloon_timeout_after_sample(wait_for_balloon(&client, target_mib, "stalled"))
+            .await;
 
     assert_eq!(outcome, SandboxParkOutcome::Reusable);
     let event = captured_event(
@@ -4068,7 +4099,8 @@ async fn wait_for_balloon_timeout_logs_target_not_observed_reason() {
     let client = ApiClient::new(api.socket_path()).unwrap();
 
     let (outcome, events) =
-        capture_async_log_events(wait_for_balloon(&client, target_mib, "stale-target")).await;
+        capture_balloon_timeout_after_sample(wait_for_balloon(&client, target_mib, "stale-target"))
+            .await;
 
     assert_eq!(outcome, SandboxParkOutcome::Reusable);
     let event = captured_event(
@@ -4084,7 +4116,7 @@ async fn wait_for_balloon_timeout_logs_target_not_observed_reason() {
 #[tokio::test]
 async fn wait_for_balloon_stats_poll_is_bounded_by_settle_timeout() {
     let target_mib = 2048 - balloon::MIN_GUEST_MIB;
-    let api = MockLifecycleApi::with_stats(
+    let mut api = MockLifecycleApi::with_stats(
         std::collections::VecDeque::new(),
         std::collections::VecDeque::from([MockBalloonStatsReply::DelayedOk(
             BALLOON_SETTLE_TIMEOUT + Duration::from_secs(1),
@@ -4093,8 +4125,27 @@ async fn wait_for_balloon_stats_poll_is_bounded_by_settle_timeout() {
     );
     let client = ApiClient::new(api.socket_path()).unwrap();
 
-    let (outcome, events) =
-        capture_async_log_events(wait_for_balloon(&client, target_mib, "slow-stats")).await;
+    let captured = CapturedEvents::default();
+    let subscriber = tracing_subscriber::registry().with(captured.clone());
+    let guard = tracing::subscriber::set_default(subscriber);
+    tracing::callsite::rebuild_interest_cache();
+    let wait = wait_for_balloon(&client, target_mib, "slow-stats");
+    tokio::pin!(wait);
+    let request = tokio::select! {
+        request = api.api.next_request() => request,
+        _ = &mut wait => panic!("balloon wait completed before requesting statistics"),
+    };
+    assert_eq!(
+        (request.method.as_str(), request.path.as_str()),
+        ("GET", "/balloon/statistics")
+    );
+
+    tokio::time::pause();
+    tokio::time::advance(BALLOON_SETTLE_TIMEOUT).await;
+    tokio::time::resume();
+    let outcome = wait.await;
+    drop(guard);
+    let events = captured.entries();
 
     assert_eq!(outcome, SandboxParkOutcome::Reusable);
     let event = captured_event(
@@ -4119,7 +4170,7 @@ async fn wait_for_balloon_timeout_logs_severe_deficit_and_memory_stats() {
     let client = ApiClient::new(api.socket_path()).unwrap();
 
     let (outcome, events) =
-        capture_async_log_events(wait_for_balloon(&client, target_mib, "severe")).await;
+        capture_balloon_timeout_after_sample(wait_for_balloon(&client, target_mib, "severe")).await;
 
     assert_eq!(
         outcome,
@@ -5228,15 +5279,15 @@ async fn park_rejects_severe_balloon_retention_after_pausing() {
     let mut controller = Some(test_balloon_controller());
     let mut is_parked = false;
 
-    let outcome = park_inner(
+    let (result, _) = capture_balloon_timeout_after_sample(park_inner(
         &mut is_parked,
         2048,
         &mut controller,
         api.socket_path(),
         "timeout-test",
-    )
-    .await
-    .unwrap();
+    ))
+    .await;
+    let outcome = result.unwrap();
 
     assert_eq!(
         outcome,
