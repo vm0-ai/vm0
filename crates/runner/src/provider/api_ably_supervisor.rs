@@ -835,21 +835,50 @@ fn parse_network_policy_refresh_notification(
             return None;
         }
     };
-    // TODO(#23619): Rename this key with the realtime notification contract.
-    let Some(connector_slug) = msg
-        .data
-        .get("connectorRef")
-        .and_then(|v| v.as_str())
-        .filter(|value| !value.is_empty())
-    else {
-        warn!("ably: network-policy-refresh message missing connectorRef");
-        return None;
+    let connector_slug =
+        match parse_network_policy_refresh_identity_field(&msg.data, "connectorSlug") {
+            Ok(value) => value,
+            Err(()) => {
+                warn!("ably: network-policy-refresh message has invalid connectorSlug");
+                return None;
+            }
+        };
+    let connector_ref = match parse_network_policy_refresh_identity_field(&msg.data, "connectorRef")
+    {
+        Ok(value) => value,
+        Err(()) => {
+            warn!("ably: network-policy-refresh message has invalid connectorRef");
+            return None;
+        }
+    };
+    let connector_slug = match (connector_slug, connector_ref) {
+        (Some(connector_slug), Some(connector_ref)) if connector_slug != connector_ref => {
+            warn!("ably: network-policy-refresh connectorSlug and connectorRef do not match");
+            return None;
+        }
+        (Some(connector_slug), _) => connector_slug,
+        (None, Some(connector_ref)) => connector_ref,
+        (None, None) => {
+            warn!("ably: network-policy-refresh message missing connector identity");
+            return None;
+        }
     };
 
     Some(NetworkPolicyRefreshNotification {
         run_id,
         connector_slug: connector_slug.to_string(),
     })
+}
+
+fn parse_network_policy_refresh_identity_field<'a>(
+    data: &'a serde_json::Value,
+    field: &str,
+) -> Result<Option<&'a str>, ()> {
+    match data.get(field) {
+        None => Ok(None),
+        Some(serde_json::Value::String(value)) if !value.is_empty() => Ok(Some(value)),
+        Some(_) => Err(()),
+    }
 }
 
 fn parse_job_notification(msg: &ably_subscriber::Message) -> Option<JobNotification<'_>> {
@@ -1113,7 +1142,7 @@ mod tests {
 
     fn malformed_network_policy_refresh_messages(
         unrelated_name: &'static str,
-    ) -> [(&'static str, Option<&'static str>, serde_json::Value); 5] {
+    ) -> [(&'static str, Option<&'static str>, serde_json::Value); 10] {
         [
             (
                 "invalid runId",
@@ -1129,7 +1158,7 @@ mod tests {
                 serde_json::json!({ "connectorRef": "github" }),
             ),
             (
-                "missing connectorRef",
+                "missing connector identity",
                 Some("network-policy-refresh"),
                 serde_json::json!({ "runId": "00000000-0000-0000-0000-000000000003" }),
             ),
@@ -1138,6 +1167,51 @@ mod tests {
                 Some("network-policy-refresh"),
                 serde_json::json!({
                     "runId": "00000000-0000-0000-0000-000000000003",
+                    "connectorRef": ""
+                }),
+            ),
+            (
+                "empty connectorSlug with valid connectorRef",
+                Some("network-policy-refresh"),
+                serde_json::json!({
+                    "runId": "00000000-0000-0000-0000-000000000003",
+                    "connectorSlug": "",
+                    "connectorRef": "github"
+                }),
+            ),
+            (
+                "invalid connectorSlug with valid connectorRef",
+                Some("network-policy-refresh"),
+                serde_json::json!({
+                    "runId": "00000000-0000-0000-0000-000000000003",
+                    "connectorSlug": 1,
+                    "connectorRef": "github"
+                }),
+            ),
+            (
+                "invalid connectorRef with valid connectorSlug",
+                Some("network-policy-refresh"),
+                serde_json::json!({
+                    "runId": "00000000-0000-0000-0000-000000000003",
+                    "connectorSlug": "github",
+                    "connectorRef": null
+                }),
+            ),
+            (
+                "conflicting connector identities",
+                Some("network-policy-refresh"),
+                serde_json::json!({
+                    "runId": "00000000-0000-0000-0000-000000000003",
+                    "connectorSlug": "github",
+                    "connectorRef": "slack"
+                }),
+            ),
+            (
+                "empty connectorRef with valid connectorSlug",
+                Some("network-policy-refresh"),
+                serde_json::json!({
+                    "runId": "00000000-0000-0000-0000-000000000003",
+                    "connectorSlug": "github",
                     "connectorRef": ""
                 }),
             ),
@@ -2102,22 +2176,42 @@ mod tests {
     }
 
     #[test]
-    fn parse_network_policy_refresh_notification_valid() {
-        let msg = make_message(
-            Some("network-policy-refresh"),
-            serde_json::json!({
-                "runId": "00000000-0000-0000-0000-000000000003",
-                "connectorRef": "github"
-            }),
-        );
+    fn parse_network_policy_refresh_notification_accepts_compatible_identities() {
+        for (case, data) in [
+            (
+                "canonical only",
+                serde_json::json!({
+                    "runId": "00000000-0000-0000-0000-000000000003",
+                    "connectorSlug": "github"
+                }),
+            ),
+            (
+                "legacy only",
+                serde_json::json!({
+                    "runId": "00000000-0000-0000-0000-000000000003",
+                    "connectorRef": "github"
+                }),
+            ),
+            (
+                "matching dual identities",
+                serde_json::json!({
+                    "runId": "00000000-0000-0000-0000-000000000003",
+                    "connectorSlug": "github",
+                    "connectorRef": "github"
+                }),
+            ),
+        ] {
+            let msg = make_message(Some("network-policy-refresh"), data);
 
-        let notification = parse_network_policy_refresh_notification(&msg).unwrap();
+            let notification = parse_network_policy_refresh_notification(&msg).unwrap();
 
-        assert_eq!(
-            notification.run_id.to_string(),
-            "00000000-0000-0000-0000-000000000003"
-        );
-        assert_eq!(notification.connector_slug, "github");
+            assert_eq!(
+                notification.run_id.to_string(),
+                "00000000-0000-0000-0000-000000000003",
+                "{case}"
+            );
+            assert_eq!(notification.connector_slug, "github", "{case}");
+        }
     }
 
     #[test]
