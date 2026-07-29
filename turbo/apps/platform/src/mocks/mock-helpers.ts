@@ -7,8 +7,8 @@
  */
 import { triggerAblyEvent } from "./ably.ts";
 
-/** Simulate a new chat message being created in a thread. */
-export function createChatMessage(threadId: string): void {
+/** Simulate a new chat event being created in a thread. */
+export function createChatEvent(threadId: string): void {
   triggerAblyEvent(`chatThreadMessageCreated:${threadId}`);
 }
 

@@ -32,12 +32,12 @@ const USER_ID = "background-sync-user";
 const ORG_ID = "background-sync-org";
 const THREAD_ID = "b0000000-0000-4000-a000-000000000801";
 const OTHER_THREAD_ID = "b0000000-0000-4000-a000-000000000805";
-const FIRST_CACHED_MESSAGE_ID = "00000000-0000-4000-8000-000000000802";
-const LAST_CACHED_MESSAGE_ID = "00000000-0000-4000-8000-000000000803";
-const NEW_MESSAGE_ID = "00000000-0000-4000-8000-000000000804";
+const FIRST_CACHED_EVENT_ID = "00000000-0000-4000-8000-000000000802";
+const LAST_CACHED_EVENT_ID = "00000000-0000-4000-8000-000000000803";
+const NEW_EVENT_ID = "00000000-0000-4000-8000-000000000804";
 const CREATED_AT = "2026-07-23T10:00:00.000Z";
 
-function assistantMessage(
+function assistantEvent(
   threadId: string,
   id: string,
   content: string,
@@ -54,23 +54,23 @@ function assistantMessage(
   };
 }
 
-const firstCachedMessage = assistantMessage(
+const firstCachedEvent = assistantEvent(
   THREAD_ID,
-  FIRST_CACHED_MESSAGE_ID,
+  FIRST_CACHED_EVENT_ID,
   "First cached message",
   "2026-07-23T10:01:00.000Z",
   1,
 );
-const lastCachedMessage = assistantMessage(
+const lastCachedEvent = assistantEvent(
   THREAD_ID,
-  LAST_CACHED_MESSAGE_ID,
+  LAST_CACHED_EVENT_ID,
   "Last cached message",
   "2026-07-23T10:02:00.000Z",
   2,
 );
-const newMessage = assistantMessage(
+const newEvent = assistantEvent(
   THREAD_ID,
-  NEW_MESSAGE_ID,
+  NEW_EVENT_ID,
   "New remote message",
   "2026-07-23T10:03:00.000Z",
   3,
@@ -102,7 +102,7 @@ describe("chat event background sync", () => {
     await context.store.set(
       writeIndexedDbChatEvents$,
       THREAD_ID,
-      [firstCachedMessage, lastCachedMessage],
+      [firstCachedEvent, lastCachedEvent],
       context.signal,
     );
 
@@ -115,9 +115,9 @@ describe("chat event background sync", () => {
         sinceSeqId: query.sinceSeqId,
         beforeSeqId: query.beforeSeqId,
       });
-      if (query.sinceSeqId === lastCachedMessage.seqId) {
+      if (query.sinceSeqId === lastCachedEvent.seqId) {
         return respond(200, {
-          events: [chatEventResponse(newMessage)],
+          events: [chatEventResponse(newEvent)],
           hasHistoryBefore: true,
         });
       }
@@ -144,9 +144,9 @@ describe("chat event background sync", () => {
 
       await waitFor(async () => {
         await expect(
-          appDb.get(CHAT_MESSAGES_STORE, NEW_MESSAGE_ID),
+          appDb.get(CHAT_MESSAGES_STORE, NEW_EVENT_ID),
         ).resolves.toMatchObject({
-          id: NEW_MESSAGE_ID,
+          id: NEW_EVENT_ID,
           threadId: THREAD_ID,
         });
       });
@@ -167,7 +167,7 @@ describe("chat event background sync", () => {
     await context.store.set(
       writeIndexedDbChatEvents$,
       THREAD_ID,
-      [firstCachedMessage, lastCachedMessage],
+      [firstCachedEvent, lastCachedEvent],
       context.signal,
     );
 
@@ -202,7 +202,7 @@ describe("chat event background sync", () => {
       });
 
       context.mocks.ably.trigger(`chatThreadMessageCreated:${THREAD_ID}`, {
-        syncThroughSeqId: lastCachedMessage.seqId,
+        syncThroughSeqId: lastCachedEvent.seqId,
       });
       context.mocks.ably.trigger(`chatThreadMessageCreated:${OTHER_THREAD_ID}`);
 

@@ -1,15 +1,12 @@
 import { command, computed, state } from "ccstate";
-import type {
-  EnrichedChatMessage,
-  GroupedChatMessageGroup,
-} from "./chat-message.ts";
+import type { EnrichedChatEvent, ChatEventGroup } from "./chat-event.ts";
 import type { ChatMessageUsagePayload } from "@vm0/api-contracts/contracts/chat-threads";
 import { chatEventCompatibilityRole } from "@vm0/api-contracts/contracts/chat-events";
 
 interface RunSegment {
   readonly runId: string;
   runGroupId: string | undefined;
-  readonly messages: EnrichedChatMessage[];
+  readonly events: EnrichedChatEvent[];
   readonly startGroupIndex: number;
   endGroupIndex: number;
 }
@@ -17,12 +14,12 @@ interface RunSegment {
 interface LooseSegment {
   readonly runId: undefined;
   readonly runGroupId: undefined;
-  readonly messages: EnrichedChatMessage[];
+  readonly events: EnrichedChatEvent[];
   readonly startGroupIndex: number;
   endGroupIndex: number;
 }
 
-type MessageSegment = RunSegment | LooseSegment;
+type EventSegment = RunSegment | LooseSegment;
 
 type GroupedRunSegment = RunSegment & { runGroupId: string };
 
@@ -30,13 +27,13 @@ export interface RunGroupFold {
   readonly key: string;
   readonly runGroupId: string;
   readonly hiddenRunCount: number;
-  readonly hiddenGroups: GroupedChatMessageGroup[];
-  readonly labelGroups: GroupedChatMessageGroup[];
+  readonly hiddenGroups: ChatEventGroup[];
+  readonly labelGroups: ChatEventGroup[];
   readonly expanded: boolean;
 }
 
 export interface RunGroupFolding {
-  readonly visibleGroups: GroupedChatMessageGroup[];
+  readonly visibleGroups: ChatEventGroup[];
   readonly foldsByNextGroupId: ReadonlyMap<string, readonly RunGroupFold[]>;
 }
 
@@ -60,43 +57,43 @@ export const toggleRunGroupExpanded$ = command(
   },
 );
 
-function groupMessagesByRole(
-  messages: readonly EnrichedChatMessage[],
-): GroupedChatMessageGroup[] {
-  const groups: GroupedChatMessageGroup[] = [];
-  for (const message of messages) {
-    const role = chatEventCompatibilityRole(message.eventType);
+function groupEventsByRole(
+  events: readonly EnrichedChatEvent[],
+): ChatEventGroup[] {
+  const groups: ChatEventGroup[] = [];
+  for (const event of events) {
+    const role = chatEventCompatibilityRole(event.eventType);
     const last = groups[groups.length - 1];
     if (last && last.role === role) {
-      last.messages.push(message);
+      last.events.push(event);
       continue;
     }
     groups.push({
-      beginMessageId: message.id,
+      beginEventId: event.id,
       role,
-      messages: [message],
+      events: [event],
     });
   }
   return groups;
 }
 
-function firstRunIdForMessages(
-  messages: readonly EnrichedChatMessage[],
+function firstRunIdForEvents(
+  events: readonly EnrichedChatEvent[],
 ): string | undefined {
-  return messages.find((message) => {
-    return message.runId !== undefined;
+  return events.find((event) => {
+    return event.runId !== undefined;
   })?.runId;
 }
 
 function usageByRunIdFromGroups(
-  groups: readonly GroupedChatMessageGroup[],
+  groups: readonly ChatEventGroup[],
 ): Map<string, ChatMessageUsagePayload> {
   const usageByRunId = new Map<string, ChatMessageUsagePayload>();
   for (const group of groups) {
     if (group.role !== "assistant" || group.usage === undefined) {
       continue;
     }
-    const runId = firstRunIdForMessages(group.messages);
+    const runId = firstRunIdForEvents(group.events);
     if (runId !== undefined) {
       setLatestUsageForRun(usageByRunId, runId, group.usage);
     }
@@ -200,42 +197,39 @@ function mergedUsageForRunSegments(
 }
 
 function attachUsageToGroups(
-  groups: readonly GroupedChatMessageGroup[],
+  groups: readonly ChatEventGroup[],
   usageByRunId: ReadonlyMap<string, ChatMessageUsagePayload>,
-): GroupedChatMessageGroup[] {
+): ChatEventGroup[] {
   return groups.map((group) => {
     if (group.role !== "assistant") {
       return group;
     }
-    const runId = firstRunIdForMessages(group.messages);
+    const runId = firstRunIdForEvents(group.events);
     const usage = runId === undefined ? undefined : usageByRunId.get(runId);
     return usage === undefined ? group : { ...group, usage };
   });
 }
 
 function segmentGroups(
-  segment: MessageSegment,
+  segment: EventSegment,
   usageByRunId: ReadonlyMap<string, ChatMessageUsagePayload>,
-): GroupedChatMessageGroup[] {
-  return attachUsageToGroups(
-    groupMessagesByRole(segment.messages),
-    usageByRunId,
-  );
+): ChatEventGroup[] {
+  return attachUsageToGroups(groupEventsByRole(segment.events), usageByRunId);
 }
 
-function messageSegmentsFromGroups(
-  groups: readonly GroupedChatMessageGroup[],
-): MessageSegment[] {
-  const segments: MessageSegment[] = [];
+function eventSegmentsFromGroups(
+  groups: readonly ChatEventGroup[],
+): EventSegment[] {
+  const segments: EventSegment[] = [];
 
   for (const [groupIndex, group] of groups.entries()) {
-    for (const message of group.messages) {
-      const runId = message.runId;
+    for (const event of group.events) {
+      const runId = event.runId;
       if (runId === undefined) {
         segments.push({
           runId: undefined,
           runGroupId: undefined,
-          messages: [message],
+          events: [event],
           startGroupIndex: groupIndex,
           endGroupIndex: groupIndex + 1,
         });
@@ -244,18 +238,18 @@ function messageSegmentsFromGroups(
 
       const last = segments[segments.length - 1];
       if (last?.runId === runId) {
-        last.messages.push(message);
+        last.events.push(event);
         last.endGroupIndex = groupIndex + 1;
         if (last.runGroupId === undefined) {
-          last.runGroupId = message.runGroupId;
+          last.runGroupId = event.runGroupId;
         }
         continue;
       }
 
       segments.push({
         runId,
-        runGroupId: message.runGroupId,
-        messages: [message],
+        runGroupId: event.runGroupId,
+        events: [event],
         startGroupIndex: groupIndex,
         endGroupIndex: groupIndex + 1,
       });
@@ -290,13 +284,13 @@ function appendFoldBeforeGroup(
 }
 
 function isGroupedRunSegment(
-  segment: MessageSegment | undefined,
+  segment: EventSegment | undefined,
 ): segment is GroupedRunSegment {
   return segment?.runId !== undefined && segment.runGroupId !== undefined;
 }
 
 function runGroupStreakEndIndex(
-  segments: readonly MessageSegment[],
+  segments: readonly EventSegment[],
   startIndex: number,
   runGroupId: string,
 ): number {
@@ -333,9 +327,9 @@ function appendIndividualGroupWindowItems(
 }
 
 function runGroupVisualWindowItems(
-  groups: readonly GroupedChatMessageGroup[],
+  groups: readonly ChatEventGroup[],
 ): RunGroupVisualWindowItem[] {
-  const segments = messageSegmentsFromGroups(groups);
+  const segments = eventSegmentsFromGroups(groups);
   const items: RunGroupVisualWindowItem[] = [];
   let coveredGroupIndex = 0;
 
@@ -420,7 +414,7 @@ function trailingRunGroupVisualWindowStartIndex(
 }
 
 export function runGroupVisualWindowStartIndex(
-  groups: readonly GroupedChatMessageGroup[],
+  groups: readonly ChatEventGroup[],
   cursorGroupId: string | null,
   visibleItemCount: number,
 ): number {
@@ -437,7 +431,7 @@ export function runGroupVisualWindowStartIndex(
   }
 
   const cursorGroupIndex = groups.findIndex((group) => {
-    return group.beginMessageId === cursorGroupId;
+    return group.beginEventId === cursorGroupId;
   });
   if (cursorGroupIndex === -1) {
     return trailingRunGroupVisualWindowStartIndex(items, visibleItemCount);
@@ -453,7 +447,7 @@ export function runGroupVisualWindowStartIndex(
 }
 
 export function previousRunGroupVisualWindowStartIndex(
-  groups: readonly GroupedChatMessageGroup[],
+  groups: readonly ChatEventGroup[],
   currentStartGroupIndex: number,
   visibleItemCount: number,
 ): number {
@@ -488,8 +482,8 @@ function buildFoldSection(
   readonly fold: RunGroupFold;
   readonly expandedNextGroupId: string;
   readonly collapsedNextGroupId: string;
-  readonly expandedGroups: GroupedChatMessageGroup[];
-  readonly collapsedGroups: GroupedChatMessageGroup[];
+  readonly expandedGroups: ChatEventGroup[];
+  readonly collapsedGroups: ChatEventGroup[];
 } | null {
   const hiddenSegments = runSegments.slice(0, -1);
   const latestSegment = runSegments[runSegments.length - 1];
@@ -510,8 +504,8 @@ function buildFoldSection(
     return segmentGroups(item, usageByRunId);
   });
   const firstHiddenRunId = hiddenSegments[0]?.runId;
-  const collapsedNextGroupId = collapsedGroups[0]?.beginMessageId;
-  const expandedNextGroupId = hiddenGroups[0]?.beginMessageId;
+  const collapsedNextGroupId = collapsedGroups[0]?.beginEventId;
+  const expandedNextGroupId = hiddenGroups[0]?.beginEventId;
 
   if (
     firstHiddenRunId === undefined ||
@@ -540,12 +534,12 @@ function buildFoldSection(
 }
 
 export function buildRunGroupFolding(
-  groups: readonly GroupedChatMessageGroup[],
+  groups: readonly ChatEventGroup[],
   expansionOverrides?: ReadonlyMap<string, boolean>,
 ): RunGroupFolding | null {
-  const segments = messageSegmentsFromGroups(groups);
+  const segments = eventSegmentsFromGroups(groups);
   const usageByRunId = usageByRunIdFromGroups(groups);
-  const visibleGroups: GroupedChatMessageGroup[] = [];
+  const visibleGroups: ChatEventGroup[] = [];
   const foldsByNextGroupId = new Map<string, RunGroupFold[]>();
 
   for (let index = 0; index < segments.length; ) {

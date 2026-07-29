@@ -10,11 +10,11 @@ import {
   type BodyRenderBlock,
   type ParsedBodyBlock,
 } from "../../../signals/chat-page/parse-body-blocks.ts";
-import { currentMessageImageArtifactNavigation } from "../zero-artifact-image-navigation.ts";
+import { currentEventImageArtifactNavigation } from "../zero-artifact-image-navigation.ts";
 
-type MessageFixture = Parameters<
-  typeof currentMessageImageArtifactNavigation
->[1][number]["messages"][number];
+type EventFixture = Parameters<
+  typeof currentEventImageArtifactNavigation
+>[1][number]["events"][number];
 
 const emptyArtifactPreviewImageUrls$ = computed(() => {
   return Promise.resolve(new Map<string, string>());
@@ -36,7 +36,7 @@ function artifactFile(
   };
 }
 
-function assistantMessage({ content }: { content: string }): MessageFixture {
+function assistantEvent({ content }: { content: string }): EventFixture {
   const artifactCardSignals = createArtifactCardSignalsRegistry(
     emptyArtifactPreviewImageUrls$,
   );
@@ -60,8 +60,8 @@ function assistantMessage({ content }: { content: string }): MessageFixture {
   };
 }
 
-describe("currentMessageImageArtifactNavigation", () => {
-  it("navigates assistant images split across messages in the same group", () => {
+describe("currentEventImageArtifactNavigation", () => {
+  it("navigates assistant images split across events in the same group", () => {
     const firstImageUrl =
       "https://cdn.vm7.io/artifacts/test/body-image-split-navigation/first.png";
     const secondImageUrl =
@@ -84,19 +84,19 @@ describe("currentMessageImageArtifactNavigation", () => {
     ];
     const groups = [
       {
-        messages: [
-          assistantMessage({ content: "Generated images:" }),
-          assistantMessage({
+        events: [
+          assistantEvent({ content: "Generated images:" }),
+          assistantEvent({
             content: `1. ![first.png](${firstImageUrl})`,
           }),
-          assistantMessage({
+          assistantEvent({
             content: `2. ![second.png](${secondImageUrl})`,
           }),
         ],
       },
     ];
 
-    const navigation = currentMessageImageArtifactNavigation(
+    const navigation = currentEventImageArtifactNavigation(
       runs,
       groups,
       firstImageUrl,

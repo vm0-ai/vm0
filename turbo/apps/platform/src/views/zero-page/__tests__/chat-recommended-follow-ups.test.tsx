@@ -19,7 +19,7 @@ describe("chat lifecycle", () => {
     mockChatLifecycle(context, {
       threadId: HISTORY_THREAD_ID,
       threadTitle: "Artifact inventory",
-      chatMessages: [
+      chatEvents: [
         {
           id: "msg-empty-artifacts",
           eventType: "output.message" as const,
@@ -64,7 +64,7 @@ describe("chat lifecycle", () => {
     mockChatLifecycle(context, {
       threadId: FOLLOWUP_THREAD_ID,
       threadTitle: "Launch package",
-      chatMessages: [
+      chatEvents: [
         {
           id: "msg-followup-user",
           eventType: "input.prompt" as const,
@@ -195,7 +195,7 @@ describe("chat lifecycle", () => {
       seqId: 4,
       createdAt: "2026-06-09T10:01:02Z",
     };
-    const chatMessages: MockChatEventInput[] = [
+    const chatEvents: MockChatEventInput[] = [
       {
         id: "msg-followup-user",
         eventType: "input.prompt" as const,
@@ -219,7 +219,7 @@ describe("chat lifecycle", () => {
     mockChatLifecycle(context, {
       threadId: FOLLOWUP_THREAD_ID,
       threadTitle: "Launch package",
-      chatMessages,
+      chatEvents,
     });
 
     detachedSetupPage({
@@ -234,7 +234,7 @@ describe("chat lifecycle", () => {
     });
     expect(context.mocks.ably.hasSubscription(createdTopic)).toBeFalsy();
 
-    chatMessages.push(followupsEvent);
+    chatEvents.push(followupsEvent);
     context.mocks.ably.trigger(createdTopic, {});
 
     await waitFor(() => {
@@ -272,7 +272,7 @@ describe("chat lifecycle", () => {
       seqId: 4,
       createdAt: "2026-06-09T10:01:02Z",
     };
-    const chatMessages: MockChatEventInput[] = [
+    const chatEvents: MockChatEventInput[] = [
       {
         id: "msg-followup-subscribe-gap-user",
         eventType: "input.prompt" as const,
@@ -296,13 +296,13 @@ describe("chat lifecycle", () => {
     mockChatLifecycle(context, {
       threadId: FOLLOWUP_THREAD_ID,
       threadTitle: "Launch package",
-      chatMessages,
-      afterInitialMessagesList: () => {
+      chatEvents,
+      afterInitialEventsList: () => {
         if (updatedAfterInitialList) {
           return;
         }
         updatedAfterInitialList = true;
-        chatMessages.push(followupsEvent);
+        chatEvents.push(followupsEvent);
       },
     });
 
@@ -325,7 +325,7 @@ describe("chat lifecycle", () => {
 
     mockChatLifecycle(context, {
       threadId,
-      chatMessages: [
+      chatEvents: [
         {
           id: queuedMessageId,
           eventType: "input.prompt" as const,
@@ -370,7 +370,7 @@ describe("chat lifecycle", () => {
     mockChatLifecycle(context, {
       threadId: FOLLOWUP_THREAD_ID,
       threadTitle: "Launch package",
-      chatMessages: [
+      chatEvents: [
         {
           id: "msg-followup-old-user",
           eventType: "input.prompt" as const,

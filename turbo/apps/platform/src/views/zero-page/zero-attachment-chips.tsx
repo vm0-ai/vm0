@@ -23,7 +23,7 @@ import type {
   ChatThreadArtifactFile,
   ChatThreadArtifactRun,
 } from "@vm0/api-contracts/contracts/chat-threads";
-import type { ZeroChatAttachment } from "../../signals/chat-page/chat-message.ts";
+import type { ZeroChatAttachment } from "../../signals/chat-page/chat-event.ts";
 import type { ChatThreadSignals } from "../../signals/chat-page/chat-thread-signals.ts";
 import {
   currentLeftThread$,
@@ -71,8 +71,8 @@ import {
   artifactTitleSubtitle,
 } from "./zero-artifact-display.ts";
 import {
-  currentMessageImageArtifactNavigation,
-  equalMessageImageGroups,
+  currentEventImageArtifactNavigation,
+  equalEventImageGroups,
   type ImageArtifactNavigationItem,
   shouldIgnoreImageArtifactNavigationKey,
 } from "./zero-artifact-image-navigation.ts";
@@ -882,8 +882,8 @@ function ArtifactPreviewDialogThreadResolver({
 }) {
   const loadable = useLastLoadable(thread.artifacts$);
   const agentId = useGet(thread.agentId$);
-  const messageGroups = useLastResolved(thread.messageImageGroups$, {
-    equalityFn: equalMessageImageGroups,
+  const eventGroups = useLastResolved(thread.eventImageGroups$, {
+    equalityFn: equalEventImageGroups,
   });
   const navigateImageLightbox = useSet(navigateImageLightbox$);
   const reloadArtifacts = useSet(thread.reloadArtifacts$);
@@ -893,9 +893,9 @@ function ArtifactPreviewDialogThreadResolver({
       : undefined;
   const imageNavigation =
     preview.kind === "image" && loadable.state === "hasData"
-      ? currentMessageImageArtifactNavigation(
+      ? currentEventImageArtifactNavigation(
           loadable.data,
-          messageGroups ?? [],
+          eventGroups ?? [],
           preview.url,
         )
       : {};

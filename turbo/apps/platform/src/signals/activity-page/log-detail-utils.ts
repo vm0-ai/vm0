@@ -301,7 +301,7 @@ function eventDedupeKeys(events: AgentEvent[]): Set<string> {
   return keys;
 }
 
-// ============ GROUPED MESSAGE TYPES ============
+// ============ EVENT GROUP TYPES ============
 
 interface TodoItem {
   content: string;
@@ -323,7 +323,7 @@ export interface ToolOperation {
   todoState?: TodoItem[];
 }
 
-export interface GroupedMessage {
+export interface EventGroup {
   type: "system" | "assistant" | "result" | "todo";
   sequenceNumber: number;
   createdAt: string;
@@ -334,48 +334,48 @@ export interface GroupedMessage {
   // For "todo" type: current state of all tasks
   todoState?: TodoItem[];
   eventData: unknown;
-  // For task system events: child messages from sub-agent
-  childMessages?: GroupedMessage[];
+  // For task system events: child groups from sub-agent
+  childGroups?: EventGroup[];
 }
 
-export function groupedMessageKey(message: GroupedMessage): string {
-  return `${message.type}-${message.sequenceNumber}-${message.createdAt}`;
+export function eventGroupKey(group: EventGroup): string {
+  return `${group.type}-${group.sequenceNumber}-${group.createdAt}`;
 }
 
-interface GroupEventsIntoMessagesOptions {
+interface GroupEventsIntoGroupsOptions {
   framework?: string | null;
 }
 
 /**
- * Returns true if a grouped message should be shown.
+ * Returns true if an event group should be shown.
  *
  * Claude Code emits a result event that repeats the final assistant text, so
- * text-only assistant messages immediately before a non-empty result are
- * hidden. Other frameworks keep the assistant message as-is.
+ * Text-only assistant groups immediately before a non-empty result are
+ * hidden. Other frameworks keep the assistant group as-is.
  */
-function isVisibleGroupedMessage(
-  message: GroupedMessage,
-  nextMessage: GroupedMessage | undefined,
+function isVisibleEventGroup(
+  group: EventGroup,
+  nextGroup: EventGroup | undefined,
   framework?: string | null,
 ): boolean {
-  if (message.type !== "assistant") {
+  if (group.type !== "assistant") {
     return true;
   }
-  if (!nextMessage || nextMessage.type !== "result") {
+  if (!nextGroup || nextGroup.type !== "result") {
     return true;
   }
   if (framework !== "claude-code") {
     return true;
   }
-  const result = isRecord(nextMessage.eventData)
-    ? nextMessage.eventData.result
+  const result = isRecord(nextGroup.eventData)
+    ? nextGroup.eventData.result
     : undefined;
   if (typeof result !== "string" || result.trim().length === 0) {
     return true;
   }
   return (
-    (message.thinkingBlocks?.length ?? 0) > 0 ||
-    (message.toolOperations?.length ?? 0) > 0
+    (group.thinkingBlocks?.length ?? 0) > 0 ||
+    (group.toolOperations?.length ?? 0) > 0
   );
 }
 
@@ -421,7 +421,7 @@ interface TaskEventData extends GroupingEventData {
 
 interface PendingToolUse {
   operation: ToolOperation;
-  message: GroupedMessage;
+  group: EventGroup;
   parentToolUseId?: string;
 }
 
@@ -462,7 +462,7 @@ function toGroupingEventData(data: unknown): GroupingEventData {
   return isRecord(data) ? (data as GroupingEventData) : {};
 }
 
-function getMessageContents(eventData: GroupingEventData): unknown[] {
+function getEventContents(eventData: GroupingEventData): unknown[] {
   const contents = eventData.message?.content;
   return Array.isArray(contents) ? contents : [];
 }
@@ -629,11 +629,11 @@ function fallbackToolUseId(
 function registerPendingToolUse(
   pendingToolUses: Map<string, PendingToolUse[]>,
   operation: ToolOperation,
-  message: GroupedMessage,
+  group: EventGroup,
   parentToolUseId?: string,
 ): void {
   const pending = pendingToolUses.get(operation.toolUseId) ?? [];
-  pending.push({ operation, message, parentToolUseId });
+  pending.push({ operation, group, parentToolUseId });
   pendingToolUses.set(operation.toolUseId, pending);
 }
 
@@ -745,7 +745,7 @@ function processToolResult(params: {
   event: AgentEvent;
   fallbackSequenceNumber: number;
   fallbackToolUseIdValue: string;
-  grouped: GroupedMessage[];
+  grouped: EventGroup[];
 }): void {
   const {
     resultContent,
@@ -774,7 +774,7 @@ function processToolResult(params: {
     return;
   }
 
-  // Orphan tool_result - create standalone message
+  // Orphan tool_result - create standalone group
   grouped.push({
     type: "assistant",
     sequenceNumber: fallbackSequenceNumber,
@@ -798,12 +798,10 @@ function processToolResult(params: {
 }
 
 /**
- * Check if last grouped message is an assistant message that can be merged with new content.
- * Returns the message if mergeable, null otherwise.
+ * Check if the last event group is an assistant group that can be merged.
+ * Returns the group if mergeable, null otherwise.
  */
-function getLastMergeableAssistant(
-  grouped: GroupedMessage[],
-): GroupedMessage | null {
+function getLastMergeableAssistant(grouped: EventGroup[]): EventGroup | null {
   if (grouped.length === 0) {
     return null;
   }
@@ -815,20 +813,20 @@ function getLastMergeableAssistant(
 }
 
 /**
- * Append tool operations to an existing assistant message and register them as pending.
+ * Append tool operations to an existing assistant group and register them as pending.
  */
-function appendToolsToMessage(
-  message: GroupedMessage,
+function appendToolsToGroup(
+  group: EventGroup,
   toolOperations: ToolOperation[],
   pendingToolUses: Map<string, PendingToolUse[]>,
   parentToolUseId?: string,
 ): void {
-  if (!message.toolOperations) {
-    message.toolOperations = [];
+  if (!group.toolOperations) {
+    group.toolOperations = [];
   }
-  message.toolOperations.push(...toolOperations);
+  group.toolOperations.push(...toolOperations);
   for (const op of toolOperations) {
-    registerPendingToolUse(pendingToolUses, op, message, parentToolUseId);
+    registerPendingToolUse(pendingToolUses, op, group, parentToolUseId);
   }
 }
 
@@ -856,13 +854,13 @@ function processTodoWrite(op: ToolOperation): TodoItem[] | null {
 }
 
 interface GroupingContext {
-  grouped: GroupedMessage[];
+  grouped: EventGroup[];
   pendingToolUses: Map<string, PendingToolUse[]>;
   todoState: TodoItem[];
-  pendingTasks: Map<string, GroupedMessage>;
-  // Map from tool_use_id (that spawned the task) → task GroupedMessage
+  pendingTasks: Map<string, EventGroup>;
+  // Map from tool_use_id (that spawned the task) → task EventGroup
   // Used to route child events via parent_tool_use_id
-  taskByToolUseId: Map<string, GroupedMessage>;
+  taskByToolUseId: Map<string, EventGroup>;
 }
 
 function processSystemEvent(event: AgentEvent, ctx: GroupingContext): void {
@@ -888,16 +886,16 @@ function processSystemEvent(event: AgentEvent, ctx: GroupingContext): void {
 
   // Merge task_started + task_notification into a single row by task_id
   if (subtype === "task_started") {
-    const message: GroupedMessage = {
+    const group: EventGroup = {
       type: "system",
       sequenceNumber: event.sequenceNumber,
       createdAt: event.createdAt,
       eventData: taskData,
     };
-    ctx.grouped.push(message);
-    ctx.pendingTasks.set(taskId, message);
+    ctx.grouped.push(group);
+    ctx.pendingTasks.set(taskId, group);
     if (taskData.tool_use_id) {
-      ctx.taskByToolUseId.set(taskData.tool_use_id, message);
+      ctx.taskByToolUseId.set(taskData.tool_use_id, group);
     }
     return;
   }
@@ -905,7 +903,7 @@ function processSystemEvent(event: AgentEvent, ctx: GroupingContext): void {
   if (subtype === "task_notification") {
     const pending = ctx.pendingTasks.get(taskId);
     if (pending) {
-      // Merge notification into the existing task_started message
+      // Merge notification into the existing task_started group
       const existingData = pending.eventData as TaskEventData;
       existingData.task_status = taskData.task_status;
       existingData.task_summary = taskData.task_summary;
@@ -941,12 +939,12 @@ function processResultEvent(event: AgentEvent, ctx: GroupingContext): void {
 
 /**
  * Find the parent task for a child event via parent_tool_use_id.
- * Returns the task GroupedMessage if found, null otherwise.
+ * Returns the task EventGroup if found, null otherwise.
  */
 function findParentTask(
   eventData: GroupingEventData,
   ctx: GroupingContext,
-): GroupedMessage | null {
+): EventGroup | null {
   const parentId = stringValue(eventData.parent_tool_use_id);
   if (!parentId) {
     return null;
@@ -955,34 +953,33 @@ function findParentTask(
 }
 
 /**
- * Append a child message to a task's childMessages array.
+ * Append a child group to a task's childGroups array.
  */
-function appendChildToTask(task: GroupedMessage, child: GroupedMessage): void {
-  if (!task.childMessages) {
-    task.childMessages = [];
+function appendChildToTask(task: EventGroup, child: EventGroup): void {
+  if (!task.childGroups) {
+    task.childGroups = [];
   }
-  task.childMessages.push(child);
+  task.childGroups.push(child);
 }
 
-function getTaskChildren(task: GroupedMessage): GroupedMessage[] {
-  if (!task.childMessages) {
-    task.childMessages = [];
+function getTaskChildren(task: EventGroup): EventGroup[] {
+  if (!task.childGroups) {
+    task.childGroups = [];
   }
-  return task.childMessages;
+  return task.childGroups;
 }
 
 /**
- * Merge tool-only operations into the last child assistant message of a task.
+ * Merge tool-only operations into the last child assistant group of a task.
  * Returns true if merged, false if a new child should be created instead.
  */
 function mergeToolsIntoLastChild(
-  parentTask: GroupedMessage,
+  parentTask: EventGroup,
   toolOperations: ToolOperation[],
   pendingToolUses: GroupingContext["pendingToolUses"],
   parentToolUseId: string | undefined,
 ): boolean {
-  const lastChild =
-    parentTask.childMessages?.[parentTask.childMessages.length - 1];
+  const lastChild = parentTask.childGroups?.[parentTask.childGroups.length - 1];
   if (lastChild?.type !== "assistant") {
     return false;
   }
@@ -1002,10 +999,10 @@ function mergeToolsIntoLastChild(
 function processChildAssistantEvent(
   event: AgentEvent,
   eventData: GroupingEventData,
-  parentTask: GroupedMessage,
+  parentTask: EventGroup,
   ctx: GroupingContext,
 ): void {
-  const contents = getMessageContents(eventData);
+  const contents = getEventContents(eventData);
   const { thinkingParts, textParts, toolOperations } = parseAssistantContent(
     contents,
     event.sequenceNumber,
@@ -1018,7 +1015,7 @@ function processChildAssistantEvent(
     return;
   }
 
-  // Merge tool-only events into the last child assistant message
+  // Merge tool-only events into the last child assistant group
   if (!hasThinking && !hasText && hasTools) {
     if (
       mergeToolsIntoLastChild(
@@ -1032,7 +1029,7 @@ function processChildAssistantEvent(
     }
   }
 
-  const child: GroupedMessage = {
+  const child: EventGroup = {
     type: "assistant",
     sequenceNumber: event.sequenceNumber,
     createdAt: event.createdAt,
@@ -1065,7 +1062,7 @@ function processAssistantEvent(
     return;
   }
 
-  const contents = getMessageContents(eventData);
+  const contents = getEventContents(eventData);
   const { thinkingParts, textParts, toolOperations } = parseAssistantContent(
     contents,
     event.sequenceNumber,
@@ -1108,14 +1105,14 @@ function processAssistantEvent(
   ) {
     const lastAssistant = getLastMergeableAssistant(ctx.grouped);
     if (lastAssistant) {
-      appendToolsToMessage(lastAssistant, otherToolOps, ctx.pendingToolUses);
+      appendToolsToGroup(lastAssistant, otherToolOps, ctx.pendingToolUses);
       return;
     }
   }
 
-  // Create assistant message for text and non-TodoWrite tools
+  // Create assistant group for text and non-TodoWrite tools
   if (hasThinking || hasText || hasOtherTools) {
-    const message: GroupedMessage = {
+    const group: EventGroup = {
       type: "assistant",
       sequenceNumber: event.sequenceNumber,
       createdAt: event.createdAt,
@@ -1124,15 +1121,15 @@ function processAssistantEvent(
       toolOperations: hasOtherTools ? otherToolOps : undefined,
       eventData: event.eventData,
     };
-    ctx.grouped.push(message);
+    ctx.grouped.push(group);
     for (const op of otherToolOps) {
-      registerPendingToolUse(ctx.pendingToolUses, op, message);
+      registerPendingToolUse(ctx.pendingToolUses, op, group);
     }
   }
 
   // Create standalone todo card for each TodoWrite
   for (const [todoIndex, snapshot] of todoWriteSnapshots.entries()) {
-    const todoMessage: GroupedMessage = {
+    const todoGroup: EventGroup = {
       type: "todo",
       sequenceNumber: sequenceNumberWithContentOffset({
         sequenceNumber: event.sequenceNumber,
@@ -1145,12 +1142,8 @@ function processAssistantEvent(
       toolOperations: [snapshot.operation],
       eventData: {},
     };
-    ctx.grouped.push(todoMessage);
-    registerPendingToolUse(
-      ctx.pendingToolUses,
-      snapshot.operation,
-      todoMessage,
-    );
+    ctx.grouped.push(todoGroup);
+    registerPendingToolUse(ctx.pendingToolUses, snapshot.operation, todoGroup);
   }
 }
 
@@ -1164,7 +1157,7 @@ function processUserEvent(
   const parentTask = findParentTask(eventData, ctx);
   const target = parentTask ? getTaskChildren(parentTask) : ctx.grouped;
 
-  const contents = getMessageContents(eventData);
+  const contents = getEventContents(eventData);
   const toolMeta = toToolResultMeta(eventData.tool_use_result);
   const toolResults = contents.flatMap((content, contentIndex) => {
     return isRecord(content) && content.type === "tool_result"
@@ -1207,16 +1200,16 @@ function processUserEvent(
 }
 
 /**
- * Groups flat event array into message-centric structure.
- * - Consecutive assistant messages are merged (text + tools in one card)
+ * Groups flat event array into group-centric structure.
+ * - Consecutive assistant groups are merged (text + tools in one card)
  * - Tool results are linked to their tool_use calls
  * - TodoWrite operations create standalone "todo" type cards
  * - System and Result events remain independent
  */
-export function groupEventsIntoMessages(
+export function groupEventsIntoGroups(
   events: AgentEvent[],
-  options: GroupEventsIntoMessagesOptions = {},
-): GroupedMessage[] {
+  options: GroupEventsIntoGroupsOptions = {},
+): EventGroup[] {
   const sorted = [...events].sort((a, b) => {
     return a.sequenceNumber - b.sequenceNumber;
   });
@@ -1276,22 +1269,18 @@ export function groupEventsIntoMessages(
   return ctx.grouped;
 }
 
-export function groupVisibleMessages(
+export function groupVisibleGroups(
   events: AgentEvent[],
-  options: GroupEventsIntoMessagesOptions = {},
-): GroupedMessage[] {
-  const allMessages = groupEventsIntoMessages(events, options);
-  return allMessages.filter((message, index) => {
-    return isVisibleGroupedMessage(
-      message,
-      allMessages[index + 1],
-      options.framework,
-    );
+  options: GroupEventsIntoGroupsOptions = {},
+): EventGroup[] {
+  const allGroups = groupEventsIntoGroups(events, options);
+  return allGroups.filter((group, index) => {
+    return isVisibleEventGroup(group, allGroups[index + 1], options.framework);
   });
 }
 
 /**
- * Extract visible/searchable text from a grouped message.
+ * Extract visible/searchable text from an event group.
  */
 function getToolSearchText(operations: ToolOperation[] | undefined): string[] {
   const parts: string[] = [];
@@ -1327,27 +1316,27 @@ function getTodoSearchText(todos: TodoItem[] | undefined): string[] {
   );
 }
 
-function getChildMessageSearchText(
-  childMessages: GroupedMessage[] | undefined,
+function getChildGroupSearchText(
+  childGroups: EventGroup[] | undefined,
 ): string[] {
   return (
-    childMessages?.map((childMessage) => {
-      return getVisibleGroupedMessageText(childMessage);
+    childGroups?.map((childGroup) => {
+      return getVisibleEventGroupText(childGroup);
     }) ?? []
   );
 }
 
-function getSystemMessageSearchText(
-  message: GroupedMessage,
+function getSystemGroupSearchText(
+  group: EventGroup,
   eventData: GroupingEventData,
 ): string[] {
   const parts: string[] = [];
   if (typeof eventData.subtype === "string" && eventData.subtype) {
     parts.push(eventData.subtype);
   }
-  if (isTaskEventData(message.eventData)) {
-    const description = stringValue(message.eventData.description);
-    const taskSummary = stringValue(message.eventData.task_summary);
+  if (isTaskEventData(group.eventData)) {
+    const description = stringValue(group.eventData.description);
+    const taskSummary = stringValue(group.eventData.task_summary);
     if (description) {
       parts.push(description);
     }
@@ -1365,40 +1354,40 @@ function getSystemMessageSearchText(
   return parts;
 }
 
-function getVisibleGroupedMessageText(message: GroupedMessage): string {
+function getVisibleEventGroupText(group: EventGroup): string {
   const parts: string[] = [];
 
-  parts.push(message.type);
+  parts.push(group.type);
 
-  if (message.thinkingBlocks) {
-    parts.push(...message.thinkingBlocks);
+  if (group.thinkingBlocks) {
+    parts.push(...group.thinkingBlocks);
   }
 
-  if (message.textBefore) {
-    parts.push(message.textBefore);
+  if (group.textBefore) {
+    parts.push(group.textBefore);
   }
 
   parts.push(
-    ...(message.type === "todo"
-      ? getToolErrorSearchText(message.toolOperations)
-      : getToolSearchText(message.toolOperations)),
+    ...(group.type === "todo"
+      ? getToolErrorSearchText(group.toolOperations)
+      : getToolSearchText(group.toolOperations)),
   );
 
-  if (message.textAfter) {
-    parts.push(message.textAfter);
+  if (group.textAfter) {
+    parts.push(group.textAfter);
   }
 
-  parts.push(...getTodoSearchText(message.todoState));
-  parts.push(...getChildMessageSearchText(message.childMessages));
+  parts.push(...getTodoSearchText(group.todoState));
+  parts.push(...getChildGroupSearchText(group.childGroups));
 
   // For system/result events, also extract from eventData
-  const eventData = toGroupingEventData(message.eventData);
+  const eventData = toGroupingEventData(group.eventData);
 
-  if (message.type === "system") {
-    parts.push(...getSystemMessageSearchText(message, eventData));
+  if (group.type === "system") {
+    parts.push(...getSystemGroupSearchText(group, eventData));
   }
 
-  if (message.type === "result" && typeof eventData.result === "string") {
+  if (group.type === "result" && typeof eventData.result === "string") {
     parts.push(eventData.result);
   }
 
@@ -1406,16 +1395,16 @@ function getVisibleGroupedMessageText(message: GroupedMessage): string {
 }
 
 /**
- * Check if a grouped message matches the search term.
+ * Check if an event group matches the search term.
  */
-export function groupedMessageMatchesSearch(
-  message: GroupedMessage,
+export function eventGroupMatchesSearch(
+  group: EventGroup,
   searchTerm: string,
 ): boolean {
   const normalizedSearchTerm = searchTerm.trim().toLowerCase();
   if (!normalizedSearchTerm) {
     return true;
   }
-  const visibleText = getVisibleGroupedMessageText(message).toLowerCase();
+  const visibleText = getVisibleEventGroupText(group).toLowerCase();
   return visibleText.includes(normalizedSearchTerm);
 }

@@ -33,7 +33,7 @@ import {
   KEYBOARD_NEXT_THREAD_ID,
   AGENT_CHAT_PATH,
   makeRunGroupMessages,
-  makeMessage,
+  makeEvent,
   mockKeyboardNavigationThreads,
   buttonByText,
   buttonByLabel,
@@ -611,7 +611,7 @@ describe("chat lifecycle", () => {
       threadId: HISTORY_THREAD_ID,
       threadTitle: "History review",
       beforeHistoryGate: beforeHistoryGate.promise,
-      afterInitialMessagesList: () => {
+      afterInitialEventsList: () => {
         initialPageReturned = true;
       },
       historyEvents: [
@@ -623,7 +623,7 @@ describe("chat lifecycle", () => {
           createdAt: "2026-06-02T10:00:00Z",
         },
       ],
-      chatMessages: [
+      chatEvents: [
         {
           eventType: "input.prompt" as const,
           role: "user",
@@ -673,8 +673,8 @@ describe("chat lifecycle", () => {
     mockChatLifecycle(context, {
       threadId,
       threadTitle: "Scroll history",
-      chatMessages: Array.from({ length: 8 }, (_, index) => {
-        return makeMessage(
+      chatEvents: Array.from({ length: 8 }, (_, index) => {
+        return makeEvent(
           `scroll-message-${index}`,
           `Visible launch update ${index}`,
           threadId,
@@ -753,7 +753,7 @@ describe("chat lifecycle", () => {
     mockResizeObserver();
     let markReadCalls = 0;
     const threadId = "render-window-thread";
-    const chatMessages: ChatEvent[] = Array.from({ length: 24 }, (_, index) => {
+    const chatEvents: ChatEvent[] = Array.from({ length: 24 }, (_, index) => {
       return {
         id: `render-window-message-${index}`,
         threadId,
@@ -769,7 +769,7 @@ describe("chat lifecycle", () => {
     mockChatLifecycle(context, {
       threadId,
       threadTitle: "Render window",
-      chatMessages,
+      chatEvents,
     });
     context.mocks.api(chatThreadMarkReadContract.markRead, ({ respond }) => {
       markReadCalls += 1;
@@ -819,7 +819,7 @@ describe("chat lifecycle", () => {
     mockChatLifecycle(context, {
       threadId,
       threadTitle: "Tail run group window",
-      chatMessages: [
+      chatEvents: [
         ...makeRunGroupMessages({
           label: "A",
           count: 11,
@@ -879,7 +879,7 @@ describe("chat lifecycle", () => {
     mockChatLifecycle(context, {
       threadId,
       threadTitle: "Structured run group label",
-      chatMessages: messages,
+      chatEvents: messages,
     });
 
     detachedSetupPage({
@@ -904,7 +904,7 @@ describe("chat lifecycle", () => {
     mockChatLifecycle(context, {
       threadId,
       threadTitle: "Middle run group window",
-      chatMessages: [
+      chatEvents: [
         ...makeRunGroupMessages({
           label: "A",
           count: 1,

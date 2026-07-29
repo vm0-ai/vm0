@@ -25,10 +25,10 @@ const context = testContext();
 const AGENT_ID = "c0000000-0000-4000-a000-000000000001";
 const FIRST_THREAD_ID = "b0000000-0000-4000-a000-000000000731";
 const SECOND_THREAD_ID = "b0000000-0000-4000-a000-000000000732";
-const FIRST_MESSAGE_ID = "00000000-0000-4000-8000-000000000731";
-const FIRST_MESSAGE = "Persist this remote response for thread re-entry";
-const STRUCTURED_MESSAGE_ID = "00000000-0000-4000-8000-000000000733";
-const STRUCTURED_MESSAGE = "Legacy structured content should stay hidden";
+const FIRST_EVENT_ID = "00000000-0000-4000-8000-000000000731";
+const FIRST_EVENT_CONTENT = "Persist this remote response for thread re-entry";
+const STRUCTURED_EVENT_ID = "00000000-0000-4000-8000-000000000733";
+const STRUCTURED_EVENT_CONTENT = "Legacy structured content should stay hidden";
 const STRUCTURED_REFERENCE_TITLE = "Archived IndexedDB source";
 function userMessageFixture(): UserMessageDocument {
   return {
@@ -53,8 +53,8 @@ async function findThreadLink(title: string): Promise<HTMLAnchorElement> {
   return link;
 }
 
-describe("chat message persistence", () => {
-  it("round-trips canonical user and assistant messages through IndexedDB on thread re-entry", async () => {
+describe("chat event persistence", () => {
+  it("round-trips canonical user and assistant events through IndexedDB on thread re-entry", async () => {
     mockUser(
       { id: "idb-reentry-user", fullName: "IndexedDB Test User" },
       { token: "test-token" },
@@ -105,20 +105,20 @@ describe("chat message persistence", () => {
           return respond(200, {
             events: [
               {
-                id: STRUCTURED_MESSAGE_ID,
+                id: STRUCTURED_EVENT_ID,
                 threadId: FIRST_THREAD_ID,
                 eventType: "input.prompt" as const,
-                content: STRUCTURED_MESSAGE,
+                content: STRUCTURED_EVENT_CONTENT,
                 runId: "d0000000-0000-4000-a000-000000000731",
                 userMessage,
                 createdAt: "2026-06-09T10:00:00Z",
                 seqId: 1,
               },
               {
-                id: FIRST_MESSAGE_ID,
+                id: FIRST_EVENT_ID,
                 threadId: FIRST_THREAD_ID,
                 eventType: "output.message" as const,
-                content: FIRST_MESSAGE,
+                content: FIRST_EVENT_CONTENT,
                 runId: "d0000000-0000-4000-a000-000000000731",
                 createdAt: "2026-06-09T10:01:00Z",
                 seqId: 2,
@@ -159,7 +159,7 @@ describe("chat message persistence", () => {
 
       await firstThreadCaughtUp.promise;
       await expect(
-        screen.findByText(FIRST_MESSAGE),
+        screen.findByText(FIRST_EVENT_CONTENT),
       ).resolves.toBeInTheDocument();
       await waitFor(() => {
         const reference = document.querySelector(
@@ -167,28 +167,30 @@ describe("chat message persistence", () => {
         );
         expect(reference).toHaveAttribute("href", `/chats/${FIRST_THREAD_ID}`);
       });
-      expect(screen.queryByText(STRUCTURED_MESSAGE)).not.toBeInTheDocument();
+      expect(
+        screen.queryByText(STRUCTURED_EVENT_CONTENT),
+      ).not.toBeInTheDocument();
       await waitFor(async () => {
         const testDb = await openChatIdb("idb-reentry-user", "idb-reentry-org");
         try {
           const userMessageElement: unknown = await testDb.get(
             CHAT_MESSAGES_STORE,
-            STRUCTURED_MESSAGE_ID,
+            STRUCTURED_EVENT_ID,
           );
           expect(userMessageElement).toMatchObject({
-            content: STRUCTURED_MESSAGE,
+            content: STRUCTURED_EVENT_CONTENT,
             userMessage,
             threadId: FIRST_THREAD_ID,
           });
-          const persistedMessage: unknown = await testDb.get(
+          const persistedEvent: unknown = await testDb.get(
             CHAT_MESSAGES_STORE,
-            FIRST_MESSAGE_ID,
+            FIRST_EVENT_ID,
           );
-          expect(persistedMessage).toMatchObject({
-            content: FIRST_MESSAGE,
+          expect(persistedEvent).toMatchObject({
+            content: FIRST_EVENT_CONTENT,
             threadId: FIRST_THREAD_ID,
           });
-          expect(persistedMessage).not.toHaveProperty("userMessage");
+          expect(persistedEvent).not.toHaveProperty("userMessage");
         } finally {
           testDb.close();
         }
@@ -205,12 +207,14 @@ describe("chat message persistence", () => {
 
       await waitFor(() => {
         expect(document.title).toBe("IndexedDB source thread | VM0");
-        expect(screen.getByText(FIRST_MESSAGE)).toBeInTheDocument();
+        expect(screen.getByText(FIRST_EVENT_CONTENT)).toBeInTheDocument();
         const reference = document.querySelector(
           `a[aria-label="Open chat ${STRUCTURED_REFERENCE_TITLE}"]`,
         );
         expect(reference).toHaveAttribute("href", `/chats/${FIRST_THREAD_ID}`);
-        expect(screen.queryByText(STRUCTURED_MESSAGE)).not.toBeInTheDocument();
+        expect(
+          screen.queryByText(STRUCTURED_EVENT_CONTENT),
+        ).not.toBeInTheDocument();
       });
     } finally {
       blockedRemote.resolve();
@@ -218,19 +222,19 @@ describe("chat message persistence", () => {
     }
   });
 
-  it("falls back to the remote message list when cached structured data is invalid", async () => {
+  it("falls back to the remote event list when cached structured data is invalid", async () => {
     const userId = "idb-invalid-user";
     const orgId = "idb-invalid-org";
     const threadId = "b0000000-0000-4000-a000-000000000734";
-    const remoteMessage = "Reloaded after invalid structured cache";
-    const cachedMessage = "Invalid cached structured message";
-    const remoteMessagesCaughtUp = context.mocks.deferred<void>();
+    const remoteEventContent = "Reloaded after invalid structured cache";
+    const cachedEventContent = "Invalid cached structured message";
+    const remoteEventsCaughtUp = context.mocks.deferred<void>();
     const testDb = await openChatIdb(userId, orgId);
     try {
       await testDb.put(CHAT_MESSAGES_STORE, {
         id: "00000000-0000-4000-8000-000000000734",
         eventType: "input.prompt" as const,
-        content: cachedMessage,
+        content: cachedEventContent,
         userMessage: { version: 1, parts: [] },
         createdAt: "2026-06-09T10:00:00Z",
         threadId,
@@ -255,8 +259,8 @@ describe("chat message persistence", () => {
     });
     context.mocks.api(chatThreadEventsContract.list, ({ query, respond }) => {
       if (query.sinceSeqId) {
-        if (!remoteMessagesCaughtUp.settled()) {
-          remoteMessagesCaughtUp.resolve();
+        if (!remoteEventsCaughtUp.settled()) {
+          remoteEventsCaughtUp.resolve();
         }
         return respond(200, { events: [] });
       }
@@ -266,10 +270,10 @@ describe("chat message persistence", () => {
             id: "00000000-0000-4000-8000-000000000735",
             threadId,
             eventType: "input.prompt" as const,
-            content: remoteMessage,
+            content: remoteEventContent,
             userMessage: {
               version: 1,
-              parts: [{ type: "text", text: remoteMessage }],
+              parts: [{ type: "text", text: remoteEventContent }],
             },
             createdAt: "2026-06-09T10:01:00Z",
             seqId: 1,
@@ -290,11 +294,11 @@ describe("chat message persistence", () => {
         },
       });
 
-      await remoteMessagesCaughtUp.promise;
+      await remoteEventsCaughtUp.promise;
       await expect(
-        screen.findByText(remoteMessage),
+        screen.findByText(remoteEventContent),
       ).resolves.toBeInTheDocument();
-      expect(screen.queryByText(cachedMessage)).not.toBeInTheDocument();
+      expect(screen.queryByText(cachedEventContent)).not.toBeInTheDocument();
     } finally {
       appDb.close();
     }

@@ -56,8 +56,8 @@ import {
   artifactTitleSubtitle,
 } from "./zero-artifact-display.ts";
 import {
-  currentMessageImageArtifactNavigation,
-  equalMessageImageGroups,
+  currentEventImageArtifactNavigation,
+  equalEventImageGroups,
   type ImageArtifactNavigationItem,
   shouldIgnoreImageArtifactNavigationKey,
 } from "./zero-artifact-image-navigation.ts";
@@ -144,8 +144,8 @@ function ArtifactSidebarWithThreadContext({
 }: ArtifactSidebarProps) {
   const loadable = useLastLoadable(thread.artifacts$);
   const agentId = useGet(thread.agentId$);
-  const messageGroups = useLastResolved(thread.messageImageGroups$, {
-    equalityFn: equalMessageImageGroups,
+  const eventGroups = useLastResolved(thread.eventImageGroups$, {
+    equalityFn: equalEventImageGroups,
   });
   const reloadArtifacts = useSet(thread.reloadArtifacts$);
   const text$ =
@@ -156,9 +156,9 @@ function ArtifactSidebarWithThreadContext({
       : undefined;
   const imageNavigation =
     loadable.state === "hasData"
-      ? currentMessageImageArtifactNavigation(
+      ? currentEventImageArtifactNavigation(
           loadable.data,
-          messageGroups ?? [],
+          eventGroups ?? [],
           artifactRef.url,
         )
       : {};

@@ -53,7 +53,7 @@ describe("chat lifecycle", () => {
     mockChatLifecycle(context, {
       threadId,
       threadTitle: "Run logs message",
-      chatMessages: [
+      chatEvents: [
         {
           id: "msg-run-logs-user",
           role: "user",
@@ -93,7 +93,7 @@ describe("chat lifecycle", () => {
     mockChatLifecycle(context, {
       threadId,
       threadTitle: "Assistant copy",
-      chatMessages: [
+      chatEvents: [
         {
           id: "msg-assistant-copy-user",
           role: "user",
@@ -138,7 +138,7 @@ describe("chat lifecycle", () => {
     mockChatLifecycle(context, {
       threadId,
       threadTitle: "Assistant workflow",
-      chatMessages: [
+      chatEvents: [
         {
           id: "msg-workflow-empty-user",
           role: "user",
@@ -161,8 +161,8 @@ describe("chat lifecycle", () => {
       path: `/chats/${threadId}`,
     });
 
-    const assistantMessage = await screen.findByText(assistantReply);
-    const assistantGroup = assistantMessage.closest('[data-role="assistant"]');
+    const assistantEvent = await screen.findByText(assistantReply);
+    const assistantGroup = assistantEvent.closest('[data-role="assistant"]');
     if (!(assistantGroup instanceof HTMLElement)) {
       throw new Error("assistant message group not found");
     }
@@ -204,7 +204,7 @@ describe("chat lifecycle", () => {
     mockChatLifecycle(context, {
       threadId,
       threadTitle: "Assistant workflow draft",
-      chatMessages: [
+      chatEvents: [
         {
           id: "msg-workflow-draft-user",
           role: "user",
@@ -554,7 +554,7 @@ describe("chat lifecycle", () => {
     const threadId = "b0000000-0000-4000-a000-000000000723";
     mockChatLifecycle(context, {
       threadId,
-      chatMessages: [
+      chatEvents: [
         {
           id: "msg-goal-user",
           role: "user",
@@ -640,7 +640,7 @@ describe("chat lifecycle", () => {
     const threadId = "thread-goal-dialog";
     mockChatLifecycle(context, {
       threadId,
-      chatMessages: [
+      chatEvents: [
         {
           id: "msg-goal-dialog-user",
           role: "user",
@@ -700,7 +700,7 @@ describe("chat lifecycle", () => {
     const threadId = "thread-goal-complete";
     mockChatLifecycle(context, {
       threadId,
-      chatMessages: [
+      chatEvents: [
         {
           id: "msg-goalc-active",
           runId: undefined,
@@ -744,7 +744,7 @@ Full autonomous goal prompt that should stay out of the compact chat UI`;
     mockChatLifecycle(context, {
       threadId,
       threadTitle: "Goal run group folding",
-      chatMessages: [
+      chatEvents: [
         {
           id: "msg-goal-run-group-user-1",
           role: "user",
@@ -854,7 +854,7 @@ Full autonomous goal prompt that should stay out of the compact chat UI`;
     mockChatLifecycle(context, {
       threadId,
       threadTitle: "Active goal run group folding",
-      chatMessages: [
+      chatEvents: [
         {
           id: "msg-goal-run-group-active-user-1",
           role: "user",
@@ -905,7 +905,7 @@ Full autonomous goal prompt that should stay out of the compact chat UI`;
       ).not.toBeNull();
     });
 
-    const goalMessage = screen.getByText(goalBrief);
+    const goalEvent = screen.getByText(goalBrief);
     const foldButton = buttonByLabel("Expand grouped run history");
     const thinkingIndicator = document.querySelector(
       "[data-thinking-indicator]",
@@ -913,7 +913,7 @@ Full autonomous goal prompt that should stay out of the compact chat UI`;
 
     expect(thinkingIndicator).not.toBeNull();
     expect(
-      goalMessage.compareDocumentPosition(foldButton) &
+      goalEvent.compareDocumentPosition(foldButton) &
         Node.DOCUMENT_POSITION_FOLLOWING,
     ).toBeTruthy();
     expect(
@@ -935,7 +935,7 @@ Full autonomous goal prompt that should stay out of the compact chat UI`;
     mockChatLifecycle(context, {
       threadId,
       threadTitle: "Workflow run group folding",
-      chatMessages: [
+      chatEvents: [
         {
           id: "msg-workflow-run-group-user-1",
           role: "user",
@@ -1010,7 +1010,7 @@ Full autonomous goal prompt that should stay out of the compact chat UI`;
     mockChatLifecycle(context, {
       threadId,
       threadTitle: "Paused workflow run group",
-      chatMessages: [
+      chatEvents: [
         {
           id: "msg-paused-workflow-user-1",
           role: "user",
@@ -1094,7 +1094,7 @@ Full autonomous goal prompt that should stay out of the compact chat UI`;
     mockChatLifecycle(context, {
       threadId,
       threadTitle: "Workflow user message marker",
-      chatMessages: [
+      chatEvents: [
         {
           id: "msg-workflow-marker-user",
           role: "user",
@@ -1146,7 +1146,7 @@ Full autonomous goal prompt that should stay out of the compact chat UI`;
     mockChatLifecycle(context, {
       threadId,
       threadTitle: "Pending automation event",
-      chatMessages: [
+      chatEvents: [
         {
           id: "msg-claimed-automation",
           eventType: "input.automation",
@@ -1206,7 +1206,7 @@ Full autonomous goal prompt that should stay out of the compact chat UI`;
     mockChatLifecycle(context, {
       threadId,
       threadTitle: "Template labels",
-      chatMessages: [
+      chatEvents: [
         {
           id: "msg-template-presentation",
           role: "user",
@@ -1390,7 +1390,7 @@ Full autonomous goal prompt that should stay out of the compact chat UI`;
     ];
     mockChatLifecycle(context, {
       threadId,
-      chatMessages: [
+      chatEvents: [
         {
           id: "msg-rich-attachments",
           role: "user",
@@ -1467,7 +1467,7 @@ Full autonomous goal prompt that should stay out of the compact chat UI`;
     const imageUrl = "https://cdn.vm7.io/artifacts/test/photo/photo.png";
     mockChatLifecycle(context, {
       threadId,
-      chatMessages: [
+      chatEvents: [
         {
           id: "msg-image-attachment-copy",
           role: "user",
@@ -1590,7 +1590,7 @@ Full autonomous goal prompt that should stay out of the compact chat UI`;
     };
     mockChatLifecycle(context, {
       threadId,
-      chatMessages: [
+      chatEvents: [
         {
           id: "msg-structured-copy",
           role: "user",
@@ -1657,7 +1657,7 @@ Full autonomous goal prompt that should stay out of the compact chat UI`;
     };
     mockChatLifecycle(context, {
       threadId,
-      chatMessages: [
+      chatEvents: [
         {
           id: "msg-structured-template-copy-paste",
           role: "user",
@@ -1730,7 +1730,7 @@ Full autonomous goal prompt that should stay out of the compact chat UI`;
     };
     mockChatLifecycle(context, {
       threadId,
-      chatMessages: [
+      chatEvents: [
         {
           id: "msg-structured-feedback-copy-fallback",
           role: "user",

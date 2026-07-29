@@ -84,7 +84,7 @@ export const skeletonAvatarConfig$ = computed((get) => {
 // Message cycling
 // ---------------------------------------------------------------------------
 
-const LOADING_MESSAGES = [
+const LOADING_COPY = [
   "Warming up the neurons...",
   "Brewing some ideas...",
   "Getting things ready...",
@@ -95,28 +95,28 @@ const LOADING_MESSAGES = [
   "Spinning up the team...",
 ] as const;
 
-const skeletonMsgIndex$ = state(
-  Math.floor(Math.random() * LOADING_MESSAGES.length),
+const skeletonCopyIndex$ = state(
+  Math.floor(Math.random() * LOADING_COPY.length),
 );
 
 const skeletonFirstCycle$ = state(true);
 
 const resetSkeletonCycling$ = resetSignal();
 
-export const skeletonMessages$ = computed((get) => {
-  const i = get(skeletonMsgIndex$);
-  const len = LOADING_MESSAGES.length;
+export const skeletonCopy$ = computed((get) => {
+  const i = get(skeletonCopyIndex$);
+  const len = LOADING_COPY.length;
   return {
-    staticMsg: LOADING_MESSAGES[i % len],
-    typewriterMsg: LOADING_MESSAGES[(i + 1) % len],
+    staticCopy: LOADING_COPY[i % len],
+    typewriterCopy: LOADING_COPY[(i + 1) % len],
     isFirst: get(skeletonFirstCycle$),
     cycle: i,
   };
 });
 
-const cycleSkeletonMessage$ = command(({ set }) => {
+const cycleSkeletonCopy$ = command(({ set }) => {
   set(skeletonFirstCycle$, false);
-  set(skeletonMsgIndex$, (prev) => {
+  set(skeletonCopyIndex$, (prev) => {
     return prev + 1;
   });
 });
@@ -128,7 +128,7 @@ export const startSkeletonCycling$ = command(
     let cycles = 0;
     await setLoop(
       () => {
-        set(cycleSkeletonMessage$);
+        set(cycleSkeletonCopy$);
         return ++cycles >= MAX_SKELETON_CYCLES;
       },
       4000,
