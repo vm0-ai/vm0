@@ -459,12 +459,6 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
       "Generate poster images asynchronously when video artifacts are recorded.",
     enabled: true,
   },
-  [FeatureSwitchKey.ImageStyleR2]: {
-    maintainer: "bingjie@vm0.ai",
-    description:
-      "Resolve archive-enabled image styles from private R2 packages. When off, image style authoring continues reading vm0-skills from GitHub.",
-    enabled: true,
-  },
   [FeatureSwitchKey.OrgPlanEntitlementReads]: {
     maintainer: "yuma@vm0.ai",
     description:

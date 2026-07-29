@@ -69,17 +69,8 @@ type GenerationTemplatePromptResult =
       readonly message: string;
     };
 
-interface BuildGenerationTemplatePromptOptions {
-  /**
-   * When true, archive-enabled image styles resolve through private R2.
-   * When false, the existing vm0-skills GitHub source remains unchanged.
-   */
-  readonly imageStyleR2Enabled?: boolean;
-}
-
 export function buildGenerationTemplatePrompt(
   generationTemplate: GenerationTemplateInput | null | undefined,
-  options?: BuildGenerationTemplatePromptOptions,
 ): GenerationTemplatePromptResult {
   if (!generationTemplate) {
     return { status: "resolved", prompt: "" };
@@ -89,10 +80,7 @@ export function buildGenerationTemplatePrompt(
     return buildVideoGenerationTemplatePrompt(generationTemplate);
   }
   if (generationTemplate.type === "illustration") {
-    return buildIllustrationGenerationTemplatePrompt(
-      generationTemplate,
-      options,
-    );
+    return buildIllustrationGenerationTemplatePrompt(generationTemplate);
   }
   if (generationTemplate.type === "workflow") {
     return buildWorkflowGenerationTemplatePrompt(generationTemplate);
@@ -120,14 +108,13 @@ function stripGenerationTemplateContext(prompt: string): string {
 
 export function buildGenerationTemplatesPrompt(
   generationTemplates: readonly GenerationTemplateInput[],
-  options?: BuildGenerationTemplatePromptOptions,
 ): GenerationTemplatePromptResult {
   if (generationTemplates.length === 0) {
     return { status: "resolved", prompt: "" };
   }
   const details: string[] = [];
   for (const [index, generationTemplate] of generationTemplates.entries()) {
-    const built = buildGenerationTemplatePrompt(generationTemplate, options);
+    const built = buildGenerationTemplatePrompt(generationTemplate);
     if (built.status === "invalid") {
       return built;
     }
@@ -302,7 +289,6 @@ function buildVideoGenerationTemplatePrompt(
 
 function buildIllustrationGenerationTemplatePrompt(
   generationTemplate: IllustrationGenerationTemplateInput,
-  options?: BuildGenerationTemplatePromptOptions,
 ): GenerationTemplatePromptResult {
   const imageStyle = findImageStyle(
     generationTemplate.selection.illustrationStyleId,
@@ -310,8 +296,7 @@ function buildIllustrationGenerationTemplatePrompt(
   if (!imageStyle) {
     return { status: "invalid", message: "Unknown generation image style" };
   }
-  const useR2 =
-    options?.imageStyleR2Enabled === true && hasR2Archive(imageStyle);
+  const useR2 = hasR2Archive(imageStyle);
   const styleSource = useR2
     ? `private R2 registry resource ${imageStyle.id}`
     : imageStyle.source.repo && imageStyle.source.ref
