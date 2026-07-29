@@ -491,12 +491,6 @@ const USAGE_PRICING: readonly (typeof usagePricing.$inferInsert)[] = [
   // gpt-5-mini model tokens, and operating margin.
   ...usageGroup("people-search", "perplexity", [["request", usd(0.02), 1]]),
 
-  // Browser Use reports final browser and proxy spend as USD decimals. Bill
-  // the combined provider cost with the standard managed-service 20% markup.
-  ...usageGroup("browser", "browser-use", [
-    ["provider_cost_usd_micros", usd(1.2), 1_000_000],
-  ]),
-
   // Gemini 2.5 Flash Image — https://cloud.google.com/vertex-ai/generative-ai/pricing
   // $30/1M output tokens × 1290 tokens per 1024×1024 image = $0.0387/image.
   ...usageGroup("image", "gemini-2.5-flash-image", [

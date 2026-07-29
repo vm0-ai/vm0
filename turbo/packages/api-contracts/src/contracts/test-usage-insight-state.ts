@@ -92,15 +92,6 @@ export const testUsageInsightStateActionBodySchema = z.discriminatedUnion(
       count: z.number().int().positive().optional(),
     }),
     z.object({
-      action: z.literal("set-browser-usage-hold"),
-      org_id: z.string(),
-      user_id: z.string(),
-      run_id: z.string(),
-      chat_thread_id: z.string(),
-      idempotency_key: z.string(),
-      settled: z.boolean(),
-    }),
-    z.object({
       action: z.literal("attach-usage-allowance"),
       org_id: z.string(),
       run_id: z.string().nullable(),
