@@ -15,7 +15,6 @@ import { safeJsonParse, tapError } from "../utils";
 const UNSPLASH_SEARCH_URL = "https://api.unsplash.com/search/photos";
 const UNSPLASH_HOME_URL = "https://unsplash.com/";
 const UNSPLASH_UTM_SOURCE = "vm0_presentation_image_resolver";
-const PEXELS_SEARCH_URL = "https://api.pexels.com/v1/search";
 const MAX_SEARCH_CONCURRENCY = 6;
 const RESULTS_PER_QUERY = 10;
 
@@ -85,34 +84,6 @@ const unsplashSearchResponseSchema = z
   .passthrough();
 
 type UnsplashPhoto = z.infer<typeof unsplashPhotoSchema>;
-
-const pexelsPhotoSchema = z
-  .object({
-    url: z.url().optional(),
-    src: z
-      .object({
-        large: z.url().optional(),
-        medium: z.url().optional(),
-        original: z.url().optional(),
-      })
-      .passthrough()
-      .optional(),
-    photographer: z.string().optional(),
-    photographer_url: z.url().optional(),
-    alt: z.string().nullable().optional(),
-    width: z.number().int().positive().optional(),
-    height: z.number().int().positive().optional(),
-    avg_color: z.string().nullable().optional(),
-  })
-  .passthrough();
-
-const pexelsSearchResponseSchema = z
-  .object({
-    photos: z.array(pexelsPhotoSchema),
-  })
-  .passthrough();
-
-type PexelsPhoto = z.infer<typeof pexelsPhotoSchema>;
 
 const resolveBody$ = bodyResultOf(presentationImagesContract.resolve);
 
@@ -299,126 +270,15 @@ async function searchUnsplash(
   return downloadTrackingFailed(item.query);
 }
 
-// Pexels uses `square` where the contract (and Unsplash) uses `squarish`.
-function pexelsOrientation(
-  orientation: PresentationImageResolveItem["orientation"],
-): string | undefined {
-  if (!orientation) {
-    return undefined;
-  }
-  return orientation === "squarish" ? "square" : orientation;
-}
-
-function selectedPexelsImageUrl(photo: PexelsPhoto): string | undefined {
-  return photo.src?.large ?? photo.src?.medium ?? photo.src?.original;
-}
-
-function buildPexelsAsset(
-  item: PresentationImageResolveItem,
-  photo: PexelsPhoto,
-): PresentationImageAsset | null {
-  const src = selectedPexelsImageUrl(photo);
-  const photographerName = photo.photographer?.trim();
-  const photographerUrl = photo.photographer_url;
-  const sourceUrl = photo.url;
-  if (!src || !photographerName || !photographerUrl || !sourceUrl) {
-    return null;
-  }
-
-  return {
-    src,
-    alt: photo.alt?.trim() || item.intent || item.query,
-    source: "pexels",
-    sourceName: "Pexels",
-    sourceUrl,
-    // Credit link rendered by the deck templates; for Pexels this points at the
-    // photo page, which satisfies the Pexels attribution guidelines.
-    sourceAttributionUrl: sourceUrl,
-    unsplashUrl: sourceUrl,
-    photographerName,
-    photographerUrl,
-    license: "Pexels",
-    ...(photo.width ? { width: photo.width } : {}),
-    ...(photo.height ? { height: photo.height } : {}),
-    ...(photo.avg_color ? { color: photo.avg_color } : {}),
-  };
-}
-
-// Pexels grants free commercial use without attribution or download tracking, so
-// unlike Unsplash there is no per-image download callback to make here.
-async function searchPexels(
-  item: PresentationImageResolveItem,
-  apiKey: string,
-  signal: AbortSignal,
-): Promise<UniqueResolution> {
-  const url = new URL(PEXELS_SEARCH_URL);
-  url.searchParams.set("query", item.query);
-  url.searchParams.set("per_page", String(RESULTS_PER_QUERY));
-  const orientation = pexelsOrientation(item.orientation);
-  if (orientation) {
-    url.searchParams.set("orientation", orientation);
-  }
-
-  const response = await tapError(
-    fetch(url, {
-      headers: {
-        Authorization: apiKey,
-        "User-Agent": "vm0-presentation-image-resolver/1.0",
-      },
-      signal,
-    }),
-  );
-  signal.throwIfAborted();
-  if (!response) {
-    return providerError(`Pexels search failed for "${item.query}"`);
-  }
-  if (!response.ok) {
-    return providerError(
-      `Pexels search failed with ${response.status} ${response.statusText}`,
-    );
-  }
-
-  const body = await tapError(response.text());
-  signal.throwIfAborted();
-  if (body === undefined) {
-    return providerError("Pexels search returned an unreadable response");
-  }
-
-  const parsed = pexelsSearchResponseSchema.safeParse(safeJsonParse(body));
-  if (!parsed.success) {
-    return providerError("Pexels search returned an unexpected response");
-  }
-
-  if (parsed.data.photos.length === 0) {
-    return noResults(item.query, "Pexels");
-  }
-
-  for (const photo of parsed.data.photos) {
-    const asset = buildPexelsAsset(item, photo);
-    if (asset) {
-      return { status: "resolved", asset };
-    }
-  }
-
-  return noResults(item.query, "Pexels");
-}
-
-// Build the ordered provider chain for this request. Unsplash is tried first
-// when configured, with Pexels as fallback. Providers without a configured key
+// Build the provider chain for this request. Providers without a configured key
 // are skipped.
 function buildProviderChain(): readonly ProviderSearch[] {
   const chain: ProviderSearch[] = [];
   const unsplashKey = env("UNSPLASH_ACCESS_KEY");
-  const pexelsKey = env("PEXELS_API_KEY");
 
   if (unsplashKey) {
     chain.push((item, signal) => {
       return searchUnsplash(item, unsplashKey, signal);
-    });
-  }
-  if (pexelsKey) {
-    chain.push((item, signal) => {
-      return searchPexels(item, pexelsKey, signal);
     });
   }
 

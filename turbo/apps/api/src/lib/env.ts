@@ -36,7 +36,6 @@ const SCHEMA = {
   ZERO_BROWSER_USE_API_KEY: z.string().min(1).optional(),
   STEAM_WEB_API_KEY: z.string().min(1).optional(),
   UNSPLASH_ACCESS_KEY: z.string().min(1).optional(),
-  PEXELS_API_KEY: z.string().min(1).optional(),
   FINICITY_APP_KEY: z.string().min(1).optional(),
   FINICITY_APP_SECRET: z.string().min(1).optional(),
   FINICITY_PARTNER_ID: z.string().min(1).optional(),
