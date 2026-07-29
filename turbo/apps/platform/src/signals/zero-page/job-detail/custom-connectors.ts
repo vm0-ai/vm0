@@ -4,6 +4,7 @@ import { zeroClient$ } from "../../api-client.ts";
 import { withCleanup } from "../../utils.ts";
 import { accept } from "../../../lib/accept.ts";
 import { agentDetail$ } from "./detail.ts";
+import { reloadCustomConnectorAuthorizedAgents$ } from "../settings/custom-connectors.ts";
 
 // ---------------------------------------------------------------------------
 // Per-agent custom connector authorization — mirrors connectors.ts but keyed
@@ -144,6 +145,7 @@ const saveAgentCustomConnectors$ = command(
       () => {
         set(clearAgentCustomConnectorDraft$, detail.agentId);
         set(reloadAgentCustomConnectors$);
+        set(reloadCustomConnectorAuthorizedAgents$);
       },
     );
   },

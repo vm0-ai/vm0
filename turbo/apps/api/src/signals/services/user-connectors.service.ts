@@ -1,12 +1,15 @@
-import { and, eq, inArray, or } from "drizzle-orm";
+import { and, eq, inArray, or, sql } from "drizzle-orm";
 import type { ConnectorSlug } from "@vm0/api-contracts/contracts/connector-identity";
 import { agentComposes } from "@vm0/db/schema/agent-compose";
 import {
   orgCustomConnectors,
   type OrgCustomConnectorField,
+  type OrgCustomConnectorAuthMode,
   type OrgCustomConnectorHeaderInjection,
   type OrgCustomConnectorQueryInjection,
 } from "@vm0/db/schema/org-custom-connector";
+import { connectors as connectorConnections } from "@vm0/db/schema/connector";
+import { secrets } from "@vm0/db/schema/secret";
 import { orgCustomConnectorSecrets } from "@vm0/db/schema/org-custom-connector-secret";
 import { orgCustomConnectorValues } from "@vm0/db/schema/org-custom-connector-value";
 import { userCustomConnectors } from "@vm0/db/schema/user-custom-connector";
@@ -56,7 +59,7 @@ type AddUserCustomConnectorResult =
 const LEGACY_SECRET_KEY = "secret";
 const LEGACY_SECRET_PLACEHOLDER = "{{secret}}";
 const CUSTOM_CONNECTOR_TEMPLATE_REFERENCE_REGEX =
-  /\{\{\s*(secrets|variables)\.([a-z][a-z0-9_]*)\s*\}\}/g;
+  /\{\{\s*(secrets|variables|oauth)\.([a-z][a-z0-9_]*)\s*\}\}/g;
 
 function legacyCustomConnectorFields(): readonly OrgCustomConnectorField[] {
   return [
@@ -98,6 +101,7 @@ function customConnectorAuthTemplateConfigured(args: {
   readonly fields: readonly OrgCustomConnectorField[];
   readonly configuredMarkers: ReadonlySet<string>;
   readonly template: string;
+  readonly oauthConnected: boolean;
 }): boolean {
   const fieldByReference = new Map<string, OrgCustomConnectorField>(
     args.fields.map((field) => {
@@ -132,6 +136,12 @@ function customConnectorAuthTemplateConfigured(args: {
     const namespace = match[1];
     const key = match[2];
     if (!namespace || !key) {
+      continue;
+    }
+    if (namespace === "oauth") {
+      if (key !== "access_token" || !args.oauthConnected) {
+        return false;
+      }
       continue;
     }
     const field = fieldByReference.get(`${namespace}.${key}`);
@@ -326,6 +336,100 @@ async function lockZeroAgentForConnectorReplace(
   return agent !== undefined;
 }
 
+interface LockedCustomConnectorRow {
+  readonly id: string;
+  readonly prefixes: readonly string[];
+  readonly prefixTemplates: readonly string[];
+  readonly headerTemplate: string;
+  readonly fields: readonly OrgCustomConnectorField[];
+  readonly headerInjections: readonly OrgCustomConnectorHeaderInjection[];
+  readonly queryInjections: readonly OrgCustomConnectorQueryInjection[];
+  readonly authMode: OrgCustomConnectorAuthMode;
+  readonly revision: number;
+}
+
+async function loadCustomConnectorOAuthConnectionIds(
+  db: Pick<Db, "select">,
+  args: {
+    readonly orgId: string;
+    readonly userId: string;
+    readonly connectorIds: readonly string[];
+  },
+): Promise<ReadonlySet<string>> {
+  const rows = await db
+    .select({
+      customConnectorId: connectorConnections.customConnectorId,
+    })
+    .from(connectorConnections)
+    .innerJoin(
+      secrets,
+      and(
+        eq(secrets.connectorId, connectorConnections.id),
+        eq(secrets.name, "access_token"),
+      ),
+    )
+    .where(
+      and(
+        eq(connectorConnections.orgId, args.orgId),
+        eq(connectorConnections.userId, args.userId),
+        eq(connectorConnections.authMethod, "oauth"),
+        eq(connectorConnections.needsReconnect, false),
+        inArray(connectorConnections.customConnectorId, [...args.connectorIds]),
+      ),
+    );
+  return new Set(
+    rows.flatMap((row) => {
+      return row.customConnectorId ? [row.customConnectorId] : [];
+    }),
+  );
+}
+
+function customConnectorGrantIsConfigured(args: {
+  readonly row: LockedCustomConnectorRow;
+  readonly configuredMarkers: ReadonlySet<string>;
+  readonly oauthConnected: boolean;
+}): boolean {
+  const fields =
+    args.row.authMode === "manual"
+      ? customConnectorGrantFields(args.row.fields)
+      : args.row.fields;
+  const missingRequired = fields.some((field) => {
+    return (
+      field.required &&
+      !args.configuredMarkers.has(
+        `${args.row.id}:${customConnectorValueMarkerKey(field)}`,
+      )
+    );
+  });
+  const hasConfiguredAuth = customConnectorAuthTemplates(args.row).some(
+    (template) => {
+      return customConnectorAuthTemplateConfigured({
+        connectorId: args.row.id,
+        fields,
+        configuredMarkers: args.configuredMarkers,
+        template,
+        oauthConnected: args.oauthConnected,
+      });
+    },
+  );
+  const hasConfiguredPrefix = customConnectorPrefixTemplates(args.row).some(
+    (template) => {
+      return customConnectorPrefixTemplateConfigured({
+        connectorId: args.row.id,
+        fields,
+        configuredMarkers: args.configuredMarkers,
+        template,
+      });
+    },
+  );
+  return (
+    !missingRequired &&
+    hasConfiguredAuth &&
+    hasConfiguredPrefix &&
+    (args.row.authMode === "manual" || args.oauthConnected)
+  );
+}
+
 async function lockCustomConnectorsForReplace(
   db: Pick<Db, "select">,
   args: {
@@ -336,21 +440,14 @@ async function lockCustomConnectorsForReplace(
 ): Promise<{
   readonly missingIds: readonly string[];
   readonly unconfiguredIds: readonly string[];
+  readonly revisions: ReadonlyMap<string, number>;
 }> {
   if (args.enabledIds.length === 0) {
-    return { missingIds: [], unconfiguredIds: [] };
+    return { missingIds: [], unconfiguredIds: [], revisions: new Map() };
   }
 
   const sortedIds = [...args.enabledIds].sort();
-  const lockedRows: {
-    readonly id: string;
-    readonly prefixes: readonly string[];
-    readonly prefixTemplates: readonly string[];
-    readonly headerTemplate: string;
-    readonly fields: readonly OrgCustomConnectorField[];
-    readonly headerInjections: readonly OrgCustomConnectorHeaderInjection[];
-    readonly queryInjections: readonly OrgCustomConnectorQueryInjection[];
-  }[] = [];
+  const lockedRows: LockedCustomConnectorRow[] = [];
   for (const id of sortedIds) {
     const [locked] = await db
       .select({
@@ -361,12 +458,15 @@ async function lockCustomConnectorsForReplace(
         fields: orgCustomConnectors.fields,
         headerInjections: orgCustomConnectors.headerInjections,
         queryInjections: orgCustomConnectors.queryInjections,
+        authMode: orgCustomConnectors.authMode,
+        revision: orgCustomConnectors.revision,
       })
       .from(orgCustomConnectors)
       .where(
         and(
           eq(orgCustomConnectors.orgId, args.orgId),
           eq(orgCustomConnectors.id, id),
+          eq(orgCustomConnectors.enabled, true),
         ),
       )
       .for("update")
@@ -385,51 +485,42 @@ async function lockCustomConnectorsForReplace(
     return !lockedIds.has(id);
   });
   if (missingIds.length > 0) {
-    return { missingIds, unconfiguredIds: [] };
+    return { missingIds, unconfiguredIds: [], revisions: new Map() };
   }
 
-  const configuredMarkers = await loadCustomConnectorGrantValueMarkers(db, {
-    orgId: args.orgId,
-    userId: args.userId,
-    connectorIds: lockedRows.map((row) => {
-      return row.id;
+  const connectorIds = lockedRows.map((row) => {
+    return row.id;
+  });
+  const [configuredMarkers, oauthConnectedIds] = await Promise.all([
+    loadCustomConnectorGrantValueMarkers(db, {
+      orgId: args.orgId,
+      userId: args.userId,
+      connectorIds,
     }),
-  });
+    loadCustomConnectorOAuthConnectionIds(db, {
+      orgId: args.orgId,
+      userId: args.userId,
+      connectorIds,
+    }),
+  ]);
   const unconfiguredIds = lockedRows.flatMap((row) => {
-    const fields = customConnectorGrantFields(row.fields);
-    const missingRequired = fields.some((field) => {
-      return (
-        field.required &&
-        !configuredMarkers.has(
-          `${row.id}:${customConnectorValueMarkerKey(field)}`,
-        )
-      );
-    });
-    const hasConfiguredAuth = customConnectorAuthTemplates(row).some(
-      (template) => {
-        return customConnectorAuthTemplateConfigured({
-          connectorId: row.id,
-          fields,
-          configuredMarkers,
-          template,
-        });
-      },
-    );
-    const hasConfiguredPrefix = customConnectorPrefixTemplates(row).some(
-      (template) => {
-        return customConnectorPrefixTemplateConfigured({
-          connectorId: row.id,
-          fields,
-          configuredMarkers,
-          template,
-        });
-      },
-    );
-    return missingRequired || !hasConfiguredAuth || !hasConfiguredPrefix
-      ? [row.id]
-      : [];
+    return customConnectorGrantIsConfigured({
+      row,
+      configuredMarkers,
+      oauthConnected: oauthConnectedIds.has(row.id),
+    })
+      ? []
+      : [row.id];
   });
-  return { missingIds: [], unconfiguredIds };
+  return {
+    missingIds: [],
+    unconfiguredIds,
+    revisions: new Map(
+      lockedRows.map((row) => {
+        return [row.id, row.revision] as const;
+      }),
+    ),
+  };
 }
 
 export async function updateUserConnectors(
@@ -537,6 +628,7 @@ export async function updateUserCustomConnectors(
       return { status: "agentNotFound" };
     }
 
+    let connectorRevisions: ReadonlyMap<string, number> = new Map();
     if (operation !== "remove") {
       const validation = await lockCustomConnectorsForReplace(tx, {
         orgId: args.orgId,
@@ -555,6 +647,7 @@ export async function updateUserCustomConnectors(
           unconfiguredIds: validation.unconfiguredIds,
         };
       }
+      connectorRevisions = validation.revisions;
     }
 
     const connectorScope = and(
@@ -586,10 +679,21 @@ export async function updateUserCustomConnectors(
               userId: args.userId,
               agentId: args.agentId,
               customConnectorId,
+              connectorRevision: connectorRevisions.get(customConnectorId) ?? 1,
             };
           }),
         )
-        .onConflictDoNothing();
+        .onConflictDoUpdate({
+          target: [
+            userCustomConnectors.orgId,
+            userCustomConnectors.userId,
+            userCustomConnectors.agentId,
+            userCustomConnectors.customConnectorId,
+          ],
+          set: {
+            connectorRevision: sql`excluded.connector_revision`,
+          },
+        });
     }
 
     if (operation === "replace") {

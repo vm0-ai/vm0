@@ -8,6 +8,7 @@ import {
 import { agentComposes } from "@vm0/db/schema/agent-compose";
 import { userConnectors } from "@vm0/db/schema/user-connector";
 import { userCustomConnectors } from "@vm0/db/schema/user-custom-connector";
+import { orgCustomConnectors } from "@vm0/db/schema/org-custom-connector";
 import { zeroAgents } from "@vm0/db/schema/zero-agent";
 import { and, asc, desc, eq, isNull, or } from "drizzle-orm";
 
@@ -195,11 +196,23 @@ export function zeroAgentEnabledCustomConnectorIds(args: {
     const rows = await get(db$)
       .select({ customConnectorId: userCustomConnectors.customConnectorId })
       .from(userCustomConnectors)
+      .innerJoin(
+        orgCustomConnectors,
+        and(
+          eq(orgCustomConnectors.id, userCustomConnectors.customConnectorId),
+          eq(orgCustomConnectors.orgId, userCustomConnectors.orgId),
+          eq(
+            orgCustomConnectors.revision,
+            userCustomConnectors.connectorRevision,
+          ),
+        ),
+      )
       .where(
         and(
           eq(userCustomConnectors.orgId, args.orgId),
           eq(userCustomConnectors.userId, args.userId),
           eq(userCustomConnectors.agentId, args.agentId),
+          eq(orgCustomConnectors.enabled, true),
         ),
       );
 

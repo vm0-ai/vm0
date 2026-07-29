@@ -69,7 +69,7 @@ async function createUnconfiguredCustomConnector(
 ) {
   return await connectors.createCustomConnector(actor, {
     displayName: `Connector ${slug}`,
-    slug,
+    slug: `_${slug}`,
     prefixes: [`https://${slug}.example.test`],
     headerName: "Authorization",
     headerTemplate: "Bearer {{secret}}",
@@ -92,7 +92,7 @@ async function createOptionalOnlyCustomConnector(
 ) {
   return await connectors.createCustomConnector(actor, {
     displayName: `Connector ${slug}`,
-    slug,
+    slug: `_${slug}`,
     prefixTemplates: [`https://${slug}.example.test`],
     fields: [
       {
@@ -118,7 +118,7 @@ async function createCustomConnectorWithOptionalPrefixVariable(
 ) {
   const connector = await connectors.createCustomConnector(actor, {
     displayName: `Connector ${slug}`,
-    slug,
+    slug: `_${slug}`,
     prefixTemplates: [`https://{{variables.subdomain}}.${slug}.example.test`],
     fields: [
       {

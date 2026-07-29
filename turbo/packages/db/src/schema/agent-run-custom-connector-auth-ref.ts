@@ -1,5 +1,6 @@
 import {
   index,
+  integer,
   pgTable,
   primaryKey,
   timestamp,
@@ -30,9 +31,10 @@ export const agentRunCustomConnectorAuthRefs = pgTable(
       ),
     secretName: varchar("secret_name", { length: 255 }).notNull(),
     connectorId: uuid("connector_id").notNull(),
+    connectorRevision: integer("connector_revision").notNull().default(1),
     kind: varchar("kind", { length: 16 }).notNull(),
     key: varchar("key", { length: 64 }).notNull(),
-    encryptedValue: text("encrypted_value").notNull(),
+    encryptedValue: text("encrypted_value"),
     expiresAt: timestamp("expires_at").notNull(),
     createdAt: timestamp("created_at").defaultNow().notNull(),
   },

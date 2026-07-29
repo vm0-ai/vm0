@@ -24,6 +24,7 @@ import {
 import { zeroAgentCustomConnectorsContract } from "@vm0/api-contracts/contracts/zero-agent-custom-connectors";
 import {
   zeroCustomConnectorByIdContract,
+  zeroCustomConnectorOAuth2Contract,
   zeroCustomConnectorProposalContract,
   zeroCustomConnectorSecretContract,
   zeroCustomConnectorsContract,
@@ -32,6 +33,7 @@ import {
   type PatchCustomConnectorBody,
   type SaveCustomConnectorProposalBody,
   type SaveCustomConnectorProposalResponse,
+  type UpdateCustomConnectorBody,
 } from "@vm0/api-contracts/contracts/zero-custom-connectors";
 import { zeroFeatureSwitchesContract } from "@vm0/api-contracts/contracts/zero-feature-switches";
 import {
@@ -100,6 +102,10 @@ const SLACK_OAUTH_TOKEN_URL = "https://slack.com/api/oauth.v2.access";
 const SLACK_OAUTH_USER_INFO_URL = "https://slack.com/api/users.info";
 const GITHUB_APP_INSTALLATIONS_URL = "https://api.github.com/app/installations";
 const GITHUB_APP_SLUG = "bdd-github-app";
+const CUSTOM_CONNECTOR_OAUTH2_AUTHORIZATION_URL =
+  "https://custom-oauth.example.test/authorize";
+const CUSTOM_CONNECTOR_OAUTH2_TOKEN_URL =
+  "https://custom-oauth.example.test/token";
 
 function authHeaders(actor: ApiTestUser | null): AuthHeaders {
   return actor ? { authorization: "Bearer clerk-session" } : {};
@@ -115,6 +121,61 @@ function expectStatus<
   if (response.status !== status) {
     throw new Error(`Expected status ${status}, got ${response.status}`);
   }
+}
+
+interface CustomConnectorOAuth2ProviderRecorder {
+  readonly authorizationUrl: string;
+  readonly tokenUrl: string;
+  readonly tokenBodies: URLSearchParams[];
+  readonly authorizationHeaders: (string | null)[];
+}
+
+interface CustomConnectorOAuth2ProviderOptions {
+  readonly initialExpiresIn?: number;
+  readonly refreshResponse?: (attempt: number) => Response | Promise<Response>;
+}
+
+export function mockCustomConnectorOAuth2Provider(
+  context: TestContext,
+  options: CustomConnectorOAuth2ProviderOptions = {},
+): CustomConnectorOAuth2ProviderRecorder {
+  context.mocks.dns.lookupOverrides.set("custom-oauth.example.test", [
+    { address: "93.184.216.34", family: 4 },
+  ]);
+  const tokenBodies: URLSearchParams[] = [];
+  const authorizationHeaders: (string | null)[] = [];
+  let refreshAttempts = 0;
+  server.use(
+    http.post(CUSTOM_CONNECTOR_OAUTH2_TOKEN_URL, async ({ request }) => {
+      const body = new URLSearchParams(await request.text());
+      tokenBodies.push(body);
+      authorizationHeaders.push(request.headers.get("authorization"));
+      if (body.get("grant_type") === "refresh_token") {
+        refreshAttempts += 1;
+        if (options.refreshResponse) {
+          return await options.refreshResponse(refreshAttempts);
+        }
+        return HttpResponse.json({
+          access_token: "custom-oauth-refreshed-access-token",
+          token_type: "Bearer",
+          expires_in: 3600,
+        });
+      }
+      return HttpResponse.json({
+        access_token: "custom-oauth-initial-access-token",
+        refresh_token: "custom-oauth-refresh-token",
+        id_token: "custom-oauth-id-token",
+        token_type: "Bearer",
+        expires_in: options.initialExpiresIn ?? 0,
+      });
+    }),
+  );
+  return {
+    authorizationUrl: CUSTOM_CONNECTOR_OAUTH2_AUTHORIZATION_URL,
+    tokenUrl: CUSTOM_CONNECTOR_OAUTH2_TOKEN_URL,
+    tokenBodies,
+    authorizationHeaders,
+  };
 }
 
 export function mockGitHubConnectorOAuth(): void {
@@ -1615,6 +1676,38 @@ export function createConnectorBddApi(context: TestContext) {
       return response.body;
     },
 
+    async requestUpdateCustomConnector(
+      actor: ApiTestUser | null,
+      connectorId: string,
+      body: UpdateCustomConnectorBody,
+      statuses: readonly (200 | 400 | 401 | 403 | 404 | 500)[],
+    ) {
+      const client = setupApp({ context })(zeroCustomConnectorByIdContract);
+      return await accept(
+        client.update({
+          params: { id: connectorId },
+          headers: authenticate(actor),
+          body,
+        }),
+        statuses,
+      );
+    },
+
+    async updateCustomConnector(
+      actor: ApiTestUser,
+      connectorId: string,
+      body: UpdateCustomConnectorBody,
+    ): Promise<CustomConnectorResponse> {
+      const response = await api.requestUpdateCustomConnector(
+        actor,
+        connectorId,
+        body,
+        [200],
+      );
+      expectStatus(response, 200);
+      return response.body;
+    },
+
     async requestDeleteCustomConnector(
       actor: ApiTestUser | null,
       connectorId: string,
@@ -1719,6 +1812,50 @@ export function createConnectorBddApi(context: TestContext) {
         connectorId,
         statuses,
       );
+    },
+
+    async requestStartCustomConnectorOAuth2(
+      actor: ApiTestUser | null,
+      connectorId: string,
+      statuses: readonly (200 | 400 | 401 | 403 | 404 | 500)[],
+    ) {
+      const client = setupApp({ context })(zeroCustomConnectorOAuth2Contract);
+      return await accept(
+        client.start({
+          params: { id: connectorId },
+          headers: authenticate(actor),
+          body: {},
+        }),
+        statuses,
+      );
+    },
+
+    async startCustomConnectorOAuth2(
+      actor: ApiTestUser,
+      connectorId: string,
+    ): Promise<string> {
+      const response = await api.requestStartCustomConnectorOAuth2(
+        actor,
+        connectorId,
+        [200],
+      );
+      expectStatus(response, 200);
+      return response.body.authorizationUrl;
+    },
+
+    async completeCustomConnectorOAuth2Callback(query: CallbackQuery) {
+      const client = setupApp({ context })(zeroCustomConnectorOAuth2Contract);
+      return await accept(client.callback({ query }), [307]);
+    },
+
+    async completeCustomConnectorOAuth2CallbackResult(query: CallbackQuery) {
+      const client = setupApp({ context })(zeroCustomConnectorOAuth2Contract);
+      const response = await accept(
+        client.callback({ query: { ...query, responseMode: "json" } }),
+        [200],
+      );
+      expectStatus(response, 200);
+      return response;
     },
 
     async requestAgentCustomConnectors(

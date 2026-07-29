@@ -5122,8 +5122,29 @@
     {
       "idx": 731,
       "version": "7",
-      "when": 1785329675714,
-      "tag": "0731_browser_session_resize_state",
+      "when": 1785322216166,
+      "tag": "0731_prefix_custom_connector_slugs",
+      "breakpoints": true
+    },
+    {
+      "idx": 732,
+      "version": "7",
+      "when": 1785322216167,
+      "tag": "0732_custom_connector_oauth_schema",
+      "breakpoints": true
+    },
+    {
+      "idx": 733,
+      "version": "7",
+      "when": 1785322216168,
+      "tag": "0733_enforce_custom_connector_oauth_mode",
+      "breakpoints": true
+    },
+    {
+      "idx": 734,
+      "version": "7",
+      "when": 1785330577500,
+      "tag": "0734_browser_session_resize_state",
       "breakpoints": true
     }
   ]

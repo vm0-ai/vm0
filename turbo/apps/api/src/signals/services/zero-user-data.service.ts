@@ -24,7 +24,7 @@ import { morningBriefSchedules } from "@vm0/db/schema/morning-brief";
 import { orgMembersMetadata } from "@vm0/db/schema/org-members-metadata";
 import { secrets } from "@vm0/db/schema/secret";
 import { variables } from "@vm0/db/schema/variable";
-import { and, eq } from "drizzle-orm";
+import { and, eq, isNull } from "drizzle-orm";
 
 import { nowDate } from "../../lib/time";
 import { db$, writeDb$, type ReadonlyDb } from "../external/db";
@@ -530,6 +530,7 @@ export const setUserSecret$ = command(
       })
       .onConflictDoUpdate({
         target: [secrets.orgId, secrets.userId, secrets.name, secrets.type],
+        targetWhere: isNull(secrets.connectorId),
         set: {
           encryptedValue,
           description: args.secret.description ?? null,
