@@ -393,8 +393,7 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     maintainer: "ethan@vm0.ai",
     description:
       "Chat message skeletons above the first visible message while older history loads.",
-    // Not rolled out to anyone yet; enable per-user via the Lab page.
-    enabled: false,
+    enabled: true,
   },
   [FeatureSwitchKey.ThreeColumnNav]: {
     maintainer: "ming@vm0.ai",

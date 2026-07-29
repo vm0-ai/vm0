@@ -202,7 +202,8 @@ function startOfDayInTz(date: Date, tz: string): Date {
     10,
   );
 
-  const elapsed = ((hour * 60 + minute) * 60 + second) * 1000;
+  const elapsed =
+    ((hour * 60 + minute) * 60 + second) * 1000 + date.getUTCMilliseconds();
   let result = new Date(date.getTime() - elapsed);
 
   const verify = (candidate: Date): boolean => {
