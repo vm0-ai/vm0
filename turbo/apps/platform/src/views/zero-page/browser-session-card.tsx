@@ -1,5 +1,6 @@
 import { Button, cn } from "@vm0/ui";
 import { useGet, useLastLoadable, useSet } from "ccstate-react";
+import { useTranslation } from "react-i18next";
 
 import type { BrowserSessionSignals } from "../../signals/chat-page/browser-session-block.ts";
 import {
@@ -30,6 +31,7 @@ function BrowserSessionCardSkeleton() {
 }
 
 function BrowserSessionUnavailable() {
+  const { t } = useTranslation();
   return (
     <div
       data-browser-session-card
@@ -38,21 +40,29 @@ function BrowserSessionUnavailable() {
     >
       <span className="flex min-w-0 flex-1 items-center gap-2">
         <span className="truncate text-sm font-medium text-foreground">
-          Cloud browser
+          {t(($) => {
+            return $.browserSession.cardTitle;
+          })}
         </span>
         <span className="inline-flex shrink-0 items-center gap-1.5 text-[11px] font-medium text-muted-foreground">
           <span className="size-1.5 rounded-full bg-muted-foreground/50" />
-          Stopped
+          {t(($) => {
+            return $.browserSession.status.stopped;
+          })}
         </span>
       </span>
       <Button
         type="button"
         size="sm"
         disabled
-        aria-label="Browser unavailable"
+        aria-label={t(($) => {
+          return $.browserSession.unavailable.title;
+        })}
         className="min-w-[58px] bg-foreground px-2.5 text-xs text-background hover:bg-foreground/90 active:bg-foreground/80"
       >
-        Open
+        {t(($) => {
+          return $.browserSession.openAction;
+        })}
       </Button>
     </div>
   );
@@ -61,6 +71,7 @@ function BrowserSessionUnavailable() {
 // A fixed-height entry point. The live view is heavy and resizes as pages load,
 // so it lives in the right sidebar instead of inside the message stream.
 export function BrowserSessionCard({ signals }: BrowserSessionCardProps) {
+  const { t } = useTranslation();
   const sessionLoadable = useLastLoadable(signals.session$);
   const selectedBrowserId = useGet(activeSidebarBrowserSessionId$);
   const openSidebar = useSet(openThreadBrowserSession$);
@@ -86,7 +97,9 @@ export function BrowserSessionCard({ signals }: BrowserSessionCardProps) {
     >
       <span className="flex min-w-0 flex-1 items-center gap-2">
         <span className="truncate text-sm font-medium text-foreground">
-          Cloud browser
+          {t(($) => {
+            return $.browserSession.cardTitle;
+          })}
         </span>
         <span
           className={cn(
@@ -102,19 +115,32 @@ export function BrowserSessionCard({ signals }: BrowserSessionCardProps) {
               live ? "bg-emerald-500" : "bg-muted-foreground/50",
             )}
           />
-          {live ? "Live" : "Stopped"}
+          {live
+            ? t(($) => {
+                return $.browserSession.status.live;
+              })
+            : t(($) => {
+                return $.browserSession.status.stopped;
+              })}
         </span>
       </span>
       <Button
         type="button"
         size="sm"
-        aria-label={`Open ${session.name} browser`}
+        aria-label={t(
+          ($) => {
+            return $.browserSession.open;
+          },
+          { name: session.name },
+        )}
         onClick={() => {
           openSidebar(signals.browserId);
         }}
         className="min-w-[58px] bg-foreground px-2.5 text-xs text-background hover:bg-foreground/90 active:bg-foreground/80"
       >
-        Open
+        {t(($) => {
+          return $.browserSession.openAction;
+        })}
       </Button>
     </div>
   );

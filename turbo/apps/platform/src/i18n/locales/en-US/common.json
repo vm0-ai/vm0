@@ -1,4 +1,348 @@
 {
+  "activity": {
+    "context": {
+      "artifact": "Artifact",
+      "environmentMapping": "Environment Mapping",
+      "featureFlags": "Feature Flags",
+      "firewalls": "Firewalls",
+      "mountPath": "Mount Path",
+      "name": "Name",
+      "networkPolicies": "Network Policies",
+      "none": "None",
+      "prompt": "Prompt",
+      "runId": "Run ID",
+      "secrets": "Secrets",
+      "session": "Session",
+      "storageName": "Storage Name",
+      "systemPrompt": "System Prompt",
+      "value": "Value",
+      "variables": "Variables",
+      "version": "Version",
+      "volumes": "Volumes"
+    },
+    "detail": {
+      "activity": "Activity",
+      "contextUnavailable": {
+        "description": "Execution context is not available for this run. It may be an older run created before context snapshots were enabled.",
+        "title": "Context not available"
+      },
+      "downloadRawData": "Download raw data",
+      "errorGuidance": {
+        "computerUseAuthorizationRequired": {
+          "guidance": "Request a delegated Computer Use authorization link, ask the user to select a Zero Desktop host for this chat or Slack thread, then start a new run. Existing run tokens cannot be upgraded in place.",
+          "title": "Computer Use authorization required"
+        },
+        "concurrentRunLimitReached": {
+          "guidance": "Wait for your current run to complete before starting a new one.",
+          "title": "Concurrent run limit reached"
+        },
+        "creditsDepleted": {
+          "guidance": "Run credit diagnostics first. Buy credits only when the current plan allows it; otherwise return the plan upgrade link.",
+          "title": "Credits depleted"
+        },
+        "modelProviderUnavailable": {
+          "guidance": "The model provider used by this thread has been deleted. Start a new chat thread to continue.",
+          "title": "Model provider unavailable"
+        },
+        "noModelProvider": {
+          "guidance": "Configure a model provider to start running agents.",
+          "title": "No model provider configured"
+        },
+        "paidPlanRequired": {
+          "guidance": "Built-in video generation is unavailable on the current plan.",
+          "title": "Paid plan required"
+        },
+        "providerIncompatible": {
+          "guidance": "This session was created with a different provider type.",
+          "title": "Provider not compatible"
+        },
+        "providerTemporarilyUnavailable": {
+          "guidance": "The model provider is temporarily unavailable. Please try again later.",
+          "title": "Provider temporarily unavailable"
+        }
+      },
+      "fallbackAgent": "Agent",
+      "fields": {
+        "duration": "Duration",
+        "model": "Model",
+        "source": "Source",
+        "status": "Status",
+        "time": "Time"
+      },
+      "log": "Log",
+      "modelProvidedBy": "{{model}} provided by {{provider}}",
+      "networkEmpty": {
+        "description": "No network traffic was recorded for this run.",
+        "title": "No network logs"
+      },
+      "notFound": {
+        "back": "Back to activity",
+        "description": "This log doesn't exist or you don't have permission to view it in the current workspace.",
+        "title": "Log not found"
+      },
+      "runner": {
+        "deviceLimitMismatch": "Idle pool entry exists but its device rate limiter state does not match.",
+        "featureDisabled": "Sandbox reuse is disabled for this run.",
+        "noSessionId": "No session ID available to match against the idle pool.",
+        "notReused": "Not reused",
+        "poolMiss": "No matching sandbox found in the idle pool.",
+        "profileMismatch": "Idle pool entry exists but its profile does not match.",
+        "reused": "Reused",
+        "reusedDescription": "Sandbox was unparked from the idle pool.",
+        "sandbox": "Sandbox",
+        "unknown": "Unknown (older run, recorded before sandbox reuse tracking was added).",
+        "unparkFailed": "Unpark attempt failed; a fresh sandbox was provisioned."
+      },
+      "steps": {
+        "matched": "({{matched}}/{{total}} matched)",
+        "noEvents": "No events available",
+        "search": "Search steps",
+        "systemPrompt": "System Prompt",
+        "title": "Steps",
+        "total": "{{total}} total",
+        "userPrompt": "Prompt"
+      },
+      "tabs": {
+        "context": "Context",
+        "network": "Network",
+        "runner": "Runner",
+        "steps": "Steps"
+      }
+    },
+    "documentTitle": "Activity",
+    "events": {
+      "agents_one": "agent",
+      "agents_other": "agents",
+      "allTasksCompleted": "All tasks completed",
+      "argsLabel": "args:",
+      "calls_one": "{{formattedCount}} call",
+      "calls_other": "{{formattedCount}} calls",
+      "commands_one": "command",
+      "commands_other": "commands",
+      "duration": "Duration: {{duration}}",
+      "emptyOutput": "(empty output)",
+      "files_one": "{{formattedCount}} file",
+      "files_other": "{{formattedCount}} files",
+      "initialize": "Initialize",
+      "inputTokens": "in: {{formattedCount}}",
+      "models_one": "{{formattedCount}} model",
+      "models_other": "{{formattedCount}} models",
+      "nameLabel": "name:",
+      "outputTokens": "out: {{formattedCount}}",
+      "remainingLines_one": "+{{formattedCount}} line",
+      "remainingLines_other": "+{{formattedCount}} lines",
+      "searches_one": "{{formattedCount}} search",
+      "searches_other": "{{formattedCount}} searches",
+      "steps_one": "{{formattedCount}} step",
+      "steps_other": "{{formattedCount}} steps",
+      "summary": "Summary",
+      "task": "Task",
+      "thinking": "Thinking",
+      "todo": "Todo",
+      "toolFailed": "{{toolName}} failed",
+      "tools_one": "tool",
+      "tools_other": "tools",
+      "turns_one": "{{formattedCount}} turn",
+      "turns_other": "{{formattedCount}} turns"
+    },
+    "inspect": {
+      "contextUnavailable": {
+        "description": "Execution context is not available in this imported log.",
+        "title": "Context not available"
+      },
+      "documentTitle": "Inspect Log",
+      "errors": {
+        "invalid": "Invalid JSON file. Upload an exported activity log JSON file.",
+        "load": "Could not load JSON file. Upload an exported activity log JSON file.",
+        "oversized": "JSON file is too large. Upload an exported activity log JSON file under 25 MB."
+      },
+      "fallbackName": "Imported Log",
+      "inspect": "Inspect",
+      "networkUnavailable": {
+        "description": "Network logs are not available in this imported log.",
+        "title": "Network logs not available"
+      },
+      "noLog": {
+        "description": "Upload an activity log JSON file to inspect it.",
+        "title": "No log loaded",
+        "upload": "Upload JSON"
+      }
+    },
+    "list": {
+      "description": "Logs and runs from your agents.",
+      "errors": {
+        "description": "Something went wrong. Please try again later.",
+        "title": "Failed to load activity data"
+      },
+      "filters": {
+        "agent": "Agent filter",
+        "allAgents": "All agents",
+        "allSources": "All sources",
+        "allStatuses": "All statuses",
+        "source": "Source filter",
+        "status": "Status filter"
+      },
+      "title": "Activity"
+    },
+    "network": {
+      "browser": "browser",
+      "capture": {
+        "binaryData": "[Binary data, {{size}} base64-encoded]",
+        "complete": "complete",
+        "headersWithCount": "{{title}} ({{formattedCount}})",
+        "requestBody": "Request Body",
+        "requestHeaders": "Request Headers",
+        "responseBody": "Response Body",
+        "responseHeaders": "Response Headers",
+        "truncated": "truncated"
+      },
+      "details": {
+        "action": "Action",
+        "authCacheHit": "Cache Hit",
+        "authRefreshedConnectors": "Refreshed Connectors",
+        "authRefreshedSecrets": "Refreshed Secrets",
+        "authResolvedSecrets": "Resolved Secrets",
+        "authUrlRewrite": "URL Rewrite",
+        "baseUrl": "Base URL",
+        "billable": "Billable",
+        "browserUserAgent": "Browser User-Agent",
+        "connectorBaseUrl": "Connector Base URL",
+        "connectorDiagnostic": "Connector Diagnostic",
+        "connectorEnvNames": "Connector Env Names",
+        "connectorReason": "Connector Reason",
+        "connectorRouteCandidates": "Connector Route Candidates",
+        "connectorRouteReason": "Connector Route Reason",
+        "dnsEvent": "DNS Event",
+        "dnsQueryType": "DNS Query Type",
+        "dnsResult": "DNS Result",
+        "dnsSerial": "DNS Serial",
+        "error": "Error",
+        "firewall": "Firewall",
+        "host": "Host",
+        "latency": "Latency",
+        "method": "Method",
+        "modelCatalogCacheBypassReason": "Model Catalog Cache Bypass Reason",
+        "modelCatalogCacheEntryAge": "Model Catalog Cache Entry Age",
+        "modelCatalogCacheEvictionCount": "Model Catalog Cache Eviction Count",
+        "modelCatalogCacheStatus": "Model Catalog Cache Status",
+        "modelCatalogCacheValidationLatency": "Model Catalog Cache Validation Latency",
+        "modelCatalogPrefetchRole": "Model Catalog Prefetch Role",
+        "modelCatalogUpstreamEncoding": "Model Catalog Upstream Encoding",
+        "params": "Params",
+        "permission": "Permission",
+        "permissionError": "Permission Error",
+        "port": "Port",
+        "requestSize": "Request Size",
+        "responseSize": "Response Size",
+        "ruleMatch": "Rule Match",
+        "status": "Status",
+        "timestamp": "Timestamp",
+        "type": "Type",
+        "upstreamBindingClientBindingCount": "Upstream Client Binding Count",
+        "upstreamBindingClientBindingEndpointMatch": "Upstream Client Binding Endpoint Match",
+        "upstreamBindingClientBindingHosts": "Upstream Client Binding Hosts",
+        "upstreamBindingClientBindingMatch": "Upstream Client Binding Match",
+        "upstreamBindingClientId": "Upstream Binding Client ID",
+        "upstreamBindingClientSockname": "Upstream Binding Client Sockname",
+        "upstreamBindingDirectBindingHost": "Upstream Direct Binding Host",
+        "upstreamBindingDirectBindingKinds": "Upstream Direct Binding Kinds",
+        "upstreamBindingDirectBindingPort": "Upstream Direct Binding Port",
+        "upstreamBindingDirectBindingPresent": "Upstream Direct Binding Present",
+        "upstreamBindingReason": "Upstream Binding Reason",
+        "upstreamBindingRequestHost": "Upstream Binding Request Host",
+        "upstreamBindingRequestPort": "Upstream Binding Request Port",
+        "upstreamBindingServerAddress": "Upstream Binding Server Address",
+        "upstreamBindingServerConnected": "Upstream Binding Server Connected",
+        "upstreamBindingServerId": "Upstream Binding Server ID",
+        "upstreamBindingServerPeername": "Upstream Binding Server Peername",
+        "upstreamBindingServerSockname": "Upstream Binding Server Sockname",
+        "upstreamBindingTrustedHost": "Upstream Binding Trusted Host",
+        "url": "URL"
+      },
+      "filter": {
+        "allTypes": "All types",
+        "selectedTypes_one": "{{formattedCount}} type",
+        "selectedTypes_other": "{{formattedCount}} types",
+        "type": "Type filter"
+      },
+      "headers": {
+        "latency": "Latency",
+        "method": "Method",
+        "permission": "Permission",
+        "status": "Status",
+        "time": "Time",
+        "type": "Type",
+        "urlHost": "URL / Host"
+      },
+      "loadMore": "Load more",
+      "no": "No",
+      "noMatchingLogs": "No matching logs in loaded results",
+      "unknown": "unknown",
+      "yes": "Yes"
+    },
+    "pagination": {
+      "backTwo": "Back 2 pages",
+      "forwardTwo": "Forward 2 pages",
+      "next": "Next page",
+      "page": "Page {{current}}",
+      "pageOf": "Page {{current}} of {{total}}",
+      "previous": "Previous page",
+      "rowsPerPage": "Rows per page"
+    },
+    "sources": {
+      "agent": "Agent",
+      "agentphone": "AgentPhone",
+      "agentWithName": "Agent ({{name}})",
+      "cli": "CLI",
+      "email": "Email",
+      "feishu": "Feishu",
+      "github": "GitHub",
+      "slack": "Slack",
+      "teams": "Teams",
+      "telegram": "Telegram",
+      "web": "Web",
+      "webhook": "Webhook",
+      "workflowEvent": "Workflow event",
+      "workflowSchedule": "Workflow schedule"
+    },
+    "statuses": {
+      "cancelled": "Cancelled",
+      "completed": "Done",
+      "failed": "Failed",
+      "pending": "Pending",
+      "queued": "Queued",
+      "running": "Running",
+      "timeout": "Timeout"
+    },
+    "statusFilters": {
+      "cancelled": "Cancelled",
+      "completed": "Completed",
+      "failed": "Failed",
+      "pending": "Pending",
+      "queued": "Queued",
+      "running": "Running",
+      "timeout": "Timeout"
+    },
+    "table": {
+      "empty": {
+        "description": "When your agents start working, their activity will show up here.",
+        "title": "All quiet for now"
+      },
+      "filteredEmpty": {
+        "description": "Try different filters to find what you're looking for.",
+        "title": "Nothing matches those filters"
+      },
+      "headers": {
+        "agent": "Agent",
+        "description": "Description",
+        "duration": "Duration",
+        "session": "Session",
+        "source": "Source",
+        "startTime": "Start Time",
+        "status": "Status"
+      }
+    }
+  },
   "auth": {
     "clerk": {
       "accessNotAllowed": "Access is not allowed.",
@@ -10,6 +354,35 @@
     },
     "loading": "Loading authentication",
     "toggleTheme": "Toggle theme"
+  },
+  "browserSession": {
+    "cardTitle": "Cloud browser",
+    "close": "Close live browser",
+    "documentTitle": "Live browser",
+    "iframeTitle": "Live browser: {{name}}",
+    "invalidLink": "Invalid browser link",
+    "open": "Open {{name}} browser",
+    "openAction": "Open",
+    "openNewPage": "Open this browser in a new page",
+    "panel": {
+      "notLive": "Browser not live",
+      "resume": "Resume browser",
+      "resumeDescription": "Resuming restores the saved login profile and storage. The previous pages and tabs do not come back.",
+      "resuming": "Resuming…",
+      "suspended": "Browser suspended"
+    },
+    "reclaimHint_one": "Zero keeps this browser while this panel is open, and reclaims it after {{formattedCount}} idle minute.",
+    "reclaimHint_other": "Zero keeps this browser while this panel is open, and reclaims it after {{formattedCount}} idle minutes.",
+    "status": {
+      "live": "Live",
+      "starting": "Starting",
+      "stopped": "Stopped"
+    },
+    "title": "Live browser",
+    "unavailable": {
+      "description": "This browser does not belong to this chat or has been removed.",
+      "title": "Browser unavailable"
+    }
   },
   "lifecycle": {
     "emailUnsubscribe": {
@@ -1344,6 +1717,40 @@
       }
     }
   },
+  "reportError": {
+    "description": "Send diagnostic information for this failed run to the developer team. We will investigate and follow up shortly.",
+    "disclosure": {
+      "agentConfiguration": "Agent configuration",
+      "agentTelemetry": "Agent telemetry and run logs",
+      "chatHistory": "Chat history and agent events",
+      "connectedServices": "Connected services (no credentials)",
+      "networkLogs": "Network request logs",
+      "runContext": "Run context and environment",
+      "title": "What will be sent"
+    },
+    "documentTitle": "Report Error",
+    "error": {
+      "loadFailed": "Failed to load run details",
+      "notFailed": "This run did not fail and cannot be reported",
+      "title": "Error",
+      "tryAgain": "Try Again"
+    },
+    "fields": {
+      "description": "Description",
+      "descriptionPlaceholder": "What happened? What did you expect?",
+      "title": "Title",
+      "titlePlaceholder": "Brief summary of the issue"
+    },
+    "loading": "Loading run details",
+    "send": "Send Report",
+    "sending": "Sending...",
+    "success": {
+      "description": "Your error report has been sent to the developer team. They will investigate and follow up.",
+      "reference": "Reference: {{reference}}",
+      "title": "Report sent"
+    },
+    "title": "Report error to developer"
+  },
   "settings": {
     "accountMenu": {
       "addAccount": "Add account",
@@ -1818,6 +2225,55 @@
         "logoTooLarge": "Logo is too large ({{width}}×{{height}}px). Maximum size is {{maximum}}×{{maximum}}px.",
         "logoTooSmall": "Logo is too small ({{width}}×{{height}}px). Minimum size is {{minimum}}×{{minimum}}px."
       }
+    }
+  },
+  "works": {
+    "actions": {
+      "cancel": "Cancel",
+      "connect": "Connect",
+      "disconnect": "Disconnect",
+      "disconnecting": "Disconnecting…",
+      "manage": "Manage",
+      "moreOptions": "More options",
+      "uninstall": "Uninstall",
+      "uninstalling": "Uninstalling…",
+      "updatePermissions": "Update Permissions"
+    },
+    "connected": "Connected",
+    "connectedWithDetail": "Connected ({{detail}})",
+    "documentTitle": "Works",
+    "feishuConnected": "Feishu connected successfully",
+    "header": {
+      "description": "Connect with {{displayName}} through these channels",
+      "title": "Where {{displayName}} works"
+    },
+    "slack": {
+      "adminInstall": "Ask your admin to install the Slack integration",
+      "description": "Team communication and collaboration",
+      "install": "Install to Slack",
+      "permissionsUpdated": "Slack permissions have been updated",
+      "uninstallDescription": "This will remove the Slack integration for your entire workspace. All connected users will be disconnected and {{displayName}} will no longer respond to messages or mentions in Slack. This action cannot be undone.",
+      "uninstallTitle": "Uninstall Slack integration?"
+    },
+    "strapi": {
+      "description": "Automate work when entries are published"
+    },
+    "teams": {
+      "adminInstall": "Ask your admin to install the Microsoft Teams integration",
+      "connectAccount": "Connect your Microsoft account to finish setup",
+      "connectThenInstall": "Connect your Microsoft account, then install the Teams app",
+      "description": "Team communication and collaboration",
+      "disconnect": "Disconnect Microsoft Teams",
+      "install": "Install in Teams",
+      "moreOptions": "More Microsoft Teams options",
+      "permissionsUpdated": "Microsoft Teams permissions have been updated",
+      "uninstall": "Uninstall Microsoft Teams",
+      "uninstallDescription": "This removes the Microsoft Teams integration from {{brandName}} for your workspace. All connected users will be disconnected and {{displayName}} will no longer respond to Teams messages for this workspace until an admin reconnects it.",
+      "uninstallTitle": "Uninstall Microsoft Teams integration?"
+    },
+    "telegram": {
+      "description": "Route Telegram messages to agents",
+      "openSettings": "Open Telegram settings"
     }
   }
 }
