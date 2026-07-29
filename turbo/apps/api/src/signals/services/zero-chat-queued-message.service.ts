@@ -132,6 +132,8 @@ export type QueueFirstRunAssociation =
       readonly prompt: string;
       readonly goalId: string;
       readonly objectiveBrief: string;
+      readonly orgId: string;
+      readonly userId: string;
     };
 
 export type QueueFirstRunClaimResult =
@@ -372,6 +374,8 @@ async function claimGoalQueueFirstRunAssociation(
     chatThreadId: args.threadId,
     goalId: args.goalId,
     eventId: args.eventId,
+    orgId: args.orgId,
+    userId: args.userId,
   });
   const head =
     automationPause === null

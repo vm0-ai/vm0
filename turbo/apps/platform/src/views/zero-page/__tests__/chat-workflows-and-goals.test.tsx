@@ -733,6 +733,44 @@ describe("chat lifecycle", () => {
     expect(screen.queryByLabelText("Active goal")).not.toBeInTheDocument();
   });
 
+  it("renders a rejected goal event as a goal artifact without its machine error", async () => {
+    const threadId = "thread-rejected-goal-artifact";
+    const objectiveBrief = "Keep the release moving";
+    const machineError = "Goal continuation no longer matches the active goal";
+
+    mockChatLifecycle(context, {
+      threadId,
+      threadTitle: "Rejected goal artifact",
+      chatEvents: [
+        {
+          id: "msg-rejected-goal",
+          eventType: "input.rejected",
+          role: "user",
+          content: objectiveBrief,
+          userMessage: {
+            version: 1,
+            parts: [{ type: "text", text: objectiveBrief }],
+          },
+          error: machineError,
+          goalSnapshot: { objectiveBrief },
+          revokesEventId: "msg-pending-goal",
+          createdAt: "2026-06-09T10:00:00Z",
+        },
+      ],
+    });
+
+    detachedSetupPage({ context, path: `/chats/${threadId}` });
+
+    await waitFor(() => {
+      expect(screen.getByLabelText("Goal")).toBeInTheDocument();
+      expect(screen.getByText(objectiveBrief)).toBeInTheDocument();
+    });
+    expect(screen.queryByText(machineError)).not.toBeInTheDocument();
+    expect(
+      screen.getByLabelText("Goal").closest('[data-role="user"]'),
+    ).not.toBeNull();
+  });
+
   it("surfaces archived goal history in the latest assistant row", async () => {
     const threadId = "thread-goal-run-group-folding";
     const runGroupId = "f0000001-0000-4000-a000-00000000072b";

@@ -269,6 +269,8 @@ const launchQueuedGoal$ = command(
           prompt,
           goalId: normalizedGoal.goalId,
           objectiveBrief: goalSnapshot.objectiveBrief,
+          orgId: normalizedGoal.orgId,
+          userId: normalizedGoal.userId,
         },
         zeroRunModelPin: {
           modelProvider: effectiveModelProvider ?? null,
@@ -323,12 +325,22 @@ export const drainGoalQueueForThread$ = command(
       );
       signal.throwIfAborted();
       if (!decrypted.ok || !decrypted.value) {
+        const paused = await pauseActiveGoalForThread(db, {
+          orgId: event.orgId,
+          userId: event.userId,
+          threadId: event.chatThreadId,
+        });
+        signal.throwIfAborted();
         await rejectGoalEvent(
           db,
           event,
           GOAL_PAYLOAD_UNREADABLE_REASON,
           signal,
         );
+        log.warn("Goal queue event payload unreadable; goal paused", {
+          eventId: event.id,
+          pauseResult: paused.kind,
+        });
         continue;
       }
 

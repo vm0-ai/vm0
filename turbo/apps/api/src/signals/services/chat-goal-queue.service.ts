@@ -119,6 +119,7 @@ async function attemptGoalQueueAdmission(
   args: {
     readonly chatThreadId: string;
     readonly encryptedParams: string | undefined;
+    readonly objectiveBrief: string;
   },
 ): Promise<GoalQueueAdmissionAttempt> {
   return await db.transaction(async (tx) => {
@@ -137,6 +138,7 @@ async function attemptGoalQueueAdmission(
       content: null,
       runId: null,
       encryptedParams: args.encryptedParams,
+      goalSnapshot: { objectiveBrief: args.objectiveBrief },
     });
     if (!inserted) {
       throw new Error("Goal queue event insert returned no row");
@@ -152,12 +154,14 @@ export async function admitGoalQueueEvent(
     readonly chatThreadId: string;
     readonly orgId: string;
     readonly userId: string;
+    readonly objectiveBrief: string;
     readonly params: GoalQueueEventParams;
   },
 ): Promise<GoalQueueAdmission> {
   const initial = await attemptGoalQueueAdmission(db, {
     chatThreadId: args.chatThreadId,
     encryptedParams: undefined,
+    objectiveBrief: args.objectiveBrief,
   });
   if (initial.kind !== "payload-required") {
     return initial;
@@ -173,6 +177,7 @@ export async function admitGoalQueueEvent(
     const retryWithoutPayload = await attemptGoalQueueAdmission(db, {
       chatThreadId: args.chatThreadId,
       encryptedParams: undefined,
+      objectiveBrief: args.objectiveBrief,
     });
     if (retryWithoutPayload.kind !== "payload-required") {
       return retryWithoutPayload;
@@ -183,6 +188,7 @@ export async function admitGoalQueueEvent(
   const final = await attemptGoalQueueAdmission(db, {
     chatThreadId: args.chatThreadId,
     encryptedParams: encrypted.value,
+    objectiveBrief: args.objectiveBrief,
   });
   if (final.kind === "payload-required") {
     throw new Error("Goal queue admission still required encrypted params");
@@ -322,6 +328,8 @@ export async function goalQueueEventMatchesActiveGoal(
     readonly chatThreadId: string;
     readonly goalId: string;
     readonly eventId: string;
+    readonly orgId: string;
+    readonly userId: string;
   },
 ): Promise<boolean> {
   const [goal] = await db
@@ -340,6 +348,8 @@ export async function goalQueueEventMatchesActiveGoal(
       and(
         eq(threadGoals.id, args.goalId),
         eq(threadGoals.chatThreadId, args.chatThreadId),
+        eq(threadGoals.orgId, args.orgId),
+        eq(threadGoals.ownerUserId, args.userId),
         noGoalChangeAfterQueueEvent(db),
       ),
     )
@@ -371,13 +381,28 @@ export async function rejectGoalQueueEvent(
     if (!(await pendingGoalEventStillExists(tx, args))) {
       return false;
     }
+    const [pending] = await tx
+      .select({ goalSnapshot: chatMessages.goalSnapshot })
+      .from(chatMessages)
+      .where(eq(chatMessages.id, args.eventId))
+      .limit(1);
+    let objectiveBrief = pending?.goalSnapshot?.objectiveBrief;
+    if (!objectiveBrief) {
+      const [goal] = await tx
+        .select({ objectiveBrief: threadGoals.objectiveBrief })
+        .from(threadGoals)
+        .where(eq(threadGoals.chatThreadId, args.chatThreadId))
+        .limit(1);
+      objectiveBrief = goal?.objectiveBrief ?? "Goal continuation";
+    }
     const rejected = await replaceChatEvent(tx, args.eventId, {
       chatThreadId: args.chatThreadId,
       eventType: "input.rejected",
-      content: args.reason,
-      userMessage: createUserMessageDocument({ text: args.reason }),
+      content: objectiveBrief,
+      userMessage: createUserMessageDocument({ text: objectiveBrief }),
       runId: null,
       error: args.reason,
+      goalSnapshot: { objectiveBrief },
     });
     return rejected !== null;
   });

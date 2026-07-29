@@ -294,6 +294,7 @@ describe("zero goals", () => {
       orgId: fixture.orgId,
       userId: fixture.userId,
       goalId: goal.goalId,
+      objectiveBrief: "coalesce goal triggers",
       callbackSecret: "first-callback-secret",
     });
     const second = await admitGoalQueueEventFixture({
@@ -301,6 +302,7 @@ describe("zero goals", () => {
       orgId: fixture.orgId,
       userId: fixture.userId,
       goalId: goal.goalId,
+      objectiveBrief: "coalesce goal triggers",
       callbackSecret: "second-callback-secret",
     });
 

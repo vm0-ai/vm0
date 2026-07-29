@@ -125,6 +125,10 @@ type UserMessage = Extract<
 >;
 type AssistantMessage = Exclude<ChatEventResponse, UserMessage>;
 type PromptMessage = Extract<ChatEventResponse, { eventType: "input.prompt" }>;
+type RejectedMessage = Extract<
+  ChatEventResponse,
+  { eventType: "input.rejected" }
+>;
 type OutputMessage = Extract<
   ChatEventResponse,
   { eventType: "output.message" }
@@ -468,6 +472,18 @@ async function goalRunIds(threadId: string): Promise<readonly string[]> {
   return (await readGoalQueueStateFixture(threadId)).runIds;
 }
 
+function rejectedGoalEventForSource(
+  events: readonly ChatEventResponse[],
+  sourceEventId: string | undefined,
+): RejectedMessage | undefined {
+  return events.find((event): event is RejectedMessage => {
+    return (
+      event.eventType === "input.rejected" &&
+      event.revokesEventId === sourceEventId
+    );
+  });
+}
+
 /**
  * Checkpoint + exitCode-0 complete. Completing without a checkpoint routes to
  * the missing-checkpoint handler and FAILS the run, so every successful chat
@@ -478,6 +494,24 @@ async function completeChatRunOk(
   sandboxHeaders: { readonly authorization: string },
   options: { readonly lastEventSequence?: number } = {},
 ): Promise<void> {
+  await checkpointChatRun(runId, sandboxHeaders);
+  await webhooks.requestAgentComplete(
+    {
+      runId,
+      exitCode: 0,
+      ...(options.lastEventSequence === undefined
+        ? {}
+        : { lastEventSequence: options.lastEventSequence }),
+    },
+    sandboxHeaders,
+    [200],
+  );
+}
+
+async function checkpointChatRun(
+  runId: string,
+  sandboxHeaders: { readonly authorization: string },
+): Promise<void> {
   const historyHash = createHash("sha256")
     .update(`bdd chat session history ${runId}`)
     .digest("hex");
@@ -487,17 +521,6 @@ async function completeChatRunOk(
       cliAgentType: "claude-code",
       cliAgentSessionId: cliAgentSessionIdForChatRun(runId),
       cliAgentSessionHistoryHash: historyHash,
-    },
-    sandboxHeaders,
-    [200],
-  );
-  await webhooks.requestAgentComplete(
-    {
-      runId,
-      exitCode: 0,
-      ...(options.lastEventSequence === undefined
-        ? {}
-        : { lastEventSequence: options.lastEventSequence }),
     },
     sandboxHeaders,
     [200],
@@ -1582,6 +1605,78 @@ Continue the JPM IJTXX Treasury allocation follow-up for issue #20818 and [ACME-
     await expect(goalRunIds(first.threadId)).resolves.toHaveLength(0);
   }, 90_000);
 
+  it("pauses the goal and renders its rejection as a goal when claim-time payload decryption fails", async () => {
+    const { actor, agentId, runnerGroup } = await entitledChatActor();
+    await enableGoalWorkflows(actor);
+    chatCallbacks.failIfChatCallbackRouteIsFetched();
+
+    const first = await startChatRun(actor, {
+      agentId,
+      prompt: "finish before goal payload decryption fails",
+    });
+    const objectiveBrief = "Pause after payload decryption failure";
+    await createGoalForRun(actor, first.runId, objectiveBrief);
+    const kms = useSecretKmsProbe(undefined, (_command, callNumber) => {
+      return callNumber === 1
+        ? Promise.reject(new Error("internal goal payload decrypt failure"))
+        : undefined;
+    });
+    chatCallbacks.mockChatOutputEvents([
+      assistantEvent(0, "completed before goal payload decryption failure"),
+    ]);
+
+    const sandboxHeaders = await claimChatRun(runnerGroup, first.runId);
+    await completeChatRunOk(first.runId, sandboxHeaders, {
+      lastEventSequence: 0,
+    });
+
+    await expect
+      .poll(async () => {
+        const goal = await accept(
+          goalsClient().get({
+            headers: zeroGoalHeaders(actor, first.runId),
+          }),
+          [200],
+        );
+        return goal.body.status;
+      })
+      .toBe("paused");
+    const [goalEventId] = await goalQueueEventIds(first.threadId);
+    expect(goalEventId).toBeDefined();
+    const events = await waitForThreadMessages(
+      actor,
+      first.threadId,
+      (items) => {
+        return items.some((event) => {
+          return (
+            event.eventType === "input.rejected" &&
+            event.revokesEventId === goalEventId
+          );
+        });
+      },
+    );
+    const rejectedGoalEvent = rejectedGoalEventForSource(
+      events.events,
+      goalEventId,
+    );
+    expect(rejectedGoalEvent).toMatchObject({
+      eventType: "input.rejected",
+      content: objectiveBrief,
+      userMessage: {
+        version: 1,
+        parts: [{ type: "text", text: objectiveBrief }],
+      },
+      error: "Goal continuation queue payload is unreadable",
+      goalSnapshot: { objectiveBrief },
+    });
+    expect(JSON.stringify(rejectedGoalEvent?.userMessage)).not.toContain(
+      "internal goal payload decrypt failure",
+    );
+    expect(rejectedGoalEvent).not.toHaveProperty("runId");
+    expect(kms.decryptCalls).toBeGreaterThanOrEqual(1);
+    await expect(goalRunIds(first.threadId)).resolves.toHaveLength(0);
+  }, 90_000);
+
   it("pauses the goal and rejects its event when claim-time run creation fails", async () => {
     const { actor, agentId, runnerGroup } = await entitledChatActor();
     await enableGoalWorkflows(actor);
@@ -1591,7 +1686,8 @@ Continue the JPM IJTXX Treasury allocation follow-up for issue #20818 and [ACME-
       agentId,
       prompt: "finish before goal claim fails",
     });
-    await createGoalForRun(actor, first.runId, "pause after claim failure");
+    const objectiveBrief = "Pause after claim failure";
+    await createGoalForRun(actor, first.runId, objectiveBrief);
     await misc.deleteOrgModelProvider(actor, "anthropic-api-key", [204]);
     chatCallbacks.mockChatOutputEvents([
       assistantEvent(0, "completed before goal claim failure"),
@@ -1627,15 +1723,24 @@ Continue the JPM IJTXX Treasury allocation follow-up for issue #20818 and [ACME-
         });
       },
     );
-    const rejectedGoalEvent = events.events.find((event) => {
-      return (
-        event.eventType === "input.rejected" &&
-        event.revokesEventId === goalEventId
-      );
-    });
+    const rejectedGoalEvent = rejectedGoalEventForSource(
+      events.events,
+      goalEventId,
+    );
     expect(rejectedGoalEvent).toMatchObject({
       eventType: "input.rejected",
+      content: objectiveBrief,
+      userMessage: {
+        version: 1,
+        parts: [{ type: "text", text: objectiveBrief }],
+      },
+      error: expect.any(String),
+      goalSnapshot: { objectiveBrief },
     });
+    expect(rejectedGoalEvent?.content).not.toBe(rejectedGoalEvent?.error);
+    expect(JSON.stringify(rejectedGoalEvent?.userMessage)).not.toContain(
+      rejectedGoalEvent?.error,
+    );
     expect(rejectedGoalEvent).not.toHaveProperty("runId");
     await expect(goalRunIds(first.threadId)).resolves.toHaveLength(0);
   }, 90_000);
@@ -1703,7 +1808,7 @@ Continue the JPM IJTXX Treasury allocation follow-up for issue #20818 and [ACME-
     await flushWaitUntilForTest();
   }, 90_000);
 
-  it("admits a user message enqueued while the goal trigger is in flight before the pending goal event", async () => {
+  it("keeps an unclaimed goal event invisible, then rejects it without a run when pre-launch validation fails", async () => {
     const { actor, agentId, runnerGroup } = await entitledChatActor();
     await enableGoalWorkflows(actor);
     chatCallbacks.failIfChatCallbackRouteIsFetched();
@@ -1798,14 +1903,100 @@ Continue the JPM IJTXX Treasury allocation follow-up for issue #20818 and [ACME-
         });
       },
     );
-    const rejectedGoalEvent = rejected.events.find((event) => {
-      return (
-        event.eventType === "input.rejected" &&
-        event.revokesEventId === goalEventId
-      );
-    });
+    const rejectedGoalEvent = rejectedGoalEventForSource(
+      rejected.events,
+      goalEventId,
+    );
     expect(rejectedGoalEvent).toMatchObject({
       eventType: "input.rejected",
+      content: goalBrief,
+      userMessage: {
+        version: 1,
+        parts: [{ type: "text", text: goalBrief }],
+      },
+      error: "Goal continuation no longer matches the active goal",
+      goalSnapshot: { objectiveBrief: goalBrief },
+    });
+    expect(rejectedGoalEvent?.content).not.toBe(rejectedGoalEvent?.error);
+    expect(rejectedGoalEvent).not.toHaveProperty("runId");
+    await expect(goalRunIds(first.threadId)).resolves.toHaveLength(0);
+    await flushWaitUntilForTest();
+  }, 90_000);
+
+  it("rejects a goal event without a run when post-lost re-validation finds the goal paused", async () => {
+    const { actor, agentId, runnerGroup } = await entitledChatActor();
+    await enableGoalWorkflows(actor);
+    chatCallbacks.failIfChatCallbackRouteIsFetched();
+
+    const first = await startChatRun(actor, {
+      agentId,
+      prompt: "finish before the goal final claim is lost",
+    });
+    const objectiveBrief = "Reject after final claim loss";
+    await createGoalForRun(actor, first.runId, objectiveBrief);
+    chatCallbacks.mockChatOutputEvents([
+      assistantEvent(0, "completed before the goal final claim was lost"),
+    ]);
+
+    const sandboxHeaders = await claimChatRun(runnerGroup, first.runId);
+    await checkpointChatRun(first.runId, sandboxHeaders);
+    const goalLaunchPreparationStarted = createDeferredPromise<void>(
+      context.signal,
+    );
+    const releaseGoalLaunchPreparation = deferredGate();
+    context.mocks.s3.getSignedUrl.mockImplementationOnce(async () => {
+      goalLaunchPreparationStarted.resolve(undefined);
+      await releaseGoalLaunchPreparation.wait();
+      return "https://r2.example.com/storage/archive.tar.gz?sig=goal-lost";
+    });
+
+    await webhooks.requestAgentComplete(
+      {
+        runId: first.runId,
+        exitCode: 0,
+        lastEventSequence: 0,
+      },
+      sandboxHeaders,
+      [200],
+    );
+    await goalLaunchPreparationStarted.promise;
+
+    const paused = await accept(
+      goalsClient().pause({
+        headers: zeroGoalHeaders(actor, first.runId),
+      }),
+      [200],
+    );
+    expect(paused.body.status).toBe("paused");
+    releaseGoalLaunchPreparation.release();
+
+    const [goalEventId] = await goalQueueEventIds(first.threadId);
+    expect(goalEventId).toBeDefined();
+    const events = await waitForThreadMessages(
+      actor,
+      first.threadId,
+      (items) => {
+        return items.some((event) => {
+          return (
+            event.eventType === "input.rejected" &&
+            event.revokesEventId === goalEventId
+          );
+        });
+      },
+    );
+    const rejectedGoalEvent = rejectedGoalEventForSource(
+      events.events,
+      goalEventId,
+    );
+    expect(rejectedGoalEvent).toMatchObject({
+      eventType: "input.rejected",
+      content: objectiveBrief,
+      userMessage: {
+        version: 1,
+        parts: [{ type: "text", text: objectiveBrief }],
+      },
+      error: "Goal continuation no longer matches the active goal",
+      goalSnapshot: { objectiveBrief },
     });
     expect(rejectedGoalEvent).not.toHaveProperty("runId");
     await expect(goalRunIds(first.threadId)).resolves.toHaveLength(0);
