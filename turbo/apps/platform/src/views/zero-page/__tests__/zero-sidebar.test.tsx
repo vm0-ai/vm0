@@ -32,7 +32,6 @@ import {
 } from "../../../signals/zero-page/zero-sidebar-state.ts";
 import { PLACEHOLDER } from "./chat-test-helpers.ts";
 import { i18n } from "../../../i18n/index.ts";
-import { setLocale$ } from "../../../signals/locale.ts";
 
 const context = testContext();
 
@@ -2274,12 +2273,17 @@ describe("zero sidebar", () => {
       locale: "pt-BR",
       supportedLocales: ["en-US", "pt-BR"],
     });
-    await context.store.set(setLocale$, "pt-BR", context.signal);
 
-    setupSidebarPage({ context, path: `/agents/${AGENT_ID}/chat` });
+    setupSidebarPage({
+      context,
+      path: `/agents/${AGENT_ID}/chat`,
+      featureSwitches: {
+        [FeatureSwitchKey.LanguagePreference]: true,
+      },
+    });
 
-    const nav = await waitFor(() => {
-      return sidebar();
+    const nav = await screen.findByRole("navigation", {
+      name: "Barra lateral",
     });
     expect(within(nav).getByText("Agentes")).toBeInTheDocument();
 
@@ -2297,12 +2301,12 @@ describe("zero sidebar", () => {
       locale: "pt-BR",
       supportedLocales: ["en-US", "pt-BR"],
     });
-    await context.store.set(setLocale$, "pt-BR", context.signal);
 
     setupSidebarPage({
       context,
       path: `/agents/${AGENT_ID}/chat`,
       featureSwitches: {
+        [FeatureSwitchKey.LanguagePreference]: true,
         [FeatureSwitchKey.ThreeColumnNav]: true,
       },
     });

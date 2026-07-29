@@ -3,6 +3,7 @@ import {
   zeroConnectorCatalogContract,
   type PublicConnectorCatalogStatusItem,
 } from "@vm0/api-contracts/contracts/zero-connector-catalog";
+import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import { afterEach, describe, expect, it } from "vitest";
 
 import {
@@ -16,7 +17,6 @@ import { reloadConnectors$ } from "../../../signals/external/connectors.ts";
 import { setIdeationActiveTab$ } from "../../../signals/zero-page/zero-ideation.ts";
 import { PLACEHOLDER } from "./chat-test-helpers.ts";
 import { i18n } from "../../../i18n/index.ts";
-import { setLocale$ } from "../../../signals/locale.ts";
 
 const context = testContext();
 
@@ -335,11 +335,13 @@ describe("zero ideation page", () => {
       supportedLocales: ["en-US", "pt-BR"],
     });
     context.mocks.data.onboardingStatus({ defaultAgentId: null });
-    await context.store.set(setLocale$, "pt-BR", context.signal);
 
     detachedSetupPage({
       context,
       path: `/agents/${agentId}/chat`,
+      featureSwitches: {
+        [FeatureSwitchKey.LanguagePreference]: true,
+      },
     });
 
     await expect(
@@ -376,11 +378,13 @@ describe("zero ideation page", () => {
       locale: "pt-BR",
       supportedLocales: ["en-US", "pt-BR"],
     });
-    await context.store.set(setLocale$, "pt-BR", context.signal);
 
     detachedSetupPage({
       context,
       path: `/agents/${agentId}/ideas`,
+      featureSwitches: {
+        [FeatureSwitchKey.LanguagePreference]: true,
+      },
     });
 
     const localizedTitles = await screen.findAllByText("Ideias e casos de uso");

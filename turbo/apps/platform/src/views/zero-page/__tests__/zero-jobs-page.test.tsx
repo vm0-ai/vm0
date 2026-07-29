@@ -17,8 +17,8 @@ import {
   type TeamComposeItem,
   zeroTeamContract,
 } from "@vm0/api-contracts/contracts/zero-team";
+import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import { i18n } from "../../../i18n/index.ts";
-import { setLocale$ } from "../../../signals/locale.ts";
 
 const context = testContext();
 
@@ -398,7 +398,6 @@ describe("zero jobs page", () => {
       locale: "pt-BR",
       supportedLocales: ["en-US", "pt-BR"],
     });
-    await context.store.set(setLocale$, "pt-BR", context.signal);
     context.mocks.api(zeroTeamContract.list, ({ respond }) => {
       return respond(200, team);
     });
@@ -455,7 +454,13 @@ describe("zero jobs page", () => {
       });
     });
 
-    detachedSetupPage({ context, path: "/agents" });
+    detachedSetupPage({
+      context,
+      path: "/agents",
+      featureSwitches: {
+        [FeatureSwitchKey.LanguagePreference]: true,
+      },
+    });
 
     await expect(
       screen.findByRole("heading", { name: "Agentes" }),
