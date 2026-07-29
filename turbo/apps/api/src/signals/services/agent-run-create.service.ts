@@ -194,6 +194,7 @@ import type {
 } from "./chat-session-continuity.service";
 import {
   claimQueueFirstRunAssociation,
+  recordQueueFirstClaimedRun,
   type QueueFirstRunAssociation,
   type QueueFirstRunClaimResult,
 } from "./zero-chat-queued-message.service";
@@ -5511,6 +5512,12 @@ async function commitFailedLaunch(args: {
         runnerGroup: undefined,
         error: message,
       });
+      if (queueFirstClaim) {
+        await recordQueueFirstClaimedRun(tx, {
+          claim: queueFirstClaim,
+          runId: args.identity.runId,
+        });
+      }
       return {
         kind: "failed",
         createdAt,
@@ -5783,6 +5790,12 @@ async function commitQueuedPreparedLaunch(
     status: "queued",
     runnerGroup: payload.runnerGroup,
   });
+  if (queueFirstClaim) {
+    await recordQueueFirstClaimedRun(tx, {
+      claim: queueFirstClaim,
+      runId: run.id,
+    });
+  }
   await args.timing.measure(
     "api_dispatch_persist_custom_connector_auth_refs",
     "nested",
@@ -5847,6 +5860,12 @@ async function commitPendingPreparedLaunch(
     status: "pending",
     runnerGroup: payload.runnerGroup,
   });
+  if (queueFirstClaim) {
+    await recordQueueFirstClaimedRun(tx, {
+      claim: queueFirstClaim,
+      runId: run.id,
+    });
+  }
   const runnerJobCreatedAt = await args.timing.measure(
     "api_dispatch_persist_runner_job_queue",
     "top_level",
