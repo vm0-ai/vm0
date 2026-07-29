@@ -102,10 +102,12 @@ body {
 
 @media (display-mode: standalone) {
   /* Keep editable content in document coordinates. iOS can paint a stale
-     caret when a focused editor is inside a fixed-position ancestor. */
+     caret when a focused editor is inside a fixed-position ancestor. Keep
+     keyboard-reserve scrolling programmatic so touch gestures cannot move
+     the app shell into the reserved space. */
   #root {
     position: absolute;
-    overflow-y: auto;
+    overflow-y: hidden;
   }
 
   #root::after {
