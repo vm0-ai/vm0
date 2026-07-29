@@ -258,7 +258,8 @@ All HTTP calls via `zeroClient$` must use the `accept` utility function. This is
 
 `accept` takes a ts-rest call promise and a **required non-empty** array of accepted status codes. It returns a type-narrowed result containing only the accepted status codes. Any response **not** in the accept list is automatically:
 
-1. Shown as a `toast.error` (with the server's error message)
+1. Shown as a `toast.error` (with the server's error message), except for 401
+   responses handled by the authenticated client's sign-in recovery
 2. Thrown as an `ApiError` (so the calling code stops executing)
 
 ```typescript
@@ -273,7 +274,8 @@ export const inviteMember$ = command(
       [200],
     );
     // result type is narrowed to { status: 200, body: OrgMessageResponse }
-    // If status was 400/401/403/500 → toast + throw already happened, we never reach here
+    // If status was 400/403/500 → toast + throw already happened.
+    // A 401 redirects to sign-in without an error toast.
     toast.success(`Invitation sent to ${email}`);
     set(refreshOrgMembers$);
   },
@@ -317,7 +319,7 @@ export const getAgent$ = computed(async (get) => {
 
 ### Fail fast for background fetches
 
-For `computed` (background data fetching), call `accept` directly and let errors propagate. `accept` already handles API errors by showing the server message and throwing an `ApiError`; application code should not catch or replace that error handling.
+For `computed` (background data fetching), call `accept` directly and let errors propagate. `accept` already handles API errors by showing the server message (except for 401 responses owned by sign-in recovery) and throwing an `ApiError`; application code should not catch or replace that error handling.
 
 ```typescript
 export const billingStatus$ = computed(async (get) => {
@@ -329,7 +331,7 @@ export const billingStatus$ = computed(async (get) => {
 
 ### View layer: use loadables for state
 
-When `accept` throws, `useLoadable` / `useLoadableSet` transitions to `{ state: 'hasError', error: ApiError }`. Views should use loadable state for loading, disabled, and success UI. Do not catch errors in the view layer, do not show replacement toasts, and do not add application-level error handling around API failures; `accept` already handled the error and the flow should fail fast.
+When `accept` throws, `useLoadable` / `useLoadableSet` transitions to `{ state: 'hasError', error: ApiError }`. Views should use loadable state for loading, disabled, and success UI. Do not catch errors in the view layer, do not show replacement toasts, and do not add application-level error handling around API failures; `accept` and the authenticated client already handled the error and the flow should fail fast.
 
 ```typescript
 function ScheduleForm() {
