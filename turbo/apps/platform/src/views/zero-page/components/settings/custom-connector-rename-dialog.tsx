@@ -1,5 +1,6 @@
 import { useGet, useSet } from "ccstate-react";
 import { useLoadableSet } from "ccstate-react/experimental";
+import { useTranslation } from "react-i18next";
 import { detach, Reason } from "../../../../signals/utils.ts";
 import { pageSignal$ } from "../../../../signals/page-signal.ts";
 import {
@@ -26,6 +27,7 @@ export function CustomConnectorRenameDialog({
   id: string;
   currentDisplayName: string;
 }) {
+  const { t } = useTranslation();
   const displayName = useGet(customConnectorRenameInput$);
   const setDisplayName = useSet(setCustomConnectorRenameInput$);
   const closeDialog = useSet(closeCustomConnectorDialog$);
@@ -60,7 +62,11 @@ export function CustomConnectorRenameDialog({
     >
       <DialogContent className="max-w-md" aria-describedby={undefined}>
         <DialogHeader>
-          <DialogTitle>Rename custom connector</DialogTitle>
+          <DialogTitle>
+            {t(($) => {
+              return $.connectors.custom.rename.title;
+            })}
+          </DialogTitle>
         </DialogHeader>
         <form className="flex flex-col gap-4" onSubmit={onSubmit}>
           <div className="flex flex-col gap-2">
@@ -68,7 +74,9 @@ export function CustomConnectorRenameDialog({
               htmlFor="cc-rename-name"
               className="text-sm font-medium text-foreground"
             >
-              Display name
+              {t(($) => {
+                return $.connectors.custom.rename.displayName;
+              })}
             </label>
             <Input
               id="cc-rename-name"
@@ -86,10 +94,18 @@ export function CustomConnectorRenameDialog({
               onClick={closeDialog}
               disabled={submitting}
             >
-              Cancel
+              {t(($) => {
+                return $.connectors.actions.cancel;
+              })}
             </Button>
             <Button type="submit" disabled={!canSubmit}>
-              {submitting ? "Saving…" : "Save"}
+              {submitting
+                ? t(($) => {
+                    return $.connectors.actions.savingEllipsis;
+                  })
+                : t(($) => {
+                    return $.connectors.actions.save;
+                  })}
             </Button>
           </DialogFooter>
         </form>

@@ -13,6 +13,9 @@ import {
   formatEventTime,
 } from "./event-card.tsx";
 import { StatusDot } from "./status-dot.tsx";
+import { useTranslation } from "react-i18next";
+import { i18n } from "../../../../i18n/index.ts";
+import { formatAppNumber } from "../../../../i18n/format.ts";
 
 interface EventGroupCardProps {
   group: EventGroup;
@@ -95,6 +98,7 @@ function ThinkingSummary({
   showConnector: boolean;
   isDashed: boolean;
 }) {
+  const { t } = useTranslation();
   const hasSearchMatch = Boolean(
     searchTerm &&
     searchTerm.trim() &&
@@ -109,7 +113,9 @@ function ThinkingSummary({
           <div className="flex items-center gap-2">
             <StatusDot variant="success" />
             <span className="font-semibold text-sm text-foreground shrink-0">
-              Thinking
+              {t(($) => {
+                return $.activity.events.thinking;
+              })}
             </span>
             <span className="flex-1" />
             <span className="text-xs text-muted-foreground shrink-0 ml-4 whitespace-nowrap hidden sm:inline">
@@ -231,6 +237,7 @@ function TaskEventGroupCard({
   showConnector?: boolean;
   startedAt?: string | null;
 }) {
+  const { t } = useTranslation();
   const taskData = isTaskEventData(group.eventData) ? group.eventData : null;
   const description =
     stringValue(taskData?.description) ??
@@ -264,7 +271,9 @@ function TaskEventGroupCard({
             <StatusDot variant={isFailed ? "error" : "success"} />
           )}
           <span className="font-semibold text-sm text-foreground shrink-0">
-            Task
+            {t(($) => {
+              return $.activity.events.task;
+            })}
           </span>
           {description && (
             <span className="text-sm text-muted-foreground truncate">
@@ -300,7 +309,9 @@ function TaskEventGroupCard({
               <StatusDot variant={isFailed ? "error" : "success"} />
             )}
             <span className="font-semibold text-sm text-foreground shrink-0">
-              Task
+              {t(($) => {
+                return $.activity.events.task;
+              })}
             </span>
             {description && (
               <span className="text-sm text-muted-foreground truncate min-w-0">
@@ -309,7 +320,15 @@ function TaskEventGroupCard({
             )}
             {toolCount > 0 && (
               <span className="inline-flex items-center rounded-full bg-muted px-2 py-0.5 text-xs font-medium text-muted-foreground shrink-0">
-                {toolCount} steps
+                {t(
+                  ($) => {
+                    return $.activity.events.steps;
+                  },
+                  {
+                    count: toolCount,
+                    formattedCount: formatAppNumber(toolCount),
+                  },
+                )}
               </span>
             )}
             <span className="flex-1" />
@@ -350,6 +369,7 @@ function SystemEventGroupCard({
   showConnector?: boolean;
   startedAt?: string | null;
 }) {
+  const { t } = useTranslation();
   const eventData = isRecord(group.eventData) ? group.eventData : {};
   const subtype =
     typeof eventData.subtype === "string" ? eventData.subtype : undefined;
@@ -378,7 +398,11 @@ function SystemEventGroupCard({
       <div className="flex gap-2 items-center relative">
         <StatusDot variant="neutral" />
         <span className="font-semibold text-sm text-foreground">
-          {subtype === "init" ? "Initialize" : subtype}
+          {subtype === "init"
+            ? t(($) => {
+                return $.activity.events.initialize;
+              })
+            : subtype}
         </span>
         <span className="flex-1">
           {subtype === "init" && <SystemInitContent eventData={eventData} />}
@@ -403,6 +427,7 @@ function ResultEventGroupCard({
   showConnector?: boolean;
   startedAt?: string | null;
 }) {
+  const { t } = useTranslation();
   const eventData = isRecord(group.eventData) ? group.eventData : {};
   const timestamp = formatEventTime(group.createdAt, startedAt);
   const isError = eventData.is_error === true || eventData.success === false;
@@ -419,7 +444,9 @@ function ResultEventGroupCard({
           <div className="flex gap-2 items-center">
             <StatusDot variant={isError ? "error" : "primary"} />
             <span className="font-semibold text-sm text-foreground">
-              Summary
+              {t(($) => {
+                return $.activity.events.summary;
+              })}
             </span>
             <span className="flex-1" />
             <span className="text-xs text-muted-foreground shrink-0 ml-4 whitespace-nowrap hidden sm:inline">
@@ -478,7 +505,13 @@ function getTodoOperationErrors(group: EventGroup): {
     }
 
     const content =
-      operation.result.content.trim() || `${operation.toolName} failed`;
+      operation.result.content.trim() ||
+      i18n.t(
+        ($) => {
+          return $.activity.events.toolFailed;
+        },
+        { toolName: operation.toolName },
+      );
     return [
       {
         content,
@@ -499,6 +532,7 @@ function TodoCard({
   showConnector?: boolean;
   startedAt?: string | null;
 }) {
+  const { t } = useTranslation();
   const todoItems = group.todoState ?? [];
   const operationErrors = getTodoOperationErrors(group);
   // Filter out subtasks for count - only count top-level tasks
@@ -540,7 +574,9 @@ function TodoCard({
           <div className="flex gap-2 items-center">
             <StatusDot variant="todo" />
             <span className="font-semibold text-sm text-foreground shrink-0">
-              Todo
+              {t(($) => {
+                return $.activity.events.todo;
+              })}
             </span>
             {inProgressTask ? (
               <span
@@ -551,11 +587,13 @@ function TodoCard({
               </span>
             ) : (
               <span className="text-sm text-muted-foreground">
-                All tasks completed
+                {t(($) => {
+                  return $.activity.events.allTasksCompleted;
+                })}
               </span>
             )}
             <span className="text-sm text-muted-foreground shrink-0">
-              [{completedCount}/{totalCount}]
+              [{formatAppNumber(completedCount)}/{formatAppNumber(totalCount)}]
             </span>
             <span className="flex-1" />
             <span className="text-xs text-muted-foreground shrink-0 ml-4 whitespace-nowrap hidden sm:inline">
@@ -702,13 +740,38 @@ function CollapsedToolGroup({
   showConnector: boolean;
   isDashed: boolean;
 }) {
+  const { t } = useTranslation();
   const count = group.operations.length;
   const label =
     group.toolName === "Read"
-      ? `${count} files`
+      ? t(
+          ($) => {
+            return $.activity.events.files;
+          },
+          {
+            count,
+            formattedCount: formatAppNumber(count),
+          },
+        )
       : group.toolName === "Grep"
-        ? `${count} searches`
-        : `${count} calls`;
+        ? t(
+            ($) => {
+              return $.activity.events.searches;
+            },
+            {
+              count,
+              formattedCount: formatAppNumber(count),
+            },
+          )
+        : t(
+            ($) => {
+              return $.activity.events.calls;
+            },
+            {
+              count,
+              formattedCount: formatAppNumber(count),
+            },
+          );
   const operationKeyCounts = new Map<string, number>();
 
   return (

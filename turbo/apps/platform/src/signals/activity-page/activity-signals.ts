@@ -15,7 +15,10 @@ import {
   scrollToBottomActivityDetail$,
 } from "./activity-detail-scroll.ts";
 import { setAblyLoop$ } from "../realtime.ts";
-import { formatActivityClockTime } from "./activity-time.ts";
+import {
+  formatActivityClockTime,
+  formatActivityDurationMs,
+} from "./activity-time.ts";
 
 // ---------------------------------------------------------------------------
 // Filters — URL-derived
@@ -382,14 +385,5 @@ export function formatDuration(
   if (!Number.isFinite(ms) || ms < 0) {
     return undefined;
   }
-  if (ms < 1000) {
-    return `${ms}ms`;
-  }
-  const seconds = ms / 1000;
-  if (seconds < 60) {
-    return `${seconds.toFixed(1)}s`;
-  }
-  const minutes = Math.floor(seconds / 60);
-  const remainingSec = Math.round(seconds % 60);
-  return `${minutes}m ${remainingSec}s`;
+  return formatActivityDurationMs(ms);
 }

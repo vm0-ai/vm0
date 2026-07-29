@@ -21,6 +21,7 @@ import { setAblyLoop$ } from "../realtime.ts";
 import { retryTransientLoad } from "../utils.ts";
 import { resolveActiveUserPermissionGrantPolicy } from "../user-permission-grants.ts";
 import { parseUserPermissionGrantExpiresIn } from "./permission-grant-expiration.ts";
+import { i18n } from "../../i18n/index.ts";
 
 // ---------------------------------------------------------------------------
 // Route params
@@ -85,7 +86,9 @@ export function findPermissionInMetadata(
   if (name === UNKNOWN_PERMISSION_GRANT) {
     return {
       name: UNKNOWN_PERMISSION_GRANT,
-      description: "Unknown endpoints",
+      description: i18n.t(($) => {
+        return $.authorization.permission.unknownEndpoints;
+      }),
     };
   }
   return (

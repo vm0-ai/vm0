@@ -1,10 +1,22 @@
-import { currentLocale } from "./index.ts";
+import { i18n } from "./index.ts";
+import { DEFAULT_LOCALE } from "./resources.ts";
+
+export function resolvedAppLocale(): string {
+  return i18n.resolvedLanguage ?? i18n.language ?? DEFAULT_LOCALE;
+}
+
+export function formatAppNumber(
+  value: number,
+  options?: Intl.NumberFormatOptions,
+): string {
+  return new Intl.NumberFormat(resolvedAppLocale(), options).format(value);
+}
 
 export function formatLocalizedNumber(
   value: number,
   options?: Intl.NumberFormatOptions,
 ): string {
-  return new Intl.NumberFormat(currentLocale(), options).format(value);
+  return formatAppNumber(value, options);
 }
 
 export function formatCompactNumber(

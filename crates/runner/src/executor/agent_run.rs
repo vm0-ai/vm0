@@ -1,7 +1,7 @@
 use std::future::Future;
 use std::time::{Duration, Instant};
 
-use guest_contracts::diagnostics::FailureDiagnostic;
+use guest_contracts::diagnostics::{CliTerminationReason, FailureDiagnostic};
 use guest_contracts::session_history_identity::{
     FinalSessionHistoryIdentity, FinalSessionHistoryIdentityError,
     SESSION_HISTORY_IDENTITY_VERIFY_EXIT_EXPECTED_MISMATCH,
@@ -57,8 +57,8 @@ use super::{
     JOB_TIMEOUT_EXIT_CODE, PROCESS_CANCEL_TIMEOUTS, ResourceFailureDiagnostics,
     ResourceFailureKind, RunnerError, RunnerResult, SandboxReuseResult,
     SessionHistoryRestoreFallback, SessionHistoryRestorePlan, USER_ENV_FILE_ENV_KEY,
-    agent_exit_failure_message, guest_runtime_dir, guest_runtime_path, job_terminal_wait_timeout,
-    normalize_failure_exit_code,
+    agent_exit_failure_message, guest_runtime_dir, guest_runtime_path, job_supervisor_timeout,
+    job_terminal_wait_timeout, normalize_failure_exit_code,
 };
 use crate::active_input::ActiveInputSource;
 use crate::helper_exec::{helper_exec_succeeded, helper_exec_termination_label};
@@ -808,6 +808,12 @@ fn process_exit_code(exit: &sandbox::ProcessExit) -> Option<i32> {
 
 fn process_failed(exit: &sandbox::ProcessExit) -> bool {
     !matches!(exit.termination, ExecTermination::Exited { exit_code: 0 })
+}
+
+fn diagnostic_is_agent_execution_timeout(diagnostic: Option<&FailureDiagnostic>) -> bool {
+    diagnostic
+        .and_then(|diagnostic| diagnostic.cli_termination.as_ref())
+        .is_some_and(|termination| termination.reason == CliTerminationReason::ExecutionTimeout)
 }
 
 fn process_exit_oom_candidate(exit: &sandbox::ProcessExit) -> bool {
@@ -1718,14 +1724,14 @@ pub(super) async fn run_in_sandbox_with_process_cancel_timeouts(
     validate_agent_bootstrap_exec_boundary(&agent_cmd, &env_pairs)?;
     info!(run_id = %context.run_id, "spawning agent");
 
-    // JOB_TIMEOUT remains the guest-side runtime budget. The host waits a
-    // little longer for terminal proof so the guest timeout path can kill,
-    // drain stdout/stderr, and report ExecTermination::TimedOut.
+    // Guest-agent receives JOB_TIMEOUT as the user execution budget. The
+    // sandbox supervisor remains a later hard fallback so guest-agent can
+    // terminate the CLI and create a recovery checkpoint first.
     let t = Instant::now();
     let handle = sandbox
         .start_process(&StartProcessRequest {
             cmd: &agent_cmd,
-            timeout: JOB_TIMEOUT,
+            timeout: job_supervisor_timeout(),
             env: &env_refs,
             sudo: false,
             output: ProcessOutputMode::stream_with_stderr_capture(
@@ -2141,7 +2147,9 @@ pub(super) async fn run_in_sandbox_with_process_cancel_timeouts(
             // handoff.
             guest_error.unwrap_or_else(|| agent_exit_failure_message(failure_exit_code))
         };
-        Some(if matches!(exit.termination, ExecTermination::TimedOut) {
+        let is_runner_job_timeout = matches!(exit.termination, ExecTermination::TimedOut)
+            || diagnostic_is_agent_execution_timeout(failure_diagnostic.as_ref());
+        Some(if is_runner_job_timeout {
             ExecutionFailure::runner_job_timeout(
                 failure_exit_code,
                 error,

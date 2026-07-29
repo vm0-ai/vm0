@@ -9,6 +9,7 @@ import { toast } from "@vm0/ui/components/ui/sonner";
 import { accept } from "../../lib/accept.ts";
 import { zeroClient$ } from "../api-client.ts";
 import { setAblyLoop$ } from "../realtime.ts";
+import { i18n } from "../../i18n/index.ts";
 
 const reload$ = state(0);
 const internalDialogOpen$ = state(false);
@@ -115,7 +116,11 @@ export const disconnectFeishuOrg$ = command(
     set(reload$, (value) => {
       return value + 1;
     });
-    toast.success("Disconnected from Feishu");
+    toast.success(
+      i18n.t(($) => {
+        return $.connectors.providerSettings.toasts.feishuDisconnected;
+      }),
+    );
   },
 );
 
@@ -324,7 +329,11 @@ export const completeFeishuInstallationSetup$ = command(
     set(reload$, (value) => {
       return value + 1;
     });
-    toast.success("Feishu bot installed successfully");
+    toast.success(
+      i18n.t(($) => {
+        return $.connectors.providerSettings.toasts.feishuBotInstalled;
+      }),
+    );
   },
 );
 
@@ -342,7 +351,11 @@ export const uninstallFeishuInstallation$ = command(
     set(reload$, (value) => {
       return value + 1;
     });
-    toast.success("Feishu bot uninstalled");
+    toast.success(
+      i18n.t(($) => {
+        return $.connectors.providerSettings.toasts.feishuBotUninstalled;
+      }),
+    );
   },
 );
 
@@ -364,7 +377,11 @@ export const showFeishuSettingsResult$ = command(() => {
   if (error) {
     toast.error(error);
   } else if (params.get("status") === "connected") {
-    toast.success("Feishu connected successfully");
+    toast.success(
+      i18n.t(($) => {
+        return $.connectors.providerSettings.toasts.feishuConnected;
+      }),
+    );
   } else {
     return;
   }
@@ -397,7 +414,11 @@ export const startFeishuSettingsRealtime$ = command(
           );
         })
       ) {
-        toast.success("Feishu connected successfully");
+        toast.success(
+          i18n.t(($) => {
+            return $.connectors.providerSettings.toasts.feishuConnected;
+          }),
+        );
       }
       return false;
     });

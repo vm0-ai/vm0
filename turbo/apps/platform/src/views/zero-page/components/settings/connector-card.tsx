@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import { useTranslation } from "react-i18next";
 import {
   IconAdjustmentsHorizontal,
   IconCircleCheck,
@@ -106,6 +107,7 @@ function CatalogConnectorCard({
   busy,
   connect,
 }: CatalogConnectorCardProps) {
+  const { t } = useTranslation();
   const handleConnect = () => {
     runConnect(connector, connect, busy);
   };
@@ -114,7 +116,12 @@ function CatalogConnectorCard({
     <div
       role="button"
       tabIndex={busy ? -1 : 0}
-      aria-label={`Connect ${connector.label}`}
+      aria-label={t(
+        ($) => {
+          return $.connectors.card.connectAria;
+        },
+        { connector: connector.label },
+      )}
       aria-disabled={busy}
       className={cn(
         "zero-card overflow-hidden text-left",
@@ -175,12 +182,15 @@ function ConnectorConnectionStatus({
   readonly busy: boolean;
   readonly connect: ConnectorConnectHandlers;
 }) {
+  const { t } = useTranslation();
   const connectionStatus = connectorCurrentConnectionStatus(connector);
   if (busy) {
     return (
       <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
         <IconLoader2 size={12} stroke={1.5} className="animate-spin" />
-        Connecting…
+        {t(($) => {
+          return $.connectors.card.connecting;
+        })}
       </span>
     );
   }
@@ -189,7 +199,9 @@ function ConnectorConnectionStatus({
       <span className="flex shrink-0 items-center gap-2 whitespace-nowrap text-xs">
         <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-amber-500" />
         <span className="text-amber-600 dark:text-amber-400">
-          Connection expired
+          {t(($) => {
+            return $.connectors.card.connectionExpired;
+          })}
         </span>
       </span>
     );
@@ -199,7 +211,9 @@ function ConnectorConnectionStatus({
       <span className="flex min-w-0 items-center gap-2 text-[11px]">
         <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-amber-500" />
         <span className="min-w-0 truncate text-amber-600 dark:text-amber-400">
-          Update permissions
+          {t(($) => {
+            return $.connectors.card.updatePermissions;
+          })}
         </span>
       </span>
     );
@@ -210,7 +224,9 @@ function ConnectorConnectionStatus({
       expiryText ??
       (connector.connection?.externalUsername
         ? `@${connector.connection.externalUsername}`
-        : "Connected");
+        : t(($) => {
+            return $.connectors.card.connected;
+          }));
     return (
       <span className="flex items-center gap-2 truncate text-xs text-muted-foreground">
         <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-emerald-500" />
@@ -226,7 +242,9 @@ function ConnectorConnectionStatus({
       }}
       className="text-xs font-medium text-muted-foreground transition-colors hover:text-foreground"
     >
-      Connect
+      {t(($) => {
+        return $.connectors.actions.connect;
+      })}
     </button>
   );
 }
@@ -241,6 +259,7 @@ function ConnectionConnectorCard({
   onDisconnect,
   onReviewScopes,
 }: ConnectionConnectorCardProps) {
+  const { t } = useTranslation();
   const connectionStatus = connectorCurrentConnectionStatus(connector);
   return (
     <div className="zero-card flex flex-col">
@@ -273,7 +292,9 @@ function ConnectionConnectorCard({
                   variant="ghost"
                   size="icon"
                   className="h-7 w-7 shrink-0 rounded-lg text-muted-foreground hover:text-foreground"
-                  aria-label="More options"
+                  aria-label={t(($) => {
+                    return $.connectors.custom.moreOptions;
+                  })}
                   disabled={busy}
                 >
                   <IconDotsVertical size={14} stroke={1.5} />
@@ -286,19 +307,25 @@ function ConnectionConnectorCard({
                       runConnect(connector, connect, busy);
                     }}
                   >
-                    Reconnect
+                    {t(($) => {
+                      return $.connectors.actions.reconnect;
+                    })}
                   </DropdownMenuModalItem>
                 ) : null}
                 {connectionStatus === "scope-mismatch" && onReviewScopes ? (
                   <DropdownMenuModalItem onModalSelect={onReviewScopes}>
-                    Review permissions
+                    {t(($) => {
+                      return $.connectors.card.reviewPermissions;
+                    })}
                   </DropdownMenuModalItem>
                 ) : null}
                 <DropdownMenuItem
                   onClick={onDisconnect}
                   disabled={disconnecting || busy}
                 >
-                  Disconnect
+                  {t(($) => {
+                    return $.connectors.actions.disconnect;
+                  })}
                 </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
@@ -309,8 +336,11 @@ function ConnectionConnectorCard({
   );
 }
 
-function onboardingHelpText(helpText: string | undefined): string {
-  return (helpText ?? "Connect this account to continue")
+function onboardingHelpText(
+  helpText: string | undefined,
+  fallback: string,
+): string {
+  return (helpText ?? fallback)
     .replace(/^Connect your \w+ account to /u, "")
     .replace(/^Connect your Google account to /u, "")
     .replace(/^Connect /u, "");
@@ -326,6 +356,7 @@ function OnboardingConnectorCard({
   required,
   connect,
 }: OnboardingConnectorCardProps) {
+  const { t } = useTranslation();
   const label = connector?.label ?? connectorSlug;
   return (
     <div
@@ -349,16 +380,30 @@ function OnboardingConnectorCard({
         <p className="mt-0.5 truncate text-xs text-muted-foreground">
           {layout === "workflow" ? (
             <span className="text-muted-foreground/70">
-              {required ? "Required" : "Optional"} ·{" "}
+              {required
+                ? t(($) => {
+                    return $.connectors.card.required;
+                  })
+                : t(($) => {
+                    return $.connectors.card.optional;
+                  })}{" "}
+              ·{" "}
             </span>
           ) : null}
-          {onboardingHelpText(connector?.description)}
+          {onboardingHelpText(
+            connector?.description,
+            t(($) => {
+              return $.connectors.card.connectToContinue;
+            }),
+          )}
         </p>
       </div>
       {connected ? (
         <span className="inline-flex shrink-0 items-center gap-1.5 text-xs font-medium text-primary">
           <IconCircleCheck size={16} aria-hidden="true" />
-          Connected
+          {t(($) => {
+            return $.connectors.card.connected;
+          })}
         </span>
       ) : (
         <Button
@@ -376,7 +421,9 @@ function OnboardingConnectorCard({
           {busy ? (
             <IconLoader2 className="animate-spin" aria-hidden="true" />
           ) : null}
-          Connect
+          {t(($) => {
+            return $.connectors.actions.connect;
+          })}
         </Button>
       )}
     </div>
@@ -390,15 +437,24 @@ function ActionConnectorCard({
   busy,
   onActivate,
 }: ActionConnectorCardProps) {
+  const { t } = useTranslation();
   const reconnectRequired =
     connectorCurrentConnectionStatus(connector) === "reconnect-required";
   const actionLabel = complete
-    ? "Authorized"
+    ? t(($) => {
+        return $.connectors.card.authorized;
+      })
     : reconnectRequired
-      ? "Reconnect"
+      ? t(($) => {
+          return $.connectors.actions.reconnect;
+        })
       : connected
-        ? "Authorize"
-        : "Connect";
+        ? t(($) => {
+            return $.connectors.actions.authorize;
+          })
+        : t(($) => {
+            return $.connectors.actions.connect;
+          });
 
   return (
     <div
@@ -453,6 +509,7 @@ function PermissionConnectorCard({
   onManage,
   onToggle,
 }: PermissionConnectorCardProps) {
+  const { t } = useTranslation();
   return (
     <>
       <div className="flex w-full items-center gap-3 px-5 py-4 text-left transition-colors">
@@ -486,13 +543,22 @@ function PermissionConnectorCard({
                     type="button"
                     onClick={onManage}
                     className="flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-                    aria-label={`Manage ${connector.label} permissions`}
+                    aria-label={t(
+                      ($) => {
+                        return $.connectors.card.managePermissionsFor;
+                      },
+                      { connector: connector.label },
+                    )}
                   >
                     <IconAdjustmentsHorizontal size={15} stroke={1.5} />
                   </button>
                 </TooltipTrigger>
                 <TooltipContent side="top">
-                  <p className="text-xs">Manage permissions</p>
+                  <p className="text-xs">
+                    {t(($) => {
+                      return $.connectors.card.managePermissions;
+                    })}
+                  </p>
                 </TooltipContent>
               </Tooltip>
             </TooltipProvider>
@@ -501,7 +567,21 @@ function PermissionConnectorCard({
             checked={enabled}
             onCheckedChange={onToggle}
             loading={loading}
-            ariaLabel={`${enabled ? "Revoke" : "Grant"} ${connector.label} access`}
+            ariaLabel={t(
+              ($) => {
+                return $.connectors.card.accessFor;
+              },
+              {
+                action: enabled
+                  ? t(($) => {
+                      return $.connectors.actions.revoke;
+                    })
+                  : t(($) => {
+                      return $.connectors.actions.grant;
+                    }),
+                connector: connector.label,
+              },
+            )}
           />
         </div>
       </div>

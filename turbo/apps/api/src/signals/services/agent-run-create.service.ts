@@ -195,6 +195,7 @@ import type {
 import {
   claimQueueFirstRunAssociation,
   recordQueueFirstClaimedRun,
+  recordQueueFirstFailedRun,
   type QueueFirstRunAssociation,
   type QueueFirstRunClaimResult,
 } from "./zero-chat-queued-message.service";
@@ -5513,7 +5514,7 @@ async function commitFailedLaunch(args: {
         error: message,
       });
       if (queueFirstClaim) {
-        await recordQueueFirstClaimedRun(tx, {
+        await recordQueueFirstFailedRun(tx, {
           claim: queueFirstClaim,
           runId: args.identity.runId,
         });

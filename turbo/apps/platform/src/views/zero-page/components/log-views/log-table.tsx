@@ -1,9 +1,9 @@
 import { IconChevronRight, IconClock, IconLoader2 } from "@tabler/icons-react";
 import { cn } from "@vm0/ui";
+import { useTranslation } from "react-i18next";
 import {
   getTriggerSourceLabel,
   type LogEntry,
-  type LogStatus,
 } from "../../../../signals/zero-page/log-types.ts";
 import {
   formatLogTime,
@@ -12,16 +12,6 @@ import {
 import { StatusBadge } from "./status-badge.tsx";
 import { Link } from "../../../router/link.tsx";
 import { emptyActivityImg } from "../../platform-assets.ts";
-
-export const STATUS_LABELS: Readonly<Record<LogStatus, string>> = {
-  queued: "Queued",
-  pending: "Pending",
-  running: "Running",
-  completed: "Completed",
-  failed: "Failed",
-  timeout: "Timeout",
-  cancelled: "Cancelled",
-};
 
 // ---------------------------------------------------------------------------
 // Grid layouts
@@ -64,6 +54,7 @@ function LogRow({
   showDescription: boolean;
   gridClassName: string;
 }) {
+  const { t } = useTranslation();
   const time = formatLogTime(entry.createdAt);
   const agentName = entry.displayName ?? entry.agentId;
 
@@ -119,9 +110,13 @@ function LogRow({
                 size={12}
                 stroke={1.5}
                 className="animate-spin"
-                aria-label="Running"
+                aria-label={t(($) => {
+                  return $.activity.statuses.running;
+                })}
               />
-              Running
+              {t(($) => {
+                return $.activity.statuses.running;
+              })}
             </span>
           ) : (
             <span className="inline-flex items-center gap-0.5">
@@ -184,6 +179,70 @@ function SkeletonRows({
   );
 }
 
+function LogTableHeader({
+  gridClassName,
+  showDescription,
+  showSource,
+}: {
+  gridClassName: string;
+  showDescription: boolean;
+  showSource: boolean;
+}) {
+  const { t } = useTranslation();
+
+  return (
+    <div
+      className={cn(
+        gridClassName,
+        "sticky top-0 z-10 px-5 py-3 text-sm font-medium text-muted-foreground bg-card border-b border-border/40",
+      )}
+    >
+      <div className="text-left">
+        {t(($) => {
+          return $.activity.table.headers.agent;
+        })}
+      </div>
+      {showDescription && (
+        <div className="text-left">
+          {t(($) => {
+            return $.activity.table.headers.description;
+          })}
+        </div>
+      )}
+      {showSource && (
+        <div className="text-left">
+          {t(($) => {
+            return $.activity.table.headers.source;
+          })}
+        </div>
+      )}
+      {showSource && (
+        <div className="text-left">
+          {t(($) => {
+            return $.activity.table.headers.session;
+          })}
+        </div>
+      )}
+      <div className="text-left">
+        {t(($) => {
+          return $.activity.table.headers.status;
+        })}
+      </div>
+      <div className="text-left">
+        {t(($) => {
+          return $.activity.table.headers.startTime;
+        })}
+      </div>
+      <div className="text-left">
+        {t(($) => {
+          return $.activity.table.headers.duration;
+        })}
+      </div>
+      <div />
+    </div>
+  );
+}
+
 // ---------------------------------------------------------------------------
 // LogTable
 // ---------------------------------------------------------------------------
@@ -214,34 +273,45 @@ export function LogTable({
   rowsPerPage,
   showSource = false,
   showDescription = false,
-  emptyTitle = "All quiet for now",
-  emptyDescription = "When your agents start working, their activity will show up here.",
-  filteredEmptyTitle = "Nothing matches those filters",
-  filteredEmptyDescription = "Try different filters to find what you're looking for.",
+  emptyTitle,
+  emptyDescription,
+  filteredEmptyTitle,
+  filteredEmptyDescription,
   hasActiveFilter = false,
   minWidth = "540px",
 }: LogTableProps) {
+  const { t } = useTranslation();
   const gridClassName = pickGrid(showSource, showDescription);
+  const resolvedEmptyTitle =
+    emptyTitle ??
+    t(($) => {
+      return $.activity.table.empty.title;
+    });
+  const resolvedEmptyDescription =
+    emptyDescription ??
+    t(($) => {
+      return $.activity.table.empty.description;
+    });
+  const resolvedFilteredEmptyTitle =
+    filteredEmptyTitle ??
+    t(($) => {
+      return $.activity.table.filteredEmpty.title;
+    });
+  const resolvedFilteredEmptyDescription =
+    filteredEmptyDescription ??
+    t(($) => {
+      return $.activity.table.filteredEmpty.description;
+    });
 
   return (
     <div className="overflow-x-auto">
       <div style={{ minWidth }}>
         {(logs.length > 0 || isLoading) && (
-          <div
-            className={cn(
-              gridClassName,
-              "sticky top-0 z-10 px-5 py-3 text-sm font-medium text-muted-foreground bg-card border-b border-border/40",
-            )}
-          >
-            <div className="text-left">Agent</div>
-            {showDescription && <div className="text-left">Description</div>}
-            {showSource && <div className="text-left">Source</div>}
-            {showSource && <div className="text-left">Session</div>}
-            <div className="text-left">Status</div>
-            <div className="text-left">Start Time</div>
-            <div className="text-left">Duration</div>
-            <div />
-          </div>
+          <LogTableHeader
+            gridClassName={gridClassName}
+            showDescription={showDescription}
+            showSource={showSource}
+          />
         )}
         {isLoading ? (
           <SkeletonRows
@@ -265,10 +335,14 @@ export function LogTable({
             />
             <div className="text-center">
               <p className="text-sm font-medium text-foreground">
-                {hasActiveFilter ? filteredEmptyTitle : emptyTitle}
+                {hasActiveFilter
+                  ? resolvedFilteredEmptyTitle
+                  : resolvedEmptyTitle}
               </p>
               <p className="text-xs text-muted-foreground mt-1">
-                {hasActiveFilter ? filteredEmptyDescription : emptyDescription}
+                {hasActiveFilter
+                  ? resolvedFilteredEmptyDescription
+                  : resolvedEmptyDescription}
               </p>
             </div>
           </div>
