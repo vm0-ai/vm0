@@ -5,6 +5,7 @@ import { updateDocumentTitle$ } from "../document-title.ts";
 import { updatePage$ } from "../react-router.ts";
 import { hideAppSkeleton$ } from "../app-skeleton.ts";
 import { onboardGuard$ } from "../zero-page/onboard-guard.ts";
+import { i18n } from "../../i18n/index.ts";
 
 export const setupActivityInspectPage$ = command(
   async ({ set }, signal: AbortSignal) => {
@@ -13,7 +14,12 @@ export const setupActivityInspectPage$ = command(
     }
 
     set(updatePage$, createElement(ActivityInspectPage), "sidebar");
-    set(updateDocumentTitle$, "Inspect Log");
+    set(
+      updateDocumentTitle$,
+      i18n.t(($) => {
+        return $.activity.inspect.documentTitle;
+      }),
+    );
     await set(hideAppSkeleton$, signal);
   },
 );

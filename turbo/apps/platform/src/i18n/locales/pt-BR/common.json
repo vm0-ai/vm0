@@ -1,4 +1,426 @@
 {
+  "activity": {
+    "context": {
+      "artifact": "Artefato",
+      "environmentMapping": "Mapeamento de ambiente",
+      "featureFlags": "Flags de recurso",
+      "firewalls": "Firewalls",
+      "mountPath": "Caminho de montagem",
+      "name": "Nome",
+      "networkPolicies": "Políticas de rede",
+      "none": "Nenhum",
+      "prompt": "Prompt",
+      "runId": "ID da execução",
+      "secrets": "Segredos",
+      "session": "Sessão",
+      "storageName": "Nome do armazenamento",
+      "systemPrompt": "Prompt do sistema",
+      "value": "Valor",
+      "variables": "Variáveis",
+      "version": "Versão",
+      "volumes": "Volumes"
+    },
+    "detail": {
+      "activity": "Atividade",
+      "contextUnavailable": {
+        "description": "O contexto de execução não está disponível para esta execução. Talvez seja uma execução antiga, criada antes da ativação dos snapshots de contexto.",
+        "title": "Contexto indisponível"
+      },
+      "downloadRawData": "Baixar dados brutos",
+      "errorGuidance": {
+        "computerUseAuthorizationRequired": {
+          "guidance": "Solicite um link de autorização delegada do Computer Use, peça ao usuário para selecionar um host do Zero Desktop para este chat ou thread do Slack e inicie uma nova execução. Os tokens de uma execução existente não podem receber permissões adicionais.",
+          "title": "Autorização do Computer Use necessária"
+        },
+        "concurrentRunLimitReached": {
+          "guidance": "Aguarde a conclusão da execução atual antes de iniciar outra.",
+          "title": "Limite de execuções simultâneas atingido"
+        },
+        "creditsDepleted": {
+          "guidance": "Primeiro, execute o diagnóstico de créditos. Compre créditos somente quando o plano atual permitir; caso contrário, retorne o link de upgrade do plano.",
+          "title": "Créditos esgotados"
+        },
+        "modelProviderUnavailable": {
+          "guidance": "O provedor de modelos usado por esta thread foi excluído. Inicie uma nova thread de chat para continuar.",
+          "title": "Provedor de modelos indisponível"
+        },
+        "noModelProvider": {
+          "guidance": "Configure um provedor de modelos para começar a executar agentes.",
+          "title": "Nenhum provedor de modelos configurado"
+        },
+        "paidPlanRequired": {
+          "guidance": "A geração de vídeo integrada não está disponível no plano atual.",
+          "title": "Plano pago necessário"
+        },
+        "providerIncompatible": {
+          "guidance": "Esta sessão foi criada com um tipo de provedor diferente.",
+          "title": "Provedor incompatível"
+        },
+        "providerTemporarilyUnavailable": {
+          "guidance": "O provedor de modelos está temporariamente indisponível. Tente novamente mais tarde.",
+          "title": "Provedor temporariamente indisponível"
+        }
+      },
+      "fallbackAgent": "Agente",
+      "fields": {
+        "duration": "Duração",
+        "model": "Modelo",
+        "source": "Origem",
+        "status": "Status",
+        "time": "Horário"
+      },
+      "log": "Log",
+      "modelProvidedBy": "{{model}} fornecido por {{provider}}",
+      "networkEmpty": {
+        "description": "Nenhum tráfego de rede foi registrado para esta execução.",
+        "title": "Nenhum log de rede"
+      },
+      "notFound": {
+        "back": "Voltar para a atividade",
+        "description": "Este log não existe ou você não tem permissão para visualizá-lo no espaço de trabalho atual.",
+        "title": "Log não encontrado"
+      },
+      "runner": {
+        "deviceLimitMismatch": "A entrada no pool ocioso existe, mas o estado do limitador de uso do dispositivo não corresponde.",
+        "featureDisabled": "A reutilização de sandbox está desativada para esta execução.",
+        "noSessionId": "Não há um ID de sessão disponível para procurar uma correspondência no pool ocioso.",
+        "notReused": "Não reutilizado",
+        "poolMiss": "Nenhum sandbox correspondente foi encontrado no pool ocioso.",
+        "profileMismatch": "A entrada no pool ocioso existe, mas o perfil não corresponde.",
+        "reused": "Reutilizado",
+        "reusedDescription": "O sandbox foi reativado a partir do pool ocioso.",
+        "sandbox": "Sandbox",
+        "unknown": "Desconhecido (execução antiga, registrada antes da adição do rastreamento de reutilização de sandbox).",
+        "unparkFailed": "A tentativa de reativação falhou; um novo sandbox foi provisionado."
+      },
+      "steps": {
+        "matched": "({{matched}}/{{total}} correspondentes)",
+        "noEvents": "Nenhum evento disponível",
+        "search": "Pesquisar etapas",
+        "systemPrompt": "Prompt do sistema",
+        "title": "Etapas",
+        "total": "{{total}} no total",
+        "userPrompt": "Prompt"
+      },
+      "tabs": {
+        "context": "Contexto",
+        "network": "Rede",
+        "runner": "Runner",
+        "steps": "Etapas"
+      }
+    },
+    "documentTitle": "Atividade",
+    "events": {
+      "agents_one": "agente",
+      "agents_many": "agentes",
+      "agents_other": "agentes",
+      "allTasksCompleted": "Todas as tarefas foram concluídas",
+      "argsLabel": "argumentos:",
+      "calls_one": "{{formattedCount}} chamada",
+      "calls_many": "{{formattedCount}} chamadas",
+      "calls_other": "{{formattedCount}} chamadas",
+      "commands_one": "comando",
+      "commands_many": "comandos",
+      "commands_other": "comandos",
+      "duration": "Duração: {{duration}}",
+      "emptyOutput": "(saída vazia)",
+      "files_one": "{{formattedCount}} arquivo",
+      "files_many": "{{formattedCount}} arquivos",
+      "files_other": "{{formattedCount}} arquivos",
+      "initialize": "Inicialização",
+      "inputTokens": "entrada: {{formattedCount}}",
+      "models_one": "{{formattedCount}} modelo",
+      "models_many": "{{formattedCount}} modelos",
+      "models_other": "{{formattedCount}} modelos",
+      "nameLabel": "nome:",
+      "outputTokens": "saída: {{formattedCount}}",
+      "remainingLines_one": "+{{formattedCount}} linha",
+      "remainingLines_many": "+{{formattedCount}} linhas",
+      "remainingLines_other": "+{{formattedCount}} linhas",
+      "searches_one": "{{formattedCount}} busca",
+      "searches_many": "{{formattedCount}} buscas",
+      "searches_other": "{{formattedCount}} buscas",
+      "steps_one": "{{formattedCount}} etapa",
+      "steps_many": "{{formattedCount}} etapas",
+      "steps_other": "{{formattedCount}} etapas",
+      "summary": "Resumo",
+      "task": "Tarefa",
+      "thinking": "Raciocínio",
+      "todo": "Tarefas",
+      "toolFailed": "{{toolName}} falhou",
+      "tools_one": "ferramenta",
+      "tools_many": "ferramentas",
+      "tools_other": "ferramentas",
+      "turns_one": "{{formattedCount}} turno",
+      "turns_many": "{{formattedCount}} turnos",
+      "turns_other": "{{formattedCount}} turnos"
+    },
+    "inspect": {
+      "contextUnavailable": {
+        "description": "O contexto de execução não está disponível neste log importado.",
+        "title": "Contexto indisponível"
+      },
+      "documentTitle": "Inspecionar log",
+      "errors": {
+        "invalid": "Arquivo JSON inválido. Envie um arquivo JSON exportado de um log de atividade.",
+        "load": "Não foi possível carregar o arquivo JSON. Envie um arquivo JSON exportado de um log de atividade.",
+        "oversized": "O arquivo JSON é muito grande. Envie um arquivo JSON exportado de um log de atividade com menos de 25 MB."
+      },
+      "fallbackName": "Log importado",
+      "inspect": "Inspecionar",
+      "networkUnavailable": {
+        "description": "Os logs de rede não estão disponíveis neste log importado.",
+        "title": "Logs de rede indisponíveis"
+      },
+      "noLog": {
+        "description": "Envie o arquivo JSON de um log de atividade para inspecioná-lo.",
+        "title": "Nenhum log carregado",
+        "upload": "Enviar JSON"
+      }
+    },
+    "list": {
+      "description": "Logs e execuções dos seus agentes.",
+      "errors": {
+        "description": "Algo deu errado. Tente novamente mais tarde.",
+        "title": "Não foi possível carregar os dados de atividade"
+      },
+      "filters": {
+        "agent": "Filtro de agente",
+        "allAgents": "Todos os agentes",
+        "allSources": "Todas as origens",
+        "allStatuses": "Todos os status",
+        "source": "Filtro de origem",
+        "status": "Filtro de status"
+      },
+      "title": "Atividade"
+    },
+    "network": {
+      "browser": "navegador",
+      "capture": {
+        "binaryData": "[Dados binários, {{size}} codificados em base64]",
+        "complete": "completo",
+        "headersWithCount": "{{title}} ({{formattedCount}})",
+        "requestBody": "Corpo da requisição",
+        "requestHeaders": "Cabeçalhos da requisição",
+        "responseBody": "Corpo da resposta",
+        "responseHeaders": "Cabeçalhos da resposta",
+        "truncated": "truncado"
+      },
+      "details": {
+        "action": "Ação",
+        "authCacheHit": "Acerto de cache",
+        "authRefreshedConnectors": "Conectores atualizados",
+        "authRefreshedSecrets": "Segredos atualizados",
+        "authResolvedSecrets": "Segredos resolvidos",
+        "authUrlRewrite": "Reescrita de URL",
+        "baseUrl": "URL base",
+        "billable": "Faturável",
+        "browserUserAgent": "User-Agent do navegador",
+        "connectorBaseUrl": "URL base do conector",
+        "connectorDiagnostic": "Diagnóstico do conector",
+        "connectorEnvNames": "Nomes de ambiente do conector",
+        "connectorReason": "Motivo do conector",
+        "connectorRouteCandidates": "Rotas candidatas do conector",
+        "connectorRouteReason": "Motivo da rota do conector",
+        "dnsEvent": "Evento de DNS",
+        "dnsQueryType": "Tipo de consulta DNS",
+        "dnsResult": "Resultado de DNS",
+        "dnsSerial": "Serial de DNS",
+        "error": "Erro",
+        "firewall": "Firewall",
+        "host": "Host",
+        "latency": "Latência",
+        "method": "Método",
+        "modelCatalogCacheBypassReason": "Motivo para ignorar o cache do catálogo de modelos",
+        "modelCatalogCacheEntryAge": "Idade da entrada do cache do catálogo de modelos",
+        "modelCatalogCacheEvictionCount": "Contagem de remoções do cache do catálogo de modelos",
+        "modelCatalogCacheStatus": "Status do cache do catálogo de modelos",
+        "modelCatalogCacheValidationLatency": "Latência de validação do cache do catálogo de modelos",
+        "modelCatalogPrefetchRole": "Função de pré-carregamento do catálogo de modelos",
+        "modelCatalogUpstreamEncoding": "Codificação upstream do catálogo de modelos",
+        "params": "Parâmetros",
+        "permission": "Permissão",
+        "permissionError": "Erro de permissão",
+        "port": "Porta",
+        "requestSize": "Tamanho da requisição",
+        "responseSize": "Tamanho da resposta",
+        "ruleMatch": "Regra correspondente",
+        "status": "Status",
+        "timestamp": "Data e hora",
+        "type": "Tipo",
+        "upstreamBindingClientBindingCount": "Contagem de vinculações do cliente upstream",
+        "upstreamBindingClientBindingEndpointMatch": "Correspondência do endpoint da vinculação do cliente upstream",
+        "upstreamBindingClientBindingHosts": "Hosts da vinculação do cliente upstream",
+        "upstreamBindingClientBindingMatch": "Correspondência da vinculação do cliente upstream",
+        "upstreamBindingClientId": "ID do cliente da vinculação upstream",
+        "upstreamBindingClientSockname": "Sockname do cliente da vinculação upstream",
+        "upstreamBindingDirectBindingHost": "Host da vinculação direta upstream",
+        "upstreamBindingDirectBindingKinds": "Tipos de vinculação direta upstream",
+        "upstreamBindingDirectBindingPort": "Porta da vinculação direta upstream",
+        "upstreamBindingDirectBindingPresent": "Presença de vinculação direta upstream",
+        "upstreamBindingReason": "Motivo da vinculação upstream",
+        "upstreamBindingRequestHost": "Host da requisição da vinculação upstream",
+        "upstreamBindingRequestPort": "Porta da requisição da vinculação upstream",
+        "upstreamBindingServerAddress": "Endereço do servidor da vinculação upstream",
+        "upstreamBindingServerConnected": "Servidor da vinculação upstream conectado",
+        "upstreamBindingServerId": "ID do servidor da vinculação upstream",
+        "upstreamBindingServerPeername": "Peername do servidor da vinculação upstream",
+        "upstreamBindingServerSockname": "Sockname do servidor da vinculação upstream",
+        "upstreamBindingTrustedHost": "Host confiável da vinculação upstream",
+        "url": "URL"
+      },
+      "filter": {
+        "allTypes": "Todos os tipos",
+        "selectedTypes_one": "{{formattedCount}} tipo",
+        "selectedTypes_many": "{{formattedCount}} tipos",
+        "selectedTypes_other": "{{formattedCount}} tipos",
+        "type": "Filtro de tipo"
+      },
+      "headers": {
+        "latency": "Latência",
+        "method": "Método",
+        "permission": "Permissão",
+        "status": "Status",
+        "time": "Horário",
+        "type": "Tipo",
+        "urlHost": "URL / Host"
+      },
+      "loadMore": "Carregar mais",
+      "no": "Não",
+      "noMatchingLogs": "Nenhum log correspondente nos resultados carregados",
+      "unknown": "desconhecido",
+      "yes": "Sim"
+    },
+    "pagination": {
+      "backTwo": "Voltar 2 páginas",
+      "forwardTwo": "Avançar 2 páginas",
+      "next": "Próxima página",
+      "page": "Página {{current}}",
+      "pageOf": "Página {{current}} de {{total}}",
+      "previous": "Página anterior",
+      "rowsPerPage": "Linhas por página"
+    },
+    "sources": {
+      "agent": "Agente",
+      "agentphone": "AgentPhone",
+      "agentWithName": "Agente ({{name}})",
+      "cli": "CLI",
+      "email": "E-mail",
+      "feishu": "Feishu",
+      "github": "GitHub",
+      "slack": "Slack",
+      "teams": "Teams",
+      "telegram": "Telegram",
+      "web": "Web",
+      "webhook": "Webhook",
+      "workflowEvent": "Evento de workflow",
+      "workflowSchedule": "Agendamento de workflow"
+    },
+    "statuses": {
+      "cancelled": "Cancelado",
+      "completed": "Concluído",
+      "failed": "Falhou",
+      "pending": "Pendente",
+      "queued": "Na fila",
+      "running": "Em execução",
+      "timeout": "Tempo esgotado"
+    },
+    "statusFilters": {
+      "cancelled": "Cancelado",
+      "completed": "Concluído",
+      "failed": "Falhou",
+      "pending": "Pendente",
+      "queued": "Na fila",
+      "running": "Em execução",
+      "timeout": "Tempo esgotado"
+    },
+    "table": {
+      "empty": {
+        "description": "Quando seus agentes começarem a trabalhar, as atividades aparecerão aqui.",
+        "title": "Tudo tranquilo por enquanto"
+      },
+      "filteredEmpty": {
+        "description": "Tente outros filtros para encontrar o que procura.",
+        "title": "Nenhum resultado para esses filtros"
+      },
+      "headers": {
+        "agent": "Agente",
+        "description": "Descrição",
+        "duration": "Duração",
+        "session": "Sessão",
+        "source": "Origem",
+        "startTime": "Hora de início",
+        "status": "Status"
+      }
+    }
+  },
+  "browserSession": {
+    "close": "Fechar navegador ao vivo",
+    "creditsCharged_one": "{{formattedCount}} crédito cobrado",
+    "creditsCharged_many": "{{formattedCount}} créditos cobrados",
+    "creditsCharged_other": "{{formattedCount}} créditos cobrados",
+    "documentTitle": "Navegador ao vivo",
+    "iframeTitle": "Navegador ao vivo: {{name}}",
+    "invalidLink": "Link de navegador inválido",
+    "open": "Abrir o navegador {{name}}",
+    "openNewPage": "Abrir este navegador em uma nova página",
+    "panel": {
+      "notLive": "Navegador não está ao vivo",
+      "resume": "Retomar navegador",
+      "resumeDescription": "Ao retomar, o perfil de login e o armazenamento salvos são restaurados. As páginas e abas anteriores não são recuperadas.",
+      "resuming": "Retomando…",
+      "suspended": "Navegador suspenso"
+    },
+    "reclaimHint_one": "O Zero mantém este navegador enquanto o painel está aberto e o recupera após {{formattedCount}} minuto de inatividade.",
+    "reclaimHint_many": "O Zero mantém este navegador enquanto o painel está aberto e o recupera após {{formattedCount}} minutos de inatividade.",
+    "reclaimHint_other": "O Zero mantém este navegador enquanto o painel está aberto e o recupera após {{formattedCount}} minutos de inatividade.",
+    "status": {
+      "error": "Erro",
+      "live": "Ao vivo",
+      "starting": "Iniciando",
+      "stopping": "Parando",
+      "suspended": "Suspenso"
+    },
+    "title": "Navegador ao vivo",
+    "unavailable": {
+      "description": "Este navegador não pertence a este chat ou foi removido.",
+      "title": "Navegador indisponível"
+    }
+  },
+  "reportError": {
+    "description": "Envie informações de diagnóstico desta execução com falha para a equipe de desenvolvimento. Investigaremos o caso e retornaremos em breve.",
+    "disclosure": {
+      "agentConfiguration": "Configuração do agente",
+      "agentTelemetry": "Telemetria do agente e logs da execução",
+      "chatHistory": "Histórico do chat e eventos do agente",
+      "connectedServices": "Serviços conectados (sem credenciais)",
+      "networkLogs": "Logs de requisições de rede",
+      "runContext": "Contexto e ambiente da execução",
+      "title": "O que será enviado"
+    },
+    "documentTitle": "Relatar erro",
+    "error": {
+      "loadFailed": "Não foi possível carregar os detalhes da execução",
+      "notFailed": "Esta execução não falhou e não pode ser relatada",
+      "title": "Erro",
+      "tryAgain": "Tentar novamente"
+    },
+    "fields": {
+      "description": "Descrição",
+      "descriptionPlaceholder": "O que aconteceu? O que você esperava?",
+      "title": "Título",
+      "titlePlaceholder": "Resumo breve do problema"
+    },
+    "loading": "Carregando detalhes da execução",
+    "send": "Enviar relatório",
+    "sending": "Enviando...",
+    "success": {
+      "description": "Seu relatório de erro foi enviado para a equipe de desenvolvimento. Ela investigará o caso e retornará.",
+      "reference": "Referência: {{reference}}",
+      "title": "Relatório enviado"
+    },
+    "title": "Relatar erro ao desenvolvedor"
+  },
   "settings": {
     "preferences": {
       "language": {
@@ -6,6 +428,55 @@
         "label": "Idioma",
         "title": "Idioma"
       }
+    }
+  },
+  "works": {
+    "actions": {
+      "cancel": "Cancelar",
+      "connect": "Conectar",
+      "disconnect": "Desconectar",
+      "disconnecting": "Desconectando…",
+      "manage": "Gerenciar",
+      "moreOptions": "Mais opções",
+      "uninstall": "Desinstalar",
+      "uninstalling": "Desinstalando…",
+      "updatePermissions": "Atualizar permissões"
+    },
+    "connected": "Conectado",
+    "connectedWithDetail": "Conectado ({{detail}})",
+    "documentTitle": "Integrações",
+    "feishuConnected": "Feishu conectado com sucesso",
+    "header": {
+      "description": "Conecte-se com {{displayName}} por estes canais",
+      "title": "Onde {{displayName}} trabalha"
+    },
+    "slack": {
+      "adminInstall": "Peça ao administrador para instalar a integração com o Slack",
+      "description": "Comunicação e colaboração em equipe",
+      "install": "Instalar no Slack",
+      "permissionsUpdated": "As permissões do Slack foram atualizadas",
+      "uninstallDescription": "Isso removerá a integração com o Slack de todo o espaço de trabalho. Todos os usuários conectados serão desconectados, e {{displayName}} deixará de responder a mensagens ou menções no Slack. Essa ação não pode ser desfeita.",
+      "uninstallTitle": "Desinstalar a integração com o Slack?"
+    },
+    "strapi": {
+      "description": "Automatize o trabalho quando entradas forem publicadas"
+    },
+    "teams": {
+      "adminInstall": "Peça ao administrador para instalar a integração com o Microsoft Teams",
+      "connectAccount": "Conecte sua conta Microsoft para concluir a configuração",
+      "connectThenInstall": "Conecte sua conta Microsoft e instale o aplicativo do Teams",
+      "description": "Comunicação e colaboração em equipe",
+      "disconnect": "Desconectar Microsoft Teams",
+      "install": "Instalar no Teams",
+      "moreOptions": "Mais opções do Microsoft Teams",
+      "permissionsUpdated": "As permissões do Microsoft Teams foram atualizadas",
+      "uninstall": "Desinstalar Microsoft Teams",
+      "uninstallDescription": "Isso removerá a integração com o Microsoft Teams do {{brandName}} neste espaço de trabalho. Todos os usuários conectados serão desconectados, e {{displayName}} deixará de responder a mensagens do Teams neste espaço até que um administrador reconecte a integração.",
+      "uninstallTitle": "Desinstalar a integração com o Microsoft Teams?"
+    },
+    "telegram": {
+      "description": "Encaminhe mensagens do Telegram para agentes",
+      "openSettings": "Abrir configurações do Telegram"
     }
   }
 }

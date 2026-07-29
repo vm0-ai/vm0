@@ -3,6 +3,7 @@ import { pageSignal$ } from "../../signals/page-signal.ts";
 import { detach, Reason } from "../../signals/utils.ts";
 import { IconSearch, IconChartLine, IconUpload } from "@tabler/icons-react";
 import { Button, Input, Tabs, TabsList, TabsTrigger } from "@vm0/ui";
+import { useTranslation } from "react-i18next";
 import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import type {
   LogStatus,
@@ -31,6 +32,7 @@ import { searchParams$, updateSearchParams$ } from "../../signals/route.ts";
 import { ContextContent } from "../zero-page/components/context-content.tsx";
 import { NetworkContent } from "../zero-page/components/network-content.tsx";
 import { Link } from "../router/link.tsx";
+import { formatAppNumber } from "../../i18n/format.ts";
 
 type InspectTab = "steps" | "context" | "network";
 
@@ -97,6 +99,7 @@ function isInspectTab(value: string): value is InspectTab {
 }
 
 function InspectBreadcrumb({ title }: { title: string }) {
+  const { t } = useTranslation();
   return (
     <nav className="hidden md:flex shrink-0 items-center gap-1 px-4 pt-4 text-sm text-muted-foreground">
       <Link
@@ -104,7 +107,9 @@ function InspectBreadcrumb({ title }: { title: string }) {
         className="inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 hover:bg-muted hover:text-foreground transition-colors no-underline text-inherit"
       >
         <IconChartLine size={14} stroke={1.5} className="shrink-0" />
-        Activity
+        {t(($) => {
+          return $.activity.detail.activity;
+        })}
       </Link>
       <span className="text-muted-foreground/40 select-none">/</span>
       <span className="rounded-md px-1.5 py-0.5 text-foreground font-medium truncate">
@@ -115,18 +120,29 @@ function InspectBreadcrumb({ title }: { title: string }) {
 }
 
 function InspectEmptyState() {
+  const { t } = useTranslation();
   const loadFile = useSet(loadInspectLogFile$);
   const pageSignal = useGet(pageSignal$);
   const loadError = useGet(inspectLogLoadError$);
 
   return (
     <div className="h-full flex flex-col min-h-0">
-      <InspectBreadcrumb title="Inspect" />
+      <InspectBreadcrumb
+        title={t(($) => {
+          return $.activity.inspect.inspect;
+        })}
+      />
       <div className="flex-1 flex flex-col items-center justify-center gap-3 pb-20">
         <IconUpload size={48} stroke={1} className="text-muted-foreground/40" />
-        <h2 className="text-lg font-semibold text-foreground">No log loaded</h2>
+        <h2 className="text-lg font-semibold text-foreground">
+          {t(($) => {
+            return $.activity.inspect.noLog.title;
+          })}
+        </h2>
         <p className="text-sm text-muted-foreground text-center max-w-sm">
-          Upload an activity log JSON file to inspect it.
+          {t(($) => {
+            return $.activity.inspect.noLog.description;
+          })}
         </p>
         {loadError && (
           <p className="text-sm text-destructive text-center max-w-sm">
@@ -136,7 +152,9 @@ function InspectEmptyState() {
         <Button variant="outline" asChild>
           <label className="cursor-pointer">
             <IconUpload size={16} stroke={1.5} />
-            Upload JSON
+            {t(($) => {
+              return $.activity.inspect.noLog.upload;
+            })}
             <input
               type="file"
               accept=".json"
@@ -166,14 +184,14 @@ function buildInspectDetail(meta: InspectLogData["meta"]) {
   };
 }
 
-function prepareInspectData(data: InspectLogData) {
+function prepareInspectData(data: InspectLogData, fallbackName: string) {
   const { meta, events } = data;
   const detail = buildInspectDetail(meta);
   const createdAt = stringValue(meta?.createdAt);
 
   return {
     events,
-    displayName: stringValue(meta?.displayName) ?? "Imported Log",
+    displayName: stringValue(meta?.displayName) ?? fallbackName,
     status: logStatusValue(meta?.status),
     triggerSource: triggerSourceValue(meta?.triggerSource),
     triggerAgentName: nullableStringValue(meta?.triggerAgentName),
@@ -194,6 +212,7 @@ function StepsTab({
 }: {
   prepared: ReturnType<typeof prepareInspectData>;
 }) {
+  const { t } = useTranslation();
   const stepSearch = useGet(inspectStepSearch$);
   const setStepSearch = useSet(setInspectStepSearch$);
   const visibleGroups = useGet(inspectVisibleGroups$);
@@ -210,19 +229,36 @@ function StepsTab({
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
         <div className="flex items-center gap-3">
           <span className="text-base font-medium text-foreground whitespace-nowrap">
-            Steps
+            {t(($) => {
+              return $.activity.detail.steps.title;
+            })}
           </span>
           <span className="text-sm text-muted-foreground whitespace-nowrap">
             {stepSearch.trim()
-              ? `(${groups.length}/${visibleGroups.length} matched)`
-              : `${visibleGroups.length} total`}
+              ? t(
+                  ($) => {
+                    return $.activity.detail.steps.matched;
+                  },
+                  {
+                    matched: formatAppNumber(groups.length),
+                    total: formatAppNumber(visibleGroups.length),
+                  },
+                )
+              : t(
+                  ($) => {
+                    return $.activity.detail.steps.total;
+                  },
+                  { total: formatAppNumber(visibleGroups.length) },
+                )}
           </span>
         </div>
         <div className="flex items-center gap-2 sm:gap-3">
           <div className="relative flex-1 sm:flex-none sm:w-44">
             <IconSearch className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
             <Input
-              placeholder="Search steps"
+              placeholder={t(($) => {
+                return $.activity.detail.steps.search;
+              })}
               value={stepSearch}
               onChange={(e) => {
                 return setStepSearch(e.target.value);
@@ -263,11 +299,16 @@ function InspectMissingPanel({
 }
 
 function InspectContextTab({ data }: { data: InspectLogData }) {
+  const { t } = useTranslation();
   if (!data.context) {
     return (
       <InspectMissingPanel
-        title="Context not available"
-        description="Execution context is not available in this imported log."
+        title={t(($) => {
+          return $.activity.inspect.contextUnavailable.title;
+        })}
+        description={t(($) => {
+          return $.activity.inspect.contextUnavailable.description;
+        })}
       />
     );
   }
@@ -275,11 +316,16 @@ function InspectContextTab({ data }: { data: InspectLogData }) {
 }
 
 function InspectNetworkTab({ data }: { data: InspectLogData }) {
+  const { t } = useTranslation();
   if (!data.networkLogs) {
     return (
       <InspectMissingPanel
-        title="Network logs not available"
-        description="Network logs are not available in this imported log."
+        title={t(($) => {
+          return $.activity.inspect.networkUnavailable.title;
+        })}
+        description={t(($) => {
+          return $.activity.inspect.networkUnavailable.description;
+        })}
       />
     );
   }
@@ -287,6 +333,7 @@ function InspectNetworkTab({ data }: { data: InspectLogData }) {
 }
 
 function InspectLogContent({ data }: { data: InspectLogData }) {
+  const { t } = useTranslation();
   const features = useLastResolved(featureSwitch$);
   const showDebugTabs = features?.[FeatureSwitchKey.ZeroDebug] ?? false;
 
@@ -307,7 +354,12 @@ function InspectLogContent({ data }: { data: InspectLogData }) {
     detach(updateParams(next), Reason.DomCallback);
   };
 
-  const prepared = prepareInspectData(data);
+  const prepared = prepareInspectData(
+    data,
+    t(($) => {
+      return $.activity.inspect.fallbackName;
+    }),
+  );
   const {
     displayName,
     status,
@@ -347,9 +399,21 @@ function InspectLogContent({ data }: { data: InspectLogData }) {
                 }}
               >
                 <TabsList>
-                  <TabsTrigger value="steps">Steps</TabsTrigger>
-                  <TabsTrigger value="context">Context</TabsTrigger>
-                  <TabsTrigger value="network">Network</TabsTrigger>
+                  <TabsTrigger value="steps">
+                    {t(($) => {
+                      return $.activity.detail.tabs.steps;
+                    })}
+                  </TabsTrigger>
+                  <TabsTrigger value="context">
+                    {t(($) => {
+                      return $.activity.detail.tabs.context;
+                    })}
+                  </TabsTrigger>
+                  <TabsTrigger value="network">
+                    {t(($) => {
+                      return $.activity.detail.tabs.network;
+                    })}
+                  </TabsTrigger>
                 </TabsList>
               </Tabs>
             </div>

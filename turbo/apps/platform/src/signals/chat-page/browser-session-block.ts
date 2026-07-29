@@ -5,6 +5,8 @@ import {
 } from "@vm0/api-contracts/contracts/zero-browser";
 import { command, computed, state, type Command, type Computed } from "ccstate";
 
+import { formatAppNumber } from "../../i18n/format.ts";
+import { i18n } from "../../i18n/index.ts";
 import { accept } from "../../lib/accept.ts";
 import { zeroClient$, type ZeroClientFactory } from "../api-client.ts";
 import { pageSignal$ } from "../page-signal.ts";
@@ -205,7 +207,15 @@ export function browserSessionReclaimHint(
   session: ZeroBrowserSession,
 ): string | null {
   return session.status === "active"
-    ? `Zero keeps this browser while this panel is open, and reclaims it after ${ZERO_BROWSER_IDLE_LEASE_MINUTES} idle minutes.`
+    ? i18n.t(
+        ($) => {
+          return $.browserSession.reclaimHint;
+        },
+        {
+          count: ZERO_BROWSER_IDLE_LEASE_MINUTES,
+          formattedCount: formatAppNumber(ZERO_BROWSER_IDLE_LEASE_MINUTES),
+        },
+      )
     : null;
 }
 

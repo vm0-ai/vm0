@@ -1,7 +1,10 @@
 import { IconChevronRight } from "@tabler/icons-react";
 import { CopyButton } from "@vm0/ui";
 import type { NetworkLogEntry } from "@vm0/api-contracts/contracts/runs";
+import { useTranslation } from "react-i18next";
 import { formatSize, InlineBadge } from "./network-badge.tsx";
+import { i18n } from "../../../i18n/index.ts";
+import { formatAppNumber } from "../../../i18n/format.ts";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -14,7 +17,12 @@ function formatBodyForDisplay(
   if (encoding === "base64") {
     const sizeEstimate = Math.round((body.length * 3) / 4);
     return {
-      text: `[Binary data, ${formatSize(sizeEstimate)} base64-encoded]`,
+      text: i18n.t(
+        ($) => {
+          return $.activity.network.capture.binaryData;
+        },
+        { size: formatSize(sizeEstimate) },
+      ),
       isBinary: true,
     };
   }
@@ -38,6 +46,7 @@ function CollapsibleSection({
   copyText?: string;
   children: React.ReactNode;
 }) {
+  const { t } = useTranslation();
   return (
     <details className="group">
       <summary className="cursor-pointer list-none w-full text-left">
@@ -50,10 +59,18 @@ function CollapsibleSection({
           <span className="text-xs font-medium text-foreground">{title}</span>
           {badge && <InlineBadge color="muted">{badge}</InlineBadge>}
           {truncated === true && (
-            <InlineBadge color="warning">truncated</InlineBadge>
+            <InlineBadge color="warning">
+              {t(($) => {
+                return $.activity.network.capture.truncated;
+              })}
+            </InlineBadge>
           )}
           {truncated === false && (
-            <InlineBadge color="muted">complete</InlineBadge>
+            <InlineBadge color="muted">
+              {t(($) => {
+                return $.activity.network.capture.complete;
+              })}
+            </InlineBadge>
           )}
           {copyText && (
             <span
@@ -79,6 +96,7 @@ function HeadersSection({
   title: string;
   headers: Record<string, string>;
 }) {
+  const { t } = useTranslation();
   const entries = Object.entries(headers);
   const copyText = entries
     .map(([k, v]) => {
@@ -88,7 +106,12 @@ function HeadersSection({
 
   return (
     <CollapsibleSection
-      title={`${title} (${entries.length})`}
+      title={t(
+        ($) => {
+          return $.activity.network.capture.headersWithCount;
+        },
+        { title, formattedCount: formatAppNumber(entries.length) },
+      )}
       copyText={copyText}
     >
       <div className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1 text-xs">
@@ -161,19 +184,31 @@ function BodyMetadata({
   encoding: NetworkLogEntry["request_body_encoding"];
   truncated: boolean | undefined;
 }) {
+  const { t } = useTranslation();
   return (
     <div className="flex items-center gap-2 text-xs text-muted-foreground">
       <span className="font-medium">{title}</span>
       {encoding && <InlineBadge color="muted">{encoding}</InlineBadge>}
       {truncated === true && (
-        <InlineBadge color="warning">truncated</InlineBadge>
+        <InlineBadge color="warning">
+          {t(($) => {
+            return $.activity.network.capture.truncated;
+          })}
+        </InlineBadge>
       )}
-      {truncated === false && <InlineBadge color="muted">complete</InlineBadge>}
+      {truncated === false && (
+        <InlineBadge color="muted">
+          {t(($) => {
+            return $.activity.network.capture.complete;
+          })}
+        </InlineBadge>
+      )}
     </div>
   );
 }
 
 export function CapturedBodySections({ entry }: { entry: NetworkLogEntry }) {
+  const { t } = useTranslation();
   const requestHeaders = filterHeaders(entry.request_headers);
   const responseHeaders = filterHeaders(entry.response_headers);
   const requestBody = entry.request_body ?? null;
@@ -201,11 +236,18 @@ export function CapturedBodySections({ entry }: { entry: NetworkLogEntry }) {
   return (
     <div className="mt-3 space-y-2">
       {requestHeaders && (
-        <HeadersSection title="Request Headers" headers={requestHeaders} />
+        <HeadersSection
+          title={t(($) => {
+            return $.activity.network.capture.requestHeaders;
+          })}
+          headers={requestHeaders}
+        />
       )}
       {requestBody && (
         <BodyBlock
-          title="Request Body"
+          title={t(($) => {
+            return $.activity.network.capture.requestBody;
+          })}
           body={requestBody}
           encoding={entry.request_body_encoding}
           truncated={entry.request_body_truncated}
@@ -213,17 +255,26 @@ export function CapturedBodySections({ entry }: { entry: NetworkLogEntry }) {
       )}
       {requestBodyMetadata && (
         <BodyMetadata
-          title="Request Body"
+          title={t(($) => {
+            return $.activity.network.capture.requestBody;
+          })}
           encoding={entry.request_body_encoding}
           truncated={entry.request_body_truncated}
         />
       )}
       {responseHeaders && (
-        <HeadersSection title="Response Headers" headers={responseHeaders} />
+        <HeadersSection
+          title={t(($) => {
+            return $.activity.network.capture.responseHeaders;
+          })}
+          headers={responseHeaders}
+        />
       )}
       {responseBody && (
         <BodyBlock
-          title="Response Body"
+          title={t(($) => {
+            return $.activity.network.capture.responseBody;
+          })}
           body={responseBody}
           encoding={entry.response_body_encoding}
           truncated={entry.response_body_truncated}
@@ -231,7 +282,9 @@ export function CapturedBodySections({ entry }: { entry: NetworkLogEntry }) {
       )}
       {responseBodyMetadata && (
         <BodyMetadata
-          title="Response Body"
+          title={t(($) => {
+            return $.activity.network.capture.responseBody;
+          })}
           encoding={entry.response_body_encoding}
           truncated={entry.response_body_truncated}
         />
