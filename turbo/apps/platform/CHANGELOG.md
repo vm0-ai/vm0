@@ -1,5 +1,28 @@
 # Changelog
 
+## [0.656.0](https://github.com/vm0-ai/vm0/compare/app-v0.655.0...app-v0.656.0) (2026-07-29)
+
+
+### Features
+
+* **platform:** compact cloud browser cards with explicit open action ([#23749](https://github.com/vm0-ai/vm0/issues/23749)) ([f404c94](https://github.com/vm0-ai/vm0/commit/f404c94fadd178f59fa77d37e454cfc3e28d367c))
+* **platform:** localize agent management surfaces ([#23716](https://github.com/vm0-ai/vm0/issues/23716)) ([918fddd](https://github.com/vm0-ai/vm0/commit/918fddd3ad07e16ed5d4c352b8c63829d4d6b855))
+* **platform:** localize insights, usage, and billing ([#23721](https://github.com/vm0-ai/vm0/issues/23721)) ([b5a133a](https://github.com/vm0-ai/vm0/commit/b5a133a578dc36f82d9f3cc168c21efa4e585a4c))
+
+
+### Refactoring
+
+* **chat:** retire legacy input content storage ([#23658](https://github.com/vm0-ai/vm0/issues/23658)) ([dcbe985](https://github.com/vm0-ai/vm0/commit/dcbe985bf518c6bf745f8714417df2e9a92576de))
+* **connectors:** align custom oauth storage with organization model ([#23521](https://github.com/vm0-ai/vm0/issues/23521)) ([ab3e118](https://github.com/vm0-ai/vm0/commit/ab3e118690a3d7346dadb571ffb38bf9e5d40bbf))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.246.0
+    * @vm0/core bumped to 8.486.0
+
 ## [0.655.0](https://github.com/vm0-ai/vm0/compare/app-v0.654.0...app-v0.655.0) (2026-07-29)
 
 
