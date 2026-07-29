@@ -188,21 +188,19 @@ async function validateChatEventSourcesAreAppendOnly(
       throw new Error("Failed to create append-only chat thread fixture");
     }
 
-    // Simulate the previous typed API version serving during migration: it
-    // writes event_type but does not know about seq_id and relies on the
-    // temporary database allocator.
+    // Simulate the current typed API serving during migration: it writes
+    // event_type but does not know about seq_id and relies on the temporary
+    // database allocator.
     const message = await client.query<{ id: string; seqId: string }>(
       `
         INSERT INTO "chat_messages" (
           "chat_thread_id",
-          "role",
           "content",
           "event_type",
           "structured_prompt"
         )
         VALUES (
           $1,
-          'user',
           'append-only migration test',
           'input.prompt',
           '{"version":1,"parts":[{"type":"text","text":"append-only migration test"}]}'::jsonb
@@ -220,13 +218,11 @@ async function validateChatEventSourcesAreAppendOnly(
       `
         INSERT INTO "chat_messages" (
           "chat_thread_id",
-          "role",
           "content",
           "event_type"
         )
         VALUES (
           $1,
-          'assistant',
           'second typed API migration test',
           'output.message'
         )
@@ -2981,6 +2977,151 @@ async function validateChatEventQueueContraction(): Promise<void> {
   );
 }
 
+const CHAT_MESSAGE_ROLE_CONTRACTION_PREVIOUS_MIGRATION = 721;
+const CHAT_MESSAGE_ROLE_CONTRACTION_MIGRATION = 722;
+
+async function validateChatMessageRoleContraction(): Promise<void> {
+  console.log("=== Validate populated chat message role contraction ===\n");
+
+  const testDb = "migration_chat_message_role_contraction_test";
+  const testDbUrl = createTestDbUrl(testDb);
+  const composeId = "94000000-0000-4000-8000-000000000001";
+  const threadId = "94000000-0000-4000-8000-000000000002";
+
+  await createDatabase(testDb);
+  try {
+    await runMigrationsUpTo(
+      testDbUrl,
+      CHAT_MESSAGE_ROLE_CONTRACTION_PREVIOUS_MIGRATION,
+    );
+    const client = new Client({ connectionString: testDbUrl });
+    await client.connect();
+    try {
+      await client.query(
+        `
+          INSERT INTO "agent_composes" ("id", "user_id", "name", "org_id")
+          VALUES (
+            $1,
+            'chat-message-role-contraction-user',
+            'chat-message-role-contraction',
+            'chat-message-role-contraction-org'
+          )
+        `,
+        [composeId],
+      );
+      await client.query(
+        `
+          INSERT INTO "chat_threads" (
+            "id",
+            "user_id",
+            "agent_compose_id"
+          )
+          VALUES (
+            $1,
+            'chat-message-role-contraction-user',
+            $2
+          )
+        `,
+        [threadId, composeId],
+      );
+      const historicalEvents = await client.query<{ id: string }>(
+        `
+          INSERT INTO "chat_messages" (
+            "chat_thread_id",
+            "event_type",
+            "role",
+            "content",
+            "structured_prompt"
+          )
+          VALUES
+            (
+              $1,
+              'input.prompt',
+              'user',
+              'historical prompt',
+              '{
+                "version": 1,
+                "parts": [
+                  {"type": "text", "text": "historical prompt"}
+                ]
+              }'::jsonb
+            ),
+            (
+              $1,
+              'output.message',
+              'assistant',
+              'historical response',
+              NULL
+            )
+          RETURNING "id"
+        `,
+        [threadId],
+      );
+      const historicalPromptId = historicalEvents.rows[0]?.id;
+      assert.ok(historicalPromptId);
+
+      await applyMigrationsUpToInTransaction(
+        client,
+        CHAT_MESSAGE_ROLE_CONTRACTION_MIGRATION,
+      );
+
+      const roleColumn = await client.query<{ columnName: string }>(`
+        SELECT column_name AS "columnName"
+        FROM information_schema.columns
+        WHERE table_schema = 'public'
+          AND table_name = 'chat_messages'
+          AND column_name = 'role'
+      `);
+      assert.deepEqual(roleColumn.rows, []);
+
+      const persistedEvents = await client.query<{
+        content: string;
+        eventType: string;
+      }>(
+        `
+          SELECT
+            "content",
+            "event_type" AS "eventType"
+          FROM "chat_messages"
+          WHERE "chat_thread_id" = $1
+          ORDER BY "seq_id"
+        `,
+        [threadId],
+      );
+      assert.deepEqual(persistedEvents.rows, [
+        { content: "historical prompt", eventType: "input.prompt" },
+        { content: "historical response", eventType: "output.message" },
+      ]);
+
+      await client.query(
+        `
+          INSERT INTO "chat_messages" (
+            "chat_thread_id",
+            "event_type",
+            "content"
+          )
+          VALUES ($1, 'output.message', 'post-migration response')
+        `,
+        [threadId],
+      );
+
+      await expectAppendOnlyUpdateRejected(client, {
+        tableName: "chat_messages",
+        query: `UPDATE "chat_messages" SET "content" = 'mutated' WHERE "id" = $1`,
+        rowId: historicalPromptId,
+      });
+    } finally {
+      await client.end();
+    }
+  } finally {
+    await dropDatabase(testDb);
+  }
+
+  console.log(
+    "   ✅ Historical events survive role removal, canonical inserts continue, and append-only protection remains active\n",
+  );
+}
+
 const SESSION_STORAGE_BACKFILL_PREVIOUS_MIGRATION = 653;
 const SESSION_STORAGE_BACKFILL_MIGRATION = 654;
 
@@ -5259,6 +5400,7 @@ async function main(): Promise<void> {
     await validateStructuredPromptDraftBackfill();
     await validateUserMessageBackfillAndContract();
     await validateChatEventQueueContraction();
+    await validateChatMessageRoleContraction();
 
     // Step 1.5: Validate latest snapshot accuracy (NEW)
     await validateLatestSnapshotAccuracy();
