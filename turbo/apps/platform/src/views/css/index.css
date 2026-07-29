@@ -653,10 +653,6 @@ body {
   /* Global scrollbar styling */
   * {
     scrollbar-width: thin;
-    scrollbar-color: transparent transparent;
-  }
-
-  *:hover {
     scrollbar-color: hsl(var(--muted-foreground) / 0.2) transparent;
   }
 
@@ -670,12 +666,8 @@ body {
   }
 
   *::-webkit-scrollbar-thumb {
-    background-color: transparent;
-    border-radius: 3px;
-  }
-
-  *:hover::-webkit-scrollbar-thumb {
     background-color: hsl(var(--muted-foreground) / 0.2);
+    border-radius: 3px;
   }
 
   *::-webkit-scrollbar-thumb:hover {
