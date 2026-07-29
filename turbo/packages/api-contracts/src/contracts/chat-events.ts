@@ -198,6 +198,12 @@ export function isChatInputEventType(
   );
 }
 
+export function isChatUserMessageEventType(
+  eventType: ChatEventType,
+): eventType is "input.prompt" | "input.rejected" {
+  return eventType === "input.prompt" || eventType === "input.rejected";
+}
+
 export function isChatOutputEventType(
   eventType: ChatEventType,
 ): eventType is

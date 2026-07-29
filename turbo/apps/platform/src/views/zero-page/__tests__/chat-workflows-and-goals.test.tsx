@@ -1208,11 +1208,21 @@ Full autonomous goal prompt that should stay out of the compact chat UI`;
           role: "user",
           content: "Create the business review deck",
           runId: "run-template-presentation",
-          generationTemplate: {
-            type: "presentation",
-            selection: {
-              templateId: presentationTemplate.templateId,
-            },
+          userMessage: {
+            version: 1,
+            parts: [
+              {
+                type: "template",
+                titleSnapshot: presentationTemplate.title,
+                template: {
+                  type: "presentation",
+                  selection: {
+                    templateId: presentationTemplate.templateId,
+                  },
+                },
+              },
+              { type: "text", text: "Create the business review deck" },
+            ],
           },
           createdAt: "2026-06-09T10:00:00Z",
         },
@@ -1221,9 +1231,22 @@ Full autonomous goal prompt that should stay out of the compact chat UI`;
           role: "user",
           content: "Create a product walkthrough video",
           runId: "run-template-video",
-          generationTemplate: {
-            type: "video",
-            selection: { stylePresetId: videoTemplate.id },
+          userMessage: {
+            version: 1,
+            parts: [
+              {
+                type: "template",
+                titleSnapshot: videoTemplate.title,
+                template: {
+                  type: "video",
+                  selection: { stylePresetId: videoTemplate.id },
+                },
+              },
+              {
+                type: "text",
+                text: "Create a product walkthrough video",
+              },
+            ],
           },
           createdAt: "2026-06-09T10:01:00Z",
         },
@@ -1232,11 +1255,22 @@ Full autonomous goal prompt that should stay out of the compact chat UI`;
           role: "user",
           content: "Create an illustrated launch card",
           runId: "run-template-illustration",
-          generationTemplate: {
-            type: "illustration",
-            selection: {
-              illustrationStyleId: illustrationTemplate.illustrationStyleId,
-            },
+          userMessage: {
+            version: 1,
+            parts: [
+              {
+                type: "template",
+                titleSnapshot: illustrationTemplate.title,
+                template: {
+                  type: "illustration",
+                  selection: {
+                    illustrationStyleId:
+                      illustrationTemplate.illustrationStyleId,
+                  },
+                },
+              },
+              { type: "text", text: "Create an illustrated launch card" },
+            ],
           },
           createdAt: "2026-06-09T10:02:00Z",
         },
@@ -1245,9 +1279,19 @@ Full autonomous goal prompt that should stay out of the compact chat UI`;
           role: "user",
           content: "Create a yoga website",
           runId: "run-template-website",
-          generationTemplate: {
-            type: "website",
-            selection: { websiteTemplateId: websiteTemplate.id },
+          userMessage: {
+            version: 1,
+            parts: [
+              {
+                type: "template",
+                titleSnapshot: websiteTemplate.title,
+                template: {
+                  type: "website",
+                  selection: { websiteTemplateId: websiteTemplate.id },
+                },
+              },
+              { type: "text", text: "Create a yoga website" },
+            ],
           },
           createdAt: "2026-06-09T10:03:00Z",
         },
@@ -1260,48 +1304,108 @@ Full autonomous goal prompt that should stay out of the compact chat UI`;
     });
 
     await waitFor(() => {
-      expect(
-        screen.getByLabelText(`Message template ${presentationTemplate.title}`),
-      ).toHaveTextContent("Presentation");
-      expect(
-        screen.getByLabelText(`Message template ${videoTemplate.title}`),
-      ).toHaveTextContent("Video");
-      expect(
-        screen.getByLabelText(`Message template ${illustrationTemplate.title}`),
-      ).toHaveTextContent("Illustration");
+      const presentationTemplateLabel = screen.getByLabelText(
+        `Message template ${presentationTemplate.title}`,
+      );
+      const videoTemplateLabel = screen.getByLabelText(
+        `Message template ${videoTemplate.title}`,
+      );
+      const illustrationTemplateLabel = screen.getByLabelText(
+        `Message template ${illustrationTemplate.title}`,
+      );
       const websiteTemplateLabel = screen.getByLabelText(
         `Message template ${websiteTemplate.title}`,
       );
-      expect(websiteTemplateLabel).toHaveTextContent("Website");
+      expect(presentationTemplateLabel).toHaveTextContent(
+        presentationTemplate.title,
+      );
+      expect(presentationTemplateLabel).toHaveAttribute(
+        "title",
+        `Presentation · ${presentationTemplate.title}`,
+      );
+      expect(videoTemplateLabel).toHaveTextContent(videoTemplate.title);
+      expect(videoTemplateLabel).toHaveAttribute(
+        "title",
+        `Video · ${videoTemplate.title}`,
+      );
+      expect(illustrationTemplateLabel).toHaveTextContent(
+        illustrationTemplate.title,
+      );
+      expect(illustrationTemplateLabel).toHaveAttribute(
+        "title",
+        `Illustration · ${illustrationTemplate.title}`,
+      );
+      expect(websiteTemplateLabel).toHaveTextContent(websiteTemplate.title);
+      expect(websiteTemplateLabel).toHaveAttribute(
+        "title",
+        `Website · ${websiteTemplate.title}`,
+      );
       expect(
-        websiteTemplateLabel.querySelector(".tabler-icon-world"),
-      ).not.toBeNull();
-      expect(
-        websiteTemplateLabel.querySelector(".tabler-icon-presentation"),
-      ).toBeNull();
+        screen.getByLabelText(`Message template ${videoTemplate.title}`),
+      ).toHaveAttribute("aria-haspopup", "dialog");
     });
   });
 
-  it("copies a user message with legacy inline attachments from chat history", async () => {
+  it("copies a canonical user message with rich attachments from chat history", async () => {
     const clipboard = context.mocks.browser.clipboardWrite();
-    const threadId = "legacy-attachment-copy";
+    const threadId = "rich-attachment-copy";
+    const messageText = "Review the launch assets";
     const imageUrl = "/f/test-user/attachment-chart/chart.png";
     const videoUrl = "/f/test-user/attachment-demo/demo.mp4";
     const audioUrl = "/f/test-user/attachment-briefing/briefing.mp3";
     const markdownUrl = "/f/test-user/attachment-notes/notes.md";
+    const attachFiles = [
+      {
+        id: "attachment-chart",
+        filename: "chart.png",
+        contentType: "image/png",
+        size: 1024,
+        url: imageUrl,
+      },
+      {
+        id: "attachment-demo",
+        filename: "demo.mp4",
+        contentType: "video/mp4",
+        size: 2048,
+        url: videoUrl,
+      },
+      {
+        id: "attachment-briefing",
+        filename: "briefing.mp3",
+        contentType: "audio/mpeg",
+        size: 3072,
+        url: audioUrl,
+      },
+      {
+        id: "attachment-notes",
+        filename: "notes.md",
+        contentType: "text/markdown",
+        size: 4096,
+        url: markdownUrl,
+      },
+    ];
     mockChatLifecycle(context, {
       threadId,
       chatMessages: [
         {
-          id: "msg-legacy-attachments",
+          id: "msg-rich-attachments",
           role: "user",
-          content: [
-            "Review the launch assets",
-            `[Attached file: chart.png](${imageUrl})`,
-            `[Attached file: demo.mp4](${videoUrl})`,
-            `[Attached file: briefing.mp3](${audioUrl})`,
-            `[Attached file: notes.md](${markdownUrl})`,
-          ].join("\n"),
+          content: "stale legacy content",
+          attachFiles,
+          userMessage: {
+            version: 1,
+            parts: [
+              ...attachFiles.map((file) => {
+                return {
+                  type: "file" as const,
+                  fileId: file.id,
+                  filenameSnapshot: file.filename,
+                  contentType: file.contentType,
+                };
+              }),
+              { type: "text", text: messageText },
+            ],
+          },
           createdAt: "2026-06-09T10:00:00Z",
         },
       ],
@@ -1310,7 +1414,7 @@ Full autonomous goal prompt that should stay out of the compact chat UI`;
     detachedSetupPage({ context, path: `/chats/${threadId}` });
 
     await waitFor(() => {
-      expect(screen.getByText("Review the launch assets")).toBeInTheDocument();
+      expect(screen.getByText(messageText)).toBeInTheDocument();
       expect(screen.getByLabelText("Preview chart.png")).toBeInTheDocument();
       expect(screen.getByLabelText("Preview demo.mp4")).toBeInTheDocument();
       expect(
@@ -1327,7 +1431,7 @@ Full autonomous goal prompt that should stay out of the compact chat UI`;
     const plainText = await readClipboardItemText(item, "text/plain");
     expect(plainText).toBe(
       [
-        "Review the launch assets",
+        messageText,
         "",
         "Attachments:",
         `- chart.png: ${imageUrl}`,
@@ -1341,14 +1445,14 @@ Full autonomous goal prompt that should stay out of the compact chat UI`;
     expect(html).toContain(`<a href="${imageUrl}"`);
     expect(html).not.toContain("<img");
     const payload = parseChatClipboardPayload(html);
-    expect(payload.text).toBe("Review the launch assets");
+    expect(payload.text).toBe(messageText);
     expect(payload.attachments).toHaveLength(4);
     expect(payload.attachments[0]).toStrictEqual({
       id: "attachment-chart",
       filename: "chart.png",
       url: imageUrl,
-      contentType: "image/*",
-      size: 0,
+      contentType: "image/png",
+      size: 1024,
     });
   });
 

@@ -77,6 +77,7 @@ import {
   isNull,
   lt,
   ne,
+  not,
   notExists,
   or,
   type SQL,
@@ -113,8 +114,15 @@ import { appendChatThreadEvent } from "./zero-chat-thread-event.service";
 import { excludeGoalMarkerCondition } from "./zero-chat-goal-marker.service";
 import { cancelRun$, type CancelRunResult } from "./zero-run-cancel.service";
 import { buildWorkflowScheduleAutomationBrief } from "./zero-workflow-automation-brief.service";
-import { maybeCreateUserMessageDocument } from "./zero-chat-user-message.service";
-import { chatEventTypeSql } from "./zero-chat-event-type.service";
+import {
+  maybeCreateUserMessageDocument,
+  projectUserMessage,
+  requiredUserMessageForEvent,
+} from "./zero-chat-user-message.service";
+import {
+  chatEventTypeIn,
+  chatEventTypeSql,
+} from "./zero-chat-event-type.service";
 
 export { insertAssistantEventMessages$ };
 
@@ -246,6 +254,7 @@ type ChatSearchMessageRow = {
   readonly chatThreadId: string;
   readonly eventType: ChatEventType;
   readonly content: string | null;
+  readonly userMessage: UserMessageDocument | null;
   readonly createdAt: Date;
   readonly seqId: number;
   readonly sequenceNumber: number | null;
@@ -456,6 +465,7 @@ const searchMessageColumns = {
   chatThreadId: chatMessages.chatThreadId,
   eventType: chatEventTypeSql().as("event_type"),
   content: chatMessages.content,
+  userMessage: chatMessages.userMessage,
   createdAt: chatMessages.createdAt,
   seqId: chatMessages.seqId,
   sequenceNumber: chatMessages.sequenceNumber,
@@ -1885,9 +1895,16 @@ export const zeroArtifacts$ = command(
 );
 
 function toChatSearchMessage(row: ChatSearchMessageRow): ChatSearchMessage {
-  if (row.content === null) {
+  const userMessage = requiredUserMessageForEvent(
+    row.eventType,
+    row.userMessage,
+  );
+  const content = userMessage
+    ? projectUserMessage(userMessage).displayText
+    : row.content;
+  if (content === null) {
     throw new Error(
-      "chat search invariant violated: message content is null despite isNotNull filter",
+      "chat search invariant violated: searchable message text is null",
     );
   }
 
@@ -1895,12 +1912,50 @@ function toChatSearchMessage(row: ChatSearchMessageRow): ChatSearchMessage {
     messageId: row.messageId,
     chatThreadId: row.chatThreadId,
     role: chatEventCompatibilityRole(row.eventType),
-    content: row.content,
+    content,
     createdAt: row.createdAt.toISOString(),
     seqId: row.seqId,
     sequenceNumber: row.sequenceNumber,
     runId: row.runId,
   };
+}
+
+function chatSearchMessageTextCondition(): SQL {
+  return or(
+    and(
+      chatEventTypeIn(["input.prompt", "input.rejected"]),
+      isNotNull(chatMessages.userMessage),
+    ),
+    and(
+      not(chatEventTypeIn(["input.prompt", "input.rejected"])),
+      isNotNull(chatMessages.content),
+    ),
+  ) as SQL;
+}
+
+function userMessageSearchText(): SQL {
+  return sql`concat_ws(
+    ' ',
+    jsonb_path_query_array(${chatMessages.userMessage}, '$.parts[*].text')::text,
+    jsonb_path_query_array(${chatMessages.userMessage}, '$.parts[*].titleSnapshot')::text,
+    jsonb_path_query_array(${chatMessages.userMessage}, '$.parts[*].filenameSnapshot')::text,
+    jsonb_path_query_array(${chatMessages.userMessage}, '$.parts[*].quote')::text,
+    jsonb_path_query_array(${chatMessages.userMessage}, '$.parts[*].note[*].text')::text,
+    jsonb_path_query_array(${chatMessages.userMessage}, '$.parts[*].note[*].titleSnapshot')::text
+  )`;
+}
+
+function chatSearchKeywordCondition(pattern: string): SQL {
+  return or(
+    and(
+      chatEventTypeIn(["input.prompt", "input.rejected"]),
+      ilike(userMessageSearchText(), pattern),
+    ),
+    and(
+      not(chatEventTypeIn(["input.prompt", "input.rejected"])),
+      ilike(chatMessages.content, pattern),
+    ),
+  ) as SQL;
 }
 
 function chatSearchMatchesTable(messageIds: readonly string[]): SQL {
@@ -1929,7 +1984,7 @@ function chatSearchContextSideQuery(
         args.isBefore
           ? lt(chatMessages.seqId, matchedChatMessage.seqId)
           : gt(chatMessages.seqId, matchedChatMessage.seqId),
-        isNotNull(chatMessages.content),
+        chatSearchMessageTextCondition(),
         visibleChatEventCondition(db),
         excludeGoalMarkerCondition(),
       ),
@@ -1989,6 +2044,7 @@ async function loadChatSearchContexts(
       chatThreadId: context.chatThreadId,
       eventType: context.eventType,
       content: context.content,
+      userMessage: context.userMessage,
       createdAt: context.createdAt,
       seqId: context.seqId,
       sequenceNumber: context.sequenceNumber,
@@ -2049,10 +2105,10 @@ export function zeroChatSearch(args: {
     const matchConditions = [
       eq(chatThreads.userId, args.userId),
       eq(agentComposes.orgId, args.orgId),
-      isNotNull(chatMessages.content),
+      chatSearchMessageTextCondition(),
       visibleChatEventCondition(db),
       excludeGoalMarkerCondition(),
-      ilike(chatMessages.content, pattern),
+      chatSearchKeywordCondition(pattern),
     ];
     if (sinceDate) {
       matchConditions.push(gte(chatMessages.createdAt, sinceDate));

@@ -3,6 +3,7 @@ import { chatMessages } from "@vm0/db/schema/chat-message";
 import {
   CHAT_EVENT_TYPES,
   chatEventCompatibilityRole,
+  type ChatEventType,
 } from "@vm0/api-contracts/contracts/chat-events";
 import type { UserMessageDocument } from "@vm0/api-contracts/contracts/chat-threads";
 import {
@@ -26,7 +27,10 @@ import {
   chatEventTypeSql,
 } from "./zero-chat-event-type.service";
 import { visibleChatEventCondition } from "./zero-chat-message-shared.service";
-import { projectUserMessage } from "./zero-chat-user-message.service";
+import {
+  projectUserMessage,
+  requiredUserMessageForEvent,
+} from "./zero-chat-user-message.service";
 
 const INCOMPLETE_ROUND_LIMIT = 20;
 const INCOMPLETE_MESSAGE_CHAR_CAP = 4000;
@@ -39,6 +43,7 @@ interface IncompleteRoundSelection {
 }
 
 interface IncompleteRoundMessage {
+  readonly eventType: ChatEventType;
   readonly role: "user" | "assistant";
   readonly content: string | null;
   readonly userMessage: UserMessageDocument | null;
@@ -238,6 +243,7 @@ async function loadSelectedIncompleteRounds(
       roundsByRunId.set(row.runId, round);
     }
     round.messages.push({
+      eventType: row.eventType,
       role: chatEventCompatibilityRole(row.eventType),
       content: row.content,
       userMessage: row.userMessage,
@@ -272,8 +278,12 @@ function formatIncompleteMessage(
   message: IncompleteRoundMessage,
   inlineTemplatesEnabled: boolean,
 ): string {
-  if (message.role === "user" && message.userMessage) {
-    const prompt = projectUserMessage(message.userMessage, {
+  const userMessage = requiredUserMessageForEvent(
+    message.eventType,
+    message.userMessage,
+  );
+  if (userMessage) {
+    const prompt = projectUserMessage(userMessage, {
       inlineTemplates: inlineTemplatesEnabled,
     }).agentPrompt;
     return `User: ${truncateIncomplete(prompt) || "[empty message]"}`;

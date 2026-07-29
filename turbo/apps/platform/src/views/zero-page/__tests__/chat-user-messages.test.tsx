@@ -197,6 +197,17 @@ describe("user messages", () => {
           },
           createdAt: "2026-07-21T10:01:00Z",
         },
+        {
+          id: "00000000-0000-4000-8000-000000000744",
+          role: "user",
+          content: "Migrated **literal** text",
+          runId: "d0000000-0000-4000-a000-000000000744",
+          userMessage: {
+            version: 1,
+            parts: [{ type: "text", text: "Migrated **literal** text" }],
+          },
+          createdAt: "2026-07-21T10:02:00Z",
+        },
       ],
     });
 
@@ -235,7 +246,7 @@ describe("user messages", () => {
     ).toBeTruthy();
     expect(
       userMessageElement.querySelector(
-        'button[aria-label="Download original-report.pdf"]',
+        'button[aria-label="Open pdf preview for original-report.pdf"]',
       ),
     ).toBeInTheDocument();
     expect(screen.getByLabelText("File deleted-notes.txt")).toBeInTheDocument();
@@ -252,6 +263,10 @@ describe("user messages", () => {
     expect(
       screen.queryByText("Legacy text stays hidden"),
     ).not.toBeInTheDocument();
+    const migratedLiteralMarkdown = await screen.findByText(
+      "Migrated **literal** text",
+    );
+    expect(migratedLiteralMarkdown.querySelector("strong")).toBeNull();
   });
 
   it("groups structured feedback and highlights chat thread mentions in notes", async () => {

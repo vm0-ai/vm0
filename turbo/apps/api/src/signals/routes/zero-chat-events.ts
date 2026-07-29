@@ -34,6 +34,7 @@ import {
   inArray,
   isNotNull,
   isNull,
+  not,
   or,
   sql,
 } from "drizzle-orm";
@@ -109,7 +110,10 @@ import {
 } from "../services/zero-chat-event.service";
 import { loadWebChatIncompleteContext } from "../services/zero-chat-incomplete-context.service";
 import { chatThreadAdmissionBlocked } from "../services/zero-chat-active-run.service";
-import { projectUserMessage } from "../services/zero-chat-user-message.service";
+import {
+  projectUserMessage,
+  requiredUserMessageForEvent,
+} from "../services/zero-chat-user-message.service";
 import { appendQueuedRunAssistantMarker } from "../services/zero-chat-queue-marker.service";
 import {
   discardUnclaimedUserMessage,
@@ -198,8 +202,9 @@ interface ResolvedThread {
 }
 
 interface WebChatPriorRunMessage {
+  readonly eventType: ChatEventType;
   readonly role: "user" | "assistant";
-  readonly content: string;
+  readonly content: string | null;
   readonly userMessage: UserMessageDocument | null;
   readonly attachFiles: readonly string[] | null;
   readonly generationTemplate: ChatMessageGenerationTemplate | null;
@@ -695,14 +700,22 @@ function formatPriorRunMessage(
   inlineTemplatesEnabled: boolean,
 ): string {
   const roleLabel = message.role === "user" ? "User" : "Assistant";
-  if (message.role === "user" && message.userMessage) {
-    const prompt = projectUserMessage(message.userMessage, {
+  const userMessage = requiredUserMessageForEvent(
+    message.eventType,
+    message.userMessage,
+  );
+  if (userMessage) {
+    const prompt = projectUserMessage(userMessage, {
       inlineTemplates: inlineTemplatesEnabled,
     }).agentPrompt;
     return `${roleLabel}: ${truncatePrior(prompt) || "[empty message]"}`;
   }
   const attach = formatAttachFileIds(message.attachFiles);
-  const body = `${roleLabel}: ${truncatePrior(message.content) || "[empty message]"}`;
+  const body = `${roleLabel}: ${
+    message.content === null
+      ? "[empty message]"
+      : truncatePrior(message.content) || "[empty message]"
+  }`;
   return attach ? `${body}\n${attach}` : body;
 }
 
@@ -825,7 +838,16 @@ async function getLatestRunsByThreadId(
     .where(
       and(
         eq(chatMessages.chatThreadId, threadId),
-        isNotNull(chatMessages.content),
+        or(
+          and(
+            chatEventTypeIn(["input.prompt", "input.rejected"]),
+            isNotNull(chatMessages.userMessage),
+          ),
+          and(
+            not(chatEventTypeIn(["input.prompt", "input.rejected"])),
+            isNotNull(chatMessages.content),
+          ),
+        ),
         inArray(chatMessages.runId, runIds),
         chatEventTypeIn(CHAT_EVENT_TYPES),
         visibleChatEventCondition(db),
@@ -835,11 +857,12 @@ async function getLatestRunsByThreadId(
 
   const messagesByRunId = new Map<string, WebChatPriorRunMessage[]>();
   for (const row of messageRows) {
-    if (row.runId === null || row.content === null) {
+    if (row.runId === null) {
       continue;
     }
     const existing = messagesByRunId.get(row.runId) ?? [];
     existing.push({
+      eventType: row.eventType,
       role: chatEventCompatibilityRole(row.eventType),
       content: row.content,
       userMessage: row.userMessage,

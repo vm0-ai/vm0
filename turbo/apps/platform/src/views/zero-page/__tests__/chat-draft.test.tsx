@@ -239,7 +239,7 @@ describe("chat drafts", () => {
     });
   });
 
-  it("normalizes an agent feedback draft from the preceding API", async () => {
+  it("loads an agent feedback draft from the canonical API", async () => {
     const agentId = "c0000000-0000-4000-a000-000000000111";
     const referencedThreadId = "b1000000-0000-4000-a000-000000000111";
     const firstAttachment = {
@@ -260,7 +260,7 @@ describe("chat drafts", () => {
     context.mocks.http.get("*/api/zero/agents/:id/draft", () => {
       return HttpResponse.json({
         draftContent: "stale legacy agent draft",
-        draftStructuredPrompt: {
+        draftUserMessage: {
           version: 1,
           parts: [
             {
@@ -363,10 +363,6 @@ describe("chat drafts", () => {
             version: 1,
             parts: [{ type: "text", text: "agent-level draft" }],
           },
-          draftStructuredPrompt: {
-            version: 1,
-            parts: [{ type: "text", text: "agent-level draft" }],
-          },
           draftAttachments: null,
         });
       });
@@ -378,7 +374,6 @@ describe("chat drafts", () => {
         expect(draftPatches).toContainEqual({
           draftContent: null,
           draftUserMessage: null,
-          draftStructuredPrompt: null,
           draftAttachments: null,
         });
       });
@@ -416,10 +411,6 @@ describe("chat drafts", () => {
           version: 1,
           parts: [{ type: "text", text: "thread-level draft" }],
         },
-        draftStructuredPrompt: {
-          version: 1,
-          parts: [{ type: "text", text: "thread-level draft" }],
-        },
         draftAttachments: null,
       });
     });
@@ -431,7 +422,6 @@ describe("chat drafts", () => {
       expect(draftPatches).toContainEqual({
         draftContent: null,
         draftUserMessage: null,
-        draftStructuredPrompt: null,
         draftAttachments: null,
       });
     });
@@ -606,7 +596,7 @@ describe("chat drafts", () => {
     context.mocks.http.get("*/api/zero/chat-threads/:id/draft", () => {
       return HttpResponse.json({
         draftContent: "stale legacy draft",
-        draftStructuredPrompt: {
+        draftUserMessage: {
           version: 1,
           parts: [
             {

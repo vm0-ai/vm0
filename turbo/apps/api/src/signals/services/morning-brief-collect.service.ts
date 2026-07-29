@@ -25,6 +25,7 @@ import {
   isNull,
   lte,
   ne,
+  not,
   or,
 } from "drizzle-orm";
 
@@ -39,7 +40,10 @@ import {
   refreshConnectorCredentialAccess,
 } from "./connector-credential-runtime.service";
 import { loadConnectorRuntimeSnapshot } from "./connector-catalog-runtime.service";
-import { projectUserMessage } from "./zero-chat-user-message.service";
+import {
+  projectUserMessage,
+  requiredUserMessageForEvent,
+} from "./zero-chat-user-message.service";
 import {
   chatEventTypeIn,
   chatEventTypeSql,
@@ -625,10 +629,13 @@ async function collectUnreadChatThreads(args: {
         and(
           eq(chatMessages.chatThreadId, row.id),
           or(
-            isNotNull(chatMessages.content),
             and(
               chatEventTypeIn(["input.prompt", "input.rejected"]),
               isNotNull(chatMessages.userMessage),
+            ),
+            and(
+              not(chatEventTypeIn(["input.prompt", "input.rejected"])),
+              isNotNull(chatMessages.content),
             ),
           ),
           chatEventTypeIn(CHAT_EVENT_TYPES),
@@ -643,10 +650,13 @@ async function collectUnreadChatThreads(args: {
       lastMessageAt: row.lastMessageAt.toISOString(),
       recentMessages: messages.reverse().flatMap((message) => {
         const role = chatEventCompatibilityRole(message.eventType);
-        const content =
-          role === "user" && message.userMessage
-            ? projectUserMessage(message.userMessage).displayText
-            : message.content;
+        const userMessage = requiredUserMessageForEvent(
+          message.eventType,
+          message.userMessage,
+        );
+        const content = userMessage
+          ? projectUserMessage(userMessage).displayText
+          : message.content;
         return content === null
           ? []
           : [

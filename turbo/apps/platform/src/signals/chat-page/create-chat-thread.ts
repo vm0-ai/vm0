@@ -170,7 +170,6 @@ import {
 import {
   messageDocumentToDisplayText,
   messageDocumentToPrompt,
-  shouldUseUserMessage,
   textToMessageDocument,
 } from "../zero-page/user-message-document-codec.ts";
 
@@ -1949,17 +1948,13 @@ function createMessageSemanticSignals(
     (get): Promise<readonly QueuedChatMessageItem[]> => {
       return Promise.resolve(
         get(queuedMessages$).map((message) => {
-          const userMessage =
-            message.eventType === "input.prompt" &&
-            shouldUseUserMessage(message.userMessage)
-              ? message.userMessage
-              : undefined;
           const text =
             message.eventType === "input.automation"
               ? message.triggerBrief
-              : userMessage
-                ? messageDocumentToDisplayText(userMessage)
-                : message.content;
+              : message.eventType === "input.prompt" ||
+                  message.eventType === "input.rejected"
+                ? messageDocumentToDisplayText(message.userMessage)
+                : null;
           return { id: message.id, text: (text ?? "").trim() };
         }),
       );
@@ -3739,7 +3734,6 @@ function createRecallMessage(deps: RecallMessageDeps) {
       ) {
         return;
       }
-
       const agentId = get(agentId$);
       if (!agentId) {
         return;
@@ -3757,23 +3751,25 @@ function createRecallMessage(deps: RecallMessageDeps) {
           createdAt: nowDate().toISOString(),
         },
       });
-      const userMessage = shouldUseUserMessage(message.userMessage)
-        ? message.userMessage
-        : null;
-      const templatePart = userMessage?.parts.find((part) => {
+      const userMessage = message.userMessage;
+      const templatePart = userMessage.parts.find((part) => {
         return part.type === "template";
       });
+      const fileIds = new Set(
+        userMessage.parts.flatMap((part) => {
+          return part.type === "file" ? [part.fileId] : [];
+        }),
+      );
       set(draft.seed$, {
-        content: userMessage
-          ? (messageDocumentToPrompt(userMessage) ?? "")
-          : (message.content ?? ""),
+        content: messageDocumentToPrompt(userMessage) ?? "",
         userMessage,
-        generationTemplate: userMessage
-          ? templatePart?.type === "template"
-            ? templatePart.template
-            : undefined
-          : message.generationTemplate,
-        attachments: (message.attachFiles ?? []).map(createRestoredAttachment),
+        generationTemplate:
+          templatePart?.type === "template" ? templatePart.template : undefined,
+        attachments: (message.attachFiles ?? [])
+          .filter((attachment) => {
+            return fileIds.has(attachment.id);
+          })
+          .map(createRestoredAttachment),
       });
 
       await set(

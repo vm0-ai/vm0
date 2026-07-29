@@ -5,6 +5,7 @@ import { cronCompactChatThreadSnapshotsContract } from "@vm0/api-contracts/contr
 import {
   chatThreadsContract,
   type ChatEventResponse,
+  type UserMessageDocument,
 } from "@vm0/api-contracts/contracts/chat-threads";
 import type { ZeroCapability } from "@vm0/api-contracts/contracts/composes";
 import { DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL } from "@vm0/api-contracts/contracts/model-providers";
@@ -345,6 +346,7 @@ async function sendNoCreditMessage(
     readonly agentId: string;
     readonly threadId?: string;
     readonly prompt: string;
+    readonly userMessage?: UserMessageDocument;
   },
 ): Promise<string> {
   await api.ensureOrgModelProvider(actor);
@@ -2273,6 +2275,34 @@ describe("CHAT-01 chat search", () => {
       "owner says supercalifragilistic",
     );
     expect(isolation.results[0]?.agentName).toStrictEqual(expect.any(String));
+
+    // Canonical userMessage fields, not the legacy content projection, own
+    // both matching and the returned display text.
+    const canonicalKeyword = `canonical-${randomUUID()}`;
+    const legacyKeyword = `legacy-${randomUUID()}`;
+    const canonicalDisplay = `Find [Chat thread: ${canonicalKeyword} archive]`;
+    await sendNoCreditMessage(owner, {
+      agentId: agentA.agentId,
+      prompt: legacyKeyword,
+      userMessage: {
+        version: 1,
+        parts: [
+          { type: "text", text: "Find " },
+          {
+            type: "chat_thread",
+            threadId: ownerThreadA,
+            titleSnapshot: `${canonicalKeyword} archive`,
+          },
+        ],
+      },
+    });
+    const canonicalSearch = await chat.searchChat(owner, canonicalKeyword);
+    expect(canonicalSearch.results).toHaveLength(1);
+    expect(canonicalSearch.results[0]?.matchedMessage.content).toBe(
+      canonicalDisplay,
+    );
+    const legacySearch = await chat.searchChat(owner, legacyKeyword);
+    expect(legacySearch.results).toStrictEqual([]);
 
     // Cross-org isolation for the same user.
     const sameUserOtherOrg = bdd.user({ userId: owner.userId });

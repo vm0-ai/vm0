@@ -7,7 +7,11 @@ const CHAT_IDB_SEQ_ID_RESET_VERSION = 18;
 const ARTIFACT_CACHE_REMOVED_VERSION = 20;
 const CHAT_IDB_CHAT_EVENT_RESET_VERSION = 21;
 const CHAT_IDB_THREAD_EVENT_SEQ_ID_RESET_VERSION = 22;
-const CHAT_IDB_SCHEMA_VERSION = CHAT_IDB_THREAD_EVENT_SEQ_ID_RESET_VERSION;
+// userMessage is now the only source for persisted user-input rendering.
+// Rebuild every chat event cache so documents written by older App bundles
+// cannot reintroduce content-only events after the server migration.
+const CHAT_IDB_USER_MESSAGE_READ_CUTOVER_VERSION = 23;
+const CHAT_IDB_SCHEMA_VERSION = CHAT_IDB_USER_MESSAGE_READ_CUTOVER_VERSION;
 const LEGACY_CHAT_THREAD_META_STORE = "chat_thread_agents";
 const LEGACY_ARTIFACT_ITEMS_STORE = "artifact_items";
 const LEGACY_ARTIFACT_SYNC_STORE = "artifact_sync";
@@ -80,6 +84,11 @@ export function upgradeChatIdb(db: IDBPDatabase, oldVersion: number): void {
   }
 
   if (oldVersion < CHAT_IDB_THREAD_EVENT_SEQ_ID_RESET_VERSION) {
+    deleteChatThreadEventStores(db);
+  }
+
+  if (oldVersion < CHAT_IDB_USER_MESSAGE_READ_CUTOVER_VERSION) {
+    deleteObjectStoreIfExists(db, CHAT_MESSAGES_STORE);
     deleteChatThreadEventStores(db);
   }
 

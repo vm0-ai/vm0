@@ -43,7 +43,6 @@ import {
   IconMessageCircle,
   IconMoodPlus,
   IconPackage,
-  IconPresentation,
   IconRoute,
   IconSearch,
   IconTarget,
@@ -53,7 +52,6 @@ import {
   IconCoins,
   IconHourglass,
   IconBrandSlack,
-  IconWorld,
 } from "@tabler/icons-react";
 import {
   cn,
@@ -99,7 +97,6 @@ import {
 import {
   messageDocumentToDisplayText,
   messageDocumentToPrompt,
-  shouldUseUserMessage,
   type EditorDocumentSnapshot,
 } from "../../signals/zero-page/user-message-document-codec.ts";
 import type {
@@ -107,11 +104,7 @@ import type {
   ZeroWorkflowSchedule,
 } from "@vm0/api-contracts/contracts/zero-workflows";
 import {
-  ILLUSTRATION_TEMPLATE_ITEMS,
   PRESENTATION_TEMPLATE_PICKER_ITEMS,
-  findWebsiteTemplateItem,
-  findVideoTemplateItem,
-  findWorkflowTemplateItem,
   r2ImageTransformUrl,
 } from "@vm0/core";
 import type {
@@ -267,7 +260,6 @@ import {
   type ChatThreadEmojiItem,
 } from "../../signals/chat-page/chat-thread-emoji.ts";
 import { openRenameChatThreadDialogForThreadId$ } from "../../signals/chat-page/chat-thread-rename.ts";
-import { ATTACH_ONLY_PLACEHOLDER } from "../../signals/chat-page/resolve-draft-attachments.ts";
 import {
   setTemplatePickerCategory$,
   setTemplatePickerOpen$,
@@ -341,9 +333,7 @@ function asInputChatEvent(message: ChatMessage): ChatInputMessage | undefined {
 function visibleUserMessage(
   inputMessage: ChatInputMessage | undefined,
 ): UserMessageDocument | undefined {
-  return inputMessage && shouldUseUserMessage(inputMessage.userMessage)
-    ? inputMessage.userMessage
-    : undefined;
+  return inputMessage?.userMessage;
 }
 
 function chatEventAttachments(message: ChatMessage) {
@@ -2559,9 +2549,7 @@ function runGroupFoldSourceLabel(fold: RunGroupFold): string {
     if (!isInputChatEvent(message)) {
       continue;
     }
-    const content = shouldUseUserMessage(message.userMessage)
-      ? messageDocumentToDisplayText(message.userMessage)
-      : message.content;
+    const content = messageDocumentToDisplayText(message.userMessage);
     if (content?.trim()) {
       return normalizedInlineLabel(content);
     }
@@ -2596,7 +2584,9 @@ function runGroupFoldGoalLabel(fold: RunGroupFold): string {
 function goalUserMessageBrief(message: EnrichedChatMessage): string | null {
   return (
     message.goalSnapshot?.objectiveBrief?.trim() ||
-    message.content?.trim() ||
+    (isInputChatEvent(message)
+      ? messageDocumentToDisplayText(message.userMessage)?.trim()
+      : null) ||
     null
   );
 }
@@ -5383,7 +5373,9 @@ function workflowMessageBody(
 ): string {
   const workflowSnapshot = message.workflowSnapshot;
   if (!workflowSnapshot) {
-    return message.content?.trim() || "Workflow";
+    return (
+      messageDocumentToDisplayText(message.userMessage)?.trim() || "Workflow"
+    );
   }
   return (
     workflowMessageBrief(workflowSnapshot) ??
@@ -5497,7 +5489,10 @@ function clipboardAttachmentsFromUserMessage(
 function AttachmentMaterializationState({
   attachment,
 }: {
-  attachment: ReturnType<typeof resolveAttachments>[number];
+  attachment: {
+    readonly filename: string;
+    readonly assetRef?: NonNullable<ResolvedAttachFile["assetRef"]>;
+  };
 }) {
   const materialization = attachment.assetRef?.materialization;
   if (!materialization || materialization.status === "ready") {
@@ -5672,54 +5667,6 @@ function UserMessageActions({
   );
 }
 
-function formatSelectionIdLabel(selectionId: string): string {
-  const label = selectionId
-    .replace(/^template:/, "")
-    .replace(/^video-template:/, "")
-    .replace(/^workflow-template:/, "")
-    .replace(/^html-ppt-/, "")
-    .replace(/-/g, " ");
-  return label.charAt(0).toUpperCase() + label.slice(1);
-}
-
-function generationTemplateLabel(
-  value: GenerationTemplateRequest | undefined,
-): string | null {
-  if (!value) {
-    return null;
-  }
-  if (value.type === "video") {
-    const item = findVideoTemplateItem(value.selection.stylePresetId);
-    return item?.title ?? formatSelectionIdLabel(value.selection.stylePresetId);
-  }
-  if (value.type === "workflow") {
-    const item = findWorkflowTemplateItem(value.selection.workflowTemplateId);
-    return (
-      item?.title ?? formatSelectionIdLabel(value.selection.workflowTemplateId)
-    );
-  }
-  if (value.type === "illustration") {
-    const item = ILLUSTRATION_TEMPLATE_ITEMS.find((candidate) => {
-      return (
-        candidate.illustrationStyleId === value.selection.illustrationStyleId
-      );
-    });
-    return (
-      item?.title ?? formatSelectionIdLabel(value.selection.illustrationStyleId)
-    );
-  }
-  if (value.type === "website") {
-    const item = findWebsiteTemplateItem(value.selection.websiteTemplateId);
-    return (
-      item?.title ?? formatSelectionIdLabel(value.selection.websiteTemplateId)
-    );
-  }
-  const item = PRESENTATION_TEMPLATE_PICKER_ITEMS.find((candidate) => {
-    return candidate.templateId === value.selection.templateId;
-  });
-  return item?.title ?? formatSelectionIdLabel(value.selection.templateId);
-}
-
 function generationTemplateTypeLabel(
   value: GenerationTemplateRequest | undefined,
 ): string | null {
@@ -5739,47 +5686,6 @@ function generationTemplateTypeLabel(
     return "Website";
   }
   return "Presentation";
-}
-
-function UserMessageGenerationTemplate({
-  generationTemplate,
-}: {
-  generationTemplate: GenerationTemplateRequest | undefined;
-}) {
-  const label = generationTemplateLabel(generationTemplate);
-  const typeLabel = generationTemplateTypeLabel(generationTemplate);
-  if (!label || !typeLabel) {
-    return null;
-  }
-  const className =
-    "mb-1.5 flex max-w-[85%] items-center gap-1.5 self-end text-xs font-medium text-muted-foreground";
-  const content = (
-    <>
-      {generationTemplate?.type === "video" ? (
-        <IconVideo size={15} stroke={1.8} className="shrink-0" />
-      ) : generationTemplate?.type === "illustration" ? (
-        <IconPhoto size={15} stroke={1.8} className="shrink-0" />
-      ) : generationTemplate?.type === "workflow" ? (
-        <IconRoute size={15} stroke={1.8} className="shrink-0" />
-      ) : generationTemplate?.type === "website" ? (
-        <IconWorld size={15} stroke={1.8} className="shrink-0" />
-      ) : (
-        <IconPresentation size={15} stroke={1.8} className="shrink-0" />
-      )}
-      <span className="shrink-0">{typeLabel}</span>
-      <span className="shrink-0">·</span>
-      <span className="min-w-0 truncate">{label}</span>
-    </>
-  );
-  return (
-    <div
-      aria-label={`Message template ${label}`}
-      className={className}
-      title={`${typeLabel} · ${label}`}
-    >
-      {content}
-    </div>
-  );
 }
 
 function SlackUserMessageOrigin({
@@ -5915,16 +5821,71 @@ function UserMessageFileReference({
   part: Extract<UserMessagePart, { type: "file" }>;
   attachment: ResolvedAttachFile | undefined;
 }) {
+  const openVideoLightbox = useSet(openAttachmentVideoLightbox$);
+
+  if (
+    attachment?.assetRef &&
+    attachment.assetRef.materialization.status !== "ready"
+  ) {
+    return <AttachmentMaterializationState attachment={attachment} />;
+  }
   if (attachment) {
-    return (
-      <span className="inline-flex align-middle">
+    const kind = classifyChatAttachment({
+      filename: part.filenameSnapshot,
+      url: attachment.url,
+      contentType: part.contentType,
+    });
+    let reference: ReactNode;
+    if (kind === "video") {
+      reference = (
+        <ChatVideoPreviewButton
+          ariaLabel={`Preview ${part.filenameSnapshot}`}
+          buttonClassName={CHAT_INLINE_VIDEO_ATTACHMENT_PREVIEW_CLASS}
+          filename={part.filenameSnapshot}
+          onPreview={() => {
+            openVideoLightbox({
+              url: attachment.url,
+              filename: part.filenameSnapshot,
+            });
+          }}
+          posterClassName="h-full w-full"
+          url={attachment.url}
+          videoClassName="h-full w-full object-contain"
+        />
+      );
+    } else if (
+      kind === "markdown" ||
+      kind === "text" ||
+      kind === "json" ||
+      kind === "csv" ||
+      kind === "pdf" ||
+      kind === "html"
+    ) {
+      reference = (
+        <PreviewableFileAttachmentChip
+          filename={part.filenameSnapshot}
+          url={attachment.url}
+          kind={kind}
+        />
+      );
+    } else if (kind === "audio") {
+      reference = (
+        <PreviewableAudioAttachmentChip
+          filename={part.filenameSnapshot}
+          url={attachment.url}
+          contentType={part.contentType}
+        />
+      );
+    } else {
+      reference = (
         <FileAttachmentChip
           contentType={part.contentType}
           filename={part.filenameSnapshot}
           url={attachment.url}
         />
-      </span>
-    );
+      );
+    }
+    return <span className="inline-flex align-middle">{reference}</span>;
   }
   return (
     <span
@@ -6366,40 +6327,6 @@ function useUserMessageRendering() {
   };
 }
 
-function matchesLegacyUserMessageFields(
-  inputMessage: ChatInputMessage | undefined,
-  userMessage: UserMessageDocument | undefined,
-): boolean {
-  // Migration 0717 reconstructs this exact files-then-text projection. Keep
-  // its existing Markdown and attachment UI until the userMessage-only read
-  // cutover removes the legacy fields in a later change.
-  if (!inputMessage || !userMessage) {
-    return false;
-  }
-  const attachments = inputMessage.attachFiles ?? [];
-  const content = inputMessage.content ?? "";
-  const expectedPartCount = attachments.length + (content.length > 0 ? 1 : 0);
-  if (userMessage.parts.length !== expectedPartCount) {
-    return false;
-  }
-  for (const [index, attachment] of attachments.entries()) {
-    const part = userMessage.parts[index];
-    if (
-      part?.type !== "file" ||
-      part.fileId !== attachment.id ||
-      part.filenameSnapshot !== attachment.filename ||
-      part.contentType !== attachment.contentType
-    ) {
-      return false;
-    }
-  }
-  if (content.length === 0) {
-    return true;
-  }
-  const textPart = userMessage.parts.at(-1);
-  return textPart?.type === "text" && textPart.text === content;
-}
-
 function resolvePagedUserMessageRendering({
   message,
   inputMessage,
@@ -6411,30 +6338,20 @@ function resolvePagedUserMessageRendering({
   userMessage: UserMessageDocument | undefined;
   inlineTemplates: boolean;
 }) {
-  // Two attachment sources coexist: the structured `attachFiles` field
-  // (current flow) and legacy `[Attached file: ...](url)` inline lines left
-  // over from messages sent before #10243 split the flows. Keep the legacy
-  // representation when those inline lines are still present.
+  const legacyContent =
+    message.eventType === "input.automation"
+      ? (message.triggerBrief ?? "")
+      : (message.content ?? "");
   const { cleanContent, parsed } = parseInlineAttachments(
-    message.content ?? "",
+    inputMessage ? "" : legacyContent,
   );
-  const canonicalUserMessage =
-    parsed.length === 0 &&
-    !matchesLegacyUserMessageFields(inputMessage, userMessage)
-      ? userMessage
-      : undefined;
+  const canonicalUserMessage = userMessage;
   const attachFiles = inputMessage?.attachFiles;
-  const legacyCopyText =
-    attachFiles &&
-    attachFiles.length > 0 &&
-    cleanContent.trim() === ATTACH_ONLY_PLACEHOLDER
-      ? ""
-      : cleanContent;
   const copyText = canonicalUserMessage
     ? (messageDocumentToPrompt(canonicalUserMessage, {
         inlineTemplates,
       }) ?? "")
-    : legacyCopyText;
+    : cleanContent;
   const legacyClipboardAttachments = clipboardAttachmentsFromMessage(
     message,
     parsed,
@@ -6445,18 +6362,12 @@ function resolvePagedUserMessageRendering({
         legacyClipboardAttachments,
       )
     : legacyClipboardAttachments;
-  const generationTemplate = canonicalUserMessage?.parts.some((part) => {
-    return part.type === "template";
-  })
-    ? undefined
-    : inputMessage?.generationTemplate;
 
   return {
     attachFiles,
     canonicalUserMessage,
     clipboardAttachments,
     copyText,
-    generationTemplate,
     parsed,
   };
 }
@@ -6476,7 +6387,6 @@ function PagedUserMessage({
     canonicalUserMessage,
     clipboardAttachments,
     copyText,
-    generationTemplate,
     parsed,
   } = resolvePagedUserMessageRendering({
     message,
@@ -6537,9 +6447,6 @@ function PagedUserMessage({
         <div className="flex flex-col items-end w-full">
           <SlackUserMessageOrigin permalink={message.slackMessagePermalink} />
           <FeishuUserMessageOrigin chatOpenUrl={message.feishuChatOpenUrl} />
-          <UserMessageGenerationTemplate
-            generationTemplate={generationTemplate}
-          />
           {canonicalUserMessage ? (
             <UserMessageContent
               document={canonicalUserMessage}
