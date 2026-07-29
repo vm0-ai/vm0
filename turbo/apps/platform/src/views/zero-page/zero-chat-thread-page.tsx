@@ -2783,11 +2783,8 @@ function ChatHistoryBackfillSkeleton({
 }: {
   thread: ChatThreadSignals;
 }) {
-  const featureSwitches = useGet(featureSwitch$);
-  const enabled =
-    featureSwitches[FeatureSwitchKey.ChatHistoryBackfillProgress] ?? false;
   const progress = useLastResolved(thread.historyBackfillProgress$);
-  if (!enabled || progress === null || progress === undefined) {
+  if (progress === null || progress === undefined) {
     return null;
   }
   return (

@@ -1,6 +1,5 @@
 import { waitFor } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
-import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import {
   chatThreadEventsContract,
   type ChatEventResponse,
@@ -99,9 +98,6 @@ describe("chat history backfill loading", () => {
     detachedSetupPage({
       context,
       path: `/chats/${THREAD_ID}`,
-      featureSwitches: {
-        [FeatureSwitchKey.ChatHistoryBackfillProgress]: true,
-      },
     });
 
     await waitFor(() => {
@@ -136,25 +132,5 @@ describe("chat history backfill loading", () => {
         document.querySelector("[data-history-backfill-skeleton]"),
       ).toBeNull();
     });
-  });
-
-  it("stays hidden during backfill when the feature switch is off", async () => {
-    const { finalHistoryPage, beforeSeqIds } = mockPagedHistory();
-
-    detachedSetupPage({
-      context,
-      path: `/chats/${THREAD_ID}`,
-      featureSwitches: {
-        [FeatureSwitchKey.ChatHistoryBackfillProgress]: false,
-      },
-    });
-
-    await waitFor(() => {
-      expect(beforeSeqIds).toContain(GATED_BEFORE_SEQ_ID);
-    });
-    expect(
-      document.querySelector("[data-history-backfill-skeleton]"),
-    ).toBeNull();
-    finalHistoryPage.resolve();
   });
 });

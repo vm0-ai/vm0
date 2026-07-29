@@ -389,12 +389,6 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
-  [FeatureSwitchKey.ChatHistoryBackfillProgress]: {
-    maintainer: "ethan@vm0.ai",
-    description:
-      "Chat message skeletons above the first visible message while older history loads.",
-    enabled: true,
-  },
   [FeatureSwitchKey.ThreeColumnNav]: {
     maintainer: "ming@vm0.ai",
     description:
