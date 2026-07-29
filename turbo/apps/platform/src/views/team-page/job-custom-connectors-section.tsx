@@ -1,5 +1,6 @@
 import { useGet, useLastLoadable, useLastResolved } from "ccstate-react";
 import { useLoadableSet } from "ccstate-react/experimental";
+import { useTranslation } from "react-i18next";
 import { toast } from "@vm0/ui/components/ui/sonner";
 import type { CustomConnectorResponse } from "@vm0/api-contracts/contracts/zero-custom-connectors";
 import { LoadingSwitch } from "../components/loading-switch.tsx";
@@ -28,6 +29,7 @@ function CustomConnectorPermissionRow({
   isLast: boolean;
   onToggle: (checked: boolean) => void;
 }) {
+  const { t } = useTranslation("agents");
   return (
     <div
       className={
@@ -47,7 +49,10 @@ function CustomConnectorPermissionRow({
         </div>
         <div className="truncate text-xs text-muted-foreground font-mono">
           {connector.prefixes[0]}
-          {!connector.hasSecret && " — no secret set"}
+          {!connector.hasSecret &&
+            t(($) => {
+              return $.authorization.customConnectors.noSecretSuffix;
+            })}
         </div>
       </div>
       <LoadingSwitch
@@ -55,14 +60,26 @@ function CustomConnectorPermissionRow({
         loading={loading}
         disabled={disabled}
         onCheckedChange={onToggle}
-        ariaLabel={`Authorize ${connector.displayName} for this agent`}
+        ariaLabel={t(
+          ($) => {
+            return $.authorization.customConnectors.authorize;
+          },
+          { connectorName: connector.displayName },
+        )}
       />
-      {!connector.hasSecret && <span className="sr-only">No secret set</span>}
+      {!connector.hasSecret && (
+        <span className="sr-only">
+          {t(($) => {
+            return $.authorization.customConnectors.noSecret;
+          })}
+        </span>
+      )}
     </div>
   );
 }
 
 export function JobCustomConnectorsSection() {
+  const { t } = useTranslation("agents");
   const connectors = useLastResolved(customConnectors$);
   const addedLoadable = useLastLoadable(agentAddedCustomConnectors$);
   const added = addedLoadable.state === "hasData" ? addedLoadable.data : [];
@@ -83,7 +100,11 @@ export function JobCustomConnectorsSection() {
       (async () => {
         const saved = await toggle(id, checked, pageSignal);
         if (saved) {
-          toast.success("Custom connectors saved");
+          toast.success(
+            t(($) => {
+              return $.authorization.customConnectors.saved;
+            }),
+          );
         }
       })(),
       Reason.DomCallback,
@@ -93,8 +114,9 @@ export function JobCustomConnectorsSection() {
   return (
     <div className="zero-card">
       <div className="px-5 pt-4 pb-3 text-sm text-muted-foreground border-b border-border/50">
-        Custom connectors registered by your org. Only connectors you have
-        supplied a secret for can be toggled on.
+        {t(($) => {
+          return $.authorization.customConnectors.description;
+        })}
       </div>
       {connectors.map((c, i) => {
         const enabled = addedSet.has(c.id);

@@ -19,6 +19,7 @@ import {
   IconChevronRight,
   IconDice,
 } from "@tabler/icons-react";
+import { useTranslation } from "react-i18next";
 import type { AvatarSvgConfig } from "./avatar-svg-utils.ts";
 import { AvatarSvgPreview } from "./avatar-svg-preview.tsx";
 import {
@@ -30,7 +31,6 @@ import {
 import {
   type Step,
   AVATAR_MAKER_STEPS,
-  INTENSITY_LABELS,
   avatarMakerOpen$,
   avatarMakerConfig$,
   avatarMakerStep$,
@@ -123,6 +123,19 @@ function StepOptions({
   justPicked: string | null;
   selectOption: (field: Step, value: number | string) => void;
 }) {
+  const { t } = useTranslation("agents");
+  const intensityLabels = {
+    d: t(($) => {
+      return $.avatar.intensity.chill;
+    }),
+    m: t(($) => {
+      return $.avatar.intensity.normal;
+    }),
+    h: t(($) => {
+      return $.avatar.intensity.hyped;
+    }),
+  };
+
   if (step === "intensity") {
     return (["d", "m", "h"] as const).map((val, i) => {
       const isPicked = justPicked === `intensity-${val}`;
@@ -144,7 +157,7 @@ function StepOptions({
         >
           <AvatarSvgPreview config={preview} size={56} />
           <span className="text-[10px] text-muted-foreground">
-            {INTENSITY_LABELS[val]}
+            {intensityLabels[val]}
           </span>
         </button>
       );
@@ -203,6 +216,7 @@ function StepOptions({
 }
 
 function AvatarPreviewWithShuffle() {
+  const { t } = useTranslation("agents");
   const config = useGet(avatarMakerConfig$);
   const justPicked = useGet(avatarMakerJustPicked$);
   const showSparkles = useGet(avatarMakerShowSparkles$);
@@ -229,7 +243,9 @@ function AvatarPreviewWithShuffle() {
               onClick={() => {
                 detach(shuffle(pageSignal), Reason.DomCallback);
               }}
-              aria-label="Randomize avatar"
+              aria-label={t(($) => {
+                return $.avatar.randomize;
+              })}
             >
               <IconDice
                 size={14}
@@ -243,7 +259,11 @@ function AvatarPreviewWithShuffle() {
             </button>
           </TooltipTrigger>
           <TooltipContent side="bottom">
-            <p className="text-xs">Shuffle — try a random look!</p>
+            <p className="text-xs">
+              {t(($) => {
+                return $.avatar.shuffleHint;
+              })}
+            </p>
           </TooltipContent>
         </Tooltip>
       </TooltipProvider>
@@ -252,18 +272,39 @@ function AvatarPreviewWithShuffle() {
 }
 
 function StepNavigator() {
+  const { t } = useTranslation("agents");
   const step = useGet(avatarMakerStep$);
   const stepIdx = useGet(avatarMakerStepIdx$);
   const goBack = useSet(goBackStep$);
   const goForward = useSet(goForwardStep$);
+  const stepLabels: Record<Step, string> = {
+    rotation: t(($) => {
+      return $.avatar.steps.angle;
+    }),
+    skin: t(($) => {
+      return $.avatar.steps.skin;
+    }),
+    hairStyle: t(($) => {
+      return $.avatar.steps.hair;
+    }),
+    hairColor: t(($) => {
+      return $.avatar.steps.color;
+    }),
+    expression: t(($) => {
+      return $.avatar.steps.face;
+    }),
+    intensity: t(($) => {
+      return $.avatar.steps.mood;
+    }),
+  };
 
   return (
     <>
       <div className="flex items-center gap-1">
-        {AVATAR_MAKER_STEPS.map((s, i) => {
+        {AVATAR_MAKER_STEPS.map((stepKey, i) => {
           return (
             <div
-              key={s.key}
+              key={stepKey}
               className={cn(
                 "h-1.5 rounded-full transition-all duration-300",
                 i === stepIdx
@@ -285,7 +326,9 @@ function StepNavigator() {
             stepIdx === 0 && "invisible",
           )}
           onClick={goBack}
-          aria-label="Previous step"
+          aria-label={t(($) => {
+            return $.avatar.previousStep;
+          })}
         >
           <IconChevronLeft size={14} />
         </button>
@@ -294,7 +337,7 @@ function StepNavigator() {
           key={step}
           style={{ animation: "avatar-option-appear 0.15s ease-out" }}
         >
-          {AVATAR_MAKER_STEPS[stepIdx]?.label}
+          {stepLabels[step]}
         </p>
         <button
           type="button"
@@ -303,7 +346,9 @@ function StepNavigator() {
             stepIdx === AVATAR_MAKER_STEPS.length - 1 && "invisible",
           )}
           onClick={goForward}
-          aria-label="Next step"
+          aria-label={t(($) => {
+            return $.avatar.nextStep;
+          })}
         >
           <IconChevronRight size={14} />
         </button>
@@ -317,6 +362,7 @@ function AvatarMakerDialogBody({
 }: {
   onConfirm: (config: AvatarSvgConfig) => Promise<void>;
 }) {
+  const { t } = useTranslation("agents");
   const config = useGet(avatarMakerConfig$);
   const step = useGet(avatarMakerStep$);
   const justPicked = useGet(avatarMakerJustPicked$);
@@ -341,9 +387,15 @@ function AvatarMakerDialogBody({
   return (
     <DialogContent className="w-[calc(100vw-2rem)] sm:max-w-lg p-0 gap-0 overflow-hidden">
       <DialogHeader className="sr-only">
-        <DialogTitle>Give your agent a face</DialogTitle>
+        <DialogTitle>
+          {t(($) => {
+            return $.avatar.title;
+          })}
+        </DialogTitle>
         <DialogDescription>
-          Customize the agent avatar style, color, and facial details.
+          {t(($) => {
+            return $.avatar.accessibilityDescription;
+          })}
         </DialogDescription>
       </DialogHeader>
 
@@ -355,9 +407,15 @@ function AvatarMakerDialogBody({
       {/* Controls section */}
       <div className="flex flex-col items-center gap-4 px-6 py-5">
         <div className="text-center">
-          <h2 className="text-base font-semibold">Give your agent a face</h2>
+          <h2 className="text-base font-semibold">
+            {t(($) => {
+              return $.avatar.title;
+            })}
+          </h2>
           <p className="text-xs text-muted-foreground mt-0.5">
-            Pick a style or hit shuffle for a surprise.
+            {t(($) => {
+              return $.avatar.description;
+            })}
           </p>
         </div>
         <StepNavigator />
@@ -379,10 +437,18 @@ function AvatarMakerDialogBody({
       {/* Footer */}
       <div className="flex justify-center gap-3 px-6 pt-6 pb-6">
         <Button variant="outline" onClick={closeMaker} disabled={saving}>
-          Cancel
+          {t(($) => {
+            return $.actions.cancel;
+          })}
         </Button>
         <Button onClick={handleConfirm} disabled={saving}>
-          {saving ? "Saving…" : "Use this avatar"}
+          {saving
+            ? t(($) => {
+                return $.actions.saving;
+              })
+            : t(($) => {
+                return $.avatar.use;
+              })}
         </Button>
       </div>
     </DialogContent>
@@ -396,6 +462,7 @@ interface AvatarMakerProps {
 }
 
 export function AvatarMaker({ onConfirm, trigger }: AvatarMakerProps) {
+  const { t } = useTranslation("agents");
   const open = useGet(avatarMakerOpen$);
   const openMaker = useSet(openAvatarMaker$);
   const closeMaker = useSet(closeAvatarMaker$);
@@ -430,13 +497,19 @@ export function AvatarMaker({ onConfirm, trigger }: AvatarMakerProps) {
                   return openMaker();
                 }}
                 className="h-12 w-12 shrink-0 rounded-full border-2 border-dashed border-muted-foreground/30 flex items-center justify-center text-muted-foreground hover:border-muted-foreground/50 hover:text-foreground transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
-                aria-label="Create custom avatar"
+                aria-label={t(($) => {
+                  return $.avatar.create;
+                })}
               >
                 <IconWand size={16} stroke={1.5} />
               </button>
             </TooltipTrigger>
             <TooltipContent side="bottom">
-              <p className="text-xs">Customize avatar</p>
+              <p className="text-xs">
+                {t(($) => {
+                  return $.avatar.actions.customize;
+                })}
+              </p>
             </TooltipContent>
           </Tooltip>
         </TooltipProvider>

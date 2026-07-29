@@ -7,6 +7,7 @@ import {
   IconSearch,
 } from "@tabler/icons-react";
 import { Card, CardContent, cn, Input } from "@vm0/ui";
+import { useTranslation } from "react-i18next";
 import { ConnectorIcon } from "./components/settings/connector-icons.tsx";
 import { getCategories } from "./zero-ideation-data.ts";
 import { featureSwitch$ } from "../../signals/external/feature-switch.ts";
@@ -19,7 +20,48 @@ import {
   ideationSearchQuery$,
   setIdeationSearchQuery$,
 } from "../../signals/zero-page/zero-ideation.ts";
+
+interface IdeationUseCaseCopy {
+  readonly title: string;
+  readonly description: string;
+}
+
+interface IdeationCategoryCopy {
+  readonly title: string;
+  readonly cases: Readonly<Record<string, IdeationUseCaseCopy>>;
+}
+
+type IdeationCatalogCopy = Readonly<Record<string, IdeationCategoryCopy>>;
+
+function localizeCategories(
+  categories: ReturnType<typeof getCategories>,
+  catalogCopy: IdeationCatalogCopy,
+) {
+  return categories.map((category) => {
+    const categoryCopy = catalogCopy[category.id];
+    if (!categoryCopy) {
+      throw new Error(`Missing ideation category copy: ${category.id}`);
+    }
+    return {
+      ...category,
+      title: categoryCopy.title,
+      cases: category.cases.map((useCase) => {
+        const useCaseCopy = categoryCopy.cases[useCase.title];
+        if (!useCaseCopy) {
+          throw new Error(`Missing ideation use case copy: ${useCase.title}`);
+        }
+        return {
+          ...useCase,
+          title: useCaseCopy.title,
+          description: useCaseCopy.description,
+        };
+      }),
+    };
+  });
+}
+
 export function ZeroIdeationPage() {
+  const { t } = useTranslation("agents");
   const features = useLastResolved(featureSwitch$);
   const connectorStatusLoadable = useLoadable(connectorCatalogStatusByRef$);
   const lastConnectorStatusByRef = useLastResolved(
@@ -37,10 +79,16 @@ export function ZeroIdeationPage() {
       : connectorStatusLoadable.state === "loading"
         ? undefined
         : new Set<string>();
-  const categories = getCategories({
-    features,
-    visibleConnectorRefs,
-  }).slice(0, 8);
+  const catalogCopy: IdeationCatalogCopy = t(
+    ($) => {
+      return $.ideation.catalog;
+    },
+    { returnObjects: true },
+  );
+  const categories = localizeCategories(
+    getCategories({ features, visibleConnectorRefs }).slice(0, 8),
+    catalogCopy,
+  );
   const activeTab = useGet(ideationActiveTab$);
   const setActiveTab = useSet(setIdeationActiveTab$);
   const searchQuery = useGet(ideationSearchQuery$);
@@ -114,11 +162,15 @@ export function ZeroIdeationPage() {
           className="inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 hover:bg-muted hover:text-foreground transition-colors cursor-pointer"
         >
           <IconMessageCircle size={14} stroke={1.5} className="shrink-0" />
-          Chat
+          {t(($) => {
+            return $.ideation.chat;
+          })}
         </button>
         <span className="text-muted-foreground/40 select-none">/</span>
         <span className="rounded-md px-1.5 py-0.5 text-foreground font-medium truncate">
-          Ideas &amp; Use Cases
+          {t(($) => {
+            return $.ideation.title;
+          })}
         </span>
       </nav>
 
@@ -127,11 +179,14 @@ export function ZeroIdeationPage() {
           <div className="mx-auto w-full max-w-[900px]">
             <header className="bg-transparent pt-3 md:pt-6 pb-3">
               <h1 className="hidden md:block text-lg font-semibold tracking-tight text-foreground">
-                Ideas &amp; Use Cases
+                {t(($) => {
+                  return $.ideation.title;
+                })}
               </h1>
               <p className="hidden md:block mt-1 text-sm text-muted-foreground leading-relaxed">
-                Click any card to start a conversation. It could become an
-                on-demand task, a recurring workflow, or a subagent.
+                {t(($) => {
+                  return $.ideation.description;
+                })}
               </p>
             </header>
 
@@ -150,7 +205,9 @@ export function ZeroIdeationPage() {
                       return setActiveTab("all");
                     }}
                   >
-                    All
+                    {t(($) => {
+                      return $.ideation.all;
+                    })}
                   </button>
                   {categories.map((category) => {
                     return (
@@ -184,9 +241,13 @@ export function ZeroIdeationPage() {
                     onChange={(e) => {
                       return setSearchQuery(e.target.value);
                     }}
-                    placeholder="Search"
+                    placeholder={t(($) => {
+                      return $.ideation.search.placeholder;
+                    })}
                     className="pl-9"
-                    aria-label="Search use cases"
+                    aria-label={t(($) => {
+                      return $.ideation.search.accessibilityLabel;
+                    })}
                   />
                 </div>
               </div>
@@ -196,7 +257,9 @@ export function ZeroIdeationPage() {
               <div className="flex flex-col gap-6">
                 {visibleCategories.length === 0 ? (
                   <p className="text-sm text-muted-foreground">
-                    No use cases match your search.
+                    {t(($) => {
+                      return $.ideation.search.empty;
+                    })}
                   </p>
                 ) : null}
                 {visibleCategories.map((category) => {

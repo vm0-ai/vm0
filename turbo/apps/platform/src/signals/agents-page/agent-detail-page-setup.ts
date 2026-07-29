@@ -15,6 +15,7 @@ import { onboardGuard$ } from "../zero-page/onboard-guard.ts";
 import { hideAppSkeleton$ } from "../app-skeleton.ts";
 import { setActiveAgent$ } from "../zero-page/zero-job-detail.ts";
 import { setChatAgentId$ } from "../agent-chat.ts";
+import { i18n } from "../../i18n/index.ts";
 
 export const setupAgentDetailPage$ = command(
   async ({ get, set }, signal: AbortSignal) => {
@@ -53,7 +54,14 @@ export const setupAgentDetailPage$ = command(
     set(setActiveAgent$, agentId);
     set(setChatAgentId$, agentId);
     set(rememberLastUsedAgentId$, agentId);
-    const displayName = agent.displayName ?? "Agent";
+    const displayName =
+      agent.displayName ??
+      i18n.t(
+        ($) => {
+          return $.fallbackName;
+        },
+        { ns: "agents" },
+      );
     set(updateDocumentTitle$, displayName);
 
     if (await set(onboardGuard$, signal)) {

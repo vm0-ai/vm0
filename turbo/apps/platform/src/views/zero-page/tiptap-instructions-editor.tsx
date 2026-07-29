@@ -116,10 +116,24 @@ interface TiptapInstructionsEditorProps {
   footerHint?: string | null;
   /** Visual surface for embedding the editor in either a card or a full-page canvas. */
   surface?: "card" | "canvas";
+  toolbarLabels?: Partial<ToolbarLabels>;
 }
 
 const ICON_SIZE = 18;
 const ICON_STROKE = 1.5;
+const DEFAULT_TOOLBAR_LABELS = {
+  bold: "Bold",
+  italic: "Italic",
+  strikethrough: "Strikethrough",
+  inlineCode: "Inline code",
+  heading1: "Heading 1",
+  heading2: "Heading 2",
+  heading3: "Heading 3",
+  bulletList: "Bullet list",
+  orderedList: "Ordered list",
+  blockquote: "Blockquote",
+} as const;
+type ToolbarLabels = Record<keyof typeof DEFAULT_TOOLBAR_LABELS, string>;
 
 function ToolbarButton({
   onAction,
@@ -199,7 +213,9 @@ export function TiptapInstructionsEditor({
   placeholder = "Write instructions for your agent...",
   footerHint = "Edit the instructions directly to customize your agent's behavior.",
   surface = "card",
+  toolbarLabels,
 }: TiptapInstructionsEditorProps) {
+  const labels = { ...DEFAULT_TOOLBAR_LABELS, ...toolbarLabels };
   const editorClassName = cn(
     EDITOR_CLASSES,
     surface === "canvas" ? "min-h-[calc(100vh-10rem)] px-0 py-3" : "",
@@ -243,7 +259,7 @@ export function TiptapInstructionsEditor({
             }}
             active={editor.isActive("bold")}
             disabled={disabled}
-            title="Bold"
+            title={labels.bold}
           >
             <IconBold size={ICON_SIZE} stroke={ICON_STROKE} />
           </ToolbarButton>
@@ -253,7 +269,7 @@ export function TiptapInstructionsEditor({
             }}
             active={editor.isActive("italic")}
             disabled={disabled}
-            title="Italic"
+            title={labels.italic}
           >
             <IconItalic size={ICON_SIZE} stroke={ICON_STROKE} />
           </ToolbarButton>
@@ -263,7 +279,7 @@ export function TiptapInstructionsEditor({
             }}
             active={editor.isActive("strike")}
             disabled={disabled}
-            title="Strikethrough"
+            title={labels.strikethrough}
           >
             <IconStrikethrough size={ICON_SIZE} stroke={ICON_STROKE} />
           </ToolbarButton>
@@ -273,7 +289,7 @@ export function TiptapInstructionsEditor({
             }}
             active={editor.isActive("code")}
             disabled={disabled}
-            title="Inline code"
+            title={labels.inlineCode}
           >
             <IconCode size={ICON_SIZE} stroke={ICON_STROKE} />
           </ToolbarButton>
@@ -286,7 +302,7 @@ export function TiptapInstructionsEditor({
             }}
             active={editor.isActive("heading", { level: 1 })}
             disabled={disabled}
-            title="Heading 1"
+            title={labels.heading1}
           >
             <IconH1 size={ICON_SIZE} stroke={ICON_STROKE} />
           </ToolbarButton>
@@ -296,7 +312,7 @@ export function TiptapInstructionsEditor({
             }}
             active={editor.isActive("heading", { level: 2 })}
             disabled={disabled}
-            title="Heading 2"
+            title={labels.heading2}
           >
             <IconH2 size={ICON_SIZE} stroke={ICON_STROKE} />
           </ToolbarButton>
@@ -306,7 +322,7 @@ export function TiptapInstructionsEditor({
             }}
             active={editor.isActive("heading", { level: 3 })}
             disabled={disabled}
-            title="Heading 3"
+            title={labels.heading3}
           >
             <IconH3 size={ICON_SIZE} stroke={ICON_STROKE} />
           </ToolbarButton>
@@ -319,7 +335,7 @@ export function TiptapInstructionsEditor({
             }}
             active={editor.isActive("bulletList")}
             disabled={disabled}
-            title="Bullet list"
+            title={labels.bulletList}
           >
             <IconList size={ICON_SIZE} stroke={ICON_STROKE} />
           </ToolbarButton>
@@ -329,7 +345,7 @@ export function TiptapInstructionsEditor({
             }}
             active={editor.isActive("orderedList")}
             disabled={disabled}
-            title="Ordered list"
+            title={labels.orderedList}
           >
             <IconListNumbers size={ICON_SIZE} stroke={ICON_STROKE} />
           </ToolbarButton>
@@ -339,7 +355,7 @@ export function TiptapInstructionsEditor({
             }}
             active={editor.isActive("blockquote")}
             disabled={disabled}
-            title="Blockquote"
+            title={labels.blockquote}
           >
             <IconBlockquote size={ICON_SIZE} stroke={ICON_STROKE} />
           </ToolbarButton>

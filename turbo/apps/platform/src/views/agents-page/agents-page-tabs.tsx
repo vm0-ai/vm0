@@ -1,5 +1,6 @@
 import { useGet, useLastResolved, useLoadable, useSet } from "ccstate-react";
 import { useLoadableSet } from "ccstate-react/experimental";
+import { useTranslation } from "react-i18next";
 import { pageSignal$ } from "../../signals/page-signal.ts";
 import { IconLoader2, IconPlus, IconWand } from "@tabler/icons-react";
 import {
@@ -65,6 +66,7 @@ const MAX_PUBLIC_AGENTS = 7;
 type Visibility = "public" | "private";
 
 export function AgentsPageTabs() {
+  const { t } = useTranslation("agents");
   const dialogOpen = useGet(jobsDialogOpen$);
   const setDialogOpen = useSet(setJobsDialogOpen$);
   const newName = useGet(jobsNewName$);
@@ -101,7 +103,14 @@ export function AgentsPageTabs() {
     await createSubagentFn(trimmed, avatarUrl, visibility, pageSignal);
     setDialogOpen(false);
     resetDialog();
-    toast.success(`${trimmed} created successfully`);
+    toast.success(
+      t(
+        ($) => {
+          return $.list.create.success;
+        },
+        { agentName: trimmed },
+      ),
+    );
   });
 
   return (
@@ -110,11 +119,23 @@ export function AgentsPageTabs() {
         <div className="mx-auto max-w-[900px] flex flex-wrap items-end justify-between gap-4">
           <div className="min-w-0 hidden md:block">
             <h1 className="text-lg font-semibold tracking-tight text-foreground">
-              Agents
+              {t(($) => {
+                return $.list.title;
+              })}
             </h1>
             <p className="mt-0.5 text-sm text-muted-foreground">
-              {defaultAgentName} and sub-agents working together to run tailored
-              workflows for you and your team.
+              {t(
+                ($) => {
+                  return $.list.description;
+                },
+                {
+                  agentName:
+                    defaultAgentName ??
+                    t(($) => {
+                      return $.fallbackName;
+                    }),
+                },
+              )}
             </p>
           </div>
         </div>
@@ -156,6 +177,7 @@ function AgentTabsView({
   atPublicLimit: boolean;
   onCreate: (visibility: Visibility) => void;
 }) {
+  const { t } = useTranslation("agents");
   const agentsLoadable = useLoadable(sortedAgents$);
   const membersLoadable = useLoadable(orgMembers$);
   const unreadAgentIds = useLastResolved(unreadAgentIds$);
@@ -196,13 +218,17 @@ function AgentTabsView({
               value="public"
               className="gap-1.5 px-3 text-sm data-[state=active]:bg-background"
             >
-              Public
+              {t(($) => {
+                return $.list.tabs.public;
+              })}
             </TabsTrigger>
             <TabsTrigger
               value="private"
               className="gap-1.5 px-3 text-sm data-[state=active]:bg-background"
             >
-              Private
+              {t(($) => {
+                return $.list.tabs.private;
+              })}
             </TabsTrigger>
           </TabsList>
         </Tabs>
@@ -216,7 +242,9 @@ function AgentTabsView({
           }}
         >
           <IconPlus size={14} stroke={2} />
-          New agent
+          {t(($) => {
+            return $.list.actions.new;
+          })}
         </Button>
       </div>
 
@@ -237,6 +265,7 @@ function AgentTabsView({
 }
 
 function PrivateEmptyState() {
+  const { t } = useTranslation("agents");
   return (
     <div className="zero-card flex min-h-[20rem] flex-col items-center justify-center px-6 text-center">
       <img
@@ -246,10 +275,14 @@ function PrivateEmptyState() {
         className="h-24 w-24 object-contain opacity-80"
       />
       <p className="mt-3 text-sm font-medium text-foreground">
-        No private agents yet
+        {t(($) => {
+          return $.list.privateEmpty.title;
+        })}
       </p>
       <p className="mt-1 max-w-[340px] text-sm text-muted-foreground">
-        Create an agent only you can see and use. Private agents are unlimited.
+        {t(($) => {
+          return $.list.privateEmpty.description;
+        })}
       </p>
     </div>
   );
@@ -266,6 +299,7 @@ function AgentGrid({
   unreadAgentIds: ReadonlySet<string> | undefined;
   showCreator: boolean;
 }) {
+  const { t } = useTranslation("agents");
   return (
     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
       {agents.map((agent) => {
@@ -278,7 +312,13 @@ function AgentGrid({
           >
             <AgentCard
               agent={agent}
-              creator={agentCreator(agent, membersById)}
+              creator={agentCreator(
+                agent,
+                membersById,
+                t(($) => {
+                  return $.list.cards.unknownCreator;
+                }),
+              )}
               hasUnread={unreadAgentIds?.has(agent.id) ?? false}
               showCreator={showCreator}
             />
@@ -350,6 +390,7 @@ function CreateTeammateDialog({
 }
 
 function CreateAgentAvatarPreview() {
+  const { t } = useTranslation("agents");
   const avatarUrl = useGet(jobsAvatarUrl$);
   const setAvatarUrl = useSet(setJobsAvatarUrl$);
 
@@ -366,11 +407,15 @@ function CreateAgentAvatarPreview() {
               type="button"
               onClick={openMaker}
               className="relative rounded-full transition-transform duration-200 hover:scale-110 focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
-              aria-label="Customize avatar"
+              aria-label={t(($) => {
+                return $.avatar.actions.customize;
+              })}
             >
               <AvatarFromUrl
                 avatarUrl={avatarUrl}
-                alt="New agent"
+                alt={t(($) => {
+                  return $.list.create.newAgentAlt;
+                })}
                 className="h-16 w-16 rounded-full object-cover object-top"
               />
               <TooltipProvider delayDuration={200}>
@@ -381,7 +426,11 @@ function CreateAgentAvatarPreview() {
                     </span>
                   </TooltipTrigger>
                   <TooltipContent side="bottom">
-                    <p className="text-xs">Customize avatar</p>
+                    <p className="text-xs">
+                      {t(($) => {
+                        return $.avatar.actions.customize;
+                      })}
+                    </p>
                   </TooltipContent>
                 </Tooltip>
               </TooltipProvider>
@@ -389,6 +438,116 @@ function CreateAgentAvatarPreview() {
           );
         }}
       />
+    </div>
+  );
+}
+
+function CreateAgentFields({
+  newName,
+  onNameChange,
+  onConfirm,
+  creating,
+  visibility,
+  onVisibilityChange,
+  avatarUrl,
+}: {
+  newName: string;
+  onNameChange: (name: string) => void;
+  onConfirm: (avatarUrl: string) => void;
+  creating: boolean;
+  visibility: Visibility;
+  onVisibilityChange: (visibility: Visibility) => void;
+  avatarUrl: string;
+}) {
+  const { t } = useTranslation("agents");
+  return (
+    <div className="flex flex-col gap-4 px-6 py-6">
+      <div className="text-center">
+        <p className="text-base font-semibold">
+          {t(($) => {
+            return $.list.create.title;
+          })}
+        </p>
+        <p className="text-sm text-muted-foreground mt-0.5">
+          {t(($) => {
+            return $.list.create.description;
+          })}
+        </p>
+      </div>
+      <div className="flex flex-col gap-1.5">
+        <label
+          htmlFor="new-agent-name"
+          className="text-sm font-medium text-foreground"
+        >
+          {t(($) => {
+            return $.profile.fields.name.label;
+          })}
+        </label>
+        <Input
+          id="new-agent-name"
+          value={newName}
+          onChange={(e) => {
+            return onNameChange(e.target.value);
+          }}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" && newName.trim() && !creating) {
+              onConfirm(avatarUrl);
+            }
+          }}
+          placeholder={t(($) => {
+            return $.list.create.namePlaceholder;
+          })}
+          autoFocus
+          disabled={creating}
+        />
+      </div>
+      <div className="flex flex-col gap-1.5">
+        <span className="text-xs text-muted-foreground">
+          {t(($) => {
+            return $.list.create.visibilityLabel;
+          })}
+        </span>
+        <Select
+          value={visibility}
+          onValueChange={(value) => {
+            if (value === "public" || value === "private") {
+              onVisibilityChange(value);
+            }
+          }}
+          disabled={creating}
+        >
+          <SelectTrigger
+            className="h-9 w-full"
+            aria-label={t(($) => {
+              return $.list.create.visibilityLabel;
+            })}
+          >
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="private">
+              {t(($) => {
+                return $.list.create.visibility.private.label;
+              })}{" "}
+              <span className="text-muted-foreground">
+                {t(($) => {
+                  return $.list.create.visibility.private.description;
+                })}
+              </span>
+            </SelectItem>
+            <SelectItem value="public">
+              {t(($) => {
+                return $.list.create.visibility.public.label;
+              })}{" "}
+              <span className="text-muted-foreground">
+                {t(($) => {
+                  return $.list.create.visibility.public.description;
+                })}
+              </span>
+            </SelectItem>
+          </SelectContent>
+        </Select>
+      </div>
     </div>
   );
 }
@@ -410,86 +569,42 @@ function CreateTeammateDialogContent({
   visibility: Visibility;
   onVisibilityChange: (visibility: Visibility) => void;
 }) {
+  const { t } = useTranslation("agents");
   const avatarUrl = useGet(jobsAvatarUrl$);
 
   return (
     <DialogContent className="sm:max-w-[480px] p-0 gap-0 overflow-hidden">
       <DialogHeader className="sr-only">
-        <DialogTitle>Create a new agent</DialogTitle>
+        <DialogTitle>
+          {t(($) => {
+            return $.list.create.title;
+          })}
+        </DialogTitle>
         <DialogDescription>
-          Name the new agent, choose its visibility, and customize its avatar.
+          {t(($) => {
+            return $.list.create.accessibilityDescription;
+          })}
         </DialogDescription>
       </DialogHeader>
 
       <CreateAgentAvatarPreview />
 
-      {/* Content */}
-      <div className="flex flex-col gap-4 px-6 py-6">
-        <div className="text-center">
-          <p className="text-base font-semibold">Create a new agent</p>
-          <p className="text-sm text-muted-foreground mt-0.5">
-            Name your agent and set who can use it.
-          </p>
-        </div>
-        <div className="flex flex-col gap-1.5">
-          <label
-            htmlFor="new-agent-name"
-            className="text-sm font-medium text-foreground"
-          >
-            Name
-          </label>
-          <Input
-            id="new-agent-name"
-            value={newName}
-            onChange={(e) => {
-              return onNameChange(e.target.value);
-            }}
-            onKeyDown={(e) => {
-              if (e.key === "Enter" && newName.trim() && !creating) {
-                onConfirm(avatarUrl);
-              }
-            }}
-            placeholder="e.g. Research Assistant"
-            autoFocus
-            disabled={creating}
-          />
-        </div>
-        <div className="flex flex-col gap-1.5">
-          <span className="text-xs text-muted-foreground">Visibility</span>
-          <Select
-            value={visibility}
-            onValueChange={(value) => {
-              if (value === "public" || value === "private") {
-                onVisibilityChange(value);
-              }
-            }}
-            disabled={creating}
-          >
-            <SelectTrigger className="h-9 w-full" aria-label="Visibility">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="private">
-                Private{" "}
-                <span className="text-muted-foreground">
-                  (only you can see and use it)
-                </span>
-              </SelectItem>
-              <SelectItem value="public">
-                Public{" "}
-                <span className="text-muted-foreground">
-                  (anyone in this workspace can use it)
-                </span>
-              </SelectItem>
-            </SelectContent>
-          </Select>
-        </div>
-      </div>
+      <CreateAgentFields
+        newName={newName}
+        onNameChange={onNameChange}
+        onConfirm={onConfirm}
+        creating={creating}
+        visibility={visibility}
+        onVisibilityChange={onVisibilityChange}
+        avatarUrl={avatarUrl}
+      />
 
       {/* Footer */}
       <div className="flex justify-center gap-3 px-6 pt-4 pb-8">
         <Button variant="outline" onClick={onCancel} disabled={creating}>
-          Cancel
+          {t(($) => {
+            return $.actions.cancel;
+          })}
         </Button>
         <Button
           onClick={() => {
@@ -500,10 +615,14 @@ function CreateTeammateDialogContent({
           {creating ? (
             <span className="inline-flex items-center gap-1.5">
               <IconLoader2 size={14} className="animate-spin" />
-              Creating...
+              {t(($) => {
+                return $.list.create.creating;
+              })}
             </span>
           ) : (
-            "Create"
+            t(($) => {
+              return $.actions.create;
+            })
           )}
         </Button>
       </div>
@@ -541,9 +660,10 @@ function orgMemberDisplayName(member: OrgMember): string {
 function agentCreator(
   agent: AgentProps["agent"],
   membersById: ReadonlyMap<string, OrgMember>,
+  unknownName: string,
 ): AgentCreator {
   if (!agent.ownerId) {
-    return { name: "Unknown", imageUrl: null };
+    return { name: unknownName, imageUrl: null };
   }
 
   const member = membersById.get(agent.ownerId);
@@ -572,20 +692,31 @@ function CreatorAvatar({ creator }: { creator: AgentCreator }) {
 }
 
 function AgentUnreadIndicator() {
+  const { t } = useTranslation("agents");
   return (
     <span
-      aria-label="Unread"
+      aria-label={t(($) => {
+        return $.status.unread;
+      })}
       className="absolute -right-0.5 -top-0.5 h-3 w-3 rounded-full border-2 border-card bg-sky-600"
     />
   );
 }
 
 function AgentCard({ agent, creator, hasUnread, showCreator }: AgentProps) {
+  const { t } = useTranslation("agents");
   const defaultAgentId = useLastResolved(defaultAgentId$);
   const lead = agent.id === defaultAgentId;
   const displayName = agent.displayName ?? agent.id;
   const description = defaultAgentId
-    ? agent.description || (lead ? "Your core agent" : "Sub-agent")
+    ? agent.description ||
+      (lead
+        ? t(($) => {
+            return $.list.cards.coreDescription;
+          })
+        : t(($) => {
+            return $.list.cards.subagentDescription;
+          }))
     : "";
   return (
     <Card className="zero-card cursor-pointer flex flex-col hover:bg-muted/30 transition-colors h-full">
@@ -627,7 +758,12 @@ function AgentCard({ agent, creator, hasUnread, showCreator }: AgentProps) {
                         <CreatorAvatar creator={creator} />
                       </span>
                       <span className="text-xs font-medium text-foreground">
-                        Created by {creator.name}
+                        {t(
+                          ($) => {
+                            return $.list.cards.createdBy;
+                          },
+                          { creator: creator.name },
+                        )}
                       </span>
                     </span>
                     {description && (

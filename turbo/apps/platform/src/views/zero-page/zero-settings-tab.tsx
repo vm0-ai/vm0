@@ -2,6 +2,7 @@
 // oxlint-disable max-lines-per-function
 import { useGet, useSet } from "ccstate-react";
 import { useLoadableSet } from "ccstate-react/experimental";
+import { useTranslation } from "react-i18next";
 import { pageSignal$ } from "../../signals/page-signal.ts";
 import {
   Button,
@@ -23,13 +24,7 @@ import {
   AlertDescription,
   AlertTitle,
 } from "@vm0/ui/components/ui/alert";
-import {
-  type Tone,
-  TONE_OPTIONS,
-  toneLabel,
-  TONE_HINT,
-  TONE_SAMPLES,
-} from "./zero-tone-constants.ts";
+import { type Tone, TONE_OPTIONS } from "./zero-tone-constants.ts";
 import { detach, Reason } from "../../signals/utils.ts";
 import { ZeroUnsavedBar } from "./zero-unsaved-bar.tsx";
 import type { Command } from "ccstate";
@@ -105,6 +100,7 @@ export function ZeroSettingsTab({
   deleteCopyTargets = [],
   onCopyWorkflowBeforeDelete,
 }: ZeroSettingsTabProps) {
+  const { t } = useTranslation("agents");
   const defaults = {
     name: resolvedAgentName,
     description: initialDescription,
@@ -145,6 +141,67 @@ export function ZeroSettingsTab({
   const setDemoteConfirmOpen = useSet(setAgentDemoteConfirmOpen$);
   const willDemoteVisibility =
     initialVisibility === "public" && visibility === "private";
+  const toneCopy = {
+    professional: {
+      label: t(($) => {
+        return $.profile.tones.professional.label;
+      }),
+      hint: t(($) => {
+        return $.profile.tones.professional.hint;
+      }),
+      user: t(($) => {
+        return $.profile.tones.professional.userSample;
+      }),
+      agent: t(($) => {
+        return $.profile.tones.professional.agentSample;
+      }),
+    },
+    friendly: {
+      label: t(($) => {
+        return $.profile.tones.friendly.label;
+      }),
+      hint: t(($) => {
+        return $.profile.tones.friendly.hint;
+      }),
+      user: t(($) => {
+        return $.profile.tones.friendly.userSample;
+      }),
+      agent: t(($) => {
+        return $.profile.tones.friendly.agentSample;
+      }),
+    },
+    direct: {
+      label: t(($) => {
+        return $.profile.tones.direct.label;
+      }),
+      hint: t(($) => {
+        return $.profile.tones.direct.hint;
+      }),
+      user: t(($) => {
+        return $.profile.tones.direct.userSample;
+      }),
+      agent: t(($) => {
+        return $.profile.tones.direct.agentSample;
+      }),
+    },
+    supportive: {
+      label: t(($) => {
+        return $.profile.tones.supportive.label;
+      }),
+      hint: t(($) => {
+        return $.profile.tones.supportive.hint;
+      }),
+      user: t(($) => {
+        return $.profile.tones.supportive.userSample;
+      }),
+      agent: t(($) => {
+        return $.profile.tones.supportive.agentSample;
+      }),
+    },
+  } satisfies Record<
+    Tone,
+    { label: string; hint: string; user: string; agent: string }
+  >;
 
   const runSaveSettings = () => {
     detach(
@@ -159,7 +216,11 @@ export function ZeroSettingsTab({
           },
           pageSignal,
         );
-        toast.success("Profile saved");
+        toast.success(
+          t(($) => {
+            return $.profile.saved;
+          }),
+        );
       })(),
       Reason.DomCallback,
     );
@@ -179,8 +240,12 @@ export function ZeroSettingsTab({
         <Card className="zero-card overflow-hidden">
           <CardContent className="p-4 sm:p-5">
             <InlineSettingsRow
-              label="Avatar"
-              description="Create your own avatar."
+              label={t(($) => {
+                return $.profile.fields.avatar.label;
+              })}
+              description={t(($) => {
+                return $.profile.fields.avatar.description;
+              })}
               wideControls
             >
               <div className="min-w-0 w-full">
@@ -216,7 +281,11 @@ export function ZeroSettingsTab({
                         },
                         pageSignal,
                       );
-                      toast.success("Profile saved");
+                      toast.success(
+                        t(($) => {
+                          return $.profile.saved;
+                        }),
+                      );
                     }}
                   />
                 </div>
@@ -224,8 +293,12 @@ export function ZeroSettingsTab({
             </InlineSettingsRow>
 
             <InlineSettingsRow
-              label="Name"
-              description="Shown in the team list and when this agent speaks."
+              label={t(($) => {
+                return $.profile.fields.name.label;
+              })}
+              description={t(($) => {
+                return $.profile.fields.name.description;
+              })}
               wideControls
             >
               <div className="min-w-0 w-full">
@@ -238,16 +311,24 @@ export function ZeroSettingsTab({
                       patch: { name: e.target.value },
                     });
                   }}
-                  placeholder="What should we call them?"
+                  placeholder={t(($) => {
+                    return $.profile.fields.name.placeholder;
+                  })}
                   className="h-9 w-full"
-                  aria-label="Name"
+                  aria-label={t(($) => {
+                    return $.profile.fields.name.label;
+                  })}
                 />
               </div>
             </InlineSettingsRow>
 
             <InlineSettingsRow
-              label="Description"
-              description="What this agent helps with—visible to teammates."
+              label={t(($) => {
+                return $.profile.fields.description.label;
+              })}
+              description={t(($) => {
+                return $.profile.fields.description.description;
+              })}
               wideControls
             >
               <div className="min-w-0 w-full">
@@ -260,28 +341,43 @@ export function ZeroSettingsTab({
                       patch: { description: e.target.value },
                     });
                   }}
-                  placeholder="What does this agent do?"
+                  placeholder={t(($) => {
+                    return $.profile.fields.description.placeholder;
+                  })}
                   rows={3}
                   className="w-full rounded-lg border-[0.7px] border-[hsl(var(--gray-400))] bg-input px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground outline-none transition-colors focus:border-primary focus:ring-[3px] focus:ring-primary/10 resize-y min-h-[72px]"
-                  aria-label="Description"
+                  aria-label={t(($) => {
+                    return $.profile.fields.description.label;
+                  })}
                 />
               </div>
             </InlineSettingsRow>
 
             <InlineSettingsRow
-              label="How they sound"
-              description="Voice style for replies. Preview updates when you change tone."
+              label={t(($) => {
+                return $.profile.fields.tone.label;
+              })}
+              description={t(($) => {
+                return $.profile.fields.tone.description;
+              })}
               wideControls
             >
               <div
                 className="min-w-0 w-full flex flex-col gap-3"
                 role="group"
-                aria-label={`How ${resolvedAgentName} sounds`}
+                aria-label={t(
+                  ($) => {
+                    return $.profile.fields.tone.accessibilityLabel;
+                  },
+                  { agentName: resolvedAgentName },
+                )}
               >
                 <div
                   className="grid w-full grid-cols-2 gap-2"
                   role="group"
-                  aria-label="Tone"
+                  aria-label={t(($) => {
+                    return $.profile.fields.tone.groupLabel;
+                  })}
                 >
                   {TONE_OPTIONS.map((opt) => {
                     return (
@@ -301,7 +397,7 @@ export function ZeroSettingsTab({
                             : "zero-chip text-muted-foreground hover:text-foreground",
                         )}
                       >
-                        {toneLabel(opt)}
+                        {toneCopy[opt].label}
                       </button>
                     );
                   })}
@@ -311,18 +407,18 @@ export function ZeroSettingsTab({
                   key={tone}
                 >
                   <p className="text-xs text-muted-foreground italic min-h-[1.25rem] leading-relaxed">
-                    {TONE_HINT[tone]}
+                    {toneCopy[tone].hint}
                   </p>
                   <div className="my-2 border-t border-border/30" />
                   <div className="flex flex-col gap-1.5 pb-1.5">
                     <div className="flex justify-end">
                       <div className="zero-bubble-cool max-w-[85%] rounded-xl px-3 py-2 text-sm leading-relaxed transition-colors duration-200">
-                        {TONE_SAMPLES[tone].user}
+                        {toneCopy[tone].user}
                       </div>
                     </div>
                     <div className="flex justify-start">
                       <div className="zero-chat-bubble-assistant max-w-[85%] rounded-xl px-3 py-2 text-sm text-foreground leading-relaxed transition-colors duration-200">
-                        {TONE_SAMPLES[tone].zero}
+                        {toneCopy[tone].agent}
                       </div>
                     </div>
                   </div>
@@ -331,8 +427,12 @@ export function ZeroSettingsTab({
             </InlineSettingsRow>
             {canEditVisibility && (
               <InlineSettingsRow
-                label="Make public"
-                description="Visible to everyone in this workspace."
+                label={t(($) => {
+                  return $.profile.fields.visibility.label;
+                })}
+                description={t(($) => {
+                  return $.profile.fields.visibility.description;
+                })}
               >
                 <Switch
                   checked={visibility === "public"}
@@ -342,7 +442,9 @@ export function ZeroSettingsTab({
                       patch: { visibility: checked ? "public" : "private" },
                     });
                   }}
-                  aria-label="Make public"
+                  aria-label={t(($) => {
+                    return $.profile.fields.visibility.label;
+                  })}
                 />
               </InlineSettingsRow>
             )}
@@ -365,25 +467,49 @@ export function ZeroSettingsTab({
           onDiscard={handleResetSettings}
           onSave={handleSaveSettings}
           saving={saving}
+          message={t(($) => {
+            return $.unsaved.message;
+          })}
+          discardLabel={t(($) => {
+            return $.actions.discard;
+          })}
+          saveLabel={t(($) => {
+            return $.actions.save;
+          })}
         />
       )}
 
       <Dialog open={demoteConfirmOpen} onOpenChange={setDemoteConfirmOpen}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Make {resolvedAgentName} private?</DialogTitle>
+            <DialogTitle>
+              {t(
+                ($) => {
+                  return $.profile.makePrivate.title;
+                },
+                { agentName: resolvedAgentName },
+              )}
+            </DialogTitle>
             <DialogDescription>
-              While this agent is private, other members lose access to their
-              chat history under it. They regain access if you make it public
-              again.
+              {t(($) => {
+                return $.profile.makePrivate.description;
+              })}
             </DialogDescription>
           </DialogHeader>
           <Alert variant="destructive">
             <IconAlertTriangle size={16} stroke={1.5} />
-            <AlertTitle>Members lose access</AlertTitle>
+            <AlertTitle>
+              {t(($) => {
+                return $.profile.makePrivate.warningTitle;
+              })}
+            </AlertTitle>
             <AlertDescription>
-              Other members will no longer see {resolvedAgentName} or their
-              chats under it.
+              {t(
+                ($) => {
+                  return $.profile.makePrivate.warningDescription;
+                },
+                { agentName: resolvedAgentName },
+              )}
             </AlertDescription>
           </Alert>
           <DialogFooter>
@@ -395,7 +521,9 @@ export function ZeroSettingsTab({
                 setDemoteConfirmOpen(false);
               }}
             >
-              Cancel
+              {t(($) => {
+                return $.actions.cancel;
+              })}
             </Button>
             <Button
               variant="destructive"
@@ -406,7 +534,13 @@ export function ZeroSettingsTab({
                 runSaveSettings();
               }}
             >
-              {saving ? "Saving…" : "Make private"}
+              {saving
+                ? t(($) => {
+                    return $.actions.saving;
+                  })
+                : t(($) => {
+                    return $.profile.makePrivate.confirm;
+                  })}
             </Button>
           </DialogFooter>
         </DialogContent>

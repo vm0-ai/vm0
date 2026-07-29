@@ -1,5 +1,5 @@
 import { fireEvent, screen, waitFor, within } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 
 import {
   click,
@@ -17,8 +17,15 @@ import {
   type TeamComposeItem,
   zeroTeamContract,
 } from "@vm0/api-contracts/contracts/zero-team";
+import { i18n } from "../../../i18n/index.ts";
+import { setLocale$ } from "../../../signals/locale.ts";
 
 const context = testContext();
+
+afterEach(async () => {
+  await i18n.changeLanguage("en-US");
+  document.documentElement.lang = "en-US";
+});
 
 function createDefaultAgent(): TeamComposeItem {
   return {
@@ -70,12 +77,12 @@ function tabByText(text: string): HTMLElement {
   return tab;
 }
 
-function newAgentButton(): HTMLElement {
+function newAgentButton(label = "New agent"): HTMLElement {
   const button = queryAllByRoleFast("button").find((candidate) => {
-    return candidate.textContent?.replace(/\s+/g, " ").trim() === "New agent";
+    return candidate.textContent?.replace(/\s+/g, " ").trim() === label;
   });
   if (!button) {
-    throw new Error("New agent button not found");
+    throw new Error(`${label} button not found`);
   }
   return button;
 }
@@ -94,9 +101,12 @@ async function openCreateDialog(
   return await screen.findByRole("dialog");
 }
 
-function dialogCreateButton(dialog: HTMLElement): HTMLElement {
+function dialogCreateButton(
+  dialog: HTMLElement,
+  label = "Create",
+): HTMLElement {
   const createButton = queryAllByRoleFast("button", dialog).find((button) => {
-    return button.textContent?.trim() === "Create";
+    return button.textContent?.trim() === label;
   });
   if (!createButton) {
     throw new Error("dialog create button not found");
@@ -355,5 +365,125 @@ describe("zero jobs page", () => {
         screen.getByText("Summarize risks with concise bullets."),
       ).toBeInTheDocument();
     });
+  });
+
+  it("localizes agent listing, creation, and management in Brazilian Portuguese", async () => {
+    const researchAgentId = "a0000000-0000-4000-a000-000000000401";
+    let team: TeamComposeItem[] = [
+      createDefaultAgent(),
+      {
+        id: researchAgentId,
+        ownerId: "test-user-123",
+        displayName: "Research Agent",
+        description: "Finds launch risks",
+        sound: "professional",
+        avatarUrl: null,
+        visibility: "public",
+        headVersionId: "version_pt",
+        updatedAt: "2026-03-10T00:00:00Z",
+      },
+    ];
+    mockAgentsPage(team);
+    context.mocks.data.userPreferences({
+      locale: "pt-BR",
+      supportedLocales: ["en-US", "pt-BR"],
+    });
+    await context.store.set(setLocale$, "pt-BR", context.signal);
+    context.mocks.api(zeroTeamContract.list, ({ respond }) => {
+      return respond(200, team);
+    });
+    context.mocks.api(zeroAgentsMainContract.create, ({ body, respond }) => {
+      const agent: TeamComposeItem = {
+        id: "a0000000-0000-4000-a000-000000000402",
+        ownerId: "test-user-123",
+        displayName: body.displayName ?? null,
+        description: null,
+        sound: body.sound ?? null,
+        avatarUrl: body.avatarUrl ?? null,
+        visibility: body.visibility ?? "public",
+        headVersionId: "version_created_pt",
+        updatedAt: "2026-03-10T00:00:00Z",
+      };
+      team = [...team, agent];
+      return respond(201, {
+        agentId: agent.id,
+        ownerId: "test-user-123",
+        description: agent.description,
+        displayName: agent.displayName,
+        sound: agent.sound,
+        avatarUrl: agent.avatarUrl,
+        modelProviderId: null,
+        selectedModel: null,
+        preferPersonalProvider: false,
+        visibility: agent.visibility,
+      });
+    });
+    context.mocks.api(
+      zeroAgentInstructionsContract.update,
+      ({ params, respond }) => {
+        const agent = team.find((item) => {
+          return item.id === params.id;
+        });
+        return respond(200, {
+          agentId: params.id,
+          ownerId: "test-user-123",
+          description: agent?.description ?? null,
+          displayName: agent?.displayName ?? null,
+          sound: agent?.sound ?? null,
+          avatarUrl: agent?.avatarUrl ?? null,
+          modelProviderId: null,
+          selectedModel: null,
+          preferPersonalProvider: false,
+          visibility: agent?.visibility ?? "public",
+        });
+      },
+    );
+    context.mocks.api(zeroAgentInstructionsContract.get, ({ respond }) => {
+      return respond(200, {
+        content: "Summarize risks with concise bullets.",
+        filename: "AGENTS.md",
+      });
+    });
+
+    detachedSetupPage({ context, path: "/agents" });
+
+    await expect(screen.findByText("Agentes")).resolves.toBeInTheDocument();
+    expect(screen.getByText("Research Agent")).toBeInTheDocument();
+    expect(screen.getByText("Finds launch risks")).toBeInTheDocument();
+
+    click(newAgentButton("Novo agente"));
+    const createDialog = await screen.findByRole("dialog", {
+      name: "Criar um novo agente",
+    });
+    await fill(
+      within(createDialog).getByPlaceholderText("Ex.: Assistente de pesquisa"),
+      "Agente de marketing",
+    );
+    click(dialogCreateButton(createDialog, "Criar"));
+
+    await expect(
+      screen.findByText("Agente de marketing"),
+    ).resolves.toBeInTheDocument();
+
+    const researchAgentLink = screen.getByText("Research Agent").closest("a");
+    if (!(researchAgentLink instanceof HTMLElement)) {
+      throw new Error("Research Agent link not found");
+    }
+    click(researchAgentLink);
+
+    await expect(
+      screen.findByLabelText("Conversar com Research Agent"),
+    ).resolves.toBeInTheDocument();
+    expect(tabByText("Autorização")).toBeInTheDocument();
+    click(tabByText("Perfil"));
+    await expect(
+      screen.findByDisplayValue("Finds launch risks"),
+    ).resolves.toBeInTheDocument();
+    expect(screen.getByText("Nome")).toBeInTheDocument();
+
+    click(screen.getByText("Excluir agente"));
+    await expect(
+      screen.findByRole("dialog", { name: "Excluir Research Agent?" }),
+    ).resolves.toBeInTheDocument();
   });
 });

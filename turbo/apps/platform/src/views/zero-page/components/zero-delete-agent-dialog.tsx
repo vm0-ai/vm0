@@ -19,6 +19,7 @@ import {
   SelectValue,
 } from "@vm0/ui";
 import { IconAlertTriangle, IconTrash } from "@tabler/icons-react";
+import { useTranslation } from "react-i18next";
 import { pageSignal$ } from "../../../signals/page-signal.ts";
 import { detach, Reason } from "../../../signals/utils.ts";
 import {
@@ -43,6 +44,8 @@ export interface AgentDeleteCopyTarget {
 const DELETE_WITH_AGENT = "__delete_with_agent__";
 
 function DeleteDangerHeader({ agentName }: { agentName: string }) {
+  const { t } = useTranslation("agents");
+
   return (
     <>
       <DialogHeader className="space-y-0 text-left">
@@ -52,15 +55,25 @@ function DeleteDangerHeader({ agentName }: { agentName: string }) {
             stroke={1.5}
             className="shrink-0 text-destructive"
           />
-          <DialogTitle>Delete {agentName}?</DialogTitle>
+          <DialogTitle>
+            {t(
+              ($) => {
+                return $.delete.title;
+              },
+              { agentName },
+            )}
+          </DialogTitle>
         </div>
         <DialogDescription className="mt-3">
-          Deletes the agent, its workflows, automations, and everyone&apos;s
-          chat history.
+          {t(($) => {
+            return $.delete.description;
+          })}
         </DialogDescription>
       </DialogHeader>
       <p className="mt-3 text-sm font-semibold text-foreground">
-        This can&apos;t be undone.
+        {t(($) => {
+          return $.delete.irreversible;
+        })}
       </p>
     </>
   );
@@ -79,7 +92,18 @@ function DeleteConfirmButton({
   onDelete,
   className,
 }: DeleteConfirmButtonProps) {
-  const label = copying ? "Copying…" : deleting ? "Deleting…" : "Delete agent";
+  const { t } = useTranslation("agents");
+  const label = copying
+    ? t(($) => {
+        return $.actions.copying;
+      })
+    : deleting
+      ? t(($) => {
+          return $.actions.deleting;
+        })
+      : t(($) => {
+          return $.actions.delete;
+        });
   return (
     <Button
       variant="destructive"
@@ -114,6 +138,8 @@ function AgentDeleteReconcileView({
   copyChoices,
   setCopyChoices,
 }: AgentDeleteReconcileViewProps) {
+  const { t } = useTranslation("agents");
+
   return (
     <div className="grid grid-cols-[264px_1fr]">
       <div className="flex flex-col border-r border-[hsl(var(--gray-400))]/40 bg-muted/40 px-6 py-6">
@@ -127,17 +153,23 @@ function AgentDeleteReconcileView({
           />
           <DialogClose asChild>
             <Button variant="outline" size="sm" className="w-full">
-              Cancel
+              {t(($) => {
+                return $.actions.cancel;
+              })}
             </Button>
           </DialogClose>
         </div>
       </div>
       <div className="flex flex-col px-6 py-6">
         <p className="text-sm font-medium text-foreground">
-          Keep any workflows?
+          {t(($) => {
+            return $.delete.workflows.title;
+          })}
         </p>
         <p className="mt-1 text-xs text-muted-foreground">
-          Copy a workflow to another agent to keep it. Anything left is deleted.
+          {t(($) => {
+            return $.delete.workflows.description;
+          })}
         </p>
         <div className="mt-3 flex max-h-[320px] flex-col gap-1 overflow-y-auto">
           {deleteWorkflows.map((workflow) => {
@@ -160,18 +192,30 @@ function AgentDeleteReconcileView({
                 >
                   <SelectTrigger
                     className="w-full"
-                    aria-label={`Handle workflow ${workflow.title}`}
+                    aria-label={t(
+                      ($) => {
+                        return $.delete.workflows.handle;
+                      },
+                      { workflowTitle: workflow.title },
+                    )}
                   >
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value={DELETE_WITH_AGENT}>
-                      Delete with agent
+                      {t(($) => {
+                        return $.delete.workflows.deleteWithAgent;
+                      })}
                     </SelectItem>
                     {deleteCopyTargets.map((target) => {
                       return (
                         <SelectItem key={target.id} value={target.id}>
-                          Copy to {target.displayName ?? target.id}
+                          {t(
+                            ($) => {
+                              return $.delete.workflows.copyTo;
+                            },
+                            { agentName: target.displayName ?? target.id },
+                          )}
                         </SelectItem>
                       );
                     })}
@@ -199,13 +243,17 @@ function AgentDeleteSimpleView({
   copying,
   onDelete,
 }: AgentDeleteSimpleViewProps) {
+  const { t } = useTranslation("agents");
+
   return (
     <div className="flex flex-col px-6 py-6">
       <DeleteDangerHeader agentName={agentName} />
       <DialogFooter className="mt-6">
         <DialogClose asChild>
           <Button variant="outline" size="sm">
-            Cancel
+            {t(($) => {
+              return $.actions.cancel;
+            })}
           </Button>
         </DialogClose>
         <DeleteConfirmButton
@@ -241,6 +289,7 @@ export function AgentDeleteDialog({
   deleteCopyTargets = [],
   onCopyWorkflowBeforeDelete,
 }: AgentDeleteDialogProps) {
+  const { t } = useTranslation("agents");
   const pageSignal = useGet(pageSignal$);
 
   const [deleteLoadable, deleteAgentFn] = useLoadableSet(deleteAgent$);
@@ -292,10 +341,15 @@ export function AgentDeleteDialog({
       <CardContent className="p-4 sm:p-5">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between sm:gap-6">
           <div className="min-w-0 sm:max-w-[46%]">
-            <h3 className="text-sm font-medium text-foreground">Danger zone</h3>
+            <h3 className="text-sm font-medium text-foreground">
+              {t(($) => {
+                return $.delete.dangerZone;
+              })}
+            </h3>
             <p className="text-xs text-muted-foreground mt-1 leading-snug">
-              Permanently remove this agent and all its data. This action cannot
-              be undone.
+              {t(($) => {
+                return $.delete.dangerZoneDescription;
+              })}
             </p>
           </div>
           <div className="flex w-full shrink-0 justify-end sm:w-auto">
@@ -307,7 +361,9 @@ export function AgentDeleteDialog({
                   className="h-9 gap-2 rounded-lg border-destructive/40 px-4 text-destructive hover:bg-destructive/10 hover:text-destructive"
                 >
                   <IconTrash size={14} stroke={1.5} />
-                  Delete agent
+                  {t(($) => {
+                    return $.actions.delete;
+                  })}
                 </Button>
               </DialogTrigger>
               <DialogContent className="max-w-3xl gap-0 overflow-hidden p-0">
