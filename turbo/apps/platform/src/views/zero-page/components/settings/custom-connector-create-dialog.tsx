@@ -921,12 +921,30 @@ function CustomConnectorForm({
   );
 }
 
+function CustomConnectorDialogTitle({
+  editing,
+}: {
+  readonly editing: boolean;
+}) {
+  const { t } = useTranslation();
+  return (
+    <DialogTitle>
+      {editing
+        ? t(($) => {
+            return $.connectors.custom.edit.title;
+          })
+        : t(($) => {
+            return $.connectors.custom.create.title;
+          })}
+    </DialogTitle>
+  );
+}
+
 export function CustomConnectorCreateDialog({
   connector,
 }: {
   readonly connector?: CustomConnectorResponse;
 }) {
-  const { t } = useTranslation();
   const form = useGet(customConnectorCreateForm$);
   const featureSwitches = useGet(featureSwitch$);
   const oauth2Enabled =
@@ -1022,15 +1040,7 @@ export function CustomConnectorCreateDialog({
           aria-describedby={undefined}
         >
           <DialogHeader>
-            <DialogTitle>
-              {editing
-                ? t(($) => {
-                    return $.connectors.custom.edit.title;
-                  })
-                : t(($) => {
-                    return $.connectors.custom.create.title;
-                  })}
-            </DialogTitle>
+            <CustomConnectorDialogTitle editing={editing} />
           </DialogHeader>
           <CustomConnectorForm
             form={form}

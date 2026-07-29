@@ -73,13 +73,16 @@ function ApiSecretField({
   readonly value: string;
   readonly setValue: (value: string) => void;
 }) {
+  const { t } = useTranslation();
   return (
     <div className="flex flex-col gap-2">
       <label
         htmlFor="cc-connect-secret"
         className="text-sm font-medium text-foreground"
       >
-        Secret
+        {t(($) => {
+          return $.connectors.custom.connect.secret;
+        })}
       </label>
       <Input
         id="cc-connect-secret"

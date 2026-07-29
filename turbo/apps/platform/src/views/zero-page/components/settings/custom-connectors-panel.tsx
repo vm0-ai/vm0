@@ -113,22 +113,19 @@ interface CustomConnectorRowProps {
   readonly onDelete: () => void;
 }
 
-function CustomConnectorRow({
+function CustomConnectorCardContent({
   connector,
   authorizedAgents,
   authorizedAgentsLoading,
-  isAdmin,
-  onConnect,
-  onDisconnect,
-  onEdit,
-  onRename,
-  fullEditingEnabled,
-  onDelete,
-}: CustomConnectorRowProps) {
+  hasActions,
+}: {
+  readonly connector: CustomConnectorResponse;
+  readonly authorizedAgents: readonly TeamComposeItem[];
+  readonly authorizedAgentsLoading: boolean;
+  readonly hasActions: boolean;
+}) {
   const { t } = useTranslation();
-  const hasActions = connector.connected || isAdmin;
-  const directOAuth = connectsDirectlyWithOAuth(connector, fullEditingEnabled);
-  const cardContent = (
+  return (
     <>
       <div className="flex h-14 items-center gap-2.5 px-5">
         <CustomConnectorIcon
@@ -171,6 +168,31 @@ function CustomConnectorRow({
         )}
       </div>
     </>
+  );
+}
+
+function CustomConnectorRow({
+  connector,
+  authorizedAgents,
+  authorizedAgentsLoading,
+  isAdmin,
+  onConnect,
+  onDisconnect,
+  onEdit,
+  onRename,
+  fullEditingEnabled,
+  onDelete,
+}: CustomConnectorRowProps) {
+  const { t } = useTranslation();
+  const hasActions = connector.connected || isAdmin;
+  const directOAuth = connectsDirectlyWithOAuth(connector, fullEditingEnabled);
+  const cardContent = (
+    <CustomConnectorCardContent
+      connector={connector}
+      authorizedAgents={authorizedAgents}
+      authorizedAgentsLoading={authorizedAgentsLoading}
+      hasActions={hasActions}
+    />
   );
 
   return (
