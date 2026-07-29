@@ -1,5 +1,36 @@
 # Changelog
 
+## [1.342.0](https://github.com/vm0-ai/vm0/compare/api-v1.341.0...api-v1.342.0) (2026-07-29)
+
+
+### Features
+
+* **api:** admit morning briefs through the chat thread queue ([#23713](https://github.com/vm0-ai/vm0/issues/23713)) ([f7fe7aa](https://github.com/vm0-ai/vm0/commit/f7fe7aa84358e363b8042cd6ea85dafccd132046))
+* **chat:** admit goal continuation through the thread queue ([#23714](https://github.com/vm0-ai/vm0/issues/23714)) ([5913886](https://github.com/vm0-ai/vm0/commit/591388645ddd0614c9a80c1942c59f4e05255b8e))
+* **zero:** enable zero finance for all users ([#23701](https://github.com/vm0-ai/vm0/issues/23701)) ([e2aac84](https://github.com/vm0-ai/vm0/commit/e2aac848b5e88debc8f729e1899210e742183fb0))
+
+
+### Bug Fixes
+
+* **goals:** harden queued goal rejection ([#23740](https://github.com/vm0-ai/vm0/issues/23740)) ([4728a57](https://github.com/vm0-ai/vm0/commit/4728a579e20772b4fee8230fc038b0179b32231f))
+
+
+### Refactoring
+
+* **api:** replace redundant sql column wrappers ([#23719](https://github.com/vm0-ai/vm0/issues/23719)) ([cb8356b](https://github.com/vm0-ai/vm0/commit/cb8356be5cb15bc3d79a8715fb5327ddd0e2f133))
+* **connectors:** adopt slug terminology internally ([#23697](https://github.com/vm0-ai/vm0/issues/23697)) ([ffa2a39](https://github.com/vm0-ai/vm0/commit/ffa2a39c3624c85ceed4d3b6bed32bc652ed4feb))
+* **teams:** retire legacy thread session continuity ([#23720](https://github.com/vm0-ai/vm0/issues/23720)) ([c6341a4](https://github.com/vm0-ai/vm0/commit/c6341a4eaaadc3167314955471f524cfac300e73))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.244.0
+    * @vm0/connectors bumped to 1.201.1
+    * @vm0/core bumped to 8.485.0
+    * @vm0/db bumped to 1.151.0
+
 ## [1.341.0](https://github.com/vm0-ai/vm0/compare/api-v1.340.4...api-v1.341.0) (2026-07-29)
 
 

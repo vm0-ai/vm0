@@ -1,5 +1,21 @@
 # Changelog
 
+## [9.264.8](https://github.com/vm0-ai/vm0/compare/cli-v9.264.7...cli-v9.264.8) (2026-07-29)
+
+
+### Refactoring
+
+* **connectors:** adopt slug terminology internally ([#23697](https://github.com/vm0-ai/vm0/issues/23697)) ([ffa2a39](https://github.com/vm0-ai/vm0/commit/ffa2a39c3624c85ceed4d3b6bed32bc652ed4feb))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/api-contracts bumped to 1.244.0
+    * @vm0/connectors bumped to 1.201.1
+    * @vm0/core bumped to 8.485.0
+
 ## [9.264.7](https://github.com/vm0-ai/vm0/compare/cli-v9.264.6...cli-v9.264.7) (2026-07-29)
 
 
