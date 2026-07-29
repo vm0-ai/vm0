@@ -210,12 +210,12 @@ describe("personal usage settings", () => {
         screen.getAllByText("People Search").some((element) => {
           return element.parentElement?.textContent === "People Search80";
         }),
-      ).toBe(true);
+      ).toBeTruthy();
       expect(
         screen.getAllByText("Web Search").some((element) => {
           return element.parentElement?.textContent === "Web Search120";
         }),
-      ).toBe(true);
+      ).toBeTruthy();
       expect(screen.getAllByText("Finance").length).toBeGreaterThanOrEqual(1);
       expect(screen.getAllByText("Weather").length).toBeGreaterThanOrEqual(1);
       expect(screen.queryByText("Firecrawl")).not.toBeInTheDocument();
