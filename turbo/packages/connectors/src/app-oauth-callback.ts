@@ -3,13 +3,8 @@ export const CONNECTOR_APP_OAUTH_CALLBACK_METADATA_STORAGE_KEY =
   "vm0.connector.appOauthCallbackMetadata";
 
 const LEGACY_CALLBACK_CONNECTOR_REFS: ReadonlySet<string> = new Set([
-  "airtable",
-  "asana",
   "cloudflare",
-  "gumroad",
-  "monday",
   "slack",
-  "todoist",
   "xero",
 ]);
 
