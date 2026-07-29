@@ -311,7 +311,9 @@ async function selectModelRankings(
           inArray(modelStat.model, modelStatsModelIds),
         ),
       )
-      .groupBy(sql`1`),
+      .groupBy(({ model }) => {
+        return model;
+      }),
   );
 
   const rows: ModelRankingRow[] = await db

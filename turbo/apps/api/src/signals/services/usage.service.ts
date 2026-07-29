@@ -78,7 +78,9 @@ async function queryAgentRunsDaily(
         isNotNull(agentRuns.completedAt),
       ),
     )
-    .groupBy(sql`DATE(${agentRuns.createdAt})`);
+    .groupBy(({ date }) => {
+      return date;
+    });
 
   return rows;
 }

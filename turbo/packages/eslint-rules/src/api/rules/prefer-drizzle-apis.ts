@@ -30,9 +30,11 @@ import {
 
 import {
   getDrizzleColumnMetadata,
+  getDrizzleTableMetadataForRead,
   isDrizzleDeclaration,
   isDrizzlePgCoreDeclaration,
   isDrizzleSqlTag,
+  isDrizzleSqlType,
   isDrizzleSymbol,
   isNamedDrizzleSignature,
   resolvedSymbol,
@@ -111,6 +113,17 @@ const STRUCTURED_RESULT_ARGUMENT = new Map<string, number>([
 
 const RELATIONAL_QUERY_METHODS = new Set(["findFirst", "findMany"]);
 
+// PostgreSQL resolves these implicit input columns before an identically named
+// output alias in GROUP BY, but Drizzle table metadata does not list them.
+const POSTGRES_SYSTEM_COLUMN_NAMES = new Set([
+  "cmax",
+  "cmin",
+  "ctid",
+  "tableoid",
+  "xmax",
+  "xmin",
+]);
+
 // This lint models the conventional, type-correct Drizzle patterns used in this
 // repository. It assumes bindings remain unchanged after creation and uses the
 // project's default identifier casing. Unusual TypeScript or runtime
@@ -151,6 +164,8 @@ export const preferDrizzleApis = createRule({
         "Use a Drizzle select builder for this complete schema-backed query.",
       scalarCteQueryBuilder:
         "Use Drizzle $with(...), select(), and joins for this complete scalar CTE projection.",
+      selectedGrouping:
+        "Group by the selected Drizzle field instead of repeating its SQL expression or positional ordinal.",
       structuredScalarQuery:
         "Use a Drizzle select builder for this complete raw scalar query.",
       typedApi: "Use Drizzle {{helper}}(...) for this equivalent SQL-tag leaf.",
@@ -930,6 +945,342 @@ export const preferDrizzleApis = createRule({
         leftMetadata.tableName === rightMetadata.tableName &&
         context.sourceCode.getText(left) === context.sourceCode.getText(right)
       );
+    }
+
+    function callReceiver(
+      node: TSESTree.CallExpression,
+    ): TSESTree.Expression | undefined {
+      if (
+        node.callee.type !== AST_NODE_TYPES.MemberExpression ||
+        node.callee.object.type === AST_NODE_TYPES.Super
+      ) {
+        return undefined;
+      }
+      return node.callee.object;
+    }
+
+    function directDrizzleCall(
+      node: TSESTree.Expression,
+      method: string,
+    ): TSESTree.CallExpression | undefined {
+      return node.type === AST_NODE_TYPES.CallExpression &&
+        node.callee.type === AST_NODE_TYPES.MemberExpression &&
+        memberName(node.callee) === method &&
+        isDrizzleMethodCall(node, method)
+        ? node
+        : undefined;
+    }
+
+    function singleCallArgument(
+      node: TSESTree.CallExpression,
+    ): TSESTree.Expression | undefined {
+      const argument = node.arguments[0];
+      return node.arguments.length === 1 &&
+        argument !== undefined &&
+        argument.type !== AST_NODE_TYPES.SpreadElement
+        ? argument
+        : undefined;
+    }
+
+    interface DirectGroupingQuery {
+      readonly selection: TSESTree.ObjectExpression;
+      readonly source: TSESTree.Expression;
+    }
+
+    function directGroupingQuery(
+      node: TSESTree.CallExpression,
+    ): DirectGroupingQuery | undefined {
+      let previous = callReceiver(node);
+      if (previous === undefined) {
+        return undefined;
+      }
+
+      if (
+        previous.type === AST_NODE_TYPES.CallExpression &&
+        previous.callee.type === AST_NODE_TYPES.MemberExpression &&
+        memberName(previous.callee) === "where"
+      ) {
+        const where = directDrizzleCall(previous, "where");
+        if (
+          where === undefined ||
+          singleCallArgument(where) === undefined ||
+          callReceiver(where) === undefined
+        ) {
+          return undefined;
+        }
+        previous = callReceiver(where);
+        if (previous === undefined) {
+          return undefined;
+        }
+      }
+
+      const from = directDrizzleCall(previous, "from");
+      const source = from === undefined ? undefined : singleCallArgument(from);
+      const beforeFrom = from === undefined ? undefined : callReceiver(from);
+      if (source === undefined || beforeFrom === undefined) {
+        return undefined;
+      }
+
+      const select = directDrizzleCall(beforeFrom, "select");
+      const selection =
+        select === undefined ? undefined : singleCallArgument(select);
+      const database = select === undefined ? undefined : callReceiver(select);
+      return selection?.type === AST_NODE_TYPES.ObjectExpression &&
+        database?.type === AST_NODE_TYPES.Identifier
+        ? { selection, source }
+        : undefined;
+    }
+
+    interface AliasedSelectedSql {
+      readonly alias: string;
+      readonly source: TSESTree.Expression;
+    }
+
+    function directAliasedSelectedSql(
+      property: TSESTree.Property,
+    ): AliasedSelectedSql | undefined {
+      const value = property.value;
+      if (
+        value.type !== AST_NODE_TYPES.CallExpression ||
+        value.callee.type !== AST_NODE_TYPES.MemberExpression ||
+        memberName(value.callee) !== "as" ||
+        !isDrizzleMethodCall(value, "as")
+      ) {
+        return undefined;
+      }
+      const alias = singleCallArgument(value);
+      const aliasedSource = callReceiver(value);
+      if (
+        alias?.type !== AST_NODE_TYPES.Literal ||
+        typeof alias.value !== "string" ||
+        alias.value === "" ||
+        aliasedSource === undefined
+      ) {
+        return undefined;
+      }
+      const tsAliasedSource = services.esTreeNodeToTSNodeMap.get(aliasedSource);
+      if (
+        !isDrizzleSqlType(
+          checker,
+          checker.getTypeAtLocation(tsAliasedSource),
+          tsAliasedSource,
+        )
+      ) {
+        return undefined;
+      }
+
+      const mapWith = directDrizzleCall(aliasedSource, "mapWith");
+      const source =
+        mapWith !== undefined && singleCallArgument(mapWith) !== undefined
+          ? callReceiver(mapWith)
+          : aliasedSource;
+      return source === undefined ? undefined : { alias: alias.value, source };
+    }
+
+    interface DirectSelectionField {
+      readonly aliasedSql: AliasedSelectedSql | undefined;
+      readonly outputName: string;
+    }
+
+    function directSelectionFields(
+      node: TSESTree.ObjectExpression,
+    ): readonly DirectSelectionField[] | undefined {
+      const fields: DirectSelectionField[] = [];
+      for (const property of node.properties) {
+        if (
+          property.type !== AST_NODE_TYPES.Property ||
+          property.kind !== "init" ||
+          property.computed ||
+          property.method ||
+          property.shorthand ||
+          property.key.type !== AST_NODE_TYPES.Identifier
+        ) {
+          return undefined;
+        }
+
+        const aliasedSql = directAliasedSelectedSql(property);
+        if (aliasedSql !== undefined) {
+          fields.push({
+            aliasedSql,
+            outputName: aliasedSql.alias,
+          });
+          continue;
+        }
+
+        const value = property.value;
+        if (
+          value.type !== AST_NODE_TYPES.Identifier &&
+          value.type !== AST_NODE_TYPES.MemberExpression
+        ) {
+          return undefined;
+        }
+        const metadata = columnMetadata(value);
+        if (!isConventionalColumnExpression(value) || metadata === undefined) {
+          return undefined;
+        }
+        fields.push({
+          aliasedSql: undefined,
+          outputName: metadata.databaseName,
+        });
+      }
+      return fields;
+    }
+
+    function conventionalColumnSymbol(
+      node: TSESTree.Expression,
+    ): TypeScriptSymbol | undefined {
+      if (!isConventionalColumnExpression(node)) {
+        return undefined;
+      }
+      const tsNode = services.esTreeNodeToTSNodeMap.get(node);
+      const location = isPropertyAccessExpression(tsNode)
+        ? tsNode.name
+        : isIdentifier(tsNode)
+          ? tsNode
+          : undefined;
+      return location === undefined
+        ? undefined
+        : resolvedSymbol(checker, checker.getSymbolAtLocation(location));
+    }
+
+    function isSameGroupingColumn(
+      left: TSESTree.Expression,
+      right: TSESTree.Expression,
+    ): boolean {
+      const leftMetadata = columnMetadata(left);
+      const rightMetadata = columnMetadata(right);
+      const leftSymbol = conventionalColumnSymbol(left);
+      return (
+        leftMetadata !== undefined &&
+        rightMetadata !== undefined &&
+        leftSymbol !== undefined &&
+        leftSymbol === conventionalColumnSymbol(right) &&
+        leftMetadata.databaseName === rightMetadata.databaseName &&
+        leftMetadata.tableName === rightMetadata.tableName
+      );
+    }
+
+    function templateElementText(node: TSESTree.TemplateElement): string {
+      return node.value.cooked ?? node.value.raw;
+    }
+
+    function selectedGroupingOrdinal(
+      node: TSESTree.TaggedTemplateExpression,
+    ): number | undefined {
+      const quasi = node.quasi.quasis[0];
+      if (
+        node.quasi.expressions.length !== 0 ||
+        node.quasi.quasis.length !== 1 ||
+        quasi === undefined
+      ) {
+        return undefined;
+      }
+      const text = templateElementText(quasi).trim();
+      if (!/^[1-9]\d*$/u.test(text)) {
+        return undefined;
+      }
+      const ordinal = Number(text);
+      return Number.isSafeInteger(ordinal) ? ordinal : undefined;
+    }
+
+    function isSameDirectSqlTemplate(
+      left: TSESTree.TaggedTemplateExpression,
+      right: TSESTree.Expression,
+    ): boolean {
+      if (
+        right.type !== AST_NODE_TYPES.TaggedTemplateExpression ||
+        left.quasi.expressions.length === 0 ||
+        left.quasi.expressions.length !== right.quasi.expressions.length ||
+        left.quasi.quasis.length !== right.quasi.quasis.length ||
+        !isDrizzleSqlTag(checker, services, left.tag) ||
+        !isDrizzleSqlTag(checker, services, right.tag)
+      ) {
+        return false;
+      }
+      return (
+        left.quasi.quasis.every((quasi, index) => {
+          const compared = right.quasi.quasis[index];
+          return (
+            compared !== undefined &&
+            templateElementText(quasi) === templateElementText(compared)
+          );
+        }) &&
+        left.quasi.expressions.every((expression, index) => {
+          const compared = right.quasi.expressions[index];
+          return (
+            compared !== undefined && isSameGroupingColumn(expression, compared)
+          );
+        })
+      );
+    }
+
+    function inspectSelectedFieldGroupingCall(
+      node: TSESTree.CallExpression,
+    ): void {
+      if (
+        node.callee.type !== AST_NODE_TYPES.MemberExpression ||
+        memberName(node.callee) !== "groupBy" ||
+        node.arguments.length !== 1
+      ) {
+        return;
+      }
+      const grouping = node.arguments[0];
+      if (grouping?.type !== AST_NODE_TYPES.TaggedTemplateExpression) {
+        return;
+      }
+
+      structuralCallInspections.push(() => {
+        if (
+          !isDrizzleMethodCall(node, "groupBy") ||
+          !isDrizzleSqlTag(checker, services, grouping.tag)
+        ) {
+          return;
+        }
+        const query = directGroupingQuery(node);
+        const fields =
+          query === undefined
+            ? undefined
+            : directSelectionFields(query.selection);
+        if (query === undefined || fields === undefined) {
+          return;
+        }
+        const tsSource = services.esTreeNodeToTSNodeMap.get(query.source);
+        const sourceMetadata = getDrizzleTableMetadataForRead(
+          checker,
+          tsSource,
+        );
+        if (sourceMetadata === undefined) {
+          return;
+        }
+
+        const ordinal = selectedGroupingOrdinal(grouping);
+        const ordinalField =
+          ordinal === undefined ? undefined : fields[ordinal - 1];
+        const matchingFields =
+          ordinal === undefined
+            ? fields.filter((field) => {
+                return (
+                  field.aliasedSql !== undefined &&
+                  isSameDirectSqlTemplate(grouping, field.aliasedSql.source)
+                );
+              })
+            : [];
+        const selectedField =
+          ordinalField ??
+          (matchingFields.length === 1 ? matchingFields[0] : undefined);
+        const alias = selectedField?.aliasedSql?.alias;
+        if (
+          alias === undefined ||
+          sourceMetadata.columns.has(alias) ||
+          POSTGRES_SYSTEM_COLUMN_NAMES.has(alias) ||
+          fields.filter((field) => {
+            return field.outputName === alias;
+          }).length !== 1
+        ) {
+          return;
+        }
+        context.report({ node: grouping, messageId: "selectedGrouping" });
+      });
     }
 
     function unwrapDirectColumnResult(node: TSESTree.Expression): {
@@ -1811,6 +2162,7 @@ export const preferDrizzleApis = createRule({
       CallExpression(node: TSESTree.CallExpression): void {
         inspectRawQueryCall(node);
         inspectPredicateCall(node);
+        inspectSelectedFieldGroupingCall(node);
         inspectAdditionalContextCall(node);
         inspectConflictUpdateCall(node);
         inspectLateralJoin(node);
