@@ -25,8 +25,6 @@ import {
   clearPendingLogo$,
   profileName$,
   setProfileName$,
-  profileSlug$,
-  setProfileSlug$,
   profileLogoUrl$,
   pendingLogoFile$,
   pendingLogoPreview$,
@@ -62,9 +60,6 @@ function ProfileSection({
   const name = useGet(profileName$);
   const setName = useSet(setProfileName$);
 
-  const slug = useGet(profileSlug$);
-  const setSlug = useSet(setProfileSlug$);
-
   const [saveLoadable, saveProfile] = useLoadableSet(saveOrgProfile$);
   const saving = saveLoadable.state === "loading";
 
@@ -84,8 +79,7 @@ function ProfileSection({
   const setLogoLoaded = useSet(setLogoLoaded$);
   const loadOrgLogo = useSet(loadOrgLogo$);
   const hasNameChange = name !== (org.name ?? "");
-  const hasSlugChange = slug !== (org.slug ?? "");
-  const hasChanges = hasNameChange || hasSlugChange || !!pendingLogoFile;
+  const hasChanges = hasNameChange || !!pendingLogoFile;
 
   const handleFileSelect = async (file: File) => {
     if (!modalSignal) {
@@ -137,7 +131,6 @@ function ProfileSection({
 
   const handleDiscard = () => {
     setName(org.name ?? "");
-    setSlug(org.slug ?? "");
     clearPendingLogo();
   };
 
@@ -148,7 +141,6 @@ function ProfileSection({
     await saveProfile(
       {
         name,
-        slug,
         logoFile: pendingLogoFile,
       },
       modalSignal,
@@ -274,39 +266,6 @@ function ProfileSection({
           ) : (
             <span className="text-sm text-foreground shrink-0">
               {org.name ?? ""}
-            </span>
-          )}
-        </div>
-        <div className="h-0 zero-border-t mx-5" />
-        {/* Slug row */}
-        <div className="flex items-center justify-between gap-4 px-5 py-4">
-          <div className="min-w-0">
-            <p className="text-sm font-medium text-foreground">
-              {t(($) => {
-                return $.settings.workspace.profile.slug.title;
-              })}
-            </p>
-            <p className="text-[13px] text-muted-foreground mt-0.5">
-              {t(($) => {
-                return $.settings.workspace.profile.slug.description;
-              })}
-            </p>
-          </div>
-          {isAdmin ? (
-            <Input
-              id="org-slug"
-              value={slug}
-              onChange={(e) => {
-                return setSlug(e.target.value);
-              }}
-              placeholder={t(($) => {
-                return $.settings.workspace.profile.slug.placeholder;
-              })}
-              className="w-[220px] shrink-0"
-            />
-          ) : (
-            <span className="text-sm text-foreground shrink-0">
-              {org.slug ?? ""}
             </span>
           )}
         </div>
@@ -605,15 +564,6 @@ function GeneralTabSkeleton() {
             <div className="min-w-0">
               <div className="h-4 w-10 rounded bg-muted/50 animate-pulse" />
               <div className="h-3 w-40 rounded bg-muted/30 animate-pulse mt-1.5" />
-            </div>
-            <div className="h-9 w-[220px] shrink-0 rounded-lg bg-muted/30 animate-pulse" />
-          </div>
-          <div className="h-0 zero-border-t mx-5" />
-          {/* Slug row */}
-          <div className="flex items-center justify-between gap-4 px-5 py-4">
-            <div className="min-w-0">
-              <div className="h-4 w-8 rounded bg-muted/50 animate-pulse" />
-              <div className="h-3 w-52 rounded bg-muted/30 animate-pulse mt-1.5" />
             </div>
             <div className="h-9 w-[220px] shrink-0 rounded-lg bg-muted/30 animate-pulse" />
           </div>
