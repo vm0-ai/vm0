@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
+import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 
 import {
   generateZeroToken,
@@ -13,9 +13,18 @@ import {
   verifyZeroToken,
 } from "../tokens";
 import { now } from "../../external/time";
+import { safeJsonParse } from "../../utils";
 
 function currentSecond(): number {
   return Math.floor(now() / 1000);
+}
+
+function decodeZeroTokenPayloadForTest(token: string): unknown {
+  const payload = token.slice("vm0_sandbox_".length).split(".")[1];
+  if (!payload) {
+    throw new Error("Expected a signed Zero token payload");
+  }
+  return safeJsonParse(Buffer.from(payload, "base64url").toString());
 }
 
 describe("auth tokens", () => {
@@ -125,21 +134,10 @@ describe("auth tokens", () => {
     expect(verifyZeroToken(token)?.capabilities).toContain("maps:read");
   });
 
-  it("gates the default-on weather capability behind its feature switch", () => {
-    const defaultToken = generateZeroToken("user_zero", "run_zero", "org_zero");
-    const disabledToken = generateZeroToken(
-      "user_zero",
-      "run_zero",
-      "org_zero",
-      { [FeatureSwitchKey.ZeroWeather]: false },
-    );
+  it("includes weather capability in zero-scoped tokens", () => {
+    const token = generateZeroToken("user_zero", "run_zero", "org_zero");
 
-    expect(verifyZeroToken(defaultToken)?.capabilities).toContain(
-      "weather:read",
-    );
-    expect(verifyZeroToken(disabledToken)?.capabilities).not.toContain(
-      "weather:read",
-    );
+    expect(verifyZeroToken(token)?.capabilities).toContain("weather:read");
   });
 
   it("includes chat thread read and write capabilities in zero-scoped tokens", () => {
@@ -195,27 +193,58 @@ describe("auth tokens", () => {
     );
   });
 
-  it("gates people-search capability behind its staff rollout switch", () => {
-    const defaultToken = generateZeroToken(
-      "user_zero",
-      "run_zero",
-      "org_nonexistent",
-    );
-    const staffToken = generateZeroToken(
-      "user_zero",
-      "run_zero",
-      "org_3ANttyrbWYJk6JKRSTRLEsbsDLe",
-    );
+  it("includes people-search capability in zero-scoped tokens", () => {
+    const token = generateZeroToken("user_zero", "run_zero", "org_zero");
 
-    expect(verifyZeroToken(defaultToken)?.capabilities).not.toContain(
-      "people-search:read",
-    );
-    expect(verifyZeroToken(staffToken)?.capabilities).toContain(
+    expect(verifyZeroToken(token)?.capabilities).toContain(
       "people-search:read",
     );
   });
 
-  it("grants goal capabilities by default", () => {
+  it("gates browser capabilities on both the rollout and thread access", () => {
+    const defaultToken = generateZeroToken(
+      "user_zero",
+      "run_zero",
+      "org_3ANttyrbWYJk6JKRSTRLEsbsDLe",
+    );
+    const enabledToken = generateZeroToken(
+      "user_zero",
+      "run_zero",
+      "org_3ANttyrbWYJk6JKRSTRLEsbsDLe",
+      undefined,
+      { cloudBrowserEnabled: true },
+    );
+    const disabledToken = generateZeroToken(
+      "user_zero",
+      "run_zero",
+      "org_3ANttyrbWYJk6JKRSTRLEsbsDLe",
+      { [FeatureSwitchKey.ZeroBrowser]: false },
+      { cloudBrowserEnabled: true },
+    );
+
+    for (const token of [defaultToken, disabledToken]) {
+      expect(verifyZeroToken(token)?.capabilities).not.toContain(
+        "browser:read",
+      );
+      expect(verifyZeroToken(token)?.capabilities).not.toContain(
+        "browser:write",
+      );
+    }
+    expect(verifyZeroToken(enabledToken)).toMatchObject({
+      cloudBrowserEnabled: true,
+      capabilities: expect.arrayContaining(["browser:read", "browser:write"]),
+    });
+    expect(decodeZeroTokenPayloadForTest(disabledToken)).not.toHaveProperty(
+      "cloudBrowserEnabled",
+    );
+    expect(decodeZeroTokenPayloadForTest(disabledToken)).toMatchObject({
+      featureSwitchOverrides: {
+        [FeatureSwitchKey.ZeroBrowser]: false,
+      },
+    });
+  });
+
+  it("grants all goal capabilities", () => {
     const defaultToken = generateZeroToken("user_zero", "run_zero", "org_zero");
 
     expect(verifyZeroToken(defaultToken)?.capabilities).toContain("goal:read");
@@ -224,36 +253,6 @@ describe("auth tokens", () => {
     );
     expect(verifyZeroToken(defaultToken)?.capabilities).toContain(
       "goal:user-control:write",
-    );
-  });
-
-  it("excludes user-control goal writes for workflow-event runs but keeps agent result writes", () => {
-    const userDrivenToken = generateZeroToken(
-      "user_zero",
-      "run_zero",
-      "org_zero",
-      {},
-      { triggerSource: "web" },
-    );
-    const continuationToken = generateZeroToken(
-      "user_zero",
-      "run_zero",
-      "org_zero",
-      {},
-      { triggerSource: "workflow-event" },
-    );
-
-    expect(verifyZeroToken(userDrivenToken)?.capabilities).toContain(
-      "goal:user-control:write",
-    );
-    expect(verifyZeroToken(continuationToken)?.capabilities).not.toContain(
-      "goal:user-control:write",
-    );
-    expect(verifyZeroToken(continuationToken)?.capabilities).toContain(
-      "goal:read",
-    );
-    expect(verifyZeroToken(continuationToken)?.capabilities).toContain(
-      "goal:agent-result:write",
     );
   });
 

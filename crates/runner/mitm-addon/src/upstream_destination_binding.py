@@ -27,16 +27,20 @@ from url_utils import normalize_trusted_hostname
 # endpoint matching details and are intentionally not exported.
 __all__ = (
     "BindingKind",
+    "NormalizedUpstreamDestination",
     "UpstreamDestinationBinding",
     "add_server_binding_kind_if_matching",
     "binding_snapshot_for_tests",
     "bound_destination_endpoint_for_flow",
     "diagnostic_snapshot_for_flow",
     "flow_matches_bound_destination",
+    "flow_matches_direct_bound_destination",
+    "flow_matches_normalized_destination",
     "forget_client_bindings",
     "forget_server_binding",
     "has_server_binding",
-    "record_server_binding",
+    "normalize_upstream_destination",
+    "record_normalized_server_binding",
     "refresh_server_binding_connected_address_if_matching",
     "reset_for_tests",
     "reuse_server_binding_kind_if_matching",
@@ -46,6 +50,14 @@ __all__ = (
 # `api_allow` authorizes VM0 API traffic. `connector_auth` authorizes ordinary
 # upstream credential injection for connector firewalls.
 BindingKind = Literal["api_allow", "connector_auth"]
+
+
+@dataclass(frozen=True)
+class NormalizedUpstreamDestination:
+    """Normalized authority text, not proof about a live upstream endpoint."""
+
+    host: str
+    port: int
 
 
 @dataclass(frozen=True)
@@ -67,6 +79,18 @@ class UpstreamDestinationBinding:
 _bindings_by_server_id: dict[str, UpstreamDestinationBinding] = {}
 _server_ids_by_client_id: dict[str, set[str]] = {}
 _client_id_by_server_id: dict[str, str] = {}
+
+
+def normalize_upstream_destination(
+    *,
+    host: str,
+    port: int,
+) -> NormalizedUpstreamDestination:
+    """Normalize raw authority text for target-aware binding operations."""
+    return NormalizedUpstreamDestination(
+        host=normalize_trusted_hostname(host),
+        port=port,
+    )
 
 
 def _connection_id(connection: object) -> str | None:
@@ -122,22 +146,21 @@ def _associate_server_with_client(server_id: str, client: object | None) -> None
     _server_ids_by_client_id.setdefault(client_id, set()).add(server_id)
 
 
-def record_server_binding(
+def record_normalized_server_binding(
     server: object,
     *,
     client: object | None = None,
-    host: str,
-    port: int,
+    destination: NormalizedUpstreamDestination,
     kinds: frozenset[BindingKind],
     original_address: tuple[str, int] | None,
 ) -> None:
-    """Record a destination after the caller retargeted or verified upstream."""
+    """Record a normalized destination after retargeting or verification."""
     server_id = _connection_id(server)
     if server_id is None:
         return
     _bindings_by_server_id[server_id] = UpstreamDestinationBinding(
-        host=normalize_trusted_hostname(host),
-        port=port,
+        host=destination.host,
+        port=destination.port,
         kinds=kinds,
         original_address=original_address,
     )
@@ -147,8 +170,7 @@ def record_server_binding(
 def _matching_server_binding(
     server: object,
     *,
-    host: str,
-    port: int,
+    destination: NormalizedUpstreamDestination,
 ) -> tuple[str, UpstreamDestinationBinding] | None:
     server_id = _connection_id(server)
     if server_id is None:
@@ -156,8 +178,7 @@ def _matching_server_binding(
     binding = _bindings_by_server_id.get(server_id)
     if binding is None:
         return None
-    normalized_host = normalize_trusted_hostname(host)
-    if binding.host != normalized_host or binding.port != port:
+    if binding.host != destination.host or binding.port != destination.port:
         return None
     if not _server_binding_matches_current_destination(server, binding):
         return None
@@ -168,12 +189,11 @@ def reuse_server_binding_kind_if_matching(
     server: object,
     *,
     client: object | None = None,
-    host: str,
-    port: int,
+    destination: NormalizedUpstreamDestination,
     kind: BindingKind,
 ) -> bool:
     """Reuse an existing binding kind without authorizing a missing kind."""
-    matched = _matching_server_binding(server, host=host, port=port)
+    matched = _matching_server_binding(server, destination=destination)
     if matched is None:
         return False
     server_id, binding = matched
@@ -187,12 +207,11 @@ def add_server_binding_kind_if_matching(
     server: object,
     *,
     client: object | None = None,
-    host: str,
-    port: int,
+    destination: NormalizedUpstreamDestination,
     kind: BindingKind,
 ) -> bool:
     """Add a binding kind only if the current server destination still matches."""
-    matched = _matching_server_binding(server, host=host, port=port)
+    matched = _matching_server_binding(server, destination=destination)
     if matched is None:
         return False
     server_id, binding = matched
@@ -211,8 +230,7 @@ def refresh_server_binding_connected_address_if_matching(
     server: object,
     *,
     client: object | None = None,
-    host: str,
-    port: int,
+    destination: NormalizedUpstreamDestination,
     kind: BindingKind,
     connected_address: tuple[str, int],
 ) -> bool:
@@ -223,8 +241,7 @@ def refresh_server_binding_connected_address_if_matching(
     binding = _bindings_by_server_id.get(server_id)
     if binding is None:
         return False
-    normalized_host = normalize_trusted_hostname(host)
-    if binding.host != normalized_host or binding.port != port:
+    if binding.host != destination.host or binding.port != destination.port:
         return False
     connected_pair = connection_endpoints.authoritative_connected_endpoint(connected_address)
     if connected_pair is None:
@@ -310,11 +327,14 @@ def _binding_matches(
 def _server_binding_matches_current_destination(
     server: object,
     binding: UpstreamDestinationBinding,
+    *,
+    extra_endpoints: tuple[tuple[str, int] | None, ...] = (),
 ) -> bool:
     if bool(getattr(server, "connected", False)):
         connected_endpoint = connection_endpoints.connected_ip_destination_endpoint(
             server,
             port=binding.port,
+            extra_endpoints=extra_endpoints,
         )
         return (
             binding.original_address is not None
@@ -450,26 +470,47 @@ def flow_matches_bound_destination(
     if not trusted_host:
         return False
     try:
-        normalized_host = normalize_trusted_hostname(trusted_host)
+        destination = normalize_upstream_destination(
+            host=trusted_host,
+            port=flow.request.port,
+        )
     except (UnicodeError, ValueError):
         return False
 
-    port = flow.request.port
+    return flow_matches_normalized_destination(
+        flow,
+        destination=destination,
+        allowed_kinds=allowed_kinds,
+    )
+
+
+def flow_matches_normalized_destination(
+    flow: http.HTTPFlow,
+    *,
+    destination: NormalizedUpstreamDestination,
+    allowed_kinds: frozenset[BindingKind],
+) -> bool:
+    """Match current binding evidence against an already-normalized authority.
+
+    The caller must derive ``destination`` from the current flow authority.
+    This function revalidates mutable endpoint evidence but does not authorize
+    an unrelated destination.
+    """
     server = flow.server_conn
     server_id = _connection_id(server)
     binding = _bindings_by_server_id.get(server_id) if server_id is not None else None
     if binding is not None:
         return _binding_matches(
             binding,
-            host=normalized_host,
-            port=port,
+            host=destination.host,
+            port=destination.port,
             allowed_kinds=allowed_kinds,
         ) and _server_binding_matches_current_destination(server, binding)
 
     matching_client_bindings = _matching_client_bindings(
         flow.client_conn,
-        host=normalized_host,
-        port=port,
+        host=destination.host,
+        port=destination.port,
         allowed_kinds=allowed_kinds,
     )
     if bool(getattr(server, "connected", False)):
@@ -477,13 +518,52 @@ def flow_matches_bound_destination(
             _client_binding_connected_endpoint(
                 client=flow.client_conn,
                 server=server,
-                port=port,
+                port=destination.port,
                 bindings=matching_client_bindings,
             )
             is not None
         )
 
-    return _address_matches(normalized_host, port, getattr(server, "address", None))
+    return _address_matches(
+        destination.host,
+        destination.port,
+        getattr(server, "address", None),
+    )
+
+
+def flow_matches_direct_bound_destination(
+    flow: http.HTTPFlow,
+    *,
+    allowed_kinds: frozenset[BindingKind],
+) -> bool:
+    """Return whether the current server has a matching direct binding.
+
+    Connected transparent flows include the client socket endpoint as the same
+    authoritative evidence accepted when the direct binding was created.
+    """
+    trusted_host = flow_metadata.trusted_authority_host(flow.metadata)
+    if not trusted_host:
+        return False
+    try:
+        normalized_host = normalize_trusted_hostname(trusted_host)
+    except (UnicodeError, ValueError):
+        return False
+
+    server = flow.server_conn
+    server_id = _connection_id(server)
+    binding = _bindings_by_server_id.get(server_id) if server_id is not None else None
+    if binding is None:
+        return False
+    return _binding_matches(
+        binding,
+        host=normalized_host,
+        port=flow.request.port,
+        allowed_kinds=allowed_kinds,
+    ) and _server_binding_matches_current_destination(
+        server,
+        binding,
+        extra_endpoints=(connection_endpoints.connection_sockname(flow.client_conn),),
+    )
 
 
 def bound_destination_endpoint_for_flow(

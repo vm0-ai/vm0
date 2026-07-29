@@ -3,16 +3,15 @@ import { describe, expect, it } from "vitest";
 
 import {
   chatThreadByIdContract,
-  chatThreadArtifactsContract,
   chatThreadMarkAgentReadContract,
   chatThreadMarkReadContract,
-  chatThreadMessagesContract,
+  chatThreadEventsContract,
   chatThreadPinContract,
   chatThreadRenameContract,
   chatThreadUnpinContract,
   chatThreadsContract,
 } from "@vm0/api-contracts/contracts/chat-threads";
-import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
+import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import { zeroAgentsByIdContract } from "@vm0/api-contracts/contracts/zero-agents";
 
 import {
@@ -166,6 +165,7 @@ function mockChatThreadSnapshot(
         };
       }),
       latestEventId: null,
+      latestSeqId: null,
     });
   });
   context.mocks.api(chatThreadsContract.events, ({ respond }) => {
@@ -320,8 +320,6 @@ function mockSidebarThreadStory(
   context.mocks.api(chatThreadByIdContract.get, ({ respond }) => {
     return respond(200, {
       lastReadAt: null,
-      computerUseHostId: null,
-      codexServiceTier: null,
     });
   });
   context.mocks.api(chatThreadPinContract.pin, ({ params, respond }) => {
@@ -390,8 +388,6 @@ describe("zero sidebar", () => {
     context.mocks.api(chatThreadByIdContract.get, ({ respond }) => {
       return respond(200, {
         lastReadAt: null,
-        computerUseHostId: null,
-        codexServiceTier: null,
       });
     });
 
@@ -441,6 +437,7 @@ describe("zero sidebar", () => {
           },
         ],
         latestEventId: null,
+        latestSeqId: null,
       });
     });
     context.mocks.api(chatThreadsContract.events, ({ respond }) => {
@@ -470,6 +467,47 @@ describe("zero sidebar", () => {
         "Running",
       ),
     ).not.toBeInTheDocument();
+  });
+
+  it("keeps the sidebar responsive when a draft membership request rejects", async () => {
+    prepareDefaultAgent();
+    const draftResponse = context.mocks.deferred<void>();
+    let draftRequests = 0;
+    let draftResponseSent = false;
+
+    mockSidebarThreadStory([
+      createThread(EXISTING_THREAD_ID, "Existing conversation"),
+    ]);
+    context.mocks.api(chatThreadsContract.drafts, async ({ respond }) => {
+      draftRequests += 1;
+      await draftResponse.promise;
+      draftResponseSent = true;
+      return respond(401, {
+        error: {
+          code: "UNAUTHORIZED",
+          message: "Draft membership unavailable",
+        },
+      });
+    });
+
+    setupSidebarPage({ context, path: `/agents/${AGENT_ID}/chat` });
+
+    await waitFor(() => {
+      expect(draftRequests).toBe(1);
+      expect(
+        within(sidebar()).getByText("Existing conversation"),
+      ).toBeInTheDocument();
+    });
+
+    draftResponse.resolve();
+    await waitFor(() => {
+      expect(draftResponseSent).toBeTruthy();
+      expect(
+        within(sidebar()).getByText("Existing conversation"),
+      ).toBeInTheDocument();
+    });
+    openChatListMenu();
+    expect(menuItemByText("New chat")).toBeInTheDocument();
   });
 
   it("preserves server thread order while creating an optimistic new chat", async () => {
@@ -515,8 +553,6 @@ describe("zero sidebar", () => {
     context.mocks.api(chatThreadByIdContract.get, ({ respond }) => {
       return respond(200, {
         lastReadAt: null,
-        computerUseHostId: null,
-        codexServiceTier: null,
       });
     });
 
@@ -555,65 +591,6 @@ describe("zero sidebar", () => {
     createDeferred.resolve();
   });
 
-  it("closes the artifact sidebar when creating a new main chat", async () => {
-    prepareDefaultAgent();
-    const artifactUrl = encodeURIComponent(
-      "https://cdn.vm7.io/artifacts/test/archive.zip",
-    );
-    const threads = [
-      {
-        id: EXISTING_THREAD_ID,
-        title: "Existing conversation",
-        agent: { id: AGENT_ID, avatarUrl: null },
-        createdAt: "2026-03-10T00:00:00Z",
-        updatedAt: "2026-03-10T00:00:00Z",
-      },
-    ];
-    mockChatThreadSnapshot(() => {
-      return threads;
-    });
-    context.mocks.api(chatThreadsContract.create, ({ body, respond }) => {
-      return respond(201, {
-        id: body.clientThreadId ?? "created-thread-id",
-        title: null,
-        createdAt: "2026-03-10T00:00:00Z",
-      });
-    });
-    context.mocks.api(chatThreadArtifactsContract.list, ({ respond }) => {
-      return respond(200, { runs: [] });
-    });
-    context.mocks.api(chatThreadByIdContract.get, ({ respond }) => {
-      return respond(200, {
-        lastReadAt: null,
-        computerUseHostId: null,
-        codexServiceTier: null,
-      });
-    });
-
-    setupSidebarPage({
-      context,
-      path: `/chats/${EXISTING_THREAD_ID}?artifact=${artifactUrl}`,
-    });
-
-    const newChatButton = await waitFor(() => {
-      expect(screen.getByTestId("artifact-sidebar")).toBeInTheDocument();
-      expect(
-        within(sidebar()).getByText("Existing conversation"),
-      ).toBeInTheDocument();
-      const button = screen.getByLabelText("Open chat list menu");
-      expect(button).not.toBeDisabled();
-      return button;
-    });
-
-    click(newChatButton);
-    click(menuItemByText("New chat"));
-
-    await waitFor(() => {
-      expect(screen.queryByTestId("artifact-sidebar")).not.toBeInTheDocument();
-      expect(window.location.search).not.toContain("artifact=");
-    });
-  });
-
   it("requests unread chat threads and filters the event-sourced list", async () => {
     prepareDefaultAgent();
     const pinnedUnreadThread = createThread(
@@ -640,8 +617,6 @@ describe("zero sidebar", () => {
     context.mocks.api(chatThreadByIdContract.get, ({ respond }) => {
       return respond(200, {
         lastReadAt: null,
-        computerUseHostId: null,
-        codexServiceTier: null,
       });
     });
     context.mocks.api(chatThreadsContract.unreads, ({ respond }) => {
@@ -660,7 +635,6 @@ describe("zero sidebar", () => {
     setupSidebarPage({
       context,
       path: `/chats/${EXISTING_THREAD_ID}`,
-      featureSwitches: { [FeatureSwitchKey.AgentUnreadIndicators]: true },
     });
 
     await waitFor(() => {
@@ -688,29 +662,6 @@ describe("zero sidebar", () => {
     });
   });
 
-  it("hides the unread chat filter when unread indicators are disabled", async () => {
-    prepareDefaultAgent();
-    mockSidebarThreadStory([createThread(EXISTING_THREAD_ID, "Release plan")]);
-    context.mocks.api(chatThreadsContract.unreads, ({ respond }) => {
-      return respond(200, { unreads: [] });
-    });
-
-    setupSidebarPage({
-      context,
-      path: `/chats/${EXISTING_THREAD_ID}`,
-      featureSwitches: { [FeatureSwitchKey.AgentUnreadIndicators]: false },
-    });
-
-    await waitFor(() => {
-      expect(within(sidebar()).getByText("Release plan")).toBeInTheDocument();
-    });
-
-    openChatListMenu();
-
-    expect(queryMenuItemByText("Unread only")).toBeNull();
-    expect(queryMenuItemByText("All chats")).toBeNull();
-  });
-
   it("keeps an event-sourced pinned current chat at the front of the pinned section", async () => {
     prepareDefaultAgent();
     const pinnedCurrentThread = createThread(
@@ -731,8 +682,6 @@ describe("zero sidebar", () => {
     context.mocks.api(chatThreadByIdContract.get, ({ respond }) => {
       return respond(200, {
         lastReadAt: null,
-        computerUseHostId: null,
-        codexServiceTier: null,
       });
     });
     context.mocks.api(chatThreadsContract.unreads, ({ respond }) => {
@@ -768,18 +717,25 @@ describe("zero sidebar", () => {
       });
     });
     context.mocks.api(
-      chatThreadMessagesContract.list,
+      chatThreadEventsContract.list,
       ({ params, query, respond }) => {
-        if (query.sinceSeqId || query.beforeSeqId) {
-          return respond(200, { messages: [] });
+        if (
+          query.sinceSeqId ||
+          query.beforeSeqId ||
+          query.sinceId ||
+          query.beforeId
+        ) {
+          return respond(200, { events: [] });
         }
         return respond(200, {
-          messages:
+          events:
             params.threadId === INCIDENT_THREAD_ID
               ? [
                   {
                     id: "incident-message-1",
-                    role: "assistant",
+                    threadId: INCIDENT_THREAD_ID,
+                    eventType: "run.completed" as const,
+                    runId: "mock-run",
                     content: "Incident update",
                     runLifecycleEvent: "completed",
                     seqId: 1,
@@ -1683,7 +1639,6 @@ describe("zero sidebar", () => {
       context,
       path: `/agents/${AGENT_ID}/chat`,
       featureSwitches: {
-        [FeatureSwitchKey.AgentUnreadIndicators]: true,
         [FeatureSwitchKey.ChatThreadUnifiedSearch]: true,
       },
     });
@@ -1799,7 +1754,6 @@ describe("zero sidebar", () => {
     setupSidebarPage({
       context,
       path: `/agents/${RESEARCH_AGENT_ID}/chat`,
-      featureSwitches: { [FeatureSwitchKey.AgentUnreadIndicators]: true },
     });
 
     const nav = await waitFor(() => {
@@ -1822,8 +1776,9 @@ describe("zero sidebar", () => {
     });
   });
 
-  it("moves to the first chat thread for the next pinned agent from a chat thread", async () => {
+  it("keeps the chat list owner without carrying rows across agent scopes", async () => {
     prepareAgentTeam();
+    const supportUnreadGate = context.mocks.deferred<void>();
     context.mocks.data.userPreferences({
       pinnedAgentIds: [RESEARCH_AGENT_ID, SUPPORT_AGENT_ID],
     });
@@ -1849,14 +1804,45 @@ describe("zero sidebar", () => {
       },
     );
     mockSidebarThreadStory([researchThread, supportThread, olderSupportThread]);
+    context.mocks.api(
+      chatThreadsContract.unreads,
+      async ({ query, respond }) => {
+        if (query.agentId === SUPPORT_AGENT_ID) {
+          await supportUnreadGate.promise;
+        }
+        const threadId =
+          query.agentId === SUPPORT_AGENT_ID
+            ? INCIDENT_THREAD_ID
+            : RESEARCH_THREAD_ID;
+        return respond(200, {
+          unreads: [
+            {
+              threadId,
+              unreadAt: "2026-03-10T00:05:00Z",
+            },
+          ],
+        });
+      },
+    );
 
-    setupSidebarPage({ context, path: `/chats/${RESEARCH_THREAD_ID}` });
+    setupSidebarPage({
+      context,
+      path: `/chats/${RESEARCH_THREAD_ID}`,
+    });
 
     await waitFor(() => {
       expect(
         within(sidebar()).getByText("Research kickoff"),
       ).toBeInTheDocument();
     });
+    openChatListMenu();
+    click(menuItemByText("Unread only"));
+    await waitFor(() => {
+      expect(
+        within(sidebar()).getByText("Research kickoff"),
+      ).toBeInTheDocument();
+    });
+    const chatList = within(sidebar()).getByLabelText("Chat threads");
 
     fireEvent.keyDown(document.body, {
       key: "}",
@@ -1866,6 +1852,18 @@ describe("zero sidebar", () => {
 
     await waitFor(() => {
       expect(pathname()).toBe(`/chats/${INCIDENT_THREAD_ID}`);
+      expect(
+        within(sidebar()).queryByText("Research kickoff"),
+      ).not.toBeInTheDocument();
+      expect(within(sidebar()).getByLabelText("Chat threads")).toBe(chatList);
+    });
+
+    supportUnreadGate.resolve(undefined);
+    await waitFor(() => {
+      expect(
+        within(sidebar()).getByText("Support escalation"),
+      ).toBeInTheDocument();
+      expect(within(sidebar()).getByLabelText("Chat threads")).toBe(chatList);
     });
   });
 
@@ -2015,7 +2013,7 @@ describe("zero sidebar", () => {
     });
   });
 
-  it("shows agent unread indicators and dropdown actions behind the feature switch", async () => {
+  it("shows agent unread indicators and dropdown actions", async () => {
     prepareAgentTeam();
     context.mocks.data.userPreferences({
       pinnedAgentIds: [RESEARCH_AGENT_ID],
@@ -2031,7 +2029,6 @@ describe("zero sidebar", () => {
     setupSidebarPage({
       context,
       path: `/agents/${AGENT_ID}/chat`,
-      featureSwitches: { [FeatureSwitchKey.AgentUnreadIndicators]: true },
     });
 
     const nav = await waitFor(() => {
@@ -2161,7 +2158,6 @@ describe("zero sidebar", () => {
     setupSidebarPage({
       context,
       path: `/agents/${AGENT_ID}/chat`,
-      featureSwitches: { [FeatureSwitchKey.AgentUnreadIndicators]: true },
     });
 
     const nav = await waitFor(() => {
@@ -2210,7 +2206,6 @@ describe("zero sidebar", () => {
     setupSidebarPage({
       context,
       path: `/agents/${AGENT_ID}/chat`,
-      featureSwitches: { [FeatureSwitchKey.AgentUnreadIndicators]: true },
     });
 
     const nav = await waitFor(() => {
@@ -2262,7 +2257,7 @@ describe("zero sidebar", () => {
     });
   });
 
-  it("collapses and reopens the manage navigation section", async () => {
+  it("uses CSS hover for the scrollbar and toggles the manage section", async () => {
     prepareDefaultAgent();
 
     setupSidebarPage({ context, path: `/agents/${AGENT_ID}/chat` });
@@ -2297,14 +2292,31 @@ describe("zero sidebar", () => {
     if (!scrollWrapper) {
       throw new Error("Sidebar scroll wrapper not found");
     }
+    const scrollbarTrack = scrollArea.nextElementSibling;
+    if (!(scrollbarTrack instanceof HTMLElement)) {
+      throw new Error("Sidebar scrollbar track not found");
+    }
+
+    expect(scrollWrapper).toHaveClass("group/sidebar-scroll");
+    expect(scrollbarTrack).toHaveClass(
+      "opacity-0",
+      "transition-opacity",
+      "duration-150",
+      "group-hover/sidebar-scroll:opacity-100",
+    );
+    expect(scrollbarTrack.style.opacity).toBe("");
     fireEvent.mouseEnter(scrollWrapper);
     fireEvent.mouseLeave(scrollWrapper);
+    expect(scrollbarTrack.style.opacity).toBe("");
 
     Object.defineProperty(scrollArea, "scrollHeight", {
       configurable: true,
       value: 200,
     });
     fireEvent.scroll(scrollArea);
+    expect(scrollbarTrack).not.toHaveClass(
+      "group-hover/sidebar-scroll:opacity-100",
+    );
 
     click(within(nav).getByText("Manage"));
 

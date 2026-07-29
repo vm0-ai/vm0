@@ -201,7 +201,7 @@ jobs:
       APP_STORE_CONNECT_API_KEY_ID: ${{ secrets.APP_STORE_CONNECT_API_KEY_ID }}
       APP_STORE_CONNECT_API_ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_API_ISSUER_ID }}
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@v7.0.1
         with:
           ref: desktop-v${{ needs.release-please.outputs.desktop_version }}
 
@@ -533,7 +533,7 @@ jobs:
       RELEASE_TAG: desktop-v${{ needs.release-please.outputs.desktop_version }}
       MANIFEST_TAG: desktop-updates
     steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           ref: desktop-v${{ needs.release-please.outputs.desktop_version }}
 
@@ -615,7 +615,9 @@ jobs:
       contents: read
     environment: production
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@v7.0.1
+        with:
+          ref: ${{ needs.release-please.outputs.release_target }}
 
       - uses: ./.github/actions/toolchain-init
 
@@ -816,7 +818,9 @@ jobs:
       id-token: write
     environment: production
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@v7.0.1
+        with:
+          ref: ${{ needs.release-please.outputs.release_target }}
       - uses: ./.github/actions/toolchain-init
 
       - name: Build Runtime API Schema
@@ -957,8 +961,9 @@ jobs:
     permissions:
       contents: read
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@v7.0.1
         with:
+          ref: ${{ needs.release-please.outputs.release_target }}
           fetch-depth: 0
 
       - name: Detect Host Worker deploy input changes
@@ -1011,7 +1016,9 @@ jobs:
       contents: read
     environment: production
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@v7.0.1
+        with:
+          ref: ${{ needs.release-please.outputs.release_target }}
       - uses: ./.github/actions/toolchain-init
 
       - name: Notify Slack - Starting
@@ -1166,7 +1173,9 @@ jobs:
       deployments: write
     environment: production
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@v7.0.1
+        with:
+          ref: ${{ needs.release-please.outputs.release_target }}
       - uses: ./.github/actions/toolchain-init
 
       - name: Start GitHub Deployment
@@ -1332,16 +1341,16 @@ jobs:
 
           echo "Published runtime API schema for $RELEASE_SHA"
 
-  # Publish the immutable app artifact to Cloudflare Pages. If the same release
-  # run also promotes API, wait for API traffic to be live first.
+  # Publish the immutable app artifact to Cloudflare Pages after any required
+  # production migration succeeds, without waiting for API promotion.
   promote-app-production:
-    needs: [release-please, builds-complete, promote-api-production]
+    needs: [release-please, builds-complete, migrate-production]
     if: >-
       always() &&
       needs.release-please.outputs.app_release_created == 'true' &&
       needs.builds-complete.result == 'success' &&
-      (needs.release-please.outputs.api_deploy_required != 'true' ||
-       needs.promote-api-production.result == 'success')
+      (needs.release-please.outputs.api_release_created != 'true' ||
+       needs.migrate-production.result == 'success')
     runs-on: ubuntu-latest
     container:
       image: ghcr.io/vm0-ai/vm0-toolchain:20260622
@@ -1356,7 +1365,9 @@ jobs:
       deployments: write
     environment: production
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@v7.0.1
+        with:
+          ref: ${{ needs.release-please.outputs.release_target }}
       - uses: ./.github/actions/toolchain-init
 
       - name: Start GitHub Deployment
@@ -1610,7 +1621,7 @@ jobs:
       contents: read
       issues: write
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@v7.0.1
         with:
           ref: main
 
@@ -1652,7 +1663,9 @@ jobs:
       contents: read
       id-token: write
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@v7.0.1
+        with:
+          ref: ${{ needs.release-please.outputs.release_target }}
 
       - name: Notify Slack - Starting
         id: slack-start
@@ -1800,7 +1813,9 @@ jobs:
           - aarch64-unknown-linux-musl
           - x86_64-unknown-linux-musl
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@v7.0.1
+        with:
+          ref: ${{ needs.release-please.outputs.release_target }}
 
       - name: Resolve runner target metadata
         id: target-metadata
@@ -1989,11 +2004,15 @@ jobs:
       # resolve the host subset from matrix.id inside that job.
       matrix: ${{ steps.groups.outputs.matrix }}
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@v7.0.1
+        with:
+          ref: ${{ needs.release-please.outputs.release_target }}
 
       - name: Setup SSH via Cloudflare Tunnel
         uses: ./.github/actions/setup-ssh-tunnel
         with:
+          ssh-user: ${{ vars.AWS_METAL_RUNNER_USER }}
+          ssh-hosts: ${{ secrets.AWS_METAL_RUNNER_HOSTS }}
           ssh-key: ${{ secrets.AWS_METAL_RUNNER_SSH_KEY }}
           cf-access-client-id: ${{ secrets.CF_ACCESS_CLIENT_ID }}
           cf-access-client-secret: ${{ secrets.CF_ACCESS_CLIENT_SECRET }}
@@ -2045,7 +2064,9 @@ jobs:
       matrix:
         include: ${{ fromJSON(needs.runner-production-host-groups.outputs.matrix || '[]') }}
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@v7.0.1
+        with:
+          ref: ${{ needs.release-please.outputs.release_target }}
 
       - name: Notify Slack - Starting
         id: slack-start
@@ -2070,6 +2091,8 @@ jobs:
       - name: Setup SSH via Cloudflare Tunnel
         uses: ./.github/actions/setup-ssh-tunnel
         with:
+          ssh-user: ${{ vars.AWS_METAL_RUNNER_USER }}
+          ssh-hosts: ${{ secrets.AWS_METAL_RUNNER_HOSTS }}
           ssh-key: ${{ secrets.AWS_METAL_RUNNER_SSH_KEY }}
           cf-access-client-id: ${{ secrets.CF_ACCESS_CLIENT_ID }}
           cf-access-client-secret: ${{ secrets.CF_ACCESS_CLIENT_SECRET }}
@@ -2291,7 +2314,9 @@ jobs:
       matrix:
         include: ${{ fromJSON(needs.runner-production-host-groups.outputs.matrix || '[]') }}
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@v7.0.1
+        with:
+          ref: ${{ needs.release-please.outputs.release_target }}
 
       - name: Notify Slack - Starting
         id: slack-start
@@ -2316,6 +2341,8 @@ jobs:
       - name: Setup SSH via Cloudflare Tunnel
         uses: ./.github/actions/setup-ssh-tunnel
         with:
+          ssh-user: ${{ vars.AWS_METAL_RUNNER_USER }}
+          ssh-hosts: ${{ secrets.AWS_METAL_RUNNER_HOSTS }}
           ssh-key: ${{ secrets.AWS_METAL_RUNNER_SSH_KEY }}
           cf-access-client-id: ${{ secrets.CF_ACCESS_CLIENT_ID }}
           cf-access-client-secret: ${{ secrets.CF_ACCESS_CLIENT_SECRET }}
@@ -2453,7 +2480,9 @@ jobs:
       contents: read
     environment: production
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@v7.0.1
+        with:
+          ref: ${{ needs.release-please.outputs.release_target }}
       - uses: ./.github/actions/toolchain-init
 
       - name: Build E2B templates
@@ -2476,7 +2505,9 @@ jobs:
     permissions:
       contents: read
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@v7.0.1
+        with:
+          ref: ${{ needs.release-please.outputs.release_target }}
       - uses: ./.github/actions/toolchain-init
 
       - name: Generate Node.js SBOM

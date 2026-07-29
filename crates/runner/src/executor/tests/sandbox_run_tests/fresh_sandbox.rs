@@ -44,8 +44,12 @@ impl SandboxFactory for CreateGateFactory {
     }
 }
 
-fn guest_dns_readiness_failure(message: &str) -> SandboxError {
+fn guest_dns_readiness_failure(
+    reason: SandboxGuestDnsReadinessReason,
+    message: &str,
+) -> SandboxError {
     SandboxError::GuestDnsReadiness {
+        reason,
         message: message.to_string(),
     }
 }
@@ -62,6 +66,60 @@ async fn execute_inner_happy_path() {
             .unwrap();
     assert_eq!(exit_code, 0);
     assert!(error_msg.is_none());
+    assert_proxy_registry_empty(dir.path()).await;
+}
+
+#[tokio::test]
+async fn execute_inner_carries_early_codex_catalog_prefetch_into_agent_run() {
+    let dir = tempfile::tempdir().unwrap();
+    let config = test_executor_config(dir.path()).await;
+    let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::new());
+    let factory = MockSandboxFactory::with_overrides(Arc::clone(&overrides));
+
+    let (exit_code, error_msg) =
+        run_new_sandbox_status(&factory, &codex_oauth_context(), &config, &default_params())
+            .await
+            .unwrap();
+
+    assert_eq!(exit_code, 0);
+    assert!(error_msg.is_none());
+    let start_calls = overrides.start_process_calls();
+    assert_eq!(start_calls.len(), 2);
+    assert!(start_calls[0].cmd.contains("codex --version"));
+    assert!(!start_calls[1].cmd.contains("codex --version"));
+    assert_proxy_registry_empty(dir.path()).await;
+}
+
+#[tokio::test]
+async fn execute_inner_does_not_prefetch_after_early_guest_state_failure() {
+    let dir = tempfile::tempdir().unwrap();
+    let config = test_executor_config(dir.path()).await;
+    let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::new());
+    overrides.add_exec_matcher(sandbox_mock::ExecMatcher {
+        pattern: "guest-reseed".to_string(),
+        exit_code: 64,
+        stdout: Vec::new(),
+        stderr: b"restore denied".to_vec(),
+    });
+    let factory = MockSandboxFactory::with_overrides(Arc::clone(&overrides));
+    let params = JobParams {
+        restore_guest_state: true,
+        ..default_params()
+    };
+
+    let (exit_code, error_msg) =
+        run_new_sandbox_status(&factory, &codex_oauth_context(), &config, &params)
+            .await
+            .unwrap();
+
+    assert_eq!(exit_code, 1);
+    let error = error_msg.expect("guest state failure should fail the run");
+    assert!(error.contains("guest state restore failed"), "got: {error}");
+    assert!(error.contains("restore denied"), "got: {error}");
+    assert!(
+        overrides.start_process_calls().is_empty(),
+        "neither prefetch nor agent may start after guest state failure"
+    );
     assert_proxy_registry_empty(dir.path()).await;
 }
 
@@ -257,7 +315,10 @@ async fn execute_new_sandbox_replaces_one_dns_unready_attachment_before_workload
     let dir = tempfile::tempdir().unwrap();
     let config = test_executor_config(dir.path()).await;
     let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::new());
-    overrides.push_start_result(Err(guest_dns_readiness_failure("first attachment failed")));
+    overrides.push_start_result(Err(guest_dns_readiness_failure(
+        SandboxGuestDnsReadinessReason::DnsPath,
+        "first attachment failed",
+    )));
     let factory = MockSandboxFactory::with_overrides(Arc::clone(&overrides));
     let ctx = minimal_context();
     let sandbox_id = SandboxId::new_v4();
@@ -317,11 +378,60 @@ async fn execute_new_sandbox_replaces_one_dns_unready_attachment_before_workload
 }
 
 #[tokio::test]
+async fn execute_new_sandbox_does_not_replace_guest_exec_timing_failures() {
+    for (reason, message) in [
+        (
+            SandboxGuestDnsReadinessReason::ProcessTimeout,
+            "guest process timed out",
+        ),
+        (
+            SandboxGuestDnsReadinessReason::Deadline,
+            "host deadline expired",
+        ),
+    ] {
+        let dir = tempfile::tempdir().unwrap();
+        let config = test_executor_config(dir.path()).await;
+        let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::new());
+        overrides.push_start_result(Err(guest_dns_readiness_failure(reason, message)));
+        let factory = MockSandboxFactory::with_overrides(Arc::clone(&overrides));
+        let ctx = minimal_context();
+        let mut telemetry = test_telemetry(&config, &ctx);
+
+        let result = execute_new_sandbox(
+            &factory,
+            &ctx,
+            NewSandboxDispatch {
+                id: SandboxId::new_v4(),
+                reuse_result: SandboxReuseResult::PoolMiss,
+            },
+            &config,
+            &default_params(),
+            &mut telemetry,
+            tokio_util::sync::CancellationToken::new(),
+        )
+        .await;
+
+        let error = result
+            .err()
+            .expect("guest exec timing failure must be returned");
+        assert!(error.to_string().contains(message), "got: {error}");
+        assert_eq!(overrides.create_configs().len(), 1);
+        assert_eq!(overrides.destroy_call_count(), 1);
+        assert!(overrides.start_process_calls().is_empty());
+        assert_proxy_registry_empty(dir.path()).await;
+        assert_no_telemetry_action(&telemetry, "runner_fresh_sandbox_dns_readiness_retry");
+    }
+}
+
+#[tokio::test]
 async fn dns_readiness_retry_keeps_one_fresh_archive_owner() {
     let dir = tempfile::tempdir().unwrap();
     let config = test_executor_config(dir.path()).await;
     let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::new());
-    overrides.push_start_result(Err(guest_dns_readiness_failure("first attachment failed")));
+    overrides.push_start_result(Err(guest_dns_readiness_failure(
+        SandboxGuestDnsReadinessReason::DnsPath,
+        "first attachment failed",
+    )));
     let factory = MockSandboxFactory::with_overrides(Arc::clone(&overrides));
     let server = httpmock::MockServer::start_async().await;
     let body = b"fresh archive across DNS retry".to_vec();
@@ -378,8 +488,14 @@ async fn execute_new_sandbox_stops_after_two_dns_unready_attachments() {
     let dir = tempfile::tempdir().unwrap();
     let config = test_executor_config(dir.path()).await;
     let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::new());
-    overrides.push_start_result(Err(guest_dns_readiness_failure("first attachment failed")));
-    overrides.push_start_result(Err(guest_dns_readiness_failure("second attachment failed")));
+    overrides.push_start_result(Err(guest_dns_readiness_failure(
+        SandboxGuestDnsReadinessReason::DnsPath,
+        "first attachment failed",
+    )));
+    overrides.push_start_result(Err(guest_dns_readiness_failure(
+        SandboxGuestDnsReadinessReason::DnsPath,
+        "second attachment failed",
+    )));
     let factory = MockSandboxFactory::with_overrides(Arc::clone(&overrides));
     let ctx = minimal_context();
     let mut telemetry = test_telemetry(&config, &ctx);
@@ -460,7 +576,10 @@ async fn execute_new_sandbox_suppresses_dns_retry_after_uncertain_destroy() {
     let dir = tempfile::tempdir().unwrap();
     let config = test_executor_config(dir.path()).await;
     let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::new());
-    overrides.push_start_result(Err(guest_dns_readiness_failure("attachment failed")));
+    overrides.push_start_result(Err(guest_dns_readiness_failure(
+        SandboxGuestDnsReadinessReason::DnsPath,
+        "attachment failed",
+    )));
     overrides.push_destroy_panic("simulated destroy panic");
     let factory = MockSandboxFactory::with_overrides(Arc::clone(&overrides));
     let ctx = minimal_context();
@@ -505,7 +624,10 @@ async fn execute_new_sandbox_waits_for_destroy_before_dns_retry_create() {
     let config = test_executor_config(dir.path()).await;
     let gate = sandbox_mock::MockLifecycleGate::new();
     let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::new());
-    overrides.push_start_result(Err(guest_dns_readiness_failure("attachment failed")));
+    overrides.push_start_result(Err(guest_dns_readiness_failure(
+        SandboxGuestDnsReadinessReason::DnsPath,
+        "attachment failed",
+    )));
     overrides.set_destroy_lifecycle_gate(gate.clone());
     let factory = Arc::new(MockSandboxFactory::with_overrides(Arc::clone(&overrides)));
     let ctx = minimal_context();
@@ -642,30 +764,60 @@ async fn execute_new_sandbox_does_not_notify_after_post_start_prepare_failure() 
 }
 
 #[tokio::test]
-async fn execute_job_workspace_mount_failure_destroys_sandbox() {
+async fn execute_job_workspace_mount_failure_drains_early_prefetch_before_destroy() {
     let dir = tempfile::tempdir().unwrap();
     let config = test_executor_config(dir.path()).await;
     let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::new());
+    let wait_gate = MockLifecycleGate::new();
+    overrides.set_wait_process_lifecycle_gate(wait_gate.clone());
+    overrides.set_process_cancel_releases_wait_gate(false);
     overrides.add_exec_matcher(sandbox_mock::ExecMatcher {
         pattern: "mount -t ext4".to_string(),
         exit_code: 64,
         stdout: Vec::new(),
         stderr: b"mount denied".to_vec(),
     });
-    let factory = MockSandboxFactory::with_overrides(Arc::clone(&overrides));
+    let factory = Arc::new(MockSandboxFactory::with_overrides(Arc::clone(&overrides)));
 
-    let (outcome, _telemetry) = execute_job(
-        &factory,
-        minimal_context(),
-        NewSandboxDispatch {
-            id: SandboxId::new_v4(),
-            reuse_result: SandboxReuseResult::PoolMiss,
-        },
-        &config,
-        &default_params(),
-        tokio_util::sync::CancellationToken::new(),
-    )
-    .await;
+    let task = tokio::spawn({
+        let factory = Arc::clone(&factory);
+        async move {
+            execute_job(
+                factory.as_ref(),
+                codex_oauth_context(),
+                NewSandboxDispatch {
+                    id: SandboxId::new_v4(),
+                    reuse_result: SandboxReuseResult::PoolMiss,
+                },
+                &config,
+                &default_params(),
+                tokio_util::sync::CancellationToken::new(),
+            )
+            .await
+        }
+    });
+
+    wait_gate
+        .wait_entered(1, Duration::from_secs(5))
+        .await
+        .expect("prefetch wait should start before sandbox destruction");
+    assert!(
+        overrides
+            .wait_for_process_cancel_calls(1, Duration::from_secs(5))
+            .await,
+        "mount failure should cancel the prefetch before destruction"
+    );
+    assert_eq!(
+        overrides.destroy_call_count(),
+        0,
+        "sandbox must remain alive until the prefetch wait is drained"
+    );
+    wait_gate.release_one();
+
+    let (outcome, _telemetry) = tokio::time::timeout(Duration::from_secs(5), task)
+        .await
+        .expect("mount-failure cleanup should finish after the prefetch wait is released")
+        .expect("mount-failure task should not panic");
 
     assert_eq!(outcome.exit_code(), 1);
     let error = outcome.error().unwrap();
@@ -683,10 +835,16 @@ async fn execute_job_workspace_mount_failure_destroys_sandbox() {
         "network log session should be closed before returning"
     );
     assert_eq!(overrides.destroy_call_count(), 1);
+    let start_calls = overrides.start_process_calls();
+    assert_eq!(start_calls.len(), 1);
+    assert!(start_calls[0].cmd.contains("codex --version"));
+    let wait_calls = overrides.wait_process_calls();
+    assert_eq!(wait_calls.len(), 1);
     assert!(
-        overrides.start_process_calls().is_empty(),
-        "agent must not start after workspace mount failure"
+        wait_calls[0].timeout < Duration::from_secs(18),
+        "workspace mount time must reduce the original prefetch wait deadline"
     );
+    assert_eq!(overrides.process_cancel_calls().len(), 1);
     assert_proxy_registry_empty(dir.path()).await;
 }
 

@@ -6,6 +6,8 @@ use guest_agent::masker::SecretMasker;
 use serde_json::json;
 use std::time::Duration;
 
+const EVENT_MESSAGE: &str = "quoted \"message\" with slash \\\\ and newline\n你好 🚀";
+
 #[tokio::test]
 async fn ordinary_cli_sends_a_no_backlog_event_without_collection_delay()
 -> Result<(), Box<dyn std::error::Error>> {
@@ -14,7 +16,7 @@ async fn ordinary_cli_sends_a_no_backlog_event_without_collection_delay()
     let mut server = common::ControlledHttpServer::start().await?;
     let prompt = [
         "@ECHO@".to_string(),
-        json!({ "type": "assistant", "message": "singleton" }).to_string(),
+        json!({ "type": "assistant", "message": EVENT_MESSAGE }).to_string(),
     ]
     .join("\n");
 
@@ -43,6 +45,10 @@ async fn ordinary_cli_sends_a_no_backlog_event_without_collection_delay()
         .await
     });
     let request = server.next_request(Duration::from_secs(5)).await?;
+    assert_eq!(
+        request.request.content_type.as_deref(),
+        Some("application/json")
+    );
     let body: serde_json::Value = serde_json::from_str(&request.request.body)?;
     assert_eq!(
         body.get("runId").and_then(serde_json::Value::as_str),
@@ -58,6 +64,10 @@ async fn ordinary_cli_sends_a_no_backlog_event_without_collection_delay()
             .get("sequenceNumber")
             .and_then(serde_json::Value::as_u64),
         Some(0)
+    );
+    assert_eq!(
+        events[0].get("message").and_then(serde_json::Value::as_str),
+        Some(EVENT_MESSAGE)
     );
     request.respond(200)?;
 

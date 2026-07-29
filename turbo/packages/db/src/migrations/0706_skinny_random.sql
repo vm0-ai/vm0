@@ -1,0 +1,3 @@
+ALTER TABLE "mail_drafts" ADD COLUMN "follow_up_automation_id" uuid;--> statement-breakpoint
+ALTER TABLE "mail_drafts" ADD CONSTRAINT "mail_drafts_follow_up_automation_id_zero_workflow_automations_id_fk" FOREIGN KEY ("follow_up_automation_id") REFERENCES "public"."zero_workflow_automations"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
+CREATE INDEX "idx_mail_drafts_follow_up_automation" ON "mail_drafts" USING btree ("follow_up_automation_id");

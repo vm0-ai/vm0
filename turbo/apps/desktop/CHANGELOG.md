@@ -1,5 +1,329 @@
 # Changelog
 
+## [0.28.67](https://github.com/vm0-ai/vm0/compare/desktop-v0.28.66...desktop-v0.28.67) (2026-07-29)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.243.1
+
+## [0.28.66](https://github.com/vm0-ai/vm0/compare/desktop-v0.28.65...desktop-v0.28.66) (2026-07-29)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.243.0
+
+## [0.28.65](https://github.com/vm0-ai/vm0/compare/desktop-v0.28.64...desktop-v0.28.65) (2026-07-28)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.242.1
+
+## [0.28.64](https://github.com/vm0-ai/vm0/compare/desktop-v0.28.63...desktop-v0.28.64) (2026-07-28)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.242.0
+
+## [0.28.63](https://github.com/vm0-ai/vm0/compare/desktop-v0.28.62...desktop-v0.28.63) (2026-07-28)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.241.1
+
+## [0.28.62](https://github.com/vm0-ai/vm0/compare/desktop-v0.28.61...desktop-v0.28.62) (2026-07-28)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.241.0
+
+## [0.28.61](https://github.com/vm0-ai/vm0/compare/desktop-v0.28.60...desktop-v0.28.61) (2026-07-28)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.240.0
+
+## [0.28.60](https://github.com/vm0-ai/vm0/compare/desktop-v0.28.59...desktop-v0.28.60) (2026-07-28)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.239.2
+
+## [0.28.59](https://github.com/vm0-ai/vm0/compare/desktop-v0.28.58...desktop-v0.28.59) (2026-07-28)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.239.1
+
+## [0.28.58](https://github.com/vm0-ai/vm0/compare/desktop-v0.28.57...desktop-v0.28.58) (2026-07-28)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.239.0
+
+## [0.28.57](https://github.com/vm0-ai/vm0/compare/desktop-v0.28.56...desktop-v0.28.57) (2026-07-28)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.238.0
+
+## [0.28.56](https://github.com/vm0-ai/vm0/compare/desktop-v0.28.55...desktop-v0.28.56) (2026-07-28)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.237.2
+
+## [0.28.55](https://github.com/vm0-ai/vm0/compare/desktop-v0.28.54...desktop-v0.28.55) (2026-07-28)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.237.1
+
+## [0.28.54](https://github.com/vm0-ai/vm0/compare/desktop-v0.28.53...desktop-v0.28.54) (2026-07-27)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.237.0
+
+## [0.28.53](https://github.com/vm0-ai/vm0/compare/desktop-v0.28.52...desktop-v0.28.53) (2026-07-27)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.236.0
+
+## [0.28.52](https://github.com/vm0-ai/vm0/compare/desktop-v0.28.51...desktop-v0.28.52) (2026-07-27)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.235.0
+
+## [0.28.51](https://github.com/vm0-ai/vm0/compare/desktop-v0.28.50...desktop-v0.28.51) (2026-07-27)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.234.1
+
+## [0.28.50](https://github.com/vm0-ai/vm0/compare/desktop-v0.28.49...desktop-v0.28.50) (2026-07-27)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.234.0
+
+## [0.28.49](https://github.com/vm0-ai/vm0/compare/desktop-v0.28.48...desktop-v0.28.49) (2026-07-27)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.233.3
+
+## [0.28.48](https://github.com/vm0-ai/vm0/compare/desktop-v0.28.47...desktop-v0.28.48) (2026-07-26)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.233.2
+
+## [0.28.47](https://github.com/vm0-ai/vm0/compare/desktop-v0.28.46...desktop-v0.28.47) (2026-07-26)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.233.1
+
+## [0.28.46](https://github.com/vm0-ai/vm0/compare/desktop-v0.28.45...desktop-v0.28.46) (2026-07-26)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.233.0
+
+## [0.28.45](https://github.com/vm0-ai/vm0/compare/desktop-v0.28.44...desktop-v0.28.45) (2026-07-26)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.232.2
+
+## [0.28.44](https://github.com/vm0-ai/vm0/compare/desktop-v0.28.43...desktop-v0.28.44) (2026-07-26)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.232.1
+
+## [0.28.43](https://github.com/vm0-ai/vm0/compare/desktop-v0.28.42...desktop-v0.28.43) (2026-07-26)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.232.0
+
+## [0.28.42](https://github.com/vm0-ai/vm0/compare/desktop-v0.28.41...desktop-v0.28.42) (2026-07-26)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.231.2
+
+## [0.28.41](https://github.com/vm0-ai/vm0/compare/desktop-v0.28.40...desktop-v0.28.41) (2026-07-25)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.231.1
+
+## [0.28.40](https://github.com/vm0-ai/vm0/compare/desktop-v0.28.39...desktop-v0.28.40) (2026-07-25)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.231.0
+
+## [0.28.39](https://github.com/vm0-ai/vm0/compare/desktop-v0.28.38...desktop-v0.28.39) (2026-07-25)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.230.1
+
+## [0.28.38](https://github.com/vm0-ai/vm0/compare/desktop-v0.28.37...desktop-v0.28.38) (2026-07-25)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.230.0
+
+## [0.28.37](https://github.com/vm0-ai/vm0/compare/desktop-v0.28.36...desktop-v0.28.37) (2026-07-25)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.229.2
+
+## [0.28.36](https://github.com/vm0-ai/vm0/compare/desktop-v0.28.35...desktop-v0.28.36) (2026-07-25)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.229.1
+
+## [0.28.35](https://github.com/vm0-ai/vm0/compare/desktop-v0.28.34...desktop-v0.28.35) (2026-07-25)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.229.0
+
+## [0.28.34](https://github.com/vm0-ai/vm0/compare/desktop-v0.28.33...desktop-v0.28.34) (2026-07-25)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.228.0
+
+## [0.28.33](https://github.com/vm0-ai/vm0/compare/desktop-v0.28.32...desktop-v0.28.33) (2026-07-25)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.227.0
+
+## [0.28.32](https://github.com/vm0-ai/vm0/compare/desktop-v0.28.31...desktop-v0.28.32) (2026-07-24)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.226.0
+
 ## [0.28.31](https://github.com/vm0-ai/vm0/compare/desktop-v0.28.30...desktop-v0.28.31) (2026-07-24)
 
 

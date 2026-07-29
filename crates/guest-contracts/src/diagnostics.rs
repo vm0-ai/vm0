@@ -416,6 +416,8 @@ impl FailureClass {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum FailureReason {
+    /// The session history exceeded the checkpoint size limit.
+    SessionHistoryLimit,
     /// The provider account has insufficient credits.
     InsufficientCredits,
     /// The configured API key is invalid.
@@ -432,6 +434,8 @@ pub enum FailureReason {
     ProviderStreamTimeout,
     /// The provider returned a server error.
     ProviderServerError,
+    /// The provider refused the request under a safety policy.
+    SafetyPolicyRefusal,
     /// The CLI requires reconnecting or re-authentication.
     ReconnectRequired,
     /// The provider reported a usage limit.
@@ -443,6 +447,7 @@ impl FailureReason {
     #[must_use]
     pub const fn as_str(self) -> &'static str {
         match self {
+            Self::SessionHistoryLimit => "session_history_limit",
             Self::InsufficientCredits => "insufficient_credits",
             Self::InvalidApiKey => "invalid_api_key",
             Self::InvalidCredentials => "invalid_credentials",
@@ -451,6 +456,7 @@ impl FailureReason {
             Self::ProviderOverloaded => "provider_overloaded",
             Self::ProviderStreamTimeout => "provider_stream_timeout",
             Self::ProviderServerError => "provider_server_error",
+            Self::SafetyPolicyRefusal => "safety_policy_refusal",
             Self::ReconnectRequired => "reconnect_required",
             Self::UsageLimit => "usage_limit",
         }
@@ -958,6 +964,30 @@ mod tests {
     }
 
     #[test]
+    fn failure_diagnostic_serializes_session_history_limit_reason() {
+        assert_eq!(
+            FailureReason::SessionHistoryLimit.as_str(),
+            "session_history_limit"
+        );
+
+        for framework in [AgentFramework::Codex, AgentFramework::ClaudeCode] {
+            let diagnostic = FailureDiagnostic::new(
+                FailureClass::CheckpointFailed,
+                framework,
+                PromptMetadata::from_prompt("continue"),
+            )
+            .with_cli_exit_code(0)
+            .with_failure_reason(FailureReason::SessionHistoryLimit);
+
+            let json = serde_json::to_value(&diagnostic).unwrap();
+            assert_eq!(json["failureReason"], "session_history_limit");
+
+            let round_trip: FailureDiagnostic = serde_json::from_value(json).unwrap();
+            assert_eq!(round_trip, diagnostic);
+        }
+    }
+
+    #[test]
     fn failure_diagnostic_serializes_output_token_limit_reason() {
         assert_eq!(
             FailureReason::OutputTokenLimit.as_str(),
@@ -1040,6 +1070,28 @@ mod tests {
 
         let json = serde_json::to_value(&diagnostic).unwrap();
         assert_eq!(json["failureReason"], "provider_server_error");
+
+        let round_trip: FailureDiagnostic = serde_json::from_value(json).unwrap();
+        assert_eq!(round_trip, diagnostic);
+    }
+
+    #[test]
+    fn failure_diagnostic_serializes_safety_policy_refusal_reason() {
+        assert_eq!(
+            FailureReason::SafetyPolicyRefusal.as_str(),
+            "safety_policy_refusal"
+        );
+
+        let diagnostic = FailureDiagnostic::new(
+            FailureClass::CliNonzero,
+            AgentFramework::Codex,
+            PromptMetadata::from_prompt("debug failure"),
+        )
+        .with_cli_exit_code(1)
+        .with_failure_reason(FailureReason::SafetyPolicyRefusal);
+
+        let json = serde_json::to_value(&diagnostic).unwrap();
+        assert_eq!(json["failureReason"], "safety_policy_refusal");
 
         let round_trip: FailureDiagnostic = serde_json::from_value(json).unwrap();
         assert_eq!(round_trip, diagnostic);

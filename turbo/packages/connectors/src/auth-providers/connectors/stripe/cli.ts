@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-import type { ConnectorDeviceAuthStartOptions } from "@vm0/connectors/connectors";
+import type { ConnectorDeviceAuthStartOptions } from "@vm0/connectors/connector-config";
 import type {
   OAuthDeviceAuthPollResult,
   OAuthDeviceAuthStartResult,
@@ -49,7 +49,7 @@ type StripeCliPollState = z.infer<typeof stripeCliPollStateSchema>;
 
 type StripeCliPollResponse = z.infer<typeof stripeCliPollResponseSchema>;
 
-export function redactStripeCliDashboardAuthText(value: string): string {
+function redactStripeCliDashboardAuthText(value: string): string {
   return value
     .replace(
       /https:\/\/dashboard\.stripe\.com\/stripecli\/[^\s"'<>)]*/gu,

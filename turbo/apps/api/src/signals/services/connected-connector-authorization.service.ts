@@ -1,6 +1,7 @@
 import { command } from "ccstate";
 import { and, eq, or } from "drizzle-orm";
 import type { ConnectorRef } from "@vm0/api-contracts/contracts/connector-identity";
+import type { ConnectorChangedPayload } from "@vm0/api-contracts/contracts/realtime";
 import { agentComposes } from "@vm0/db/schema/agent-compose";
 import { orgMetadata } from "@vm0/db/schema/org-metadata";
 import { zeroAgents } from "@vm0/db/schema/zero-agent";
@@ -182,7 +183,9 @@ export const authorizeConnectedConnector$ = command(
         message: agentNotFoundMessage(agent.id),
       };
     }
-    await publishUserSignal([args.userId], "connector:changed");
+    await publishUserSignal([args.userId], "connector:changed", {
+      connectorRef: args.connectorType,
+    } satisfies ConnectorChangedPayload);
     signal.throwIfAborted();
     return { status: "authorized", agentId: agent.id };
   },

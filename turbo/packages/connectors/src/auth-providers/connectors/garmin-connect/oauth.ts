@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-import type { ConnectorAuthCodeGrantConfig } from "@vm0/connectors/connectors";
+import type { ConnectorAuthCodeGrantConfig } from "@vm0/connectors/connector-config";
 import { throwOAuthError } from "../../oauth/error";
 
 const GARMIN_CONNECT_TOKEN_URL =
@@ -234,11 +234,4 @@ async function fetchGarminConnectUserId(
     username: data.displayName ?? null,
     email: null,
   };
-}
-
-/**
- * Get the primary secret name for Garmin Connect connector.
- */
-export function getGarminConnectSecretName(): string {
-  return "GARMIN_CONNECT_ACCESS_TOKEN";
 }

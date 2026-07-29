@@ -141,9 +141,9 @@ pub(crate) fn wait_for_pid_exit(pid: u32, context: &str) {
             kill_pid_group(pid);
             panic!("pid {pid} did not terminate within 5s after {context}");
         }
-        let changed = wait_for_pid_set_change(pid, remaining)
+        let exited = wait_for_live_pids_exit(pid, remaining)
             .unwrap_or_else(|e| panic!("failed waiting for pid {pid} after {context}: {e}"));
-        if !changed {
+        if !exited {
             kill_pid_group(pid);
             panic!("pid {pid} did not terminate within 5s after {context}");
         }
@@ -262,7 +262,7 @@ impl DirectoryWatcher {
     }
 }
 
-fn wait_for_pid_set_change(pid: u32, timeout: Duration) -> std::io::Result<bool> {
+fn wait_for_live_pids_exit(pid: u32, timeout: Duration) -> std::io::Result<bool> {
     let pids = live_pids_for_wait(pid);
     if pids.is_empty() {
         return Ok(true);
@@ -275,16 +275,29 @@ fn wait_for_pid_set_change(pid: u32, timeout: Duration) -> std::io::Result<bool>
         return Ok(true);
     }
 
-    let mut pollfds = pidfds
-        .iter()
-        .map(|pidfd| libc::pollfd {
+    wait_for_pidfds_exit(&pidfds, timeout)
+}
+
+fn wait_for_pidfds_exit(pidfds: &[OwnedFd], timeout: Duration) -> std::io::Result<bool> {
+    let deadline = Instant::now() + timeout;
+    for pidfd in pidfds {
+        // poll(2) rejects an fd count above the current RLIMIT_NOFILE even
+        // when these descriptors were opened before the limit was lowered.
+        // Poll each captured process identity under the same total deadline.
+        let remaining = deadline.saturating_duration_since(Instant::now());
+        if remaining.is_zero() {
+            return Ok(false);
+        }
+        let pollfd = libc::pollfd {
             fd: pidfd.as_raw_fd(),
             events: libc::POLLIN,
             revents: 0,
-        })
-        .collect::<Vec<_>>();
-
-    poll_until(&mut pollfds, timeout)
+        };
+        if !poll_until(&mut [pollfd], remaining)? {
+            return Ok(false);
+        }
+    }
+    Ok(true)
 }
 
 fn live_pids_for_wait(pid: u32) -> Vec<u32> {
@@ -366,6 +379,10 @@ fn drain_fd(fd: std::os::fd::RawFd) {
 mod tests {
     use super::*;
 
+    const LOW_NOFILE_CHILD_TEST: &str =
+        "support::process::tests::pidfd_wait_survives_lowered_nofile_limit_child";
+    const LOW_NOFILE_CHILD_MARKER: &str = "low-nofile-pidfd-wait-ran";
+
     #[test]
     fn parse_proc_stat_handles_process_names_with_parentheses() {
         let stat = "123 (name ) with parens) S 1 456 456 0 -1 4194304 1 2 3 4 5 6 7 8 20 0 1 0 0";
@@ -402,5 +419,88 @@ mod tests {
         kill_pid_group(pid);
         wait_for_pid_exit(pid, "test cleanup for reaped leader live group");
         group_guard.disarm();
+    }
+
+    #[test]
+    fn pidfd_wait_survives_lowered_nofile_limit() {
+        let output = std::process::Command::new(std::env::current_exe().unwrap())
+            .args(["--ignored", "--exact", LOW_NOFILE_CHILD_TEST, "--nocapture"])
+            .output()
+            .unwrap();
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        let stderr = String::from_utf8_lossy(&output.stderr);
+
+        assert!(
+            output.status.success(),
+            "low-nofile child test failed: {}\nstdout:\n{stdout}\nstderr:\n{stderr}",
+            output.status
+        );
+        assert!(
+            stdout.contains(LOW_NOFILE_CHILD_MARKER) || stderr.contains(LOW_NOFILE_CHILD_MARKER),
+            "low-nofile child test did not run\nstdout:\n{stdout}\nstderr:\n{stderr}"
+        );
+    }
+
+    #[test]
+    #[ignore]
+    fn pidfd_wait_survives_lowered_nofile_limit_child() {
+        println!("{LOW_NOFILE_CHILD_MARKER}");
+
+        let pidfds: [OwnedFd; 2] = std::array::from_fn(|_| {
+            // SAFETY: `eventfd` returns a fresh descriptor or a negative error.
+            let fd = unsafe { libc::eventfd(1, libc::EFD_CLOEXEC | libc::EFD_NONBLOCK) };
+            assert!(
+                fd >= 0,
+                "eventfd failed: {}",
+                std::io::Error::last_os_error()
+            );
+            // SAFETY: `fd` is a fresh descriptor returned by `eventfd`.
+            unsafe { OwnedFd::from_raw_fd(fd) }
+        });
+        let mut original = libc::rlimit {
+            rlim_cur: 0,
+            rlim_max: 0,
+        };
+        // SAFETY: `original` points to initialized storage for `getrlimit`.
+        let result = unsafe { libc::getrlimit(libc::RLIMIT_NOFILE, &mut original) };
+        assert_eq!(
+            result,
+            0,
+            "getrlimit failed: {}",
+            std::io::Error::last_os_error()
+        );
+        let lowered = libc::rlimit {
+            rlim_cur: 1,
+            rlim_max: original.rlim_max,
+        };
+        // SAFETY: `lowered` preserves the current hard limit.
+        let result = unsafe { libc::setrlimit(libc::RLIMIT_NOFILE, &lowered) };
+        assert_eq!(
+            result,
+            0,
+            "setrlimit failed: {}",
+            std::io::Error::last_os_error()
+        );
+        let mut combined = pidfds
+            .iter()
+            .map(|pidfd| libc::pollfd {
+                fd: pidfd.as_raw_fd(),
+                events: libc::POLLIN,
+                revents: 0,
+            })
+            .collect::<Vec<_>>();
+        let combined_error = poll_until(&mut combined, Duration::from_secs(1)).unwrap_err();
+        assert_eq!(combined_error.raw_os_error(), Some(libc::EINVAL));
+        let result = wait_for_pidfds_exit(&pidfds, Duration::from_secs(1));
+        // SAFETY: `original` was returned by `getrlimit`.
+        let restore = unsafe { libc::setrlimit(libc::RLIMIT_NOFILE, &original) };
+        assert_eq!(
+            restore,
+            0,
+            "restoring rlimit failed: {}",
+            std::io::Error::last_os_error()
+        );
+
+        assert!(result.unwrap());
     }
 }

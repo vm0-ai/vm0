@@ -1,6 +1,7 @@
 import { command, computed, type Computed } from "ccstate";
 import type {
   SendMode,
+  UserLocale,
   UpdateUserPreferencesRequest,
   UserPreferencesResponse,
 } from "@vm0/api-contracts/contracts/zero-user-preferences";
@@ -58,6 +59,17 @@ function parseSendMode(value: unknown): SendMode {
   return value === "cmd-enter" ? "cmd-enter" : "enter";
 }
 
+function parseUserLocale(value: unknown): UserLocale | null {
+  if (value === null || value === "en-US" || value === "pt-BR") {
+    return value;
+  }
+  // TODO(#23508): remove after persisted legacy values are migrated.
+  if (value === "zh-CN") {
+    return "en-US";
+  }
+  throw new Error(`Unexpected user locale: ${String(value)}`);
+}
+
 function parseSecretType(value: string): SecretType {
   if (value === "user" || value === "model-provider" || value === "connector") {
     return value;
@@ -92,6 +104,7 @@ export function userPreferences({
     const [row] = await db
       .select({
         timezone: orgMembersMetadata.timezone,
+        locale: orgMembersMetadata.locale,
         pinnedAgentIds: orgMembersMetadata.pinnedAgentIds,
         sendMode: orgMembersMetadata.sendMode,
         morningBriefEnabled: orgMembersMetadata.morningBriefEnabled,
@@ -110,6 +123,7 @@ export function userPreferences({
     if (!row) {
       return {
         timezone: null,
+        locale: null,
         pinnedAgentIds: [],
         sendMode: "enter",
         morningBriefEnabled: false,
@@ -120,6 +134,7 @@ export function userPreferences({
 
     return {
       timezone: row.timezone,
+      locale: parseUserLocale(row.locale),
       pinnedAgentIds: normalizePinnedAgentIds(
         toStringArray(row.pinnedAgentIds),
       ),
@@ -163,6 +178,7 @@ export function userModelPreference({
 
 interface UpdateUserPreferencesArgs extends UserScopedQuery {
   readonly preferences: UpdateUserPreferencesRequest;
+  readonly allowBrazilianPortuguese?: boolean;
 }
 
 type UpdateUserPreferencesResult =
@@ -176,6 +192,15 @@ export const updateUserPreferences$ = command(
     signal: AbortSignal,
   ): Promise<UpdateUserPreferencesResult> => {
     const preferences = args.preferences;
+    if (
+      preferences.locale === "pt-BR" &&
+      args.allowBrazilianPortuguese !== true
+    ) {
+      return {
+        ok: false,
+        message: "Invalid request",
+      };
+    }
     if (
       preferences.timezone !== undefined &&
       !isValidTimeZone(preferences.timezone)
@@ -191,11 +216,17 @@ export const updateUserPreferences$ = command(
     );
     signal.throwIfAborted();
 
-    const merged: Omit<UserPreferencesResponse, "morningBriefNextRunAt"> = {
+    const merged: Omit<UserPreferencesResponse, "morningBriefNextRunAt"> & {
+      readonly locale: UserLocale | null;
+    } = {
       timezone:
         preferences.timezone !== undefined
           ? preferences.timezone
           : existing.timezone,
+      locale:
+        preferences.locale !== undefined
+          ? preferences.locale
+          : (existing.locale ?? null),
       pinnedAgentIds:
         preferences.pinnedAgentIds !== undefined
           ? normalizePinnedAgentIds(preferences.pinnedAgentIds)
@@ -222,6 +253,7 @@ export const updateUserPreferences$ = command(
         orgId: args.orgId,
         userId: args.userId,
         timezone: merged.timezone,
+        locale: merged.locale,
         pinnedAgentIds: merged.pinnedAgentIds,
         sendMode: merged.sendMode,
         morningBriefEnabled: merged.morningBriefEnabled,
@@ -234,6 +266,9 @@ export const updateUserPreferences$ = command(
         set: {
           ...(preferences.timezone !== undefined && {
             timezone: preferences.timezone,
+          }),
+          ...(preferences.locale !== undefined && {
+            locale: preferences.locale,
           }),
           ...(preferences.pinnedAgentIds !== undefined && {
             pinnedAgentIds: normalizePinnedAgentIds(preferences.pinnedAgentIds),

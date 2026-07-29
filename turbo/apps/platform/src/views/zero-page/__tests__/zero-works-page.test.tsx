@@ -10,7 +10,8 @@ import {
   zeroFeishuConnectContract,
   type FeishuConnectStatus,
 } from "@vm0/api-contracts/contracts/zero-feishu-connect";
-import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
+import { zeroStrapiIntegrationsContract } from "@vm0/api-contracts/contracts/zero-strapi-integrations";
+import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import { screen, waitFor } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
@@ -103,7 +104,11 @@ function mockFeishuAPI(overrides: Partial<FeishuConnectStatus> = {}): void {
 }
 
 function setupWorksPage(
-  options: { teamsEnabled?: boolean; feishuEnabled?: boolean } = {},
+  options: {
+    teamsEnabled?: boolean;
+    feishuEnabled?: boolean;
+    strapiEnabled?: boolean;
+  } = {},
 ): void {
   detachedSetupPage({
     context,
@@ -111,11 +116,79 @@ function setupWorksPage(
     featureSwitches: {
       [FeatureSwitchKey.TeamsIntegration]: options.teamsEnabled ?? false,
       [FeatureSwitchKey.FeishuIntegration]: options.feishuEnabled ?? false,
+      [FeatureSwitchKey.StrapiIntegration]: options.strapiEnabled ?? false,
     },
   });
 }
 
 describe("works page", () => {
+  it("shows skeleton rows while Feishu settings load", async () => {
+    const responseReady = context.mocks.deferred<void>();
+    context.mocks.api(
+      zeroFeishuConnectContract.getStatus,
+      async ({ respond }) => {
+        await responseReady.promise;
+        return respond(200, {
+          isConnected: false,
+          isInstalled: false,
+          isAdmin: true,
+          appId: null,
+          callbackUrl: null,
+          callbackVerified: false,
+          messageReceived: false,
+          tenantKey: null,
+          tenantName: null,
+          defaultAgentId: null,
+          defaultAgentName: "Okou",
+        });
+      },
+    );
+
+    detachedSetupPage({
+      context,
+      path: "/settings/feishu",
+      featureSwitches: {
+        [FeatureSwitchKey.FeishuIntegration]: true,
+      },
+    });
+
+    await expect(
+      screen.findByTestId("feishu-settings-loading"),
+    ).resolves.toBeInTheDocument();
+
+    responseReady.resolve();
+    await expect(screen.findByText("Feishu bots")).resolves.toBeInTheDocument();
+    expect(screen.queryByTestId("feishu-settings-loading")).toBeNull();
+  });
+
+  it("shows Feishu setup troubleshooting guidance", async () => {
+    mockFeishuAPI();
+
+    detachedSetupPage({
+      context,
+      path: "/settings/feishu",
+      featureSwitches: {
+        [FeatureSwitchKey.FeishuIntegration]: true,
+      },
+    });
+
+    await expect(
+      screen.findByRole("heading", { name: "Setup FAQ" }),
+    ).resolves.toBeInTheDocument();
+    expect(
+      screen.getByText(
+        /Why does Feishu show "Challenge code didn't get a response"\?/,
+      ),
+    ).toBeInTheDocument();
+    expect(screen.getByText(/Return to the Tokens step/)).toBeInTheDocument();
+    expect(
+      screen.getByText("Why is publishing the app waiting for approval?"),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(/Feishu sends the approval request/),
+    ).toBeInTheDocument();
+  });
+
   it("shows integration cards with current connection status and realtime refreshes", async () => {
     mockSlackAPI({
       isConnected: true,
@@ -138,6 +211,7 @@ describe("works page", () => {
       expect(screen.getByText("Slack")).toBeInTheDocument();
       expect(screen.queryByText("Microsoft Teams")).not.toBeInTheDocument();
       expect(screen.queryByText("Feishu")).not.toBeInTheDocument();
+      expect(screen.queryByText("Strapi")).not.toBeInTheDocument();
       expect(screen.getByText("Telegram")).toBeInTheDocument();
       expect(screen.getByText("Phone")).toBeInTheDocument();
       expect(screen.getByText(/update permissions/i)).toBeInTheDocument();
@@ -231,9 +305,84 @@ describe("works page", () => {
       screen.getByRole("img", { name: "Okou Feishu bot icon" }),
     ).toHaveAttribute("src", "https://example.com/okou-feishu.png");
     expect(screen.getByText("Connected (Feishu User)")).toBeInTheDocument();
+    expect(queryRole("button", "Add bot")).toBeNull();
     click(getRole("button", "More options for Okou Feishu"));
     expect(queryRole("button", "Manage")).toBeNull();
     expect(getRole("button", "Uninstall")).toBeInTheDocument();
+  });
+
+  it("shows Strapi only when its integration switch is enabled", async () => {
+    mockSlackAPI({ isConnected: true, isInstalled: true, isAdmin: true });
+
+    setupWorksPage({ strapiEnabled: true });
+
+    await waitFor(() => {
+      expect(screen.getByText("Strapi")).toBeInTheDocument();
+      expect(
+        screen.getByText("Automate work when entries are published"),
+      ).toBeInTheDocument();
+    });
+  });
+
+  it("redirects direct Strapi settings navigation when the switch is disabled", async () => {
+    detachedSetupPage({
+      context,
+      path: "/settings/strapi",
+      featureSwitches: {
+        [FeatureSwitchKey.StrapiIntegration]: false,
+      },
+    });
+
+    await waitFor(() => {
+      expect(window.location.pathname).toBe("/");
+    });
+    expect(screen.queryByText("Add Strapi instance")).not.toBeInTheDocument();
+  });
+
+  it("checks whether Strapi delivered its external test webhook", async () => {
+    const integrationId = "00000000-0000-4000-8000-000000000091";
+    let tested = false;
+    context.mocks.api(zeroStrapiIntegrationsContract.list, ({ respond }) => {
+      return respond(200, [
+        {
+          id: integrationId,
+          name: "Marketing CMS",
+          baseUrl: "https://cms.example.com",
+          webhookUrl: `https://www.vm0.test/api/zero/strapi/events/${integrationId}`,
+          secretLastFour: "abcd",
+          lastTestedAt: tested ? "2026-07-28T04:00:00.000Z" : null,
+          lastReceivedAt: null,
+          createdAt: "2026-07-28T03:00:00.000Z",
+        },
+      ]);
+    });
+    context.mocks.api(
+      zeroStrapiIntegrationsContract.checkTest,
+      ({ respond }) => {
+        tested = true;
+        return respond(200, {
+          received: true,
+          lastTestedAt: "2026-07-28T04:00:00.000Z",
+        });
+      },
+    );
+
+    detachedSetupPage({
+      context,
+      path: "/settings/strapi",
+      featureSwitches: {
+        [FeatureSwitchKey.StrapiIntegration]: true,
+      },
+    });
+
+    await expect(
+      screen.findByText("Marketing CMS"),
+    ).resolves.toBeInTheDocument();
+    expect(screen.queryByText("Webhook tested")).not.toBeInTheDocument();
+    click(getRole("button", "Check test"));
+    await expect(
+      screen.findByText("Webhook tested"),
+    ).resolves.toBeInTheDocument();
   });
 
   it("redirects direct Feishu settings navigation when the switch is disabled", async () => {
@@ -251,7 +400,7 @@ describe("works page", () => {
     expect(screen.queryByText("Feishu bots")).not.toBeInTheDocument();
   });
 
-  it("shows Feishu management actions to a bot owner", async () => {
+  it("hides Feishu management actions from organization members", async () => {
     const installationId = "00000000-0000-4000-8000-000000000001";
     const agentId = "00000000-0000-4000-8000-000000000002";
     mockSlackAPI({ isConnected: true, isInstalled: true, isAdmin: false });
@@ -259,28 +408,26 @@ describe("works page", () => {
       isInstalled: true,
       isAdmin: false,
       installationId,
-      appId: "cli_owner",
+      appId: "cli_member",
       callbackUrl: `https://api.vm0.test/api/zero/feishu/events/${installationId}`,
       callbackVerified: true,
       messageReceived: true,
-      tenantKey: "tenant-owner",
-      tenantName: "Owner bot",
+      tenantKey: "tenant-member",
+      tenantName: "Member bot",
       defaultAgentId: agentId,
       defaultAgentName: "Okou",
       installations: [
         {
           id: installationId,
           isConnected: false,
-          appId: "cli_owner",
+          appId: "cli_member",
           callbackUrl: `https://api.vm0.test/api/zero/feishu/events/${installationId}`,
-          connectUrl: `https://api.vm0.test/api/zero/feishu/oauth/connect?state=owner`,
           callbackVerified: true,
           messageReceived: true,
-          tenantKey: "tenant-owner",
-          tenantName: "Owner bot",
+          tenantKey: "tenant-member",
+          tenantName: "Member bot",
           defaultAgentId: agentId,
           defaultAgentName: "Okou",
-          canManage: true,
           setupCompleted: false,
         },
       ],
@@ -289,47 +436,42 @@ describe("works page", () => {
     setupWorksPage({ feishuEnabled: true });
     click(await screen.findByTestId("feishu-setup-button"));
     await expect(screen.findByText("Feishu bots")).resolves.toBeInTheDocument();
-    expect(getRole("button", "Add bot")).toBeInTheDocument();
+    expect(queryRole("button", "Add bot")).toBeNull();
     expect(screen.getByText("Setup incomplete")).toBeInTheDocument();
     expect(queryRole("link", "Connect")).toBeNull();
 
-    click(getRole("button", "More options for Owner bot"));
-    expect(getRole("button", "Manage")).toBeInTheDocument();
-    click(getRole("button", "Uninstall"));
-    expect(
-      screen.getByRole("heading", { name: "Uninstall Feishu bot?" }),
-    ).toBeInTheDocument();
+    expect(queryRole("button", "More options for Member bot")).toBeNull();
   });
 
-  it("keeps the Feishu setup guide available after setup completes", async () => {
+  it("lets an organization admin use the completed review guide", async () => {
     const installationId = "00000000-0000-4000-8000-000000000001";
     const agentId = "00000000-0000-4000-8000-000000000002";
     mockSlackAPI({ isConnected: true, isInstalled: true, isAdmin: false });
     mockFeishuAPI({
+      isConnected: true,
       isInstalled: true,
-      isAdmin: false,
+      isAdmin: true,
       installationId,
-      appId: "cli_completed_owner",
+      appId: "cli_completed_admin",
       callbackUrl: `https://api.vm0.test/api/zero/feishu/events/${installationId}`,
       callbackVerified: true,
       messageReceived: true,
-      tenantKey: "tenant-owner",
-      tenantName: "Completed owner bot",
+      tenantKey: "tenant-admin",
+      tenantName: "Completed admin bot",
       defaultAgentId: agentId,
       defaultAgentName: "Okou",
       installations: [
         {
           id: installationId,
-          isConnected: false,
-          appId: "cli_completed_owner",
+          isConnected: true,
+          appId: "cli_completed_admin",
           callbackUrl: `https://api.vm0.test/api/zero/feishu/events/${installationId}`,
           callbackVerified: true,
           messageReceived: true,
-          tenantKey: "tenant-owner",
-          tenantName: "Completed owner bot",
+          tenantKey: "tenant-admin",
+          tenantName: "Completed admin bot",
           defaultAgentId: agentId,
           defaultAgentName: "Okou",
-          canManage: true,
           setupCompleted: true,
         },
       ],
@@ -338,15 +480,54 @@ describe("works page", () => {
     setupWorksPage({ feishuEnabled: true });
     click(await screen.findByTestId("feishu-setup-button"));
     await expect(screen.findByText("Feishu bots")).resolves.toBeInTheDocument();
+    expect(queryRole("button", "Add bot")).toBeNull();
 
-    click(getRole("button", "More options for Completed owner bot"));
-    click(getRole("button", "Setup guide"));
+    click(getRole("button", "More options for Completed admin bot"));
+    expect(queryRole("button", "Manage")).toBeNull();
+    expect(getRole("button", "Uninstall")).toBeInTheDocument();
+    expect(getRole("button", "Disconnect")).toBeInTheDocument();
+    click(getRole("button", "Review guide"));
+
     expect(
-      screen.getByText("Import the required permissions"),
+      screen.getByRole("heading", { name: "Feishu review guide" }),
     ).toBeInTheDocument();
+    expect(
+      screen.getByText("Create an enterprise custom app"),
+    ).toBeInTheDocument();
+
+    click(getRole("button", "Next"));
+    expect(screen.getByLabelText("App ID")).toHaveValue("cli_completed_admin");
+    expect(screen.getByLabelText("App ID")).toBeDisabled();
+    expect(screen.getByLabelText("App Secret")).toBeDisabled();
+    expect(screen.getByLabelText("App Secret")).toHaveAttribute(
+      "placeholder",
+      "Configured",
+    );
+
+    click(getRole("button", "Next"));
+    expect(screen.getByLabelText("Encrypt Key")).toBeDisabled();
+    expect(screen.getByLabelText("Verification Token")).toBeDisabled();
+    expect(getRole("button", "Next")).toBeEnabled();
+
+    click(getRole("button", "Next"));
+    expect(screen.getByText("Configure event delivery")).toBeInTheDocument();
+
+    click(getRole("button", "Next"));
+    expect(
+      screen.getByText("Configure the OAuth redirect URL"),
+    ).toBeInTheDocument();
+
+    click(getRole("button", "Next"));
+    expect(screen.getByText("Publish the app")).toBeInTheDocument();
+    expect(screen.getByLabelText("Default agent")).toBeDisabled();
+
+    click(getRole("button", "Done"));
+    expect(
+      screen.queryByRole("heading", { name: "Feishu review guide" }),
+    ).toBeNull();
   });
 
-  it("only lets a connected non-owner disconnect their own account", async () => {
+  it("only lets a connected non-admin disconnect their own account", async () => {
     const installationId = "00000000-0000-4000-8000-000000000001";
     const agentId = "00000000-0000-4000-8000-000000000002";
     mockSlackAPI({ isConnected: true, isInstalled: true, isAdmin: false });
@@ -375,7 +556,6 @@ describe("works page", () => {
           tenantName: "Member bot",
           defaultAgentId: agentId,
           defaultAgentName: "Okou",
-          canManage: false,
         },
       ],
     });
@@ -386,6 +566,7 @@ describe("works page", () => {
 
     click(getRole("button", "More options for Member bot"));
     expect(getRole("button", "Disconnect")).toBeInTheDocument();
+    expect(queryRole("button", "Review guide")).toBeNull();
     expect(queryRole("button", "Manage")).toBeNull();
     expect(queryRole("button", "Uninstall")).toBeNull();
   });
@@ -423,7 +604,6 @@ describe("works page", () => {
           tenantName: "Member bot",
           defaultAgentId: agentId,
           defaultAgentName: "Okou",
-          canManage: false,
         },
       ],
     });
@@ -437,7 +617,10 @@ describe("works page", () => {
       return null;
     });
     click(getRole("button", "Connect"));
-    expect(open).toHaveBeenCalledWith(connectUrl, "_blank");
+    expect(open).toHaveBeenCalledWith(
+      `${connectUrl}&callbackTarget=app`,
+      "_blank",
+    );
     expect(queryRole("button", "More options for Member bot")).toBeNull();
   });
 
@@ -445,14 +628,15 @@ describe("works page", () => {
     const installationId = "00000000-0000-4000-8000-000000000001";
     const agentId = "00000000-0000-4000-8000-000000000002";
     let callbackVerified = false;
+    let isConnected = false;
     mockSlackAPI({ isConnected: true, isInstalled: true, isAdmin: true });
     context.mocks.api(zeroFeishuConnectContract.getStatus, ({ respond }) => {
       const installation = {
         id: installationId,
-        isConnected: false,
+        isConnected,
         appId: "cli_feishu",
         callbackUrl: `https://api.vm0.test/api/zero/feishu/events/${installationId}`,
-        oauthRedirectUrl: "https://api.vm0.test/api/zero/feishu/oauth/callback",
+        oauthRedirectUrl: "https://app.vm0.test/connectors/feishu/callback",
         callbackVerified,
         messageReceived: false,
         tenantKey: null,
@@ -461,7 +645,7 @@ describe("works page", () => {
         defaultAgentName: "Okou",
       };
       return respond(200, {
-        isConnected: false,
+        isConnected,
         isInstalled: true,
         isAdmin: true,
         installationId,
@@ -483,24 +667,16 @@ describe("works page", () => {
     click(getRole("button", "More options for Feishu bot"));
     click(getRole("button", "Manage"));
     expect(
-      screen.getByText("Import the required permissions"),
+      screen.getByRole("img", {
+        name: "Feishu Event Configuration screen with the subscription mode edit control highlighted",
+      }),
     ).toBeInTheDocument();
-    expect(document.body).toHaveTextContent("im:message.p2p_msg:readonly");
-    expect(document.body).toHaveTextContent("im:message.group_at_msg:readonly");
-    expect(document.body).toHaveTextContent("im:message.group_msg");
-    expect(document.body).toHaveTextContent("im:message.reactions:write_only");
-    expect(document.body).toHaveTextContent("im:resource");
-    click(getRole("button", "Next"));
-
+    click(getRole("button", "Show next Feishu guide image"));
     expect(
-      screen.getByText("Configure the OAuth redirect URL"),
+      screen.getByRole("img", {
+        name: "Feishu Event Configuration screen with the Request URL field highlighted",
+      }),
     ).toBeInTheDocument();
-    expect(
-      screen.getByDisplayValue(
-        "https://api.vm0.test/api/zero/feishu/oauth/callback",
-      ),
-    ).toBeInTheDocument();
-    click(getRole("button", "Next"));
 
     await waitFor(() => {
       expect(screen.getAllByText("Waiting for callback")).not.toHaveLength(0);
@@ -509,17 +685,31 @@ describe("works page", () => {
     });
 
     callbackVerified = true;
+    isConnected = true;
     context.mocks.ably.trigger("feishu:changed");
 
     await waitFor(() => {
       expect(screen.getByText("Callback verified")).toBeInTheDocument();
       expect(getRole("button", "Next")).toBeEnabled();
+      expect(
+        screen.getByText("Feishu connected successfully"),
+      ).toBeInTheDocument();
     });
+
+    click(getRole("button", "Next"));
+    expect(
+      screen.getByText("Configure the OAuth redirect URL"),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByDisplayValue(
+        "https://app.vm0.test/connectors/feishu/callback",
+      ),
+    ).toBeInTheDocument();
   });
 
-  it("shows the guided Feishu custom app setup for organization members", async () => {
-    mockSlackAPI({ isConnected: true, isInstalled: true, isAdmin: false });
-    mockFeishuAPI({ isAdmin: false });
+  it("shows the guided Feishu custom app setup for organization admins", async () => {
+    mockSlackAPI({ isConnected: true, isInstalled: true, isAdmin: true });
+    mockFeishuAPI({ isAdmin: true });
     setupWorksPage({ feishuEnabled: true });
 
     click(await screen.findByTestId("feishu-setup-button"));
@@ -530,6 +720,12 @@ describe("works page", () => {
       screen.findByText("Create an enterprise custom app"),
     ).resolves.toBeInTheDocument();
     expect(
+      screen.getByRole("img", {
+        name: "Feishu app creation form with the app name, icon, and Create button highlighted",
+      }),
+    ).toBeInTheDocument();
+    expect(queryRole("button", "Show creating a Feishu app guide")).toBeNull();
+    expect(
       screen.getByText("Download the VM0 icon").closest("a"),
     ).toHaveAttribute("download", "vm0-feishu-app-icon.png");
 
@@ -538,14 +734,19 @@ describe("works page", () => {
     await expect(screen.findByLabelText("App ID")).resolves.toBeInTheDocument();
     expect(screen.getByLabelText("App Secret")).toBeInTheDocument();
     expect(
+      screen.getByRole("img", {
+        name: "Feishu app creation result showing where to find the App ID and App Secret",
+      }),
+    ).toBeInTheDocument();
+    expect(
       screen.queryByLabelText("Verification Token"),
     ).not.toBeInTheDocument();
     expect(screen.queryByLabelText("Default agent")).not.toBeInTheDocument();
   });
 
   it("rejects a registered Feishu App ID on the credentials step", async () => {
-    mockSlackAPI({ isConnected: true, isInstalled: true, isAdmin: false });
-    mockFeishuAPI({ isAdmin: false });
+    mockSlackAPI({ isConnected: true, isInstalled: true, isAdmin: true });
+    mockFeishuAPI({ isAdmin: true });
     context.mocks.api(
       zeroFeishuConnectContract.checkAppId,
       ({ query, respond }) => {

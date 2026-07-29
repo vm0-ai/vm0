@@ -1,5 +1,8 @@
 import { sql } from "drizzle-orm";
+import type { ChatEventType } from "@vm0/api-contracts/contracts/chat-events";
+import type { TriggerSource } from "@vm0/api-contracts/contracts/logs";
 import {
+  check,
   pgTable,
   uuid,
   text,
@@ -19,7 +22,7 @@ import type {
   ChatMessageGoalEvent,
   ChatMessageGoalSnapshot,
   ChatMessageRecommendedFollowups,
-  ChatMessageStructuredPrompt,
+  ChatMessageUserMessage,
   ChatMessageUsagePayload,
 } from "@vm0/db/jsonb-contracts/chat-message";
 export type {
@@ -35,7 +38,7 @@ export type {
   ChatMessageRecommendedFollowupGenerationType,
   ChatMessageRecommendedFollowupKind,
   ChatMessageRecommendedFollowups,
-  ChatMessageStructuredPrompt,
+  ChatMessageUserMessage,
   ChatMessageUsageKindBreakdown,
   ChatMessageUsagePayload,
   ChatMessageUsageProviderBreakdown,
@@ -45,13 +48,13 @@ export type {
 } from "@vm0/db/jsonb-contracts/chat-message";
 
 /**
- * Chat Messages table
- * Each row is a single message belonging to a chat_thread.
+ * Physical storage for the immutable ChatEvent stream.
+ * Each row is one typed event belonging to a chat_thread. The table and
+ * selected physical column names stay message-named during the rollout.
  *
- * User messages are persisted immediately on send. Queued user messages are
- * represented by chat_message_queue rows; when the queue is drained, a new
- * user row is appended with run_id and revokes_message_id pointing at the
- * queued row it supersedes.
+ * User and automation inputs are persisted immediately. A run-less,
+ * unrevoked input event is pending queue state; its run-attributed replacement
+ * is the immutable claim.
  *
  * Assistant rows are appended after run output exists. Queue marker control
  * rows can also be appended for queued runs and later revoked when the run
@@ -82,10 +85,10 @@ export const chatMessages = pgTable(
       )
       .notNull(),
     // Attribution only: identifies the run that consumed or produced this row.
-    // Queued state is represented exclusively by chat_message_queue.
+    // A null value on an unrevoked input.prompt/input.automation is pending.
     runId: uuid("run_id"),
     usagePayload: jsonb("usage_payload").$type<ChatMessageUsagePayload>(),
-    revokesMessageId: uuid("revokes_message_id").references(
+    revokesEventId: uuid("revokes_message_id").references(
       (): AnyPgColumn => {
         return chatMessages.id;
       },
@@ -95,11 +98,21 @@ export const chatMessages = pgTable(
     // Stable grouping key for repeated automation/workflow/goal-triggered
     // runs rendered in a chat thread.
     runGroupId: uuid("run_group_id"),
-    role: text("role").notNull(), // "user" | "assistant"
+    eventType: text("event_type").$type<ChatEventType>().notNull(),
+    automationId: uuid("automation_id"),
+    triggerSource: text("trigger_source").$type<TriggerSource>(),
+    triggerBrief: text("trigger_brief"),
+    // Persistent-secret encrypted queue parameters. This field never leaves
+    // the API and remains only on the original pending input event.
+    encryptedParams: text("encrypted_params"),
+    // Release A keeps the legacy column nullable while eventType readers
+    // deploy, but writers still populate it for rollback-eligible readers.
+    // A later release stops the dual-write after old readers have drained;
+    // Release B can then drop the physical column.
+    role: text("role"),
     content: text("content"),
-    /** Stable business representation of rich user-message content. */
-    structuredPrompt:
-      jsonb("structured_prompt").$type<ChatMessageStructuredPrompt>(),
+    /** Canonical rich user-message document for input prompt events. */
+    userMessage: jsonb("structured_prompt").$type<ChatMessageUserMessage>(),
     thinking: text("thinking"),
     error: text("error"),
     /** "completed" | "failed" | "cancelled"; null for non-terminal rows. */
@@ -118,12 +131,7 @@ export const chatMessages = pgTable(
       "generation_template",
     ).$type<ChatMessageGenerationTemplate>(),
     slackMessagePermalink: text("slack_message_permalink"),
-    // Database-only rollout marker for API versions that still read legacy
-    // mail cards. Drop this column after the link-only reader has fully
-    // deployed; migrations run before API traffic promotion.
-    mailDraftId: uuid("mail_draft_id").unique(
-      "chat_messages_mail_draft_id_unique",
-    ),
+    feishuChatOpenUrl: text("feishu_chat_open_url"),
     recommendedFollowups: jsonb(
       "recommended_followups",
     ).$type<ChatMessageRecommendedFollowups>(),
@@ -143,7 +151,7 @@ export const chatMessages = pgTable(
         .on(table.runId)
         .where(sql`${table.usagePayload} IS NOT NULL`),
       uniqueIndex("chat_messages_revokes_message_id_unique").on(
-        table.revokesMessageId,
+        table.revokesEventId,
       ),
       uniqueIndex("chat_messages_interrupts_run_id_unique").on(
         table.interruptsRunId,
@@ -151,6 +159,19 @@ export const chatMessages = pgTable(
       index("idx_chat_messages_run_group_id")
         .on(table.runGroupId)
         .where(sql`${table.runGroupId} IS NOT NULL`),
+      index("chat_messages_input_automation_idx")
+        .on(table.automationId)
+        .where(sql`${table.eventType} = 'input.automation'`),
+      index("chat_messages_pending_queue_idx")
+        .on(table.chatThreadId, table.createdAt, table.id)
+        .where(
+          sql`${table.runId} IS NULL AND ${table.eventType} IN ('input.prompt', 'input.automation')`,
+        ),
+      index("chat_messages_automation_pause_idx")
+        .on(table.chatThreadId, table.seqId.desc())
+        .where(
+          sql`${table.eventType} IN ('queue.automation_paused', 'queue.automation_resumed')`,
+        ),
       uniqueIndex("chat_messages_run_seq_unique").on(
         table.runId,
         table.sequenceNumber,
@@ -165,6 +186,34 @@ export const chatMessages = pgTable(
       uniqueIndex("chat_messages_run_thinking_unique")
         .on(table.runId)
         .where(sql`${table.thinking} IS NOT NULL`),
+      check(
+        "chat_messages_event_type_check",
+        sql`${table.eventType} IN (
+          'input.prompt',
+          'input.automation',
+          'input.rejected',
+          'output.message',
+          'output.error',
+          'output.thinking',
+          'output.followups',
+          'run.queued',
+          'run.dequeued',
+          'run.completed',
+          'run.failed',
+          'run.cancelled',
+          'queue.automation_paused',
+          'queue.automation_resumed',
+          'control.interrupt',
+          'control.revoke',
+          'goal.changed',
+          'usage.recorded'
+        )`,
+      ),
+      check(
+        "chat_messages_input_user_message_check",
+        sql`${table.eventType} NOT IN ('input.prompt', 'input.rejected')
+          OR ${table.userMessage} IS NOT NULL`,
+      ),
     ];
   },
 );

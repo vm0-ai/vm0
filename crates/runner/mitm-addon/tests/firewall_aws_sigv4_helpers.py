@@ -29,7 +29,8 @@ from tests.aws_sigv4_helpers import (
     aws_sigv4_presigned_query_path,
     resolved_aws_sigv4_credentials,
 )
-from url_utils import get_original_url
+from tests.firewall_auth_helpers import handle_firewall_request_without_upstream_admission
+from url_utils import get_trusted_authority
 
 DEFAULT_SANDBOX_TOKEN = "sandbox-token"
 FAR_FUTURE_EXPIRES_AT = 9_999_999_999
@@ -220,7 +221,7 @@ def prepare_firewall_request(
 ) -> None:
     flow.metadata[metadata_keys.VM_RUN_ID] = run_id
     flow.metadata[metadata_keys.ORIGINAL_URL] = (
-        get_original_url(flow) if original_url is None else original_url
+        get_trusted_authority(flow).url if original_url is None else original_url
     )
 
 
@@ -287,7 +288,7 @@ async def handle_firewall_request_with_auth_endpoint(
     prepare_firewall_request(flow, run_id=resolved_vm_info["runId"])
 
     with resolved_endpoint.run(), mitm_ctx(api_url=resolved_endpoint.api_url):
-        return await auth.handle_firewall_request(
+        return await handle_firewall_request_without_upstream_admission(
             flow,
             aws_allow() if allow is None else allow,
             dict(resolved_vm_info),

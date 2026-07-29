@@ -4,6 +4,7 @@
 import type { FormEvent, ReactNode } from "react";
 import { useGet, useLastResolved, useLoadable, useSet } from "ccstate-react";
 import { useLoadableSet } from "ccstate-react/experimental";
+import type { StrapiIntegration } from "@vm0/api-contracts/contracts/zero-strapi-integrations";
 import type {
   GmailLabelAppliedEventConfig,
   GmailNewMessageEventConfig,
@@ -58,9 +59,10 @@ import {
   IconExternalLink,
   IconPlugConnected,
   IconVideo,
+  IconWebhook,
   IconX,
 } from "@tabler/icons-react";
-import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
+import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import {
   Button,
   Checkbox,
@@ -109,6 +111,7 @@ import {
   createWorkflowNotionChildPageAutomation$,
   createWorkflowNotionDatabaseItemAutomation$,
   createWorkflowNotionPageContentUpdatedAutomation$,
+  createWorkflowStrapiEntryPublishedAutomation$,
   createWorkflowWebhookAutomation$,
   createGithubLabelActor$,
   createScheduleCronFields$,
@@ -135,6 +138,8 @@ import {
   setCreateGithubLabelActor$,
   setCreateGmailMatchConditions$,
   setCreateNotionPageContentUpdatedScope$,
+  createStrapiIntegrationId$,
+  setCreateStrapiIntegrationId$,
   setCreateScheduleCronFields$,
   setCreatedWorkflowWebhookAutomation$,
   setEditingGithubLabelActor$,
@@ -175,7 +180,9 @@ import {
   type WorkflowDetailTab,
   type WorkflowAutomationCreateDialog,
   type NotionPageContentUpdatedScopeMode,
+  type GmailMatchField,
   type GmailMatchCondition,
+  type GmailMatchOperator,
   type GmailTextField,
   type GmailTextOperator,
   workflowMetadataPatch$,
@@ -191,6 +198,7 @@ import {
 import { detach, Reason } from "../../signals/utils.ts";
 import { writeToClipboard } from "../../signals/zero-page/clipboard.ts";
 import { orgPlanCapabilities$ } from "../../signals/zero-page/org-plan-capabilities.ts";
+import { strapiIntegrations$ } from "../../signals/zero-page/zero-strapi.ts";
 import {
   connectGithubInstallation$,
   githubIntegrationData$,
@@ -233,8 +241,6 @@ import { emptyAutomationsImg } from "../zero-page/platform-assets.ts";
 import { ConnectorIcon } from "../zero-page/components/settings/connector-icons.tsx";
 import { WorkflowWebhookUpgradeDialog } from "./workflow-webhook-upgrade-dialog.tsx";
 
-const FIELD_CLASS =
-  "h-9 w-full rounded-md border border-border/60 bg-background px-2.5 text-sm outline-none focus:border-primary";
 const AUTOMATION_FIELD_CLASS =
   "h-8 w-full rounded-md border border-border/60 bg-background px-2 text-xs";
 const WORKFLOW_EDIT_TEXTAREA_CLASS =
@@ -289,14 +295,32 @@ const GMAIL_TEXT_FIELDS: readonly {
   { field: "cc", label: "Cc" },
 ];
 
-const GMAIL_TEXT_OPERATORS: readonly {
-  readonly operator: GmailTextOperator;
+const GMAIL_MATCH_FIELDS: readonly {
+  readonly field: GmailMatchField;
   readonly label: string;
-}[] = [
-  { operator: "contains", label: "Contains" },
-  { operator: "doesNotContain", label: "Does not contain" },
-];
+}[] = [{ field: "threadId", label: "Thread ID" }, ...GMAIL_TEXT_FIELDS];
 
+interface GmailMatchOperatorOption {
+  readonly operator: GmailMatchOperator;
+  readonly label: string;
+  readonly formSuffix: string;
+}
+
+const GMAIL_TEXT_OPERATORS: readonly (GmailMatchOperatorOption & {
+  readonly operator: GmailTextOperator;
+})[] = [
+  { operator: "contains", label: "Contains", formSuffix: "Contains" },
+  {
+    operator: "containsAny",
+    label: "Contains any",
+    formSuffix: "ContainsAny",
+  },
+  {
+    operator: "doesNotContain",
+    label: "Does not contain",
+    formSuffix: "DoesNotContain",
+  },
+];
 const GITHUB_SUBJECT_OPTIONS: readonly {
   readonly value: GithubLabelAppliedSubjectFilter;
   readonly label: string;
@@ -687,10 +711,10 @@ function AutomationCreateAction() {
     capabilities?.workflowWebhookAutomationAllowed ?? true;
   const notionWorkflowAutomationsEnabled =
     features[FeatureSwitchKey.NotionWorkflowAutomations] ?? false;
-  const githubWorkflowRunAutomationsEnabled =
-    features[FeatureSwitchKey.GithubWorkflowRunAutomations] ?? false;
   const githubWebhookAutomationsEnabled =
     features[FeatureSwitchKey.GithubWebhookAutomations] ?? false;
+  const strapiIntegrationEnabled =
+    features[FeatureSwitchKey.StrapiIntegration] ?? false;
 
   return (
     <AutomationCreateMenu
@@ -703,10 +727,10 @@ function AutomationCreateAction() {
       }}
       githubLabelAutomationsEnabled
       githubWebhookAutomationsEnabled={githubWebhookAutomationsEnabled}
-      githubWorkflowRunAutomationsEnabled={githubWorkflowRunAutomationsEnabled}
       googleCalendarAutomationsEnabled
       googleMeetAutomationsEnabled
       notionWorkflowAutomationsEnabled={notionWorkflowAutomationsEnabled}
+      strapiIntegrationEnabled={strapiIntegrationEnabled}
       webhookTierEligible={webhookTierEligible}
     />
   );
@@ -2630,25 +2654,46 @@ function formTextValue(form: FormData, name: string): string | undefined {
   return trimmed.length > 0 ? trimmed : undefined;
 }
 
+function formTextValues(
+  form: FormData,
+  name: string,
+): readonly string[] | undefined {
+  const value = formTextValue(form, name);
+  if (!value) {
+    return undefined;
+  }
+  const values = value
+    .split(",")
+    .map((entry) => {
+      return entry.trim();
+    })
+    .filter((entry) => {
+      return entry.length > 0;
+    });
+  return values.length > 0 ? values : undefined;
+}
+
 function buildGmailNewMessageEventConfig(
   form: FormData,
   baseConfig?: GmailNewMessageEventConfig,
 ): GmailNewMessageEventConfig {
   const baseMatch = baseConfig?.match;
+  const threadId = formTextValue(form, "threadId");
   const match: GmailMatchRules = {};
   for (const { field } of GMAIL_TEXT_FIELDS) {
     const existing = baseMatch?.[field];
     const contains = formTextValue(form, `${field}Contains`);
+    const containsAny = formTextValues(form, `${field}ContainsAny`);
     const doesNotContain = formTextValue(form, `${field}DoesNotContain`);
     const matcher: GmailTextMatcher = {};
-    if (existing?.containsAny) {
-      matcher.containsAny = existing.containsAny;
-    }
     if (existing?.doesNotContainAny) {
       matcher.doesNotContainAny = existing.doesNotContainAny;
     }
     if (contains) {
       matcher.contains = contains;
+    }
+    if (containsAny) {
+      matcher.containsAny = [...containsAny];
     }
     if (doesNotContain) {
       matcher.doesNotContain = doesNotContain;
@@ -2657,9 +2702,12 @@ function buildGmailNewMessageEventConfig(
       match[field] = matcher;
     }
   }
-  return Object.keys(match).length > 0
-    ? { provider: "gmail", event: "new_message", match }
-    : { provider: "gmail", event: "new_message" };
+  return {
+    provider: "gmail",
+    event: "new_message",
+    ...(threadId ? { threadId } : {}),
+    ...(Object.keys(match).length > 0 ? { match } : {}),
+  };
 }
 
 function gmailMatchConditions(
@@ -2669,10 +2717,19 @@ function gmailMatchConditions(
   for (const { field } of GMAIL_TEXT_FIELDS) {
     for (const { operator } of GMAIL_TEXT_OPERATORS) {
       const value = config?.match?.[field]?.[operator];
-      if (value) {
+      if (typeof value === "string" && value.length > 0) {
         conditions.push({ field, operator, value });
+      } else if (Array.isArray(value) && value.length > 0) {
+        conditions.push({ field, operator, value: value.join(", ") });
       }
     }
+  }
+  if (config?.threadId) {
+    conditions.push({
+      field: "threadId",
+      operator: "is",
+      value: config.threadId,
+    });
   }
   return conditions.length > 0
     ? conditions
@@ -2681,6 +2738,7 @@ function gmailMatchConditions(
 
 function nextGmailMatchCondition(
   conditions: readonly GmailMatchCondition[],
+  threadIdEnabled: boolean,
 ): GmailMatchCondition | null {
   for (const { operator } of GMAIL_TEXT_OPERATORS) {
     for (const { field } of GMAIL_TEXT_FIELDS) {
@@ -2692,31 +2750,59 @@ function nextGmailMatchCondition(
       }
     }
   }
+  if (!threadIdEnabled) {
+    return null;
+  }
+  const threadIdUsed = conditions.some((condition) => {
+    return condition.field === "threadId";
+  });
+  if (!threadIdUsed) {
+    return { field: "threadId", operator: "is", value: "" };
+  }
   return null;
 }
 
-function gmailTextFieldOption(
+function gmailMatchFieldOption(
   value: string,
-): (typeof GMAIL_TEXT_FIELDS)[number] {
-  const option = GMAIL_TEXT_FIELDS.find((candidate) => {
+): (typeof GMAIL_MATCH_FIELDS)[number] {
+  const option = GMAIL_MATCH_FIELDS.find((candidate) => {
     return candidate.field === value;
   });
   if (!option) {
-    throw new Error(`Unknown Gmail text field: ${value}`);
+    throw new Error(`Unknown Gmail match field: ${value}`);
   }
   return option;
 }
 
-function gmailTextOperatorOption(
+function gmailMatchOperatorOptions(
+  field: GmailMatchField,
+): readonly GmailMatchOperatorOption[] {
+  return field === "threadId"
+    ? [{ operator: "is", label: "Is", formSuffix: "" }]
+    : GMAIL_TEXT_OPERATORS;
+}
+
+function gmailMatchOperatorOption(
+  field: GmailMatchField,
   value: string,
-): (typeof GMAIL_TEXT_OPERATORS)[number] {
-  const option = GMAIL_TEXT_OPERATORS.find((candidate) => {
+): GmailMatchOperatorOption {
+  const option = gmailMatchOperatorOptions(field).find((candidate) => {
     return candidate.operator === value;
   });
   if (!option) {
-    throw new Error(`Unknown Gmail text operator: ${value}`);
+    throw new Error(`Unknown Gmail match operator: ${value}`);
   }
   return option;
+}
+
+function gmailMatchOperatorForField(
+  field: GmailMatchField,
+  operator: GmailMatchOperator,
+): GmailMatchOperator {
+  if (field === "threadId") {
+    return "is";
+  }
+  return operator === "is" ? "contains" : operator;
 }
 
 function buildGmailLabelAppliedEventConfig(
@@ -2975,16 +3061,16 @@ function textMatcherParts(
 }
 
 function formatGmailMatchSummary(config: GmailNewMessageEventConfig): string {
+  const parts: string[] = config.threadId
+    ? [`Thread ID is ${quote(config.threadId)}`]
+    : [];
   const match = config.match;
-  if (!match) {
-    return "all inbound messages";
-  }
-
-  const parts: string[] = [];
-  for (const { field } of GMAIL_TEXT_FIELDS) {
-    const matcher = match[field];
-    if (matcher) {
-      parts.push(...textMatcherParts(field, matcher));
+  if (match) {
+    for (const { field } of GMAIL_TEXT_FIELDS) {
+      const matcher = match[field];
+      if (matcher) {
+        parts.push(...textMatcherParts(field, matcher));
+      }
     }
   }
   return parts.length > 0 ? parts.join("; ") : "all inbound messages";
@@ -3040,6 +3126,9 @@ function workflowAutomationTitle(
   }
   if (automation.eventType === "notion-page-content-updated") {
     return "Notion page content updated";
+  }
+  if (automation.eventType === "strapi-entry-published") {
+    return "Strapi entry published";
   }
   return "Webhook";
 }
@@ -3192,6 +3281,14 @@ function workflowAutomationSummary(
     const title = automation.eventConfig.scope.dataSource.title;
     return title ? `Database ${quote(title)}` : "Configured database";
   }
+  if (automation.eventType === "strapi-entry-published") {
+    return [
+      automation.eventConfig.contentTypeUid ?? "Any content type",
+      automation.eventConfig.locale
+        ? `Locale ${automation.eventConfig.locale}`
+        : "Any locale",
+    ].join(" · ");
+  }
   return null;
 }
 
@@ -3214,6 +3311,7 @@ type AutomationCreateDialogKind =
   | "notion-child-page"
   | "notion-database-item"
   | "notion-page-content-updated"
+  | "strapi-entry-published"
   | "webhook";
 
 type AutomationCategoryKey =
@@ -3241,12 +3339,12 @@ type AutomationCreateCategory = {
 function buildIntegrationAutomationOptions({
   githubLabelAutomationsEnabled,
   githubWebhookAutomationsEnabled,
-  githubWorkflowRunAutomationsEnabled,
+  strapiIntegrationEnabled,
   webhookTierEligible,
 }: {
   readonly githubLabelAutomationsEnabled: boolean;
   readonly githubWebhookAutomationsEnabled: boolean;
-  readonly githubWorkflowRunAutomationsEnabled: boolean;
+  readonly strapiIntegrationEnabled: boolean;
   readonly webhookTierEligible: boolean;
 }): AutomationCreateOption[] {
   const integrationOptions: AutomationCreateOption[] = [];
@@ -3258,14 +3356,12 @@ function buildIntegrationAutomationOptions({
       icon: IconBrandGithub,
     });
   }
-  if (githubWorkflowRunAutomationsEnabled) {
-    integrationOptions.push({
-      kind: "github-workflow-run",
-      title: "GitHub workflow completed",
-      description: "Run when a matching Actions workflow run completes.",
-      icon: IconBrandGithub,
-    });
-  }
+  integrationOptions.push({
+    kind: "github-workflow-run",
+    title: "GitHub workflow completed",
+    description: "Run when a matching Actions workflow run completes.",
+    icon: IconBrandGithub,
+  });
   if (githubWebhookAutomationsEnabled) {
     integrationOptions.push(
       {
@@ -3293,6 +3389,14 @@ function buildIntegrationAutomationOptions({
         icon: IconBrandGithub,
       },
     );
+  }
+  if (strapiIntegrationEnabled) {
+    integrationOptions.push({
+      kind: "strapi-entry-published",
+      title: "Strapi entry published",
+      description: "Run after a matching Strapi entry is published.",
+      icon: IconWebhook,
+    });
   }
   integrationOptions.push({
     kind: "webhook",
@@ -3347,18 +3451,18 @@ const AUTOMATION_CATEGORY_CHIP: Readonly<
 function buildAutomationCreateCategories({
   githubLabelAutomationsEnabled,
   githubWebhookAutomationsEnabled,
-  githubWorkflowRunAutomationsEnabled,
   googleCalendarAutomationsEnabled,
   googleMeetAutomationsEnabled,
   notionWorkflowAutomationsEnabled,
+  strapiIntegrationEnabled,
   webhookTierEligible,
 }: {
   readonly githubLabelAutomationsEnabled: boolean;
   readonly githubWebhookAutomationsEnabled: boolean;
-  readonly githubWorkflowRunAutomationsEnabled: boolean;
   readonly googleCalendarAutomationsEnabled: boolean;
   readonly googleMeetAutomationsEnabled: boolean;
   readonly notionWorkflowAutomationsEnabled: boolean;
+  readonly strapiIntegrationEnabled: boolean;
   readonly webhookTierEligible: boolean;
 }): readonly AutomationCreateCategory[] {
   const calendarOptions: AutomationCreateOption[] = [];
@@ -3396,7 +3500,7 @@ function buildAutomationCreateCategories({
   const integrationOptions = buildIntegrationAutomationOptions({
     githubLabelAutomationsEnabled,
     githubWebhookAutomationsEnabled,
-    githubWorkflowRunAutomationsEnabled,
+    strapiIntegrationEnabled,
     webhookTierEligible,
   });
   const notionOptions = buildNotionAutomationOptions(
@@ -3546,19 +3650,19 @@ function AutomationCreateMenu({
   onSelect,
   githubLabelAutomationsEnabled,
   githubWebhookAutomationsEnabled,
-  githubWorkflowRunAutomationsEnabled,
   googleCalendarAutomationsEnabled,
   googleMeetAutomationsEnabled,
   notionWorkflowAutomationsEnabled,
+  strapiIntegrationEnabled,
   webhookTierEligible,
 }: {
   readonly onSelect: (kind: AutomationCreateDialogKind) => void;
   readonly githubLabelAutomationsEnabled: boolean;
   readonly githubWebhookAutomationsEnabled: boolean;
-  readonly githubWorkflowRunAutomationsEnabled: boolean;
   readonly googleCalendarAutomationsEnabled: boolean;
   readonly googleMeetAutomationsEnabled: boolean;
   readonly notionWorkflowAutomationsEnabled: boolean;
+  readonly strapiIntegrationEnabled: boolean;
   readonly webhookTierEligible: boolean;
 }) {
   const open = useGet(workflowAutomationPickerOpen$);
@@ -3568,10 +3672,10 @@ function AutomationCreateMenu({
   const categories = buildAutomationCreateCategories({
     githubLabelAutomationsEnabled,
     githubWebhookAutomationsEnabled,
-    githubWorkflowRunAutomationsEnabled,
     googleCalendarAutomationsEnabled,
     googleMeetAutomationsEnabled,
     notionWorkflowAutomationsEnabled,
+    strapiIntegrationEnabled,
     webhookTierEligible,
   });
   const activeCategory =
@@ -3812,6 +3916,188 @@ function AutomationsSection({
   );
 }
 
+function CreateStrapiEntryPublishedAutomationDialog({
+  workflowId,
+  open,
+  onOpenChange,
+}: {
+  readonly workflowId: string;
+  readonly open: boolean;
+  readonly onOpenChange: (open: boolean) => void;
+}) {
+  const pageSignal = useGet(pageSignal$);
+  const integrations = useLastResolved(strapiIntegrations$) ?? [];
+  const selectedIntegrationId = useGet(createStrapiIntegrationId$);
+  const setSelectedIntegrationId = useSet(setCreateStrapiIntegrationId$);
+  const effectiveIntegrationId = integrations.some((integration) => {
+    return integration.id === selectedIntegrationId;
+  })
+    ? (selectedIntegrationId ?? "")
+    : (integrations[0]?.id ?? "");
+  const [createLoadable, createAutomation] = useLoadableSet(
+    createWorkflowStrapiEntryPublishedAutomation$,
+  );
+  const creating = createLoadable.state === "loading";
+  const submitAutomation = (contentTypeUid: string, locale: string) => {
+    if (!effectiveIntegrationId) {
+      return;
+    }
+    detach(
+      (async () => {
+        await createAutomation(
+          {
+            workflowId,
+            eventConfig: {
+              provider: "strapi",
+              event: "entry_published",
+              integrationId: effectiveIntegrationId,
+              ...(contentTypeUid ? { contentTypeUid } : {}),
+              ...(locale ? { locale } : {}),
+            },
+          },
+          pageSignal,
+        );
+        onOpenChange(false);
+      })(),
+      Reason.DomCallback,
+    );
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Add Strapi automation</DialogTitle>
+          <DialogDescription>
+            Run this workflow after matching localized publish events settle.
+          </DialogDescription>
+        </DialogHeader>
+        {integrations.length === 0 ? (
+          <div className="flex flex-col gap-4">
+            <div className="rounded-md border border-border/60 bg-muted/30 px-3 py-2 text-sm text-muted-foreground">
+              Connect a Strapi instance before creating this automation.
+            </div>
+            <DialogFooter>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => {
+                  onOpenChange(false);
+                }}
+              >
+                Cancel
+              </Button>
+              <Link
+                pathname={ROUTES.settingsStrapi}
+                className="zero-btn-morandi inline-flex h-9 items-center justify-center rounded-lg px-3 text-sm font-medium"
+              >
+                Configure Strapi
+              </Link>
+            </DialogFooter>
+          </div>
+        ) : (
+          <StrapiAutomationForm
+            integrations={integrations}
+            effectiveIntegrationId={effectiveIntegrationId}
+            creating={creating}
+            onSelectIntegration={setSelectedIntegrationId}
+            onCancel={() => {
+              onOpenChange(false);
+            }}
+            onSubmit={submitAutomation}
+          />
+        )}
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function StrapiAutomationForm({
+  integrations,
+  effectiveIntegrationId,
+  creating,
+  onSelectIntegration,
+  onCancel,
+  onSubmit,
+}: {
+  readonly integrations: readonly StrapiIntegration[];
+  readonly effectiveIntegrationId: string;
+  readonly creating: boolean;
+  readonly onSelectIntegration: (integrationId: string) => void;
+  readonly onCancel: () => void;
+  readonly onSubmit: (contentTypeUid: string, locale: string) => void;
+}) {
+  return (
+    <form
+      aria-label="Add Strapi entry published automation"
+      className="flex flex-col gap-4"
+      onSubmit={(event) => {
+        event.preventDefault();
+        const form = new FormData(event.currentTarget);
+        const contentTypeUid = String(form.get("contentTypeUid") ?? "").trim();
+        const locale = String(form.get("locale") ?? "").trim();
+        onSubmit(contentTypeUid, locale);
+      }}
+    >
+      <label className="flex flex-col gap-1 text-xs text-muted-foreground">
+        Strapi instance
+        <Select
+          value={effectiveIntegrationId}
+          disabled={creating}
+          onValueChange={onSelectIntegration}
+        >
+          <SelectTrigger className="h-9 w-full" aria-label="Strapi instance">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            {integrations.map((integration) => {
+              return (
+                <SelectItem key={integration.id} value={integration.id}>
+                  {integration.name}
+                </SelectItem>
+              );
+            })}
+          </SelectContent>
+        </Select>
+      </label>
+      <label className="flex flex-col gap-1 text-xs text-muted-foreground">
+        Content type UID (optional)
+        <Input
+          name="contentTypeUid"
+          disabled={creating}
+          placeholder="api::article.article"
+        />
+      </label>
+      <label className="flex flex-col gap-1 text-xs text-muted-foreground">
+        Locale (optional)
+        <Input name="locale" disabled={creating} placeholder="en" />
+      </label>
+      <p className="text-xs text-muted-foreground">
+        Leave locale blank to combine all localized publish events for the same
+        document into one workflow run.
+      </p>
+      <DialogFooter>
+        <Button
+          type="button"
+          variant="outline"
+          disabled={creating}
+          onClick={onCancel}
+        >
+          Cancel
+        </Button>
+        <Button type="submit" disabled={creating}>
+          {creating ? (
+            <IconLoader2 size={14} className="animate-spin" />
+          ) : (
+            <IconWebhook size={14} />
+          )}
+          Add Strapi automation
+        </Button>
+      </DialogFooter>
+    </form>
+  );
+}
+
 function WorkflowAutomationCreateDialogs({
   workflowId,
   displayTimezone,
@@ -3823,6 +4109,10 @@ function WorkflowAutomationCreateDialogs({
   readonly createDialog: WorkflowAutomationCreateDialog;
   readonly setCreateDialog: (dialog: WorkflowAutomationCreateDialog) => void;
 }) {
+  const features = useGet(featureSwitch$);
+  const strapiIntegrationEnabled =
+    features[FeatureSwitchKey.StrapiIntegration] ?? false;
+
   return (
     <>
       <CreateIntervalAutomationDialog
@@ -3914,6 +4204,15 @@ function WorkflowAutomationCreateDialogs({
           setCreateDialog(open ? "notion-page-content-updated" : null);
         }}
       />
+      {strapiIntegrationEnabled ? (
+        <CreateStrapiEntryPublishedAutomationDialog
+          workflowId={workflowId}
+          open={createDialog === "strapi-entry-published"}
+          onOpenChange={(open) => {
+            setCreateDialog(open ? "strapi-entry-published" : null);
+          }}
+        />
+      ) : null}
       <CreateWebhookAutomationDialog
         workflowId={workflowId}
         open={createDialog === "webhook"}
@@ -4028,13 +4327,12 @@ function CreateNotionDatabaseItemAutomationDialog({
         >
           <label className="flex flex-col gap-1 text-xs text-muted-foreground">
             Database URL
-            <input
+            <Input
               name="databaseUrl"
               aria-label="Database URL"
               required
               disabled={creating}
               placeholder="https://www.notion.so/..."
-              className={FIELD_CLASS}
             />
           </label>
           <DialogFooter>
@@ -4119,25 +4417,23 @@ function NotionPageContentUpdatedScopeFields({
       {scope === "page" ? (
         <label className="flex flex-col gap-1 text-xs text-muted-foreground">
           Page URL
-          <input
+          <Input
             name="pageUrl"
             aria-label="Page URL"
             required
             disabled={creating}
             placeholder="https://www.notion.so/workspace/Page-title-..."
-            className={FIELD_CLASS}
           />
         </label>
       ) : (
         <label className="flex flex-col gap-1 text-xs text-muted-foreground">
           Database URL
-          <input
+          <Input
             name="databaseUrl"
             aria-label="Database URL"
             required
             disabled={creating}
             placeholder="https://www.notion.so/..."
-            className={FIELD_CLASS}
           />
         </label>
       )}
@@ -4286,13 +4582,12 @@ function CreateNotionChildPageAutomationDialog({
         >
           <label className="flex flex-col gap-1 text-xs text-muted-foreground">
             Parent page URL
-            <input
+            <Input
               name="parentPageUrl"
               aria-label="Parent page URL"
               required
               disabled={creating}
               placeholder="https://www.notion.so/workspace/Page-title-..."
-              className={FIELD_CLASS}
             />
           </label>
           <DialogFooter>
@@ -4610,13 +4905,12 @@ function ScheduleAutomationFields({
     return (
       <label className="flex flex-col gap-1 text-xs text-muted-foreground">
         Run at
-        <input
+        <Input
           name="atTime"
           aria-label="Run at"
           type="datetime-local"
           defaultValue={defaultAtTime}
           disabled={disabled}
-          className={FIELD_CLASS}
         />
         <span className="text-xs text-muted-foreground">
           Displays in {displayTimezone}.
@@ -4789,12 +5083,11 @@ function WorkflowCustomCronField({
   return (
     <label className="flex flex-col gap-1 text-xs text-muted-foreground">
       Cron expression
-      <input
+      <Input
         aria-label="Cron expression"
         value={value}
         disabled={disabled}
         placeholder="0 9 * * *"
-        className={FIELD_CLASS}
         onChange={(event) => {
           onChange(event.currentTarget.value);
         }}
@@ -4979,8 +5272,8 @@ function updateGmailMatchCondition(
 function gmailMatchConditionUsed(
   conditions: readonly GmailMatchCondition[],
   index: number,
-  field: GmailTextField,
-  operator: GmailTextOperator,
+  field: GmailMatchField,
+  operator: GmailMatchOperator,
 ): boolean {
   return conditions.some((condition, conditionIndex) => {
     return (
@@ -4996,16 +5289,23 @@ function GmailMatchConditionRow({
   conditions,
   index,
   disabled,
+  threadIdEnabled,
   onChange,
 }: {
   readonly condition: GmailMatchCondition;
   readonly conditions: readonly GmailMatchCondition[];
   readonly index: number;
   readonly disabled: boolean;
+  readonly threadIdEnabled: boolean;
   readonly onChange: (conditions: readonly GmailMatchCondition[]) => void;
 }) {
-  const fieldLabel = gmailTextFieldOption(condition.field).label;
-  const operatorLabel = gmailTextOperatorOption(condition.operator).label;
+  const fieldLabel = gmailMatchFieldOption(condition.field).label;
+  const operatorOptions = gmailMatchOperatorOptions(condition.field);
+  const operatorOption = gmailMatchOperatorOption(
+    condition.field,
+    condition.operator,
+  );
+  const operatorLabel = operatorOption.label;
   const updateCondition = (update: Partial<GmailMatchCondition>) => {
     onChange(updateGmailMatchCondition(conditions, index, update));
   };
@@ -5016,29 +5316,39 @@ function GmailMatchConditionRow({
         value={condition.field}
         disabled={disabled}
         onValueChange={(value) => {
-          updateCondition({ field: gmailTextFieldOption(value).field });
+          const field = gmailMatchFieldOption(value).field;
+          updateCondition({
+            field,
+            operator: gmailMatchOperatorForField(field, condition.operator),
+          });
         }}
       >
         <SelectTrigger aria-label={`Condition ${index + 1} field`}>
           <SelectValue />
         </SelectTrigger>
         <SelectContent>
-          {GMAIL_TEXT_FIELDS.map((option) => {
-            return (
-              <SelectItem
-                key={option.field}
-                value={option.field}
-                disabled={gmailMatchConditionUsed(
-                  conditions,
-                  index,
-                  option.field,
-                  condition.operator,
-                )}
-              >
-                {option.label}
-              </SelectItem>
-            );
-          })}
+          {(threadIdEnabled ? GMAIL_MATCH_FIELDS : GMAIL_TEXT_FIELDS).map(
+            (option) => {
+              const operator = gmailMatchOperatorForField(
+                option.field,
+                condition.operator,
+              );
+              return (
+                <SelectItem
+                  key={option.field}
+                  value={option.field}
+                  disabled={gmailMatchConditionUsed(
+                    conditions,
+                    index,
+                    option.field,
+                    operator,
+                  )}
+                >
+                  {option.label}
+                </SelectItem>
+              );
+            },
+          )}
         </SelectContent>
       </Select>
       <Select
@@ -5046,7 +5356,7 @@ function GmailMatchConditionRow({
         disabled={disabled}
         onValueChange={(value) => {
           updateCondition({
-            operator: gmailTextOperatorOption(value).operator,
+            operator: gmailMatchOperatorOption(condition.field, value).operator,
           });
         }}
       >
@@ -5054,7 +5364,7 @@ function GmailMatchConditionRow({
           <SelectValue />
         </SelectTrigger>
         <SelectContent>
-          {GMAIL_TEXT_OPERATORS.map((option) => {
+          {operatorOptions.map((option) => {
             return (
               <SelectItem
                 key={option.operator}
@@ -5073,7 +5383,7 @@ function GmailMatchConditionRow({
         </SelectContent>
       </Select>
       <Input
-        name={`${condition.field}${condition.operator === "contains" ? "Contains" : "DoesNotContain"}`}
+        name={`${condition.field}${operatorOption.formSuffix}`}
         aria-label={`${fieldLabel} ${operatorLabel.toLowerCase()}`}
         value={condition.value}
         disabled={disabled}
@@ -5113,7 +5423,10 @@ function GmailMatchConditionsEditor({
   readonly disabled: boolean;
   readonly onChange: (conditions: readonly GmailMatchCondition[]) => void;
 }) {
-  const nextCondition = nextGmailMatchCondition(conditions);
+  const features = useGet(featureSwitch$);
+  const threadIdEnabled =
+    features[FeatureSwitchKey.ZeroMailReplyFollowUp] ?? false;
+  const nextCondition = nextGmailMatchCondition(conditions, threadIdEnabled);
   return (
     <div className="flex flex-col gap-2">
       {conditions.map((condition, index) => {
@@ -5124,6 +5437,7 @@ function GmailMatchConditionsEditor({
             conditions={conditions}
             index={index}
             disabled={disabled}
+            threadIdEnabled={threadIdEnabled}
             onChange={onChange}
           />
         );
@@ -5291,13 +5605,12 @@ function CreateGmailLabelAppliedAutomationDialog({
         >
           <label className="flex flex-col gap-1 text-xs text-muted-foreground">
             Label name
-            <input
+            <Input
               name="labelName"
               aria-label="Label name"
               required
               disabled={creating}
               placeholder="Support"
-              className={FIELD_CLASS}
             />
           </label>
           <DialogFooter>
@@ -5339,14 +5652,13 @@ function GithubLabelAutomationFields({
     <div className="flex flex-col gap-3">
       <label className="flex flex-col gap-1 text-xs text-muted-foreground">
         Label name
-        <input
+        <Input
           name="labelName"
           aria-label="GitHub label name"
           required
           disabled={disabled}
           defaultValue={defaultConfig?.labelName ?? ""}
           placeholder="triage"
-          className={FIELD_CLASS}
         />
       </label>
       <label className="flex flex-col gap-1 text-xs text-muted-foreground">
@@ -5456,13 +5768,12 @@ function GithubWorkflowRunAutomationFields({
             className="flex flex-col gap-1 text-xs text-muted-foreground"
           >
             {field.label}
-            <input
+            <Input
               name={field.name}
               aria-label={field.label}
               disabled={disabled}
               defaultValue={field.defaultValues?.join(", ") ?? ""}
               placeholder={field.placeholder}
-              className={FIELD_CLASS}
             />
           </label>
         );
@@ -5513,13 +5824,12 @@ function GithubFilterInput({
   return (
     <label className="flex flex-col gap-1 text-xs text-muted-foreground">
       {label}
-      <input
+      <Input
         name={name}
         aria-label={label}
         disabled={disabled}
         defaultValue={defaultValues?.join(", ") ?? ""}
         placeholder={placeholder}
-        className={FIELD_CLASS}
       />
     </label>
   );
@@ -6363,13 +6673,12 @@ function CreateGoogleCalendarEventAutomationDialog({
         >
           <label className="flex flex-col gap-1 text-xs text-muted-foreground">
             Calendar ID
-            <input
+            <Input
               name="calendarId"
               aria-label="Calendar ID"
               disabled={creating}
               defaultValue="primary"
               placeholder="primary"
-              className={FIELD_CLASS}
             />
           </label>
           <DialogFooter>
@@ -6539,7 +6848,7 @@ function WebhookReadonlyField({
 }) {
   return (
     <div className="flex min-w-0 gap-2">
-      <input readOnly value={value} className={cn(FIELD_CLASS, "min-w-0")} />
+      <Input readOnly value={value} className="min-w-0" />
       <Button type="button" variant="outline" onClick={onCopy}>
         <IconCopy size={14} />
         Copy

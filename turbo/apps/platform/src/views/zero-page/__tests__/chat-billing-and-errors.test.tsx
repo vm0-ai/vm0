@@ -2,7 +2,7 @@ import { screen, waitFor } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 import {
   chatThreadByIdContract,
-  chatThreadMessagesContract,
+  chatThreadEventsContract,
   chatThreadsContract,
 } from "@vm0/api-contracts/contracts/chat-threads";
 import {
@@ -486,28 +486,36 @@ describe("chat lifecycle", () => {
       return respond(200, {
         chatThreads: threadListSnapshot(threads),
         latestEventId: null,
+        latestSeqId: null,
       });
     });
     context.mocks.api(
-      chatThreadMessagesContract.list,
+      chatThreadEventsContract.list,
       ({ params, query, respond }) => {
-        if (query.sinceSeqId) {
-          return respond(200, { messages: [] });
+        if (query.sinceSeqId || query.sinceId) {
+          return respond(200, { events: [] });
         }
         if (params.threadId === RUNNING_THREAD_ID) {
           return respond(200, {
-            messages: [
+            events: [
               {
                 id: "msg-running-user",
-                role: "user",
+                threadId: RUNNING_THREAD_ID,
+                eventType: "input.prompt" as const,
                 content: "Active task prompt",
+                userMessage: {
+                  version: 1,
+                  parts: [{ type: "text", text: "Active task prompt" }],
+                },
                 runId: "run-active",
                 seqId: 1,
                 createdAt: "2026-03-10T00:00:00Z",
               },
               {
                 id: "msg-running-assistant",
-                role: "assistant",
+                threadId: RUNNING_THREAD_ID,
+                eventType: "output.thinking" as const,
+                thinking: "",
                 content: null,
                 runId: "run-active",
                 seqId: 2,
@@ -517,17 +525,23 @@ describe("chat lifecycle", () => {
           });
         }
         return respond(200, {
-          messages: [
+          events: [
             {
               id: "msg-completed-user",
-              role: "user",
+              threadId: COMPLETED_THREAD_ID,
+              eventType: "input.prompt" as const,
               content: "Done task",
+              userMessage: {
+                version: 1,
+                parts: [{ type: "text", text: "Done task" }],
+              },
               seqId: 1,
               createdAt: "2026-03-10T00:00:00Z",
             },
             {
               id: "msg-completed-assistant",
-              role: "assistant",
+              threadId: COMPLETED_THREAD_ID,
+              eventType: "output.message" as const,
               content: "All done!",
               seqId: 2,
               createdAt: "2026-03-10T00:00:01Z",
@@ -539,8 +553,6 @@ describe("chat lifecycle", () => {
     context.mocks.api(chatThreadByIdContract.get, ({ respond }) => {
       return respond(200, {
         lastReadAt: null,
-        computerUseHostId: null,
-        codexServiceTier: null,
       });
     });
     context.mocks.api(logsByIdContract.getById, ({ respond }) => {
@@ -620,14 +632,14 @@ describe("initial thinking indicator", () => {
       chatMessages: [
         {
           id: "msg-thinking-user",
-          role: "user",
+          eventType: "input.prompt" as const,
           content: "Draft a launch checklist",
           runId: "run-active",
           createdAt: "2026-03-10T00:00:00Z",
         },
         {
           id: "msg-thinking-marker",
-          role: "assistant",
+          eventType: "output.thinking" as const,
           content: null,
           thinking: "Reviewing your request",
           runId: "run-active",
@@ -658,14 +670,14 @@ describe("initial thinking indicator", () => {
       chatMessages: [
         {
           id: "msg-thinking-detail-gated-user",
-          role: "user",
+          eventType: "input.prompt" as const,
           content: "Draft a launch checklist",
           runId: "run-active",
           createdAt: "2026-03-10T00:00:00Z",
         },
         {
           id: "msg-thinking-detail-gated-marker",
-          role: "assistant",
+          eventType: "output.thinking" as const,
           content: null,
           thinking: "Reading the prompt",
           runId: "run-active",
@@ -726,14 +738,14 @@ describe("initial thinking indicator", () => {
       chatMessages: [
         {
           id: "msg-thinking-rollover-user",
-          role: "user",
+          eventType: "input.prompt" as const,
           content: "Draft a launch checklist",
           runId: "run-active",
           createdAt: "2026-03-10T00:00:00Z",
         },
         {
           id: "msg-thinking-rollover-marker",
-          role: "assistant",
+          eventType: "output.thinking" as const,
           content: null,
           thinking,
           runId: "run-active",
@@ -775,14 +787,14 @@ describe("initial thinking indicator", () => {
       chatMessages: [
         {
           id: "msg-thinking-queued-user",
-          role: "user",
+          eventType: "input.prompt" as const,
           content: "Draft a launch checklist",
           runId: "run-active",
           createdAt: "2026-03-10T00:00:00Z",
         },
         {
           id: "msg-thinking-queued-marker",
-          role: "assistant",
+          eventType: "output.thinking" as const,
           content: null,
           thinking: "Reviewing your request",
           runId: "run-active",
@@ -790,7 +802,7 @@ describe("initial thinking indicator", () => {
         },
         {
           id: "msg-thinking-queued-followup",
-          role: "user",
+          eventType: "input.prompt" as const,
           content: "Also include owners",
           runId: undefined,
           createdAt: "2026-03-10T00:00:02Z",
@@ -820,14 +832,14 @@ describe("initial thinking indicator", () => {
       chatMessages: [
         {
           id: "msg-thinking-answer-user",
-          role: "user",
+          eventType: "input.prompt" as const,
           content: "Draft a launch checklist",
           runId: "run-active",
           createdAt: "2026-03-10T00:00:00Z",
         },
         {
           id: "msg-thinking-answer-marker",
-          role: "assistant",
+          eventType: "output.thinking" as const,
           content: null,
           thinking: "Reviewing your request",
           runId: "run-active",
@@ -835,7 +847,7 @@ describe("initial thinking indicator", () => {
         },
         {
           id: "msg-thinking-answer",
-          role: "assistant",
+          eventType: "output.message" as const,
           content: "Here is the checklist.",
           runId: "run-active",
           createdAt: "2026-03-10T00:00:02Z",

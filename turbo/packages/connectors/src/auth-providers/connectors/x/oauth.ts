@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-import type { ConnectorAuthCodeGrantConfig } from "@vm0/connectors/connectors";
+import type { ConnectorAuthCodeGrantConfig } from "@vm0/connectors/connector-config";
 import { throwOAuthError } from "../../oauth/error";
 
 const X_TOKEN_URL = "https://api.x.com/2/oauth2/token";
@@ -240,11 +240,4 @@ async function fetchXUserInfo(accessToken: string): Promise<XUserInfo> {
     username: data.data.username ?? null,
     email: null, // X API v2 does not expose email via /2/users/me
   };
-}
-
-/**
- * Get the primary secret name for X connector (the access token).
- */
-export function getXSecretName(): string {
-  return "X_ACCESS_TOKEN";
 }

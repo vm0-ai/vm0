@@ -1,7 +1,7 @@
 import { createHmac, randomUUID } from "node:crypto";
 
 import { zeroWorkflowAutomationsContract } from "@vm0/api-contracts/contracts/zero-workflows";
-import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
+import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import { HttpResponse, http } from "msw";
 
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
@@ -859,9 +859,12 @@ describe("POST /api/webhooks/notion", () => {
 
     // The run landed in the automation's bound chat thread with the friendly
     // Notion brief, linked to the created run.
-    const messages = await wf.readThreadMessages(threadId);
+    const messages = await wf.readThreadEvents(threadId);
     const workflowMessage = messages.find((message) => {
-      return message.role === "user" && message.content === `/${WORKFLOW_NAME}`;
+      return (
+        message.eventType === "input.prompt" &&
+        message.content === `/${WORKFLOW_NAME}`
+      );
     });
     if (!workflowMessage?.runId) {
       throw new Error("Expected a dispatched Notion workflow run message");

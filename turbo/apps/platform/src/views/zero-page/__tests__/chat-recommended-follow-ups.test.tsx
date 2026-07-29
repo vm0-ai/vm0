@@ -1,15 +1,16 @@
 import { screen, waitFor } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
-import { chatThreadArtifactsContract } from "@vm0/api-contracts/contracts/chat-threads";
-import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
-import { click } from "../../../__tests__/page-helper.ts";
+import { artifactCatalogContract } from "@vm0/api-contracts/contracts/artifact-catalog";
+import { click, fill } from "../../../__tests__/page-helper.ts";
 import { mockChatLifecycle } from "./chat-test-helpers.ts";
+import type { MockChatEventInput } from "./chat-event-test-helpers.ts";
 import {
   context,
   detachedSetupPage,
   FOLLOWUP_THREAD_ID,
   HISTORY_THREAD_ID,
   buttonByText,
+  findWorkflowComposerEditor,
   queryButtonByText,
 } from "./chat-lifecycle-test-helpers.ts";
 
@@ -21,14 +22,15 @@ describe("chat lifecycle", () => {
       chatMessages: [
         {
           id: "msg-empty-artifacts",
+          eventType: "output.message" as const,
           role: "assistant",
           content: "No files were produced for this request.",
           createdAt: "2026-06-09T10:00:00Z",
         },
       ],
     });
-    context.mocks.api(chatThreadArtifactsContract.list, ({ respond }) => {
-      return respond(200, { runs: [] });
+    context.mocks.api(artifactCatalogContract.list, ({ respond }) => {
+      return respond(200, { artifacts: [], nextCursor: null });
     });
 
     detachedSetupPage({ context, path: `/chats/${HISTORY_THREAD_ID}` });
@@ -36,15 +38,16 @@ describe("chat lifecycle", () => {
     click(await screen.findByLabelText("Open artifacts"));
 
     await waitFor(() => {
-      expect(screen.getByTestId("artifact-inbox")).toBeInTheDocument();
       expect(
-        screen.getByText("No uploaded files in this chat yet."),
+        screen.getByTestId("thread-sidebar-artifacts"),
       ).toBeInTheDocument();
+      expect(screen.getByText("No artifacts found")).toBeInTheDocument();
     });
   });
-  it("sends a recommended follow-up from the latest assistant reply", async () => {
+  it("selects or appends a recommended follow-up without sending it", async () => {
     const assistantReply = "I can turn this into a launch package.";
     const followupPrompt = "Create a presentation outline";
+    const existingDraft = "Keep the current launch context";
     const completedAt = "2026-06-09T10:01:01Z";
     const completedAtLabel = new Date(completedAt).toLocaleString("en-US", {
       month: "short",
@@ -52,20 +55,19 @@ describe("chat lifecycle", () => {
       hour: "numeric",
       minute: "2-digit",
     });
-    const sendGate = context.mocks.deferred<void>();
     const sentMessages: {
       prompt?: string;
-      revokesMessageId?: string;
-      structuredPrompt?: unknown;
+      revokesEventId?: string;
+      userMessage?: unknown;
     }[] = [];
 
     mockChatLifecycle(context, {
       threadId: FOLLOWUP_THREAD_ID,
       threadTitle: "Launch package",
-      sendGate: sendGate.promise,
       chatMessages: [
         {
           id: "msg-followup-user",
+          eventType: "input.prompt" as const,
           role: "user",
           content: "Package this launch plan",
           runId: "run-followup",
@@ -73,6 +75,7 @@ describe("chat lifecycle", () => {
         },
         {
           id: "msg-followup-assistant",
+          eventType: "output.message" as const,
           role: "assistant",
           content: assistantReply,
           runId: "run-followup",
@@ -80,6 +83,7 @@ describe("chat lifecycle", () => {
         },
         {
           id: "msg-followup-completed",
+          eventType: "run.completed" as const,
           role: "assistant",
           content: null,
           runId: "run-followup",
@@ -125,9 +129,10 @@ describe("chat lifecycle", () => {
     detachedSetupPage({
       context,
       path: `/chats/${FOLLOWUP_THREAD_ID}`,
-      featureSwitches: { [FeatureSwitchKey.StructuredPrompt]: true },
     });
 
+    const composer = await findWorkflowComposerEditor();
+    await fill(composer, existingDraft);
     await waitFor(() => {
       expect(screen.getByText(assistantReply)).toBeInTheDocument();
       expect(
@@ -144,23 +149,170 @@ describe("chat lifecycle", () => {
     click(buttonByText(followupPrompt));
 
     await waitFor(() => {
-      expect(queryButtonByText(followupPrompt)).not.toBeInTheDocument();
-      expect(screen.getByText(followupPrompt)).toBeInTheDocument();
-      expect(screen.getByLabelText("Stop")).toBeInTheDocument();
+      expect(composer.textContent).toBe(`${existingDraft}\n${followupPrompt}`);
+      expect(buttonByText(followupPrompt)).toBeInTheDocument();
+      expect(screen.getByLabelText("Send")).toBeInTheDocument();
     });
     expect(sentMessages).toHaveLength(0);
 
-    sendGate.resolve();
+    click(buttonByText(followupPrompt));
 
     await waitFor(() => {
-      expect(sentMessages).toHaveLength(1);
-      expect(screen.getByLabelText("Stop")).toBeInTheDocument();
+      expect(composer).toHaveFocus();
+      expect(window.getSelection()?.toString()).toBe(followupPrompt);
     });
-    expect(sentMessages[0]).toMatchObject({ prompt: followupPrompt });
-    expect(sentMessages[0]?.revokesMessageId).toBeUndefined();
-    expect(sentMessages[0]?.structuredPrompt).toStrictEqual({
-      version: 1,
-      parts: [{ type: "text", text: followupPrompt }],
+    expect(composer.textContent).toBe(`${existingDraft}\n${followupPrompt}`);
+    expect(sentMessages).toHaveLength(0);
+  });
+
+  it("shows recommended follow-ups after an appended follow-up event", async () => {
+    const assistantReply = "I can turn this into a launch package.";
+    const followupPrompt = "Create a presentation outline";
+    const createdTopic = `chatThreadMessageCreated:${FOLLOWUP_THREAD_ID}`;
+    const completedMarker: MockChatEventInput = {
+      id: "00000000-0000-4000-8000-000000004001",
+      eventType: "run.completed" as const,
+      role: "assistant",
+      content: null,
+      runId: "run-followup",
+      runLifecycleEvent: "completed",
+      seqId: 3,
+      createdAt: "2026-06-09T10:01:01Z",
+    };
+    const followupsEvent: MockChatEventInput = {
+      id: "00000000-0000-4000-8000-000000004002",
+      eventType: "output.followups",
+      role: "assistant",
+      content: null,
+      runId: "run-followup",
+      recommendedFollowups: [
+        {
+          prompt: followupPrompt,
+          kind: "generate",
+          generationType: "presentation",
+        },
+      ],
+      seqId: 4,
+      createdAt: "2026-06-09T10:01:02Z",
+    };
+    const chatMessages: MockChatEventInput[] = [
+      {
+        id: "msg-followup-user",
+        eventType: "input.prompt" as const,
+        role: "user",
+        content: "Package this launch plan",
+        runId: "run-followup",
+        createdAt: "2026-06-09T10:00:00Z",
+      },
+      {
+        id: "msg-followup-assistant",
+        eventType: "output.message" as const,
+        role: "assistant",
+        content: assistantReply,
+        runId: "run-followup",
+        sequenceNumber: 2,
+        createdAt: "2026-06-09T10:01:01Z",
+      },
+      completedMarker,
+    ];
+
+    mockChatLifecycle(context, {
+      threadId: FOLLOWUP_THREAD_ID,
+      threadTitle: "Launch package",
+      chatMessages,
+    });
+
+    detachedSetupPage({
+      context,
+      path: `/chats/${FOLLOWUP_THREAD_ID}`,
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText(assistantReply)).toBeInTheDocument();
+      expect(queryButtonByText(followupPrompt)).not.toBeInTheDocument();
+      expect(context.mocks.ably.hasChannelSubscription()).toBeTruthy();
+    });
+    expect(context.mocks.ably.hasSubscription(createdTopic)).toBeFalsy();
+
+    chatMessages.push(followupsEvent);
+    context.mocks.ably.trigger(createdTopic, {});
+
+    await waitFor(() => {
+      expect(buttonByText(followupPrompt)).toBeInTheDocument();
+      expect(document.querySelector("[data-thinking-indicator]")).toBeNull();
+    });
+  });
+
+  it("catches recommended follow-ups written before realtime subscription is ready", async () => {
+    const assistantReply = "I can turn this into a launch package.";
+    const followupPrompt = "Create a presentation outline";
+    const completedMarker: MockChatEventInput = {
+      id: "00000000-0000-4000-8000-000000004003",
+      eventType: "run.completed" as const,
+      role: "assistant",
+      content: null,
+      runId: "run-followup-subscribe-gap",
+      runLifecycleEvent: "completed",
+      seqId: 3,
+      createdAt: "2026-06-09T10:01:01Z",
+    };
+    const followupsEvent: MockChatEventInput = {
+      id: "00000000-0000-4000-8000-000000004004",
+      eventType: "output.followups",
+      role: "assistant",
+      content: null,
+      runId: "run-followup-subscribe-gap",
+      recommendedFollowups: [
+        {
+          prompt: followupPrompt,
+          kind: "generate",
+          generationType: "presentation",
+        },
+      ],
+      seqId: 4,
+      createdAt: "2026-06-09T10:01:02Z",
+    };
+    const chatMessages: MockChatEventInput[] = [
+      {
+        id: "msg-followup-subscribe-gap-user",
+        eventType: "input.prompt" as const,
+        role: "user",
+        content: "Package this launch plan",
+        runId: "run-followup-subscribe-gap",
+        createdAt: "2026-06-09T10:00:00Z",
+      },
+      {
+        id: "msg-followup-subscribe-gap-assistant",
+        eventType: "output.message" as const,
+        role: "assistant",
+        content: assistantReply,
+        runId: "run-followup-subscribe-gap",
+        createdAt: "2026-06-09T10:01:00Z",
+      },
+      completedMarker,
+    ];
+    let updatedAfterInitialList = false;
+
+    mockChatLifecycle(context, {
+      threadId: FOLLOWUP_THREAD_ID,
+      threadTitle: "Launch package",
+      chatMessages,
+      afterInitialMessagesList: () => {
+        if (updatedAfterInitialList) {
+          return;
+        }
+        updatedAfterInitialList = true;
+        chatMessages.push(followupsEvent);
+      },
+    });
+
+    detachedSetupPage({
+      context,
+      path: `/chats/${FOLLOWUP_THREAD_ID}`,
+    });
+
+    await waitFor(() => {
+      expect(buttonByText(followupPrompt)).toBeInTheDocument();
     });
   });
 
@@ -176,6 +328,7 @@ describe("chat lifecycle", () => {
       chatMessages: [
         {
           id: queuedMessageId,
+          eventType: "input.prompt" as const,
           role: "user",
           content: prompt,
           runId: undefined,
@@ -183,10 +336,11 @@ describe("chat lifecycle", () => {
         },
         {
           id: claimedMessageId,
+          eventType: "input.prompt" as const,
           role: "user",
           content: prompt,
           runId,
-          revokesMessageId: queuedMessageId,
+          revokesEventId: queuedMessageId,
           createdAt: "2026-06-09T10:00:01Z",
         },
       ],
@@ -219,6 +373,7 @@ describe("chat lifecycle", () => {
       chatMessages: [
         {
           id: "msg-followup-old-user",
+          eventType: "input.prompt" as const,
           role: "user",
           content: "Package this launch plan",
           runId: "run-followup-old",
@@ -226,6 +381,7 @@ describe("chat lifecycle", () => {
         },
         {
           id: "msg-followup-old-assistant",
+          eventType: "output.message" as const,
           role: "assistant",
           content: firstAssistantReply,
           runId: "run-followup-old",
@@ -233,6 +389,7 @@ describe("chat lifecycle", () => {
         },
         {
           id: "msg-followup-old-completed",
+          eventType: "run.completed" as const,
           role: "assistant",
           content: null,
           runId: "run-followup-old",
@@ -248,6 +405,7 @@ describe("chat lifecycle", () => {
         },
         {
           id: "msg-followup-new-user",
+          eventType: "input.prompt" as const,
           role: "user",
           content: followupPrompt,
           runId: "run-followup-new",
@@ -255,6 +413,7 @@ describe("chat lifecycle", () => {
         },
         {
           id: "msg-followup-new-assistant",
+          eventType: "output.message" as const,
           role: "assistant",
           content: newerAssistantReply,
           runId: "run-followup-new",
@@ -262,6 +421,7 @@ describe("chat lifecycle", () => {
         },
         {
           id: "msg-followup-new-completed",
+          eventType: "run.completed" as const,
           role: "assistant",
           content: null,
           runId: "run-followup-new",

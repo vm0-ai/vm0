@@ -1,16 +1,13 @@
 import {
   and,
   eq,
-  gte,
   inArray,
   isNotNull,
-  lt,
   max,
   sql,
+  sum,
   type SQLWrapper,
 } from "drizzle-orm";
-import { usageAllowanceAllocations } from "@vm0/db/schema/org-usage-allowance";
-import { usageEvent } from "@vm0/db/schema/usage-event";
 
 import {
   nullableDriverValueDecoder,
@@ -18,6 +15,11 @@ import {
   pgTextDecoder,
 } from "../../lib/db-structured-result";
 import type { Db } from "../external/db";
+import {
+  buildFinalizedUsageRelation,
+  type FinalizedUsageRelation,
+} from "./finalized-usage-relation";
+import { normalizeFinalizedUsagePeriod } from "./finalized-usage-time";
 
 const MODEL_USAGE_KIND = "model";
 const TOKEN_CATEGORY_INPUT = "tokens.input";
@@ -84,119 +86,128 @@ export async function getMemberUsageTotals(
   orgId: string,
   billingWindow: BillingWindow,
 ): Promise<UsageMemberTotalsRow[]> {
+  const usage = buildFinalizedUsageRelation(
+    normalizeFinalizedUsagePeriod(billingWindow),
+  );
   const totalsSelect = {
-    userId: usageEvent.userId,
-    inputTokens: usageEventTokenSum(INPUT_TOKEN_CATEGORIES, "input_tokens"),
-    outputTokens: usageEventTokenSum(OUTPUT_TOKEN_CATEGORIES, "output_tokens"),
-    cacheReadInputTokens: usageEventTokenSum(
+    userId: usage.userId,
+    inputTokens: finalizedUsageTokenSum(
+      usage,
+      INPUT_TOKEN_CATEGORIES,
+      "input_tokens",
+    ),
+    outputTokens: finalizedUsageTokenSum(
+      usage,
+      OUTPUT_TOKEN_CATEGORIES,
+      "output_tokens",
+    ),
+    cacheReadInputTokens: finalizedUsageTokenSum(
+      usage,
       CACHE_READ_TOKEN_CATEGORIES,
       "cache_read_input_tokens",
     ),
-    cacheCreationInputTokens: usageEventTokenSum(
+    cacheCreationInputTokens: finalizedUsageTokenSum(
+      usage,
       CACHE_CREATION_TOKEN_CATEGORIES,
       "cache_creation_input_tokens",
     ),
-    creditsCharged: usageCreditsSum("credits_charged"),
+    creditsCharged: usageCreditsSum(usage, "credits_charged"),
   } satisfies Record<keyof UsageMemberTotalsRow, unknown>;
 
   return await db
     .select(totalsSelect)
-    .from(usageEvent)
-    .leftJoin(
-      usageAllowanceAllocations,
-      eq(usageAllowanceAllocations.usageEventId, usageEvent.id),
-    )
-    .where(
-      and(
-        eq(usageEvent.orgId, orgId),
-        eq(usageEvent.status, "processed"),
-        gte(usageEvent.processedAt, billingWindow.start),
-        lt(usageEvent.processedAt, billingWindow.end),
-      ),
-    )
-    .groupBy(usageEvent.userId);
+    .from(usage)
+    .where(eq(usage.orgId, orgId))
+    .groupBy(usage.userId);
 }
 
-export function buildUsageEventRunUsageTotalsSubquery(db: Db, orgId: string) {
+export function buildFinalizedUsageRunTotalsSubquery(db: Db, orgId: string) {
+  const usage = buildFinalizedUsageRelation();
   const totalsSelect = {
-    runId: usageEvent.runId,
-    inputTokens: usageEventTokenSum(INPUT_TOKEN_CATEGORIES, "input_tokens_sum"),
-    outputTokens: usageEventTokenSum(
+    runId: usage.runId,
+    inputTokens: finalizedUsageTokenSum(
+      usage,
+      INPUT_TOKEN_CATEGORIES,
+      "input_tokens_sum",
+    ),
+    outputTokens: finalizedUsageTokenSum(
+      usage,
       OUTPUT_TOKEN_CATEGORIES,
       "output_tokens_sum",
     ),
-    cacheReadInputTokens: usageEventTokenSum(
+    cacheReadInputTokens: finalizedUsageTokenSum(
+      usage,
       CACHE_READ_TOKEN_CATEGORIES,
       "cache_read_input_tokens_sum",
     ),
-    cacheCreationInputTokens: usageEventTokenSum(
+    cacheCreationInputTokens: finalizedUsageTokenSum(
+      usage,
       CACHE_CREATION_TOKEN_CATEGORIES,
       "cache_creation_input_tokens_sum",
     ),
-    cacheTokens: usageEventTokenSum(
+    cacheTokens: finalizedUsageTokenSum(
+      usage,
       ALL_CACHE_TOKEN_CATEGORIES,
       "cache_tokens_sum",
     ),
-    creditsCharged: usageCreditsSum("credits_sum"),
-    model:
-      sql`MAX(CASE WHEN ${eq(usageEvent.kind, MODEL_USAGE_KIND)} THEN ${usageEvent.provider} ELSE NULL END)`
-        .mapWith(nullableTextDecoder)
-        .as("model"),
-    userId: max(usageEvent.userId).mapWith(pgTextDecoder).as("user_id"),
+    creditsCharged: usageCreditsSum(usage, "credits_sum"),
+    model: max(
+      sql`CASE WHEN ${eq(usage.kind, MODEL_USAGE_KIND)} THEN ${usage.provider} ELSE NULL END`,
+    )
+      .mapWith(nullableTextDecoder)
+      .as("model"),
+    userId: max(usage.userId).mapWith(pgTextDecoder).as("user_id"),
   } satisfies Record<keyof UsageRunTotalsRow, unknown>;
 
   return db
     .select(totalsSelect)
-    .from(usageEvent)
-    .leftJoin(
-      usageAllowanceAllocations,
-      eq(usageAllowanceAllocations.usageEventId, usageEvent.id),
-    )
-    .where(
-      and(
-        eq(usageEvent.orgId, orgId),
-        eq(usageEvent.status, "processed"),
-        isNotNull(usageEvent.runId),
-      ),
-    )
-    .groupBy(usageEvent.runId)
-    .as("usage_event_run_usage_totals");
+    .from(usage)
+    .where(and(eq(usage.orgId, orgId), isNotNull(usage.runId)))
+    .groupBy(usage.runId)
+    .as("finalized_usage_run_totals");
 }
 
-type UsageEventRunUsageTotalsSubquery = ReturnType<
-  typeof buildUsageEventRunUsageTotalsSubquery
+type FinalizedUsageRunTotalsSubquery = ReturnType<
+  typeof buildFinalizedUsageRunTotalsSubquery
 >;
 
-export function hasRunUsageTotals(events: UsageEventRunUsageTotalsSubquery) {
+export function hasRunUsageTotals(events: FinalizedUsageRunTotalsSubquery) {
   return isNotNull(events.runId);
 }
 
-export function mergedRunInputTokens(events: UsageEventRunUsageTotalsSubquery) {
+export function mergedRunInputTokens(events: FinalizedUsageRunTotalsSubquery) {
   return coalesceRunTotal(events.inputTokens, "input_tokens");
 }
 
-export function mergedRunOutputTokens(
-  events: UsageEventRunUsageTotalsSubquery,
-) {
+export function mergedRunOutputTokens(events: FinalizedUsageRunTotalsSubquery) {
   return coalesceRunTotal(events.outputTokens, "output_tokens");
 }
 
-export function mergedRunCacheTokens(events: UsageEventRunUsageTotalsSubquery) {
+export function mergedRunCacheTokens(events: FinalizedUsageRunTotalsSubquery) {
   return coalesceRunTotal(events.cacheTokens, "cache_tokens");
 }
 
 export function mergedRunCreditsCharged(
-  events: UsageEventRunUsageTotalsSubquery,
+  events: FinalizedUsageRunTotalsSubquery,
 ) {
   return coalesceRunTotal(events.creditsCharged, "credits_charged");
 }
 
-export function mergedRunModel(events: UsageEventRunUsageTotalsSubquery) {
+export function mergedRunModel(events: FinalizedUsageRunTotalsSubquery) {
   return sql`${events.model}`.mapWith(nullableTextDecoder).as("model");
 }
 
-function usageEventTokenSum(categories: readonly string[], alias: string) {
-  return sql`COALESCE(SUM(CASE WHEN ${eq(usageEvent.kind, MODEL_USAGE_KIND)} AND ${inArray(usageEvent.category, categories)} THEN ${usageEvent.quantity} ELSE 0 END), 0)::bigint`
+function finalizedUsageTokenSum(
+  usage: FinalizedUsageRelation,
+  categories: readonly string[],
+  alias: string,
+) {
+  return sql`COALESCE(${sum(
+    sql`CASE WHEN ${and(
+      eq(usage.kind, MODEL_USAGE_KIND),
+      inArray(usage.category, categories),
+    )} THEN ${usage.quantity} ELSE 0 END`,
+  )}, 0)::bigint`
     .mapWith(pgInt8ToSafeIntegerDecoder)
     .as(alias);
 }
@@ -207,8 +218,10 @@ function coalesceRunTotal(column: SQLWrapper, alias: string) {
     .as(alias);
 }
 
-function usageCreditsSum(alias: string) {
-  return sql`COALESCE(SUM(COALESCE(${usageEvent.creditsCharged}, 0) + COALESCE(${usageAllowanceAllocations.unitsApplied}, 0)), 0)::bigint`
+function usageCreditsSum(usage: FinalizedUsageRelation, alias: string) {
+  return sql`COALESCE(${sum(
+    sql`${usage.creditsCharged} + ${usage.allowanceUnits}`,
+  )}, 0)::bigint`
     .mapWith(pgInt8ToSafeIntegerDecoder)
     .as(alias);
 }

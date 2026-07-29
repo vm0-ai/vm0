@@ -5,9 +5,9 @@ import { testOAuthProviderDeviceAuthRoutes } from "./routes/test-oauth-provider-
 import { testOAuthProviderEchoRoutes } from "./routes/test-oauth-provider-echo";
 import { testOAuthProviderTokenRoutes } from "./routes/test-oauth-provider-token";
 import { testOAuthProviderUserinfoRoutes } from "./routes/test-oauth-provider-userinfo";
-import { testSlackDispatchProbeRoutes } from "./routes/test-slack-dispatch-probe";
 import { testSlackMockRoutes } from "./routes/test-slack-mock";
 import { testSlackStateRoutes } from "./routes/test-slack-state";
+import { testStorageFixtureRoutes } from "./routes/test-storage-fixture";
 import { testTelegramDispatchProbeRoutes } from "./routes/test-telegram-dispatch-probe";
 import { testTelegramMockRoutes } from "./routes/test-telegram-mock";
 import { testTelegramStateRoutes } from "./routes/test-telegram-state";
@@ -48,9 +48,9 @@ export const E2E_ROUTES: readonly RouteEntry[] = [
   ...testOAuthProviderEchoRoutes,
   ...testOAuthProviderTokenRoutes,
   ...testOAuthProviderUserinfoRoutes,
-  ...testSlackDispatchProbeRoutes,
   ...testSlackMockRoutes,
   ...testSlackStateRoutes,
+  ...testStorageFixtureRoutes,
   ...testTelegramDispatchProbeRoutes,
   ...testTelegramMockRoutes,
   ...testTelegramStateRoutes,

@@ -8,13 +8,16 @@ import {
   WEBSITE_TEMPLATE_ITEMS,
   WORKFLOW_TEMPLATE_ITEMS,
 } from "@vm0/core";
-import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
+import { replayChatThreadEvents } from "@vm0/core/chat-thread-event-replay";
+import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import {
-  chatMessagesContract,
+  chatEventsContract,
+  chatThreadEventsContract,
   type AttachFile,
   type ChatRunOptionsRequest,
+  type ChatThreadEvent,
   type GenerationTemplateRequest,
-  type PagedChatMessage,
+  type ChatEventResponse,
   type UserMessageDocument,
 } from "@vm0/api-contracts/contracts/chat-threads";
 import { zeroMailContract } from "@vm0/api-contracts/contracts/zero-mail";
@@ -37,6 +40,7 @@ import {
   createBddApi,
   expectApiError,
   type ApiTestUser,
+  type ApiTestUserOptions,
 } from "./helpers/api-bdd";
 import { createChatCallbacksApi } from "./helpers/api-bdd-chat-callbacks";
 import { createChatFilesBddApi } from "./helpers/api-bdd-chat-files";
@@ -50,7 +54,9 @@ import { createMiscRoutesApi } from "./helpers/api-bdd-misc";
 import { createRunsApi } from "./helpers/api-bdd-runs";
 import { createWebhookCallbackApi } from "./helpers/api-bdd-webhooks";
 import {
+  clearThreadSessionBinding,
   deleteVm0ManagedDefaultModelKey,
+  readThreadSessionBinding,
   seedVm0ManagedModelKey as seedVm0ManagedModelKeyState,
 } from "./helpers/runtime-state";
 import { createZeroRouteMocks } from "./helpers/zero-route-test";
@@ -59,12 +65,17 @@ import { overwriteModelProviderSecretForTests } from "./helpers/zero-model-provi
 import { flushWaitUntilForTest } from "../../context/wait-until";
 import { createDeferredPromise } from "../../utils";
 import {
+  deleteAgentRunFixture,
   deleteBddVm0ApiKeys,
   hasVm0ApiKeyLabel,
   holdChatMessageFixture,
   holdChatMessageQueueItemFixture,
   holdOrgAdmissionLockFixture,
+  holdThreadSessionBindingClearFixture,
+  holdThreadSessionConversationChangesFixture,
+  holdThreadSessionConversationClearFixture,
   replaceBddVm0ApiKeys,
+  replaceThreadSessionBindingFixture,
 } from "../../../test-fixtures/chat-messages";
 
 /**
@@ -87,6 +98,7 @@ const connectors = createConnectorBddApi(context);
 const cu = createComputerUseBddApi(context);
 const misc = createMiscRoutesApi(context);
 const routeMocks = createZeroRouteMocks(context);
+const STAFF_ORG_ID = "org_3ANttyrbWYJk6JKRSTRLEsbsDLe";
 const CODEX_WEB_IMAGE_UPLOAD_PROMPT_SNIPPET = "zero web upload-file -f <path>";
 const API_DISPATCH_ZERO_WEB_CHAT_PRE_CREATE_ACTION_TYPES = [
   "api_dispatch_pre_create_zero_web_chat_prepare_normal_send",
@@ -111,6 +123,16 @@ const API_DISPATCH_ZERO_WEB_CHAT_PRE_CREATE_ACTION_TYPES = [
 ] as const;
 const API_DISPATCH_ZERO_INTERNAL_ENTRYPOINT_ACTION_TYPES = [
   "api_dispatch_pre_create_zero_entrypoint_gap",
+] as const;
+const API_DISPATCH_THREAD_SESSION_BINDING_ACTION_TYPES = [
+  "api_dispatch_validate_thread_session_snapshot_thread",
+  "api_dispatch_load_thread_session_binding",
+  "api_dispatch_update_thread_session_binding",
+] as const;
+const API_DISPATCH_QUEUED_PERSISTENCE_ACTION_TYPES = [
+  "api_dispatch_persist_custom_connector_auth_refs",
+  "api_dispatch_insert_agent_run_queue",
+  "api_dispatch_count_agent_run_queue_depth",
 ] as const;
 const FORBIDDEN_API_DISPATCH_TIMING_KEYS = [
   "org_id",
@@ -182,8 +204,28 @@ function codexAuthJson(): string {
   });
 }
 
-type AssistantMessage = Extract<PagedChatMessage, { role: "assistant" }>;
-type UserMessage = Extract<PagedChatMessage, { role: "user" }>;
+type UserMessage = Extract<
+  ChatEventResponse,
+  {
+    eventType:
+      | "input.prompt"
+      | "input.automation"
+      | "input.rejected"
+      | "control.interrupt"
+      | "control.revoke";
+  }
+>;
+type AssistantMessage = Exclude<ChatEventResponse, UserMessage>;
+type PromptMessage = Extract<ChatEventResponse, { eventType: "input.prompt" }>;
+type FailedMessage = Extract<ChatEventResponse, { eventType: "run.failed" }>;
+type OutputMessage = Extract<
+  ChatEventResponse,
+  { eventType: "output.message" }
+>;
+type FollowupsMessage = Extract<
+  ChatEventResponse,
+  { eventType: "output.followups" }
+>;
 type RunnerClaim = Awaited<ReturnType<typeof api.claimRunnerJob>>;
 
 interface EntitledChatActor {
@@ -196,24 +238,26 @@ interface EntitledChatActor {
 interface ChatRunSendBody {
   readonly agentId: string;
   readonly prompt: string;
-  readonly structuredPrompt?: UserMessageDocument;
+  readonly userMessage?: UserMessageDocument;
   readonly threadId?: string;
   readonly clientThreadId?: string;
-  readonly clientMessageId?: string;
+  readonly clientEventId?: string;
   readonly model?: string;
   readonly runOptions?: ChatRunOptionsRequest;
   readonly generationTemplate?: GenerationTemplateRequest;
   readonly attachFiles?: readonly AttachFile[];
   readonly computerUseHostId?: string | null;
-  readonly revokesMessageId?: string;
+  readonly revokesEventId?: string;
 }
 
 const openRouterBodySchema = z.object({
   messages: z.array(z.object({ role: z.string(), content: z.string() })),
 });
 
-async function entitledChatActor(): Promise<EntitledChatActor> {
-  const actor = bdd.user();
+async function entitledChatActor(
+  options: ApiTestUserOptions = {},
+): Promise<EntitledChatActor> {
+  const actor = bdd.user(options);
   chatCallbacks.acceptChatObjectStorage();
   api.acceptStorageDownloads();
   api.acceptTelemetryIngest();
@@ -243,9 +287,9 @@ async function sendChatRun(
 ): Promise<{ readonly runId: string; readonly threadId: string }> {
   const requestBody = {
     ...body,
-    clientMessageId: body.clientMessageId ?? randomUUID(),
+    clientEventId: body.clientEventId ?? randomUUID(),
   };
-  const sent = await chat.requestSendMessage(actor, requestBody, [201]);
+  const sent = await chat.requestSendEvent(actor, requestBody, [201]);
   if (sent.status !== 201) {
     throw new Error("Expected the entitled chat send to create a run");
   }
@@ -260,14 +304,14 @@ async function sendChatRun(
       (items) => {
         return userMessages(items).some((message) => {
           return (
-            message.revokesMessageId === requestBody.clientMessageId &&
+            message.revokesEventId === requestBody.clientEventId &&
             message.runId !== undefined
           );
         });
       },
     );
-    runId = userMessages(messages.messages).find((message) => {
-      return message.revokesMessageId === requestBody.clientMessageId;
+    runId = userMessages(messages.events).find((message) => {
+      return message.revokesEventId === requestBody.clientEventId;
     })?.runId;
   }
   if (runId === undefined || runId === null) {
@@ -367,6 +411,14 @@ function firstAssistantMessageEventsForRun(
   });
 }
 
+function firstAssistantMessageEligibilityEventsForRun(
+  runId: string,
+): readonly Record<string, unknown>[] {
+  return sandboxOperationEventsForRun(runId).filter((event) => {
+    return event.op_type === "first_assistant_message_eligible";
+  });
+}
+
 function apiDispatchTimingEventsForRun(
   runId: string,
 ): readonly Record<string, unknown>[] {
@@ -453,13 +505,13 @@ function zeroTokenFromClaim(claim: RunnerClaim): string {
 async function waitForThreadMessages(
   actor: ApiTestUser,
   threadId: string,
-  predicate: (messages: readonly PagedChatMessage[]) => boolean,
+  predicate: (messages: readonly ChatEventResponse[]) => boolean,
 ) {
-  let page: Awaited<ReturnType<typeof chat.listThreadMessages>> | undefined;
+  let page: Awaited<ReturnType<typeof chat.listThreadEvents>> | undefined;
   await expect
     .poll(async () => {
-      page = await chat.listThreadMessages(actor, threadId);
-      return predicate(page.messages);
+      page = await chat.listThreadEvents(actor, threadId);
+      return predicate(page.events);
     })
     .toBe(true);
   if (!page) {
@@ -591,41 +643,50 @@ async function cancelChatRun(actor: ApiTestUser, runId: string): Promise<void> {
 }
 
 function assistantMessages(
-  messages: readonly PagedChatMessage[],
+  messages: readonly ChatEventResponse[],
 ): AssistantMessage[] {
-  return messages.flatMap((message) => {
-    return message.role === "assistant" ? [message] : [];
+  return messages.filter((message): message is AssistantMessage => {
+    return !isUserMessage(message);
   });
 }
 
-function userMessages(messages: readonly PagedChatMessage[]): UserMessage[] {
-  return messages.flatMap((message) => {
-    return message.role === "user" ? [message] : [];
-  });
+function userMessages(messages: readonly ChatEventResponse[]): UserMessage[] {
+  return messages.filter(isUserMessage);
+}
+
+function isUserMessage(message: ChatEventResponse): message is UserMessage {
+  switch (message.eventType) {
+    case "input.prompt":
+    case "input.automation":
+    case "input.rejected":
+    case "control.interrupt":
+    case "control.revoke": {
+      return true;
+    }
+    default: {
+      return false;
+    }
+  }
 }
 
 function eventBackedContents(
-  messages: readonly PagedChatMessage[],
+  messages: readonly ChatEventResponse[],
   runId: string,
-): AssistantMessage[] {
-  return assistantMessages(messages).filter((message) => {
-    return (
-      message.runId === runId &&
-      message.content !== null &&
-      message.runLifecycleEvent === undefined
-    );
+): OutputMessage[] {
+  return messages.filter((message): message is OutputMessage => {
+    return message.eventType === "output.message" && message.runId === runId;
   });
 }
 
 function recommendedFollowupMessages(
-  messages: readonly PagedChatMessage[],
+  messages: readonly ChatEventResponse[],
   runId: string,
-): AssistantMessage[] {
-  return assistantMessages(messages).filter((message) => {
+): FollowupsMessage[] {
+  return messages.filter((message): message is FollowupsMessage => {
     return (
+      message.eventType === "output.followups" &&
       message.runId === runId &&
-      message.runLifecycleEvent === undefined &&
-      (message.recommendedFollowups?.length ?? 0) > 0
+      message.recommendedFollowups.length > 0
     );
   });
 }
@@ -657,8 +718,12 @@ function modelProvidersClient() {
   return setupApp({ context })(zeroModelProvidersMainContract);
 }
 
-function chatMessagesClient() {
-  return setupApp({ context })(chatMessagesContract);
+function chatEventsClient() {
+  return setupApp({ context })(chatEventsContract);
+}
+
+function chatThreadEventsClient() {
+  return setupApp({ context })(chatThreadEventsContract);
 }
 
 function sessionHeaders(actor: ApiTestUser): {
@@ -698,21 +763,65 @@ async function readThreadComputerUseHostId(
   actor: ApiTestUser,
   threadId: string,
 ): Promise<string | null> {
-  const thread = await chat.readThread(actor, threadId);
-  return thread.computerUseHostId ?? null;
+  return (await readThreadProjection(actor, threadId)).computerUseHostId;
+}
+
+async function readThreadProjection(actor: ApiTestUser, threadId: string) {
+  const snapshot = await chat.getThreadSnapshot(actor);
+  const events: ChatThreadEvent[] = [];
+  let cursor = snapshot.latestSeqId;
+
+  for (let page = 0; page < 20; page++) {
+    const response = await chat.requestThreadEvents(
+      actor,
+      cursor ? { sinceSeqId: cursor } : {},
+      [200],
+    );
+    expect(response.status).toBe(200);
+    if (response.status !== 200) {
+      throw new Error("Expected chat thread events to load");
+    }
+
+    const sequencedEvents = response.body.events.map((event) => {
+      if (event.seqId === undefined) {
+        throw new Error("Expected chat thread event sequence ID");
+      }
+      return { ...event, seqId: event.seqId };
+    });
+    events.push(...sequencedEvents);
+    if (!response.body.hasMore) {
+      break;
+    }
+
+    const lastEvent = sequencedEvents.at(-1);
+    if (!lastEvent) {
+      throw new Error("Expected paginated chat thread events");
+    }
+    cursor = lastEvent.seqId;
+  }
+
+  const thread = replayChatThreadEvents(snapshot.chatThreads, events).find(
+    (candidate) => {
+      return candidate.id === threadId;
+    },
+  );
+  if (!thread) {
+    throw new Error("Expected chat thread event projection");
+  }
+  return thread;
 }
 
 /**
  * Raw chat send through the Hono app, for statuses the typed contract does
  * not model (precedent: requestListAutomationsRaw in api-bdd-runs).
  */
-async function requestSendMessageRaw(
+async function requestSendEventRaw(
   actor: ApiTestUser,
-  body: ChatRunSendBody,
+  body: ChatRunSendBody & { readonly userMessage: UserMessageDocument },
 ): Promise<{ readonly status: number; readonly body: unknown }> {
   const headers = sessionHeaders(actor);
   const app = createApp({ signal: context.signal });
-  const response = await app.request("/api/zero/chat/messages", {
+  const response = await app.request("/api/zero/chat/events", {
     method: "POST",
     headers: { ...headers, "content-type": "application/json" },
     body: JSON.stringify(body),
@@ -722,15 +831,21 @@ async function requestSendMessageRaw(
 }
 
 /** Chat send authenticated by a run-scoped sandbox bearer token. */
-async function requestSendMessageWithBearer(
+async function requestSendEventWithBearer(
   token: string,
   body: { readonly agentId: string; readonly prompt: string },
   statuses: readonly (201 | 401 | 403)[],
 ) {
   return await accept(
-    chatMessagesClient().send({
+    chatEventsClient().send({
       headers: { authorization: `Bearer ${token}` },
-      body,
+      body: {
+        ...body,
+        userMessage: {
+          version: 1,
+          parts: [{ type: "text", text: body.prompt }],
+        },
+      },
     }),
     statuses,
   );
@@ -742,11 +857,24 @@ describe("CHAT-02: web chat send and client ids", () => {
     chatCallbacks.failIfChatCallbackRouteIsFetched();
 
     const clientThreadId = randomUUID();
-    const clientMessageId = randomUUID();
+    const clientEventId = randomUUID();
     const prompt = "hello from bdd web chat";
-    const first = await chat.requestSendMessage(
-      actor,
-      { agentId, prompt, clientThreadId, clientMessageId },
+    const model = await chat.getDefaultCreateThreadModel(actor);
+    const first = await accept(
+      chatEventsClient().send({
+        headers: sessionHeaders(actor),
+        body: {
+          agentId,
+          prompt,
+          userMessage: {
+            version: 1,
+            parts: [{ type: "text", text: prompt }],
+          },
+          clientThreadId,
+          clientEventId,
+          model,
+        },
+      }),
       [201],
     );
     if (first.status !== 201 || first.body.runId === null) {
@@ -755,6 +883,27 @@ describe("CHAT-02: web chat send and client ids", () => {
     expect(first.body.threadId).toBe(clientThreadId);
     expect(first.body.status).toBe("pending");
     const runId = first.body.runId;
+    const pendingBinding = await readThreadSessionBinding(
+      context,
+      clientThreadId,
+    );
+    expect(pendingBinding.agent_session_run_id).toBe(runId);
+    expect(pendingBinding.agent_session_id).toMatch(/[0-9a-f-]{36}/);
+    expect(pendingBinding.run_session_id).toBe(pendingBinding.agent_session_id);
+    expect(sandboxOperationEventsForRun(runId)).toContainEqual({
+      _time: expect.any(String),
+      source: "api",
+      op_type: "chat_thread_session_binding_persisted",
+      sandbox_type: "chat",
+      duration_ms: 0,
+      success: true,
+      run_id: runId,
+      chat_thread_id: clientThreadId,
+      agent_session_id: pendingBinding.agent_session_id,
+      agent_session_run_id: runId,
+      binding_action: "initialized",
+      run_status: "pending",
+    });
 
     const timingEvents = apiDispatchTimingEventsForRun(runId);
     expectApiDispatchActions(
@@ -771,6 +920,11 @@ describe("CHAT-02: web chat send and client ids", () => {
       ["api_dispatch_pre_create_agent_run"],
       "top_level",
     );
+    expectApiDispatchSpanKind(
+      timingEvents,
+      API_DISPATCH_THREAD_SESSION_BINDING_ACTION_TYPES,
+      "nested",
+    );
     expect(timingEvents).toContainEqual(
       expect.objectContaining({
         op_type: "api_dispatch_prepare_run_callbacks",
@@ -786,7 +940,7 @@ describe("CHAT-02: web chat send and client ids", () => {
     expectApiDispatchTimingEventsNotToLeak(timingEvents, [
       prompt,
       clientThreadId,
-      clientMessageId,
+      clientEventId,
       agentId,
     ]);
 
@@ -803,17 +957,16 @@ describe("CHAT-02: web chat send and client ids", () => {
       (items) => {
         return userMessages(items).some((message) => {
           return (
-            message.revokesMessageId === clientMessageId &&
-            message.runId === runId
+            message.revokesEventId === clientEventId && message.runId === runId
           );
         });
       },
     );
-    const userRows = userMessages(messages.messages);
+    const userRows = userMessages(messages.events);
     expect(userRows).toHaveLength(2);
     expect(userRows).toContainEqual(
       expect.objectContaining({
-        id: clientMessageId,
+        id: clientEventId,
         content: prompt,
       }),
     );
@@ -821,23 +974,70 @@ describe("CHAT-02: web chat send and client ids", () => {
       expect.objectContaining({
         content: prompt,
         runId,
-        revokesMessageId: clientMessageId,
+        revokesEventId: clientEventId,
       }),
     );
     const original = userRows.find((message) => {
-      return message.id === clientMessageId;
+      return message.id === clientEventId;
     });
     expect(original).toMatchObject({
-      id: clientMessageId,
+      id: clientEventId,
+      threadId: clientThreadId,
+      eventType: "input.prompt",
       content: prompt,
     });
     expect(original?.runId).toBeUndefined();
+    expect(original).not.toHaveProperty("revokesEventId");
+
+    const originalById = await chat.getThreadEvent(
+      actor,
+      clientThreadId,
+      clientEventId,
+    );
+    expect(originalById).toMatchObject({
+      id: clientEventId,
+      threadId: clientThreadId,
+      eventType: "input.prompt",
+      content: prompt,
+    });
+    expect(originalById).not.toHaveProperty("revokesEventId");
+
+    const eventPage = await accept(
+      chatThreadEventsClient().list({
+        headers: sessionHeaders(actor),
+        params: { threadId: clientThreadId },
+        query: { limit: 50 },
+      }),
+      [200],
+    );
+    const originalEvent = eventPage.body.events.find((event) => {
+      return event.id === clientEventId;
+    });
+    expect(originalEvent).toMatchObject({
+      id: clientEventId,
+      threadId: clientThreadId,
+      eventType: "input.prompt",
+      content: prompt,
+    });
+    await expect(
+      accept(
+        chatThreadEventsClient().get({
+          headers: sessionHeaders(actor),
+          params: { threadId: clientThreadId, eventId: clientEventId },
+        }),
+        [200],
+      ),
+    ).resolves.toMatchObject({
+      body: {
+        id: clientEventId,
+        threadId: clientThreadId,
+        eventType: "input.prompt",
+      },
+    });
 
     await expect(chat.readThread(actor, clientThreadId)).resolves.toStrictEqual(
       {
         lastReadAt: null,
-        computerUseHostId: null,
-        codexServiceTier: null,
       },
     );
 
@@ -849,7 +1049,7 @@ describe("CHAT-02: web chat send and client ids", () => {
       clientThreadId: emptyClientThreadId,
     });
     expect(created.id).toBe(emptyClientThreadId);
-    const emptyThreadSend = await chat.requestSendMessage(
+    const emptyThreadSend = await chat.requestSendEvent(
       actor,
       {
         agentId,
@@ -865,7 +1065,7 @@ describe("CHAT-02: web chat send and client ids", () => {
   }, 90_000);
 
   it("rejects unauthenticated, unknown-agent, and foreign private-agent sends", async () => {
-    const unauthenticated = await chat.requestSendMessage(
+    const unauthenticated = await chat.requestSendEvent(
       null,
       { agentId: randomUUID(), prompt: "hello" },
       [401],
@@ -880,7 +1080,7 @@ describe("CHAT-02: web chat send and client ids", () => {
       visibility: "private",
     });
 
-    const unknownAgent = await chat.requestSendMessage(
+    const unknownAgent = await chat.requestSendEvent(
       actor,
       { agentId: randomUUID(), prompt: "hello" },
       [404],
@@ -889,7 +1089,7 @@ describe("CHAT-02: web chat send and client ids", () => {
     expect(unknownAgent.body.error.code).toBe("NOT_FOUND");
 
     const peer = bdd.user({ orgId: actor.orgId });
-    const forbidden = await chat.requestSendMessage(
+    const forbidden = await chat.requestSendEvent(
       peer,
       { agentId: agent.agentId, prompt: "hello" },
       [403],
@@ -912,13 +1112,13 @@ describe("CHAT-02: interrupting active chat runs", () => {
     });
 
     const interruptId = randomUUID();
-    const interrupted = await chat.requestSendMessage(
+    const interrupted = await chat.requestSendEvent(
       actor,
       {
         agentId,
         threadId: first.threadId,
         interruptsRunId: first.runId,
-        clientMessageId: interruptId,
+        clientEventId: interruptId,
       },
       [201],
     );
@@ -934,10 +1134,14 @@ describe("CHAT-02: interrupting active chat runs", () => {
       (items) => {
         return (
           userMessages(items).some((message) => {
-            return message.interruptsRunId === first.runId;
+            return (
+              message.eventType === "control.interrupt" &&
+              message.interruptsRunId === first.runId
+            );
           }) &&
           assistantMessages(items).some((message) => {
             return (
+              message.eventType === "run.cancelled" &&
               message.runId === first.runId &&
               message.runLifecycleEvent === "cancelled"
             );
@@ -945,14 +1149,18 @@ describe("CHAT-02: interrupting active chat runs", () => {
         );
       },
     );
-    const interruptRows = userMessages(messages.messages).filter((message) => {
-      return message.interruptsRunId === first.runId;
+    const interruptRows = userMessages(messages.events).filter((message) => {
+      return (
+        message.eventType === "control.interrupt" &&
+        message.interruptsRunId === first.runId
+      );
     });
     expect(interruptRows).toHaveLength(1);
     expect(interruptRows[0]).toMatchObject({ id: interruptId, content: null });
     expect(
-      assistantMessages(messages.messages).filter((message) => {
+      assistantMessages(messages.events).filter((message) => {
         return (
+          message.eventType === "run.cancelled" &&
           message.runId === first.runId &&
           message.runLifecycleEvent === "cancelled"
         );
@@ -960,13 +1168,13 @@ describe("CHAT-02: interrupting active chat runs", () => {
     ).toHaveLength(1);
 
     // Replaying the interrupt (same or fresh client id) stays idempotent.
-    const replayedInterrupt = await chat.requestSendMessage(
+    const replayedInterrupt = await chat.requestSendEvent(
       actor,
       {
         agentId,
         threadId: first.threadId,
         interruptsRunId: first.runId,
-        clientMessageId: interruptId,
+        clientEventId: interruptId,
       },
       [201],
     );
@@ -974,20 +1182,23 @@ describe("CHAT-02: interrupting active chat runs", () => {
       runId: null,
       threadId: first.threadId,
     });
-    await chat.requestSendMessage(
+    await chat.requestSendEvent(
       actor,
       {
         agentId,
         threadId: first.threadId,
         interruptsRunId: first.runId,
-        clientMessageId: randomUUID(),
+        clientEventId: randomUUID(),
       },
       [201],
     );
-    const afterReplays = await chat.listThreadMessages(actor, first.threadId);
+    const afterReplays = await chat.listThreadEvents(actor, first.threadId);
     expect(
-      userMessages(afterReplays.messages).filter((message) => {
-        return message.interruptsRunId === first.runId;
+      userMessages(afterReplays.events).filter((message) => {
+        return (
+          message.eventType === "control.interrupt" &&
+          message.interruptsRunId === first.runId
+        );
       }),
     ).toHaveLength(1);
 
@@ -998,13 +1209,13 @@ describe("CHAT-02: interrupting active chat runs", () => {
       prompt: "cancelled through the cancel api",
     });
     await cancelChatRun(actor, second.runId);
-    const lateInterrupt = await chat.requestSendMessage(
+    const lateInterrupt = await chat.requestSendEvent(
       actor,
       {
         agentId,
         threadId: first.threadId,
         interruptsRunId: second.runId,
-        clientMessageId: randomUUID(),
+        clientEventId: randomUUID(),
       },
       [400],
     );
@@ -1014,19 +1225,19 @@ describe("CHAT-02: interrupting active chat runs", () => {
     );
 
     // The interrupt's client message id is burned for normal sends.
-    const reusedInterruptId = await chat.requestSendMessage(
+    const reusedInterruptId = await chat.requestSendEvent(
       actor,
       {
         agentId,
         threadId: first.threadId,
         prompt: "reuse the interrupt client id",
-        clientMessageId: interruptId,
+        clientEventId: interruptId,
       },
       [409],
     );
     expectApiError(reusedInterruptId.body);
     expect(reusedInterruptId.body.error.message).toBe(
-      "clientMessageId is already in use",
+      "clientEventId is already in use",
     );
 
     // Both cancelled rounds surface as incomplete context for the next run.
@@ -1056,13 +1267,13 @@ describe("CHAT-02: queueing and recalling messages", () => {
     });
 
     const queuedId = randomUUID();
-    const queued = await chat.requestSendMessage(
+    const queued = await chat.requestSendEvent(
       actor,
       {
         agentId,
         threadId: first.threadId,
         prompt: "queued behind the active run",
-        clientMessageId: queuedId,
+        clientEventId: queuedId,
       },
       [201],
     );
@@ -1079,13 +1290,13 @@ describe("CHAT-02: queueing and recalling messages", () => {
         modelProviderId: providerId,
       },
     ]);
-    const queuedRetry = await chat.requestSendMessage(
+    const queuedRetry = await chat.requestSendEvent(
       actor,
       {
         agentId,
         threadId: first.threadId,
         prompt: "queued behind the active run",
-        clientMessageId: queuedId,
+        clientEventId: queuedId,
       },
       [201],
     );
@@ -1106,40 +1317,40 @@ describe("CHAT-02: queueing and recalling messages", () => {
       agentId: strangerAgent.agentId,
       title: "Cross-user conflict thread",
     });
-    const crossUser = await chat.requestSendMessage(
+    const crossUser = await chat.requestSendEvent(
       stranger,
       {
         agentId: strangerAgent.agentId,
         threadId: strangerThread.id,
         prompt: "cross-user retry",
-        clientMessageId: queuedId,
+        clientEventId: queuedId,
       },
       [409],
     );
     expectApiError(crossUser.body);
     expect(crossUser.body.error.message).toBe(
-      "clientMessageId is already in use",
+      "clientEventId is already in use",
     );
-    const strangerMessages = await chat.listThreadMessages(
+    const strangerMessages = await chat.listThreadEvents(
       stranger,
       strangerThread.id,
     );
-    expect(strangerMessages.messages).toStrictEqual([]);
+    expect(strangerMessages.events).toStrictEqual([]);
 
-    const beforeRecall = await chat.listThreadMessages(actor, first.threadId);
+    const beforeRecall = await chat.listThreadEvents(actor, first.threadId);
     expect(
-      userMessages(beforeRecall.messages).filter((message) => {
+      userMessages(beforeRecall.events).filter((message) => {
         return message.id === queuedId;
       }),
     ).toHaveLength(1);
 
-    const recalled = await chat.requestSendMessage(
+    const recalled = await chat.requestSendEvent(
       actor,
       {
         agentId,
         threadId: first.threadId,
-        revokesMessageId: queuedId,
-        clientMessageId: randomUUID(),
+        revokesEventId: queuedId,
+        clientEventId: randomUUID(),
       },
       [201],
     );
@@ -1148,13 +1359,13 @@ describe("CHAT-02: queueing and recalling messages", () => {
     }
     expect(recalled.body.runId).toBeNull();
 
-    const repeatedRecall = await chat.requestSendMessage(
+    const repeatedRecall = await chat.requestSendEvent(
       actor,
       {
         agentId,
         threadId: first.threadId,
-        revokesMessageId: queuedId,
-        clientMessageId: randomUUID(),
+        revokesEventId: queuedId,
+        clientEventId: randomUUID(),
       },
       [201],
     );
@@ -1162,22 +1373,22 @@ describe("CHAT-02: queueing and recalling messages", () => {
       runId: null,
       threadId: first.threadId,
     });
-    const afterRepeated = await chat.listThreadMessages(actor, first.threadId);
+    const afterRepeated = await chat.listThreadEvents(actor, first.threadId);
 
     // Run-associated messages cannot be recalled.
-    const associated = userMessages(afterRepeated.messages).find((message) => {
+    const associated = userMessages(afterRepeated.events).find((message) => {
       return message.runId === first.runId;
     });
     if (!associated) {
       throw new Error("Expected the active run's user message to be listed");
     }
-    const rejectedRecall = await chat.requestSendMessage(
+    const rejectedRecall = await chat.requestSendEvent(
       actor,
       {
         agentId,
         threadId: first.threadId,
-        revokesMessageId: associated.id,
-        clientMessageId: randomUUID(),
+        revokesEventId: associated.id,
+        clientEventId: randomUUID(),
       },
       [400],
     );
@@ -1199,13 +1410,13 @@ describe("CHAT-02: queueing and recalling messages", () => {
       prompt: "cross-thread recall anchor",
     });
     const queuedMessageId = randomUUID();
-    const queued = await chat.requestSendMessage(
+    const queued = await chat.requestSendEvent(
       actor,
       {
         agentId,
         threadId: anchor.threadId,
         prompt: "must remain queued in the original thread",
-        clientMessageId: queuedMessageId,
+        clientEventId: queuedMessageId,
       },
       [201],
     );
@@ -1215,13 +1426,13 @@ describe("CHAT-02: queueing and recalling messages", () => {
       agentId,
       title: "Cross-thread recall target",
     });
-    await chat.requestSendMessage(
+    await chat.requestSendEvent(
       actor,
       {
         agentId,
         threadId: otherThread.id,
-        revokesMessageId: queuedMessageId,
-        clientMessageId: randomUUID(),
+        revokesEventId: queuedMessageId,
+        clientEventId: randomUUID(),
       },
       [201, 400],
     );
@@ -1233,14 +1444,14 @@ describe("CHAT-02: queueing and recalling messages", () => {
       (items) => {
         return userMessages(items).some((message) => {
           return (
-            message.revokesMessageId === queuedMessageId &&
+            message.revokesEventId === queuedMessageId &&
             typeof message.runId === "string"
           );
         });
       },
     );
-    const promoted = userMessages(messages.messages).find((message) => {
-      return message.revokesMessageId === queuedMessageId;
+    const promoted = userMessages(messages.events).find((message) => {
+      return message.revokesEventId === queuedMessageId;
     });
     if (!promoted?.runId) {
       throw new Error("Expected the original queued message to create a run");
@@ -1257,7 +1468,7 @@ describe("CHAT-02: org queue markers", () => {
     mockEnv("CONCURRENT_RUN_LIMIT_CAP", "1");
     const controller = new AbortController();
 
-    const blocker = await chat.requestSendMessage(
+    const blocker = await chat.requestSendEvent(
       actor,
       { agentId, prompt: "occupy org concurrency before interrupt abort" },
       [201],
@@ -1267,7 +1478,7 @@ describe("CHAT-02: org queue markers", () => {
     }
     expect(blocker.body.status).toBe("pending");
 
-    const queued = await chat.requestSendMessage(
+    const queued = await chat.requestSendEvent(
       actor,
       { agentId, prompt: "drain after interrupt abort" },
       [201],
@@ -1286,13 +1497,13 @@ describe("CHAT-02: org queue markers", () => {
       return Promise.resolve(undefined);
     });
 
-    await chat.requestSendMessage(
+    await chat.requestSendEvent(
       actor,
       {
         agentId,
         threadId: blocker.body.threadId,
         interruptsRunId: blocker.body.runId,
-        clientMessageId: randomUUID(),
+        clientEventId: randomUUID(),
       },
       [201],
       controller.signal,
@@ -1312,7 +1523,7 @@ describe("CHAT-02: org queue markers", () => {
     chatCallbacks.failIfChatCallbackRouteIsFetched();
     mockEnv("CONCURRENT_RUN_LIMIT_CAP", "1");
 
-    const blocker = await chat.requestSendMessage(
+    const blocker = await chat.requestSendEvent(
       actor,
       { agentId, prompt: "occupy org concurrency" },
       [201],
@@ -1322,7 +1533,7 @@ describe("CHAT-02: org queue markers", () => {
     }
     expect(blocker.body.status).toBe("pending");
 
-    const queuedRun = await chat.requestSendMessage(
+    const queuedRun = await chat.requestSendEvent(
       actor,
       { agentId, prompt: "wait behind the active run" },
       [201],
@@ -1331,6 +1542,35 @@ describe("CHAT-02: org queue markers", () => {
       throw new Error("Expected the second send to create a queued run");
     }
     expect(queuedRun.body.status).toBe("queued");
+    const queuedBinding = await readThreadSessionBinding(
+      context,
+      queuedRun.body.threadId,
+    );
+    expect(queuedBinding.agent_session_run_id).toBe(queuedRun.body.runId);
+    expect(queuedBinding.agent_session_id).toMatch(/[0-9a-f-]{36}/);
+    expect(queuedBinding.run_session_id).toBe(queuedBinding.agent_session_id);
+    expect(sandboxOperationEventsForRun(queuedRun.body.runId)).toContainEqual({
+      _time: expect.any(String),
+      source: "api",
+      op_type: "chat_thread_session_binding_persisted",
+      sandbox_type: "chat",
+      duration_ms: 0,
+      success: true,
+      run_id: queuedRun.body.runId,
+      chat_thread_id: queuedRun.body.threadId,
+      agent_session_id: queuedBinding.agent_session_id,
+      agent_session_run_id: queuedRun.body.runId,
+      binding_action: "initialized",
+      run_status: "queued",
+    });
+    const queuedTimingEvents = apiDispatchTimingEventsForRun(
+      queuedRun.body.runId,
+    );
+    expectApiDispatchSpanKind(
+      queuedTimingEvents,
+      API_DISPATCH_QUEUED_PERSISTENCE_ACTION_TYPES,
+      "nested",
+    );
 
     const queuedThread = queuedRun.body.threadId;
     const beforeDequeue = await waitForThreadMessages(
@@ -1347,7 +1587,7 @@ describe("CHAT-02: org queue markers", () => {
         );
       },
     );
-    const queuedRunUserRows = userMessages(beforeDequeue.messages);
+    const queuedRunUserRows = userMessages(beforeDequeue.events);
     expect(queuedRunUserRows).toHaveLength(2);
     const queuedRunMessage = queuedRunUserRows.find((message) => {
       return message.runId === queuedRun.body.runId;
@@ -1356,13 +1596,13 @@ describe("CHAT-02: org queue markers", () => {
       content: "wait behind the active run",
       runId: queuedRun.body.runId,
     });
-    expect(queuedRunMessage?.revokesMessageId).toBeDefined();
+    expect(queuedRunMessage?.revokesEventId).toBeDefined();
     const queuedRunOriginal = queuedRunUserRows.find((message) => {
-      return message.id === queuedRunMessage?.revokesMessageId;
+      return message.id === queuedRunMessage?.revokesEventId;
     });
     expect(queuedRunOriginal?.content).toBe("wait behind the active run");
     expect(queuedRunOriginal?.runId).toBeUndefined();
-    const marker = assistantMessages(beforeDequeue.messages).find((message) => {
+    const marker = assistantMessages(beforeDequeue.events).find((message) => {
       return message.runEventId === "queue:queued";
     });
     if (!marker) {
@@ -1387,22 +1627,25 @@ describe("CHAT-02: org queue markers", () => {
       },
     };
     const templateMessageId = randomUUID();
-    const queuedTemplate = await chat.requestSendMessage(
+    const queuedTemplate = await chat.requestSendEvent(
       actor,
       {
         agentId,
         threadId: queuedThread,
         prompt: "template queued deck",
         generationTemplate,
-        clientMessageId: templateMessageId,
+        clientEventId: templateMessageId,
       },
       [201],
     );
     expect(queuedTemplate.body).toMatchObject({ runId: null });
-    const withTemplate = await chat.listThreadMessages(actor, queuedThread);
-    const templateMessage = userMessages(withTemplate.messages).find(
-      (message) => {
-        return message.id === templateMessageId;
+    const withTemplate = await chat.listThreadEvents(actor, queuedThread);
+    const templateMessage = userMessages(withTemplate.events).find(
+      (message): message is PromptMessage => {
+        return (
+          message.eventType === "input.prompt" &&
+          message.id === templateMessageId
+        );
       },
     );
     expect(templateMessage?.generationTemplate).toStrictEqual(
@@ -1416,26 +1659,26 @@ describe("CHAT-02: org queue markers", () => {
     });
 
     // Recall the queued template message so the dequeue does not auto-send it.
-    await chat.requestSendMessage(
+    await chat.requestSendEvent(
       actor,
       {
         agentId,
         threadId: queuedThread,
-        revokesMessageId: templateMessageId,
-        clientMessageId: randomUUID(),
+        revokesEventId: templateMessageId,
+        clientEventId: randomUUID(),
       },
       [201],
     );
 
     // Interrupting the blocking run drains the org queue and revokes the
     // queue marker on the dequeued run's thread.
-    await chat.requestSendMessage(
+    await chat.requestSendEvent(
       actor,
       {
         agentId,
         threadId: blocker.body.threadId,
         interruptsRunId: blocker.body.runId,
-        clientMessageId: randomUUID(),
+        clientEventId: randomUUID(),
       },
       [201],
     );
@@ -1451,7 +1694,7 @@ describe("CHAT-02: org queue markers", () => {
         });
       },
     );
-    const revoker = assistantMessages(afterDequeue.messages).find((message) => {
+    const revoker = assistantMessages(afterDequeue.events).find((message) => {
       return message.runEventId === "queue:dequeued";
     });
     if (!revoker) {
@@ -1460,7 +1703,7 @@ describe("CHAT-02: org queue markers", () => {
     expect(revoker).toMatchObject({
       content: null,
       runId: queuedRun.body.runId,
-      revokesMessageId: marker.id,
+      revokesEventId: marker.id,
     });
     const queueAfter = await api.readRunQueue(actor);
     expect(queueAfter.body.queue).toHaveLength(0);
@@ -1479,12 +1722,12 @@ describe("CHAT-02: dispatch failure", () => {
     mockOptionalEnv("RUNNER_DEFAULT_GROUP", undefined);
     const messageId = randomUUID();
 
-    const sent = await chat.requestSendMessage(
+    const sent = await chat.requestSendEvent(
       actor,
       {
         agentId,
         prompt: "fail before worker start",
-        clientMessageId: messageId,
+        clientEventId: messageId,
       },
       [201],
     );
@@ -1492,10 +1735,29 @@ describe("CHAT-02: dispatch failure", () => {
       throw new Error("Expected the failed dispatch to still create a run");
     }
     expect(sent.body.status).toBe("failed");
+    await flushWaitUntilForTest();
+    expect(
+      firstAssistantMessageEligibilityEventsForRun(sent.body.runId),
+    ).toStrictEqual([
+      expect.objectContaining({
+        op_type: "first_assistant_message_eligible",
+        sandbox_type: "runner",
+        duration_ms: 0,
+        success: true,
+        run_id: sent.body.runId,
+      }),
+    ]);
 
     const run = await api.readRun(actor, sent.body.runId);
     expect(run.status).toBe("failed");
     expect(run.error).toContain("RUNNER_DEFAULT_GROUP");
+    await expect(
+      readThreadSessionBinding(context, sent.body.threadId),
+    ).resolves.toMatchObject({
+      agent_session_id: null,
+      agent_session_run_id: null,
+      run_session_id: null,
+    });
 
     const messages = await waitForThreadMessages(
       actor,
@@ -1503,15 +1765,17 @@ describe("CHAT-02: dispatch failure", () => {
       (items) => {
         return assistantMessages(items).some((message) => {
           return (
+            message.eventType === "run.failed" &&
             message.runId === sent.body.runId &&
             message.runLifecycleEvent === "failed"
           );
         });
       },
     );
-    const failedMarker = assistantMessages(messages.messages).find(
-      (message) => {
+    const failedMarker = assistantMessages(messages.events).find(
+      (message): message is FailedMessage => {
         return (
+          message.eventType === "run.failed" &&
           message.runId === sent.body.runId &&
           message.runLifecycleEvent === "failed"
         );
@@ -1521,20 +1785,20 @@ describe("CHAT-02: dispatch failure", () => {
       throw new Error("Expected a failed lifecycle marker");
     }
     expect(failedMarker.error).toStrictEqual(expect.any(String));
-    expect(userMessages(messages.messages)).toContainEqual(
+    expect(userMessages(messages.events)).toContainEqual(
       expect.objectContaining({
         content: "fail before worker start",
-        revokesMessageId: messageId,
+        revokesEventId: messageId,
         runId: sent.body.runId,
       }),
     );
-    const replay = await chat.requestSendMessage(
+    const replay = await chat.requestSendEvent(
       actor,
       {
         agentId,
         threadId: sent.body.threadId,
         prompt: "fail before worker start",
-        clientMessageId: messageId,
+        clientEventId: messageId,
       },
       [201],
     );
@@ -1543,6 +1807,10 @@ describe("CHAT-02: dispatch failure", () => {
       threadId: sent.body.threadId,
       status: "failed",
     });
+    await flushWaitUntilForTest();
+    expect(
+      firstAssistantMessageEligibilityEventsForRun(sent.body.runId),
+    ).toHaveLength(1);
     const queue = await api.readRunQueue(actor);
     expect(queue.body.queue).not.toContainEqual(
       expect.objectContaining({ runId: sent.body.runId }),
@@ -1556,9 +1824,8 @@ describe("CHAT-02: admission without spendable credits", () => {
   it("blocks admission for model-first sends through visible chat messages", async () => {
     const actor = bdd.user();
     bdd.acceptAgentStorageWrites();
-    await bdd.bootstrapOnboarding(actor, {
-      displayName: "BDD pro-suspend admission agent",
-    });
+    const completed = await bdd.completeOnboarding(actor);
+    expect(completed.status).toBe(200);
     const agent = await bdd.createAgent(actor, {
       displayName: "Pro-suspend chat agent",
     });
@@ -1585,24 +1852,26 @@ describe("CHAT-02: admission without spendable credits", () => {
       },
     ]);
 
-    const clientMessageId = randomUUID();
+    const clientEventId = randomUUID();
     const sendBody: ChatRunSendBody = {
       agentId: agent.agentId,
       prompt: "blocked by suspended plan",
       model: "claude-sonnet-4-6",
-      clientMessageId,
+      clientEventId,
     };
-    const sent = await chat.requestSendMessage(actor, sendBody, [201]);
+    const sent = await chat.requestSendEvent(actor, sendBody, [201]);
     if (sent.status !== 201) {
       throw new Error("Expected the blocked send to return 201 without a run");
     }
     expect(sent.body.runId).toBeNull();
 
-    const messages = await chat.listThreadMessages(actor, sent.body.threadId);
-    const blockedUsers = userMessages(messages.messages);
+    const messages = await chat.listThreadEvents(actor, sent.body.threadId);
+    const blockedUsers = userMessages(messages.events);
     expect(blockedUsers).toHaveLength(2);
     const queuedUser = blockedUsers.find((message) => {
-      return message.id === clientMessageId;
+      return (
+        message.eventType === "input.prompt" && message.id === clientEventId
+      );
     });
     if (!queuedUser) {
       throw new Error("Expected the original queued user message");
@@ -1611,9 +1880,11 @@ describe("CHAT-02: admission without spendable credits", () => {
       content: "blocked by suspended plan",
     });
     expect(queuedUser.runId).toBeUndefined();
-    expect(queuedUser.error).toBeUndefined();
     const blockedUser = blockedUsers.find((message) => {
-      return message.revokesMessageId === clientMessageId;
+      return (
+        message.eventType === "input.rejected" &&
+        message.revokesEventId === clientEventId
+      );
     });
     if (!blockedUser) {
       throw new Error("Expected an insufficient-credits replacement message");
@@ -1621,23 +1892,25 @@ describe("CHAT-02: admission without spendable credits", () => {
     expect(blockedUser).toMatchObject({
       content: "blocked by suspended plan",
       error: "insufficient_credits",
-      revokesMessageId: clientMessageId,
+      revokesEventId: clientEventId,
     });
     expect(blockedUser.runId).toBeUndefined();
-    const guidance = assistantMessages(messages.messages)[0];
+    const guidance = assistantMessages(messages.events).find((message) => {
+      return message.eventType === "output.error";
+    });
     if (!guidance) {
       throw new Error("Expected insufficient-credits assistant guidance");
     }
     expect(guidance.content).toContain("Buy more credits");
     expect(guidance.error).toBe("insufficient_credits");
 
-    const appended = await chat.listThreadMessages(actor, sent.body.threadId, {
+    const appended = await chat.listThreadEvents(actor, sent.body.threadId, {
       sinceSeqId: queuedUser.seqId,
     });
-    expect(appended.messages).toStrictEqual([
+    expect(appended.events).toStrictEqual([
       expect.objectContaining({
         id: blockedUser.id,
-        revokesMessageId: clientMessageId,
+        revokesEventId: clientEventId,
         error: "insufficient_credits",
       }),
       expect.objectContaining({
@@ -1650,28 +1923,20 @@ describe("CHAT-02: admission without spendable credits", () => {
     expect(queue.body.queue).toHaveLength(0);
     expect(queue.body.concurrency.active).toBe(0);
 
-    const retry = await chat.requestSendMessage(
+    const retry = await chat.requestSendEvent(
       actor,
       { ...sendBody, threadId: sent.body.threadId },
       [201],
     );
     expect(retry.body).toStrictEqual(sent.body);
-    const afterRetry = await chat.listThreadMessages(actor, sent.body.threadId);
-    expect(afterRetry.messages).toHaveLength(3);
+    const afterRetry = await chat.listThreadEvents(actor, sent.body.threadId);
+    expect(afterRetry.events).toHaveLength(3);
   }, 60_000);
 });
 
 describe("CHAT-02: Zero Mail link delivery", () => {
   it("delivers a linked Gmail draft exactly once through the agent reply", async () => {
     const { actor, agentId, runnerGroup } = await entitledChatActor();
-    if (!actor.orgId) {
-      throw new Error("Expected an org-scoped actor");
-    }
-    await updateFeatureSwitchesForUser(
-      context,
-      { ...actor, orgId: actor.orgId },
-      { [FeatureSwitchKey.ZeroMail]: true },
-    );
     mockGmailConnectorOAuth({
       accessToken: "gmail-agent-reply-token",
       email: "sender@example.com",
@@ -1742,9 +2007,9 @@ describe("CHAT-02: Zero Mail link delivery", () => {
       }),
       [200],
     );
-    const beforeReply = await chat.listThreadMessages(actor, run.threadId);
+    const beforeReply = await chat.listThreadEvents(actor, run.threadId);
     expect(
-      assistantMessages(beforeReply.messages).filter((message) => {
+      assistantMessages(beforeReply.events).filter((message) => {
         return message.content?.includes(linked.body.mailDraftUrl);
       }),
     ).toHaveLength(0);
@@ -1765,7 +2030,7 @@ describe("CHAT-02: Zero Mail link delivery", () => {
       },
     );
     expect(
-      assistantMessages(completed.messages).filter((message) => {
+      assistantMessages(completed.events).filter((message) => {
         return message.content?.includes(linked.body.mailDraftUrl);
       }),
     ).toStrictEqual([
@@ -1780,17 +2045,7 @@ describe("CHAT-02: Zero Mail link delivery", () => {
 describe("CHAT-02: model-first provider policies", () => {
   it("adds Codex image upload guidance for web chat Codex sends", async () => {
     const { actor, agentId, runnerGroup } = await entitledChatActor();
-    if (!actor.orgId) {
-      throw new Error("Expected an org-scoped actor");
-    }
     chatCallbacks.failIfChatCallbackRouteIsFetched();
-    await updateFeatureSwitchesForUser(
-      context,
-      { ...actor, orgId: actor.orgId },
-      {
-        [FeatureSwitchKey.ZeroMail]: true,
-      },
-    );
 
     await misc.upsertPersonalModelProvider(
       actor,
@@ -1831,6 +2086,19 @@ describe("CHAT-02: model-first provider policies", () => {
     expect(appendSystemPrompt).toContain("append that signature exactly once");
     expect(appendSystemPrompt).toContain(
       "return the link from the command to the user",
+    );
+    expect(appendSystemPrompt).toContain("Do not add a mail callback prompt");
+    expect(appendSystemPrompt).toContain(
+      "confirm the send against Gmail before reporting it",
+    );
+    expect(appendSystemPrompt).toContain(
+      "`zero workflow automation list <workflow>` shows one workflow's triggers",
+    );
+    expect(appendSystemPrompt).not.toContain(
+      "A message sent by the email card's Follow up action is explicit approval",
+    );
+    expect(appendSystemPrompt).toContain(
+      "Never send a reply automatically; the user always sends",
     );
     expect(appendSystemPrompt).toContain(CODEX_WEB_IMAGE_UPLOAD_PROMPT_SNIPPET);
     expect(appendSystemPrompt).not.toContain("When running in Codex");
@@ -1949,9 +2217,14 @@ describe("CHAT-02: model-first provider policies", () => {
         modelProviderId: null,
       },
     ]);
-    const vm0Send = await requestSendMessageRaw(actor, {
+    const vm0Prompt = "vm0-backed admission with spendable credits";
+    const vm0Send = await requestSendEventRaw(actor, {
       agentId,
-      prompt: "vm0-backed admission with spendable credits",
+      prompt: vm0Prompt,
+      userMessage: {
+        version: 1,
+        parts: [{ type: "text", text: vm0Prompt }],
+      },
       model: "claude-sonnet-4-6",
     });
     expect([201, 503]).toContain(vm0Send.status);
@@ -2070,7 +2343,7 @@ describe("CHAT-02: model-first provider policies", () => {
     ]);
 
     const [sent, updated] = await Promise.all([
-      chat.requestSendMessage(
+      chat.requestSendEvent(
         actor,
         {
           agentId,
@@ -2174,7 +2447,7 @@ describe("CHAT-02: model-first provider policies", () => {
     ]);
 
     const switchOffThreadId = randomUUID();
-    const switchOff = await chat.requestSendMessage(
+    const switchOff = await chat.requestSendEvent(
       actor,
       {
         agentId,
@@ -2201,8 +2474,8 @@ describe("CHAT-02: model-first provider policies", () => {
       model: "gpt-5.6-sol",
       runOptions: { codexServiceTier: "fast" },
     });
-    expect((await chat.readThread(actor, fast.threadId)).codexServiceTier).toBe(
-      "fast",
+    expect((await readThreadProjection(actor, fast.threadId)).serviceTier).toBe(
+      "priority",
     );
     const { claim } = await claimChatRun(runnerGroup, fast.runId);
     const environment = claimEnvironment(claim);
@@ -2216,8 +2489,8 @@ describe("CHAT-02: model-first provider policies", () => {
       ),
     );
     await cancelChatRun(actor, fast.runId);
-    expect((await chat.readThread(actor, fast.threadId)).codexServiceTier).toBe(
-      "fast",
+    expect((await readThreadProjection(actor, fast.threadId)).serviceTier).toBe(
+      "priority",
     );
 
     const invalidFastPatch = await chat.requestUpdateThreadModelSelection(
@@ -2231,8 +2504,8 @@ describe("CHAT-02: model-first provider policies", () => {
     expect(invalidFastPatch.body.error.message).toBe(
       "Codex fast mode is only available for ChatGPT (Codex) GPT 5.5 and GPT 5.6 runs",
     );
-    expect((await chat.readThread(actor, fast.threadId)).codexServiceTier).toBe(
-      "fast",
+    expect((await readThreadProjection(actor, fast.threadId)).serviceTier).toBe(
+      "priority",
     );
 
     await chat.updateThreadModelSelection(
@@ -2243,9 +2516,9 @@ describe("CHAT-02: model-first provider policies", () => {
         codexServiceTier: null,
       },
     );
-    const updatedFastThread = await chat.readThread(actor, fast.threadId);
-    expect(updatedFastThread).not.toHaveProperty("selectedModel");
-    expect(updatedFastThread.codexServiceTier).toBeNull();
+    expect(
+      (await readThreadProjection(actor, fast.threadId)).serviceTier,
+    ).toBeNull();
     const updatedFastThreadEvents = await chat.requestThreadEvents(
       actor,
       {},
@@ -2284,7 +2557,7 @@ describe("CHAT-02: model-first provider policies", () => {
       model: "gpt-5.5",
     });
     expect(
-      (await chat.readThread(actor, standard.threadId)).codexServiceTier,
+      (await readThreadProjection(actor, standard.threadId)).serviceTier,
     ).toBeNull();
     const { claim: standardClaim } = await claimChatRun(
       runnerGroup,
@@ -2296,7 +2569,7 @@ describe("CHAT-02: model-first provider policies", () => {
     await cancelChatRun(actor, standard.runId);
 
     const rejectedThreadId = randomUUID();
-    const rejected = await chat.requestSendMessage(
+    const rejected = await chat.requestSendEvent(
       actor,
       {
         agentId,
@@ -2386,7 +2659,7 @@ describe("CHAT-02: model-first provider policies", () => {
     expect(environment.OPENAI_MODEL).toBe("gpt-5.5");
     expect(environment.VM0_CODEX_SERVICE_TIER).toBeUndefined();
     expect(
-      (await chat.readThread(actor, first.threadId)).codexServiceTier,
+      (await readThreadProjection(actor, first.threadId)).serviceTier,
     ).toBeNull();
     await expectNoThreadModelUpdateEvent(actor, first.threadId, "gpt-5.5");
     await cancelChatRun(actor, followUp.runId);
@@ -2824,6 +3097,11 @@ describe("CHAT-02: run-level model overrides", () => {
       prompt: "continue on sonnet in the same session",
       model: "claude-sonnet-4-6",
     });
+    expectApiDispatchSpanKind(
+      apiDispatchTimingEventsForRun(second.runId),
+      ["api_dispatch_validate_thread_session_snapshot_session"],
+      "nested",
+    );
     const secondClaim = await claimChatRun(runnerGroup, second.runId);
     expect(secondClaim.claim.resumeSession?.sessionId).toBe(
       `bdd-cli-${first.runId}`,
@@ -2832,6 +3110,490 @@ describe("CHAT-02: run-level model overrides", () => {
       "claude-sonnet-4-6",
     );
     await cancelChatRun(actor, second.runId);
+  }, 90_000);
+
+  it("lazily adopts the latest eligible session for a legacy unbound thread", async () => {
+    const { actor, agentId, runnerGroup } = await entitledChatActor();
+    chatCallbacks.failIfChatCallbackRouteIsFetched();
+
+    const first = await sendChatRun(actor, {
+      agentId,
+      prompt: "establish history before lazy adoption",
+    });
+    const firstClaim = await claimChatRun(runnerGroup, first.runId);
+    chatCallbacks.mockChatOutputEvents([]);
+    await completeChatRunOk(first.runId, firstClaim.sandboxHeaders);
+    const firstBinding = await readThreadSessionBinding(
+      context,
+      first.threadId,
+    );
+    if (!firstBinding.agent_session_id) {
+      throw new Error("Expected the first run to establish a session");
+    }
+
+    await clearThreadSessionBinding(context, first.threadId);
+    await expect(
+      readThreadSessionBinding(context, first.threadId),
+    ).resolves.toMatchObject({
+      agent_session_id: null,
+      agent_session_run_id: null,
+    });
+
+    const second = await sendChatRun(actor, {
+      agentId,
+      threadId: first.threadId,
+      prompt: "adopt the historical session",
+    });
+    const secondBinding = await readThreadSessionBinding(
+      context,
+      first.threadId,
+    );
+    expect(secondBinding).toMatchObject({
+      agent_session_id: firstBinding.agent_session_id,
+      agent_session_run_id: second.runId,
+      run_session_id: firstBinding.agent_session_id,
+    });
+    expect(sandboxOperationEventsForRun(second.runId)).toContainEqual(
+      expect.objectContaining({
+        op_type: "chat_thread_session_binding_persisted",
+        chat_thread_id: first.threadId,
+        agent_session_id: firstBinding.agent_session_id,
+        agent_session_run_id: second.runId,
+        binding_action: "adopted",
+      }),
+    );
+    const secondClaim = await claimChatRun(runnerGroup, second.runId);
+    expect(secondClaim.claim.resumeSession?.sessionId).toBe(
+      `bdd-cli-${first.runId}`,
+    );
+    await cancelChatRun(actor, second.runId);
+  }, 90_000);
+
+  it("refuses a canonical session owned by another user and organization", async () => {
+    const primary = await entitledChatActor();
+    const foreign = await entitledChatActor();
+    const runnerGroup = api.configureRunnerGroup();
+    chatCallbacks.failIfChatCallbackRouteIsFetched();
+
+    const primaryFirst = await sendChatRun(primary.actor, {
+      agentId: primary.agentId,
+      prompt: "establish the correctly owned canonical session",
+    });
+    const primaryClaim = await claimChatRun(runnerGroup, primaryFirst.runId);
+    chatCallbacks.mockChatOutputEvents([]);
+    await completeChatRunOk(primaryFirst.runId, primaryClaim.sandboxHeaders);
+
+    const foreignFirst = await sendChatRun(foreign.actor, {
+      agentId: foreign.agentId,
+      prompt: "establish a foreign canonical session",
+    });
+    const foreignClaim = await claimChatRun(runnerGroup, foreignFirst.runId);
+    chatCallbacks.mockChatOutputEvents([]);
+    await completeChatRunOk(foreignFirst.runId, foreignClaim.sandboxHeaders);
+
+    const primaryBinding = await readThreadSessionBinding(
+      context,
+      primaryFirst.threadId,
+    );
+    const foreignBinding = await readThreadSessionBinding(
+      context,
+      foreignFirst.threadId,
+    );
+    if (!primaryBinding.agent_session_id || !foreignBinding.agent_session_id) {
+      throw new Error("Expected both threads to establish canonical sessions");
+    }
+    await replaceThreadSessionBindingFixture({
+      threadId: primaryFirst.threadId,
+      sessionId: foreignBinding.agent_session_id,
+      runId: foreignFirst.runId,
+    });
+
+    const primarySecond = await sendChatRun(primary.actor, {
+      agentId: primary.agentId,
+      threadId: primaryFirst.threadId,
+      prompt: "continue without reusing the foreign session",
+    });
+    const repairedBinding = await readThreadSessionBinding(
+      context,
+      primaryFirst.threadId,
+    );
+    expect(repairedBinding).toMatchObject({
+      agent_session_id: primaryBinding.agent_session_id,
+      agent_session_run_id: primarySecond.runId,
+      run_session_id: primaryBinding.agent_session_id,
+    });
+    expect(repairedBinding.agent_session_id).not.toBe(
+      foreignBinding.agent_session_id,
+    );
+    expect(sandboxOperationEventsForRun(primarySecond.runId)).toContainEqual(
+      expect.objectContaining({
+        op_type: "chat_thread_session_binding_persisted",
+        chat_thread_id: primaryFirst.threadId,
+        agent_session_id: primaryBinding.agent_session_id,
+        agent_session_run_id: primarySecond.runId,
+        binding_action: "adopted",
+      }),
+    );
+    const primarySecondClaim = await claimChatRun(
+      runnerGroup,
+      primarySecond.runId,
+    );
+    expect(primarySecondClaim.claim.resumeSession?.sessionId).toBe(
+      `bdd-cli-${primaryFirst.runId}`,
+    );
+    await cancelChatRun(primary.actor, primarySecond.runId);
+  }, 90_000);
+
+  it("retries preparation when the canonical binding changes", async () => {
+    const { actor, agentId, runnerGroup } = await entitledChatActor();
+    if (!actor.orgId) {
+      throw new Error("Expected an org-scoped actor for binding validation");
+    }
+    chatCallbacks.failIfChatCallbackRouteIsFetched();
+
+    const first = await sendChatRun(actor, {
+      agentId,
+      prompt: "establish the binding snapshot",
+    });
+    const firstClaim = await claimChatRun(runnerGroup, first.runId);
+    chatCallbacks.mockChatOutputEvents([]);
+    await completeChatRunOk(first.runId, firstClaim.sandboxHeaders);
+    await flushWaitUntilForTest();
+    const firstBinding = await readThreadSessionBinding(
+      context,
+      first.threadId,
+    );
+    if (!firstBinding.agent_session_id) {
+      throw new Error("Expected the first run to establish a session");
+    }
+
+    const admissionLock = await holdOrgAdmissionLockFixture({
+      orgId: actor.orgId,
+      signal: context.signal,
+    });
+    onTestFinished(async () => {
+      admissionLock.release();
+      await admissionLock.done;
+    });
+    const messageId = randomUUID();
+    const secondPromise = sendChatRun(actor, {
+      agentId,
+      threadId: first.threadId,
+      prompt: "retry after the binding changes",
+      clientEventId: messageId,
+    });
+    // The queue-first insert must complete before a fixture owns the parent
+    // thread row; otherwise its FK check would block before session resolution.
+    await expect
+      .poll(async () => {
+        const messages = await chat.listThreadEvents(actor, first.threadId);
+        return messages.events.some((message) => {
+          return message.id === messageId;
+        });
+      })
+      .toBe(true);
+
+    const bindingClear = await holdThreadSessionBindingClearFixture({
+      threadId: first.threadId,
+      signal: context.signal,
+    });
+    onTestFinished(async () => {
+      bindingClear.release();
+      await bindingClear.done;
+    });
+    admissionLock.release();
+    await admissionLock.done;
+    // Unlike the shared org advisory key, this row lock can only be reached
+    // after the target preparation has captured its binding snapshot.
+    await expect
+      .poll(bindingClear.blockedWaiterCount)
+      .toBeGreaterThanOrEqual(1);
+    bindingClear.release();
+    await bindingClear.done;
+    const second = await secondPromise;
+
+    const retryEvents = sandboxOperationEvents().filter((event) => {
+      return (
+        event.op_type === "chat_thread_session_binding_retry" &&
+        event.chat_thread_id === first.threadId
+      );
+    });
+    expect(retryEvents).toContainEqual(
+      expect.objectContaining({
+        agent_session_id: firstBinding.agent_session_id,
+        binding_action: "retried",
+        resolution_action: "reused",
+        retry_reason: "binding_changed",
+      }),
+    );
+    const secondBinding = await readThreadSessionBinding(
+      context,
+      first.threadId,
+    );
+    expect(secondBinding).toMatchObject({
+      agent_session_id: firstBinding.agent_session_id,
+      agent_session_run_id: second.runId,
+      run_session_id: firstBinding.agent_session_id,
+    });
+    const secondClaim = await claimChatRun(runnerGroup, second.runId);
+    expect(secondClaim.claim.resumeSession?.sessionId).toBe(
+      `bdd-cli-${first.runId}`,
+    );
+    await cancelChatRun(actor, second.runId);
+  }, 90_000);
+
+  it("retries preparation when the canonical conversation snapshot changes", async () => {
+    const { actor, agentId, runnerGroup } = await entitledChatActor();
+    chatCallbacks.failIfChatCallbackRouteIsFetched();
+
+    const first = await sendChatRun(actor, {
+      agentId,
+      prompt: "establish the checkpoint snapshot",
+    });
+    const firstClaim = await claimChatRun(runnerGroup, first.runId);
+    chatCallbacks.mockChatOutputEvents([]);
+    await completeChatRunOk(first.runId, firstClaim.sandboxHeaders);
+    await flushWaitUntilForTest();
+    const firstBinding = await readThreadSessionBinding(
+      context,
+      first.threadId,
+    );
+    if (!firstBinding.agent_session_id) {
+      throw new Error("Expected the first run to establish a session");
+    }
+
+    const conversationClear = await holdThreadSessionConversationClearFixture({
+      threadId: first.threadId,
+      signal: context.signal,
+    });
+    onTestFinished(async () => {
+      conversationClear.release();
+      await conversationClear.done;
+    });
+    const secondPromise = sendChatRun(actor, {
+      agentId,
+      threadId: first.threadId,
+      prompt: "retry after the checkpoint changes",
+    });
+    // The staged clear is still uncommitted, so the run resolves the pre-clear
+    // snapshot and only blocks once its commit re-reads the session row.
+    await expect
+      .poll(conversationClear.blockedWaiterCount)
+      .toBeGreaterThanOrEqual(1);
+
+    conversationClear.release();
+    await conversationClear.done;
+    const second = await secondPromise;
+
+    const retryEvents = sandboxOperationEvents().filter((event) => {
+      return (
+        event.op_type === "chat_thread_session_binding_retry" &&
+        event.chat_thread_id === first.threadId
+      );
+    });
+    expect(retryEvents).toContainEqual(
+      expect.objectContaining({
+        agent_session_id: firstBinding.agent_session_id,
+        binding_action: "retried",
+        resolution_action: "reused",
+        retry_reason: "session_changed",
+      }),
+    );
+    const secondBinding = await readThreadSessionBinding(
+      context,
+      first.threadId,
+    );
+    expect(secondBinding).toMatchObject({
+      agent_session_id: firstBinding.agent_session_id,
+      agent_session_run_id: second.runId,
+      run_session_id: firstBinding.agent_session_id,
+    });
+    const secondClaim = await claimChatRun(runnerGroup, second.runId);
+    expect(secondClaim.claim.resumeSession).toBeNull();
+    await cancelChatRun(actor, second.runId);
+  }, 90_000);
+
+  it("fails after every canonical session preparation snapshot changes", async () => {
+    const { actor, agentId, runnerGroup } = await entitledChatActor();
+    chatCallbacks.failIfChatCallbackRouteIsFetched();
+
+    const first = await sendChatRun(actor, {
+      agentId,
+      prompt: "establish the snapshot before retry exhaustion",
+    });
+    const firstClaim = await claimChatRun(runnerGroup, first.runId);
+    chatCallbacks.mockChatOutputEvents([]);
+    await completeChatRunOk(first.runId, firstClaim.sandboxHeaders);
+    await flushWaitUntilForTest();
+    const firstBinding = await readThreadSessionBinding(
+      context,
+      first.threadId,
+    );
+    if (!firstBinding.agent_session_id) {
+      throw new Error("Expected the first run to establish a session");
+    }
+
+    const preparationAttempts = 3;
+    const conversationChanges =
+      await holdThreadSessionConversationChangesFixture({
+        threadId: first.threadId,
+        changeCount: preparationAttempts,
+        signal: context.signal,
+      });
+    onTestFinished(async () => {
+      conversationChanges.releaseAll();
+      await conversationChanges.done;
+    });
+    const retryPrompt = "exhaust every session preparation attempt";
+    const failedPromise = requestSendEventRaw(actor, {
+      agentId,
+      threadId: first.threadId,
+      clientEventId: randomUUID(),
+      prompt: retryPrompt,
+      userMessage: {
+        version: 1,
+        parts: [{ type: "text", text: retryPrompt }],
+      },
+    });
+
+    for (let attempt = 0; attempt < preparationAttempts; attempt += 1) {
+      await expect
+        .poll(conversationChanges.blockedWaiterCount)
+        .toBeGreaterThanOrEqual(1);
+      conversationChanges.release();
+      if (attempt + 1 < preparationAttempts) {
+        await expect
+          .poll(conversationChanges.stagedChangeCount)
+          .toBe(attempt + 2);
+      }
+    }
+    await conversationChanges.done;
+    const failed = await failedPromise;
+    expect(failed).toStrictEqual({
+      status: 500,
+      body: { error: "Internal server error" },
+    });
+
+    const retryEvents = sandboxOperationEvents().filter((event) => {
+      return (
+        event.op_type === "chat_thread_session_binding_retry" &&
+        event.chat_thread_id === first.threadId
+      );
+    });
+    expect(retryEvents).toHaveLength(preparationAttempts);
+    expect(retryEvents).toStrictEqual(
+      expect.arrayContaining(
+        Array.from({ length: preparationAttempts }, () => {
+          return expect.objectContaining({
+            agent_session_id: firstBinding.agent_session_id,
+            binding_action: "retried",
+            resolution_action: "reused",
+            retry_reason: "session_changed",
+          });
+        }),
+      ),
+    );
+    await expect(
+      readThreadSessionBinding(context, first.threadId),
+    ).resolves.toStrictEqual(firstBinding);
+  }, 90_000);
+
+  it("rotates from the latest session run when binding provenance is deleted", async () => {
+    const { actor, agentId, runnerGroup, providerId } =
+      await entitledChatActor();
+    chatCallbacks.failIfChatCallbackRouteIsFetched();
+    await api.updateOrgModelPolicies(actor, [
+      {
+        model: "claude-sonnet-4-6",
+        isDefault: true,
+        defaultProviderType: "anthropic-api-key",
+        credentialScope: "org",
+        modelProviderId: providerId,
+      },
+    ]);
+
+    const first = await sendChatRun(actor, {
+      agentId,
+      prompt: "establish the original provider route",
+      model: "claude-sonnet-4-6",
+    });
+    const firstClaim = await claimChatRun(runnerGroup, first.runId);
+    chatCallbacks.mockChatOutputEvents([]);
+    await completeChatRunOk(first.runId, firstClaim.sandboxHeaders);
+
+    const second = await sendChatRun(actor, {
+      agentId,
+      threadId: first.threadId,
+      prompt: "advance binding provenance on the same route",
+    });
+    const secondClaim = await claimChatRun(runnerGroup, second.runId);
+    expect(secondClaim.claim.resumeSession?.sessionId).toBe(
+      `bdd-cli-${first.runId}`,
+    );
+    chatCallbacks.mockChatOutputEvents([]);
+    await completeChatRunOk(second.runId, secondClaim.sandboxHeaders);
+    const originalBinding = await readThreadSessionBinding(
+      context,
+      first.threadId,
+    );
+    if (!originalBinding.agent_session_id) {
+      throw new Error("Expected the original route to bind a session");
+    }
+
+    await deleteAgentRunFixture({ runId: second.runId });
+    await expect(
+      readThreadSessionBinding(context, first.threadId),
+    ).resolves.toMatchObject({
+      agent_session_id: originalBinding.agent_session_id,
+      agent_session_run_id: null,
+      run_session_id: null,
+    });
+
+    const { providerId: openRouterProviderId } = await upsertOrgModelProvider(
+      actor,
+      {
+        type: "openrouter-api-key",
+        secret: "provenance-fallback-openrouter-key",
+      },
+    );
+    await api.updateOrgModelPolicies(actor, [
+      {
+        model: "claude-sonnet-4-6",
+        isDefault: true,
+        defaultProviderType: "openrouter-api-key",
+        credentialScope: "org",
+        modelProviderId: openRouterProviderId,
+      },
+    ]);
+
+    const third = await sendChatRun(actor, {
+      agentId,
+      threadId: first.threadId,
+      prompt: "rotate after the provenance run is removed",
+    });
+    const rotatedBinding = await readThreadSessionBinding(
+      context,
+      first.threadId,
+    );
+    expect(rotatedBinding.agent_session_id).not.toBe(
+      originalBinding.agent_session_id,
+    );
+    expect(rotatedBinding).toMatchObject({
+      agent_session_run_id: third.runId,
+      run_session_id: rotatedBinding.agent_session_id,
+    });
+    expect(sandboxOperationEventsForRun(third.runId)).toContainEqual(
+      expect.objectContaining({
+        op_type: "chat_thread_session_binding_persisted",
+        chat_thread_id: first.threadId,
+        agent_session_id: rotatedBinding.agent_session_id,
+        agent_session_run_id: third.runId,
+        binding_action: "rotated",
+      }),
+    );
+    const thirdClaim = await claimChatRun(runnerGroup, third.runId);
+    expect(thirdClaim.claim.resumeSession).toBeNull();
+    await cancelChatRun(actor, third.runId);
   }, 90_000);
 
   it("re-resolves a sticky model through the current provider policy", async () => {
@@ -2846,6 +3608,13 @@ describe("CHAT-02: run-level model overrides", () => {
     const firstClaim = await claimChatRun(runnerGroup, first.runId);
     chatCallbacks.mockChatOutputEvents([]);
     await completeChatRunOk(first.runId, firstClaim.sandboxHeaders);
+    const originalBinding = await readThreadSessionBinding(
+      context,
+      first.threadId,
+    );
+    if (!originalBinding.agent_session_id) {
+      throw new Error("Expected the original route to bind a session");
+    }
     const pinned = await chat.readThread(actor, first.threadId);
     expect(pinned).not.toHaveProperty("selectedModel");
     expect(pinned).not.toHaveProperty("modelProviderId");
@@ -2936,12 +3705,43 @@ describe("CHAT-02: run-level model overrides", () => {
     );
     expect(thirdClaim.claim.cliAgentType).toBe("claude-code");
     expect(thirdClaim.claim.resumeSession).toBeNull();
+    await completeChatRunOk(third.runId, thirdClaim.sandboxHeaders);
+    const rotatedBinding = await readThreadSessionBinding(
+      context,
+      first.threadId,
+    );
+    expect(rotatedBinding.agent_session_id).not.toBe(
+      originalBinding.agent_session_id,
+    );
+    expect(rotatedBinding).toMatchObject({
+      agent_session_run_id: third.runId,
+      run_session_id: rotatedBinding.agent_session_id,
+    });
     await expectNoThreadModelUpdateEvent(
       actor,
       first.threadId,
       "claude-sonnet-4-6",
     );
-    await cancelChatRun(actor, third.runId);
+
+    const fourth = await sendChatRun(actor, {
+      agentId,
+      threadId: first.threadId,
+      prompt: "continue after the canonical session rotates",
+    });
+    const fourthBinding = await readThreadSessionBinding(
+      context,
+      first.threadId,
+    );
+    expect(fourthBinding).toMatchObject({
+      agent_session_id: rotatedBinding.agent_session_id,
+      agent_session_run_id: fourth.runId,
+      run_session_id: rotatedBinding.agent_session_id,
+    });
+    const fourthClaim = await claimChatRun(runnerGroup, fourth.runId);
+    expect(fourthClaim.claim.resumeSession?.sessionId).toBe(
+      `bdd-cli-${third.runId}`,
+    );
+    await cancelChatRun(actor, fourth.runId);
   }, 90_000);
 
   it("rejects invalid model selections without creating visible state", async () => {
@@ -2954,7 +3754,7 @@ describe("CHAT-02: run-level model overrides", () => {
 
     // Chat send only accepts supported run models.
     const vm0ThreadId = randomUUID();
-    const invalidModel = await chat.requestSendMessage(
+    const invalidModel = await chat.requestSendEvent(
       actor,
       {
         agentId: agent.agentId,
@@ -2971,7 +3771,7 @@ describe("CHAT-02: run-level model overrides", () => {
     await chat.requestReadThread(actor, vm0ThreadId, [404]);
 
     const unavailableThreadId = randomUUID();
-    const unavailable = await chat.requestSendMessage(
+    const unavailable = await chat.requestSendEvent(
       actor,
       {
         agentId: agent.agentId,
@@ -2993,7 +3793,7 @@ describe("CHAT-02: run-level model overrides", () => {
       "anthropic/claude-haiku-4.5",
     ]) {
       const removedThreadId = randomUUID();
-      const removed = await chat.requestSendMessage(
+      const removed = await chat.requestSendEvent(
         actor,
         {
           agentId: agent.agentId,
@@ -3031,6 +3831,13 @@ describe("CHAT-02: incomplete-round context", () => {
     });
     const firstClaim = await claimChatRun(runnerGroup, first.runId);
     await failChatRun(first.runId, firstClaim.sandboxHeaders, "boom one");
+    const firstBinding = await readThreadSessionBinding(
+      context,
+      first.threadId,
+    );
+    if (!firstBinding.agent_session_id) {
+      throw new Error("Expected the failed run to retain its session binding");
+    }
 
     const longPrompt = `second ${"x".repeat(4100)}`;
     const second = await sendChatRun(actor, {
@@ -3040,11 +3847,25 @@ describe("CHAT-02: incomplete-round context", () => {
     });
     const secondClaim = await claimChatRun(runnerGroup, second.runId);
     await failChatRun(second.runId, secondClaim.sandboxHeaders, "boom two");
+    await expect(
+      readThreadSessionBinding(context, first.threadId),
+    ).resolves.toMatchObject({
+      agent_session_id: firstBinding.agent_session_id,
+      agent_session_run_id: second.runId,
+      run_session_id: firstBinding.agent_session_id,
+    });
 
     const third = await sendChatRun(actor, {
       agentId,
       threadId: first.threadId,
       prompt: "retry after two failures",
+    });
+    await expect(
+      readThreadSessionBinding(context, first.threadId),
+    ).resolves.toMatchObject({
+      agent_session_id: firstBinding.agent_session_id,
+      agent_session_run_id: third.runId,
+      run_session_id: firstBinding.agent_session_id,
     });
     const thirdRun = await api.readRun(actor, third.runId);
     const appended = thirdRun.appendSystemPrompt ?? "";
@@ -3111,6 +3932,7 @@ describe("CHAT-02: initial thinking indicator", () => {
     const page = await waitForThreadMessages(actor, run.threadId, (items) => {
       return assistantMessages(items).some((message) => {
         return (
+          message.eventType === "output.thinking" &&
           message.runId === run.runId &&
           message.content === null &&
           message.thinking === thinkingResponse
@@ -3118,13 +3940,15 @@ describe("CHAT-02: initial thinking indicator", () => {
       });
     });
     await waitForThreadTitle(actor, run.threadId, titleResponse);
-    const marker = assistantMessages(page.messages).find((message) => {
+    const marker = assistantMessages(page.events).find((message) => {
       return (
-        message.runId === run.runId && message.thinking === thinkingResponse
+        message.eventType === "output.thinking" &&
+        message.runId === run.runId &&
+        message.thinking === thinkingResponse
       );
     });
     expect(marker).toMatchObject({
-      role: "assistant",
+      eventType: "output.thinking",
       content: null,
       runId: run.runId,
       runEventId: "thinking:initial",
@@ -3209,7 +4033,7 @@ describe("CHAT-02: prior rounds and thread titles", () => {
       },
     );
     const recommender = recommendedFollowupMessages(
-      afterFirst.messages,
+      afterFirst.events,
       first.runId,
     ).find((message) => {
       return (message.recommendedFollowups?.length ?? 0) > 0;
@@ -3217,7 +4041,7 @@ describe("CHAT-02: prior rounds and thread titles", () => {
     if (!recommender) {
       throw new Error("Expected a recommended follow-ups message");
     }
-    expect(recommender.runLifecycleEvent).toBeUndefined();
+    expect(recommender.eventType).toBe("output.followups");
 
     const second = await sendChatRun(actor, {
       agentId,
@@ -3252,13 +4076,13 @@ describe("CHAT-02: prior rounds and thread titles", () => {
     expect(titleRequests).toBe(1);
     await cancelChatRun(actor, third.runId);
 
-    const normalFollowup = await chat.requestSendMessage(
+    const normalFollowup = await chat.requestSendEvent(
       actor,
       {
         agentId,
         threadId: first.threadId,
         prompt: "use the recommended follow-up",
-        revokesMessageId: recommender.id,
+        revokesEventId: recommender.id,
       },
       [201],
     );
@@ -3275,15 +4099,15 @@ describe("CHAT-02: prior rounds and thread titles", () => {
       (messages) => {
         return userMessages(messages).some((message) => {
           return (
-            message.revokesMessageId === recommender.id &&
+            message.revokesEventId === recommender.id &&
             message.runId === normalFollowupRunId
           );
         });
       },
     );
     expect(
-      userMessages(afterFollowup.messages).some((message) => {
-        return message.revokesMessageId === recommender.id;
+      userMessages(afterFollowup.events).some((message) => {
+        return message.revokesEventId === recommender.id;
       }),
     ).toBeTruthy();
     await cancelChatRun(actor, normalFollowupRunId);
@@ -3291,17 +4115,9 @@ describe("CHAT-02: prior rounds and thread titles", () => {
 });
 
 describe("CHAT-02: generation templates and attachments", () => {
-  it("uses the structured message document for the enabled runtime path", async () => {
+  it("uses the userMessage document for the runtime prompt", async () => {
     const { actor, agentId } = await entitledChatActor();
     chatCallbacks.failIfChatCallbackRouteIsFetched();
-    if (!actor.orgId) {
-      throw new Error("Expected an org-scoped actor");
-    }
-    await updateFeatureSwitchesForUser(
-      context,
-      { ...actor, orgId: actor.orgId },
-      { [FeatureSwitchKey.StructuredPrompt]: true },
-    );
 
     const style = ILLUSTRATION_TEMPLATE_ITEMS[0];
     if (!style) {
@@ -3313,8 +4129,14 @@ describe("CHAT-02: generation templates and attachments", () => {
     };
     const fileId = randomUUID();
     const referencedThreadId = randomUUID();
-    const prompt = `Review [Roadmap](/chats/${referencedThreadId}) now`;
-    const structuredPrompt: UserMessageDocument = {
+    const mailDraftId = randomUUID();
+    const feedbackPrompt =
+      `Feedback on 2 parts of an email draft (mail draft ID: ${mailDraftId}):\n\n` +
+      "> First quote\n\nClarify this point\n\n---\n\n" +
+      `> Second quote\n\nAdd supporting evidence from [Roadmap](/chats/${referencedThreadId})`;
+    const prompt =
+      `Review [Roadmap](/chats/${referencedThreadId}) now\n\n` + feedbackPrompt;
+    const userMessage: UserMessageDocument = {
       version: 1,
       parts: [
         {
@@ -3335,13 +4157,40 @@ describe("CHAT-02: generation templates and attachments", () => {
           titleSnapshot: "Roadmap",
         },
         { type: "text", text: " now" },
+        {
+          type: "feedback",
+          quote: "First quote",
+          note: [{ type: "text", text: "Clarify this point" }],
+          source: {
+            type: "mail",
+            id: mailDraftId,
+            status: "draft",
+          },
+        },
+        {
+          type: "feedback",
+          quote: "Second quote",
+          note: [
+            { type: "text", text: "Add supporting evidence from " },
+            {
+              type: "chat_thread",
+              threadId: referencedThreadId,
+              titleSnapshot: "Roadmap",
+            },
+          ],
+          source: {
+            type: "mail",
+            id: mailDraftId,
+            status: "draft",
+          },
+        },
       ],
     };
 
     const sent = await sendChatRun(actor, {
       agentId,
       prompt,
-      structuredPrompt,
+      userMessage,
       generationTemplate,
       attachFiles: [
         {
@@ -3373,18 +4222,22 @@ describe("CHAT-02: generation templates and attachments", () => {
         });
       },
     );
-    const message = userMessages(messages.messages).find((item) => {
-      return item.runId === sent.runId;
-    });
+    const message = userMessages(messages.events).find(
+      (item): item is PromptMessage => {
+        return item.eventType === "input.prompt" && item.runId === sent.runId;
+      },
+    );
     expect(message).toMatchObject({
       content: prompt,
-      structuredPrompt,
+      userMessage,
     });
     await cancelChatRun(actor, sent.runId);
   }, 90_000);
 
-  it("falls back to the legacy runtime path for enabled old clients", async () => {
-    const { actor, agentId } = await entitledChatActor();
+  it("projects multiple inline templates into one ordered prompt and one shared context", async () => {
+    const { actor, agentId } = await entitledChatActor({
+      orgId: STAFF_ORG_ID,
+    });
     chatCallbacks.failIfChatCallbackRouteIsFetched();
     if (!actor.orgId) {
       throw new Error("Expected an org-scoped actor");
@@ -3392,17 +4245,128 @@ describe("CHAT-02: generation templates and attachments", () => {
     await updateFeatureSwitchesForUser(
       context,
       { ...actor, orgId: actor.orgId },
-      { [FeatureSwitchKey.StructuredPrompt]: true },
+      {
+        [FeatureSwitchKey.StructuredPromptInlineTemplates]: true,
+      },
     );
+
+    const style = ILLUSTRATION_TEMPLATE_ITEMS[0];
+    const workflow = WORKFLOW_TEMPLATE_ITEMS[0];
+    if (!style || !workflow) {
+      throw new Error("Expected registered inline templates");
+    }
+    const illustrationTemplate: GenerationTemplateRequest = {
+      type: "illustration",
+      selection: { illustrationStyleId: style.illustrationStyleId },
+    };
+    const workflowTemplate: GenerationTemplateRequest = {
+      type: "workflow",
+      selection: { workflowTemplateId: workflow.id },
+    };
+    const userMessage: UserMessageDocument = {
+      version: 1,
+      parts: [
+        { type: "text", text: "Use " },
+        {
+          type: "template",
+          titleSnapshot: style.title,
+          template: illustrationTemplate,
+        },
+        { type: "text", text: " for the dog, then " },
+        {
+          type: "template",
+          titleSnapshot: workflow.title,
+          template: workflowTemplate,
+        },
+        { type: "text", text: " for the follow-up" },
+        {
+          type: "feedback",
+          quote: "Earlier answer",
+          note: [
+            { type: "text", text: "Restyle with " },
+            {
+              type: "template",
+              titleSnapshot: style.title,
+              template: illustrationTemplate,
+            },
+          ],
+        },
+      ],
+    };
+
+    const sent = await sendChatRun(actor, {
+      agentId,
+      prompt: "legacy fallback",
+      userMessage,
+    });
+    const run = await api.readRun(actor, sent.runId);
+    const firstMarker = `[Template #1: ${style.title} (illustration)]`;
+    const secondMarker = `[Template #2: ${workflow.title} (workflow)]`;
+    const feedbackMarker = `[Template #3: ${style.title} (illustration)]`;
+    expect(run.prompt).toContain(
+      `Use ${firstMarker} for the dog, then ${secondMarker} for the follow-up`,
+    );
+    expect(run.prompt).toContain(`Restyle with ${feedbackMarker}`);
+    expect(run.prompt.indexOf(firstMarker)).toBeLessThan(
+      run.prompt.indexOf(secondMarker),
+    );
+
+    const systemPrompt = run.appendSystemPrompt ?? "";
+    expect(systemPrompt.match(/^# Inline Templates$/gm)).toHaveLength(1);
+    expect(systemPrompt).not.toContain("# Artifact Template Context");
+    expect(systemPrompt).not.toContain("# Workflow Template Context");
+    expect(systemPrompt).toContain("## Template #1 (illustration)");
+    expect(systemPrompt).toContain("## Template #2 (workflow)");
+    expect(systemPrompt).toContain("## Template #3 (illustration)");
+    expect(systemPrompt).toContain(style.illustrationStyleId);
+    expect(systemPrompt).toContain(workflow.id);
+
+    const messages = await waitForThreadMessages(
+      actor,
+      sent.threadId,
+      (items) => {
+        return userMessages(items).some((message) => {
+          return message.runId === sent.runId;
+        });
+      },
+    );
+    const message = userMessages(messages.events).find(
+      (item): item is PromptMessage => {
+        return item.eventType === "input.prompt" && item.runId === sent.runId;
+      },
+    );
+    expect(message?.generationTemplate).toStrictEqual(illustrationTemplate);
+    expect(message).toMatchObject({
+      content: "legacy fallback",
+      userMessage,
+    });
+    await cancelChatRun(actor, sent.runId);
+  }, 90_000);
+
+  it("preserves the attachment userMessage order in the runtime prompt", async () => {
+    const { actor, agentId } = await entitledChatActor();
+    chatCallbacks.failIfChatCallbackRouteIsFetched();
 
     const fileId = randomUUID();
     const sent = await sendChatRun(actor, {
       agentId,
-      prompt: "legacy client attachment",
+      prompt: "plain API attachment",
+      userMessage: {
+        version: 1,
+        parts: [
+          {
+            type: "file",
+            fileId,
+            filenameSnapshot: "api-input.txt",
+            contentType: "text/plain",
+          },
+          { type: "text", text: "plain API attachment" },
+        ],
+      },
       attachFiles: [
         {
           id: fileId,
-          filename: "legacy.txt",
+          filename: "api-input.txt",
           contentType: "text/plain",
           size: 12,
         },
@@ -3412,12 +4376,79 @@ describe("CHAT-02: generation templates and attachments", () => {
     const run = await api.readRun(actor, sent.runId);
     expect(run.prompt).toBe(
       [
-        "legacy client attachment",
-        `[Web file] legacy.txt (text/plain)\n   [ID] ${fileId}`,
+        `[Web file] api-input.txt (text/plain)\n   [ID] ${fileId}`,
+        "plain API attachment",
       ].join("\n\n"),
     );
+    const messages = await waitForThreadMessages(
+      actor,
+      sent.threadId,
+      (items) => {
+        return userMessages(items).some((message) => {
+          return message.runId === sent.runId;
+        });
+      },
+    );
+    expect(
+      userMessages(messages.events).find((message) => {
+        return message.runId === sent.runId;
+      }),
+    ).toMatchObject({
+      content: "plain API attachment",
+      userMessage: {
+        version: 1,
+        parts: [
+          {
+            type: "file",
+            fileId,
+            filenameSnapshot: "api-input.txt",
+            contentType: "text/plain",
+          },
+          { type: "text", text: "plain API attachment" },
+        ],
+      },
+    });
     await cancelChatRun(actor, sent.runId);
   }, 60_000);
+
+  it("keeps legacy single-template context when inline templates are enabled", async () => {
+    const { actor, agentId } = await entitledChatActor({
+      orgId: STAFF_ORG_ID,
+    });
+    chatCallbacks.failIfChatCallbackRouteIsFetched();
+    if (!actor.orgId) {
+      throw new Error("Expected an org-scoped actor");
+    }
+    await updateFeatureSwitchesForUser(
+      context,
+      { ...actor, orgId: actor.orgId },
+      {
+        [FeatureSwitchKey.StructuredPromptInlineTemplates]: true,
+      },
+    );
+
+    const style = ILLUSTRATION_TEMPLATE_ITEMS[0];
+    if (!style) {
+      throw new Error("Expected a registered illustration style");
+    }
+    const sent = await sendChatRun(actor, {
+      agentId,
+      prompt: "draw a dog",
+      generationTemplate: {
+        type: "illustration",
+        selection: { illustrationStyleId: style.illustrationStyleId },
+      },
+    });
+
+    const run = await api.readRun(actor, sent.runId);
+    expect(run.prompt).toBe("draw a dog");
+    const systemPrompt = run.appendSystemPrompt ?? "";
+    expect(systemPrompt).toContain("# Artifact Template Context");
+    expect(systemPrompt).toContain(style.illustrationStyleId);
+    expect(systemPrompt).not.toContain("# Inline Templates");
+    expect(systemPrompt).not.toContain("[Template #1:");
+    await cancelChatRun(actor, sent.runId);
+  }, 90_000);
 
   it("renders generation template guidance into the run system prompt", async () => {
     const { actor, agentId } = await entitledChatActor();
@@ -3452,8 +4483,6 @@ describe("CHAT-02: generation templates and attachments", () => {
       "Selected presentation template: Playful Launch Presentation (template:html-ppt-playful-launch)",
     );
     expect(presentationPrompt).not.toContain("Selected design system");
-    // Runbook flow: pull the selected self-contained runbook package; the
-    // retired multi-resource generation command is not surfaced.
     expect(presentationPrompt).toContain(
       `zero resource pull ${template.templateId}-runbook --dir ./generated/resources`,
     );
@@ -3517,7 +4546,7 @@ describe("CHAT-02: generation templates and attachments", () => {
       `Template: ${websiteTemplate.title} (${websiteTemplate.id})`,
     );
     expect(websitePrompt).toContain(
-      `zero resource pull ${websiteTemplate.resourceId} --dir ./generated/resources`,
+      "zero resource pull template:black-slabs-v2 --dir ./generated/resources",
     );
     expect(websitePrompt).toContain(
       `./generated/resources/${websiteTemplate.sourcePath}/render.mjs`,
@@ -3527,6 +4556,33 @@ describe("CHAT-02: generation templates and attachments", () => {
     );
     expect(websitePrompt).toContain("zero host <output-dir> --site <slug>");
     await cancelChatRun(actor, website.runId);
+  }, 90_000);
+
+  it("uses R2 by default and preserves GitHub fallback through the user feature switch", async () => {
+    const { actor, agentId } = await entitledChatActor();
+    chatCallbacks.failIfChatCallbackRouteIsFetched();
+    const style = ILLUSTRATION_TEMPLATE_ITEMS.find((item) => {
+      return item.illustrationStyleId === "image-style:ink-storefront";
+    });
+    if (!style) {
+      throw new Error("Expected the ink-storefront illustration style");
+    }
+
+    const defaultR2Run = await sendChatRun(actor, {
+      agentId,
+      prompt: "draw a flower shop from the default R2 source",
+      generationTemplate: {
+        type: "illustration",
+        selection: { illustrationStyleId: style.illustrationStyleId },
+      },
+    });
+    const defaultR2Prompt =
+      (await api.readRun(actor, defaultR2Run.runId)).appendSystemPrompt ?? "";
+    expect(defaultR2Prompt).toContain(
+      "Style source: private R2 registry resource image-style:ink-storefront",
+    );
+    expect(defaultR2Prompt).toContain("--compile --style-source r2");
+    await cancelChatRun(actor, defaultR2Run.runId);
 
     if (!actor.orgId) {
       throw new Error("Expected an org-scoped actor");
@@ -3534,25 +4590,42 @@ describe("CHAT-02: generation templates and attachments", () => {
     await updateFeatureSwitchesForUser(
       context,
       { ...actor, orgId: actor.orgId },
-      { [FeatureSwitchKey.WebsiteTemplateV2]: true },
+      { [FeatureSwitchKey.ImageStyleR2]: false },
     );
-    const websiteV2 = await sendChatRun(actor, {
+
+    const githubRun = await sendChatRun(actor, {
       agentId,
-      prompt: "make a v2 campaign landing page",
+      prompt: "draw a flower shop",
       generationTemplate: {
-        type: "website",
-        selection: { websiteTemplateId: websiteTemplate.id },
+        type: "illustration",
+        selection: { illustrationStyleId: style.illustrationStyleId },
       },
     });
-    const websiteV2Run = await api.readRun(actor, websiteV2.runId);
-    const websiteV2Prompt = websiteV2Run.appendSystemPrompt ?? "";
-    expect(websiteV2Prompt).toContain(
-      "zero resource pull template:black-slabs-v2 --dir ./generated/resources",
+    const githubPrompt =
+      (await api.readRun(actor, githubRun.runId)).appendSystemPrompt ?? "";
+    expect(githubPrompt).toContain(
+      "Style source: vm0-ai/vm0-skills@main:illustration-template/ink-storefront",
     );
-    expect(websiteV2Prompt).toContain(
-      `./generated/resources/${websiteTemplate.sourcePath}/render.mjs`,
+    expect(githubPrompt).not.toContain("private R2 registry resource");
+    expect(githubPrompt).not.toContain("--style-source r2");
+    await cancelChatRun(actor, githubRun.runId);
+
+    const githubOnlyRun = await sendChatRun(actor, {
+      agentId,
+      prompt: "draw a chibi hero",
+      generationTemplate: {
+        type: "illustration",
+        selection: { illustrationStyleId: "image-style:chibi-hero" },
+      },
+    });
+    const githubOnlyPrompt =
+      (await api.readRun(actor, githubOnlyRun.runId)).appendSystemPrompt ?? "";
+    expect(githubOnlyPrompt).toContain(
+      "Style source: vm0-ai/vm0-skills@main:illustration-template/chibi-hero",
     );
-    await cancelChatRun(actor, websiteV2.runId);
+    expect(githubOnlyPrompt).not.toContain("private R2 registry resource");
+    expect(githubOnlyPrompt).not.toContain("--style-source r2");
+    await cancelChatRun(actor, githubOnlyRun.runId);
   }, 90_000);
 
   it("is one-shot: a follow-up without re-attaching the style gets no template context", async () => {
@@ -3580,7 +4653,7 @@ describe("CHAT-02: generation templates and attachments", () => {
     );
     expect(firstPrompt).toContain("Follow the returned packet completely");
     expect(firstPrompt).toContain(
-      "If the source is unavailable, stop without generating",
+      "If the R2 source is unavailable, stop without generating; do not fall back to GitHub.",
     );
     expect(firstPrompt).toContain("--compiled-prompt");
     expect(firstPrompt).toContain(style.illustrationStyleId);
@@ -3647,9 +4720,6 @@ describe("CHAT-02: generation templates and attachments", () => {
     // The illustration style is gone entirely for this turn: it's not attached
     // to this message, and prior/incomplete context no longer repeats template
     // selections.
-    expect(thirdPrompt).not.toContain(
-      `zero generate image --provider built-in --style ${style.illustrationStyleId} --prompt "<user request>" --compile`,
-    );
     expect(thirdPrompt).not.toContain(style.illustrationStyleId);
     await cancelChatRun(actor, third.runId);
 
@@ -3658,8 +4728,6 @@ describe("CHAT-02: generation templates and attachments", () => {
     const freshPrompt = (await api.readRun(actor, fresh.runId))
       .appendSystemPrompt;
     expect(freshPrompt).not.toContain("# Artifact Template Context");
-    // The base agent prompt always carries generic `zero generate` guidance, so
-    // assert the absence of the template-specific command, not the bare verb.
     expect(freshPrompt).not.toContain(
       "zero generate image --provider built-in --style",
     );
@@ -3812,7 +4880,7 @@ describe("CHAT-02: generation templates and attachments", () => {
       },
     ];
     for (const arm of arms) {
-      const rejected = await chat.requestSendMessage(
+      const rejected = await chat.requestSendEvent(
         actor,
         {
           agentId: agent.agentId,
@@ -3858,11 +4926,16 @@ describe("CHAT-02: generation templates and attachments", () => {
       run.threadId,
       (items) => {
         return userMessages(items).some((message) => {
-          return (message.attachFiles?.length ?? 0) > 0;
+          return (
+            message.eventType === "input.prompt" &&
+            (message.attachFiles?.length ?? 0) > 0
+          );
         });
       },
     );
-    const attached = userMessages(messages.messages)[0]?.attachFiles?.[0];
+    const attached = userMessages(messages.events).find((message) => {
+      return message.eventType === "input.prompt";
+    })?.attachFiles?.[0];
     expect(attached).toMatchObject({
       id: fileId,
       filename,
@@ -3878,14 +4951,6 @@ describe("CHAT-02: queued attachments on auto-send", () => {
   it("preserves structured part order when a queued message is promoted", async () => {
     const { actor, agentId, runnerGroup } = await entitledChatActor();
     chatCallbacks.failIfChatCallbackRouteIsFetched();
-    if (!actor.orgId) {
-      throw new Error("Expected an org-scoped actor");
-    }
-    await updateFeatureSwitchesForUser(
-      context,
-      { ...actor, orgId: actor.orgId },
-      { [FeatureSwitchKey.StructuredPrompt]: true },
-    );
 
     const anchor = await sendChatRun(actor, {
       agentId,
@@ -3895,7 +4960,11 @@ describe("CHAT-02: queued attachments on auto-send", () => {
 
     const fileId = randomUUID();
     const queuedId = randomUUID();
-    const structuredPrompt: UserMessageDocument = {
+    const queuedPrompt =
+      "queued structured text\n\n" +
+      "Feedback on this part of your reply:\n\n" +
+      "> Queued quote\n\nRevise after the anchor completes";
+    const userMessage: UserMessageDocument = {
       version: 1,
       parts: [
         {
@@ -3905,16 +4974,21 @@ describe("CHAT-02: queued attachments on auto-send", () => {
           contentType: "text/plain",
         },
         { type: "text", text: "queued structured text" },
+        {
+          type: "feedback",
+          quote: "Queued quote",
+          note: [{ type: "text", text: "Revise after the anchor completes" }],
+        },
       ],
     };
-    const queued = await chat.requestSendMessage(
+    const queued = await chat.requestSendEvent(
       actor,
       {
         agentId,
         threadId: anchor.threadId,
-        prompt: "queued structured text",
-        structuredPrompt,
-        clientMessageId: queuedId,
+        prompt: queuedPrompt,
+        userMessage,
+        clientEventId: queuedId,
         attachFiles: [
           {
             id: fileId,
@@ -3936,24 +5010,29 @@ describe("CHAT-02: queued attachments on auto-send", () => {
       (items) => {
         return userMessages(items).some((message) => {
           return (
-            message.revokesMessageId === queuedId && message.runId !== undefined
+            message.revokesEventId === queuedId && message.runId !== undefined
           );
         });
       },
     );
-    const promoted = userMessages(messages.messages).find((message) => {
-      return message.revokesMessageId === queuedId;
-    });
+    const promoted = userMessages(messages.events).find(
+      (message): message is PromptMessage => {
+        return (
+          message.eventType === "input.prompt" &&
+          message.revokesEventId === queuedId
+        );
+      },
+    );
     if (!promoted?.runId) {
       throw new Error("Expected the structured queued message to auto-send");
     }
-    expect(promoted.structuredPrompt).toStrictEqual(structuredPrompt);
+    expect(promoted.userMessage).toStrictEqual(userMessage);
 
     const run = await api.readRun(actor, promoted.runId);
     expect(run.prompt).toBe(
       [
         `[Web file] ordered.txt (text/plain)\n   [ID] ${fileId}`,
-        "queued structured text",
+        queuedPrompt,
       ].join("\n\n"),
     );
     await cancelChatRun(actor, promoted.runId);
@@ -3971,13 +5050,13 @@ describe("CHAT-02: queued attachments on auto-send", () => {
 
     const fileId = randomUUID();
     const queuedId = randomUUID();
-    const queued = await chat.requestSendMessage(
+    const queued = await chat.requestSendEvent(
       actor,
       {
         agentId,
         threadId: anchor.threadId,
         prompt: "queued with attachment",
-        clientMessageId: queuedId,
+        clientEventId: queuedId,
         attachFiles: [
           {
             id: fileId,
@@ -4001,14 +5080,19 @@ describe("CHAT-02: queued attachments on auto-send", () => {
       (items) => {
         return userMessages(items).some((message) => {
           return (
-            message.revokesMessageId === queuedId && message.runId !== undefined
+            message.revokesEventId === queuedId && message.runId !== undefined
           );
         });
       },
     );
-    const promoted = userMessages(messages.messages).find((message) => {
-      return message.revokesMessageId === queuedId;
-    });
+    const promoted = userMessages(messages.events).find(
+      (message): message is PromptMessage => {
+        return (
+          message.eventType === "input.prompt" &&
+          message.revokesEventId === queuedId
+        );
+      },
+    );
     if (!promoted?.runId) {
       throw new Error("Expected the queued message to auto-send into a run");
     }
@@ -4020,7 +5104,7 @@ describe("CHAT-02: queued attachments on auto-send", () => {
       size: 12,
       url: expect.stringContaining(`${fileId}/notes.txt`),
     });
-    const original = userMessages(messages.messages).find((message) => {
+    const original = userMessages(messages.events).find((message) => {
       return message.id === queuedId;
     });
     if (!original) {
@@ -4061,7 +5145,7 @@ describe("CHAT-02/FILE-03: computer-use host grants", () => {
       [403],
     );
     expect(deniedCommand.status).toBe(403);
-    const deniedSend = await requestSendMessageWithBearer(
+    const deniedSend = await requestSendEventWithBearer(
       plainToken,
       { agentId, prompt: "sandbox tokens cannot chat" },
       [403],
@@ -4150,7 +5234,7 @@ describe("CHAT-02/FILE-03: computer-use host grants", () => {
       displayName: "Computer-use guard agent",
     });
 
-    const unknownHost = await chat.requestSendMessage(
+    const unknownHost = await chat.requestSendEvent(
       actor,
       {
         agentId: agent.agentId,
@@ -4165,7 +5249,7 @@ describe("CHAT-02/FILE-03: computer-use host grants", () => {
     // Stopping a host revokes it, so an explicit selection reports it as
     // missing rather than offline, and clears any thread binding immediately.
     const stopped = await cu.startComputerUseHost(actor);
-    const stoppedPinned = await chat.requestSendMessage(
+    const stoppedPinned = await chat.requestSendEvent(
       actor,
       {
         agentId: agent.agentId,
@@ -4181,7 +5265,7 @@ describe("CHAT-02/FILE-03: computer-use host grants", () => {
     await expect(
       readThreadComputerUseHostId(actor, stoppedPinned.body.threadId),
     ).resolves.toBeNull();
-    const revokedHost = await chat.requestSendMessage(
+    const revokedHost = await chat.requestSendEvent(
       actor,
       {
         agentId: agent.agentId,
@@ -4197,7 +5281,7 @@ describe("CHAT-02/FILE-03: computer-use host grants", () => {
     // bindings survive and reconnect to the same host id on the next start.
     const installationId = randomUUID();
     const installed = await cu.startComputerUseHost(actor, { installationId });
-    const installedPinned = await chat.requestSendMessage(
+    const installedPinned = await chat.requestSendEvent(
       actor,
       {
         agentId: agent.agentId,
@@ -4213,7 +5297,7 @@ describe("CHAT-02/FILE-03: computer-use host grants", () => {
     await expect(
       readThreadComputerUseHostId(actor, installedPinned.body.threadId),
     ).resolves.toBe(installed.hostId);
-    const stoppedInstalledHost = await chat.requestSendMessage(
+    const stoppedInstalledHost = await chat.requestSendEvent(
       actor,
       {
         agentId: agent.agentId,
@@ -4231,41 +5315,9 @@ describe("CHAT-02/FILE-03: computer-use host grants", () => {
     });
     expect(reconnected.hostId).toBe(installed.hostId);
 
-    // A deleted sticky host is cleared on the next send without the field.
-    // (The actor has no credits, so sends stop at admission — host selection
-    // and sticky-host updates still happen first.)
-    const sticky = await cu.startComputerUseHost(actor);
-    const pinned = await chat.requestSendMessage(
-      actor,
-      {
-        agentId: agent.agentId,
-        prompt: "pin the host before deleting it",
-        computerUseHostId: sticky.hostId,
-      },
-      [201],
-    );
-    if (pinned.status !== 201) {
-      throw new Error("Expected the pinned send to be accepted");
-    }
-    expect(pinned.body.runId).toBeNull();
-    await cu.deleteComputerUseHost(actor, sticky.hostId);
-    await expect(
-      readThreadComputerUseHostId(actor, pinned.body.threadId),
-    ).resolves.toBeNull();
-    const clearedSend = await chat.requestSendMessage(
-      actor,
-      {
-        agentId: agent.agentId,
-        threadId: pinned.body.threadId,
-        prompt: "send after the host vanished",
-      },
-      [201],
-    );
-    expect(clearedSend.body).toMatchObject({ threadId: pinned.body.threadId });
-
     // A valid sticky host remains usable for later non-explicit sends.
     const survivor = await cu.startComputerUseHost(actor);
-    const survivorThread = await chat.requestSendMessage(
+    const survivorThread = await chat.requestSendEvent(
       actor,
       {
         agentId: agent.agentId,
@@ -4282,7 +5334,7 @@ describe("CHAT-02/FILE-03: computer-use host grants", () => {
     // online, not revoked), but explicit selections are still accepted so the
     // run can use the host if it reconnects while running.
     mockNow(now() + 91_000);
-    const offlineHostSend = await chat.requestSendMessage(
+    const offlineHostSend = await chat.requestSendEvent(
       actor,
       {
         agentId: agent.agentId,
@@ -4295,7 +5347,7 @@ describe("CHAT-02/FILE-03: computer-use host grants", () => {
 
     // The sticky-host fallthrough also tolerates a stale host instead of
     // failing: a send without the field on the pinned thread is accepted.
-    const staleStickySend = await chat.requestSendMessage(
+    const staleStickySend = await chat.requestSendEvent(
       actor,
       {
         agentId: agent.agentId,
@@ -4317,24 +5369,25 @@ describe("CHAT-02: shared user message queue", () => {
     chatCallbacks.failIfChatCallbackRouteIsFetched();
 
     const messageId = randomUUID();
-    const structuredPrompt: UserMessageDocument = {
+    const referencedThreadId = randomUUID();
+    const userMessage: UserMessageDocument = {
       version: 1,
       parts: [
         { type: "text", text: "queue-first " },
         {
           type: "chat_thread",
-          threadId: randomUUID(),
+          threadId: referencedThreadId,
           titleSnapshot: "direct dispatch",
         },
       ],
     };
-    const sent = await chat.requestSendMessage(
+    const sent = await chat.requestSendEvent(
       actor,
       {
         agentId,
         prompt: "queue-first direct dispatch",
-        structuredPrompt,
-        clientMessageId: messageId,
+        userMessage,
+        clientEventId: messageId,
       },
       [201],
     );
@@ -4351,21 +5404,21 @@ describe("CHAT-02: shared user message queue", () => {
       (items) => {
         return userMessages(items).some((message) => {
           return (
-            message.revokesMessageId === messageId && message.runId === runId
+            message.revokesEventId === messageId && message.runId === runId
           );
         });
       },
     );
-    const rows = userMessages(messages.messages);
+    const rows = userMessages(messages.events);
     expect(rows).toHaveLength(2);
     const claimed = rows.find((message) => {
-      return message.revokesMessageId === messageId;
+      return message.revokesEventId === messageId;
     });
     expect(claimed).toMatchObject({
       content: "queue-first direct dispatch",
-      structuredPrompt,
+      userMessage,
       runId,
-      revokesMessageId: messageId,
+      revokesEventId: messageId,
     });
     expect(claimed?.id).not.toBe(messageId);
     const queued = rows.find((message) => {
@@ -4377,17 +5430,17 @@ describe("CHAT-02: shared user message queue", () => {
     expect(queued).toMatchObject({
       id: messageId,
       content: "queue-first direct dispatch",
-      structuredPrompt,
+      userMessage,
     });
     expect(queued.runId).toBeUndefined();
 
-    const replay = await chat.requestSendMessage(
+    const replay = await chat.requestSendEvent(
       actor,
       {
         agentId,
         threadId: sent.body.threadId,
         prompt: "queue-first direct dispatch",
-        clientMessageId: messageId,
+        clientEventId: messageId,
       },
       [201],
     );
@@ -4401,7 +5454,9 @@ describe("CHAT-02: shared user message queue", () => {
       .toBe(true);
 
     const claimedRun = await claimChatRun(runnerGroup, runId);
-    expect(claimedRun.claim.prompt).toBe("queue-first direct dispatch");
+    expect(claimedRun.claim.prompt).toBe(
+      `queue-first [direct dispatch](/chats/${referencedThreadId})`,
+    );
     await expect
       .poll(() => {
         return apiDispatchActionTypes(apiDispatchTimingEventsForRun(runId)).has(
@@ -4424,13 +5479,13 @@ describe("CHAT-02: shared user message queue", () => {
     const anchorClaim = await claimChatRun(runnerGroup, anchor.runId);
 
     const previewMessageId = randomUUID();
-    const previewQueued = await chat.requestSendMessage(
+    const previewQueued = await chat.requestSendEvent(
       actor,
       {
         agentId,
         threadId: anchor.threadId,
         prompt: "queued real-agent preview run",
-        clientMessageId: previewMessageId,
+        clientEventId: previewMessageId,
         realAgentInPreview: true,
       },
       [201],
@@ -4438,13 +5493,13 @@ describe("CHAT-02: shared user message queue", () => {
     expect(previewQueued.body).toMatchObject({ runId: null });
 
     const mockMessageId = randomUUID();
-    const mockQueued = await chat.requestSendMessage(
+    const mockQueued = await chat.requestSendEvent(
       actor,
       {
         agentId,
         threadId: anchor.threadId,
         prompt: "queued preview mock run",
-        clientMessageId: mockMessageId,
+        clientEventId: mockMessageId,
       },
       [201],
     );
@@ -4460,15 +5515,15 @@ describe("CHAT-02: shared user message queue", () => {
       (items) => {
         return userMessages(items).some((message) => {
           return (
-            message.revokesMessageId === previewMessageId &&
+            message.revokesEventId === previewMessageId &&
             typeof message.runId === "string"
           );
         });
       },
     );
-    const previewRunId = userMessages(previewMessages.messages).find(
+    const previewRunId = userMessages(previewMessages.events).find(
       (message) => {
-        return message.revokesMessageId === previewMessageId;
+        return message.revokesEventId === previewMessageId;
       },
     )?.runId;
     if (!previewRunId) {
@@ -4486,14 +5541,14 @@ describe("CHAT-02: shared user message queue", () => {
       (items) => {
         return userMessages(items).some((message) => {
           return (
-            message.revokesMessageId === mockMessageId &&
+            message.revokesEventId === mockMessageId &&
             typeof message.runId === "string"
           );
         });
       },
     );
-    const mockRunId = userMessages(mockMessages.messages).find((message) => {
-      return message.revokesMessageId === mockMessageId;
+    const mockRunId = userMessages(mockMessages.events).find((message) => {
+      return message.revokesEventId === mockMessageId;
     })?.runId;
     if (!mockRunId) {
       throw new Error("Expected the default preview message to auto-send");
@@ -4516,13 +5571,13 @@ describe("CHAT-02: shared user message queue", () => {
 
     const firstId = randomUUID();
     const firstPrompt = "first queued transcript message";
-    const first = await chat.requestSendMessage(
+    const first = await chat.requestSendEvent(
       actor,
       {
         agentId,
         threadId: anchor.threadId,
         prompt: firstPrompt,
-        clientMessageId: firstId,
+        clientEventId: firstId,
       },
       [201],
     );
@@ -4530,13 +5585,13 @@ describe("CHAT-02: shared user message queue", () => {
 
     const secondId = randomUUID();
     const secondPrompt = "second queued transcript message";
-    const second = await chat.requestSendMessage(
+    const second = await chat.requestSendEvent(
       actor,
       {
         agentId,
         threadId: anchor.threadId,
         prompt: secondPrompt,
-        clientMessageId: secondId,
+        clientEventId: secondId,
       },
       [201],
     );
@@ -4549,17 +5604,17 @@ describe("CHAT-02: shared user message queue", () => {
       (items) => {
         return userMessages(items).some((message) => {
           return (
-            message.revokesMessageId === firstId && message.runId !== undefined
+            message.revokesEventId === firstId && message.runId !== undefined
           );
         });
       },
     );
-    const users = userMessages(messages.messages);
+    const users = userMessages(messages.events);
     const firstOriginal = users.find((message) => {
       return message.id === firstId;
     });
     const firstClaimed = users.find((message) => {
-      return message.revokesMessageId === firstId;
+      return message.revokesEventId === firstId;
     });
     if (!firstOriginal || !firstClaimed?.runId) {
       throw new Error("Expected the first queued message to be claimed");
@@ -4570,7 +5625,7 @@ describe("CHAT-02: shared user message queue", () => {
 
     const replacedIds = new Set(
       users.flatMap((message) => {
-        return message.revokesMessageId ? [message.revokesMessageId] : [];
+        return message.revokesEventId ? [message.revokesEventId] : [];
       }),
     );
     const visibleQueuedPrompts = users
@@ -4585,13 +5640,13 @@ describe("CHAT-02: shared user message queue", () => {
       });
     expect(visibleQueuedPrompts).toStrictEqual([secondPrompt, firstPrompt]);
 
-    await chat.requestSendMessage(
+    await chat.requestSendEvent(
       actor,
       {
         agentId,
         threadId: anchor.threadId,
-        revokesMessageId: secondId,
-        clientMessageId: randomUUID(),
+        revokesEventId: secondId,
+        clientEventId: randomUUID(),
       },
       [201],
     );
@@ -4615,12 +5670,12 @@ describe("CHAT-02: shared user message queue", () => {
     });
 
     const prompt = "dispatch while thread list publication is pending";
-    const send = chat.requestSendMessage(
+    const send = chat.requestSendEvent(
       actor,
       {
         agentId,
         prompt,
-        clientMessageId: randomUUID(),
+        clientEventId: randomUUID(),
       },
       [201],
     );
@@ -4717,16 +5772,16 @@ describe("CHAT-02: shared user message queue", () => {
       agentId,
       threadId: anchor.threadId,
       prompt: "queued send survives thread list publication failure",
-      clientMessageId: queuedMessageId,
+      clientEventId: queuedMessageId,
     };
-    const queued = await chat.requestSendMessage(actor, queuedBody, [201]);
+    const queued = await chat.requestSendEvent(actor, queuedBody, [201]);
     expect(queued.body).toMatchObject({
       runId: null,
       threadId: anchor.threadId,
     });
     expect(failedThreadListPublish).toBeTruthy();
 
-    const retried = await chat.requestSendMessage(actor, queuedBody, [201]);
+    const retried = await chat.requestSendEvent(actor, queuedBody, [201]);
     expect(retried.body).toMatchObject({
       runId: null,
       threadId: anchor.threadId,
@@ -4745,14 +5800,14 @@ describe("CHAT-02: shared user message queue", () => {
       (items) => {
         return userMessages(items).some((message) => {
           return (
-            message.revokesMessageId === queuedMessageId &&
+            message.revokesEventId === queuedMessageId &&
             typeof message.runId === "string"
           );
         });
       },
     );
-    const promoted = userMessages(messages.messages).find((message) => {
-      return message.revokesMessageId === queuedMessageId;
+    const promoted = userMessages(messages.events).find((message) => {
+      return message.revokesEventId === queuedMessageId;
     });
     if (!promoted?.runId) {
       throw new Error("Expected the queued message to remain drainable");
@@ -4815,20 +5870,20 @@ describe("CHAT-02: shared user message queue", () => {
 
     const prompt = "terminal drain and inline send share one claim";
     const messageId = randomUUID();
-    const send = chat.requestSendMessage(
+    const send = chat.requestSendEvent(
       actor,
       {
         agentId,
         threadId: anchor.threadId,
         prompt,
-        clientMessageId: messageId,
+        clientEventId: messageId,
       },
       [201],
     );
     await expect
       .poll(async () => {
-        const messages = await chat.listThreadMessages(actor, anchor.threadId);
-        return messages.messages.some((message) => {
+        const messages = await chat.listThreadEvents(actor, anchor.threadId);
+        return messages.events.some((message) => {
           return message.id === messageId;
         });
       })
@@ -4846,15 +5901,15 @@ describe("CHAT-02: shared user message queue", () => {
       throw new Error("Expected one race winner to own the queued message");
     }
 
-    const messages = await chat.listThreadMessages(actor, anchor.threadId);
-    const claimed = userMessages(messages.messages).filter((message) => {
+    const messages = await chat.listThreadEvents(actor, anchor.threadId);
+    const claimed = userMessages(messages.events).filter((message) => {
       return (
-        message.revokesMessageId === messageId && message.runId !== undefined
+        message.revokesEventId === messageId && message.runId !== undefined
       );
     });
     expect(claimed).toHaveLength(1);
     expect(claimed[0]?.runId).toBe(sent.body.runId);
-    const queued = userMessages(messages.messages).find((message) => {
+    const queued = userMessages(messages.events).find((message) => {
       return message.id === messageId;
     });
     if (!queued) {
@@ -4893,13 +5948,13 @@ describe("CHAT-02: shared user message queue", () => {
     const anchorClaim = await claimChatRun(runnerGroup, anchor.runId);
 
     const messageId = randomUUID();
-    const queued = await chat.requestSendMessage(
+    const queued = await chat.requestSendEvent(
       actor,
       {
         agentId,
         threadId: anchor.threadId,
         prompt: "recall races the appended claim",
-        clientMessageId: messageId,
+        clientEventId: messageId,
       },
       [201],
     );
@@ -4951,16 +6006,16 @@ describe("CHAT-02: shared user message queue", () => {
     await expect.poll(admissionLock.waiterCount).toBe(2);
     admissionLock.release();
     await admissionLock.done;
-    await expect.poll(messageQueueLock.blockedWaiterCount).toBe(1);
+    await expect.poll(messageQueueLock.directBlockedWaiterCount).toBe(1);
 
     const recall = Promise.allSettled([
-      chat.requestSendMessage(
+      chat.requestSendEvent(
         actor,
         {
           agentId,
           threadId: anchor.threadId,
-          revokesMessageId: messageId,
-          clientMessageId: randomUUID(),
+          revokesEventId: messageId,
+          clientEventId: randomUUID(),
         },
         [400],
       ),
@@ -4986,19 +6041,19 @@ describe("CHAT-02: shared user message queue", () => {
       (items) => {
         return userMessages(items).some((message) => {
           return (
-            message.revokesMessageId === messageId &&
+            message.revokesEventId === messageId &&
             typeof message.runId === "string"
           );
         });
       },
     );
-    const claimed = userMessages(messages.messages).find((message) => {
-      return message.revokesMessageId === messageId;
+    const claimed = userMessages(messages.events).find((message) => {
+      return message.revokesEventId === messageId;
     });
     if (!claimed?.runId) {
       throw new Error("Expected the queue drain to append a claimed message");
     }
-    const original = userMessages(messages.messages).find((message) => {
+    const original = userMessages(messages.events).find((message) => {
       return message.id === messageId;
     });
     if (!original) {
@@ -5025,13 +6080,13 @@ describe("CHAT-02: shared user message queue", () => {
 
     const prompt = "recall wins the atomic queue-first race";
     const messageId = randomUUID();
-    const queued = await chat.requestSendMessage(
+    const queued = await chat.requestSendEvent(
       actor,
       {
         agentId,
         threadId: anchor.threadId,
         prompt,
-        clientMessageId: messageId,
+        clientEventId: messageId,
       },
       [201],
     );
@@ -5046,27 +6101,56 @@ describe("CHAT-02: shared user message queue", () => {
       messageId,
       signal: context.signal,
     });
+
+    // Stage the callback drain at org admission before recall reaches the queue
+    // row. The direct waiter proves recall is first; the transitive count after
+    // admission opens proves the drain is queued behind it.
+    const callbackQueryStarted = createDeferredPromise<void>(context.signal);
+    const releaseCallbackQuery = createDeferredPromise<void>(context.signal);
     onTestFinished(async () => {
+      if (!releaseCallbackQuery.settled()) {
+        releaseCallbackQuery.resolve(undefined);
+      }
       admissionLock.release();
       messageQueueLock.release();
       await Promise.all([admissionLock.done, messageQueueLock.done]);
     });
 
-    chatCallbacks.mockChatOutputEvents([]);
-    await completeChatRunOk(anchor.runId, anchorClaim.sandboxHeaders);
-    await expect.poll(admissionLock.waiterCount).toBeGreaterThanOrEqual(1);
+    context.mocks.axiom.query.mockImplementation((...args: unknown[]) => {
+      const apl = typeof args[0] === "string" ? args[0] : "";
+      if (!apl.includes("['agent-run-events']")) {
+        return Promise.resolve([]);
+      }
+      if (!callbackQueryStarted.settled()) {
+        callbackQueryStarted.resolve(undefined);
+      }
+      return releaseCallbackQuery.promise.then(() => {
+        return [assistantEvent(0, "recall-first queue race complete")];
+      });
+    });
 
-    const recall = chat.requestSendMessage(
-      actor,
-      {
-        agentId,
-        threadId: anchor.threadId,
-        revokesMessageId: messageId,
-        clientMessageId: randomUUID(),
-      },
-      [201],
-    );
-    await expect.poll(messageQueueLock.blockedWaiterCount).toBe(1);
+    await completeChatRunOk(anchor.runId, anchorClaim.sandboxHeaders, {
+      lastEventSequence: 0,
+    });
+    await callbackQueryStarted.promise;
+    await expect.poll(admissionLock.waiterCount).toBe(1);
+
+    releaseCallbackQuery.resolve(undefined);
+    await expect.poll(admissionLock.waiterCount).toBe(2);
+
+    const recall = Promise.allSettled([
+      chat.requestSendEvent(
+        actor,
+        {
+          agentId,
+          threadId: anchor.threadId,
+          revokesEventId: messageId,
+          clientEventId: randomUUID(),
+        },
+        [201],
+      ),
+    ]);
+    await expect.poll(messageQueueLock.directBlockedWaiterCount).toBe(1);
 
     admissionLock.release();
     await admissionLock.done;
@@ -5075,7 +6159,11 @@ describe("CHAT-02: shared user message queue", () => {
       .toBeGreaterThanOrEqual(2);
     messageQueueLock.release();
 
-    const recalled = await recall;
+    const [recallResult] = await recall;
+    if (recallResult.status === "rejected") {
+      throw recallResult.reason;
+    }
+    const recalled = recallResult.value;
     expect(recalled.body).toMatchObject({
       runId: null,
       threadId: anchor.threadId,
@@ -5095,16 +6183,16 @@ describe("CHAT-02: shared user message queue", () => {
       })
       .toBe(true);
 
-    const messages = await chat.listThreadMessages(actor, anchor.threadId);
-    expect(userMessages(messages.messages)).toContainEqual(
+    const messages = await chat.listThreadEvents(actor, anchor.threadId);
+    expect(userMessages(messages.events)).toContainEqual(
       expect.objectContaining({
         content: null,
-        revokesMessageId: messageId,
+        revokesEventId: messageId,
       }),
     );
     expect(
-      userMessages(messages.messages).filter((message) => {
-        return message.revokesMessageId === messageId && message.runId;
+      userMessages(messages.events).filter((message) => {
+        return message.revokesEventId === messageId && message.runId;
       }),
     ).toHaveLength(0);
 
@@ -5130,13 +6218,13 @@ describe("CHAT-02: shared user message queue", () => {
     await claimChatRun(runnerGroup, anchor.runId);
     const messageId = randomUUID();
     const prompt = "queued auto-send deleted before its marker";
-    const queued = await chat.requestSendMessage(
+    const queued = await chat.requestSendEvent(
       actor,
       {
         agentId,
         threadId: anchor.threadId,
         prompt,
-        clientMessageId: messageId,
+        clientEventId: messageId,
       },
       [201],
     );
@@ -5238,13 +6326,13 @@ describe("CHAT-02: shared user message queue", () => {
     const anchorClaim = await claimChatRun(runnerGroup, anchor.runId);
 
     const queuedId = randomUUID();
-    const queued = await chat.requestSendMessage(
+    const queued = await chat.requestSendEvent(
       actor,
       {
         agentId,
         threadId: anchor.threadId,
         prompt: "queue-first waits for the anchor",
-        clientMessageId: queuedId,
+        clientEventId: queuedId,
       },
       [201],
     );
@@ -5252,37 +6340,37 @@ describe("CHAT-02: shared user message queue", () => {
 
     // A second queued message can be recalled before dispatch.
     const recalledId = randomUUID();
-    const toRecall = await chat.requestSendMessage(
+    const toRecall = await chat.requestSendEvent(
       actor,
       {
         agentId,
         threadId: anchor.threadId,
         prompt: "queue-first message to recall",
-        clientMessageId: recalledId,
+        clientEventId: recalledId,
       },
       [201],
     );
     expect(toRecall.body).toMatchObject({ runId: null });
-    const recalled = await chat.requestSendMessage(
+    const recalled = await chat.requestSendEvent(
       actor,
       {
         agentId,
         threadId: anchor.threadId,
-        revokesMessageId: recalledId,
-        clientMessageId: randomUUID(),
+        revokesEventId: recalledId,
+        clientEventId: randomUUID(),
       },
       [201],
     );
     expect(recalled.body).toMatchObject({ runId: null });
 
     // A repeated recall stays idempotent.
-    const repeatedRecall = await chat.requestSendMessage(
+    const repeatedRecall = await chat.requestSendEvent(
       actor,
       {
         agentId,
         threadId: anchor.threadId,
-        revokesMessageId: recalledId,
-        clientMessageId: randomUUID(),
+        revokesEventId: recalledId,
+        clientEventId: randomUUID(),
       },
       [201],
     );
@@ -5299,20 +6387,20 @@ describe("CHAT-02: shared user message queue", () => {
       (items) => {
         return userMessages(items).some((message) => {
           return (
-            message.revokesMessageId === queuedId &&
+            message.revokesEventId === queuedId &&
             typeof message.runId === "string"
           );
         });
       },
     );
-    const promoted = userMessages(messages.messages).find((message) => {
-      return message.revokesMessageId === queuedId;
+    const promoted = userMessages(messages.events).find((message) => {
+      return message.revokesEventId === queuedId;
     });
     if (!promoted?.runId) {
       throw new Error("Expected the queued message to append a replacement");
     }
     expect(promoted.content).toBe("queue-first waits for the anchor");
-    const original = userMessages(messages.messages).find((message) => {
+    const original = userMessages(messages.events).find((message) => {
       return message.id === queuedId;
     });
     if (!original) {
@@ -5322,13 +6410,13 @@ describe("CHAT-02: shared user message queue", () => {
     expect(Date.parse(promoted.createdAt)).toBeGreaterThan(
       Date.parse(original.createdAt),
     );
-    const appended = await chat.listThreadMessages(actor, anchor.threadId, {
+    const appended = await chat.listThreadEvents(actor, anchor.threadId, {
       sinceSeqId: original.seqId,
     });
-    expect(appended.messages).toContainEqual(
+    expect(appended.events).toContainEqual(
       expect.objectContaining({
         id: promoted.id,
-        revokesMessageId: queuedId,
+        revokesEventId: queuedId,
         runId: promoted.runId,
       }),
     );
@@ -5359,13 +6447,13 @@ describe("CHAT-02: shared user message queue", () => {
     await claimChatRun(runnerGroup, anchor.runId);
 
     const queuedId = randomUUID();
-    const queued = await chat.requestSendMessage(
+    const queued = await chat.requestSendEvent(
       actor,
       {
         agentId,
         threadId: anchor.threadId,
         prompt: "queue-first fires after cancel",
-        clientMessageId: queuedId,
+        clientEventId: queuedId,
       },
       [201],
     );
@@ -5381,21 +6469,21 @@ describe("CHAT-02: shared user message queue", () => {
       (items) => {
         return userMessages(items).some((message) => {
           return (
-            message.revokesMessageId === queuedId &&
+            message.revokesEventId === queuedId &&
             typeof message.runId === "string" &&
             message.runId !== anchor.runId
           );
         });
       },
     );
-    const fired = userMessages(messages.messages).find((message) => {
-      return message.revokesMessageId === queuedId;
+    const fired = userMessages(messages.events).find((message) => {
+      return message.revokesEventId === queuedId;
     });
     if (!fired?.runId) {
       throw new Error("Expected the queued message to fire after cancel");
     }
     expect(fired.content).toBe("queue-first fires after cancel");
-    const original = userMessages(messages.messages).find((message) => {
+    const original = userMessages(messages.events).find((message) => {
       return message.id === queuedId;
     });
     if (!original) {

@@ -1,5 +1,33 @@
 # Changelog
 
+## [0.4.5](https://github.com/vm0-ai/vm0/compare/guest-contracts-v0.4.4...guest-contracts-v0.4.5) (2026-07-28)
+
+
+### Refactoring
+
+* **runner:** require canonical storage manifests ([#23550](https://github.com/vm0-ai/vm0/issues/23550)) ([cedc736](https://github.com/vm0-ai/vm0/commit/cedc736c5d46390ba0d145df5274359aff5330a6))
+
+## [0.4.4](https://github.com/vm0-ai/vm0/compare/guest-contracts-v0.4.3...guest-contracts-v0.4.4) (2026-07-28)
+
+
+### Bug Fixes
+
+* **runner:** classify codex safety policy refusals ([#23391](https://github.com/vm0-ai/vm0/issues/23391)) ([a1d9986](https://github.com/vm0-ai/vm0/commit/a1d9986f1183067249dc168ba3643acdf05f79ca))
+
+## [0.4.3](https://github.com/vm0-ai/vm0/compare/guest-contracts-v0.4.2...guest-contracts-v0.4.3) (2026-07-25)
+
+
+### Bug Fixes
+
+* **guest-agent:** classify oversized session history failures ([#23020](https://github.com/vm0-ai/vm0/issues/23020)) ([13b74f3](https://github.com/vm0-ai/vm0/commit/13b74f3d501b1e2f3be539969d3a9eb3479c7d3e))
+
+## [0.4.2](https://github.com/vm0-ai/vm0/compare/guest-contracts-v0.4.1...guest-contracts-v0.4.2) (2026-07-25)
+
+
+### Documentation
+
+* **rust:** document private runtime file invariants ([#23000](https://github.com/vm0-ai/vm0/issues/23000)) ([200dd45](https://github.com/vm0-ai/vm0/commit/200dd45652429376a2729a09addb08dbc0167c1b))
+
 ## [0.4.1](https://github.com/vm0-ai/vm0/compare/guest-contracts-v0.4.0...guest-contracts-v0.4.1) (2026-07-23)
 
 

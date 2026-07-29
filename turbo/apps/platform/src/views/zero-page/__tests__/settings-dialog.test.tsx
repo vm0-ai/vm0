@@ -1,4 +1,11 @@
 import { screen, waitFor, within } from "@testing-library/react";
+import { zeroConnectorCatalogContract } from "@vm0/api-contracts/contracts/zero-connector-catalog";
+import {
+  type UserLocale,
+  type UserPreferencesResponse,
+  zeroUserPreferencesContract,
+} from "@vm0/api-contracts/contracts/zero-user-preferences";
+import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import { describe, expect, it } from "vitest";
 
 import {
@@ -7,10 +14,24 @@ import {
   queryAllByRoleFast,
 } from "../../../__tests__/page-helper.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
+import { localeStorageKey } from "../../../i18n/locale-storage.ts";
+import { localStorageSignals } from "../../../signals/external/local-storage.ts";
 
 const context = testContext();
+const { set$: setCachedLocale$ } = localStorageSignals(
+  localeStorageKey("org_default"),
+);
 
-async function openDialog(role: "admin" | "member" = "admin"): Promise<void> {
+function cachedLocale(): string | null {
+  const { get$ } = localStorageSignals(localeStorageKey("org_default"));
+  return context.store.get(get$);
+}
+
+async function openDialog(
+  role: "admin" | "member" = "admin",
+  section: "debug" | "general" | "preference" = "general",
+  featureSwitches?: Partial<Record<FeatureSwitchKey, boolean>>,
+): Promise<void> {
   context.mocks.data.org({
     id: "org_1",
     slug: "test-org",
@@ -25,13 +46,217 @@ async function openDialog(role: "admin" | "member" = "admin"): Promise<void> {
     membershipRequests: [],
     createdAt: "2026-01-01T00:00:00Z",
   });
-  detachedSetupPage({ context, path: "/?settings=general" });
+  detachedSetupPage({
+    context,
+    path: `/?settings=${section}`,
+    featureSwitches: {
+      ...(section === "debug" ? { [FeatureSwitchKey.ZeroDebug]: true } : {}),
+      ...featureSwitches,
+    },
+  });
   await waitFor(() => {
     expect(screen.getByRole("dialog")).toBeInTheDocument();
   });
 }
 
+function createPreferences(locale: UserLocale | null): UserPreferencesResponse {
+  return {
+    timezone: null,
+    locale,
+    supportedLocales: ["en-US", "pt-BR"],
+    pinnedAgentIds: [],
+    sendMode: "enter",
+    morningBriefEnabled: false,
+    morningBriefNextRunAt: null,
+    captureNetworkBodiesRemaining: 0,
+  };
+}
+
 describe("settings dialog", () => {
+  it("defaults to English instead of the browser language before user selection", async () => {
+    const submittedLocales: UserLocale[] = [];
+    let serverLocale: UserLocale | null = null;
+    context.mocks.browser.language("pt-BR");
+    context.mocks.api(zeroUserPreferencesContract.get, ({ respond }) => {
+      return respond(200, createPreferences(serverLocale));
+    });
+    context.mocks.api(
+      zeroUserPreferencesContract.update,
+      ({ body, respond }) => {
+        if (body.locale !== undefined) {
+          serverLocale = body.locale;
+          submittedLocales.push(body.locale);
+        }
+        return respond(200, createPreferences(serverLocale));
+      },
+    );
+
+    await openDialog("admin", "preference", {
+      [FeatureSwitchKey.LanguagePreference]: true,
+    });
+
+    const languageSelect = await screen.findByRole("combobox", {
+      name: "Language",
+    });
+    await waitFor(() => {
+      expect(submittedLocales).toContain("en-US");
+      expect(languageSelect).toHaveTextContent("English");
+      expect(languageSelect).toBeEnabled();
+      expect(document.documentElement.lang).toBe("en-US");
+      expect(cachedLocale()).toBe("en-US");
+    });
+
+    click(languageSelect);
+    click(screen.getByRole("option", { name: "Português (Brasil)" }));
+
+    await waitFor(() => {
+      expect(submittedLocales).toContain("pt-BR");
+      expect(
+        screen.getByRole("combobox", { name: "Idioma" }),
+      ).toHaveTextContent("Português (Brasil)");
+      expect(document.documentElement.lang).toBe("pt-BR");
+      expect(cachedLocale()).toBe("pt-BR");
+    });
+
+    click(screen.getByRole("combobox", { name: "Idioma" }));
+    click(screen.getByRole("option", { name: "English" }));
+    await waitFor(() => {
+      expect(document.documentElement.lang).toBe("en-US");
+    });
+  });
+
+  it("persists a cached locale when the workspace has no server preference", async () => {
+    const submittedLocales: UserLocale[] = [];
+    document.documentElement.lang = "pt-BR";
+    context.store.set(setCachedLocale$, "pt-BR");
+    context.mocks.api(zeroUserPreferencesContract.get, ({ respond }) => {
+      return respond(200, createPreferences(null));
+    });
+    context.mocks.api(
+      zeroUserPreferencesContract.update,
+      ({ body, respond }) => {
+        if (body.locale !== undefined) {
+          submittedLocales.push(body.locale);
+        }
+        return respond(200, createPreferences(body.locale ?? null));
+      },
+    );
+
+    await openDialog("admin", "preference", {
+      [FeatureSwitchKey.LanguagePreference]: true,
+    });
+
+    const languageSelect = await screen.findByRole("combobox", {
+      name: "Idioma",
+    });
+    await waitFor(() => {
+      expect(submittedLocales).toContain("pt-BR");
+      expect(languageSelect).toHaveTextContent("Português (Brasil)");
+      expect(languageSelect).toHaveAccessibleName("Idioma");
+      expect(document.documentElement.lang).toBe("pt-BR");
+      expect(cachedLocale()).toBe("pt-BR");
+    });
+
+    click(languageSelect);
+    click(screen.getByRole("option", { name: "English" }));
+    await waitFor(() => {
+      expect(document.documentElement.lang).toBe("en-US");
+    });
+  });
+
+  it("overrides a cached language with the workspace server preference", async () => {
+    document.documentElement.lang = "en-US";
+    context.store.set(setCachedLocale$, "en-US");
+    context.signal.addEventListener(
+      "abort",
+      () => {
+        document.documentElement.lang = "en-US";
+      },
+      { once: true },
+    );
+    context.mocks.data.userPreferences(createPreferences("pt-BR"));
+
+    await openDialog("admin", "preference", {
+      [FeatureSwitchKey.LanguagePreference]: true,
+    });
+
+    const languageSelect = await screen.findByRole("combobox", {
+      name: "Idioma",
+    });
+    await waitFor(() => {
+      expect(languageSelect).toHaveTextContent("Português (Brasil)");
+      expect(languageSelect).toHaveAccessibleName("Idioma");
+      expect(document.documentElement.lang).toBe("pt-BR");
+      expect(cachedLocale()).toBe("pt-BR");
+    });
+
+    click(languageSelect);
+    click(screen.getByRole("option", { name: "English" }));
+    await waitFor(() => {
+      expect(document.documentElement.lang).toBe("en-US");
+    });
+  });
+
+  it("hides the language entry when the feature switch is off", async () => {
+    context.mocks.data.userPreferences(createPreferences("en-US"));
+
+    await openDialog("admin", "preference");
+
+    await waitFor(() => {
+      expect(screen.getByText("Theme")).toBeInTheDocument();
+      expect(screen.queryByText("Language")).not.toBeInTheDocument();
+    });
+  });
+
+  it("hides the language entry when the deployed API predates locale support", async () => {
+    const oldApiPreferences = createPreferences(null);
+    delete oldApiPreferences.locale;
+    context.mocks.api(zeroUserPreferencesContract.get, ({ respond }) => {
+      return respond(200, oldApiPreferences);
+    });
+
+    await openDialog("admin", "preference", {
+      [FeatureSwitchKey.LanguagePreference]: true,
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText("Theme")).toBeInTheDocument();
+      expect(screen.queryByText("Language")).not.toBeInTheDocument();
+    });
+  });
+
+  it("hides the language entry when the API does not advertise Brazilian Portuguese", async () => {
+    const oldApiPreferences = createPreferences("en-US");
+    delete oldApiPreferences.supportedLocales;
+    context.mocks.api(zeroUserPreferencesContract.get, ({ respond }) => {
+      return respond(200, oldApiPreferences);
+    });
+
+    await openDialog("admin", "preference", {
+      [FeatureSwitchKey.LanguagePreference]: true,
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText("Theme")).toBeInTheDocument();
+      expect(screen.queryByText("Language")).not.toBeInTheDocument();
+    });
+  });
+
+  it("hides the language entry while the API locale rollout is disabled", async () => {
+    const guardedPreferences = createPreferences("en-US");
+    guardedPreferences.supportedLocales = ["en-US"];
+    context.mocks.data.userPreferences(guardedPreferences);
+
+    await openDialog("admin", "preference", {
+      [FeatureSwitchKey.LanguagePreference]: true,
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText("Theme")).toBeInTheDocument();
+      expect(screen.queryByText("Language")).not.toBeInTheDocument();
+    });
+  });
+
   it("lets admins navigate workspace settings without closing the dialog", async () => {
     await openDialog("admin");
 
@@ -68,5 +293,107 @@ describe("settings dialog", () => {
     const dialog = screen.getByRole("dialog");
     expect(within(dialog).queryByText("Workspace")).not.toBeInTheDocument();
     expect(screen.getByText("Theme")).toBeInTheDocument();
+  });
+
+  it("shows connector catalog diagnostics in Debug settings", async () => {
+    await openDialog("admin", "debug");
+
+    const diagnostics = await screen.findByRole("region", {
+      name: "Connector catalog",
+    });
+    expect(within(diagnostics).getByText("Stale")).toBeInTheDocument();
+    expect(within(diagnostics).getByText("Current")).toBeInTheDocument();
+    expect(within(diagnostics).getByText("2026-07-25.1")).toBeInTheDocument();
+    expect(within(diagnostics).getByText("2026-07-25.2")).toBeInTheDocument();
+    expect(within(diagnostics).getByText("1.319.0")).toBeInTheDocument();
+    expect(within(diagnostics).getByText("Reused")).toBeInTheDocument();
+    expect(within(diagnostics).getAllByText("Invalid artifact")).toHaveLength(
+      2,
+    );
+    expect(within(diagnostics).getByText("github / oauth")).toBeInTheDocument();
+    expect(
+      within(diagnostics).getByText("Missing revoke provider"),
+    ).toBeInTheDocument();
+    expect(
+      within(diagnostics).getByText("Missing versions"),
+    ).toBeInTheDocument();
+    expect(
+      within(diagnostics).getByText("Unowned secrets"),
+    ).toBeInTheDocument();
+    expect(
+      within(diagnostics).getByText("Unowned variables"),
+    ).toBeInTheDocument();
+    expect(
+      within(diagnostics).getByText("Unresolved bridge credentials"),
+    ).toBeInTheDocument();
+  });
+
+  it("does not describe an uncached rejection as a fresh evaluation", async () => {
+    context.mocks.api(
+      zeroConnectorCatalogContract.diagnostics,
+      ({ respond }) => {
+        return respond(200, {
+          state: "stale",
+          active: {
+            catalogVersion: "2026-07-25.1",
+            catalogDigest: `sha256:${"a".repeat(64)}`,
+            activatedAt: "2026-07-25T01:00:00.000Z",
+          },
+          lastAttempt: {
+            at: "2026-07-25T02:00:00.000Z",
+            outcome: "rejected",
+            failureCode: "source-unavailable",
+            reusedCachedRejection: false,
+          },
+          lastSuccessAt: "2026-07-25T01:00:00.000Z",
+          rejectedCandidate: null,
+          filtering: {
+            capabilityDigest: `sha256:${"b".repeat(64)}`,
+            evaluatedAt: "2026-07-25T01:00:00.000Z",
+            stale: false,
+            filteredAuthMethods: [],
+          },
+          credentialStorage: {
+            missingConnectorVersions: 0,
+            unownedConnectorSecrets: 0,
+            unownedConnectorVariables: 0,
+            unresolvedBridgeCredentials: 0,
+          },
+        });
+      },
+    );
+
+    await openDialog("admin", "debug");
+
+    const diagnostics = await screen.findByRole("region", {
+      name: "Connector catalog",
+    });
+    expect(within(diagnostics).getByText("Not reused")).toBeInTheDocument();
+    expect(
+      within(diagnostics).queryByText("Fresh evaluation"),
+    ).not.toBeInTheDocument();
+  });
+
+  it("keeps Debug settings usable when diagnostics are unavailable", async () => {
+    context.mocks.api(
+      zeroConnectorCatalogContract.diagnostics,
+      ({ respond }) => {
+        return respond(404, {
+          error: {
+            message: "Connector catalog diagnostics are unavailable",
+            code: "NOT_FOUND",
+          },
+        });
+      },
+    );
+
+    await openDialog("admin", "debug");
+
+    const diagnostics = await screen.findByRole("region", {
+      name: "Connector catalog",
+    });
+    expect(within(diagnostics).getByText("Unavailable")).toBeInTheDocument();
+    expect(screen.getByText("Build information")).toBeInTheDocument();
+    expect(screen.getByText("Capture network bodies")).toBeInTheDocument();
   });
 });

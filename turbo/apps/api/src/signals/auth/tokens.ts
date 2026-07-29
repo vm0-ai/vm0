@@ -4,8 +4,7 @@ import {
   ZERO_CAPABILITIES,
   ZeroCapability,
 } from "@vm0/api-contracts/contracts/composes";
-import type { TriggerSource } from "@vm0/api-contracts/contracts/logs";
-import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
+import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import {
   isFeatureEnabled,
   isUserOverridableFeatureSwitch,
@@ -31,9 +30,9 @@ const SANDBOX_TOKEN_TTL_SECONDS = 3 * 60 * 60;
 
 const CONDITIONAL_CAPABILITIES = [
   ["banking:read", FeatureSwitchKey.Banking],
-  ["people-search:read", FeatureSwitchKey.ZeroPeopleSearch],
-  ["weather:read", FeatureSwitchKey.ZeroWeather],
   ["finance:read", FeatureSwitchKey.ZeroFinance],
+  ["browser:read", FeatureSwitchKey.ZeroBrowser],
+  ["browser:write", FeatureSwitchKey.ZeroBrowser],
 ] as const satisfies readonly (readonly [ZeroCapability, FeatureSwitchKey])[];
 
 const AGENT_EXCLUDED_CAPABILITIES = [
@@ -75,7 +74,9 @@ const zeroTokenPayloadSchema = jwtBaseSchema.extend({
   runId: z.string().min(1),
   orgId: z.string().min(1),
   capabilities: zeroCapabilitiesSchema,
+  featureSwitchOverrides: z.record(z.string(), z.boolean()).optional(),
   computerUseHostId: z.string().uuid().optional(),
+  cloudBrowserEnabled: z.literal(true).optional(),
 });
 
 const cliTokenPayloadSchema = jwtBaseSchema.extend({
@@ -240,6 +241,9 @@ export function verifyZeroToken(token: string): ZeroAuth | null {
     ...(parsed.data.computerUseHostId
       ? { computerUseHostId: parsed.data.computerUseHostId }
       : {}),
+    ...(parsed.data.cloudBrowserEnabled
+      ? { cloudBrowserEnabled: parsed.data.cloudBrowserEnabled }
+      : {}),
   };
 }
 
@@ -299,7 +303,7 @@ export function generateZeroToken(
   overrides?: Partial<Record<FeatureSwitchKey, boolean>>,
   options?: {
     readonly computerUseHostId?: string;
-    readonly triggerSource?: TriggerSource;
+    readonly cloudBrowserEnabled?: boolean;
   },
 ): string {
   const nowSeconds = Math.floor(now() / 1000);
@@ -308,11 +312,9 @@ export function generateZeroToken(
     if (capability === "computer-use:write" && !options?.computerUseHostId) {
       continue;
     }
-    // Workflow-event runs are autonomous and must not create, edit, pause,
-    // resume, or clear goals. They can still report terminal agent results.
     if (
-      capability === "goal:user-control:write" &&
-      options?.triggerSource === "workflow-event"
+      (capability === "browser:read" || capability === "browser:write") &&
+      options?.cloudBrowserEnabled !== true
     ) {
       continue;
     }
@@ -334,9 +336,14 @@ export function generateZeroToken(
     runId,
     orgId,
     capabilities,
+    ...(overrides === undefined ? {} : { featureSwitchOverrides: overrides }),
     ...(capabilities.includes("computer-use:write") &&
     options?.computerUseHostId
       ? { computerUseHostId: options.computerUseHostId }
+      : {}),
+    ...(capabilities.includes("browser:write") &&
+    options?.cloudBrowserEnabled === true
+      ? { cloudBrowserEnabled: true as const }
       : {}),
     iat: nowSeconds,
     exp: nowSeconds + 2 * 60 * 60,

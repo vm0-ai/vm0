@@ -7,22 +7,22 @@ import {
   type ConnectorResponse,
   type ScopeDiffResponse,
 } from "@vm0/api-contracts/contracts/connector-schemas";
+import type { ConnectorRef } from "@vm0/api-contracts/contracts/connector-identity";
 import type { ConnectorSearchItem } from "@vm0/api-contracts/contracts/zero-connectors";
+import type { ConnectorChangedPayload } from "@vm0/api-contracts/contracts/realtime";
 import {
   connectorAuthMethodGrantMetadata,
-  connectorAuthMethodManualGrantFieldNames,
   connectorAuthMethodOwnedSecretNames,
   connectorAuthMethodRevokeMetadata,
   connectorAuthMethodRuntimeMetadata,
   connectorAuthMethodScopeDiff,
-  type ConnectorManualGrantFieldNames,
   type ConnectorOutputTarget,
-} from "@vm0/connectors/connector-utils";
+} from "@vm0/connectors/connector-auth-method";
 import { revokeConnectorAuthMethodAccessTokenWithMethod } from "@vm0/connectors/auth-providers";
 import type {
   ConnectorAuthMethodRuntimeConfig,
   ConnectorManualGrantFieldConfig,
-} from "@vm0/connectors/connectors";
+} from "@vm0/connectors/connector-config";
 import {
   getAllFeatureStates,
   type FeatureSwitchContext,
@@ -65,7 +65,6 @@ import { normalizeManualGrantSubmittedValuesWithMethod } from "./connector-catal
 import { searchConnectorCatalog } from "./connector-catalog-reader.service";
 import {
   getConnectorRuntimeMethod,
-  filterConnectorRuntimeConfiguredRefs,
   listConnectorRuntimeVisibleRefs,
   loadConnectorRuntimeSnapshot,
   type ConnectorRuntimeMethod,
@@ -273,6 +272,7 @@ function throwCapturedAbort(error: unknown): void {
 
 async function finalizeConnectorStateChangeAfterCommit(args: {
   readonly userId: string;
+  readonly connectorRef: ConnectorRef;
   readonly pendingTokenRevoke: PendingConnectorTokenRevoke | null;
   readonly signal: AbortSignal;
   readonly postCommitAbort: unknown;
@@ -288,7 +288,9 @@ async function finalizeConnectorStateChangeAfterCommit(args: {
     }
   }
 
-  await publishUserSignal([args.userId], "connector:changed");
+  await publishUserSignal([args.userId], "connector:changed", {
+    connectorRef: args.connectorRef,
+  } satisfies ConnectorChangedPayload);
   if (args.signal.aborted) {
     postCommitAbort ??= args.signal.reason;
   }
@@ -346,9 +348,7 @@ function prepareManualGrantConnect(
         : sanitized;
     if (!value) {
       if (config.required) {
-        missingRequiredNames.push(
-          normalizedValuesResult.errorNamesByPrivateName[name] ?? name,
-        );
+        missingRequiredNames.push(config.publicId);
       }
       continue;
     }
@@ -444,17 +444,11 @@ export function zeroConnectorList(args: {
       featureStatesPromise,
       loadConnectorRuntimeSnapshot(db),
     ]);
-    const visibleRefs = await listConnectorRuntimeVisibleRefs({
+    const visibleRefs = listConnectorRuntimeVisibleRefs({
       snapshot,
       featureStates,
     });
-    const configuredTypes = filterConnectorRuntimeConfiguredRefs({
-      snapshot,
-      visibleRefs,
-      readEnv: optionalEnv,
-    });
-
-    // Feature switches filter configuredTypes for discovery only. Stored
+    // Feature switches filter visible refs for discovery only. Stored
     // connections remain manageable and executable after rollout is disabled.
     const now = nowDate();
     const connectorList: ConnectorWithRuntimeMethod[] = storedRows.map(
@@ -483,7 +477,7 @@ export function zeroConnectorList(args: {
       connectors: connectorList.map((connector) => {
         return connector.response;
       }),
-      configuredTypes: [...configuredTypes],
+      configuredTypes: [...visibleRefs],
       connectorProvidedBindings,
     };
   });
@@ -693,93 +687,6 @@ async function revokePendingConnectorToken(args: {
   );
 }
 
-async function deleteManualGrantConnectorLocalState(args: {
-  readonly db: Db;
-  readonly orgId: string;
-  readonly userId: string;
-  readonly fields: ConnectorManualGrantFieldNames | null;
-  readonly signal: AbortSignal;
-}): Promise<boolean> {
-  if (!args.fields) {
-    return false;
-  }
-
-  let deleted = false;
-  for (const name of args.fields.secrets) {
-    const result = await args.db
-      .delete(secrets)
-      .where(
-        and(
-          eq(secrets.orgId, args.orgId),
-          eq(secrets.userId, args.userId),
-          eq(secrets.name, name),
-          eq(secrets.type, "user"),
-        ),
-      )
-      .returning({ id: secrets.id });
-    args.signal.throwIfAborted();
-    deleted = deleted || result.length > 0;
-  }
-
-  for (const name of args.fields.variables) {
-    const result = await args.db
-      .delete(variables)
-      .where(
-        and(
-          eq(variables.orgId, args.orgId),
-          eq(variables.userId, args.userId),
-          eq(variables.type, "user"),
-          eq(variables.name, name),
-        ),
-      )
-      .returning({ id: variables.id });
-    args.signal.throwIfAborted();
-    deleted = deleted || result.length > 0;
-  }
-
-  return deleted;
-}
-
-async function deleteManualGrantConnectorLocalStateForAuthMethods(args: {
-  readonly db: Db;
-  readonly orgId: string;
-  readonly userId: string;
-  readonly type: string;
-  readonly authMethods: readonly (string | null)[];
-  readonly snapshot: ConnectorRuntimeSnapshot;
-  readonly signal: AbortSignal;
-}): Promise<void> {
-  if (args.snapshot.identity.source !== "static") {
-    return;
-  }
-  const cleanupAuthMethods = new Set<string>();
-  for (const authMethod of args.authMethods) {
-    if (authMethod) {
-      cleanupAuthMethods.add(authMethod);
-    }
-  }
-
-  for (const authMethod of cleanupAuthMethods) {
-    args.signal.throwIfAborted();
-    const runtimeMethod = getConnectorRuntimeMethod({
-      snapshot: args.snapshot,
-      connectorRef: args.type,
-      authMethodId: authMethod,
-      requireExecutable: false,
-    });
-    if (runtimeMethod === undefined) {
-      continue;
-    }
-    await deleteManualGrantConnectorLocalState({
-      db: args.db,
-      orgId: args.orgId,
-      userId: args.userId,
-      fields: connectorAuthMethodManualGrantFieldNames(runtimeMethod.method),
-      signal: args.signal,
-    });
-  }
-}
-
 export const deleteZeroConnectorLocalState$ = command(
   async (
     { get, set },
@@ -881,6 +788,7 @@ export const deleteZeroConnectorLocalState$ = command(
 
     await finalizeConnectorStateChangeAfterCommit({
       userId: args.userId,
+      connectorRef: args.type,
       pendingTokenRevoke: deleteResult.pendingTokenRevoke,
       signal,
       postCommitAbort,
@@ -1218,6 +1126,7 @@ export const connectManualGrantConnector$ = command(
 
     await finalizeConnectorStateChangeAfterCommit({
       userId: args.userId,
+      connectorRef: args.runtimeMethod.connectorRef,
       pendingTokenRevoke,
       signal,
       postCommitAbort,
@@ -1295,6 +1204,7 @@ export const connectNoAuthConnector$ = command(
 
     await finalizeConnectorStateChangeAfterCommit({
       userId: args.userId,
+      connectorRef: args.runtimeMethod.connectorRef,
       pendingTokenRevoke,
       signal,
       postCommitAbort,
@@ -1869,19 +1779,6 @@ async function commitConnectorTokenConnection(args: {
   });
   args.signal.throwIfAborted();
 
-  await deleteManualGrantConnectorLocalStateForAuthMethods({
-    db: args.db,
-    orgId: args.orgId,
-    userId: args.userId,
-    type: args.runtimeMethod.connectorRef,
-    authMethods: [
-      existingConnector?.authMethod ?? null,
-      args.runtimeMethod.authMethodId,
-    ],
-    snapshot: args.snapshot,
-    signal: args.signal,
-  });
-
   return { connectorRow, pendingTokenRevoke };
 }
 
@@ -1962,6 +1859,7 @@ export const upsertConnectorTokenConnection$ = command(
 
     await finalizeConnectorStateChangeAfterCommit({
       userId: args.userId,
+      connectorRef: args.runtimeMethod.connectorRef,
       pendingTokenRevoke: connectionResult.pendingTokenRevoke,
       signal,
       postCommitAbort,
@@ -2027,7 +1925,6 @@ export function zeroConnectorSearch(args: {
       db: get(db$),
       keyword: args.keyword,
       featureStates,
-      apiAuthMethodPolicy: "include",
     });
   });
 }

@@ -11,14 +11,17 @@ model-provider usage billing:
   ``mitm_addon.py`` fallback used by legacy/test flows without
   response-streaming parser state.
 - Single-frame WebSocket event JSON via
-  ``extract_openai_responses_usage_from_event_json``, consumed by
-  ``response_streaming.py`` for Responses events received over upgrades.
+  ``inspect_openai_responses_event_json`` and
+  ``extract_openai_responses_usage_from_event``, consumed by
+  ``mitm_addon.py`` and ``response_streaming.py`` for Responses events received
+  over upgrades.
 - Per-event usage aggregation via ``merge_openai_responses_usage_result``,
   used by ``response_streaming.py`` to fold terminal SSE and WebSocket event
   usage into a per-flow accumulator.
 """
 
 from collections.abc import Callable
+from dataclasses import dataclass, field
 from typing import Literal, TypeGuard
 
 from mitmproxy import http
@@ -26,7 +29,7 @@ from mitmproxy import http
 import body_decoding
 from body_limits import LARGE_RESPONSE_DECOMPRESS_LIMIT
 
-from .json_probe import probe_top_level_string_field
+from .json_probe import TopLevelStringFieldProbeResult, probe_top_level_string_field
 from .json_selective import JsonSelectiveExtractor, ScalarField
 from .model_tokens import (
     MODEL_USAGE_CATEGORY_CACHE_CREATION,
@@ -121,6 +124,16 @@ _JSON_PREFILTER_MAX_STRING_BYTES = 1024
 # terminal frames with late ``type`` fields still report usage.
 _RESPONSES_EVENTLESS_SSE_PREFILTER_MAX_BYTES = 4096
 
+
+@dataclass(frozen=True)
+class OpenAIResponsesEvent:
+    """One inspected Responses WebSocket event."""
+
+    event_type: str | None
+    _body: bytes = field(repr=False)
+    _classification: _ResponsesEventTypeClassification
+
+
 _OPENAI_RESPONSES_USAGE_CATEGORIES = (
     MODEL_USAGE_CATEGORY_INPUT,
     MODEL_USAGE_CATEGORY_OUTPUT,
@@ -142,18 +155,38 @@ _RESPONSES_SSE_RESPONSE_SCALAR_FIELDS = {
     **{("response", *path): field for path, field in _RESPONSES_RESPONSE_SCALAR_FIELDS.items()},
 }
 _RESPONSES_SSE_SCALAR_FIELDS = {
-    ("type",): ScalarField("string", max_bytes=1024),
+    ("type",): ScalarField("string", max_bytes=1024, overflow_policy="discard"),
     **_RESPONSES_SSE_RESPONSE_SCALAR_FIELDS,
 }
 
 
-def _classify_responses_event_type(body: bytes) -> _ResponsesEventTypeClassification:
-    result = probe_top_level_string_field(
+def inspect_openai_responses_event_json(body: bytes) -> OpenAIResponsesEvent:
+    """Inspect one complete Responses WebSocket event with one bounded type probe."""
+    result = _probe_responses_event_type(body)
+    event_type = result.value if result.status == "found" and result.value is not None else None
+    return OpenAIResponsesEvent(
+        event_type=event_type,
+        _body=body,
+        _classification=_classify_responses_event_type_result(result),
+    )
+
+
+def _probe_responses_event_type(body: bytes) -> TopLevelStringFieldProbeResult:
+    return probe_top_level_string_field(
         body,
         "type",
         max_depth=_JSON_PREFILTER_MAX_DEPTH,
         max_string_bytes=_JSON_PREFILTER_MAX_STRING_BYTES,
     )
+
+
+def _classify_responses_event_type(body: bytes) -> _ResponsesEventTypeClassification:
+    return _classify_responses_event_type_result(_probe_responses_event_type(body))
+
+
+def _classify_responses_event_type_result(
+    result: TopLevelStringFieldProbeResult,
+) -> _ResponsesEventTypeClassification:
     if result.status == "incomplete":
         return _RESPONSES_EVENT_PENDING
     if result.status != "found" or result.value is None:
@@ -661,31 +694,6 @@ def _extract_openai_responses_usage_from_decoded_json_body(
     return extractor.finish()
 
 
-def extract_openai_responses_usage_from_json(
-    body: bytes, headers: http.Headers | None
-) -> dict | None:
-    """Extract usage from a complete non-streaming Responses JSON body.
-
-    ``headers`` may be mitmproxy response headers or ``None``. When headers are
-    provided, their content encoding controls one-shot decompression before
-    parsing; ``None`` skips decompression.
-
-    This is the silent best-effort API: it returns ``None`` when decoding or
-    parsing fails, the decoded body is empty, or no platform usage categories
-    can be extracted. Otherwise returns a dict keyed by platform model usage
-    categories such as ``MODEL_USAGE_CATEGORY_INPUT``,
-    ``MODEL_USAGE_CATEGORY_OUTPUT``, ``MODEL_USAGE_CATEGORY_CACHE_READ``, and
-    ``MODEL_USAGE_CATEGORY_CACHE_CREATION``.
-    """
-
-    if headers:
-        body = body_decoding.decompress_body(
-            body, headers, max_output=LARGE_RESPONSE_DECOMPRESS_LIMIT
-        )
-    usage, _error = _extract_openai_responses_usage_from_decoded_json_body(body)
-    return usage
-
-
 def extract_openai_responses_usage_with_error_from_json(
     body: bytes, headers: http.Headers | None
 ) -> tuple[dict | None, str | None]:
@@ -715,15 +723,11 @@ def extract_openai_responses_usage_with_error_from_json(
     return _extract_openai_responses_usage_from_decoded_json_body(body)
 
 
-def extract_openai_responses_usage_from_event_json(body: bytes) -> dict | None:
-    """Extract usage from a complete Responses event JSON object.
-
-    Codex can receive Responses API events over a WebSocket upgrade.  In that
-    path each server frame is already one JSON event rather than an SSE
-    ``event:`` / ``data:`` envelope, so reuse the SSE field map and event gate
-    directly.
-    """
-    event_type = _classify_responses_event_type(body)
+def extract_openai_responses_usage_from_event(
+    event: OpenAIResponsesEvent,
+) -> dict | None:
+    """Extract usage from a previously inspected Responses WebSocket event."""
+    event_type = event._classification
     if event_type == _RESPONSES_EVENT_KNOWN_NON_USAGE:
         return None
 
@@ -734,7 +738,7 @@ def extract_openai_responses_usage_from_event_json(body: bytes) -> dict | None:
         else _RESPONSES_SSE_RESPONSE_SCALAR_FIELDS
     )
     extractor = JsonSelectiveExtractor(scalar_fields=scalar_fields)
-    extractor.feed(body)
+    extractor.feed(event._body)
     result = extractor.finish()
     if not result.complete:
         return None

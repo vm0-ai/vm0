@@ -16,7 +16,6 @@ import {
   IconPin,
   IconPinnedOff,
 } from "@tabler/icons-react";
-import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { useChatThreadsTitleLabels } from "./zero-sidebar-shared.tsx";
 import {
   Tooltip,
@@ -75,12 +74,12 @@ import {
   type SidebarChatThreadWindow,
 } from "../../signals/chat-page/sidebar-chat-thread-scroll.ts";
 import {
+  currentChatAgentScope$,
   currentChatAgentId$,
   currentChatThreadId$,
 } from "../../signals/agent-chat.ts";
 import { sidebarActiveThreadIds$ } from "../../signals/chat-page/chat-thread-event-sourcing.ts";
 import { pathParams$, searchParams$ } from "../../signals/route.ts";
-import { featureSwitch$ } from "../../signals/external/feature-switch.ts";
 import { setSidebarExpanded$ } from "../../signals/zero-page/zero-nav.ts";
 import { DropdownMenuModalItem } from "../components/dropdown-menu-modal-item.tsx";
 import { sidebarDraftThreadIds$ } from "../../signals/chat-page/sidebar-draft-threads.ts";
@@ -201,15 +200,17 @@ function getIndicatorState({
   return hasDraft ? "draft" : null;
 }
 
+// Deliberately no `equalityFn`: an inline one closes over `threadId`, so it gets
+// a fresh identity every render. `useLastResolved` treats it as a subscription
+// dependency, which makes every render resubscribe and re-report a settled
+// rejection, spinning the row into an infinite render loop. The default
+// referential check keeps the subscription stable; the cost is that all rows
+// re-render when the set is refetched, which is cheap for a sidebar list.
 function useThreadMembership(
   threadIds$: Computed<Promise<ReadonlySet<string>>>,
   threadId: string,
 ): boolean {
-  const threadIds = useLastResolved(threadIds$, {
-    equalityFn(previous, next) {
-      return previous.has(threadId) === next.has(threadId);
-    },
-  });
+  const threadIds = useLastResolved(threadIds$);
   return threadIds?.has(threadId) ?? false;
 }
 
@@ -839,9 +840,6 @@ function ChatThreadsTitle() {
   };
   const setCollapsed = useSet(setSessionListCollapsed$);
   const collapsed = useGet(sessionListCollapsed$);
-  const features = useGet(featureSwitch$);
-  const unreadFilterEnabled =
-    features[FeatureSwitchKey.AgentUnreadIndicators] ?? false;
   const unreadOnly = useGet(chatThreadOnlyUnread$);
   const setUnreadOnly = useSet(setChatThreadOnlyUnread$);
 
@@ -909,35 +907,31 @@ function ChatThreadsTitle() {
                 <IconPlus size={16} stroke={2} className="mr-2" />
                 New chat
               </DropdownMenuItem>
-              {unreadFilterEnabled && (
-                <>
-                  <DropdownMenuSeparator />
-                  <DropdownMenuItem
-                    onSelect={() => {
-                      toggleUnreadOnly(false);
-                    }}
-                  >
-                    <IconCheck
-                      size={16}
-                      stroke={2}
-                      className={`mr-2 ${unreadOnly ? "invisible" : ""}`}
-                    />
-                    All chats
-                  </DropdownMenuItem>
-                  <DropdownMenuItem
-                    onSelect={() => {
-                      toggleUnreadOnly(true);
-                    }}
-                  >
-                    <IconCheck
-                      size={16}
-                      stroke={2}
-                      className={`mr-2 ${unreadOnly ? "" : "invisible"}`}
-                    />
-                    Unread only
-                  </DropdownMenuItem>
-                </>
-              )}
+              <DropdownMenuSeparator />
+              <DropdownMenuItem
+                onSelect={() => {
+                  toggleUnreadOnly(false);
+                }}
+              >
+                <IconCheck
+                  size={16}
+                  stroke={2}
+                  className={`mr-2 ${unreadOnly ? "invisible" : ""}`}
+                />
+                All chats
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                onSelect={() => {
+                  toggleUnreadOnly(true);
+                }}
+              >
+                <IconCheck
+                  size={16}
+                  stroke={2}
+                  className={`mr-2 ${unreadOnly ? "" : "invisible"}`}
+                />
+                Unread only
+              </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
         </TooltipProvider>
@@ -995,7 +989,11 @@ function ChatThreadsContent() {
   return <ExpandedChatThreadsContent />;
 }
 
-function ExpandedChatThreadsContent() {
+function AgentChatThreadsContent({
+  currentMainThreadId,
+}: {
+  currentMainThreadId: string | null;
+}) {
   // The primitive count preserves the previous resolved value while the
   // underlying event projection recomputes. Visible rows subscribe separately
   // in VirtualizedChatThreads.
@@ -1003,13 +1001,35 @@ function ExpandedChatThreadsContent() {
   const threadCount =
     threadCountLoadable.state === "hasData" ? threadCountLoadable.data : 0;
   const chatThreadsLoading = threadCountLoadable.state === "loading";
+  const currentMainThreadListed =
+    useLastResolved(currentChatThreadListed$) ?? false;
+  const scrollCurrentChatThreadOnRef = useSet(scrollCurrentChatThreadOnRef$);
+
+  return (
+    <div className="flex flex-col gap-1">
+      {currentMainThreadId && currentMainThreadListed ? (
+        <span
+          key={currentMainThreadId}
+          ref={scrollCurrentChatThreadOnRef}
+          data-chat-thread-id={currentMainThreadId}
+          hidden
+        />
+      ) : null}
+      {chatThreadsLoading ? (
+        <ChatThreadsSkeleton />
+      ) : (
+        <ChatThreads threadCount={threadCount} />
+      )}
+    </div>
+  );
+}
+
+function ExpandedChatThreadsContent() {
+  const agentScope = useGet(currentChatAgentScope$);
   const isScrolled = useGet(isScrolled$);
   const setIsScrolledFn = useSet(setIsScrolled$);
   const currentMainThreadId = useGet(currentChatThreadId$);
-  const currentMainThreadListed =
-    useLastResolved(currentChatThreadListed$) ?? false;
   const scrollToThread = useSet(scrollToThread$);
-  const scrollCurrentChatThreadOnRef = useSet(scrollCurrentChatThreadOnRef$);
   const pageSignal = useGet(pageSignal$);
   const focusThreadLink = (
     viewport: HTMLElement,
@@ -1062,24 +1082,6 @@ function ExpandedChatThreadsContent() {
     detach(scrollAndFocusCurrentThread(), Reason.DomCallback);
   };
 
-  const content = (
-    <div className="flex flex-col gap-1">
-      {currentMainThreadId && currentMainThreadListed ? (
-        <span
-          key={currentMainThreadId}
-          ref={scrollCurrentChatThreadOnRef}
-          data-chat-thread-id={currentMainThreadId}
-          hidden
-        />
-      ) : null}
-      {chatThreadsLoading ? (
-        <ChatThreadsSkeleton />
-      ) : (
-        <ChatThreads threadCount={threadCount} />
-      )}
-    </div>
-  );
-
   return (
     <OverlayScrollArea
       className="mt-1 min-h-0 flex-1"
@@ -1105,14 +1107,19 @@ function ExpandedChatThreadsContent() {
         boxShadow: isScrolled ? "0 -1px 0 0 hsl(var(--border) / 0.4)" : "none",
       }}
     >
-      {content}
+      <AgentChatThreadsContent
+        key={agentScope ?? "no-agent"}
+        currentMainThreadId={currentMainThreadId}
+      />
     </OverlayScrollArea>
   );
 }
 export function ChatThreadsSection() {
+  const agentScope = useGet(currentChatAgentScope$);
+
   return (
     <div className="mt-4 flex flex-col min-h-0 flex-1">
-      <ChatThreadsTitle />
+      <ChatThreadsTitle key={agentScope ?? "no-agent"} />
       <ChatThreadsContent />
       <ChatThreadRenameDialog />
       <DeleteChatThreadDialog />

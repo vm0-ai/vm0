@@ -7,14 +7,14 @@ import {
   IconVideo,
 } from "@tabler/icons-react";
 import { useGet, useSet } from "ccstate-react";
-import type { Computed } from "ccstate";
 import { detach, Reason } from "../../signals/utils.ts";
-import { lightboxUrl$ } from "../../signals/zero-page/zero-attachment-chips.ts";
+import type { TextPreviewComputed } from "../../signals/text-preview.ts";
 import {
-  openAudioLightboxOrArtifact$,
-  openDocumentLightboxOrArtifact$,
-  openVideoLightboxOrArtifact$,
-} from "../../signals/zero-page/zero-artifact-sidebar.ts";
+  lightboxUrl$,
+  openAudioLightbox$,
+  openDocumentLightbox$,
+  openVideoLightbox$,
+} from "../../signals/zero-page/zero-attachment-chips.ts";
 import { classifyChatAttachment } from "../../signals/chat-page/parse-body-blocks.ts";
 import {
   FilePreviewIcon,
@@ -24,11 +24,14 @@ import {
   downloadAttachmentUrl,
   publicAttachmentUrl,
 } from "./zero-attachment-chips.tsx";
+import { ArtifactThumbnailImage } from "./zero-artifact-thumbnail.tsx";
 
 interface ChatAttachmentDescriptor {
   filename: string;
   url: string;
   contentType?: string;
+  previewImageUrl?: string;
+  previewImagePending?: boolean;
 }
 
 type DocumentPreviewKind =
@@ -79,7 +82,7 @@ type TextPreviewProps = {
   filename: string;
   url: string;
   kind: "text" | "json";
-  text$?: Computed<Promise<string>>;
+  text$?: TextPreviewComputed;
 };
 
 const MEDIA_PREVIEW_CARD_CLASS =
@@ -87,8 +90,15 @@ const MEDIA_PREVIEW_CARD_CLASS =
 const MEDIA_PREVIEW_CARD_HOVER_CLASS =
   "hover:scale-[1.015] hover:border-foreground/20 hover:shadow-lg hover:shadow-black/10 dark:hover:shadow-black/30";
 
-function TextPreview({ filename, kind, url }: TextPreviewProps) {
-  return <AttachmentAnchorChip filename={filename} url={url} kind={kind} />;
+function TextPreview({ filename, kind, text$, url }: TextPreviewProps) {
+  return (
+    <AttachmentAnchorChip
+      filename={filename}
+      url={url}
+      kind={kind}
+      text$={text$}
+    />
+  );
 }
 
 type AttachmentAnchorChipKind =
@@ -155,13 +165,15 @@ function AttachmentAnchorChip({
   filename,
   url,
   kind,
+  text$,
 }: {
   filename: string;
   url: string;
   kind: AttachmentAnchorChipKind;
+  text$?: TextPreviewComputed;
 }) {
   const publicUrl = publicAttachmentUrl(url);
-  const openDocument = useSet(openDocumentLightboxOrArtifact$);
+  const openDocument = useSet(openDocumentLightbox$);
 
   return (
     <a
@@ -173,7 +185,12 @@ function AttachmentAnchorChip({
         }
         event.preventDefault();
         event.currentTarget.blur();
-        openDocument({ kind, url, filename });
+        openDocument({
+          kind,
+          url,
+          filename,
+          ...(text$ ? { text$ } : {}),
+        });
       }}
       aria-label={`Open ${kind} preview for ${filename}`}
       title={filename}
@@ -199,10 +216,7 @@ function titleCaseSiteSlug(slug: string): string {
     .join(" ");
 }
 
-export function fallbackHtmlPreviewTitle(
-  filename: string,
-  url: string,
-): string {
+function fallbackHtmlPreviewTitle(filename: string, url: string): string {
   if (filename !== url) {
     return filename;
   }
@@ -220,13 +234,17 @@ export function fallbackHtmlPreviewTitle(
 
 function HtmlSitePreviewCard({
   filename,
+  previewImagePending,
+  previewImageUrl,
   url,
 }: {
   filename: string;
+  previewImagePending?: boolean;
+  previewImageUrl?: string;
   url: string;
 }) {
   const publicUrl = publicAttachmentUrl(url);
-  const openDocument = useSet(openDocumentLightboxOrArtifact$);
+  const openDocument = useSet(openDocumentLightbox$);
   const title = fallbackHtmlPreviewTitle(filename, url);
 
   return (
@@ -251,39 +269,87 @@ function HtmlSitePreviewCard({
         </span>
       </div>
       <div className="relative aspect-[16/10] overflow-hidden bg-muted/30">
-        <div
-          data-testid="attachment-preview-html-viewport"
-          className="pointer-events-none absolute left-0 top-0 h-[400%] w-[400%] origin-top-left scale-[0.25]"
-        >
-          <iframe
-            src={publicUrl}
-            title={`Site preview for ${title}`}
-            sandbox="allow-same-origin allow-scripts"
-            tabIndex={-1}
-            loading="lazy"
-            scrolling="no"
-            className="pointer-events-none h-full w-full bg-background"
+        {previewImageUrl ? (
+          <ArtifactThumbnailImage
+            src={previewImageUrl}
+            testId="attachment-preview-thumbnail"
+            className="absolute inset-0 h-full w-full object-cover"
+            fallback={
+              <HtmlSitePreviewViewport publicUrl={publicUrl} title={title} />
+            }
           />
-        </div>
+        ) : previewImagePending ? (
+          <span
+            className="absolute inset-0 bg-muted/30"
+            data-testid="attachment-preview-thumbnail-pending"
+          />
+        ) : (
+          <HtmlSitePreviewViewport publicUrl={publicUrl} title={title} />
+        )}
       </div>
     </a>
   );
 }
 
+function HtmlSitePreviewViewport({
+  publicUrl,
+  title,
+}: {
+  publicUrl: string;
+  title: string;
+}) {
+  return (
+    <div
+      data-testid="attachment-preview-html-viewport"
+      className="pointer-events-none absolute left-0 top-0 h-[400%] w-[400%] origin-top-left scale-[0.25]"
+    >
+      <iframe
+        src={publicUrl}
+        title={`Site preview for ${title}`}
+        sandbox="allow-same-origin allow-scripts"
+        tabIndex={-1}
+        loading="lazy"
+        scrolling="no"
+        className="pointer-events-none h-full w-full bg-background"
+      />
+    </div>
+  );
+}
+
 function DocumentThumbnailPreview({
   filename,
-  url,
   kind,
+  previewImagePending,
+  previewImageUrl,
+  text$,
+  url,
 }: {
   filename: string;
-  url: string;
   kind: "markdown" | "csv" | "pdf" | "html";
+  previewImagePending?: boolean;
+  previewImageUrl?: string;
+  text$?: TextPreviewComputed;
+  url: string;
 }) {
   if (kind === "html") {
-    return <HtmlSitePreviewCard filename={filename} url={url} />;
+    return (
+      <HtmlSitePreviewCard
+        filename={filename}
+        previewImagePending={previewImagePending}
+        previewImageUrl={previewImageUrl}
+        url={url}
+      />
+    );
   }
 
-  return <AttachmentAnchorChip filename={filename} url={url} kind={kind} />;
+  return (
+    <AttachmentAnchorChip
+      filename={filename}
+      url={url}
+      kind={kind}
+      text$={text$}
+    />
+  );
 }
 
 function FileThumbnailPreview({
@@ -351,7 +417,7 @@ function AudioPreview({
   filename: string;
   url: string;
 }) {
-  const openAudioLightbox = useSet(openAudioLightboxOrArtifact$);
+  const openAudioLightbox = useSet(openAudioLightbox$);
   const lightboxOpen = useGet(lightboxUrl$) !== null;
   const accentClass = getFilePreviewAccentClass(
     filename,
@@ -406,7 +472,7 @@ function VideoThumbnailPreview({
   filename: string;
   url: string;
 }) {
-  const openVideoLightbox = useSet(openVideoLightboxOrArtifact$);
+  const openVideoLightbox = useSet(openVideoLightbox$);
   const lightboxOpen = useGet(lightboxUrl$) !== null;
   const videoUrl = publicAttachmentUrl(url);
 
@@ -470,7 +536,7 @@ export function AttachmentPreview({
   text$,
 }: {
   attachment: ChatAttachmentDescriptor;
-  text$?: Computed<Promise<string>>;
+  text$?: TextPreviewComputed;
 }) {
   const kind = classifyChatAttachment(attachment);
 
@@ -481,6 +547,7 @@ export function AttachmentPreview({
           filename={attachment.filename}
           url={attachment.url}
           kind="markdown"
+          text$={text$}
         />
       );
     }
@@ -510,6 +577,7 @@ export function AttachmentPreview({
           filename={attachment.filename}
           url={attachment.url}
           kind="csv"
+          text$={text$}
         />
       );
     }
@@ -526,6 +594,8 @@ export function AttachmentPreview({
       return (
         <DocumentThumbnailPreview
           filename={attachment.filename}
+          previewImagePending={attachment.previewImagePending}
+          previewImageUrl={attachment.previewImageUrl}
           url={attachment.url}
           kind="html"
         />

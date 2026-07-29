@@ -3,7 +3,7 @@ import { randomBytes } from "node:crypto";
 import { agentRuns } from "@vm0/db/schema/agent-run";
 import { zeroRuns } from "@vm0/db/schema/zero-run";
 import { command } from "ccstate";
-import { and, desc, eq, inArray, isNotNull } from "drizzle-orm";
+import { and, eq, inArray } from "drizzle-orm";
 
 import { logger } from "../../lib/log";
 import { writeDb$, type Db } from "../external/db";
@@ -14,7 +14,6 @@ import {
   postRunUserMessage,
   resolveRunChatThreadModelContext,
 } from "./zero-chat-run-message.service";
-import { canReuseChatSessionForModelRoute } from "./chat-session-continuity.service";
 import { hasUnclaimedQueuedUserMessage } from "./zero-chat-queued-message.service";
 import {
   pauseActiveGoalForThread,
@@ -92,18 +91,6 @@ function isTerminalStatus(status: string): status is TerminalRunStatus {
     status === "timeout" ||
     status === "cancelled"
   );
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null;
-}
-
-function agentSessionIdFromResult(result: unknown): string | null {
-  if (!isRecord(result)) {
-    return null;
-  }
-  const agentSessionId = result.agentSessionId;
-  return typeof agentSessionId === "string" ? agentSessionId : null;
 }
 
 function failureMessage(error: RunGoalResult): string {
@@ -187,29 +174,6 @@ async function threadIsIdle(db: Db, chatThreadId: string): Promise<boolean> {
   return activeRun === undefined;
 }
 
-async function latestSessionIdForThread(
-  db: Db,
-  chatThreadId: string,
-): Promise<string | undefined> {
-  const rows = await db
-    .select({ result: agentRuns.result })
-    .from(zeroRuns)
-    .innerJoin(agentRuns, eq(agentRuns.id, zeroRuns.id))
-    .where(
-      and(eq(zeroRuns.chatThreadId, chatThreadId), isNotNull(agentRuns.result)),
-    )
-    .orderBy(desc(agentRuns.createdAt))
-    .limit(10);
-
-  for (const row of rows) {
-    const sessionId = agentSessionIdFromResult(row.result);
-    if (sessionId) {
-      return sessionId;
-    }
-  }
-  return undefined;
-}
-
 function buildGoalChatCallbacks(args: {
   readonly threadId: string;
   readonly agentId: string;
@@ -277,7 +241,6 @@ const runGoalNow$ = command(
     { set },
     args: {
       readonly goal: GoalBootstrap;
-      readonly sessionId?: string;
       readonly dispatchFailedCallbacks: DispatchFailedRunCallbacks;
     },
     signal: AbortSignal,
@@ -297,19 +260,6 @@ const runGoalNow$ = command(
     }
     const { modelPin, effectiveModelProvider, cliAgentType, codexServiceTier } =
       modelContext;
-    const sessionId =
-      args.sessionId &&
-      (await canReuseChatSessionForModelRoute({
-        db,
-        threadId: goal.threadId,
-        sessionId: args.sessionId,
-        nextModel: modelPin.selectedModel,
-        nextModelProvider: effectiveModelProvider,
-        nextCliAgentType: cliAgentType,
-      }))
-        ? args.sessionId
-        : undefined;
-    signal.throwIfAborted();
 
     const normalizedGoal = {
       ...goal,
@@ -331,7 +281,6 @@ const runGoalNow$ = command(
         body: {
           prompt,
           agentId: goal.agentId,
-          ...(sessionId ? { sessionId } : {}),
           ...(effectiveModelProvider
             ? { modelProvider: effectiveModelProvider }
             : {}),
@@ -343,6 +292,11 @@ const runGoalNow$ = command(
         modelProviderCredentialScope:
           modelPin.modelProviderCredentialScope ?? undefined,
         selectedModelOverride: modelPin.selectedModel ?? undefined,
+        threadSessionRoute: {
+          selectedModel: modelPin.selectedModel,
+          modelProvider: effectiveModelProvider ?? null,
+          cliAgentType,
+        },
         codexServiceTier,
         callbacks: buildGoalChatCallbacks({
           threadId: goal.threadId,
@@ -436,8 +390,6 @@ export const continueGoalIfIdle$ = command(
     }
     signal.throwIfAborted();
 
-    const sessionId = await latestSessionIdForThread(db, run.chatThreadId);
-    signal.throwIfAborted();
     const runResult = await set(
       runGoalNow$,
       {
@@ -450,7 +402,6 @@ export const continueGoalIfIdle$ = command(
           objective: goal.objective,
           objectiveBrief: goal.objectiveBrief,
         },
-        ...(sessionId ? { sessionId } : {}),
         dispatchFailedCallbacks: args.dispatchFailedCallbacks,
       },
       signal,

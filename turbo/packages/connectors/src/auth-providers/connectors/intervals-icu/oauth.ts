@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-import type { ConnectorAuthCodeGrantConfig } from "@vm0/connectors/connectors";
+import type { ConnectorAuthCodeGrantConfig } from "@vm0/connectors/connector-config";
 import { throwOAuthError } from "../../oauth/error";
 
 const INTERVALS_ICU_TOKEN_URL = "https://intervals.icu/api/oauth/token";
@@ -100,11 +100,4 @@ export async function exchangeIntervalsIcuCode(
       email: null,
     },
   };
-}
-
-/**
- * Get the primary secret name for Intervals.icu connector (the access token).
- */
-export function getIntervalsIcuSecretName(): string {
-  return "INTERVALS_ICU_ACCESS_TOKEN";
 }

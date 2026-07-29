@@ -1,0 +1,179 @@
+import { fireEvent, screen, waitFor } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
+import { describe, expect, it } from "vitest";
+import type {
+  PersistedAttachment,
+  UserMessageDocument,
+} from "@vm0/api-contracts/contracts/chat-threads";
+
+import { detachedSetupPage, fill } from "../../../__tests__/page-helper.ts";
+import { testContext } from "../../../signals/__tests__/test-helpers.ts";
+import {
+  activeRunComposer,
+  mockChatLifecycle,
+  PLACEHOLDER,
+  sendMessageInUI,
+} from "./chat-test-helpers.ts";
+
+const context = testContext();
+
+const AGENT_ID = "c0000000-0000-4000-a000-000000000001";
+const THREAD_ID = "b0000000-0000-4000-a000-000000000951";
+
+interface SentMessageCapture {
+  readonly prompt?: string;
+  readonly userMessage?: UserMessageDocument;
+  readonly attachFiles?: readonly {
+    readonly id: string;
+    readonly filename: string;
+    readonly contentType: string;
+    readonly size: number;
+  }[];
+}
+
+interface QueuedMessageCapture {
+  readonly content?: string;
+  readonly userMessage?: UserMessageDocument;
+  readonly attachments?: readonly PersistedAttachment[];
+}
+
+describe("user-message writes", () => {
+  it("writes one ordered snapshot for a new-thread message", async () => {
+    const user = userEvent.setup({ delay: null });
+    let sent: SentMessageCapture | null = null;
+    mockChatLifecycle(context, {
+      onRunCreate: (body) => {
+        sent = body;
+      },
+    });
+    context.mocks.upload.success({
+      id: "upload-brief",
+      filename: "brief.txt",
+      contentType: "text/plain",
+      size: 12,
+      url: "https://cdn.vm7.io/artifacts/test/upload-brief/brief.txt",
+    });
+
+    detachedSetupPage({
+      context,
+      path: `/agents/${AGENT_ID}/chat`,
+    });
+
+    const composer = await screen.findByPlaceholderText(PLACEHOLDER);
+    const fileInput =
+      document.querySelector<HTMLInputElement>('input[type="file"]');
+    if (!fileInput) {
+      throw new Error("File input not found");
+    }
+    await user.upload(
+      fileInput,
+      new File(["launch brief"], "brief.txt", { type: "text/plain" }),
+    );
+    await screen.findByLabelText("Remove brief.txt");
+    await sendMessageInUI(user, composer, "Review the launch brief");
+
+    await waitFor(() => {
+      expect(sent).toMatchObject({
+        prompt: "Review the launch brief",
+        userMessage: {
+          version: 1,
+          parts: [
+            {
+              type: "file",
+              fileId: "upload-brief",
+              filenameSnapshot: "brief.txt",
+              contentType: "text/plain",
+            },
+            { type: "text", text: "Review the launch brief" },
+          ],
+        },
+      });
+    });
+  });
+
+  it("dual-writes content and userMessage", async () => {
+    const user = userEvent.setup({ delay: null });
+    let sent: SentMessageCapture | null = null;
+    mockChatLifecycle(context, {
+      threadId: THREAD_ID,
+      onRunCreate: (body) => {
+        sent = body;
+      },
+    });
+
+    detachedSetupPage({
+      context,
+      path: `/chats/${THREAD_ID}`,
+    });
+
+    const composer = await screen.findByRole("textbox", {
+      name: "Message",
+    });
+    await sendMessageInUI(user, composer, "Keep the legacy prompt too");
+
+    await waitFor(() => {
+      expect(sent).not.toBeNull();
+    });
+    expect(sent).toMatchObject({
+      prompt: "Keep the legacy prompt too",
+      userMessage: {
+        version: 1,
+        parts: [{ type: "text", text: "Keep the legacy prompt too" }],
+      },
+    });
+  });
+
+  it("queues one user-message snapshot", async () => {
+    let queued: QueuedMessageCapture | null = null;
+    const appendGate = context.mocks.deferred<void>();
+    mockChatLifecycle(context, {
+      threadId: THREAD_ID,
+      appendGate: appendGate.promise,
+      chatMessages: [
+        {
+          id: "msg-active-user",
+          role: "user",
+          content: "Start the active run",
+          runId: "run-active",
+          createdAt: "2026-07-21T10:00:00Z",
+        },
+        {
+          id: "msg-active-assistant",
+          role: "assistant",
+          content: null,
+          runId: "run-active",
+          createdAt: "2026-07-21T10:00:01Z",
+        },
+      ],
+      activeRunIds: ["run-active"],
+      onQueuedMessageAppend: (body) => {
+        queued = body;
+      },
+    });
+
+    detachedSetupPage({
+      context,
+      path: `/chats/${THREAD_ID}`,
+    });
+
+    await screen.findByLabelText("Stop");
+    const composer = await activeRunComposer();
+    await fill(composer, "排队完整内容");
+    fireEvent.click(screen.getByLabelText("Send"));
+
+    await waitFor(() => {
+      expect(queued).toMatchObject({
+        content: "排队完整内容",
+        userMessage: {
+          version: 1,
+          parts: [{ type: "text", text: "排队完整内容" }],
+        },
+      });
+    });
+    expect(screen.getByLabelText("Queued message")).toHaveTextContent(
+      "排队完整内容",
+    );
+    expect(composer).toHaveTextContent("");
+    appendGate.resolve();
+  });
+});

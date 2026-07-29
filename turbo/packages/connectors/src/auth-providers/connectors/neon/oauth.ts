@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-import type { ConnectorAuthCodeGrantConfig } from "@vm0/connectors/connectors";
+import type { ConnectorAuthCodeGrantConfig } from "@vm0/connectors/connector-config";
 import { throwOAuthError } from "../../oauth/error";
 
 const NEON_TOKEN_URL = "https://oauth2.neon.tech/oauth2/token";
@@ -190,11 +190,4 @@ async function fetchNeonUserInfo(accessToken: string): Promise<NeonUserInfo> {
     username: data.name ?? null,
     email: data.email ?? null,
   };
-}
-
-/**
- * Get the primary secret name for Neon connector (the access token).
- */
-export function getNeonSecretName(): string {
-  return "NEON_ACCESS_TOKEN";
 }

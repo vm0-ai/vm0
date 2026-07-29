@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-import type { ConnectorAuthCodeGrantConfig } from "@vm0/connectors/connectors";
+import type { ConnectorAuthCodeGrantConfig } from "@vm0/connectors/connector-config";
 import { throwOAuthError } from "../../oauth/error";
 
 const TODOIST_TOKEN_URL = "https://todoist.com/oauth/access_token";
@@ -126,11 +126,4 @@ async function fetchTodoistUserInfo(accessToken: string): Promise<{
     username: data.full_name ?? null,
     email: data.email ?? null,
   };
-}
-
-/**
- * Get the primary secret name for Todoist connector (the access token).
- */
-export function getTodoistSecretName(): string {
-  return "TODOIST_ACCESS_TOKEN";
 }

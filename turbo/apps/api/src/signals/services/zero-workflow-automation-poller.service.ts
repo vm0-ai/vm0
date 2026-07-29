@@ -89,9 +89,11 @@ async function hasOrgMembership(
 
 /**
  * Claim a due workflow automation via an optimistic lock on `next_run_at`: clear
- * the next run, stamp `last_run_at`, and disable one-time automations. Recurrence
- * advance happens in the completion callback. Returns the claimed row, or null
- * when another tick won the race.
+ * the next run and stamp `last_run_at`. A one-time automation stays readable
+ * until its queued event claims a run, so a draining previous API version does
+ * not discard the event during rollout. Recurrence advance happens in the
+ * completion callback. Returns the claimed row, or null when another tick won
+ * the race.
  */
 async function claimAutomation(
   db: Db,
@@ -107,7 +109,6 @@ async function claimAutomation(
       nextRunAt: null,
       lastRunAt: currentTime,
       updatedAt: currentTime,
-      ...(automation.scheduleType === "once" ? { enabled: false } : {}),
     })
     .where(
       and(
@@ -345,8 +346,7 @@ export const executeDueWorkflowAutomations$ = command(
         agentId: row.agentId,
         workflowName: row.workflowName,
         chatThreadId,
-        allowClaimedOnceScheduleAutomation:
-          claimed.scheduleType === "once" && !claimed.enabled,
+        allowClaimedOnceScheduleAutomation: claimed.scheduleType === "once",
       };
 
       const result = await tapError(

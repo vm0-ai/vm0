@@ -1,5 +1,8 @@
 import type { GenerationTemplateRequest } from "@vm0/api-contracts/contracts/chat-threads";
-import { buildGenerationTemplatePrompt } from "./generation-template-prompt";
+import {
+  buildGenerationTemplatePrompt,
+  buildGenerationTemplatesPrompt,
+} from "./generation-template-prompt";
 
 /**
  * Resolve the generation-template system prompt for a chat run.
@@ -10,13 +13,20 @@ import { buildGenerationTemplatePrompt } from "./generation-template-prompt";
  */
 export function resolveThreadGenerationTemplatePrompt(args: {
   readonly explicit: GenerationTemplateRequest | null | undefined;
-  readonly websiteTemplateV2Enabled?: boolean;
+  readonly explicitTemplates?: readonly GenerationTemplateRequest[];
+  readonly imageStyleR2Enabled?: boolean;
 }): string {
+  if (args.explicitTemplates && args.explicitTemplates.length > 0) {
+    const built = buildGenerationTemplatesPrompt(args.explicitTemplates, {
+      imageStyleR2Enabled: args.imageStyleR2Enabled,
+    });
+    return built.status === "resolved" ? built.prompt : "";
+  }
   if (!args.explicit) {
     return "";
   }
   const built = buildGenerationTemplatePrompt(args.explicit, {
-    websiteTemplateV2Enabled: args.websiteTemplateV2Enabled,
+    imageStyleR2Enabled: args.imageStyleR2Enabled,
   });
   return built.status === "resolved" ? built.prompt : "";
 }

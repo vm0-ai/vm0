@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.19.48](https://github.com/vm0-ai/vm0/compare/vsock-guest-v0.19.47...vsock-guest-v0.19.48) (2026-07-28)
+
+## [0.19.47](https://github.com/vm0-ai/vm0/compare/vsock-guest-v0.19.46...vsock-guest-v0.19.47) (2026-07-28)
+
+## [0.19.46](https://github.com/vm0-ai/vm0/compare/vsock-guest-v0.19.45...vsock-guest-v0.19.46) (2026-07-26)
+
+
+### Documentation
+
+* **rust:** document guest exec lifecycle ([#23106](https://github.com/vm0-ai/vm0/issues/23106)) ([c8d4e7c](https://github.com/vm0-ai/vm0/commit/c8d4e7caa0370ee92da7f4af3dcad4aa10ae0442))
+
+## [0.19.45](https://github.com/vm0-ai/vm0/compare/vsock-guest-v0.19.44...vsock-guest-v0.19.45) (2026-07-25)
+
+## [0.19.44](https://github.com/vm0-ai/vm0/compare/vsock-guest-v0.19.43...vsock-guest-v0.19.44) (2026-07-25)
+
 ## [0.19.43](https://github.com/vm0-ai/vm0/compare/vsock-guest-v0.19.42...vsock-guest-v0.19.43) (2026-07-23)
 
 ## [0.19.42](https://github.com/vm0-ai/vm0/compare/vsock-guest-v0.19.41...vsock-guest-v0.19.42) (2026-07-22)

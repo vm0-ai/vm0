@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-import type { ConnectorAuthCodeGrantConfig } from "@vm0/connectors/connectors";
+import type { ConnectorAuthCodeGrantConfig } from "@vm0/connectors/connector-config";
 import { throwOAuthError } from "../../oauth/error";
 
 const DEEL_TOKEN_URL = "https://app.deel.com/oauth2/tokens";
@@ -265,11 +265,4 @@ async function fetchDeelUserInfo(
     username: name || null,
     email,
   };
-}
-
-/**
- * Get the primary secret name for Deel connector (the access token).
- */
-export function getDeelSecretName(): string {
-  return "DEEL_ACCESS_TOKEN";
 }

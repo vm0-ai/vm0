@@ -4691,6 +4691,363 @@
       "when": 1784887941033,
       "tag": "0669_retire_gpt_5_4_models",
       "breakpoints": true
+    },
+    {
+      "idx": 670,
+      "version": "7",
+      "when": 1784889382187,
+      "tag": "0670_chubby_bulldozer",
+      "breakpoints": true
+    },
+    {
+      "idx": 671,
+      "version": "7",
+      "when": 1784903241957,
+      "tag": "0671_drop_chat_message_mail_draft_id",
+      "breakpoints": true
+    },
+    {
+      "idx": 672,
+      "version": "7",
+      "when": 1784903241958,
+      "tag": "0672_bouncy_anthem",
+      "breakpoints": true
+    },
+    {
+      "idx": 673,
+      "version": "7",
+      "when": 1784940295284,
+      "tag": "0673_add_claude_opus_5_managed_data",
+      "breakpoints": true
+    },
+    {
+      "idx": 674,
+      "version": "7",
+      "when": 1784950114894,
+      "tag": "0674_restore_model_usage_observation_name",
+      "breakpoints": true
+    },
+    {
+      "idx": 675,
+      "version": "7",
+      "when": 1784950319642,
+      "tag": "0675_add_model_usage_observation_compatibility_view",
+      "breakpoints": true
+    },
+    {
+      "idx": 676,
+      "version": "7",
+      "when": 1784955986223,
+      "tag": "0676_drop_model_usage_observation_compatibility_view",
+      "breakpoints": true
+    },
+    {
+      "idx": 677,
+      "version": "7",
+      "when": 1784961476844,
+      "tag": "0677_browser_sessions",
+      "breakpoints": true
+    },
+    {
+      "idx": 678,
+      "version": "7",
+      "when": 1784961486213,
+      "tag": "0678_browser_usage_pricing",
+      "breakpoints": true
+    },
+    {
+      "idx": 679,
+      "version": "7",
+      "when": 1784966626970,
+      "tag": "0679_kind_sinister_six",
+      "breakpoints": true
+    },
+    {
+      "idx": 680,
+      "version": "7",
+      "when": 1784971441848,
+      "tag": "0680_keen_strong_guy",
+      "breakpoints": true
+    },
+    {
+      "idx": 681,
+      "version": "7",
+      "when": 1784979723299,
+      "tag": "0681_workable_gargoyle",
+      "breakpoints": true
+    },
+    {
+      "idx": 682,
+      "version": "7",
+      "when": 1784982608570,
+      "tag": "0682_lethal_queen_noir",
+      "breakpoints": true
+    },
+    {
+      "idx": 683,
+      "version": "7",
+      "when": 1784989677145,
+      "tag": "0683_busy_freak",
+      "breakpoints": true
+    },
+    {
+      "idx": 684,
+      "version": "7",
+      "when": 1784995668412,
+      "tag": "0684_powerful_radioactive_man",
+      "breakpoints": true
+    },
+    {
+      "idx": 685,
+      "version": "7",
+      "when": 1784995687943,
+      "tag": "0685_slack_cutover_ingress_classifier",
+      "breakpoints": true
+    },
+    {
+      "idx": 686,
+      "version": "7",
+      "when": 1785000236346,
+      "tag": "0686_artifact_catalog",
+      "breakpoints": true
+    },
+    {
+      "idx": 687,
+      "version": "7",
+      "when": 1785000264379,
+      "tag": "0687_backfill_artifact_catalog",
+      "breakpoints": true
+    },
+    {
+      "idx": 688,
+      "version": "7",
+      "when": 1785000273953,
+      "tag": "0688_cleanup_artifact_registry",
+      "breakpoints": true
+    },
+    {
+      "idx": 689,
+      "version": "7",
+      "when": 1785042005544,
+      "tag": "0689_sloppy_pestilence",
+      "breakpoints": true
+    },
+    {
+      "idx": 690,
+      "version": "7",
+      "when": 1785052730761,
+      "tag": "0690_hard_doctor_octopus",
+      "breakpoints": true
+    },
+    {
+      "idx": 691,
+      "version": "7",
+      "when": 1785054827002,
+      "tag": "0691_reflective_maestro",
+      "breakpoints": true
+    },
+    {
+      "idx": 692,
+      "version": "7",
+      "when": 1785063900063,
+      "tag": "0692_last_aqueduct",
+      "breakpoints": true
+    },
+    {
+      "idx": 693,
+      "version": "7",
+      "when": 1785073412942,
+      "tag": "0693_broken_dracula",
+      "breakpoints": true
+    },
+    {
+      "idx": 694,
+      "version": "7",
+      "when": 1785109544958,
+      "tag": "0694_cleanup_legacy_slack_data",
+      "breakpoints": true
+    },
+    {
+      "idx": 695,
+      "version": "7",
+      "when": 1785109797532,
+      "tag": "0695_magenta_adam_warlock",
+      "breakpoints": true
+    },
+    {
+      "idx": 696,
+      "version": "7",
+      "when": 1785126000681,
+      "tag": "0696_abnormal_spectrum",
+      "breakpoints": true
+    },
+    {
+      "idx": 697,
+      "version": "7",
+      "when": 1785128606145,
+      "tag": "0697_chat_event_type",
+      "breakpoints": true
+    },
+    {
+      "idx": 698,
+      "version": "7",
+      "when": 1785128638662,
+      "tag": "0698_backfill_chat_event_type",
+      "breakpoints": true
+    },
+    {
+      "idx": 699,
+      "version": "7",
+      "when": 1785142887219,
+      "tag": "0699_military_deadpool",
+      "breakpoints": true
+    },
+    {
+      "idx": 700,
+      "version": "7",
+      "when": 1785150084768,
+      "tag": "0700_normal_union_jack",
+      "breakpoints": true
+    },
+    {
+      "idx": 701,
+      "version": "7",
+      "when": 1785153523179,
+      "tag": "0701_contract_chat_event_type",
+      "breakpoints": true
+    },
+    {
+      "idx": 702,
+      "version": "7",
+      "when": 1785171570229,
+      "tag": "0702_sturdy_power_pack",
+      "breakpoints": true
+    },
+    {
+      "idx": 703,
+      "version": "7",
+      "when": 1785198008680,
+      "tag": "0703_add_chat_thread_event_seq_id",
+      "breakpoints": true
+    },
+    {
+      "idx": 704,
+      "version": "7",
+      "when": 1785198008681,
+      "tag": "0704_backfill_chat_thread_event_seq_id",
+      "breakpoints": true
+    },
+    {
+      "idx": 705,
+      "version": "7",
+      "when": 1785198008682,
+      "tag": "0705_contract_chat_thread_event_seq_id",
+      "breakpoints": true
+    },
+    {
+      "idx": 706,
+      "version": "7",
+      "when": 1785205907968,
+      "tag": "0706_skinny_random",
+      "breakpoints": true
+    },
+    {
+      "idx": 707,
+      "version": "7",
+      "when": 1785209964889,
+      "tag": "0707_orange_solo",
+      "breakpoints": true
+    },
+    {
+      "idx": 708,
+      "version": "7",
+      "when": 1785211488965,
+      "tag": "0708_backfill_structured_prompt_drafts",
+      "breakpoints": true
+    },
+    {
+      "idx": 709,
+      "version": "7",
+      "when": 1785218485046,
+      "tag": "0709_even_warbird",
+      "breakpoints": true
+    },
+    {
+      "idx": 710,
+      "version": "7",
+      "when": 1785222471228,
+      "tag": "0710_chief_lizard",
+      "breakpoints": true
+    },
+    {
+      "idx": 711,
+      "version": "7",
+      "when": 1785222944582,
+      "tag": "0711_legal_ben_grimm",
+      "breakpoints": true
+    },
+    {
+      "idx": 712,
+      "version": "7",
+      "when": 1785227423672,
+      "tag": "0712_wonderful_franklin_richards",
+      "breakpoints": true
+    },
+    {
+      "idx": 713,
+      "version": "7",
+      "when": 1785230858440,
+      "tag": "0713_messy_king_bedlam",
+      "breakpoints": true
+    },
+    {
+      "idx": 714,
+      "version": "7",
+      "when": 1785232548176,
+      "tag": "0714_chat_event_queue_cutover",
+      "breakpoints": true
+    },
+    {
+      "idx": 715,
+      "version": "7",
+      "when": 1785235584828,
+      "tag": "0715_next_carmella_unuscione",
+      "breakpoints": true
+    },
+    {
+      "idx": 716,
+      "version": "7",
+      "when": 1785237176003,
+      "tag": "0716_workable_echo",
+      "breakpoints": true
+    },
+    {
+      "idx": 717,
+      "version": "7",
+      "when": 1785239408646,
+      "tag": "0717_backfill_user_messages",
+      "breakpoints": true
+    },
+    {
+      "idx": 718,
+      "version": "7",
+      "when": 1785239466820,
+      "tag": "0718_require_user_messages",
+      "breakpoints": true
+    },
+    {
+      "idx": 719,
+      "version": "7",
+      "when": 1785289414902,
+      "tag": "0719_drop_chat_message_queue",
+      "breakpoints": true
+    },
+    {
+      "idx": 720,
+      "version": "7",
+      "when": 1785296355620,
+      "tag": "0720_dashing_groot",
+      "breakpoints": true
     }
   ]
 }

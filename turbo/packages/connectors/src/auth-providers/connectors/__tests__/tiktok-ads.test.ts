@@ -2,10 +2,8 @@ import { describe, expect, it } from "vitest";
 import { HttpResponse, http } from "msw";
 import {
   connectorAuthClientIdentity,
-  getConnectorAuthMethodAuthCodeGrantConfig,
-  resolveConnectorAuthClientForMethod,
   type StaticConfidentialConnectorAuthClient,
-} from "../../../connector-utils";
+} from "../../../connector-auth-method";
 import {
   buildTikTokAdsAuthorizationUrl,
   exchangeTikTokAdsCode,
@@ -13,6 +11,7 @@ import {
 } from "../tiktok-ads/oauth";
 import { tiktokAdsProvider } from "../tiktok-ads/provider";
 import { server } from "../../__tests__/test-server";
+import { authCodeGrantFixture } from "./auth-code-grant-fixture";
 
 const TOKEN_URL =
   "https://business-api.tiktok.com/open_api/v1.3/oauth2/access_token/";
@@ -26,7 +25,7 @@ const testAuthClient = {
 } satisfies StaticConfidentialConnectorAuthClient;
 
 function authCodeGrant() {
-  return getConnectorAuthMethodAuthCodeGrantConfig("tiktok-ads", "oauth");
+  return authCodeGrantFixture([]);
 }
 
 describe("connector/providers/tiktok-ads", () => {
@@ -155,10 +154,7 @@ describe("connector/providers/tiktok-ads", () => {
   describe("tiktokAdsProvider", () => {
     it("buildAuthUrl delegates to buildTikTokAdsAuthorizationUrl", () => {
       const url = tiktokAdsProvider.grant.buildAuthUrl({
-        authCodeGrant: getConnectorAuthMethodAuthCodeGrantConfig(
-          "tiktok-ads",
-          "oauth",
-        ),
+        authCodeGrant: authCodeGrant(),
         authClient: connectorAuthClientIdentity(testAuthClient),
         redirectUri: "https://example.com/callback",
         state: "test-state",
@@ -166,22 +162,6 @@ describe("connector/providers/tiktok-ads", () => {
 
       expect(url).toContain("app_id=test-client");
       expect(url).toContain("business-api.tiktok.com/portal/auth");
-    });
-
-    it("resolves the OAuth client from TikTok Ads env names", () => {
-      const env: Record<string, string> = {
-        TIKTOK_ADS_OAUTH_CLIENT_ID: "test-client-id",
-        TIKTOK_ADS_OAUTH_CLIENT_SECRET: "test-client-secret",
-      };
-
-      expect(
-        resolveConnectorAuthClientForMethod("tiktok-ads", "oauth", (name) => {
-          return env[name];
-        }),
-      ).toMatchObject({
-        clientId: "test-client-id",
-        clientSecret: "test-client-secret",
-      });
     });
 
     it("keeps the existing refresh token when refresh does not rotate it", async () => {

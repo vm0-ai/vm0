@@ -136,6 +136,13 @@ mod tests {
                 .all(|part| matches!(part.parse::<u32>(), Ok(value) if *part == value.to_string()))
     }
 
+    fn is_lowercase_sha256(value: &str) -> bool {
+        value.len() == 64
+            && value
+                .bytes()
+                .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
+    }
+
     fn template_build_installs_apt_package(package: &str) -> bool {
         let mut in_apt_install = false;
         for raw_line in TEMPLATE_BUILD_SCRIPT.lines() {
@@ -496,6 +503,80 @@ wait
         assert!(
             VERIFY_SCRIPT.contains(r#""${MOUNT_DIR}/usr/bin/pnpm""#),
             "verify-rootfs.sh should verify pnpm is present in sandbox images"
+        );
+    }
+
+    #[test]
+    fn template_installs_vm0_agent_browser_for_each_guest_architecture() {
+        let agent_browser_version =
+            shell_quoted_var(TEMPLATE_BUILD_SCRIPT, "AGENT_BROWSER_VERSION")
+                .expect("build-template.sh should declare AGENT_BROWSER_VERSION");
+        assert_eq!(
+            agent_browser_version, "0.33.0-vm0.1",
+            "build-template.sh should pin the immutable vm0 agent-browser release"
+        );
+
+        for checksum_var in [
+            "AGENT_BROWSER_LINUX_X64_SHA256",
+            "AGENT_BROWSER_LINUX_ARM64_SHA256",
+        ] {
+            let checksum = shell_quoted_var(TEMPLATE_BUILD_SCRIPT, checksum_var)
+                .unwrap_or_else(|| panic!("build-template.sh should declare {checksum_var}"));
+            assert!(
+                is_lowercase_sha256(checksum),
+                "build-template.sh should pin {checksum_var} to a lowercase SHA-256"
+            );
+        }
+
+        assert!(
+            TEMPLATE_BUILD_SCRIPT.contains(
+                r#"DOWNLOAD_BASE_URL=\"https://github.com/vm0-ai/agent-browser/releases/download/v${AGENT_BROWSER_VERSION}\""#
+            ),
+            "build-template.sh should download agent-browser from the vm0 fork"
+        );
+        assert!(
+            TEMPLATE_BUILD_SCRIPT.contains(
+                r#"amd64)
+        PLATFORM=\"linux-x64\"
+        CHECKSUM=\"${AGENT_BROWSER_LINUX_X64_SHA256}\""#
+            ) && TEMPLATE_BUILD_SCRIPT.contains(
+                r#"arm64)
+        PLATFORM=\"linux-arm64\"
+        CHECKSUM=\"${AGENT_BROWSER_LINUX_ARM64_SHA256}\""#
+            ),
+            "build-template.sh should map Debian guest architectures to fork release assets"
+        );
+        assert!(
+            TEMPLATE_BUILD_SCRIPT
+                .contains(r#"echo \"\${CHECKSUM}  /tmp/agent-browser\" | sha256sum -c -"#),
+            "build-template.sh should verify agent-browser before installation"
+        );
+        assert!(
+            TEMPLATE_BUILD_SCRIPT.contains(
+                r#"curl -fsSL \"\${DOWNLOAD_BASE_URL}/agent-browser-\${PLATFORM}\" -o /tmp/agent-browser"#
+            ),
+            "build-template.sh should download the mapped release asset"
+        );
+        assert!(
+            TEMPLATE_BUILD_SCRIPT
+                .contains("install -m 0755 /tmp/agent-browser /usr/local/bin/agent-browser"),
+            "build-template.sh should install the verified native binary"
+        );
+        assert!(
+            TEMPLATE_BUILD_SCRIPT.contains(
+                r#"test \"\$(/usr/local/bin/agent-browser --version)\" = \"agent-browser ${AGENT_BROWSER_VERSION}\""#
+            ),
+            "build-template.sh should execute the installed binary and verify its version"
+        );
+        assert!(
+            !TEMPLATE_BUILD_SCRIPT.contains("agent-browser@"),
+            "build-template.sh must not install the upstream npm package"
+        );
+        assert!(
+            VERIFY_SCRIPT.contains(
+                r#"check_required_executable "/usr/local/bin/agent-browser" "agent-browser CLI""#
+            ),
+            "verify-rootfs.sh should verify the native agent-browser binary"
         );
     }
 

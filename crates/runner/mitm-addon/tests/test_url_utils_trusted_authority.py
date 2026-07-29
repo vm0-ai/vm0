@@ -2,10 +2,10 @@
 
 import pytest
 
-from url_utils import get_original_url, get_trusted_authority
+from url_utils import get_trusted_authority
 
 
-class TestGetOriginalUrl:
+class TestTrustedAuthorityUrl:
     @pytest.mark.parametrize(
         ("scheme", "port", "expected_url"),
         [
@@ -19,7 +19,10 @@ class TestGetOriginalUrl:
     )
     def test_omits_only_scheme_default_ports(self, real_flow, scheme, port, expected_url):
         flow = real_flow(host="example.com", port=port, scheme=scheme)
-        assert get_original_url(flow) == expected_url
+        trusted = get_trusted_authority(flow)
+        assert trusted.host == "example.com"
+        assert trusted.port == port
+        assert trusted.url == expected_url
 
     def test_https_non_standard_port(self, real_flow):
         # Pins two invariants at once for the #10082 regression:
@@ -31,11 +34,17 @@ class TestGetOriginalUrl:
         #   which is why we don't use it).
         flow = real_flow(host="example.com", port=8443)
         assert flow.request.headers.get("Host") == "example.com"
-        assert get_original_url(flow) == "https://example.com:8443/"
+        trusted = get_trusted_authority(flow)
+        assert trusted.host == "example.com"
+        assert trusted.port == 8443
+        assert trusted.url == "https://example.com:8443/"
 
     def test_with_path_and_query(self, real_flow):
         flow = real_flow(host="api.example.com", port=443, path="/v1/data?key=val")
-        assert get_original_url(flow) == "https://api.example.com/v1/data?key=val"
+        trusted = get_trusted_authority(flow)
+        assert trusted.host == "api.example.com"
+        assert trusted.port == 443
+        assert trusted.url == "https://api.example.com/v1/data?key=val"
 
     @pytest.mark.parametrize(
         ("port", "expected_url"),
@@ -57,7 +66,10 @@ class TestGetOriginalUrl:
             path="*",
         )
 
-        assert get_original_url(flow) == expected_url
+        trusted = get_trusted_authority(flow)
+        assert trusted.host == "api.example.com"
+        assert trusted.port == port
+        assert trusted.url == expected_url
         assert flow.request.path == "*"
 
     def test_https_uses_sni_for_transparent_destination(self, real_flow, headers):
@@ -67,7 +79,10 @@ class TestGetOriginalUrl:
             path="/v1/data?key=val",
             request_headers=headers(("Host", "api.example.com")),
         )
-        assert get_original_url(flow) == "https://api.example.com/v1/data?key=val"
+        trusted = get_trusted_authority(flow)
+        assert trusted.host == "api.example.com"
+        assert trusted.port == 443
+        assert trusted.url == "https://api.example.com/v1/data?key=val"
 
     def test_https_accepts_trailing_dot_authority_equivalence(self, real_flow, headers):
         flow = real_flow(
@@ -76,7 +91,10 @@ class TestGetOriginalUrl:
             path="/v1/data",
             request_headers=headers(("Host", "API.EXAMPLE.COM.")),
         )
-        assert get_original_url(flow) == "https://api.example.com/v1/data"
+        trusted = get_trusted_authority(flow)
+        assert trusted.host == "api.example.com"
+        assert trusted.port == 443
+        assert trusted.url == "https://api.example.com/v1/data"
 
     def test_http_uses_request_host_not_host_header(self, real_flow, headers):
         flow = real_flow(
@@ -86,7 +104,10 @@ class TestGetOriginalUrl:
             path="/v1/data",
             request_headers=headers(("Host", "api.example.com")),
         )
-        assert get_original_url(flow) == "http://203.0.113.10/v1/data"
+        trusted = get_trusted_authority(flow)
+        assert trusted.host == "203.0.113.10"
+        assert trusted.port == 80
+        assert trusted.url == "http://203.0.113.10/v1/data"
 
     def test_http_brackets_ipv6_request_host(self, real_flow, headers):
         flow = real_flow(
@@ -96,7 +117,10 @@ class TestGetOriginalUrl:
             path="/v1/data",
             request_headers=headers(("Host", "api.example.com")),
         )
-        assert get_original_url(flow) == "http://[2001:db8::1]:8080/v1/data"
+        trusted = get_trusted_authority(flow)
+        assert trusted.host == "2001:db8::1"
+        assert trusted.port == 8080
+        assert trusted.url == "http://[2001:db8::1]:8080/v1/data"
 
     def test_https_brackets_ipv6_sni(self, real_flow, headers):
         flow = real_flow(
@@ -106,7 +130,10 @@ class TestGetOriginalUrl:
             path="/v1/data",
             request_headers=headers(("Host", "[2001:db8::1]")),
         )
-        assert get_original_url(flow) == "https://[2001:db8::1]:8443/v1/data"
+        trusted = get_trusted_authority(flow)
+        assert trusted.host == "2001:db8::1"
+        assert trusted.port == 8443
+        assert trusted.url == "https://[2001:db8::1]:8443/v1/data"
 
 
 class TestTrustedAuthoritySuccess:
@@ -365,4 +392,3 @@ class TestTrustedAuthoritySuccess:
         assert trusted.host == expected_host
         assert trusted.port == 443
         assert trusted.url == expected_url
-        assert get_original_url(flow) == expected_url

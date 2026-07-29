@@ -1,8 +1,9 @@
 <!doctype html>
-<html lang="en" translate="no">
+<html lang="en-US" translate="no">
   <head>
     <title>Zero</title>
     <meta charset="UTF-8" />
+    <meta name="vm0-api-origin" content="" />
     <style>
       body {
         margin: 0;
@@ -422,6 +423,22 @@
         if (t === "dark") document.documentElement.classList.add("dark");
       })();
     </script>
+    <script>
+      // Resolve locale before the app bundle runs so refreshes use the cached
+      // workspace language while the server preference is loading.
+      (function () {
+        var orgId = sessionStorage.getItem("clerk-active-org-id");
+        var cacheKey = orgId ? "vm0:locale:" + orgId : null;
+        var cached = cacheKey ? localStorage.getItem(cacheKey) : null;
+        // Browser-language auto-selection stays disabled during rollout.
+        // Locale changes come from the workspace cache or gated preference UI.
+        var locale =
+          cached === "en-US" || cached === "pt-BR" ? cached : "en-US";
+
+        document.documentElement.lang = locale;
+        if (cacheKey) localStorage.setItem(cacheKey, locale);
+      })();
+    </script>
     <script type="module">
       if (window.__vm0BrowserSupported === true) {
         import("/src/main.ts");
@@ -795,11 +812,20 @@
         }, 4000);
       })();
     </script>
-    <script
-      src="https://api.dashboard.instatus.com/widget?host=status.vm0.ai&code=02c0ef5a&locale=en"
-      integrity="sha384-ZW3eZwADOMdlg2fdvESPD7jguK16IC/edxNFakKs81D2lkNdi3BXRmx/g331lkD3"
-      crossorigin="anonymous"
-      defer
-    ></script>
+    <script>
+      (function () {
+        var hostname = window.location.hostname.toLowerCase();
+        if (hostname !== "app.vm0.ai" && hostname !== "app.okou.ai") return;
+
+        var instatusScript = document.createElement("script");
+        instatusScript.src =
+          "https://api.dashboard.instatus.com/widget?host=status.vm0.ai&code=02c0ef5a&locale=en";
+        instatusScript.integrity =
+          "sha384-ZW3eZwADOMdlg2fdvESPD7jguK16IC/edxNFakKs81D2lkNdi3BXRmx/g331lkD3";
+        instatusScript.crossOrigin = "anonymous";
+        instatusScript.defer = true;
+        document.body.appendChild(instatusScript);
+      })();
+    </script>
   </body>
 </html>

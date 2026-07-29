@@ -1,4 +1,5 @@
 import {
+  bigint,
   jsonb,
   pgTable,
   primaryKey,
@@ -15,6 +16,8 @@ export const chatThreadSnapshots = pgTable(
     userId: text("user_id").notNull(),
     orgId: text("org_id").notNull(),
     latestEventId: uuid("latest_event_id"),
+    /** Sequence position represented by the compacted snapshot. */
+    latestEventSeqId: bigint("latest_event_seq_id", { mode: "number" }),
     chatThreads: jsonb("chat_threads")
       .$type<ChatThreadSnapshotProjections>()
       .notNull()

@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-import type { ConnectorAuthCodeGrantConfig } from "@vm0/connectors/connectors";
+import type { ConnectorAuthCodeGrantConfig } from "@vm0/connectors/connector-config";
 import { throwOAuthError } from "../../oauth/error";
 
 const SENTRY_TOKEN_URL = "https://sentry.io/oauth/token/";
@@ -171,11 +171,4 @@ export async function refreshSentryToken(
     refreshToken: data.refresh_token ?? null,
     expiresIn: data.expires_in,
   };
-}
-
-/**
- * Get the primary secret name for Sentry connector (the access token).
- */
-export function getSentrySecretName(): string {
-  return "SENTRY_ACCESS_TOKEN";
 }

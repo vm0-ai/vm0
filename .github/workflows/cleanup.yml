@@ -12,7 +12,7 @@ jobs:
   cleanup-okou-pages-domain:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@v7.0.1
 
       - name: Delete Cloudflare Pages custom preview domain
         env:
@@ -42,7 +42,7 @@ jobs:
       group: provision-preview-www-pr-${{ github.event.pull_request.number }}
       cancel-in-progress: true
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@v7.0.1
 
       - name: Delete legacy Cloudflare WWW Worker route and Worker
         env:
@@ -93,7 +93,7 @@ jobs:
     if: "!startsWith(github.head_ref || '', 'release-please--branches--')"
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@v7.0.1
 
       - name: Check if cleanup needed
         id: check
@@ -116,6 +116,9 @@ jobs:
         if: steps.check.outputs.should-cleanup == 'true'
         uses: ./.github/actions/setup-ssh-tunnel
         with:
+          ssh-user: ${{ vars.AWS_METAL_RUNNER_USER }}
+          ssh-hosts: ${{ secrets.AWS_METAL_RUNNER_HOSTS }}
+          require-all-hosts: "false"
           ssh-key: ${{ secrets.AWS_METAL_RUNNER_SSH_KEY }}
           cf-access-client-id: ${{ secrets.CF_ACCESS_CLIENT_ID }}
           cf-access-client-secret: ${{ secrets.CF_ACCESS_CLIENT_SECRET }}
@@ -181,7 +184,7 @@ jobs:
     container:
       image: ghcr.io/vm0-ai/vm0-toolchain:20260622
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@v7.0.1
 
       - name: Delete Neon Branch
         uses: ./.github/actions/neon-branch

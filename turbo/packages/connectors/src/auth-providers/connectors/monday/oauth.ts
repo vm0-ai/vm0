@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-import type { ConnectorAuthCodeGrantConfig } from "@vm0/connectors/connectors";
+import type { ConnectorAuthCodeGrantConfig } from "@vm0/connectors/connector-config";
 import { throwOAuthError } from "../../oauth/error";
 
 const MONDAY_TOKEN_URL = "https://auth.monday.com/oauth2/token";
@@ -214,11 +214,4 @@ async function fetchMondayUserInfo(
     username: me.name ?? "",
     email: me.email ?? null,
   };
-}
-
-/**
- * Get the primary secret name for Monday.com connector.
- */
-export function getMondaySecretName(): string {
-  return "MONDAY_ACCESS_TOKEN";
 }

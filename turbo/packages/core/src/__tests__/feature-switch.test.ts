@@ -12,6 +12,10 @@ import {
 describe("isFeatureEnabled", () => {
   it("should return true for globally enabled switch", () => {
     expect(isFeatureEnabled(FeatureSwitchKey.Dummy, {})).toBe(true);
+    expect(isFeatureEnabled(FeatureSwitchKey.ImageStyleR2, {})).toBe(true);
+    expect(isFeatureEnabled(FeatureSwitchKey.VideoArtifactPosters, {})).toBe(
+      true,
+    );
   });
 
   it("should return true for globally enabled switch even with context", () => {
@@ -21,9 +25,6 @@ describe("isFeatureEnabled", () => {
   });
 
   it("should return false for disabled switch without context", () => {
-    expect(
-      isFeatureEnabled(FeatureSwitchKey.ExternalConnectorCatalog, {}),
-    ).toBe(false);
     expect(isFeatureEnabled(FeatureSwitchKey.AhrefsConnector, {})).toBe(false);
     expect(isFeatureEnabled(FeatureSwitchKey.MetaAdsConnector, {})).toBe(false);
     expect(isFeatureEnabled(FeatureSwitchKey.GoogleContactsConnector, {})).toBe(
@@ -32,14 +33,23 @@ describe("isFeatureEnabled", () => {
     expect(isFeatureEnabled(FeatureSwitchKey.GoogleFormsConnector, {})).toBe(
       false,
     );
-    expect(
-      isFeatureEnabled(FeatureSwitchKey.HtmlArtifactCommentEditing, {}),
-    ).toBe(false);
+    expect(isFeatureEnabled(FeatureSwitchKey.JoggAiConnector, {})).toBe(false);
     expect(isFeatureEnabled(FeatureSwitchKey.Artifacts, {})).toBe(false);
     expect(isFeatureEnabled(FeatureSwitchKey.ComposerUploadPopover, {})).toBe(
       false,
     );
-    expect(isFeatureEnabled(FeatureSwitchKey.StructuredPrompt, {})).toBe(false);
+    expect(
+      isFeatureEnabled(FeatureSwitchKey.StructuredPromptInlineTemplates, {}),
+    ).toBe(false);
+    expect(isFeatureEnabled(FeatureSwitchKey.LanguagePreference, {})).toBe(
+      false,
+    );
+    expect(
+      isFeatureEnabled(FeatureSwitchKey.ChatThreadSidebarAutoOpen, {}),
+    ).toBe(false);
+    expect(
+      isFeatureEnabled(FeatureSwitchKey.BrazilianPortugueseLocale, {}),
+    ).toBe(false);
   });
 
   it("should return false for disabled switch with non-matching userId", () => {
@@ -112,69 +122,71 @@ describe("getAllFeatureStates", () => {
     });
     expect(staffOrgStates[FeatureSwitchKey.Lab]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.ZeroFinance]).toBe(true);
-    expect(staffOrgStates[FeatureSwitchKey.ZeroMail]).toBe(true);
-    expect(staffOrgStates[FeatureSwitchKey.ZeroPeopleSearch]).toBe(true);
-    expect(staffOrgStates[FeatureSwitchKey.CanonicalSlackIngress]).toBe(true);
-    expect(staffOrgStates[FeatureSwitchKey.CanonicalSlackWebVisibility]).toBe(
-      true,
+    expect(staffOrgStates[FeatureSwitchKey.ZeroBrowser]).toBe(true);
+    expect(staffOrgStates[FeatureSwitchKey.LanguagePreference]).toBe(false);
+    expect(staffOrgStates[FeatureSwitchKey.BrazilianPortugueseLocale]).toBe(
+      false,
     );
+    expect(staffOrgStates[FeatureSwitchKey.CodexSessionPruning]).toBe(true);
+    expect(staffOrgStates[FeatureSwitchKey.ClaudeSessionPruning]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.ChatThreadUnifiedSearch]).toBe(true);
-    expect(staffOrgStates[FeatureSwitchKey.ComposerChatThreadSuggestions]).toBe(
+    expect(staffOrgStates[FeatureSwitchKey.ChatThreadSidebarAutoOpen]).toBe(
       true,
     );
-    expect(staffOrgStates[FeatureSwitchKey.AgentUnreadIndicators]).toBe(true);
-    expect(staffOrgStates[FeatureSwitchKey.HtmlArtifactCommentEditing]).toBe(
+    expect(staffOrgStates[FeatureSwitchKey.ComposerSkillSubstringSearch]).toBe(
       true,
     );
     expect(staffOrgStates[FeatureSwitchKey.Artifacts]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.HostedArtifactVersions]).toBe(true);
-    expect(staffOrgStates[FeatureSwitchKey.WebsiteTemplateV2]).toBe(true);
-    expect(staffOrgStates[FeatureSwitchKey.PlanUpgradeGuidance]).toBe(true);
+    expect(staffOrgStates[FeatureSwitchKey.ImageStyleR2]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.ComposerUploadPopover]).toBe(false);
-    expect(staffOrgStates[FeatureSwitchKey.StructuredPrompt]).toBe(true);
+    expect(
+      staffOrgStates[FeatureSwitchKey.StructuredPromptInlineTemplates],
+    ).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.OrgPlanEntitlementReads]).toBe(true);
-    expect(staffOrgStates[FeatureSwitchKey.PresentationExport]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.WorkflowConnectorReadiness]).toBe(
       true,
     );
     expect(staffOrgStates[FeatureSwitchKey.GithubWebhookAutomations]).toBe(
       true,
     );
+    expect(staffOrgStates[FeatureSwitchKey.StrapiIntegration]).toBe(true);
 
     const otherOrgStates = getAllFeatureStates({
       orgId: "org_nonexistent",
     });
     expect(otherOrgStates[FeatureSwitchKey.Lab]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.ZeroFinance]).toBe(false);
-    expect(otherOrgStates[FeatureSwitchKey.ZeroMail]).toBe(false);
-    expect(otherOrgStates[FeatureSwitchKey.ZeroPeopleSearch]).toBe(false);
-    expect(otherOrgStates[FeatureSwitchKey.CanonicalSlackIngress]).toBe(false);
-    expect(otherOrgStates[FeatureSwitchKey.CanonicalSlackWebVisibility]).toBe(
+    expect(otherOrgStates[FeatureSwitchKey.ZeroBrowser]).toBe(false);
+    expect(otherOrgStates[FeatureSwitchKey.LanguagePreference]).toBe(false);
+    expect(otherOrgStates[FeatureSwitchKey.BrazilianPortugueseLocale]).toBe(
       false,
     );
+    expect(otherOrgStates[FeatureSwitchKey.CodexSessionPruning]).toBe(false);
+    expect(otherOrgStates[FeatureSwitchKey.ClaudeSessionPruning]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.ChatThreadUnifiedSearch]).toBe(
       false,
     );
-    expect(otherOrgStates[FeatureSwitchKey.ComposerChatThreadSuggestions]).toBe(
+    expect(otherOrgStates[FeatureSwitchKey.ChatThreadSidebarAutoOpen]).toBe(
       false,
     );
-    expect(otherOrgStates[FeatureSwitchKey.AgentUnreadIndicators]).toBe(false);
-    expect(otherOrgStates[FeatureSwitchKey.HtmlArtifactCommentEditing]).toBe(
+    expect(otherOrgStates[FeatureSwitchKey.ComposerSkillSubstringSearch]).toBe(
       false,
     );
     expect(otherOrgStates[FeatureSwitchKey.Artifacts]).toBe(false);
-    expect(otherOrgStates[FeatureSwitchKey.WebsiteTemplateV2]).toBe(false);
-    expect(otherOrgStates[FeatureSwitchKey.PlanUpgradeGuidance]).toBe(false);
+    expect(otherOrgStates[FeatureSwitchKey.ImageStyleR2]).toBe(true);
     expect(otherOrgStates[FeatureSwitchKey.ComposerUploadPopover]).toBe(false);
-    expect(otherOrgStates[FeatureSwitchKey.StructuredPrompt]).toBe(false);
+    expect(
+      otherOrgStates[FeatureSwitchKey.StructuredPromptInlineTemplates],
+    ).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.OrgPlanEntitlementReads]).toBe(true);
-    expect(otherOrgStates[FeatureSwitchKey.PresentationExport]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.WorkflowConnectorReadiness]).toBe(
       false,
     );
     expect(otherOrgStates[FeatureSwitchKey.GithubWebhookAutomations]).toBe(
       false,
     );
+    expect(otherOrgStates[FeatureSwitchKey.StrapiIntegration]).toBe(false);
   });
 
   it("should apply overrides to enable disabled features", () => {
@@ -209,9 +221,6 @@ describe("getAllFeatureStates", () => {
 describe("user-overridable switches", () => {
   it("excludes internal switches from user override helpers", () => {
     expect(getUserOverridableFeatureSwitchKeys()).not.toContain(
-      FeatureSwitchKey.ExternalConnectorCatalog,
-    );
-    expect(getUserOverridableFeatureSwitchKeys()).not.toContain(
       FeatureSwitchKey.ComposerUploadPopover,
     );
     expect(getUserOverridableFeatureSwitchKeys()).not.toContain(
@@ -221,13 +230,25 @@ describe("user-overridable switches", () => {
       FeatureSwitchKey.OrgPlanEntitlementReads,
     );
     expect(getUserOverridableFeatureSwitchKeys()).not.toContain(
-      FeatureSwitchKey.PlanUpgradeGuidance,
+      FeatureSwitchKey.ZeroMailReplyFollowUp,
+    );
+    expect(getUserOverridableFeatureSwitchKeys()).toContain(
+      FeatureSwitchKey.LanguagePreference,
+    );
+    expect(getUserOverridableFeatureSwitchKeys()).not.toContain(
+      FeatureSwitchKey.BrazilianPortugueseLocale,
+    );
+    expect(getUserOverridableFeatureSwitchKeys()).toContain(
+      FeatureSwitchKey.ZeroBrowser,
     );
     expect(getUserOverridableFeatureSwitchKeys()).not.toContain(
       FeatureSwitchKey.GithubWebhookAutomations,
     );
-    expect(getUserOverridableFeatureSwitchKeys()).toContain(
-      FeatureSwitchKey.ZeroPeopleSearch,
+    expect(getUserOverridableFeatureSwitchKeys()).not.toContain(
+      FeatureSwitchKey.StrapiIntegration,
+    );
+    expect(getUserOverridableFeatureSwitchKeys()).not.toContain(
+      FeatureSwitchKey.StructuredPromptInlineTemplates,
     );
     expect(getUserOverridableFeatureSwitchKeys()).toContain(
       FeatureSwitchKey.ZeroFinance,
@@ -235,23 +256,35 @@ describe("user-overridable switches", () => {
     expect(getUserOverridableFeatureSwitchKeys()).toContain(
       FeatureSwitchKey.ComposerConnectorPermissions,
     );
+    expect(getUserOverridableFeatureSwitchKeys()).toContain(
+      FeatureSwitchKey.ImageStyleR2,
+    );
 
     expect(
       filterUserOverridableFeatureSwitchOverrides({
-        [FeatureSwitchKey.ExternalConnectorCatalog]: true,
         [FeatureSwitchKey.ComposerUploadPopover]: true,
         [FeatureSwitchKey.WorkflowConnectorReadiness]: true,
         [FeatureSwitchKey.OrgPlanEntitlementReads]: true,
-        [FeatureSwitchKey.PlanUpgradeGuidance]: true,
-        [FeatureSwitchKey.ZeroPeopleSearch]: true,
+        [FeatureSwitchKey.StructuredPromptInlineTemplates]: true,
+        [FeatureSwitchKey.ZeroMailReplyFollowUp]: true,
+        [FeatureSwitchKey.BrazilianPortugueseLocale]: true,
+        [FeatureSwitchKey.ZeroBrowser]: true,
         [FeatureSwitchKey.ComposerConnectorPermissions]: true,
         [FeatureSwitchKey.Dummy]: false,
       }),
     ).toStrictEqual({
-      [FeatureSwitchKey.ZeroPeopleSearch]: true,
+      [FeatureSwitchKey.ZeroBrowser]: true,
       [FeatureSwitchKey.ComposerConnectorPermissions]: true,
       [FeatureSwitchKey.Dummy]: false,
     });
+  });
+
+  it("ignores persisted overrides for removed switches", () => {
+    expect(
+      filterUserOverridableFeatureSwitchOverrides({
+        zeroPeopleSearch: false,
+      }),
+    ).toStrictEqual({});
   });
 });
 

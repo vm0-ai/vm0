@@ -1,5 +1,121 @@
 # Changelog
 
+## [0.58.6](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.58.5...guest-agent-v0.58.6) (2026-07-29)
+
+
+### Refactoring
+
+* **guest-agent:** split checkpoint pipelines ([#23600](https://github.com/vm0-ai/vm0/issues/23600)) ([859fb3b](https://github.com/vm0-ai/vm0/commit/859fb3b537a842d78b7bebb7dc483b3c1eaea160))
+
+## [0.58.5](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.58.4...guest-agent-v0.58.5) (2026-07-28)
+
+## [0.58.4](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.58.3...guest-agent-v0.58.4) (2026-07-28)
+
+## [0.58.3](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.58.2...guest-agent-v0.58.3) (2026-07-28)
+
+
+### Bug Fixes
+
+* **runner:** classify codex safety policy refusals ([#23391](https://github.com/vm0-ai/vm0/issues/23391)) ([a1d9986](https://github.com/vm0-ai/vm0/commit/a1d9986f1183067249dc168ba3643acdf05f79ca))
+
+## [0.58.2](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.58.1...guest-agent-v0.58.2) (2026-07-27)
+
+
+### Refactoring
+
+* **guest-agent:** retire checkpoint gzip downgrade ([#23314](https://github.com/vm0-ai/vm0/issues/23314)) ([7fe12c2](https://github.com/vm0-ai/vm0/commit/7fe12c206e8e0504da52a646527221359e7b94b7))
+
+## [0.58.1](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.58.0...guest-agent-v0.58.1) (2026-07-27)
+
+
+### Bug Fixes
+
+* **guest-agent:** preserve codex fast mode in app server ([#23240](https://github.com/vm0-ai/vm0/issues/23240)) ([f108f48](https://github.com/vm0-ai/vm0/commit/f108f48e832d3d4d61de338bb698b6d782f1121e))
+
+
+### Documentation
+
+* **guest-agent:** document reuse preparation safety contract ([#23243](https://github.com/vm0-ai/vm0/issues/23243)) ([9437606](https://github.com/vm0-ai/vm0/commit/9437606dabaa1ae4f51bd4be04f388b66d9c0ab4))
+
+
+### Refactoring
+
+* **guest-agent:** narrow session metadata visibility ([#23244](https://github.com/vm0-ai/vm0/issues/23244)) ([fba8fff](https://github.com/vm0-ai/vm0/commit/fba8fff884be8030a1af16f5c1c108a3b28d5d22))
+
+
+### Performance Improvements
+
+* **guest-agent:** offload checkpoint history work ([#23260](https://github.com/vm0-ai/vm0/issues/23260)) ([41379e3](https://github.com/vm0-ai/vm0/commit/41379e381da2c29323f5e1e3f6a11031b81cea5e))
+
+## [0.58.0](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.57.1...guest-agent-v0.58.0) (2026-07-26)
+
+
+### Features
+
+* prune oversized codex session history ([#23136](https://github.com/vm0-ai/vm0/issues/23136)) ([010d286](https://github.com/vm0-ai/vm0/commit/010d286e46b4b7035ef41e6417bdfca707688aa0))
+
+
+### Refactoring
+
+* **storage:** detach runtime from legacy storage type ([#23143](https://github.com/vm0-ai/vm0/issues/23143)) ([cc415c5](https://github.com/vm0-ai/vm0/commit/cc415c5c844343ab573c0d9de5a31d1fd378ad69))
+
+## [0.57.1](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.57.0...guest-agent-v0.57.1) (2026-07-26)
+
+
+### Performance Improvements
+
+* disable unused codex plugin and apps startup work ([#23132](https://github.com/vm0-ai/vm0/issues/23132)) ([038cabe](https://github.com/vm0-ai/vm0/commit/038cabedd7e5b8adbe4926f94102affe8455ad14))
+
+## [0.57.0](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.56.6...guest-agent-v0.57.0) (2026-07-26)
+
+
+### Features
+
+* prune compacted claude session history ([#23081](https://github.com/vm0-ai/vm0/issues/23081)) ([671dc1c](https://github.com/vm0-ai/vm0/commit/671dc1c3a1ffe14b3be6d7079afd6f2cc24f14b0))
+
+## [0.56.6](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.56.5...guest-agent-v0.56.6) (2026-07-26)
+
+
+### Refactoring
+
+* **storage:** authorize writeback by storage id ([#23112](https://github.com/vm0-ai/vm0/issues/23112)) ([321117e](https://github.com/vm0-ai/vm0/commit/321117edaf5f2304b87a435748557ad47cf73ea3))
+
+## [0.56.5](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.56.4...guest-agent-v0.56.5) (2026-07-26)
+
+
+### Performance Improvements
+
+* **guest-agent:** disable upstream codex analytics ([#23099](https://github.com/vm0-ai/vm0/issues/23099)) ([88ecf52](https://github.com/vm0-ai/vm0/commit/88ecf529e28c1a18f2ecd421d51f5d8023b25d8b))
+
+## [0.56.4](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.56.3...guest-agent-v0.56.4) (2026-07-25)
+
+
+### Bug Fixes
+
+* **guest-agent:** classify no-chunks stream timeouts ([#23041](https://github.com/vm0-ai/vm0/issues/23041)) ([f3a9714](https://github.com/vm0-ai/vm0/commit/f3a97146f04c2b883c00f174f05a2ead14ec5342))
+
+## [0.56.3](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.56.2...guest-agent-v0.56.3) (2026-07-25)
+
+
+### Bug Fixes
+
+* **guest-agent:** classify oversized session history failures ([#23020](https://github.com/vm0-ai/vm0/issues/23020)) ([13b74f3](https://github.com/vm0-ai/vm0/commit/13b74f3d501b1e2f3be539969d3a9eb3479c7d3e))
+
+## [0.56.2](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.56.1...guest-agent-v0.56.2) (2026-07-25)
+
+
+### Performance Improvements
+
+* **guest-agent:** reuse verified mock builds across tests ([#22984](https://github.com/vm0-ai/vm0/issues/22984)) ([cfe1d4b](https://github.com/vm0-ai/vm0/commit/cfe1d4bd614b83a1191b635f1cd80ef23d6b97c2))
+
+## [0.56.1](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.56.0...guest-agent-v0.56.1) (2026-07-25)
+
+
+### Performance Improvements
+
+* add first-output coverage and codex lifecycle timings ([#22946](https://github.com/vm0-ai/vm0/issues/22946)) ([12e1316](https://github.com/vm0-ai/vm0/commit/12e13160392117b0fbe950b51fb0edc986059b90))
+* **guest-agent:** reuse serialized event bodies ([#22944](https://github.com/vm0-ai/vm0/issues/22944)) ([aade076](https://github.com/vm0-ai/vm0/commit/aade076d5570c98e5a575d6cb61734df4510c4cf))
+
 ## [0.56.0](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.55.0...guest-agent-v0.56.0) (2026-07-23)
 
 

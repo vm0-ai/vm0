@@ -1,7 +1,11 @@
 import { randomUUID } from "node:crypto";
 
+import { createStore } from "ccstate";
 import { http, HttpResponse } from "msw";
-import type { TestSlackStateResponse } from "@vm0/api-contracts/contracts/test-slack-state";
+import type {
+  TestSlackStatePostResponse,
+  TestSlackStateResponse,
+} from "@vm0/api-contracts/contracts/test-slack-state";
 import type {
   TestTelegramStateResponse,
   TestTelegramStateSeedResponse,
@@ -11,17 +15,17 @@ import { createAppWithRoutes } from "../../../app-factory-core";
 import { mockEnv, mockOptionalEnv } from "../../../lib/env";
 import { server } from "../../../mocks/server";
 import { testContext } from "../../../__tests__/test-context";
-import { testSlackDispatchProbeRoutes } from "../test-slack-dispatch-probe";
 import { testSlackStateRoutes } from "../test-slack-state";
 import { testTelegramDispatchProbeRoutes } from "../test-telegram-dispatch-probe";
 import { testTelegramStateRoutes } from "../test-telegram-state";
+import { seedRun$ } from "./helpers/zero-usage-insight";
 import { createFixtureTracker } from "./helpers/zero-route-test";
 
 const context = testContext();
+const store = createStore();
 const TELEGRAM_STATE_ROUTE = "/api/test/telegram-state";
 const TELEGRAM_DISPATCH_PROBE_ROUTE = "/api/test/telegram-dispatch-probe";
 const SLACK_STATE_ROUTE = "/api/test/slack-state";
-const SLACK_DISPATCH_PROBE_ROUTE = "/api/test/slack-dispatch-probe";
 const TELEGRAM_TEST_BOT_TOKEN = "123456:e2e-test-bot-token";
 const TELEGRAM_TEST_API_BASE_URL = "https://telegram.test/bot";
 
@@ -36,6 +40,9 @@ interface TelegramFixture {
 interface SlackFixture {
   readonly teamId: string;
   readonly slackUserId: string;
+  readonly userId: string;
+  readonly orgId: string;
+  readonly defaultAgentId: string;
 }
 
 interface RecentRun {
@@ -51,7 +58,6 @@ function requestApp(path: string, init?: RequestInit): Promise<Response> {
       ...testTelegramStateRoutes,
       ...testTelegramDispatchProbeRoutes,
       ...testSlackStateRoutes,
-      ...testSlackDispatchProbeRoutes,
     ],
   });
   return Promise.resolve(app.request(path, init));
@@ -82,31 +88,6 @@ function recentRuns(value: readonly unknown[]): RecentRun[] {
       (typeof run.promptPreview === "string" || run.promptPreview === null)
     );
   });
-}
-
-function sandboxOperationEventsForRun(
-  runId: string,
-): readonly Record<string, unknown>[] {
-  return context.mocks.axiom.sdkIngest.mock.calls.flatMap((call) => {
-    const dataset = call[0];
-    const events = call[1];
-    if (dataset !== "vm0-sandbox-op-log-dev" || !Array.isArray(events)) {
-      return [];
-    }
-    return events.filter((event): event is Record<string, unknown> => {
-      return isRecord(event) && event.run_id === runId;
-    });
-  });
-}
-
-function sandboxOperationActionTypes(
-  events: readonly Record<string, unknown>[],
-): Set<unknown> {
-  return new Set(
-    events.map((event) => {
-      return event.op_type;
-    }),
-  );
 }
 
 function mockClerkTestUser(args: {
@@ -141,44 +122,6 @@ function mockTelegramTyping(): void {
       });
     }),
   );
-}
-
-function configureSlackDispatchMocks(): void {
-  mockOptionalEnv("RUNNER_DEFAULT_GROUP", "vm0/test");
-  mockOptionalEnv("VM0_API_BACKEND_URL", "http://localhost:3000");
-  mockOptionalEnv("VM0_WEB_URL", "http://localhost:3000");
-  mockEnv("APP_URL", "http://localhost:3002");
-  context.mocks.s3.send.mockResolvedValue({});
-  context.mocks.slack.assistant.threads.setStatus.mockResolvedValue({
-    ok: true,
-  });
-  context.mocks.slack.chat.postMessage.mockResolvedValue({
-    ok: true,
-    ts: "1710000000.000000",
-    channel: "C-test",
-  });
-  context.mocks.slack.chat.postEphemeral.mockResolvedValue({
-    ok: true,
-    message_ts: "1710000000.000001",
-  });
-  context.mocks.slack.conversations.history.mockResolvedValue({
-    ok: true,
-    messages: [],
-  });
-  context.mocks.slack.conversations.replies.mockResolvedValue({
-    ok: true,
-    messages: [],
-  });
-  context.mocks.slack.users.info.mockResolvedValue({
-    ok: true,
-    user: {
-      profile: {
-        display_name: "Slack User",
-        email: "slack@example.com",
-      },
-      tz: "UTC",
-    },
-  });
 }
 
 function postTelegramState(body: Record<string, unknown>): Promise<Response> {
@@ -288,7 +231,17 @@ async function seedSlackFixture(args: {
     seed_default_agent: true,
   });
   expect(response.status).toBe(200);
-  const fixture = { teamId, slackUserId };
+  const body = await readJson<TestSlackStatePostResponse>(response);
+  if (!body.default_agent_id) {
+    throw new Error("Expected Slack fixture to include a default agent");
+  }
+  const fixture = {
+    teamId,
+    slackUserId,
+    userId: body.vm0_user_id,
+    orgId: body.org_id,
+    defaultAgentId: body.default_agent_id,
+  };
   await trackSlackFixture(Promise.resolve(fixture));
   return fixture;
 }
@@ -326,23 +279,17 @@ async function dispatchSlackMessage(args: {
   readonly fixture: SlackFixture;
   readonly text: string;
 }): Promise<void> {
-  configureSlackDispatchMocks();
-  const response = await requestApp(SLACK_DISPATCH_PROBE_ROUTE, {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({
-      team_id: args.fixture.teamId,
-      channel_id: "C-test",
-      user_id: args.fixture.slackUserId,
-      message_text: args.text,
-      message_ts: "1710000000.000000",
-      channel_type: "channel",
-    }),
-  });
-  expect(response.status).toBe(200);
-  await expect(
-    readJson<{ readonly ok: true }>(response),
-  ).resolves.toStrictEqual({ ok: true });
+  await store.set(
+    seedRun$,
+    {
+      orgId: args.fixture.orgId,
+      userId: args.fixture.userId,
+      composeId: args.fixture.defaultAgentId,
+      triggerSource: "slack",
+      prompt: args.text,
+    },
+    context.signal,
+  );
 }
 describe("GET /api/test/telegram-state", () => {
   it("returns 404 when the test endpoint is not allowed", async () => {
@@ -680,7 +627,13 @@ describe("POST /api/test/telegram-state", () => {
       throw new Error("Expected seeded default agent id");
     }
     await trackSlackFixture(
-      Promise.resolve({ teamId, slackUserId: "U_TELEGRAM_RACE" }),
+      Promise.resolve({
+        teamId,
+        slackUserId: "U_TELEGRAM_RACE",
+        userId,
+        orgId,
+        defaultAgentId,
+      }),
     );
     await trackTelegramFixture(
       Promise.resolve({
@@ -694,86 +647,6 @@ describe("POST /api/test/telegram-state", () => {
 
     expect(new Set(defaultAgentIds).size).toBe(1);
     expect(defaultAgentIds).not.toContain(null);
-  });
-
-  it("emits Slack pre-create timing without leaking Slack payload values", async () => {
-    mockEnv("ENV", "development");
-    const userId = uniqueId("user");
-    const orgId = uniqueId("org");
-    const email = `${randomUUID()}@example.test`;
-    const slack = await seedSlackFixture({ userId, orgId, email });
-    const prompt = "slack timing should not leak prompt";
-
-    await dispatchSlackMessage({
-      fixture: slack,
-      text: prompt,
-    });
-
-    const slackState = await readSlackState(slack.teamId);
-    const run = recentRuns(slackState.recent_runs).find((candidate) => {
-      return candidate.promptPreview === prompt;
-    });
-    if (!run) {
-      throw new Error("Expected Slack dispatch probe to create a run");
-    }
-    const timingEvents = sandboxOperationEventsForRun(run.id);
-    const actionTypes = sandboxOperationActionTypes(timingEvents);
-    for (const actionType of [
-      "api_dispatch_pre_create_zero_slack_entrypoint_gap",
-      "api_dispatch_pre_create_zero_slack_resolve_message",
-      "api_dispatch_pre_create_zero_slack_set_thread_status",
-      "api_dispatch_pre_create_zero_slack_build_run_params",
-      "api_dispatch_pre_create_zero_slack_build_run_params_enrich_message",
-      "api_dispatch_pre_create_zero_slack_build_run_params_resolve_model_route",
-      "api_dispatch_pre_create_zero_slack_build_run_params_load_thread_binding",
-      "api_dispatch_pre_create_zero_slack_build_run_params_resolve_session",
-      "api_dispatch_pre_create_zero_slack_build_run_params_resolve_computer_use_host",
-      "api_dispatch_pre_create_zero_slack_build_run_params_fetch_conversation_context",
-      "api_dispatch_pre_create_zero_slack_build_run_params_fetch_conversation_context_history",
-      "api_dispatch_pre_create_zero_slack_build_run_params_fetch_conversation_context_user_info",
-      "api_dispatch_pre_create_zero_slack_build_run_params_fetch_conversation_context_format",
-      "api_dispatch_pre_create_zero_slack_build_run_params_user_info_resolver",
-      "api_dispatch_pre_create_zero_slack_build_run_params_assemble",
-      "api_dispatch_pre_create_zero_slack_create_run",
-    ]) {
-      expect(actionTypes).toContain(actionType);
-    }
-    expect(actionTypes).not.toContain(
-      "api_dispatch_pre_create_zero_entrypoint_gap",
-    );
-    expect(timingEvents).toStrictEqual(
-      expect.arrayContaining([
-        expect.objectContaining({
-          op_type: "api_dispatch_pre_create_zero_slack_create_run",
-          trigger_source: "slack",
-          zero_run_origin: "zero_run",
-          span_kind: "nested",
-        }),
-      ]),
-    );
-    expect(timingEvents).toStrictEqual(
-      expect.arrayContaining([
-        expect.objectContaining({
-          op_type:
-            "api_dispatch_pre_create_zero_slack_build_run_params_fetch_conversation_context",
-          slack_context_shape: "channel_no_thread",
-          slack_context_thread_message_count_bucket: "0",
-          slack_context_channel_message_count_bucket: expect.any(String),
-          slack_context_total_message_count_bucket: expect.any(String),
-          slack_context_user_info_id_count_bucket: expect.any(String),
-        }),
-      ]),
-    );
-    const serializedTimingEvents = JSON.stringify(timingEvents);
-    for (const forbiddenValue of [
-      prompt,
-      slack.teamId,
-      slack.slackUserId,
-      "C-test",
-      "1710000000.000000",
-    ]) {
-      expect(serializedTimingEvents).not.toContain(forbiddenValue);
-    }
   });
 });
 

@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-import type { ConnectorAuthCodeGrantConfig } from "@vm0/connectors/connectors";
+import type { ConnectorAuthCodeGrantConfig } from "@vm0/connectors/connector-config";
 import { throwOAuthError } from "../../oauth/error";
 
 const DOCUSIGN_TOKEN_URL = "https://account-d.docusign.com/oauth/token";
@@ -239,11 +239,4 @@ async function fetchDocuSignUserInfo(
     username: data.name ?? null,
     email: data.email ?? null,
   };
-}
-
-/**
- * Get the primary secret name for DocuSign connector (the access token).
- */
-export function getDocuSignSecretName(): string {
-  return "DOCUSIGN_ACCESS_TOKEN";
 }

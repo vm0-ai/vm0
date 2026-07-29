@@ -2,8 +2,8 @@ import {
   resolveConnectorAuthClient,
   type ConnectorAuthClient,
   type ConnectorEnvReader,
-} from "@vm0/connectors/connector-utils";
-import type { ConnectorAuthMethodRuntimeConfig } from "@vm0/connectors/connectors";
+} from "@vm0/connectors/connector-auth-method";
+import type { ConnectorAuthMethodRuntimeConfig } from "@vm0/connectors/connector-config";
 import { buildConnectorAuthCodeAuthorizationUrlWithMethod } from "@vm0/connectors/auth-providers";
 import type { AuthUrlResult } from "@vm0/connectors/auth-providers/provider-flow-types";
 

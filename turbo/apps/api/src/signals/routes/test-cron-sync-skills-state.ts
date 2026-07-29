@@ -97,7 +97,6 @@ async function seedStorageRows(
           orgId: SYSTEM_ORG_ID,
           userId: VOLUME_ORG_USER_ID,
           name: version.storage_name,
-          type: "volume",
           s3Prefix: version.s3_prefix,
           size: version.size,
           fileCount: version.file_count,
@@ -256,7 +255,6 @@ async function readStorageByNameForAction(
 ) {
   const [row] = await db
     .select({
-      type: storages.type,
       headVersionId: storages.headVersionId,
       size: storages.size,
       versionSize: storageVersions.size,
@@ -270,7 +268,6 @@ async function readStorageByNameForAction(
   return actionOk({
     storage: row
       ? {
-          type: row.type,
           head_version_id: row.headVersionId,
           size: row.size,
           version_size: row.versionSize,

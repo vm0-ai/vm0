@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-import type { ConnectorAuthCodeGrantConfig } from "@vm0/connectors/connectors";
+import type { ConnectorAuthCodeGrantConfig } from "@vm0/connectors/connector-config";
 import { throwOAuthError } from "../../oauth/error";
 
 const FIGMA_TOKEN_URL = "https://api.figma.com/v1/oauth/token";
@@ -195,11 +195,4 @@ async function fetchFigmaUserInfo(accessToken: string): Promise<FigmaUserInfo> {
     email: data.email ?? null,
     name: data.handle ?? null,
   };
-}
-
-/**
- * Get the primary secret name for Figma connector (the access token).
- */
-export function getFigmaSecretName(): string {
-  return "FIGMA_ACCESS_TOKEN";
 }

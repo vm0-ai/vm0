@@ -16,7 +16,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@vm0/ui/components/ui/dialog";
-import type { ConnectorDeviceAuthStartOptions } from "@vm0/connectors/connectors";
+import type { ConnectorDeviceAuthStartOptions } from "@vm0/connectors/connector-config";
 import type {
   ConnectorAuthMethodId,
   ConnectorRef,
@@ -51,7 +51,6 @@ import {
   clearManualGrantForm$,
   manualGrantFormValuesFor$,
   selectedConnectorRef$,
-  isStandaloneMode,
   connectorCurrentConnectionStatus,
   connectorExpiryCountdownText,
   hasConnectorStatusBrowserAuthGrant,
@@ -354,12 +353,7 @@ function getOAuthAuthCodeProgressContent({
 }) {
   // While browser authorization is in progress, only show connecting state.
   if (isPolling) {
-    const standaloneHint = isStandaloneMode()
-      ? " Switch back here after completing sign-in."
-      : "";
-    return (
-      <p className="text-sm text-muted-foreground">{`Connecting...${standaloneHint}`}</p>
-    );
+    return <p className="text-sm text-muted-foreground">Connecting...</p>;
   }
 
   if (settling) {

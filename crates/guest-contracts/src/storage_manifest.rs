@@ -1,5 +1,7 @@
 //! Runner-to-guest storage manifest wire contract.
 
+use std::collections::HashSet;
+
 use serde::{Deserialize, Serialize};
 
 /// Storage preparation manifest sent from the runner to `guest-download`.
@@ -18,12 +20,7 @@ pub struct Manifest {
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct ManifestWire {
-    #[serde(default)]
-    storages: Option<Vec<StorageEntry>>,
-    #[serde(default)]
-    artifacts: Option<Vec<ArtifactEntry>>,
-    #[serde(default)]
-    storage_mounts: Option<Vec<StorageMountEntry>>,
+    storage_mounts: Vec<StorageMountEntry>,
     #[serde(default)]
     cleanup_paths: Vec<String>,
     #[serde(default)]
@@ -69,23 +66,12 @@ impl<'de> Deserialize<'de> for Manifest {
         D: serde::Deserializer<'de>,
     {
         let wire = ManifestWire::deserialize(deserializer)?;
-        match (wire.storages, wire.artifacts, wire.storage_mounts) {
-            (Some(storages), Some(artifacts), None) => Ok(Self {
-                storages,
-                artifacts,
-                cleanup_paths: wire.cleanup_paths,
-                instruction_cleanups: wire.instruction_cleanups,
-            }),
-            (None, None, Some(storage_mounts)) => Self::from_storage_mounts(
-                storage_mounts,
-                wire.cleanup_paths,
-                wire.instruction_cleanups,
-            )
-            .map_err(serde::de::Error::custom),
-            _ => Err(serde::de::Error::custom(
-                "storage manifest must contain exactly storageMounts or both storages and artifacts",
-            )),
-        }
+        Self::from_storage_mounts(
+            wire.storage_mounts,
+            wire.cleanup_paths,
+            wire.instruction_cleanups,
+        )
+        .map_err(serde::de::Error::custom)
     }
 }
 
@@ -95,6 +81,8 @@ impl Manifest {
         cleanup_paths: Vec<String>,
         instruction_cleanups: Vec<InstructionCleanupEntry>,
     ) -> Result<Self, String> {
+        validate_unique_mount_paths(&storage_mounts)?;
+
         let mut storages = Vec::new();
         let mut artifacts = Vec::new();
 
@@ -143,6 +131,19 @@ impl Manifest {
             instruction_cleanups,
         })
     }
+}
+
+fn validate_unique_mount_paths(storage_mounts: &[StorageMountEntry]) -> Result<(), String> {
+    let mut mount_paths = HashSet::with_capacity(storage_mounts.len());
+    for mount in storage_mounts {
+        if !mount_paths.insert(mount.mount_path.as_str()) {
+            return Err(format!(
+                "storage manifest contains duplicate mountPath \"{}\"",
+                mount.mount_path
+            ));
+        }
+    }
+    Ok(())
 }
 
 /// Volume storage entry in the guest storage manifest.
@@ -366,7 +367,8 @@ mod tests {
                     "mountPath": "/home/user/.codex",
                     "archiveUrl": "https://example.com/storage.tar.gz",
                     "cached": false,
-                    "writeback": false
+                    "writeback": false,
+                    "futureMountField": true
                 },
                 {
                     "name": "memory",
@@ -378,7 +380,8 @@ mod tests {
                     "writeback": true
                 }
             ],
-            "cleanupPaths": ["/stale"]
+            "cleanupPaths": ["/stale"],
+            "futureManifestField": true
         }))
         .unwrap();
 
@@ -397,9 +400,9 @@ mod tests {
     }
 
     #[test]
-    fn manifest_rejects_ambiguous_representations() {
+    fn manifest_rejects_legacy_representations() {
         for value in [
-            json!({ "storageMounts": [], "storages": [], "artifacts": [] }),
+            json!({ "storages": [], "artifacts": [] }),
             json!({ "storages": [] }),
             json!({ "artifacts": [] }),
             json!({}),
@@ -409,44 +412,20 @@ mod tests {
     }
 
     #[test]
-    fn legacy_manifest_defaults_omitted_fields() {
-        let manifest: Manifest = serde_json::from_value(json!({
-            "storages": [{
-                "mountPath": "/data",
-                "unknownStorageField": true
-            }],
-            "artifacts": [{
-                "mountPath": "/workspace",
-                "extractPath": "/ignored"
-            }]
-        }))
-        .unwrap();
+    fn manifest_rejects_duplicate_storage_mount_paths() {
+        let result = serde_json::from_value::<Manifest>(json!({
+            "storageMounts": [
+                {
+                    "mountPath": "/workspace"
+                },
+                {
+                    "mountPath": "/workspace",
+                    "writeback": true
+                }
+            ]
+        }));
 
-        assert_eq!(
-            manifest,
-            Manifest {
-                storages: vec![StorageEntry {
-                    mount_path: "/data".into(),
-                    extract_path: None,
-                    archive_url: None,
-                    instructions_target_filename: None,
-                    cached: false,
-                    vas_storage_name: None,
-                    vas_version_id: None,
-                }],
-                artifacts: vec![ArtifactEntry {
-                    mount_path: "/workspace".into(),
-                    archive_url: None,
-                    empty: false,
-                    cached: false,
-                    vas_storage_name: None,
-                    vas_storage_id: None,
-                    vas_version_id: None,
-                    missing_root_policy: None,
-                }],
-                cleanup_paths: Vec::new(),
-                instruction_cleanups: Vec::new(),
-            }
-        );
+        let error = result.unwrap_err().to_string();
+        assert!(error.contains("duplicate mountPath \"/workspace\""));
     }
 }

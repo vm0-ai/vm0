@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-import type { ConnectorAuthCodeGrantConfig } from "@vm0/connectors/connectors";
+import type { ConnectorAuthCodeGrantConfig } from "@vm0/connectors/connector-config";
 import { throwOAuthError } from "../../oauth/error";
 
 const AIRTABLE_TOKEN_URL = "https://airtable.com/oauth2/v1/token";
@@ -232,11 +232,4 @@ async function fetchAirtableUserInfo(
     username: data.email ?? null,
     email: data.email ?? null,
   };
-}
-
-/**
- * Get the primary secret name for Airtable connector (the access token).
- */
-export function getAirtableSecretName(): string {
-  return "AIRTABLE_ACCESS_TOKEN";
 }

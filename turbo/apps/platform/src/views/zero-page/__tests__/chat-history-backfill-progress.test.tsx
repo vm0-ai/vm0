@@ -1,9 +1,8 @@
 import { waitFor } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
-import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import {
-  chatThreadMessagesContract,
-  type PagedChatMessage,
+  chatThreadEventsContract,
+  type ChatEventResponse,
 } from "@vm0/api-contracts/contracts/chat-threads";
 
 import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
@@ -19,10 +18,23 @@ const PAGE_SIZE = 50;
 // fetched and flushed into the persistent message state.
 const GATED_BEFORE_SEQ_ID = 51;
 
-function messageForSeq(seqId: number): PagedChatMessage {
+function eventForSeq(seqId: number): ChatEventResponse {
+  if (seqId === TOTAL_MESSAGES) {
+    return {
+      id: `00000000-0000-4000-8000-${String(seqId).padStart(12, "0")}`,
+      threadId: THREAD_ID,
+      eventType: "output.message",
+      content: "Latest visible message",
+      seqId,
+      createdAt: new Date(
+        Date.parse("2026-03-10T00:00:00.000Z") + seqId * 1000,
+      ).toISOString(),
+    };
+  }
   return {
     id: `00000000-0000-4000-8000-${String(seqId).padStart(12, "0")}`,
-    role: "assistant",
+    threadId: THREAD_ID,
+    eventType: "goal.changed",
     // Control rows participate in history pagination without rendering
     // hundreds of unrelated transcript nodes in this progress-only test.
     content: null,
@@ -34,15 +46,15 @@ function messageForSeq(seqId: number): PagedChatMessage {
   };
 }
 
-function messagesInRange(
+function eventsInRange(
   fromSeqId: number,
   toSeqId: number,
-): PagedChatMessage[] {
-  const messages: PagedChatMessage[] = [];
+): ChatEventResponse[] {
+  const events: ChatEventResponse[] = [];
   for (let seqId = fromSeqId; seqId <= toSeqId; seqId++) {
-    messages.push(messageForSeq(seqId));
+    events.push(eventForSeq(seqId));
   }
-  return messages;
+  return events;
 }
 
 function mockPagedHistory(): {
@@ -53,17 +65,14 @@ function mockPagedHistory(): {
   const finalHistoryPage = context.mocks.deferred<void>();
   const beforeSeqIds: number[] = [];
   context.mocks.api(
-    chatThreadMessagesContract.list,
+    chatThreadEventsContract.list,
     async ({ query, respond }) => {
       if (query.sinceSeqId !== undefined) {
-        return respond(200, { messages: [] });
+        return respond(200, { events: [] });
       }
       if (query.beforeSeqId === undefined) {
         return respond(200, {
-          messages: messagesInRange(
-            TOTAL_MESSAGES - PAGE_SIZE + 1,
-            TOTAL_MESSAGES,
-          ),
+          events: eventsInRange(TOTAL_MESSAGES - PAGE_SIZE + 1, TOTAL_MESSAGES),
           hasHistoryBefore: true,
         });
       }
@@ -74,7 +83,7 @@ function mockPagedHistory(): {
       const toSeqId = query.beforeSeqId - 1;
       const fromSeqId = Math.max(1, toSeqId - PAGE_SIZE + 1);
       return respond(200, {
-        messages: messagesInRange(fromSeqId, toSeqId),
+        events: eventsInRange(fromSeqId, toSeqId),
         hasHistoryBefore: fromSeqId > 1,
       });
     },
@@ -82,48 +91,46 @@ function mockPagedHistory(): {
   return { finalHistoryPage, beforeSeqIds };
 }
 
-describe("chat history backfill progress", () => {
-  it("shows incremental progress during backfill and hides it once history completes", async () => {
+describe("chat history backfill loading", () => {
+  it("shows a message skeleton pair above the first message and hides it once history completes", async () => {
     const { finalHistoryPage, beforeSeqIds } = mockPagedHistory();
 
     detachedSetupPage({
       context,
       path: `/chats/${THREAD_ID}`,
-      featureSwitches: {
-        [FeatureSwitchKey.ChatHistoryBackfillProgress]: true,
-      },
     });
 
     await waitFor(() => {
       expect(beforeSeqIds).toContain(GATED_BEFORE_SEQ_ID);
-      const progressBar = document.querySelector(
-        "[data-history-backfill-progress]",
+      const messageContainer = document.querySelector(
+        "[data-message-container]",
       );
-      expect(progressBar).toBeInstanceOf(HTMLElement);
-      // Six pages flushed mid-backfill: seqIds 51..400 are loaded, so the
-      // approximate progress is (400 - 51) / 400 = 87%.
-      expect(progressBar).toHaveAttribute("aria-valuenow", "87");
+      const skeleton = document.querySelector(
+        "[data-history-backfill-skeleton]",
+      );
+      const firstMessage = document.querySelector('[data-role="assistant"]');
+      if (
+        !(messageContainer instanceof HTMLElement) ||
+        !(skeleton instanceof HTMLElement) ||
+        !(firstMessage instanceof HTMLElement)
+      ) {
+        throw new Error("Expected the loading skeleton above a chat message");
+      }
+      expect(skeleton.parentElement).toBe(messageContainer);
+      expect(
+        skeleton.querySelectorAll("[data-chat-message-skeleton]"),
+      ).toHaveLength(2);
+      expect(
+        skeleton.compareDocumentPosition(firstMessage) &
+          Node.DOCUMENT_POSITION_FOLLOWING,
+      ).toBeTruthy();
     });
 
     finalHistoryPage.resolve();
     await waitFor(() => {
       expect(
-        document.querySelector("[data-history-backfill-progress]"),
+        document.querySelector("[data-history-backfill-skeleton]"),
       ).toBeNull();
     });
-  });
-
-  it("stays hidden during backfill when the feature switch is off", async () => {
-    const { finalHistoryPage, beforeSeqIds } = mockPagedHistory();
-
-    detachedSetupPage({ context, path: `/chats/${THREAD_ID}` });
-
-    await waitFor(() => {
-      expect(beforeSeqIds).toContain(GATED_BEFORE_SEQ_ID);
-    });
-    expect(
-      document.querySelector("[data-history-backfill-progress]"),
-    ).toBeNull();
-    finalHistoryPage.resolve();
   });
 });

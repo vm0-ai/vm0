@@ -265,6 +265,7 @@ function buildMatchFromFlags(
 
 export function buildGmailNewMessageEventConfig(
   options: GmailAutomationOptions,
+  baseConfig?: GmailNewMessageEventConfig,
 ): GmailNewMessageEventConfig {
   if (
     options.config !== undefined &&
@@ -280,9 +281,12 @@ export function buildGmailNewMessageEventConfig(
       ? readConfigMatch(options.config)
       : buildMatchFromFlags(options);
 
-  return match
-    ? { provider: "gmail", event: "new_message", match }
-    : { provider: "gmail", event: "new_message" };
+  return {
+    provider: "gmail",
+    event: "new_message",
+    ...(baseConfig?.threadId ? { threadId: baseConfig.threadId } : {}),
+    ...(match ? { match } : {}),
+  };
 }
 
 export function buildGmailLabelAppliedEventConfig(

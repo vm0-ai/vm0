@@ -7,7 +7,6 @@ import {
 import { agentComposes } from "@vm0/db/schema/agent-compose";
 import { agentRuns } from "@vm0/db/schema/agent-run";
 import { agentSessions } from "@vm0/db/schema/agent-session";
-import { chatMessageQueue } from "@vm0/db/schema/chat-message-queue";
 import { chatThreads } from "@vm0/db/schema/chat-thread";
 import { zeroRuns } from "@vm0/db/schema/zero-run";
 import { command } from "ccstate";
@@ -18,9 +17,10 @@ import { bodyResultOf } from "../context/request";
 import { writeDb$, type Db } from "../external/db";
 import type { RouteEntry } from "../route-entry";
 import {
-  insertChatMessage,
-  updateChatMessage,
-} from "../services/zero-chat-message.service";
+  insertChatEvent,
+  replaceChatEvent,
+} from "../services/zero-chat-event.service";
+import { createUserMessageDocument } from "../services/zero-chat-user-message.service";
 import {
   isTestEndpointAllowed,
   testEndpointNotFoundResponse,
@@ -118,33 +118,40 @@ async function seedFixture(
   }
 
   const message = await db.transaction(async (tx) => {
-    return await insertChatMessage(tx, {
+    const baseEvent = {
       chatThreadId: thread.id,
-      role: "user",
       content: "orphan monitor fixture",
+      userMessage: createUserMessageDocument({
+        text: "orphan monitor fixture",
+      }),
       runId: null,
-      error: fixtureKind === "failed-message" ? "INSUFFICIENT_CREDITS" : null,
-    });
+    };
+    return fixtureKind === "failed-message"
+      ? await insertChatEvent(tx, {
+          ...baseEvent,
+          eventType: "input.rejected",
+          error: "INSUFFICIENT_CREDITS",
+        })
+      : await insertChatEvent(tx, {
+          ...baseEvent,
+          eventType: "input.prompt",
+          triggerSource: fixtureKind === "orphan" ? "slack" : "web",
+        });
   });
   signal.throwIfAborted();
   if (!message) {
     throw new Error("Failed to seed orphan monitor message");
   }
 
-  if (fixtureKind === "queued-message") {
-    await db.insert(chatMessageQueue).values({
-      orgId,
-      userId,
-      chatThreadId: thread.id,
-      itemType: "user_message",
-      chatMessageId: message.id,
-    });
-  } else if (fixtureKind === "revoked-message") {
+  if (fixtureKind === "revoked-message") {
     await db.transaction(async (tx) => {
-      await updateChatMessage(tx, message.id, {
+      await replaceChatEvent(tx, message.id, {
         chatThreadId: thread.id,
-        role: "user",
+        eventType: "input.prompt",
         content: "claimed orphan monitor fixture",
+        userMessage: createUserMessageDocument({
+          text: "claimed orphan monitor fixture",
+        }),
         runId: randomUUID(),
       });
     });

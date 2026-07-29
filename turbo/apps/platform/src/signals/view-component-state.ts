@@ -1,14 +1,8 @@
 import { command, computed, state } from "ccstate";
 import { reloadTelegramConnectLinkStatus$ } from "./zero-page/telegram-connect-signals.ts";
-import { onRef, setLoop, throwIfAbort } from "./utils.ts";
-import { fetchPreviewText } from "./chat-page/artifact-card-signals.ts";
+import { onRef, setLoop } from "./utils.ts";
 
 type ImageLoadStatus = "loading" | "loaded" | "error";
-
-export type TextPreviewLoadState = {
-  status: "loading" | "loaded" | "error";
-  text: string;
-};
 
 export const IMAGE_LIGHTBOX_MIN_ZOOM = 0.1;
 export const IMAGE_LIGHTBOX_MAX_ZOOM = 3;
@@ -16,13 +10,11 @@ export const IMAGE_LIGHTBOX_MAX_ZOOM = 3;
 const internalImageLoadStatusByKey$ = state<Record<string, ImageLoadStatus>>(
   {},
 );
+const internalImageLoadStatusRefCountByKey$ = state<Record<string, number>>({});
 const internalZoomableImageCanvasFitWidthByKey$ = state<Record<string, number>>(
   {},
 );
 const internalZoomableImageCanvasZoomByKey$ = state<Record<string, number>>({});
-const internalTextPreviewLoadStateByKey$ = state<
-  Record<string, TextPreviewLoadState>
->({});
 const internalTypewriterDisplayedByKey$ = state<Record<string, string>>({});
 
 export const imageLoadStatusByKey$ = computed((get) => {
@@ -35,10 +27,6 @@ export const zoomableImageCanvasZoomByKey$ = computed((get) => {
 
 export const zoomableImageCanvasFitWidthByKey$ = computed((get) => {
   return get(internalZoomableImageCanvasFitWidthByKey$);
-});
-
-export const textPreviewLoadStateByKey$ = computed((get) => {
-  return get(internalTextPreviewLoadStateByKey$);
 });
 
 export const typewriterDisplayed$ = computed((get) => {
@@ -98,56 +86,59 @@ const resetImageLoadStatus$ = command(({ set }, key: string) => {
   });
 });
 
+const retainImageLoadStatus$ = command(({ get, set }, key: string) => {
+  const refCount = get(internalImageLoadStatusRefCountByKey$)[key] ?? 0;
+  set(internalImageLoadStatusRefCountByKey$, (current) => {
+    return { ...current, [key]: refCount + 1 };
+  });
+  set(resetImageLoadStatus$, key);
+});
+
+const releaseImageLoadStatus$ = command(({ get, set }, key: string) => {
+  const refCount = get(internalImageLoadStatusRefCountByKey$)[key] ?? 0;
+  if (refCount > 1) {
+    set(internalImageLoadStatusRefCountByKey$, (current) => {
+      return { ...current, [key]: refCount - 1 };
+    });
+    return;
+  }
+
+  set(internalImageLoadStatusRefCountByKey$, (current) => {
+    if (!(key in current)) {
+      return current;
+    }
+    const next = { ...current };
+    delete next[key];
+    return next;
+  });
+  set(internalImageLoadStatusByKey$, (current) => {
+    if (!(key in current)) {
+      return current;
+    }
+    const next = { ...current };
+    delete next[key];
+    return next;
+  });
+});
+
 const resetImageLoadStatusOnRef$ = command(
-  ({ set }, el: HTMLElement, _signal: AbortSignal) => {
+  ({ set }, el: HTMLElement, signal: AbortSignal) => {
     const key = el.dataset.imageLoadKey;
     if (!key) {
       return;
     }
-    set(resetImageLoadStatus$, key);
+    set(retainImageLoadStatus$, key);
+    signal.addEventListener(
+      "abort",
+      () => {
+        set(releaseImageLoadStatus$, key);
+      },
+      { once: true },
+    );
   },
 );
 
 export const imageLoadStatusRef$ = onRef(resetImageLoadStatusOnRef$);
-
-export const textPreviewLoaderRef$ = onRef(
-  command(async ({ set }, el: HTMLElement, signal: AbortSignal) => {
-    const key = el.dataset.textPreviewKey;
-    const url = el.dataset.textPreviewUrl;
-    if (!key || !url) {
-      return;
-    }
-
-    set(internalTextPreviewLoadStateByKey$, (current) => {
-      const next = { ...current };
-      next[key] = { status: "loading", text: "" };
-      return next;
-    });
-
-    // The try-catch block here can probably be removed. Currently, the internal
-    // textPreviewLoadStateByKey seems to have some issues, but let's prioritize
-    // fixing the pointCache (upvote cache) problem first.
-    // For now, I'll just add a TODO for the try-catch issue.
-    // confirmed by ethan@vm0.ai
-    // eslint-disable-next-line no-restricted-syntax
-    try {
-      const text = await fetchPreviewText(url, signal);
-
-      set(internalTextPreviewLoadStateByKey$, (current) => {
-        const next = { ...current };
-        next[key] = { status: "loaded", text };
-        return next;
-      });
-    } catch (error) {
-      throwIfAbort(error);
-      set(internalTextPreviewLoadStateByKey$, (current) => {
-        const next = { ...current };
-        next[key] = { status: "error", text: "" };
-        return next;
-      });
-    }
-  }),
-);
 
 const resetTypewriterDisplayed$ = command(({ set }, key: string) => {
   set(internalTypewriterDisplayedByKey$, (current) => {

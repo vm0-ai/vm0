@@ -1,7 +1,4 @@
-import type {
-  AuthCodeGrantConnectorType,
-  ConnectorAuthCodeGrantConfig,
-} from "@vm0/connectors/connectors";
+import type { ConnectorAuthCodeGrantConfig } from "@vm0/connectors/connector-config";
 import { z } from "zod";
 
 import { throwOAuthError } from "./error";
@@ -14,10 +11,10 @@ const MICROSOFT_AUTHORIZATION_URL =
 
 const MICROSOFT_USERINFO_URL = "https://graph.microsoft.com/v1.0/me";
 
-type MicrosoftOAuthConnectorType = Extract<
-  AuthCodeGrantConnectorType,
-  "microsoft-365" | "outlook-calendar" | "outlook-mail"
->;
+type MicrosoftOAuthConnectorType =
+  | "microsoft-365"
+  | "outlook-calendar"
+  | "outlook-mail";
 
 interface MicrosoftUserInfo {
   id: string;

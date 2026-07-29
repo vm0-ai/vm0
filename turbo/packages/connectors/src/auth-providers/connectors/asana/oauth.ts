@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-import type { ConnectorAuthCodeGrantConfig } from "@vm0/connectors/connectors";
+import type { ConnectorAuthCodeGrantConfig } from "@vm0/connectors/connector-config";
 import { throwOAuthError } from "../../oauth/error";
 
 const ASANA_TOKEN_URL = "https://app.asana.com/-/oauth_token";
@@ -203,11 +203,4 @@ export async function refreshAsanaToken(
     refreshToken: data.refresh_token ?? null,
     expiresIn: data.expires_in,
   };
-}
-
-/**
- * Get the primary secret name for Asana connector (the access token).
- */
-export function getAsanaSecretName(): string {
-  return "ASANA_ACCESS_TOKEN";
 }

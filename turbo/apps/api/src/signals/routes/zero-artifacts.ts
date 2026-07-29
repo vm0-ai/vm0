@@ -1,5 +1,5 @@
 import { command } from "ccstate";
-import { and, eq, exists, sql, type SQL } from "drizzle-orm";
+import { and, eq, exists, or, sql, type SQL } from "drizzle-orm";
 import { artifactsContract } from "@vm0/api-contracts/contracts/chat-threads";
 import { agentComposes } from "@vm0/db/schema/agent-compose";
 import { chatMessages } from "@vm0/db/schema/chat-message";
@@ -14,12 +14,7 @@ import { organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
 import { bodyResultOf, queryOf } from "../context/request";
 import { writeDb$, type Db } from "../external/db";
-import {
-  artifactFavoriteUrls$,
-  favoriteArtifact$,
-  unfavoriteArtifact$,
-  zeroArtifacts$,
-} from "../services/zero-chat-thread.service";
+import { zeroArtifacts$ } from "../services/zero-chat-thread.service";
 import { nowDate } from "../../lib/time";
 import { notFound } from "../../lib/error";
 import type { RouteEntry } from "../route-entry";
@@ -115,10 +110,10 @@ async function userCanAccessArtifactUrl(
   const rows = await executeRawRows(
     db,
     sql`
-      SELECT (
-        ${uploadedArtifactAccessCondition(db, args)}
-        OR ${attachedArtifactAccessCondition(db, args)}
-      ) AS "canAccess"
+      SELECT ${or(
+        uploadedArtifactAccessCondition(db, args),
+        attachedArtifactAccessCondition(db, args),
+      )} AS "canAccess"
     `,
     artifactAccessRowSchema,
   );
@@ -168,71 +163,6 @@ const listArtifactsInner$ = command(
         syncUntil: result.syncUntil,
       },
     };
-  },
-);
-
-const listArtifactFavoritesInner$ = command(
-  async ({ get, set }, signal: AbortSignal) => {
-    const auth = get(organizationAuthContext$);
-    const artifactUrls = await set(
-      artifactFavoriteUrls$,
-      { userId: auth.userId, orgId: auth.orgId },
-      signal,
-    );
-
-    return {
-      status: 200 as const,
-      body: { artifactUrls },
-    };
-  },
-);
-
-const favoriteArtifactInner$ = command(
-  async ({ get, set }, signal: AbortSignal) => {
-    const auth = get(organizationAuthContext$);
-    const bodyResult = await get(bodyResultOf(artifactsContract.favorite));
-    signal.throwIfAborted();
-    if (!bodyResult.ok) {
-      return bodyResult.response;
-    }
-    const visible = await set(
-      favoriteArtifact$,
-      {
-        userId: auth.userId,
-        orgId: auth.orgId,
-        artifactUrl: bodyResult.data.artifactUrl,
-      },
-      signal,
-    );
-    signal.throwIfAborted();
-    if (!visible) {
-      return notFound("Artifact not found");
-    }
-
-    return { status: 204 as const, body: undefined };
-  },
-);
-
-const unfavoriteArtifactInner$ = command(
-  async ({ get, set }, signal: AbortSignal) => {
-    const auth = get(organizationAuthContext$);
-    const bodyResult = await get(bodyResultOf(artifactsContract.unfavorite));
-    signal.throwIfAborted();
-    if (!bodyResult.ok) {
-      return bodyResult.response;
-    }
-    await set(
-      unfavoriteArtifact$,
-      {
-        userId: auth.userId,
-        orgId: auth.orgId,
-        artifactUrl: bodyResult.data.artifactUrl,
-      },
-      signal,
-    );
-    signal.throwIfAborted();
-
-    return { status: 204 as const, body: undefined };
   },
 );
 
@@ -386,39 +316,6 @@ export const zeroArtifactsRoutes: readonly RouteEntry[] = [
         requiredCapability: "chat-message:read",
       },
       listArtifactsInner$,
-    ),
-  },
-  {
-    route: artifactsContract.listFavorites,
-    handler: authRoute(
-      {
-        requireOrganization: true,
-        missingOrganizationStatus: 401,
-        requiredCapability: "chat-message:read",
-      },
-      listArtifactFavoritesInner$,
-    ),
-  },
-  {
-    route: artifactsContract.favorite,
-    handler: authRoute(
-      {
-        requireOrganization: true,
-        missingOrganizationStatus: 401,
-        requiredCapability: "chat-message:read",
-      },
-      favoriteArtifactInner$,
-    ),
-  },
-  {
-    route: artifactsContract.unfavorite,
-    handler: authRoute(
-      {
-        requireOrganization: true,
-        missingOrganizationStatus: 401,
-        requiredCapability: "chat-message:read",
-      },
-      unfavoriteArtifactInner$,
     ),
   },
   {

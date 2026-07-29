@@ -22,7 +22,7 @@ if [ -z "${CF_ACCESS_CLIENT_ID:-}" ] || [ -z "${CF_ACCESS_CLIENT_SECRET:-}" ]; t
 fi
 
 DOMAIN="${CF_TUNNEL_DOMAIN:-vm3.ai}"
-SUB="${HOST%.${DOMAIN}}"
+SUB="${HOST%."${DOMAIN}"}"
 TUNNEL_HOST="${SUB//./-}-ssh.${DOMAIN}"
 CLOUDFLARED_BIN="${CLOUDFLARED_BIN:-cloudflared}"
 LOG_DIR="${RUNNER_TEMP:-${TMPDIR:-/tmp}}"
@@ -45,8 +45,18 @@ redact_cloudflared_log() {
     -e 's/(--id(=|[[:space:]]+))[^[:space:]]+/\1[redacted]/g' \
     -e 's/(CF_ACCESS_CLIENT_SECRET=)[^[:space:]]+/\1[redacted]/g' \
     -e 's/(CF_ACCESS_CLIENT_ID=)[^[:space:]]+/\1[redacted]/g' \
+    -e 's/(TUNNEL_SERVICE_TOKEN_SECRET=)[^[:space:]]+/\1[redacted]/g' \
+    -e 's/(TUNNEL_SERVICE_TOKEN_ID=)[^[:space:]]+/\1[redacted]/g' \
     -e 's/(Authorization:[[:space:]]*Bearer[[:space:]]+)[^[:space:]]+/\1[redacted]/Ig' \
     "$LOG_FILE"
+}
+
+emit_redacted_cloudflared_log() {
+  local header="$1"
+  if [ -s "$LOG_FILE" ]; then
+    echo "$header" >&2
+    redact_cloudflared_log | tail -n 20 >&2
+  fi
 }
 
 failure_title() {
@@ -80,11 +90,11 @@ failure_message() {
   esac
 }
 
-emit_failure_marker() {
+emit_failure_report() {
   local status="$1"
-  local title message escaped_title escaped_message
-  title=$(failure_title)
-  message=$(failure_message "$status" "$title")
+  local title="$2"
+  local message="$3"
+  local escaped_title escaped_message
   escaped_title=$(github_escape "$title")
   escaped_message=$(github_escape "$message")
 
@@ -96,28 +106,85 @@ emit_failure_marker() {
       echo ""
       echo "- Host: \`${HOST}\`"
       echo "- Tunnel: \`${TUNNEL_HOST}\`"
-      echo "- cloudflared exit: \`${status}\`"
+      echo "- Exit status: \`${status}\`"
       echo "- Diagnosis: ${message}"
       echo ""
     } >> "$GITHUB_STEP_SUMMARY"
   fi
 
-  if [ -s "$LOG_FILE" ]; then
-    echo "----- cloudflared stderr (last 20 lines, redacted) -----" >&2
-    redact_cloudflared_log | tail -n 20 >&2
+  emit_redacted_cloudflared_log \
+    "----- cloudflared stderr (last 20 lines, redacted) -----"
+}
+
+emit_failure_marker() {
+  local status="$1"
+  local title message
+  title=$(failure_title)
+  message=$(failure_message "$status" "$title")
+  emit_failure_report "$status" "$title" "$message"
+}
+
+emit_interrupted_marker() {
+  local signal="$1"
+  local status="$2"
+  local title="Cloudflare SSH proxy interrupted"
+  local message
+  message="Cloudflare Access SSH to ${HOST} (${TUNNEL_HOST}) was interrupted by signal ${signal}. If SSH reported a banner timeout, cloudflared did not deliver the origin SSH banner before ConnectTimeout; inspect the redacted stderr below."
+  emit_failure_report "$status" "$title" "$message"
+}
+
+cloudflared_pid=""
+
+terminate_cloudflared() {
+  if [ -n "$cloudflared_pid" ]; then
+    kill -TERM "$cloudflared_pid" 2>/dev/null || true
+    wait "$cloudflared_pid" 2>/dev/null || true
+    cloudflared_pid=""
   fi
 }
 
+cleanup() {
+  local status="$1"
+  trap - EXIT
+  terminate_cloudflared
+  rm -f "$LOG_FILE"
+  exit "$status"
+}
+
+handle_hup() {
+  trap - HUP INT TERM
+  terminate_cloudflared
+  emit_redacted_cloudflared_log \
+    "----- cloudflared stderr before ProxyCommand teardown (last 20 lines, redacted) -----"
+  exit 129
+}
+
+handle_signal() {
+  local signal="$1"
+  local status="$2"
+  trap - HUP INT TERM
+  terminate_cloudflared
+  emit_interrupted_marker "$signal" "$status"
+  exit "$status"
+}
+
+trap 'cleanup $?' EXIT
+trap handle_hup HUP
+trap 'handle_signal INT 130' INT
+trap 'handle_signal TERM 143' TERM
+
 status=0
-"$CLOUDFLARED_BIN" access ssh \
+TUNNEL_SERVICE_TOKEN_ID="$CF_ACCESS_CLIENT_ID" \
+  TUNNEL_SERVICE_TOKEN_SECRET="$CF_ACCESS_CLIENT_SECRET" \
+  "$CLOUDFLARED_BIN" access ssh \
   --hostname "$TUNNEL_HOST" \
-  --id "$CF_ACCESS_CLIENT_ID" \
-  --secret "$CF_ACCESS_CLIENT_SECRET" \
-  2> "$LOG_FILE" || status=$?
+  <&0 2> "$LOG_FILE" &
+cloudflared_pid=$!
+wait "$cloudflared_pid" || status=$?
+cloudflared_pid=""
 
 if [ "$status" -ne 0 ]; then
   emit_failure_marker "$status"
 fi
 
-rm -f "$LOG_FILE"
 exit "$status"

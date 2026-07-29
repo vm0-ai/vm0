@@ -9,16 +9,24 @@ import {
   runGroupVisualWindowStartIndex,
 } from "../run-group-folding.ts";
 
+const THREAD_ID = "00000000-0000-4000-8000-000000000001";
+
 function userMessage(params: {
   readonly id: string;
   readonly runId?: string;
   readonly runGroupId?: string;
   readonly content?: string;
 }): EnrichedChatMessage {
+  const content = params.content ?? params.id;
   return {
     id: params.id,
-    role: "user",
-    content: params.content ?? params.id,
+    threadId: THREAD_ID,
+    eventType: "input.prompt" as const,
+    content,
+    userMessage: {
+      version: 1,
+      parts: [{ type: "text", text: content }],
+    },
     runId: params.runId,
     runGroupId: params.runGroupId,
     createdAt: "2026-06-24T00:00:00.000Z",
@@ -36,7 +44,8 @@ function assistantMessage(params: {
 }): EnrichedChatMessage {
   return {
     id: params.id,
-    role: "assistant",
+    threadId: THREAD_ID,
+    eventType: "output.message" as const,
     content: params.content ?? params.id,
     runId: params.runId,
     runGroupId: params.runGroupId,

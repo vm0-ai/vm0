@@ -6,7 +6,7 @@ use std::collections::BTreeMap;
 
 use crate::executor;
 use crate::provider::mock::{MockJobProvider, MockProviderHandle};
-use crate::run_cancellation::SharedRunCancellationMap;
+use crate::run_cancellation::RunCancellationRegistry;
 use sandbox_mock::MockSandboxRuntime;
 
 pub(in super::super) fn test_profiles() -> BTreeMap<String, config::ProfileConfig> {
@@ -34,7 +34,7 @@ pub(in super::super) struct MockRunEnv {
     pub(in super::super) parking_gate: ParkingGate,
     pub(in super::super) start_observer: StartLoopTestObserver,
     pub(in super::super) mode_tx: tokio::sync::watch::Sender<RunnerMode>,
-    pub(in super::super) cancel_tokens: SharedRunCancellationMap,
+    pub(in super::super) cancel_tokens: RunCancellationRegistry,
     pub(in super::super) cancel: CancellationToken,
     pub(in super::super) _temp_dir: tempfile::TempDir,
 }
@@ -173,7 +173,7 @@ fn build_mock_run_config_with_runtime(
     let parking_gate = ParkingGate::new_open();
     let lifecycle = LifecycleController::new(mode_tx, parking_gate.clone());
     let start_observer = StartLoopTestObserver::default();
-    let cancel_tokens: SharedRunCancellationMap = Arc::new(tokio::sync::Mutex::new(HashMap::new()));
+    let cancel_tokens = RunCancellationRegistry::new();
 
     let home = HomePaths::with_root(temp_dir.path().to_path_buf());
     let registry_path = temp_dir.path().join("registry.json");
@@ -240,7 +240,7 @@ fn build_mock_run_config_with_runtime(
         },
         provider: ProviderState {
             provider,
-            cancel_tokens: Arc::clone(&cancel_tokens),
+            cancel_tokens: cancel_tokens.clone(),
             cancel: cancel.clone(),
         },
         proxy: ProxyState {

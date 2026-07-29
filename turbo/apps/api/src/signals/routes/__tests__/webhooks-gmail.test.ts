@@ -484,7 +484,7 @@ async function setupFixture(): Promise<GmailTestFixture> {
 
   bdd.acceptAgentStorageWrites();
   await bdd.readOnboardingStatus(actor);
-  await bdd.bootstrapOnboarding(actor, {
+  await bdd.bootstrapLimitedFreeOnboarding(actor, {
     displayName: "BDD Gmail Webhook Owner",
   });
   await grantVisibleCredits({ ...actor, orgId: actor.orgId });
@@ -564,15 +564,15 @@ async function workflowAutomationBriefs(
   actor: ApiTestUser,
   chatThreadId: string,
 ): Promise<readonly (string | null | undefined)[]> {
-  const { messages } = await chatApi.listThreadMessages(actor, chatThreadId, {
+  const { events } = await chatApi.listThreadEvents(actor, chatThreadId, {
     limit: 20,
   });
-  return messages
-    .filter((message) => {
-      return message.role === "user";
+  return events
+    .filter((event) => {
+      return event.eventType === "input.prompt";
     })
-    .map((message) => {
-      return message.workflowSnapshot?.triggerBrief;
+    .map((event) => {
+      return event.workflowSnapshot?.triggerBrief;
     });
 }
 
@@ -580,12 +580,12 @@ async function workflowRunIds(
   actor: ApiTestUser,
   chatThreadId: string,
 ): Promise<readonly string[]> {
-  const { messages } = await chatApi.listThreadMessages(actor, chatThreadId, {
+  const { events } = await chatApi.listThreadEvents(actor, chatThreadId, {
     limit: 20,
   });
-  return messages.flatMap((message) => {
+  return events.flatMap((message) => {
     if (
-      message.role !== "user" ||
+      message.eventType !== "input.prompt" ||
       message.content !== `/${WORKFLOW_NAME}` ||
       !message.runId
     ) {
@@ -626,6 +626,7 @@ describe("POST /api/webhooks/gmail", () => {
   it("dispatches matching new inbound messages and de-duplicates retries", async () => {
     const gmailEmail = uniqueGmailEmail();
     configureGmailEnv();
+    mockOptionalEnv("ZERO_MAIL_REPLY_FOLLOW_UP_ROLLOUT_ENABLED", "true");
     const runnerGroup = runsApi.configureRunnerGroup();
     configureGmailWatchMock();
     configureGmailMessageMocks(gmailEmail);
@@ -644,6 +645,24 @@ describe("POST /api/webhooks/gmail", () => {
           eventConfig: {
             provider: "gmail",
             event: "new_message",
+            threadId: "gmail-thread-1",
+            match: { subject: { contains: "invoice" } },
+          },
+        },
+      }),
+      [201],
+    );
+    const unrelatedThread = await accept(
+      automationsClient().create({
+        headers: authHeaders(actor),
+        params: { workflowId },
+        body: {
+          kind: "event",
+          eventType: "gmail-new-message",
+          eventConfig: {
+            provider: "gmail",
+            event: "new_message",
+            threadId: "gmail-thread-2",
             match: { subject: { contains: "invoice" } },
           },
         },
@@ -681,6 +700,11 @@ describe("POST /api/webhooks/gmail", () => {
         lastRunAt: expect.any(String),
       },
     );
+    await expect(
+      readAutomation(actor, unrelatedThread.body.id),
+    ).resolves.toMatchObject({
+      lastRunAt: null,
+    });
     const [runId] = await workflowRunIds(actor, chatThreadId);
     if (!runId) {
       throw new Error("Expected a dispatched Gmail workflow run");

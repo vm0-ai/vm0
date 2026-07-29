@@ -1,0 +1,808 @@
+import type {
+  PublicConnectorCatalogAuthMethodDetail,
+  PublicConnectorCatalogCategoryMetadata,
+  PublicConnectorCatalogIcon,
+  PublicConnectorCatalogPermissionDetail,
+  PublicConnectorCatalogPermissionSummary,
+} from "@vm0/api-contracts/contracts/zero-connector-catalog";
+import type {
+  ConnectorAuthMethodId,
+  ConnectorRef,
+} from "@vm0/api-contracts/contracts/connector-identity";
+import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
+
+interface TestConnectorAuthMethod {
+  readonly detail: PublicConnectorCatalogAuthMethodDetail;
+  readonly featureSwitch?: FeatureSwitchKey;
+  readonly requiredScopes: readonly string[];
+  readonly supportsRefresh: boolean;
+}
+
+export interface TestConnectorCatalogDefinition {
+  readonly connectorRef: ConnectorRef;
+  readonly label: string;
+  readonly description: string;
+  readonly icon: PublicConnectorCatalogIcon;
+  readonly category: string;
+  readonly generation: readonly string[];
+  readonly tags: readonly string[];
+  readonly authMethods: readonly TestConnectorAuthMethod[];
+  readonly permissionSummary: PublicConnectorCatalogPermissionSummary;
+  readonly connectNotice: "google-security-warning" | null;
+}
+
+const NO_PERMISSIONS = {
+  hasPermissions: false,
+  permissionCount: 0,
+  hasCategories: false,
+  hasDefaultPolicyOverrides: false,
+} satisfies PublicConnectorCatalogPermissionSummary;
+
+function icon(connectorRef: ConnectorRef): PublicConnectorCatalogIcon {
+  return {
+    url: `https://icons.example.test/${connectorRef}.svg`,
+    invertInDarkMode: connectorRef === "github",
+  };
+}
+
+function authCodeMethod(
+  args: {
+    readonly featureSwitch?: FeatureSwitchKey;
+    readonly requiredScopes?: readonly string[];
+    readonly supportsRefresh?: boolean;
+  } = {},
+): TestConnectorAuthMethod {
+  return {
+    detail: {
+      id: "oauth",
+      label: "OAuth (Recommended)",
+      description: "Sign in to grant access.",
+      grantKind: "auth-code",
+      manualFields: [],
+      startOptions: [],
+    },
+    ...(args.featureSwitch ? { featureSwitch: args.featureSwitch } : {}),
+    requiredScopes: args.requiredScopes ?? [],
+    supportsRefresh: args.supportsRefresh ?? true,
+  };
+}
+
+function manualMethod(
+  id: ConnectorAuthMethodId,
+  label: string,
+  fields: PublicConnectorCatalogAuthMethodDetail["manualFields"],
+): TestConnectorAuthMethod {
+  return {
+    detail: {
+      id,
+      label,
+      description: `Enter the ${label.toLowerCase()} credentials.`,
+      grantKind: "manual",
+      manualFields: fields,
+      startOptions: [],
+    },
+    requiredScopes: [],
+    supportsRefresh: false,
+  };
+}
+
+function externalCodeMethod(args: {
+  readonly id: ConnectorAuthMethodId;
+  readonly label: string;
+  readonly description: string;
+  readonly featureSwitch?: FeatureSwitchKey;
+}): TestConnectorAuthMethod {
+  return {
+    detail: {
+      id: args.id,
+      label: args.label,
+      description: args.description,
+      grantKind: "external-code",
+      manualFields: [],
+      startOptions: [],
+    },
+    ...(args.featureSwitch ? { featureSwitch: args.featureSwitch } : {}),
+    requiredScopes: [],
+    supportsRefresh: true,
+  };
+}
+
+function oauthConnector(args: {
+  readonly connectorRef: ConnectorRef;
+  readonly label: string;
+  readonly description: string;
+  readonly category: string;
+  readonly tags?: readonly string[];
+  readonly featureSwitch?: FeatureSwitchKey;
+  readonly requiredScopes?: readonly string[];
+  readonly permissionDetail?: PublicConnectorCatalogPermissionDetail;
+}): TestConnectorCatalogDefinition {
+  return {
+    connectorRef: args.connectorRef,
+    label: args.label,
+    description: args.description,
+    icon: icon(args.connectorRef),
+    category: args.category,
+    generation: [],
+    tags: args.tags ?? [],
+    authMethods: [
+      authCodeMethod({
+        ...(args.featureSwitch ? { featureSwitch: args.featureSwitch } : {}),
+        ...(args.requiredScopes ? { requiredScopes: args.requiredScopes } : {}),
+      }),
+    ],
+    permissionSummary:
+      args.permissionDetail === undefined
+        ? NO_PERMISSIONS
+        : permissionSummary(args.permissionDetail),
+    connectNotice: null,
+  };
+}
+
+const axiomPermissions = {
+  connectorRef: "axiom",
+  label: "Axiom",
+  icon: icon("axiom"),
+  permissionCount: 3,
+  permissions: [
+    {
+      name: "annotations|create",
+      description: "Create Axiom annotations.",
+    },
+    { name: "dashboards|read", description: "Read Axiom dashboards." },
+    { name: "datasets|read", description: "Read Axiom datasets." },
+  ],
+  categories: null,
+  defaultPolicy: {
+    permissionDefault: "allow",
+    unknownPolicy: "allow",
+  },
+} satisfies PublicConnectorCatalogPermissionDetail;
+
+const slackPermissions = {
+  connectorRef: "slack",
+  label: "Slack",
+  icon: icon("slack"),
+  permissionCount: 6,
+  permissions: [
+    { name: "bookmarks:read", description: "List channel bookmarks." },
+    { name: "files:read", description: "Read shared files." },
+    { name: "bookmarks:write", description: "Manage channel bookmarks." },
+    { name: "channels:join", description: "Join public channels." },
+    { name: "openid", description: "Read the connected identity." },
+    {
+      name: "admin.analytics:read",
+      description: "Access workspace analytics data",
+    },
+  ],
+  categories: {
+    categories: {
+      "bookmarks:read": "Read",
+      "files:read": "Read",
+      "bookmarks:write": "Write",
+      "channels:join": "Misc",
+      openid: "Misc",
+      "admin.analytics:read": "Admin",
+    },
+    displayOrder: ["Read", "Write", "Admin", "Misc"],
+  },
+  defaultPolicy: {
+    permissionDefault: "deny",
+    permissionOverrides: {
+      allow: ["bookmarks:read"],
+    },
+    unknownPolicy: "allow",
+  },
+} satisfies PublicConnectorCatalogPermissionDetail;
+
+const cloudflarePermissionNames = [
+  "access-app.read",
+  "access-audit-log.read",
+  "account-analytics.read",
+  "account-api-tokens.read",
+  "account-dns-settings.read",
+  "account-settings.read",
+  "ai-search.read",
+  "analytics.read",
+  "api-gateway.read",
+  "argotunnel.read",
+  "browser-rendering.read",
+  "cache.purge",
+  "cloud-connector.read",
+  "containers.read",
+  "d1.read",
+  "dns.read",
+  "images.read",
+  "logs.read",
+  "notifications.read",
+  "queues.read",
+  "workers-r2.read",
+  "memberships.read",
+];
+
+const cloudflarePermissions = {
+  connectorRef: "cloudflare",
+  label: "Cloudflare",
+  icon: icon("cloudflare"),
+  permissionCount: cloudflarePermissionNames.length,
+  permissions: cloudflarePermissionNames.map((name) => {
+    return { name };
+  }),
+  categories: null,
+  defaultPolicy: {
+    permissionDefault: "allow",
+    unknownPolicy: "deny",
+  },
+} satisfies PublicConnectorCatalogPermissionDetail;
+
+const gmailPermissions = {
+  connectorRef: "gmail",
+  label: "Gmail",
+  icon: icon("gmail"),
+  permissionCount: 1,
+  permissions: [
+    {
+      name: "messages.write",
+      description: "Create and update Gmail messages.",
+    },
+  ],
+  categories: null,
+  defaultPolicy: {
+    permissionDefault: "deny",
+    unknownPolicy: "allow",
+  },
+} satisfies PublicConnectorCatalogPermissionDetail;
+
+const youtubePermissions = {
+  connectorRef: "youtube",
+  label: "YouTube",
+  icon: icon("youtube"),
+  permissionCount: 1,
+  permissions: [
+    {
+      name: "videos.write",
+      description: "Create and update YouTube videos.",
+    },
+  ],
+  categories: null,
+  defaultPolicy: {
+    permissionDefault: "deny",
+    unknownPolicy: "allow",
+  },
+} satisfies PublicConnectorCatalogPermissionDetail;
+
+export const testConnectorPermissionDetails = new Map<
+  ConnectorRef,
+  PublicConnectorCatalogPermissionDetail
+>([
+  ["axiom", axiomPermissions],
+  ["cloudflare", cloudflarePermissions],
+  ["gmail", gmailPermissions],
+  ["slack", slackPermissions],
+  ["youtube", youtubePermissions],
+]);
+
+function permissionSummary(
+  detail: PublicConnectorCatalogPermissionDetail,
+): PublicConnectorCatalogPermissionSummary {
+  return {
+    hasPermissions: detail.permissionCount > 0,
+    permissionCount: detail.permissionCount,
+    hasCategories: detail.categories !== null,
+    hasDefaultPolicyOverrides:
+      detail.defaultPolicy.permissionOverrides !== undefined,
+  };
+}
+
+const tokenField = [
+  {
+    id: "apiToken",
+    label: "API Token",
+    required: true,
+    placeholder: null,
+    inputType: "password",
+  },
+] satisfies PublicConnectorCatalogAuthMethodDetail["manualFields"];
+
+export const testConnectorCatalogDefinitions = (
+  [
+    {
+      connectorRef: "ahrefs",
+      label: "Ahrefs",
+      description: "Access SEO data, backlink analysis, and keyword research.",
+      icon: icon("ahrefs"),
+      category: "marketing-content-growth",
+      generation: [],
+      tags: [],
+      authMethods: [
+        manualMethod("api-token", "API Token", [
+          {
+            id: "apiToken",
+            label: "API Token",
+            required: true,
+            placeholder: "your-ahrefs-api-token",
+            inputType: "password",
+          },
+        ]),
+      ],
+      permissionSummary: NO_PERMISSIONS,
+      connectNotice: null,
+    },
+    oauthConnector({
+      connectorRef: "openai",
+      label: "OpenAI",
+      description: "Access OpenAI models and APIs.",
+      category: "ai-general-models",
+    }),
+    {
+      connectorRef: "base44",
+      label: "Base44",
+      description: "Access and manage Base44 apps.",
+      icon: icon("base44"),
+      category: "ai-agent-apps",
+      generation: [],
+      tags: [],
+      authMethods: [
+        {
+          detail: {
+            id: "oauth",
+            label: "OAuth",
+            description: "Sign in with Base44 to grant access.",
+            grantKind: "device-auth",
+            manualFields: [],
+            startOptions: [],
+          },
+          requiredScopes: [],
+          supportsRefresh: true,
+        },
+      ],
+      permissionSummary: NO_PERMISSIONS,
+      connectNotice: null,
+    },
+    oauthConnector({
+      connectorRef: "slack",
+      label: "Slack",
+      description: "Send messages and read channels.",
+      category: "communication-collaboration",
+      tags: ["chat", "messaging", "im"],
+      permissionDetail: slackPermissions,
+    }),
+    oauthConnector({
+      connectorRef: "gmail",
+      label: "Gmail",
+      description: "Read and manage Gmail messages.",
+      category: "communication-collaboration",
+      permissionDetail: gmailPermissions,
+    }),
+    oauthConnector({
+      connectorRef: "cal-com",
+      label: "Cal.com",
+      description: "Manage Cal.com bookings and schedules.",
+      category: "meetings-scheduling",
+    }),
+    oauthConnector({
+      connectorRef: "google-calendar",
+      label: "Google Calendar",
+      description: "Manage Google Calendar events.",
+      category: "meetings-scheduling",
+    }),
+    oauthConnector({
+      connectorRef: "zoom",
+      label: "Zoom",
+      description: "Manage Zoom meetings and recordings.",
+      category: "meetings-scheduling",
+    }),
+    oauthConnector({
+      connectorRef: "box",
+      label: "Box",
+      description: "Access and manage Box files.",
+      category: "docs-files-knowledge",
+    }),
+    oauthConnector({
+      connectorRef: "dropbox",
+      label: "Dropbox",
+      description: "Access and manage Dropbox files.",
+      category: "docs-files-knowledge",
+    }),
+    oauthConnector({
+      connectorRef: "google-drive",
+      label: "Google Drive",
+      description: "Access Google Drive files and presentations.",
+      category: "docs-files-knowledge",
+    }),
+    oauthConnector({
+      connectorRef: "google-sheets",
+      label: "Google Sheets",
+      description: "Read and update Google Sheets.",
+      category: "docs-files-knowledge",
+    }),
+    oauthConnector({
+      connectorRef: "notion",
+      label: "Notion",
+      description: "Access Notion pages and databases.",
+      category: "docs-files-knowledge",
+    }),
+    oauthConnector({
+      connectorRef: "github",
+      label: "GitHub",
+      description:
+        "Connect your GitHub account to access repositories and GitHub features.",
+      category: "engineering-team-execution",
+      tags: ["gh", "git", "vcs", "scm", "repos"],
+    }),
+    oauthConnector({
+      connectorRef: "asana",
+      label: "Asana",
+      description:
+        "Connect your Asana account to manage projects, tasks, and team workflows.",
+      category: "engineering-team-execution",
+    }),
+    oauthConnector({
+      connectorRef: "cloudflare",
+      label: "Cloudflare",
+      description: "Manage Cloudflare infrastructure.",
+      category: "engineering-team-execution",
+      permissionDetail: cloudflarePermissions,
+    }),
+    oauthConnector({
+      connectorRef: "datadog",
+      label: "Datadog",
+      description: "Access Datadog observability data.",
+      category: "engineering-team-execution",
+    }),
+    oauthConnector({
+      connectorRef: "sentry",
+      label: "Sentry",
+      description: "Access error tracking and project data.",
+      category: "engineering-team-execution",
+    }),
+    oauthConnector({
+      connectorRef: "linear",
+      label: "Linear",
+      description: "Manage Linear issues and projects.",
+      category: "engineering-team-execution",
+    }),
+    oauthConnector({
+      connectorRef: "hubspot",
+      label: "HubSpot",
+      description: "Manage HubSpot CRM data.",
+      category: "sales-crm-business-operations",
+    }),
+    oauthConnector({
+      connectorRef: "quickbooks",
+      label: "QuickBooks",
+      description: "Access QuickBooks accounting data.",
+      category: "sales-crm-business-operations",
+    }),
+    oauthConnector({
+      connectorRef: "google-ads",
+      label: "Google Ads",
+      description: "Manage Google Ads campaigns and reports.",
+      category: "marketing-content-growth",
+      tags: ["ads", "advertising", "campaigns"],
+      requiredScopes: [
+        "https://www.googleapis.com/auth/adwords",
+        "https://www.googleapis.com/auth/datamanager",
+        "https://www.googleapis.com/auth/userinfo.email",
+      ],
+    }),
+    oauthConnector({
+      connectorRef: "mailchimp",
+      label: "Mailchimp",
+      description: "Manage Mailchimp audiences and campaigns.",
+      category: "marketing-content-growth",
+    }),
+    oauthConnector({
+      connectorRef: "meta-ads",
+      label: "Meta Ads",
+      description: "Manage Meta Ads campaigns and audiences.",
+      category: "marketing-content-growth",
+      featureSwitch: FeatureSwitchKey.MetaAdsConnector,
+    }),
+    oauthConnector({
+      connectorRef: "tiktok-ads",
+      label: "TikTok Ads",
+      description: "Manage TikTok Ads campaigns.",
+      category: "marketing-content-growth",
+    }),
+    oauthConnector({
+      connectorRef: "youtube",
+      label: "YouTube",
+      description: "Manage YouTube channels and videos.",
+      category: "marketing-content-growth",
+      permissionDetail: youtubePermissions,
+    }),
+    {
+      connectorRef: "axiom",
+      label: "Axiom",
+      description: "Query logs and manage observability data.",
+      icon: icon("axiom"),
+      category: "data-automation-infrastructure",
+      generation: [],
+      tags: ["logs", "observability"],
+      authMethods: [manualMethod("api-token", "API Token", tokenField)],
+      permissionSummary: permissionSummary(axiomPermissions),
+      connectNotice: null,
+    },
+    {
+      connectorRef: "aws",
+      label: "AWS",
+      description: "Connect a temporary AWS session.",
+      icon: icon("aws"),
+      category: "data-automation-infrastructure",
+      generation: [],
+      tags: ["cloud", "infrastructure", "storage", "compute"],
+      authMethods: [
+        externalCodeMethod({
+          id: "cli",
+          label: "Sign in with AWS",
+          description:
+            "Sign in with AWS and paste the authorization code. This temporary AWS connector expires after up to 12 hours.",
+          featureSwitch: FeatureSwitchKey.AwsConnector,
+        }),
+      ],
+      permissionSummary: NO_PERMISSIONS,
+      connectNotice: null,
+    },
+    {
+      connectorRef: "cloudinary",
+      label: "Cloudinary",
+      description: "Manage Cloudinary media assets.",
+      icon: icon("cloudinary"),
+      category: "marketing-content-growth",
+      generation: [],
+      tags: [],
+      authMethods: [
+        manualMethod("api-token", "API Credentials", [
+          {
+            id: "apiKey",
+            label: "API Key",
+            required: true,
+            placeholder: null,
+            inputType: "password",
+          },
+          {
+            id: "apiSecret",
+            label: "API Secret",
+            required: true,
+            placeholder: null,
+            inputType: "password",
+          },
+          {
+            id: "cloudName",
+            label: "Cloud Name",
+            required: true,
+            placeholder: "your-cloud-name",
+            inputType: "text",
+          },
+        ]),
+      ],
+      permissionSummary: NO_PERMISSIONS,
+      connectNotice: null,
+    },
+    oauthConnector({
+      connectorRef: "google-maps",
+      label: "Google Maps",
+      description: "Access Google Maps Platform APIs.",
+      category: "data-automation-infrastructure",
+    }),
+    {
+      connectorRef: "plausible",
+      label: "Plausible",
+      description: "Access website traffic analytics and visitor stats.",
+      icon: icon("plausible"),
+      category: "data-automation-infrastructure",
+      generation: [],
+      tags: ["analytics", "traffic"],
+      authMethods: [
+        manualMethod("api-token", "API Key", [
+          {
+            id: "apiKey",
+            label: "API Key",
+            required: true,
+            placeholder: "your-plausible-api-key",
+            inputType: "password",
+          },
+        ]),
+      ],
+      permissionSummary: NO_PERMISSIONS,
+      connectNotice: null,
+    },
+    {
+      connectorRef: "revenuecat",
+      label: "RevenueCat",
+      description: "Access subscriptions, purchases, and customer data.",
+      icon: icon("revenuecat"),
+      category: "data-automation-infrastructure",
+      generation: [],
+      tags: ["subscriptions", "revenue"],
+      authMethods: [
+        manualMethod("api-token", "Secret API Key", [
+          {
+            id: "secretApiKey",
+            label: "Secret API Key",
+            required: true,
+            placeholder: "sk_xxxxxxxxxxxxxxxx",
+            inputType: "password",
+          },
+        ]),
+      ],
+      permissionSummary: NO_PERMISSIONS,
+      connectNotice: null,
+    },
+    {
+      connectorRef: "playstation",
+      label: "PlayStation",
+      description: "Access PlayStation Network player data.",
+      icon: icon("playstation"),
+      category: "data-automation-infrastructure",
+      generation: [],
+      tags: ["gaming", "player", "psn"],
+      authMethods: [
+        externalCodeMethod({
+          id: "api",
+          label: "PlayStation sign-in",
+          description: "Paste the PlayStation authorization value.",
+        }),
+      ],
+      permissionSummary: NO_PERMISSIONS,
+      connectNotice: null,
+    },
+    {
+      connectorRef: "steam",
+      label: "Steam",
+      description: "Access Steam player and game data.",
+      icon: icon("steam"),
+      category: "data-automation-infrastructure",
+      generation: [],
+      tags: ["gaming", "player"],
+      authMethods: [
+        {
+          detail: {
+            id: "openid",
+            label: "Steam sign-in",
+            description: "Sign in with Steam to connect your player account.",
+            grantKind: "openid-auth",
+            manualFields: [],
+            startOptions: [],
+          },
+          requiredScopes: [],
+          supportsRefresh: false,
+        },
+      ],
+      permissionSummary: NO_PERMISSIONS,
+      connectNotice: null,
+    },
+    {
+      connectorRef: "stripe",
+      label: "Stripe",
+      description: "Manage payments, customers, and subscriptions.",
+      icon: icon("stripe"),
+      category: "data-automation-infrastructure",
+      generation: [],
+      tags: ["payments", "billing", "checkout"],
+      authMethods: [
+        authCodeMethod(),
+        {
+          detail: {
+            id: "cli",
+            label: "Sign in with Stripe",
+            description: "Approve access in the Stripe Dashboard.",
+            grantKind: "device-auth",
+            manualFields: [],
+            startOptions: [
+              {
+                id: "mode",
+                kind: "select",
+                label: "Mode",
+                required: true,
+                defaultValue: "test",
+                options: [
+                  { value: "test", label: "Test" },
+                  { value: "live", label: "Live" },
+                ],
+              },
+            ],
+          },
+          requiredScopes: [],
+          supportsRefresh: false,
+        },
+        manualMethod("api-token", "API Key", tokenField),
+      ],
+      permissionSummary: NO_PERMISSIONS,
+      connectNotice: null,
+    },
+  ] satisfies TestConnectorCatalogDefinition[]
+).sort((left, right) => {
+  return left.connectorRef.localeCompare(right.connectorRef);
+});
+
+export const testConnectorCatalogCategoryMetadata = {
+  categories: [
+    {
+      id: "ai-general-models",
+      label: "General Models and Reasoning",
+      menuLabel: "General Models",
+      groupId: "ai",
+    },
+    {
+      id: "ai-agent-apps",
+      label: "Agent Platforms and AI Apps",
+      menuLabel: "Agent Platforms",
+      groupId: "ai",
+    },
+    {
+      id: "communication-collaboration",
+      label: "Communication and Collaboration",
+      menuLabel: "Communication",
+      groupId: null,
+    },
+    {
+      id: "meetings-scheduling",
+      label: "Meetings and Scheduling",
+      menuLabel: "Meetings",
+      groupId: null,
+    },
+    {
+      id: "docs-files-knowledge",
+      label: "Docs, Files, and Knowledge",
+      menuLabel: "Documents",
+      groupId: null,
+    },
+    {
+      id: "engineering-team-execution",
+      label: "Engineering and Team Execution",
+      menuLabel: "Engineering",
+      groupId: null,
+    },
+    {
+      id: "sales-crm-business-operations",
+      label: "Sales, CRM, and Business Operations",
+      menuLabel: "Sales and Business",
+      groupId: null,
+    },
+    {
+      id: "marketing-content-growth",
+      label: "Marketing, Content, and Growth",
+      menuLabel: "Marketing",
+      groupId: null,
+    },
+    {
+      id: "data-automation-infrastructure",
+      label: "Data, Automation, and Infrastructure",
+      menuLabel: "Data and Automation",
+      groupId: null,
+    },
+  ],
+  groups: [{ id: "ai", label: "AI", menuLabel: "AI" }],
+} satisfies PublicConnectorCatalogCategoryMetadata;
+
+export const testConnectorRefs = testConnectorCatalogDefinitions.map(
+  (definition) => {
+    return definition.connectorRef;
+  },
+);
+
+export const composerOverflowConnectorRefs = [
+  "asana",
+  "box",
+  "cal-com",
+  "cloudflare",
+  "datadog",
+  "dropbox",
+  "gmail",
+  "google-ads",
+  "google-calendar",
+  "google-drive",
+  "google-maps",
+  "google-sheets",
+  "hubspot",
+  "linear",
+  "mailchimp",
+  "meta-ads",
+  "notion",
+  "quickbooks",
+  "tiktok-ads",
+  "youtube",
+  "zoom",
+] satisfies readonly ConnectorRef[];

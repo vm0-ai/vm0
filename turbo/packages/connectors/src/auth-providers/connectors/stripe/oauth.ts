@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-import type { ConnectorAuthCodeGrantConfig } from "@vm0/connectors/connectors";
+import type { ConnectorAuthCodeGrantConfig } from "@vm0/connectors/connector-config";
 import { throwOAuthError } from "../../oauth/error";
 
 const STRIPE_TOKEN_URL = "https://connect.stripe.com/oauth/token";
@@ -202,11 +202,4 @@ async function fetchStripeAccountInfo(
     username: data.business_profile?.name ?? null,
     email: data.email ?? null,
   };
-}
-
-/**
- * Get the primary secret name for Stripe connector (the access token).
- */
-export function getStripeSecretName(): string {
-  return "STRIPE_ACCESS_TOKEN";
 }

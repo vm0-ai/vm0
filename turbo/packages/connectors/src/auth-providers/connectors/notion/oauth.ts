@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-import type { ConnectorAuthCodeGrantConfig } from "@vm0/connectors/connectors";
+import type { ConnectorAuthCodeGrantConfig } from "@vm0/connectors/connector-config";
 import { throwOAuthError } from "../../oauth/error";
 
 const NOTION_TOKEN_URL = "https://api.notion.com/v1/oauth/token";
@@ -175,13 +175,4 @@ export async function refreshNotionToken(
     refreshToken: data.refresh_token ?? null,
     expiresIn: data.expires_in,
   };
-}
-
-/**
- * Get the primary secret name for Notion connector (the access token).
- * Uses an explicit key rather than Object.keys() ordering to avoid
- * fragile dependency on property insertion order.
- */
-export function getNotionSecretName(): string {
-  return "NOTION_ACCESS_TOKEN";
 }

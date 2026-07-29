@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-import type { ConnectorAuthCodeGrantConfig } from "@vm0/connectors/connectors";
+import type { ConnectorAuthCodeGrantConfig } from "@vm0/connectors/connector-config";
 import { throwOAuthError } from "../../oauth/error";
 
 const REDDIT_TOKEN_URL = "https://www.reddit.com/api/v1/access_token";
@@ -205,11 +205,4 @@ export async function refreshRedditToken(
     refreshToken: data.refresh_token ?? null,
     expiresIn: data.expires_in,
   };
-}
-
-/**
- * Get the primary secret name for Reddit connector (the access token).
- */
-export function getRedditSecretName(): string {
-  return "REDDIT_ACCESS_TOKEN";
 }

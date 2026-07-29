@@ -108,6 +108,36 @@ export async function mutateRunnerJobSecretValueEnvironmentKeys(
   });
 }
 
+export async function mutateRunnerJobConnectorPermissionBaseline(
+  context: TestContext,
+  runId: string,
+  mode:
+    | "remove"
+    | "malformed"
+    | "catalog-mismatch"
+    | "authority-mismatch"
+    | "inconsistent"
+    | "incomplete",
+): Promise<void> {
+  await postAction(context, {
+    action: "mutate-runner-job-connector-permission-baseline",
+    run_id: runId,
+    mode,
+  });
+}
+
+export async function setRunnerJobContextProfileAsPreviousApi(
+  context: TestContext,
+  runId: string,
+  profile: string,
+): Promise<void> {
+  await postAction(context, {
+    action: "set-runner-job-context-profile-as-previous-api",
+    run_id: runId,
+    profile,
+  });
+}
+
 export async function removeRunCanonicalStorageState(
   context: TestContext,
   runId: string,
@@ -116,6 +146,24 @@ export async function removeRunCanonicalStorageState(
     action: "remove-run-canonical-storage-state",
     run_id: runId,
   });
+}
+
+export async function readRunnerJobStorageState(
+  context: TestContext,
+  runId: string,
+): Promise<
+  NonNullable<TestRuntimeStateActionResponse["runner_job_storage_state"]>
+> {
+  const response = await postAction(context, {
+    action: "read-runner-job-storage-state",
+    run_id: runId,
+  });
+  if (!response.runner_job_storage_state) {
+    throw new Error(
+      "readRunnerJobStorageState missing runner_job_storage_state",
+    );
+  }
+  return response.runner_job_storage_state;
 }
 
 export async function readStoragePersistenceState(
@@ -217,4 +265,95 @@ export async function readRunApiStart(
     throw new Error("readRunApiStart missing api_started_at");
   }
   return response.api_started_at ?? null;
+}
+
+export async function readThreadSessionBinding(
+  context: TestContext,
+  threadId: string,
+): Promise<
+  NonNullable<TestRuntimeStateActionResponse["thread_session_binding"]>
+> {
+  const response = await postAction(context, {
+    action: "read-thread-session-binding",
+    thread_id: threadId,
+  });
+  if (!response.thread_session_binding) {
+    throw new Error("readThreadSessionBinding missing thread_session_binding");
+  }
+  return response.thread_session_binding;
+}
+
+export async function clearThreadSessionBinding(
+  context: TestContext,
+  threadId: string,
+): Promise<void> {
+  await postAction(context, {
+    action: "clear-thread-session-binding",
+    thread_id: threadId,
+  });
+}
+
+export async function insertLegacyArtifactCatalogFile(
+  context: TestContext,
+  args: {
+    readonly userId: string;
+    readonly orgId: string;
+    readonly filename: string;
+    readonly url: string;
+  },
+): Promise<string> {
+  const response = await postAction(context, {
+    action: "insert-legacy-artifact-catalog-file",
+    user_id: args.userId,
+    org_id: args.orgId,
+    filename: args.filename,
+    url: args.url,
+  });
+  if (!response.file_id) {
+    throw new Error("insertLegacyArtifactCatalogFile missing file_id");
+  }
+  return response.file_id;
+}
+
+export async function setComputerUseHostAsPreviousApi(
+  context: TestContext,
+  args: {
+    readonly threadId: string;
+    readonly computerUseHostId: string;
+  },
+): Promise<void> {
+  await postAction(context, {
+    action: "set-computer-use-host-as-previous-api",
+    thread_id: args.threadId,
+    computer_use_host_id: args.computerUseHostId,
+  });
+}
+
+export async function readBrowserProfileAsPreviousApi(
+  context: TestContext,
+  args: {
+    readonly browserId: string;
+    readonly userId: string;
+    readonly orgId: string;
+  },
+): Promise<{
+  readonly browserProfileId: string;
+  readonly providerProfileId: string;
+}> {
+  const response = await postAction(context, {
+    action: "read-browser-profile-as-previous-api",
+    browser_id: args.browserId,
+    user_id: args.userId,
+    org_id: args.orgId,
+  });
+  if (!response.previous_api_browser_profile) {
+    throw new Error(
+      "readBrowserProfileAsPreviousApi missing previous_api_browser_profile",
+    );
+  }
+  return {
+    browserProfileId: response.previous_api_browser_profile.browser_profile_id,
+    providerProfileId:
+      response.previous_api_browser_profile.provider_profile_id,
+  };
 }

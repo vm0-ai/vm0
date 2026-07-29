@@ -19,6 +19,7 @@ use crate::{
 fn stream_request(label: &str) -> ExecStreamRequest<'_> {
     ExecStreamRequest {
         timeout_ms: 5000,
+        start_write_timeout: Duration::from_secs(5),
         command: "stream",
         env: &[],
         sudo: false,
@@ -37,6 +38,7 @@ fn stream_request(label: &str) -> ExecStreamRequest<'_> {
 fn operation_request(label: &str) -> ExecOperationRequest<'_> {
     ExecOperationRequest {
         timeout_ms: 5000,
+        start_write_timeout: Duration::from_secs(5),
         command: "stream",
         env: &[],
         sudo: false,
@@ -49,8 +51,9 @@ fn operation_request(label: &str) -> ExecOperationRequest<'_> {
     }
 }
 
-async fn assert_stream_request_rejected_without_frame(
+async fn assert_stream_request_fails_without_frame(
     request: ExecStreamRequest<'_>,
+    expected_kind: io::ErrorKind,
     expected_message_substring: Option<&str>,
 ) {
     let (host, mut guest) = setup_host_and_guest().await;
@@ -63,7 +66,7 @@ async fn assert_stream_request_rejected_without_frame(
     };
     assert_eq!(
         err.kind(),
-        io::ErrorKind::InvalidInput,
+        expected_kind,
         "stream request {label:?} returned unexpected error: {err}",
     );
     if let Some(expected) = expected_message_substring {
@@ -81,8 +84,9 @@ async fn assert_stream_request_rejected_without_frame(
     assert_connection_accepts_exec_operation(&host, &mut guest).await;
 }
 
-async fn assert_start_request_rejected_without_frame(
+async fn assert_start_request_fails_without_frame(
     request: ExecOperationRequest<'_>,
+    expected_kind: io::ErrorKind,
     expected_message_substring: Option<&str>,
 ) {
     let (host, mut guest) = setup_host_and_guest().await;
@@ -95,7 +99,7 @@ async fn assert_start_request_rejected_without_frame(
     };
     assert_eq!(
         err.kind(),
-        io::ErrorKind::InvalidInput,
+        expected_kind,
         "exec start request {label:?} returned unexpected error: {err}",
     );
     if let Some(expected) = expected_message_substring {
@@ -170,11 +174,12 @@ async fn assert_stream_output_frames_poison_connection(
 
 #[tokio::test]
 async fn exec_operation_stream_rejects_zero_capacity_without_sending_frame() {
-    assert_stream_request_rejected_without_frame(
+    assert_stream_request_fails_without_frame(
         ExecStreamRequest {
             stream_queue_capacity: Some(0),
             ..stream_request("zero-capacity")
         },
+        io::ErrorKind::InvalidInput,
         None,
     )
     .await;
@@ -182,11 +187,12 @@ async fn exec_operation_stream_rejects_zero_capacity_without_sending_frame() {
 
 #[tokio::test]
 async fn exec_operation_stream_rejects_oversized_capacity_without_sending_frame() {
-    assert_stream_request_rejected_without_frame(
+    assert_stream_request_fails_without_frame(
         ExecStreamRequest {
             stream_queue_capacity: Some(exec_operation_impl::test_support::MAX_STREAM_CAPACITY + 1),
             ..stream_request("oversized-capacity")
         },
+        io::ErrorKind::InvalidInput,
         None,
     )
     .await;
@@ -196,12 +202,13 @@ async fn exec_operation_stream_rejects_oversized_capacity_without_sending_frame(
 async fn exec_operation_stream_rejects_oversized_stdin_without_sending_frame() {
     let stdin_bytes = vec![0; vsock_proto::MAX_EXEC_STDIN_BYTES + 1];
 
-    assert_stream_request_rejected_without_frame(
+    assert_stream_request_fails_without_frame(
         ExecStreamRequest {
             command: "cat",
             stdin_bytes: Some(&stdin_bytes),
             ..stream_request("stream-oversized-stdin")
         },
+        io::ErrorKind::InvalidInput,
         Some("stdin_bytes"),
     )
     .await;
@@ -282,13 +289,14 @@ async fn exec_operation_stream_sends_stdin_bytes() {
 
 #[tokio::test]
 async fn exec_start_rejects_receiver_without_stream_policy() {
-    assert_start_request_rejected_without_frame(
+    assert_start_request_fails_without_frame(
         ExecOperationRequest {
             command: "capture",
             stderr: ExecOutputPolicy::Discard,
             stream_queue_capacity: Some(1),
             ..operation_request("unexpected-receiver")
         },
+        io::ErrorKind::InvalidInput,
         None,
     )
     .await;
@@ -296,13 +304,14 @@ async fn exec_start_rejects_receiver_without_stream_policy() {
 
 #[tokio::test]
 async fn exec_operation_stream_rejects_non_streaming_policy() {
-    assert_stream_request_rejected_without_frame(
+    assert_stream_request_fails_without_frame(
         ExecStreamRequest {
             command: "capture",
             stdout: ExecOutputPolicy::Capture { limit_bytes: 1024 },
             stderr: ExecOutputPolicy::Discard,
             ..stream_request("non-streaming-helper")
         },
+        io::ErrorKind::InvalidInput,
         None,
     )
     .await;
@@ -310,7 +319,7 @@ async fn exec_operation_stream_rejects_non_streaming_policy() {
 
 #[tokio::test]
 async fn exec_start_encode_error_does_not_register_or_send_frame() {
-    assert_start_request_rejected_without_frame(
+    assert_start_request_fails_without_frame(
         ExecOperationRequest {
             stdout: ExecOutputPolicy::Stream {
                 limit_bytes: 1024,
@@ -320,6 +329,7 @@ async fn exec_start_encode_error_does_not_register_or_send_frame() {
             stream_queue_capacity: Some(1),
             ..operation_request("bad-policy")
         },
+        io::ErrorKind::InvalidInput,
         None,
     )
     .await;
@@ -327,13 +337,53 @@ async fn exec_start_encode_error_does_not_register_or_send_frame() {
 
 #[tokio::test]
 async fn exec_start_rejects_zero_timeout_without_sending_frame() {
-    assert_start_request_rejected_without_frame(
+    assert_start_request_fails_without_frame(
         ExecOperationRequest {
             timeout_ms: 0,
             command: "sleep 60",
             ..operation_request("zero-timeout")
         },
+        io::ErrorKind::InvalidInput,
         None,
+    )
+    .await;
+}
+
+#[tokio::test]
+async fn exec_start_zero_write_timeout_does_not_send_frame() {
+    assert_start_request_fails_without_frame(
+        ExecOperationRequest {
+            start_write_timeout: Duration::ZERO,
+            ..operation_request("zero-start-write-timeout")
+        },
+        io::ErrorKind::TimedOut,
+        Some("exec start timeout"),
+    )
+    .await;
+}
+
+#[tokio::test]
+async fn exec_start_oversized_write_timeout_does_not_send_frame() {
+    assert_start_request_fails_without_frame(
+        ExecOperationRequest {
+            start_write_timeout: Duration::MAX,
+            ..operation_request("oversized-start-write-timeout")
+        },
+        io::ErrorKind::InvalidInput,
+        Some("exec start timeout is too large"),
+    )
+    .await;
+}
+
+#[tokio::test]
+async fn exec_operation_stream_zero_write_timeout_does_not_send_frame() {
+    assert_stream_request_fails_without_frame(
+        ExecStreamRequest {
+            start_write_timeout: Duration::ZERO,
+            ..stream_request("stream-zero-start-write-timeout")
+        },
+        io::ErrorKind::TimedOut,
+        Some("exec start timeout"),
     )
     .await;
 }

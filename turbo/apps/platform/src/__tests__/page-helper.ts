@@ -21,7 +21,7 @@ import {
   setSearch,
 } from "../signals/location";
 import { vi } from "vitest";
-import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
+import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import { getAllFeatureStates } from "@vm0/core/feature-switch";
 import { setMockFeatureSwitches } from "../mocks/handlers/api-feature-switches.helpers";
 import { FEATURE_SWITCH_CACHE_KEY } from "../signals/external/feature-switch";

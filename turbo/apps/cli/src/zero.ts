@@ -2,7 +2,7 @@
 // Sentry must be initialized before any other imports
 import "./instrument.js";
 import { Command } from "commander";
-import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
+import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import { isFeatureEnabled } from "@vm0/core/feature-switch";
 import { configureGlobalProxyFromEnv } from "./lib/network/proxy.js";
 import {
@@ -50,6 +50,7 @@ const COMMAND_CAPABILITY_MAP: Record<
   whoami: null,
   "developer-support": null,
   "computer-use": "computer-use:write",
+  browser: ["browser:read", "browser:write"],
   intro: null,
   generate: null,
   web: null,
@@ -67,7 +68,7 @@ const COMMAND_CAPABILITY_MAP: Record<
 const COMMAND_FEATURE_SWITCH_MAP: Readonly<
   Partial<Record<string, FeatureSwitchKey>>
 > = {
-  upgrade: FeatureSwitchKey.PlanUpgradeGuidance,
+  browser: FeatureSwitchKey.ZeroBrowser,
 };
 
 type FeatureSwitchOverrides = Partial<Record<FeatureSwitchKey, boolean>>;
@@ -277,6 +278,13 @@ const ZERO_COMMAND_DEFINITIONS: readonly ZeroCommandDefinition[] = [
     },
   },
   {
+    name: "browser",
+    description: "Managed remote browser sessions for agent-browser",
+    load: async () => {
+      return (await import("./commands/zero/browser")).zeroBrowserCommand;
+    },
+  },
+  {
     name: "generate",
     description:
       "Generate assets via vm0's built-in pipelines or get connector skill-invocation guidance",
@@ -397,12 +405,13 @@ function isCommandFeatureEnabled(
   featureSwitchOverrides?: FeatureSwitchOverrides,
 ): boolean {
   const featureSwitch = COMMAND_FEATURE_SWITCH_MAP[name];
+  const overrides = featureSwitchOverrides ?? payload?.featureSwitchOverrides;
   return (
     !featureSwitch ||
     isFeatureEnabled(featureSwitch, {
       userId: payload?.userId,
       orgId: payload?.orgId,
-      overrides: featureSwitchOverrides,
+      overrides,
     })
   );
 }

@@ -61,6 +61,13 @@ function requiredSlackFileId(externalId: string | null): string {
   return externalId;
 }
 
+function requiredSlackPermalink(deliveryUrl: string | null): string {
+  if (!deliveryUrl) {
+    throw new Error("Delivered Slack asset is missing its permalink");
+  }
+  return deliveryUrl;
+}
+
 async function canonicalSlackDeliveryRow(
   db: Db,
   args: {
@@ -110,7 +117,7 @@ function deliveredResult(
   return {
     status: "delivered",
     fileId: requiredSlackFileId(row.externalId),
-    permalink: row.deliveryUrl ?? "",
+    permalink: requiredSlackPermalink(row.deliveryUrl),
   };
 }
 
@@ -122,6 +129,35 @@ interface CanonicalSlackDeliveryFailure {
   readonly code: string;
   readonly message: string;
   readonly retryable: boolean;
+}
+
+function resolveSlackFilePermalink(
+  info: Awaited<ReturnType<typeof getFileInfo>>,
+):
+  | { readonly ok: true; readonly permalink: string }
+  | { readonly ok: false; readonly error: CanonicalSlackDeliveryFailure } {
+  if (info.kind === "slack_error") {
+    return {
+      ok: false,
+      error: {
+        code: info.error,
+        message: `Slack delivery failed: ${info.error}`,
+        retryable: true,
+      },
+    };
+  }
+  const permalink = info.file?.permalink;
+  if (!permalink) {
+    return {
+      ok: false,
+      error: {
+        code: "missing_permalink",
+        message: "Slack file info did not include a permalink",
+        retryable: true,
+      },
+    };
+  }
+  return { ok: true, permalink };
 }
 
 function failedResult(
@@ -174,7 +210,7 @@ async function deliveryResultAfterTransitionConflict(
     return {
       status: "delivered",
       fileId: requiredSlackFileId(current.externalId),
-      permalink: current.deliveryUrl ?? "",
+      permalink: requiredSlackPermalink(current.deliveryUrl),
     };
   }
   if (current?.status === "failed" && current.lastError) {
@@ -212,11 +248,12 @@ async function markDeliveryDelivered(
   permalink: string,
 ): Promise<CanonicalSlackDeliveryResult> {
   const fileId = requiredSlackFileId(row.externalId);
+  const deliveryUrl = requiredSlackPermalink(permalink);
   const [delivered] = await db
     .update(canonicalAssetDeliveries)
     .set({
       status: "delivered",
-      url: permalink || null,
+      url: deliveryUrl,
       lastError: null,
       updatedAt: sql`now()`,
     })
@@ -226,7 +263,7 @@ async function markDeliveryDelivered(
     ? {
         status: "delivered",
         fileId,
-        permalink,
+        permalink: deliveryUrl,
       }
     : await deliveryResultAfterTransitionConflict(db, row);
 }
@@ -286,9 +323,11 @@ async function completeExistingSlackFile(
     });
   }
   const info = await getFileInfo(client, row.externalId);
-  const permalink =
-    info.kind === "ok" ? (info.file?.permalink ?? row.deliveryUrl ?? "") : "";
-  return await markDeliveryDelivered(db, row, permalink);
+  const permalinkResult = resolveSlackFilePermalink(info);
+  if (!permalinkResult.ok) {
+    return await markDeliveryFailed(db, row, permalinkResult.error);
+  }
+  return await markDeliveryDelivered(db, row, permalinkResult.permalink);
 }
 
 export const prepareCanonicalSlackDelivery$ = command(
@@ -436,10 +475,18 @@ export const completeCanonicalSlackDelivery$ = command(
       signal,
     );
     signal.throwIfAborted();
-    const permalink =
-      infoResult.ok && infoResult.value.kind === "ok"
-        ? (infoResult.value.file?.permalink ?? "")
-        : "";
-    return await markDeliveryDelivered(db, row, permalink);
+    if (!infoResult.ok) {
+      return await markDeliveryFailed(db, row, {
+        code: "slack-request-failed",
+        message: providerFailureMessage(infoResult.error),
+        retryable: true,
+      });
+    }
+    const info = infoResult.value;
+    const permalinkResult = resolveSlackFilePermalink(info);
+    if (!permalinkResult.ok) {
+      return await markDeliveryFailed(db, row, permalinkResult.error);
+    }
+    return await markDeliveryDelivered(db, row, permalinkResult.permalink);
   },
 );

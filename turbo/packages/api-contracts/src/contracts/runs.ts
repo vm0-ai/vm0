@@ -713,6 +713,62 @@ const agentEventsResponseSchema = z.object({
  */
 const networkLogActionSchema = z.enum(["ALLOW", "DENY", "BLOCK"]);
 
+const modelCatalogCacheStatusSchema = z.enum([
+  "model_catalog_bypass",
+  "model_catalog_fresh_hit",
+  "model_catalog_cold_stored",
+  "model_catalog_cold_not_stored",
+  "model_catalog_revalidated_304",
+  "model_catalog_revalidated_200_same",
+  "model_catalog_revalidated_200_changed",
+  "model_catalog_revalidation_not_stored",
+  "model_catalog_etag_confirmed",
+  "model_catalog_etag_invalidated",
+]);
+
+const modelCatalogCacheBypassReasonSchema = z.enum([
+  "request_url",
+  "request_method",
+  "request_framing",
+  "request_body",
+  "request_streaming",
+  "request_conditions",
+  "request_cache_control",
+  "request_encoding",
+  "request_identity",
+  "request_capacity",
+  "response_status",
+  "response_encoding",
+  "response_content_type",
+  "response_cache_control",
+  "response_vary",
+  "response_etag",
+  "response_size",
+  "response_stream",
+  "response_body",
+  "response_json",
+  "response_shape",
+  "response_missing",
+  "concurrent_change",
+  "transport_error",
+]);
+
+const modelCatalogCacheUpstreamEncodingSchema = z.enum(["identity", "br"]);
+
+const modelCatalogPrefetchRoleSchema = z.enum([
+  "producer",
+  "completed_consumer",
+  "inflight_consumer",
+]);
+
+const modelCatalogCacheMillisecondsSchema = z
+  .number()
+  .int()
+  .min(0)
+  .max(2_147_483_647);
+
+const modelCatalogCacheEvictionCountSchema = z.number().int().min(0).max(32);
+
 /**
  * Network log entry schema.
  * [NETWORK_LOG_FIELDS] — keep in sync with all network log schemas
@@ -730,6 +786,18 @@ const networkLogEntrySchema = z.object({
   request_size: z.number().optional(),
   response_size: z.number().optional(),
   browser_user_agent: z.boolean().optional(),
+  model_catalog_cache_status: modelCatalogCacheStatusSchema.optional(),
+  model_catalog_cache_upstream_encoding:
+    modelCatalogCacheUpstreamEncodingSchema.optional(),
+  model_catalog_cache_bypass_reason:
+    modelCatalogCacheBypassReasonSchema.optional(),
+  model_catalog_cache_entry_age_ms:
+    modelCatalogCacheMillisecondsSchema.optional(),
+  model_catalog_cache_validation_latency_ms:
+    modelCatalogCacheMillisecondsSchema.optional(),
+  model_catalog_cache_eviction_count:
+    modelCatalogCacheEvictionCountSchema.optional(),
+  model_catalog_prefetch_role: modelCatalogPrefetchRoleSchema.optional(),
   dns_event: z.string().optional(),
   dns_query_type: z.string().optional(),
   dns_result: z.string().optional(),
@@ -930,30 +998,6 @@ const queueResponseSchema = z.object({
   estimatedTimePerRun: z.number().nullable(),
 });
 
-/**
- * Runs queue route contract (/api/agent/runs/queue)
- * Returns org-wide queue status with concurrency context
- */
-export const runsQueueContract = c.router({
-  /**
-   * GET /api/agent/runs/queue
-   * Get org run queue status including concurrency context and queued entries
-   */
-  getQueue: {
-    method: "GET",
-    path: "/api/agent/runs/queue",
-    headers: authHeadersSchema,
-    responses: {
-      200: queueResponseSchema,
-      401: apiErrorSchema,
-      403: apiErrorSchema,
-    },
-    summary: "Get org run queue status",
-  },
-});
-
-export type RunsQueueContract = typeof runsQueueContract;
-
 // Export schemas for reuse
 export {
   runStatusSchema,
@@ -973,6 +1017,12 @@ export {
   metricsResponseSchema,
   agentEventsResponseSchema,
   networkLogActionSchema,
+  modelCatalogCacheStatusSchema,
+  modelCatalogCacheBypassReasonSchema,
+  modelCatalogCacheUpstreamEncodingSchema,
+  modelCatalogPrefetchRoleSchema,
+  modelCatalogCacheMillisecondsSchema,
+  modelCatalogCacheEvictionCountSchema,
   networkLogEntrySchema,
   networkLogsResponseSchema,
   searchResultSchema,

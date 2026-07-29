@@ -1,9 +1,7 @@
 use std::collections::{HashMap, HashSet};
 
 use api_contracts::generated::constants::model_provider_env::placeholders as model_provider_placeholders;
-use api_contracts::generated::types::runners::storage::{
-    ArtifactEntryMissingRootPolicy, StorageManifest,
-};
+use api_contracts::generated::types::runners::storage::ArtifactEntryMissingRootPolicy;
 use sandbox::SandboxId;
 use sandbox_mock::MockSandbox;
 use serde_json::json;
@@ -29,6 +27,7 @@ use crate::host_env::{
     RUNNER_NET_RX_MIB_PER_SEC_ENV, RUNNER_NET_TX_MIB_PER_SEC_ENV,
 };
 use crate::ids::RunId;
+use crate::storage_manifest::StorageManifest;
 use crate::types::{CodexRuntimeConfig, ExecutionContext, ResumeSession, SandboxReuseResult};
 
 fn validate_context_for_test(ctx: &ExecutionContext) -> Result<(), String> {
@@ -95,14 +94,37 @@ fn model_provider_env_placeholder_validation_accepts_anthropic_api_key_placehold
 }
 
 #[test]
-fn model_provider_env_placeholder_validation_rejects_real_anthropic_api_key() {
-    let secret = "sk-ant-api03-real-secret-value";
-    let ctx = context_with_env(HashMap::from([("ANTHROPIC_API_KEY".into(), secret.into())]));
+fn model_provider_env_placeholder_validation_rejects_non_placeholder_values() {
+    let protected_values = [
+        ("ANTHROPIC_API_KEY", "sk-ant-api03-rejected-test-value"),
+        ("ANTHROPIC_AUTH_TOKEN", "sk-rejected-anthropic-auth-token"),
+        (
+            "CLAUDE_CODE_OAUTH_TOKEN",
+            "sk-ant-oat01-rejected-test-value",
+        ),
+        ("OPENAI_API_KEY", "sk-proj-rejected-test-value"),
+        ("CHATGPT_ACCESS_TOKEN", "chatgpt-token-rejected-test-value"),
+        ("CHATGPT_ACCOUNT_ID", "ws_rejected_test_account"),
+        ("CHATGPT_REFRESH_TOKEN", "rt_rejected_test_refresh_token"),
+        ("CHATGPT_ID_TOKEN", "hdr.rejected-test-id-token.sig"),
+    ];
 
-    let error = validate_model_provider_env_placeholders(&ctx).unwrap_err();
+    for (key, value) in protected_values {
+        let ctx = context_with_env(HashMap::from([(key.to_owned(), value.to_owned())]));
 
-    assert!(error.contains("ANTHROPIC_API_KEY"));
-    assert!(!error.contains(secret));
+        let Err(error) = validate_context_for_test(&ctx) else {
+            panic!("validation unexpectedly accepted {key}");
+        };
+
+        assert!(
+            error.contains(key),
+            "validation error did not identify {key}"
+        );
+        assert!(
+            !error.contains(value),
+            "validation error for {key} echoed its rejected value"
+        );
+    }
 }
 
 #[test]
@@ -304,20 +326,6 @@ fn model_provider_env_placeholder_validation_accepts_empty_anthropic_api_key_wit
 }
 
 #[test]
-fn model_provider_env_placeholder_validation_rejects_real_anthropic_auth_token() {
-    let secret = "sk-real-openrouter-token";
-    let ctx = context_with_env(HashMap::from([(
-        "ANTHROPIC_AUTH_TOKEN".into(),
-        secret.into(),
-    )]));
-
-    let error = validate_model_provider_env_placeholders(&ctx).unwrap_err();
-
-    assert!(error.contains("ANTHROPIC_AUTH_TOKEN"));
-    assert!(!error.contains(secret));
-}
-
-#[test]
 fn model_provider_env_placeholder_validation_accepts_claude_oauth_placeholder() {
     let ctx = context_with_env(HashMap::from([(
         "CLAUDE_CODE_OAUTH_TOKEN".into(),
@@ -338,17 +346,6 @@ fn model_provider_env_placeholder_validation_accepts_openai_api_key_placeholder(
 }
 
 #[test]
-fn model_provider_env_placeholder_validation_rejects_real_openai_api_key() {
-    let secret = "sk-proj-real-openai-secret";
-    let ctx = context_with_env(HashMap::from([("OPENAI_API_KEY".into(), secret.into())]));
-
-    let error = validate_model_provider_env_placeholders(&ctx).unwrap_err();
-
-    assert!(error.contains("OPENAI_API_KEY"));
-    assert!(!error.contains(secret));
-}
-
-#[test]
 fn model_provider_env_placeholder_validation_accepts_codex_oauth_placeholders() {
     let ctx = context_with_env(HashMap::from([
         (
@@ -366,45 +363,6 @@ fn model_provider_env_placeholder_validation_accepts_codex_oauth_placeholders() 
     ]));
 
     assert!(validate_model_provider_env_placeholders(&ctx).is_ok());
-}
-
-#[test]
-fn model_provider_env_placeholder_validation_rejects_real_chatgpt_access_token() {
-    let secret = "ey-real-chatgpt-access-token";
-    let ctx = context_with_env(HashMap::from([(
-        "CHATGPT_ACCESS_TOKEN".into(),
-        secret.into(),
-    )]));
-
-    let error = validate_model_provider_env_placeholders(&ctx).unwrap_err();
-
-    assert!(error.contains("CHATGPT_ACCESS_TOKEN"));
-    assert!(!error.contains(secret));
-}
-
-#[test]
-fn model_provider_env_placeholder_validation_rejects_real_chatgpt_refresh_token() {
-    let secret = "rt_real_chatgpt_refresh_token";
-    let ctx = context_with_env(HashMap::from([(
-        "CHATGPT_REFRESH_TOKEN".into(),
-        secret.into(),
-    )]));
-
-    let error = validate_model_provider_env_placeholders(&ctx).unwrap_err();
-
-    assert!(error.contains("CHATGPT_REFRESH_TOKEN"));
-    assert!(!error.contains(secret));
-}
-
-#[test]
-fn model_provider_env_placeholder_validation_rejects_chatgpt_id_token() {
-    let secret = "hdr.real-chatgpt-id-token.sig";
-    let ctx = context_with_env(HashMap::from([("CHATGPT_ID_TOKEN".into(), secret.into())]));
-
-    let error = validate_model_provider_env_placeholders(&ctx).unwrap_err();
-
-    assert!(error.contains("CHATGPT_ID_TOKEN"));
-    assert!(!error.contains(secret));
 }
 
 #[test]

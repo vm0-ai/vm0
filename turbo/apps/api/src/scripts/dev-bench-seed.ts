@@ -31,11 +31,10 @@ type Database = ReturnType<typeof db>;
 type AgentRunInsert = typeof agentRuns.$inferInsert;
 type ZeroRunInsert = typeof zeroRuns.$inferInsert;
 type ChatMessageInsert = typeof chatMessages.$inferInsert;
-type SeedChatMessageRow = Omit<ChatMessageInsert, "seqId"> & {
+type SeedChatMessageRow = Omit<ChatMessageInsert, "role" | "seqId"> & {
   id: string;
   createdAt: Date;
   sequenceNumber?: number | null;
-  revokesMessageId?: string | null;
   seqId?: number;
 };
 
@@ -634,7 +633,11 @@ function appendRunMessages(
 ): void {
   const runId = randomUUID();
   const hasUsage = args.runIndex < args.profile.usageCount;
-  const eventCount = Math.max(1, args.runRowCount - 2 - (hasUsage ? 1 : 0));
+  const hasFollowups = args.runIndex < args.profile.followupCount;
+  const eventCount = Math.max(
+    1,
+    args.runRowCount - 2 - (hasUsage ? 1 : 0) - (hasFollowups ? 1 : 0),
+  );
   const baseCreatedAt = interpolateDate(
     args.startAt,
     args.endAt,
@@ -642,12 +645,14 @@ function appendRunMessages(
     args.runCount,
   );
   const failed = args.runIndex < args.profile.failedRunCount;
+  const prompt = userPromptLorem(args.profile, args.runIndex);
   const userMessageRow: SeedChatMessageRow = {
     id: randomUUID(),
     chatThreadId: args.threadId,
     runId,
-    role: "user",
-    content: userPromptLorem(args.profile, args.runIndex),
+    eventType: "input.prompt",
+    content: prompt,
+    userMessage: { version: 1, parts: [{ type: "text", text: prompt }] },
     createdAt: baseCreatedAt,
   };
 
@@ -660,7 +665,7 @@ function appendRunMessages(
     agentComposeVersionId: args.versionId,
     sessionId: args.sessionId,
     status: failed ? "failed" : "completed",
-    prompt: userPromptLorem(args.profile, args.runIndex),
+    prompt,
     result: failed
       ? null
       : {
@@ -710,6 +715,16 @@ function appendRunMessages(
     failed,
     messageRows: args.rows.messageRows,
   });
+  appendFollowupsMessage({
+    profile: args.profile,
+    threadId: args.threadId,
+    runId,
+    runIndex: args.runIndex,
+    eventCount,
+    baseCreatedAt,
+    hasFollowups,
+    messageRows: args.rows.messageRows,
+  });
 }
 
 function appendAssistantEventMessages(args: {
@@ -732,7 +747,7 @@ function appendAssistantEventMessages(args: {
       id: randomUUID(),
       chatThreadId: args.threadId,
       runId: args.runId,
-      role: "assistant",
+      eventType: "output.message",
       content: markdownLorem(args.profile, args.runIndex, eventIndex),
       sequenceNumber,
       runEventId: runEventId(args.profile, args.runIndex, sequenceNumber),
@@ -759,7 +774,7 @@ function appendUsageMessage(args: {
     id: randomUUID(),
     chatThreadId: args.threadId,
     runId: args.runId,
-    role: "assistant",
+    eventType: "usage.recorded",
     content: null,
     usagePayload: usagePayload(args.profile, args.runIndex, createdAt),
     createdAt,
@@ -780,15 +795,35 @@ function appendLifecycleMessage(args: {
     id: randomUUID(),
     chatThreadId: args.threadId,
     runId: args.runId,
-    role: "assistant",
+    eventType: args.failed ? "run.failed" : "run.completed",
     content: null,
     error: args.failed ? "Synthetic benchmark failure" : null,
     runLifecycleEvent: args.failed ? "failed" : "completed",
-    recommendedFollowups:
-      args.runIndex < args.profile.followupCount
-        ? recommendedFollowups(args.profile, args.runIndex)
-        : null,
     createdAt: addMs(args.baseCreatedAt, 45_000 + args.eventCount * 100),
+  });
+}
+
+function appendFollowupsMessage(args: {
+  readonly profile: ThreadProfile;
+  readonly threadId: string;
+  readonly runId: string;
+  readonly runIndex: number;
+  readonly eventCount: number;
+  readonly baseCreatedAt: Date;
+  readonly hasFollowups: boolean;
+  readonly messageRows: SeedChatMessageRow[];
+}): void {
+  if (!args.hasFollowups) {
+    return;
+  }
+  args.messageRows.push({
+    id: randomUUID(),
+    chatThreadId: args.threadId,
+    runId: args.runId,
+    eventType: "output.followups",
+    content: null,
+    recommendedFollowups: recommendedFollowups(args.profile, args.runIndex),
+    createdAt: addMs(args.baseCreatedAt, 45_001 + args.eventCount * 100),
   });
 }
 
@@ -817,11 +852,15 @@ function appendNullRunControlRows(args: {
       id: randomUUID(),
       chatThreadId: args.threadId,
       runId: null,
-      role: controlIndex % 2 === 0 ? "user" : "assistant",
+      eventType: controlIndex % 2 === 0 ? "input.prompt" : "output.thinking",
       content:
         controlIndex % 2 === 0
           ? userPromptLorem(args.profile, controlIndex)
           : null,
+      thinking:
+        controlIndex % 2 === 0
+          ? null
+          : `Synthetic background state ${String(controlIndex)}`,
       createdAt,
     });
   }
@@ -845,7 +884,7 @@ function applyRevokeMarkers(
     );
     const revoker = runUserMessageRows[revokerIndex];
     if (targetId && revoker) {
-      revoker.revokesMessageId = targetId;
+      revoker.revokesEventId = targetId;
     }
   }
 }

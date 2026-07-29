@@ -224,7 +224,7 @@ class UsageWebhookServer:
         return [
             event
             for request in self.requests
-            if request.path == "/api/webhooks/agent/model-usage-observation-v2"
+            if request.path == "/api/webhooks/agent/model-usage-observation"
             for body in [request.json_body()]
             for event in body.get("events", [])
             if isinstance(event, dict)

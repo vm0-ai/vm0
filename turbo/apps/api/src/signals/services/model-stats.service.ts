@@ -1,18 +1,29 @@
 import { command } from "ccstate";
-import { and, eq, gte, inArray, lt, sql, sum } from "drizzle-orm";
+import {
+  and,
+  desc,
+  eq,
+  gt,
+  gte,
+  inArray,
+  lt,
+  or,
+  sql,
+  sum,
+  type SQLWrapper,
+} from "drizzle-orm";
 import { CRON_AGGREGATE_MODEL_STATS_MAX_HOURS } from "@vm0/api-contracts/contracts/cron";
 import { modelStat } from "@vm0/db/schema/model-stat";
-import { compactModelUsageObservation } from "@vm0/db/schema/compact-model-usage-observation";
+import { modelUsageObservation } from "@vm0/db/schema/model-usage-observation";
 import {
   VM0_MODEL_ALIAS_TO_MODEL,
   VM0_MODEL_TO_PROVIDER,
 } from "@vm0/api-contracts/contracts/model-providers";
-import { z } from "zod";
 
 import {
-  executeRawRows,
-  pgInt8ToSafeIntegerSchema,
-} from "../../lib/db-raw-rows";
+  pgInt8ToSafeIntegerDecoder,
+  pgTextDecoder,
+} from "../../lib/db-structured-result";
 import { type Db, writeDb$ } from "../external/db";
 import { nowDate } from "../external/time";
 
@@ -38,24 +49,6 @@ interface ModelRankingResult {
   readonly windowEnd: Date;
   readonly rows: readonly ModelRankingRow[];
 }
-
-const modelRankingSqlRowSchema = z
-  .object({
-    model: z.string(),
-    input_tokens: pgInt8ToSafeIntegerSchema,
-    output_tokens: pgInt8ToSafeIntegerSchema,
-    total_tokens: pgInt8ToSafeIntegerSchema,
-    previous_total_tokens: pgInt8ToSafeIntegerSchema,
-  })
-  .transform((row): ModelRankingRow => {
-    return {
-      model: row.model,
-      inputTokens: row.input_tokens,
-      outputTokens: row.output_tokens,
-      totalTokens: row.total_tokens,
-      previousTotalTokens: row.previous_total_tokens,
-    };
-  });
 
 function getModelAliasEntries() {
   return Object.entries(VM0_MODEL_ALIAS_TO_MODEL);
@@ -129,8 +122,8 @@ function parseModelRankingPeriod(
   return "week";
 }
 
-function compactModelUsageObservationModelExpression() {
-  const modelColumn = compactModelUsageObservation.model;
+function modelUsageObservationModelExpression() {
+  const modelColumn = modelUsageObservation.model;
   return sql`CASE ${sql.join(
     getModelAliasEntries().map(([alias, model]) => {
       return sql`WHEN ${eq(modelColumn, alias)} THEN ${model}`;
@@ -146,7 +139,19 @@ function modelStatModelExpression() {
       return sql`WHEN ${eq(modelColumn, alias)} THEN ${model}`;
     }),
     sql` `,
-  )} ELSE ${modelColumn} END`;
+  )} ELSE ${sql`${modelColumn}`} END`.mapWith(pgTextDecoder);
+}
+
+function modelStatWindowSum(value: SQLWrapper, start: string, end: string) {
+  return sql`COALESCE(
+    ${sum(value)} FILTER (
+      WHERE ${and(
+        gte(modelStat.hourStart, sql`${start}::timestamp`),
+        lt(modelStat.hourStart, sql`${end}::timestamp`),
+      )}
+    ),
+    0
+  )::bigint`.mapWith(pgInt8ToSafeIntegerDecoder);
 }
 
 async function replaceModelStats(
@@ -154,7 +159,7 @@ async function replaceModelStats(
   windowStart: Date,
   windowEnd: Date,
 ): Promise<number> {
-  const observationModelExpr = compactModelUsageObservationModelExpression();
+  const observationModelExpr = modelUsageObservationModelExpression();
   const modelStatsModelIds = getModelStatsModelIds();
   const windowStartParam = utcTimestampParam(windowStart);
   const windowEndParam = utcTimestampParam(windowEnd);
@@ -173,22 +178,30 @@ async function replaceModelStats(
     const { rowCount } = await tx.execute(sql`
       WITH usage_rows AS (
         SELECT
-          date_trunc('hour', ${compactModelUsageObservation.observedAt})::timestamp AS hour_start,
+          date_trunc('hour', ${modelUsageObservation.observedAt})::timestamp AS hour_start,
           ${observationModelExpr} AS model,
-          ${compactModelUsageObservation.inputTokens}::bigint AS input_tokens,
-          ${compactModelUsageObservation.outputTokens}::bigint AS output_tokens,
-          ${compactModelUsageObservation.cacheReadInputTokens}::bigint AS cache_read_input_tokens,
-          ${compactModelUsageObservation.cacheCreationInputTokens}::bigint AS cache_creation_input_tokens
-        FROM ${compactModelUsageObservation}
-        WHERE ${gte(compactModelUsageObservation.observedAt, sql`${windowStartParam}::timestamp`)}
-          AND ${lt(compactModelUsageObservation.observedAt, sql`${windowEndParam}::timestamp`)}
-          AND ${inArray(compactModelUsageObservation.model, modelStatsModelIds)}
-          AND (
-            ${compactModelUsageObservation.inputTokens} > 0
-            OR ${compactModelUsageObservation.outputTokens} > 0
-            OR ${compactModelUsageObservation.cacheReadInputTokens} > 0
-            OR ${compactModelUsageObservation.cacheCreationInputTokens} > 0
-          )
+          ${modelUsageObservation.inputTokens}::bigint AS input_tokens,
+          ${modelUsageObservation.outputTokens}::bigint AS output_tokens,
+          ${modelUsageObservation.cacheReadInputTokens}::bigint AS cache_read_input_tokens,
+          ${modelUsageObservation.cacheCreationInputTokens}::bigint AS cache_creation_input_tokens
+        FROM ${modelUsageObservation}
+        WHERE ${and(
+          gte(
+            modelUsageObservation.observedAt,
+            sql`${windowStartParam}::timestamp`,
+          ),
+          lt(
+            modelUsageObservation.observedAt,
+            sql`${windowEndParam}::timestamp`,
+          ),
+          inArray(modelUsageObservation.model, modelStatsModelIds),
+          or(
+            gt(modelUsageObservation.inputTokens, sql`0`),
+            gt(modelUsageObservation.outputTokens, sql`0`),
+            gt(modelUsageObservation.cacheReadInputTokens, sql`0`),
+            gt(modelUsageObservation.cacheCreationInputTokens, sql`0`),
+          ),
+        )}
       ),
       aggregated AS (
         SELECT
@@ -246,8 +259,8 @@ async function deleteExpiredModelUsageObservations(
   retentionStart: Date,
 ): Promise<void> {
   await db
-    .delete(compactModelUsageObservation)
-    .where(lt(compactModelUsageObservation.observedAt, retentionStart));
+    .delete(modelUsageObservation)
+    .where(lt(modelUsageObservation.observedAt, retentionStart));
 }
 
 async function selectModelRankings(
@@ -265,45 +278,55 @@ async function selectModelRankings(
   const previousStartParam = utcTimestampParam(previousStart);
   const previousEndParam = utcTimestampParam(previousEnd);
 
-  const rows = await executeRawRows(
-    db,
-    sql`
-      WITH current_period AS (
-      SELECT
-        ${modelExpr} AS model,
-        COALESCE(SUM(${modelStat.inputTokens} + ${modelStat.cacheReadInputTokens} + ${modelStat.cacheCreationInputTokens}), 0)::bigint AS input_tokens,
-        COALESCE(${sum(modelStat.outputTokens)}, 0)::bigint AS output_tokens,
-        COALESCE(${sum(modelStat.totalTokens)}, 0)::bigint AS total_tokens
-      FROM ${modelStat}
-      WHERE ${gte(modelStat.hourStart, sql`${windowStartParam}::timestamp`)}
-        AND ${lt(modelStat.hourStart, sql`${windowEndParam}::timestamp`)}
-        AND ${inArray(modelStat.model, modelStatsModelIds)}
-      GROUP BY 1
-    ),
-    previous_period AS (
-      SELECT
-        ${modelExpr} AS model,
-        COALESCE(${sum(modelStat.totalTokens)}, 0)::bigint AS previous_total_tokens
-      FROM ${modelStat}
-      WHERE ${gte(modelStat.hourStart, sql`${previousStartParam}::timestamp`)}
-        AND ${lt(modelStat.hourStart, sql`${previousEndParam}::timestamp`)}
-        AND ${inArray(modelStat.model, modelStatsModelIds)}
-      GROUP BY 1
-    )
-    SELECT
-      current_period.model,
-      current_period.input_tokens,
-      current_period.output_tokens,
-      current_period.total_tokens,
-      COALESCE(previous_period.previous_total_tokens, 0)::bigint AS previous_total_tokens
-    FROM current_period
-    LEFT JOIN previous_period ON previous_period.model = current_period.model
-    WHERE current_period.total_tokens > 0
-    ORDER BY current_period.total_tokens DESC
-      LIMIT 50
-    `,
-    modelRankingSqlRowSchema,
+  const rankingPeriods = db.$with("ranking_periods").as(
+    db
+      .select({
+        model: modelExpr.as("ranking_model"),
+        inputTokens: modelStatWindowSum(
+          sql`${modelStat.inputTokens} + ${modelStat.cacheReadInputTokens} + ${modelStat.cacheCreationInputTokens}`,
+          windowStartParam,
+          windowEndParam,
+        ).as("input_tokens"),
+        outputTokens: modelStatWindowSum(
+          modelStat.outputTokens,
+          windowStartParam,
+          windowEndParam,
+        ).as("output_tokens"),
+        totalTokens: modelStatWindowSum(
+          modelStat.totalTokens,
+          windowStartParam,
+          windowEndParam,
+        ).as("total_tokens"),
+        previousTotalTokens: modelStatWindowSum(
+          modelStat.totalTokens,
+          previousStartParam,
+          previousEndParam,
+        ).as("previous_total_tokens"),
+      })
+      .from(modelStat)
+      .where(
+        and(
+          gte(modelStat.hourStart, sql`${previousStartParam}::timestamp`),
+          lt(modelStat.hourStart, sql`${windowEndParam}::timestamp`),
+          inArray(modelStat.model, modelStatsModelIds),
+        ),
+      )
+      .groupBy(sql`1`),
   );
+
+  const rows: ModelRankingRow[] = await db
+    .with(rankingPeriods)
+    .select({
+      model: rankingPeriods.model,
+      inputTokens: rankingPeriods.inputTokens,
+      outputTokens: rankingPeriods.outputTokens,
+      totalTokens: rankingPeriods.totalTokens,
+      previousTotalTokens: rankingPeriods.previousTotalTokens,
+    })
+    .from(rankingPeriods)
+    .where(gt(rankingPeriods.totalTokens, sql`0`))
+    .orderBy(desc(rankingPeriods.totalTokens))
+    .limit(50);
 
   return {
     period,

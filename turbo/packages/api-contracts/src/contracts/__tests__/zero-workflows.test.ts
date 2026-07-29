@@ -17,6 +17,7 @@ describe("Gmail new message workflow automation contract", () => {
     const parsed = gmailNewMessageEventConfigSchema.safeParse({
       provider: "gmail",
       event: "new_message",
+      threadId: "gmail-thread-1",
       match: {
         from: { contains: "@example.com" },
         to: { containsAny: ["team@example.com"] },

@@ -524,14 +524,23 @@ fn cli_failure_reason_ignores_simple_claude_overloaded_from_stderr() {
 }
 
 #[test]
-fn cli_failure_reason_classifies_claude_result_stream_idle_timeout() {
-    let reason = super::classify_cli_failure_reason(
-        AgentFramework::ClaudeCode,
-        FailureDetailSource::ClaudeResult,
+fn cli_failure_reason_classifies_claude_result_stream_idle_timeouts() {
+    for message in [
         "API Error: Stream idle timeout - partial response received",
-    );
+        "API Error: Stream idle timeout - no chunks received",
+    ] {
+        let reason = super::classify_cli_failure_reason(
+            AgentFramework::ClaudeCode,
+            FailureDetailSource::ClaudeResult,
+            message,
+        );
 
-    assert_eq!(reason, Some(FailureReason::ProviderStreamTimeout));
+        assert_eq!(
+            reason,
+            Some(FailureReason::ProviderStreamTimeout),
+            "message: {message}"
+        );
+    }
 }
 
 #[test]
@@ -546,37 +555,49 @@ fn cli_failure_reason_classifies_claude_result_stalled_mid_stream() {
 }
 
 #[test]
-fn cli_failure_reason_classifies_claude_result_stalled_mid_stream_diagnostic() {
-    let message = "API Error: Response stalled mid-stream. The response above may be incomplete.";
-    let msg = cli_failure_message(
-        1,
-        &["background stderr noise".to_string()],
-        Some(&cli_diagnostic(message, FailureDetailSource::ClaudeResult)),
-    );
-    let diagnostic = FailureDiagnostic::new(
-        FailureClass::CliNonzero,
-        AgentFramework::ClaudeCode,
-        PromptMetadata::from_prompt("plain prompt"),
-    )
-    .with_cli_exit_code(1)
-    .with_failure_detail_source(msg.source);
-    let diagnostic = with_cli_failure_reason(diagnostic, &msg);
+fn cli_failure_reason_classifies_claude_result_stream_timeout_diagnostics() {
+    for message in [
+        "API Error: Stream idle timeout - partial response received",
+        "API Error: Stream idle timeout - no chunks received",
+        "API Error: Response stalled mid-stream. The response above may be incomplete.",
+    ] {
+        let msg = cli_failure_message(
+            1,
+            &["background stderr noise".to_string()],
+            Some(&cli_diagnostic(message, FailureDetailSource::ClaudeResult)),
+        );
+        let diagnostic = FailureDiagnostic::new(
+            FailureClass::CliNonzero,
+            AgentFramework::ClaudeCode,
+            PromptMetadata::from_prompt("plain prompt"),
+        )
+        .with_cli_exit_code(1)
+        .with_failure_detail_source(msg.source);
+        let diagnostic = with_cli_failure_reason(diagnostic, &msg);
 
-    assert_eq!(msg.source, FailureDetailSource::ClaudeResult);
-    assert_eq!(
-        diagnostic.failure_reason,
-        Some(FailureReason::ProviderStreamTimeout)
-    );
-    assert_eq!(
-        diagnostic.failure_detail_source,
-        Some(FailureDetailSource::ClaudeResult)
-    );
+        assert_eq!(
+            msg.source,
+            FailureDetailSource::ClaudeResult,
+            "message: {message}"
+        );
+        assert_eq!(
+            diagnostic.failure_reason,
+            Some(FailureReason::ProviderStreamTimeout),
+            "message: {message}"
+        );
+        assert_eq!(
+            diagnostic.failure_detail_source,
+            Some(FailureDetailSource::ClaudeResult),
+            "message: {message}"
+        );
+    }
 }
 
 #[test]
 fn cli_failure_reason_ignores_claude_result_stream_timeout_messages_from_stderr() {
     for message in [
         "API Error: Stream idle timeout - partial response received",
+        "API Error: Stream idle timeout - no chunks received",
         "API Error: Response stalled mid-stream. The response above may be incomplete.",
     ] {
         let reason = super::classify_cli_failure_reason(
@@ -593,6 +614,7 @@ fn cli_failure_reason_ignores_claude_result_stream_timeout_messages_from_stderr(
 fn cli_failure_reason_ignores_non_claude_stream_timeout_messages() {
     for message in [
         "API Error: Stream idle timeout - partial response received",
+        "API Error: Stream idle timeout - no chunks received",
         "API Error: Response stalled mid-stream. The response above may be incomplete.",
     ] {
         let reason = super::classify_cli_failure_reason(
@@ -606,20 +628,26 @@ fn cli_failure_reason_ignores_non_claude_stream_timeout_messages() {
 }
 
 #[test]
-fn cli_failure_reason_ignores_generic_claude_timeout() {
-    let reason = super::classify_cli_failure_reason(
-        AgentFramework::ClaudeCode,
-        FailureDetailSource::ClaudeResult,
+fn cli_failure_reason_ignores_unrecognized_claude_timeouts() {
+    for message in [
         "API Error: request timed out",
-    );
+        "API Error: Stream idle timeout - connection reset",
+    ] {
+        let reason = super::classify_cli_failure_reason(
+            AgentFramework::ClaudeCode,
+            FailureDetailSource::ClaudeResult,
+            message,
+        );
 
-    assert_eq!(reason, None);
+        assert_eq!(reason, None, "message: {message}");
+    }
 }
 
 #[test]
 fn cli_failure_reason_ignores_explanatory_stream_timeout_text() {
     for message in [
         "Observed API Error: Stream idle timeout - partial response received in an earlier run",
+        "Observed API Error: Stream idle timeout - no chunks received in an earlier run",
         "Observed API Error: Response stalled mid-stream. The response above may be incomplete in an earlier run",
     ] {
         let reason = super::classify_cli_failure_reason(
@@ -964,6 +992,52 @@ fn cli_failure_reason_ignores_generic_codex_401() {
 }
 
 #[test]
+fn cli_failure_reason_classifies_exact_codex_safety_policy_refusal() {
+    let reason = super::classify_cli_failure_reason(
+        AgentFramework::Codex,
+        FailureDetailSource::CodexJsonl,
+        CODEX_SAFETY_POLICY_REFUSAL_MESSAGE,
+    );
+
+    assert_eq!(reason, Some(FailureReason::SafetyPolicyRefusal));
+}
+
+#[test]
+fn cli_failure_reason_does_not_broadly_classify_safety_policy_text() {
+    for message in [
+        "policy violation",
+        "security risk",
+        "This content was flagged for possible cybersecurity risk.",
+        "This request was refused by a content policy.",
+    ] {
+        let reason = super::classify_cli_failure_reason(
+            AgentFramework::Codex,
+            FailureDetailSource::CodexJsonl,
+            message,
+        );
+
+        assert_eq!(reason, None, "message: {message}");
+    }
+
+    assert_eq!(
+        super::classify_cli_failure_reason(
+            AgentFramework::Codex,
+            FailureDetailSource::Stderr,
+            CODEX_SAFETY_POLICY_REFUSAL_MESSAGE,
+        ),
+        None
+    );
+    assert_eq!(
+        super::classify_cli_failure_reason(
+            AgentFramework::ClaudeCode,
+            FailureDetailSource::CodexJsonl,
+            CODEX_SAFETY_POLICY_REFUSAL_MESSAGE,
+        ),
+        None
+    );
+}
+
+#[test]
 fn cli_failure_reason_classifies_codex_oauth_reconnect_required() {
     let reason = classify_cli_failure_reason(
         AgentFramework::Codex,
@@ -1069,6 +1143,33 @@ fn cli_failure_reason_prefers_message_classification_over_carried_reason() {
     let diagnostic = with_cli_failure_reason(diagnostic, &failure_message);
 
     assert_eq!(diagnostic.failure_reason, Some(FailureReason::UsageLimit));
+}
+
+#[test]
+fn cli_failure_reason_preserves_structured_safety_policy_refusal() {
+    let diagnostic = FailureDiagnostic::new(
+        FailureClass::CliNonzero,
+        AgentFramework::Codex,
+        PromptMetadata::from_prompt("debug failure"),
+    )
+    .with_cli_exit_code(1)
+    .with_failure_detail_source(FailureDetailSource::CodexJsonl);
+    let failure_message = selected_failure_message(
+        "This request was refused by the provider.",
+        FailureDetailSource::CodexJsonl,
+        Some(FailureReason::SafetyPolicyRefusal),
+    );
+    let diagnostic = with_cli_failure_reason(diagnostic, &failure_message);
+
+    assert_eq!(diagnostic.failure_class, FailureClass::CliNonzero);
+    assert_eq!(
+        diagnostic.failure_reason,
+        Some(FailureReason::SafetyPolicyRefusal)
+    );
+    assert_eq!(
+        diagnostic.failure_detail_source,
+        Some(FailureDetailSource::CodexJsonl)
+    );
 }
 
 #[test]

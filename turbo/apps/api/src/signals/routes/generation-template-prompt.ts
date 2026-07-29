@@ -4,6 +4,7 @@ import {
   findPresentationRunbookPackage,
   findVideoTemplate,
   findWebsiteTemplatePackage,
+  hasR2Archive,
   resolvePresentationRunbookColorToken,
   type PresentationRunbookPackage,
   type WebsiteTemplatePackage,
@@ -70,10 +71,10 @@ type GenerationTemplatePromptResult =
 
 interface BuildGenerationTemplatePromptOptions {
   /**
-   * When true, website templates use their refreshed self-contained v2
-   * packages. When false, the existing package resources remain unchanged.
+   * When true, archive-enabled image styles resolve through private R2.
+   * When false, the existing vm0-skills GitHub source remains unchanged.
    */
-  readonly websiteTemplateV2Enabled?: boolean;
+  readonly imageStyleR2Enabled?: boolean;
 }
 
 export function buildGenerationTemplatePrompt(
@@ -88,33 +89,75 @@ export function buildGenerationTemplatePrompt(
     return buildVideoGenerationTemplatePrompt(generationTemplate);
   }
   if (generationTemplate.type === "illustration") {
-    return buildIllustrationGenerationTemplatePrompt(generationTemplate);
+    return buildIllustrationGenerationTemplatePrompt(
+      generationTemplate,
+      options,
+    );
   }
   if (generationTemplate.type === "workflow") {
     return buildWorkflowGenerationTemplatePrompt(generationTemplate);
   }
   if (generationTemplate.type === "website") {
-    return buildWebsiteGenerationTemplatePrompt(generationTemplate, options);
+    return buildWebsiteGenerationTemplatePrompt(generationTemplate);
   }
 
   return buildPresentationGenerationTemplatePrompt(generationTemplate);
 }
 
-// Shared framing for every artifact-template block, kept in one place so the
-// three builders cannot drift. It balances two jobs that pull in opposite
-// directions:
-//   1. The user *deliberately* selected this template — a strong signal, so it is
-//      the default style for that artifact in this run, and the agent must not
-//      re-ask for an already-selected style (vm0-ai/vm0#17525).
-//   2. The selection must not hijack unrelated work in this run, so the "does
-//      not force you to generate" boundary is load-bearing, not decorative.
-// State the facts and hand back the decision, rather than naming a step ("resolve
-// from the registry") without the facts needed to act on it.
+function stripGenerationTemplateContext(prompt: string): string {
+  const lines = prompt.split("\n");
+  if (lines[0] === "# Workflow Template Context") {
+    return lines.slice(lines[1] === "" ? 2 : 1).join("\n");
+  }
+  if (lines[0] !== "# Artifact Template Context") {
+    return prompt;
+  }
+  const framingEnd = lines.findIndex((line, index) => {
+    return index > 1 && line === "";
+  });
+  return lines.slice(framingEnd + 1).join("\n");
+}
+
+export function buildGenerationTemplatesPrompt(
+  generationTemplates: readonly GenerationTemplateInput[],
+  options?: BuildGenerationTemplatePromptOptions,
+): GenerationTemplatePromptResult {
+  if (generationTemplates.length === 0) {
+    return { status: "resolved", prompt: "" };
+  }
+  const details: string[] = [];
+  for (const [index, generationTemplate] of generationTemplates.entries()) {
+    const built = buildGenerationTemplatePrompt(generationTemplate, options);
+    if (built.status === "invalid") {
+      return built;
+    }
+    details.push(
+      [
+        `## Template #${index + 1} (${generationTemplate.type})`,
+        "",
+        stripGenerationTemplateContext(built.prompt),
+      ].join("\n"),
+    );
+  }
+  return {
+    status: "resolved",
+    prompt: [
+      "# Inline Templates",
+      "",
+      "Match each numbered template marker in the current user message with the same numbered section below.",
+      "- Apply each template only to the request around its marker.",
+      "- A template is context, not a request by itself.",
+      "",
+      details.join("\n\n"),
+    ].join("\n"),
+  };
+}
+
 function templateFraming(artifactNoun: string): readonly string[] {
   return [
     "# Artifact Template Context",
     "",
-    `- The user deliberately selected this artifact template for this run — treat it as the default style for any ${artifactNoun} you produce here.`,
+    `- The user deliberately selected this artifact template for this run — treat it as the default style whenever you produce ${artifactNoun} here.`,
     `- It does not force you to generate: the user's prompt decides the task, content, output format, and whether to produce an artifact at all. If a request isn't about producing ${artifactNoun}, just answer it normally.`,
     "- Other artifact templates, files, or attachments may also be present.",
     "",
@@ -177,7 +220,6 @@ function buildPresentationRunbookPrompt(
 
 function buildWebsiteGenerationTemplatePrompt(
   generationTemplate: WebsiteGenerationTemplateInput,
-  options?: BuildGenerationTemplatePromptOptions,
 ): GenerationTemplatePromptResult {
   const item = findWebsiteTemplateItem(
     generationTemplate.selection.websiteTemplateId,
@@ -186,9 +228,7 @@ function buildWebsiteGenerationTemplatePrompt(
     return { status: "invalid", message: "Unknown website template" };
   }
 
-  const packageId = options?.websiteTemplateV2Enabled
-    ? `${item.templateId}-v2`
-    : item.templateId;
+  const packageId = `${item.templateId}-v2`;
   const pkg = findWebsiteTemplatePackage(packageId);
   if (!pkg) {
     return { status: "invalid", message: "Unknown website template" };
@@ -262,6 +302,7 @@ function buildVideoGenerationTemplatePrompt(
 
 function buildIllustrationGenerationTemplatePrompt(
   generationTemplate: IllustrationGenerationTemplateInput,
+  options?: BuildGenerationTemplatePromptOptions,
 ): GenerationTemplatePromptResult {
   const imageStyle = findImageStyle(
     generationTemplate.selection.illustrationStyleId,
@@ -269,10 +310,21 @@ function buildIllustrationGenerationTemplatePrompt(
   if (!imageStyle) {
     return { status: "invalid", message: "Unknown generation image style" };
   }
-  const styleSource =
-    imageStyle.source.repo && imageStyle.source.ref
+  const useR2 =
+    options?.imageStyleR2Enabled === true && hasR2Archive(imageStyle);
+  const styleSource = useR2
+    ? `private R2 registry resource ${imageStyle.id}`
+    : imageStyle.source.repo && imageStyle.source.ref
       ? `${imageStyle.source.repo}@${imageStyle.source.ref}:${imageStyle.source.path}`
       : imageStyle.source.path;
+  const compileCommand = [
+    `zero generate image --provider built-in --style ${imageStyle.id}`,
+    '--prompt "<user request>" --compile',
+    ...(useR2 ? ["--style-source r2"] : []),
+  ].join(" ");
+  const sourceInstruction = useR2
+    ? "Follow the returned packet completely, including pulling the private R2 package and reading its extracted SKILL.md. If the R2 source is unavailable, stop without generating; do not fall back to GitHub."
+    : `Follow the returned packet completely, including reading its style source (${styleSource}) and SKILL.md. If the source is unavailable, stop without generating.`;
 
   return {
     status: "resolved",
@@ -285,8 +337,8 @@ function buildIllustrationGenerationTemplatePrompt(
       `- Style source: ${styleSource}`,
       "",
       "When you produce an illustration or image from the user's request:",
-      `- Run once: zero generate image --provider built-in --style ${imageStyle.id} --prompt "<user request>" --compile`,
-      `- Follow the returned packet completely, including reading its style source (${styleSource}) and SKILL.md. If the source is unavailable, stop without generating.`,
+      `- Run once: ${compileCommand}`,
+      `- ${sourceInstruction}`,
       '- Then run `zero generate image --provider built-in --compiled-prompt "<compiled prompt>"` with the resolved compatible CLI options and required reference image URLs, without `--style`.',
       "- If a flag above no longer applies, run `zero generate image -h` to discover the current flags, models, providers, and styles.",
     ].join("\n"),

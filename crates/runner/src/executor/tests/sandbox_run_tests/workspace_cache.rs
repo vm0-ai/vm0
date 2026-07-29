@@ -1,6 +1,69 @@
 use super::*;
 
 #[tokio::test]
+async fn workspace_mount_retry_starts_a_new_codex_catalog_prefetch_owner() {
+    let dir = tempfile::tempdir().unwrap();
+    let runner_paths = RunnerPaths::new(dir.path().join("runner"));
+    let cache = SessionWorkspaceCache::new(runner_paths.clone());
+    let mut config = test_executor_config(dir.path()).await;
+    config.workspace_cache = Some(cache.clone());
+    let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::new());
+    overrides.add_exec_matcher(sandbox_mock::ExecMatcher {
+        pattern: "mount -t ext4".to_string(),
+        exit_code: 64,
+        stdout: Vec::new(),
+        stderr: b"cached mount denied".to_vec(),
+    });
+    let factory = MockSandboxFactory::with_overrides(Arc::clone(&overrides));
+    let mut ctx = codex_oauth_context();
+    let session_id = "00000000-0000-4000-8000-000000023425";
+    ctx.resume_session = Some(ResumeSession::inline(
+        session_id.into(),
+        r#"{"type":"init"}"#.into(),
+    ));
+    let params = JobParams {
+        workspace_disk_mb: 16,
+        ..default_params()
+    };
+    seed_workspace_image_cache(&cache, &runner_paths, session_id, 16).await;
+    let mut telemetry = test_telemetry(&config, &ctx);
+
+    let outcome = execute_new_sandbox(
+        &factory,
+        &ctx,
+        NewSandboxDispatch {
+            id: SandboxId::new_v4(),
+            reuse_result: SandboxReuseResult::PoolMiss,
+        },
+        &config,
+        &params,
+        &mut telemetry,
+        tokio_util::sync::CancellationToken::new(),
+    )
+    .await
+    .unwrap();
+
+    assert_eq!(outcome.exit_code(), 0);
+    assert!(outcome.workspace_image.is_none());
+    assert_eq!(overrides.create_configs().len(), 2);
+    assert_eq!(overrides.destroy_call_count(), 1);
+    let start_calls = overrides.start_process_calls();
+    assert_eq!(start_calls.len(), 3);
+    assert!(start_calls[0].cmd.contains("codex --version"));
+    assert!(start_calls[1].cmd.contains("codex --version"));
+    assert!(!start_calls[2].cmd.contains("codex --version"));
+    assert_eq!(
+        telemetry
+            .pending_ops_snapshot()
+            .iter()
+            .filter(|(action, _, _)| action == "runner_codex_model_catalog_prefetch")
+            .count(),
+        2
+    );
+    assert_proxy_registry_empty(dir.path()).await;
+}
+
+#[tokio::test]
 async fn execute_inner_retries_fresh_after_workspace_cache_hit_create_failure() {
     let dir = tempfile::tempdir().unwrap();
     let runner_paths = RunnerPaths::new(dir.path().join("runner"));
@@ -132,6 +195,7 @@ async fn execute_inner_dns_readiness_retry_replaces_consumed_workspace_cache_hit
     config.workspace_cache = Some(cache.clone());
     let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::new());
     overrides.push_start_result(Err(SandboxError::GuestDnsReadiness {
+        reason: SandboxGuestDnsReadinessReason::DnsPath,
         message: "first attachment failed".into(),
     }));
     let factory = MockSandboxFactory::with_overrides(Arc::clone(&overrides));
@@ -203,6 +267,91 @@ async fn execute_inner_dns_readiness_retry_replaces_consumed_workspace_cache_hit
 }
 
 #[tokio::test]
+async fn process_timeout_invalidates_consumed_workspace_cache_without_fallback() {
+    let dir = tempfile::tempdir().unwrap();
+    let runner_paths = RunnerPaths::new(dir.path().join("runner"));
+    let cache = SessionWorkspaceCache::new(runner_paths.clone());
+    let mut config = test_executor_config(dir.path()).await;
+    config.workspace_cache = Some(cache.clone());
+    let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::new());
+    overrides.push_start_result(Err(SandboxError::GuestDnsReadiness {
+        reason: SandboxGuestDnsReadinessReason::ProcessTimeout,
+        message: "guest process timed out".into(),
+    }));
+    let factory = MockSandboxFactory::with_overrides(Arc::clone(&overrides));
+    let session_id = "sess-cache-dns-process-timeout";
+    let mut ctx = minimal_context();
+    ctx.resume_session = Some(ResumeSession::inline(
+        session_id.into(),
+        r#"{"type":"init"}"#.into(),
+    ));
+    let params = JobParams {
+        workspace_disk_mb: 16,
+        ..default_params()
+    };
+    let expected_seed =
+        seed_workspace_image_cache(&cache, &runner_paths, session_id, params.workspace_disk_mb)
+            .await;
+    let mut telemetry = test_telemetry(&config, &ctx);
+
+    let result = execute_new_sandbox(
+        &factory,
+        &ctx,
+        NewSandboxDispatch {
+            id: SandboxId::new_v4(),
+            reuse_result: SandboxReuseResult::PoolMiss,
+        },
+        &config,
+        &params,
+        &mut telemetry,
+        tokio_util::sync::CancellationToken::new(),
+    )
+    .await;
+
+    let error = result
+        .err()
+        .expect("guest process timeout must be returned");
+    assert!(
+        error.to_string().contains("guest process timed out"),
+        "got: {error}"
+    );
+    let configs = overrides.create_configs();
+    assert_eq!(configs.len(), 1);
+    assert_eq!(
+        configs[0].workspace_drive,
+        Some(sandbox::WorkspaceDriveConfig {
+            size_mb: params.workspace_disk_mb,
+            seed_image: Some(sandbox::WorkspaceDriveSeedImage::Move(
+                expected_seed.clone(),
+            )),
+        })
+    );
+    assert_eq!(overrides.destroy_call_count(), 1);
+    assert!(overrides.start_process_calls().is_empty());
+    assert!(!expected_seed.exists());
+    assert_no_telemetry_action(&telemetry, "runner_fresh_sandbox_dns_readiness_retry");
+    assert_no_telemetry_action(
+        &telemetry,
+        "runner_fresh_sandbox_retry_without_workspace_image",
+    );
+
+    let checkout = cache
+        .prepare(WorkspaceImagePrepareRequest {
+            identity: WorkspaceImageLeaseIdentity {
+                run_id: RunId::new_v4(),
+                sandbox_id: SandboxId::new_v4(),
+                profile_name: &params.profile_name,
+                cli_agent_session_id: Some(session_id),
+                working_dir: CANONICAL_WORKING_DIR,
+                image_size_bytes: u64::from(params.workspace_disk_mb) * 1024 * 1024,
+            },
+            workspace_drive_required: true,
+        })
+        .await;
+    assert_eq!(checkout.result(), WorkspaceCacheCheckoutResult::Miss);
+}
+
+#[tokio::test]
 async fn dns_replacement_records_completion_when_fresh_storage_prepare_fails() {
     let dir = tempfile::tempdir().unwrap();
     let runner_paths = RunnerPaths::new(dir.path().join("runner"));
@@ -211,6 +360,7 @@ async fn dns_replacement_records_completion_when_fresh_storage_prepare_fails() {
     config.workspace_cache = Some(cache.clone());
     let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::new());
     overrides.push_start_result(Err(SandboxError::GuestDnsReadiness {
+        reason: SandboxGuestDnsReadinessReason::DnsPath,
         message: "first attachment failed".into(),
     }));
     let factory = MockSandboxFactory::with_overrides(Arc::clone(&overrides));

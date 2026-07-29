@@ -418,7 +418,10 @@ fn secure_dir_component(
                     walk.expected_uid
                 )));
             }
-            chmod_dir_fd(fd, component_path, PRIVATE_DIR_MODE, walk.context)?;
+            let component_mode = (stat.st_mode as u32) & 0o7777;
+            if component_mode != PRIVATE_DIR_MODE {
+                chmod_dir_fd(fd, component_path, PRIVATE_DIR_MODE, walk.context)?;
+            }
         }
         DirMode::TrustedParent if is_final => {
             validate_trusted_component_owner(

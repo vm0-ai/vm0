@@ -7,6 +7,7 @@ from types import FrameType
 
 import pytest
 
+from usage import json_selective
 from usage.json_selective import JsonSelectiveExtractor, ScalarField
 
 
@@ -98,6 +99,16 @@ def test_rejects_invalid_scalar_field_max_bytes(max_bytes):
 def test_rejects_bool_scalar_field_max_bytes():
     with pytest.raises(TypeError, match="max_bytes"):
         ScalarField("string", max_bytes=True)
+
+
+def test_rejects_invalid_scalar_field_overflow_policy():
+    with pytest.raises(ValueError, match="overflow_policy"):
+        ScalarField("string", overflow_policy=json.loads('"ignore"'))
+
+
+def test_rejects_discard_overflow_policy_for_integer_field():
+    with pytest.raises(ValueError, match="requires a string field"):
+        ScalarField("int", overflow_policy="discard")
 
 
 def test_rejects_invalid_scalar_field_config_value():
@@ -566,6 +577,64 @@ def test_rejects_oversized_selected_string():
     assert result.values == {}
 
 
+def test_discards_oversized_optional_selected_string_across_chunks():
+    extractor = JsonSelectiveExtractor(
+        scalar_fields={
+            ("type",): ScalarField("string", max_bytes=3, overflow_policy="discard"),
+            ("usage", "output_tokens"): ScalarField("int"),
+        }
+    )
+
+    extractor.feed(b'{"type":"abc')
+    extractor.feed(b'def","usage":{"output_tokens":7}}')
+    result = _finish(extractor)
+
+    assert result.complete is True
+    assert result.values == {("usage", "output_tokens"): 7}
+    assert extractor.observed_scalar_for_diagnostics(("type",)) is None
+
+
+@pytest.mark.parametrize(
+    ("payload", "error"),
+    [
+        (rb'{"type":"abcd\x"}', "invalid string escape"),
+        (b'{"type":"abcd\xff"}', "invalid string"),
+    ],
+)
+def test_discarded_oversized_selected_string_still_validates_json(payload, error):
+    extractor = JsonSelectiveExtractor(
+        scalar_fields={("type",): ScalarField("string", max_bytes=3, overflow_policy="discard")}
+    )
+
+    extractor.feed(payload)
+    result = _finish(extractor)
+
+    assert result.complete is False
+    assert result.error == error
+    assert result.values == {}
+
+
+@pytest.mark.parametrize(
+    ("payload", "expected_type"),
+    [
+        (b'{"type":"ok","type":"long"}', None),
+        (b'{"type":"long","type":"ok"}', "ok"),
+    ],
+)
+def test_discarded_oversized_duplicate_selected_string_uses_last_value(payload, expected_type):
+    extractor = JsonSelectiveExtractor(
+        scalar_fields={("type",): ScalarField("string", max_bytes=3, overflow_policy="discard")}
+    )
+
+    extractor.feed(payload)
+    result = _finish(extractor)
+
+    assert result.complete is True
+    expected_values = {} if expected_type is None else {("type",): expected_type}
+    assert result.values == expected_values
+    assert extractor.observed_scalar_for_diagnostics(("type",)) == expected_type
+
+
 def test_selected_string_limit_counts_escape_bytes():
     extractor = JsonSelectiveExtractor(
         scalar_fields={("model",): ScalarField("string", max_bytes=1)}
@@ -960,6 +1029,44 @@ def test_wildcard_pattern_collects_keys_after_wildcard_segment():
 
     assert result.complete is True
     assert result.wildcard_array_counts == {("*", "items"): {"a": 2, "b": 1}}
+
+
+def test_mixed_paths_match_collection_prefixes_once_per_object_across_chunks():
+    generic_match_calls = 0
+    generic_match_code = json_selective._matches_any_path_pattern.__code__
+
+    # Profile the public parser operation so the real matcher stays in place
+    # while calls provide a deterministic performance contract.
+    def count_generic_match_calls(frame: FrameType, event: str, _arg: object) -> None:
+        nonlocal generic_match_calls
+        if event == "call" and frame.f_code is generic_match_code:
+            generic_match_calls += 1
+
+    extractor = JsonSelectiveExtractor(
+        scalar_fields={("usage", "input_tokens"): ScalarField("int")},
+        wildcard_array_count_paths={("*", "items")},
+    )
+    chunks = (
+        b'{"alpha":{"empty":{},"noise":{"deep":1},"first":0,',
+        b'"second":0,"items":[1,2]},"usage":{"input_',
+        b'tokens":7}}',
+    )
+
+    previous_profile = sys.getprofile()
+    sys.setprofile(count_generic_match_calls)
+    try:
+        for chunk in chunks:
+            extractor.feed(chunk)
+    finally:
+        sys.setprofile(previous_profile)
+    result = _finish(extractor)
+
+    assert result.complete is True
+    assert result.values == {("usage", "input_tokens"): 7}
+    assert result.wildcard_array_counts == {("*", "items"): {"alpha": 2}}
+    # The wildcard prefix is checked at most once for "alpha" and once for its
+    # unselected "noise" object, never for the empty object or every key.
+    assert generic_match_calls <= 2
 
 
 def test_leading_wildcard_does_not_match_array_element_marker():

@@ -1,12 +1,15 @@
 import { command, state, type Command } from "ccstate";
 import { delay } from "signal-timers";
-import { zeroAgentDraftContract } from "@vm0/api-contracts/contracts/zero-agents";
+import {
+  zeroAgentDraftContract,
+  zeroAgentDraftResponseSchema,
+} from "@vm0/api-contracts/contracts/zero-agents";
 import type {
   GenerationTemplateRequest,
   PersistedAttachment,
   UserMessageDocument,
 } from "@vm0/api-contracts/contracts/chat-threads";
-import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
+import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import { accept } from "../../lib/accept.ts";
 import { currentChatAgentRecordId$ } from "../agent-chat.ts";
 import { zeroClient$ } from "../api-client.ts";
@@ -42,26 +45,14 @@ export interface EnsuredAgentDraft extends AgentDraftEntry {
 
 interface RestoredAgentDraftState {
   readonly content: string;
-  readonly structuredPrompt: UserMessageDocument | null;
+  readonly userMessage: UserMessageDocument | null;
   readonly generationTemplate: GenerationTemplateRequest | undefined;
   readonly attachments: PersistedAttachment[];
 }
 
 const agentDraftCache$ = state(new Map<string, AgentDraftEntry>());
 
-function legacyAgentDraftState(args: {
-  readonly draftContent: string | null;
-  readonly draftAttachments: PersistedAttachment[] | null;
-}): RestoredAgentDraftState {
-  return {
-    content: args.draftContent ?? "",
-    structuredPrompt: null,
-    generationTemplate: undefined,
-    attachments: args.draftAttachments ?? [],
-  };
-}
-
-function structuredAgentDraftAttachments(
+function userMessageAgentDraftAttachments(
   document: UserMessageDocument,
   attachments: readonly PersistedAttachment[],
 ): PersistedAttachment[] {
@@ -79,16 +70,26 @@ function structuredAgentDraftAttachments(
   });
 }
 
-function structuredAgentDraftState(args: {
-  readonly draftContent: string | null;
-  readonly draftStructuredPrompt?: UserMessageDocument | null;
-  readonly draftAttachments: PersistedAttachment[] | null;
-}): RestoredAgentDraftState | null {
-  const document = args.draftStructuredPrompt;
-  if (!document || messageDocumentToEditorDoc(document) === null) {
+function userMessageAgentDraftState(
+  args: {
+    readonly draftContent: string | null;
+    readonly draftUserMessage?: UserMessageDocument | null;
+    readonly draftAttachments: PersistedAttachment[] | null;
+  },
+  inlineTemplatesEnabled: boolean,
+): RestoredAgentDraftState | null {
+  const document = args.draftUserMessage;
+  if (
+    !document ||
+    messageDocumentToEditorDoc(document, {
+      inlineTemplates: inlineTemplatesEnabled,
+    }) === null
+  ) {
     return null;
   }
-  const content = messageDocumentToPrompt(document);
+  const content = messageDocumentToPrompt(document, {
+    inlineTemplates: inlineTemplatesEnabled,
+  });
   if (content === null) {
     return null;
   }
@@ -97,12 +98,12 @@ function structuredAgentDraftState(args: {
   });
   return {
     content,
-    structuredPrompt: document,
+    userMessage: document,
     generationTemplate:
-      generationTemplate?.type === "template"
+      !inlineTemplatesEnabled && generationTemplate?.type === "template"
         ? generationTemplate.template
         : undefined,
-    attachments: structuredAgentDraftAttachments(
+    attachments: userMessageAgentDraftAttachments(
       document,
       args.draftAttachments ?? [],
     ),
@@ -120,7 +121,7 @@ function createAgentDraftSync(agentId: string, draft: DraftSignals) {
           params: { id: agentId },
           body: {
             draftContent: payload.content,
-            draftStructuredPrompt: payload.structuredPrompt,
+            draftUserMessage: payload.userMessage,
             draftAttachments: payload.attachments,
           },
           fetchOptions: { signal },
@@ -154,11 +155,8 @@ function createAgentDraftSync(agentId: string, draft: DraftSignals) {
           size: result.attachment.size,
         };
       });
-      const features = get(featureSwitch$);
       const payload = buildDraftPersistencePayload({
         input: get(draft.input$),
-        structuredPromptEnabled:
-          features[FeatureSwitchKey.StructuredPrompt] ?? false,
         editorDocument: set(draft.readEditorDocument$),
         generationTemplate: get(draft.generationTemplate$),
         attachments,
@@ -181,7 +179,7 @@ function createAgentDraftSync(agentId: string, draft: DraftSignals) {
     set(draftSyncReset$);
     await set(
       patchDraft$,
-      { content: null, structuredPrompt: null, attachments: null },
+      { content: null, userMessage: null, attachments: null },
       signal,
     );
   });
@@ -235,15 +233,20 @@ export const loadAgentDraft$ = command(
     );
     signal.throwIfAborted();
 
+    const response = zeroAgentDraftResponseSchema.parse(result.body);
     const features = get(featureSwitch$);
-    const restoredDraft =
-      (features[FeatureSwitchKey.StructuredPrompt] ?? false)
-        ? (structuredAgentDraftState(result.body) ??
-          legacyAgentDraftState(result.body))
-        : legacyAgentDraftState(result.body);
+    const inlineTemplatesEnabled =
+      features[FeatureSwitchKey.StructuredPromptInlineTemplates] ?? false;
+    const restoredDraft = userMessageAgentDraftState(
+      response,
+      inlineTemplatesEnabled,
+    );
+    if (!restoredDraft) {
+      return;
+    }
     const hasServerDraft =
       restoredDraft.content.length > 0 ||
-      restoredDraft.structuredPrompt !== null ||
+      restoredDraft.userMessage !== null ||
       restoredDraft.attachments.length > 0;
     if (!hasServerDraft) {
       return;
@@ -251,7 +254,7 @@ export const loadAgentDraft$ = command(
 
     set(draft.seed$, {
       content: restoredDraft.content,
-      structuredPrompt: restoredDraft.structuredPrompt,
+      userMessage: restoredDraft.userMessage,
       generationTemplate: restoredDraft.generationTemplate,
       attachments: restoredDraft.attachments.map(createRestoredAttachment),
     });

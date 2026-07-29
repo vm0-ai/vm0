@@ -1,11 +1,10 @@
 use std::collections::{HashMap, HashSet};
 
-use api_contracts::generated::types::runners::storage::{
-    ArtifactEntry, ArtifactEntryMissingRootPolicy, StorageEntry, StorageManifest,
-};
+use api_contracts::generated::types::runners::storage::ArtifactEntryMissingRootPolicy;
 
 use super::{ArchiveSource, ArtifactAction, StorageAction, build_storage_plan};
 use crate::storage_fingerprints::{StorageFingerprint, StorageFingerprints};
+use crate::storage_manifest::{ArtifactEntry, StorageEntry, StorageManifest};
 
 fn storage(
     mount_path: &str,

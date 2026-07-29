@@ -15,8 +15,10 @@ import { server } from "../../../../mocks/server";
 import { zeroChatCommand } from "../index";
 
 const THREAD_ID = "00000000-0000-4000-8000-000000000001";
+const OTHER_THREAD_ID = "00000000-0000-4000-8000-000000000002";
 const GET_URL = `http://localhost:3000/api/zero/chat-threads/${THREAD_ID}/metadata`;
-const MODEL_SELECTION_URL = `http://localhost:3000/api/zero/chat-threads/${THREAD_ID}/model-selection`;
+const OTHER_GET_URL = `http://localhost:3000/api/zero/chat-threads/${OTHER_THREAD_ID}/metadata`;
+const OTHER_MODEL_SELECTION_URL = `http://localhost:3000/api/zero/chat-threads/${OTHER_THREAD_ID}/model-selection`;
 const MODEL_POLICIES_URL = "http://localhost:3000/api/zero/model-policies";
 
 const MODEL_POLICIES_RESPONSE = {
@@ -62,6 +64,7 @@ describe("zero chat model command", () => {
   }) as never);
 
   beforeEach(() => {
+    vi.clearAllMocks();
     chalk.level = 0;
     vi.stubEnv("VM0_API_BACKEND_URL", "http://localhost:3000");
     vi.stubEnv("ZERO_TOKEN", "test-zero-token");
@@ -90,6 +93,7 @@ describe("zero chat model command", () => {
     expect(output).toContain("Switchable models:");
     expect(output).toContain("Claude Sonnet 5");
     expect(output).toContain("claude-sonnet-5");
+    expect(output).toContain("--thread <id>");
     expect(output).not.toContain("No personal subscription connected");
     expect(output).not.toContain("gpt-5.5");
   });
@@ -115,17 +119,46 @@ describe("zero chat model command", () => {
 
     const output = mockConsoleLog.mock.calls.flat().join("\n");
     expect(output).toContain("Chat thread loaded");
-    expect(output).toContain("Model:  claude-sonnet-5");
+    expect(output).toContain("Model:  Claude Sonnet 5 (claude-sonnet-5)");
     expect(output).toContain("Switchable models:");
-    expect(output).toContain("zero chat model <model>");
+    expect(output).toContain(`zero chat model --thread ${THREAD_ID} <model>`);
   });
 
-  it("switches the current chat thread to a valid model", async () => {
+  it("shows the model for --thread outside a web chat environment", async () => {
+    vi.stubEnv("ZERO_CHAT_THREAD_ID", undefined);
+    server.use(
+      http.get(OTHER_GET_URL, () => {
+        return HttpResponse.json({
+          id: OTHER_THREAD_ID,
+          title: "Daily report",
+          selectedModel: "claude-sonnet-5",
+        });
+      }),
+      http.get(MODEL_POLICIES_URL, () => {
+        return HttpResponse.json(MODEL_POLICIES_RESPONSE);
+      }),
+    );
+
+    await zeroChatCommand.parseAsync([
+      "node",
+      "cli",
+      "model",
+      "--thread",
+      OTHER_THREAD_ID,
+    ]);
+
+    const output = mockConsoleLog.mock.calls.flat().join("\n");
+    expect(output).toContain(`Thread: ${OTHER_THREAD_ID}`);
+    expect(output).toContain("Model:  Claude Sonnet 5 (claude-sonnet-5)");
+  });
+
+  it("switches the model for --thread outside a web chat environment", async () => {
+    vi.stubEnv("ZERO_CHAT_THREAD_ID", undefined);
     server.use(
       http.get(MODEL_POLICIES_URL, () => {
         return HttpResponse.json(MODEL_POLICIES_RESPONSE);
       }),
-      http.post(MODEL_SELECTION_URL, async ({ request }) => {
+      http.post(OTHER_MODEL_SELECTION_URL, async ({ request }) => {
         expect(request.headers.get("authorization")).toBe(
           "Bearer test-zero-token",
         );
@@ -140,12 +173,14 @@ describe("zero chat model command", () => {
       "node",
       "cli",
       "model",
+      "--thread",
+      OTHER_THREAD_ID,
       "claude-sonnet-5",
     ]);
 
     const output = mockConsoleLog.mock.calls.flat().join("\n");
     expect(output).toContain("Chat model updated");
-    expect(output).toContain(`Thread: ${THREAD_ID}`);
+    expect(output).toContain(`Thread: ${OTHER_THREAD_ID}`);
     expect(output).toContain("Model:  Claude Sonnet 5 (claude-sonnet-5)");
   });
 

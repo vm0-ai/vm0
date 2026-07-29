@@ -5,7 +5,7 @@ import type {
 import { agentRuns } from "@vm0/db/schema/agent-run";
 import { usageDaily } from "@vm0/db/schema/usage-daily";
 import { command } from "ccstate";
-import { and, count, eq, gte, isNotNull, lt, sql } from "drizzle-orm";
+import { and, count, eq, gte, isNotNull, lt, sql, sum } from "drizzle-orm";
 
 import {
   pgInt8ToSafeIntegerDecoder,
@@ -62,10 +62,11 @@ async function queryAgentRunsDaily(
     .select({
       date: sql`DATE(${agentRuns.createdAt})`.mapWith(pgTextDecoder).as("date"),
       run_count: count().as("run_count"),
-      run_time_ms:
-        sql`COALESCE(SUM(EXTRACT(EPOCH FROM (${agentRuns.completedAt} - ${agentRuns.startedAt})) * 1000), 0)::bigint`
-          .mapWith(pgInt8ToSafeIntegerDecoder)
-          .as("run_time_ms"),
+      run_time_ms: sql`COALESCE(${sum(
+        sql`EXTRACT(EPOCH FROM (${agentRuns.completedAt} - ${agentRuns.startedAt})) * 1000`,
+      )}, 0)::bigint`
+        .mapWith(pgInt8ToSafeIntegerDecoder)
+        .as("run_time_ms"),
     })
     .from(agentRuns)
     .where(

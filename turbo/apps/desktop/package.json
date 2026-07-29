@@ -1,6 +1,6 @@
 {
   "name": "@vm0/desktop",
-  "version": "0.28.31",
+  "version": "0.28.67",
   "private": true,
   "productName": "Zero Computer Use",
   "description": "Zero desktop shell",
@@ -50,7 +50,7 @@
     "@vm0/typescript-config": "workspace:*",
     "electron": "42.3.3",
     "happy-dom": "^20.9.0",
-    "oxlint": "^1.57.0",
+    "oxlint": "^1.75.0",
     "tsup": "^8.5.1",
     "typescript": "^6.0.3",
     "vite": "^8.0.16",

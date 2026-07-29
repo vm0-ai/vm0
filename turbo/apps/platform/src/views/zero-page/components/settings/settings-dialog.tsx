@@ -23,14 +23,14 @@ import {
   IconFileInvoice,
   IconUsers,
 } from "@tabler/icons-react";
-import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
+import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 
 import { isOrgAdmin$ } from "../../../../signals/org.ts";
 import { featureSwitch$ } from "../../../../signals/external/feature-switch.ts";
 import {
   isAdminOnlySettingsSection,
+  setSettingsClerkProfilePortalContainer$,
   settingsActiveSection$,
-  externalProfileModalOpen$,
   setSettingsActiveSection$,
   type SettingsSection,
 } from "../../../../signals/zero-page/settings/settings-dialog.ts";
@@ -182,26 +182,12 @@ function SectionContent({ section }: { section: SettingsSection }) {
   return <Component />;
 }
 
-function isClerkModalTarget(target: EventTarget | null): boolean {
-  if (!(target instanceof Element)) {
-    return false;
-  }
-  return (
-    target.closest(
-      [
-        "[data-clerk-user-profile]",
-        "[data-clerk-modal]",
-        '[class*="cl-userProfile"]',
-        '[class*="cl-modal"]',
-      ].join(","),
-    ) !== null
-  );
-}
-
 export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
   const activeSection = useGet(settingsActiveSection$);
   const setActiveSection = useSet(setSettingsActiveSection$);
-  const externalProfileModalOpen = useGet(externalProfileModalOpen$);
+  const setClerkProfilePortalContainer = useSet(
+    setSettingsClerkProfilePortalContainer$,
+  );
   const features = useGet(featureSwitch$);
   const isAdminLoadable = useLoadable(isOrgAdmin$);
   const isAdmin =
@@ -240,18 +226,10 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
   };
 
   return (
-    <Dialog
-      open={open}
-      onOpenChange={onOpenChange}
-      modal={!externalProfileModalOpen}
-    >
+    <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
+        ref={setClerkProfilePortalContainer}
         className="zero-app flex flex-col w-[calc(100vw-2rem)] max-w-[1200px] h-[92dvh] sm:h-[85vh] p-0 gap-0 overflow-hidden zero-border rounded-xl bg-card"
-        onInteractOutside={(event) => {
-          if (isClerkModalTarget(event.target)) {
-            event.preventDefault();
-          }
-        }}
       >
         <DialogTitle className="sr-only">Settings</DialogTitle>
         <DialogDescription className="sr-only">

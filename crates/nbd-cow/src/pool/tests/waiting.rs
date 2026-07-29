@@ -49,6 +49,43 @@ async fn single_waiting_acquire_spawns_single_demand_scan() {
 }
 
 #[tokio::test]
+async fn demand_scan_panic_returns_io_error_without_stranding_waiter() {
+    fn panic_when_scanned(_: u32) -> bool {
+        panic!("intentional demand scan panic");
+    }
+
+    let dir = tempfile::tempdir().expect("tempdir");
+    let handle = DevicePoolHandle::from_pool(test_pool(
+        1,
+        DevicePoolConfig::default().cooldown,
+        dir.path(),
+        panic_when_scanned,
+    ));
+
+    let result = tokio::time::timeout(Duration::from_secs(1), handle.acquire())
+        .await
+        .expect("acquire remained pending after scan task panic");
+    let error = match result {
+        Err(NbdCowError::Io(error)) => error,
+        Err(error) => panic!("unexpected acquire error: {error}"),
+        Ok(_) => panic!("acquire unexpectedly succeeded"),
+    };
+    assert!(
+        error.to_string().contains("device scan task failed"),
+        "unexpected I/O error: {error}"
+    );
+
+    let snapshot = handle.snapshot().await;
+    assert_eq!(snapshot.waiting_acquires, 0);
+    assert!(snapshot.in_flight.is_empty());
+    assert!(snapshot.cooldown.is_empty());
+
+    tokio::time::timeout(Duration::from_secs(1), handle.cleanup())
+        .await
+        .expect("pool cleanup remained pending after scan task panic");
+}
+
+#[tokio::test]
 async fn separate_pools_do_not_claim_same_locked_index() {
     let dir = tempfile::tempdir().expect("tempdir");
     let first = DevicePoolHandle::from_pool(test_pool(

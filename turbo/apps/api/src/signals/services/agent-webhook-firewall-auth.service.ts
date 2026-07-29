@@ -24,7 +24,7 @@ import {
   type ConnectorRefreshTokenInputMetadata,
   type ConnectorAuthMethodRuntimeMetadata,
   type ConnectorOutputTarget,
-} from "@vm0/connectors/connector-utils";
+} from "@vm0/connectors/connector-auth-method";
 import {
   parseBasicAuthTemplates,
   replaceBasicAuthTemplates,
@@ -55,7 +55,7 @@ import { connectors } from "@vm0/db/schema/connector";
 import { modelProviders } from "@vm0/db/schema/model-provider";
 import { secrets as secretsTable } from "@vm0/db/schema/secret";
 import { variables as variablesTable } from "@vm0/db/schema/variable";
-import { and, eq, inArray, sql } from "drizzle-orm";
+import { and, eq, gt, inArray, sql } from "drizzle-orm";
 import { z } from "zod";
 
 import { executeRawRows, pgInt8ToBigIntSchema } from "../../lib/db-raw-rows";
@@ -2962,7 +2962,7 @@ async function syncCustomConnectorRuntimeSecrets(args: {
       and(
         eq(agentRunCustomConnectorAuthRefs.runId, args.runId),
         inArray(agentRunCustomConnectorAuthRefs.secretName, missingKeys),
-        sql`${agentRunCustomConnectorAuthRefs.expiresAt} > now()`,
+        gt(agentRunCustomConnectorAuthRefs.expiresAt, sql`now()`),
       ),
     );
 

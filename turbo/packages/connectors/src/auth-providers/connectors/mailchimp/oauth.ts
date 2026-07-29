@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-import type { ConnectorAuthCodeGrantConfig } from "@vm0/connectors/connectors";
+import type { ConnectorAuthCodeGrantConfig } from "@vm0/connectors/connector-config";
 import { throwOAuthError } from "../../oauth/error";
 
 const MAILCHIMP_TOKEN_URL = "https://login.mailchimp.com/oauth2/token";
@@ -141,11 +141,4 @@ async function fetchMailchimpMetadata(accessToken: string): Promise<{
       email: data.login?.login_email ?? null,
     },
   };
-}
-
-/**
- * Get the primary secret name for Mailchimp connector (the access token).
- */
-export function getMailchimpSecretName(): string {
-  return "MAILCHIMP_ACCESS_TOKEN";
 }

@@ -6,10 +6,11 @@ import {
   type Computed,
   type State,
 } from "ccstate";
-import { resetSignal, tapError } from "../utils.ts";
-import { currentChatThreadId$ } from "../agent-chat.ts";
+import { delay } from "signal-timers";
+import { onRejection, resetSignal, settle, tapError } from "../utils.ts";
 import { zeroClient$ } from "../api-client.ts";
 import { accept } from "../../lib/accept.ts";
+import { IN_VITEST } from "../../env.ts";
 import type {
   GenerationTemplateRequest,
   PersistedAttachment,
@@ -27,6 +28,41 @@ interface FileInfo {
   id: string;
   url: string;
 }
+
+const MULTIPART_UPLOAD_THRESHOLD_BYTES = 5 * 1024 * 1024;
+const MAX_PART_UPLOAD_ATTEMPTS = 5;
+const PART_UPLOAD_RETRY_BASE_DELAY_MS = 250;
+const MULTIPART_ABORT_TIMEOUT_MS = 5000;
+
+interface MultipartUploadReference {
+  id: string;
+  filename: string;
+  uploadId: string;
+}
+
+const abortMultipartUpload$ = command(
+  async (
+    { get },
+    upload: MultipartUploadReference,
+    signal: AbortSignal,
+  ): Promise<void> => {
+    const client = get(zeroClient$)(zeroUploadsContract);
+    await tapError(
+      accept(
+        client.abortMultipart({
+          body: upload,
+          fetchOptions: {
+            keepalive: true,
+            signal,
+          },
+        }),
+        [200],
+        signal,
+        { showErrorToast: false },
+      ),
+    );
+  },
+);
 
 function uploadContentTypeByExtension(ext: string): string | undefined {
   const contentTypeByExtension: Record<string, string | undefined> = {
@@ -121,6 +157,42 @@ function inferUploadContentType(file: File): string {
     : "application/octet-stream";
 }
 
+async function uploadPartWithRetry(
+  uploadUrl: string,
+  body: Blob,
+  contentType: string,
+  signal: AbortSignal,
+): Promise<void> {
+  for (let attempt = 1; attempt <= MAX_PART_UPLOAD_ATTEMPTS; attempt += 1) {
+    const result = await settle(
+      fetch(uploadUrl, {
+        method: "PUT",
+        body,
+        headers: { "content-type": contentType },
+        signal,
+      }),
+      signal,
+    );
+    if (result.ok) {
+      if (result.value.ok) {
+        return;
+      }
+      if (attempt === MAX_PART_UPLOAD_ATTEMPTS) {
+        throw new Error(
+          `storage returned ${result.value.status} ${result.value.statusText}`,
+        );
+      }
+    } else if (attempt === MAX_PART_UPLOAD_ATTEMPTS) {
+      throw result.error;
+    }
+    await delay(
+      IN_VITEST ? 0 : PART_UPLOAD_RETRY_BASE_DELAY_MS * 2 ** (attempt - 1),
+      { signal },
+    );
+  }
+  throw new Error("Multipart upload retry loop ended unexpectedly");
+}
+
 export interface ZeroChatAttachment {
   filename: string;
   contentType: string;
@@ -156,29 +228,79 @@ function createChatAttachment(file: File): ZeroChatAttachment {
     const signal = set(resetSignal$, parentSignal);
 
     const promise = (async () => {
-      // Step 1: ask the server to sign a PUT URL for R2. The file body never
-      // travels through the Next.js runtime, which lets us exceed Vercel's
-      // serverless body cap and next dev's multipart parser limits.
+      // Step 1: ask the server to sign either one PUT URL or retryable R2
+      // multipart URLs. The file body never travels through the app runtime.
       const prepared = await accept(
         client.prepare({
           body: {
             filename: file.name,
             contentType,
             size: file.size,
+            ...(file.size >= MULTIPART_UPLOAD_THRESHOLD_BYTES
+              ? { multipart: true as const }
+              : {}),
           },
           fetchOptions: { signal },
         }),
         [200],
       );
-      signal.throwIfAborted();
 
+      if ("multipart" in prepared.body) {
+        const multipart = prepared.body.multipart;
+        return await onRejection(
+          (async () => {
+            signal.throwIfAborted();
+            for (const part of multipart.parts) {
+              const start = (part.partNumber - 1) * multipart.partSize;
+              const end = Math.min(start + multipart.partSize, file.size);
+              await uploadPartWithRetry(
+                part.uploadUrl,
+                file.slice(start, end, prepared.body.contentType),
+                prepared.body.contentType,
+                signal,
+              );
+            }
+
+            const completed = await accept(
+              client.completeMultipart({
+                body: {
+                  id: prepared.body.id,
+                  filename: prepared.body.filename,
+                  uploadId: multipart.uploadId,
+                  partCount: multipart.parts.length,
+                },
+                fetchOptions: { signal },
+              }),
+              [200],
+            );
+            signal.throwIfAborted();
+            return completed.body;
+          })(),
+          async () => {
+            const cleanupSignal = AbortSignal.timeout(
+              MULTIPART_ABORT_TIMEOUT_MS,
+            );
+            await set(
+              abortMultipartUpload$,
+              {
+                id: prepared.body.id,
+                filename: prepared.body.filename,
+                uploadId: multipart.uploadId,
+              },
+              cleanupSignal,
+            );
+          },
+        );
+      }
+
+      signal.throwIfAborted();
       const putRes = await fetch(prepared.body.uploadUrl, {
         method: "PUT",
         body: file,
         headers: { "content-type": prepared.body.contentType },
         signal,
       });
-      parentSignal.throwIfAborted();
+      signal.throwIfAborted();
 
       if (!putRes.ok) {
         throw new Error(
@@ -215,7 +337,7 @@ export interface DraftSignals {
   setInput$: Command<void, [string]>;
   appendInput$: Command<void, [string]>;
   setInputSyncTarget$: Command<void, [DraftInputSyncTarget | null]>;
-  takeRestoredStructuredPrompt$: Command<UserMessageDocument | null, []>;
+  takeRestoredUserMessage$: Command<UserMessageDocument | null, []>;
   readEditorDocument$: Command<EditorDocumentSnapshot | null, []>;
   setEditorDocument$: Command<void, [EditorDocumentSnapshot | null]>;
   generationTemplate$: Computed<GenerationTemplateRequest | undefined>;
@@ -238,14 +360,14 @@ export interface DraftSignals {
 
 interface DraftSeed {
   content: string;
-  structuredPrompt: UserMessageDocument | null;
+  userMessage: UserMessageDocument | null;
   generationTemplate: GenerationTemplateRequest | undefined;
   attachments: ZeroChatAttachment[];
 }
 
 export interface DraftInputSyncTarget {
   syncInput(value: string): void;
-  syncStructuredPrompt(value: UserMessageDocument): void;
+  syncUserMessage(value: UserMessageDocument): void;
 }
 
 /**
@@ -296,16 +418,14 @@ function createDraftInputSignals() {
   const syncInput$ = command(({ get }, value: string) => {
     get(internalInputSyncTarget$)?.syncInput(value);
   });
-  const syncStructuredPrompt$ = command(
-    ({ get }, value: UserMessageDocument) => {
-      const target = get(internalInputSyncTarget$);
-      if (!target) {
-        return false;
-      }
-      target.syncStructuredPrompt(value);
-      return true;
-    },
-  );
+  const syncUserMessage$ = command(({ get }, value: UserMessageDocument) => {
+    const target = get(internalInputSyncTarget$);
+    if (!target) {
+      return false;
+    }
+    target.syncUserMessage(value);
+    return true;
+  });
   const setInputSyncTarget$ = command(
     ({ set }, target: DraftInputSyncTarget | null) => {
       set(internalInputSyncTarget$, target);
@@ -331,21 +451,21 @@ function createDraftInputSignals() {
     setInput$,
     appendInput$,
     setInputSyncTarget$,
-    syncStructuredPrompt$,
+    syncUserMessage$,
   };
 }
 
 function createDraftDocumentSignals() {
-  let restoredStructuredPrompt: UserMessageDocument | null = null;
+  let restoredUserMessage: UserMessageDocument | null = null;
   let editorDocument: EditorDocumentSnapshot | null = null;
-  const setRestoredStructuredPrompt$ = command(
+  const setRestoredUserMessage$ = command(
     (_context, value: UserMessageDocument | null) => {
-      restoredStructuredPrompt = value;
+      restoredUserMessage = value;
     },
   );
-  const takeRestoredStructuredPrompt$ = command(() => {
-    const value = restoredStructuredPrompt;
-    restoredStructuredPrompt = null;
+  const takeRestoredUserMessage$ = command(() => {
+    const value = restoredUserMessage;
+    restoredUserMessage = null;
     return value;
   });
   const readEditorDocument$ = command(() => {
@@ -357,8 +477,8 @@ function createDraftDocumentSignals() {
     },
   );
   return {
-    setRestoredStructuredPrompt$,
-    takeRestoredStructuredPrompt$,
+    setRestoredUserMessage$,
+    takeRestoredUserMessage$,
     readEditorDocument$,
     setEditorDocument$,
   };
@@ -379,7 +499,7 @@ function createDraftLifecycleSignals({
 }) {
   const clear$ = command(({ get, set }) => {
     set(draftInput.setInput$, "");
-    set(draftDocument.setRestoredStructuredPrompt$, null);
+    set(draftDocument.setRestoredUserMessage$, null);
     set(draftDocument.setEditorDocument$, null);
     set(internalGenerationTemplate$, undefined);
     const attachments = get(internalAttachments$);
@@ -394,15 +514,15 @@ function createDraftLifecycleSignals({
 
   const seed$ = command(({ set }, value: DraftSeed) => {
     set(draftDocument.setEditorDocument$, null);
-    set(draftDocument.setRestoredStructuredPrompt$, value.structuredPrompt);
+    set(draftDocument.setRestoredUserMessage$, value.userMessage);
     set(internalGenerationTemplate$, value.generationTemplate);
     set(internalAttachments$, value.attachments);
     set(draftInput.setInput$, value.content);
     if (
-      value.structuredPrompt &&
-      set(draftInput.syncStructuredPrompt$, value.structuredPrompt)
+      value.userMessage &&
+      set(draftInput.syncUserMessage$, value.userMessage)
     ) {
-      set(draftDocument.takeRestoredStructuredPrompt$);
+      set(draftDocument.takeRestoredUserMessage$);
     }
   });
 
@@ -513,7 +633,7 @@ export function createDraftSignals(): DraftSignals {
 
   return {
     ...draftInput,
-    takeRestoredStructuredPrompt$: draftDocument.takeRestoredStructuredPrompt$,
+    takeRestoredUserMessage$: draftDocument.takeRestoredUserMessage$,
     readEditorDocument$: draftDocument.readEditorDocument$,
     setEditorDocument$: draftDocument.setEditorDocument$,
     generationTemplate$,
@@ -531,10 +651,8 @@ export function createDraftSignals(): DraftSignals {
 }
 
 // ---------------------------------------------------------------------------
-// Draft storage — per-thread map + talk-page singleton
+// Draft storage — talk-page singleton
 // ---------------------------------------------------------------------------
-
-const internalDraftMap$ = state<Record<string, DraftSignals>>({});
 
 const internalTalkDraft$ = state(createDraftSignals());
 
@@ -544,92 +662,4 @@ export const talkDraft$ = computed((get) => {
 
 export const setTalkDraft$ = command(({ set }, draft: DraftSignals) => {
   set(internalTalkDraft$, draft);
-});
-
-/**
- * The current draft for the active route.
- * Returns `talkDraft$` when there is no chatThreadId (talk page / landing),
- * or the thread's draft from the map.
- */
-const currentDraft$ = computed((get) => {
-  const threadId = get(currentChatThreadId$);
-  if (!threadId) {
-    return get(talkDraft$);
-  }
-  return get(internalDraftMap$)[threadId] ?? null;
-});
-
-const zeroChatInput$ = computed((get) => {
-  const draft = get(currentDraft$);
-  return draft ? get(draft.input$) : "";
-});
-
-export const zeroChatAttachments$ = computed((get) => {
-  const draft = get(currentDraft$);
-  return draft ? get(draft.attachments$) : [];
-});
-
-export const uploadZeroAttachment$ = command(
-  async ({ get, set }, file: File, signal: AbortSignal) => {
-    const draft = get(currentDraft$);
-    if (draft) {
-      await set(draft.uploadAttachment$, file, signal);
-    }
-  },
-);
-
-export const restoreZeroAttachments$ = command(
-  ({ get, set }, attachments: PersistedAttachment[]) => {
-    const draft = get(currentDraft$);
-    if (draft) {
-      set(draft.restoreAttachments$, attachments);
-    }
-  },
-);
-
-export const removeZeroAttachment$ = command(
-  ({ get, set }, attachment: ZeroChatAttachment) => {
-    const draft = get(currentDraft$);
-    if (draft) {
-      set(draft.removeAttachment$, attachment);
-    }
-  },
-);
-
-export const zeroDragOver$ = computed((get) => {
-  const draft = get(currentDraft$);
-  return draft ? get(draft.dragOver$) : false;
-});
-
-export const setZeroDragOver$ = command(({ get, set }, value: boolean) => {
-  const draft = get(currentDraft$);
-  if (draft) {
-    set(draft.setDragOver$, value);
-  }
-});
-
-export const appendZeroChatInput$ = command(({ get, set }, value: string) => {
-  const draft = get(currentDraft$);
-  if (draft) {
-    set(draft.appendInput$, value);
-  }
-});
-
-export const setZeroChatInputSyncTarget$ = command(
-  ({ get, set }, target: DraftInputSyncTarget | null) => {
-    const draft = get(currentDraft$);
-    if (draft) {
-      set(draft.setInputSyncTarget$, target);
-    }
-  },
-);
-
-/**
- * True when the current draft has content to send: either non-empty text or
- * at least one attachment. Used as single source of truth for send enablement.
- */
-export const canSendZeroChat$ = computed((get) => {
-  return (
-    get(zeroChatInput$).trim() !== "" || get(zeroChatAttachments$).length > 0
-  );
 });

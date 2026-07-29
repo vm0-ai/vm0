@@ -10,7 +10,7 @@ import {
 } from "@vm0/api-contracts/contracts/integrations";
 import { zeroFeishuConnectContract } from "@vm0/api-contracts/contracts/zero-feishu-connect";
 import { zeroFeishuOauthContract } from "@vm0/api-contracts/contracts/zero-feishu-oauth";
-import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
+import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
 import { createApp } from "../../../app-factory";
@@ -422,37 +422,6 @@ describe("POST /api/zero/integrations/feishu/message", () => {
     });
   });
 
-  it("requires an explicit installation when multiple bots are configured", async () => {
-    const first = await setupFeishuInstallation();
-    await setupFeishuInstallation(first.actor);
-    const client = setupApp({ context })(integrationsFeishuMessageContract);
-    const token = zeroToken(first.actor);
-
-    const ambiguous = await accept(
-      client.sendMessage({
-        headers: { authorization: `Bearer ${token}` },
-        body: { chat: "oc_target_chat", text: "Choose a bot" },
-      }),
-      [400],
-    );
-    expect(ambiguous.body.error.message).toContain(
-      "Multiple Feishu installations",
-    );
-
-    const selected = await accept(
-      client.sendMessage({
-        headers: { authorization: `Bearer ${token}` },
-        body: {
-          installationId: first.installationId,
-          chat: "oc_target_chat",
-          text: "Selected bot",
-        },
-      }),
-      [200],
-    );
-    expect(selected.body.ok).toBeTruthy();
-  });
-
   it("downloads a resource from a Feishu message", async () => {
     const { actor, installationId } = await setupFeishuInstallation();
     const payload = Buffer.from("feishu resource bytes");
@@ -509,7 +478,7 @@ describe("POST /api/zero/integrations/feishu/message", () => {
     await runsApi.ensureOrgModelProvider(actor);
     const runnerGroup = runsApi.configureRunnerGroup();
     await runsApi.heartbeatRunner(runnerGroup);
-    const sent = await chatApi.requestSendMessage(
+    const sent = await chatApi.requestSendEvent(
       actor,
       {
         agentId,

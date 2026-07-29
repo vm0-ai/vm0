@@ -8,22 +8,21 @@
   },
   "sandboxToken": "fixture-sandbox-token-not-real",
   "storageManifest": {
-    "storages": [
+    "storageMounts": [
       {
-        "name": "workspace",
+        "name": "fixture-workspace",
+        "storageId": "fixture-workspace-id",
+        "versionId": "fixture-storage-version",
         "mountPath": "/home/user/workspace",
-        "vasStorageName": "fixture-workspace",
-        "vasVersionId": "fixture-storage-version",
         "archiveUrl": "https://storage.fixture.invalid/workspace.tar.gz"
-      }
-    ],
-    "artifacts": [
+      },
       {
+        "name": "fixture-artifacts",
+        "storageId": "fixture-storage-id",
+        "versionId": "fixture-artifact-version",
         "mountPath": "/home/user/artifacts",
-        "vasStorageName": "fixture-artifacts",
-        "vasStorageId": "fixture-storage-id",
-        "vasVersionId": "fixture-artifact-version",
-        "archiveUrl": "https://storage.fixture.invalid/artifacts.tar.gz"
+        "archiveUrl": "https://storage.fixture.invalid/artifacts.tar.gz",
+        "writeback": true
       }
     ]
   },
@@ -77,7 +76,6 @@
   "disallowedTools": ["FixtureDangerousTool"],
   "tools": ["Bash", "Read"],
   "settings": "{\"fixture\":true}",
-  "experimentalProfile": "vm0/default",
   "featureFlags": {
     "fixtureFlag": true
   },

@@ -7,11 +7,11 @@ it applies the universal gates (``run_id`` present, firewall flagged
 billable by the web layer, firewall has a registered handler) and
 delegates to the matching per-connector ``report_usage`` function.
 
-The TypeScript billable connector manifest lives in
-``turbo/packages/firewalls-generator/src/connector-firewall-manifest.ts`` as
-``BILLABLE_FIREWALL_CONNECTOR_TYPES``. Adding a new billable connector means
-marking it billable there, adding a connector module here, and registering its
-reporter plus optional response-inspection capability in :data:`_REGISTRATIONS`.
+Billable connector metadata comes from the accepted connector catalog and
+reaches the runner through the claim's ``billableFirewalls`` list. Adding a new
+billable connector means marking its catalog firewall billable, adding a
+connector module here, and registering its reporter plus optional
+response-inspection capability in :data:`_REGISTRATIONS`.
 Response inspection owns both parser creation and buffered-fallback selection,
 so those decisions cannot drift across independent registries.
 """
@@ -44,8 +44,8 @@ class _ConnectorUsageRegistration(NamedTuple):
 
 # Map firewall_name → one coherent connector usage registration. A reporter is
 # only invoked when ``flow.metadata[metadata_keys.FIREWALL_BILLABLE]`` is True.
-# That flag comes from the runner claim's ``billableFirewalls`` list, generated
-# from ``BILLABLE_FIREWALL_CONNECTOR_TYPES`` in the TypeScript firewall manifest.
+# That flag comes from the runner claim's ``billableFirewalls`` list, projected
+# from the accepted connector catalog.
 # Deployment desync manifests as a dropped billing record plus the warning below.
 _REGISTRATIONS: dict[str, _ConnectorUsageRegistration] = {
     "x": _ConnectorUsageRegistration(
@@ -59,9 +59,9 @@ _REGISTRATIONS: dict[str, _ConnectorUsageRegistration] = {
 
 # One-shot guard: first time we see a billable firewall_name with no
 # registered handler, warn once per name per addon process.  Catches the
-# deployment-desync case where ``BILLABLE_FIREWALL_CONNECTOR_TYPES`` and the
-# generated execution metadata have grown but the runner is on an older addon
-# image — without this, billing records silently drop with no local signal.
+# deployment-desync case where accepted catalog metadata has grown but the
+# runner is on an older addon image — without this, billing records silently
+# drop with no local signal.
 _unregistered_handler_warned: set[str] = set()
 
 
@@ -89,8 +89,8 @@ def report_connector_usage(flow: http.HTTPFlow, run_id: str) -> None:
     - ``flow.metadata[metadata_keys.FIREWALL_NAME]`` has no registered handler (covers
       both the model-provider path — routed through
       :func:`report_model_provider_usage` instead — and any connector firewall
-      marked billable by the TypeScript firewall manifest but not yet supported
-      by this addon version).
+      marked billable by the accepted connector catalog but not yet supported by
+      this addon version).
     """
     if not run_id:
         return
@@ -107,7 +107,7 @@ def report_connector_usage(flow: http.HTTPFlow, run_id: str) -> None:
                 flow_metadata.proxy_log_path(flow.metadata),
                 f"Billable firewall {firewall_name!r} has no registered handler — "
                 "billing records for this firewall will be dropped.  Check that "
-                "BILLABLE_FIREWALL_CONNECTOR_TYPES and _REGISTRATIONS here are in sync.",
+                "the accepted catalog and _REGISTRATIONS here are in sync.",
                 "unregistered_billable_handler",
                 "confirmed",
                 firewall_name=firewall_name,

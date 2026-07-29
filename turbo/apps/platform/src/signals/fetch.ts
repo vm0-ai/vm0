@@ -2,13 +2,16 @@ import { computed } from "ccstate";
 import { addCapturedPreviewBypassHeader } from "../lib/preview-bypass-cookie.ts";
 import { clerk$ } from "./auth.ts";
 import {
+  authRecoverySignal,
   fetchFreshToken,
   handleUnauthorizedRedirect,
+  retryAuthRecoveryOperation,
   unauthorizedRedirectSuppressionUntil$,
 } from "./auth-retry.ts";
 import { resolveApiBase, resolveOAuthApiBase } from "./api-base.ts";
 import { addClientHeaders } from "./client-headers.ts";
 import { reportForceUpgradeResponse } from "./force-upgrade.ts";
+import { rootSignal$ } from "./root-signal.ts";
 
 /**
  * OAuth navigation uses the direct API in preview/development so those
@@ -104,7 +107,10 @@ export const fetch$ = computed((get) => {
     const clerk = await get(clerk$);
     const initialToken = (await clerk.session?.getToken()) ?? null;
 
-    const performFetch = async (token: string | null): Promise<Response> => {
+    const performFetch = async (
+      token: string | null,
+      signal?: AbortSignal,
+    ): Promise<Response> => {
       // Clone Request inputs so the body stream is available for retry.
       const requestInput = url instanceof Request ? url.clone() : url;
 
@@ -160,6 +166,9 @@ export const fetch$ = computed((get) => {
       const finalHeaders = new Headers(finalInit.headers);
       addCapturedPreviewBypassHeader(finalHeaders, finalUrl);
       finalInit.headers = finalHeaders;
+      if (signal) {
+        finalInit.signal = signal;
+      }
 
       return await fetch(finalUrl, finalInit);
     };
@@ -167,9 +176,15 @@ export const fetch$ = computed((get) => {
     let response = await performFetch(initialToken);
 
     if (response.status === 401) {
-      const freshToken = await fetchFreshToken(clerk, initialToken);
-      if (freshToken) {
-        response = await performFetch(freshToken);
+      const recoverySignal = authRecoverySignal(
+        get(rootSignal$),
+        options?.signal ?? (url instanceof Request ? url.signal : undefined),
+      );
+      const refreshResult = await fetchFreshToken(clerk, recoverySignal);
+      if (refreshResult.status === "refreshed") {
+        response = await retryAuthRecoveryOperation(async () => {
+          return await performFetch(refreshResult.token, recoverySignal);
+        }, recoverySignal);
       }
       if (response.status === 401) {
         handleUnauthorizedRedirect(

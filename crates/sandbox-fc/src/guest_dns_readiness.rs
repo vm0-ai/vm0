@@ -2,28 +2,37 @@ use std::fmt;
 use std::io;
 use std::time::Duration;
 
-use tokio::time::{Instant, timeout};
-use vsock_host::{ExecCaptureRequest, ExecOperationResult, ExecOwnedCapturedOutput, VsockHost};
-use vsock_proto::ExecTermination;
+use sandbox::SandboxGuestDnsReadinessReason;
+use tokio::time::{Instant, timeout_at};
+use vsock_host::{ExecOperationRequest, ExecOperationResult, ExecOwnedCapturedOutput, VsockHost};
+use vsock_proto::{ExecOutputPolicy, ExecTermination};
 
 use crate::network::{DNS_READINESS_HOSTNAME, DNS_READINESS_IPV4};
 
 const RESOLVER_ENV: &[(&str, &str)] = &[("RES_OPTIONS", "attempts:1 timeout:1")];
 const LABEL: &str = "guest-dns-readiness";
 const PROCESS_TIMEOUT_MS: u32 = 1_100;
-const OPERATION_WAIT_TIMEOUT: Duration = Duration::from_millis(1_500);
+const OPERATION_START_AND_RESULT_GRACE_MS: u64 = 1_000;
+const OPERATION_WAIT_TIMEOUT: Duration =
+    Duration::from_millis(PROCESS_TIMEOUT_MS as u64 + OPERATION_START_AND_RESULT_GRACE_MS);
 const STDOUT_LIMIT_BYTES: u32 = 1_024;
 const STDERR_LIMIT_BYTES: u32 = 512;
 const EXPECTED_TRANSIENT_EXIT_CODES: &[i32] = &[2];
 
+pub(crate) const GUEST_DNS_READINESS_MAX_ATTEMPTS: u16 = 3;
+/// IPv4 packet size of the fixed `vm0-readiness.invalid` UDP A query.
+pub(crate) const GUEST_DNS_READINESS_PACKET_BYTES: u64 = 67;
+
 const PRODUCTION_POLICY: ReadinessPolicy = ReadinessPolicy {
-    total_timeout: Duration::from_millis(3_500),
-    max_attempts: 3,
+    total_timeout: Duration::from_secs(7),
+    attempt_timeout: OPERATION_WAIT_TIMEOUT,
+    max_attempts: GUEST_DNS_READINESS_MAX_ATTEMPTS,
 };
 
 #[derive(Clone, Copy)]
 struct ReadinessPolicy {
     total_timeout: Duration,
+    attempt_timeout: Duration,
     max_attempts: u16,
 }
 
@@ -65,6 +74,23 @@ impl GuestDnsReadinessFailure {
             Self::TimedOut | Self::ExitNonZero(2) | Self::UnexpectedAnswer
         )
     }
+
+    pub(crate) fn sandbox_reason(self) -> SandboxGuestDnsReadinessReason {
+        match self {
+            Self::TimedOut => SandboxGuestDnsReadinessReason::ProcessTimeout,
+            Self::Deadline => SandboxGuestDnsReadinessReason::Deadline,
+            Self::ExitNonZero(2) | Self::UnexpectedAnswer => {
+                SandboxGuestDnsReadinessReason::DnsPath
+            }
+            Self::Transport(_)
+            | Self::Cancelled
+            | Self::StartFailed
+            | Self::WaitFailed
+            | Self::ExitNonZero(_)
+            | Self::OutputTruncated
+            | Self::InvalidOutput => SandboxGuestDnsReadinessReason::Other,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -104,14 +130,14 @@ async fn wait_for_guest_dns_readiness_with_policy(
 
     loop {
         attempts += 1;
-        let remaining = deadline.saturating_duration_since(Instant::now());
-        let failure = match probe_guest_dns_once(guest, remaining.min(OPERATION_WAIT_TIMEOUT)).await
-        {
+        let failure = match probe_guest_dns_once(guest, policy.attempt_timeout).await {
             Ok(()) => return Ok(()),
             Err(failure) => failure,
         };
 
-        if !failure.retryable() || attempts >= policy.max_attempts || Instant::now() >= deadline {
+        let complete_retry_fits =
+            deadline.saturating_duration_since(Instant::now()) >= policy.attempt_timeout;
+        if !failure.retryable() || attempts >= policy.max_attempts || !complete_retry_fits {
             return Err(GuestDnsReadinessError {
                 attempts,
                 elapsed: started.elapsed(),
@@ -126,23 +152,44 @@ pub(crate) async fn probe_guest_dns_once(
     wait_timeout: Duration,
 ) -> Result<(), GuestDnsReadinessFailure> {
     let command = format!("/usr/bin/getent ahostsv4 {DNS_READINESS_HOSTNAME}");
-    let request = ExecCaptureRequest {
+    let request = ExecOperationRequest {
         timeout_ms: PROCESS_TIMEOUT_MS,
+        start_write_timeout: wait_timeout,
         command: &command,
         env: RESOLVER_ENV,
         sudo: false,
         label: LABEL,
-        stdout_limit_bytes: STDOUT_LIMIT_BYTES,
-        stderr_limit_bytes: STDERR_LIMIT_BYTES,
+        stdout: ExecOutputPolicy::Capture {
+            limit_bytes: STDOUT_LIMIT_BYTES,
+        },
+        stderr: ExecOutputPolicy::Capture {
+            limit_bytes: STDERR_LIMIT_BYTES,
+        },
         expected_exit_codes: EXPECTED_TRANSIENT_EXIT_CODES,
         stdin_bytes: None,
-        wait_timeout,
+        stream_queue_capacity: None,
     };
 
-    match timeout(wait_timeout, guest.exec_operation_capture(request)).await {
-        Ok(Ok(result)) => validate_result(result),
-        Ok(Err(error)) => Err(GuestDnsReadinessFailure::Transport(error.kind())),
-        Err(_) => Err(GuestDnsReadinessFailure::Deadline),
+    // Bound startup and terminal waiting by one deadline while leaving terminal
+    // timeout cleanup to the operation handle.
+    let deadline = Instant::now() + wait_timeout;
+    let handle = match timeout_at(deadline, guest.start_exec_operation(request)).await {
+        Ok(Ok(handle)) => handle,
+        Ok(Err(error)) => {
+            return Err(GuestDnsReadinessFailure::Transport(error.kind()));
+        }
+        Err(_) => return Err(GuestDnsReadinessFailure::Deadline),
+    };
+
+    match handle
+        .wait(deadline.saturating_duration_since(Instant::now()))
+        .await
+    {
+        Ok(result) => validate_result(result),
+        Err(error) if error.kind() == io::ErrorKind::TimedOut => {
+            Err(GuestDnsReadinessFailure::Deadline)
+        }
+        Err(error) => Err(GuestDnsReadinessFailure::Transport(error.kind())),
     }
 }
 
@@ -214,6 +261,7 @@ mod tests {
 
     const TEST_POLICY: ReadinessPolicy = ReadinessPolicy {
         total_timeout: Duration::from_secs(1),
+        attempt_timeout: Duration::from_millis(250),
         max_attempts: 3,
     };
 
@@ -385,6 +433,62 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn guest_dns_readiness_retries_late_guest_process_timeout() {
+        let (host, mut guest) = setup_host_and_guest().await;
+        let task = tokio::spawn(async move {
+            wait_for_guest_dns_readiness_with_policy(&host, PRODUCTION_POLICY).await
+        });
+        let first = read_message(&mut guest).await;
+
+        tokio::time::pause();
+        tokio::time::advance(Duration::from_millis(1_600)).await;
+        send_result(&mut guest, &first, ExecTermination::TimedOut, b"", false).await;
+
+        let second = read_message(&mut guest).await;
+        send_result(
+            &mut guest,
+            &second,
+            ExecTermination::Exited { exit_code: 0 },
+            b"192.0.2.1 STREAM vm0-readiness.invalid\n",
+            false,
+        )
+        .await;
+
+        task.await.unwrap().unwrap();
+    }
+
+    #[tokio::test]
+    async fn guest_dns_readiness_does_not_start_shortened_retry() {
+        let (host, mut guest) = setup_host_and_guest().await;
+        let policy = ReadinessPolicy {
+            total_timeout: Duration::from_millis(500),
+            attempt_timeout: Duration::from_millis(300),
+            max_attempts: 3,
+        };
+        let task =
+            tokio::spawn(
+                async move { wait_for_guest_dns_readiness_with_policy(&host, policy).await },
+            );
+        let first = read_message(&mut guest).await;
+
+        tokio::time::pause();
+        tokio::time::advance(Duration::from_millis(250)).await;
+        send_result(
+            &mut guest,
+            &first,
+            ExecTermination::Exited { exit_code: 2 },
+            b"",
+            false,
+        )
+        .await;
+
+        let error = task.await.unwrap().unwrap_err();
+        assert_eq!(error.attempts, 1);
+        assert_eq!(error.last_failure, GuestDnsReadinessFailure::ExitNonZero(2));
+        assert!(error.elapsed < policy.total_timeout);
+    }
+
+    #[tokio::test]
     async fn guest_dns_readiness_stops_at_attempt_limit() {
         let (host, mut guest) = setup_host_and_guest().await;
         let task = tokio::spawn(async move {
@@ -411,10 +515,12 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn guest_dns_readiness_respects_total_deadline() {
+    async fn guest_dns_readiness_classifies_terminal_expiry_as_deadline() {
         let (host, mut guest) = setup_host_and_guest().await;
+        tokio::time::pause();
         let policy = ReadinessPolicy {
             total_timeout: Duration::from_millis(50),
+            attempt_timeout: Duration::from_millis(50),
             max_attempts: 3,
         };
         let readiness =
@@ -426,12 +532,9 @@ mod tests {
         let error = task.await.unwrap().unwrap_err();
 
         assert_eq!(error.attempts, 1);
-        assert!(matches!(
-            error.last_failure,
-            GuestDnsReadinessFailure::Deadline
-                | GuestDnsReadinessFailure::Transport(io::ErrorKind::TimedOut)
-        ));
-        assert!(error.elapsed < Duration::from_millis(500));
+        assert_eq!(error.last_failure, GuestDnsReadinessFailure::Deadline);
+        assert!(error.elapsed >= policy.total_timeout);
+        assert!(error.elapsed < OPERATION_WAIT_TIMEOUT);
     }
 
     #[test]

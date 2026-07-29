@@ -1,11 +1,11 @@
-import { command, computed, state, type Command } from "ccstate";
+import { command, computed, type Command } from "ccstate";
 import type {
   ChatThreadDraft,
   GenerationTemplateRequest,
   PersistedAttachment,
   UserMessageDocument,
 } from "@vm0/api-contracts/contracts/chat-threads";
-import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
+import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import { currentChatThreadId$ } from "../agent-chat.ts";
 import { featureSwitch$ } from "../external/feature-switch.ts";
 import { logger } from "../log.ts";
@@ -21,49 +21,65 @@ import {
   messageDocumentToEditorDoc,
   messageDocumentToPrompt,
 } from "../zero-page/user-message-document-codec.ts";
-import { clearArtifactPreview$ } from "../zero-page/zero-artifact-sidebar.ts";
-import { closeMailDraftSidebar$ } from "../zero-page/mail-draft-sidebar.ts";
 import { createChatThreadSignals, ensureDraft$ } from "./create-chat-thread.ts";
 import { createOptimisticChatMessagesForThread } from "./optimistic-chat-messages.ts";
 import type { ChatThreadSignals } from "./chat-thread-signals.ts";
-import { closeHeaderAutomationSidebar$ } from "./header-automation-sidebar.ts";
+import {
+  currentLeftThread$,
+  currentRightThread$,
+  setCurrentLeftThread$,
+  setCurrentRightThread$,
+} from "./chat-thread-pane-state.ts";
 import { createRemoteChatThreadDataSource } from "./remote-chat-thread-data-source.ts";
 import { setupChatThreadInitScroll$ } from "./setup-chat-thread-signals.ts";
 import { syncPrimaryThread$ } from "./sync-primary-thread.ts";
+import {
+  autoOpenInitialThreadSidebar$,
+  autoOpenThreadSidebar$,
+} from "./thread-sidebar-coordinator.ts";
+import {
+  createComposerConnectorAuthorizationSignals,
+  type ComposerConnectorAuthorizationSignals,
+} from "../zero-page/zero-connectors.ts";
 
 export const SIDEBAR_PARAM = "sidebar";
+export { currentLeftThread$, currentRightThread$ };
 
 const L = logger("ChatPanes");
 
-const internalLeftThread$ = state<ChatThreadSignals | null>(null);
-const internalRightThread$ = state<ChatThreadSignals | null>(null);
-
-export const currentLeftThread$ = computed((get): ChatThreadSignals | null => {
-  return get(internalLeftThread$);
+const leftPaneAgentId$ = computed((get): string | null => {
+  const thread = get(currentLeftThread$);
+  return thread ? get(thread.agentId$) : null;
 });
-
-export const currentRightThread$ = computed((get): ChatThreadSignals | null => {
-  return get(internalRightThread$);
+const rightPaneAgentId$ = computed((get): string | null => {
+  const thread = get(currentRightThread$);
+  return thread ? get(thread.agentId$) : null;
 });
-
-const setLeftThread$ = command(({ set }, thread: ChatThreadSignals | null) => {
-  set(internalLeftThread$, thread);
-});
-
-const setRightThread$ = command(({ set }, thread: ChatThreadSignals | null) => {
-  set(internalRightThread$, thread);
-});
+const leftPaneConnectorAuthorization =
+  createComposerConnectorAuthorizationSignals(leftPaneAgentId$);
+const rightPaneConnectorAuthorization =
+  createComposerConnectorAuthorizationSignals(rightPaneAgentId$);
 
 const resetLeftSetupSignal$ = resetSignal();
 const resetRightSetupSignal$ = resetSignal();
 
+// Thread-owned sidebars are anchored to the previous thread's messages.
+const closeThreadSidebars$ = command(({ get, set }) => {
+  for (const thread of [get(currentLeftThread$), get(currentRightThread$)]) {
+    if (thread) {
+      set(thread.sidebar.close$);
+    }
+  }
+});
+
 export const unloadRightThread$ = command(({ get, set }) => {
-  const currentRightThread = get(internalRightThread$);
+  const currentRightThread = get(currentRightThread$);
   if (currentRightThread) {
     set(currentRightThread.resetRenderedChatGroupsIfAtBottom$);
+    set(currentRightThread.sidebar.close$);
   }
   set(resetRightSetupSignal$);
-  set(internalRightThread$, null);
+  set(setCurrentRightThread$, null);
   const next = new URLSearchParams(get(searchParams$));
   if (next.has(SIDEBAR_PARAM)) {
     next.delete(SIDEBAR_PARAM);
@@ -74,25 +90,17 @@ export const unloadRightThread$ = command(({ get, set }) => {
 interface PaneSpec {
   setPaneThread$: Command<void, [ChatThreadSignals | null]>;
   resetSetupSignal$: ReturnType<typeof resetSignal>;
+  connectorAuthorization: ComposerConnectorAuthorizationSignals;
 }
 
 interface RestoredDraftState {
   readonly content: string;
-  readonly structuredPrompt: UserMessageDocument | null;
+  readonly userMessage: UserMessageDocument | null;
   readonly generationTemplate: GenerationTemplateRequest | undefined;
   readonly attachments: PersistedAttachment[];
 }
 
-function legacyDraftState(threadDraft: ChatThreadDraft): RestoredDraftState {
-  return {
-    content: threadDraft.draftContent ?? "",
-    structuredPrompt: null,
-    generationTemplate: undefined,
-    attachments: threadDraft.draftAttachments ?? [],
-  };
-}
-
-function structuredDraftAttachments(
+function userMessageDraftAttachments(
   document: UserMessageDocument,
   attachments: readonly PersistedAttachment[],
 ): PersistedAttachment[] {
@@ -110,14 +118,22 @@ function structuredDraftAttachments(
   });
 }
 
-function structuredDraftState(
+function userMessageDraftState(
   threadDraft: ChatThreadDraft,
+  inlineTemplatesEnabled: boolean,
 ): RestoredDraftState | null {
-  const document = threadDraft.draftStructuredPrompt;
-  if (!document || messageDocumentToEditorDoc(document) === null) {
+  const document = threadDraft.draftUserMessage;
+  if (
+    !document ||
+    messageDocumentToEditorDoc(document, {
+      inlineTemplates: inlineTemplatesEnabled,
+    }) === null
+  ) {
     return null;
   }
-  const content = messageDocumentToPrompt(document);
+  const content = messageDocumentToPrompt(document, {
+    inlineTemplates: inlineTemplatesEnabled,
+  });
   if (content === null) {
     return null;
   }
@@ -126,12 +142,12 @@ function structuredDraftState(
   });
   return {
     content,
-    structuredPrompt: document,
+    userMessage: document,
     generationTemplate:
-      generationTemplate?.type === "template"
+      !inlineTemplatesEnabled && generationTemplate?.type === "template"
         ? generationTemplate.template
         : undefined,
-    attachments: structuredDraftAttachments(
+    attachments: userMessageDraftAttachments(
       document,
       threadDraft.draftAttachments ?? [],
     ),
@@ -153,13 +169,18 @@ const loadDraft$ = command(
     }
 
     const features = get(featureSwitch$);
-    const restoredDraft =
-      (features[FeatureSwitchKey.StructuredPrompt] ?? false)
-        ? (structuredDraftState(threadDraft) ?? legacyDraftState(threadDraft))
-        : legacyDraftState(threadDraft);
+    const inlineTemplatesEnabled =
+      features[FeatureSwitchKey.StructuredPromptInlineTemplates] ?? false;
+    const restoredDraft = userMessageDraftState(
+      threadDraft,
+      inlineTemplatesEnabled,
+    );
+    if (!restoredDraft) {
+      return;
+    }
     const hasDraft =
       restoredDraft.content.length > 0 ||
-      restoredDraft.structuredPrompt !== null ||
+      restoredDraft.userMessage !== null ||
       restoredDraft.attachments.length > 0;
     if (isNew && hasDraft) {
       const restoredAttachments = restoredDraft.attachments.map(
@@ -167,7 +188,7 @@ const loadDraft$ = command(
       );
       set(thread.draft.seed$, {
         content: restoredDraft.content,
-        structuredPrompt: restoredDraft.structuredPrompt,
+        userMessage: restoredDraft.userMessage,
         generationTemplate: restoredDraft.generationTemplate,
         attachments: restoredAttachments,
       });
@@ -192,6 +213,8 @@ const resolvePaneThread$ = command(
       set(loadDraft$, thread, isNew, signal),
       set(setupChatThreadInitScroll$, thread, signal),
       set(thread.subscribeChatThread$, signal),
+      set(autoOpenInitialThreadSidebar$, thread, signal),
+      set(autoOpenThreadSidebar$, thread, signal),
     ]);
     signal.throwIfAborted();
     L.debug("resolvePaneThread$ Promise.all done", {
@@ -216,12 +239,14 @@ const setupPaneThread$ = command(
     const initialOptimisticEntries = get(
       createOptimisticChatMessagesForThread(threadId),
     );
-    const thread = createChatThreadSignals(
-      threadId,
-      draft,
-      dataSource,
+    const features = get(featureSwitch$);
+    const inlineTemplatesEnabled =
+      features[FeatureSwitchKey.StructuredPromptInlineTemplates] ?? false;
+    const thread = createChatThreadSignals(threadId, draft, dataSource, {
       initialOptimisticEntries,
-    );
+      inlineTemplatesEnabled,
+      connectorAuthorization: spec.connectorAuthorization,
+    });
     set(spec.setPaneThread$, thread);
 
     await set(
@@ -246,8 +271,9 @@ export const setupLeftThread$ = command(
       set(
         setupPaneThread$,
         {
-          setPaneThread$: setLeftThread$,
+          setPaneThread$: setCurrentLeftThread$,
           resetSetupSignal$: resetLeftSetupSignal$,
+          connectorAuthorization: leftPaneConnectorAuthorization,
         },
         threadId,
         parentSignal,
@@ -265,8 +291,9 @@ export const setupRightThread$ = command(
     await set(
       setupPaneThread$,
       {
-        setPaneThread$: setRightThread$,
+        setPaneThread$: setCurrentRightThread$,
         resetSetupSignal$: resetRightSetupSignal$,
+        connectorAuthorization: rightPaneConnectorAuthorization,
       },
       threadId,
       parentSignal,
@@ -280,11 +307,9 @@ export const loadLeftThread$ = command(
       return;
     }
 
-    // Drop right sidebar state before switching threads — open artifact
-    // and automation panels are anchored to the previous thread's messages.
-    set(clearArtifactPreview$);
-    set(closeHeaderAutomationSidebar$);
-    set(closeMailDraftSidebar$);
+    // Drop sidebar state before switching threads because its content is
+    // anchored to the previous thread's messages.
+    set(closeThreadSidebars$);
 
     const next = new URLSearchParams(get(searchParams$));
     if (next.get(SIDEBAR_PARAM) === threadId) {
@@ -304,18 +329,16 @@ export const loadRightThread$ = command(
       return;
     }
 
-    if (get(internalRightThread$)?.threadId === threadId) {
+    if (get(currentRightThread$)?.threadId === threadId) {
       return;
     }
 
-    const currentRightThread = get(internalRightThread$);
+    const currentRightThread = get(currentRightThread$);
     if (currentRightThread && currentRightThread.threadId !== threadId) {
       set(currentRightThread.resetRenderedChatGroupsIfAtBottom$);
     }
 
-    set(clearArtifactPreview$);
-    set(closeHeaderAutomationSidebar$);
-    set(closeMailDraftSidebar$);
+    set(closeThreadSidebars$);
 
     const next = new URLSearchParams(get(searchParams$));
     next.set(SIDEBAR_PARAM, threadId);

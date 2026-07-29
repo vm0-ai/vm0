@@ -73,7 +73,7 @@ export interface ApiTestMocks {
     readonly users: {
       readonly getUserList: AsyncMock;
       readonly getOrganizationMembershipList: AsyncMock;
-      readonly updateUser: AsyncMock;
+      readonly updateUserMetadata: AsyncMock;
     };
     readonly signInTokens: {
       readonly createSignInToken: AsyncMock;
@@ -258,7 +258,7 @@ const apiTestMocks: ApiTestMocks = vi.hoisted((): ApiTestMocks => {
       getUserList: vi.fn<(...args: unknown[]) => Promise<unknown>>(),
       getOrganizationMembershipList:
         vi.fn<(...args: unknown[]) => Promise<unknown>>(),
-      updateUser: vi.fn<(...args: unknown[]) => Promise<unknown>>(),
+      updateUserMetadata: vi.fn<(...args: unknown[]) => Promise<unknown>>(),
     },
     signInTokens: {
       createSignInToken: vi.fn<(...args: unknown[]) => Promise<unknown>>(),
@@ -432,7 +432,31 @@ const apiTestMocks: ApiTestMocks = vi.hoisted((): ApiTestMocks => {
 });
 
 vi.mock("@aws-sdk/client-s3", () => {
+  class AbortMultipartUploadCommand {
+    readonly input: unknown;
+
+    constructor(input: unknown) {
+      this.input = input;
+    }
+  }
+
+  class CompleteMultipartUploadCommand {
+    readonly input: unknown;
+
+    constructor(input: unknown) {
+      this.input = input;
+    }
+  }
+
   class CopyObjectCommand {
+    readonly input: unknown;
+
+    constructor(input: unknown) {
+      this.input = input;
+    }
+  }
+
+  class CreateMultipartUploadCommand {
     readonly input: unknown;
 
     constructor(input: unknown) {
@@ -457,6 +481,14 @@ vi.mock("@aws-sdk/client-s3", () => {
   }
 
   class ListObjectsV2Command {
+    readonly input: unknown;
+
+    constructor(input: unknown) {
+      this.input = input;
+    }
+  }
+
+  class ListPartsCommand {
     readonly input: unknown;
 
     constructor(input: unknown) {
@@ -490,14 +522,27 @@ vi.mock("@aws-sdk/client-s3", () => {
     }
   }
 
+  class UploadPartCommand {
+    readonly input: unknown;
+
+    constructor(input: unknown) {
+      this.input = input;
+    }
+  }
+
   return {
+    AbortMultipartUploadCommand,
+    CompleteMultipartUploadCommand,
     CopyObjectCommand,
+    CreateMultipartUploadCommand,
     DeleteObjectsCommand,
     GetObjectCommand,
     HeadObjectCommand,
     ListObjectsV2Command,
+    ListPartsCommand,
     PutObjectCommand,
     S3Client,
+    UploadPartCommand,
   };
 });
 
@@ -928,7 +973,7 @@ export function resetApiTestMocks(): void {
   apiTestMocks.clerk.organizations.updateOrganizationLogo.mockReset();
   apiTestMocks.clerk.users.getUserList.mockReset();
   apiTestMocks.clerk.users.getOrganizationMembershipList.mockReset();
-  apiTestMocks.clerk.users.updateUser.mockReset();
+  apiTestMocks.clerk.users.updateUserMetadata.mockReset();
   apiTestMocks.clerk.signInTokens.createSignInToken.mockReset();
   apiTestMocks.clerk.m2m.createToken.mockReset();
   apiTestMocks.s3.send.mockReset();

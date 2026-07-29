@@ -4,7 +4,7 @@ import { toast } from "@vm0/ui/components/ui/sonner";
 
 import { accept } from "../../../lib/accept.ts";
 import { now } from "../../../lib/time.ts";
-import type { ConnectorDeviceAuthStartOptions } from "@vm0/connectors/connectors";
+import type { ConnectorDeviceAuthStartOptions } from "@vm0/connectors/connector-config";
 import {
   CONNECTOR_APP_OAUTH_CALLBACK_METADATA_STORAGE_KEY,
   isConnectorAppOauthCallbackEnabled,
@@ -32,7 +32,6 @@ import type {
 import type {
   ConnectorOauthDeviceAuthSessionPollResponse,
   ConnectorListResponse,
-  ConnectorReconnectReason,
   ConnectorResponse,
 } from "@vm0/api-contracts/contracts/connector-schemas";
 import type {
@@ -61,13 +60,14 @@ import {
   tapError,
   withCleanup,
 } from "../../utils.ts";
-import { setAblyLoop$ } from "../../realtime.ts";
+import { setAblyPayloadLoop$ } from "../../realtime.ts";
 import { localStorageSignals } from "../../external/local-storage.ts";
 import { subagents$ } from "../../agent.ts";
 import { reloadAgentConnectorAuthorizations$ } from "../agent-connector-authorizations.ts";
 import { sanitizeTokenInputRecord } from "./token-input.ts";
 import { IN_VITEST } from "../../../env.ts";
 import { connectorRedirectingPath } from "../../connectors-page/connector-redirecting.ts";
+import { isConnectorChangedPayloadFor } from "../../connector-change.ts";
 
 const HIDDEN_CONNECTIONS_STORAGE_KEY = "vm0.connections.hiddenTypes";
 
@@ -98,6 +98,16 @@ export type ConnectorCatalogBrowserAuthMethodDetail =
   PublicConnectorCatalogAuthMethodDetail & {
     readonly grantKind: BrowserAuthGrantKind;
   };
+
+type ConnectorStatusDirectConnectMethod =
+  | {
+      readonly kind: "browser-auth";
+      readonly authMethod: PublicConnectorCatalogAuthMethodDetail;
+    }
+  | {
+      readonly kind: "no-auth";
+      readonly authMethod: ConnectorAuthMethodId;
+    };
 
 export function manualGrantInputValuesForMethod(
   method: Pick<PublicConnectorCatalogAuthMethodDetail, "manualFields">,
@@ -162,7 +172,7 @@ export function getConnectorStatusAuthMethod(
   );
 }
 
-export function getConnectorStatusAuthMethodsByGrantKind(
+function getConnectorStatusAuthMethodsByGrantKind(
   connector: PublicConnectorCatalogStatusItem,
   grantKind: ConnectorStatusGrantKind,
 ): PublicConnectorCatalogAuthMethodDetail[] {
@@ -191,17 +201,6 @@ export function hasConnectorStatusProviderDrivenConnectMethod(
     );
   });
 }
-
-export function hasConnectorStatusAuthCodeGrant(
-  connector: PublicConnectorCatalogStatusItem,
-): boolean {
-  return getConnectorStatusAuthMethodsByGrantKind(connector, "auth-code").some(
-    () => {
-      return true;
-    },
-  );
-}
-
 export function hasConnectorStatusBrowserAuthGrant(
   connector: PublicConnectorCatalogStatusItem,
 ): boolean {
@@ -213,13 +212,7 @@ export function hasConnectorStatusBrowserAuthGrant(
 export function getConnectorStatusConnectLaunchMode(
   connector: PublicConnectorCatalogStatusItem,
 ): ConnectorConnectLaunchMode {
-  if (getOnlyAvailableStatusBrowserAuthMethod(connector)) {
-    return "browser-auth";
-  }
-  if (getOnlyAvailableStatusNoAuthMethod(connector)) {
-    return "no-auth";
-  }
-  return "modal";
+  return getConnectorStatusDirectConnectMethod(connector)?.kind ?? "modal";
 }
 
 export function getAvailableStatusAuthCodeAuthMethod(
@@ -237,7 +230,7 @@ export function getAvailableStatusAuthCodeAuthMethod(
   return parsed.data;
 }
 
-export function getOnlyAvailableStatusAuthCodeAuthMethod(
+function getOnlyAvailableStatusAuthCodeAuthMethod(
   connector: PublicConnectorCatalogStatusItem,
 ): ConnectorAuthMethodId | null {
   const authMethod = connector.singleAuthCodeAuthMethodId;
@@ -251,23 +244,7 @@ export function getOnlyAvailableStatusAuthCodeAuthMethod(
   }
   return getAvailableStatusAuthCodeAuthMethod(connector, authMethod);
 }
-
-export function getAvailableStatusBrowserAuthMethod(
-  connector: PublicConnectorCatalogStatusItem,
-  authMethod: string,
-): ConnectorAuthMethodId | null {
-  const parsed = connectorAuthMethodIdSchema.safeParse(authMethod);
-  if (!parsed.success) {
-    return null;
-  }
-  const method = getConnectorStatusAuthMethod(connector, parsed.data);
-  if (!method || !isBrowserAuthGrantKind(method.grantKind)) {
-    return null;
-  }
-  return parsed.data;
-}
-
-export function getOnlyAvailableStatusBrowserAuthMethod(
+function getOnlyAvailableStatusBrowserAuthMethod(
   connector: PublicConnectorCatalogStatusItem,
 ): ConnectorAuthMethodId | null {
   const [method] = connector.authMethods;
@@ -289,7 +266,7 @@ export function getOnlyAvailableStatusBrowserAuthMethodDetail(
     : null;
 }
 
-export function getAvailableStatusNoAuthMethod(
+function getAvailableStatusNoAuthMethod(
   connector: PublicConnectorCatalogStatusItem,
   authMethod: string,
 ): ConnectorAuthMethodId | null {
@@ -312,6 +289,18 @@ export function getOnlyAvailableStatusNoAuthMethod(
     return null;
   }
   return getAvailableStatusNoAuthMethod(connector, method.id);
+}
+
+export function getConnectorStatusDirectConnectMethod(
+  connector: PublicConnectorCatalogStatusItem,
+): ConnectorStatusDirectConnectMethod | null {
+  const browserAuthMethod =
+    getOnlyAvailableStatusBrowserAuthMethodDetail(connector);
+  if (browserAuthMethod) {
+    return { kind: "browser-auth", authMethod: browserAuthMethod };
+  }
+  const noAuthMethod = getOnlyAvailableStatusNoAuthMethod(connector);
+  return noAuthMethod ? { kind: "no-auth", authMethod: noAuthMethod } : null;
 }
 
 function connectorTokenExpiresAtMs(
@@ -366,21 +355,6 @@ export function connectorExpiryCountdownText(
     return "Expires in less than 1 hour";
   }
   return formatExpiryCountdown(Math.ceil(remainingMs / HOUR_MS), "hour");
-}
-
-const reconnectReasonTooltipText = {
-  provider_session_expired:
-    "The provider session expired. Reconnect to continue.",
-  authorization_expired_or_revoked:
-    "Authorization expired or was revoked. Reconnect to continue.",
-  credential_expired: "The stored credential expired. Reconnect to continue.",
-} satisfies Record<ConnectorReconnectReason, string>;
-
-export function connectorReconnectReasonTooltipText(
-  connector: PublicConnectorCatalogStatusItem,
-): string | null {
-  const reason = connector.connection?.reconnectReason;
-  return reason ? reconnectReasonTooltipText[reason] : null;
 }
 
 /**
@@ -2038,8 +2012,7 @@ async function waitForOAuthAuthCodePopupClosed(
   return "popupClosed";
 }
 
-const resetOAuthAuthCodeConnectorLoopSignal$ = resetSignal();
-const resetOAuthAuthCodeConnectorPopupSignal$ = resetSignal();
+const resetOAuthAuthCodeWaitSignal$ = resetSignal();
 
 // ---------------------------------------------------------------------------
 // Connect command
@@ -2273,56 +2246,52 @@ export const connectConnectorOAuthAuthCode$ = command(
         // Wait for the browser authorization flow to complete. The callback
         // publishes `connector:changed`, and the subscription rechecks server
         // state.
-        const loopSignal = set(resetOAuthAuthCodeConnectorLoopSignal$, signal);
-        const popupSignal = set(
-          resetOAuthAuthCodeConnectorPopupSignal$,
-          signal,
-        );
-
-        const completed = await withCleanup(
-          (async () => {
-            const waitForConnectorChanged = async () => {
-              await set(
-                setAblyLoop$,
-                {
-                  topic: "connector:changed",
-                  loopCommand$: onConnectorChanged$,
-                  options: { runOnSubscribe: true },
-                },
-                loopSignal,
-              );
-              return "connectorChanged" as const;
-            };
-            const changedPromise = waitForConnectorChanged();
-            const waitResult =
-              authWindow === null
-                ? await changedPromise
-                : await Promise.race([
-                    changedPromise,
-                    waitForOAuthAuthCodePopupClosed(authWindow, popupSignal),
-                  ]);
-            signal.throwIfAborted();
-
-            if (waitResult === "popupClosed") {
-              set(resetOAuthAuthCodeConnectorLoopSignal$, signal);
-              const connectedAfterClose = await set(
-                onConnectorChanged$,
-                signal,
-              );
-              signal.throwIfAborted();
-              if (!connectedAfterClose) {
-                return false;
-              }
+        const waitSignal = set(resetOAuthAuthCodeWaitSignal$, signal);
+        const onMatchingConnectorChanged$ = command(
+          async (
+            { set },
+            payload: unknown,
+            sig: AbortSignal,
+          ): Promise<boolean> => {
+            if (!isConnectorChangedPayloadFor(payload, connectorRef)) {
+              return false;
             }
-            return true;
-          })(),
-          () => {
-            set(resetOAuthAuthCodeConnectorLoopSignal$, signal);
-            set(resetOAuthAuthCodeConnectorPopupSignal$, signal);
+            return await set(onConnectorChanged$, sig);
           },
         );
-        if (!completed) {
-          return false;
+        const waitForConnectorChanged = async () => {
+          await set(
+            setAblyPayloadLoop$,
+            {
+              topic: "connector:changed",
+              loopCommand$: onMatchingConnectorChanged$,
+              catchUpCommand$: onConnectorChanged$,
+              options: { runOnSubscribe: true },
+            },
+            waitSignal,
+          );
+          return "connectorChanged" as const;
+        };
+        const changedPromise = waitForConnectorChanged();
+        const waitResult = await withCleanup(
+          authWindow === null
+            ? changedPromise
+            : Promise.race([
+                changedPromise,
+                waitForOAuthAuthCodePopupClosed(authWindow, waitSignal),
+              ]),
+          () => {
+            set(resetOAuthAuthCodeWaitSignal$, signal);
+          },
+        );
+        signal.throwIfAborted();
+
+        if (waitResult === "popupClosed") {
+          const connectedAfterClose = await set(onConnectorChanged$, signal);
+          signal.throwIfAborted();
+          if (!connectedAfterClose) {
+            return false;
+          }
         }
 
         // Refresh the connectors$ cache so UI picks up the latest state.

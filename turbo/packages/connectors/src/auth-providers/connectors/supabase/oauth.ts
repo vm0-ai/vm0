@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-import type { ConnectorAuthCodeGrantConfig } from "@vm0/connectors/connectors";
+import type { ConnectorAuthCodeGrantConfig } from "@vm0/connectors/connector-config";
 import { throwOAuthError } from "../../oauth/error";
 
 const SUPABASE_TOKEN_URL = "https://api.supabase.com/v1/oauth/token";
@@ -245,11 +245,4 @@ async function fetchSupabaseUserInfo(
     username: org?.name ?? null,
     email: null,
   };
-}
-
-/**
- * Get the primary secret name for Supabase connector (the access token).
- */
-export function getSupabaseSecretName(): string {
-  return "SUPABASE_ACCESS_TOKEN";
 }

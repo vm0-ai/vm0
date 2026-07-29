@@ -6,6 +6,8 @@ import {
   index,
   jsonb,
   bigint,
+  boolean,
+  check,
   varchar,
 } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
@@ -14,9 +16,10 @@ import { agentComposes } from "./agent-compose";
 import { computerUseHosts } from "./computer-use-host";
 import type {
   ChatThreadDraftAttachments,
-  ChatThreadDraftStructuredPrompt,
+  ChatThreadDraftUserMessage,
   ChatThreadGenerationTemplate,
 } from "@vm0/db/jsonb-contracts/chat-thread";
+import { agentRuns, agentSessions } from "./agent-run-session-conversation";
 
 /**
  * Chat Threads table
@@ -47,14 +50,34 @@ export const chatThreads = pgTable(
      */
     sourceScheduleRunId: uuid("source_schedule_run_id"),
     /**
+     * Canonical vm0 application session for runs admitted on this thread.
+     * Every thread-bound run source resolves continuation through this binding.
+     */
+    agentSessionId: uuid("agent_session_id").references(
+      () => {
+        return agentSessions.id;
+      },
+      { onDelete: "set null" },
+    ),
+    /**
+     * Run whose final admission most recently established agentSessionId.
+     * Provides route provenance for session rotation and binding snapshots.
+     */
+    agentSessionRunId: uuid("agent_session_run_id").references(
+      () => {
+        return agentRuns.id;
+      },
+      { onDelete: "set null" },
+    ),
+    /**
      * Draft text content for the thread's composer. Null when no draft is saved.
      * Persisted with local-first sync: local state takes precedence on first visit.
      */
     draftContent: text("draft_content"),
     /** Stable business representation of the composer's rich draft content. */
-    draftStructuredPrompt: jsonb(
+    draftUserMessage: jsonb(
       "draft_structured_prompt",
-    ).$type<ChatThreadDraftStructuredPrompt>(),
+    ).$type<ChatThreadDraftUserMessage>(),
     /**
      * Draft attachment metadata for the thread's composer. Only completed uploads.
      * Null when no draft attachments are saved.
@@ -97,6 +120,13 @@ export const chatThreads = pgTable(
       { onDelete: "set null" },
     ),
     /**
+     * Whether this thread may use Zero's managed cloud browser.
+     * Mutually exclusive with computerUseHostId at application boundaries.
+     */
+    cloudBrowserEnabled: boolean("cloud_browser_enabled")
+      .default(false)
+      .notNull(),
+    /**
      * Timestamp at which the user pinned this thread to the top of the sidebar.
      * NULL means unpinned. Pinned threads sort above unpinned, both groups
      * keep recency ordering. Per `(user, agent)` because `chat_threads` rows
@@ -124,19 +154,23 @@ export const chatThreads = pgTable(
     })
       .default(0)
       .notNull(),
-    /**
-     * Chat-message-queue pause state: while set, workflow events keep
-     * enqueueing but are not consumed. Never blocks user messages.
-     * `pauseReason` is user-visible (set on manual pause or automatically
-     * when run creation for a dequeued event fails).
-     */
-    queuePausedAt: timestamp("queue_paused_at"),
-    pauseReason: text("pause_reason"),
     createdAt: timestamp("created_at").defaultNow().notNull(),
     updatedAt: timestamp("updated_at").defaultNow().notNull(),
   },
   (table) => {
     return [
+      check(
+        "chat_threads_computer_access_check",
+        sql`NOT (${table.cloudBrowserEnabled} AND ${table.computerUseHostId} IS NOT NULL)`,
+      ),
+      check(
+        "chat_threads_draft_user_message_check",
+        sql`${table.draftUserMessage} IS NOT NULL
+          OR (
+            COALESCE(${table.draftContent}, '') = ''
+            AND COALESCE(${table.draftAttachments}, '[]'::jsonb) = '[]'::jsonb
+          )`,
+      ),
       index("idx_chat_threads_user_compose_updated").on(
         table.userId,
         table.agentComposeId,

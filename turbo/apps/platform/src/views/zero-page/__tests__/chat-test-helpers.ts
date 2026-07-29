@@ -13,13 +13,12 @@ import {
   chatThreadComputerUseHostContract,
   chatThreadDraftContract,
   chatThreadModelSelectionContract,
-  chatThreadMessagesContract,
-  chatMessagesContract,
+  chatThreadEventsContract,
+  chatEventsContract,
   MODEL_FIRST_SELECTION_PROVIDER_ID,
   type ChatRunOptionsRequest,
   type CodexServiceTier,
   type GenerationTemplateRequest,
-  type PagedChatMessage,
   type PersistedAttachment,
   type UserMessageDocument,
 } from "@vm0/api-contracts/contracts/chat-threads";
@@ -34,6 +33,10 @@ import { zeroQueuePositionContract } from "@vm0/api-contracts/contracts/zero-que
 import { zeroTeamContract } from "@vm0/api-contracts/contracts/zero-team";
 import { zeroAgentsByIdContract } from "@vm0/api-contracts/contracts/zero-agents";
 import type { RunStatus } from "@vm0/api-contracts/contracts/runs";
+import {
+  normalizeMockChatEvents,
+  type MockChatEventInput,
+} from "./chat-event-test-helpers.ts";
 
 import { fill } from "../../../__tests__/page-helper.ts";
 import { nowIso } from "../../../__tests__/time.ts";
@@ -109,19 +112,18 @@ export function mockSubagentThread(context: TestContext, _threadId: string) {
       },
     ]);
   });
-  context.mocks.api(chatThreadMessagesContract.list, ({ respond }) => {
-    return respond(200, { messages: [] });
+  context.mocks.api(chatThreadEventsContract.list, ({ respond }) => {
+    return respond(200, { events: [] });
   });
   context.mocks.api(chatThreadByIdContract.get, ({ respond }) => {
     return respond(200, {
       lastReadAt: null,
-      computerUseHostId: null,
-      codexServiceTier: null,
     });
   });
   context.mocks.api(chatThreadDraftContract.get, ({ respond }) => {
     return respond(200, {
       draftContent: null,
+      draftUserMessage: null,
       draftAttachments: null,
     });
   });
@@ -221,6 +223,7 @@ interface ThreadListItem {
   selectedModel?: string | null;
   serviceTier?: "priority" | null;
   computerUseHostId?: string | null;
+  cloudBrowserEnabled?: boolean;
 }
 
 const UUID_PATTERN =
@@ -240,6 +243,7 @@ export function threadListSnapshot(threads: readonly ThreadListItem[]) {
       selectedModel: thread.selectedModel ?? null,
       serviceTier: thread.serviceTier ?? null,
       computerUseHostId: thread.computerUseHostId ?? null,
+      cloudBrowserEnabled: thread.cloudBrowserEnabled ?? false,
     };
   });
 }
@@ -255,40 +259,34 @@ interface MockLifecycleControl {
   cancelRun: () => void;
 }
 
-type MockPagedMessage =
-  | (Omit<Extract<PagedChatMessage, { role: "user" }>, "id" | "seqId"> & {
-      id?: string;
-    })
-  | (Omit<Extract<PagedChatMessage, { role: "assistant" }>, "id" | "seqId"> & {
-      id?: string;
-    });
+type MockChatEvent = MockChatEventInput;
 
-function cloneMockPagedMessage<T extends PagedChatMessage>(message: T): T {
+function cloneMockChatEvent<T extends MockChatEventInput>(message: T): T {
   return structuredClone(message);
 }
 
-function isRecallMessageBody(body: {
-  revokesMessageId?: string;
+function isRecallEventBody(body: {
+  revokesEventId?: string;
   prompt?: string;
 }): body is {
-  revokesMessageId: string;
+  revokesEventId: string;
   threadId: string;
-  clientMessageId?: string;
+  clientEventId?: string;
 } {
-  return body.revokesMessageId !== undefined && body.prompt === undefined;
+  return body.revokesEventId !== undefined && body.prompt === undefined;
 }
 
-function isInterruptMessageBody(body: { interruptsRunId?: string }): body is {
+function isInterruptEventBody(body: { interruptsRunId?: string }): body is {
   interruptsRunId: string;
   threadId: string;
-  clientMessageId?: string;
+  clientEventId?: string;
 } {
   return body.interruptsRunId !== undefined;
 }
 
 function appendSeedChatMessages(args: {
-  pagedMessages: (MockPagedMessage & { id: string })[];
-  chatMessages: MockPagedMessage[];
+  pagedEvents: (MockChatEvent & { id: string })[];
+  chatMessages: MockChatEvent[];
   activeRunIds: readonly string[];
 }) {
   const completionCandidateRuns = new Map<string, string>();
@@ -302,14 +300,14 @@ function appendSeedChatMessages(args: {
       completionCandidateRuns,
       terminalRunIds,
     });
-    args.pagedMessages.push({
+    args.pagedEvents.push({
       ...seed,
       id: seed.id ?? `msg-seed-${i}`,
       runId,
     });
   }
   appendDefaultCompletionMarkers({
-    pagedMessages: args.pagedMessages,
+    pagedEvents: args.pagedEvents,
     completionCandidateRuns,
     terminalRunIds,
     activeRunIds: new Set(args.activeRunIds),
@@ -333,7 +331,7 @@ function addCompletionCandidate(
 }
 
 function collectSeedRunState(args: {
-  seed: MockPagedMessage;
+  seed: MockChatEvent;
   runId: string | undefined;
   completionCandidateRuns: Map<string, string>;
   terminalRunIds: Set<string>;
@@ -367,7 +365,7 @@ function collectSeedRunState(args: {
 }
 
 function appendDefaultCompletionMarkers(args: {
-  pagedMessages: (MockPagedMessage & { id: string })[];
+  pagedEvents: (MockChatEvent & { id: string })[];
   completionCandidateRuns: Map<string, string>;
   terminalRunIds: Set<string>;
   activeRunIds: Set<string>;
@@ -376,7 +374,7 @@ function appendDefaultCompletionMarkers(args: {
     if (args.terminalRunIds.has(runId) || args.activeRunIds.has(runId)) {
       continue;
     }
-    args.pagedMessages.push({
+    args.pagedEvents.push({
       id: `msg-seed-marker-${runId}`,
       role: "assistant",
       content: null,
@@ -391,33 +389,35 @@ export function mockChatLifecycle(
   context: TestContext,
   options?: {
     threadId?: string;
-    historyMessages?: MockPagedMessage[];
-    chatMessages?: MockPagedMessage[];
+    historyEvents?: MockChatEvent[];
+    chatMessages?: MockChatEvent[];
     threadTitle?: string | null;
     selectedModel?: string | null;
     codexServiceTier?: CodexServiceTier | null;
     computerUseHostId?: string | null;
+    cloudBrowserEnabled?: boolean;
     activeRunIds?: string[];
     onQueuedMessageAppend?: (body: {
       content?: string;
       hasTextContent?: boolean;
       attachments?: PersistedAttachment[];
-      clientMessageId: string;
+      clientEventId: string;
       generationTemplate?: GenerationTemplateRequest;
-      structuredPrompt?: UserMessageDocument;
+      userMessage?: UserMessageDocument;
       modelSelection?: ModelSelectionRequest | null;
       runOptions?: ChatRunOptionsRequest;
     }) => void;
     onRecallMessageAppend?: (body: {
-      revokesMessageId: string;
-      clientMessageId: string;
+      revokesEventId: string;
+      clientEventId: string;
     }) => void;
     onInterruptMessageAppend?: (body: {
       interruptsRunId: string;
-      clientMessageId: string;
+      clientEventId: string;
     }) => void;
     onComputerUseHostUpdate?: (body: {
       computerUseHostId: string | null;
+      cloudBrowserEnabled?: boolean;
     }) => void;
     /**
      * Promise the append handler awaits before responding. Lets a test observe
@@ -442,7 +442,7 @@ export function mockChatLifecycle(
     afterInitialMessagesList?: () => void;
     onRunCreate?: (body: {
       prompt?: string;
-      clientMessageId?: string;
+      clientEventId?: string;
       clientThreadId?: string;
       attachFiles?: {
         id: string;
@@ -452,20 +452,23 @@ export function mockChatLifecycle(
       }[];
       hasTextContent?: boolean;
       generationTemplate?: GenerationTemplateRequest;
-      structuredPrompt?: UserMessageDocument;
+      userMessage?: UserMessageDocument;
       model?: string;
       modelSelection?: ModelSelectionRequest | null;
       runOptions?: ChatRunOptionsRequest;
       computerUseHostId?: string | null;
-      revokesMessageId?: string;
+      cloudBrowserEnabled?: boolean;
+      revokesEventId?: string;
     }) => void;
     onSendRequest?: (body: {
       prompt: string;
       threadId?: string;
       clientThreadId?: string;
-      structuredPrompt?: UserMessageDocument;
+      userMessage?: UserMessageDocument;
       model?: string;
       modelSelection?: ModelSelectionRequest | null;
+      computerUseHostId?: string | null;
+      cloudBrowserEnabled?: boolean;
     }) => void;
     onThreadCreate?: (body: {
       clientThreadId?: string;
@@ -480,7 +483,7 @@ export function mockChatLifecycle(
   },
 ): MockLifecycleControl {
   let threadId = options?.threadId ?? "b0000000-0000-4000-a000-000000000900";
-  const historyMessages = options?.historyMessages ?? [];
+  const historyEvents = options?.historyEvents ?? [];
   const chatMessages = options?.chatMessages ?? [];
 
   let runStatus: RunStatus = "running";
@@ -490,16 +493,18 @@ export function mockChatLifecycle(
   let resultContent = "";
   let threadListOverride: ThreadListItem[] | null = null;
   let runPrompt: string | null = null;
-  let runStructuredPrompt: UserMessageDocument | undefined;
-  let runUserMessageId = "msg-user-sent";
+  let runUserEventId = "msg-user-sent";
+  let runUserMessage: UserMessageDocument | undefined;
   let runAssociated = false;
   let threadTitle: string | null = options?.threadTitle ?? null;
   let selectedModel: string | null = options?.selectedModel ?? null;
   let codexServiceTier: CodexServiceTier | null =
     options?.codexServiceTier ?? null;
   let computerUseHostId: string | null = options?.computerUseHostId ?? null;
+  let cloudBrowserEnabled = options?.cloudBrowserEnabled ?? false;
   let latestThreadEventId: string | null = null;
-  const queuedMessages: MockPagedMessage[] = [];
+  let latestThreadEventSeqId: number | null = null;
+  const queuedMessages: MockChatEvent[] = [];
   const optionActiveRunIds = options?.activeRunIds ?? [];
   // Version counter: bumped whenever the run reaches a terminal state so
   // subsequent polls discover a "new" assistant message row (simulating the
@@ -507,9 +512,9 @@ export function mockChatLifecycle(
   let assistantVersion = 0;
   let lastDeliveredVersion = -1;
 
-  const rememberRunUserMessageId = (clientMessageId: string | undefined) => {
-    if (clientMessageId !== undefined) {
-      runUserMessageId = clientMessageId;
+  const rememberRunUserEventId = (clientEventId: string | undefined) => {
+    if (clientEventId !== undefined) {
+      runUserEventId = clientEventId;
     }
   };
 
@@ -524,40 +529,40 @@ export function mockChatLifecycle(
     createChatMessage(threadId);
   };
 
-  const appendRecallControlMessage = (body: {
-    revokesMessageId: string;
+  const appendRecallControlEvent = (body: {
+    revokesEventId: string;
     threadId: string;
-    clientMessageId?: string;
+    clientEventId?: string;
   }) => {
-    const clientMessageId = body.clientMessageId ?? crypto.randomUUID();
+    const clientEventId = body.clientEventId ?? crypto.randomUUID();
     const now = nowIso();
     options?.onRecallMessageAppend?.({
-      revokesMessageId: body.revokesMessageId,
-      clientMessageId,
+      revokesEventId: body.revokesEventId,
+      clientEventId,
     });
     queuedMessages.push({
-      id: clientMessageId,
+      id: clientEventId,
       role: "user" as const,
       content: null,
-      revokesMessageId: body.revokesMessageId,
+      revokesEventId: body.revokesEventId,
       createdAt: now,
     });
     return { runId: null, threadId: body.threadId, createdAt: now };
   };
 
-  const appendInterruptControlMessage = (body: {
+  const appendInterruptControlEvent = (body: {
     interruptsRunId: string;
     threadId: string;
-    clientMessageId?: string;
+    clientEventId?: string;
   }) => {
-    const clientMessageId = body.clientMessageId ?? crypto.randomUUID();
+    const clientEventId = body.clientEventId ?? crypto.randomUUID();
     const now = nowIso();
     options?.onInterruptMessageAppend?.({
       interruptsRunId: body.interruptsRunId,
-      clientMessageId,
+      clientEventId,
     });
     queuedMessages.push({
-      id: clientMessageId,
+      id: clientEventId,
       role: "user" as const,
       content: null,
       interruptsRunId: body.interruptsRunId,
@@ -597,23 +602,27 @@ export function mockChatLifecycle(
         selectedModel,
         serviceTier: codexServiceTier === "fast" ? ("priority" as const) : null,
         computerUseHostId,
+        cloudBrowserEnabled,
       },
     ];
   };
 
-  const buildPagedMessages = (): PagedChatMessage[] => {
+  const buildCanonicalEvents = (): (MockChatEvent & {
+    id: string;
+    seqId: number;
+  })[] => {
     const assistantId = `msg-assistant-run-v${assistantVersion}`;
-    const historicalMessages = historyMessages.map((message, i) => {
+    const historicalEvents = historyEvents.map((message, i) => {
       return {
         id: `msg-history-${i}`,
         ...message,
       };
     });
 
-    const pagedMessages: (MockPagedMessage & { id: string })[] = [];
+    const pagedEvents: (MockChatEvent & { id: string })[] = [];
 
-    for (const message of historicalMessages) {
-      pagedMessages.push(message);
+    for (const message of historicalEvents) {
+      pagedEvents.push(message);
     }
 
     // Seed with pre-existing chatMessages (e.g. history on resume). Seeded
@@ -623,31 +632,29 @@ export function mockChatLifecycle(
     // queued. Tests that *want* a queued seed should explicitly pass
     // `runId: undefined`, which we respect via the `in` check.
     appendSeedChatMessages({
-      pagedMessages,
+      pagedEvents,
       chatMessages,
       activeRunIds: optionActiveRunIds,
     });
 
     for (const message of queuedMessages) {
-      pagedMessages.push({
-        id: message.id ?? `queued-${pagedMessages.length}`,
+      pagedEvents.push({
+        id: message.id ?? `queued-${pagedEvents.length}`,
         ...message,
       });
     }
 
     // After a run is associated, append user + assistant messages.
     if (runAssociated) {
-      pagedMessages.push({
-        id: runUserMessageId,
+      pagedEvents.push({
+        id: runUserEventId,
         role: "user",
         content: runPrompt ?? "Hello",
-        ...(runStructuredPrompt
-          ? { structuredPrompt: runStructuredPrompt }
-          : {}),
+        ...(runUserMessage ? { userMessage: runUserMessage } : {}),
         runId: MOCK_RUN_ID,
         createdAt: "2026-03-10T00:00:01Z",
       });
-      pagedMessages.push({
+      pagedEvents.push({
         id: assistantId,
         role: "assistant",
         content: resultContent || null,
@@ -660,7 +667,7 @@ export function mockChatLifecycle(
         createdAt: "2026-03-10T00:00:02Z",
       });
       if (runStatus === "completed") {
-        pagedMessages.push({
+        pagedEvents.push({
           id: `msg-assistant-run-marker-v${assistantVersion}`,
           role: "assistant",
           content: null,
@@ -671,7 +678,7 @@ export function mockChatLifecycle(
       }
     }
 
-    return pagedMessages.map((message, index) => {
+    return pagedEvents.map((message, index) => {
       return { ...message, seqId: index + 1 };
     });
   };
@@ -684,14 +691,14 @@ export function mockChatLifecycle(
       contentType: string;
       size: number;
     }[];
-    clientMessageId?: string;
+    clientEventId?: string;
     hasTextContent?: boolean;
     generationTemplate?: GenerationTemplateRequest;
-    structuredPrompt?: UserMessageDocument;
+    userMessage?: UserMessageDocument;
     model?: string;
     runOptions?: ChatRunOptionsRequest;
   }) => {
-    const clientMessageId = body.clientMessageId ?? crypto.randomUUID();
+    const clientEventId = body.clientEventId ?? crypto.randomUUID();
     const attachFiles = body.attachFiles?.map((file) => {
       return {
         ...file,
@@ -703,9 +710,9 @@ export function mockChatLifecycle(
       content: body.prompt,
       hasTextContent: body.hasTextContent,
       attachments: attachFiles,
-      clientMessageId,
+      clientEventId,
       generationTemplate: body.generationTemplate,
-      structuredPrompt: body.structuredPrompt,
+      userMessage: body.userMessage,
       modelSelection,
       runOptions: body.runOptions,
     });
@@ -714,14 +721,12 @@ export function mockChatLifecycle(
     }
     const now = nowIso();
     queuedMessages.push({
-      id: clientMessageId,
+      id: clientEventId,
       role: "user" as const,
       content: body.prompt ?? "",
       attachFiles,
       generationTemplate: body.generationTemplate,
-      ...(body.structuredPrompt
-        ? { structuredPrompt: body.structuredPrompt }
-        : {}),
+      ...(body.userMessage ? { userMessage: body.userMessage } : {}),
       createdAt: now,
     });
     return { runId: null, threadId, createdAt: now };
@@ -729,7 +734,7 @@ export function mockChatLifecycle(
 
   const startRunFromUserMessage = async (body: {
     prompt?: string;
-    clientMessageId?: string;
+    clientEventId?: string;
     attachFiles?: {
       id: string;
       filename: string;
@@ -738,11 +743,12 @@ export function mockChatLifecycle(
     }[];
     hasTextContent?: boolean;
     generationTemplate?: GenerationTemplateRequest;
-    structuredPrompt?: UserMessageDocument;
+    userMessage?: UserMessageDocument;
     model?: string;
     runOptions?: ChatRunOptionsRequest;
     computerUseHostId?: string | null;
-    revokesMessageId?: string;
+    cloudBrowserEnabled?: boolean;
+    revokesEventId?: string;
   }) => {
     if (options?.sendGate) {
       await options.sendGate;
@@ -750,8 +756,15 @@ export function mockChatLifecycle(
     if (body.prompt) {
       runPrompt = body.prompt;
     }
-    runStructuredPrompt = body.structuredPrompt;
-    rememberRunUserMessageId(body.clientMessageId);
+    runUserMessage = body.userMessage;
+    if (body.cloudBrowserEnabled === true) {
+      computerUseHostId = null;
+      cloudBrowserEnabled = true;
+    } else if (body.computerUseHostId) {
+      computerUseHostId = body.computerUseHostId;
+      cloudBrowserEnabled = false;
+    }
+    rememberRunUserEventId(body.clientEventId);
     const modelSelection = modelSelectionFromBody(body);
     options?.onRunCreate?.({ ...body, modelSelection });
     selectedModel = modelSelection?.selectedModel ?? selectedModel;
@@ -768,33 +781,43 @@ export function mockChatLifecycle(
   };
 
   // Paged messages endpoint — cursor-aware, version-aware mock.
-  context.mocks.api(chatThreadMessagesContract.list, ({ query, respond }) => {
+  context.mocks.api(chatThreadEventsContract.list, ({ query, respond }) => {
     const sinceSeqId = query.sinceSeqId;
     const beforeSeqId = query.beforeSeqId;
     const limit = query.limit ?? 50;
     const beforeHistoryGate = options?.beforeHistoryGate ?? Promise.resolve();
-    const pagedMessages = buildPagedMessages();
+    const pagedEvents = buildCanonicalEvents();
 
     if (beforeSeqId) {
       return beforeHistoryGate.then(() => {
-        const beforeIndex = pagedMessages.findIndex((message) => {
+        const beforeIndex = pagedEvents.findIndex((message) => {
           return message.seqId === beforeSeqId;
         });
         if (beforeIndex <= 0) {
-          return respond(200, { messages: [], hasHistoryBefore: false });
+          return respond(200, { events: [], hasHistoryBefore: false });
         }
-        const olderMessages = pagedMessages.slice(
+        const olderEvents = pagedEvents.slice(
           Math.max(0, beforeIndex - limit),
           beforeIndex,
         );
         return respond(200, {
-          messages: olderMessages.map(cloneMockPagedMessage),
-          hasHistoryBefore: beforeIndex - olderMessages.length > 0,
+          events: normalizeMockChatEvents(olderEvents.map(cloneMockChatEvent)),
+          hasHistoryBefore: beforeIndex - olderEvents.length > 0,
         });
       });
     }
 
     if (sinceSeqId) {
+      const appendedEvents = pagedEvents.filter((message) => {
+        return message.seqId > sinceSeqId;
+      });
+      if (appendedEvents.length > 0) {
+        return respond(200, {
+          events: normalizeMockChatEvents(
+            appendedEvents.map(cloneMockChatEvent),
+          ),
+        });
+      }
       // If the assistant version bumped since the client's cursor, return
       // the updated assistant message as a "new" row. Otherwise return
       // empty to avoid duplicate keys.
@@ -802,23 +825,24 @@ export function mockChatLifecycle(
         lastDeliveredVersion = assistantVersion;
         const messages =
           runStatus === "completed"
-            ? pagedMessages.slice(Math.max(0, pagedMessages.length - 2))
-            : [pagedMessages[pagedMessages.length - 1]!];
+            ? pagedEvents.slice(Math.max(0, pagedEvents.length - 2))
+            : [pagedEvents[pagedEvents.length - 1]!];
         return respond(200, {
-          messages: messages.map(cloneMockPagedMessage),
+          events: normalizeMockChatEvents(messages.map(cloneMockChatEvent)),
         });
       }
-      return respond(200, { messages: [] });
+      return respond(200, { events: [] });
     }
 
     lastDeliveredVersion = assistantVersion;
-    const latestMessages = pagedMessages.slice(historyMessages.length);
+    const latestEvents = pagedEvents.slice(historyEvents.length);
     const body = {
-      messages: latestMessages
-        .slice(Math.max(0, latestMessages.length - limit))
-        .map(cloneMockPagedMessage),
-      hasHistoryBefore:
-        historyMessages.length > 0 || latestMessages.length > limit,
+      events: normalizeMockChatEvents(
+        latestEvents
+          .slice(Math.max(0, latestEvents.length - limit))
+          .map(cloneMockChatEvent),
+      ),
+      hasHistoryBefore: historyEvents.length > 0 || latestEvents.length > limit,
     };
     options?.afterInitialMessagesList?.();
     return respond(200, body);
@@ -829,13 +853,12 @@ export function mockChatLifecycle(
     }
     return respond(200, {
       lastReadAt: "2026-03-10T00:00:00Z",
-      computerUseHostId,
-      codexServiceTier,
     });
   });
   context.mocks.api(chatThreadDraftContract.get, ({ respond }) => {
     return respond(200, {
       draftContent: null,
+      draftUserMessage: null,
       draftAttachments: null,
     });
   });
@@ -847,6 +870,7 @@ export function mockChatLifecycle(
       codexServiceTier = body.codexServiceTier ?? null;
       latestThreadEventId =
         body.serviceTierEventId ?? body.eventId ?? crypto.randomUUID();
+      latestThreadEventSeqId = (latestThreadEventSeqId ?? 0) + 1;
       options?.onModelSelectionUpdate?.({
         model: body.model,
         modelSelection,
@@ -859,9 +883,14 @@ export function mockChatLifecycle(
     chatThreadComputerUseHostContract.update,
     ({ body, respond }) => {
       computerUseHostId = body.computerUseHostId;
+      cloudBrowserEnabled =
+        body.cloudBrowserEnabled ??
+        (body.computerUseHostId ? false : cloudBrowserEnabled);
       latestThreadEventId = body.eventId ?? crypto.randomUUID();
+      latestThreadEventSeqId = (latestThreadEventSeqId ?? 0) + 1;
       options?.onComputerUseHostUpdate?.({
         computerUseHostId: body.computerUseHostId,
+        cloudBrowserEnabled: body.cloudBrowserEnabled,
       });
       return respond(204);
     },
@@ -870,6 +899,7 @@ export function mockChatLifecycle(
     return respond(200, {
       chatThreads: threadListSnapshot(effectiveThreadList()),
       latestEventId: latestThreadEventId,
+      latestSeqId: latestThreadEventSeqId,
     });
   });
   context.mocks.api(chatThreadsContract.events, ({ respond }) => {
@@ -907,23 +937,28 @@ export function mockChatLifecycle(
       createdAt: "2026-03-10T00:00:00Z",
     });
   });
-  // Unified chat message endpoint (creates thread + run + association)
-  context.mocks.api(chatMessagesContract.send, async ({ body, respond }) => {
-    if (isRecallMessageBody(body)) {
-      return respond(201, appendRecallControlMessage(body));
+  // Unified chat event endpoint (creates thread + run + association)
+  context.mocks.api(chatEventsContract.send, async ({ body, respond }) => {
+    if (isRecallEventBody(body)) {
+      return respond(201, appendRecallControlEvent(body));
     }
 
-    if (isInterruptMessageBody(body)) {
-      return respond(201, appendInterruptControlMessage(body));
+    if (isInterruptEventBody(body)) {
+      return respond(201, appendInterruptControlEvent(body));
+    }
+    if (body.prompt === undefined) {
+      throw new Error("Expected prompt for a normal chat event send");
     }
 
     options?.onSendRequest?.({
       prompt: body.prompt,
       threadId: body.threadId,
       clientThreadId: body.clientThreadId,
-      structuredPrompt: body.structuredPrompt,
+      userMessage: body.userMessage,
       model: body.model,
       modelSelection: modelSelectionFromBody(body),
+      computerUseHostId: body.computerUseHostId,
+      cloudBrowserEnabled: body.cloudBrowserEnabled,
     });
     threadId = body.clientThreadId ?? threadId;
     const responseBody = hasActiveRun()
@@ -1003,6 +1038,7 @@ export function mockChatLifecycle(
     setCodexServiceTier: (tier) => {
       codexServiceTier = tier;
       latestThreadEventId = crypto.randomUUID();
+      latestThreadEventSeqId = (latestThreadEventSeqId ?? 0) + 1;
     },
     completeRun: (content?: string) => {
       runStatus = "completed";

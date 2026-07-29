@@ -2,6 +2,7 @@ use std::fs::File;
 use std::io;
 use std::os::unix::fs::{MetadataExt, OpenOptionsExt};
 use std::path::{Path, PathBuf};
+use std::time::Duration;
 
 use nix::fcntl::{Flock, FlockArg};
 
@@ -10,6 +11,8 @@ use crate::host_file::{self, DirMode, PRIVATE_FILE_MODE};
 
 const LOCK_BUSY_ERROR: &str = "lock is already held by another process";
 const LOCK_REPLACED_MAX_RETRIES: usize = 64;
+const LOCK_RETRY_INITIAL_DELAY: Duration = Duration::from_millis(5);
+const LOCK_RETRY_MAX_DELAY: Duration = Duration::from_millis(50);
 
 /// Open (or create) the lock file, creating parent directories as needed.
 pub(crate) fn open_lock_file(path: &Path) -> RunnerResult<File> {
@@ -65,13 +68,15 @@ enum LockMode {
 }
 
 impl LockMode {
-    fn arg(self) -> FlockArg {
+    fn nonblocking_arg(self) -> FlockArg {
         match self {
-            Self::Exclusive => FlockArg::LockExclusive,
-            Self::Shared => FlockArg::LockShared,
-            Self::TryExclusive => FlockArg::LockExclusiveNonblock,
-            Self::TryShared => FlockArg::LockSharedNonblock,
+            Self::Exclusive | Self::TryExclusive => FlockArg::LockExclusiveNonblock,
+            Self::Shared | Self::TryShared => FlockArg::LockSharedNonblock,
         }
+    }
+
+    fn waits(self) -> bool {
+        matches!(self, Self::Exclusive | Self::Shared)
     }
 
     fn map_error(self, path: &Path, e: nix::errno::Errno) -> RunnerError {
@@ -96,9 +101,23 @@ enum LockAcquire {
 }
 
 async fn acquire_result_with(path: PathBuf, mode: LockMode) -> RunnerResult<LockAcquire> {
-    tokio::task::spawn_blocking(move || acquire_result_blocking(&path, mode, |_| Ok(())))
+    let mut retry_delay = LOCK_RETRY_INITIAL_DELAY;
+    loop {
+        let attempt_path = path.clone();
+        let result = tokio::task::spawn_blocking(move || {
+            acquire_result_blocking(&attempt_path, mode, |_| Ok(()))
+        })
         .await
-        .map_err(|e| RunnerError::Internal(format!("lock task: {e}")))?
+        .map_err(|e| RunnerError::Internal(format!("lock task: {e}")))??;
+
+        match result {
+            LockAcquire::Busy if mode.waits() => {
+                tokio::time::sleep(retry_delay).await;
+                retry_delay = (retry_delay * 2).min(LOCK_RETRY_MAX_DELAY);
+            }
+            result => return Ok(result),
+        }
+    }
 }
 
 fn acquire_result_blocking(
@@ -108,12 +127,9 @@ fn acquire_result_blocking(
 ) -> RunnerResult<LockAcquire> {
     for _ in 0..LOCK_REPLACED_MAX_RETRIES {
         let file = open_lock_file(path)?;
-        let lock = match Flock::lock(file, mode.arg()) {
+        let lock = match Flock::lock(file, mode.nonblocking_arg()) {
             Ok(lock) => lock,
-            Err((file, e))
-                if matches!(mode, LockMode::TryExclusive | LockMode::TryShared)
-                    && e == nix::errno::Errno::EWOULDBLOCK =>
-            {
+            Err((file, e)) if e == nix::errno::Errno::EWOULDBLOCK => {
                 if file_is_current_inode(&file, path) {
                     return Ok(LockAcquire::Busy);
                 }
@@ -142,7 +158,7 @@ fn acquire_existing_result_blocking(
             Some(file) => file,
             None => return Ok(None),
         };
-        let lock = match Flock::lock(file, mode.arg()) {
+        let lock = match Flock::lock(file, mode.nonblocking_arg()) {
             Ok(lock) => lock,
             Err((file, e)) if e == nix::errno::Errno::EWOULDBLOCK => {
                 if file_is_current_inode(&file, path) {
@@ -217,16 +233,18 @@ async fn acquire_with(path: PathBuf, mode: LockMode) -> RunnerResult<Flock<File>
     }
 }
 
-/// Acquire an exclusive flock on the given path, blocking until available.
+/// Acquire an exclusive flock on the given path, waiting asynchronously until available.
 ///
+/// Waiting is cancellation-safe: dropping the returned future stops future attempts.
 /// The returned guard holds the lock until dropped.
 pub async fn acquire(path: PathBuf) -> RunnerResult<Flock<File>> {
     acquire_with(path, LockMode::Exclusive).await
 }
 
-/// Acquire a shared flock on the given path, blocking until available.
+/// Acquire a shared flock on the given path, waiting asynchronously until available.
 ///
 /// Multiple shared locks can coexist; only exclusive locks conflict.
+/// Waiting is cancellation-safe: dropping the returned future stops future attempts.
 /// The returned guard holds the lock until dropped.
 pub async fn acquire_shared(path: PathBuf) -> RunnerResult<Flock<File>> {
     acquire_with(path, LockMode::Shared).await
@@ -284,7 +302,10 @@ pub async fn try_acquire_existing_shared_or_missing(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::future::{Future as _, poll_fn};
     use std::os::unix::fs::{PermissionsExt, symlink};
+    use std::sync::mpsc;
+    use std::time::Instant;
 
     fn mode(path: &Path) -> u32 {
         std::fs::metadata(path).unwrap().permissions().mode() & 0o777
@@ -298,6 +319,78 @@ mod tests {
         let guard = acquire(path.clone()).await.unwrap();
         assert!(path.exists());
         drop(guard);
+    }
+
+    #[test]
+    fn cancelled_acquire_does_not_occupy_blocking_pool() {
+        const WAIT_TIMEOUT: Duration = Duration::from_secs(1);
+
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("test.lock");
+        let holder = Flock::lock(open_lock_file(&path).unwrap(), FlockArg::LockExclusive).unwrap();
+        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o644)).unwrap();
+
+        let runtime = tokio::runtime::Builder::new_multi_thread()
+            .worker_threads(1)
+            .max_blocking_threads(1)
+            .enable_all()
+            .build()
+            .unwrap();
+
+        let (blocker_started_tx, blocker_started_rx) = mpsc::channel();
+        let (release_blocker_tx, release_blocker_rx) = mpsc::channel();
+        let blocker = runtime.spawn_blocking(move || {
+            blocker_started_tx.send(()).unwrap();
+            release_blocker_rx.recv().unwrap();
+        });
+        blocker_started_rx.recv_timeout(WAIT_TIMEOUT).unwrap();
+
+        let (waiter_pending_tx, waiter_pending_rx) = mpsc::channel();
+        let waiter_path = path.clone();
+        let waiter = runtime.spawn(async move {
+            let mut acquisition = Box::pin(acquire(waiter_path));
+            let mut waiter_pending_tx = Some(waiter_pending_tx);
+            poll_fn(move |context| {
+                let poll = acquisition.as_mut().poll(context);
+                if poll.is_pending()
+                    && let Some(waiter_pending_tx) = waiter_pending_tx.take()
+                {
+                    waiter_pending_tx.send(()).unwrap();
+                }
+                poll
+            })
+            .await
+        });
+        waiter_pending_rx.recv_timeout(WAIT_TIMEOUT).unwrap();
+
+        release_blocker_tx.send(()).unwrap();
+        runtime.block_on(blocker).unwrap();
+        let open_deadline = Instant::now() + WAIT_TIMEOUT;
+        while mode(&path) != 0o600 {
+            assert!(
+                Instant::now() < open_deadline,
+                "lock waiter did not open and tighten the lock file"
+            );
+            std::thread::yield_now();
+        }
+
+        waiter.abort();
+        let waiter_error = runtime.block_on(waiter).unwrap_err();
+        assert!(waiter_error.is_cancelled());
+
+        let mut probe = runtime.spawn_blocking(|| {});
+        let probe_completed_while_locked = runtime
+            .block_on(async { tokio::time::timeout(WAIT_TIMEOUT, &mut probe).await.is_ok() });
+
+        drop(holder);
+        if !probe_completed_while_locked {
+            runtime.block_on(probe).unwrap();
+        }
+
+        assert!(
+            probe_completed_while_locked,
+            "cancelled lock waiter kept the blocking-pool thread occupied"
+        );
     }
 
     #[tokio::test]

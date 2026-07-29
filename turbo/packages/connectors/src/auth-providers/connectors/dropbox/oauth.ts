@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-import type { ConnectorAuthCodeGrantConfig } from "@vm0/connectors/connectors";
+import type { ConnectorAuthCodeGrantConfig } from "@vm0/connectors/connector-config";
 import { throwOAuthError } from "../../oauth/error";
 
 const DROPBOX_TOKEN_URL = "https://api.dropboxapi.com/oauth2/token";
@@ -198,11 +198,4 @@ async function fetchDropboxUserInfo(
     username: data.name?.display_name ?? null,
     email: data.email ?? null,
   };
-}
-
-/**
- * Get the primary secret name for Dropbox connector (the access token).
- */
-export function getDropboxSecretName(): string {
-  return "DROPBOX_ACCESS_TOKEN";
 }

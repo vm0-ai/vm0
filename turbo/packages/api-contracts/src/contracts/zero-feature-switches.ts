@@ -7,6 +7,11 @@ const c = initContract();
 export const featureSwitchesResponseSchema = z.object({
   switches: z.record(z.string(), z.boolean()),
   effectiveSwitches: z.record(z.string(), z.boolean()),
+  /**
+   * Optional capability handshake for multiple inline template parts.
+   * Older API deployments omit this field.
+   */
+  supportsStructuredInlineTemplates: z.boolean().optional(),
 });
 
 export type FeatureSwitchesResponse = z.infer<

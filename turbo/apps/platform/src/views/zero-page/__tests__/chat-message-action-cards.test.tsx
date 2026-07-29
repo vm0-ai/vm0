@@ -1,10 +1,14 @@
 import type { ConnectorResponse } from "@vm0/api-contracts/contracts/connector-schemas";
-import { chatThreadMessagesContract } from "@vm0/api-contracts/contracts/chat-threads";
+import { chatThreadEventsContract } from "@vm0/api-contracts/contracts/chat-threads";
 import {
   zeroConnectorManualGrantContract,
   zeroConnectorNoAuthGrantContract,
   zeroConnectorOauthStartContract,
 } from "@vm0/api-contracts/contracts/zero-connectors";
+import {
+  zeroBrowserContract,
+  type ZeroBrowserSession,
+} from "@vm0/api-contracts/contracts/zero-browser";
 import { zeroMailContract } from "@vm0/api-contracts/contracts/zero-mail";
 import {
   zeroConnectorCatalogContract,
@@ -17,7 +21,7 @@ import {
   type UserPermissionGrantResponse,
 } from "@vm0/api-contracts/contracts/zero-user-permission-grants";
 import { UNKNOWN_PERMISSION_GRANT } from "@vm0/connectors/firewall-types";
-import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
+import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { HttpResponse } from "msw";
@@ -237,6 +241,129 @@ async function confirmPermissionAction(
   await user.click(await waitForButtonByText("Confirm", card));
 }
 
+const MAIL_FOLLOW_UP_SUBJECT = "July receipts";
+
+async function waitForMailDraftCard(): Promise<HTMLElement> {
+  let card: HTMLElement | undefined;
+  await waitFor(() => {
+    card = queryAllByRoleFast("button").find((button) => {
+      return (
+        button.getAttribute("aria-label") ===
+        `Open draft email: ${MAIL_FOLLOW_UP_SUBJECT}`
+      );
+    });
+    expect(card).toBeDefined();
+  });
+  if (!card) {
+    throw new Error("Mail draft card not found");
+  }
+  return card;
+}
+
+function mailFollowUpScenario(args: {
+  readonly threadId: string;
+  readonly mailDraftId: string;
+}): {
+  readonly threadId: string;
+  readonly mailDraftId: string;
+  readonly sentPrompts: { prompt: string; threadId?: string }[];
+  readonly followUpRequests: string[];
+} {
+  const { threadId, mailDraftId } = args;
+  const createdAt = "2026-07-14T10:00:00.000Z";
+  const mailDraftUrl = `https://app.vm0.ai/mail/drafts/${mailDraftId}`;
+  const sentPrompts: { prompt: string; threadId?: string }[] = [];
+  const followUpRequests: string[] = [];
+  let sent = false;
+  let followUp:
+    | {
+        readonly status: "active";
+        readonly automationId: string;
+      }
+    | undefined;
+  const mailDraft = (status: "draft" | "sent") => {
+    return {
+      version: 3 as const,
+      provider: "gmail" as const,
+      from: "sender@example.com",
+      to: ["recipient@example.com"],
+      cc: [],
+      bcc: [],
+      subject: MAIL_FOLLOW_UP_SUBJECT,
+      body: "Mail body",
+      status,
+      detailAvailable: true,
+      gmailDraftId: "r-callback-draft",
+      gmailThreadId: "gmail-thread-id",
+      gmailMessageId: "gmail-message-id",
+      ...(status === "sent"
+        ? {
+            sentGmailMessageId: "gmail-sent-message-id",
+            sentAt: "2026-07-14T10:01:00.000Z",
+            ...(followUp ? { followUp } : {}),
+          }
+        : {}),
+      references: [],
+      attachments: [],
+      createdAt,
+      updatedAt: createdAt,
+    };
+  };
+
+  mockConnectorCatalogStatus([
+    publicConnectorStatusItem({ connectorRef: "gmail", label: "Gmail" }),
+  ]);
+  context.mocks.api(zeroMailContract.getDraft, ({ respond }) => {
+    return respond(200, {
+      mailDraftId,
+      mailDraftUrl,
+      mailDraft: mailDraft(sent ? "sent" : "draft"),
+    });
+  });
+  context.mocks.api(zeroMailContract.sendDraft, ({ respond }) => {
+    sent = true;
+    return respond(200, {
+      mailDraftId,
+      mailDraftUrl,
+      mailDraft: mailDraft("sent"),
+    });
+  });
+  context.mocks.api(zeroMailContract.createFollowUp, ({ params, respond }) => {
+    followUpRequests.push(params.mailDraftId);
+    followUp = {
+      status: "active",
+      automationId: "c0000000-0000-4000-a000-000000000044",
+    };
+    return respond(200, {
+      mailDraftId,
+      automationId: followUp.automationId,
+    });
+  });
+  mockChatLifecycle(context, {
+    threadId,
+    threadTitle: "Mail follow-up",
+    chatMessages: [
+      {
+        id: `${mailDraftId}-message`,
+        role: "assistant",
+        content: mailDraftUrl,
+        runId: `${mailDraftId}-run`,
+        createdAt,
+      },
+    ],
+    onSendRequest: ({ prompt, threadId: sentThreadId }) => {
+      sentPrompts.push({ prompt, threadId: sentThreadId });
+    },
+  });
+
+  return {
+    threadId,
+    mailDraftId,
+    sentPrompts,
+    followUpRequests,
+  };
+}
+
 function selectMailText(element: HTMLElement): void {
   element.dispatchEvent(new MouseEvent("mousedown", { bubbles: true }));
   const range = document.createRange();
@@ -286,6 +413,9 @@ describe("chat message action cards", () => {
     const mailDraftUrl = `https://app.vm0.ai/mail/drafts/${mailDraftId}`;
     const imageBytes = new TextEncoder().encode("mail draft image");
     const pdfBytes = new TextEncoder().encode("mail draft pdf");
+    const textBytes = new TextEncoder().encode(
+      "Mail attachment decision: ship",
+    );
     const mailDraftHtml =
       '<div>Mail body <strong>before</strong></div><p><img src="cid:email-test-illustration" alt="Cheerful envelope illustration"><br>After image</p><hr><ul><li>Mail body after</li></ul><a href="https://example.com/review">Review</a><div><img src="https://images.example.test/signature.png" alt="Sender signature logo" width="96" height="32"><img src="data:image/png;base64,dW5zYWZl" alt="Unsafe signature image"></div>';
 
@@ -348,6 +478,12 @@ describe("chat message action cards", () => {
               size: 248_192,
               partId: "1",
             },
+            {
+              filename: "decision.txt",
+              contentType: "text/plain",
+              size: textBytes.byteLength,
+              partId: "3",
+            },
           ],
           createdAt,
           updatedAt: sent ? "2026-07-14T10:01:00.000Z" : createdAt,
@@ -396,6 +532,12 @@ describe("chat message action cards", () => {
               size: 248_192,
               partId: "1",
             },
+            {
+              filename: "decision.txt",
+              contentType: "text/plain",
+              size: textBytes.byteLength,
+              partId: "3",
+            },
           ],
           createdAt,
           updatedAt: "2026-07-14T10:01:00.000Z",
@@ -411,6 +553,12 @@ describe("chat message action cards", () => {
           return new HttpResponse(pdfBytes, {
             status: 200,
             headers: { "Content-Type": "application/pdf" },
+          });
+        }
+        if (params.partId === "3") {
+          return new HttpResponse(textBytes, {
+            status: 200,
+            headers: { "Content-Type": "application/octet-stream" },
           });
         }
         expect(params.partId).toBe("2");
@@ -452,7 +600,6 @@ describe("chat message action cards", () => {
     detachedSetupPage({
       context,
       path: `/chats/${threadId}`,
-      featureSwitches: { [FeatureSwitchKey.ZeroMail]: true },
     });
 
     let cards: HTMLElement[] = [];
@@ -542,6 +689,18 @@ describe("chat message action cards", () => {
     await waitFor(() => {
       expect(screen.queryByTestId("attachment-lightbox")).toBeNull();
     });
+    const textPreview = await within(sidebar).findByLabelText(
+      "Open text preview for decision.txt",
+    );
+    await user.click(textPreview);
+    const textLightbox = await screen.findByTestId("attachment-lightbox");
+    await expect(
+      within(textLightbox).findByText(/Mail attachment decision: ship/u),
+    ).resolves.toBeInTheDocument();
+    await user.click(within(textLightbox).getByLabelText("Close"));
+    await waitFor(() => {
+      expect(screen.queryByTestId("attachment-lightbox")).toBeNull();
+    });
     const inlineImage = await within(messageSection).findByRole("img", {
       name: "Cheerful envelope illustration",
     });
@@ -607,7 +766,7 @@ describe("chat message action cards", () => {
       expect(feedbackItem).toHaveTextContent("Mail body after");
     });
 
-    expect(draftRequests).toBe(2);
+    expect(draftRequests).toBe(1);
     await user.click(await waitForButtonByText("Send", sidebar));
 
     await waitFor(() => {
@@ -633,7 +792,7 @@ describe("chat message action cards", () => {
       "data-feedback-source-sent-id",
       "gmail-sent-message-id",
     );
-    expect(draftRequests).toBe(2);
+    expect(draftRequests).toBe(1);
 
     let liveAttachmentUrls: string[] = [];
     await waitFor(() => {
@@ -653,7 +812,7 @@ describe("chat message action cards", () => {
     });
   });
 
-  it("keeps user links and renders assistant actions on alternate origins", async () => {
+  it("renders canonical user text literally and assistant actions on alternate origins", async () => {
     const previousUrl = window.location.href;
     const threadId = `${THREAD_ID}-alternate-production-origin`;
     window.location.href = `https://app.okou.ai/chats/${threadId}`;
@@ -702,70 +861,200 @@ describe("chat message action cards", () => {
     const connectorCard = await screen.findByTestId("connector-action-card");
     expect(within(connectorCard).getByText("Slack")).toBeInTheDocument();
     expect(screen.getAllByTestId("connector-action-card")).toHaveLength(1);
-    const userConnectorLink = queryAllByRoleFast("link").find((link) => {
-      return link.textContent === "User connector link";
-    });
-    expect(userConnectorLink).toHaveAttribute("href", canonicalUrl);
+    expect(
+      screen.getByText(`[User connector link](${canonicalUrl})`),
+    ).toBeInTheDocument();
+    expect(
+      queryAllByRoleFast("link").find((link) => {
+        return link.textContent === "User connector link";
+      }),
+    ).toBeUndefined();
     const untrustedLink = queryAllByRoleFast("link").find((link) => {
       return link.textContent === "Untrusted connector";
     });
     expect(untrustedLink).toHaveAttribute("href", untrustedUrl);
   });
 
-  it("restores the mail draft sidebar from the URL before its card is loaded", async () => {
-    const threadId = "c0000000-0000-4000-a000-000000000021";
-    const mailDraftId = "c0000000-0000-4000-a000-000000000022";
-    const createdAt = "2026-07-14T10:00:00.000Z";
-    let draftRequests = 0;
-
-    context.mocks.api(zeroMailContract.getDraft, ({ respond }) => {
-      draftRequests += 1;
-      return respond(200, {
-        mailDraftId,
-        mailDraftUrl: `https://app.vm0.ai/mail/drafts/${mailDraftId}`,
-        mailDraft: {
-          version: 3,
-          provider: "gmail",
-          from: "sender@example.com",
-          to: ["recipient@example.com", "teammate@example.com"],
-          cc: [],
-          bcc: [],
-          subject: "Restored draft",
-          body: "Mail body",
-          status: "draft",
-          detailAvailable: true,
-          gmailDraftId: "r-restored-draft",
-          gmailThreadId: "gmail-thread-id",
-          gmailMessageId: "gmail-message-id",
-          references: [],
-          attachments: [],
-          createdAt,
-          updatedAt: createdAt,
-        },
-      });
-    });
-    mockChatLifecycle(context, {
-      threadId,
-      threadTitle: "Restored mail draft",
-      chatMessages: [],
+  it("offers follow-up after sending without starting another round", async () => {
+    const user = userEvent.setup({ delay: null });
+    const scenario = mailFollowUpScenario({
+      threadId: "c0000000-0000-4000-a000-000000000041",
+      mailDraftId: "c0000000-0000-4000-a000-000000000043",
     });
 
     detachedSetupPage({
       context,
-      path: `/chats/${threadId}?mail-draft=${mailDraftId}`,
-      featureSwitches: { [FeatureSwitchKey.ZeroMail]: true },
+      path: `/chats/${scenario.threadId}`,
+      featureSwitches: {
+        [FeatureSwitchKey.ZeroMailReplyFollowUp]: true,
+      },
     });
 
-    const sidebar = await screen.findByTestId("mail-draft-sidebar");
-    expect(within(sidebar).getByText("Restored draft")).toBeInTheDocument();
+    await user.click(await waitForMailDraftCard());
+    let sidebar = await screen.findByTestId("mail-draft-sidebar");
+    await user.click(await waitForButtonByText("Send", sidebar));
+
+    await expect(screen.findByText("Email sent")).resolves.toBeInTheDocument();
+    expect(scenario.sentPrompts).toStrictEqual([]);
+    sidebar = screen.getByTestId("mail-draft-sidebar");
     expect(
-      within(sidebar).getByText(
-        /to recipient@example\.com, teammate@example\.com/u,
-      ),
-    ).toBeInTheDocument();
-    const sendButton = await waitForButtonByText("Send", sidebar);
-    expect(sendButton).toBeInTheDocument();
-    expect(draftRequests).toBe(1);
+      queryAllByRoleFast("button").filter((button) => {
+        return button.textContent?.trim() === "Follow up";
+      }),
+    ).toHaveLength(2);
+    await user.click(await waitForButtonByText("Follow up", sidebar));
+
+    await waitFor(() => {
+      expect(scenario.followUpRequests).toStrictEqual([scenario.mailDraftId]);
+      expect(scenario.sentPrompts).toStrictEqual([]);
+      expect(
+        queryAllByRoleFast("button").filter((button) => {
+          return button.textContent?.trim() === "Tracking replies";
+        }),
+      ).toHaveLength(2);
+    });
+  });
+
+  it("hides follow-up while its rollout switch is disabled", async () => {
+    const user = userEvent.setup({ delay: null });
+    const scenario = mailFollowUpScenario({
+      threadId: "c0000000-0000-4000-a000-000000000044",
+      mailDraftId: "c0000000-0000-4000-a000-000000000045",
+    });
+
+    detachedSetupPage({
+      context,
+      path: `/chats/${scenario.threadId}`,
+    });
+
+    await user.click(await waitForMailDraftCard());
+    const sidebar = await screen.findByTestId("mail-draft-sidebar");
+    await user.click(await waitForButtonByText("Send", sidebar));
+    await expect(screen.findByText("Email sent")).resolves.toBeInTheDocument();
+
+    expect(queryButtonByText("Follow up", document)).toBeNull();
+    expect(scenario.followUpRequests).toStrictEqual([]);
+  });
+
+  it("keeps the email sent when reply tracking cannot be enabled", async () => {
+    const user = userEvent.setup({ delay: null });
+    const scenario = mailFollowUpScenario({
+      threadId: "c0000000-0000-4000-a000-000000000061",
+      mailDraftId: "c0000000-0000-4000-a000-000000000062",
+    });
+    context.mocks.api(zeroMailContract.createFollowUp, ({ respond }) => {
+      return respond(409, {
+        error: {
+          message: "Failed to enable reply tracking",
+          code: "CONFLICT",
+        },
+      });
+    });
+
+    detachedSetupPage({
+      context,
+      path: `/chats/${scenario.threadId}`,
+      featureSwitches: {
+        [FeatureSwitchKey.ZeroMailReplyFollowUp]: true,
+      },
+    });
+
+    await user.click(await waitForMailDraftCard());
+    let sidebar = await screen.findByTestId("mail-draft-sidebar");
+    await user.click(await waitForButtonByText("Send", sidebar));
+
+    await waitFor(() => {
+      expect(screen.getByText("Email sent")).toBeInTheDocument();
+    });
+    await waitFor(() => {
+      sidebar = screen.getByTestId("mail-draft-sidebar");
+      expect(within(sidebar).getByText("Sent")).toBeInTheDocument();
+    });
+    await user.click(await waitForButtonByText("Follow up", sidebar));
+    await waitFor(() => {
+      expect(
+        screen.getByText("Failed to enable reply tracking"),
+      ).toBeInTheDocument();
+    });
+    expect(scenario.sentPrompts).toStrictEqual([]);
+  });
+
+  it("does not offer follow-up when the email fails to send", async () => {
+    const user = userEvent.setup({ delay: null });
+    const scenario = mailFollowUpScenario({
+      threadId: "c0000000-0000-4000-a000-000000000081",
+      mailDraftId: "c0000000-0000-4000-a000-000000000082",
+    });
+    context.mocks.api(zeroMailContract.sendDraft, ({ respond }) => {
+      return respond(409, {
+        error: {
+          message: "This mail draft can no longer be sent",
+          code: "CONFLICT",
+        },
+      });
+    });
+
+    detachedSetupPage({
+      context,
+      path: `/chats/${scenario.threadId}`,
+      featureSwitches: {
+        [FeatureSwitchKey.ZeroMailReplyFollowUp]: true,
+      },
+    });
+
+    await user.click(await waitForMailDraftCard());
+    const sidebar = await screen.findByTestId("mail-draft-sidebar");
+    await user.click(await waitForButtonByText("Send", sidebar));
+
+    await waitFor(() => {
+      expect(
+        screen.getByText("This mail draft can no longer be sent"),
+      ).toBeInTheDocument();
+    });
+    expect(screen.queryByText("Email sent")).toBeNull();
+    expect(queryButtonByText("Follow up", document)).toBeNull();
+    expect(scenario.sentPrompts).toStrictEqual([]);
+  });
+
+  it("starts follow-up from the sent email card in the chat thread", async () => {
+    const user = userEvent.setup({ delay: null });
+    const scenario = mailFollowUpScenario({
+      threadId: "c0000000-0000-4000-a000-000000000071",
+      mailDraftId: "c0000000-0000-4000-a000-000000000072",
+    });
+
+    detachedSetupPage({
+      context,
+      path: `/chats/${scenario.threadId}`,
+      featureSwitches: {
+        [FeatureSwitchKey.ZeroMailReplyFollowUp]: true,
+      },
+    });
+
+    await user.click(await waitForMailDraftCard());
+    const sidebar = await screen.findByTestId("mail-draft-sidebar");
+    await user.click(await waitForButtonByText("Send", sidebar));
+
+    await waitFor(() => {
+      expect(screen.getByText("Email sent")).toBeInTheDocument();
+    });
+    const closeButton = queryAllByRoleFast(
+      "button",
+      screen.getByTestId("mail-draft-sidebar"),
+    ).find((button) => {
+      return button.getAttribute("aria-label") === "Close email details";
+    });
+    expect(closeButton).toBeDefined();
+    if (!closeButton) {
+      throw new Error("Close email details button not found");
+    }
+    await user.click(closeButton);
+    await user.click(await waitForButtonByText("Follow up", document));
+
+    await waitFor(() => {
+      expect(scenario.followUpRequests).toStrictEqual([scenario.mailDraftId]);
+      expect(scenario.sentPrompts).toStrictEqual([]);
+    });
   });
 
   it("keeps mail feedback scoped to the chat that owns the draft in split view", async () => {
@@ -812,7 +1101,7 @@ describe("chat message action cards", () => {
       chatMessages: [],
     });
     context.mocks.api(
-      chatThreadMessagesContract.list,
+      chatThreadEventsContract.list,
       ({ params, query, respond }) => {
         if (
           params.threadId !== rightThreadId ||
@@ -820,16 +1109,17 @@ describe("chat message action cards", () => {
           query.sinceSeqId
         ) {
           return respond(200, {
-            messages: [],
+            events: [],
             ...(query.beforeSeqId ? { hasHistoryBefore: false } : {}),
           });
         }
         return respond(200, {
-          messages: [
+          events: [
             {
               id: "c0000000-0000-4000-a000-000000000034",
+              threadId: rightThreadId,
+              eventType: "output.message",
               seqId: 1,
-              role: "assistant",
               content: `https://app.vm0.ai/mail/drafts/${mailDraftId}`,
               createdAt,
             },
@@ -841,10 +1131,12 @@ describe("chat message action cards", () => {
 
     detachedSetupPage({
       context,
-      path: `/chats/${leftThreadId}?sidebar=${rightThreadId}&mail-draft=${mailDraftId}`,
-      featureSwitches: { [FeatureSwitchKey.ZeroMail]: true },
+      path: `/chats/${leftThreadId}?sidebar=${rightThreadId}`,
     });
 
+    await user.click(
+      await screen.findByLabelText("Open draft email: Right chat draft"),
+    );
     const sidebar = await screen.findByTestId("mail-draft-sidebar");
     expect(sidebar).toHaveAttribute(
       "data-chat-thread-container-id",
@@ -866,7 +1158,7 @@ describe("chat message action cards", () => {
     });
   });
 
-  it("switches drafts and reloads a draft when it is reopened", async () => {
+  it("switches drafts without reloading a draft when it is reopened", async () => {
     const user = userEvent.setup({ delay: null });
     const threadId = "c0000000-0000-4000-a000-000000000023";
     const firstMailDraftId = "c0000000-0000-4000-a000-000000000024";
@@ -934,7 +1226,6 @@ describe("chat message action cards", () => {
     detachedSetupPage({
       context,
       path: `/chats/${threadId}`,
-      featureSwitches: { [FeatureSwitchKey.ZeroMail]: true },
     });
 
     await user.click(
@@ -963,11 +1254,7 @@ describe("chat message action cards", () => {
       await screen.findByLabelText("Open draft email: Second draft"),
     );
     sidebar = await screen.findByTestId("mail-draft-sidebar");
-    await waitFor(() => {
-      expect(
-        within(sidebar).getByText("Updated second draft"),
-      ).toBeInTheDocument();
-    });
+    expect(within(sidebar).getByText("Second draft")).toBeInTheDocument();
     expect(
       screen.getByLabelText("Open draft email: Second draft"),
     ).toBeInTheDocument();
@@ -975,8 +1262,8 @@ describe("chat message action cards", () => {
       screen.queryByLabelText("Open draft email: Updated second draft"),
     ).toBeNull();
 
-    expect(firstDraftRequests).toBe(2);
-    expect(secondDraftRequests).toBe(3);
+    expect(firstDraftRequests).toBe(1);
+    expect(secondDraftRequests).toBe(1);
   });
 
   it("preserves assistant copy and reconnects an expired connector", async () => {
@@ -1312,7 +1599,7 @@ describe("chat message action cards", () => {
     ).not.toBeInTheDocument();
   });
 
-  it("reloads the shared mail draft after deleting it", async () => {
+  it("deletes the shared mail draft without reloading it", async () => {
     const user = userEvent.setup({ delay: null });
     const threadId = "c0000000-0000-4000-a000-000000000018";
     const mailDraftId = "c0000000-0000-4000-a000-000000000019";
@@ -1374,7 +1661,6 @@ describe("chat message action cards", () => {
     detachedSetupPage({
       context,
       path: `/chats/${threadId}`,
-      featureSwitches: { [FeatureSwitchKey.ZeroMail]: true },
     });
 
     const card = await screen.findByLabelText("Open draft email: Delete me");
@@ -1384,14 +1670,14 @@ describe("chat message action cards", () => {
     expect(draftRequests).toBe(1);
     await user.click(card);
     const sidebar = await screen.findByTestId("mail-draft-sidebar");
-    expect(draftRequests).toBe(2);
+    expect(draftRequests).toBe(1);
     expect(within(sidebar).queryByText("Cc")).toBeNull();
     expect(within(sidebar).queryByText("Bcc")).toBeNull();
     await user.click(await waitForButtonByText("Delete", sidebar));
 
     await waitFor(() => {
       expect(deleted).toBeTruthy();
-      expect(draftRequests).toBe(2);
+      expect(draftRequests).toBe(1);
       expect(screen.queryByLabelText("Open draft email: Delete me")).toBeNull();
       expect(screen.queryByTestId("mail-draft-sidebar")).toBeNull();
     });
@@ -1414,6 +1700,7 @@ describe("chat message action cards", () => {
     let reconnectRequired = true;
     let pauseReadyRefresh = false;
     let catalogRequests = 0;
+    let draftRequests = 0;
     let oauthStartRequests = 0;
 
     context.mocks.data.connectors([
@@ -1469,6 +1756,7 @@ describe("chat message action cards", () => {
       },
     );
     context.mocks.api(zeroMailContract.getDraft, async ({ respond }) => {
+      draftRequests += 1;
       if (pauseReadyRefresh && !reconnectRequired) {
         refreshStarted.resolve();
         await completeRefresh.promise;
@@ -1513,8 +1801,7 @@ describe("chat message action cards", () => {
 
     detachedSetupPage({
       context,
-      path: `/chats/${threadId}?mail-draft=${mailDraftId}`,
-      featureSwitches: { [FeatureSwitchKey.ZeroMail]: true },
+      path: `/chats/${threadId}`,
     });
 
     const card = await screen.findByLabelText(
@@ -1523,20 +1810,11 @@ describe("chat message action cards", () => {
     expect(within(card).getByText("Need reconnect")).toBeInTheDocument();
     expect(card).toBeEnabled();
 
-    const message = await screen.findByText(
-      "You no longer have permission to access this email. Reconnect Gmail to continue.",
-    );
-    const sidebar = message.closest("aside");
-    if (!sidebar) {
-      throw new Error("Expected Gmail reconnect sidebar");
-    }
-    const reconnect = buttonByText("Reconnect Gmail", sidebar);
-    await waitFor(() => {
-      expect(hasSubscription("connector:changed")).toBeTruthy();
-      expect(catalogRequests).toBeGreaterThanOrEqual(2);
-    });
+    expect(catalogRequests).toBeGreaterThanOrEqual(1);
+    expect(hasSubscription("connector:changed")).toBeFalsy();
+    expect(draftRequests).toBe(1);
 
-    await user.click(reconnect);
+    await user.click(card);
     await waitFor(() => {
       expect(oauthStartRequests).toBe(1);
       expect(openAuthWindow.calls).toHaveLength(1);
@@ -1544,6 +1822,7 @@ describe("chat message action cards", () => {
         "https://accounts.google.test/oauth",
       );
       expect(within(card).getByText("Reconnecting…")).toBeInTheDocument();
+      expect(hasSubscription("connector:changed")).toBeTruthy();
     });
 
     reconnectRequired = false;
@@ -1555,31 +1834,27 @@ describe("chat message action cards", () => {
         updatedAt: "2026-01-01T00:00:01Z",
       }),
     ]);
-    triggerAblyEvent("connector:changed");
+    triggerAblyEvent("connector:changed", { connectorRef: "gmail" });
 
     await refreshStarted.promise;
     const cardRemainedVisible = card.isConnected;
-    const sidebarRemainedVisible = message.isConnected;
     completeRefresh.resolve();
     expect(cardRemainedVisible).toBeTruthy();
-    expect(sidebarRemainedVisible).toBeTruthy();
 
     const refreshedCard = await screen.findByLabelText(
       "Open draft email: Reconnect required",
     );
     expect(within(refreshedCard).getByText("Draft")).toBeInTheDocument();
+    await user.click(refreshedCard);
     await waitFor(() => {
-      expect(
-        screen.queryByText(
-          "You no longer have permission to access this email. Reconnect Gmail to continue.",
-        ),
-      ).toBeNull();
       expect(
         within(screen.getByTestId("mail-draft-sidebar")).getByRole("heading", {
           name: "Reconnect required",
         }),
       ).toBeInTheDocument();
     });
+    expect(draftRequests).toBe(2);
+    expect(hasSubscription("connector:changed")).toBeFalsy();
   });
 
   it("renders a deleted email card without an interactive sidebar trigger", async () => {
@@ -1630,7 +1905,6 @@ describe("chat message action cards", () => {
     detachedSetupPage({
       context,
       path: `/chats/${threadId}`,
-      featureSwitches: { [FeatureSwitchKey.ZeroMail]: true },
     });
 
     const deletedCard = await screen.findByLabelText(
@@ -1853,7 +2127,11 @@ describe("chat message action cards", () => {
             connectorRef: body.connectorRef,
             permission: grant.permission,
             action: grant.action,
-            expiresAt: isoFromNowMs(30 * 60 * 1000),
+            expiresAt: isoFromNowMs(
+              grant.permission === "spreadsheets.create"
+                ? 30 * 60 * 1000
+                : 60 * 60 * 1000,
+            ),
             createdAt: "2026-06-09T11:00:00Z",
             updatedAt: "2026-06-09T11:01:00Z",
           },
@@ -1919,7 +2197,7 @@ describe("chat message action cards", () => {
       ).toBeInTheDocument();
     });
     expect(
-      within(writeCard).queryByText("Expires in less than 1 hour"),
+      within(writeCard).queryByText("Expires in 1 hour"),
     ).not.toBeInTheDocument();
 
     expect(capturedPermissionGrantBodies).toStrictEqual([
@@ -1959,7 +2237,7 @@ describe("chat message action cards", () => {
     const sentPrompts: {
       prompt: string;
       threadId?: string;
-      structuredPrompt?: unknown;
+      userMessage?: unknown;
     }[] = [];
 
     context.mocks.api(
@@ -2018,11 +2296,11 @@ describe("chat message action cards", () => {
           createdAt: "2026-06-09T10:01:00Z",
         },
       ],
-      onSendRequest: ({ prompt, threadId: sentThreadId, structuredPrompt }) => {
+      onSendRequest: ({ prompt, threadId: sentThreadId, userMessage }) => {
         sentPrompts.push({
           prompt,
           threadId: sentThreadId,
-          structuredPrompt,
+          userMessage,
         });
       },
     });
@@ -2030,7 +2308,6 @@ describe("chat message action cards", () => {
     detachedSetupPage({
       context,
       path: `/chats/${threadId}`,
-      featureSwitches: { [FeatureSwitchKey.StructuredPrompt]: true },
     });
 
     const permissionCard = await screen.findByTestId("permission-action-card");
@@ -2041,7 +2318,7 @@ describe("chat message action cards", () => {
         {
           prompt: callbackPrompt,
           threadId,
-          structuredPrompt: {
+          userMessage: {
             version: 1,
             parts: [{ type: "text", text: callbackPrompt }],
           },
@@ -2333,6 +2610,9 @@ describe("chat message action cards", () => {
       ).toBeInTheDocument();
     });
     expect(queryButtonByText("Confirm", permissionCard)).toBeNull();
+    expect(
+      within(permissionCard).queryByTestId("permission-action-card-controls"),
+    ).not.toBeInTheDocument();
   });
 
   it("shows already allowed permission action cards as read-only after refresh", async () => {
@@ -2763,9 +3043,6 @@ describe("chat message action cards", () => {
     detachedSetupPage({
       context,
       path: `/chats/${THREAD_ID}-plan-upgrade`,
-      featureSwitches: {
-        [FeatureSwitchKey.PlanUpgradeGuidance]: true,
-      },
     });
 
     const cards = await screen.findAllByTestId("plan-upgrade-card");
@@ -2790,52 +3067,6 @@ describe("chat message action cards", () => {
       "href",
       creditUrl,
     );
-  });
-
-  it("keeps plan links ordinary when upgrade guidance is disabled", async () => {
-    const absoluteUrl =
-      "https://app.vm0.ai/?settings=billing&billingView=plans";
-    const relativeUrl = "/?settings=billing&billingView=plans";
-
-    mockChatLifecycle(context, {
-      threadId: `${THREAD_ID}-plan-upgrade-disabled`,
-      threadTitle: "Plan upgrade link",
-      chatMessages: [
-        {
-          id: "msg-user-plan-upgrade-disabled",
-          role: "user",
-          content: "Help me unlock video generation",
-          runId: "run-plan-upgrade-disabled",
-          createdAt: "2026-06-09T10:00:00Z",
-        },
-        {
-          id: "msg-assistant-plan-upgrade-link",
-          role: "assistant",
-          content: [absoluteUrl, `[Compare plans](${relativeUrl})`].join(
-            "\n\n",
-          ),
-          runId: "run-plan-upgrade-disabled",
-          createdAt: "2026-06-09T10:01:00Z",
-        },
-      ],
-    });
-
-    detachedSetupPage({
-      context,
-      path: `/chats/${THREAD_ID}-plan-upgrade-disabled`,
-      featureSwitches: {
-        [FeatureSwitchKey.PlanUpgradeGuidance]: false,
-      },
-    });
-
-    await waitFor(() => {
-      expect(linkByText(absoluteUrl, document)).toBeInTheDocument();
-    });
-    expect(linkByText("Compare plans", document)).toHaveAttribute(
-      "href",
-      relativeUrl,
-    );
-    expect(screen.queryByTestId("plan-upgrade-card")).not.toBeInTheDocument();
   });
 
   it("automatically retries permission action loading before showing an error", async () => {
@@ -2979,8 +3210,11 @@ describe("chat message action cards", () => {
     });
 
     const permissionCard = await screen.findByTestId("permission-action-card");
+    const permissionControls = within(permissionCard).getByTestId(
+      "permission-action-card-controls",
+    );
     expect(
-      within(permissionCard).getByText("Checking permission status..."),
+      within(permissionControls).getByText("Checking permission status..."),
     ).toBeInTheDocument();
     expect(
       queryButtonByText("Checking permission status...", permissionCard),
@@ -2988,7 +3222,14 @@ describe("chat message action cards", () => {
     expect(queryButtonByText("Confirm", permissionCard)).toBeNull();
 
     resolveList();
-    await waitForButtonByText("Confirm", permissionCard);
+    const confirmButton = await waitForButtonByText(
+      "Confirm",
+      permissionControls,
+    );
+    expect(within(permissionControls).getByText("Confirm")).toBe(confirmButton);
+    expect(
+      within(permissionControls).getByLabelText("Permission duration"),
+    ).toBeInTheDocument();
   });
 
   it("does not retry non-transient permission action loading failures", async () => {
@@ -3043,6 +3284,9 @@ describe("chat message action cards", () => {
       queryButtonByText("Couldn't load permission status", permissionCard),
     ).toBeNull();
     expect(queryButtonByText("Confirm", permissionCard)).toBeNull();
+    expect(
+      within(permissionCard).queryByTestId("permission-action-card-controls"),
+    ).not.toBeInTheDocument();
     expect(listRequests).toBe(1);
   });
 
@@ -3457,5 +3701,98 @@ describe("chat message action cards", () => {
         within(permissionCard).getByText("Permission denied"),
       ).toBeInTheDocument();
     });
+  });
+
+  it("renders trusted browser universal links as fixed cards that open the live sidebar", async () => {
+    const threadId = "c0000000-0000-4000-a000-000000000080";
+    const browserId = "c0000000-0000-4000-a000-000000000081";
+    const liveUrl =
+      "https://live.browser-use.com/?wss=test-browser-session-token";
+    const browser: ZeroBrowserSession = {
+      id: browserId,
+      name: "booking",
+      status: "active",
+      viewerUrl: `https://app.vm0.ai/browsers/${browserId}`,
+      liveUrl,
+      proxyCountryCode: null,
+      timeoutMinutes: 240,
+      maxCredits: 500,
+      grossCredits: 0,
+      creditsCharged: 0,
+      idleExpiresAt: "2026-07-24T10:10:00.000Z",
+      suspendedAt: null,
+      suspensionReason: null,
+      createdAt: "2026-07-24T10:00:00.000Z",
+      updatedAt: "2026-07-24T10:00:00.000Z",
+    };
+    let browserRequests = 0;
+    context.mocks.api(zeroBrowserContract.get, ({ params, query, respond }) => {
+      expect(params.browserId).toBe(browserId);
+      expect(query.chatThreadId).toBe(threadId);
+      browserRequests += 1;
+      return respond(200, { browser });
+    });
+    let leaseRequests = 0;
+    context.mocks.api(zeroBrowserContract.leaseById, ({ respond }) => {
+      leaseRequests += 1;
+      return respond(200, { browser });
+    });
+
+    const untrustedUrl = `https://evil.example.test/browsers/${browserId}`;
+    mockChatLifecycle(context, {
+      threadId,
+      threadTitle: "Managed browser card",
+      chatMessages: [
+        {
+          id: "c0000000-0000-4000-a000-000000000082",
+          role: "assistant",
+          content: [
+            `https://app.vm0.ai/browsers/${browserId}`,
+            `[Open browser](/browsers/${browserId})`,
+            `[Untrusted browser](${untrustedUrl})`,
+          ].join("\n"),
+          runId: "c0000000-0000-4000-a000-000000000085",
+          createdAt: "2026-07-24T10:00:00.000Z",
+        },
+      ],
+    });
+
+    detachedSetupPage({
+      context,
+      path: `/chats/${threadId}`,
+    });
+
+    await waitFor(() => {
+      expect(browserRequests).toBeGreaterThan(0);
+    });
+    // The message stream shows fixed-height entry points only; the live view is
+    // heavy and would resize the transcript as pages load.
+    const cards = await waitFor(() => {
+      const found = Array.from(
+        document.querySelectorAll<HTMLButtonElement>(
+          "[data-browser-session-card]",
+        ),
+      );
+      expect(found).toHaveLength(2);
+      return found;
+    });
+    expect(
+      document.querySelector('iframe[title="Live browser: booking"]'),
+    ).toBeNull();
+
+    cards[0]?.click();
+
+    const frame = await screen.findByTitle("Live browser: booking");
+    expect(frame).toHaveAttribute("src", liveUrl);
+    expect(frame).toHaveAttribute("referrerpolicy", "no-referrer");
+    expect(frame.closest("[data-browser-session-sidebar]")).not.toBeNull();
+    await waitFor(() => {
+      expect(leaseRequests).toBeGreaterThan(0);
+    });
+    expect(
+      queryAllByRoleFast("link").find((link) => {
+        return link.textContent === "Untrusted browser";
+      }),
+    ).toHaveAttribute("href", untrustedUrl);
   });
 });

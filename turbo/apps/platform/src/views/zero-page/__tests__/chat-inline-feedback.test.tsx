@@ -1,14 +1,15 @@
 import { fireEvent, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
-import type {
-  GenerationTemplateRequest,
-  UserMessageDocument,
+import {
+  chatThreadByIdContract,
+  type GenerationTemplateRequest,
+  type UserMessageDocument,
 } from "@vm0/api-contracts/contracts/chat-threads";
 import type { OrgModelPolicy } from "@vm0/api-contracts/contracts/model-providers";
 import { zeroModelPoliciesMainContract } from "@vm0/api-contracts/contracts/zero-model-policies";
 import { zeroWorkflowsCollectionContract } from "@vm0/api-contracts/contracts/zero-workflows";
-import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
+import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import { PRESENTATION_TEMPLATE_PICKER_ITEMS } from "@vm0/core";
 import { toast } from "@vm0/ui/components/ui/sonner";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
@@ -30,7 +31,7 @@ interface ModelSelectionRequest {
 
 interface RunCreateCapture {
   prompt?: string;
-  structuredPrompt?: UserMessageDocument;
+  userMessage?: UserMessageDocument;
   attachFiles?: {
     id: string;
     filename: string;
@@ -41,7 +42,7 @@ interface RunCreateCapture {
   generationTemplate?: GenerationTemplateRequest;
   modelSelection?: ModelSelectionRequest | null;
   computerUseHostId?: string | null;
-  clientMessageId?: string;
+  clientEventId?: string;
 }
 
 function selectTextRangeForInlineFeedback(element: HTMLElement): void {
@@ -222,6 +223,88 @@ function dispatchDocumentShortcut(
 }
 
 describe("chat inline feedback", () => {
+  it("inserts a template node inside a feedback note", async () => {
+    const user = userEvent.setup({ delay: null });
+    const assistantReply = "The illustration direction is too generic.";
+    const template = PRESENTATION_TEMPLATE_PICKER_ITEMS[0]!;
+    const sentMessages: RunCreateCapture[] = [];
+    mockChatLifecycle(context, {
+      threadId: FEEDBACK_THREAD_ID,
+      threadTitle: "Template feedback",
+      chatMessages: [
+        {
+          id: "msg-template-feedback-user",
+          role: "user",
+          content: "Review the direction",
+          runId: "run-template-feedback",
+          createdAt: "2026-07-27T10:00:00Z",
+        },
+        {
+          id: "msg-template-feedback-assistant",
+          role: "assistant",
+          content: assistantReply,
+          runId: "run-template-feedback",
+          createdAt: "2026-07-27T10:00:01Z",
+        },
+      ],
+      onRunCreate(body) {
+        sentMessages.push(body);
+      },
+    });
+
+    detachedSetupPage({
+      context,
+      path: `/chats/${FEEDBACK_THREAD_ID}`,
+      featureSwitches: {
+        [FeatureSwitchKey.StructuredPromptInlineTemplates]: true,
+      },
+    });
+
+    const assistantReplyElement = await screen.findByText(assistantReply);
+    selectTextForInlineFeedback(assistantReplyElement);
+    await user.click(await screen.findByText("Provide feedback"));
+    const feedbackNote = await findFeedbackNote();
+    await user.click(feedbackNote);
+
+    click(screen.getByLabelText("Template"));
+    await user.click(
+      await screen.findByLabelText(`Select template ${template.title}`),
+    );
+    await waitFor(() => {
+      expect(
+        feedbackNote.querySelector("[data-composer-inline-template]"),
+      ).toBeInTheDocument();
+      expect(screen.getByLabelText("Send")).toBeEnabled();
+    });
+    await user.click(screen.getByLabelText("Send"));
+
+    await waitFor(() => {
+      expect(sentMessages).toHaveLength(1);
+    });
+    expect(sentMessages[0]?.generationTemplate).toBeUndefined();
+    expect(sentMessages[0]?.userMessage?.parts).toHaveLength(1);
+    expect(sentMessages[0]?.userMessage?.parts[0]).toMatchObject({
+      type: "feedback",
+      quote: assistantReply,
+      note: [
+        {
+          type: "template",
+          titleSnapshot: template.title,
+          template: {
+            type: "presentation",
+            selection: { templateId: template.templateId },
+          },
+        },
+      ],
+    });
+    expect(sentMessages[0]?.prompt).toContain(
+      `Select ${template.title} presentation template`,
+    );
+    await waitFor(() => {
+      expect(feedbackNotes()).toHaveLength(0);
+    });
+  });
+
   it("keeps ordinary text and inline feedback in one composer document", async () => {
     const user = userEvent.setup({ delay: null });
     const assistantReply = "The rollout dates are unclear in this summary.";
@@ -256,7 +339,6 @@ describe("chat inline feedback", () => {
     detachedSetupPage({
       context,
       path: `/chats/${FEEDBACK_THREAD_ID}`,
-      featureSwitches: { [FeatureSwitchKey.StructuredPrompt]: true },
     });
 
     const composerEditor = await findComposerEditor();
@@ -311,13 +393,225 @@ describe("chat inline feedback", () => {
     );
     expect(sentPrompt).toContain("Mention the dates before the risk summary.");
     expect(sentPrompt).toContain("Make the dates explicit.");
-    expect(sentMessages[0]?.structuredPrompt).toStrictEqual({
+    expect(sentMessages[0]?.userMessage).toStrictEqual({
       version: 1,
-      parts: [{ type: "text", text: sentPrompt }],
+      parts: [
+        {
+          type: "text",
+          text: "Mention the dates before the risk summary.",
+        },
+        {
+          type: "feedback",
+          quote: assistantReply,
+          note: [{ type: "text", text: "Make the dates explicit." }],
+        },
+      ],
     });
 
     expect(feedbackNotes()).toHaveLength(0);
     await expect(findComposerEditor()).resolves.toBe(composerEditor);
+  });
+
+  it("keeps legacy feedback runtime behavior while dual-writing user messages", async () => {
+    const user = userEvent.setup({ delay: null });
+    const threadId = "b0000000-0000-4000-a000-000000000707";
+    const assistantReply = "The release summary needs a clearer owner.";
+    const sentMessages: RunCreateCapture[] = [];
+
+    mockChatLifecycle(context, {
+      threadId,
+      threadTitle: "Legacy feedback",
+      chatMessages: [
+        {
+          id: "msg-legacy-feedback-user",
+          role: "user",
+          content: "Review this release summary",
+          runId: "run-legacy-feedback",
+          createdAt: "2026-07-26T10:00:00Z",
+        },
+        {
+          id: "msg-legacy-feedback-assistant",
+          role: "assistant",
+          content: assistantReply,
+          runId: "run-legacy-feedback",
+          createdAt: "2026-07-26T10:00:01Z",
+        },
+      ],
+      onRunCreate: (body) => {
+        sentMessages.push(body);
+      },
+    });
+
+    detachedSetupPage({
+      context,
+      path: `/chats/${threadId}`,
+    });
+
+    selectTextForInlineFeedback(await screen.findByText(assistantReply));
+    await user.click(await screen.findByText("Provide feedback"));
+    pastePlainText(await findFeedbackNote(), "Name the owner.");
+    await user.click(screen.getByLabelText("Send"));
+
+    await waitFor(() => {
+      expect(sentMessages).toHaveLength(1);
+    });
+    expect(sentMessages[0]?.prompt).toContain(
+      "Feedback on this part of your reply:",
+    );
+    expect(sentMessages[0]?.prompt).toContain(`> ${assistantReply}`);
+    expect(sentMessages[0]?.prompt).toContain("Name the owner.");
+    expect(sentMessages[0]?.userMessage).toStrictEqual({
+      version: 1,
+      parts: [
+        {
+          type: "feedback",
+          quote: assistantReply,
+          note: [{ type: "text", text: "Name the owner." }],
+        },
+      ],
+    });
+  });
+
+  it("restores queued inline feedback as a userMessage draft", async () => {
+    const user = userEvent.setup({ delay: null });
+    const threadId = "b0000000-0000-4000-a000-000000000706";
+    const assistantReply = "The rollout plan needs a clearer owner.";
+    const template = PRESENTATION_TEMPLATE_PICKER_ITEMS[0]!;
+    const queuedMessages: RunCreateCapture[] = [];
+    const draftPatches: Record<string, unknown>[] = [];
+
+    context.mocks.data.orgModelPolicies([
+      {
+        id: "00000000-0000-4000-a000-000000000706",
+        model: "claude-sonnet-4-6",
+        modelLabel: "Claude Sonnet 4.6",
+        isDefault: true,
+        defaultProviderType: "vm0",
+        credentialScope: "org",
+        modelProviderId: null,
+        routeStatus: "valid",
+        routeStatusReason: null,
+        createdAt: "2026-07-14T00:00:00.000Z",
+        updatedAt: "2026-07-14T00:00:00.000Z",
+      },
+    ]);
+    mockChatLifecycle(context, {
+      threadId,
+      threadTitle: "Queued feedback",
+      selectedModel: "claude-sonnet-4-6",
+      chatMessages: [
+        {
+          id: "msg-queued-feedback-user",
+          role: "user",
+          content: "Review this rollout plan",
+          runId: "run-queued-feedback",
+          createdAt: "2026-07-26T10:00:00Z",
+        },
+        {
+          id: "msg-queued-feedback-assistant",
+          role: "assistant",
+          content: assistantReply,
+          runId: "run-queued-feedback",
+          createdAt: "2026-07-26T10:00:01Z",
+        },
+      ],
+      activeRunIds: ["run-queued-feedback"],
+      onQueuedMessageAppend: (body) => {
+        queuedMessages.push(body);
+      },
+    });
+    context.mocks.api(chatThreadByIdContract.patch, ({ body, respond }) => {
+      draftPatches.push(body as Record<string, unknown>);
+      return respond(204);
+    });
+
+    detachedSetupPage({
+      context,
+      path: `/chats/${threadId}`,
+    });
+
+    click(await screen.findByLabelText("Template"));
+    click(
+      await screen.findByLabelText(
+        `Preview ${template.title} at current slide`,
+      ),
+    );
+    click(await screen.findByLabelText("Select style Gold Luxe"));
+    click(await screen.findByLabelText(`Select template ${template.title}`));
+    await waitFor(() => {
+      expect(
+        screen.getByLabelText(`Remove template ${template.title}`),
+      ).toBeInTheDocument();
+    });
+
+    selectTextForInlineFeedback(await screen.findByText(assistantReply));
+    await user.click(await screen.findByText("Provide feedback"));
+    pastePlainText(
+      await findFeedbackNote(),
+      "Name the owner and explain the complete result.",
+    );
+    await user.click(screen.getByLabelText("Send"));
+
+    await waitFor(() => {
+      expect(queuedMessages).toHaveLength(1);
+    });
+    expect(queuedMessages[0]?.userMessage).toStrictEqual({
+      version: 1,
+      parts: [
+        {
+          type: "template",
+          titleSnapshot: template.title,
+          template: {
+            type: "presentation",
+            selection: {
+              colorSystemId: "color-system:gold-luxe",
+              templateId: template.templateId,
+              previewUrl: template.embedUrl,
+            },
+          },
+        },
+        {
+          type: "feedback",
+          quote: assistantReply,
+          note: [
+            {
+              type: "text",
+              text: "Name the owner and explain the complete result.",
+            },
+          ],
+        },
+      ],
+    });
+
+    await user.click(await screen.findByLabelText("Remove queued message"));
+
+    const composer = await findComposerEditor();
+    await waitFor(() => {
+      expect(
+        screen.getByLabelText(`Remove template ${template.title}`),
+      ).toBeInTheDocument();
+    });
+    await waitFor(() => {
+      const feedbackItem = composer.querySelector("[data-feedback-item]");
+      expect(feedbackItem).toHaveTextContent(assistantReply);
+      expect(feedbackItem).toHaveTextContent(
+        "Name the owner and explain the complete result.",
+      );
+    });
+    expect(composer).not.toHaveTextContent(
+      "Feedback on this part of your reply:",
+    );
+    expect(composer).not.toHaveTextContent(`> ${assistantReply}`);
+    await waitFor(() => {
+      expect(draftPatches).toContainEqual({
+        draftContent:
+          "Feedback on this part of your reply:\n\n" +
+          `> ${assistantReply}\n\n` +
+          "Name the owner and explain the complete result.",
+        draftUserMessage: queuedMessages[0]?.userMessage,
+        draftAttachments: null,
+      });
+    });
   });
 
   it.each([
@@ -339,10 +633,14 @@ describe("chat inline feedback", () => {
       const user = userEvent.setup({ delay: null });
       const assistantReply = "Mail body after";
       const mailDraftId = "c0000000-0000-4000-a000-000000000012";
-      const sentPrompts: string[] = [];
+      const threadId =
+        status === "draft"
+          ? "b0000000-0000-4000-a000-000000000704"
+          : "b0000000-0000-4000-a000-000000000705";
+      const sentMessages: RunCreateCapture[] = [];
 
       mockChatLifecycle(context, {
-        threadId: FEEDBACK_THREAD_ID,
+        threadId,
         threadTitle: "Mail feedback",
         chatMessages: [
           {
@@ -354,15 +652,13 @@ describe("chat inline feedback", () => {
           },
         ],
         onRunCreate: (body) => {
-          if (body.prompt !== undefined) {
-            sentPrompts.push(body.prompt);
-          }
+          sentMessages.push(body);
         },
       });
 
       detachedSetupPage({
         context,
-        path: `/chats/${FEEDBACK_THREAD_ID}`,
+        path: `/chats/${threadId}`,
       });
 
       const assistantReplyElement = await screen.findByText(assistantReply);
@@ -386,14 +682,33 @@ describe("chat inline feedback", () => {
       await user.click(screen.getByLabelText("Send"));
 
       await waitFor(() => {
-        expect(sentPrompts).toHaveLength(1);
+        expect(sentMessages).toHaveLength(1);
       });
       const sentIdSuffix = sentId ? `, sent ID: ${sentId}` : "";
-      expect(sentPrompts[0]).toContain(
+      expect(sentMessages[0]?.prompt).toContain(
         `Feedback on this part of ${sourceDescription} (${idLabel}: ${mailDraftId}${sentIdSuffix}):`,
       );
-      expect(sentPrompts[0]).toContain("> Mail body after");
-      expect(sentPrompts[0]).toContain("Rewrite this paragraph.");
+      expect(sentMessages[0]?.prompt).toContain("> Mail body after");
+      expect(sentMessages[0]?.prompt).toContain("Rewrite this paragraph.");
+      expect(sentMessages[0]?.userMessage).toStrictEqual({
+        version: 1,
+        parts: [
+          {
+            type: "feedback",
+            quote: assistantReply,
+            note: [{ type: "text", text: "Rewrite this paragraph." }],
+            source: {
+              type: "mail",
+              id: mailDraftId,
+              status,
+              ...(sentId ? { sentId } : {}),
+            },
+          },
+        ],
+      });
+      await waitFor(() => {
+        expect(feedbackNotes()).toHaveLength(0);
+      });
     },
   );
 

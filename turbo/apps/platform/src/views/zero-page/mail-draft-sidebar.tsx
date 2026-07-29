@@ -5,6 +5,7 @@ import {
   IconPaperclip,
   IconPencil,
   IconPlayerPlay,
+  IconRoute,
   IconSend,
   IconTrash,
   IconX,
@@ -14,6 +15,7 @@ import type {
   ZeroMailDraft,
   ZeroMailInlineImage,
 } from "@vm0/api-contracts/contracts/zero-mail";
+import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import { Button } from "@vm0/ui";
 import { toast } from "@vm0/ui/components/ui/sonner";
 import { useGet, useLastLoadable, useLoadable, useSet } from "ccstate-react";
@@ -22,13 +24,17 @@ import type { CSSProperties, ReactNode } from "react";
 
 import type { MailDraftSignals } from "../../signals/chat-page/mail-draft.ts";
 import { classifyChatAttachment } from "../../signals/chat-page/parse-body-blocks.ts";
+import { featureSwitch$ } from "../../signals/external/feature-switch.ts";
 import { pageSignal$ } from "../../signals/page-signal.ts";
 import {
   openImageLightbox$,
   openVideoLightbox$,
 } from "../../signals/zero-page/zero-attachment-chips.ts";
-import { closeMailDraftSidebar$ } from "../../signals/zero-page/mail-draft-sidebar.ts";
 import { detach, Reason } from "../../signals/utils.ts";
+import {
+  isTextPreviewKind,
+  type TextPreviewComputed,
+} from "../../signals/text-preview.ts";
 import {
   FileAttachmentChip,
   PreviewableAudioAttachmentChip,
@@ -38,6 +44,7 @@ import { useGmailReconnect } from "./use-gmail-reconnect.ts";
 
 interface MailDraftSidebarProps {
   readonly signals: MailDraftSignals;
+  readonly onClose: () => void;
 }
 
 function SidebarCloseButton({ close }: { readonly close: () => void }) {
@@ -119,8 +126,14 @@ function UnavailableMailDraftSidebar({
   );
 }
 
-function GmailReconnectButton() {
-  const { reconnect, reconnectDisabled, reconnecting } = useGmailReconnect();
+function GmailReconnectButton({
+  signals,
+}: {
+  readonly signals: MailDraftSignals;
+}) {
+  const reloadDraft = useSet(signals.reloadDraft$);
+  const { reconnect, reconnectDisabled, reconnecting } =
+    useGmailReconnect(reloadDraft);
   return (
     <Button
       type="button"
@@ -227,9 +240,11 @@ function AttachmentSummary({
 
 function MailAttachmentPreview({
   attachment,
+  text$,
   url,
 }: {
   readonly attachment: ZeroMailAttachment;
+  readonly text$?: TextPreviewComputed;
   readonly url: string | null | undefined;
 }) {
   if (!url) {
@@ -262,6 +277,7 @@ function MailAttachmentPreview({
         kind={kind}
         shareAvailable={false}
         splitViewAvailable={false}
+        text$={isTextPreviewKind(kind) ? text$ : undefined}
         url={url}
       />
     );
@@ -896,12 +912,13 @@ function MailDraftDetails({
   readonly signals: MailDraftSignals;
 }) {
   const setAttachmentScopeRef = useSet(signals.setAttachmentScopeRef$);
-  const attachmentUrlsLoadable = useLoadable(signals.attachmentUrls$);
-  const attachmentUrls =
-    attachmentUrlsLoadable.state === "hasData"
-      ? attachmentUrlsLoadable.data
+  const attachmentPreviewsLoadable = useLoadable(signals.attachmentPreviews$);
+  const attachmentPreviews =
+    attachmentPreviewsLoadable.state === "hasData"
+      ? attachmentPreviewsLoadable.data
       : null;
-  const attachmentUrlsLoading = attachmentUrlsLoadable.state === "loading";
+  const attachmentUrls = attachmentPreviews?.urls ?? null;
+  const attachmentUrlsLoading = attachmentPreviewsLoadable.state === "loading";
   const attachments = draft.version === 3 ? draft.attachments : [];
   return (
     <div
@@ -929,6 +946,7 @@ function MailDraftDetails({
                 <MailAttachmentPreview
                   key={key}
                   attachment={attachment}
+                  text$={attachmentPreviews?.text.get(attachment.partId)}
                   url={
                     attachmentUrlsLoading
                       ? undefined
@@ -946,6 +964,12 @@ function MailDraftDetails({
   );
 }
 
+function isReplyFollowUpEnabled(
+  featureSwitches: Readonly<Record<FeatureSwitchKey, boolean>>,
+): boolean {
+  return featureSwitches[FeatureSwitchKey.ZeroMailReplyFollowUp];
+}
+
 function MailDraftDetail({
   draft,
   signals,
@@ -956,11 +980,24 @@ function MailDraftDetail({
   readonly close: () => void;
 }) {
   const pageSignal = useGet(pageSignal$);
+  const featureSwitches = useGet(featureSwitch$);
   const [deleteLoadable, deleteDraft] = useLoadableSet(signals.delete$);
   const [sendLoadable, send] = useLoadableSet(signals.send$);
+  const localFollowUpState = useGet(signals.followUpState$);
+  const followUp = useSet(signals.followUp$);
+  const followUpState =
+    localFollowUpState === "submitting"
+      ? localFollowUpState
+      : (draft.followUp?.status ?? localFollowUpState);
+  const followUpSubmitting = followUpState === "submitting";
+  const followUpActive = followUpState === "active";
+  const followUpPaused = followUpState === "paused";
+  const followUpEnabled = isReplyFollowUpEnabled(featureSwitches);
   const active = draft.status === "draft";
   const pending =
-    deleteLoadable.state === "loading" || sendLoadable.state === "loading";
+    deleteLoadable.state === "loading" ||
+    sendLoadable.state === "loading" ||
+    followUpSubmitting;
   const openInGmail = draft.gmailThreadId
     ? `https://mail.google.com/mail/u/0/#all/${encodeURIComponent(draft.gmailThreadId)}`
     : null;
@@ -979,13 +1016,16 @@ function MailDraftDetail({
     };
     detach(sendAndNotify(), Reason.DomCallback);
   };
+  const onFollowUp = () => {
+    detach(followUp(pageSignal), Reason.DomCallback);
+  };
 
   return (
     <aside
       aria-label="Email details"
       data-chat-thread-container-id={signals.threadId}
       data-testid="mail-draft-sidebar"
-      className="flex h-full w-full min-h-0 flex-col border-l border-border/60 bg-background xl:border-l-0 animate-in fade-in slide-in-from-right-2 duration-[180ms] ease"
+      className="flex h-full w-full min-h-0 flex-col border-l border-border/60 bg-background xl:border-l-0"
     >
       <MailDraftDetails close={close} draft={draft} signals={signals} />
       <footer className="flex shrink-0 items-center justify-between gap-2 border-t border-border/60 px-4 py-3">
@@ -1027,22 +1067,44 @@ function MailDraftDetail({
               Send
             </Button>
           ) : null}
+          {!active && followUpEnabled ? (
+            <Button
+              type="button"
+              size="sm"
+              disabled={pending || followUpState !== "idle"}
+              onClick={onFollowUp}
+            >
+              {followUpSubmitting ? (
+                <IconLoader2 size={15} className="animate-spin" />
+              ) : followUpActive ? (
+                <IconCircleCheck size={15} />
+              ) : (
+                <IconRoute size={15} />
+              )}
+              {followUpActive
+                ? "Tracking replies"
+                : followUpPaused
+                  ? "Tracking paused"
+                  : followUpSubmitting
+                    ? "Setting up…"
+                    : "Follow up"}
+            </Button>
+          ) : null}
         </div>
       </footer>
     </aside>
   );
 }
 
-export function MailDraftSidebar({ signals }: MailDraftSidebarProps) {
+export function MailDraftSidebar({ signals, onClose }: MailDraftSidebarProps) {
   const draftLoadable = useLastLoadable(signals.sidebarDraft$);
-  const close = useSet(closeMailDraftSidebar$);
   if (draftLoadable.state === "loading") {
-    return <MailDraftSidebarSkeleton close={close} />;
+    return <MailDraftSidebarSkeleton close={onClose} />;
   }
   if (draftLoadable.state === "hasError" || draftLoadable.data === null) {
     return (
       <UnavailableMailDraftSidebar
-        close={close}
+        close={onClose}
         message="This email is no longer available."
       />
     );
@@ -1050,16 +1112,16 @@ export function MailDraftSidebar({ signals }: MailDraftSidebarProps) {
   if (draftLoadable.data.accessStatus === "reconnect") {
     return (
       <UnavailableMailDraftSidebar
-        close={close}
+        close={onClose}
         message="You no longer have permission to access this email. Reconnect Gmail to continue."
-        action={<GmailReconnectButton />}
+        action={<GmailReconnectButton signals={signals} />}
       />
     );
   }
   if (draftLoadable.data.status === "deleted") {
     return (
       <UnavailableMailDraftSidebar
-        close={close}
+        close={onClose}
         message="This draft was deleted."
       />
     );
@@ -1068,7 +1130,7 @@ export function MailDraftSidebar({ signals }: MailDraftSidebarProps) {
     <MailDraftDetail
       draft={draftLoadable.data}
       signals={signals}
-      close={close}
+      close={onClose}
     />
   );
 }

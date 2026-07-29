@@ -27,6 +27,9 @@ export function initSentry(): void {
     // Disable tracing - only error tracking is needed
     tracesSampleRate: 0,
 
+    // Preserve native fetch errors for application-level error handling.
+    enhanceFetchErrorMessages: false,
+
     // Filter out expected errors
     beforeSend(event, hint) {
       // Filter out 4xx client errors that are expected
@@ -39,8 +42,8 @@ export function initSentry(): void {
         return null;
       }
 
-      // ApiError thrown by accept() — surfaced to users via toast
-      // notifications and not actionable in Sentry.
+      // ApiError thrown by accept() — surfaced through toast notifications or
+      // authentication recovery and not actionable in Sentry.
       const original = hint?.originalException;
       if (original instanceof ApiError) {
         return null;

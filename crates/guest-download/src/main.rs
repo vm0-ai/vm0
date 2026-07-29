@@ -239,7 +239,7 @@ mod tests {
     fn run_manifest_file_and_remove_removes_file_on_success() {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("storage-manifest.json");
-        std::fs::write(&path, br#"{"storages":[],"artifacts":[]}"#).unwrap();
+        std::fs::write(&path, br#"{"storageMounts":[]}"#).unwrap();
 
         assert!(run_manifest_file_and_remove(path.to_str().unwrap()));
 
@@ -278,7 +278,7 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let target = dir.path().join("target-manifest.json");
         let path = dir.path().join("storage-manifest.json");
-        std::fs::write(&target, br#"{"storages":[],"artifacts":[]}"#).unwrap();
+        std::fs::write(&target, br#"{"storageMounts":[]}"#).unwrap();
         std::os::unix::fs::symlink(&target, &path).unwrap();
 
         assert!(!run_manifest_file_and_remove(path.to_str().unwrap()));

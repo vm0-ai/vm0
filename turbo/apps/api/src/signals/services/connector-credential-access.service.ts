@@ -2,7 +2,7 @@ import {
   connectorAuthMethodOwnedSecretNames,
   connectorAuthMethodOwnedVariableNames,
   connectorAuthMethodRuntimeMetadata,
-} from "@vm0/connectors/connector-utils";
+} from "@vm0/connectors/connector-auth-method";
 import { connectors } from "@vm0/db/schema/connector";
 import { secrets } from "@vm0/db/schema/secret";
 import { variables } from "@vm0/db/schema/variable";
@@ -150,10 +150,13 @@ function connectorIdentityExists(
           eq(credentialAccessConnector.storageVersion, access.storageVersion),
           connectorStateRevision === undefined
             ? undefined
-            : sql`(
-                EXTRACT(EPOCH FROM ${credentialAccessConnector.updatedAt})
-                * 1000000
-              )::bigint = ${connectorStateRevision}`,
+            : eq(
+                sql`(
+                  EXTRACT(EPOCH FROM ${credentialAccessConnector.updatedAt})
+                  * 1000000
+                )::bigint`,
+                connectorStateRevision,
+              ),
         ),
       ),
   );

@@ -1,17 +1,22 @@
 import { describe, expect, it } from "vitest";
 
 import {
-  artifactFavoriteBodySchema,
   artifactItemSchema,
   artifactsContract,
   artifactsListResponseSchema,
-  chatMessagesContract,
-  chatThreadMessagesContract,
+  chatThreadByIdContract,
+  chatEventsContract,
+  chatThreadEventsContract,
+  chatThreadComputerUseHostContract,
+  chatThreadDraftSchema,
+  chatThreadEventSchema,
   chatThreadModelSelectionContract,
   chatThreadsContract,
+  chatEventResponseSchema,
+  chatEventSchema,
   generationTemplateRequestSchema,
   MODEL_FIRST_SELECTION_PROVIDER_ID,
-  pagedChatMessageSchema,
+  userMessageDocumentSchema,
 } from "../chat-threads";
 
 const legacyModelSelection = {
@@ -33,10 +38,15 @@ describe("chat message response contract", () => {
   };
 
   it("rejects legacy automation metadata", () => {
-    const parsed = pagedChatMessageSchema.safeParse({
+    const parsed = chatEventSchema.safeParse({
       id: "message-1",
-      role: "user",
+      threadId: "thread-1",
+      eventType: "input.prompt",
       content: "Run the workflow",
+      userMessage: {
+        version: 1,
+        parts: [{ type: "text", text: "Run the workflow" }],
+      },
       seqId: 1,
       createdAt: "2026-07-13T00:00:00.000Z",
       automationId: "legacy-automation-id",
@@ -52,9 +62,10 @@ describe("chat message response contract", () => {
   });
 
   it("rejects API messages without a sequence ID", () => {
-    const parsed = pagedChatMessageSchema.safeParse({
+    const parsed = chatEventResponseSchema.safeParse({
       id: "message-1",
-      role: "user",
+      threadId: "thread-1",
+      eventType: "input.prompt",
       content: "Run the workflow",
       createdAt: "2026-07-13T00:00:00.000Z",
     });
@@ -63,10 +74,15 @@ describe("chat message response contract", () => {
   });
 
   it("accepts a canonical-only workflow Automation identifier", () => {
-    const parsed = pagedChatMessageSchema.safeParse({
+    const parsed = chatEventSchema.safeParse({
       id: "message-1",
-      role: "user",
+      threadId: "thread-1",
+      eventType: "input.prompt",
       content: "Run the workflow",
+      userMessage: {
+        version: 1,
+        parts: [{ type: "text", text: "Run the workflow" }],
+      },
       seqId: 1,
       createdAt: "2026-07-13T00:00:00.000Z",
       workflowSnapshot: { ...workflowSnapshot, automationId },
@@ -81,12 +97,77 @@ describe("chat message response contract", () => {
       automationId,
     });
   });
+
+  it("exposes user input documents as userMessage", () => {
+    const userMessage = {
+      version: 1 as const,
+      parts: [{ type: "text" as const, text: "Run the task" }],
+    };
+    const event = chatEventSchema.safeParse({
+      id: "message-1",
+      threadId: "thread-1",
+      eventType: "input.prompt",
+      content: "Run the task",
+      userMessage,
+      seqId: 1,
+      createdAt: "2026-07-13T00:00:00.000Z",
+    });
+    const send = chatEventsContract.send.body.safeParse({
+      agentId: "agent-1",
+      prompt: "Run the task",
+      userMessage,
+    });
+
+    expect(event).toMatchObject({ success: true, data: { userMessage } });
+    expect(send).toMatchObject({ success: true, data: { userMessage } });
+  });
+
+  it("rejects thread drafts that only carry the retired rich-input field", () => {
+    const userMessage = {
+      version: 1 as const,
+      parts: [{ type: "text" as const, text: "Resume the draft" }],
+    };
+
+    expect(
+      chatThreadDraftSchema.safeParse({
+        draftContent: "Resume the draft",
+        draftStructuredPrompt: userMessage,
+        draftAttachments: null,
+      }).success,
+    ).toBe(false);
+  });
+
+  it("requires userMessage for non-empty thread drafts", () => {
+    expect(
+      chatThreadByIdContract.patch.body.safeParse({
+        draftContent: null,
+        draftUserMessage: null,
+        draftAttachments: null,
+      }),
+    ).toMatchObject({ success: true });
+    expect(
+      chatThreadByIdContract.patch.body.safeParse({
+        draftContent: "Resume the draft",
+        draftUserMessage: null,
+        draftAttachments: null,
+      }),
+    ).toMatchObject({
+      success: false,
+      error: {
+        issues: [
+          expect.objectContaining({
+            path: ["draftUserMessage"],
+          }),
+        ],
+      },
+    });
+  });
 });
 
-describe("chat message pagination request compatibility", () => {
+describe("chat event pagination request compatibility", () => {
   it("accepts current sequence cursors", () => {
     expect(
-      chatThreadMessagesContract.list.query.safeParse({
+      chatThreadEventsContract.list.query.safeParse({
         sinceSeqId: "42",
         limit: "20",
       }),
@@ -99,7 +180,7 @@ describe("chat message pagination request compatibility", () => {
   it("accepts previous frontend UUID cursors during rollout", () => {
     const beforeId = "11111111-1111-4111-8111-111111111111";
     expect(
-      chatThreadMessagesContract.list.query.safeParse({
+      chatThreadEventsContract.list.query.safeParse({
         beforeId,
         limit: "20",
       }),
@@ -107,6 +188,45 @@ describe("chat message pagination request compatibility", () => {
       success: true,
       data: { beforeId, limit: 20 },
     });
+  });
+});
+
+describe("chat thread event sequence contract", () => {
+  it("coerces current sequence cursors", () => {
+    expect(
+      chatThreadsContract.events.query.safeParse({ sinceSeqId: "42" }),
+    ).toMatchObject({
+      success: true,
+      data: { sinceSeqId: 42 },
+    });
+  });
+
+  it("accepts previous API responses during independent app promotion", () => {
+    const legacyEvent = {
+      id: "11111111-1111-4111-8111-111111111111",
+      kind: "renamed",
+      chatThreadId: "22222222-2222-4222-8222-222222222222",
+      agentId: "33333333-3333-4333-8333-333333333333",
+      title: "Legacy cursor title",
+      selectedModel: null,
+      serviceTier: null,
+      computerUseHostId: null,
+      createdAt: "2026-07-28T00:00:00.000Z",
+    };
+
+    expect(
+      chatThreadsContract.snapshot.responses[200].safeParse({
+        chatThreads: [],
+        latestEventId: legacyEvent.id,
+      }).success,
+    ).toBe(true);
+    expect(
+      chatThreadsContract.events.responses[200].safeParse({
+        events: [legacyEvent],
+        hasMore: false,
+      }).success,
+    ).toBe(true);
+    expect(chatThreadEventSchema.safeParse(legacyEvent).success).toBe(false);
   });
 });
 
@@ -154,10 +274,14 @@ describe("chat thread model request compatibility", () => {
     expect(parsed.data).toStrictEqual({ model: null });
   });
 
-  it("normalizes legacy chat send modelSelection bodies to model", () => {
-    const parsed = chatMessagesContract.send.body.safeParse({
+  it("normalizes legacy chat event send modelSelection bodies to model", () => {
+    const parsed = chatEventsContract.send.body.safeParse({
       agentId: "agent-1",
       prompt: "Build a launch plan",
+      userMessage: {
+        version: 1,
+        parts: [{ type: "text", text: "Build a launch plan" }],
+      },
       modelProvider: "anthropic-api-key",
       modelSelection: legacyModelSelection,
     });
@@ -206,10 +330,14 @@ describe("chat thread model request compatibility", () => {
     expect(parsed.data).toStrictEqual({ model: "claude-sonnet-4-6" });
   });
 
-  it("normalizes legacy chat send bodies pinned to a concrete provider", () => {
-    const parsed = chatMessagesContract.send.body.safeParse({
+  it("normalizes legacy chat event send bodies pinned to a concrete provider", () => {
+    const parsed = chatEventsContract.send.body.safeParse({
       agentId: "agent-1",
       prompt: "Build a launch plan",
+      userMessage: {
+        version: 1,
+        parts: [{ type: "text", text: "Build a launch plan" }],
+      },
       modelProvider: "anthropic-api-key",
       modelSelection: legacyProviderPinnedModelSelection,
     });
@@ -228,7 +356,62 @@ describe("chat thread model request compatibility", () => {
   });
 });
 
+describe("chat thread computer access contract", () => {
+  const hostId = "11111111-1111-4111-8111-111111111111";
+
+  it("accepts Cloud browser as an explicit thread selection", () => {
+    expect(
+      chatThreadComputerUseHostContract.update.body.safeParse({
+        computerUseHostId: null,
+        cloudBrowserEnabled: true,
+      }),
+    ).toMatchObject({ success: true });
+  });
+
+  it("rejects selecting Cloud browser and Computer Use together", () => {
+    expect(
+      chatEventsContract.send.body.safeParse({
+        agentId: "agent-1",
+        prompt: "Browse from both places",
+        computerUseHostId: hostId,
+        cloudBrowserEnabled: true,
+      }),
+    ).toMatchObject({ success: false });
+    expect(
+      chatThreadComputerUseHostContract.update.body.safeParse({
+        computerUseHostId: hostId,
+        cloudBrowserEnabled: true,
+      }),
+    ).toMatchObject({ success: false });
+  });
+});
+
 describe("chat thread generation template contract", () => {
+  it("accepts template parts inside feedback notes", () => {
+    const parsed = userMessageDocumentSchema.safeParse({
+      version: 1,
+      parts: [
+        {
+          type: "feedback",
+          quote: "Original reply",
+          note: [
+            { type: "text", text: "Use " },
+            {
+              type: "template",
+              titleSnapshot: "Paper cut",
+              template: {
+                type: "illustration",
+                selection: { illustrationStyleId: "paper-cut" },
+              },
+            },
+          ],
+        },
+      ],
+    });
+
+    expect(parsed.success).toBe(true);
+  });
+
   it("accepts presentation template selections", () => {
     const parsed = generationTemplateRequestSchema.safeParse({
       type: "presentation",
@@ -310,18 +493,6 @@ describe("artifacts contract", () => {
   it("exposes an org-level generated artifacts route", () => {
     expect(artifactsContract.list.method).toBe("GET");
     expect(artifactsContract.list.path).toBe("/api/zero/artifacts");
-    expect(artifactsContract.listFavorites.method).toBe("GET");
-    expect(artifactsContract.listFavorites.path).toBe(
-      "/api/zero/artifacts/favorites",
-    );
-    expect(artifactsContract.favorite.method).toBe("POST");
-    expect(artifactsContract.favorite.path).toBe(
-      "/api/zero/artifacts/favorite",
-    );
-    expect(artifactsContract.unfavorite.method).toBe("POST");
-    expect(artifactsContract.unfavorite.path).toBe(
-      "/api/zero/artifacts/unfavorite",
-    );
     expect(artifactsContract.getImageEditSnapshot.method).toBe("GET");
     expect(artifactsContract.getImageEditSnapshot.path).toBe(
       "/api/zero/artifacts/image-edit-snapshot",
@@ -416,14 +587,6 @@ describe("artifacts contract", () => {
       truncated: false,
       nextCursor: null,
       syncUntil: "2026-07-20T04:01:00.000Z",
-    });
-
-    expect(parsed.success).toBe(true);
-  });
-
-  it("accepts artifact favorite request bodies", () => {
-    const parsed = artifactFavoriteBodySchema.safeParse({
-      artifactUrl: "https://static.vm0.io/artifacts/launch-plan.html",
     });
 
     expect(parsed.success).toBe(true);

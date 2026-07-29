@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-import type { ConnectorAuthCodeGrantConfig } from "@vm0/connectors/connectors";
+import type { ConnectorAuthCodeGrantConfig } from "@vm0/connectors/connector-config";
 import { throwOAuthError } from "../../oauth/error";
 
 const LINEAR_TOKEN_URL = "https://api.linear.app/oauth/token";
@@ -245,11 +245,4 @@ export async function revokeLinearToken(
   if (!response.ok) {
     throw new Error(`Linear token revocation failed: ${response.status}`);
   }
-}
-
-/**
- * Get the primary secret name for Linear connector (the access token).
- */
-export function getLinearSecretName(): string {
-  return "LINEAR_ACCESS_TOKEN";
 }

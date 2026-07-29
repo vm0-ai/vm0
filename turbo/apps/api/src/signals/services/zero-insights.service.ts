@@ -1,17 +1,11 @@
 import { computed, type Computed } from "ccstate";
 import type {
   DayInsight,
-  InsightsRangeResponse,
   InsightsResponse,
 } from "@vm0/api-contracts/contracts/zero-insights";
 import { insightsDaily } from "@vm0/db/schema/insights-daily";
 import { orgMembersCache } from "@vm0/db/schema/org-members-cache";
-import { and, count, desc, eq, gte, max, min, sql } from "drizzle-orm";
-
-import {
-  nullableDriverValueDecoder,
-  pgTextDecoder,
-} from "../../lib/db-structured-result";
+import { and, desc, eq, gte, sql } from "drizzle-orm";
 import { nowDate } from "../../lib/time";
 import { clerk$ } from "../external/clerk";
 import { db$ } from "../external/db";
@@ -19,7 +13,6 @@ import { tapError } from "../utils";
 
 type DayInsightData = Partial<Omit<DayInsight, "date">>;
 const ORG_MEMBERSHIP_PAGE_SIZE = 100;
-const nullableTextDecoder = nullableDriverValueDecoder(pgTextDecoder);
 
 interface StoredTeamUsageEntry {
   readonly userId?: string;
@@ -192,41 +185,6 @@ export function zeroInsights(args: {
       totalCredits,
       totalRuns,
       lastUpdated: lastUpdated?.toISOString() ?? null,
-    };
-  });
-}
-
-export function zeroInsightsRange(args: {
-  readonly orgId: string;
-  readonly userId: string;
-}): Computed<Promise<InsightsRangeResponse>> {
-  return computed(async (get): Promise<InsightsRangeResponse> => {
-    const [row] = await get(db$)
-      .select({
-        minDate: min(insightsDaily.date)
-          .mapWith(nullableTextDecoder)
-          .as("min_date"),
-        maxDate: max(insightsDaily.date)
-          .mapWith(nullableTextDecoder)
-          .as("max_date"),
-        totalDays: count().as("total_days"),
-      })
-      .from(insightsDaily)
-      .where(
-        and(
-          eq(insightsDaily.orgId, args.orgId),
-          eq(insightsDaily.userId, args.userId),
-        ),
-      );
-
-    if (!row || row.totalDays === 0) {
-      return { minDate: null, maxDate: null, totalDays: 0 };
-    }
-
-    return {
-      minDate: row.minDate,
-      maxDate: row.maxDate,
-      totalDays: row.totalDays,
     };
   });
 }

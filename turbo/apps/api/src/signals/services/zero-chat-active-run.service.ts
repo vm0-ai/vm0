@@ -15,10 +15,11 @@ import {
 } from "drizzle-orm";
 
 import type { Db } from "../external/db";
+import { chatEventTypeIn } from "./zero-chat-event-type.service";
 
 const ACTIVE_CHAT_RUN_STATUSES = ["queued", "pending", "running"] as const;
 
-export async function activeChatRunExists(
+async function activeChatRunExists(
   db: Pick<Db, "select">,
   args: {
     readonly threadId: string;
@@ -58,7 +59,7 @@ export async function activeChatRunExists(
               .where(
                 and(
                   eq(chatMessages.runId, zeroRuns.id),
-                  eq(chatMessages.role, "user"),
+                  chatEventTypeIn(["input.prompt"]),
                 ),
               ),
           ),
@@ -68,4 +69,17 @@ export async function activeChatRunExists(
     .limit(1);
 
   return run !== undefined;
+}
+
+// A managed browser now outlives the run that opened it and the next run simply
+// attaches to the same live instance, so an unsettled browser must not hold up
+// the thread's next run.
+export async function chatThreadAdmissionBlocked(
+  db: Pick<Db, "select">,
+  args: {
+    readonly threadId: string;
+    readonly excludeRunId?: string;
+  },
+): Promise<boolean> {
+  return await activeChatRunExists(db, args);
 }

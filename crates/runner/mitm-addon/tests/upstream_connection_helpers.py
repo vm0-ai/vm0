@@ -1,13 +1,57 @@
-"""Shared helpers for connected upstream mitmproxy test state."""
+"""Shared helpers for upstream mitmproxy test state."""
 
 from typing import cast
 
 from mitmproxy import certs, connection, http
 
+import upstream_destination_binding
+
 # Keep the shape mitmproxy types expect without adding an authoritative endpoint.
 _NO_CONNECTED_CLIENT_SOCKNAME = ("", 0)
 # Admission only checks that mitmproxy recorded at least one upstream certificate.
 _TLS_CERTIFICATE_PROOF = cast(certs.Cert, object())
+
+
+def seed_server_binding(
+    server: object,
+    *,
+    client: object | None = None,
+    host: str,
+    port: int,
+    kinds: frozenset[upstream_destination_binding.BindingKind],
+    original_address: tuple[str, int] | None,
+) -> None:
+    """Seed normalized upstream binding state for a test."""
+    destination = upstream_destination_binding.normalize_upstream_destination(
+        host=host,
+        port=port,
+    )
+    upstream_destination_binding.record_normalized_server_binding(
+        server,
+        client=client,
+        destination=destination,
+        kinds=kinds,
+        original_address=original_address,
+    )
+
+
+def bind_flow_upstream(
+    flow: http.HTTPFlow,
+    *,
+    host: str = "api.github.com",
+    port: int = 443,
+    kinds: frozenset[upstream_destination_binding.BindingKind] = frozenset(("connector_auth",)),
+) -> None:
+    """Bind a flow to an admitted upstream destination."""
+    original_address = flow.server_conn.address
+    flow.server_conn.address = (host, port)
+    seed_server_binding(
+        flow.server_conn,
+        host=host,
+        port=port,
+        kinds=kinds,
+        original_address=original_address,
+    )
 
 
 def mark_connected_tls_upstream(

@@ -1,26 +1,25 @@
 import { randomBytes } from "node:crypto";
 
 import { command } from "ccstate";
+import { v5 as uuidv5 } from "uuid";
 import {
   getVm0VisibleModels,
   isSupportedRunModel,
   type SupportedRunModel,
 } from "@vm0/api-contracts/contracts/model-providers";
-import { isFeatureEnabled } from "@vm0/core/feature-switch";
-import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
-import { agentSessions } from "@vm0/db/schema/agent-session";
-import { computerUseHosts } from "@vm0/db/schema/computer-use-host";
+import { agentRuns } from "@vm0/db/schema/agent-run";
+import { chatMessages } from "@vm0/db/schema/chat-message";
 import { orgMetadata } from "@vm0/db/schema/org-metadata";
 import { teamsOrgConnections } from "@vm0/db/schema/teams-org-connection";
 import { teamsOrgInstallations } from "@vm0/db/schema/teams-org-installation";
-import { teamsOrgThreadSessions } from "@vm0/db/schema/teams-org-thread-session";
 import { teamsUserAgentPreferences } from "@vm0/db/schema/teams-user-agent-preference";
 import { zeroAgents } from "@vm0/db/schema/zero-agent";
 import type {
   TeamsInboundActivity,
   TeamsInboundAttachment,
 } from "@vm0/api-contracts/contracts/zero-teams-bot";
-import { and, desc, eq, isNull, or } from "drizzle-orm";
+import { and, desc, eq, isNull, notExists, or } from "drizzle-orm";
+import { alias } from "drizzle-orm/pg-core";
 import { convert } from "html-to-text";
 
 import { env } from "../../lib/env";
@@ -28,6 +27,10 @@ import { inferMimetype } from "../../lib/mimetype";
 import { logger } from "../../lib/log";
 import { nowDate } from "../../lib/time";
 import { writeDb$, type Db } from "../external/db";
+import {
+  publishChatThreadMessageCreatedSafely,
+  publishThreadListChanged,
+} from "../external/realtime";
 import {
   fetchTeamsChannelMessage,
   fetchTeamsChannelMessageReplies,
@@ -43,19 +46,18 @@ import {
 } from "../external/teams-bot-client";
 import { bestEffort, safeJsonParse } from "../utils";
 import { dispatchFailedRunCallbacks } from "./agent-run-callback.service";
-import { formatIntegrationRunError$ } from "./integration-run-errors.service";
+import { drainChatThreadQueueForThread$ } from "./chat-thread-queue-drain.service";
 import {
   resolveIntegrationModelRouteForUser$,
   type IntegrationModelRoutePin,
 } from "./integration-model-route.service";
-import { canReuseIntegrationSessionForModelRoute } from "./integration-session-model-compatibility.service";
 import type { ApiDispatchTimingCollector } from "./api-dispatch-timing.service";
-import { userFeatureSwitchOverrides } from "./feature-switches.service";
 import { listOrgModelPolicies$ } from "./zero-model-policy.service";
 import {
-  teamsOrgCallbackPayloadSchema,
-  type TeamsOrgCallbackPayload,
-} from "./teams-org-callback-payload";
+  teamsDeliveryTargetSchema,
+  type TeamsDeliveryTarget,
+} from "./teams-chat-callback-payload";
+import { ensureTeamsChatThreadRoute } from "./teams-chat-ingress.service";
 import type { TeamsFileTokenPayload } from "./teams-file-token";
 import {
   updateUserModelPreference$,
@@ -66,7 +68,11 @@ import {
   disconnectTeamsConnection$,
   publishTeamsChanged$,
 } from "./zero-teams-connect.service";
-import { createZeroRun$ } from "./zero-runs-create.service";
+import { touchChatThreadLastMessageAt } from "./zero-chat-message-shared.service";
+import { insertChatEvent } from "./zero-chat-event.service";
+import { createUserMessageDocument } from "./zero-chat-user-message.service";
+import { chatEventTypeIn } from "./zero-chat-event-type.service";
+import { encryptQueuedUserMessageRunParams } from "./zero-chat-queued-message.service";
 
 const L = logger("TeamsDispatch");
 const TEAMS_LOGIN_PROMPT_FALLBACK_TEXT =
@@ -92,6 +98,9 @@ const TEAMS_THINKING_REACTION_TYPE = "1f4ad_thoughtballoon";
 const TEAMS_FILE_DOWNLOAD_INFO_CONTENT_TYPE =
   "application/vnd.microsoft.teams.file.download.info";
 const TEAMS_REFERENCE_ATTACHMENT_CONTENT_TYPE = "reference";
+const TEAMS_CHAT_MESSAGE_ID_NAMESPACE = "b60a5846-d85f-4db8-b9aa-d7d803efbb57";
+const TEAMS_DIRECT_MESSAGE_THREAD_ID = "direct-message";
+const teamsQueueEventRevoker = alias(chatMessages, "teams_queue_event_revoker");
 
 type TeamsBotCommand = "help" | "connect" | "disconnect" | "switch" | "model";
 type TeamsCardAction = "switch_agent" | "switch_model";
@@ -162,11 +171,6 @@ type ResolvedEffectiveCompose = Extract<
   { readonly status: "resolved" }
 >;
 
-interface TeamsRunThreadContext {
-  readonly existingSessionId: string | undefined;
-  readonly computerUseHostId: string | undefined;
-}
-
 type TeamsMessageDispatchResult =
   | { readonly kind: "ignored" }
   | {
@@ -177,17 +181,8 @@ type TeamsMessageDispatchResult =
     }
   | {
       readonly kind: "accepted" | "queued";
-      readonly runId: string;
-    }
-  | {
-      readonly kind: "failed";
-      readonly replyText: string;
       readonly runId?: string;
     };
-
-function callbackSecret(): string {
-  return randomBytes(32).toString("hex");
-}
 
 function nonEmpty(value: string | null | undefined): string | undefined {
   return value && value.length > 0 ? value : undefined;
@@ -738,22 +733,6 @@ async function resolveDefaultComposeId(
   return metadata?.defaultAgentId ?? null;
 }
 
-function buildTeamsDispatchErrorText(args: {
-  readonly errorText: string;
-  readonly logsUrl: string | undefined;
-  readonly footerText: string | undefined;
-}): string {
-  return [
-    args.errorText,
-    args.logsUrl ? `[Audit](${args.logsUrl})` : undefined,
-    args.footerText ? `_${args.footerText}_` : undefined,
-  ]
-    .filter((part): part is string => {
-      return Boolean(part);
-    })
-    .join("\n\n");
-}
-
 async function sendTeamsRunStartIndicator(args: {
   readonly activity: TeamsMessageActivity;
   readonly signal: AbortSignal;
@@ -990,113 +969,6 @@ const teamsModelPickerState$ = command(
     };
   },
 );
-
-async function resolveCompatibleTeamsThreadSession(args: {
-  readonly db: Db;
-  readonly connectionId: string;
-  readonly conversationId: string;
-  readonly threadId: string;
-  readonly orgId: string;
-  readonly userId: string;
-  readonly composeId: string;
-  readonly modelRoute: IntegrationModelRoutePin | undefined;
-}): Promise<TeamsRunThreadContext> {
-  const [threadSession] = await args.db
-    .select({
-      agentSessionId: teamsOrgThreadSessions.agentSessionId,
-      computerUseHostId: teamsOrgThreadSessions.computerUseHostId,
-    })
-    .from(teamsOrgThreadSessions)
-    .where(
-      and(
-        eq(teamsOrgThreadSessions.connectionId, args.connectionId),
-        eq(teamsOrgThreadSessions.teamsConversationId, args.conversationId),
-        eq(teamsOrgThreadSessions.teamsThreadId, args.threadId),
-      ),
-    )
-    .limit(1);
-  const computerUseHostId = await resolveComputerUseHostForTeamsThread({
-    db: args.db,
-    orgId: args.orgId,
-    userId: args.userId,
-    hostId: threadSession?.computerUseHostId ?? null,
-  });
-
-  if (!threadSession?.agentSessionId) {
-    return { existingSessionId: undefined, computerUseHostId };
-  }
-
-  const existingSessionId = await resolveCompatibleTeamsAgentSession({
-    db: args.db,
-    sessionId: threadSession.agentSessionId,
-    userId: args.userId,
-    composeId: args.composeId,
-    modelRoute: args.modelRoute,
-  });
-
-  return { existingSessionId, computerUseHostId };
-}
-
-async function resolveCompatibleTeamsAgentSession(args: {
-  readonly db: Db;
-  readonly sessionId: string;
-  readonly userId: string;
-  readonly composeId: string;
-  readonly modelRoute: IntegrationModelRoutePin | undefined;
-}): Promise<string | undefined> {
-  const [agentSession] = await args.db
-    .select({ agentComposeId: agentSessions.agentComposeId })
-    .from(agentSessions)
-    .where(
-      and(
-        eq(agentSessions.id, args.sessionId),
-        eq(agentSessions.userId, args.userId),
-      ),
-    )
-    .limit(1);
-  if (agentSession?.agentComposeId !== args.composeId) {
-    return undefined;
-  }
-
-  if (args.modelRoute) {
-    const canReuseSession = await canReuseIntegrationSessionForModelRoute({
-      db: args.db,
-      sessionId: args.sessionId,
-      modelRoute: args.modelRoute,
-    });
-    if (!canReuseSession) {
-      return undefined;
-    }
-  }
-
-  return args.sessionId;
-}
-
-async function resolveComputerUseHostForTeamsThread(args: {
-  readonly db: Db;
-  readonly orgId: string;
-  readonly userId: string;
-  readonly hostId: string | null;
-}): Promise<string | undefined> {
-  if (!args.hostId || !args.orgId) {
-    return undefined;
-  }
-
-  const [host] = await args.db
-    .select({ id: computerUseHosts.id })
-    .from(computerUseHosts)
-    .where(
-      and(
-        eq(computerUseHosts.id, args.hostId),
-        eq(computerUseHosts.orgId, args.orgId),
-        eq(computerUseHosts.userId, args.userId),
-        isNull(computerUseHosts.revokedAt),
-      ),
-    )
-    .limit(1);
-
-  return host?.id;
-}
 
 function formatTeamsSenderBlock(message: TeamsContextMessage): string {
   const parts = [`id: ${message.senderId}`];
@@ -1356,6 +1228,21 @@ function isTeamsThreadReply(activity: TeamsMessageActivity): boolean {
   return Boolean(
     activity.activityId && activity.threadId !== activity.activityId,
   );
+}
+
+function teamsSessionThreadId(args: {
+  readonly activity: TeamsMessageActivity;
+  readonly agentId: string;
+  readonly selectedModel: string | null;
+}): string {
+  const { activity } = args;
+  if (
+    activity.conversationType === "personal" &&
+    !isTeamsThreadReply(activity)
+  ) {
+    return `${TEAMS_DIRECT_MESSAGE_THREAD_ID}:${args.agentId}:${args.selectedModel ?? "default"}`;
+  }
+  return activity.threadId;
 }
 
 function currentTeamsActivityIds(
@@ -1663,15 +1550,15 @@ function buildTeamsPrompt(args: {
     .join("\n");
 }
 
-function callbackPayload(args: {
+function teamsDeliveryTarget(args: {
   readonly activity: TeamsMessageActivity;
   readonly installation: TeamsInstallation;
   readonly connection: TeamsConnection;
   readonly composeId: string;
-  readonly existingSessionId: string | undefined;
+  readonly modelRoute: IntegrationModelRoutePin | undefined;
   readonly files: readonly TeamsPromptFile[];
-}): TeamsOrgCallbackPayload {
-  return teamsOrgCallbackPayloadSchema.parse({
+}): TeamsDeliveryTarget {
+  return teamsDeliveryTargetSchema.parse({
     tenantId: args.activity.tenantId,
     tenantName: args.activity.tenantName,
     teamId: args.activity.teamId,
@@ -1679,7 +1566,11 @@ function callbackPayload(args: {
     channelId: args.activity.channelId,
     conversationId: args.activity.conversationId,
     conversationType: args.activity.conversationType,
-    threadId: args.activity.threadId,
+    threadId: teamsSessionThreadId({
+      activity: args.activity,
+      agentId: args.composeId,
+      selectedModel: args.modelRoute?.selectedModel ?? null,
+    }),
     activityId: args.activity.activityId,
     serviceUrl: args.activity.serviceUrl,
     connectionId: args.connection.id,
@@ -1688,8 +1579,6 @@ function callbackPayload(args: {
     teamsUserPrincipalName: args.activity.sender.userPrincipalName,
     botId: args.activity.recipient?.id ?? args.installation.botId,
     botName: args.activity.recipient?.name ?? args.installation.botName,
-    agentId: args.composeId,
-    existingSessionId: args.existingSessionId ?? null,
     files: args.files.map((file) => {
       return { fileId: file.fileId, ...file.payload };
     }),
@@ -1703,17 +1592,193 @@ function promptForTeamsRun(args: {
   return appendTeamsFilesToPrompt(args.activity.text, args.promptFiles);
 }
 
+function teamsChatMessageId(
+  activity: TeamsMessageActivity,
+  connectionId: string,
+): string {
+  return uuidv5(
+    `${connectionId}:${activity.idempotencyKey}`,
+    TEAMS_CHAT_MESSAGE_ID_NAMESPACE,
+  );
+}
+
+async function persistTeamsChatMessage(args: {
+  readonly db: Db;
+  readonly activity: TeamsMessageActivity;
+  readonly installation: BoundTeamsInstallation;
+  readonly connection: TeamsConnection;
+  readonly composeId: string;
+  readonly promptFiles: readonly TeamsPromptFile[];
+  readonly promptContext: TeamsPromptContext;
+  readonly apiStartTime: number;
+  readonly modelRoute: IntegrationModelRoutePin | undefined;
+  readonly signal: AbortSignal;
+}): Promise<
+  | {
+      readonly inserted: true;
+      readonly chatThreadId: string;
+      readonly chatMessageId: string;
+    }
+  | { readonly inserted: false }
+> {
+  const currentTime = new Date(args.apiStartTime);
+  const route = await ensureTeamsChatThreadRoute(args.db, {
+    connectionId: args.connection.id,
+    conversationId: args.activity.conversationId,
+    threadId: teamsSessionThreadId({
+      activity: args.activity,
+      agentId: args.composeId,
+      selectedModel: args.modelRoute?.selectedModel ?? null,
+    }),
+    userId: args.connection.vm0UserId,
+    orgId: args.installation.orgId,
+    agentComposeId: args.composeId,
+    selectedModel: args.modelRoute?.selectedModel ?? null,
+    currentTime,
+  });
+  args.signal.throwIfAborted();
+
+  const delivery = teamsDeliveryTarget({
+    activity: args.activity,
+    installation: args.installation,
+    connection: args.connection,
+    composeId: args.composeId,
+    modelRoute: args.modelRoute,
+    files: [...args.promptFiles, ...args.promptContext.files],
+  });
+  const prompt = promptForTeamsRun(args);
+  const encryptedParams = await encryptQueuedUserMessageRunParams(
+    {
+      version: 1,
+      prompt,
+      appendSystemPrompt: buildTeamsPrompt({
+        activity: args.activity,
+        installation: args.installation,
+        threadContext: args.promptContext.text,
+      }),
+      teamsDelivery: delivery,
+      apiStartTime: args.apiStartTime,
+      userInfoExtras: {
+        teamsUserDisplayName: args.activity.sender.name ?? undefined,
+        teamsUserPrincipalName:
+          args.activity.sender.userPrincipalName ?? undefined,
+        teamsUserId: args.activity.sender.id,
+      },
+    },
+    {
+      orgId: args.installation.orgId,
+      userId: args.connection.vm0UserId,
+    },
+  );
+  args.signal.throwIfAborted();
+
+  const chatMessageId = teamsChatMessageId(args.activity, args.connection.id);
+  const inserted = await args.db.transaction(async (tx) => {
+    const message = await insertChatEvent(
+      tx,
+      {
+        id: chatMessageId,
+        chatThreadId: route.chatThreadId,
+        eventType: "input.prompt",
+        content: prompt,
+        userMessage: createUserMessageDocument({
+          text: args.activity.text,
+          files: args.promptFiles.map((file) => {
+            return {
+              id: file.fileId,
+              filename: file.name,
+              contentType: file.contentType,
+            };
+          }),
+        }),
+        runId: null,
+        triggerSource: "teams",
+        encryptedParams,
+        createdAt: currentTime,
+      },
+      "id",
+    );
+    args.signal.throwIfAborted();
+    if (!message) {
+      return false;
+    }
+    await touchChatThreadLastMessageAt(
+      tx,
+      route.chatThreadId,
+      currentTime,
+      chatMessageId,
+    );
+    return true;
+  });
+  args.signal.throwIfAborted();
+  return inserted
+    ? { inserted: true, chatThreadId: route.chatThreadId, chatMessageId }
+    : { inserted: false };
+}
+
+async function teamsMessageDispatchState(
+  db: Db,
+  args: {
+    readonly chatThreadId: string;
+    readonly chatMessageId: string;
+  },
+): Promise<TeamsMessageDispatchResult> {
+  const [[run], [queued]] = await Promise.all([
+    db
+      .select({ runId: agentRuns.id, status: agentRuns.status })
+      .from(chatMessages)
+      .innerJoin(agentRuns, eq(agentRuns.id, chatMessages.runId))
+      .where(
+        and(
+          eq(chatMessages.chatThreadId, args.chatThreadId),
+          or(
+            eq(chatMessages.id, args.chatMessageId),
+            eq(chatMessages.revokesEventId, args.chatMessageId),
+          ),
+        ),
+      )
+      .limit(1),
+    db
+      .select({ id: chatMessages.id })
+      .from(chatMessages)
+      .where(
+        and(
+          eq(chatMessages.id, args.chatMessageId),
+          eq(chatMessages.chatThreadId, args.chatThreadId),
+          chatEventTypeIn(["input.prompt"]),
+          isNull(chatMessages.runId),
+          notExists(
+            db
+              .select({ id: teamsQueueEventRevoker.id })
+              .from(teamsQueueEventRevoker)
+              .where(
+                eq(teamsQueueEventRevoker.revokesEventId, chatMessages.id),
+              ),
+          ),
+        ),
+      )
+      .limit(1),
+  ]);
+  if (queued || run?.status === "queued") {
+    return {
+      kind: "queued",
+      ...(run ? { runId: run.runId } : {}),
+    };
+  }
+  return {
+    kind: "accepted",
+    ...(run ? { runId: run.runId } : {}),
+  };
+}
+
 const runAgentForTeams$ = command(
   async (
-    { get, set },
+    { set },
     args: {
       readonly activity: TeamsMessageActivity;
       readonly installation: BoundTeamsInstallation;
       readonly connection: TeamsConnection;
       readonly composeId: string;
-      readonly agentLabel: string;
-      readonly sessionId: string | undefined;
-      readonly computerUseHostId: string | undefined;
       readonly promptFiles: readonly TeamsPromptFile[];
       readonly promptContext: TeamsPromptContext;
       readonly apiStartTime: number;
@@ -1727,114 +1792,41 @@ const runAgentForTeams$ = command(
       "nested",
       nowDate().getTime(),
     );
-    const result = await set(
-      createZeroRun$,
-      {
-        auth: {
-          tokenType: "session",
-          userId: args.connection.vm0UserId,
-          orgId: args.installation.orgId,
-          orgRole: "member",
-        },
-        body: {
-          prompt: promptForTeamsRun(args),
-          agentId: args.composeId,
-          sessionId: args.sessionId,
-          ...(args.modelRoute?.modelProviderType
-            ? { modelProvider: args.modelRoute.modelProviderType }
-            : {}),
-        },
-        apiStartTime: args.apiStartTime,
-        triggerSource: "teams",
-        appendSystemPrompt: buildTeamsPrompt({
-          activity: args.activity,
-          installation: args.installation,
-          threadContext: args.promptContext.text,
-        }),
-        userInfoExtras: {
-          teamsUserDisplayName: args.activity.sender.name ?? undefined,
-          teamsUserPrincipalName:
-            args.activity.sender.userPrincipalName ?? undefined,
-          teamsUserId: args.activity.sender.id,
-        },
-        modelProviderId: args.modelRoute?.modelProviderId ?? undefined,
-        modelProviderCredentialScope:
-          args.modelRoute?.modelProviderCredentialScope ?? undefined,
-        selectedModelOverride: args.modelRoute?.selectedModel ?? undefined,
-        computerUseHostId: args.computerUseHostId,
-        dispatchFailedCallbacks: dispatchFailedRunCallbacks,
-        timing: args.timing,
-        callbacks: [
-          {
-            internalKind: "teams:org",
-            secret: callbackSecret(),
-            payload: callbackPayload({
-              activity: args.activity,
-              installation: args.installation,
-              connection: args.connection,
-              composeId: args.composeId,
-              existingSessionId: args.sessionId,
-              files: [...args.promptFiles, ...args.promptContext.files],
-            }),
-          },
-        ],
-      },
+    const db = set(writeDb$);
+    const persisted = await persistTeamsChatMessage({
+      db,
+      activity: args.activity,
+      installation: args.installation,
+      connection: args.connection,
+      composeId: args.composeId,
+      promptFiles: args.promptFiles,
+      promptContext: args.promptContext,
+      apiStartTime: args.apiStartTime,
+      modelRoute: args.modelRoute,
       signal,
-    );
+    });
     signal.throwIfAborted();
-
-    if (result.status === 201) {
-      return {
-        kind: result.body.status === "queued" ? "queued" : "accepted",
-        runId: result.body.runId,
-      };
+    if (!persisted.inserted) {
+      return { kind: "ignored" };
     }
 
-    const errorText = await set(
-      formatIntegrationRunError$,
+    await publishChatThreadMessageCreatedSafely(
+      args.connection.vm0UserId,
+      persisted.chatThreadId,
+    );
+    signal.throwIfAborted();
+    await publishThreadListChanged(args.connection.vm0UserId);
+    signal.throwIfAborted();
+    await set(
+      drainChatThreadQueueForThread$,
       {
-        orgId: args.installation.orgId,
-        userId: args.connection.vm0UserId,
-        code: result.body.error.code,
-        message: result.body.error.message,
+        chatThreadId: persisted.chatThreadId,
+        dispatchFailedCallbacks: dispatchFailedRunCallbacks,
       },
       signal,
     );
     signal.throwIfAborted();
-
-    const overrides = await get(
-      userFeatureSwitchOverrides(
-        args.installation.orgId,
-        args.connection.vm0UserId,
-      ),
-    );
-    signal.throwIfAborted();
-    const logsUrl = isFeatureEnabled(FeatureSwitchKey.ZeroDebug, {
-      userId: args.connection.vm0UserId,
-      orgId: args.installation.orgId,
-      overrides,
-    })
-      ? `${env("APP_URL")}/activities`
-      : undefined;
-    const db = set(writeDb$);
-    const defaultComposeId = await resolveDefaultComposeId(
-      db,
-      args.installation.orgId,
-    );
-    signal.throwIfAborted();
-    const footerText =
-      args.composeId !== defaultComposeId
-        ? `Sent via ${args.agentLabel}`
-        : undefined;
-
-    return {
-      kind: "failed",
-      replyText: buildTeamsDispatchErrorText({
-        errorText,
-        logsUrl,
-        footerText,
-      }),
-    };
+    return await teamsMessageDispatchState(db, persisted);
   },
 );
 
@@ -2172,7 +2164,6 @@ const runResolvedTeamsAgentForActivity$ = command(
   async (
     { set },
     args: {
-      readonly db: Db;
       readonly prompt: string;
       readonly promptFiles: readonly TeamsPromptFile[];
       readonly activity: TeamsMessageActivity;
@@ -2184,6 +2175,22 @@ const runResolvedTeamsAgentForActivity$ = command(
     },
     signal: AbortSignal,
   ): Promise<TeamsMessageDispatchResult> => {
+    const db = set(writeDb$);
+    const [existingMessage] = await db
+      .select({ id: chatMessages.id })
+      .from(chatMessages)
+      .where(
+        eq(
+          chatMessages.id,
+          teamsChatMessageId(args.activity, args.connection.id),
+        ),
+      )
+      .limit(1);
+    signal.throwIfAborted();
+    if (existingMessage) {
+      return { kind: "ignored" };
+    }
+
     await sendTeamsRunStartIndicator({
       activity: args.activity,
       signal,
@@ -2200,34 +2207,19 @@ const runResolvedTeamsAgentForActivity$ = command(
     );
     signal.throwIfAborted();
 
-    const runThreadContext = await resolveCompatibleTeamsThreadSession({
-      db: args.db,
-      connectionId: args.connection.id,
-      conversationId: args.activity.conversationId,
-      threadId: args.activity.threadId,
-      orgId: args.installation.orgId,
-      userId: args.connection.vm0UserId,
-      composeId: args.effectiveCompose.composeId,
-      modelRoute,
-    });
-    signal.throwIfAborted();
-
     const promptContext = await fetchTeamsPromptContext({
       activity: args.activity,
       signal,
     });
     signal.throwIfAborted();
 
-    const result = await set(
+    return await set(
       runAgentForTeams$,
       {
         activity: { ...args.activity, text: args.prompt },
         installation: args.installation,
         connection: args.connection,
         composeId: args.effectiveCompose.composeId,
-        agentLabel: agentLabel(args.effectiveCompose.agent),
-        sessionId: runThreadContext.existingSessionId,
-        computerUseHostId: runThreadContext.computerUseHostId,
         promptFiles: args.promptFiles,
         promptContext,
         apiStartTime: args.apiStartTime,
@@ -2236,19 +2228,6 @@ const runResolvedTeamsAgentForActivity$ = command(
       },
       signal,
     );
-    signal.throwIfAborted();
-
-    if (result.kind === "failed") {
-      L.warn("Teams agent dispatch failed", {
-        tenantId: args.activity.tenantId,
-        conversationId: args.activity.conversationId,
-        threadId: args.activity.threadId,
-        userId: args.connection.vm0UserId,
-        runId: result.runId,
-      });
-    }
-
-    return result;
   },
 );
 
@@ -2368,7 +2347,6 @@ export const dispatchTeamsMessageToAgent$ = command(
     return set(
       runResolvedTeamsAgentForActivity$,
       {
-        db,
         prompt,
         promptFiles,
         activity,

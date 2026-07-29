@@ -1,7 +1,7 @@
 import {
-  chatThreadMessagesContract,
+  chatThreadEventsContract,
   chatThreadMetadataContract,
-  type PagedChatMessage,
+  type ChatEventResponse,
 } from "@vm0/api-contracts/contracts/chat-threads";
 import {
   zeroWorkflowsCollectionContract,
@@ -140,15 +140,12 @@ export function createWorkflowsBddApi(context: TestContext) {
       readonly invoiceId: string;
     }> {
       const actor = bdd.user();
-      if (options.timezone) {
-        await bdd.bootstrapOnboarding(actor, {
-          displayName: "Workflow BDD Owner",
-          timezone: options.timezone,
-        });
-      }
       const entitlement = await runs.grantProEntitlement(actor, {
         tier: options.tier,
       });
+      if (options.timezone) {
+        await bdd.updateUserTimezone(actor, options.timezone);
+      }
       await runs.ensureOrgModelProvider(actor);
       bdd.acceptAgentStorageWrites();
       return { actor, ...entitlement };
@@ -212,10 +209,10 @@ export function createWorkflowsBddApi(context: TestContext) {
       return response.body.selectedModel;
     },
 
-    async readThreadMessages(
+    async readThreadEvents(
       threadId: string,
-    ): Promise<readonly PagedChatMessage[]> {
-      const client = setupApp({ context })(chatThreadMessagesContract);
+    ): Promise<readonly ChatEventResponse[]> {
+      const client = setupApp({ context })(chatThreadEventsContract);
       const response = await accept(
         client.list({
           headers: authHeaders(),
@@ -224,7 +221,7 @@ export function createWorkflowsBddApi(context: TestContext) {
         }),
         [200],
       );
-      return response.body.messages;
+      return response.body.events;
     },
 
     /**

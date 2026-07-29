@@ -7,6 +7,7 @@ use vsock_host::{ExecCaptureRequest, ExecOperationResult, ExecOwnedCapturedOutpu
 
 use crate::command::{CommandError, exec_with_timeout};
 use crate::duration::duration_ms;
+use crate::guest_dns_netfilter_trace::GuestDnsNetfilterTraceAttachment;
 use crate::guest_dns_network_evidence::{
     GuestDnsNetworkEvidenceBaseline, GuestDnsNetworkEvidenceTarget,
     capture_guest_dns_network_evidence_report,
@@ -42,6 +43,7 @@ pub(crate) struct GuestDnsFailureDiagnosticContext<'a> {
     pub(crate) dns_port: u16,
     pub(crate) attachment_generation: u64,
     pub(crate) readiness_attempts: u16,
+    pub(crate) root_netfilter_trace: &'a GuestDnsNetfilterTraceAttachment,
     pub(crate) network_evidence_baseline: Option<&'a GuestDnsNetworkEvidenceBaseline>,
     pub(crate) startup_mode: &'static str,
 }
@@ -74,8 +76,13 @@ pub(crate) async fn capture_guest_dns_failure_diagnostics(
 async fn capture_snapshot(guest: &VsockHost, context: GuestDnsFailureDiagnosticContext<'_>) {
     let namespace = context.namespace;
     let peer_ip = context.peer_ip;
-    let network_evidence_target =
-        GuestDnsNetworkEvidenceTarget::new(namespace, context.host_device);
+    let network_evidence_target = GuestDnsNetworkEvidenceTarget::new(
+        namespace,
+        context.host_device,
+        peer_ip,
+        context.dns_port,
+        context.root_netfilter_trace,
+    );
     let conntrack_source_args = ["-L", "-s", peer_ip];
     let conntrack_destination_args = ["-L", "-d", peer_ip];
     let namespace_conntrack_args = [

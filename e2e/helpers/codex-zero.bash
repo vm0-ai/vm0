@@ -113,14 +113,12 @@ configure_codex_zero_model_policy() {
     _codex_zero_curl "/api/zero/model-policies" -X PUT -d "$payload" >/dev/null
 }
 
-# Poll /api/zero/chat-threads/:id/messages until the current run has a terminal
-# assistant lifecycle marker (the paged message API no longer exposes agent run
-# status; terminal runs append a null-content lifecycle marker row instead).
-# Other assistant marker rows, such as recommended followups, may be inserted
-# after the terminal marker and must not hide it. LAST_MSG_CONTENT comes from
-# the latest non-blank assistant content row for the same run.
+# Poll /api/zero/chat-threads/:id/events until the current run has a terminal
+# lifecycle event. Other output events, such as recommended followups, may be
+# inserted after the terminal event and must not hide it. LAST_MSG_CONTENT
+# comes from the latest non-blank output.message event for the same run.
 # On success, exports:
-#   LAST_RUN_ID      — runId of the assistant message
+#   LAST_RUN_ID      — runId of the terminal event
 #   LAST_MSG_CONTENT — content text
 # Usage: wait_for_chat_assistant_done <thread_id> [timeout_seconds]
 wait_for_chat_assistant_done() {
@@ -134,22 +132,21 @@ wait_for_chat_assistant_done() {
     fi
     local expected_run_id="$LAST_RUN_ID"
     while (( SECONDS - start < timeout )); do
-        body=$(_codex_zero_curl "/api/zero/chat-threads/$thread_id/messages?limit=50" 2>/dev/null || true)
+        body=$(_codex_zero_curl "/api/zero/chat-threads/$thread_id/events?limit=50" 2>/dev/null || true)
         if [[ -n "$body" ]]; then
             terminal=$(printf '%s' "$body" \
                 | jq -r --arg expectedRunId "$expected_run_id" '
                     [
-                        .messages[]
-                        | select(.role == "assistant")
+                        .events[]
                         | select((.runId // "") == $expectedRunId)
                         | select(
-                            (.runLifecycleEvent // "") as $event
-                            | ["completed", "failed", "timeout", "cancelled"]
-                            | index($event)
+                            (.eventType // "") as $eventType
+                            | ["run.completed", "run.failed", "run.cancelled"]
+                            | index($eventType)
                         )
                     ]
                     | last // {}
-                    | [(.runLifecycleEvent // ""), (.runId // "")]
+                    | [(.eventType // ""), (.runId // "")]
                     | @tsv
                 ' 2>/dev/null)
             status_value="${terminal%%$'\t'*}"
@@ -157,13 +154,13 @@ wait_for_chat_assistant_done() {
             # the trailing "timed out" lines below run, so emit progress here.
             echo "# poll t=$((SECONDS - start))s status=${status_value:-EMPTY}" >&2
             case "$status_value" in
-                completed|failed|timeout|cancelled)
+                run.completed|run.failed|run.cancelled)
                     run_id="${terminal#*$'\t'}"
                     content=$(printf '%s' "$body" \
                         | jq -r --arg runId "$run_id" '
                             [
-                                .messages[]
-                                | select(.role == "assistant")
+                                .events[]
+                                | select(.eventType == "output.message")
                                 | select((.runId // "") == $runId)
                                 | select((.content // "") | test("\\S"))
                             ]
@@ -193,10 +190,9 @@ wait_for_chat_assistant_done() {
 }
 
 # Send a message that triggers a real run + eager-pin via the same path the
-# web chat composer uses. POST /api/zero/chat/messages is the unified
+# web chat composer uses. POST /api/zero/chat/events is the unified
 # "create thread (if needed) + run + association" endpoint
-# (chatMessagesContract in
-# turbo/packages/api-contracts/src/contracts/chat-threads.ts:281-327).
+# (`chatEventsContract` in the chat-thread API contracts).
 #
 # We can't use `zero chat message send` here: that CLI hits
 # /api/zero/integrations/chat/message, whose handler only inserts an
@@ -212,7 +208,8 @@ send_chat_run_message() {
     local agent_id="$1"
     local prompt="$2"
     local selected_model="$3"
-    local payload body
+    local payload body client_event_id
+    client_event_id=$(cat /proc/sys/kernel/random/uuid)
     # realAgentInPreview=true bypasses USE_MOCK_CODEX in the runner so the real
     # codex CLI executes against $OPENAI_API_KEY. Without it, CI's
     # USE_MOCK_CODEX=true env var causes guest-mock-codex to echo the prompt
@@ -222,8 +219,9 @@ send_chat_run_message() {
         --arg agentId "$agent_id" \
         --arg prompt "$prompt" \
         --arg selectedModel "$selected_model" \
-        '{agentId: $agentId, prompt: $prompt, model: $selectedModel, hasTextContent: true, realAgentInPreview: true}')
-    body=$(_codex_zero_curl "/api/zero/chat/messages" \
+        --arg clientEventId "$client_event_id" \
+        '{agentId: $agentId, prompt: $prompt, userMessage: {version: 1, parts: [{type: "text", text: $prompt}]}, model: $selectedModel, clientEventId: $clientEventId, hasTextContent: true, realAgentInPreview: true}')
+    body=$(_codex_zero_curl "/api/zero/chat/events" \
         -X POST \
         -d "$payload")
     LAST_RUN_ID=$(printf '%s' "$body" | jq -r '.runId // ""')

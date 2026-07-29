@@ -1,10 +1,12 @@
 import { createHash } from "node:crypto";
 import { gunzipSync, gzipSync } from "node:zlib";
 
-import type { ConnectorCatalogSyncFailureCode } from "@vm0/api-contracts/contracts/cron";
+import type { ConnectorCatalogSyncFailureCode } from "@vm0/api-contracts/contracts/connector-catalog-diagnostics";
 import { z } from "zod";
 
 import { safeJsonParse, safeSync } from "../../utils";
+import type { ApiDispatchTimingActionType } from "../api-dispatch-timing.service";
+import type { ConnectorCatalogLoadTiming } from "../connector-catalog-load-timing.service";
 import {
   CONNECTOR_CATALOG_ACTIVE_KEY,
   CONNECTOR_CATALOG_MAX_RAW_BYTES,
@@ -145,33 +147,85 @@ function assertSupportedArtifactSchema(value: unknown): void {
   }
 }
 
+function measureSnapshotPhase<T>(
+  timing: ConnectorCatalogLoadTiming | undefined,
+  actionType: ApiDispatchTimingActionType,
+  operation: () => T,
+): T {
+  return timing ? timing.measureSync(actionType, operation) : operation();
+}
+
+function validateCatalogJson(args: {
+  readonly json: unknown;
+  readonly catalogVersion: string;
+  readonly timing?: ConnectorCatalogLoadTiming;
+}): ConnectorCatalogArtifact {
+  const artifact = measureSnapshotPhase(
+    args.timing,
+    "api_dispatch_connector_catalog_validate_schema",
+    () => {
+      assertSupportedArtifactSchema(args.json);
+      const parsed = parseStrict(
+        args.json,
+        connectorCatalogArtifactSchema,
+        "invalid-artifact",
+      );
+      if (parsed.catalogVersion !== args.catalogVersion) {
+        fail("invalid-reference");
+      }
+      return parsed;
+    },
+  );
+  measureSnapshotPhase(
+    args.timing,
+    "api_dispatch_connector_catalog_validate_public_projection",
+    () => {
+      const publicProjection = safeSync(() => {
+        validateConnectorCatalogPublicProjection(artifact);
+      });
+      if (!("ok" in publicProjection)) {
+        fail("public-leakage");
+      }
+    },
+  );
+  measureSnapshotPhase(
+    args.timing,
+    "api_dispatch_connector_catalog_validate_relationships",
+    () => {
+      const relationships = safeSync(() => {
+        validateConnectorCatalogArtifact(artifact);
+      });
+      if (!("ok" in relationships)) {
+        fail("relationship-mismatch");
+      }
+    },
+  );
+  return artifact;
+}
+
+function decodeCatalogJson(
+  bytes: Uint8Array,
+  timing: ConnectorCatalogLoadTiming | undefined,
+): unknown {
+  return measureSnapshotPhase(
+    timing,
+    "api_dispatch_connector_catalog_decode_json",
+    () => {
+      return decodedJson(bytes);
+    },
+  );
+}
+
 function parseAndValidateCatalog(args: {
   readonly bytes: Uint8Array;
   readonly catalogVersion: string;
+  readonly timing?: ConnectorCatalogLoadTiming;
 }): ConnectorCatalogArtifact {
-  const json = decodedJson(args.bytes);
-  assertSupportedArtifactSchema(json);
-  const artifact = parseStrict(
-    json,
-    connectorCatalogArtifactSchema,
-    "invalid-artifact",
-  );
-  if (artifact.catalogVersion !== args.catalogVersion) {
-    fail("invalid-reference");
-  }
-  const publicProjection = safeSync(() => {
-    validateConnectorCatalogPublicProjection(artifact);
+  return validateCatalogJson({
+    json: decodeCatalogJson(args.bytes, args.timing),
+    catalogVersion: args.catalogVersion,
+    ...(args.timing === undefined ? {} : { timing: args.timing }),
   });
-  if (!("ok" in publicProjection)) {
-    fail("public-leakage");
-  }
-  const relationships = safeSync(() => {
-    validateConnectorCatalogArtifact(artifact);
-  });
-  if (!("ok" in relationships)) {
-    fail("relationship-mismatch");
-  }
-  return artifact;
 }
 
 export const CONNECTOR_CATALOG_ACTIVE_MAX_BYTES = ACTIVE_POINTER_MAX_BYTES;
@@ -237,27 +291,87 @@ function gunzipCatalog(bytes: Uint8Array): Buffer {
   fail("invalid-compression");
 }
 
-export function decodeConnectorCatalogSnapshot(args: {
+interface ConnectorCatalogSnapshotDecodeArgs {
   readonly catalogGzip: Uint8Array;
   readonly catalogRawSize: number;
   readonly catalogVersion: string;
   readonly catalogDigest: string;
-}): DecodedConnectorCatalogSnapshot {
+  readonly timing?: ConnectorCatalogLoadTiming;
+}
+
+function decodeConnectorCatalogSnapshotJson(
+  args: ConnectorCatalogSnapshotDecodeArgs,
+): unknown {
   if (
     args.catalogGzip.byteLength > CONNECTOR_CATALOG_MAX_GZIP_BYTES ||
     args.catalogRawSize > CONNECTOR_CATALOG_MAX_RAW_BYTES
   ) {
     fail("object-too-large");
   }
-  const rawBytes = gunzipCatalog(args.catalogGzip);
-  if (rawBytes.byteLength !== args.catalogRawSize) {
-    fail("invalid-reference");
-  }
-  assertDigest(rawBytes, args.catalogDigest);
+  const rawBytes = measureSnapshotPhase(
+    args.timing,
+    "api_dispatch_connector_catalog_decompress",
+    () => {
+      const decompressed = gunzipCatalog(args.catalogGzip);
+      if (decompressed.byteLength !== args.catalogRawSize) {
+        fail("invalid-reference");
+      }
+      return decompressed;
+    },
+  );
+  measureSnapshotPhase(
+    args.timing,
+    "api_dispatch_connector_catalog_verify_digest",
+    () => {
+      assertDigest(rawBytes, args.catalogDigest);
+    },
+  );
+  return decodeCatalogJson(rawBytes, args.timing);
+}
+
+export function decodeConnectorCatalogSnapshot(
+  args: ConnectorCatalogSnapshotDecodeArgs,
+): DecodedConnectorCatalogSnapshot {
   return {
-    artifact: parseAndValidateCatalog({
-      bytes: rawBytes,
+    artifact: validateCatalogJson({
+      json: decodeConnectorCatalogSnapshotJson(args),
       catalogVersion: args.catalogVersion,
+      ...(args.timing === undefined ? {} : { timing: args.timing }),
     }),
   };
+}
+
+function assertAttestedConnectorCatalogArtifact(
+  value: unknown,
+  catalogVersion: string,
+): asserts value is ConnectorCatalogArtifact {
+  if (!isRecord(value)) {
+    fail("invalid-artifact");
+  }
+  if (
+    typeof value.artifactSchemaVersion === "number" &&
+    value.artifactSchemaVersion !== SUPPORTED_CONNECTOR_CATALOG_SCHEMA_VERSION
+  ) {
+    fail("unsupported-schema");
+  }
+  if (
+    value.artifactSchemaVersion !==
+      SUPPORTED_CONNECTOR_CATALOG_SCHEMA_VERSION ||
+    typeof value.catalogVersion !== "string"
+  ) {
+    fail("invalid-artifact");
+  }
+  if (value.catalogVersion !== catalogVersion) {
+    fail("invalid-reference");
+  }
+}
+
+export function decodeAttestedConnectorCatalogSnapshot(
+  args: ConnectorCatalogSnapshotDecodeArgs,
+): DecodedConnectorCatalogSnapshot {
+  const artifact = decodeConnectorCatalogSnapshotJson(args);
+  // The exact-digest compatibility row and current validator authority
+  // establish deep schema and semantic validity. Keep this boundary local.
+  assertAttestedConnectorCatalogArtifact(artifact, args.catalogVersion);
+  return { artifact };
 }

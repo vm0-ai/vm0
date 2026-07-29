@@ -28,9 +28,9 @@ setup_file() {
         "$(jq -nc \
             --arg subdomain "$TEST_SUBDOMAIN" \
             '{
-                ZENDESK_API_TOKEN: "fake-zendesk-token-for-e2e",
-                ZENDESK_SUBDOMAIN: $subdomain,
-                ZENDESK_EMAIL: "e2e@test.vm0.ai"
+                apiToken: "fake-zendesk-token-for-e2e",
+                subdomain: $subdomain,
+                email: "e2e@test.vm0.ai"
             }')"
 
     # Create artifact

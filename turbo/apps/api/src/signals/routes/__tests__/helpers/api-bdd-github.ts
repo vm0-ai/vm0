@@ -11,14 +11,13 @@ import {
   type GithubConnectUserBody,
   type GithubInstallationResponse,
 } from "@vm0/api-contracts/contracts/integrations-github";
-import { orgDefaultAgentContract } from "@vm0/api-contracts/contracts/orgs";
 import { zeroConnectorsByTypeContract } from "@vm0/api-contracts/contracts/zero-connectors";
 import { zeroFeatureSwitchesContract } from "@vm0/api-contracts/contracts/zero-feature-switches";
 import {
   zeroSecretsContract,
   zeroVariablesContract,
 } from "@vm0/api-contracts/contracts/zero-secrets";
-import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
+import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import { HttpResponse, http } from "msw";
 import { z } from "zod";
 
@@ -466,18 +465,6 @@ export function createGithubBddApi(context: TestContext) {
       await accept(
         client.set({ headers: authenticate(actor), body: { name, value } }),
         [200, 201],
-      );
-    },
-
-    async setDefaultAgent(actor: ApiTestUser, agentId: string): Promise<void> {
-      const client = setupApp({ context })(orgDefaultAgentContract);
-      await accept(
-        client.setDefaultAgent({
-          headers: authenticate(actor),
-          query: {},
-          body: { agentId },
-        }),
-        [200],
       );
     },
 

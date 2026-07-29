@@ -31,7 +31,7 @@ use crate::duration::duration_ms;
 use crate::error::{ApiStatusError, RunnerError, RunnerResult};
 use crate::http::{ApiRequestBuilder, HttpClient};
 use crate::ids::RunId;
-use crate::run_cancellation::SharedRunCancellationMap;
+use crate::run_cancellation::RunCancellationRegistry;
 use crate::types::{
     CompleteRequest, ExecutionContext, HeartbeatState, Job, NetworkPolicyRefreshBatchResponse,
     PollResponse, SandboxReuseResult,
@@ -42,13 +42,6 @@ use sandbox::SandboxId;
 #[serde(rename_all = "camelCase")]
 struct ClaimRequestBody {
     telemetry: ClaimRequestTelemetry,
-    capabilities: [ClaimCapability; 1],
-}
-
-#[derive(Serialize)]
-enum ClaimCapability {
-    #[serde(rename = "storage-mounts-v1")]
-    StorageMountsV1,
 }
 
 #[derive(Serialize)]
@@ -177,6 +170,26 @@ enum DiscoveryWakeup {
 /// - **Discovery**: HTTP poll fallback (adaptive interval)
 /// - **Claim**: `POST /api/runners/jobs/{id}/claim`
 /// - **Complete**: `POST /api/webhooks/agent/complete` with per-job sandbox token
+///
+/// ## Claim failure and rediscovery
+///
+/// Claim is also feedback into discovery. A successful or unavailable claim
+/// clears any per-run cooldown; an unavailable claim promptly polls the backlog.
+/// Other failures are classified as transient or deterministic and give that run
+/// a corresponding runner-local cooldown.
+///
+/// While a run is cooling down, matching direct candidates are skipped and the
+/// bounded active run IDs are sent as optional poll exclusions. Recording a
+/// per-run cooldown requests an immediate poll so unrelated candidates can make
+/// progress. An empty excluded poll schedules a deferred retry through the
+/// `PollWakeups` state machine. If every exclusion expires while that poll is in
+/// flight, the provider immediately polls again without the stale exclusions.
+///
+/// An older API may ignore the additive exclusions and return a cooled run. The
+/// provider therefore checks returned candidates locally and defers rather than
+/// reclaiming that run at network-round-trip cadence. Cooldown capacity never
+/// evicts an active entry; saturation instead applies a short provider-wide
+/// cooldown and defers all discovery before retrying.
 pub struct ApiProvider {
     api: ApiClient,
     runner_id: String,
@@ -192,7 +205,7 @@ pub struct ApiProvider {
     claim_cooldowns: ClaimCooldowns,
     /// Background Ably control-plane task.
     ably_supervisor: Mutex<Option<AblySupervisor>>,
-    cancel_tokens: SharedRunCancellationMap,
+    cancel_tokens: RunCancellationRegistry,
     network_policy_refresh: NetworkPolicyRefreshHandle,
     builtin_firewall_catalog_refresh: BuiltinFirewallCatalogRefreshController,
     /// Shutdown signal.
@@ -218,7 +231,7 @@ impl ApiProvider {
         config: ApiProviderConfig,
         builtin_firewall_catalog_cache_paths: BuiltinFirewallCatalogCachePaths,
         cancel: CancellationToken,
-        cancel_tokens: SharedRunCancellationMap,
+        cancel_tokens: RunCancellationRegistry,
     ) -> Arc<Self> {
         let ApiProviderConfig {
             runner_id,
@@ -408,7 +421,7 @@ impl ApiProvider {
             profiles: self.supported_profiles.clone(),
             poll_wakeups: Arc::clone(&self.poll_wakeups),
             direct_candidates: Arc::clone(&self.direct_candidates),
-            cancel_tokens: Arc::clone(&self.cancel_tokens),
+            cancel_tokens: self.cancel_tokens.clone(),
             network_policy_refresh: self.network_policy_refresh.clone(),
             provider_cancel: self.cancel.clone(),
         }));
@@ -515,8 +528,6 @@ impl JobProvider for ApiProvider {
                     if self.cancel.is_cancelled() {
                         return None;
                     }
-                    // Fall back to default profile when server doesn't send one
-                    // (backwards compat with pre-profile API).
                     let run_id = job.run_id;
                     let cli_agent_session_id = job.cli_agent_session_id;
                     let history_generation_run_id = job.history_generation_run_id;
@@ -524,9 +535,7 @@ impl JobProvider for ApiProvider {
                         job.history_generation_affinity_protected_until;
                     let affinity_protected_until = job.affinity_protected_until;
                     let session_affinity_resource = job.session_affinity_resource;
-                    let profile = job
-                        .experimental_profile
-                        .unwrap_or_else(|| crate::profile::DEFAULT_PROFILE.to_owned());
+                    let profile = job.experimental_profile;
                     info!(run_id = %run_id, %profile, poll_reason = ?reason, "poll: job found");
                     let mut candidate = JobCandidate::new(run_id, profile)
                         .with_affinity_metadata(cli_agent_session_id, affinity_protected_until)
@@ -599,7 +608,7 @@ impl JobProvider for ApiProvider {
             }
             Ok(None) => {
                 self.claim_cooldowns.remove(run_id).await;
-                info!(run_id = %run_id, "already claimed, skipping");
+                info!(run_id = %run_id, "job unavailable, skipping");
                 self.poll_wakeups.request_immediate_poll().await;
                 None
             }
@@ -896,8 +905,7 @@ impl ApiClient {
         Ok(())
     }
 
-    /// Claim a job for execution. Treats the current HTTP 404 unavailable
-    /// response and the legacy HTTP 409 conflict response as a lost race so
+    /// Claim a job for execution. Treats HTTP 404 as an unavailable job so
     /// callers can continue gracefully.
     async fn claim(
         &self,
@@ -920,10 +928,6 @@ impl ApiClient {
             "claim",
         )
         .await?;
-
-        if resp.status() == StatusCode::CONFLICT {
-            return Ok(None);
-        }
 
         if resp.status() == StatusCode::NOT_FOUND {
             return Ok(None);
@@ -1093,7 +1097,6 @@ fn claim_request_body(candidate: &JobCandidate) -> ClaimRequestBody {
                 .map(claim_telemetry_duration_ms),
             poll_reason: candidate.poll_reason().map(String::from),
         },
-        capabilities: [ClaimCapability::StorageMountsV1],
     }
 }
 
@@ -1625,6 +1628,19 @@ mod tests {
         )
     }
 
+    fn api_provider_for_test_with_supported_profiles(
+        api_url: String,
+        cancel: CancellationToken,
+        poll_wakeups: Arc<PollWakeups>,
+        supported_profiles: Vec<String>,
+    ) -> Arc<ApiProvider> {
+        let mut provider = api_provider_for_test(api_url, cancel, poll_wakeups);
+        Arc::get_mut(&mut provider)
+            .expect("fresh test provider should not be shared")
+            .supported_profiles = supported_profiles;
+        provider
+    }
+
     fn api_provider_for_test_with_claim_cooldown_capacity(
         api_url: String,
         cancel: CancellationToken,
@@ -1654,7 +1670,7 @@ mod tests {
             ),
             claim_cooldowns: ClaimCooldowns::new(claim_cooldown_capacity),
             ably_supervisor: Mutex::new(Some(AblySupervisor::disabled())),
-            cancel_tokens: Arc::new(tokio::sync::Mutex::new(std::collections::HashMap::new())),
+            cancel_tokens: RunCancellationRegistry::new(),
             cancel,
         })
     }
@@ -1955,10 +1971,7 @@ mod tests {
         assert!(!body.to_string().contains("historyHash"));
         assert!(!body.to_string().contains("cacheKey"));
         assert!(!body.to_string().contains("path"));
-        assert_eq!(
-            body["capabilities"],
-            serde_json::json!(["storage-mounts-v1"])
-        );
+        assert!(body.get("capabilities").is_none());
     }
 
     #[test]
@@ -2180,7 +2193,7 @@ mod tests {
                 then.status(200).json_body(serde_json::json!({
                     "job": {
                         "runId": run_id,
-                        "experimentalProfile": "vm0/default",
+                        "experimentalProfile": "vm0/large",
                         "cliAgentSessionId": "sess-poll",
                         "historyGenerationRunId": history_generation_run_id,
                         "historyGenerationAffinityProtectedUntil": "2999-01-01T00:00:00.000Z",
@@ -2190,10 +2203,11 @@ mod tests {
                 }));
             })
             .await;
-        let provider = api_provider_for_test(
+        let provider = api_provider_for_test_with_supported_profiles(
             server.base_url(),
             CancellationToken::new(),
             Arc::new(PollWakeups::new(false)),
+            vec!["vm0/large".to_string()],
         );
 
         let discovered = tokio::time::timeout(Duration::from_secs(1), provider.discover())
@@ -2202,7 +2216,7 @@ mod tests {
             .unwrap();
 
         assert_eq!(discovered.run_id(), run_id);
-        assert_eq!(discovered.profile_name(), "vm0/default");
+        assert_eq!(discovered.profile_name(), "vm0/large");
         assert_eq!(discovered.cli_agent_session_id(), Some("sess-poll"));
         assert_eq!(
             discovered.history_generation_run_id(),
@@ -2473,11 +2487,11 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn lost_claim_race_polls_backlog_without_excluding_run() {
+    async fn unavailable_claim_polls_backlog_without_excluding_run() {
         let server = MockServer::start_async().await;
-        let lost_run_id: RunId = "00000000-0000-0000-0000-00000000001b".parse().unwrap();
+        let unavailable_run_id: RunId = "00000000-0000-0000-0000-00000000001b".parse().unwrap();
         let next_run_id: RunId = "00000000-0000-0000-0000-00000000001c".parse().unwrap();
-        let claim_path = format!("/api/runners/jobs/{lost_run_id}/claim");
+        let claim_path = format!("/api/runners/jobs/{unavailable_run_id}/claim");
         let claim_mock = server
             .mock_async(|when, then| {
                 when.method(POST).path(claim_path.as_str());
@@ -2519,15 +2533,18 @@ mod tests {
         );
         push_direct_candidate_for_test(
             &provider,
-            DirectJobCandidate::new(lost_run_id, crate::profile::DEFAULT_PROFILE.to_string()),
+            DirectJobCandidate::new(
+                unavailable_run_id,
+                crate::profile::DEFAULT_PROFILE.to_string(),
+            ),
         )
         .await;
 
-        let lost = provider.discover().await.unwrap();
-        assert!(provider.claim(lost).await.is_none());
+        let unavailable = provider.discover().await.unwrap();
+        assert!(provider.claim(unavailable).await.is_none());
         let next = tokio::time::timeout(Duration::from_secs(1), provider.discover())
             .await
-            .expect("lost race should promptly poll the backlog")
+            .expect("unavailable claim should promptly poll the backlog")
             .unwrap();
         assert_eq!(next.run_id(), next_run_id);
 
@@ -2986,25 +3003,46 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn api_client_claim_not_found_or_legacy_conflict_is_already_claimed() {
-        for status in [409_u16, 404] {
-            let server = MockServer::start_async().await;
-            let run_id = RunId::nil();
-            let path = format!("/api/runners/jobs/{run_id}/claim");
-            let mock = server
-                .mock_async(|when, then| {
-                    when.method(POST).path(path.as_str());
-                    then.status(status);
-                })
-                .await;
-            let api = api_client_for_server(&server);
+    async fn api_client_claim_not_found_is_unavailable() {
+        let server = MockServer::start_async().await;
+        let run_id = RunId::nil();
+        let path = format!("/api/runners/jobs/{run_id}/claim");
+        let mock = server
+            .mock_async(|when, then| {
+                when.method(POST).path(path.as_str());
+                then.status(404);
+            })
+            .await;
+        let api = api_client_for_server(&server);
 
-            let candidate = JobCandidate::new(run_id, crate::profile::DEFAULT_PROFILE.to_string());
-            let outcome = api.claim(&candidate).await.unwrap();
+        let candidate = JobCandidate::new(run_id, crate::profile::DEFAULT_PROFILE.to_string());
+        let outcome = api.claim(&candidate).await.unwrap();
 
-            assert!(outcome.is_none());
-            mock.assert_async().await;
-        }
+        assert!(outcome.is_none());
+        mock.assert_async().await;
+    }
+
+    #[tokio::test]
+    async fn api_client_claim_conflict_is_api_status_error() {
+        let server = MockServer::start_async().await;
+        let run_id = RunId::nil();
+        let path = format!("/api/runners/jobs/{run_id}/claim");
+        let mock = server
+            .mock_async(|when, then| {
+                when.method(POST).path(path.as_str());
+                then.status(409).body("unexpected conflict");
+            })
+            .await;
+        let api = api_client_for_server(&server);
+
+        let candidate = JobCandidate::new(run_id, crate::profile::DEFAULT_PROFILE.to_string());
+        let error = api.claim(&candidate).await.unwrap_err();
+
+        let ClaimApiError::Request(error) = error else {
+            panic!("expected ClaimApiError::Request");
+        };
+        assert_api_status_error(error, "claim", StatusCode::CONFLICT, "unexpected conflict");
+        mock.assert_async().await;
     }
 
     #[tokio::test]
@@ -3153,6 +3191,61 @@ mod tests {
         );
         assert!(
             !message.contains("github"),
+            "decode error must not include response body values, got: {message}"
+        );
+        mock.assert_async().await;
+    }
+
+    #[tokio::test]
+    async fn api_client_claim_rejects_resume_history_ref_without_encoding() {
+        let server = MockServer::start_async().await;
+        let run_id = RunId::nil();
+        let path = format!("/api/runners/jobs/{run_id}/claim");
+        let mock = server
+            .mock_async(|when, then| {
+                when.method(POST).path(path.as_str());
+                then.status(200).json_body(serde_json::json!({
+                    "runId": run_id,
+                    "prompt": "continue",
+                    "sandboxToken": "claim-sandbox-token",
+                    "cliAgentType": "claude_code",
+                    "resumeSession": {
+                        "sessionId": "session-id",
+                        "historyRef": {
+                            "kind": "blob",
+                            "hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                            "url": "https://storage.example/history?secret=presigned-value",
+                            "rawSize": 42,
+                            "encodedSize": 42
+                        }
+                    },
+                    "billableFirewalls": []
+                }));
+            })
+            .await;
+        let api = api_client_for_server(&server);
+
+        let err = api
+            .claim(&JobCandidate::new(
+                run_id,
+                crate::profile::DEFAULT_PROFILE.to_string(),
+            ))
+            .await
+            .unwrap_err();
+
+        let ClaimApiError::ResponseDecode(message) = err else {
+            panic!("expected ClaimApiError::ResponseDecode");
+        };
+        assert!(
+            message.contains("failed at resumeSession"),
+            "decode error should identify the resume session, got: {message}"
+        );
+        assert!(
+            !message.contains("claim-sandbox-token"),
+            "decode error must not include response body values, got: {message}"
+        );
+        assert!(
+            !message.contains("presigned-value"),
             "decode error must not include response body values, got: {message}"
         );
         mock.assert_async().await;
@@ -3971,34 +4064,58 @@ mod tests {
             Arc::new(PollWakeups::new(false)),
         );
 
-        let completion = capture_api_provider_events(provider.complete(
-            run_id,
-            1,
-            Some("boom"),
-            None,
-            None,
-            CompletionAuth::sandbox_token(run_id, "sandbox-token".to_string()),
-        ));
-        let observe_requests = async {
-            let first_request = next_request(&mut requests).await;
-            assert_complete_authorization(&first_request, "sandbox-token");
-            tokio::task::yield_now().await;
+        let captured = CapturedEvents::default();
+        let subscriber = tracing_subscriber::registry().with(captured.clone());
+        let completion = provider
+            .complete(
+                run_id,
+                1,
+                Some("boom"),
+                None,
+                None,
+                CompletionAuth::sandbox_token(run_id, "sandbox-token".to_string()),
+            )
+            .with_subscriber(subscriber);
+        tokio::pin!(completion);
+
+        let first_request = tokio::select! {
+            () = &mut completion => panic!("completion should wait before the retry"),
+            request = next_request(&mut requests) => request,
+        };
+        assert_complete_authorization(&first_request, "sandbox-token");
+        // Establish the retry timer before advancing paused time.
+        std::future::poll_fn(|cx| {
             assert!(
-                requests.try_recv().is_err(),
+                completion.as_mut().poll(cx).is_pending(),
                 "completion should wait before the retry"
             );
-            tokio::time::advance(Duration::from_secs(2)).await;
-            let second_request = next_request(&mut requests).await;
-            assert_complete_authorization(&second_request, "sandbox-token");
-        };
+            if captured.entries().iter().any(|event| {
+                event
+                    .fields
+                    .get("message")
+                    .is_some_and(|message| message == "completion report failed, retrying")
+            }) {
+                std::task::Poll::Ready(())
+            } else {
+                std::task::Poll::Pending
+            }
+        })
+        .await;
+        assert!(
+            requests.try_recv().is_err(),
+            "completion should wait before the retry"
+        );
 
-        let (((), events), ()) = tokio::join!(completion, observe_requests);
+        tokio::time::advance(Duration::from_secs(2)).await;
+        let ((), second_request) = tokio::join!(&mut completion, next_request(&mut requests));
+        assert_complete_authorization(&second_request, "sandbox-token");
         server_task.await.unwrap();
         assert!(
             requests.recv().await.is_none(),
             "completion should stop after the retry"
         );
 
+        let events = captured.entries();
         let run_id = run_id.to_string();
         assert_eq!(
             events

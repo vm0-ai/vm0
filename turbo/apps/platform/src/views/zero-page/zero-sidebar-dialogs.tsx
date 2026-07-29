@@ -32,7 +32,6 @@ import {
 import { unreadAgentIds$ } from "../../signals/chat-page/sidebar-unread-threads.ts";
 import {
   agentListDialogChatThreads$,
-  agentUnreadIndicatorsEnabled$,
   chatThreadUnifiedSearchEnabled$,
   type AgentListDialogChatThread,
   type AgentListDialogChatThreadResult,
@@ -43,7 +42,7 @@ import { equalArrays, equalSets } from "../../lib/equality.ts";
 import { AgentAvatarImg, AvatarFromUrl } from "./zero-sidebar-shared.tsx";
 import { AgentRowSideActions } from "./zero-sidebar-agent-row-actions.tsx";
 
-export interface AgentDialogItem {
+interface AgentDialogItem {
   readonly id: string;
   readonly displayName?: string | null;
 }
@@ -355,14 +354,12 @@ function PinnedAgentCommandItem({
   onUnpin,
   onChat,
   disabled,
-  unreadIndicatorsEnabled,
   hasUnread,
 }: {
   agent: SubagentInfo;
   onUnpin: () => void;
   onChat?: () => void;
   disabled?: boolean;
-  unreadIndicatorsEnabled: boolean;
   hasUnread: boolean;
 }) {
   return (
@@ -375,7 +372,7 @@ function PinnedAgentCommandItem({
       <div className="flex shrink-0 items-center gap-0.5">
         <AgentCommandSideActions>
           <AgentRowSideActions
-            hasUnread={unreadIndicatorsEnabled && hasUnread}
+            hasUnread={hasUnread}
             action={{
               label: "Unpin",
               disabled,
@@ -393,7 +390,6 @@ function LeadAgentCommandSection({
   displayName,
   show,
   zeroAvatarUrl,
-  unreadIndicatorsEnabled,
   defaultAgentId,
   unreadAgentIds,
   onChat,
@@ -401,7 +397,6 @@ function LeadAgentCommandSection({
   readonly displayName: string;
   readonly show: boolean;
   readonly zeroAvatarUrl: string | null;
-  readonly unreadIndicatorsEnabled: boolean;
   readonly defaultAgentId: string | null | undefined;
   readonly unreadAgentIds: ReadonlySet<string> | undefined;
   readonly onChat: () => void;
@@ -427,13 +422,11 @@ function LeadAgentCommandSection({
           }
           subtitle="Your lead assistant, always here for you"
         />
-        {unreadIndicatorsEnabled && (
-          <AgentCommandSideActions>
-            <AgentRowSideActions
-              hasUnread={setHasId(unreadAgentIds, defaultAgentId)}
-            />
-          </AgentCommandSideActions>
-        )}
+        <AgentCommandSideActions>
+          <AgentRowSideActions
+            hasUnread={setHasId(unreadAgentIds, defaultAgentId)}
+          />
+        </AgentCommandSideActions>
       </CommandItem>
     </AgentCommandSection>
   );
@@ -442,14 +435,12 @@ function LeadAgentCommandSection({
 function PinnedAgentsCommandSection({
   agents,
   disabled,
-  unreadIndicatorsEnabled,
   unreadAgentIds,
   onChat,
   onTogglePin,
 }: {
   readonly agents: readonly SubagentInfo[];
   readonly disabled: boolean;
-  readonly unreadIndicatorsEnabled: boolean;
   readonly unreadAgentIds: ReadonlySet<string> | undefined;
   readonly onChat: (agentId: string) => void;
   readonly onTogglePin: (agentId: string) => void;
@@ -471,7 +462,6 @@ function PinnedAgentsCommandSection({
               return onChat(agent.id);
             }}
             disabled={disabled}
-            unreadIndicatorsEnabled={unreadIndicatorsEnabled}
             hasUnread={setHasId(unreadAgentIds, agent.id)}
           />
         );
@@ -483,14 +473,12 @@ function PinnedAgentsCommandSection({
 function UnpinnedAgentsCommandSection({
   agents,
   disabled,
-  unreadIndicatorsEnabled,
   unreadAgentIds,
   onChat,
   onTogglePin,
 }: {
   readonly agents: readonly SubagentInfo[];
   readonly disabled: boolean;
-  readonly unreadIndicatorsEnabled: boolean;
   readonly unreadAgentIds: ReadonlySet<string> | undefined;
   readonly onChat: (agentId: string) => void;
   readonly onTogglePin: (agentId: string) => void;
@@ -513,9 +501,7 @@ function UnpinnedAgentsCommandSection({
             <AgentCommandAgentContent agent={agent} />
             <AgentCommandSideActions>
               <AgentRowSideActions
-                hasUnread={
-                  unreadIndicatorsEnabled && setHasId(unreadAgentIds, agent.id)
-                }
+                hasUnread={setHasId(unreadAgentIds, agent.id)}
                 action={{
                   label: "Pin to sidebar",
                   disabled,
@@ -662,7 +648,6 @@ export function AgentListDialog({
   const query = useGet(chatListQuery$);
   const setQuery = useSet(setChatListQuery$);
   const pinnedIds = useLastResolved(pinnedAgentIds$) ?? [];
-  const unreadIndicatorsEnabled = useGet(agentUnreadIndicatorsEnabled$);
   const chatThreadUnifiedSearchEnabled = useGet(
     chatThreadUnifiedSearchEnabled$,
   );
@@ -742,7 +727,6 @@ export function AgentListDialog({
           displayName={displayName}
           show={showLead}
           zeroAvatarUrl={zeroAvatarUrl}
-          unreadIndicatorsEnabled={unreadIndicatorsEnabled}
           defaultAgentId={defaultAgentId}
           unreadAgentIds={unreadAgentIds}
           onChat={() => {
@@ -752,7 +736,6 @@ export function AgentListDialog({
         <PinnedAgentsCommandSection
           agents={filteredPinned}
           disabled={saving}
-          unreadIndicatorsEnabled={unreadIndicatorsEnabled}
           unreadAgentIds={unreadAgentIds}
           onChat={handleChat}
           onTogglePin={togglePin}
@@ -760,7 +743,6 @@ export function AgentListDialog({
         <UnpinnedAgentsCommandSection
           agents={filteredUnpinned}
           disabled={saving}
-          unreadIndicatorsEnabled={unreadIndicatorsEnabled}
           unreadAgentIds={unreadAgentIds}
           onChat={handleChat}
           onTogglePin={togglePin}

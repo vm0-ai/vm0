@@ -2,7 +2,7 @@ import {
   userMessageDocumentSchema,
   type UserMessageDocument,
 } from "@vm0/api-contracts/contracts/chat-threads";
-import { jsonParseOr, throwIfAbort } from "../utils.ts";
+import { jsonParseOr, settle, throwIfAbort, withCleanup } from "../utils.ts";
 
 const CHAT_MESSAGE_CLIPBOARD_ATTR = "data-vm0-chat-message";
 
@@ -17,7 +17,7 @@ export interface ChatClipboardAttachment {
 export interface ChatClipboardPayload {
   text: string;
   attachments: ChatClipboardAttachment[];
-  structuredPrompt?: UserMessageDocument;
+  userMessage?: UserMessageDocument;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -53,19 +53,17 @@ function parseChatClipboardPayload(
   if (!parsed.attachments.every(isChatClipboardAttachment)) {
     return null;
   }
-  const structuredPrompt =
-    parsed.structuredPrompt === undefined
+  const userMessage =
+    parsed.userMessage === undefined
       ? undefined
-      : userMessageDocumentSchema.safeParse(parsed.structuredPrompt);
-  if (structuredPrompt !== undefined && !structuredPrompt.success) {
+      : userMessageDocumentSchema.safeParse(parsed.userMessage);
+  if (userMessage !== undefined && !userMessage.success) {
     return null;
   }
   return {
     text: parsed.text,
     attachments: parsed.attachments,
-    ...(structuredPrompt?.success
-      ? { structuredPrompt: structuredPrompt.data }
-      : {}),
+    ...(userMessage?.success ? { userMessage: userMessage.data } : {}),
   };
 }
 
@@ -135,6 +133,85 @@ async function writeClipboardItem(items: Record<string, Blob>): Promise<void> {
   await navigator.clipboard.write([new ClipboardItem(items)]);
 }
 
+function executeLegacyCopyCommand(): boolean {
+  const command: unknown = Reflect.get(document, "execCommand");
+  if (typeof command !== "function") {
+    return false;
+  }
+  return Reflect.apply(command, document, ["copy"]) === true;
+}
+
+async function runLegacyClipboardCopy(
+  prepare: () => void,
+  cleanup: () => void,
+): Promise<boolean> {
+  const execute = async (): Promise<boolean> => {
+    prepare();
+    const copied = executeLegacyCopyCommand();
+    await Promise.resolve();
+    return copied;
+  };
+  const result = await withCleanup(settle(execute()), cleanup);
+  return result.ok ? result.value : false;
+}
+
+async function writeRichClipboardFallback(
+  plainText: string,
+  html: string,
+): Promise<boolean> {
+  const body = document.body;
+  if (!body) {
+    return false;
+  }
+
+  const selection = window.getSelection();
+  const previousRanges = selection
+    ? Array.from({ length: selection.rangeCount }, (_, index) => {
+        return selection.getRangeAt(index).cloneRange();
+      })
+    : [];
+  const copyTarget = document.createElement("div");
+  copyTarget.contentEditable = "true";
+  copyTarget.setAttribute("aria-hidden", "true");
+  copyTarget.style.position = "fixed";
+  copyTarget.style.left = "-9999px";
+  copyTarget.style.top = "-9999px";
+  copyTarget.innerHTML = html;
+  body.appendChild(copyTarget);
+
+  const copyRange = document.createRange();
+  copyRange.selectNodeContents(copyTarget);
+  selection?.removeAllRanges();
+  selection?.addRange(copyRange);
+
+  let copied = false;
+  const handleCopy = (event: ClipboardEvent) => {
+    if (!event.clipboardData) {
+      return;
+    }
+    event.preventDefault();
+    event.clipboardData.setData("text/plain", plainText);
+    event.clipboardData.setData("text/html", html);
+    copied = true;
+  };
+  document.addEventListener("copy", handleCopy, { once: true });
+  const commandSucceeded = await runLegacyClipboardCopy(
+    () => {
+      selection?.removeAllRanges();
+      selection?.addRange(copyRange);
+    },
+    () => {
+      document.removeEventListener("copy", handleCopy);
+      copyTarget.remove();
+      selection?.removeAllRanges();
+      for (const previousRange of previousRanges) {
+        selection?.addRange(previousRange);
+      }
+    },
+  );
+  return commandSucceeded && copied;
+}
+
 /**
  * Write text to the clipboard with a legacy fallback.
  *
@@ -154,21 +231,20 @@ export async function writeToClipboard(text: string): Promise<boolean> {
     // Clipboard API can throw NotAllowedError on iOS Safari when the user
     // gesture context is lost (e.g. after an async boundary). Fall back to
     // the legacy execCommand approach.
-    // eslint-disable-next-line no-restricted-syntax -- clipboard API requires try/catch for legacy execCommand fallback
-    try {
-      const textarea = document.createElement("textarea");
-      textarea.value = text;
-      textarea.style.position = "fixed";
-      textarea.style.opacity = "0";
-      document.body.appendChild(textarea);
-      textarea.select();
-      document.execCommand("copy");
-      textarea.remove();
-      return true;
-    } catch (fallbackError: unknown) {
-      throwIfAbort(fallbackError);
-      return false;
-    }
+    let textarea: HTMLTextAreaElement | null = null;
+    return await runLegacyClipboardCopy(
+      () => {
+        textarea = document.createElement("textarea");
+        textarea.value = text;
+        textarea.style.position = "fixed";
+        textarea.style.opacity = "0";
+        document.body.appendChild(textarea);
+        textarea.select();
+      },
+      () => {
+        textarea?.remove();
+      },
+    );
   }
 }
 
@@ -176,15 +252,17 @@ export async function writeChatMessageToClipboard(
   payload: ChatClipboardPayload,
 ): Promise<boolean> {
   const plainText = formatPlainText(payload);
-  if (
-    (payload.attachments.length === 0 && !payload.structuredPrompt) ||
-    typeof ClipboardItem === "undefined" ||
-    !navigator.clipboard?.write
-  ) {
+  if (payload.attachments.length === 0 && !payload.userMessage) {
     return await writeToClipboard(plainText);
   }
 
   const html = formatMessageHtml(payload);
+  if (typeof ClipboardItem === "undefined" || !navigator.clipboard?.write) {
+    if (await writeRichClipboardFallback(plainText, html)) {
+      return true;
+    }
+    return await writeToClipboard(plainText);
+  }
   const baseItems: Record<string, Blob> = {
     "text/plain": new Blob([plainText], { type: "text/plain" }),
     "text/html": new Blob([html], { type: "text/html" }),
@@ -196,6 +274,9 @@ export async function writeChatMessageToClipboard(
     return true;
   } catch (error: unknown) {
     throwIfAbort(error);
+    if (await writeRichClipboardFallback(plainText, html)) {
+      return true;
+    }
     return await writeToClipboard(plainText);
   }
 }

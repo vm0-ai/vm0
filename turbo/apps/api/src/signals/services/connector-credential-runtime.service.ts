@@ -1,6 +1,6 @@
 import type { FeatureSwitchContext } from "@vm0/core/feature-switch";
 import { refreshConnectorAuthProviderAccessTokenWithMethod } from "@vm0/connectors/auth-providers";
-import { resolveConnectorAuthClient } from "@vm0/connectors/connector-utils";
+import { resolveConnectorAuthClient } from "@vm0/connectors/connector-auth-method";
 import { connectors } from "@vm0/db/schema/connector";
 import { secrets } from "@vm0/db/schema/secret";
 import { variables } from "@vm0/db/schema/variable";
@@ -468,7 +468,7 @@ async function markConnectorCredentialNeedsReconnectAfterRefreshFailure(args: {
           eq(connectors.userId, args.userId),
           eq(connectors.type, args.connection.connectorRef),
           eq(connectors.authMethod, args.connection.runtimeMethod.authMethodId),
-          sql`${connectors.updatedAt}::text = ${args.connection.stateRevision}`,
+          eq(sql`${connectors.updatedAt}::text`, args.connection.stateRevision),
         ),
       );
   });

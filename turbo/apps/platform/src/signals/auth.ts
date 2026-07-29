@@ -1,3 +1,5 @@
+import { Clerk } from "@clerk/clerk-js";
+import { ui } from "@clerk/ui";
 import { command, computed, state } from "ccstate";
 import { clearSentryUser, setSentryUser } from "../lib/sentry.ts";
 import { clearPostHogUser, setPostHogUser } from "../lib/posthog.ts";
@@ -24,9 +26,10 @@ const CLERK_SATELLITE_REDIRECT_ORIGIN_PATTERN =
 
 type AllowedAuthRedirectOrigin = string | RegExp;
 
-export interface ClerkSatelliteConfig {
+interface ClerkSatelliteConfig {
   readonly domain: typeof PRODUCTION_SATELLITE_HOSTNAME;
   readonly isSatellite: true;
+  readonly satelliteAutoSync: true;
 }
 
 const AD_ATTRIBUTION_PARAMS = [
@@ -77,7 +80,7 @@ export function resolveWebOrigin(): string {
   return deriveServiceOrigin(origin, "www");
 }
 
-export function resolveAppOrigin(): string {
+function resolveAppOrigin(): string {
   const origin = location.origin;
   return !origin || origin === "null" ? "" : origin;
 }
@@ -93,6 +96,7 @@ export function resolveClerkSatelliteConfig(): ClerkSatelliteConfig | null {
   return {
     domain: PRODUCTION_SATELLITE_HOSTNAME,
     isSatellite: true,
+    satelliteAutoSync: true,
   };
 }
 
@@ -289,29 +293,67 @@ export function buildSignInRedirectUrl(
   return redirectUrl ?? resolveAppUrl();
 }
 
+export const clerkUi$ = computed(() => {
+  return ui;
+});
+
 /**
- * Clerk instance signal.
- *
- * Initializes the real Clerk SDK with the publishable key.
+ * Construct Clerk synchronously so the React provider can subscribe before
+ * loading starts. Passing an already-loaded instance can make the provider
+ * miss Clerk's ready event and leave hosted auth UI in its loading fallback.
  */
-export const clerk$ = computed(async () => {
+export const clerkInstance$ = computed(() => {
   const publishableKey = resolvePlatformRuntimeConfig().clerkPublishableKey;
   const satelliteConfig = resolveClerkSatelliteConfig();
 
-  // Dynamic import: @clerk/clerk-js is a 2.8MB webpack monolith (53%
-  // Web3/Solana/Coinbase code we don't use) that cannot be tree-shaken.
-  // Moving it to a separate async chunk avoids blocking initial JS parsing.
-  const { Clerk } = await import("@clerk/clerk-js");
+  const { ClerkUI } = ui;
+  if (!ClerkUI) {
+    throw new Error("Clerk UI module did not provide its renderer");
+  }
 
   const clerkInstance = satelliteConfig
     ? new Clerk(publishableKey, { domain: satelliteConfig.domain })
     : new Clerk(publishableKey);
+
+  // @clerk/react subscribes to status in a passive effect without requesting
+  // the current value. If Clerk loads first, that leaves its context stuck at
+  // "loading". Make every status subscription replay the latest value.
+  const subscribeToStatus = clerkInstance.on.bind(clerkInstance);
+  clerkInstance.on = (event, handler, options) => {
+    subscribeToStatus(event, handler, { ...options, notify: true });
+  };
+
+  // Both VM0 signals and @clerk/react need the loaded instance. Share the
+  // first load instead of issuing concurrent bootstrap requests.
+  const loadClerk = clerkInstance.load.bind(clerkInstance);
+  let loadPromise: Promise<void> | undefined;
+  clerkInstance.load = (options) => {
+    loadPromise ??= loadClerk(options);
+    return loadPromise;
+  };
+
+  return clerkInstance;
+});
+
+/**
+ * Loaded Clerk instance for consumers that need authentication state.
+ */
+export const clerk$ = computed(async (get) => {
+  const clerkInstance = get(clerkInstance$);
+  const satelliteConfig = resolveClerkSatelliteConfig();
   await clerkInstance.load({
-    ...(satelliteConfig ? { isSatellite: true } : {}),
+    ui,
+    ...(satelliteConfig
+      ? {
+          isSatellite: true,
+          satelliteAutoSync: satelliteConfig.satelliteAutoSync,
+        }
+      : {}),
     signInUrl: resolveAppAuthUrl("/sign-in"),
     signUpUrl: resolveAppAuthUrl("/sign-up"),
     afterSignOutUrl: resolveAppAuthUrl("/sign-in"),
   });
+
   return clerkInstance;
 });
 

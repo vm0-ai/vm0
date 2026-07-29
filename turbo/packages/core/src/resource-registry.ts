@@ -128,6 +128,102 @@ function privateR2ArchiveSource(
   };
 }
 
+// Archive digests for the image style packages manually published from
+// vm0-ai/vm0-skills@45e237a. Keep these aligned with the private R2 version ids
+// served by the API download route.
+const IMAGE_STYLE_ARCHIVE_SHA256: Readonly<Record<string, string>> = {
+  "cozy-parlor":
+    "c68f23536a0bd16e2d25b41dc77eb8a7e0ef798bcd10de614697ce73ea20205d",
+  "crowd-ink":
+    "db3938a80247c6407755671d15116d99ef09190289d1af854f64443769528939",
+  "editorial-flatfolk":
+    "f4f4fba414e5f816393f545fc8ee2157e6fc8b19781dd4016e0ed4100f97881a",
+  endpaper: "f43a0e3b9a093132e9cb87569c0daee4cef571434454a64c1eca2c7d586fb041",
+  "flat-poster":
+    "6bd75a94d11e1a5c56169cd509948170b1b2c8abeb3cd1b5edbdfe2fd5e0b83f",
+  "folk-muse":
+    "9f5cd9168a952d0596942382134b9170a80fc51429bf2a027ae73229d1ad9b37",
+  "folk-storybook":
+    "3685d6f4f71e76b25ebb7ef3b15b16e18c4ae167cbd9855272d3fbe8f0597ee4",
+  "grain-poster":
+    "ba19d4a6362b329dbc8c5c3e813d28f7ead5db617ce29efffe6a5709e9d4c3e9",
+  "grainy-duotone":
+    "17341a1b4f2a62e601ad3ccdcd5610dc72e8f51eb275fdb23370164e61f98c1b",
+  "iberian-vignette":
+    "8cf1dc409f64d7d5760787e4a9f60c3d9ff4488847cfed8de57be2e64f0bfc08",
+  "ink-mascot":
+    "b9ab95fa3b6612daea88e7313a14843731eb27daabc3740dcc8e85ec5a7247d0",
+  "ink-storefront":
+    "40b65c731e46f35633fbd18fada81ed2fabebc6d88d521917d4859ce469a4af4",
+  inkdab: "5389733d7cbd35be4cfe060e2e5df4163f1be718a4a2e1486876bf604f089f4e",
+  inkstomp: "70b9605babab9947a77b1bd2efa2130cb69fd4813423b0ccf8fa36b25b77a18a",
+  "iso-scene":
+    "6f1ab27d0558125d0ae9e3e72341560d8cd7928dd361dd9ece37c06c241e6175",
+  "jade-blockprint":
+    "42ad01d6ed018892fb54c9aa6017c68c70b148219a29640afa29ad74e8c757da",
+  "light-pop-portrait":
+    "eea5f691547e524eba32b7f6f5493d6b0e2d908483a1ac1665dc344e53583923",
+  "loose-contour":
+    "2be2ad6955ee3de42e669ec8d7ccba6f0b7461ff6ff2b07c495461f57749d46a",
+  "mellow-pop":
+    "58cbc5d4a9a6096a05107071670b8ae3c9e20a0706b228fc654f33a5936c940b",
+  "mosaic-still-life":
+    "f68d69a25cc686faa7d2d876d91726ff00ecd22f70ddeb53eec460d2682ea797",
+  "notion-illustration":
+    "fd074314a1cc1da0433711da1515e85c1e31e34b393cd66b819e2cf6329a592e",
+  "op-ed-cover":
+    "89f47e7be124c17c9750a7fc5495c0a189b96dc204cdedc38b24cc834e9c02a6",
+  "painterly-botanical":
+    "bca8b9a428cfdc0d3a64466a421367964234d779e209c2e4bfb9a68db8507ce9",
+  papernook: "ef45679989582b781dd629bb5aa0822941e82c1aad0ee8ae435da8e8541c694f",
+  "postcard-illustration":
+    "707dce8362b3d9f28134172ad063861f523fbc66a69109eee8c4a2b00936bd1e",
+  "riso-relic":
+    "a2ca7fdcb2c389690edb4227f51fab59139b35603c1718327780a1de61997ed7",
+  "shadow-pop":
+    "446a1071b82359dbad3d895edc3dc00bc593bca7ada327b45806a23bb2a7ee21",
+  "soft-vector":
+    "7720ac2645bf69091241eb7b1010be7df21e2d1a56d49047526dd4d51bab0c76",
+  "sticker-sheet":
+    "2765eaeed3959c08a0cd9143aa709ffe7b0ff3023b04776aa6ccd09d912c866d",
+  "sunlit-gouache":
+    "fea806daab5589d1370356d6f90cecb676b79ac0f2ee6390d0ad12217cd8ea9b",
+  "tiny-wanderer":
+    "03b1f744718f5b2444ea7e90f1e141771c0960516f4ebf6bd31bf80551e3b714",
+  "vm0-illustration":
+    "03e77d6968190b9f1888a900963135e92f75b40a6c37e1c1bae999ea49669a37",
+};
+
+function imageStyleArchiveSha256(slug: string): string {
+  const sha256 = IMAGE_STYLE_ARCHIVE_SHA256[slug];
+  if (!sha256) {
+    throw new Error(`Missing image style archive sha256 for ${slug}`);
+  }
+  return sha256;
+}
+
+function vm0ImageStyleSource(
+  slug: string,
+  r2ArchiveAvailable = true,
+): ResourceSourceRef {
+  const archiveSha256 = r2ArchiveAvailable
+    ? imageStyleArchiveSha256(slug)
+    : undefined;
+  return {
+    repo: VM0_SKILLS_REPO,
+    ref: VM0_SKILLS_REF,
+    path: `illustration-template/${slug}`,
+    ...(archiveSha256
+      ? {
+          archive: {
+            type: "tar.gz" as const,
+            sha256: archiveSha256,
+          },
+        }
+      : {}),
+  };
+}
+
 const PRESENTATION_RESOURCE_ARCHIVE_SHA256 = {
   colorSystemBauhausPrimary:
     "f42a1d62462f24b1a411889f8011b07bd3f1bb1db82a339cc59cf5ab5be2f475",
@@ -956,6 +1052,15 @@ const RESOURCE_REGISTRY: readonly RegistryEntry[] = [
     targets: ["report"],
   },
   {
+    id: "template:web-prototype-taste-editorial",
+    kind: "template",
+    name: "Taste Editorial Web Prototype",
+    description:
+      "Editorial-minimalist web prototype with warm monochrome canvas, serif display type, hairline borders, pastel chips, and ambient micro-motion.",
+    source: { path: "design-templates/web-prototype-taste-editorial" },
+    targets: ["website"],
+  },
+  {
     id: "template:audio-jingle",
     kind: "template",
     name: "Audio Jingle",
@@ -963,6 +1068,15 @@ const RESOURCE_REGISTRY: readonly RegistryEntry[] = [
       "Audio generation skill — jingles, beds, voiceover, and sound effects. Routes music requests to Suno V5 / Udio / Lyria, speech to MiniMax TTS / FishAudio / ElevenLabs V3, and SFX to ElevenLabs SFX or AudioCraft. Output is one MP3/WAV file…",
     source: { path: "design-templates/audio-jingle" },
     targets: ["intro-video"],
+  },
+  {
+    id: "template:blog-post",
+    kind: "template",
+    name: "Blog Post",
+    description:
+      "A long-form article / blog post — masthead, hero image placeholder, article body with figures and pull quotes, author byline, related posts.",
+    source: { path: "design-templates/blog-post" },
+    targets: ["website"],
   },
   {
     id: "template:clinical-case-report",
@@ -981,12 +1095,22 @@ const RESOURCE_REGISTRY: readonly RegistryEntry[] = [
       "Run a 5-dimension expert design review on any HTML artifact in the project — Philosophy / Visual hierarchy / Detail / Functionality / Innovation, each scored 0–10. Outputs a single self-contained HTML report with a radar chart, evidence…",
     source: { path: "design-templates/critique" },
     targets: [
+      "website",
       "dashboard-design",
       "report",
       "docs-design",
       "poster",
       "mobile-app-design",
     ],
+  },
+  {
+    id: "template:dating-web",
+    kind: "template",
+    name: "Dating Web",
+    description:
+      "A consumer-feeling dating / matchmaking dashboard — left rail navigation, ticker bar of community signals, headline KPIs, a 30-day mutual-matches bar chart, and a match-rate trend block. Editorial typography, restrained accent.",
+    source: { path: "design-templates/dating-web" },
+    targets: ["website"],
   },
   {
     id: "template:dcf-valuation",
@@ -1004,7 +1128,16 @@ const RESOURCE_REGISTRY: readonly RegistryEntry[] = [
     description:
       'A two-spread digital e-guide preview — page 1 is a cover (display title, author, "What\'s inside" stats, table of contents teaser); page 2 is a spread (lesson body with pull-quote and a step list). Lifestyle / creator brand tone.',
     source: { path: "design-templates/digital-eguide" },
-    targets: ["docs-design"],
+    targets: ["website", "docs-design"],
+  },
+  {
+    id: "template:email-marketing",
+    kind: "template",
+    name: "Email Marketing",
+    description:
+      "A brand product-launch email — masthead with wordmark, hero image block, headline lockup with skewed-italic accent, body copy, primary CTA, and a specifications grid. Pure HTML email layout (centered single column, table fallback).",
+    source: { path: "design-templates/email-marketing" },
+    targets: ["website"],
   },
   {
     id: "template:eng-runbook",
@@ -1031,7 +1164,7 @@ const RESOURCE_REGISTRY: readonly RegistryEntry[] = [
     description:
       "A multi-frame gamified mobile-app prototype — three phone frames on a dark showcase stage. Frame 1: cover / poster, Frame 2: today's quests with XP ribbons and a level bar, Frame 3: quest detail. Vivid quest tiles, level ribbon, bottom t…",
     source: { path: "design-templates/gamified-app" },
-    targets: ["mobile-app-design"],
+    targets: ["website", "mobile-app-design"],
   },
   {
     id: "template:github-dashboard",
@@ -1148,6 +1281,15 @@ const RESOURCE_REGISTRY: readonly RegistryEntry[] = [
   },
 
   {
+    id: "template:kami-landing",
+    kind: "template",
+    name: "Kami Landing",
+    description:
+      "Produce a print-grade single-page kami (紙 / 纸) document — warm parchment canvas, ink-blue accent, serif at one weight, no italic, no cool grays. The output reads like a professional white paper or studio one-pager, not an app UI. Multili…",
+    source: { path: "design-templates/kami-landing" },
+    targets: ["website"],
+  },
+  {
     id: "template:kanban-board",
     kind: "template",
     name: "Kanban Board",
@@ -1172,7 +1314,7 @@ const RESOURCE_REGISTRY: readonly RegistryEntry[] = [
     description:
       "Create refreshable, auditable artifacts backed by connector or local data. Trigger when the user asks for live dashboards, refreshable reports, synced views, or reusable data-backed artifacts.",
     source: { path: "design-templates/live-artifact" },
-    targets: ["dashboard-design", "report"],
+    targets: ["dashboard-design", "report", "website"],
   },
   {
     id: "template:live-dashboard",
@@ -1219,6 +1361,16 @@ const RESOURCE_REGISTRY: readonly RegistryEntry[] = [
     source: { path: "design-templates/motion-frames" },
     targets: ["intro-video"],
   },
+  {
+    id: "template:open-design-landing",
+    kind: "template",
+    name: "Editorial Landing",
+    description:
+      "Single-page editorial landing site in the Atelier Zero visual language (Monocle / Apartamento / Études collage). Composes from a typed inputs.json with optional gpt-image-2 assets.",
+    source: { path: "design-templates/open-design-landing" },
+    targets: ["website"],
+  },
+
   {
     id: "template:orbit-general",
     kind: "template",
@@ -1273,6 +1425,26 @@ const RESOURCE_REGISTRY: readonly RegistryEntry[] = [
     source: { path: "design-templates/pm-spec" },
     targets: ["docs-design"],
   },
+  {
+    id: "template:pricing-page",
+    kind: "template",
+    name: "Pricing Page",
+    description:
+      "A standalone pricing page — header, plan tiers, feature comparison table, and an FAQ.",
+    source: { path: "design-templates/pricing-page" },
+    targets: ["website"],
+  },
+
+  {
+    id: "template:saas-landing",
+    kind: "template",
+    name: "Saas Landing",
+    description:
+      "Single-page SaaS landing with hero, features, social proof, pricing, and CTA. Respects the active DESIGN.md color/typography/layout tokens.",
+    source: { path: "design-templates/saas-landing" },
+    targets: ["website"],
+  },
+
   {
     id: "template:social-carousel",
     kind: "template",
@@ -1334,6 +1506,7 @@ const RESOURCE_REGISTRY: readonly RegistryEntry[] = [
       "Wrap any HTML artifact with a side panel of live, parameterized controls — accent color, type scale, density, motion, theme — that rewrite CSS custom properties in real time and persist to localStorage. Lets the user explore variants of…",
     source: { path: "design-templates/tweaks" },
     targets: [
+      "website",
       "dashboard-design",
       "report",
       "docs-design",
@@ -1351,13 +1524,49 @@ const RESOURCE_REGISTRY: readonly RegistryEntry[] = [
     targets: ["intro-video"],
   },
   {
+    id: "template:waitlist-page",
+    kind: "template",
+    name: "Waitlist Page",
+    description:
+      "Minimal pre-launch landing with email capture, brand logo, and optional decorative layer. Reads DESIGN.md for colors, typography, and layout rules.",
+    source: { path: "design-templates/waitlist-page" },
+    targets: ["website"],
+  },
+  {
+    id: "template:web-prototype",
+    kind: "template",
+    name: "Web Prototype",
+    description:
+      "General-purpose desktop web prototype. Single self-contained HTML file built by copying the seed `assets/template.html` and pasting section layouts from `references/layouts.md`. Default for any landing / marketing / docs / SaaS page when…",
+    source: { path: "design-templates/web-prototype" },
+    targets: ["website"],
+  },
+  {
+    id: "template:web-prototype-taste-brutalist",
+    kind: "template",
+    name: "Web Prototype Taste Brutalist",
+    description:
+      "Swiss industrial-print web prototype. Newsprint canvas, monolithic black grotesque, viewport-bleeding numerals, hairline grid dividers, hazard-red accent, ASCII syntax decoration. Distilled from Leonxlnx/taste-skill `brutalist-skill` (Sw…",
+    source: { path: "design-templates/web-prototype-taste-brutalist" },
+    targets: ["website"],
+  },
+  {
+    id: "template:web-prototype-taste-soft",
+    kind: "template",
+    name: "Web Prototype Taste Soft",
+    description:
+      "Apple-tier soft web prototype. Silver/cream canvas, double-bezel cards, button-in-button CTAs, generous squircle radii, spring motion, ambient mesh. Distilled from Leonxlnx/taste-skill `soft-skill` + sections 4–8 of `taste-skill`.",
+    source: { path: "design-templates/web-prototype-taste-soft" },
+    targets: ["website"],
+  },
+  {
     id: "template:wireframe-sketch",
     kind: "template",
     name: "Wireframe Sketch",
     description:
       "A hand-drawn wireframe exploration — graph-paper background, marker / pencil tone, multiple tab labels for variants, sticky-note annotations, scribbled chart placeholders, hatched fills. Reads like a designer's whiteboard before any pixe…",
     source: { path: "design-templates/wireframe-sketch" },
-    targets: ["mobile-app-design", "dashboard-design"],
+    targets: ["website", "mobile-app-design", "dashboard-design"],
   },
   {
     id: "template:x-research",
@@ -2752,11 +2961,7 @@ const RESOURCE_REGISTRY: readonly RegistryEntry[] = [
     description:
       "Zero-native illustration style for hand-drawn product spot illustrations with simple ink contours and soft backgrounds.",
     desc: 'Notion-editorial-style hand-drawn spot illustration. Black brush-pen ink on white, tapered confident strokes, solid-black curly hair, solid-black pants/shoes, 3/4 face turned toward viewer with closed-eye smile and soft nose hint, open breathing body outlines, and 1-3 supporting scene props + ambient marks that frame the moment. Trigger when user says /notion-illustration, asks for a "Notion-style illustration", "Notion spot illustration", or a new piece in this hand-drawn brush-pen Notion editorial style.',
-    source: {
-      repo: VM0_SKILLS_REPO,
-      ref: VM0_SKILLS_REF,
-      path: "illustration-template/notion-illustration",
-    },
+    source: vm0ImageStyleSource("notion-illustration"),
   },
   {
     id: "image-style:vm0-illustration",
@@ -2765,11 +2970,7 @@ const RESOURCE_REGISTRY: readonly RegistryEntry[] = [
     description:
       "vm0 in-app spot illustration style with bold hand-drawn ink line art, white-filled interiors, and a soft rounded color backdrop.",
     desc: "Generate vm0-style vm0 in-app spot illustrations: bold hand-drawn ink line art with white-filled interiors, a soft rounded color backdrop, transparent output, and simple iconic metaphors for product states.",
-    source: {
-      repo: VM0_SKILLS_REPO,
-      ref: VM0_SKILLS_REF,
-      path: "illustration-template/vm0-illustration",
-    },
+    source: vm0ImageStyleSource("vm0-illustration"),
   },
   {
     id: "image-style:postcard-illustration",
@@ -2778,11 +2979,7 @@ const RESOURCE_REGISTRY: readonly RegistryEntry[] = [
     description:
       "Hand-drawn editorial postcard / travel-journal illustration with fine black ink linework, flat saturated gouache fills, sharp edges, dense small repeated ink patterns, paper-grain texture, sparse white speckles, and a tall portrait composition.",
     desc: 'Hand-drawn editorial postcard illustration style. Fine black marker/pen ink linework over flat saturated gouache color fills with sharp edges, dense small repeated ink patterns on surfaces (rows of windows, shingle curves, hatching, stippling), subtle paper-grain background texture, tiny scattered white speckles (snow / petals / sparkle), and a tall portrait composition with a layered foreground-midground-background. Travel-journal / urban-sketcher aesthetic. Trigger when the user says /postcard-illustration, asks for a "postcard illustration", "travel illustration", "urban sketcher style", or briefs a palette + scene archetype + complexity.',
-    source: {
-      repo: VM0_SKILLS_REPO,
-      ref: VM0_SKILLS_REF,
-      path: "illustration-template/postcard-illustration",
-    },
+    source: vm0ImageStyleSource("postcard-illustration"),
   },
   {
     id: "image-style:folk-storybook",
@@ -2791,11 +2988,7 @@ const RESOURCE_REGISTRY: readonly RegistryEntry[] = [
     description:
       "Folk-art children's picture-book illustration — hand-painted gouache and watercolor scenes with anthropomorphic animal characters, closed-crescent-eye smiles, dusty muted folk palette, and decorative pattern surfaces.",
     desc: "Folk-art children's picture-book illustration style — hand-painted gouache/watercolor scene on aged paper, anthropomorphic animal characters with closed-crescent-eye smiles, dusty muted folk palette, decorative pattern surfaces (wallpaper, rugs, textiles), and a hushed lullaby mood. Trigger when users ask for a folk-art illustration, storybook scene, cozy animal illustration, or any new piece in this Eastern European picture-book style.",
-    source: {
-      repo: VM0_SKILLS_REPO,
-      ref: VM0_SKILLS_REF,
-      path: "illustration-template/folk-storybook",
-    },
+    source: vm0ImageStyleSource("folk-storybook"),
   },
   {
     id: "image-style:papernook",
@@ -2804,11 +2997,7 @@ const RESOURCE_REGISTRY: readonly RegistryEntry[] = [
     description:
       "Hand-drawn editorial illustration set in a cozy cluttered personal-studio scene with warm cream paper, scratchy ink, painterly gouache fills, dot-eye character face, and dense edge-to-edge thematic props.",
     desc: 'Hand-drawn editorial illustration in the spirit of a cluttered personal-studio scene. Loose scratchy black ink outlines that wobble, textured gouache fills with visible brush marks, warm cream paper background, simplified dot-eye character face, and a DENSE edge-to-edge composition where a centered character is orbited by thematic props that visually act out the scene metaphor. Default palette: dusty cornflower blue, soft coral pink, fresh sage green, charcoal, warm cream — no mustard, no burnt-orange. Trigger when user says /papernook, asks for a "papernook illustration", a "cozy cluttered editorial scene", a "warm-cream desk scene", or a new piece in this hand-drawn studio-clutter editorial style.',
-    source: {
-      repo: VM0_SKILLS_REPO,
-      ref: VM0_SKILLS_REF,
-      path: "illustration-template/papernook",
-    },
+    source: vm0ImageStyleSource("papernook"),
   },
   {
     id: "image-style:painterly-botanical",
@@ -2817,11 +3006,7 @@ const RESOURCE_REGISTRY: readonly RegistryEntry[] = [
     description:
       "Painterly watercolor + gouache portrait illustration with a single figure embraced by lush botanicals, closed-eye introspective expression, and a softly tinted paper-wash background.",
     desc: 'Painterly watercolor + gouache portrait illustration. Single figure (closed eyes, contemplative) embraced by botanicals — leaves, blossoms, grasses. Translucent washes with visible pigment bleeds, sparse crisp ink line accents on key edges, tiny handwritten cursive signature in an upper corner, and a tinted paper-wash background (never pure white). Eight user axes drive composition: subject, hair, pose, botanicals, palette, background wash, complexity (L1/L2/L3), and format. Trigger when a brief describes a contemplative figure with foliage, a "watercolor portrait", a "botanical embrace", or asks for a piece in this painterly editorial style.',
-    source: {
-      repo: VM0_SKILLS_REPO,
-      ref: VM0_SKILLS_REF,
-      path: "illustration-template/painterly-botanical",
-    },
+    source: vm0ImageStyleSource("painterly-botanical"),
   },
   {
     id: "image-style:iso-scene",
@@ -2830,11 +3015,7 @@ const RESOURCE_REGISTRY: readonly RegistryEntry[] = [
     description:
       "Isometric editorial-magazine scene illustration with ultra-fine hairline outlines, flat fills, a saturated monochromatic background, and a scene-as-metaphor composition built from theme-native props.",
     desc: 'Isometric editorial-magazine scene illustration in a locked flat-vector style — ultra-fine hairline outlines, monochromatic saturated background filling the canvas, and a single composed scene whose props themselves embody the theme. Trigger when users say /iso-scene, ask for an "isometric editorial illustration", a "scene illustration in the editorial machine style", or brief with palette + scene archetype + complexity.',
-    source: {
-      repo: VM0_SKILLS_REPO,
-      ref: VM0_SKILLS_REF,
-      path: "illustration-template/iso-scene",
-    },
+    source: vm0ImageStyleSource("iso-scene"),
   },
   {
     id: "image-style:inkdab",
@@ -2843,11 +3024,7 @@ const RESOURCE_REGISTRY: readonly RegistryEntry[] = [
     description:
       "Brush-pen editorial illustration where a free-floating color dab is painted first, then loose black ink linework is drawn freely on top — never as an outline around the color. Scribbled hatched hair, open-outline bodies, pure white background.",
     desc: 'Brush-pen editorial illustration style — a flat accent-color "dab" painted first, then loose black ink drawn freely on top. ONE flat accent-color shape per prop (painted-first, never outlined in black), black hand-wobbled ink on pure white background, scribbled hatched hair, open-outline bodies with zero fill, and one small solid-accent triangle floating freely as a recurring motif. Trigger when user says /inkdab, asks for an "inkdab illustration", a "brush-pen illustration with a single accent color", a "free-floating color block illustration", or briefs in the style of the included reference images.',
-    source: {
-      repo: VM0_SKILLS_REPO,
-      ref: VM0_SKILLS_REF,
-      path: "illustration-template/inkdab",
-    },
+    source: vm0ImageStyleSource("inkdab"),
   },
   {
     id: "image-style:riso-relic",
@@ -2856,11 +3033,7 @@ const RESOURCE_REGISTRY: readonly RegistryEntry[] = [
     description:
       'Pop-art retro risograph poster of a single nostalgic everyday object on a saturated single-hue field — bold black ink outlines, halftone grain, hand-drawn doodle accents, tiny "SMALL OBJECTS IN TIME" banner up top, chunky retro headline with offset drop-shadow at the bottom.',
     desc: 'Pop-art retro risograph poster of a single nostalgic everyday object — saturated single-color background, bold black ink outlines, halftone/riso grain, hand-drawn doodle accents (sparkles, squiggles, dots, music notes, lightning), tiny white "SMALL OBJECTS IN TIME" banner at top, chunky retro display headline at bottom with offset black drop-shadow. Trigger when user says /riso-relic, asks for a "riso poster", a "small objects in time" illustration, or any new piece in this nostalgic pop-art relic-object style.',
-    source: {
-      repo: VM0_SKILLS_REPO,
-      ref: VM0_SKILLS_REF,
-      path: "illustration-template/riso-relic",
-    },
+    source: vm0ImageStyleSource("riso-relic"),
   },
   {
     id: "image-style:inkstomp",
@@ -2869,11 +3042,7 @@ const RESOURCE_REGISTRY: readonly RegistryEntry[] = [
     description:
       "Loud indie-packaging poster style — full-bleed saturated flat color, a two-line hand-lettered headline, and one weird-cute black brush-ink character.",
     desc: 'Inkstomp — a loud, hand-screened indie-packaging poster style. Full-bleed saturated flat color filling the entire canvas, a two-line hand-lettered headline (thin arched caps over chunky drop-shadowed display), and one weird-cute character drawn in thick uniform black brush ink. Trigger when the user says /inkstomp, asks for an "inkstomp poster", a "Ray Fenwick / Hattie Stewart packaging poster", an "indie brush-ink flavor card", or briefs in a "palette + headline + character" shape.',
-    source: {
-      repo: VM0_SKILLS_REPO,
-      ref: VM0_SKILLS_REF,
-      path: "illustration-template/inkstomp",
-    },
+    source: vm0ImageStyleSource("inkstomp"),
   },
   {
     id: "image-style:folk-muse",
@@ -2882,11 +3051,7 @@ const RESOURCE_REGISTRY: readonly RegistryEntry[] = [
     description:
       "Flat folk-art gouache portrait style — a single contemplative chest-up figure framed by an asymmetric botanical surround, with painted irises, smooth flat hair, a hand against the cheek, and a patterned robe.",
     desc: 'Flat folk-art gouache portrait illustration in the contemporary editorial style of Carson Ellis, Maja Tomljanovic, and Bodil Jane. A single chest-up figure with an elongated mannerist oval face, tiny almond half-lidded eyes, smooth flat hair, one hand pressed against the face, a patterned robe filling the lower frame, and an asymmetric botanical surround filling the background edge-to-edge. Hand-painted matte gouache texture, flat color blocks, no harsh outlines, no photorealism. Calm, slightly melancholic, contemplative mood. Trigger when the user says /folk-muse, asks for a "folk-art portrait", "gouache portrait", "Carson Ellis style portrait", or any new piece in this contemplative folk-portrait style.',
-    source: {
-      repo: VM0_SKILLS_REPO,
-      ref: VM0_SKILLS_REF,
-      path: "illustration-template/folk-muse",
-    },
+    source: vm0ImageStyleSource("folk-muse"),
   },
   {
     id: "image-style:sunlit-gouache",
@@ -2895,11 +3060,7 @@ const RESOURCE_REGISTRY: readonly RegistryEntry[] = [
     description:
       "Bright pastel travel-painting illustration in opaque gouache on textured paper with chunky flat brushstrokes, vertical one-point perspective, and figures walking into warm sunlight.",
     desc: 'Sunlit Gouache travel-painting illustration. Opaque gouache on textured paper, visible chunky flat brushstrokes with dry-brush highlights, locked six-color palette (cream, butter-yellow, sky-blue, sage-green, terracotta, one small red accent), vertical 2:3 one-point-perspective composition drawing the eye into a bright sunlit focal point, figures seen from behind walking into the scene, an overhead band of hanging elements (awning, prayer flags, catenary, bunting, lanterns) creating depth, dappled painterly reflections on the ground, airy optimistic warm mood. Trigger when user says /sunlit-gouache, asks for a "sunlit gouache illustration", "painterly travel scene", "gouache café/market/temple/station scene", or a new piece in this bright pastel painted-light style.',
-    source: {
-      repo: VM0_SKILLS_REPO,
-      ref: VM0_SKILLS_REF,
-      path: "illustration-template/sunlit-gouache",
-    },
+    source: vm0ImageStyleSource("sunlit-gouache"),
   },
   {
     id: "image-style:mosaic-still-life",
@@ -2908,11 +3069,7 @@ const RESOURCE_REGISTRY: readonly RegistryEntry[] = [
     description:
       "Editorial still-life illustration in a mosaic-tile + painterly hybrid style — tessellated ground/sky/wall surfaces with crisp painterly objects, an animal companion, and a patterned textile peeking through.",
     desc: 'Mosaic-tile + painterly hybrid editorial illustration. Tessellated/pointillist mosaic surfaces (grass, sky, sand, walls, floors) anchor the scene, with crisp painterly still-life objects rendered ON TOP. Always features a still-life centerpiece on a table, an animal companion at the heart of the scene, and at least one patterned textile peeking through. Cozy, nostalgic, bucolic mood. Trigger when user says /mosaic-still-life, asks for a "mosaic illustration", "mosaic-tile editorial illustration", "tessellated still life", or briefs with a palette + scene + animal in this style.',
-    source: {
-      repo: VM0_SKILLS_REPO,
-      ref: VM0_SKILLS_REF,
-      path: "illustration-template/mosaic-still-life",
-    },
+    source: vm0ImageStyleSource("mosaic-still-life"),
   },
   {
     id: "image-style:ink-mascot",
@@ -2921,11 +3078,7 @@ const RESOURCE_REGISTRY: readonly RegistryEntry[] = [
     description:
       "Vintage editorial marketing card. Bold serif headline and short serif descriptor over a hand-drawn black-ink anthropomorphic mascot (stick limbs, chunky white sneakers) on a single solid saturated flat color background.",
     desc: 'Generate a 3:5 portrait editorial marketing card in a locked vintage-textbook style. Bold serif headline plus an optional short serif descriptor sit on a single solid saturated flat color background (no gradient, no divider, no ground line). A hand-drawn black-ink anthropomorphic hero object — paint bucket, magnifying glass, envelope, notebook, funnel, megaphone, rocket, seedling, gift box, compass, etc. — stands with two thin stick arms, two stick legs, and chunky white sneakers with black laces (the signature detail). Crosshatch and stipple shading on rounded surfaces; floating ink doodles (sparkles, arrows, hearts, percent or dollar signs, motion lines) at the requested density. Dialable along six axes: concept, palette, hero object, action, doodle density (L1 minimal, L2 balanced, L3 packed), and type layout (A title-top, B headline-bottom, C headline-only, D big-word + tiny-descriptor). Trigger when user says /ink-mascot, asks for a "marketing card illustration", a "retro editorial mascot poster", or briefs with a marketing concept plus palette plus character.',
-    source: {
-      repo: VM0_SKILLS_REPO,
-      ref: VM0_SKILLS_REF,
-      path: "illustration-template/ink-mascot",
-    },
+    source: vm0ImageStyleSource("ink-mascot"),
   },
   {
     id: "image-style:sticker-sheet",
@@ -2934,11 +3087,7 @@ const RESOURCE_REGISTRY: readonly RegistryEntry[] = [
     description:
       "Hand-painted gouache sticker-sheet illustration with ~20 themed objects floating on white, punchy saturated palette, wobbly hand-drawn ink overlay, and tiny decorative marks on every item.",
     desc: 'Sticker Sheet — hand-painted gouache sticker-sheet illustration. ~20 small floating themed objects on pure white, punchy saturated palette (coral, mustard, sage, dusty pink, navy, cream, warm brown), flat brushy gouache fills with wobbly hand-drawn ink linework and tiny decorative marks (dots, hatches, squiggles) on every object. Each object slightly tilted, no drop shadows, cheerful cozy lifestyle journal mood. Trigger when user says /sticker-sheet, asks for a "sticker sheet illustration", "hand-painted gouache sticker pack", "themed object sheet", or briefs with a scene theme + object count in this house style.',
-    source: {
-      repo: VM0_SKILLS_REPO,
-      ref: VM0_SKILLS_REF,
-      path: "illustration-template/sticker-sheet",
-    },
+    source: vm0ImageStyleSource("sticker-sheet"),
   },
   {
     id: "image-style:flat-poster",
@@ -2947,11 +3096,7 @@ const RESOURCE_REGISTRY: readonly RegistryEntry[] = [
     description:
       "Vertical flat-color editorial poster style — saturated solid background, one centered hand-drawn vector subject in bold deep-navy outlines with strict two-tone fill, headline pinned top-left, wordmark pinned bottom-right.",
     desc: 'Flat Poster — a vertical flat-color editorial poster style for brand benefit cards, marketing posters, and in-app campaign visuals. Portrait 2:3 canvas filled edge-to-edge with one saturated hue; a single centered hand-drawn vector subject in deep-navy outlines with strict two-tone fill (pure white plus one darker bg-tint accent); a bold rounded sans-serif headline pinned top-left; a short wordmark (default VM0) pinned bottom-right; small floating accent marks around the subject; no body copy. Six creative dials: palette, subject archetype, composition preset, accent marks, headline voice, mood. Trigger when the user says /flat-poster, asks for a "flat-color editorial poster", a "brand benefit card", a "marketing card in the bold outline + flat color style", or briefs with a palette + subject + headline shape.',
-    source: {
-      repo: VM0_SKILLS_REPO,
-      ref: VM0_SKILLS_REF,
-      path: "illustration-template/flat-poster",
-    },
+    source: vm0ImageStyleSource("flat-poster"),
   },
   {
     id: "image-style:mellow-pop",
@@ -2960,11 +3105,7 @@ const RESOURCE_REGISTRY: readonly RegistryEntry[] = [
     description:
       "Chill flat-vector editorial poster of a serene recurring character on a fully saturated solid color background, with a signature pop of bright leaf-green and a scene-as-metaphor composition.",
     desc: 'Mellow-pop flat-vector editorial illustration: a recurring chill character with closed-eye smile, tiny nose hint, and short dark bobbed hair, posed inside a scene-as-metaphor composition on a single fully saturated solid color background, with a signature pop of bright leaf-green woven into every piece (hero prop, plants, motifs, or sweater). Thin uniform black outlines, flat solid fills only, no gradients or texture. Five dials per brief: palette, scene metaphor, complexity (L1/L2/L3), pose, outfit accent. Trigger when user says /mellow-pop, asks for a "mellow-pop illustration", "chill flat-vector poster", or briefs with a scene metaphor + palette + complexity.',
-    source: {
-      repo: VM0_SKILLS_REPO,
-      ref: VM0_SKILLS_REF,
-      path: "illustration-template/mellow-pop",
-    },
+    source: vm0ImageStyleSource("mellow-pop"),
   },
   {
     id: "image-style:grainy-duotone",
@@ -2973,11 +3114,7 @@ const RESOURCE_REGISTRY: readonly RegistryEntry[] = [
     description:
       "Editorial spot illustration on a warm cream background — grainy charcoal-stippled hands, outline-free flat two-tone color blocks with internal patterns, and scattered ambient marks.",
     desc: 'Grainy-duotone editorial spot illustration: warm cream off-white background, grainy charcoal-stippled hands (and occasional faces) drawn in textured black ink, paired with free-floating flat two-tone color blocks that carry NO outlines and are filled with internal patterns (grid, dots, spiral, hatching, squiggles, wavy lines), surrounded by scattered ambient marks (zigzags, triangles, x marks, circles, dashes). Square 1:1 scene-as-metaphor compositions. Five creative dials per brief: palette (two flat hues, e.g. teal+yellow / coral+sage / lavender+mustard / navy+peach / burgundy+dusty pink), elements (hand(s) + 1-3 props like flag, sprout, magnifier, balloons, ladder), scene archetype (Launch / Grow / Connect / Discover / Communicate / Reflect / Navigate / Care / Transform / Build), complexity (L1 minimal / L2 balanced / L3 rich), and mood (celebratory / calm / curious / reflective / determined / warm / quiet). Trigger when user says /grainy-duotone, asks for a "grainy two-tone editorial illustration", "charcoal-stippled hand illustration", "duotone editorial spot", or briefs with a scene metaphor + two-color palette + complexity.',
-    source: {
-      repo: VM0_SKILLS_REPO,
-      ref: VM0_SKILLS_REF,
-      path: "illustration-template/grainy-duotone",
-    },
+    source: vm0ImageStyleSource("grainy-duotone"),
   },
   {
     id: "image-style:op-ed-cover",
@@ -2986,11 +3123,7 @@ const RESOURCE_REGISTRY: readonly RegistryEntry[] = [
     description:
       "Editorial magazine op-ed cover — flat-vector scene with paper grain, elongated ink-line characters, muted retro palette, and a serif headline block in the lower-right.",
     desc: 'Editorial magazine op-ed cover illustration. Flat-vector + paper-grain scene with expressive elongated ink-line characters, gentle painterly shading, 1950s-60s editorial mood, and a serif headline overlay block in the lower-right corner carrying a witty contrarian or declarative title with two short lines of italic body copy. 5-axis framework: palette (background + accent + ink), complexity (L1 single hero / L2 small ensemble / L3 busy crowd), scene metaphor (specific cultural microcosm), headline voice (declarative / pun / appreciative / contrarian), and headline block style (solid vs. translucent). Trigger when user says /op-ed-cover, asks for an "editorial magazine illustration", an "op-ed cover", a "magazine essay illustration", or a scene with a headline overlay in this style.',
-    source: {
-      repo: VM0_SKILLS_REPO,
-      ref: VM0_SKILLS_REF,
-      path: "illustration-template/op-ed-cover",
-    },
+    source: vm0ImageStyleSource("op-ed-cover"),
   },
   {
     id: "image-style:grain-poster",
@@ -2999,11 +3132,7 @@ const RESOURCE_REGISTRY: readonly RegistryEntry[] = [
     description:
       "Flat-vector editorial poster of a serene full-body figure with one hero prop — riso grain on a single textile, closed-eye smile + red cheek blush, muted limited palette.",
     desc: 'Grain Poster — flat-vector editorial illustration of a serene full-body figure interacting with one hero prop (bicycle, bouquet, cat, book, skateboard, sun hat, guitar, dog leash). Closed-eye smile + single round red cheek blush + dark nose mark + solid black hair, silhouette-first (no inked outlines). Riso/halftone grain confined to exactly ONE textile element (skirt or trousers); every other surface is flat color. Muted single-hue background, generous negative space, no headlines or wordmarks. Six tunable dials: palette (cool-dawn · sunset-coral · twilight · forest-green · custom), mood, scene, cast, complexity (L1/L2/L3), framing. Strongest at L1 + side-profile + solo. Trigger when user says /grain-poster, asks for a "flat-vector editorial poster", "riso-grain figure poster", "grainy editorial illustration", or briefs with a scene + palette + cast in this house style.',
-    source: {
-      repo: VM0_SKILLS_REPO,
-      ref: VM0_SKILLS_REF,
-      path: "illustration-template/grain-poster",
-    },
+    source: vm0ImageStyleSource("grain-poster"),
   },
   {
     id: "image-style:light-pop-portrait",
@@ -3012,11 +3141,7 @@ const RESOURCE_REGISTRY: readonly RegistryEntry[] = [
     description:
       "Light hand-drawn flat-vector single-character portrait on a fully saturated color block — chunky black hair, big shiny eyes, tiny red nose, pink five-point-star sparkle blush.",
     desc: 'Light Pop Portrait — a hand-drawn flat-vector single-character portrait style for playful avatars, mood pieces, and editorial character cards. Square 1:1 canvas filled with one fully saturated background hue; a single child–tween character with chunky glossy-black hair (with one or two flyaway strands), big round shiny eyes (single white glint each, thin lashes above), tiny round red nose, expressive small mouth, and pink FIVE-POINT STAR sparkle blush on the cheeks (never solid dots). Thin delicate slightly-wavy hand-drawn contour lines, flat solid fills only, no gradients or texture, ~5-color palette per piece. Eight creative dials: expression, hairstyle, gender register, pose, palette, headwear, prop, outfit. Trigger when user says /light-pop-portrait, asks for a "light pop portrait", "flat-vector character portrait", "saturated color-block character", or briefs with expression + hairstyle + palette + prop.',
-    source: {
-      repo: VM0_SKILLS_REPO,
-      ref: VM0_SKILLS_REF,
-      path: "illustration-template/light-pop-portrait",
-    },
+    source: vm0ImageStyleSource("light-pop-portrait"),
   },
   {
     id: "image-style:endpaper",
@@ -3025,11 +3150,7 @@ const RESOURCE_REGISTRY: readonly RegistryEntry[] = [
     description:
       "Riso-grain flat-vector collection of chill characters or objects scattered across a saturated solid color field, with two-tone interior shading and closed-eye sleepy faces.",
     desc: 'Riso-grain flat-vector editorial collection illustration. Many small animals or objects scattered across a fully saturated solid color background — like the inside endpaper of a children\'s picture book. Subtle riso/screenprint grain inside every fill, two-tone interior shading on every character (darker top + lighter belly), closed crescent-eye sleepy smiles with tiny dot noses, NO outlines on character bodies, loose hand-drawn line details on props (yarn spirals, leaf veins, pot stripes), scattered curated composition where characters overlap and touch the canvas edges. Five dials: background hue, cast (cats/dogs/foxes/birds/sea-creatures/houseplants/kitchen-objects/etc.), character palette (3–5 curated fills), density (L1 sparse / L2 balanced / L3 packed), prop vocabulary matched to cast. Trigger when user says /endpaper, asks for an "endpaper illustration", a "scattered animal or object collection on saturated color", a "children\'s-book endpaper scene", or briefs with a cast + background hue + density + palette.',
-    source: {
-      repo: VM0_SKILLS_REPO,
-      ref: VM0_SKILLS_REF,
-      path: "illustration-template/endpaper",
-    },
+    source: vm0ImageStyleSource("endpaper"),
   },
   {
     id: "image-style:editorial-flatfolk",
@@ -3038,11 +3159,7 @@ const RESOURCE_REGISTRY: readonly RegistryEntry[] = [
     description:
       "Editorial hand-drawn naive book-illustration style — flat saturated color blocks, loose ink line overlay, paper grain, and a strong sense of place.",
     desc: 'Editorial hand-drawn naive book-illustration style. Flat saturated color blocks with loose hand-drawn ink line work sitting ON TOP of the color, subtle paper grain across the canvas, simple ink hatching for sky / sun rays / rain / snow, and a strong sense of place built from tall narrow architecture and a one-point depth axis. Five dials per brief: palette (warm-primary, coastal-peach, jewel-night, winter-cool, autumn-rust, monsoon-twilight), scene metaphor (street, harbor, market, transit, park, square, interior, alpine-village), perspective (one-point street, frontal facade, low-angle hero, isometric, top-down), cast (solo wanderer, paired, small crowd, none), and light/weather (midday sun, golden hour, rain, snow, blue hour). Trigger when user says /editorial-flatfolk, asks for an "editorial flat-folk illustration", a "saturated naive book-illustration scene", a "tall narrow row-house illustration", or briefs a palette + scene metaphor + season.',
-    source: {
-      repo: VM0_SKILLS_REPO,
-      ref: VM0_SKILLS_REF,
-      path: "illustration-template/editorial-flatfolk",
-    },
+    source: vm0ImageStyleSource("editorial-flatfolk"),
   },
   {
     id: "image-style:soft-vector",
@@ -3051,11 +3168,7 @@ const RESOURCE_REGISTRY: readonly RegistryEntry[] = [
     description:
       "Airy flat-vector spot illustration — square pale-blue canvas, thin ~1.5-2px dark-navy linework with intentionally open / unclosed outlines, flat fills, one muted accent hue, centered subject with breathing room.",
     desc: 'Soft Vector — an airy flat-vector spot illustration style for in-app onboarding art, empty states, billing cards, and friendly UI moments. Square 1:1 canvas on a single flat pale-blue field #EEF1F5; thin uniform dark-navy outlines (~1.5-2px, rounded caps, NOT chunky); the signature lift comes from several intentionally OPEN / unclosed outlines per piece (mug rim gap, handle that doesn\'t close, ground line ending in mid-air, cloud silhouette break, lamp arm fade, pot rim gap); strictly flat colour fills with no gradients or shading; one muted lead accent (mustard / lime-sage / warm-orange / violet) plus neutrals; subject centered at ~60-75% of canvas with generous breathing room; scattered thin-navy micro-marks (dots, plus signs, sparkles, or motion ticks). Six dials per brief: palette accent, scene metaphor, complexity (L1/L2/L3), cast, accent marks, action/mood. Trigger when user says /soft-vector, asks for a "soft-vector illustration", a "friendly UI onboarding illustration", a "thin-line flat spot illustration", or briefs a scene metaphor + palette + complexity in this house style.',
-    source: {
-      repo: VM0_SKILLS_REPO,
-      ref: VM0_SKILLS_REF,
-      path: "illustration-template/soft-vector",
-    },
+    source: vm0ImageStyleSource("soft-vector"),
   },
   {
     id: "image-style:loose-contour",
@@ -3064,11 +3177,7 @@ const RESOURCE_REGISTRY: readonly RegistryEntry[] = [
     description:
       "Flat editorial spot illustration — open teal contour lines, offset color blobs (printing-misregistration look), one ribbon line on warm cream paper.",
     desc: 'Loose-contour flat editorial spot illustration: confident open-contour ink drawings in dark teal-green (#1e4d4a) over flat offset color blobs (printing-misregistration look) on warm cream paper (#f0ebdc), with exactly one continuous looping ribbon line of the same teal weaving through the scene. Tight 5-color palette: cream + teal + mustard + soft blue + coral. Lines are deliberately broken at joints and edges. Five dials per brief: scene metaphor, cast, complexity (L1/L2/L3), accent lead, ribbon path. Trigger when user says /loose-contour, asks for a "loose-contour illustration", "offset-blob editorial illustration", or "cream paper ribbon-line scene".',
-    source: {
-      repo: VM0_SKILLS_REPO,
-      ref: VM0_SKILLS_REF,
-      path: "illustration-template/loose-contour",
-    },
+    source: vm0ImageStyleSource("loose-contour"),
   },
   {
     id: "image-style:jade-blockprint",
@@ -3077,11 +3186,7 @@ const RESOURCE_REGISTRY: readonly RegistryEntry[] = [
     description:
       "Two-tone hand-drawn block-print spot illustration — accent color painted as free-floating shapes on white, with chunky black ink layered on top. Eight palettes.",
     desc: 'Jade-blockprint two-pass hand-drawn block-print spot illustration: one accent color painted FIRST as free-floating shapes on pure white, then chunky black ink line art layered ON TOP. Color blobs have no perimeter outline — ink draws detail, hatching, and motion marks, never traces the colored shape. Wobbly variable-weight linework with occasional flooded black masses; tiny linocut speckle grain inside color fills. Eight named palettes (jade, coral, cobalt, plum, sage, rose, slate, terracotta) plus custom-hex override. Resolves vague briefs (growth, trust, freedom, fairness) into concrete scene metaphors via an internal synthesizer table before generating. Five dials per piece: palette, scene metaphor, complexity (L1 single object / L2 mini-scene / L3 vignette), motion marks, speckle density. Trigger when the user says /jade-blockprint, asks for a "block-print illustration", "linocut spot illustration", "two-tone screen-print", or briefs a metaphor for a blog cover or marketing card in this style.',
-    source: {
-      repo: VM0_SKILLS_REPO,
-      ref: VM0_SKILLS_REF,
-      path: "illustration-template/jade-blockprint",
-    },
+    source: vm0ImageStyleSource("jade-blockprint"),
   },
   {
     id: "image-style:shadow-pop",
@@ -3090,11 +3195,7 @@ const RESOURCE_REGISTRY: readonly RegistryEntry[] = [
     description:
       "Bright flat-vector illustration with offset black shape shadows, white dashed stitching, palette confetti, and transparent PNG output.",
     desc: 'Bright flat-vector editorial illustration style — every colored shape sits in front of an offset black silhouette of itself (the signature depth trick, no outlines on the fills), with white hand-drawn dashed stitching, scattered palette-colored sparkle confetti, and a fully transparent PNG background so the piece drops cleanly onto any surface. Five dials per brief — palette (default / berry-pop / tropical / citrus-cobalt), scene metaphor, complexity (L1 / L2 / L3), confetti density, and subject domain. Trigger when user says /shadow-pop, asks for a "shadow-pop illustration", a "bright flat-vector illustration with offset shadow", an "in-app illustration with offset shadow trick", or briefs in the style of the included reference images.',
-    source: {
-      repo: VM0_SKILLS_REPO,
-      ref: VM0_SKILLS_REF,
-      path: "illustration-template/shadow-pop",
-    },
+    source: vm0ImageStyleSource("shadow-pop"),
   },
   {
     id: "image-style:tiny-wanderer",
@@ -3103,11 +3204,7 @@ const RESOURCE_REGISTRY: readonly RegistryEntry[] = [
     description:
       "Contemplative bande-dessinée landscape illustration — tiny human dwarfed by vast nature, ink hatching + flat color, vertical portrait canvas.",
     desc: 'Contemplative bande-dessinée landscape illustration in a locked house style — a tiny human (or 2–3 figures) is dwarfed by a vast natural panorama, hand-drawn black ink contour + parallel/cross-hatching for clouds, rock walls, foliage, grass, and water texture, sitting on flat color blocks beneath the ink (no gradients, no airbrush). Restrained 3–5 color palette per piece including black ink, vertical portrait canvas (1024x1536, reads ~3:5). Always outdoor/wilderness. Moebius / Christophe Chabouté travel-sketchbook lineage, quiet wonder mood. Six dials per brief: palette family (sage-plains / sunset-warm / coastal-teal / cool-mist / autumn-rust / winter-pale / custom), landscape archetype (plains+clouds / mountain valley / river vista / rocky ridge / coastal cliffs / misty gorge / forest clearing / alpine pass / desert mesa / lakeshore), activity (walking / cycling / hiking / standing-and-gazing), solitude count (1 / 2 / 3), complexity (L1 single plane / L2 fore+mid / L3 full multi-plane vista), and weather/time (midday / golden hour / sunset / overcast / mist / blue hour). Trigger when user says /tiny-wanderer, asks for a "tiny wanderer illustration", "bande-dessinée landscape", "Moebius-style travel illustration", "ink-hatched vertical landscape", or briefs with a palette + landscape archetype + complexity in this house style.',
-    source: {
-      repo: VM0_SKILLS_REPO,
-      ref: VM0_SKILLS_REF,
-      path: "illustration-template/tiny-wanderer",
-    },
+    source: vm0ImageStyleSource("tiny-wanderer"),
   },
   {
     id: "image-style:iberian-vignette",
@@ -3116,11 +3213,7 @@ const RESOURCE_REGISTRY: readonly RegistryEntry[] = [
     description:
       "Hand-drawn editorial vignette style — loose wobble ink, flat muted cream + burgundy + one accent (sage / mustard / dusty blue / terracotta), minimal abstract faces, observed Mediterranean composition with a serif Spanish wordmark at the bottom.",
     desc: 'Iberian-vignette hand-drawn editorial illustration: loose hand-drawn ink linework with visible wobble and varied weight, flat muted color fills (no gradients, no shading, no texture) on a warm cream off-white background, burgundy/wine always present as the anchor color somewhere in the scene, exactly one secondary accent per piece (sage green / mustard yellow / dusty muted blue / terracotta-rust), minimal abstract faces (tiny dot or short-mark eyes, soft nose hint, almost no mouth), hair as flat color masses, warm sand skin tones, casually-observed body language (leaning, holding, mid-action, never stiffly posed), and a short Spanish serif lowercase wordmark anchored at the bottom center of the canvas. Always grounded by an architectural / scenic prop (stone arched doorway, tall arched window, balcony, sunlit courtyard, wooden counter, archway, stoop, open terrace). Six dials per brief: scene metaphor (trade shop, domestic moment, leisure ritual), cast (solo L1 / pair L2 / 3-4 figures L3), architectural prop, secondary accent (one only), wordmark (Spanish noun), complexity (L1/L2/L3). Trained on nano-banana-2 image-to-image with one of three locked anchor references (mañana / ritmo / familia). Trigger when user says /iberian-vignette, asks for an "Iberian vignette illustration", a "Spanish editorial illustration", a "Mediterranean observed-moment scene", or briefs a scene metaphor + cast + complexity in this hand-drawn editorial style.',
-    source: {
-      repo: VM0_SKILLS_REPO,
-      ref: VM0_SKILLS_REF,
-      path: "illustration-template/iberian-vignette",
-    },
+    source: vm0ImageStyleSource("iberian-vignette"),
   },
   {
     id: "image-style:cozy-parlor",
@@ -3129,11 +3222,7 @@ const RESOURCE_REGISTRY: readonly RegistryEntry[] = [
     description:
       "Hand-painted watercolor + ink-line scene — one anthropomorphic animal in a quiet domestic interior, clean cool-white paper, neutral palette with one hot accent pop.",
     desc: "Hand-painted watercolor + brushy black ink line on clean cool-white paper (no amber tint). ONE anthropomorphic animal mid-quiet-activity in a domestic interior. Closed-crescent-eye smile, minimal facial features, expression through posture. At least two patterned surfaces per piece. Cool/neutral palette lead (sage, slate-blue, cornflower, lavender, mint, dove-gray) with a single hot accent pop (cherry-red, mustard, magenta-pink) on one object. Six dials per brief — cast, activity, palette family, pattern motif stack, hot accent object, and complexity (L1/L2/L3). Trigger when user says /cozy-parlor, asks for a 'cozy parlor illustration', a 'watercolor animal scene', a 'picture-book interior', or a new piece in this neutral-palette watercolor style.",
-    source: {
-      repo: VM0_SKILLS_REPO,
-      ref: VM0_SKILLS_REF,
-      path: "illustration-template/cozy-parlor",
-    },
+    source: vm0ImageStyleSource("cozy-parlor"),
   },
   {
     id: "image-style:crowd-ink",
@@ -3142,11 +3231,7 @@ const RESOURCE_REGISTRY: readonly RegistryEntry[] = [
     description:
       "Hand-drawn editorial crowd illustration — sketchy black ink contours over flat 3-color spot fills on pure white, scene-as-metaphor composition.",
     desc: 'Hand-drawn editorial crowd illustration style — confident sketchy black ink contour lines with slightly irregular weight, flat 3-color spot fills sitting under or beside the ink lines (edges allowed to misregister slightly), on a PURE WHITE background (never cream). Fine-line backdrop drawn lighter than the foreground figures, scattered atmospheric marks in negative space (birds / leaves / steam / confetti / dots), and a scene-as-metaphor composition with a cast that varies per piece. Six dials per brief — palette (tested families: urban editorial / cool transit / warm natural / cozy interior), scene metaphor, complexity (L2 small group of 3–5 / L3 full crowd of 8–10), cast, backdrop, atmospheric motif. Trigger when the user says /crowd-ink, asks for a "crowd-ink illustration", "editorial crowd scene", "hand-drawn ink-and-spot-color illustration", "New-Yorker-style crowd vignette", or briefs with palette + scene metaphor + complexity level.',
-    source: {
-      repo: VM0_SKILLS_REPO,
-      ref: VM0_SKILLS_REF,
-      path: "illustration-template/crowd-ink",
-    },
+    source: vm0ImageStyleSource("crowd-ink"),
   },
   {
     id: "image-style:ink-storefront",
@@ -3155,11 +3240,7 @@ const RESOURCE_REGISTRY: readonly RegistryEntry[] = [
     description:
       "Single-color hand-drawn ink fineliner illustration of a small storefront on warm cream paper — hand-lettered shop sign, foliage, and street props.",
     desc: 'Boutique-poster illustration style — a single-color hand-drawn ink line drawing of a small storefront (café, boulangerie, florist, bookshop, ramen, wine bar, barber, record store, etc.) seen from street level on warm cream paper #f4ecd8. Locked frame: portrait 1024x1536, monochromatic ink with occasional double-stroke shadow under awnings and signs, a hand-lettered shop sign baked into the building, foliage and at least one small street prop (bike, A-frame chalkboard, planters, lanterns, café tables, dog/cat at the door), and a faint horizontal sidewalk line across the bottom. No solid color fills, no shading, no gradients. Seven dials per brief — ink color, shop name + subtitle, archetype, perspective (flat facade vs 3/4 corner), foreground props, foliage density, and complexity (L1 single facade / L2 small scene / L3 full vignette). Trigger when user says /ink-storefront, asks for a "shopfront illustration", "storefront poster", "boutique fineliner illustration", "café line drawing", or briefs with a shop name + ink color + archetype in this house style.',
-    source: {
-      repo: VM0_SKILLS_REPO,
-      ref: VM0_SKILLS_REF,
-      path: "illustration-template/ink-storefront",
-    },
+    source: vm0ImageStyleSource("ink-storefront"),
   },
   {
     id: "image-style:chibi-hero",
@@ -3168,11 +3249,9 @@ const RESOURCE_REGISTRY: readonly RegistryEntry[] = [
     description:
       "Chibi mobile-RPG mascot illustration — oversized-head super-deformed character, warm-dark hand-drawn outlines, cel-shaded flat fills, mid-action pose, transparent background.",
     desc: 'Chibi mobile-RPG mascot illustration style — single full-body hero character with super-deformed proportions (head ~1:1 head-to-body ratio, head dominates the silhouette), bold warm dark brown outline (NOT pure black) of confident even weight, cel-shaded flat color fills with exactly one tier of subtle shadow per surface, always isolated on a transparent background with no scene or ground line. Pose is always mid-action and dynamic (sprint, lunge, mid-cast, low sneak, leap, raised prayer, mid-stumble) — never a static T-pose. Face is simplified and expressive (slit/narrow eyes by default, tiny mouth or none, no fine detail), 3/4 angle view at eye level. Square 1024x1024 canvas. Six dials per brief: archetype (ninja, mage, knight, ranger, alchemist, bard, cleric, rogue, monk, summoner, beastmaster, paladin, druid, necromancer), palette (warm earthy / cool arcane / forest scout / steel + crimson / tinkerer mustard + teal + copper / devout gold + ivory + cyan / desert ochre / ice wraith), hero prop (spear, longbow, staff, dual daggers, tome, hammer, sword + kite shield, smoking flask, lute, scythe, mace, war horn, summoning crystal), pose energy (the verb), outfit complexity (L1 simple tunic / L2 layered cloak + belt + 1-2 accessories / L3 full kit with pauldrons, pouches, sashes, scabbard, trinkets, goggles, capes), and mood (determined, fierce, stoic, focused, mischievous, gleeful, weary, smug, serene-focused). Trigger when user says /chibi-hero, asks for a "chibi hero", a "chibi RPG mascot", a "pocket adventurer character", a "super-deformed hero illustration", or briefs with an archetype + palette + weapon + pose in this style.',
-    source: {
-      repo: VM0_SKILLS_REPO,
-      ref: VM0_SKILLS_REF,
-      path: "illustration-template/chibi-hero",
-    },
+    // Source PR vm0-ai/vm0-skills#240 has not merged, so this style remains
+    // GitHub-only until its package exists on the default branch.
+    source: vm0ImageStyleSource("chibi-hero", false),
   },
 ];
 
@@ -3573,27 +3652,27 @@ const WEBSITE_TEMPLATE_PACKAGES: readonly WebsiteTemplatePackage[] =
 
 const WEBSITE_TEMPLATE_V2_ARCHIVE_SHA256: Record<string, string> = {
   "black-slabs":
-    "840a02ad6e9caac5abfa6abea991f7a0c71fdee16700011d64ad3af7013164cc",
+    "de6f78c5a524cf3959ca56af7a93ec5bca113555bbd1a5983eebf1bc353971d4",
   "blueprint-grid":
-    "8d02b52dfe72d8d0e59ba69e6ee9ffe3ae527c68e6cc89afe04264801c5c8d53",
+    "dec02c4fe156566272a92b7386cb032cec7e3a1250dd42429ca3e7f42374dc28",
   "coastal-hotel":
-    "b9e2ac6e12ee525ce8896b704071eebf439590700d95060c6db76c90d167a08e",
+    "09d239d7a0e1c27334f2c3c8da9e408174cece6bcc8a34342438598db739aa4e",
   "dot-matrix":
-    "823b02b5ac17d4899de867b99a9332912f6ace671cce8a72a91cff9426a661b3",
+    "0beb9b1bcb12ace6d3541df269a629af8e3b41c8f9d7e3c3fcfe069655cd9074",
   "frame-stack":
-    "c2a9d32dadbc0e00c3e29fe78eebe6525757b81e21d39eb25cbf34adb98e2322",
+    "7c4c13eaa22b4185607c6ac6a726dd931fe896b279b38a6267c0105f81214f8b",
   "frosted-scatter":
-    "a2a191134d56a33b90bfc0540c97a022f8f4b028d942ddcd482380ad5e9589ca",
+    "c67a7baf924ae4b57241e61527dd875d084e38040653a9bbcc659c13d2382cf9",
   "gallery-wall":
-    "0295121b12c8ded9a93efd3781e308020ffcb5b71b1f9fc682cac96cf4d5c14a",
+    "f6e41fb711b8c9317a425b463a9812e99f2aecb630d1acbfb77ef0965c2ba55f",
   "glass-bloom":
-    "48374e9ded67087f481b82d260a70438aa2fd9abc33367e4190fa5fb606214e4",
+    "713fbac57cf37a0ddd6d7e7d79a0b9f29f8fff7a0aa55bc741bc5dcd0e498d25",
   "serif-stack":
-    "9cb399465cb5c66ae7fb857986450ef154e7dc7c6e7c59a89281011933c55ab3",
+    "6d5d65fb21d6c5ec5627fe32fbfc55e80841a2343f2d91bf3ee3a0f62547766a",
   "sticker-pop":
-    "5802135c5f922d6ae3748d13468e6bc24549f70c946fdf109b34ff02de471b09",
+    "61954f4652e2cc86cd1016a537078ea050fe95735a7477e6bd56c91a0c0aec3b",
   "warm-cards":
-    "0973164b9b4e3811ab565430043f74a6fa0546ca6f215db64a1eb79bd14542e6",
+    "213197ef200b16738b51b5d6c4a90b6e6c12c86c63207ef6afc31456cdd0d2e1",
 };
 
 function websiteTemplateV2ArchiveSha256(slug: string): string {
@@ -3604,9 +3683,9 @@ function websiteTemplateV2ArchiveSha256(slug: string): string {
   return sha256;
 }
 
-// Keep refreshed packages outside the picker-backed list. The API selects
-// these additive resource ids behind WebsiteTemplateV2 while released clients
-// and users outside the rollout continue pulling the original package ids.
+// Keep refreshed packages outside the picker-backed list. Website generation
+// resolves to these additive v2 resource ids, while released clients continue
+// pulling the original package ids.
 const WEBSITE_TEMPLATE_V2_PACKAGES: readonly WebsiteTemplatePackage[] =
   WEBSITE_TEMPLATE_ITEMS.map((item) => {
     return {
@@ -3774,6 +3853,10 @@ export function findImageStyle(id: string): RegistryEntry | undefined {
   return listImageStyles().find((entry) => {
     return entry.id === id;
   });
+}
+
+export function hasR2Archive(entry: RegistryEntry): boolean {
+  return entry.source.archive !== undefined;
 }
 
 const VIDEO_TEMPLATE_ID_ALIASES: Readonly<Record<string, string>> = {

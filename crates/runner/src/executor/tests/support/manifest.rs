@@ -1,4 +1,4 @@
-use api_contracts::generated::types::runners::storage::{ArtifactEntry, StorageEntry};
+use crate::storage_manifest::{ArtifactEntry, StorageEntry};
 
 pub(in crate::executor::tests) fn api_storage(
     name: &str,

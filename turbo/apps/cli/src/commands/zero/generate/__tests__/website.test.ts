@@ -53,7 +53,16 @@ describe("zero generate website command", () => {
     expect(stdout).toContain("## Candidate Registry Slice");
     expect(stdout).toContain("observability launch site");
     expect(stdout).toContain("template:black-slabs");
-    expect(stdout).not.toContain("template:web-prototype-taste-editorial");
+    expect(stdout).toContain("template:web-prototype-taste-editorial");
+    expect(stdout).toContain(
+      "For landing, marketing, official brand or product, and launch pages, select a vm0 built-in website template.",
+    );
+    expect(stdout).toContain(
+      "For other HTML or website requests, select an Open Design template based on intent; when ambiguous, prefer Open Design.",
+    );
+    expect(stdout).toContain(
+      "Built-in website candidates have `source.archive`; candidates without it are Open Design templates.",
+    );
     expect(stdout).not.toContain("template:html-ppt-pitch-deck");
     expect(stdout).toContain(
       "Write the artifact under `./generated/mockups/clearpath-demo/`.",
@@ -80,21 +89,28 @@ describe("zero generate website command", () => {
     );
   });
 
-  it("should reject an Open Design website template", async () => {
-    await expect(async () => {
-      await generateCommand.parseAsync([
-        "node",
-        "cli",
-        "website",
-        "--prompt",
-        "Pricing page for a SaaS",
-        "--template",
-        "saas-landing",
-      ]);
-    }).rejects.toThrow("process.exit called");
+  it("should accept a restored Open Design website template", async () => {
+    await generateCommand.parseAsync([
+      "node",
+      "cli",
+      "website",
+      "--prompt",
+      "A documentation page for a developer tool",
+      "--template",
+      "web-prototype",
+    ]);
 
-    const stderr = mockConsoleError.mock.calls.flat().join("\n");
-    expect(stderr).toContain("Unknown template for website");
+    const stdout = mockConsoleLog.mock.calls.flat().join("\n");
+    expect(stdout).toContain(
+      "Selected template: template:web-prototype (Web Prototype)",
+    );
+    expect(stdout).toContain("Use the explicitly selected template.");
+    expect(stdout).not.toContain(
+      "For landing, marketing, official brand or product, and launch pages, select a vm0 built-in website template.",
+    );
+    expect(stdout).not.toContain(
+      "Selected template package: zero resource pull template:web-prototype",
+    );
   });
 
   it("should accept the built-in R2 website template package", async () => {

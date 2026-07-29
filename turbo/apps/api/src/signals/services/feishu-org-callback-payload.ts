@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-const feishuOrgCallbackFileSchema = z.object({
+export const feishuOrgCallbackFileSchema = z.object({
   fileId: z.string().min(1),
   messageId: z.string().min(1),
   fileKey: z.string().min(1),
@@ -19,6 +19,7 @@ export const feishuOrgCallbackPayloadSchema = z
     reactionId: z.string().optional(),
     replyInThread: z.boolean().optional(),
     files: z.array(feishuOrgCallbackFileSchema).optional(),
+    canonicalChatDelivery: z.boolean().optional(),
   })
   .passthrough();
 

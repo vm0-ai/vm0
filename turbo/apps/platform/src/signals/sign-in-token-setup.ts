@@ -45,10 +45,17 @@ export const setupSignInTokenPage$ = command(
       return;
     }
 
-    await clerk.setActive({ session: result.createdSessionId });
+    await clerk.setActive({
+      session: result.createdSessionId,
+      navigate: ({ session, decorateUrl }) => {
+        const destination = session.currentTask
+          ? `/sign-in/tasks/${session.currentTask.key}`
+          : "/";
+        window.location.href = decorateUrl(destination);
+      },
+    });
     signal.throwIfAborted();
 
-    L.debug("Token sign-in complete, redirecting to /");
-    set(detachedNavigateTo$, "/", { replace: true });
+    L.debug("Token sign-in complete");
   },
 );

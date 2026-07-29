@@ -1,10 +1,7 @@
 import type { ChatMessage } from "./chat-message-types.ts";
 
-export function isCancelledAssistantMessage(message: ChatMessage): boolean {
-  return (
-    message.role === "assistant" &&
-    message.runId !== undefined &&
-    (message.runLifecycleEvent === "cancelled" ||
-      message.error?.trim().toLowerCase() === "run cancelled")
-  );
+export function isCancelledRunEvent(
+  event: ChatMessage,
+): event is Extract<ChatMessage, { eventType: "run.cancelled" }> {
+  return event.eventType === "run.cancelled";
 }

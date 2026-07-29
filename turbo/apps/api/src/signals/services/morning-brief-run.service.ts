@@ -117,8 +117,56 @@ async function markDeliveryFailed(
     .where(eq(morningBriefDeliveries.id, deliveryId));
 }
 
-function buildMorningBriefPrompt(briefDate: string): string {
+/** The line the member sees in the Morning Brief chat thread. */
+function buildMorningBriefChatMessage(briefDate: string): string {
   return `Generate my Morning Brief for ${briefDate}.`;
+}
+
+function formatMorningBriefLocalTime(timezone: string, date: Date): string {
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: timezone,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  }).format(date);
+}
+
+/**
+ * The prompt the run actually receives.
+ *
+ * The Morning Brief thread keeps one persistent session, so a scheduled run
+ * arrives on top of the previous days' runs. State the facts that separate
+ * this delivery from those: where it came from, which URLs belong to it, and
+ * what the server does with the uploaded object. Facts only — the agent
+ * decides how to act on them.
+ */
+function buildMorningBriefRunPrompt(args: {
+  readonly briefDate: string;
+  readonly timezone: string;
+  readonly deliveryId: string;
+  readonly triggeredAt: Date;
+  readonly inputUrl: string;
+  readonly outputUrl: string;
+}): string {
+  return [
+    buildMorningBriefChatMessage(args.briefDate),
+    "",
+    "# Run facts",
+    "",
+    `- trigger: the Morning Brief schedule fired for ${args.briefDate}; nobody typed this message`,
+    `- fired at: ${formatMorningBriefLocalTime(args.timezone, args.triggeredAt)} (${args.timezone})`,
+    `- delivery id: ${args.deliveryId}`,
+    "- chat thread: every Morning Brief delivery runs in this one thread and keeps its session, so the messages above are earlier deliveries; the URLs they carried are expired",
+    `- collected input for this delivery: HTTP GET ${args.inputUrl}`,
+    `- destination for this delivery's brief: HTTP PUT ${args.outputUrl}`,
+    `- both URLs are signed for delivery ${args.deliveryId} only and expire ${SIGNED_URL_TTL_SECONDS / 60} minutes after the trigger above`,
+    "- email assembly: a server-side job reads the object at the PUT URL, renders the email, and queues it; it runs once a minute",
+    "- when a run ends with no object at the PUT URL: the delivery is recorded failed, no email is queued, and nothing re-runs it",
+    '- the JSON shape expected at the PUT URL is in your system instructions under "# Morning Brief run"',
+  ].join("\n");
 }
 
 function buildMorningBriefAppendSystemPrompt(args: {
@@ -175,7 +223,6 @@ interface ClaimedMorningBrief {
   readonly briefDate: string;
   readonly deliveryId: string;
   readonly currentTime: Date;
-  readonly structuredPromptEnabled: boolean;
 }
 
 /** Feature and once-per-local-date gates; claims the delivery row. */
@@ -225,10 +272,6 @@ async function admitMorningBriefDelivery(
     briefDate,
     deliveryId: delivery.id,
     currentTime,
-    structuredPromptEnabled: isFeatureEnabled(
-      FeatureSwitchKey.StructuredPrompt,
-      featureSwitchContext,
-    ),
   };
 }
 
@@ -269,7 +312,6 @@ const stageMorningBriefInput$ = command(
       dayStart,
       dayEnd,
       excludeChatThreadId: row.chatThreadId,
-      structuredPromptEnabled: claimed.structuredPromptEnabled,
       signal,
     });
     signal.throwIfAborted();
@@ -329,28 +371,31 @@ async function ensureMorningBriefChatThread(
   if (row.chatThreadId) {
     return row.chatThreadId;
   }
-  const chatThreadId = await createAutomationChatThread(db, {
-    userId: row.userId,
-    orgId: row.orgId,
-    agentId,
-    title: MORNING_BRIEF_THREAD_TITLE,
-    currentTime,
+  return await db.transaction(async (tx) => {
+    const chatThreadId = await createAutomationChatThread(tx, {
+      userId: row.userId,
+      orgId: row.orgId,
+      agentId,
+      title: MORNING_BRIEF_THREAD_TITLE,
+      currentTime,
+    });
+    await tx
+      .update(morningBriefSchedules)
+      .set({ chatThreadId, updatedAt: currentTime })
+      .where(
+        and(
+          eq(morningBriefSchedules.orgId, row.orgId),
+          eq(morningBriefSchedules.userId, row.userId),
+        ),
+      );
+    return chatThreadId;
   });
-  await db
-    .update(morningBriefSchedules)
-    .set({ chatThreadId, updatedAt: currentTime })
-    .where(
-      and(
-        eq(morningBriefSchedules.orgId, row.orgId),
-        eq(morningBriefSchedules.userId, row.userId),
-      ),
-    );
-  return chatThreadId;
 }
 
 interface MorningBriefModelContext {
   readonly modelPin: ModelFirstPin;
   readonly effectiveModelProvider: string | null | undefined;
+  readonly cliAgentType: string | null;
   readonly codexServiceTier: "fast" | undefined;
 }
 
@@ -390,6 +435,7 @@ async function resolveMorningBriefModelContext(
   return {
     modelPin: pin,
     effectiveModelProvider: providerAdmission.effectiveModelProvider,
+    cliAgentType: providerAdmission.cliAgentType,
     codexServiceTier: runCodexServiceTier,
   };
 }
@@ -403,16 +449,18 @@ async function recordMorningBriefRunStart(
     readonly chatThreadId: string;
     readonly runId: string;
     readonly runStatus: string;
-    readonly prompt: string;
+    readonly chatMessage: string;
   },
 ): Promise<void> {
   const { claimed, staged, model } = args;
+  // The thread shows the member-facing line; the run-facts prompt with its
+  // signed URLs stays on the run.
   await postRunUserMessage({
     db,
     threadId: args.chatThreadId,
     userId: claimed.row.userId,
     runId: args.runId,
-    prompt: args.prompt,
+    prompt: args.chatMessage,
     appendQueueMarker: args.runStatus === "queued",
   });
 
@@ -482,7 +530,15 @@ const startMorningBriefRun$ = command(
       return "skipped";
     }
 
-    const prompt = buildMorningBriefPrompt(briefDate);
+    const chatMessage = buildMorningBriefChatMessage(briefDate);
+    const runPrompt = buildMorningBriefRunPrompt({
+      briefDate,
+      timezone,
+      deliveryId,
+      triggeredAt: currentTime,
+      inputUrl: staged.inputUrl,
+      outputUrl: staged.outputUrl,
+    });
     const callbacks: {
       readonly internalKind: InternalRunCallbackKind;
       readonly secret: string;
@@ -510,7 +566,7 @@ const startMorningBriefRun$ = command(
           tokenType: "session",
         },
         body: {
-          prompt,
+          prompt: runPrompt,
           agentId,
           ...(model.effectiveModelProvider
             ? { modelProvider: model.effectiveModelProvider }
@@ -523,6 +579,11 @@ const startMorningBriefRun$ = command(
         modelProviderCredentialScope:
           model.modelPin.modelProviderCredentialScope ?? undefined,
         selectedModelOverride: model.modelPin.selectedModel ?? undefined,
+        threadSessionRoute: {
+          selectedModel: model.modelPin.selectedModel,
+          modelProvider: model.effectiveModelProvider ?? null,
+          cliAgentType: model.cliAgentType,
+        },
         codexServiceTier: model.codexServiceTier,
         appendSystemPrompt: buildMorningBriefAppendSystemPrompt({
           briefDate,
@@ -555,7 +616,7 @@ const startMorningBriefRun$ = command(
       chatThreadId,
       runId: result.body.runId,
       runStatus: result.body.status,
-      prompt,
+      chatMessage,
     });
     signal.throwIfAborted();
 
@@ -714,10 +775,6 @@ async function admitManualMorningBrief(
       briefDate,
       deliveryId: delivery.id,
       currentTime,
-      structuredPromptEnabled: isFeatureEnabled(
-        FeatureSwitchKey.StructuredPrompt,
-        featureSwitchContext,
-      ),
     },
   };
 }

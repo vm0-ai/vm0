@@ -184,6 +184,52 @@ describe("zero generate video command", () => {
     expect(stdout).toContain("Credits charged: 720");
   });
 
+  it("should print the complete video result as one JSON object", async () => {
+    server.use(
+      http.post(VIDEO_URL, () => {
+        return HttpResponse.json(VIDEO_RESULT);
+      }),
+    );
+
+    await generateCommand.parseAsync([
+      "node",
+      "cli",
+      "video",
+      "--prompt",
+      "A neon market tracking shot",
+      "--json",
+    ]);
+
+    expect(mockConsoleLog.mock.calls).toEqual([[JSON.stringify(VIDEO_RESULT)]]);
+  });
+
+  it.each([
+    ["provider listing", ["video", "--json"]],
+    ["connector guidance", ["video", "--provider", "heygen", "--json"]],
+    [
+      "template selection",
+      [
+        "video",
+        "--template",
+        "video-template:epic-grandeur",
+        "--prompt",
+        "A cinematic mountain reveal",
+        "--json",
+      ],
+    ],
+  ])("should reject JSON output for %s", async (_mode, args) => {
+    await expect(async () => {
+      await generateCommand.parseAsync(["node", "cli", ...args]);
+    }).rejects.toThrow("process.exit called");
+
+    expect(mockConsoleError).toHaveBeenCalledWith(
+      expect.stringContaining(
+        "--json is only available for direct built-in generation",
+      ),
+    );
+    expect(mockConsoleLog).not.toHaveBeenCalled();
+  });
+
   it("should reject frame images that do not match --aspect-ratio before generating", async () => {
     const postVideo = vi.fn();
     server.use(
@@ -290,7 +336,7 @@ describe("zero generate video command", () => {
     expect(helpOutput).toContain("--image-url");
     expect(helpOutput).toContain("--first-frame-image-url");
     expect(helpOutput).toContain("--last-frame-image-url");
-    expect(helpOutput).not.toContain("--json");
+    expect(helpOutput).toContain("--json");
   });
 
   it("should surface API errors", async () => {
@@ -345,7 +391,7 @@ describe("zero generate video command", () => {
 
     const stderr = mockConsoleError.mock.calls.flat().join("\n");
     expect(stderr).toContain("Paid plan required");
-    expect(stderr).not.toContain("zero upgrade pro");
+    expect(stderr).toContain("zero upgrade pro");
     expect(generationRequests).toBe(0);
   });
 });

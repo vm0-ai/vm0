@@ -34,7 +34,23 @@ export const testRuntimeStateActionBodySchema = z.discriminatedUnion("action", [
     mode: z.enum(["remove", "invalid"]),
   }),
   z.object({
+    action: z.literal("mutate-runner-job-connector-permission-baseline"),
+    run_id: z.uuid(),
+    mode: z.enum([
+      "remove",
+      "malformed",
+      "catalog-mismatch",
+      "authority-mismatch",
+      "inconsistent",
+      "incomplete",
+    ]),
+  }),
+  z.object({
     action: z.literal("remove-run-canonical-storage-state"),
+    run_id: z.uuid(),
+  }),
+  z.object({
+    action: z.literal("read-runner-job-storage-state"),
     run_id: z.uuid(),
   }),
   z.object({
@@ -70,6 +86,37 @@ export const testRuntimeStateActionBodySchema = z.discriminatedUnion("action", [
     action: z.literal("read-run-api-start"),
     run_id: z.uuid(),
   }),
+  z.object({
+    action: z.literal("read-thread-session-binding"),
+    thread_id: z.uuid(),
+  }),
+  z.object({
+    action: z.literal("clear-thread-session-binding"),
+    thread_id: z.uuid(),
+  }),
+  z.object({
+    action: z.literal("insert-legacy-artifact-catalog-file"),
+    user_id: z.string(),
+    org_id: z.string(),
+    filename: z.string(),
+    url: z.url(),
+  }),
+  z.object({
+    action: z.literal("set-computer-use-host-as-previous-api"),
+    thread_id: z.uuid(),
+    computer_use_host_id: z.uuid(),
+  }),
+  z.object({
+    action: z.literal("set-runner-job-context-profile-as-previous-api"),
+    run_id: z.uuid(),
+    profile: z.string(),
+  }),
+  z.object({
+    action: z.literal("read-browser-profile-as-previous-api"),
+    browser_id: z.uuid(),
+    user_id: z.string(),
+    org_id: z.string(),
+  }),
 ]);
 
 export const testRuntimeStateActionResponseSchema = z.object({
@@ -80,11 +127,32 @@ export const testRuntimeStateActionResponseSchema = z.object({
   admission_lock_waiting: z.boolean().optional(),
   uploaded_file_sources: z.array(z.string()).optional(),
   api_started_at: z.string().nullable().optional(),
+  thread_session_binding: z
+    .object({
+      agent_session_id: z.uuid().nullable(),
+      agent_session_run_id: z.uuid().nullable(),
+      run_session_id: z.uuid().nullable(),
+    })
+    .optional(),
+  file_id: z.uuid().optional(),
+  previous_api_browser_profile: z
+    .object({
+      browser_profile_id: z.uuid(),
+      provider_profile_id: z.uuid(),
+    })
+    .optional(),
   storage_persistence: z
     .object({
       run_canonical: z.boolean(),
       session_canonical: z.boolean(),
       checkpoint_canonical: z.boolean(),
+    })
+    .optional(),
+  runner_job_storage_state: z
+    .object({
+      has_stored_storage_manifest: z.boolean(),
+      canonical_mount_count: z.number().int().nonnegative(),
+      has_run_context_storage: z.boolean(),
     })
     .optional(),
 });

@@ -17,6 +17,7 @@ const STATIC_ALLOWED_ORIGINS = Object.freeze(
     "https://app.vm7.ai:8443",
   ]),
 );
+const OKOU_PAGES_PREVIEW_HOST_SUFFIX = ".okou-app.pages.dev";
 
 function getAllowedOrigin(origin: string | undefined): string | null {
   if (!origin) {
@@ -51,7 +52,9 @@ function getAllowedOrigin(origin: string | undefined): string | null {
 
   if (
     deployEnv === "preview" &&
-    (hostname.endsWith(".vm7.ai") || hostname.endsWith(".omby.ai"))
+    (hostname.endsWith(".vm7.ai") ||
+      hostname.endsWith(".omby.ai") ||
+      (url.port === "" && hostname.endsWith(OKOU_PAGES_PREVIEW_HOST_SUFFIX)))
   ) {
     return normalizedOrigin;
   }

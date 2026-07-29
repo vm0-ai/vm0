@@ -1,5 +1,6 @@
 import { sql } from "drizzle-orm";
 import {
+  boolean,
   check,
   customType,
   foreignKey,
@@ -61,6 +62,9 @@ export const connectorCatalogSyncState = pgTable(
     lastAttemptOutcome: varchar("last_attempt_outcome", {
       length: 32,
     }).$type<ConnectorCatalogAttemptOutcome>(),
+    lastAttemptReusedCachedRejection: boolean(
+      "last_attempt_reused_cached_rejection",
+    ),
     lastSuccessAt: timestamp("last_success_at"),
     lastFailureCode: varchar("last_failure_code", {
       length: 64,
@@ -76,6 +80,12 @@ export const connectorCatalogSyncState = pgTable(
     lastRejectedFailureCode: varchar("last_rejected_failure_code", {
       length: 64,
     }).$type<ConnectorCatalogFailureCode>(),
+    lastRejectedBackendVersion: varchar("last_rejected_backend_version", {
+      length: 64,
+    }),
+    lastRejectedBuildCommitSha: varchar("last_rejected_build_commit_sha", {
+      length: 40,
+    }),
   },
   (table) => {
     return [
@@ -120,6 +130,20 @@ export const connectorCatalogSyncState = pgTable(
         )`,
       ),
       check(
+        "connector_catalog_sync_state_attempt_cache_reuse_complete",
+        sql`(
+          ${table.lastAttemptOutcome} IS NULL
+          AND ${table.lastAttemptReusedCachedRejection} IS NULL
+        ) OR (
+          ${table.lastAttemptOutcome} IS NOT NULL
+          AND ${table.lastAttemptReusedCachedRejection} IS NOT NULL
+          AND (
+            ${table.lastAttemptReusedCachedRejection} = FALSE
+            OR ${table.lastAttemptOutcome} = 'rejected'
+          )
+        )`,
+      ),
+      check(
         "connector_catalog_sync_state_rejected_candidate_complete",
         sql`(
           ${table.lastRejectedCatalogVersion} IS NULL
@@ -147,6 +171,22 @@ export const connectorCatalogSyncState = pgTable(
               AND ${table.lastRejectedCatalogKey} IS NOT NULL
               AND ${table.lastRejectedCatalogDigest} IS NOT NULL
             )
+          )
+        )`,
+      ),
+      check(
+        "connector_catalog_sync_state_rejection_authority_complete",
+        sql`(
+          ${table.lastRejectedFailureCode} IS NULL
+          AND ${table.lastRejectedBackendVersion} IS NULL
+          AND ${table.lastRejectedBuildCommitSha} IS NULL
+        ) OR (
+          ${table.lastRejectedFailureCode} IS NOT NULL
+          AND ${table.lastRejectedBackendVersion} IS NOT NULL
+          AND ${table.lastRejectedBackendVersion} ~ '^(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)$'
+          AND (
+            ${table.lastRejectedBuildCommitSha} IS NULL
+            OR ${table.lastRejectedBuildCommitSha} ~ '^[a-f0-9]{40}$'
           )
         )`,
       ),
@@ -206,6 +246,18 @@ export const connectorCatalogCompatibilityEvaluation = pgTable(
     executableCapabilityDigest: varchar("executable_capability_digest", {
       length: 71,
     }).notNull(),
+    catalogValidationBackendVersion: varchar(
+      "catalog_validation_backend_version",
+      {
+        length: 64,
+      },
+    ),
+    catalogValidationBuildCommitSha: varchar(
+      "catalog_validation_build_commit_sha",
+      {
+        length: 40,
+      },
+    ),
     evaluatedAt: timestamp("evaluated_at").notNull(),
     filteredAuthMethods: jsonb("filtered_auth_methods")
       .$type<ConnectorCatalogFilteredAuthMethods>()
@@ -242,6 +294,20 @@ export const connectorCatalogCompatibilityEvaluation = pgTable(
       check(
         "connector_catalog_compatibility_catalog_digest_valid",
         sql`${table.catalogDigest} ~ '^sha256:[a-f0-9]{64}$'`,
+      ),
+      check(
+        "connector_catalog_compat_validation_authority_complete",
+        sql`(
+          ${table.catalogValidationBackendVersion} IS NULL
+          AND ${table.catalogValidationBuildCommitSha} IS NULL
+        ) OR (
+          ${table.catalogValidationBackendVersion} IS NOT NULL
+          AND ${table.catalogValidationBackendVersion} ~ '^(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)$'
+          AND (
+            ${table.catalogValidationBuildCommitSha} IS NULL
+            OR ${table.catalogValidationBuildCommitSha} ~ '^[a-f0-9]{40}$'
+          )
+        )`,
       ),
     ];
   },

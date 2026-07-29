@@ -66,7 +66,9 @@ describe("POST /api/zero/uploads/prepare", () => {
     if (response.status !== 200) {
       return;
     }
-    expect(response.body.uploadUrl).toMatch(/^https?:\/\//);
+    expect("uploadUrl" in response.body ? response.body.uploadUrl : "").toMatch(
+      /^https?:\/\//,
+    );
     expect(response.body.url).toMatch(/^https?:\/\//);
     expect(response.body.id).toMatch(/^[0-9a-f-]{36}$/);
   });
@@ -146,7 +148,9 @@ describe("POST /api/zero/uploads/prepare", () => {
       contentType: "text/plain",
       size: 13,
     });
-    expect(response.body.uploadUrl).toMatch(/^https?:\/\//);
+    expect("uploadUrl" in response.body ? response.body.uploadUrl : "").toMatch(
+      /^https?:\/\//,
+    );
     expect(response.body.url).toBe(
       `https://cdn.vm7.io/artifacts/${userId}/${response.body.id}/hello.txt`,
     );
@@ -155,9 +159,8 @@ describe("POST /api/zero/uploads/prepare", () => {
 
   it("rejects suspended orgs with insufficient credits", async () => {
     const actor = bdd.user();
-    await bdd.bootstrapOnboarding(actor, {
-      displayName: "Suspended upload prepare agent",
-    });
+    const completed = await bdd.completeOnboarding(actor);
+    expect(completed.status).toBe(200);
     if (!actor.orgId) {
       throw new Error("Expected suspended upload prepare actor to have an org");
     }
@@ -276,6 +279,7 @@ describe("POST /api/zero/uploads/prepare", () => {
       },
       region: "auto",
       forcePathStyle: false,
+      requestChecksumCalculation: "WHEN_REQUIRED",
     });
   });
 

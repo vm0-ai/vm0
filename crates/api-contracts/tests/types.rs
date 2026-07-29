@@ -77,8 +77,7 @@ fn generated_prepare_request_serializes_wire_shape() {
     let hash = "a".repeat(64);
     let request = prepare::Request {
         run_id: "run-1".to_string(),
-        storage_name: "memory".to_string(),
-        storage_type: "artifact".to_string(),
+        storage_id: "00000000-0000-4000-8000-000000000001".to_string(),
         files: vec![FileEntryWithHash {
             path: "file.txt".to_string(),
             hash: hash.clone(),
@@ -95,8 +94,7 @@ fn generated_prepare_request_serializes_wire_shape() {
         value,
         json!({
             "runId": "run-1",
-            "storageName": "memory",
-            "storageType": "artifact",
+            "storageId": "00000000-0000-4000-8000-000000000001",
             "files": [{
                 "path": "file.txt",
                 "hash": hash,
@@ -114,8 +112,7 @@ fn generated_prepare_request_serializes_wire_shape() {
 fn generated_prepare_request_serializes_optional_fields() {
     let request = prepare::Request {
         run_id: "run-1".to_string(),
-        storage_name: "memory".to_string(),
-        storage_type: "artifact".to_string(),
+        storage_id: "00000000-0000-4000-8000-000000000001".to_string(),
         files: vec![],
         parent_version_id: Some("parent-1".to_string()),
         force: Some(true),
@@ -128,6 +125,7 @@ fn generated_prepare_request_serializes_optional_fields() {
     };
 
     let value = serde_json::to_value(request).unwrap();
+    assert_eq!(value["storageId"], "00000000-0000-4000-8000-000000000001");
     assert_eq!(value["parentVersionId"], "parent-1");
     assert_eq!(value["force"], true);
     assert_eq!(value["baseVersion"], "base-1");
@@ -183,8 +181,7 @@ fn generated_commit_request_serializes_wire_shape() {
     let hash = "b".repeat(64);
     let request = commit::Request {
         run_id: "run-1".to_string(),
-        storage_name: "memory".to_string(),
-        storage_type: "artifact".to_string(),
+        storage_id: "00000000-0000-4000-8000-000000000001".to_string(),
         version_id: "version-1".to_string(),
         parent_version_id: None,
         files: vec![FileEntryWithHash {
@@ -200,8 +197,7 @@ fn generated_commit_request_serializes_wire_shape() {
         value,
         json!({
             "runId": "run-1",
-            "storageName": "memory",
-            "storageType": "artifact",
+            "storageId": "00000000-0000-4000-8000-000000000001",
             "versionId": "version-1",
             "files": [{
                 "path": "file.txt",
@@ -218,8 +214,7 @@ fn generated_commit_request_serializes_wire_shape() {
 fn generated_commit_request_preserves_empty_message() {
     let request = commit::Request {
         run_id: "run-1".to_string(),
-        storage_name: "memory".to_string(),
-        storage_type: "artifact".to_string(),
+        storage_id: "00000000-0000-4000-8000-000000000001".to_string(),
         version_id: "version-1".to_string(),
         parent_version_id: None,
         files: vec![],
@@ -227,6 +222,7 @@ fn generated_commit_request_preserves_empty_message() {
     };
 
     let value = serde_json::to_value(request).unwrap();
+    assert_eq!(value["storageId"], "00000000-0000-4000-8000-000000000001");
     assert_eq!(value["message"], "");
 }
 
@@ -251,156 +247,6 @@ fn generated_commit_response_deserializes_success_shape() {
 }
 
 #[test]
-fn generated_storage_manifest_ignores_legacy_artifact_manifest_url() {
-    let manifest: runner_storage::StorageManifest = serde_json::from_value(json!({
-        "storages": [{
-            "name": "workspace",
-            "mountPath": "/workspace",
-            "vasStorageName": "workspace-volume",
-            "vasVersionId": "version-1",
-            "instructionsTargetFilename": "AGENTS.md",
-            "archiveUrl": "https://storage.example/workspace.tar.gz",
-        }],
-        "artifacts": [{
-            "mountPath": "/home/user/.claude/projects/project",
-            "vasStorageName": "memory",
-            "vasStorageId": "storage-id-1",
-            "vasVersionId": "version-2",
-            "archiveUrl": "https://storage.example/artifact.tar.gz",
-            "manifestUrl": "https://storage.example/manifest.json",
-        }],
-    }))
-    .unwrap();
-
-    assert_eq!(manifest.storages[0].name, "workspace");
-    assert_eq!(manifest.storages[0].mount_path, "/workspace");
-    assert_eq!(manifest.storages[0].vas_storage_name, "workspace-volume");
-    assert_eq!(
-        manifest.storages[0].instructions_target_filename.as_deref(),
-        Some("AGENTS.md")
-    );
-    assert_eq!(manifest.artifacts[0].vas_storage_id, "storage-id-1");
-    assert_eq!(
-        manifest.artifacts[0].archive_url.as_deref(),
-        Some("https://storage.example/artifact.tar.gz")
-    );
-    assert_eq!(manifest.artifacts[0].empty, None);
-}
-
-#[test]
-fn generated_storage_manifest_serializes_claim_shape() {
-    let manifest = runner_storage::StorageManifest {
-        storages: vec![runner_storage::StorageEntry {
-            name: "workspace".to_string(),
-            mount_path: "/workspace".to_string(),
-            vas_storage_name: "workspace-volume".to_string(),
-            vas_version_id: "version-1".to_string(),
-            instructions_target_filename: None,
-            archive_url: "https://storage.example/workspace.tar.gz".to_string(),
-            archive_size: None,
-        }],
-        artifacts: vec![runner_storage::ArtifactEntry {
-            mount_path: "/home/user/.claude/projects/project".to_string(),
-            vas_storage_name: "memory".to_string(),
-            vas_storage_id: "storage-id-1".to_string(),
-            vas_version_id: "version-2".to_string(),
-            archive_url: Some("https://storage.example/artifact.tar.gz".to_string()),
-            empty: None,
-            missing_root_policy: None,
-            archive_size: None,
-        }],
-    };
-
-    let value = serde_json::to_value(manifest).unwrap();
-
-    assert_eq!(
-        value,
-        json!({
-            "storages": [{
-                "name": "workspace",
-                "mountPath": "/workspace",
-                "vasStorageName": "workspace-volume",
-                "vasVersionId": "version-1",
-                "archiveUrl": "https://storage.example/workspace.tar.gz",
-            }],
-            "artifacts": [{
-                "mountPath": "/home/user/.claude/projects/project",
-                "vasStorageName": "memory",
-                "vasStorageId": "storage-id-1",
-                "vasVersionId": "version-2",
-                "archiveUrl": "https://storage.example/artifact.tar.gz",
-            }],
-        })
-    );
-}
-
-#[test]
-fn generated_storage_manifest_accepts_explicit_empty_artifacts() {
-    let manifest: runner_storage::StorageManifest = serde_json::from_value(json!({
-        "storages": [],
-        "artifacts": [{
-            "mountPath": "/home/user/.claude/projects/project",
-            "vasStorageName": "memory",
-            "vasStorageId": "storage-id-1",
-            "vasVersionId": "version-2",
-            "archiveUrl": "https://storage.example/artifact.tar.gz",
-            "empty": true,
-        }],
-    }))
-    .unwrap();
-
-    assert_eq!(manifest.artifacts[0].empty, Some(true));
-    assert_eq!(
-        manifest.artifacts[0].archive_url.as_deref(),
-        Some("https://storage.example/artifact.tar.gz")
-    );
-
-    let value = serde_json::to_value(manifest).unwrap();
-    assert_eq!(value["artifacts"][0]["empty"], true);
-    assert!(value["artifacts"][0]["archiveUrl"].is_string());
-}
-
-#[test]
-fn generated_storage_manifest_accepts_explicit_empty_artifacts_without_archive_url() {
-    let manifest: runner_storage::StorageManifest = serde_json::from_value(json!({
-        "storages": [],
-        "artifacts": [{
-            "mountPath": "/home/user/.claude/projects/project",
-            "vasStorageName": "memory",
-            "vasStorageId": "storage-id-1",
-            "vasVersionId": "version-2",
-            "empty": true,
-        }],
-    }))
-    .unwrap();
-
-    assert_eq!(manifest.artifacts[0].empty, Some(true));
-    assert_eq!(manifest.artifacts[0].archive_url, None);
-
-    let value = serde_json::to_value(manifest).unwrap();
-    assert_eq!(value["artifacts"][0]["empty"], true);
-    assert!(value["artifacts"][0].get("archiveUrl").is_none());
-}
-
-#[test]
-fn generated_storage_manifest_serializes_empty_artifacts() {
-    let manifest = runner_storage::StorageManifest {
-        storages: vec![],
-        artifacts: vec![],
-    };
-
-    let value = serde_json::to_value(manifest).unwrap();
-
-    assert_eq!(
-        value,
-        json!({
-            "storages": [],
-            "artifacts": [],
-        })
-    );
-}
-
-#[test]
 fn generated_storage_mount_entry_preserves_canonical_shape() {
     let mount: runner_storage::StorageMountEntry = serde_json::from_value(json!({
         "name": "memory",
@@ -422,20 +268,4 @@ fn generated_storage_mount_entry_preserves_canonical_shape() {
         mount.missing_root_policy,
         Some(runner_storage::ArtifactEntryMissingRootPolicy::PreserveParentVersion)
     );
-}
-
-#[test]
-fn generated_storage_manifest_rejects_guest_download_null_archive_url() {
-    let result = serde_json::from_value::<runner_storage::StorageManifest>(json!({
-        "storages": [{
-            "name": "workspace",
-            "mountPath": "/workspace",
-            "vasStorageName": "workspace-volume",
-            "vasVersionId": "version-1",
-            "archiveUrl": null,
-        }],
-        "artifacts": [],
-    }));
-
-    assert!(result.is_err());
 }

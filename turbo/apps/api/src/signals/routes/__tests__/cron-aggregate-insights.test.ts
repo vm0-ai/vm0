@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 
+import { createStore } from "ccstate";
 import { cronAggregateInsightsContract } from "@vm0/api-contracts/contracts/cron";
 import type { DayInsight } from "@vm0/api-contracts/contracts/zero-insights";
 import { HttpResponse, http } from "msw";
@@ -18,6 +19,10 @@ import { createBddApi, type ApiTestUser } from "./helpers/api-bdd";
 import { createBillingMediaApi } from "./helpers/api-bdd-billing-media";
 import { createRunsApi } from "./helpers/api-bdd-runs";
 import { createWebhookCallbackApi } from "./helpers/api-bdd-webhooks";
+import {
+  insertUsageEvent$,
+  materializeHourlyUsage$,
+} from "./helpers/zero-usage-insight";
 
 /**
  * The aggregation cron sweeps all activity within a 25h lookback of "now".
@@ -26,6 +31,7 @@ import { createWebhookCallbackApi } from "./helpers/api-bdd-webhooks";
  * inside this file's aggregation window, and vice versa.
  */
 const context = testContext();
+const store = createStore();
 const FIXED_NOW_ISO = "2999-01-02T12:00:00.000Z";
 const TODAY = "2999-01-02";
 const ACTIVITY_AT_ISO = "2999-01-02T11:55:00.000Z";
@@ -518,6 +524,87 @@ describe("GET /api/cron/aggregate-insights", () => {
     });
   });
 
+  it("aggregates run-linked and runless usage from hourly storage", async () => {
+    const seeded = await seedInsightActor();
+    if (!seeded.actor.orgId) {
+      throw new Error("Expected an org-scoped actor");
+    }
+    const runId = await seedCompletedRun(seeded);
+    await store.set(
+      insertUsageEvent$,
+      {
+        orgId: seeded.actor.orgId,
+        userId: seeded.actor.userId,
+        runId,
+        kind: "connector",
+        provider: "hourly-fixture",
+        category: "call",
+        quantity: 3,
+        status: "processed",
+        creditsCharged: 725,
+        processedAt: activityAt(),
+      },
+      context.signal,
+    );
+    await store.set(
+      insertUsageEvent$,
+      {
+        orgId: seeded.actor.orgId,
+        userId: seeded.actor.userId,
+        runId: null,
+        kind: "maps",
+        provider: "hourly-runless-fixture",
+        category: "geocoding",
+        quantity: 1,
+        status: "processed",
+        creditsCharged: 125,
+        processedAt: activityAt(),
+      },
+      context.signal,
+    );
+    await expect(
+      store.set(
+        materializeHourlyUsage$,
+        {
+          orgId: seeded.actor.orgId,
+          userId: seeded.actor.userId,
+          runId,
+        },
+        context.signal,
+      ),
+    ).resolves.toBe(1);
+    await expect(
+      store.set(
+        materializeHourlyUsage$,
+        {
+          orgId: seeded.actor.orgId,
+          userId: seeded.actor.userId,
+          runId: null,
+        },
+        context.signal,
+      ),
+    ).resolves.toBe(1);
+    mockNow(new Date(FIXED_NOW_ISO));
+    defaultClerkMocksFor(seeded);
+
+    await runAggregation();
+
+    const data = await findInsights(seeded.actor);
+    expect(data?.creditsUsed).toBe(850);
+    expect(data?.agents).toMatchObject([
+      { runs: 1, credits: 725 },
+      {
+        agentId: null,
+        agentName: "Other usage",
+        runs: 0,
+        credits: 125,
+      },
+    ]);
+    expect(data?.teamUsage).toMatchObject([
+      { name: "Test User", credits: 850 },
+    ]);
+  });
+
   it("excludes removed org members from team credit usage", async () => {
     const bdd = createBddApi(context);
     const seeded = await seedInsightActor();
@@ -565,6 +652,64 @@ describe("GET /api/cron/aggregate-insights", () => {
     ]);
   });
 
+  it("reprocesses new activity in the watermark hour", async () => {
+    const seeded = await seedInsightActor();
+    if (!seeded.actor.orgId) {
+      throw new Error("Expected an org-scoped actor");
+    }
+    await store.set(
+      insertUsageEvent$,
+      {
+        orgId: seeded.actor.orgId,
+        userId: seeded.actor.userId,
+        runId: null,
+        status: "processed",
+        creditsCharged: 300,
+        processedAt: activityAt(),
+      },
+      context.signal,
+    );
+    mockNow(new Date("2999-01-02T12:30:00.000Z"));
+    defaultClerkMocksFor(seeded);
+    await runAggregation();
+    const firstPass = await findInsights(seeded.actor);
+    expect(firstPass?.creditsUsed).toBe(300);
+
+    await store.set(
+      insertUsageEvent$,
+      {
+        orgId: seeded.actor.orgId,
+        userId: seeded.actor.userId,
+        runId: null,
+        status: "processed",
+        creditsCharged: 100,
+        processedAt: new Date("2999-01-02T12:40:00.000Z"),
+      },
+      context.signal,
+    );
+    await expect(
+      store.set(
+        materializeHourlyUsage$,
+        {
+          orgId: seeded.actor.orgId,
+          userId: seeded.actor.userId,
+          runId: null,
+        },
+        context.signal,
+      ),
+    ).resolves.toBe(2);
+    mockNow(new Date("2999-01-02T12:50:00.000Z"));
+    defaultClerkMocksFor(seeded);
+
+    const secondPass = await runAggregation();
+    expect(secondPass.body).toMatchObject({
+      windows: 1,
+    });
+
+    const data = await findInsights(seeded.actor);
+    expect(data?.creditsUsed).toBe(400);
+  });
+
   it("reprocesses activity at the previous aggregation watermark", async () => {
     const seeded = await seedInsightActor();
     await seedCompletedRun(seeded, { credits: 300 });
@@ -578,9 +723,6 @@ describe("GET /api/cron/aggregate-insights", () => {
     const firstPass = await findInsights(seeded.actor);
     expect(firstPass?.creditsUsed).toBe(300 + settleCredits);
 
-    // The first pass stamped the watermark at the end of the aggregation
-    // day; activity inside the 5-minute reprocess overlap must trigger a
-    // second aggregation that folds the new usage into the same day.
     const lateActivityAt = new Date("2999-01-02T23:56:00.000Z");
     const runlessCredits = await recordRunlessUsageAt(
       seeded.actor,

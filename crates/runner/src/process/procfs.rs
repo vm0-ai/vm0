@@ -24,10 +24,8 @@ fn parse_cmdline_bytes(bytes: &[u8]) -> Option<Vec<String>> {
 
 /// Read `/proc/{pid}/cmdline` as the NUL-separated argv.
 ///
-/// Returns `None` for kernel threads (empty cmdline) and for processes whose
-/// cmdline has been rewritten (via `prctl(PR_SET_NAME)` or similar) into a
-/// single NUL-free blob — those aren't the exec-spawned processes we care
-/// about identifying here.
+/// Returns `None` when the file cannot be read, when its contents are empty or
+/// NUL-free, or when every NUL-delimited segment is empty.
 pub(crate) async fn read_cmdline(pid: u32) -> Option<Vec<String>> {
     let path = format!("/proc/{pid}/cmdline");
     let bytes = tokio::fs::read(&path).await.ok()?;
@@ -303,12 +301,20 @@ fn service_unit_from_cgroup_path(path: &str) -> Option<String> {
         })
 }
 
-/// Scan `/proc` for all process argvs.
-///
-/// Returns `(pid, argv)` pairs for every readable process plus whether the
-/// top-level directory scan completed without errors.
+/// Scan `/proc` for process argvs and track Firecracker discovery uncertainty.
 pub(super) struct ProcCmdlineScan {
+    /// Cmdlines that were successfully parsed as NUL-separated argvs.
     pub(super) entries: Vec<(u32, Vec<String>)>,
+    /// Whether the scan encountered no uncertainty that callers must treat as
+    /// a potentially undiscovered live Firecracker.
+    ///
+    /// This is false when opening or iterating `/proc` fails, when an
+    /// unreadable or unparseable cmdline belongs to a live Firecracker, or when
+    /// unavailable or malformed `/proc/{pid}/stat` facts cannot rule one out.
+    /// Empty and NUL-free cmdlines use this same classification. A disappeared
+    /// PID, zombie or otherwise terminal Firecracker, or known non-Firecracker
+    /// process does not make the scan incomplete. This is not a guarantee that
+    /// every non-Firecracker cmdline was readable.
     pub(super) complete: bool,
 }
 

@@ -1,5 +1,5 @@
 import { command } from "ccstate";
-import { count, sql, type SQL } from "drizzle-orm";
+import { and, count, eq, inArray, sql, type SQL } from "drizzle-orm";
 import {
   type UsageRecordKind,
   type UsageRecordRow,
@@ -18,6 +18,11 @@ import {
 } from "../../lib/db-raw-rows";
 import { clerk$ } from "../external/clerk";
 import { writeDb$, type Db } from "../external/db";
+import {
+  buildFinalizedUsageRelation,
+  type FinalizedUsageRelation,
+} from "./finalized-usage-relation";
+import { normalizeFinalizedUsagePeriod } from "./finalized-usage-time";
 import { getOrgBillingPeriod$ } from "./zero-org-billing-period.service";
 import { resolveEmails } from "./zero-usage.service";
 import {
@@ -105,14 +110,11 @@ type UsageRecordBreakdownSqlRow = z.output<
   typeof usageRecordBreakdownSqlRowSchema
 >;
 
-function tokenExpr() {
-  const list = sql.join(
-    MODEL_TOKEN_CATEGORIES.map((category) => {
-      return sql`${category}`;
-    }),
-    sql`, `,
-  );
-  return sql`CASE WHEN ue.kind = ${MODEL_USAGE_KIND} AND ue.category IN (${list}) THEN ue.quantity ELSE 0 END`;
+function tokenExpr(usage: FinalizedUsageRelation) {
+  return sql`CASE WHEN ${and(
+    eq(usage.kind, MODEL_USAGE_KIND),
+    inArray(usage.category, MODEL_TOKEN_CATEGORIES),
+  )} THEN ${usage.quantity} ELSE 0 END`;
 }
 
 function sourceExpr() {
@@ -131,22 +133,16 @@ function sourceExpr() {
     END`;
 }
 
-function usageKindExpr() {
-  const usageKindList = sql.join(
-    USAGE_RECORD_KINDS.map((kind) => {
-      return sql`${kind}`;
-    }),
-    sql`, `,
-  );
+function usageKindExpr(usage: FinalizedUsageRelation) {
   return sql`
     CASE
-      WHEN ue.kind IN (${usageKindList}) THEN ue.kind
+      WHEN ${inArray(usage.kind, USAGE_RECORD_KINDS)} THEN ${usage.kind}
       ELSE 'other'
     END`;
 }
 
-function usageCreditsExpr() {
-  return sql`COALESCE(ue.credits_charged, 0) + COALESCE(uaa.units_applied, 0)`;
+function usageCreditsExpr(usage: FinalizedUsageRelation) {
+  return sql`${usage.creditsCharged} + ${usage.allowanceUnits}`;
 }
 
 // Per-source usage for one user in one org. `record` is the shared CTE so the
@@ -165,26 +161,19 @@ function recordWith(
     }),
     sql`, `,
   );
+  const usage = buildFinalizedUsageRelation(period ?? undefined);
   const userPredicate =
-    userId === null ? sql.empty() : sql`AND ue.user_id = ${userId}`;
-  const periodPredicate = period
-    ? sql`
-        AND ue.created_at AT TIME ZONE 'UTC' >= ${period.start.toISOString()}::timestamptz
-        AND ue.created_at AT TIME ZONE 'UTC' < ${period.end.toISOString()}::timestamptz`
-    : sql.empty();
+    userId === null ? sql.empty() : sql`AND ${eq(usage.userId, userId)}`;
   return sql`
     WITH usage_rows AS (
       SELECT
-        ue.run_id,
-        ue.user_id,
-        ${usageCreditsExpr()}::bigint AS credits,
-        ${tokenExpr()}::bigint AS tokens
-      FROM usage_event ue
-      LEFT JOIN usage_allowance_allocations uaa ON uaa.usage_event_id = ue.id
-      WHERE ue.org_id = ${orgId}
+        ${usage.runId} AS run_id,
+        ${usage.userId} AS user_id,
+        ${usageCreditsExpr(usage)}::bigint AS credits,
+        ${tokenExpr(usage)}::bigint AS tokens
+      FROM ${usage}
+      WHERE ${usage.orgId} = ${orgId}
         ${userPredicate}
-        AND ue.status = 'processed'
-        ${periodPredicate}
     ),
     runs AS (
       SELECT
@@ -276,7 +265,7 @@ async function queryUsageRecordRows(
       SELECT row_key, source, user_id, thread_id, run_id, title, credits, tokens, last_activity
       FROM record
       ${where}
-      ORDER BY last_activity DESC
+      ORDER BY last_activity DESC, row_key
       LIMIT ${pageSize} OFFSET ${offset}
     `,
     usageRecordSqlRowSchema,
@@ -316,9 +305,15 @@ function rowKeyExpr() {
   );
   return sql`
     CASE
-      WHEN chat_thread_id IS NOT NULL AND source IN (${threadedSourceList})
+      WHEN ${and(
+        sql`chat_thread_id IS NOT NULL`,
+        sql`source IN (${threadedSourceList})`,
+      )}
         THEN CONCAT(source, ':thread:', chat_thread_id::text, ':user:', user_id)
-      WHEN chat_thread_id IS NULL AND source IN (${threadedSourceList})
+      WHEN ${and(
+        sql`chat_thread_id IS NULL`,
+        sql`source IN (${threadedSourceList})`,
+      )}
         THEN CONCAT(source, ':deleted-thread:user:', user_id)
       ELSE CONCAT(source, ':run:', run_id::text, ':user:', user_id)
     END`;
@@ -335,13 +330,9 @@ async function queryUsageRecordBreakdown(
     return new Map();
   }
 
+  const usage = buildFinalizedUsageRelation(period ?? undefined);
   const userPredicate =
-    userId === null ? sql.empty() : sql`AND ue.user_id = ${userId}`;
-  const periodPredicate = period
-    ? sql`
-          AND ue.created_at AT TIME ZONE 'UTC' >= ${period.start.toISOString()}::timestamptz
-          AND ue.created_at AT TIME ZONE 'UTC' < ${period.end.toISOString()}::timestamptz`
-    : sql.empty();
+    userId === null ? sql.empty() : sql`AND ${eq(usage.userId, userId)}`;
   const rowKeyList = sql.join(
     rowKeys.map((rowKey) => {
       return sql`${rowKey}`;
@@ -349,7 +340,7 @@ async function queryUsageRecordBreakdown(
     sql`, `,
   );
   const sourceSql = sourceExpr();
-  const kindSql = usageKindExpr();
+  const kindSql = usageKindExpr(usage);
 
   const rows = await executeRawRows(
     db,
@@ -358,18 +349,15 @@ async function queryUsageRecordBreakdown(
         SELECT
           ${sourceSql} AS source,
           zr.chat_thread_id,
-          ue.run_id,
-          ue.user_id,
+          ${usage.runId} AS run_id,
+          ${usage.userId} AS user_id,
           ${kindSql} AS kind,
-          COALESCE(NULLIF(ue.provider, ''), 'unknown') AS provider,
-          ${usageCreditsExpr()}::bigint AS credits
-        FROM usage_event ue
-        LEFT JOIN usage_allowance_allocations uaa ON uaa.usage_event_id = ue.id
-        INNER JOIN zero_runs zr ON zr.id = ue.run_id
-        WHERE ue.org_id = ${orgId}
+          COALESCE(NULLIF(${usage.provider}, ''), 'unknown') AS provider,
+          ${usageCreditsExpr(usage)}::bigint AS credits
+        FROM ${usage}
+        INNER JOIN zero_runs zr ON zr.id = ${usage.runId}
+        WHERE ${usage.orgId} = ${orgId}
           ${userPredicate}
-          AND ue.status = 'processed'
-          ${periodPredicate}
       ),
       keyed AS (
         SELECT
@@ -474,7 +462,8 @@ export const zeroUsageRecord$ = command(
     const db = set(writeDb$);
     const userId = args.scope === "mine" ? args.userId : null;
     const offset = (args.page - 1) * args.pageSize;
-    const recordCte = recordWith(userId, args.orgId, period);
+    const queryPeriod = period ? normalizeFinalizedUsagePeriod(period) : null;
+    const recordCte = recordWith(userId, args.orgId, queryPeriod);
 
     signal.throwIfAborted();
     const rows = await queryUsageRecordRows(
@@ -489,7 +478,7 @@ export const zeroUsageRecord$ = command(
       db,
       userId,
       args.orgId,
-      period,
+      queryPeriod,
       rows.map((row) => {
         return row.rowKey;
       }),

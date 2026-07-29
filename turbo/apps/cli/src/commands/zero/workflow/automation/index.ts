@@ -7,8 +7,9 @@ import type {
   GithubWorkflowRunConclusion,
   ZeroWorkflowSchedule,
 } from "@vm0/api-contracts/contracts/zero-workflows";
-import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
+import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import { isFeatureEnabled } from "@vm0/core/feature-switch";
+import { getModelDisplayName } from "@vm0/core/model-display-name";
 import {
   type ZeroWorkflowAutomationCreateRequest,
   type ZeroWorkflowAutomationSummary,
@@ -17,7 +18,10 @@ import {
   deleteWorkflowAutomation,
   disableWorkflowAutomation,
   enableWorkflowAutomation,
+  getZeroChatThread,
   getWorkflowAutomation,
+  listWorkspaceWorkflowAutomations,
+  listZeroModelPolicies,
   listWorkflowAutomations,
   updateWorkflowAutomation,
 } from "../../../../lib/api";
@@ -30,7 +34,9 @@ import {
 } from "../resolve-workflow-ref";
 import {
   printWorkflowAutomationDetails,
+  printWorkflowAutomationThreadModel,
   printWorkflowAutomationsTable,
+  type WorkflowAutomationThreadModel,
 } from "./display";
 import {
   buildGmailLabelAppliedEventConfig,
@@ -71,6 +77,9 @@ interface AddOptions extends GmailAutomationOptions {
   readonly pageUrl?: string;
   readonly parentPageUrl?: string;
   readonly databaseUrl?: string;
+  readonly integrationId?: string;
+  readonly contentTypeUid?: string;
+  readonly locale?: string;
 }
 
 interface UpdateOptions extends GmailAutomationOptions {
@@ -121,10 +130,19 @@ const GITHUB_WEBHOOK_EVENT_KINDS = [
   "github-deployment-status-created",
   "github-issue-comment-created",
 ] as const;
+const STRAPI_EVENT_KINDS = ["strapi-entry-published"] as const;
 
 function githubWebhookAutomationsEnabled(): boolean {
   const payload = decodeZeroTokenPayload();
   return isFeatureEnabled(FeatureSwitchKey.GithubWebhookAutomations, {
+    userId: payload?.userId,
+    orgId: payload?.orgId,
+  });
+}
+
+function strapiIntegrationEnabled(): boolean {
+  const payload = decodeZeroTokenPayload();
+  return isFeatureEnabled(FeatureSwitchKey.StrapiIntegration, {
     userId: payload?.userId,
     orgId: payload?.orgId,
   });
@@ -135,7 +153,50 @@ function automationKinds(): readonly string[] {
     ...SCHEDULE_KINDS,
     ...EVENT_KINDS,
     ...(githubWebhookAutomationsEnabled() ? GITHUB_WEBHOOK_EVENT_KINDS : []),
+    ...(strapiIntegrationEnabled() ? STRAPI_EVENT_KINDS : []),
   ];
+}
+
+async function loadWorkflowAutomationThreadModel(
+  automation: ZeroWorkflowAutomationSummary,
+): Promise<WorkflowAutomationThreadModel | undefined> {
+  if (!automation.chatThreadId) {
+    return undefined;
+  }
+
+  const thread = await getZeroChatThread({
+    threadId: automation.chatThreadId,
+  });
+  const modelId =
+    thread.selectedModel ??
+    (await listZeroModelPolicies()).workspaceDefaultModel;
+  if (!modelId) {
+    throw new Error(
+      `Chat thread "${automation.chatThreadId}" has no available model`,
+    );
+  }
+
+  return {
+    id: modelId,
+    label: getModelDisplayName(modelId),
+  };
+}
+
+async function tryLoadWorkflowAutomationThreadModel(
+  automation: ZeroWorkflowAutomationSummary,
+): Promise<WorkflowAutomationThreadModel | undefined> {
+  try {
+    return await loadWorkflowAutomationThreadModel(automation);
+  } catch (error) {
+    console.warn(
+      chalk.yellow(
+        `⚠ Automation changed, but thread model details could not be loaded: ${
+          error instanceof Error ? error.message : "Unknown error"
+        }`,
+      ),
+    );
+    return undefined;
+  }
 }
 
 function githubWebhookEventKind(
@@ -560,13 +621,22 @@ function hasNotionAutomationOptions(options: AddOptions): boolean {
   );
 }
 
+function hasStrapiAutomationOptions(options: AddOptions): boolean {
+  return (
+    options.integrationId !== undefined ||
+    options.contentTypeUid !== undefined ||
+    options.locale !== undefined
+  );
+}
+
 function hasEventAddOptions(options: AddOptions): boolean {
   return (
     hasGmailAutomationOptions(options) ||
     hasGmailLabelOption(options) ||
     hasGithubAutomationOptions(options) ||
     hasCalendarAutomationOptions(options) ||
-    hasNotionAutomationOptions(options)
+    hasNotionAutomationOptions(options) ||
+    hasStrapiAutomationOptions(options)
   );
 }
 
@@ -599,6 +669,14 @@ function assertNoNotionAutomationOptions(options: AddOptions): void {
   if (hasNotionAutomationOptions(options)) {
     throw new Error(
       "Notion automation flags only apply to Notion event automations",
+    );
+  }
+}
+
+function assertNoStrapiAutomationOptions(options: AddOptions): void {
+  if (hasStrapiAutomationOptions(options)) {
+    throw new Error(
+      "Strapi automation flags only apply to Strapi event automations",
     );
   }
 }
@@ -1015,6 +1093,7 @@ function buildGmailNewMessageCreateRequest(
   assertNoGithubAutomationOptions(options);
   assertNoCalendarAutomationOptions(options);
   assertNoNotionAutomationOptions(options);
+  assertNoStrapiAutomationOptions(options);
   return {
     kind: "event",
     eventType: "gmail-new-message",
@@ -1034,6 +1113,7 @@ function buildGmailLabelAppliedCreateRequest(
   assertNoGithubAutomationOptions(options);
   assertNoCalendarAutomationOptions(options);
   assertNoNotionAutomationOptions(options);
+  assertNoStrapiAutomationOptions(options);
   return {
     kind: "event",
     eventType: "gmail-label-applied",
@@ -1052,6 +1132,7 @@ function buildGithubLabelAppliedCreateRequest(
   }
   assertNoCalendarAutomationOptions(options);
   assertNoNotionAutomationOptions(options);
+  assertNoStrapiAutomationOptions(options);
   if (hasGithubWorkflowRunSpecificOptions(options)) {
     throw new Error(
       "Workflow run filter flags only apply to github-workflow-run-completed automations",
@@ -1089,6 +1170,7 @@ function buildGithubWorkflowRunCompletedCreateRequest(
   ]);
   assertNoCalendarAutomationOptions(options);
   assertNoNotionAutomationOptions(options);
+  assertNoStrapiAutomationOptions(options);
   return {
     kind: "event",
     eventType: "github-workflow-run-completed",
@@ -1108,6 +1190,7 @@ function assertGithubWebhookCreateOptions(
   }
   assertNoCalendarAutomationOptions(options);
   assertNoNotionAutomationOptions(options);
+  assertNoStrapiAutomationOptions(options);
   assertOnlyGithubAutomationOptions(options, allowed);
 }
 
@@ -1194,10 +1277,11 @@ function buildGoogleCalendarEventCreateRequest(
     hasGmailAutomationOptions(options) ||
     hasGmailLabelOption(options) ||
     hasGithubAutomationOptions(options) ||
-    hasNotionAutomationOptions(options)
+    hasNotionAutomationOptions(options) ||
+    hasStrapiAutomationOptions(options)
   ) {
     throw new Error(
-      "Gmail, GitHub, and Notion automation flags only apply to their event automations",
+      "Gmail, GitHub, Notion, and Strapi automation flags only apply to their event automations",
     );
   }
   const calendarId = options.calendarId?.trim() || "primary";
@@ -1242,10 +1326,11 @@ function buildNotionChildPageCreatedCreateRequest(
     hasGmailAutomationOptions(options) ||
     hasGmailLabelOption(options) ||
     hasGithubAutomationOptions(options) ||
-    hasCalendarAutomationOptions(options)
+    hasCalendarAutomationOptions(options) ||
+    hasStrapiAutomationOptions(options)
   ) {
     throw new Error(
-      "Gmail, GitHub, and Google Calendar automation flags only apply to their event automations",
+      "Gmail, GitHub, Google Calendar, and Strapi automation flags only apply to their event automations",
     );
   }
 
@@ -1280,10 +1365,11 @@ function buildNotionDatabaseItemCreatedCreateRequest(
     hasGmailAutomationOptions(options) ||
     hasGmailLabelOption(options) ||
     hasGithubAutomationOptions(options) ||
-    hasCalendarAutomationOptions(options)
+    hasCalendarAutomationOptions(options) ||
+    hasStrapiAutomationOptions(options)
   ) {
     throw new Error(
-      "Gmail, GitHub, and Google Calendar automation flags only apply to their event automations",
+      "Gmail, GitHub, Google Calendar, and Strapi automation flags only apply to their event automations",
     );
   }
 
@@ -1318,10 +1404,11 @@ function buildNotionPageContentUpdatedCreateRequest(
     hasGmailAutomationOptions(options) ||
     hasGmailLabelOption(options) ||
     hasGithubAutomationOptions(options) ||
-    hasCalendarAutomationOptions(options)
+    hasCalendarAutomationOptions(options) ||
+    hasStrapiAutomationOptions(options)
   ) {
     throw new Error(
-      "Gmail, GitHub, and Google Calendar automation flags only apply to their event automations",
+      "Gmail, GitHub, Google Calendar, and Strapi automation flags only apply to their event automations",
     );
   }
 
@@ -1332,30 +1419,34 @@ function buildNotionPageContentUpdatedCreateRequest(
   }
   const pageUrl = options.pageUrl?.trim();
   const databaseUrl = options.databaseUrl?.trim();
-  if (
-    (pageUrl !== undefined && pageUrl.length > 0) ===
-    (databaseUrl !== undefined && databaseUrl.length > 0)
-  ) {
-    throw new Error(
-      'notion-page-content-updated automations require exactly one of --page-url "https://www.notion.so/..." or --database-url "https://www.notion.so/..."',
-    );
+  const invalidScopeMessage =
+    'notion-page-content-updated automations require exactly one of --page-url "https://www.notion.so/..." or --database-url "https://www.notion.so/..."';
+  if (pageUrl && databaseUrl) {
+    throw new Error(invalidScopeMessage);
   }
 
+  if (pageUrl) {
+    return {
+      kind: "event",
+      eventType: "notion-page-content-updated",
+      eventConfig: {
+        provider: "notion",
+        event: "page_content_updated",
+        pageUrl,
+      },
+    };
+  }
+  if (!databaseUrl) {
+    throw new Error(invalidScopeMessage);
+  }
   return {
     kind: "event",
     eventType: "notion-page-content-updated",
-    eventConfig:
-      pageUrl !== undefined && pageUrl.length > 0
-        ? {
-            provider: "notion",
-            event: "page_content_updated",
-            pageUrl,
-          }
-        : {
-            provider: "notion",
-            event: "page_content_updated",
-            databaseUrl: databaseUrl ?? "",
-          },
+    eventConfig: {
+      provider: "notion",
+      event: "page_content_updated",
+      databaseUrl,
+    },
   };
 }
 
@@ -1373,6 +1464,42 @@ function buildWebhookCreateRequest(
       provider: "webhook",
       event: "received",
       auth: { mode: "hmac-sha256" },
+    },
+  };
+}
+
+function buildStrapiEntryPublishedCreateRequest(
+  options: AddOptions,
+): ZeroWorkflowAutomationCreateRequest {
+  assertNoScheduleAddOptions(options);
+  if (
+    hasGmailAutomationOptions(options) ||
+    hasGmailLabelOption(options) ||
+    hasGithubAutomationOptions(options) ||
+    hasCalendarAutomationOptions(options) ||
+    hasNotionAutomationOptions(options)
+  ) {
+    throw new Error(
+      "Only Strapi automation flags apply to strapi-entry-published automations",
+    );
+  }
+  const integrationId = options.integrationId?.trim();
+  if (!integrationId) {
+    throw new Error(
+      "strapi-entry-published automations require --integration-id <uuid>",
+    );
+  }
+  const contentTypeUid = options.contentTypeUid?.trim();
+  const locale = options.locale?.trim();
+  return {
+    kind: "event",
+    eventType: "strapi-entry-published",
+    eventConfig: {
+      provider: "strapi",
+      event: "entry_published",
+      integrationId,
+      ...(contentTypeUid ? { contentTypeUid } : {}),
+      ...(locale ? { locale } : {}),
     },
   };
 }
@@ -1420,6 +1547,8 @@ function buildCreateRequest(
       return buildNotionDatabaseItemCreatedCreateRequest(options);
     case "notion-page-content-updated":
       return buildNotionPageContentUpdatedCreateRequest(options);
+    case "strapi-entry-published":
+      return buildStrapiEntryPublishedCreateRequest(options);
     case "webhook":
       return buildWebhookCreateRequest(options);
     default:
@@ -1613,12 +1742,17 @@ function buildEventUpdate(
     return { eventConfig: buildGmailLabelAppliedEventConfig(options) };
   }
 
+  if (existing.eventType !== "gmail-new-message") {
+    throw new Error("This event automation cannot be updated");
+  }
   if (!hasGmailOptions || hasLabelOption) {
     throw new Error(
       "Use Gmail match options for gmail-new-message automations",
     );
   }
-  return { eventConfig: buildGmailNewMessageEventConfig(options) };
+  return {
+    eventConfig: buildGmailNewMessageEventConfig(options, existing.eventConfig),
+  };
 }
 
 function buildScheduleUpdate(
@@ -1712,6 +1846,15 @@ const addCommand = addGithubAutomationOptions(
     "--database-url <url>",
     "Notion database URL for notion-database-item-created or notion-page-content-updated automations",
   )
+  .option(
+    "--integration-id <uuid>",
+    "Strapi integration ID for Strapi event automations",
+  )
+  .option(
+    "--content-type-uid <uid>",
+    "Optional Strapi content type UID, for example api::article.article",
+  )
+  .option("--locale <locale>", "Optional Strapi locale filter")
   .option("--agent <id>", "Agent ID for resolving a workflow name")
   .addHelpText(
     "after",
@@ -1732,6 +1875,7 @@ Examples:
   zero workflow automation add research-notes --agent <agent-id> notion-database-item-created --database-url "https://www.notion.so/1234567890abcdef1234567890abcdef?v=abcdef1234567890abcdef1234567890"
   zero workflow automation add research-notes --agent <agent-id> notion-page-content-updated --page-url "https://www.notion.so/workspace/Page-title-1234567890abcdef1234567890abcdef"
   zero workflow automation add research-notes --agent <agent-id> notion-page-content-updated --database-url "https://www.notion.so/1234567890abcdef1234567890abcdef?v=abcdef1234567890abcdef1234567890"
+  zero workflow automation add deploy-blog --agent <agent-id> strapi-entry-published --integration-id <uuid> --content-type-uid api::article.article
   zero workflow automation add triage --agent <agent-id> webhook
 
 Notes:
@@ -1753,6 +1897,11 @@ Notes:
             "GitHub webhook automations are not enabled for this workspace",
           );
         }
+        if (kind === "strapi-entry-published" && !strapiIntegrationEnabled()) {
+          throw new Error(
+            "Strapi workflow automations are not enabled for this workspace",
+          );
+        }
         if (
           options.timezone &&
           kind !== "cron" &&
@@ -1770,7 +1919,13 @@ Notes:
         console.log(
           chalk.green(`✓ Automation added to workflow "${workflowRef}"`),
         );
-        printWorkflowAutomationDetails(automation, { workflowRef });
+        const threadModel =
+          await tryLoadWorkflowAutomationThreadModel(automation);
+        printWorkflowAutomationDetails(automation, {
+          workflowRef,
+          workflowId,
+          threadModel,
+        });
       },
     ),
   );
@@ -1806,13 +1961,13 @@ Examples:
   .action(
     withErrorHandler(async (id: string, options: UpdateOptions) => {
       const existing = await getWorkflowAutomation(id);
-      const automation = await updateWorkflowAutomation(
-        id,
-        buildUpdate(options, existing),
-      );
+      const body = buildUpdate(options, existing);
+      const automation = await updateWorkflowAutomation(id, body);
 
       console.log(chalk.green(`✓ Automation ${automation.id} updated`));
-      printWorkflowAutomationDetails(automation);
+      const threadModel =
+        await tryLoadWorkflowAutomationThreadModel(automation);
+      printWorkflowAutomationDetails(automation, { threadModel });
     }),
   );
 
@@ -1857,7 +2012,22 @@ const showCommand = new Command()
   .action(
     withErrorHandler(async (id: string) => {
       const automation = await getWorkflowAutomation(id);
-      printWorkflowAutomationDetails(automation);
+      const entries = await listWorkspaceWorkflowAutomations();
+      const entry = entries.find(({ automation }) => {
+        return automation.id === id;
+      });
+      if (!entry) {
+        printWorkflowAutomationDetails(automation);
+        return;
+      }
+      const threadModel = await loadWorkflowAutomationThreadModel(
+        entry.automation,
+      );
+      printWorkflowAutomationDetails(entry.automation, {
+        workflowRef: entry.workflow.name,
+        workflowId: entry.workflow.id,
+        threadModel,
+      });
     }),
   );
 
@@ -1881,6 +2051,9 @@ const enableCommand = new Command()
     withErrorHandler(async (id: string) => {
       const automation = await enableWorkflowAutomation(id);
       console.log(chalk.green(`✓ Automation ${automation.id} enabled`));
+      const threadModel =
+        await tryLoadWorkflowAutomationThreadModel(automation);
+      printWorkflowAutomationThreadModel(threadModel);
     }),
   );
 
@@ -1892,6 +2065,9 @@ const disableCommand = new Command()
     withErrorHandler(async (id: string) => {
       const automation = await disableWorkflowAutomation(id);
       console.log(chalk.green(`✓ Automation ${automation.id} disabled`));
+      const threadModel =
+        await tryLoadWorkflowAutomationThreadModel(automation);
+      printWorkflowAutomationThreadModel(threadModel);
     }),
   );
 

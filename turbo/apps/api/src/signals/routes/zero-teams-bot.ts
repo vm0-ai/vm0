@@ -16,7 +16,6 @@ import { logger } from "../../lib/log";
 import { authorization$, request$ } from "../context/hono";
 import { waitUntil } from "../context/wait-until";
 import {
-  deleteTeamsReaction,
   sendTeamsMessage,
   sendTeamsMessageReply,
   type TeamsAdaptiveCard,
@@ -34,12 +33,11 @@ import {
   TEAMS_WELCOME_TEXT,
 } from "../services/zero-teams-dispatch.service";
 import { ApiDispatchTimingCollector } from "../services/api-dispatch-timing.service";
-import { bestEffort, safeJsonParse, tapError } from "../utils";
+import { safeJsonParse, tapError } from "../utils";
 
 const L = logger("TeamsBot");
 const TEAMS_LOGIN_PROMPT_CARD_TEXT =
   "Please connect your account to use Okou in this Teams workspace.";
-const TEAMS_THINKING_REACTION_TYPE = "1f4ad_thoughtballoon";
 const TEAMS_SUPPORTED_COMMANDS_TEXT =
   "`help`, `connect`, `disconnect`, `switch`, `model`";
 
@@ -132,7 +130,6 @@ type TeamsDispatchReplySource =
       readonly connectUrl?: string;
       readonly card?: TeamsAdaptiveCard;
     }
-  | { readonly kind: "failed"; readonly replyText: string }
   | { readonly kind: "queued" }
   | { readonly kind: "ignored" | "accepted" };
 
@@ -160,9 +157,6 @@ function dispatchReplyContent(dispatch: TeamsDispatchReplySource): {
             }
           : {}),
     };
-  }
-  if (dispatch.kind === "failed") {
-    return { replyText: dispatch.replyText };
   }
   if (dispatch.kind === "queued") {
     const url = queueUrl();
@@ -258,30 +252,6 @@ const sendTeamsInstallWelcome$ = command(
   },
 );
 
-async function clearTeamsThinkingReactionForActivity(args: {
-  readonly activity: TeamsMessageActivity;
-  readonly signal: AbortSignal;
-}): Promise<void> {
-  if (
-    args.activity.conversationType === "personal" ||
-    !args.activity.activityId
-  ) {
-    return;
-  }
-
-  await bestEffort(
-    deleteTeamsReaction({
-      serviceUrl: args.activity.serviceUrl,
-      conversationId: args.activity.conversationId,
-      activityId: args.activity.activityId,
-      tenantId: args.activity.tenantId,
-      reactionType: TEAMS_THINKING_REACTION_TYPE,
-      signal: args.signal,
-    }),
-    args.signal,
-  );
-}
-
 const dispatchTeamsMessageAndReply$ = command(
   async (
     { set },
@@ -304,14 +274,6 @@ const dispatchTeamsMessageAndReply$ = command(
       signal,
     );
     signal.throwIfAborted();
-
-    if (dispatch.kind === "failed") {
-      await clearTeamsThinkingReactionForActivity({
-        activity: args.activity,
-        signal,
-      });
-      signal.throwIfAborted();
-    }
 
     const { replyText, card } = dispatchReplyContent(dispatch);
     if (!replyText) {

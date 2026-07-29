@@ -2,12 +2,11 @@ import { command } from "ccstate";
 import {
   webhookHeartbeatContract,
   webhookModelUsageObservationContract,
-  webhookModelUsageObservationV2Contract,
   webhookTelemetryContract,
   webhookUsageEventContract,
 } from "@vm0/api-contracts/contracts/webhooks";
 import { agentRuns } from "@vm0/db/schema/agent-run";
-import { compactModelUsageObservation } from "@vm0/db/schema/compact-model-usage-observation";
+import { modelUsageObservation } from "@vm0/db/schema/model-usage-observation";
 import { usageEvent } from "@vm0/db/schema/usage-event";
 import { zeroRuns } from "@vm0/db/schema/zero-run";
 import { and, eq } from "drizzle-orm";
@@ -249,31 +248,9 @@ const usageEvent$ = command(async ({ get, set }, signal: AbortSignal) => {
 const modelUsageObservationBody$ = bodyResultOf(
   webhookModelUsageObservationContract.send,
 );
-const modelUsageObservation$ = command(async ({ get }, signal: AbortSignal) => {
-  const bodyResult = await get(modelUsageObservationBody$);
-  signal.throwIfAborted();
-  if (!bodyResult.ok) {
-    return bodyResult.response;
-  }
-
-  const body = bodyResult.data;
-  const auth = getSandboxAuthForRun(body.runId, get(authorization$));
-  if (!auth) {
-    return unauthorizedRunMismatch;
-  }
-
-  return {
-    status: 200 as const,
-    body: { success: true },
-  };
-});
-
-const modelUsageObservationV2Body$ = bodyResultOf(
-  webhookModelUsageObservationV2Contract.send,
-);
-const modelUsageObservationV2$ = command(
+const modelUsageObservation$ = command(
   async ({ get, set }, signal: AbortSignal) => {
-    const bodyResult = await get(modelUsageObservationV2Body$);
+    const bodyResult = await get(modelUsageObservationBody$);
     signal.throwIfAborted();
     if (!bodyResult.ok) {
       return bodyResult.response;
@@ -321,10 +298,10 @@ const modelUsageObservationV2$ = command(
 
     if (observationValues.length > 0) {
       await db
-        .insert(compactModelUsageObservation)
+        .insert(modelUsageObservation)
         .values(observationValues)
         .onConflictDoNothing({
-          target: [compactModelUsageObservation.idempotencyKey],
+          target: [modelUsageObservation.idempotencyKey],
         });
     }
     signal.throwIfAborted();
@@ -454,10 +431,6 @@ export const webhooksAgentHealthUsageTelemetryRoutes: readonly RouteEntry[] = [
   {
     route: webhookModelUsageObservationContract.send,
     handler: modelUsageObservation$,
-  },
-  {
-    route: webhookModelUsageObservationV2Contract.send,
-    handler: modelUsageObservationV2$,
   },
   {
     route: webhookTelemetryContract.send,

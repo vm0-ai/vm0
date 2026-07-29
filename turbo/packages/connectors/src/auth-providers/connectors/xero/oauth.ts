@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-import type { ConnectorAuthCodeGrantConfig } from "@vm0/connectors/connectors";
+import type { ConnectorAuthCodeGrantConfig } from "@vm0/connectors/connector-config";
 import { throwOAuthError } from "../../oauth/error";
 
 const XERO_TOKEN_URL = "https://identity.xero.com/connect/token";
@@ -191,11 +191,4 @@ async function fetchXeroUserInfo(accessToken: string): Promise<XeroUserInfo> {
     username: data.name ?? null,
     email: data.email ?? null,
   };
-}
-
-/**
- * Get the primary secret name for Xero connector (the access token).
- */
-export function getXeroSecretName(): string {
-  return "XERO_ACCESS_TOKEN";
 }

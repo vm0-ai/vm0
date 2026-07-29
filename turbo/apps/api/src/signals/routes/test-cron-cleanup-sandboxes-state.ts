@@ -18,13 +18,13 @@ import { exportJobs } from "@vm0/db/schema/export-job";
 import { orgMetadata } from "@vm0/db/schema/org-metadata";
 import { runnerJobQueue } from "@vm0/db/schema/runner-job-queue";
 import { command } from "ccstate";
-import { and, eq, inArray, sql } from "drizzle-orm";
+import { and, eq, inArray, notExists } from "drizzle-orm";
 
 import { request$ } from "../context/hono";
 import { bodyResultOf } from "../context/request";
 import { writeDb$, type Db } from "../external/db";
 import type { RouteEntry } from "../route-entry";
-import { insertChatMessage } from "../services/zero-chat-message.service";
+import { insertChatEvent } from "../services/zero-chat-event.service";
 import {
   isTestEndpointAllowed,
   testEndpointNotFoundResponse,
@@ -207,13 +207,19 @@ async function deleteRunForAction(
   if (runThreadIds.length > 0) {
     await db.delete(chatMessages).where(eq(chatMessages.runId, runId));
     signal.throwIfAborted();
-    await db.delete(chatThreads).where(
-      sql`${inArray(chatThreads.id, runThreadIds)} AND NOT EXISTS (
-        SELECT 1
-        FROM ${chatMessages}
-        WHERE ${eq(chatMessages.chatThreadId, chatThreads.id)}
-      )`,
-    );
+    await db
+      .delete(chatThreads)
+      .where(
+        and(
+          inArray(chatThreads.id, runThreadIds),
+          notExists(
+            db
+              .select({ id: chatMessages.id })
+              .from(chatMessages)
+              .where(eq(chatMessages.chatThreadId, chatThreads.id)),
+          ),
+        ),
+      );
     signal.throwIfAborted();
   }
   await db.delete(agentRunQueue).where(eq(agentRunQueue.runId, runId));
@@ -258,7 +264,7 @@ async function seedRunnerJobForAction(
     runnerGroup: readOptionalString(body, "runner_group") ?? "vm0/test",
     profile: readOptionalString(body, "profile") ?? "vm0/default",
     executionContext: {
-      storageManifest: null,
+      storageMounts: [],
       environment: null,
       resumeSession: null,
       encryptedSecrets: null,
@@ -374,9 +380,9 @@ async function seedQueueMarkerForAction(
     return actionBadRequest("failed to seed chat thread");
   }
   const marker = await db.transaction(async (tx) => {
-    return await insertChatMessage(tx, {
+    return await insertChatEvent(tx, {
       chatThreadId: thread.id,
-      role: "assistant",
+      eventType: "run.queued",
       content: "Waiting in queue...",
       runId,
       runEventId: "queue:queued",
@@ -520,11 +526,11 @@ async function getQueueMarkerRevokerForAction(
   const [revoker] = await db
     .select({
       id: chatMessages.id,
-      revokesMessageId: chatMessages.revokesMessageId,
+      revokesEventId: chatMessages.revokesEventId,
       runEventId: chatMessages.runEventId,
     })
     .from(chatMessages)
-    .where(eq(chatMessages.revokesMessageId, markerId))
+    .where(eq(chatMessages.revokesEventId, markerId))
     .limit(1);
   signal.throwIfAborted();
   return actionOk({ queue_marker_revoker: revoker ?? null });

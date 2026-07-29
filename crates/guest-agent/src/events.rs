@@ -14,15 +14,17 @@ use crate::http::HttpClient;
 use crate::masker::SecretMasker;
 use crate::paths;
 use crate::session_metadata;
+use bytes::Bytes;
 use guest_common::{log_error, log_info};
 use guest_contracts::diagnostics::FailureReason;
-use serde::Serialize;
 use serde_json::{Map, Value, json};
-use std::io::Write;
 
 const LOG_TAG: &str = "sandbox:guest-agent";
 const FAILURE_DIAGNOSTIC_MAX_BYTES: usize = 4096;
 const FAILURE_DIAGNOSTIC_TRUNCATED_SUFFIX: &str = "...[truncated]";
+const EVENT_PAYLOAD_RUN_ID_PREFIX: &[u8] = b"{\"runId\":";
+const EVENT_PAYLOAD_EVENTS_PREFIX: &[u8] = b",\"events\":[";
+const EVENT_PAYLOAD_SUFFIX: &[u8] = b"]}";
 
 #[derive(Debug, PartialEq, Eq)]
 pub(crate) struct CodexFailureDiagnostic {
@@ -98,35 +100,45 @@ pub(crate) fn event_payload_for_run_id(events: Vec<Value>, run_id: &str) -> Valu
     Value::Object(payload)
 }
 
-pub(crate) fn serialized_event_payload_size_for_run_id(
-    events: &[Value],
-    run_id: &str,
-) -> Result<usize, AgentError> {
-    let mut size = SerializedSize::default();
-    serde_json::to_writer(&mut size, &BorrowedEventPayload { run_id, events })?;
-    Ok(size.bytes)
+pub(crate) struct EventPayloadEnvelope {
+    prefix: Bytes,
 }
 
-#[derive(Serialize)]
-struct BorrowedEventPayload<'a> {
-    #[serde(rename = "runId")]
-    run_id: &'a str,
-    events: &'a [Value],
-}
-
-#[derive(Default)]
-struct SerializedSize {
-    bytes: usize,
-}
-
-impl Write for SerializedSize {
-    fn write(&mut self, buffer: &[u8]) -> std::io::Result<usize> {
-        self.bytes = self.bytes.saturating_add(buffer.len());
-        Ok(buffer.len())
+impl EventPayloadEnvelope {
+    pub(crate) fn new(run_id: &str) -> Result<Self, AgentError> {
+        let run_id = serde_json::to_vec(run_id)?;
+        let mut prefix = Vec::with_capacity(
+            EVENT_PAYLOAD_RUN_ID_PREFIX.len() + run_id.len() + EVENT_PAYLOAD_EVENTS_PREFIX.len(),
+        );
+        prefix.extend_from_slice(EVENT_PAYLOAD_RUN_ID_PREFIX);
+        prefix.extend_from_slice(&run_id);
+        prefix.extend_from_slice(EVENT_PAYLOAD_EVENTS_PREFIX);
+        Ok(Self {
+            prefix: Bytes::from(prefix),
+        })
     }
 
-    fn flush(&mut self) -> std::io::Result<()> {
-        Ok(())
+    pub(crate) fn singleton_bytes(&self, event_bytes: usize) -> usize {
+        self.prefix.len() + event_bytes + EVENT_PAYLOAD_SUFFIX.len()
+    }
+
+    pub(crate) fn payload(&self, events: &[Bytes]) -> Bytes {
+        let event_bytes = events.iter().map(Bytes::len).sum::<usize>();
+        let separators = events.len().saturating_sub(1);
+        let mut payload = Vec::with_capacity(
+            self.prefix.len() + event_bytes + separators + EVENT_PAYLOAD_SUFFIX.len(),
+        );
+        payload.extend_from_slice(&self.prefix);
+        let mut needs_separator = false;
+        for event in events {
+            if needs_separator {
+                payload.push(b',');
+            }
+            payload.extend_from_slice(event);
+            needs_separator = true;
+        }
+        payload.extend_from_slice(EVENT_PAYLOAD_SUFFIX);
+        Bytes::from(payload)
     }
 }
 
@@ -351,6 +363,7 @@ fn codex_error_info_failure_reason(error: &Value) -> Option<FailureReason> {
     match codex_error_info_variant(error)? {
         "serverOverloaded" => Some(FailureReason::ProviderOverloaded),
         "usageLimitExceeded" => Some(FailureReason::UsageLimit),
+        "cyberPolicy" => Some(FailureReason::SafetyPolicyRefusal),
         _ => None,
     }
 }
@@ -425,10 +438,29 @@ pub async fn post_event_with_error_flag(
     event_error_flag: &str,
 ) -> Result<(), AgentError> {
     let url = http.events_url()?;
-    match http
+    let result = http
         .post_json(url, payload, constants::HTTP_MAX_ATTEMPTS)
-        .await
-    {
+        .await;
+    handle_event_post_result(result, event_error_flag)
+}
+
+pub(crate) async fn post_serialized_event_with_error_flag(
+    http: &HttpClient,
+    payload: Bytes,
+    event_error_flag: &str,
+) -> Result<(), AgentError> {
+    let url = http.events_url()?;
+    let result = http
+        .post_json_bytes(url, payload, constants::HTTP_MAX_ATTEMPTS)
+        .await;
+    handle_event_post_result(result, event_error_flag)
+}
+
+fn handle_event_post_result(
+    result: Result<Option<Value>, AgentError>,
+    event_error_flag: &str,
+) -> Result<(), AgentError> {
+    match result {
         Ok(_) => Ok(()),
         Err(e) => {
             log_error!(LOG_TAG, "Failed to send event after retries");

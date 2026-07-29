@@ -1,14 +1,15 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { describe, expect, it } from "vitest";
+import { z } from "zod";
 
 import {
+  compatibleStoredExecutionContextSchema,
   elapsedSinceApiStartMs,
   executionContextSchema,
   heartbeatBodySchema,
   heldSessionStateSchema,
   jobSchema,
-  legacyStorageManifestSchema,
   RUNNER_BUILTIN_FIREWALL_RESOLVE_NAMES_MAX,
   RUNNER_POLL_EXCLUDED_RUN_IDS_MAX,
   SESSION_HISTORY_DOWNLOAD_SOURCE_CONFIGURED_PUBLIC_ENDPOINT,
@@ -19,6 +20,7 @@ import {
   runnersPollContract,
   storageMountEntrySchema,
   storageManifestSchema,
+  storedConnectorPermissionBaselineSchema,
   storedExecutionContextSchema,
   storedResumeSessionSchema,
 } from "../runners";
@@ -32,6 +34,35 @@ function loadRunnerClaimResponseFixture(): unknown {
   );
 }
 
+function connectorPermissionBaselineFixture() {
+  return {
+    version: 1 as const,
+    catalogIdentity: {
+      sourceId: "connector-catalog",
+      schemaVersion: 1,
+      catalogVersion: "2026-07-28",
+      catalogDigest: `sha256:${"a".repeat(64)}`,
+      capabilityDigest: `sha256:${"b".repeat(64)}`,
+    },
+    validationAuthority: {
+      backendVersion: "1.337.1",
+      buildCommitSha: "c".repeat(40),
+    },
+    connectors: {
+      slack: {
+        permissionNames: ["conversations:read", "chat:write"],
+        defaultPolicy: {
+          permissionDefault: "allow" as const,
+          permissionOverrides: {
+            deny: ["chat:write"],
+          },
+          unknownPolicy: "deny" as const,
+        },
+      },
+    },
+  };
+}
+
 describe("runner claim response contract", () => {
   it("accepts the shared current response fixture", () => {
     const context = executionContextSchema.parse(
@@ -42,13 +73,189 @@ describe("runner claim response contract", () => {
       runId: "00000000-0000-4000-8000-000000020985",
       agentComposeVersionId:
         "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
-      experimentalProfile: "vm0/default",
       modelUsageProvider: "fixture-model",
     });
+    expect(context).not.toHaveProperty("experimentalProfile");
+  });
+
+  it("does not expose the API-only connector permission baseline", () => {
+    const fixture = executionContextSchema.parse(
+      loadRunnerClaimResponseFixture(),
+    );
+    const context = executionContextSchema.parse({
+      ...fixture,
+      connectorPermissionBaseline: connectorPermissionBaselineFixture(),
+    });
+
+    expect(context).not.toHaveProperty("connectorPermissionBaseline");
+  });
+});
+
+describe("stored connector permission baseline contract", () => {
+  const storedContext = {
+    storageMounts: [],
+    environment: null,
+    secretValueEnvironmentKeys: null,
+    resumeSession: null,
+    encryptedSecrets: null,
+    cliAgentType: "codex",
+  };
+
+  it("accepts compact versioned defaults", () => {
+    expect(
+      storedConnectorPermissionBaselineSchema.parse(
+        connectorPermissionBaselineFixture(),
+      ),
+    ).toEqual(connectorPermissionBaselineFixture());
+  });
+
+  it("rejects unsupported, overlapping, and unknown permission metadata", () => {
+    const baseline = connectorPermissionBaselineFixture();
+    expect(
+      storedConnectorPermissionBaselineSchema.safeParse({
+        ...baseline,
+        version: 2,
+      }).success,
+    ).toBe(false);
+    expect(
+      storedConnectorPermissionBaselineSchema.safeParse({
+        ...baseline,
+        connectors: {
+          slack: {
+            ...baseline.connectors.slack,
+            defaultPolicy: {
+              ...baseline.connectors.slack.defaultPolicy,
+              permissionOverrides: {
+                allow: ["chat:write"],
+                deny: ["chat:write"],
+              },
+            },
+          },
+        },
+      }).success,
+    ).toBe(false);
+    expect(
+      storedConnectorPermissionBaselineSchema.safeParse({
+        ...baseline,
+        connectors: {
+          slack: {
+            ...baseline.connectors.slack,
+            defaultPolicy: {
+              ...baseline.connectors.slack.defaultPolicy,
+              permissionOverrides: {
+                deny: ["files:write"],
+              },
+            },
+          },
+        },
+      }).success,
+    ).toBe(false);
+  });
+
+  it("isolates future metadata to the compatible persisted reader", () => {
+    const futureBaseline = { version: 2, payload: "future" };
+    const context = {
+      ...storedContext,
+      connectorPermissionBaseline: futureBaseline,
+    };
+
+    expect(storedExecutionContextSchema.safeParse(context).success).toBe(false);
+
+    const parsed = compatibleStoredExecutionContextSchema.parse(context);
+
+    expect(parsed.connectorPermissionBaseline).toEqual(futureBaseline);
+    expect(
+      storedConnectorPermissionBaselineSchema.safeParse(
+        parsed.connectorPermissionBaseline,
+      ).success,
+    ).toBe(false);
+  });
+
+  it("allows a previous reader to ignore the new optional field", () => {
+    const previousStoredExecutionContextSchema =
+      storedExecutionContextSchema.omit({
+        connectorPermissionBaseline: true,
+      });
+    const parsed = previousStoredExecutionContextSchema.parse({
+      ...storedContext,
+      connectorPermissionBaseline: connectorPermissionBaselineFixture(),
+    });
+
+    expect(parsed).not.toHaveProperty("connectorPermissionBaseline");
+  });
+});
+
+describe("runner poll response contract", () => {
+  const job = {
+    runId: "22222222-2222-4222-8222-222222222222",
+    prompt: "continue",
+    appendSystemPrompt: null,
+    agentComposeVersionId: null,
+    vars: null,
+  };
+
+  it.each(["vm0/default", "vm0/large"])(
+    "requires and preserves profile %s",
+    (experimentalProfile) => {
+      expect(jobSchema.parse({ ...job, experimentalProfile })).toMatchObject({
+        experimentalProfile,
+      });
+    },
+  );
+
+  it("rejects a missing profile", () => {
+    expect(jobSchema.safeParse(job).success).toBe(false);
   });
 });
 
 describe("runner storage manifest contract", () => {
+  const storedContext = {
+    storageMounts: [],
+    environment: null,
+    secretValueEnvironmentKeys: null,
+    resumeSession: null,
+    encryptedSecrets: null,
+    cliAgentType: "codex",
+  };
+
+  it("keeps prepared readers compatible with omitted stored fields", () => {
+    const preparedStoredExecutionContextSchema =
+      storedExecutionContextSchema.extend({
+        storageManifest: z.unknown().nullable().optional(),
+      });
+
+    expect(preparedStoredExecutionContextSchema.parse(storedContext)).toEqual(
+      storedContext,
+    );
+    expect(storedExecutionContextSchema.parse(storedContext)).toEqual(
+      storedContext,
+    );
+  });
+
+  it("requires canonical mounts while ignoring previous stored fields", () => {
+    expect(
+      compatibleStoredExecutionContextSchema.parse({
+        ...storedContext,
+        storageManifest: null,
+      }),
+    ).toEqual(storedContext);
+    expect(
+      compatibleStoredExecutionContextSchema.parse({
+        ...storedContext,
+        storageManifest: {
+          storages: [{ futureLegacyField: true }],
+          artifacts: [],
+        },
+      }),
+    ).toEqual(storedContext);
+    expect(
+      compatibleStoredExecutionContextSchema.safeParse({
+        ...storedContext,
+        storageMounts: undefined,
+      }).success,
+    ).toBe(false);
+  });
+
   it("accepts canonical read-only and writeback mounts", () => {
     expect(
       storageMountEntrySchema.parse({
@@ -114,7 +321,7 @@ describe("runner storage manifest contract", () => {
     ).toBe(false);
   });
 
-  it("accepts exactly one canonical or legacy wire representation", () => {
+  it("accepts only the canonical wire representation", () => {
     const canonical = {
       storageMounts: [
         {
@@ -129,14 +336,14 @@ describe("runner storage manifest contract", () => {
     const legacy = { storages: [], artifacts: [] };
 
     expect(storageManifestSchema.parse(canonical)).toEqual(canonical);
-    expect(storageManifestSchema.parse(legacy)).toEqual(legacy);
-    expect(
-      storageManifestSchema.safeParse({ ...canonical, ...legacy }).success,
-    ).toBe(false);
-    expect(storageManifestSchema.safeParse({ storages: [] }).success).toBe(
-      false,
-    );
+    expect(storageManifestSchema.safeParse(legacy).success).toBe(false);
     expect(storageManifestSchema.safeParse({}).success).toBe(false);
+    expect(
+      storageManifestSchema.parse({
+        ...canonical,
+        futureRunnerField: true,
+      }),
+    ).toEqual(canonical);
   });
 
   it("rejects duplicate canonical mount paths", () => {
@@ -153,257 +360,6 @@ describe("runner storage manifest contract", () => {
         storageMounts: [mount, { ...mount, name: "replacement" }],
       }).success,
     ).toBe(false);
-  });
-
-  it("accepts the web-produced claim manifest shape", () => {
-    expect(
-      legacyStorageManifestSchema.parse({
-        storages: [
-          {
-            name: "workspace",
-            mountPath: "/workspace",
-            vasStorageName: "workspace-volume",
-            vasVersionId: "version-1",
-            archiveUrl: "https://storage.example/archive.tar.gz",
-          },
-        ],
-        artifacts: [
-          {
-            mountPath: "/home/user/.claude/projects/project",
-            vasStorageName: "memory",
-            vasStorageId: "storage-id-1",
-            vasVersionId: "version-2",
-            archiveUrl: "https://storage.example/artifact.tar.gz",
-          },
-        ],
-      }),
-    ).toEqual({
-      storages: [
-        {
-          name: "workspace",
-          mountPath: "/workspace",
-          vasStorageName: "workspace-volume",
-          vasVersionId: "version-1",
-          archiveUrl: "https://storage.example/archive.tar.gz",
-        },
-      ],
-      artifacts: [
-        {
-          mountPath: "/home/user/.claude/projects/project",
-          vasStorageName: "memory",
-          vasStorageId: "storage-id-1",
-          vasVersionId: "version-2",
-          archiveUrl: "https://storage.example/artifact.tar.gz",
-        },
-      ],
-    });
-  });
-
-  it("strips legacy artifact manifest urls", () => {
-    expect(
-      legacyStorageManifestSchema.parse({
-        storages: [],
-        artifacts: [
-          {
-            mountPath: "/home/user/.claude/projects/project",
-            vasStorageName: "memory",
-            vasStorageId: "storage-id-1",
-            vasVersionId: "version-2",
-            archiveUrl: "https://storage.example/artifact.tar.gz",
-            manifestUrl: "https://storage.example/manifest.json",
-          },
-        ],
-      }),
-    ).toEqual({
-      storages: [],
-      artifacts: [
-        {
-          mountPath: "/home/user/.claude/projects/project",
-          vasStorageName: "memory",
-          vasStorageId: "storage-id-1",
-          vasVersionId: "version-2",
-          archiveUrl: "https://storage.example/artifact.tar.gz",
-        },
-      ],
-    });
-  });
-
-  it("accepts explicit empty artifact entries with compatibility archive urls", () => {
-    const manifest = legacyStorageManifestSchema.parse({
-      storages: [],
-      artifacts: [
-        {
-          mountPath: "/home/user/.claude/projects/project",
-          vasStorageName: "memory",
-          vasStorageId: "storage-id-1",
-          vasVersionId: "version-2",
-          archiveUrl: "https://storage.example/artifact.tar.gz",
-          empty: true,
-        },
-      ],
-    });
-
-    expect(manifest.artifacts[0]).toMatchObject({
-      archiveUrl: "https://storage.example/artifact.tar.gz",
-      empty: true,
-    });
-  });
-
-  it("accepts explicit empty artifact entries without archive urls", () => {
-    const manifest = legacyStorageManifestSchema.parse({
-      storages: [],
-      artifacts: [
-        {
-          mountPath: "/home/user/.claude/projects/project",
-          vasStorageName: "memory",
-          vasStorageId: "storage-id-1",
-          vasVersionId: "version-2",
-          empty: true,
-        },
-      ],
-    });
-
-    expect(manifest.artifacts[0]).toMatchObject({
-      empty: true,
-    });
-    expect(manifest.artifacts[0]?.archiveUrl).toBeUndefined();
-  });
-
-  it("rejects non-empty artifact entries without archive urls", () => {
-    const result = legacyStorageManifestSchema.safeParse({
-      storages: [],
-      artifacts: [
-        {
-          mountPath: "/home/user/.claude/projects/project",
-          vasStorageName: "memory",
-          vasStorageId: "storage-id-1",
-          vasVersionId: "version-2",
-        },
-      ],
-    });
-
-    expect(result.success).toBe(false);
-  });
-
-  it("rejects guest-download-only nullable archive urls", () => {
-    const result = legacyStorageManifestSchema.safeParse({
-      storages: [
-        {
-          name: "workspace",
-          mountPath: "/workspace",
-          vasStorageName: "workspace-volume",
-          vasVersionId: "version-1",
-          archiveUrl: null,
-        },
-      ],
-      artifacts: [],
-    });
-
-    expect(result.success).toBe(false);
-  });
-
-  it("rejects nullable artifact archive urls even for explicit empty artifacts", () => {
-    const result = legacyStorageManifestSchema.safeParse({
-      storages: [],
-      artifacts: [
-        {
-          mountPath: "/home/user/.claude/projects/project",
-          vasStorageName: "memory",
-          vasStorageId: "storage-id-1",
-          vasVersionId: "version-2",
-          archiveUrl: null,
-          empty: true,
-        },
-      ],
-    });
-
-    expect(result.success).toBe(false);
-  });
-
-  it("accepts preserve-parent missing-root policy on artifact entries", () => {
-    const manifest = legacyStorageManifestSchema.parse({
-      storages: [],
-      artifacts: [
-        {
-          mountPath: "/home/user/.claude/projects/-home-user-workspace/memory",
-          vasStorageName: "memory",
-          vasStorageId: "storage-id-1",
-          vasVersionId: "version-2",
-          archiveUrl: "https://storage.example/artifact.tar.gz",
-          missingRootPolicy: "preserveParentVersion",
-        },
-      ],
-    });
-
-    expect(manifest.artifacts[0]?.missingRootPolicy).toBe(
-      "preserveParentVersion",
-    );
-  });
-
-  it("accepts explicit fail missing-root policy on artifact entries", () => {
-    const manifest = legacyStorageManifestSchema.parse({
-      storages: [],
-      artifacts: [
-        {
-          mountPath: "/home/user/.claude/projects/-home-user-workspace/memory",
-          vasStorageName: "memory",
-          vasStorageId: "storage-id-1",
-          vasVersionId: "version-2",
-          archiveUrl: "https://storage.example/artifact.tar.gz",
-          missingRootPolicy: "fail",
-        },
-      ],
-    });
-
-    expect(manifest.artifacts[0]?.missingRootPolicy).toBe("fail");
-  });
-
-  it("rejects unknown artifact missing-root policies", () => {
-    const result = legacyStorageManifestSchema.safeParse({
-      storages: [],
-      artifacts: [
-        {
-          mountPath: "/home/user/.claude/projects/-home-user-workspace/memory",
-          vasStorageName: "memory",
-          vasStorageId: "storage-id-1",
-          vasVersionId: "version-2",
-          archiveUrl: "https://storage.example/artifact.tar.gz",
-          missingRootPolicy: "ignore",
-        },
-      ],
-    });
-
-    expect(result.success).toBe(false);
-  });
-
-  it("strips runner-derived guest-download fields", () => {
-    const manifest = legacyStorageManifestSchema.parse({
-      storages: [
-        {
-          name: "workspace",
-          mountPath: "/workspace",
-          vasStorageName: "workspace-volume",
-          vasVersionId: "version-1",
-          archiveUrl: "https://storage.example/archive.tar.gz",
-          cached: true,
-        },
-      ],
-      artifacts: [],
-      cleanupPaths: ["/workspace"],
-    });
-
-    expect(manifest).toEqual({
-      storages: [
-        {
-          name: "workspace",
-          mountPath: "/workspace",
-          vasStorageName: "workspace-volume",
-          vasVersionId: "version-1",
-          archiveUrl: "https://storage.example/archive.tar.gz",
-        },
-      ],
-      artifacts: [],
-    });
   });
 });
 
@@ -455,6 +411,7 @@ describe("runner resume session contract", () => {
       historyRef: {
         ...storedResumeSession.historyRef,
         url: "https://r2.example.com/blobs/history.blob?sig=secret",
+        encoding: "identity",
         rawSize: 1024,
         encodedSize: 1024,
       },
@@ -467,6 +424,7 @@ describe("runner resume session contract", () => {
       appendSystemPrompt: null,
       agentComposeVersionId: null,
       vars: null,
+      experimentalProfile: "vm0/default",
       historyGenerationRunId,
       historyGenerationAffinityProtectedUntil,
       sessionAffinityResource: "reusableSandbox",
@@ -511,6 +469,7 @@ describe("runner resume session contract", () => {
       appendSystemPrompt: null,
       agentComposeVersionId: null,
       vars: null,
+      experimentalProfile: "vm0/default",
       historyGenerationAffinityProtectedUntil: null,
     });
     expect(job.historyGenerationAffinityProtectedUntil).toBeNull();
@@ -648,12 +607,12 @@ describe("runner resume session contract", () => {
     ).toBe(false);
   });
 
-  it("requires a URL for hash-backed claim resume sessions", () => {
+  it("keeps stored identity refs tolerant and requires explicit claim metadata", () => {
     const storedResumeSession = {
       sessionId: "sess-123",
       historyRef: { kind: "blob", hash: historyHash },
     };
-    const claimResumeSession = {
+    const claimResumeSessionWithoutEncoding = {
       sessionId: "sess-123",
       historyRef: {
         kind: "blob",
@@ -663,10 +622,23 @@ describe("runner resume session contract", () => {
         encodedSize: 1024,
       },
     };
+    const claimResumeSession = {
+      ...claimResumeSessionWithoutEncoding,
+      historyRef: {
+        ...claimResumeSessionWithoutEncoding.historyRef,
+        encoding: "identity",
+      },
+    };
 
+    expect(
+      storedResumeSessionSchema.safeParse(storedResumeSession).success,
+    ).toBe(true);
     expect(resumeSessionSchema.safeParse(storedResumeSession).success).toBe(
       false,
     );
+    expect(
+      resumeSessionSchema.safeParse(claimResumeSessionWithoutEncoding).success,
+    ).toBe(false);
     expect(resumeSessionSchema.parse(claimResumeSession)).toEqual(
       claimResumeSession,
     );
@@ -695,6 +667,7 @@ describe("runner resume session contract", () => {
         kind: "blob",
         hash: historyHash,
         url: "https://r2.example.com/blobs/history.blob?sig=secret",
+        encoding: "identity",
         rawSize: RESUME_SESSION_HISTORY_MAX_BYTES + 1,
         encodedSize: RESUME_SESSION_HISTORY_MAX_BYTES + 1,
       },
@@ -728,6 +701,7 @@ describe("runner resume session contract", () => {
         kind: "blob",
         hash: historyHash,
         url: "https://r2.example.com/blobs/history.blob?sig=secret",
+        encoding: "identity",
         rawSize: 1024,
         encodedSize: 1024,
         downloadSource: "regional_edge_cache",

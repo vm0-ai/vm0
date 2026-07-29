@@ -5,8 +5,9 @@ mod start;
 mod started_cancel;
 
 pub use control::{
-    DecodedExecControl, DecodedExecControlResult, decode_exec_control, decode_exec_control_result,
-    encode_exec_control, encode_exec_control_result,
+    DecodedExecControl, DecodedExecControlResult, EXEC_CONTROL_MAX_PAYLOAD_BYTES,
+    EXEC_CONTROL_NONCE_LEN, ExecControlNonce, ExecControlStatus, decode_exec_control,
+    decode_exec_control_result, encode_exec_control, encode_exec_control_result,
 };
 pub use output::{
     DecodedExecOutput, ExecOutputStream, decode_exec_output, encode_exec_output,
@@ -27,10 +28,6 @@ pub use started_cancel::{
 
 #[cfg(test)]
 use crate::error::ProtocolError;
-#[cfg(test)]
-use crate::payloads::exec_control::EXEC_CONTROL_NONCE_LEN;
-#[cfg(test)]
-use crate::payloads::exec_control::ExecControlStatus;
 #[cfg(test)]
 use result::EXEC_TERMINATION_CANCELLED;
 #[cfg(test)]

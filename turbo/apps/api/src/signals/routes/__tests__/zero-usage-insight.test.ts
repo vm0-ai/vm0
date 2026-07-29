@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 
+import { createStore } from "ccstate";
 import {
   triggerSourceSchema,
   type TriggerSource,
@@ -9,10 +10,10 @@ import {
   zeroUsageInsightContract,
 } from "@vm0/api-contracts/contracts/zero-usage-insight";
 import { HttpResponse, http } from "msw";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
-import { nowDate } from "../../../lib/time";
+import { clearMockNow, mockNow, nowDate } from "../../../lib/time";
 import { server } from "../../../mocks/server";
 import {
   ensureUsagePricingRow,
@@ -24,18 +25,22 @@ import { createChatFilesBddApi } from "./helpers/api-bdd-chat-files";
 import { createRunsApi } from "./helpers/api-bdd-runs";
 import { createZeroRouteMocks } from "./helpers/zero-route-test";
 import { createWebhookCallbackApi } from "./helpers/api-bdd-webhooks";
+import {
+  insertUsageEvent$,
+  materializeHourlyUsage$,
+} from "./helpers/zero-usage-insight";
 
 /*
- * Usage rows are bucketed by their database insertion time, which cannot be
- * backdated through any product path. All seeded activity therefore lands in
- * the current hour; window-boundary behavior for past days (yesterday
- * buckets, 7d/day-window edges, timezone date shifts, and the
- * activity-vs-billing-time distinction) is no longer covered here.
+ * Finalized usage is filtered and bucketed by settlement time. Database
+ * insertion time remains independent from the application clock used by
+ * inline managed settlement and the pending-usage processing endpoint.
  */
 const context = testContext();
 const mocks = createZeroRouteMocks(context);
+const store = createStore();
 const GOOGLE_GEOCODING_URL =
   "https://maps.googleapis.com/maps/api/geocode/json";
+const HOUR_MS = 3_600_000;
 
 function authHeaders() {
   return { authorization: "Bearer clerk-session" };
@@ -160,9 +165,9 @@ async function reportRunUsage(
   );
 }
 
-async function processPendingUsage(): Promise<void> {
+async function processPendingUsage(actor: ApiTestUser): Promise<void> {
   const billing = createBillingMediaApi(context);
-  await billing.processUsageEvents();
+  await billing.processOrgUsageEvents(actor);
 }
 
 /**
@@ -212,6 +217,10 @@ function authenticateInsightActor(actor: ApiTestUser): void {
 }
 
 describe("GET /api/zero/usage/insight", () => {
+  afterEach(() => {
+    clearMockNow();
+  });
+
   it("returns 401 when not authenticated", async () => {
     const response = await accept(
       apiClient().get({
@@ -292,7 +301,7 @@ describe("GET /api/zero/usage/insight", () => {
       { kind: "model", category: "tokens.input", quantity: 1000, credits: 100 },
       { kind: "model", category: "tokens.output", quantity: 500, credits: 0 },
     ]);
-    await processPendingUsage();
+    await processPendingUsage(actor);
     authenticateInsightActor(actor);
 
     const response = await accept(
@@ -329,7 +338,7 @@ describe("GET /api/zero/usage/insight", () => {
         { kind: "connector", category: "call", quantity: 1, credits: 50 },
       ]);
     }
-    await processPendingUsage();
+    await processPendingUsage(actor);
 
     authenticateInsightActor(actor);
     const response = await accept(
@@ -354,25 +363,26 @@ describe("GET /api/zero/usage/insight", () => {
     expect(totalByBucket["others"]).toBeGreaterThanOrEqual(250);
   });
 
-  it("groupBy=agent with 9 agents produces top-7 + others series keys", async () => {
+  it("uses agent name to break ties at the top-7 boundary", async () => {
     const actor = await entitledInsightActor();
+    const names: string[] = [];
+    const suffix = randomUUID().slice(0, 8);
 
     for (let i = 1; i <= 9; i++) {
-      const compose = await createInsightCompose(
-        actor,
-        `agent-${i}-${randomUUID().slice(0, 8)}`,
-      );
+      const name = `tie-agent-${String(i).padStart(2, "0")}-${suffix}`;
+      names.push(name);
+      const compose = await createInsightCompose(actor, name);
       const runId = await createSourceRun(actor, compose.composeId, "cli");
       await reportRunUsage(actor, runId, [
         {
           kind: "connector",
           category: "call",
           quantity: 1,
-          credits: i * 100,
+          credits: 100,
         },
       ]);
     }
-    await processPendingUsage();
+    await processPendingUsage(actor);
 
     authenticateInsightActor(actor);
     const response = await accept(
@@ -389,18 +399,18 @@ describe("GET /api/zero/usage/insight", () => {
         seriesKeys.add(key);
       }
     }
-    expect(seriesKeys.size).toBeLessThanOrEqual(8);
-    expect(seriesKeys.has("others")).toBeTruthy();
+    expect(seriesKeys).toStrictEqual(new Set([...names.slice(0, 7), "others"]));
   });
 
-  it("today produces hourly bucket strings", async () => {
+  it("today includes first-hour activity in an hourly bucket", async () => {
+    mockNow(new Date("2026-07-29T00:30:00.500Z"));
     const actor = await entitledInsightActor();
     const compose = await createInsightCompose(actor);
     const runId = await createSourceRun(actor, compose.composeId, "cli");
     await reportRunUsage(actor, runId, [
       { kind: "connector", category: "call", quantity: 1, credits: 10 },
     ]);
-    await processPendingUsage();
+    await processPendingUsage(actor);
 
     authenticateInsightActor(actor);
     const response = await accept(
@@ -411,10 +421,8 @@ describe("GET /api/zero/usage/insight", () => {
       [200],
     );
 
-    expect(response.body.buckets.length).toBeGreaterThanOrEqual(1);
-    for (const bucket of response.body.buckets) {
-      expect(bucket.ts).toMatch(/:00:00/);
-    }
+    expect(response.body.buckets).toHaveLength(1);
+    expect(response.body.buckets[0]?.ts).toBe("2026-07-29T00:00:00.000Z");
   });
 
   it("day window returns the selected calendar day with hourly buckets", async () => {
@@ -424,7 +432,7 @@ describe("GET /api/zero/usage/insight", () => {
     await reportRunUsage(actor, runId, [
       { kind: "connector", category: "call", quantity: 1, credits: 42 },
     ]);
-    await processPendingUsage();
+    await processPendingUsage(actor);
     const selectedDate = nowDate().toISOString().split("T")[0];
     expect(selectedDate).toBeDefined();
 
@@ -453,6 +461,136 @@ describe("GET /api/zero/usage/insight", () => {
     expect(bucket?.ts).toMatch(/:00:00/);
   });
 
+  it("uses settlement time for range membership and hourly buckets", async () => {
+    const actor = await entitledInsightActor();
+    const settledAt = new Date(nowDate().getTime() + 25 * HOUR_MS);
+    mockNow(settledAt);
+    const credits = await recordRunlessUsage(actor);
+    clearMockNow();
+    authenticateInsightActor(actor);
+
+    const currentRange = await accept(
+      apiClient().get({
+        query: { range: "7d", groupBy: "source", tz: "UTC" },
+        headers: authHeaders(),
+      }),
+      [200],
+    );
+    expect(currentRange.body.grandTotalCredits).toBe(0);
+    expect(currentRange.body.buckets).toStrictEqual([]);
+
+    const processedDate = settledAt.toISOString().slice(0, 10);
+    const processedRange = await accept(
+      apiClient().get({
+        query: {
+          range: "day",
+          date: processedDate,
+          groupBy: "source",
+          tz: "UTC",
+        },
+        headers: authHeaders(),
+      }),
+      [200],
+    );
+    const processedHour = new Date(settledAt);
+    processedHour.setUTCMinutes(0, 0, 0);
+
+    expect(processedRange.body.grandTotalCredits).toBe(credits);
+    expect(processedRange.body.buckets).toStrictEqual([
+      {
+        ts: processedHour.toISOString(),
+        series: { others: credits },
+        tokens: { others: 0 },
+      },
+    ]);
+  });
+
+  it("keeps mixed facts in one adjacent day at fractional UTC offsets", async () => {
+    const actor = await entitledInsightActor();
+    if (!actor.orgId) {
+      throw new Error("Expected an org-scoped actor");
+    }
+    const orgId = actor.orgId;
+    const compose = await createInsightCompose(actor);
+    const hourlyRunId = await createSourceRun(actor, compose.composeId, "cli");
+    const rawRunId = await createSourceRun(actor, compose.composeId, "cli");
+    const insertProcessedEvent = async (
+      runId: string,
+      processedAt: Date,
+      creditsCharged: number,
+    ): Promise<void> => {
+      await store.set(
+        insertUsageEvent$,
+        {
+          orgId,
+          userId: actor.userId,
+          runId,
+          kind: "connector",
+          provider: `hour-boundary-${randomUUID().slice(0, 8)}`,
+          category: "call",
+          quantity: 1,
+          status: "processed",
+          creditsCharged,
+          processedAt,
+        },
+        context.signal,
+      );
+    };
+
+    await insertProcessedEvent(
+      hourlyRunId,
+      new Date("2026-07-26T18:50:00.000Z"),
+      1,
+    );
+    await insertProcessedEvent(
+      hourlyRunId,
+      new Date("2026-07-26T19:00:00.000Z"),
+      2,
+    );
+    await expect(
+      store.set(
+        materializeHourlyUsage$,
+        {
+          orgId: actor.orgId,
+          userId: actor.userId,
+          runId: hourlyRunId,
+        },
+        context.signal,
+      ),
+    ).resolves.toBe(2);
+    await insertProcessedEvent(
+      rawRunId,
+      new Date("2026-07-27T18:50:00.000Z"),
+      4,
+    );
+    await insertProcessedEvent(
+      rawRunId,
+      new Date("2026-07-27T19:00:00.000Z"),
+      8,
+    );
+
+    authenticateInsightActor(actor);
+    const readDay = async (date: string): Promise<number> => {
+      const response = await accept(
+        apiClient().get({
+          query: {
+            range: "day",
+            date,
+            groupBy: "source",
+            tz: "Asia/Kolkata",
+          },
+          headers: authHeaders(),
+        }),
+        [200],
+      );
+      return response.body.grandTotalCredits;
+    };
+
+    await expect(readDay("2026-07-26")).resolves.toBe(1);
+    await expect(readDay("2026-07-27")).resolves.toBe(6);
+    await expect(readDay("2026-07-28")).resolves.toBe(8);
+  });
+
   it("scope isolation — other user's activity in same org is invisible", async () => {
     const bdd = createBddApi(context);
     const actor = await entitledInsightActor();
@@ -477,7 +615,7 @@ describe("GET /api/zero/usage/insight", () => {
       { kind: "model", category: "tokens.input", quantity: 999, credits: 999 },
       { kind: "connector", category: "tweet.read", quantity: 1, credits: 999 },
     ]);
-    await processPendingUsage();
+    await processPendingUsage(actor);
 
     authenticateInsightActor(actor);
     const response = await accept(
@@ -510,7 +648,7 @@ describe("GET /api/zero/usage/insight", () => {
         credits: 4,
       },
     ]);
-    await processPendingUsage();
+    await processPendingUsage(actor);
     // Reported after processing and never settled: pending rows must stay
     // out of every total.
     await reportRunUsage(actor, runId, [
@@ -547,7 +685,7 @@ describe("GET /api/zero/usage/insight", () => {
       { kind: "connector", category: "tweet.read", quantity: 1, credits: 40 },
       { kind: "model", category: "tokens.output", quantity: 15, credits: 5 },
     ]);
-    await processPendingUsage();
+    await processPendingUsage(actor);
 
     authenticateInsightActor(actor);
     const response = await accept(
@@ -582,7 +720,7 @@ describe("GET /api/zero/usage/insight", () => {
       agentId: agent.agentId,
       title: "Test Chat Thread",
     });
-    const sent = await chat.requestSendMessage(
+    const sent = await chat.requestSendEvent(
       actor,
       {
         agentId: agent.agentId,
@@ -602,7 +740,7 @@ describe("GET /api/zero/usage/insight", () => {
     await reportRunUsage(actor, sent.body.runId, [
       { kind: "connector", category: "call", quantity: 1, credits: 225 },
     ]);
-    await processPendingUsage();
+    await processPendingUsage(actor);
 
     authenticateInsightActor(actor);
     const response = await accept(

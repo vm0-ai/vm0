@@ -1,11 +1,10 @@
 import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type { ConnectorResponse } from "@vm0/api-contracts/contracts/connector-schemas";
-import {
-  CONNECTOR_TYPE_KEYS,
-  type ConnectorRegistryAuthMethodId,
-  type ConnectorType,
-} from "@vm0/connectors/connectors";
+import type {
+  ConnectorAuthMethodId,
+  ConnectorRef,
+} from "@vm0/api-contracts/contracts/connector-identity";
 import {
   ILLUSTRATION_TEMPLATE_ITEMS,
   PRESENTATION_TEMPLATE_PICKER_ITEMS,
@@ -13,9 +12,8 @@ import {
 } from "@vm0/core";
 import {
   chatThreadByIdContract,
-  chatThreadMessagesContract,
+  chatThreadEventsContract,
   chatThreadsContract,
-  type PagedChatMessage,
 } from "@vm0/api-contracts/contracts/chat-threads";
 import type {
   ModelProviderResponse,
@@ -35,7 +33,12 @@ import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { localStorageSignals } from "../../../signals/external/local-storage.ts";
 import { CODEX_FAST_MODE_LOCAL_DEFAULT_STORAGE_KEY } from "../../../signals/zero-page/codex-fast-local-default.ts";
 import { click, queryAllByRoleFast } from "../../../__tests__/page-helper.ts";
+import { composerOverflowConnectorRefs } from "../../../mocks/handlers/connector-catalog-fixtures.ts";
 import { mockChatLifecycle } from "./chat-test-helpers.ts";
+import {
+  normalizeMockChatEvents,
+  type MockChatEventInput,
+} from "./chat-event-test-helpers.ts";
 
 export const context = testContext();
 
@@ -80,19 +83,7 @@ export function applyUserConnectorUpdate(
   return [...body.enabledTypes];
 }
 
-export const NOW = "2026-05-08T00:00:00.000Z";
-
-function connectorSearchFixtureTypes(): readonly ConnectorType[] {
-  const excludes = new Set<ConnectorType>([
-    "github",
-    "gmail",
-    "notion",
-    "slack",
-  ]);
-  return CONNECTOR_TYPE_KEYS.filter((type) => {
-    return !excludes.has(type);
-  }).slice(0, 21);
-}
+const NOW = "2026-05-08T00:00:00.000Z";
 
 export function expectTextBefore(firstText: string, secondText: string): void {
   const first = screen.getByText(firstText);
@@ -389,13 +380,11 @@ export function mockAgent(options?: {
 export function mockThread(options?: {
   selectedModel?: string | null;
   activeRunIds?: string[];
-  messages?: PagedChatMessage[];
+  messages?: MockChatEventInput[];
 }): void {
   context.mocks.api(chatThreadByIdContract.get, ({ respond }) => {
     return respond(200, {
       lastReadAt: null,
-      computerUseHostId: null,
-      codexServiceTier: null,
     });
   });
   context.mocks.api(chatThreadsContract.snapshot, ({ respond }) => {
@@ -416,6 +405,7 @@ export function mockThread(options?: {
         },
       ],
       latestEventId: null,
+      latestSeqId: null,
     });
   });
   context.mocks.api(chatThreadsContract.events, ({ respond }) => {
@@ -429,12 +419,17 @@ export function mockThread(options?: {
           : [],
     });
   });
-  context.mocks.api(chatThreadMessagesContract.list, ({ query, respond }) => {
-    if (query.sinceSeqId || query.beforeSeqId) {
-      return respond(200, { messages: [], hasHistoryBefore: false });
+  context.mocks.api(chatThreadEventsContract.list, ({ query, respond }) => {
+    if (
+      query.sinceSeqId ||
+      query.beforeSeqId ||
+      query.sinceId ||
+      query.beforeId
+    ) {
+      return respond(200, { events: [], hasHistoryBefore: false });
     }
     return respond(200, {
-      messages: options?.messages ?? [],
+      events: normalizeMockChatEvents(options?.messages ?? []),
       hasHistoryBefore: false,
     });
   });
@@ -466,6 +461,7 @@ export function mockComposerThreadSnapshot(
         };
       }),
       latestEventId: null,
+      latestSeqId: null,
     });
   });
 }
@@ -495,8 +491,8 @@ export function mockActiveTemplateThread(): void {
 
 export function mockConnectors(
   connectors: {
-    type: ConnectorType;
-    authMethod?: ConnectorRegistryAuthMethodId;
+    type: ConnectorRef;
+    authMethod?: ConnectorAuthMethodId;
     externalUsername?: string;
     oauthScopes?: string[];
   }[],
@@ -525,7 +521,7 @@ export function mockManyConnectedConnectors(): void {
   mockConnectors([
     { type: "github", externalUsername: "octocat" },
     { type: "slack", externalUsername: "launch-team" },
-    ...connectorSearchFixtureTypes().map((type) => {
+    ...composerOverflowConnectorRefs.map((type) => {
       return { type };
     }),
   ]);

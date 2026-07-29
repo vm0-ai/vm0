@@ -1,5 +1,6 @@
 import { command } from "ccstate";
+import { brandName$ } from "./branding.ts";
 
-export const updateDocumentTitle$ = command((_ctx, pageName: string) => {
-  document.title = `${pageName} | VM0`;
+export const updateDocumentTitle$ = command(({ get }, pageName: string) => {
+  document.title = `${pageName} | ${get(brandName$)}`;
 });

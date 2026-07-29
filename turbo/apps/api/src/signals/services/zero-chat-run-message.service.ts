@@ -15,7 +15,9 @@ import {
 } from "../external/realtime";
 import { nowDate } from "../external/time";
 import { loadUserFeatureSwitchContext } from "./feature-switches.service";
-import { insertChatMessage } from "./zero-chat-message.service";
+import { insertChatEvent } from "./zero-chat-event.service";
+import { createUserMessageDocument } from "./zero-chat-user-message.service";
+import { chatEventTypeIn } from "./zero-chat-event-type.service";
 import { appendQueuedRunAssistantMarker } from "./zero-chat-queue-marker.service";
 import { nonEmptyGoalObjectiveBrief } from "./zero-goal-objective-brief-normalization.service";
 import {
@@ -34,7 +36,7 @@ async function getFirstRunSelectedModel(
     .where(
       and(
         eq(chatMessages.chatThreadId, threadId),
-        eq(chatMessages.role, "user"),
+        chatEventTypeIn(["input.prompt"]),
         isNotNull(chatMessages.runId),
         isNotNull(zeroRuns.selectedModel),
       ),
@@ -101,10 +103,11 @@ export async function postRunUserMessage(params: {
       }
     : undefined;
   await params.db.transaction(async (tx): Promise<void> => {
-    const inserted = await insertChatMessage(tx, {
+    const inserted = await insertChatEvent(tx, {
       chatThreadId: params.threadId,
-      role: "user",
+      eventType: "input.prompt",
       content: params.prompt,
+      userMessage: createUserMessageDocument({ text: params.prompt }),
       runId: params.runId,
       runGroupId: params.runGroupId,
       goalSnapshot,
@@ -119,13 +122,41 @@ export async function postRunUserMessage(params: {
       createdAfter: inserted?.createdAt ?? nowDate(),
     });
   });
-  await publishUserSignal(
-    [params.userId],
-    `chatThreadMessageCreated:${params.threadId}`,
-  );
-  await publishUserSignal(
-    [params.userId],
-    `chatThreadRunCreated:${params.threadId}`,
-  );
-  await publishThreadListChanged(params.userId);
+  await publishRunUserMessageSignals(params.userId, params.threadId);
+}
+
+async function publishRunUserMessageSignals(
+  userId: string,
+  threadId: string,
+): Promise<void> {
+  await publishUserSignal([userId], `chatThreadMessageCreated:${threadId}`);
+  await publishUserSignal([userId], `chatThreadRunCreated:${threadId}`);
+  await publishThreadListChanged(userId);
+}
+
+/**
+ * Finish the side effects for a user message inserted by a queue-first run
+ * claim. The claim and run rows already committed atomically; only a queued
+ * marker and realtime notifications remain.
+ */
+export async function finalizeClaimedRunUserMessage(params: {
+  readonly db: Db;
+  readonly threadId: string;
+  readonly userId: string;
+  readonly runId: string;
+  readonly runStatus: string;
+  readonly runGroupId?: string;
+  readonly createdAt: Date;
+}): Promise<void> {
+  if (params.runStatus === "queued") {
+    await params.db.transaction(async (tx): Promise<void> => {
+      await appendQueuedRunAssistantMarker(tx, {
+        chatThreadId: params.threadId,
+        runId: params.runId,
+        runGroupId: params.runGroupId,
+        createdAfter: params.createdAt,
+      });
+    });
+  }
+  await publishRunUserMessageSignals(params.userId, params.threadId);
 }

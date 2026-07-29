@@ -1,4 +1,4 @@
-import type { SignIn } from "@clerk/clerk-react";
+import type { SignIn } from "@clerk/react";
 import type { ComponentProps } from "react";
 import {
   platformVm0LogoDarkImg,
@@ -9,7 +9,7 @@ type ClerkAppearance = NonNullable<ComponentProps<typeof SignIn>["appearance"]>;
 
 export function getClerkAppearance(theme: "light" | "dark"): ClerkAppearance {
   return {
-    layout: {
+    options: {
       logoImageUrl:
         theme === "dark" ? platformVm0LogoImg : platformVm0LogoDarkImg,
       logoPlacement: "inside",

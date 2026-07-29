@@ -82,6 +82,7 @@ export interface ZeroAuth {
   readonly orgId: string;
   readonly capabilities: readonly ZeroCapability[];
   readonly computerUseHostId?: string;
+  readonly cloudBrowserEnabled?: true;
 }
 
 export interface CliAuth {

@@ -1,4 +1,4 @@
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 
 import { createStore } from "ccstate";
 import { eq, sql } from "drizzle-orm";
@@ -9,10 +9,13 @@ import {
 } from "@vm0/db/schema/agent-compose";
 import { agentRuns } from "@vm0/db/schema/agent-run";
 import { agentSessions } from "@vm0/db/schema/agent-session";
-import { chatThreadEvents } from "@vm0/db/schema/chat-thread-event";
 import { chatMessages } from "@vm0/db/schema/chat-message";
 import { chatThreads } from "@vm0/db/schema/chat-thread";
 import { connectors } from "@vm0/db/schema/connector";
+import {
+  connectorCatalogActiveSnapshot,
+  connectorCatalogSyncState,
+} from "@vm0/db/schema/connector-catalog";
 import { creditExpiresRecord } from "@vm0/db/schema/credit-expires-record";
 import { orgMembersMetadata } from "@vm0/db/schema/org-members-metadata";
 import { orgMetadata } from "@vm0/db/schema/org-metadata";
@@ -21,7 +24,8 @@ import { zeroRuns } from "@vm0/db/schema/zero-run";
 import { bench } from "vitest";
 import {
   chatThreadByIdContract,
-  chatThreadMessagesContract,
+  chatThreadEventsContract,
+  type UserMessageDocument,
 } from "@vm0/api-contracts/contracts/chat-threads";
 import { zeroBillingStatusContract } from "@vm0/api-contracts/contracts/zero-billing";
 import { zeroConnectorsMainContract } from "@vm0/api-contracts/contracts/zero-connectors";
@@ -36,6 +40,19 @@ import { setupApp, testContext } from "../../../__tests__/test-helpers";
 import { server } from "../../../mocks/server";
 import { writeDb$ } from "../../external/db";
 import { nowDate } from "../../external/time";
+import { appendChatThreadEvent } from "../../services/zero-chat-thread-event.service";
+import {
+  connectorCatalogExecutableCapabilityState,
+  persistConnectorCatalogCompatibility,
+} from "../../services/connector-catalog-compatibility.service";
+import {
+  SUPPORTED_CONNECTOR_CATALOG_SCHEMA_VERSION,
+  type ConnectorCatalogArtifact,
+  type ConnectorCatalogArtifactConnector,
+} from "../../services/connector-catalog-artifacts/artifacts";
+import { encodeConnectorCatalogSnapshot } from "../../services/connector-catalog-artifacts/loader";
+import { connectorCatalogSource } from "../../services/connector-catalog-source";
+import { currentConnectorCatalogValidatorIdentity } from "../../services/connector-catalog-validator-authority";
 import { seedUserModelProvider$ } from "./helpers/zero-model-providers";
 import { seedOrgMembership$ } from "../__tests__/helpers/zero-org-membership";
 import { createZeroRouteMocks } from "../__tests__/helpers/zero-route-test";
@@ -68,11 +85,13 @@ const TARGET_ATTACHMENT_COUNT = 6;
 const MOCK_R2_LIST_DELAY_MS = 10;
 const STATUSES = ["completed", "completed", "failed", "running"] as const;
 const queryPlanRowSchema = z.object({ "QUERY PLAN": z.string() });
+const BENCH_CONNECTOR_CATALOG_VERSION = "bench-api-v1";
+const BENCH_CONNECTOR_CATALOG_KEY =
+  `connectors/v${String(SUPPORTED_CONNECTOR_CATALOG_SCHEMA_VERSION)}/` +
+  `releases/${BENCH_CONNECTOR_CATALOG_VERSION}/catalog.json`;
 
 const chatThreadClient = setupApp({ context })(chatThreadByIdContract);
-const chatThreadMessagesClient = setupApp({ context })(
-  chatThreadMessagesContract,
-);
+const chatThreadEventsClient = setupApp({ context })(chatThreadEventsContract);
 const connectorsClient = setupApp({ context })(zeroConnectorsMainContract);
 const userPreferencesClient = setupApp({ context })(
   zeroUserPreferencesContract,
@@ -88,6 +107,184 @@ interface BenchChatThreadFixture {
   readonly orgId: string;
   readonly composeId: string;
   readonly threadId: string;
+}
+
+function benchCatalogConnector(args: {
+  readonly connectorRef: string;
+  readonly label: string;
+  readonly iconKey: string;
+  readonly secretName: string;
+}): ConnectorCatalogArtifactConnector {
+  return {
+    connectorRef: args.connectorRef,
+    label: args.label,
+    description: `${args.label} connector used by the API benchmark`,
+    category: "benchmark",
+    generation: [],
+    tags: ["benchmark"],
+    authMethods: [
+      {
+        id: "api-token",
+        label: "API token",
+        description: null,
+        visible: true,
+        featureSwitch: null,
+        storage: {
+          version: 1,
+          secrets: [args.secretName],
+          variables: [],
+        },
+        grant: {
+          kind: "manual",
+          fields: [
+            {
+              privateName: args.secretName,
+              publicId: "credential",
+              label: "Credential",
+              required: true,
+              placeholder: null,
+              storage: "secret",
+            },
+          ],
+        },
+        access: {
+          kind: "static",
+          envBindings: {
+            BENCH_CONNECTOR_TOKEN: `$secrets.${args.secretName}`,
+          },
+        },
+        revoke: { kind: "none" },
+      },
+    ],
+    icon: {
+      key: args.iconKey,
+      invertInDarkMode: false,
+    },
+    skill: { kind: "none" },
+    firewall: { kind: "none" },
+  };
+}
+
+const BENCH_CONNECTOR_CATALOG = {
+  artifactSchemaVersion: SUPPORTED_CONNECTOR_CATALOG_SCHEMA_VERSION,
+  catalogVersion: BENCH_CONNECTOR_CATALOG_VERSION,
+  categoryMetadata: {
+    categories: [
+      {
+        id: "benchmark",
+        label: "Benchmark",
+        menuLabel: "Benchmark",
+        groupId: null,
+      },
+    ],
+    groups: [],
+  },
+  connectors: [
+    benchCatalogConnector({
+      connectorRef: "benchmark-github",
+      label: "GitHub",
+      iconKey:
+        "views/zero-page/components/settings/icons/github-4a739019d805.svg",
+      secretName: "GITHUB_TOKEN",
+    }),
+    benchCatalogConnector({
+      connectorRef: "benchmark-notion",
+      label: "Notion",
+      iconKey:
+        "views/zero-page/components/settings/icons/notion-beeb509915a9.svg",
+      secretName: "NOTION_TOKEN",
+    }),
+    benchCatalogConnector({
+      connectorRef: "benchmark-slack",
+      label: "Slack",
+      iconKey:
+        "views/zero-page/components/settings/icons/slack-198390069136.svg",
+      secretName: "SLACK_TOKEN",
+    }),
+  ],
+} satisfies ConnectorCatalogArtifact;
+
+function sha256Digest(bytes: Uint8Array): string {
+  return `sha256:${createHash("sha256").update(bytes).digest("hex")}`;
+}
+
+async function seedBenchConnectorCatalog(): Promise<void> {
+  const rawBytes = Buffer.from(`${JSON.stringify(BENCH_CONNECTOR_CATALOG)}\n`);
+  const catalogDigest = sha256Digest(rawBytes);
+  const catalogGzip = encodeConnectorCatalogSnapshot(rawBytes);
+  const source = connectorCatalogSource();
+  const capability = connectorCatalogExecutableCapabilityState();
+  const activatedAt = nowDate();
+  const db = store.set(writeDb$);
+  const syncStateValues = {
+    revision: 1,
+    lastObservedCatalogVersion: BENCH_CONNECTOR_CATALOG_VERSION,
+    lastObservedCatalogKey: BENCH_CONNECTOR_CATALOG_KEY,
+    lastObservedCatalogDigest: catalogDigest,
+    lastObservedPointerEtag: null,
+    lastAttemptAt: activatedAt,
+    lastAttemptOutcome: "accepted" as const,
+    lastAttemptReusedCachedRejection: false,
+    lastSuccessAt: activatedAt,
+    lastFailureCode: null,
+    lastRejectedCatalogVersion: null,
+    lastRejectedCatalogKey: null,
+    lastRejectedCatalogDigest: null,
+    lastRejectedPointerEtag: null,
+    lastRejectedFailureCode: null,
+    lastRejectedBackendVersion: null,
+    lastRejectedBuildCommitSha: null,
+  };
+  const snapshotValues = {
+    catalogVersion: BENCH_CONNECTOR_CATALOG_VERSION,
+    catalogKey: BENCH_CONNECTOR_CATALOG_KEY,
+    catalogDigest,
+    catalogRawSize: rawBytes.byteLength,
+    catalogGzip,
+    activatedAt,
+  };
+
+  await db.transaction(async (tx) => {
+    await tx
+      .insert(connectorCatalogSyncState)
+      .values({
+        sourceId: source.sourceId,
+        schemaVersion: SUPPORTED_CONNECTOR_CATALOG_SCHEMA_VERSION,
+        ...syncStateValues,
+      })
+      .onConflictDoUpdate({
+        target: [
+          connectorCatalogSyncState.sourceId,
+          connectorCatalogSyncState.schemaVersion,
+        ],
+        set: syncStateValues,
+      });
+    await tx
+      .insert(connectorCatalogActiveSnapshot)
+      .values({
+        sourceId: source.sourceId,
+        schemaVersion: SUPPORTED_CONNECTOR_CATALOG_SCHEMA_VERSION,
+        ...snapshotValues,
+      })
+      .onConflictDoUpdate({
+        target: [
+          connectorCatalogActiveSnapshot.sourceId,
+          connectorCatalogActiveSnapshot.schemaVersion,
+        ],
+        set: snapshotValues,
+      });
+    await persistConnectorCatalogCompatibility({
+      db: tx,
+      sourceId: source.sourceId,
+      identity: {
+        catalogVersion: BENCH_CONNECTOR_CATALOG_VERSION,
+        catalogDigest,
+      },
+      artifact: BENCH_CONNECTOR_CATALOG,
+      capability,
+      validator: currentConnectorCatalogValidatorIdentity(),
+    });
+  });
 }
 
 async function chunkedInsert<T>(
@@ -121,6 +318,28 @@ function markdownLorem(runIndex: number, messageIndex: number): string {
 
 function targetAttachmentId(index: number): string {
   return `bench-attachment-${String(index).padStart(2, "0")}`;
+}
+
+function benchUserMessage(
+  content: string,
+  attachmentId: string | undefined,
+): UserMessageDocument {
+  return {
+    version: 1,
+    parts: [
+      ...(attachmentId
+        ? [
+            {
+              type: "file" as const,
+              fileId: attachmentId,
+              filenameSnapshot: "bench-attachment.md",
+              contentType: "text/markdown",
+            },
+          ]
+        : []),
+      { type: "text", text: content },
+    ],
+  };
 }
 
 function commandName(command: unknown): string {
@@ -333,13 +552,15 @@ async function seedBenchChatThread(): Promise<BenchChatThreadFixture> {
     agentComposeId: composeId,
     title,
   });
-  await db.insert(chatThreadEvents).values({
-    userId,
-    orgId,
-    chatThreadId: threadId,
-    kind: "created",
-    agentComposeId: composeId,
-    title,
+  await db.transaction(async (tx) => {
+    await appendChatThreadEvent(tx, {
+      userId,
+      orgId,
+      chatThreadId: threadId,
+      kind: "created",
+      agentComposeId: composeId,
+      title,
+    });
   });
 
   return { userId, orgId, composeId, threadId };
@@ -386,11 +607,12 @@ async function seedTargetThreadRuns(
   const messageRows: {
     chatThreadId: string;
     runId: string;
-    role: string;
+    eventType: "input.prompt" | "output.message";
     content: string;
     sequenceNumber: number;
     seqId: number;
     attachFiles?: string[];
+    userMessage?: UserMessageDocument;
     createdAt: Date;
   }[] = [];
   const now = nowDate().getTime();
@@ -412,16 +634,22 @@ async function seedTargetThreadRuns(
     });
     for (let m = 0; m < TARGET_MESSAGES_PER_RUN; m++) {
       const latestAttachmentStart = TARGET_RUN_COUNT - TARGET_ATTACHMENT_COUNT;
+      const attachmentId =
+        m === 0 && i >= latestAttachmentStart
+          ? targetAttachmentId(i - latestAttachmentStart)
+          : undefined;
+      const content = markdownLorem(i, m);
       messageRows.push({
         chatThreadId: fixture.threadId,
         runId,
-        role: m === 0 ? "user" : "assistant",
-        content: markdownLorem(i, m),
+        eventType: m === 0 ? "input.prompt" : "output.message",
+        content,
         sequenceNumber: m,
         seqId: i * TARGET_MESSAGES_PER_RUN + m + 1,
-        ...(m === 0 && i >= latestAttachmentStart
-          ? { attachFiles: [targetAttachmentId(i - latestAttachmentStart)] }
+        ...(m === 0
+          ? { userMessage: benchUserMessage(content, attachmentId) }
           : {}),
+        ...(attachmentId ? { attachFiles: [attachmentId] } : {}),
         createdAt: new Date(now + i * 1000 + m),
       });
     }
@@ -487,8 +715,8 @@ async function seedSideEffectFreeGetData(
     {
       orgId: fixture.orgId,
       userId: fixture.userId,
-      type: "github",
-      authMethod: "oauth",
+      type: "benchmark-github",
+      authMethod: "api-token",
       storageVersion: 1,
       externalId: "bench-github",
       externalUsername: "bench-github",
@@ -496,8 +724,8 @@ async function seedSideEffectFreeGetData(
     {
       orgId: fixture.orgId,
       userId: fixture.userId,
-      type: "slack",
-      authMethod: "oauth",
+      type: "benchmark-slack",
+      authMethod: "api-token",
       storageVersion: 1,
       externalId: "bench-slack",
       externalUsername: "bench-slack",
@@ -505,8 +733,8 @@ async function seedSideEffectFreeGetData(
     {
       orgId: fixture.orgId,
       userId: fixture.userId,
-      type: "notion",
-      authMethod: "oauth",
+      type: "benchmark-notion",
+      authMethod: "api-token",
       storageVersion: 1,
       externalId: "bench-notion",
       externalUsername: "bench-notion",
@@ -576,6 +804,7 @@ const ensureSeeded: () => Promise<BenchChatThreadFixture> = (() => {
   return () => {
     cached ??= (async () => {
       installR2ListMock();
+      await seedBenchConnectorCatalog();
       const seeded = await seedBenchChatThread();
       await seedBackgroundLoad();
       await seedTargetThreadRuns(seeded);
@@ -590,6 +819,31 @@ const ensureSeeded: () => Promise<BenchChatThreadFixture> = (() => {
       if (sanity.status !== 200) {
         throw new Error(
           `sanity check failed: status=${String(sanity.status)} body=${JSON.stringify(sanity.body)}`,
+        );
+      }
+      const connectorSanity = await connectorsClient.list({
+        headers: { authorization: "Bearer clerk-session" },
+      });
+      if (connectorSanity.status !== 200) {
+        throw new Error(
+          `connector sanity check failed: status=${String(connectorSanity.status)} body=${JSON.stringify(connectorSanity.body)}`,
+        );
+      }
+      const listedConnectorRefs = new Set(
+        connectorSanity.body.connectors.map((connector) => {
+          return connector.type;
+        }),
+      );
+      const missingConnectorRefs = BENCH_CONNECTOR_CATALOG.connectors
+        .map((connector) => {
+          return connector.connectorRef;
+        })
+        .filter((connectorRef) => {
+          return !listedConnectorRefs.has(connectorRef);
+        });
+      if (missingConnectorRefs.length > 0) {
+        throw new Error(
+          `connector sanity check omitted seeded connectors: ${missingConnectorRefs.join(", ")}`,
         );
       }
       return seeded;
@@ -618,10 +872,10 @@ describe("bench side-effect-free GET API routes", () => {
   );
 
   bench(
-    "GET /api/zero/chat-threads/:threadId/messages",
+    "GET /api/zero/chat-threads/:threadId/events",
     async () => {
       const fixture = await ensureSeeded();
-      const response = await chatThreadMessagesClient.list({
+      const response = await chatThreadEventsClient.list({
         params: { threadId: fixture.threadId },
         query: { limit: 50 },
         headers: authHeaders,

@@ -2,10 +2,9 @@ import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 import {
-  chatThreadMessagesContract,
+  chatThreadEventsContract,
   type UserMessageDocument,
 } from "@vm0/api-contracts/contracts/chat-threads";
-import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 
 import { mockOrganization, mockUser } from "../../../__tests__/mock-auth.ts";
 import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
@@ -31,7 +30,7 @@ const FIRST_MESSAGE = "Persist this remote response for thread re-entry";
 const STRUCTURED_MESSAGE_ID = "00000000-0000-4000-8000-000000000733";
 const STRUCTURED_MESSAGE = "Legacy structured content should stay hidden";
 const STRUCTURED_REFERENCE_TITLE = "Archived IndexedDB source";
-function structuredPromptFixture(): UserMessageDocument {
+function userMessageFixture(): UserMessageDocument {
   return {
     version: 1,
     parts: [
@@ -55,7 +54,7 @@ async function findThreadLink(title: string): Promise<HTMLAnchorElement> {
 }
 
 describe("chat message persistence", () => {
-  it("round-trips structured and legacy messages through IndexedDB on thread re-entry", async () => {
+  it("round-trips canonical user and assistant messages through IndexedDB on thread re-entry", async () => {
     mockUser(
       { id: "idb-reentry-user", fullName: "IndexedDB Test User" },
       { token: "test-token" },
@@ -65,7 +64,7 @@ describe("chat message persistence", () => {
       memberships: [{ id: "idb-reentry-org" }],
     });
     const appDb = await context.store.get(chatIdb$);
-    const structuredPrompt = structuredPromptFixture();
+    const userMessage = userMessageFixture();
     const user = userEvent.setup({ delay: null });
     const blockedRemote = context.mocks.deferred<void>();
     const firstThreadCaughtUp = context.mocks.deferred<void>();
@@ -91,7 +90,7 @@ describe("chat message persistence", () => {
       },
     ]);
     context.mocks.api(
-      chatThreadMessagesContract.list,
+      chatThreadEventsContract.list,
       async ({ params, query, respond }) => {
         if (params.threadId === FIRST_THREAD_ID) {
           if (blockFirstThreadRemote) {
@@ -101,22 +100,24 @@ describe("chat message persistence", () => {
             if (!firstThreadCaughtUp.settled()) {
               firstThreadCaughtUp.resolve();
             }
-            return respond(200, { messages: [] });
+            return respond(200, { events: [] });
           }
           return respond(200, {
-            messages: [
+            events: [
               {
                 id: STRUCTURED_MESSAGE_ID,
-                role: "user",
+                threadId: FIRST_THREAD_ID,
+                eventType: "input.prompt" as const,
                 content: STRUCTURED_MESSAGE,
                 runId: "d0000000-0000-4000-a000-000000000731",
-                structuredPrompt,
+                userMessage,
                 createdAt: "2026-06-09T10:00:00Z",
                 seqId: 1,
               },
               {
                 id: FIRST_MESSAGE_ID,
-                role: "assistant",
+                threadId: FIRST_THREAD_ID,
+                eventType: "output.message" as const,
                 content: FIRST_MESSAGE,
                 runId: "d0000000-0000-4000-a000-000000000731",
                 createdAt: "2026-06-09T10:01:00Z",
@@ -126,14 +127,15 @@ describe("chat message persistence", () => {
             hasHistoryBefore: false,
           });
         }
-        if (query.sinceSeqId) {
-          return respond(200, { messages: [] });
+        if (query.sinceSeqId || query.sinceId) {
+          return respond(200, { events: [] });
         }
         return respond(200, {
-          messages: [
+          events: [
             {
               id: "00000000-0000-4000-8000-000000000732",
-              role: "assistant",
+              threadId: SECOND_THREAD_ID,
+              eventType: "output.message" as const,
               content: "Other thread response",
               createdAt: "2026-06-09T10:00:00Z",
               seqId: 1,
@@ -148,7 +150,6 @@ describe("chat message persistence", () => {
       detachedSetupPage({
         context,
         path: `/chats/${FIRST_THREAD_ID}`,
-        featureSwitches: { [FeatureSwitchKey.StructuredPrompt]: true },
         user: { id: "idb-reentry-user", fullName: "IndexedDB Test User" },
         org: {
           activeOrg: { id: "idb-reentry-org", name: "IndexedDB Test Org" },
@@ -170,13 +171,13 @@ describe("chat message persistence", () => {
       await waitFor(async () => {
         const testDb = await openChatIdb("idb-reentry-user", "idb-reentry-org");
         try {
-          const structuredMessage: unknown = await testDb.get(
+          const userMessageElement: unknown = await testDb.get(
             CHAT_MESSAGES_STORE,
             STRUCTURED_MESSAGE_ID,
           );
-          expect(structuredMessage).toMatchObject({
+          expect(userMessageElement).toMatchObject({
             content: STRUCTURED_MESSAGE,
-            structuredPrompt,
+            userMessage,
             threadId: FIRST_THREAD_ID,
           });
           const persistedMessage: unknown = await testDb.get(
@@ -187,7 +188,7 @@ describe("chat message persistence", () => {
             content: FIRST_MESSAGE,
             threadId: FIRST_THREAD_ID,
           });
-          expect(persistedMessage).not.toHaveProperty("structuredPrompt");
+          expect(persistedMessage).not.toHaveProperty("userMessage");
         } finally {
           testDb.close();
         }
@@ -228,9 +229,9 @@ describe("chat message persistence", () => {
     try {
       await testDb.put(CHAT_MESSAGES_STORE, {
         id: "00000000-0000-4000-8000-000000000734",
-        role: "user",
+        eventType: "input.prompt" as const,
         content: cachedMessage,
-        structuredPrompt: { version: 1, parts: [] },
+        userMessage: { version: 1, parts: [] },
         createdAt: "2026-06-09T10:00:00Z",
         threadId,
         orderSequence: -1,
@@ -252,19 +253,24 @@ describe("chat message persistence", () => {
       threadId,
       threadTitle: "Invalid IndexedDB cache",
     });
-    context.mocks.api(chatThreadMessagesContract.list, ({ query, respond }) => {
+    context.mocks.api(chatThreadEventsContract.list, ({ query, respond }) => {
       if (query.sinceSeqId) {
         if (!remoteMessagesCaughtUp.settled()) {
           remoteMessagesCaughtUp.resolve();
         }
-        return respond(200, { messages: [] });
+        return respond(200, { events: [] });
       }
       return respond(200, {
-        messages: [
+        events: [
           {
             id: "00000000-0000-4000-8000-000000000735",
-            role: "user",
+            threadId,
+            eventType: "input.prompt" as const,
             content: remoteMessage,
+            userMessage: {
+              version: 1,
+              parts: [{ type: "text", text: remoteMessage }],
+            },
             createdAt: "2026-06-09T10:01:00Z",
             seqId: 1,
           },

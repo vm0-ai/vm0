@@ -33,6 +33,7 @@ import {
   revokeQueuedRunAssistantMarkers,
   type QueueMarkerRevokeNotification,
 } from "./zero-chat-queue-marker.service";
+import { recordFirstAssistantMessageEligibility } from "./zero-chat-first-assistant-message-metric.service";
 import {
   activePaidConcurrencySlots,
   cappedBaseConcurrencyLimit,
@@ -71,6 +72,7 @@ interface QueueCandidate {
   readonly createdAt: Date;
   readonly encryptedParams: string | null;
   readonly runStatus: string | null;
+  readonly chatThreadId: string | null;
 }
 
 interface RunnerNotification {
@@ -82,11 +84,22 @@ interface RunnerNotification {
   readonly createdAt: Date;
 }
 
+interface FirstAssistantMessageEligibility {
+  readonly runId: string;
+  readonly apiStartedAt: number;
+}
+
+interface PromotedRunnerJob {
+  readonly createdAt: Date;
+  readonly apiStartedAt: number;
+}
+
 type PromoteQueuedCandidateResult =
   | {
       readonly status: "promoted";
       readonly runnerNotification: RunnerNotification | null;
       readonly queueMarkerNotification: QueueMarkerRevokeNotification | null;
+      readonly firstAssistantMessageEligibility: FirstAssistantMessageEligibility | null;
     }
   | { readonly status: "full" }
   | { readonly status: "removed-stale" }
@@ -161,7 +174,7 @@ async function insertPromotedRunnerJob(
     readonly queuedAt: Date;
     readonly payload: QueuedRunnerJobPayload;
   },
-): Promise<Date> {
+): Promise<PromotedRunnerJob> {
   const promotedAt = now();
   const [remainingRow] = await tx
     .select({ depth: count() })
@@ -202,7 +215,10 @@ async function insertPromotedRunnerJob(
   if (!runnerJob) {
     throw new Error("Promoted runner job queue insert returned no row");
   }
-  return runnerJob.createdAt;
+  return {
+    createdAt: runnerJob.createdAt,
+    apiStartedAt: promotedAt,
+  };
 }
 
 async function loadDrainCandidates(
@@ -226,9 +242,11 @@ async function loadDrainCandidates(
         createdAt: agentRunQueue.createdAt,
         encryptedParams: agentRunQueue.encryptedParams,
         runStatus: agentRuns.status,
+        chatThreadId: zeroRuns.chatThreadId,
       })
       .from(agentRunQueue)
       .leftJoin(agentRuns, eq(agentRunQueue.runId, agentRuns.id))
+      .leftJoin(zeroRuns, eq(agentRunQueue.runId, zeroRuns.id))
       .where(eq(agentRunQueue.orgId, orgId))
       .orderBy(agentRunQueue.createdAt);
   });
@@ -324,10 +342,11 @@ async function promoteQueuedCandidate(
         status: "promoted",
         runnerNotification: null,
         queueMarkerNotification,
+        firstAssistantMessageEligibility: null,
       };
     }
 
-    const runnerJobCreatedAt = await insertPromotedRunnerJob(tx, {
+    const runnerJob = await insertPromotedRunnerJob(tx, {
       orgId: args.orgId,
       runId: args.row.runId,
       queuedAt: args.row.createdAt,
@@ -336,13 +355,19 @@ async function promoteQueuedCandidate(
     return {
       status: "promoted",
       queueMarkerNotification,
+      firstAssistantMessageEligibility: args.row.chatThreadId
+        ? {
+            runId: args.row.runId,
+            apiStartedAt: runnerJob.apiStartedAt,
+          }
+        : null,
       runnerNotification: {
         runId: args.row.runId,
         runnerGroup: args.payload.runnerGroup,
         profile: args.payload.profile,
         cliAgentSessionId: args.payload.cliAgentSessionId,
         historyGenerationRunId: args.payload.historyGenerationRunId,
-        createdAt: runnerJobCreatedAt,
+        createdAt: runnerJob.createdAt,
       },
     };
   });
@@ -431,6 +456,12 @@ async function promoteQueuedCandidateWithSideEffects(
       runId: args.row.runId,
     });
     return "skipped";
+  }
+
+  if (result.firstAssistantMessageEligibility) {
+    recordFirstAssistantMessageEligibility(
+      result.firstAssistantMessageEligibility,
+    );
   }
 
   await publishPromotedQueueSideEffects(db, {

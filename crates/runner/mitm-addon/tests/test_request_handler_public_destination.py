@@ -1,27 +1,39 @@
 """Public destination request-hook tests."""
 
+import asyncio
 import json
+from types import SimpleNamespace
+from unittest.mock import AsyncMock
 
 import pytest
+from mitmproxy import connection
 from mitmproxy.flow import Error
 
+import auth
 import auth_base_forwarder
 import builtin_host_policy
 import flow_metadata_keys as metadata_keys
 import mitm_addon
+import public_destination
 import request_classification
 import upstream_destination_binding
 from body_limits import STREAM_BUFFER_LIMIT
+from tests.aws_sigv4_helpers import resolved_aws_sigv4_credentials
+from tests.firewall_helpers import cancel_pending_task
 from tests.jsonl_log_helpers import read_jsonl_entries_after_flush
 from tests.request_handler_helpers import _single_firewall_vm, _write_registry
 from tests.requestheaders_helpers import _assert_no_request_stream
-from tests.upstream_connection_helpers import mark_connected_tls_upstream
+from tests.upstream_connection_helpers import (
+    mark_connected_tls_upstream,
+    seed_server_binding,
+)
 
 
 def _write_public_destination_firewall_registry(
     tmp_path,
     *,
     auth_config: dict[str, object] | None = None,
+    unknown_policy: str = "deny",
     vm_fields: dict[str, object] | None = None,
 ):
     return _write_registry(
@@ -40,7 +52,7 @@ def _write_public_destination_firewall_registry(
                 "allow": ["call"],
                 "deny": [],
                 "ask": [],
-                "unknownPolicy": "deny",
+                "unknownPolicy": unknown_policy,
             },
             vm_fields=vm_fields,
         ),
@@ -53,6 +65,7 @@ def _public_destination_flow(
     *,
     destination_host: str,
     method: str = "GET",
+    path: str = "/v1/items",
     extra_headers: tuple[tuple[str, str], ...] = (),
 ):
     return real_flow(
@@ -60,10 +73,24 @@ def _public_destination_flow(
         client_ip="10.200.0.5",
         host=destination_host,
         sni="service.example.com",
-        path="/v1/items",
+        path=path,
         method=method,
         request_headers=headers(("Host", "service.example.com"), *extra_headers),
     )
+
+
+def _track_public_destination_classifications(monkeypatch: pytest.MonkeyPatch) -> list[object]:
+    classified_hosts: list[object] = []
+    classify_runtime_destination_host = public_destination.classify_runtime_destination_host
+
+    def track(
+        runtime_host: object,
+    ) -> public_destination.RuntimeDestinationHostClassification:
+        classified_hosts.append(runtime_host)
+        return classify_runtime_destination_host(runtime_host)
+
+    monkeypatch.setattr(public_destination, "classify_runtime_destination_host", track)
+    return classified_hosts
 
 
 def _assert_public_destination_denied(flow, *, destination_host: str, reason: str) -> None:
@@ -149,10 +176,17 @@ async def test_public_destination_blocks_unsafe_runtime_destination_before_auth(
     ],
 )
 async def test_public_destination_allows_public_runtime_destination(
-    tmp_path, real_flow, mitm_ctx, fake_firewall_headers, headers, destination_host
+    tmp_path,
+    real_flow,
+    mitm_ctx,
+    fake_firewall_headers,
+    headers,
+    monkeypatch,
+    destination_host,
 ):
     reg_path = _write_public_destination_firewall_registry(tmp_path)
     flow = _public_destination_flow(real_flow, headers, destination_host=destination_host)
+    classified_hosts = _track_public_destination_classifications(monkeypatch)
 
     with (
         mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
@@ -161,6 +195,7 @@ async def test_public_destination_allows_public_runtime_destination(
         await mitm_addon.request(flow)
 
     auth_fetch.assert_awaited_once()
+    assert classified_hosts == [destination_host, destination_host]
     assert flow.response is None
     assert flow.metadata[metadata_keys.FIREWALL_ACTION] == "ALLOW"
     assert flow.metadata[metadata_keys.FIREWALL_BASE] == "https://service.example.com"
@@ -169,13 +204,163 @@ async def test_public_destination_allows_public_runtime_destination(
     assert flow.request.headers["Authorization"] == "Bearer x"
 
 
+@pytest.mark.parametrize(
+    ("auth_config", "token_meta"),
+    [
+        pytest.param(
+            {"headers": {"Authorization": "Bearer ${{ secrets.EXAMPLE_TOKEN }}"}},
+            {
+                "headers": {"Authorization": "Bearer resolved"},
+                "resolved_secrets": ["EXAMPLE_TOKEN"],
+                "refreshed_connectors": [],
+                "refreshed_secrets": [],
+                "cache_hit": False,
+            },
+            id="header",
+        ),
+        pytest.param(
+            {"query": {"api_key": "${{ secrets.EXAMPLE_TOKEN }}"}},
+            {
+                "headers": {},
+                "query": {"api_key": "resolved"},
+                "resolved_secrets": ["EXAMPLE_TOKEN"],
+                "refreshed_connectors": [],
+                "refreshed_secrets": [],
+                "cache_hit": False,
+            },
+            id="query",
+        ),
+        pytest.param(
+            {
+                "awsSigv4": {
+                    "accessKeyId": "${{ secrets.AWS_ACCESS_KEY_ID }}",
+                    "secretAccessKey": "${{ secrets.AWS_SECRET_ACCESS_KEY }}",
+                }
+            },
+            {
+                "headers": {},
+                "aws_sigv4": resolved_aws_sigv4_credentials(session_token=None),
+                "resolved_secrets": ["AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY"],
+                "refreshed_connectors": [],
+                "refreshed_secrets": [],
+                "cache_hit": False,
+            },
+            id="aws-sigv4",
+        ),
+    ],
+)
+@pytest.mark.parametrize(
+    "upstream_change",
+    [
+        pytest.param("completed", id="disconnect-hook-completed"),
+        pytest.param("pending", id="disconnect-hook-pending"),
+        pytest.param("peer-changed", id="connected-peer-changed"),
+    ],
+)
+async def test_public_destination_upstream_change_during_auth_prevents_credential_application(
+    tmp_path,
+    real_flow,
+    mitm_ctx,
+    headers,
+    monkeypatch,
+    auth_config,
+    token_meta,
+    upstream_change,
+):
+    reg_path = _write_public_destination_firewall_registry(
+        tmp_path,
+        auth_config=auth_config,
+    )
+    flow = _public_destination_flow(
+        real_flow,
+        headers,
+        destination_host="93.184.216.34",
+    )
+    mark_connected_tls_upstream(
+        flow,
+        sni="service.example.com",
+        server_address=("93.184.216.34", 443),
+        peername=("93.184.216.34", 443),
+    )
+    original_headers = flow.request.headers.fields
+    original_path = flow.request.path
+    auth_resolution_entered = asyncio.Event()
+    release_auth_resolution = asyncio.Event()
+
+    async def resolve_auth(*_args, **_kwargs):
+        auth_resolution_entered.set()
+        await release_auth_resolution.wait()
+        return token_meta
+
+    auth_fetch = AsyncMock(side_effect=resolve_auth)
+    monkeypatch.setattr(auth, "get_firewall_headers", auth_fetch)
+
+    with mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"):
+        request_task = asyncio.create_task(mitm_addon.request(flow))
+        try:
+            await asyncio.wait_for(auth_resolution_entered.wait(), timeout=1)
+            if upstream_change == "peer-changed":
+                flow.server_conn.peername = ("10.0.0.1", 443)
+            else:
+                flow.server_conn.state = connection.ConnectionState.CLOSED
+                if upstream_change == "completed":
+                    mitm_addon.server_disconnected(SimpleNamespace(server=flow.server_conn))
+            release_auth_resolution.set()
+            await request_task
+        finally:
+            release_auth_resolution.set()
+            await cancel_pending_task(request_task)
+
+    auth_fetch.assert_awaited_once()
+    assert flow.response is not None
+    assert flow.response.status_code == 403
+    assert flow.metadata[metadata_keys.FIREWALL_ERROR] == "upstream_destination_unbound"
+    assert flow.request.headers.fields == original_headers
+    assert flow.request.path == original_path
+    assert flow.server_conn.id not in upstream_destination_binding.binding_snapshot_for_tests()
+
+
+async def test_public_destination_policy_allow_classifies_public_runtime_destination_once(
+    tmp_path,
+    real_flow,
+    mitm_ctx,
+    fake_firewall_headers,
+    headers,
+    monkeypatch,
+):
+    reg_path = _write_public_destination_firewall_registry(
+        tmp_path,
+        unknown_policy="allow",
+    )
+    flow = _public_destination_flow(
+        real_flow,
+        headers,
+        destination_host="93.184.216.34",
+        method="OPTIONS",
+        path="*",
+    )
+    classified_hosts = _track_public_destination_classifications(monkeypatch)
+
+    with (
+        mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
+        fake_firewall_headers() as auth_fetch,
+    ):
+        await mitm_addon.request(flow)
+
+    auth_fetch.assert_not_awaited()
+    assert classified_hosts == ["93.184.216.34"]
+    assert flow.response is None
+    assert flow.metadata[metadata_keys.FIREWALL_ACTION] == "ALLOW"
+    assert "Authorization" not in flow.request.headers
+
+
 async def test_public_destination_blocks_prebound_private_original_destination(
     tmp_path, real_flow, mitm_ctx, fake_firewall_headers, headers
 ):
     reg_path = _write_public_destination_firewall_registry(tmp_path)
     flow = _public_destination_flow(real_flow, headers, destination_host="service.example.com")
     flow.server_conn.address = ("service.example.com", 443)
-    upstream_destination_binding.record_server_binding(
+    seed_server_binding(
         flow.server_conn,
         client=flow.client_conn,
         host="service.example.com",
@@ -204,7 +389,7 @@ async def test_public_destination_allows_prebound_public_original_destination(
     reg_path = _write_public_destination_firewall_registry(tmp_path)
     flow = _public_destination_flow(real_flow, headers, destination_host="service.example.com")
     flow.server_conn.address = ("service.example.com", 443)
-    upstream_destination_binding.record_server_binding(
+    seed_server_binding(
         flow.server_conn,
         client=flow.client_conn,
         host="service.example.com",
@@ -234,7 +419,7 @@ async def test_public_destination_blocks_private_transparent_host_despite_public
     reg_path = _write_public_destination_firewall_registry(tmp_path)
     flow = _public_destination_flow(real_flow, headers, destination_host="10.0.0.1")
     flow.server_conn.address = ("service.example.com", 443)
-    upstream_destination_binding.record_server_binding(
+    seed_server_binding(
         flow.server_conn,
         client=flow.client_conn,
         host="service.example.com",
@@ -263,7 +448,7 @@ async def test_public_destination_blocks_bracketed_private_host_despite_public_o
     reg_path = _write_public_destination_firewall_registry(tmp_path)
     flow = _public_destination_flow(real_flow, headers, destination_host="[::1]")
     flow.server_conn.address = ("service.example.com", 443)
-    upstream_destination_binding.record_server_binding(
+    seed_server_binding(
         flow.server_conn,
         client=flow.client_conn,
         host="service.example.com",
@@ -296,7 +481,7 @@ async def test_public_destination_allows_bracketed_public_ipv6_host_with_public_
         destination_host="[2001:4860:4860::8888]",
     )
     flow.server_conn.address = ("service.example.com", 443)
-    upstream_destination_binding.record_server_binding(
+    seed_server_binding(
         flow.server_conn,
         client=flow.client_conn,
         host="service.example.com",
@@ -334,7 +519,7 @@ async def test_public_destination_blocks_legacy_ipv4_host_despite_public_origina
     reg_path = _write_public_destination_firewall_registry(tmp_path)
     flow = _public_destination_flow(real_flow, headers, destination_host=destination_host)
     flow.server_conn.address = ("service.example.com", 443)
-    upstream_destination_binding.record_server_binding(
+    seed_server_binding(
         flow.server_conn,
         client=flow.client_conn,
         host="service.example.com",
@@ -374,7 +559,7 @@ async def test_public_destination_blocks_percent_encoded_host_despite_public_ori
     reg_path = _write_public_destination_firewall_registry(tmp_path)
     flow = _public_destination_flow(real_flow, headers, destination_host=destination_host)
     flow.server_conn.address = ("service.example.com", 443)
-    upstream_destination_binding.record_server_binding(
+    seed_server_binding(
         flow.server_conn,
         client=flow.client_conn,
         host="service.example.com",
@@ -413,7 +598,7 @@ async def test_public_destination_blocks_malformed_host_despite_public_original(
     reg_path = _write_public_destination_firewall_registry(tmp_path)
     flow = _public_destination_flow(real_flow, headers, destination_host=destination_host)
     flow.server_conn.address = ("service.example.com", 443)
-    upstream_destination_binding.record_server_binding(
+    seed_server_binding(
         flow.server_conn,
         client=flow.client_conn,
         host="service.example.com",
@@ -442,7 +627,7 @@ async def test_public_destination_blocks_prebound_public_original_port_mismatch(
     reg_path = _write_public_destination_firewall_registry(tmp_path)
     flow = _public_destination_flow(real_flow, headers, destination_host="service.example.com")
     flow.server_conn.address = ("service.example.com", 443)
-    upstream_destination_binding.record_server_binding(
+    seed_server_binding(
         flow.server_conn,
         client=flow.client_conn,
         host="service.example.com",
@@ -476,7 +661,7 @@ async def test_public_destination_allows_connected_prebound_public_original_dest
         server_address=("service.example.com", 443),
         peername=("93.184.216.35", 443),
     )
-    upstream_destination_binding.record_server_binding(
+    seed_server_binding(
         flow.server_conn,
         client=flow.client_conn,
         host="service.example.com",
@@ -497,6 +682,46 @@ async def test_public_destination_allows_connected_prebound_public_original_dest
     assert flow.request.headers["Authorization"] == "Bearer x"
 
 
+async def test_public_destination_classifies_connected_hosts_once_per_admission_check(
+    tmp_path,
+    real_flow,
+    mitm_ctx,
+    fake_firewall_headers,
+    headers,
+    monkeypatch,
+):
+    reg_path = _write_public_destination_firewall_registry(tmp_path)
+    flow = _public_destination_flow(
+        real_flow,
+        headers,
+        destination_host="service.example.com",
+    )
+    mark_connected_tls_upstream(
+        flow,
+        sni="service.example.com",
+        server_address=("service.example.com", 443),
+        peername=("93.184.216.35", 443),
+    )
+    classified_hosts = _track_public_destination_classifications(monkeypatch)
+
+    with (
+        mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
+        fake_firewall_headers() as auth_fetch,
+    ):
+        await mitm_addon.request(flow)
+
+    auth_fetch.assert_awaited_once()
+    assert classified_hosts == [
+        "service.example.com",
+        "93.184.216.35",
+        "93.184.216.35",
+        "service.example.com",
+    ]
+    assert flow.response is None
+    assert flow.metadata[metadata_keys.FIREWALL_ACTION] == "ALLOW"
+    assert flow.request.headers["Authorization"] == "Bearer x"
+
+
 async def test_public_destination_blocks_connected_private_transparent_host_despite_public_original(
     tmp_path, real_flow, mitm_ctx, fake_firewall_headers, headers
 ):
@@ -508,7 +733,7 @@ async def test_public_destination_blocks_connected_private_transparent_host_desp
         server_address=("service.example.com", 443),
         peername=("93.184.216.35", 443),
     )
-    upstream_destination_binding.record_server_binding(
+    seed_server_binding(
         flow.server_conn,
         client=flow.client_conn,
         host="service.example.com",
@@ -542,7 +767,7 @@ async def test_public_destination_blocks_connected_public_original_port_mismatch
         server_address=("service.example.com", 443),
         peername=("93.184.216.35", 443),
     )
-    upstream_destination_binding.record_server_binding(
+    seed_server_binding(
         flow.server_conn,
         client=flow.client_conn,
         host="service.example.com",
@@ -809,7 +1034,7 @@ async def test_public_destination_blocks_connected_private_peer_despite_public_o
         server_address=("service.example.com", 443),
         peername=("10.0.0.1", 443),
     )
-    upstream_destination_binding.record_server_binding(
+    seed_server_binding(
         flow.server_conn,
         client=flow.client_conn,
         host="service.example.com",
@@ -843,7 +1068,7 @@ async def test_public_destination_blocks_private_original_despite_connected_publ
         server_address=("service.example.com", 443),
         peername=("93.184.216.35", 443),
     )
-    upstream_destination_binding.record_server_binding(
+    seed_server_binding(
         flow.server_conn,
         client=flow.client_conn,
         host="service.example.com",
@@ -871,7 +1096,7 @@ async def test_public_destination_ignores_stale_prebound_public_original_destina
 ):
     reg_path = _write_public_destination_firewall_registry(tmp_path)
     flow = _public_destination_flow(real_flow, headers, destination_host="10.0.0.1")
-    upstream_destination_binding.record_server_binding(
+    seed_server_binding(
         flow.server_conn,
         client=flow.client_conn,
         host="service.example.com",
@@ -1111,6 +1336,57 @@ async def test_public_destination_revalidates_cached_auth_base_hostname_classifi
         reason="non_public_destination",
     )
     assert auth_base_forwarder.forward_request_admission_state_for_tests() == (0, 0)
+
+
+async def test_public_destination_revalidates_cached_policy_allow_classification(
+    tmp_path,
+    real_flow,
+    mitm_ctx,
+    fake_firewall_headers,
+    headers,
+    monkeypatch,
+):
+    reg_path = _write_public_destination_firewall_registry(
+        tmp_path,
+        unknown_policy="allow",
+        vm_fields={"captureNetworkBodies": True},
+    )
+    flow = _public_destination_flow(
+        real_flow,
+        headers,
+        destination_host="93.184.216.34",
+        method="OPTIONS",
+        path="*",
+        extra_headers=(("Content-Length", str(mitm_addon.STREAM_BUFFER_LIMIT + 1)),),
+    )
+    classified_hosts = _track_public_destination_classifications(monkeypatch)
+
+    with (
+        mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
+        fake_firewall_headers() as auth_fetch,
+    ):
+        assert mitm_addon.requestheaders(flow) is None
+        assert classified_hosts == ["93.184.216.34"]
+        assert request_classification.REQUEST_CLASSIFICATION_METADATA_KEY in flow.metadata
+
+        mark_connected_tls_upstream(
+            flow,
+            sni="service.example.com",
+            server_address=("service.example.com", 443),
+            peername=("10.0.0.1", 443),
+        )
+
+        await mitm_addon.request(flow)
+
+    auth_fetch.assert_not_awaited()
+    request_phase_classified_hosts = classified_hosts[1:]
+    assert "10.0.0.1" in request_phase_classified_hosts
+    _assert_public_destination_denied(
+        flow,
+        destination_host="10.0.0.1",
+        reason="non_public_destination",
+    )
+    assert request_classification.REQUEST_CLASSIFICATION_METADATA_KEY not in flow.metadata
 
 
 async def test_firewall_allow_header_auth_requestheaders_blocks_public_destination_private_host(

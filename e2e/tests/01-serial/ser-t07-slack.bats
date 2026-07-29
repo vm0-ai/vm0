@@ -102,40 +102,8 @@ teardown_file() {
     assert_output --partial "/settings/slack"
 }
 
-@test "slack: app_mention handler runs without error (dispatch probe)" {
-    slack_seed_state "$TEAM_ID" "$SLACK_USER_ID" --with-connection --with-default-agent >/dev/null
-
-    local ts probe_resp
-    ts="$(date +%s).000090"
-    probe_resp=$(slack_dispatch_probe "$TEAM_ID" "$CHANNEL_ID" "$SLACK_USER_ID" \
-        "hello from e2e mention probe" "$ts" "channel")
-    # The probe either returns {ok: true} (dispatch ran, run row created)
-    # or {ok: false, error: {...}}. Anything else is a transport bug.
-    local ok
-    if ! ok=$(echo "$probe_resp" | jq -r '.ok' 2>/tmp/slack-dispatch-probe-jq.err); then
-        echo "# dispatch-probe returned a non-JSON response" >&2
-        echo "# endpoint: $(_slack_api_backend_url)/api/test/slack-dispatch-probe" >&2
-        if [[ -n "${VERCEL_AUTOMATION_BYPASS_SECRET:-}" ]]; then
-            echo "# bypass secret env: set" >&2
-        else
-            echo "# bypass secret env: unset" >&2
-        fi
-        echo "# jq error: $(cat /tmp/slack-dispatch-probe-jq.err)" >&2
-        echo "# response: $probe_resp" >&2
-        return 1
-    fi
-    if [[ "$ok" != "true" ]]; then
-        echo "# dispatch-probe returned failure:" >&2
-        echo "$probe_resp" | jq '.' >&2
-        return 1
-    fi
-}
-
 @test "slack: app_mention dispatches an agent run" {
-    # Reset first so the dispatch-probe's run from the previous test doesn't
-    # mask a partial-insert race on this test's own async dispatch (where
-    # agent_runs lands before zero_runs and recent_runs[0] has a null
-    # triggerSource via the LEFT JOIN).
+    # Reset first so this test observes only its own canonical webhook flow.
     slack_reset_state "$TEAM_ID"
     local seed_resp vm0_user_id
     seed_resp=$(slack_seed_state "$TEAM_ID" "$SLACK_USER_ID" --with-connection --with-default-agent)
@@ -157,6 +125,12 @@ teardown_file() {
     local state first_run
     state=$(slack_fetch_state "$TEAM_ID")
     [[ "$(echo "$state" | jq -r '.recent_runs | length')" -gt 0 ]]
+    [[ "$(echo "$state" | jq -r '.chat_thread_routes | length')" -eq 1 ]]
+    [[ "$(echo "$state" | jq -r '.chat_thread_routes[0] | has("backend")')" == "false" ]]
+    [[ "$(echo "$state" | jq -r '.chat_thread_routes[0].chatThreadId')" != "null" ]]
+    [[ "$(echo "$state" | jq -r '.chat_ingress | length')" -eq 1 ]]
+    [[ "$(echo "$state" | jq -r '.chat_ingress[0].status')" == "processed" ]]
+    [[ "$(echo "$state" | jq -r '.chat_ingress[0].eventId')" != "null" ]]
     first_run=$(echo "$state" | jq -c '.recent_runs[0]')
     [[ "$(echo "$first_run" | jq -r '.triggerSource')" == "slack" ]]
     # Run must be attributed to the vm0 user the connection belongs to.

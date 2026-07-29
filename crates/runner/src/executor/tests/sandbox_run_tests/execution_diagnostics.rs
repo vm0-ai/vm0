@@ -143,6 +143,7 @@ async fn execute_inner_preserves_system_stream_log_after_nonzero_exit_guest_copy
             sandbox,
             source_ip,
             network_log_session,
+            prepared_guest_runtime: None,
         },
         &ctx,
         &config,
@@ -175,7 +176,7 @@ async fn execute_inner_preserves_system_stream_log_after_nonzero_exit_guest_copy
 }
 
 #[tokio::test(flavor = "current_thread")]
-async fn execute_prepared_sandbox_run_logs_guest_session_id() {
+async fn execute_prepared_sandbox_run_logs_discovered_guest_session_id() {
     let dir = tempfile::tempdir().unwrap();
     let config = test_executor_config(dir.path()).await;
     let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::new());
@@ -194,6 +195,7 @@ async fn execute_prepared_sandbox_run_logs_guest_session_id() {
             sandbox,
             source_ip,
             network_log_session,
+            prepared_guest_runtime: None,
         },
         &ctx,
         &config,
@@ -212,7 +214,7 @@ async fn execute_prepared_sandbox_run_logs_guest_session_id() {
         outcome.discovered_cli_agent_session_id.as_deref(),
         Some(raw_session_id)
     );
-    let event = captured_event(&events, "read guest session ID for parking");
+    let event = captured_event(&events, "read guest CLI agent session ID after execution");
     assert_eq!(
         event.fields.get("session_id").map(String::as_str),
         Some(raw_session_id)
@@ -220,8 +222,55 @@ async fn execute_prepared_sandbox_run_logs_guest_session_id() {
 }
 
 #[tokio::test(flavor = "current_thread")]
-async fn execute_prepared_sandbox_run_canonicalizes_codex_discovered_cli_agent_session_id_for_parking()
- {
+async fn execute_prepared_sandbox_run_discovers_guest_session_id_after_nonzero_exit() {
+    let dir = tempfile::tempdir().unwrap();
+    let config = test_executor_config(dir.path()).await;
+    let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::new());
+    let raw_session_id = "sess-failed-first-run";
+    overrides.push_wait_process_exit(ProcessExit::new(1, 7, Vec::new(), Vec::new()));
+    overrides.push_read_file_result(Ok(None));
+    overrides.push_read_file_result(Ok(None));
+    overrides.push_read_file_result(Ok(Some(raw_session_id.as_bytes().to_vec())));
+    let sandbox = create_overridden_sandbox(Arc::clone(&overrides)).await;
+    let ctx = minimal_context();
+    let source_ip = sandbox.source_ip().to_string();
+    let network_log_session = register_proxy(&config, &ctx, &source_ip).await.unwrap();
+    let mut telemetry = test_telemetry(&config, &ctx);
+
+    let (outcome, events) = capture_async_events(execute_prepared_sandbox_run(
+        PreparedSandboxRun {
+            sandbox,
+            source_ip,
+            network_log_session,
+            prepared_guest_runtime: None,
+        },
+        &ctx,
+        &config,
+        RunStart {
+            restore_guest_state: false,
+            reuse_result: SandboxReuseResult::PoolMiss,
+            prev_storage: None,
+        },
+        &mut telemetry,
+        RunControls::new(tokio_util::sync::CancellationToken::new(), None),
+    ))
+    .await;
+
+    assert_eq!(outcome.exit_code(), 7);
+    assert_eq!(outcome.error(), Some("Agent exited with code 7"));
+    assert_eq!(
+        outcome.discovered_cli_agent_session_id.as_deref(),
+        Some(raw_session_id)
+    );
+    let event = captured_event(&events, "read guest CLI agent session ID after execution");
+    assert_eq!(
+        event.fields.get("session_id").map(String::as_str),
+        Some(raw_session_id)
+    );
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn execute_prepared_sandbox_run_canonicalizes_codex_discovered_cli_agent_session_id() {
     let dir = tempfile::tempdir().unwrap();
     let config = test_executor_config(dir.path()).await;
     let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::new());
@@ -242,6 +291,7 @@ async fn execute_prepared_sandbox_run_canonicalizes_codex_discovered_cli_agent_s
             sandbox,
             source_ip,
             network_log_session,
+            prepared_guest_runtime: None,
         },
         &ctx,
         &config,
@@ -260,7 +310,7 @@ async fn execute_prepared_sandbox_run_canonicalizes_codex_discovered_cli_agent_s
         outcome.discovered_cli_agent_session_id.as_deref(),
         Some(canonical_session_id)
     );
-    let event = captured_event(&events, "read guest session ID for parking");
+    let event = captured_event(&events, "read guest CLI agent session ID after execution");
     assert_eq!(
         event.fields.get("session_id").map(String::as_str),
         Some(canonical_session_id)
@@ -288,6 +338,7 @@ async fn execute_prepared_sandbox_run_ignores_non_uuid_codex_discovered_cli_agen
             sandbox,
             source_ip,
             network_log_session,
+            prepared_guest_runtime: None,
         },
         &ctx,
         &config,

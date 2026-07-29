@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-import type { ConnectorAuthCodeGrantConfig } from "@vm0/connectors/connectors";
+import type { ConnectorAuthCodeGrantConfig } from "@vm0/connectors/connector-config";
 import { throwOAuthError } from "../../oauth/error";
 
 const AHREFS_TOKEN_URL = "https://app.ahrefs.com/api/token";
@@ -215,11 +215,4 @@ async function fetchAhrefsUserInfo(
     name: data.subscription?.usage_type ?? null,
     email: null,
   };
-}
-
-/**
- * Get the primary secret name for Ahrefs connector.
- */
-export function getAhrefsSecretName(): string {
-  return "AHREFS_ACCESS_TOKEN";
 }

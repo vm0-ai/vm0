@@ -1,13 +1,17 @@
 import { computed, type Computed } from "ccstate";
 import {
-  CopyObjectCommand,
+  AbortMultipartUploadCommand,
+  CompleteMultipartUploadCommand,
+  CreateMultipartUploadCommand,
   DeleteObjectsCommand,
   GetObjectCommand,
   type GetObjectCommandOutput,
   HeadObjectCommand,
+  ListPartsCommand,
   ListObjectsV2Command,
   PutObjectCommand,
   S3Client,
+  UploadPartCommand,
 } from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import {
@@ -29,6 +33,11 @@ interface S3FileEntry {
   readonly path: string;
   readonly hash: string;
   readonly size: number;
+}
+
+interface MultipartS3Part {
+  readonly partNumber: number;
+  readonly etag: string;
 }
 
 interface S3StorageManifest {
@@ -78,6 +87,7 @@ function createS3Client(
     endpoint,
     credentials,
     forcePathStyle: env("S3_FORCE_PATH_STYLE") === "true",
+    requestChecksumCalculation: "WHEN_REQUIRED",
   });
 }
 
@@ -458,6 +468,113 @@ export function generatePresignedPutUrl(
   );
 }
 
+export function createMultipartS3Upload(
+  bucket: string,
+  key: string,
+  contentType: string,
+): Computed<Promise<string>> {
+  return computed(async (get): Promise<string> => {
+    const client = get(s3ClientForBucket(bucket));
+    const response = await client.send(
+      new CreateMultipartUploadCommand({
+        Bucket: bucket,
+        Key: key,
+        ContentType: contentType,
+      }),
+    );
+    if (!response.UploadId) {
+      throw new Error("R2 did not return a multipart upload ID");
+    }
+    return response.UploadId;
+  });
+}
+
+export function generatePresignedUploadPartUrl(
+  bucket: string,
+  key: string,
+  uploadId: string,
+  partNumber: number,
+  expiresIn: number,
+): Computed<Promise<string>> {
+  return computed((get): Promise<string> => {
+    const client = get(s3ClientForBucket(bucket, true));
+    return getSignedUrl(
+      client,
+      new UploadPartCommand({
+        Bucket: bucket,
+        Key: key,
+        UploadId: uploadId,
+        PartNumber: partNumber,
+      }),
+      { expiresIn },
+    );
+  });
+}
+
+export function listMultipartS3Parts(
+  bucket: string,
+  key: string,
+  uploadId: string,
+): Computed<Promise<readonly MultipartS3Part[]>> {
+  return computed(async (get): Promise<readonly MultipartS3Part[]> => {
+    const client = get(s3ClientForBucket(bucket));
+    const response = await client.send(
+      new ListPartsCommand({
+        Bucket: bucket,
+        Key: key,
+        UploadId: uploadId,
+        MaxParts: 1000,
+      }),
+    );
+    return (response.Parts ?? []).map((part) => {
+      if (part.PartNumber === undefined || part.ETag === undefined) {
+        throw new Error("R2 returned incomplete multipart part metadata");
+      }
+      return { partNumber: part.PartNumber, etag: part.ETag };
+    });
+  });
+}
+
+export function completeMultipartS3Upload(
+  bucket: string,
+  key: string,
+  uploadId: string,
+  parts: readonly MultipartS3Part[],
+): Computed<Promise<void>> {
+  return computed(async (get): Promise<void> => {
+    const client = get(s3ClientForBucket(bucket));
+    await client.send(
+      new CompleteMultipartUploadCommand({
+        Bucket: bucket,
+        Key: key,
+        UploadId: uploadId,
+        MultipartUpload: {
+          Parts: parts.map((part) => {
+            return { ETag: part.etag, PartNumber: part.partNumber };
+          }),
+        },
+      }),
+    );
+  });
+}
+
+export function abortMultipartS3Upload(
+  bucket: string,
+  key: string,
+  uploadId: string,
+): Computed<Promise<void>> {
+  return computed(async (get): Promise<void> => {
+    const client = get(s3ClientForBucket(bucket));
+    await client.send(
+      new AbortMultipartUploadCommand({
+        Bucket: bucket,
+        Key: key,
+        UploadId: uploadId,
+      }),
+    );
+  });
+}
+
 function generatePresignedPutUrlWithClient(
   client$: Computed<S3Client>,
   bucket: string,
@@ -584,6 +701,51 @@ function putS3ObjectWithClient(
   });
 }
 
+const IMMUTABLE_CACHE_CONTROL = "public, max-age=31536000, immutable";
+
+function isS3PreconditionFailedError(error: unknown): boolean {
+  const candidate = error as {
+    readonly name?: string;
+    readonly $metadata?: { readonly httpStatusCode?: number };
+  };
+  return (
+    candidate.name === "PreconditionFailed" ||
+    candidate.$metadata?.httpStatusCode === 412
+  );
+}
+
+/**
+ * Upload an object exactly once. An existing key is an idempotent success, so
+ * callers can safely retry without changing bytes behind an immutable URL.
+ */
+export function putImmutableS3Object(
+  bucket: string,
+  key: string,
+  body: string | Buffer,
+  contentType: string,
+  signal?: AbortSignal,
+): Computed<Promise<void>> {
+  return computed(async (get): Promise<void> => {
+    const client = get(s3ClientForBucket(bucket));
+    const uploaded = await settle(
+      client.send(
+        new PutObjectCommand({
+          Bucket: bucket,
+          Key: key,
+          Body: body,
+          ContentType: contentType,
+          CacheControl: IMMUTABLE_CACHE_CONTROL,
+          IfNoneMatch: "*",
+        }),
+        signal ? { abortSignal: signal } : undefined,
+      ),
+    );
+    if (!uploaded.ok && !isS3PreconditionFailedError(uploaded.error)) {
+      throw uploaded.error;
+    }
+  });
+}
+
 export function putHostedSitesS3Object(
   bucket: string,
   key: string,
@@ -595,28 +757,6 @@ export function putHostedSitesS3Object(
     key,
     body,
     contentType,
-  });
-}
-
-function s3CopySource(bucket: string, key: string): string {
-  const encodedKey = key.split("/").map(encodeURIComponent).join("/");
-  return `${bucket}/${encodedKey}`;
-}
-
-export function copyHostedSitesS3Object(
-  bucket: string,
-  sourceKey: string,
-  destinationKey: string,
-): Computed<Promise<void>> {
-  return computed(async (get): Promise<void> => {
-    const client = get(hostedSitesS3Client$);
-    await client.send(
-      new CopyObjectCommand({
-        Bucket: bucket,
-        CopySource: s3CopySource(bucket, sourceKey),
-        Key: destinationKey,
-      }),
-    );
   });
 }
 

@@ -4,10 +4,10 @@ import {
   chatThreadByIdContract,
   chatThreadArtifactsContract,
   chatThreadMarkReadContract,
-  chatThreadMessagesContract,
+  chatThreadEventsContract,
   chatThreadRenameContract,
   chatThreadsContract,
-  type PagedChatMessage,
+  type ChatEvent,
   type UserMessageDocument,
 } from "@vm0/api-contracts/contracts/chat-threads";
 import {
@@ -26,6 +26,10 @@ import {
   queryAllByRoleFast,
 } from "../../../__tests__/page-helper.ts";
 import { mockChatLifecycle, threadListSnapshot } from "./chat-test-helpers.ts";
+import {
+  normalizeMockChatEvents,
+  type MockChatEventInput,
+} from "./chat-event-test-helpers.ts";
 export const context = testContext();
 
 export function detachedSetupPage(
@@ -44,10 +48,8 @@ export const KEYBOARD_PREV_THREAD_ID = "b0000000-0000-4000-a000-000000000707";
 export const KEYBOARD_CURRENT_THREAD_ID =
   "b0000000-0000-4000-a000-000000000708";
 export const KEYBOARD_NEXT_THREAD_ID = "b0000000-0000-4000-a000-000000000709";
-export const SERVER_QUEUED_VISIBLE_THREAD_ID =
-  "b0000000-0000-4000-a000-000000000710";
-export const SERVER_QUEUED_RESOLVED_THREAD_ID =
-  "b0000000-0000-4000-a000-000000000711";
+const SERVER_QUEUED_VISIBLE_THREAD_ID = "b0000000-0000-4000-a000-000000000710";
+const SERVER_QUEUED_RESOLVED_THREAD_ID = "b0000000-0000-4000-a000-000000000711";
 export const SERVER_QUEUED_RUN_THREAD_ID =
   "b0000000-0000-4000-a000-000000000712";
 export const RUNNING_THREAD_ID = "b0000000-0000-4000-a000-000000000713";
@@ -62,14 +64,12 @@ export const COMPUTER_USE_SAVED_SELECTION_THREAD_ID =
   "b0000000-0000-4000-a000-000000000718";
 export const AGENT_CHAT_PATH = `/agents/${AGENT_ID}/chat`;
 
-type ChatMessageSeed =
-  | Omit<Extract<PagedChatMessage, { role: "user" }>, "seqId">
-  | Omit<Extract<PagedChatMessage, { role: "assistant" }>, "seqId">;
+type ChatMessageSeed = Omit<
+  Extract<ChatEvent, { eventType: "input.prompt" }>,
+  "seqId"
+>;
 
-export function replaceNavigatorProperty(
-  property: string,
-  value: unknown,
-): void {
+function replaceNavigatorProperty(property: string, value: unknown): void {
   const descriptor = Object.getOwnPropertyDescriptor(navigator, property);
   Object.defineProperty(navigator, property, {
     configurable: true,
@@ -108,20 +108,17 @@ export function computerUsePermissions() {
   };
 }
 
-export interface PushBrowserMock {
+interface PushBrowserMock {
   readonly register: ReturnType<typeof vi.fn>;
 }
 
-export type TestPushManager = Pick<
-  PushManager,
-  "getSubscription" | "subscribe"
->;
+type TestPushManager = Pick<PushManager, "getSubscription" | "subscribe">;
 
-export interface TestServiceWorkerRegistration {
+interface TestServiceWorkerRegistration {
   readonly pushManager: TestPushManager;
 }
 
-export interface TestServiceWorkerContainer {
+interface TestServiceWorkerContainer {
   readonly register: () => Promise<TestServiceWorkerRegistration>;
 }
 
@@ -156,7 +153,7 @@ export function parseChatClipboardPayload(html: string): {
     contentType: string;
     size: number;
   }[];
-  structuredPrompt?: UserMessageDocument;
+  userMessage?: UserMessageDocument;
 } {
   const doc = new DOMParser().parseFromString(html, "text/html");
   const encoded = doc.querySelector<HTMLElement>("[data-vm0-chat-message]")
@@ -173,7 +170,7 @@ export function parseChatClipboardPayload(html: string): {
       contentType: string;
       size: number;
     }[];
-    structuredPrompt?: UserMessageDocument;
+    userMessage?: UserMessageDocument;
   };
 }
 
@@ -245,7 +242,7 @@ export function makeRunGroupMessages(params: {
   readonly count: number;
   readonly runGroupId: string;
   readonly startMinute: number;
-}): ChatMessageSeed[] {
+}): MockChatEventInput[] {
   return Array.from({ length: params.count }, (_, index) => {
     const itemNumber = index + 1;
     const runId = `${params.runGroupId}-run-${itemNumber}`;
@@ -288,11 +285,20 @@ export function expectTextBefore(
   ).toBeTruthy();
 }
 
-export function makeMessage(id: string, text: string): ChatMessageSeed {
+export function makeMessage(
+  id: string,
+  text: string,
+  threadId = "00000000-0000-4000-8000-000000000001",
+): ChatMessageSeed {
   return {
     id,
-    role: "user",
+    threadId,
+    eventType: "input.prompt",
     content: text,
+    userMessage: {
+      version: 1,
+      parts: [{ type: "text", text }],
+    },
     createdAt: "2026-05-01T00:00:00Z",
   };
 }
@@ -359,6 +365,7 @@ export function mockKeyboardNavigationThreads({
     return respond(200, {
       chatThreads: threadListSnapshot(threadList),
       latestEventId: null,
+      latestSeqId: null,
     });
   });
   context.mocks.api(chatThreadsContract.events, ({ respond }) => {
@@ -376,29 +383,28 @@ export function mockKeyboardNavigationThreads({
     }
     return respond(200, {
       lastReadAt: null,
-      computerUseHostId: null,
-      codexServiceTier: null,
     });
   });
   context.mocks.api(
-    chatThreadMessagesContract.list,
+    chatThreadEventsContract.list,
     ({ params, query, respond }) => {
-      if (query.sinceSeqId) {
-        return respond(200, { messages: [] });
+      if (query.sinceSeqId || query.sinceId) {
+        return respond(200, { events: [] });
       }
       const thread = byId.get(params.threadId);
       return respond(200, {
-        messages: thread
-          ? [
-              {
-                id: `${thread.id}-message`,
-                role: "user",
-                content: thread.message,
-                seqId: 1,
-                createdAt: "2026-06-01T00:00:00Z",
-              },
-            ]
-          : [],
+        events: normalizeMockChatEvents(
+          thread
+            ? [
+                {
+                  id: `${thread.id}-message`,
+                  role: "user",
+                  content: thread.message,
+                  createdAt: "2026-06-01T00:00:00Z",
+                },
+              ]
+            : [],
+        ),
         hasHistoryBefore: false,
       });
     },
@@ -412,7 +418,7 @@ export function mockAutomationThread(): void {
   mockChatLifecycle(context, {
     threadId: AUTOMATION_THREAD_ID,
     threadTitle: "Scheduled launch review",
-    historyMessages: [
+    historyEvents: [
       {
         role: "user",
         content: "Review launch risks",
@@ -488,7 +494,7 @@ export function mockServerQueuedThreadStories(): void {
           seqId: 2,
           createdAt: "2026-06-09T10:00:01Z",
         },
-      ] satisfies PagedChatMessage[],
+      ] satisfies MockChatEventInput[],
       activeRunIds: ["run-server-queued-visible"],
     },
     {
@@ -529,7 +535,7 @@ export function mockServerQueuedThreadStories(): void {
           seqId: 4,
           createdAt: "2026-06-09T10:05:03Z",
         },
-      ] satisfies PagedChatMessage[],
+      ] satisfies MockChatEventInput[],
       activeRunIds: [],
     },
   ];
@@ -564,6 +570,7 @@ export function mockServerQueuedThreadStories(): void {
     return respond(200, {
       chatThreads: threadListSnapshot(threadList),
       latestEventId: null,
+      latestSeqId: null,
     });
   });
   context.mocks.api(chatThreadByIdContract.get, ({ params, respond }) => {
@@ -575,18 +582,23 @@ export function mockServerQueuedThreadStories(): void {
     }
     return respond(200, {
       lastReadAt: "2026-06-09T10:00:00Z",
-      computerUseHostId: null,
-      codexServiceTier: null,
     });
   });
   context.mocks.api(
-    chatThreadMessagesContract.list,
+    chatThreadEventsContract.list,
     ({ params, query, respond }) => {
-      if (query.sinceSeqId || query.beforeSeqId) {
-        return respond(200, { messages: [] });
+      if (
+        query.sinceSeqId ||
+        query.beforeSeqId ||
+        query.sinceId ||
+        query.beforeId
+      ) {
+        return respond(200, { events: [] });
       }
       return respond(200, {
-        messages: byId.get(params.threadId)?.messages ?? [],
+        events: normalizeMockChatEvents(
+          byId.get(params.threadId)?.messages ?? [],
+        ),
         hasHistoryBefore: false,
       });
     },
@@ -684,16 +696,6 @@ export function linkByText(text: string): HTMLElement {
   });
   if (!link) {
     throw new Error(`${text} link not found`);
-  }
-  return link;
-}
-
-export function linkByLabel(label: string): HTMLElement {
-  const link = queryAllByRoleFast("link").find((candidate) => {
-    return candidate.getAttribute("aria-label") === label;
-  });
-  if (!link) {
-    throw new Error(`${label} link not found`);
   }
   return link;
 }

@@ -159,7 +159,6 @@ async function validateChatEventSourcesAreAppendOnly(
   let agentComposeId: string | undefined;
   let threadId: string | undefined;
   let messageId: string | undefined;
-  let eventId: string | undefined;
 
   try {
     const agentCompose = await client.query<{ id: string }>(`
@@ -189,16 +188,25 @@ async function validateChatEventSourcesAreAppendOnly(
       throw new Error("Failed to create append-only chat thread fixture");
     }
 
-    // Simulate the API version serving during migration: it does not know
-    // about seq_id and relies on the temporary database allocator.
+    // Simulate the previous typed API version serving during migration: it
+    // writes event_type but does not know about seq_id and relies on the
+    // temporary database allocator.
     const message = await client.query<{ id: string; seqId: string }>(
       `
         INSERT INTO "chat_messages" (
           "chat_thread_id",
           "role",
-          "content"
+          "content",
+          "event_type",
+          "structured_prompt"
         )
-        VALUES ($1, 'user', 'append-only migration test')
+        VALUES (
+          $1,
+          'user',
+          'append-only migration test',
+          'input.prompt',
+          '{"version":1,"parts":[{"type":"text","text":"append-only migration test"}]}'::jsonb
+        )
         RETURNING "id", "seq_id" AS "seqId"
       `,
       [threadId],
@@ -213,9 +221,15 @@ async function validateChatEventSourcesAreAppendOnly(
         INSERT INTO "chat_messages" (
           "chat_thread_id",
           "role",
-          "content"
+          "content",
+          "event_type"
         )
-        VALUES ($1, 'assistant', 'second legacy API migration test')
+        VALUES (
+          $1,
+          'assistant',
+          'second typed API migration test',
+          'output.message'
+        )
         RETURNING "seq_id" AS "seqId"
       `,
       [threadId],
@@ -231,7 +245,7 @@ async function validateChatEventSourcesAreAppendOnly(
     );
     assert.equal(sequenceState.rows[0]?.lastSeqId, "2");
 
-    const event = await client.query<{ id: string }>(
+    const event = await client.query<{ id: string; seqId: string }>(
       `
         INSERT INTO "chat_thread_events" (
           "user_id",
@@ -249,14 +263,80 @@ async function validateChatEventSourcesAreAppendOnly(
           $2,
           'append-only migration test'
         )
-        RETURNING "id"
+        RETURNING "id", "seq_id" AS "seqId"
       `,
       [threadId, agentComposeId],
     );
-    eventId = event.rows[0]?.id;
+    const eventId = event.rows[0]?.id;
     if (!eventId) {
       throw new Error("Failed to create append-only chat thread event fixture");
     }
+    assert.equal(event.rows[0]?.seqId, "1");
+    const threadEventSequenceState = await client.query<{
+      lastSeqId: string;
+    }>(
+      `
+        SELECT "last_seq_id" AS "lastSeqId"
+        FROM "chat_thread_event_sequences"
+        WHERE "user_id" = 'append-only-test-user'
+          AND "org_id" = 'append-only-test-org'
+      `,
+    );
+    assert.equal(threadEventSequenceState.rows[0]?.lastSeqId, "1");
+
+    const nextEvent = await client.query<{ id: string; seqId: string }>(
+      `
+        INSERT INTO "chat_thread_events" (
+          "user_id",
+          "org_id",
+          "chat_thread_id",
+          "kind",
+          "agent_compose_id",
+          "title"
+        )
+        VALUES (
+          'append-only-test-user',
+          'append-only-test-org',
+          $1,
+          'renamed',
+          $2,
+          'advanced append-only migration test'
+        )
+        RETURNING "id", "seq_id" AS "seqId"
+      `,
+      [threadId, agentComposeId],
+    );
+    const nextEventId = nextEvent.rows[0]?.id;
+    if (!nextEventId) {
+      throw new Error("Failed to create second chat thread event fixture");
+    }
+    assert.equal(nextEvent.rows[0]?.seqId, "2");
+
+    const snapshot = await client.query<{ latestSeqId: string }>(
+      `
+        INSERT INTO "chat_thread_snapshots" (
+          "user_id",
+          "org_id",
+          "latest_event_id"
+        )
+        VALUES ('append-only-test-user', 'append-only-test-org', $1)
+        RETURNING "latest_event_seq_id" AS "latestSeqId"
+      `,
+      [eventId],
+    );
+    assert.equal(snapshot.rows[0]?.latestSeqId, "1");
+
+    const advancedSnapshot = await client.query<{ latestSeqId: string }>(
+      `
+        UPDATE "chat_thread_snapshots"
+        SET "latest_event_id" = $1
+        WHERE "user_id" = 'append-only-test-user'
+          AND "org_id" = 'append-only-test-org'
+        RETURNING "latest_event_seq_id" AS "latestSeqId"
+      `,
+      [nextEventId],
+    );
+    assert.equal(advancedSnapshot.rows[0]?.latestSeqId, "2");
 
     await expectAppendOnlyUpdateRejected(client, {
       tableName: "chat_messages",
@@ -272,14 +352,23 @@ async function validateChatEventSourcesAreAppendOnly(
     console.log("   ✅ chat_messages rejects UPDATE");
     console.log("   ✅ chat_thread_events rejects UPDATE\n");
     console.log(
-      "   ✅ previous API writes receive a database-allocated seq_id\n",
+      "   ✅ previous API writes receive database-allocated seq_ids\n",
     );
   } finally {
-    if (eventId) {
-      await client.query(`DELETE FROM "chat_thread_events" WHERE "id" = $1`, [
-        eventId,
-      ]);
-    }
+    await client.query(
+      `
+        DELETE FROM "chat_thread_snapshots"
+        WHERE "user_id" = 'append-only-test-user'
+          AND "org_id" = 'append-only-test-org'
+      `,
+    );
+    await client.query(
+      `
+        DELETE FROM "chat_thread_events"
+        WHERE "user_id" = 'append-only-test-user'
+          AND "org_id" = 'append-only-test-org'
+      `,
+    );
     if (agentComposeId) {
       await client.query(`DELETE FROM "agent_composes" WHERE "id" = $1`, [
         agentComposeId,
@@ -905,6 +994,245 @@ async function expectDatabaseError(
   throw new Error(`Expected database error ${args.code}`);
 }
 
+async function validateConnectorCatalogFinalConstraints(
+  dbUrl: string,
+): Promise<void> {
+  console.log(
+    "=== Phase 2.6: Validate final connector catalog constraints ===\n",
+  );
+  const attemptConstraint =
+    "connector_catalog_sync_state_attempt_cache_reuse_complete";
+  const candidateConstraint =
+    "connector_catalog_sync_state_rejected_candidate_complete";
+  const authorityConstraint =
+    "connector_catalog_sync_state_rejection_authority_complete";
+
+  const client = new Client({ connectionString: dbUrl });
+  await client.connect();
+  try {
+    await client.query(`
+      INSERT INTO "connector_catalog_sync_state" (
+        "source_id",
+        "schema_version",
+        "last_attempt_at",
+        "last_attempt_outcome",
+        "last_attempt_reused_cached_rejection",
+        "last_failure_code",
+        "last_rejected_catalog_version",
+        "last_rejected_catalog_key",
+        "last_rejected_catalog_digest",
+        "last_rejected_pointer_etag",
+        "last_rejected_failure_code",
+        "last_rejected_backend_version",
+        "last_rejected_build_commit_sha"
+      )
+      VALUES
+        (
+          'migration-final-catalog-accepted',
+          1,
+          '2026-07-25 00:00:00',
+          'accepted',
+          FALSE,
+          NULL,
+          NULL,
+          NULL,
+          NULL,
+          NULL,
+          NULL,
+          NULL,
+          NULL
+        ),
+        (
+          'migration-final-catalog-rejected',
+          1,
+          '2026-07-25 00:00:00',
+          'rejected',
+          TRUE,
+          'invalid-artifact',
+          '2026-07-25.1',
+          'connectors/v1/releases/2026-07-25.1/catalog.json',
+          'sha256:${"b".repeat(64)}',
+          '"final-authority-etag"',
+          'invalid-artifact',
+          '1.319.0',
+          '${"a".repeat(40)}'
+        )
+    `);
+    const validRows = await client.query<{ source_id: string }>(`
+      SELECT "source_id"
+      FROM "connector_catalog_sync_state"
+      WHERE "source_id" IN (
+        'migration-final-catalog-accepted',
+        'migration-final-catalog-rejected'
+      )
+      ORDER BY "source_id"
+    `);
+    assert.deepEqual(
+      validRows.rows.map((row) => {
+        return row.source_id;
+      }),
+      ["migration-final-catalog-accepted", "migration-final-catalog-rejected"],
+    );
+
+    await expectDatabaseError(client, {
+      code: "23514",
+      messageIncludes: attemptConstraint,
+      query: `
+        INSERT INTO "connector_catalog_sync_state"
+          ("source_id", "schema_version", "last_attempt_reused_cached_rejection")
+        VALUES ('invalid-provenance-without-attempt', 1, FALSE)
+      `,
+    });
+    await expectDatabaseError(client, {
+      code: "23514",
+      messageIncludes: attemptConstraint,
+      query: `
+        INSERT INTO "connector_catalog_sync_state" (
+          "source_id",
+          "schema_version",
+          "last_attempt_at",
+          "last_attempt_outcome",
+          "last_failure_code"
+        )
+        VALUES (
+          'invalid-missing-attempt-provenance',
+          1,
+          '2026-07-25 00:00:00',
+          'rejected',
+          'source-unavailable'
+        )
+      `,
+    });
+    await expectDatabaseError(client, {
+      code: "23514",
+      messageIncludes: attemptConstraint,
+      query: `
+        INSERT INTO "connector_catalog_sync_state" (
+          "source_id",
+          "schema_version",
+          "last_attempt_at",
+          "last_attempt_outcome",
+          "last_attempt_reused_cached_rejection"
+        )
+        VALUES (
+          'invalid-reused-accepted-attempt',
+          1,
+          '2026-07-25 00:00:00',
+          'accepted',
+          TRUE
+        )
+      `,
+    });
+    await expectDatabaseError(client, {
+      code: "23514",
+      messageIncludes: candidateConstraint,
+      query: `
+        INSERT INTO "connector_catalog_sync_state" (
+          "source_id",
+          "schema_version",
+          "last_rejected_catalog_version",
+          "last_rejected_failure_code",
+          "last_rejected_backend_version"
+        )
+        VALUES (
+          'invalid-partial-rejected-candidate',
+          1,
+          '2026-07-25.2',
+          'invalid-artifact',
+          '1.319.0'
+        )
+      `,
+    });
+    await expectDatabaseError(client, {
+      code: "23514",
+      messageIncludes: authorityConstraint,
+      query: `
+        INSERT INTO "connector_catalog_sync_state" (
+          "source_id",
+          "schema_version",
+          "last_rejected_catalog_version",
+          "last_rejected_catalog_key",
+          "last_rejected_catalog_digest",
+          "last_rejected_failure_code"
+        )
+        VALUES (
+          'invalid-candidate-without-authority',
+          1,
+          '2026-07-25.3',
+          'connectors/v1/releases/2026-07-25.3/catalog.json',
+          'sha256:${"c".repeat(64)}',
+          'invalid-artifact'
+        )
+      `,
+    });
+    await expectDatabaseError(client, {
+      code: "23514",
+      messageIncludes: authorityConstraint,
+      query: `
+        INSERT INTO "connector_catalog_sync_state"
+          ("source_id", "schema_version", "last_rejected_backend_version")
+        VALUES ('invalid-authority-without-candidate', 1, '1.319.0')
+      `,
+    });
+    await expectDatabaseError(client, {
+      code: "23514",
+      messageIncludes: authorityConstraint,
+      query: `
+        INSERT INTO "connector_catalog_sync_state" (
+          "source_id",
+          "schema_version",
+          "last_rejected_pointer_etag",
+          "last_rejected_failure_code",
+          "last_rejected_backend_version"
+        )
+        VALUES (
+          'invalid-rejection-backend-version',
+          1,
+          '"invalid-version-etag"',
+          'invalid-pointer',
+          '1.319.0-rc.1'
+        )
+      `,
+    });
+    await expectDatabaseError(client, {
+      code: "23514",
+      messageIncludes: authorityConstraint,
+      query: `
+        INSERT INTO "connector_catalog_sync_state" (
+          "source_id",
+          "schema_version",
+          "last_rejected_pointer_etag",
+          "last_rejected_failure_code",
+          "last_rejected_backend_version",
+          "last_rejected_build_commit_sha"
+        )
+        VALUES (
+          'invalid-rejection-build-commit',
+          1,
+          '"invalid-build-etag"',
+          'invalid-pointer',
+          '1.319.0',
+          '${"d".repeat(39)}'
+        )
+      `,
+    });
+
+    await client.query(`
+      DELETE FROM "connector_catalog_sync_state"
+      WHERE "source_id" IN (
+        'migration-final-catalog-accepted',
+        'migration-final-catalog-rejected'
+      )
+    `);
+  } finally {
+    await client.end();
+  }
+
+  console.log(
+    "   ✅ Final connector catalog constraints accept complete state and reject ambiguous state\n",
+  );
+}
+
 async function validateConnectorCredentialOwnershipContraction(): Promise<void> {
   console.log(
     "=== Phase 1.5: Validate connector credential ownership contraction ===\n",
@@ -1284,6 +1612,1341 @@ async function applyMigrationsUpToInTransaction(
     await client.query("ROLLBACK");
     throw error;
   }
+}
+
+const STRUCTURED_PROMPT_DRAFT_BACKFILL_PREVIOUS_MIGRATION = 707;
+const STRUCTURED_PROMPT_DRAFT_BACKFILL_MIGRATION = 708;
+const STRUCTURED_PROMPT_DRAFT_LEGACY_COLUMN_DROP_MIGRATION = 711;
+
+async function validateStructuredPromptDraftBackfill(): Promise<void> {
+  console.log("=== Validate structured prompt draft backfill ===\n");
+
+  const testDb = "migration_structured_prompt_draft_backfill_test";
+  const testDbUrl = createTestDbUrl(testDb);
+  const fixture = {
+    composeId: "90000000-0000-4000-8000-000000000001",
+    threadIds: {
+      legacy: "91000000-0000-4000-8000-000000000001",
+      canonical: "91000000-0000-4000-8000-000000000002",
+      equal: "91000000-0000-4000-8000-000000000003",
+    },
+    draftUsers: {
+      legacy: "structured-prompt-backfill-legacy-user",
+      canonical: "structured-prompt-backfill-canonical-user",
+      equal: "structured-prompt-backfill-equal-user",
+    },
+    orgId: "structured-prompt-backfill-org",
+  } as const;
+  const canonicalDocument = {
+    version: 1,
+    parts: [{ type: "text", text: "canonical draft" }],
+  };
+  const feedbackDocument = {
+    version: 1,
+    parts: [
+      { type: "text", text: "draft with feedback" },
+      {
+        type: "feedback",
+        quote: "quoted draft",
+        note: [{ type: "text", text: "feedback note" }],
+      },
+    ],
+  };
+
+  await createDatabase(testDb);
+  try {
+    await runMigrationsUpTo(
+      testDbUrl,
+      STRUCTURED_PROMPT_DRAFT_BACKFILL_PREVIOUS_MIGRATION,
+    );
+
+    const client = new Client({ connectionString: testDbUrl });
+    await client.connect();
+    try {
+      await client.query(
+        `INSERT INTO "agent_composes" ("id", "user_id", "name", "org_id")
+         VALUES ($1, $2, $3, $4)`,
+        [
+          fixture.composeId,
+          fixture.draftUsers.legacy,
+          "structured-prompt-backfill",
+          fixture.orgId,
+        ],
+      );
+      await client.query(
+        `INSERT INTO "zero_agents" ("id", "org_id", "owner", "name")
+         VALUES ($1, $2, $3, $4)`,
+        [
+          fixture.composeId,
+          fixture.orgId,
+          fixture.draftUsers.legacy,
+          "structured-prompt-backfill",
+        ],
+      );
+      await client.query(
+        `INSERT INTO "chat_threads" (
+           "id",
+           "user_id",
+           "agent_compose_id",
+           "draft_structured_prompt",
+           "draft_structured_prompt_with_feedback"
+         )
+         VALUES
+           ($1, $2, $7, $8::jsonb, $9::jsonb),
+           ($3, $4, $7, $8::jsonb, NULL),
+           ($5, $6, $7, $9::jsonb, $9::jsonb)`,
+        [
+          fixture.threadIds.legacy,
+          fixture.draftUsers.legacy,
+          fixture.threadIds.canonical,
+          fixture.draftUsers.canonical,
+          fixture.threadIds.equal,
+          fixture.draftUsers.equal,
+          fixture.composeId,
+          JSON.stringify(canonicalDocument),
+          JSON.stringify(feedbackDocument),
+        ],
+      );
+      // Seed the compatibility columns before their backfill and removal so
+      // this fixture covers the full migration sequence.
+      await client.query(
+        `INSERT INTO "zero_agent_drafts" (
+           "user_id",
+           "org_id",
+           "agent_id",
+           "draft_structured_prompt",
+           "draft_structured_prompt_with_feedback"
+         )
+         VALUES
+           ($1, $2, $3, $4::jsonb, $5::jsonb),
+           ($6, $2, $3, $4::jsonb, NULL),
+           ($7, $2, $3, $5::jsonb, $5::jsonb)`,
+        [
+          fixture.draftUsers.legacy,
+          fixture.orgId,
+          fixture.composeId,
+          JSON.stringify(canonicalDocument),
+          JSON.stringify(feedbackDocument),
+          fixture.draftUsers.canonical,
+          fixture.draftUsers.equal,
+        ],
+      );
+
+      await applyMigrationsUpToInTransaction(
+        client,
+        STRUCTURED_PROMPT_DRAFT_BACKFILL_MIGRATION,
+      );
+
+      const chatRows = await client.query<{
+        id: string;
+        draft_structured_prompt: unknown;
+        draft_structured_prompt_with_feedback: unknown;
+      }>(
+        `SELECT
+           "id",
+           "draft_structured_prompt",
+           "draft_structured_prompt_with_feedback"
+         FROM "chat_threads"
+         WHERE "id" = ANY($1::uuid[])
+         ORDER BY "id"`,
+        [Object.values(fixture.threadIds)],
+      );
+      const chatRowsById = new Map(
+        chatRows.rows.map((row) => {
+          return [row.id, row] as const;
+        }),
+      );
+      assert.deepEqual(chatRowsById.get(fixture.threadIds.legacy), {
+        id: fixture.threadIds.legacy,
+        draft_structured_prompt: feedbackDocument,
+        draft_structured_prompt_with_feedback: feedbackDocument,
+      });
+      assert.deepEqual(chatRowsById.get(fixture.threadIds.canonical), {
+        id: fixture.threadIds.canonical,
+        draft_structured_prompt: canonicalDocument,
+        draft_structured_prompt_with_feedback: null,
+      });
+      assert.deepEqual(chatRowsById.get(fixture.threadIds.equal), {
+        id: fixture.threadIds.equal,
+        draft_structured_prompt: feedbackDocument,
+        draft_structured_prompt_with_feedback: feedbackDocument,
+      });
+
+      const draftRows = await client.query<{
+        user_id: string;
+        draft_structured_prompt: unknown;
+        draft_structured_prompt_with_feedback: unknown;
+      }>(
+        `SELECT
+           "user_id",
+           "draft_structured_prompt",
+           "draft_structured_prompt_with_feedback"
+         FROM "zero_agent_drafts"
+         WHERE "user_id" = ANY($1::text[])
+         ORDER BY "user_id"`,
+        [Object.values(fixture.draftUsers)],
+      );
+      const draftRowsByUser = new Map(
+        draftRows.rows.map((row) => {
+          return [row.user_id, row] as const;
+        }),
+      );
+      assert.deepEqual(draftRowsByUser.get(fixture.draftUsers.legacy), {
+        user_id: fixture.draftUsers.legacy,
+        draft_structured_prompt: feedbackDocument,
+        draft_structured_prompt_with_feedback: feedbackDocument,
+      });
+      assert.deepEqual(draftRowsByUser.get(fixture.draftUsers.canonical), {
+        user_id: fixture.draftUsers.canonical,
+        draft_structured_prompt: canonicalDocument,
+        draft_structured_prompt_with_feedback: null,
+      });
+      assert.deepEqual(draftRowsByUser.get(fixture.draftUsers.equal), {
+        user_id: fixture.draftUsers.equal,
+        draft_structured_prompt: feedbackDocument,
+        draft_structured_prompt_with_feedback: feedbackDocument,
+      });
+
+      await applyMigrationsUpToInTransaction(
+        client,
+        STRUCTURED_PROMPT_DRAFT_LEGACY_COLUMN_DROP_MIGRATION,
+      );
+
+      const legacyColumns = await client.query<{
+        table_name: string;
+        column_name: string;
+      }>(
+        `SELECT
+           "table_name",
+           "column_name"
+         FROM information_schema.columns
+         WHERE "table_schema" = 'public'
+           AND "column_name" IN (
+             'structured_prompt_with_feedback',
+             'draft_structured_prompt_with_feedback'
+           )
+         ORDER BY "table_name", "column_name"`,
+      );
+      assert.deepEqual(legacyColumns.rows, []);
+
+      const canonicalRowsAfterDrop = await client.query<{
+        id: string;
+        draft_structured_prompt: unknown;
+      }>(
+        `SELECT
+           "id",
+           "draft_structured_prompt"
+         FROM "chat_threads"
+         WHERE "id" = ANY($1::uuid[])
+         ORDER BY "id"`,
+        [Object.values(fixture.threadIds)],
+      );
+      assert.deepEqual(
+        canonicalRowsAfterDrop.rows.map((row) => {
+          return [row.id, row.draft_structured_prompt] as const;
+        }),
+        [
+          [fixture.threadIds.legacy, feedbackDocument],
+          [fixture.threadIds.canonical, canonicalDocument],
+          [fixture.threadIds.equal, feedbackDocument],
+        ],
+      );
+
+      const canonicalDraftRowsAfterDrop = await client.query<{
+        user_id: string;
+        draft_structured_prompt: unknown;
+      }>(
+        `SELECT
+           "user_id",
+           "draft_structured_prompt"
+         FROM "zero_agent_drafts"
+         WHERE "user_id" = ANY($1::text[])
+         ORDER BY "user_id"`,
+        [Object.values(fixture.draftUsers)],
+      );
+      assert.deepEqual(
+        canonicalDraftRowsAfterDrop.rows.map((row) => {
+          return [row.user_id, row.draft_structured_prompt] as const;
+        }),
+        [
+          [fixture.draftUsers.canonical, canonicalDocument],
+          [fixture.draftUsers.equal, feedbackDocument],
+          [fixture.draftUsers.legacy, feedbackDocument],
+        ],
+      );
+    } finally {
+      await client.end();
+    }
+  } finally {
+    await dropDatabase(testDb);
+  }
+
+  console.log(
+    "   ✅ Both draft tables backfill feedback, preserve canonical rows, and drop legacy columns\n",
+  );
+}
+
+const USER_MESSAGE_BACKFILL_PREVIOUS_MIGRATION = 716;
+const USER_MESSAGE_BACKFILL_MIGRATION = 717;
+const USER_MESSAGE_CONTRACT_MIGRATION = 718;
+
+async function validateUserMessageBackfillAndContract(): Promise<void> {
+  console.log(
+    "=== Validate historical userMessage backfill and contract ===\n",
+  );
+
+  const testDb = "migration_user_message_backfill_test";
+  const testDbUrl = createTestDbUrl(testDb);
+  const composeId = "92000000-0000-4000-8000-000000000001";
+  const threadIds = {
+    events: "92000000-0000-4000-8000-000000000002",
+    draft: "92000000-0000-4000-8000-000000000003",
+    emptyDraft: "92000000-0000-4000-8000-000000000004",
+  } as const;
+  const file = {
+    id: "historical-file",
+    filename: "history.txt",
+    contentType: "text/plain",
+    size: 42,
+    objectKey: "historical-file/history.txt",
+  };
+  const canonicalDocument = {
+    version: 1,
+    parts: [{ type: "text", text: "already canonical" }],
+  };
+  const synthesizedDocument = {
+    version: 1,
+    parts: [
+      {
+        type: "file",
+        fileId: file.id,
+        filenameSnapshot: file.filename,
+        contentType: file.contentType,
+      },
+      { type: "text", text: "legacy prompt" },
+    ],
+  };
+
+  await createDatabase(testDb);
+  try {
+    await runMigrationsUpTo(
+      testDbUrl,
+      USER_MESSAGE_BACKFILL_PREVIOUS_MIGRATION,
+    );
+
+    const client = new Client({ connectionString: testDbUrl });
+    await client.connect();
+    try {
+      await client.query(
+        `INSERT INTO "agent_composes" ("id", "user_id", "name", "org_id")
+         VALUES ($1, 'user-message-backfill-user', 'user-message-backfill', 'user-message-backfill-org')`,
+        [composeId],
+      );
+      await client.query(
+        `INSERT INTO "zero_agents" ("id", "org_id", "owner", "name")
+         VALUES ($1, 'user-message-backfill-org', 'user-message-backfill-user', 'user-message-backfill')`,
+        [composeId],
+      );
+      await client.query(
+        `INSERT INTO "chat_threads" (
+           "id",
+           "user_id",
+           "agent_compose_id",
+           "draft_content",
+           "draft_attachments"
+         )
+         VALUES
+           ($1, 'user-message-backfill-user', $3, 'legacy prompt', $4::jsonb),
+           ($2, 'user-message-backfill-user', $3, NULL, NULL)`,
+        [
+          threadIds.draft,
+          threadIds.emptyDraft,
+          composeId,
+          JSON.stringify([file]),
+        ],
+      );
+      await client.query(
+        `INSERT INTO "chat_threads" (
+           "id",
+           "user_id",
+           "agent_compose_id"
+         )
+         VALUES ($1, 'user-message-backfill-user', $2)`,
+        [threadIds.events, composeId],
+      );
+      await client.query(
+        `INSERT INTO "zero_agent_drafts" (
+           "user_id",
+           "org_id",
+           "agent_id",
+           "draft_content",
+           "draft_attachments"
+         )
+         VALUES (
+           'user-message-backfill-user',
+           'user-message-backfill-org',
+           $1,
+           'legacy prompt',
+           $2::jsonb
+         )`,
+        [composeId, JSON.stringify([file])],
+      );
+
+      const events = await client.query<{ id: string }>(
+        `INSERT INTO "chat_messages" (
+           "chat_thread_id",
+           "role",
+           "content",
+           "event_type",
+           "attach_file_metadata",
+           "structured_prompt",
+           "error",
+           "automation_id"
+         )
+         VALUES
+           ($1, 'user', 'legacy prompt', 'input.prompt', $2::jsonb, NULL, NULL, NULL),
+           ($1, 'user', 'already canonical', 'input.prompt', NULL, $3::jsonb, NULL, NULL),
+           ($1, 'user', 'rejected prompt', 'input.rejected', NULL, NULL, 'rejected', NULL),
+           ($1, 'user', NULL, 'input.rejected', NULL, NULL, 'automation rejection', '92000000-0000-4000-8000-000000000005'),
+           ($1, 'user', NULL, 'input.automation', NULL, NULL, NULL, NULL)
+         RETURNING "id"`,
+        [
+          threadIds.events,
+          JSON.stringify([file]),
+          JSON.stringify(canonicalDocument),
+        ],
+      );
+      const [
+        synthesizedEvent,
+        canonicalEvent,
+        rejectedEvent,
+        automationRejectedEvent,
+        automationEvent,
+      ] = events.rows.map((row) => {
+        return row.id;
+      });
+      assert.ok(synthesizedEvent);
+      assert.ok(canonicalEvent);
+      assert.ok(rejectedEvent);
+      assert.ok(automationRejectedEvent);
+      assert.ok(automationEvent);
+
+      await applyMigrationsUpToInTransaction(
+        client,
+        USER_MESSAGE_BACKFILL_MIGRATION,
+      );
+
+      const inputRows = await client.query<{
+        id: string;
+        userMessage: unknown;
+      }>(
+        `SELECT "id", "structured_prompt" AS "userMessage"
+         FROM "chat_messages"
+         WHERE "id" = ANY($1::uuid[])`,
+        [
+          [
+            synthesizedEvent,
+            canonicalEvent,
+            rejectedEvent,
+            automationRejectedEvent,
+          ],
+        ],
+      );
+      const userMessageById = new Map(
+        inputRows.rows.map((row) => {
+          return [row.id, row.userMessage] as const;
+        }),
+      );
+      assert.deepEqual(
+        userMessageById.get(synthesizedEvent),
+        synthesizedDocument,
+      );
+      assert.deepEqual(userMessageById.get(canonicalEvent), canonicalDocument);
+      assert.deepEqual(userMessageById.get(rejectedEvent), {
+        version: 1,
+        parts: [{ type: "text", text: "rejected prompt" }],
+      });
+      assert.deepEqual(userMessageById.get(automationRejectedEvent), {
+        version: 1,
+        parts: [{ type: "text", text: "automation rejection" }],
+      });
+
+      const draftRows = await client.query<{
+        id: string;
+        draftUserMessage: unknown;
+      }>(
+        `SELECT "id", "draft_structured_prompt" AS "draftUserMessage"
+         FROM "chat_threads"
+         WHERE "id" = ANY($1::uuid[])
+         ORDER BY "id"`,
+        [[threadIds.draft, threadIds.emptyDraft]],
+      );
+      assert.deepEqual(draftRows.rows, [
+        {
+          id: threadIds.draft,
+          draftUserMessage: synthesizedDocument,
+        },
+        {
+          id: threadIds.emptyDraft,
+          draftUserMessage: null,
+        },
+      ]);
+      const agentDraft = await client.query<{ draftUserMessage: unknown }>(
+        `SELECT "draft_structured_prompt" AS "draftUserMessage"
+         FROM "zero_agent_drafts"
+         WHERE "user_id" = 'user-message-backfill-user'
+           AND "org_id" = 'user-message-backfill-org'
+           AND "agent_id" = $1`,
+        [composeId],
+      );
+      assert.deepEqual(agentDraft.rows, [
+        { draftUserMessage: synthesizedDocument },
+      ]);
+
+      await expectAppendOnlyUpdateRejected(client, {
+        tableName: "chat_messages",
+        query: `UPDATE "chat_messages" SET "content" = 'mutated' WHERE "id" = $1`,
+        rowId: synthesizedEvent,
+      });
+
+      await applyMigrationsUpToInTransaction(
+        client,
+        USER_MESSAGE_CONTRACT_MIGRATION,
+      );
+      await expectDatabaseError(client, {
+        code: "23514",
+        messageIncludes: "chat_messages_input_user_message_check",
+        query: `
+          INSERT INTO "chat_messages" (
+            "chat_thread_id",
+            "role",
+            "content",
+            "event_type"
+          )
+          VALUES ($1, 'user', 'missing userMessage', 'input.prompt')
+        `,
+        values: [threadIds.events],
+      });
+      await client.query(
+        `INSERT INTO "chat_messages" (
+           "chat_thread_id",
+           "role",
+           "content",
+           "event_type"
+         )
+         VALUES ($1, 'assistant', 'output remains nullable', 'output.message')`,
+        [threadIds.events],
+      );
+      await expectDatabaseError(client, {
+        code: "23514",
+        messageIncludes: "chat_threads_draft_user_message_check",
+        query: `
+          UPDATE "chat_threads"
+          SET
+            "draft_content" = 'missing userMessage',
+            "draft_structured_prompt" = NULL
+          WHERE "id" = $1
+        `,
+        values: [threadIds.emptyDraft],
+      });
+      await expectDatabaseError(client, {
+        code: "23514",
+        messageIncludes: "zero_agent_drafts_draft_user_message_check",
+        query: `
+          UPDATE "zero_agent_drafts"
+          SET "draft_structured_prompt" = NULL
+          WHERE "user_id" = 'user-message-backfill-user'
+            AND "org_id" = 'user-message-backfill-org'
+            AND "agent_id" = $1
+        `,
+        values: [composeId],
+      });
+      const constraints = await client.query<{
+        name: string;
+        validated: boolean;
+      }>(
+        `SELECT
+           "conname" AS "name",
+           "convalidated" AS "validated"
+         FROM "pg_catalog"."pg_constraint"
+         WHERE "conname" = ANY($1::text[])
+         ORDER BY "conname"`,
+        [
+          [
+            "chat_messages_input_user_message_check",
+            "chat_threads_draft_user_message_check",
+            "zero_agent_drafts_draft_user_message_check",
+          ],
+        ],
+      );
+      assert.deepEqual(constraints.rows, [
+        {
+          name: "chat_messages_input_user_message_check",
+          validated: true,
+        },
+        {
+          name: "chat_threads_draft_user_message_check",
+          validated: true,
+        },
+        {
+          name: "zero_agent_drafts_draft_user_message_check",
+          validated: true,
+        },
+      ]);
+    } finally {
+      await client.end();
+    }
+  } finally {
+    await dropDatabase(testDb);
+  }
+
+  console.log(
+    "   ✅ Historical events and drafts gain canonical documents, non-empty inputs require userMessage, and append-only protection remains active\n",
+  );
+}
+
+const CHAT_EVENT_TYPE_PREVIOUS_MIGRATION = 696;
+const CHAT_EVENT_TYPE_ADDITIVE_MIGRATION = 697;
+const CHAT_EVENT_TYPE_BACKFILL_MIGRATION = 698;
+const CHAT_EVENT_TYPE_CONTRACT_MIGRATION = 701;
+const CHAT_EVENT_TYPE_CONSUMER_MIGRATION = 702;
+
+async function validateChatEventTypeBackfillAndContract(): Promise<void> {
+  console.log(
+    "=== Validate populated ChatEvent type backfill and contract ===\n",
+  );
+
+  const testDb = "migration_chat_event_type_backfill_test";
+  const testDbUrl = createTestDbUrl(testDb);
+
+  await createDatabase(testDb);
+  try {
+    await runMigrationsUpTo(testDbUrl, CHAT_EVENT_TYPE_PREVIOUS_MIGRATION);
+
+    const client = new Client({ connectionString: testDbUrl });
+    await client.connect();
+    try {
+      const agentCompose = await client.query<{ id: string }>(`
+        INSERT INTO "agent_composes" ("user_id", "name", "org_id")
+        VALUES (
+          'chat-event-backfill-user',
+          'chat-event-backfill-test',
+          'chat-event-backfill-org'
+        )
+        RETURNING "id"
+      `);
+      const agentComposeId = agentCompose.rows[0]?.id;
+      assert.ok(agentComposeId);
+
+      const thread = await client.query<{ id: string }>(
+        `
+          INSERT INTO "chat_threads" (
+            "user_id",
+            "agent_compose_id",
+            "title"
+          )
+          VALUES (
+            'chat-event-backfill-user',
+            $1,
+            'chat event backfill test'
+          )
+          RETURNING "id"
+        `,
+        [agentComposeId],
+      );
+      const threadId = thread.rows[0]?.id;
+      assert.ok(threadId);
+
+      const messages = await client.query<{ id: string }>(
+        `
+          INSERT INTO "chat_messages" (
+            "chat_thread_id",
+            "role",
+            "content"
+          )
+          VALUES
+            ($1, 'user', 'legacy prompt'),
+            ($1, 'assistant', 'legacy response')
+          RETURNING "id"
+        `,
+        [threadId],
+      );
+      const promptId = messages.rows[0]?.id;
+      assert.ok(promptId);
+
+      await client.query(
+        `
+          INSERT INTO "chat_messages" (
+            "chat_thread_id",
+            "role",
+            "structured_prompt_with_feedback",
+            "revokes_message_id"
+          )
+          VALUES ($1, 'user', $2::jsonb, $3)
+        `,
+        [
+          threadId,
+          JSON.stringify({
+            version: 1,
+            parts: [
+              {
+                type: "feedback",
+                quote: "legacy response",
+                note: [{ type: "text", text: "Make this more concise" }],
+              },
+            ],
+          }),
+          promptId,
+        ],
+      );
+
+      await expectAppendOnlyUpdateRejected(client, {
+        tableName: "chat_messages",
+        query: `UPDATE "chat_messages" SET "content" = 'mutated' WHERE "id" = $1`,
+        rowId: promptId,
+      });
+
+      await applyMigrationsUpToInTransaction(
+        client,
+        CHAT_EVENT_TYPE_ADDITIVE_MIGRATION,
+      );
+
+      await expectAppendOnlyUpdateRejected(client, {
+        tableName: "chat_messages",
+        query: `UPDATE "chat_messages" SET "content" = 'mutated' WHERE "id" = $1`,
+        rowId: promptId,
+      });
+
+      await client.query(
+        `
+          INSERT INTO "chat_messages" (
+            "chat_thread_id",
+            "role",
+            "content",
+            "event_type"
+          )
+          VALUES ($1, 'assistant', 'typed writer during rollout', 'output.message')
+        `,
+        [threadId],
+      );
+
+      await applyMigrationsUpToInTransaction(
+        client,
+        CHAT_EVENT_TYPE_BACKFILL_MIGRATION,
+      );
+
+      const classified = await client.query<{
+        eventType: string | null;
+        role: string;
+      }>(
+        `
+          SELECT
+            "role",
+            "event_type" AS "eventType"
+          FROM "chat_messages"
+          WHERE "chat_thread_id" = $1
+          ORDER BY "seq_id"
+        `,
+        [threadId],
+      );
+      assert.deepEqual(classified.rows, [
+        { eventType: "input.prompt", role: "user" },
+        { eventType: "output.message", role: "assistant" },
+        { eventType: "input.prompt", role: "user" },
+        { eventType: "output.message", role: "assistant" },
+      ]);
+
+      await expectAppendOnlyUpdateRejected(client, {
+        tableName: "chat_messages",
+        query: `UPDATE "chat_messages" SET "content" = 'mutated' WHERE "id" = $1`,
+        rowId: promptId,
+      });
+
+      const rolloutTailWrite = await client.query<{
+        eventType: string | null;
+        id: string;
+      }>(
+        `
+          INSERT INTO "chat_messages" (
+            "chat_thread_id",
+            "role",
+            "content"
+          )
+          VALUES ($1, 'user', 'rollout-tail writer before contract')
+          RETURNING "id", "event_type" AS "eventType"
+        `,
+        [threadId],
+      );
+      const rolloutTailId = rolloutTailWrite.rows[0]?.id;
+      assert.ok(rolloutTailId);
+      assert.equal(rolloutTailWrite.rows[0]?.eventType, null);
+
+      await applyMigrationsUpToInTransaction(
+        client,
+        CHAT_EVENT_TYPE_CONTRACT_MIGRATION,
+      );
+
+      const contractedTail = await client.query<{ eventType: string }>(
+        `
+          SELECT "event_type" AS "eventType"
+          FROM "chat_messages"
+          WHERE "id" = $1
+        `,
+        [rolloutTailId],
+      );
+      assert.equal(contractedTail.rows[0]?.eventType, "input.prompt");
+
+      const contractState = await client.query<{
+        constraintValidated: boolean;
+        eventTypeNotNull: boolean;
+      }>(`
+        SELECT
+          attribute.attnotnull AS "eventTypeNotNull",
+          event_type_constraint.convalidated AS "constraintValidated"
+        FROM pg_catalog.pg_attribute AS attribute
+        INNER JOIN pg_catalog.pg_class AS relation
+          ON relation.oid = attribute.attrelid
+        INNER JOIN pg_catalog.pg_namespace AS namespace
+          ON namespace.oid = relation.relnamespace
+        INNER JOIN pg_catalog.pg_constraint AS event_type_constraint
+          ON event_type_constraint.conrelid = relation.oid
+          AND event_type_constraint.conname = 'chat_messages_event_type_check'
+        WHERE namespace.nspname = 'public'
+          AND relation.relname = 'chat_messages'
+          AND attribute.attname = 'event_type'
+      `);
+      assert.deepEqual(contractState.rows, [
+        { constraintValidated: true, eventTypeNotNull: true },
+      ]);
+
+      await expectDatabaseError(client, {
+        code: "23502",
+        query: `
+          INSERT INTO "chat_messages" (
+            "chat_thread_id",
+            "role",
+            "content",
+            "event_type"
+          )
+          VALUES ($1, 'user', 'NULL event type after contract', NULL)
+        `,
+        values: [threadId],
+      });
+      await expectDatabaseError(client, {
+        code: "23514",
+        query: `
+          INSERT INTO "chat_messages" (
+            "chat_thread_id",
+            "role",
+            "content",
+            "event_type"
+          )
+          VALUES ($1, 'user', 'unsupported event type after contract', 'unsupported.event')
+        `,
+        values: [threadId],
+      });
+
+      await expectAppendOnlyUpdateRejected(client, {
+        tableName: "chat_messages",
+        query: `UPDATE "chat_messages" SET "content" = 'mutated' WHERE "id" = $1`,
+        rowId: rolloutTailId,
+      });
+
+      await applyMigrationsUpToInTransaction(
+        client,
+        CHAT_EVENT_TYPE_CONSUMER_MIGRATION,
+      );
+
+      const consumerEvents = await client.query<{
+        eventType: string;
+        id: string;
+      }>(
+        `
+          INSERT INTO "chat_messages" (
+            "chat_thread_id",
+            "role",
+            "content",
+            "event_type",
+            "automation_id",
+            "trigger_source",
+            "trigger_brief",
+            "encrypted_params",
+            "error"
+          )
+          VALUES
+            (
+              $1,
+              'user',
+              NULL,
+              'input.automation',
+              '80000000-0000-4000-8000-000000000001',
+              'workflow-event',
+              'Gmail label applied',
+              'encrypted-queue-params',
+              NULL
+            ),
+            (
+              $1,
+              'assistant',
+              NULL,
+              'queue.automation_paused',
+              NULL,
+              NULL,
+              NULL,
+              NULL,
+              'Provider unavailable'
+            ),
+            (
+              $1,
+              'assistant',
+              NULL,
+              'queue.automation_resumed',
+              NULL,
+              NULL,
+              NULL,
+              NULL,
+              NULL
+            )
+          RETURNING "id", "event_type" AS "eventType"
+        `,
+        [threadId],
+      );
+      assert.deepEqual(
+        consumerEvents.rows.map(({ eventType }) => {
+          return eventType;
+        }),
+        [
+          "input.automation",
+          "queue.automation_paused",
+          "queue.automation_resumed",
+        ],
+      );
+
+      const automationEventId = consumerEvents.rows[0]?.id;
+      assert.ok(automationEventId);
+
+      const automationPayload = await client.query<{
+        automationId: string;
+        encryptedParams: string;
+        triggerBrief: string;
+        triggerSource: string;
+      }>(
+        `
+          SELECT
+            "automation_id" AS "automationId",
+            "trigger_source" AS "triggerSource",
+            "trigger_brief" AS "triggerBrief",
+            "encrypted_params" AS "encryptedParams"
+          FROM "chat_messages"
+          WHERE "id" = $1
+        `,
+        [automationEventId],
+      );
+      assert.deepEqual(automationPayload.rows[0], {
+        automationId: "80000000-0000-4000-8000-000000000001",
+        encryptedParams: "encrypted-queue-params",
+        triggerBrief: "Gmail label applied",
+        triggerSource: "workflow-event",
+      });
+
+      const consumerColumns = await client.query<{
+        columnName: string;
+        isNullable: string;
+      }>(`
+        SELECT
+          column_name AS "columnName",
+          is_nullable AS "isNullable"
+        FROM information_schema.columns
+        WHERE table_schema = 'public'
+          AND table_name = 'chat_messages'
+          AND column_name IN (
+            'automation_id',
+            'trigger_source',
+            'trigger_brief',
+            'encrypted_params'
+          )
+        ORDER BY column_name
+      `);
+      assert.deepEqual(consumerColumns.rows, [
+        { columnName: "automation_id", isNullable: "YES" },
+        { columnName: "encrypted_params", isNullable: "YES" },
+        { columnName: "trigger_brief", isNullable: "YES" },
+        { columnName: "trigger_source", isNullable: "YES" },
+      ]);
+
+      const consumerIndexes = await client.query<{ indexName: string }>(`
+        SELECT indexname AS "indexName"
+        FROM pg_catalog.pg_indexes
+        WHERE schemaname = 'public'
+          AND tablename = 'chat_messages'
+          AND indexname IN (
+            'chat_messages_input_automation_idx',
+            'chat_messages_pending_queue_idx',
+            'chat_messages_automation_pause_idx'
+          )
+        ORDER BY indexname
+      `);
+      assert.deepEqual(consumerIndexes.rows, [
+        { indexName: "chat_messages_automation_pause_idx" },
+        { indexName: "chat_messages_input_automation_idx" },
+        { indexName: "chat_messages_pending_queue_idx" },
+      ]);
+
+      const consumerConstraint = await client.query<{
+        constraintValidated: boolean;
+      }>(`
+        SELECT convalidated AS "constraintValidated"
+        FROM pg_catalog.pg_constraint
+        WHERE conrelid = 'public.chat_messages'::regclass
+          AND conname = 'chat_messages_event_type_check'
+      `);
+      assert.deepEqual(consumerConstraint.rows, [
+        { constraintValidated: true },
+      ]);
+
+      await expectDatabaseError(client, {
+        code: "23514",
+        query: `
+          INSERT INTO "chat_messages" (
+            "chat_thread_id",
+            "role",
+            "content",
+            "event_type"
+          )
+          VALUES ($1, 'user', 'unsupported event type after expansion', 'unsupported.event')
+        `,
+        values: [threadId],
+      });
+      await expectAppendOnlyUpdateRejected(client, {
+        tableName: "chat_messages",
+        query: `UPDATE "chat_messages" SET "trigger_brief" = 'mutated' WHERE "id" = $1`,
+        rowId: automationEventId,
+      });
+    } finally {
+      await client.end();
+    }
+  } finally {
+    await dropDatabase(testDb);
+  }
+
+  console.log(
+    "   ✅ Rollout-tail rows are classified, automation queue leaves are accepted, and append-only protection remains active\n",
+  );
+}
+
+const CHAT_EVENT_QUEUE_CONTRACTION_PREVIOUS_MIGRATION = 718;
+const CHAT_EVENT_QUEUE_CONTRACTION_MIGRATION = 719;
+
+async function validateChatEventQueueContraction(): Promise<void> {
+  console.log("=== Validate ChatEvent queue schema contraction ===\n");
+
+  const testDb = "migration_chat_event_queue_contraction_test";
+  const testDbUrl = createTestDbUrl(testDb);
+  const composeId = "93000000-0000-4000-8000-000000000001";
+  const threadId = "93000000-0000-4000-8000-000000000002";
+  const promptId = "93000000-0000-4000-8000-000000000003";
+  const legacyQueueId = "93000000-0000-4000-8000-000000000004";
+
+  await createDatabase(testDb);
+  try {
+    await runMigrationsUpTo(
+      testDbUrl,
+      CHAT_EVENT_QUEUE_CONTRACTION_PREVIOUS_MIGRATION,
+    );
+    const client = new Client({ connectionString: testDbUrl });
+    await client.connect();
+    try {
+      await client.query(
+        `
+          INSERT INTO "agent_composes" ("id", "user_id", "name", "org_id")
+          VALUES (
+            $1,
+            'chat-event-queue-contraction-user',
+            'chat-event-queue-contraction',
+            'chat-event-queue-contraction-org'
+          )
+        `,
+        [composeId],
+      );
+      await client.query(
+        `
+          INSERT INTO "chat_threads" (
+            "id",
+            "user_id",
+            "agent_compose_id"
+          )
+          VALUES (
+            $1,
+            'chat-event-queue-contraction-user',
+            $2
+          )
+        `,
+        [threadId, composeId],
+      );
+      await client.query(
+        `
+          INSERT INTO "chat_messages" (
+            "id",
+            "chat_thread_id",
+            "run_id",
+            "event_type",
+            "role",
+            "content",
+            "structured_prompt"
+          )
+          VALUES (
+            $1,
+            $2,
+            NULL,
+            'input.prompt',
+            'user',
+            'pending canonical prompt',
+            '{
+              "version": 1,
+              "parts": [
+                {"type": "text", "text": "pending canonical prompt"}
+              ]
+            }'::jsonb
+          )
+        `,
+        [promptId, threadId],
+      );
+      await client.query(
+        `
+          INSERT INTO "chat_message_queue" (
+            "id",
+            "org_id",
+            "user_id",
+            "chat_thread_id",
+            "item_type",
+            "chat_message_id",
+            "encrypted_params"
+          )
+          VALUES (
+            $1,
+            'chat-event-queue-contraction-org',
+            'chat-event-queue-contraction-user',
+            $2,
+            'slack_user_message',
+            $3,
+            'legacy-overlap-ciphertext'
+          )
+        `,
+        [legacyQueueId, threadId, promptId],
+      );
+      const mirroredPayload = await client.query<{
+        encryptedParams: string;
+        triggerSource: string;
+      }>(
+        `
+          SELECT
+            "encrypted_params" AS "encryptedParams",
+            "trigger_source" AS "triggerSource"
+          FROM "chat_messages"
+          WHERE "id" = $1
+        `,
+        [promptId],
+      );
+      assert.deepEqual(mirroredPayload.rows, [
+        {
+          encryptedParams: "legacy-overlap-ciphertext",
+          triggerSource: "slack",
+        },
+      ]);
+      await client.query(
+        `
+          INSERT INTO "chat_messages" (
+            "chat_thread_id",
+            "run_id",
+            "event_type",
+            "role",
+            "content",
+            "error"
+          )
+          VALUES (
+            $1,
+            NULL,
+            'queue.automation_paused',
+            'assistant',
+            NULL,
+            'contraction fixture pause'
+          )
+        `,
+        [threadId],
+      );
+
+      const projectedPause = await client.query<{
+        pauseReason: string;
+        queuePausedAt: Date;
+      }>(
+        `
+          SELECT
+            "queue_paused_at" AS "queuePausedAt",
+            "pause_reason" AS "pauseReason"
+          FROM "chat_threads"
+          WHERE "id" = $1
+        `,
+        [threadId],
+      );
+      assert.equal(
+        projectedPause.rows[0]?.pauseReason,
+        "contraction fixture pause",
+      );
+      assert.ok(projectedPause.rows[0]?.queuePausedAt instanceof Date);
+
+      await applyMigrationsUpToInTransaction(
+        client,
+        CHAT_EVENT_QUEUE_CONTRACTION_MIGRATION,
+      );
+
+      const retiredSchema = await client.query<{
+        compatibilityDeleteFunction: string | null;
+        compatibilityRelationKind: string | null;
+        compatibilityView: string | null;
+        legacyColumnCount: number;
+        legacyDeleteFunction: string | null;
+        legacyEnum: string | null;
+        legacyInsertFunction: string | null;
+        legacyPauseFunction: string | null;
+        legacyPauseProjectionFunction: string | null;
+        legacyTableCount: number;
+      }>(`
+        SELECT
+          to_regclass('public.chat_message_queue')::text
+            AS "compatibilityView",
+          (
+            SELECT relation.relkind::text
+            FROM pg_class AS relation
+            INNER JOIN pg_namespace AS namespace
+              ON namespace.oid = relation.relnamespace
+            WHERE namespace.nspname = 'public'
+              AND relation.relname = 'chat_message_queue'
+          ) AS "compatibilityRelationKind",
+          to_regprocedure(
+            'ignore_legacy_chat_message_queue_delete_0719()'
+          )::text AS "compatibilityDeleteFunction",
+          to_regtype('public.chat_message_queue_item_type')::text
+            AS "legacyEnum",
+          (
+            SELECT COUNT(*)::integer
+            FROM information_schema.tables
+            WHERE table_schema = 'public'
+              AND table_name = 'chat_message_queue'
+              AND table_type = 'BASE TABLE'
+          ) AS "legacyTableCount",
+          (
+            SELECT COUNT(*)::integer
+            FROM information_schema.columns
+            WHERE table_schema = 'public'
+              AND table_name = 'chat_threads'
+              AND column_name IN ('queue_paused_at', 'pause_reason')
+          ) AS "legacyColumnCount",
+          to_regprocedure(
+            'mirror_legacy_chat_queue_insert_0714()'
+          )::text AS "legacyInsertFunction",
+          to_regprocedure(
+            'mirror_legacy_chat_queue_delete_0714()'
+          )::text AS "legacyDeleteFunction",
+          to_regprocedure(
+            'project_chat_queue_pause_event_0714()'
+          )::text AS "legacyPauseProjectionFunction",
+          to_regprocedure(
+            'mirror_legacy_chat_queue_pause_0714()'
+          )::text AS "legacyPauseFunction"
+      `);
+      assert.deepEqual(retiredSchema.rows, [
+        {
+          compatibilityDeleteFunction:
+            "ignore_legacy_chat_message_queue_delete_0719()",
+          compatibilityRelationKind: "v",
+          compatibilityView: "chat_message_queue",
+          legacyColumnCount: 0,
+          legacyDeleteFunction: null,
+          legacyEnum: null,
+          legacyInsertFunction: null,
+          legacyPauseFunction: null,
+          legacyPauseProjectionFunction: null,
+          legacyTableCount: 0,
+        },
+      ]);
+
+      const legacyUserDelete = await client.query(
+        `
+          DELETE FROM "chat_message_queue"
+          WHERE "chat_thread_id" = $1
+            AND "chat_message_id" = $2
+            AND "item_type" IN ($3, $4, $5, $6)
+        `,
+        [
+          threadId,
+          promptId,
+          "user_message",
+          "slack_user_message",
+          "feishu_user_message",
+          "teams_user_message",
+        ],
+      );
+      assert.equal(legacyUserDelete.rowCount, 0);
+
+      const legacyWorkflowDelete = await client.query(
+        `
+          DELETE FROM "chat_message_queue"
+          WHERE "id" = $1
+            AND "chat_thread_id" = $2
+            AND "item_type" = $3
+        `,
+        [legacyQueueId, threadId, "workflow_event"],
+      );
+      assert.equal(legacyWorkflowDelete.rowCount, 0);
+
+      const canonicalEvents = await client.query<{
+        content: string | null;
+        encryptedParams: string | null;
+        eventType: string;
+        triggerSource: string | null;
+      }>(
+        `
+          SELECT
+            "content",
+            "encrypted_params" AS "encryptedParams",
+            "event_type" AS "eventType",
+            "trigger_source" AS "triggerSource"
+          FROM "chat_messages"
+          WHERE "chat_thread_id" = $1
+          ORDER BY "seq_id"
+        `,
+        [threadId],
+      );
+      assert.deepEqual(canonicalEvents.rows, [
+        {
+          content: "pending canonical prompt",
+          encryptedParams: "legacy-overlap-ciphertext",
+          eventType: "input.prompt",
+          triggerSource: "slack",
+        },
+        {
+          content: null,
+          encryptedParams: null,
+          eventType: "queue.automation_paused",
+          triggerSource: null,
+        },
+      ]);
+
+      await expectAppendOnlyUpdateRejected(client, {
+        tableName: "chat_messages",
+        query: `UPDATE "chat_messages" SET "trigger_source" = 'slack' WHERE "id" = $1`,
+        rowId: promptId,
+      });
+    } finally {
+      await client.end();
+    }
+  } finally {
+    await dropDatabase(testDb);
+  }
+
+  console.log(
+    "   ✅ Canonical queue events survive while legacy storage retires and the one-release DELETE compatibility view accepts old API cleanup\n",
+  );
 }
 
 const SESSION_STORAGE_BACKFILL_PREVIOUS_MIGRATION = 653;
@@ -2508,6 +4171,99 @@ async function validateStorageArchiveSizeFinalization(): Promise<void> {
   }
 }
 
+async function validateStorageLegacyTypeContraction(): Promise<void> {
+  console.log("=== Phase 1.55: Validate Storage legacy type contraction ===\n");
+  const testDb = "migration_storage_legacy_type_contraction_test";
+  const testDbUrl = createTestDbUrl(testDb);
+  const storageId = "52000000-0000-4000-8000-000000000001";
+
+  await createDatabase(testDb);
+  try {
+    await runMigrationsUpTo(testDbUrl, 695);
+    const client = new Client({ connectionString: testDbUrl });
+    await client.connect();
+    try {
+      await client.query(
+        `
+          INSERT INTO "storages" (
+            "id",
+            "user_id",
+            "name",
+            "type",
+            "org_id",
+            "s3_prefix"
+          )
+          VALUES ($1, 'storage-contraction-user', 'storage-contraction', 'volume', 'storage-contraction-org', 'legacy-prefix')
+        `,
+        [storageId],
+      );
+
+      await applyMigrationsUpTo(client, 696);
+
+      const legacyColumns = await client.query<{ column_name: string }>(`
+        SELECT "column_name"
+        FROM "information_schema"."columns"
+        WHERE "table_schema" = 'public'
+          AND (
+            ("table_name" = 'storages' AND "column_name" = 'type')
+            OR (
+              "table_name" = 'storage_version_lineage'
+              AND "column_name" = 'storage_type'
+            )
+          )
+      `);
+      assert.deepEqual(legacyColumns.rows, []);
+
+      const identityIndexes = await client.query<{ indexname: string }>(`
+        SELECT "indexname"
+        FROM "pg_indexes"
+        WHERE "schemaname" = 'public'
+          AND "tablename" = 'storages'
+          AND "indexname" IN (
+            'idx_storages_org_user_name',
+            'idx_storages_org_user_name_type'
+          )
+        ORDER BY "indexname"
+      `);
+      assert.deepEqual(identityIndexes.rows, [
+        { indexname: "idx_storages_org_user_name" },
+      ]);
+
+      const upserted = await client.query<{
+        id: string;
+        s3_prefix: string;
+      }>(`
+        INSERT INTO "storages" (
+          "user_id",
+          "name",
+          "org_id",
+          "s3_prefix"
+        )
+        VALUES (
+          'storage-contraction-user',
+          'storage-contraction',
+          'storage-contraction-org',
+          'canonical-prefix'
+        )
+        ON CONFLICT ("org_id", "user_id", "name")
+        DO UPDATE SET "s3_prefix" = EXCLUDED."s3_prefix"
+        RETURNING "id", "s3_prefix"
+      `);
+      assert.deepEqual(upserted.rows, [
+        { id: storageId, s3_prefix: "canonical-prefix" },
+      ]);
+
+      console.log(
+        "   ✅ Legacy type columns and index are removed while canonical writes and existing Storage rows remain valid\n",
+      );
+    } finally {
+      await client.end();
+    }
+  } finally {
+    await dropDatabase(testDb);
+  }
+}
+
 async function extractSchemaFromDb(dbUrl: string): Promise<{
   tables: Set<string>;
   columns: Map<string, Set<string>>;
@@ -2769,6 +4525,206 @@ async function validateSlackChatThreadRouteBackfill(): Promise<void> {
   }
 }
 
+async function validateSlackLegacySchemaContraction(): Promise<void> {
+  console.log("=== Phase 1.76: Validate legacy Slack schema contraction ===\n");
+  const testDb = "migration_slack_legacy_schema_contraction_test";
+  const testDbUrl = createTestDbUrl(testDb);
+  const connectionId = "51000000-0000-4000-8000-000000000001";
+  const sessionId = "51000000-0000-4000-8000-000000000002";
+  const routeId = "51000000-0000-4000-8000-000000000003";
+
+  await createDatabase(testDb);
+  try {
+    await runMigrationsUpTo(testDbUrl, 693);
+    const client = new Client({ connectionString: testDbUrl });
+    await client.connect();
+    try {
+      await client.query(`
+        INSERT INTO "slack_org_installations" (
+          "slack_workspace_id",
+          "encrypted_bot_token",
+          "bot_user_id"
+        )
+        VALUES (
+          'legacy-contraction-workspace',
+          'encrypted-token',
+          'legacy-contraction-bot'
+        )
+      `);
+      await client.query(
+        `
+          INSERT INTO "slack_org_connections" (
+            "id",
+            "slack_user_id",
+            "slack_workspace_id",
+            "vm0_user_id"
+          )
+          VALUES (
+            $1,
+            'legacy-contraction-slack-user',
+            'legacy-contraction-workspace',
+            'legacy-contraction-user'
+          )
+        `,
+        [connectionId],
+      );
+      await client.query(
+        `
+          INSERT INTO "slack_org_thread_sessions" (
+            "id",
+            "connection_id",
+            "slack_channel_id",
+            "slack_thread_ts"
+          )
+          VALUES ($1, $2, 'legacy-channel', '1000.000001')
+        `,
+        [sessionId, connectionId],
+      );
+      await client.query(
+        `
+          INSERT INTO "slack_chat_thread_routes" (
+            "id",
+            "connection_id",
+            "channel_id",
+            "thread_ts",
+            "user_id",
+            "backend",
+            "chat_thread_id",
+            "legacy_cutover_event_id",
+            "legacy_cutover_message_ts"
+          )
+          VALUES (
+            $1,
+            $2,
+            'legacy-channel',
+            '1000.000001',
+            'legacy-contraction-user',
+            'legacy',
+            NULL,
+            'legacy-cutover-event',
+            '1000.000002'
+          )
+        `,
+        [routeId, connectionId],
+      );
+      await client.query(
+        `
+          INSERT INTO "slack_chat_ingress" (
+            "route_id",
+            "event_id",
+            "payload"
+          )
+          VALUES (
+            $1,
+            'legacy-retry-event',
+            '{"event":{"ts":"1000.000001"}}'
+          )
+        `,
+        [routeId],
+      );
+      await client.query(`
+        INSERT INTO "user_feature_switches" (
+          "org_id",
+          "user_id",
+          "switches"
+        )
+        VALUES (
+          'legacy-contraction-org',
+          'legacy-contraction-user',
+          '{
+            "canonicalSlackIngress": false,
+            "canonicalSlackWebVisibility": true,
+            "canonicalSlackAssets": false,
+            "unrelatedSwitch": true
+          }'::jsonb
+        )
+      `);
+
+      await applyMigrationsUpTo(client, 695);
+
+      const [legacyState, routeColumns, switches] = await Promise.all([
+        client.query<{
+          ingress_exists: boolean;
+          legacy_classifier: string | null;
+          legacy_session_table: string | null;
+          route_canonicalizer: string | null;
+          route_exists: boolean;
+        }>(
+          `
+            SELECT
+              EXISTS (
+                SELECT 1
+                FROM "slack_chat_ingress"
+                WHERE "event_id" = 'legacy-retry-event'
+              ) AS "ingress_exists",
+              to_regprocedure(
+                'classify_legacy_slack_cutover_ingress()'
+              )::text AS "legacy_classifier",
+              to_regclass(
+                'public.slack_org_thread_sessions'
+              )::text AS "legacy_session_table",
+              to_regprocedure(
+                'canonicalize_slack_chat_thread_route()'
+              )::text AS "route_canonicalizer",
+              EXISTS (
+                SELECT 1
+                FROM "slack_chat_thread_routes"
+                WHERE "id" = $1
+              ) AS "route_exists"
+          `,
+          [routeId],
+        ),
+        client.query<{ column_name: string; is_nullable: "NO" | "YES" }>(`
+          SELECT "column_name", "is_nullable"
+          FROM "information_schema"."columns"
+          WHERE "table_schema" = 'public'
+            AND "table_name" = 'slack_chat_thread_routes'
+          ORDER BY "ordinal_position"
+        `),
+        client.query<{ switches: Record<string, boolean> }>(`
+          SELECT "switches"
+          FROM "user_feature_switches"
+          WHERE "org_id" = 'legacy-contraction-org'
+            AND "user_id" = 'legacy-contraction-user'
+        `),
+      ]);
+
+      assert.deepEqual(legacyState.rows, [
+        {
+          ingress_exists: false,
+          legacy_classifier: null,
+          legacy_session_table: null,
+          route_canonicalizer: null,
+          route_exists: false,
+        },
+      ]);
+      assert.deepEqual(routeColumns.rows, [
+        { column_name: "id", is_nullable: "NO" },
+        { column_name: "connection_id", is_nullable: "NO" },
+        { column_name: "channel_id", is_nullable: "NO" },
+        { column_name: "thread_ts", is_nullable: "NO" },
+        { column_name: "user_id", is_nullable: "NO" },
+        { column_name: "chat_thread_id", is_nullable: "NO" },
+        { column_name: "created_at", is_nullable: "NO" },
+      ]);
+      assert.deepEqual(switches.rows, [
+        {
+          switches: {
+            unrelatedSwitch: true,
+          },
+        },
+      ]);
+      console.log(
+        "   ✅ Legacy Slack rows, schema, triggers, and feature overrides are removed\n",
+      );
+    } finally {
+      await client.end();
+    }
+  } finally {
+    await dropDatabase(testDb);
+  }
+}
+
 async function validateOrgPlanEntitlementBackfill(): Promise<void> {
   console.log(
     "=== Phase 1.8: Validate existing org plan entitlement backfill ===\n",
@@ -2923,143 +4879,60 @@ async function validateOrgPlanEntitlementBackfill(): Promise<void> {
   }
 }
 
-async function validateCompactModelUsageObservationBackfill(): Promise<void> {
-  console.log(
-    "=== Phase 1.9: Validate compact model observation backfill ===\n",
-  );
-  const testDb = "migration_compact_model_observation_backfill_test";
+async function validateModelObservationContractCleanup(): Promise<void> {
+  console.log("=== Phase 1.9: Validate model observation cleanup ===\n");
+  const testDb = "migration_model_observation_cleanup_test";
   const testDbUrl = createTestDbUrl(testDb);
 
   await createDatabase(testDb);
   try {
-    await runMigrationsUpTo(testDbUrl, 660);
+    await runMigrationsUpTo(testDbUrl, 676);
     const client = new Client({ connectionString: testDbUrl });
     await client.connect();
     try {
       await client.query(`
-        WITH boundary AS (
-          SELECT date_trunc('hour', NOW() AT TIME ZONE 'UTC') AS current_hour
-        )
         INSERT INTO "model_usage_observation" (
           "idempotency_key",
-          "org_id",
-          "user_id",
           "model",
-          "category",
-          "quantity",
+          "input_tokens",
+          "output_tokens",
+          "cache_read_input_tokens",
+          "cache_creation_input_tokens",
           "observed_at"
         )
-        SELECT *
-        FROM (
-          VALUES
-            (
-              '66000000-0000-4000-8000-000000000001'::uuid,
-              'compact-backfill-org',
-              'compact-backfill-user',
-              'model-a',
-              'tokens.input',
-              10::bigint,
-              (SELECT current_hour - INTERVAL '2 hours' FROM boundary)
-            ),
-            (
-              '66000000-0000-4000-8000-000000000002'::uuid,
-              'compact-backfill-org',
-              'compact-backfill-user',
-              'model-a',
-              'tokens.input',
-              7::bigint,
-              (SELECT current_hour - INTERVAL '2 hours' FROM boundary)
-            ),
-            (
-              '66000000-0000-4000-8000-000000000003'::uuid,
-              'compact-backfill-org',
-              'compact-backfill-user',
-              'model-a',
-              'tokens.output',
-              5::bigint,
-              (SELECT current_hour - INTERVAL '2 hours' FROM boundary)
-            ),
-            (
-              '66000000-0000-4000-8000-000000000004'::uuid,
-              'compact-backfill-org',
-              'compact-backfill-user',
-              'model-a',
-              'tokens.cache_read',
-              3::bigint,
-              (SELECT current_hour - INTERVAL '2 hours' FROM boundary)
-            ),
-            (
-              '66000000-0000-4000-8000-000000000005'::uuid,
-              'compact-backfill-org',
-              'compact-backfill-user',
-              'model-a',
-              'tokens.cache_creation',
-              2::bigint,
-              (SELECT current_hour - INTERVAL '2 hours' FROM boundary)
-            ),
-            (
-              '66000000-0000-4000-8000-000000000006'::uuid,
-              'compact-backfill-org',
-              'compact-backfill-user',
-              'model-b',
-              'tokens.output',
-              9::bigint,
-              (SELECT current_hour - INTERVAL '2 hours' FROM boundary)
-            ),
-            (
-              '66000000-0000-4000-8000-000000000007'::uuid,
-              'compact-backfill-org',
-              'compact-backfill-user',
-              'boundary-model',
-              'tokens.input',
-              11::bigint,
-              (
-                SELECT current_hour - INTERVAL '32 days' + INTERVAL '5 minutes'
-                FROM boundary
-              )
-            ),
-            (
-              '66000000-0000-4000-8000-000000000008'::uuid,
-              'compact-backfill-org',
-              'compact-backfill-user',
-              'expired-model',
-              'tokens.input',
-              100::bigint,
-              (
-                SELECT current_hour - INTERVAL '32 days' - INTERVAL '1 second'
-                FROM boundary
-              )
-            ),
-            (
-              '66000000-0000-4000-8000-000000000009'::uuid,
-              'compact-backfill-org',
-              'compact-backfill-user',
-              'ignored-model',
-              'tokens.unknown',
-              20::bigint,
-              (SELECT current_hour - INTERVAL '2 hours' FROM boundary)
-            ),
-            (
-              '66000000-0000-4000-8000-000000000010'::uuid,
-              'compact-backfill-org',
-              'compact-backfill-user',
-              'ignored-model',
-              'tokens.input',
-              0::bigint,
-              (SELECT current_hour - INTERVAL '2 hours' FROM boundary)
-            )
-        ) AS fixture (
-          idempotency_key,
-          org_id,
-          user_id,
-          model,
-          category,
-          quantity,
-          observed_at
+        VALUES (
+          '66600000-0000-4000-8000-000000000001',
+          'claude-sonnet-4-6',
+          10,
+          20,
+          30,
+          40,
+          '2026-07-24 00:00:00'
         )
       `);
 
-      await applyMigrationsUpTo(client, 663);
+      await client.query(`
+        INSERT INTO "model_stat" (
+          "hour_start",
+          "model",
+          "input_tokens",
+          "output_tokens",
+          "cache_read_input_tokens",
+          "cache_creation_input_tokens",
+          "total_tokens"
+        )
+        VALUES (
+          '2026-07-24 00:00:00',
+          'claude-sonnet-4-6',
+          10,
+          20,
+          30,
+          40,
+          100
+        )
+      `);
+
+      await applyMigrationsUpTo(client, 676);
 
       const compactRows = await client.query<{
         cacheCreationInputTokens: string;
@@ -3067,84 +4940,100 @@ async function validateCompactModelUsageObservationBackfill(): Promise<void> {
         inputTokens: string;
         model: string;
         outputTokens: string;
-        window: string;
       }>(`
         SELECT
           "model",
-          CASE
-            WHEN "observed_at" =
-              date_trunc('hour', NOW() AT TIME ZONE 'UTC') - INTERVAL '2 hours'
-              THEN 'recent'
-            WHEN "observed_at" =
-              date_trunc('hour', NOW() AT TIME ZONE 'UTC') - INTERVAL '32 days'
-              THEN 'boundary'
-            ELSE 'unexpected'
-          END AS "window",
           "input_tokens"::text AS "inputTokens",
           "output_tokens"::text AS "outputTokens",
           "cache_read_input_tokens"::text AS "cacheReadInputTokens",
           "cache_creation_input_tokens"::text AS "cacheCreationInputTokens"
-        FROM "compact_model_usage_observation"
-        ORDER BY "window", "model"
+        FROM "model_usage_observation"
       `);
       assert.deepEqual(compactRows.rows, [
         {
-          model: "boundary-model",
-          window: "boundary",
-          inputTokens: "11",
-          outputTokens: "0",
-          cacheReadInputTokens: "0",
-          cacheCreationInputTokens: "0",
-        },
-        {
-          model: "model-a",
-          window: "recent",
-          inputTokens: "17",
-          outputTokens: "5",
-          cacheReadInputTokens: "3",
-          cacheCreationInputTokens: "2",
-        },
-        {
-          model: "model-b",
-          window: "recent",
-          inputTokens: "0",
-          outputTokens: "9",
-          cacheReadInputTokens: "0",
-          cacheCreationInputTokens: "0",
+          model: "claude-sonnet-4-6",
+          inputTokens: "10",
+          outputTokens: "20",
+          cacheReadInputTokens: "30",
+          cacheCreationInputTokens: "40",
         },
       ]);
 
-      await client.query(`
-        INSERT INTO "model_usage_observation" (
-          "idempotency_key",
-          "org_id",
-          "user_id",
+      const modelStatRows = await client.query<{
+        cacheCreationInputTokens: string;
+        cacheReadInputTokens: string;
+        inputTokens: string;
+        model: string;
+        outputTokens: string;
+        totalTokens: string;
+      }>(`
+        SELECT
           "model",
-          "category",
-          "quantity"
-        )
-        VALUES (
-          '66000000-0000-4000-8000-000000000100',
-          'legacy-api-org',
-          'legacy-api-user',
-          'legacy-api-model',
-          'tokens.input',
-          1
-        )
+          "input_tokens"::text AS "inputTokens",
+          "output_tokens"::text AS "outputTokens",
+          "cache_read_input_tokens"::text AS "cacheReadInputTokens",
+          "cache_creation_input_tokens"::text AS "cacheCreationInputTokens",
+          "total_tokens"::text AS "totalTokens"
+        FROM "model_stat"
       `);
+      assert.deepEqual(modelStatRows.rows, [
+        {
+          model: "claude-sonnet-4-6",
+          inputTokens: "10",
+          outputTokens: "20",
+          cacheReadInputTokens: "30",
+          cacheCreationInputTokens: "40",
+          totalTokens: "100",
+        },
+      ]);
 
-      const finalKey = await client.query<{ present: boolean }>(`
-        SELECT EXISTS (
-          SELECT 1
-          FROM pg_indexes
-          WHERE schemaname = 'public'
-            AND tablename = 'model_stat'
-            AND indexname = 'uq_model_stat_hour_model'
-        ) AS present
+      const contractState = await client.query<{
+        activeKeyPresent: boolean;
+        legacyColumnsAbsent: boolean;
+        legacyKeyAbsent: boolean;
+        compatibilityViewAbsent: boolean;
+      }>(`
+        SELECT
+          to_regclass('public.compact_model_usage_observation') IS NULL
+            AS "compatibilityViewAbsent",
+          NOT EXISTS (
+            SELECT 1
+            FROM information_schema.columns
+            WHERE table_schema = 'public'
+              AND table_name = 'model_stat'
+              AND column_name IN (
+                'model_provider',
+                'request_count',
+                'org_count',
+                'user_count',
+                'credits_charged'
+              )
+          ) AS "legacyColumnsAbsent",
+          NOT EXISTS (
+            SELECT 1
+            FROM pg_indexes
+            WHERE schemaname = 'public'
+              AND tablename = 'model_stat'
+              AND indexname = 'uq_model_stat_hour_model_provider'
+          ) AS "legacyKeyAbsent",
+          EXISTS (
+            SELECT 1
+            FROM pg_indexes
+            WHERE schemaname = 'public'
+              AND tablename = 'model_stat'
+              AND indexname = 'uq_model_stat_hour_model'
+          ) AS "activeKeyPresent"
       `);
-      assert.equal(finalKey.rows[0]?.present, true);
+      assert.deepEqual(contractState.rows, [
+        {
+          compatibilityViewAbsent: true,
+          legacyColumnsAbsent: true,
+          legacyKeyAbsent: true,
+          activeKeyPresent: true,
+        },
+      ]);
       console.log(
-        "   ✅ Compact rows preserve retained four-counter totals and legacy writes remain valid\n",
+        "   ✅ Active compact and ranking data survive legacy schema cleanup\n",
       );
     } finally {
       await client.end();
@@ -3327,11 +5216,17 @@ async function main(): Promise<void> {
     await validateConnectorCredentialOwnershipContraction();
 
     await validateStorageArchiveSizeFinalization();
+    await validateStorageLegacyTypeContraction();
     await validateLegacyMemoryCleanup();
     await validateSessionStorageBackfill();
     await validateSlackChatThreadRouteBackfill();
+    await validateSlackLegacySchemaContraction();
     await validateOrgPlanEntitlementBackfill();
-    await validateCompactModelUsageObservationBackfill();
+    await validateModelObservationContractCleanup();
+    await validateChatEventTypeBackfillAndContract();
+    await validateStructuredPromptDraftBackfill();
+    await validateUserMessageBackfillAndContract();
+    await validateChatEventQueueContraction();
 
     // Step 1.5: Validate latest snapshot accuracy (NEW)
     await validateLatestSnapshotAccuracy();
@@ -3344,6 +5239,7 @@ async function main(): Promise<void> {
     console.log("   ✅ Migrations applied successfully\n");
 
     await validateChatEventSourcesAreAppendOnly(dbUrl1);
+    await validateConnectorCatalogFinalConstraints(dbUrl1);
 
     // Step 2: Backup and regenerate migrations
     console.log("=== Phase 3: Test regenerated migrations ===\n");
@@ -3372,6 +5268,9 @@ async function main(): Promise<void> {
       console.log("   ✅ Journal timestamps are strictly increasing");
       console.log("   ✅ Latest snapshot accurately reflects final DB state");
       console.log("   ✅ Chat event source tables reject UPDATE");
+      console.log(
+        "   ✅ Final connector catalog constraints reject invalid state",
+      );
       console.log("   ✅ Schemas are functionally equivalent");
       console.log("   ✅ All migrations match the schema definitions");
 

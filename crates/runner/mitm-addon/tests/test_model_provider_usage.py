@@ -6,6 +6,7 @@ import pytest
 from mitmproxy.test import tutils
 
 import flow_metadata_keys as metadata_keys
+import http_network_log
 import mitm_addon
 import usage
 from tests.flow_helpers import header_map
@@ -268,7 +269,7 @@ class TestReportModelProviderUsage:
             usage.flush_usage_events(trigger="test")
 
         assert webhook.request_count == 1
-        assert webhook.requests[0].path == "/api/webhooks/agent/model-usage-observation-v2"
+        assert webhook.requests[0].path == "/api/webhooks/agent/model-usage-observation"
         body = webhook.requests[0].json_body()
         assert set(body["events"][0]) == {
             "idempotencyKey",
@@ -303,11 +304,11 @@ class TestReportModelProviderUsage:
         requests_by_path = {request.path: request for request in webhook.requests}
         assert set(requests_by_path) == {
             "/api/webhooks/agent/usage-event",
-            "/api/webhooks/agent/model-usage-observation-v2",
+            "/api/webhooks/agent/model-usage-observation",
         }
         usage_body = requests_by_path["/api/webhooks/agent/usage-event"].json_body()
         observation_body = requests_by_path[
-            "/api/webhooks/agent/model-usage-observation-v2"
+            "/api/webhooks/agent/model-usage-observation"
         ].json_body()
         assert usage_body["events"][0]["provider"] == "claude-sonnet-4-6"
         assert observation_body["events"][0]["model"] == "claude-sonnet-4-6"
@@ -537,11 +538,11 @@ class TestReportModelProviderUsage:
         requests_by_path = {request.path: request for request in webhook.requests}
         assert set(requests_by_path) == {
             "/api/webhooks/agent/usage-event",
-            "/api/webhooks/agent/model-usage-observation-v2",
+            "/api/webhooks/agent/model-usage-observation",
         }
         usage_body = requests_by_path["/api/webhooks/agent/usage-event"].json_body()
         observation_body = requests_by_path[
-            "/api/webhooks/agent/model-usage-observation-v2"
+            "/api/webhooks/agent/model-usage-observation"
         ].json_body()
         assert [
             {key: value for key, value in event.items() if key != "idempotencyKey"}
@@ -758,6 +759,12 @@ class TestModelProviderResponseHookUsage:
         flow.metadata[metadata_keys.VM_NETWORK_LOG_PATH] = log_path
         flow.metadata[metadata_keys.FIREWALL_ACTION] = "ALLOW"
         flow.metadata[metadata_keys.ORIGINAL_URL] = "https://api.anthropic.com/v1/messages"
+        http_network_log.set_target(
+            flow,
+            url="https://api.anthropic.com/v1/messages",
+            host="api.anthropic.com",
+            port=443,
+        )
         flow.metadata[metadata_keys.FIREWALL_NAME] = "model-provider:anthropic-api-key"
         flow.metadata[metadata_keys.FIREWALL_BILLABLE] = True
         flow.metadata[metadata_keys.VM_SANDBOX_AUTH_KEY] = "tok-xyz"
@@ -780,7 +787,7 @@ class TestModelProviderResponseHookUsage:
         requests_by_path = {request.path: request for request in webhook.requests}
         assert set(requests_by_path) == {
             "/api/webhooks/agent/usage-event",
-            "/api/webhooks/agent/model-usage-observation-v2",
+            "/api/webhooks/agent/model-usage-observation",
         }
         body = requests_by_path["/api/webhooks/agent/usage-event"].json_body()
         assert body["runId"] == "run-int-001"
@@ -789,7 +796,7 @@ class TestModelProviderResponseHookUsage:
         assert by_category["tokens.output"]["quantity"] == 500
         assert by_category["tokens.input"]["provider"] == "claude-sonnet-4-6"
         observation_body = requests_by_path[
-            "/api/webhooks/agent/model-usage-observation-v2"
+            "/api/webhooks/agent/model-usage-observation"
         ].json_body()
         assert observation_body["events"] == [
             {

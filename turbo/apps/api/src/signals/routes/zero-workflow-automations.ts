@@ -317,11 +317,11 @@ const runAutomationInner$ = command(
       signal,
     );
     signal.throwIfAborted();
-    if (result.kind === "ok") {
+    if (result.kind === "ok" || result.kind === "enqueued") {
       return {
         status: 201 as const,
         body: {
-          runId: result.runId,
+          runId: result.kind === "ok" ? result.runId : null,
           chatThreadId: result.chatThreadId,
         },
       };

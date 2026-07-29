@@ -35,9 +35,7 @@ pub(super) fn build_cli_command_for_runtime(
                 runtime.mock_codex_path.as_ref(),
                 CodexArgsConfig {
                     model: runtime.openai_model.as_ref(),
-                    openai_base_url: runtime.openai_base_url.as_ref(),
                     startup_config_overrides: &startup_config_overrides,
-                    fast_mode: runtime.codex_fast_mode,
                     resume_id: runtime.resume_session_id.as_ref(),
                     append_system_prompt: runtime.append_system_prompt.as_ref(),
                 },
@@ -161,23 +159,15 @@ fn build_codex_memories_config() -> String {
     "features.memories=true".to_string()
 }
 
-fn build_codex_openai_base_url_config(openai_base_url: &str) -> String {
-    let value = codex_runtime_config::quote_toml_basic_string(openai_base_url);
-    format!("openai_base_url={value}")
-}
-
 fn push_codex_config_overrides(args: &mut Vec<String>, overrides: &[String]) {
     for override_value in overrides {
-        args.push("-c".to_string());
-        args.push(override_value.clone());
+        push_codex_config_override(args, override_value.clone());
     }
 }
 
-fn push_codex_fast_mode_configs(args: &mut Vec<String>) {
+fn push_codex_config_override(args: &mut Vec<String>, override_value: impl Into<String>) {
     args.push("-c".to_string());
-    args.push("features.fast_mode=true".to_string());
-    args.push("-c".to_string());
-    args.push(r#"service_tier="fast""#.to_string());
+    args.push(override_value.into());
 }
 
 /// Per-model overrides for the codex `model_reasoning_effort` config.
@@ -194,18 +184,14 @@ pub(super) fn default_codex_reasoning_effort_for_model(model: &str) -> Option<&'
 
 struct CodexArgsConfig<'a> {
     model: &'a str,
-    openai_base_url: &'a str,
     startup_config_overrides: &'a [String],
-    fast_mode: bool,
     resume_id: &'a str,
     append_system_prompt: &'a str,
 }
 
 fn build_codex_args(
     model: &str,
-    openai_base_url: &str,
     startup_config_overrides: &[String],
-    fast_mode: bool,
     resume_id: &str,
     append_system_prompt: &str,
 ) -> Vec<String> {
@@ -219,18 +205,8 @@ fn build_codex_args(
         paths::CANONICAL_WORKING_DIR.to_string(),
     ];
 
-    args.push("-c".to_string());
-    args.push(build_codex_memories_config());
-
-    if startup_config_overrides.is_empty() && !openai_base_url.is_empty() {
-        args.push("-c".to_string());
-        args.push(build_codex_openai_base_url_config(openai_base_url));
-    }
+    push_codex_config_override(&mut args, build_codex_memories_config());
     push_codex_config_overrides(&mut args, startup_config_overrides);
-
-    if fast_mode {
-        push_codex_fast_mode_configs(&mut args);
-    }
 
     if !model.is_empty() {
         args.push("-m".to_string());
@@ -279,9 +255,7 @@ fn build_codex_command_with_config(
     let mut cmd = vec![bin];
     cmd.extend(build_codex_args(
         config.model,
-        config.openai_base_url,
         config.startup_config_overrides,
-        config.fast_mode,
         config.resume_id,
         config.append_system_prompt,
     ));
@@ -468,28 +442,7 @@ mod tests {
     fn build_codex_args_for_test(model: &str, resume_id: &str, prompt: &str) -> Vec<String> {
         let _system_log_state_guard = crate::lock_system_log_test_state();
         disable_system_log();
-        let args = build_codex_args(model, "", &[], false, resume_id, "");
-        assert!(!args.iter().any(|arg| arg == prompt));
-        args
-    }
-
-    fn build_codex_fast_args_for_test(model: &str, resume_id: &str, prompt: &str) -> Vec<String> {
-        let _system_log_state_guard = crate::lock_system_log_test_state();
-        disable_system_log();
-        let args = build_codex_args(model, "", &[], true, resume_id, "");
-        assert!(!args.iter().any(|arg| arg == prompt));
-        args
-    }
-
-    fn build_codex_args_with_base_url_for_test(
-        model: &str,
-        openai_base_url: &str,
-        resume_id: &str,
-        prompt: &str,
-    ) -> Vec<String> {
-        let _system_log_state_guard = crate::lock_system_log_test_state();
-        disable_system_log();
-        let args = build_codex_args(model, openai_base_url, &[], false, resume_id, "");
+        let args = build_codex_args(model, &[], resume_id, "");
         assert!(!args.iter().any(|arg| arg == prompt));
         args
     }
@@ -501,7 +454,7 @@ mod tests {
     ) -> Vec<String> {
         let _system_log_state_guard = crate::lock_system_log_test_state();
         disable_system_log();
-        let args = build_codex_args(model, "", startup_config_overrides, false, "", "");
+        let args = build_codex_args(model, startup_config_overrides, "", "");
         assert!(!args.iter().any(|arg| arg == prompt));
         args
     }
@@ -514,7 +467,7 @@ mod tests {
     ) -> Vec<String> {
         let _system_log_state_guard = crate::lock_system_log_test_state();
         disable_system_log();
-        let args = build_codex_args(model, "", &[], false, resume_id, append_system_prompt);
+        let args = build_codex_args(model, &[], resume_id, append_system_prompt);
         assert!(!args.iter().any(|arg| arg == prompt));
         args
     }
@@ -536,9 +489,7 @@ mod tests {
             },
             CodexArgsConfig {
                 model: "",
-                openai_base_url: "",
                 startup_config_overrides: &[],
-                fast_mode: false,
                 resume_id: "",
                 append_system_prompt: "",
             },
@@ -552,7 +503,7 @@ mod tests {
         let system_log_path = tmp.path().join("system.log");
         guest_common::log::set_system_log_file(system_log_path.to_string_lossy().as_ref());
 
-        let args = build_codex_args("", "", &[], false, "thread-secret-123", "");
+        let args = build_codex_args("", &[], "thread-secret-123", "");
         guest_common::log::clear_system_log_file();
         let system_log = std::fs::read_to_string(system_log_path).unwrap();
 
@@ -591,27 +542,6 @@ mod tests {
     }
 
     #[test]
-    fn build_codex_args_with_fast_mode_configs() {
-        let args = build_codex_fast_args_for_test("gpt-5.5", "", "p");
-        assert!(codex_args_have_config(&args, "features.fast_mode=true"));
-        assert!(codex_args_have_config(&args, r#"service_tier="fast""#));
-    }
-
-    #[test]
-    fn build_codex_args_with_openai_base_url() {
-        let args = build_codex_args_with_base_url_for_test(
-            "legacy-model",
-            "https://api.legacy-provider.test/v1",
-            "",
-            "p",
-        );
-        assert!(codex_args_have_config(
-            &args,
-            r#"openai_base_url="https://api.legacy-provider.test/v1""#
-        ));
-    }
-
-    #[test]
     fn build_codex_args_with_structured_runtime_config() {
         let overrides = vec![
             r#"model_provider="minimax""#.to_string(),
@@ -623,23 +553,6 @@ mod tests {
         for override_value in overrides {
             assert!(codex_args_have_config(&args, &override_value));
         }
-        assert!(!args.iter().any(|arg| arg.starts_with("openai_base_url=")));
-    }
-
-    #[test]
-    fn build_codex_args_prefers_structured_runtime_config_over_openai_base_url() {
-        let _system_log_state_guard = crate::lock_system_log_test_state();
-        disable_system_log();
-        let args = build_codex_args(
-            "MiniMax-M3",
-            "https://api.should-not-win.test/v1",
-            &[r#"model_provider="minimax""#.to_string()],
-            false,
-            "",
-            "",
-        );
-
-        assert!(codex_args_have_config(&args, r#"model_provider="minimax""#));
         assert!(!args.iter().any(|arg| arg.starts_with("openai_base_url=")));
     }
 

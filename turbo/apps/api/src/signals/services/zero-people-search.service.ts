@@ -88,10 +88,26 @@ const outputTextSchema = z.object({
   text: z.string(),
 });
 
+const perplexityUsageSchema = z
+  .object({
+    tool_calls_details: z
+      .object({
+        search_people: z
+          .object({
+            invocation: z.literal(1).optional(),
+          })
+          .passthrough()
+          .optional(),
+      })
+      .passthrough()
+      .optional(),
+  })
+  .passthrough();
+
 const perplexityEnvelopeSchema = z.object({
   status: z.string(),
   output: z.array(z.unknown()),
-  usage: z.unknown().optional(),
+  usage: perplexityUsageSchema.optional(),
 });
 
 const PEOPLE_SEARCH_JSON_SCHEMA = {
@@ -445,31 +461,6 @@ function structuredOutputText(output: readonly unknown[]): string | undefined {
   return textItems.length === 1 ? textItems[0] : undefined;
 }
 
-function hasValidPeopleSearchInvocation(usage: unknown): boolean {
-  if (usage === undefined) {
-    return true;
-  }
-  if (!isRecord(usage)) {
-    return false;
-  }
-  const details = usage.tool_calls_details;
-  if (details === undefined) {
-    return true;
-  }
-  if (!isRecord(details)) {
-    return false;
-  }
-  const searchPeople = details.search_people;
-  if (searchPeople === undefined) {
-    return true;
-  }
-  if (!isRecord(searchPeople)) {
-    return false;
-  }
-  const invocation = searchPeople.invocation;
-  return invocation === undefined || invocation === 1;
-}
-
 function normalizedHttpUrl(value: string): string | undefined {
   if (value.length > ZERO_PEOPLE_SEARCH_MAX_SOURCE_URL_CHARS) {
     return undefined;
@@ -615,11 +606,7 @@ function normalizeProfiles(
       ? peopleSearchOutputItemSchema.safeParse(peopleItems[0])
       : undefined;
   const outputText = structuredOutputText(envelope.data.output);
-  if (
-    !peopleItem?.success ||
-    outputText === undefined ||
-    !hasValidPeopleSearchInvocation(envelope.data.usage)
-  ) {
+  if (!peopleItem?.success || outputText === undefined) {
     return errorResult(invalidResponse());
   }
   const structured = structuredResponseSchema.safeParse(

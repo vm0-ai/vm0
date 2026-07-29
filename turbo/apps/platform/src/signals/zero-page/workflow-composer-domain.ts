@@ -1,13 +1,27 @@
 import type { ZeroWorkflowSummary } from "@vm0/api-contracts/contracts/zero-workflows";
-export function matchesWorkflowNameQuery(
-  workflowName: string,
+
+export function findWorkflowQueryMatches(
+  workflows: readonly ComposerSlashWorkflow[],
   query: string,
-): boolean {
-  if (!query) {
-    return true;
+  substringSearchEnabled: boolean,
+): readonly ComposerSlashWorkflow[] {
+  const normalizedQuery = query.toLowerCase();
+  const prefixMatches: ComposerSlashWorkflow[] = [];
+  const substringMatches: ComposerSlashWorkflow[] = [];
+
+  for (const workflow of workflows) {
+    const normalizedName = workflow.name.toLowerCase();
+    if (normalizedName.startsWith(normalizedQuery)) {
+      prefixMatches.push(workflow);
+    } else if (
+      substringSearchEnabled &&
+      normalizedName.includes(normalizedQuery)
+    ) {
+      substringMatches.push(workflow);
+    }
   }
 
-  return workflowName.toLowerCase().startsWith(query.toLowerCase());
+  return [...prefixMatches, ...substringMatches];
 }
 
 export interface SlashWorkflowRange {
@@ -43,13 +57,6 @@ export function findActiveSlashWorkflowRange(
   return { start, end: caretIndex, query };
 }
 
-export function matchesWorkflowQuery(
-  workflow: ComposerSlashWorkflow,
-  query: string,
-): boolean {
-  return matchesWorkflowNameQuery(workflow.name, query);
-}
-
 export function workflowTokenPattern(
   workflowNames: readonly string[],
 ): RegExp | null {
@@ -60,7 +67,7 @@ export function workflowTokenPattern(
   const escaped = workflowNames.map((name) => {
     return name.replace(/[.*+?^${}()|[\]\\]/g, String.raw`\$&`);
   });
-  return new RegExp(`/(?:${escaped.join("|")})(?=$|\\s)`, "g");
+  return new RegExp(`(?:^|\\s)/(?:${escaped.join("|")})(?=$|\\s)`, "g");
 }
 
 export function buildComposerSlashWorkflows({

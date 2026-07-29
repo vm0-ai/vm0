@@ -4,7 +4,7 @@ import { buildInfoContract } from "@vm0/api-contracts/contracts/build-info";
 import { healthContract } from "@vm0/api-contracts/contracts/health";
 import { zeroFeatureSwitchesContract } from "@vm0/api-contracts/contracts/zero-feature-switches";
 import { zeroReportErrorContract } from "@vm0/api-contracts/contracts/zero-report-error";
-import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
+import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import { describe, expect, it } from "vitest";
 
 import apiPackage from "../../../../package.json";
@@ -202,7 +202,6 @@ describe("OPS-01: feature switches and report-error routes", () => {
         headers: headersFor(owner),
         body: {
           switches: {
-            [FeatureSwitchKey.AgentUnreadIndicators]: true,
             [FeatureSwitchKey.ChatThreadUnifiedSearch]: true,
             [FeatureSwitchKey.Dummy]: false,
           },
@@ -210,9 +209,6 @@ describe("OPS-01: feature switches and report-error routes", () => {
       }),
       [200],
     );
-    expect(
-      ownerUpdate.body.switches[FeatureSwitchKey.AgentUnreadIndicators],
-    ).toBeTruthy();
     expect(
       ownerUpdate.body.switches[FeatureSwitchKey.ChatThreadUnifiedSearch],
     ).toBeTruthy();
@@ -223,9 +219,6 @@ describe("OPS-01: feature switches and report-error routes", () => {
       [200],
     );
     expect(
-      peerRead.body.switches[FeatureSwitchKey.AgentUnreadIndicators],
-    ).toBeTruthy();
-    expect(
       peerRead.body.switches[FeatureSwitchKey.ChatThreadUnifiedSearch],
     ).toBeTruthy();
     expect(peerRead.body.switches[FeatureSwitchKey.Dummy]).toBeUndefined();
@@ -235,9 +228,6 @@ describe("OPS-01: feature switches and report-error routes", () => {
       [200],
     );
     expect(
-      outsiderRead.body.switches[FeatureSwitchKey.AgentUnreadIndicators],
-    ).toBeUndefined();
-    expect(
       outsiderRead.body.switches[FeatureSwitchKey.ChatThreadUnifiedSearch],
     ).toBeUndefined();
 
@@ -246,16 +236,12 @@ describe("OPS-01: feature switches and report-error routes", () => {
         headers: headersFor(peer),
         body: {
           switches: {
-            [FeatureSwitchKey.AgentUnreadIndicators]: false,
             [FeatureSwitchKey.ChatThreadUnifiedSearch]: false,
           },
         },
       }),
       [200],
     );
-    expect(
-      peerUpdate.body.switches[FeatureSwitchKey.AgentUnreadIndicators],
-    ).toBeFalsy();
     expect(
       peerUpdate.body.switches[FeatureSwitchKey.ChatThreadUnifiedSearch],
     ).toBeFalsy();
@@ -265,11 +251,6 @@ describe("OPS-01: feature switches and report-error routes", () => {
       featureSwitchesClient().get({ headers: headersFor(owner) }),
       [200],
     );
-    expect(
-      ownerReadAfterPeerUpdate.body.switches[
-        FeatureSwitchKey.AgentUnreadIndicators
-      ],
-    ).toBeFalsy();
     expect(
       ownerReadAfterPeerUpdate.body.switches[
         FeatureSwitchKey.ChatThreadUnifiedSearch
@@ -289,9 +270,6 @@ describe("OPS-01: feature switches and report-error routes", () => {
       featureSwitchesClient().get({ headers: headersFor(peer) }),
       [200],
     );
-    expect(
-      peerReadAfterDelete.body.switches[FeatureSwitchKey.AgentUnreadIndicators],
-    ).toBeUndefined();
     expect(
       peerReadAfterDelete.body.switches[
         FeatureSwitchKey.ChatThreadUnifiedSearch

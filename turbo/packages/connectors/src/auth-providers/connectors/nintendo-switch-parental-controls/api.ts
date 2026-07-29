@@ -1,9 +1,9 @@
 import { z } from "zod";
 
-import type { ConnectorExternalCodeGrantConfig } from "@vm0/connectors/connectors";
-import { NINTENDO_SWITCH_PARENTAL_CONTROLS_APP } from "../../../connectors/nintendo-switch-parental-controls";
+import type { ConnectorExternalCodeGrantConfig } from "@vm0/connectors/connector-config";
 import type { ConnectorAuthProviderGrantUserInfo } from "../../grant-result";
 import { throwOAuthError } from "../../oauth/error";
+import { NINTENDO_SWITCH_PARENTAL_CONTROLS_APP } from "./app";
 import {
   NINTENDO_ACCOUNT_AUTHORIZATION_URL,
   NINTENDO_ACCOUNT_PROFILE_URL,
@@ -26,6 +26,8 @@ import {
 
 const PROVIDER_LABEL = "Nintendo Switch Parental Controls";
 
+export { NINTENDO_SWITCH_PARENTAL_CONTROLS_APP };
+
 export const NINTENDO_SWITCH_PARENTAL_CONTROLS_AUTHORIZATION_URL =
   NINTENDO_ACCOUNT_AUTHORIZATION_URL;
 export const NINTENDO_SWITCH_PARENTAL_CONTROLS_SESSION_TOKEN_URL =
@@ -38,12 +40,10 @@ export const NINTENDO_SWITCH_PARENTAL_CONTROLS_FEDERATION_URL = `${NINTENDO_SWIT
 export const NINTENDO_SWITCH_PARENTAL_CONTROLS_OWNED_DEVICES_URL = `${NINTENDO_SWITCH_PARENTAL_CONTROLS_APP.actionBaseUrl}/v3/actions/user/fetchOwnedDevices`;
 export const NINTENDO_SWITCH_PARENTAL_CONTROLS_LOGOUT_URL = `${NINTENDO_SWITCH_PARENTAL_CONTROLS_APP.actionBaseUrl}/v2/actions/logout`;
 
-export type NintendoSwitchParentalControlsProviderState =
-  NintendoAccountProviderState;
-export type NintendoSwitchParentalControlsSessionToken =
-  NintendoAccountSessionToken;
-export type NintendoSwitchParentalControlsToken = NintendoAccountToken;
-export type NintendoSwitchParentalControlsProfile = NintendoAccountProfile;
+type NintendoSwitchParentalControlsProviderState = NintendoAccountProviderState;
+type NintendoSwitchParentalControlsSessionToken = NintendoAccountSessionToken;
+type NintendoSwitchParentalControlsToken = NintendoAccountToken;
+type NintendoSwitchParentalControlsProfile = NintendoAccountProfile;
 
 interface NintendoSwitchParentalControlsDeviceCatalogEntry {
   readonly deviceId: string;

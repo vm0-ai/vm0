@@ -10,7 +10,7 @@ import {
   chatThreadsContract,
   type ChatThreadEvent,
 } from "@vm0/api-contracts/contracts/chat-threads";
-import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
+import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import { zeroUserConnectorsContract } from "@vm0/api-contracts/contracts/user-connectors";
 import { zeroUserPermissionGrantsContract } from "@vm0/api-contracts/contracts/zero-user-permission-grants";
 import { zeroClaudeCodeDeviceAuthContract } from "@vm0/api-contracts/contracts/zero-claude-code-device-auth";
@@ -33,6 +33,7 @@ import {
   resetChatPageModelSelection$,
   setChatPageModelSelection$,
 } from "../../../signals/zero-page/zero-chat-page.ts";
+import { loadLeftThread$ } from "../../../signals/chat-page/chat-thread-panes.ts";
 import {
   click,
   detachedSetupPage,
@@ -77,6 +78,19 @@ import {
 beforeEach(() => {
   context.mocks.data.onboardingStatus({ defaultAgentId: AGENT_ID });
 });
+
+async function navigateToChatThread(threadId: string): Promise<void> {
+  const link = await waitFor(() => {
+    const candidate = document.querySelector<HTMLAnchorElement>(
+      `a[href="/chats/${threadId}"]`,
+    );
+    if (!candidate) {
+      throw new Error(`Thread link not found: ${threadId}`);
+    }
+    return candidate;
+  });
+  click(link);
+}
 
 describe("chat composer models", () => {
   it("keeps model resources cached across Clerk profile events", async () => {
@@ -2062,6 +2076,204 @@ describe("chat composer models", () => {
     });
   });
 
+  it("keeps connector access resolved across same-agent chat navigation", async () => {
+    const unexpectedReload = context.mocks.deferred<void>();
+    let authorizationRequestCount = 0;
+
+    mockOrgModelRoutes("claude-sonnet-4-6");
+    mockAgent();
+    mockManyConnectedConnectors();
+    mockChatLifecycle(context, { threadId: THREAD_ID });
+    mockComposerThreadSnapshot([
+      { id: THREAD_ID, agentId: AGENT_ID, title: "First Scout thread" },
+      {
+        id: OTHER_AGENT_THREAD_ID,
+        agentId: AGENT_ID,
+        title: "Second Scout thread",
+      },
+    ]);
+    context.mocks.api(
+      zeroUserConnectorsContract.get,
+      async ({ respond, withSignal }) => {
+        authorizationRequestCount += 1;
+        if (authorizationRequestCount > 1) {
+          await withSignal(unexpectedReload.promise);
+        }
+        return respond(200, { enabledTypes: ["github"] });
+      },
+    );
+
+    detachedSetupPage({ context, path: `/chats/${THREAD_ID}` });
+
+    const initialThread = await screen.findByLabelText("Chat thread");
+    const initialConnectorButton =
+      within(initialThread).getByLabelText("Connectors");
+    await waitFor(() => {
+      expect(initialConnectorButton.querySelector("img")).not.toBeNull();
+      expect(authorizationRequestCount).toBe(1);
+    });
+
+    await navigateToChatThread(OTHER_AGENT_THREAD_ID);
+    await waitFor(() => {
+      expect(
+        within(screen.getByLabelText("Chat thread")).getByText(
+          "Second Scout thread",
+        ),
+      ).toBeInTheDocument();
+    });
+
+    const nextConnectorButton = within(
+      screen.getByLabelText("Chat thread"),
+    ).getByLabelText("Connectors");
+    click(nextConnectorButton);
+    const connectorStatusStayedResolved =
+      screen.queryByLabelText("Remove GitHub") !== null;
+    const requestCountAfterNavigation = authorizationRequestCount;
+    unexpectedReload.resolve();
+
+    expect(connectorStatusStayedResolved).toBeTruthy();
+    expect(requestCountAfterNavigation).toBe(1);
+    expect(nextConnectorButton.querySelector("img")).not.toBeNull();
+  });
+
+  it("does not expose previous-agent connector access while navigation resolves", async () => {
+    const otherAgentAuthorization = context.mocks.deferred<void>();
+    const authorizationAgentIds: string[] = [];
+
+    mockOrgModelRoutes("claude-sonnet-4-6");
+    mockAgent({ includeOtherAgent: true });
+    mockManyConnectedConnectors();
+    mockChatLifecycle(context, { threadId: THREAD_ID });
+    mockComposerThreadSnapshot([
+      { id: THREAD_ID, agentId: AGENT_ID, title: "Scout thread" },
+      {
+        id: OTHER_AGENT_THREAD_ID,
+        agentId: OTHER_AGENT_ID,
+        title: "Other agent thread",
+      },
+    ]);
+    context.mocks.api(
+      zeroUserConnectorsContract.get,
+      async ({ params, respond, withSignal }) => {
+        authorizationAgentIds.push(params.id);
+        if (params.id === OTHER_AGENT_ID) {
+          await withSignal(otherAgentAuthorization.promise);
+          return respond(200, { enabledTypes: ["slack"] });
+        }
+        return respond(200, { enabledTypes: ["github"] });
+      },
+    );
+
+    detachedSetupPage({ context, path: `/chats/${THREAD_ID}` });
+
+    const initialConnectorButton = within(
+      await screen.findByLabelText("Chat thread"),
+    ).getByLabelText("Connectors");
+    await waitFor(() => {
+      expect(initialConnectorButton.querySelector("img")).not.toBeNull();
+    });
+
+    act(() => {
+      context.store.set(loadLeftThread$, OTHER_AGENT_THREAD_ID);
+    });
+    await waitFor(() => {
+      expect(authorizationAgentIds).toContain(OTHER_AGENT_ID);
+      expect(
+        within(screen.getByLabelText("Chat thread")).getByText(
+          "Other agent thread",
+        ),
+      ).toBeInTheDocument();
+    });
+
+    const nextConnectorButton = within(
+      screen.getByLabelText("Chat thread"),
+    ).getByLabelText("Connectors");
+    click(nextConnectorButton);
+    expect(screen.queryByLabelText("Remove GitHub")).not.toBeInTheDocument();
+    expect(nextConnectorButton.querySelector("img")).toBeNull();
+
+    otherAgentAuthorization.resolve();
+    await expect(
+      screen.findByLabelText("Remove Slack"),
+    ).resolves.toBeInTheDocument();
+    expect(screen.getByLabelText("Add GitHub")).toBeInTheDocument();
+  });
+
+  it("deduplicates same-agent pane reads and reloads both after a mutation", async () => {
+    const user = userEvent.setup({ delay: null });
+    const initialAuthorization = context.mocks.deferred<void>();
+    let authorizationRequestCount = 0;
+    let enabledTypes: string[] = ["slack"];
+    let updatedAuthorizationAgentId: string | undefined;
+
+    mockOrgModelRoutes("claude-sonnet-4-6");
+    mockAgent();
+    mockConnectors([{ type: "slack", externalUsername: "launch-team" }]);
+    mockChatLifecycle(context, { threadId: THREAD_ID });
+    mockComposerThreadSnapshot([
+      { id: THREAD_ID, agentId: AGENT_ID, title: "First Scout thread" },
+      {
+        id: OTHER_AGENT_THREAD_ID,
+        agentId: AGENT_ID,
+        title: "Second Scout thread",
+      },
+    ]);
+    context.mocks.api(
+      zeroUserConnectorsContract.get,
+      async ({ respond, withSignal }) => {
+        authorizationRequestCount += 1;
+        if (authorizationRequestCount === 1) {
+          await withSignal(initialAuthorization.promise);
+        }
+        return respond(200, { enabledTypes });
+      },
+    );
+    context.mocks.api(
+      zeroUserConnectorsContract.update,
+      ({ params, body, respond }) => {
+        updatedAuthorizationAgentId = params.id;
+        enabledTypes = applyUserConnectorUpdate(enabledTypes, body);
+        return respond(200, { enabledTypes });
+      },
+    );
+
+    detachedSetupPage({
+      context,
+      path: `/chats/${THREAD_ID}?sidebar=${OTHER_AGENT_THREAD_ID}`,
+    });
+
+    const threadRegions = await screen.findAllByLabelText("Chat thread");
+    expect(threadRegions).toHaveLength(2);
+    await waitFor(() => {
+      expect(authorizationRequestCount).toBe(1);
+    });
+
+    initialAuthorization.resolve();
+    const connectorButtons = threadRegions.map((thread) => {
+      return within(thread).getByLabelText("Connectors");
+    });
+    await waitFor(() => {
+      for (const button of connectorButtons) {
+        expect(button.querySelector("img")).not.toBeNull();
+      }
+    });
+
+    const sideConnectorButton = connectorButtons[1];
+    if (!sideConnectorButton) {
+      throw new Error("Side connector button not found");
+    }
+    await user.click(sideConnectorButton);
+    await user.click(await screen.findByLabelText("Remove Slack"));
+
+    await waitFor(() => {
+      expect(updatedAuthorizationAgentId).toBe(AGENT_ID);
+      expect(authorizationRequestCount).toBe(2);
+      for (const button of connectorButtons) {
+        expect(button.querySelector("img")).toBeNull();
+      }
+    });
+  });
+
   it("scopes connector permissions and access to each split chat composer", async () => {
     const user = userEvent.setup({ delay: null });
     const enabledByAgent = new Map<string, string[]>([
@@ -2166,6 +2378,7 @@ describe("chat composer models", () => {
     const workflowRequestCount = workflowAgentIds.length;
     persistedThreadEvent = {
       id: "d0000000-0000-4000-a000-000000000099",
+      seqId: 1,
       kind: "renamed",
       chatThreadId: OTHER_AGENT_THREAD_ID,
       agentId: OTHER_AGENT_ID,

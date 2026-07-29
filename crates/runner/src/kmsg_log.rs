@@ -16,7 +16,8 @@ use tracing::{info, warn};
 
 use crate::child_cleanup::kill_and_reap_child_on_drop;
 use crate::network_log_drain::{
-    NetworkLogDrainProducer, NetworkLogDrainRequest, run_drainable_line_reader,
+    DrainableLineReaderExit, NetworkLogDrainProducer, NetworkLogDrainRequest,
+    run_drainable_line_reader,
 };
 use crate::network_log_manager::NetworkLogManager;
 
@@ -27,15 +28,28 @@ const LOG_PREFIX: &str = "VM0:";
 /// shutdown to cancel the async task and kill the `dmesg -w` child process.
 pub struct KmsgHandle {
     cancel: CancellationToken,
-    task: tokio::task::JoinHandle<()>,
+    task: Option<tokio::task::JoinHandle<DrainableLineReaderExit>>,
     child: Option<tokio::process::Child>,
     drain: NetworkLogDrainProducer,
 }
 
 impl KmsgHandle {
-    /// Stop the kmsg monitor and wait for cleanup.
-    pub async fn stop(mut self) {
-        self.cancel.cancel();
+    /// Await the monitor task, or pend forever after its completion has already
+    /// been consumed.
+    ///
+    /// Keeping the task in the handle lets the runner reactor select on it
+    /// without taking ownership unless it actually completes.
+    pub(crate) async fn wait(&mut self) -> Result<DrainableLineReaderExit, tokio::task::JoinError> {
+        let result = match self.task.as_mut() {
+            Some(task) => task.await,
+            None => std::future::pending().await,
+        };
+        self.task = None;
+        result
+    }
+
+    /// Kill the dmesg child when necessary and wait for it to be reaped.
+    pub(crate) async fn kill_and_reap_child(&mut self) {
         let child_reaped = if let Some(ref mut child) = self.child {
             let _ = child.start_kill();
             child.wait().await.is_ok()
@@ -45,7 +59,15 @@ impl KmsgHandle {
         if child_reaped {
             self.child = None;
         }
-        let _ = (&mut self.task).await;
+    }
+
+    /// Stop the kmsg monitor and wait for cleanup.
+    pub async fn stop(mut self) {
+        self.cancel.cancel();
+        self.kill_and_reap_child().await;
+        if let Some(task) = self.task.take() {
+            let _ = task.await;
+        }
         info!("kmsg monitor stopped");
     }
 
@@ -57,19 +79,21 @@ impl KmsgHandle {
         let (drain, mut drain_rx) = NetworkLogDrainProducer::channel("kmsg");
         Self {
             cancel,
-            task: tokio::spawn(async move {
+            task: Some(tokio::spawn(async move {
                 loop {
                     tokio::select! {
-                        _ = token.cancelled() => break,
+                        _ = token.cancelled() => {
+                            return DrainableLineReaderExit::Cancelled;
+                        }
                         request = drain_rx.recv() => {
                             let Some(request) = request else {
-                                break;
+                                return DrainableLineReaderExit::DrainChannelClosed;
                             };
                             request.ack();
                         }
                     }
                 }
-            }),
+            })),
             child: None,
             drain,
         }
@@ -93,7 +117,9 @@ impl Drop for KmsgHandle {
     fn drop(&mut self) {
         kill_and_reap_child_on_drop("dmesg", &mut self.child);
         self.cancel.cancel();
-        self.task.abort();
+        if let Some(task) = &self.task {
+            task.abort();
+        }
     }
 }
 
@@ -101,53 +127,68 @@ impl Drop for KmsgHandle {
 /// network log entries. Returns a handle; call [`KmsgHandle::stop`] during
 /// shutdown so the tokio runtime can exit cleanly.
 pub fn spawn(network_log_manager: NetworkLogManager) -> std::io::Result<KmsgHandle> {
-    let mut child = tokio::process::Command::new("dmesg")
+    let child = tokio::process::Command::new("dmesg")
         .args(["-w"])
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .spawn()?;
 
-    let stdout = child
-        .stdout
-        .take()
-        .ok_or_else(|| std::io::Error::other("failed to capture dmesg stdout"))?;
+    KmsgHandle::from_child(child, network_log_manager)
+}
 
-    let cancel = CancellationToken::new();
-    let token = cancel.clone();
-    let (drain, drain_rx) = NetworkLogDrainProducer::channel("kmsg");
+impl KmsgHandle {
+    fn from_child(
+        mut child: tokio::process::Child,
+        network_log_manager: NetworkLogManager,
+    ) -> std::io::Result<Self> {
+        let stdout = child
+            .stdout
+            .take()
+            .ok_or_else(|| std::io::Error::other("failed to capture dmesg stdout"))?;
 
-    // Log stderr in a background task so dmesg errors are visible.
-    // Shares the cancel token so the task exits promptly on shutdown.
-    if let Some(stderr) = child.stderr.take() {
-        let stderr_cancel = cancel.clone();
-        tokio::spawn(async move {
-            let mut lines = tokio::io::BufReader::new(stderr).lines();
-            loop {
-                tokio::select! {
-                    _ = stderr_cancel.cancelled() => break,
-                    result = lines.next_line() => {
-                        match result {
-                            Ok(Some(line)) if !line.is_empty() => {
-                                warn!(target: "dmesg", "stderr: {line}");
+        let cancel = CancellationToken::new();
+        let token = cancel.clone();
+        let (drain, drain_rx) = NetworkLogDrainProducer::channel("kmsg");
+
+        // Log stderr in a background task so dmesg errors are visible.
+        // Shares the cancel token so the task exits promptly on shutdown.
+        if let Some(stderr) = child.stderr.take() {
+            let stderr_cancel = cancel.clone();
+            tokio::spawn(async move {
+                let mut lines = tokio::io::BufReader::new(stderr).lines();
+                loop {
+                    tokio::select! {
+                        _ = stderr_cancel.cancelled() => break,
+                        result = lines.next_line() => {
+                            match result {
+                                Ok(Some(line)) if !line.is_empty() => {
+                                    warn!(target: "dmesg", "stderr: {line}");
+                                }
+                                Ok(None) | Err(_) => break,
+                                _ => {}
                             }
-                            Ok(None) | Err(_) => break,
-                            _ => {}
                         }
                     }
                 }
-            }
-        });
+            });
+        }
+
+        let task = tokio::spawn(run_loop(network_log_manager, token, stdout, drain_rx));
+        Ok(Self {
+            cancel,
+            task: Some(task),
+            child: Some(child),
+            drain,
+        })
     }
 
-    let task = tokio::spawn(async move {
-        run_loop(network_log_manager, token, stdout, drain_rx).await;
-    });
-    Ok(KmsgHandle {
-        cancel,
-        task,
-        child: Some(child),
-        drain,
-    })
+    #[cfg(test)]
+    pub(crate) fn from_test_child(
+        child: tokio::process::Child,
+        network_log_manager: NetworkLogManager,
+    ) -> std::io::Result<Self> {
+        Self::from_child(child, network_log_manager)
+    }
 }
 
 /// Read kernel log lines from `dmesg -w` stdout, parse iptables LOG
@@ -157,14 +198,14 @@ async fn run_loop(
     cancel: CancellationToken,
     stdout: tokio::process::ChildStdout,
     drain_rx: mpsc::Receiver<NetworkLogDrainRequest>,
-) {
+) -> DrainableLineReaderExit {
     run_reader(
         network_log_manager,
         cancel,
         tokio::io::BufReader::new(stdout),
         drain_rx,
     )
-    .await;
+    .await
 }
 
 async fn run_reader<R>(
@@ -172,16 +213,17 @@ async fn run_reader<R>(
     cancel: CancellationToken,
     reader: R,
     drain_rx: mpsc::Receiver<NetworkLogDrainRequest>,
-) where
+) -> DrainableLineReaderExit
+where
     R: AsyncBufRead + Unpin,
 {
-    let _ = run_drainable_line_reader(reader, cancel, drain_rx, move |line| {
+    run_drainable_line_reader(reader, cancel, drain_rx, move |line| {
         let network_log_manager = network_log_manager.clone();
         async move {
             handle_kmsg_line(&network_log_manager, &line).await;
         }
     })
-    .await;
+    .await
 }
 
 async fn handle_kmsg_line(network_log_manager: &NetworkLogManager, line: &str) {

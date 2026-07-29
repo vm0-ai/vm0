@@ -1,5 +1,55 @@
 # Changelog
 
+## [0.37.159](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.37.158...sandbox-fc-v0.37.159) (2026-07-29)
+
+
+### Documentation
+
+* **runner:** document guest dns network evidence architecture ([#23624](https://github.com/vm0-ai/vm0/issues/23624)) ([573928a](https://github.com/vm0-ai/vm0/commit/573928ad414d4c10b535bc17d7e927495a465ce1))
+
+## [0.37.158](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.37.157...sandbox-fc-v0.37.158) (2026-07-28)
+
+## [0.37.157](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.37.156...sandbox-fc-v0.37.157) (2026-07-28)
+
+
+### Bug Fixes
+
+* **vsock-host:** bound exec start writes by host deadlines ([#23551](https://github.com/vm0-ai/vm0/issues/23551)) ([7b7822d](https://github.com/vm0-ai/vm0/commit/7b7822dbb2520442f78812db4fd290f5baa5ec56))
+
+## [0.37.156](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.37.155...sandbox-fc-v0.37.156) (2026-07-28)
+
+
+### Bug Fixes
+
+* **sandbox-fc:** propagate firecracker transition errors ([#23413](https://github.com/vm0-ai/vm0/issues/23413)) ([a73a42c](https://github.com/vm0-ai/vm0/commit/a73a42ceaea91c3468406b939431436f2ea3dce2))
+
+## [0.37.155](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.37.154...sandbox-fc-v0.37.155) (2026-07-28)
+
+## [0.37.154](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.37.153...sandbox-fc-v0.37.154) (2026-07-27)
+
+
+### Bug Fixes
+
+* **runner:** trace guest dns through root netfilter ([#23311](https://github.com/vm0-ai/vm0/issues/23311)) ([ca05dd0](https://github.com/vm0-ai/vm0/commit/ca05dd0a296ac2b1634aceba5ca1a64adcbd601a))
+
+## [0.37.153](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.37.152...sandbox-fc-v0.37.153) (2026-07-27)
+
+
+### Bug Fixes
+
+* **runner:** distinguish dns readiness timeouts ([#23282](https://github.com/vm0-ai/vm0/issues/23282)) ([1593bf9](https://github.com/vm0-ai/vm0/commit/1593bf9ddbce0c4b022ed7d772b845bbcd86be1b))
+
+## [0.37.152](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.37.151...sandbox-fc-v0.37.152) (2026-07-27)
+
+
+### Refactoring
+
+* **sandbox-fc:** centralize dns probe deadline ([#23185](https://github.com/vm0-ai/vm0/issues/23185)) ([8c8d8f6](https://github.com/vm0-ai/vm0/commit/8c8d8f6c349fae3f27bec4b6012eeedc78881778))
+
+## [0.37.151](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.37.150...sandbox-fc-v0.37.151) (2026-07-25)
+
+## [0.37.150](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.37.149...sandbox-fc-v0.37.150) (2026-07-25)
+
 ## [0.37.149](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.37.148...sandbox-fc-v0.37.149) (2026-07-23)
 
 

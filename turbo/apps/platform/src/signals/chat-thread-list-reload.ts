@@ -18,7 +18,7 @@ export const reloadChatUnreadState$ = command(({ set }) => {
   });
 });
 
-export const reloadChatActiveRunIds$ = command(({ set }) => {
+const reloadChatActiveRunIds$ = command(({ set }) => {
   set(internalReloadChatActiveRunIds$, (n) => {
     return n + 1;
   });

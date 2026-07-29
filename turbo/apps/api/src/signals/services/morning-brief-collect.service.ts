@@ -8,6 +8,10 @@
  * failed source is annotated in the input JSON instead of blocking the brief.
  */
 import { z } from "zod";
+import {
+  CHAT_EVENT_TYPES,
+  chatEventCompatibilityRole,
+} from "@vm0/api-contracts/contracts/chat-events";
 import { agentComposes } from "@vm0/db/schema/agent-compose";
 import { chatMessages } from "@vm0/db/schema/chat-message";
 import { chatThreads } from "@vm0/db/schema/chat-thread";
@@ -21,8 +25,8 @@ import {
   isNull,
   lte,
   ne,
+  not,
   or,
-  type SQL,
 } from "drizzle-orm";
 
 import { env } from "../../lib/env";
@@ -36,7 +40,14 @@ import {
   refreshConnectorCredentialAccess,
 } from "./connector-credential-runtime.service";
 import { loadConnectorRuntimeSnapshot } from "./connector-catalog-runtime.service";
-import { projectStructuredUserMessage } from "./zero-chat-structured-message.service";
+import {
+  projectUserMessage,
+  requiredUserMessageForEvent,
+} from "./zero-chat-user-message.service";
+import {
+  chatEventTypeIn,
+  chatEventTypeSql,
+} from "./zero-chat-event-type.service";
 
 const GITHUB_API_BASE = "https://api.github.com";
 const GMAIL_API_BASE = "https://gmail.googleapis.com/gmail/v1/users/me";
@@ -576,7 +587,6 @@ async function collectUnreadChatThreads(args: {
   readonly since: Date;
   readonly until: Date;
   readonly excludeChatThreadId: string | null;
-  readonly structuredPromptEnabled: boolean;
 }): Promise<MorningBriefChatThreadsData> {
   const appUrl = env("APP_URL");
   const rows = await args.db
@@ -609,24 +619,26 @@ async function collectUnreadChatThreads(args: {
   for (const row of rows) {
     const messages = await args.db
       .select({
-        role: chatMessages.role,
+        eventType: chatEventTypeSql().as("event_type"),
         content: chatMessages.content,
-        structuredPrompt: chatMessages.structuredPrompt,
+        userMessage: chatMessages.userMessage,
         createdAt: chatMessages.createdAt,
       })
       .from(chatMessages)
       .where(
         and(
           eq(chatMessages.chatThreadId, row.id),
-          args.structuredPromptEnabled
-            ? (or(
-                isNotNull(chatMessages.content),
-                and(
-                  eq(chatMessages.role, "user"),
-                  isNotNull(chatMessages.structuredPrompt),
-                ),
-              ) as SQL)
-            : isNotNull(chatMessages.content),
+          or(
+            and(
+              chatEventTypeIn(["input.prompt", "input.rejected"]),
+              isNotNull(chatMessages.userMessage),
+            ),
+            and(
+              not(chatEventTypeIn(["input.prompt", "input.rejected"])),
+              isNotNull(chatMessages.content),
+            ),
+          ),
+          chatEventTypeIn(CHAT_EVENT_TYPES),
         ),
       )
       .orderBy(desc(chatMessages.createdAt))
@@ -637,17 +649,19 @@ async function collectUnreadChatThreads(args: {
       url: `${appUrl}/chats/${row.id}`,
       lastMessageAt: row.lastMessageAt.toISOString(),
       recentMessages: messages.reverse().flatMap((message) => {
-        const content =
-          args.structuredPromptEnabled &&
-          message.role === "user" &&
-          message.structuredPrompt
-            ? projectStructuredUserMessage(message.structuredPrompt).displayText
-            : message.content;
+        const role = chatEventCompatibilityRole(message.eventType);
+        const userMessage = requiredUserMessageForEvent(
+          message.eventType,
+          message.userMessage,
+        );
+        const content = userMessage
+          ? projectUserMessage(userMessage).displayText
+          : message.content;
         return content === null
           ? []
           : [
               {
-                role: message.role,
+                role,
                 content,
                 at: message.createdAt.toISOString(),
               },
@@ -711,7 +725,6 @@ interface CollectMorningBriefInputArgs {
   readonly dayEnd: Date;
   /** The member's Morning Brief thread; never reported as unread. */
   readonly excludeChatThreadId: string | null;
-  readonly structuredPromptEnabled: boolean;
   readonly signal: AbortSignal;
 }
 
@@ -759,7 +772,6 @@ export async function collectMorningBriefInput(
         since: args.since,
         until: args.until,
         excludeChatThreadId: args.excludeChatThreadId,
-        structuredPromptEnabled: args.structuredPromptEnabled,
       });
     }),
   ]);

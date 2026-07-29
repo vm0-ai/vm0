@@ -1,10 +1,10 @@
 import { agentRuns } from "@vm0/db/schema/agent-run";
+import { chatEventCompatibilityRole } from "@vm0/api-contracts/contracts/chat-events";
 import { chatMessages } from "@vm0/db/schema/chat-message";
 import {
   and,
   desc,
   eq,
-  inArray,
   isNotNull,
   isNull,
   ne,
@@ -22,10 +22,18 @@ import { tapError } from "../utils";
 import { assistantMessageIdForRunEvent } from "./assistant-message-id";
 import {
   runGroupIdForRun,
-  visibleChatMessageCondition,
+  visibleChatEventCondition,
 } from "./zero-chat-message-shared.service";
-import { insertChatMessage } from "./zero-chat-message.service";
+import { insertChatEvent } from "./zero-chat-event.service";
+import {
+  chatEventTypeIn,
+  chatEventTypeSql,
+} from "./zero-chat-event-type.service";
 import { queuedUserMessageExists } from "./zero-chat-queued-message.service";
+import {
+  projectUserMessage,
+  requiredUserMessageForEvent,
+} from "./zero-chat-user-message.service";
 
 const log = logger("api:zero:chat-initial-thinking");
 
@@ -78,8 +86,9 @@ async function loadThinkingContextMessages(args: {
 }): Promise<ThinkingContextMessage[]> {
   const rows = await args.db
     .select({
-      role: chatMessages.role,
+      eventType: chatEventTypeSql().as("event_type"),
       content: chatMessages.content,
+      userMessage: chatMessages.userMessage,
       createdAt: chatMessages.createdAt,
       sequenceNumber: chatMessages.sequenceNumber,
     })
@@ -87,13 +96,24 @@ async function loadThinkingContextMessages(args: {
     .where(
       and(
         eq(chatMessages.chatThreadId, args.threadId),
-        isNotNull(chatMessages.content),
-        inArray(chatMessages.role, ["user", "assistant"]),
-        visibleChatMessageCondition(args.db),
+        chatEventTypeIn([
+          "input.prompt",
+          "input.rejected",
+          "output.message",
+          "output.error",
+        ]),
+        or(
+          and(
+            chatEventTypeIn(["input.prompt", "input.rejected"]),
+            isNotNull(chatMessages.userMessage),
+          ),
+          and(
+            not(chatEventTypeIn(["input.prompt", "input.rejected"])),
+            isNotNull(chatMessages.content),
+          ),
+        ),
+        visibleChatEventCondition(args.db),
         not(queuedUserMessageExists(args.db)),
-        isNull(chatMessages.runLifecycleEvent),
-        isNull(chatMessages.recommendedFollowups),
-        isNull(chatMessages.usagePayload),
         or(
           isNull(chatMessages.runId),
           ne(chatMessages.runId, args.runId),
@@ -112,13 +132,22 @@ async function loadThinkingContextMessages(args: {
     .limit(THINKING_CONTEXT_MESSAGE_CAP);
 
   return rows.reverse().flatMap((row) => {
-    if (
-      row.content === null ||
-      (row.role !== "user" && row.role !== "assistant")
-    ) {
+    const userMessage = requiredUserMessageForEvent(
+      row.eventType,
+      row.userMessage,
+    );
+    const content = userMessage
+      ? projectUserMessage(userMessage).agentPrompt
+      : row.content;
+    if (content === null) {
       return [];
     }
-    return [{ role: row.role, content: row.content }];
+    return [
+      {
+        role: chatEventCompatibilityRole(row.eventType),
+        content,
+      },
+    ];
   });
 }
 
@@ -144,7 +173,13 @@ async function runCanReceiveThinkingMessage(args: {
     .where(
       and(
         eq(chatMessages.runId, args.runId),
-        eq(chatMessages.role, "assistant"),
+        chatEventTypeIn([
+          "output.message",
+          "output.error",
+          "run.queued",
+          "run.failed",
+          "run.cancelled",
+        ]),
         or(
           isNotNull(chatMessages.content),
           isNotNull(chatMessages.error),
@@ -237,7 +272,7 @@ export async function generateAndPersistInitialThinkingMessage(args: {
 
   const runGroupId = await runGroupIdForRun(args.db, args.runId);
   const inserted = await args.db.transaction(async (tx) => {
-    return await insertChatMessage(
+    return await insertChatEvent(
       tx,
       {
         id: assistantMessageIdForRunEvent(
@@ -247,7 +282,7 @@ export async function generateAndPersistInitialThinkingMessage(args: {
         chatThreadId: args.threadId,
         runId: args.runId,
         runGroupId,
-        role: "assistant",
+        eventType: "output.thinking",
         content: null,
         thinking,
         runEventId: INITIAL_THINKING_RUN_EVENT_ID,

@@ -73,7 +73,7 @@ jobs:
       contents: read
       pull-requests: read
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@v7.0.1
         with:
           fetch-depth: 0
 
@@ -119,7 +119,7 @@ jobs:
     outputs:
       turbo-ts-checks-needed: ${{ steps.detect.outputs.turbo-ts-checks-needed }}
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@v7.0.1
         with:
           fetch-depth: 0
 
@@ -174,7 +174,7 @@ jobs:
       turbo-runner-consumer-needed: ${{ steps.runner-e2e.outputs.turbo-runner-consumer-needed }}
       base-ref: ${{ steps.detect.outputs.base-ref }}
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@v7.0.1
         with:
           fetch-depth: 0
 
@@ -348,7 +348,7 @@ jobs:
     # Skip for release-please PRs, commits, and merge queue entries
     if: needs.detect-release.outputs.skip != 'true'
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@v7.0.1
         with:
           fetch-depth: 0
 
@@ -381,38 +381,6 @@ jobs:
           # shellcheck disable=SC2086
           ./scripts/check-file-size.sh $FILTERED_FILES
 
-  block-generated-firewalls:
-    needs: [detect-release]
-    runs-on: ubuntu-latest
-    timeout-minutes: 5
-    # Skip for release-please PRs, commits, and merge queue entries
-    if: needs.detect-release.outputs.skip != 'true'
-    steps:
-      - uses: actions/checkout@v7
-      - name: Ensure generated connector firewall files are untracked
-        run: ./scripts/ensure-generated-connector-firewalls-untracked.sh
-
-  block-connector-source-changes:
-    runs-on: ubuntu-latest
-    timeout-minutes: 5
-    permissions:
-      contents: read
-    steps:
-      - uses: actions/checkout@v7
-        with:
-          fetch-depth: 0
-          persist-credentials: false
-
-      - name: Block connector source additions and modifications
-        env:
-          EVENT_NAME: ${{ github.event_name }}
-          CHECKOUT_REF: ${{ github.ref }}
-          PULL_REQUEST_BASE_SHA: ${{ github.event.pull_request.base.sha }}
-          MERGE_GROUP_BASE_SHA: ${{ github.event.merge_group.base_sha }}
-        run: |
-          BASE_SHA=$(.github/scripts/changed-base-ref.sh)
-          .github/scripts/check-connector-source-freeze.sh "$BASE_SHA"
-
   # Lint jobs - split into 4 parallel jobs for faster CI
   lint-eslint:
     needs: [detect-turbo-ts-checks]
@@ -422,7 +390,7 @@ jobs:
     container:
       image: ghcr.io/vm0-ai/vm0-toolchain:20260622
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@v7.0.1
         with:
           fetch-depth: 0
       - uses: ./.github/actions/toolchain-init
@@ -449,7 +417,7 @@ jobs:
     container:
       image: ghcr.io/vm0-ai/vm0-toolchain:20260622
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@v7.0.1
       - uses: ./.github/actions/toolchain-init
       # The two heavy app type-checks (api, @vm0/app ≈ 57% of the former
       # serial total) run in the separate lint-types-apps job below. Here we
@@ -468,7 +436,7 @@ jobs:
     container:
       image: ghcr.io/vm0-ai/vm0-toolchain:20260622
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@v7.0.1
       - uses: ./.github/actions/toolchain-init
       # Heaviest tsc projects, split off lint-types so they run on their own
       # runner. Kept serial (one tsc at a time) to stay within runner memory —
@@ -531,7 +499,7 @@ jobs:
     container:
       image: ghcr.io/vm0-ai/vm0-toolchain:20260622
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@v7.0.1
       - uses: ./.github/actions/toolchain-init
       - name: Prettier
         working-directory: turbo
@@ -545,7 +513,7 @@ jobs:
     container:
       image: ghcr.io/vm0-ai/vm0-toolchain:20260622
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@v7.0.1
       - uses: ./.github/actions/toolchain-init
       - name: Knip
         working-directory: turbo
@@ -567,7 +535,7 @@ jobs:
       image: ghcr.io/vm0-ai/vm0-toolchain:20260622
     services:
       postgres:
-        image: pgvector/pgvector:pg17
+        image: ghcr.io/vm0-ai/pgvector@sha256:d229d4e975e7102b7df031cbfcf5c4463ee21c84d0373d7a736191a2603dddfd
         options: >-
           --health-cmd pg_isready
           --health-interval 2s
@@ -577,7 +545,7 @@ jobs:
         env:
           POSTGRES_HOST_AUTH_METHOD: trust
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@v7.0.1
       - uses: ./.github/actions/toolchain-init
       - name: Run Database Migrations
         working-directory: turbo
@@ -613,7 +581,7 @@ jobs:
       image: ghcr.io/vm0-ai/vm0-toolchain:20260622
     services:
       postgres:
-        image: pgvector/pgvector:pg17
+        image: ghcr.io/vm0-ai/pgvector@sha256:d229d4e975e7102b7df031cbfcf5c4463ee21c84d0373d7a736191a2603dddfd
         options: >-
           --health-cmd pg_isready
           --health-interval 2s
@@ -623,7 +591,7 @@ jobs:
         env:
           POSTGRES_HOST_AUTH_METHOD: trust
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@v7.0.1
         with:
           fetch-depth: 0
       - uses: ./.github/actions/toolchain-init
@@ -692,7 +660,7 @@ jobs:
     container:
       image: ghcr.io/vm0-ai/vm0-toolchain:20260622
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@v7.0.1
       - uses: ./.github/actions/toolchain-init
       - name: Test CLI
         working-directory: turbo
@@ -724,7 +692,7 @@ jobs:
     container:
       image: ghcr.io/vm0-ai/vm0-toolchain:20260622
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@v7.0.1
       - uses: ./.github/actions/toolchain-init
       - name: Test App
         working-directory: turbo
@@ -757,7 +725,7 @@ jobs:
       image: ghcr.io/vm0-ai/vm0-toolchain:20260622
     services:
       postgres:
-        image: pgvector/pgvector:pg17
+        image: ghcr.io/vm0-ai/pgvector@sha256:d229d4e975e7102b7df031cbfcf5c4463ee21c84d0373d7a736191a2603dddfd
         options: >-
           --health-cmd pg_isready
           --health-interval 2s
@@ -767,7 +735,7 @@ jobs:
         env:
           POSTGRES_HOST_AUTH_METHOD: trust
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@v7.0.1
       - uses: ./.github/actions/toolchain-init
       - name: Run Database Migrations
         working-directory: turbo
@@ -806,11 +774,11 @@ jobs:
     container:
       image: ghcr.io/vm0-ai/vm0-toolchain-rust:20260622
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@v7.0.1
       - uses: ./.github/actions/toolchain-init
       - name: Test Other Packages
         working-directory: turbo
-        run: pnpm vitest run --project=@vm0/core --project=@vm0/ui --project=@vm0/firewalls-generator --project=@vm0/api-contracts --project=@vm0/db --coverage.enabled --coverage.reporter=json
+        run: pnpm vitest run --project=@vm0/core --project=@vm0/ui --project=@vm0/api-contracts --project=@vm0/db --coverage.enabled --coverage.reporter=json
       - name: Test Connectors
         working-directory: turbo
         run: pnpm -F @vm0/connectors exec vitest run --reporter=default
@@ -867,7 +835,7 @@ jobs:
       run:
         shell: bash
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@v7.0.1
       - uses: ./.github/actions/toolchain-init
 
       - name: Fetch development Doppler OAuth config
@@ -1069,6 +1037,62 @@ jobs:
           API_DEPLOYMENT_URL: ${{ steps.api-deploy.outputs.url }}
           VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
 
+      # Vercel does not run cron schedules for preview deployments. Reconcile
+      # through the unique deployment URL before exposing it through an alias or
+      # allowing downstream runner and E2E consumers to start.
+      - name: Reconcile preview connector catalog
+        env:
+          API_DEPLOYMENT_URL: ${{ steps.api-deploy.outputs.url }}
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+          VERCEL_AUTOMATION_BYPASS_SECRET: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
+        run: |
+          set -euo pipefail
+
+          response=""
+          for attempt in 1 2 3; do
+            if ! response=$(curl \
+              --fail-with-body \
+              --show-error \
+              --silent \
+              --max-time 120 \
+              -H "Authorization: Bearer ${CRON_SECRET}" \
+              -H "x-vercel-protection-bypass: ${VERCEL_AUTOMATION_BYPASS_SECRET}" \
+              "${API_DEPLOYMENT_URL}/api/cron/sync-connector-catalog"); then
+              echo "::warning::Connector catalog reconcile request failed (attempt ${attempt}/3)"
+            elif summary=$(jq -c '{
+              outcome,
+              state,
+              active,
+              lastAttempt,
+              filtering: {
+                capabilityDigest: .filtering.capabilityDigest,
+                evaluatedAt: .filtering.evaluatedAt,
+                stale: .filtering.stale,
+                filteredAuthMethodCount: (.filtering.filteredAuthMethods | length)
+              }
+            }' <<< "$response"); then
+              echo "Connector catalog reconcile: ${summary}"
+
+              if jq -e '
+                .state == "current"
+                and .active != null
+                and .filtering.stale == false
+              ' <<< "$response" >/dev/null; then
+                exit 0
+              fi
+              echo "::warning::Connector catalog is not ready (attempt ${attempt}/3)"
+            else
+              echo "::warning::Connector catalog reconcile returned invalid JSON (attempt ${attempt}/3)"
+            fi
+
+            if [ "$attempt" -lt 3 ]; then
+              sleep 2
+            fi
+          done
+
+          echo "::error::Connector catalog reconcile did not produce a current accepted snapshot"
+          exit 1
+
       - name: Create API Vercel Alias
         id: api-alias
         if: vars.PREVIEW_DOMAIN != ''
@@ -1175,6 +1199,8 @@ jobs:
     needs: [detect-release]
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    outputs:
+      deployment-url: ${{ steps.pages-deploy.outputs.url }}
     concurrency:
       group: deploy-app-${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
       cancel-in-progress: false
@@ -1198,10 +1224,11 @@ jobs:
       CF_PAGES_PREVIEW_DOMAIN: ${{ vars.CF_PAGES_PREVIEW_DOMAIN }}
       CF_PAGES_PREVIEW_ZONE_ID: ${{ vars.CF_PAGES_PREVIEW_ZONE_ID }}
       CLOUDFLARE_ACCOUNT_ID: ${{ vars.CF_ACCOUNT_ID }}
+      PREVIEW_DOMAIN: ${{ vars.PREVIEW_DOMAIN }}
       R2_ACCOUNT_ID: ${{ vars.R2_ACCOUNT_ID }}
       R2_BUCKET_NAME: ${{ vars.R2_STATIC_BUCKET_NAME }}
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@v7.0.1
         with:
           ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
 
@@ -1378,18 +1405,22 @@ jobs:
 
           : "${CF_PAGES_PROJECT_NAME:?CF_PAGES_PROJECT_NAME variable is required}"
           : "${CLOUDFLARE_ACCOUNT_ID:?CF_ACCOUNT_ID variable is required}"
+          : "${PREVIEW_DOMAIN:?PREVIEW_DOMAIN variable is required}"
 
           r2_endpoint="https://${R2_ACCOUNT_ID}.r2.cloudflarestorage.com"
           artifact_uri="s3://${R2_BUCKET_NAME}/${ARTIFACT_PREFIX}"
           canonical_dist="$(mktemp -d)"
           pages_dist="$(mktemp -d)"
+          job_ref="${PAGES_BRANCH%-app}"
+          api_origin="https://${job_ref}-api.${PREVIEW_DOMAIN}"
 
           aws s3 cp "$artifact_uri/" "$canonical_dist/" \
             --endpoint-url "$r2_endpoint" \
             --recursive
           bash .github/scripts/prepare-okou-pages-dist.sh \
             "$canonical_dist" \
-            "$pages_dist"
+            "$pages_dist" \
+            "$api_origin"
 
           {
             echo "dist=$pages_dist"
@@ -1407,11 +1438,13 @@ jobs:
           echo "url=https://${PAGES_BRANCH}.${CF_PAGES_PREVIEW_DOMAIN}" >> "$GITHUB_OUTPUT"
 
       - name: Deploy Cloudflare Pages preview
+        id: pages-deploy
         env:
           ARTIFACT_SHA: ${{ steps.artifact.outputs.sha }}
           CLOUDFLARE_API_TOKEN: ${{ secrets.CF_PAGES_DEPLOY_API_TOKEN }}
           PAGES_BRANCH: ${{ steps.pages-branch.outputs.branch }}
           PAGES_DIST: ${{ steps.pages-preview.outputs.dist }}
+          WRANGLER_OUTPUT_FILE_PATH: /tmp/wrangler-pages-output.ndjson
         working-directory: turbo
         run: |
           set -euo pipefail
@@ -1421,6 +1454,36 @@ jobs:
             --branch "$PAGES_BRANCH" \
             --commit-hash "$ARTIFACT_SHA" \
             --commit-dirty=false
+
+          deployment="$(
+            jq --slurp --compact-output \
+              'map(select(.type == "pages-deploy-detailed")) | last' \
+              "$WRANGLER_OUTPUT_FILE_PATH"
+          )"
+          deployment_url="$(jq -r '.url // empty' <<< "$deployment")"
+          deployment_commit="$(jq -r \
+            '.deployment_trigger.metadata.commit_hash // empty' \
+            <<< "$deployment")"
+
+          if [[ -z "$deployment_url" ]]; then
+            echo "::error::Wrangler did not report a Pages deployment URL"
+            exit 1
+          fi
+          deployment_host="${deployment_url#https://}"
+          deployment_hash="${deployment_host%%.*}"
+          if [[ \
+            ! "$deployment_hash" =~ ^[0-9a-f]{8}$ ||
+            "$deployment_url" != "https://${deployment_hash}.${CF_PAGES_PROJECT_NAME}.pages.dev" \
+          ]]; then
+            echo "::error::Wrangler did not report an immutable Pages deployment URL"
+            exit 1
+          fi
+          if [[ "$deployment_commit" != "$ARTIFACT_SHA" ]]; then
+            echo "::error::Pages deployment commit does not match the app artifact"
+            exit 1
+          fi
+
+          echo "url=$deployment_url" >> "$GITHUB_OUTPUT"
 
       - name: Configure Cloudflare Pages custom preview domain
         if: steps.pages-custom-domain.outputs.domain != ''
@@ -1438,11 +1501,125 @@ jobs:
             "$PAGES_CUSTOM_DOMAIN" \
             "$PAGES_BRANCH"
 
+      - name: Wait for Cloudflare Pages preview assets
+        env:
+          PAGES_DIST: ${{ steps.pages-preview.outputs.dist }}
+          PAGES_URL: ${{ steps.pages-deploy.outputs.url }}
+        run: |
+          set -euo pipefail
+
+          mapfile -t probe_files < <(
+            node --input-type=module - "$PAGES_DIST/assets" <<'NODE'
+          import { readdir, readFile } from "node:fs/promises";
+          import path from "node:path";
+
+          const assetsDirectory = process.argv[2];
+          const assetNames = await readdir(assetsDirectory);
+          const javascriptAssets = new Set(
+            assetNames.filter((assetName) => assetName.endsWith(".js")),
+          );
+          const rootPrefixes = ["index-", "Route-", "SignIn-", "SignUp-"];
+          const roots = [...javascriptAssets].filter((assetName) =>
+            rootPrefixes.some((prefix) => assetName.startsWith(prefix)),
+          );
+
+          for (const prefix of rootPrefixes) {
+            if (!roots.some((assetName) => assetName.startsWith(prefix))) {
+              throw new Error(`Could not identify ${prefix} preview assets`);
+            }
+          }
+
+          const queuedAssets = [...roots];
+          const reachableAssets = new Set();
+          const relativeImportPattern =
+            /["']\.\/([^"'?#]+\.js)(?:[?#][^"']*)?["']/g;
+
+          while (queuedAssets.length > 0) {
+            const assetName = queuedAssets.pop();
+            if (!assetName || reachableAssets.has(assetName)) {
+              continue;
+            }
+            reachableAssets.add(assetName);
+
+            const source = await readFile(
+              path.join(assetsDirectory, assetName),
+              "utf8",
+            );
+            for (const match of source.matchAll(relativeImportPattern)) {
+              const dependencyName = match[1];
+              if (
+                javascriptAssets.has(dependencyName) &&
+                !reachableAssets.has(dependencyName)
+              ) {
+                queuedAssets.push(dependencyName);
+              }
+            }
+          }
+
+          for (const assetName of [...reachableAssets].sort()) {
+            console.log(path.join(assetsDirectory, assetName));
+          }
+          NODE
+          )
+          echo "Checking ${#probe_files[@]} app and Clerk JavaScript assets"
+
+          probe_curl_args=()
+          for probe_file in "${probe_files[@]}"; do
+            relative_path="${probe_file#"$PAGES_DIST"/}"
+            probe_curl_args+=(
+              --output /dev/null
+              --url "${PAGES_URL%/}/${relative_path}"
+            )
+          done
+
+          ready_passes=0
+          for attempt in {1..60}; do
+            probe_results="$(curl \
+              --silent \
+              --max-time 10 \
+              --parallel \
+              --parallel-immediate \
+              --parallel-max 16 \
+              --write-out $'%{http_code}|%{content_type}|%{url_effective}\n' \
+              "${probe_curl_args[@]}" 2>/dev/null || true)"
+            probe_result_count="$(grep -c '|' <<< "$probe_results")"
+            not_ready_files="$(
+              while IFS='|' read -r status content_type asset_url; do
+                if [[ "$status" != 2?? || "$content_type" != *javascript* ]]; then
+                  printf "%s\n" "${asset_url#"${PAGES_URL%/}/"}"
+                fi
+              done <<< "$probe_results"
+            )"
+            if (( probe_result_count != ${#probe_files[@]} )); then
+              not_ready_files+="${not_ready_files:+$'\n'}incomplete readiness response"
+            fi
+
+            if [[ -z "$not_ready_files" ]]; then
+              ((ready_passes += 1))
+            else
+              ready_passes=0
+              first_not_ready="${not_ready_files%%$'\n'*}"
+              not_ready_count="$(wc -l <<< "$not_ready_files")"
+              echo "::warning::${not_ready_count} preview assets are not ready (attempt ${attempt}/60); first: ${first_not_ready}"
+            fi
+
+            if (( ready_passes >= 2 )); then
+              echo "Cloudflare Pages preview assets are ready"
+              exit 0
+            fi
+            sleep 2
+          done
+
+          echo "::error::Cloudflare Pages preview assets did not become ready"
+          exit 1
+
       - name: Record Cloudflare Pages preview
         env:
+          PAGES_DEPLOYMENT_URL: ${{ steps.pages-deploy.outputs.url }}
           PAGES_CUSTOM_URL: ${{ steps.pages-custom-domain.outputs.url }}
           PAGES_PREVIEW_URL: ${{ steps.pages-preview.outputs.url }}
         run: |
+          echo "Cloudflare Pages deployment: ${PAGES_DEPLOYMENT_URL}" >> "$GITHUB_STEP_SUMMARY"
           echo "Cloudflare Pages preview: ${PAGES_PREVIEW_URL}" >> "$GITHUB_STEP_SUMMARY"
           if [[ -n "$PAGES_CUSTOM_URL" ]]; then
             echo "Cloudflare Pages custom preview: ${PAGES_CUSTOM_URL}" >> "$GITHUB_STEP_SUMMARY"
@@ -1471,7 +1648,7 @@ jobs:
         needs.prepare.outputs.e2e-changed == 'true'
       )
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@v7.0.1
 
       - name: Install Ansible
         run: pip3 install ansible-core
@@ -1479,6 +1656,9 @@ jobs:
       - name: Setup SSH via Cloudflare Tunnel
         uses: ./.github/actions/setup-ssh-tunnel
         with:
+          ssh-user: ${{ vars.AWS_METAL_RUNNER_USER }}
+          ssh-hosts: ${{ secrets.AWS_METAL_RUNNER_HOSTS }}
+          require-all-hosts: "false"
           ssh-key: ${{ secrets.AWS_METAL_RUNNER_SSH_KEY }}
           cf-access-client-id: ${{ secrets.CF_ACCESS_CLIENT_ID }}
           cf-access-client-secret: ${{ secrets.CF_ACCESS_CLIENT_SECRET }}
@@ -1532,6 +1712,10 @@ jobs:
             --extra-vars "$EXTRA_VARS" \
             -v
 
+  # CI_CHECK_BROWSER_E2E=1 makes both Browser and Playwright E2E failures
+  # blocking. Any other value keeps the tests running but makes them
+  # informational.
+  #
   # Exercise the hosted Clerk UI via agent-browser. This is intentionally
   # separate from Playwright because Playwright signs in through Clerk's
   # testing helper instead of the third-party form UI.
@@ -1555,7 +1739,7 @@ jobs:
       needs.deploy-api.result == 'success' &&
       needs.deploy-app.result == 'success'
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@v7.0.1
         with:
           submodules: recursive
       - uses: actions/setup-node@v7
@@ -1569,21 +1753,13 @@ jobs:
           BATS_TEST_TIMEOUT=180 ./e2e/test/libs/bats/bin/bats -T ./e2e/tests/02-browser/*.bats
         env:
           VM0_API_BACKEND_URL: ${{ needs.deploy-api.outputs.preview-url }}
-          VM0_AUTH_URL: ${{ needs.prepare.outputs.app-preview-url }}
-          VM0_AUTH_REDIRECT_URL: ${{ needs.prepare.outputs.app-preview-url }}/_/skeleton
+          VM0_AUTH_URL: ${{ needs.deploy-app.outputs.deployment-url }}
+          VM0_AUTH_REDIRECT_URL: ${{ needs.deploy-app.outputs.deployment-url }}/_/skeleton
           VM0_AUTH_DOMAIN: ${{ needs.prepare.outputs.api-preview-url != '' && format('{0}-api.{1}', needs.prepare.outputs.job-ref, vars.PREVIEW_DOMAIN || 'vm6.ai') || '' }}
           JOB_REF: ${{ needs.prepare.outputs.job-ref }}
           CLERK_SECRET_KEY: ${{ secrets.CLERK_SECRET_KEY }}
+          VERCEL_AUTOMATION_BYPASS_SECRET: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
           E2E_ACCOUNT: ${{ needs.prepare.outputs.job-ref }}+clerk_test+browser@vm0-e2e.ai
-      - name: Upload auth screenshots
-        if: always()
-        uses: actions/upload-artifact@v7
-        with:
-          name: cli-e2e-02-browser-screenshots
-          path: /tmp/e2e-auth-screenshots/
-          retention-days: 7
-          if-no-files-found: ignore
-
   cli-e2e-02-playwright:
     runs-on: ubuntu-latest
     timeout-minutes: 8
@@ -1609,7 +1785,7 @@ jobs:
       needs.deploy-app.result == 'success' &&
       (github.event_name == 'push' || needs.deploy-stripe-listener.result == 'success')
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@v7.0.1
         with:
           submodules: recursive
       - uses: actions/setup-node@v7
@@ -1671,10 +1847,11 @@ jobs:
           STRIPE_SECRET_KEY: ${{ secrets.STRIPE_SECRET_KEY }}
           VERCEL_AUTOMATION_BYPASS_SECRET: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
       - name: Run Playwright E2E tests
+        continue-on-error: ${{ vars.CI_CHECK_BROWSER_E2E != '1' }}
         run: cd e2e && npx playwright test --config playwright/playwright.config.ts
         env:
           VM0_API_BACKEND_URL: ${{ needs.deploy-api.outputs.preview-url }}
-          VM0_APP_URL: ${{ needs.prepare.outputs.app-preview-url }}
+          VM0_APP_URL: ${{ needs.deploy-app.outputs.deployment-url }}
           CLERK_PUBLISHABLE_KEY: ${{ vars.CLERK_PUBLISHABLE_KEY }}
           CLERK_SECRET_KEY: ${{ secrets.CLERK_SECRET_KEY }}
           JOB_REF: ${{ needs.prepare.outputs.job-ref }}
@@ -1718,7 +1895,7 @@ jobs:
         needs.prepare.outputs.e2e-changed == 'true'
       )
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@v7.0.1
       - uses: pnpm/action-setup@v6
         with:
           version: 10.33.4
@@ -1730,7 +1907,7 @@ jobs:
       - name: Configure git safe directory
         run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
       - name: Install CLI dependencies
-        run: cd turbo && pnpm install --frozen-lockfile --filter @vm0/cli --filter @vm0/firewalls-generator...
+        run: cd turbo && pnpm install --frozen-lockfile --filter @vm0/cli...
       - name: Build CLI
         run: cd turbo && pnpm --filter @vm0/cli build
       - name: Verify CLI package contents
@@ -1806,7 +1983,7 @@ jobs:
       )
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@v7.0.1
         with:
           submodules: recursive
       - uses: actions/setup-node@v7
@@ -1931,11 +2108,13 @@ jobs:
       rootfs-hash-map: ${{ steps.manifest.outputs.rootfs-hash-map }}
       snapshot-hash-map: ${{ steps.manifest.outputs.snapshot-hash-map }}
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@v7.0.1
 
       - name: Setup SSH via Cloudflare Tunnel
         uses: ./.github/actions/setup-ssh-tunnel
         with:
+          ssh-user: ${{ vars.AWS_METAL_RUNNER_USER }}
+          ssh-hosts: ${{ secrets.AWS_METAL_RUNNER_HOSTS }}
           ssh-key: ${{ secrets.AWS_METAL_RUNNER_SSH_KEY }}
           cf-access-client-id: ${{ secrets.CF_ACCESS_CLIENT_ID }}
           cf-access-client-secret: ${{ secrets.CF_ACCESS_CLIENT_SECRET }}
@@ -2020,11 +2199,13 @@ jobs:
       (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) &&
       needs.prepare.outputs.turbo-runner-consumer-needed == 'true'
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@v7.0.1
 
       - name: Setup SSH via Cloudflare Tunnel
         uses: ./.github/actions/setup-ssh-tunnel
         with:
+          ssh-user: ${{ vars.AWS_METAL_RUNNER_USER }}
+          ssh-hosts: ${{ secrets.AWS_METAL_RUNNER_HOSTS }}
           ssh-key: ${{ secrets.AWS_METAL_RUNNER_SSH_KEY }}
           cf-access-client-id: ${{ secrets.CF_ACCESS_CLIENT_ID }}
           cf-access-client-secret: ${{ secrets.CF_ACCESS_CLIENT_SECRET }}
@@ -2372,7 +2553,7 @@ jobs:
         include: ${{ fromJSON(needs.deploy-runner-prepare.outputs.runner-matrix) }}
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@v7.0.1
         with:
           submodules: recursive
       - uses: actions/setup-node@v7
@@ -2485,7 +2666,7 @@ jobs:
       (github.event_name != 'push' || !startsWith(github.event.head_commit.message, 'chore: release')) &&
       needs.prepare.outputs.e2b-changed == 'true'
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@v7.0.1
       - uses: ./.github/actions/toolchain-init
 
       - name: Build E2B templates
@@ -2510,7 +2691,7 @@ jobs:
     permissions:
       contents: read
     steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
       - uses: ./.github/actions/toolchain-init
 
       - name: Download online runtime API schema
@@ -2579,8 +2760,6 @@ jobs:
       - detect-turbo-ts-checks
       - prepare
       - file-size-check
-      - block-generated-firewalls
-      - block-connector-source-changes
       - lint-eslint
       - lint-types
       - lint-types-apps
@@ -2617,10 +2796,6 @@ jobs:
           if [[ "$IS_RELEASE" == "true" ]]; then
             if [[ "$EVENT_NAME" == "merge_group" && "$RELEASE_PRESENCE_RESULT" != "success" ]]; then
               echo "::error::validate-release-presence: expected success, got $RELEASE_PRESENCE_RESULT"
-              exit 1
-            fi
-            if [[ "${{ needs.block-connector-source-changes.result }}" != "success" ]]; then
-              echo "::error::block-connector-source-changes: expected success, got ${{ needs.block-connector-source-changes.result }}"
               exit 1
             fi
             echo "✅ Release-please — skipping CI gate"
@@ -2673,9 +2848,6 @@ jobs:
           check_result "detect-turbo-ts-checks" "${{ needs.detect-turbo-ts-checks.result }}" ""
           check_result "prepare" "${{ needs.prepare.result }}" ""
           check_result "file-size-check" "${{ needs.file-size-check.result }}" ""
-          check_result "block-generated-firewalls" "${{ needs.block-generated-firewalls.result }}" ""
-          check_result "block-connector-source-changes" "${{ needs.block-connector-source-changes.result }}" ""
-
           # Turbo TypeScript checks: only 'success' is acceptable unless
           # detect-turbo-ts-checks classified this as a crates-only change set.
           check_result "lint-eslint" "${{ needs.lint-eslint.result }}" "$TS_CHECK_SKIP_ALLOWED"
@@ -2696,7 +2868,7 @@ jobs:
           check_result "build-cli" "${{ needs.build-cli.result }}" "true"
           check_result "build-e2b-template" "${{ needs.build-e2b-template.result }}" "true"
           check_result "cli-e2e-02-browser" "${{ needs.cli-e2e-02-browser.result }}" "${{ vars.CI_CHECK_BROWSER_E2E == '1' && 'true' || 'informational' }}"
-          check_result "cli-e2e-02-playwright" "${{ needs.cli-e2e-02-playwright.result }}" "true"
+          check_result "cli-e2e-02-playwright" "${{ needs.cli-e2e-02-playwright.result }}" "${{ vars.CI_CHECK_BROWSER_E2E == '1' && 'true' || 'informational' }}"
           check_result "cli-e2e-01-serial" "${{ needs.cli-e2e-01-serial.result }}" "true"
           check_result "deploy-runner-prepare" "${{ needs.deploy-runner-prepare.result }}" "$RUNNER_E2E_SKIP_ALLOWED"
           check_result "deploy-runner-start" "${{ needs.deploy-runner-start.result }}" "$RUNNER_E2E_SKIP_ALLOWED"

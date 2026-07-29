@@ -16,9 +16,7 @@ const SLOCK_REFRESH_TOKEN_URL = `${SLOCK_API_BASE_URL}/api/auth/refresh`;
 const DEFAULT_DEVICE_AUTH_EXPIRES_IN_SECONDS = 600;
 const POST_TOKEN_LOOKUP_FAILED_DESCRIPTION =
   "Unable to load Slock account metadata after authorization.";
-export const SLOCK_ACCESS_SECRET_NAME = "SLOCK_ACCESS_TOKEN";
-export const SLOCK_REFRESH_SECRET_NAME = "SLOCK_REFRESH_TOKEN";
-export const SLOCK_SERVER_ID_SECRET_NAME = "SLOCK_SERVER_ID";
+const SLOCK_SERVER_ID_SECRET_NAME = "SLOCK_SERVER_ID";
 
 const deviceAuthResponseSchema = z.object({
   deviceCode: z.string(),

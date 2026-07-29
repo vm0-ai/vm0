@@ -2,12 +2,7 @@ import { randomUUID } from "node:crypto";
 
 import { zeroConnectorsSearchContract } from "@vm0/api-contracts/contracts/zero-connectors";
 import { zeroFeatureSwitchesContract } from "@vm0/api-contracts/contracts/zero-feature-switches";
-import {
-  CONNECTOR_TYPE_KEYS,
-  CONNECTOR_TYPES,
-  type ConnectorAuthMethodConfig,
-} from "@vm0/connectors/connectors";
-import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
+import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import { createStore } from "ccstate";
 import { afterEach } from "vitest";
 
@@ -64,12 +59,8 @@ describe("GET /api/zero/connectors/search", () => {
     readonly orgId: string;
     readonly userId: string;
   }[] = [];
-  const restoreConnectorRegistry: (() => void)[] = [];
 
   afterEach(async () => {
-    while (restoreConnectorRegistry.length > 0) {
-      restoreConnectorRegistry.pop()?.();
-    }
     while (seededFeatureSwitches.length > 0) {
       const fixture = seededFeatureSwitches.pop();
       if (fixture) {
@@ -142,20 +133,36 @@ describe("GET /api/zero/connectors/search", () => {
     const client = setupApp({ context })(zeroConnectorsSearchContract);
     const response = await accept(
       client.search({
-        query: { keyword: "slack" },
+        query: { keyword: "permission behavior" },
         headers: { authorization: "Bearer clerk-session" },
       }),
       [200],
     );
 
-    expect(response.body.connectors.length).toBeGreaterThan(0);
-    for (const connector of response.body.connectors) {
-      const matchesLabel = connector.label.toLowerCase().includes("slack");
-      const matchesDescription = connector.description
-        .toLowerCase()
-        .includes("slack");
-      expect(matchesLabel || matchesDescription).toBeTruthy();
-    }
+    expect(
+      response.body.connectors.map((connector) => {
+        return connector.id;
+      }),
+    ).toStrictEqual(["slack"]);
+  });
+
+  it("filters connectors by keyword matching tags", async () => {
+    mocks.clerk.session(`user_${randomUUID()}`, `org_${randomUUID()}`);
+
+    const client = setupApp({ context })(zeroConnectorsSearchContract);
+    const response = await accept(
+      client.search({
+        query: { keyword: "llm" },
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [200],
+    );
+
+    expect(
+      response.body.connectors.map((connector) => {
+        return connector.id;
+      }),
+    ).toStrictEqual(["openai"]);
   });
 
   it("returns empty array for non-matching keyword", async () => {
@@ -239,130 +246,25 @@ describe("GET /api/zero/connectors/search", () => {
     expect(connector?.authMethods).toStrictEqual(["oauth", "api"]);
   });
 
-  it("applies static auth method visibility to connector search", async () => {
+  it("applies accepted auth method visibility to connector search", async () => {
     const userId = `user_${randomUUID()}`;
     const orgId = `org_${randomUUID()}`;
     seededFeatureSwitches.push({ orgId, userId });
     await enableFeatureSwitches(orgId, userId, {});
     mocks.clerk.session(userId, orgId);
 
-    const authMethods = CONNECTOR_TYPES.stripe.authMethods;
-    const originalOauth = authMethods.oauth;
-    const originalCli = authMethods.cli;
-    const originalApiToken = authMethods["api-token"];
-
-    restoreConnectorRegistry.push(() => {
-      Object.defineProperty(authMethods, "oauth", {
-        value: originalOauth,
-        configurable: true,
-        enumerable: true,
-      });
-      Object.defineProperty(authMethods, "cli", {
-        value: originalCli,
-        configurable: true,
-        enumerable: true,
-      });
-      Object.defineProperty(authMethods, "api-token", {
-        value: originalApiToken,
-        configurable: true,
-        enumerable: true,
-      });
-    });
-    Object.defineProperty(authMethods, "oauth", {
-      value: {
-        ...originalOauth,
-        visible: false,
-      } satisfies ConnectorAuthMethodConfig,
-      configurable: true,
-      enumerable: true,
-    });
-    Object.defineProperty(authMethods, "cli", {
-      value: {
-        ...originalCli,
-        visible: false,
-      } satisfies ConnectorAuthMethodConfig,
-      configurable: true,
-      enumerable: true,
-    });
-    Object.defineProperty(authMethods, "api-token", {
-      value: {
-        ...originalApiToken,
-        visible: false,
-      } satisfies ConnectorAuthMethodConfig,
-      configurable: true,
-      enumerable: true,
-    });
-
-    const client = setupApp({ context })(zeroConnectorsSearchContract);
-    const partial = await accept(
-      client.search({
-        query: { keyword: "stripe" },
-        headers: { authorization: "Bearer clerk-session" },
-      }),
-      [200],
-    );
-    const visibleStripe = partial.body.connectors.find((connector) => {
-      return connector.id === "stripe";
-    });
-    expect(visibleStripe).toBeUndefined();
-  });
-
-  it("matches Google Cloud connector tags without a feature switch", async () => {
-    const userId = `user_${randomUUID()}`;
-    const orgId = `org_${randomUUID()}`;
-    mocks.clerk.session(userId, orgId);
-
     const client = setupApp({ context })(zeroConnectorsSearchContract);
     const response = await accept(
       client.search({
-        query: { keyword: "gcp" },
+        query: { keyword: "cloudflare" },
         headers: { authorization: "Bearer clerk-session" },
       }),
       [200],
     );
-    const connector = response.body.connectors.find((candidate) => {
-      return candidate.id === "google-cloud";
+    const cloudflare = response.body.connectors.find((connector) => {
+      return connector.id === "cloudflare";
     });
-    expect(connector).toBeDefined();
-    expect(connector?.authMethods).toStrictEqual(["oauth"]);
-  });
-
-  it("shows Base44 as a connector without a feature switch", async () => {
-    mocks.clerk.session(`user_${randomUUID()}`, `org_${randomUUID()}`);
-
-    const client = setupApp({ context })(zeroConnectorsSearchContract);
-    const response = await accept(
-      client.search({
-        query: { keyword: "base44" },
-        headers: { authorization: "Bearer clerk-session" },
-      }),
-      [200],
-    );
-
-    const connector = response.body.connectors.find((c) => {
-      return c.id === "base44";
-    });
-    expect(connector).toBeDefined();
-    expect(connector?.authMethods).toStrictEqual(["oauth"]);
-  });
-
-  it("shows Slock as a connector without a feature switch", async () => {
-    mocks.clerk.session(`user_${randomUUID()}`, `org_${randomUUID()}`);
-
-    const client = setupApp({ context })(zeroConnectorsSearchContract);
-    const response = await accept(
-      client.search({
-        query: { keyword: "slock" },
-        headers: { authorization: "Bearer clerk-session" },
-      }),
-      [200],
-    );
-
-    const connector = response.body.connectors.find((c) => {
-      return c.id === "slock";
-    });
-    expect(connector).toBeDefined();
-    expect(connector?.authMethods).toStrictEqual(["oauth"]);
+    expect(cloudflare?.authMethods).toStrictEqual(["oauth"]);
   });
 
   it("shows ungated api-token while hiding feature-gated oauth", async () => {
@@ -385,33 +287,6 @@ describe("GET /api/zero/connectors/search", () => {
     expect(neon?.authMethods).not.toContain("oauth");
   });
 
-  it("includes connectors with at least one ungated auth method", async () => {
-    mocks.clerk.session(`user_${randomUUID()}`, `org_${randomUUID()}`);
-
-    const client = setupApp({ context })(zeroConnectorsSearchContract);
-    const response = await accept(
-      client.search({
-        query: {},
-        headers: { authorization: "Bearer clerk-session" },
-      }),
-      [200],
-    );
-
-    const unflaggedTypes = CONNECTOR_TYPE_KEYS.filter((type) => {
-      return Object.values(CONNECTOR_TYPES[type].authMethods).some((method) => {
-        return !method.featureFlag;
-      });
-    });
-    expect(unflaggedTypes.length).toBeGreaterThan(0);
-
-    for (const type of unflaggedTypes) {
-      const found = response.body.connectors.find((c) => {
-        return c.id === type;
-      });
-      expect(found).toBeDefined();
-    }
-  });
-
   it("exposes openai as api-token only", async () => {
     mocks.clerk.session(`user_${randomUUID()}`, `org_${randomUUID()}`);
 
@@ -429,24 +304,6 @@ describe("GET /api/zero/connectors/search", () => {
     });
     expect(openai).toBeDefined();
     expect(openai?.authMethods).toStrictEqual(["api-token"]);
-  });
-
-  it("hides zapier when its api-token auth method is feature-gated", async () => {
-    mocks.clerk.session(`user_${randomUUID()}`, `org_${randomUUID()}`);
-
-    const client = setupApp({ context })(zeroConnectorsSearchContract);
-    const response = await accept(
-      client.search({
-        query: {},
-        headers: { authorization: "Bearer clerk-session" },
-      }),
-      [200],
-    );
-
-    const zapier = response.body.connectors.find((c) => {
-      return c.id === "zapier";
-    });
-    expect(zapier).toBeUndefined();
   });
 
   it("accepts a ZERO_TOKEN carrying the connector:read capability", async () => {

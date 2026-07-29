@@ -46,7 +46,7 @@ describe("POST /api/zero/attribution/signup", () => {
         },
       ],
     });
-    context.mocks.clerk.users.updateUser.mockResolvedValue({});
+    context.mocks.clerk.users.updateUserMetadata.mockResolvedValue({});
 
     const response = await accept(
       client().recordSignup({
@@ -68,22 +68,25 @@ describe("POST /api/zero/attribution/signup", () => {
     );
 
     expect(response.body).toStrictEqual({ recorded: true });
-    expect(context.mocks.clerk.users.updateUser).toHaveBeenCalledWith(userId, {
-      privateMetadata: {
-        existing: "value",
-        signup_attribution: {
-          vm0_source: "presentation",
-          utm_source: "google",
-          utm_medium: "cpc",
-          utm_campaign: "presentation_search_en",
-          vm0_experiment: "presentation_lp",
-          vm0_variant: "a",
-          gclid: "test-gclid",
-          gclid_present: "true",
-          recorded_at: RECORDED_AT_ISO,
+    expect(context.mocks.clerk.users.updateUserMetadata).toHaveBeenCalledWith(
+      userId,
+      {
+        privateMetadata: {
+          existing: "value",
+          signup_attribution: {
+            vm0_source: "presentation",
+            utm_source: "google",
+            utm_medium: "cpc",
+            utm_campaign: "presentation_search_en",
+            vm0_experiment: "presentation_lp",
+            vm0_variant: "a",
+            gclid: "test-gclid",
+            gclid_present: "true",
+            recorded_at: RECORDED_AT_ISO,
+          },
         },
       },
-    });
+    );
   });
 
   it("does not overwrite existing signup attribution", async () => {
@@ -115,6 +118,6 @@ describe("POST /api/zero/attribution/signup", () => {
     );
 
     expect(response.body).toStrictEqual({ recorded: false });
-    expect(context.mocks.clerk.users.updateUser).not.toHaveBeenCalled();
+    expect(context.mocks.clerk.users.updateUserMetadata).not.toHaveBeenCalled();
   });
 });

@@ -182,7 +182,6 @@ export default [
       "api/no-store-in-params": "error",
       "api/no-unsafe-sql-interpolation": "error",
       "api/prefer-drizzle-apis": "error",
-      "api/prefer-drizzle-query-builder": "error",
       "api/require-execute-row-schema": "error",
       "api/require-sql-result-mapping": "error",
       "api/signal-check-await": "error",
@@ -259,6 +258,17 @@ export default [
             "Service-directory tests must live behind API endpoint boundaries. Put coverage under routes/__tests__ or document a narrow exception in services/__tests__.",
         },
       ],
+    },
+  },
+  {
+    // Keep the finite SemVer/build-identity policy matrix as a narrow
+    // state-machine exception. Route tests cover the constructible sync
+    // behavior, while arbitrary build versions are not a production API input.
+    files: [
+      "src/signals/services/__tests__/connector-catalog-rejection-authority.test.ts",
+    ],
+    rules: {
+      "no-restricted-syntax": ["error", ...restrictedSyntax],
     },
   },
   {

@@ -3,7 +3,11 @@ import chalk from "chalk";
 import { generateWebImage } from "../../../lib/api";
 import { withErrorHandler } from "../../../lib/command";
 import { createStyledImageCompilationPacket } from "./image-style-authoring";
-import { findImageStyle, listImageStyles } from "./resource-registry";
+import {
+  findImageStyle,
+  hasR2Archive,
+  listImageStyles,
+} from "./resource-registry";
 import { formatRegistryListing } from "./resource-listing";
 import { dispatchGenerate } from "../generate/lib/dispatch";
 import type { GenerationType } from "../generate/lib/lister";
@@ -28,8 +32,10 @@ interface ImageOptions {
   inputFidelity?: string;
   imagePromptStrength?: string;
   style?: string;
+  styleSource: "github" | "r2";
   compile?: boolean;
   all?: boolean;
+  json?: boolean;
 }
 
 interface ImageGenerateCommandConfig {
@@ -96,6 +102,13 @@ function collectString(value: string, previous: string[]): string[] {
   return [...previous, value];
 }
 
+function parseStyleSource(value: string): "github" | "r2" {
+  if (value !== "github" && value !== "r2") {
+    throw new InvalidArgumentError("style source must be github or r2");
+  }
+  return value;
+}
+
 function parseInputFidelity(value: string | undefined): string | undefined {
   if (value === undefined) {
     return undefined;
@@ -143,6 +156,9 @@ function resolveImagePromptMode(
 
   if (!compile && options.style) {
     throw new Error("--style can only be used with --compile");
+  }
+  if (!compile && options.styleSource !== "github") {
+    throw new Error("--style-source can only be used with --compile");
   }
 
   if ([compile, hasCompiledPrompt, hasRawPrompt].filter(Boolean).length !== 1) {
@@ -194,6 +210,7 @@ export function createImageGenerateCommand(
       "--all",
       "When listing providers (no --prompt given), include unavailable or not-yet-authorized connectors",
     )
+    .option("--json", "Print the complete generation result as JSON")
     .option(
       "--model <model>",
       "Model: gpt-image-1 (default), gpt-image-2, gpt-image-1.5, gpt-image-1-mini, flux-pro-1.1, flux-pro-1.1-ultra, qwen-image, seedream4, or nano-banana-2",
@@ -247,6 +264,12 @@ export function createImageGenerateCommand(
       "Image style id to compile from the registry (see Image Styles below)",
     )
     .option(
+      "--style-source <source>",
+      "Style package source for compile mode: github or r2",
+      parseStyleSource,
+      "github",
+    )
+    .option(
       "--compile",
       "Resolve the selected style and print a prompt-compilation packet",
     )
@@ -258,8 +281,9 @@ ${config.examples}
 
 Output:
   Prints the generated /f/ image file URL and metadata with --compiled-prompt
-  or --raw-prompt. With --style <id> --prompt "..." --compile, prints a
-  prompt-compilation packet for the current agent.
+  or --raw-prompt. Use --json for the complete result object. With
+  --style <id> --prompt "..." --compile, prints a prompt-compilation packet
+  for the current agent.
 
 Notes:
   - Authenticates via ZERO_TOKEN (requires file:write capability)
@@ -314,12 +338,18 @@ ${formatRegistryListing(styles, "image styles")}`;
             options.compile || options.style
               ? "--compile requires --prompt <text> or piped stdin"
               : undefined,
+          requireExecutionFor: options.json ? "--json" : undefined,
         });
         if (dispatch.outcome === "handled") return;
         const resolvedPrompt = dispatch.prompt;
         const mode = resolveImagePromptMode(options, config.usageCommand);
 
         if (mode === "compile") {
+          if (options.json) {
+            throw new Error(
+              "--json is only available for direct built-in generation",
+            );
+          }
           const styleId = options.style;
           if (!styleId) {
             throw new Error("--compile requires --style <id>");
@@ -328,10 +358,16 @@ ${formatRegistryListing(styles, "image styles")}`;
           if (!style) {
             throw unknownStyleError(styleId, config.usageCommand);
           }
+          if (options.styleSource === "r2" && !hasR2Archive(style)) {
+            throw new Error(
+              `Image style ${style.id} does not provide an R2 archive`,
+            );
+          }
 
           const packet = createStyledImageCompilationPacket({
             prompt: resolvedPrompt,
             style,
+            sourceMode: options.styleSource,
             details: [
               `Model preference if direct image generation is used: ${options.model}`,
               `Requested size: ${options.size}`,
@@ -378,6 +414,11 @@ ${formatRegistryListing(styles, "image styles")}`;
           inputFidelity,
           imagePromptStrength,
         });
+
+        if (options.json) {
+          console.log(JSON.stringify(result));
+          return;
+        }
 
         console.log(chalk.green(`✓ Image generated: ${result.url}`));
         console.log(chalk.dim(`  File: ${result.filename}`));

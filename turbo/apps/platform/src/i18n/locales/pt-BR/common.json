@@ -1,0 +1,11 @@
+{
+  "settings": {
+    "preferences": {
+      "language": {
+        "description": "Escolha seu idioma preferido para a interface do {{brandName}}",
+        "label": "Idioma",
+        "title": "Idioma"
+      }
+    }
+  }
+}

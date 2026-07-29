@@ -17,7 +17,7 @@ import {
   IconFlask,
   IconCoins,
 } from "@tabler/icons-react";
-import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
+import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import {
   DropdownMenu,
   DropdownMenuTrigger,
@@ -634,11 +634,14 @@ export function AccountDropdown({
     detach(
       clerk?.setActive({
         session: sessionId,
-        beforeEmit: () => {
+        navigate: ({ session, decorateUrl }) => {
           // Navigate to "/" rather than reloading the current URL: the new
           // account may not have access to the current route (e.g. an org
           // scoped chat/agent id), which would otherwise render as 404.
-          window.location.href = "/";
+          const destination = session.currentTask
+            ? `/sign-in/tasks/${session.currentTask.key}`
+            : "/";
+          window.location.href = decorateUrl(destination);
         },
       }),
       Reason.DomCallback,

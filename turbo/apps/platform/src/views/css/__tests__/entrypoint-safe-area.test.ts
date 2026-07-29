@@ -90,7 +90,7 @@ describe("platform entrypoint safe area behavior", () => {
       /#root\s*{[\s\S]*box-sizing:\s*border-box;[\s\S]*background-color:\s*hsl\(var\(--background\)\);[\s\S]*padding:\s*var\(--sat\)\s+var\(--sar\)\s+var\(--sab-raw\)\s+var\(--sal\);/,
     );
     expect(globalCss).toMatch(
-      /@media\s*\(display-mode:\s*standalone\)\s*{[\s\S]*#root\s*{\s*position:\s*absolute;\s*overflow-y:\s*auto;\s*}/,
+      /@media\s*\(display-mode:\s*standalone\)\s*{[\s\S]*#root\s*{\s*position:\s*absolute;\s*overflow-y:\s*hidden;\s*}/,
     );
     expect(globalCss.indexOf("position: absolute;")).toBeGreaterThan(
       globalCss.indexOf("position: fixed;"),
@@ -112,13 +112,5 @@ describe("platform entrypoint safe area behavior", () => {
     );
     expect(globalCss).not.toContain("data-keyboard-inset-page");
     expect(globalCss).not.toMatch(/:root\[data-keyboard-open="true"\]\s+#root/);
-  });
-
-  it("keeps artifact fullscreen above app chrome", () => {
-    const globalCss = readGlobalCss();
-
-    expect(globalCss).toMatch(
-      /\.zero-app\[data-zero-artifact-fullscreen="true"\]\s+\.zero-workspace-bg\s*{[\s\S]*z-index:\s*60;[\s\S]*}/,
-    );
   });
 });

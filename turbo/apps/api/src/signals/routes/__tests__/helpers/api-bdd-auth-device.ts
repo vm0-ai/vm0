@@ -5,7 +5,6 @@ import { authContract } from "@vm0/api-contracts/contracts/auth";
 import {
   cliAuthApproveContract,
   cliAuthDeviceContract,
-  cliAuthOrgContract,
   cliAuthTokenContract,
 } from "@vm0/api-contracts/contracts/cli-auth";
 import {
@@ -485,27 +484,6 @@ export function createAuthDeviceApiActions(context: TestContext) {
         }),
         statuses,
       );
-    },
-
-    async requestOrgSwitch(
-      token: string | null,
-      body: { readonly slug: string },
-      statuses: readonly (200 | 400 | 401 | 403 | 404)[],
-    ) {
-      const client = authDeviceApp(context)(cliAuthOrgContract);
-      return await accept(
-        client.switchOrg({
-          headers: token ? { authorization: `Bearer ${token}` } : {},
-          body,
-        }),
-        statuses,
-      );
-    },
-
-    async requestOrgSwitchRaw(token: string, rawBody: string) {
-      return await postRawJson("/api/cli/auth/org", rawBody, {
-        authorization: `Bearer ${token}`,
-      });
     },
 
     async requestTestToken(

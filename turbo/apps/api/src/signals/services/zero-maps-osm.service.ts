@@ -21,7 +21,7 @@ const RENDER_CATEGORY = "osm.render.png";
 const OVERPASS_URL = "https://overpass-api.de/api/interpreter";
 const ATTRIBUTION = "© OpenStreetMap contributors";
 const MAX_BBOX_AREA_SQUARE_METERS = 50_000_000;
-const MAX_MERCATOR_LATITUDE = 85.051_129;
+const MAX_MERCATOR_LATITUDE = 85.051129;
 const MAX_FEATURES = 2500;
 
 interface AuthedMapsArgs<TBody> {

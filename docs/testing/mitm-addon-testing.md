@@ -31,7 +31,10 @@ uv sync --locked
 ```
 
 `uv sync --locked` installs the development and test dependency groups into
-`.venv` without changing `uv.lock`.
+`.venv` without changing `uv.lock`. It also selects the exact interpreter from
+`.python-version`, which matches the Python patch embedded in the pinned
+mitmproxy standalone runtime. The package metadata, Ruff, and BasedPyright
+retain Python 3.12 as the supported source-compatibility floor.
 
 ## Running Tests
 
@@ -91,18 +94,21 @@ tests must not resolve a different mitmproxy version from production.
 | ------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------- |
 | `test_addon_configuration.py`                           | Addon option registration and configuration updates                                                                  |
 | `test_builtin_host_policy_contract.py`                  | Cross-stage malformed built-in host policy contracts                                                                 |
-| `test_connection_endpoints.py`                          | Connection endpoint shape validation and IPv6 tuple normalization                                                     |
+| `test_connection_endpoints.py`                          | Connection endpoint shape validation and IPv6 tuple normalization                                                    |
 | `test_request_handler_passthrough.py`                   | Request pass-through, auto-allow, and browser user-agent passthrough decisions                                       |
-| `test_request_handler_authority_validation.py`          | HTTPS authority validation before firewall auth                                                                      |
+| `test_request_handler_authority_validation.py`          | Request-hook Host/SNI/`:authority` validation and denial effects                                                     |
+| `test_request_handler_builtin_host_policy.py`           | Request-hook runtime built-in host-policy enforcement and compiled-policy reuse                                      |
+| `test_request_handler_connector_admission.py`           | Request-hook connector destination admission, TLS evidence, test-endpoint bypass, and API binding interaction        |
+| `test_request_handler_api_admission.py`                 | Request-hook platform API destination admission and binding                                                          |
 | `test_request_handler_firewall_dispatch.py`             | Core firewall dispatch, permission blocks, malformed config/policy handling, block responses, and unsafe-path blocks |
 | `test_request_handler_public_destination.py`            | Request-hook public destination validation and revalidation                                                          |
 | `test_request_handler_connector_diagnostics.py`         | Request-hook connector diagnostics and inactive built-in connector diagnostics                                       |
 | `test_request_handler_auth_base_body.py`                | Request-hook auth-base body admission and cleanup                                                                    |
-| `test_request_headers_streaming.py`                     | Requestheaders stream installation, body framing, buffering, and probe cleanup                                        |
+| `test_request_headers_streaming.py`                     | Requestheaders stream installation, body framing, buffering, and probe cleanup                                       |
 | `test_request_headers_api_admission.py`                 | Requestheaders platform API destination admission and binding                                                        |
-| `test_request_headers_connector_admission.py`           | Requestheaders connector destination admission, TLS evidence, and binding                                             |
+| `test_request_headers_connector_admission.py`           | Requestheaders connector destination admission, TLS evidence, and binding                                            |
 | `test_request_headers_firewall_auth.py`                 | Requestheaders stream-safe firewall auth, connector intent, fallback, and cancellation cleanup                       |
-| `test_mitmproxy_request_framing.py`                     | HTTP/2 request framing through mitmproxy's state machine and real addon hook dispatch                                 |
+| `test_mitmproxy_request_framing.py`                     | HTTP/2 request framing through mitmproxy's state machine and real addon hook dispatch                                |
 | `test_request_handler_usage_tracking.py`                | Request-hook billable usage tracking lifecycle                                                                       |
 | `test_response_headers_handler.py`                      | Response-header hook stream setup                                                                                    |
 | `test_response_handler_connector_diagnostics.py`        | Response-hook connector diagnostic replacement and streaming lifecycle                                               |
@@ -117,7 +123,11 @@ tests must not resolve a different mitmproxy version from production.
 | `test_registry_loading.py`                              | Registry loading, parsing, unavailable-state, and cache behavior                                                     |
 | `test_registry_auth_cache_eviction.py`                  | Registry-driven auth-cache ownership and eviction behavior                                                           |
 | `test_registry_context.py`                              | VM lookup and public compiled context API behavior                                                                   |
-| `test_registry_builtin_cache.py`                        | Registry built-in firewall resolution and compiled-core cache behavior                                               |
+| `test_registry_builtin_catalog_resolution.py`           | Built-in catalog resolution and resolver contracts                                                                   |
+| `test_registry_builtin_snapshot.py`                     | Built-in catalog snapshot identity and invalidation                                                                  |
+| `test_registry_builtin_catalog_validation.py`           | Built-in catalog payload and file-trust validation                                                                   |
+| `test_registry_builtin_core_cache.py`                   | Compiled built-in core reuse, scoping, pruning, and lifecycle                                                        |
+| `test_registry_inline_firewalls.py`                     | Inline registry firewall behavior outside the built-in catalog cache                                                 |
 | `test_registry_builtin_base_url_vars.py`                | Registry built-in base URL variable resolution and validation                                                        |
 | `test_registry_context_state.py`                        | Registry compiled context reload, unavailable-state, and malformed-shape behavior                                    |
 | `test_matching_path.py`                                 | Low-level firewall path matching                                                                                     |
@@ -166,12 +176,18 @@ tests must not resolve a different mitmproxy version from production.
 | `test_openai_responses_event_json.py`                   | OpenAI Responses event JSON usage extraction and merge behavior                                                      |
 | `test_openai_responses_json.py`                         | OpenAI Responses non-SSE JSON usage extraction                                                                       |
 | `test_openai_responses_sse.py`                          | OpenAI Responses SSE usage extraction                                                                                |
-| `test_response_streaming.py`                            | Response streaming parser setup                                                                                      |
+| `test_response_stream_buffering.py`                     | Response-stream callback byte counting and bounded capture-buffer retention                                          |
+| `test_response_encoding_inspection_risk.py`             | Response decoder admission and non-streamable encoding risk diagnostics                                              |
+| `test_x_response_parsers.py`                            | X connector NDJSON and JSON response parser state and finalization                                                   |
+| `test_model_provider_response_parser_setup.py`          | Model-provider JSON and SSE response parser selection, feeding, and finalization                                     |
+| `test_response_stream_state_release.py`                 | Direct response-stream state release, idempotency, and callback ownership                                            |
 | `test_model_provider_json_fallback.py`                  | Model provider buffered JSON fallback usage pipeline                                                                 |
 | `test_model_provider_json_streaming.py`                 | Model provider streaming JSON response usage pipeline                                                                |
 | `test_model_provider_sse_usage.py`                      | Model provider SSE usage pipeline                                                                                    |
 | `test_model_provider_websocket_usage.py`                | Model provider WebSocket usage reporting and source reconciliation                                                   |
 | `test_model_provider_websocket_lifecycle.py`            | Model provider WebSocket HTTP upgrade and terminal usage lifecycle                                                   |
+| `test_codex_output_timing.py`                           | Default Codex provider-output timing observations over WebSocket                                                     |
+| `test_claude_output_timing.py`                          | Claude Code provider-output lifecycle timing over Anthropic SSE                                                      |
 | `test_websocket_retention.py`                           | Registered WebSocket message retention and cleanup                                                                   |
 | `test_model_provider_websocket_metadata.py`             | Model provider WebSocket usage metadata parsing                                                                      |
 | `test_model_provider_usage.py`                          | Model provider usage reporter                                                                                        |
@@ -216,6 +232,7 @@ phases:
 
 ```python
 import flow_metadata_keys as metadata_keys
+import http_network_log
 
 
 def test_firewall_response_logs_context(tmp_path, real_flow, mitm_ctx):
@@ -228,10 +245,20 @@ def test_firewall_response_logs_context(tmp_path, real_flow, mitm_ctx):
             metadata_keys.FIREWALL_ACTION: "ALLOW",
         }
     )
+    http_network_log.set_target(
+        flow,
+        url="https://api.github.com/repos",
+        host="api.github.com",
+        port=443,
+    )
 
     with mitm_ctx():
         mitm_addon.response(flow)
 ```
+
+Tests that enter `response()` or `error()` directly with a nonempty network log
+path must seed the typed network-log target established by request
+classification. Missing target metadata is an invariant violation.
 
 Do not hand-build `MagicMock` HTTP flows for addon hook tests. Mocks and stubs
 are still appropriate at real external boundaries such as `mitmproxy.ctx`,

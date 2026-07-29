@@ -10,7 +10,7 @@ import { HttpResponse, http } from "msw";
 import { delay } from "signal-timers";
 import { describe, expect, it, onTestFinished } from "vitest";
 
-import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
+import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 
 import { mockOptionalEnv } from "../../../lib/env";
 import {
@@ -18,6 +18,7 @@ import {
   type SecretKmsClient,
 } from "../../../lib/secret-kms-client";
 import { now } from "../../../lib/time";
+import { installApiTestConnectorCatalog } from "../../../test-fixtures/connector-catalog";
 import { seedOrgMetadata } from "../../../test-fixtures/system-config-seeds";
 import { testContext } from "../../../__tests__/test-context";
 import { server } from "../../../mocks/server";
@@ -1321,8 +1322,8 @@ describe("FW-4: connector refresh and replacement snapshots", () => {
     const connectorsApi = createConnectorBddApi(context);
     const { actor, headers } = await firewallRun();
     await connectorsApi.connectManualGrant(actor, "lark", "api-token", {
-      LARK_APP_ID: "lark-app-id",
-      LARK_APP_SECRET: "lark-app-secret",
+      appId: "lark-app-id",
+      appSecret: "lark-app-secret",
     });
     server.use(
       http.post(
@@ -1423,9 +1424,9 @@ describe("FW-6: manual-grant api-token refresh without a provider client", () =>
       [FeatureSwitchKey.TestOauthConnector]: true,
     });
     await connectorsApi.connectManualGrant(actor, "test-oauth", "api-token", {
-      TEST_OAUTH_TOKEN: "manual-secret",
-      TEST_OAUTH_API_TOKEN_INPUT_VAR: "manual-var",
-      TEST_OAUTH_API_TENANT_ID: "tenant-x",
+      apiToken: "manual-secret",
+      inputVariable: "manual-var",
+      tenantId: "tenant-x",
     });
 
     const before = Math.floor(now() / 1000);
@@ -2106,6 +2107,7 @@ describe("FW-10: platform connector secrets", () => {
       refreshToken: "google-ads-refresh",
     });
     mockOptionalEnv("GOOGLE_ADS_DEVELOPER_TOKEN", undefined);
+    await installApiTestConnectorCatalog();
 
     const missing = await fw.requestFirewallAuth(
       headers,
@@ -2211,6 +2213,7 @@ describe("FW-10: platform connector secrets", () => {
     const fw = createFirewallApi(context);
     const { headers } = await firewallRun();
     mockOptionalEnv("GOOGLE_ADS_DEVELOPER_TOKEN", undefined);
+    await installApiTestConnectorCatalog();
 
     const resolved = await fw.requestFirewallAuth(
       headers,

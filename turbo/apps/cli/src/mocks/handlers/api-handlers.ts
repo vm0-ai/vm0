@@ -1,24 +1,13 @@
 import { http, HttpResponse } from "msw";
 import {
-  CONNECTOR_TYPE_KEYS,
-  CONNECTOR_TYPES,
-  type ConnectorAuthMethodConfig,
-  connectorRegistryAuthMethodIdSchema,
-  type ConnectorRegistryAuthMethodId,
-  type ConnectorType,
-} from "@vm0/connectors/connectors";
+  connectorAuthMethodIdSchema,
+  type ConnectorAuthMethodId,
+} from "@vm0/api-contracts/contracts/connector-identity";
 import type {
   PublicConnectorCatalogAuthMethodDetail,
   PublicConnectorCatalogItem,
   PublicConnectorCatalogStatusItem,
 } from "@vm0/api-contracts/contracts/zero-connector-catalog";
-import {
-  getAvailableConnectorAuthMethodIds,
-  getConnectorAuthMethod,
-  getConnectorGenerationTypes,
-  getConnectorTags,
-} from "@vm0/connectors/connector-utils";
-import { getStaticConnectorIconMetadata } from "@vm0/connectors/static-connector-icons";
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
@@ -26,8 +15,8 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 function isConnectorAuthMethodId(
   value: unknown,
-): value is ConnectorRegistryAuthMethodId {
-  return connectorRegistryAuthMethodIdSchema.safeParse(value).success;
+): value is ConnectorAuthMethodId {
+  return connectorAuthMethodIdSchema.safeParse(value).success;
 }
 
 function defaultPermissionSummary() {
@@ -39,107 +28,50 @@ function defaultPermissionSummary() {
   };
 }
 
-function defaultManualFieldsForCatalog(
-  method: ConnectorAuthMethodConfig,
-): PublicConnectorCatalogAuthMethodDetail["manualFields"] {
-  if (method.grant.kind !== "manual") {
-    return [];
-  }
-  return Object.values(method.grant.fields).map((field) => {
-    return {
-      id: field.publicId,
-      label: field.label,
-      required: field.required,
-      placeholder: field.placeholder ?? null,
-      inputType: field.storage === "variable" ? "text" : "password",
-    };
-  });
-}
-
-function defaultStartOptionsForCatalog(
-  method: ConnectorAuthMethodConfig,
-): PublicConnectorCatalogAuthMethodDetail["startOptions"] {
-  if (method.grant.kind !== "device-auth") {
-    return [];
-  }
-  return Object.values(method.grant.startOptions ?? {}).map((option) => {
-    return {
-      id: option.publicId,
-      kind: option.kind,
-      label: option.label,
-      required: option.required,
-      defaultValue: option.defaultValue ?? null,
-      options: option.options.map((choice) => {
-        return { value: choice.value, label: choice.label };
-      }),
-    };
-  });
-}
-
-function defaultCatalogAuthMethods(
-  type: ConnectorType,
-): PublicConnectorCatalogAuthMethodDetail[] {
-  return getAvailableConnectorAuthMethodIds(type, {}).flatMap((authMethod) => {
-    const method = getConnectorAuthMethod(type, authMethod);
-    if (!method) return [];
-    return [
-      {
-        id: authMethod,
-        label: method.label,
-        description: null,
-        grantKind: method.grant.kind,
-        manualFields: defaultManualFieldsForCatalog(method),
-        startOptions: defaultStartOptionsForCatalog(method),
-      },
-    ];
-  });
-}
-
-function defaultPublicCatalogItem(
-  type: ConnectorType,
-): PublicConnectorCatalogItem | null {
-  const authMethods = defaultCatalogAuthMethods(type);
-  if (authMethods.length === 0) {
-    return null;
-  }
-  const config = CONNECTOR_TYPES[type];
+function authCodeMethod(): PublicConnectorCatalogAuthMethodDetail {
   return {
-    connectorRef: type,
-    label: config.label,
-    description: config.helpText,
-    icon: getStaticConnectorIconMetadata(type),
-    category: config.category,
-    generation: [...getConnectorGenerationTypes(type)],
-    tags: [...getConnectorTags(type)],
-    authMethods: authMethods.map((authMethod) => {
-      return {
-        id: authMethod.id,
-        label: authMethod.label,
-        description: authMethod.description,
-        grantKind: authMethod.grantKind,
-      };
-    }),
-    permissionSummary: defaultPermissionSummary(),
+    id: "oauth",
+    label: "OAuth",
+    description: "Sign in to grant access.",
+    grantKind: "auth-code",
+    manualFields: [],
+    startOptions: [],
   };
 }
 
-function defaultPublicCatalog() {
-  return CONNECTOR_TYPE_KEYS.flatMap((type) => {
-    const item = defaultPublicCatalogItem(type);
-    return item ? [item] : [];
-  });
+function manualMethod(
+  fields: PublicConnectorCatalogAuthMethodDetail["manualFields"],
+): PublicConnectorCatalogAuthMethodDetail {
+  return {
+    id: "api-token",
+    label: "API Token",
+    description: "Enter API credentials.",
+    grantKind: "manual",
+    manualFields: fields,
+    startOptions: [],
+  };
 }
 
-function defaultPublicCatalogStatusItem(
-  type: ConnectorType,
-): PublicConnectorCatalogStatusItem | null {
-  const item = defaultPublicCatalogItem(type);
-  if (!item) {
-    return null;
-  }
+function defaultPublicCatalogStatusItem(args: {
+  readonly connectorRef: string;
+  readonly label: string;
+  readonly description: string;
+  readonly tags?: readonly string[];
+  readonly authMethods?: readonly PublicConnectorCatalogAuthMethodDetail[];
+}): PublicConnectorCatalogStatusItem {
   return {
-    ...item,
-    authMethods: defaultCatalogAuthMethods(type),
+    connectorRef: args.connectorRef,
+    label: args.label,
+    description: args.description,
+    icon: {
+      url: `https://icons.example.test/${args.connectorRef}.svg`,
+      invertInDarkMode: false,
+    },
+    category: "test-connectors",
+    generation: [],
+    tags: [...(args.tags ?? [])],
+    authMethods: [...(args.authMethods ?? [authCodeMethod()])],
+    permissionSummary: defaultPermissionSummary(),
     connection: null,
     connected: false,
     connectionStatus: "not-connected",
@@ -151,16 +83,115 @@ function defaultPublicCatalogStatusItem(
   };
 }
 
-function defaultPublicCatalogStatus() {
-  return CONNECTOR_TYPE_KEYS.flatMap((type) => {
-    const item = defaultPublicCatalogStatusItem(type);
-    return item ? [item] : [];
+const tokenField = {
+  id: "apiKey",
+  label: "API Key",
+  required: true,
+  placeholder: null,
+  inputType: "password",
+} as const;
+
+const defaultPublicCatalogStatus = [
+  defaultPublicCatalogStatusItem({
+    connectorRef: "github",
+    label: "GitHub",
+    description: "Access GitHub repositories.",
+    tags: ["vcs", "api"],
+  }),
+  defaultPublicCatalogStatusItem({
+    connectorRef: "gitlab",
+    label: "GitLab",
+    description: "Access GitLab repositories.",
+    tags: ["vcs"],
+  }),
+  defaultPublicCatalogStatusItem({
+    connectorRef: "microsoft-365",
+    label: "Microsoft 365",
+    description: "Access Microsoft 365 collaboration tools.",
+    tags: ["chat"],
+  }),
+  defaultPublicCatalogStatusItem({
+    connectorRef: "slack",
+    label: "Slack",
+    description: "Send Slack messages.",
+    tags: ["chat"],
+  }),
+  defaultPublicCatalogStatusItem({
+    connectorRef: "chatwoot",
+    label: "Chatwoot",
+    description: "Manage customer conversations.",
+  }),
+  defaultPublicCatalogStatusItem({
+    connectorRef: "openai",
+    label: "OpenAI",
+    description: "Access the OpenAI API.",
+    tags: ["chatgpt", "api"],
+    authMethods: [manualMethod([tokenField])],
+  }),
+  defaultPublicCatalogStatusItem({
+    connectorRef: "stripe",
+    label: "Stripe",
+    description: "Manage payments through the Stripe API.",
+    tags: ["api", "payments"],
+    authMethods: [authCodeMethod(), manualMethod([tokenField])],
+  }),
+  defaultPublicCatalogStatusItem({
+    connectorRef: "zendesk",
+    label: "Zendesk",
+    description: "Manage support data through the Zendesk API.",
+    tags: ["api", "support"],
+    authMethods: [
+      manualMethod([
+        {
+          id: "apiToken",
+          label: "API Token",
+          required: true,
+          placeholder: null,
+          inputType: "password",
+        },
+        {
+          id: "subdomain",
+          label: "Subdomain",
+          required: true,
+          placeholder: null,
+          inputType: "text",
+        },
+        {
+          id: "email",
+          label: "Email",
+          required: true,
+          placeholder: null,
+          inputType: "text",
+        },
+      ]),
+    ],
+  }),
+] satisfies readonly PublicConnectorCatalogStatusItem[];
+
+function defaultPublicCatalog(): PublicConnectorCatalogItem[] {
+  return defaultPublicCatalogStatus.map((item) => {
+    return {
+      connectorRef: item.connectorRef,
+      label: item.label,
+      description: item.description,
+      icon: item.icon,
+      category: item.category,
+      generation: [...item.generation],
+      tags: [...item.tags],
+      authMethods: item.authMethods.map((authMethod) => {
+        return {
+          id: authMethod.id,
+          label: authMethod.label,
+          description: authMethod.description,
+          grantKind: authMethod.grantKind,
+        };
+      }),
+      permissionSummary: item.permissionSummary,
+    };
   });
 }
 
-function manualGrantAuthMethodFromBody(
-  body: unknown,
-): ConnectorRegistryAuthMethodId {
+function manualGrantAuthMethodFromBody(body: unknown): ConnectorAuthMethodId {
   if (isRecord(body) && isConnectorAuthMethodId(body.authMethod)) {
     return body.authMethod;
   }
@@ -169,7 +200,7 @@ function manualGrantAuthMethodFromBody(
 
 function connectorManualGrantResponse(
   type: string,
-  authMethod: ConnectorRegistryAuthMethodId,
+  authMethod: ConnectorAuthMethodId,
 ) {
   return {
     id: "00000000-0000-4000-8000-000000000001",
@@ -233,19 +264,19 @@ export const apiHandlers = [
   // GET /api/zero/connector-catalog/status - public catalog with connection status
   http.get("http://localhost:3000/api/zero/connector-catalog/status", () => {
     return HttpResponse.json(
-      { connectors: defaultPublicCatalogStatus() },
+      { connectors: defaultPublicCatalogStatus },
       { status: 200 },
     );
   }),
   http.get("https://app.vm0.ai/api/zero/connector-catalog/status", () => {
     return HttpResponse.json(
-      { connectors: defaultPublicCatalogStatus() },
+      { connectors: defaultPublicCatalogStatus },
       { status: 200 },
     );
   }),
   http.get("https://www.vm0.ai/api/zero/connector-catalog/status", () => {
     return HttpResponse.json(
-      { connectors: defaultPublicCatalogStatus() },
+      { connectors: defaultPublicCatalogStatus },
       { status: 200 },
     );
   }),

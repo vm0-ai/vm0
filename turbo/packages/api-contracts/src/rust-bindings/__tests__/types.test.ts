@@ -10,12 +10,7 @@ import {
   type RustTypeBinding,
   rustTypeBindings,
 } from "../types";
-import {
-  artifactEntrySchema,
-  legacyStorageManifestSchema,
-  storageEntrySchema,
-  storageMountEntrySchema,
-} from "../../contracts/runners";
+import { storageMountEntrySchema } from "../../contracts/runners";
 import { fileEntryWithHashSchema } from "../../contracts/storages";
 import {
   webhookCheckpointsContract,
@@ -26,17 +21,7 @@ import {
 const expectedBindings = [
   {
     rustModulePath: ["runners", "storage"],
-    rustTypeName: "ArtifactEntry",
-    direction: "response",
-  },
-  {
-    rustModulePath: ["runners", "storage"],
-    rustTypeName: "StorageEntry",
-    direction: "response",
-  },
-  {
-    rustModulePath: ["runners", "storage"],
-    rustTypeName: "StorageManifest",
+    rustTypeName: "ArtifactEntryMissingRootPolicy",
     direction: "response",
   },
   {
@@ -206,9 +191,6 @@ describe("Rust type bindings", () => {
     ).toHaveLength(2);
     expect(firstRender).not.toContain("pub struct RequestFile {");
     expect(firstRender).toContain("pub uploads: Option<ResponseUploads>,");
-    expect(firstRender).toContain("pub struct StorageManifest {");
-    expect(firstRender).toContain("pub storages: Vec<StorageEntry>,");
-    expect(firstRender).toContain("pub artifacts: Vec<ArtifactEntry>,");
     expect(firstRender).toContain("pub struct StorageMountEntry {");
     expect(firstRender).toContain("pub storage_id: String,");
     expect(firstRender).toContain("pub version_id: String,");
@@ -242,7 +224,7 @@ describe("Rust type bindings", () => {
       "pub versions: std::collections::BTreeMap<String, String>,",
     );
     expect(firstRender.match(/pub archive_size: Option<u64>,/g)).toHaveLength(
-      3,
+      1,
     );
   });
 
@@ -256,28 +238,6 @@ describe("Rust type bindings", () => {
           enum: ["fail", "preserveParentVersion"],
         },
         writeback: { type: "boolean" },
-      },
-    });
-  });
-
-  it("keeps storage manifest field overrides aligned with entry schemas", () => {
-    const manifestSchema = z.toJSONSchema(legacyStorageManifestSchema);
-    const storageSchema = { ...z.toJSONSchema(storageEntrySchema) };
-    const artifactSchema = { ...z.toJSONSchema(artifactEntrySchema) };
-    delete storageSchema.$schema;
-    delete artifactSchema.$schema;
-
-    expect(manifestSchema).toMatchObject({
-      required: ["storages", "artifacts"],
-      properties: {
-        storages: {
-          type: "array",
-          items: storageSchema,
-        },
-        artifacts: {
-          type: "array",
-          items: artifactSchema,
-        },
       },
     });
   });
@@ -305,7 +265,7 @@ describe("Rust type bindings", () => {
 
   it("keeps checkpoint policy override aligned with the runner policy schema", () => {
     const runnerPolicySchema = z.toJSONSchema(
-      artifactEntrySchema.shape.missingRootPolicy,
+      storageMountEntrySchema.shape.missingRootPolicy,
     );
     const checkpointPolicySchema = z.toJSONSchema(
       webhookCheckpointsContract.create.body.shape.artifactSnapshots.unwrap()
@@ -385,21 +345,21 @@ describe("Rust type bindings", () => {
     const rendered = renderExampleRustTypes([
       validBinding({
         schema: z.object({
-          storageType: z.enum(["volume", "artifact"]),
+          deliveryMode: z.enum(["stream", "batch"]),
         }),
         fieldTypeOverrides: {
-          storageType: "String",
+          deliveryMode: "String",
         },
         declarations: [
           requestDeclaration({
-            storageType: ["Storage type."],
+            deliveryMode: ["Delivery mode."],
           }),
         ],
       }),
     ]);
 
-    expect(rendered).toContain("pub storage_type: String,");
-    expect(rendered).not.toContain("pub enum RequestStorageType");
+    expect(rendered).toContain("pub delivery_mode: String,");
+    expect(rendered).not.toContain("pub enum RequestDeliveryMode");
   });
 
   it("renames Rust keyword fields", () => {

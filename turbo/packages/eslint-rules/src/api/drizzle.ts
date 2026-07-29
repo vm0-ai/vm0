@@ -4,6 +4,19 @@ import {
   type TSESTree,
 } from "@typescript-eslint/utils";
 import {
+  isAsExpression,
+  isCallExpression,
+  isIdentifier,
+  isNonNullExpression,
+  isObjectLiteralExpression,
+  isParenthesizedExpression,
+  isPropertyAccessExpression,
+  isPropertyAssignment,
+  isSatisfiesExpression,
+  isTypeAssertionExpression,
+  isVariableDeclaration,
+  isVariableDeclarationList,
+  NodeFlags,
   SymbolFlags,
   TypeFlags,
   type Declaration,
@@ -14,9 +27,20 @@ import {
   type TypeChecker,
 } from "typescript";
 
+function drizzleDeclarationSourcePath(node: Declaration): string {
+  return node.getSourceFile().fileName.replaceAll("\\", "/");
+}
+
 export function isDrizzleDeclaration(node: Declaration): boolean {
-  const sourcePath = node.getSourceFile().fileName.replaceAll("\\", "/");
-  return sourcePath.includes("/node_modules/drizzle-orm/");
+  return drizzleDeclarationSourcePath(node).includes(
+    "/node_modules/drizzle-orm/",
+  );
+}
+
+export function isDrizzlePgCoreDeclaration(node: Declaration): boolean {
+  return drizzleDeclarationSourcePath(node).includes(
+    "/node_modules/drizzle-orm/pg-core/",
+  );
 }
 
 export function resolvedSymbol(
@@ -53,6 +77,152 @@ export function isNamedDrizzleSignature(
     declaration.name?.getText() === name &&
     isDrizzleDeclaration(declaration)
   );
+}
+
+function unwrapTransparentExpression(node: Node): Node {
+  let current = node;
+  while (
+    isAsExpression(current) ||
+    isNonNullExpression(current) ||
+    isParenthesizedExpression(current) ||
+    isSatisfiesExpression(current) ||
+    isTypeAssertionExpression(current)
+  ) {
+    current = current.expression;
+  }
+  return current;
+}
+
+function drizzleExpressionName(
+  checker: TypeChecker,
+  node: Node,
+  visited: Set<TypeScriptSymbol>,
+): string | undefined {
+  const expression = unwrapTransparentExpression(node);
+  if (isIdentifier(expression)) {
+    const symbol = resolvedSymbol(
+      checker,
+      checker.getSymbolAtLocation(expression),
+    );
+    if (symbol === undefined || visited.has(symbol)) {
+      return undefined;
+    }
+    if (isDrizzleSymbol(checker, symbol)) {
+      return symbol.getName();
+    }
+    const declaration = symbol.valueDeclaration;
+    if (
+      declaration === undefined ||
+      !isVariableDeclaration(declaration) ||
+      !isVariableDeclarationList(declaration.parent) ||
+      (declaration.parent.flags & NodeFlags.Const) === 0 ||
+      declaration.initializer === undefined
+    ) {
+      return undefined;
+    }
+    visited.add(symbol);
+    const name = drizzleExpressionName(
+      checker,
+      declaration.initializer,
+      visited,
+    );
+    visited.delete(symbol);
+    return name;
+  }
+  if (isPropertyAccessExpression(expression)) {
+    const symbol = resolvedSymbol(
+      checker,
+      checker.getSymbolAtLocation(expression.name),
+    );
+    return symbol !== undefined && isDrizzleSymbol(checker, symbol)
+      ? symbol.getName()
+      : undefined;
+  }
+  return undefined;
+}
+
+export function drizzleCallName(
+  checker: TypeChecker,
+  node: Node,
+): string | undefined {
+  const expression = unwrapTransparentExpression(node);
+  if (!isCallExpression(expression)) {
+    return undefined;
+  }
+  const declaration = checker.getResolvedSignature(expression)?.declaration;
+  if (declaration === undefined || !isDrizzleDeclaration(declaration)) {
+    return undefined;
+  }
+  return drizzleExpressionName(checker, expression.expression, new Set());
+}
+
+interface DrizzleTableDeclaration {
+  readonly hasSimpleColumnOrder: boolean;
+}
+
+// Write-query linting recognizes normal pgTable(...) and schema.table(...)
+// declarations. Runtime column order is assumed only for inline object literals
+// with identifier-keyed property assignments; other declarations simply skip
+// findings that depend on that order.
+function drizzleTableDeclaration(
+  checker: TypeChecker,
+  node: Node,
+  visited: Set<TypeScriptSymbol>,
+): DrizzleTableDeclaration | undefined {
+  const expression = unwrapTransparentExpression(node);
+  if (isCallExpression(expression)) {
+    const callName = drizzleExpressionName(
+      checker,
+      expression.expression,
+      new Set(),
+    );
+    const columns = expression.arguments[1];
+    if (
+      (callName !== "pgTable" && callName !== "table") ||
+      columns === undefined
+    ) {
+      return undefined;
+    }
+    const definition = unwrapTransparentExpression(columns);
+    return {
+      hasSimpleColumnOrder:
+        isObjectLiteralExpression(definition) &&
+        definition.properties.every((property) => {
+          return isPropertyAssignment(property) && isIdentifier(property.name);
+        }),
+    };
+  }
+  if (!isIdentifier(expression)) {
+    return undefined;
+  }
+  const symbol = resolvedSymbol(
+    checker,
+    checker.getSymbolAtLocation(expression),
+  );
+  if (
+    symbol === undefined ||
+    visited.has(symbol) ||
+    symbol.valueDeclaration === undefined
+  ) {
+    return undefined;
+  }
+  const declaration = symbol.valueDeclaration;
+  if (
+    !isVariableDeclaration(declaration) ||
+    !isVariableDeclarationList(declaration.parent) ||
+    (declaration.parent.flags & NodeFlags.Const) === 0 ||
+    declaration.initializer === undefined
+  ) {
+    return undefined;
+  }
+  visited.add(symbol);
+  const table = drizzleTableDeclaration(
+    checker,
+    declaration.initializer,
+    visited,
+  );
+  visited.delete(symbol);
+  return table;
 }
 
 export function isDrizzleSqlTag(
@@ -169,6 +339,347 @@ export function isDrizzleTableType(
     return (
       isDrizzleWrapperType(checker, member) &&
       drizzleBrand(checker, member, location) === "Table"
+    );
+  });
+}
+
+export interface DrizzleTableColumnMetadata {
+  readonly databaseName: string;
+  readonly hasDefault: boolean;
+  readonly isEmittedOnInsert: boolean;
+  readonly isWritable: boolean;
+  readonly propertyName: string;
+  readonly propertySymbol: TypeScriptSymbol;
+  readonly tableName: string;
+}
+
+export interface DrizzleTableMetadata {
+  readonly columns: ReadonlyMap<string, DrizzleTableColumnMetadata>;
+  readonly hasDirectDeclaration: boolean;
+  readonly hasSimpleColumnOrder: boolean;
+  readonly name: string;
+  readonly schema: string | undefined;
+}
+
+interface DrizzleColumnMetadata {
+  readonly databaseName: string;
+  readonly isEmittedOnInsert: boolean;
+  readonly tableName: string;
+}
+
+function exactStringProperty(
+  checker: TypeChecker,
+  type: Type,
+  name: string,
+  location: Node,
+): string | undefined {
+  const value = propertyType(checker, type, name, location);
+  return value?.isStringLiteral() === true ? value.value : undefined;
+}
+
+function exactBooleanProperty(
+  checker: TypeChecker,
+  type: Type,
+  name: string,
+  location: Node,
+): boolean | undefined {
+  const value = propertyType(checker, type, name, location);
+  if (value === undefined || (value.flags & TypeFlags.BooleanLiteral) === 0) {
+    return undefined;
+  }
+  return checker.isTypeAssignableTo(value, checker.getTrueType());
+}
+
+function concreteDrizzleColumnMetadata(
+  checker: TypeChecker,
+  type: Type,
+  location: Node,
+): (DrizzleColumnMetadata & { readonly hasDefault: boolean }) | undefined {
+  if (
+    !isDrizzleWrapperType(checker, type) ||
+    drizzleBrand(checker, type, location) !== "Column"
+  ) {
+    return undefined;
+  }
+  const metadataType = propertyType(checker, type, "_", location);
+  if (metadataType === undefined) {
+    return undefined;
+  }
+  const databaseName = exactStringProperty(
+    checker,
+    metadataType,
+    "name",
+    location,
+  );
+  const tableName = exactStringProperty(
+    checker,
+    metadataType,
+    "tableName",
+    location,
+  );
+  const hasDefault = exactBooleanProperty(
+    checker,
+    metadataType,
+    "hasDefault",
+    location,
+  );
+  const dialect = exactStringProperty(
+    checker,
+    metadataType,
+    "dialect",
+    location,
+  );
+  const generated = propertyType(checker, metadataType, "generated", location);
+  const generatedType =
+    generated === undefined
+      ? undefined
+      : exactStringProperty(checker, generated, "type", location);
+  const isEmittedOnInsert =
+    generated === undefined
+      ? undefined
+      : (generated.flags & TypeFlags.Undefined) !== 0
+        ? true
+        : generatedType === "always"
+          ? false
+          : generatedType === "byDefault"
+            ? true
+            : undefined;
+  return databaseName === undefined ||
+    tableName === undefined ||
+    hasDefault === undefined ||
+    dialect !== "pg" ||
+    isEmittedOnInsert === undefined
+    ? undefined
+    : { databaseName, hasDefault, isEmittedOnInsert, tableName };
+}
+
+function drizzleColumnMetadata(
+  checker: TypeChecker,
+  type: Type,
+  location: Node,
+): (DrizzleColumnMetadata & { readonly hasDefault: boolean }) | undefined {
+  if (type.isUnion()) {
+    return undefined;
+  }
+  if ((type.flags & TypeFlags.TypeParameter) !== 0) {
+    const constraint = checker.getBaseConstraintOfType(type);
+    return constraint === undefined
+      ? undefined
+      : drizzleColumnMetadata(checker, constraint, location);
+  }
+  return concreteDrizzleColumnMetadata(checker, type, location);
+}
+
+function exactSchemaName(
+  checker: TypeChecker,
+  metadataType: Type,
+  location: Node,
+): string | null | undefined {
+  const schemaType = propertyType(checker, metadataType, "schema", location);
+  if (schemaType === undefined) {
+    return undefined;
+  }
+  if ((schemaType.flags & TypeFlags.Undefined) !== 0) {
+    return null;
+  }
+  return schemaType.isStringLiteral() ? schemaType.value : undefined;
+}
+
+function concreteDrizzleTableMetadata(
+  checker: TypeChecker,
+  type: Type,
+  location: Node,
+): DrizzleTableMetadata | undefined {
+  if (
+    !isDrizzleWrapperType(checker, type) ||
+    drizzleBrand(checker, type, location) !== "Table"
+  ) {
+    return undefined;
+  }
+  const metadataType = propertyType(checker, type, "_", location);
+  if (metadataType === undefined) {
+    return undefined;
+  }
+  const name = exactStringProperty(checker, metadataType, "name", location);
+  const schema = exactSchemaName(checker, metadataType, location);
+  const columnsType = propertyType(checker, metadataType, "columns", location);
+  const insertType = propertyType(
+    checker,
+    metadataType,
+    "inferInsert",
+    location,
+  );
+  if (
+    name === undefined ||
+    schema === undefined ||
+    columnsType === undefined ||
+    insertType === undefined
+  ) {
+    return undefined;
+  }
+  const insertProperties = new Set(
+    checker.getPropertiesOfType(insertType).map((property) => {
+      return property.getName();
+    }),
+  );
+  const columnProperties = checker.getPropertiesOfType(columnsType);
+  const columns = new Map<string, DrizzleTableColumnMetadata>();
+  for (const property of columnProperties) {
+    const propertyName = property.getName();
+    const directProperty = checker.getPropertyOfType(type, propertyName);
+    const column = drizzleColumnMetadata(
+      checker,
+      checker.getTypeOfSymbolAtLocation(property, location),
+      location,
+    );
+    if (directProperty === undefined || column === undefined) {
+      return undefined;
+    }
+    columns.set(column.databaseName, {
+      ...column,
+      isWritable: insertProperties.has(propertyName),
+      propertyName,
+      propertySymbol: resolvedSymbol(checker, directProperty) ?? directProperty,
+    });
+  }
+  return {
+    columns,
+    hasDirectDeclaration: false,
+    hasSimpleColumnOrder: false,
+    name,
+    schema: schema ?? undefined,
+  };
+}
+
+function getDrizzleTableMetadata(
+  checker: TypeChecker,
+  type: Type,
+  location: Node,
+): DrizzleTableMetadata | undefined {
+  if (type.isUnion()) {
+    return undefined;
+  }
+  if ((type.flags & TypeFlags.TypeParameter) !== 0) {
+    const constraint = checker.getBaseConstraintOfType(type);
+    return constraint === undefined
+      ? undefined
+      : getDrizzleTableMetadata(checker, constraint, location);
+  }
+  return concreteDrizzleTableMetadata(checker, type, location);
+}
+
+export function getDrizzleTableMetadataForWrite(
+  checker: TypeChecker,
+  node: Node,
+): DrizzleTableMetadata | undefined {
+  const metadata = getDrizzleTableMetadata(
+    checker,
+    checker.getTypeAtLocation(node),
+    node,
+  );
+  if (metadata === undefined) {
+    return undefined;
+  }
+  const declaration = drizzleTableDeclaration(checker, node, new Set());
+  return declaration === undefined
+    ? metadata
+    : {
+        ...metadata,
+        hasDirectDeclaration: true,
+        hasSimpleColumnOrder: declaration.hasSimpleColumnOrder,
+      };
+}
+
+export function getDrizzleColumnMetadata(
+  checker: TypeChecker,
+  type: Type,
+  location: Node,
+):
+  | Readonly<
+      Omit<
+        DrizzleTableColumnMetadata,
+        "isWritable" | "propertyName" | "propertySymbol"
+      >
+    >
+  | undefined {
+  return drizzleColumnMetadata(checker, type, location);
+}
+
+export function isDrizzleArrayParameter(
+  checker: TypeChecker,
+  services: ParserServicesWithTypeInformation,
+  node: TSESTree.Expression,
+): boolean {
+  if (
+    node.type !== AST_NODE_TYPES.CallExpression ||
+    node.arguments.length === 0 ||
+    node.arguments.some((argument) => {
+      return argument.type === AST_NODE_TYPES.SpreadElement;
+    })
+  ) {
+    return false;
+  }
+  const tsCall = services.esTreeNodeToTSNodeMap.get(node);
+  const signature = checker.getResolvedSignature(tsCall);
+  const argument = node.arguments[0];
+  if (
+    signature === undefined ||
+    !isNamedDrizzleSignature(signature, "param") ||
+    argument === undefined ||
+    argument.type === AST_NODE_TYPES.SpreadElement
+  ) {
+    return false;
+  }
+  const argumentType = checker.getTypeAtLocation(
+    services.esTreeNodeToTSNodeMap.get(argument),
+  );
+  return everyConcreteType(checker, argumentType, (member) => {
+    return checker.isArrayType(member) || checker.isTupleType(member);
+  });
+}
+
+export function isDrizzleSqlType(
+  checker: TypeChecker,
+  type: Type,
+  location: Node,
+): boolean {
+  return everyConcreteType(checker, type, (member) => {
+    return (
+      isDrizzleWrapperType(checker, member) &&
+      drizzleBrand(checker, member, location) === "SQL"
+    );
+  });
+}
+
+export function isDrizzleSelectType(
+  checker: TypeChecker,
+  type: Type,
+  location: Node,
+): boolean {
+  return everyConcreteType(checker, type, (member) => {
+    if (!isDrizzleWrapperType(checker, member)) {
+      return false;
+    }
+    const metadataType = propertyType(checker, member, "_", location);
+    if (metadataType === undefined) {
+      return false;
+    }
+    const dialectType = propertyType(
+      checker,
+      metadataType,
+      "dialect",
+      location,
+    );
+    const selectModeType = propertyType(
+      checker,
+      metadataType,
+      "selectMode",
+      location,
+    );
+    return (
+      dialectType?.isStringLiteral() === true &&
+      dialectType.value === "pg" &&
+      selectModeType !== undefined
     );
   });
 }

@@ -1,10 +1,13 @@
 import { act, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
+import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import { zeroWorkflowsCollectionContract } from "@vm0/api-contracts/contracts/zero-workflows";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { pathname } from "../../../signals/location.ts";
-import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
+import {
+  detachedSetupPage,
+  queryAllByRoleFast,
+} from "../../../__tests__/page-helper.ts";
 import {
   context,
   AGENT_ID,
@@ -231,6 +234,9 @@ describe("chat composer models", () => {
     detachedSetupPage({
       context,
       path: `/agents/${AGENT_ID}/chat`,
+      featureSwitches: {
+        [FeatureSwitchKey.ComposerSkillSubstringSearch]: true,
+      },
     });
 
     const editor = await findComposerEditor();
@@ -258,14 +264,15 @@ describe("chat composer models", () => {
     );
     expect(slashWorkflowMenu).not.toHaveClass("max-h-80");
 
-    await user.keyboard("sales");
+    await user.keyboard("ReSeArCh");
 
     await waitFor(() => {
       expect(screen.queryByText("support-escalation")).not.toBeInTheDocument();
     });
-    const matchedPrefix = screen.getByText("sales", { selector: "span" });
-    expect(matchedPrefix).toHaveClass("text-primary/60");
-    expect(screen.getByText("-research")).toBeInTheDocument();
+    const matchedSubstring = screen.getByText("research", {
+      selector: "span",
+    });
+    expect(matchedSubstring).toHaveClass("text-primary/60");
 
     await user.keyboard("{Enter}");
 
@@ -280,6 +287,138 @@ describe("chat composer models", () => {
         return element.tagName.toLowerCase() === "span";
       });
     expect(highlightedWorkflow).toHaveClass("text-primary");
+  });
+
+  it("keeps slash skill substring matching behind the feature switch", async () => {
+    const user = userEvent.setup({ delay: null });
+    mockOrgModelRoutes("kimi-k2.7-code");
+    mockAgent();
+    context.mocks.api(zeroWorkflowsCollectionContract.list, ({ respond }) => {
+      return respond(200, [
+        workflowSummary({
+          name: "sales-research",
+          displayName: "Sales Research",
+          description: "Find account context before outreach",
+          agentId: AGENT_ID,
+        }),
+        workflowSummary({
+          name: "research-assistant",
+          displayName: "Research Assistant",
+          description: "Research a topic from the beginning",
+          agentId: AGENT_ID,
+        }),
+      ]);
+    });
+
+    detachedSetupPage({
+      context,
+      path: `/agents/${AGENT_ID}/chat`,
+      featureSwitches: {
+        [FeatureSwitchKey.ComposerSkillSubstringSearch]: false,
+      },
+    });
+
+    const editor = await findComposerEditor();
+    await user.click(editor);
+    await user.keyboard("/ReSeArCh");
+
+    const slashWorkflowMenu = await screen.findByTestId("slash-workflow-menu");
+    expect(slashWorkflowMenu).toHaveTextContent("/research-assistant");
+    expect(slashWorkflowMenu).not.toHaveTextContent("/sales-research");
+  });
+
+  it("prioritizes prefix matches in slash skill substring search", async () => {
+    const user = userEvent.setup({ delay: null });
+    mockOrgModelRoutes("kimi-k2.7-code");
+    mockAgent();
+    context.mocks.api(zeroWorkflowsCollectionContract.list, ({ respond }) => {
+      return respond(200, [
+        workflowSummary({
+          name: "dummy-pr-to-release",
+          displayName: "Dummy PR to Release",
+          description: null,
+          agentId: AGENT_ID,
+        }),
+        workflowSummary({
+          name: "release-production",
+          displayName: "Release Production",
+          description: null,
+          agentId: AGENT_ID,
+        }),
+        workflowSummary({
+          name: "prepare-release-notes",
+          displayName: "Prepare Release Notes",
+          description: null,
+          agentId: AGENT_ID,
+        }),
+        workflowSummary({
+          name: "release-staging",
+          displayName: "Release Staging",
+          description: null,
+          agentId: AGENT_ID,
+        }),
+      ]);
+    });
+
+    detachedSetupPage({
+      context,
+      path: `/agents/${AGENT_ID}/chat`,
+      featureSwitches: {
+        [FeatureSwitchKey.ComposerSkillSubstringSearch]: true,
+      },
+    });
+
+    const editor = await findComposerEditor();
+    await user.click(editor);
+    await user.keyboard("/ReLeAsE");
+
+    const slashWorkflowMenu = await screen.findByTestId("slash-workflow-menu");
+    expect(
+      queryAllByRoleFast("button", slashWorkflowMenu).map((option) => {
+        return option.textContent;
+      }),
+    ).toStrictEqual([
+      "/release-production",
+      "/release-staging",
+      "/dummy-pr-to-release",
+      "/prepare-release-notes",
+    ]);
+
+    await user.keyboard("{Enter}");
+
+    await waitFor(() => {
+      expect(editor.textContent).toContain("/release-production");
+    });
+  });
+
+  it("does not highlight workflow names inside URLs", async () => {
+    const user = userEvent.setup({ delay: null });
+    mockOrgModelRoutes("kimi-k2.7-code");
+    mockAgent();
+    context.mocks.api(zeroWorkflowsCollectionContract.list, ({ respond }) => {
+      return respond(200, [
+        workflowSummary({
+          name: "pr-review",
+          displayName: "PR Review",
+          description: "Review a pull request",
+          agentId: AGENT_ID,
+        }),
+      ]);
+    });
+
+    detachedSetupPage({
+      context,
+      path: `/agents/${AGENT_ID}/chat`,
+    });
+
+    const editor = await findComposerEditor();
+    await user.click(editor);
+    await user.keyboard("https://www.vm0.ai/en/use-cases/pr-review");
+
+    expect(editor).toHaveTextContent(
+      "https://www.vm0.ai/en/use-cases/pr-review",
+    );
+    expect(editor.querySelector("span.text-primary")).not.toBeInTheDocument();
   });
 
   it("inserts a current-agent chat thread mention chip from @ suggestions", async () => {
@@ -305,9 +444,6 @@ describe("chat composer models", () => {
     detachedSetupPage({
       context,
       path: `/chats/${THREAD_ID}`,
-      featureSwitches: {
-        [FeatureSwitchKey.ComposerChatThreadSuggestions]: true,
-      },
     });
 
     const editor = await findComposerEditor();
@@ -348,9 +484,6 @@ describe("chat composer models", () => {
     detachedSetupPage({
       context,
       path: `/chats/${THREAD_ID}`,
-      featureSwitches: {
-        [FeatureSwitchKey.ComposerChatThreadSuggestions]: true,
-      },
     });
 
     const editor = await findComposerEditor();
@@ -370,41 +503,7 @@ describe("chat composer models", () => {
     });
   });
 
-  it("keeps @ chat thread suggestions behind the feature switch", async () => {
-    const user = userEvent.setup({ delay: null });
-    mockOrgModelRoutes("kimi-k2.7-code");
-    mockAgent();
-    mockThread();
-    mockComposerThreadSnapshot([
-      { id: THREAD_ID, agentId: AGENT_ID, title: "My thread" },
-      {
-        id: SUGGESTED_THREAD_ID,
-        agentId: AGENT_ID,
-        title: "Project Alpha",
-      },
-    ]);
-
-    detachedSetupPage({
-      context,
-      path: `/chats/${THREAD_ID}`,
-      featureSwitches: {
-        [FeatureSwitchKey.ComposerChatThreadSuggestions]: false,
-      },
-    });
-
-    const editor = await findComposerEditor();
-    await user.click(editor);
-    await user.keyboard("@alpha");
-
-    await waitFor(() => {
-      expect(editor).toHaveTextContent("@alpha");
-      expect(
-        screen.queryByTestId("chat-thread-suggestion-menu"),
-      ).not.toBeInTheDocument();
-    });
-  });
-
-  it("shows a workflow created in the current chat without a page refresh", async () => {
+  it("reloads workflow suggestions and highlights without remounting the composer", async () => {
     const user = userEvent.setup({ delay: null });
     let workflows: ReturnType<typeof workflowSummary>[] = [];
     mockOrgModelRoutes("kimi-k2.7-code");
@@ -451,6 +550,171 @@ describe("chat composer models", () => {
     await expect(
       screen.findByText("new-chat-workflow"),
     ).resolves.toBeInTheDocument();
+    await expect(findComposerEditor()).resolves.toBe(editor);
+
+    await user.keyboard("{Enter}");
+
+    await waitFor(() => {
+      expect(editor).toHaveTextContent("/new-chat-workflow");
+    });
+    const highlightedWorkflow = screen
+      .getAllByText("/new-chat-workflow")
+      .find((element) => {
+        return element.tagName.toLowerCase() === "span";
+      });
+    expect(highlightedWorkflow).toHaveClass("text-primary");
+  });
+
+  it("keeps the latest workflow highlights when split-pane reloads resolve out of order", async () => {
+    const user = userEvent.setup({ delay: null });
+    const staleRequestsStarted = context.mocks.deferred<void>();
+    const releaseStaleRequests = context.mocks.deferred<void>();
+    const freshRequestsStarted = context.mocks.deferred<void>();
+    const barrierRequestsStarted = context.mocks.deferred<void>();
+    const releaseBarrierRequests = context.mocks.deferred<void>();
+    const latestWorkflow = workflowSummary({
+      name: "new-split-workflow",
+      displayName: "New Split Workflow",
+      description: "Created by the right chat run",
+      agentId: AGENT_ID,
+    });
+    let reloadPhase: "initial" | "stale" | "fresh" | "barrier" = "initial";
+    let staleRequestCount = 0;
+    let freshRequestCount = 0;
+    let barrierRequestCount = 0;
+    mockOrgModelRoutes("kimi-k2.7-code");
+    mockAgent();
+    mockThread();
+    mockComposerThreadSnapshot([
+      { id: THREAD_ID, agentId: AGENT_ID, title: "Left thread" },
+      { id: SUGGESTED_THREAD_ID, agentId: AGENT_ID, title: "Right thread" },
+    ]);
+    context.mocks.api(
+      zeroWorkflowsCollectionContract.list,
+      async ({ respond }) => {
+        if (reloadPhase === "stale") {
+          staleRequestCount += 1;
+          if (staleRequestCount === 2) {
+            staleRequestsStarted.resolve();
+          }
+          await releaseStaleRequests.promise;
+          return respond(200, []);
+        }
+        if (reloadPhase === "fresh") {
+          freshRequestCount += 1;
+          if (freshRequestCount === 2) {
+            freshRequestsStarted.resolve();
+          }
+          return respond(200, [latestWorkflow]);
+        }
+        if (reloadPhase === "barrier") {
+          barrierRequestCount += 1;
+          if (barrierRequestCount === 4) {
+            barrierRequestsStarted.resolve();
+          }
+          await releaseBarrierRequests.promise;
+          return respond(200, [latestWorkflow]);
+        }
+        return respond(200, []);
+      },
+    );
+
+    detachedSetupPage({
+      context,
+      path: `/chats/${THREAD_ID}?sidebar=${SUGGESTED_THREAD_ID}`,
+    });
+
+    await waitFor(() => {
+      expect(
+        context.mocks.ably.hasSubscription(
+          `chatThreadWorkflowsChanged:${THREAD_ID}`,
+        ),
+      ).toBeTruthy();
+      expect(
+        context.mocks.ably.hasSubscription(
+          `chatThreadWorkflowsChanged:${SUGGESTED_THREAD_ID}`,
+        ),
+      ).toBeTruthy();
+    });
+    const threadRegions = await screen.findAllByLabelText("Chat thread");
+    expect(threadRegions).toHaveLength(2);
+    const leftThread = threadRegions[0];
+    const rightThread = threadRegions[1];
+    if (!leftThread || !rightThread) {
+      throw new Error("Split chat threads not found");
+    }
+    const leftEditor = await within(leftThread).findByRole("textbox", {
+      name: "Message",
+    });
+    const rightEditor = await within(rightThread).findByRole("textbox", {
+      name: "Message",
+    });
+    await user.click(leftEditor);
+    await user.keyboard("/");
+    await expect(
+      screen.findByText("No matching workflows"),
+    ).resolves.toBeInTheDocument();
+
+    reloadPhase = "stale";
+    act(() => {
+      context.mocks.ably.trigger(
+        `chatThreadWorkflowsChanged:${SUGGESTED_THREAD_ID}`,
+        null,
+      );
+    });
+    await staleRequestsStarted.promise;
+
+    reloadPhase = "fresh";
+    act(() => {
+      context.mocks.ably.trigger(
+        `chatThreadWorkflowsChanged:${THREAD_ID}`,
+        null,
+      );
+    });
+    await freshRequestsStarted.promise;
+
+    await expect(
+      screen.findByText("new-split-workflow"),
+    ).resolves.toBeInTheDocument();
+    expect(within(leftThread).getByRole("textbox", { name: "Message" })).toBe(
+      leftEditor,
+    );
+    expect(within(rightThread).getByRole("textbox", { name: "Message" })).toBe(
+      rightEditor,
+    );
+
+    reloadPhase = "barrier";
+    act(() => {
+      context.mocks.ably.trigger(
+        `chatThreadWorkflowsChanged:${THREAD_ID}`,
+        null,
+      );
+    });
+    await waitFor(() => {
+      expect(barrierRequestCount).toBe(2);
+    });
+
+    act(() => {
+      releaseStaleRequests.resolve();
+      context.mocks.ably.trigger(
+        `chatThreadWorkflowsChanged:${SUGGESTED_THREAD_ID}`,
+        null,
+      );
+    });
+    await barrierRequestsStarted.promise;
+
+    await user.keyboard("{Enter}");
+
+    await waitFor(() => {
+      expect(leftEditor).toHaveTextContent("/new-split-workflow");
+    });
+    const highlightedWorkflow = within(leftEditor)
+      .getAllByText("/new-split-workflow")
+      .find((element) => {
+        return element.tagName.toLowerCase() === "span";
+      });
+    expect(highlightedWorkflow).toHaveClass("text-primary");
+    releaseBarrierRequests.resolve();
   });
 
   it("closes the slash workflow menu when focus leaves the composer input", async () => {

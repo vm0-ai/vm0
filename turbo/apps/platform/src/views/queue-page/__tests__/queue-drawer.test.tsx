@@ -1,7 +1,7 @@
 import { screen, waitFor } from "@testing-library/react";
 import {
   chatThreadByIdContract,
-  chatThreadMessagesContract,
+  chatThreadEventsContract,
 } from "@vm0/api-contracts/contracts/chat-threads";
 import {
   zeroBillingConcurrencyCheckoutContract,
@@ -84,24 +84,35 @@ function mockConcurrencyCapability(canBuyConcurrency: boolean): void {
 }
 
 function mockQueuedThread(): void {
-  context.mocks.api(chatThreadMessagesContract.list, ({ query, respond }) => {
-    if (query.sinceSeqId) {
-      return respond(200, { messages: [] });
+  context.mocks.api(chatThreadEventsContract.list, ({ query, respond }) => {
+    if (
+      query.sinceSeqId !== undefined ||
+      query.beforeSeqId !== undefined ||
+      query.sinceId !== undefined ||
+      query.beforeId !== undefined
+    ) {
+      return respond(200, { events: [] });
     }
 
     return respond(200, {
-      messages: [
+      events: [
         {
           id: "msg-previous-user",
-          role: "user",
+          threadId: THREAD_ID,
+          eventType: "input.prompt" as const,
           content: "Previous prompt",
+          userMessage: {
+            version: 1,
+            parts: [{ type: "text", text: "Previous prompt" }],
+          },
           runId: "run-completed",
           seqId: 1,
           createdAt: "2026-01-01T00:00:00Z",
         },
         {
           id: "msg-previous-assistant",
-          role: "assistant",
+          threadId: THREAD_ID,
+          eventType: "run.completed" as const,
           content: "Previous answer",
           runId: "run-completed",
           runLifecycleEvent: "completed",
@@ -110,7 +121,8 @@ function mockQueuedThread(): void {
         },
         {
           id: "msg-queued-marker",
-          role: "assistant",
+          threadId: THREAD_ID,
+          eventType: "run.queued" as const,
           content: "Waiting in queue...",
           runId: "run-queued",
           runEventId: "queue:queued",
@@ -123,8 +135,6 @@ function mockQueuedThread(): void {
   context.mocks.api(chatThreadByIdContract.get, ({ respond }) => {
     return respond(200, {
       lastReadAt: null,
-      computerUseHostId: null,
-      codexServiceTier: null,
     });
   });
 }

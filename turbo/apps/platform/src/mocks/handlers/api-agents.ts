@@ -17,7 +17,7 @@ import {
   chatThreadMarkReadContract,
   chatThreadComputerUseHostContract,
   chatThreadModelSelectionContract,
-  chatThreadMessagesContract,
+  chatThreadEventsContract,
   chatThreadArtifactsContract,
   artifactsContract,
 } from "@vm0/api-contracts/contracts/chat-threads";
@@ -148,6 +148,7 @@ export const apiAgentsHandlers = [
   mockApi(zeroAgentDraftContract.get, ({ respond }) => {
     return respond(200, {
       draftContent: null,
+      draftUserMessage: null,
       draftAttachments: null,
     });
   }),
@@ -162,6 +163,7 @@ export const apiAgentsHandlers = [
     return respond(200, {
       chatThreads: [],
       latestEventId: null,
+      latestSeqId: null,
     });
   }),
 
@@ -192,9 +194,9 @@ export const apiAgentsHandlers = [
     });
   }),
 
-  // GET /api/zero/chat-threads/:threadId/messages (paged messages)
-  mockApi(chatThreadMessagesContract.list, ({ respond }) => {
-    return respond(200, { messages: [] });
+  // GET /api/zero/chat-threads/:threadId/events (paged events)
+  mockApi(chatThreadEventsContract.list, ({ respond }) => {
+    return respond(200, { events: [] });
   }),
 
   // GET /api/zero/chat-threads/:threadId/artifacts
@@ -211,8 +213,6 @@ export const apiAgentsHandlers = [
   mockApi(chatThreadByIdContract.get, ({ respond }) => {
     return respond(200, {
       lastReadAt: "2026-03-10T00:00:00Z",
-      computerUseHostId: null,
-      codexServiceTier: null,
     });
   }),
 
@@ -220,6 +220,7 @@ export const apiAgentsHandlers = [
   mockApi(chatThreadDraftContract.get, ({ respond }) => {
     return respond(200, {
       draftContent: null,
+      draftUserMessage: null,
       draftAttachments: null,
     });
   }),

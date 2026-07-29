@@ -114,6 +114,7 @@ function mockSidebarThreadStory(threads: readonly SidebarThread[]): void {
         };
       }),
       latestEventId: null,
+      latestSeqId: null,
     });
   });
   context.mocks.api(chatThreadsContract.events, ({ respond }) => {
@@ -125,8 +126,6 @@ function mockSidebarThreadStory(threads: readonly SidebarThread[]): void {
   context.mocks.api(chatThreadByIdContract.get, ({ respond }) => {
     return respond(200, {
       lastReadAt: null,
-      computerUseHostId: null,
-      codexServiceTier: null,
     });
   });
 }

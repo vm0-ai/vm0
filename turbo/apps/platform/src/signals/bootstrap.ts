@@ -1,8 +1,10 @@
 import { command, type Command } from "ccstate";
 import { createElement } from "react";
 import { toast } from "@vm0/ui/components/ui/sonner";
+import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import { setupClerk$, watchOrgSwitch$ } from "./auth.ts";
 import { initTheme$ } from "./theme.ts";
+import { initLocale$, syncLocalePreference$ } from "./locale.ts";
 import { setRootSignal$ } from "./root-signal.ts";
 import {
   initRoutes$,
@@ -26,6 +28,8 @@ import { setupTeamsConnectPage$ } from "./zero-page/teams-connect-page.ts";
 import { setupTelegramConnectPage$ } from "./zero-page/telegram-connect-page.ts";
 import { setupTelegramSettingsPage$ } from "./zero-page/telegram-settings-page.ts";
 import { setupFeishuSettingsPage$ } from "./zero-page/feishu-settings-page.ts";
+import { setupStrapiSettingsPage$ } from "./zero-page/strapi-settings-page.ts";
+import { setupFeishuOAuthCallbackPage$ } from "./zero-page/feishu-oauth-callback-page.ts";
 import { setupActivityPage$ } from "./activity-page/activity-page-setup.ts";
 import { setupActivityDetailPage$ } from "./activity-page/activity-detail-page-setup.ts";
 import { setupActivityInspectPage$ } from "./activity-page/activity-inspect-page-setup.ts";
@@ -55,6 +59,8 @@ import { setupIdeationPage$ } from "./zero-page/ideation-page-setup.ts";
 import { setupConnectorsPage$ } from "./connectors-page/connectors-page-setup.ts";
 import { setupCustomConnectorProposalPage$ } from "./connectors-page/custom-connector-proposal-page-setup.ts";
 import { setupComputerUseAuthorizationPage$ } from "./computer-use-authorization/computer-use-authorization-page-setup.ts";
+import { setupBrowserAuthorizationPage$ } from "./browser-authorization/browser-authorization-page-setup.ts";
+import { setupBrowserSessionPage$ } from "./browser-session/browser-session-page-setup.ts";
 import { setupDirectedConnectPage$ } from "./connectors-page/directed-connect-page-setup.ts";
 import { setupDirectedAuthorizePage$ } from "./connectors-page/directed-authorize-page-setup.ts";
 import { setupConnectorRedirectingPage$ } from "./connectors-page/connector-redirecting-page-setup.ts";
@@ -81,6 +87,10 @@ import { updatePage$ } from "./react-router.ts";
 import { NotFoundPage } from "../views/not-found-page.tsx";
 
 import { setupGlobalKeyboardShortcuts$ } from "./zero-page/zero-nav.ts";
+import {
+  featureSwitch$,
+  reloadFeatureSwitch$,
+} from "./external/feature-switch.ts";
 import { reloadBillingStatus$ } from "./zero-page/billing.ts";
 import { checkUnifiedSettingsParam$ } from "./zero-page/settings/settings-dialog.ts";
 
@@ -160,6 +170,10 @@ const ROUTE_CONFIG = [
     setup: setupAuthSidebarPageWrapper(setupChatPage$),
   },
   {
+    path: ROUTES.browser,
+    setup: setupAuthPageWrapper(setupBrowserSessionPage$),
+  },
+  {
     path: ROUTES.prompt,
     setup: setupAuthPageWrapper(setupPromptPage$),
   },
@@ -176,8 +190,16 @@ const ROUTE_CONFIG = [
     setup: setupAuthPageWrapper(setupComputerUseAuthorizationPage$),
   },
   {
+    path: ROUTES.browserAuthorize,
+    setup: setupAuthPageWrapper(setupBrowserAuthorizationPage$),
+  },
+  {
     path: ROUTES.connectorCallbackResult,
     setup: setupConnectorCallbackPage$,
+  },
+  {
+    path: ROUTES.feishuOAuthCallback,
+    setup: setupFeishuOAuthCallbackPage$,
   },
   {
     path: ROUTES.connectorCallback,
@@ -262,6 +284,10 @@ const ROUTE_CONFIG = [
   {
     path: ROUTES.settingsFeishu,
     setup: setupAuthSidebarPageWrapper(setupFeishuSettingsPage$),
+  },
+  {
+    path: ROUTES.settingsStrapi,
+    setup: setupAuthSidebarPageWrapper(setupStrapiSettingsPage$),
   },
   {
     path: ROUTES.settingsTelegram,
@@ -412,6 +438,15 @@ const setupRoutes$ = command(async ({ set }, signal: AbortSignal) => {
   await set(initRoutes$, ROUTE_CONFIG, signal);
 });
 
+const setupFeatureSwitches$ = command(
+  async ({ get, set }, signal: AbortSignal) => {
+    await set(reloadFeatureSwitch$, signal);
+    if (get(featureSwitch$)[FeatureSwitchKey.LanguagePreference] === true) {
+      await set(syncLocalePreference$, signal);
+    }
+  },
+);
+
 function showSuccessToastAfterMount(message: string): void {
   const showToast = () => {
     window.setTimeout(() => {
@@ -487,6 +522,8 @@ const setupNotificationListener$ = command(({ set }, signal: AbortSignal) => {
 
 export const bootstrap$ = command(
   async ({ set }, render: () => void, signal: AbortSignal) => {
+    await set(initLocale$, signal);
+    signal.throwIfAborted();
     set(initTheme$);
     set(setRootSignal$, signal);
     set(initBootstrapSkeleton$);
@@ -508,6 +545,7 @@ export const bootstrap$ = command(
       set(setupGlobalKeyboardShortcuts$, signal),
       set(setupClerk$, signal),
       set(watchOrgSwitch$, signal),
+      set(setupFeatureSwitches$, signal),
     ]);
 
     signal.throwIfAborted();

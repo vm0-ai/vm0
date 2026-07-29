@@ -147,13 +147,12 @@ mod tests {
         let extract_parent = extract_path.parent().unwrap().to_path_buf();
         let missing_archive = dir.path().join("missing.tar.gz");
         let manifest = json!({
-            "storages": [{
+            "storageMounts": [{
                 "mountPath": dir.path().join(".codex"),
                 "extractPath": extract_path,
                 "archiveUrl": format!("file://{}", missing_archive.display()),
                 "instructionsTargetFilename": "AGENTS.md"
-            }],
-            "artifacts": []
+            }]
         });
 
         let success = super::run_manifest_bytes(&serde_json::to_vec(&manifest).unwrap());
@@ -169,13 +168,13 @@ mod tests {
         let mount = dir.path().join("memory");
         let missing_archive = dir.path().join("missing-empty.tar.gz");
         let manifest = json!({
-            "storages": [],
-            "artifacts": [{
+            "storageMounts": [{
                 "mountPath": mount,
                 "archiveUrl": format!("file://{}", missing_archive.display()),
                 "empty": true,
-                "vasStorageName": "memory",
-                "vasVersionId": "empty-v1"
+                "name": "memory",
+                "versionId": "empty-v1",
+                "writeback": true
             }]
         });
 
@@ -190,12 +189,12 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let mount = dir.path().join("memory");
         let manifest = json!({
-            "storages": [],
-            "artifacts": [{
+            "storageMounts": [{
                 "mountPath": mount,
                 "empty": true,
-                "vasStorageName": "memory",
-                "vasVersionId": "empty-v1"
+                "name": "memory",
+                "versionId": "empty-v1",
+                "writeback": true
             }]
         });
 
@@ -219,7 +218,7 @@ mod tests {
         std::fs::write(&blocker, "not a directory").unwrap();
         let archive = dir.path().join("archive.tar.gz");
         let manifest = json!({
-            "storages": [
+            "storageMounts": [
                 {
                     "mountPath": dir.path().join(".codex"),
                     "extractPath": first_extract_path,
@@ -232,8 +231,7 @@ mod tests {
                     "archiveUrl": format!("file://{}", archive.display()),
                     "instructionsTargetFilename": "CLAUDE.md"
                 }
-            ],
-            "artifacts": []
+            ]
         });
 
         let success = super::run_manifest_bytes(&serde_json::to_vec(&manifest).unwrap());

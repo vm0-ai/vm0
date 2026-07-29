@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 
-import archiver from "archiver";
+import { ZipArchive } from "archiver";
 import { eq, or, sql } from "drizzle-orm";
 import type { AxiomNetworkEvent } from "@vm0/api-contracts/contracts/runs";
 import { agentComposeVersions } from "@vm0/db/schema/agent-compose";
@@ -28,6 +28,7 @@ import {
 import { zeroConnectorList } from "./zero-connector-data.service";
 import { createPlainSupportThread } from "./plain-support.service";
 import { normalizeRunContextSnapshot } from "./run-context-snapshot.service";
+import { sanitizeAxiomNetworkEvents } from "./network-log-sanitizer";
 
 const log = logger("service:diagnostic-bundle");
 
@@ -123,7 +124,7 @@ async function assembleZip(
   entries: readonly ZipEntry[],
   signal: AbortSignal,
 ): Promise<Buffer> {
-  const archive = archiver("zip", { zlib: { level: 6 } });
+  const archive = new ZipArchive({ zlib: { level: 6 } });
   const chunks: Buffer[] = [];
   const done = createDeferredPromise<Buffer>(signal);
 
@@ -534,7 +535,7 @@ function collectSessionRuns(
       .where(
         or(
           eq(agentRuns.continuedFromSessionId, agentSessionId),
-          sql`${agentRuns.result}->>'agentSessionId' = ${agentSessionId}`,
+          eq(sql`${agentRuns.result}->>'agentSessionId'`, agentSessionId),
         ),
       )
       .orderBy(agentRuns.createdAt);
@@ -727,7 +728,7 @@ function assembleActivityLog(
       data.context = runContext;
     }
     if (networkLogs.length > 0) {
-      data.networkLogs = mapNetworkLogs(networkLogs);
+      data.networkLogs = sanitizeAxiomNetworkEvents(networkLogs);
     }
 
     return data;
@@ -774,58 +775,6 @@ function runSessionId(run: RunMeta): string | null {
     readonly agentSessionId?: string;
   } | null;
   return resultObject?.agentSessionId ?? run.continuedFromSessionId ?? null;
-}
-
-function mapNetworkLogs(
-  logs: readonly AxiomNetworkEvent[],
-): Record<string, unknown>[] {
-  return logs.map((event) => {
-    return {
-      timestamp: event._time,
-      type: event.type,
-      action: event.action,
-      host: event.host,
-      port: event.port,
-      method: event.method,
-      url: event.url,
-      status: event.status,
-      latency_ms: event.latency_ms,
-      request_size: event.request_size,
-      response_size: event.response_size,
-      browser_user_agent: event.browser_user_agent,
-      dns_event: event.dns_event,
-      dns_query_type: event.dns_query_type,
-      dns_result: event.dns_result,
-      dns_serial: event.dns_serial,
-      firewall_base: event.firewall_base,
-      firewall_name: event.firewall_name,
-      firewall_permission: event.firewall_permission,
-      firewall_rule_match: event.firewall_rule_match,
-      firewall_params: event.firewall_params,
-      firewall_billable: event.firewall_billable,
-      firewall_error: event.firewall_error,
-      connector_diagnostic_type: event.connector_diagnostic_type,
-      connector_diagnostic_reason: event.connector_diagnostic_reason,
-      connector_diagnostic_env_names: event.connector_diagnostic_env_names,
-      connector_diagnostic_base: event.connector_diagnostic_base,
-      connector_route_reason: event.connector_route_reason,
-      connector_route_candidates: event.connector_route_candidates,
-      auth_resolved_secrets: event.auth_resolved_secrets,
-      auth_refreshed_connectors: event.auth_refreshed_connectors,
-      auth_refreshed_secrets: event.auth_refreshed_secrets,
-      auth_cache_hit: event.auth_cache_hit,
-      auth_url_rewrite: event.auth_url_rewrite,
-      error: event.error,
-      request_headers: event.request_headers,
-      request_body: event.request_body,
-      request_body_encoding: event.request_body_encoding,
-      request_body_truncated: event.request_body_truncated,
-      response_headers: event.response_headers,
-      response_body: event.response_body,
-      response_body_encoding: event.response_body_encoding,
-      response_body_truncated: event.response_body_truncated,
-    };
-  });
 }
 
 function queryAgentEvents(

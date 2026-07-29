@@ -14,15 +14,21 @@ import {
   testRuntimeStateContract,
   type TestRuntimeStateActionBody,
 } from "@vm0/api-contracts/contracts/test-runtime-state";
+import { compatibleStoredExecutionContextSchema } from "@vm0/api-contracts/contracts/runners";
 import { agentRuns } from "@vm0/db/schema/agent-run";
 import { agentSessions } from "@vm0/db/schema/agent-session";
+import {
+  browserProfiles,
+  browserSessions,
+} from "@vm0/db/schema/browser-session";
+import { chatThreads } from "@vm0/db/schema/chat-thread";
 import { checkpoints } from "@vm0/db/schema/checkpoint";
 import { orgCustomConnectors } from "@vm0/db/schema/org-custom-connector";
 import { runnerJobQueue } from "@vm0/db/schema/runner-job-queue";
 import { runUploadedFiles } from "@vm0/db/schema/run-uploaded-file";
 import { vm0ApiKeys } from "@vm0/db/schema/vm0-api-key";
 import { zeroRuns } from "@vm0/db/schema/zero-run";
-import { eq, sql } from "drizzle-orm";
+import { and, eq, sql, type SQL } from "drizzle-orm";
 import { z } from "zod";
 
 import { executeRawRows } from "../../lib/db-raw-rows";
@@ -267,6 +273,52 @@ async function readRunApiStart(
   return run.apiStartedAt?.toISOString() ?? null;
 }
 
+async function readThreadSessionBinding(
+  db: Db,
+  threadId: string,
+  signal: AbortSignal,
+): Promise<{
+  readonly agent_session_id: string | null;
+  readonly agent_session_run_id: string | null;
+  readonly run_session_id: string | null;
+}> {
+  const [thread] = await db
+    .select({
+      agentSessionId: chatThreads.agentSessionId,
+      agentSessionRunId: chatThreads.agentSessionRunId,
+      runSessionId: agentRuns.sessionId,
+    })
+    .from(chatThreads)
+    .leftJoin(agentRuns, eq(chatThreads.agentSessionRunId, agentRuns.id))
+    .where(eq(chatThreads.id, threadId))
+    .limit(1);
+  signal.throwIfAborted();
+  if (!thread) {
+    throw new Error("Expected a chat thread session binding row");
+  }
+  return {
+    agent_session_id: thread.agentSessionId,
+    agent_session_run_id: thread.agentSessionRunId,
+    run_session_id: thread.runSessionId,
+  };
+}
+
+async function clearThreadSessionBinding(
+  db: Db,
+  threadId: string,
+  signal: AbortSignal,
+): Promise<void> {
+  const [thread] = await db
+    .update(chatThreads)
+    .set({ agentSessionId: null, agentSessionRunId: null })
+    .where(eq(chatThreads.id, threadId))
+    .returning({ id: chatThreads.id });
+  signal.throwIfAborted();
+  if (!thread) {
+    throw new Error("Expected a chat thread session binding row");
+  }
+}
+
 async function mutateRunnerJobSecretValueEnvironmentKeys(
   db: Db,
   runId: string,
@@ -287,6 +339,85 @@ async function mutateRunnerJobSecretValueEnvironmentKeys(
     .set({ executionContext })
     .where(eq(runnerJobQueue.runId, runId));
   signal.throwIfAborted();
+}
+
+type ConnectorPermissionBaselineMutationAction = Extract<
+  TestRuntimeStateActionBody,
+  { action: "mutate-runner-job-connector-permission-baseline" }
+>;
+
+async function mutateRunnerJobConnectorPermissionBaseline(
+  db: Db,
+  body: ConnectorPermissionBaselineMutationAction,
+  signal: AbortSignal,
+): Promise<void> {
+  let executionContext: SQL;
+  switch (body.mode) {
+    case "remove": {
+      executionContext = sql`${runnerJobQueue.executionContext} - 'connectorPermissionBaseline'`;
+      break;
+    }
+    case "malformed": {
+      executionContext = sql`jsonb_set(
+        ${runnerJobQueue.executionContext},
+        '{connectorPermissionBaseline}',
+        '{"version":2}'::jsonb,
+        true
+      )`;
+      break;
+    }
+    case "catalog-mismatch": {
+      executionContext = sql`jsonb_set(
+        ${runnerJobQueue.executionContext},
+        '{connectorPermissionBaseline,catalogIdentity,catalogDigest}',
+        '"sha256:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"'::jsonb,
+        true
+      )`;
+      break;
+    }
+    case "authority-mismatch": {
+      executionContext = sql`jsonb_set(
+        ${runnerJobQueue.executionContext},
+        '{connectorPermissionBaseline,validationAuthority,backendVersion}',
+        '"999.0.0"'::jsonb,
+        true
+      )`;
+      break;
+    }
+    case "inconsistent": {
+      executionContext = sql`jsonb_set(
+        ${runnerJobQueue.executionContext},
+        '{connectorPermissionBaseline,connectors,constructor}',
+        '{
+          "permissionNames": [],
+          "defaultPolicy": {
+            "permissionDefault": "allow",
+            "unknownPolicy": "allow"
+          }
+        }'::jsonb,
+        true
+      )`;
+      break;
+    }
+    case "incomplete": {
+      executionContext = sql`jsonb_set(
+        ${runnerJobQueue.executionContext},
+        '{connectorPermissionBaseline,connectors}',
+        '{}'::jsonb,
+        true
+      )`;
+      break;
+    }
+  }
+  const [updated] = await db
+    .update(runnerJobQueue)
+    .set({ executionContext })
+    .where(eq(runnerJobQueue.runId, body.run_id))
+    .returning({ runId: runnerJobQueue.runId });
+  signal.throwIfAborted();
+  if (!updated) {
+    throw new Error("Expected a runner job permission baseline");
+  }
 }
 
 async function removeRunCanonicalStorageState(
@@ -351,6 +482,31 @@ async function readStoragePersistenceState(
   };
 }
 
+async function readRunnerJobStorageState(
+  db: Db,
+  runId: string,
+  signal: AbortSignal,
+) {
+  const [job] = await db
+    .select({ executionContext: runnerJobQueue.executionContext })
+    .from(runnerJobQueue)
+    .where(eq(runnerJobQueue.runId, runId))
+    .limit(1);
+  signal.throwIfAborted();
+  if (!job) {
+    throw new Error("Runner job queue row not found");
+  }
+  const rawContext = z
+    .record(z.string(), z.unknown())
+    .parse(job.executionContext);
+  const context = compatibleStoredExecutionContextSchema.parse(rawContext);
+  return {
+    has_stored_storage_manifest: Object.hasOwn(rawContext, "storageManifest"),
+    canonical_mount_count: context.storageMounts.length,
+    has_run_context_storage: Object.hasOwn(rawContext, "runContextStorage"),
+  };
+}
+
 type StorageStateAction = Extract<
   TestRuntimeStateActionBody,
   { action: "remove-run-canonical-storage-state" }
@@ -360,7 +516,14 @@ type ReadStorageStateAction = Extract<
   TestRuntimeStateActionBody,
   { action: "read-storage-persistence-state" }
 >;
-type AnyStorageStateAction = StorageStateAction | ReadStorageStateAction;
+type ReadRunnerJobStorageStateAction = Extract<
+  TestRuntimeStateActionBody,
+  { action: "read-runner-job-storage-state" }
+>;
+type AnyStorageStateAction =
+  | StorageStateAction
+  | ReadStorageStateAction
+  | ReadRunnerJobStorageStateAction;
 
 function isStorageStateAction(
   body: TestRuntimeStateActionBody,
@@ -368,6 +531,9 @@ function isStorageStateAction(
   switch (body.action) {
     case "remove-run-canonical-storage-state":
     case "read-storage-persistence-state": {
+      return true;
+    }
+    case "read-runner-job-storage-state": {
       return true;
     }
     default: {
@@ -390,25 +556,42 @@ async function storageStateActionResponse(
   body: AnyStorageStateAction,
   signal: AbortSignal,
 ) {
-  if (body.action === "read-storage-persistence-state") {
-    return {
-      status: 200 as const,
-      body: {
-        ok: true as const,
-        storage_persistence: await readStoragePersistenceState(
-          db,
-          {
-            runId: body.run_id,
-            sessionId: body.session_id,
-            checkpointId: body.checkpoint_id,
-          },
-          signal,
-        ),
-      },
-    };
+  switch (body.action) {
+    case "read-storage-persistence-state": {
+      return {
+        status: 200 as const,
+        body: {
+          ok: true as const,
+          storage_persistence: await readStoragePersistenceState(
+            db,
+            {
+              runId: body.run_id,
+              sessionId: body.session_id,
+              checkpointId: body.checkpoint_id,
+            },
+            signal,
+          ),
+        },
+      };
+    }
+    case "read-runner-job-storage-state": {
+      return {
+        status: 200 as const,
+        body: {
+          ok: true as const,
+          runner_job_storage_state: await readRunnerJobStorageState(
+            db,
+            body.run_id,
+            signal,
+          ),
+        },
+      };
+    }
+    case "remove-run-canonical-storage-state": {
+      await mutateStorageState(db, body, signal);
+      return { status: 200 as const, body: { ok: true as const } };
+    }
   }
-  await mutateStorageState(db, body, signal);
-  return { status: 200 as const, body: { ok: true as const } };
 }
 
 type TimingStateAction = Extract<
@@ -447,6 +630,239 @@ async function timingStateActionResponse(
   }
 }
 
+type ThreadSessionStateAction = Extract<
+  TestRuntimeStateActionBody,
+  {
+    action: "read-thread-session-binding" | "clear-thread-session-binding";
+  }
+>;
+
+function isThreadSessionStateAction(
+  body: TestRuntimeStateActionBody,
+): body is ThreadSessionStateAction {
+  return (
+    body.action === "read-thread-session-binding" ||
+    body.action === "clear-thread-session-binding"
+  );
+}
+
+async function threadSessionStateActionResponse(
+  db: Db,
+  body: ThreadSessionStateAction,
+  signal: AbortSignal,
+) {
+  switch (body.action) {
+    case "read-thread-session-binding": {
+      return {
+        status: 200 as const,
+        body: {
+          ok: true as const,
+          thread_session_binding: await readThreadSessionBinding(
+            db,
+            body.thread_id,
+            signal,
+          ),
+        },
+      };
+    }
+    case "clear-thread-session-binding": {
+      await clearThreadSessionBinding(db, body.thread_id, signal);
+      return { status: 200 as const, body: { ok: true as const } };
+    }
+  }
+}
+
+type LegacyArtifactCatalogFileAction = Extract<
+  TestRuntimeStateActionBody,
+  { action: "insert-legacy-artifact-catalog-file" }
+>;
+
+async function insertLegacyArtifactCatalogFile(
+  db: Db,
+  body: LegacyArtifactCatalogFileAction,
+  signal: AbortSignal,
+) {
+  const [file] = await db
+    .insert(runUploadedFiles)
+    .values({
+      source: "web",
+      externalId: body.url,
+      userId: body.user_id,
+      orgId: body.org_id,
+      filename: body.filename,
+      contentType: "application/zip",
+      sizeBytes: 512,
+      url: body.url,
+      metadata: {},
+    })
+    .returning({ id: runUploadedFiles.id });
+  signal.throwIfAborted();
+  if (!file) {
+    throw new Error("Failed to insert a legacy artifact catalog file");
+  }
+  return {
+    status: 200 as const,
+    body: { ok: true as const, file_id: file.id },
+  };
+}
+
+type PreviousApiComputerAccessAction = Extract<
+  TestRuntimeStateActionBody,
+  { action: "set-computer-use-host-as-previous-api" }
+>;
+
+async function setComputerUseHostAsPreviousApi(
+  db: Db,
+  body: PreviousApiComputerAccessAction,
+  signal: AbortSignal,
+) {
+  // The API version immediately before cloud browser shipped updated only
+  // computer_use_host_id. No current production route can reproduce that
+  // mixed-version writer shape.
+  const [updated] = await db
+    .update(chatThreads)
+    .set({ computerUseHostId: body.computer_use_host_id })
+    .where(eq(chatThreads.id, body.thread_id))
+    .returning({ id: chatThreads.id });
+  signal.throwIfAborted();
+  if (!updated) {
+    throw new Error("Expected a chat thread for previous API host update");
+  }
+  return { status: 200 as const, body: { ok: true as const } };
+}
+
+type PreviousApiRunnerJobContextProfileAction = Extract<
+  TestRuntimeStateActionBody,
+  { action: "set-runner-job-context-profile-as-previous-api" }
+>;
+
+async function setRunnerJobContextProfileAsPreviousApi(
+  db: Db,
+  body: PreviousApiRunnerJobContextProfileAction,
+  signal: AbortSignal,
+) {
+  // The previous API stored the routing profile in both the dedicated queue
+  // column and execution-context JSON.
+  const [updated] = await db
+    .update(runnerJobQueue)
+    .set({
+      executionContext: sql`jsonb_set(
+        ${runnerJobQueue.executionContext},
+        '{experimentalProfile}',
+        to_jsonb(${body.profile}::text),
+        true
+      )`,
+    })
+    .where(eq(runnerJobQueue.runId, body.run_id))
+    .returning({ runId: runnerJobQueue.runId });
+  signal.throwIfAborted();
+  if (!updated) {
+    throw new Error("Expected a runner job for previous API profile update");
+  }
+  return { status: 200 as const, body: { ok: true as const } };
+}
+
+type PreviousApiBrowserProfileAction = Extract<
+  TestRuntimeStateActionBody,
+  { action: "read-browser-profile-as-previous-api" }
+>;
+
+async function readBrowserProfileAsPreviousApi(
+  db: Db,
+  body: PreviousApiBrowserProfileAction,
+  signal: AbortSignal,
+) {
+  // Keep this query limited to the columns and owner checks understood by the
+  // API version immediately before browser_thread_profiles existed.
+  const [browser] = await db
+    .select({ browserProfileId: browserSessions.browserProfileId })
+    .from(browserSessions)
+    .where(
+      and(
+        eq(browserSessions.id, body.browser_id),
+        eq(browserSessions.orgId, body.org_id),
+        eq(browserSessions.userId, body.user_id),
+      ),
+    )
+    .limit(1);
+  signal.throwIfAborted();
+  if (!browser) {
+    throw new Error("Expected a browser session for previous API read");
+  }
+  const [profile] = await db
+    .select({
+      id: browserProfiles.id,
+      providerProfileId: browserProfiles.providerProfileId,
+    })
+    .from(browserProfiles)
+    .where(
+      and(
+        eq(browserProfiles.id, browser.browserProfileId),
+        eq(browserProfiles.orgId, body.org_id),
+        eq(browserProfiles.userId, body.user_id),
+      ),
+    )
+    .limit(1);
+  signal.throwIfAborted();
+  if (!profile) {
+    throw new Error("Expected a browser profile for previous API read");
+  }
+  return {
+    status: 200 as const,
+    body: {
+      ok: true as const,
+      previous_api_browser_profile: {
+        browser_profile_id: profile.id,
+        provider_profile_id: profile.providerProfileId,
+      },
+    },
+  };
+}
+
+type CompatibilityFixtureAction =
+  | LegacyArtifactCatalogFileAction
+  | PreviousApiComputerAccessAction
+  | PreviousApiRunnerJobContextProfileAction
+  | PreviousApiBrowserProfileAction
+  | ConnectorPermissionBaselineMutationAction;
+
+function isCompatibilityFixtureAction(
+  body: TestRuntimeStateActionBody,
+): body is CompatibilityFixtureAction {
+  return [
+    "insert-legacy-artifact-catalog-file",
+    "set-computer-use-host-as-previous-api",
+    "set-runner-job-context-profile-as-previous-api",
+    "read-browser-profile-as-previous-api",
+    "mutate-runner-job-connector-permission-baseline",
+  ].includes(body.action);
+}
+
+async function compatibilityFixtureActionResponse(
+  db: Db,
+  body: CompatibilityFixtureAction,
+  signal: AbortSignal,
+) {
+  switch (body.action) {
+    case "insert-legacy-artifact-catalog-file": {
+      return await insertLegacyArtifactCatalogFile(db, body, signal);
+    }
+    case "set-computer-use-host-as-previous-api": {
+      return await setComputerUseHostAsPreviousApi(db, body, signal);
+    }
+    case "set-runner-job-context-profile-as-previous-api": {
+      return await setRunnerJobContextProfileAsPreviousApi(db, body, signal);
+    }
+    case "read-browser-profile-as-previous-api": {
+      return await readBrowserProfileAsPreviousApi(db, body, signal);
+    }
+    case "mutate-runner-job-connector-permission-baseline": {
+      await mutateRunnerJobConnectorPermissionBaseline(db, body, signal);
+      return { status: 200 as const, body: { ok: true as const } };
+    }
+  }
+}
+
 const postRuntimeStateAction$ = command(
   async ({ get, set }, signal: AbortSignal) => {
     if (!isTestEndpointAllowed(get(request$))) {
@@ -466,6 +882,12 @@ const postRuntimeStateAction$ = command(
     }
     if (isTimingStateAction(body)) {
       return await timingStateActionResponse(db, body, signal);
+    }
+    if (isThreadSessionStateAction(body)) {
+      return await threadSessionStateActionResponse(db, body, signal);
+    }
+    if (isCompatibilityFixtureAction(body)) {
+      return await compatibilityFixtureActionResponse(db, body, signal);
     }
     switch (body.action) {
       case "seed-vm0-managed-default-model-key": {

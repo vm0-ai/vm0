@@ -58,8 +58,10 @@ import {
 import { talkDraft$ } from "../../signals/zero-page/chat-draft.ts";
 import {
   newThreadGenerationTemplate$,
-  newThreadComputerUseHostId$,
+  newThreadComputerAccess$,
+  resetNewThreadComputerAccess$,
   setNewThreadGenerationTemplate$,
+  setNewThreadCloudBrowserEnabled$,
   setNewThreadComputerUseHostId$,
 } from "../../signals/zero-page/zero-chat-composer.ts";
 import {
@@ -84,6 +86,7 @@ import { PersonalClaudeCodeDeviceAuthDialog } from "./components/settings/claude
 import { PersonalCodexDeviceAuthDialog } from "./components/settings/codex-device-auth-dialog.tsx";
 import { queueCurrentAgentDraftSync$ } from "../../signals/zero-page/agent-draft.ts";
 import type { EditorDocumentSnapshot } from "../../signals/zero-page/user-message-document-codec.ts";
+import { zeroBrowserEnabled$ } from "../../signals/external/feature-switch.ts";
 
 function getTagline(
   agentName: string,
@@ -451,22 +454,25 @@ function useNewThreadComputerUse() {
     computerUseHostsLoadable.state === "hasData"
       ? computerUseHostsLoadable.data
       : lastResolvedComputerUseHosts;
-  const storedComputerUseHostId = useGet(newThreadComputerUseHostId$);
+  const computerAccess = useGet(newThreadComputerAccess$);
+  const cloudBrowserAvailable = useGet(zeroBrowserEnabled$);
+  const cloudBrowserEnabled = computerAccess.kind === "cloudBrowser";
   const selectedComputerUseHostId = resolveSelectedComputerUseHostId(
     computerUseHosts,
-    storedComputerUseHostId,
+    computerAccess.kind === "computerUse" ? computerAccess.hostId : null,
   );
   const visibleHosts = visibleComputerUseHosts(
     computerUseHosts,
     selectedComputerUseHostId,
   );
   const setComputerUseHostId = useSet(setNewThreadComputerUseHostId$);
+  const setCloudBrowserEnabled = useSet(setNewThreadCloudBrowserEnabled$);
+  const resetComputerAccess = useSet(resetNewThreadComputerAccess$);
 
   return {
     selectedComputerUseHostId,
-    clearComputerUseHostId: () => {
-      setComputerUseHostId(null);
-    },
+    cloudBrowserEnabled,
+    clearComputerAccess: resetComputerAccess,
     computerUse: {
       hosts: visibleHosts,
       loading:
@@ -474,6 +480,9 @@ function useNewThreadComputerUse() {
         computerUseHosts.length === 0,
       selectedHostId: selectedComputerUseHostId,
       onChange: setComputerUseHostId,
+      cloudBrowserAvailable,
+      cloudBrowserEnabled,
+      onCloudBrowserChange: setCloudBrowserEnabled,
       downloadUrl: ZERO_DESKTOP_DOWNLOAD_URL,
     },
   };
@@ -490,13 +499,15 @@ function useAgentChatDraftSync(pageSignal: AbortSignal) {
 function useAgentChatSendMessage({
   currentChatAgentId,
   selectedComputerUseHostId,
-  clearComputerUseHostId,
+  cloudBrowserEnabled,
+  clearComputerAccess,
   setGenerationTemplate,
   resetModelSelection,
 }: {
   currentChatAgentId: string | null | undefined;
   selectedComputerUseHostId: string | null | undefined;
-  clearComputerUseHostId: () => void;
+  cloudBrowserEnabled: boolean;
+  clearComputerAccess: () => void;
   setGenerationTemplate: (value: GenerationTemplateRequest | undefined) => void;
   resetModelSelection: () => void;
 }): {
@@ -527,12 +538,13 @@ function useAgentChatSendMessage({
               ...(selectedComputerUseHostId
                 ? { computerUseHostId: selectedComputerUseHostId }
                 : {}),
+              ...(cloudBrowserEnabled ? { cloudBrowserEnabled: true } : {}),
             },
             rootSignal,
           );
           if (sent) {
             setGenerationTemplate(undefined);
-            clearComputerUseHostId();
+            clearComputerAccess();
             resetModelSelection();
           }
         })(),
@@ -601,8 +613,12 @@ export function AgentChatPage() {
 
   const generationTemplate = useGet(newThreadGenerationTemplate$);
   const setGenerationTemplate = useSet(setNewThreadGenerationTemplate$);
-  const { selectedComputerUseHostId, clearComputerUseHostId, computerUse } =
-    useNewThreadComputerUse();
+  const {
+    selectedComputerUseHostId,
+    cloudBrowserEnabled,
+    clearComputerAccess,
+    computerUse,
+  } = useNewThreadComputerUse();
   const pageSignal = useGet(pageSignal$);
   const subscribeComputerUseHostsChangedRef = useSet(
     subscribeComputerUseHostsChangedRef$,
@@ -614,7 +630,8 @@ export function AgentChatPage() {
     useAgentChatSendMessage({
       currentChatAgentId,
       selectedComputerUseHostId,
-      clearComputerUseHostId,
+      cloudBrowserEnabled,
+      clearComputerAccess,
       setGenerationTemplate,
       resetModelSelection,
     });

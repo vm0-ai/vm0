@@ -1,11 +1,15 @@
 import { randomUUID } from "node:crypto";
 
+import { createStore } from "ccstate";
 import type { TriggerSource } from "@vm0/api-contracts/contracts/logs";
+import { zeroMapsContract } from "@vm0/api-contracts/contracts/zero-maps";
 import { zeroUsageRecordContract } from "@vm0/api-contracts/contracts/zero-usage-record";
+import { HttpResponse, http } from "msw";
 
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
 import { mockOptionalEnv } from "../../../lib/env";
 import { clearMockNow, mockNow, nowDate } from "../../../lib/time";
+import { server } from "../../../mocks/server";
 import { seedUsagePricingRows } from "../../../test-fixtures/system-config-seeds";
 import { createBddApi, type ApiTestUser } from "./helpers/api-bdd";
 import { createBillingMediaApi } from "./helpers/api-bdd-billing-media";
@@ -14,6 +18,10 @@ import { createChatFilesBddApi } from "./helpers/api-bdd-chat-files";
 import { createRunsApi } from "./helpers/api-bdd-runs";
 import { createWebhookCallbackApi } from "./helpers/api-bdd-webhooks";
 import { createZeroRouteMocks } from "./helpers/zero-route-test";
+import {
+  materializeHourlyUsage$,
+  readUsageStorageCounts$,
+} from "./helpers/zero-usage-insight";
 
 const context = testContext();
 const bdd = createBddApi(context);
@@ -23,13 +31,17 @@ const webhooks = createWebhookCallbackApi(context);
 const chatApi = createChatFilesBddApi(context);
 const chatCallbacks = createChatCallbacksApi(context);
 const mocks = createZeroRouteMocks(context);
+const store = createStore();
 
 /*
- * Timezone/DST period-boundary reads ("today"/"yesterday" row membership) are
- * not covered here: usage_event.created_at is a database default, so sandbox
- * webhooks cannot backdate ledger rows into a past period.
+ * Finalized period membership follows settlement time. Database insertion time
+ * remains independent from the application clock used by inline managed
+ * settlement and the pending-usage processing endpoint.
  */
 
+const DAY_MS = 86_400_000;
+const GOOGLE_GEOCODING_URL =
+  "https://maps.googleapis.com/maps/api/geocode/json";
 const MODEL_TOKEN_CATEGORIES = {
   input: "tokens.input",
   output: "tokens.output",
@@ -94,7 +106,7 @@ async function createChatThreadRun(
   if (args.createdAt) {
     mockNow(args.createdAt);
   }
-  const sent = await chatApi.requestSendMessage(
+  const sent = await chatApi.requestSendEvent(
     fixture.actor,
     { agentId: fixture.agentId, prompt: "record usage", threadId },
     [201],
@@ -373,7 +385,7 @@ describe("GET /api/zero/usage/record", () => {
       25,
     );
 
-    await billing.processUsageEvents();
+    await billing.processOrgUsageEvents(fixture.actor);
     mocks.clerk.session(fixture.actor.userId, fixture.actor.orgId);
 
     const response = await accept(
@@ -421,6 +433,74 @@ describe("GET /api/zero/usage/record", () => {
     expect(response.body.rows[2]?.credits).toBe(80);
   });
 
+  it("returns rows, totals, tokens, and breakdowns from hourly storage", async () => {
+    const fixture = await entitledRecordActor();
+    if (!fixture.actor.orgId) {
+      throw new Error("Expected an org-scoped actor");
+    }
+    const model = uniqueProvider("hourly-model");
+    const connectorProvider = uniqueProvider("hourly-connector");
+    await seedModelPricing(model);
+    await seedConnectorPricing(connectorProvider);
+    const run = await createUnthreadedRun(fixture.actor, {
+      prompt: "Hourly usage record",
+      triggerSource: "slack",
+    });
+    await recordModelUsage(fixture.actor, run.runId, model, { input: 50 });
+    await recordConnectorUsage(fixture.actor, run.runId, connectorProvider, 2);
+    await billing.processOrgUsageEvents(fixture.actor);
+    await expect(
+      store.set(
+        materializeHourlyUsage$,
+        {
+          orgId: fixture.actor.orgId,
+          userId: fixture.actor.userId,
+          runId: run.runId,
+        },
+        context.signal,
+      ),
+    ).resolves.toBe(2);
+    await expect(
+      store.set(
+        readUsageStorageCounts$,
+        { scope: "user", id: fixture.actor.userId },
+        context.signal,
+      ),
+    ).resolves.toStrictEqual({ raw: 0, hourly: 2 });
+
+    mocks.clerk.session(fixture.actor.userId, fixture.actor.orgId);
+    const response = await accept(
+      apiClient().get({
+        query: { range: "today", tz: "UTC" },
+        headers: authHeaders(),
+      }),
+      [200],
+    );
+
+    expect(response.body.totalCredits).toBe(70);
+    expect(response.body.pagination.total).toBe(1);
+    expect(response.body.rows).toStrictEqual([
+      expect.objectContaining({
+        source: "slack",
+        runId: run.runId,
+        credits: 70,
+        tokens: 50,
+        breakdown: [
+          {
+            kind: "model",
+            credits: 50,
+            providers: [{ provider: model, credits: 50 }],
+          },
+          {
+            kind: "connector",
+            credits: 20,
+            providers: [{ provider: connectorProvider, credits: 20 }],
+          },
+        ],
+      }),
+    ]);
+  });
+
   it("normalizes current Workflow Automation sources without changing credits", async () => {
     const fixture = await entitledRecordActor();
     const connectorProvider = uniqueProvider("bdd-connector");
@@ -443,7 +523,7 @@ describe("GET /api/zero/usage/record", () => {
       );
     }
 
-    await billing.processUsageEvents();
+    await billing.processOrgUsageEvents(fixture.actor);
     mocks.clerk.session(fixture.actor.userId, fixture.actor.orgId);
 
     const response = await accept(
@@ -506,7 +586,7 @@ describe("GET /api/zero/usage/record", () => {
     );
     await recordImageUsage(fixture.actor, deletedNewer.runId, imageProvider, 1);
 
-    await billing.processUsageEvents();
+    await billing.processOrgUsageEvents(fixture.actor);
     await chatApi.deleteThread(fixture.actor, deletedOlder.threadId);
     await chatApi.deleteThread(fixture.actor, deletedNewer.threadId);
 
@@ -578,7 +658,7 @@ describe("GET /api/zero/usage/record", () => {
       12,
     );
 
-    await billing.processUsageEvents();
+    await billing.processOrgUsageEvents(fixture.actor);
     mocks.clerk.session(fixture.actor.userId, fixture.actor.orgId);
 
     const slackResponse = await accept(
@@ -622,7 +702,7 @@ describe("GET /api/zero/usage/record", () => {
       output: 5,
     });
 
-    await billing.processUsageEvents();
+    await billing.processOrgUsageEvents(fixture.actor);
     mocks.clerk.session(fixture.actor.userId, fixture.actor.orgId);
 
     const response = await accept(
@@ -649,12 +729,15 @@ describe("GET /api/zero/usage/record", () => {
     const fixture = await entitledRecordActor();
     const connectorProvider = uniqueProvider("bdd-connector");
     await seedConnectorPricing(connectorProvider);
+    const tiedCreatedAt = createdAt(10);
+    const threadIds: string[] = [];
 
-    for (const minutesAgo of [30, 20, 10]) {
+    for (const title of ["Chat A", "Chat B", "Chat C"]) {
       const chat = await createChatThreadRun(fixture, {
-        title: `Chat ${minutesAgo}`,
-        createdAt: createdAt(minutesAgo),
+        title,
+        createdAt: tiedCreatedAt,
       });
+      threadIds.push(chat.threadId);
       await recordConnectorUsage(
         fixture.actor,
         chat.runId,
@@ -663,7 +746,7 @@ describe("GET /api/zero/usage/record", () => {
       );
     }
 
-    await billing.processUsageEvents();
+    await billing.processOrgUsageEvents(fixture.actor);
     mocks.clerk.session(fixture.actor.userId, fixture.actor.orgId);
 
     const response = await accept(
@@ -676,8 +759,22 @@ describe("GET /api/zero/usage/record", () => {
 
     expect(response.body.rows).toHaveLength(2);
     expect(response.body.pagination.total).toBe(3);
-    expect(response.body.rows[0]?.title).toBe("Chat 10");
-    expect(response.body.rows[1]?.title).toBe("Chat 20");
+    const expectedThreadIds = [...threadIds].sort();
+    expect(
+      response.body.rows.map((row) => {
+        return row.threadId;
+      }),
+    ).toStrictEqual(expectedThreadIds.slice(0, 2));
+
+    const secondPage = await accept(
+      apiClient().get({
+        query: { page: 2, pageSize: 2 },
+        headers: authHeaders(),
+      }),
+      [200],
+    );
+    expect(secondPage.body.rows).toHaveLength(1);
+    expect(secondPage.body.rows[0]?.threadId).toBe(expectedThreadIds[2]);
   });
 
   it("returns kind and provider breakdowns for each usage row", async () => {
@@ -701,7 +798,7 @@ describe("GET /api/zero/usage/record", () => {
     await recordImageUsage(fixture.actor, run.runId, imageProvider, 4);
     await recordConnectorUsage(fixture.actor, run.runId, connectorProvider, 2);
 
-    await billing.processUsageEvents();
+    await billing.processOrgUsageEvents(fixture.actor);
     mocks.clerk.session(fixture.actor.userId, fixture.actor.orgId);
 
     const response = await accept(
@@ -728,6 +825,82 @@ describe("GET /api/zero/usage/record", () => {
         kind: "connector",
         credits: 20,
         providers: [{ provider: connectorProvider, credits: 20 }],
+      },
+    ]);
+  });
+
+  it("uses settlement time consistently for rows, totals, and breakdowns", async () => {
+    const fixture = await entitledRecordActor();
+    billing.configureMapsProvider();
+    await seedUsagePricingRows([
+      {
+        kind: "maps",
+        provider: "google-maps",
+        category: "geocoding",
+        unitPrice: 6,
+        unitSize: 1,
+      },
+    ]);
+    server.use(
+      http.get(GOOGLE_GEOCODING_URL, () => {
+        return HttpResponse.json({
+          status: "OK",
+          results: [
+            {
+              formatted_address: "1 Infinite Loop, Cupertino, CA",
+              geometry: { location: { lat: 37.3317, lng: -122.0301 } },
+            },
+          ],
+        });
+      }),
+    );
+
+    const run = await createUnthreadedRun(fixture.actor, {
+      prompt: "Settlement boundary usage",
+      triggerSource: "cli",
+    });
+    const settledAt = new Date(nowDate().getTime() + 8 * DAY_MS);
+    mockNow(settledAt);
+    const mapsToken = api.zeroTokenForRunWithCapabilities(
+      fixture.actor,
+      run.runId,
+      ["maps:read"],
+    );
+    const maps = setupApp({ context })(zeroMapsContract);
+    const geocode = await accept(
+      maps.geocode({
+        headers: { authorization: `Bearer ${mapsToken}` },
+        body: { address: "1 Infinite Loop, Cupertino" },
+      }),
+      [200],
+    );
+    expect(geocode.body.creditsCharged).toBe(6);
+
+    mockNow(new Date(settledAt.getTime() + 60_000));
+    mocks.clerk.session(fixture.actor.userId, fixture.actor.orgId);
+
+    const response = await accept(
+      apiClient().get({
+        query: { range: "7d", tz: "UTC" },
+        headers: authHeaders(),
+      }),
+      [200],
+    );
+
+    expect(response.body.rows).toHaveLength(1);
+    expect(response.body.pagination.total).toBe(1);
+    expect(response.body.totalCredits).toBe(6);
+    expect(response.body.rows[0]).toMatchObject({
+      source: "cli",
+      runId: run.runId,
+      credits: 6,
+      tokens: 0,
+    });
+    expect(response.body.rows[0]?.breakdown).toStrictEqual([
+      {
+        kind: "other",
+        credits: 6,
+        providers: [{ provider: "google-maps", credits: 6 }],
       },
     ]);
   });

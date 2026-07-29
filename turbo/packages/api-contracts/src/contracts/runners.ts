@@ -2,6 +2,7 @@ import { z } from "zod";
 import { authHeadersSchema, initContract } from "./base";
 import {
   executionFirewallsSchema,
+  firewallPolicyValueSchema,
   firewallSchema,
   networkPolicySchema,
   networkPoliciesSchema,
@@ -36,7 +37,6 @@ export const SESSION_HISTORY_DOWNLOAD_SOURCE_DEFAULT_R2_ENDPOINT =
 export const SESSION_HISTORY_GZIP_MIN_BYTES = 64 * 1024;
 export const NETWORK_POLICY_REFRESH_CONNECTOR_REFS_MAX = 256;
 export const RUNNER_BUILTIN_FIREWALL_RESOLVE_NAMES_MAX = 512;
-export const RUNNER_STORAGE_MOUNTS_CAPABILITY = "storage-mounts-v1";
 export const sessionHistoryEncodingSchema = z.enum([
   SESSION_HISTORY_ENCODING_IDENTITY,
   SESSION_HISTORY_ENCODING_GZIP,
@@ -122,6 +122,90 @@ const networkPolicyRefreshesSchema = z.record(
   z.string(),
   networkPolicyRefreshSchema,
 );
+const connectorPermissionNameListSchema = z
+  .array(z.string().min(1))
+  .superRefine((names, context) => {
+    if (new Set(names).size !== names.length) {
+      context.addIssue({
+        code: "custom",
+        message: "Connector permission names must be unique",
+      });
+    }
+  });
+const connectorPermissionDefaultOverridesSchema = z
+  .object({
+    allow: connectorPermissionNameListSchema.optional(),
+    deny: connectorPermissionNameListSchema.optional(),
+    ask: connectorPermissionNameListSchema.optional(),
+  })
+  .strict();
+const connectorPermissionBaselineEntrySchema = z
+  .object({
+    permissionNames: connectorPermissionNameListSchema,
+    defaultPolicy: z
+      .object({
+        permissionDefault: firewallPolicyValueSchema,
+        permissionOverrides:
+          connectorPermissionDefaultOverridesSchema.optional(),
+        unknownPolicy: firewallPolicyValueSchema,
+      })
+      .strict(),
+  })
+  .strict()
+  .superRefine((entry, context) => {
+    const permissionNames = new Set(entry.permissionNames);
+    const overrideNames = Object.values(
+      entry.defaultPolicy.permissionOverrides ?? {},
+    ).flat();
+    if (new Set(overrideNames).size !== overrideNames.length) {
+      context.addIssue({
+        code: "custom",
+        path: ["defaultPolicy", "permissionOverrides"],
+        message: "Connector permission overrides must not overlap",
+      });
+    }
+    for (const permissionName of overrideNames) {
+      if (!permissionNames.has(permissionName)) {
+        context.addIssue({
+          code: "custom",
+          path: ["defaultPolicy", "permissionOverrides"],
+          message: "Connector permission override must name a permission",
+        });
+      }
+    }
+  });
+const connectorCatalogDigestSchema = z.string().regex(/^sha256:[a-f0-9]{64}$/u);
+const connectorCatalogBackendVersionSchema = z
+  .string()
+  .regex(/^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$/u);
+const connectorCatalogBuildCommitShaSchema = z
+  .string()
+  .regex(/^[a-f0-9]{40}$/u);
+
+export const storedConnectorPermissionBaselineSchema = z
+  .object({
+    version: z.literal(1),
+    catalogIdentity: z
+      .object({
+        sourceId: z.string().min(1),
+        schemaVersion: z.number().int().positive(),
+        catalogVersion: z.string().min(1),
+        catalogDigest: connectorCatalogDigestSchema,
+        capabilityDigest: connectorCatalogDigestSchema,
+      })
+      .strict(),
+    validationAuthority: z
+      .object({
+        backendVersion: connectorCatalogBackendVersionSchema,
+        buildCommitSha: connectorCatalogBuildCommitShaSchema.nullable(),
+      })
+      .strict(),
+    connectors: z.record(
+      connectorRefSchema,
+      connectorPermissionBaselineEntrySchema,
+    ),
+  })
+  .strict();
 const runnerBuiltinFirewallNameSchema = z
   .string()
   .min(1)
@@ -178,7 +262,7 @@ export const jobSchema = z.object({
   appendSystemPrompt: z.string().nullable(),
   agentComposeVersionId: z.string().nullable(),
   vars: z.record(z.string(), z.string()).nullable(),
-  experimentalProfile: z.string().optional(),
+  experimentalProfile: z.string(),
   cliAgentSessionId: z.string().nullable().optional(),
   historyGenerationRunId: z.uuid().optional(),
   historyGenerationAffinityProtectedUntil: z
@@ -241,24 +325,8 @@ export const runnersPollContract = c.router({
   },
 });
 
-/**
- * Storage entry in manifest
- */
 const archiveSizeSchema = z.number().int().min(1).max(Number.MAX_SAFE_INTEGER);
 
-export const storageEntrySchema = z.object({
-  name: z.string(),
-  mountPath: z.string(),
-  vasStorageName: z.string(),
-  vasVersionId: z.string(),
-  instructionsTargetFilename: z.string().optional(),
-  archiveUrl: z.string(),
-  archiveSize: archiveSizeSchema.optional(),
-});
-
-/**
- * Artifact entry in manifest
- */
 // Optional internal checkpoint behavior for a missing artifact root. Absence
 // is equivalent to "fail".
 export const artifactMissingRootPolicySchema = z.enum([
@@ -266,35 +334,8 @@ export const artifactMissingRootPolicySchema = z.enum([
   "preserveParentVersion",
 ]);
 
-export const artifactEntrySchema = z
-  .object({
-    mountPath: z.string(),
-    vasStorageName: z.string(),
-    vasStorageId: z.string(),
-    vasVersionId: z.string(),
-    archiveUrl: z.string().optional(),
-    archiveSize: archiveSizeSchema.optional(),
-    empty: z.boolean().optional(),
-    missingRootPolicy: artifactMissingRootPolicySchema.optional(),
-  })
-  .superRefine((artifact, ctx) => {
-    if (artifact.empty === true || artifact.archiveUrl !== undefined) {
-      return;
-    }
-
-    ctx.addIssue({
-      code: z.ZodIssueCode.custom,
-      path: ["archiveUrl"],
-      message: "archiveUrl is required unless empty is true",
-    });
-  });
-
 /**
- * Canonical resolved Storage mount accepted by new runners.
- *
- * The API emits this representation only for runners that advertise the
- * storage-mounts-v1 claim capability. Older runners receive the legacy
- * projection instead.
+ * Canonical resolved Storage mount emitted to runners.
  */
 export const storageMountEntrySchema = z
   .object({
@@ -355,14 +396,6 @@ export const storedStorageMountEntrySchema = storageMountEntrySchema.extend({
   userId: z.string(),
 });
 
-/**
- * Legacy Storage manifest with presigned URLs for download.
- */
-export const legacyStorageManifestSchema = z.object({
-  storages: z.array(storageEntrySchema),
-  artifacts: z.array(artifactEntrySchema),
-});
-
 function uniqueStorageMountPaths<T extends { readonly mountPath: string }>(
   mounts: readonly T[],
   ctx: z.RefinementCtx,
@@ -381,38 +414,11 @@ function uniqueStorageMountPaths<T extends { readonly mountPath: string }>(
 }
 
 /** Canonical Runner wire representation. */
-export const canonicalStorageManifestSchema = z.object({
+export const storageManifestSchema = z.object({
   storageMounts: z
     .array(storageMountEntrySchema)
     .superRefine(uniqueStorageMountPaths),
 });
-
-/**
- * Runner Storage manifests contain exactly one complete representation. Other
- * runner-derived fields remain strip-compatible, but representation fields may
- * never be mixed or omitted.
- */
-export const storageManifestSchema = z
-  .unknown()
-  .superRefine((manifest, ctx) => {
-    if (typeof manifest !== "object" || manifest === null) {
-      return;
-    }
-    const value = manifest as Record<string, unknown>;
-    const hasStorageMounts = Object.hasOwn(value, "storageMounts");
-    const hasStorages = Object.hasOwn(value, "storages");
-    const hasArtifacts = Object.hasOwn(value, "artifacts");
-    const hasCanonical = hasStorageMounts && !hasStorages && !hasArtifacts;
-    const hasLegacy = !hasStorageMounts && hasStorages && hasArtifacts;
-    if (!hasCanonical && !hasLegacy) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        message:
-          "storage manifest must contain exactly storageMounts or both storages and artifacts",
-      });
-    }
-  })
-  .pipe(z.union([legacyStorageManifestSchema, canonicalStorageManifestSchema]));
 
 /**
  * Resume session information. The compatibility wire field is `sessionId`, but
@@ -452,7 +458,7 @@ const storedResumeSessionRefSchema = z.object({
 const resumeSessionIdentityHistoryRefSchema = resumeSessionHistoryBlobRefSchema
   .extend({
     url: z.string().url(),
-    encoding: z.literal("identity").optional(),
+    encoding: z.literal("identity"),
     rawSize: resumeSessionHistoryRawSizeSchema,
     encodedSize: resumeSessionHistoryEncodedSizeSchema,
     ...resumeSessionHistoryDownloadSourceFieldSchema,
@@ -520,13 +526,9 @@ export const secretConnectorMetadataMapSchema = z.record(
  * Secrets are encrypted with AES-256-GCM before storage
  */
 export const storedExecutionContextSchema = z.object({
-  // Claim-time compatibility projection for old runners. Queue rows have a
-  // short TTL; long-lived run/session/checkpoint writers are canonical-only.
-  storageManifest: legacyStorageManifestSchema.nullable(),
   storageMounts: z
     .array(storedStorageMountEntrySchema)
-    .superRefine(uniqueStorageMountPaths)
-    .optional(),
+    .superRefine(uniqueStorageMountPaths),
   environment: z.record(z.string(), z.string()).nullable(),
   // API-only references used to reconstruct runner masking values from the
   // stored environment. Null means no persistent secret map, and array
@@ -568,14 +570,15 @@ export const storedExecutionContextSchema = z.object({
   // Per-connector runtime network policy refresh deadlines. Used by runners to refresh
   // active sandbox policy when temporary allow grants expire.
   networkPolicyRefreshes: networkPolicyRefreshesSchema.optional(),
+  // API-only catalog-derived permission defaults for claim-time grant refresh.
+  connectorPermissionBaseline:
+    storedConnectorPermissionBaselineSchema.optional(),
   // Tools to disable in Claude CLI (passed as --disallowed-tools)
   disallowedTools: z.array(z.string()).optional(),
   // Tools to make available in Claude CLI (passed as --tools)
   tools: z.array(z.string()).optional(),
   // Settings JSON to pass to Claude CLI (passed as --settings)
   settings: z.string().optional(),
-  // VM profile for resource allocation (e.g., "vm0/default")
-  experimentalProfile: z.string().optional(),
   // Feature flags evaluated at job creation time (all switch states for user/org)
   featureFlags: z.record(z.string(), z.boolean()).optional(),
   billableFirewalls: z.array(z.string()).optional(),
@@ -588,6 +591,17 @@ export const storedExecutionContextSchema = z.object({
     .nullable()
     .optional(),
 });
+
+/**
+ * Tolerant reader for execution contexts already persisted in a database or
+ * encrypted queue payload. The optional baseline is derived performance data,
+ * so malformed or future versions must remain an independent cache miss rather
+ * than invalidating the complete queued execution context.
+ */
+export const compatibleStoredExecutionContextSchema =
+  storedExecutionContextSchema.extend({
+    connectorPermissionBaseline: z.unknown().optional(),
+  });
 
 /**
  * Execution context returned when claiming a job.
@@ -647,8 +661,6 @@ export const executionContextSchema = z.object({
   tools: z.array(z.string()).optional(),
   // Settings JSON to pass to Claude CLI (passed as --settings)
   settings: z.string().optional(),
-  // VM profile for resource allocation (e.g., "vm0/default")
-  experimentalProfile: z.string().optional(),
   // Feature flags evaluated at job creation time (all switch states for user/org)
   featureFlags: z.record(z.string(), z.boolean()).optional(),
   billableFirewalls: z.array(z.string()).optional(),
@@ -816,6 +828,12 @@ export type ExecutionContext = z.infer<typeof executionContextSchema>;
 export type StoredExecutionContext = z.infer<
   typeof storedExecutionContextSchema
 >;
+export type CompatibleStoredExecutionContext = z.infer<
+  typeof compatibleStoredExecutionContextSchema
+>;
+export type StoredConnectorPermissionBaseline = z.infer<
+  typeof storedConnectorPermissionBaselineSchema
+>;
 export type NetworkPolicyRefresh = z.infer<typeof networkPolicyRefreshSchema>;
 export type RunnerBuiltinFirewallsResolveBody = z.infer<
   typeof runnerBuiltinFirewallsResolveBodySchema
@@ -826,17 +844,12 @@ export type RunnerBuiltinFirewallsResolveResponse = z.infer<
 export type SecretConnectorMetadata = z.infer<
   typeof secretConnectorMetadataSchema
 >;
-export type StorageEntry = z.infer<typeof storageEntrySchema>;
-export type ArtifactEntry = z.infer<typeof artifactEntrySchema>;
 export type StorageMountEntry = z.infer<typeof storageMountEntrySchema>;
 export type StoredStorageMountEntry = z.infer<
   typeof storedStorageMountEntrySchema
 >;
-export type LegacyStorageManifest = z.infer<typeof legacyStorageManifestSchema>;
-export type CanonicalStorageManifest = z.infer<
-  typeof canonicalStorageManifestSchema
->;
 export type StorageManifest = z.infer<typeof storageManifestSchema>;
+export type CanonicalStorageManifest = StorageManifest;
 export type StoredResumeSession = z.infer<typeof storedResumeSessionSchema>;
 export type ResumeSession = z.infer<typeof resumeSessionSchema>;
 export type SessionHistoryDownloadSource = z.infer<

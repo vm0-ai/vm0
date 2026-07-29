@@ -5,7 +5,8 @@ import {
   CANONICAL_CLAUDE_MEMORY_MOUNT_PATH,
   DEFAULT_PROFILE,
   type SecretConnectorMetadata,
-  type LegacyStorageManifest,
+  type StorageMountEntry,
+  type StoredConnectorPermissionBaseline,
   type StoredExecutionContext,
 } from "@vm0/api-contracts/contracts/runners";
 import type { RunContextResponse } from "@vm0/api-contracts/contracts/zero-runs";
@@ -35,8 +36,7 @@ import {
 import {
   connectorAuthMethodRuntimeMetadata,
   type ConnectorRuntimeBindingEntry,
-} from "@vm0/connectors/connector-utils";
-import { connectorTypeSchema } from "@vm0/connectors/connectors";
+} from "@vm0/connectors/connector-auth-method";
 import type {
   ConnectorServerFirewallExecutionMetadata,
   ConnectorServerFirewallPermissionIndex,
@@ -84,6 +84,7 @@ import {
   agentComposeVersions,
 } from "@vm0/db/schema/agent-compose";
 import { connectors } from "@vm0/db/schema/connector";
+import { chatThreads } from "@vm0/db/schema/chat-thread";
 import { agentRunCallbacks } from "@vm0/db/schema/agent-run-callback";
 import { agentRunCustomConnectorAuthRefs } from "@vm0/db/schema/agent-run-custom-connector-auth-ref";
 import { agentRunQueue } from "@vm0/db/schema/agent-run-queue";
@@ -115,6 +116,8 @@ import {
   notFound,
   providerUnavailable,
 } from "../../lib/error";
+import { VERCEL_AUTOMATION_BYPASS_ENV } from "../../lib/preview-automation-bypass";
+import { previewAutomationBypass$ } from "../context/hono";
 import { writeDb$, type Db } from "../external/db";
 import { getDatasetName, ingestToAxiom } from "../external/axiom";
 import {
@@ -148,8 +151,8 @@ import {
 } from "./zero-custom-connector.service";
 import { activePendingRunPredicate } from "./agent-run-activity.service";
 import {
-  prepareAgentRunStorageManifest,
-  type PreparedAgentRunStorageManifest,
+  prepareAgentRunStorage,
+  type PreparedAgentRunStorage,
   StorageManifestBuildStats,
   type StorageManifestSource,
 } from "./agent-run-storage.service";
@@ -181,14 +184,20 @@ import {
   defaultFirewallPolicyForPermissionIndex,
   networkPolicyForFirewallPolicy,
 } from "./firewall-network-policy.service";
+import { currentConnectorCatalogValidatorIdentity } from "./connector-catalog-validator-authority";
 import { logger } from "../../lib/log";
 import { recordSandboxOperation } from "../external/sandbox-op-log";
 import type { InternalRunCallbackKind } from "./internal-run-callback";
+import type {
+  ChatThreadSessionResolution,
+  ChatThreadSessionResolutionAction,
+} from "./chat-session-continuity.service";
 import {
   claimQueueFirstRunAssociation,
   type QueueFirstRunAssociation,
   type QueueFirstRunClaimResult,
 } from "./zero-chat-queued-message.service";
+import { recordFirstAssistantMessageEligibility } from "./zero-chat-first-assistant-message-metric.service";
 import {
   activePaidConcurrencySlots,
   cappedBaseConcurrencyLimit,
@@ -221,7 +230,7 @@ import {
 const PENDING_RUN_TTL_MS = 15 * 60 * 1000;
 const AUTO_MEMORY_ARTIFACT_NAME = MEMORY_ARTIFACT_NAME;
 type ArtifactMissingRootPolicy = NonNullable<
-  LegacyStorageManifest["artifacts"][number]["missingRootPolicy"]
+  StorageMountEntry["missingRootPolicy"]
 >;
 const AUTO_MEMORY_MISSING_ROOT_POLICY: ArtifactMissingRootPolicy =
   "preserveParentVersion";
@@ -413,6 +422,15 @@ interface LaunchRunIdentity {
 
 type LaunchRunStatus = "pending" | "queued" | "failed";
 
+type ThreadSessionBindingAction = ChatThreadSessionResolutionAction;
+
+interface ThreadSessionBindingWrite {
+  readonly chatThreadId: string;
+  readonly agentSessionId: string;
+  readonly agentSessionRunId: string;
+  readonly action: ThreadSessionBindingAction;
+}
+
 type RunnerJobPayload = ReturnType<typeof queuedRunnerJobPayload>;
 const CUSTOM_CONNECTOR_AUTH_REF_TTL_MS = 5 * 60 * 60 * 1000;
 
@@ -445,6 +463,15 @@ export interface QueueFirstRunClaimLost {
   readonly kind: "queue-first-claim-lost";
 }
 
+interface ThreadSessionSnapshotStale {
+  readonly kind: "thread-session-snapshot-stale";
+  readonly chatThreadId: string;
+  readonly agentSessionId: string;
+  readonly agentSessionRunId: string;
+  readonly resolutionAction: ChatThreadSessionResolutionAction;
+  readonly reason: "binding_changed" | "session_changed";
+}
+
 type AtomicLaunchCommitResult =
   | {
       readonly kind: "pending";
@@ -453,6 +480,7 @@ type AtomicLaunchCommitResult =
       readonly runnerJobCreatedAt: Date;
       readonly runContextSnapshot: RunContextAxiomSnapshot;
       readonly queueFirstClaim: QueueFirstRunClaimed | undefined;
+      readonly threadSessionBinding: ThreadSessionBindingWrite | undefined;
     }
   | {
       readonly kind: "queued";
@@ -462,10 +490,12 @@ type AtomicLaunchCommitResult =
       readonly telemetryTimestamp: string;
       readonly runContextSnapshot: RunContextAxiomSnapshot;
       readonly queueFirstClaim: QueueFirstRunClaimed | undefined;
+      readonly threadSessionBinding: ThreadSessionBindingWrite | undefined;
     }
   | {
       readonly kind: "queue-payload-required";
     }
+  | ThreadSessionSnapshotStale
   | QueueFirstRunClaimLost;
 type QueuePayloadRequiredResult = Extract<
   AtomicLaunchCommitResult,
@@ -479,7 +509,9 @@ type CommitAtomicLaunch = (
 ) => Promise<AtomicLaunchCommitAttempt>;
 type CommittedAtomicLaunchResult = Exclude<
   AtomicLaunchCommitResult,
-  { readonly kind: "queue-payload-required" } | QueueFirstRunClaimLost
+  | { readonly kind: "queue-payload-required" }
+  | QueueFirstRunClaimLost
+  | ThreadSessionSnapshotStale
 >;
 
 type FailedLaunchCommitResult =
@@ -506,7 +538,8 @@ type CreateRunSuccessResult = {
 type QueueFirstAgentRunResult =
   | CreateRunSuccessResult
   | CreateRunErrorResult
-  | QueueFirstRunClaimLost;
+  | QueueFirstRunClaimLost
+  | ThreadSessionSnapshotStale;
 
 export function isQueueFirstRunClaimLost(
   result: unknown,
@@ -516,6 +549,17 @@ export function isQueueFirstRunClaimLost(
     result !== null &&
     "kind" in result &&
     result.kind === "queue-first-claim-lost"
+  );
+}
+
+export function isThreadSessionSnapshotStale(
+  result: unknown,
+): result is ThreadSessionSnapshotStale {
+  return (
+    typeof result === "object" &&
+    result !== null &&
+    "kind" in result &&
+    result.kind === "thread-session-snapshot-stale"
   );
 }
 
@@ -561,6 +605,7 @@ interface ResolvedModelProviderEnvironment {
 interface PermissionManifest {
   readonly firewalls: ExecutionFirewalls;
   readonly networkPolicies: NetworkPolicies;
+  readonly connectorPermissionBaseline?: StoredConnectorPermissionBaseline;
   readonly environmentSecretPlaceholders:
     | Readonly<Record<string, string>>
     | undefined;
@@ -587,6 +632,7 @@ interface StoredExecutionSecrets {
 interface BuiltStoredExecutionContext {
   readonly context: StoredExecutionContext;
   readonly persistedStorageMounts: readonly PersistedStorageMount[];
+  readonly runContextStorage: PreparedAgentRunStorage["runContextStorage"];
   readonly secretNames: readonly string[];
   // Plain secret values used for run-context redaction; values, not names.
   readonly secretValues: readonly string[];
@@ -594,12 +640,9 @@ interface BuiltStoredExecutionContext {
 
 type BuiltStoredExecutionContextDraft = Omit<
   BuiltStoredExecutionContext,
-  "context" | "persistedStorageMounts"
+  "context" | "persistedStorageMounts" | "runContextStorage"
 > & {
-  readonly context: Omit<
-    StoredExecutionContext,
-    "storageManifest" | "storageMounts"
-  >;
+  readonly context: Omit<StoredExecutionContext, "storageMounts">;
 };
 
 type ApiErrorResponse<Status extends number, Code extends string> = {
@@ -643,8 +686,10 @@ export interface CreateAgentRunArgs {
   readonly selectedModelOverride?: string;
   readonly callbacks?: readonly RunCallback[];
   readonly chatThreadId?: string;
+  readonly threadSessionResolution?: ChatThreadSessionResolution;
   readonly includeZeroTokenSecret?: boolean;
   readonly zeroTokenComputerUseHostId?: string;
+  readonly zeroTokenCloudBrowserEnabled?: boolean;
   readonly extraEnvironment?: Record<string, string>;
   // When set, system + workflow skill volumes are built and prepended in
   // prepareRunContext using the run's resolved (model-provider) framework.
@@ -837,18 +882,15 @@ function buildLegacySystemSkillVolumes(
   });
 }
 
-function buildExternalConnectorSkillVolumes(
+function buildConnectorSkillVolumes(
   connectorTypes: readonly ConnectorRef[],
   snapshot: ConnectorRuntimeSnapshot,
   framework: SupportedFramework,
 ): readonly PreparedAdditionalVolume[] {
-  if (snapshot.identity.source !== "external") {
-    throw new Error("External connector skill snapshot is unavailable");
-  }
   return connectorTypes.flatMap((connectorRef) => {
     const connector = getConnectorRuntimeConnector(snapshot, connectorRef);
-    if (!connector?.skill) {
-      throw new Error("External connector skill metadata is unavailable");
+    if (connector === undefined) {
+      throw new Error("Accepted connector skill metadata is unavailable");
     }
     if (connector.skill.kind === "none") {
       return [];
@@ -896,32 +938,19 @@ function buildInjectedSkillVolumes(
   }
   const connectorTypes = args.allowedConnectorTypes ?? [];
   const seedSkillNames = [...SEED_SKILLS, GOAL_SKILL_NAME];
-  const systemSkillVolumes =
-    args.connectorCatalogSnapshot.identity.source === "external"
-      ? [
-          ...(prepareAdditionalVolumesWithSource(
-            buildLegacySystemSkillVolumes(seedSkillNames, framework),
-            "system_skill",
-          ) ?? []),
-          ...buildExternalConnectorSkillVolumes(
-            connectorTypes,
-            args.connectorCatalogSnapshot,
-            framework,
-          ),
-        ]
-      : (prepareAdditionalVolumesWithSource(
-          buildLegacySystemSkillVolumes(
-            [
-              ...seedSkillNames,
-              ...connectorTypes.flatMap((connectorRef) => {
-                const parsed = connectorTypeSchema.safeParse(connectorRef);
-                return parsed.success ? [parsed.data] : [];
-              }),
-            ],
-            framework,
-          ),
-          "system_skill",
-        ) ?? []);
+  // Connector rollout switches govern discovery only. Once a connector ref is
+  // part of a run, its accepted catalog skill remains executable and mountable.
+  const systemSkillVolumes = [
+    ...(prepareAdditionalVolumesWithSource(
+      buildLegacySystemSkillVolumes(seedSkillNames, framework),
+      "system_skill",
+    ) ?? []),
+    ...buildConnectorSkillVolumes(
+      connectorTypes,
+      args.connectorCatalogSnapshot,
+      framework,
+    ),
+  ];
   return [
     ...systemSkillVolumes,
     ...(prepareAdditionalVolumesWithSource(
@@ -1708,7 +1737,7 @@ function providerEnvironmentFromSecretMap(
 }
 
 function vm0ApiKeySelectionOrder() {
-  return sql`case when ${vm0ApiKeys.label} = 'dev-seed' then 0 else 1 end`;
+  return sql`case when ${eq(vm0ApiKeys.label, sql`'dev-seed'`)} then 0 else 1 end`;
 }
 
 async function multiAuthModelProviderEnvironment(
@@ -3790,6 +3819,52 @@ interface BuiltinConnectorManifestSource {
   readonly permissionIndex: ConnectorServerFirewallPermissionIndex;
 }
 
+function buildConnectorPermissionBaseline(
+  snapshot: ConnectorRuntimeSnapshot,
+  sources: readonly BuiltinConnectorManifestSource[],
+): StoredConnectorPermissionBaseline {
+  const validationAuthority = currentConnectorCatalogValidatorIdentity();
+  return {
+    version: 1,
+    catalogIdentity: snapshot.acceptedSnapshot.identity,
+    validationAuthority: {
+      backendVersion: validationAuthority.backendVersion,
+      buildCommitSha: validationAuthority.buildCommitSha,
+    },
+    connectors: Object.fromEntries(
+      sources.map((source) => {
+        const defaultPolicy = source.permissionIndex.defaultPolicy;
+        const permissionOverrides = defaultPolicy.permissionOverrides;
+        return [
+          source.metadata.connectorRef,
+          {
+            permissionNames: [...source.permissionIndex.permissionNames],
+            defaultPolicy: {
+              permissionDefault: defaultPolicy.permissionDefault,
+              ...(permissionOverrides
+                ? {
+                    permissionOverrides: {
+                      ...(permissionOverrides.allow
+                        ? { allow: [...permissionOverrides.allow] }
+                        : {}),
+                      ...(permissionOverrides.deny
+                        ? { deny: [...permissionOverrides.deny] }
+                        : {}),
+                      ...(permissionOverrides.ask
+                        ? { ask: [...permissionOverrides.ask] }
+                        : {}),
+                    },
+                  }
+                : {}),
+              unknownPolicy: defaultPolicy.unknownPolicy,
+            },
+          },
+        ];
+      }),
+    ),
+  };
+}
+
 function applyBuiltinConnectorMetadataPolicies(
   sources: readonly BuiltinConnectorManifestSource[],
   policies: FirewallPolicies | undefined,
@@ -3938,6 +4013,10 @@ async function buildPermissionManifest(args: {
 
       return Promise.resolve({
         firewalls,
+        connectorPermissionBaseline: buildConnectorPermissionBaseline(
+          args.connectorCatalogSnapshot,
+          builtinSources,
+        ),
         environmentSecretPlaceholders: mergeRecords(
           providerManifest?.environmentSecretPlaceholders,
           connectorManifest.environmentSecretPlaceholders,
@@ -4725,10 +4804,10 @@ async function buildStoredExecutionContextDraft(args: {
       userTimezone: args.userTimezone,
       firewalls: permissions?.firewalls,
       networkPolicies: permissions?.networkPolicies,
+      connectorPermissionBaseline: permissions?.connectorPermissionBaseline,
       disallowedTools: args.body.disallowedTools,
       tools: args.body.tools,
       settings: args.body.settings,
-      experimentalProfile: runnerProfile(args.resolved.content),
       featureFlags: getAllFeatureStates(args.featureSwitchContext),
       billableFirewalls: [...args.billableFirewalls],
       modelUsageProvider: args.modelUsageProvider,
@@ -4740,16 +4819,16 @@ async function buildStoredExecutionContextDraft(args: {
 }
 
 async function resolveBuiltStoredExecutionContext(
-  storageManifestPromise: Promise<PreparedAgentRunStorageManifest>,
+  preparedStoragePromise: Promise<PreparedAgentRunStorage>,
   builtContextDraftPromise: Promise<BuiltStoredExecutionContextDraft>,
 ): Promise<BuiltStoredExecutionContext> {
-  const [storageManifestResult, builtContextDraftResult] =
+  const [preparedStorageResult, builtContextDraftResult] =
     await Promise.allSettled([
-      storageManifestPromise,
+      preparedStoragePromise,
       builtContextDraftPromise,
     ]);
-  if (storageManifestResult.status === "rejected") {
-    throw storageManifestResult.reason;
+  if (preparedStorageResult.status === "rejected") {
+    throw preparedStorageResult.reason;
   }
   if (builtContextDraftResult.status === "rejected") {
     throw builtContextDraftResult.reason;
@@ -4757,12 +4836,12 @@ async function resolveBuiltStoredExecutionContext(
   return {
     ...builtContextDraftResult.value,
     persistedStorageMounts: [
-      ...storageManifestResult.value.persistedStorageMounts,
+      ...preparedStorageResult.value.persistedStorageMounts,
     ],
+    runContextStorage: preparedStorageResult.value.runContextStorage,
     context: {
       ...builtContextDraftResult.value.context,
-      storageManifest: storageManifestResult.value.storageManifest,
-      storageMounts: [...storageManifestResult.value.storageMounts],
+      storageMounts: [...preparedStorageResult.value.storageMounts],
     },
   };
 }
@@ -4828,7 +4907,6 @@ function buildRunContextSnapshot(args: {
   readonly builtContext: BuiltStoredExecutionContext;
 }): RunContextAxiomSnapshot {
   const storedContext = args.builtContext.context;
-  const manifest: LegacyStorageManifest | null = storedContext.storageManifest;
   const sanitizedEnvironment = sanitizeEnvironment(
     storedContext.environment,
     args.builtContext.secretValues,
@@ -4848,22 +4926,8 @@ function buildRunContextSnapshot(args: {
     networkPolicyEntries: networkPoliciesRecordToEntries(
       storedContext.networkPolicies,
     ),
-    volumes: (manifest?.storages ?? []).map((storage) => {
-      return {
-        name: storage.name,
-        mountPath: storage.mountPath,
-        vasStorageName: storage.vasStorageName,
-        vasVersionId: storage.vasVersionId,
-      };
-    }),
-    artifact:
-      manifest && manifest.artifacts.length > 0
-        ? {
-            mountPath: manifest.artifacts[0]!.mountPath,
-            vasStorageName: manifest.artifacts[0]!.vasStorageName,
-            vasVersionId: manifest.artifacts[0]!.vasVersionId,
-          }
-        : null,
+    volumes: args.builtContext.runContextStorage.volumes,
+    artifact: args.builtContext.runContextStorage.artifact,
     featureFlagEntries: featureFlagsRecordToEntries(storedContext.featureFlags),
   };
   return snapshot;
@@ -4902,6 +4966,62 @@ function recordQueuedRunEnqueueTelemetry(args: {
   if ("error" in result) {
     L.warn("Failed to record queued run enqueue telemetry", {
       runId: args.runId,
+      error: result.error,
+    });
+  }
+}
+
+function recordThreadSessionBindingTelemetry(args: {
+  readonly binding: ThreadSessionBindingWrite;
+  readonly runStatus: "pending" | "queued";
+}): void {
+  const result = safeSync(() => {
+    recordSandboxOperation({
+      sandboxType: "chat",
+      actionType: "chat_thread_session_binding_persisted",
+      durationMs: 0,
+      success: true,
+      runId: args.binding.agentSessionRunId,
+      dimensions: {
+        chat_thread_id: args.binding.chatThreadId,
+        agent_session_id: args.binding.agentSessionId,
+        agent_session_run_id: args.binding.agentSessionRunId,
+        binding_action: args.binding.action,
+        run_status: args.runStatus,
+      },
+    });
+  });
+  if ("error" in result) {
+    L.warn("Failed to record chat thread session binding telemetry", {
+      runId: args.binding.agentSessionRunId,
+      error: result.error,
+    });
+  }
+}
+
+export function recordThreadSessionBindingRetryTelemetry(
+  retry: ThreadSessionSnapshotStale,
+): void {
+  const result = safeSync(() => {
+    recordSandboxOperation({
+      sandboxType: "chat",
+      actionType: "chat_thread_session_binding_retry",
+      durationMs: 0,
+      success: true,
+      runId: retry.agentSessionRunId,
+      dimensions: {
+        chat_thread_id: retry.chatThreadId,
+        agent_session_id: retry.agentSessionId,
+        agent_session_run_id: retry.agentSessionRunId,
+        binding_action: "retried",
+        resolution_action: retry.resolutionAction,
+        retry_reason: retry.reason,
+      },
+    });
+  });
+  if ("error" in result) {
+    L.warn("Failed to record chat thread session binding retry telemetry", {
+      runId: retry.agentSessionRunId,
       error: result.error,
     });
   }
@@ -5130,6 +5250,7 @@ interface BuildRunnerJobPayloadInput {
   readonly additionalVolumeSources: AdditionalVolumeSources;
   readonly includeZeroTokenSecret: boolean | undefined;
   readonly zeroTokenComputerUseHostId: string | undefined;
+  readonly zeroTokenCloudBrowserEnabled: boolean | undefined;
   readonly chatThreadId: string | undefined;
   readonly extraEnvironment: Record<string, string> | undefined;
   readonly userTimezone: string | undefined;
@@ -5162,27 +5283,31 @@ function buildRunnerJobPayload(
             args.run.id,
             args.orgId,
             featureSwitchOverrides,
-            {
-              ...(args.zeroTokenComputerUseHostId
-                ? { computerUseHostId: args.zeroTokenComputerUseHostId }
-                : {}),
-              ...(args.body.triggerSource
-                ? { triggerSource: args.body.triggerSource }
-                : {}),
-            },
+            args.zeroTokenComputerUseHostId ||
+              args.zeroTokenCloudBrowserEnabled === true
+              ? {
+                  ...(args.zeroTokenComputerUseHostId
+                    ? {
+                        computerUseHostId: args.zeroTokenComputerUseHostId,
+                      }
+                    : {}),
+                  cloudBrowserEnabled:
+                    args.zeroTokenCloudBrowserEnabled === true,
+                }
+              : undefined,
           ),
         )
       : args.body;
     const storageManifestStats = args.timing
       ? new StorageManifestBuildStats()
       : undefined;
-    const storageManifestPromise = measureApiDispatchTiming(
+    const preparedStoragePromise = measureApiDispatchTiming(
       args.timing,
       "api_dispatch_prepare_storage_manifest",
       "nested",
       async () => {
         return await get(
-          prepareAgentRunStorageManifest({
+          prepareAgentRunStorage({
             db,
             content: args.resolved.content,
             vars: body.vars,
@@ -5217,7 +5342,7 @@ function buildRunnerJobPayload(
       },
     );
     const builtContext = await resolveBuiltStoredExecutionContext(
-      storageManifestPromise,
+      preparedStoragePromise,
       builtContextDraftPromise,
     );
     const runContextSnapshot = buildRunContextSnapshot({
@@ -5398,6 +5523,13 @@ async function commitFailedLaunch(args: {
     return committed;
   }
 
+  if (args.createArgs.chatThreadId) {
+    recordFirstAssistantMessageEligibility({
+      runId: args.identity.runId,
+      apiStartedAt: args.createArgs.apiStartTime,
+    });
+  }
+
   await publishRunChangedForUserSafely(
     args.createArgs.userId,
     args.identity.runId,
@@ -5465,13 +5597,174 @@ async function insertAtomicLaunchRunRecord(args: {
     createdAt,
   );
   if (args.commit.context.modelProvider?.type === "vm0") {
-    await activateUsageAllowanceWindowsForRun(args.tx, {
-      orgId: args.commit.createArgs.orgId,
-      runId: run.id,
-      runCreatedAt: run.createdAt,
-    });
+    await args.commit.timing.measure(
+      "api_dispatch_activate_usage_allowance_windows",
+      "nested",
+      async () => {
+        await activateUsageAllowanceWindowsForRun(args.tx, {
+          orgId: args.commit.createArgs.orgId,
+          runId: run.id,
+          runCreatedAt: run.createdAt,
+        });
+      },
+    );
   }
   return run;
+}
+
+async function persistThreadSessionBinding(
+  tx: DbTransaction,
+  args: {
+    readonly chatThreadId: string | undefined;
+    readonly identity: LaunchRunIdentity;
+    readonly resolution: ChatThreadSessionResolution | undefined;
+    readonly timing: ApiDispatchTimingCollector;
+  },
+): Promise<ThreadSessionBindingWrite | undefined> {
+  if (!args.chatThreadId) {
+    return undefined;
+  }
+  const chatThreadId = args.chatThreadId;
+
+  const [thread] = await args.timing.measure(
+    "api_dispatch_load_thread_session_binding",
+    "nested",
+    async () => {
+      return await tx
+        .select({ agentSessionId: chatThreads.agentSessionId })
+        .from(chatThreads)
+        .where(eq(chatThreads.id, chatThreadId))
+        .for("update")
+        .limit(1);
+    },
+  );
+  if (!thread) {
+    throw new Error("Chat thread not found while persisting session binding");
+  }
+
+  const action: ThreadSessionBindingAction =
+    args.resolution?.action ??
+    (thread.agentSessionId === null
+      ? "initialized"
+      : thread.agentSessionId === args.identity.sessionId
+        ? "reused"
+        : "rotated");
+  const [updated] = await args.timing.measure(
+    "api_dispatch_update_thread_session_binding",
+    "nested",
+    async () => {
+      return await tx
+        .update(chatThreads)
+        .set({
+          agentSessionId: args.identity.sessionId,
+          agentSessionRunId: args.identity.runId,
+        })
+        .where(eq(chatThreads.id, chatThreadId))
+        .returning({ id: chatThreads.id });
+    },
+  );
+  if (!updated) {
+    throw new Error("Failed to persist chat thread session binding");
+  }
+
+  return {
+    chatThreadId: updated.id,
+    agentSessionId: args.identity.sessionId,
+    agentSessionRunId: args.identity.runId,
+    action,
+  };
+}
+
+function threadSessionSnapshotStale(args: {
+  readonly createArgs: CreateAgentRunArgs;
+  readonly identity: LaunchRunIdentity;
+  readonly reason: ThreadSessionSnapshotStale["reason"];
+}): ThreadSessionSnapshotStale {
+  const resolution = args.createArgs.threadSessionResolution;
+  const chatThreadId = args.createArgs.chatThreadId;
+  if (!resolution || !chatThreadId) {
+    throw new Error("Missing chat thread session snapshot");
+  }
+  return {
+    kind: "thread-session-snapshot-stale",
+    chatThreadId,
+    agentSessionId: args.identity.sessionId,
+    agentSessionRunId: args.identity.runId,
+    resolutionAction: resolution.action,
+    reason: args.reason,
+  };
+}
+
+async function validateThreadSessionSnapshot(
+  tx: DbTransaction,
+  args: {
+    readonly createArgs: CreateAgentRunArgs;
+    readonly identity: LaunchRunIdentity;
+    readonly timing: ApiDispatchTimingCollector;
+  },
+): Promise<ThreadSessionSnapshotStale | undefined> {
+  const resolution = args.createArgs.threadSessionResolution;
+  const chatThreadId = args.createArgs.chatThreadId;
+  if (!resolution || !chatThreadId) {
+    return undefined;
+  }
+
+  const [thread] = await args.timing.measure(
+    "api_dispatch_validate_thread_session_snapshot_thread",
+    "nested",
+    async () => {
+      return await tx
+        .select({
+          agentSessionId: chatThreads.agentSessionId,
+          agentSessionRunId: chatThreads.agentSessionRunId,
+        })
+        .from(chatThreads)
+        .where(eq(chatThreads.id, chatThreadId))
+        .for("update")
+        .limit(1);
+    },
+  );
+  if (!thread) {
+    throw new Error("Chat thread not found while validating session snapshot");
+  }
+  if (
+    thread.agentSessionId !== resolution.expected.agentSessionId ||
+    thread.agentSessionRunId !== resolution.expected.agentSessionRunId
+  ) {
+    return threadSessionSnapshotStale({
+      createArgs: args.createArgs,
+      identity: args.identity,
+      reason: "binding_changed",
+    });
+  }
+
+  const expectedSessionId = resolution.expected.sessionId;
+  if (expectedSessionId === null) {
+    return undefined;
+  }
+  const [session] = await args.timing.measure(
+    "api_dispatch_validate_thread_session_snapshot_session",
+    "nested",
+    async () => {
+      return await tx
+        .select({ conversationId: agentSessions.conversationId })
+        .from(agentSessions)
+        .where(eq(agentSessions.id, expectedSessionId))
+        .for("update")
+        .limit(1);
+    },
+  );
+  if (
+    !session ||
+    session.conversationId !== resolution.expected.conversationId
+  ) {
+    return threadSessionSnapshotStale({
+      createArgs: args.createArgs,
+      identity: args.identity,
+      reason: "session_changed",
+    });
+  }
+  return undefined;
 }
 
 async function commitQueuedPreparedLaunch(
@@ -5490,22 +5783,46 @@ async function commitQueuedPreparedLaunch(
     status: "queued",
     runnerGroup: payload.runnerGroup,
   });
-  await persistRunCustomConnectorAuthRefs(tx, {
-    runId: args.identity.runId,
-    refs: args.launch.customConnectorAuthRefs,
+  await args.timing.measure(
+    "api_dispatch_persist_custom_connector_auth_refs",
+    "nested",
+    async () => {
+      await persistRunCustomConnectorAuthRefs(tx, {
+        runId: args.identity.runId,
+        refs: args.launch.customConnectorAuthRefs,
+      });
+    },
+  );
+  await args.timing.measure(
+    "api_dispatch_insert_agent_run_queue",
+    "nested",
+    async () => {
+      await tx.insert(agentRunQueue).values({
+        runId: args.identity.runId,
+        userId: args.createArgs.userId,
+        orgId: args.createArgs.orgId,
+        encryptedParams: args.encryptedQueuedParams,
+        createdAt: run.createdAt,
+        expiresAt: sql`now() + interval '2 hours'`,
+      });
+    },
+  );
+  const [depthRow] = await args.timing.measure(
+    "api_dispatch_count_agent_run_queue_depth",
+    "nested",
+    async () => {
+      return await tx
+        .select({ depth: count() })
+        .from(agentRunQueue)
+        .where(eq(agentRunQueue.orgId, args.createArgs.orgId));
+    },
+  );
+  const threadSessionBinding = await persistThreadSessionBinding(tx, {
+    chatThreadId: args.createArgs.chatThreadId,
+    identity: args.identity,
+    resolution: args.createArgs.threadSessionResolution,
+    timing: args.timing,
   });
-  await tx.insert(agentRunQueue).values({
-    runId: args.identity.runId,
-    userId: args.createArgs.userId,
-    orgId: args.createArgs.orgId,
-    encryptedParams: args.encryptedQueuedParams,
-    createdAt: run.createdAt,
-    expiresAt: sql`now() + interval '2 hours'`,
-  });
-  const [depthRow] = await tx
-    .select({ depth: count() })
-    .from(agentRunQueue)
-    .where(eq(agentRunQueue.orgId, args.createArgs.orgId));
   return {
     kind: "queued",
     run,
@@ -5514,6 +5831,7 @@ async function commitQueuedPreparedLaunch(
     telemetryTimestamp: nowDate().toISOString(),
     runContextSnapshot: args.launch.runContextSnapshot,
     queueFirstClaim,
+    threadSessionBinding,
   };
 }
 
@@ -5555,6 +5873,12 @@ async function commitPendingPreparedLaunch(
       );
     },
   );
+  const threadSessionBinding = await persistThreadSessionBinding(tx, {
+    chatThreadId: args.createArgs.chatThreadId,
+    identity: args.identity,
+    resolution: args.createArgs.threadSessionResolution,
+    timing: args.timing,
+  });
   return {
     kind: "pending",
     run,
@@ -5562,6 +5886,7 @@ async function commitPendingPreparedLaunch(
     runnerJobCreatedAt,
     runContextSnapshot: args.launch.runContextSnapshot,
     queueFirstClaim,
+    threadSessionBinding,
   };
 }
 
@@ -5579,6 +5904,14 @@ async function commitPreparedLaunch(
         );
       },
     );
+    const staleThreadSession = await validateThreadSessionSnapshot(tx, {
+      createArgs: args.createArgs,
+      identity: args.identity,
+      timing: args.timing,
+    });
+    if (staleThreadSession) {
+      return staleThreadSession;
+    }
     const concurrency = await args.timing.measure(
       "api_dispatch_check_concurrency_limit",
       "nested",
@@ -5657,6 +5990,7 @@ function buildAtomicLaunchPayload(
     additionalVolumeSources: args.context.additionalVolumeSources,
     includeZeroTokenSecret: args.createArgs.includeZeroTokenSecret,
     zeroTokenComputerUseHostId: args.createArgs.zeroTokenComputerUseHostId,
+    zeroTokenCloudBrowserEnabled: args.createArgs.zeroTokenCloudBrowserEnabled,
     chatThreadId: args.createArgs.chatThreadId,
     extraEnvironment: args.createArgs.extraEnvironment,
     userTimezone: args.context.userTimezone,
@@ -6402,10 +6736,16 @@ async function prepareRunRuntimeContext(args: {
 async function connectorCatalogSnapshotForRun(args: {
   readonly db: Db;
   readonly preloadedConnectorCatalogSnapshot?: ConnectorRuntimeSnapshot;
+  readonly connectorScope: EffectiveConnectorScope;
+  readonly timing: ApiDispatchTimingCollector;
 }): Promise<ConnectorRuntimeSnapshot> {
   return (
     args.preloadedConnectorCatalogSnapshot ??
-    (await loadConnectorRuntimeSnapshot(args.db))
+    (await loadConnectorRuntimeSnapshot(args.db, {
+      timing: args.timing,
+      requestedConnectorCount:
+        args.connectorScope.allowedConnectorTypes?.length,
+    }))
   );
 }
 
@@ -6576,6 +6916,12 @@ async function committedAtomicLaunchResponse(args: {
   readonly committed: CommittedAtomicLaunchResult;
   readonly timing: ApiDispatchTimingCollector;
 }): Promise<Extract<CreateRunRouteResult, { readonly status: 201 }>> {
+  if (args.committed.threadSessionBinding) {
+    recordThreadSessionBindingTelemetry({
+      binding: args.committed.threadSessionBinding,
+      runStatus: args.committed.kind,
+    });
+  }
   if (args.committed.kind === "queued") {
     recordQueuedRunEnqueueTelemetry({
       runId: args.committed.run.id,
@@ -6605,6 +6951,13 @@ async function committedAtomicLaunchResponse(args: {
     return args.committed.queueFirstClaim
       ? { ...response, queueFirstClaim: args.committed.queueFirstClaim }
       : response;
+  }
+
+  if (args.createArgs.chatThreadId) {
+    recordFirstAssistantMessageEligibility({
+      runId: args.committed.run.id,
+      apiStartedAt: args.createArgs.apiStartTime,
+    });
   }
 
   ingestRunContextSnapshot(args.committed.runContextSnapshot);
@@ -6693,6 +7046,9 @@ async function finalizeAtomicLaunchCommit(args: {
       launch: args.launch,
       timing: args.input.timing,
     });
+    return args.committed;
+  }
+  if (args.committed.kind === "thread-session-snapshot-stale") {
     return args.committed;
   }
   if (args.committed.kind === "queue-payload-required") {
@@ -6902,7 +7258,19 @@ export const prepareAgentRun$ = command(
     input: PrepareAgentRunArgs,
     signal: AbortSignal,
   ): Promise<PreparedAgentRun | CreateRunErrorResult> => {
-    const { args, timing } = input;
+    // A preview request that passed the protection guard gives its sandbox CLI
+    // the same bypass through the existing user-environment channel.
+    const previewAutomationBypass = get(previewAutomationBypass$);
+    const args = previewAutomationBypass
+      ? {
+          ...input.args,
+          extraEnvironment: {
+            ...input.args.extraEnvironment,
+            [VERCEL_AUTOMATION_BYPASS_ENV]: previewAutomationBypass,
+          },
+        }
+      : input.args;
+    const { timing } = input;
     const db = set(writeDb$);
     if (input.checkOrgPlanStatusBeforeContext) {
       const tierGate = await timing.measure(
@@ -7025,6 +7393,9 @@ export const createAgentRun$ = command(
     );
     if (isQueueFirstRunClaimLost(result)) {
       throw new Error("Direct run unexpectedly lost a queue-first claim");
+    }
+    if (isThreadSessionSnapshotStale(result)) {
+      throw new Error("Direct run unexpectedly used a stale thread session");
     }
     return result;
   },

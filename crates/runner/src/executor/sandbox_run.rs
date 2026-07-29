@@ -7,13 +7,16 @@ use std::time::{Duration, Instant};
 use futures_util::FutureExt;
 use sandbox::{
     Sandbox, SandboxConfig, SandboxCreateObserver, SandboxCreateStage, SandboxError,
-    SandboxFactory, SandboxId, SandboxNbdCowCreateOutcome, SandboxNbdCowCreateStage,
-    SandboxNbdNetlinkConnectStage, SandboxStartObserver, SandboxStartStage,
+    SandboxFactory, SandboxGuestDnsReadinessReason, SandboxId, SandboxNbdCowCreateOutcome,
+    SandboxNbdCowCreateStage, SandboxNbdNetlinkConnectStage, SandboxStartObserver,
+    SandboxStartStage,
 };
 use tokio_util::sync::CancellationToken;
 use tracing::{info, warn};
 
-use super::agent_run::{AgentExecutionResult, RunControls, RunStart, run_in_sandbox};
+use super::agent_run::{
+    AgentExecutionResult, PreparedGuestRuntime, RunControls, RunStart, run_in_sandbox,
+};
 use super::cli_framework::{
     EffectiveCliFramework, effective_cli_framework, normalized_cli_agent_type,
 };
@@ -496,6 +499,8 @@ pub(super) async fn execute_new_sandbox_with_prepared_notifier(
             StartSandboxOptions {
                 workspace_image: workspace_image.as_ref(),
                 sandbox_prepared,
+                reuse_result,
+                cancel: &controls.cancel,
             },
         )
         .await;
@@ -524,6 +529,14 @@ pub(super) async fn execute_new_sandbox_with_prepared_notifier(
         let cache_hit = workspace_image
             .as_ref()
             .is_some_and(WorkspaceImageLease::is_cache_hit);
+        if failure.invalidate_consumed_workspace_cache && cache_hit {
+            invalidate_workspace_cache_hit(
+                workspace_image.as_ref(),
+                context.run_id,
+                "sandbox_prepare_failed",
+            )
+            .await;
+        }
         let retry_guest_dns = failure.retry == SandboxPrepareRetry::GuestDnsReadiness;
         let retry_without_workspace =
             failure.retry == SandboxPrepareRetry::WithoutWorkspaceImage && cache_hit;
@@ -662,12 +675,14 @@ pub(super) struct PreparedSandboxRun {
     pub(super) sandbox: Box<dyn Sandbox>,
     pub(super) source_ip: String,
     pub(super) network_log_session: NetworkLogSession,
+    pub(super) prepared_guest_runtime: Option<PreparedGuestRuntime>,
 }
 
 pub(super) struct SandboxPrepareError {
     error: RunnerError,
     retry: SandboxPrepareRetry,
     cleanup_completed: bool,
+    invalidate_consumed_workspace_cache: bool,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -685,6 +700,8 @@ pub(super) struct NewSandboxHooks<'a> {
 struct StartSandboxOptions<'a> {
     workspace_image: Option<&'a WorkspaceImageLease>,
     sandbox_prepared: Option<&'a SandboxPreparedNotifier>,
+    reuse_result: SandboxReuseResult,
+    cancel: &'a CancellationToken,
 }
 
 impl SandboxPrepareError {
@@ -693,14 +710,29 @@ impl SandboxPrepareError {
             error,
             retry: SandboxPrepareRetry::WithoutWorkspaceImage,
             cleanup_completed,
+            invalidate_consumed_workspace_cache: false,
         }
     }
 
-    fn guest_dns_readiness(error: RunnerError, cleanup_completed: bool) -> Self {
+    fn guest_dns_readiness(
+        error: RunnerError,
+        cleanup_completed: bool,
+        reason: SandboxGuestDnsReadinessReason,
+    ) -> Self {
+        let suppress_replacement = matches!(
+            reason,
+            SandboxGuestDnsReadinessReason::ProcessTimeout
+                | SandboxGuestDnsReadinessReason::Deadline
+        );
         Self {
             error,
-            retry: SandboxPrepareRetry::GuestDnsReadiness,
+            retry: if suppress_replacement {
+                SandboxPrepareRetry::None
+            } else {
+                SandboxPrepareRetry::GuestDnsReadiness
+            },
             cleanup_completed,
+            invalidate_consumed_workspace_cache: suppress_replacement,
         }
     }
 
@@ -709,6 +741,7 @@ impl SandboxPrepareError {
             error,
             retry: SandboxPrepareRetry::None,
             cleanup_completed: false,
+            invalidate_consumed_workspace_cache: false,
         }
     }
 }
@@ -889,6 +922,8 @@ async fn create_started_sandbox(
     let StartSandboxOptions {
         workspace_image,
         sandbox_prepared,
+        reuse_result,
+        cancel,
     } = options;
     let sandbox_config = SandboxConfig {
         id: sandbox_id,
@@ -1002,7 +1037,10 @@ async fn create_started_sandbox(
         sandbox.start_with_observer(&mut observer).await
     };
     if let Err(e) = start_result {
-        let guest_dns_readiness = matches!(&e, SandboxError::GuestDnsReadiness { .. });
+        let guest_dns_readiness_reason = match &e {
+            SandboxError::GuestDnsReadiness { reason, .. } => Some(*reason),
+            _ => None,
+        };
         telemetry.record(
             RUNNER_FRESH_SANDBOX_START,
             sandbox_start_started.elapsed(),
@@ -1025,7 +1063,7 @@ async fn create_started_sandbox(
         let network_log_observation = network_log_session
             .close_for_upload(context.run_id, &config.network_log_drain)
             .await;
-        if guest_dns_readiness {
+        if guest_dns_readiness_reason.is_some() {
             let observation = match network_log_start_offset {
                 Some(start_offset) => {
                     inspect_readiness_log_segment(&network_log_path, start_offset).await
@@ -1050,10 +1088,11 @@ async fn create_started_sandbox(
             .is_completed();
         let cleanup_completed = unregister_completed && destroy_completed;
         let error = e.into();
-        return Err(if guest_dns_readiness {
-            SandboxPrepareError::guest_dns_readiness(error, cleanup_completed)
-        } else {
-            SandboxPrepareError::retry_without_workspace_image(error, cleanup_completed)
+        return Err(match guest_dns_readiness_reason {
+            Some(reason) => {
+                SandboxPrepareError::guest_dns_readiness(error, cleanup_completed, reason)
+            }
+            None => SandboxPrepareError::retry_without_workspace_image(error, cleanup_completed),
         });
     }
     telemetry.record(
@@ -1064,6 +1103,17 @@ async fn create_started_sandbox(
     );
     telemetry.record("vm_create", t.elapsed(), true, None);
 
+    let mut prepared_guest_runtime =
+        PreparedGuestRuntime::prepare_for_codex_model_catalog_prefetch(
+            sandbox.as_ref(),
+            context,
+            params.restore_guest_state,
+            reuse_result,
+            cancel,
+            telemetry,
+        )
+        .await;
+
     let mount_started = Instant::now();
     if let Err(e) = ensure_workspace_drive_mounted(sandbox.as_ref(), context.run_id).await {
         telemetry.record(
@@ -1072,6 +1122,11 @@ async fn create_started_sandbox(
             false,
             Some(&e.to_string()),
         );
+        if let Some(prepared_guest_runtime) = prepared_guest_runtime.take() {
+            prepared_guest_runtime
+                .finish(sandbox.as_ref(), telemetry)
+                .await;
+        }
         let unregister_completed =
             match unregister_proxy_registry(config, &source_ip, context.run_id).await {
                 Ok(()) => true,
@@ -1104,6 +1159,7 @@ async fn create_started_sandbox(
         sandbox,
         source_ip,
         network_log_session,
+        prepared_guest_runtime,
     })
 }
 
@@ -1209,6 +1265,7 @@ pub(super) async fn execute_reused_sandbox(
             sandbox,
             source_ip,
             network_log_session,
+            prepared_guest_runtime: None,
         },
         context,
         config,
@@ -1235,10 +1292,13 @@ pub(super) async fn execute_prepared_sandbox_run(
         sandbox,
         source_ip,
         network_log_session,
+        prepared_guest_runtime,
     } = run;
     let cleanup_cancel = controls.cancel.clone();
     let reuse_result = start.reuse_result;
 
+    let mut controls = controls;
+    controls.prepared_guest_runtime = prepared_guest_runtime;
     let result = run_in_sandbox(
         sandbox.as_ref(),
         context,
@@ -1300,23 +1360,22 @@ pub(super) async fn execute_prepared_sandbox_run(
         }
     }
 
-    // Read CLI-generated session ID for first-run parking.
-    let discovered_cli_agent_session_id =
-        if agent_result.exit_code() == 0 && context.cli_agent_session_id().is_none() {
-            let id = read_guest_cli_agent_session_id(sandbox.as_ref(), context.run_id)
-                .await
-                .and_then(|id| normalize_guest_cli_agent_session_id_for_parking(context, id));
-            if let Some(ref sid) = id {
-                info!(
-                    run_id = %context.run_id,
-                    session_id = %sid,
-                    "read guest session ID for parking"
-                );
-            }
-            id
-        } else {
-            None
-        };
+    // Read the CLI-generated session ID after a first-run execution.
+    let discovered_cli_agent_session_id = if context.cli_agent_session_id().is_none() {
+        let id = read_guest_cli_agent_session_id(sandbox.as_ref(), context.run_id)
+            .await
+            .and_then(|id| normalize_guest_cli_agent_session_id(context, id));
+        if let Some(ref sid) = id {
+            info!(
+                run_id = %context.run_id,
+                session_id = %sid,
+                "read guest CLI agent session ID after execution"
+            );
+        }
+        id
+    } else {
+        None
+    };
 
     ExecuteOutcome {
         failure: agent_result.failure,
@@ -1329,7 +1388,7 @@ pub(super) async fn execute_prepared_sandbox_run(
     }
 }
 
-fn normalize_guest_cli_agent_session_id_for_parking(
+fn normalize_guest_cli_agent_session_id(
     context: &ExecutionContext,
     session_id: String,
 ) -> Option<String> {

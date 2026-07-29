@@ -72,6 +72,13 @@ const LOG_TAG: &str = "sandbox:guest-agent";
 const OPENAI_BASE_URL_ENV_KEY: &str = "OPENAI_BASE_URL";
 const ZERO_AGENT_ID_ENV_KEY: &str = "ZERO_AGENT_ID";
 const WEB_SEARCH_TOOL_NAME: &str = "WebSearch";
+const CODEX_FIXED_STARTUP_CONFIGS: [&str; 3] = [
+    "analytics.enabled=false",
+    "features.plugins=false",
+    "features.apps=false",
+];
+const CODEX_FAST_MODE_STARTUP_CONFIGS: [&str; 2] =
+    ["features.fast_mode=true", r#"service_tier="fast""#];
 const CODEX_WEB_SEARCH_DISABLED_CONFIG: &str = r#"web_search="disabled""#;
 /// Maximum retained bytes for one ordinary CLI stdout record before parsing.
 ///
@@ -400,8 +407,17 @@ impl<'a> CliRuntimeConfig<'a> {
             self.codex_runtime_config.as_ref(),
             Path::new(&codex_home),
         );
+        if self.codex_runtime_config.is_none() && !self.openai_base_url.is_empty() {
+            let base_url =
+                codex_runtime_config::quote_toml_basic_string(self.openai_base_url.as_ref());
+            overrides.push(format!("openai_base_url={base_url}"));
+        }
         if self.disable_builtin_web_search {
             overrides.push(CODEX_WEB_SEARCH_DISABLED_CONFIG.to_string());
+        }
+        overrides.extend(CODEX_FIXED_STARTUP_CONFIGS.map(str::to_string));
+        if self.codex_fast_mode {
+            overrides.extend(CODEX_FAST_MODE_STARTUP_CONFIGS.map(str::to_string));
         }
         overrides
     }
@@ -480,6 +496,10 @@ impl CliEventIngestor {
             ),
             failure_diagnostic: None,
         }
+    }
+
+    fn record_e2e_from_api_start_at(&self, op_name: &str, observed_at_ms: u64) {
+        timing::record_e2e_from_api_start_at(op_name, &self.api_start_time, observed_at_ms);
     }
 
     async fn write_raw_line(log_file: &mut tokio::fs::File, raw_line: impl AsRef<[u8]>) {
@@ -799,7 +819,7 @@ async fn execute_cli_inner(
         http.clone(),
         runtime.event_error_flag.to_string(),
         &runtime.run_id,
-    );
+    )?;
 
     let mut heartbeat_done = false;
     let mut cli_exit_at: Option<Instant> = None;

@@ -1,4 +1,5 @@
 import { vi } from "vitest";
+import { replaceState } from "../signals/location.ts";
 
 export interface MockedInvitation {
   id: string;
@@ -152,15 +153,19 @@ export function clearMockedAuth() {
   internalMockedMemberships = [{ id: "org_default" }];
   internalMockedClientSessions = [];
   clerkListeners.length = 0;
+  mockedClerk.on = defaultClerkStatusOn;
   mockedClerk.signOut.mockReset();
   mockedClerk.openSignIn.mockReset();
   mockedClerk.openUserProfile.mockReset();
+  mockedClerk.closeUserProfile.mockReset();
   mockedClerk.setActive.mockReset();
+  mockedClerk.setActive.mockImplementation(defaultSetActiveImpl);
   mockedClerk.createOrganization.mockReset();
   mockedClerk.sessionGetToken.mockReset();
   mockedClerk.sessionGetToken.mockImplementation(defaultGetTokenImpl);
-  mockedClerk.load.mockReset();
-  mockedClerk.load.mockImplementation(defaultLoadImpl);
+  mockedClerk.load = mockedClerkLoad;
+  mockedClerkLoad.mockReset();
+  mockedClerkLoad.mockImplementation(defaultLoadImpl);
   mockedClerk.clientSignInCreate.mockReset();
   mockedClerk.clientSignInCreate.mockResolvedValue({
     status: "complete",
@@ -172,6 +177,7 @@ export function clearMockedAuth() {
 }
 
 const clerkListeners: (() => void)[] = [];
+function defaultClerkStatusOn(): void {}
 
 export function emitMockedClerkEvent(): void {
   for (const listener of clerkListeners) {
@@ -202,10 +208,46 @@ const defaultBuildUrlWithAuthImpl = (to: string) => {
 const defaultLoadImpl = () => {
   return Promise.resolve();
 };
+export const mockedClerkLoad = vi.fn<typeof defaultLoadImpl>(defaultLoadImpl);
+
+interface MockedSetActiveParams {
+  organization?: string | null;
+  session?: string | null;
+  navigate?: (params: {
+    session: {
+      currentTask?: {
+        key: "choose-organization" | "reset-password" | "setup-mfa";
+      };
+    };
+    decorateUrl: (url: string) => string;
+  }) => void | Promise<unknown>;
+}
+
+async function defaultSetActiveImpl(
+  params: MockedSetActiveParams,
+): Promise<void> {
+  let navigatedTo: string | null = null;
+  await params.navigate?.({
+    session: {},
+    decorateUrl: (url) => {
+      navigatedTo = defaultBuildUrlWithAuthImpl(url);
+      return navigatedTo;
+    },
+  });
+  if (navigatedTo) {
+    replaceState(null, "", navigatedTo);
+  }
+}
+
 const initialize =
   vi.fn<
     (publishableKey: string, options?: { readonly domain?: string }) => void
   >();
+
+interface MockedUserProfileOptions {
+  apiKeysProps?: { hide?: boolean };
+  getContainer?: () => HTMLElement | null;
+}
 
 export const mockedClerk = {
   initialize,
@@ -237,10 +279,10 @@ export const mockedClerk = {
   openSignIn: vi.fn(() => {
     return Promise.resolve();
   }),
-  openUserProfile: vi.fn(() => {
-    return Promise.resolve();
-  }),
-  load: vi.fn(defaultLoadImpl),
+  openUserProfile: vi.fn<(options?: MockedUserProfileOptions) => void>(),
+  closeUserProfile: vi.fn<() => void>(),
+  load: mockedClerkLoad,
+  on: defaultClerkStatusOn,
   addListener: (cb: () => void) => {
     clerkListeners.push(cb);
     return () => {
@@ -254,16 +296,7 @@ export const mockedClerk = {
   // Production-instance behavior: the URL passes through unchanged. Dev
   // instances append the __clerk_db_jwt session handoff parameter.
   buildUrlWithAuth: vi.fn(defaultBuildUrlWithAuthImpl),
-  setActive: vi.fn(
-    (params: {
-      organization?: string;
-      session?: string;
-      beforeEmit?: () => void;
-    }) => {
-      params.beforeEmit?.();
-      return Promise.resolve();
-    },
-  ),
+  setActive: vi.fn(defaultSetActiveImpl),
   createOrganization: vi.fn((_params: { name: string; slug: string }) => {
     return Promise.resolve({ id: "new-org-id" });
   }),

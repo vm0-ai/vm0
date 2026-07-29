@@ -21,65 +21,7 @@ pub mod runners {
             PreserveParentVersion,
         }
 
-        /// Artifact entry in a runner storage manifest.
-        #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-        #[serde(rename_all = "camelCase")]
-        pub struct ArtifactEntry {
-            /// Guest filesystem path where the artifact is mounted.
-            pub mount_path: String,
-            /// VAS storage name that stores the artifact versions.
-            pub vas_storage_name: String,
-            /// VAS storage identifier for the artifact.
-            pub vas_storage_id: String,
-            /// VAS version identifier for the artifact contents.
-            pub vas_version_id: String,
-            /// Optional presigned URL for downloading the artifact archive. Explicit empty artifacts may omit it.
-            #[serde(default, skip_serializing_if = "Option::is_none")]
-            pub archive_url: Option<String>,
-            /// Optional exact encoded archive size in bytes. Older queued manifests may omit it.
-            #[serde(default, skip_serializing_if = "Option::is_none")]
-            pub archive_size: Option<u64>,
-            /// Whether this artifact version is explicitly empty and can be prepared without downloading an archive.
-            #[serde(default, skip_serializing_if = "Option::is_none")]
-            pub empty: Option<bool>,
-            /// Optional policy for a missing artifact root; absence behaves like `fail`.
-            #[serde(default, skip_serializing_if = "Option::is_none")]
-            pub missing_root_policy: Option<ArtifactEntryMissingRootPolicy>,
-        }
-
-        /// Volume storage entry in a runner storage manifest.
-        #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-        #[serde(rename_all = "camelCase")]
-        pub struct StorageEntry {
-            /// User-facing storage name referenced by the run.
-            pub name: String,
-            /// Guest filesystem path where the storage is mounted.
-            pub mount_path: String,
-            /// VAS storage name that stores the volume versions.
-            pub vas_storage_name: String,
-            /// VAS version identifier for the volume contents.
-            pub vas_version_id: String,
-            /// Optional filename used when storage instructions are written into the mount.
-            #[serde(default, skip_serializing_if = "Option::is_none")]
-            pub instructions_target_filename: Option<String>,
-            /// Presigned URL for downloading the storage archive.
-            pub archive_url: String,
-            /// Optional exact encoded archive size in bytes. Older queued manifests may omit it.
-            #[serde(default, skip_serializing_if = "Option::is_none")]
-            pub archive_size: Option<u64>,
-        }
-
-        /// Runner storage manifest containing all volume and artifact mounts.
-        #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-        #[serde(rename_all = "camelCase")]
-        pub struct StorageManifest {
-            /// Volume storage entries to mount for the run.
-            pub storages: Vec<StorageEntry>,
-            /// Artifact entries to mount for the run.
-            pub artifacts: Vec<ArtifactEntry>,
-        }
-
-        /// Canonical resolved Storage mount accepted by capability-aware runners.
+        /// Canonical resolved Storage mount accepted by runners.
         #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
         #[serde(rename_all = "camelCase")]
         pub struct StorageMountEntry {
@@ -187,10 +129,8 @@ pub mod webhooks {
                 pub struct Request {
                     /// Agent run identifier bound to the sandbox token.
                     pub run_id: String,
-                    /// Storage name being committed.
-                    pub storage_name: String,
-                    /// Storage kind encoded by the TypeScript contract.
-                    pub storage_type: String,
+                    /// Canonical Storage identifier authorized by the agent run.
+                    pub storage_id: String,
                     /// Storage version identifier being committed.
                     pub version_id: String,
                     /// Optional parent version used when committing an incremental upload.
@@ -243,10 +183,8 @@ pub mod webhooks {
                 pub struct Request {
                     /// Agent run identifier bound to the sandbox token.
                     pub run_id: String,
-                    /// Storage name being prepared for upload.
-                    pub storage_name: String,
-                    /// Storage kind encoded by the TypeScript contract.
-                    pub storage_type: String,
+                    /// Canonical Storage identifier authorized by the agent run.
+                    pub storage_id: String,
                     /// Content-addressed file list included in the upload.
                     pub files: Vec<super::FileEntryWithHash>,
                     /// Optional parent version used when preparing an incremental upload.

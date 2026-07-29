@@ -1,15 +1,16 @@
 import { command, computed } from "ccstate";
 import { getAllFeatureStates } from "@vm0/core/feature-switch";
 import { zeroFeatureSwitchesContract } from "@vm0/api-contracts/contracts/zero-feature-switches";
-import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
-import { authenticatedIdentity$, clerk$ } from "../auth";
+import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
+import { clerk$ } from "../auth";
 import { accept } from "../../lib/accept.ts";
 import { resolveApiBaseForTarget } from "../api-base.ts";
 import { createAuthedContractClient } from "../api-client-base.ts";
 import { unauthorizedRedirectSuppressionUntil$ } from "../auth-retry.ts";
+import { rootSignal$ } from "../root-signal.ts";
 import { localStorageSignals } from "./local-storage.ts";
 
-export const FEATURE_SWITCH_CACHE_KEY = "vm0:feature-switch-cache:v2";
+export const FEATURE_SWITCH_CACHE_KEY = "vm0:feature-switch-cache:v3";
 
 const { set$: setFeatureSwitchLocalStorage$, get$: featureSwitchCache$ } =
   localStorageSignals(FEATURE_SWITCH_CACHE_KEY);
@@ -22,6 +23,9 @@ const apiFeatureSwitchClient$ = computed((get) => {
     getClerk: () => {
       return get(clerk$);
     },
+    getRootSignal: () => {
+      return get(rootSignal$);
+    },
     getUnauthorizedRedirectSuppressionUntil: () => {
       return get(unauthorizedRedirectSuppressionUntil$);
     },
@@ -33,22 +37,14 @@ function applySwitches(
   overrides: Partial<Record<string, boolean>> | undefined,
   effectiveSwitches: Partial<Record<string, boolean>> | undefined,
 ) {
-  if (overrides) {
+  const resolvedSwitches = effectiveSwitches ?? overrides;
+  if (resolvedSwitches) {
     for (const key of Object.values(FeatureSwitchKey)) {
-      const value = overrides[key];
+      const value = resolvedSwitches[key];
       if (value !== undefined) {
         result[key] = Boolean(value);
       }
     }
-  }
-
-  const notionWorkflowAutomations =
-    overrides?.[FeatureSwitchKey.NotionWorkflowAutomations] ??
-    effectiveSwitches?.[FeatureSwitchKey.NotionWorkflowAutomations];
-  if (notionWorkflowAutomations !== undefined) {
-    result[FeatureSwitchKey.NotionWorkflowAutomations] = Boolean(
-      notionWorkflowAutomations,
-    );
   }
 }
 
@@ -62,12 +58,22 @@ export const featureSwitch$ = computed((get) => {
   return JSON.parse(raw) as Record<FeatureSwitchKey, boolean>;
 });
 
+export const chatThreadSidebarAutoOpenEnabled$ = computed((get): boolean => {
+  return (
+    get(featureSwitch$)[FeatureSwitchKey.ChatThreadSidebarAutoOpen] ?? false
+  );
+});
+
 export const codexFastModeEnabled$ = computed((get): boolean => {
   return get(featureSwitch$)[FeatureSwitchKey.CodexFastMode] ?? false;
 });
 
 export const composerUploadPopoverEnabled$ = computed((get): boolean => {
   return get(featureSwitch$)[FeatureSwitchKey.ComposerUploadPopover] ?? false;
+});
+
+export const zeroBrowserEnabled$ = computed((get): boolean => {
+  return get(featureSwitch$)[FeatureSwitchKey.ZeroBrowser] ?? false;
 });
 
 export const composerConnectorPermissionsEnabled$ = computed((get): boolean => {
@@ -78,8 +84,11 @@ export const composerConnectorPermissionsEnabled$ = computed((get): boolean => {
 
 export const reloadFeatureSwitch$ = command(
   async ({ get, set }, signal: AbortSignal) => {
-    const identity = await get(authenticatedIdentity$);
+    const clerk = await get(clerk$);
     signal.throwIfAborted();
+    if (!clerk.user || !clerk.organization) {
+      return;
+    }
 
     const client = get(apiFeatureSwitchClient$);
     const result = await accept(
@@ -89,15 +98,18 @@ export const reloadFeatureSwitch$ = command(
     signal.throwIfAborted();
 
     const combined = getAllFeatureStates({
-      userId: identity.userId,
-      email: identity.email,
-      orgId: identity.orgId,
+      userId: clerk.user.id,
+      email: clerk.user.primaryEmailAddress?.emailAddress,
+      orgId: clerk.organization.id,
     });
     applySwitches(
       combined,
       result.body.switches,
       result.body.effectiveSwitches,
     );
+    if (result.body.supportsStructuredInlineTemplates !== true) {
+      combined[FeatureSwitchKey.StructuredPromptInlineTemplates] = false;
+    }
 
     set(setFeatureSwitchLocalStorage$, JSON.stringify(combined));
   },

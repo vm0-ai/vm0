@@ -30,11 +30,10 @@
       "ignoreDependencies": ["@hono/node-server-v1"]
     },
     "apps/platform": {
-      "entry": ["src/main.ts", "**/*.{test,spec}.ts?(x)"],
+      "entry": ["src/main.ts", "i18next.config.ts", "**/*.{test,spec}.ts?(x)"],
       "project": ["**/*.{ts,tsx}"],
       "ignore": [
         "src/views/zero-page/zero-sidebar-account.tsx",
-        "src/views/zero-page/html-dom-edit-types.ts",
         "src/views/zero-page/zero-sidebar-chat-list.tsx",
         "src/views/zero-page/zero-sidebar-pinned.tsx",
         "src/views/zero-page/zero-sidebar-scroll.tsx",
@@ -42,8 +41,8 @@
       ],
       "ignoreDependencies": [
         "@sentry/cli",
+        "@solana/web3.js",
         "idb",
-        "dom-to-pptx",
         "katex",
         "tailwindcss",
         "typescript-eslint",
@@ -87,8 +86,7 @@
         "src/**/__tests__/**/*.{test,spec}.ts",
         "src/**/*.{test,spec}.ts"
       ],
-      "project": ["src/**/*.ts"],
-      "ignore": ["src/connector-registry.validation.ts"]
+      "project": ["src/**/*.ts"]
     },
     "packages/api-contracts": {
       "entry": [
@@ -164,7 +162,6 @@
   ],
   "ignoreDependencies": [
     "@commitlint/cli",
-    "@vm0/firewalls-generator",
     "oxlint",
     "oxlint-tsgolint",
     "playwright"

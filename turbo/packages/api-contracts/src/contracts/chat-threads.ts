@@ -1,6 +1,8 @@
 import { z } from "zod";
 import { authHeadersSchema, initContract } from "./base";
+import { chatEventTypeSchema } from "./chat-events";
 import { apiErrorSchema } from "./errors";
+import { requireUserMessageForNonEmptyDraft } from "./draft-user-message";
 import { hostedArtifactKindSchema } from "./zero-host";
 import { runStatusSchema } from "./runs";
 import { zeroGoalEventSchema } from "./zero-goals";
@@ -73,6 +75,8 @@ const chatThreadArtifactGoogleDriveSyncSchema = z.discriminatedUnion("status", [
 const chatThreadArtifactFileSchema = resolvedAttachFileSchema.extend({
   createdAt: z.string(),
   artifactKind: hostedArtifactKindSchema.optional(),
+  previewImageUrl: z.string().optional(),
+  aliasUrl: z.string().optional(),
   googleDriveSync: chatThreadArtifactGoogleDriveSyncSchema.optional(),
 });
 
@@ -132,14 +136,6 @@ const artifactsListResponseSchema = z.object({
   syncUntil: z.string().datetime().optional(),
 });
 
-const artifactFavoritesResponseSchema = z.object({
-  artifactUrls: z.array(z.string()),
-});
-
-const artifactFavoriteBodySchema = z.object({
-  artifactUrl: z.string().min(1),
-});
-
 const imageArtifactEditSnapshotItemSchema = z.object({
   url: z.string().url(),
   x: z.number(),
@@ -164,21 +160,6 @@ const imageArtifactEditSnapshotUpsertSchema = z.object({
 const imageArtifactEditSnapshotSchema = z.object({
   artifactUrl: z.string().url(),
   snapshot: imageArtifactEditSnapshotStateSchema,
-  updatedAt: z.string(),
-});
-
-const htmlArtifactEditSnapshotQuerySchema = z.object({
-  url: z.string().url(),
-});
-
-const htmlArtifactEditSnapshotUpsertSchema = z.object({
-  url: z.string().url(),
-  html: z.string().min(1),
-});
-
-const htmlArtifactEditSnapshotSchema = z.object({
-  artifactUrl: z.string().url(),
-  snapshotUrl: z.string().url(),
   updatedAt: z.string(),
 });
 
@@ -230,10 +211,13 @@ const chatThreadSnapshotProjectionSchema = z.object({
   selectedModel: z.string().nullable().default(null),
   serviceTier: chatThreadServiceTierSchema.nullable().default(null),
   computerUseHostId: z.string().uuid().nullable().default(null),
+  cloudBrowserEnabled: z.boolean().optional(),
 });
 
 const chatThreadEventSchema = z.object({
   id: chatThreadEventIdSchema,
+  /** Server-assigned strict position within the user/org event stream. */
+  seqId: z.number().int().positive(),
   kind: z.enum([
     "created",
     "renamed",
@@ -251,7 +235,15 @@ const chatThreadEventSchema = z.object({
   selectedModel: z.string().nullable().default(null),
   serviceTier: chatThreadServiceTierSchema.nullable().default(null),
   computerUseHostId: z.string().uuid().nullable().default(null),
+  cloudBrowserEnabled: z.boolean().optional(),
   createdAt: z.string(),
+});
+
+// App promotion is independent from API promotion. Keep response validation
+// tolerant of the previous API until every pre-sequence API can no longer
+// serve traffic; new API writers still use chatThreadEventSchema above.
+const chatThreadEventResponseSchema = chatThreadEventSchema.extend({
+  seqId: chatThreadEventSchema.shape.seqId.optional(),
 });
 
 const chatMessageUsageProviderBreakdownSchema = z.object({
@@ -338,33 +330,61 @@ const generationTemplateRequestSchema = z.discriminatedUnion("type", [
   websiteGenerationTemplateRequestSchema,
 ]);
 
+const userMessageTextPartSchema = z
+  .object({
+    type: z.literal("text"),
+    text: z.string().min(1),
+  })
+  .strict();
+
+const userMessageChatThreadPartSchema = z
+  .object({
+    type: z.literal("chat_thread"),
+    threadId: z.string().uuid(),
+    titleSnapshot: z.string().min(1),
+  })
+  .strict();
+
+const userMessageTemplatePartSchema = z
+  .object({
+    type: z.literal("template"),
+    titleSnapshot: z.string().min(1),
+    template: generationTemplateRequestSchema,
+  })
+  .strict();
+
+const feedbackNotePartSchema = z.discriminatedUnion("type", [
+  userMessageTextPartSchema,
+  userMessageChatThreadPartSchema,
+  userMessageTemplatePartSchema,
+]);
+
 const userMessagePartSchema = z.discriminatedUnion("type", [
-  z
-    .object({
-      type: z.literal("text"),
-      text: z.string().min(1),
-    })
-    .strict(),
-  z
-    .object({
-      type: z.literal("chat_thread"),
-      threadId: z.string().uuid(),
-      titleSnapshot: z.string().min(1),
-    })
-    .strict(),
-  z
-    .object({
-      type: z.literal("template"),
-      titleSnapshot: z.string().min(1),
-      template: generationTemplateRequestSchema,
-    })
-    .strict(),
+  userMessageTextPartSchema,
+  userMessageChatThreadPartSchema,
+  userMessageTemplatePartSchema,
   z
     .object({
       type: z.literal("file"),
       fileId: z.string().min(1),
       filenameSnapshot: z.string().min(1),
       contentType: z.string().min(1),
+    })
+    .strict(),
+  z
+    .object({
+      type: z.literal("feedback"),
+      quote: z.string().min(1),
+      note: z.array(feedbackNotePartSchema).min(1),
+      source: z
+        .object({
+          type: z.literal("mail"),
+          id: z.string().min(1),
+          status: z.enum(["draft", "sent"]),
+          sentId: z.string().min(1).optional(),
+        })
+        .strict()
+        .optional(),
     })
     .strict(),
 ]);
@@ -386,27 +406,23 @@ const workflowSnapshotSchema = z.object({
   triggerBrief: z.string().nullable().optional(),
 });
 
-const pagedChatMessageBaseSchema = z.object({
+const chatEventBaseSchema = z.object({
   id: z.string(),
+  threadId: z.string(),
   content: z.string().nullable(),
   runId: z.string().optional(),
   runGroupId: z.string().optional(),
   triggerSource: triggerSourceSchema.optional(),
   slackMessagePermalink: z.string().url().optional(),
+  feishuChatOpenUrl: z.string().url().optional(),
   isGoalRun: z.boolean().optional(),
   runEventId: z.string().optional(),
-  goalEvent: zeroGoalEventSchema.optional(),
   goalSnapshot: z
     .object({
       objectiveBrief: z.string().min(1),
     })
     .optional(),
-  usage: chatMessageUsagePayloadSchema.optional(),
-  revokesMessageId: z.string().optional(),
-  interruptsRunId: z.string().optional(),
-  error: z.string().optional(),
-  attachFiles: z.array(resolvedAttachFileSchema).optional(),
-  generationTemplate: generationTemplateRequestSchema.optional(),
+  revokesEventId: z.string().optional(),
   /** Server-assigned strict position within the chat thread. */
   seqId: z.number().int().positive(),
   sequenceNumber: z.number().nullable().optional(),
@@ -432,20 +448,185 @@ const chatMessageRecommendedFollowupsSchema = z.preprocess((value) => {
   });
 }, z.array(chatMessageRecommendedFollowupSchema));
 
-const pagedChatMessageSchema = z.discriminatedUnion("role", [
-  pagedChatMessageBaseSchema
-    .extend({
-      role: z.literal("user"),
-      structuredPrompt: userMessageDocumentSchema.optional(),
-    })
-    .strict(),
-  pagedChatMessageBaseSchema.extend({
-    role: z.literal("assistant"),
-    thinking: z.string().optional(),
-    runLifecycleEvent: z.enum(["completed", "failed", "cancelled"]).optional(),
-    recommendedFollowups: chatMessageRecommendedFollowupsSchema.optional(),
-  }),
+const inputPromptEventSchema = chatEventBaseSchema
+  .extend({
+    eventType: z.literal("input.prompt"),
+    userMessage: userMessageDocumentSchema,
+    attachFiles: z.array(resolvedAttachFileSchema).optional(),
+    generationTemplate: generationTemplateRequestSchema.optional(),
+  })
+  .strict();
+
+const inputAutomationEventSchema = chatEventBaseSchema
+  .extend({
+    eventType: z.literal("input.automation"),
+    content: z.null(),
+    automationId: z.string().uuid(),
+    triggerSource: triggerSourceSchema,
+    triggerBrief: z.string().nullable(),
+  })
+  .strict();
+
+const inputRejectedEventSchema = chatEventBaseSchema
+  .extend({
+    eventType: z.literal("input.rejected"),
+    userMessage: userMessageDocumentSchema,
+    error: z.string(),
+    automationId: z.string().uuid().optional(),
+    triggerBrief: z.string().nullable().optional(),
+    attachFiles: z.array(resolvedAttachFileSchema).optional(),
+    generationTemplate: generationTemplateRequestSchema.optional(),
+  })
+  .strict();
+
+const outputMessageEventSchema = chatEventBaseSchema
+  .extend({
+    eventType: z.literal("output.message"),
+    content: z.string(),
+  })
+  .strict();
+
+const outputErrorEventSchema = chatEventBaseSchema
+  .extend({
+    eventType: z.literal("output.error"),
+    error: z.string(),
+  })
+  .strict();
+
+const outputThinkingEventSchema = chatEventBaseSchema
+  .extend({
+    eventType: z.literal("output.thinking"),
+    content: z.null(),
+    thinking: z.string(),
+  })
+  .strict();
+
+const outputFollowupsEventSchema = chatEventBaseSchema
+  .extend({
+    eventType: z.literal("output.followups"),
+    content: z.null(),
+    recommendedFollowups: chatMessageRecommendedFollowupsSchema,
+  })
+  .strict();
+
+const runQueuedEventSchema = chatEventBaseSchema
+  .extend({
+    eventType: z.literal("run.queued"),
+    runId: z.string(),
+    content: z.string(),
+  })
+  .strict();
+
+const runDequeuedEventSchema = chatEventBaseSchema
+  .extend({
+    eventType: z.literal("run.dequeued"),
+    runId: z.string(),
+    content: z.null(),
+    revokesEventId: z.string(),
+  })
+  .strict();
+
+const runCompletedEventSchema = chatEventBaseSchema
+  .extend({
+    eventType: z.literal("run.completed"),
+    runId: z.string(),
+    attachFiles: z.array(resolvedAttachFileSchema).optional(),
+    runLifecycleEvent: z.literal("completed"),
+  })
+  .strict();
+
+const runFailedEventSchema = chatEventBaseSchema
+  .extend({
+    eventType: z.literal("run.failed"),
+    runId: z.string(),
+    error: z.string().optional(),
+    runLifecycleEvent: z.literal("failed"),
+  })
+  .strict();
+
+const runCancelledEventSchema = chatEventBaseSchema
+  .extend({
+    eventType: z.literal("run.cancelled"),
+    runId: z.string(),
+    error: z.string().optional(),
+    runLifecycleEvent: z.literal("cancelled"),
+  })
+  .strict();
+
+const queueAutomationPausedEventSchema = chatEventBaseSchema
+  .extend({
+    eventType: z.literal("queue.automation_paused"),
+    content: z.null(),
+    pauseReason: z.string().nullable(),
+  })
+  .strict();
+
+const queueAutomationResumedEventSchema = chatEventBaseSchema
+  .extend({
+    eventType: z.literal("queue.automation_resumed"),
+    content: z.null(),
+  })
+  .strict();
+
+const controlInterruptEventSchema = chatEventBaseSchema
+  .extend({
+    eventType: z.literal("control.interrupt"),
+    content: z.null(),
+    interruptsRunId: z.string(),
+  })
+  .strict();
+
+const controlRevokeEventSchema = chatEventBaseSchema
+  .extend({
+    eventType: z.literal("control.revoke"),
+    content: z.null(),
+    revokesEventId: z.string(),
+  })
+  .strict();
+
+const goalChangedEventSchema = chatEventBaseSchema
+  .extend({
+    eventType: z.literal("goal.changed"),
+    content: z.null(),
+    goalEvent: zeroGoalEventSchema,
+  })
+  .strict();
+
+const usageRecordedEventSchema = chatEventBaseSchema
+  .extend({
+    eventType: z.literal("usage.recorded"),
+    runId: z.string(),
+    content: z.null(),
+    usage: chatMessageUsagePayloadSchema,
+  })
+  .strict();
+
+const chatEventSchema = z.discriminatedUnion("eventType", [
+  inputPromptEventSchema,
+  inputAutomationEventSchema,
+  inputRejectedEventSchema,
+  outputMessageEventSchema,
+  outputErrorEventSchema,
+  outputThinkingEventSchema,
+  outputFollowupsEventSchema,
+  runQueuedEventSchema,
+  runDequeuedEventSchema,
+  runCompletedEventSchema,
+  runFailedEventSchema,
+  runCancelledEventSchema,
+  queueAutomationPausedEventSchema,
+  queueAutomationResumedEventSchema,
+  controlInterruptEventSchema,
+  controlRevokeEventSchema,
+  goalChangedEventSchema,
+  usageRecordedEventSchema,
 ]);
+
+const chatEventResponseSchema = chatEventSchema;
+
+if (chatEventTypeSchema.options.length !== chatEventSchema.options.length) {
+  throw new Error("ChatEvent schema must cover the complete event catalog");
+}
 
 const chatThreadDetailSchema = z.object({
   /**
@@ -453,8 +634,6 @@ const chatThreadDetailSchema = z.object({
    * is newer than this timestamp.
    */
   lastReadAt: z.string().nullable(),
-  computerUseHostId: z.string().uuid().nullable(),
-  codexServiceTier: codexServiceTierSchema.nullable(),
 });
 
 const chatThreadMetadataSchema = z.object({
@@ -463,11 +642,13 @@ const chatThreadMetadataSchema = z.object({
   selectedModel: z.string().nullable(),
 });
 
-const chatThreadDraftSchema = z.object({
-  draftContent: z.string().nullable(),
-  draftStructuredPrompt: userMessageDocumentSchema.nullable().optional(),
-  draftAttachments: z.array(persistedAttachmentSchema).nullable(),
-});
+const chatThreadDraftSchema = z
+  .object({
+    draftContent: z.string().nullable(),
+    draftUserMessage: userMessageDocumentSchema.nullable(),
+    draftAttachments: z.array(persistedAttachmentSchema).nullable(),
+  })
+  .superRefine(requireUserMessageForNonEmptyDraft);
 
 const selectedModelRequestSchema = requestedRunModelSchema;
 
@@ -539,43 +720,56 @@ const chatRunOptionsRequestSchema = z.object({
   codexServiceTier: codexServiceTierSchema.optional(),
 });
 
-const chatMessageNormalSendBodySchema = z.preprocess(
+const chatNormalSendBodyShape = {
+  agentId: z.string().min(1),
+  prompt: z.string().min(1),
+  threadId: z.string().optional(),
+  clientThreadId: z.string().uuid().optional(),
+  chatThreadEventId: chatThreadEventIdSchema.optional(),
+  // Client-generated UUID for the sort touch created by direct user sends.
+  // Lets event-sourced clients reconcile optimistic sidebar recency by id.
+  chatThreadSortEventId: chatThreadEventIdSchema.optional(),
+  /**
+   * Selected model id. The API resolves the effective provider from org
+   * policy and available credentials. Existing threads may omit it to
+   * reuse the thread's persisted model.
+   */
+  model: selectedModelRequestSchema.optional(),
+  runOptions: chatRunOptionsRequestSchema.optional(),
+  userMessage: userMessageDocumentSchema,
+  generationTemplate: generationTemplateRequestSchema.optional(),
+  computerUseHostId: z.string().uuid().nullable().optional(),
+  cloudBrowserEnabled: z.boolean().optional(),
+  // Optional for backward compatibility: older clients that omit this field
+  // still trigger title generation (server guards with !== false, not === true).
+  hasTextContent: z.boolean().optional(),
+  attachFiles: z.array(attachFileSchema).optional(),
+  // Preview evaluation escape hatch: when enabled, the request asks the
+  // runner to bypass preview mock CLIs and use the real agent runtime.
+  realAgentInPreview: z.boolean().optional(),
+} as const;
+
+const chatEventNormalSendBodySchema = z.preprocess(
   (value) => {
     return normalizeLegacyModelSelectionInput(value, { allowNull: false });
   },
-  z.object({
-    agentId: z.string().min(1),
-    prompt: z.string().min(1),
-    threadId: z.string().optional(),
-    clientThreadId: z.string().uuid().optional(),
-    chatThreadEventId: chatThreadEventIdSchema.optional(),
-    // Client-generated UUID for the sort touch created by direct user sends.
-    // Lets event-sourced clients reconcile optimistic sidebar recency by id.
-    chatThreadSortEventId: chatThreadEventIdSchema.optional(),
-    /**
-     * Selected model id. The API resolves the effective provider from org
-     * policy and available credentials. Existing threads may omit it to
-     * reuse the thread's persisted model.
-     */
-    model: selectedModelRequestSchema.optional(),
-    runOptions: chatRunOptionsRequestSchema.optional(),
-    structuredPrompt: userMessageDocumentSchema.optional(),
-    generationTemplate: generationTemplateRequestSchema.optional(),
-    computerUseHostId: z.string().uuid().nullable().optional(),
-    // Optional for backward compatibility: older clients that omit this field
-    // still trigger title generation (server guards with !== false, not === true).
-    hasTextContent: z.boolean().optional(),
-    attachFiles: z.array(attachFileSchema).optional(),
-    // Client-generated UUID used as the user message's primary key.
-    // Lets the client render an optimistic row and reconcile with the
-    // server row by id — no temp-id swap, no React remount.
-    clientMessageId: z.string().uuid().optional(),
-    // Preview evaluation escape hatch: when enabled, the request asks the
-    // runner to bypass preview mock CLIs and use the real agent runtime.
-    realAgentInPreview: z.boolean().optional(),
-    revokesMessageId: z.string().min(1).optional(),
-    interruptsRunId: z.undefined().optional(),
-  }),
+  z
+    .object({
+      ...chatNormalSendBodyShape,
+      // Client-generated UUID used as the user event's primary key.
+      clientEventId: z.string().uuid().optional(),
+      revokesEventId: z.string().min(1).optional(),
+      interruptsRunId: z.undefined().optional(),
+    })
+    .refine(
+      (body) => {
+        return !(body.cloudBrowserEnabled && body.computerUseHostId);
+      },
+      {
+        message: "Cloud browser and Computer Use cannot both be enabled",
+        path: ["cloudBrowserEnabled"],
+      },
+    ),
 );
 
 /**
@@ -590,6 +784,9 @@ export const chatThreadsContract = c.router({
       200: z.object({
         chatThreads: z.array(chatThreadSnapshotProjectionSchema),
         latestEventId: chatThreadEventIdSchema.nullable(),
+        // Remove optionality only after pre-sequence APIs cannot serve a newly
+        // promoted app during rollout or rollback.
+        latestSeqId: z.number().int().positive().nullable().optional(),
       }),
       401: apiErrorSchema,
       403: apiErrorSchema,
@@ -602,19 +799,21 @@ export const chatThreadsContract = c.router({
     path: "/api/zero/chat-threads/events",
     headers: authHeadersSchema,
     query: z.object({
+      sinceSeqId: z.coerce.number().int().positive().optional(),
+      // Previous clients use UUID cursors. The API resolves them to seq_id
+      // until those clients can no longer remain active.
       sinceEventId: chatThreadEventIdSchema.optional(),
     }),
     responses: {
       200: z.object({
-        events: z.array(chatThreadEventSchema),
+        events: z.array(chatThreadEventResponseSchema),
         hasMore: z.boolean(),
       }),
       401: apiErrorSchema,
       403: apiErrorSchema,
       410: apiErrorSchema,
     },
-    summary:
-      "List chat thread lifecycle events after an optional event id cursor.",
+    summary: "List chat thread lifecycle events after an optional cursor.",
   },
   activeIds: {
     method: "GET",
@@ -658,7 +857,7 @@ export const chatThreadsContract = c.router({
       200: z.object({
         /**
          * Thread ids owned by the caller that currently hold an unsent draft
-         * (non-empty `draftContent`, a structured prompt, or one+
+         * (non-empty `draftContent`, a user message, or one+
          * `draftAttachments`).
          */
         draftThreadIds: z.array(z.string()),
@@ -703,9 +902,9 @@ const chatThreadIdPathParamsSchema = z.object({ id: z.string().uuid() });
 const chatThreadThreadIdPathParamsSchema = z.object({
   threadId: z.string().uuid(),
 });
-const chatThreadMessagePathParamsSchema =
+const chatThreadEventPathParamsSchema =
   chatThreadThreadIdPathParamsSchema.extend({
-    messageId: z.string().uuid(),
+    eventId: z.string().uuid(),
   });
 
 export const chatThreadByIdContract = c.router({
@@ -720,21 +919,23 @@ export const chatThreadByIdContract = c.router({
       401: apiErrorSchema,
       404: apiErrorSchema,
     },
-    summary: "Get chat thread detail",
+    summary: "Get chat thread read state",
   },
   patch: {
     method: "PATCH",
     path: "/api/zero/chat-threads/:id",
     headers: authHeadersSchema,
     pathParams: chatThreadIdPathParamsSchema,
-    body: z.object({
-      draftContent: z.string().nullable().optional(),
-      draftStructuredPrompt: userMessageDocumentSchema.nullable().optional(),
-      draftAttachments: z
-        .array(persistedAttachmentSchema)
-        .nullable()
-        .optional(),
-    }),
+    body: z
+      .object({
+        draftContent: z.string().nullable().optional(),
+        draftUserMessage: userMessageDocumentSchema.nullable(),
+        draftAttachments: z
+          .array(persistedAttachmentSchema)
+          .nullable()
+          .optional(),
+      })
+      .superRefine(requireUserMessageForNonEmptyDraft),
     responses: {
       204: c.noBody(),
       400: apiErrorSchema,
@@ -961,10 +1162,21 @@ export const chatThreadComputerUseHostContract = c.router({
     path: "/api/zero/chat-threads/:id/computer-use-host",
     headers: authHeadersSchema,
     pathParams: chatThreadIdPathParamsSchema,
-    body: z.object({
-      computerUseHostId: z.string().uuid().nullable(),
-      eventId: chatThreadEventIdSchema.optional(),
-    }),
+    body: z
+      .object({
+        computerUseHostId: z.string().uuid().nullable(),
+        cloudBrowserEnabled: z.boolean().optional(),
+        eventId: chatThreadEventIdSchema.optional(),
+      })
+      .refine(
+        (body) => {
+          return !(body.cloudBrowserEnabled && body.computerUseHostId);
+        },
+        {
+          message: "Cloud browser and Computer Use cannot both be enabled",
+          path: ["cloudBrowserEnabled"],
+        },
+      ),
     responses: {
       204: c.noBody(),
       400: apiErrorSchema,
@@ -976,29 +1188,26 @@ export const chatThreadComputerUseHostContract = c.router({
   },
 });
 
-/**
- * Chat messages contract (/api/zero/chat/messages)
- * Unified endpoint: create thread (if needed) + run + association in one call.
- */
-export const chatMessagesContract = c.router({
+/** Canonical ChatEvent write contract. */
+export const chatEventsContract = c.router({
   send: {
     method: "POST",
-    path: "/api/zero/chat/messages",
+    path: "/api/zero/chat/events",
     headers: authHeadersSchema,
     body: z.union([
-      chatMessageNormalSendBodySchema,
+      chatEventNormalSendBodySchema,
       z.object({
         agentId: z.string().min(1),
         threadId: z.string().min(1),
-        revokesMessageId: z.string().min(1),
-        clientMessageId: z.string().uuid().optional(),
+        revokesEventId: z.string().min(1),
+        clientEventId: z.string().uuid().optional(),
         prompt: z.undefined().optional(),
         clientThreadId: z.undefined().optional(),
         chatThreadEventId: z.undefined().optional(),
         chatThreadSortEventId: z.undefined().optional(),
         model: z.undefined().optional(),
         runOptions: z.undefined().optional(),
-        structuredPrompt: z.undefined().optional(),
+        userMessage: z.undefined().optional(),
         generationTemplate: z.undefined().optional(),
         computerUseHostId: z.undefined().optional(),
         hasTextContent: z.undefined().optional(),
@@ -1010,20 +1219,20 @@ export const chatMessagesContract = c.router({
         agentId: z.string().min(1),
         threadId: z.string().min(1),
         interruptsRunId: z.string().uuid(),
-        clientMessageId: z.string().uuid().optional(),
+        clientEventId: z.string().uuid().optional(),
         prompt: z.undefined().optional(),
         clientThreadId: z.undefined().optional(),
         chatThreadEventId: z.undefined().optional(),
         chatThreadSortEventId: z.undefined().optional(),
         model: z.undefined().optional(),
         runOptions: z.undefined().optional(),
-        structuredPrompt: z.undefined().optional(),
+        userMessage: z.undefined().optional(),
         generationTemplate: z.undefined().optional(),
         computerUseHostId: z.undefined().optional(),
         hasTextContent: z.undefined().optional(),
         attachFiles: z.undefined().optional(),
         realAgentInPreview: z.undefined().optional(),
-        revokesMessageId: z.undefined().optional(),
+        revokesEventId: z.undefined().optional(),
       }),
     ]),
     responses: {
@@ -1041,7 +1250,7 @@ export const chatMessagesContract = c.router({
       409: apiErrorSchema,
       422: apiErrorSchema,
     },
-    summary: "Send a chat message (create thread + run + association)",
+    summary: "Append a chat event and dispatch input when applicable",
   },
 });
 
@@ -1111,59 +1320,42 @@ export const chatSearchContract = c.router({
   },
 });
 
-/**
- * Paginated chat messages contract (/api/zero/chat-threads/:threadId/messages)
- * Cursor-based pagination using the thread-scoped message sequence.
- *
- * Query params (mutually exclusive):
- *   sinceSeqId  — forward pagination: messages strictly after this cursor
- *   beforeSeqId — backward pagination: messages strictly before this cursor
- *   sinceId / beforeId — previous frontend UUID cursors retained during rollout
- *   (neither) — initial load anchored at the last user message
- *
- * Response includes `hasMore` for initial load and backward pagination so the
- * UI knows whether to offer upward scroll loading.
- */
-export const chatThreadMessagesContract = c.router({
+/** Canonical ChatEvent read contract. */
+export const chatThreadEventsContract = c.router({
   list: {
     method: "GET",
-    path: "/api/zero/chat-threads/:threadId/messages",
+    path: "/api/zero/chat-threads/:threadId/events",
     headers: authHeadersSchema,
     pathParams: chatThreadThreadIdPathParamsSchema,
     query: z.object({
       sinceSeqId: z.coerce.number().int().positive().optional(),
       beforeSeqId: z.coerce.number().int().positive().optional(),
-      // Remove after browser clients from the pre-seqId release can no longer
-      // remain active against the current backend.
       sinceId: z.string().uuid().optional(),
       beforeId: z.string().uuid().optional(),
       limit: z.coerce.number().min(1).max(50).default(50),
     }),
     responses: {
       200: z.object({
-        messages: z.array(pagedChatMessageSchema),
+        events: z.array(chatEventResponseSchema),
         hasHistoryBefore: z.boolean().optional(),
       }),
       400: apiErrorSchema,
       401: apiErrorSchema,
       404: apiErrorSchema,
     },
-    summary: "Get paginated chat messages for a thread",
+    summary: "Get paginated chat events for a thread",
   },
-  // Compatibility for already-open app-v0.627.3 browser clients. The next app
-  // no longer calls this route; remove it only after those clients can no
-  // longer reasonably remain active against the current backend.
   get: {
     method: "GET",
-    path: "/api/zero/chat-threads/:threadId/messages/:messageId",
+    path: "/api/zero/chat-threads/:threadId/events/:eventId",
     headers: authHeadersSchema,
-    pathParams: chatThreadMessagePathParamsSchema,
+    pathParams: chatThreadEventPathParamsSchema,
     responses: {
-      200: pagedChatMessageSchema,
+      200: chatEventResponseSchema,
       401: apiErrorSchema,
       404: apiErrorSchema,
     },
-    summary: "Get a chat message by id for a thread",
+    summary: "Get a chat event by id for a thread",
   },
 });
 
@@ -1183,50 +1375,6 @@ export const chatThreadArtifactsContract = c.router({
       404: apiErrorSchema,
     },
     summary: "List uploaded files associated with every run in a chat thread",
-  },
-  getHtmlEditSnapshot: {
-    method: "GET",
-    path: "/api/zero/chat-threads/:threadId/html-artifact-edit-snapshot",
-    headers: authHeadersSchema,
-    pathParams: chatThreadThreadIdPathParamsSchema,
-    query: htmlArtifactEditSnapshotQuerySchema,
-    responses: {
-      200: z.object({ snapshot: htmlArtifactEditSnapshotSchema.nullable() }),
-      400: apiErrorSchema,
-      401: apiErrorSchema,
-      404: apiErrorSchema,
-    },
-    summary: "Get a resumable HTML artifact edit snapshot for a chat thread",
-  },
-  upsertHtmlEditSnapshot: {
-    method: "PUT",
-    path: "/api/zero/chat-threads/:threadId/html-artifact-edit-snapshot",
-    headers: authHeadersSchema,
-    pathParams: chatThreadThreadIdPathParamsSchema,
-    body: htmlArtifactEditSnapshotUpsertSchema,
-    responses: {
-      200: htmlArtifactEditSnapshotSchema,
-      400: apiErrorSchema,
-      401: apiErrorSchema,
-      402: apiErrorSchema,
-      404: apiErrorSchema,
-      500: apiErrorSchema,
-    },
-    summary: "Upsert a resumable HTML artifact edit snapshot for a chat thread",
-  },
-  deleteHtmlEditSnapshot: {
-    method: "DELETE",
-    path: "/api/zero/chat-threads/:threadId/html-artifact-edit-snapshot",
-    headers: authHeadersSchema,
-    pathParams: chatThreadThreadIdPathParamsSchema,
-    query: htmlArtifactEditSnapshotQuerySchema,
-    responses: {
-      204: c.noBody(),
-      400: apiErrorSchema,
-      401: apiErrorSchema,
-      404: apiErrorSchema,
-    },
-    summary: "Delete a resumable HTML artifact edit snapshot for a chat thread",
   },
   syncGoogleDrive: {
     method: "POST",
@@ -1251,28 +1399,6 @@ export const chatThreadArtifactsContract = c.router({
     },
     summary: "Sync a chat artifact file to the user's connected Google Drive",
   },
-  uploadGoogleSlides: {
-    method: "POST",
-    path: "/api/zero/chat-threads/:threadId/artifacts/google-slides",
-    headers: authHeadersSchema,
-    pathParams: chatThreadThreadIdPathParamsSchema,
-    contentType: "multipart/form-data",
-    body: c.type<FormData>(),
-    responses: {
-      200: z.object({
-        id: z.string(),
-        name: z.string(),
-        webViewLink: z.string().nullable(),
-      }),
-      400: apiErrorSchema,
-      401: apiErrorSchema,
-      403: apiErrorSchema,
-      404: apiErrorSchema,
-      503: apiErrorSchema,
-    },
-    summary:
-      "Upload a presentation artifact to the user's Google Drive as a native Google Slides deck",
-  },
 });
 
 export const artifactsContract = c.router({
@@ -1288,45 +1414,6 @@ export const artifactsContract = c.router({
     },
     summary:
       "List artifacts for the caller's current organization (keyset-paginated)",
-  },
-  listFavorites: {
-    method: "GET",
-    path: "/api/zero/artifacts/favorites",
-    headers: authHeadersSchema,
-    responses: {
-      200: artifactFavoritesResponseSchema,
-      401: apiErrorSchema,
-      403: apiErrorSchema,
-    },
-    summary: "List artifact favorite URLs for the caller",
-  },
-  favorite: {
-    method: "POST",
-    path: "/api/zero/artifacts/favorite",
-    headers: authHeadersSchema,
-    body: artifactFavoriteBodySchema,
-    responses: {
-      204: c.noBody(),
-      400: apiErrorSchema,
-      401: apiErrorSchema,
-      403: apiErrorSchema,
-      404: apiErrorSchema,
-    },
-    summary: "Favorite an artifact for the caller",
-  },
-  unfavorite: {
-    method: "POST",
-    path: "/api/zero/artifacts/unfavorite",
-    headers: authHeadersSchema,
-    body: artifactFavoriteBodySchema,
-    responses: {
-      204: c.noBody(),
-      400: apiErrorSchema,
-      401: apiErrorSchema,
-      403: apiErrorSchema,
-      404: apiErrorSchema,
-    },
-    summary: "Remove an artifact favorite for the caller",
   },
   getImageEditSnapshot: {
     method: "GET",
@@ -1387,8 +1474,8 @@ export type ChatThreadModelSelectionContract =
   typeof chatThreadModelSelectionContract;
 export type ChatThreadComputerUseHostContract =
   typeof chatThreadComputerUseHostContract;
-export type ChatMessagesContract = typeof chatMessagesContract;
-export type ChatThreadMessagesContract = typeof chatThreadMessagesContract;
+export type ChatEventsContract = typeof chatEventsContract;
+export type ChatThreadEventsContract = typeof chatThreadEventsContract;
 export type ChatThreadArtifactsContract = typeof chatThreadArtifactsContract;
 export type ArtifactsContract = typeof artifactsContract;
 export type ChatSearchContract = typeof chatSearchContract;
@@ -1410,22 +1497,20 @@ export {
   videoGenerationTemplateRequestSchema,
   illustrationGenerationTemplateRequestSchema,
   websiteGenerationTemplateRequestSchema,
-  pagedChatMessageSchema,
+  chatEventSchema,
   chatMessageUsagePayloadSchema,
   summaryEntrySchema,
   persistedAttachmentSchema,
   attachFileSchema,
   resolvedAttachFileSchema,
   artifactItemSchema,
-  artifactFavoriteBodySchema,
-  artifactFavoritesResponseSchema,
   artifactsListResponseSchema,
   imageArtifactEditSnapshotSchema,
   imageArtifactEditSnapshotStateSchema,
   chatThreadArtifactFileSchema,
   chatThreadArtifactGoogleDriveSyncSchema,
   chatThreadArtifactRunSchema,
-  htmlArtifactEditSnapshotSchema,
+  chatEventResponseSchema,
 };
 
 export type CodexServiceTier = z.infer<typeof codexServiceTierSchema>;
@@ -1435,6 +1520,7 @@ export type GenerationTemplateRequest = z.infer<
   typeof generationTemplateRequestSchema
 >;
 export type GenerationTemplateType = GenerationTemplateRequest["type"];
+export type FeedbackNotePart = z.infer<typeof feedbackNotePartSchema>;
 export type UserMessagePart = z.infer<typeof userMessagePartSchema>;
 export type UserMessageDocument = z.infer<typeof userMessageDocumentSchema>;
 export type LegacyThreadGenerationTemplateType = Exclude<
@@ -1479,7 +1565,35 @@ export type ChatThreadEvent = z.infer<typeof chatThreadEventSchema>;
 export type ChatThreadDetail = z.infer<typeof chatThreadDetailSchema>;
 export type ChatThreadMetadata = z.infer<typeof chatThreadMetadataSchema>;
 export type ChatThreadDraft = z.infer<typeof chatThreadDraftSchema>;
-export type PagedChatMessage = z.infer<typeof pagedChatMessageSchema>;
+export type ChatEvent = z.infer<typeof chatEventSchema>;
+export type ChatEventResponse = z.infer<typeof chatEventResponseSchema>;
+export type ChatEventSendBody = z.infer<typeof chatEventsContract.send.body>;
+
+export function chatEventResponse(event: ChatEvent): ChatEventResponse {
+  return chatEventResponseSchema.parse(event);
+}
+
+export type ChatInputEvent = Extract<
+  ChatEvent,
+  { eventType: "input.prompt" | "input.automation" | "input.rejected" }
+>;
+export type ChatUserMessageEvent = Extract<
+  ChatEvent,
+  { eventType: "input.prompt" | "input.rejected" }
+>;
+export type ChatAutomationEvent = Extract<
+  ChatEvent,
+  { eventType: "input.automation" }
+>;
+export type ChatPromptEvent = Extract<ChatEvent, { eventType: "input.prompt" }>;
+export type ChatFollowupsEvent = Extract<
+  ChatEvent,
+  { eventType: "output.followups" }
+>;
+export type ChatUsageEvent = Extract<
+  ChatEvent,
+  { eventType: "usage.recorded" }
+>;
 export type ChatMessageUsagePayload = z.infer<
   typeof chatMessageUsagePayloadSchema
 >;
@@ -1495,16 +1609,10 @@ export type ChatThreadArtifactGoogleDriveSync = z.infer<
 >;
 export type ChatThreadArtifactRun = z.infer<typeof chatThreadArtifactRunSchema>;
 export type ArtifactItem = z.infer<typeof artifactItemSchema>;
-export type ArtifactFavoritesResponse = z.infer<
-  typeof artifactFavoritesResponseSchema
->;
 export type ArtifactsListResponse = z.infer<typeof artifactsListResponseSchema>;
 export type ImageArtifactEditSnapshot = z.infer<
   typeof imageArtifactEditSnapshotSchema
 >;
 export type ImageArtifactEditSnapshotState = z.infer<
   typeof imageArtifactEditSnapshotStateSchema
->;
-export type HtmlArtifactEditSnapshot = z.infer<
-  typeof htmlArtifactEditSnapshotSchema
 >;

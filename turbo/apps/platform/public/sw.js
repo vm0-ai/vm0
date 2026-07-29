@@ -1,5 +1,6 @@
 const CACHE_VERSION = String(Date.now());
 const STATIC_CACHE = `static-${CACHE_VERSION}`;
+const OKOU_ROOT_DOMAINS = ["okou.ai", "omby.ai", "okou-app.pages.dev"];
 
 const STATIC_RE =
   /\.(?:js|css|png|svg|jpe?g|gif|ico|woff2?|ttf|eot|webp|avif|json|wasm|map)$/i;
@@ -8,17 +9,18 @@ function isStaticAsset(url) {
   return url.origin === self.location.origin && STATIC_RE.test(url.pathname);
 }
 
-function isRevalidatedStaticAsset(url) {
-  return (
-    url.origin === self.location.origin &&
-    url.pathname.startsWith("/firewall-metadata/")
-  );
-}
-
 function isApiRequest(url) {
   return (
     url.origin === self.location.origin && url.pathname.startsWith("/api/")
   );
+}
+
+function defaultNotificationTitle() {
+  const hostname = self.location.hostname.toLowerCase();
+  const isOkou = OKOU_ROOT_DOMAINS.some((domain) => {
+    return hostname === domain || hostname.endsWith(`.${domain}`);
+  });
+  return isOkou ? "Okou" : "VM0";
 }
 
 function isCacheableAssetResponse(response) {
@@ -28,32 +30,6 @@ function isCacheableAssetResponse(response) {
     !response.redirected &&
     !contentType.toLowerCase().includes("text/html")
   );
-}
-
-async function fetchRevalidatedStaticAsset(request) {
-  try {
-    const response = await fetch(request, { cache: "no-cache" });
-    if (isCacheableAssetResponse(response)) {
-      try {
-        const cache = await caches.open(STATIC_CACHE);
-        await cache.put(request, response.clone());
-      } catch {
-        // The network response is authoritative; Cache Storage is best effort.
-      }
-    }
-    return response;
-  } catch (error) {
-    try {
-      const cache = await caches.open(STATIC_CACHE);
-      const cached = await cache.match(request);
-      if (cached && isCacheableAssetResponse(cached)) {
-        return cached;
-      }
-    } catch {
-      // Preserve the original network error if the fallback cache is unusable.
-    }
-    throw error;
-  }
 }
 
 self.addEventListener("install", (_event) => {
@@ -82,13 +58,6 @@ self.addEventListener("fetch", (event) => {
   }
 
   const url = new URL(event.request.url);
-
-  if (isRevalidatedStaticAsset(url)) {
-    // Stable generated firewall URLs must revalidate instead of being served
-    // cache-first like content-hashed Vite assets.
-    event.respondWith(fetchRevalidatedStaticAsset(event.request));
-    return;
-  }
 
   if (isStaticAsset(url)) {
     // Cache-First: Vite content-hashed filenames are immutable.
@@ -178,7 +147,10 @@ self.addEventListener("push", (event) => {
   };
 
   event.waitUntil(
-    self.registration.showNotification(data.title ?? "vm0", options),
+    self.registration.showNotification(
+      data.title ?? defaultNotificationTitle(),
+      options,
+    ),
   );
 });
 

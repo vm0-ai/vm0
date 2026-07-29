@@ -2,7 +2,6 @@ import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it } from "vitest";
 import { chatThreadArtifactsContract } from "@vm0/api-contracts/contracts/chat-threads";
-import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import {
   ILLUSTRATION_TEMPLATE_ITEMS,
   PRESENTATION_TEMPLATE_PICKER_ITEMS,
@@ -446,7 +445,9 @@ describe("chat lifecycle", () => {
         eventConfig: {
           provider: "gmail",
           event: "new_message",
+          threadId: "gmail-thread-1",
           match: {
+            from: { containsAny: ["customer@example.com"] },
             subject: { doesNotContain: "newsletter" },
           },
         },
@@ -464,6 +465,20 @@ describe("chat lifecycle", () => {
     const dialog = await screen.findByRole("dialog", {
       name: "Edit automation",
     });
+    expect(within(dialog).getByLabelText("From contains any")).toHaveValue(
+      "customer@example.com",
+    );
+    expect(within(dialog).getByLabelText("Thread ID value")).toHaveValue(
+      "gmail-thread-1",
+    );
+    // The field and operator cells are fixed for a thread-scoped automation, so
+    // they must not look editable next to the value cell.
+    expect(within(dialog).getByLabelText("Thread ID field")).toBeDisabled();
+    expect(within(dialog).getByLabelText("Thread ID operator")).toBeDisabled();
+    await fill(
+      within(dialog).getByLabelText("Thread ID value"),
+      "gmail-thread-2",
+    );
     await fill(within(dialog).getByLabelText("From contains"), "@acme.com");
     await fill(within(dialog).getByLabelText("Body contains"), "invoice");
     click(buttonByText("Save automation", dialog));
@@ -475,8 +490,12 @@ describe("chat lifecycle", () => {
           eventConfig: {
             provider: "gmail",
             event: "new_message",
+            threadId: "gmail-thread-2",
             match: {
-              from: { contains: "@acme.com" },
+              from: {
+                contains: "@acme.com",
+                containsAny: ["customer@example.com"],
+              },
               subject: { doesNotContain: "newsletter" },
               body: { contains: "invoice" },
             },
@@ -1121,6 +1140,62 @@ Full autonomous goal prompt that should stay out of the compact chat UI`;
     });
   });
 
+  it("renders automation trigger briefs and folds queue status events", async () => {
+    const threadId = "thread-pending-automation-event";
+
+    mockChatLifecycle(context, {
+      threadId,
+      threadTitle: "Pending automation event",
+      chatMessages: [
+        {
+          id: "msg-claimed-automation",
+          eventType: "input.automation",
+          content: null,
+          automationId: "f0000001-0000-4000-a000-000000000931",
+          triggerSource: "workflow-event",
+          triggerBrief: "Scheduled digest due",
+          runId: "f0000001-0000-4000-a000-000000000933",
+          createdAt: "2026-06-09T09:59:00Z",
+        },
+        {
+          id: "msg-pending-automation",
+          eventType: "input.automation",
+          content: null,
+          automationId: "f0000001-0000-4000-a000-000000000932",
+          triggerSource: "workflow-event",
+          triggerBrief: "Gmail label applied",
+          runId: undefined,
+          createdAt: "2026-06-09T10:00:00Z",
+        },
+        {
+          id: "msg-automation-paused",
+          eventType: "queue.automation_paused",
+          content: null,
+          pauseReason: "Provider unavailable",
+          createdAt: "2026-06-09T10:01:00Z",
+        },
+        {
+          id: "msg-automation-resumed",
+          eventType: "queue.automation_resumed",
+          content: null,
+          createdAt: "2026-06-09T10:02:00Z",
+        },
+      ],
+    });
+
+    detachedSetupPage({
+      context,
+      path: `/chats/${threadId}`,
+    });
+
+    const claimedAutomationBrief = await screen.findByText(
+      "Scheduled digest due",
+    );
+    expect(claimedAutomationBrief).toBeInTheDocument();
+    await expectQueuedMessages(["Gmail label applied"]);
+    expect(screen.queryByText("Provider unavailable")).not.toBeInTheDocument();
+  });
+
   it("shows template labels on historical user messages", async () => {
     const threadId = "template-message-history";
     const presentationTemplate = PRESENTATION_TEMPLATE_PICKER_ITEMS[0]!;
@@ -1137,11 +1212,21 @@ Full autonomous goal prompt that should stay out of the compact chat UI`;
           role: "user",
           content: "Create the business review deck",
           runId: "run-template-presentation",
-          generationTemplate: {
-            type: "presentation",
-            selection: {
-              templateId: presentationTemplate.templateId,
-            },
+          userMessage: {
+            version: 1,
+            parts: [
+              {
+                type: "template",
+                titleSnapshot: presentationTemplate.title,
+                template: {
+                  type: "presentation",
+                  selection: {
+                    templateId: presentationTemplate.templateId,
+                  },
+                },
+              },
+              { type: "text", text: "Create the business review deck" },
+            ],
           },
           createdAt: "2026-06-09T10:00:00Z",
         },
@@ -1150,9 +1235,22 @@ Full autonomous goal prompt that should stay out of the compact chat UI`;
           role: "user",
           content: "Create a product walkthrough video",
           runId: "run-template-video",
-          generationTemplate: {
-            type: "video",
-            selection: { stylePresetId: videoTemplate.id },
+          userMessage: {
+            version: 1,
+            parts: [
+              {
+                type: "template",
+                titleSnapshot: videoTemplate.title,
+                template: {
+                  type: "video",
+                  selection: { stylePresetId: videoTemplate.id },
+                },
+              },
+              {
+                type: "text",
+                text: "Create a product walkthrough video",
+              },
+            ],
           },
           createdAt: "2026-06-09T10:01:00Z",
         },
@@ -1161,11 +1259,22 @@ Full autonomous goal prompt that should stay out of the compact chat UI`;
           role: "user",
           content: "Create an illustrated launch card",
           runId: "run-template-illustration",
-          generationTemplate: {
-            type: "illustration",
-            selection: {
-              illustrationStyleId: illustrationTemplate.illustrationStyleId,
-            },
+          userMessage: {
+            version: 1,
+            parts: [
+              {
+                type: "template",
+                titleSnapshot: illustrationTemplate.title,
+                template: {
+                  type: "illustration",
+                  selection: {
+                    illustrationStyleId:
+                      illustrationTemplate.illustrationStyleId,
+                  },
+                },
+              },
+              { type: "text", text: "Create an illustrated launch card" },
+            ],
           },
           createdAt: "2026-06-09T10:02:00Z",
         },
@@ -1174,9 +1283,19 @@ Full autonomous goal prompt that should stay out of the compact chat UI`;
           role: "user",
           content: "Create a yoga website",
           runId: "run-template-website",
-          generationTemplate: {
-            type: "website",
-            selection: { websiteTemplateId: websiteTemplate.id },
+          userMessage: {
+            version: 1,
+            parts: [
+              {
+                type: "template",
+                titleSnapshot: websiteTemplate.title,
+                template: {
+                  type: "website",
+                  selection: { websiteTemplateId: websiteTemplate.id },
+                },
+              },
+              { type: "text", text: "Create a yoga website" },
+            ],
           },
           createdAt: "2026-06-09T10:03:00Z",
         },
@@ -1189,48 +1308,108 @@ Full autonomous goal prompt that should stay out of the compact chat UI`;
     });
 
     await waitFor(() => {
-      expect(
-        screen.getByLabelText(`Message template ${presentationTemplate.title}`),
-      ).toHaveTextContent("Presentation");
-      expect(
-        screen.getByLabelText(`Message template ${videoTemplate.title}`),
-      ).toHaveTextContent("Video");
-      expect(
-        screen.getByLabelText(`Message template ${illustrationTemplate.title}`),
-      ).toHaveTextContent("Illustration");
+      const presentationTemplateLabel = screen.getByLabelText(
+        `Message template ${presentationTemplate.title}`,
+      );
+      const videoTemplateLabel = screen.getByLabelText(
+        `Message template ${videoTemplate.title}`,
+      );
+      const illustrationTemplateLabel = screen.getByLabelText(
+        `Message template ${illustrationTemplate.title}`,
+      );
       const websiteTemplateLabel = screen.getByLabelText(
         `Message template ${websiteTemplate.title}`,
       );
-      expect(websiteTemplateLabel).toHaveTextContent("Website");
+      expect(presentationTemplateLabel).toHaveTextContent(
+        presentationTemplate.title,
+      );
+      expect(presentationTemplateLabel).toHaveAttribute(
+        "title",
+        `Presentation · ${presentationTemplate.title}`,
+      );
+      expect(videoTemplateLabel).toHaveTextContent(videoTemplate.title);
+      expect(videoTemplateLabel).toHaveAttribute(
+        "title",
+        `Video · ${videoTemplate.title}`,
+      );
+      expect(illustrationTemplateLabel).toHaveTextContent(
+        illustrationTemplate.title,
+      );
+      expect(illustrationTemplateLabel).toHaveAttribute(
+        "title",
+        `Illustration · ${illustrationTemplate.title}`,
+      );
+      expect(websiteTemplateLabel).toHaveTextContent(websiteTemplate.title);
+      expect(websiteTemplateLabel).toHaveAttribute(
+        "title",
+        `Website · ${websiteTemplate.title}`,
+      );
       expect(
-        websiteTemplateLabel.querySelector(".tabler-icon-world"),
-      ).not.toBeNull();
-      expect(
-        websiteTemplateLabel.querySelector(".tabler-icon-presentation"),
-      ).toBeNull();
+        screen.getByLabelText(`Message template ${videoTemplate.title}`),
+      ).toHaveAttribute("aria-haspopup", "dialog");
     });
   });
 
-  it("copies a user message with legacy inline attachments from chat history", async () => {
+  it("copies a canonical user message with rich attachments from chat history", async () => {
     const clipboard = context.mocks.browser.clipboardWrite();
-    const threadId = "legacy-attachment-copy";
+    const threadId = "rich-attachment-copy";
+    const messageText = "Review the launch assets";
     const imageUrl = "/f/test-user/attachment-chart/chart.png";
     const videoUrl = "/f/test-user/attachment-demo/demo.mp4";
     const audioUrl = "/f/test-user/attachment-briefing/briefing.mp3";
     const markdownUrl = "/f/test-user/attachment-notes/notes.md";
+    const attachFiles = [
+      {
+        id: "attachment-chart",
+        filename: "chart.png",
+        contentType: "image/png",
+        size: 1024,
+        url: imageUrl,
+      },
+      {
+        id: "attachment-demo",
+        filename: "demo.mp4",
+        contentType: "video/mp4",
+        size: 2048,
+        url: videoUrl,
+      },
+      {
+        id: "attachment-briefing",
+        filename: "briefing.mp3",
+        contentType: "audio/mpeg",
+        size: 3072,
+        url: audioUrl,
+      },
+      {
+        id: "attachment-notes",
+        filename: "notes.md",
+        contentType: "text/markdown",
+        size: 4096,
+        url: markdownUrl,
+      },
+    ];
     mockChatLifecycle(context, {
       threadId,
       chatMessages: [
         {
-          id: "msg-legacy-attachments",
+          id: "msg-rich-attachments",
           role: "user",
-          content: [
-            "Review the launch assets",
-            `[Attached file: chart.png](${imageUrl})`,
-            `[Attached file: demo.mp4](${videoUrl})`,
-            `[Attached file: briefing.mp3](${audioUrl})`,
-            `[Attached file: notes.md](${markdownUrl})`,
-          ].join("\n"),
+          content: "stale legacy content",
+          attachFiles,
+          userMessage: {
+            version: 1,
+            parts: [
+              ...attachFiles.map((file) => {
+                return {
+                  type: "file" as const,
+                  fileId: file.id,
+                  filenameSnapshot: file.filename,
+                  contentType: file.contentType,
+                };
+              }),
+              { type: "text", text: messageText },
+            ],
+          },
           createdAt: "2026-06-09T10:00:00Z",
         },
       ],
@@ -1239,7 +1418,7 @@ Full autonomous goal prompt that should stay out of the compact chat UI`;
     detachedSetupPage({ context, path: `/chats/${threadId}` });
 
     await waitFor(() => {
-      expect(screen.getByText("Review the launch assets")).toBeInTheDocument();
+      expect(screen.getByText(messageText)).toBeInTheDocument();
       expect(screen.getByLabelText("Preview chart.png")).toBeInTheDocument();
       expect(screen.getByLabelText("Preview demo.mp4")).toBeInTheDocument();
       expect(
@@ -1256,7 +1435,7 @@ Full autonomous goal prompt that should stay out of the compact chat UI`;
     const plainText = await readClipboardItemText(item, "text/plain");
     expect(plainText).toBe(
       [
-        "Review the launch assets",
+        messageText,
         "",
         "Attachments:",
         `- chart.png: ${imageUrl}`,
@@ -1270,14 +1449,14 @@ Full autonomous goal prompt that should stay out of the compact chat UI`;
     expect(html).toContain(`<a href="${imageUrl}"`);
     expect(html).not.toContain("<img");
     const payload = parseChatClipboardPayload(html);
-    expect(payload.text).toBe("Review the launch assets");
+    expect(payload.text).toBe(messageText);
     expect(payload.attachments).toHaveLength(4);
     expect(payload.attachments[0]).toStrictEqual({
       id: "attachment-chart",
       filename: "chart.png",
       url: imageUrl,
-      contentType: "image/*",
-      size: 0,
+      contentType: "image/png",
+      size: 1024,
     });
   });
 
@@ -1336,6 +1515,18 @@ Full autonomous goal prompt that should stay out of the compact chat UI`;
           size: 2048,
         },
       ],
+      userMessage: {
+        version: 1,
+        parts: [
+          {
+            type: "file",
+            fileId: "attachment-photo",
+            filenameSnapshot: "photo.png",
+            contentType: "image/png",
+          },
+          { type: "text", text: messageText },
+        ],
+      },
     });
   });
 
@@ -1358,7 +1549,7 @@ Full autonomous goal prompt that should stay out of the compact chat UI`;
       size: 6,
       url: "https://cdn.vm7.io/artifacts/test/copy/second.txt",
     };
-    const structuredPrompt = {
+    const userMessage = {
       version: 1 as const,
       parts: [
         {
@@ -1390,6 +1581,11 @@ Full autonomous goal prompt that should stay out of the compact chat UI`;
           contentType: firstAttachment.contentType,
         },
         { type: "text" as const, text: " now" },
+        {
+          type: "feedback" as const,
+          quote: "The roadmap lacks dates",
+          note: [{ type: "text" as const, text: "Add the launch milestones" }],
+        },
       ],
     };
     mockChatLifecycle(context, {
@@ -1399,7 +1595,7 @@ Full autonomous goal prompt that should stay out of the compact chat UI`;
           id: "msg-structured-copy",
           role: "user",
           content: "stale legacy content",
-          structuredPrompt,
+          userMessage,
           attachFiles: [firstAttachment, secondAttachment],
           createdAt: "2026-06-09T10:00:00Z",
         },
@@ -1409,7 +1605,6 @@ Full autonomous goal prompt that should stay out of the compact chat UI`;
     detachedSetupPage({
       context,
       path: `/chats/${threadId}`,
-      featureSwitches: { [FeatureSwitchKey.StructuredPrompt]: true },
     });
 
     await waitFor(() => {
@@ -1422,9 +1617,12 @@ Full autonomous goal prompt that should stay out of the compact chat UI`;
     const item = await readSingleRichClipboardWrite(clipboard);
     const html = await readClipboardItemText(item, "text/html");
     expect(parseChatClipboardPayload(html)).toStrictEqual({
-      text: `Review [Roadmap](/chats/${referencedThreadId}) now`,
+      text:
+        `Review [Roadmap](/chats/${referencedThreadId}) now\n\n` +
+        "Feedback on this part of your reply:\n\n" +
+        "> The roadmap lacks dates\n\nAdd the launch milestones",
       attachments: [secondAttachment, firstAttachment],
-      structuredPrompt,
+      userMessage,
     });
   });
 
@@ -1439,7 +1637,9 @@ Full autonomous goal prompt that should stay out of the compact chat UI`;
       },
     };
     const messageText = "Create a matching illustration";
-    const structuredPrompt = {
+    const feedbackQuote = "The illustration lacks contrast";
+    const feedbackNote = "Increase the foreground contrast";
+    const userMessage = {
       version: 1 as const,
       parts: [
         {
@@ -1448,6 +1648,11 @@ Full autonomous goal prompt that should stay out of the compact chat UI`;
           template: generationTemplate,
         },
         { type: "text" as const, text: messageText },
+        {
+          type: "feedback" as const,
+          quote: feedbackQuote,
+          note: [{ type: "text" as const, text: feedbackNote }],
+        },
       ],
     };
     mockChatLifecycle(context, {
@@ -1457,7 +1662,7 @@ Full autonomous goal prompt that should stay out of the compact chat UI`;
           id: "msg-structured-template-copy-paste",
           role: "user",
           content: "invalidate",
-          structuredPrompt,
+          userMessage,
           createdAt: "2026-06-09T10:00:00Z",
         },
       ],
@@ -1466,7 +1671,6 @@ Full autonomous goal prompt that should stay out of the compact chat UI`;
     detachedSetupPage({
       context,
       path: `/chats/${threadId}`,
-      featureSwitches: { [FeatureSwitchKey.StructuredPrompt]: true },
     });
 
     await waitFor(() => {
@@ -1496,61 +1700,85 @@ Full autonomous goal prompt that should stay out of the compact chat UI`;
       expect(
         screen.getByLabelText(`Remove template ${style.title}`),
       ).toBeInTheDocument();
+      const feedbackItem = composer.querySelector("[data-feedback-item]");
+      expect(feedbackItem).toHaveTextContent(feedbackQuote);
+      expect(feedbackItem).toHaveTextContent(feedbackNote);
     });
   });
 
-  it("does not restore a copied structured template when the switch is off", async () => {
-    const threadId = "structured-template-paste-disabled";
-    const style = ILLUSTRATION_TEMPLATE_ITEMS[0]!;
-    const messageText = "Paste without restoring the template";
-    const payload = {
-      text: messageText,
-      attachments: [],
-      structuredPrompt: {
-        version: 1 as const,
-        parts: [
-          {
-            type: "template" as const,
-            titleSnapshot: style.title,
-            template: {
-              type: "illustration" as const,
-              selection: {
-                illustrationStyleId: style.illustrationStyleId,
-              },
-            },
-          },
-          { type: "text" as const, text: messageText },
-        ],
-      },
+  it("preserves structured feedback when the browser rejects the modern clipboard API", async () => {
+    const clipboard = context.mocks.browser.clipboardWrite();
+    clipboard.rejectWith(
+      new DOMException("Clipboard blocked", "NotAllowedError"),
+    );
+    const fallbackClipboard = context.mocks.browser.clipboardExecCommand();
+    const threadId = "structured-feedback-copy-fallback";
+    const userMessage = {
+      version: 1 as const,
+      parts: [
+        {
+          type: "feedback" as const,
+          quote: "The release plan needs an owner",
+          note: [{ type: "text" as const, text: "Name the owner" }],
+        },
+        {
+          type: "feedback" as const,
+          quote: "The release plan needs dates",
+          note: [{ type: "text" as const, text: "Add the milestones" }],
+        },
+      ],
     };
-    mockChatLifecycle(context, { threadId });
+    mockChatLifecycle(context, {
+      threadId,
+      chatMessages: [
+        {
+          id: "msg-structured-feedback-copy-fallback",
+          role: "user",
+          content: "stale legacy feedback",
+          userMessage,
+          createdAt: "2026-06-09T10:00:00Z",
+        },
+      ],
+    });
 
     detachedSetupPage({
       context,
       path: `/chats/${threadId}`,
-      featureSwitches: { [FeatureSwitchKey.StructuredPrompt]: false },
     });
 
+    await screen.findByText("The release plan needs an owner");
+    click(screen.getByLabelText("Copy message"));
+
+    await waitFor(() => {
+      expect(fallbackClipboard.writes).toHaveLength(1);
+    });
+    const copied = fallbackClipboard.writes[0];
+    if (!copied) {
+      throw new Error("Fallback clipboard write not found");
+    }
     const composer = await screen.findByRole("textbox", { name: "Message" });
     fireEvent.paste(composer, {
       clipboardData: {
         getData: (type: string) => {
-          if (type === "text/html") {
-            return `<div data-vm0-chat-message="${encodeURIComponent(
-              JSON.stringify(payload),
-            )}"></div>`;
-          }
-          return type === "text/plain" ? messageText : "";
+          return copied[type] ?? "";
         },
         items: [],
       },
     });
 
     await waitFor(() => {
-      expect(composer).toHaveTextContent(messageText);
-      expect(
-        screen.queryByLabelText(`Remove template ${style.title}`),
-      ).not.toBeInTheDocument();
+      const feedbackItems = composer.querySelectorAll("[data-feedback-item]");
+      expect(feedbackItems).toHaveLength(2);
+      expect(feedbackItems[0]).toHaveTextContent(
+        "The release plan needs an owner",
+      );
+      expect(feedbackItems[0]).toHaveTextContent("Name the owner");
+      expect(feedbackItems[1]).toHaveTextContent(
+        "The release plan needs dates",
+      );
+      expect(feedbackItems[1]).toHaveTextContent("Add the milestones");
+      expect(feedbackItems[0]).toBeVisible();
+      expect(feedbackItems[1]).toBeVisible();
     });
   });
 });

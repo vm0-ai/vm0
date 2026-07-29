@@ -13,11 +13,7 @@ import auth
 import flow_metadata_keys as metadata_keys
 import mitm_addon
 import usage
-from tests.auth_base_forwarder_helpers import (
-    FakeSocket,
-    fake_forwarder_upstream,
-    http_response,
-)
+from tests.auth_base_forwarder_helpers import fake_forwarder_upstream
 from tests.pending_helpers import assert_pending
 from tests.request_handler_helpers import _single_firewall_vm, _write_registry
 from tests.requestheaders_helpers import await_requestheaders_result
@@ -38,28 +34,28 @@ async def _wait_for_forward_start(
     started: threading.Event,
     request_task: asyncio.Task[None],
     *,
-    timeout: float = _FORWARD_START_TIMEOUT_SECONDS,
+    wait_timeout: float = _FORWARD_START_TIMEOUT_SECONDS,
 ) -> None:
-    started_task = asyncio.create_task(asyncio.to_thread(started.wait, timeout))
+    started_task = asyncio.create_task(asyncio.to_thread(started.wait, wait_timeout))
     try:
         done, _ = await asyncio.wait(
             (started_task, request_task),
             return_when=asyncio.FIRST_COMPLETED,
-            timeout=timeout,
+            timeout=wait_timeout,
         )
         if (started_task in done and started_task.result()) or started.is_set():
             return
 
         if request_task not in done and not request_task.done():
             request_task.cancel()
-            await asyncio.wait((request_task,), timeout=timeout)
+            await asyncio.wait((request_task,), timeout=wait_timeout)
 
             if request_task.done():
                 await asyncio.gather(request_task, return_exceptions=True)
 
             raise AssertionError(
                 "auth.base forwarder did not start before timeout "
-                f"(timeout={timeout}, "
+                f"(timeout={wait_timeout}, "
                 "request_task_pending_before_cancel="
                 "True, "
                 f"request_task_done={request_task.done()}, "
@@ -88,23 +84,23 @@ async def _await_request_task(request_task: asyncio.Task[None]) -> None:
 async def _drain_request_task(
     request_task: asyncio.Task[None],
     *,
-    timeout: float = _FORWARD_START_TIMEOUT_SECONDS,
+    wait_timeout: float = _FORWARD_START_TIMEOUT_SECONDS,
 ) -> None:
     if not request_task.done():
-        await asyncio.wait((request_task,), timeout=timeout)
+        await asyncio.wait((request_task,), timeout=wait_timeout)
     if request_task.done():
         await asyncio.gather(request_task, return_exceptions=True)
         return
 
     request_task.cancel()
-    await asyncio.wait((request_task,), timeout=timeout)
+    await asyncio.wait((request_task,), timeout=wait_timeout)
     if request_task.done():
         await asyncio.gather(request_task, return_exceptions=True)
         return
 
     raise AssertionError(
         "request task did not finish before cleanup timeout "
-        f"(timeout={timeout}, request_task_done={request_task.done()}, "
+        f"(timeout={wait_timeout}, request_task_done={request_task.done()}, "
         f"request_task_cancelled={request_task.cancelled()})"
     )
 
@@ -735,17 +731,10 @@ async def test_billable_auth_url_rewrite_flow_drains_after_response(
     forward_started = threading.Event()
     release_forward = threading.Event()
 
-    def create_connection(_address, _timeout, _source_address):
+    def block_connect(_address):
         forward_started.set()
         if not release_forward.wait(timeout=5):
             raise TimeoutError("test did not release blocked auth.base forward")
-        return FakeSocket(
-            http_response(
-                status=200,
-                body=b'{"delivered":true}',
-                headers=[("Content-Type", "application/json")],
-            )
-        )
 
     with (
         mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
@@ -754,14 +743,18 @@ async def test_billable_auth_url_rewrite_flow_drains_after_response(
             "get_firewall_headers",
             AsyncMock(return_value=token_meta),
         ),
-        fake_forwarder_upstream(create_connection=create_connection) as upstream,
+        fake_forwarder_upstream(
+            body=b'{"delivered":true}',
+            headers=[("Content-Type", "application/json")],
+            connect_side_effect=block_connect,
+        ) as upstream,
     ):
         request_task = asyncio.create_task(mitm_addon.request(flow))
         try:
             await _wait_for_forward_start(forward_started, request_task)
 
-            assert upstream.getaddrinfo_calls == [("real.example.com", 443)]
-            assert upstream.create_connection_calls == [(("93.184.216.34", 443), 30, None)]
+            assert upstream.resolve_calls == ["real.example.com"]
+            assert upstream.connect_calls == [("93.184.216.34", 443)]
             usage.write_pending_snapshot(flush_request_id="request-1")
             assert_pending(
                 usage_pending_path,
@@ -823,8 +816,8 @@ async def test_billable_auth_url_rewrite_forward_failure_releases_tracking(
     ):
         await mitm_addon.request(flow)
 
-    assert upstream.getaddrinfo_calls == [("real.example.com", 443)]
-    assert upstream.create_connection_calls == [(("93.184.216.34", 443), 30, None)]
+    assert upstream.resolve_calls == ["real.example.com"]
+    assert upstream.connect_calls == [("93.184.216.34", 443)]
     assert flow.response is not None
     assert flow.response.status_code == 502
     assert flow.metadata[metadata_keys.FIREWALL_ERROR] == "url_rewrite_forward_failed"
@@ -850,12 +843,11 @@ async def test_billable_auth_url_rewrite_forward_cancellation_releases_tracking(
     release_forward = threading.Event()
     forward_unblocked = threading.Event()
 
-    def create_connection(_address, _timeout, _source_address):
+    def block_connect(_address):
         forward_started.set()
         try:
             if not release_forward.wait(timeout=5):
                 raise TimeoutError("test did not release blocked auth.base forward")
-            return FakeSocket(http_response())
         finally:
             forward_unblocked.set()
 
@@ -866,7 +858,7 @@ async def test_billable_auth_url_rewrite_forward_cancellation_releases_tracking(
             "get_firewall_headers",
             AsyncMock(return_value=token_meta),
         ),
-        fake_forwarder_upstream(create_connection=create_connection),
+        fake_forwarder_upstream(connect_side_effect=block_connect),
     ):
         request_task = asyncio.create_task(mitm_addon.request(flow))
         try:

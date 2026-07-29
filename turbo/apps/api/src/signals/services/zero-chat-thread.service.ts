@@ -1,5 +1,10 @@
 import { command, computed, type Computed } from "ccstate";
 import {
+  chatEventCompatibilityRole,
+  type ChatEventType,
+} from "@vm0/api-contracts/contracts/chat-events";
+import {
+  chatEventResponse,
   type ArtifactItem,
   type ChatSearchMessage,
   type ChatSearchResult,
@@ -7,7 +12,8 @@ import {
   type ChatThreadArtifactRun,
   type ChatThreadDetail,
   type CodexServiceTier,
-  type PagedChatMessage,
+  type ChatEvent,
+  type ChatEventResponse,
   type PersistedAttachment,
   type ResolvedAttachFile,
   type UserMessageDocument,
@@ -35,7 +41,7 @@ import {
   type ChatMessageAttachFileMetadata,
   type ChatMessageGenerationTemplate,
   type ChatMessageRecommendedFollowups,
-  type ChatMessageStructuredPrompt,
+  type ChatMessageUserMessage,
   type ChatMessageGoalEvent,
   type ChatMessageGoalSnapshot,
 } from "@vm0/db/schema/chat-message";
@@ -50,7 +56,6 @@ import {
   chatMessageAssetRefs,
   runUploadedFiles,
 } from "@vm0/db/schema/run-uploaded-file";
-import { userArtifactFavorites } from "@vm0/db/schema/user-artifact-favorite";
 import { zeroAgents } from "@vm0/db/schema/zero-agent";
 import { zeroRuns } from "@vm0/db/schema/zero-run";
 import {
@@ -71,9 +76,12 @@ import {
   isNotNull,
   isNull,
   lt,
+  ne,
+  not,
   notExists,
   or,
   type SQL,
+  type SQLWrapper,
   sql,
 } from "drizzle-orm";
 import { z } from "zod";
@@ -98,7 +106,7 @@ import {
   insertAssistantEventMessages$,
   resolveAttachFileMetadataUrls,
   resolveAttachFileUrls,
-  visibleChatMessageCondition,
+  visibleChatEventCondition,
 } from "./zero-chat-message-shared.service";
 import { normalizeRecommendedFollowups } from "./zero-chat-recommended-followups.service";
 import { latestRunFinishMessageSubquery } from "./zero-chat-thread-read-state-query";
@@ -106,11 +114,18 @@ import { appendChatThreadEvent } from "./zero-chat-thread-event.service";
 import { excludeGoalMarkerCondition } from "./zero-chat-goal-marker.service";
 import { cancelRun$, type CancelRunResult } from "./zero-run-cancel.service";
 import { buildWorkflowScheduleAutomationBrief } from "./zero-workflow-automation-brief.service";
-import { excludeCanonicalSlackChatThreads } from "./canonical-slack-web-visibility.service";
+import {
+  maybeCreateUserMessageDocument,
+  projectUserMessage,
+  requiredUserMessageForEvent,
+} from "./zero-chat-user-message.service";
+import {
+  chatEventTypeIn,
+  chatEventTypeSql,
+} from "./zero-chat-event-type.service";
 
 export { insertAssistantEventMessages$ };
 
-const messageRoleSchema = z.enum(["user", "assistant"]);
 const nullableTriggerSourceDecoder = nullableDriverValueDecoder(
   zodEnumDriverValueDecoder(triggerSourceSchema),
 );
@@ -120,16 +135,20 @@ const revokedChatMessage = alias(chatMessages, "revoked_chat_message");
 const hostedRunUploadedFiles = alias(runUploadedFiles, "hosted_files");
 const HOSTED_ARTIFACT_KINDS = ["hosted-site", "presentation-html"] as const;
 
-type ChatMessageRow = {
+type ChatEventRow = {
   readonly id: string;
-  readonly role: string;
+  readonly chatThreadId: string;
+  readonly eventType: ChatEventType;
   readonly content: string | null;
-  readonly structuredPrompt: ChatMessageStructuredPrompt | null;
+  readonly userMessage: ChatMessageUserMessage | null;
   readonly thinking: string | null;
   readonly runId: string | null;
   readonly runGroupId: string | null;
+  readonly automationId: string | null;
   readonly triggerSource: TriggerSource | null;
+  readonly triggerBrief: string | null;
   readonly slackMessagePermalink: string | null;
+  readonly feishuChatOpenUrl: string | null;
   readonly isGoalRun: boolean;
   readonly usagePayload: ChatMessageUsagePayload | null;
   readonly runEventId: string | null;
@@ -144,7 +163,7 @@ type ChatMessageRow = {
   readonly attachFileMetadata: readonly ChatMessageAttachFileMetadata[] | null;
   readonly generationTemplate: ChatMessageGenerationTemplate | null;
   readonly recommendedFollowups: ChatMessageRecommendedFollowups | null;
-  readonly revokesMessageId: string | null;
+  readonly revokesEventId: string | null;
   readonly interruptsRunId: string | null;
   readonly workflowName: string | null;
   readonly workflowDisplayName: string | null;
@@ -233,8 +252,9 @@ const artifactSyncUntilRowSchema = z.object({ sync_until: z.string() });
 type ChatSearchMessageRow = {
   readonly messageId: string;
   readonly chatThreadId: string;
-  readonly role: string;
+  readonly eventType: ChatEventType;
   readonly content: string | null;
+  readonly userMessage: UserMessageDocument | null;
   readonly createdAt: Date;
   readonly seqId: number;
   readonly sequenceNumber: number | null;
@@ -251,13 +271,14 @@ type ChatThreadRow = {
   readonly title: string | null;
   readonly agentComposeId: string;
   readonly draftContent: string | null;
-  readonly draftStructuredPrompt: UserMessageDocument | null;
+  readonly draftUserMessage: UserMessageDocument | null;
   readonly draftAttachments: readonly PersistedAttachment[] | null;
   readonly modelProviderId: string | null;
   readonly modelProviderType: ModelProviderType | null;
   readonly modelProviderCredentialScope: ModelProviderCredentialScope | null;
   readonly codexServiceTier: CodexServiceTier | null;
   readonly computerUseHostId: string | null;
+  readonly cloudBrowserEnabled: boolean;
   readonly orgId: string | null;
   readonly lastReadAt: Date | null;
   readonly lastMessageAt: Date;
@@ -269,22 +290,23 @@ type ChatThreadRow = {
 
 type ChatThreadDetailRow = {
   readonly lastReadAt: Date | null;
-  readonly computerUseHostId: string | null;
-  readonly codexServiceTier: CodexServiceTier | null;
 };
 
 function effectiveChatMessageRunId() {
   return chatMessages.runId;
 }
 
-const messageColumns = {
+const eventColumns = {
   id: chatMessages.id,
-  role: chatMessages.role,
+  chatThreadId: chatMessages.chatThreadId,
+  eventType: chatEventTypeSql().as("event_type"),
   content: chatMessages.content,
-  structuredPrompt: chatMessages.structuredPrompt,
+  userMessage: chatMessages.userMessage,
   thinking: chatMessages.thinking,
   runId: effectiveChatMessageRunId(),
   runGroupId: chatMessages.runGroupId,
+  automationId: chatMessages.automationId,
+  triggerBrief: chatMessages.triggerBrief,
   usagePayload: chatMessages.usagePayload,
   runEventId: chatMessages.runEventId,
   goalEvent: chatMessages.goalEvent,
@@ -298,16 +320,16 @@ const messageColumns = {
   attachFileMetadata: chatMessages.attachFileMetadata,
   generationTemplate: chatMessages.generationTemplate,
   recommendedFollowups: chatMessages.recommendedFollowups,
-  revokesMessageId: chatMessages.revokesMessageId,
+  revokesEventId: chatMessages.revokesEventId,
   interruptsRunId: chatMessages.interruptsRunId,
 } as const;
 
 function chatMessageMetadataSubquery(db: Pick<Db, "select">) {
   return db
     .select({
-      triggerSource: sql`${zeroRuns.triggerSource}`
+      runTriggerSource: sql`${zeroRuns.triggerSource}`
         .mapWith(nullableTriggerSourceDecoder)
-        .as("trigger_source"),
+        .as("run_trigger_source"),
       workflowId: sql`${zeroWorkflows.id}`
         .mapWith(zeroWorkflows.id)
         .as("workflow_id"),
@@ -389,18 +411,29 @@ function chatMessageMetadataSubquery(db: Pick<Db, "select">) {
     .as("chat_message_metadata");
 }
 
-function selectChatMessagesWithMetadata(db: Pick<Db, "select">) {
+function selectChatEventsWithMetadata(db: Pick<Db, "select">) {
   const metadata = chatMessageMetadataSubquery(db);
   return db
     .select({
-      ...messageColumns,
-      triggerSource: metadata.triggerSource,
+      ...eventColumns,
+      triggerSource: sql`COALESCE(
+        ${chatMessages.triggerSource},
+        ${metadata.runTriggerSource}
+      )`
+        .mapWith(nullableTriggerSourceDecoder)
+        .as("trigger_source"),
       slackMessagePermalink: sql`COALESCE(
         ${chatMessages.slackMessagePermalink},
         ${revokedChatMessage.slackMessagePermalink}
       )`
         .mapWith(nullableTextDecoder)
         .as("slack_message_permalink"),
+      feishuChatOpenUrl: sql`COALESCE(
+        ${chatMessages.feishuChatOpenUrl},
+        ${revokedChatMessage.feishuChatOpenUrl}
+      )`
+        .mapWith(nullableTextDecoder)
+        .as("feishu_chat_open_url"),
       workflowId: metadata.workflowId,
       workflowAgentId: metadata.workflowAgentId,
       workflowName: metadata.workflowName,
@@ -423,19 +456,25 @@ function selectChatMessagesWithMetadata(db: Pick<Db, "select">) {
     .leftJoinLateral(metadata, sql`true`)
     .leftJoin(
       revokedChatMessage,
-      eq(revokedChatMessage.id, chatMessages.revokesMessageId),
+      eq(revokedChatMessage.id, chatMessages.revokesEventId),
     );
 }
 
 const searchMessageColumns = {
   messageId: chatMessages.id,
   chatThreadId: chatMessages.chatThreadId,
-  role: chatMessages.role,
+  eventType: chatEventTypeSql().as("event_type"),
   content: chatMessages.content,
+  userMessage: chatMessages.userMessage,
   createdAt: chatMessages.createdAt,
   seqId: chatMessages.seqId,
   sequenceNumber: chatMessages.sequenceNumber,
   runId: effectiveChatMessageRunId(),
+} as const;
+
+const searchContextMessageColumns = {
+  ...searchMessageColumns,
+  eventType: chatEventTypeSql().as("context_event_type"),
 } as const;
 
 function escapeLikePattern(value: string): string {
@@ -461,6 +500,15 @@ function parseHostedArtifactKindFromMetadata(
   return parseHostedArtifactKind(metadata.artifactKind);
 }
 
+function parseHostedArtifactAliasUrlFromMetadata(
+  metadata: unknown,
+): string | undefined {
+  if (!isRecord(metadata) || typeof metadata.aliasUrl !== "string") {
+    return undefined;
+  }
+  return metadata.aliasUrl;
+}
+
 function ownedChatThread(
   threadId: string,
   userId: string,
@@ -473,9 +521,10 @@ function ownedChatThread(
         title: chatThreads.title,
         agentComposeId: chatThreads.agentComposeId,
         draftContent: chatThreads.draftContent,
-        draftStructuredPrompt: chatThreads.draftStructuredPrompt,
+        draftUserMessage: chatThreads.draftUserMessage,
         draftAttachments: chatThreads.draftAttachments,
         computerUseHostId: chatThreads.computerUseHostId,
+        cloudBrowserEnabled: chatThreads.cloudBrowserEnabled,
         modelProviderId: chatThreads.modelProviderId,
         modelProviderType: chatThreads.modelProviderType,
         modelProviderCredentialScope: chatThreads.modelProviderCredentialScope,
@@ -502,12 +551,13 @@ function ownedChatThread(
       title: thread.title,
       agentComposeId: thread.agentComposeId,
       draftContent: thread.draftContent ?? null,
-      draftStructuredPrompt: thread.draftStructuredPrompt ?? null,
+      draftUserMessage: thread.draftUserMessage ?? null,
       draftAttachments: persistedAttachmentSchema
         .array()
         .nullable()
         .parse(thread.draftAttachments ?? null),
       computerUseHostId: thread.computerUseHostId,
+      cloudBrowserEnabled: thread.cloudBrowserEnabled,
       modelProviderId: thread.modelProviderId,
       modelProviderType: modelProviderTypeSchema
         .nullable()
@@ -539,7 +589,7 @@ export function zeroChatThreadDraft(args: {
 
     return {
       draftContent: thread.draftContent,
-      draftStructuredPrompt: thread.draftStructuredPrompt,
+      draftUserMessage: thread.draftUserMessage,
       draftAttachments: thread.draftAttachments
         ? [...thread.draftAttachments]
         : null,
@@ -658,7 +708,7 @@ async function canonicalMessageAttachments(
 
 function chatMessageAttachFiles(
   userId: string,
-  row: ChatMessageRow,
+  row: ChatEventRow,
   canonicalAttachments: readonly ResolvedAttachFile[],
 ): Computed<Promise<readonly ResolvedAttachFile[] | undefined>> {
   return computed(async (get) => {
@@ -675,22 +725,13 @@ function chatMessageAttachFiles(
   });
 }
 
-function lifecycleEventOrUndefined(
-  value: string | null,
-): "completed" | "failed" | "cancelled" | undefined {
-  if (value === "completed" || value === "failed" || value === "cancelled") {
-    return value;
-  }
-  return undefined;
-}
-
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 function normalizeUsagePayload(
   value: ChatMessageUsagePayload | null,
-): PagedChatMessage["usage"] {
+): Extract<ChatEvent, { eventType: "usage.recorded" }>["usage"] | undefined {
   if (value === null) {
     return undefined;
   }
@@ -714,7 +755,18 @@ function normalizeUsagePayload(
   };
 }
 
-function workflowScheduleAutomationBrief(row: ChatMessageRow): string | null {
+function requiredChatEventField<T>(
+  value: T | null,
+  eventType: ChatEventType,
+  field: string,
+): T {
+  if (value === null) {
+    throw new Error(`${eventType} chat event is missing ${field}`);
+  }
+  return value;
+}
+
+function workflowScheduleAutomationBrief(row: ChatEventRow): string | null {
   if (row.workflowAutomationKind !== "schedule") {
     return null;
   }
@@ -730,8 +782,8 @@ function workflowScheduleAutomationBrief(row: ChatMessageRow): string | null {
 }
 
 function workflowSnapshotFromRow(
-  row: ChatMessageRow,
-): NonNullable<PagedChatMessage["workflowSnapshot"]> | undefined {
+  row: ChatEventRow,
+): NonNullable<ChatEvent["workflowSnapshot"]> | undefined {
   if (row.workflowName === null) {
     return undefined;
   }
@@ -747,17 +799,12 @@ function workflowSnapshotFromRow(
   };
 }
 
-function nullToUndefined<T>(value: T | null): T | undefined {
-  return value === null ? undefined : value;
-}
-
-function pagedMessageContent(
-  row: ChatMessageRow,
-  role: "user" | "assistant",
+function chatEventContent(
+  row: ChatEventRow,
   canonicalAttachmentCount: number,
 ): string | null {
   if (
-    role !== "user" ||
+    (row.eventType !== "input.prompt" && row.eventType !== "input.rejected") ||
     canonicalAttachmentCount === 0 ||
     !row.slackMessagePermalink
   ) {
@@ -771,60 +818,254 @@ function pagedMessageContent(
     .join("\n\n");
 }
 
-function toPagedMessage(
+function baseChatEventFromRow(
+  row: ChatEventRow,
+  workflowSnapshot: NonNullable<ChatEvent["workflowSnapshot"]> | undefined,
+  content: string | null,
+) {
+  return {
+    id: row.id,
+    threadId: row.chatThreadId,
+    content,
+    runId: row.runId ?? undefined,
+    runGroupId: row.runGroupId ?? undefined,
+    triggerSource: row.triggerSource ?? undefined,
+    slackMessagePermalink: row.slackMessagePermalink ?? undefined,
+    feishuChatOpenUrl: row.feishuChatOpenUrl ?? undefined,
+    isGoalRun: row.isGoalRun || undefined,
+    runEventId: row.runEventId ?? undefined,
+    goalSnapshot: row.goalSnapshot ?? undefined,
+    revokesEventId: row.revokesEventId ?? undefined,
+    seqId: row.seqId,
+    sequenceNumber: row.sequenceNumber,
+    workflowSnapshot,
+    createdAt: row.createdAt.toISOString(),
+  };
+}
+
+type ChatEventBase = ReturnType<typeof baseChatEventFromRow>;
+type ChatEventBuilder = (
+  row: ChatEventRow,
+  event: ChatEventBase,
+  attachFiles: readonly ResolvedAttachFile[] | undefined,
+) => ChatEvent;
+
+const chatEventBuilders = {
+  "input.prompt": (row, event, attachFiles) => {
+    return {
+      ...event,
+      eventType: "input.prompt",
+      userMessage: requiredChatEventField(
+        row.userMessage,
+        row.eventType,
+        "userMessage",
+      ),
+      attachFiles: attachFiles ? [...attachFiles] : undefined,
+      generationTemplate: row.generationTemplate ?? undefined,
+    };
+  },
+  "input.automation": (row, event) => {
+    return {
+      ...event,
+      eventType: "input.automation",
+      content: null,
+      automationId: requiredChatEventField(
+        row.automationId,
+        row.eventType,
+        "automationId",
+      ),
+      triggerSource: requiredChatEventField(
+        row.triggerSource,
+        row.eventType,
+        "triggerSource",
+      ),
+      triggerBrief: row.triggerBrief,
+    };
+  },
+  "input.rejected": (row, event, attachFiles) => {
+    return {
+      ...event,
+      eventType: "input.rejected",
+      userMessage: requiredChatEventField(
+        row.userMessage,
+        row.eventType,
+        "userMessage",
+      ),
+      error: requiredChatEventField(row.error, row.eventType, "error"),
+      automationId: row.automationId ?? undefined,
+      triggerBrief: row.automationId === null ? undefined : row.triggerBrief,
+      attachFiles: attachFiles ? [...attachFiles] : undefined,
+      generationTemplate: row.generationTemplate ?? undefined,
+    };
+  },
+  "output.message": (row, event) => {
+    return {
+      ...event,
+      eventType: "output.message",
+      content: requiredChatEventField(row.content, row.eventType, "content"),
+    };
+  },
+  "output.error": (row, event) => {
+    return {
+      ...event,
+      eventType: "output.error",
+      error: requiredChatEventField(row.error, row.eventType, "error"),
+    };
+  },
+  "output.thinking": (row, event) => {
+    return {
+      ...event,
+      eventType: "output.thinking",
+      content: null,
+      thinking: requiredChatEventField(row.thinking, row.eventType, "thinking"),
+    };
+  },
+  "output.followups": (row, event) => {
+    const recommendedFollowups = requiredChatEventField(
+      row.recommendedFollowups,
+      row.eventType,
+      "recommendedFollowups",
+    );
+    return {
+      ...event,
+      eventType: "output.followups",
+      content: null,
+      recommendedFollowups: normalizeRecommendedFollowups(recommendedFollowups),
+    };
+  },
+  "run.queued": (row, event) => {
+    return {
+      ...event,
+      eventType: "run.queued",
+      runId: requiredChatEventField(row.runId, row.eventType, "runId"),
+      content: requiredChatEventField(row.content, row.eventType, "content"),
+    };
+  },
+  "run.dequeued": (row, event) => {
+    return {
+      ...event,
+      eventType: "run.dequeued",
+      runId: requiredChatEventField(row.runId, row.eventType, "runId"),
+      content: null,
+      revokesEventId: requiredChatEventField(
+        row.revokesEventId,
+        row.eventType,
+        "revokesEventId",
+      ),
+    };
+  },
+  "run.completed": (row, event, attachFiles) => {
+    return {
+      ...event,
+      eventType: "run.completed",
+      runId: requiredChatEventField(row.runId, row.eventType, "runId"),
+      attachFiles: attachFiles ? [...attachFiles] : undefined,
+      runLifecycleEvent: "completed",
+    };
+  },
+  "run.failed": (row, event) => {
+    return {
+      ...event,
+      eventType: "run.failed",
+      runId: requiredChatEventField(row.runId, row.eventType, "runId"),
+      error: row.error ?? undefined,
+      runLifecycleEvent: "failed",
+    };
+  },
+  "run.cancelled": (row, event) => {
+    return {
+      ...event,
+      eventType: "run.cancelled",
+      runId: requiredChatEventField(row.runId, row.eventType, "runId"),
+      error: row.error ?? undefined,
+      runLifecycleEvent: "cancelled",
+    };
+  },
+  "queue.automation_paused": (row, event) => {
+    return {
+      ...event,
+      eventType: "queue.automation_paused",
+      content: null,
+      pauseReason: row.error,
+    };
+  },
+  "queue.automation_resumed": (_row, event) => {
+    return {
+      ...event,
+      eventType: "queue.automation_resumed",
+      content: null,
+    };
+  },
+  "control.interrupt": (row, event) => {
+    return {
+      ...event,
+      eventType: "control.interrupt",
+      content: null,
+      interruptsRunId: requiredChatEventField(
+        row.interruptsRunId,
+        row.eventType,
+        "interruptsRunId",
+      ),
+    };
+  },
+  "control.revoke": (row, event) => {
+    return {
+      ...event,
+      eventType: "control.revoke",
+      content: null,
+      revokesEventId: requiredChatEventField(
+        row.revokesEventId,
+        row.eventType,
+        "revokesEventId",
+      ),
+    };
+  },
+  "goal.changed": (row, event) => {
+    return {
+      ...event,
+      eventType: "goal.changed",
+      content: null,
+      goalEvent: requiredChatEventField(
+        row.goalEvent,
+        row.eventType,
+        "goalEvent",
+      ),
+    };
+  },
+  "usage.recorded": (row, event) => {
+    return {
+      ...event,
+      eventType: "usage.recorded",
+      runId: requiredChatEventField(row.runId, row.eventType, "runId"),
+      content: null,
+      usage: requiredChatEventField(
+        normalizeUsagePayload(row.usagePayload) ?? null,
+        row.eventType,
+        "usage",
+      ),
+    };
+  },
+} satisfies Record<ChatEventType, ChatEventBuilder>;
+
+function toChatEvent(
   userId: string,
-  row: ChatMessageRow,
+  row: ChatEventRow,
   canonicalAttachments: readonly ResolvedAttachFile[],
-): Computed<Promise<PagedChatMessage>> {
-  return computed(async (get): Promise<PagedChatMessage> => {
+): Computed<Promise<ChatEventResponse>> {
+  return computed(async (get): Promise<ChatEventResponse> => {
     const attachFiles = await get(
       chatMessageAttachFiles(userId, row, canonicalAttachments),
     );
-    const workflowSnapshot = workflowSnapshotFromRow(row);
-
-    const role = messageRoleSchema.parse(row.role);
-    const content = pagedMessageContent(row, role, canonicalAttachments.length);
-    const message = {
-      id: row.id,
-      role,
-      content,
-      runId: nullToUndefined(row.runId),
-      runGroupId: nullToUndefined(row.runGroupId),
-      triggerSource: nullToUndefined(row.triggerSource),
-      slackMessagePermalink: nullToUndefined(row.slackMessagePermalink),
-      isGoalRun: row.isGoalRun || undefined,
-      usage: normalizeUsagePayload(row.usagePayload),
-      runEventId: nullToUndefined(row.runEventId),
-      goalEvent: nullToUndefined(row.goalEvent),
-      goalSnapshot: nullToUndefined(row.goalSnapshot),
-      revokesMessageId: nullToUndefined(row.revokesMessageId),
-      interruptsRunId: nullToUndefined(row.interruptsRunId),
-      error: nullToUndefined(row.error),
-      attachFiles: attachFiles ? [...attachFiles] : undefined,
-      generationTemplate: nullToUndefined(row.generationTemplate),
-      seqId: row.seqId,
-      sequenceNumber: row.sequenceNumber,
-      workflowSnapshot,
-      createdAt: row.createdAt.toISOString(),
-    };
-    if (role !== "assistant") {
-      return {
-        ...message,
-        role: "user" as const,
-        structuredPrompt: nullToUndefined(row.structuredPrompt),
-      };
-    }
-    const recommendedFollowups = normalizeRecommendedFollowups(
-      row.recommendedFollowups,
+    const event = chatEventBuilders[row.eventType](
+      row,
+      baseChatEventFromRow(
+        row,
+        workflowSnapshotFromRow(row),
+        chatEventContent(row, canonicalAttachments.length),
+      ),
+      attachFiles,
     );
-    return {
-      ...message,
-      role: "assistant" as const,
-      thinking: nullToUndefined(row.thinking),
-      runLifecycleEvent: lifecycleEventOrUndefined(row.runLifecycleEvent),
-      recommendedFollowups:
-        recommendedFollowups.length > 0 ? recommendedFollowups : undefined,
-    };
+    return chatEventResponse(event);
   });
 }
 
@@ -867,8 +1108,6 @@ function ownedChatThreadDetail(
     const [thread] = await get(db$)
       .select({
         lastReadAt: chatThreads.lastReadAt,
-        computerUseHostId: chatThreads.computerUseHostId,
-        codexServiceTier: chatThreads.codexServiceTier,
       })
       .from(chatThreads)
       .where(and(eq(chatThreads.id, threadId), eq(chatThreads.userId, userId)))
@@ -880,8 +1119,6 @@ function ownedChatThreadDetail(
 
     return {
       lastReadAt: thread.lastReadAt,
-      computerUseHostId: thread.computerUseHostId,
-      codexServiceTier: thread.codexServiceTier ?? null,
     };
   });
 }
@@ -898,8 +1135,6 @@ export function zeroChatThreadDetail(args: {
 
     return {
       lastReadAt: thread.lastReadAt?.toISOString() ?? null,
-      computerUseHostId: thread.computerUseHostId,
-      codexServiceTier: thread.codexServiceTier,
     };
   });
 }
@@ -912,7 +1147,6 @@ export function zeroChatThreadDetail(args: {
 export function zeroChatThreadUnreads(args: {
   readonly userId: string;
   readonly agentComposeId: string;
-  readonly includeCanonicalSlackThreads?: boolean;
 }): Computed<Promise<readonly { threadId: string; unreadAt: string }[]>> {
   return computed(async (get) => {
     const db = get(db$);
@@ -934,9 +1168,6 @@ export function zeroChatThreadUnreads(args: {
           ),
           noActiveRunsForCurrentThreadCondition(db),
           noActiveGoalsForCurrentThreadCondition(db),
-          ...(args.includeCanonicalSlackThreads
-            ? []
-            : [excludeCanonicalSlackChatThreads(db, chatThreads.id)]),
         ),
       );
     return rows.map((row) => {
@@ -952,7 +1183,6 @@ export function zeroChatThreadUnreads(args: {
 export function zeroChatThreadUnreadAgentIds(args: {
   readonly userId: string;
   readonly orgId: string;
-  readonly includeCanonicalSlackThreads?: boolean;
 }): Computed<Promise<readonly string[]>> {
   return computed(async (get) => {
     const db = get(db$);
@@ -972,9 +1202,6 @@ export function zeroChatThreadUnreadAgentIds(args: {
           ),
           noActiveRunsForCurrentThreadCondition(db),
           noActiveGoalsForCurrentThreadCondition(db),
-          ...(args.includeCanonicalSlackThreads
-            ? []
-            : [excludeCanonicalSlackChatThreads(db, chatThreads.id)]),
         ),
       );
     return rows.map((row) => {
@@ -991,7 +1218,6 @@ export function zeroChatThreadUnreadAgentIds(args: {
 export function zeroChatThreadActiveRunThreadIds(args: {
   readonly userId: string;
   readonly orgId: string;
-  readonly includeCanonicalSlackThreads?: boolean;
 }): Computed<Promise<readonly string[]>> {
   return computed(async (get) => {
     const db = get(db$);
@@ -1007,9 +1233,6 @@ export function zeroChatThreadActiveRunThreadIds(args: {
           eq(zeroAgents.orgId, args.orgId),
           isNotNull(zeroRuns.chatThreadId),
           inArray(agentRuns.status, [...ACTIVE_RUN_STATUSES]),
-          ...(args.includeCanonicalSlackThreads
-            ? []
-            : [excludeCanonicalSlackChatThreads(db, chatThreads.id)]),
         ),
       );
 
@@ -1021,11 +1244,10 @@ export function zeroChatThreadActiveRunThreadIds(args: {
 
 /**
  * Thread ids owned by the user that currently hold an unsent composer draft
- * (non-empty `draftContent`, a structured prompt, or one+ `draftAttachments`).
+ * (non-empty `draftContent`, a user message, or one+ `draftAttachments`).
  */
 export function zeroChatThreadDraftIds(args: {
   readonly userId: string;
-  readonly includeCanonicalSlackThreads?: boolean;
 }): Computed<Promise<readonly string[]>> {
   return computed(async (get): Promise<readonly string[]> => {
     const db = get(db$);
@@ -1035,17 +1257,17 @@ export function zeroChatThreadDraftIds(args: {
       .where(
         and(
           eq(chatThreads.userId, args.userId),
-          ...(args.includeCanonicalSlackThreads
-            ? []
-            : [excludeCanonicalSlackChatThreads(db, chatThreads.id)]),
-          sql`(
-            COALESCE(${chatThreads.draftContent}, '') <> ''
-            OR ${isNotNull(chatThreads.draftStructuredPrompt)}
-            OR (
-              ${isNotNull(chatThreads.draftAttachments)}
-              AND jsonb_array_length(${chatThreads.draftAttachments}) > 0
-            )
-          )`,
+          or(
+            ne(sql`COALESCE(${chatThreads.draftContent}, '')`, sql`''`),
+            isNotNull(chatThreads.draftUserMessage),
+            and(
+              isNotNull(chatThreads.draftAttachments),
+              gt(
+                sql`jsonb_array_length(${chatThreads.draftAttachments})`,
+                sql`0`,
+              ),
+            ),
+          ),
         ),
       );
     return rows.map((row) => {
@@ -1068,6 +1290,7 @@ function loadZeroChatThreadArtifactRows(
       contentType: runUploadedFiles.contentType,
       sizeBytes: runUploadedFiles.sizeBytes,
       url: runUploadedFiles.url,
+      previewImageUrl: runUploadedFiles.previewImageUrl,
       metadata: runUploadedFiles.metadata,
       classification: runUploadedFiles.classification,
       accessLevel: runUploadedFiles.accessLevel,
@@ -1157,6 +1380,7 @@ export function zeroChatThreadArtifacts(args: {
           files: [],
         };
         const artifactKind = parseHostedArtifactKindFromMetadata(row.metadata);
+        const aliasUrl = parseHostedArtifactAliasUrlFromMetadata(row.metadata);
         const canonical =
           row.assetVersion === CANONICAL_ASSET_VERSION &&
           row.classification === "published-output" &&
@@ -1167,6 +1391,10 @@ export function zeroChatThreadArtifacts(args: {
           contentType: row.contentType ?? inferMimetype(filename),
           size: row.sizeBytes ?? 0,
           url: row.url,
+          ...(row.previewImageUrl
+            ? { previewImageUrl: row.previewImageUrl }
+            : {}),
+          ...(aliasUrl ? { aliasUrl } : {}),
           ...(canonical
             ? {
                 assetRef: {
@@ -1248,11 +1476,11 @@ function artifactVisibilityConditions(
   ];
 }
 
-function artifactChatThreadId(db: Pick<Db, "select">): SQL {
+function artifactChatThreadId(db: Pick<Db, "select">, runId: SQLWrapper): SQL {
   const earliestThread = db
     .select({ threadId: chatMessages.chatThreadId })
     .from(chatMessages)
-    .where(eq(chatMessages.runId, runUploadedFiles.runId))
+    .where(eq(chatMessages.runId, runId))
     .orderBy(asc(chatMessages.seqId))
     .limit(1);
 
@@ -1426,8 +1654,14 @@ async function listChangedArtifacts(args: {
     visible_runs.metadata_updated_at
   )`;
   const lowerBoundClause = args.cursor
-    ? sql`(${effectiveUpdatedAt}, ${runUploadedFiles.id}) > (${args.cursor.updatedAt}::timestamptz AT TIME ZONE 'UTC', ${args.cursor.rowId}::uuid)`
-    : sql`${effectiveUpdatedAt} >= (${args.updatedAfter}::timestamptz AT TIME ZONE 'UTC') - (${ARTIFACT_SYNC_REPLAY_WINDOW_MINUTES} * interval '1 minute')`;
+    ? gt(
+        sql`(${effectiveUpdatedAt}, ${runUploadedFiles.id})`,
+        sql`(${args.cursor.updatedAt}::timestamptz AT TIME ZONE 'UTC', ${args.cursor.rowId}::uuid)`,
+      )
+    : gte(
+        effectiveUpdatedAt,
+        sql`(${args.updatedAfter}::timestamptz AT TIME ZONE 'UTC') - (${ARTIFACT_SYNC_REPLAY_WINDOW_MINUTES} * interval '1 minute')`,
+      );
   const callerConditions = artifactCallerVisibilityConditions(args.query);
   const fileConditions = artifactFileVisibilityConditions(args.db);
   const rows = await executeRawRows(
@@ -1445,16 +1679,7 @@ async function listChangedArtifacts(args: {
         INNER JOIN ${zeroRuns}
           ON ${eq(zeroRuns.id, agentRuns.id)}
         INNER JOIN ${chatThreads}
-          ON ${chatThreads.id} = COALESCE(
-            ${zeroRuns.chatThreadId},
-            (
-              SELECT ${chatMessages.chatThreadId}
-              FROM ${chatMessages}
-              WHERE ${eq(chatMessages.runId, zeroRuns.id)}
-              ORDER BY ${asc(chatMessages.seqId)}
-              LIMIT 1
-            )
-          )
+          ON ${eq(chatThreads.id, artifactChatThreadId(args.db, zeroRuns.id))}
         INNER JOIN ${agentComposes}
           ON ${eq(agentComposes.id, chatThreads.agentComposeId)}
         INNER JOIN ${zeroAgents}
@@ -1467,10 +1692,15 @@ async function listChangedArtifacts(args: {
           ${effectiveUpdatedAt} AS effective_updated_at
         FROM visible_runs
         INNER JOIN ${runUploadedFiles}
-          ON ${runUploadedFiles.runId} = visible_runs.run_id
-        WHERE ${sql.join(fileConditions, sql` AND `)}
-          AND ${lowerBoundClause}
-          AND ${lt(effectiveUpdatedAt, sql`${args.syncUntil}::timestamptz AT TIME ZONE 'UTC'`)}
+          ON ${eq(runUploadedFiles.runId, sql`visible_runs.run_id`)}
+        WHERE ${and(
+          ...fileConditions,
+          lowerBoundClause,
+          lt(
+            effectiveUpdatedAt,
+            sql`${args.syncUntil}::timestamptz AT TIME ZONE 'UTC'`,
+          ),
+        )}
         ORDER BY ${asc(effectiveUpdatedAt)}, ${asc(runUploadedFiles.id)}
         LIMIT ${args.limit + 1}
       )
@@ -1507,22 +1737,16 @@ async function listChangedArtifacts(args: {
         ${zeroAgents.avatarUrl} AS agent_avatar_url
       FROM changed_artifact_ids
       INNER JOIN ${runUploadedFiles}
-        ON ${runUploadedFiles.id} = changed_artifact_ids.row_id
+        ON ${eq(runUploadedFiles.id, sql`changed_artifact_ids.row_id`)}
       INNER JOIN ${agentRuns}
         ON ${eq(agentRuns.id, runUploadedFiles.runId)}
       INNER JOIN ${zeroRuns}
         ON ${eq(zeroRuns.id, runUploadedFiles.runId)}
       INNER JOIN ${chatThreads}
-        ON ${chatThreads.id} = COALESCE(
-          ${zeroRuns.chatThreadId},
-          (
-            SELECT ${chatMessages.chatThreadId}
-            FROM ${chatMessages}
-            WHERE ${eq(chatMessages.runId, runUploadedFiles.runId)}
-            ORDER BY ${asc(chatMessages.seqId)}
-            LIMIT 1
-          )
-        )
+        ON ${eq(
+          chatThreads.id,
+          artifactChatThreadId(args.db, runUploadedFiles.runId),
+        )}
       INNER JOIN ${agentComposes}
         ON ${eq(agentComposes.id, chatThreads.agentComposeId)}
       INNER JOIN ${zeroAgents}
@@ -1547,7 +1771,10 @@ async function listArtifactHistory(args: {
   // The full path returns visible rows. IndexedDB owns stable-ID merging and
   // hosted-run shadowing, so this query avoids a history-wide URL sort.
   const keysetCondition = args.cursor
-    ? sql`(${runUploadedFiles.createdAt}, ${runUploadedFiles.id}) < (${args.cursor.createdAt}::timestamptz AT TIME ZONE 'UTC', ${args.cursor.rowId}::uuid)`
+    ? lt(
+        sql`(${runUploadedFiles.createdAt}, ${runUploadedFiles.id})`,
+        sql`(${args.cursor.createdAt}::timestamptz AT TIME ZONE 'UTC', ${args.cursor.rowId}::uuid)`,
+      )
     : undefined;
   const conditions = artifactVisibilityConditions(args.db, args.query);
   const rows: ArtifactListRow[] = await args.db
@@ -1599,7 +1826,10 @@ async function listArtifactHistory(args: {
     .from(runUploadedFiles)
     .innerJoin(agentRuns, eq(agentRuns.id, runUploadedFiles.runId))
     .innerJoin(zeroRuns, eq(zeroRuns.id, runUploadedFiles.runId))
-    .innerJoin(chatThreads, eq(chatThreads.id, artifactChatThreadId(args.db)))
+    .innerJoin(
+      chatThreads,
+      eq(chatThreads.id, artifactChatThreadId(args.db, runUploadedFiles.runId)),
+    )
     .innerJoin(agentComposes, eq(agentComposes.id, chatThreads.agentComposeId))
     .innerJoin(zeroAgents, eq(zeroAgents.id, agentComposes.id))
     .where(and(...conditions, keysetCondition))
@@ -1624,17 +1854,6 @@ async function listArtifactHistory(args: {
     nextCursor,
     syncUntil: args.syncUntil,
   };
-}
-
-interface ArtifactFavoriteArgs {
-  readonly userId: string;
-  readonly orgId: string;
-  readonly artifactUrl: string;
-}
-
-interface ArtifactFavoriteScope {
-  readonly userId: string;
-  readonly orgId: string;
 }
 
 export const zeroArtifacts$ = command(
@@ -1675,119 +1894,68 @@ export const zeroArtifacts$ = command(
   },
 );
 
-export const artifactFavoriteUrls$ = command(
-  async (
-    { set },
-    args: ArtifactFavoriteScope,
-    signal: AbortSignal,
-  ): Promise<string[]> => {
-    const rows = await set(writeDb$)
-      .select({ artifactUrl: userArtifactFavorites.artifactUrl })
-      .from(userArtifactFavorites)
-      .where(
-        and(
-          eq(userArtifactFavorites.orgId, args.orgId),
-          eq(userArtifactFavorites.userId, args.userId),
-        ),
-      )
-      .orderBy(asc(userArtifactFavorites.artifactUrl));
-    signal.throwIfAborted();
-    return rows.map((row) => {
-      return row.artifactUrl;
-    });
-  },
-);
-
-async function artifactUrlIsVisible(
-  db: Pick<Db, "select">,
-  args: ArtifactFavoriteArgs,
-): Promise<boolean> {
-  const conditions = [
-    ...artifactVisibilityConditions(db, args),
-    eq(runUploadedFiles.url, args.artifactUrl),
-  ];
-  const rows = await db
-    .select({ id: runUploadedFiles.id })
-    .from(runUploadedFiles)
-    .innerJoin(agentRuns, eq(agentRuns.id, runUploadedFiles.runId))
-    .innerJoin(zeroRuns, eq(zeroRuns.id, runUploadedFiles.runId))
-    .innerJoin(chatThreads, eq(chatThreads.id, artifactChatThreadId(db)))
-    .innerJoin(agentComposes, eq(agentComposes.id, chatThreads.agentComposeId))
-    .where(and(...conditions))
-    .limit(1);
-  return rows.length > 0;
-}
-
-export const favoriteArtifact$ = command(
-  async (
-    { set },
-    args: ArtifactFavoriteArgs,
-    signal: AbortSignal,
-  ): Promise<boolean> => {
-    const db = set(writeDb$);
-    const visible = await db.transaction(async (tx) => {
-      if (!(await artifactUrlIsVisible(tx, args))) {
-        return false;
-      }
-
-      await tx
-        .insert(userArtifactFavorites)
-        .values({
-          orgId: args.orgId,
-          userId: args.userId,
-          artifactUrl: args.artifactUrl,
-        })
-        .onConflictDoNothing({
-          target: [
-            userArtifactFavorites.orgId,
-            userArtifactFavorites.userId,
-            userArtifactFavorites.artifactUrl,
-          ],
-        });
-      return true;
-    });
-    signal.throwIfAborted();
-    return visible;
-  },
-);
-
-export const unfavoriteArtifact$ = command(
-  async (
-    { set },
-    args: ArtifactFavoriteArgs,
-    signal: AbortSignal,
-  ): Promise<void> => {
-    const db = set(writeDb$);
-    await db
-      .delete(userArtifactFavorites)
-      .where(
-        and(
-          eq(userArtifactFavorites.orgId, args.orgId),
-          eq(userArtifactFavorites.userId, args.userId),
-          eq(userArtifactFavorites.artifactUrl, args.artifactUrl),
-        ),
-      );
-    signal.throwIfAborted();
-  },
-);
-
 function toChatSearchMessage(row: ChatSearchMessageRow): ChatSearchMessage {
-  if (row.content === null) {
+  const userMessage = requiredUserMessageForEvent(
+    row.eventType,
+    row.userMessage,
+  );
+  const content = userMessage
+    ? projectUserMessage(userMessage).displayText
+    : row.content;
+  if (content === null) {
     throw new Error(
-      "chat search invariant violated: message content is null despite isNotNull filter",
+      "chat search invariant violated: searchable message text is null",
     );
   }
 
   return {
     messageId: row.messageId,
     chatThreadId: row.chatThreadId,
-    role: messageRoleSchema.parse(row.role),
-    content: row.content,
+    role: chatEventCompatibilityRole(row.eventType),
+    content,
     createdAt: row.createdAt.toISOString(),
     seqId: row.seqId,
     sequenceNumber: row.sequenceNumber,
     runId: row.runId,
   };
+}
+
+function chatSearchMessageTextCondition(): SQL {
+  return or(
+    and(
+      chatEventTypeIn(["input.prompt", "input.rejected"]),
+      isNotNull(chatMessages.userMessage),
+    ),
+    and(
+      not(chatEventTypeIn(["input.prompt", "input.rejected"])),
+      isNotNull(chatMessages.content),
+    ),
+  ) as SQL;
+}
+
+function userMessageSearchText(): SQL {
+  return sql`concat_ws(
+    ' ',
+    jsonb_path_query_array(${chatMessages.userMessage}, '$.parts[*].text')::text,
+    jsonb_path_query_array(${chatMessages.userMessage}, '$.parts[*].titleSnapshot')::text,
+    jsonb_path_query_array(${chatMessages.userMessage}, '$.parts[*].filenameSnapshot')::text,
+    jsonb_path_query_array(${chatMessages.userMessage}, '$.parts[*].quote')::text,
+    jsonb_path_query_array(${chatMessages.userMessage}, '$.parts[*].note[*].text')::text,
+    jsonb_path_query_array(${chatMessages.userMessage}, '$.parts[*].note[*].titleSnapshot')::text
+  )`;
+}
+
+function chatSearchKeywordCondition(pattern: string): SQL {
+  return or(
+    and(
+      chatEventTypeIn(["input.prompt", "input.rejected"]),
+      ilike(userMessageSearchText(), pattern),
+    ),
+    and(
+      not(chatEventTypeIn(["input.prompt", "input.rejected"])),
+      ilike(chatMessages.content, pattern),
+    ),
+  ) as SQL;
 }
 
 function chatSearchMatchesTable(messageIds: readonly string[]): SQL {
@@ -1807,7 +1975,7 @@ function chatSearchContextSideQuery(
       isBefore: sql`${args.isBefore}::boolean`
         .mapWith(pgBooleanDecoder)
         .as("is_before"),
-      ...searchMessageColumns,
+      ...searchContextMessageColumns,
     })
     .from(chatMessages)
     .where(
@@ -1816,8 +1984,8 @@ function chatSearchContextSideQuery(
         args.isBefore
           ? lt(chatMessages.seqId, matchedChatMessage.seqId)
           : gt(chatMessages.seqId, matchedChatMessage.seqId),
-        isNotNull(chatMessages.content),
-        visibleChatMessageCondition(db),
+        chatSearchMessageTextCondition(),
+        visibleChatEventCondition(db),
         excludeGoalMarkerCondition(),
       ),
     )
@@ -1874,8 +2042,9 @@ async function loadChatSearchContexts(
       isBefore: context.isBefore,
       messageId: context.messageId,
       chatThreadId: context.chatThreadId,
-      role: context.role,
+      eventType: context.eventType,
       content: context.content,
+      userMessage: context.userMessage,
       createdAt: context.createdAt,
       seqId: context.seqId,
       sequenceNumber: context.sequenceNumber,
@@ -1890,7 +2059,7 @@ async function loadChatSearchContexts(
     )
     .innerJoin(
       matchedChatMessage,
-      sql`${matchedChatMessage.id} = chat_search_matches.message_id`,
+      eq(matchedChatMessage.id, sql`chat_search_matches.message_id`),
     )
     .crossJoinLateral(context)
     .orderBy(resultOrdinality, asc(context.seqId));
@@ -1922,7 +2091,6 @@ export function zeroChatSearch(args: {
   readonly limit: number;
   readonly before: number;
   readonly after: number;
-  readonly includeCanonicalSlackThreads?: boolean;
 }): Computed<
   Promise<{
     readonly results: readonly ChatSearchResult[];
@@ -1937,13 +2105,10 @@ export function zeroChatSearch(args: {
     const matchConditions = [
       eq(chatThreads.userId, args.userId),
       eq(agentComposes.orgId, args.orgId),
-      isNotNull(chatMessages.content),
-      visibleChatMessageCondition(db),
+      chatSearchMessageTextCondition(),
+      visibleChatEventCondition(db),
       excludeGoalMarkerCondition(),
-      ilike(chatMessages.content, pattern),
-      ...(args.includeCanonicalSlackThreads
-        ? []
-        : [excludeCanonicalSlackChatThreads(db, chatThreads.id)]),
+      chatSearchKeywordCondition(pattern),
     ];
     if (sinceDate) {
       matchConditions.push(gte(chatMessages.createdAt, sinceDate));
@@ -1994,7 +2159,7 @@ export function zeroChatSearch(args: {
   });
 }
 
-export function zeroChatThreadMessagesPage(args: {
+export function zeroChatThreadEventsPage(args: {
   readonly threadId: string;
   readonly userId: string;
   readonly sinceSeqId: number | undefined;
@@ -2004,7 +2169,7 @@ export function zeroChatThreadMessagesPage(args: {
   readonly limit: number;
 }): Computed<
   Promise<{
-    readonly messages: readonly PagedChatMessage[];
+    readonly events: readonly ChatEventResponse[];
     readonly hasHistoryBefore: boolean;
   } | null>
 > {
@@ -2053,7 +2218,7 @@ export function zeroChatThreadMessagesPage(args: {
             )
             .limit(1);
     if (legacyCursorId !== undefined && !legacyCursor) {
-      return { messages: [], hasHistoryBefore: false };
+      return { events: [], hasHistoryBefore: false };
     }
 
     const sinceSeqId =
@@ -2061,23 +2226,23 @@ export function zeroChatThreadMessagesPage(args: {
     const beforeSeqId =
       args.beforeSeqId ?? (args.beforeId ? legacyCursor?.seqId : undefined);
     const threadFilter = eq(chatMessages.chatThreadId, args.threadId);
-    let rows: ChatMessageRow[];
+    let rows: ChatEventRow[];
     let hasHistoryBefore = false;
 
     if (sinceSeqId !== undefined) {
-      rows = await selectChatMessagesWithMetadata(db)
+      rows = await selectChatEventsWithMetadata(db)
         .where(and(threadFilter, gt(chatMessages.seqId, sinceSeqId)))
         .orderBy(asc(chatMessages.seqId))
         .limit(args.limit);
     } else if (beforeSeqId !== undefined) {
-      const previousRows = await selectChatMessagesWithMetadata(db)
+      const previousRows = await selectChatEventsWithMetadata(db)
         .where(and(threadFilter, lt(chatMessages.seqId, beforeSeqId)))
         .orderBy(desc(chatMessages.seqId))
         .limit(args.limit + 1);
       hasHistoryBefore = previousRows.length > args.limit;
       rows = previousRows.slice(0, args.limit).reverse();
     } else {
-      const latestRows = await selectChatMessagesWithMetadata(db)
+      const latestRows = await selectChatEventsWithMetadata(db)
         .where(threadFilter)
         .orderBy(desc(chatMessages.seqId))
         .limit(args.limit + 1);
@@ -2086,8 +2251,8 @@ export function zeroChatThreadMessagesPage(args: {
     }
 
     return {
-      messages: await get(
-        pagedMessagesWithAssets({
+      events: await get(
+        chatEventsWithAssets({
           userId: args.userId,
           rows,
         }),
@@ -2097,10 +2262,10 @@ export function zeroChatThreadMessagesPage(args: {
   });
 }
 
-function pagedMessagesWithAssets(args: {
+function chatEventsWithAssets(args: {
   readonly userId: string;
-  readonly rows: readonly ChatMessageRow[];
-}): Computed<Promise<readonly PagedChatMessage[]>> {
+  readonly rows: readonly ChatEventRow[];
+}): Computed<Promise<readonly ChatEventResponse[]>> {
   return computed(async (get) => {
     const canonicalByMessage = await canonicalMessageAttachments(
       get(db$),
@@ -2112,22 +2277,18 @@ function pagedMessagesWithAssets(args: {
     return await Promise.all(
       args.rows.map((row) => {
         return get(
-          toPagedMessage(
-            args.userId,
-            row,
-            canonicalByMessage.get(row.id) ?? [],
-          ),
+          toChatEvent(args.userId, row, canonicalByMessage.get(row.id) ?? []),
         );
       }),
     );
   });
 }
 
-export function zeroChatThreadMessageById(args: {
+export function zeroChatThreadEventById(args: {
   readonly threadId: string;
   readonly userId: string;
-  readonly messageId: string;
-}): Computed<Promise<PagedChatMessage | null>> {
+  readonly eventId: string;
+}): Computed<Promise<ChatEventResponse | null>> {
   return computed(async (get) => {
     const owned = await get(ownedChatThread(args.threadId, args.userId));
     if (!owned) {
@@ -2135,10 +2296,10 @@ export function zeroChatThreadMessageById(args: {
     }
 
     const db = get(db$);
-    const [row] = await selectChatMessagesWithMetadata(db)
+    const [row] = await selectChatEventsWithMetadata(db)
       .where(
         and(
-          eq(chatMessages.id, args.messageId),
+          eq(chatMessages.id, args.eventId),
           eq(chatMessages.chatThreadId, args.threadId),
         ),
       )
@@ -2147,13 +2308,13 @@ export function zeroChatThreadMessageById(args: {
       return null;
     }
 
-    const [message] = await get(
-      pagedMessagesWithAssets({
+    const [event] = await get(
+      chatEventsWithAssets({
         userId: args.userId,
         rows: [row],
       }),
     );
-    return message ?? null;
+    return event ?? null;
   });
 }
 
@@ -2206,6 +2367,7 @@ export const createChatThread$ = command(
         selectedModel: args.selectedModel,
         serviceTier: null,
         computerUseHostId: null,
+        cloudBrowserEnabled: false,
         createdAt: createdThread.createdAt,
       });
       return createdThread;
@@ -2377,18 +2539,23 @@ export const updateChatThreadDraft$ = command(
       readonly threadId: string;
       readonly userId: string;
       readonly draftContent: string | null;
-      readonly draftStructuredPrompt: UserMessageDocument | null;
+      readonly draftUserMessage: UserMessageDocument | null;
       readonly draftAttachments: readonly PersistedAttachment[] | null;
     },
     signal: AbortSignal,
   ): Promise<{ readonly updated: boolean }> => {
     const writeDb = set(writeDb$);
-
+    const draftUserMessage =
+      args.draftUserMessage ??
+      maybeCreateUserMessageDocument({
+        text: args.draftContent,
+        files: args.draftAttachments ?? undefined,
+      });
     const updated = await writeDb
       .update(chatThreads)
       .set({
         draftContent: args.draftContent,
-        draftStructuredPrompt: args.draftStructuredPrompt,
+        draftUserMessage,
         draftAttachments: args.draftAttachments
           ? [...args.draftAttachments]
           : null,

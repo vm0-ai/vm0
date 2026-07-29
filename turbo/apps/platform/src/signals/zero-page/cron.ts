@@ -4,7 +4,7 @@
 
 import { getGmtOffset } from "@vm0/core/timezone";
 
-import { now, nowDate } from "../../lib/time.ts";
+import { nowDate } from "../../lib/time.ts";
 
 type AutomationTimeOption =
   | "every-weekday"
@@ -14,59 +14,6 @@ type AutomationTimeOption =
   | "loop";
 
 export type CronTimeOption = Exclude<AutomationTimeOption, "loop">;
-
-/** Discriminated union for automation creation/update request body. */
-export type AutomationFormBody = {
-  agentId: string;
-  name: string;
-  timezone: string;
-  prompt: string;
-  description?: string;
-  enabled?: boolean;
-  modelProviderId?: string | null;
-  selectedModel?: string | null;
-} & (
-  | { cronExpression: string }
-  | { atTime: string }
-  | { intervalSeconds: number }
-);
-
-// ---------------------------------------------------------------------------
-// One-time Automation schedule helpers
-// ---------------------------------------------------------------------------
-
-/** Build an ISO datetime string from local date + hour + minute. */
-export function buildAtTime(
-  date: string,
-  hour: string,
-  minute: string,
-): string {
-  const [y, mo, d] = date.split("-").map(Number) as [number, number, number];
-  const h = Number.parseInt(hour, 10);
-  const m = Number.parseInt(minute, 10);
-  return new Date(y, mo - 1, d, h, m).toISOString();
-}
-
-/** Return true when the given local date + hour + minute is in the past. */
-export function isAtTimePast(
-  date: string,
-  hour: string,
-  minute: string,
-): boolean {
-  const [y, mo, d] = date.split("-").map(Number) as [number, number, number];
-  const h = Number.parseInt(hour, 10);
-  const m = Number.parseInt(minute, 10);
-  return new Date(y, mo - 1, d, h, m).getTime() <= now();
-}
-
-/** Today's date in the local timezone formatted as YYYY-MM-DD. */
-export function getTodayDateLocal(): string {
-  const today = nowDate();
-  const y = today.getFullYear();
-  const mo = String(today.getMonth() + 1).padStart(2, "0");
-  const day = String(today.getDate()).padStart(2, "0");
-  return `${y}-${mo}-${day}`;
-}
 
 // ---------------------------------------------------------------------------
 // Common timezones for automation form selectors
@@ -186,22 +133,6 @@ function zonedWallTimeToUtc(
   const secondOffset = timezoneOffsetMinutes(timezone, firstInstant);
   return new Date(utcGuess - secondOffset * 60_000);
 }
-
-export function cronTimeInTimezone(
-  hour: number,
-  minute: number,
-  sourceTimezone: string,
-  displayTimezone: string,
-): { hour: number; minute: number } {
-  const result = cronWallTimeInTimezone(
-    hour,
-    minute,
-    sourceTimezone,
-    displayTimezone,
-  );
-  return { hour: result.hour, minute: result.minute };
-}
-
 export function cronWallTimeInTimezone(
   hour: number,
   minute: number,

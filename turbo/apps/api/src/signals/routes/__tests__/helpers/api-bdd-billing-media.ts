@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 
 import type StripeSDK from "stripe";
-import { cronProcessUsageEventsContract } from "@vm0/api-contracts/contracts/cron";
+import { testUsageSettlementContract } from "@vm0/api-contracts/contracts/test-usage-settlement";
 import { usageContract } from "@vm0/api-contracts/contracts/usage";
 import { zeroAttributionContract } from "@vm0/api-contracts/contracts/zero-attribution";
 import { zeroBankingContract } from "@vm0/api-contracts/contracts/zero-banking";
@@ -27,8 +27,6 @@ import { zeroBuiltInGenerationContract } from "@vm0/api-contracts/contracts/zero
 import { zeroFeatureSwitchesContract } from "@vm0/api-contracts/contracts/zero-feature-switches";
 import {
   zeroInsightsContract,
-  zeroInsightsRangeContract,
-  type InsightsRangeResponse,
   type InsightsResponse,
 } from "@vm0/api-contracts/contracts/zero-insights";
 import { zeroImageIoGenerateContract } from "@vm0/api-contracts/contracts/zero-image-io-generate";
@@ -56,11 +54,8 @@ import {
   mockStripeClient,
 } from "../../../external/stripe-client";
 import { modelStatsContract } from "../../model-stats";
-import {
-  createBddApi,
-  type ApiTestUser,
-  type OnboardingBootstrapOptions,
-} from "./api-bdd";
+import { testUsageSettlementRoutes } from "../../test-usage-settlement";
+import type { ApiTestUser } from "./api-bdd";
 import { createZeroRouteMocks } from "./zero-route-test";
 
 type ClerkOrgRole = "org:admin" | "org:member";
@@ -99,6 +94,7 @@ interface StripeInvoice {
   readonly amount_paid: number;
   readonly status: string | null;
   readonly hosted_invoice_url: string | null;
+  readonly invoice_pdf: string | null;
 }
 
 interface CheckoutBody {
@@ -116,10 +112,6 @@ interface AutoRechargeUpdateBody {
   readonly enabled: boolean;
   readonly threshold?: number;
   readonly amount?: number;
-}
-
-interface CronHeaders {
-  readonly authorization: string;
 }
 
 type CheckoutStatus = 200 | 400 | 401 | 403 | 500 | 503;
@@ -219,18 +211,15 @@ function stripeInvoices(value: unknown): readonly StripeInvoice[] {
   });
 }
 
-function cronHeaders(): CronHeaders {
-  return { authorization: "Bearer test-cron-secret" };
-}
-
 export function createBillingMediaApi(context: TestContext) {
   const routeMocks = createZeroRouteMocks(context);
   mockStripeClient(context.mocks.stripe as unknown as StripeSDK);
-  mockListStripeInvoices(async (customerId) => {
+  mockListStripeInvoices(async (customerId, created) => {
     return stripeInvoices(
       await context.mocks.stripe.invoices.list({
         customer: customerId,
-        limit: 24,
+        limit: created ? 100 : 24,
+        ...(created ? { created } : {}),
       }),
     );
   });
@@ -285,17 +274,6 @@ export function createBillingMediaApi(context: TestContext) {
     configureBillingPrices,
     configureCampaign,
     configureMapsProvider,
-
-    async bootstrapOnboarding(
-      actor: ApiTestUser,
-      body: OnboardingBootstrapOptions,
-    ) {
-      const agentId = await createBddApi(context).bootstrapOnboarding(
-        actor,
-        body,
-      );
-      return { status: 200 as const, body: { agentId } };
-    },
 
     async readBillingStatus(
       actor: ApiTestUser,
@@ -552,17 +530,6 @@ export function createBillingMediaApi(context: TestContext) {
       return response.body;
     },
 
-    async readInsightsRange(
-      actor: ApiTestUser,
-    ): Promise<InsightsRangeResponse> {
-      const client = setupApp({ context })(zeroInsightsRangeContract);
-      const response = await accept(
-        client.get({ headers: authenticate(actor) }),
-        [200],
-      );
-      return response.body;
-    },
-
     async readModelRankings() {
       const client = setupApp({ context })(modelStatsContract);
       return await accept(
@@ -571,9 +538,18 @@ export function createBillingMediaApi(context: TestContext) {
       );
     },
 
-    async processUsageEvents() {
-      const client = setupApp({ context })(cronProcessUsageEventsContract);
-      return await accept(client.process({ headers: cronHeaders() }), [200]);
+    async processOrgUsageEvents(actor: ApiTestUser) {
+      if (!actor.orgId) {
+        throw new Error("Cannot process usage without an organization");
+      }
+      const client = setupApp({
+        context,
+        routes: testUsageSettlementRoutes,
+      })(testUsageSettlementContract);
+      return await accept(
+        client.process({ body: { org_id: actor.orgId } }),
+        [200],
+      );
     },
 
     async recordSignupAttribution(actor: ApiTestUser) {

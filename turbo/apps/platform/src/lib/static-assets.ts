@@ -32,9 +32,17 @@ export const platformFeishuEventRequestUrlImg = platformStaticAssetUrl(
 export const platformFeishuEncryptionStrategyImg = platformStaticAssetUrl(
   "views/zero-page/assets/feishu/encryption-strategy-e50ee6b26d77.png",
 );
-export const platformFeishuCreateAppVersionImg = platformStaticAssetUrl(
-  "views/zero-page/assets/feishu/create-app-version-6a84ea716a76.png",
+export const platformFeishuVersionManagementCreateVersionImg =
+  platformStaticAssetUrl(
+    "views/zero-page/assets/feishu/version-management-create-version-43e32042dc81.png",
+  );
+export const platformFeishuVersionAvailabilityEditImg = platformStaticAssetUrl(
+  "views/zero-page/assets/feishu/version-availability-edit-5990fd6c7eae.png",
 );
+export const platformFeishuAvailabilitySettingsAllMembersImg =
+  platformStaticAssetUrl(
+    "views/zero-page/assets/feishu/availability-settings-all-members-2cf582a888ed.png",
+  );
 export const platformFeishuSecuritySettingsRedirectUrlImg =
   platformStaticAssetUrl(
     "views/zero-page/assets/feishu/security-settings-redirect-url-e7cf83ec76d4.png",

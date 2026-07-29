@@ -1,5 +1,5 @@
 import { command } from "ccstate";
-import { and, eq, isNull, ne, or } from "drizzle-orm";
+import { and, eq, isNull, notInArray, or } from "drizzle-orm";
 import { agentRunCallbacks } from "@vm0/db/schema/agent-run-callback";
 import { agentRuns } from "@vm0/db/schema/agent-run";
 import type { FeatureSwitchContext } from "@vm0/core/feature-switch";
@@ -11,8 +11,8 @@ import { db$ } from "../external/db";
 import { decryptPersistentSecretValue } from "./crypto.utils";
 import { userFeatureSwitchOverrides } from "./feature-switches.service";
 import { handleAgentPhoneInternalCallback$ } from "./internal-agentphone-run-callback.service";
+import { handleChatInternalCallback$ } from "./internal-chat-run-callback.service";
 import { internalRunCallbackKindForRecord } from "./internal-run-callback";
-import { handleSlackOrgInternalCallback$ } from "./internal-slack-org-run-callback.service";
 import { handleTeamsOrgInternalCallback$ } from "./internal-teams-org-run-callback.service";
 import { handleTelegramInternalCallback$ } from "./internal-telegram-run-callback.service";
 
@@ -60,7 +60,12 @@ export const dispatchProgressCallbacks$ = command(
           eq(agentRunCallbacks.status, "pending"),
           or(
             isNull(agentRunCallbacks.internalKind),
-            ne(agentRunCallbacks.internalKind, "slack:chat"),
+            notInArray(agentRunCallbacks.internalKind, [
+              "slack:chat",
+              "feishu:chat",
+              "teams:chat",
+              "slack:org",
+            ]),
           ),
         ),
       );
@@ -79,7 +84,19 @@ export const dispatchProgressCallbacks$ = command(
           status: "progress" as const,
           payload: callback.payload,
         };
-        if (internalKind === "chat" || internalKind === "slack:chat") {
+        if (internalKind === "chat") {
+          await set(
+            handleChatInternalCallback$,
+            { callback: progressCallback },
+            signal,
+          );
+          return;
+        }
+        if (
+          internalKind === "slack:chat" ||
+          internalKind === "feishu:chat" ||
+          internalKind === "teams:chat"
+        ) {
           return;
         }
         if (internalKind === "agentphone") {
@@ -88,10 +105,6 @@ export const dispatchProgressCallbacks$ = command(
             progressCallback,
             signal,
           );
-          return;
-        }
-        if (internalKind === "slack:org") {
-          await set(handleSlackOrgInternalCallback$, progressCallback, signal);
           return;
         }
         if (internalKind === "teams:org") {

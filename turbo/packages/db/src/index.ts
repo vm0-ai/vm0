@@ -20,7 +20,6 @@ import * as modelProviderSchema from "./schema/model-provider";
 import * as orgModelPolicySchema from "./schema/org-model-policy";
 import * as modelStatSchema from "./schema/model-stat";
 import * as modelUsageObservationSchema from "./schema/model-usage-observation";
-import * as compactModelUsageObservationSchema from "./schema/compact-model-usage-observation";
 import * as variableSchema from "./schema/variable";
 import * as composeJobSchema from "./schema/compose-job";
 import * as connectorSchema from "./schema/connector";
@@ -29,6 +28,7 @@ import * as modelProviderAuthSessionSchema from "./schema/model-provider-auth-se
 import * as connectorOauthDeviceAuthorizationSessionSchema from "./schema/connector-oauth-device-authorization-session";
 import * as connectorOauthStateSchema from "./schema/connector-oauth-state";
 import * as usageEventSchema from "./schema/usage-event";
+import * as usageEventHourlyRollupSchema from "./schema/usage-event-hourly-rollup";
 import * as runBuiltInAdmissionSchema from "./schema/run-built-in-admission";
 import * as usageDailySchema from "./schema/usage-daily";
 import * as githubInstallationSchema from "./schema/github-installation";
@@ -47,18 +47,20 @@ import * as agentphoneMessageSchema from "./schema/agentphone-message";
 import * as agentphoneVerificationSendCooldownSchema from "./schema/agentphone-verification-send-cooldown";
 import * as slackOrgInstallationSchema from "./schema/slack-org-installation";
 import * as slackOrgConnectionSchema from "./schema/slack-org-connection";
-import * as slackOrgThreadSessionSchema from "./schema/slack-org-thread-session";
 import * as slackChatThreadRouteSchema from "./schema/slack-chat-thread-route";
 import * as slackChatIngressSchema from "./schema/slack-chat-ingress";
 import * as slackUserAgentPreferenceSchema from "./schema/slack-user-agent-preference";
 import * as teamsOrgInstallationSchema from "./schema/teams-org-installation";
 import * as teamsOrgConnectionSchema from "./schema/teams-org-connection";
+import * as teamsChatThreadRouteSchema from "./schema/teams-chat-thread-route";
 import * as teamsOrgThreadSessionSchema from "./schema/teams-org-thread-session";
 import * as teamsUserAgentPreferenceSchema from "./schema/teams-user-agent-preference";
 import * as feishuOrgInstallationSchema from "./schema/feishu-org-installation";
 import * as feishuOrgConnectionSchema from "./schema/feishu-org-connection";
 import * as feishuOrgThreadSessionSchema from "./schema/feishu-org-thread-session";
 import * as feishuOrgEventSchema from "./schema/feishu-org-event";
+import * as feishuChatThreadRouteSchema from "./schema/feishu-chat-thread-route";
+import * as feishuChatIngressSchema from "./schema/feishu-chat-ingress";
 import * as feishuUserAgentPreferenceSchema from "./schema/feishu-user-agent-preference";
 import * as e2eTeamsMockCallLogSchema from "./schema/e2e-teams-mock-call-log";
 import * as e2eTelegramMockCallLogSchema from "./schema/e2e-telegram-mock-call-log";
@@ -84,7 +86,6 @@ import * as storageVersionLineageSchema from "./schema/storage-version-lineage";
 import * as runUploadedFileSchema from "./schema/run-uploaded-file";
 import * as vm0ApiKeySchema from "./schema/vm0-api-key";
 import * as zeroWorkflowSchema from "./schema/zero-workflow";
-import * as chatMessageQueueSchema from "./schema/chat-message-queue";
 import * as morningBriefSchema from "./schema/morning-brief";
 import * as computerUseHostSchema from "./schema/computer-use-host";
 import * as insightsDailySchema from "./schema/insights-daily";
@@ -99,17 +100,19 @@ import * as orgCustomConnectorSchema from "./schema/org-custom-connector";
 import * as orgCustomConnectorSecretSchema from "./schema/org-custom-connector-secret";
 import * as orgCustomConnectorValueSchema from "./schema/org-custom-connector-value";
 import * as hostedSiteSchema from "./schema/hosted-site";
-import * as htmlArtifactEditDraftSchema from "./schema/html-artifact-edit-draft";
+import * as artifactSchema from "./schema/artifact";
 import * as imageArtifactEditSnapshotSchema from "./schema/image-artifact-edit-snapshot";
 import * as userArtifactFavoriteSchema from "./schema/user-artifact-favorite";
 import * as builtInGenerationJobSchema from "./schema/built-in-generation-job";
 import * as bankingSchema from "./schema/banking";
 import * as gmailEventSchema from "./schema/gmail-event";
 import * as notionEventSchema from "./schema/notion-event";
+import * as strapiIntegrationSchema from "./schema/strapi-integration";
 import * as googleCalendarEventSchema from "./schema/google-calendar-event";
 import * as googleWorkspaceEventSchema from "./schema/google-workspace-event";
 import * as connectorCatalogSchema from "./schema/connector-catalog";
 import * as mailDraftSchema from "./schema/mail-draft";
+import * as browserSessionSchema from "./schema/browser-session";
 
 export const schema = {
   ...userSchema,
@@ -134,21 +137,22 @@ export const schema = {
   ...orgModelPolicySchema,
   ...modelStatSchema,
   ...modelUsageObservationSchema,
-  ...compactModelUsageObservationSchema,
   ...slackOrgInstallationSchema,
   ...slackOrgConnectionSchema,
-  ...slackOrgThreadSessionSchema,
   ...slackChatThreadRouteSchema,
   ...slackChatIngressSchema,
   ...slackUserAgentPreferenceSchema,
   ...teamsOrgInstallationSchema,
   ...teamsOrgConnectionSchema,
+  ...teamsChatThreadRouteSchema,
   ...teamsOrgThreadSessionSchema,
   ...teamsUserAgentPreferenceSchema,
   ...feishuOrgInstallationSchema,
   ...feishuOrgConnectionSchema,
   ...feishuOrgThreadSessionSchema,
   ...feishuOrgEventSchema,
+  ...feishuChatThreadRouteSchema,
+  ...feishuChatIngressSchema,
   ...feishuUserAgentPreferenceSchema,
   ...e2eTeamsMockCallLogSchema,
   ...e2eTelegramMockCallLogSchema,
@@ -160,6 +164,7 @@ export const schema = {
   ...connectorOauthDeviceAuthorizationSessionSchema,
   ...connectorOauthStateSchema,
   ...usageEventSchema,
+  ...usageEventHourlyRollupSchema,
   ...runBuiltInAdmissionSchema,
   ...usageDailySchema,
   ...githubInstallationSchema,
@@ -198,7 +203,6 @@ export const schema = {
   ...runUploadedFileSchema,
   ...vm0ApiKeySchema,
   ...zeroWorkflowSchema,
-  ...chatMessageQueueSchema,
   ...morningBriefSchema,
   ...computerUseHostSchema,
   ...insightsDailySchema,
@@ -213,17 +217,19 @@ export const schema = {
   ...orgCustomConnectorSecretSchema,
   ...orgCustomConnectorValueSchema,
   ...hostedSiteSchema,
-  ...htmlArtifactEditDraftSchema,
+  ...artifactSchema,
   ...imageArtifactEditSnapshotSchema,
   ...userArtifactFavoriteSchema,
   ...builtInGenerationJobSchema,
   ...bankingSchema,
   ...gmailEventSchema,
   ...notionEventSchema,
+  ...strapiIntegrationSchema,
   ...googleCalendarEventSchema,
   ...googleWorkspaceEventSchema,
   ...connectorCatalogSchema,
   ...mailDraftSchema,
+  ...browserSessionSchema,
 };
 
 export type DatabaseSchema = typeof schema;

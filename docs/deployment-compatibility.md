@@ -25,12 +25,9 @@ Frontend deployments publish new browser assets, but users who already have an
 app page open keep running the JavaScript that page loaded until the page
 navigates, refreshes, or the app forces a reload.
 
-The platform app also registers a service worker for static assets, navigation
-fallback, and push notifications. The current service worker treats API
-requests as network-only, while navigation requests are network-first with a
-cached fallback for offline cold-open. Service-worker code is still a browser
-resident deployable surface. Changes to service-worker behavior should also
-account for old controlled clients during rollout.
+The platform app also registers a service worker. Service-worker code is a
+browser-resident deployable surface, so changes to its behavior must account for
+old controlled clients during rollout.
 
 The backend must therefore tolerate requests from the previous frontend version
 after a backend deployment. When changing an API used by the frontend, keep the
@@ -40,12 +37,14 @@ active, or introduce a versioned/new endpoint and migrate the frontend first.
 ### Backend
 
 The backend is the compatibility boundary for both frontend and runner traffic.
-In the production release workflow, app and runner promotion wait for API
-promotion when the same release also changes the API. That ordering reduces the
-chance of a new frontend or runner talking to an old backend, but it does not
-remove cross-version windows: old browser pages can still call the new backend,
-old runners keep draining against the new backend, and traffic promotion is not
-an atomic process visible to every client at the same instant.
+In the production release workflow, app promotion starts after any required
+production migration and does not wait for API promotion. A new frontend can
+therefore talk to the old backend during a normal production rollout or remain
+paired with it if API promotion fails. Runner promotion still waits for API
+promotion when the same release also changes the API. Old browser pages can
+also call the new backend, old runners keep draining against the new backend,
+and traffic promotion is not an atomic process visible to every client at the
+same instant.
 
 Production database migrations are part of the API release lifecycle and run
 before the new API deployment is promoted. Old backend code can therefore
@@ -57,14 +56,14 @@ This is a traffic-promotion guarantee, not a guarantee that no deployment
 preparation has happened yet. Staged Vercel builds, runner rootfs/snapshot
 builds, host provisioning, and other non-serving preparation jobs may complete
 before migrations run. API traffic promotion must wait until the required
-migrations have completed; app and runner promotion also wait for API promotion
-when the same release changes the API.
+migrations have completed. App promotion waits for required migrations but is
+independent of API promotion. Runner promotion waits for API promotion when the
+same release changes the API.
 
 Backend changes must be safe with:
 
 - old frontend -> new backend
-- new frontend -> old backend, if traffic propagation or non-production
-  deployment order can expose that pairing
+- new frontend -> old backend
 - old runner -> new backend
 - new runner -> old backend, if traffic propagation or non-production
   deployment order can expose that pairing
@@ -169,71 +168,6 @@ For runner/backend API changes:
 - Include poll, claim, heartbeat, completion, artifact, and session-resume paths
   when those protocols change.
 
-### Storage mount manifest rollout
-
-The runtime Storage unification uses a receiver-first Runner rollout. New
-Runners advertise `storage-mounts-v1` through the existing claim
-`capabilities[]` field and accept exactly one of these response shapes:
-
-- canonical `storageMounts`
-- legacy `storages` plus `artifacts`
-
-Mixed, incomplete, and representation-free manifests are invalid. The initial
-receiver release left backend output unchanged. After that receiver fleet was
-deployed, the API began sending `storageMounts` only to a Runner that advertises
-the capability; old Runners continue receiving both legacy arrays.
-
-New run, session, and checkpoint writers persist canonical Storage mounts only.
-After the latest session continuation heads were backfilled and verified,
-application readers require canonical run, session, and checkpoint persistence.
-Legacy API response shapes are still projected from canonical mounts. The
-physical legacy columns remain temporarily for rollback-safe deployment and are
-not selected or written by application code. Remove them only after the detached
-API release is healthy and every rollback-eligible API version that accesses
-them has drained. The short-lived runner job queue also retains its legacy claim
-projection until old Runner output is removed.
-
-Phase 4A contracts the migration denominator to the latest state used by
-session continuation. Every session continuation head must have canonical
-writeback mounts, and projecting those mounts back to the legacy artifact shape
-must be lossless. Omitted and `latest` version declarations retain their
-dynamic-HEAD behavior. Historical run and checkpoint rows are not converted
-into resumable snapshots: arbitrary checkpoint resume has been retired, while
-a successful session continuation naturally emits a fully resolved canonical
-run and checkpoint.
-
-Remove the remaining legacy columns and readers only after verification finds
-zero legacy writes, zero unmigrated session continuation heads, and no lossy
-session conversion. Malformed, ambiguous, or unresolvable latest session state
-must block contraction rather than being silently rewritten.
-
-Runner and guest binaries ship together, so the Runner-to-guest manifest uses
-the canonical shape immediately while the guest reader temporarily accepts both
-representations. Remove the legacy readers and the capability only after the
-canonical API output has been stable across the fully upgraded Runner fleet.
-
-### Firewall hostname policy
-
-The backend is the single owner of firewall configuration hostname policy.
-Generated firewall definitions must already contain canonical lowercase ASCII
-hostname literals; catalog tests enforce that invariant, and dispatch forwards
-those static definitions without rewriting them. The backend converts rendered
-custom connector hostnames and hostname-bearing built-in variable values to the
-same canonical identity before putting them into existing runner payload
-fields. Raw custom connector definitions and encrypted variable values remain
-unchanged in storage.
-
-Runner validation remains unchanged and fail closed. It defensively validates
-configuration received from old and new backends, resolved credential-bearing
-targets, and untrusted request authorities. The fixed backend policy must emit
-only canonical ASCII identities accepted unchanged by draining old runners; a
-policy upgrade requires deliberate compatibility analysis before deployment.
-
-A fully dynamic secret-backed `auth.base` remains runner-validated because the
-existing auth request has no policy/capability marker that can distinguish old
-and new runs. Changing that path requires an explicit backward-compatible
-protocol design rather than silently tightening old in-flight runs.
-
 For persisted state changes:
 
 - Test reading rows or payloads written by the previous version.
@@ -241,28 +175,6 @@ For persisted state changes:
   before code promotion.
 - Test that new writes do not break the previous deployed reader during the
   rollout window, or document why the old reader cannot observe the new data.
-
-### Connector credential ownership contraction
-
-The final connector credential ownership contraction may run only after every
-active and rollback-eligible API version writes a positive storage version,
-and assigns each connector credential to its stable connector id. Drain older
-API instances that lack either guarantee, then require the protected production
-readiness counts to be zero before applying the migration.
-
-The contraction reruns its immutable reconciliation and validates aggregate
-invariant counts in the same transaction as the hard constraints. An unresolved
-row aborts the migration without retaining reconciliation changes; remediate
-the data and retry. After success, connector storage versions are required,
-connector credential ownership is exact, and deleting a connector cascades to
-its owned secrets and variables so cleanup remains atomic across every deletion
-path. Application disconnect and replacement flows still delete owned
-credentials explicitly; the cascade is the final data-integrity guarantee, not
-a replacement for domain cleanup or provider revocation.
-
-After contraction, do not roll back directly to an API version that lacks the
-required write guarantees. Recovery must roll forward or restore the nullable
-schema before promoting that older API.
 
 Do not add broad defensive fallbacks just to hide incompatibility. The goal is a
 specific compatibility contract for the rollout window, with clear deletion

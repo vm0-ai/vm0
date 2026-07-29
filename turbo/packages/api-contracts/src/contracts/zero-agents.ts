@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { authHeadersSchema, initContract } from "./base";
 import { apiErrorSchema } from "./errors";
+import { requireUserMessageForNonEmptyDraft } from "./draft-user-message";
 import {
   persistedAttachmentSchema,
   userMessageDocumentSchema,
@@ -64,17 +65,21 @@ export const zeroAgentInstructionsRequestSchema = z.object({
   content: z.string(),
 });
 
-export const zeroAgentDraftResponseSchema = z.object({
-  draftContent: z.string().nullable(),
-  draftStructuredPrompt: userMessageDocumentSchema.nullable().optional(),
-  draftAttachments: z.array(persistedAttachmentSchema).nullable(),
-});
+export const zeroAgentDraftResponseSchema = z
+  .object({
+    draftContent: z.string().nullable(),
+    draftUserMessage: userMessageDocumentSchema.nullable(),
+    draftAttachments: z.array(persistedAttachmentSchema).nullable(),
+  })
+  .superRefine(requireUserMessageForNonEmptyDraft);
 
-export const zeroAgentDraftRequestSchema = z.object({
-  draftContent: z.string().nullable().optional(),
-  draftStructuredPrompt: userMessageDocumentSchema.nullable().optional(),
-  draftAttachments: z.array(persistedAttachmentSchema).nullable().optional(),
-});
+export const zeroAgentDraftRequestSchema = z
+  .object({
+    draftContent: z.string().nullable().optional(),
+    draftUserMessage: userMessageDocumentSchema.nullable(),
+    draftAttachments: z.array(persistedAttachmentSchema).nullable().optional(),
+  })
+  .superRefine(requireUserMessageForNonEmptyDraft);
 
 /**
  * Contract for GET/POST /api/zero/agents (list/create agents)

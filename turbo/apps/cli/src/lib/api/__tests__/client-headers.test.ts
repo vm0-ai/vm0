@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { http, HttpResponse } from "msw";
 import {
   CLIENT_REQUEST_ID_HEADER,
@@ -65,6 +65,7 @@ describe("CLI client headers", () => {
   });
 
   it("overrides spoofed headers after contract-client header merging", async () => {
+    vi.stubEnv("VERCEL_AUTOMATION_BYPASS_SECRET", "preview-bypass");
     const contract = initContract();
     const testContract = contract.router({
       get: {
@@ -114,6 +115,12 @@ describe("CLI client headers", () => {
     }
 
     expect(firstHeaders.get("authorization")).toBe("Bearer test-token");
+    expect(firstHeaders.get("x-vercel-protection-bypass")).toBe(
+      "preview-bypass",
+    );
+    expect(secondHeaders.get("x-vercel-protection-bypass")).toBe(
+      "preview-bypass",
+    );
     expect(firstHeaders.get(CLIENT_VERSION_HEADER)).toBe("0.0.0-test");
     expect(firstHeaders.get(CLIENT_TYPE_HEADER)).toBe(CLIENT_TYPE_CLI);
     expect(secondHeaders.get(CLIENT_VERSION_HEADER)).toBe("0.0.0-test");

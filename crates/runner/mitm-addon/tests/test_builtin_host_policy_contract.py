@@ -1,4 +1,4 @@
-"""Cross-stage contracts for malformed builtin host policies."""
+"""Validation contracts for credentialed builtin bases and host policies."""
 
 import pytest
 
@@ -7,6 +7,19 @@ import builtin_host_policy
 _AUTH_CONFIG: dict[str, object] = {
     "headers": {"Authorization": "Bearer x"},
 }
+
+
+def test_invalid_utf8_credentialed_base_host_is_rejected() -> None:
+    with pytest.raises(
+        builtin_host_policy.BuiltinHostPolicyError,
+        match="resolved base URL is invalid",
+    ):
+        builtin_host_policy.validate_credentialed_builtin_base(
+            firewall_name="contract-test",
+            base="https://api%FF.example.com/v1",
+            auth_config=_AUTH_CONFIG,
+            host_policy={"kind": "providerOwned", "suffixes": ["example.com"]},
+        )
 
 
 @pytest.mark.parametrize(
@@ -49,12 +62,42 @@ _AUTH_CONFIG: dict[str, object] = {
         pytest.param(
             {
                 "kind": "providerOwned",
+                "exactHosts": None,
+                "suffixes": ["example.com"],
+            },
+            "https://api.example.com",
+            "api.example.com",
+            id="null-exact-hosts",
+        ),
+        pytest.param(
+            {
+                "kind": "providerOwned",
+                "exactHosts": ["api.example.com"],
+                "suffixes": None,
+            },
+            "https://api.example.com",
+            "api.example.com",
+            id="null-suffixes",
+        ),
+        pytest.param(
+            {
+                "kind": "providerOwned",
                 "suffixes": ["example.com"],
                 "allowNonDefaultPort": "false",
             },
             "https://api.example.com",
             "api.example.com",
             id="invalid-boolean-type",
+        ),
+        pytest.param(
+            {
+                "kind": "providerOwned",
+                "suffixes": ["example.com"],
+                "allowNonDefaultPort": None,
+            },
+            "https://api.example.com",
+            "api.example.com",
+            id="null-allow-non-default-port",
         ),
         pytest.param(
             {"kind": "unsupported"},
@@ -68,6 +111,16 @@ _AUTH_CONFIG: dict[str, object] = {
             "api.example.com",
             id="non-object-policy",
         ),
+        *[
+            pytest.param(
+                {"kind": "providerOwned", field: [f"evil{character}host.example.com"]},
+                "https://api.example.com",
+                "api.example.com",
+                id=f"forbidden-{field}-{ord(character):x}",
+            )
+            for field in ("exactHosts", "suffixes")
+            for character in "<>^|"
+        ],
     ],
 )
 def test_malformed_policy_is_rejected_by_every_validation_stage(

@@ -12,7 +12,37 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
+  cancel-superseded:
+    name: Cancel superseded merge-group CI
+    if: github.event_name == 'merge_group'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      actions: write
+      contents: read
+      pull-requests: read
+    steps:
+      - uses: actions/checkout@v7.0.1
+
+      - name: Cancel and await older runs for the queued PR
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          GITHUB_RUN_ID: ${{ github.run_id }}
+          GITHUB_SHA: ${{ github.sha }}
+          MERGE_GROUP_HEAD_REF: ${{ github.event.merge_group.head_ref }}
+        run: .github/scripts/cancel-superseded-merge-group-runs.sh
+
   prepare:
+    needs: [cancel-superseded]
+    if: >-
+      ${{
+        !cancelled() &&
+        (
+          github.event_name != 'merge_group' ||
+          needs.cancel-superseded.result == 'success'
+        )
+      }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
@@ -40,7 +70,7 @@ jobs:
       runner-binary-hit-targets: ${{ steps.binary-plan.outputs.hit-targets }}
       runner-binary-miss-count: ${{ steps.binary-plan.outputs.miss-count }}
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@v7.0.1
         with:
           fetch-depth: 0
 
@@ -201,6 +231,8 @@ jobs:
         if: steps.needed.outputs.current-runner-image-needed == 'true'
         uses: ./.github/actions/setup-ssh-tunnel
         with:
+          ssh-user: ${{ vars.AWS_METAL_RUNNER_USER }}
+          ssh-hosts: ${{ secrets.AWS_METAL_RUNNER_HOSTS }}
           ssh-key: ${{ secrets.AWS_METAL_RUNNER_SSH_KEY }}
           cf-access-client-id: ${{ secrets.CF_ACCESS_CLIENT_ID }}
           cf-access-client-secret: ${{ secrets.CF_ACCESS_CLIENT_SECRET }}
@@ -265,6 +297,8 @@ jobs:
     needs: [prepare]
     if: >-
       ${{
+        !cancelled() &&
+        needs.prepare.result == 'success' &&
         needs.prepare.outputs.current-runner-image-needed == 'true' &&
         needs.prepare.outputs.runner-binary-miss-count != '0'
       }}
@@ -277,7 +311,7 @@ jobs:
       TARGET_TRIPLE: ${{ matrix.target }}
       RUNNER_BINARY_ACTUAL_TOOLCHAIN_IMAGE: ghcr.io/vm0-ai/vm0-toolchain-rust@sha256:45b223a0b80494cc0d6517807c37d7a244799a19b476325a5d6dde82865e845c
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@v7.0.1
 
       - name: Configure git safe directory
         shell: bash
@@ -366,7 +400,7 @@ jobs:
       TARGET_TRIPLE: ${{ matrix.target }}
       PROFILE: vm0/default
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@v7.0.1
 
       - name: Resolve runner binary input
         id: binary-input
@@ -399,6 +433,8 @@ jobs:
       - name: Setup SSH via Cloudflare Tunnel
         uses: ./.github/actions/setup-ssh-tunnel
         with:
+          ssh-user: ${{ vars.AWS_METAL_RUNNER_USER }}
+          ssh-hosts: ${{ secrets.AWS_METAL_RUNNER_HOSTS }}
           ssh-key: ${{ secrets.AWS_METAL_RUNNER_SSH_KEY }}
           cf-access-client-id: ${{ secrets.CF_ACCESS_CLIENT_ID }}
           cf-access-client-secret: ${{ secrets.CF_ACCESS_CLIENT_SECRET }}
@@ -494,7 +530,7 @@ jobs:
       matrix:
         include: ${{ fromJSON(needs.prepare.outputs.runner-binary-compile-matrix) }}
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@v7.0.1
 
       - name: Resolve runner binary input
         id: binary-input

@@ -6,7 +6,6 @@ import { navigateToChat$ } from "../zero-page/zero-nav.ts";
 import { currentChatThreadId$, chatThreads$ } from "../agent-chat.ts";
 import {
   chatThreadByIdContract,
-  type ChatThreadEvent,
   chatThreadPinContract,
   chatThreadUnpinContract,
   chatThreadRenameContract,
@@ -18,28 +17,9 @@ import type { BodyRenderBlock } from "./parse-body-blocks.ts";
 import { nowDate } from "../../lib/time.ts";
 import { registerOptimisticChatThreadEvent$ } from "./chat-thread-event-sourcing.ts";
 import type { ChatMessage } from "./chat-message-types.ts";
+import type { OptimisticChatThreadEvent } from "./chat-thread-event-types.ts";
 
-export { chatThreads$ } from "../agent-chat.ts";
-
-export {
-  zeroChatAttachments$,
-  uploadZeroAttachment$,
-  restoreZeroAttachments$,
-  removeZeroAttachment$,
-  appendZeroChatInput$,
-  setZeroChatInputSyncTarget$,
-  zeroDragOver$,
-  setZeroDragOver$,
-  canSendZeroChat$,
-  type ZeroChatAttachment,
-  type DraftInputSyncTarget,
-} from "../zero-page/chat-draft.ts";
-
-// ---------------------------------------------------------------------------
-// Re-export paged message types from @vm0/core
-// ---------------------------------------------------------------------------
-
-export type { PagedChatMessage } from "@vm0/api-contracts/contracts/chat-threads";
+export { type ZeroChatAttachment } from "../zero-page/chat-draft.ts";
 
 export type EnrichedChatMessage = ChatMessage & {
   blocks: BodyRenderBlock[];
@@ -77,8 +57,9 @@ export const deleteChatThread$ = command(
         selectedModel: null,
         serviceTier: null,
         computerUseHostId: null,
+        cloudBrowserEnabled: false,
         createdAt: nowDate().toISOString(),
-      } satisfies ChatThreadEvent);
+      } satisfies OptimisticChatThreadEvent);
     }
 
     const client = get(zeroClient$)(chatThreadByIdContract);
@@ -133,8 +114,9 @@ export const pinChatThread$ = command(
         selectedModel: null,
         serviceTier: null,
         computerUseHostId: null,
+        cloudBrowserEnabled: false,
         createdAt: nowDate().toISOString(),
-      } satisfies ChatThreadEvent);
+      } satisfies OptimisticChatThreadEvent);
     }
     const client = get(zeroClient$)(chatThreadPinContract);
     await accept(
@@ -167,8 +149,9 @@ export const unpinChatThread$ = command(
         selectedModel: null,
         serviceTier: null,
         computerUseHostId: null,
+        cloudBrowserEnabled: false,
         createdAt: nowDate().toISOString(),
-      } satisfies ChatThreadEvent);
+      } satisfies OptimisticChatThreadEvent);
     }
     const client = get(zeroClient$)(chatThreadUnpinContract);
     await accept(
@@ -217,8 +200,9 @@ export const renameChatThread$ = command(
         selectedModel: null,
         serviceTier: null,
         computerUseHostId: null,
+        cloudBrowserEnabled: false,
         createdAt: nowDate().toISOString(),
-      } satisfies ChatThreadEvent);
+      } satisfies OptimisticChatThreadEvent);
     }
 
     const client = get(zeroClient$)(chatThreadRenameContract);

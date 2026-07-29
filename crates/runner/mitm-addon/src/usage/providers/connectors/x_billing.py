@@ -58,6 +58,7 @@ from typing import NamedTuple
 import matching
 from host_normalization import UnsafeIdnaCompatibilityMappingError, normalize_idna_label
 
+from ...json_selective import json_nesting_within_limit
 from .x_tlds import IANA_TLDS
 
 
@@ -237,8 +238,15 @@ def classify_bucket(permission: str, method: str, path: str) -> str | None:
     """Return the X billing bucket for a matched firewall request.
 
     ``permission`` is the firewall permission name set on
-    ``metadata_keys.FIREWALL_PERMISSION``.  ``method`` and ``path`` come from
-    ``flow.request``.
+    ``metadata_keys.FIREWALL_PERMISSION``.  ``method`` comes from
+    ``flow.request.method``.  ``path`` must be the URL path with its query
+    removed, not mitmproxy's raw ``flow.request.path``.  The production caller
+    applies ``_strip_request_target_query()`` in ``_response_usage_context()``
+    before calling this function.
+
+    Compiled path overrides match this normalized path.  Passing a raw,
+    query-bearing request target can miss an override and fall back to the
+    permission's default billing bucket.
 
     Returns ``None`` for permissions that are not billable (e.g. the
     ``"app-only"`` scope).  The caller should skip emission in that
@@ -265,9 +273,13 @@ _INCLUDES_TO_BUCKET: dict[str, str] = {
 
 
 def classify_includes_bucket(key: str) -> str | None:
-    """Return the billing bucket for an ``includes.<key>`` resource
-    type, or ``None`` if the key is not recognized.  Caller is
-    responsible for substituting a safe over-charging fallback.
+    """Return the billing bucket for an ``includes.<key>`` resource type.
+
+    ``None`` means the caller must preserve the unknown type as a bounded
+    synthetic ``includes.<key>`` category or the fixed
+    ``includes.__overflow__`` category, not substitute a known bucket.  The
+    server applies the minimum-rate X ``__fallback__`` price to these
+    categories, records ``fallback_pricing``, and emits underbilling telemetry.
     """
     return _INCLUDES_TO_BUCKET.get(key)
 
@@ -409,7 +421,7 @@ def _tweet_create_body_has_rendered_link_signal(obj: dict[str, object]) -> bool:
 
 
 def _tweet_create_body_is_plain_text_without_url(body: bytes | None) -> bool:
-    if not body:
+    if not body or not json_nesting_within_limit(body):
         return False
     try:
         obj = json.loads(body)

@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-import type { ConnectorAuthCodeGrantConfig } from "@vm0/connectors/connectors";
+import type { ConnectorAuthCodeGrantConfig } from "@vm0/connectors/connector-config";
 import { throwOAuthError } from "../../oauth/error";
 
 const WEBFLOW_TOKEN_URL = "https://api.webflow.com/oauth/access_token";
@@ -121,11 +121,4 @@ async function fetchWebflowUserInfo(accessToken: string): Promise<{
     username: fullName,
     email: data.email ?? null,
   };
-}
-
-/**
- * Get the primary secret name for Webflow connector.
- */
-export function getWebflowSecretName(): string {
-  return "WEBFLOW_ACCESS_TOKEN";
 }

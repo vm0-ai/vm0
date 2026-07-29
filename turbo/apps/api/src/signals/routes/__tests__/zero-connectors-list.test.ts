@@ -40,8 +40,8 @@ async function connectGitlab(fixture: AuthenticatedFixture): Promise<void> {
       body: {
         authMethod: "api-token",
         values: {
-          GITLAB_TOKEN: "gl-test-token",
-          GITLAB_HOST: "gitlab.example.com",
+          accessToken: "gl-test-token",
+          host: "gitlab.example.com",
         },
       },
       headers: authHeaders(),

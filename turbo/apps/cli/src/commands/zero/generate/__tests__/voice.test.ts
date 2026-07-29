@@ -80,6 +80,41 @@ describe("zero generate voice command", () => {
     expect(stdout).toContain("Credits charged: 1");
   });
 
+  it("should print the complete voice result as one JSON object", async () => {
+    server.use(
+      http.post(SPEECH_URL, () => {
+        return HttpResponse.json(VOICE_RESULT);
+      }),
+    );
+
+    await generateCommand.parseAsync([
+      "node",
+      "cli",
+      "voice",
+      "--text",
+      "Hello from vm0",
+      "--json",
+    ]);
+
+    expect(mockConsoleLog.mock.calls).toEqual([[JSON.stringify(VOICE_RESULT)]]);
+  });
+
+  it.each([
+    ["provider listing", ["voice", "--json"]],
+    ["connector guidance", ["voice", "--provider", "elevenlabs", "--json"]],
+  ])("should reject JSON output for %s", async (_mode, args) => {
+    await expect(async () => {
+      await generateCommand.parseAsync(["node", "cli", ...args]);
+    }).rejects.toThrow("process.exit called");
+
+    expect(mockConsoleError).toHaveBeenCalledWith(
+      expect.stringContaining(
+        "--json is only available for direct built-in generation",
+      ),
+    );
+    expect(mockConsoleLog).not.toHaveBeenCalled();
+  });
+
   it("should surface API errors", async () => {
     server.use(
       http.post(SPEECH_URL, () => {

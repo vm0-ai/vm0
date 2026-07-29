@@ -5,8 +5,9 @@ export const internalRunCallbackKinds = [
   "github:issues",
   "morning-brief:email",
   "slack:chat",
+  "feishu:chat",
+  "teams:chat",
   "feishu:org",
-  "slack:org",
   "teams:org",
   "telegram",
   "workflow-automation:cron",
@@ -44,8 +45,9 @@ function isInternalRunCallbackKind(
     case "github:issues":
     case "morning-brief:email":
     case "slack:chat":
+    case "feishu:chat":
+    case "teams:chat":
     case "feishu:org":
-    case "slack:org":
     case "teams:org":
     case "telegram":
     case "workflow-automation:cron":

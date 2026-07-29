@@ -7,6 +7,7 @@ import {
   it,
   vi,
 } from "vitest";
+import { isOkouProductionHostname } from "../lib/platform-host.ts";
 
 const PREVIEW_PLAUSIBLE_URL = "https://preview.plausible.example/js/script.js";
 const PRODUCTION_PLAUSIBLE_URL =
@@ -17,6 +18,7 @@ const PREVIEW_CLERK_KEY = "pk_test_preview";
 const PRODUCTION_CLERK_KEY = "pk_live_production";
 const PREVIEW_VAPID_KEY = "preview_vapid_key";
 const PRODUCTION_VAPID_KEY = "production_vapid_key";
+const PREVIEW_API_ORIGIN_SELECTOR = 'meta[name="vm0-api-origin"]';
 
 const { posthogInit, sentryInit } = vi.hoisted(() => {
   return {
@@ -52,6 +54,13 @@ const appendedPlausibleScripts: HTMLScriptElement[] = [];
 
 function setBrowserUrl(url: string): void {
   window.location.href = url;
+}
+
+function setPreviewApiOrigin(origin: string): void {
+  const element = document.createElement("meta");
+  element.name = "vm0-api-origin";
+  element.content = origin;
+  document.head.append(element);
 }
 
 function installImmediateIdleCallback(): void {
@@ -123,6 +132,7 @@ function plausibleScriptSources(): string[] {
 beforeEach(() => {
   vi.clearAllMocks();
   vi.resetModules();
+  document.querySelector(PREVIEW_API_ORIGIN_SELECTOR)?.remove();
   appendedPlausibleScripts.length = 0;
   stubPortableBuildInputs();
   installImmediateIdleCallback();
@@ -132,6 +142,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  document.querySelector(PREVIEW_API_ORIGIN_SELECTOR)?.remove();
   Reflect.deleteProperty(window, "plausible");
   Reflect.deleteProperty(window, "__vm0PlausibleLoadScheduled");
 });
@@ -156,9 +167,7 @@ describe("portable platform runtime environment", () => {
     expect(runtime.apiBase.resolveApiBase()).toBe("https://api.vm0.ai");
     expect(runtime.apiBase.resolveOAuthApiBase()).toBe("https://www.vm0.ai");
     expect(runtime.auth.resolveWebOrigin()).toBe("https://www.vm0.ai");
-    expect(
-      runtime.platformHost.isOkouProductionHostname("okou.ai.evil.example"),
-    ).toBeFalsy();
+    expect(isOkouProductionHostname("okou.ai.evil.example")).toBeFalsy();
     expect(runtime.platformHost.resolvePlatformRuntimeConfig()).toMatchObject({
       environment: "production",
       clerkPublishableKey: PRODUCTION_CLERK_KEY,
@@ -200,6 +209,7 @@ describe("portable platform runtime environment", () => {
       expect.objectContaining({
         dsn: SENTRY_DSN,
         enabled: true,
+        enhanceFetchErrorMessages: false,
         environment: "production",
       }),
     );
@@ -264,8 +274,32 @@ describe("portable platform runtime environment", () => {
     });
   });
 
+  it("uses the configured API for an immutable Pages deployment", async () => {
+    setBrowserUrl("https://3508a2f5.okou-app.pages.dev/agents");
+    setPreviewApiOrigin("https://pr-23364-api.vm6.ai");
+    const runtime = await loadRuntimeSurfaces();
+
+    expect(runtime.apiBase.resolveApiBase()).toBe(
+      "https://pr-23364-api.vm6.ai",
+    );
+    expect(runtime.apiBase.resolveOAuthApiBase()).toBe(
+      "https://pr-23364-api.vm6.ai",
+    );
+  });
+
+  it("rejects an invalid API origin on an immutable Pages deployment", async () => {
+    setBrowserUrl("https://3508a2f5.okou-app.pages.dev/agents");
+    setPreviewApiOrigin("https://example.com");
+    const runtime = await loadRuntimeSurfaces();
+
+    expect(() => runtime.apiBase.resolveApiBase()).toThrow(
+      "Invalid Cloudflare Pages preview API origin",
+    );
+  });
+
   it("keeps unrecognized provider hosts on the same origin", async () => {
     setBrowserUrl("https://deployment.pages.dev/agents");
+    setPreviewApiOrigin("https://pr-23364-api.vm6.ai");
     const runtime = await loadRuntimeSurfaces();
 
     expect(runtime.apiBase.resolveApiBase()).toBe(

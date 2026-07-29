@@ -374,7 +374,7 @@ describe("personal model providers settings", () => {
     });
   });
 
-  it("keeps Claude Code validation inline and toasts unexpected errors", async () => {
+  it("keeps Claude Code validation inline and suppresses transport error toasts", async () => {
     context.mocks.data.org({
       id: "org_1",
       slug: "test-org",
@@ -448,12 +448,10 @@ describe("personal model providers settings", () => {
       },
     );
     click(submit);
-    await expect(
-      screen.findByText("Failed to fetch"),
-    ).resolves.toBeInTheDocument();
     await waitFor(() => {
       expect(submit).toBeEnabled();
     });
+    expect(screen.queryByText("Failed to fetch")).not.toBeInTheDocument();
   });
 
   it("shows available subscription details in the connected status", async () => {

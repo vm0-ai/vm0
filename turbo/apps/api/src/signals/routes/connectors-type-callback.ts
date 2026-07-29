@@ -10,7 +10,7 @@ import {
 import {
   connectorGrantScopes,
   resolveConnectorAuthClient,
-} from "@vm0/connectors/connector-utils";
+} from "@vm0/connectors/connector-auth-method";
 import {
   exchangeConnectorAuthCodeWithMethod,
   verifyConnectorOpenIdAuthCallbackWithMethod,

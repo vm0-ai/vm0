@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-import type { ConnectorAuthCodeGrantConfig } from "@vm0/connectors/connectors";
+import type { ConnectorAuthCodeGrantConfig } from "@vm0/connectors/connector-config";
 import { throwOAuthError } from "../../oauth/error";
 
 const HUBSPOT_TOKEN_URL = "https://api.hubapi.com/oauth/v1/token";
@@ -183,11 +183,4 @@ async function fetchHubSpotUserInfo(
     email: data.user ?? null,
     hubDomain: data.hub_domain ?? null,
   };
-}
-
-/**
- * Get the primary secret name for HubSpot connector (the access token).
- */
-export function getHubSpotSecretName(): string {
-  return "HUBSPOT_ACCESS_TOKEN";
 }

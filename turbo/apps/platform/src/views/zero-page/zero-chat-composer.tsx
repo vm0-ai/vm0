@@ -113,17 +113,16 @@ import {
 import type {
   GenerationTemplateRequest,
   PersistedAttachment,
+  UserMessageDocument,
 } from "@vm0/api-contracts/contracts/chat-threads";
 import { AttachmentChips } from "./zero-attachment-chips.tsx";
 import { TiptapWorkflowComposer } from "./tiptap-workflow-composer.tsx";
 import { computerUseIllustrationImg } from "./platform-assets.ts";
 import type { ComposerPasteEvent } from "./composer-input-types.ts";
 import {
-  parsePresentationEditDraft,
   previewPresentationHtml,
-  type PresentationEditDraft,
-} from "./presentation-html-edit-protocol.ts";
-import { readableAttachmentResourceUrl } from "./zero-attachment-url.ts";
+  type PresentationPreviewDraft,
+} from "./presentation-html-preview.ts";
 import {
   ILLUSTRATION_TEMPLATE_ITEMS,
   PRESENTATION_TEMPLATE_PICKER_ITEMS,
@@ -141,7 +140,7 @@ import {
   type WebsiteTemplateItem,
   type WorkflowTemplateItem,
 } from "@vm0/core";
-import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
+import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import type { ConnectorRef } from "@vm0/api-contracts/contracts/connector-identity";
 import type { PublicConnectorCatalogStatusItem } from "@vm0/api-contracts/contracts/zero-connector-catalog";
 import { getModelImageInputSupport } from "@vm0/api-contracts/contracts/model-providers";
@@ -151,12 +150,18 @@ import {
   type ModelProviderSelection,
 } from "./components/model-provider-picker.tsx";
 import { ConnectorIcon } from "./components/settings/connector-icons.tsx";
+import { ConnectorCard } from "./components/settings/connector-card.tsx";
+import type { ConnectorConnectHandlers } from "./components/settings/launch-connector-connect.ts";
 import { ConnectModal } from "./components/settings/add-connection-dialog.tsx";
 import {
   allConnectorCatalogItems$,
+  connectConnectorNoAuth$,
+  connectConnectorOAuthAuthCode$,
+  connectFlowConnectorRef$,
   matchesConnectorSearch,
   justConnectedRefs$,
   pollingOAuthAuthCodeConnectorRef$,
+  pollingOAuthDeviceAuthConnectorRef$,
 } from "../../signals/zero-page/settings/connectors.ts";
 import { LoadingSwitch } from "../components/loading-switch.tsx";
 import { pageSignal$ } from "../../signals/page-signal.ts";
@@ -173,6 +178,7 @@ import {
   ZERO_DESKTOP_UNSUPPORTED_INTEL_MAC_LABEL,
 } from "../../signals/zero-page/computer-use-hosts.ts";
 import type { ComposerConnectorSignals } from "../../signals/zero-page/zero-connectors.ts";
+import type { AgentConnectorAuthorizations } from "../../signals/zero-page/agent-connector-authorizations.ts";
 import { applyUserPermissionGrants$ } from "../../signals/permission-allow/permission-allow-signals.ts";
 import { activeUserPermissionGrantSnapshot } from "../../signals/user-permission-grants.ts";
 import { savePermissionDraftPolicies } from "../../signals/zero-page/settings/permission-grant-save.ts";
@@ -184,7 +190,10 @@ import {
   uploadPopoverOpen$,
   setUploadPopoverOpen$,
   templatePickerOpen$,
+  templatePickerSkipEnterAnimation$,
   setTemplatePickerOpen$,
+  templatePickerReferenceValue$,
+  setTemplatePickerReferenceValue$,
   openWebsiteTemplatePreview$,
   templatePickerCategory$,
   setTemplatePickerCategory$,
@@ -208,11 +217,13 @@ import {
   setTemplateCardHtmlPreview$,
   type TemplateCardHtmlPreviewState,
   templateDetailHtmlPreview$,
-  setTemplateDetailHtmlPreview$,
-  templateDetailThemeIdBySlug$,
-  setTemplateDetailThemeId$,
-  templateDetailSlideIndexBySlug$,
-  setTemplateDetailSlideIndex$,
+  closePresentationTemplateDetailPreview$,
+  loadPresentationTemplateHtmlPreview,
+  ownTemplatePickerPreviewResources$,
+  openPresentationTemplateDetailPreview$,
+  releaseTemplatePickerPreviewResources$,
+  selectPresentationTemplateDetailPreview$,
+  settlePresentationTemplateDetailPreviewFrame$,
 } from "../../signals/zero-page/zero-chat-composer.ts";
 import {
   audioInputAvailable$,
@@ -226,6 +237,7 @@ import {
   stopAndTranscribe$,
 } from "../../signals/voice-io/voice-io-stt.ts";
 import { readChatMessageFromClipboard } from "../../signals/zero-page/clipboard.ts";
+import { shouldUseUserMessage } from "../../signals/zero-page/user-message-document-codec.ts";
 import { Markdown } from "../components/markdown.tsx";
 import { WebsiteTemplatePreviewDialogSlot } from "./website-template-preview-dialog.tsx";
 
@@ -236,13 +248,6 @@ const COMPOSER_CONTROL_FOCUS_CLASS =
 function isHappyDomTestEnvironment(): boolean {
   return (
     typeof globalThis.window !== "undefined" && "happyDOM" in globalThis.window
-  );
-}
-
-function shouldLoadTemplateDetailHtmlPreviewInHappyDom(): boolean {
-  return (
-    Reflect.get(globalThis, "vm0LoadTemplateDetailHtmlPreviewInHappyDom") ===
-    true
   );
 }
 
@@ -321,6 +326,9 @@ export interface ZeroChatComposerProps {
     loading: boolean;
     selectedHostId: string | null;
     onChange: (hostId: string | null) => void;
+    cloudBrowserAvailable: boolean;
+    cloudBrowserEnabled: boolean;
+    onCloudBrowserChange: (enabled: boolean) => void;
     downloadUrl: string;
   };
   /** When true, hide the model picker until the selected model resolves. */
@@ -361,6 +369,12 @@ export interface ZeroChatComposerProps {
   onCancelActiveGoal?: () => void;
 }
 
+export interface ComposerConnectorReadState {
+  readonly catalogItems: Loadable<readonly PublicConnectorCatalogStatusItem[]>;
+  readonly agentId: Loadable<string | null>;
+  readonly authorizations: Loadable<AgentConnectorAuthorizations | null>;
+}
+
 export interface QueuedComposerItem {
   id: string;
   text: string;
@@ -390,6 +404,17 @@ type ComposerTemplatePicker = NonNullable<
 type ComposerComputerUse = NonNullable<ZeroChatComposerProps["computerUse"]>;
 
 const TEMPLATE_CARD_PREVIEW_SIZE = { width: 480, height: 270 } as const;
+const TEMPLATE_HIGH_RESOLUTION_PREVIEW_SIZE = {
+  width: 708,
+  height: 398,
+} as const;
+const TEMPLATE_DETAIL_THUMBNAIL_PREVIEW_SIZE = {
+  width: 224,
+  height: 126,
+} as const;
+const PRESENTATION_GALLERY_PREVIEW_BASE_URL =
+  "https://static.vm0.io/web/assets/presentation-gallery/2026-07-04";
+const PRESENTATION_GALLERY_SLIDE_COUNT = 15;
 const TEMPLATE_PREWARM_IMAGE_COUNT = 15;
 const ILLUSTRATION_PREWARM_IMAGE_COUNT = 24;
 const ILLUSTRATION_EAGER_IMAGE_COUNT = 24;
@@ -1586,12 +1611,6 @@ function TemplateEmptyPanel({
   );
 }
 
-function presentationTemplateSlideImages(
-  item: PresentationTemplateItem,
-): readonly string[] {
-  return item.previewImages;
-}
-
 function presentationTemplateSlideCount(
   item: PresentationTemplateItem,
 ): number {
@@ -1621,18 +1640,63 @@ function presentationTemplateCardSlideImage(
   if (cardPreviewSource !== undefined) {
     return r2ImageTransformUrl(cardPreviewSource, size);
   }
-  return presentationTemplateFallbackSlideImage(item, index, size);
+  return presentationTemplateGallerySlideImage(item, index, size);
 }
 
-function presentationTemplateFallbackSlideImage(
+function presentationTemplateGallerySlideImage(
   item: PresentationTemplateItem,
   index: number,
   size: TemplatePreviewImageSize = TEMPLATE_CARD_PREVIEW_SIZE,
 ): string {
-  const slideImages = presentationTemplateSlideImages(item);
-  const safeIndex = Math.max(0, Math.min(index, slideImages.length - 1));
-  const image = slideImages[safeIndex] ?? item.previewImage;
-  return r2ImageTransformUrl(image, size);
+  return r2ImageTransformUrl(
+    presentationTemplateGallerySlideUrl(item, index),
+    size,
+  );
+}
+
+function presentationTemplateGallerySlideUrl(
+  item: PresentationTemplateItem,
+  index: number,
+): string {
+  const safeIndex = Math.max(
+    0,
+    Math.min(index, PRESENTATION_GALLERY_SLIDE_COUNT - 1),
+  );
+  const slideNumber = String(safeIndex + 1).padStart(3, "0");
+  return `${PRESENTATION_GALLERY_PREVIEW_BASE_URL}/${item.slug}/slide-${slideNumber}.webp`;
+}
+
+function presentationTemplateHighResolutionSlideImage(
+  item: PresentationTemplateItem,
+  index: number,
+  theme: PresentationTemplateThemeOption,
+  size: TemplatePreviewImageSize = TEMPLATE_HIGH_RESOLUTION_PREVIEW_SIZE,
+): string {
+  if (index === 0) {
+    return presentationTemplateCardSlideImage(item, index, theme, size);
+  }
+  return presentationTemplateGallerySlideImage(item, index, size);
+}
+
+function presentationTemplateDetailSlideImageSource(
+  item: PresentationTemplateItem,
+  index: number,
+  theme: PresentationTemplateThemeOption,
+  htmlPreviewFailed: boolean,
+): string {
+  if (index === 0) {
+    return (
+      presentationTemplateThemedCardPreviewSource(item, theme) ??
+      presentationTemplateGallerySlideUrl(item, index)
+    );
+  }
+  if (htmlPreviewFailed) {
+    return presentationTemplateGallerySlideUrl(item, index);
+  }
+  return (
+    item.previewImages[index] ??
+    presentationTemplateGallerySlideUrl(item, index)
+  );
 }
 
 function prewarmTemplatePreviewImage(
@@ -2242,7 +2306,7 @@ function hexLuminance(hexColor: string): number {
   const normalized = hexColor.replace("#", "");
   const channels = [0, 2, 4].map((index) => {
     const value = Number.parseInt(normalized.slice(index, index + 2), 16) / 255;
-    return value <= 0.039_28
+    return value <= 0.03928
       ? value / 12.92
       : Math.pow((value + 0.055) / 1.055, 2.4);
   });
@@ -2350,7 +2414,7 @@ function presentationTemplateThemeCss(
 
 function themedPreviewPresentationHtml(params: {
   readonly activeSlideId: string;
-  readonly draft: PresentationEditDraft;
+  readonly draft: PresentationPreviewDraft;
   readonly theme: PresentationTemplateThemeOption;
 }): string {
   return previewPresentationHtml({
@@ -2358,24 +2422,6 @@ function themedPreviewPresentationHtml(params: {
     additionalHeadStyle: presentationTemplateThemeCss(params.theme),
     html: params.draft.html,
   });
-}
-
-async function loadPresentationTemplateHtmlPreview(params: {
-  readonly item: PresentationTemplateItem;
-}): Promise<PresentationEditDraft | null> {
-  const response = await fetch(
-    readableAttachmentResourceUrl(params.item.embedUrl),
-    {
-      credentials: "omit",
-      mode: "cors",
-    },
-  );
-  if (!response.ok) {
-    throw new Error(`Failed to load template HTML (${response.status})`);
-  }
-
-  const draft = parsePresentationEditDraft(await response.text());
-  return draft.slides.length > 0 ? draft : null;
 }
 
 function schedulePresentationTemplateCardSlideIndex(params: {
@@ -2420,37 +2466,6 @@ function revokePresentationTemplateHtmlPreviewUrl(url: string | null): void {
   if (url !== null) {
     URL.revokeObjectURL(url);
   }
-}
-
-function createThemedPresentationPreviewUrl(params: {
-  readonly activeSlideId: string;
-  readonly draft: PresentationEditDraft;
-  readonly theme: PresentationTemplateThemeOption;
-}): string {
-  return URL.createObjectURL(
-    new Blob(
-      [
-        createThemedPresentationPreviewHtml({
-          activeSlideId: params.activeSlideId,
-          draft: params.draft,
-          theme: params.theme,
-        }),
-      ],
-      { type: "text/html;charset=utf-8" },
-    ),
-  );
-}
-
-function createThemedPresentationPreviewHtml(params: {
-  readonly activeSlideId: string;
-  readonly draft: PresentationEditDraft;
-  readonly theme: PresentationTemplateThemeOption;
-}): string {
-  return themedPreviewPresentationHtml({
-    activeSlideId: params.activeSlideId,
-    draft: params.draft,
-    theme: params.theme,
-  });
 }
 
 type PresentationTemplateThemeVariables = CSSProperties &
@@ -2501,7 +2516,7 @@ function getPresentationTemplateThumbnailThemeVariables(
 }
 
 function getPresentationTemplateThumbnailPreviewHtml(
-  draft: PresentationEditDraft,
+  draft: PresentationPreviewDraft,
   slideId: string,
 ): string {
   return previewPresentationHtml({
@@ -2604,14 +2619,14 @@ function renderPresentationTemplateShadowThumbnail(
 
 function PresentationTemplateShadowThumbnail({
   draft,
-  fallbackImage,
+  imageUrl,
   runtime,
   slideId,
   themeVariables,
   title,
 }: {
-  readonly draft: PresentationEditDraft | undefined;
-  readonly fallbackImage: string;
+  readonly draft: PresentationPreviewDraft | undefined;
+  readonly imageUrl: string;
   readonly runtime: TemplatePreviewRuntime;
   readonly slideId: string | null;
   readonly themeVariables: PresentationTemplateThemeVariables;
@@ -2620,14 +2635,12 @@ function PresentationTemplateShadowThumbnail({
   const hasHtmlThumbnail = draft !== undefined && slideId !== null;
   return (
     <>
-      {hasHtmlThumbnail ? null : (
-        <img
-          src={fallbackImage}
-          alt=""
-          loading="lazy"
-          className="absolute inset-0 h-full w-full object-cover"
-        />
-      )}
+      <img
+        src={imageUrl}
+        alt=""
+        loading="lazy"
+        className="absolute inset-0 h-full w-full object-cover"
+      />
       {hasHtmlThumbnail ? (
         <div
           ref={(node) => {
@@ -2650,7 +2663,7 @@ function PresentationTemplateShadowThumbnail({
 }
 
 function createPresentationTemplateHtmlPreviewState(params: {
-  readonly draft: PresentationEditDraft;
+  readonly draft: PresentationPreviewDraft;
   readonly index: number;
   readonly item: PresentationTemplateItem;
   readonly previousFrameUrl: string | null;
@@ -2681,14 +2694,13 @@ function createPresentationTemplateHtmlPreviewState(params: {
     embedUrl: params.item.embedUrl,
     themeId: params.theme.id,
     loading: false,
-    failed: false,
     frameUrl,
     slideCount: params.draft.slides.length,
   };
 }
 
 function createPresentationTemplateCardHtmlPreviewState(params: {
-  readonly draft: PresentationEditDraft;
+  readonly draft: PresentationPreviewDraft;
   readonly index: number;
   readonly item: PresentationTemplateItem;
   readonly previousFrameUrl: string | null;
@@ -2761,22 +2773,113 @@ function revealTemplatePreviewFrameAfterPaint(params: {
       if (!params.frame.isConnected) {
         return;
       }
-      params.frame.dataset.loaded = "true";
       params.onFrameLoad(params.frameUrl);
     });
   });
 }
 
-function TemplatePreviewFrames({
-  fallbackImageUrl,
+function startProgressiveTemplatePreviewImageLoad(
+  lowResolutionImage: HTMLImageElement,
+): void {
+  const highResolutionImage =
+    lowResolutionImage.parentElement?.querySelector<HTMLImageElement>(
+      '[data-template-preview-image="high"]',
+    );
+  if (highResolutionImage === null || highResolutionImage === undefined) {
+    return;
+  }
+
+  const highResolutionUrl = highResolutionImage.dataset.src;
+  if (
+    highResolutionUrl === undefined ||
+    highResolutionImage.getAttribute("src") === highResolutionUrl
+  ) {
+    return;
+  }
+  delete highResolutionImage.dataset.loaded;
+  highResolutionImage.src = highResolutionUrl;
+}
+
+function ProgressiveTemplatePreviewImage({
+  alt,
+  className,
+  dataTestId,
+  fetchPriority,
+  highResolutionUrl,
   loading,
+  lowResolutionUrl,
+}: {
+  readonly alt: string;
+  readonly className: string;
+  readonly dataTestId?: string;
+  readonly fetchPriority?: "high" | "low" | "auto";
+  readonly highResolutionUrl: string;
+  readonly loading?: "eager" | "lazy";
+  readonly lowResolutionUrl: string;
+}) {
+  const hasHighResolutionImage = lowResolutionUrl !== highResolutionUrl;
+
+  return (
+    <>
+      <img
+        src={lowResolutionUrl}
+        alt={alt}
+        aria-hidden={alt === "" ? "true" : undefined}
+        data-template-preview-image="low"
+        data-testid={dataTestId}
+        className={className}
+        loading={loading}
+        decoding="async"
+        fetchPriority={fetchPriority}
+        onLoad={(event) => {
+          if (hasHighResolutionImage) {
+            startProgressiveTemplatePreviewImageLoad(event.currentTarget);
+          }
+        }}
+        onError={(event) => {
+          if (hasHighResolutionImage) {
+            startProgressiveTemplatePreviewImageLoad(event.currentTarget);
+          }
+        }}
+      />
+      {hasHighResolutionImage ? (
+        <img
+          src={undefined}
+          data-template-preview-image="high"
+          data-src={highResolutionUrl}
+          alt={alt}
+          aria-hidden={alt === "" ? "true" : undefined}
+          className={cn(
+            className,
+            "opacity-0 transition-opacity duration-150 data-[loaded=true]:opacity-100",
+          )}
+          loading={loading}
+          decoding="async"
+          fetchPriority={fetchPriority}
+          onLoad={(event) => {
+            const highResolutionImage = event.currentTarget;
+            highResolutionImage.dataset.loaded = "true";
+          }}
+        />
+      ) : null}
+    </>
+  );
+}
+
+function TemplatePreviewFrames({
+  highResolutionImageUrl,
+  loadedFrameUrl,
+  loading,
+  lowResolutionImageUrl,
   onFrameLoad,
   overlayFrameUrl,
   primaryFrameUrl,
   title,
 }: {
-  readonly fallbackImageUrl: string;
+  readonly highResolutionImageUrl: string;
+  readonly loadedFrameUrl: string | null;
   readonly loading: boolean;
+  readonly lowResolutionImageUrl: string;
   readonly onFrameLoad: (frameUrl: string) => void;
   readonly overlayFrameUrl: string | null;
   readonly primaryFrameUrl: string | null;
@@ -2792,21 +2895,19 @@ function TemplatePreviewFrames({
 
   return (
     <>
-      <img
-        key={fallbackImageUrl}
-        src={fallbackImageUrl}
+      <ProgressiveTemplatePreviewImage
         alt=""
-        aria-hidden="true"
-        data-testid={`${title} card image preview`}
         className="pointer-events-none absolute inset-0 h-full w-full object-cover"
-        loading="eager"
-        decoding="async"
+        dataTestId={`${title} card image preview`}
         fetchPriority="high"
+        highResolutionUrl={highResolutionImageUrl}
+        loading="eager"
+        lowResolutionUrl={lowResolutionImageUrl}
       />
       {frameUrls.map((frameUrl) => {
         return (
           <iframe
-            key={frameUrl ?? "empty"}
+            key={frameUrl}
             title={
               frameUrl === overlayFrameUrl
                 ? `${title} active HTML preview`
@@ -2817,6 +2918,7 @@ function TemplatePreviewFrames({
                 ? `${title} card HTML preview`
                 : undefined
             }
+            data-loaded={frameUrl === loadedFrameUrl ? "true" : undefined}
             src={frameUrl}
             sandbox="allow-same-origin"
             tabIndex={-1}
@@ -2852,27 +2954,31 @@ function TemplatePreview({
   runtime: TemplatePreviewRuntime;
   theme?: PresentationTemplateThemeOption;
 }) {
+  const pageSignal = useGet(pageSignal$);
   const hover = useGet(templateCardHover$);
   const setHover = useSet(setTemplateCardHover$);
   const htmlPreview = useGet(templateCardHtmlPreview$);
   const setHtmlPreview = useSet(setTemplateCardHtmlPreview$);
   const loadedHtmlFrameUrls = useGet(templateCardLoadedHtmlFrameUrls$);
   const setLoadedHtmlFrameUrl = useSet(setTemplateCardLoadedHtmlFrameUrl$);
-  const fallbackSlideCount = presentationTemplateSlideCount(item);
+  const slideCount = presentationTemplateSlideCount(item);
   const hoverSlideIndex = Math.max(
     0,
-    Math.min(
-      hover?.slug === item.slug ? hover.index : 0,
-      fallbackSlideCount - 1,
-    ),
+    Math.min(hover?.slug === item.slug ? hover.index : 0, slideCount - 1),
   );
   const previewTheme =
     theme ??
     findPresentationTemplateTheme(defaultPresentationTemplateThemeId(item));
-  const fallbackImageUrl = presentationTemplateCardSlideImage(
+  const lowResolutionImageUrl = presentationTemplateCardSlideImage(
     item,
     hoverSlideIndex,
     previewTheme,
+  );
+  const highResolutionImageUrl = presentationTemplateHighResolutionSlideImage(
+    item,
+    hoverSlideIndex,
+    previewTheme,
+    TEMPLATE_HIGH_RESOLUTION_PREVIEW_SIZE,
   );
   const activeHtmlPreview =
     htmlPreview?.slug === item.slug &&
@@ -2887,7 +2993,7 @@ function TemplatePreview({
       activeFrameUrl: activeHtmlPreview?.frameUrl ?? null,
       loadedFrameUrl,
     });
-  const scrubSlideCount = activeHtmlPreview?.slideCount ?? fallbackSlideCount;
+  const scrubSlideCount = activeHtmlPreview?.slideCount ?? slideCount;
   const currentPreviewSlideIndex = () => {
     const cache = runtime.presentation;
     const index =
@@ -2938,16 +3044,18 @@ function TemplatePreview({
         embedUrl: item.embedUrl,
         themeId: previewTheme.id,
         loading: false,
-        failed: true,
         frameUrl: null,
-        slideCount: fallbackSlideCount,
+        slideCount,
       });
       return;
     }
 
     let pendingLoad = cache.pendingLoads.get(item.embedUrl);
     if (pendingLoad === undefined) {
-      pendingLoad = loadPresentationTemplateHtmlPreview({ item });
+      pendingLoad = loadPresentationTemplateHtmlPreview({
+        item,
+        signal: pageSignal,
+      });
       cache.pendingLoads.set(item.embedUrl, pendingLoad);
     }
 
@@ -2958,16 +3066,18 @@ function TemplatePreview({
       embedUrl: item.embedUrl,
       themeId: previewTheme.id,
       loading: true,
-      failed: false,
       frameUrl: null,
-      slideCount: fallbackSlideCount,
+      slideCount,
     });
     detach(
       (async () => {
-        const result = await tapError(pendingLoad);
-        if (cache.pendingLoads.get(item.embedUrl) === pendingLoad) {
-          cache.pendingLoads.delete(item.embedUrl);
-        }
+        const result = await tapError(
+          pendingLoad.finally(() => {
+            if (cache.pendingLoads.get(item.embedUrl) === pendingLoad) {
+              cache.pendingLoads.delete(item.embedUrl);
+            }
+          }),
+        );
 
         if (result === undefined || result === null) {
           cache.failed.add(item.embedUrl);
@@ -2977,9 +3087,8 @@ function TemplatePreview({
               embedUrl: item.embedUrl,
               themeId: previewTheme.id,
               loading: false,
-              failed: true,
               frameUrl: null,
-              slideCount: fallbackSlideCount,
+              slideCount,
             });
           }
           return;
@@ -3077,8 +3186,10 @@ function TemplatePreview({
       }}
     >
       <TemplatePreviewFrames
-        fallbackImageUrl={fallbackImageUrl}
+        highResolutionImageUrl={highResolutionImageUrl}
+        loadedFrameUrl={loadedFrameUrl}
         loading={activeHtmlPreview?.loading === true}
+        lowResolutionImageUrl={lowResolutionImageUrl}
         onFrameLoad={handleFrameLoad}
         overlayFrameUrl={overlayFrameUrl}
         primaryFrameUrl={primaryFrameUrl}
@@ -3144,95 +3255,92 @@ function handleTemplateDetailTabKeyDown(
   candidates[nextIndex]?.focus();
 }
 
-interface PresentationTemplateDetailPreviewState {
-  readonly embedUrl: string;
-  readonly failed: boolean;
-  readonly frameUrl: string | null;
-  readonly index: number;
-  readonly loading: boolean;
-  readonly slideCount: number;
-  readonly slug: string;
-  readonly themeId: string;
-}
-
-type SetPresentationTemplateDetailPreview = (
-  value: PresentationTemplateDetailPreviewState | null,
-) => void;
-
-type SetPresentationTemplateDetailSlideIndex = (
-  slug: string,
-  index: number,
-) => void;
-
-function setLoadedPresentationTemplateDetailPreview({
-  draft,
-  index,
-  item,
+function TemplateDetailPreviewFrame({
+  frameLoaded,
+  frameUrl,
+  onFrameLoad,
+  previousFrameSlideIndex,
   previousFrameUrl,
-  selectedTheme,
-  setDetailPreview,
+  slideIndex,
+  title,
 }: {
-  readonly draft: PresentationEditDraft;
-  readonly index: number;
-  readonly item: PresentationTemplateItem;
+  readonly frameLoaded: boolean;
+  readonly frameUrl: string | null;
+  readonly onFrameLoad: (frameUrl: string) => void;
+  readonly previousFrameSlideIndex: number | null;
   readonly previousFrameUrl: string | null;
-  readonly selectedTheme: PresentationTemplateThemeOption;
-  readonly setDetailPreview: SetPresentationTemplateDetailPreview;
+  readonly slideIndex: number;
+  readonly title: string;
 }) {
-  const slide = draft.slides[Math.min(index, draft.slides.length - 1)];
-  if (slide === undefined) {
-    return;
-  }
-  revokePresentationTemplateHtmlPreviewUrl(previousFrameUrl);
-  const frameUrl = createThemedPresentationPreviewUrl({
-    activeSlideId: slide.id,
-    draft,
-    theme: selectedTheme,
-  });
-  setDetailPreview({
-    slug: item.slug,
-    embedUrl: item.embedUrl,
-    themeId: selectedTheme.id,
-    index,
-    loading: false,
-    failed: false,
-    frameUrl,
-    slideCount: draft.slides.length,
+  const frames: readonly {
+    readonly active: boolean;
+    readonly slideIndex: number;
+    readonly url: string;
+  }[] = [
+    ...(previousFrameUrl === null || previousFrameUrl === frameUrl
+      ? []
+      : [
+          {
+            active: false,
+            slideIndex: previousFrameSlideIndex ?? slideIndex,
+            url: previousFrameUrl,
+          },
+        ]),
+    ...(frameUrl === null ? [] : [{ active: true, slideIndex, url: frameUrl }]),
+  ];
+
+  return frames.map((candidateFrame) => {
+    const previousFrameShowsActiveSlide =
+      !candidateFrame.active && candidateFrame.slideIndex === slideIndex;
+    return (
+      <iframe
+        key={candidateFrame.url}
+        title={
+          candidateFrame.active
+            ? `${title} HTML preview`
+            : `${title} previous HTML preview`
+        }
+        data-template-detail-frame={
+          candidateFrame.active ? "active" : "previous"
+        }
+        data-loaded={!candidateFrame.active || frameLoaded ? "true" : undefined}
+        data-testid={
+          candidateFrame.active ? `${title} detail HTML preview` : undefined
+        }
+        src={candidateFrame.url}
+        sandbox="allow-same-origin"
+        tabIndex={-1}
+        className={cn(
+          "pointer-events-none absolute inset-0 h-full w-full border-0 bg-background opacity-0 data-[loaded=true]:opacity-100",
+          candidateFrame.active
+            ? "z-40"
+            : previousFrameShowsActiveSlide
+              ? "z-30"
+              : "z-10",
+        )}
+        onLoad={(event) => {
+          if (!candidateFrame.active) {
+            return;
+          }
+          revealTemplatePreviewFrameAfterPaint({
+            frame: event.currentTarget,
+            frameUrl: candidateFrame.url,
+            onFrameLoad,
+          });
+        }}
+      />
+    );
   });
 }
 
-function selectPresentationTemplateDetailSlide({
-  detailPreview,
-  detailSlideCount,
-  index,
-  item,
-  selectedTheme,
-  setDetailPreview,
-  setSlideIndex,
-  runtime,
-}: {
-  readonly detailPreview: PresentationTemplateDetailPreviewState | null;
-  readonly detailSlideCount: number;
-  readonly index: number;
-  readonly item: PresentationTemplateItem;
-  readonly selectedTheme: PresentationTemplateThemeOption;
-  readonly setDetailPreview: SetPresentationTemplateDetailPreview;
-  readonly setSlideIndex: SetPresentationTemplateDetailSlideIndex;
-  readonly runtime: TemplatePreviewRuntime;
-}) {
-  const nextIndex = Math.max(0, Math.min(detailSlideCount - 1, index));
-  setSlideIndex(item.slug, nextIndex);
-  const cachedDraft = runtime.presentation.drafts.get(item.embedUrl);
-  if (cachedDraft !== undefined) {
-    setLoadedPresentationTemplateDetailPreview({
-      draft: cachedDraft,
-      index: nextIndex,
-      item,
-      previousFrameUrl: detailPreview?.frameUrl ?? null,
-      selectedTheme,
-      setDetailPreview,
-    });
-  }
+function templateDetailPreviewMatchesItem(
+  preview: {
+    readonly embedUrl: string;
+    readonly slug: string;
+  } | null,
+  item: PresentationTemplateItem,
+): boolean {
+  return preview?.slug === item.slug && preview.embedUrl === item.embedUrl;
 }
 
 function TemplatePreviewPage({
@@ -3247,180 +3355,57 @@ function TemplatePreviewPage({
   runtime: TemplatePreviewRuntime;
 }) {
   const detailPreview = useGet(templateDetailHtmlPreview$);
-  const setDetailPreview = useSet(setTemplateDetailHtmlPreview$);
-  const themeIdBySlug = useGet(templateDetailThemeIdBySlug$);
-  const setThemeId = useSet(setTemplateDetailThemeId$);
   const setCardThemeId = useSet(setTemplateCardThemeId$);
-  const slideIndexBySlug = useGet(templateDetailSlideIndexBySlug$);
-  const setSlideIndex = useSet(setTemplateDetailSlideIndex$);
+  const selectDetailPreview = useSet(selectPresentationTemplateDetailPreview$);
+  const settleDetailPreviewFrame = useSet(
+    settlePresentationTemplateDetailPreviewFrame$,
+  );
+  const visibleDetailPreview = templateDetailPreviewMatchesItem(
+    detailPreview,
+    item,
+  )
+    ? detailPreview
+    : null;
   const selectedThemeId =
-    themeIdBySlug[item.slug] ?? defaultPresentationTemplateThemeId(item);
+    visibleDetailPreview?.themeId ?? defaultPresentationTemplateThemeId(item);
   const selectedTheme = findPresentationTemplateTheme(selectedThemeId);
-  const activeSlideIndex = slideIndexBySlug[item.slug] ?? 0;
-  const visibleDetailPreview =
-    detailPreview?.slug === item.slug &&
-    detailPreview.embedUrl === item.embedUrl &&
-    detailPreview.themeId === selectedTheme.id &&
-    detailPreview.index === activeSlideIndex
-      ? detailPreview
-      : null;
-  const fallbackSlideCount = presentationTemplateSlideCount(item);
+  const activeSlideIndex = visibleDetailPreview?.index ?? 0;
+  const defaultSlideCount = presentationTemplateSlideCount(item);
   const detailSlideCount =
-    visibleDetailPreview?.slideCount ?? fallbackSlideCount;
+    visibleDetailPreview?.slideCount ?? defaultSlideCount;
   const cachedDetailDraft = runtime.presentation.drafts.get(item.embedUrl);
+  const htmlPreviewFailed = runtime.presentation.failed.has(item.embedUrl);
   const thumbnailThemeVariables =
     getPresentationTemplateThumbnailThemeVariables(selectedTheme);
-  const detailFallbackImage = presentationTemplateFallbackSlideImage(
+  const detailImageSource = presentationTemplateDetailSlideImageSource(
     item,
     activeSlideIndex,
+    selectedTheme,
+    htmlPreviewFailed,
   );
-
-  const setLoadedDetailPreview = (params: {
-    readonly draft: PresentationEditDraft;
-    readonly index: number;
-    readonly previousFrameUrl: string | null;
-    readonly theme: PresentationTemplateThemeOption;
-  }) => {
-    setLoadedPresentationTemplateDetailPreview({
-      draft: params.draft,
-      index: params.index,
-      item,
-      previousFrameUrl: params.previousFrameUrl,
-      selectedTheme: params.theme,
-      setDetailPreview,
-    });
-  };
-
-  const loadDetailHtmlPreviewAfterMount = (node: HTMLDivElement | null) => {
-    const hasVisibleDetailPreviewResult =
-      visibleDetailPreview !== null &&
-      (visibleDetailPreview.frameUrl !== null || visibleDetailPreview.failed);
-    if (
-      node === null ||
-      hasVisibleDetailPreviewResult ||
-      (isHappyDomTestEnvironment() &&
-        !shouldLoadTemplateDetailHtmlPreviewInHappyDom())
-    ) {
-      return;
-    }
-
-    const cache = runtime.presentation;
-    const detailTokenKey = `detail:${item.embedUrl}`;
-    const detailToken = Symbol(detailTokenKey);
-    cache.detailTokens.set(detailTokenKey, detailToken);
-    const isActive = () => {
-      return (
-        node.isConnected &&
-        cache.detailTokens.get(detailTokenKey) === detailToken
-      );
-    };
-    const cachedDraft = cache.drafts.get(item.embedUrl);
-    if (cachedDraft !== undefined) {
-      if (isActive()) {
-        setLoadedDetailPreview({
-          draft: cachedDraft,
-          index: activeSlideIndex,
-          previousFrameUrl: detailPreview?.frameUrl ?? null,
-          theme: selectedTheme,
-        });
-      }
-      return;
-    }
-
-    if (cache.failed.has(item.embedUrl)) {
-      if (isActive()) {
-        setDetailPreview({
-          slug: item.slug,
-          embedUrl: item.embedUrl,
-          themeId: selectedTheme.id,
-          index: activeSlideIndex,
-          loading: false,
-          failed: true,
-          frameUrl: null,
-          slideCount: fallbackSlideCount,
-        });
-      }
-      return;
-    }
-
-    let pendingLoad = cache.pendingLoads.get(item.embedUrl);
-    if (pendingLoad === undefined) {
-      pendingLoad = loadPresentationTemplateHtmlPreview({ item });
-      cache.pendingLoads.set(item.embedUrl, pendingLoad);
-    }
-    if (visibleDetailPreview?.loading !== true) {
-      setDetailPreview({
-        slug: item.slug,
-        embedUrl: item.embedUrl,
-        themeId: selectedTheme.id,
-        index: activeSlideIndex,
-        loading: true,
-        failed: false,
-        frameUrl: null,
-        slideCount: fallbackSlideCount,
-      });
-    }
-    detach(
-      (async () => {
-        const result = await tapError(pendingLoad);
-        if (cache.pendingLoads.get(item.embedUrl) === pendingLoad) {
-          cache.pendingLoads.delete(item.embedUrl);
-        }
-        if (result === undefined || result === null) {
-          cache.failed.add(item.embedUrl);
-          if (!isActive()) {
-            return;
-          }
-          setDetailPreview({
-            slug: item.slug,
-            embedUrl: item.embedUrl,
-            themeId: selectedTheme.id,
-            index: activeSlideIndex,
-            loading: false,
-            failed: true,
-            frameUrl: null,
-            slideCount: fallbackSlideCount,
-          });
-          return;
-        }
-        cache.drafts.set(item.embedUrl, result);
-        if (isActive()) {
-          setLoadedDetailPreview({
-            draft: result,
-            index: activeSlideIndex,
-            previousFrameUrl: detailPreview?.frameUrl ?? null,
-            theme: selectedTheme,
-          });
-        }
-      })(),
-      Reason.DomCallback,
-    );
-  };
-
+  const detailLowResolutionImage = r2ImageTransformUrl(
+    detailImageSource,
+    TEMPLATE_DETAIL_THUMBNAIL_PREVIEW_SIZE,
+  );
+  const detailHighResolutionImage = detailImageSource;
   const selectDetailSlide = (index: number) => {
-    selectPresentationTemplateDetailSlide({
-      detailPreview,
-      detailSlideCount,
-      index,
+    selectDetailPreview({
       item,
-      selectedTheme,
-      setDetailPreview,
-      setSlideIndex,
       runtime,
+      index: Math.max(0, Math.min(detailSlideCount - 1, index)),
+      themeCss: presentationTemplateThemeCss(selectedTheme),
+      themeId: selectedTheme.id,
     });
   };
 
   const selectDetailTheme = (theme: PresentationTemplateThemeOption) => {
-    setThemeId(item.slug, theme.id);
-    const cachedDraft = runtime.presentation.drafts.get(item.embedUrl);
-    if (cachedDraft !== undefined) {
-      setLoadedDetailPreview({
-        draft: cachedDraft,
-        index: activeSlideIndex,
-        previousFrameUrl: detailPreview?.frameUrl ?? null,
-        theme,
-      });
-    }
+    selectDetailPreview({
+      item,
+      runtime,
+      index: activeSlideIndex,
+      themeCss: presentationTemplateThemeCss(theme),
+      themeId: theme.id,
+    });
   };
   const handleDetailSlideKeyDown = (event: ReactKeyboardEvent<HTMLElement>) => {
     if (event.defaultPrevented) {
@@ -3466,10 +3451,7 @@ function TemplatePreviewPage({
           </span>
         </DialogTitle>
       </DialogHeader>
-      <div
-        ref={loadDetailHtmlPreviewAfterMount}
-        className="grid min-h-0 flex-1 gap-3 overflow-y-auto bg-muted/20 p-3 sm:gap-4 sm:p-5 lg:max-h-[72vh] lg:grid-cols-[minmax(0,1fr)_320px] lg:overflow-hidden"
-      >
+      <div className="grid min-h-0 flex-1 gap-3 overflow-y-auto bg-muted/20 p-3 sm:gap-4 sm:p-5 lg:max-h-[72vh] lg:grid-cols-[minmax(0,1fr)_320px] lg:overflow-hidden">
         <div className="rounded-lg border border-border bg-background p-2.5 sm:p-3">
           <div
             role="group"
@@ -3478,39 +3460,27 @@ function TemplatePreviewPage({
             onKeyDown={handleDetailSlideKeyDown}
             className="relative aspect-[16/9] overflow-hidden rounded-lg bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
           >
-            <img
-              key={detailFallbackImage}
-              src={detailFallbackImage}
+            <ProgressiveTemplatePreviewImage
               alt=""
-              aria-hidden="true"
-              data-testid={`${item.title} detail image preview`}
-              className="pointer-events-none absolute inset-0 h-full w-full object-cover"
-              loading="eager"
-              decoding="async"
+              className="pointer-events-none absolute inset-0 z-20 h-full w-full object-cover"
+              dataTestId={`${item.title} detail image preview`}
               fetchPriority="high"
+              highResolutionUrl={detailHighResolutionImage}
+              loading="eager"
+              lowResolutionUrl={detailLowResolutionImage}
             />
-            <iframe
-              key={
-                visibleDetailPreview?.frameUrl ??
-                `${item.slug}:${selectedTheme.id}:${activeSlideIndex}:pending`
-              }
-              title={`${item.title} HTML preview`}
-              data-testid={`${item.title} detail HTML preview`}
-              src={visibleDetailPreview?.frameUrl ?? undefined}
-              sandbox="allow-same-origin"
-              tabIndex={-1}
-              className="pointer-events-none absolute inset-0 h-full w-full border-0 bg-background opacity-0 data-[loaded=true]:opacity-100"
-              onLoad={(event) => {
-                const frameUrl = visibleDetailPreview?.frameUrl;
-                if (!frameUrl) {
-                  return;
-                }
-                revealTemplatePreviewFrameAfterPaint({
-                  frame: event.currentTarget,
-                  frameUrl,
-                  onFrameLoad: () => {},
-                });
+            <TemplateDetailPreviewFrame
+              frameLoaded={visibleDetailPreview?.frameLoaded ?? false}
+              frameUrl={visibleDetailPreview?.frameUrl ?? null}
+              onFrameLoad={(frameUrl) => {
+                settleDetailPreviewFrame(frameUrl);
               }}
+              previousFrameSlideIndex={
+                visibleDetailPreview?.previousFrameSlideIndex ?? null
+              }
+              previousFrameUrl={visibleDetailPreview?.previousFrameUrl ?? null}
+              slideIndex={activeSlideIndex}
+              title={item.title}
             />
             <button
               type="button"
@@ -3551,9 +3521,14 @@ function TemplatePreviewPage({
             ).map((slideNumber) => {
               const slideIndex = slideNumber - 1;
               const active = slideIndex === activeSlideIndex;
-              const thumbnailImage = presentationTemplateFallbackSlideImage(
-                item,
-                slideIndex,
+              const thumbnailImage = r2ImageTransformUrl(
+                presentationTemplateDetailSlideImageSource(
+                  item,
+                  slideIndex,
+                  selectedTheme,
+                  htmlPreviewFailed,
+                ),
+                TEMPLATE_DETAIL_THUMBNAIL_PREVIEW_SIZE,
               );
               const thumbnailSlide =
                 cachedDetailDraft?.slides[slideIndex] ?? null;
@@ -3575,7 +3550,7 @@ function TemplatePreviewPage({
                 >
                   <PresentationTemplateShadowThumbnail
                     draft={cachedDetailDraft}
-                    fallbackImage={thumbnailImage}
+                    imageUrl={thumbnailImage}
                     runtime={runtime}
                     slideId={thumbnailSlide?.id ?? null}
                     themeVariables={thumbnailThemeVariables}
@@ -4644,6 +4619,7 @@ function TemplatePickerDialog({
   value,
   onChange,
   onClose,
+  skipEnterAnimation,
   hasPptTab,
   presentationItems,
   hasIllustrationTab,
@@ -4654,6 +4630,7 @@ function TemplatePickerDialog({
   value: GenerationTemplateRequest | undefined;
   onChange: (value: GenerationTemplateRequest | undefined) => void;
   onClose: () => void;
+  skipEnterAnimation: boolean;
   hasPptTab: boolean;
   presentationItems: readonly PresentationTemplateItem[];
   hasIllustrationTab: boolean;
@@ -4661,12 +4638,12 @@ function TemplatePickerDialog({
   hasWorkflowTab: boolean;
   runtime: TemplatePreviewRuntime;
 }) {
+  const pageSignal = useGet(pageSignal$);
   const category = useGet(templatePickerCategory$);
   const setCategory = useSet(setTemplatePickerCategory$);
   const search = useGet(templatePickerSearch$);
   const setSearch = useSet(setTemplatePickerSearch$);
   const previewSlug = useGet(templatePickerPreviewSlug$);
-  const setPreviewSlug = useSet(setTemplatePickerPreviewSlug$);
   const restorePresentationGridScroll = useSet(
     restoreTemplatePickerPresentationScroll$,
   );
@@ -4674,13 +4651,15 @@ function TemplatePickerDialog({
     setTemplatePickerPresentationScrollTop$,
   );
   const detailPreview = useGet(templateDetailHtmlPreview$);
-  const setDetailPreview = useSet(setTemplateDetailHtmlPreview$);
-  const detailThemeIdBySlug = useGet(templateDetailThemeIdBySlug$);
-  const setDetailThemeId = useSet(setTemplateDetailThemeId$);
+  const ownPreviewResources = useSet(ownTemplatePickerPreviewResources$);
+  const releasePreviewResources = useSet(
+    releaseTemplatePickerPreviewResources$,
+  );
+  const openDetailPreview = useSet(openPresentationTemplateDetailPreview$);
+  const selectDetailPreview = useSet(selectPresentationTemplateDetailPreview$);
+  const closeDetailPreview = useSet(closePresentationTemplateDetailPreview$);
   const openWebsiteTemplatePreview = useSet(openWebsiteTemplatePreview$);
   const cardThemeIdBySlug = useGet(templateCardThemeIdBySlug$);
-  const detailSlideIndexBySlug = useGet(templateDetailSlideIndexBySlug$);
-  const setDetailSlideIndex = useSet(setTemplateDetailSlideIndex$);
   const illustrationVariantIndex = useGet(illustrationVariantIndex$);
   const setIllustrationVariantIndex = useSet(setIllustrationVariantIndex$);
   const previewItem =
@@ -4690,6 +4669,7 @@ function TemplatePickerDialog({
   const isPreviewing = Boolean(previewItem);
   const dialogContentClassName = cn(
     "gap-0 overflow-hidden p-0 focus:outline-none focus-visible:outline-none focus-visible:ring-0",
+    skipEnterAnimation && "data-[state=open]:!animate-none",
     isPreviewing
       ? "flex h-[min(90dvh,760px)] max-w-6xl flex-col sm:h-auto [&>button[aria-label=Close]]:top-[7px]"
       : "flex h-[min(82vh,760px)] max-w-6xl flex-col [&>button[aria-label=Close]]:top-[7px] sm:[&>button[aria-label=Close]]:top-[19px]",
@@ -4747,6 +4727,7 @@ function TemplatePickerDialog({
   };
 
   const closeTemplatePicker = () => {
+    releasePreviewResources(runtime);
     setPresentationGridScrollTop(0);
     onClose();
   };
@@ -4788,44 +4769,42 @@ function TemplatePickerDialog({
       cardThemeIdBySlug[item.slug] ?? defaultPresentationTemplateThemeId(item),
     );
     const selectedSlideIndex = Math.max(0, Math.floor(slideIndex));
-    setDetailThemeId(item.slug, selectedTheme.id);
-    setDetailSlideIndex(item.slug, selectedSlideIndex);
-    const cachedDraft = runtime.presentation.drafts.get(item.embedUrl);
-    if (cachedDraft !== undefined) {
-      setLoadedPresentationTemplateDetailPreview({
-        draft: cachedDraft,
-        index: selectedSlideIndex,
-        item,
-        previousFrameUrl: detailPreview?.frameUrl ?? null,
-        selectedTheme,
-        setDetailPreview,
-      });
-    }
-    setPreviewSlug(item.slug);
+    detach(
+      openDetailPreview(
+        {
+          index: selectedSlideIndex,
+          item,
+          runtime,
+          themeCss: presentationTemplateThemeCss(selectedTheme),
+          themeId: selectedTheme.id,
+        },
+        pageSignal,
+      ),
+      Reason.DomCallback,
+    );
   };
 
   const previewDetailNavigationState = () => {
     if (previewItem === null) {
       return null;
     }
-    const selectedThemeId =
-      detailThemeIdBySlug[previewItem.slug] ??
-      defaultPresentationTemplateThemeId(previewItem);
-    const selectedTheme = findPresentationTemplateTheme(selectedThemeId);
-    const visibleDetailPreview =
+    const activeDetailPreview =
       detailPreview?.slug === previewItem.slug &&
-      detailPreview.embedUrl === previewItem.embedUrl &&
-      detailPreview.themeId === selectedTheme.id
+      detailPreview.embedUrl === previewItem.embedUrl
         ? detailPreview
         : null;
+    const selectedThemeId =
+      activeDetailPreview?.themeId ??
+      cardThemeIdBySlug[previewItem.slug] ??
+      defaultPresentationTemplateThemeId(previewItem);
+    const selectedTheme = findPresentationTemplateTheme(selectedThemeId);
     const detailSlideCount =
-      visibleDetailPreview?.slideCount ??
-      Math.max(presentationTemplateSlideImages(previewItem).length, 1);
+      activeDetailPreview?.slideCount ??
+      presentationTemplateSlideCount(previewItem);
     return {
-      activeSlideIndex: detailSlideIndexBySlug[previewItem.slug] ?? 0,
+      activeSlideIndex: activeDetailPreview?.index ?? 0,
       detailSlideCount,
       selectedTheme,
-      visibleDetailPreview,
     };
   };
 
@@ -4837,15 +4816,12 @@ function TemplatePickerDialog({
     if (navigationState === null) {
       return;
     }
-    selectPresentationTemplateDetailSlide({
-      detailPreview: navigationState.visibleDetailPreview,
-      detailSlideCount: navigationState.detailSlideCount,
-      index,
+    selectDetailPreview({
       item: previewItem,
-      selectedTheme: navigationState.selectedTheme,
-      setDetailPreview,
-      setSlideIndex: setDetailSlideIndex,
       runtime,
+      index: Math.max(0, Math.min(navigationState.detailSlideCount - 1, index)),
+      themeCss: presentationTemplateThemeCss(navigationState.selectedTheme),
+      themeId: navigationState.selectedTheme.id,
     });
   };
 
@@ -4901,7 +4877,7 @@ function TemplatePickerDialog({
       onOpenChange={(open) => {
         if (!open) {
           if (isPreviewing) {
-            setPreviewSlug(null);
+            closeDetailPreview(runtime);
             return;
           }
           closeTemplatePicker();
@@ -4910,6 +4886,9 @@ function TemplatePickerDialog({
     >
       <DialogContent
         className={dialogContentClassName}
+        overlayClassName={
+          skipEnterAnimation ? "data-[state=open]:!animate-none" : undefined
+        }
         aria-describedby={undefined}
         onKeyDown={handleDialogKeyDown}
         onKeyDownCapture={
@@ -4917,6 +4896,7 @@ function TemplatePickerDialog({
         }
         onOpenAutoFocus={(event) => {
           event.preventDefault();
+          ownPreviewResources(runtime, pageSignal);
           if (!isPreviewing) {
             prewarmTemplatePreviewsForCategory(selectedCategory);
           }
@@ -4926,7 +4906,7 @@ function TemplatePickerDialog({
           <TemplatePreviewPage
             item={previewItem}
             onBack={() => {
-              setPreviewSlug(null);
+              closeDetailPreview(runtime);
             }}
             onSelect={handleSelectPresentation}
             runtime={runtime}
@@ -5241,6 +5221,47 @@ function selectedComposerTemplateAttachment(
     : undefined;
 }
 
+function inlineComposerTemplatePicker({
+  picker,
+  enabled,
+  insertTemplate,
+  onDraftChange,
+}: {
+  picker: ComposerTemplatePicker | undefined;
+  enabled: boolean;
+  insertTemplate: (
+    value: GenerationTemplateRequest,
+    attachment: ComposerTemplateAttachment,
+  ) => void;
+  onDraftChange: (() => void) | undefined;
+}): ComposerTemplatePicker | undefined {
+  if (!picker || !enabled) {
+    return picker;
+  }
+  return {
+    value: undefined,
+    onChange(value) {
+      if (!value) {
+        return;
+      }
+      const attachment = selectedComposerTemplateAttachment(value);
+      if (!attachment) {
+        return;
+      }
+      insertTemplate(value, attachment);
+      onDraftChange?.();
+    },
+  };
+}
+
+function userMessageInlineTemplatesEnabled(
+  featureSwitches: Partial<Record<FeatureSwitchKey, boolean>>,
+): boolean {
+  return (
+    featureSwitches[FeatureSwitchKey.StructuredPromptInlineTemplates] === true
+  );
+}
+
 function composerTemplateAttachmentLifecycleKey(
   attachment: ComposerTemplateAttachment | undefined,
 ): string {
@@ -5270,6 +5291,8 @@ function ComposerTemplateAttachmentSync({
   const setCategory = useSet(setTemplatePickerCategory$);
   const setSearch = useSet(setTemplatePickerSearch$);
   const setPreviewSlug = useSet(setTemplatePickerPreviewSlug$);
+  const setReferenceValue = useSet(setTemplatePickerReferenceValue$);
+  const readSelectedTemplate = useSet(composer.readSelectedTemplate$);
   const cardThemeIdBySlug = useGet(templateCardThemeIdBySlug$);
   const attachment = selectedComposerTemplateAttachment(picker?.value);
   const openPicker = (category: string) => {
@@ -5286,6 +5309,7 @@ function ComposerTemplateAttachmentSync({
     );
     setSearch("");
     setPreviewSlug(null);
+    setReferenceValue(readSelectedTemplate() ?? null);
     setCategory(category);
     setOpen(true);
   };
@@ -5315,6 +5339,7 @@ function ComposerTemplateAttachmentSync({
 
 function TemplatePickerButton({
   picker,
+  onOpen,
   hasPptTab,
   presentationItems,
   hasIllustrationTab,
@@ -5323,6 +5348,7 @@ function TemplatePickerButton({
   runtime,
 }: {
   picker: ComposerTemplatePicker;
+  onOpen: () => void;
   hasPptTab: boolean;
   presentationItems: readonly PresentationTemplateItem[];
   hasIllustrationTab: boolean;
@@ -5331,10 +5357,13 @@ function TemplatePickerButton({
   runtime: TemplatePreviewRuntime;
 }) {
   const open = useGet(templatePickerOpen$);
+  const skipEnterAnimation = useGet(templatePickerSkipEnterAnimation$);
   const category = useGet(templatePickerCategory$);
+  const referenceValue = useGet(templatePickerReferenceValue$);
   const setOpen = useSet(setTemplatePickerOpen$);
   const setSearch = useSet(setTemplatePickerSearch$);
   const setPreviewSlug = useSet(setTemplatePickerPreviewSlug$);
+  const setReferenceValue = useSet(setTemplatePickerReferenceValue$);
   const cardThemeIdBySlug = useGet(templateCardThemeIdBySlug$);
   const selectedTitle = selectedTemplateTitle(picker.value);
   const selectedCategory = resolveTemplatePickerCategory({
@@ -5376,9 +5405,11 @@ function TemplatePickerButton({
               onFocus={prewarmPicker}
               onPointerDown={prewarmPicker}
               onClick={() => {
+                onOpen();
                 prewarmPicker();
                 setSearch("");
                 setPreviewSlug(null);
+                setReferenceValue(null);
                 setOpen(true);
               }}
             >
@@ -5392,11 +5423,13 @@ function TemplatePickerButton({
       </TooltipProvider>
       {open && (
         <TemplatePickerDialog
-          value={picker.value}
+          value={referenceValue ?? picker.value}
           onChange={picker.onChange}
           onClose={() => {
+            setReferenceValue(null);
             setOpen(false);
           }}
+          skipEnterAnimation={skipEnterAnimation}
           hasPptTab={hasPptTab}
           presentationItems={presentationItems}
           hasIllustrationTab={hasIllustrationTab}
@@ -5421,12 +5454,14 @@ function ComposerTemplatePickerSlot({
   const hasVideoTab = true;
   const hasWorkflowTab = true;
   const presentationItems = PRESENTATION_TEMPLATE_PICKER_ITEMS;
+  const prepareTemplateInsertion = useSet(composer.prepareTemplateInsertion$);
   if (!picker) {
     return null;
   }
   return (
     <TemplatePickerButton
       picker={picker}
+      onOpen={prepareTemplateInsertion}
       hasPptTab={hasPptTab}
       presentationItems={presentationItems}
       hasIllustrationTab={hasIllustrationTab}
@@ -5484,16 +5519,18 @@ function ComposerWorkflowPromptSlot({
 function ConnectorTriggerIcons({
   connectors,
   hasComputerUse,
+  hasCloudBrowser,
 }: {
   connectors: ComposerConnectorItem[];
   hasComputerUse: boolean;
+  hasCloudBrowser: boolean;
 }) {
   const enabled = connectors
     .filter((c) => {
       return c.authorized;
     })
     .slice(0, 3);
-  if (enabled.length === 0 && !hasComputerUse) {
+  if (enabled.length === 0 && !hasComputerUse && !hasCloudBrowser) {
     return <IconPlug size={18} stroke={1.5} />;
   }
   return (
@@ -5514,6 +5551,13 @@ function ConnectorTriggerIcons({
           </span>
         </span>
       )}
+      {hasCloudBrowser && (
+        <span className="relative shrink-0">
+          <span className="flex h-6 w-6 items-center justify-center overflow-hidden rounded-full bg-background text-primary zero-border sm:h-7 sm:w-7">
+            <IconWorld size={16} stroke={1.5} />
+          </span>
+        </span>
+      )}
     </span>
   );
 }
@@ -5521,15 +5565,17 @@ function ConnectorTriggerIcons({
 function AddConnectorsDialog({
   signals,
   unconnected,
-  pollingConnectorRef,
+  busyConnectorRef,
+  connectHandlers,
   onClose,
-  onSelect,
 }: {
   signals: ComposerConnectorSignals;
   unconnected: PublicConnectorCatalogStatusItem[];
-  pollingConnectorRef: ConnectorRef | null;
+  busyConnectorRef: ConnectorRef | null;
+  connectHandlers: (
+    connector: PublicConnectorCatalogStatusItem,
+  ) => ConnectorConnectHandlers;
   onClose: () => void;
-  onSelect: (connectorRef: ConnectorRef) => void;
 }) {
   const search = useGet(signals.addDialogSearch$);
   const setSearch = useSet(signals.setAddDialogSearch$);
@@ -5545,7 +5591,7 @@ function AddConnectorsDialog({
       }}
     >
       <DialogContent
-        className="max-w-2xl flex flex-col max-h-[80vh]"
+        className="zero-app max-w-2xl flex max-h-[80vh] flex-col"
         aria-describedby={undefined}
       >
         <DialogHeader className="shrink-0">
@@ -5568,42 +5614,13 @@ function AddConnectorsDialog({
           <div className="grid grid-cols-2 gap-3">
             {filtered.map((item) => {
               return (
-                <button
-                  type="button"
+                <ConnectorCard
                   key={item.connectorRef}
-                  onClick={() => {
-                    return onSelect(item.connectorRef);
-                  }}
-                  disabled={pollingConnectorRef === item.connectorRef}
-                  aria-label={`Connect ${item.label}`}
-                  className="rounded-lg bg-card overflow-hidden transition-colors hover:bg-muted/30 cursor-pointer text-left w-full"
-                  style={{ border: "0.7px solid hsl(var(--gray-400))" }}
-                >
-                  <div className="flex items-center gap-2.5 px-4 pt-4 pb-1">
-                    <span className="flex h-5 w-5 shrink-0 items-center justify-center">
-                      <ConnectorIcon icon={item.icon} size={20} />
-                    </span>
-                    <span className="min-w-0 flex-1 text-sm font-medium text-foreground truncate">
-                      {item.label}
-                    </span>
-                    {pollingConnectorRef === item.connectorRef ? (
-                      <IconLoader2
-                        size={16}
-                        stroke={1.5}
-                        className="shrink-0 text-muted-foreground animate-spin"
-                      />
-                    ) : (
-                      <span className="shrink-0 flex h-7 w-7 items-center justify-center rounded-md border border-border/60 text-muted-foreground">
-                        <IconPlus size={14} stroke={1.5} />
-                      </span>
-                    )}
-                  </div>
-                  <div className="px-4 pb-4 pt-1">
-                    <div className="text-xs text-muted-foreground line-clamp-2">
-                      {item.description}
-                    </div>
-                  </div>
-                </button>
+                  variant="catalog"
+                  connector={item}
+                  busy={busyConnectorRef === item.connectorRef}
+                  connect={connectHandlers(item)}
+                />
               );
             })}
           </div>
@@ -5625,6 +5642,44 @@ function ComputerUseConnectorMenuSection({
       <div className="px-2 pb-1 pt-1 text-xs text-muted-foreground">
         Your computer
       </div>
+      {computerUse.cloudBrowserAvailable && (
+        <div
+          onClick={() => {
+            computerUse.onCloudBrowserChange(!computerUse.cloudBrowserEnabled);
+          }}
+          className={cn(
+            "flex cursor-pointer items-center gap-2 rounded-md px-2 py-2 transition-colors",
+            computerUse.cloudBrowserEnabled
+              ? "bg-primary/5"
+              : "hover:bg-gray-100 dark:hover:bg-gray-200",
+          )}
+        >
+          <span className="flex h-4 w-4 shrink-0 items-center justify-center text-muted-foreground">
+            <IconWorld size={16} stroke={1.5} />
+          </span>
+          <span className="min-w-0 flex-1">
+            <span className="block truncate text-sm text-foreground">
+              Cloud browser
+            </span>
+          </span>
+          <span
+            className="flex shrink-0 items-center"
+            onClick={(event) => {
+              event.stopPropagation();
+            }}
+          >
+            <LoadingSwitch
+              checked={computerUse.cloudBrowserEnabled}
+              onCheckedChange={onDomEventFn((enabled) => {
+                computerUse.onCloudBrowserChange(enabled);
+              })}
+              loading={false}
+              ariaLabel={`${computerUse.cloudBrowserEnabled ? "Disable" : "Enable"} Cloud browser`}
+              size="sm"
+            />
+          </span>
+        </div>
+      )}
       {computerUse.loading ? (
         <div className="flex flex-col animate-pulse">
           {Array.from({ length: 2 }, (_, i) => {
@@ -5873,6 +5928,7 @@ function ConnectorsPopoverButton({
                 <ConnectorTriggerIcons
                   connectors={agentConnectors}
                   hasComputerUse={Boolean(computerUse?.selectedHostId)}
+                  hasCloudBrowser={Boolean(computerUse?.cloudBrowserEnabled)}
                 />
               </button>
             </TooltipTrigger>
@@ -6446,17 +6502,19 @@ function toPersistedAttachments(
 
 function restoreChatClipboardPayload({
   event,
-  structuredPromptEnabled,
+  inlineTemplatesEnabled,
   visualAttachmentUnsupported,
   insertPromptMarkdown,
+  insertUserMessage,
   restoreAttachments,
   onTemplateChange,
   onDraftChange,
 }: {
   event: ComposerPasteEvent;
-  structuredPromptEnabled: boolean;
+  inlineTemplatesEnabled: boolean;
   visualAttachmentUnsupported: VisualAttachmentUnsupportedState | null;
   insertPromptMarkdown: (value: string) => void;
+  insertUserMessage: (value: UserMessageDocument) => void;
   restoreAttachments: (attachments: PersistedAttachment[]) => void;
   onTemplateChange:
     | ((value: GenerationTemplateRequest | undefined) => void)
@@ -6470,11 +6528,11 @@ function restoreChatClipboardPayload({
   if (!payload) {
     return false;
   }
-  const structuredPrompt = structuredPromptEnabled
-    ? payload.structuredPrompt
+  const userMessage = shouldUseUserMessage(payload.userMessage)
+    ? payload.userMessage
     : undefined;
   const persistedAttachments = toPersistedAttachments(payload.attachments);
-  if (!structuredPrompt && persistedAttachments.length === 0) {
+  if (!userMessage && persistedAttachments.length === 0) {
     return false;
   }
   const allowedAttachments = visualAttachmentUnsupported
@@ -6493,13 +6551,23 @@ function restoreChatClipboardPayload({
   }
 
   event.preventDefault();
-  if (payload.text) {
+  const hasInsertableUserMessagePart = userMessage?.parts.some((part) => {
+    return (
+      part.type === "text" ||
+      part.type === "chat_thread" ||
+      part.type === "feedback" ||
+      (inlineTemplatesEnabled && part.type === "template")
+    );
+  });
+  if (userMessage && hasInsertableUserMessagePart) {
+    insertUserMessage(userMessage);
+  } else if (payload.text) {
     insertPromptMarkdown(payload.text);
   }
-  const templatePart = structuredPrompt?.parts.find((part) => {
+  const templatePart = userMessage?.parts.find((part) => {
     return part.type === "template";
   });
-  if (templatePart?.type === "template") {
+  if (!inlineTemplatesEnabled && templatePart?.type === "template") {
     onTemplateChange?.(templatePart.template);
   }
   if (allowedAttachments.length > 0) {
@@ -6759,51 +6827,95 @@ function nullToUndefined<T>(value: T | null): T | undefined {
   return value === null ? undefined : value;
 }
 
+function equalAgentConnectorAuthorizations(
+  left: AgentConnectorAuthorizations | null,
+  right: AgentConnectorAuthorizations | null,
+): boolean {
+  if (left === null || right === null) {
+    return left === right;
+  }
+  return (
+    left.agentId === right.agentId &&
+    equalArrays(left.enabledTypes, right.enabledTypes)
+  );
+}
+
+export function useComposerConnectorReadState(
+  composerConnectors: ComposerConnectorSignals,
+): ComposerConnectorReadState {
+  return {
+    catalogItems: useLastLoadable(allConnectorCatalogItems$),
+    agentId: useLoadable(composerConnectors.agentId$),
+    authorizations: useLastLoadable(composerConnectors.authorizations$, {
+      equalityFn: equalAgentConnectorAuthorizations,
+    }),
+  };
+}
+
+function matchingAuthorizedConnectorRefs(
+  agentId: Loadable<string | null>,
+  authorizations: Loadable<AgentConnectorAuthorizations | null>,
+): readonly ConnectorRef[] | null {
+  if (agentId.state !== "hasData" || authorizations.state !== "hasData") {
+    return null;
+  }
+  if (agentId.data === null) {
+    return authorizations.data === null ? [] : null;
+  }
+  if (authorizations.data?.agentId !== agentId.data) {
+    return null;
+  }
+  return authorizations.data.enabledTypes;
+}
+
 // The thread route invokes this hook from its ccstate-connected composer so
 // dynamic bindings do not cross another React component boundary. The agent
 // landing page uses the component wrapper below for its separate signal scope.
-export function useZeroChatComposer({
-  composer,
-  composerConnectors,
-  onSend,
-  onQueue,
-  sending,
-  queueWhileSending = false,
-  submissionLoading = false,
-  onCancel,
-  displayName,
-  className,
-  autoFocus,
-  enableMobileSingleLine = false,
-  draft,
-  composerFileInput$: composerFileInputProp$,
-  setComposerFileInput$: setComposerFileInputProp$,
-  chatThreadId,
-  onDraftChange,
-  actionsLoading = false,
-  modelPicker,
-  templatePicker,
-  onCreateWorkflowPrompt,
-  computerUse,
-  modelPickerLoading = false,
-  submitBlocker,
-  queuedItems,
-  onRemoveQueuedItem,
-  workflowEventItems,
-  onRemoveWorkflowEvent,
-  workflowEventsPaused = false,
-  workflowEventsPauseReason,
-  onSetWorkflowEventsPaused,
-  onClearWorkflowEvents,
-  activeGoal,
-  onCancelActiveGoal,
-}: ZeroChatComposerProps) {
+export function useZeroChatComposer(
+  {
+    composer,
+    composerConnectors,
+    onSend,
+    onQueue,
+    sending,
+    queueWhileSending = false,
+    submissionLoading = false,
+    onCancel,
+    displayName,
+    className,
+    autoFocus,
+    enableMobileSingleLine = false,
+    draft,
+    composerFileInput$: composerFileInputProp$,
+    setComposerFileInput$: setComposerFileInputProp$,
+    chatThreadId,
+    onDraftChange,
+    actionsLoading = false,
+    modelPicker,
+    templatePicker,
+    onCreateWorkflowPrompt,
+    computerUse,
+    modelPickerLoading = false,
+    submitBlocker,
+    queuedItems,
+    onRemoveQueuedItem,
+    workflowEventItems,
+    onRemoveWorkflowEvent,
+    workflowEventsPaused = false,
+    workflowEventsPauseReason,
+    onSetWorkflowEventsPaused,
+    onClearWorkflowEvents,
+    activeGoal,
+    onCancelActiveGoal,
+  }: ZeroChatComposerProps,
+  connectorReadState: ComposerConnectorReadState,
+) {
   const showAddDialog = useGet(composerConnectors.showAddDialog$);
   const setShowAddDialog = useSet(composerConnectors.setShowAddDialog$);
   const openGoalDialog = useSet(openChatThreadGoalDialog$);
   const featureSwitches = useGet(featureSwitch$);
-  const structuredPromptEnabled =
-    featureSwitches[FeatureSwitchKey.StructuredPrompt] ?? false;
+  const inlineTemplatesEnabled =
+    userMessageInlineTemplatesEnabled(featureSwitches);
 
   const resolved = useResolvedComposerSignals(
     draft,
@@ -6823,6 +6935,8 @@ export function useZeroChatComposer({
     setDragOver,
   } = resolved;
   const insertPromptMarkdown = useSet(composer.insertPromptMarkdown$);
+  const insertUserMessage = useSet(composer.insertUserMessage$);
+  const insertTemplate = useSet(composer.insertTemplate$);
   const appendComposerText = useSet(composer.appendText$);
   const [inputForSubmissionLoadable, readInputForSubmission] = useLoadableSet(
     composer.readInputForSubmission$,
@@ -6837,6 +6951,12 @@ export function useZeroChatComposer({
     visualAttachmentUnsupported,
   );
   const uploadsReady = attachmentUploadsState === "hasData";
+  const composerTemplatePicker = inlineComposerTemplatePicker({
+    picker: templatePicker,
+    enabled: inlineTemplatesEnabled,
+    insertTemplate,
+    onDraftChange,
+  });
 
   // File upload handlers (paste / drag-drop)
   const handlePaste = (e: ComposerPasteEvent) => {
@@ -6846,11 +6966,12 @@ export function useZeroChatComposer({
     if (
       restoreChatClipboardPayload({
         event: e,
-        structuredPromptEnabled,
+        inlineTemplatesEnabled,
         visualAttachmentUnsupported,
         insertPromptMarkdown,
+        insertUserMessage,
         restoreAttachments,
-        onTemplateChange: templatePicker?.onChange,
+        onTemplateChange: composerTemplatePicker?.onChange,
         onDraftChange,
       })
     ) {
@@ -6934,13 +7055,9 @@ export function useZeroChatComposer({
   };
 
   // Connectors: connected (org-level) + authorized (agent-level) → available
-  const connectorCatalogItemsLoadable = useLastLoadable(
-    allConnectorCatalogItems$,
-  );
-  const authorizedConnectorsLoadable = useLastLoadable(
-    composerConnectors.authorizedConnectors$,
-    { equalityFn: equalArrays },
-  );
+  const connectorCatalogItemsLoadable = connectorReadState.catalogItems;
+  const agentIdLoadable = connectorReadState.agentId;
+  const authorizationsLoadable = connectorReadState.authorizations;
   const pageSignal = useGet(pageSignal$);
   const selectedConnectorRef = useGet(composerConnectors.selectedConnectorRef$);
   const pendingConnectorRef = useGet(composerConnectors.pendingConnectorRef$);
@@ -6950,7 +7067,13 @@ export function useZeroChatComposer({
   const setSelectedConnectorRef = useSet(
     composerConnectors.setSelectedConnectorRef$,
   );
-  const pollingConnectorRef = useGet(pollingOAuthAuthCodeConnectorRef$);
+  const pollingAuthCodeRef = useGet(pollingOAuthAuthCodeConnectorRef$);
+  const pollingDeviceAuthRef = useGet(pollingOAuthDeviceAuthConnectorRef$);
+  const connectFlowRef = useGet(connectFlowConnectorRef$);
+  const busyConnectorRef =
+    connectFlowRef ?? pollingAuthCodeRef ?? pollingDeviceAuthRef;
+  const connectBrowserAuth = useSet(connectConnectorOAuthAuthCode$);
+  const connectNoAuth = useSet(connectConnectorNoAuth$);
   const authorizeFn = useSet(composerConnectors.authorizeConnector$);
   const deauthorizeFn = useSet(composerConnectors.deauthorizeConnector$);
   const optimisticConnected = useGet(justConnectedRefs$);
@@ -6959,13 +7082,16 @@ export function useZeroChatComposer({
   const setSavingConnectorRef = useSet(
     composerConnectors.setSavingConnectorRef$,
   );
-  const agentRecordId = loadableDataOrNull(
-    useLastLoadable(composerConnectors.agentId$),
+  const agentRecordId = loadableDataOrNull(agentIdLoadable);
+
+  const authorizedConnectors = matchingAuthorizedConnectorRefs(
+    agentIdLoadable,
+    authorizationsLoadable,
   );
 
   const connectorsLoading =
     connectorCatalogItemsLoadable.state !== "hasData" ||
-    authorizedConnectorsLoadable.state !== "hasData";
+    authorizedConnectors === null;
 
   const connectorCatalogItems =
     connectorCatalogItemsLoadable.state === "hasData"
@@ -6976,11 +7102,7 @@ export function useZeroChatComposer({
       return [connector.connectorRef, connector];
     }),
   );
-  const authorizedConnectors =
-    authorizedConnectorsLoadable.state === "hasData"
-      ? authorizedConnectorsLoadable.data
-      : [];
-  const authorizedSet = new Set(authorizedConnectors);
+  const authorizedSet = new Set(authorizedConnectors ?? []);
 
   const unconnectedConnectors = connectorCatalogItems.filter((connector) => {
     return (
@@ -7026,6 +7148,71 @@ export function useZeroChatComposer({
     return true;
   };
 
+  const completeConnectorAddition = async (
+    connectorRef: ConnectorRef,
+  ): Promise<void> => {
+    if (!authorizedSet.has(connectorRef)) {
+      const authorized = await handleConnectSuccess(connectorRef);
+      if (!authorized) {
+        setPendingConnectorRef(null);
+        return;
+      }
+    }
+    setPendingConnectorRef(null);
+    setShowAddDialog(false);
+  };
+
+  const connectorConnectHandlers = (
+    connector: PublicConnectorCatalogStatusItem,
+  ): ConnectorConnectHandlers => {
+    const connectorRef = connector.connectorRef;
+    return {
+      openModal: () => {
+        setPendingConnectorRef(connectorRef);
+        setSelectedConnectorRef(connectorRef);
+      },
+      connectBrowserAuth: async (authMethod) => {
+        setPendingConnectorRef(connectorRef);
+        const connected = await connectBrowserAuth(
+          connectorRef,
+          authMethod,
+          {
+            connectorLabel: connector.label,
+            connectorIcon: connector.icon,
+            agentId: nullToUndefined(agentRecordId),
+          },
+          pageSignal,
+        );
+        if (connected) {
+          await completeConnectorAddition(connectorRef);
+        } else {
+          setPendingConnectorRef(null);
+        }
+        return connected;
+      },
+      connectNoAuth: async (authMethod) => {
+        setPendingConnectorRef(connectorRef);
+        const connected = await connectNoAuth(
+          {
+            connectorRef,
+            authMethod,
+            options: {
+              connectorLabel: connector.label,
+              agentId: nullToUndefined(agentRecordId),
+            },
+          },
+          pageSignal,
+        );
+        if (connected) {
+          await completeConnectorAddition(connectorRef);
+        } else {
+          setPendingConnectorRef(null);
+        }
+        return connected;
+      },
+    };
+  };
+
   const handleToggle = async (connectorRef: ConnectorRef, checked: boolean) => {
     setSavingConnectorRef(connectorRef);
     await bestEffort(
@@ -7064,9 +7251,17 @@ export function useZeroChatComposer({
         return;
       }
       if (sendAction === "send") {
-        onSend(prompt, templatePicker?.value, submission.editorDocument);
+        onSend(
+          prompt,
+          composerTemplatePicker?.value,
+          submission.editorDocument,
+        );
       } else {
-        onQueue?.(prompt, templatePicker?.value, submission.editorDocument);
+        onQueue?.(
+          prompt,
+          composerTemplatePicker?.value,
+          submission.editorDocument,
+        );
       }
     };
     detach(submitCurrentInput(), Reason.DomCallback);
@@ -7195,7 +7390,7 @@ export function useZeroChatComposer({
             <div className="flex flex-col">
               <ComposerTemplateAttachmentSync
                 composer={composer}
-                picker={templatePicker}
+                picker={composerTemplatePicker}
                 onDraftChange={onDraftChange}
                 runtime={composer.templatePreview}
               />
@@ -7226,7 +7421,7 @@ export function useZeroChatComposer({
                   />
                   <ComposerTemplatePickerSlot
                     composer={composer}
-                    picker={templatePicker}
+                    picker={composerTemplatePicker}
                   />
                   <ComposerWorkflowPromptSlot
                     onCreateWorkflowPrompt={onCreateWorkflowPrompt}
@@ -7292,15 +7487,9 @@ export function useZeroChatComposer({
           }}
           onSuccess={async () => {
             const connectorRef = pendingConnectorRef ?? selectedConnectorRef;
-            if (connectorRef && !authorizedSet.has(connectorRef)) {
-              const authorized = await handleConnectSuccess(connectorRef);
-              if (!authorized) {
-                setPendingConnectorRef(null);
-                return;
-              }
+            if (connectorRef) {
+              await completeConnectorAddition(connectorRef);
             }
-            setPendingConnectorRef(null);
-            setShowAddDialog(false);
           }}
         />
       )}
@@ -7308,14 +7497,11 @@ export function useZeroChatComposer({
         <AddConnectorsDialog
           signals={composerConnectors}
           unconnected={unconnectedConnectors}
-          pollingConnectorRef={pollingConnectorRef}
+          busyConnectorRef={busyConnectorRef}
+          connectHandlers={connectorConnectHandlers}
           onClose={() => {
             setPendingConnectorRef(null);
             return setShowAddDialog(false);
-          }}
-          onSelect={(connectorRef) => {
-            setPendingConnectorRef(connectorRef);
-            setSelectedConnectorRef(connectorRef);
           }}
         />
       )}
@@ -7324,5 +7510,8 @@ export function useZeroChatComposer({
 }
 
 export function ZeroChatComposer(props: ZeroChatComposerProps) {
-  return useZeroChatComposer(props);
+  const connectorReadState = useComposerConnectorReadState(
+    props.composerConnectors,
+  );
+  return useZeroChatComposer(props, connectorReadState);
 }

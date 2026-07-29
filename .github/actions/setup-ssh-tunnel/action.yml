@@ -2,6 +2,16 @@ name: "Setup SSH via Cloudflare Tunnel"
 description: "Install cloudflared and configure SSH to proxy through Cloudflare Tunnel"
 
 inputs:
+  ssh-user:
+    description: "SSH user for metal runner hosts"
+    required: true
+  ssh-hosts:
+    description: "Comma-separated metal runner hosts to pre-connect"
+    required: true
+  require-all-hosts:
+    description: "Fail setup unless every SSH host pre-connects"
+    required: false
+    default: "true"
   ssh-key:
     description: "SSH private key for metal runner"
     required: true
@@ -54,6 +64,12 @@ runs:
         echo "$SSH_KEY" > "$HOME/.ssh/runner.pem"
         chmod 600 "$HOME/.ssh/runner.pem"
 
+        # Ansible expands ~ from the system account rather than the HOME
+        # provided by GitHub container jobs. Point it at the shared master
+        # socket created below so both clients use the same connection.
+        printf 'ANSIBLE_SSH_CONTROL_PATH=%s\n' \
+          "$HOME/.ssh/vm0-ssh-%%C" >> "$GITHUB_ENV"
+
         # Store credentials in a restricted file sourced by the proxy script,
         # so they don't appear in SSH config or process listings.
         printf 'export CF_ACCESS_CLIENT_ID="%s"\nexport CF_ACCESS_CLIENT_SECRET="%s"\n' \
@@ -63,17 +79,23 @@ runs:
 
         install -m 755 "$GITHUB_WORKSPACE/.github/scripts/cloudflare-ssh-proxy.sh" "$HOME/.ssh/cf-proxy.sh"
 
+        # Cloudflare Access setup and the origin SSH banner share this timeout.
+        # ConnectionAttempts does not restart an active ProxyCommand.
+        # The shared master preserves the native SSH 15-second keepalive
+        # cadence and Ansible's existing 300-second missed-response tolerance.
         SSH_CONFIG="$(printf '%s\n' \
           "Host *.vm3.ai" \
           "  StrictHostKeyChecking no" \
           "  UserKnownHostsFile /dev/null" \
-          "  ConnectTimeout 10" \
-          "  ConnectionAttempts 3" \
+          "  ConnectTimeout 30" \
           "  ServerAliveInterval 15" \
-          "  ServerAliveCountMax 4" \
+          "  ServerAliveCountMax 20" \
           "  TCPKeepAlive yes" \
           "  IPQoS throughput" \
           "  IdentityFile $HOME/.ssh/runner.pem" \
+          "  ControlMaster auto" \
+          "  ControlPath $HOME/.ssh/vm0-ssh-%C" \
+          "  ControlPersist 600s" \
           "  ProxyCommand $HOME/.ssh/cf-proxy.sh %h")"
 
         # Write to system config so all SSH clients (ssh, scp, ansible) read it
@@ -84,3 +106,11 @@ runs:
           mkdir -p /etc/ssh/ssh_config.d
           echo "$SSH_CONFIG" > /etc/ssh/ssh_config.d/tunnel.conf
         fi
+
+    - name: Establish replay-safe SSH transport
+      shell: bash
+      env:
+        SSH_USER: ${{ inputs.ssh-user }}
+        SSH_HOSTS: ${{ inputs.ssh-hosts }}
+        REQUIRE_ALL_HOSTS: ${{ inputs.require-all-hosts }}
+      run: bash "$GITHUB_WORKSPACE/.github/scripts/cloudflare-ssh-preconnect.sh" "$SSH_USER" "$SSH_HOSTS" "$REQUIRE_ALL_HOSTS"

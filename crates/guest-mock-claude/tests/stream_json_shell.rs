@@ -4,9 +4,25 @@ use std::collections::HashSet;
 use std::fs;
 use std::process::Stdio;
 
+#[cfg(unix)]
+use std::io::Read;
+#[cfg(unix)]
+use std::process::Command;
+#[cfg(unix)]
+use std::sync::mpsc;
+#[cfg(unix)]
+use std::time::{Duration, Instant};
+
+#[cfg(unix)]
+use guest_mock_claude::process_group_child::observe_child_exit_without_reaping;
 use serde_json::Value;
 #[cfg(target_os = "linux")]
 use support::kill_pid_file;
+#[cfg(unix)]
+use support::{
+    ChildWaitOutcome, continue_cleanup_in_background,
+    wait_child_status_and_cleanup_group_with_observer,
+};
 use support::{
     LARGE_MOCK_OUTPUT_BYTES, MOCK_CAPTURE_LIMIT_BYTES, STDERR_TRUNCATION_MARKER,
     STDOUT_TRUNCATION_MARKER, event_kind, expected_history_path, init_session_id, mock_claude,
@@ -486,5 +502,148 @@ fn orphan_pipe_does_not_block_output_wait() -> Result<(), Box<dyn std::error::Er
         events.iter().map(event_kind).collect::<Vec<_>>(),
         ["system/init", "result/success"]
     );
+    Ok(())
+}
+
+#[cfg(unix)]
+#[test]
+fn post_sigkill_timeout_transfers_child_and_pipe_cleanup() -> Result<(), Box<dyn std::error::Error>>
+{
+    const STDOUT_PREFIX: &[u8] = b"stdout-ready";
+    const STDERR_PREFIX: &[u8] = b"stderr-ready";
+    const CLEANUP_TIMEOUT: Duration = Duration::from_secs(2);
+
+    let mut command = Command::new("sh");
+    command
+        .args([
+            "-c",
+            "printf stdout-ready; printf stderr-ready >&2; exec sleep 30",
+        ])
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped());
+    let mut child = spawn_managed_mock_child(&mut command)?;
+    let child_pid = child.id();
+    let Some(mut child_stdout) = child.take_stdout() else {
+        child.terminate();
+        return Err(std::io::Error::other("missing test child stdout").into());
+    };
+    let Some(mut child_stderr) = child.take_stderr() else {
+        child.terminate();
+        return Err(std::io::Error::other("missing test child stderr").into());
+    };
+
+    let (stdout_ready_tx, stdout_ready_rx) = mpsc::channel();
+    let (stdout_result_tx, stdout_result_rx) = mpsc::channel();
+    let stdout_thread = std::thread::spawn(move || {
+        let result = (|| -> std::io::Result<Vec<u8>> {
+            let mut output = vec![0; STDOUT_PREFIX.len()];
+            child_stdout.read_exact(&mut output)?;
+            stdout_ready_tx
+                .send(())
+                .map_err(|_| std::io::Error::other("stdout readiness receiver dropped"))?;
+            child_stdout.read_to_end(&mut output)?;
+            Ok(output)
+        })();
+        let _ = stdout_result_tx.send(result);
+    });
+
+    let (stderr_ready_tx, stderr_ready_rx) = mpsc::channel();
+    let (stderr_result_tx, stderr_result_rx) = mpsc::channel();
+    let stderr_thread = std::thread::spawn(move || {
+        let result = (|| -> std::io::Result<Vec<u8>> {
+            let mut output = vec![0; STDERR_PREFIX.len()];
+            child_stderr.read_exact(&mut output)?;
+            stderr_ready_tx
+                .send(())
+                .map_err(|_| std::io::Error::other("stderr readiness receiver dropped"))?;
+            child_stderr.read_to_end(&mut output)?;
+            Ok(output)
+        })();
+        let _ = stderr_result_tx.send(result);
+    });
+
+    for (stream, ready_rx) in [("stdout", &stdout_ready_rx), ("stderr", &stderr_ready_rx)] {
+        if let Err(error) = ready_rx.recv_timeout(CLEANUP_TIMEOUT) {
+            child.terminate();
+            let _ = stdout_thread.join();
+            let _ = stderr_thread.join();
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::TimedOut,
+                format!("{stream} reader did not become ready: {error}"),
+            )
+            .into());
+        }
+    }
+
+    let (observer_ready_tx, observer_ready_rx) = mpsc::channel();
+    let (release_observer_tx, release_observer_rx) = mpsc::channel();
+    let started = Instant::now();
+    let outcome = wait_child_status_and_cleanup_group_with_observer(
+        child,
+        Duration::ZERO,
+        Duration::from_millis(20),
+        move |pid| {
+            observe_child_exit_without_reaping(pid)?;
+            observer_ready_tx
+                .send(())
+                .map_err(|_| std::io::Error::other("observer readiness receiver dropped"))?;
+            let _ = release_observer_rx.recv();
+            Ok(())
+        },
+    );
+    let elapsed = started.elapsed();
+
+    let (cleanup, error) = match outcome {
+        ChildWaitOutcome::CleanupPending { cleanup, error } => (cleanup, error),
+        ChildWaitOutcome::Complete(result) => {
+            let _ = stdout_thread.join();
+            let _ = stderr_thread.join();
+            return Err(std::io::Error::other(format!(
+                "expected pending child cleanup, got {result:?}"
+            ))
+            .into());
+        }
+    };
+    let (cleanup_complete_tx, cleanup_complete_rx) = mpsc::channel();
+    continue_cleanup_in_background(
+        cleanup,
+        stdout_thread,
+        stderr_thread,
+        Some(cleanup_complete_tx),
+    );
+
+    assert_eq!(error.kind(), std::io::ErrorKind::TimedOut);
+    assert!(
+        error
+            .to_string()
+            .starts_with("mock child did not exit after SIGKILL:"),
+        "unexpected timeout diagnostic: {error}"
+    );
+    assert!(
+        elapsed < Duration::from_secs(1),
+        "foreground timeout should remain bounded, elapsed: {elapsed:?}"
+    );
+
+    observer_ready_rx.recv_timeout(CLEANUP_TIMEOUT)?;
+    release_observer_tx.send(())?;
+    cleanup_complete_rx.recv_timeout(CLEANUP_TIMEOUT)?;
+
+    let stdout = stdout_result_rx.recv_timeout(CLEANUP_TIMEOUT)??;
+    let stderr = stderr_result_rx.recv_timeout(CLEANUP_TIMEOUT)??;
+    assert_eq!(stdout, STDOUT_PREFIX);
+    assert_eq!(stderr, STDERR_PREFIX);
+
+    let child_pid = libc::pid_t::try_from(child_pid)?;
+    let mut status = 0;
+    // SAFETY: cleanup completion reports that the owned direct child has
+    // already been waited; WNOHANG only verifies that no waitable child remains.
+    let wait_result = unsafe { libc::waitpid(child_pid, &mut status, libc::WNOHANG) };
+    assert_eq!(wait_result, -1);
+    assert_eq!(
+        std::io::Error::last_os_error().raw_os_error(),
+        Some(libc::ECHILD)
+    );
+
     Ok(())
 }

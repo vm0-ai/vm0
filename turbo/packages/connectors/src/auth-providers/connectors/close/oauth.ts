@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-import type { ConnectorAuthCodeGrantConfig } from "@vm0/connectors/connectors";
+import type { ConnectorAuthCodeGrantConfig } from "@vm0/connectors/connector-config";
 import { throwOAuthError } from "../../oauth/error";
 
 const CLOSE_TOKEN_URL = "https://api.close.com/oauth2/token/";
@@ -189,11 +189,4 @@ async function fetchCloseUserInfo(
     id: data.id,
     email: data.email ?? null,
   };
-}
-
-/**
- * Get the primary secret name for Close connector (the access token).
- */
-export function getCloseSecretName(): string {
-  return "CLOSE_ACCESS_TOKEN";
 }

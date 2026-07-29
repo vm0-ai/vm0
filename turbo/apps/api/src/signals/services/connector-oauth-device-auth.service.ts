@@ -15,7 +15,7 @@ import {
 import {
   resolveConnectorAuthClient,
   type ConnectorAuthClient,
-} from "@vm0/connectors/connector-utils";
+} from "@vm0/connectors/connector-auth-method";
 import {
   pollConnectorDeviceAuthorizationWithMethod,
   startConnectorDeviceAuthorizationWithMethod,
@@ -932,7 +932,7 @@ export const startConnectorOauthDeviceAuthSession$ = command(
       authMethodId: resolvedMethod.authMethodId,
       method: resolvedMethod.method,
       authClient: resolvedClient.authClient,
-      options: normalizedStartOptions.options ?? {},
+      options: normalizedStartOptions.options,
     });
     signal.throwIfAborted();
 

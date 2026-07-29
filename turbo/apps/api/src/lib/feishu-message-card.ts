@@ -88,35 +88,29 @@ export function buildFeishuWelcomeMessage(args: {
       {
         tag: "markdown",
         content:
-          "Send me a direct message or mention me in a group chat to get started.\n\nCommands: `/zero help`, `/zero connect`, `/zero disconnect`, `/zero switch`, `/zero model`.",
+          "Send me a direct message or mention me in a group chat to get started.\n\nCommands: `/help`, `/connect`, `/disconnect`, `/switch`, `/model`.",
       },
     ],
   });
 }
 
 export function buildFeishuHelpMessage(): FeishuOutboundMessage {
-  return cardMessage({
-    title: "Zero commands",
-    template: "blue",
-    summary: "Available Zero commands for Feishu.",
-    elements: [
-      {
-        tag: "markdown",
-        content: [
-          "• `/zero help` — Show this help",
-          "• `/zero connect` — Connect your VM0 account",
-          "• `/zero disconnect` — Disconnect your VM0 account",
-          "• `/zero switch` — Choose which agent responds",
-          "• `/zero model` — Choose your model",
-        ].join("\n"),
-      },
-      {
-        tag: "markdown",
-        content:
-          "Send a task in a direct message, or mention the bot with a task in a group chat.",
-      },
-    ],
-  });
+  return {
+    msgType: "text",
+    content: {
+      text: [
+        "Zero commands",
+        "",
+        "/help — Show this help",
+        "/connect — Connect your VM0 account",
+        "/disconnect — Disconnect your VM0 account",
+        "/switch — Choose which agent responds",
+        "/model — Choose your model",
+        "",
+        "Send a task in a direct message, or mention the bot with a task in a group chat.",
+      ].join("\n"),
+    },
+  };
 }
 
 export function buildFeishuNoticeMessage(args: {

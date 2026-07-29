@@ -1,5 +1,6 @@
 import { zeroConnectorCatalogContract } from "@vm0/api-contracts/contracts/zero-connector-catalog";
 import { getAllFeatureStates } from "@vm0/core/feature-switch";
+import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import { command } from "ccstate";
 
 import { organizationAuthContext$ } from "../auth/auth-context";
@@ -8,6 +9,7 @@ import { pathParamsOf } from "../context/request";
 import { db$ } from "../external/db";
 import type { RouteEntry } from "../route-entry";
 import { userFeatureSwitchOverrides } from "../services/feature-switches.service";
+import { connectorCatalogDiagnostics$ } from "../services/connector-catalog-diagnostics.service";
 import {
   getPublicConnectorCatalogDetail,
   getPublicConnectorCatalogPermissionDetail,
@@ -24,6 +26,22 @@ const connectorCatalogAuth = {
   missingOrganizationStatus: 401,
   requiredCapability: "connector:read",
 } as const;
+
+const connectorCatalogDiagnosticsAuth = {
+  requireOrganization: true,
+  missingOrganizationStatus: 401,
+  accept: ["session"],
+} as const;
+
+const connectorCatalogDiagnosticsDisabled = Object.freeze({
+  status: 403 as const,
+  body: Object.freeze({
+    error: Object.freeze({
+      message: "Connector catalog diagnostics are not enabled",
+      code: "FORBIDDEN",
+    }),
+  }),
+});
 
 function connectorCatalogNotFound() {
   return notFound("Connector catalog item not found");
@@ -72,7 +90,6 @@ const listConnectorCatalogInner$ = command(
       listPublicConnectorCatalog({
         db: context.db,
         featureStates: context.featureStates,
-        apiAuthMethodPolicy: "include",
       }),
       signal,
     );
@@ -90,21 +107,26 @@ const listConnectorCatalogStatusInner$ = command(
     const context = await set(connectorCatalogRequestContext$);
     signal.throwIfAborted();
 
-    const connectorState = await get(
-      zeroConnectorList({
-        orgId: auth.orgId,
-        userId: auth.userId,
-        featureStates: context.featureStates,
-      }),
+    const connectorState = await settleConnectorCatalogRead(
+      get(
+        zeroConnectorList({
+          orgId: auth.orgId,
+          userId: auth.userId,
+          featureStates: context.featureStates,
+        }),
+      ),
+      signal,
     );
+    if (!connectorState.ok) {
+      return connectorCatalogUnavailable();
+    }
     signal.throwIfAborted();
 
     const catalog = await settleConnectorCatalogRead(
       listPublicConnectorCatalogStatus({
         db: context.db,
         featureStates: context.featureStates,
-        apiAuthMethodPolicy: "include",
-        connectors: connectorState.connectors,
+        connectors: connectorState.value.connectors,
       }),
       signal,
     );
@@ -113,6 +135,19 @@ const listConnectorCatalogStatusInner$ = command(
     }
 
     return { status: 200 as const, body: catalog.value };
+  },
+);
+
+const getConnectorCatalogDiagnosticsInner$ = command(
+  async ({ set }, signal: AbortSignal) => {
+    const context = await set(connectorCatalogRequestContext$);
+    signal.throwIfAborted();
+    if (!context.featureStates[FeatureSwitchKey.ZeroDebug]) {
+      return connectorCatalogDiagnosticsDisabled;
+    }
+
+    const diagnostics = await set(connectorCatalogDiagnostics$, signal);
+    return { status: 200 as const, body: diagnostics };
   },
 );
 
@@ -127,7 +162,6 @@ const getConnectorCatalogInner$ = command(
         db: context.db,
         connectorRef: params.connectorRef,
         featureStates: context.featureStates,
-        apiAuthMethodPolicy: "include",
       }),
       signal,
     );
@@ -153,7 +187,6 @@ const getConnectorCatalogPermissionsInner$ = command(
         db: context.db,
         connectorRef: params.connectorRef,
         featureStates: context.featureStates,
-        apiAuthMethodPolicy: "include",
       }),
       signal,
     );
@@ -176,6 +209,13 @@ export const zeroConnectorCatalogRoutes: readonly RouteEntry[] = [
   {
     route: zeroConnectorCatalogContract.status,
     handler: authRoute(connectorCatalogAuth, listConnectorCatalogStatusInner$),
+  },
+  {
+    route: zeroConnectorCatalogContract.diagnostics,
+    handler: authRoute(
+      connectorCatalogDiagnosticsAuth,
+      getConnectorCatalogDiagnosticsInner$,
+    ),
   },
   {
     route: zeroConnectorCatalogContract.get,

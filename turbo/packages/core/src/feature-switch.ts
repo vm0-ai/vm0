@@ -46,13 +46,6 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     description: "Test-only feature switch for flag system validation",
     enabled: true,
   },
-  [FeatureSwitchKey.ExternalConnectorCatalog]: {
-    maintainer: "liangyou@vm0.ai",
-    description:
-      "Use the accepted external catalog as the global source for official connectors",
-    enabled: false,
-    userOverridable: false,
-  },
   [FeatureSwitchKey.AhrefsConnector]: {
     maintainer: "yuma@vm0.ai",
     description: "Enable the Ahrefs SEO connector",
@@ -126,6 +119,11 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
   [FeatureSwitchKey.GoogleFormsConnector]: {
     maintainer: "yuma@vm0.ai",
     description: "Enable the Google Forms connector",
+    enabled: false,
+  },
+  [FeatureSwitchKey.JoggAiConnector]: {
+    maintainer: "yuma@vm0.ai",
+    description: "Enable the JoggAI video generation connector",
     enabled: false,
   },
   [FeatureSwitchKey.MercuryConnector]: {
@@ -230,44 +228,23 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
       "Reveal activity debug surfaces, activity log navigation, appended system prompts, and Debug preferences",
     enabled: false,
   },
-  [FeatureSwitchKey.CanonicalSlackIngress]: {
-    maintainer: "lancy@vm0.ai",
+  [FeatureSwitchKey.LanguagePreference]: {
+    maintainer: "yuma@vm0.ai",
     description:
-      "Route newly admitted per-user Slack threads through canonical chat ingress.",
+      "Enable workspace language bootstrap, persistence, and the Settings preference entry.",
     enabled: false,
-    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
-  [FeatureSwitchKey.CanonicalSlackWebVisibility]: {
-    maintainer: "lancy@vm0.ai",
+  [FeatureSwitchKey.BrazilianPortugueseLocale]: {
+    maintainer: "yuma@vm0.ai",
     description:
-      "Show canonical Slack chat threads in Web chat surfaces for enrolled users.",
+      "Allow pt-BR preference writes after incompatible API readers and rollback candidates have drained.",
     enabled: false,
-    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
-  },
-  [FeatureSwitchKey.CanonicalSlackAssets]: {
-    maintainer: "lancy@vm0.ai",
-    description:
-      "Canonicalize direct Slack inputs and run-scoped Slack file publications.",
-    enabled: false,
-    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
-  },
-  [FeatureSwitchKey.ZeroWeather]: {
-    maintainer: "ethan@vm0.ai",
-    description:
-      "Enable the managed Google-backed Zero Weather and Air Quality APIs and weather:read ZERO_TOKEN capability.",
-    enabled: true,
+    userOverridable: false,
   },
   [FeatureSwitchKey.ZeroFinance]: {
     maintainer: "ethan@vm0.ai",
     description:
       "Enable the managed APIDojo-backed Zero Finance API and finance:read ZERO_TOKEN capability.",
-    enabled: false,
-    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
-  },
-  [FeatureSwitchKey.ZeroPeopleSearch]: {
-    maintainer: "liangyou@vm0.ai",
-    description:
-      "Enable managed Perplexity People Search and the people-search:read ZERO_TOKEN capability.",
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
@@ -306,12 +283,6 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
       "Enable Notion event workflow automations, starting with child pages created under a configured parent page.",
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
-  },
-  [FeatureSwitchKey.GithubWorkflowRunAutomations]: {
-    maintainer: "ethan@vm0.ai",
-    description:
-      "Enable GitHub Actions workflow run completed event automations.",
-    enabled: true,
   },
   [FeatureSwitchKey.GithubWebhookAutomations]: {
     maintainer: "ethan@vm0.ai",
@@ -356,6 +327,20 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
+  [FeatureSwitchKey.CodexSessionPruning]: {
+    maintainer: "liangyou@vm0.ai",
+    description:
+      "Prune oversized Codex checkpoint histories to the latest native compact generation.",
+    enabled: false,
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+  },
+  [FeatureSwitchKey.ClaudeSessionPruning]: {
+    maintainer: "liangyou@vm0.ai",
+    description:
+      "Prune oversized Claude Code checkpoint histories to the latest native compact generation.",
+    enabled: false,
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+  },
   [FeatureSwitchKey.RealAgentInPreview]: {
     maintainer: "ethan@vm0.ai",
     description:
@@ -369,12 +354,13 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     enabled: false,
     userOverridable: false,
   },
-  [FeatureSwitchKey.StructuredPrompt]: {
+  [FeatureSwitchKey.StructuredPromptInlineTemplates]: {
     maintainer: "bingjie@vm0.ai",
     description:
-      "Enable structured user prompt rendering, sends, and drafts while preserving the legacy content fallback.",
+      "Enable multiple inline artifact templates in structured chat prompts.",
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+    userOverridable: false,
   },
   [FeatureSwitchKey.ZapierConnector]: {
     maintainer: "yuma@vm0.ai",
@@ -382,24 +368,10 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
       "Enable the Zapier connector. When disabled, Zapier is hidden from the connectors list and cannot be connected.",
     enabled: false,
   },
-  [FeatureSwitchKey.HtmlArtifactCommentEditing]: {
-    maintainer: "bingjie@vm0.ai",
-    description:
-      "Enable the HTML artifact comment-editing workflow for collecting DOM comments and preparing instrumented working-copy edits.",
-    enabled: false,
-    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
-  },
   [FeatureSwitchKey.ComputerUseDesktopPlugins]: {
     maintainer: "lancy@vm0.ai",
     description:
       "Enable Zero Desktop Computer Use plugins for local resources, starting with the bundled filesystem plugin gateway.",
-    enabled: false,
-    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
-  },
-  [FeatureSwitchKey.AgentUnreadIndicators]: {
-    maintainer: "ethan@vm0.ai",
-    description:
-      "Show chat unread indicators in sidebar pinned agent lists and the conversation picker.",
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
@@ -410,19 +382,19 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
-  [FeatureSwitchKey.ComposerChatThreadSuggestions]: {
+  [FeatureSwitchKey.ChatThreadSidebarAutoOpen]: {
     maintainer: "ethan@vm0.ai",
     description:
-      "Suggest titled chat threads from the current agent when typing @ in the chat composer.",
+      "Automatically open the latest sidebar-capable card from a running or successfully completed chat run when the utility sidebar is closed and split view is available.",
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
-  [FeatureSwitchKey.ChatHistoryBackfillProgress]: {
-    maintainer: "ethan@vm0.ai",
+  [FeatureSwitchKey.ComposerSkillSubstringSearch]: {
+    maintainer: "yuma@vm0.ai",
     description:
-      "Progress bar under the chat thread header showing history backfill progress while older messages load.",
-    // Not rolled out to anyone yet; enable per-user via the Lab page.
+      "Match chat composer slash skill suggestions by any slug substring instead of only prefixes.",
     enabled: false,
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
   [FeatureSwitchKey.ThreeColumnNav]: {
     maintainer: "ming@vm0.ai",
@@ -439,6 +411,12 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
+  [FeatureSwitchKey.SlackDmSessionRouting]: {
+    maintainer: "yuma@vm0.ai",
+    description:
+      "Reuse agent/model-scoped sessions for top-level Slack direct messages after compatible callback readers are deployed.",
+    enabled: false,
+  },
   [FeatureSwitchKey.TeamsIntegration]: {
     maintainer: "linghan@vm0.ai",
     description:
@@ -453,12 +431,13 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
-  [FeatureSwitchKey.PresentationExport]: {
-    maintainer: "bingjie@vm0.ai",
+  [FeatureSwitchKey.StrapiIntegration]: {
+    maintainer: "ethan@vm0.ai",
     description:
-      "Enable downloading presentation artifacts as PPTX files and uploading them as native, editable Google Slides decks.",
+      "Enable Strapi integration settings and Strapi entry-published workflow automations.",
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+    userOverridable: false,
   },
   [FeatureSwitchKey.Artifacts]: {
     maintainer: "bingjie@vm0.ai",
@@ -478,23 +457,13 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     maintainer: "bingjie@vm0.ai",
     description:
       "Generate poster images asynchronously when video artifacts are recorded.",
-    enabled: false,
-    enabledUserHashes: ["032a75d8"],
+    enabled: true,
   },
-  [FeatureSwitchKey.WebsiteTemplateV2]: {
+  [FeatureSwitchKey.ImageStyleR2]: {
     maintainer: "bingjie@vm0.ai",
     description:
-      "Generate websites from refreshed self-contained template packages. When off, website generation uses the existing package versions.",
-    enabled: false,
-    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
-  },
-  [FeatureSwitchKey.PlanUpgradeGuidance]: {
-    maintainer: "ethan@vm0.ai",
-    description:
-      "Show plan-upgrade guidance in Zero CLI help and render billing plan links as rich chat cards.",
-    enabled: false,
-    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
-    userOverridable: false,
+      "Resolve archive-enabled image styles from private R2 packages. When off, image style authoring continues reading vm0-skills from GitHub.",
+    enabled: true,
   },
   [FeatureSwitchKey.OrgPlanEntitlementReads]: {
     maintainer: "yuma@vm0.ai",
@@ -511,10 +480,17 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
     userOverridable: false,
   },
-  [FeatureSwitchKey.ZeroMail]: {
-    maintainer: "ethan@vm0.ai",
+  [FeatureSwitchKey.ZeroMailReplyFollowUp]: {
+    maintainer: "yuma@vm0.ai",
     description:
-      "Enable persistent Gmail and Outlook draft cards created through the Zero Mail CLI.",
+      "Enable Zero Mail reply follow-up after all API deployments can read Gmail event configurations with threadId.",
+    enabled: false,
+    userOverridable: false,
+  },
+  [FeatureSwitchKey.ZeroBrowser]: {
+    maintainer: "liangyou@vm0.ai",
+    description:
+      "Enable thread-scoped Cloud browser access in chat and the Zero CLI.",
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },

@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-import type { ConnectorAuthCodeGrantConfig } from "@vm0/connectors/connectors";
+import type { ConnectorAuthCodeGrantConfig } from "@vm0/connectors/connector-config";
 import { throwOAuthError } from "../../oauth/error";
 
 const CANVA_TOKEN_URL = "https://api.canva.com/rest/v1/oauth/token";
@@ -263,11 +263,4 @@ async function fetchCanvaUserInfo(accessToken: string): Promise<CanvaUserInfo> {
     username: displayName,
     email: null,
   };
-}
-
-/**
- * Get the primary secret name for Canva connector (the access token).
- */
-export function getCanvaSecretName(): string {
-  return "CANVA_ACCESS_TOKEN";
 }

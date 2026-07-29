@@ -7,7 +7,6 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use api_contracts::generated::constants::runners::paths::CANONICAL_GUEST_HOME_DIR;
-use api_contracts::generated::types::runners::storage::StorageManifest;
 use flate2::{Compression, write::GzEncoder};
 use guest_contracts::session_history_identity::{
     FINAL_SESSION_HISTORY_IDENTITY_MAX_BYTES, FinalSessionHistoryFramework,
@@ -36,6 +35,7 @@ use tokio::sync::{Notify, oneshot};
 use super::super::agent_run::{
     ProcessCancelTimeouts, RunControls, RunStart, build_agent_start_command, run_in_sandbox,
 };
+use super::super::codex_model_catalog_prefetch::PREFETCH_HOST_START_TIMEOUT;
 use super::super::diagnostics::AgentStdoutStreamDiagnostics;
 use super::super::storage::guest_download_stdin_command;
 use super::super::telemetry::RunnerSpawnTiming;
@@ -58,18 +58,30 @@ use crate::restored_session_identity::{
     RestoredSessionIdentityMismatchReason,
 };
 use crate::storage_fingerprints::{StorageFingerprint, StorageFingerprints};
+use crate::storage_manifest::StorageManifest;
 use crate::telemetry::SessionHistoryTelemetrySnapshot;
 use crate::test_fixtures::OneShotSessionHistoryServer;
 use crate::types::{
-    ResumeSession, ResumeSessionHistory, ResumeSessionHistoryDownloadSource,
-    ResumeSessionHistoryEncoding, ResumeSessionHistoryRef, ResumeSessionHistoryRefKind,
-    SandboxReuseResult,
+    CodexRuntimeConfig, ExecutionContext, FirewallEntry, ResumeSession, ResumeSessionHistory,
+    ResumeSessionHistoryDownloadSource, ResumeSessionHistoryEncoding, ResumeSessionHistoryRef,
+    ResumeSessionHistoryRefKind, SandboxReuseResult,
 };
 use crate::workspace_image_cache::{
     WorkspaceSessionHistorySidecar, WorkspaceSessionHistorySidecarRepresentation,
 };
 
 const LARGE_SESSION_HISTORY_SIZE_BYTES: usize = 1024 * 1024 + 1;
+
+fn codex_oauth_context() -> ExecutionContext {
+    let mut context = minimal_context();
+    context.cli_agent_type = "codex".into();
+    context.encrypted_secrets = Some("encrypted".into());
+    context.firewalls = Some(vec![FirewallEntry::Builtin {
+        name: "model-provider:codex-oauth-token".into(),
+        base_url_vars: None,
+    }]);
+    context
+}
 
 fn gzip_bytes(raw: &[u8]) -> Vec<u8> {
     let mut encoder = GzEncoder::new(Vec::new(), Compression::fast());
@@ -190,7 +202,7 @@ fn context_with_checkpointed_session_identity(
                 kind: ResumeSessionHistoryRefKind::Blob,
                 hash: hex::encode(Sha256::digest(history)),
                 url: format!("https://example.com/{session_id}.blob"),
-                encoding: None,
+                encoding: ResumeSessionHistoryEncoding::Identity,
                 raw_size: history.len() as u64,
                 encoded_size: history.len() as u64,
                 download_source: None,
@@ -359,7 +371,7 @@ async fn assert_checkpointed_final_identity_helper_failure_falls_back(
                 kind: ResumeSessionHistoryRefKind::Blob,
                 hash: hex::encode(Sha256::digest(history)),
                 url: server.url("/history.blob?token=secret"),
-                encoding: None,
+                encoding: ResumeSessionHistoryEncoding::Identity,
                 raw_size: history.len() as u64,
                 encoded_size: history.len() as u64,
                 download_source: None,
@@ -1052,7 +1064,7 @@ async fn run_in_sandbox_materializes_resume_session_history_ref_before_restore()
                 kind: ResumeSessionHistoryRefKind::Blob,
                 hash: hex::encode(Sha256::digest(history)),
                 url: history_server.url(),
-                encoding: None,
+                encoding: ResumeSessionHistoryEncoding::Identity,
                 raw_size: history.len() as u64,
                 encoded_size: history.len() as u64,
                 download_source: None,
@@ -1103,7 +1115,7 @@ async fn run_in_sandbox_records_gzip_session_history_download_encoding() {
                 kind: ResumeSessionHistoryRefKind::Blob,
                 hash: hex::encode(Sha256::digest(history)),
                 url: history_server.url(),
-                encoding: Some(ResumeSessionHistoryEncoding::Gzip),
+                encoding: ResumeSessionHistoryEncoding::Gzip,
                 raw_size: history.len() as u64,
                 encoded_size: compressed.len() as u64,
                 download_source: Some(ResumeSessionHistoryDownloadSource::ConfiguredPublicEndpoint),
@@ -1214,7 +1226,7 @@ async fn run_in_sandbox_records_zstd_session_history_download_encoding() {
                 kind: ResumeSessionHistoryRefKind::Blob,
                 hash: hex::encode(Sha256::digest(history)),
                 url: history_server.url(),
-                encoding: Some(ResumeSessionHistoryEncoding::Zstd),
+                encoding: ResumeSessionHistoryEncoding::Zstd,
                 raw_size: history.len() as u64,
                 encoded_size: compressed.len() as u64,
                 download_source: None,
@@ -1326,7 +1338,7 @@ async fn run_in_sandbox_uses_prestarted_session_history_materializer() {
                 kind: ResumeSessionHistoryRefKind::Blob,
                 hash: hex::encode(Sha256::digest(history)),
                 url: history_server.url(),
-                encoding: None,
+                encoding: ResumeSessionHistoryEncoding::Identity,
                 raw_size: history.len() as u64,
                 encoded_size: history.len() as u64,
                 download_source: None,
@@ -1472,7 +1484,7 @@ async fn run_in_sandbox_restores_session_history_from_workspace_sidecar() {
                 kind: ResumeSessionHistoryRefKind::Blob,
                 hash: hex::encode(Sha256::digest(history)),
                 url: server.url("/history.blob?token=secret"),
-                encoding: None,
+                encoding: ResumeSessionHistoryEncoding::Identity,
                 raw_size: history.len() as u64,
                 encoded_size: history.len() as u64,
                 download_source: None,
@@ -1541,7 +1553,7 @@ async fn run_in_sandbox_reports_cancelled_while_workspace_sidecar_read_is_pendin
                 kind: ResumeSessionHistoryRefKind::Blob,
                 hash: hex::encode(Sha256::digest(history)),
                 url: "https://example.test/history.blob?token=secret".into(),
-                encoding: None,
+                encoding: ResumeSessionHistoryEncoding::Identity,
                 raw_size: history.len() as u64,
                 encoded_size: history.len() as u64,
                 download_source: None,
@@ -1635,7 +1647,7 @@ async fn run_in_sandbox_falls_back_when_workspace_sidecar_hash_mismatches() {
                 kind: ResumeSessionHistoryRefKind::Blob,
                 hash: hex::encode(Sha256::digest(history)),
                 url: server.url("/history.blob?token=secret"),
-                encoding: None,
+                encoding: ResumeSessionHistoryEncoding::Identity,
                 raw_size: history.len() as u64,
                 encoded_size: history.len() as u64,
                 download_source: None,
@@ -1715,7 +1727,7 @@ async fn run_in_sandbox_restores_codex_zstd_sidecar_with_session_timestamp() {
                 kind: ResumeSessionHistoryRefKind::Blob,
                 hash: hex::encode(Sha256::digest(&history)),
                 url: server.url("/history.blob?token=secret"),
-                encoding: Some(ResumeSessionHistoryEncoding::Zstd),
+                encoding: ResumeSessionHistoryEncoding::Zstd,
                 raw_size: history.len() as u64,
                 encoded_size: compressed_history.len() as u64,
                 download_source: None,
@@ -1784,7 +1796,7 @@ async fn run_in_sandbox_restores_codex_raw_sidecar_with_session_timestamp() {
                 kind: ResumeSessionHistoryRefKind::Blob,
                 hash: hex::encode(Sha256::digest(history)),
                 url: server.url("/history.blob?token=secret"),
-                encoding: None,
+                encoding: ResumeSessionHistoryEncoding::Identity,
                 raw_size: history.len() as u64,
                 encoded_size: history.len() as u64,
                 download_source: None,
@@ -1880,7 +1892,7 @@ async fn run_in_sandbox_records_completed_prestarted_materializer_failure() {
                 kind: ResumeSessionHistoryRefKind::Blob,
                 hash: hex::encode(Sha256::digest(b"different")),
                 url: history_server.url(),
-                encoding: None,
+                encoding: ResumeSessionHistoryEncoding::Identity,
                 raw_size: history.len() as u64,
                 encoded_size: history.len() as u64,
                 download_source: None,
@@ -1975,7 +1987,7 @@ async fn run_in_sandbox_skips_checkpointed_final_session_history_restore() {
                 kind: ResumeSessionHistoryRefKind::Blob,
                 hash: hex::encode(Sha256::digest(&history)),
                 url: server.url("/history.blob?token=secret"),
-                encoding: None,
+                encoding: ResumeSessionHistoryEncoding::Identity,
                 raw_size: history.len() as u64,
                 encoded_size: history.len() as u64,
                 download_source: None,
@@ -2271,7 +2283,7 @@ async fn run_in_sandbox_restores_when_checkpointed_final_identity_helper_reports
                 kind: ResumeSessionHistoryRefKind::Blob,
                 hash: hex::encode(Sha256::digest(history)),
                 url: server.url("/history.blob?token=secret"),
-                encoding: None,
+                encoding: ResumeSessionHistoryEncoding::Identity,
                 raw_size: history.len() as u64,
                 encoded_size: history.len() as u64,
                 download_source: None,
@@ -2365,7 +2377,7 @@ async fn run_in_sandbox_restores_when_checkpointed_final_identity_helper_exec_er
                 kind: ResumeSessionHistoryRefKind::Blob,
                 hash: hex::encode(Sha256::digest(history)),
                 url: server.url("/history.blob?token=secret"),
-                encoding: None,
+                encoding: ResumeSessionHistoryEncoding::Identity,
                 raw_size: history.len() as u64,
                 encoded_size: history.len() as u64,
                 download_source: None,
@@ -2472,7 +2484,7 @@ async fn run_in_sandbox_restores_when_skip_verified_identity_mismatches_request(
                 kind: ResumeSessionHistoryRefKind::Blob,
                 hash: hex::encode(Sha256::digest(history)),
                 url: server.url("/history.blob?token=secret"),
-                encoding: None,
+                encoding: ResumeSessionHistoryEncoding::Identity,
                 raw_size: history.len() as u64,
                 encoded_size: history.len() as u64,
                 download_source: None,
@@ -2487,7 +2499,7 @@ async fn run_in_sandbox_restores_when_skip_verified_identity_mismatches_request(
                 kind: ResumeSessionHistoryRefKind::Blob,
                 hash: hex::encode(Sha256::digest(history)),
                 url: server.url("/other-history.blob?token=secret"),
-                encoding: None,
+                encoding: ResumeSessionHistoryEncoding::Identity,
                 raw_size: history.len() as u64,
                 encoded_size: history.len() as u64,
                 download_source: None,
@@ -2603,7 +2615,7 @@ async fn run_in_sandbox_records_mismatch_fallback_and_restores_prestarted_histor
                     kind: ResumeSessionHistoryRefKind::Blob,
                     hash: hex::encode(Sha256::digest(history)),
                     url: server.url("/history.blob?token=secret"),
-                    encoding: None,
+                    encoding: ResumeSessionHistoryEncoding::Identity,
                     raw_size: history.len() as u64,
                     encoded_size: history.len() as u64,
                     download_source: None,
@@ -2714,7 +2726,7 @@ async fn run_in_sandbox_records_requested_larger_prefix_outcomes_without_changin
                     kind: ResumeSessionHistoryRefKind::Blob,
                     hash: requested_hash.clone(),
                     url: server.url("/history.blob?token=secret"),
-                    encoding: None,
+                    encoding: ResumeSessionHistoryEncoding::Identity,
                     raw_size: requested_history.len() as u64,
                     encoded_size: requested_history.len() as u64,
                     download_source: None,
@@ -2831,7 +2843,7 @@ async fn run_in_sandbox_records_missing_idle_identity_reuse_fallback() {
                 kind: ResumeSessionHistoryRefKind::Blob,
                 hash: hex::encode(Sha256::digest(history)),
                 url: server.url("/history.blob?token=secret"),
-                encoding: None,
+                encoding: ResumeSessionHistoryEncoding::Identity,
                 raw_size: history.len() as u64,
                 encoded_size: history.len() as u64,
                 download_source: None,
@@ -2919,7 +2931,7 @@ async fn run_in_sandbox_uses_final_identity_when_restored_history_changes_before
                 kind: ResumeSessionHistoryRefKind::Blob,
                 hash: hex::encode(Sha256::digest(history)),
                 url: server.url("/history.blob?token=secret"),
-                encoding: None,
+                encoding: ResumeSessionHistoryEncoding::Identity,
                 raw_size: history.len() as u64,
                 encoded_size: history.len() as u64,
                 download_source: None,
@@ -3079,6 +3091,62 @@ async fn run_in_sandbox_records_invalid_final_identity_metadata_reason() {
 }
 
 #[tokio::test]
+async fn run_in_sandbox_records_oversized_final_identity_metadata_reason() {
+    let dir = tempfile::tempdir().unwrap();
+    let config = test_executor_config(dir.path()).await;
+    let sandbox = sandbox_mock::MockSandbox::new("test");
+    let ctx = minimal_context();
+    let session_id = "sess-oversized-final-123";
+    let history = br#"{"type":"init"}"#;
+    let (metadata_path, _) = final_identity_runtime_paths(&ctx);
+    let mut metadata =
+        final_identity_metadata_bytes(session_id, history, claude_history_path(session_id));
+    let oversized_metadata_len = FINAL_SESSION_HISTORY_IDENTITY_MAX_BYTES as usize + 1;
+    assert!(metadata.len() < oversized_metadata_len);
+    metadata.resize(oversized_metadata_len, b' ');
+    serde_json::from_slice::<serde_json::Value>(&metadata).unwrap();
+    sandbox.push_read_file_result(Ok(Some(metadata)));
+    let mut telemetry = test_telemetry(&config, &ctx);
+
+    let result = run_in_sandbox(
+        &sandbox,
+        &ctx,
+        &config,
+        RunStart {
+            restore_guest_state: false,
+            reuse_result: SandboxReuseResult::PoolMiss,
+            prev_storage: None,
+        },
+        &mut telemetry,
+        RunControls::new(tokio_util::sync::CancellationToken::new(), None),
+    )
+    .await
+    .unwrap();
+
+    assert!(result.failure.is_none());
+    assert!(result.reusable_session_identity.is_none());
+    let read_calls = sandbox.read_file_calls();
+    assert_eq!(read_calls.len(), 1);
+    assert_eq!(read_calls[0].path, metadata_path);
+    assert_eq!(
+        read_calls[0].max_bytes,
+        FINAL_SESSION_HISTORY_IDENTITY_MAX_BYTES + 1
+    );
+    let ops = telemetry.pending_ops_snapshot();
+    assert_successful_action(
+        &ops,
+        "session_history_identity_finalize_unverifiable_metadata",
+    );
+    assert!(
+        ops.iter().all(|op| {
+            op.0 != "session_history_identity_finalize_invalid_metadata"
+                && op.0 != "session_history_identity_finalized"
+        }),
+        "oversized metadata should not record invalid or finalized identity telemetry, got: {ops:?}"
+    );
+}
+
+#[tokio::test]
 async fn run_in_sandbox_records_large_final_identity_metadata() {
     let dir = tempfile::tempdir().unwrap();
     let config = test_executor_config(dir.path()).await;
@@ -3185,7 +3253,7 @@ async fn run_in_sandbox_redacts_session_history_download_details_from_telemetry(
                 kind: ResumeSessionHistoryRefKind::Blob,
                 hash: expected_hash.clone(),
                 url: history_server.url(),
-                encoding: None,
+                encoding: ResumeSessionHistoryEncoding::Identity,
                 raw_size: history.len() as u64,
                 encoded_size: history.len() as u64,
                 download_source: None,
@@ -3465,6 +3533,315 @@ async fn run_in_sandbox_forwards_local_active_inputs_in_order_and_dedupes() {
 }
 
 #[tokio::test]
+async fn codex_catalog_prefetch_waits_for_guest_state_restore() {
+    let dir = tempfile::tempdir().unwrap();
+    let config = test_executor_config(dir.path()).await;
+    let inner = sandbox_mock::MockSandbox::new("test");
+    inner.push_exec_result(Err(sandbox_exec_error("restore failed")));
+    let prefetch_started = Arc::new(Notify::new());
+    let sandbox = OperationGateSandbox {
+        inner: Box::new(inner),
+        point: SandboxGatePoint::StartProcess,
+        entered: Arc::clone(&prefetch_started),
+        release: Arc::new(Notify::new()),
+    };
+    let ctx = codex_oauth_context();
+    let mut telemetry = test_telemetry(&config, &ctx);
+
+    let result = tokio::time::timeout(
+        RUN_IN_SANDBOX_TEST_TIMEOUT,
+        run_in_sandbox(
+            &sandbox,
+            &ctx,
+            &config,
+            RunStart {
+                restore_guest_state: true,
+                reuse_result: SandboxReuseResult::PoolMiss,
+                prev_storage: None,
+            },
+            &mut telemetry,
+            RunControls::new(tokio_util::sync::CancellationToken::new(), None),
+        ),
+    )
+    .await
+    .unwrap();
+
+    assert!(result.is_err());
+    assert!(
+        tokio::time::timeout(Duration::from_millis(10), prefetch_started.notified())
+            .await
+            .is_err(),
+        "prefetch must not start before guest state restoration succeeds",
+    );
+}
+
+#[tokio::test]
+async fn codex_catalog_prefetch_start_observes_run_cancellation() {
+    let dir = tempfile::tempdir().unwrap();
+    let config = test_executor_config(dir.path()).await;
+    let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::new());
+    let prefetch_started = Arc::new(Notify::new());
+    let sandbox = OperationGateSandbox {
+        inner: create_overridden_sandbox(Arc::clone(&overrides)).await,
+        point: SandboxGatePoint::StartProcess,
+        entered: Arc::clone(&prefetch_started),
+        release: Arc::new(Notify::new()),
+    };
+    let ctx = codex_oauth_context();
+    let cancel = tokio_util::sync::CancellationToken::new();
+    let run_task = spawn_run_in_sandbox_test(Box::new(sandbox), ctx, config, cancel.clone());
+
+    tokio::time::timeout(RUN_IN_SANDBOX_TEST_TIMEOUT, prefetch_started.notified())
+        .await
+        .expect("prefetch should enter process start");
+    cancel.cancel();
+
+    let result = tokio::time::timeout(RUN_IN_SANDBOX_TEST_TIMEOUT, run_task)
+        .await
+        .expect("cancelled prefetch start should not hold the run open")
+        .unwrap()
+        .unwrap();
+
+    assert_eq!(
+        result.failure.as_ref().map(|failure| failure.exit_code),
+        Some(EXIT_SIGKILL)
+    );
+    assert!(overrides.start_process_calls().is_empty());
+    assert!(overrides.wait_process_calls().is_empty());
+    assert!(overrides.process_cancel_calls().is_empty());
+}
+
+#[tokio::test(start_paused = true)]
+async fn codex_catalog_prefetch_start_timeout_does_not_delay_agent() {
+    let dir = tempfile::tempdir().unwrap();
+    let config = test_executor_config(dir.path()).await;
+    let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::new());
+    let process_start_entered = Arc::new(Notify::new());
+    let process_start_release = Arc::new(Notify::new());
+    let sandbox = OperationGateSandbox {
+        inner: create_overridden_sandbox(Arc::clone(&overrides)).await,
+        point: SandboxGatePoint::StartProcess,
+        entered: Arc::clone(&process_start_entered),
+        release: Arc::clone(&process_start_release),
+    };
+    let run_task = spawn_run_in_sandbox_test(
+        Box::new(sandbox),
+        codex_oauth_context(),
+        config,
+        tokio_util::sync::CancellationToken::new(),
+    );
+
+    process_start_entered.notified().await;
+    tokio::time::advance(PREFETCH_HOST_START_TIMEOUT).await;
+    tokio::task::yield_now().await;
+    process_start_release.notify_one();
+
+    let result = run_task.await.unwrap().unwrap();
+    assert!(result.failure.is_none());
+    let start_calls = overrides.start_process_calls();
+    assert_eq!(start_calls.len(), 1);
+    assert!(!start_calls[0].cmd.contains("codex --version"));
+}
+
+async fn assert_codex_catalog_prefetch_skipped(
+    context: ExecutionContext,
+    reuse_result: SandboxReuseResult,
+    scenario: &str,
+) {
+    let dir = tempfile::tempdir().unwrap();
+    let config = test_executor_config(dir.path()).await;
+    let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::new());
+    let sandbox = create_overridden_sandbox(Arc::clone(&overrides)).await;
+    let mut telemetry = test_telemetry(&config, &context);
+
+    let result = tokio::time::timeout(
+        RUN_IN_SANDBOX_TEST_TIMEOUT,
+        run_in_sandbox(
+            &*sandbox,
+            &context,
+            &config,
+            RunStart {
+                restore_guest_state: false,
+                reuse_result,
+                prev_storage: None,
+            },
+            &mut telemetry,
+            RunControls::new(tokio_util::sync::CancellationToken::new(), None),
+        ),
+    )
+    .await
+    .unwrap()
+    .unwrap();
+
+    assert!(result.failure.is_none(), "{scenario}");
+    let start_calls = overrides.start_process_calls();
+    assert_eq!(start_calls.len(), 1, "{scenario}");
+    assert!(
+        !start_calls[0].cmd.contains("codex --version"),
+        "{scenario}"
+    );
+}
+
+#[tokio::test]
+async fn codex_catalog_prefetch_skips_ineligible_runs() {
+    let mut unrelated_framework = codex_oauth_context();
+    unrelated_framework.cli_agent_type = "claude-code".into();
+
+    let mut missing_secrets = codex_oauth_context();
+    missing_secrets.encrypted_secrets = None;
+
+    let mut missing_firewall = codex_oauth_context();
+    missing_firewall.firewalls = None;
+
+    let mut custom_runtime = codex_oauth_context();
+    custom_runtime.codex_runtime_config = Some(CodexRuntimeConfig {
+        provider_id: "provider".into(),
+        name: "custom".into(),
+        base_url: "https://provider.example".into(),
+        env_key: "TOKEN".into(),
+        wire_api: "responses".into(),
+        supports_websockets: false,
+        model_catalog: None,
+    });
+
+    let scenarios = [
+        (
+            unrelated_framework,
+            SandboxReuseResult::PoolMiss,
+            "unrelated framework",
+        ),
+        (
+            missing_secrets,
+            SandboxReuseResult::PoolMiss,
+            "missing encrypted secrets",
+        ),
+        (
+            missing_firewall,
+            SandboxReuseResult::PoolMiss,
+            "missing Codex OAuth firewall",
+        ),
+        (
+            custom_runtime,
+            SandboxReuseResult::PoolMiss,
+            "custom Codex runtime",
+        ),
+        (
+            codex_oauth_context(),
+            SandboxReuseResult::Reused,
+            "reused sandbox",
+        ),
+    ];
+
+    for (context, reuse_result, scenario) in scenarios {
+        assert_codex_catalog_prefetch_skipped(context, reuse_result, scenario).await;
+    }
+}
+
+#[tokio::test]
+async fn codex_catalog_prefetch_is_cancelled_on_pre_spawn_exit() {
+    let dir = tempfile::tempdir().unwrap();
+    let config = test_executor_config(dir.path()).await;
+    let wait_gate = MockLifecycleGate::new();
+    let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::new());
+    overrides.set_wait_process_lifecycle_gate(wait_gate.clone());
+    let private_write_started = Arc::new(Notify::new());
+    let sandbox = OperationGateSandbox {
+        inner: create_overridden_sandbox(Arc::clone(&overrides)).await,
+        point: SandboxGatePoint::WritePrivateFile,
+        entered: Arc::clone(&private_write_started),
+        release: Arc::new(Notify::new()),
+    };
+    let ctx = codex_oauth_context();
+    let cancel = tokio_util::sync::CancellationToken::new();
+    let run_task = spawn_run_in_sandbox_test(Box::new(sandbox), ctx, config, cancel.clone());
+
+    wait_gate
+        .wait_entered(1, RUN_IN_SANDBOX_TEST_TIMEOUT)
+        .await
+        .expect("prefetch should enter process wait");
+    tokio::time::timeout(
+        RUN_IN_SANDBOX_TEST_TIMEOUT,
+        private_write_started.notified(),
+    )
+    .await
+    .expect("run should enter private-file preparation");
+    cancel.cancel();
+
+    assert!(
+        overrides
+            .wait_for_process_cancel_calls(1, RUN_IN_SANDBOX_TEST_TIMEOUT)
+            .await
+    );
+    let result = tokio::time::timeout(RUN_IN_SANDBOX_TEST_TIMEOUT, run_task)
+        .await
+        .expect("prefetch cleanup should be bounded")
+        .unwrap()
+        .unwrap();
+
+    assert_eq!(
+        result.failure.as_ref().map(|failure| failure.exit_code),
+        Some(EXIT_SIGKILL)
+    );
+    assert_eq!(overrides.start_process_calls().len(), 1);
+    assert_eq!(overrides.wait_process_calls().len(), 1);
+    assert_eq!(overrides.process_cancel_calls().len(), 1);
+}
+
+#[tokio::test]
+async fn fresh_codex_oauth_run_prefetches_catalog_while_agent_prepares() {
+    let dir = tempfile::tempdir().unwrap();
+    let config = test_executor_config(dir.path()).await;
+    let wait_gate = Arc::new(Notify::new());
+    let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::with_wait_process_gate(
+        Arc::clone(&wait_gate),
+    ));
+    let sandbox = create_overridden_sandbox(Arc::clone(&overrides)).await;
+    let ctx = codex_oauth_context();
+    let run_task = spawn_run_in_sandbox_test(
+        sandbox,
+        ctx,
+        config,
+        tokio_util::sync::CancellationToken::new(),
+    );
+
+    tokio::time::timeout(RUN_IN_SANDBOX_TEST_TIMEOUT, async {
+        loop {
+            if overrides.start_process_calls().len() == 2
+                && overrides.wait_process_calls().len() == 2
+            {
+                break;
+            }
+            tokio::task::yield_now().await;
+        }
+    })
+    .await
+    .unwrap();
+
+    let start_calls = overrides.start_process_calls();
+    assert!(start_calls[0].cmd.contains("codex --version"));
+    assert!(
+        start_calls[0]
+            .cmd
+            .contains("X-VM0-Codex-Model-Catalog-Prefetch: 1")
+    );
+    assert_eq!(start_calls[0].control, sandbox::ProcessControlMode::None);
+    assert!(matches!(
+        start_calls[0].output,
+        ProcessOutputMode::Buffered { .. }
+    ));
+    assert_eq!(start_calls[1].control, sandbox::ProcessControlMode::Enabled);
+    assert!(!start_calls[1].cmd.contains("codex --version"));
+
+    wait_gate.notify_waiters();
+    let result = tokio::time::timeout(RUN_IN_SANDBOX_TEST_TIMEOUT, run_task)
+        .await
+        .unwrap()
+        .unwrap()
+        .unwrap();
+    assert!(result.failure.is_none());
+}
+
+#[tokio::test]
 async fn run_in_sandbox_sets_codex_app_server_backend_for_active_input_source() {
     let dir = tempfile::tempdir().unwrap();
     let config = test_executor_config(dir.path()).await;
@@ -3610,7 +3987,7 @@ async fn run_in_sandbox_reports_cancelled_while_session_history_download_is_pend
                 kind: ResumeSessionHistoryRefKind::Blob,
                 hash: hex::encode(Sha256::digest(history)),
                 url: format!("http://{address}/history.blob?token=secret"),
-                encoding: None,
+                encoding: ResumeSessionHistoryEncoding::Identity,
                 raw_size: history.len() as u64,
                 encoded_size: history.len() as u64,
                 download_source: None,

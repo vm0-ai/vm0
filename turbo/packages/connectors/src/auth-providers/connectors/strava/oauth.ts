@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-import type { ConnectorAuthCodeGrantConfig } from "@vm0/connectors/connectors";
+import type { ConnectorAuthCodeGrantConfig } from "@vm0/connectors/connector-config";
 import { throwOAuthError } from "../../oauth/error";
 
 const STRAVA_TOKEN_URL = "https://www.strava.com/oauth/token";
@@ -215,11 +215,4 @@ async function fetchStravaAthleteInfo(
     username: name,
     email: null,
   };
-}
-
-/**
- * Get the primary secret name for Strava connector (the access token).
- */
-export function getStravaSecretName(): string {
-  return "STRAVA_ACCESS_TOKEN";
 }

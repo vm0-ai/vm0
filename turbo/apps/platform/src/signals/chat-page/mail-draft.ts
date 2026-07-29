@@ -1,4 +1,11 @@
-import { command, computed, state, type Command, type Computed } from "ccstate";
+import {
+  command,
+  computed,
+  state,
+  type Command,
+  type Computed,
+  type State,
+} from "ccstate";
 import {
   zeroMailContract,
   type ZeroMailDraft,
@@ -15,8 +22,17 @@ import {
   getOrCreateCardSignals,
   registeredCardSignals,
 } from "./card-signal-map.ts";
-import { onRef } from "../utils.ts";
-import { connectorChangedVersion$ } from "../connector-reload.ts";
+import { onRef, withCleanup } from "../utils.ts";
+import {
+  createTextPreviewComputedFromBlob,
+  type TextPreviewComputed,
+} from "../text-preview.ts";
+
+export type MailDraftFollowUpState =
+  | "idle"
+  | "submitting"
+  | "active"
+  | "paused";
 
 export interface MailDraftDescriptor {
   readonly mailDraftId: string;
@@ -24,33 +40,33 @@ export interface MailDraftDescriptor {
   readonly href: string;
 }
 
+export interface MailAttachmentPreviews {
+  readonly text: ReadonlyMap<string, TextPreviewComputed>;
+  readonly urls: ReadonlyMap<string, string | null>;
+}
+
 export interface MailDraftSignals extends MailDraftDescriptor {
   readonly threadId: string;
   readonly draft$: Computed<Promise<ZeroMailDraft | null>>;
   readonly sidebarDraft$: Computed<Promise<ZeroMailDraft | null>>;
-  readonly attachmentUrls$: Computed<
-    Promise<ReadonlyMap<string, string | null>>
-  >;
+  readonly attachmentPreviews$: Computed<Promise<MailAttachmentPreviews>>;
   readonly setAttachmentScopeRef$: Command<
     (() => void) | undefined,
     [HTMLDivElement | null]
   >;
-  readonly reloadSidebar$: Command<void, []>;
+  readonly reloadDraft$: Command<void, []>;
   readonly delete$: Command<Promise<void>, [AbortSignal]>;
   readonly send$: Command<Promise<void>, [AbortSignal]>;
+  readonly followUpState$: Computed<MailDraftFollowUpState>;
+  readonly followUp$: Command<Promise<void>, [AbortSignal]>;
 }
 
 export interface MailDraftCardSignalsRegistry {
   register(descriptor: MailDraftDescriptor): MailDraftSignals;
   resolve(resourceKey: string): MailDraftSignals;
   entries(): ReadonlyMap<string, MailDraftSignals>;
+  readonly reload$: Command<void, []>;
 }
-
-export const emptyMailDraftSignalsById$ = computed<
-  ReadonlyMap<string, MailDraftSignals>
->(() => {
-  return new Map();
-});
 
 function browserOrigin(): string | null {
   if (typeof location === "undefined" || !location.origin) {
@@ -128,10 +144,10 @@ export function parseMailDraftUrl(value: string): MailDraftDescriptor | null {
   };
 }
 
-function createAttachmentUrls(
+function createAttachmentPreviews(
   descriptor: MailDraftDescriptor,
   sidebarDraft$: Computed<Promise<ZeroMailDraft | null>>,
-): Pick<MailDraftSignals, "attachmentUrls$" | "setAttachmentScopeRef$"> {
+): Pick<MailDraftSignals, "attachmentPreviews$" | "setAttachmentScopeRef$"> {
   const attachmentObjectUrls = new Map<string, string>();
   const attachmentScopeActive$ = state(false);
   let cleanupSignal: AbortSignal | null = null;
@@ -146,10 +162,10 @@ function createAttachmentUrls(
     loadVersion += 1;
     revokeAttachmentObjectUrls();
   };
-  const attachmentUrls$ = computed(
-    async (get): Promise<ReadonlyMap<string, string | null>> => {
+  const attachmentPreviews$ = computed(
+    async (get): Promise<MailAttachmentPreviews> => {
       if (!get(attachmentScopeActive$)) {
-        return new Map();
+        return { text: new Map(), urls: new Map() };
       }
       const currentLoadVersion = ++loadVersion;
       const draftPromise = get(sidebarDraft$);
@@ -169,18 +185,20 @@ function createAttachmentUrls(
       const draft = await draftPromise;
       signal.throwIfAborted();
       if (currentLoadVersion !== loadVersion) {
-        return new Map();
+        return { text: new Map(), urls: new Map() };
       }
+      const attachments = draft?.version === 3 ? draft.attachments : [];
+      const attachmentPartIds = new Set(
+        attachments.flatMap((attachment) => {
+          return attachment.partId ? [attachment.partId] : [];
+        }),
+      );
       const partIds = Array.from(
         new Set([
           ...(draft?.inlineImages ?? []).map((image) => {
             return image.partId;
           }),
-          ...(draft?.version === 3 ? draft.attachments : []).flatMap(
-            (attachment) => {
-              return attachment.partId ? [attachment.partId] : [];
-            },
-          ),
+          ...attachmentPartIds,
         ]),
       );
       const responses = await Promise.all(
@@ -200,20 +218,27 @@ function createAttachmentUrls(
       );
       signal.throwIfAborted();
       if (currentLoadVersion !== loadVersion) {
-        return new Map();
+        return { text: new Map(), urls: new Map() };
       }
       revokeAttachmentObjectUrls();
-      const imageUrls = new Map<string, string | null>();
+      const textPreviews = new Map<string, TextPreviewComputed>();
+      const urls = new Map<string, string | null>();
       for (const { partId, response } of responses) {
         if (response.status === 404) {
-          imageUrls.set(partId, null);
+          urls.set(partId, null);
           continue;
         }
         const url = URL.createObjectURL(response.body);
         attachmentObjectUrls.set(partId, url);
-        imageUrls.set(partId, url);
+        urls.set(partId, url);
+        if (attachmentPartIds.has(partId)) {
+          textPreviews.set(
+            partId,
+            createTextPreviewComputedFromBlob(response.body),
+          );
+        }
       }
-      return imageUrls;
+      return { text: textPreviews, urls };
     },
   );
   const setAttachmentScopeRef$ = onRef(
@@ -229,19 +254,31 @@ function createAttachmentUrls(
       );
     }),
   );
-  return { attachmentUrls$, setAttachmentScopeRef$ };
+  return {
+    attachmentPreviews$,
+    setAttachmentScopeRef$,
+  };
 }
 
-function createMailDraftSignals(
-  threadId: string,
+interface MailDraftResourceSignals extends Pick<
+  MailDraftSignals,
+  "draft$" | "sidebarDraft$" | "reloadDraft$" | "followUpState$"
+> {
+  readonly followUpStateValue$: State<MailDraftFollowUpState>;
+  readonly draftOverride$: State<ZeroMailDraft | null | undefined>;
+}
+
+function createMailDraftResourceSignals(
   descriptor: MailDraftDescriptor,
-): MailDraftSignals {
+): MailDraftResourceSignals {
+  const followUpStateValue$ = state<MailDraftFollowUpState>("idle");
+  const followUpState$ = computed((get) => {
+    return get(followUpStateValue$);
+  });
   const draftOverride$ = state<ZeroMailDraft | null | undefined>(undefined);
-  const sidebarDraftOverride$ = state<ZeroMailDraft | null | undefined>(
-    undefined,
-  );
+  const draftReloadVersion$ = state(0);
   const draft$ = computed(async (get): Promise<ZeroMailDraft | null> => {
-    get(connectorChangedVersion$);
+    get(draftReloadVersion$);
     const override = get(draftOverride$);
     if (override !== undefined) {
       return override;
@@ -255,30 +292,30 @@ function createMailDraftSignals(
     );
     return response.status === 200 ? response.body.mailDraft : null;
   });
-  const sidebarReloadVersion$ = state(0);
-  const sidebarDraft$ = computed(async (get): Promise<ZeroMailDraft | null> => {
-    get(connectorChangedVersion$);
-    get(sidebarReloadVersion$);
-    const override = get(sidebarDraftOverride$);
-    if (override !== undefined) {
-      return override;
-    }
-    const response = await accept(
-      get(zeroClient$)(zeroMailContract).getDraft({
-        params: { mailDraftId: descriptor.mailDraftId },
-        fetchOptions: { signal: get(pageSignal$) },
-      }),
-      [200, 404],
-    );
-    return response.status === 200 ? response.body.mailDraft : null;
-  });
-  const attachmentUrls = createAttachmentUrls(descriptor, sidebarDraft$);
-  const reloadSidebar$ = command(({ set }) => {
-    set(sidebarDraftOverride$, undefined);
-    set(sidebarReloadVersion$, (version) => {
+  const sidebarDraft$ = draft$;
+  const reloadDraft$ = command(({ set }) => {
+    set(draftOverride$, undefined);
+    set(followUpStateValue$, (current) => {
+      return current === "submitting" ? current : "idle";
+    });
+    set(draftReloadVersion$, (version) => {
       return version + 1;
     });
   });
+  return {
+    followUpStateValue$,
+    draftOverride$,
+    draft$,
+    sidebarDraft$,
+    reloadDraft$,
+    followUpState$,
+  };
+}
+
+function createMailDraftMutationSignals(
+  descriptor: MailDraftDescriptor,
+  resources: MailDraftResourceSignals,
+): Pick<MailDraftSignals, "delete$" | "send$" | "followUp$"> {
   const delete$ = command(
     async ({ get, set }, signal: AbortSignal): Promise<void> => {
       await accept(
@@ -289,8 +326,7 @@ function createMailDraftSignals(
         [204],
       );
       signal.throwIfAborted();
-      set(draftOverride$, null);
-      set(sidebarDraftOverride$, null);
+      set(resources.draftOverride$, null);
     },
   );
   const send$ = command(async ({ get, set }, signal: AbortSignal) => {
@@ -302,18 +338,70 @@ function createMailDraftSignals(
       [200],
     );
     signal.throwIfAborted();
-    set(draftOverride$, response.body.mailDraft);
-    set(sidebarDraftOverride$, response.body.mailDraft);
+    set(resources.draftOverride$, response.body.mailDraft);
   });
+  const followUp$ = command(
+    async ({ get, set }, signal: AbortSignal): Promise<void> => {
+      if (get(resources.followUpStateValue$) !== "idle") {
+        return;
+      }
+      set(resources.followUpStateValue$, "submitting");
+      await withCleanup(
+        (async () => {
+          const draft = await get(resources.draft$);
+          signal.throwIfAborted();
+          if (!draft) {
+            throw new Error("Email is no longer available");
+          }
+          if (draft.followUp) {
+            set(resources.followUpStateValue$, draft.followUp.status);
+            return;
+          }
+          await accept(
+            get(zeroClient$)(zeroMailContract).createFollowUp({
+              params: { mailDraftId: descriptor.mailDraftId },
+              body: {},
+              fetchOptions: { signal },
+            }),
+            [200],
+          );
+          set(resources.reloadDraft$);
+          set(resources.followUpStateValue$, "active");
+        })(),
+        () => {
+          set(resources.followUpStateValue$, (current) => {
+            return current === "submitting" ? "idle" : current;
+          });
+        },
+      );
+    },
+  );
+  return { delete$, send$, followUp$ };
+}
+
+function createMailDraftSignals(
+  threadId: string,
+  descriptor: MailDraftDescriptor,
+): MailDraftSignals {
+  const resources = createMailDraftResourceSignals(descriptor);
+  const mutations = createMailDraftMutationSignals(descriptor, resources);
+  const attachmentPreviews = createAttachmentPreviews(
+    descriptor,
+    resources.sidebarDraft$,
+  );
   return {
-    ...descriptor,
+    mailDraftId: descriptor.mailDraftId,
+    originalUrl: descriptor.originalUrl,
+    href: descriptor.href,
     threadId,
-    draft$,
-    sidebarDraft$,
-    ...attachmentUrls,
-    reloadSidebar$,
-    delete$,
-    send$,
+    draft$: resources.draft$,
+    sidebarDraft$: resources.sidebarDraft$,
+    ...attachmentPreviews,
+    reloadDraft$: resources.reloadDraft$,
+    delete$: mutations.delete$,
+    send$: mutations.send$,
+    followUpState$: resources.followUpState$,
+    followUp$: mutations.followUp$,
   };
 }
 
@@ -321,7 +409,13 @@ export function createMailDraftCardSignalsRegistry(
   threadId: string,
 ): MailDraftCardSignalsRegistry {
   const signalsByResourceKey = new Map<string, MailDraftSignals>();
+  const reload$ = command(({ set }) => {
+    for (const signals of signalsByResourceKey.values()) {
+      set(signals.reloadDraft$);
+    }
+  });
   return {
+    reload$,
     register(descriptor) {
       return getOrCreateCardSignals(
         signalsByResourceKey,

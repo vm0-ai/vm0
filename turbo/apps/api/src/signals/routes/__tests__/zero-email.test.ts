@@ -6,6 +6,7 @@ import { testContext } from "../../../__tests__/test-context";
 import { mockEnv, mockOptionalEnv } from "../../../lib/env";
 import { flushWaitUntilForTest } from "../../context/wait-until";
 import { createBddApi } from "./helpers/api-bdd";
+import { createBillingMediaApi } from "./helpers/api-bdd-billing-media";
 import { createEmailApi } from "./helpers/api-bdd-email";
 import { createRunsApi } from "./helpers/api-bdd-runs";
 import { createWebhookCallbackApi } from "./helpers/api-bdd-webhooks";
@@ -59,9 +60,6 @@ async function emailOrg(): Promise<EmailOrgFixture> {
   runs.acceptStorageDownloads();
   runs.acceptTelemetryIngest();
 
-  await bdd.bootstrapOnboarding(actor, {
-    displayName: "BDD Email Agent",
-  });
   await runs.grantProEntitlement(actor);
   await runs.ensureOrgModelProvider(actor);
   await runs.heartbeatRunner(runnerGroup);
@@ -116,6 +114,70 @@ beforeEach(() => {
   // This route drains a cross-file outbox; Resend pacing is not part of these
   // transactional delivery assertions.
   mockOptionalEnv("EMAIL_OUTBOX_DRAIN_DELAY_MS", "0");
+});
+
+describe("low-credit email delivery", () => {
+  it("sends low-credit alerts from support@vm0.ai", async () => {
+    const actor = bdd.user();
+    const billing = createBillingMediaApi(context);
+    bdd.acceptAgentStorageWrites();
+    runs.acceptStorageDownloads();
+    runs.acceptTelemetryIngest();
+    await runs.grantProEntitlement(actor);
+
+    const before = await billing.readBillingStatus(actor);
+    expect(before.credits).toBeGreaterThan(5000);
+
+    const agentName = `bdd-low-credit-${randomUUID().slice(0, 8)}`;
+    const compose = await runs.createCompose(actor, {
+      version: "1.0",
+      agents: {
+        [agentName]: {
+          framework: "claude-code",
+          environment: { ANTHROPIC_API_KEY: "bdd-inline-key" },
+        },
+      },
+    });
+    const run = await runs.createDirectRun(actor, {
+      agentComposeId: compose.composeId,
+      prompt: "cross the low-credit alert threshold",
+      triggerSource: "web",
+    });
+    await webhooks.requestAgentUsageEvent(
+      {
+        runId: run.runId,
+        events: [
+          {
+            idempotencyKey: randomUUID(),
+            kind: "model",
+            provider: "bdd-model",
+            category: "tokens.output",
+            quantity: 1,
+            grossCredits: before.credits - 4999,
+          },
+        ],
+      },
+      {
+        authorization: `Bearer ${runs.sandboxTokenForRun(actor, run.runId)}`,
+      },
+      [200],
+    );
+
+    // Refresh the current Clerk membership mocks before settlement resolves
+    // the organization's admin recipients.
+    await billing.readBillingStatus(actor);
+    await billing.processOrgUsageEvents(actor);
+    const drain = await email.drainEmailOutboxCron(true);
+
+    expect(drain.status).toBe(200);
+    expect(context.mocks.resend.send).toHaveBeenCalledWith(
+      expect.objectContaining({
+        from: "VM0 Team <support@vm0.ai>",
+        to: actor.email,
+        subject: "Your credit balance is running low",
+      }),
+    );
+  });
 });
 
 describe("POST /api/zero/email/inbound", () => {

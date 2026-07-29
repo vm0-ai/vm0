@@ -48,7 +48,28 @@ const routeTestContract = c.router({
       }),
     },
   },
+  structured: {
+    method: "GET",
+    path: "/__test/structured",
+    responses: {
+      200: z.object({
+        content: z.string(),
+        userMessage: z.unknown().optional(),
+      }),
+    },
+  },
 });
+
+const userMessageFeedbackDocument = {
+  version: 1,
+  parts: [
+    {
+      type: "feedback",
+      quote: "The button is hard to find",
+      note: [{ type: "text", text: "Increase the contrast" }],
+    },
+  ],
+} as const;
 
 describe("honoSignalHandler", () => {
   it("reads computed handlers", async () => {
@@ -139,5 +160,30 @@ describe("honoSignalHandler", () => {
     );
 
     expect(response.body).toStrictEqual({ ok: true });
+  });
+
+  it("returns the complete userMessage document", async () => {
+    const handler$ = computed(() => {
+      return {
+        status: 200 as const,
+        body: {
+          content: "The button is hard to find\nIncrease the contrast",
+          userMessage: userMessageFeedbackDocument,
+        },
+      };
+    });
+    const client = setupApp({
+      context,
+      routes: [
+        ...ROUTES,
+        { route: routeTestContract.structured, handler: handler$ },
+      ],
+    })(routeTestContract);
+
+    const response = await accept(client.structured(), [200]);
+    expect(response.body).toStrictEqual({
+      content: "The button is hard to find\nIncrease the contrast",
+      userMessage: userMessageFeedbackDocument,
+    });
   });
 });

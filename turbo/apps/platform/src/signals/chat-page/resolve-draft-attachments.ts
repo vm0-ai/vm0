@@ -1,7 +1,7 @@
 import { command } from "ccstate";
 import type {
   AttachFile,
-  PagedChatMessage,
+  ChatPromptEvent,
 } from "@vm0/api-contracts/contracts/chat-threads";
 import { getModelImageInputSupport } from "@vm0/api-contracts/contracts/model-providers";
 import type {
@@ -11,11 +11,11 @@ import type {
 
 /**
  * Placeholder stored as the prompt when the user sends only files with no
- * typed text, so the `chatMessagesContract.send` body passes its `min(1)`
+ * typed text, so the `chatEventsContract.send` body passes its `min(1)`
  * validation. The UI strips this placeholder from `PagedUserMessage` so the
  * bubble shows only the download chips.
  */
-export const ATTACH_ONLY_PLACEHOLDER = "(see attached files)";
+const ATTACH_ONLY_PLACEHOLDER = "(see attached files)";
 
 /**
  * Prepared send-message payload derived from a draft.
@@ -30,7 +30,7 @@ export const ATTACH_ONLY_PLACEHOLDER = "(see attached files)";
 interface PreparedUserMessage {
   prompt: string;
   attachFiles: AttachFile[] | undefined;
-  attachments: PagedChatMessage["attachFiles"];
+  attachments: ChatPromptEvent["attachFiles"];
   hasTextContent: boolean;
 }
 
@@ -120,7 +120,7 @@ function attachmentUploadFailureMessage(
  * Resolves a draft's pending attachments (waits for uploads to finish,
  * rejects failed entries) and shapes the result into both the
  * outbound `AttachFile[]` for the send contract and the optimistic-UI
- * `PagedChatMessage["attachFiles"]` shape.
+ * `ChatEvent["attachFiles"]` shape.
  *
  * Returns `null` when the user has typed nothing and no attachments are
  * ready — callers should abort the send in that case.
@@ -183,7 +183,7 @@ export const prepareUserMessageFromDraft$ = command(
           })
         : undefined;
 
-    const attachments: PagedChatMessage["attachFiles"] =
+    const attachments: ChatPromptEvent["attachFiles"] =
       ready.length > 0
         ? ready.map((r) => {
             return {

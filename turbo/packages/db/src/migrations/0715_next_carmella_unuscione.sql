@@ -1,0 +1,2 @@
+DROP INDEX "idx_usage_event_hourly_rollup_processed_org_user";--> statement-breakpoint
+CREATE INDEX "idx_usage_event_hourly_rollup_physical_grain" ON "usage_event_hourly_rollup" USING btree ("processed_hour" DESC NULLS LAST,"org_id","user_id","run_id","kind","provider","category","short_window_id","weekly_window_id");

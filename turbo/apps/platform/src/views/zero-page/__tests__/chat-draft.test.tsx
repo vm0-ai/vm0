@@ -1,7 +1,6 @@
 import { fireEvent, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { toast } from "@vm0/ui/components/ui/sonner";
-import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { ILLUSTRATION_TEMPLATE_ITEMS } from "@vm0/core";
 import { HttpResponse } from "msw";
 import { describe, expect, it, vi } from "vitest";
@@ -17,6 +16,7 @@ import {
 import { zeroTeamContract } from "@vm0/api-contracts/contracts/zero-team";
 import { zeroWorkflowsCollectionContract } from "@vm0/api-contracts/contracts/zero-workflows";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
+import { resetSignal } from "../../../signals/utils.ts";
 import {
   click,
   detachedSetupPage as baseDetachedSetupPage,
@@ -87,6 +87,7 @@ function mockThreadDetails(): void {
         };
       }),
       latestEventId: null,
+      latestSeqId: null,
     });
   });
   context.mocks.api(chatThreadsContract.events, ({ respond }) => {
@@ -95,13 +96,12 @@ function mockThreadDetails(): void {
   context.mocks.api(chatThreadByIdContract.get, ({ respond }) => {
     return respond(200, {
       lastReadAt: null,
-      computerUseHostId: null,
-      codexServiceTier: null,
     });
   });
   context.mocks.api(chatThreadDraftContract.get, ({ respond }) => {
     return respond(200, {
       draftContent: null,
+      draftUserMessage: null,
       draftAttachments: null,
     });
   });
@@ -197,6 +197,21 @@ describe("chat drafts", () => {
     context.mocks.api(zeroAgentDraftContract.get, ({ params, respond }) => {
       return respond(200, {
         draftContent: `Resume the ${params.id} launch notes`,
+        draftUserMessage: {
+          version: 1,
+          parts: [
+            {
+              type: "file",
+              fileId: "agent-draft-brief",
+              filenameSnapshot: "agent-brief.md",
+              contentType: "text/markdown",
+            },
+            {
+              type: "text",
+              text: `Resume the ${params.id} launch notes`,
+            },
+          ],
+        },
         draftAttachments: [
           {
             id: "agent-draft-brief",
@@ -224,7 +239,7 @@ describe("chat drafts", () => {
     });
   });
 
-  it("restores a structured agent draft instead of stale legacy state", async () => {
+  it("loads an agent feedback draft from the canonical API", async () => {
     const agentId = "c0000000-0000-4000-a000-000000000111";
     const referencedThreadId = "b1000000-0000-4000-a000-000000000111";
     const firstAttachment = {
@@ -242,10 +257,10 @@ describe("chat drafts", () => {
       url: "https://cdn.vm7.io/artifacts/test/drafts/second.txt",
     };
     mockAgentChatPage(agentId);
-    context.mocks.api(zeroAgentDraftContract.get, ({ respond }) => {
-      return respond(200, {
+    context.mocks.http.get("*/api/zero/agents/:id/draft", () => {
+      return HttpResponse.json({
         draftContent: "stale legacy agent draft",
-        draftStructuredPrompt: {
+        draftUserMessage: {
           version: 1,
           parts: [
             {
@@ -267,6 +282,11 @@ describe("chat drafts", () => {
               titleSnapshot: "Launch research",
             },
             { type: "text", text: " now" },
+            {
+              type: "feedback",
+              quote: "The launch owner is unclear",
+              note: [{ type: "text", text: "Name the responsible team" }],
+            },
           ],
         },
         draftAttachments: [firstAttachment, secondAttachment],
@@ -276,7 +296,6 @@ describe("chat drafts", () => {
     detachedSetupPage({
       context,
       path: `/agents/${agentId}/chat`,
-      featureSwitches: { [FeatureSwitchKey.StructuredPrompt]: true },
     });
 
     const editor = await findComposerEditor();
@@ -288,6 +307,9 @@ describe("chat drafts", () => {
           `span[data-chat-thread-mention="${referencedThreadId}"]`,
         ),
       ).toHaveTextContent("Launch research");
+      const feedbackItem = editor.querySelector("[data-feedback-item]");
+      expect(feedbackItem).toHaveTextContent("The launch owner is unclear");
+      expect(feedbackItem).toHaveTextContent("Name the responsible team");
       expect(
         queryAllByRoleFast("button")
           .filter((button) => {
@@ -311,6 +333,7 @@ describe("chat drafts", () => {
     context.mocks.api(zeroAgentDraftContract.get, ({ respond }) => {
       return respond(200, {
         draftContent: null,
+        draftUserMessage: null,
         draftAttachments: null,
       });
     });
@@ -326,7 +349,6 @@ describe("chat drafts", () => {
       detachedSetupPage({
         context,
         path: `/agents/${agentId}/chat`,
-        featureSwitches: { [FeatureSwitchKey.StructuredPrompt]: true },
       });
 
       await waitFor(() => {
@@ -337,7 +359,7 @@ describe("chat drafts", () => {
       await waitFor(() => {
         expect(draftPatches).toContainEqual({
           draftContent: "agent-level draft",
-          draftStructuredPrompt: {
+          draftUserMessage: {
             version: 1,
             parts: [{ type: "text", text: "agent-level draft" }],
           },
@@ -351,7 +373,7 @@ describe("chat drafts", () => {
       await waitFor(() => {
         expect(draftPatches).toContainEqual({
           draftContent: null,
-          draftStructuredPrompt: null,
+          draftUserMessage: null,
           draftAttachments: null,
         });
       });
@@ -364,7 +386,7 @@ describe("chat drafts", () => {
     }
   });
 
-  it("persists and clears typed thread drafts when structured prompts are enabled", async () => {
+  it("persists and clears typed thread drafts as userMessage documents", async () => {
     const user = userEvent.setup({ delay: null });
     const threadId = "b1000000-0000-4000-a000-000000000107";
     const draftPatches: Record<string, unknown>[] = [];
@@ -377,7 +399,6 @@ describe("chat drafts", () => {
     detachedSetupPage({
       context,
       path: `/chats/${threadId}`,
-      featureSwitches: { [FeatureSwitchKey.StructuredPrompt]: true },
     });
 
     const editor = await findComposerEditor();
@@ -386,7 +407,7 @@ describe("chat drafts", () => {
     await waitFor(() => {
       expect(draftPatches).toContainEqual({
         draftContent: "thread-level draft",
-        draftStructuredPrompt: {
+        draftUserMessage: {
           version: 1,
           parts: [{ type: "text", text: "thread-level draft" }],
         },
@@ -400,7 +421,7 @@ describe("chat drafts", () => {
     await waitFor(() => {
       expect(draftPatches).toContainEqual({
         draftContent: null,
-        draftStructuredPrompt: null,
+        draftUserMessage: null,
         draftAttachments: null,
       });
     });
@@ -438,6 +459,65 @@ describe("chat drafts", () => {
     });
   });
 
+  it("preserves feedback draft nodes while navigating between threads", async () => {
+    const quote = "The launch owner is unclear";
+    const note = "Name the responsible team";
+    context.mocks.data.userModelPreference({
+      selectedModel: "claude-sonnet-4-6",
+      updatedAt: "2026-03-10T00:00:00Z",
+    });
+    mockThreadDetails();
+    context.mocks.api(chatThreadDraftContract.get, ({ params, respond }) => {
+      if (params.id !== THREAD_ONE_ID) {
+        return respond(200, {
+          draftContent: null,
+          draftUserMessage: null,
+          draftAttachments: null,
+        });
+      }
+      return respond(200, {
+        draftContent: `Feedback on this part of your reply:\n\n> ${quote}\n\n${note}`,
+        draftUserMessage: {
+          version: 1,
+          parts: [
+            {
+              type: "feedback",
+              quote,
+              note: [{ type: "text", text: note }],
+            },
+          ],
+        },
+        draftAttachments: null,
+      });
+    });
+
+    detachedSetupPage({
+      context,
+      path: `/chats/${THREAD_ONE_ID}`,
+    });
+
+    await waitFor(() => {
+      const feedbackItem = textarea().querySelector("[data-feedback-item]");
+      expect(feedbackItem).toHaveTextContent(quote);
+      expect(feedbackItem).toHaveTextContent(note);
+    });
+
+    await navigateToThread(THREAD_TWO_ID);
+    await waitFor(() => {
+      expect(textarea().querySelector("[data-feedback-item]")).toBeNull();
+    });
+
+    await navigateToThread(THREAD_ONE_ID);
+    await waitFor(() => {
+      const feedbackItem = textarea().querySelector("[data-feedback-item]");
+      expect(feedbackItem).toHaveTextContent(quote);
+      expect(feedbackItem).toHaveTextContent(note);
+    });
+    expect(textarea()).not.toHaveTextContent(
+      "Feedback on this part of your reply:",
+    );
+  });
+
   it("restores a saved server draft with attachments on first thread open", async () => {
     context.mocks.data.userModelPreference({
       selectedModel: "claude-sonnet-4-6",
@@ -447,13 +527,23 @@ describe("chat drafts", () => {
     context.mocks.api(chatThreadByIdContract.get, ({ respond }) => {
       return respond(200, {
         lastReadAt: null,
-        computerUseHostId: null,
-        codexServiceTier: null,
       });
     });
     context.mocks.api(chatThreadDraftContract.get, ({ respond }) => {
       return respond(200, {
         draftContent: "Review the saved launch brief",
+        draftUserMessage: {
+          version: 1,
+          parts: [
+            {
+              type: "file",
+              fileId: "draft-brief",
+              filenameSnapshot: "brief.md",
+              contentType: "text/markdown",
+            },
+            { type: "text", text: "Review the saved launch brief" },
+          ],
+        },
         draftAttachments: [
           {
             id: "draft-brief",
@@ -474,10 +564,11 @@ describe("chat drafts", () => {
     });
   });
 
-  it("restores and persists the structured draft when the switch is enabled", async () => {
+  it("restores and persists feedback as a userMessage draft", async () => {
     const user = userEvent.setup({ delay: null });
     const threadId = "b1000000-0000-4000-a000-000000000104";
     const referencedThreadId = "b1000000-0000-4000-a000-000000000105";
+    const feedbackReferencedThreadId = "b1000000-0000-4000-a000-000000000106";
     const illustrationTemplate = ILLUSTRATION_TEMPLATE_ITEMS[0]!;
     const draftPatches: Record<string, unknown>[] = [];
     const secondAttachment = {
@@ -502,10 +593,10 @@ describe("chat drafts", () => {
     };
 
     mockChatLifecycle(context, { threadId });
-    context.mocks.api(chatThreadDraftContract.get, ({ respond }) => {
-      return respond(200, {
+    context.mocks.http.get("*/api/zero/chat-threads/:id/draft", () => {
+      return HttpResponse.json({
         draftContent: "stale legacy draft",
-        draftStructuredPrompt: {
+        draftUserMessage: {
           version: 1,
           parts: [
             {
@@ -532,20 +623,31 @@ describe("chat drafts", () => {
               titleSnapshot: "Launch research",
             },
             { type: "text", text: " now" },
+            {
+              type: "feedback",
+              quote: "The launch sequence is vague",
+              note: [
+                { type: "text", text: "Add the rollout dates from " },
+                {
+                  type: "chat_thread",
+                  threadId: feedbackReferencedThreadId,
+                  titleSnapshot: "Release notes",
+                },
+              ],
+            },
           ],
         },
         draftAttachments: [firstAttachment, secondAttachment],
       });
     });
     context.mocks.api(chatThreadByIdContract.patch, ({ body, respond }) => {
-      draftPatches.push(body as Record<string, unknown>);
+      draftPatches.push(chatThreadByIdContract.patch.body.parse(body));
       return respond(204);
     });
 
     detachedSetupPage({
       context,
       path: `/chats/${threadId}`,
-      featureSwitches: { [FeatureSwitchKey.StructuredPrompt]: true },
     });
 
     const editor = await findComposerEditor();
@@ -559,6 +661,16 @@ describe("chat drafts", () => {
       expect(
         screen.getByLabelText(`Remove template ${illustrationTemplate.title}`),
       ).toBeInTheDocument();
+      const feedbackItem = editor.querySelector("[data-feedback-item]");
+      expect(feedbackItem).toHaveTextContent("The launch sequence is vague");
+      expect(feedbackItem).toHaveTextContent(
+        "Add the rollout dates from Release notes",
+      );
+      expect(
+        feedbackItem?.querySelector(
+          `span[data-chat-thread-mention="${feedbackReferencedThreadId}"]`,
+        ),
+      ).toHaveTextContent("Release notes");
       expect(
         queryAllByRoleFast("button")
           .filter((button) => {
@@ -576,8 +688,12 @@ describe("chat drafts", () => {
 
     await waitFor(() => {
       expect(draftPatches).toContainEqual({
-        draftContent: `Review [Launch research](/chats/${referencedThreadId}) now`,
-        draftStructuredPrompt: {
+        draftContent:
+          `Review [Launch research](/chats/${referencedThreadId}) now\n\n` +
+          "Feedback on this part of your reply:\n\n" +
+          "> The launch sequence is vague\n\n" +
+          `Add the rollout dates from [Release notes](/chats/${feedbackReferencedThreadId})`,
+        draftUserMessage: {
           version: 1,
           parts: [
             {
@@ -598,63 +714,27 @@ describe("chat drafts", () => {
               titleSnapshot: "Launch research",
             },
             { type: "text", text: " now" },
+            {
+              type: "feedback",
+              quote: "The launch sequence is vague",
+              note: [
+                { type: "text", text: "Add the rollout dates from " },
+                {
+                  type: "chat_thread",
+                  threadId: feedbackReferencedThreadId,
+                  titleSnapshot: "Release notes",
+                },
+              ],
+            },
           ],
         },
         draftAttachments: [secondAttachment],
       });
     });
-  });
 
-  it("keeps legacy draft hydration and clears structured state when the switch is disabled", async () => {
-    const user = userEvent.setup({ delay: null });
-    const threadId = "b1000000-0000-4000-a000-000000000106";
-    const draftPatches: Record<string, unknown>[] = [];
-    const legacyAttachment = {
-      id: "legacy-draft-file",
-      filename: "legacy.txt",
-      contentType: "text/plain",
-      size: 6,
-      url: "https://cdn.vm7.io/artifacts/test/drafts/legacy.txt",
-    };
-
-    mockChatLifecycle(context, { threadId });
-    context.mocks.api(chatThreadDraftContract.get, ({ respond }) => {
-      return respond(200, {
-        draftContent: "legacy draft",
-        draftStructuredPrompt: {
-          version: 1,
-          parts: [{ type: "text", text: "structured draft" }],
-        },
-        draftAttachments: [legacyAttachment],
-      });
-    });
-    context.mocks.api(chatThreadByIdContract.patch, ({ body, respond }) => {
-      draftPatches.push(body as Record<string, unknown>);
-      return respond(204);
-    });
-
-    detachedSetupPage({
-      context,
-      path: `/chats/${threadId}`,
-      featureSwitches: { [FeatureSwitchKey.StructuredPrompt]: false },
-    });
-
-    const editor = await findComposerEditor();
+    await user.click(screen.getByLabelText("Remove feedback"));
     await waitFor(() => {
-      expect(editor).toHaveTextContent("legacy draft");
-      expect(editor).not.toHaveTextContent("structured draft");
-      expect(screen.getByLabelText("Remove legacy.txt")).toBeInTheDocument();
-    });
-
-    await user.click(editor);
-    await user.keyboard(" updated");
-
-    await waitFor(() => {
-      expect(draftPatches).toContainEqual({
-        draftContent: "legacy draft updated",
-        draftStructuredPrompt: null,
-        draftAttachments: [legacyAttachment],
-      });
+      expect(editor.querySelector("[data-feedback-item]")).toBeNull();
     });
   });
 
@@ -666,13 +746,23 @@ describe("chat drafts", () => {
     context.mocks.api(chatThreadByIdContract.get, ({ respond }) => {
       return respond(200, {
         lastReadAt: null,
-        computerUseHostId: null,
-        codexServiceTier: null,
       });
     });
     context.mocks.api(chatThreadDraftContract.get, ({ respond }) => {
       return respond(200, {
         draftContent: "Review the saved launch brief",
+        draftUserMessage: {
+          version: 1,
+          parts: [
+            {
+              type: "file",
+              fileId: "draft-brief",
+              filenameSnapshot: "brief.md",
+              contentType: "text/markdown",
+            },
+            { type: "text", text: "Review the saved launch brief" },
+          ],
+        },
         draftAttachments: [
           {
             id: "draft-brief",
@@ -685,7 +775,7 @@ describe("chat drafts", () => {
       });
     });
     context.mocks.api(chatThreadByIdContract.patch, ({ body, respond }) => {
-      draftPatches.push(body as Record<string, unknown>);
+      draftPatches.push(chatThreadByIdContract.patch.body.parse(body));
       return respond(204);
     });
     context.mocks.upload.success({
@@ -718,7 +808,24 @@ describe("chat drafts", () => {
     await waitFor(() => {
       expect(draftPatches).toContainEqual({
         draftContent: "Review the updated launch brief",
-        draftStructuredPrompt: null,
+        draftUserMessage: {
+          version: 1,
+          parts: [
+            {
+              type: "file",
+              fileId: "draft-brief",
+              filenameSnapshot: "brief.md",
+              contentType: "text/markdown",
+            },
+            {
+              type: "file",
+              fileId: "fresh-launch-note",
+              filenameSnapshot: "fresh.txt",
+              contentType: "text/plain",
+            },
+            { type: "text", text: "Review the updated launch brief" },
+          ],
+        },
         draftAttachments: [
           {
             id: "draft-brief",
@@ -748,7 +855,7 @@ describe("chat drafts", () => {
       expect(textarea().textContent ?? "").toBe("");
       expect(draftPatches).toContainEqual({
         draftContent: null,
-        draftStructuredPrompt: null,
+        draftUserMessage: null,
         draftAttachments: null,
       });
     });
@@ -882,6 +989,341 @@ describe("chat drafts", () => {
       ).toBeInTheDocument();
       expect(screen.queryByTitle("failed.txt")).not.toBeInTheDocument();
       expect(screen.getByLabelText("Remove ok.txt")).toBeInTheDocument();
+    });
+  });
+
+  it("uploads large attachments in retryable R2 parts", async () => {
+    const user = userEvent.setup({ delay: null });
+    const preparedBodies: unknown[] = [];
+    const uploadedPartSizes: number[] = [];
+    let firstPartAttempts = 0;
+    let completeBody: unknown = null;
+
+    context.mocks.data.userModelPreference({
+      selectedModel: "claude-sonnet-4-6",
+      updatedAt: "2026-03-10T00:00:00Z",
+    });
+    mockThreadDetails();
+    context.mocks.http.post(
+      "*/api/zero/uploads/prepare",
+      async ({ request }) => {
+        preparedBodies.push(await request.json());
+        return HttpResponse.json({
+          id: "f58e50a2-5546-4ac9-8713-13443e726241",
+          filename: "recording.mp4",
+          contentType: "video/mp4",
+          size: 5 * 1024 * 1024 + 1,
+          url: "https://example.com/recording.mp4",
+          multipart: {
+            uploadId: "multipart-upload-1",
+            partSize: 5 * 1024 * 1024,
+            parts: [
+              {
+                partNumber: 1,
+                uploadUrl: "https://mock-upload.example.com/recording-part-1",
+              },
+              {
+                partNumber: 2,
+                uploadUrl: "https://mock-upload.example.com/recording-part-2",
+              },
+            ],
+          },
+        });
+      },
+    );
+    context.mocks.http.put(
+      "https://mock-upload.example.com/recording-part-1",
+      async ({ request }) => {
+        firstPartAttempts += 1;
+        if (firstPartAttempts === 1) {
+          return new HttpResponse(null, { status: 503 });
+        }
+        uploadedPartSizes.push((await request.arrayBuffer()).byteLength);
+        return new HttpResponse(null, { status: 200 });
+      },
+    );
+    context.mocks.http.put(
+      "https://mock-upload.example.com/recording-part-2",
+      async ({ request }) => {
+        uploadedPartSizes.push((await request.arrayBuffer()).byteLength);
+        return new HttpResponse(null, { status: 200 });
+      },
+    );
+    context.mocks.http.post(
+      "*/api/zero/uploads/multipart/complete",
+      async ({ request }) => {
+        completeBody = await request.json();
+        return HttpResponse.json({
+          id: "f58e50a2-5546-4ac9-8713-13443e726241",
+          url: "https://example.com/recording.mp4",
+        });
+      },
+    );
+
+    detachedSetupPage({ context, path: `/chats/${THREAD_UPLOADS_ID}` });
+
+    await waitFor(() => {
+      expect(textarea()).toBeInTheDocument();
+    });
+
+    const fileInput =
+      document.querySelector<HTMLInputElement>('input[type="file"]')!;
+    await user.upload(
+      fileInput,
+      new File([new Uint8Array(5 * 1024 * 1024 + 1)], "recording.mp4", {
+        type: "video/mp4",
+      }),
+    );
+
+    await waitFor(() => {
+      expect(screen.getByLabelText("Remove recording.mp4")).toBeInTheDocument();
+      expect(preparedBodies).toStrictEqual([
+        {
+          filename: "recording.mp4",
+          contentType: "video/mp4",
+          size: 5 * 1024 * 1024 + 1,
+          multipart: true,
+        },
+      ]);
+      expect(firstPartAttempts).toBe(2);
+      expect(uploadedPartSizes).toStrictEqual([5 * 1024 * 1024, 1]);
+      expect(completeBody).toStrictEqual({
+        id: "f58e50a2-5546-4ac9-8713-13443e726241",
+        filename: "recording.mp4",
+        uploadId: "multipart-upload-1",
+        partCount: 2,
+      });
+    });
+  });
+
+  it("falls back to a legacy single PUT response during API rollout", async () => {
+    const user = userEvent.setup({ delay: null });
+    let prepareBody: unknown = null;
+    let uploadedSize = 0;
+
+    context.mocks.data.userModelPreference({
+      selectedModel: "claude-sonnet-4-6",
+      updatedAt: "2026-03-10T00:00:00Z",
+    });
+    mockThreadDetails();
+    context.mocks.http.post(
+      "*/api/zero/uploads/prepare",
+      async ({ request }) => {
+        prepareBody = await request.json();
+        return HttpResponse.json({
+          id: "3b649e8a-c608-4355-a7d9-12e21af26df5",
+          filename: "legacy.mp4",
+          contentType: "video/mp4",
+          size: 5 * 1024 * 1024 + 1,
+          uploadUrl: "https://mock-upload.example.com/legacy.mp4",
+          url: "https://example.com/legacy.mp4",
+        });
+      },
+    );
+    context.mocks.http.put(
+      "https://mock-upload.example.com/legacy.mp4",
+      async ({ request }) => {
+        uploadedSize = (await request.arrayBuffer()).byteLength;
+        return new HttpResponse(null, { status: 200 });
+      },
+    );
+
+    detachedSetupPage({ context, path: `/chats/${THREAD_UPLOADS_ID}` });
+
+    await waitFor(() => {
+      expect(textarea()).toBeInTheDocument();
+    });
+
+    const fileInput =
+      document.querySelector<HTMLInputElement>('input[type="file"]')!;
+    await user.upload(
+      fileInput,
+      new File([new Uint8Array(5 * 1024 * 1024 + 1)], "legacy.mp4", {
+        type: "video/mp4",
+      }),
+    );
+
+    await waitFor(() => {
+      expect(screen.getByLabelText("Remove legacy.mp4")).toBeInTheDocument();
+      expect(prepareBody).toMatchObject({ multipart: true });
+      expect(uploadedSize).toBe(5 * 1024 * 1024 + 1);
+    });
+  });
+
+  it("aborts multipart storage after the final part retry fails", async () => {
+    const user = userEvent.setup({ delay: null });
+    let partAttempts = 0;
+    let abortBody: unknown = null;
+
+    context.mocks.data.userModelPreference({
+      selectedModel: "claude-sonnet-4-6",
+      updatedAt: "2026-03-10T00:00:00Z",
+    });
+    mockThreadDetails();
+    context.mocks.http.post("*/api/zero/uploads/prepare", () => {
+      return HttpResponse.json({
+        id: "8d70fdfa-2eb4-4a32-a2e2-635799804ad6",
+        filename: "failed-recording.mp4",
+        contentType: "video/mp4",
+        size: 5 * 1024 * 1024 + 1,
+        url: "https://example.com/failed-recording.mp4",
+        multipart: {
+          uploadId: "multipart-upload-failed",
+          partSize: 5 * 1024 * 1024,
+          parts: [
+            {
+              partNumber: 1,
+              uploadUrl:
+                "https://mock-upload.example.com/failed-recording-part-1",
+            },
+            {
+              partNumber: 2,
+              uploadUrl:
+                "https://mock-upload.example.com/failed-recording-part-2",
+            },
+          ],
+        },
+      });
+    });
+    context.mocks.http.put(
+      "https://mock-upload.example.com/failed-recording-part-1",
+      () => {
+        partAttempts += 1;
+        return new HttpResponse(null, { status: 503 });
+      },
+    );
+    context.mocks.http.post(
+      "*/api/zero/uploads/multipart/abort",
+      async ({ request }) => {
+        abortBody = await request.json();
+        return HttpResponse.json({
+          id: "8d70fdfa-2eb4-4a32-a2e2-635799804ad6",
+        });
+      },
+    );
+
+    detachedSetupPage({ context, path: `/chats/${THREAD_UPLOADS_ID}` });
+
+    await waitFor(() => {
+      expect(textarea()).toBeInTheDocument();
+    });
+
+    const fileInput =
+      document.querySelector<HTMLInputElement>('input[type="file"]')!;
+    await user.upload(
+      fileInput,
+      new File([new Uint8Array(5 * 1024 * 1024 + 1)], "failed-recording.mp4", {
+        type: "video/mp4",
+      }),
+    );
+
+    await waitFor(() => {
+      expect(
+        screen.getByText("Failed to upload failed-recording.mp4"),
+      ).toBeInTheDocument();
+      expect(partAttempts).toBe(5);
+      expect(abortBody).toStrictEqual({
+        id: "8d70fdfa-2eb4-4a32-a2e2-635799804ad6",
+        filename: "failed-recording.mp4",
+        uploadId: "multipart-upload-failed",
+      });
+    });
+  });
+
+  it("aborts multipart storage when the upload owner is cancelled", async () => {
+    const user = userEvent.setup({ delay: null });
+    const resetUploadOwnerSignal$ = resetSignal();
+    const ownerSignal = context.store.set(
+      resetUploadOwnerSignal$,
+      context.signal,
+    );
+    const ownerContext = {
+      mocks: context.mocks,
+      signal: ownerSignal,
+      store: context.store,
+    };
+    const partStarted = context.mocks.deferred<void>();
+    let abortBody: unknown = null;
+    let abortRequestWasCancelled = true;
+
+    context.mocks.data.userModelPreference({
+      selectedModel: "claude-sonnet-4-6",
+      updatedAt: "2026-03-10T00:00:00Z",
+    });
+    mockThreadDetails();
+    context.mocks.http.post("*/api/zero/uploads/prepare", () => {
+      return HttpResponse.json({
+        id: "6eb9fa2a-c5ec-4a6a-afbf-a28939735454",
+        filename: "cancelled-recording.mp4",
+        contentType: "video/mp4",
+        size: 5 * 1024 * 1024 + 1,
+        url: "https://example.com/cancelled-recording.mp4",
+        multipart: {
+          uploadId: "multipart-upload-cancelled",
+          partSize: 5 * 1024 * 1024,
+          parts: [
+            {
+              partNumber: 1,
+              uploadUrl:
+                "https://mock-upload.example.com/cancelled-recording-part-1",
+            },
+            {
+              partNumber: 2,
+              uploadUrl:
+                "https://mock-upload.example.com/cancelled-recording-part-2",
+            },
+          ],
+        },
+      });
+    });
+    context.mocks.http.put(
+      "https://mock-upload.example.com/cancelled-recording-part-1",
+      ({ deferred }) => {
+        partStarted.resolve();
+        return deferred<Response>().promise;
+      },
+    );
+    context.mocks.http.post(
+      "*/api/zero/uploads/multipart/abort",
+      async ({ request }) => {
+        abortRequestWasCancelled = request.signal.aborted;
+        abortBody = await request.json();
+        return HttpResponse.json({
+          id: "6eb9fa2a-c5ec-4a6a-afbf-a28939735454",
+        });
+      },
+    );
+
+    detachedSetupPage({
+      context: ownerContext,
+      path: `/chats/${THREAD_UPLOADS_ID}`,
+    });
+
+    await waitFor(() => {
+      expect(textarea()).toBeInTheDocument();
+    });
+
+    const fileInput =
+      document.querySelector<HTMLInputElement>('input[type="file"]')!;
+    await user.upload(
+      fileInput,
+      new File(
+        [new Uint8Array(5 * 1024 * 1024 + 1)],
+        "cancelled-recording.mp4",
+        { type: "video/mp4" },
+      ),
+    );
+    await partStarted.promise;
+
+    context.store.set(resetUploadOwnerSignal$);
+
+    await waitFor(() => {
+      expect(abortRequestWasCancelled).toBeFalsy();
+      expect(abortBody).toStrictEqual({
+        id: "6eb9fa2a-c5ec-4a6a-afbf-a28939735454",
+        filename: "cancelled-recording.mp4",
+        uploadId: "multipart-upload-cancelled",
+      });
     });
   });
 

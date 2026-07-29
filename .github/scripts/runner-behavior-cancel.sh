@@ -39,11 +39,19 @@ RECONCILE_TEST_DIR=$(mktemp -d "/tmp/vm0-${SVC}-reconcile.XXXXXX")
 RECONCILE_BIN_DIR="$RECONCILE_TEST_DIR/bin"
 RECONCILE_COUNT_DIR="$RECONCILE_TEST_DIR/counts"
 RECONCILE_LOCK_INFO="$RECONCILE_TEST_DIR/pool-indexes"
+RECONCILE_CAPACITY_RELEASE="$RECONCILE_TEST_DIR/release-capacity"
+RECONCILE_CAPACITY_RELEASED="$RECONCILE_TEST_DIR/capacity-released"
 RECONCILE_IDLE_RELEASE="$RECONCILE_TEST_DIR/release-idle"
 RECONCILE_IDLE_RELEASED="$RECONCILE_TEST_DIR/idle-released"
 RECONCILE_ACTIVE_RELEASE="$RECONCILE_TEST_DIR/release-active"
 RECONCILE_FIREWALL_DELETE_STARTED="$RECONCILE_TEST_DIR/firewall-delete-started"
 RECONCILE_FIREWALL_DELETE_RELEASE="$RECONCILE_TEST_DIR/release-firewall-delete"
+RECONCILE_LOCK_HOLDER_ERROR="$RECONCILE_TEST_DIR/lock-holder-error"
+RECONCILE_LOCK_HOLDER_STATUS="$RECONCILE_TEST_DIR/lock-holder-status"
+RECONCILE_LOCK_PUBLISH_READY="$RECONCILE_TEST_DIR/lock-publish-ready"
+RECONCILE_LOCK_PUBLISH_RELEASE="$RECONCILE_TEST_DIR/release-lock-publish"
+RECONCILE_REQUIRED_POOL_INDEXES=5
+RECONCILE_CAPACITY_TIMEOUT_SECONDS=60
 RECONCILE_LOCK_HOLDER_PID=""
 
 fail() { echo "FAIL: $1"; exit 1; }
@@ -67,6 +75,8 @@ cleanup() {
     print_service_logs
   fi
   sudo touch \
+    "$RECONCILE_LOCK_PUBLISH_RELEASE" \
+    "$RECONCILE_CAPACITY_RELEASE" \
     "$RECONCILE_IDLE_RELEASE" \
     "$RECONCILE_ACTIVE_RELEASE" \
     "$RECONCILE_FIREWALL_DELETE_RELEASE"
@@ -91,21 +101,36 @@ REAL_IPTABLES_RESTORE=$(command -v iptables-restore)
 REAL_IP6TABLES_SAVE=$(command -v ip6tables-save)
 REAL_IP6TABLES_RESTORE=$(command -v ip6tables-restore)
 
-# Reserve four pool indexes before the runner starts. Two become clean
-# historical indexes, one owns a synthetic firewall-only orphan, and one
-# remains active throughout reconciliation. The first three locks are released
-# during own-index cleanup, after the runner has captured their resources and
-# acquired a different index.
-sudo bash -s -- \
-  "$RECONCILE_LOCK_INFO" \
-  "$RECONCILE_IDLE_RELEASE" \
-  "$RECONCILE_IDLE_RELEASED" \
-  "$RECONCILE_ACTIVE_RELEASE" <<'LOCK_HOLDER' &
+# Reserve five pool indexes before the runner starts. Four back the existing
+# reconciliation fixture, while the fifth holds capacity for the runner
+# startup handoff. Incomplete attempts release every lock before retrying.
+# A stable supervisor publishes the privileged helper's terminal status;
+# sudo's process identity is not part of the lifecycle protocol.
+(
+  lock_holder_status=0
+  sudo bash -s -- \
+    "$RECONCILE_LOCK_INFO" \
+    "$RECONCILE_LOCK_PUBLISH_READY" \
+    "$RECONCILE_LOCK_PUBLISH_RELEASE" \
+    "$RECONCILE_CAPACITY_RELEASE" \
+    "$RECONCILE_CAPACITY_RELEASED" \
+    "$RECONCILE_IDLE_RELEASE" \
+    "$RECONCILE_IDLE_RELEASED" \
+    "$RECONCILE_ACTIVE_RELEASE" \
+    "$RECONCILE_REQUIRED_POOL_INDEXES" \
+    "$RECONCILE_CAPACITY_TIMEOUT_SECONDS" \
+    <<'LOCK_HOLDER' || lock_holder_status=$?
 set -euo pipefail
 LOCK_INFO=$1
-IDLE_RELEASE=$2
-IDLE_RELEASED=$3
-ACTIVE_RELEASE=$4
+LOCK_PUBLISH_READY=$2
+LOCK_PUBLISH_RELEASE=$3
+CAPACITY_RELEASE=$4
+CAPACITY_RELEASED=$5
+IDLE_RELEASE=$6
+IDLE_RELEASED=$7
+ACTIVE_RELEASE=$8
+REQUIRED_POOL_INDEXES=$9
+CAPACITY_TIMEOUT_SECONDS=${10}
 declare -a RESERVED_FDS=()
 declare -a RESERVED_INDEXES=()
 
@@ -122,22 +147,59 @@ reserve_index() {
   fi
 }
 
-# Prefer existing persistent lock files. Create new files only if the host has
-# fewer than four idle indexes available.
-for index in $(seq 63 -1 0); do
-  [ -e "/var/lock/vm0-netns-pool-${index}.lock" ] || continue
-  reserve_index "$index"
-  [ "${#RESERVED_INDEXES[@]}" -eq 4 ] && break
-done
-if [ "${#RESERVED_INDEXES[@]}" -lt 4 ]; then
-  for index in $(seq 63 -1 0); do
-    [ -e "/var/lock/vm0-netns-pool-${index}.lock" ] && continue
-    reserve_index "$index"
-    [ "${#RESERVED_INDEXES[@]}" -eq 4 ] && break
+release_reserved_indexes() {
+  local fd
+  for fd in "${RESERVED_FDS[@]}"; do
+    exec {fd}>&-
   done
-fi
-[ "${#RESERVED_INDEXES[@]}" -eq 4 ] || exit 1
-printf '%s\n' "${RESERVED_INDEXES[@]}" >"$LOCK_INFO"
+  RESERVED_FDS=()
+  RESERVED_INDEXES=()
+}
+
+CAPACITY_DEADLINE=$((SECONDS + CAPACITY_TIMEOUT_SECONDS))
+LAST_ACQUIRED=0
+while true; do
+  # Prefer existing persistent lock files. Create new files only if the host
+  # has fewer than five idle indexes available.
+  for index in $(seq 63 -1 0); do
+    [ -e "/var/lock/vm0-netns-pool-${index}.lock" ] || continue
+    reserve_index "$index"
+    [ "${#RESERVED_INDEXES[@]}" -eq "$REQUIRED_POOL_INDEXES" ] && break
+  done
+  if [ "${#RESERVED_INDEXES[@]}" -lt "$REQUIRED_POOL_INDEXES" ]; then
+    for index in $(seq 63 -1 0); do
+      [ -e "/var/lock/vm0-netns-pool-${index}.lock" ] && continue
+      reserve_index "$index"
+      [ "${#RESERVED_INDEXES[@]}" -eq "$REQUIRED_POOL_INDEXES" ] && break
+    done
+  fi
+  LAST_ACQUIRED=${#RESERVED_INDEXES[@]}
+  if [ "$LAST_ACQUIRED" -eq "$REQUIRED_POOL_INDEXES" ]; then
+    break
+  fi
+
+  release_reserved_indexes
+  [ ! -e "$CAPACITY_RELEASE" ] || exit 0
+  if [ "$SECONDS" -ge "$CAPACITY_DEADLINE" ]; then
+    echo "timed out after ${CAPACITY_TIMEOUT_SECONDS}s waiting for namespace pool capacity: required ${REQUIRED_POOL_INDEXES} indexes, acquired ${LAST_ACQUIRED} on last attempt" >&2
+    exit 1
+  fi
+  sleep 1
+done
+
+# Only the first four indexes belong to the reconciliation fixture. Retain the
+# fifth lock until the parent has created the transient runner service.
+# Wait for the parent to observe this ready state before publishing the pool
+# indexes so every run exercises delayed helper readiness.
+touch "$LOCK_PUBLISH_READY"
+while [ ! -e "$LOCK_PUBLISH_RELEASE" ]; do sleep 0.05; done
+printf '%s\n' "${RESERVED_INDEXES[@]:0:4}" >"$LOCK_INFO"
+
+while [ ! -e "$CAPACITY_RELEASE" ]; do sleep 0.05; done
+CAPACITY_FD=${RESERVED_FDS[4]}
+flock -u "$CAPACITY_FD"
+exec {CAPACITY_FD}>&-
+touch "$CAPACITY_RELEASED"
 
 while [ ! -e "$IDLE_RELEASE" ]; do sleep 0.05; done
 for position in 0 1 2; do
@@ -147,15 +209,48 @@ touch "$IDLE_RELEASED"
 
 while [ ! -e "$ACTIVE_RELEASE" ]; do sleep 0.05; done
 LOCK_HOLDER
+  status_tmp="${RECONCILE_LOCK_HOLDER_STATUS}.tmp.${BASHPID}"
+  printf '%s\n' "$lock_holder_status" >"$status_tmp"
+  mv "$status_tmp" "$RECONCILE_LOCK_HOLDER_STATUS"
+  exit "$lock_holder_status"
+) >"$RECONCILE_LOCK_HOLDER_ERROR" 2>&1 &
 RECONCILE_LOCK_HOLDER_PID=$!
 
-for _ in $(seq 1 200); do
+fail_reconcile_lock_holder() {
+  local status=$1 checkpoint=$2
+  [ ! -s "$RECONCILE_LOCK_HOLDER_ERROR" ] \
+    || cat "$RECONCILE_LOCK_HOLDER_ERROR"
+  fail "namespace pool reservation helper completed with status ${status} ${checkpoint}"
+}
+
+fail_if_reconcile_lock_holder_completed() {
+  local checkpoint=$1 status
+  if [ -s "$RECONCILE_LOCK_HOLDER_STATUS" ]; then
+    status=$(<"$RECONCILE_LOCK_HOLDER_STATUS")
+    fail_reconcile_lock_holder "$status" "$checkpoint"
+  fi
+}
+
+RECONCILE_LOCK_PUBLISH_ACKNOWLEDGED=false
+RECONCILE_LOCK_READY_DEADLINE=$((SECONDS + RECONCILE_CAPACITY_TIMEOUT_SECONDS + 5))
+while [ "$SECONDS" -lt "$RECONCILE_LOCK_READY_DEADLINE" ]; do
   [ -s "$RECONCILE_LOCK_INFO" ] && break
-  kill -0 "$RECONCILE_LOCK_HOLDER_PID" 2>/dev/null \
-    || fail "failed to reserve namespace pool indexes"
+  fail_if_reconcile_lock_holder_completed "before publishing pool indexes"
+  if [ -e "$RECONCILE_LOCK_PUBLISH_READY" ] \
+    && [ "$RECONCILE_LOCK_PUBLISH_ACKNOWLEDGED" = false ]; then
+    touch "$RECONCILE_LOCK_PUBLISH_RELEASE"
+    RECONCILE_LOCK_PUBLISH_ACKNOWLEDGED=true
+  fi
   sleep 0.05
 done
-[ -s "$RECONCILE_LOCK_INFO" ] || fail "timed out reserving namespace pool indexes"
+if [ ! -s "$RECONCILE_LOCK_INFO" ]; then
+  fail_if_reconcile_lock_holder_completed "before publishing pool indexes"
+  [ ! -s "$RECONCILE_LOCK_HOLDER_ERROR" ] \
+    || cat "$RECONCILE_LOCK_HOLDER_ERROR"
+  fail "timed out waiting for namespace pool reservation helper"
+fi
+[ "$RECONCILE_LOCK_PUBLISH_ACKNOWLEDGED" = true ] \
+  || fail "namespace pool reservation helper skipped delayed publication"
 mapfile -t RECONCILE_POOL_INDEXES <"$RECONCILE_LOCK_INFO"
 printf -v RECONCILE_FIREWALL_POOL_HEX '%02x' "${RECONCILE_POOL_INDEXES[2]}"
 printf -v RECONCILE_ACTIVE_POOL_HEX '%02x' "${RECONCILE_POOL_INDEXES[3]}"
@@ -369,6 +464,16 @@ sudo "$BIN_DIR/runner" service start --name "$SVC" \
   --env "VM0_RECONCILE_IDLE_RELEASE=$RECONCILE_IDLE_RELEASE" \
   --env "VM0_RECONCILE_IDLE_RELEASED=$RECONCILE_IDLE_RELEASED"
 
+sudo touch "$RECONCILE_CAPACITY_RELEASE"
+for _ in $(seq 1 200); do
+  [ -e "$RECONCILE_CAPACITY_RELEASED" ] && break
+  fail_if_reconcile_lock_holder_completed "before releasing capacity"
+  sleep 0.05
+done
+fail_if_reconcile_lock_holder_completed "before releasing capacity"
+[ -e "$RECONCILE_CAPACITY_RELEASED" ] \
+  || fail "timed out releasing runner namespace pool capacity"
+
 assert_reconcile_count() {
   local name=$1 expected=$2 path="$RECONCILE_COUNT_DIR/$1" actual=0
   if [ -f "$path" ]; then
@@ -475,8 +580,17 @@ sudo "$BIN_DIR/runner" service stop --name "$SVC" --force
 sudo rm -rf "$GROUP_DIR" "$RUNNER_DIR"
 rm -f "$SUBMIT_OUTPUT"
 touch "$RECONCILE_ACTIVE_RELEASE"
-wait "$RECONCILE_LOCK_HOLDER_PID"
+if wait "$RECONCILE_LOCK_HOLDER_PID"; then
+  RECONCILE_LOCK_HOLDER_EXIT=0
+else
+  RECONCILE_LOCK_HOLDER_EXIT=$?
+fi
 RECONCILE_LOCK_HOLDER_PID=""
+if [ "$RECONCILE_LOCK_HOLDER_EXIT" -ne 0 ]; then
+  fail_reconcile_lock_holder \
+    "$RECONCILE_LOCK_HOLDER_EXIT" \
+    "after releasing active locks"
+fi
 sudo rm -rf "$RECONCILE_TEST_DIR"
 trap - EXIT
 

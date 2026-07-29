@@ -11,15 +11,21 @@ import { Slice, type Node as ProseMirrorNode } from "@tiptap/pm/model";
 import {
   Plugin,
   PluginKey,
+  NodeSelection,
   type EditorState,
   type Transaction,
 } from "@tiptap/pm/state";
 import { Decoration, DecorationSet, type NodeView } from "@tiptap/pm/view";
 import { StarterKit } from "@tiptap/starter-kit";
 import { createCompositionGate, type CompositionGate } from "@vm0/ui";
+import {
+  generationTemplateRequestSchema,
+  type GenerationTemplateRequest,
+  type UserMessageDocument,
+} from "@vm0/api-contracts/contracts/chat-threads";
 import type { ZeroWorkflowSummary } from "@vm0/api-contracts/contracts/zero-workflows";
 import { currentChatAgentRecordId$ } from "../agent-chat.ts";
-import { onRef } from "../utils.ts";
+import { onRef, resetSignal } from "../utils.ts";
 import type { DraftInputSyncTarget, DraftSignals } from "./chat-draft.ts";
 import {
   createFeedbackSignals,
@@ -39,6 +45,7 @@ import {
   type ComposerChatThreadSuggestionResult,
 } from "./composer-chat-thread-suggestions.ts";
 import {
+  buildComposerSlashWorkflows,
   findActiveSlashWorkflowRange,
   workflowTokenPattern,
   type ComposerSlashWorkflow,
@@ -47,6 +54,7 @@ import {
 import {
   CHAT_THREAD_MENTION_NODE_NAME,
   createEditorDocumentSnapshot,
+  INLINE_TEMPLATE_NODE_NAME,
   messageDocumentToEditorDoc,
   TEMPLATE_ATTACHMENT_NODE_NAME,
   type EditorDocumentSnapshot,
@@ -56,8 +64,67 @@ import {
   type TemplatePreviewRuntime,
 } from "./template-preview-runtime.ts";
 import { createComposerWorkflows } from "./composer-workflows.ts";
+import { reloadWorkflowData$ } from "../workflows-page/workflow-reload.ts";
 
 type AgentIdValue = string | null | Promise<string | null>;
+type WorkflowNamesSyncCommand = Command<
+  Promise<void>,
+  [AbortSignal, AbortSignal]
+>;
+
+interface MountedWorkflowNamesSync {
+  readonly command$: WorkflowNamesSyncCommand;
+  readonly mountSignal: AbortSignal;
+}
+
+const mountedWorkflowNamesSyncs$ = state<ReadonlySet<MountedWorkflowNamesSync>>(
+  new Set(),
+);
+
+const registerMountedWorkflowNamesSync$ = command(
+  ({ get, set }, mountedWorkflowNamesSync: MountedWorkflowNamesSync): void => {
+    const current = get(mountedWorkflowNamesSyncs$);
+    if (current.has(mountedWorkflowNamesSync)) {
+      return;
+    }
+    const next = new Set(current);
+    next.add(mountedWorkflowNamesSync);
+    set(mountedWorkflowNamesSyncs$, next);
+  },
+);
+
+const unregisterMountedWorkflowNamesSync$ = command(
+  ({ get, set }, mountedWorkflowNamesSync: MountedWorkflowNamesSync): void => {
+    const current = get(mountedWorkflowNamesSyncs$);
+    if (!current.has(mountedWorkflowNamesSync)) {
+      return;
+    }
+    const next = new Set(current);
+    next.delete(mountedWorkflowNamesSync);
+    set(mountedWorkflowNamesSyncs$, next);
+  },
+);
+
+const reloadMountedWorkflowNames$ = command(
+  async ({ get, set }, signal: AbortSignal): Promise<void> => {
+    set(reloadWorkflowData$);
+    const pendingSyncs: Promise<void>[] = [];
+    for (const mountedWorkflowNamesSync of get(mountedWorkflowNamesSyncs$)) {
+      if (mountedWorkflowNamesSync.mountSignal.aborted) {
+        continue;
+      }
+      pendingSyncs.push(
+        set(
+          mountedWorkflowNamesSync.command$,
+          mountedWorkflowNamesSync.mountSignal,
+          signal,
+        ),
+      );
+    }
+    await Promise.all(pendingSyncs);
+    signal.throwIfAborted();
+  },
+);
 
 const EDITOR_CONTENT_CLASS =
   // Let the editor grow to 40% of the viewport, capped at 320px, then scroll
@@ -120,15 +187,26 @@ export interface WorkflowComposerSignals {
   >;
   readonly agentId$: Computed<Promise<string | null>>;
   readonly workflows$: Computed<Promise<readonly ZeroWorkflowSummary[]>>;
+  readonly reloadWorkflows$: Command<Promise<void>, [AbortSignal]>;
   readonly selectedSuggestionIndex$: Computed<number>;
   readonly setSelectedSuggestionIndex$: Command<void, [number]>;
   readonly closeSuggestionMenu$: Command<void, []>;
-  readonly setWorkflowNames$: Command<void, [readonly string[]]>;
   readonly insertWorkflow$: Command<void, [ComposerSlashWorkflow]>;
   readonly insertChatThread$: Command<void, [ComposerChatThreadSuggestion]>;
   readonly insertPromptMarkdown$: Command<void, [string]>;
+  readonly insertUserMessage$: Command<void, [UserMessageDocument]>;
+  readonly insertTemplate$: Command<
+    void,
+    [GenerationTemplateRequest, ComposerTemplateAttachment]
+  >;
+  readonly readSelectedTemplate$: Command<
+    GenerationTemplateRequest | undefined,
+    []
+  >;
+  readonly prepareTemplateInsertion$: Command<void, []>;
   readonly insertText$: Command<void, [string]>;
   readonly appendText$: Command<void, [string]>;
+  readonly selectOrAppendText$: Command<void, [string]>;
   readonly readInputForSubmission$: Command<
     Promise<WorkflowComposerSubmissionSnapshot>,
     [AbortSignal]
@@ -137,7 +215,6 @@ export interface WorkflowComposerSignals {
     (() => void) | undefined,
     [HTMLButtonElement | null]
   >;
-  readonly setEventHandlers$: Command<void, [WorkflowComposerEventHandlers]>;
   readonly feedback: FeedbackSignals;
 }
 
@@ -153,15 +230,6 @@ export interface ComposerTemplateAttachment {
   readonly title: string;
   readonly category: string;
   readonly previewImageUrl?: string;
-}
-
-export interface WorkflowComposerEventHandlers {
-  readonly onInput: () => void;
-  readonly onKeyDown: (event: KeyboardEvent) => boolean;
-  readonly onPaste: (
-    event: ClipboardEvent,
-    currentTarget: HTMLElement,
-  ) => boolean;
 }
 
 function createComposerAgentResources<T extends AgentIdValue>(
@@ -199,8 +267,15 @@ function createReadInputForSubmissionCommand(
 }
 
 const FEEDBACK_ITEM_NODE_NAME = "feedbackItem";
-const CHAT_THREAD_MENTION_CLASS =
-  "rounded bg-primary/10 px-1 text-primary whitespace-nowrap";
+const COMPOSER_INLINE_REFERENCE_CLASS =
+  "relative -top-px mx-0.5 inline-flex h-7 max-w-full select-none items-center " +
+  "gap-1.5 whitespace-nowrap rounded-md bg-orange-500/10 px-2 align-middle " +
+  "text-[13px] font-medium text-orange-600 transition-colors " +
+  "hover:bg-orange-500/15 dark:bg-orange-400/15 dark:text-orange-300 " +
+  "dark:hover:bg-orange-400/20 data-[selected]:bg-orange-500/15 " +
+  "data-[selected]:ring-1 data-[selected]:ring-inset " +
+  "data-[selected]:ring-orange-500/40 dark:data-[selected]:bg-orange-400/20 " +
+  "dark:data-[selected]:ring-orange-300/40";
 
 interface ChatThreadMentionAttributes {
   readonly threadId: string;
@@ -221,6 +296,50 @@ function chatThreadMentionAttributes(
 function chatThreadMentionText(node: ProseMirrorNode): string {
   const { threadId, title } = chatThreadMentionAttributes(node);
   return serializeChatThreadMention(threadId, title);
+}
+
+function createChatThreadMentionNodeView(node: ProseMirrorNode): NodeView {
+  const dom = document.createElement("span");
+  dom.className = COMPOSER_INLINE_REFERENCE_CLASS;
+  dom.contentEditable = "false";
+  dom.style.outline = "none";
+  dom.style.userSelect = "none";
+  const icon = createComposerIcon(13, 1.7, [
+    "M3 20l1.3 -3.9c-2.324 -3.437 -1.426 -7.872 2.1 -10.374c3.526 -2.501 8.59 -2.296 11.845 .48c3.255 2.777 3.695 7.266 1.029 10.501c-2.666 3.235 -7.615 4.215 -11.574 2.293l-4.7 1",
+  ]);
+  icon.setAttribute("class", "shrink-0");
+  const title = document.createElement("span");
+  title.className = "min-w-0 select-none truncate";
+  dom.append(icon, title);
+
+  let currentNode = node;
+  function render(nextNode: ProseMirrorNode): void {
+    const attributes = chatThreadMentionAttributes(nextNode);
+    dom.dataset.chatThreadMention = attributes.threadId;
+    title.textContent = attributes.title;
+  }
+  render(node);
+
+  return {
+    dom,
+    update(nextNode) {
+      if (nextNode.type !== currentNode.type) {
+        return false;
+      }
+      currentNode = nextNode;
+      render(nextNode);
+      return true;
+    },
+    selectNode() {
+      dom.dataset.selected = "";
+    },
+    deselectNode() {
+      delete dom.dataset.selected;
+    },
+    ignoreMutation() {
+      return true;
+    },
+  };
 }
 
 const ChatThreadMentionNode = Node.create({
@@ -253,13 +372,18 @@ const ChatThreadMentionNode = Node.create({
       "span",
       {
         "data-chat-thread-mention": threadId,
-        class: CHAT_THREAD_MENTION_CLASS,
+        class: COMPOSER_INLINE_REFERENCE_CLASS,
       },
       title,
     ];
   },
   renderText({ node }) {
     return chatThreadMentionText(node);
+  },
+  addNodeView() {
+    return ({ node }) => {
+      return createChatThreadMentionNodeView(node);
+    };
   },
 });
 
@@ -398,11 +522,11 @@ function createFeedbackItemNodeView(
   let currentNode = node;
   function render(nextNode: ProseMirrorNode): void {
     const { quote, showDivider, fill } = feedbackItemNodeAttributes(nextNode);
-    dom.className = `flex flex-col gap-1.5 pb-1.5${
-      showDivider ? " border-t border-dashed border-border/60 pt-1.5" : ""
+    dom.className = `flex flex-col gap-1.5 pb-1.5 pt-1.5${
+      showDivider ? " border-t border-dashed border-border/60" : ""
     }`;
     noteDom.className = `relative${fill ? " min-h-[96px]" : ""}`;
-    placeholderDom.hidden = nextNode.textContent.length > 0;
+    placeholderDom.hidden = nodeText(nextNode).length > 0;
     contentDOM.className =
       "relative w-full px-1 py-1 text-[0.9375rem] leading-snug " +
       `text-foreground outline-none [&_p]:m-0${fill ? " min-h-[96px]" : ""}`;
@@ -603,6 +727,82 @@ function createTemplateAttachmentNodeView(
       currentNode = nextNode;
       render(nextNode);
       return true;
+    },
+    stopEvent(event) {
+      return (
+        event.target instanceof globalThis.Node && dom.contains(event.target)
+      );
+    },
+    ignoreMutation() {
+      return true;
+    },
+  };
+}
+
+function createInlineTemplateNodeView(
+  node: ProseMirrorNode,
+  selectAndOpenTemplate: (category: string) => void,
+): NodeView {
+  const dom = document.createElement("span");
+  dom.dataset.composerInlineTemplate = "";
+  dom.className = COMPOSER_INLINE_REFERENCE_CLASS;
+  dom.contentEditable = "false";
+  dom.style.outline = "none";
+  dom.style.userSelect = "none";
+
+  const openButton = document.createElement("button");
+  openButton.type = "button";
+  openButton.className =
+    "flex h-full min-w-0 items-center gap-1.5 rounded-md text-orange-600 " +
+    "focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-orange-500/40 " +
+    "dark:text-orange-300 dark:focus-visible:ring-orange-300/40";
+  const icon = createComposerIcon(13, 1.7, [
+    "M4 4m-2 0a2 2 0 0 1 2 -2h16a2 2 0 0 1 2 2v4a2 2 0 0 1 -2 2h-16a2 2 0 0 1 -2 -2z",
+    "M4 14m-2 0a2 2 0 0 1 2 -2h6a2 2 0 0 1 2 2v6a2 2 0 0 1 -2 2h-6a2 2 0 0 1 -2 -2z",
+    "M16 14l6 0",
+    "M16 18l6 0",
+    "M16 22l6 0",
+  ]);
+  icon.setAttribute("class", "shrink-0");
+  const title = document.createElement("span");
+  title.className =
+    "min-w-0 select-none truncate text-[13px] font-medium text-orange-600 " +
+    "dark:text-orange-300";
+  openButton.append(icon, title);
+  dom.append(openButton);
+
+  let currentNode = node;
+  function render(nextNode: ProseMirrorNode): void {
+    const attachment = templateAttachmentNodeAttributes(nextNode);
+    title.textContent = attachment.title;
+    openButton.setAttribute(
+      "aria-label",
+      templateAttachmentPreviewLabel(attachment),
+    );
+  }
+  openButton.addEventListener("mousedown", (event) => {
+    event.preventDefault();
+    selectAndOpenTemplate(
+      templateAttachmentNodeAttributes(currentNode).category,
+    );
+  });
+  render(currentNode);
+
+  return {
+    dom,
+    update(nextNode) {
+      if (nextNode.type !== currentNode.type) {
+        return false;
+      }
+      currentNode = nextNode;
+      render(nextNode);
+      return true;
+    },
+    selectNode() {
+      dom.dataset.selected = "";
+    },
+    deselectNode() {
+      delete dom.dataset.selected;
     },
     stopEvent(event) {
       return (
@@ -902,6 +1102,10 @@ function nodeText(
     if (leafNode.type.name === CHAT_THREAD_MENTION_NODE_NAME) {
       return chatThreadMentionText(leafNode);
     }
+    if (leafNode.type.name === INLINE_TEMPLATE_NODE_NAME) {
+      const attachment = templateAttachmentNodeAttributes(leafNode);
+      return `Select ${attachment.title} ${attachment.type} template`;
+    }
     return leafNode.type.name === "hardBreak" ? "\n" : "";
   });
 }
@@ -995,9 +1199,11 @@ function buildWorkflowDecorations(
       return;
     }
     for (const match of text.matchAll(pattern)) {
-      const start = pos + (match.index ?? 0);
+      const matchStart = pos + (match.index ?? 0);
+      const workflowStart = match[0].lastIndexOf("/");
+      const start = matchStart + workflowStart;
       decorations.push(
-        Decoration.inline(start, start + match[0].length, {
+        Decoration.inline(start, matchStart + match[0].length, {
           class: WORKFLOW_HIGHLIGHT_CLASS,
         }),
       );
@@ -1072,15 +1278,12 @@ interface WorkflowComposerRuntime {
   selectionUpdate(editor: Editor): void;
   focus(editor: Editor): void;
   blur(): void;
-  input(): void;
   templateAttachment: ComposerTemplateAttachment | undefined;
   openTemplate(category: string): void;
   removeTemplate(): void;
   templateRemoved(): void;
   replaceFeedbackItems(items: readonly FeedbackItem[]): void;
   removeFeedback(id: number): void;
-  keyDown(event: KeyboardEvent): boolean;
-  paste(event: ClipboardEvent, currentTarget: HTMLElement): boolean;
 }
 
 function createTemplateAttachmentNode(
@@ -1151,6 +1354,56 @@ function createTemplateAttachmentNode(
   });
 }
 
+function createInlineTemplateNode(
+  runtime: WorkflowComposerRuntime,
+): Node<undefined, unknown> {
+  return Node.create({
+    name: INLINE_TEMPLATE_NODE_NAME,
+    group: "inline",
+    inline: true,
+    atom: true,
+    selectable: true,
+    addAttributes() {
+      return {
+        templateType: { default: "presentation" },
+        template: { default: null },
+        title: { default: "" },
+        category: { default: "slides" },
+        previewImageUrl: { default: null },
+      };
+    },
+    parseHTML() {
+      return [{ tag: "span[data-composer-inline-template]" }];
+    },
+    renderHTML({ HTMLAttributes }) {
+      return [
+        "span",
+        { ...HTMLAttributes, "data-composer-inline-template": "" },
+      ];
+    },
+    renderText({ node }) {
+      const attachment = templateAttachmentNodeAttributes(node);
+      return `Select ${attachment.title} ${attachment.type} template`;
+    },
+    addNodeView() {
+      return ({ node, getPos, editor }) => {
+        return createInlineTemplateNodeView(node, (category) => {
+          const position = getPos();
+          if (typeof position !== "number") {
+            return;
+          }
+          editor.view.dispatch(
+            editor.state.tr.setSelection(
+              NodeSelection.create(editor.state.doc, position),
+            ),
+          );
+          runtime.openTemplate(category);
+        });
+      };
+    },
+  });
+}
+
 function createFeedbackItemNode(
   runtime: WorkflowComposerRuntime,
 ): Node<undefined, unknown> {
@@ -1195,6 +1448,7 @@ function createWorkflowEditor(runtime: WorkflowComposerRuntime): Editor {
     extensions: [
       STARTER_KIT,
       createTemplateAttachmentNode(runtime),
+      createInlineTemplateNode(runtime),
       createFeedbackItemNode(runtime),
       ChatThreadMentionNode,
       WorkflowHighlight,
@@ -1206,12 +1460,6 @@ function createWorkflowEditor(runtime: WorkflowComposerRuntime): Editor {
         placeholder: COMPOSER_PLACEHOLDER,
         tabindex: "0",
         class: EDITOR_CONTENT_CLASS,
-      },
-      handlePaste: (_view, event) => {
-        return runtime.paste(event, _view.dom);
-      },
-      handleKeyDown: (_view, event) => {
-        return runtime.keyDown(event);
       },
     },
     onUpdate: ({ editor }) => {
@@ -1258,33 +1506,50 @@ function workflowComposerDocumentForValue(
   return editor.schema.node("doc", undefined, content);
 }
 
-function workflowComposerDocumentForStructuredPrompt(
+function workflowComposerDocumentForUserMessage(
   editor: Editor,
-  value: Parameters<DraftInputSyncTarget["syncStructuredPrompt"]>[0],
+  value: Parameters<DraftInputSyncTarget["syncUserMessage"]>[0],
+  inlineTemplatesEnabled: boolean,
 ): ProseMirrorNode | null {
-  const document = messageDocumentToEditorDoc(value);
+  const document = messageDocumentToEditorDoc(value, {
+    inlineTemplates: inlineTemplatesEnabled,
+  });
   return document ? editor.schema.nodeFromJSON(document) : null;
 }
 
 function workflowComposerDocumentForDraft(
   editor: Editor,
-  input: string,
-  structuredPrompt:
-    | Parameters<DraftInputSyncTarget["syncStructuredPrompt"]>[0]
-    | null,
+  inlineTemplatesEnabled: boolean,
+  draft: {
+    readonly input: string;
+    readonly userMessage:
+      | Parameters<DraftInputSyncTarget["syncUserMessage"]>[0]
+      | null;
+    readonly editorDocument: EditorDocumentSnapshot | null;
+  },
 ): ProseMirrorNode {
   if (feedbackItemsFromWorkflowComposer(editor).length > 0) {
     return editor.state.doc;
   }
-  const structuredDocument = structuredPrompt
-    ? workflowComposerDocumentForStructuredPrompt(editor, structuredPrompt)
+  const userMessageDocument = draft.userMessage
+    ? workflowComposerDocumentForUserMessage(
+        editor,
+        draft.userMessage,
+        inlineTemplatesEnabled,
+      )
     : null;
-  return structuredDocument ?? workflowComposerDocumentForValue(editor, input);
+  const restoredEditorDocument = draft.editorDocument
+    ? editor.schema.nodeFromJSON(draft.editorDocument.toEditorDocument())
+    : null;
+  return (
+    userMessageDocument ??
+    restoredEditorDocument ??
+    workflowComposerDocumentForValue(editor, draft.input)
+  );
 }
 
 function configureMountedWorkflowEditor(
   editor: Editor,
-  runtime: WorkflowComposerRuntime,
   singleLineOnMobile: boolean,
 ): void {
   editor.setOptions({
@@ -1295,12 +1560,6 @@ function configureMountedWorkflowEditor(
         tabindex: "0",
         class: editorContentClass(singleLineOnMobile),
       },
-      handlePaste: (_view, event) => {
-        return runtime.paste(event, _view.dom);
-      },
-      handleKeyDown: (_view, event) => {
-        return runtime.keyDown(event);
-      },
     },
   });
 }
@@ -1310,15 +1569,81 @@ function resetMountedWorkflowRuntime(runtime: WorkflowComposerRuntime): void {
   runtime.selectionUpdate = () => {};
   runtime.focus = () => {};
   runtime.blur = () => {};
-  runtime.input = () => {};
   runtime.replaceFeedbackItems = () => {};
   runtime.removeFeedback = () => {};
-  runtime.keyDown = () => {
-    return false;
-  };
-  runtime.paste = () => {
-    return false;
-  };
+}
+
+function applyWorkflowNames(editor: Editor, names: readonly string[]): void {
+  const storage = workflowHighlightStorage(editor);
+  const unchanged =
+    storage.workflowNames.length === names.length &&
+    storage.workflowNames.every((name, index) => {
+      return name === names[index];
+    });
+  if (unchanged) {
+    return;
+  }
+  storage.workflowNames = names;
+  if (editor.isInitialized) {
+    editor.view.dispatch(editor.state.tr);
+  }
+}
+
+function createSyncWorkflowNamesCommand(
+  editor: Editor,
+  agentId$: Computed<Promise<string | null>>,
+  workflows$: Computed<Promise<readonly ZeroWorkflowSummary[]>>,
+): WorkflowNamesSyncCommand {
+  const resetWorkflowNamesSyncSignal$ = resetSignal();
+  return command(
+    async (
+      { get, set },
+      mountSignal: AbortSignal,
+      signal: AbortSignal,
+    ): Promise<void> => {
+      if (mountSignal.aborted) {
+        return;
+      }
+      signal.throwIfAborted();
+      const syncSignal = set(
+        resetWorkflowNamesSyncSignal$,
+        mountSignal,
+        signal,
+      );
+      const [agentId, workflows] = await Promise.all([
+        get(agentId$),
+        get(workflows$),
+      ]);
+      signal.throwIfAborted();
+      if (syncSignal.aborted) {
+        return;
+      }
+      const workflowNames = buildComposerSlashWorkflows({
+        agentId,
+        workflows,
+      }).map((workflow) => {
+        return workflow.name;
+      });
+      applyWorkflowNames(editor, workflowNames);
+    },
+  );
+}
+
+function mountCompositionListeners(
+  editor: Editor,
+  compositionGate: CompositionGate,
+  signal: AbortSignal,
+): void {
+  editor.view.dom.addEventListener(
+    "compositionstart",
+    compositionGate.compositionStart,
+    { signal },
+  );
+  editor.view.dom.addEventListener(
+    "compositionend",
+    compositionGate.compositionEnd,
+    { signal },
+  );
 }
 
 interface MountEditorOptions {
@@ -1330,6 +1655,8 @@ interface MountEditorOptions {
   selectedSuggestionIndexState$: State<number>;
   feedback: FeedbackSignals;
   compositionGate: CompositionGate;
+  syncWorkflowNames$: WorkflowNamesSyncCommand;
+  inlineTemplatesEnabled: boolean;
   autoFocus: boolean;
   singleLineOnMobile: boolean;
 }
@@ -1343,11 +1670,13 @@ function createMountEditorCommand({
   selectedSuggestionIndexState$,
   feedback,
   compositionGate,
+  syncWorkflowNames$,
+  inlineTemplatesEnabled,
   autoFocus,
   singleLineOnMobile,
 }: MountEditorOptions) {
   return onRef(
-    command(({ get, set }, element: HTMLElement, signal: AbortSignal) => {
+    command(async ({ get, set }, element: HTMLElement, signal: AbortSignal) => {
       runtime.update = (updatedEditor) => {
         runtime.replaceFeedbackItems(
           feedbackItemsFromWorkflowComposer(updatedEditor),
@@ -1357,10 +1686,11 @@ function createMountEditorCommand({
           draft.setEditorDocument$,
           createEditorDocumentSnapshot(updatedEditor.state.doc),
         );
-        runtime.input();
         set(selectedSuggestionIndexState$, 0);
         set(caretIndex$, updatedEditor.state.selection.head);
         compositionGate.notifySettled();
+        // Forward TipTap updates through the React-owned DOM boundary.
+        element.dispatchEvent(new Event("input", { bubbles: true }));
       };
       runtime.selectionUpdate = (updatedEditor) => {
         set(caretIndex$, updatedEditor.state.selection.head);
@@ -1378,28 +1708,21 @@ function createMountEditorCommand({
       runtime.removeFeedback = (id) => {
         set(feedback.removeFeedback$, id);
       };
-      configureMountedWorkflowEditor(editor, runtime, singleLineOnMobile);
-      const input = get(draft.input$);
-      const structuredPrompt = set(draft.takeRestoredStructuredPrompt$);
+      configureMountedWorkflowEditor(editor, singleLineOnMobile);
       setWorkflowComposerDocument(
         editor,
-        workflowComposerDocumentForDraft(editor, input, structuredPrompt),
+        workflowComposerDocumentForDraft(editor, inlineTemplatesEnabled, {
+          input: get(draft.input$),
+          userMessage: set(draft.takeRestoredUserMessage$),
+          editorDocument: set(draft.readEditorDocument$),
+        }),
       );
       set(
         draft.setEditorDocument$,
         createEditorDocumentSnapshot(editor.state.doc),
       );
       editor.mount(element);
-      editor.view.dom.addEventListener(
-        "compositionstart",
-        compositionGate.compositionStart,
-        { signal },
-      );
-      editor.view.dom.addEventListener(
-        "compositionend",
-        compositionGate.compositionEnd,
-        { signal },
-      );
+      mountCompositionListeners(editor, compositionGate, signal);
       set(draft.setInputSyncTarget$, {
         syncInput(value: string) {
           if (workflowComposerDocToString(editor) === value) {
@@ -1419,10 +1742,11 @@ function createMountEditorCommand({
             );
           }
         },
-        syncStructuredPrompt(value) {
-          const document = workflowComposerDocumentForStructuredPrompt(
+        syncUserMessage(value) {
+          const document = workflowComposerDocumentForUserMessage(
             editor,
             value,
+            inlineTemplatesEnabled,
           );
           if (!document) {
             return;
@@ -1439,16 +1763,24 @@ function createMountEditorCommand({
           );
         },
       });
+      // Keep workflow decoration sync scoped to real editor mounts.
+      const mountedWorkflowNamesSync = {
+        command$: syncWorkflowNames$,
+        mountSignal: signal,
+      };
+      set(registerMountedWorkflowNamesSync$, mountedWorkflowNamesSync);
       if (autoFocus && !isIOS()) {
         editor.commands.focus("end");
       }
       signal.addEventListener("abort", () => {
+        set(unregisterMountedWorkflowNamesSync$, mountedWorkflowNamesSync);
         compositionGate.cancel(signal.reason);
         resetMountedWorkflowRuntime(runtime);
         set(draft.setInputSyncTarget$, null);
         set(editorFocusedState$, false);
         editor.unmount();
       });
+      await set(syncWorkflowNames$, signal, signal);
     }),
   );
 }
@@ -1535,7 +1867,46 @@ function createInsertTextCommands(editor: Editor) {
       .scrollIntoView()
       .run();
   });
-  const appendText$ = command((_context, value: string) => {
+
+  const selectText = (value: string): boolean => {
+    const text = value.trim();
+    if (!text) {
+      return false;
+    }
+
+    let textRun = "";
+    let textRunStart = -1;
+    let textRunEnd = -1;
+    let selection: { from: number; to: number } | null = null;
+    editor.state.doc.descendants((node, position) => {
+      if (selection || !node.isText || !node.text) {
+        return;
+      }
+      if (position === textRunEnd) {
+        textRun += node.text;
+      } else {
+        textRun = node.text;
+        textRunStart = position;
+      }
+      textRunEnd = position + node.nodeSize;
+
+      const matchIndex = textRun.indexOf(text);
+      if (matchIndex !== -1) {
+        selection = {
+          from: textRunStart + matchIndex,
+          to: textRunStart + matchIndex + text.length,
+        };
+      }
+    });
+    if (!selection) {
+      return false;
+    }
+
+    editor.chain().focus().setTextSelection(selection).scrollIntoView().run();
+    return true;
+  };
+
+  const appendText = (value: string) => {
     const text = value.trim();
     if (!text) {
       return;
@@ -1544,8 +1915,167 @@ function createInsertTextCommands(editor: Editor) {
     const textblock = activeTextblock(editor);
     const content = textblock?.value.trimEnd() ? `\n${text}` : text;
     editor.commands.insertContent(content);
+  };
+
+  const appendText$ = command((_context, value: string) => {
+    appendText(value);
   });
-  return { insertText$, insertPromptMarkdown$, appendText$ };
+  const selectOrAppendText$ = command((_context, value: string) => {
+    if (!selectText(value)) {
+      appendText(value);
+    }
+  });
+
+  return {
+    insertText$,
+    insertPromptMarkdown$,
+    appendText$,
+    selectOrAppendText$,
+  };
+}
+
+function inlineTemplateNode(
+  editor: Editor,
+  request: GenerationTemplateRequest,
+  attachment: ComposerTemplateAttachment,
+): ProseMirrorNode {
+  return editor.schema.nodeFromJSON({
+    type: INLINE_TEMPLATE_NODE_NAME,
+    attrs: {
+      templateType: request.type,
+      template: request,
+      title: attachment.title,
+      category: attachment.category,
+      previewImageUrl: attachment.previewImageUrl ?? null,
+    },
+  });
+}
+
+function createInsertTemplateCommand(editor: Editor) {
+  return command(
+    (
+      _context,
+      request: GenerationTemplateRequest,
+      attachment: ComposerTemplateAttachment,
+    ) => {
+      const node = inlineTemplateNode(editor, request, attachment);
+      const { selection } = editor.state;
+      if (
+        selection instanceof NodeSelection &&
+        selection.node.type.name === INLINE_TEMPLATE_NODE_NAME
+      ) {
+        editor.view.dispatch(
+          editor.state.tr
+            .setNodeMarkup(selection.from, undefined, node.attrs)
+            .scrollIntoView(),
+        );
+        return;
+      }
+      editor
+        .chain()
+        .focus()
+        .insertContent(node.toJSON())
+        .scrollIntoView()
+        .run();
+    },
+  );
+}
+
+function createPrepareTemplateInsertionCommand(editor: Editor) {
+  return command(() => {
+    const { selection } = editor.state;
+    if (
+      selection instanceof NodeSelection &&
+      selection.node.type.name === INLINE_TEMPLATE_NODE_NAME
+    ) {
+      editor.commands.setTextSelection(selection.to);
+    }
+  });
+}
+
+function createReadSelectedTemplateCommand(editor: Editor) {
+  return command(() => {
+    const { selection } = editor.state;
+    if (
+      !(selection instanceof NodeSelection) ||
+      selection.node.type.name !== INLINE_TEMPLATE_NODE_NAME
+    ) {
+      return undefined;
+    }
+    const parsed = generationTemplateRequestSchema.safeParse(
+      selection.node.attrs.template,
+    );
+    return parsed.success ? parsed.data : undefined;
+  });
+}
+
+function createTemplateInsertionCommands(editor: Editor) {
+  return {
+    insertTemplate$: createInsertTemplateCommand(editor),
+    readSelectedTemplate$: createReadSelectedTemplateCommand(editor),
+    prepareTemplateInsertion$: createPrepareTemplateInsertionCommand(editor),
+  };
+}
+
+function createInsertUserMessageCommand(
+  editor: Editor,
+  inlineTemplatesEnabled: boolean,
+) {
+  return command((_context, value: UserMessageDocument) => {
+    const insertableParts = value.parts.filter((part) => {
+      return (
+        part.type === "text" ||
+        part.type === "chat_thread" ||
+        part.type === "feedback" ||
+        (inlineTemplatesEnabled && part.type === "template")
+      );
+    });
+    if (insertableParts.length === 0) {
+      return;
+    }
+    const restored = messageDocumentToEditorDoc(
+      {
+        version: 1,
+        parts: insertableParts,
+      },
+      { inlineTemplates: inlineTemplatesEnabled },
+    );
+    if (!restored?.content) {
+      return;
+    }
+
+    let nextFeedbackId = feedbackItemsFromWorkflowComposer(editor).reduce(
+      (nextId, item) => {
+        return Math.max(nextId, item.id + 1);
+      },
+      1,
+    );
+    const content = restored.content.map((node) => {
+      if (node.type !== FEEDBACK_ITEM_NODE_NAME) {
+        return node;
+      }
+      const feedbackId = nextFeedbackId;
+      nextFeedbackId += 1;
+      return {
+        ...node,
+        attrs: {
+          ...node.attrs,
+          feedbackId,
+        },
+      };
+    });
+
+    editor
+      .chain()
+      .focus()
+      .insertContent(content)
+      .command(({ tr }) => {
+        withFeedbackItemLayout(tr);
+        return true;
+      })
+      .scrollIntoView()
+      .run();
+  });
 }
 
 function createWorkflowComposerRuntime(): WorkflowComposerRuntime {
@@ -1554,19 +2084,12 @@ function createWorkflowComposerRuntime(): WorkflowComposerRuntime {
     selectionUpdate(_editor: Editor): void {},
     focus(_editor: Editor): void {},
     blur(): void {},
-    input(): void {},
     templateAttachment: undefined,
     openTemplate(_category: string): void {},
     removeTemplate(): void {},
     templateRemoved(): void {},
     replaceFeedbackItems(_items: readonly FeedbackItem[]): void {},
     removeFeedback(_id: number): void {},
-    keyDown(_event: KeyboardEvent): boolean {
-      return false;
-    },
-    paste: (_event: ClipboardEvent, _currentTarget: HTMLElement) => {
-      return false;
-    },
   };
 }
 
@@ -1619,6 +2142,7 @@ export function createWorkflowComposerSignals<
   draft: DraftSignals,
   threadId?: string,
   agentIdSource$: Computed<T> = currentChatAgentRecordId$ as Computed<T>,
+  inlineTemplatesEnabled = false,
 ): WorkflowComposerSignals {
   const caretIndex$ = state(-1);
   const editorFocusedState$ = state(false);
@@ -1629,6 +2153,11 @@ export function createWorkflowComposerSignals<
   const { agentId$, workflows$ } = createComposerAgentResources(agentIdSource$);
 
   const editor = createWorkflowEditor(runtime);
+  const syncWorkflowNames$ = createSyncWorkflowNamesCommand(
+    editor,
+    agentId$,
+    workflows$,
+  );
   const templateAttachment = createTemplateAttachmentControls(editor, runtime);
   const feedback = createComposerFeedback(threadId, editor);
 
@@ -1671,19 +2200,6 @@ export function createWorkflowComposerSignals<
   const focus$ = command(() => {
     editor.commands.focus("end");
   });
-  const setWorkflowNames$ = command((_context, names: readonly string[]) => {
-    workflowHighlightStorage(editor).workflowNames = names;
-    if (editor.isInitialized) {
-      editor.view.dispatch(editor.state.tr);
-    }
-  });
-  const setEventHandlers$ = command(
-    (_context, handlers: WorkflowComposerEventHandlers) => {
-      runtime.input = handlers.onInput;
-      runtime.keyDown = handlers.onKeyDown;
-      runtime.paste = handlers.onPaste;
-    },
-  );
   const mountEditor = (autoFocus: boolean, singleLineOnMobile: boolean) => {
     return createMountEditorCommand({
       editor,
@@ -1694,6 +2210,8 @@ export function createWorkflowComposerSignals<
       selectedSuggestionIndexState$,
       feedback,
       compositionGate,
+      syncWorkflowNames$,
+      inlineTemplatesEnabled,
       autoFocus,
       singleLineOnMobile,
     });
@@ -1707,6 +2225,11 @@ export function createWorkflowComposerSignals<
     activeChatThreadSuggestionRange$,
   );
   const textCommands = createInsertTextCommands(editor);
+  const templateCommands = createTemplateInsertionCommands(editor);
+  const insertUserMessage$ = createInsertUserMessageCommand(
+    editor,
+    inlineTemplatesEnabled,
+  );
   const readInputForSubmission$ = createReadInputForSubmissionCommand(
     editor,
     compositionGate,
@@ -1729,16 +2252,17 @@ export function createWorkflowComposerSignals<
     chatThreadSuggestions$,
     agentId$,
     workflows$,
+    reloadWorkflows$: reloadMountedWorkflowNames$,
     selectedSuggestionIndex$,
     setSelectedSuggestionIndex$,
     closeSuggestionMenu$,
-    setWorkflowNames$,
     insertWorkflow$,
     insertChatThread$,
     ...textCommands,
+    ...templateCommands,
+    insertUserMessage$,
     readInputForSubmission$,
     setTemplateAttachmentLifecycleRef$: templateAttachment.setLifecycleRef$,
-    setEventHandlers$,
     feedback,
   };
 }

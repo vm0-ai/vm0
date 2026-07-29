@@ -353,170 +353,223 @@ function addField(
   }
 }
 
-function addConnectorDiagnosticFields(
-  out: [string, string][],
-  entry: NetworkLogEntry,
-): void {
-  addField(
-    out,
-    "Connector Diagnostic",
-    entry.connector_diagnostic_type,
-    formatValue(entry.connector_diagnostic_type),
-  );
-  addField(
-    out,
-    "Connector Reason",
-    entry.connector_diagnostic_reason,
-    formatValue(entry.connector_diagnostic_reason),
-  );
-  addField(
-    out,
-    "Connector Env Names",
-    entry.connector_diagnostic_env_names,
-    formatValue(entry.connector_diagnostic_env_names),
-  );
-  addField(
-    out,
-    "Connector Base URL",
-    entry.connector_diagnostic_base,
-    formatValue(entry.connector_diagnostic_base),
-  );
-}
-
-function addConnectorRouteFields(
-  out: [string, string][],
-  entry: NetworkLogEntry,
-): void {
-  addField(
-    out,
-    "Connector Route Reason",
-    entry.connector_route_reason,
-    formatValue(entry.connector_route_reason),
-  );
-  addField(
-    out,
-    "Connector Route Candidates",
-    entry.connector_route_candidates,
-    formatValue(entry.connector_route_candidates),
-  );
-}
-
 // [NETWORK_LOG_FIELDS] — keep in sync with all network log schemas
-// Note: request_headers, request/response body fields are rendered
-// separately by CapturedBodySections below.
+// The exhaustive Record makes a new contract field fail type checking until
+// the UI either adds a detail formatter or explicitly delegates it.
+interface NetworkLogDetailDescriptor {
+  readonly label: string;
+  readonly value: (entry: NetworkLogEntry) => unknown;
+  readonly format: (entry: NetworkLogEntry) => string;
+}
+
+function detailField<K extends keyof NetworkLogEntry>(
+  label: string,
+  key: K,
+  formatter: (value: NetworkLogEntry[K]) => string = formatValue,
+): NetworkLogDetailDescriptor {
+  return {
+    label,
+    value: (entry) => {
+      return entry[key];
+    },
+    format: (entry) => {
+      return formatter(entry[key]);
+    },
+  };
+}
+
+const networkLogDetailFields = {
+  timestamp: detailField("Timestamp", "timestamp"),
+  type: detailField("Type", "type"),
+  action: detailField("Action", "action"),
+  method: detailField("Method", "method"),
+  url: detailField("URL", "url"),
+  host: detailField("Host", "host"),
+  port: detailField("Port", "port"),
+  status: detailField("Status", "status"),
+  latency_ms: detailField("Latency", "latency_ms", formatLatency),
+  request_size: detailField("Request Size", "request_size", formatSize),
+  response_size: detailField("Response Size", "response_size", formatSize),
+  browser_user_agent: detailField("Browser User-Agent", "browser_user_agent"),
+  model_catalog_cache_status: detailField(
+    "Model Catalog Cache Status",
+    "model_catalog_cache_status",
+  ),
+  model_catalog_cache_upstream_encoding: detailField(
+    "Model Catalog Upstream Encoding",
+    "model_catalog_cache_upstream_encoding",
+  ),
+  model_catalog_cache_bypass_reason: detailField(
+    "Model Catalog Cache Bypass Reason",
+    "model_catalog_cache_bypass_reason",
+  ),
+  model_catalog_cache_entry_age_ms: detailField(
+    "Model Catalog Cache Entry Age",
+    "model_catalog_cache_entry_age_ms",
+    formatLatency,
+  ),
+  model_catalog_cache_validation_latency_ms: detailField(
+    "Model Catalog Cache Validation Latency",
+    "model_catalog_cache_validation_latency_ms",
+    formatLatency,
+  ),
+  model_catalog_cache_eviction_count: detailField(
+    "Model Catalog Cache Eviction Count",
+    "model_catalog_cache_eviction_count",
+  ),
+  model_catalog_prefetch_role: detailField(
+    "Model Catalog Prefetch Role",
+    "model_catalog_prefetch_role",
+  ),
+  dns_event: detailField("DNS Event", "dns_event"),
+  dns_query_type: detailField("DNS Query Type", "dns_query_type"),
+  dns_result: detailField("DNS Result", "dns_result"),
+  dns_serial: detailField("DNS Serial", "dns_serial"),
+  firewall_name: detailField("Firewall", "firewall_name"),
+  firewall_permission: detailField("Permission", "firewall_permission"),
+  firewall_rule_match: detailField("Rule Match", "firewall_rule_match"),
+  firewall_base: detailField("Base URL", "firewall_base"),
+  firewall_params: detailField("Params", "firewall_params", formatParams),
+  firewall_billable: detailField("Billable", "firewall_billable"),
+  firewall_error: detailField("Permission Error", "firewall_error"),
+  upstream_binding_reason: detailField(
+    "Upstream Binding Reason",
+    "upstream_binding_reason",
+  ),
+  upstream_binding_trusted_host: detailField(
+    "Upstream Binding Trusted Host",
+    "upstream_binding_trusted_host",
+  ),
+  upstream_binding_request_host: detailField(
+    "Upstream Binding Request Host",
+    "upstream_binding_request_host",
+  ),
+  upstream_binding_request_port: detailField(
+    "Upstream Binding Request Port",
+    "upstream_binding_request_port",
+  ),
+  upstream_binding_server_connected: detailField(
+    "Upstream Binding Server Connected",
+    "upstream_binding_server_connected",
+  ),
+  upstream_binding_server_address: detailField(
+    "Upstream Binding Server Address",
+    "upstream_binding_server_address",
+  ),
+  upstream_binding_server_peername: detailField(
+    "Upstream Binding Server Peername",
+    "upstream_binding_server_peername",
+  ),
+  upstream_binding_server_sockname: detailField(
+    "Upstream Binding Server Sockname",
+    "upstream_binding_server_sockname",
+  ),
+  upstream_binding_client_sockname: detailField(
+    "Upstream Binding Client Sockname",
+    "upstream_binding_client_sockname",
+  ),
+  upstream_binding_server_id: detailField(
+    "Upstream Binding Server ID",
+    "upstream_binding_server_id",
+  ),
+  upstream_binding_client_id: detailField(
+    "Upstream Binding Client ID",
+    "upstream_binding_client_id",
+  ),
+  upstream_binding_direct_binding_present: detailField(
+    "Upstream Direct Binding Present",
+    "upstream_binding_direct_binding_present",
+  ),
+  upstream_binding_direct_binding_host: detailField(
+    "Upstream Direct Binding Host",
+    "upstream_binding_direct_binding_host",
+  ),
+  upstream_binding_direct_binding_port: detailField(
+    "Upstream Direct Binding Port",
+    "upstream_binding_direct_binding_port",
+  ),
+  upstream_binding_direct_binding_kinds: detailField(
+    "Upstream Direct Binding Kinds",
+    "upstream_binding_direct_binding_kinds",
+  ),
+  upstream_binding_client_binding_count: detailField(
+    "Upstream Client Binding Count",
+    "upstream_binding_client_binding_count",
+  ),
+  upstream_binding_client_binding_match: detailField(
+    "Upstream Client Binding Match",
+    "upstream_binding_client_binding_match",
+  ),
+  upstream_binding_client_binding_endpoint_match: detailField(
+    "Upstream Client Binding Endpoint Match",
+    "upstream_binding_client_binding_endpoint_match",
+  ),
+  upstream_binding_client_binding_hosts: detailField(
+    "Upstream Client Binding Hosts",
+    "upstream_binding_client_binding_hosts",
+  ),
+  connector_diagnostic_type: detailField(
+    "Connector Diagnostic",
+    "connector_diagnostic_type",
+  ),
+  connector_diagnostic_reason: detailField(
+    "Connector Reason",
+    "connector_diagnostic_reason",
+  ),
+  connector_diagnostic_env_names: detailField(
+    "Connector Env Names",
+    "connector_diagnostic_env_names",
+  ),
+  connector_diagnostic_base: detailField(
+    "Connector Base URL",
+    "connector_diagnostic_base",
+  ),
+  connector_route_reason: detailField(
+    "Connector Route Reason",
+    "connector_route_reason",
+  ),
+  connector_route_candidates: detailField(
+    "Connector Route Candidates",
+    "connector_route_candidates",
+  ),
+  auth_resolved_secrets: detailField(
+    "Resolved Secrets",
+    "auth_resolved_secrets",
+  ),
+  auth_refreshed_connectors: detailField(
+    "Refreshed Connectors",
+    "auth_refreshed_connectors",
+  ),
+  auth_refreshed_secrets: detailField(
+    "Refreshed Secrets",
+    "auth_refreshed_secrets",
+  ),
+  auth_cache_hit: detailField("Cache Hit", "auth_cache_hit"),
+  auth_url_rewrite: detailField("URL Rewrite", "auth_url_rewrite"),
+  error: detailField("Error", "error"),
+  // CapturedBodySections renders these fields below the detail grid.
+  request_headers: null,
+  request_body: null,
+  request_body_encoding: null,
+  request_body_truncated: null,
+  response_headers: null,
+  response_body: null,
+  response_body_encoding: null,
+  response_body_truncated: null,
+} satisfies Record<keyof NetworkLogEntry, NetworkLogDetailDescriptor | null>;
+
 function collectDetails(entry: NetworkLogEntry): [string, string][] {
   const out: [string, string][] = [];
-  addField(out, "Timestamp", entry.timestamp, entry.timestamp);
-  addField(out, "Type", entry.type, formatValue(entry.type));
-  addField(out, "Action", entry.action, formatValue(entry.action));
-  addField(out, "Method", entry.method, formatValue(entry.method));
-  addField(out, "URL", entry.url, formatValue(entry.url));
-  addField(out, "Host", entry.host, formatValue(entry.host));
-  addField(out, "Port", entry.port, formatValue(entry.port));
-  addField(out, "Status", entry.status, formatValue(entry.status));
-  addField(out, "Latency", entry.latency_ms, formatLatency(entry.latency_ms));
-  addField(
-    out,
-    "Request Size",
-    entry.request_size,
-    formatSize(entry.request_size),
-  );
-  addField(
-    out,
-    "Response Size",
-    entry.response_size,
-    formatSize(entry.response_size),
-  );
-  addField(
-    out,
-    "Browser User-Agent",
-    entry.browser_user_agent,
-    entry.browser_user_agent ? "Yes" : "No",
-  );
-  addField(out, "DNS Event", entry.dns_event, formatValue(entry.dns_event));
-  addField(
-    out,
-    "DNS Query Type",
-    entry.dns_query_type,
-    formatValue(entry.dns_query_type),
-  );
-  addField(out, "DNS Result", entry.dns_result, formatValue(entry.dns_result));
-  addField(out, "DNS Serial", entry.dns_serial, formatValue(entry.dns_serial));
-  addField(
-    out,
-    "Firewall",
-    entry.firewall_name,
-    formatValue(entry.firewall_name),
-  );
-  addField(
-    out,
-    "Permission",
-    entry.firewall_permission,
-    formatValue(entry.firewall_permission),
-  );
-  addField(
-    out,
-    "Rule Match",
-    entry.firewall_rule_match,
-    formatValue(entry.firewall_rule_match),
-  );
-  addField(
-    out,
-    "Base URL",
-    entry.firewall_base,
-    formatValue(entry.firewall_base),
-  );
-  addField(
-    out,
-    "Params",
-    entry.firewall_params,
-    formatParams(entry.firewall_params),
-  );
-  addField(
-    out,
-    "Billable",
-    entry.firewall_billable,
-    entry.firewall_billable ? "Yes" : "No",
-  );
-  addField(
-    out,
-    "Permission Error",
-    entry.firewall_error,
-    formatValue(entry.firewall_error),
-  );
-  addConnectorDiagnosticFields(out, entry);
-  addConnectorRouteFields(out, entry);
-  addField(
-    out,
-    "Resolved Secrets",
-    entry.auth_resolved_secrets,
-    formatValue(entry.auth_resolved_secrets),
-  );
-  addField(
-    out,
-    "Refreshed Connectors",
-    entry.auth_refreshed_connectors,
-    formatValue(entry.auth_refreshed_connectors),
-  );
-  addField(
-    out,
-    "Refreshed Secrets",
-    entry.auth_refreshed_secrets,
-    formatValue(entry.auth_refreshed_secrets),
-  );
-  addField(
-    out,
-    "Cache Hit",
-    entry.auth_cache_hit,
-    formatValue(entry.auth_cache_hit),
-  );
-  addField(
-    out,
-    "URL Rewrite",
-    entry.auth_url_rewrite,
-    formatValue(entry.auth_url_rewrite),
-  );
-  addField(out, "Error", entry.error, formatValue(entry.error));
+  for (const descriptor of Object.values(networkLogDetailFields)) {
+    if (descriptor) {
+      addField(
+        out,
+        descriptor.label,
+        descriptor.value(entry),
+        descriptor.format(entry),
+      );
+    }
+  }
   return out;
 }
 

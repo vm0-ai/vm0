@@ -7,9 +7,51 @@ import {
   WORKFLOW_TEMPLATE_ITEMS,
 } from "@vm0/core";
 import { findImageStyle } from "@vm0/core/resource-registry";
-import { buildGenerationTemplatePrompt } from "../generation-template-prompt";
+import {
+  buildGenerationTemplatePrompt,
+  buildGenerationTemplatesPrompt,
+} from "../generation-template-prompt";
 
 describe("buildGenerationTemplatePrompt", () => {
+  it("builds one shared context for multiple ordered templates", () => {
+    const illustration = ILLUSTRATION_TEMPLATE_ITEMS[0]!;
+    const workflow = WORKFLOW_TEMPLATE_ITEMS[0]!;
+
+    const result = buildGenerationTemplatesPrompt([
+      {
+        type: "illustration",
+        selection: {
+          illustrationStyleId: illustration.illustrationStyleId,
+        },
+      },
+      {
+        type: "workflow",
+        selection: { workflowTemplateId: workflow.id },
+      },
+    ]);
+
+    expect(result.status).toBe("resolved");
+    if (result.status !== "resolved") {
+      return;
+    }
+    expect(result.prompt.match(/^# Inline Templates$/gm)).toHaveLength(1);
+    expect(result.prompt).not.toContain("# Artifact Template Context");
+    expect(result.prompt).not.toContain("# Workflow Template Context");
+    expect(result.prompt).toContain("## Template #1 (illustration)");
+    expect(result.prompt).toContain("## Template #2 (workflow)");
+    expect(result.prompt).toContain(
+      "Match each numbered template marker in the current user message with the same numbered section below.",
+    );
+    expect(result.prompt).toContain(
+      "Apply each template only to the request around its marker.",
+    );
+    expect(result.prompt).toContain(
+      "A template is context, not a request by itself.",
+    );
+    expect(result.prompt).toContain(illustration.illustrationStyleId);
+    expect(result.prompt).toContain(workflow.id);
+  });
+
   it("returns invalid for a presentation selection without a runbook package", () => {
     // Presentations are runbook-only. Retired demo-catalog selections no longer
     // resolve to generation prompts.
@@ -43,14 +85,12 @@ describe("buildGenerationTemplatePrompt", () => {
     expect(result.prompt).toContain(
       "Selected presentation template: Playful Launch Presentation (template:html-ppt-playful-launch)",
     );
-    // Pull exactly one resource: the selected runbook package.
     expect(result.prompt).toContain(
       "zero resource pull template:html-ppt-playful-launch-runbook --dir ./generated/resources",
     );
     expect(result.prompt).toContain(
       "./generated/resources/playful-launch/AGENT_RUNBOOK.md",
     );
-    // Color system is a runtime token in the deck JSON.
     expect(result.prompt).toContain('"colorSystem": "carnival"');
     expect(result.prompt).toContain(
       "all user-visible slide content, with the first slide visible before JavaScript runs",
@@ -61,7 +101,6 @@ describe("buildGenerationTemplatePrompt", () => {
     expect(result.prompt).toContain(
       "zero host <output-dir> --site <slug> --artifact-kind presentation-html",
     );
-    // The runbook flow has no design system and does not use `zero generate`.
     expect(result.prompt).not.toContain("Design system:");
     expect(result.prompt).not.toContain("Selected design system");
     expect(result.prompt).not.toContain("zero generate presentation");
@@ -81,7 +120,6 @@ describe("buildGenerationTemplatePrompt", () => {
     if (result.status !== "resolved") {
       return;
     }
-    // playful-launch default color token.
     expect(result.prompt).toContain('"colorSystem": "carnival"');
   });
 
@@ -101,8 +139,6 @@ describe("buildGenerationTemplatePrompt", () => {
       return;
     }
     expect(result.prompt).toContain("# Artifact Template Context");
-    // States the attached style and the exact command that applies it, so the
-    // agent does not re-ask for an already-selected style (vm0-ai/vm0#17525).
     expect(result.prompt).toContain(item.illustrationStyleId);
     expect(result.prompt).toContain(
       `- Style description: ${imageStyle.description}`,
@@ -178,8 +214,9 @@ describe("buildGenerationTemplatePrompt", () => {
     expect(result.prompt).not.toContain("# Artifact Template Context");
   });
 
-  it("builds website template package guidance", () => {
+  it("builds website template v2 package guidance", () => {
     const item = WEBSITE_TEMPLATE_ITEMS[0]!;
+    const resourceId = `${item.resourceId}-v2`;
 
     const result = buildGenerationTemplatePrompt({
       type: "website",
@@ -196,10 +233,10 @@ describe("buildGenerationTemplatePrompt", () => {
       return;
     }
     expect(result.prompt).toContain(`Template: ${item.title} (${item.id})`);
-    expect(result.prompt).toContain(`Template package id: ${item.templateId}`);
-    expect(result.prompt).toContain(`Package resource: ${item.resourceId}`);
+    expect(result.prompt).toContain(`Template package id: ${resourceId}`);
+    expect(result.prompt).toContain(`Package resource: ${resourceId}`);
     expect(result.prompt).toContain(
-      `zero resource pull ${item.resourceId} --dir ./generated/resources`,
+      `zero resource pull ${resourceId} --dir ./generated/resources`,
     );
     expect(result.prompt).toContain(
       `./generated/resources/${item.sourcePath}/resolve-images.mjs`,
@@ -213,18 +250,15 @@ describe("buildGenerationTemplatePrompt", () => {
     expect(result.prompt).not.toContain("zero generate website --template");
   });
 
-  it("selects every additive v2 package behind the rollout switch", () => {
+  it("selects every website template v2 package", () => {
     for (const item of WEBSITE_TEMPLATE_ITEMS) {
       const resourceId = `${item.resourceId}-v2`;
-      const result = buildGenerationTemplatePrompt(
-        {
-          type: "website",
-          selection: {
-            websiteTemplateId: item.id,
-          },
+      const result = buildGenerationTemplatePrompt({
+        type: "website",
+        selection: {
+          websiteTemplateId: item.id,
         },
-        { websiteTemplateV2Enabled: true },
-      );
+      });
 
       expect(result).toStrictEqual({
         status: "resolved",

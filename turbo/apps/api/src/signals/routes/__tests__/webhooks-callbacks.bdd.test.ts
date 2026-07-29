@@ -1,10 +1,11 @@
 import { createHash, randomInt, randomUUID } from "node:crypto";
 
+import { createStore } from "ccstate";
 import { LIMITED_FREE1_DEFAULT_RUN_MODEL } from "@vm0/api-contracts/contracts/model-providers";
 import { RESUME_SESSION_HISTORY_MAX_BYTES } from "@vm0/api-contracts/contracts/runners";
 import { MAX_FILE_SIZE_BYTES } from "@vm0/api-contracts/contracts/storages";
 import { HttpResponse, http } from "msw";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, onTestFinished } from "vitest";
 
 import { mockEnv, mockOptionalEnv } from "../../../lib/env";
 import { now, nowDate } from "../../../lib/time";
@@ -17,7 +18,9 @@ import {
   deleteOrgPlanEntitlementFixture,
   readOrgPlanEntitlementFixture,
 } from "../../../test-fixtures/org-plan-entitlement";
+import { seedUsagePricingRows } from "../../../test-fixtures/system-config-seeds";
 import { readUsageAllowanceEntitlementFixture } from "../../../test-fixtures/usage-allowance";
+import { holdUsageEventCompactionLockFixture } from "../../../test-fixtures/usage-event-compaction";
 import {
   createBddApi,
   expectApiError,
@@ -27,12 +30,26 @@ import { createBddIntegrationApi } from "./helpers/api-bdd-integrations";
 import { createBillingMediaApi } from "./helpers/api-bdd-billing-media";
 import { createConnectorBddApi } from "./helpers/api-bdd-connectors";
 import { createGithubBddApi, newGithubUserId } from "./helpers/api-bdd-github";
-import { createRunsApi } from "./helpers/api-bdd-runs";
+import {
+  createRunsApi,
+  expectCanonicalStorageManifest,
+} from "./helpers/api-bdd-runs";
 import { createStoragesBddApi } from "./helpers/api-bdd-storages";
 import { createWebhookCallbackApi } from "./helpers/api-bdd-webhooks";
+import {
+  generatedStripeCustomerId,
+  generatedStripeSubscriptionId,
+  postUsageAllowanceInvoicePaid,
+} from "./helpers/stripe-billing-webhook";
+import {
+  insertUsageEvent$,
+  materializeHourlyUsage$,
+  readUsageStorageCounts$,
+} from "./helpers/zero-usage-insight";
 
 const context = testContext();
 const api = createWebhookCallbackApi(context);
+const store = createStore();
 const THIRTY_DAYS_MS = 30 * 24 * 60 * 60 * 1000;
 const DEFAULT_AGENT_AVATAR_URL = "svg:r1s0h1c5f4h";
 
@@ -85,6 +102,13 @@ async function waitForExpectation(
       return result.ok;
     })
     .toBe(true);
+}
+
+async function completeOnboardingWithoutCredits(
+  actor: ApiTestUser,
+): Promise<void> {
+  const completed = await createBddApi(context).completeOnboarding(actor);
+  expect(completed.status).toBe(200);
 }
 
 function stripeEvent(args: {
@@ -1210,25 +1234,6 @@ describe("WHCB-05: sandbox agent webhook boundaries", () => {
     expectApiError(mismatchedUsageEvent.body);
     expect(mismatchedUsageEvent.body.error.code).toBe("UNAUTHORIZED");
 
-    const mismatchedLegacyModelUsage =
-      await api.requestAgentModelUsageObservation(
-        {
-          runId,
-          events: [
-            {
-              idempotencyKey: randomUUID(),
-              model: "claude-sonnet-4-6",
-              category: "tokens.input",
-              quantity: 1,
-            },
-          ],
-        },
-        mismatchedHeaders,
-        [401],
-      );
-    expectApiError(mismatchedLegacyModelUsage.body);
-    expect(mismatchedLegacyModelUsage.body.error.code).toBe("UNAUTHORIZED");
-
     const mismatchedCompactModelUsage =
       await api.requestAgentModelUsageObservationV2(
         {
@@ -1287,42 +1292,6 @@ describe("WHCB-05: sandbox agent webhook boundaries", () => {
     );
     expectApiError(missingUsageRun.body);
     expect(missingUsageRun.body.error.code).toBe("NOT_FOUND");
-
-    const malformedModelUsage =
-      await api.requestAgentModelUsageObservationUnchecked(
-        {
-          runId,
-          events: [
-            {
-              idempotencyKey: randomUUID(),
-              model: "claude-sonnet-4-6",
-              category: "tokens.input",
-              quantity: 0,
-            },
-          ],
-        },
-        headers,
-        [400],
-      );
-    expectApiError(malformedModelUsage.body);
-    expect(malformedModelUsage.body.error.code).toBe("BAD_REQUEST");
-
-    const legacyModelUsageNoOp = await api.requestAgentModelUsageObservation(
-      {
-        runId,
-        events: [
-          {
-            idempotencyKey: randomUUID(),
-            model: "claude-sonnet-4-6",
-            category: "tokens.input",
-            quantity: 1,
-          },
-        ],
-      },
-      headers,
-      [200],
-    );
-    expect(legacyModelUsageNoOp.body).toStrictEqual({ success: true });
 
     const malformedCompactModelUsage =
       await api.requestAgentModelUsageObservationV2Unchecked(
@@ -1643,8 +1612,7 @@ describe("WHCB-06: sandbox agent artifact webhook boundaries", () => {
     const mismatchedStoragePrepare = await api.requestAgentStoragePrepare(
       {
         runId,
-        storageName: "artifact-bdd",
-        storageType: "artifact",
+        storageId: randomUUID(),
         files: [{ path: "index.txt", hash, size: 5 }],
       },
       mismatchedHeaders,
@@ -1657,8 +1625,7 @@ describe("WHCB-06: sandbox agent artifact webhook boundaries", () => {
       await api.requestAgentStoragePrepareUnchecked(
         {
           runId,
-          storageName: "",
-          storageType: "artifact",
+          storageId: "",
           files: [{ path: "index.txt", hash, size: 5 }],
         },
         headers,
@@ -1670,8 +1637,7 @@ describe("WHCB-06: sandbox agent artifact webhook boundaries", () => {
     const mismatchedStorageCommit = await api.requestAgentStorageCommit(
       {
         runId,
-        storageName: "artifact-bdd",
-        storageType: "artifact",
+        storageId: randomUUID(),
         versionId: randomUUID(),
         files: [{ path: "index.txt", hash, size: 5 }],
       },
@@ -1684,8 +1650,7 @@ describe("WHCB-06: sandbox agent artifact webhook boundaries", () => {
     const malformedStorageCommit = await api.requestAgentStorageCommitUnchecked(
       {
         runId,
-        storageName: "artifact-bdd",
-        storageType: "artifact",
+        storageId: randomUUID(),
         versionId: "",
         files: [{ path: "index.txt", hash, size: 5 }],
       },
@@ -1706,7 +1671,8 @@ describe("WHCB-09: sandbox storage writes and checkpoint history blobs land in t
     bdd.acceptAgentStorageWrites();
     runs.acceptStorageDownloads();
     runs.acceptTelemetryIngest();
-    runs.configureRunnerGroup();
+    const runnerGroup = runs.configureRunnerGroup();
+    await runs.heartbeatRunner(runnerGroup);
     await runs.grantProEntitlement(actor);
     await runs.ensureOrgModelProvider(actor);
     const agent = await bdd.createAgent(actor, {
@@ -1718,8 +1684,16 @@ describe("WHCB-09: sandbox storage writes and checkpoint history blobs land in t
       prompt: "write artifacts from the sandbox",
       modelProvider: "anthropic-api-key",
     });
+    const claim = await runs.claimRunnerJob(run.runId);
+    const manifest = expectCanonicalStorageManifest(claim.storageManifest);
+    const writebackMount = manifest?.storageMounts.find((mount) => {
+      return mount.writeback === true;
+    });
+    if (!writebackMount) {
+      throw new Error("Expected a canonical writeback mount");
+    }
     const headers = {
-      authorization: `Bearer ${runs.sandboxTokenForRun(actor, run.runId)}`,
+      authorization: `Bearer ${claim.sandboxToken}`,
     };
 
     // Checkpoint history blobs: first prepare issues an upload URL, the
@@ -1762,8 +1736,22 @@ describe("WHCB-09: sandbox storage writes and checkpoint history blobs land in t
     expectApiError(missingHistoryRun.body);
     expect(missingHistoryRun.body.error.message).toBe("Agent run not found");
 
-    // Artifact writes land under the run organization's storage prefix.
-    const storageName = `bdd-sandbox-artifact-${randomUUID().slice(0, 8)}`;
+    const unmountedStorage = await api.requestAgentStoragePrepare(
+      {
+        runId: run.runId,
+        storageId: randomUUID(),
+        files: [],
+      },
+      headers,
+      [404],
+    );
+    expectApiError(unmountedStorage.body);
+    expect(unmountedStorage.body.error.message).toBe(
+      "Writeback storage not found",
+    );
+
+    // Canonical writes land under the run organization's Storage prefix.
+    const storageName = writebackMount.name;
     const files = [
       {
         path: "index.html",
@@ -1774,7 +1762,12 @@ describe("WHCB-09: sandbox storage writes and checkpoint history blobs land in t
       },
     ];
     const prepared = await api.requestAgentStoragePrepare(
-      { runId: run.runId, storageName, storageType: "artifact", files },
+      {
+        runId: run.runId,
+        storageId: writebackMount.storageId,
+        parentVersionId: writebackMount.versionId,
+        files,
+      },
       headers,
       [200],
     );
@@ -1793,10 +1786,9 @@ describe("WHCB-09: sandbox storage writes and checkpoint history blobs land in t
     const committed = await api.requestAgentStorageCommit(
       {
         runId: run.runId,
-        storageName,
-        storageType: "artifact",
+        storageId: writebackMount.storageId,
         versionId: prepared.body.versionId,
-        parentVersionId: "b".repeat(64),
+        parentVersionId: writebackMount.versionId,
         files,
         message: "bdd sandbox commit",
       },
@@ -1817,7 +1809,7 @@ describe("WHCB-09: sandbox storage writes and checkpoint history blobs land in t
     // Re-preparing identical content reuses the committed version without
     // new upload URLs.
     const reprepared = await api.requestAgentStoragePrepare(
-      { runId: run.runId, storageName, storageType: "artifact", files },
+      { runId: run.runId, storageId: writebackMount.storageId, files },
       headers,
       [200],
     );
@@ -1832,8 +1824,7 @@ describe("WHCB-09: sandbox storage writes and checkpoint history blobs land in t
     const mismatchedCommit = await api.requestAgentStorageCommit(
       {
         runId: run.runId,
-        storageName,
-        storageType: "artifact",
+        storageId: writebackMount.storageId,
         versionId: "f".repeat(64),
         files,
       },
@@ -1848,8 +1839,7 @@ describe("WHCB-09: sandbox storage writes and checkpoint history blobs land in t
     const oversized = await api.requestAgentStoragePrepare(
       {
         runId: run.runId,
-        storageName: `bdd-oversized-${randomUUID().slice(0, 8)}`,
-        storageType: "artifact",
+        storageId: writebackMount.storageId,
         files: [
           {
             path: "a.bin",
@@ -1865,9 +1855,8 @@ describe("WHCB-09: sandbox storage writes and checkpoint history blobs land in t
     expectApiError(oversized.body);
     expect(oversized.body.error.code).toBe("PAYLOAD_TOO_LARGE");
 
-    // The committed artifact is visible to the run owner through the public
-    // storage reads.
-    const listed = await storages.listStorages(actor, "artifact");
+    // The committed writeback is visible through fixture-only state reads.
+    const listed = await storages.listStorages(actor, "user");
     expect(listed).toStrictEqual(
       expect.arrayContaining([
         expect.objectContaining({
@@ -1879,7 +1868,7 @@ describe("WHCB-09: sandbox storage writes and checkpoint history blobs land in t
     );
     const downloaded = await storages.downloadStorage(actor, {
       name: storageName,
-      type: "artifact",
+      owner: "user",
     });
     expect(downloaded).toMatchObject({
       versionId: prepared.body.versionId,
@@ -1959,7 +1948,7 @@ describe("WHCB-07: Stripe billing lifecycle webhooks", () => {
     const suffix = randomUUID().slice(0, 8);
     api.configureStripeBillingEnv();
     context.mocks.stripe.subscriptions.list.mockResolvedValue({ data: [] });
-    await bdd.bootstrapOnboarding(actor, { displayName: "BDD Atom Grant" });
+    await completeOnboardingWithoutCredits(actor);
 
     await api.postStripeEvent(
       stripeEvent({
@@ -2470,7 +2459,7 @@ describe("WHCB-07: Stripe billing lifecycle webhooks", () => {
     const suffix = randomUUID().slice(0, 8);
     const grantExpiresAtUnix = epochSeconds(30);
     api.configureStripeBillingEnv();
-    await bdd.bootstrapOnboarding(actor, { displayName: "BDD Custom Grant" });
+    await completeOnboardingWithoutCredits(actor);
 
     await api.postStripeEvent(
       stripeEvent({
@@ -2803,7 +2792,7 @@ describe("WHCB-07: Stripe billing lifecycle webhooks", () => {
     const actor = bdd.user();
     const orgId = orgOf(actor);
     api.configureStripeBillingEnv();
-    await bdd.bootstrapOnboarding(actor, { displayName: "BDD Trial Agent" });
+    await completeOnboardingWithoutCredits(actor);
 
     const suffix = randomUUID().slice(0, 8);
     const customerId = `cus_bdd_trial_${suffix}`;
@@ -3511,7 +3500,7 @@ describe("WHCB-07: Stripe billing lifecycle webhooks", () => {
     const actor = bdd.user();
     const orgId = orgOf(actor);
     api.configureStripeBillingEnv();
-    await bdd.bootstrapOnboarding(actor, { displayName: "BDD Binding Agent" });
+    await completeOnboardingWithoutCredits(actor);
 
     const suffix = randomUUID().slice(0, 8);
     const customerId = `cus_bdd_bind_${suffix}`;
@@ -3738,7 +3727,7 @@ describe("WHCB-07: Stripe billing lifecycle webhooks", () => {
     const actor = bdd.user();
     const orgId = orgOf(actor);
     api.configureStripeBillingEnv();
-    await bdd.bootstrapOnboarding(actor, { displayName: "BDD Credits Agent" });
+    await completeOnboardingWithoutCredits(actor);
     const baselineCredits = (await billing.readBillingStatus(actor)).credits;
 
     // A one-time checkout before payment settles grants nothing.
@@ -4451,9 +4440,21 @@ describe("WHCB-08: Clerk deletion webhooks tear down account state", () => {
 
     const actor = bdd.user();
     const granted = await runs.grantProEntitlement(actor);
+    await postUsageAllowanceInvoicePaid(context.signal, {
+      orgId: orgOf(actor),
+      userId: actor.userId,
+      customerId: generatedStripeCustomerId(),
+      subscriptionId: generatedStripeSubscriptionId(),
+      effectiveAt: new Date(now() - 60_000),
+      expiresAt: new Date(now() + 365 * 86_400_000),
+      shortWindowSeconds: 3600,
+      shortWindowUnits: 100,
+      weeklyWindowSeconds: 7 * 86_400,
+      weeklyWindowUnits: 100,
+    });
     await runs.ensureOrgModelProvider(actor);
     await connectors.connectManualGrant(actor, "openai", "api-token", {
-      OPENAI_TOKEN: "org-teardown-connector-token",
+      apiKey: "org-teardown-connector-token",
     });
     const agent = await bdd.createAgent(actor, {
       displayName: "BDD Org Teardown Agent",
@@ -4465,6 +4466,63 @@ describe("WHCB-08: Clerk deletion webhooks tear down account state", () => {
       modelProvider: "anthropic-api-key",
     });
     expect(run.status).toBe("pending");
+    const usageProvider = `org-teardown-${randomUUID().slice(0, 8)}`;
+    await seedUsagePricingRows([
+      {
+        kind: "connector",
+        provider: usageProvider,
+        category: "call",
+        unitPrice: 10,
+        unitSize: 1,
+      },
+    ]);
+    await api.requestAgentUsageEvent(
+      {
+        runId: run.runId,
+        events: [
+          {
+            idempotencyKey: randomUUID(),
+            kind: "connector",
+            provider: usageProvider,
+            category: "call",
+            quantity: 1,
+          },
+        ],
+      },
+      { authorization: `Bearer ${runs.sandboxTokenForRun(actor, run.runId)}` },
+      [200],
+    );
+    await createBillingMediaApi(context).processOrgUsageEvents(actor);
+    await expect(
+      store.set(
+        materializeHourlyUsage$,
+        {
+          orgId: orgOf(actor),
+          userId: actor.userId,
+          runId: run.runId,
+        },
+        context.signal,
+      ),
+    ).resolves.toBe(1);
+    await store.set(
+      insertUsageEvent$,
+      {
+        orgId: orgOf(actor),
+        userId: actor.userId,
+        runId: run.runId,
+        status: "processed",
+        creditsCharged: 5,
+        processedAt: nowDate(),
+      },
+      context.signal,
+    );
+    await expect(
+      store.set(
+        readUsageStorageCounts$,
+        { scope: "organization", id: orgOf(actor) },
+        context.signal,
+      ),
+    ).resolves.toStrictEqual({ raw: 1, hourly: 1 });
 
     await gh.installGithubApp(actor, agent.agentId, {
       oauthCode: {
@@ -4542,12 +4600,30 @@ describe("WHCB-08: Clerk deletion webhooks tear down account state", () => {
       }
       return Promise.resolve({});
     });
+    const compactionLock = await holdUsageEventCompactionLockFixture(
+      context.signal,
+    );
+    onTestFinished(async () => {
+      compactionLock.release();
+      await compactionLock.done;
+      await flushWaitUntilForTest();
+    });
     api.verifyNextClerkWebhook({
       type: "organization.deleted",
       data: { id: orgOf(actor) },
     });
     const redelivery = await api.requestClerkWebhook("{}", {}, [200]);
     expect(redelivery.body).toBe("OK");
+    await expect.poll(compactionLock.waiterCount).toBeGreaterThanOrEqual(1);
+    await expect(
+      store.set(
+        readUsageStorageCounts$,
+        { scope: "organization", id: orgOf(actor) },
+        context.signal,
+      ),
+    ).resolves.toStrictEqual({ raw: 1, hourly: 1 });
+    compactionLock.release();
+    await compactionLock.done;
     await flushWaitUntilForTest();
 
     await expect
@@ -4565,6 +4641,15 @@ describe("WHCB-08: Clerk deletion webhooks tear down account state", () => {
       await expect(bdd.listAgents(actor)).resolves.toStrictEqual([]);
     });
     await waitForExpectation(async () => {
+      await expect(
+        store.set(
+          readUsageStorageCounts$,
+          { scope: "organization", id: orgOf(actor) },
+          context.signal,
+        ),
+      ).resolves.toStrictEqual({ raw: 0, hourly: 0 });
+    });
+    await waitForExpectation(async () => {
       const listed = await connectors.listConnectors(actor);
       expect(listed.connectors).not.toContainEqual(
         expect.objectContaining({
@@ -4573,13 +4658,11 @@ describe("WHCB-08: Clerk deletion webhooks tear down account state", () => {
         }),
       );
     });
-    await waitForExpectation(async () => {});
-
     // An org without a live subscription skips the Stripe update.
     const updateCalls =
       context.mocks.stripe.subscriptions.update.mock.calls.length;
     const plainActor = bdd.user();
-    await bdd.bootstrapOnboarding(plainActor, {
+    await bdd.bootstrapLimitedFreeOnboarding(plainActor, {
       displayName: "BDD Plain Teardown",
     });
     api.verifyNextClerkWebhook({
@@ -4810,7 +4893,7 @@ describe("WHCB-08: Clerk deletion webhooks tear down account state", () => {
     await runs.grantProEntitlement(doomed);
     await runs.ensureOrgModelProvider(doomed);
     await connectors.connectManualGrant(doomed, "openai", "api-token", {
-      OPENAI_TOKEN: "user-teardown-connector-token",
+      apiKey: "user-teardown-connector-token",
     });
     const peer = bdd.user({ orgId: doomed.orgId, orgRole: "org:member" });
     const sharedAgent = await bdd.createAgent(peer, {
@@ -4837,6 +4920,48 @@ describe("WHCB-08: Clerk deletion webhooks tear down account state", () => {
       modelProvider: "anthropic-api-key",
     });
     expect(run.status).toBe("pending");
+    await store.set(
+      insertUsageEvent$,
+      {
+        orgId: orgOf(doomed),
+        userId: doomed.userId,
+        runId: run.runId,
+        status: "processed",
+        creditsCharged: 10,
+        processedAt: nowDate(),
+      },
+      context.signal,
+    );
+    await expect(
+      store.set(
+        materializeHourlyUsage$,
+        {
+          orgId: orgOf(doomed),
+          userId: doomed.userId,
+          runId: run.runId,
+        },
+        context.signal,
+      ),
+    ).resolves.toBe(1);
+    await store.set(
+      insertUsageEvent$,
+      {
+        orgId: orgOf(doomed),
+        userId: doomed.userId,
+        runId: run.runId,
+        status: "processed",
+        creditsCharged: 5,
+        processedAt: nowDate(),
+      },
+      context.signal,
+    );
+    await expect(
+      store.set(
+        readUsageStorageCounts$,
+        { scope: "user", id: doomed.userId },
+        context.signal,
+      ),
+    ).resolves.toStrictEqual({ raw: 1, hourly: 1 });
 
     // The installation's default agent is the peer's compose, so the
     // installation itself survives the user teardown while the doomed
@@ -4867,12 +4992,30 @@ describe("WHCB-08: Clerk deletion webhooks tear down account state", () => {
     // stop the rest of the teardown.
     const s3CallCountBeforeCleanup = context.mocks.s3.send.mock.calls.length;
     context.mocks.s3.send.mockRejectedValueOnce(new Error("R2 unavailable"));
+    const compactionLock = await holdUsageEventCompactionLockFixture(
+      context.signal,
+    );
+    onTestFinished(async () => {
+      compactionLock.release();
+      await compactionLock.done;
+      await flushWaitUntilForTest();
+    });
     api.verifyNextClerkWebhook({
       type: "user.deleted",
       data: { id: doomed.userId },
     });
     const response = await api.requestClerkWebhook("{}", {}, [200]);
     expect(response.body).toBe("OK");
+    await expect.poll(compactionLock.waiterCount).toBeGreaterThanOrEqual(1);
+    await expect(
+      store.set(
+        readUsageStorageCounts$,
+        { scope: "user", id: doomed.userId },
+        context.signal,
+      ),
+    ).resolves.toStrictEqual({ raw: 1, hourly: 1 });
+    compactionLock.release();
+    await compactionLock.done;
     await flushWaitUntilForTest();
     const firstCleanupS3Prefix = commandInput(
       context.mocks.s3.send.mock.calls[s3CallCountBeforeCleanup]?.[0],
@@ -4930,6 +5073,13 @@ describe("WHCB-08: Clerk deletion webhooks tear down account state", () => {
       permission: "chat:write",
       action: "deny",
     });
+    await expect(
+      store.set(
+        readUsageStorageCounts$,
+        { scope: "user", id: doomed.userId },
+        context.signal,
+      ),
+    ).resolves.toStrictEqual({ raw: 0, hourly: 0 });
     expect(context.mocks.stripe.subscriptions.list).not.toHaveBeenCalled();
     expect(context.mocks.stripe.subscriptions.update).not.toHaveBeenCalled();
     expect(context.mocks.stripe.subscriptions.cancel).not.toHaveBeenCalled();

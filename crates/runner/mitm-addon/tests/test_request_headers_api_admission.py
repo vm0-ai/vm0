@@ -11,8 +11,14 @@ import upstream_admission
 import upstream_destination_binding
 from body_limits import STREAM_BUFFER_LIMIT
 from tests.request_handler_helpers import _vm_without_firewalls, _write_registry
-from tests.requestheaders_helpers import _assert_no_request_stream
-from tests.upstream_connection_helpers import mark_connected_tls_upstream
+from tests.requestheaders_helpers import (
+    _assert_no_request_stream,
+    track_trusted_authority_validations,
+)
+from tests.upstream_connection_helpers import (
+    mark_connected_tls_upstream,
+    seed_server_binding,
+)
 
 
 def _write_api_registry(tmp_path: Path, *, capture_network_bodies: bool) -> Path:
@@ -191,7 +197,7 @@ async def test_capture_enabled_api_allow_uses_prior_client_binding_when_server_c
     )
 
     server_connect_server = connection.Server(address=("198.18.20.34", 443))
-    upstream_destination_binding.record_server_binding(
+    seed_server_binding(
         server_connect_server,
         client=flow.client_conn,
         host="api.vm0.ai",
@@ -233,7 +239,7 @@ async def test_api_allow_prior_client_binding_endpoint_mismatch_blocks(
     flow.client_conn.sockname = ("203.0.113.10", 443)
 
     server_connect_server = connection.Server(address=("198.18.20.34", 443))
-    upstream_destination_binding.record_server_binding(
+    seed_server_binding(
         server_connect_server,
         client=flow.client_conn,
         host="api.vm0.ai",
@@ -278,7 +284,7 @@ async def test_api_allow_current_server_binding_mismatch_blocks_even_with_prior_
     flow.server_conn.state = connection.ConnectionState.OPEN
 
     server_connect_server = connection.Server(address=("198.18.20.34", 443))
-    upstream_destination_binding.record_server_binding(
+    seed_server_binding(
         server_connect_server,
         client=flow.client_conn,
         host="api.vm0.ai",
@@ -286,7 +292,7 @@ async def test_api_allow_current_server_binding_mismatch_blocks_even_with_prior_
         kinds=frozenset(("api_allow",)),
         original_address=("198.18.20.34", 443),
     )
-    upstream_destination_binding.record_server_binding(
+    seed_server_binding(
         flow.server_conn,
         client=flow.client_conn,
         host="attacker.example.com",
@@ -307,7 +313,7 @@ async def test_api_allow_current_server_binding_mismatch_blocks_even_with_prior_
 
 
 async def test_api_allow_small_bounded_body_retargets_unconnected_upstream(
-    tmp_path, real_flow, mitm_ctx, headers
+    tmp_path, real_flow, mitm_ctx, headers, monkeypatch
 ):
     reg_path = _write_api_registry(tmp_path, capture_network_bodies=False)
     flow = real_flow(
@@ -322,10 +328,12 @@ async def test_api_allow_small_bounded_body_retargets_unconnected_upstream(
             ("Content-Length", "4"),
         ),
     )
+    validated_flows = track_trusted_authority_validations(monkeypatch)
 
     with mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"):
         assert mitm_addon.requestheaders(flow) is None
 
+        assert validated_flows == [flow]
         _assert_no_request_stream(flow)
         assert metadata_keys.VM_RUN_ID not in flow.metadata
         assert metadata_keys.ORIGINAL_URL not in flow.metadata
@@ -333,6 +341,7 @@ async def test_api_allow_small_bounded_body_retargets_unconnected_upstream(
 
         await mitm_addon.request(flow)
 
+    assert validated_flows == [flow, flow]
     assert flow.response is None
     assert flow.metadata[metadata_keys.FIREWALL_ACTION] == "ALLOW"
     binding = upstream_destination_binding.binding_snapshot_for_tests()[flow.server_conn.id]

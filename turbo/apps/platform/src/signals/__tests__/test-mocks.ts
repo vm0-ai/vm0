@@ -43,6 +43,10 @@ import {
   mockUploadPending,
   mockUploadSuccess,
 } from "../../mocks/upload-helpers.ts";
+import {
+  resetMockClerkAuthComponentMounted,
+  setMockClerkAuthComponentMounted,
+} from "../../test/mocks/clerk-react.ts";
 import { createDeferredPromise } from "../utils.ts";
 
 interface WindowOpenCall {
@@ -66,6 +70,11 @@ interface ClipboardWriteMock {
 
 interface ClipboardRichWriteMock {
   writes: ClipboardItem[][];
+  rejectWith: (error: Error) => void;
+}
+
+interface ClipboardExecCommandMock {
+  writes: Record<string, string>[];
 }
 
 interface BrowserDownload {
@@ -237,11 +246,22 @@ export function createTestMocks(getSignal: () => AbortSignal) {
           spy.mockRestore();
         });
       },
+      language: (language: string): void => {
+        const spy = vi
+          .spyOn(navigator, "language", "get")
+          .mockReturnValue(language);
+        restoreOnAbort(getSignal(), () => {
+          spy.mockRestore();
+        });
+      },
       clipboardWriteText: (): ClipboardWriteMock => {
         return mockClipboardWriteText(getSignal());
       },
       clipboardWrite: (): ClipboardRichWriteMock => {
         return mockClipboardWrite(getSignal());
+      },
+      clipboardExecCommand: (): ClipboardExecCommandMock => {
+        return mockClipboardExecCommand(getSignal());
       },
       blobDownload: (): BrowserDownloadMock => {
         return mockBlobDownload(getSignal());
@@ -277,6 +297,17 @@ export function createTestMocks(getSignal: () => AbortSignal) {
       hasChannelSubscription,
       hasSubscription,
       getAuthTokenHistory,
+    },
+    clerk: {
+      deferAuthComponentMount: () => {
+        setMockClerkAuthComponentMounted(false);
+        restoreOnAbort(getSignal(), resetMockClerkAuthComponentMounted);
+        return {
+          mount: () => {
+            setMockClerkAuthComponentMounted(true);
+          },
+        };
+      },
     },
     deferred: <T>() => {
       return createDeferredPromise<T>(getSignal());
@@ -366,14 +397,68 @@ function mockClipboardWriteText(signal: AbortSignal): ClipboardWriteMock {
 
 function mockClipboardWrite(signal: AbortSignal): ClipboardRichWriteMock {
   const writes: ClipboardItem[][] = [];
+  let rejection: Error | null = null;
   const spy = vi
     .spyOn(navigator.clipboard, "write")
     .mockImplementation((items) => {
       writes.push(items);
+      if (rejection !== null) {
+        return Promise.reject(
+          new Error(rejection.message, { cause: rejection }),
+        );
+      }
       return Promise.resolve();
     });
   restoreOnAbort(signal, () => {
     spy.mockRestore();
+  });
+  return {
+    writes,
+    rejectWith(error: Error) {
+      rejection = error;
+    },
+  };
+}
+
+function mockClipboardExecCommand(
+  signal: AbortSignal,
+): ClipboardExecCommandMock {
+  const writes: Record<string, string>[] = [];
+  const descriptor = Object.getOwnPropertyDescriptor(document, "execCommand");
+  Object.defineProperty(document, "execCommand", {
+    configurable: true,
+    value: (command: string) => {
+      if (command !== "copy") {
+        return false;
+      }
+      if (document.getSelection()?.rangeCount === 0) {
+        return false;
+      }
+      const data: Record<string, string> = {};
+      const event = new Event("copy", {
+        bubbles: true,
+        cancelable: true,
+      });
+      Object.defineProperty(event, "clipboardData", {
+        value: {
+          setData(type: string, value: string) {
+            data[type] = value;
+          },
+        },
+      });
+      const handled = !document.dispatchEvent(event);
+      if (handled) {
+        writes.push(data);
+      }
+      return handled;
+    },
+  });
+  restoreOnAbort(signal, () => {
+    if (descriptor) {
+      Object.defineProperty(document, "execCommand", descriptor);
+    } else {
+      Reflect.deleteProperty(document, "execCommand");
+    }
   });
   return { writes };
 }

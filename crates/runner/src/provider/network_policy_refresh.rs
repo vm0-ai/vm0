@@ -1585,6 +1585,50 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn duplicate_network_policy_refresh_fails_closed() {
+        let server = MockServer::start();
+        let run_id = RunId::nil();
+        let refresh_mock = server.mock(|when, then| {
+            when.method(POST)
+                .path(format!("/api/runners/runs/{run_id}/network-policy-refresh"));
+            then.status(200)
+                .header("content-type", "application/json")
+                .json_body(json!({
+                    "refreshes": [
+                        {
+                            "connectorRef": "slack",
+                            "networkPolicy": {
+                                "allow": ["chat:write", "files:write"],
+                                "deny": [],
+                                "ask": ["channels:read"],
+                                "unknownPolicy": "allow",
+                            },
+                            "nextRefreshAt": null,
+                        },
+                        {
+                            "connectorRef": "slack",
+                            "networkPolicy": {
+                                "allow": ["channels:read"],
+                                "deny": ["files:write"],
+                                "ask": ["chat:write"],
+                                "unknownPolicy": "ask",
+                            },
+                            "nextRefreshAt": null,
+                        },
+                    ],
+                }));
+        });
+
+        let harness = NetworkPolicyRefreshHarness::new(&server, run_id).await;
+        harness.refresh_slack().await;
+        refresh_mock.assert_calls(1);
+        let policy = harness.slack_policy().await;
+        assert_fail_closed_policy(&policy);
+
+        harness.shutdown().await;
+    }
+
+    #[tokio::test]
     async fn invalid_network_policy_refresh_deadline_fails_closed() {
         let server = MockServer::start();
         let run_id = RunId::nil();

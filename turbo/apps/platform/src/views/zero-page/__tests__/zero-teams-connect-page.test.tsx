@@ -1,5 +1,5 @@
 import { zeroTeamsConnectContract } from "@vm0/api-contracts/contracts/zero-teams-connect";
-import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
+import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import { screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 

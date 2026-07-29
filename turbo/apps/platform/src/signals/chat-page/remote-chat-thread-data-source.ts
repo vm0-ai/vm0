@@ -2,30 +2,24 @@ import { command, computed, type Command } from "ccstate";
 import {
   chatThreadByIdContract,
   chatThreadDraftContract,
+  chatThreadDraftSchema,
   chatThreadMarkReadContract,
   chatThreadComputerUseHostContract,
   chatThreadModelSelectionContract,
-  chatThreadMessagesContract,
-  chatMessagesContract,
-  type ChatThreadEvent,
 } from "@vm0/api-contracts/contracts/chat-threads";
 import { accept } from "../../lib/accept.ts";
 import { nowDate } from "../../lib/time.ts";
 import { zeroClient$ } from "../api-client.ts";
 import { threadCodexServiceTierFromSelection } from "./model-selection-request.ts";
 import { setAblyLoop$ } from "../realtime.ts";
-import {
-  createDeferredPromise,
-  onRejection,
-  resetSignalScope,
-  withCleanup,
-} from "../utils.ts";
+import { createDeferredPromise } from "../utils.ts";
 import { logger } from "../log.ts";
 import { reloadSidebarDraftThreads$ } from "./sidebar-draft-threads.ts";
 import {
   applyUnreadSnapshot$,
   recordOptimisticReadMark$,
 } from "./sidebar-unread-threads.ts";
+import { listChatEvents, sendChatEvent } from "./chat-event-api.ts";
 import {
   chatThreadMetaMap$,
   optimisticChatThreadCreateUnsettled,
@@ -33,16 +27,17 @@ import {
 } from "./chat-thread-event-sourcing.ts";
 import type {
   CancelRunsArgs,
-  AppendQueuedMessageArgs,
-  ListMessagesAfterArgs,
-  ListMessagesBeforeArgs,
+  AppendQueuedEventArgs,
+  ListEventsAfterArgs,
+  ListEventsBeforeArgs,
   MarkReadArgs,
   PatchComputerUseHostArgs,
   PatchModelSelectionArgs,
   PatchDraftArgs,
-  RecallMessageArgs,
+  RecallEventArgs,
   SubscribeRealtimeArgs,
 } from "./chat-thread-data-source.ts";
+import type { OptimisticChatThreadEvent } from "./chat-thread-event-types.ts";
 
 const L = logger("ChatThread");
 export const CHAT_MESSAGES_PAGE_LIMIT = 50;
@@ -55,7 +50,7 @@ type ChatRealtimeSubscription = {
 const patchDraft$ = command(
   async (
     { get, set },
-    { threadId, content, structuredPrompt, attachments }: PatchDraftArgs,
+    { threadId, content, userMessage, attachments }: PatchDraftArgs,
     signal: AbortSignal,
   ) => {
     const client = get(zeroClient$)(chatThreadByIdContract);
@@ -64,7 +59,7 @@ const patchDraft$ = command(
         params: { id: threadId },
         body: {
           draftContent: content,
-          draftStructuredPrompt: structuredPrompt,
+          draftUserMessage: userMessage,
           draftAttachments: attachments,
         },
         fetchOptions: { signal },
@@ -96,8 +91,9 @@ const patchModelSelection$ = command(
         selectedModel: modelSelection?.selectedModel ?? null,
         serviceTier: null,
         computerUseHostId: null,
+        cloudBrowserEnabled: false,
         createdAt,
-      } satisfies ChatThreadEvent);
+      } satisfies OptimisticChatThreadEvent);
       set(registerOptimisticChatThreadEvent$, {
         id: serviceTierEventId,
         kind: "service_tier_updated",
@@ -108,8 +104,9 @@ const patchModelSelection$ = command(
         serviceTier:
           modelSelection?.codexServiceTier === "fast" ? "priority" : null,
         computerUseHostId: null,
+        cloudBrowserEnabled: false,
         createdAt,
-      } satisfies ChatThreadEvent);
+      } satisfies OptimisticChatThreadEvent);
     }
 
     const client = get(zeroClient$)(chatThreadModelSelectionContract);
@@ -132,7 +129,11 @@ const patchModelSelection$ = command(
 const patchComputerUseHost$ = command(
   async (
     { get, set },
-    { threadId, computerUseHostId }: PatchComputerUseHostArgs,
+    {
+      threadId,
+      computerUseHostId,
+      cloudBrowserEnabled,
+    }: PatchComputerUseHostArgs,
     signal: AbortSignal,
   ) => {
     const eventId = crypto.randomUUID();
@@ -147,14 +148,15 @@ const patchComputerUseHost$ = command(
         selectedModel: null,
         serviceTier: null,
         computerUseHostId,
+        cloudBrowserEnabled,
         createdAt: nowDate().toISOString(),
-      } satisfies ChatThreadEvent);
+      } satisfies OptimisticChatThreadEvent);
     }
     const client = get(zeroClient$)(chatThreadComputerUseHostContract);
     await accept(
       client.update({
         params: { id: threadId },
-        body: { computerUseHostId, eventId },
+        body: { computerUseHostId, cloudBrowserEnabled, eventId },
         fetchOptions: { signal },
       }),
       [204],
@@ -162,7 +164,7 @@ const patchComputerUseHost$ = command(
   },
 );
 
-const appendQueuedMessage$ = command(
+const appendQueuedEvent$ = command(
   async (
     { get },
     {
@@ -170,124 +172,106 @@ const appendQueuedMessage$ = command(
       agentId,
       content,
       attachments,
-      clientMessageId,
+      clientEventId,
       chatThreadSortEventId,
       hasTextContent,
       generationTemplate,
-      structuredPrompt,
+      userMessage,
       computerUseHostId,
+      cloudBrowserEnabled,
       runOptions,
       realAgentInPreview,
-    }: AppendQueuedMessageArgs,
+    }: AppendQueuedEventArgs,
     signal: AbortSignal,
   ) => {
-    const client = get(zeroClient$)(chatMessagesContract);
-    await accept(
-      client.send({
-        body: {
-          agentId,
-          prompt: content ?? "",
-          threadId,
-          hasTextContent,
-          clientMessageId,
-          chatThreadSortEventId,
-          generationTemplate,
-          ...(structuredPrompt ? { structuredPrompt } : {}),
-          ...(runOptions ? { runOptions } : {}),
-          ...(realAgentInPreview ? { realAgentInPreview: true } : {}),
-          ...(computerUseHostId === undefined ? {} : { computerUseHostId }),
-          attachFiles: attachments ?? undefined,
-        },
-        fetchOptions: { signal },
-      }),
-      [201],
+    await sendChatEvent(
+      get(zeroClient$),
+      {
+        agentId,
+        prompt: content ?? "",
+        threadId,
+        hasTextContent,
+        clientEventId: clientEventId,
+        chatThreadSortEventId,
+        generationTemplate,
+        userMessage,
+        ...(runOptions ? { runOptions } : {}),
+        ...(realAgentInPreview ? { realAgentInPreview: true } : {}),
+        ...(computerUseHostId === undefined ? {} : { computerUseHostId }),
+        ...(cloudBrowserEnabled === undefined ? {} : { cloudBrowserEnabled }),
+        attachFiles: attachments ?? undefined,
+      },
+      signal,
     );
     signal.throwIfAborted();
   },
 );
 
-const recallMessage$ = command(
+const recallEvent$ = command(
   async (
     { get },
-    { threadId, agentId, revokesMessageId, clientMessageId }: RecallMessageArgs,
+    { threadId, agentId, revokesEventId, clientEventId }: RecallEventArgs,
     signal: AbortSignal,
   ) => {
-    const client = get(zeroClient$)(chatMessagesContract);
-    await accept(
-      client.send({
-        body: {
-          agentId,
-          threadId,
-          revokesMessageId,
-          clientMessageId,
-        },
-        fetchOptions: { signal },
-      }),
-      [201],
+    await sendChatEvent(
+      get(zeroClient$),
+      {
+        agentId,
+        threadId,
+        revokesEventId: revokesEventId,
+        clientEventId: clientEventId,
+      },
+      signal,
     );
     signal.throwIfAborted();
   },
 );
 
-export const listMessagesAfter$ = command(
+export const listEventsAfter$ = command(
   async (
     { get },
-    { threadId, sinceSeqId }: ListMessagesAfterArgs,
+    { threadId, sinceSeqId }: ListEventsAfterArgs,
     signal: AbortSignal,
   ) => {
-    const client = get(zeroClient$)(chatThreadMessagesContract);
-    const result = await accept(
-      client.list({
-        params: { threadId },
-        query: { sinceSeqId, limit: CHAT_MESSAGES_PAGE_LIMIT },
-        fetchOptions: { signal },
-      }),
-      [200],
+    const result = await listChatEvents(
+      get(zeroClient$),
+      threadId,
+      { sinceSeqId, limit: CHAT_MESSAGES_PAGE_LIMIT },
+      signal,
     );
     signal.throwIfAborted();
-    L.debug("listMessagesAfter$", {
+    L.debug("listEventsAfter$", {
       threadId,
       sinceSeqId,
-      count: result.body.messages.length,
-      runMessages: result.body.messages.flatMap((m) => {
-        if (m.role !== "assistant" || !m.runId) {
+      count: result.events.length,
+      runEvents: result.events.flatMap((event) => {
+        if (!event.runId) {
           return [];
         }
         return [
           {
-            id: m.id,
-            runId: m.runId,
+            id: event.id,
+            runId: event.runId,
           },
         ];
       }),
     });
-    return {
-      messages: result.body.messages,
-      hasHistoryBefore: result.body.hasHistoryBefore ?? false,
-    };
+    return result;
   },
 );
 
-export const listMessagesBefore$ = command(
+const listEventsBefore$ = command(
   async (
     { get },
-    { threadId, beforeSeqId }: ListMessagesBeforeArgs,
+    { threadId, beforeSeqId }: ListEventsBeforeArgs,
     signal: AbortSignal,
   ) => {
-    const client = get(zeroClient$)(chatThreadMessagesContract);
-    const result = await accept(
-      client.list({
-        params: { threadId },
-        query: { beforeSeqId, limit: 50 },
-        fetchOptions: { signal },
-      }),
-      [200],
+    return await listChatEvents(
+      get(zeroClient$),
+      threadId,
+      { beforeSeqId, limit: 50 },
+      signal,
     );
-    signal.throwIfAborted();
-    return {
-      messages: result.body.messages,
-      hasHistoryBefore: result.body.hasHistoryBefore ?? false,
-    };
   },
 );
 
@@ -297,7 +281,6 @@ const cancelRuns$ = command(
     { threadId, agentId, interrupts }: CancelRunsArgs,
     signal: AbortSignal,
   ) => {
-    const client = get(zeroClient$)(chatMessagesContract);
     L.debug("cancelRun$ start", {
       threadId,
       pendingRunIds: interrupts.map((interrupt) => {
@@ -305,18 +288,16 @@ const cancelRuns$ = command(
       }),
     });
     await Promise.all(
-      interrupts.map(async ({ runId, clientMessageId }) => {
-        await accept(
-          client.send({
-            body: {
-              agentId,
-              threadId,
-              interruptsRunId: runId,
-              clientMessageId,
-            },
-            fetchOptions: { signal },
-          }),
-          [201],
+      interrupts.map(async ({ runId, clientEventId }) => {
+        await sendChatEvent(
+          get(zeroClient$),
+          {
+            agentId,
+            threadId,
+            interruptsRunId: runId,
+            clientEventId: clientEventId,
+          },
+          signal,
         );
         L.debug("cancelRun$ server accepted cancel", { threadId, runId });
       }),
@@ -346,92 +327,61 @@ const markRead$ = command(
 );
 
 function createSubscribeRealtime() {
-  const resetSubscriptionSignal$ = resetSignalScope();
-
   return command(
     async (
       { set },
       { threadId, handlers }: SubscribeRealtimeArgs,
       signal: AbortSignal,
     ) => {
-      const subscriptionScope = set(resetSubscriptionSignal$, signal);
-      const subscriptionSignal = subscriptionScope.signal;
-
-      await withCleanup(
-        (async () => {
-          const ready = createDeferredPromise<void>(subscriptionSignal);
-          const subscriptions: ChatRealtimeSubscription[] = [
-            {
-              topic: `chatThreadAutomationsChanged:${threadId}`,
-              loopCommand$: handlers.onAutomationsChanged$,
-            },
-            {
-              topic: `chatThreadArtifactsChanged:${threadId}`,
-              loopCommand$: handlers.onArtifactsChanged$,
-            },
-            {
-              topic: `chatThreadWorkflowsChanged:${threadId}`,
-              loopCommand$: handlers.onWorkflowsChanged$,
-            },
-            {
-              topic: `chatThreadWorkflowQueueChanged:${threadId}`,
-              loopCommand$: handlers.onWorkflowQueueChanged$,
-            },
-          ];
-
-          let pendingSubscriptions = subscriptions.length;
-          const markSubscribed = () => {
-            pendingSubscriptions -= 1;
-            if (pendingSubscriptions === 0 && !ready.settled()) {
-              ready.resolve();
-            }
-          };
-          const options = { onSubscribed: markSubscribed };
-          const startSubscription = async (
-            subscription: ChatRealtimeSubscription,
-          ) => {
-            await set(
-              setAblyLoop$,
-              {
-                topic: subscription.topic,
-                loopCommand$: subscription.loopCommand$,
-                options,
-              },
-              subscriptionSignal,
-            );
-            subscriptionSignal.throwIfAborted();
-            if (ready.settled()) {
-              return;
-            }
-            const error = new Error(
-              `Realtime subscription ended before ready: ${subscription.topic}`,
-            );
-            ready.reject(error);
-            throw error;
-          };
-          const subscriptionPromises = subscriptions.map(startSubscription);
-          const subscription = Promise.all(subscriptionPromises);
-
-          await Promise.race([ready.promise, subscription]);
-          subscriptionSignal.throwIfAborted();
-          if (ready.settled() && handlers.onSubscribed$) {
-            await onRejection(
-              Promise.resolve(set(handlers.onSubscribed$, subscriptionSignal)),
-              async () => {
-                subscriptionScope.abort();
-                await Promise.allSettled(subscriptionPromises);
-                signal.throwIfAborted();
-              },
-            );
-            subscriptionSignal.throwIfAborted();
-          }
-          await subscription;
-          subscriptionSignal.throwIfAborted();
-        })(),
-        () => {
-          subscriptionScope.abort(signal.reason);
+      const ready = createDeferredPromise<void>(signal);
+      const subscriptions: ChatRealtimeSubscription[] = [
+        {
+          topic: `chatThreadAutomationsChanged:${threadId}`,
+          loopCommand$: handlers.onAutomationsChanged$,
         },
+        {
+          topic: `chatThreadArtifactsChanged:${threadId}`,
+          loopCommand$: handlers.onArtifactsChanged$,
+        },
+        {
+          topic: `chatThreadWorkflowsChanged:${threadId}`,
+          loopCommand$: handlers.onWorkflowsChanged$,
+        },
+        {
+          topic: `chatThreadWorkflowQueueChanged:${threadId}`,
+          loopCommand$: handlers.onWorkflowQueueChanged$,
+        },
+      ];
+
+      let pendingSubscriptions = subscriptions.length;
+      const markSubscribed = () => {
+        pendingSubscriptions -= 1;
+        if (pendingSubscriptions === 0 && !ready.settled()) {
+          ready.resolve();
+        }
+      };
+      const options = { onSubscribed: markSubscribed };
+      const subscription = Promise.all(
+        subscriptions.map((subscription) => {
+          return set(
+            setAblyLoop$,
+            {
+              topic: subscription.topic,
+              loopCommand$: subscription.loopCommand$,
+              options,
+            },
+            signal,
+          );
+        }),
       );
+
+      await Promise.race([ready.promise, subscription]);
+      signal.throwIfAborted();
+      if (ready.settled() && handlers.onSubscribed$) {
+        await set(handlers.onSubscribed$, signal);
+        signal.throwIfAborted();
+      }
+      await subscription;
     },
   );
 }
@@ -453,7 +403,7 @@ export function createRemoteChatThreadDataSource(threadId: string) {
     if (result.status === 404) {
       return null;
     }
-    return result.body;
+    return chatThreadDraftSchema.parse(result.body);
   });
 
   return {
@@ -461,10 +411,10 @@ export function createRemoteChatThreadDataSource(threadId: string) {
     patchDraft$,
     patchModelSelection$,
     patchComputerUseHost$,
-    appendQueuedMessage$,
-    recallMessage$,
-    listMessagesAfter$,
-    listMessagesBefore$,
+    appendQueuedEvent$,
+    recallEvent$,
+    listEventsAfter$,
+    listEventsBefore$,
     cancelRuns$,
     markRead$,
     subscribeRealtime$,

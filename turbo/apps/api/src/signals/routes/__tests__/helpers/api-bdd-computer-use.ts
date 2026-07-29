@@ -483,33 +483,6 @@ export function createComputerUseBddApi(context: TestContext) {
       return response.body;
     },
 
-    async requestDeleteComputerUseHost(
-      actor: ApiTestUser | null,
-      hostId: string,
-      statuses: readonly (200 | 401 | 403 | 404)[],
-    ) {
-      return await accept(
-        hostsClient().delete({
-          headers: authenticate(actor),
-          params: { hostId },
-        }),
-        statuses,
-      );
-    },
-
-    async deleteComputerUseHost(
-      actor: ApiTestUser,
-      hostId: string,
-    ): Promise<void> {
-      await accept(
-        hostsClient().delete({
-          headers: authenticate(actor),
-          params: { hostId },
-        }),
-        [200],
-      );
-    },
-
     async heartbeatComputerUseHost(
       hostToken: string,
       options: ComputerUseHostStartOptions = {},

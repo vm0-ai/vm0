@@ -1,7 +1,10 @@
 import { command, computed } from "ccstate";
 import { zeroFeatureSwitchesContract } from "@vm0/api-contracts/contracts/zero-feature-switches";
 import { getAllFeatureStates } from "@vm0/core/feature-switch";
+import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 
+import { isBrazilianPortugueseLocaleRolloutEnabled } from "../../lib/brazilian-portuguese-locale-rollout";
+import { isZeroMailReplyFollowUpRolloutEnabled } from "../../lib/zero-mail-reply-follow-up-rollout";
 import { organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
 import { bodyResultOf } from "../context/request";
@@ -21,16 +24,22 @@ function featureSwitchResponseBody(params: {
   readonly orgId: string;
   readonly userId: string;
   readonly switches: Record<string, boolean>;
+  readonly supportsStructuredInlineTemplates: boolean;
 }) {
   const effectiveSwitches = getAllFeatureStates({
     orgId: params.orgId,
     userId: params.userId,
     overrides: params.switches,
   });
+  effectiveSwitches[FeatureSwitchKey.ZeroMailReplyFollowUp] =
+    isZeroMailReplyFollowUpRolloutEnabled();
+  effectiveSwitches[FeatureSwitchKey.BrazilianPortugueseLocale] =
+    isBrazilianPortugueseLocaleRolloutEnabled();
 
   return {
     switches: params.switches,
     effectiveSwitches,
+    supportsStructuredInlineTemplates: params.supportsStructuredInlineTemplates,
   };
 }
 
@@ -45,6 +54,7 @@ const getFeatureSwitchesInner$ = computed(async (get): Promise<unknown> => {
       orgId: auth.orgId,
       userId: auth.userId,
       switches,
+      supportsStructuredInlineTemplates: true,
     }),
   };
 });
@@ -78,6 +88,7 @@ const updateFeatureSwitchesInner$ = command(
         orgId: auth.orgId,
         userId: auth.userId,
         switches,
+        supportsStructuredInlineTemplates: true,
       }),
     };
   },

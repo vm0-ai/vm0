@@ -3,7 +3,6 @@ import {
   chatThreadMarkAgentReadContract,
   chatThreadsContract,
 } from "@vm0/api-contracts/contracts/chat-threads";
-import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { accept } from "../../lib/accept.ts";
 import { now } from "../../lib/time.ts";
 import { zeroClient$ } from "../api-client.ts";
@@ -12,7 +11,6 @@ import {
   reloadChatUnreadState$,
   reloadChatUnreadStateCounter$,
 } from "../chat-thread-list-reload.ts";
-import { featureSwitch$ } from "../external/feature-switch.ts";
 
 type UnreadSnapshot = readonly { threadId: string; unreadAt: string }[];
 
@@ -83,10 +81,6 @@ export const sidebarUnreadThreadIds$ = computed(
 export const unreadAgentIds$ = computed(
   async (get): Promise<ReadonlySet<string>> => {
     get(reloadChatUnreadStateCounter$);
-    const features = get(featureSwitch$);
-    if (!features[FeatureSwitchKey.AgentUnreadIndicators]) {
-      return new Set();
-    }
     const client = get(zeroClient$)(chatThreadsContract);
     const result = await accept(client.unreadAgents(), [200]);
     return new Set(result.body.agentIds);

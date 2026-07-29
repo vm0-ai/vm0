@@ -5,17 +5,16 @@ import {
   type ZeroWorkflowAutomationCreateRequest,
 } from "@vm0/api-contracts/contracts/zero-workflows";
 import { zeroWorkflowQueueContract } from "@vm0/api-contracts/contracts/zero-workflow-queue";
-import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
 import { createApp } from "../../../app-factory";
 import { mockOptionalEnv } from "../../../lib/env";
+import { verifyZeroToken } from "../../auth/tokens";
 import { flushWaitUntilForTest } from "../../context/wait-until";
 import type { ApiTestUser } from "./helpers/api-bdd";
 import { createGithubBddApi } from "./helpers/api-bdd-github";
 import { createRunsApi } from "./helpers/api-bdd-runs";
 import { createWorkflowsBddApi } from "./helpers/api-bdd-workflows";
-import { updateFeatureSwitchesForUser } from "./helpers/zero-feature-switches";
 import { createZeroRouteMocks } from "./helpers/zero-route-test";
 
 const context = testContext();
@@ -608,9 +607,6 @@ describe("POST /api/webhooks/github for workflow automations", () => {
   it("dispatches completed workflow runs matching all GitHub filters", async () => {
     const { fixture, actor, agentId, workflowId } = await setupFixture();
     const installed = await gh.installGithubApp(actor, agentId);
-    await updateFeatureSwitchesForUser(context, fixture, {
-      [FeatureSwitchKey.GithubWorkflowRunAutomations]: true,
-    });
     mockOptionalEnv("GITHUB_APP_WEBHOOK_SECRET", GITHUB_WEBHOOK_SECRET);
     mocks.clerk.session(fixture.userId, fixture.orgId, "org:member");
 
@@ -670,6 +666,13 @@ describe("POST /api/webhooks/github for workflow automations", () => {
       throw new Error("Expected a GitHub workflow run automation");
     }
     const claim = await runsApi.claimRunnerJob(runId);
+    const zeroToken = claim.environment?.ZERO_TOKEN;
+    if (!zeroToken) {
+      throw new Error("Expected the workflow event run to expose ZERO_TOKEN");
+    }
+    expect(verifyZeroToken(zeroToken)?.capabilities).toContain(
+      "goal:user-control:write",
+    );
     expect(claim.appendSystemPrompt).toContain(
       'GitHub Actions workflow "Turbo" completed with conclusion "failure"',
     );
@@ -680,9 +683,6 @@ describe("POST /api/webhooks/github for workflow automations", () => {
   it("accepts startup failures with GitHub's documented nullable run fields", async () => {
     const { fixture, actor, agentId, workflowId } = await setupFixture();
     const installed = await gh.installGithubApp(actor, agentId);
-    await updateFeatureSwitchesForUser(context, fixture, {
-      [FeatureSwitchKey.GithubWorkflowRunAutomations]: true,
-    });
     mockOptionalEnv("GITHUB_APP_WEBHOOK_SECRET", GITHUB_WEBHOOK_SECRET);
     mocks.clerk.session(fixture.userId, fixture.orgId, "org:member");
 

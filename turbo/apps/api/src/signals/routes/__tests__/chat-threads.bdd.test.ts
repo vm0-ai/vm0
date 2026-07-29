@@ -1,14 +1,15 @@
 import { createHash, randomUUID } from "node:crypto";
 
+import { createStore } from "ccstate";
 import { cronCompactChatThreadSnapshotsContract } from "@vm0/api-contracts/contracts/cron";
 import {
   chatThreadsContract,
-  type PagedChatMessage,
+  type ChatEventResponse,
+  type UserMessageDocument,
 } from "@vm0/api-contracts/contracts/chat-threads";
 import type { ZeroCapability } from "@vm0/api-contracts/contracts/composes";
 import { DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL } from "@vm0/api-contracts/contracts/model-providers";
 import { zeroGoalsContract } from "@vm0/api-contracts/contracts/zero-goals";
-import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { describe, expect, it, onTestFinished } from "vitest";
 
 import { createApp } from "../../../app-factory";
@@ -22,7 +23,13 @@ import {
 import {
   holdChatMessageInsertTransactionFixture,
   insertChatMessageTransactionFixture,
+  insertOutputEventWithConflictingLegacyPayloadFixture,
 } from "../../../test-fixtures/chat-messages";
+import {
+  holdChatThreadEventInsertTransactionFixture,
+  insertChatThreadEventTransactionFixture,
+} from "../../../test-fixtures/chat-thread-events";
+import { installApiTestConnectorCatalog } from "../../../test-fixtures/connector-catalog";
 import { signSandboxJwtForTests } from "../../auth/tokens";
 import { flushWaitUntilForTest } from "../../context/wait-until";
 import {
@@ -42,7 +49,6 @@ import {
   createConnectorBddApi,
   mockGoogleDriveConnectorOAuth,
   mockGoogleDriveFilesList,
-  mockGoogleDriveSlidesUpload,
 } from "./helpers/api-bdd-connectors";
 import { createRunsApi } from "./helpers/api-bdd-runs";
 import { createWebhookCallbackApi } from "./helpers/api-bdd-webhooks";
@@ -55,7 +61,10 @@ import {
   generatedStripeSubscriptionId,
   postUsageAllowanceInvoicePaid,
 } from "./helpers/stripe-billing-webhook";
-import { updateFeatureSwitchesForUser } from "./helpers/zero-feature-switches";
+import {
+  insertUsageEvent$,
+  materializeHourlyUsage$,
+} from "./helpers/zero-usage-insight";
 
 /**
  * CHAT-01 / CHAT-03: chat thread lifecycle beyond the mutation chain that
@@ -79,10 +88,21 @@ const chatCallbacks = createChatCallbacksApi(context);
 const cu = createComputerUseBddApi(context);
 const connectorsApi = createConnectorBddApi(context);
 const authOrg = createAuthOrgAgentsBddApi(context);
+const store = createStore();
 const CHAT_THREAD_SNAPSHOT_CRON_SECRET = "chat-thread-snapshot-cron-secret";
 
-type AssistantMessage = Extract<PagedChatMessage, { role: "assistant" }>;
-type UserMessage = Extract<PagedChatMessage, { role: "user" }>;
+type UserMessage = Extract<
+  ChatEventResponse,
+  {
+    eventType:
+      | "input.prompt"
+      | "input.automation"
+      | "input.rejected"
+      | "control.interrupt"
+      | "control.revoke";
+  }
+>;
+type AssistantMessage = Exclude<ChatEventResponse, UserMessage>;
 type RunnerClaim = Awaited<ReturnType<typeof api.claimRunnerJob>>;
 
 async function compactChatThreadSnapshots() {
@@ -145,7 +165,7 @@ async function sendChatRun(
     readonly model?: string;
   },
 ): Promise<{ readonly runId: string; readonly threadId: string }> {
-  const sent = await chat.requestSendMessage(actor, body, [201]);
+  const sent = await chat.requestSendEvent(actor, body, [201]);
   if (sent.status !== 201 || sent.body.runId === null) {
     throw new Error("Expected the entitled chat send to create a run");
   }
@@ -179,17 +199,35 @@ function zeroTokenFromClaim(claim: RunnerClaim): string {
 async function waitForThreadMessages(
   actor: ApiTestUser,
   threadId: string,
-  predicate: (messages: readonly PagedChatMessage[]) => boolean,
+  predicate: (messages: readonly ChatEventResponse[]) => boolean,
 ) {
-  let page: Awaited<ReturnType<typeof chat.listThreadMessages>> | undefined;
+  let page: Awaited<ReturnType<typeof chat.listThreadEvents>> | undefined;
   await expect
     .poll(async () => {
-      page = await chat.listThreadMessages(actor, threadId);
-      return predicate(page.messages);
+      page = await chat.listThreadEvents(actor, threadId);
+      return predicate(page.events);
     })
     .toBe(true);
   if (!page) {
     throw new Error(`Expected chat thread ${threadId} messages to be readable`);
+  }
+  return page;
+}
+
+async function waitForThreadEvents(
+  actor: ApiTestUser,
+  threadId: string,
+  predicate: (events: readonly ChatEventResponse[]) => boolean,
+) {
+  let page: Awaited<ReturnType<typeof chat.listThreadEvents>> | undefined;
+  await expect
+    .poll(async () => {
+      page = await chat.listThreadEvents(actor, threadId);
+      return predicate(page.events);
+    })
+    .toBe(true);
+  if (!page) {
+    throw new Error(`Expected chat thread ${threadId} events to be readable`);
   }
   return page;
 }
@@ -241,27 +279,45 @@ async function cancelChatRun(actor: ApiTestUser, runId: string): Promise<void> {
 }
 
 function assistantMessages(
-  messages: readonly PagedChatMessage[],
+  messages: readonly ChatEventResponse[],
 ): AssistantMessage[] {
-  return messages.flatMap((message) => {
-    return message.role === "assistant" ? [message] : [];
+  return messages.filter((message): message is AssistantMessage => {
+    return !isUserMessage(message);
   });
 }
 
-function userMessages(messages: readonly PagedChatMessage[]): UserMessage[] {
-  return messages.flatMap((message) => {
-    return message.role === "user" ? [message] : [];
-  });
+function userMessages(messages: readonly ChatEventResponse[]): UserMessage[] {
+  return messages.filter(isUserMessage);
 }
 
-async function usageMessagesForRun(
+function isUserMessage(message: ChatEventResponse): message is UserMessage {
+  switch (message.eventType) {
+    case "input.prompt":
+    case "input.automation":
+    case "input.rejected":
+    case "control.interrupt":
+    case "control.revoke": {
+      return true;
+    }
+    default: {
+      return false;
+    }
+  }
+}
+
+type UsageRecordedEvent = Extract<
+  ChatEventResponse,
+  { eventType: "usage.recorded" }
+>;
+
+async function usageEventsForRun(
   actor: ApiTestUser,
   threadId: string,
   runId: string,
-): Promise<PagedChatMessage[]> {
-  const page = await chat.listThreadMessages(actor, threadId);
-  return page.messages.filter((message) => {
-    return message.runId === runId && message.usage !== undefined;
+): Promise<UsageRecordedEvent[]> {
+  const page = await chat.listThreadEvents(actor, threadId);
+  return page.events.filter((event): event is UsageRecordedEvent => {
+    return event.eventType === "usage.recorded" && event.runId === runId;
   });
 }
 
@@ -290,10 +346,11 @@ async function sendNoCreditMessage(
     readonly agentId: string;
     readonly threadId?: string;
     readonly prompt: string;
+    readonly userMessage?: UserMessageDocument;
   },
 ): Promise<string> {
   await api.ensureOrgModelProvider(actor);
-  const sent = await chat.requestSendMessage(actor, body, [201]);
+  const sent = await chat.requestSendEvent(actor, body, [201]);
   if (sent.status !== 201 || sent.body.runId !== null) {
     throw new Error("Expected a no-credit send without a run");
   }
@@ -321,11 +378,9 @@ async function completeChatRunInThread(
   const { sandboxHeaders } = await claimChatRun(runnerGroup, run.runId);
   chatCallbacks.mockChatOutputEvents([]);
   await completeChatRunOk(run.runId, sandboxHeaders);
-  await waitForThreadMessages(actor, run.threadId, (messages) => {
-    return assistantMessages(messages).some((message) => {
-      return (
-        message.runId === run.runId && message.runLifecycleEvent === "completed"
-      );
+  await waitForThreadEvents(actor, run.threadId, (events) => {
+    return events.some((event) => {
+      return event.runId === run.runId && event.eventType === "run.completed";
     });
   });
   return run;
@@ -432,7 +487,7 @@ const malformedChatThreadIdRequests = [
   },
   {
     method: "GET",
-    path: "/api/zero/chat-threads/:id/messages",
+    path: "/api/zero/chat-threads/:id/events",
     paramName: "threadId",
   },
   {
@@ -510,6 +565,7 @@ describe("CHAT-01 thread detail, create, and delete cascades", () => {
     expect(snapshot.body).toStrictEqual({
       chatThreads: [],
       latestEventId: null,
+      latestSeqId: null,
     });
     const events = await accept(
       zeroClient.events({ headers: zeroHeaders, query: {} }),
@@ -602,6 +658,7 @@ describe("CHAT-01 thread detail, create, and delete cascades", () => {
     expect(emptySnapshot).toStrictEqual({
       chatThreads: [],
       latestEventId: null,
+      latestSeqId: null,
     });
 
     const thread = await chat.createThread(actor, {
@@ -629,6 +686,11 @@ describe("CHAT-01 thread detail, create, and delete cascades", () => {
     }
     expect(allEvents.body.hasMore).toBeFalsy();
     expect(allEvents.body.events).toHaveLength(4);
+    expect(
+      allEvents.body.events.map((event) => {
+        return event.seqId;
+      }),
+    ).toStrictEqual([1, 2, 3, 4]);
     expect(allEvents.body.events).toStrictEqual(
       expect.arrayContaining([
         expect.objectContaining({
@@ -666,9 +728,45 @@ describe("CHAT-01 thread detail, create, and delete cascades", () => {
       ]),
     );
 
+    const modelSelectionEvent = allEvents.body.events.find((event) => {
+      return event.id === modelSelectionEventId;
+    });
+    const serviceTierEvent = allEvents.body.events.find((event) => {
+      return event.kind === "service_tier_updated";
+    });
+    if (
+      !modelSelectionEvent ||
+      modelSelectionEvent.seqId === undefined ||
+      !serviceTierEvent ||
+      serviceTierEvent.seqId === undefined
+    ) {
+      throw new Error("Expected model selection event pair");
+    }
+    expect(serviceTierEvent.createdAt).toBe(modelSelectionEvent.createdAt);
+    expect(serviceTierEvent.seqId).toBe(modelSelectionEvent.seqId + 1);
+    const afterCollidingTimestamp = await chat.requestThreadEvents(
+      actor,
+      { sinceSeqId: modelSelectionEvent.seqId },
+      [200],
+    );
+    expect(afterCollidingTimestamp.status).toBe(200);
+    if (afterCollidingTimestamp.status !== 200) {
+      throw new Error("Expected colliding timestamp cursor page to load");
+    }
+    expect(afterCollidingTimestamp.body.events).toStrictEqual([
+      serviceTierEvent,
+    ]);
+
+    const createEvent = allEvents.body.events.find((event) => {
+      return event.id === createEventId;
+    });
+    if (!createEvent) {
+      throw new Error("Expected created thread event");
+    }
+
     const afterCreate = await chat.requestThreadEvents(
       actor,
-      { sinceEventId: createEventId },
+      { sinceSeqId: createEvent.seqId },
       [200],
     );
     expect(afterCreate.status).toBe(200);
@@ -684,9 +782,22 @@ describe("CHAT-01 thread detail, create, and delete cascades", () => {
       ]),
     );
 
+    const afterLegacyCursor = await chat.requestThreadEvents(
+      actor,
+      { sinceEventId: createEventId },
+      [200],
+    );
+    expect(afterLegacyCursor.status).toBe(200);
+    if (afterLegacyCursor.status !== 200) {
+      throw new Error("Expected legacy thread event cursor to load");
+    }
+    expect(afterLegacyCursor.body.events).toStrictEqual(
+      afterCreate.body.events,
+    );
+
     const expired = await chat.requestThreadEvents(
       actor,
-      { sinceEventId: randomUUID() },
+      { sinceSeqId: 999_999 },
       [410],
     );
     expect(expired.body).toStrictEqual({
@@ -696,6 +807,61 @@ describe("CHAT-01 thread detail, create, and delete cascades", () => {
       },
     });
   });
+
+  it("keeps concurrent thread event sequence reservation atomic through commit", async () => {
+    const owner = bdd.user();
+    if (!owner.orgId) {
+      throw new Error("Expected an organization-scoped chat actor");
+    }
+    bdd.acceptAgentStorageWrites();
+    const agent = await bdd.createAgent(owner, {
+      displayName: "Concurrent thread event agent",
+    });
+    const threadId = await sendNoCreditMessage(owner, {
+      agentId: agent.agentId,
+      prompt: "thread event sequence serialization anchor",
+    });
+    const fixture = {
+      userId: owner.userId,
+      orgId: owner.orgId,
+      chatThreadId: threadId,
+      agentComposeId: agent.agentId,
+    } as const;
+    const held = await holdChatThreadEventInsertTransactionFixture({
+      ...fixture,
+      title: "Held thread event",
+      signal: context.signal,
+    });
+    const secondInsert = insertChatThreadEventTransactionFixture({
+      ...fixture,
+      title: "Blocked thread event",
+    });
+    onTestFinished(async () => {
+      held.release();
+      await Promise.allSettled([held.done, secondInsert]);
+    });
+
+    await expect.poll(held.blockedWaiterCount).toBe(1);
+    const beforeCommit = await allThreadEvents(owner);
+    expect(
+      beforeCommit.some((event) => {
+        return event.id === held.event.id;
+      }),
+    ).toBeFalsy();
+
+    held.release();
+    await held.done;
+    const second = await secondInsert;
+    const committed = (await allThreadEvents(owner)).filter((event) => {
+      return event.id === held.event.id || event.id === second.id;
+    });
+    expect(
+      committed.map((event) => {
+        return event.id;
+      }),
+    ).toStrictEqual([held.event.id, second.id]);
+    expect(held.event.seqId).toBeLessThan(second.seqId);
+  }, 30_000);
 
   it("touches thread sort from existing direct user sends and run-finished markers", async () => {
     const { actor, agentId, runnerGroup } = await entitledChatActor(
@@ -733,6 +899,7 @@ describe("CHAT-01 thread detail, create, and delete cascades", () => {
     await waitForThreadMessages(actor, run.threadId, (messages) => {
       return assistantMessages(messages).some((message) => {
         return (
+          message.eventType === "run.completed" &&
           message.runId === run.runId &&
           message.runLifecycleEvent === "completed"
         );
@@ -775,8 +942,16 @@ describe("CHAT-01 thread detail, create, and delete cascades", () => {
     const initialCompact = await compactChatThreadSnapshots();
     expect(initialCompact.eventsApplied).toBeGreaterThanOrEqual(2);
 
+    const liveCreateEvent = (await allThreadEvents(actor)).find((event) => {
+      return event.id === liveCreateEventId;
+    });
+    if (!liveCreateEvent) {
+      throw new Error("Expected live thread creation event");
+    }
+
     const baselineSnapshot = await chat.getThreadSnapshot(actor);
     expect(baselineSnapshot.latestEventId).not.toBeNull();
+    expect(baselineSnapshot.latestSeqId).not.toBeNull();
     expect(
       baselineSnapshot.chatThreads.map((thread) => {
         return thread.id;
@@ -815,6 +990,7 @@ describe("CHAT-01 thread detail, create, and delete cascades", () => {
 
     const compactedSnapshot = await chat.getThreadSnapshot(actor);
     expect(compactedSnapshot.latestEventId).not.toBeNull();
+    expect(compactedSnapshot.latestSeqId).not.toBeNull();
     expect(compactedSnapshot.chatThreads).toStrictEqual([
       expect.objectContaining({
         id: liveThread.id,
@@ -827,7 +1003,7 @@ describe("CHAT-01 thread detail, create, and delete cascades", () => {
 
     const prunedCursor = await chat.requestThreadEvents(
       actor,
-      { sinceEventId: liveCreateEventId },
+      { sinceSeqId: liveCreateEvent.seqId },
       [410],
     );
     expect(prunedCursor.body).toStrictEqual({
@@ -839,7 +1015,7 @@ describe("CHAT-01 thread detail, create, and delete cascades", () => {
 
     const retainedAnchorCursor = await chat.requestThreadEvents(
       actor,
-      { sinceEventId: compactedSnapshot.latestEventId ?? undefined },
+      { sinceSeqId: compactedSnapshot.latestSeqId ?? undefined },
       [200],
     );
     expect(retainedAnchorCursor.status).toBe(200);
@@ -1011,9 +1187,6 @@ describe("CHAT-01 thread detail, create, and delete cascades", () => {
 
     const host = await cu.startComputerUseHost(actor);
     await chat.updateThreadComputerUseHost(actor, thread.id, host.hostId);
-    await expect(chat.readThread(actor, thread.id)).resolves.toMatchObject({
-      computerUseHostId: host.hostId,
-    });
 
     const missingHost = await chat.requestUpdateThreadComputerUseHost(
       actor,
@@ -1035,9 +1208,6 @@ describe("CHAT-01 thread detail, create, and delete cascades", () => {
     expect(peerUpdate.body.error.message).toBe("Chat thread not found");
 
     await chat.updateThreadComputerUseHost(actor, thread.id, null);
-    await expect(chat.readThread(actor, thread.id)).resolves.toMatchObject({
-      computerUseHostId: null,
-    });
 
     const hostEvents = (await allThreadEvents(actor)).filter((event) => {
       return (
@@ -1132,8 +1302,6 @@ describe("CHAT-01 thread detail, create, and delete cascades", () => {
     expect(peerDelete.body.error.code).toBe("NOT_FOUND");
     await expect(chat.readThread(actor, main.threadId)).resolves.toStrictEqual({
       lastReadAt: null,
-      computerUseHostId: null,
-      codexServiceTier: null,
     });
 
     const deleted = await chat.requestDeleteThread(actor, main.threadId, [204]);
@@ -1159,7 +1327,45 @@ describe("CHAT-01 thread detail, create, and delete cascades", () => {
 });
 
 describe("CHAT-01 chat thread read state", () => {
-  it("lists unread agent ids behind the agent unread feature switch", async () => {
+  it("uses event type rather than legacy lifecycle payload for read cursors", async () => {
+    const { actor, agentId, runnerGroup } = await entitledChatActor(
+      "Read cursor event type agent",
+    );
+    const run = await completeChatRunInThread(actor, runnerGroup, {
+      agentId,
+      prompt: "read cursor event type",
+    });
+    const firstRead = await chat.markThreadRead(actor, run.threadId);
+    if (!firstRead.lastReadAt) {
+      throw new Error("Expected the completed run to establish a read cursor");
+    }
+
+    const conflicting =
+      await insertOutputEventWithConflictingLegacyPayloadFixture({
+        threadId: run.threadId,
+        content: "explicit output event with stale lifecycle payload",
+        createdAt: new Date(new Date(firstRead.lastReadAt).getTime() + 1000),
+        legacyPayload: "run.completed",
+      });
+    const page = await chat.listThreadEvents(actor, run.threadId);
+    expect(page.events).toContainEqual(
+      expect.objectContaining({
+        id: conflicting.id,
+        eventType: "output.message",
+      }),
+    );
+
+    await expect(chat.listThreadUnreads(actor, agentId)).resolves.toStrictEqual(
+      [],
+    );
+    await expect(
+      chat.markThreadRead(actor, run.threadId),
+    ).resolves.toMatchObject({
+      lastReadAt: firstRead.lastReadAt,
+    });
+  }, 120_000);
+
+  it("lists unread agent ids", async () => {
     const {
       actor: owner,
       agentId: agentA,
@@ -1172,16 +1378,6 @@ describe("CHAT-01 chat thread read state", () => {
       })
     ).agentId;
 
-    await connectorsApi.updateFeatureSwitches(owner, {
-      [FeatureSwitchKey.AgentUnreadIndicators]: false,
-    });
-    const disabled = await chat.requestListUnreadAgents(owner, [403]);
-    expectApiError(disabled.body);
-    expect(disabled.body.error.code).toBe("FORBIDDEN");
-
-    await connectorsApi.updateFeatureSwitches(owner, {
-      [FeatureSwitchKey.AgentUnreadIndicators]: true,
-    });
     await expect(chat.listUnreadAgents(owner)).resolves.toStrictEqual([]);
 
     // An active (claimed) run keeps its thread out of the unread aggregate
@@ -1195,11 +1391,10 @@ describe("CHAT-01 chat thread read state", () => {
 
     chatCallbacks.mockChatOutputEvents([]);
     await completeChatRunOk(activeRun.runId, activeClaim.sandboxHeaders);
-    await waitForThreadMessages(owner, activeRun.threadId, (messages) => {
-      return assistantMessages(messages).some((message) => {
+    await waitForThreadEvents(owner, activeRun.threadId, (events) => {
+      return events.some((event) => {
         return (
-          message.runId === activeRun.runId &&
-          message.runLifecycleEvent === "completed"
+          event.runId === activeRun.runId && event.eventType === "run.completed"
         );
       });
     });
@@ -1357,11 +1552,11 @@ describe("CHAT-01 chat thread read state", () => {
 
     chatCallbacks.mockChatOutputEvents([]);
     await completeChatRunOk(runningRun.runId, runningClaim.sandboxHeaders);
-    await waitForThreadMessages(owner, runningRun.threadId, (messages) => {
-      return assistantMessages(messages).some((message) => {
+    await waitForThreadEvents(owner, runningRun.threadId, (events) => {
+      return events.some((event) => {
         return (
-          message.runId === runningRun.runId &&
-          message.runLifecycleEvent === "completed"
+          event.runId === runningRun.runId &&
+          event.eventType === "run.completed"
         );
       });
     });
@@ -1380,7 +1575,7 @@ describe("CHAT-01 chat thread read state", () => {
     );
   }, 120_000);
 
-  it("marks all unread chat threads for one agent behind the agent unread feature switch", async () => {
+  it("marks all unread chat threads for one agent", async () => {
     const {
       actor: owner,
       agentId: agentA,
@@ -1392,21 +1587,6 @@ describe("CHAT-01 chat thread read state", () => {
         visibility: "private",
       })
     ).agentId;
-
-    await connectorsApi.updateFeatureSwitches(owner, {
-      [FeatureSwitchKey.AgentUnreadIndicators]: false,
-    });
-    const disabled = await chat.requestMarkAgentThreadsRead(
-      owner,
-      agentA,
-      [403],
-    );
-    expectApiError(disabled.body);
-    expect(disabled.body.error.code).toBe("FORBIDDEN");
-
-    await connectorsApi.updateFeatureSwitches(owner, {
-      [FeatureSwitchKey.AgentUnreadIndicators]: true,
-    });
 
     const firstRunA = await completeChatRunInThread(owner, runnerGroup, {
       agentId: agentA,
@@ -1459,7 +1639,7 @@ describe("CHAT-01 chat thread read state", () => {
     await expect(chat.listUnreadAgents(owner)).resolves.toStrictEqual([agentB]);
   }, 120_000);
 
-  it("pages thread messages with since and before cursors", async () => {
+  it("pages thread events with since and before cursors", async () => {
     const owner = bdd.user();
     bdd.acceptAgentStorageWrites();
     const agent = await bdd.createAgent(owner, {
@@ -1476,21 +1656,21 @@ describe("CHAT-01 chat thread read state", () => {
       prompt: "cursor round two",
     });
 
-    const full = await chat.listThreadMessages(owner, threadId);
+    const full = await chat.listThreadEvents(owner, threadId);
     expect(full.hasHistoryBefore).toBeFalsy();
     expect(
-      full.messages.map((message) => {
-        return [message.role, message.content] as const;
+      full.events.map((event) => {
+        return [event.eventType, event.content] as const;
       }),
     ).toStrictEqual([
-      ["user", "cursor round one"],
-      ["user", "cursor round one"],
-      ["assistant", expect.stringContaining("Insufficient credits")],
-      ["user", "cursor round two"],
-      ["user", "cursor round two"],
-      ["assistant", expect.stringContaining("Insufficient credits")],
+      ["input.prompt", "cursor round one"],
+      ["input.rejected", "cursor round one"],
+      ["output.error", expect.stringContaining("Insufficient credits")],
+      ["input.prompt", "cursor round two"],
+      ["input.rejected", "cursor round two"],
+      ["output.error", expect.stringContaining("Insufficient credits")],
     ]);
-    const seqIds = full.messages.map((message) => {
+    const seqIds = full.events.map((message) => {
       return message.seqId;
     });
     expect(seqIds).toStrictEqual(
@@ -1506,7 +1686,7 @@ describe("CHAT-01 chat thread read state", () => {
       secondQueuedUserMessage,
       secondReplacementMessage,
       secondAssistantMessage,
-    ] = full.messages;
+    ] = full.events;
     if (
       !firstQueuedUserMessage ||
       !firstReplacementMessage ||
@@ -1526,74 +1706,74 @@ describe("CHAT-01 chat thread read state", () => {
     const firstAssistantSeqId = firstAssistantMessage.seqId;
     const secondQueuedUserSeqId = secondQueuedUserMessage.seqId;
     const secondAssistantSeqId = secondAssistantMessage.seqId;
-    expect(full.messages[0]?.error).toBeUndefined();
-    expect(full.messages[1]).toMatchObject({
+    expect(full.events[1]).toMatchObject({
+      eventType: "input.rejected",
       error: "insufficient_credits",
-      revokesMessageId: firstQueuedUser,
+      revokesEventId: firstQueuedUser,
     });
-    expect(full.messages[3]?.error).toBeUndefined();
-    expect(full.messages[4]).toMatchObject({
+    expect(full.events[4]).toMatchObject({
+      eventType: "input.rejected",
       error: "insufficient_credits",
-      revokesMessageId: secondQueuedUser,
+      revokesEventId: secondQueuedUser,
     });
 
     // Latest page overflow: only the newest rows, with history behind them.
-    const latest = await chat.listThreadMessages(owner, threadId, {
+    const latest = await chat.listThreadEvents(owner, threadId, {
       limit: 2,
     });
     expect(
-      latest.messages.map((message) => {
+      latest.events.map((message) => {
         return message.id;
       }),
     ).toStrictEqual([secondReplacement, secondAssistant]);
     expect(latest.hasHistoryBefore).toBeTruthy();
 
     // Forward pagination strictly after the cursor.
-    const since = await chat.listThreadMessages(owner, threadId, {
+    const since = await chat.listThreadEvents(owner, threadId, {
       sinceSeqId: firstAssistantSeqId,
     });
     expect(
-      since.messages.map((message) => {
+      since.events.map((message) => {
         return message.id;
       }),
     ).toStrictEqual([secondQueuedUser, secondReplacement, secondAssistant]);
-    const legacySince = await chat.listThreadMessages(owner, threadId, {
+    const legacySince = await chat.listThreadEvents(owner, threadId, {
       sinceId: firstAssistant,
     });
     expect(
-      legacySince.messages.map((message) => {
+      legacySince.events.map((message) => {
         return message.id;
       }),
     ).toStrictEqual([secondQueuedUser, secondReplacement, secondAssistant]);
 
     // Backward pagination strictly before the cursor.
-    const before = await chat.listThreadMessages(owner, threadId, {
+    const before = await chat.listThreadEvents(owner, threadId, {
       beforeSeqId: secondQueuedUserSeqId,
       limit: 3,
     });
     expect(
-      before.messages.map((message) => {
+      before.events.map((message) => {
         return message.id;
       }),
     ).toStrictEqual([firstQueuedUser, firstReplacement, firstAssistant]);
     expect(before.hasHistoryBefore).toBeFalsy();
-    const legacyBefore = await chat.listThreadMessages(owner, threadId, {
+    const legacyBefore = await chat.listThreadEvents(owner, threadId, {
       beforeId: secondQueuedUser,
       limit: 3,
     });
     expect(
-      legacyBefore.messages.map((message) => {
+      legacyBefore.events.map((message) => {
         return message.id;
       }),
     ).toStrictEqual([firstQueuedUser, firstReplacement, firstAssistant]);
     expect(legacyBefore.hasHistoryBefore).toBeFalsy();
 
-    const beforeOverflow = await chat.listThreadMessages(owner, threadId, {
+    const beforeOverflow = await chat.listThreadEvents(owner, threadId, {
       beforeSeqId: secondAssistantSeqId,
       limit: 2,
     });
     expect(
-      beforeOverflow.messages.map((message) => {
+      beforeOverflow.events.map((message) => {
         return message.id;
       }),
     ).toStrictEqual([secondQueuedUser, secondReplacement]);
@@ -1628,9 +1808,9 @@ describe("CHAT-01 chat thread read state", () => {
     });
 
     await expect.poll(held.blockedWaiterCount).toBe(1);
-    const beforeCommit = await chat.listThreadMessages(owner, threadId);
+    const beforeCommit = await chat.listThreadEvents(owner, threadId);
     expect(
-      beforeCommit.messages.some((message) => {
+      beforeCommit.events.some((message) => {
         return (
           message.content === firstContent || message.content === secondContent
         );
@@ -1640,8 +1820,8 @@ describe("CHAT-01 chat thread read state", () => {
     held.release();
     await held.done;
     const second = await secondInsert;
-    const committed = await chat.listThreadMessages(owner, threadId);
-    const concurrentRows = committed.messages.filter((message) => {
+    const committed = await chat.listThreadEvents(owner, threadId);
+    const concurrentRows = committed.events.filter((message) => {
       return message.id === held.message.id || message.id === second.id;
     });
     expect(
@@ -1653,8 +1833,77 @@ describe("CHAT-01 chat thread read state", () => {
   }, 30_000);
 });
 
-describe("CHAT-03 run usage messages", () => {
-  it("emits one immutable usage message per run", async () => {
+describe("CHAT-03 run usage events", () => {
+  it("emits aggregate-only usage with the run completion timestamp", async () => {
+    const { actor, agentId, runnerGroup } = await entitledChatActor(
+      "Hourly usage event agent",
+    );
+    if (!actor.orgId) {
+      throw new Error("Expected an org-scoped actor");
+    }
+    const run = await sendChatRun(actor, {
+      agentId,
+      prompt: "record compacted usage",
+    });
+    const { sandboxHeaders } = await claimChatRun(runnerGroup, run.runId);
+    const provider = `hourly-chat-${randomUUID().slice(0, 8)}`;
+    await store.set(
+      insertUsageEvent$,
+      {
+        orgId: actor.orgId,
+        userId: actor.userId,
+        runId: run.runId,
+        kind: "connector",
+        provider,
+        category: "api_request",
+        quantity: 3,
+        status: "processed",
+        creditsCharged: 7,
+        processedAt: new Date("2020-01-01T12:25:00.000Z"),
+      },
+      context.signal,
+    );
+    await expect(
+      store.set(
+        materializeHourlyUsage$,
+        {
+          orgId: actor.orgId,
+          userId: actor.userId,
+          runId: run.runId,
+        },
+        context.signal,
+      ),
+    ).resolves.toBe(1);
+
+    const completedAt = new Date(now() + 1000);
+    mockNow(completedAt);
+    onTestFinished(() => {
+      clearMockNow();
+    });
+    await completeChatRunOk(run.runId, sandboxHeaders);
+    await flushWaitUntilForTest();
+
+    const usageEvents = await usageEventsForRun(actor, run.threadId, run.runId);
+    expect(usageEvents).toStrictEqual([
+      expect.objectContaining({
+        createdAt: completedAt.toISOString(),
+        usage: {
+          version: 1,
+          totalCredits: 7,
+          settledAt: completedAt.toISOString(),
+          breakdown: [
+            {
+              kind: "connector",
+              credits: 7,
+              providers: [{ provider, credits: 7 }],
+            },
+          ],
+        },
+      }),
+    ]);
+  }, 60_000);
+
+  it("emits one immutable usage event per run", async () => {
     const { actor, agentId } = await entitledChatActorWithoutRunner(
       "Usage message agent",
     );
@@ -1695,17 +1944,32 @@ describe("CHAT-03 run usage messages", () => {
       sandboxHeaders,
       [200],
     );
-    const billing = createBillingMediaApi(context);
-    await billing.processUsageEvents();
+    const conflicting =
+      await insertOutputEventWithConflictingLegacyPayloadFixture({
+        threadId,
+        runId,
+        content: "explicit output event with stale usage payload",
+        legacyPayload: "usage.recorded",
+      });
+    const page = await chat.listThreadEvents(actor, threadId);
+    expect(page.events).toContainEqual(
+      expect.objectContaining({
+        id: conflicting.id,
+        eventType: "output.message",
+      }),
+    );
 
-    let usageMessages = await usageMessagesForRun(actor, threadId, runId);
-    expect(usageMessages).toHaveLength(1);
-    const usageMessage = usageMessages[0];
-    if (!usageMessage) {
-      throw new Error("Expected one usage message");
+    const billing = createBillingMediaApi(context);
+    await billing.processOrgUsageEvents(actor);
+
+    let usageEvents = await usageEventsForRun(actor, threadId, runId);
+    expect(usageEvents).toHaveLength(1);
+    const usageEvent = usageEvents[0];
+    if (!usageEvent) {
+      throw new Error("Expected one usage event");
     }
-    expect(usageMessage).toMatchObject({
-      role: "assistant",
+    expect(usageEvent).toMatchObject({
+      eventType: "usage.recorded",
       content: null,
       usage: {
         version: 1,
@@ -1746,9 +2010,9 @@ describe("CHAT-03 run usage messages", () => {
       [200],
     );
     mockNow(new Date("2030-01-01T00:00:00.000Z"));
-    await billing.processUsageEvents();
-    usageMessages = await usageMessagesForRun(actor, threadId, runId);
-    expect(usageMessages).toStrictEqual([usageMessage]);
+    await billing.processOrgUsageEvents(actor);
+    usageEvents = await usageEventsForRun(actor, threadId, runId);
+    expect(usageEvents).toStrictEqual([usageEvent]);
 
     clearMockNow();
     await webhooks.requestAgentUsageEvent(
@@ -1768,12 +2032,12 @@ describe("CHAT-03 run usage messages", () => {
       [200],
     );
     mockNow(new Date("2030-01-01T00:00:01.000Z"));
-    await billing.processUsageEvents();
-    usageMessages = await usageMessagesForRun(actor, threadId, runId);
-    expect(usageMessages).toStrictEqual([usageMessage]);
+    await billing.processOrgUsageEvents(actor);
+    usageEvents = await usageEventsForRun(actor, threadId, runId);
+    expect(usageEvents).toStrictEqual([usageEvent]);
   }, 60_000);
 
-  it("emits complete allowance-covered usage in one message", async () => {
+  it("emits complete allowance-covered usage in one event", async () => {
     const seededModel = await seedVm0ManagedDefaultModelKey(context);
     const selectedModel = DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL;
     expect(seededModel).toBe(selectedModel);
@@ -1840,12 +2104,12 @@ describe("CHAT-03 run usage messages", () => {
       sandboxHeaders,
       [200],
     );
-    await createBillingMediaApi(context).processUsageEvents();
+    await createBillingMediaApi(context).processOrgUsageEvents(actor);
 
-    const usageMessages = await usageMessagesForRun(actor, threadId, runId);
-    expect(usageMessages).toHaveLength(1);
-    expect(usageMessages[0]).toMatchObject({
-      role: "assistant",
+    const usageEvents = await usageEventsForRun(actor, threadId, runId);
+    expect(usageEvents).toHaveLength(1);
+    expect(usageEvents[0]).toMatchObject({
+      eventType: "usage.recorded",
       content: null,
       usage: {
         version: 1,
@@ -1873,7 +2137,7 @@ describe("CHAT-03 run usage messages", () => {
     ).toStrictEqual({ short: 70, weekly: 70 });
   }, 60_000);
 
-  it("emits zero-credit usage messages and skips runs without usage", async () => {
+  it("emits zero-credit usage events and skips runs without usage", async () => {
     const { actor, agentId, runnerGroup } = await entitledChatActor(
       "Zero usage message agent",
     );
@@ -1905,11 +2169,12 @@ describe("CHAT-03 run usage messages", () => {
     await completeChatRunOk(zeroRun.runId, zeroSandboxHeaders);
     await flushWaitUntilForTest();
 
-    const zeroPage = await chat.listThreadMessages(actor, zeroRun.threadId);
-    const zeroUsageMessage = zeroPage.messages.find((message) => {
-      return message.runId === zeroRun.runId && message.usage !== undefined;
-    });
-    expect(zeroUsageMessage?.usage).toMatchObject({
+    const [zeroUsageEvent] = await usageEventsForRun(
+      actor,
+      zeroRun.threadId,
+      zeroRun.runId,
+    );
+    expect(zeroUsageEvent?.usage).toMatchObject({
       version: 1,
       totalCredits: 0,
       breakdown: [
@@ -1936,7 +2201,7 @@ describe("CHAT-03 run usage messages", () => {
     await completeChatRunOk(quietRun.runId, quietSandboxHeaders);
     await flushWaitUntilForTest();
     await expect(
-      usageMessagesForRun(actor, quietRun.threadId, quietRun.runId),
+      usageEventsForRun(actor, quietRun.threadId, quietRun.runId),
     ).resolves.toHaveLength(0);
   }, 60_000);
 });
@@ -2010,6 +2275,34 @@ describe("CHAT-01 chat search", () => {
       "owner says supercalifragilistic",
     );
     expect(isolation.results[0]?.agentName).toStrictEqual(expect.any(String));
+
+    // Canonical userMessage fields, not the legacy content projection, own
+    // both matching and the returned display text.
+    const canonicalKeyword = `canonical-${randomUUID()}`;
+    const legacyKeyword = `legacy-${randomUUID()}`;
+    const canonicalDisplay = `Find [Chat thread: ${canonicalKeyword} archive]`;
+    await sendNoCreditMessage(owner, {
+      agentId: agentA.agentId,
+      prompt: legacyKeyword,
+      userMessage: {
+        version: 1,
+        parts: [
+          { type: "text", text: "Find " },
+          {
+            type: "chat_thread",
+            threadId: ownerThreadA,
+            titleSnapshot: `${canonicalKeyword} archive`,
+          },
+        ],
+      },
+    });
+    const canonicalSearch = await chat.searchChat(owner, canonicalKeyword);
+    expect(canonicalSearch.results).toHaveLength(1);
+    expect(canonicalSearch.results[0]?.matchedMessage.content).toBe(
+      canonicalDisplay,
+    );
+    const legacySearch = await chat.searchChat(owner, legacyKeyword);
+    expect(legacySearch.results).toStrictEqual([]);
 
     // Cross-org isolation for the same user.
     const sameUserOtherOrg = bdd.user({ userId: owner.userId });
@@ -2496,135 +2789,17 @@ describe("CHAT-03 thread artifacts and google drive status", () => {
     // Drive 401 with no refresh credentials resolves to "unknown".
     mockOptionalEnv("GOOGLE_OAUTH_CLIENT_ID", undefined);
     mockOptionalEnv("GOOGLE_OAUTH_CLIENT_SECRET", undefined);
+    await installApiTestConnectorCatalog();
     mockGoogleDriveFilesList(() => {
       return { status: 401 };
     });
     artifacts = await chat.listThreadArtifacts(actor, run.threadId);
     for (const file of artifacts.runs[0]?.files ?? []) {
-      expect(file.googleDriveSync).toStrictEqual({ status: "unknown" });
+      expect(file.googleDriveSync).toStrictEqual({ status: "disconnected" });
     }
 
     chatCallbacks.mockChatOutputEvents([]);
     await completeChatRunOk(run.runId, sandboxHeaders);
-  }, 120_000);
-
-  it("uploads a presentation to Google Slides behind a feature flag", async () => {
-    const { actor } = await entitledChatActor("Slides upload agent");
-    const objectStore = chatCallbacks.acceptChatObjectStorage();
-    const orgId = actor.orgId;
-    if (!orgId) {
-      throw new Error("entitled actor is missing an organization");
-    }
-    const threadId = randomUUID();
-    // Gated off by default: the feature switch hides the endpoint.
-    const gated = await chat.requestUploadThreadArtifactGoogleSlidesFromUpload(
-      actor,
-      threadId,
-      randomUUID(),
-      [403],
-    );
-    expectApiError(gated.body);
-    expect(gated.body.error.code).toBe("FORBIDDEN");
-
-    await updateFeatureSwitchesForUser(
-      context,
-      { userId: actor.userId, orgId },
-      { [FeatureSwitchKey.PresentationExport]: true },
-    );
-
-    // Enabled, but Google Drive is not connected yet.
-    const noDrive =
-      await chat.requestUploadThreadArtifactGoogleSlidesFromUpload(
-        actor,
-        threadId,
-        randomUUID(),
-        [400],
-      );
-    expectApiError(noDrive.body);
-    expect(noDrive.body.error.message).toBe(
-      "Connect Google Drive before uploading to Google Slides",
-    );
-
-    // Connect Google Drive through the public OAuth routes.
-    mockGoogleDriveConnectorOAuth();
-    const start = await connectorsApi.startOauth(
-      actor,
-      "google-drive",
-      "oauth",
-    );
-    await connectorsApi.completeOauthCallback("google-drive", {
-      code: "drive-ok",
-      state: stateFromAuthorizationUrl(start.authorizationUrl),
-    });
-
-    const missingUpload =
-      await chat.requestUploadThreadArtifactGoogleSlidesFromUpload(
-        actor,
-        threadId,
-        randomUUID(),
-        [404],
-      );
-    expectApiError(missingUpload.body);
-    expect(missingUpload.body.error.message).toBe(
-      "Presentation upload not found",
-    );
-
-    const oversizedUploadId = randomUUID();
-    objectStore.addObject({
-      bucket: "test-user-artifacts",
-      key: `artifacts/${encodeURIComponent(actor.userId)}/${oversizedUploadId}/too-large.pptx`,
-      size: 100 * 1024 * 1024 + 1,
-    });
-    const oversized =
-      await chat.requestUploadThreadArtifactGoogleSlidesFromUpload(
-        actor,
-        threadId,
-        oversizedUploadId,
-        [400],
-      );
-    expectApiError(oversized.body);
-    expect(oversized.body.error.message).toBe(
-      "Presentation file is too large (max 100 MB)",
-    );
-
-    // A PPTX larger than Vercel's request-body limit is staged in R2, then
-    // Drive converts it into a native Google Slides deck via resumable upload.
-    const stagedPptx = new Uint8Array(5 * 1024 * 1024);
-    stagedPptx.set([0x50, 0x4b, 0x03, 0x04]);
-    const prepared = await chat.prepareUpload(actor, {
-      filename: "large-deck.pptx",
-      contentType:
-        "application/vnd.openxmlformats-officedocument.presentationml.presentation",
-      size: stagedPptx.byteLength,
-    });
-    const stagedKey = `artifacts/${encodeURIComponent(actor.userId)}/${prepared.id}/large-deck.pptx`;
-    objectStore.addObject({
-      bucket: "test-user-artifacts",
-      body: stagedPptx,
-      key: stagedKey,
-      size: stagedPptx.byteLength,
-    });
-    const uploadRecorder = mockGoogleDriveSlidesUpload();
-    const uploaded =
-      await chat.requestUploadThreadArtifactGoogleSlidesFromUpload(
-        actor,
-        threadId,
-        prepared.id,
-        [200],
-      );
-    expect(uploaded.body).toStrictEqual({
-      id: "slides-file-1",
-      name: "deck",
-      webViewLink: "https://docs.google.com/presentation/d/slides-file-1/edit",
-    });
-    expect(uploadRecorder.metadataBodies[0]).toContain(
-      "application/vnd.google-apps.presentation",
-    );
-    expect(uploadRecorder.uploadBodies[0]).toHaveLength(stagedPptx.byteLength);
-    expect(uploadRecorder.uploadBodies[0]?.slice(0, 4)).toStrictEqual(
-      stagedPptx.slice(0, 4),
-    );
-    expect(objectStore.deletedKeys).toContain(stagedKey);
   }, 120_000);
 
   it("dedupes artifact urls and filters hosted-site runs", async () => {

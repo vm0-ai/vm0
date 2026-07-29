@@ -1,6 +1,4 @@
 import { command } from "ccstate";
-import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
-import { isFeatureEnabled } from "@vm0/core/feature-switch";
 import { slackChatIngress } from "@vm0/db/schema/slack-chat-ingress";
 import { slackChatThreadRoutes } from "@vm0/db/schema/slack-chat-thread-route";
 import { slackOrgConnections } from "@vm0/db/schema/slack-org-connection";
@@ -41,12 +39,14 @@ import {
 import { drainChatThreadQueueForThread$ } from "./chat-thread-queue-drain.service";
 import { decryptPersistentSecretValue } from "./crypto.utils";
 import { loadUserFeatureSwitchContext } from "./feature-switches.service";
-import { touchChatThreadLastMessageAt } from "./zero-chat-message-shared.service";
-import { insertChatMessage } from "./zero-chat-message.service";
 import {
-  encryptQueuedUserMessageRunParams,
-  enqueueUserMessageQueueItem,
-} from "./zero-chat-queued-message.service";
+  isSlackDirectMessageSessionThreadTs,
+  slackSessionThreadTs,
+} from "./slack-chat-ingress.service";
+import { touchChatThreadLastMessageAt } from "./zero-chat-message-shared.service";
+import { insertChatEvent } from "./zero-chat-event.service";
+import { createUserMessageDocument } from "./zero-chat-user-message.service";
+import { encryptQueuedUserMessageRunParams } from "./zero-chat-queued-message.service";
 
 const L = logger("CanonicalSlackIngressProcessor");
 const PROCESSING_STALE_AFTER_MS = 5 * 60 * 1000;
@@ -96,6 +96,10 @@ function slackChannelType(
     return "group_dm";
   }
   return "channel";
+}
+
+function slackPhysicalThreadTs(event: SlackAgentEvent): string {
+  return event.thread_ts ?? event.ts;
 }
 
 function buildSlackSystemPrompt(args: {
@@ -219,7 +223,6 @@ async function loadClaimedIngress(db: Db, ingressId: string) {
       and(
         eq(slackChatIngress.id, ingressId),
         eq(slackChatIngress.status, "processing"),
-        eq(slackChatThreadRoutes.backend, "canonical"),
       ),
     )
     .limit(1);
@@ -232,11 +235,21 @@ function requireMatchingEvent(
 ) {
   const parsed = slackEventCallbackSchema.parse(JSON.parse(payload) as unknown);
   const event = parsed.event;
+  const channelType = slackChannelType(event);
+  const matchesThread =
+    channelType === "dm" && !event.thread_ts
+      ? isSlackDirectMessageSessionThreadTs(route.threadTs) ||
+        route.threadTs === event.ts
+      : slackSessionThreadTs({
+          channelType,
+          messageTs: event.ts,
+          ...(event.thread_ts ? { threadTs: event.thread_ts } : {}),
+        }) === route.threadTs;
   if (
     parsed.team_id !== route.workspaceId ||
     event.user !== route.slackUserId ||
     event.channel !== route.channelId ||
-    (event.thread_ts ?? event.ts) !== route.threadTs
+    !matchesThread
   ) {
     throw new Error("Canonical Slack ingress payload does not match its route");
   }
@@ -275,17 +288,22 @@ interface PersistedCanonicalSlackIngress {
   readonly chatThreadId: string;
   readonly channelId: string;
   readonly threadTs: string;
+  readonly routeThreadTs?: string;
 }
 
 function persistedCanonicalSlackIngress(
   ingress: NonNullable<Awaited<ReturnType<typeof loadClaimedIngress>>>,
+  threadTs: string,
   chatThreadId: string,
 ): PersistedCanonicalSlackIngress {
   return {
     userId: ingress.userId,
     chatThreadId,
     channelId: ingress.channelId,
-    threadTs: ingress.threadTs,
+    threadTs,
+    ...(threadTs === ingress.threadTs
+      ? {}
+      : { routeThreadTs: ingress.threadTs }),
   };
 }
 
@@ -320,7 +338,6 @@ async function persistCanonicalSlackMessage(
   args: {
     readonly ingress: ClaimedCanonicalSlackIngress;
     readonly chatThreadId: string;
-    readonly orgId: string;
     readonly displayContent: string;
     readonly messagePermalink: string | null;
     readonly canonicalAssets: readonly CanonicalSlackInputAsset[];
@@ -331,14 +348,26 @@ async function persistCanonicalSlackMessage(
   signal: AbortSignal,
 ): Promise<void> {
   await db.transaction(async (tx) => {
-    const inserted = await insertChatMessage(
+    const inserted = await insertChatEvent(
       tx,
       {
         id: args.ingress.ingressId,
         chatThreadId: args.chatThreadId,
-        role: "user",
+        eventType: "input.prompt",
         content: args.displayContent,
+        userMessage: createUserMessageDocument({
+          text: args.displayContent,
+          files: args.canonicalAssets.map((asset) => {
+            return {
+              id: asset.assetId,
+              filename: asset.filename,
+              contentType: asset.contentType,
+            };
+          }),
+        }),
         runId: null,
+        triggerSource: "slack",
+        encryptedParams: args.encryptedParams,
         slackMessagePermalink: args.messagePermalink,
         createdAt: args.ingress.createdAt,
       },
@@ -353,15 +382,6 @@ async function persistCanonicalSlackMessage(
       args.ingress.ingressId,
       args.canonicalAssets,
     );
-    await enqueueUserMessageQueueItem(tx, {
-      orgId: args.orgId,
-      userId: args.ingress.userId,
-      chatThreadId: args.chatThreadId,
-      chatMessageId: args.ingress.ingressId,
-      triggerSource: "slack",
-      encryptedParams: args.encryptedParams,
-    });
-    signal.throwIfAborted();
     await touchChatThreadLastMessageAt(
       tx,
       args.chatThreadId,
@@ -397,6 +417,7 @@ const persistClaimedCanonicalSlackIngress$ = command(
     const chatThreadId = ingress.chatThreadId;
     const orgId = ingress.orgId;
     const event = requireMatchingEvent(ingress.payload, ingress);
+    const threadTs = slackPhysicalThreadTs(event);
     const featureContext = await loadUserFeatureSwitchContext(
       db,
       orgId,
@@ -413,36 +434,30 @@ const persistClaimedCanonicalSlackIngress$ = command(
       client,
       ingressId,
       channelId: ingress.channelId,
-      threadTs: ingress.threadTs,
+      threadTs,
     });
     signal.throwIfAborted();
     const userInfoResolver = createSlackUserInfoResolver(client);
     const messageContent = stripBotMention(event.text, ingress.botUserId);
-    const canonicalAssetsEnabled = isFeatureEnabled(
-      FeatureSwitchKey.CanonicalSlackAssets,
-      featureContext,
+    const canonicalAssets = await set(
+      materializeCanonicalSlackInputAssets$,
+      {
+        userId: ingress.userId,
+        orgId,
+        chatThreadId,
+        workspaceId: ingress.workspaceId,
+        channelId: ingress.channelId,
+        messageTs: event.ts,
+        botToken,
+        files: event.files ?? [],
+      },
+      signal,
     );
-    const canonicalAssets = canonicalAssetsEnabled
-      ? await set(
-          materializeCanonicalSlackInputAssets$,
-          {
-            userId: ingress.userId,
-            orgId,
-            chatThreadId,
-            workspaceId: ingress.workspaceId,
-            channelId: ingress.channelId,
-            messageTs: event.ts,
-            botToken,
-            files: event.files ?? [],
-          },
-          signal,
-        )
-      : [];
     signal.throwIfAborted();
     const [enriched, context, permalinkResult] = await Promise.all([
       enrichMessageContent({
         messageContent,
-        files: canonicalAssetsEnabled ? undefined : event.files,
+        files: undefined,
         client,
         userId: event.user,
         userInfoResolver,
@@ -481,12 +496,15 @@ const persistClaimedCanonicalSlackIngress$ = command(
           botUserId: ingress.botUserId,
           channelId: ingress.channelId,
           channelType: slackChannelType(event),
-          threadTs: ingress.threadTs,
+          threadTs,
           executionContext: context.executionContext,
         }),
         slackDelivery: {
           channelId: ingress.channelId,
-          threadTs: ingress.threadTs,
+          threadTs,
+          ...(threadTs === ingress.threadTs
+            ? {}
+            : { routeThreadTs: ingress.threadTs }),
         },
         userInfoExtras: enriched.userInfoExtras,
       },
@@ -499,7 +517,6 @@ const persistClaimedCanonicalSlackIngress$ = command(
       {
         ingress,
         chatThreadId,
-        orgId,
         displayContent: enriched.displayContent,
         messagePermalink,
         canonicalAssets,
@@ -508,7 +525,7 @@ const persistClaimedCanonicalSlackIngress$ = command(
       signal,
     );
     signal.throwIfAborted();
-    return persistedCanonicalSlackIngress(ingress, chatThreadId);
+    return persistedCanonicalSlackIngress(ingress, threadTs, chatThreadId);
   },
 );
 
@@ -556,6 +573,9 @@ export const processCanonicalSlackIngress$ = command(
               chatThreadId: ingress.chatThreadId,
               channelId: ingress.channelId,
               threadTs: ingress.threadTs,
+              ...(ingress.routeThreadTs
+                ? { routeThreadTs: ingress.routeThreadTs }
+                : {}),
             },
             signal,
           ),

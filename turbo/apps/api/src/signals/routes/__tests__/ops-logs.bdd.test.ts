@@ -10,7 +10,6 @@ import type {
 } from "@vm0/api-contracts/contracts/chat-threads";
 import { cronAggregateModelStatsContract } from "@vm0/api-contracts/contracts/cron";
 import { zeroAgentInstructionsContract } from "@vm0/api-contracts/contracts/zero-agents";
-import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { ILLUSTRATION_TEMPLATE_ITEMS } from "@vm0/core";
 
 import { createAppWithRoutes } from "../../../app-factory-core";
@@ -27,7 +26,6 @@ import { createOpsLogsApi } from "./helpers/api-bdd-ops-logs";
 import { createRunsApi } from "./helpers/api-bdd-runs";
 import { createWebhookCallbackApi } from "./helpers/api-bdd-webhooks";
 import { commitMemoryVersion } from "./helpers/zero-memory";
-import { updateFeatureSwitchesForUser } from "./helpers/zero-feature-switches";
 import { createFixtureTracker } from "./helpers/zero-route-test";
 
 /*
@@ -325,23 +323,6 @@ describe("BILL-02: model usage aggregation and public rankings", () => {
     const baseTotal = baseline.body.totalTokens;
 
     mockNow(mainObservedAt);
-    const legacyNoOp = await webhooks.requestAgentModelUsageObservation(
-      {
-        runId: created.runId,
-        events: [
-          {
-            idempotencyKey: randomUUID(),
-            model,
-            category: "tokens.input",
-            quantity: 999,
-          },
-        ],
-      },
-      sandboxHeaders,
-      [200],
-    );
-    expect(legacyNoOp.body).toStrictEqual({ success: true });
-
     const compactIdempotencyKey = randomUUID();
     const compactBody = {
       runId: created.runId,
@@ -704,99 +685,74 @@ describe("OPS-01: user data export", () => {
     });
   });
 
-  it.each([
-    { projection: "structured", structuredPromptEnabled: true },
-    { projection: "legacy", structuredPromptEnabled: false },
-  ])(
-    "exports the $projection user-message projection",
-    async ({ structuredPromptEnabled }) => {
-      const api = createOpsLogsApi(context);
-      const chat = createChatFilesBddApi(context);
-      const { actor, agentId } = await entitledRunActor();
-      if (!actor.orgId) {
-        throw new Error("Expected an org-scoped actor");
-      }
-      await updateFeatureSwitchesForUser(
-        context,
-        { ...actor, orgId: actor.orgId },
-        { [FeatureSwitchKey.StructuredPrompt]: structuredPromptEnabled },
-      );
-
-      const style = ILLUSTRATION_TEMPLATE_ITEMS[0];
-      if (!style) {
-        throw new Error("Expected a registered illustration style");
-      }
-      const generationTemplate: GenerationTemplateRequest = {
-        type: "illustration",
-        selection: { illustrationStyleId: style.illustrationStyleId },
-      };
-      const structuredPrompt: UserMessageDocument = {
-        version: 1,
-        parts: [
-          {
-            type: "template",
-            titleSnapshot: style.title,
-            template: generationTemplate,
-          },
-          { type: "text", text: "Export the structured request" },
-        ],
-      };
-      const sent = await chat.requestSendMessage(
-        actor,
+  it("exports the userMessage projection", async () => {
+    const api = createOpsLogsApi(context);
+    const chat = createChatFilesBddApi(context);
+    const { actor, agentId } = await entitledRunActor();
+    const style = ILLUSTRATION_TEMPLATE_ITEMS[0];
+    if (!style) {
+      throw new Error("Expected a registered illustration style");
+    }
+    const generationTemplate: GenerationTemplateRequest = {
+      type: "illustration",
+      selection: { illustrationStyleId: style.illustrationStyleId },
+    };
+    const userMessage: UserMessageDocument = {
+      version: 1,
+      parts: [
         {
-          agentId,
-          prompt: "stale export content",
-          generationTemplate,
-          structuredPrompt,
+          type: "template",
+          titleSnapshot: style.title,
+          template: generationTemplate,
         },
-        [201],
-      );
-      if (sent.status !== 201) {
-        throw new Error("Expected the structured message send to succeed");
-      }
+        { type: "text", text: "Export the structured request" },
+      ],
+    };
+    const sent = await chat.requestSendEvent(
+      actor,
+      {
+        agentId,
+        prompt: "stale export content",
+        generationTemplate,
+        userMessage,
+      },
+      [201],
+    );
+    if (sent.status !== 201) {
+      throw new Error("Expected the structured message send to succeed");
+    }
 
-      const exportStartAt = Date.UTC(2026, 4, 12, 5, 30);
-      mockNow(exportStartAt);
-      context.mocks.s3.getSignedUrl.mockResolvedValue(
-        "https://r2.example.com/bdd-structured-export.zip?sig=test",
-      );
-      const started = await api.requestPostUserExport(actor, [202]);
-      const exportKey = `exports/${actor.userId}/${started.body.jobId}.zip`;
-      await waitForUserExportJobStatus(
-        api,
-        actor,
-        started.body.jobId,
-        "completed",
-      );
+    const exportStartAt = Date.UTC(2026, 4, 12, 5, 30);
+    mockNow(exportStartAt);
+    context.mocks.s3.getSignedUrl.mockResolvedValue(
+      "https://r2.example.com/bdd-structured-export.zip?sig=test",
+    );
+    const started = await api.requestPostUserExport(actor, [202]);
+    const exportKey = `exports/${actor.userId}/${started.body.jobId}.zip`;
+    await waitForUserExportJobStatus(
+      api,
+      actor,
+      started.body.jobId,
+      "completed",
+    );
 
-      const messages = JSON.parse(
-        zipText(
-          exportZip(exportKey),
-          `conversations/chat-thread-${sent.body.threadId}.json`,
-        ),
-      ) as {
-        readonly role: string;
-        readonly content: string;
-        readonly structuredPrompt?: UserMessageDocument;
-      }[];
-      const expectedContent = structuredPromptEnabled
-        ? `[Template: ${style.title}]\n\nExport the structured request`
-        : "stale export content";
-      expect(messages[0]).toMatchObject({
-        role: "user",
-        content: expectedContent,
-        ...(structuredPromptEnabled ? { structuredPrompt } : {}),
-      });
-      expect(messages[0]?.content).not.toContain(
-        structuredPromptEnabled
-          ? "stale export content"
-          : "Export the structured request",
-      );
-      if (!structuredPromptEnabled) {
-        expect(messages[0]).not.toHaveProperty("structuredPrompt");
-      }
-    },
-  );
+    const messages = JSON.parse(
+      zipText(
+        exportZip(exportKey),
+        `conversations/chat-thread-${sent.body.threadId}.json`,
+      ),
+    ) as {
+      readonly role: string;
+      readonly content: string;
+      readonly userMessage?: UserMessageDocument;
+    }[];
+    expect(messages[0]).toMatchObject({
+      role: "user",
+      content: `[Template: ${style.title}]\n\nExport the structured request`,
+      userMessage,
+    });
+    expect(messages[0]?.content).not.toContain("stale export content");
+  });
 
   it("exports only agent instruction files, workflow files, and memory files", async () => {
     const api = createOpsLogsApi(context);

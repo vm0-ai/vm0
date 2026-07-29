@@ -67,8 +67,13 @@ function connectorCatalogSensitiveValues(
     }
     if (authMethod.client?.clientRegistration === "static") {
       if (authMethod.client.clientType === "confidential") {
-        addSensitiveValue(authMethod.client.clientIdEnv, values);
-        addSensitiveValue(authMethod.client.clientSecretEnv, values);
+        if ("clientIdEnv" in authMethod.client) {
+          addSensitiveValue(authMethod.client.clientIdEnv, values);
+          addSensitiveValue(authMethod.client.clientSecretEnv, values);
+        } else {
+          addSensitiveValue(authMethod.client.clientId, values);
+          addSensitiveValue(authMethod.client.clientSecret, values);
+        }
       } else {
         addSensitiveValue(authMethod.client.clientId, values);
       }

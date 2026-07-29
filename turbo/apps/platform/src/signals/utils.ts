@@ -20,14 +20,6 @@ class PromiseTracker {
 }
 
 const tracker = new PromiseTracker();
-
-export function markDetachedErrorHandled(error: unknown): unknown {
-  if ((typeof error === "object" || typeof error === "function") && error) {
-    tracker.handledErrors.add(error);
-  }
-  return error;
-}
-
 function isHandledDetachedError(error: unknown): boolean {
   return (
     (typeof error === "object" || typeof error === "function") &&
@@ -293,14 +285,6 @@ export async function withCleanup<T>(
     cleanup();
   }
 }
-
-export function toVoid<T>(p: Promise<T>): Promise<void> {
-  // This helper intentionally discards fulfillment values while preserving rejection semantics.
-  // confirmed by ethan@vm0.ai
-  // oxlint-disable-next-line promise/prefer-await-to-then
-  return p.then(() => {});
-}
-
 // ---------------------------------------------------------------------------
 // Bounded async load retry
 // ---------------------------------------------------------------------------
@@ -362,6 +346,53 @@ const FIB_DELAYS_MS = [
 ] as const;
 
 const MAX_LOOP_COUNT_IN_TEST = 100;
+
+function fibonacciRetryDelayMs(retryIndex: number): number {
+  return (
+    FIB_DELAYS_MS[Math.min(retryIndex, FIB_DELAYS_MS.length - 1)] ?? 60_000
+  );
+}
+
+async function waitForFibonacciRetry(
+  retryIndex: number,
+  signal: AbortSignal,
+): Promise<void> {
+  const delayMs = fibonacciRetryDelayMs(retryIndex);
+  await (IN_VITEST
+    ? delay(0, { signal: AbortSignal.any([]) })
+    : delay(delayMs, { signal }));
+  signal.throwIfAborted();
+}
+
+/**
+ * Retry one async operation with fibonacci backoff while `shouldRetry`
+ * classifies its rejection as transient. Resolves on the first successful
+ * attempt and rejects when the signal aborts or an error is not retryable.
+ */
+export async function retryWithFibonacciBackoff<T>(
+  operation: () => Promise<T>,
+  shouldRetry: (error: unknown) => boolean,
+  signal: AbortSignal,
+): Promise<T> {
+  let retryIndex = 0;
+  while (true) {
+    if (IN_VITEST && retryIndex > MAX_LOOP_COUNT_IN_TEST) {
+      throw new Error(
+        `retryWithFibonacciBackoff: infinite retry detected — exceeded ${MAX_LOOP_COUNT_IN_TEST} attempts in test`,
+      );
+    }
+    const result = await settle(runRetriedLoad(operation), signal);
+    if (result.ok) {
+      return result.value;
+    }
+    if (!shouldRetry(result.error)) {
+      throw result.error;
+    }
+    await waitForFibonacciRetry(retryIndex, signal);
+    retryIndex++;
+  }
+}
+
 /**
  * Run `loopBody` in a loop with `interval` between iterations.
  * Transient (non-abort) errors trigger fibonacci backoff retries.
@@ -405,16 +436,13 @@ export async function setLoop(
       if (options.retryTransientErrors === false) {
         throw error;
       }
-      const backoff =
-        FIB_DELAYS_MS[Math.min(fibIndex, FIB_DELAYS_MS.length - 1)] ?? 60_000;
+      const backoff = fibonacciRetryDelayMs(fibIndex);
       L.warn(
         `setLoop: transient error (attempt ${fibIndex + 1}), retrying in ${backoff}ms`,
         error,
       );
+      await waitForFibonacciRetry(fibIndex, signal);
       fibIndex++;
-      await (IN_VITEST
-        ? delay(0, { signal: AbortSignal.any([]) })
-        : delay(backoff, { signal }));
     }
   }
 }
@@ -428,28 +456,6 @@ export function resetSignal(): Command<AbortSignal, AbortSignal[]> {
     set(controller$, controller);
 
     return AbortSignal.any([controller.signal, ...signals]);
-  });
-}
-
-interface ResetSignalScope {
-  readonly signal: AbortSignal;
-  readonly abort: (reason?: unknown) => void;
-}
-
-export function resetSignalScope(): Command<ResetSignalScope, AbortSignal[]> {
-  const controller$ = state<AbortController | undefined>(undefined);
-
-  return command(({ get, set }, ...signals: AbortSignal[]) => {
-    get(controller$)?.abort();
-    const controller = new AbortController();
-    set(controller$, controller);
-
-    return {
-      signal: AbortSignal.any([controller.signal, ...signals]),
-      abort: (reason?: unknown) => {
-        controller.abort(reason);
-      },
-    };
   });
 }
 

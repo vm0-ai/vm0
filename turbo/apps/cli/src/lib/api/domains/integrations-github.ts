@@ -75,10 +75,6 @@ export async function downloadGithubFile(
   const headers: Record<string, string> = {
     Authorization: `Bearer ${token}`,
   };
-  const bypassSecret = process.env.VERCEL_AUTOMATION_BYPASS_SECRET;
-  if (bypassSecret) {
-    headers["x-vercel-protection-bypass"] = bypassSecret;
-  }
 
   const response = await fetch(url, {
     headers: headersWithCliClientHeaders(headers),

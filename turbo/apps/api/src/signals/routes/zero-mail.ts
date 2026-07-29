@@ -1,44 +1,45 @@
 import { command } from "ccstate";
 import { zeroMailContract } from "@vm0/api-contracts/contracts/zero-mail";
-import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
-import { isFeatureEnabled } from "@vm0/core/feature-switch";
 
-import { conflict, notFound } from "../../lib/error";
+import { badRequestMessage, conflict, notFound } from "../../lib/error";
+import { isZeroMailReplyFollowUpRolloutEnabled } from "../../lib/zero-mail-reply-follow-up-rollout";
 import { organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
 import { bodyResultOf, pathParamsOf } from "../context/request";
-import { db$ } from "../external/db";
+import {
+  publishChatThreadAutomationsChangedSafely,
+  publishChatThreadMessageCreatedSafely,
+  publishThreadListChangedSafely,
+} from "../external/realtime";
 import type { RouteEntry } from "../route-entry";
-import { loadUserFeatureSwitchContext } from "../services/feature-switches.service";
 import {
   deleteZeroMailDraft$,
   getZeroMailDraftAttachment$,
   getZeroMailDraft$,
   linkZeroMailDraft$,
   sendZeroMailDraft$,
+  setupZeroMailFollowUp$,
   type ZeroMailDraftLinkMutationResult,
   type ZeroMailDraftMutationResult,
+  type ZeroMailFollowUpSetupResult,
 } from "../services/zero-mail.service";
 
-const zeroMailDisabled = Object.freeze({
+const zeroMailReplyFollowUpDisabled = Object.freeze({
   status: 403 as const,
   body: Object.freeze({
     error: Object.freeze({
-      message: "Zero Mail is not enabled",
+      message: "Zero Mail reply follow-up is not enabled",
       code: "FORBIDDEN",
     }),
   }),
 });
 
-const zeroMailEnabled$ = command(async ({ get }) => {
-  const auth = get(organizationAuthContext$);
-  const context = await loadUserFeatureSwitchContext(
-    get(db$),
-    auth.orgId,
-    auth.userId,
-  );
-  return isFeatureEnabled(FeatureSwitchKey.ZeroMail, context);
-});
+function forbidden(message: string) {
+  return {
+    status: 403 as const,
+    body: { error: { message, code: "FORBIDDEN" as const } },
+  };
+}
 
 function mutationResponse(result: ZeroMailDraftMutationResult) {
   switch (result.kind) {
@@ -81,13 +82,35 @@ function linkMutationResponse(result: ZeroMailDraftLinkMutationResult) {
   }
 }
 
+function followUpSetupResponse(result: ZeroMailFollowUpSetupResult) {
+  switch (result.kind) {
+    case "ok": {
+      return {
+        status: 200 as const,
+        body: {
+          mailDraftId: result.mailDraftId,
+          automationId: result.automationId,
+        },
+      };
+    }
+    case "not_found": {
+      return notFound(result.message);
+    }
+    case "conflict": {
+      return conflict(result.message);
+    }
+    case "forbidden": {
+      return forbidden(result.message);
+    }
+    case "bad_request": {
+      return badRequestMessage(result.message);
+    }
+  }
+}
+
 const linkDraftBody$ = bodyResultOf(zeroMailContract.linkDraft);
 const linkDraftInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   const auth = get(organizationAuthContext$);
-  if (!(await set(zeroMailEnabled$))) {
-    return zeroMailDisabled;
-  }
-  signal.throwIfAborted();
   const bodyResult = await get(linkDraftBody$);
   signal.throwIfAborted();
   if (!bodyResult.ok) {
@@ -108,9 +131,6 @@ const linkDraftInner$ = command(async ({ get, set }, signal: AbortSignal) => {
 const getDraftParams$ = pathParamsOf(zeroMailContract.getDraft);
 const getDraftInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   const auth = get(organizationAuthContext$);
-  if (!(await set(zeroMailEnabled$))) {
-    return zeroMailDisabled;
-  }
   return mutationResponse(
     await set(
       getZeroMailDraft$,
@@ -125,12 +145,22 @@ const getDraftInner$ = command(async ({ get, set }, signal: AbortSignal) => {
 });
 
 const getAttachmentParams$ = pathParamsOf(zeroMailContract.getAttachment);
+
+function attachmentResponseContentType(contentType: string): string {
+  const mediaType = contentType.split(";", 1)[0]?.trim().toLowerCase();
+  if (
+    mediaType?.startsWith("text/") ||
+    mediaType === "application/json" ||
+    mediaType?.endsWith("+json")
+  ) {
+    return "application/octet-stream";
+  }
+  return contentType;
+}
+
 const getAttachmentInner$ = command(
   async ({ get, set }, signal: AbortSignal) => {
     const auth = get(organizationAuthContext$);
-    if (!(await set(zeroMailEnabled$))) {
-      return zeroMailDisabled;
-    }
     const result = await set(
       getZeroMailDraftAttachment$,
       {
@@ -149,7 +179,10 @@ const getAttachmentInner$ = command(
       }
       case "ok": {
         const headers = new Headers();
-        headers.set("Content-Type", result.contentType);
+        headers.set(
+          "Content-Type",
+          attachmentResponseContentType(result.contentType),
+        );
         headers.set("Content-Length", String(result.content.byteLength));
         headers.set("Cache-Control", "private, max-age=300");
         headers.set("X-Content-Type-Options", "nosniff");
@@ -168,9 +201,6 @@ const getAttachmentInner$ = command(
 const deleteDraftParams$ = pathParamsOf(zeroMailContract.deleteDraft);
 const deleteDraftInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   const auth = get(organizationAuthContext$);
-  if (!(await set(zeroMailEnabled$))) {
-    return zeroMailDisabled;
-  }
   const result = await set(
     deleteZeroMailDraft$,
     {
@@ -189,9 +219,6 @@ const deleteDraftInner$ = command(async ({ get, set }, signal: AbortSignal) => {
 const sendDraftParams$ = pathParamsOf(zeroMailContract.sendDraft);
 const sendDraftInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   const auth = get(organizationAuthContext$);
-  if (!(await set(zeroMailEnabled$))) {
-    return zeroMailDisabled;
-  }
   return mutationResponse(
     await set(
       sendZeroMailDraft$,
@@ -205,6 +232,52 @@ const sendDraftInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   );
 });
 
+const createFollowUpBody$ = bodyResultOf(zeroMailContract.createFollowUp);
+const createFollowUpParams$ = pathParamsOf(zeroMailContract.createFollowUp);
+const createFollowUpInner$ = command(
+  async ({ get, set }, signal: AbortSignal) => {
+    const auth = get(organizationAuthContext$);
+    if (!isZeroMailReplyFollowUpRolloutEnabled()) {
+      return zeroMailReplyFollowUpDisabled;
+    }
+    signal.throwIfAborted();
+    const bodyResult = await get(createFollowUpBody$);
+    signal.throwIfAborted();
+    if (!bodyResult.ok) {
+      return bodyResult.response;
+    }
+    const result = await set(
+      setupZeroMailFollowUp$,
+      {
+        orgId: auth.orgId,
+        userId: auth.userId,
+        memberRole: auth.orgRole ?? "member",
+        ...get(createFollowUpParams$),
+      },
+      signal,
+    );
+    signal.throwIfAborted();
+    if (result.kind === "ok") {
+      await publishChatThreadAutomationsChangedSafely(
+        auth.userId,
+        result.chatThreadId,
+      );
+      signal.throwIfAborted();
+      if (result.messageSeqId !== undefined) {
+        await publishChatThreadMessageCreatedSafely(
+          auth.userId,
+          result.chatThreadId,
+          result.messageSeqId,
+        );
+        signal.throwIfAborted();
+        await publishThreadListChangedSafely(auth.userId);
+        signal.throwIfAborted();
+      }
+    }
+    return followUpSetupResponse(result);
+  },
+);
+
 const mailDraftLinkAuth = Object.freeze({
   requireOrganization: true,
   missingOrganizationStatus: 401 as const,
@@ -216,6 +289,13 @@ const mailDraftHumanAuth = Object.freeze({
   requireOrganization: true,
   missingOrganizationStatus: 401 as const,
   requiredCapability: "connector:read" as const,
+  accept: Object.freeze(["session"] as const),
+});
+
+const mailFollowUpHumanAuth = Object.freeze({
+  requireOrganization: true,
+  missingOrganizationStatus: 401 as const,
+  requiredCapability: "agent:write" as const,
   accept: Object.freeze(["session"] as const),
 });
 
@@ -239,5 +319,9 @@ export const zeroMailRoutes: readonly RouteEntry[] = [
   {
     route: zeroMailContract.sendDraft,
     handler: authRoute(mailDraftHumanAuth, sendDraftInner$),
+  },
+  {
+    route: zeroMailContract.createFollowUp,
+    handler: authRoute(mailFollowUpHumanAuth, createFollowUpInner$),
   },
 ];

@@ -8,7 +8,7 @@ use crate::call_records::{
     CopyFileCall, ExecCall, ExecMatcher, ProcessCancelCall, ProcessControlCall, StartProcessCall,
     WaitProcessCall, WriteFileCall, WriteFilesCall,
 };
-use crate::lifecycle::{BlockingGate, DestroyBehavior, LifecycleBehaviors, MockLifecycleGate};
+use crate::lifecycle::{DestroyBehavior, LifecycleBehaviors, MockLifecycleGate};
 use crate::support::LockIgnoringPoison;
 
 pub(crate) struct ExecMatcherResult {
@@ -57,13 +57,13 @@ pub(crate) struct LifecycleOverrideState {
     /// these overrides. Empty queue → default reusable outcome.
     pub(crate) park_behaviors: LifecycleBehaviors<SandboxParkOutcome>,
     /// Optional gate that records and blocks every `park()` entry until released.
-    pub(crate) park_gate: Mutex<Option<BlockingGate>>,
+    pub(crate) park_gate: Mutex<Option<MockLifecycleGate>>,
     /// FIFO queue of unpark results consumed by every sandbox built with
     /// these overrides. Empty queue → default Ok(()).
     pub(crate) unpark_behaviors: LifecycleBehaviors<()>,
     /// Optional gate that records and blocks every factory `destroy()` entry
     /// until released.
-    pub(crate) destroy_gate: Mutex<Option<BlockingGate>>,
+    pub(crate) destroy_gate: Mutex<Option<MockLifecycleGate>>,
     /// FIFO queue of destroy behaviours consumed by every factory built with
     /// these overrides. Empty queue → default successful destroy.
     pub(crate) destroy_behaviors: Mutex<VecDeque<DestroyBehavior>>,
@@ -399,25 +399,8 @@ impl MockSandboxOverrides {
     }
 
     /// Block every `park()` call with a durable lifecycle gate.
-    ///
-    /// Prefer this over [`Self::set_park_gate`]: entries and releases are
-    /// durable, so tests do not need to pre-arm `Notify` futures.
     pub fn set_park_lifecycle_gate(&self, gate: MockLifecycleGate) {
-        *self.lifecycle.park_gate.lock_ignoring_poison() = Some(BlockingGate::Lifecycle(gate));
-    }
-
-    /// Legacy `Notify`-pair park gate.
-    ///
-    /// New tests should use [`Self::set_park_lifecycle_gate`] because this
-    /// edge-triggered API can lose entry or release notifications if the test
-    /// does not pre-arm the corresponding `notified()` future.
-    pub fn set_park_gate(
-        &self,
-        entered: Arc<tokio::sync::Notify>,
-        release: Arc<tokio::sync::Notify>,
-    ) {
-        *self.lifecycle.park_gate.lock_ignoring_poison() =
-            Some(BlockingGate::LegacyNotify { entered, release });
+        *self.lifecycle.park_gate.lock_ignoring_poison() = Some(gate);
     }
 
     /// Queue an `unpark()` result applied to the next factory-created sandbox.
@@ -433,25 +416,8 @@ impl MockSandboxOverrides {
     }
 
     /// Block every factory `destroy()` call with a durable lifecycle gate.
-    ///
-    /// Prefer this over [`Self::set_destroy_gate`]: entries and releases are
-    /// durable, so tests do not need to pre-arm `Notify` futures.
     pub fn set_destroy_lifecycle_gate(&self, gate: MockLifecycleGate) {
-        *self.lifecycle.destroy_gate.lock_ignoring_poison() = Some(BlockingGate::Lifecycle(gate));
-    }
-
-    /// Legacy `Notify`-pair destroy gate.
-    ///
-    /// New tests should use [`Self::set_destroy_lifecycle_gate`] because this
-    /// edge-triggered API can lose entry or release notifications if the test
-    /// does not pre-arm the corresponding `notified()` future.
-    pub fn set_destroy_gate(
-        &self,
-        entered: Arc<tokio::sync::Notify>,
-        release: Arc<tokio::sync::Notify>,
-    ) {
-        *self.lifecycle.destroy_gate.lock_ignoring_poison() =
-            Some(BlockingGate::LegacyNotify { entered, release });
+        *self.lifecycle.destroy_gate.lock_ignoring_poison() = Some(gate);
     }
 
     /// Queue a factory `destroy()` panic applied to the next destroy call made

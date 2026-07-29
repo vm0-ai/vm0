@@ -2,15 +2,21 @@ import { agentRunCallbacks } from "@vm0/db/schema/agent-run-callback";
 import { agentRuns } from "@vm0/db/schema/agent-run";
 import { chatMessages } from "@vm0/db/schema/chat-message";
 import { chatThreads } from "@vm0/db/schema/chat-thread";
+import { orgMetadata } from "@vm0/db/schema/org-metadata";
 import { slackChatThreadRoutes } from "@vm0/db/schema/slack-chat-thread-route";
 import { slackOrgConnections } from "@vm0/db/schema/slack-org-connection";
 import { slackOrgInstallations } from "@vm0/db/schema/slack-org-installation";
+import { zeroAgents } from "@vm0/db/schema/zero-agent";
 import { zeroRuns } from "@vm0/db/schema/zero-run";
+import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
+import { isFeatureEnabled } from "@vm0/core/feature-switch";
 import { and, countDistinct, eq, isNotNull } from "drizzle-orm";
 
 import { buildAgentResponseMessage } from "../../lib/slack-blocks";
+import { env } from "../../lib/env";
 import { logger } from "../../lib/log";
 import type { Db } from "../external/db";
+import { chatEventTypeIn } from "./zero-chat-event-type.service";
 import { recordSandboxOperation } from "../external/sandbox-op-log";
 import {
   createSlackClient,
@@ -122,7 +128,12 @@ async function loadSlackChatDeliveryContext(args: {
         eq(chatMessages.id, payload.chatMessageId),
         eq(chatMessages.runId, args.callback.runId),
         eq(chatMessages.chatThreadId, run.chatThreadId),
-        eq(chatMessages.role, "assistant"),
+        chatEventTypeIn([
+          "output.message",
+          "output.error",
+          "run.failed",
+          "run.cancelled",
+        ]),
         isNotNull(chatMessages.content),
       ),
     )
@@ -155,9 +166,11 @@ async function loadSlackChatDeliveryContext(args: {
       and(
         eq(slackChatThreadRoutes.chatThreadId, run.chatThreadId),
         eq(slackChatThreadRoutes.channelId, payload.channelId),
-        eq(slackChatThreadRoutes.threadTs, payload.threadTs),
+        eq(
+          slackChatThreadRoutes.threadTs,
+          payload.routeThreadTs ?? payload.threadTs,
+        ),
         eq(slackChatThreadRoutes.userId, run.userId),
-        eq(slackChatThreadRoutes.backend, "canonical"),
         eq(slackOrgConnections.vm0UserId, run.userId),
         eq(slackOrgInstallations.orgId, run.orgId),
       ),
@@ -185,7 +198,6 @@ async function countCanonicalSlackMentioners(args: {
         eq(slackOrgConnections.slackWorkspaceId, args.workspaceId),
         eq(slackChatThreadRoutes.channelId, args.channelId),
         eq(slackChatThreadRoutes.threadTs, args.threadTs),
-        eq(slackChatThreadRoutes.backend, "canonical"),
       ),
     );
   return row?.count ?? 0;
@@ -207,7 +219,7 @@ async function deliverClaimedSlackChatCallback(args: {
       db: args.db,
       workspaceId: binding.workspaceId,
       channelId: payload.channelId,
-      threadTs: payload.threadTs,
+      threadTs: payload.routeThreadTs ?? payload.threadTs,
     }),
     loadUserFeatureSwitchContext(args.db, run.orgId, run.userId),
   ]);
@@ -300,5 +312,128 @@ export async function dispatchSlackChatDeliveryOnce(
       callbackId,
       runId: callback.runId,
     });
+  }
+}
+
+export async function deliverSlackChatAdmissionFailure(args: {
+  readonly db: Db;
+  readonly chatThreadId: string;
+  readonly userId: string;
+  readonly orgId: string;
+  readonly agentId: string;
+  readonly channelId: string;
+  readonly threadTs: string;
+  readonly routeThreadTs?: string;
+  readonly chatMessageId: string;
+  readonly signal: AbortSignal;
+}): Promise<void> {
+  const [messageRows, bindingRows] = await Promise.all([
+    args.db
+      .select({ content: chatMessages.content })
+      .from(chatMessages)
+      .where(
+        and(
+          eq(chatMessages.id, args.chatMessageId),
+          eq(chatMessages.chatThreadId, args.chatThreadId),
+          chatEventTypeIn(["output.error"]),
+          isNotNull(chatMessages.content),
+        ),
+      )
+      .limit(1),
+    args.db
+      .select({
+        slackUserId: slackOrgConnections.slackUserId,
+        workspaceId: slackOrgConnections.slackWorkspaceId,
+        encryptedBotToken: slackOrgInstallations.encryptedBotToken,
+      })
+      .from(slackChatThreadRoutes)
+      .innerJoin(
+        slackOrgConnections,
+        eq(slackOrgConnections.id, slackChatThreadRoutes.connectionId),
+      )
+      .innerJoin(
+        slackOrgInstallations,
+        eq(
+          slackOrgInstallations.slackWorkspaceId,
+          slackOrgConnections.slackWorkspaceId,
+        ),
+      )
+      .where(
+        and(
+          eq(slackChatThreadRoutes.chatThreadId, args.chatThreadId),
+          eq(slackChatThreadRoutes.channelId, args.channelId),
+          eq(
+            slackChatThreadRoutes.threadTs,
+            args.routeThreadTs ?? args.threadTs,
+          ),
+          eq(slackChatThreadRoutes.userId, args.userId),
+          eq(slackOrgConnections.vm0UserId, args.userId),
+          eq(slackOrgInstallations.orgId, args.orgId),
+        ),
+      )
+      .limit(1),
+  ]);
+  args.signal.throwIfAborted();
+  const message = messageRows[0];
+  const binding = bindingRows[0];
+  if (!message?.content || !binding) {
+    return;
+  }
+
+  const [mentionerCount, featureContext, orgRows, agentRows] =
+    await Promise.all([
+      countCanonicalSlackMentioners({
+        db: args.db,
+        workspaceId: binding.workspaceId,
+        channelId: args.channelId,
+        threadTs: args.routeThreadTs ?? args.threadTs,
+      }),
+      loadUserFeatureSwitchContext(args.db, args.orgId, args.userId),
+      args.db
+        .select({ defaultAgentId: orgMetadata.defaultAgentId })
+        .from(orgMetadata)
+        .where(eq(orgMetadata.orgId, args.orgId))
+        .limit(1),
+      args.db
+        .select({ displayName: zeroAgents.displayName, name: zeroAgents.name })
+        .from(zeroAgents)
+        .where(eq(zeroAgents.id, args.agentId))
+        .limit(1),
+    ]);
+  args.signal.throwIfAborted();
+  const org = orgRows[0];
+  const agent = agentRows[0];
+
+  const footerParts: string[] = [];
+  const agentLabel = agent?.displayName ?? agent?.name;
+  if (agentLabel && args.agentId !== org?.defaultAgentId) {
+    footerParts.push(`Sent via ${agentLabel}`);
+  }
+  if (mentionerCount > 1) {
+    footerParts.push(`Reply to <@${binding.slackUserId}>`);
+  }
+  const logsUrl = isFeatureEnabled(FeatureSwitchKey.ZeroDebug, featureContext)
+    ? `${env("APP_URL").replace(/\/$/, "")}/activities`
+    : undefined;
+  const botToken = await decryptPersistentSecretValue(
+    binding.encryptedBotToken,
+    featureContext,
+  );
+  args.signal.throwIfAborted();
+  const result = await postMessage(
+    createSlackClient(botToken),
+    args.channelId,
+    message.content,
+    {
+      threadTs: args.threadTs,
+      blocks: buildAgentResponseMessage(
+        message.content,
+        logsUrl,
+        footerParts.length > 0 ? footerParts.join(" · ") : undefined,
+      ),
+    },
+  );
+  if (result.kind === "slack_error") {
+    throw new Error(`Slack API error: ${result.error}`);
   }
 }

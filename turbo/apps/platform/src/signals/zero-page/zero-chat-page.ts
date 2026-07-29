@@ -15,7 +15,7 @@ import {
   resolveModelFirstUserDefaultSelection,
 } from "./model-default-selection.ts";
 import type { ModelProviderSelection } from "../../views/zero-page/components/model-provider-picker.tsx";
-import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
+import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import {
   codexFastModeLocalDefault$,
   setCodexFastModeLocalDefault$,
@@ -25,20 +25,20 @@ import { openClaudeCodeDeviceAuthDialogPersonal$ } from "./settings/claude-code-
 import { openCodexDeviceAuthDialogPersonal$ } from "./settings/codex-device-auth.ts";
 import { currentChatAgentRecordId$ } from "../agent-chat.ts";
 import { createComposerConnectorSignals } from "./zero-connectors.ts";
-
-// ---------------------------------------------------------------------------
-// Landing page local UI state for ZeroChatPage
-// ---------------------------------------------------------------------------
-
-export const chatPageInput$ = computed((get) => {
-  return get(get(talkDraft$).input$);
-});
 export const setChatPageInput$ = command(({ get, set }, value: string) => {
   set(get(talkDraft$).setInput$, value);
 });
 
 export const chatPageWorkflowComposer$ = computed((get) => {
-  return createWorkflowComposerSignals(get(talkDraft$));
+  const features = get(featureSwitch$);
+  const inlineTemplatesEnabled =
+    features[FeatureSwitchKey.StructuredPromptInlineTemplates] ?? false;
+  return createWorkflowComposerSignals(
+    get(talkDraft$),
+    undefined,
+    currentChatAgentRecordId$,
+    inlineTemplatesEnabled,
+  );
 });
 
 export const chatPageComposerConnectors = createComposerConnectorSignals(

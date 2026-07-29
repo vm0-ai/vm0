@@ -19,6 +19,7 @@ import {
   type NotionChildPageCreatedEventCreateConfig,
   type NotionDatabaseItemCreatedEventCreateConfig,
   type NotionPageContentUpdatedEventCreateConfig,
+  type StrapiEntryPublishedEventConfig,
   type ZeroWorkflowDetailResponse,
   type ZeroWorkflowConnectorReadinessResponse,
   type ZeroWorkflowSchedule,
@@ -67,10 +68,12 @@ export interface WorkflowCopyFormState {
 }
 
 export type GmailTextField = "from" | "subject" | "body" | "to" | "cc";
-export type GmailTextOperator = "contains" | "doesNotContain";
+export type GmailTextOperator = "contains" | "containsAny" | "doesNotContain";
+export type GmailMatchField = GmailTextField | "threadId";
+export type GmailMatchOperator = GmailTextOperator | "is";
 export interface GmailMatchCondition {
-  readonly field: GmailTextField;
-  readonly operator: GmailTextOperator;
+  readonly field: GmailMatchField;
+  readonly operator: GmailMatchOperator;
   readonly value: string;
 }
 
@@ -103,10 +106,11 @@ export type WorkflowAutomationCreateDialog =
   | "notion-child-page"
   | "notion-database-item"
   | "notion-page-content-updated"
+  | "strapi-entry-published"
   | "webhook"
   | null;
 export type NotionPageContentUpdatedScopeMode = "page" | "database";
-export type WorkflowAutomationCategoryKey =
+type WorkflowAutomationCategoryKey =
   | "schedule"
   | "email"
   | "calendar"
@@ -119,7 +123,7 @@ type WorkflowWebhookAutomationSummary = Extract<
 type WorkflowGithubLabelActor =
   GithubLabelAppliedEventConfig["filters"]["actor"]["type"];
 export type WorkflowAutomationEntry = ZeroWorkflowAutomationsListEntry;
-export const WORKFLOW_DETAIL_FILE_PARAM = "file";
+const WORKFLOW_DETAIL_FILE_PARAM = "file";
 
 function workflowDetailTabFromRoute(route: RouteKey | null): WorkflowDetailTab {
   switch (route) {
@@ -139,7 +143,7 @@ function workflowDetailTabFromRoute(route: RouteKey | null): WorkflowDetailTab {
   }
 }
 
-export function workflowDetailRouteForTab(
+function workflowDetailRouteForTab(
   tab: WorkflowDetailTab,
 ):
   | typeof ROUTES.workflowDetailAutomations
@@ -231,6 +235,7 @@ const internalCreatedWorkflowWebhookAutomation$ =
   state<WorkflowWebhookAutomationSummary | null>(null);
 const internalWorkflowAutomationPickerOpen$ = state(false);
 const internalWorkflowWebhookUpgradeDialogOpen$ = state(false);
+const internalCreateStrapiIntegrationId$ = state<string | null>(null);
 const internalWorkflowAutomationPickerCategory$ =
   state<WorkflowAutomationCategoryKey>("schedule");
 const internalCreateNotionPageContentUpdatedScope$ =
@@ -577,6 +582,16 @@ export const createNotionPageContentUpdatedScope$ = computed((get) => {
   return get(internalCreateNotionPageContentUpdatedScope$);
 });
 
+export const createStrapiIntegrationId$ = computed((get) => {
+  return get(internalCreateStrapiIntegrationId$);
+});
+
+export const setCreateStrapiIntegrationId$ = command(
+  ({ set }, integrationId: string | null) => {
+    set(internalCreateStrapiIntegrationId$, integrationId);
+  },
+);
+
 export const setCreateNotionPageContentUpdatedScope$ = command(
   ({ set }, scope: NotionPageContentUpdatedScopeMode) => {
     set(internalCreateNotionPageContentUpdatedScope$, scope);
@@ -866,26 +881,6 @@ export const copyWorkflow$ = command(
     return result.body;
   },
 );
-
-export const runWorkflow$ = command(
-  async (
-    { get },
-    workflowId: string,
-    signal: AbortSignal,
-  ): Promise<{ chatThreadId: string; runId: string }> => {
-    const client = get(zeroClient$)(zeroWorkflowsDetailContract);
-    const result = await accept(
-      client.run({
-        params: { workflowId },
-        fetchOptions: { signal },
-      }),
-      [200],
-    );
-    signal.throwIfAborted();
-    return result.body;
-  },
-);
-
 export const openWorkflowChat$ = command(
   async ({ get, set }, workflowId: string, signal: AbortSignal) => {
     const client = get(zeroClient$)(zeroWorkflowsDetailContract);
@@ -1286,6 +1281,33 @@ export const createWorkflowNotionPageContentUpdatedAutomation$ = command(
   },
 );
 
+export const createWorkflowStrapiEntryPublishedAutomation$ = command(
+  async (
+    { get, set },
+    input: {
+      readonly workflowId: string;
+      readonly eventConfig: StrapiEntryPublishedEventConfig;
+    },
+    signal: AbortSignal,
+  ) => {
+    const client = get(zeroClient$)(zeroWorkflowAutomationsContract);
+    await accept(
+      client.create({
+        params: { workflowId: input.workflowId },
+        body: {
+          kind: "event",
+          eventType: "strapi-entry-published",
+          eventConfig: input.eventConfig,
+        },
+        fetchOptions: { signal },
+      }),
+      [201],
+    );
+    signal.throwIfAborted();
+    set(reloadWorkflows$);
+  },
+);
+
 export const createWorkflowWebhookAutomation$ = command(
   async (
     { get, set },
@@ -1551,7 +1573,7 @@ export const runWorkflowAutomationNow$ = command(
     { get },
     automationId: string,
     signal: AbortSignal,
-  ): Promise<{ chatThreadId: string; runId: string }> => {
+  ): Promise<{ chatThreadId: string; runId: string | null }> => {
     const client = get(zeroClient$)(zeroWorkflowAutomationsContract);
     const result = await accept(
       client.run({

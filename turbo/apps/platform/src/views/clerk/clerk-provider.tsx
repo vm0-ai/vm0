@@ -1,19 +1,20 @@
 import {
   ClerkProvider as BaseClerkProvider,
-  GoogleOneTap,
   type ClerkProviderProps as BaseClerkProviderProps,
-} from "@clerk/clerk-react";
-import { useLoadable } from "ccstate-react";
+} from "@clerk/react";
+import { useGet } from "ccstate-react";
 import type { ReactNode } from "react";
 import { resolvePlatformRuntimeConfig } from "../../lib/platform-host.ts";
+import { brandName$ } from "../../signals/branding.ts";
 import {
-  clerk$,
+  clerkInstance$,
+  clerkUi$,
   getAllowedAuthRedirectOriginsForCurrentPage,
   resolveAppAuthUrl,
   resolveAppUrl,
   resolveClerkSatelliteConfig,
 } from "../../signals/auth.ts";
-import { getVm0ClerkLocalization } from "../auth/clerk-localization.ts";
+import { getClerkLocalization } from "../auth/clerk-localization.ts";
 import { getClerkAppearance } from "./clerk-appearance.ts";
 
 interface ClerkProviderProps {
@@ -21,11 +22,9 @@ interface ClerkProviderProps {
 }
 
 export function VM0ClerkProvider({ children }: ClerkProviderProps) {
-  const clerkLoadable = useLoadable(clerk$);
-
-  if (clerkLoadable.state !== "hasData") {
-    return null;
-  }
+  const clerkInstance = useGet(clerkInstance$);
+  const clerkUi = useGet(clerkUi$);
+  const brandName = useGet(brandName$);
 
   const publishableKey = resolvePlatformRuntimeConfig().clerkPublishableKey;
   const appUrl = resolveAppUrl();
@@ -33,31 +32,23 @@ export function VM0ClerkProvider({ children }: ClerkProviderProps) {
   const satelliteConfig = resolveClerkSatelliteConfig();
 
   const providerProps = {
-    Clerk: clerkLoadable.data as unknown as BaseClerkProviderProps["Clerk"],
+    Clerk: clerkInstance as unknown as BaseClerkProviderProps["Clerk"],
+    afterSignOutUrl: resolveAppAuthUrl("/sign-in"),
     allowedRedirectOrigins,
     appearance: getClerkAppearance(),
-    localization: getVm0ClerkLocalization(),
+    localization: getClerkLocalization(brandName),
     publishableKey,
     signInFallbackRedirectUrl: appUrl,
     signInUrl: resolveAppAuthUrl("/sign-in"),
     signUpFallbackRedirectUrl: appUrl,
     signUpUrl: resolveAppAuthUrl("/sign-up"),
+    ui: clerkUi,
   };
-  const providerChildren = (
-    <>
-      <GoogleOneTap
-        signInForceRedirectUrl={appUrl}
-        signUpForceRedirectUrl={appUrl}
-      />
-      {children}
-    </>
-  );
-
   return satelliteConfig ? (
     <BaseClerkProvider {...providerProps} {...satelliteConfig}>
-      {providerChildren}
+      {children}
     </BaseClerkProvider>
   ) : (
-    <BaseClerkProvider {...providerProps}>{providerChildren}</BaseClerkProvider>
+    <BaseClerkProvider {...providerProps}>{children}</BaseClerkProvider>
   );
 }

@@ -1,17 +1,26 @@
 import type { TriggerSource } from "@vm0/api-contracts/contracts/logs";
 import { agentRuns } from "@vm0/db/schema/agent-run";
-import { chatMessageQueue } from "@vm0/db/schema/chat-message-queue";
+import { chatMessages } from "@vm0/db/schema/chat-message";
 import { chatThreads } from "@vm0/db/schema/chat-thread";
 import { zeroRuns } from "@vm0/db/schema/zero-run";
 import {
   workflowUserAutomationThreads,
   zeroWorkflowAutomations,
 } from "@vm0/db/schema/zero-workflow";
-import { and, asc, eq, inArray, isNull, or, sql } from "drizzle-orm";
+import { and, asc, eq, inArray, isNull, notExists, sql } from "drizzle-orm";
+import { alias } from "drizzle-orm/pg-core";
 import { z } from "zod";
 
 import type { Db, ReadonlyDb } from "../external/db";
 import { settle } from "../utils";
+import {
+  hasPendingUserChatQueueEvent,
+  listPendingChatQueueEvents,
+  loadChatAutomationIntakePause,
+  loadPendingChatQueueEvent,
+  lockChatQueueThread,
+  staleChatEventQueueThreadIds,
+} from "./chat-event-queue.service";
 import {
   decryptPersistentSecretsMap,
   encryptPersistentSecretsMap,
@@ -20,9 +29,16 @@ import {
   internalRunCallbackKinds,
   type InternalRunCallbackKind,
 } from "./internal-run-callback";
-import { hasUnclaimedQueuedUserMessage } from "./zero-chat-queued-message.service";
+import {
+  insertChatEvent,
+  replaceChatEvent,
+  revokeChatEvent,
+} from "./zero-chat-event.service";
+import { chatEventTypeIn } from "./zero-chat-event-type.service";
+import { createUserMessageDocument } from "./zero-chat-user-message.service";
 
 const WORKFLOW_QUEUE_EVENT_PARAMS_KEY = "__workflow_queue_event_params__";
+const automationEventRevoker = alias(chatMessages, "automation_event_revoker");
 
 const workflowQueueEventParamsWireSchema = z.object({
   version: z.literal(1),
@@ -39,15 +55,12 @@ const workflowQueueEventParamsWireSchema = z.object({
     .optional(),
   recordLastRunId: z.boolean().optional(),
   recordLastRunAt: z.boolean().optional(),
+  activePreviousRunPolicy: z.enum(["block", "allow"]),
+  allowClaimedOnceScheduleAutomation: z.boolean().optional(),
 });
 
-/**
- * The caller-supplied remainder of `RunWorkflowAutomationNowArgs` persisted with
- * a queued event. Fields the automation-run command derives from the automation row
- * itself (default prompt, default callbacks) stay undefined and are rebuilt
- * at dequeue time.
- */
-interface WorkflowQueueEventParams {
+/** Queue-only run parameters retained as persistent-secret ciphertext. */
+export interface WorkflowQueueEventParams {
   readonly version: 1;
   readonly prompt?: string;
   readonly appendSystemPrompt?: string;
@@ -58,6 +71,8 @@ interface WorkflowQueueEventParams {
   }[];
   readonly recordLastRunId?: boolean;
   readonly recordLastRunAt?: boolean;
+  readonly activePreviousRunPolicy: "block" | "allow";
+  readonly allowClaimedOnceScheduleAutomation?: boolean;
 }
 
 async function encryptWorkflowQueueEventParams(
@@ -86,31 +101,16 @@ export async function decryptWorkflowQueueEventParams(
   return workflowQueueEventParamsWireSchema.parse(JSON.parse(raw));
 }
 
-function chatMessageQueueLock(chatThreadId: string) {
-  const key = `chat_message_queue:${chatThreadId}`;
-  return sql`SELECT pg_advisory_xact_lock(hashtext(${key}))`;
+function chatEventQueueAdmissionLock(chatThreadId: string) {
+  // Keep the advisory namespace stable while API revisions overlap. This is
+  // only a lock identifier; the contracted queue table is never accessed.
+  const compatibilityKey = `chat_message_queue:${chatThreadId}`;
+  return sql`SELECT pg_advisory_xact_lock(hashtext(${compatibilityKey}))`;
 }
 
-async function queuePausedForThread(
-  db: Db,
-  chatThreadId: string,
-): Promise<boolean> {
-  const [thread] = await db
-    .select({ queuePausedAt: chatThreads.queuePausedAt })
-    .from(chatThreads)
-    .where(eq(chatThreads.id, chatThreadId))
-    .limit(1);
-  return thread !== undefined && thread.queuePausedAt !== null;
-}
-
-/**
- * Thread-level busy check: any in-flight run bound to the workflow's chat
- * thread blocks the queue. `queued` counts — the workflow's single in-flight
- * run may itself be waiting on an org concurrency slot, and admitting more
- * runs would break the serial invariant.
- */
+/** Any active thread-bound run preserves strict per-thread serialization. */
 async function activeRunExistsForWorkflowThread(
-  db: Db,
+  db: Pick<Db, "select">,
   threadId: string,
 ): Promise<boolean> {
   const [run] = await db
@@ -127,47 +127,57 @@ async function activeRunExistsForWorkflowThread(
   return run !== undefined;
 }
 
-async function pendingWorkflowEventExists(
-  db: Db,
-  chatThreadId: string,
-): Promise<boolean> {
-  const [row] = await db
-    .select({ id: chatMessageQueue.id })
-    .from(chatMessageQueue)
-    .where(
-      and(
-        eq(chatMessageQueue.chatThreadId, chatThreadId),
-        eq(chatMessageQueue.itemType, "workflow_event"),
-      ),
-    )
-    .limit(1);
-  return row !== undefined;
-}
-
 async function pendingTickExistsForAutomation(
-  db: Db,
+  db: Pick<Db, "select">,
   automationId: string,
 ): Promise<boolean> {
   const [tick] = await db
-    .select({ id: chatMessageQueue.id })
-    .from(chatMessageQueue)
-    .where(eq(chatMessageQueue.automationId, automationId))
+    .select({ id: chatMessages.id })
+    .from(chatMessages)
+    .where(
+      and(
+        eq(chatMessages.automationId, automationId),
+        chatEventTypeIn(["input.automation"]),
+        isNull(chatMessages.runId),
+        notExists(
+          db
+            .select({ id: automationEventRevoker.id })
+            .from(automationEventRevoker)
+            .where(eq(automationEventRevoker.revokesEventId, chatMessages.id)),
+        ),
+      ),
+    )
     .limit(1);
   return tick !== undefined;
 }
 
-type WorkflowQueueAdmission = "proceed" | "enqueued";
+type WorkflowQueueAdmission =
+  | { readonly kind: "inserted"; readonly eventId: string }
+  | { readonly kind: "coalesced" };
 type WorkflowQueueAdmissionAttempt =
-  | { readonly kind: "proceed" }
-  | { readonly kind: "enqueued" }
+  | WorkflowQueueAdmission
   | { readonly kind: "payload-required" };
+
+export type WorkflowQueueAdmissionTransaction = Parameters<
+  Parameters<Db["transaction"]>[0]
+>[0];
+
+export type PersistWorkflowQueueSourceTransition = (
+  tx: WorkflowQueueAdmissionTransaction,
+) => Promise<void>;
 
 interface WorkflowQueueAdmissionArgs {
   readonly automation: typeof zeroWorkflowAutomations.$inferSelect;
   readonly chatThreadId: string;
   readonly triggerSource: TriggerSource;
   readonly triggerBrief: string | undefined;
+  readonly coalescePendingScheduleRun: boolean;
   readonly params: WorkflowQueueEventParams;
+  /**
+   * Atomically transitions a provider-owned source event only after its
+   * workflow queue item has been inserted. Throwing rolls back both writes.
+   */
+  readonly persistSourceTransition?: PersistWorkflowQueueSourceTransition;
 }
 
 async function attemptWorkflowQueueAdmission(
@@ -177,51 +187,42 @@ async function attemptWorkflowQueueAdmission(
 ): Promise<WorkflowQueueAdmissionAttempt> {
   const { automation } = args;
   return await db.transaction(async (tx) => {
-    await tx.execute(chatMessageQueueLock(args.chatThreadId));
-
-    const paused = await queuePausedForThread(tx, args.chatThreadId);
-
-    if (!paused) {
-      const busy = await activeRunExistsForWorkflowThread(
-        tx,
-        args.chatThreadId,
-      );
-      if (!busy && !(await pendingWorkflowEventExists(tx, args.chatThreadId))) {
-        return { kind: "proceed" };
-      }
-    }
+    await tx.execute(chatEventQueueAdmissionLock(args.chatThreadId));
 
     if (
+      args.coalescePendingScheduleRun &&
       automation.kind === "schedule" &&
       (await pendingTickExistsForAutomation(tx, automation.id))
     ) {
-      return { kind: "enqueued" };
+      return { kind: "coalesced" };
     }
 
     if (encryptedParams === undefined) {
       return { kind: "payload-required" };
     }
 
-    await tx.insert(chatMessageQueue).values({
-      orgId: automation.orgId,
-      userId: automation.ownerUserId,
+    const inserted = await insertChatEvent(tx, {
       chatThreadId: args.chatThreadId,
-      itemType: "workflow_event",
+      eventType: "input.automation",
+      content: null,
+      runId: null,
       automationId: automation.id,
       triggerSource: args.triggerSource,
       triggerBrief: args.triggerBrief ?? null,
       encryptedParams,
     });
-    return { kind: "enqueued" };
+    if (!inserted) {
+      throw new Error("Workflow queue event insert returned no row");
+    }
+    await args.persistSourceTransition?.(tx);
+    return { kind: "inserted", eventId: inserted.id };
   });
 }
 
 /**
- * Decide whether a fired automation event may create its run now or must wait in
- * the chat message queue. Serialized per chat thread via an advisory lock.
- * Schedule ticks coalesce per automation: at most one pending tick.
- * Queue payload encryption runs only after a locked attempt requires it and
- * outside the transaction; the subsequent locked attempt owns the final state.
+ * Persist every fired automation as a pending input event. The locked
+ * coalescing predicate is unchanged: schedule automations have at most one
+ * unclaimed, unrevoked event when the caller enables coalescing.
  */
 export async function admitWorkflowAutomationEvent(
   db: Db,
@@ -230,7 +231,7 @@ export async function admitWorkflowAutomationEvent(
   const { automation } = args;
   const initial = await attemptWorkflowQueueAdmission(db, args, undefined);
   if (initial.kind !== "payload-required") {
-    return initial.kind;
+    return initial;
   }
 
   const encryptedParamsResult = await settle(
@@ -246,7 +247,7 @@ export async function admitWorkflowAutomationEvent(
       undefined,
     );
     if (retryWithoutPayload.kind !== "payload-required") {
-      return retryWithoutPayload.kind;
+      return retryWithoutPayload;
     }
     throw encryptedParamsResult.error;
   }
@@ -259,182 +260,214 @@ export async function admitWorkflowAutomationEvent(
   if (final.kind === "payload-required") {
     throw new Error("Workflow queue admission still required encrypted params");
   }
-  return final.kind;
+  return final;
 }
 
-export interface ClaimedWorkflowQueueEvent {
+export interface PendingWorkflowQueueEvent {
   readonly id: string;
-  readonly orgId: string;
   readonly userId: string;
   readonly automationId: string;
   readonly chatThreadId: string;
-  readonly triggerSource: string;
+  readonly triggerSource: TriggerSource;
   readonly triggerBrief: string | null;
   readonly encryptedParams: string;
   readonly createdAt: Date;
 }
 
 /**
- * Pop the oldest pending workflow event for the thread's queue, or return
- * null when the queue must not advance: paused, a queued user chat message
- * waiting (user messages always drain first), or an in-flight run.
- * The claimed row is deleted; a failed dequeue re-inserts it via
- * `restoreWorkflowQueueEventAndPause`.
+ * Load the runnable automation head. Pending user events always win, pause
+ * leaves gate automation only, and any active run blocks the whole thread.
+ *
+ * During code-before-migration deployment, legacy queue rows simply have no
+ * event counterpart yet and therefore return null rather than failing.
  */
-export async function claimNextWorkflowQueueEvent(
+export async function loadNextWorkflowQueueEvent(
   db: Db,
   chatThreadId: string,
-): Promise<ClaimedWorkflowQueueEvent | null> {
+  queueItemCreatedBefore?: Date,
+): Promise<PendingWorkflowQueueEvent | null> {
   return await db.transaction(async (tx) => {
-    await tx.execute(chatMessageQueueLock(chatThreadId));
-    if (await queuePausedForThread(tx, chatThreadId)) {
+    await tx.execute(chatEventQueueAdmissionLock(chatThreadId));
+    if (await loadChatAutomationIntakePause(tx, chatThreadId)) {
       return null;
     }
-
-    if (await hasUnclaimedQueuedUserMessage(tx, chatThreadId)) {
+    if (await hasPendingUserChatQueueEvent(tx, chatThreadId)) {
       return null;
     }
     if (await activeRunExistsForWorkflowThread(tx, chatThreadId)) {
       return null;
     }
 
-    const [item] = await tx
-      .select({
-        id: chatMessageQueue.id,
-        orgId: chatMessageQueue.orgId,
-        userId: chatMessageQueue.userId,
-        automationId: chatMessageQueue.automationId,
-        chatThreadId: chatMessageQueue.chatThreadId,
-        triggerSource: chatMessageQueue.triggerSource,
-        triggerBrief: chatMessageQueue.triggerBrief,
-        encryptedParams: chatMessageQueue.encryptedParams,
-        createdAt: chatMessageQueue.createdAt,
-      })
-      .from(chatMessageQueue)
-      .where(
-        and(
-          eq(chatMessageQueue.chatThreadId, chatThreadId),
-          eq(chatMessageQueue.itemType, "workflow_event"),
-        ),
-      )
-      .orderBy(asc(chatMessageQueue.createdAt), asc(chatMessageQueue.id))
-      .limit(1);
-    if (!item) {
+    const pending = await listPendingChatQueueEvents(
+      tx,
+      chatThreadId,
+      queueItemCreatedBefore,
+    );
+    const head = pending[0];
+    if (!head || head.eventType !== "input.automation") {
       return null;
     }
-    if (!item.automationId || !item.triggerSource || !item.encryptedParams) {
+    const [event] = await tx
+      .select({
+        id: chatMessages.id,
+        userId: chatThreads.userId,
+        automationId: chatMessages.automationId,
+        chatThreadId: chatMessages.chatThreadId,
+        triggerSource: chatMessages.triggerSource,
+        triggerBrief: chatMessages.triggerBrief,
+        encryptedParams: chatMessages.encryptedParams,
+        createdAt: chatMessages.createdAt,
+      })
+      .from(chatMessages)
+      .innerJoin(chatThreads, eq(chatThreads.id, chatMessages.chatThreadId))
+      .where(eq(chatMessages.id, head.id))
+      .limit(1);
+    if (!event) {
+      return null;
+    }
+    if (!event.automationId || !event.triggerSource || !event.encryptedParams) {
       throw new Error(
-        `Workflow event queue item ${item.id} is missing its automation payload`,
+        `Workflow queue event ${event.id} is missing its typed payload`,
       );
     }
-
-    await tx.delete(chatMessageQueue).where(eq(chatMessageQueue.id, item.id));
     return {
-      id: item.id,
-      orgId: item.orgId,
-      userId: item.userId,
-      automationId: item.automationId,
-      chatThreadId: item.chatThreadId,
-      triggerSource: item.triggerSource,
-      triggerBrief: item.triggerBrief,
-      encryptedParams: item.encryptedParams,
-      createdAt: item.createdAt,
+      ...event,
+      automationId: event.automationId,
+      triggerSource: event.triggerSource,
+      encryptedParams: event.encryptedParams,
     };
   });
 }
 
-async function setPauseState(
-  db: Db,
-  chatThreadId: string,
-  pause: {
-    readonly pausedAt: Date;
-    readonly pauseReason: string | null;
-  } | null,
-  updatedAt: Date,
-): Promise<void> {
-  await db
-    .update(chatThreads)
-    .set({
-      queuePausedAt: pause?.pausedAt ?? null,
-      pauseReason: pause?.pauseReason ?? null,
-      updatedAt,
+async function loadAutomationRejectionPayload(
+  db: Pick<Db, "select">,
+  eventId: string,
+) {
+  const [event] = await db
+    .select({
+      automationId: chatMessages.automationId,
+      triggerSource: chatMessages.triggerSource,
+      triggerBrief: chatMessages.triggerBrief,
     })
-    .where(eq(chatThreads.id, chatThreadId));
+    .from(chatMessages)
+    .where(eq(chatMessages.id, eventId))
+    .limit(1);
+  return event ?? null;
 }
 
-/**
- * Put a claimed event back at its original queue position (id and createdAt
- * are preserved) and pause the queue so the failure does not burn through
- * the backlog. Used when run creation for a dequeued event fails.
- */
-export async function restoreWorkflowQueueEventAndPause(
+async function pendingAutomationEventStillExists(
+  db: Pick<Db, "select">,
+  args: {
+    readonly chatThreadId: string;
+    readonly eventId: string;
+  },
+): Promise<boolean> {
+  const pending = await loadPendingChatQueueEvent(db, args);
+  return pending?.eventType === "input.automation";
+}
+
+/** Reject an unfireable automation event while it still owns the queue head. */
+export async function rejectWorkflowQueueEvent(
   db: Db,
   args: {
-    readonly event: ClaimedWorkflowQueueEvent;
-    readonly pauseReason: string;
-    readonly pausedAt: Date;
+    readonly chatThreadId: string;
+    readonly eventId: string;
+    readonly reason: string;
   },
-): Promise<void> {
-  const { event } = args;
-  await db.transaction(async (tx) => {
-    await tx.execute(chatMessageQueueLock(event.chatThreadId));
-
-    await tx
-      .insert(chatMessageQueue)
-      .values({
-        id: event.id,
-        orgId: event.orgId,
-        userId: event.userId,
-        chatThreadId: event.chatThreadId,
-        itemType: "workflow_event",
-        automationId: event.automationId,
-        triggerSource: event.triggerSource,
-        triggerBrief: event.triggerBrief,
-        encryptedParams: event.encryptedParams,
-        createdAt: event.createdAt,
-      })
-      .onConflictDoNothing();
-
-    await setPauseState(
-      tx,
-      event.chatThreadId,
-      { pausedAt: args.pausedAt, pauseReason: args.pauseReason },
-      args.pausedAt,
-    );
+): Promise<boolean> {
+  return await db.transaction(async (tx) => {
+    if (!(await lockChatQueueThread(tx, args.chatThreadId))) {
+      return false;
+    }
+    // The event owned the runnable head before launch. A user message or run
+    // may win the thread while launch is in flight, but a permanent conflict
+    // must still consume this trigger instead of making it retry later.
+    if (!(await pendingAutomationEventStillExists(tx, args))) {
+      return false;
+    }
+    const payload = await loadAutomationRejectionPayload(tx, args.eventId);
+    if (!payload?.automationId || !payload.triggerSource) {
+      return false;
+    }
+    const rejectionMessage = payload.triggerBrief ?? args.reason;
+    const rejected = await replaceChatEvent(tx, args.eventId, {
+      chatThreadId: args.chatThreadId,
+      eventType: "input.rejected",
+      content: rejectionMessage,
+      userMessage: createUserMessageDocument({ text: rejectionMessage }),
+      runId: null,
+      error: args.reason,
+      automationId: payload.automationId,
+      triggerSource: payload.triggerSource,
+      triggerBrief: payload.triggerBrief,
+    });
+    return rejected !== null;
   });
 }
 
 /**
- * Chat threads with pending work — the safety-net sweep re-drains these in
- * case admission or a terminal-run callback missed its immediate drain.
- * User messages remain drainable while workflow automation intake is paused.
+ * Fast-fail one launch atomically: reject its pending trigger and append the
+ * automation-intake pause leaf. The trigger is never restored or retried.
  */
-export async function pendingChatThreadQueueThreadIds(
+export async function failWorkflowQueueEventAfterRunFailure(
   db: Db,
-  limit: number,
-): Promise<readonly string[]> {
-  const rows = await db
-    .selectDistinct({ chatThreadId: chatMessageQueue.chatThreadId })
-    .from(chatMessageQueue)
-    .innerJoin(chatThreads, eq(chatThreads.id, chatMessageQueue.chatThreadId))
-    .where(
-      and(
-        or(
-          inArray(chatMessageQueue.itemType, [
-            "user_message",
-            "slack_user_message",
-          ]),
-          and(
-            eq(chatMessageQueue.itemType, "workflow_event"),
-            isNull(chatThreads.queuePausedAt),
-          ),
-        ),
-      ),
-    )
-    .limit(limit);
-  return rows.map((row) => {
-    return row.chatThreadId;
+  args: {
+    readonly chatThreadId: string;
+    readonly eventId: string;
+    readonly pauseReason: string;
+  },
+): Promise<boolean> {
+  return await db.transaction(async (tx) => {
+    if (!(await lockChatQueueThread(tx, args.chatThreadId))) {
+      return false;
+    }
+    // Fast-fail is terminal for the attempted trigger. Post-launch changes to
+    // priority or pause state must not restore it for an automatic retry.
+    if (!(await pendingAutomationEventStillExists(tx, args))) {
+      return false;
+    }
+    const payload = await loadAutomationRejectionPayload(tx, args.eventId);
+    if (!payload?.automationId || !payload.triggerSource) {
+      return false;
+    }
+    const rejectionMessage = payload.triggerBrief ?? args.pauseReason;
+    const rejected = await replaceChatEvent(tx, args.eventId, {
+      chatThreadId: args.chatThreadId,
+      eventType: "input.rejected",
+      content: rejectionMessage,
+      userMessage: createUserMessageDocument({ text: rejectionMessage }),
+      runId: null,
+      error: args.pauseReason,
+      automationId: payload.automationId,
+      triggerSource: payload.triggerSource,
+      triggerBrief: payload.triggerBrief,
+    });
+    if (!rejected) {
+      return false;
+    }
+    const pause = await insertChatEvent(tx, {
+      chatThreadId: args.chatThreadId,
+      eventType: "queue.automation_paused",
+      content: null,
+      runId: null,
+      pauseReason: args.pauseReason,
+      createdAt: new Date(rejected.createdAt.getTime() + 1),
+    });
+    if (!pause) {
+      throw new Error("Failed to append workflow queue pause event");
+    }
+    return true;
   });
+}
+
+export async function staleChatThreadQueueThreadIds(
+  db: Db,
+  args: {
+    readonly staleBefore: Date;
+    readonly limit: number;
+  },
+): Promise<readonly string[]> {
+  return await staleChatEventQueueThreadIds(db, args);
 }
 
 export interface WorkflowQueueThreadRow {
@@ -442,14 +475,11 @@ export interface WorkflowQueueThreadRow {
   readonly userId: string;
   readonly workflowId: string;
   readonly chatThreadId: string;
-  readonly queuePausedAt: Date | null;
+  readonly automationPausedAt: Date | null;
   readonly pauseReason: string | null;
 }
 
-/**
- * Resolve the caller-owned workflow-queue key for a chat thread. Null when
- * the thread has no workflow queue or belongs to another org/user.
- */
+/** Resolve the caller-owned workflow queue and its folded pause state. */
 export async function loadWorkflowQueueThread(
   db: ReadonlyDb,
   args: {
@@ -463,14 +493,8 @@ export async function loadWorkflowQueueThread(
       orgId: workflowUserAutomationThreads.orgId,
       userId: workflowUserAutomationThreads.userId,
       workflowId: workflowUserAutomationThreads.workflowId,
-      queuePausedAt: chatThreads.queuePausedAt,
-      pauseReason: chatThreads.pauseReason,
     })
     .from(workflowUserAutomationThreads)
-    .innerJoin(
-      chatThreads,
-      eq(chatThreads.id, workflowUserAutomationThreads.chatThreadId),
-    )
     .where(
       and(
         eq(workflowUserAutomationThreads.chatThreadId, args.threadId),
@@ -482,13 +506,12 @@ export async function loadWorkflowQueueThread(
   if (!row) {
     return null;
   }
+  const pause = await loadChatAutomationIntakePause(db, args.threadId);
   return {
-    orgId: row.orgId,
-    userId: row.userId,
-    workflowId: row.workflowId,
+    ...row,
     chatThreadId: args.threadId,
-    queuePausedAt: row.queuePausedAt,
-    pauseReason: row.pauseReason,
+    automationPausedAt: pause?.pausedAt ?? null,
+    pauseReason: pause?.pauseReason ?? null,
   };
 }
 
@@ -499,10 +522,10 @@ interface WorkflowQueueRunningRun {
   readonly createdAt: Date;
 }
 
-interface PendingWorkflowQueueEvent {
+interface PendingWorkflowQueueEventSummary {
   readonly id: string;
   readonly automationId: string;
-  readonly triggerSource: string;
+  readonly triggerSource: TriggerSource;
   readonly triggerBrief: string | null;
   readonly createdAt: Date;
 }
@@ -534,44 +557,47 @@ export async function loadRunningWorkflowThreadRun(
 export async function listPendingWorkflowQueueEvents(
   db: ReadonlyDb,
   thread: WorkflowQueueThreadRow,
-): Promise<readonly PendingWorkflowQueueEvent[]> {
+): Promise<readonly PendingWorkflowQueueEventSummary[]> {
+  const pending = await listPendingChatQueueEvents(db, thread.chatThreadId);
+  const automationIds = pending.flatMap((event) => {
+    return event.eventType === "input.automation" ? [event.id] : [];
+  });
+  if (automationIds.length === 0) {
+    return [];
+  }
   const rows = await db
     .select({
-      id: chatMessageQueue.id,
-      automationId: chatMessageQueue.automationId,
-      triggerSource: chatMessageQueue.triggerSource,
-      triggerBrief: chatMessageQueue.triggerBrief,
-      createdAt: chatMessageQueue.createdAt,
+      id: chatMessages.id,
+      automationId: chatMessages.automationId,
+      triggerSource: chatMessages.triggerSource,
+      triggerBrief: chatMessages.triggerBrief,
+      createdAt: chatMessages.createdAt,
     })
-    .from(chatMessageQueue)
-    .where(
-      and(
-        eq(chatMessageQueue.chatThreadId, thread.chatThreadId),
-        eq(chatMessageQueue.itemType, "workflow_event"),
-      ),
-    );
-  const events: PendingWorkflowQueueEvent[] = [];
-  for (const event of rows) {
-    if (event.automationId !== null && event.triggerSource !== null) {
-      events.push({
-        id: event.id,
-        automationId: event.automationId,
-        triggerSource: event.triggerSource,
-        triggerBrief: event.triggerBrief,
-        createdAt: event.createdAt,
-      });
-    }
-  }
-  return events.sort((a, b) => {
-    const byTime = a.createdAt.getTime() - b.createdAt.getTime();
-    return byTime !== 0 ? byTime : a.id.localeCompare(b.id);
+    .from(chatMessages)
+    .where(inArray(chatMessages.id, automationIds));
+  const byId = new Map(
+    rows.flatMap((event) => {
+      return event.automationId && event.triggerSource
+        ? [
+            [
+              event.id,
+              {
+                ...event,
+                automationId: event.automationId,
+                triggerSource: event.triggerSource,
+              },
+            ] as const,
+          ]
+        : [];
+    }),
+  );
+  return automationIds.flatMap((id) => {
+    const event = byId.get(id);
+    return event ? [event] : [];
   });
 }
 
-/**
- * Delete one pending event owned by the caller. Returns its chat thread id
- * for the realtime signal, or null when no such event exists.
- */
+/** Append a control revocation for one caller-owned pending automation event. */
 export async function deleteWorkflowQueueEventById(
   db: Db,
   args: {
@@ -580,38 +606,67 @@ export async function deleteWorkflowQueueEventById(
     readonly eventId: string;
   },
 ): Promise<{ readonly chatThreadId: string } | null> {
-  const [deleted] = await db
-    .delete(chatMessageQueue)
-    .where(
-      and(
-        eq(chatMessageQueue.id, args.eventId),
-        eq(chatMessageQueue.orgId, args.orgId),
-        eq(chatMessageQueue.userId, args.userId),
-        eq(chatMessageQueue.itemType, "workflow_event"),
-      ),
-    )
-    .returning({ chatThreadId: chatMessageQueue.chatThreadId });
-  return deleted ?? null;
+  return await db.transaction(async (tx) => {
+    const [owned] = await tx
+      .select({ chatThreadId: chatMessages.chatThreadId })
+      .from(chatMessages)
+      .innerJoin(
+        workflowUserAutomationThreads,
+        eq(
+          workflowUserAutomationThreads.chatThreadId,
+          chatMessages.chatThreadId,
+        ),
+      )
+      .where(
+        and(
+          eq(chatMessages.id, args.eventId),
+          eq(workflowUserAutomationThreads.orgId, args.orgId),
+          eq(workflowUserAutomationThreads.userId, args.userId),
+        ),
+      )
+      .limit(1);
+    if (!owned || !(await lockChatQueueThread(tx, owned.chatThreadId))) {
+      return null;
+    }
+    const pending = await loadPendingChatQueueEvent(tx, {
+      chatThreadId: owned.chatThreadId,
+      eventId: args.eventId,
+    });
+    if (pending?.eventType !== "input.automation") {
+      return null;
+    }
+    const revoked = await revokeChatEvent(tx, args.eventId, {
+      chatThreadId: owned.chatThreadId,
+      eventType: "control.revoke",
+      runId: null,
+    });
+    return revoked ? { chatThreadId: owned.chatThreadId } : null;
+  });
 }
 
 export async function clearWorkflowQueueEvents(
   db: Db,
   thread: WorkflowQueueThreadRow,
 ): Promise<void> {
-  await db
-    .delete(chatMessageQueue)
-    .where(
-      and(
-        eq(chatMessageQueue.chatThreadId, thread.chatThreadId),
-        eq(chatMessageQueue.itemType, "workflow_event"),
-      ),
-    );
+  await db.transaction(async (tx) => {
+    if (!(await lockChatQueueThread(tx, thread.chatThreadId))) {
+      return;
+    }
+    const pending = await listPendingChatQueueEvents(tx, thread.chatThreadId);
+    for (const event of pending) {
+      if (event.eventType !== "input.automation") {
+        continue;
+      }
+      await revokeChatEvent(tx, event.id, {
+        chatThreadId: thread.chatThreadId,
+        eventType: "control.revoke",
+        runId: null,
+      });
+    }
+  });
 }
 
-/**
- * Manual pause/resume. Pause freezes consumption while intake continues;
- * resume clears both the pause timestamp and any stored reason.
- */
+/** Manual pause/resume appends the corresponding immutable control leaf. */
 export async function setWorkflowQueuePause(
   db: Db,
   thread: WorkflowQueueThreadRow,
@@ -621,5 +676,28 @@ export async function setWorkflowQueuePause(
   } | null,
   updatedAt: Date,
 ): Promise<void> {
-  await setPauseState(db, thread.chatThreadId, pause, updatedAt);
+  await db.transaction(async (tx) => {
+    if (!(await lockChatQueueThread(tx, thread.chatThreadId))) {
+      return;
+    }
+    const inserted = pause
+      ? await insertChatEvent(tx, {
+          chatThreadId: thread.chatThreadId,
+          eventType: "queue.automation_paused",
+          content: null,
+          runId: null,
+          pauseReason: pause.pauseReason,
+          createdAt: pause.pausedAt,
+        })
+      : await insertChatEvent(tx, {
+          chatThreadId: thread.chatThreadId,
+          eventType: "queue.automation_resumed",
+          content: null,
+          runId: null,
+          createdAt: updatedAt,
+        });
+    if (!inserted) {
+      throw new Error("Failed to append workflow queue pause transition");
+    }
+  });
 }

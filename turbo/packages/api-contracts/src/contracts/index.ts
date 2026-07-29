@@ -24,6 +24,32 @@ export {
   type HealthRouteResponse,
 } from "./health";
 export {
+  CHAT_EVENT_TYPES,
+  chatEventCompatibilityRole,
+  chatEventRunLifecycle,
+  chatEventTypeSchema,
+  foldChatAutomationIntakePause,
+  foldActiveChatGoalObjective,
+  foldPendingChatQueueEvents,
+  foldRunnableChatQueueEvents,
+  foldChatRunStates,
+  foldLatestChatUsageByRunId,
+  isChatInputEventType,
+  isChatOutputEventType,
+  isPendingChatQueueEvent,
+  isChatRunTerminalEventType,
+  isValidChatEventRevocation,
+  revokedChatEventIds,
+  terminatedChatRunIds,
+  type ChatEventCompatibilityRole,
+  type ChatAutomationIntakePauseFoldInput,
+  type ChatAutomationIntakePauseState,
+  type ChatEventRunLifecycle,
+  type ChatQueueFoldInput,
+  type ChatEventType,
+  type ChatRunFoldState,
+} from "./chat-events";
+export {
   ACTIONABLE_RUN_ERROR_SNIPPETS,
   apiErrorSchema,
   ApiError,
@@ -123,12 +149,10 @@ export {
   type NetworkLogsResponse,
   type SearchResult,
   type LogsSearchResponse,
-  runsQueueContract,
   queueEntrySchema,
   runningTaskSchema,
   concurrencyInfoSchema,
   queueResponseSchema,
-  type RunsQueueContract,
   type QueueEntry,
   type RunningTask,
   type ConcurrencyInfo,
@@ -147,24 +171,10 @@ export {
   type ZeroUserModelPreferenceContract,
 } from "./zero-user-model-preference";
 export {
-  storagesContract,
-  storageTypeSchema,
-  uploadStorageResponseSchema,
-  // Direct upload schemas (shared with webhooks)
   MAX_FILE_SIZE_BYTES,
   fileEntryWithHashSchema,
   storageChangesSchema,
   presignedUploadSchema,
-  // Direct upload contracts (CLI endpoints)
-  storagesPrepareContract,
-  storagesCommitContract,
-  storagesDownloadContract,
-  storagesListContract,
-  type StoragesContract,
-  type StoragesPrepareContract,
-  type StoragesCommitContract,
-  type StoragesDownloadContract,
-  type StoragesListContract,
 } from "./storages";
 export {
   registryResourceDownloadContract,
@@ -217,8 +227,6 @@ export {
   webhookCheckpointsContract,
   webhookCheckpointsPrepareHistoryContract,
   webhookHeartbeatContract,
-  webhookStoragesContract,
-  webhookStoragesIncrementalContract,
   webhookTelemetryContract,
   // Direct upload contracts (Webhook endpoints for sandbox)
   webhookStoragesPrepareContract,
@@ -231,17 +239,12 @@ export {
   type WebhookCheckpointsContract,
   type WebhookCheckpointsPrepareHistoryContract,
   type WebhookHeartbeatContract,
-  type WebhookStoragesContract,
-  type WebhookStoragesIncrementalContract,
   type WebhookTelemetryContract,
   type WebhookStoragesPrepareContract,
   type WebhookStoragesCommitContract,
   webhookModelUsageObservationContract,
-  webhookModelUsageObservationV2Contract,
   webhookUsageEventContract,
   type WebhookClerkContract,
-  type WebhookModelUsageObservationContract,
-  type WebhookModelUsageObservationV2Contract,
   type WebhookUsageEventContract,
   type WebhookGithubContract,
   type WebhookGmailContract,
@@ -254,11 +257,9 @@ export {
   cliAuthDeviceContract,
   cliAuthTokenContract,
   cliAuthApproveContract,
-  cliAuthOrgContract,
   type CliAuthDeviceContract,
   type CliAuthTokenContract,
   type CliAuthApproveContract,
-  type CliAuthOrgContract,
 } from "./cli-auth";
 export { authContract, type AuthContract } from "./auth";
 export {
@@ -376,6 +377,14 @@ export {
   type TestUsageInsightStateFixture,
 } from "./test-usage-insight-state";
 export {
+  testUsageSettlementContract,
+  testUsageSettlementRequestSchema,
+  testUsageSettlementResponseSchema,
+  type TestUsageSettlementContract,
+  type TestUsageSettlementRequest,
+  type TestUsageSettlementResponse,
+} from "./test-usage-settlement";
+export {
   testCronCleanupSandboxesStateActionBodySchema,
   testCronCleanupSandboxesStateActionResponseSchema,
   testCronCleanupSandboxesStateContract,
@@ -384,18 +393,6 @@ export {
   type TestCronCleanupSandboxesStateActionResponse,
   type TestCronCleanupSandboxesStateContract,
 } from "./test-cron-cleanup-sandboxes-state";
-export {
-  testSlackDispatchProbeBodySchema,
-  testSlackDispatchProbeContract,
-  testSlackDispatchProbeErrorSchema,
-  testSlackDispatchProbeFailureResponseSchema,
-  testSlackDispatchProbeResponseSchema,
-  testSlackDispatchProbeSuccessResponseSchema,
-  type TestSlackDispatchProbeBody,
-  type TestSlackDispatchProbeContract,
-  type TestSlackDispatchProbeError,
-  type TestSlackDispatchProbeResponse,
-} from "./test-slack-dispatch-probe";
 export {
   testSlackStateContract,
   testSlackStateErrorSchema,
@@ -492,13 +489,11 @@ export {
   type CronTelegramCleanupContract,
 } from "./cron";
 export {
-  orgDefaultAgentContract,
   orgSlugSchema,
   orgResponseSchema,
   updateOrgRequestSchema,
   orgTierSchema,
   isOrgTier,
-  type OrgDefaultAgentContract,
   type OrgResponse,
   type UpdateOrgRequest,
   type OrgTier,
@@ -614,6 +609,13 @@ export {
   type SessionResponse,
 } from "./sessions";
 export {
+  artifactCatalogContract,
+  type ArtifactCatalogContract,
+  type ArtifactCatalogKind,
+  type ArtifactDetail,
+  type ArtifactSummary,
+} from "./artifact-catalog";
+export {
   chatThreadsContract,
   chatThreadByIdContract,
   chatThreadDraftContract,
@@ -622,8 +624,8 @@ export {
   chatThreadMetadataContract,
   chatThreadModelSelectionContract,
   chatThreadComputerUseHostContract,
-  chatMessagesContract,
-  chatThreadMessagesContract,
+  chatEventsContract,
+  chatThreadEventsContract,
   chatThreadArtifactsContract,
   artifactsContract,
   chatSearchContract,
@@ -636,20 +638,20 @@ export {
   generationTemplateRequestSchema,
   presentationGenerationTemplateRequestSchema,
   websiteGenerationTemplateRequestSchema,
-  pagedChatMessageSchema,
+  chatEventResponse,
+  chatEventResponseSchema,
+  chatEventSchema,
   summaryEntrySchema,
   persistedAttachmentSchema,
   attachFileSchema,
   resolvedAttachFileSchema,
   artifactItemSchema,
-  artifactFavoriteBodySchema,
   artifactsListResponseSchema,
   imageArtifactEditSnapshotSchema,
   imageArtifactEditSnapshotStateSchema,
   chatThreadArtifactFileSchema,
   chatThreadArtifactGoogleDriveSyncSchema,
   chatThreadArtifactRunSchema,
-  htmlArtifactEditSnapshotSchema,
   type GenerationTemplateRequest,
   type PresentationGenerationTemplateRequest,
   type WebsiteGenerationTemplateRequest,
@@ -662,8 +664,8 @@ export {
   type ChatThreadMetadataContract,
   type ChatThreadModelSelectionContract,
   type ChatThreadComputerUseHostContract,
-  type ChatMessagesContract,
-  type ChatThreadMessagesContract,
+  type ChatEventsContract,
+  type ChatThreadEventsContract,
   type ChatThreadArtifactsContract,
   type ArtifactsContract,
   type ChatSearchContract,
@@ -675,7 +677,15 @@ export {
   type ChatThreadDetail,
   type ChatThreadMetadata,
   type ChatThreadDraft,
-  type PagedChatMessage,
+  type ChatEvent,
+  type ChatEventResponse,
+  type ChatEventSendBody,
+  type ChatFollowupsEvent,
+  type ChatAutomationEvent,
+  type ChatInputEvent,
+  type ChatPromptEvent,
+  type ChatUserMessageEvent,
+  type ChatUsageEvent,
   type PersistedAttachment,
   type AttachFile,
   type ResolvedAttachFile,
@@ -686,7 +696,6 @@ export {
   type ChatThreadArtifactFile,
   type ChatThreadArtifactGoogleDriveSync,
   type ChatThreadArtifactRun,
-  type HtmlArtifactEditSnapshot,
 } from "./chat-threads";
 export {
   runnersPollContract,
@@ -701,19 +710,14 @@ export {
   storedExecutionContextSchema,
   secretConnectorMetadataSchema,
   secretConnectorMetadataMapSchema,
-  storageEntrySchema,
   CANONICAL_CODEX_MEMORY_MOUNT_PATH,
   CANONICAL_CLAUDE_MEMORY_MOUNT_PATH,
   CANONICAL_GUEST_HOME_DIR,
   CANONICAL_WORKING_DIR,
   DEFAULT_PROFILE,
   RUNNER_BUILTIN_FIREWALL_RESOLVE_NAMES_MAX,
-  RUNNER_STORAGE_MOUNTS_CAPABILITY,
   SESSION_HISTORY_DOWNLOAD_SOURCE_CONFIGURED_PUBLIC_ENDPOINT,
   SESSION_HISTORY_DOWNLOAD_SOURCE_DEFAULT_R2_ENDPOINT,
-  artifactEntrySchema,
-  canonicalStorageManifestSchema,
-  legacyStorageManifestSchema,
   storageMountEntrySchema,
   storedStorageMountEntrySchema,
   sessionHistoryDownloadSourceSchema,
@@ -729,10 +733,7 @@ export {
   type StoredExecutionContext,
   type NetworkPolicyRefresh,
   type SecretConnectorMetadata,
-  type StorageEntry,
-  type ArtifactEntry,
   type CanonicalStorageManifest,
-  type LegacyStorageManifest,
   type StorageMountEntry,
   type StoredStorageMountEntry,
   type StorageManifest,
@@ -744,6 +745,8 @@ export {
 
 export {
   ablyTokenRequestSchema,
+  connectorChangedPayloadSchema,
+  type ConnectorChangedPayload,
   runnerRealtimeTokenContract,
   type RunnerRealtimeTokenContract,
   platformRealtimeTokenContract,
@@ -773,27 +776,6 @@ export {
   type LogsFilters,
 } from "./logs";
 
-export {
-  connectorTypeSchema,
-  CONNECTOR_TYPES,
-  CONNECTOR_DISPLAY_CATEGORY_GROUPS,
-  CONNECTOR_DISPLAY_CATEGORY_META,
-  CONNECTOR_DISPLAY_CATEGORY_ORDER,
-  type ConnectorType,
-  type AuthGrantConnectorType,
-  type ConnectorConfig,
-  type ConnectorDisplayCategory,
-  type ConnectorDisplayCategoryGroup,
-  type ConnectorAuthMethodConfig,
-  type ConnectorRegistryAuthMethodId,
-  type ConnectorEnvBindings,
-  type ConnectorEnvBindingValue,
-} from "@vm0/connectors/connectors";
-export {
-  getConnectorOwnedSecretNames,
-  getConnectorEnvBindingEntries,
-  type ScopeDiff,
-} from "@vm0/connectors/connector-utils";
 export {
   connectorResponseConnectionStatusSchema,
   connectorResponseSchema,
@@ -870,6 +852,8 @@ export {
   type UpdateUserPreferencesRequest,
   sendModeSchema,
   type SendMode,
+  userLocaleSchema,
+  type UserLocale,
 } from "./zero-user-preferences";
 export {
   featureSwitchesResponseSchema,
@@ -1516,12 +1500,6 @@ export {
   type ZeroSlackInteractiveContract,
 } from "./zero-slack-interactive";
 export {
-  zeroSlackBrowserConnectContract,
-  zeroSlackBrowserConnectQuerySchema,
-  type ZeroSlackBrowserConnectContract,
-  type ZeroSlackBrowserConnectQuery,
-} from "./zero-slack-browser-connect";
-export {
   zeroSlackOauthContract,
   zeroSlackOauthInstallQuerySchema,
   zeroSlackOauthConnectQuerySchema,
@@ -1588,7 +1566,6 @@ export {
   type ComputerUseCommandResult,
   type ComputerUseCommandStatus,
   type ComputerUseHost,
-  type ComputerUseHostDeleteResponse,
   type ComputerUseHostListResponse,
   type ComputerUsePluginCommandKind,
   type ComputerUseReadCommandKind,
@@ -1629,11 +1606,8 @@ export {
 } from "./zero-computer-use-plugins";
 export {
   zeroInsightsContract,
-  zeroInsightsRangeContract,
   type ZeroInsightsContract,
-  type ZeroInsightsRangeContract,
   type InsightsResponse,
-  type InsightsRangeResponse,
   type DayInsight,
 } from "./zero-insights";
 export {

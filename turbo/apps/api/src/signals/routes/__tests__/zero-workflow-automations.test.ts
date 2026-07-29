@@ -4,7 +4,7 @@ import {
   zeroWorkflowAutomationsContract,
   zeroWorkflowsDetailContract,
 } from "@vm0/api-contracts/contracts/zero-workflows";
-import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
+import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import { HttpResponse, http } from "msw";
 
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
@@ -104,14 +104,6 @@ async function enableNotionWorkflowAutomations(
 ): Promise<void> {
   await updateFeatureSwitchesForUser(context, fixture, {
     [FeatureSwitchKey.NotionWorkflowAutomations]: true,
-  });
-}
-
-async function enableGithubWorkflowRunAutomations(
-  fixture: WorkflowsFixture,
-): Promise<void> {
-  await updateFeatureSwitchesForUser(context, fixture, {
-    [FeatureSwitchKey.GithubWorkflowRunAutomations]: true,
   });
 }
 
@@ -1859,7 +1851,6 @@ describe("zero workflow automations", () => {
   it("creates and updates GitHub workflow run completed automations", async () => {
     const scenario = await setupFixture();
     await gh.installGithubApp(scenario.actor, scenario.agentId);
-    await enableGithubWorkflowRunAutomations(scenario.fixture);
     mocks.clerk.session(
       scenario.fixture.userId,
       scenario.fixture.orgId,
@@ -2342,6 +2333,9 @@ describe("zero workflow automations", () => {
     );
 
     expect(run.body.chatThreadId).toBe(threadId);
+    if (!run.body.runId) {
+      throw new Error("Expected an idle manual automation run to start");
+    }
     const timingEvents = sandboxOperationEventsForRun(run.body.runId);
     expect(timingEvents).toStrictEqual(
       expect.arrayContaining([
@@ -2388,9 +2382,12 @@ describe("zero workflow automations", () => {
 
     // The run landed in the bound thread as the workflow slash-command user
     // message, linked to the created run id.
-    const messages = await wf.readThreadMessages(threadId);
+    const messages = await wf.readThreadEvents(threadId);
     const workflowMessage = messages.find((message) => {
-      return message.role === "user" && message.content === `/${WORKFLOW_NAME}`;
+      return (
+        message.eventType === "input.prompt" &&
+        message.content === `/${WORKFLOW_NAME}`
+      );
     });
     expect(workflowMessage).toBeDefined();
     expect(workflowMessage?.runId).toBe(run.body.runId);

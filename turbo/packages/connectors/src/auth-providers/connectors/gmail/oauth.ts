@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-import type { ConnectorAuthCodeGrantConfig } from "@vm0/connectors/connectors";
+import type { ConnectorAuthCodeGrantConfig } from "@vm0/connectors/connector-config";
 import { buildGoogleAuthorizationUrl } from "../../oauth/google";
 import { throwOAuthError } from "../../oauth/error";
 
@@ -130,11 +130,4 @@ async function fetchGmailUserInfo(accessToken: string): Promise<GmailUserInfo> {
     email: data.emailAddress ?? null,
     name: data.emailAddress ?? null,
   };
-}
-
-/**
- * Get the primary secret name for Gmail connector (the access token).
- */
-export function getGmailSecretName(): string {
-  return "GMAIL_ACCESS_TOKEN";
 }

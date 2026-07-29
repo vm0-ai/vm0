@@ -4,6 +4,7 @@ import { toast } from "@vm0/ui/components/ui/sonner";
 import { describe, expect, it, vi } from "vitest";
 import { zeroVoiceIoQuotaContract } from "@vm0/api-contracts/contracts/zero-voice-io-quota";
 import { zeroComputerUseHostsContract } from "@vm0/api-contracts/contracts/zero-computer-use";
+import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import { fill } from "../../../__tests__/page-helper.ts";
 import {
   mockChatLifecycle,
@@ -14,6 +15,7 @@ import {
   context,
   detachedSetupPage,
   AGENT_ID,
+  AGENT_CHAT_PATH,
   COMPUTER_USE_SELECTION_THREAD_ID,
   COMPUTER_USE_SEND_THREAD_ID,
   COMPUTER_USE_SAVED_SELECTION_THREAD_ID,
@@ -26,6 +28,266 @@ import {
 } from "./chat-lifecycle-test-helpers.ts";
 
 describe("chat lifecycle", () => {
+  it("keeps Cloud browser and Computer Use mutually exclusive", async () => {
+    const user = userEvent.setup({ delay: null });
+    const threadId = "b0000000-0000-4000-a000-000000000719";
+    const hostId = "11111111-1111-4111-8111-111111111111";
+    const updates: {
+      computerUseHostId: string | null;
+      cloudBrowserEnabled?: boolean;
+    }[] = [];
+    const lifecycle = mockChatLifecycle(context, {
+      threadId,
+      computerUseHostId: hostId,
+      onComputerUseHostUpdate: (body) => {
+        updates.push(body);
+      },
+    });
+    lifecycle.setThreadList([
+      {
+        id: threadId,
+        title: null,
+        agent: { id: AGENT_ID, avatarUrl: null },
+        createdAt: "2026-03-10T00:00:00Z",
+        updatedAt: "2026-03-10T00:00:00Z",
+        computerUseHostId: hostId,
+        cloudBrowserEnabled: false,
+      },
+    ]);
+    context.mocks.api(zeroComputerUseHostsContract.list, ({ respond }) => {
+      return respond(200, {
+        hosts: [
+          {
+            id: hostId,
+            displayName: "Studio Mac",
+            appVersion: "1.0.0",
+            osVersion: "macOS 15.0",
+            supportedCapabilities: ["app.open"],
+            permissions: computerUsePermissions(),
+            status: "online",
+            lastSeenAt: "2026-06-10T12:00:00Z",
+            createdAt: "2026-06-10T11:00:00Z",
+          },
+        ],
+      });
+    });
+
+    detachedSetupPage({
+      context,
+      path: `/chats/${threadId}`,
+      featureSwitches: { [FeatureSwitchKey.ZeroBrowser]: true },
+    });
+
+    await waitFor(() => {
+      return chatComposerTextarea();
+    });
+    await user.click(await screen.findByLabelText("Connectors"));
+    expect(screen.getByText("Your computer")).toBeInTheDocument();
+    expect(
+      screen.getByRole("switch", { name: "Enable Cloud browser" }),
+    ).toHaveAttribute("aria-checked", "false");
+    expect(
+      screen.getByRole("switch", { name: "Disconnect Studio Mac" }),
+    ).toHaveAttribute("aria-checked", "true");
+
+    await user.click(
+      screen.getByRole("switch", { name: "Enable Cloud browser" }),
+    );
+    await waitFor(() => {
+      expect(updates.at(-1)).toStrictEqual({
+        computerUseHostId: null,
+        cloudBrowserEnabled: true,
+      });
+      expect(
+        screen.getByRole("switch", { name: "Disable Cloud browser" }),
+      ).toHaveAttribute("aria-checked", "true");
+      expect(
+        screen.getByRole("switch", { name: "Connect Studio Mac" }),
+      ).toHaveAttribute("aria-checked", "false");
+    });
+
+    await user.click(
+      screen.getByRole("switch", { name: "Connect Studio Mac" }),
+    );
+    await waitFor(() => {
+      expect(updates.at(-1)).toStrictEqual({
+        computerUseHostId: hostId,
+        cloudBrowserEnabled: false,
+      });
+      expect(
+        screen.getByRole("switch", { name: "Enable Cloud browser" }),
+      ).toHaveAttribute("aria-checked", "false");
+    });
+  });
+
+  it("creates a new chat thread with Cloud browser on by default", async () => {
+    const user = userEvent.setup({ delay: null });
+    let sentCloudBrowserEnabled: boolean | undefined;
+    let sentComputerUseHostId: string | null | undefined;
+    mockChatLifecycle(context, {
+      onRunCreate: (body) => {
+        sentCloudBrowserEnabled = body.cloudBrowserEnabled;
+        sentComputerUseHostId = body.computerUseHostId;
+      },
+    });
+    context.mocks.api(zeroComputerUseHostsContract.list, ({ respond }) => {
+      return respond(200, { hosts: [] });
+    });
+
+    detachedSetupPage({
+      context,
+      path: AGENT_CHAT_PATH,
+      featureSwitches: { [FeatureSwitchKey.ZeroBrowser]: true },
+    });
+
+    const textarea = await screen.findByPlaceholderText(PLACEHOLDER);
+    await user.click(await screen.findByLabelText("Connectors"));
+    expect(
+      screen.getByRole("switch", { name: "Disable Cloud browser" }),
+    ).toHaveAttribute("aria-checked", "true");
+    await user.keyboard("{Escape}");
+
+    await sendMessageInUI(user, textarea, "Open a cloud browser");
+
+    await waitFor(() => {
+      expect(sentCloudBrowserEnabled).toBeTruthy();
+      expect(sentComputerUseHostId).toBeUndefined();
+    });
+  });
+
+  it("creates a new chat thread without Cloud browser after turning it off", async () => {
+    const user = userEvent.setup({ delay: null });
+    let sentCloudBrowserEnabled: boolean | undefined;
+    mockChatLifecycle(context, {
+      onRunCreate: (body) => {
+        sentCloudBrowserEnabled = body.cloudBrowserEnabled;
+      },
+    });
+    context.mocks.api(zeroComputerUseHostsContract.list, ({ respond }) => {
+      return respond(200, { hosts: [] });
+    });
+
+    detachedSetupPage({
+      context,
+      path: AGENT_CHAT_PATH,
+      featureSwitches: { [FeatureSwitchKey.ZeroBrowser]: true },
+    });
+
+    const textarea = await screen.findByPlaceholderText(PLACEHOLDER);
+    await user.click(await screen.findByLabelText("Connectors"));
+    await user.click(
+      screen.getByRole("switch", { name: "Disable Cloud browser" }),
+    );
+    await waitFor(() => {
+      expect(
+        screen.getByRole("switch", { name: "Enable Cloud browser" }),
+      ).toHaveAttribute("aria-checked", "false");
+    });
+    await user.keyboard("{Escape}");
+
+    await sendMessageInUI(user, textarea, "Keep the cloud browser closed");
+
+    await waitFor(() => {
+      expect(sentCloudBrowserEnabled).toBeUndefined();
+    });
+  });
+
+  it("hides Cloud browser from a new chat thread when the feature is disabled", async () => {
+    const user = userEvent.setup({ delay: null });
+    let sentCloudBrowserEnabled: boolean | undefined;
+    mockChatLifecycle(context, {
+      onRunCreate: (body) => {
+        sentCloudBrowserEnabled = body.cloudBrowserEnabled;
+      },
+    });
+    context.mocks.api(zeroComputerUseHostsContract.list, ({ respond }) => {
+      return respond(200, { hosts: [] });
+    });
+
+    detachedSetupPage({ context, path: AGENT_CHAT_PATH });
+
+    const textarea = await screen.findByPlaceholderText(PLACEHOLDER);
+    await user.click(await screen.findByLabelText("Connectors"));
+    expect(screen.getByText("Your computer")).toBeInTheDocument();
+    expect(
+      screen.queryByRole("switch", { name: "Disable Cloud browser" }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("switch", { name: "Enable Cloud browser" }),
+    ).not.toBeInTheDocument();
+    await user.keyboard("{Escape}");
+
+    await sendMessageInUI(user, textarea, "No cloud browser here");
+
+    await waitFor(() => {
+      expect(sentCloudBrowserEnabled).toBeUndefined();
+    });
+  });
+
+  it("replaces the new chat thread Cloud browser default with a Computer Use host", async () => {
+    const user = userEvent.setup({ delay: null });
+    const hostId = "55555555-5555-4555-8555-555555555555";
+    let sentCloudBrowserEnabled: boolean | undefined;
+    let sentComputerUseHostId: string | null | undefined;
+    mockChatLifecycle(context, {
+      onRunCreate: (body) => {
+        sentCloudBrowserEnabled = body.cloudBrowserEnabled;
+        sentComputerUseHostId = body.computerUseHostId;
+      },
+    });
+    context.mocks.api(zeroComputerUseHostsContract.list, ({ respond }) => {
+      return respond(200, {
+        hosts: [
+          {
+            id: hostId,
+            displayName: "Studio Mac",
+            appVersion: "1.0.0",
+            osVersion: "macOS 15.0",
+            supportedCapabilities: ["app.open"],
+            permissions: computerUsePermissions(),
+            status: "online",
+            lastSeenAt: "2026-06-10T12:00:00Z",
+            createdAt: "2026-06-10T11:00:00Z",
+          },
+        ],
+      });
+    });
+
+    detachedSetupPage({
+      context,
+      path: AGENT_CHAT_PATH,
+      featureSwitches: { [FeatureSwitchKey.ZeroBrowser]: true },
+    });
+
+    const textarea = await screen.findByPlaceholderText(PLACEHOLDER);
+    await user.click(await screen.findByLabelText("Connectors"));
+    expect(
+      screen.getByRole("switch", { name: "Disable Cloud browser" }),
+    ).toHaveAttribute("aria-checked", "true");
+
+    const hostsGroup = await screen.findByRole("group", {
+      name: "Computer Use hosts",
+    });
+    await user.click(within(hostsGroup).getByText("Studio Mac"));
+
+    await waitFor(() => {
+      expect(
+        screen.getByRole("switch", { name: "Enable Cloud browser" }),
+      ).toHaveAttribute("aria-checked", "false");
+      expect(
+        screen.getByRole("switch", { name: "Disconnect Studio Mac" }),
+      ).toHaveAttribute("aria-checked", "true");
+    });
+    await user.keyboard("{Escape}");
+
+    await sendMessageInUI(user, textarea, "Open the app on my computer");
+
+    await waitFor(() => {
+      expect(sentComputerUseHostId).toBe(hostId);
+      expect(sentCloudBrowserEnabled).toBeUndefined();
+    });
+  });
+
   it("shows online computers in the chat composer", async () => {
     const user = userEvent.setup({ delay: null });
     const threadId = COMPUTER_USE_SELECTION_THREAD_ID;
@@ -582,7 +844,10 @@ describe("chat lifecycle", () => {
       await waitFor(() => {
         expect(draftPatches).toContainEqual({
           draftContent: "Summarize the standup",
-          draftStructuredPrompt: null,
+          draftUserMessage: {
+            version: 1,
+            parts: [{ type: "text", text: "Summarize the standup" }],
+          },
           draftAttachments: null,
         });
       });
@@ -649,7 +914,10 @@ describe("chat lifecycle", () => {
     await waitFor(() => {
       expect(draftPatches).toContainEqual({
         draftContent: "First sentence",
-        draftStructuredPrompt: null,
+        draftUserMessage: {
+          version: 1,
+          parts: [{ type: "text", text: "First sentence" }],
+        },
         draftAttachments: null,
       });
     });

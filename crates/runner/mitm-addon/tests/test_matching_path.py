@@ -138,3 +138,9 @@ class TestMatchPath:
         assert compiled is not None
 
         assert matching.match_compiled_path("/api/file-123", compiled) is None
+
+    def test_compiled_duplicate_params_keep_the_later_capture(self):
+        compiled = matching.compile_path_pattern("/{id}/{id}")
+        assert compiled is not None
+
+        assert matching.match_compiled_path("/first/second", compiled) == {"id": "second"}

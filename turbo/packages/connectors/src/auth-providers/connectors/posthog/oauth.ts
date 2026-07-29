@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-import type { ConnectorAuthCodeGrantConfig } from "@vm0/connectors/connectors";
+import type { ConnectorAuthCodeGrantConfig } from "@vm0/connectors/connector-config";
 import { throwOAuthError } from "../../oauth/error";
 
 const POSTHOG_TOKEN_URL = "https://us.posthog.com/oauth/token";
@@ -192,11 +192,4 @@ async function fetchPosthogUserInfo(
     name: name || null,
     email: data.email ?? null,
   };
-}
-
-/**
- * Get the primary secret name for PostHog connector (the access token).
- */
-export function getPosthogSecretName(): string {
-  return "POSTHOG_ACCESS_TOKEN";
 }

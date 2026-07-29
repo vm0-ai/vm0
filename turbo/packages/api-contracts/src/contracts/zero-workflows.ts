@@ -116,6 +116,7 @@ export const zeroWorkflowEventTypeSchema = z.enum([
   "notion-child-page-created",
   "notion-database-item-created",
   "notion-page-content-updated",
+  "strapi-entry-published",
   "webhook-received",
 ]);
 export type ZeroWorkflowEventType = z.infer<typeof zeroWorkflowEventTypeSchema>;
@@ -144,6 +145,7 @@ export const gmailNewMessageEventConfigSchema = z
   .object({
     provider: z.literal("gmail"),
     event: z.literal("new_message"),
+    threadId: z.string().min(1).optional(),
     match: z
       .object({
         from: gmailTextMatchSchema.optional(),
@@ -599,6 +601,19 @@ export type NotionWorkflowEventConfig =
   | NotionDatabaseItemCreatedEventConfig
   | NotionPageContentUpdatedEventConfig;
 
+export const strapiEntryPublishedEventConfigSchema = z
+  .object({
+    provider: z.literal("strapi"),
+    event: z.literal("entry_published"),
+    integrationId: z.string().uuid(),
+    contentTypeUid: z.string().trim().min(1).max(255).optional(),
+    locale: z.string().trim().min(1).max(64).optional(),
+  })
+  .strict();
+export type StrapiEntryPublishedEventConfig = z.infer<
+  typeof strapiEntryPublishedEventConfigSchema
+>;
+
 /**
  * Schedule configuration, discriminated by `type`. Aligned with Automation's
  * time-based Automation schedule model:
@@ -780,6 +795,15 @@ export const zeroWorkflowNotionPageContentUpdatedAutomationSummarySchema =
     scheduleSummary: z.null(),
   });
 
+export const zeroWorkflowStrapiEntryPublishedAutomationSummarySchema =
+  zeroWorkflowAutomationSummaryBaseSchema.extend({
+    kind: z.literal("event"),
+    eventType: z.literal("strapi-entry-published"),
+    eventConfig: strapiEntryPublishedEventConfigSchema,
+    schedule: z.null(),
+    scheduleSummary: z.null(),
+  });
+
 export const zeroWorkflowWebhookReceivedAutomationSummarySchema =
   zeroWorkflowAutomationSummaryBaseSchema.extend({
     kind: z.literal("event"),
@@ -812,6 +836,7 @@ export const zeroWorkflowEventAutomationSummarySchema = z.discriminatedUnion(
     zeroWorkflowNotionChildPageCreatedAutomationSummarySchema,
     zeroWorkflowNotionDatabaseItemCreatedAutomationSummarySchema,
     zeroWorkflowNotionPageContentUpdatedAutomationSummarySchema,
+    zeroWorkflowStrapiEntryPublishedAutomationSummarySchema,
     zeroWorkflowWebhookReceivedAutomationSummarySchema,
   ],
 );
@@ -981,6 +1006,15 @@ export const chatThreadWorkflowNotionPageContentUpdatedAutomationSchema =
     scheduleSummary: z.null(),
   });
 
+export const chatThreadWorkflowStrapiEntryPublishedAutomationSchema =
+  chatThreadWorkflowAutomationBaseSchema.extend({
+    kind: z.literal("event"),
+    eventType: z.literal("strapi-entry-published"),
+    eventConfig: strapiEntryPublishedEventConfigSchema,
+    schedule: z.null(),
+    scheduleSummary: z.null(),
+  });
+
 export const chatThreadWorkflowWebhookReceivedAutomationSchema =
   zeroWorkflowWebhookReceivedAutomationSummarySchema.extend({
     id: z.string().uuid(),
@@ -1005,6 +1039,7 @@ export const chatThreadWorkflowAutomationSchema = z.union([
   chatThreadWorkflowNotionChildPageCreatedAutomationSchema,
   chatThreadWorkflowNotionDatabaseItemCreatedAutomationSchema,
   chatThreadWorkflowNotionPageContentUpdatedAutomationSchema,
+  chatThreadWorkflowStrapiEntryPublishedAutomationSchema,
   chatThreadWorkflowWebhookReceivedAutomationSchema,
 ]);
 export type ChatThreadWorkflowAutomation = z.infer<
@@ -1161,6 +1196,14 @@ export const zeroWorkflowNotionPageContentUpdatedAutomationCreateRequestSchema =
     enabled: z.boolean().optional(),
   });
 
+export const zeroWorkflowStrapiEntryPublishedAutomationCreateRequestSchema =
+  z.object({
+    kind: z.literal("event"),
+    eventType: z.literal("strapi-entry-published"),
+    eventConfig: strapiEntryPublishedEventConfigSchema,
+    enabled: z.boolean().optional(),
+  });
+
 export const zeroWorkflowWebhookReceivedAutomationCreateRequestSchema =
   z.object({
     kind: z.literal("event"),
@@ -1186,6 +1229,7 @@ export const zeroWorkflowAutomationCreateRequestSchema = z.union([
   zeroWorkflowNotionChildPageCreatedAutomationCreateRequestSchema,
   zeroWorkflowNotionDatabaseItemCreatedAutomationCreateRequestSchema,
   zeroWorkflowNotionPageContentUpdatedAutomationCreateRequestSchema,
+  zeroWorkflowStrapiEntryPublishedAutomationCreateRequestSchema,
   zeroWorkflowWebhookReceivedAutomationCreateRequestSchema,
 ]);
 export type ZeroWorkflowAutomationCreateRequest = z.infer<
@@ -1304,7 +1348,9 @@ export const zeroWorkflowCopyRequestSchema = z.object({
 
 export const zeroWorkflowRunResponseSchema = z.object({
   chatThreadId: z.string().uuid(),
-  runId: z.string(),
+  // Null means the manual invocation is waiting in the chat thread queue and
+  // no run has been created for it yet.
+  runId: z.string().nullable(),
 });
 
 export const zeroWorkflowChatThreadResponseSchema = z.object({
@@ -1681,7 +1727,7 @@ export const zeroWorkflowAutomationsContract = c.router({
       404: apiErrorSchema,
       409: apiErrorSchema,
     },
-    summary: "Run a workflow automation immediately in its bound chat thread",
+    summary: "Submit a workflow automation run in its bound chat thread",
   },
   revealWebhookSecret: {
     method: "POST",

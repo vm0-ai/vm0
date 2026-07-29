@@ -12,31 +12,72 @@ const prepareRequestSchema = z.object({
   filename: z.string().min(1).max(255),
   contentType: z.string().min(1).max(200),
   size: z.number().int().nonnegative(),
+  /**
+   * New clients request multipart uploads for large files. Older API
+   * deployments ignore this unknown field and return the legacy single PUT
+   * response, which keeps frontend/backend rolling deploys compatible.
+   */
+  multipart: z.literal(true).optional(),
 });
 
 const importImageRequestSchema = z.object({
   url: z.string().url(),
 });
 
-const prepareResponseSchema = z.object({
+const uploadMetadataSchema = z.object({
   id: z.string(),
   filename: z.string(),
   contentType: z.string(),
   size: z.number(),
-  /** Presigned PUT URL — browser uploads the file body here directly. */
-  uploadUrl: z.string().url(),
   /** Public CDN URL returned to the app after upload succeeds. */
   url: z.string().url(),
+});
+
+const prepareResponseSchema = uploadMetadataSchema.extend({
+  /** Presigned PUT URL — browser uploads the file body here directly. */
+  uploadUrl: z.string().url(),
+});
+
+const multipartUploadPartSchema = z.object({
+  partNumber: z.number().int().positive(),
+  uploadUrl: z.string().url(),
+});
+
+const multipartPrepareResponseSchema = uploadMetadataSchema.extend({
+  multipart: z.object({
+    uploadId: z.string().min(1),
+    partSize: z.number().int().positive(),
+    parts: z.array(multipartUploadPartSchema).min(1),
+  }),
+});
+
+const prepareResultSchema = z.union([
+  prepareResponseSchema,
+  multipartPrepareResponseSchema,
+]);
+
+const multipartUploadIdentitySchema = z.object({
+  id: z.string().uuid(),
+  filename: z.string().min(1).max(255),
+  uploadId: z.string().min(1),
+});
+
+const multipartCompleteRequestSchema = multipartUploadIdentitySchema.extend({
+  partCount: z.number().int().min(1).max(1000),
+});
+
+const multipartResponseSchema = z.object({
+  id: z.string().uuid(),
+  url: z.string().url(),
+});
+
+const multipartAbortResponseSchema = z.object({
+  id: z.string().uuid(),
 });
 
 const completeRequestSchema = z.object({
   id: z.string().uuid(),
   contentType: z.string().min(1).max(200).optional(),
-});
-
-const htmlDomEditSnapshotRequestSchema = z.object({
-  filename: z.string().min(1).max(255),
-  html: z.string().min(1),
 });
 
 const completeResponseSchema = z.object({
@@ -66,7 +107,7 @@ export const zeroUploadsContract = c.router({
     headers: authHeadersSchema,
     body: prepareRequestSchema,
     responses: {
-      200: prepareResponseSchema,
+      200: prepareResultSchema,
       400: apiErrorSchema,
       401: apiErrorSchema,
       402: apiErrorSchema,
@@ -74,6 +115,35 @@ export const zeroUploadsContract = c.router({
       500: apiErrorSchema,
     },
     summary: "Prepare a direct-to-R2 upload",
+  },
+  completeMultipart: {
+    method: "POST",
+    path: "/api/zero/uploads/multipart/complete",
+    headers: authHeadersSchema,
+    body: multipartCompleteRequestSchema,
+    responses: {
+      200: multipartResponseSchema,
+      400: apiErrorSchema,
+      401: apiErrorSchema,
+      402: apiErrorSchema,
+      403: apiErrorSchema,
+      500: apiErrorSchema,
+    },
+    summary: "Complete a multipart R2 upload",
+  },
+  abortMultipart: {
+    method: "POST",
+    path: "/api/zero/uploads/multipart/abort",
+    headers: authHeadersSchema,
+    body: multipartUploadIdentitySchema,
+    responses: {
+      200: multipartAbortResponseSchema,
+      400: apiErrorSchema,
+      401: apiErrorSchema,
+      403: apiErrorSchema,
+      500: apiErrorSchema,
+    },
+    summary: "Abort a multipart R2 upload",
   },
   complete: {
     method: "POST",
@@ -107,26 +177,11 @@ export const zeroUploadsContract = c.router({
     },
     summary: "Import a remote image into user artifact storage",
   },
-  htmlDomEditSnapshot: {
-    method: "POST",
-    path: "/api/zero/uploads/html-dom-edit-snapshot",
-    headers: authHeadersSchema,
-    body: htmlDomEditSnapshotRequestSchema,
-    responses: {
-      200: completeResponseSchema,
-      400: apiErrorSchema,
-      401: apiErrorSchema,
-      402: apiErrorSchema,
-      403: apiErrorSchema,
-      500: apiErrorSchema,
-    },
-    summary: "Upload an HTML DOM edit snapshot",
-  },
 });
 
 export type ZeroUploadsContract = typeof zeroUploadsContract;
 
 // Inferred types
-export type UploadPrepareResponse = z.infer<typeof prepareResponseSchema>;
+export type UploadPrepareResponse = z.infer<typeof prepareResultSchema>;
 export type UploadCompleteResponse = z.infer<typeof completeResponseSchema>;
 export type UploadImportImageResponse = z.infer<typeof completeResponseSchema>;

@@ -67,7 +67,7 @@ export function automationKindLabel(
 
 type GmailMatchRules = NonNullable<GmailNewMessageEventConfig["match"]>;
 type GmailTextMatcher = NonNullable<GmailMatchRules["from"]>;
-export type GmailTextField = "from" | "subject" | "body" | "to" | "cc";
+type GmailTextField = "from" | "subject" | "body" | "to" | "cc";
 
 export const GMAIL_TEXT_FIELDS: readonly {
   readonly field: GmailTextField;
@@ -89,25 +89,46 @@ function formTextValue(form: FormData, name: string): string | undefined {
   return trimmed.length > 0 ? trimmed : undefined;
 }
 
+function formTextValues(
+  form: FormData,
+  name: string,
+): readonly string[] | undefined {
+  const value = formTextValue(form, name);
+  if (!value) {
+    return undefined;
+  }
+  const values = value
+    .split(",")
+    .map((entry) => {
+      return entry.trim();
+    })
+    .filter((entry) => {
+      return entry.length > 0;
+    });
+  return values.length > 0 ? values : undefined;
+}
+
 export function buildGmailNewMessageEventConfig(
   form: FormData,
   baseConfig?: GmailNewMessageEventConfig,
 ): GmailNewMessageEventConfig {
   const baseMatch = baseConfig?.match;
+  const threadId = formTextValue(form, "threadId");
   const match: GmailMatchRules = {};
   for (const { field } of GMAIL_TEXT_FIELDS) {
     const existing = baseMatch?.[field];
     const contains = formTextValue(form, `${field}Contains`);
+    const containsAny = formTextValues(form, `${field}ContainsAny`);
     const doesNotContain = formTextValue(form, `${field}DoesNotContain`);
     const matcher: GmailTextMatcher = {};
-    if (existing?.containsAny) {
-      matcher.containsAny = existing.containsAny;
-    }
     if (existing?.doesNotContainAny) {
       matcher.doesNotContainAny = existing.doesNotContainAny;
     }
     if (contains) {
       matcher.contains = contains;
+    }
+    if (containsAny) {
+      matcher.containsAny = [...containsAny];
     }
     if (doesNotContain) {
       matcher.doesNotContain = doesNotContain;
@@ -116,9 +137,12 @@ export function buildGmailNewMessageEventConfig(
       match[field] = matcher;
     }
   }
-  return Object.keys(match).length > 0
-    ? { provider: "gmail", event: "new_message", match }
-    : { provider: "gmail", event: "new_message" };
+  return {
+    provider: "gmail",
+    event: "new_message",
+    ...(threadId ? { threadId } : {}),
+    ...(Object.keys(match).length > 0 ? { match } : {}),
+  };
 }
 
 export function buildGmailLabelAppliedEventConfig(
@@ -165,19 +189,17 @@ function textMatcherParts(
   return parts;
 }
 
-export function formatGmailMatchSummary(
-  config: GmailNewMessageEventConfig,
-): string {
+function formatGmailMatchSummary(config: GmailNewMessageEventConfig): string {
+  const parts: string[] = config.threadId
+    ? [`Thread ID is ${quote(config.threadId)}`]
+    : [];
   const match = config.match;
-  if (!match) {
-    return "all inbound messages";
-  }
-
-  const parts: string[] = [];
-  for (const { field } of GMAIL_TEXT_FIELDS) {
-    const matcher = match[field];
-    if (matcher) {
-      parts.push(...textMatcherParts(field, matcher));
+  if (match) {
+    for (const { field } of GMAIL_TEXT_FIELDS) {
+      const matcher = match[field];
+      if (matcher) {
+        parts.push(...textMatcherParts(field, matcher));
+      }
     }
   }
   return parts.length > 0 ? parts.join("; ") : "all inbound messages";
@@ -324,7 +346,8 @@ export function gmailAutomationSummary(
 export function gmailMatcherDefaultValue(
   config: GmailNewMessageEventConfig,
   field: GmailTextField,
-  key: "contains" | "doesNotContain",
+  key: "contains" | "containsAny" | "doesNotContain",
 ): string {
-  return config.match?.[field]?.[key] ?? "";
+  const value = config.match?.[field]?.[key];
+  return Array.isArray(value) ? value.join(", ") : (value ?? "");
 }

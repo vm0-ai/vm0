@@ -2,11 +2,9 @@ import type {
   CSSProperties,
   FormEvent,
   MouseEvent as ReactMouseEvent,
-  PointerEvent as ReactPointerEvent,
   ReactNode,
   UIEvent as ReactUIEvent,
 } from "react";
-import { createPortal } from "react-dom";
 import {
   useGet,
   useSet,
@@ -29,8 +27,6 @@ import {
 } from "../../signals/chat-page/workflow-prompt-action.ts";
 import {
   IconAlertCircle,
-  IconArrowsDiagonal,
-  IconArrowsDiagonalMinimize2,
   IconHandStop,
   IconPhoto,
   IconChartLine,
@@ -47,16 +43,15 @@ import {
   IconMessageCircle,
   IconMoodPlus,
   IconPackage,
-  IconPresentation,
   IconRoute,
   IconSearch,
   IconTarget,
+  IconTemplate,
   IconX,
   IconClock,
   IconCoins,
   IconHourglass,
   IconBrandSlack,
-  IconWorld,
 } from "@tabler/icons-react";
 import {
   cn,
@@ -86,13 +81,19 @@ import {
 } from "@vm0/ui";
 import { RUN_ERROR_GUIDANCE } from "@vm0/api-contracts/contracts/errors";
 import type {
-  ChatThreadArtifactFile,
   ChatMessageUsagePayload,
+  FeedbackNotePart,
+  ChatFollowupsEvent,
   GenerationTemplateRequest,
   ResolvedAttachFile,
   UserMessageDocument,
   UserMessagePart,
 } from "@vm0/api-contracts/contracts/chat-threads";
+import {
+  chatEventCompatibilityRole,
+  foldLatestChatUsageByRunId,
+  terminatedChatRunIds,
+} from "@vm0/api-contracts/contracts/chat-events";
 import {
   messageDocumentToDisplayText,
   messageDocumentToPrompt,
@@ -103,11 +104,7 @@ import type {
   ZeroWorkflowSchedule,
 } from "@vm0/api-contracts/contracts/zero-workflows";
 import {
-  ILLUSTRATION_TEMPLATE_ITEMS,
   PRESENTATION_TEMPLATE_PICKER_ITEMS,
-  findWebsiteTemplateItem,
-  findVideoTemplateItem,
-  findWorkflowTemplateItem,
   r2ImageTransformUrl,
 } from "@vm0/core";
 import type {
@@ -115,9 +112,9 @@ import type {
   UserPermissionGrantResponse,
 } from "@vm0/api-contracts/contracts/zero-user-permission-grants";
 import type { PublicConnectorCatalogPermissionDetail } from "@vm0/api-contracts/contracts/zero-connector-catalog";
-import { emptyArtifactImg, emptyChatImg } from "./platform-assets.ts";
+import { emptyChatImg } from "./platform-assets.ts";
 import type { FirewallPolicyValue } from "@vm0/connectors/firewall-types";
-import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
+import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import { Markdown } from "../components/markdown.tsx";
 import { detach, Reason } from "../../signals/utils.ts";
 import { featureSwitch$ } from "../../signals/external/feature-switch.ts";
@@ -133,27 +130,30 @@ import {
   PreviewableFileAttachmentChip,
   publicAttachmentUrl,
 } from "./zero-attachment-chips.tsx";
-import { ArtifactSidebar } from "./zero-artifact-sidebar.tsx";
-import { PresentationHtmlEditor } from "./presentation-html-editor.tsx";
 import { MailDraftCard } from "./mail-draft-card.tsx";
-import { MailDraftSidebar } from "./mail-draft-sidebar.tsx";
+import { BrowserSessionCard } from "./browser-session-card.tsx";
+import { settingsIconAssetUrl } from "./components/settings/settings-icon-assets.ts";
 import {
   classifyChatAttachment,
   contentTypeForBodyPreviewKind,
   type BodyRenderBlock,
 } from "../../signals/chat-page/parse-body-blocks.ts";
+import type { ArtifactSignals } from "../../signals/chat-page/artifact-card-signals.ts";
+import {
+  isTextPreviewKind,
+  type TextPreviewComputed,
+} from "../../signals/text-preview.ts";
 import {
   activeChatConnectorAction$,
   closeChatConnectorActionConnectDialog$,
   type ConnectorSignals,
   type CustomConnectorSignals,
 } from "../../signals/chat-page/connector-action-block.ts";
-import { connectorCurrentConnectionStatus } from "../../signals/zero-page/settings/connectors.ts";
 import {
   completedWorkExpandedKeys$,
   toggleCompletedWorkExpanded$,
 } from "../../signals/chat-page/completed-work-folding.ts";
-import { isCancelledAssistantMessage } from "../../signals/chat-page/chat-run-lifecycle.ts";
+import { isCancelledRunEvent } from "../../signals/chat-page/chat-run-lifecycle.ts";
 import {
   buildRunGroupFolding,
   runGroupExpansionOverrides$,
@@ -164,17 +164,19 @@ import {
 import { runChatActionCallback$ } from "../../signals/chat-page/action-callback.ts";
 import type { ComputerUseAuthorizationSignals } from "../../signals/chat-page/computer-use-authorization-block.ts";
 import type { PlanUpgradeSignals } from "../../signals/chat-page/plan-upgrade-block.ts";
-import {
-  emptyMailDraftSignalsById$,
-  type MailDraftSignals,
-} from "../../signals/chat-page/mail-draft.ts";
 import type { PermissionSignals } from "../../signals/chat-page/permission-card-signals.ts";
 import { AttachmentPreview } from "./zero-attachment-preview.tsx";
+import { ArtifactThumbnailImage } from "./zero-artifact-thumbnail.tsx";
 import { FilePreviewIcon } from "./zero-file-preview-icon.tsx";
 import { ConnectorIcon } from "./components/settings/connector-icons.tsx";
+import { ConnectorCard } from "./components/settings/connector-card.tsx";
 import { ConnectModal } from "./components/settings/add-connection-dialog.tsx";
 import { PermissionGrantDurationSelect } from "../components/permission-grant-duration-select.tsx";
-import { lightboxUrl$ as attachmentLightboxUrl$ } from "../../signals/zero-page/zero-attachment-chips.ts";
+import {
+  lightboxUrl$ as attachmentLightboxUrl$,
+  openImageLightbox$ as openAttachmentImageLightbox$,
+  openVideoLightbox$ as openAttachmentVideoLightbox$,
+} from "../../signals/zero-page/zero-attachment-chips.ts";
 import {
   DEFAULT_USER_PERMISSION_GRANT_EXPIRES_IN,
   permissionGrantExpiresInByScope$,
@@ -182,34 +184,6 @@ import {
   setPermissionGrantExpiresIn$,
 } from "../../signals/permission-allow/permission-grant-expiration.ts";
 import { isActiveUserPermissionGrant } from "../../signals/user-permission-grants.ts";
-import {
-  artifactFullscreen$,
-  artifactInboxQuery$,
-  artifactInboxSearchOpen$,
-  artifactInboxSection$,
-  ARTIFACT_PANEL_MIN_THREAD_WIDTH,
-  ARTIFACT_PANEL_MIN_WIDTH,
-  artifactPanelResizing$,
-  artifactPanelWidth$,
-  backToArtifactInbox$,
-  type ArtifactInboxSection,
-  type ArtifactRef,
-  closeArtifact$,
-  closePresentationEditor$,
-  currentArtifactInboxThreadId$,
-  currentArtifactRef$,
-  currentPresentationEditorUrl$,
-  openArtifactFromInbox$,
-  openArtifactInbox$,
-  setArtifactInboxQuery$,
-  setArtifactInboxSection$,
-  setArtifactPanelResizing$,
-  setArtifactPanelWidth$,
-  openImageLightboxOrArtifact$ as openAttachmentImageLightbox$,
-  openVideoLightboxOrArtifact$ as openAttachmentVideoLightbox$,
-  toggleArtifactFullscreen$,
-  toggleArtifactInboxSearch$,
-} from "../../signals/zero-page/zero-artifact-sidebar.ts";
 import type { ChatClipboardAttachment } from "../../signals/zero-page/clipboard.ts";
 import { toast } from "@vm0/ui/components/ui/sonner";
 import type {
@@ -218,14 +192,16 @@ import type {
 } from "../../signals/chat-page/header-automation-menu.ts";
 import { pauseChatThreadGoal$ } from "../../signals/chat-page/chat-goal.ts";
 import {
-  closeHeaderAutomationSidebar$,
-  currentEditingHeaderWorkflowAutomationId$,
-  currentHeaderAutomationThreadId$,
-  openHeaderAutomationSidebar$,
-  setEditingHeaderWorkflowAutomationId$,
-} from "../../signals/chat-page/header-automation-sidebar.ts";
+  activeThreadSidebar$,
+  openThreadAutomations$,
+} from "../../signals/chat-page/thread-sidebar-coordinator.ts";
+import type { ThreadSidebarSignals } from "../../signals/chat-page/thread-sidebar.ts";
+import {
+  ThreadSidebarSlot,
+  useOpenThreadArtifacts,
+} from "./thread-sidebar.tsx";
+import { ChatThreadSidebarShell } from "./chat-thread-sidebar-shell.tsx";
 import { openQueueDrawer$ } from "../../signals/queue-page/queue-drawer-state.ts";
-import { currentMailDraftId$ } from "../../signals/zero-page/mail-draft-sidebar.ts";
 import {
   closeChatThreadEmojiMenu$,
   emojiMenuThreadId$,
@@ -260,8 +236,11 @@ import {
   renameChatThread$,
   type EnrichedChatMessage,
   type GroupedChatMessageGroup,
-  type PagedChatMessage,
 } from "../../signals/chat-page/chat-message.ts";
+import type {
+  ChatInputMessage,
+  ChatMessage,
+} from "../../signals/chat-page/chat-message-types.ts";
 import type {
   ChatThreadSignals,
   QueuedChatMessageItem,
@@ -281,9 +260,17 @@ import {
   type ChatThreadEmojiItem,
 } from "../../signals/chat-page/chat-thread-emoji.ts";
 import { openRenameChatThreadDialogForThreadId$ } from "../../signals/chat-page/chat-thread-rename.ts";
-import { ATTACH_ONLY_PLACEHOLDER } from "../../signals/chat-page/resolve-draft-attachments.ts";
 import {
+  setTemplatePickerCategory$,
+  setTemplatePickerOpen$,
+  setTemplatePickerPreviewSlug$,
+  setTemplatePickerReferenceValue$,
+  setTemplatePickerSearch$,
+} from "../../signals/zero-page/zero-chat-composer.ts";
+import {
+  useComposerConnectorReadState,
   useZeroChatComposer,
+  type ComposerConnectorReadState,
   type ZeroChatComposerProps,
   type QueuedComposerItem,
   type WorkflowEventComposerItem,
@@ -324,24 +311,58 @@ import {
 import {
   focusChatThreadContainer$,
   setChatKeyboardScrollRoot$,
-  setMainChatThreadKeyboardFocusRef$,
 } from "../../signals/chat-page/chat-keyboard.ts";
 import { PersonalClaudeCodeDeviceAuthDialog } from "./components/settings/claude-code-device-auth-dialog.tsx";
 import { PersonalCodexDeviceAuthDialog } from "./components/settings/codex-device-auth-dialog.tsx";
 
 type RecommendedFollowup = NonNullable<
-  Extract<PagedChatMessage, { role: "assistant" }>["recommendedFollowups"]
+  ChatFollowupsEvent["recommendedFollowups"]
 >[number];
+
+function isInputChatEvent(message: ChatMessage): message is ChatInputMessage {
+  return (
+    message.eventType === "input.prompt" ||
+    message.eventType === "input.rejected"
+  );
+}
+
+function asInputChatEvent(message: ChatMessage): ChatInputMessage | undefined {
+  return isInputChatEvent(message) ? message : undefined;
+}
+
+function visibleUserMessage(
+  inputMessage: ChatInputMessage | undefined,
+): UserMessageDocument | undefined {
+  return inputMessage?.userMessage;
+}
+
+function chatEventAttachments(message: ChatMessage) {
+  return isInputChatEvent(message) || message.eventType === "run.completed"
+    ? message.attachFiles
+    : undefined;
+}
+
+function chatEventError(message: ChatMessage): string | undefined {
+  if (
+    message.eventType === "input.rejected" ||
+    message.eventType === "output.error" ||
+    message.eventType === "run.failed" ||
+    message.eventType === "run.cancelled"
+  ) {
+    return message.error;
+  }
+  return undefined;
+}
 
 function ArtifactsButton({ thread }: { thread: ChatThreadSignals }) {
   return <ArtifactsButtonInner thread={thread} />;
 }
 
 function ArtifactsButtonInner({ thread }: { thread: ChatThreadSignals }) {
-  const inboxThreadId = useGet(currentArtifactInboxThreadId$);
+  const sidebarTarget = useGet(thread.sidebar.target$);
   const reloadArtifacts = useSet(thread.reloadArtifacts$);
-  const openInbox = useSet(openArtifactInbox$);
-  const open = inboxThreadId === thread.threadId;
+  const openThreadArtifacts = useOpenThreadArtifacts(thread);
+  const open = sidebarTarget?.type === "artifacts";
 
   return (
     <TooltipProvider delayDuration={300}>
@@ -351,7 +372,7 @@ function ArtifactsButtonInner({ thread }: { thread: ChatThreadSignals }) {
             type="button"
             onClick={() => {
               reloadArtifacts();
-              openInbox(thread.threadId);
+              openThreadArtifacts();
             }}
             className={cn(
               "inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md transition-colors duration-150",
@@ -380,8 +401,8 @@ export function AutomationMenuButton({
   ariaLabel?: string;
 }) {
   const reloadAutomations = useSet(thread.headerAutomations.reload$);
-  const openAutomationSidebar = useSet(openHeaderAutomationSidebar$);
-  const openThreadId = useGet(currentHeaderAutomationThreadId$);
+  const openAutomationSidebar = useSet(openThreadAutomations$);
+  const sidebarTarget = useGet(thread.sidebar.target$);
   const workflowAutomations$ = thread.headerAutomations.automations$;
   const workflowAutomationsLoadable = useLastLoadable(workflowAutomations$);
   const lastResolvedAutomations = useLastResolved(workflowAutomations$);
@@ -389,7 +410,7 @@ export function AutomationMenuButton({
     workflowAutomationsLoadable.state === "hasData"
       ? workflowAutomationsLoadable.data
       : (lastResolvedAutomations ?? []);
-  const open = openThreadId === thread.threadId;
+  const open = sidebarTarget?.type === "automations";
 
   // Show the opener when the thread has a workflow automation.
   // Goals live in the composer, so a goal-only thread has nothing here.
@@ -413,7 +434,7 @@ export function AutomationMenuButton({
             aria-pressed={open}
             onClick={() => {
               reloadAutomations();
-              openAutomationSidebar(thread.threadId);
+              openAutomationSidebar(thread);
             }}
           >
             <IconClock size={18} />
@@ -459,7 +480,7 @@ function ChatThreadHeader({ thread }: { thread: ChatThreadSignals }) {
         )}
       </div>
       <div className="hidden sm:flex items-center gap-0.5">
-        <AutomationMenuButton thread={thread} />
+        <AutomationMenuButton key={thread.threadId} thread={thread} />
         <ArtifactsButton thread={thread} />
       </div>
     </header>
@@ -787,22 +808,6 @@ function ChatThreadEmojiGrid({
   );
 }
 
-function formatBytes(bytes: number): string {
-  if (bytes < 1024) {
-    return `${bytes} B`;
-  }
-  const units = ["KB", "MB", "GB"] as const;
-  let value = bytes / 1024;
-  for (let i = 0; i < units.length; i++) {
-    const unit = units[i]!;
-    if (value < 1024 || i === units.length - 1) {
-      return `${value.toFixed(value >= 10 ? 0 : 1)} ${unit}`;
-    }
-    value = value / 1024;
-  }
-  return `${bytes} B`;
-}
-
 function formatChatTimestamp(value: string): string {
   return new Date(value).toLocaleString("en-US", {
     month: "short",
@@ -810,292 +815,6 @@ function formatChatTimestamp(value: string): string {
     hour: "numeric",
     minute: "2-digit",
   });
-}
-
-type ChatArtifactItem = {
-  runId: string;
-  file: ChatThreadArtifactFile;
-};
-
-type ArtifactPreviewKind = "image" | "video" | "audio" | "document" | "file";
-
-const ARTIFACT_INBOX_SECTIONS = [
-  { key: "all", label: "All" },
-  { key: "media", label: "Media" },
-  { key: "docs", label: "Docs" },
-  { key: "sites", label: "Sites" },
-] as const satisfies readonly {
-  key: ArtifactInboxSection;
-  label: string;
-}[];
-
-type ArtifactInboxSectionEntry = (typeof ARTIFACT_INBOX_SECTIONS)[number];
-
-function artifactItemKey(item: ChatArtifactItem): string {
-  return `${item.runId}:${item.file.id}:${item.file.url}`;
-}
-
-function getArtifactPreviewKind(
-  file: ChatThreadArtifactFile,
-): ArtifactPreviewKind {
-  const kind = classifyChatAttachment({
-    filename: file.filename,
-    url: file.url,
-    contentType: file.contentType,
-  });
-
-  if (kind === "image") {
-    return "image";
-  }
-  if (kind === "video") {
-    return "video";
-  }
-  if (kind === "audio") {
-    return "audio";
-  }
-  if (
-    kind === "markdown" ||
-    kind === "text" ||
-    kind === "json" ||
-    kind === "csv" ||
-    kind === "pdf" ||
-    kind === "html"
-  ) {
-    return "document";
-  }
-  return "file";
-}
-
-function flattenArtifactRuns(
-  runs: { runId: string; files: ChatThreadArtifactFile[] }[],
-): ChatArtifactItem[] {
-  return runs.flatMap((run) => {
-    return run.files.map((file) => {
-      return { runId: run.runId, file };
-    });
-  });
-}
-
-function artifactFileKindLabel(file: ChatThreadArtifactFile): string {
-  if (file.artifactKind === "presentation-html") {
-    return "Presentation";
-  }
-  const documentKind = getArtifactDocumentPreviewKind(file);
-  if (documentKind === "html") {
-    return "Hosted site";
-  }
-  if (documentKind === "pdf") {
-    return "PDF";
-  }
-  if (documentKind === "markdown") {
-    return "Markdown";
-  }
-  if (documentKind === "json") {
-    return "JSON";
-  }
-  if (documentKind === "csv") {
-    return "Data";
-  }
-  if (documentKind === "text") {
-    return "Text";
-  }
-
-  const previewKind = getArtifactPreviewKind(file);
-  switch (previewKind) {
-    case "image": {
-      return "Image";
-    }
-    case "video": {
-      return "Video";
-    }
-    case "audio": {
-      return "Audio";
-    }
-    case "document": {
-      return "Document";
-    }
-    case "file": {
-      return "File";
-    }
-  }
-}
-
-function artifactMatchesInboxSection(
-  item: ChatArtifactItem,
-  section: ArtifactInboxSection,
-): boolean {
-  if (section === "all") {
-    return true;
-  }
-
-  const documentKind = getArtifactDocumentPreviewKind(item.file);
-  if (section === "sites") {
-    return documentKind === "html";
-  }
-  if (section === "docs") {
-    return documentKind !== null && documentKind !== "html";
-  }
-
-  const previewKind = getArtifactPreviewKind(item.file);
-  return (
-    previewKind === "image" ||
-    previewKind === "video" ||
-    previewKind === "audio"
-  );
-}
-
-function artifactInboxSectionsForItems(
-  items: readonly ChatArtifactItem[],
-): readonly ArtifactInboxSectionEntry[] {
-  return ARTIFACT_INBOX_SECTIONS.filter((entry) => {
-    return (
-      entry.key === "all" ||
-      items.some((item) => {
-        return artifactMatchesInboxSection(item, entry.key);
-      })
-    );
-  });
-}
-
-function resolveVisibleArtifactInboxSection(
-  section: ArtifactInboxSection,
-  sections: readonly ArtifactInboxSectionEntry[],
-): ArtifactInboxSection {
-  return sections.some((entry) => {
-    return entry.key === section;
-  })
-    ? section
-    : "all";
-}
-
-function artifactMatchesSearch(item: ChatArtifactItem, query: string): boolean {
-  if (query.length === 0) {
-    return true;
-  }
-  const haystack =
-    `${item.file.filename} ${item.file.contentType}`.toLowerCase();
-  return haystack.includes(query);
-}
-
-function ArtifactFileIcon({
-  file,
-  size = "sm",
-}: {
-  file: ChatThreadArtifactFile;
-  size?: "sm" | "md";
-}) {
-  return (
-    <FilePreviewIcon
-      filename={file.filename}
-      contentType={file.contentType}
-      size={size}
-      testId="artifact-file-icon"
-    />
-  );
-}
-
-function ArtifactPreviewBadge({ file }: { file: ChatThreadArtifactFile }) {
-  const previewKind = getArtifactPreviewKind(file);
-  const publicUrl = publicAttachmentUrl(file.url);
-
-  if (previewKind === "image") {
-    return (
-      <img
-        src={r2ImageTransformUrl(publicUrl, { width: 96, height: 96 })}
-        alt=""
-        aria-hidden="true"
-        className="h-full w-full object-cover"
-      />
-    );
-  }
-
-  if (previewKind === "video") {
-    return (
-      <video
-        src={videoPosterFrameUrl(publicUrl)}
-        preload="metadata"
-        muted
-        playsInline
-        aria-hidden="true"
-        className="h-full w-full object-cover"
-        data-testid="artifact-video-preview-badge"
-      />
-    );
-  }
-
-  if (getArtifactDocumentPreviewKind(file) === "html") {
-    return (
-      <span
-        className="relative block h-full w-full overflow-hidden bg-background"
-        aria-hidden="true"
-        data-testid="artifact-html-preview-badge"
-      >
-        <iframe
-          src={publicUrl}
-          title={`${file.filename} artifact thumbnail`}
-          sandbox="allow-same-origin allow-scripts"
-          tabIndex={-1}
-          loading="lazy"
-          scrolling="no"
-          className="pointer-events-none absolute left-0 top-0 h-[400%] w-[400%] origin-top-left scale-[0.25] border-0 bg-background"
-        />
-      </span>
-    );
-  }
-
-  return <ArtifactFileIcon file={file} />;
-}
-
-type ArtifactTextPreviewKind = "markdown" | "text" | "json" | "csv";
-type ArtifactDocumentPreviewKind = ArtifactTextPreviewKind | "pdf" | "html";
-
-function getArtifactTextPreviewKind(
-  file: ChatThreadArtifactFile,
-): ArtifactTextPreviewKind | null {
-  const kind = classifyChatAttachment({
-    filename: file.filename,
-    url: file.url,
-    contentType: file.contentType,
-  });
-
-  if (
-    kind === "markdown" ||
-    kind === "text" ||
-    kind === "json" ||
-    kind === "csv"
-  ) {
-    return kind;
-  }
-
-  if (/\.log$/i.test(file.filename)) {
-    return "text";
-  }
-
-  return null;
-}
-
-function getArtifactDocumentPreviewKind(
-  file: ChatThreadArtifactFile,
-): ArtifactDocumentPreviewKind | null {
-  const textKind = getArtifactTextPreviewKind(file);
-  if (textKind) {
-    return textKind;
-  }
-
-  const contentType = file.contentType.toLowerCase();
-  const filename = file.filename.toLowerCase();
-  if (contentType === "application/pdf" || filename.endsWith(".pdf")) {
-    return "pdf";
-  }
-  if (
-    contentType === "text/html" ||
-    filename.endsWith(".html") ||
-    filename.endsWith(".htm")
-  ) {
-    return "html";
-  }
-
-  return null;
 }
 
 type ChatImagePreviewLinkProps = {
@@ -1129,9 +848,6 @@ const CHAT_INLINE_VIDEO_BODY_PREVIEW_CLASS = cn(
   CHAT_INLINE_MEDIA_PREVIEW_CHROME_CLASS,
   "bg-black",
 );
-
-const ARTIFACT_FULLSCREEN_SHELL_CLASSNAME =
-  "fixed inset-0 z-[100] flex min-h-0 flex-col bg-background pt-[var(--sat)] pb-[var(--sab)]";
 
 function ChatImagePreviewLink({
   alt,
@@ -1222,6 +938,8 @@ type ChatVideoPreviewButtonProps = {
   filename: string;
   onPreview: () => void;
   posterClassName: string;
+  previewImagePending?: boolean;
+  previewImageUrl?: string;
   url: string;
   videoClassName: string;
 };
@@ -1238,11 +956,24 @@ function ChatVideoPreviewButton({
   filename,
   onPreview,
   posterClassName,
+  previewImagePending,
+  previewImageUrl,
   url,
   videoClassName,
 }: ChatVideoPreviewButtonProps) {
   const videoUrl = publicAttachmentUrl(url);
   const posterVideoUrl = videoPosterFrameUrl(videoUrl);
+  const videoFallback = (
+    <video
+      src={posterVideoUrl}
+      preload="metadata"
+      muted
+      playsInline
+      aria-hidden="true"
+      className={cn("absolute inset-0", videoClassName)}
+      data-testid="chat-video-preview-fallback"
+    />
+  );
 
   return (
     <button
@@ -1259,14 +990,16 @@ function ChatVideoPreviewButton({
         data-testid="chat-video-preview-poster"
         className={cn("block bg-black", posterClassName)}
       />
-      <video
-        src={posterVideoUrl}
-        preload="metadata"
-        muted
-        playsInline
-        aria-hidden="true"
-        className={cn("absolute inset-0", videoClassName)}
-      />
+      {previewImageUrl ? (
+        <ArtifactThumbnailImage
+          src={previewImageUrl}
+          testId="chat-video-preview-thumbnail"
+          className={cn("absolute inset-0", videoClassName)}
+          fallback={videoFallback}
+        />
+      ) : previewImagePending ? null : (
+        videoFallback
+      )}
       <span className="absolute inset-0 flex items-center justify-center bg-black/10 transition-colors group-hover/video-preview:bg-black/35">
         <span className="flex h-9 w-9 items-center justify-center rounded-full bg-black/55 text-white shadow-lg transition-transform group-hover/video-preview:scale-105">
           <IconPlayerPlay size={17} stroke={1.8} />
@@ -1274,375 +1007,6 @@ function ChatVideoPreviewButton({
       </span>
     </button>
   );
-}
-
-function ChatArtifactInboxHeader({
-  count,
-  fullscreen,
-  searchOpen,
-  onClose,
-  onToggleSearch,
-  onToggleFullscreen,
-}: {
-  count: number | null;
-  fullscreen: boolean;
-  searchOpen: boolean;
-  onClose: () => void;
-  onToggleSearch: () => void;
-  onToggleFullscreen: () => void;
-}) {
-  return (
-    <div className="flex min-h-14 shrink-0 items-center gap-3 border-b border-border/60 px-4 py-2">
-      <div className="flex min-w-0 flex-1 items-center gap-2">
-        <h2 className="truncate text-sm font-medium text-foreground">
-          Artifacts
-        </h2>
-        {count !== null && (
-          <span className="shrink-0 rounded-full bg-muted px-2 py-0.5 text-xs font-medium text-muted-foreground">
-            {count}
-          </span>
-        )}
-      </div>
-      <TooltipProvider delayDuration={300}>
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <button
-              type="button"
-              onClick={onToggleSearch}
-              aria-label="Search artifacts"
-              aria-pressed={searchOpen}
-              className={cn(
-                "inline-flex h-8 w-8 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted/60 hover:text-foreground",
-                searchOpen && "bg-muted/60 text-foreground",
-              )}
-            >
-              <IconSearch size={16} />
-            </button>
-          </TooltipTrigger>
-          <TooltipContent side="bottom">Search artifacts</TooltipContent>
-        </Tooltip>
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <button
-              type="button"
-              onClick={onToggleFullscreen}
-              aria-label={fullscreen ? "Exit fullscreen" : "Enter fullscreen"}
-              data-testid="artifact-inbox-fullscreen-toggle"
-              className="hidden h-8 w-8 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted/60 hover:text-foreground xl:inline-flex"
-            >
-              {fullscreen ? (
-                <IconArrowsDiagonalMinimize2 size={16} />
-              ) : (
-                <IconArrowsDiagonal size={16} />
-              )}
-            </button>
-          </TooltipTrigger>
-          <TooltipContent side="bottom">
-            {fullscreen ? "Exit fullscreen" : "Enter fullscreen"}
-          </TooltipContent>
-        </Tooltip>
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <button
-              type="button"
-              onClick={onClose}
-              aria-label="Close artifacts"
-              className="inline-flex h-8 w-8 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted/60 hover:text-foreground"
-            >
-              <IconX size={16} />
-            </button>
-          </TooltipTrigger>
-          <TooltipContent side="bottom">Close artifacts</TooltipContent>
-        </Tooltip>
-      </TooltipProvider>
-    </div>
-  );
-}
-
-function ArtifactInboxTabs({
-  section,
-  sections,
-  setSection,
-}: {
-  section: ArtifactInboxSection;
-  sections: readonly ArtifactInboxSectionEntry[];
-  setSection: (value: ArtifactInboxSection) => void;
-}) {
-  return (
-    <div
-      className="grid rounded-lg bg-muted/70 p-1"
-      style={{
-        gridTemplateColumns: `repeat(${sections.length}, minmax(0, 1fr))`,
-      }}
-      role="tablist"
-      aria-label="Artifact sections"
-    >
-      {sections.map((entry) => {
-        const selected = section === entry.key;
-        return (
-          <button
-            key={entry.key}
-            type="button"
-            role="tab"
-            aria-selected={selected}
-            onClick={() => {
-              setSection(entry.key);
-            }}
-            className={cn(
-              "h-8 rounded-md px-2 text-xs font-medium transition-colors",
-              selected
-                ? "bg-background text-foreground shadow-sm"
-                : "text-muted-foreground hover:text-foreground",
-            )}
-          >
-            {entry.label}
-          </button>
-        );
-      })}
-    </div>
-  );
-}
-
-function ArtifactInboxSearch({
-  query,
-  setQuery,
-}: {
-  query: string;
-  setQuery: (value: string) => void;
-}) {
-  return (
-    <label className="relative block">
-      <span className="sr-only">Search artifacts</span>
-      <IconSearch
-        size={15}
-        className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground"
-      />
-      <input
-        value={query}
-        onChange={(event) => {
-          setQuery(event.currentTarget.value);
-        }}
-        className="h-9 w-full rounded-lg border border-border/70 bg-background pl-9 pr-3 text-sm text-foreground outline-none transition-colors placeholder:text-muted-foreground focus:border-ring"
-        placeholder="Search"
-        autoComplete="off"
-        autoFocus
-      />
-    </label>
-  );
-}
-
-function ArtifactInboxRow({
-  item,
-  onOpen,
-}: {
-  item: ChatArtifactItem;
-  onOpen: () => void;
-}) {
-  const { file } = item;
-
-  return (
-    <button
-      type="button"
-      onClick={onOpen}
-      aria-label={`Open artifact ${file.filename}`}
-      className="group flex w-full min-w-0 items-center gap-3 rounded-lg border border-border/60 bg-background/80 p-3 text-left shadow-sm transition-colors hover:border-foreground/20 hover:bg-muted/25 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
-    >
-      <span className="flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-lg bg-muted text-muted-foreground">
-        <ArtifactPreviewBadge file={file} />
-      </span>
-      <span className="min-w-0 flex-1">
-        <span
-          className="block truncate text-sm font-medium text-foreground"
-          title={file.filename}
-        >
-          {file.filename}
-        </span>
-        <span className="mt-1 flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground">
-          <span>{artifactFileKindLabel(file)}</span>
-          <span aria-hidden>·</span>
-          <span>{formatBytes(file.size)}</span>
-          <span aria-hidden>·</span>
-          <span>{formatChatTimestamp(file.createdAt)}</span>
-        </span>
-      </span>
-      <IconChevronRight
-        size={16}
-        className="shrink-0 text-muted-foreground transition-transform group-hover:translate-x-0.5 group-hover:text-foreground"
-      />
-    </button>
-  );
-}
-
-function ChatArtifactInboxBody({ thread }: { thread: ChatThreadSignals }) {
-  const loadable = useLastLoadable(thread.artifacts$);
-  const section = useGet(artifactInboxSection$);
-  const query = useGet(artifactInboxQuery$);
-  const searchOpen = useGet(artifactInboxSearchOpen$);
-  const setSection = useSet(setArtifactInboxSection$);
-  const setQuery = useSet(setArtifactInboxQuery$);
-  const openArtifact = useSet(openArtifactFromInbox$);
-
-  if (loadable.state === "loading") {
-    return (
-      <div className="flex flex-col gap-3">
-        {Array.from({ length: 5 }, (_, i) => {
-          return <Skeleton key={i} className="h-[74px] rounded-lg" />;
-        })}
-      </div>
-    );
-  }
-
-  if (loadable.state === "hasError") {
-    return (
-      <div className="rounded-lg border border-destructive/30 bg-destructive/5 p-4 text-sm text-destructive">
-        Failed to load artifacts
-      </div>
-    );
-  }
-
-  if (loadable.state !== "hasData") {
-    return null;
-  }
-
-  const items = flattenArtifactRuns(loadable.data);
-  if (items.length === 0) {
-    return (
-      <div className="flex h-full min-h-[360px] flex-col items-center justify-center gap-3 rounded-lg border border-dashed border-border/70 p-8 text-center">
-        <img
-          src={emptyArtifactImg}
-          alt=""
-          role="presentation"
-          loading="lazy"
-          className="h-24 w-24 object-contain opacity-80"
-        />
-        <p className="text-sm text-muted-foreground">
-          No uploaded files in this chat yet.
-        </p>
-      </div>
-    );
-  }
-
-  const normalizedQuery = query.trim().toLowerCase();
-  const sections = artifactInboxSectionsForItems(items);
-  const activeSection = resolveVisibleArtifactInboxSection(section, sections);
-  const visibleItems = items.filter((item) => {
-    return (
-      artifactMatchesInboxSection(item, activeSection) &&
-      artifactMatchesSearch(item, normalizedQuery)
-    );
-  });
-
-  return (
-    <div className="flex min-h-full flex-col gap-4">
-      <ArtifactInboxTabs
-        section={activeSection}
-        sections={sections}
-        setSection={setSection}
-      />
-      {(searchOpen || query.length > 0) && (
-        <ArtifactInboxSearch query={query} setQuery={setQuery} />
-      )}
-      {visibleItems.length === 0 ? (
-        <div className="flex flex-1 items-center justify-center rounded-lg border border-dashed border-border/70 p-8 text-center text-sm text-muted-foreground">
-          No artifacts match this view.
-        </div>
-      ) : (
-        <div className="flex flex-col gap-2">
-          {visibleItems.map((item) => {
-            return (
-              <ArtifactInboxRow
-                key={artifactItemKey(item)}
-                item={item}
-                onOpen={() => {
-                  openArtifact({
-                    threadId: thread.threadId,
-                    url: item.file.url,
-                  });
-                }}
-              />
-            );
-          })}
-        </div>
-      )}
-    </div>
-  );
-}
-
-function ChatArtifactInboxList({ thread }: { thread: ChatThreadSignals }) {
-  const loadable = useLastLoadable(thread.artifacts$);
-  const fullscreen = useGet(artifactFullscreen$);
-  const searchOpen = useGet(artifactInboxSearchOpen$);
-  const toggleFullscreen = useSet(toggleArtifactFullscreen$);
-  const toggleSearch = useSet(toggleArtifactInboxSearch$);
-  const close = useSet(closeArtifact$);
-  const count =
-    loadable.state === "hasData"
-      ? flattenArtifactRuns(loadable.data).length
-      : null;
-
-  const inbox = (
-    <div
-      className={cn(
-        fullscreen
-          ? ARTIFACT_FULLSCREEN_SHELL_CLASSNAME
-          : "flex h-full w-full min-h-0 flex-col border-l border-border/60 bg-background xl:border-l-0",
-        "animate-in fade-in duration-[180ms] ease",
-      )}
-      data-testid="artifact-inbox"
-    >
-      <ChatArtifactInboxHeader
-        count={count}
-        fullscreen={fullscreen}
-        searchOpen={searchOpen}
-        onToggleSearch={toggleSearch}
-        onToggleFullscreen={toggleFullscreen}
-        onClose={close}
-      />
-      <div className="min-h-0 flex-1 overflow-y-auto px-4 py-4">
-        <ChatArtifactInboxBody thread={thread} />
-      </div>
-    </div>
-  );
-  return fullscreen && typeof document !== "undefined"
-    ? createPortal(inbox, document.body)
-    : inbox;
-}
-
-function ChatArtifactInboxSlot({
-  artifactRef,
-  leftThread,
-  rightThread,
-}: {
-  artifactRef: ArtifactRef | null;
-  leftThread: ChatThreadSignals | null;
-  rightThread: ChatThreadSignals | null;
-}) {
-  const inboxThreadId = useGet(currentArtifactInboxThreadId$);
-  const backToInbox = useSet(backToArtifactInbox$);
-  const close = useSet(closeArtifact$);
-  const thread =
-    [leftThread, rightThread].find((candidate) => {
-      return candidate?.threadId === inboxThreadId;
-    }) ??
-    leftThread ??
-    rightThread;
-
-  if (artifactRef) {
-    return (
-      <ArtifactSidebar
-        artifactRef={artifactRef}
-        thread={thread ?? undefined}
-        onBack={inboxThreadId ? backToInbox : undefined}
-        onClose={close}
-      />
-    );
-  }
-
-  if (!thread || !inboxThreadId) {
-    return null;
-  }
-
-  return <ChatArtifactInboxList thread={thread} />;
 }
 
 function formatHeaderWorkflowAutomationRun(value: string | null): string {
@@ -1792,13 +1156,15 @@ function headerWorkflowAutomationRows(
 function HeaderWorkflowAutomationCard({
   automation,
   headerAutomations,
+  threadSidebar,
 }: {
   automation: HeaderWorkflowAutomationEntry;
   headerAutomations: HeaderAutomationSignals;
+  threadSidebar: ThreadSidebarSignals;
 }) {
   const pageSignal = useGet(pageSignal$);
-  const editingAutomationId = useGet(currentEditingHeaderWorkflowAutomationId$);
-  const setEditingAutomationId = useSet(setEditingHeaderWorkflowAutomationId$);
+  const editingAutomationId = useGet(threadSidebar.editingAutomationId$);
+  const setEditingAutomationId = useSet(threadSidebar.setEditingAutomationId$);
   const [runningLoadable, runNow] = useLoadableSet(headerAutomations.runNow$);
   const running = runningLoadable.state === "loading";
   const title =
@@ -1945,9 +1311,6 @@ function HeaderWorkflowAutomationEditDialog({
   );
 }
 
-const HEADER_AUTOMATION_FIELD_CLASS =
-  "h-9 w-full rounded-md border border-border/60 bg-background px-2.5 text-sm outline-none transition-colors focus:border-primary disabled:opacity-60";
-
 function localDateTimeInputValue(value: string): string {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) {
@@ -2051,13 +1414,12 @@ function HeaderScheduleAutomationEditForm({
       {schedule.type === "once" ? (
         <label className="flex flex-col gap-1 text-xs text-muted-foreground">
           Run at
-          <input
+          <Input
             name="atTime"
             aria-label="Run at"
             type="datetime-local"
             defaultValue={localDateTimeInputValue(schedule.atTime)}
             disabled={saving}
-            className={HEADER_AUTOMATION_FIELD_CLASS}
           />
           <span>Displays in {displayTimezone}</span>
         </label>
@@ -2065,12 +1427,11 @@ function HeaderScheduleAutomationEditForm({
       {schedule.type === "cron" ? (
         <label className="flex flex-col gap-1 text-xs text-muted-foreground">
           Cron expression
-          <input
+          <Input
             name="cronExpression"
             aria-label="Cron expression"
             defaultValue={schedule.cronExpression}
             disabled={saving}
-            className={HEADER_AUTOMATION_FIELD_CLASS}
           />
           <span>Runs in {schedule.timezone}</span>
         </label>
@@ -2170,11 +1531,29 @@ function HeaderGmailNewMessageAutomationEditForm({
         );
       }}
     >
+      {automation.eventConfig.threadId ? (
+        <div className="grid grid-cols-3 gap-2">
+          <Input
+            aria-label="Thread ID field"
+            value="Thread ID"
+            readOnly
+            disabled
+          />
+          <Input aria-label="Thread ID operator" value="Is" readOnly disabled />
+          <Input
+            name="threadId"
+            aria-label="Thread ID value"
+            defaultValue={automation.eventConfig.threadId}
+            disabled={saving}
+            required
+          />
+        </div>
+      ) : null}
       <div className="grid gap-3 sm:grid-cols-2">
         {GMAIL_TEXT_FIELDS.map(({ field, label }) => {
           return (
-            <div key={field} className="grid grid-cols-2 gap-2">
-              <input
+            <div key={field} className="grid grid-cols-3 gap-2">
+              <Input
                 name={`${field}Contains`}
                 aria-label={`${label} contains`}
                 defaultValue={gmailMatcherDefaultValue(
@@ -2184,9 +1563,19 @@ function HeaderGmailNewMessageAutomationEditForm({
                 )}
                 disabled={saving}
                 placeholder={`${label} contains`}
-                className={HEADER_AUTOMATION_FIELD_CLASS}
               />
-              <input
+              <Input
+                name={`${field}ContainsAny`}
+                aria-label={`${label} contains any`}
+                defaultValue={gmailMatcherDefaultValue(
+                  automation.eventConfig,
+                  field,
+                  "containsAny",
+                )}
+                disabled={saving}
+                placeholder={`${label} contains any`}
+              />
+              <Input
                 name={`${field}DoesNotContain`}
                 aria-label={`${label} does not contain`}
                 defaultValue={gmailMatcherDefaultValue(
@@ -2196,7 +1585,6 @@ function HeaderGmailNewMessageAutomationEditForm({
                 )}
                 disabled={saving}
                 placeholder={`${label} does not contain`}
-                className={HEADER_AUTOMATION_FIELD_CLASS}
               />
             </div>
           );
@@ -2264,14 +1652,13 @@ function HeaderGmailLabelAutomationEditForm({
     >
       <label className="flex flex-col gap-1 text-xs text-muted-foreground">
         Label name
-        <input
+        <Input
           name="labelName"
           aria-label="Label name"
           required
           defaultValue={automation.eventConfig.labelName}
           disabled={saving}
           placeholder="Support"
-          className={HEADER_AUTOMATION_FIELD_CLASS}
         />
       </label>
       <DialogFooter>
@@ -2291,11 +1678,16 @@ function HeaderGmailLabelAutomationEditForm({
     </form>
   );
 }
-function HeaderAutomationSidebar({ thread }: { thread: ChatThreadSignals }) {
+function HeaderAutomationSidebar({
+  thread,
+  onClose,
+}: {
+  thread: ChatThreadSignals;
+  onClose: () => void;
+}) {
   const workflowAutomations$ = thread.headerAutomations.automations$;
   const workflowAutomationsLoadable = useLastLoadable(workflowAutomations$);
   const lastResolvedAutomations = useLastResolved(workflowAutomations$);
-  const close = useSet(closeHeaderAutomationSidebar$);
   const workflowAutomations =
     workflowAutomationsLoadable.state === "hasData"
       ? workflowAutomationsLoadable.data
@@ -2306,7 +1698,7 @@ function HeaderAutomationSidebar({ thread }: { thread: ChatThreadSignals }) {
   return (
     <aside
       aria-label="Automations"
-      className="flex h-full w-full min-h-0 flex-col border-l border-border/60 bg-background xl:border-l-0 animate-in fade-in slide-in-from-right-2 duration-[180ms] ease"
+      className="flex h-full w-full min-h-0 flex-col border-l border-border/60 bg-background xl:border-l-0"
       data-testid="automation-sidebar"
     >
       <div className="flex min-h-14 shrink-0 items-center gap-3 border-b border-border/60 px-4 py-2">
@@ -2317,7 +1709,7 @@ function HeaderAutomationSidebar({ thread }: { thread: ChatThreadSignals }) {
         </div>
         <button
           type="button"
-          onClick={close}
+          onClick={onClose}
           aria-label="Close automations"
           className="inline-flex h-8 w-8 items-center justify-center rounded-md text-muted-foreground hover:bg-muted/60 hover:text-foreground"
         >
@@ -2343,6 +1735,7 @@ function HeaderAutomationSidebar({ thread }: { thread: ChatThreadSignals }) {
                   key={automation.id}
                   automation={automation}
                   headerAutomations={thread.headerAutomations}
+                  threadSidebar={thread.sidebar}
                 />
               );
             })}
@@ -2358,27 +1751,22 @@ function HeaderAutomationSidebar({ thread }: { thread: ChatThreadSignals }) {
 // ---------------------------------------------------------------------------
 
 function ChatThread({
+  isMain,
   thread,
-  onFocusFallbackRef,
 }: {
+  isMain?: boolean;
   thread: ChatThreadSignals;
-  onFocusFallbackRef?: (el: HTMLElement | null) => (() => void) | undefined;
 }) {
-  const setContainerRef = useSet(thread.setContainerRef$);
+  const setContainerRef = useSet(
+    isMain ? thread.setMainContainerRef$ : thread.setContainerRef$,
+  );
 
   return (
     <section
       aria-label="Chat thread"
       className="flex min-w-0 basis-0 flex-1 flex-col min-h-0 bg-transparent focus:outline-none"
       data-chat-thread-container-id={thread.threadId}
-      ref={(el) => {
-        const cleanupContainerRef = setContainerRef(el);
-        const cleanupFocusFallbackRef = onFocusFallbackRef?.(el);
-        return () => {
-          cleanupFocusFallbackRef?.();
-          cleanupContainerRef?.();
-        };
-      }}
+      ref={setContainerRef}
       tabIndex={-1}
     >
       <ChatThreadContent thread={thread} />
@@ -2386,260 +1774,69 @@ function ChatThread({
   );
 }
 
-// Drag the divider to resize the artifact preview against the chat thread.
-// The preview panel is the right-most child, so its right edge coincides with
-// the container's right edge; the width is the gap from the pointer to it.
-function startArtifactPanelResize(
-  event: ReactPointerEvent<HTMLDivElement>,
-  setWidth: (width: number) => void,
-  setResizing: (resizing: boolean) => void,
-): void {
-  const container = event.currentTarget.parentElement;
-  if (!container) {
-    return;
-  }
-  event.preventDefault();
-  const rect = container.getBoundingClientRect();
-  const maxWidth = Math.max(
-    ARTIFACT_PANEL_MIN_WIDTH,
-    rect.width - ARTIFACT_PANEL_MIN_THREAD_WIDTH,
-  );
-  setResizing(true);
-  document.body.style.cursor = "col-resize";
-  document.body.style.userSelect = "none";
-
-  function onMove(moveEvent: PointerEvent): void {
-    const next = Math.min(
-      Math.max(rect.right - moveEvent.clientX, ARTIFACT_PANEL_MIN_WIDTH),
-      maxWidth,
-    );
-    setWidth(next);
-  }
-  function onUp(): void {
-    window.removeEventListener("pointermove", onMove);
-    window.removeEventListener("pointerup", onUp);
-    document.body.style.removeProperty("cursor");
-    document.body.style.removeProperty("user-select");
-    setResizing(false);
-  }
-  window.addEventListener("pointermove", onMove);
-  window.addEventListener("pointerup", onUp);
-}
-
-// Resolve the artifact panel's CSS width and transition from the persisted
-// width and the live drag state. A null width means "never resized" -> keep
-// the responsive default; once resized, the stored px is clamped against the
-// live container so the chat thread always keeps ARTIFACT_PANEL_MIN_THREAD_WIDTH.
-// The transition is dropped mid-drag so the panel tracks the pointer 1:1.
-function artifactPanelLayout(
-  width: number | null,
-  resizing: boolean,
-): { style: CSSProperties; transition: string } {
-  const widthValue =
-    width === null
-      ? "min(760px, 48vw)"
-      : `clamp(${ARTIFACT_PANEL_MIN_WIDTH}px, ${width}px, calc(100% - ${ARTIFACT_PANEL_MIN_THREAD_WIDTH}px))`;
-  return {
-    style: { "--artifact-panel-width": widthValue } as CSSProperties,
-    transition: resizing
-      ? ""
-      : "transition-[flex-basis,width] duration-[240ms] ease",
-  };
-}
-
-function ArtifactResizeHandle() {
-  const setWidth = useSet(setArtifactPanelWidth$);
-  const setResizing = useSet(setArtifactPanelResizing$);
-  return (
-    <div
-      role="separator"
-      aria-orientation="vertical"
-      aria-label="Resize preview panel"
-      className="group relative hidden xl:flex w-1 shrink-0 cursor-col-resize items-stretch justify-center"
-      onPointerDown={(event) => {
-        startArtifactPanelResize(event, setWidth, setResizing);
-      }}
-    >
-      <span
-        aria-hidden="true"
-        className="pointer-events-none absolute inset-y-0 left-1/2 w-px -translate-x-1/2 bg-border/60 transition-colors group-hover:bg-border"
-      />
-    </div>
-  );
-}
-
 function ChatThreadArea({
   leftThread,
   rightThread,
-  activePresentationEditorUrl,
-  artifactFullscreen,
-  presentationEditor,
 }: {
   leftThread: ChatThreadSignals | null;
   rightThread: ChatThreadSignals | null;
-  activePresentationEditorUrl: string | null;
-  artifactFullscreen: boolean;
-  presentationEditor: ReactNode;
 }) {
   const setKeyboardScrollRoot = useSet(setChatKeyboardScrollRoot$);
-  const setMainThreadKeyboardFocusRef = useSet(
-    setMainChatThreadKeyboardFocusRef$,
-  );
 
   return (
     <div
       ref={setKeyboardScrollRoot}
       className="flex w-full flex-1 min-w-0 min-h-0 bg-transparent"
     >
-      {activePresentationEditorUrl ? (
-        !artifactFullscreen || typeof document === "undefined" ? (
-          presentationEditor
-        ) : null
-      ) : (
+      {leftThread && <ChatThread isMain thread={leftThread} />}
+      {rightThread && (
         <>
-          {leftThread && (
-            <ChatThread
-              key={leftThread.threadId}
-              thread={leftThread}
-              onFocusFallbackRef={setMainThreadKeyboardFocusRef}
-            />
-          )}
-          {rightThread && (
-            <>
-              <div className="w-px shrink-0 bg-border/60" aria-hidden="true" />
-              <ChatThread key={rightThread.threadId} thread={rightThread} />
-            </>
-          )}
+          <div className="w-px shrink-0 bg-border/60" aria-hidden="true" />
+          <ChatThread thread={rightThread} />
         </>
       )}
     </div>
   );
 }
 
-function useSelectedMailDraftSignals(
-  leftThread: ChatThreadSignals | null,
-  rightThread: ChatThreadSignals | null,
-): MailDraftSignals | undefined {
-  const selectedMailDraftId = useGet(currentMailDraftId$);
-  const leftMailDraftSignalsById = useGet(
-    leftThread?.mailDraftCardSignalsById$ ?? emptyMailDraftSignalsById$,
-  );
-  const rightMailDraftSignalsById = useGet(
-    rightThread?.mailDraftCardSignalsById$ ?? emptyMailDraftSignalsById$,
-  );
-  if (!selectedMailDraftId) {
-    return undefined;
-  }
-  return (
-    leftMailDraftSignalsById.get(selectedMailDraftId) ??
-    rightMailDraftSignalsById.get(selectedMailDraftId)
-  );
+function ThreadAutomationsSidebarSlot({
+  thread,
+}: {
+  thread: ChatThreadSignals;
+}) {
+  const close = useSet(thread.sidebar.close$);
+  return <HeaderAutomationSidebar thread={thread} onClose={close} />;
 }
 
 export function ZeroChatThreadPage() {
+  const activeThreadSidebar = useGet(activeThreadSidebar$);
   const leftThread = useGet(currentLeftThread$);
   const rightThread = useGet(currentRightThread$);
   const lightboxUrl = useGet(attachmentLightboxUrl$);
-  const artifactRef = useGet(currentArtifactRef$);
-  const artifactInboxThreadId = useGet(currentArtifactInboxThreadId$);
-  const automationPanelThreadId = useGet(currentHeaderAutomationThreadId$);
-  const automationPanelThread = [leftThread, rightThread].find((thread) => {
-    return thread?.threadId === automationPanelThreadId;
-  });
-  const presentationEditorUrl = useGet(currentPresentationEditorUrl$);
-  const selectedMailDraftSignals = useSelectedMailDraftSignals(
-    leftThread,
-    rightThread,
-  );
-  const closePresentationEditor = useSet(closePresentationEditor$);
-  const artifactFullscreen = useGet(artifactFullscreen$);
-  const activePresentationEditorUrl = presentationEditorUrl;
-  const artifactPanelOpen =
-    artifactRef !== null || artifactInboxThreadId !== null;
-  const automationPanelOpen = automationPanelThread !== undefined;
-  const mailDraftPanelOpen = selectedMailDraftSignals !== undefined;
-  const rightPanelOpen =
-    artifactPanelOpen || automationPanelOpen || mailDraftPanelOpen;
-  const { style: artifactPanelStyle, transition: artifactTransition } =
-    artifactPanelLayout(
-      useGet(artifactPanelWidth$),
-      useGet(artifactPanelResizing$),
-    );
-  const presentationEditor = activePresentationEditorUrl ? (
-    <div
-      data-testid="presentation-editor-container"
-      className={cn(
-        "flex min-w-0 overflow-hidden bg-background",
-        artifactFullscreen
-          ? ARTIFACT_FULLSCREEN_SHELL_CLASSNAME
-          : "h-full w-full flex-1",
-      )}
-    >
-      <PresentationHtmlEditor
-        url={activePresentationEditorUrl}
-        onClose={closePresentationEditor}
-      />
-    </div>
-  ) : null;
-
   return (
     <>
-      {/* Keep the wrapper structure stable across right panel open/close so the
-          thread area's React subtree (and its scroll/keyboard state) never
-          unmounts when the sidebar appears. Only the wrapper className and
-          the optional sidebar sibling change with state. Below xl: the
-          thread half hides so the sidebar fills the pane (no toggle, the
-          50/50 split needs each half ~640px to clear the composer's sm:
-          breakpoint, below which the model picker collapses to icons). */}
-      <div
-        className="flex flex-1 min-h-0 bg-transparent"
-        style={artifactPanelStyle}
+      <ChatThreadSidebarShell
+        animateEntry={activeThreadSidebar?.animateEntry ?? true}
+        open={activeThreadSidebar !== null}
+        sidebar={
+          activeThreadSidebar ? (
+            activeThreadSidebar.target.type === "automations" ? (
+              <ThreadAutomationsSidebarSlot
+                key={activeThreadSidebar.thread.threadId}
+                thread={activeThreadSidebar.thread}
+              />
+            ) : (
+              <ThreadSidebarSlot
+                thread={activeThreadSidebar.thread}
+                target={activeThreadSidebar.target}
+              />
+            )
+          ) : null
+        }
       >
-        <div
-          className={cn(
-            "min-w-0 min-h-0",
-            artifactTransition,
-            rightPanelOpen ? "hidden xl:flex flex-1 basis-0" : "flex flex-1",
-          )}
-        >
-          <ChatThreadArea
-            leftThread={leftThread}
-            rightThread={rightThread}
-            activePresentationEditorUrl={activePresentationEditorUrl}
-            artifactFullscreen={artifactFullscreen}
-            presentationEditor={presentationEditor}
-          />
-        </div>
-        {rightPanelOpen && <ArtifactResizeHandle />}
-        <div
-          className={cn(
-            "flex min-h-0 min-w-0 overflow-hidden",
-            artifactTransition,
-            rightPanelOpen
-              ? "flex-1 basis-0 xl:w-[var(--artifact-panel-width)] xl:flex-none xl:basis-[var(--artifact-panel-width)]"
-              : "pointer-events-none w-0 flex-none basis-0",
-          )}
-          aria-hidden={!rightPanelOpen}
-        >
-          {selectedMailDraftSignals ? (
-            <MailDraftSidebar signals={selectedMailDraftSignals} />
-          ) : automationPanelThread ? (
-            <HeaderAutomationSidebar thread={automationPanelThread} />
-          ) : artifactPanelOpen ? (
-            <ChatArtifactInboxSlot
-              artifactRef={artifactRef}
-              leftThread={leftThread}
-              rightThread={rightThread}
-            />
-          ) : null}
-        </div>
-      </div>
+        <ChatThreadArea leftThread={leftThread} rightThread={rightThread} />
+      </ChatThreadSidebarShell>
       {lightboxUrl && <AttachmentLightbox />}
-      {activePresentationEditorUrl &&
-        artifactFullscreen &&
-        typeof document !== "undefined" &&
-        presentationEditor &&
-        createPortal(presentationEditor, document.body)}
       <ChatConnectorActionConnectModal />
     </>
   );
@@ -2764,6 +1961,7 @@ function ChatThreadMessagesMain({ thread }: { thread: ChatThreadSignals }) {
       >
         <ChatThreadSessionError thread={thread} />
         <ChatThreadEmptyState thread={thread} />
+        <ChatHistoryBackfillSkeleton thread={thread} />
         <ChatThreadRenderedMessageGroups thread={thread} />
         <ChatThreadThinkingIndicator thread={thread} />
       </div>
@@ -2976,14 +2174,15 @@ function groupMessagesByRole(
 ): GroupedChatMessageGroup[] {
   const groups: GroupedChatMessageGroup[] = [];
   for (const message of messages) {
+    const role = chatEventCompatibilityRole(message.eventType);
     const last = groups[groups.length - 1];
-    if (last && last.role === message.role) {
+    if (last && last.role === role) {
       last.messages.push(message);
       continue;
     }
     groups.push({
       beginMessageId: message.id,
-      role: message.role,
+      role,
       messages: [message],
     });
   }
@@ -3008,18 +2207,25 @@ function groupMessagesForCompletedWorkDisplay(
 ): GroupedChatMessageGroup[] {
   const groups: GroupedChatMessageGroup[] = [];
   for (const message of messages) {
+    const role = chatEventCompatibilityRole(message.eventType);
     const forceStandalone = foldFinalMessageIds.has(message.id);
     const last = groups[groups.length - 1];
     const lastHasFoldFinal =
       last?.messages.some((candidate) => {
         return foldFinalMessageIds.has(candidate.id);
       }) ?? false;
+    const lastFoldFinal = last?.messages.find((candidate) => {
+      return foldFinalMessageIds.has(candidate.id);
+    });
+    const continuesFoldFinalRun =
+      lastFoldFinal?.runId !== undefined &&
+      lastFoldFinal.runId === message.runId;
 
     if (
       !forceStandalone &&
       last &&
-      last.role === message.role &&
-      !lastHasFoldFinal
+      last.role === role &&
+      (!lastHasFoldFinal || continuesFoldFinalRun)
     ) {
       last.messages.push(message);
       continue;
@@ -3027,7 +2233,7 @@ function groupMessagesForCompletedWorkDisplay(
 
     groups.push({
       beginMessageId: message.id,
-      role: message.role,
+      role,
       messages: [message],
     });
   }
@@ -3045,36 +2251,22 @@ function firstRunIdForMessages(
 function usageByRunIdFromGroups(
   groups: readonly GroupedChatMessageGroup[],
 ): Map<string, ChatMessageUsagePayload> {
-  const usageByRunId = new Map<string, ChatMessageUsagePayload>();
-  for (const group of groups) {
-    if (group.role !== "assistant" || group.usage === undefined) {
-      continue;
-    }
-    const runId = firstRunIdForMessages(group.messages);
-    if (runId !== undefined) {
-      setLatestUsageForRun(usageByRunId, runId, group.usage);
-    }
-  }
-  return usageByRunId;
-}
-
-function usageSettledAtMs(usage: ChatMessageUsagePayload): number {
-  const timestamp = Date.parse(usage.settledAt);
-  return Number.isNaN(timestamp) ? 0 : timestamp;
-}
-
-function setLatestUsageForRun(
-  usageByRunId: Map<string, ChatMessageUsagePayload>,
-  runId: string,
-  usage: ChatMessageUsagePayload,
-): void {
-  const existing = usageByRunId.get(runId);
-  if (
-    existing === undefined ||
-    usageSettledAtMs(usage) >= usageSettledAtMs(existing)
-  ) {
-    usageByRunId.set(runId, usage);
-  }
+  return foldLatestChatUsageByRunId(
+    groups.flatMap((group) => {
+      const runId = firstRunIdForMessages(group.messages);
+      return group.role === "assistant" &&
+        group.usage !== undefined &&
+        runId !== undefined
+        ? [
+            {
+              eventType: "usage.recorded" as const,
+              runId,
+              usage: group.usage,
+            },
+          ]
+        : [];
+    }),
+  );
 }
 
 function attachUsageToCompletedWorkGroups(
@@ -3093,21 +2285,24 @@ function attachUsageToCompletedWorkGroups(
 
 function isRenderableAssistantMessage(message: EnrichedChatMessage): boolean {
   return (
-    message.role === "assistant" &&
+    chatEventCompatibilityRole(message.eventType) === "assistant" &&
     (Boolean(message.content) ||
-      Boolean(message.error) ||
+      Boolean(chatEventError(message)) ||
       message.blocks.length > 0 ||
-      (message.runLifecycleEvent === undefined &&
-        Boolean(message.attachFiles?.length)))
+      Boolean(chatEventAttachments(message)?.length))
+  );
+}
+
+function isPrimaryAssistantResult(message: EnrichedChatMessage): boolean {
+  return (
+    (message.eventType !== "run.completed" || Boolean(message.content)) &&
+    isRenderableAssistantMessage(message)
   );
 }
 
 function isThinkingOnlyAssistantMessage(message: EnrichedChatMessage): boolean {
   return (
-    message.role === "assistant" &&
-    message.content === null &&
-    message.error === undefined &&
-    typeof message.thinking === "string" &&
+    message.eventType === "output.thinking" &&
     message.thinking.trim().length > 0
   );
 }
@@ -3115,20 +2310,7 @@ function isThinkingOnlyAssistantMessage(message: EnrichedChatMessage): boolean {
 function terminatedRunIdsForCompletedWork(
   messages: readonly EnrichedChatMessage[],
 ): Set<string> {
-  const terminatedRunIds = new Set<string>();
-  for (const message of messages) {
-    if (message.interruptsRunId !== undefined) {
-      terminatedRunIds.add(message.interruptsRunId);
-    }
-    if (
-      message.role === "assistant" &&
-      message.runId !== undefined &&
-      message.runLifecycleEvent !== undefined
-    ) {
-      terminatedRunIds.add(message.runId);
-    }
-  }
-  return terminatedRunIds;
+  return terminatedChatRunIds(messages);
 }
 
 function buildCompletedWorkFolding(
@@ -3156,10 +2338,7 @@ function buildCompletedWorkFolding(
     }
 
     const runMessages = messages.slice(index, endIndex);
-    if (
-      !terminatedRunIds.has(runId) ||
-      runMessages.some(isCancelledAssistantMessage)
-    ) {
+    if (!terminatedRunIds.has(runId) || runMessages.some(isCancelledRunEvent)) {
       visibleMessages.push(...runMessages);
       index = endIndex;
       continue;
@@ -3167,9 +2346,17 @@ function buildCompletedWorkFolding(
 
     let finalMessageIndex = -1;
     for (let offset = runMessages.length - 1; offset >= 0; offset--) {
-      if (isRenderableAssistantMessage(runMessages[offset]!)) {
+      if (isPrimaryAssistantResult(runMessages[offset]!)) {
         finalMessageIndex = offset;
         break;
+      }
+    }
+    if (finalMessageIndex < 0) {
+      for (let offset = runMessages.length - 1; offset >= 0; offset--) {
+        if (isRenderableAssistantMessage(runMessages[offset]!)) {
+          finalMessageIndex = offset;
+          break;
+        }
       }
     }
     const finalMessage =
@@ -3178,15 +2365,21 @@ function buildCompletedWorkFolding(
       finalMessageIndex > 0 ? runMessages.slice(0, finalMessageIndex) : [];
     const hiddenMessages = precedingMessages.filter((message) => {
       return (
-        message.role !== "user" && !isThinkingOnlyAssistantMessage(message)
+        chatEventCompatibilityRole(message.eventType) !== "user" &&
+        !isThinkingOnlyAssistantMessage(message)
       );
     });
     const trailingMessages =
       finalMessageIndex >= 0 ? runMessages.slice(finalMessageIndex + 1) : [];
     const trailingMessagesAreMarkers = trailingMessages.every((message) => {
       return (
-        message.role === "assistant" && !isRenderableAssistantMessage(message)
+        chatEventCompatibilityRole(message.eventType) === "assistant" &&
+        (!isRenderableAssistantMessage(message) ||
+          message.eventType === "run.completed")
       );
+    });
+    const visibleTrailingMessages = trailingMessages.filter((message) => {
+      return isRenderableAssistantMessage(message);
     });
     if (
       finalMessage !== undefined &&
@@ -3195,9 +2388,10 @@ function buildCompletedWorkFolding(
     ) {
       visibleMessages.push(
         ...precedingMessages.filter((message) => {
-          return message.role === "user";
+          return chatEventCompatibilityRole(message.eventType) === "user";
         }),
         finalMessage,
+        ...visibleTrailingMessages,
       );
       folds.push({
         key: `${runId}:${finalMessage.id}`,
@@ -3331,23 +2525,17 @@ function runGroupFoldMessages(fold: RunGroupFold): EnrichedChatMessage[] {
   });
 }
 
-function runGroupFoldSourceLabel(
-  fold: RunGroupFold,
-  structuredPromptEnabled: boolean,
-): string {
+function runGroupFoldSourceLabel(fold: RunGroupFold): string {
   const messages = runGroupFoldMessages(fold);
   const workflowLabel = runGroupFoldWorkflowLabel(fold);
   if (workflowLabel) {
     return workflowLabel;
   }
   for (const message of messages) {
-    if (message.role !== "user") {
+    if (!isInputChatEvent(message)) {
       continue;
     }
-    const content =
-      structuredPromptEnabled && message.structuredPrompt
-        ? messageDocumentToDisplayText(message.structuredPrompt)
-        : message.content;
+    const content = messageDocumentToDisplayText(message.userMessage);
     if (content?.trim()) {
       return normalizedInlineLabel(content);
     }
@@ -3382,16 +2570,18 @@ function runGroupFoldGoalLabel(fold: RunGroupFold): string {
 function goalUserMessageBrief(message: EnrichedChatMessage): string | null {
   return (
     message.goalSnapshot?.objectiveBrief?.trim() ||
-    message.content?.trim() ||
+    (isInputChatEvent(message)
+      ? messageDocumentToDisplayText(message.userMessage)?.trim()
+      : null) ||
     null
   );
 }
 
 function isGoalUserMessage(
   message: EnrichedChatMessage,
-): message is EnrichedChatMessage & { role: "user" } {
+): message is EnrichedChatMessage & ChatInputMessage {
   return (
-    message.role === "user" &&
+    isInputChatEvent(message) &&
     message.isGoalRun === true &&
     !hasWorkflowMessageMetadata(message) &&
     goalUserMessageBrief(message) !== null
@@ -3435,17 +2625,14 @@ function verboseDurationLabelForRunGroupFold(
   return parts.join(" ");
 }
 
-function runGroupFoldLabel(
-  fold: RunGroupFold,
-  structuredPromptEnabled: boolean,
-): string {
+function runGroupFoldLabel(fold: RunGroupFold): string {
   if (isGoalRunGroupFold(fold)) {
     const duration = verboseDurationLabelForRunGroupFold(fold);
     const label = runGroupFoldGoalLabel(fold);
     return duration ? `${duration} for ${label}` : `Goal for ${label}`;
   }
   const runLabel = fold.hiddenRunCount === 1 ? "run" : "runs";
-  const sourceLabel = runGroupFoldSourceLabel(fold, structuredPromptEnabled);
+  const sourceLabel = runGroupFoldSourceLabel(fold);
   return `${fold.hiddenRunCount} ${runLabel} for ${sourceLabel}`;
 }
 
@@ -3457,11 +2644,7 @@ function RunGroupFoldRow({
   embedded?: boolean;
 }) {
   const { fold, expanded, onToggle } = control;
-  const featureSwitches = useGet(featureSwitch$);
-  const label = runGroupFoldLabel(
-    fold,
-    featureSwitches[FeatureSwitchKey.StructuredPrompt] ?? false,
-  );
+  const label = runGroupFoldLabel(fold);
   const isGoal = isGoalRunGroupFold(fold);
   const Icon = isGoal ? IconTarget : IconPackage;
   return (
@@ -3554,55 +2737,62 @@ function ChatThreadMessagesPane({ thread }: { thread: ChatThreadSignals }) {
         onScroll={handleScroll}
         className="absolute inset-0 overflow-y-auto focus:outline-none [overflow-anchor:none] [scrollbar-gutter:stable]"
       >
-        <ChatThreadMessagesMain thread={thread} />
+        <ChatThreadMessagesMain
+          key={`messages:${thread.threadId}`}
+          thread={thread}
+        />
       </div>
-      <ChatThreadSkeletonOverlay thread={thread} />
-      <ScrollToBottomButton thread={thread} />
-    </div>
-  );
-}
-
-function ChatHistoryBackfillProgress({
-  thread,
-}: {
-  thread: ChatThreadSignals;
-}) {
-  const featureSwitches = useGet(featureSwitch$);
-  const enabled =
-    featureSwitches[FeatureSwitchKey.ChatHistoryBackfillProgress] ?? false;
-  const progress = useLastResolved(thread.historyBackfillProgress$);
-  if (!enabled || progress === null || progress === undefined) {
-    return null;
-  }
-  const percent = Math.min(100, Math.max(0, progress * 100));
-  return (
-    <div
-      data-history-backfill-progress
-      role="progressbar"
-      aria-label="Loading message history"
-      aria-valuemin={0}
-      aria-valuemax={100}
-      aria-valuenow={Math.round(percent)}
-      className="h-0.5 w-full shrink-0 overflow-hidden"
-    >
-      <div
-        className="h-full bg-primary/60 transition-[width] duration-500 ease-out"
-        style={{ width: `${percent}%` }}
+      <ChatThreadSkeletonOverlay
+        key={`skeleton:${thread.threadId}`}
+        thread={thread}
+      />
+      <ScrollToBottomButton
+        key={`scroll-button:${thread.threadId}`}
+        thread={thread}
       />
     </div>
   );
 }
 
+function ChatHistoryBackfillSkeleton({
+  thread,
+}: {
+  thread: ChatThreadSignals;
+}) {
+  const progress = useLastResolved(thread.historyBackfillProgress$);
+  if (progress === null || progress === undefined) {
+    return null;
+  }
+  return (
+    <div
+      data-history-backfill-skeleton
+      role="status"
+      aria-label="Loading earlier messages"
+      className="flex flex-col gap-6"
+    >
+      <ChatMessageSkeletonPair />
+    </div>
+  );
+}
+
 function ChatThreadContent({ thread }: { thread: ChatThreadSignals }) {
+  const connectorReadState = useComposerConnectorReadState(
+    thread.composerConnectors,
+  );
   return (
     <>
       <ChatThreadHeader thread={thread} />
-      <ChatHistoryBackfillProgress thread={thread} />
 
       <div className="relative min-h-0 flex-1">
         <div className="flex h-full min-w-0 flex-col">
           <ChatThreadMessagesPane thread={thread} />
-          <ChatThreadComposer thread={thread} />
+          {/* Command loadables are hook-owned, so keep their identity boundary
+              narrower than the persistent thread and message owners. */}
+          <ChatThreadComposer
+            key={thread.threadId}
+            thread={thread}
+            connectorReadState={connectorReadState}
+          />
         </div>
       </div>
 
@@ -3702,8 +2892,9 @@ function RecommendedFollowupList({
   thread: ChatThreadSignals;
   source: RecommendedFollowupSource;
 }) {
-  const sendMessage = useSet(thread.sendMessage$);
-  const rootSignal = useGet(rootSignal$);
+  const selectOrAppendComposerText = useSet(
+    thread.workflowComposer.selectOrAppendText$,
+  );
   const handleRecommendedFollowupsRef = (element: HTMLDivElement | null) => {
     reportRecommendedFollowupsShown(element, source);
   };
@@ -3718,16 +2909,7 @@ function RecommendedFollowupList({
       followupCount: source.followups.length,
       followup,
     });
-    detach(
-      sendMessage(
-        followup.prompt,
-        {
-          includeDraftAttachments: false,
-        },
-        rootSignal,
-      ),
-      Reason.DomCallback,
-    );
+    selectOrAppendComposerText(followup.prompt);
   };
 
   return (
@@ -4022,11 +3204,13 @@ function useChatComposerModel(
 function useChatThreadComposerSendState({
   thread,
   computerUseHostIdForSend,
-  clearComputerUseHostOverride,
+  cloudBrowserEnabledForSend,
+  clearComputerAccessOverride,
 }: {
   thread: ChatThreadSignals;
   computerUseHostIdForSend: string | null | undefined;
-  clearComputerUseHostOverride: () => void;
+  cloudBrowserEnabledForSend: boolean | undefined;
+  clearComputerAccessOverride: () => void;
 }) {
   const [sendLoadable, send] = useLoadableSet(thread.sendMessage$);
   const [queueLoadable, queueMessage] = useLoadableSet(thread.queueMessage$);
@@ -4045,13 +3229,22 @@ function useChatThreadComposerSendState({
           computerUseHostIdForSend === undefined
             ? {}
             : { computerUseHostId: computerUseHostIdForSend };
+        const cloudBrowserPatch =
+          cloudBrowserEnabledForSend === undefined
+            ? {}
+            : { cloudBrowserEnabled: cloudBrowserEnabledForSend };
         const sent = await send(
           text,
-          { ...computerUsePatch, generationTemplate, editorDocument },
+          {
+            ...computerUsePatch,
+            ...cloudBrowserPatch,
+            generationTemplate,
+            editorDocument,
+          },
           rootSignal,
         );
         if (sent) {
-          clearComputerUseHostOverride();
+          clearComputerAccessOverride();
         }
       })(),
       Reason.DomCallback,
@@ -4066,13 +3259,19 @@ function useChatThreadComposerSendState({
     detach(
       (async () => {
         const computerUseHostId = computerUseHostIdForSend;
+        const cloudBrowserEnabled = cloudBrowserEnabledForSend;
         const queued = await queueMessage(
           text,
-          { computerUseHostId, generationTemplate, editorDocument },
+          {
+            computerUseHostId,
+            cloudBrowserEnabled,
+            generationTemplate,
+            editorDocument,
+          },
           rootSignal,
         );
         if (queued) {
-          clearComputerUseHostOverride();
+          clearComputerAccessOverride();
         }
       })(),
       Reason.DomCallback,
@@ -4103,7 +3302,11 @@ function useChatThreadComputerUse(
       ? computerUseHostsLoadable.data
       : [];
   const storedComputerUseHostId = useGet(thread.computerUseHostId$);
+  const cloudBrowserEnabled = useGet(thread.cloudBrowserEnabled$);
   const computerUseHostIdExplicit = useGet(thread.computerUseHostIdExplicit$);
+  const featureSwitches = useGet(featureSwitch$);
+  const cloudBrowserAvailable =
+    featureSwitches[FeatureSwitchKey.ZeroBrowser] ?? false;
   const selectedComputerUseHostId =
     computerUseHostsLoadable.state === "hasData" || computerUseHosts.length > 0
       ? resolveSelectedComputerUseHostId(
@@ -4116,20 +3319,28 @@ function useChatThreadComputerUse(
     selectedComputerUseHostId,
   );
   const setComputerUseHostId = useSet(thread.setComputerUseHostId$);
-  const clearComputerUseHostOverride = useSet(
+  const setCloudBrowserEnabled = useSet(thread.setCloudBrowserEnabled$);
+  const clearComputerAccessOverride = useSet(
     thread.clearComputerUseHostIdOverride$,
   );
   const computerUseHostIdForSend = computerUseHostIdExplicit
     ? selectedComputerUseHostId
     : undefined;
+  const cloudBrowserEnabledForSend = computerUseHostIdExplicit
+    ? cloudBrowserEnabled
+    : undefined;
   const handleComputerUseHostChange = (hostId: string | null) => {
     detach(setComputerUseHostId(hostId, pageSignal), Reason.DomCallback);
+  };
+  const handleCloudBrowserChange = (enabled: boolean) => {
+    detach(setCloudBrowserEnabled(enabled, pageSignal), Reason.DomCallback);
   };
 
   return {
     selectedComputerUseHostId,
     computerUseHostIdForSend,
-    clearComputerUseHostOverride,
+    cloudBrowserEnabledForSend,
+    clearComputerAccessOverride,
     computerUse: {
       hosts: visibleHosts,
       loading:
@@ -4137,6 +3348,9 @@ function useChatThreadComputerUse(
         computerUseHosts.length === 0,
       selectedHostId: selectedComputerUseHostId,
       onChange: handleComputerUseHostChange,
+      cloudBrowserAvailable,
+      cloudBrowserEnabled: cloudBrowserAvailable && cloudBrowserEnabled,
+      onCloudBrowserChange: handleCloudBrowserChange,
       downloadUrl: ZERO_DESKTOP_DOWNLOAD_URL,
     },
   };
@@ -4221,7 +3435,13 @@ function useQueuedMessageItems(thread: ChatThreadSignals) {
   );
 }
 
-function ChatThreadComposer({ thread }: { thread: ChatThreadSignals }) {
+function ChatThreadComposer({
+  thread,
+  connectorReadState,
+}: {
+  thread: ChatThreadSignals;
+  connectorReadState: ComposerConnectorReadState;
+}) {
   const queuedMessageItems = useQueuedMessageItems(thread);
   const hasMessagesResolved = useLastResolved(thread.hasMessages$);
   const hasMessages = hasMessagesResolved ?? false;
@@ -4233,7 +3453,8 @@ function ChatThreadComposer({ thread }: { thread: ChatThreadSignals }) {
   const pageSignal = useGet(pageSignal$);
   const {
     computerUseHostIdForSend,
-    clearComputerUseHostOverride,
+    cloudBrowserEnabledForSend,
+    clearComputerAccessOverride,
     computerUse,
   } = useChatThreadComputerUse(thread, pageSignal);
 
@@ -4252,7 +3473,8 @@ function ChatThreadComposer({ thread }: { thread: ChatThreadSignals }) {
     useChatThreadComposerSendState({
       thread,
       computerUseHostIdForSend,
-      clearComputerUseHostOverride,
+      cloudBrowserEnabledForSend,
+      clearComputerAccessOverride,
     });
   const skeletonVisible = hasMessagesResolved === undefined;
   const composerSending = sendButtonStatus === "sending";
@@ -4304,7 +3526,7 @@ function ChatThreadComposer({ thread }: { thread: ChatThreadSignals }) {
     activeGoal,
     onCancelActiveGoal,
   };
-  const composer = useZeroChatComposer(composerOptions);
+  const composer = useZeroChatComposer(composerOptions, connectorReadState);
 
   return (
     <footer
@@ -4332,34 +3554,45 @@ function ChatThreadComposer({ thread }: { thread: ChatThreadSignals }) {
 // Skeleton placeholder while session loads
 // ---------------------------------------------------------------------------
 
-function ChatSkeleton() {
+function ChatMessageSkeletonPair({ compact = false }: { compact?: boolean }) {
   return (
     <>
       {/* User bubble skeleton */}
-      <div className="flex justify-end">
-        <Skeleton className="h-10 w-[60%] rounded-xl" />
+      <div
+        data-chat-message-skeleton="user"
+        aria-hidden
+        className="flex justify-end"
+      >
+        <Skeleton
+          className={cn("h-10 rounded-xl", compact ? "w-[45%]" : "w-[60%]")}
+        />
       </div>
       {/* Assistant bubble skeleton */}
-      <div className="flex flex-col gap-2 @[900px]:grid @[900px]:grid-cols-[36px_minmax(0,1fr)] @[900px]:gap-2.5 @[900px]:-ml-[46px] @[900px]:items-start">
+      <div
+        data-chat-message-skeleton="assistant"
+        aria-hidden
+        className="flex flex-col gap-2 @[900px]:grid @[900px]:grid-cols-[36px_minmax(0,1fr)] @[900px]:gap-2.5 @[900px]:-ml-[46px] @[900px]:items-start"
+      >
         <Skeleton className="h-7 w-7 @[900px]:h-9 @[900px]:w-9 shrink-0 @[900px]:mt-0.5 rounded-xl" />
         <div className="flex flex-col gap-2">
-          <Skeleton className="h-4 w-[90%] rounded-lg" />
-          <Skeleton className="h-4 w-[75%] rounded-lg" />
-          <Skeleton className="h-4 w-[40%] rounded-lg" />
+          <Skeleton
+            className={cn("h-4 rounded-lg", compact ? "w-[85%]" : "w-[90%]")}
+          />
+          <Skeleton
+            className={cn("h-4 rounded-lg", compact ? "w-[60%]" : "w-[75%]")}
+          />
+          {!compact && <Skeleton className="h-4 w-[40%] rounded-lg" />}
         </div>
       </div>
-      {/* User bubble skeleton */}
-      <div className="flex justify-end">
-        <Skeleton className="h-10 w-[45%] rounded-xl" />
-      </div>
-      {/* Assistant bubble skeleton */}
-      <div className="flex flex-col gap-2 @[900px]:grid @[900px]:grid-cols-[36px_minmax(0,1fr)] @[900px]:gap-2.5 @[900px]:-ml-[46px] @[900px]:items-start">
-        <Skeleton className="h-7 w-7 @[900px]:h-9 @[900px]:w-9 shrink-0 @[900px]:mt-0.5 rounded-xl" />
-        <div className="flex flex-col gap-2">
-          <Skeleton className="h-4 w-[85%] rounded-lg" />
-          <Skeleton className="h-4 w-[60%] rounded-lg" />
-        </div>
-      </div>
+    </>
+  );
+}
+
+function ChatSkeleton() {
+  return (
+    <>
+      <ChatMessageSkeletonPair />
+      <ChatMessageSkeletonPair compact />
     </>
   );
 }
@@ -4778,53 +4011,84 @@ function BodyRenderBlockView({
     case "mail-draft": {
       return <MailDraftCard signals={block.signals} />;
     }
+    case "browser-session": {
+      return <BrowserSessionCard signals={block.signals} />;
+    }
     case "artifact": {
-      const { signals } = block;
-      if (signals.kind === "image") {
-        return (
-          <ChatImagePreviewLink
-            alt={signals.filename}
-            ariaLabel={`Preview ${signals.filename}`}
-            imageClassName="block h-full w-full object-contain"
-            linkClassName={CHAT_INLINE_IMAGE_PREVIEW_CLASS}
-            onPreview={() => {
-              openLightbox(signals.url);
-            }}
-            placeholderClassName="h-full w-full"
-            url={signals.url}
-          />
-        );
-      }
-      if (signals.kind === "video") {
-        return (
-          <ChatVideoPreviewButton
-            ariaLabel={`Preview ${signals.filename}`}
-            buttonClassName={CHAT_INLINE_VIDEO_BODY_PREVIEW_CLASS}
-            filename={signals.filename}
-            onPreview={() => {
-              openVideoLightbox({
-                url: signals.url,
-                filename: signals.filename,
-              });
-            }}
-            posterClassName="h-full w-full"
-            url={signals.url}
-            videoClassName="h-full w-full object-contain"
-          />
-        );
-      }
       return (
-        <AttachmentPreview
-          attachment={{
-            filename: signals.filename,
-            url: signals.url,
-            contentType: contentTypeForBodyPreviewKind(signals.kind),
-          }}
-          text$={signals.text$}
+        <ArtifactBodyRenderBlockView
+          signals={block.signals}
+          openLightbox={openLightbox}
+          openVideoLightbox={openVideoLightbox}
         />
       );
     }
   }
+}
+
+function ArtifactBodyRenderBlockView({
+  signals,
+  openLightbox,
+  openVideoLightbox,
+}: {
+  signals: ArtifactSignals;
+  openLightbox: (url: string) => void;
+  openVideoLightbox: (value: { url: string; filename: string }) => void;
+}) {
+  const previewImageLoadable = useLastLoadable(signals.previewImageUrl$);
+  const previewImagePending = previewImageLoadable.state === "loading";
+  const previewImageUrl =
+    previewImageLoadable.state === "hasData"
+      ? previewImageLoadable.data
+      : undefined;
+
+  if (signals.kind === "image") {
+    return (
+      <ChatImagePreviewLink
+        alt={signals.filename}
+        ariaLabel={`Preview ${signals.filename}`}
+        imageClassName="block h-full w-full object-contain"
+        linkClassName={CHAT_INLINE_IMAGE_PREVIEW_CLASS}
+        onPreview={() => {
+          openLightbox(signals.url);
+        }}
+        placeholderClassName="h-full w-full"
+        url={signals.url}
+      />
+    );
+  }
+  if (signals.kind === "video") {
+    return (
+      <ChatVideoPreviewButton
+        ariaLabel={`Preview ${signals.filename}`}
+        buttonClassName={CHAT_INLINE_VIDEO_BODY_PREVIEW_CLASS}
+        filename={signals.filename}
+        onPreview={() => {
+          openVideoLightbox({
+            url: signals.url,
+            filename: signals.filename,
+          });
+        }}
+        posterClassName="h-full w-full"
+        previewImagePending={previewImagePending}
+        previewImageUrl={previewImageUrl}
+        url={signals.url}
+        videoClassName="h-full w-full object-contain"
+      />
+    );
+  }
+  return (
+    <AttachmentPreview
+      attachment={{
+        filename: signals.filename,
+        url: signals.url,
+        contentType: contentTypeForBodyPreviewKind(signals.kind),
+        ...(previewImagePending ? { previewImagePending: true } : {}),
+        ...(previewImageUrl ? { previewImageUrl } : {}),
+      }}
+      text$={signals.text$}
+    />
+  );
 }
 
 function ConnectorActionCard({ signals }: { signals: ConnectorSignals }) {
@@ -4842,46 +4106,18 @@ function ConnectorActionCard({ signals }: { signals: ConnectorSignals }) {
   if (!available || !catalogItem) {
     return null;
   }
-  const reconnectRequired =
-    connectorCurrentConnectionStatus(catalogItem) === "reconnect-required";
-  const actionLabel = complete
-    ? "Authorized"
-    : reconnectRequired
-      ? "Reconnect"
-      : connected
-        ? "Authorize"
-        : "Connect";
 
   return (
-    <div
-      data-testid="connector-action-card"
-      className="flex min-h-[88px] w-full flex-col gap-3 rounded-lg border border-border/70 bg-background/85 p-3 text-left shadow-sm sm:flex-row sm:items-center sm:justify-between"
-    >
-      <div className="flex min-w-0 items-center gap-3">
-        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-border/70 bg-muted/40">
-          <ConnectorIcon icon={catalogItem.icon} size={22} />
-        </div>
-        <div className="min-w-0">
-          <div className="truncate text-[0.9375rem] font-medium text-foreground">
-            {catalogItem.label}
-          </div>
-          <div className="mt-0.5 line-clamp-2 text-sm leading-5 text-muted-foreground">
-            {catalogItem.description}
-          </div>
-        </div>
-      </div>
-      <button
-        type="button"
-        disabled={complete || loading}
-        onClick={() => {
-          detach(activate(pageSignal), Reason.DomCallback);
-        }}
-        className="inline-flex h-9 w-full shrink-0 items-center justify-center gap-2 rounded-lg border border-border bg-background px-3 text-[0.9375rem] font-medium text-foreground transition-colors hover:bg-accent disabled:cursor-not-allowed disabled:opacity-60 sm:w-auto"
-      >
-        {loading && <IconLoader2 size={15} className="animate-spin" />}
-        {actionLabel}
-      </button>
-    </div>
+    <ConnectorCard
+      variant="action"
+      connector={catalogItem}
+      connected={connected}
+      complete={complete}
+      busy={loading}
+      onActivate={() => {
+        detach(activate(pageSignal), Reason.DomCallback);
+      }}
+    />
   );
 }
 
@@ -4960,16 +4196,6 @@ function ComputerUseAuthorizationCard({
 }
 
 function PlanUpgradeCard({ signals }: { signals: PlanUpgradeSignals }) {
-  const featureSwitches = useGet(featureSwitch$);
-  if (!featureSwitches[FeatureSwitchKey.PlanUpgradeGuidance]) {
-    return (
-      <Markdown
-        source={signals.fallbackMarkdown}
-        style={{ fontSize: "inherit", lineHeight: "inherit" }}
-      />
-    );
-  }
-
   return (
     <div
       data-testid="plan-upgrade-card"
@@ -5080,7 +4306,7 @@ function PermissionActionButton({
       type="button"
       disabled={saving}
       onClick={onClick}
-      className="inline-flex h-9 w-full shrink-0 items-center justify-center gap-2 rounded-lg border border-border bg-background px-3 text-[0.9375rem] font-medium text-foreground transition-colors hover:bg-accent sm:w-auto"
+      className="inline-flex h-9 w-full min-w-0 flex-1 items-center justify-center gap-2 rounded-lg border border-border bg-background px-3 text-[0.9375rem] font-medium text-foreground transition-colors hover:bg-accent sm:w-auto sm:flex-none"
     >
       {saving && <IconLoader2 size={15} className="animate-spin" />}
       {saving ? "Saving..." : "Confirm"}
@@ -5114,7 +4340,7 @@ function PermissionActionInlineStatus({
   switch (status.kind) {
     case "loading": {
       return (
-        <div className="mt-1 flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
+        <div className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
           <IconLoader2 size={13} className="animate-spin" />
           <span>Checking permission status...</span>
         </div>
@@ -5157,6 +4383,26 @@ function PermissionActionInlineStatus({
     case "saved":
     case "already-applied": {
       return null;
+    }
+  }
+}
+
+function permissionActionHasControls(
+  status: PermissionActionCardStatus,
+): boolean {
+  switch (status.kind) {
+    case "loading":
+    case "save-error":
+    case "ready":
+    case "saving":
+    case "saved":
+    case "already-applied": {
+      return true;
+    }
+    case "load-error":
+    case "missing-target":
+    case "missing-permission": {
+      return false;
     }
   }
 }
@@ -5458,7 +4704,10 @@ function PermissionActionCardContent({
     ? permissionGrantExpiryText(expiresAt)
     : null;
   const expiryText =
-    rawExpiryText === "Expires in less than 1 hour" ? null : rawExpiryText;
+    rawExpiryText === "Expires in less than 1 hour" ||
+    rawExpiryText === "Expires in 1 hour"
+      ? null
+      : rawExpiryText;
   const showDurationSelect =
     expirationAvailable &&
     (status.kind === "ready" ||
@@ -5480,7 +4729,9 @@ function PermissionActionCardContent({
           <div className="mt-0.5 line-clamp-2 text-sm leading-5 text-muted-foreground">
             {actionLabel} {permissionName}
           </div>
-          <PermissionActionInlineStatus status={status} />
+          {status.kind !== "loading" && (
+            <PermissionActionInlineStatus status={status} />
+          )}
           {expiryText && (
             <div className="mt-0.5 text-xs font-medium text-amber-700 dark:text-amber-400">
               {expiryText}
@@ -5488,21 +4739,29 @@ function PermissionActionCardContent({
           )}
         </div>
       </div>
-      <div className="flex w-full shrink-0 flex-col gap-2 sm:w-auto sm:flex-row sm:items-center">
-        {showDurationSelect && (
-          <PermissionGrantDurationSelect
-            value={expiresIn}
-            onValueChange={onExpiresInChange}
-            disabled={status.kind === "saving"}
-            ariaLabel="Permission duration"
+      {permissionActionHasControls(status) && (
+        <div
+          data-testid="permission-action-card-controls"
+          className="flex min-h-9 w-full shrink-0 flex-row items-center gap-2 sm:w-auto"
+        >
+          {status.kind === "loading" && (
+            <PermissionActionInlineStatus status={status} />
+          )}
+          {showDurationSelect && (
+            <PermissionGrantDurationSelect
+              value={expiresIn}
+              onValueChange={onExpiresInChange}
+              disabled={status.kind === "saving"}
+              ariaLabel="Permission duration"
+            />
+          )}
+          <PermissionActionTerminalStatus
+            status={status}
+            action={signals.action}
           />
-        )}
-        <PermissionActionTerminalStatus
-          status={status}
-          action={signals.action}
-        />
-        <PermissionActionButton status={status} onClick={onClick} />
-      </div>
+          <PermissionActionButton status={status} onClick={onClick} />
+        </div>
+      )}
     </div>
   );
 }
@@ -6067,8 +5326,8 @@ function PagedUserGroup({
 
 function isWorkflowUserMessage(
   message: EnrichedChatMessage,
-): message is EnrichedChatMessage & { role: "user" } {
-  return message.role === "user" && hasWorkflowMessageMetadata(message);
+): message is EnrichedChatMessage & ChatInputMessage {
+  return isInputChatEvent(message) && hasWorkflowMessageMetadata(message);
 }
 
 function hasWorkflowMessageMetadata(message: EnrichedChatMessage): boolean {
@@ -6096,11 +5355,13 @@ function workflowMessageBrief(
 }
 
 function workflowMessageBody(
-  message: EnrichedChatMessage & { role: "user" },
+  message: EnrichedChatMessage & ChatInputMessage,
 ): string {
   const workflowSnapshot = message.workflowSnapshot;
   if (!workflowSnapshot) {
-    return message.content?.trim() || "Workflow";
+    return (
+      messageDocumentToDisplayText(message.userMessage)?.trim() || "Workflow"
+    );
   }
   return (
     workflowMessageBrief(workflowSnapshot) ??
@@ -6116,16 +5377,17 @@ interface ResolvedMessageAttachment {
   readonly assetRef?: NonNullable<ResolvedAttachFile["assetRef"]>;
   readonly isImage: boolean;
   readonly kind: ReturnType<typeof classifyChatAttachment>;
+  readonly text$?: TextPreviewComputed;
 }
 
 function resolveAttachments(
   message: EnrichedChatMessage,
   parsed: { filename: string; url: string }[],
+  artifactSignalsForUrl: ChatThreadSignals["artifactSignalsForUrl"],
 ): ResolvedMessageAttachment[] {
+  const eventAttachments = chatEventAttachments(message);
   const source =
-    message.attachFiles && message.attachFiles.length > 0
-      ? message.attachFiles
-      : parsed;
+    eventAttachments && eventAttachments.length > 0 ? eventAttachments : parsed;
   return source.map((f) => {
     const resolvedFile = "id" in f ? (f as ResolvedAttachFile) : undefined;
     const contentType =
@@ -6137,6 +5399,9 @@ function resolveAttachments(
       url: f.url,
       contentType,
     });
+    const text$ = isTextPreviewKind(kind)
+      ? artifactSignalsForUrl(f.url)?.text$
+      : undefined;
     return {
       id: "id" in f && typeof f.id === "string" ? f.id : null,
       filename: f.filename,
@@ -6145,6 +5410,7 @@ function resolveAttachments(
       ...(resolvedFile?.assetRef ? { assetRef: resolvedFile.assetRef } : {}),
       isImage: kind === "image" || isImageFilename(f.filename),
       kind,
+      ...(text$ ? { text$ } : {}),
     };
   });
 }
@@ -6159,13 +5425,12 @@ function attachmentIdFromUrl(url: string): string | null {
 }
 
 function clipboardAttachmentsFromMessage(
-  message: EnrichedChatMessage,
+  message: ChatMessage,
   parsed: { filename: string; url: string }[],
 ): ChatClipboardAttachment[] {
+  const eventAttachments = chatEventAttachments(message);
   const source =
-    message.attachFiles && message.attachFiles.length > 0
-      ? message.attachFiles
-      : parsed;
+    eventAttachments && eventAttachments.length > 0 ? eventAttachments : parsed;
   return source.map((f) => {
     const contentType =
       "contentType" in f && typeof f.contentType === "string"
@@ -6189,7 +5454,7 @@ function clipboardAttachmentsFromMessage(
   });
 }
 
-function clipboardAttachmentsFromStructuredPrompt(
+function clipboardAttachmentsFromUserMessage(
   document: UserMessageDocument,
   attachments: readonly ChatClipboardAttachment[],
 ): ChatClipboardAttachment[] {
@@ -6210,7 +5475,10 @@ function clipboardAttachmentsFromStructuredPrompt(
 function AttachmentMaterializationState({
   attachment,
 }: {
-  attachment: ReturnType<typeof resolveAttachments>[number];
+  attachment: {
+    readonly filename: string;
+    readonly assetRef?: NonNullable<ResolvedAttachFile["assetRef"]>;
+  };
 }) {
   const materialization = attachment.assetRef?.materialization;
   if (!materialization || materialization.status === "ready") {
@@ -6328,6 +5596,7 @@ function UserMessageAttachments({
               filename={a.filename}
               url={a.url}
               kind={a.kind}
+              text$={a.text$}
             />
           );
         }
@@ -6384,54 +5653,6 @@ function UserMessageActions({
   );
 }
 
-function formatSelectionIdLabel(selectionId: string): string {
-  const label = selectionId
-    .replace(/^template:/, "")
-    .replace(/^video-template:/, "")
-    .replace(/^workflow-template:/, "")
-    .replace(/^html-ppt-/, "")
-    .replace(/-/g, " ");
-  return label.charAt(0).toUpperCase() + label.slice(1);
-}
-
-function generationTemplateLabel(
-  value: GenerationTemplateRequest | undefined,
-): string | null {
-  if (!value) {
-    return null;
-  }
-  if (value.type === "video") {
-    const item = findVideoTemplateItem(value.selection.stylePresetId);
-    return item?.title ?? formatSelectionIdLabel(value.selection.stylePresetId);
-  }
-  if (value.type === "workflow") {
-    const item = findWorkflowTemplateItem(value.selection.workflowTemplateId);
-    return (
-      item?.title ?? formatSelectionIdLabel(value.selection.workflowTemplateId)
-    );
-  }
-  if (value.type === "illustration") {
-    const item = ILLUSTRATION_TEMPLATE_ITEMS.find((candidate) => {
-      return (
-        candidate.illustrationStyleId === value.selection.illustrationStyleId
-      );
-    });
-    return (
-      item?.title ?? formatSelectionIdLabel(value.selection.illustrationStyleId)
-    );
-  }
-  if (value.type === "website") {
-    const item = findWebsiteTemplateItem(value.selection.websiteTemplateId);
-    return (
-      item?.title ?? formatSelectionIdLabel(value.selection.websiteTemplateId)
-    );
-  }
-  const item = PRESENTATION_TEMPLATE_PICKER_ITEMS.find((candidate) => {
-    return candidate.templateId === value.selection.templateId;
-  });
-  return item?.title ?? formatSelectionIdLabel(value.selection.templateId);
-}
-
 function generationTemplateTypeLabel(
   value: GenerationTemplateRequest | undefined,
 ): string | null {
@@ -6451,47 +5672,6 @@ function generationTemplateTypeLabel(
     return "Website";
   }
   return "Presentation";
-}
-
-function UserMessageGenerationTemplate({
-  generationTemplate,
-}: {
-  generationTemplate: GenerationTemplateRequest | undefined;
-}) {
-  const label = generationTemplateLabel(generationTemplate);
-  const typeLabel = generationTemplateTypeLabel(generationTemplate);
-  if (!label || !typeLabel) {
-    return null;
-  }
-  const className =
-    "mb-1.5 flex max-w-[85%] items-center gap-1.5 self-end text-xs font-medium text-muted-foreground";
-  const content = (
-    <>
-      {generationTemplate?.type === "video" ? (
-        <IconVideo size={15} stroke={1.8} className="shrink-0" />
-      ) : generationTemplate?.type === "illustration" ? (
-        <IconPhoto size={15} stroke={1.8} className="shrink-0" />
-      ) : generationTemplate?.type === "workflow" ? (
-        <IconRoute size={15} stroke={1.8} className="shrink-0" />
-      ) : generationTemplate?.type === "website" ? (
-        <IconWorld size={15} stroke={1.8} className="shrink-0" />
-      ) : (
-        <IconPresentation size={15} stroke={1.8} className="shrink-0" />
-      )}
-      <span className="shrink-0">{typeLabel}</span>
-      <span className="shrink-0">·</span>
-      <span className="min-w-0 truncate">{label}</span>
-    </>
-  );
-  return (
-    <div
-      aria-label={`Message template ${label}`}
-      className={className}
-      title={`${typeLabel} · ${label}`}
-    >
-      {content}
-    </div>
-  );
 }
 
 function SlackUserMessageOrigin({
@@ -6519,68 +5699,179 @@ function SlackUserMessageOrigin({
   );
 }
 
+const feishuIconImg = settingsIconAssetUrl("lark");
+
+function FeishuUserMessageOrigin({
+  chatOpenUrl,
+}: {
+  chatOpenUrl: string | undefined;
+}) {
+  if (!chatOpenUrl) {
+    return null;
+  }
+  return (
+    <a
+      href={chatOpenUrl}
+      target="_blank"
+      rel="noreferrer"
+      aria-label="Open original chat in Feishu"
+      className="mb-1.5 inline-flex h-7 max-w-[85%] items-center gap-1.5 self-end rounded-md px-1.5 text-xs font-medium text-muted-foreground transition-colors hover:bg-gray-50 hover:text-foreground"
+    >
+      <img
+        src={feishuIconImg}
+        alt=""
+        className="size-[15px] shrink-0 object-contain"
+      />
+      <span className="shrink-0">Feishu</span>
+      <span className="shrink-0">·</span>
+      <span className="min-w-0 truncate">Open chat</span>
+      <IconArrowUpRight size={12} stroke={1.5} className="shrink-0" />
+    </a>
+  );
+}
+
 const STRUCTURED_REFERENCE_CHIP_CLASS =
   "mx-1 inline-flex max-w-[240px] items-center gap-1 rounded-md border " +
   "border-foreground/15 bg-background/80 px-1.5 py-0.5 align-middle " +
   "text-xs font-medium";
+const STRUCTURED_INLINE_REFERENCE_CLASS =
+  "relative -top-px mx-0.5 inline-flex h-7 max-w-[240px] items-center " +
+  "gap-1.5 rounded-md bg-orange-500/10 px-2 align-middle text-[13px] " +
+  "font-medium text-orange-600 transition-colors hover:bg-orange-500/15 " +
+  "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-500/30 " +
+  "active:bg-orange-500/20 dark:bg-orange-400/15 dark:text-orange-300 " +
+  "dark:hover:bg-orange-400/20 dark:active:bg-orange-400/25";
 
-function StructuredTemplateIcon({
-  type,
-}: {
-  type: GenerationTemplateRequest["type"];
-}) {
-  if (type === "video") {
-    return <IconVideo size={15} stroke={1.8} className="shrink-0" />;
-  }
-  if (type === "illustration") {
-    return <IconPhoto size={15} stroke={1.8} className="shrink-0" />;
-  }
-  if (type === "workflow") {
-    return <IconRoute size={15} stroke={1.8} className="shrink-0" />;
-  }
-  if (type === "website") {
-    return <IconWorld size={15} stroke={1.8} className="shrink-0" />;
-  }
-  return <IconPresentation size={15} stroke={1.8} className="shrink-0" />;
+function templatePickerCategoryForReference(
+  template: GenerationTemplateRequest,
+): string {
+  return template.type === "presentation" ? "slides" : template.type;
 }
 
-function StructuredTemplateReference({
+function presentationTemplatePreviewSlug(
+  template: GenerationTemplateRequest,
+): string | null {
+  if (template.type !== "presentation") {
+    return null;
+  }
+  return (
+    PRESENTATION_TEMPLATE_PICKER_ITEMS.find((item) => {
+      return item.templateId === template.selection.templateId;
+    })?.slug ?? null
+  );
+}
+
+function UserMessageTemplateReference({
   part,
 }: {
   part: Extract<UserMessagePart, { type: "template" }>;
 }) {
   const typeLabel = generationTemplateTypeLabel(part.template);
+  const setTemplatePickerCategory = useSet(setTemplatePickerCategory$);
+  const setTemplatePickerOpen = useSet(setTemplatePickerOpen$);
+  const setTemplatePickerPreviewSlug = useSet(setTemplatePickerPreviewSlug$);
+  const setTemplatePickerReferenceValue = useSet(
+    setTemplatePickerReferenceValue$,
+  );
+  const setTemplatePickerSearch = useSet(setTemplatePickerSearch$);
   return (
-    <span
+    <button
+      type="button"
+      data-structured-template-reference=""
       aria-label={`Message template ${part.titleSnapshot}`}
-      className="mx-1 inline-flex max-w-full items-center gap-1.5 text-xs font-medium text-muted-foreground"
+      aria-haspopup="dialog"
+      className={STRUCTURED_INLINE_REFERENCE_CLASS}
       title={`${typeLabel ?? part.template.type} · ${part.titleSnapshot}`}
+      onClick={() => {
+        setTemplatePickerCategory(
+          templatePickerCategoryForReference(part.template),
+        );
+        setTemplatePickerSearch("");
+        setTemplatePickerPreviewSlug(
+          presentationTemplatePreviewSlug(part.template),
+        );
+        setTemplatePickerReferenceValue(part.template);
+        setTemplatePickerOpen(true);
+      }}
     >
-      <StructuredTemplateIcon type={part.template.type} />
-      <span className="shrink-0">{typeLabel ?? part.template.type}</span>
-      <span className="shrink-0">·</span>
+      <IconTemplate size={13} stroke={1.7} className="shrink-0" />
       <span className="min-w-0 truncate">{part.titleSnapshot}</span>
-    </span>
+    </button>
   );
 }
 
-function StructuredFileReference({
+function UserMessageFileReference({
   part,
   attachment,
 }: {
   part: Extract<UserMessagePart, { type: "file" }>;
   attachment: ResolvedAttachFile | undefined;
 }) {
+  const openVideoLightbox = useSet(openAttachmentVideoLightbox$);
+
+  if (
+    attachment?.assetRef &&
+    attachment.assetRef.materialization.status !== "ready"
+  ) {
+    return <AttachmentMaterializationState attachment={attachment} />;
+  }
   if (attachment) {
-    return (
-      <span className="mx-1 inline-flex align-middle">
+    const kind = classifyChatAttachment({
+      filename: part.filenameSnapshot,
+      url: attachment.url,
+      contentType: part.contentType,
+    });
+    let reference: ReactNode;
+    if (kind === "video") {
+      reference = (
+        <ChatVideoPreviewButton
+          ariaLabel={`Preview ${part.filenameSnapshot}`}
+          buttonClassName={CHAT_INLINE_VIDEO_ATTACHMENT_PREVIEW_CLASS}
+          filename={part.filenameSnapshot}
+          onPreview={() => {
+            openVideoLightbox({
+              url: attachment.url,
+              filename: part.filenameSnapshot,
+            });
+          }}
+          posterClassName="h-full w-full"
+          url={attachment.url}
+          videoClassName="h-full w-full object-contain"
+        />
+      );
+    } else if (
+      kind === "markdown" ||
+      kind === "text" ||
+      kind === "json" ||
+      kind === "csv" ||
+      kind === "pdf" ||
+      kind === "html"
+    ) {
+      reference = (
+        <PreviewableFileAttachmentChip
+          filename={part.filenameSnapshot}
+          url={attachment.url}
+          kind={kind}
+        />
+      );
+    } else if (kind === "audio") {
+      reference = (
+        <PreviewableAudioAttachmentChip
+          filename={part.filenameSnapshot}
+          url={attachment.url}
+          contentType={part.contentType}
+        />
+      );
+    } else {
+      reference = (
         <FileAttachmentChip
           contentType={part.contentType}
           filename={part.filenameSnapshot}
           url={attachment.url}
         />
-      </span>
-    );
+      );
+    }
+    return <span className="mx-1 inline-flex align-middle">{reference}</span>;
   }
   return (
     <span
@@ -6600,11 +5891,138 @@ function StructuredFileReference({
   );
 }
 
-function StructuredUserMessagePart({
+function UserMessageChatThreadReference({
+  threadId,
+  title,
+}: {
+  threadId: string;
+  title: string;
+}) {
+  return (
+    <Link
+      pathname={ROUTES.chat}
+      options={{ pathParams: { threadId } }}
+      aria-label={`Open chat ${title}`}
+      className={STRUCTURED_INLINE_REFERENCE_CLASS}
+      title={title}
+    >
+      <IconMessageCircle size={13} stroke={1.7} className="shrink-0" />
+      <span className="min-w-0 truncate">{title}</span>
+    </Link>
+  );
+}
+
+function UserMessageFeedbackNote({
+  note,
+}: {
+  note: readonly FeedbackNotePart[];
+}) {
+  const partOccurrences = new Map<string, number>();
+  return (
+    <div>
+      {note.map((part) => {
+        const identity = JSON.stringify(part);
+        const occurrence = (partOccurrences.get(identity) ?? 0) + 1;
+        partOccurrences.set(identity, occurrence);
+        const key = `${identity}:${String(occurrence)}`;
+        if (part.type === "chat_thread") {
+          return (
+            <UserMessageChatThreadReference
+              key={key}
+              threadId={part.threadId}
+              title={part.titleSnapshot}
+            />
+          );
+        }
+        if (part.type === "template") {
+          return <UserMessageTemplateReference key={key} part={part} />;
+        }
+        return <span key={key}>{part.text}</span>;
+      })}
+    </div>
+  );
+}
+
+type UserMessageFeedbackPart = Extract<UserMessagePart, { type: "feedback" }>;
+
+function equalFeedbackSources(
+  left: UserMessageFeedbackPart["source"],
+  right: UserMessageFeedbackPart["source"],
+): boolean {
+  if (left === undefined || right === undefined) {
+    return left === right;
+  }
+  return (
+    left.type === right.type &&
+    left.id === right.id &&
+    left.status === right.status &&
+    left.sentId === right.sentId
+  );
+}
+
+function userMessageFeedbackHeading(
+  parts: readonly UserMessageFeedbackPart[],
+): string {
+  const source = parts[0]?.source;
+  if (!source) {
+    return parts.length === 1
+      ? "Feedback on this part of your reply:"
+      : `Feedback on ${parts.length} parts of your reply:`;
+  }
+  const description =
+    source.status === "draft"
+      ? `an email draft (mail draft ID: ${source.id})`
+      : `a sent email (mail ID: ${source.id}${source.sentId ? `, sent ID: ${source.sentId}` : ""})`;
+  return parts.length === 1
+    ? `Feedback on this part of ${description}:`
+    : `Feedback on ${parts.length} parts of ${description}:`;
+}
+
+function UserMessageFeedbackGroup({
+  parts,
+}: {
+  parts: readonly UserMessageFeedbackPart[];
+}) {
+  const partOccurrences = new Map<string, number>();
+  let firstPart = true;
+  return (
+    <div data-structured-feedback-group="" className="space-y-3">
+      <div>{userMessageFeedbackHeading(parts)}</div>
+      {parts.map((part) => {
+        const identity = JSON.stringify(part);
+        const occurrence = (partOccurrences.get(identity) ?? 0) + 1;
+        partOccurrences.set(identity, occurrence);
+        const showDivider = !firstPart;
+        firstPart = false;
+        return (
+          <div key={`${identity}:${String(occurrence)}`} className="space-y-3">
+            {showDivider ? (
+              <div
+                data-structured-feedback-divider=""
+                className="border-t border-border"
+              />
+            ) : null}
+            <blockquote
+              data-structured-feedback-quote=""
+              className="border-l-2 border-border pl-3 text-muted-foreground"
+            >
+              {part.quote}
+            </blockquote>
+            <UserMessageFeedbackNote note={part.note} />
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+type UserMessageStandalonePart = Exclude<UserMessagePart, { type: "feedback" }>;
+
+function UserMessagePartView({
   part,
   attachments,
 }: {
-  part: UserMessagePart;
+  part: UserMessageStandalonePart;
   attachments: readonly ResolvedAttachFile[];
 }): ReactNode {
   if (part.type === "text") {
@@ -6612,81 +6030,119 @@ function StructuredUserMessagePart({
   }
   if (part.type === "chat_thread") {
     return (
-      <Link
-        pathname={ROUTES.chat}
-        options={{ pathParams: { threadId: part.threadId } }}
-        aria-label={`Open chat ${part.titleSnapshot}`}
-        className={`${STRUCTURED_REFERENCE_CHIP_CLASS} text-primary transition-colors hover:bg-foreground/10`}
+      <UserMessageChatThreadReference
+        threadId={part.threadId}
         title={part.titleSnapshot}
-      >
-        <IconMessageCircle size={14} stroke={1.8} className="shrink-0" />
-        <span className="min-w-0 truncate">{part.titleSnapshot}</span>
-      </Link>
+      />
     );
   }
   if (part.type === "template") {
-    return <StructuredTemplateReference part={part} />;
+    return <UserMessageTemplateReference part={part} />;
   }
-  const attachment = attachments.find((candidate) => {
-    return candidate.id === part.fileId;
-  });
-  return <StructuredFileReference part={part} attachment={attachment} />;
+  if (part.type === "file") {
+    const attachment = attachments.find((candidate) => {
+      return candidate.id === part.fileId;
+    });
+    return <UserMessageFileReference part={part} attachment={attachment} />;
+  }
+  void (part satisfies never);
+  return null;
 }
 
-function StructuredUserMessage({
+function UserMessageView({
   document,
   attachments,
   elevatedFileIds,
+  inlineTemplatesEnabled,
 }: {
   document: UserMessageDocument;
   attachments: readonly ResolvedAttachFile[];
   elevatedFileIds: ReadonlySet<string>;
+  inlineTemplatesEnabled: boolean;
 }) {
   const partOccurrences = new Map<string, number>();
   const bodyParts = document.parts.filter((part) => {
-    return !isElevatedStructuredPart(part, elevatedFileIds);
+    return !isElevatedUserMessagePart(
+      part,
+      elevatedFileIds,
+      inlineTemplatesEnabled,
+    );
   });
   if (bodyParts.length === 0) {
     return null;
   }
+  const renderedParts: ReactNode[] = [];
+  let index = 0;
+  while (index < bodyParts.length) {
+    const part = bodyParts[index];
+    if (!part) {
+      break;
+    }
+    if (part.type === "feedback") {
+      const feedbackParts: UserMessageFeedbackPart[] = [part];
+      let nextIndex = index + 1;
+      while (nextIndex < bodyParts.length) {
+        const candidate = bodyParts[nextIndex];
+        if (
+          candidate?.type !== "feedback" ||
+          !equalFeedbackSources(part.source, candidate.source)
+        ) {
+          break;
+        }
+        feedbackParts.push(candidate);
+        nextIndex += 1;
+      }
+      renderedParts.push(
+        <UserMessageFeedbackGroup
+          key={`feedback:${String(index)}`}
+          parts={feedbackParts}
+        />,
+      );
+      index = nextIndex;
+      continue;
+    }
+    const identity = JSON.stringify(part);
+    const occurrence = (partOccurrences.get(identity) ?? 0) + 1;
+    partOccurrences.set(identity, occurrence);
+    renderedParts.push(
+      <UserMessagePartView
+        key={`${identity}:${String(occurrence)}`}
+        part={part}
+        attachments={attachments}
+      />,
+    );
+    index += 1;
+  }
   return (
     <div data-structured-user-message="" className="whitespace-pre-wrap">
-      {bodyParts.map((part) => {
-        const identity = JSON.stringify(part);
-        const occurrence = (partOccurrences.get(identity) ?? 0) + 1;
-        partOccurrences.set(identity, occurrence);
-        return (
-          <StructuredUserMessagePart
-            key={`${identity}:${String(occurrence)}`}
-            part={part}
-            attachments={attachments}
-          />
-        );
-      })}
+      {renderedParts}
     </div>
   );
 }
 
-function isElevatedStructuredPart(
+function isElevatedUserMessagePart(
   part: UserMessagePart,
   elevatedFileIds: ReadonlySet<string>,
+  inlineTemplatesEnabled: boolean,
 ): boolean {
   return (
-    part.type === "template" ||
+    (!inlineTemplatesEnabled && part.type === "template") ||
     (part.type === "file" && elevatedFileIds.has(part.fileId))
   );
 }
 
-function StructuredUserMessageContent({
+function UserMessageContent({
   document,
   attachments,
   referenceAttachments,
   onImageClick,
+  inlineTemplatesEnabled,
 }: {
   document: UserMessageDocument;
   attachments: ReturnType<typeof resolveAttachments>;
   referenceAttachments: readonly ResolvedAttachFile[];
   onImageClick: (url: string) => void;
+  inlineTemplatesEnabled: boolean;
 }) {
   const imageAttachments = attachments.filter((attachment) => {
     return attachment.id !== null && attachment.isImage;
@@ -6696,11 +6152,17 @@ function StructuredUserMessageContent({
       return attachment.id ? [attachment.id] : [];
     }),
   );
-  const templateParts = document.parts.filter((part) => {
-    return part.type === "template";
-  });
+  const templateParts = inlineTemplatesEnabled
+    ? []
+    : document.parts.filter((part) => {
+        return part.type === "template";
+      });
   const hasBody = document.parts.some((part) => {
-    return !isElevatedStructuredPart(part, imageAttachmentIds);
+    return !isElevatedUserMessagePart(
+      part,
+      imageAttachmentIds,
+      inlineTemplatesEnabled,
+    );
   });
 
   return (
@@ -6709,7 +6171,7 @@ function StructuredUserMessageContent({
         <div className="mb-1.5 flex max-w-[85%] flex-wrap justify-end gap-1.5">
           {templateParts.map((part) => {
             return (
-              <StructuredTemplateReference
+              <UserMessageTemplateReference
                 key={`${part.template.type}:${part.titleSnapshot}`}
                 part={part}
               />
@@ -6724,10 +6186,11 @@ function StructuredUserMessageContent({
       {hasBody ? (
         <div className="zero-chat-bubble-user rounded-xl max-w-[85%] text-[0.9375rem] leading-[1.7] [overflow-wrap:anywhere] overflow-hidden">
           <div className="px-4 py-3">
-            <StructuredUserMessage
+            <UserMessageView
               document={document}
               attachments={referenceAttachments}
               elevatedFileIds={imageAttachmentIds}
+              inlineTemplatesEnabled={inlineTemplatesEnabled}
             />
           </div>
         </div>
@@ -6739,7 +6202,7 @@ function StructuredUserMessageContent({
 function WorkflowUserMessage({
   message,
 }: {
-  message: EnrichedChatMessage & { role: "user" };
+  message: EnrichedChatMessage & ChatInputMessage;
 }) {
   const workflowSnapshot = message.workflowSnapshot;
   if (!workflowSnapshot) {
@@ -6799,7 +6262,7 @@ function GoalUserMessage({
   bodyBlocks,
   openLightbox,
 }: {
-  message: EnrichedChatMessage & { role: "user" };
+  message: EnrichedChatMessage & ChatInputMessage;
   bodyBlocks: BodyRenderBlock[];
   openLightbox: (url: string) => void;
 }) {
@@ -6841,6 +6304,60 @@ function GoalUserMessage({
   );
 }
 
+function useUserMessageRendering() {
+  const featureSwitches = useGet(featureSwitch$);
+  return {
+    inlineTemplates:
+      featureSwitches[FeatureSwitchKey.StructuredPromptInlineTemplates] ??
+      false,
+  };
+}
+
+function resolvePagedUserMessageRendering({
+  message,
+  inputMessage,
+  userMessage,
+  inlineTemplates,
+}: {
+  message: EnrichedChatMessage;
+  inputMessage: ChatInputMessage | undefined;
+  userMessage: UserMessageDocument | undefined;
+  inlineTemplates: boolean;
+}) {
+  const legacyContent =
+    message.eventType === "input.automation"
+      ? (message.triggerBrief ?? "")
+      : (message.content ?? "");
+  const { cleanContent, parsed } = parseInlineAttachments(
+    inputMessage ? "" : legacyContent,
+  );
+  const canonicalUserMessage = userMessage;
+  const attachFiles = inputMessage?.attachFiles;
+  const copyText = canonicalUserMessage
+    ? (messageDocumentToPrompt(canonicalUserMessage, {
+        inlineTemplates,
+      }) ?? "")
+    : cleanContent;
+  const legacyClipboardAttachments = clipboardAttachmentsFromMessage(
+    message,
+    parsed,
+  );
+  const clipboardAttachments = canonicalUserMessage
+    ? clipboardAttachmentsFromUserMessage(
+        canonicalUserMessage,
+        legacyClipboardAttachments,
+      )
+    : legacyClipboardAttachments;
+
+  return {
+    attachFiles,
+    canonicalUserMessage,
+    clipboardAttachments,
+    copyText,
+    parsed,
+  };
+}
+
 function PagedUserMessage({
   message,
   thread,
@@ -6848,50 +6365,32 @@ function PagedUserMessage({
   message: EnrichedChatMessage;
   thread: ChatThreadSignals;
 }) {
-  const featureSwitches = useGet(featureSwitch$);
-  const structuredPromptEnabled =
-    featureSwitches[FeatureSwitchKey.StructuredPrompt] ?? false;
-  const structuredPrompt =
-    structuredPromptEnabled && message.role === "user"
-      ? message.structuredPrompt
-      : undefined;
-  const content = message.content ?? "";
-  // Two attachment sources coexist: the structured `attachFiles` field
-  // (current flow) and legacy `[Attached file: ...](url)` inline lines left
-  // over from messages sent before #10243 split the flows. Use the structured
-  // source when it's present and fall back to inline parsing otherwise.
-  const { cleanContent, parsed } = parseInlineAttachments(content);
-  const legacyCopyText =
-    message.attachFiles &&
-    message.attachFiles.length > 0 &&
-    cleanContent.trim() === ATTACH_ONLY_PLACEHOLDER
-      ? ""
-      : cleanContent;
-  const copyText = structuredPrompt
-    ? (messageDocumentToPrompt(structuredPrompt) ?? "")
-    : legacyCopyText;
+  const { inlineTemplates } = useUserMessageRendering();
+  const inputMessage = asInputChatEvent(message);
+  const userMessage = visibleUserMessage(inputMessage);
+  const {
+    attachFiles,
+    canonicalUserMessage,
+    clipboardAttachments,
+    copyText,
+    parsed,
+  } = resolvePagedUserMessageRendering({
+    message,
+    inputMessage,
+    userMessage,
+    inlineTemplates,
+  });
   const bodyBlocks = message.blocks;
   const pageSignal = useGet(pageSignal$);
   const openImageLightbox = useSet(openAttachmentImageLightbox$);
-  const openLightbox = (url: string) => {
-    openImageLightbox(url);
-  };
+  const openLightbox = openImageLightbox;
   const copiedId = useGet(thread.copiedMessageId$);
   const copied = copiedId === message.id;
   const copyMessage = useSet(thread.copyMessage$);
-  const allAttachments = resolveAttachments(message, parsed);
-  const legacyClipboardAttachments = clipboardAttachmentsFromMessage(
-    message,
-    parsed,
-  );
-  const clipboardAttachments = structuredPrompt
-    ? clipboardAttachmentsFromStructuredPrompt(
-        structuredPrompt,
-        legacyClipboardAttachments,
-      )
-    : legacyClipboardAttachments;
+  const findArtifact = thread.artifactSignalsForUrl;
+  const allAttachments = resolveAttachments(message, parsed, findArtifact);
   const canCopy =
-    structuredPrompt !== undefined ||
+    userMessage !== undefined ||
     copyText.trim().length > 0 ||
     clipboardAttachments.length > 0;
 
@@ -6905,7 +6404,7 @@ function PagedUserMessage({
         {
           text: copyText,
           attachments: clipboardAttachments,
-          ...(structuredPrompt ? { structuredPrompt } : {}),
+          ...(userMessage ? { userMessage } : {}),
         },
         pageSignal,
       ),
@@ -6933,18 +6432,17 @@ function PagedUserMessage({
         <div className="hidden @[900px]:block @[900px]:w-9 @[900px]:h-9 @[900px]:shrink-0" />
         <div className="flex flex-col items-end w-full">
           <SlackUserMessageOrigin permalink={message.slackMessagePermalink} />
-          {structuredPrompt ? (
-            <StructuredUserMessageContent
-              document={structuredPrompt}
+          <FeishuUserMessageOrigin chatOpenUrl={message.feishuChatOpenUrl} />
+          {canonicalUserMessage ? (
+            <UserMessageContent
+              document={canonicalUserMessage}
               attachments={allAttachments}
-              referenceAttachments={message.attachFiles ?? []}
+              referenceAttachments={attachFiles ?? []}
               onImageClick={openLightbox}
+              inlineTemplatesEnabled={inlineTemplates}
             />
           ) : (
             <>
-              <UserMessageGenerationTemplate
-                generationTemplate={message.generationTemplate}
-              />
               <UserMessageAttachments
                 attachments={allAttachments}
                 onImageClick={openLightbox}
@@ -7019,6 +6517,7 @@ function PagedAssistantGroup({
         key={message.id}
         message={message}
         compactTop={compactTop}
+        thread={thread}
       />
     );
   };
@@ -7068,17 +6567,24 @@ function PagedAssistantGroup({
 function PagedAssistantMessageItem({
   message,
   compactTop = false,
+  thread,
 }: {
   message: EnrichedChatMessage;
   compactTop?: boolean;
+  thread: ChatThreadSignals;
 }) {
   const openImageLightbox = useSet(openAttachmentImageLightbox$);
   const openLightbox = (url: string) => {
     openImageLightbox(url);
   };
-  const attachments = resolveAttachments(message, []);
+  const attachments = resolveAttachments(
+    message,
+    [],
+    thread.artifactSignalsForUrl,
+  );
 
-  if (message.error) {
+  const error = chatEventError(message);
+  if (error) {
     return (
       <div
         className={cn(
@@ -7086,7 +6592,7 @@ function PagedAssistantMessageItem({
           compactTop ? "@[900px]:pt-0" : "@[900px]:pt-2.5",
         )}
       >
-        <AssistantErrorContent error={message.error} />
+        <AssistantErrorContent error={error} />
       </div>
     );
   }

@@ -1,8 +1,6 @@
 import { command } from "ccstate";
 import { and, eq, gt, isNull, or } from "drizzle-orm";
 import { chatThreadMarkAgentReadContract } from "@vm0/api-contracts/contracts/chat-threads";
-import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
-import { isFeatureEnabled } from "@vm0/core/feature-switch";
 import { chatThreads } from "@vm0/db/schema/chat-thread";
 import { zeroAgents } from "@vm0/db/schema/zero-agent";
 
@@ -11,20 +9,12 @@ import { authRoute } from "../auth/auth-route";
 import { bodyResultOf } from "../context/request";
 import { writeDb$ } from "../external/db";
 import { publishUserSignal } from "../external/realtime";
-import { userFeatureSwitchOverrides } from "../services/feature-switches.service";
 import { latestRunFinishMessageSubquery } from "../services/zero-chat-thread-read-state-query";
 import type { RouteEntry } from "../route-entry";
 
 const markAgentReadBody$ = bodyResultOf(
   chatThreadMarkAgentReadContract.markAgentRead,
 );
-
-function forbidden(message: string) {
-  return {
-    status: 403 as const,
-    body: { error: { message, code: "FORBIDDEN" } },
-  };
-}
 
 const markAgentReadInner$ = command(
   async ({ get, set }, signal: AbortSignal) => {
@@ -34,21 +24,6 @@ const markAgentReadInner$ = command(
 
     if (!bodyResult.ok) {
       return bodyResult.response;
-    }
-
-    const overrides = await get(
-      userFeatureSwitchOverrides(auth.orgId, auth.userId),
-    );
-    signal.throwIfAborted();
-
-    if (
-      !isFeatureEnabled(FeatureSwitchKey.AgentUnreadIndicators, {
-        orgId: auth.orgId,
-        userId: auth.userId,
-        overrides,
-      })
-    ) {
-      return forbidden("Agent unread indicators are not enabled");
     }
 
     const writeDb = set(writeDb$);

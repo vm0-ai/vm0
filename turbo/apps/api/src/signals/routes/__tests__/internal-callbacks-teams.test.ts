@@ -1,8 +1,12 @@
 import { Buffer } from "node:buffer";
 import { createHash } from "node:crypto";
 
+import {
+  chatThreadEventsContract,
+  chatThreadsContract,
+} from "@vm0/api-contracts/contracts/chat-threads";
 import { zeroTeamsConnectContract } from "@vm0/api-contracts/contracts/zero-teams-connect";
-import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
+import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import { HttpResponse, http } from "msw";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
@@ -77,6 +81,7 @@ interface ConnectedTeamsActor {
   readonly fixture: TeamsConnectFixture;
   readonly actor: ReturnType<typeof authOrgApi.user>;
   readonly runnerGroup: string;
+  readonly defaultAgentId: string;
 }
 
 function teamsServiceBaseUrl(serviceUrl: string): string {
@@ -356,11 +361,12 @@ async function setupConnectedTeamsActor(
   authOrgApi.acceptAgentStorageWrites();
   runsApi.acceptStorageDownloads();
   runsApi.acceptTelemetryIngest();
-  const agent = await authOrgApi.createAgent(actor, {
+  const defaultAgent = await authOrgApi.bootstrapLimitedFreeOnboarding(actor, {
     displayName: "Teams callback agent",
+  });
+  await authOrgApi.updateAgentMetadata(actor, defaultAgent.body.agentId, {
     visibility: "public",
   });
-  await authOrgApi.setDefaultAgent(actor, agent.agentId);
   await runsApi.grantProEntitlement(actor);
   await runsApi.ensureOrgModelProvider(actor);
   if (options.zeroDebug) {
@@ -383,7 +389,12 @@ async function setupConnectedTeamsActor(
   await flushWaitUntilForTest();
   clearTeamsApiCalls(setupTeamsApi);
 
-  return { fixture, actor, runnerGroup };
+  return {
+    fixture,
+    actor,
+    runnerGroup,
+    defaultAgentId: defaultAgent.body.agentId,
+  };
 }
 
 async function dispatchTeamsRun(args: {
@@ -462,6 +473,39 @@ async function dispatchTeamsPersonalRun(args: {
     orgRole: "org:admin",
   });
   return await runIdForPrompt(actor, args.text);
+}
+
+async function switchTeamsAgent(args: {
+  readonly fixture: TeamsConnectFixture;
+  readonly activityId: string;
+  readonly agentId: string;
+}): Promise<void> {
+  const response = await postTeamsActivityForTest({
+    signal: context.signal,
+    activity: teamsMessageActivityForTest(args.fixture, {
+      id: args.activityId,
+      conversation: {
+        id: `a:personal-${args.fixture.teamsUserId}`,
+        conversationType: "personal",
+      },
+      channelData: {
+        tenant: {
+          id: args.fixture.teamsTenantId,
+          name: args.fixture.teamsTenantName,
+        },
+        teamsAppId: BOT_APP_ID,
+      },
+      text: "",
+      entities: [],
+      value: {
+        zeroTeamsAction: "switch_agent",
+        selectedComposeId: args.agentId,
+      },
+    }),
+  });
+  expect(response.status).toBe(200);
+  await response.json();
+  await flushWaitUntilForTest();
 }
 
 async function claimTeamsRun(args: {
@@ -564,20 +608,21 @@ afterEach(async () => {
 });
 
 describe("Teams org internal callbacks", () => {
-  it("starts a new agent session for each top-level personal message", async () => {
+  it("forks personal message threads without replacing the main session", async () => {
     const teams = await setupConnectedTeamsActor();
     const teamsApi = teamsApiMocks({ serviceUrl: teams.fixture.serviceUrl });
     const firstRunId = await dispatchTeamsPersonalRun({
       fixture: teams.fixture,
-      activityId: "activity-personal-first",
+      activityId: "activity-personal-main-first",
       text: "remember this DM context",
     });
     const firstClaim = await claimTeamsRun({
       runnerGroup: teams.runnerGroup,
       runId: firstRunId,
     });
+    expect(firstClaim.resumeSession).toBeNull();
     clearTeamsApiCalls(teamsApi);
-    await completeSandboxRun({
+    const firstMainSessionId = await completeSandboxRun({
       runId: firstRunId,
       sandboxToken: firstClaim.sandboxToken,
       exitCode: 0,
@@ -585,49 +630,101 @@ describe("Teams org internal callbacks", () => {
 
     const secondRunId = await dispatchTeamsPersonalRun({
       fixture: teams.fixture,
-      activityId: "activity-personal-second",
+      activityId: "activity-personal-main-second",
       text: "use the previous DM context",
     });
     const secondClaim = await claimTeamsRun({
       runnerGroup: teams.runnerGroup,
       runId: secondRunId,
     });
-
-    expect(secondClaim.resumeSession).toBeNull();
-  });
-
-  it("resumes the same agent session within a personal message thread", async () => {
-    const teams = await setupConnectedTeamsActor();
-    const teamsApi = teamsApiMocks({ serviceUrl: teams.fixture.serviceUrl });
-    const rootActivityId = "activity-personal-thread-root";
-    const firstRunId = await dispatchTeamsPersonalRun({
-      fixture: teams.fixture,
-      activityId: rootActivityId,
-      text: "remember this personal thread context",
-    });
-    const firstClaim = await claimTeamsRun({
-      runnerGroup: teams.runnerGroup,
-      runId: firstRunId,
-    });
+    expect(secondClaim.resumeSession?.sessionId).toBe(firstMainSessionId);
     clearTeamsApiCalls(teamsApi);
-    const cliAgentSessionId = await completeSandboxRun({
-      runId: firstRunId,
-      sandboxToken: firstClaim.sandboxToken,
+    const latestMainSessionId = await completeSandboxRun({
+      runId: secondRunId,
+      sandboxToken: secondClaim.sandboxToken,
       exitCode: 0,
     });
 
-    const secondRunId = await dispatchTeamsPersonalRun({
-      fixture: teams.fixture,
-      activityId: "activity-personal-thread-reply",
-      threadId: rootActivityId,
-      text: "use the personal thread context",
+    const alternateAgent = await authOrgApi.createAgent(teams.actor, {
+      displayName: "Alternate Teams DM agent",
+      visibility: "public",
     });
-    const secondClaim = await claimTeamsRun({
+    await switchTeamsAgent({
+      fixture: teams.fixture,
+      activityId: "activity-personal-switch-alternate",
+      agentId: alternateAgent.agentId,
+    });
+    const alternateRunId = await dispatchTeamsPersonalRun({
+      fixture: teams.fixture,
+      activityId: "activity-personal-alternate-agent",
+      text: "use an alternate Teams DM agent",
+    });
+    const alternateClaim = await claimTeamsRun({
       runnerGroup: teams.runnerGroup,
-      runId: secondRunId,
+      runId: alternateRunId,
+    });
+    expect(alternateClaim.resumeSession).toBeNull();
+    clearTeamsApiCalls(teamsApi);
+    await completeSandboxRun({
+      runId: alternateRunId,
+      sandboxToken: alternateClaim.sandboxToken,
+      exitCode: 0,
+    });
+    await switchTeamsAgent({
+      fixture: teams.fixture,
+      activityId: "activity-personal-switch-default",
+      agentId: teams.defaultAgentId,
     });
 
-    expect(secondClaim.resumeSession?.sessionId).toBe(cliAgentSessionId);
+    const rootActivityId = "activity-personal-main-second";
+    const threadRunId = await dispatchTeamsPersonalRun({
+      fixture: teams.fixture,
+      activityId: "activity-personal-thread-first",
+      threadId: rootActivityId,
+      text: "open a personal message thread",
+    });
+    const threadClaim = await claimTeamsRun({
+      runnerGroup: teams.runnerGroup,
+      runId: threadRunId,
+    });
+    expect(threadClaim.resumeSession).toBeNull();
+    clearTeamsApiCalls(teamsApi);
+    const threadSessionId = await completeSandboxRun({
+      runId: threadRunId,
+      sandboxToken: threadClaim.sandboxToken,
+      exitCode: 0,
+    });
+
+    const threadFollowUpRunId = await dispatchTeamsPersonalRun({
+      fixture: teams.fixture,
+      activityId: "activity-personal-thread-follow-up",
+      threadId: rootActivityId,
+      text: "continue the personal message thread",
+    });
+    const threadFollowUpClaim = await claimTeamsRun({
+      runnerGroup: teams.runnerGroup,
+      runId: threadFollowUpRunId,
+    });
+    expect(threadFollowUpClaim.resumeSession?.sessionId).toBe(threadSessionId);
+    clearTeamsApiCalls(teamsApi);
+    await completeSandboxRun({
+      runId: threadFollowUpRunId,
+      sandboxToken: threadFollowUpClaim.sandboxToken,
+      exitCode: 0,
+    });
+
+    const returnToMainRunId = await dispatchTeamsPersonalRun({
+      fixture: teams.fixture,
+      activityId: "activity-personal-main-return",
+      text: "return to the main DM",
+    });
+    const returnToMainClaim = await claimTeamsRun({
+      runnerGroup: teams.runnerGroup,
+      runId: returnToMainRunId,
+    });
+    expect(returnToMainClaim.resumeSession?.sessionId).toBe(
+      latestMainSessionId,
+    );
   });
 
   it("posts completed run replies and persists Teams thread sessions", async () => {
@@ -641,6 +738,34 @@ describe("Teams org internal callbacks", () => {
       threadId: "root-completed",
       text: "finish the task",
     });
+    mocks.clerk.session(teams.fixture.userId, teams.fixture.orgId, "org:admin");
+    const threadEvents = await accept(
+      setupApp({ context })(chatThreadsContract).events({
+        headers: { authorization: "Bearer clerk-session" },
+        query: {},
+      }),
+      [200],
+    );
+    const createdThread = threadEvents.body.events.find((event) => {
+      return event.kind === "created";
+    });
+    if (!createdThread) {
+      throw new Error("Expected the canonical Teams chat thread");
+    }
+    const threadMessages = await accept(
+      setupApp({ context })(chatThreadEventsContract).list({
+        headers: { authorization: "Bearer clerk-session" },
+        params: { threadId: createdThread.chatThreadId },
+        query: {},
+      }),
+      [200],
+    );
+    expect(threadMessages.body.events).toContainEqual(
+      expect.objectContaining({
+        eventType: "input.prompt",
+        content: "finish the task",
+      }),
+    );
     const claim = await claimTeamsRun({
       runnerGroup: teams.runnerGroup,
       runId,
@@ -693,17 +818,32 @@ describe("Teams org internal callbacks", () => {
         reactionType: "1f4ad_thoughtballoon",
       },
     ]);
-    expect(summaryRequests).toHaveLength(1);
-    const summaryRequest = recordFromUnknown(
-      summaryRequests[0],
-      "Expected OpenRouter summary request",
+    const completedThreadMessages = await accept(
+      setupApp({ context })(chatThreadEventsContract).list({
+        headers: { authorization: "Bearer clerk-session" },
+        params: { threadId: createdThread.chatThreadId },
+        query: {},
+      }),
+      [200],
     );
-    expect(JSON.stringify(summaryRequest.messages)).toContain(
-      "teams agent run",
+    expect(completedThreadMessages.body.events).toContainEqual(
+      expect.objectContaining({
+        eventType: "output.message",
+        content: "Task completed successfully.",
+      }),
+    );
+    const summaryRequestValue = summaryRequests.find((request) => {
+      const serialized = JSON.stringify(request);
+      return serialized.includes("finish the task");
+    });
+    const summaryRequest = recordFromUnknown(
+      summaryRequestValue,
+      "Expected Teams run summary request",
     );
     expect(JSON.stringify(summaryRequest.messages)).toContain(
       "finish the task",
     );
+    const firstRunOpenRouterRequestCount = summaryRequests.length;
 
     const secondFixture = await trackTeamsFixture(
       Promise.resolve(
@@ -753,7 +893,9 @@ describe("Teams org internal callbacks", () => {
     expect(teamsApi.postedActivities[1]?.text).toContain(
       "Reply to Grace Hopper",
     );
-    expect(summaryRequests).toHaveLength(2);
+    expect(summaryRequests.length).toBeGreaterThan(
+      firstRunOpenRouterRequestCount,
+    );
 
     const followUpClaim = await claimFollowUpInThread({
       fixture: teams.fixture,
@@ -848,7 +990,7 @@ describe("Teams org internal callbacks", () => {
     expect(followUpClaim.resumeSession).toBeNull();
   });
 
-  it("does not persist a thread session when the Teams API rejects the reply", async () => {
+  it("keeps the canonical thread session when the Teams API rejects the reply", async () => {
     const teams = await setupConnectedTeamsActor();
     const teamsApi = teamsApiMocks({
       serviceUrl: teams.fixture.serviceUrl,
@@ -867,18 +1009,25 @@ describe("Teams org internal callbacks", () => {
     });
     clearTeamsApiCalls(teamsApi);
 
-    await completeSandboxRun({
+    const cliAgentSessionId = await completeSandboxRun({
       runId,
       sandboxToken: claim.sandboxToken,
       exitCode: 0,
     });
 
-    expect(teamsApi.tokenRequests).toHaveLength(1);
+    expect(teamsApi.tokenRequests).toHaveLength(2);
     expect(teamsApi.postedActivities).toHaveLength(1);
     expect(teamsApi.postedActivities[0]?.text).toContain(
       "Task completed successfully.",
     );
-    expect(teamsApi.reactionRequests).toHaveLength(0);
+    expect(teamsApi.reactionRequests).toStrictEqual([
+      {
+        method: "DELETE",
+        conversationId: "19:thread@thread.tacv2",
+        activityId: "activity-teams-api-error-1",
+        reactionType: "1f4ad_thoughtballoon",
+      },
+    ]);
 
     const followUpClaim = await claimFollowUpInThread({
       fixture: teams.fixture,
@@ -886,6 +1035,6 @@ describe("Teams org internal callbacks", () => {
       threadId: "root-teams-api-error",
       activityId: "activity-teams-api-error-follow-up",
     });
-    expect(followUpClaim.resumeSession).toBeNull();
+    expect(followUpClaim.resumeSession?.sessionId).toBe(cliAgentSessionId);
   });
 });

@@ -1,8 +1,10 @@
+import { performance } from "node:perf_hooks";
+
 import type { TriggerSource } from "@vm0/api-contracts/contracts/logs";
 
 import { now } from "../external/time";
 import { recordSandboxOperations } from "../external/sandbox-op-log";
-import { onRejection } from "../utils";
+import { safeSync } from "../utils";
 
 type ApiDispatchTimingSpanKind = "top_level" | "nested";
 export type ApiDispatchTimingDimensions = Readonly<Record<string, string>>;
@@ -132,6 +134,13 @@ export type ApiDispatchTimingActionType =
   | "api_dispatch_claim_queue_first_message"
   | "api_dispatch_queue_first_thread_lock_wait"
   | "api_dispatch_insert_run_record"
+  | "api_dispatch_validate_thread_session_snapshot_thread"
+  | "api_dispatch_validate_thread_session_snapshot_session"
+  | "api_dispatch_activate_usage_allowance_windows"
+  | "api_dispatch_load_thread_session_binding"
+  | "api_dispatch_update_thread_session_binding"
+  | "api_dispatch_insert_agent_run_queue"
+  | "api_dispatch_count_agent_run_queue_depth"
   | "api_dispatch_prepare_storage_manifest"
   | "api_dispatch_prepare_storage_manifest_resolve_inputs"
   | "api_dispatch_prepare_storage_manifest_ensure_artifacts"
@@ -153,7 +162,20 @@ export type ApiDispatchTimingActionType =
   | "api_dispatch_prepare_storage_manifest_resolve_artifact_versions"
   | "api_dispatch_prepare_storage_manifest_generate_artifact_urls"
   | "api_dispatch_prepare_storage_manifest_assemble"
-  | "api_dispatch_build_stored_execution_context";
+  | "api_dispatch_build_stored_execution_context"
+  | "api_dispatch_connector_catalog_load_runtime_snapshot"
+  | "api_dispatch_connector_catalog_query_identity"
+  | "api_dispatch_connector_catalog_query_payload"
+  | "api_dispatch_connector_catalog_decompress"
+  | "api_dispatch_connector_catalog_verify_digest"
+  | "api_dispatch_connector_catalog_decode_json"
+  | "api_dispatch_connector_catalog_validate_schema"
+  | "api_dispatch_connector_catalog_validate_public_projection"
+  | "api_dispatch_connector_catalog_validate_relationships"
+  | "api_dispatch_connector_catalog_validate_compatibility"
+  | "api_dispatch_connector_catalog_materialize_accepted_snapshot"
+  | "api_dispatch_connector_catalog_materialize_runtime_snapshot"
+  | "api_dispatch_connector_catalog_materialize_server_firewalls";
 
 interface ApiDispatchTimingRecord {
   readonly actionType: ApiDispatchTimingActionType;
@@ -166,6 +188,22 @@ interface ApiDispatchTimingRecord {
 export class ApiDispatchTimingCollector {
   private readonly records: ApiDispatchTimingRecord[] = [];
 
+  private recordDuration(
+    actionType: ApiDispatchTimingActionType,
+    spanKind: ApiDispatchTimingSpanKind,
+    durationMs: number,
+    finishedAt: number,
+    dimensions?: ApiDispatchTimingDimensionsInput,
+  ): void {
+    this.records.push({
+      actionType,
+      spanKind,
+      durationMs: Math.max(0, durationMs),
+      timestamp: new Date(finishedAt).toISOString(),
+      dimensions: resolveApiDispatchTimingDimensions(dimensions),
+    });
+  }
+
   recordElapsed(
     actionType: ApiDispatchTimingActionType,
     spanKind: ApiDispatchTimingSpanKind,
@@ -173,13 +211,13 @@ export class ApiDispatchTimingCollector {
     finishedAt: number = now(),
     dimensions?: ApiDispatchTimingDimensionsInput,
   ): void {
-    this.records.push({
+    this.recordDuration(
       actionType,
       spanKind,
-      durationMs: Math.max(0, finishedAt - startedAt),
-      timestamp: new Date(finishedAt).toISOString(),
-      dimensions: resolveApiDispatchTimingDimensions(dimensions),
-    });
+      finishedAt - startedAt,
+      finishedAt,
+      dimensions,
+    );
   }
 
   async measure<T>(
@@ -188,17 +226,39 @@ export class ApiDispatchTimingCollector {
     operation: () => T | Promise<T>,
     dimensions?: ApiDispatchTimingDimensionsInput,
   ): Promise<T> {
-    const startedAt = now();
-    const result = await onRejection(
-      (async () => {
-        return await operation();
-      })(),
-      () => {
-        this.recordElapsed(actionType, spanKind, startedAt, now(), dimensions);
-      },
+    const startedAt = performance.now();
+    return await (async () => {
+      return await operation();
+    })().finally(() => {
+      this.recordDuration(
+        actionType,
+        spanKind,
+        performance.now() - startedAt,
+        now(),
+        dimensions,
+      );
+    });
+  }
+
+  measureSync<T>(
+    actionType: ApiDispatchTimingActionType,
+    spanKind: ApiDispatchTimingSpanKind,
+    operation: () => T,
+    dimensions?: ApiDispatchTimingDimensionsInput,
+  ): T {
+    const startedAt = performance.now();
+    const result = safeSync(operation);
+    this.recordDuration(
+      actionType,
+      spanKind,
+      performance.now() - startedAt,
+      now(),
+      dimensions,
     );
-    this.recordElapsed(actionType, spanKind, startedAt, now(), dimensions);
-    return result;
+    if ("error" in result) {
+      throw result.error;
+    }
+    return result.ok;
   }
 
   flush(args: {

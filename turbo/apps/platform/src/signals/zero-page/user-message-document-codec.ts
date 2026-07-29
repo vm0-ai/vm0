@@ -1,7 +1,9 @@
 import type { JSONContent } from "@tiptap/core";
 import type { Node as ProseMirrorNode } from "@tiptap/pm/model";
 import {
+  generationTemplateRequestSchema,
   userMessageDocumentSchema,
+  type FeedbackNotePart,
   type GenerationTemplateRequest,
   type GenerationTemplateType,
   type PersistedAttachment,
@@ -9,11 +11,12 @@ import {
   type UserMessagePart,
 } from "@vm0/api-contracts/contracts/chat-threads";
 
-import { formatFeedbackPrompt, type FeedbackItem } from "./chat-feedback.ts";
+import { formatFeedbackPrompt, type FeedbackSource } from "./chat-feedback.ts";
 import { serializeChatThreadMention } from "./chat-thread-suggestion-domain.ts";
 
 export const CHAT_THREAD_MENTION_NODE_NAME = "chatThreadMention";
 export const TEMPLATE_ATTACHMENT_NODE_NAME = "templateAttachment";
+export const INLINE_TEMPLATE_NODE_NAME = "inlineTemplate";
 const FEEDBACK_ITEM_NODE_NAME = "feedbackItem";
 
 export interface EditorDocumentContext {
@@ -22,12 +25,19 @@ export interface EditorDocumentContext {
 }
 
 export interface EditorDocumentSnapshot {
+  readonly toEditorDocument: () => JSONContent;
   readonly toMessageDocument: (
     context?: EditorDocumentContext,
   ) => UserMessageDocument | null;
 }
 
-export interface TextMessageTemplateSnapshot {
+export function shouldUseUserMessage(
+  document: UserMessageDocument | null | undefined,
+): document is UserMessageDocument {
+  return document !== null && document !== undefined;
+}
+
+interface TextMessageTemplateSnapshot {
   readonly titleSnapshot: string;
   readonly template: GenerationTemplateRequest;
 }
@@ -47,7 +57,9 @@ function appendTextPart(parts: UserMessagePart[], text: string): void {
   parts.push({ type: "text", text });
 }
 
-function chatThreadPart(node: ProseMirrorNode): UserMessagePart | null {
+function chatThreadPart(
+  node: ProseMirrorNode,
+): Extract<UserMessagePart, { type: "chat_thread" }> | null {
   const threadId: unknown = node.attrs.threadId;
   const title: unknown = node.attrs.title;
   if (typeof threadId !== "string" || typeof title !== "string") {
@@ -60,7 +72,7 @@ function chatThreadPart(node: ProseMirrorNode): UserMessagePart | null {
   };
 }
 
-function templatePart(
+function legacyTemplatePart(
   node: ProseMirrorNode,
   generationTemplate: GenerationTemplateRequest | undefined,
 ): UserMessagePart | null {
@@ -77,6 +89,23 @@ function templatePart(
     type: "template",
     titleSnapshot: title,
     template: generationTemplate,
+  };
+}
+
+function inlineTemplatePart(
+  node: ProseMirrorNode,
+): Extract<UserMessagePart, { type: "template" }> | null {
+  const title: unknown = node.attrs.title;
+  const parsedTemplate = generationTemplateRequestSchema.safeParse(
+    node.attrs.template,
+  );
+  if (typeof title !== "string" || !parsedTemplate.success) {
+    return null;
+  }
+  return {
+    type: "template",
+    titleSnapshot: title,
+    template: parsedTemplate.data,
   };
 }
 
@@ -105,6 +134,14 @@ function appendParagraphParts(
       parts.push(part);
       continue;
     }
+    if (node.type.name === INLINE_TEMPLATE_NODE_NAME) {
+      const part = inlineTemplatePart(node);
+      if (!part) {
+        return false;
+      }
+      parts.push(part);
+      continue;
+    }
     return false;
   }
   return true;
@@ -124,39 +161,76 @@ function appendFileParts(
   }
 }
 
-function feedbackItem(node: ProseMirrorNode): FeedbackItem | null {
-  const id: unknown = node.attrs.feedbackId;
-  const quote: unknown = node.attrs.quote;
-  if (typeof id !== "number" || typeof quote !== "string") {
-    return null;
+function feedbackSource(
+  node: ProseMirrorNode,
+): FeedbackSource | null | undefined {
+  const sourceType: unknown = node.attrs.sourceType;
+  const sourceId: unknown = node.attrs.sourceId;
+  const sourceStatus: unknown = node.attrs.sourceStatus;
+  const sourceSentId: unknown = node.attrs.sourceSentId;
+  if (
+    sourceType === null &&
+    sourceId === null &&
+    sourceStatus === null &&
+    sourceSentId === null
+  ) {
+    return undefined;
   }
-  let valid = true;
-  const note = node.textBetween(0, node.content.size, "\n", (leafNode) => {
-    if (leafNode.type.name === "hardBreak") {
-      return "\n";
-    }
-    if (leafNode.type.name !== CHAT_THREAD_MENTION_NODE_NAME) {
-      valid = false;
-      return "";
-    }
-    const part = chatThreadPart(leafNode);
-    if (!part || part.type !== "chat_thread") {
-      valid = false;
-      return "";
-    }
-    return serializeChatThreadMention(part.threadId, part.titleSnapshot);
-  });
-  if (!valid) {
+  if (
+    sourceType !== "mail" ||
+    typeof sourceId !== "string" ||
+    (sourceStatus !== "draft" && sourceStatus !== "sent") ||
+    (sourceSentId !== null && typeof sourceSentId !== "string")
+  ) {
     return null;
   }
   return {
-    id,
-    quote,
-    note,
+    type: sourceType,
+    id: sourceId,
+    status: sourceStatus,
+    ...(typeof sourceSentId === "string" ? { sentId: sourceSentId } : {}),
   };
 }
 
-function templateCount(document: ProseMirrorNode): number | null {
+function feedbackPart(node: ProseMirrorNode): UserMessagePart | null {
+  const quote: unknown = node.attrs.quote;
+  const source = feedbackSource(node);
+  if (typeof quote !== "string" || source === null) {
+    return null;
+  }
+  const note: UserMessagePart[] = [];
+  for (let index = 0; index < node.childCount; index++) {
+    const paragraph = node.child(index);
+    if (paragraph.type.name !== "paragraph") {
+      return null;
+    }
+    if (index > 0) {
+      appendTextPart(note, "\n");
+    }
+    if (!appendParagraphParts(paragraph, note)) {
+      return null;
+    }
+  }
+  if (
+    !note.every((part): part is FeedbackNotePart => {
+      return (
+        part.type === "text" ||
+        part.type === "chat_thread" ||
+        part.type === "template"
+      );
+    })
+  ) {
+    return null;
+  }
+  return {
+    type: "feedback",
+    quote,
+    note,
+    ...(source ? { source } : {}),
+  };
+}
+
+function legacyTemplateCount(document: ProseMirrorNode): number | null {
   let count = 0;
   for (let index = 0; index < document.childCount; index++) {
     const nodeName = document.child(index).type.name;
@@ -175,31 +249,25 @@ function appendFeedbackGroup(
   document: ProseMirrorNode,
   startIndex: number,
   parts: UserMessagePart[],
-  prependSeparator: boolean,
 ): { readonly nextIndex: number; readonly emitted: boolean } | null {
-  const items: FeedbackItem[] = [];
+  const feedbackParts: UserMessagePart[] = [];
   let index = startIndex;
   while (index < document.childCount) {
     const node = document.child(index);
     if (node.type.name !== FEEDBACK_ITEM_NODE_NAME) {
       break;
     }
-    const item = feedbackItem(node);
-    if (!item) {
+    const part = feedbackPart(node);
+    if (!part || part.type !== "feedback") {
       return null;
     }
-    if (item.note.trim().length > 0) {
-      items.push(item);
+    if (feedbackNoteToPrompt(part.note).trim().length > 0) {
+      feedbackParts.push(part);
     }
     index += 1;
   }
-  if (items.length > 0) {
-    if (prependSeparator) {
-      appendTextPart(parts, "\n\n");
-    }
-    appendTextPart(parts, formatFeedbackPrompt(items));
-  }
-  return { nextIndex: index, emitted: items.length > 0 };
+  parts.push(...feedbackParts);
+  return { nextIndex: index, emitted: feedbackParts.length > 0 };
 }
 
 /**
@@ -218,7 +286,7 @@ export function editorDocToMessageDocument(
   const parts: UserMessagePart[] = [];
   const attachments = context.attachments ?? [];
   let filesAppended = false;
-  const documentTemplateCount = templateCount(document);
+  const documentTemplateCount = legacyTemplateCount(document);
   if (documentTemplateCount === null) {
     return null;
   }
@@ -227,7 +295,7 @@ export function editorDocToMessageDocument(
   for (let index = 0; index < document.childCount; index++) {
     const node = document.child(index);
     if (node.type.name === TEMPLATE_ATTACHMENT_NODE_NAME) {
-      const part = templatePart(node, context.generationTemplate);
+      const part = legacyTemplatePart(node, context.generationTemplate);
       if (!part) {
         return null;
       }
@@ -239,12 +307,7 @@ export function editorDocToMessageDocument(
       filesAppended = true;
     }
     if (node.type.name === FEEDBACK_ITEM_NODE_NAME) {
-      const feedbackGroup = appendFeedbackGroup(
-        document,
-        index,
-        parts,
-        previousPromptSection !== null,
-      );
+      const feedbackGroup = appendFeedbackGroup(document, index, parts);
       if (feedbackGroup === null) {
         return null;
       }
@@ -254,11 +317,8 @@ export function editorDocToMessageDocument(
       }
       continue;
     }
-    if (previousPromptSection !== null) {
-      appendTextPart(
-        parts,
-        previousPromptSection === "paragraph" ? "\n" : "\n\n",
-      );
+    if (previousPromptSection === "paragraph") {
+      appendTextPart(parts, "\n");
     }
     if (!appendParagraphParts(node, parts)) {
       return null;
@@ -285,6 +345,9 @@ export function createEditorDocumentSnapshot(
   document: ProseMirrorNode,
 ): EditorDocumentSnapshot {
   return Object.freeze({
+    toEditorDocument() {
+      return document.toJSON();
+    },
     toMessageDocument(context: EditorDocumentContext = {}) {
       return editorDocToMessageDocument(document, context);
     },
@@ -295,6 +358,7 @@ export function createEditorDocumentSnapshot(
 export function textToMessageDocument(
   text: string,
   template?: TextMessageTemplateSnapshot,
+  attachments: readonly PersistedAttachment[] = [],
 ): UserMessageDocument | null {
   const parts: UserMessagePart[] = [];
   if (template) {
@@ -304,6 +368,7 @@ export function textToMessageDocument(
       template: template.template,
     });
   }
+  appendFileParts(parts, attachments);
   appendTextPart(parts, text);
   const parsed = userMessageDocumentSchema.safeParse({ version: 1, parts });
   return parsed.success ? parsed.data : null;
@@ -323,6 +388,21 @@ function templatePreviewImageUrl(
 
 function templateNode(part: Extract<UserMessagePart, { type: "template" }>) {
   return {
+    type: INLINE_TEMPLATE_NODE_NAME,
+    attrs: {
+      templateType: part.template.type,
+      template: part.template,
+      title: part.titleSnapshot,
+      category: templateCategory(part.template.type),
+      previewImageUrl: templatePreviewImageUrl(part.template),
+    },
+  } satisfies JSONContent;
+}
+
+function legacyTemplateNode(
+  part: Extract<UserMessagePart, { type: "template" }>,
+) {
+  return {
     type: TEMPLATE_ATTACHMENT_NODE_NAME,
     attrs: {
       templateType: part.template.type,
@@ -333,21 +413,24 @@ function templateNode(part: Extract<UserMessagePart, { type: "template" }>) {
   } satisfies JSONContent;
 }
 
-/**
- * Restores the editor-owned portion of a business document. File parts stay in
- * the existing external attachment state and therefore do not become Tiptap
- * nodes. Newlines are canonically restored as paragraph boundaries.
- */
-export function messageDocumentToEditorDoc(value: unknown): JSONContent | null {
-  const parsed = userMessageDocumentSchema.safeParse(value);
-  if (!parsed.success) {
-    return null;
-  }
+function feedbackNoteToPrompt(note: readonly FeedbackNotePart[]): string {
+  return note
+    .map((part) => {
+      if (part.type === "text") {
+        return part.text;
+      }
+      if (part.type === "chat_thread") {
+        return serializeChatThreadMention(part.threadId, part.titleSnapshot);
+      }
+      return `Select ${part.titleSnapshot} ${part.template.type} template`;
+    })
+    .join("");
+}
 
+function feedbackNoteContent(note: readonly FeedbackNotePart[]): JSONContent[] {
   const content: JSONContent[] = [];
   let paragraphContent: JSONContent[] = [];
   let trailingParagraph = false;
-  let templateCount = 0;
   const flushParagraph = () => {
     content.push(
       paragraphContent.length > 0
@@ -358,19 +441,10 @@ export function messageDocumentToEditorDoc(value: unknown): JSONContent | null {
     trailingParagraph = false;
   };
 
-  for (const part of parsed.data.parts) {
-    if (part.type === "text") {
-      const lines = part.text.split("\n");
-      for (const [index, line] of lines.entries()) {
-        if (line.length > 0) {
-          paragraphContent.push({ type: "text", text: line });
-          trailingParagraph = false;
-        }
-        if (index < lines.length - 1) {
-          flushParagraph();
-          trailingParagraph = true;
-        }
-      }
+  for (const part of note) {
+    if (part.type === "template") {
+      paragraphContent.push(templateNode(part));
+      trailingParagraph = false;
       continue;
     }
     if (part.type === "chat_thread") {
@@ -384,48 +458,166 @@ export function messageDocumentToEditorDoc(value: unknown): JSONContent | null {
       trailingParagraph = false;
       continue;
     }
-    if (part.type === "template") {
-      templateCount += 1;
-      if (templateCount > 1) {
-        return null;
+    const lines = part.text.split("\n");
+    for (const [index, line] of lines.entries()) {
+      if (line.length > 0) {
+        paragraphContent.push({ type: "text", text: line });
+        trailingParagraph = false;
       }
-      if (paragraphContent.length > 0) {
+      if (index < lines.length - 1) {
         flushParagraph();
+        trailingParagraph = true;
       }
-      content.push(templateNode(part));
     }
   }
 
   if (paragraphContent.length > 0 || trailingParagraph) {
     flushParagraph();
   }
-  if (content.length === 0) {
-    content.push({ type: "paragraph" });
-  }
-  return { type: "doc", content };
+  return content.length > 0 ? content : [{ type: "paragraph" }];
 }
 
-/** Serializes the business document to the same plain prompt representation. */
-export function messageDocumentToPrompt(value: unknown): string | null {
+function formattedFeedbackParts(
+  parts: readonly Extract<UserMessagePart, { type: "feedback" }>[],
+): string {
+  return formatFeedbackPrompt(
+    parts.map((part) => {
+      return {
+        quote: part.quote,
+        note: feedbackNoteToPrompt(part.note),
+        ...(part.source ? { source: part.source } : {}),
+      };
+    }),
+  );
+}
+
+interface RestoredEditorState {
+  readonly content: JSONContent[];
+  paragraphContent: JSONContent[];
+  trailingParagraph: boolean;
+}
+
+function flushRestoredParagraph(state: RestoredEditorState): void {
+  state.content.push(
+    state.paragraphContent.length > 0
+      ? { type: "paragraph", content: state.paragraphContent }
+      : { type: "paragraph" },
+  );
+  state.paragraphContent = [];
+  state.trailingParagraph = false;
+}
+
+function appendRestoredText(state: RestoredEditorState, text: string): void {
+  const lines = text.split("\n");
+  for (const [index, line] of lines.entries()) {
+    if (line.length > 0) {
+      state.paragraphContent.push({ type: "text", text: line });
+      state.trailingParagraph = false;
+    }
+    if (index < lines.length - 1) {
+      flushRestoredParagraph(state);
+      state.trailingParagraph = true;
+    }
+  }
+}
+
+/**
+ * Restores the editor-owned portion of a business document. File parts stay in
+ * the existing external attachment state and therefore do not become Tiptap
+ * nodes. Newlines are canonically restored as paragraph boundaries.
+ */
+export function messageDocumentToEditorDoc(
+  value: unknown,
+  options: { readonly inlineTemplates?: boolean } = {},
+): JSONContent | null {
   const parsed = userMessageDocumentSchema.safeParse(value);
   if (!parsed.success) {
     return null;
   }
-  return parsed.data.parts
-    .map((part) => {
-      if (part.type === "text") {
-        return part.text;
+
+  const state: RestoredEditorState = {
+    content: [],
+    paragraphContent: [],
+    trailingParagraph: false,
+  };
+  let legacyTemplateCount = 0;
+  let feedbackIndex = 0;
+  const feedbackCount = parsed.data.parts.filter((part) => {
+    return part.type === "feedback";
+  }).length;
+
+  for (const part of parsed.data.parts) {
+    if (part.type === "text") {
+      appendRestoredText(state, part.text);
+      continue;
+    }
+    if (part.type === "chat_thread") {
+      state.paragraphContent.push({
+        type: CHAT_THREAD_MENTION_NODE_NAME,
+        attrs: {
+          threadId: part.threadId,
+          title: part.titleSnapshot,
+        },
+      });
+      state.trailingParagraph = false;
+      continue;
+    }
+    if (part.type === "feedback") {
+      if (state.paragraphContent.length > 0 || state.trailingParagraph) {
+        flushRestoredParagraph(state);
       }
-      if (part.type === "chat_thread") {
-        return serializeChatThreadMention(part.threadId, part.titleSnapshot);
+      state.content.push({
+        type: FEEDBACK_ITEM_NODE_NAME,
+        attrs: {
+          feedbackId: feedbackIndex + 1,
+          quote: part.quote,
+          showDivider: feedbackIndex > 0,
+          fill: feedbackIndex === feedbackCount - 1,
+          ...(part.source
+            ? {
+                sourceType: part.source.type,
+                sourceId: part.source.id,
+                sourceStatus: part.source.status,
+                sourceSentId: part.source.sentId ?? null,
+              }
+            : {}),
+        },
+        content: feedbackNoteContent(part.note),
+      });
+      feedbackIndex += 1;
+      continue;
+    }
+    if (part.type === "template") {
+      if (options.inlineTemplates === true) {
+        state.paragraphContent.push(templateNode(part));
+        state.trailingParagraph = false;
+        continue;
       }
-      return "";
-    })
-    .join("");
+      legacyTemplateCount += 1;
+      if (legacyTemplateCount > 1) {
+        return null;
+      }
+      if (state.paragraphContent.length > 0) {
+        flushRestoredParagraph(state);
+      }
+      state.content.push(legacyTemplateNode(part));
+    }
+  }
+
+  if (state.paragraphContent.length > 0 || state.trailingParagraph) {
+    flushRestoredParagraph(state);
+  }
+  if (state.content.length === 0) {
+    state.content.push({ type: "paragraph" });
+  }
+  return { type: "doc", content: state.content };
 }
 
-/** Serializes the business document into a compact human-readable label. */
-export function messageDocumentToDisplayText(value: unknown): string | null {
+/** Serializes the business document to the same plain prompt representation. */
+export function messageDocumentToPrompt(
+  value: unknown,
+  options: { readonly inlineTemplates?: boolean } = {},
+): string | null {
   const parsed = userMessageDocumentSchema.safeParse(value);
   if (!parsed.success) {
     return null;
@@ -433,14 +625,76 @@ export function messageDocumentToDisplayText(value: unknown): string | null {
 
   const blocks: string[] = [];
   let inlineText = "";
+  let feedbackParts: Extract<UserMessagePart, { type: "feedback" }>[] = [];
   const flushInlineText = () => {
     if (inlineText.length > 0) {
       blocks.push(inlineText);
       inlineText = "";
     }
   };
+  const flushFeedback = () => {
+    if (feedbackParts.length > 0) {
+      blocks.push(formattedFeedbackParts(feedbackParts));
+      feedbackParts = [];
+    }
+  };
 
   for (const part of parsed.data.parts) {
+    if (part.type === "feedback") {
+      flushInlineText();
+      feedbackParts.push(part);
+      continue;
+    }
+    flushFeedback();
+    if (part.type === "text") {
+      inlineText += part.text;
+    } else if (part.type === "chat_thread") {
+      inlineText += serializeChatThreadMention(
+        part.threadId,
+        part.titleSnapshot,
+      );
+    } else if (part.type === "template" && options.inlineTemplates === true) {
+      inlineText += `Select ${part.titleSnapshot} ${part.template.type} template`;
+    }
+  }
+  flushFeedback();
+  flushInlineText();
+  return blocks.join("\n\n");
+}
+
+/** Serializes the business document into a compact human-readable label. */
+export function messageDocumentToDisplayText(
+  value: unknown,
+  options: { readonly inlineTemplates?: boolean } = {},
+): string | null {
+  const parsed = userMessageDocumentSchema.safeParse(value);
+  if (!parsed.success) {
+    return null;
+  }
+
+  const blocks: string[] = [];
+  let inlineText = "";
+  let feedbackParts: Extract<UserMessagePart, { type: "feedback" }>[] = [];
+  const flushInlineText = () => {
+    if (inlineText.length > 0) {
+      blocks.push(inlineText);
+      inlineText = "";
+    }
+  };
+  const flushFeedback = () => {
+    if (feedbackParts.length > 0) {
+      blocks.push(formattedFeedbackParts(feedbackParts));
+      feedbackParts = [];
+    }
+  };
+
+  for (const part of parsed.data.parts) {
+    if (part.type === "feedback") {
+      flushInlineText();
+      feedbackParts.push(part);
+      continue;
+    }
+    flushFeedback();
     if (part.type === "text") {
       inlineText += part.text;
       continue;
@@ -449,14 +703,20 @@ export function messageDocumentToDisplayText(value: unknown): string | null {
       inlineText += `[Chat thread: ${part.titleSnapshot}]`;
       continue;
     }
+    if (part.type === "template") {
+      if (options.inlineTemplates === true) {
+        inlineText += `[Template: ${part.titleSnapshot}]`;
+      } else {
+        flushInlineText();
+        blocks.push(`[Template: ${part.titleSnapshot}]`);
+      }
+      continue;
+    }
 
     flushInlineText();
-    blocks.push(
-      part.type === "template"
-        ? `[Template: ${part.titleSnapshot}]`
-        : `[File: ${part.filenameSnapshot}]`,
-    );
+    blocks.push(`[File: ${part.filenameSnapshot}]`);
   }
+  flushFeedback();
   flushInlineText();
   return blocks.join("\n\n");
 }

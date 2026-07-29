@@ -21,14 +21,32 @@ from tests.usage_helpers import RecordingTimer, install_recording_usage_timer
 class _InstrumentedFlushOwnerLock:
     def __init__(self) -> None:
         self._lock = threading.Lock()
+        self._occupied = False
+        self.acquire_modes: list[bool] = []
+        self.release_call_count = 0
         self.blocking_acquire_started = threading.Event()
 
     def acquire(self, blocking: bool = True) -> bool:
+        self.acquire_modes.append(blocking)
         if blocking:
             self.blocking_acquire_started.set()
+        if self._occupied and blocking:
+            raise AssertionError("test-held flush ownership must not be acquired blocking")
         return self._lock.acquire(blocking)
 
     def release(self) -> None:
+        self.release_call_count += 1
+        if self._occupied:
+            raise AssertionError("test-held flush ownership must not be released")
+        self._lock.release()
+
+    def occupy(self) -> None:
+        assert self._lock.acquire(blocking=False)
+        self._occupied = True
+
+    def relinquish(self) -> None:
+        assert self._occupied
+        self._occupied = False
         self._lock.release()
 
 
@@ -46,16 +64,8 @@ class _FalseyTimerFactory:
 
 
 class _FalseyFlushOwnerLock(_InstrumentedFlushOwnerLock):
-    def __init__(self) -> None:
-        super().__init__()
-        self.acquire_modes: list[bool] = []
-
     def __bool__(self) -> bool:
         return False
-
-    def acquire(self, blocking: bool = True) -> bool:
-        self.acquire_modes.append(blocking)
-        return super().acquire(blocking)
 
 
 class _FailingRecordingTimer(RecordingTimer):
@@ -110,6 +120,65 @@ def test_usage_buffer_test_injections_accept_falsey_timer_factory_and_lock(tmp_p
     enqueue.assert_called_once()
     assert enqueue.last_call.payload["runId"] == "run-1"
     assert flush_owner_lock.acquire_modes == [False]
+
+
+def test_timer_flush_reschedules_when_flush_owner_is_busy(tmp_path):
+    enqueue = RecordingEnqueue()
+    flush_owner_lock = _InstrumentedFlushOwnerLock()
+    timers = install_recording_usage_timer(
+        enqueue_webhook=enqueue,
+        flush_owner_lock=flush_owner_lock,
+    )
+    pending_path = tmp_path / "usage-pending"
+    usage.set_pending_path(str(pending_path))
+    usage.buffer_source_usage_events(
+        "https://api.test/api/webhooks/agent/usage-event",
+        "token-a",
+        "run-1",
+        [event(source_key="source-1", quantity=10)],
+        str(tmp_path / "proxy.jsonl"),
+    )
+
+    assert len(timers) == 1
+    assert timers[0].started is True
+
+    flush_owner_lock.occupy()
+    try:
+        timers[0].callback()
+
+        enqueue.assert_not_called()
+        assert flush_owner_lock.acquire_modes == [False]
+        assert flush_owner_lock.release_call_count == 0
+        assert timers[0].cancelled is True
+        assert len(timers) == 2
+        assert timers[1].started is True
+        assert timers[1].cancelled is False
+        assert_current_pending(
+            pending_path,
+            flows=0,
+            buffered=1,
+            reports=0,
+            flush_request_id="timer-owner-busy",
+        )
+    finally:
+        flush_owner_lock.relinquish()
+
+    timers[1].callback()
+
+    enqueue.assert_called_once()
+    assert enqueue.last_call.payload["runId"] == "run-1"
+    assert enqueue.last_call.payload["events"][0]["idempotencyKey"] == "source-1"
+    assert flush_owner_lock.acquire_modes == [False, False]
+    assert flush_owner_lock.release_call_count == 1
+    assert len(timers) == 2
+    assert timers[1].cancelled is True
+    assert_current_pending(
+        pending_path,
+        flows=0,
+        buffered=0,
+        reports=0,
+        flush_request_id="timer-owner-retry-drained",
+    )
 
 
 def test_shutdown_flush_waits_for_active_timer_flush_and_drains_live_usage(tmp_path):
@@ -673,7 +742,7 @@ def test_priority_preempted_flush_keeps_timer_for_usage_buffered_during_enqueue(
     proxy_log_path = str(tmp_path / "proxy.jsonl")
     usage.set_pending_path(str(pending_path))
     usage.buffer_model_usage_observations(
-        "https://api.test/api/webhooks/agent/model-usage-observation-v2",
+        "https://api.test/api/webhooks/agent/model-usage-observation",
         "token-a",
         "run-1",
         [observation(source_key="observation-source", input_tokens=1)],

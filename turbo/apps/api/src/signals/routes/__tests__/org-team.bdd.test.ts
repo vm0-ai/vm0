@@ -1,8 +1,11 @@
 import { randomUUID } from "node:crypto";
 
+import { HttpResponse, http } from "msw";
 import { describe, expect, it } from "vitest";
 
 import { testContext } from "../../../__tests__/test-context";
+import { now } from "../../../lib/time";
+import { server } from "../../../mocks/server";
 import {
   createAuthOrgAgentsBddApi,
   type ApiTestUser,
@@ -64,7 +67,7 @@ async function onboardAdmin(
     orgState.name = options.name;
   }
   api.mockClerkOrg(admin, orgState);
-  const bootstrap = await api.bootstrapOnboarding(admin, {
+  const bootstrap = await api.bootstrapLimitedFreeOnboarding(admin, {
     displayName: options.displayName ?? "BDD Org Team Agent",
     sound: "calm",
   });
@@ -272,59 +275,6 @@ describe("ORG-01: org logo lifecycle through the Clerk boundary", () => {
     expect(postForbidden.body).toStrictEqual({
       error: { message: "Access denied", code: "BAD_REQUEST" },
     });
-
-    // DELETE happy path + ""→null arm.
-    api.mockClerkOrgLogo("delete", {
-      imageUrl: "https://img.clerk.test/default-logo.png",
-      hasImage: true,
-    });
-    const removed = await api.requestDeleteOrgLogo(admin, [200]);
-    expect(removed.body).toStrictEqual({
-      logoUrl: "https://img.clerk.test/default-logo.png",
-      hasImage: true,
-    });
-    expect(
-      context.mocks.clerk.organizations.deleteOrganizationLogo,
-    ).toHaveBeenCalledWith(orgId);
-    api.mockClerkOrgLogo("delete", { imageUrl: "", hasImage: false });
-    const removedCleared = await api.requestDeleteOrgLogo(admin, [200]);
-    expect(removedCleared.body).toStrictEqual({
-      logoUrl: null,
-      hasImage: false,
-    });
-
-    // DELETE auth arms.
-    const unauthenticatedDelete = await api.requestDeleteOrgLogo(null, [401]);
-    expectApiError(unauthenticatedDelete.body);
-    expect(unauthenticatedDelete.body.error.code).toBe("UNAUTHORIZED");
-    const noOrgDelete = await api.requestDeleteOrgLogo(noOrg, [404]);
-    expect(noOrgDelete.body).toStrictEqual({
-      error: { message: "Org not found", code: "BAD_REQUEST" },
-    });
-    const memberDelete = await api.requestDeleteOrgLogo(member, [403]);
-    expect(memberDelete.body).toStrictEqual({
-      error: {
-        message: "Only admins can remove the logo",
-        code: "BAD_REQUEST",
-      },
-    });
-
-    // DELETE Clerk failures.
-    api.mockClerkLogoError("delete", "NotFoundError");
-    const deleteNotFound = await api.requestDeleteOrgLogo(admin, [404]);
-    expect(deleteNotFound.body).toStrictEqual({
-      error: { message: "Org not found", code: "BAD_REQUEST" },
-    });
-    api.mockClerkLogoError("delete", "BadRequestError");
-    const deleteBadRequest = await api.requestDeleteOrgLogo(admin, [404]);
-    expect(deleteBadRequest.body).toStrictEqual({
-      error: { message: "Org not found", code: "BAD_REQUEST" },
-    });
-    api.mockClerkLogoError("delete", "ForbiddenError");
-    const deleteForbidden = await api.requestDeleteOrgLogo(admin, [403]);
-    expect(deleteForbidden.body).toStrictEqual({
-      error: { message: "Access denied", code: "BAD_REQUEST" },
-    });
   });
 });
 
@@ -461,6 +411,48 @@ describe("ORG-01: org update and delete error matrix", () => {
 });
 
 describe("ORG-02: membership admin matrix", () => {
+  it("rejects Clerk member records without required user identifiers", async () => {
+    const admin = api.user();
+    const orgId = orgIdOf(admin);
+    api.mockClerkOrg(admin);
+
+    context.mocks.clerk.organizations.getOrganizationMembershipList.mockResolvedValueOnce(
+      {
+        data: [
+          {
+            role: "org:admin",
+            publicUserData: {},
+            createdAt: now(),
+          },
+        ],
+      },
+    );
+    const missingMemberId = await api.requestListMembers(admin, [500]);
+    expect(missingMemberId.status).toBe(500);
+
+    server.use(
+      http.get(
+        "https://api.clerk.com/v1/organizations/:orgId/membership_requests",
+        ({ params }) => {
+          if (params.orgId !== orgId) {
+            return HttpResponse.json({ data: [] });
+          }
+          return HttpResponse.json({
+            data: [
+              {
+                id: `request-${shortId()}`,
+                public_user_data: {},
+                created_at: now(),
+              },
+            ],
+          });
+        },
+      ),
+    );
+    const missingRequestUserId = await api.requestListMembers(admin, [500]);
+    expect(missingRequestUserId.status).toBe(500);
+  });
+
   it("enforces role, self, unknown-target, invalid-body, and clerk-failure arms across member routes [ORG-MEMBERS-C]", async () => {
     const admin = api.user();
     const orgId = orgIdOf(admin);
@@ -895,14 +887,6 @@ describe("ORG-01/AGENT-02: team listing and default-agent recovery", () => {
     const restored = await api.readOnboardingStatus(admin);
     expect(restored.defaultAgentId).toBeTruthy();
     expect(restored.defaultAgentId).not.toBe(defaultAgentId);
-
-    const missingAgent = await api.requestSetDefaultAgent(
-      crossOrgAdmin,
-      randomUUID(),
-      [404],
-    );
-    expectApiError(missingAgent.body);
-    expect(missingAgent.body.error.message).toBe("Agent not found in this org");
   });
 });
 

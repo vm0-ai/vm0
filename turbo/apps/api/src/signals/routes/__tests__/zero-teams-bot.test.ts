@@ -6,8 +6,12 @@ import {
   type KeyObject,
 } from "node:crypto";
 
+import {
+  chatThreadEventsContract,
+  chatThreadsContract,
+} from "@vm0/api-contracts/contracts/chat-threads";
 import { zeroTeamsConnectContract } from "@vm0/api-contracts/contracts/zero-teams-connect";
-import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
+import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import { HttpResponse, http } from "msw";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
@@ -19,6 +23,7 @@ import { clearTeamsBotAuthCacheForTest } from "../../../lib/teams-bot-auth";
 import { now } from "../../../lib/time";
 import { server } from "../../../mocks/server";
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
+import { upsertOrgPlanEntitlementFixture } from "../../../test-fixtures/org-plan-entitlement";
 import { ROUTES } from "../../route";
 import { zeroTeamsBotRoutes } from "../zero-teams-bot";
 import { createAuthOrgAgentsBddApi } from "./helpers/api-bdd-auth-org";
@@ -823,11 +828,12 @@ async function setupConnectedTeamsBotActor(): Promise<{
   authOrgApi.acceptAgentStorageWrites();
   runsApi.acceptStorageDownloads();
   runsApi.acceptTelemetryIngest();
-  const agent = await authOrgApi.createAgent(actor, {
+  const defaultAgent = await authOrgApi.bootstrapLimitedFreeOnboarding(actor, {
     displayName: "Teams default agent",
+  });
+  await authOrgApi.updateAgentMetadata(actor, defaultAgent.body.agentId, {
     visibility: "public",
   });
-  await authOrgApi.setDefaultAgent(actor, agent.agentId);
   await runsApi.grantProEntitlement(actor);
   await runsApi.ensureOrgModelProvider(actor);
   botFrameworkHandlers();
@@ -1398,11 +1404,15 @@ describe("POST /api/zero/teams/bot", () => {
     authOrgApi.acceptAgentStorageWrites();
     runsApi.acceptStorageDownloads();
     runsApi.acceptTelemetryIngest();
-    const agent = await authOrgApi.createAgent(actor, {
-      displayName: "Teams file agent",
+    const defaultAgent = await authOrgApi.bootstrapLimitedFreeOnboarding(
+      actor,
+      {
+        displayName: "Teams file agent",
+      },
+    );
+    await authOrgApi.updateAgentMetadata(actor, defaultAgent.body.agentId, {
       visibility: "public",
     });
-    await authOrgApi.setDefaultAgent(actor, agent.agentId);
     await runsApi.grantProEntitlement(actor);
     await runsApi.ensureOrgModelProvider(actor);
     await installTeamsForTest(context.signal, fixture);
@@ -1438,11 +1448,12 @@ describe("POST /api/zero/teams/bot", () => {
     expect(response.status).toBe(200);
     const body = await readTeamsBotResponseAndFlush(response);
     expect(body).not.toHaveProperty("dispatch");
+    const canonicalFilePrompt = "[Web file] spec.png (image/png)";
     const list = await runsApi.listAgentRuns(actor, { limit: 20 });
     const run = list.runs.find((item) => {
       return (
         item.prompt.includes("please inspect this") &&
-        item.prompt.includes("[Teams file] spec.png (image/png)")
+        item.prompt.includes(canonicalFilePrompt)
       );
     });
     expect(run).toBeDefined();
@@ -1453,7 +1464,7 @@ describe("POST /api/zero/teams/bot", () => {
     await runsApi.heartbeatRunner(runnerGroup);
     const claim = await runsApi.claimRunnerJob(runId);
     expect(claim.prompt).toContain("please inspect this");
-    expect(claim.prompt).toContain("[Teams file] spec.png (image/png)");
+    expect(claim.prompt).toContain(canonicalFilePrompt);
     expect(claim.appendSystemPrompt).toContain("zero teams download-file -h");
 
     const fileIdMatch = claim.prompt.match(/ {3}\[ID\] ([^\n]+)/u);
@@ -1461,6 +1472,54 @@ describe("POST /api/zero/teams/bot", () => {
     expect(fileId).toBeTruthy();
     expect(fileId).not.toContain(contentUrl);
     expect(fileId).toMatch(/^teams_file_[A-Za-z0-9_-]{22}$/u);
+
+    mocks.clerk.session(actor.userId, actor.orgId, actor.orgRole);
+    const threadEvents = await accept(
+      setupApp({ context })(chatThreadsContract).events({
+        headers: { authorization: "Bearer clerk-session" },
+        query: {},
+      }),
+      [200],
+    );
+    const chatThreadCreated = threadEvents.body.events.find((event) => {
+      return (
+        event.kind === "created" && event.agentId === defaultAgent.body.agentId
+      );
+    });
+    if (!chatThreadCreated) {
+      throw new Error("Expected the canonical Teams file chat thread");
+    }
+    const threadEventsPage = await accept(
+      setupApp({ context })(chatThreadEventsContract).list({
+        headers: { authorization: "Bearer clerk-session" },
+        params: { threadId: chatThreadCreated.chatThreadId },
+        query: {},
+      }),
+      [200],
+    );
+    expect(threadEventsPage.body.events).toContainEqual(
+      expect.objectContaining({
+        content: [
+          "please inspect this",
+          "",
+          "[Teams file] spec.png (image/png)",
+          "   [Teams attachment ID] channel-attachment-1",
+          `   [ID] ${fileId}`,
+        ].join("\n"),
+        userMessage: {
+          version: 1,
+          parts: [
+            {
+              type: "file",
+              fileId,
+              filenameSnapshot: "spec.png",
+              contentType: "image/png",
+            },
+            { type: "text", text: "please inspect this" },
+          ],
+        },
+      }),
+    );
 
     const fileBytes = Buffer.from("teams file bytes");
     const expectedShareId = `u!${Buffer.from(contentUrl, "utf8").toString(
@@ -1912,15 +1971,147 @@ describe("POST /api/zero/teams/bot", () => {
     );
   });
 
+  it("applies agent and model switches to existing Teams chat threads", async () => {
+    const { fixture, actor, runnerGroup } = await setupConnectedTeamsBotActor();
+    const supportAgent = await authOrgApi.createAgent(actor, {
+      displayName: "Teams switched agent",
+      visibility: "public",
+    });
+    const anthropic = await runsApi.createOrgModelProvider(actor, {
+      type: "anthropic-api-key",
+      secret: "teams-switch-anthropic-key",
+    });
+    const openai = await runsApi.createOrgModelProvider(actor, {
+      type: "openai-api-key",
+      secret: "teams-switch-openai-key",
+    });
+    await runsApi.updateOrgModelPolicies(actor, [
+      {
+        model: "claude-sonnet-4-6",
+        isDefault: true,
+        defaultProviderType: "anthropic-api-key",
+        credentialScope: "org",
+        modelProviderId: anthropic.providerId,
+      },
+      {
+        model: "gpt-5.6-sol",
+        isDefault: false,
+        defaultProviderType: "openai-api-key",
+        credentialScope: "org",
+        modelProviderId: openai.providerId,
+      },
+    ]);
+    teamsGraphHistoryHandlers({
+      tenantId: fixture.teamsTenantId,
+      chatMessages: [],
+      channelMessages: [],
+      threadRoots: {},
+      threadReplies: {},
+    });
+    const threadId = "activity-existing-switch-root";
+
+    const initialResponse = await postTeamsActivity({
+      activity: teamsPersonalThreadMessageActivity({
+        fixture,
+        id: "activity-existing-switch-initial",
+        threadId,
+        text: "run before switching",
+      }),
+      token: teamsToken(),
+    });
+    expect(initialResponse.status).toBe(200);
+    await readTeamsBotResponseAndFlush(initialResponse);
+    const initialRunId = await runIdForPrompt(actor, "run before switching");
+    await runsApi.heartbeatRunner(runnerGroup);
+    await runsApi.claimRunnerJob(initialRunId);
+    await runsApi.requestCancelRun(actor, initialRunId, [200]);
+
+    const switchAgentResponse = await postTeamsActivity({
+      activity: teamsPersonalMessageActivity({
+        fixture,
+        id: "activity-existing-switch-agent",
+        text: "",
+        value: {
+          zeroTeamsAction: "switch_agent",
+          selectedComposeId: supportAgent.agentId,
+        },
+      }),
+      token: teamsToken(),
+    });
+    expect(switchAgentResponse.status).toBe(200);
+    await readTeamsBotResponseAndFlush(switchAgentResponse);
+
+    const switchedAgentResponse = await postTeamsActivity({
+      activity: teamsPersonalThreadMessageActivity({
+        fixture,
+        id: "activity-existing-switch-agent-run",
+        threadId,
+        text: "run after agent switch",
+      }),
+      token: teamsToken(),
+    });
+    expect(switchedAgentResponse.status).toBe(200);
+    await readTeamsBotResponseAndFlush(switchedAgentResponse);
+    const switchedAgentRunId = await runIdForPrompt(
+      actor,
+      "run after agent switch",
+    );
+    await runsApi.heartbeatRunner(runnerGroup);
+    const switchedAgentClaim = await runsApi.claimRunnerJob(switchedAgentRunId);
+    expect(switchedAgentClaim.appendSystemPrompt).toContain(
+      "Your name is Teams switched agent.",
+    );
+    await runsApi.requestCancelRun(actor, switchedAgentRunId, [200]);
+
+    const switchModelResponse = await postTeamsActivity({
+      activity: teamsPersonalMessageActivity({
+        fixture,
+        id: "activity-existing-switch-model",
+        text: "",
+        value: {
+          zeroTeamsAction: "switch_model",
+          selectedModel: "gpt-5.6-sol",
+        },
+      }),
+      token: teamsToken(),
+    });
+    expect(switchModelResponse.status).toBe(200);
+    await readTeamsBotResponseAndFlush(switchModelResponse);
+
+    const switchedModelResponse = await postTeamsActivity({
+      activity: teamsPersonalThreadMessageActivity({
+        fixture,
+        id: "activity-existing-switch-model-run",
+        threadId,
+        text: "run after model switch",
+      }),
+      token: teamsToken(),
+    });
+    expect(switchedModelResponse.status).toBe(200);
+    await readTeamsBotResponseAndFlush(switchedModelResponse);
+    const switchedModelRunId = await runIdForPrompt(
+      actor,
+      "run after model switch",
+    );
+    await runsApi.heartbeatRunner(runnerGroup);
+    const switchedModelClaim = await runsApi.claimRunnerJob(switchedModelRunId);
+    expect(switchedModelClaim.appendSystemPrompt).toContain(
+      "Your name is Teams switched agent.",
+    );
+    expect(switchedModelClaim.modelUsageProvider).toBe("gpt-5.6-sol");
+    await runsApi.requestCancelRun(actor, switchedModelRunId, [200]);
+  });
+
   it("replies when a connected Teams run is queued", async () => {
     const { fixture, actor, outboundRequests } =
       await setupConnectedTeamsBotActor();
     outboundRequests.splice(0, outboundRequests.length);
 
     const firstResponse = await postTeamsActivity({
-      activity: teamsPersonalMessageActivity({
+      activity: teamsPersonalThreadMessageActivity({
         fixture,
         id: "activity-queue-active-1",
+        threadId: "activity-queue-thread-1",
         text: "active run one",
       }),
       token: teamsToken(),
@@ -1931,9 +2122,10 @@ describe("POST /api/zero/teams/bot", () => {
     const firstRunId = await runIdForPrompt(actor, "active run one");
 
     const secondResponse = await postTeamsActivity({
-      activity: teamsPersonalMessageActivity({
+      activity: teamsPersonalThreadMessageActivity({
         fixture,
         id: "activity-queue-active-2",
+        threadId: "activity-queue-thread-2",
         text: "active run two",
       }),
       token: teamsToken(),
@@ -1944,9 +2136,10 @@ describe("POST /api/zero/teams/bot", () => {
     const secondRunId = await runIdForPrompt(actor, "active run two");
 
     const queuedResponse = await postTeamsActivity({
-      activity: teamsPersonalMessageActivity({
+      activity: teamsPersonalThreadMessageActivity({
         fixture,
         id: "activity-queue-third",
+        threadId: "activity-queue-thread-3",
         text: "queued run three",
       }),
       token: teamsToken(),
@@ -2009,7 +2202,7 @@ describe("POST /api/zero/teams/bot", () => {
     await runsApi.requestCancelRun(actor, secondRunId, [200]);
   });
 
-  it("sends typing and adds audit/footer text for Teams run pre-dispatch failures", async () => {
+  it("clears thinking and adds audit/footer text for Teams run admission failures", async () => {
     const fixture = await trackTeamsFixture(
       Promise.resolve(teamsConnectFixture()),
     );
@@ -2020,11 +2213,15 @@ describe("POST /api/zero/teams/bot", () => {
     });
     context.mocks.ably.publish.mockResolvedValue(undefined);
     authOrgApi.acceptAgentStorageWrites();
-    const defaultAgent = await authOrgApi.createAgent(actor, {
-      displayName: "Teams default agent",
+    const defaultAgent = await authOrgApi.bootstrapLimitedFreeOnboarding(
+      actor,
+      {
+        displayName: "Teams default agent",
+      },
+    );
+    await authOrgApi.updateAgentMetadata(actor, defaultAgent.body.agentId, {
       visibility: "public",
     });
-    await authOrgApi.setDefaultAgent(actor, defaultAgent.agentId);
     const supportAgent = await authOrgApi.createAgent(actor, {
       displayName: "Teams support agent",
       visibility: "public",
@@ -2076,13 +2273,23 @@ describe("POST /api/zero/teams/bot", () => {
     expect(switchResponse.status).toBe(200);
     const switchBody = await readTeamsBotResponseAndFlush(switchResponse);
     expect(switchBody).not.toHaveProperty("dispatch");
+    await upsertOrgPlanEntitlementFixture({
+      orgId: fixture.orgId,
+      status: "suspended",
+    });
 
     outboundRequests.splice(0, outboundRequests.length);
+    teamsGraphHistoryHandlers({
+      tenantId: fixture.teamsTenantId,
+      chatMessages: [],
+      channelMessages: [],
+      threadRoots: {},
+      threadReplies: {},
+    });
     const failedResponse = await postTeamsActivity({
-      activity: teamsPersonalMessageActivity({
-        fixture,
+      activity: teamsMessageActivity(fixture, {
         id: "activity-run-pre-dispatch-failure",
-        text: "run without entitlement",
+        text: "<at>Zero</at> run without entitlement",
       }),
       token: teamsToken(),
     });
@@ -2090,14 +2297,8 @@ describe("POST /api/zero/teams/bot", () => {
     const body = await readTeamsBotResponseAndFlush(failedResponse);
     expect(body).not.toHaveProperty("dispatch");
 
-    expect(outboundRequests).toHaveLength(2);
+    expect(outboundRequests).toHaveLength(1);
     expect(outboundRequests[0]).toMatchObject({
-      body: {
-        type: "typing",
-        channelData: { tenant: { id: fixture.teamsTenantId } },
-      },
-    });
-    expect(outboundRequests[1]).toMatchObject({
       activityId: "activity-run-pre-dispatch-failure",
       body: {
         type: "message",
@@ -2105,10 +2306,72 @@ describe("POST /api/zero/teams/bot", () => {
         textFormat: "markdown",
       },
     });
-    expect(outboundRequests[1]?.body).toMatchObject({
+    expect(outboundRequests[0]?.body).toMatchObject({
       text: expect.stringContaining("Sent via Teams support agent"),
     });
+    expect(outboundRequests.reactions).toStrictEqual([
+      {
+        method: "PUT",
+        conversationId: "19:thread@thread.tacv2",
+        activityId: "activity-run-pre-dispatch-failure",
+        reactionType: "1f4ad_thoughtballoon",
+      },
+      {
+        method: "DELETE",
+        conversationId: "19:thread@thread.tacv2",
+        activityId: "activity-run-pre-dispatch-failure",
+        reactionType: "1f4ad_thoughtballoon",
+      },
+    ]);
+  });
+
+  it("deduplicates repeated Teams activities before queueing a second run", async () => {
+    const { fixture, actor, outboundRequests } =
+      await setupConnectedTeamsBotActor();
+    teamsGraphHistoryHandlers({
+      tenantId: fixture.teamsTenantId,
+      chatMessages: [],
+      channelMessages: [],
+      threadRoots: {},
+      threadReplies: {},
+    });
+    outboundRequests.splice(0, outboundRequests.length);
+    outboundRequests.reactions.splice(0, outboundRequests.reactions.length);
+    const activity = teamsPersonalMessageActivity({
+      fixture,
+      id: "activity-deduplicated",
+      text: "run this Teams task once",
+    });
+
+    for (const attempt of [1, 2]) {
+      const response = await postTeamsActivity({
+        activity,
+        token: teamsToken(),
+      });
+      expect(response.status, `attempt ${attempt}`).toBe(200);
+      await readTeamsBotResponseAndFlush(response);
+    }
+
+    const matchingRuns = (
+      await runsApi.listAgentRuns(actor, { limit: 20 })
+    ).runs.filter((run) => {
+      return run.prompt === "run this Teams task once";
+    });
+    expect(matchingRuns).toHaveLength(1);
+    expect(outboundRequests).toHaveLength(1);
+    expect(outboundRequests[0]).toMatchObject({
+      body: {
+        type: "typing",
+        channelData: { tenant: { id: fixture.teamsTenantId } },
+      },
+    });
     expect(outboundRequests.reactions).toHaveLength(0);
+
+    const run = matchingRuns[0];
+    if (!run) {
+      throw new Error("Expected the deduplicated Teams run");
+    }
+    await runsApi.requestCancelRun(actor, run.id, [200]);
   });
 
   it("dispatches connected Teams messages to the org default agent", async () => {
@@ -2125,11 +2388,15 @@ describe("POST /api/zero/teams/bot", () => {
     authOrgApi.acceptAgentStorageWrites();
     runsApi.acceptStorageDownloads();
     runsApi.acceptTelemetryIngest();
-    const agent = await authOrgApi.createAgent(actor, {
-      displayName: "Teams default agent",
+    const defaultAgent = await authOrgApi.bootstrapLimitedFreeOnboarding(
+      actor,
+      {
+        displayName: "Teams default agent",
+      },
+    );
+    await authOrgApi.updateAgentMetadata(actor, defaultAgent.body.agentId, {
       visibility: "public",
     });
-    await authOrgApi.setDefaultAgent(actor, agent.agentId);
     await runsApi.grantProEntitlement(actor);
     await runsApi.ensureOrgModelProvider(actor);
     botFrameworkHandlers();
@@ -2562,7 +2829,7 @@ describe("POST /api/zero/teams/bot", () => {
     expect(zeroAuth?.capabilities).toContain("computer-use:write");
 
     await runsApi.requestCancelRun(actor, secondRunId, [200]);
-    await computerUseApi.deleteComputerUseHost(actor, host.hostId);
+    await computerUseApi.stopComputerUseHost(host.hostToken);
   });
 
   it("asks connected Teams users to configure a default agent", async () => {

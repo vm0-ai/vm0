@@ -1,7 +1,9 @@
 import type { Command, Computed } from "ccstate";
 import type {
+  ChatEvent,
   GenerationTemplateRequest,
-  PagedChatMessage,
+  ChatFollowupsEvent,
+  ChatPromptEvent,
   ChatThreadArtifactRun,
   ChatThreadDraft,
 } from "@vm0/api-contracts/contracts/chat-threads";
@@ -15,12 +17,16 @@ import type { GroupedChatMessageGroup } from "./chat-message.ts";
 import type { ThreadMeta } from "./chat-thread-event-sourcing.ts";
 import type { HeaderAutomationSignals } from "./header-automation-menu.ts";
 import type { WorkflowQueueSignals } from "./workflow-queue.ts";
+import type { ThreadSidebarSignals } from "./thread-sidebar.ts";
 import type { MailDraftSignals } from "./mail-draft.ts";
+import type { BrowserSessionSignals } from "./browser-session-block.ts";
 import type { ComposerConnectorSignals } from "../zero-page/zero-connectors.ts";
 import type { EditorDocumentSnapshot } from "../zero-page/user-message-document-codec.ts";
+import type { ArtifactSignals } from "./artifact-card-signals.ts";
+import type { ThreadSidebarAutoOpenCandidate } from "./thread-sidebar-auto-open.ts";
 
 type RecommendedFollowup = NonNullable<
-  Extract<PagedChatMessage, { role: "assistant" }>["recommendedFollowups"]
+  ChatFollowupsEvent["recommendedFollowups"]
 >[number];
 
 export interface RecommendedFollowupSource {
@@ -45,21 +51,23 @@ export type ComposerSendButtonStatus = "idle" | "sending";
 
 export interface MessageImageGroupProjection {
   readonly messages: readonly {
-    readonly attachFiles?: PagedChatMessage["attachFiles"];
+    readonly attachFiles?: ChatPromptEvent["attachFiles"];
     readonly blocks: readonly BodyRenderBlock[];
   }[];
 }
 
 export interface SendMessageOptions {
-  readonly revokesMessageId?: string;
+  readonly revokesEventId?: string;
   readonly includeDraftAttachments?: boolean;
   readonly computerUseHostId?: string | null;
+  readonly cloudBrowserEnabled?: boolean;
   readonly generationTemplate?: GenerationTemplateRequest;
   readonly editorDocument?: EditorDocumentSnapshot;
 }
 
 export interface QueueMessageOptions {
   readonly computerUseHostId: string | null | undefined;
+  readonly cloudBrowserEnabled: boolean | undefined;
   readonly generationTemplate: GenerationTemplateRequest | undefined;
   readonly editorDocument: EditorDocumentSnapshot;
 }
@@ -85,8 +93,10 @@ export interface ChatThreadSignals {
     [ModelProviderSelection | null, AbortSignal]
   >;
   computerUseHostId$: Computed<string | null>;
+  cloudBrowserEnabled$: Computed<boolean>;
   computerUseHostIdExplicit$: Computed<boolean>;
   setComputerUseHostId$: Command<Promise<void>, [string | null, AbortSignal]>;
+  setCloudBrowserEnabled$: Command<Promise<void>, [boolean, AbortSignal]>;
   clearComputerUseHostIdOverride$: Command<void, []>;
   sendMessage$: Command<
     Promise<boolean>,
@@ -107,6 +117,7 @@ export interface ChatThreadSignals {
   prepareKeyboardScroll$: Command<boolean, []>;
   containerEl$: Computed<HTMLElement | null>;
   setContainerRef$: Command<(() => void) | undefined, [HTMLElement | null]>;
+  setMainContainerRef$: Command<(() => void) | undefined, [HTMLElement | null]>;
   // True when the message list is scrolled away from the bottom - drives the
   // feature-gated scroll-to-bottom button. Read-only outside scroll signals.
   awayFromBottom$: Computed<boolean>;
@@ -125,6 +136,8 @@ export interface ChatThreadSignals {
   // -- Thread-owned automation resources -----------------------------------
   headerAutomations: HeaderAutomationSignals;
   workflowQueue: WorkflowQueueSignals;
+  // -- Thread-owned utility sidebar -----------------------------------------
+  sidebar: ThreadSidebarSignals;
   // -- Per-thread UI state --------------------------------------------------
   timelineExpandedIds$: Computed<Set<string>>;
   toggleTimelineExpanded$: Command<void, [string]>;
@@ -140,10 +153,18 @@ export interface ChatThreadSignals {
   // -- Paged messages (sole rendering path) --------------------------------
   latestRunFinishCreatedAt$: Computed<Promise<string | undefined>>;
   latestAssistantTextCreatedAt$: Computed<Promise<string | undefined>>;
+  indexedDbMessagesInitialized$: Computed<Promise<void>>;
   visibleRenderedChatGroups$: Computed<Promise<GroupedChatMessageGroup[]>>;
   visibleRenderedChatGroupsReady$: Computed<Promise<boolean>>;
+  sidebarAutoOpenCandidate$: Computed<
+    Promise<ThreadSidebarAutoOpenCandidate | null>
+  >;
   messageImageGroups$: Computed<Promise<MessageImageGroupProjection[]>>;
+  artifactSignalsForUrl: (url: string) => ArtifactSignals | undefined;
   mailDraftCardSignalsById$: Computed<ReadonlyMap<string, MailDraftSignals>>;
+  browserSessionCardSignalsById$: Computed<
+    ReadonlyMap<string, BrowserSessionSignals>
+  >;
   hasMessages$: Computed<Promise<boolean>>;
   hasNewMessages$: Computed<Promise<boolean>>;
   hasQueuedMessages$: Computed<Promise<boolean>>;
@@ -161,10 +182,7 @@ export interface ChatThreadSignals {
   activeGoalObjective$: Computed<Promise<string | null>>;
   loadMoreRenderedChatGroups$: Command<Promise<boolean>, [AbortSignal]>;
   resetRenderedChatGroupsIfAtBottom$: Command<void, []>;
-  receiveSyncedMessages$: Command<
-    Promise<void>,
-    [PagedChatMessage[], AbortSignal]
-  >;
+  receiveSyncedEvents$: Command<Promise<void>, [ChatEvent[], AbortSignal]>;
   subscribeChatThread$: Command<Promise<void>, [AbortSignal]>;
   // -- Thinking indicator ---------------------------------------------------
   blockColors$: Computed<[string, string, string]>;

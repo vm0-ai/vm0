@@ -1,37 +1,51 @@
 import type { ModelProviderCredentialScope } from "@vm0/api-contracts/contracts/model-providers";
-import { chatMessageQueue } from "@vm0/db/schema/chat-message-queue";
+import type { ChatEventType } from "@vm0/api-contracts/contracts/chat-events";
 import {
   chatMessages,
   type ChatMessageAttachFileMetadata,
   type ChatMessageGenerationTemplate,
-  type ChatMessageStructuredPrompt,
+  type ChatMessageUserMessage,
 } from "@vm0/db/schema/chat-message";
 import { chatThreads } from "@vm0/db/schema/chat-thread";
-import { and, asc, eq, exists, inArray, sql, type SQL } from "drizzle-orm";
+import { and, eq, exists, isNull, notExists, sql, type SQL } from "drizzle-orm";
+import { alias } from "drizzle-orm/pg-core";
 import { z } from "zod";
 
-import {
-  pgNullDecoder,
-  zodDriverValueDecoder,
-} from "../../lib/db-structured-result";
+import { pgNullDecoder } from "../../lib/db-structured-result";
 import type { Db } from "../external/db";
 import {
-  deleteChatMessage,
-  updateChatMessage,
-} from "./zero-chat-message.service";
-import { activeChatRunExists } from "./zero-chat-active-run.service";
+  hasPendingUserChatQueueEvent,
+  listPendingChatQueueEvents,
+  loadChatAutomationIntakePause,
+  loadPendingChatQueueEvent,
+  lockChatQueueThread,
+} from "./chat-event-queue.service";
+import {
+  insertChatEvent,
+  revokeChatEvent,
+  replaceChatEvent,
+} from "./zero-chat-event.service";
+import { touchChatThreadLastMessageAt } from "./zero-chat-message-shared.service";
+import { chatThreadAdmissionBlocked } from "./zero-chat-active-run.service";
+import { chatEventTypeIn } from "./zero-chat-event-type.service";
 import type { ApiDispatchTimingCollector } from "./api-dispatch-timing.service";
 import {
   decryptPersistentSecretsMap,
   encryptPersistentSecretsMap,
 } from "./crypto.utils";
+import { feishuOrgCallbackFileSchema } from "./feishu-org-callback-payload";
+import { teamsDeliveryTargetSchema } from "./teams-chat-callback-payload";
+import { createUserMessageDocument } from "./zero-chat-user-message.service";
 
 type DbTransaction = Parameters<Parameters<Db["transaction"]>[0]>[0];
 
 const USER_MESSAGE_QUEUE_RUN_PARAMS_KEY = "__user_message_queue_run_params__";
-const queuedUserMessageTriggerSourceDecoder = zodDriverValueDecoder(
-  z.enum(["web", "slack"]),
-);
+const queuedUserMessageTriggerSourceSchema = z.enum([
+  "web",
+  "slack",
+  "feishu",
+  "teams",
+]);
 
 const queuedUserMessageRunParamsSchema = z.object({
   version: z.literal(1),
@@ -42,12 +56,32 @@ const queuedUserMessageRunParamsSchema = z.object({
     .object({
       channelId: z.string(),
       threadTs: z.string(),
+      routeThreadTs: z.string().optional(),
     })
     .optional(),
+  feishuDelivery: z
+    .object({
+      installationId: z.string(),
+      connectionId: z.string(),
+      chatId: z.string(),
+      messageId: z.string(),
+      threadId: z.string(),
+      replyInThread: z.boolean(),
+      reactionId: z.string().optional(),
+      files: z.array(feishuOrgCallbackFileSchema).optional(),
+    })
+    .optional(),
+  teamsDelivery: teamsDeliveryTargetSchema.optional(),
+  apiStartTime: z.number().optional(),
   userInfoExtras: z
     .object({
       slackDisplayName: z.string().optional(),
       slackUserId: z.string().optional(),
+      feishuDisplayName: z.string().optional(),
+      feishuOpenId: z.string().optional(),
+      teamsUserDisplayName: z.string().optional(),
+      teamsUserPrincipalName: z.string().optional(),
+      teamsUserId: z.string().optional(),
     })
     .optional(),
 });
@@ -56,15 +90,16 @@ type QueuedUserMessageRunParams = z.infer<
   typeof queuedUserMessageRunParamsSchema
 >;
 
-const queuedUserMessageItemTypes = [
-  "user_message",
-  "slack_user_message",
-] as const;
+const queuedChatMessage = alias(chatMessages, "queued_chat_message");
+const queuedChatMessageRevoker = alias(
+  chatMessages,
+  "queued_chat_message_revoker",
+);
 
 export interface QueuedUserMessage {
   readonly id: string;
   readonly content: string | null;
-  readonly structuredPrompt: ChatMessageStructuredPrompt | null;
+  readonly userMessage: ChatMessageUserMessage;
   readonly attachFiles: readonly string[] | null;
   readonly attachFileMetadata: readonly ChatMessageAttachFileMetadata[] | null;
   readonly generationTemplate: ChatMessageGenerationTemplate | null;
@@ -72,33 +107,37 @@ export interface QueuedUserMessage {
   readonly modelProviderType: string | null;
   readonly modelProviderCredentialScope: ModelProviderCredentialScope | null;
   readonly selectedModel: string | null;
-  readonly triggerSource: "web" | "slack";
+  readonly triggerSource: "web" | "slack" | "feishu" | "teams";
   readonly encryptedParams: string | null;
 }
 
-export interface QueueFirstRunAssociation {
-  readonly threadId: string;
-  readonly messageId: string;
-}
+export type QueueFirstRunAssociation =
+  | {
+      readonly kind: "user_message";
+      readonly threadId: string;
+      readonly messageId: string;
+    }
+  | {
+      readonly kind: "workflow_event";
+      readonly threadId: string;
+      readonly eventId: string;
+      readonly prompt: string;
+      readonly runGroupId: string;
+    };
 
 export type QueueFirstRunClaimResult =
   | { readonly kind: "claimed"; readonly createdAt: Date }
   | { readonly kind: "lost" };
 
 /**
- * Establish the thread-first lock order shared by every user-message queue
- * consumer before it locks or deletes a queue row.
+ * Establish the thread-first lock order shared by every event-backed queue
+ * claim, rejection, and revocation.
  */
 export async function lockUserMessageQueueThread(
   db: Db,
   threadId: string,
 ): Promise<boolean> {
-  const [thread] = await db
-    .select({ id: chatThreads.id })
-    .from(chatThreads)
-    .where(eq(chatThreads.id, threadId))
-    .for("update");
-  return thread !== undefined;
+  return await lockChatQueueThread(db, threadId);
 }
 
 export async function encryptQueuedUserMessageRunParams(
@@ -130,25 +169,31 @@ export async function decryptQueuedUserMessageRunParams(
   return queuedUserMessageRunParamsSchema.parse(JSON.parse(raw) as unknown);
 }
 
-function unclaimedQueuedUserMessageCondition(
-  threadId: string,
-): SQL | undefined {
-  return and(
-    eq(chatMessageQueue.chatThreadId, threadId),
-    inArray(chatMessageQueue.itemType, queuedUserMessageItemTypes),
-  );
-}
-
-/** Whether the outer chat_messages row is waiting in the user-message queue. */
+/** Whether the outer chat_messages row is an unclaimed, unrevoked prompt. */
 export function queuedUserMessageExists(db: Pick<Db, "select">): SQL {
   return exists(
     db
-      .select({ id: chatMessageQueue.id })
-      .from(chatMessageQueue)
+      .select({ id: queuedChatMessage.id })
+      .from(queuedChatMessage)
       .where(
         and(
-          inArray(chatMessageQueue.itemType, queuedUserMessageItemTypes),
-          eq(chatMessageQueue.chatMessageId, chatMessages.id),
+          eq(queuedChatMessage.id, chatMessages.id),
+          eq(
+            queuedChatMessage.eventType,
+            "input.prompt" satisfies ChatEventType,
+          ),
+          isNull(queuedChatMessage.runId),
+          notExists(
+            db
+              .select({ id: queuedChatMessageRevoker.id })
+              .from(queuedChatMessageRevoker)
+              .where(
+                eq(
+                  queuedChatMessageRevoker.revokesEventId,
+                  queuedChatMessage.id,
+                ),
+              ),
+          ),
         ),
       ),
   );
@@ -157,12 +202,22 @@ export function queuedUserMessageExists(db: Pick<Db, "select">): SQL {
 export async function loadNextUnclaimedQueuedUserMessage(
   db: Db,
   threadId: string,
+  queueItemCreatedBefore?: Date,
 ): Promise<QueuedUserMessage | null> {
+  const pending = await listPendingChatQueueEvents(
+    db,
+    threadId,
+    queueItemCreatedBefore,
+  );
+  const head = pending[0];
+  if (!head || head.eventType !== "input.prompt") {
+    return null;
+  }
   const [message] = await db
     .select({
       id: chatMessages.id,
       content: chatMessages.content,
-      structuredPrompt: chatMessages.structuredPrompt,
+      userMessage: chatMessages.userMessage,
       attachFiles: chatMessages.attachFiles,
       attachFileMetadata: chatMessages.attachFileMetadata,
       generationTemplate: chatMessages.generationTemplate,
@@ -170,101 +225,55 @@ export async function loadNextUnclaimedQueuedUserMessage(
       modelProviderType: sql`NULL`.mapWith(pgNullDecoder),
       modelProviderCredentialScope: sql`NULL`.mapWith(pgNullDecoder),
       selectedModel: chatThreads.selectedModel,
-      triggerSource: sql`CASE
-        WHEN ${chatMessageQueue.triggerSource} = 'slack' THEN 'slack'
-        ELSE 'web'
-      END`.mapWith(queuedUserMessageTriggerSourceDecoder),
-      encryptedParams: chatMessageQueue.encryptedParams,
+      triggerSource: chatMessages.triggerSource,
+      encryptedParams: chatMessages.encryptedParams,
     })
-    .from(chatMessageQueue)
-    .innerJoin(
-      chatMessages,
-      eq(chatMessages.id, chatMessageQueue.chatMessageId),
-    )
+    .from(chatMessages)
     .innerJoin(chatThreads, eq(chatThreads.id, chatMessages.chatThreadId))
-    .where(unclaimedQueuedUserMessageCondition(threadId))
-    .orderBy(asc(chatMessageQueue.createdAt), asc(chatMessageQueue.id))
+    .where(
+      and(
+        eq(chatMessages.id, head.id),
+        eq(chatMessages.chatThreadId, threadId),
+        chatEventTypeIn(["input.prompt"]),
+        isNull(chatMessages.runId),
+      ),
+    )
     .limit(1);
-
-  return message ?? null;
+  if (!message) {
+    return null;
+  }
+  if (!message.userMessage) {
+    throw new Error("Queued input event is missing userMessage");
+  }
+  const triggerSource = queuedUserMessageTriggerSourceSchema.safeParse(
+    message.triggerSource,
+  );
+  // Legacy rows have no typed payload until the cutover migration backfills
+  // them. They remain pending (and keep automation behind them) without making
+  // a code-before-migration deploy fail.
+  if (!triggerSource.success) {
+    return null;
+  }
+  return {
+    ...message,
+    userMessage: message.userMessage,
+    triggerSource: triggerSource.data,
+  };
 }
 
 export async function loadNextUnclaimedQueuedUserMessageId(
   db: Db,
   threadId: string,
 ): Promise<string | null> {
-  const [message] = await db
-    .select({ id: chatMessages.id })
-    .from(chatMessageQueue)
-    .innerJoin(
-      chatMessages,
-      eq(chatMessages.id, chatMessageQueue.chatMessageId),
-    )
-    .where(unclaimedQueuedUserMessageCondition(threadId))
-    .orderBy(asc(chatMessageQueue.createdAt), asc(chatMessageQueue.id))
-    .limit(1);
-
-  return message?.id ?? null;
+  const [head] = await listPendingChatQueueEvents(db, threadId);
+  return head?.eventType === "input.prompt" ? head.id : null;
 }
 
 export async function hasUnclaimedQueuedUserMessage(
   db: Db,
   threadId: string,
 ): Promise<boolean> {
-  const [item] = await db
-    .select({ id: chatMessageQueue.id })
-    .from(chatMessageQueue)
-    .where(unclaimedQueuedUserMessageCondition(threadId))
-    .limit(1);
-
-  return item !== undefined;
-}
-
-/** Persist the queue pointer used by the shared per-thread scheduler. */
-export async function enqueueUserMessageQueueItem(
-  db: Db,
-  args: {
-    readonly orgId: string;
-    readonly userId: string;
-    readonly chatThreadId: string;
-    readonly chatMessageId: string;
-    readonly triggerSource?: "web" | "slack";
-    readonly encryptedParams?: string;
-  },
-): Promise<void> {
-  await db
-    .insert(chatMessageQueue)
-    .values({
-      orgId: args.orgId,
-      userId: args.userId,
-      chatThreadId: args.chatThreadId,
-      itemType:
-        args.triggerSource === "slack" ? "slack_user_message" : "user_message",
-      chatMessageId: args.chatMessageId,
-      triggerSource: args.triggerSource,
-      encryptedParams: args.encryptedParams,
-    })
-    .onConflictDoNothing();
-}
-
-export async function deleteUserMessageQueueItem(
-  db: Db,
-  args: {
-    readonly threadId: string;
-    readonly messageId: string;
-  },
-): Promise<boolean> {
-  const deleted = await db
-    .delete(chatMessageQueue)
-    .where(
-      and(
-        inArray(chatMessageQueue.itemType, queuedUserMessageItemTypes),
-        eq(chatMessageQueue.chatThreadId, args.threadId),
-        eq(chatMessageQueue.chatMessageId, args.messageId),
-      ),
-    )
-    .returning({ id: chatMessageQueue.id });
-  return deleted.length > 0;
+  return await hasPendingUserChatQueueEvent(db, threadId);
 }
 
 interface ClaimedUserMessage {
@@ -272,8 +281,8 @@ interface ClaimedUserMessage {
 }
 
 /**
- * Append the run-associated replacement for a queued user message and consume
- * its queue item. Callers serialize dispatch decisions before invoking this.
+ * Append the run-associated replacement for a pending user event. The revoke
+ * edge on the replacement is the atomic queue claim.
  */
 async function appendClaimedUserMessage(
   db: DbTransaction,
@@ -283,26 +292,29 @@ async function appendClaimedUserMessage(
     readonly runId: string;
   },
 ): Promise<ClaimedUserMessage | null> {
+  const pending = await loadPendingChatQueueEvent(db, {
+    chatThreadId: args.threadId,
+    eventId: args.messageId,
+  });
+  if (pending?.eventType !== "input.prompt") {
+    return null;
+  }
   const [queued] = await db
     .select({
       content: chatMessages.content,
-      structuredPrompt: chatMessages.structuredPrompt,
+      userMessage: chatMessages.userMessage,
       attachFiles: chatMessages.attachFiles,
       attachFileMetadata: chatMessages.attachFileMetadata,
       generationTemplate: chatMessages.generationTemplate,
+      triggerSource: chatMessages.triggerSource,
     })
-    .from(chatMessageQueue)
-    .innerJoin(
-      chatMessages,
-      eq(chatMessages.id, chatMessageQueue.chatMessageId),
-    )
+    .from(chatMessages)
     .where(
       and(
-        inArray(chatMessageQueue.itemType, queuedUserMessageItemTypes),
-        eq(chatMessageQueue.chatMessageId, args.messageId),
-        eq(chatMessageQueue.chatThreadId, args.threadId),
+        eq(chatMessages.id, args.messageId),
         eq(chatMessages.chatThreadId, args.threadId),
-        eq(chatMessages.role, "user"),
+        chatEventTypeIn(["input.prompt"]),
+        isNull(chatMessages.runId),
       ),
     )
     .for("update")
@@ -310,29 +322,25 @@ async function appendClaimedUserMessage(
   if (!queued) {
     return null;
   }
+  if (!queued.userMessage) {
+    throw new Error("Queued input event is missing userMessage");
+  }
 
-  const claimed = await updateChatMessage(db, args.messageId, {
+  const claimed = await replaceChatEvent(db, args.messageId, {
     chatThreadId: args.threadId,
-    role: "user",
+    eventType: "input.prompt",
     content: queued.content,
-    structuredPrompt: queued.structuredPrompt,
+    userMessage: queued.userMessage,
     runId: args.runId,
     attachFiles: queued.attachFiles ? [...queued.attachFiles] : null,
     attachFileMetadata: queued.attachFileMetadata
       ? [...queued.attachFileMetadata]
       : null,
     generationTemplate: queued.generationTemplate,
+    ...(queued.triggerSource ? { triggerSource: queued.triggerSource } : {}),
   });
   if (!claimed) {
     return null;
-  }
-  if (
-    !(await deleteUserMessageQueueItem(db, {
-      threadId: args.threadId,
-      messageId: args.messageId,
-    }))
-  ) {
-    throw new Error("Claimed user message queue item disappeared");
   }
   return claimed;
 }
@@ -366,9 +374,56 @@ export async function claimQueueFirstRunAssociation(
         return { kind: "lost" };
       }
 
-      if (await activeChatRunExists(db, { threadId: args.threadId })) {
+      if (await chatThreadAdmissionBlocked(db, { threadId: args.threadId })) {
         outcome = "lost";
         return { kind: "lost" };
+      }
+
+      if (args.kind === "workflow_event") {
+        if (
+          (await loadChatAutomationIntakePause(db, args.threadId)) ||
+          (await hasUnclaimedQueuedUserMessage(db, args.threadId))
+        ) {
+          outcome = "lost";
+          return { kind: "lost" };
+        }
+
+        const pending = await listPendingChatQueueEvents(db, args.threadId);
+        const head = pending[0];
+        const [automationEvent] = await db
+          .select({
+            automationId: chatMessages.automationId,
+            triggerSource: chatMessages.triggerSource,
+          })
+          .from(chatMessages)
+          .where(eq(chatMessages.id, args.eventId))
+          .limit(1);
+        if (
+          head?.eventType !== "input.automation" ||
+          head?.id !== args.eventId ||
+          automationEvent?.automationId !== args.runGroupId
+        ) {
+          outcome = "lost";
+          return { kind: "lost" };
+        }
+
+        const claimed = await replaceChatEvent(db, args.eventId, {
+          chatThreadId: args.threadId,
+          eventType: "input.prompt",
+          content: args.prompt,
+          userMessage: createUserMessageDocument({ text: args.prompt }),
+          runId: args.runId,
+          runGroupId: args.runGroupId,
+          ...(automationEvent.triggerSource
+            ? { triggerSource: automationEvent.triggerSource }
+            : {}),
+        });
+        if (!claimed) {
+          throw new Error("Claimed workflow queue event disappeared");
+        }
+
+        outcome = "claimed";
+        return { kind: "claimed", createdAt: claimed.createdAt };
       }
 
       const headMessageId = await loadNextUnclaimedQueuedUserMessageId(
@@ -400,9 +455,8 @@ export async function claimQueueFirstRunAssociation(
 }
 
 /**
- * Discard a queue-first user message that never dispatched (run creation
- * failed): consume the queue item and append a tombstone so the failed send is
- * absent from the visible thread while the message stream stays append-only.
+ * Discard a queue-first user message that never dispatched by appending a
+ * tombstone. The revoke edge removes it from both queue and visible history.
  */
 export async function discardUnclaimedUserMessage(
   db: Db,
@@ -415,20 +469,106 @@ export async function discardUnclaimedUserMessage(
     if (!(await lockUserMessageQueueThread(tx, args.threadId))) {
       return;
     }
-    const queueItemDeleted = await deleteUserMessageQueueItem(tx, {
-      threadId: args.threadId,
-      messageId: args.messageId,
+    const pending = await loadPendingChatQueueEvent(tx, {
+      chatThreadId: args.threadId,
+      eventId: args.messageId,
     });
-    if (!queueItemDeleted) {
+    if (pending?.eventType !== "input.prompt") {
       return;
     }
-    const tombstone = await deleteChatMessage(tx, args.messageId, {
+    const tombstone = await revokeChatEvent(tx, args.messageId, {
       chatThreadId: args.threadId,
-      role: "user",
+      eventType: "control.revoke",
       runId: null,
     });
     if (!tombstone) {
       throw new Error("Failed to append discarded user message tombstone");
     }
+  });
+}
+
+/**
+ * Consume the current queue head without a run and append canonical user and
+ * assistant replacements that explain a permanent integration admission
+ * failure.
+ */
+export async function failQueuedUserMessage(
+  db: Db,
+  args: {
+    readonly threadId: string;
+    readonly messageId: string;
+    readonly assistantContent: string;
+    readonly errorMarker: string;
+    readonly currentTime: Date;
+  },
+): Promise<{ readonly assistantMessageId: string } | null> {
+  return await db.transaction(async (tx) => {
+    if (!(await lockUserMessageQueueThread(tx, args.threadId))) {
+      return null;
+    }
+    if (
+      (await loadNextUnclaimedQueuedUserMessageId(tx, args.threadId)) !==
+      args.messageId
+    ) {
+      return null;
+    }
+
+    const [queued] = await tx
+      .select({
+        content: chatMessages.content,
+        userMessage: chatMessages.userMessage,
+        attachFiles: chatMessages.attachFiles,
+        attachFileMetadata: chatMessages.attachFileMetadata,
+        generationTemplate: chatMessages.generationTemplate,
+      })
+      .from(chatMessages)
+      .where(
+        and(
+          eq(chatMessages.id, args.messageId),
+          eq(chatMessages.chatThreadId, args.threadId),
+          chatEventTypeIn(["input.prompt"]),
+          isNull(chatMessages.runId),
+        ),
+      )
+      .for("update")
+      .limit(1);
+    if (!queued) {
+      return null;
+    }
+    if (!queued.userMessage) {
+      throw new Error("Queued input event is missing userMessage");
+    }
+
+    const replacement = await replaceChatEvent(tx, args.messageId, {
+      chatThreadId: args.threadId,
+      eventType: "input.rejected",
+      content: queued.content,
+      userMessage: queued.userMessage,
+      attachFiles: queued.attachFiles ? [...queued.attachFiles] : null,
+      attachFileMetadata: queued.attachFileMetadata
+        ? [...queued.attachFileMetadata]
+        : null,
+      generationTemplate: queued.generationTemplate,
+      runId: null,
+      error: args.errorMarker,
+      createdAt: args.currentTime,
+    });
+    if (!replacement) {
+      return null;
+    }
+
+    const assistant = await insertChatEvent(tx, {
+      chatThreadId: args.threadId,
+      eventType: "output.error",
+      content: args.assistantContent,
+      runId: null,
+      error: args.errorMarker,
+      createdAt: new Date(args.currentTime.getTime() + 1),
+    });
+    if (!assistant) {
+      throw new Error("Failed to append integration admission error");
+    }
+    await touchChatThreadLastMessageAt(tx, args.threadId, assistant.createdAt);
+    return { assistantMessageId: assistant.id };
   });
 }

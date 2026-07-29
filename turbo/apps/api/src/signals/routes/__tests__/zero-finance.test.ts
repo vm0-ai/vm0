@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 
 import { zeroBillingStatusContract } from "@vm0/api-contracts/contracts/zero-billing";
 import { zeroFinanceContract } from "@vm0/api-contracts/contracts/zero-finance";
-import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
+import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
 import { mockEnv } from "../../../lib/env";
@@ -100,9 +100,8 @@ describe("zero finance routes", () => {
     if (!actor.orgId) {
       throw new Error("Zero Finance test actor must belong to an organization");
     }
-    await createBddApi(context).bootstrapOnboarding(actor, {
-      displayName: "Zero Finance Test",
-    });
+    const completed = await createBddApi(context).completeOnboarding(actor);
+    expect(completed.status).toBe(200);
     const seconds = Math.floor(now() / 1000);
     const token = signSandboxJwtForTests({
       scope: "zero",

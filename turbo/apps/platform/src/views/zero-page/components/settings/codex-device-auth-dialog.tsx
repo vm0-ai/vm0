@@ -23,6 +23,7 @@ import {
   runCodexDeviceAuthPersonal$,
   type CodexDeviceAuthFlowState,
 } from "../../../../signals/zero-page/settings/codex-device-auth.ts";
+import { brandName$ } from "../../../../signals/branding.ts";
 import { detach, Reason } from "../../../../signals/utils.ts";
 import { pageSignal$ } from "../../../../signals/page-signal.ts";
 import { ProviderIcon } from "./provider-icons.tsx";
@@ -138,6 +139,8 @@ function CodexDeviceAuthBody({
   openApprovalPage: (signal: AbortSignal) => Promise<boolean>;
   pageSignal: AbortSignal;
 }) {
+  const brandName = useGet(brandName$);
+
   switch (flow.status) {
     case "idle": {
       return <CodexDeviceAuthLoadingContent />;
@@ -154,7 +157,7 @@ function CodexDeviceAuthBody({
             <p>
               First click Copy code and open approval page. Then paste the
               device code into OpenAI when prompted. Finally approve access and
-              keep this dialog open while vm0 finishes the connection.
+              keep this dialog open while {brandName} finishes the connection.
             </p>
           </div>
           <div className="rounded-lg border border-border bg-muted/30 p-3">

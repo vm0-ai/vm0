@@ -5,7 +5,6 @@ import { agentRuns } from "@vm0/db/schema/agent-run";
 import { agentSessions } from "@vm0/db/schema/agent-session";
 import { feishuOrgConnections } from "@vm0/db/schema/feishu-org-connection";
 import { feishuOrgInstallations } from "@vm0/db/schema/feishu-org-installation";
-import { feishuOrgThreadSessions } from "@vm0/db/schema/feishu-org-thread-session";
 import { zeroRuns } from "@vm0/db/schema/zero-run";
 
 import { buildFeishuAgentResponseMessage } from "../../lib/feishu-message-card";
@@ -13,9 +12,9 @@ import { logger } from "../../lib/log";
 import {
   removeFeishuMessageReaction,
   replyWithFeishuMessage,
+  sendFeishuMessage,
 } from "../external/feishu-client";
 import { writeDb$, type Db } from "../external/db";
-import { nowDate } from "../external/time";
 import { tapError } from "../utils";
 import {
   feishuOrgCallbackPayloadSchema as callbackPayloadSchema,
@@ -40,7 +39,6 @@ interface RunContext {
   readonly userId: string;
   readonly orgId: string;
   readonly prompt: string;
-  readonly sessionId: string | null;
   readonly agentId: string;
   readonly lastEventSequence: number | null;
   readonly chatThreadId: string | null;
@@ -72,7 +70,6 @@ async function loadRun(db: Db, runId: string): Promise<RunContext | undefined> {
       userId: agentRuns.userId,
       orgId: agentRuns.orgId,
       prompt: agentRuns.prompt,
-      sessionId: agentRuns.sessionId,
       agentId: agentSessions.agentComposeId,
       lastEventSequence: agentRuns.lastEventSequence,
       chatThreadId: zeroRuns.chatThreadId,
@@ -83,76 +80,6 @@ async function loadRun(db: Db, runId: string): Promise<RunContext | undefined> {
     .where(eq(agentRuns.id, runId))
     .limit(1);
   return run;
-}
-
-async function saveSession(args: {
-  readonly db: Db;
-  readonly payload: FeishuOrgCallbackPayload;
-  readonly sessionId: string | null;
-  readonly status: InternalRunCallbackEnvelope["status"];
-}): Promise<void> {
-  if (
-    args.status !== "completed" ||
-    !args.sessionId ||
-    args.payload.existingSessionId
-  ) {
-    return;
-  }
-  await args.db
-    .insert(feishuOrgThreadSessions)
-    .values({
-      connectionId: args.payload.connectionId,
-      feishuChatId: args.payload.sessionKey ?? args.payload.chatId,
-      agentSessionId: args.sessionId,
-    })
-    .onConflictDoUpdate({
-      target: [
-        feishuOrgThreadSessions.connectionId,
-        feishuOrgThreadSessions.feishuChatId,
-      ],
-      set: { agentSessionId: args.sessionId, updatedAt: nowDate() },
-    });
-}
-
-async function countThreadMentioners(args: {
-  readonly db: Db;
-  readonly installationId: string;
-  readonly sessionKey: string;
-}): Promise<number> {
-  const rows = await args.db
-    .select({ connectionId: feishuOrgThreadSessions.connectionId })
-    .from(feishuOrgThreadSessions)
-    .innerJoin(
-      feishuOrgConnections,
-      eq(feishuOrgThreadSessions.connectionId, feishuOrgConnections.id),
-    )
-    .where(
-      and(
-        eq(feishuOrgConnections.installationId, args.installationId),
-        eq(feishuOrgThreadSessions.feishuChatId, args.sessionKey),
-      ),
-    );
-  return new Set(
-    rows.map((row) => {
-      return row.connectionId;
-    }),
-  ).size;
-}
-
-async function resolveReplyToMention(args: {
-  readonly db: Db;
-  readonly payload: FeishuOrgCallbackPayload;
-  readonly feishuOpenId: string;
-}): Promise<string | undefined> {
-  if (!args.payload.replyInThread) {
-    return undefined;
-  }
-  const mentionerCount = await countThreadMentioners({
-    db: args.db,
-    installationId: args.payload.installationId,
-    sessionKey: args.payload.sessionKey ?? args.payload.chatId,
-  });
-  return mentionerCount > 1 ? `<at id=${args.feishuOpenId}></at>` : undefined;
 }
 
 async function clearThinkingReaction(args: {
@@ -180,6 +107,53 @@ async function clearThinkingReaction(args: {
   );
 }
 
+async function sendFeishuCallbackResponse(args: {
+  readonly db: Db;
+  readonly payload: FeishuOrgCallbackPayload;
+  readonly runId: string;
+  readonly message: ReturnType<typeof buildFeishuAgentResponseMessage>;
+  readonly signal: AbortSignal;
+}): Promise<void> {
+  if (args.payload.replyInThread) {
+    await replyWithFeishuMessage({
+      db: args.db,
+      installationId: args.payload.installationId,
+      messageId: args.payload.messageId,
+      message: args.message,
+      replyInThread: true,
+      signal: args.signal,
+    });
+  } else {
+    await sendFeishuMessage({
+      db: args.db,
+      installationId: args.payload.installationId,
+      receiveIdType: "chat_id",
+      receiveId: args.payload.chatId,
+      message: args.message,
+      idempotencyKey: args.runId,
+      signal: args.signal,
+    });
+  }
+  args.signal.throwIfAborted();
+}
+
+async function loadFeishuCallbackConnection(
+  db: Db,
+  payload: FeishuOrgCallbackPayload,
+) {
+  const [connection] = await db
+    .select({ id: feishuOrgConnections.id })
+    .from(feishuOrgConnections)
+    .where(
+      and(
+        eq(feishuOrgConnections.id, payload.connectionId),
+        eq(feishuOrgConnections.installationId, payload.installationId),
+      ),
+    )
+    .limit(1);
+  return connection;
+}
+
 async function handleFeishuCallback(
   args: HandleFeishuCallbackInput,
 ): Promise<InternalRunCallbackDispatchResult> {
@@ -191,6 +165,9 @@ async function handleFeishuCallback(
     return { success: false, error: "Invalid Feishu callback payload" };
   }
   const payload = parsed.data;
+  if (payload.canonicalChatDelivery) {
+    return { success: true, skipped: true };
+  }
   const run = await loadRun(args.db, args.callback.runId);
   args.signal.throwIfAborted();
   if (!run) {
@@ -218,19 +195,7 @@ async function handleFeishuCallback(
   if (!installation) {
     return { success: false, error: "Feishu installation not found" };
   }
-  const [connection] = await args.db
-    .select({
-      id: feishuOrgConnections.id,
-      feishuOpenId: feishuOrgConnections.feishuOpenId,
-    })
-    .from(feishuOrgConnections)
-    .where(
-      and(
-        eq(feishuOrgConnections.id, payload.connectionId),
-        eq(feishuOrgConnections.installationId, payload.installationId),
-      ),
-    )
-    .limit(1);
+  const connection = await loadFeishuCallbackConnection(args.db, payload);
   args.signal.throwIfAborted();
   if (!connection) {
     await clearThinkingReaction({
@@ -257,19 +222,6 @@ async function handleFeishuCallback(
         })
       : undefined;
   args.signal.throwIfAborted();
-  await saveSession({
-    db: args.db,
-    payload,
-    sessionId: run.sessionId,
-    status: args.callback.status,
-  });
-  args.signal.throwIfAborted();
-  const replyToMention = await resolveReplyToMention({
-    db: args.db,
-    payload,
-    feishuOpenId: connection.feishuOpenId,
-  });
-  args.signal.throwIfAborted();
   const presentation = await resolveIntegrationAgentResponsePresentation({
     db: args.db,
     orgId: run.orgId,
@@ -277,27 +229,26 @@ async function handleFeishuCallback(
     runId: args.callback.runId,
     agentId: payload.agentId ?? run.agentId,
     defaultAgentId: installation.defaultAgentId,
-    replyToMention,
     getFeatureOverrides: args.getFeatureOverrides,
     signal: args.signal,
   });
+  args.signal.throwIfAborted();
   const responseText =
     args.callback.status === "failed"
       ? (errorText ?? "Agent execution failed.")
       : (output ?? "Task completed successfully.");
-  await replyWithFeishuMessage({
+  const responseMessage = buildFeishuAgentResponseMessage({
+    text: responseText,
+    auditUrl: presentation.logsUrl,
+    footerText: presentation.footerText,
+  });
+  await sendFeishuCallbackResponse({
     db: args.db,
-    installationId: payload.installationId,
-    messageId: payload.messageId,
-    message: buildFeishuAgentResponseMessage({
-      text: responseText,
-      auditUrl: presentation.logsUrl,
-      footerText: presentation.footerText,
-    }),
-    replyInThread: payload.replyInThread,
+    payload,
+    runId: args.callback.runId,
+    message: responseMessage,
     signal: args.signal,
   });
-  args.signal.throwIfAborted();
   await clearThinkingReaction({
     db: args.db,
     payload,
@@ -305,6 +256,7 @@ async function handleFeishuCallback(
   });
   args.signal.throwIfAborted();
   await args.saveRunSummary(args.callback.runId, run.prompt, output ?? "");
+  args.signal.throwIfAborted();
   return { success: true };
 }
 

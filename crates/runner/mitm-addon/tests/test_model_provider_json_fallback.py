@@ -10,6 +10,7 @@ import zstandard
 from mitmproxy.test import tutils
 
 import flow_metadata_keys as metadata_keys
+import http_network_log
 import logging_utils
 from tests.flow_helpers import header_map
 from tests.jsonl_log_helpers import (
@@ -603,6 +604,12 @@ class TestModelProviderJsonFallback:
         flow.metadata[metadata_keys.VM_PROXY_LOG_PATH] = str(proxy_log_path)
         flow.metadata[metadata_keys.FIREWALL_ACTION] = "ALLOW"
         flow.metadata[metadata_keys.ORIGINAL_URL] = "https://api.github.com/repos"
+        http_network_log.set_target(
+            flow,
+            url="https://api.github.com/repos",
+            host="api.github.com",
+            port=443,
+        )
         flow.metadata[metadata_keys.FIREWALL_NAME] = "github"
         body = b'{"incomplete":'
         set_response_stream_buffer(flow, body)
@@ -622,6 +629,12 @@ class TestModelProviderJsonFallback:
         flow = real_flow(with_response=False, host="api.anthropic.com")
         set_common_model_metadata(flow, tmp_path)
         flow.metadata[metadata_keys.ORIGINAL_URL] = ANTHROPIC_JSON_CASE.original_url
+        http_network_log.set_target(
+            flow,
+            url=ANTHROPIC_JSON_CASE.original_url,
+            host=ANTHROPIC_JSON_CASE.host,
+            port=flow.request.port,
+        )
         flow.metadata[metadata_keys.FIREWALL_NAME] = firewall_name
         body = standard_success_payload(ANTHROPIC_JSON_CASE)
         set_response_stream_buffer(flow, body)

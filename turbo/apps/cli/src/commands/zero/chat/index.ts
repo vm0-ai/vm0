@@ -19,6 +19,7 @@ Examples:
   List agent chats:  zero chat list
   Show this chat:    zero chat get
   Switch model:      zero chat model claude-sonnet-5
+  Switch another:    zero chat model --thread <thread-id> claude-sonnet-5
   Rename this chat:  zero chat rename "Launch plan"
   Rename another:    zero chat rename --thread <thread-id> "Launch plan"`,
   );

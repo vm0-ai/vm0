@@ -14,6 +14,7 @@ from tests.auth_state_helpers import auth_cache_key, has_auth_state
 from tests.jsonl_log_helpers import read_jsonl_entries_after_flush
 from tests.pending_helpers import assert_pending
 from tests.request_handler_helpers import _single_firewall_vm, _write_registry
+from tests.upstream_connection_helpers import seed_server_binding
 
 _BROWSER_USER_AGENT = (
     "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 "
@@ -365,7 +366,7 @@ async def test_vm0_model_proxy_path_on_vm0_api_host_uses_firewall_auth(
         method="POST",
         path="/api/internal/vm0-model/v1/responses",
     )
-    upstream_destination_binding.record_server_binding(
+    seed_server_binding(
         flow.server_conn,
         client=flow.client_conn,
         host="api.vm0.ai",

@@ -1,8 +1,6 @@
 import type { z } from "zod";
 import {
-  artifactEntrySchema,
-  legacyStorageManifestSchema,
-  storageEntrySchema,
+  artifactMissingRootPolicySchema,
   storageMountEntrySchema,
 } from "../contracts/runners";
 import { fileEntryWithHashSchema } from "../contracts/storages";
@@ -80,9 +78,9 @@ export const rustTypeModuleDocs = [
 
 export const rustTypeBindings = [
   {
-    schema: artifactEntrySchema,
+    schema: artifactMissingRootPolicySchema,
     rustModulePath: ["runners", "storage"],
-    rustTypeName: "ArtifactEntry",
+    rustTypeName: "ArtifactEntryMissingRootPolicy",
     direction: "response",
     declarations: [
       {
@@ -94,30 +92,6 @@ export const rustTypeBindings = [
           fail: ["Treat a missing artifact root as an error."],
           preserveParentVersion: [
             "Preserve the parent artifact version when the root path is missing.",
-          ],
-        },
-      },
-      {
-        rustTypeName: "ArtifactEntry",
-        rustDoc: ["Artifact entry in a runner storage manifest."],
-        fields: {
-          mountPath: ["Guest filesystem path where the artifact is mounted."],
-          vasStorageName: [
-            "VAS storage name that stores the artifact versions.",
-          ],
-          vasStorageId: ["VAS storage identifier for the artifact."],
-          vasVersionId: ["VAS version identifier for the artifact contents."],
-          archiveUrl: [
-            "Optional presigned URL for downloading the artifact archive. Explicit empty artifacts may omit it.",
-          ],
-          archiveSize: [
-            "Optional exact encoded archive size in bytes. Older queued manifests may omit it.",
-          ],
-          empty: [
-            "Whether this artifact version is explicitly empty and can be prepared without downloading an archive.",
-          ],
-          missingRootPolicy: [
-            "Optional policy for a missing artifact root; absence behaves like `fail`.",
           ],
         },
       },
@@ -134,9 +108,7 @@ export const rustTypeBindings = [
     declarations: [
       {
         rustTypeName: "StorageMountEntry",
-        rustDoc: [
-          "Canonical resolved Storage mount accepted by capability-aware runners.",
-        ],
+        rustDoc: ["Canonical resolved Storage mount accepted by runners."],
         fields: {
           name: ["Storage name retained for diagnostics and cache identity."],
           storageId: ["Immutable Storage identifier."],
@@ -156,53 +128,6 @@ export const rustTypeBindings = [
           writeback: [
             "Whether changed contents are written back to the same Storage.",
           ],
-        },
-      },
-    ],
-  },
-  {
-    schema: storageEntrySchema,
-    rustModulePath: ["runners", "storage"],
-    rustTypeName: "StorageEntry",
-    direction: "response",
-    declarations: [
-      {
-        rustTypeName: "StorageEntry",
-        rustDoc: ["Volume storage entry in a runner storage manifest."],
-        fields: {
-          name: ["User-facing storage name referenced by the run."],
-          mountPath: ["Guest filesystem path where the storage is mounted."],
-          vasStorageName: ["VAS storage name that stores the volume versions."],
-          vasVersionId: ["VAS version identifier for the volume contents."],
-          instructionsTargetFilename: [
-            "Optional filename used when storage instructions are written into the mount.",
-          ],
-          archiveUrl: ["Presigned URL for downloading the storage archive."],
-          archiveSize: [
-            "Optional exact encoded archive size in bytes. Older queued manifests may omit it.",
-          ],
-        },
-      },
-    ],
-  },
-  {
-    schema: legacyStorageManifestSchema,
-    rustModulePath: ["runners", "storage"],
-    rustTypeName: "StorageManifest",
-    direction: "response",
-    fieldTypeOverrides: {
-      storages: "Vec<StorageEntry>",
-      artifacts: "Vec<ArtifactEntry>",
-    },
-    declarations: [
-      {
-        rustTypeName: "StorageManifest",
-        rustDoc: [
-          "Runner storage manifest containing all volume and artifact mounts.",
-        ],
-        fields: {
-          storages: ["Volume storage entries to mount for the run."],
-          artifacts: ["Artifact entries to mount for the run."],
         },
       },
     ],
@@ -283,7 +208,6 @@ export const rustTypeBindings = [
     rustTypeName: "Request",
     direction: "request",
     fieldTypeOverrides: {
-      storageType: "String",
       files: "Vec<super::FileEntryWithHash>",
     },
     declarations: [
@@ -305,8 +229,9 @@ export const rustTypeBindings = [
         ],
         fields: {
           runId: ["Agent run identifier bound to the sandbox token."],
-          storageName: ["Storage name being prepared for upload."],
-          storageType: ["Storage kind encoded by the TypeScript contract."],
+          storageId: [
+            "Canonical Storage identifier authorized by the agent run.",
+          ],
           files: ["Content-addressed file list included in the upload."],
           parentVersionId: [
             "Optional parent version used when preparing an incremental upload.",
@@ -375,7 +300,6 @@ export const rustTypeBindings = [
     rustTypeName: "Request",
     direction: "request",
     fieldTypeOverrides: {
-      storageType: "String",
       files: "Vec<super::FileEntryWithHash>",
     },
     declarations: [
@@ -386,8 +310,9 @@ export const rustTypeBindings = [
         ],
         fields: {
           runId: ["Agent run identifier bound to the sandbox token."],
-          storageName: ["Storage name being committed."],
-          storageType: ["Storage kind encoded by the TypeScript contract."],
+          storageId: [
+            "Canonical Storage identifier authorized by the agent run.",
+          ],
           versionId: ["Storage version identifier being committed."],
           parentVersionId: [
             "Optional parent version used when committing an incremental upload.",

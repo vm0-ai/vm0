@@ -6,6 +6,20 @@ import { zeroRuns } from "@vm0/db/schema/zero-run";
 import type { Db } from "../external/db";
 import { publishUserSignal } from "../external/realtime";
 
+/**
+ * Fire the user-level "artifact catalog changed" signal. The artifacts page
+ * subscribes to it and re-reads only its first page, because new artifacts
+ * always sort to the head.
+ */
+export async function publishArtifactCatalogChanged(
+  authorUserIds: readonly string[],
+): Promise<void> {
+  await publishUserSignal(
+    [...new Set(authorUserIds)],
+    "artifactCatalogChanged",
+  );
+}
+
 export async function publishArtifactsChangedForRun(
   writeDb: Db,
   runId: string,

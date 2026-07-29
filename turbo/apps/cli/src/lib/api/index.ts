@@ -97,6 +97,7 @@ export {
   deleteWorkflow,
   copyWorkflow,
   listWorkflowAutomations,
+  listWorkspaceWorkflowAutomations,
   createWorkflowAutomation,
   getWorkflowAutomation,
   updateWorkflowAutomation,
@@ -199,7 +200,10 @@ export {
   searchZeroChat,
   updateZeroChatThreadModelSelection,
 } from "./domains/zero-chat";
-export type { ZeroChatThreadSnapshot } from "./domains/zero-chat";
+export type {
+  ZeroChatThreadEvent,
+  ZeroChatThreadSnapshot,
+} from "./domains/zero-chat";
 
 // Domain modules - Zero Developer Support
 export {
@@ -218,6 +222,15 @@ export {
   fetchComputerUseScreenshot,
   getComputerUseCommand,
 } from "./domains/zero-computer-use";
+
+// Domain modules - Zero Browser
+export {
+  createBrowserAuthorizationRequest,
+  createZeroBrowser,
+  getCurrentZeroBrowser,
+  leaseZeroBrowser,
+  useZeroBrowser,
+} from "./domains/zero-browser";
 
 // Domain modules - Zero Maps
 export { callZeroMaps, type ZeroMapsResponse } from "./domains/zero-maps";

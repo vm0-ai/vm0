@@ -12,11 +12,30 @@ from mitmproxy import http
 from mitmproxy.test import tutils
 
 import flow_metadata_keys as metadata_keys
+import http_network_log
 from tests.flow_helpers import header_map
 
 RealFlowFactory = Callable[..., http.HTTPFlow]
 _WEBSOCKET_KEY = "dGhlIHNhbXBsZSBub25jZQ=="
 _WEBSOCKET_ACCEPT = "s3pPLMBiTxaQ9kYGzzhZRbK+xOo="
+
+
+def signed_raw_usage_pricing_headers(pricing: str) -> dict[str, str]:
+    signature = (
+        base64.urlsafe_b64encode(
+            hmac.new(
+                b"proxy-secret",
+                b"vm0-model-usage-pricing-v1\0" + pricing.encode("ascii"),
+                hashlib.sha256,
+            ).digest()
+        )
+        .decode()
+        .rstrip("=")
+    )
+    return {
+        "x-vm0-usage-pricing": pricing,
+        "x-vm0-usage-pricing-signature": signature,
+    }
 
 
 def signed_usage_pricing_headers(
@@ -47,21 +66,7 @@ def signed_usage_pricing_headers(
         .decode()
         .rstrip("=")
     )
-    signature = (
-        base64.urlsafe_b64encode(
-            hmac.new(
-                b"proxy-secret",
-                b"vm0-model-usage-pricing-v1\0" + pricing.encode(),
-                hashlib.sha256,
-            ).digest()
-        )
-        .decode()
-        .rstrip("=")
-    )
-    return {
-        "x-vm0-usage-pricing": pricing,
-        "x-vm0-usage-pricing-signature": signature,
-    }
+    return signed_raw_usage_pricing_headers(pricing)
 
 
 def _openai_responses_websocket_request_headers() -> http.Headers:
@@ -132,6 +137,12 @@ def make_model_provider_flow(
     )
     flow.metadata[metadata_keys.FIREWALL_ACTION] = firewall_action
     flow.metadata[metadata_keys.ORIGINAL_URL] = original_url
+    http_network_log.set_target(
+        flow,
+        url=original_url,
+        host=host,
+        port=flow.request.port,
+    )
     flow.metadata[metadata_keys.FIREWALL_NAME] = firewall_name
     flow.metadata[metadata_keys.FIREWALL_BILLABLE] = firewall_billable
     flow.metadata[metadata_keys.VM_SANDBOX_AUTH_KEY] = (

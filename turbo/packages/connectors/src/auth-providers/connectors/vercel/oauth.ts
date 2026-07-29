@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-import type { ConnectorAuthCodeGrantConfig } from "@vm0/connectors/connectors";
+import type { ConnectorAuthCodeGrantConfig } from "@vm0/connectors/connector-config";
 import { throwOAuthError } from "../../oauth/error";
 
 const VERCEL_TOKEN_URL = "https://api.vercel.com/v2/oauth/access_token";
@@ -123,11 +123,4 @@ async function fetchVercelUserInfo(
     username: data.user.username ?? null,
     email: data.user.email ?? null,
   };
-}
-
-/**
- * Get the primary secret name for Vercel connector (the access token).
- */
-export function getVercelSecretName(): string {
-  return "VERCEL_ACCESS_TOKEN";
 }

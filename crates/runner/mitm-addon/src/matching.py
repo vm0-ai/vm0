@@ -14,7 +14,6 @@ from collections.abc import Mapping
 from dataclasses import dataclass, field
 from types import MappingProxyType
 from typing import Literal, NamedTuple
-from typing import TypeAlias as _TypeAlias
 from urllib.parse import urlsplit
 
 import connector_intent
@@ -49,7 +48,7 @@ static_firewall_base_authority_key = _firewall_base_url.static_firewall_base_aut
 match_url_authority_key = _firewall_base_url.match_url_authority_key
 match_base_url = _firewall_base_url.match_base_url
 
-CompiledPathPattern: _TypeAlias = _firewall_patterns.CompiledPathPattern
+CompiledPathPattern = _firewall_patterns.CompiledPathPattern
 _compiled_rule_path_is_valid = _firewall_patterns._compiled_rule_path_is_valid
 compile_path_pattern = _firewall_patterns.compile_path_pattern
 match_compiled_path = _firewall_patterns.match_compiled_path
@@ -252,6 +251,31 @@ class CompiledFirewallSet:
         return self._api_index.all_candidates
 
     def matches_ordinary_credential_authority(self, host: str, port: int) -> bool:
+        """Return whether an HTTPS authority is eligible for a connector-auth binding.
+
+        The compiled admission index contains only APIs whose firewall names, bases,
+        and auth mappings are valid, whose bases use HTTPS, and whose auth applies
+        ordinary upstream credentials through headers, query parameters, or AWS
+        SigV4. HTTP APIs, APIs with ``auth.base`` alone or no ordinary mutation, and
+        malformed name, base, or auth inputs are excluded.
+
+        This connection-phase predicate normalizes the host and effective HTTPS port,
+        then compares only the authority. Static host authorities, including bases
+        parameterized only in their paths, and parameterized hosts participate.
+        Explicit and implicit port 443 are equivalent; non-default ports must match
+        exactly. Base paths, permission rules, and network policies are deliberately
+        not evaluated before an HTTP request exists.
+
+        A match is eligibility for the privileged ``connector_auth`` binding, not
+        request authorization. Request handling later evaluates full base/path,
+        connector-owner, permission/rule, and network-policy decisions. Before it
+        mutates a request, ordinary credential handling still requires the current
+        direct binding and applicable public-destination and host-policy guards.
+
+        Contract coverage lives in
+        ``tests/test_compiled_firewall_authority_normalization.py`` and
+        ``tests/test_server_connect_hook.py``.
+        """
         url_parts = _split_https_authority_parts(host, port)
         if url_parts is None:
             return False
@@ -1024,7 +1048,12 @@ def _ensure_compiled_network_policies(
 
 
 class FirewallAllow(NamedTuple):
-    """Base URL matched and auth headers should be injected.
+    """Matched-firewall allow decision for connector auth handling.
+
+    Depending on the auth configuration, handling may inject headers or query
+    parameters, rewrite and forward through ``auth.base``, apply AWS SigV4
+    signing, or make no credential changes. Asterisk-form allows that proceed
+    without auth are represented by ``FirewallPolicyAllow`` instead.
 
     ``permission`` and ``rule`` are present for a matched permission. They are
     ``None`` for unknown-endpoint allow, where the firewall base matched but no

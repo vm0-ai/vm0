@@ -6,10 +6,9 @@ import type { ZeroCapability } from "@vm0/api-contracts/contracts/composes";
 import type {
   AttachFile,
   GenerationTemplateRequest,
-  PagedChatMessage,
+  ChatEventResponse,
   UserMessageDocument,
 } from "@vm0/api-contracts/contracts/chat-threads";
-import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { zeroGoalsContract } from "@vm0/api-contracts/contracts/zero-goals";
 import {
   ILLUSTRATION_TEMPLATE_ITEMS,
@@ -106,8 +105,32 @@ const FORBIDDEN_CHAT_CALLBACK_PRE_CREATE_TIMING_KEYS = [
   "archiveUrl",
 ] as const;
 
-type AssistantMessage = Extract<PagedChatMessage, { role: "assistant" }>;
-type UserMessage = Extract<PagedChatMessage, { role: "user" }>;
+type UserMessage = Extract<
+  ChatEventResponse,
+  {
+    eventType:
+      | "input.prompt"
+      | "input.automation"
+      | "input.rejected"
+      | "control.interrupt"
+      | "control.revoke";
+  }
+>;
+type AssistantMessage = Exclude<ChatEventResponse, UserMessage>;
+type PromptMessage = Extract<ChatEventResponse, { eventType: "input.prompt" }>;
+type OutputMessage = Extract<
+  ChatEventResponse,
+  { eventType: "output.message" }
+>;
+type LifecycleEvent = "completed" | "failed" | "cancelled";
+type LifecycleMessage<Event extends LifecycleEvent> = Extract<
+  ChatEventResponse,
+  { eventType: `run.${Event}` }
+>;
+type FollowupsMessage = Extract<
+  ChatEventResponse,
+  { eventType: "output.followups" }
+>;
 type TestOrgRole = "admin" | "member";
 
 interface EntitledChatActor {
@@ -168,7 +191,7 @@ async function startChatRun(
     readonly selectedModel?: string;
     readonly attachFiles?: readonly AttachFile[];
     readonly generationTemplate?: GenerationTemplateRequest;
-    readonly structuredPrompt?: UserMessageDocument;
+    readonly userMessage?: UserMessageDocument;
   },
 ): Promise<{
   readonly runId: string;
@@ -179,7 +202,7 @@ async function startChatRun(
   const requestBody = {
     agentId: body.agentId,
     prompt: body.prompt,
-    clientMessageId: messageId,
+    clientEventId: messageId,
     ...(body.threadId === undefined ? {} : { threadId: body.threadId }),
     ...(body.attachFiles === undefined
       ? {}
@@ -187,16 +210,16 @@ async function startChatRun(
     ...(body.generationTemplate === undefined
       ? {}
       : { generationTemplate: body.generationTemplate }),
-    ...(body.structuredPrompt === undefined
+    ...(body.userMessage === undefined
       ? {}
-      : { structuredPrompt: body.structuredPrompt }),
+      : { userMessage: body.userMessage }),
     ...(body.selectedModel === undefined
       ? body.threadId === undefined
         ? { model: "claude-sonnet-4-6" }
         : {}
       : { model: body.selectedModel }),
   };
-  const sent = await chat.requestSendMessage(actor, requestBody, [201]);
+  const sent = await chat.requestSendEvent(actor, requestBody, [201]);
   if (sent.status !== 201) {
     throw new Error("Expected the entitled chat send to create a run");
   }
@@ -211,14 +234,13 @@ async function startChatRun(
       (items) => {
         return userMessages(items).some((message) => {
           return (
-            message.revokesMessageId === messageId &&
-            message.runId !== undefined
+            message.revokesEventId === messageId && message.runId !== undefined
           );
         });
       },
     );
-    runId = userMessages(messages.messages).find((message) => {
-      return message.revokesMessageId === messageId;
+    runId = userMessages(messages.events).find((message) => {
+      return message.revokesEventId === messageId;
     })?.runId;
   }
   if (runId === undefined || runId === null) {
@@ -241,7 +263,7 @@ async function queueChatMessage(
     readonly generationTemplate?: GenerationTemplateRequest;
   },
 ): Promise<void> {
-  const sent = await chat.requestSendMessage(
+  const sent = await chat.requestSendEvent(
     actor,
     {
       agentId: body.agentId,
@@ -344,14 +366,14 @@ function cliAgentSessionIdForChatRun(runId: string): string {
 async function waitForThreadMessages(
   actor: ApiTestUser,
   threadId: string,
-  predicate: (messages: readonly PagedChatMessage[]) => boolean,
+  predicate: (messages: readonly ChatEventResponse[]) => boolean,
 ) {
-  let page: Awaited<ReturnType<typeof chat.listThreadMessages>> | undefined;
+  let page: Awaited<ReturnType<typeof chat.listThreadEvents>> | undefined;
   await expect
     .poll(
       async () => {
-        page = await chat.listThreadMessages(actor, threadId);
-        return predicate(page.messages);
+        page = await chat.listThreadEvents(actor, threadId);
+        return predicate(page.events);
       },
       { interval: 100, timeout: 10_000 },
     )
@@ -480,17 +502,30 @@ async function failChatRun(
 }
 
 function assistantMessages(
-  messages: readonly PagedChatMessage[],
+  messages: readonly ChatEventResponse[],
 ): AssistantMessage[] {
-  return messages.flatMap((message) => {
-    return message.role === "assistant" ? [message] : [];
+  return messages.filter((message): message is AssistantMessage => {
+    return !isUserMessage(message);
   });
 }
 
-function userMessages(messages: readonly PagedChatMessage[]): UserMessage[] {
-  return messages.flatMap((message) => {
-    return message.role === "user" ? [message] : [];
-  });
+function userMessages(messages: readonly ChatEventResponse[]): UserMessage[] {
+  return messages.filter(isUserMessage);
+}
+
+function isUserMessage(message: ChatEventResponse): message is UserMessage {
+  switch (message.eventType) {
+    case "input.prompt":
+    case "input.automation":
+    case "input.rejected":
+    case "control.interrupt":
+    case "control.revoke": {
+      return true;
+    }
+    default: {
+      return false;
+    }
+  }
 }
 
 function isGoalContinuationUserMessage(
@@ -506,37 +541,33 @@ function isGoalContinuationUserMessage(
 }
 
 function eventBackedContents(
-  messages: readonly PagedChatMessage[],
+  messages: readonly ChatEventResponse[],
   runId: string,
-): AssistantMessage[] {
-  return assistantMessages(messages).filter((message) => {
-    return (
-      message.runId === runId &&
-      message.content !== null &&
-      message.runLifecycleEvent === undefined
-    );
+): OutputMessage[] {
+  return messages.filter((message): message is OutputMessage => {
+    return message.eventType === "output.message" && message.runId === runId;
   });
 }
 
-function lifecycleMarkers(
-  messages: readonly PagedChatMessage[],
+function lifecycleMarkers<Event extends LifecycleEvent>(
+  messages: readonly ChatEventResponse[],
   runId: string,
-  event: "completed" | "failed" | "cancelled",
-): AssistantMessage[] {
-  return assistantMessages(messages).filter((message) => {
-    return message.runId === runId && message.runLifecycleEvent === event;
+  event: Event,
+): LifecycleMessage<Event>[] {
+  return messages.filter((message): message is LifecycleMessage<Event> => {
+    return message.runId === runId && message.eventType === `run.${event}`;
   });
 }
 
 function recommendedFollowupMessages(
-  messages: readonly PagedChatMessage[],
+  messages: readonly ChatEventResponse[],
   runId: string,
-): AssistantMessage[] {
-  return assistantMessages(messages).filter((message) => {
+): FollowupsMessage[] {
+  return messages.filter((message): message is FollowupsMessage => {
     return (
+      message.eventType === "output.followups" &&
       message.runId === runId &&
-      message.runLifecycleEvent === undefined &&
-      (message.recommendedFollowups?.length ?? 0) > 0
+      message.recommendedFollowups.length > 0
     );
   });
 }
@@ -717,6 +748,8 @@ describe("CHAT-02: completed chat callback", () => {
     const titlePrompts: string[] = [];
     const followupSystemPrompts: string[] = [];
     const followupPrompts: string[] = [];
+    const longFollowupPrompt =
+      "Can you draft a new 90-minute workshop outline that focuses on the event-driven workflow of an AI Lead Operations Team and includes hands-on exercises?";
     mockOptionalEnv("OPENROUTER_API_KEY", "bdd-openrouter-key");
     chatCallbacks.mockOpenRouterCompletions((body) => {
       const systemContent = body.messages[0]?.content ?? "";
@@ -728,7 +761,7 @@ describe("CHAT-02: completed chat callback", () => {
         followupSystemPrompts.push(systemContent);
         followupPrompts.push(body.messages[1]?.content ?? "");
         return JSON.stringify([
-          { prompt: "Turn this into a checklist", kind: "talk" },
+          { prompt: longFollowupPrompt, kind: "talk" },
           {
             prompt: "Generate a landing page for this plan",
             kind: "generate",
@@ -762,8 +795,8 @@ describe("CHAT-02: completed chat callback", () => {
       prompt: "queued next turn",
       generationTemplate,
     });
-    const beforeComplete = await chat.listThreadMessages(actor, first.threadId);
-    const queued = userMessages(beforeComplete.messages).find((message) => {
+    const beforeComplete = await chat.listThreadEvents(actor, first.threadId);
+    const queued = userMessages(beforeComplete.events).find((message) => {
       return message.content === "queued next turn";
     });
     if (!queued) {
@@ -804,34 +837,30 @@ describe("CHAT-02: completed chat callback", () => {
       },
     );
     expect(
-      eventBackedContents(after.messages, first.runId).map((message) => {
+      eventBackedContents(after.events, first.runId).map((message) => {
         return message.content;
       }),
     ).toStrictEqual(["final answer"]);
     expect(
-      eventBackedContents(after.messages, first.runId)[0],
+      eventBackedContents(after.events, first.runId)[0],
     ).not.toHaveProperty("status");
 
-    const marker = lifecycleMarkers(
-      after.messages,
-      first.runId,
-      "completed",
-    )[0];
+    const marker = lifecycleMarkers(after.events, first.runId, "completed")[0];
     if (!marker) {
       throw new Error("Expected a completed lifecycle marker");
     }
     expect(marker.content).toBeNull();
     expect(marker).not.toHaveProperty("status");
-    expect(marker.recommendedFollowups).toBeUndefined();
+    expect(marker).not.toHaveProperty("recommendedFollowups");
     const recommender = recommendedFollowupMessages(
-      after.messages,
+      after.events,
       first.runId,
     )[0];
     if (!recommender) {
       throw new Error("Expected a recommended follow-up message");
     }
     expect(recommender.recommendedFollowups).toStrictEqual([
-      { prompt: "Turn this into a checklist", kind: "talk" },
+      { prompt: longFollowupPrompt, kind: "talk" },
       {
         prompt: "Generate a landing page for this plan",
         kind: "generate",
@@ -902,21 +931,23 @@ describe("CHAT-02: completed chat callback", () => {
         });
       },
     );
-    const claimed = userMessages(afterAutoSend.messages).find((message) => {
-      return (
-        message.content === "queued next turn" && message.runId !== undefined
-      );
-    });
+    const claimed = userMessages(afterAutoSend.events).find(
+      (message): message is PromptMessage => {
+        return (
+          message.eventType === "input.prompt" &&
+          message.content === "queued next turn" &&
+          message.runId !== undefined
+        );
+      },
+    );
     if (!claimed?.runId) {
       throw new Error("Expected the queued message to be auto-claimed");
     }
     expect(claimed.runId).not.toBe(first.runId);
     expect(claimed.id).not.toBe(queued.id);
-    expect(claimed.revokesMessageId).toBe(queued.id);
+    expect(claimed.revokesEventId).toBe(queued.id);
     expect(claimed.generationTemplate).toStrictEqual(generationTemplate);
-    // Exercise the temporary compatibility route used by already-open
-    // app-v0.627.3 browser clients.
-    const original = await chat.getThreadMessage(
+    const original = await chat.getThreadEvent(
       actor,
       first.threadId,
       queued.id,
@@ -924,7 +955,7 @@ describe("CHAT-02: completed chat callback", () => {
     expect(original.runId).toBeUndefined();
     // The raw message page contains both immutable rows; the client folds the
     // original into its run-associated replacement.
-    const matchingMessageIds = userMessages(afterAutoSend.messages)
+    const matchingMessageIds = userMessages(afterAutoSend.events)
       .filter((message) => {
         return message.content === "queued next turn";
       })
@@ -1029,7 +1060,7 @@ describe("CHAT-02: completed chat callback", () => {
         });
       },
     );
-    const claimed = userMessages(afterAutoSend.messages).find((message) => {
+    const claimed = userMessages(afterAutoSend.events).find((message) => {
       return message.content === queuedPrompt && message.runId !== undefined;
     });
     if (!claimed?.runId) {
@@ -1076,132 +1107,113 @@ describe("CHAT-02: completed chat callback", () => {
     await waitForRunStatus(actor, claimed.runId, "cancelled");
   }, 90_000);
 
-  it.each([
-    { projection: "structured", structuredPromptEnabled: true },
-    { projection: "legacy", structuredPromptEnabled: false },
-  ])(
-    "uses $projection message semantics for title and recommended follow-up context",
-    async ({ structuredPromptEnabled }) => {
-      const { actor, agentId, runnerGroup } = await entitledChatActor();
-      chatCallbacks.failIfChatCallbackRouteIsFetched();
-      if (!actor.orgId) {
-        throw new Error("Expected an org-scoped actor");
-      }
-      await updateFeatureSwitchesForUser(
-        context,
-        { ...actor, orgId: actor.orgId },
-        { [FeatureSwitchKey.StructuredPrompt]: structuredPromptEnabled },
-      );
+  it("uses userMessage semantics for title and recommended follow-up context", async () => {
+    const { actor, agentId, runnerGroup } = await entitledChatActor();
+    chatCallbacks.failIfChatCallbackRouteIsFetched();
 
-      const style = ILLUSTRATION_TEMPLATE_ITEMS[0];
-      if (!style) {
-        throw new Error("Expected a registered illustration style");
-      }
-      const generationTemplate: GenerationTemplateRequest = {
-        type: "illustration",
-        selection: { illustrationStyleId: style.illustrationStyleId },
-      };
-      const firstStructuredPrompt: UserMessageDocument = {
-        version: 1,
-        parts: [
-          {
-            type: "template",
-            titleSnapshot: style.title,
-            template: generationTemplate,
-          },
-          { type: "text", text: "first structured request" },
-        ],
-      };
-      const templatePrompt = `Select ${style.title} illustration template`;
-
-      const first = await startChatRun(actor, {
-        agentId,
-        prompt: "stale first legacy request",
-        generationTemplate,
-        structuredPrompt: firstStructuredPrompt,
-      });
-      const firstHeaders = await claimChatRun(runnerGroup, first.runId);
-      chatCallbacks.mockChatOutputEvents([
-        assistantEvent(0, "first structured answer"),
-      ]);
-      await completeChatRunOk(first.runId, firstHeaders, {
-        lastEventSequence: 0,
-      });
-      await flushWaitUntilForTest();
-
-      const titlePrompts: string[] = [];
-      const followupPrompts: string[] = [];
-      mockOptionalEnv("OPENROUTER_API_KEY", "bdd-openrouter-key");
-      chatCallbacks.mockOpenRouterCompletions((body) => {
-        const systemContent = body.messages[0]?.content ?? "";
-        if (systemContent.includes("Generate a short, descriptive title")) {
-          titlePrompts.push(body.messages[1]?.content ?? "");
-          return "Structured Context";
-        }
-        if (systemContent.includes("concise follow-up prompts")) {
-          followupPrompts.push(body.messages[1]?.content ?? "");
-          return JSON.stringify([
-            { prompt: "Continue the structured work", kind: "talk" },
-          ]);
-        }
-        return "Generated summary";
-      });
-
-      const second = await startChatRun(actor, {
-        agentId,
-        threadId: first.threadId,
-        prompt: "stale second legacy request",
-        structuredPrompt: {
-          version: 1,
-          parts: [{ type: "text", text: "second structured request" }],
+    const style = ILLUSTRATION_TEMPLATE_ITEMS[0];
+    if (!style) {
+      throw new Error("Expected a registered illustration style");
+    }
+    const generationTemplate: GenerationTemplateRequest = {
+      type: "illustration",
+      selection: { illustrationStyleId: style.illustrationStyleId },
+    };
+    const firstUserMessage: UserMessageDocument = {
+      version: 1,
+      parts: [
+        {
+          type: "template",
+          titleSnapshot: style.title,
+          template: generationTemplate,
         },
-      });
-      await waitForThreadTitle(actor, first.threadId, "Structured Context");
+        { type: "text", text: "first structured request" },
+      ],
+    };
+    const templatePrompt = `Select ${style.title} illustration template`;
 
-      const structuredContext = [
-        templatePrompt,
-        "first structured request",
-        "second structured request",
-      ];
-      const legacyContext = [
-        "stale first legacy request",
-        "stale second legacy request",
-      ];
-      const expectedContext = structuredPromptEnabled
-        ? structuredContext
-        : legacyContext;
-      const excludedContext = structuredPromptEnabled
-        ? legacyContext
-        : structuredContext;
+    const first = await startChatRun(actor, {
+      agentId,
+      prompt: "stale first legacy request",
+      generationTemplate,
+      userMessage: firstUserMessage,
+    });
+    const firstHeaders = await claimChatRun(runnerGroup, first.runId);
+    chatCallbacks.mockChatOutputEvents([
+      assistantEvent(0, "first structured answer"),
+    ]);
+    await completeChatRunOk(first.runId, firstHeaders, {
+      lastEventSequence: 0,
+    });
+    await flushWaitUntilForTest();
 
-      expect(titlePrompts).toHaveLength(1);
-      for (const value of expectedContext) {
-        expect(titlePrompts[0]).toContain(value);
+    const titlePrompts: string[] = [];
+    const followupPrompts: string[] = [];
+    mockOptionalEnv("OPENROUTER_API_KEY", "bdd-openrouter-key");
+    chatCallbacks.mockOpenRouterCompletions((body) => {
+      const systemContent = body.messages[0]?.content ?? "";
+      if (systemContent.includes("Generate a short, descriptive title")) {
+        titlePrompts.push(body.messages[1]?.content ?? "");
+        return "Structured Context";
       }
-      for (const value of excludedContext) {
-        expect(titlePrompts[0]).not.toContain(value);
+      if (systemContent.includes("concise follow-up prompts")) {
+        followupPrompts.push(body.messages[1]?.content ?? "");
+        return JSON.stringify([
+          { prompt: "Continue the structured work", kind: "talk" },
+        ]);
       }
+      return "Generated summary";
+    });
 
-      const secondHeaders = await claimChatRun(runnerGroup, second.runId);
-      chatCallbacks.mockChatOutputEvents([
-        assistantEvent(0, "second structured answer"),
-      ]);
-      await completeChatRunOk(second.runId, secondHeaders, {
-        lastEventSequence: 0,
-      });
-      await flushWaitUntilForTest();
+    const second = await startChatRun(actor, {
+      agentId,
+      threadId: first.threadId,
+      prompt: "stale second legacy request",
+      userMessage: {
+        version: 1,
+        parts: [{ type: "text", text: "second structured request" }],
+      },
+    });
+    await waitForThreadTitle(actor, first.threadId, "Structured Context");
 
-      expect(followupPrompts).toHaveLength(1);
-      for (const value of expectedContext) {
-        expect(followupPrompts[0]).toContain(value);
-      }
-      expect(followupPrompts[0]).toContain("second structured answer");
-      for (const value of excludedContext) {
-        expect(followupPrompts[0]).not.toContain(value);
-      }
-    },
-    90_000,
-  );
+    const userMessageContext = [
+      templatePrompt,
+      "first structured request",
+      "second structured request",
+    ];
+    const legacyContext = [
+      "stale first legacy request",
+      "stale second legacy request",
+    ];
+    const expectedContext = userMessageContext;
+    const excludedContext = legacyContext;
+
+    expect(titlePrompts).toHaveLength(1);
+    for (const value of expectedContext) {
+      expect(titlePrompts[0]).toContain(value);
+    }
+    for (const value of excludedContext) {
+      expect(titlePrompts[0]).not.toContain(value);
+    }
+
+    const secondHeaders = await claimChatRun(runnerGroup, second.runId);
+    chatCallbacks.mockChatOutputEvents([
+      assistantEvent(0, "second structured answer"),
+    ]);
+    await completeChatRunOk(second.runId, secondHeaders, {
+      lastEventSequence: 0,
+    });
+    await flushWaitUntilForTest();
+
+    expect(followupPrompts).toHaveLength(1);
+    for (const value of expectedContext) {
+      expect(followupPrompts[0]).toContain(value);
+    }
+    expect(followupPrompts[0]).toContain("second structured answer");
+    for (const value of excludedContext) {
+      expect(followupPrompts[0]).not.toContain(value);
+    }
+  }, 90_000);
 
   it("suppresses malformed recommended follow-up JSON instead of storing raw syntax lines", async () => {
     const { actor, agentId, runnerGroup } = await entitledChatActor();
@@ -1250,12 +1262,12 @@ describe("CHAT-02: completed chat callback", () => {
         }),
       ]),
     );
-    const after = await chat.listThreadMessages(actor, run.threadId);
-    const marker = lifecycleMarkers(after.messages, run.runId, "completed")[0];
+    const after = await chat.listThreadEvents(actor, run.threadId);
+    const marker = lifecycleMarkers(after.events, run.runId, "completed")[0];
     if (!marker) {
       throw new Error("Expected a completed lifecycle marker");
     }
-    expect(marker.recommendedFollowups).toBeUndefined();
+    expect(marker).not.toHaveProperty("recommendedFollowups");
   });
 
   it("auto-sends the queued message before completed-run LLM side effects finish", async () => {
@@ -1272,15 +1284,13 @@ describe("CHAT-02: completed chat callback", () => {
       prompt: "queued while side effects wait",
     });
 
-    const queuedBeforeComplete = await chat.listThreadMessages(
+    const queuedBeforeComplete = await chat.listThreadEvents(
       actor,
       first.threadId,
     );
-    const queued = userMessages(queuedBeforeComplete.messages).find(
-      (message) => {
-        return message.content === "queued while side effects wait";
-      },
-    );
+    const queued = userMessages(queuedBeforeComplete.events).find((message) => {
+      return message.content === "queued while side effects wait";
+    });
     if (!queued) {
       throw new Error("Expected the queued user message to be listed");
     }
@@ -1315,14 +1325,13 @@ describe("CHAT-02: completed chat callback", () => {
       (messages) => {
         return userMessages(messages).some((message) => {
           return (
-            message.revokesMessageId === queued.id &&
-            message.runId !== undefined
+            message.revokesEventId === queued.id && message.runId !== undefined
           );
         });
       },
     );
     const markerBeforeRelease = lifecycleMarkers(
-      afterAutoSend.messages,
+      afterAutoSend.events,
       first.runId,
       "completed",
     )[0];
@@ -1331,10 +1340,10 @@ describe("CHAT-02: completed chat callback", () => {
         "Expected completed marker before releasing side effects",
       );
     }
-    expect(markerBeforeRelease.recommendedFollowups).toBeUndefined();
+    expect(markerBeforeRelease).not.toHaveProperty("recommendedFollowups");
 
-    const claimed = userMessages(afterAutoSend.messages).find((message) => {
-      return message.revokesMessageId === queued.id;
+    const claimed = userMessages(afterAutoSend.events).find((message) => {
+      return message.revokesEventId === queued.id;
     });
     if (!claimed?.runId) {
       throw new Error("Expected the queued message to auto-send");
@@ -1371,17 +1380,17 @@ describe("CHAT-02: completed chat callback", () => {
       },
     );
     expect(
-      lifecycleMarkers(afterFollowups.messages, first.runId, "completed"),
+      lifecycleMarkers(afterFollowups.events, first.runId, "completed"),
     ).toHaveLength(1);
     const markerAfterRelease = lifecycleMarkers(
-      afterFollowups.messages,
+      afterFollowups.events,
       first.runId,
       "completed",
     )[0];
     expect(markerAfterRelease?.id).toBe(markerBeforeRelease.id);
-    expect(markerAfterRelease?.recommendedFollowups).toBeUndefined();
+    expect(markerAfterRelease).not.toHaveProperty("recommendedFollowups");
     const followupMessage = recommendedFollowupMessages(
-      afterFollowups.messages,
+      afterFollowups.events,
       first.runId,
     )[0];
     if (!followupMessage) {
@@ -1406,11 +1415,8 @@ describe("CHAT-02: completed chat callback", () => {
       threadId: first.threadId,
       prompt: "queued after duplicate callback",
     });
-    const afterSecondQueue = await chat.listThreadMessages(
-      actor,
-      first.threadId,
-    );
-    const duplicateProbeQueued = userMessages(afterSecondQueue.messages).find(
+    const afterSecondQueue = await chat.listThreadEvents(actor, first.threadId);
+    const duplicateProbeQueued = userMessages(afterSecondQueue.events).find(
       (message) => {
         return message.content === "queued after duplicate callback";
       },
@@ -1424,18 +1430,18 @@ describe("CHAT-02: completed chat callback", () => {
     });
     await flushWaitUntilForTest();
 
-    const afterDuplicateCallback = await chat.listThreadMessages(
+    const afterDuplicateCallback = await chat.listThreadEvents(
       actor,
       first.threadId,
     );
     const duplicateProbeClaimed = userMessages(
-      afterDuplicateCallback.messages,
+      afterDuplicateCallback.events,
     ).filter((message) => {
-      return message.revokesMessageId === duplicateProbeQueued.id;
+      return message.revokesEventId === duplicateProbeQueued.id;
     });
     expect(duplicateProbeClaimed).toHaveLength(0);
     const duplicateProbeStillQueued = userMessages(
-      afterDuplicateCallback.messages,
+      afterDuplicateCallback.events,
     ).find((message) => {
       return message.id === duplicateProbeQueued.id;
     });
@@ -1482,7 +1488,7 @@ Continue the JPM IJTXX Treasury allocation follow-up for issue #20818 and [ACME-
         });
       },
     );
-    const goalContinuation = userMessages(messages.messages).find((message) => {
+    const goalContinuation = userMessages(messages.events).find((message) => {
       return isGoalContinuationUserMessage(message, goalBrief);
     });
     expect(goalContinuation?.goalSnapshot).toStrictEqual({
@@ -1502,6 +1508,16 @@ Continue the JPM IJTXX Treasury allocation follow-up for issue #20818 and [ACME-
     );
     expect(goalContext.body.appendSystemPrompt ?? "").not.toContain(
       "# How to operate",
+    );
+    expect(goalContext.body.sessionId).toBe(
+      cliAgentSessionIdForChatRun(first.runId),
+    );
+    const continuationClaim = await claimChatRunJob(
+      runnerGroup,
+      goalContinuation.runId,
+    );
+    expect(continuationClaim.resumeSession?.sessionId).toBe(
+      cliAgentSessionIdForChatRun(first.runId),
     );
     await api.requestCancelRun(actor, goalContinuation.runId, [200]);
     await waitForRunStatus(actor, goalContinuation.runId, "cancelled");
@@ -1555,7 +1571,7 @@ Continue the JPM IJTXX Treasury allocation follow-up for issue #20818 and [ACME-
         });
       },
     );
-    const continuation = userMessages(messages.messages).find((message) => {
+    const continuation = userMessages(messages.events).find((message) => {
       return isGoalContinuationUserMessage(message, objective);
     });
     if (!continuation?.runId) {
@@ -1589,15 +1605,13 @@ Continue the JPM IJTXX Treasury allocation follow-up for issue #20818 and [ACME-
       prompt: "queued user interruption",
     });
 
-    const queuedBeforeComplete = await chat.listThreadMessages(
+    const queuedBeforeComplete = await chat.listThreadEvents(
       actor,
       first.threadId,
     );
-    const queued = userMessages(queuedBeforeComplete.messages).find(
-      (message) => {
-        return message.content === "queued user interruption";
-      },
-    );
+    const queued = userMessages(queuedBeforeComplete.events).find((message) => {
+      return message.content === "queued user interruption";
+    });
     if (!queued) {
       throw new Error("Expected the queued user message to be listed");
     }
@@ -1629,12 +1643,12 @@ Continue the JPM IJTXX Treasury allocation follow-up for issue #20818 and [ACME-
     // to reach goal continuation; releasing the gate immediately can hide the
     // old preemption path this regression covers.
     await delay(1000, { signal: context.signal });
-    const beforeAutoSend = await chat.listThreadMessages(actor, first.threadId);
-    const prematureGoalContinuation = userMessages(
-      beforeAutoSend.messages,
-    ).find((message) => {
-      return isGoalContinuationUserMessage(message, goalBrief);
-    });
+    const beforeAutoSend = await chat.listThreadEvents(actor, first.threadId);
+    const prematureGoalContinuation = userMessages(beforeAutoSend.events).find(
+      (message) => {
+        return isGoalContinuationUserMessage(message, goalBrief);
+      },
+    );
 
     outputQueryGate.release();
     if (prematureGoalContinuation?.runId) {
@@ -1658,21 +1672,20 @@ Continue the JPM IJTXX Treasury allocation follow-up for issue #20818 and [ACME-
       (messages) => {
         return userMessages(messages).some((message) => {
           return (
-            message.revokesMessageId === queued.id &&
-            message.runId !== undefined
+            message.revokesEventId === queued.id && message.runId !== undefined
           );
         });
       },
     );
-    const claimed = userMessages(afterAutoSend.messages).find((message) => {
-      return message.revokesMessageId === queued.id;
+    const claimed = userMessages(afterAutoSend.events).find((message) => {
+      return message.revokesEventId === queued.id;
     });
     expect(
       claimed?.runId,
       "queued user messages should be claimed before goal continuation creates a new run",
     ).toBeDefined();
 
-    const goalContinuation = userMessages(afterAutoSend.messages).find(
+    const goalContinuation = userMessages(afterAutoSend.events).find(
       (message) => {
         return isGoalContinuationUserMessage(message, goalBrief);
       },
@@ -1707,15 +1720,13 @@ Continue the JPM IJTXX Treasury allocation follow-up for issue #20818 and [ACME-
       threadId: first.threadId,
       prompt: "queued while org cap is full",
     });
-    const queuedBeforeComplete = await chat.listThreadMessages(
+    const queuedBeforeComplete = await chat.listThreadEvents(
       actor,
       first.threadId,
     );
-    const queued = userMessages(queuedBeforeComplete.messages).find(
-      (message) => {
-        return message.content === "queued while org cap is full";
-      },
-    );
+    const queued = userMessages(queuedBeforeComplete.events).find((message) => {
+      return message.content === "queued while org cap is full";
+    });
     if (!queued) {
       throw new Error("Expected the queued user message to be listed");
     }
@@ -1733,8 +1744,7 @@ Continue the JPM IJTXX Treasury allocation follow-up for issue #20818 and [ACME-
       (messages) => {
         const claimed = userMessages(messages).find((message) => {
           return (
-            message.revokesMessageId === queued.id &&
-            message.runId !== undefined
+            message.revokesEventId === queued.id && message.runId !== undefined
           );
         });
         return (
@@ -1748,13 +1758,13 @@ Continue the JPM IJTXX Treasury allocation follow-up for issue #20818 and [ACME-
         );
       },
     );
-    const claimed = userMessages(afterAutoSend.messages).find((message) => {
-      return message.revokesMessageId === queued.id;
+    const claimed = userMessages(afterAutoSend.events).find((message) => {
+      return message.revokesEventId === queued.id;
     });
     if (!claimed?.runId) {
       throw new Error("Expected the queued message to auto-send");
     }
-    const marker = assistantMessages(afterAutoSend.messages).find((message) => {
+    const marker = assistantMessages(afterAutoSend.events).find((message) => {
       return (
         message.runId === claimed.runId && message.runEventId === "queue:queued"
       );
@@ -1837,15 +1847,15 @@ describe("CHAT-02: chat output extraction and progress callbacks", () => {
     );
     expect(chatOutputAxiomQueryCalls()).toHaveLength(0);
     expect(
-      eventBackedContents(messages.messages, first.runId).map((message) => {
+      eventBackedContents(messages.events, first.runId).map((message) => {
         return message.content;
       }),
     ).toStrictEqual(["DB-complete streamed answer"]);
     expect(
-      lifecycleMarkers(messages.messages, first.runId, "completed"),
+      lifecycleMarkers(messages.events, first.runId, "completed"),
     ).toHaveLength(1);
 
-    const claimed = userMessages(messages.messages).find((message) => {
+    const claimed = userMessages(messages.events).find((message) => {
       return (
         message.content === "queued after streamed output" &&
         message.runId !== undefined
@@ -1921,7 +1931,7 @@ describe("CHAT-02: chat output extraction and progress callbacks", () => {
     );
     expect(chatOutputAxiomQueryCalls()).toHaveLength(1);
     expect(
-      eventBackedContents(messages.messages, run.runId).map((message) => {
+      eventBackedContents(messages.events, run.runId).map((message) => {
         return message.content;
       }),
     ).toStrictEqual(
@@ -1985,9 +1995,7 @@ describe("CHAT-02: chat output extraction and progress callbacks", () => {
       },
     );
     expect(chatOutputAxiomQueryCalls()).toHaveLength(0);
-    expect(eventBackedContents(messages.messages, silent.runId)).toHaveLength(
-      0,
-    );
+    expect(eventBackedContents(messages.events, silent.runId)).toHaveLength(0);
     await flushWaitUntilForTest();
     expect(firstAssistantMessageEventsForRun(silent.runId)).toStrictEqual([]);
 
@@ -2030,11 +2038,9 @@ describe("CHAT-02: chat output extraction and progress callbacks", () => {
     );
     expect(chatOutputAxiomQueryCalls()).toHaveLength(1);
     expect(
-      eventBackedContents(messages.messages, resultOnly.runId).map(
-        (message) => {
-          return message.content;
-        },
-      ),
+      eventBackedContents(messages.events, resultOnly.runId).map((message) => {
+        return message.content;
+      }),
     ).toStrictEqual(["Axiom result fallback answer"]);
     await flushWaitUntilForTest();
     expect(firstAssistantMessageEventsForRun(resultOnly.runId)).toHaveLength(1);
@@ -2076,11 +2082,8 @@ describe("CHAT-02: chat output extraction and progress callbacks", () => {
 
     expect(routeRequests()).toBe(0);
     expect(context.mocks.axiom.query).not.toHaveBeenCalled();
-    const progressMessages = await chat.listThreadMessages(
-      actor,
-      first.threadId,
-    );
-    const progressUserMessages = userMessages(progressMessages.messages);
+    const progressMessages = await chat.listThreadEvents(actor, first.threadId);
+    const progressUserMessages = userMessages(progressMessages.events);
     expect(progressUserMessages).toHaveLength(2);
     const progressOriginal = progressUserMessages.find((message) => {
       return message.id === first.messageId;
@@ -2089,7 +2092,7 @@ describe("CHAT-02: chat output extraction and progress callbacks", () => {
     expect(progressUserMessages).toContainEqual(
       expect.objectContaining({
         runId: first.runId,
-        revokesMessageId: first.messageId,
+        revokesEventId: first.messageId,
       }),
     );
 
@@ -2129,7 +2132,7 @@ describe("CHAT-02: chat output extraction and progress callbacks", () => {
       },
     );
     expect(
-      eventBackedContents(messages.messages, first.runId).map((message) => {
+      eventBackedContents(messages.events, first.runId).map((message) => {
         return message.content;
       }),
     ).toStrictEqual(["final fallback answer"]);
@@ -2159,7 +2162,7 @@ describe("CHAT-02: chat output extraction and progress callbacks", () => {
       },
     );
     expect(
-      eventBackedContents(messages.messages, second.runId).map((message) => {
+      eventBackedContents(messages.events, second.runId).map((message) => {
         return message.content;
       }),
     ).toStrictEqual(["Codex answer"]);
@@ -2202,7 +2205,7 @@ describe("CHAT-02: chat output extraction and progress callbacks", () => {
       },
     );
     expect(
-      eventBackedContents(messages.messages, third.runId).map((message) => {
+      eventBackedContents(messages.events, third.runId).map((message) => {
         return message.content;
       }),
     ).toStrictEqual(["Already streamed."]);
@@ -2234,7 +2237,7 @@ describe("CHAT-02: chat output extraction and progress callbacks", () => {
       },
     );
     expect(
-      lifecycleMarkers(messages.messages, fourth.runId, "completed"),
+      lifecycleMarkers(messages.events, fourth.runId, "completed"),
     ).toHaveLength(1);
     await expect(
       readThreadTitleFromEvents(actor, first.threadId),
@@ -2298,8 +2301,8 @@ describe("CHAT-02: failed chat callbacks", () => {
     }
 
     const messages = await waitForThreadMessages(actor, threadId, (items) => {
-      const failed = assistantMessages(items).filter((message) => {
-        return message.runLifecycleEvent === "failed";
+      const failed = items.filter((message) => {
+        return message.eventType === "run.failed";
       });
       return runIds.every((runId) => {
         return failed.some((message) => {
@@ -2307,7 +2310,7 @@ describe("CHAT-02: failed chat callbacks", () => {
         });
       });
     });
-    const users = userMessages(messages.messages);
+    const users = userMessages(messages.events);
     const originals = users.filter((message) => {
       return message.runId === undefined;
     });
@@ -2319,12 +2322,12 @@ describe("CHAT-02: failed chat callbacks", () => {
     expect(
       replacements.every((replacement) => {
         return originals.some((original) => {
-          return replacement.revokesMessageId === original.id;
+          return replacement.revokesEventId === original.id;
         });
       }),
     ).toBeTruthy();
-    const failed = assistantMessages(messages.messages).filter((message) => {
-      return message.runLifecycleEvent === "failed";
+    const failed = messages.events.filter((message) => {
+      return message.eventType === "run.failed";
     });
     expect(
       runIds.map((runId) => {
@@ -2385,7 +2388,7 @@ describe("CHAT-02: failed chat callbacks", () => {
         );
       },
     );
-    const marker = lifecycleMarkers(page.messages, run.runId, "failed")[0];
+    const marker = lifecycleMarkers(page.events, run.runId, "failed")[0];
     expect(marker?.error).toBe("insufficient_credits");
     expect(marker?.content).toBe("insufficient_credits");
   }, 90_000);
@@ -2415,7 +2418,7 @@ describe("CHAT-02: failed chat callbacks", () => {
         );
       },
     );
-    const marker = lifecycleMarkers(page.messages, run.runId, "failed")[0];
+    const marker = lifecycleMarkers(page.events, run.runId, "failed")[0];
     expect(marker?.error).toBe(
       "Claude Sonnet 4.6 is overloaded. Please wait a few minutes and try again, or switch to another model.",
     );
@@ -2472,7 +2475,7 @@ describe("CHAT-02: failed chat callbacks", () => {
           );
         },
       );
-      const marker = lifecycleMarkers(page.messages, run.runId, "failed")[0];
+      const marker = lifecycleMarkers(page.events, run.runId, "failed")[0];
       if (!marker?.error) {
         throw new Error("Expected failed chat callback to store an error");
       }
@@ -2535,14 +2538,6 @@ describe("CHAT-02: auto-send after failures", () => {
   it("uses structured failed messages for normal and queued incomplete-round context", async () => {
     const { actor, agentId, runnerGroup } = await entitledChatActor();
     chatCallbacks.failIfChatCallbackRouteIsFetched();
-    if (!actor.orgId) {
-      throw new Error("Expected an org-scoped actor");
-    }
-    await updateFeatureSwitchesForUser(
-      context,
-      { ...actor, orgId: actor.orgId },
-      { [FeatureSwitchKey.StructuredPrompt]: true },
-    );
 
     const anchor = await startChatRun(actor, {
       agentId,
@@ -2562,7 +2557,7 @@ describe("CHAT-02: auto-send after failures", () => {
       type: "illustration",
       selection: { illustrationStyleId: style.illustrationStyleId },
     };
-    const structuredPrompt: UserMessageDocument = {
+    const userMessage: UserMessageDocument = {
       version: 1,
       parts: [
         {
@@ -2571,16 +2566,24 @@ describe("CHAT-02: auto-send after failures", () => {
           template: generationTemplate,
         },
         { type: "text", text: "structured failed request" },
+        {
+          type: "feedback",
+          quote: "The failed response omitted the owner",
+          note: [{ type: "text", text: "Name the responsible owner" }],
+        },
       ],
     };
     const templatePrompt = `Select ${style.title} illustration template`;
+    const feedbackPrompt =
+      "Feedback on this part of your reply:\n\n" +
+      "> The failed response omitted the owner\n\nName the responsible owner";
 
     const failedForNormal = await startChatRun(actor, {
       agentId,
       threadId: anchor.threadId,
       prompt: "stale failed legacy request",
       generationTemplate,
-      structuredPrompt,
+      userMessage,
     });
     const failedForNormalHeaders = await claimChatRun(
       runnerGroup,
@@ -2600,6 +2603,7 @@ describe("CHAT-02: auto-send after failures", () => {
     });
     const normalContext = await waitForRunContext(actor, normal.runId);
     expect(normalContext.body.appendSystemPrompt).toContain(templatePrompt);
+    expect(normalContext.body.appendSystemPrompt).toContain(feedbackPrompt);
     await api.requestCancelRun(actor, normal.runId, [200]);
     await waitForRunStatus(actor, normal.runId, "cancelled");
     await flushWaitUntilForTest();
@@ -2609,7 +2613,7 @@ describe("CHAT-02: auto-send after failures", () => {
       threadId: anchor.threadId,
       prompt: "second stale failed legacy request",
       generationTemplate,
-      structuredPrompt,
+      userMessage,
     });
     const failedForQueueHeaders = await claimChatRun(
       runnerGroup,
@@ -2638,7 +2642,7 @@ describe("CHAT-02: auto-send after failures", () => {
         });
       },
     );
-    const promoted = userMessages(messages.messages).find((message) => {
+    const promoted = userMessages(messages.events).find((message) => {
       return message.content === queuedPrompt && message.runId !== undefined;
     });
     if (!promoted?.runId) {
@@ -2646,6 +2650,7 @@ describe("CHAT-02: auto-send after failures", () => {
     }
     const queuedContext = await waitForRunContext(actor, promoted.runId);
     expect(queuedContext.body.appendSystemPrompt).toContain(templatePrompt);
+    expect(queuedContext.body.appendSystemPrompt).toContain(feedbackPrompt);
 
     await api.requestCancelRun(actor, promoted.runId, [200]);
     await waitForRunStatus(actor, promoted.runId, "cancelled");
@@ -2715,6 +2720,7 @@ describe("CHAT-02: auto-send after failures", () => {
     const queuedFile = await chat.completeUpload(actor, {
       id: queuedUpload.id,
     });
+    const queuedContent = "queued with files";
     await queueChatMessage(actor, {
       agentId,
       threadId: first.threadId,
@@ -2745,17 +2751,22 @@ describe("CHAT-02: auto-send after failures", () => {
       (items) => {
         return userMessages(items).some((message) => {
           return (
-            message.content === "queued with files" &&
+            message.eventType === "input.prompt" &&
+            message.content === queuedContent &&
             message.runId !== undefined
           );
         });
       },
     );
-    const claimed = userMessages(messages.messages).find((message) => {
-      return (
-        message.content === "queued with files" && message.runId !== undefined
-      );
-    });
+    const claimed = userMessages(messages.events).find(
+      (message): message is PromptMessage => {
+        return (
+          message.eventType === "input.prompt" &&
+          message.content === queuedContent &&
+          message.runId !== undefined
+        );
+      },
+    );
     if (!claimed?.runId) {
       throw new Error(
         "Expected the queued message to be auto-claimed after the failure",
@@ -2772,7 +2783,6 @@ describe("CHAT-02: auto-send after failures", () => {
         "api_dispatch_pre_create_zero_chat_callback_auto_send_lookup_queued_message",
         "api_dispatch_pre_create_zero_chat_callback_auto_send_load_agent",
         "api_dispatch_pre_create_zero_chat_callback_auto_send_build_input",
-        "api_dispatch_pre_create_zero_chat_callback_auto_send_resolve_attachments",
         "api_dispatch_pre_create_zero_chat_callback_auto_send_create_run",
         "api_dispatch_pre_create_zero_chat_callback_auto_send_publish_signals",
       ],
@@ -2809,7 +2819,9 @@ describe("CHAT-02: auto-send after failures", () => {
     expect(appended).toContain("# Incomplete Rounds Context");
     expect(appended).toContain("RUN_STATUS: failed");
     expect(appended).toContain("...[truncated]");
-    expect(appended).toContain(`[Web file]\n   [ID] ${contextFile.id}`);
+    expect(appended).toContain(
+      `[Web file] ${contextFile.filename} (${contextFile.contentType})\n   [ID] ${contextFile.id}`,
+    );
     expect(appended).not.toContain("# Web Chat Run Context");
     expect(autoContext.body.sessionId).toBe(`bdd-cli-${first.runId}`);
 
@@ -2825,12 +2837,12 @@ describe("CHAT-02: auto-send after failures", () => {
       threadId: first.threadId,
       prompt: "queued after duplicate failed callback",
     });
-    const afterFailureSecondQueue = await chat.listThreadMessages(
+    const afterFailureSecondQueue = await chat.listThreadEvents(
       actor,
       first.threadId,
     );
     const duplicateFailureProbeQueued = userMessages(
-      afterFailureSecondQueue.messages,
+      afterFailureSecondQueue.events,
     ).find((message) => {
       return message.content === "queued after duplicate failed callback";
     });
@@ -2845,18 +2857,18 @@ describe("CHAT-02: auto-send after failures", () => {
         return context.mocks.webpush.sendNotification.mock.calls.length;
       })
       .toBe(1);
-    const afterDuplicateFailure = await chat.listThreadMessages(
+    const afterDuplicateFailure = await chat.listThreadEvents(
       actor,
       first.threadId,
     );
     const duplicateFailureProbeClaimed = userMessages(
-      afterDuplicateFailure.messages,
+      afterDuplicateFailure.events,
     ).filter((message) => {
-      return message.revokesMessageId === duplicateFailureProbeQueued.id;
+      return message.revokesEventId === duplicateFailureProbeQueued.id;
     });
     expect(duplicateFailureProbeClaimed).toHaveLength(0);
     const duplicateFailureProbeStillQueued = userMessages(
-      afterDuplicateFailure.messages,
+      afterDuplicateFailure.events,
     ).find((message) => {
       return message.id === duplicateFailureProbeQueued.id;
     });
@@ -2938,7 +2950,7 @@ describe("CHAT-02: auto-send after failures", () => {
         });
       },
     );
-    const autoSent = userMessages(messages.messages).find((message) => {
+    const autoSent = userMessages(messages.events).find((message) => {
       return message.content === queuedPrompt && message.runId !== undefined;
     });
     if (!autoSent?.runId) {
@@ -3064,7 +3076,7 @@ describe("CHAT-02: auto-send across a model switch", () => {
         });
       },
     );
-    const claimed = userMessages(messages.messages).find((message) => {
+    const claimed = userMessages(messages.events).find((message) => {
       return (
         message.content === "queued before policy removal" &&
         message.runId !== undefined
@@ -3181,7 +3193,7 @@ describe("CHAT-02: auto-send across a model switch", () => {
         });
       },
     );
-    const claimed = userMessages(messages.messages).find((message) => {
+    const claimed = userMessages(messages.events).find((message) => {
       return (
         message.content === "queue a sonnet follow-up" &&
         message.runId !== undefined
@@ -3245,6 +3257,82 @@ describe("CHAT-02: thread deletion while a run is active", () => {
 });
 
 describe("CHAT-02: push notification gating", () => {
+  it("suppresses completed run pushes while the thread has an active goal", async () => {
+    const { actor, agentId, runnerGroup } = await entitledChatActor();
+    await enableGoalWorkflows(actor);
+    chatCallbacks.failIfChatCallbackRouteIsFetched();
+    chatCallbacks.enableVapid();
+    await chatCallbacks.registerPushSubscription(actor);
+
+    const run = await startChatRun(actor, {
+      agentId,
+      prompt: "complete while goal remains active",
+    });
+    await createGoalForRun(actor, run.runId, "keep working after this run");
+    chatCallbacks.mockChatOutputEvents([]);
+    const sandboxHeaders = await claimChatRun(runnerGroup, run.runId);
+    await completeChatRunOk(run.runId, sandboxHeaders);
+
+    const messages = await waitForThreadMessages(
+      actor,
+      run.threadId,
+      (threadMessages) => {
+        return userMessages(threadMessages).some((message) => {
+          return isGoalContinuationUserMessage(
+            message,
+            "keep working after this run",
+          );
+        });
+      },
+    );
+    await flushWaitUntilForTest();
+    expect(context.mocks.webpush.sendNotification).not.toHaveBeenCalled();
+
+    const continuation = userMessages(messages.events).find((message) => {
+      return isGoalContinuationUserMessage(
+        message,
+        "keep working after this run",
+      );
+    });
+    if (!continuation?.runId) {
+      throw new Error("Expected an active goal continuation run");
+    }
+    await api.requestCancelRun(actor, continuation.runId, [200]);
+    await waitForRunStatus(actor, continuation.runId, "cancelled");
+    await flushWaitUntilForTest();
+    expect(context.mocks.webpush.sendNotification).not.toHaveBeenCalled();
+  }, 60_000);
+
+  it("suppresses failed run pushes while the thread has an active goal", async () => {
+    const { actor, agentId, runnerGroup } = await entitledChatActor();
+    await enableGoalWorkflows(actor);
+    chatCallbacks.failIfChatCallbackRouteIsFetched();
+    chatCallbacks.enableVapid();
+    await chatCallbacks.registerPushSubscription(actor);
+
+    const run = await startChatRun(actor, {
+      agentId,
+      prompt: "fail while goal remains active",
+    });
+    await createGoalForRun(actor, run.runId, "pause after this failure");
+    const sandboxHeaders = await claimChatRun(runnerGroup, run.runId);
+    await failChatRun(run.runId, sandboxHeaders, "goal iteration failed");
+
+    await expect
+      .poll(async () => {
+        const goal = await accept(
+          goalsClient().get({
+            headers: zeroGoalHeaders(actor, run.runId),
+          }),
+          [200],
+        );
+        return goal.body.status;
+      })
+      .toBe("paused");
+    await flushWaitUntilForTest();
+    expect(context.mocks.webpush.sendNotification).not.toHaveBeenCalled();
+  }, 60_000);
+
   it("withholds pushes without VAPID keys and deletes stale subscriptions after gone responses", async () => {
     const { actor, agentId, runnerGroup } = await entitledChatActor();
     chatCallbacks.failIfChatCallbackRouteIsFetched();
@@ -3268,9 +3356,9 @@ describe("CHAT-02: push notification gating", () => {
         );
       },
     );
-    expect(eventBackedContents(messages.messages, first.runId)).toHaveLength(0);
+    expect(eventBackedContents(messages.events, first.runId)).toHaveLength(0);
     expect(
-      lifecycleMarkers(messages.messages, first.runId, "completed"),
+      lifecycleMarkers(messages.events, first.runId, "completed"),
     ).toHaveLength(1);
     await flushWaitUntilForTest();
     expect(context.mocks.webpush.sendNotification).not.toHaveBeenCalled();

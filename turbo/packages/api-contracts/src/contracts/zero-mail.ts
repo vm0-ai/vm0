@@ -22,6 +22,17 @@ export const zeroMailInlineImageSchema = z.object({
   alt: z.string(),
 });
 
+export const zeroMailFollowUpSchema = z.discriminatedUnion("status", [
+  z.object({
+    status: z.literal("active"),
+    automationId: z.string().uuid(),
+  }),
+  z.object({
+    status: z.literal("paused"),
+    automationId: z.string().uuid(),
+  }),
+]);
+
 const zeroMailDraftBaseSchema = z.object({
   provider: z.literal("gmail"),
   from: z.email(),
@@ -43,6 +54,7 @@ const zeroMailDraftBaseSchema = z.object({
   gmailThreadId: z.string(),
   gmailMessageId: z.string(),
   sentGmailMessageId: z.string().optional(),
+  followUp: zeroMailFollowUpSchema.optional(),
   createdAt: z.string(),
   updatedAt: z.string(),
   sentAt: z.string().optional(),
@@ -154,11 +166,31 @@ export const zeroMailContract = c.router({
     },
     summary: "Send a linked Gmail draft",
   },
+  createFollowUp: {
+    method: "POST",
+    path: "/api/zero/mail/drafts/:mailDraftId/follow-up",
+    headers: authHeadersSchema,
+    pathParams: z.object({ mailDraftId: z.string().uuid() }),
+    body: z.object({}),
+    responses: {
+      200: z.object({
+        mailDraftId: z.string().uuid(),
+        automationId: z.string().uuid(),
+      }),
+      400: apiErrorSchema,
+      401: apiErrorSchema,
+      403: apiErrorSchema,
+      404: apiErrorSchema,
+      409: apiErrorSchema,
+    },
+    summary: "Enable reply tracking for a sent Gmail message",
+  },
 });
 
 export type ZeroMailProvider = z.infer<typeof zeroMailProviderSchema>;
 export type ZeroMailDraftStatus = z.infer<typeof zeroMailDraftStatusSchema>;
 export type ZeroMailAttachment = z.infer<typeof zeroMailAttachmentSchema>;
 export type ZeroMailInlineImage = z.infer<typeof zeroMailInlineImageSchema>;
+export type ZeroMailFollowUp = z.infer<typeof zeroMailFollowUpSchema>;
 export type ZeroMailDraft = z.infer<typeof zeroMailDraftSchema>;
 export type ZeroMailContract = typeof zeroMailContract;

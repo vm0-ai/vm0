@@ -22,6 +22,9 @@ use tokio::io::AsyncReadExt;
 use tokio_util::sync::CancellationToken;
 use tracing::{debug, info, warn};
 
+use super::codex_model_catalog_prefetch::{
+    StartedCodexModelCatalogPrefetch, is_eligible as is_codex_model_catalog_prefetch_eligible,
+};
 use super::diagnostics::{
     AgentBootstrapAbnormalExitLogContext, AgentEnvDiagnostics, AgentStdoutStreamDiagnostics,
     StdoutDrainReport, build_agent_env_diagnostics, build_agent_env_key_diagnostics,
@@ -733,10 +736,6 @@ impl AgentExecutionResult {
         }
     }
 
-    pub(super) fn exit_code(&self) -> i32 {
-        self.failure.as_ref().map_or(0, |failure| failure.exit_code)
-    }
-
     pub(super) fn with_stdout_stream_diagnostics(
         mut self,
         diagnostics: AgentStdoutStreamDiagnostics,
@@ -879,6 +878,72 @@ pub(super) struct RunControls {
     pub(super) spawn_timing: Option<RunnerSpawnTiming>,
     pub(super) session_history_restore_plan: SessionHistoryRestorePlan,
     pub(super) prepared_storage: Option<crate::storage_cache::PreparedFreshStorage>,
+    pub(super) prepared_guest_runtime: Option<PreparedGuestRuntime>,
+}
+
+pub(super) enum PreparedGuestRuntime {
+    Ready(StartedCodexModelCatalogPrefetch),
+    Failed(RunnerError),
+    Cancelled,
+}
+
+impl PreparedGuestRuntime {
+    pub(super) async fn prepare_for_codex_model_catalog_prefetch(
+        sandbox: &dyn Sandbox,
+        context: &ExecutionContext,
+        restore_guest_state: bool,
+        reuse_result: SandboxReuseResult,
+        cancel: &CancellationToken,
+        telemetry: &mut JobTelemetry,
+    ) -> Option<Self> {
+        if !is_codex_model_catalog_prefetch_eligible(context, reuse_result) {
+            return None;
+        }
+
+        Some(
+            Self::prepare(
+                sandbox,
+                context,
+                restore_guest_state,
+                reuse_result,
+                cancel,
+                telemetry,
+            )
+            .await,
+        )
+    }
+
+    async fn prepare(
+        sandbox: &dyn Sandbox,
+        context: &ExecutionContext,
+        restore_guest_state: bool,
+        reuse_result: SandboxReuseResult,
+        cancel: &CancellationToken,
+        telemetry: &mut JobTelemetry,
+    ) -> Self {
+        match prepare_guest_runtime_state_phase(
+            sandbox,
+            context,
+            restore_guest_state,
+            cancel,
+            telemetry,
+        )
+        .await
+        {
+            GuestRuntimeStatePreparation::Ready => Self::Ready(
+                StartedCodexModelCatalogPrefetch::start(sandbox, context, reuse_result, cancel)
+                    .await,
+            ),
+            GuestRuntimeStatePreparation::Failed(error) => Self::Failed(error),
+            GuestRuntimeStatePreparation::Cancelled => Self::Cancelled,
+        }
+    }
+
+    pub(super) async fn finish(self, sandbox: &dyn Sandbox, telemetry: &mut JobTelemetry) {
+        if let Self::Ready(prefetch) = self {
+            prefetch.finish(sandbox, telemetry).await;
+        }
+    }
 }
 
 impl RunControls {
@@ -892,6 +957,7 @@ impl RunControls {
             spawn_timing: None,
             session_history_restore_plan: SessionHistoryRestorePlan::Default,
             prepared_storage: None,
+            prepared_guest_runtime: None,
         }
     }
 
@@ -994,15 +1060,19 @@ async fn populate_storage_plan(
     result
 }
 
-async fn prepare_guest_storage(
+enum GuestRuntimeStatePreparation {
+    Ready,
+    Failed(RunnerError),
+    Cancelled,
+}
+
+async fn prepare_guest_runtime_state(
     sandbox: &dyn Sandbox,
     context: &ExecutionContext,
-    config: &ExecutorConfig,
-    start: &RunStart<'_>,
+    restore_guest_state_required: bool,
     telemetry: &mut JobTelemetry,
-    prepared_storage: &mut Option<crate::storage_cache::PreparedFreshStorage>,
-) -> RunnerResult<Option<crate::storage_cache::DeferredBackgroundFill>> {
-    if start.restore_guest_state {
+) -> RunnerResult<()> {
+    if restore_guest_state_required {
         let started = Instant::now();
         let result = restore_guest_state(sandbox, context).await;
         let error = result.as_ref().err().map(ToString::to_string);
@@ -1018,7 +1088,36 @@ async fn prepare_guest_storage(
         sync_guest_timezone(sandbox, context).await;
         telemetry.record("runner_guest_timezone_sync", started.elapsed(), true, None);
     }
+    Ok(())
+}
 
+async fn prepare_guest_runtime_state_phase(
+    sandbox: &dyn Sandbox,
+    context: &ExecutionContext,
+    restore_guest_state_required: bool,
+    cancel: &CancellationToken,
+    telemetry: &mut JobTelemetry,
+) -> GuestRuntimeStatePreparation {
+    match run_pre_spawn_phase(
+        cancel,
+        prepare_guest_runtime_state(sandbox, context, restore_guest_state_required, telemetry),
+    )
+    .await
+    {
+        Some(Ok(())) => GuestRuntimeStatePreparation::Ready,
+        Some(Err(error)) => GuestRuntimeStatePreparation::Failed(error),
+        None => GuestRuntimeStatePreparation::Cancelled,
+    }
+}
+
+async fn prepare_guest_storage(
+    sandbox: &dyn Sandbox,
+    context: &ExecutionContext,
+    config: &ExecutorConfig,
+    start: &RunStart<'_>,
+    telemetry: &mut JobTelemetry,
+    prepared_storage: &mut Option<crate::storage_cache::PreparedFreshStorage>,
+) -> RunnerResult<Option<crate::storage_cache::DeferredBackgroundFill>> {
     let Some(manifest) = &context.storage_manifest else {
         return Ok(None);
     };
@@ -1152,30 +1251,33 @@ pub(super) async fn run_in_sandbox_with_process_cancel_timeouts(
         spawn_timing,
         session_history_restore_plan,
         mut prepared_storage,
+        prepared_guest_runtime,
     } = controls;
     let has_active_input_source = active_input_source.is_some();
     let pre_spawn_started = Instant::now();
-    let storage_result = run_pre_spawn_phase(
-        &cancel,
-        prepare_guest_storage(
-            sandbox,
-            context,
-            config,
-            &start,
-            telemetry,
-            &mut prepared_storage,
-        ),
-    )
-    .await;
-    let deferred_background_fill = match storage_result {
-        Some(Ok(deferred)) => deferred,
-        Some(Err(error)) => {
+    let prepared_guest_runtime = match prepared_guest_runtime {
+        Some(prepared) => prepared,
+        None => {
+            PreparedGuestRuntime::prepare(
+                sandbox,
+                context,
+                start.restore_guest_state,
+                start.reuse_result,
+                &cancel,
+                telemetry,
+            )
+            .await
+        }
+    };
+    let mut model_catalog_prefetch = match prepared_guest_runtime {
+        PreparedGuestRuntime::Ready(prefetch) => prefetch.supervise(sandbox),
+        PreparedGuestRuntime::Failed(error) => {
             if let Some(prepared) = prepared_storage.as_mut() {
                 prepared.delivery.cancel_and_drain(telemetry).await;
             }
             return Err(error);
         }
-        None => {
+        PreparedGuestRuntime::Cancelled => {
             if let Some(prepared) = prepared_storage.as_mut() {
                 prepared.delivery.cancel_and_drain(telemetry).await;
             }
@@ -1196,14 +1298,61 @@ pub(super) async fn run_in_sandbox_with_process_cancel_timeouts(
             return Ok(result);
         }
     };
+    model_catalog_prefetch.record_outcome(telemetry);
+    let storage_result = model_catalog_prefetch
+        .race(run_pre_spawn_phase(
+            &cancel,
+            prepare_guest_storage(
+                sandbox,
+                context,
+                config,
+                &start,
+                telemetry,
+                &mut prepared_storage,
+            ),
+        ))
+        .await;
+    model_catalog_prefetch.record_outcome(telemetry);
+    let deferred_background_fill = match storage_result {
+        Some(Ok(deferred)) => deferred,
+        Some(Err(error)) => {
+            if let Some(prepared) = prepared_storage.as_mut() {
+                prepared.delivery.cancel_and_drain(telemetry).await;
+            }
+            model_catalog_prefetch.finish(telemetry).await;
+            return Err(error);
+        }
+        None => {
+            if let Some(prepared) = prepared_storage.as_mut() {
+                prepared.delivery.cancel_and_drain(telemetry).await;
+            }
+            model_catalog_prefetch.finish(telemetry).await;
+            info!(
+                run_id = %context.run_id,
+                "cancel received before guest process started"
+            );
+            let result = AgentExecutionResult::cancelled();
+            telemetry.record(
+                "agent_execute",
+                pre_spawn_started.elapsed(),
+                false,
+                result
+                    .failure
+                    .as_ref()
+                    .map(|failure| failure.error.as_str()),
+            );
+            return Ok(result);
+        }
+    };
     let pre_spawn_cancel = cancel.clone();
     let pre_spawn_start = &start;
     let pre_spawn_telemetry = &mut *telemetry;
-    let prepared_agent = run_pre_spawn_phase(&cancel, async move {
-        let cancel = pre_spawn_cancel;
-        let start = pre_spawn_start;
-        let telemetry = pre_spawn_telemetry;
-        let deferred_background_fill = deferred_background_fill;
+    let prepared_agent = model_catalog_prefetch
+        .race(run_pre_spawn_phase(&cancel, async move {
+            let cancel = pre_spawn_cancel;
+            let start = pre_spawn_start;
+            let telemetry = pre_spawn_telemetry;
+            let deferred_background_fill = deferred_background_fill;
 
     let mut session_restore_diagnostics = None;
     let mut pre_run_restored_session_identity = None;
@@ -1612,20 +1761,22 @@ pub(super) async fn run_in_sandbox_with_process_cancel_timeouts(
         }
     };
 
-        RunnerResult::Ok(PreparedAgentProcess {
-            handle,
-            agent_started_at: t,
-            deferred_background_fill,
-            session_restore_diagnostics,
-            pre_run_restored_session_identity,
-            env_diagnostics,
-            env_pairs,
-        })
-    })
-    .await;
+            RunnerResult::Ok(PreparedAgentProcess {
+                handle,
+                agent_started_at: t,
+                deferred_background_fill,
+                session_restore_diagnostics,
+                pre_run_restored_session_identity,
+                env_diagnostics,
+                env_pairs,
+            })
+        }))
+        .await;
+    model_catalog_prefetch.record_outcome(telemetry);
     let prepared_agent = match prepared_agent {
         Some(Ok(prepared_agent)) => prepared_agent,
         Some(Err(RunnerError::Cancelled)) | None => {
+            model_catalog_prefetch.finish(telemetry).await;
             info!(
                 run_id = %context.run_id,
                 "cancel received before guest process started"
@@ -1642,7 +1793,10 @@ pub(super) async fn run_in_sandbox_with_process_cancel_timeouts(
             );
             return Ok(result);
         }
-        Some(Err(error)) => return Err(error),
+        Some(Err(error)) => {
+            model_catalog_prefetch.finish(telemetry).await;
+            return Err(error);
+        }
     };
     let PreparedAgentProcess {
         mut handle,
@@ -1681,82 +1835,87 @@ pub(super) async fn run_in_sandbox_with_process_cancel_timeouts(
     let process_cancel = handle.take_cancel_handle();
     let wait_process = sandbox.wait_process(handle, job_terminal_wait_timeout());
     tokio::pin!(wait_process);
-    let (result, wait_cancelled, abort_stdout_drain) = tokio::select! {
-        biased;
-        result = &mut wait_process => {
-            let abort_stdout_drain = result.is_err();
-            (result, false, abort_stdout_drain)
-        }
-        () = cancel.cancelled() => {
-            info!(run_id = %context.run_id, "cancel received, cancelling guest process");
-            let cancelled_exit = || -> sandbox::Result<sandbox::ProcessExit> {
-                Ok(cancelled_agent_process_exit(guest_process_pid, false))
-            };
-            match process_cancel {
-                Some(process_cancel) => match process_cancel.cancel(process_cancel_timeouts.write).await {
-                    Ok(()) => {
-                        match tokio::time::timeout(
-                            process_cancel_timeouts.terminal_grace,
-                            &mut wait_process,
-                        )
-                        .await
-                        {
-                            Ok(Ok(exit)) => {
-                                info!(
-                                    run_id = %context.run_id,
-                                    pid = guest_process_pid,
-                                    "cancelled guest process reached terminal status"
-                                );
-                                (
-                                    Ok(cancelled_agent_process_exit(
-                                        guest_process_pid,
-                                        exit.stream_overflowed,
-                                    )),
-                                    true,
-                                    false,
+    let (result, wait_cancelled, abort_stdout_drain) = model_catalog_prefetch
+        .race(async {
+            tokio::select! {
+                biased;
+                result = &mut wait_process => {
+                    let abort_stdout_drain = result.is_err();
+                    (result, false, abort_stdout_drain)
+                }
+                () = cancel.cancelled() => {
+                    info!(run_id = %context.run_id, "cancel received, cancelling guest process");
+                    let cancelled_exit = || -> sandbox::Result<sandbox::ProcessExit> {
+                        Ok(cancelled_agent_process_exit(guest_process_pid, false))
+                    };
+                    match process_cancel {
+                        Some(process_cancel) => match process_cancel.cancel(process_cancel_timeouts.write).await {
+                            Ok(()) => {
+                                match tokio::time::timeout(
+                                    process_cancel_timeouts.terminal_grace,
+                                    &mut wait_process,
                                 )
+                                .await
+                                {
+                                    Ok(Ok(exit)) => {
+                                        info!(
+                                            run_id = %context.run_id,
+                                            pid = guest_process_pid,
+                                            "cancelled guest process reached terminal status"
+                                        );
+                                        (
+                                            Ok(cancelled_agent_process_exit(
+                                                guest_process_pid,
+                                                exit.stream_overflowed,
+                                            )),
+                                            true,
+                                            false,
+                                        )
+                                    }
+                                    Ok(Err(error)) => {
+                                        warn!(
+                                            run_id = %context.run_id,
+                                            pid = guest_process_pid,
+                                            error = %error,
+                                            "guest process wait failed after cancellation"
+                                        );
+                                        (cancelled_exit(), true, true)
+                                    }
+                                    Err(_) => {
+                                        warn!(
+                                            run_id = %context.run_id,
+                                            pid = guest_process_pid,
+                                            timeout_ms = process_cancel_timeouts.terminal_grace.as_millis(),
+                                            "timed out waiting for cancelled guest process"
+                                        );
+                                        (cancelled_exit(), true, true)
+                                    }
+                                }
                             }
-                            Ok(Err(error)) => {
+                            Err(error) => {
                                 warn!(
                                     run_id = %context.run_id,
                                     pid = guest_process_pid,
                                     error = %error,
-                                    "guest process wait failed after cancellation"
+                                    "failed to send guest process cancellation"
                                 );
                                 (cancelled_exit(), true, true)
                             }
-                            Err(_) => {
-                                warn!(
-                                    run_id = %context.run_id,
-                                    pid = guest_process_pid,
-                                    timeout_ms = process_cancel_timeouts.terminal_grace.as_millis(),
-                                    "timed out waiting for cancelled guest process"
-                                );
-                                (cancelled_exit(), true, true)
-                            }
+                        },
+                        None => {
+                            warn!(
+                                run_id = %context.run_id,
+                                pid = guest_process_pid,
+                                "sandbox does not support guest process cancellation"
+                            );
+                            (cancelled_exit(), true, true)
                         }
                     }
-                    Err(error) => {
-                        warn!(
-                            run_id = %context.run_id,
-                            pid = guest_process_pid,
-                            error = %error,
-                            "failed to send guest process cancellation"
-                        );
-                        (cancelled_exit(), true, true)
-                    }
-                },
-                None => {
-                    warn!(
-                        run_id = %context.run_id,
-                        pid = guest_process_pid,
-                        "sandbox does not support guest process cancellation"
-                    );
-                    (cancelled_exit(), true, true)
                 }
             }
-        }
-    };
+        })
+        .await;
+    model_catalog_prefetch.record_outcome(telemetry);
 
     if let Some(forwarder) = active_input_forwarder {
         forwarder.stop().await;
@@ -1784,6 +1943,7 @@ pub(super) async fn run_in_sandbox_with_process_cancel_timeouts(
             }
         }
     }
+    model_catalog_prefetch.finish(telemetry).await;
     let stdout_stream_diagnostics_on_wait_error = AgentStdoutStreamDiagnostics {
         bytes_written: stdout_drain_report.bytes_written,
         chunk_truncated: stdout_drain_report.chunk_truncated,
@@ -1792,7 +1952,7 @@ pub(super) async fn run_in_sandbox_with_process_cancel_timeouts(
     let exit = match result {
         Ok(exit) => exit,
         Err(e) => {
-            // Sandbox crashed — check host dmesg for cgroup OOM kill of the
+            // Sandbox crashed — check host dmesg for OOM evidence naming the
             // firecracker process before propagating a generic error.
             if let Some(host_process_pid) = sandbox.host_process_pid()
                 && check_host_oom(host_process_pid).await
@@ -1802,9 +1962,7 @@ pub(super) async fn run_in_sandbox_with_process_cancel_timeouts(
                     pid = host_process_pid,
                     "host OOM kill detected for firecracker"
                 );
-                let error = "Firecracker VM killed by host OOM killer \
-                             (cgroup memory limit exceeded)"
-                    .to_string();
+                let error = "Firecracker VM killed by host OOM killer".to_string();
                 telemetry.record("agent_execute", t.elapsed(), false, Some(&error));
                 return Ok(AgentExecutionResult::failure(1, error, None)
                     .with_resource_failure_kind(ResourceFailureKind::HostMemoryOomKilled));

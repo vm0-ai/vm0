@@ -1,12 +1,10 @@
-import { randomBytes } from "node:crypto";
-
 import { command, computed } from "ccstate";
 import {
   zeroWorkflowsCollectionContract,
   zeroWorkflowsDetailContract,
   zeroWorkflowVisibilityContract,
 } from "@vm0/api-contracts/contracts/zero-workflows";
-import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
+import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import {
   getAllFeatureStates,
   isFeatureEnabled,
@@ -16,7 +14,6 @@ import { getCustomSkillStorageName } from "@vm0/core/storage-names";
 import { synthesizeWorkflowSkillMd } from "@vm0/core/zero-workflow-skill";
 import { chatThreads } from "@vm0/db/schema/chat-thread";
 import { zeroAgents } from "@vm0/db/schema/zero-agent";
-import { zeroRuns } from "@vm0/db/schema/zero-run";
 import {
   workflowUserAutomationThreads,
   zeroWorkflowAutomations,
@@ -41,17 +38,12 @@ import { logger } from "../../lib/log";
 import { nowDate } from "../../lib/time";
 import { requireAgentPermission } from "../../lib/require-agent-permission";
 import { uploadVolumeServerSide$ } from "../services/storage-volume-upload.service";
-import { dispatchFailedRunCallbacks } from "../services/agent-run-callback.service";
-import {
-  postRunUserMessage,
-  resolveRunChatThreadModelContext,
-} from "../services/zero-chat-run-message.service";
-import { createZeroRun$ } from "../services/zero-runs-create.service";
 import { deleteZeroWorkflow$ } from "../services/zero-workflow-delete.service";
 import { zeroWorkflowDetail } from "../services/zero-workflow-detail.service";
 import { ensureWorkflowUserAutomationThread } from "../services/zero-workflow-user-automation-thread.service";
 import { updateZeroWorkflow$ } from "../services/zero-workflow-update.service";
 import { detectWorkflowConnectorReadiness$ } from "../services/zero-workflow-connector-readiness.service";
+import { createUserMessageDocument } from "../services/zero-chat-user-message.service";
 import { loadWorkflowVolumeFiles } from "../services/zero-workflow-volume.service";
 import {
   encryptWorkflowWebhookSecret,
@@ -72,6 +64,7 @@ import {
   type WorkflowRow,
 } from "../services/zero-workflow-data.service";
 import type { RouteEntry } from "../route-entry";
+import { sendNormalMessage$ } from "./zero-chat-events";
 
 const log = logger("api:zero:workflow-connector-readiness");
 
@@ -1013,10 +1006,6 @@ const copyWorkflowInner$ = command(
   },
 );
 
-function generateCallbackSecret(): string {
-  return randomBytes(32).toString("hex");
-}
-
 function workflowSlashPrompt(workflow: Pick<WorkflowRow, "name">): string {
   return `/${workflow.name}`;
 }
@@ -1107,56 +1096,22 @@ const runWorkflowInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   });
   signal.throwIfAborted();
 
-  const modelContext = await resolveRunChatThreadModelContext({
-    db: writeDb,
-    orgId: auth.orgId,
-    userId: auth.userId,
-    threadId: chatThreadId,
-  });
-  signal.throwIfAborted();
-  if ("status" in modelContext) {
-    return modelContext;
-  }
-  const { pin, providerAdmission, runCodexServiceTier } = modelContext;
-  if (providerAdmission.error) {
-    return providerAdmission.error;
-  }
-
   // Invoking a workflow is exactly typing its slash command in chat.
   const prompt = workflowSlashPrompt(workflow);
   const result = await set(
-    createZeroRun$,
+    sendNormalMessage$,
     {
-      auth: {
-        orgId: auth.orgId,
-        orgRole: auth.orgRole ?? "member",
-        userId: auth.userId,
-        tokenType: "session",
-      },
+      auth,
       body: {
         prompt,
+        userMessage: createUserMessageDocument({ text: prompt }),
         agentId: agent.id,
-        ...(providerAdmission.effectiveModelProvider
-          ? { modelProvider: providerAdmission.effectiveModelProvider }
-          : {}),
+        threadId: chatThreadId,
       },
+      userId: auth.userId,
+      orgId: auth.orgId,
       apiStartTime: now.getTime(),
-      triggerSource: "web",
       zeroPreCreateSource: "workflow_slash_command",
-      chatThreadId,
-      modelProviderId: pin.modelProviderId ?? undefined,
-      modelProviderCredentialScope:
-        pin.modelProviderCredentialScope ?? undefined,
-      selectedModelOverride: pin.selectedModel ?? undefined,
-      codexServiceTier: runCodexServiceTier,
-      callbacks: [
-        {
-          internalKind: "chat",
-          secret: generateCallbackSecret(),
-          payload: { threadId: chatThreadId, agentId: agent.id },
-        },
-      ],
-      dispatchFailedCallbacks: dispatchFailedRunCallbacks,
     },
     signal,
   );
@@ -1166,30 +1121,9 @@ const runWorkflowInner$ = command(async ({ get, set }, signal: AbortSignal) => {
     return result;
   }
 
-  await postRunUserMessage({
-    db: writeDb,
-    threadId: chatThreadId,
-    userId: auth.userId,
-    runId: result.body.runId,
-    prompt,
-    appendQueueMarker: result.body.status === "queued",
-  });
-  signal.throwIfAborted();
-
-  await writeDb
-    .update(zeroRuns)
-    .set({
-      modelProvider: providerAdmission.effectiveModelProvider,
-      modelProviderId: pin.modelProviderId,
-      modelProviderCredentialScope: pin.modelProviderCredentialScope,
-      selectedModel: pin.selectedModel,
-    })
-    .where(eq(zeroRuns.id, result.body.runId));
-  signal.throwIfAborted();
-
   return {
     status: 200 as const,
-    body: { chatThreadId, runId: result.body.runId },
+    body: { chatThreadId: result.body.threadId, runId: result.body.runId },
   };
 });
 

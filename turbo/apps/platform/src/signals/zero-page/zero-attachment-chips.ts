@@ -1,4 +1,10 @@
 import { command, computed, state } from "ccstate";
+import {
+  createTextPreviewComputed,
+  isTextPreviewKind,
+  type TextPreviewComputed,
+  type TextPreviewKind,
+} from "../text-preview.ts";
 import { onRef } from "../utils.ts";
 
 // ---------------------------------------------------------------------------
@@ -22,33 +28,57 @@ export type AttachmentArtifactMetadata = {
   readonly threadId: string;
 };
 
+interface AttachmentDocumentLightboxBase {
+  readonly url: string;
+  readonly filename: string;
+  readonly artifact?: AttachmentArtifactMetadata;
+  readonly shareAvailable?: boolean;
+  readonly showSizeInSubtitle?: boolean;
+  readonly splitViewAvailable?: boolean;
+}
+
+type AttachmentTextDocumentLightboxInput = AttachmentDocumentLightboxBase & {
+  readonly kind: TextPreviewKind;
+  readonly text$?: TextPreviewComputed;
+};
+
+type AttachmentFramedDocumentLightboxInput = AttachmentDocumentLightboxBase & {
+  readonly kind: "html" | "pdf";
+};
+
+type AttachmentDocumentLightboxInput =
+  | AttachmentTextDocumentLightboxInput
+  | AttachmentFramedDocumentLightboxInput;
+
+export type AttachmentDocumentLightboxState =
+  | (AttachmentDocumentLightboxBase & {
+      readonly kind: TextPreviewKind;
+      readonly text$: TextPreviewComputed;
+    })
+  | AttachmentFramedDocumentLightboxInput;
+
+function isAttachmentTextDocumentLightboxInput(
+  value: AttachmentDocumentLightboxInput,
+): value is AttachmentTextDocumentLightboxInput {
+  return isTextPreviewKind(value.kind);
+}
+
 export type AttachmentLightboxState =
   | {
       kind: "image";
       url: string;
       filename?: string;
       artifact?: AttachmentArtifactMetadata;
-      editAvailable?: boolean;
       shareAvailable?: boolean;
       showSizeInSubtitle?: boolean;
       splitViewAvailable?: boolean;
     }
-  | {
-      kind: "markdown" | "text" | "json" | "csv" | "html" | "pdf";
-      url: string;
-      filename: string;
-      artifact?: AttachmentArtifactMetadata;
-      editAvailable?: boolean;
-      shareAvailable?: boolean;
-      showSizeInSubtitle?: boolean;
-      splitViewAvailable?: boolean;
-    }
+  | AttachmentDocumentLightboxState
   | {
       kind: "audio" | "video";
       url: string;
       filename: string;
       artifact?: AttachmentArtifactMetadata;
-      editAvailable?: boolean;
       shareAvailable?: boolean;
       showSizeInSubtitle?: boolean;
       splitViewAvailable?: boolean;
@@ -107,7 +137,6 @@ export const openImageLightbox$ = command(
           url: string;
           filename?: string;
           artifact?: AttachmentArtifactMetadata;
-          editAvailable?: boolean;
           shareAvailable?: boolean;
           showSizeInSubtitle?: boolean;
           splitViewAvailable?: boolean;
@@ -139,7 +168,6 @@ export const navigateImageLightbox$ = command(
       url: string;
       filename?: string;
       artifact?: AttachmentArtifactMetadata;
-      editAvailable?: boolean;
       shareAvailable?: boolean;
       showSizeInSubtitle?: boolean;
       splitViewAvailable?: boolean;
@@ -150,24 +178,19 @@ export const navigateImageLightbox$ = command(
 );
 
 export const openDocumentLightbox$ = command(
-  (
-    { set },
-    value: {
-      kind: "markdown" | "text" | "json" | "csv" | "html" | "pdf";
-      url: string;
-      filename: string;
-      artifact?: AttachmentArtifactMetadata;
-      editAvailable?: boolean;
-      shareAvailable?: boolean;
-      showSizeInSubtitle?: boolean;
-      splitViewAvailable?: boolean;
-    },
-  ) => {
+  ({ set }, value: AttachmentDocumentLightboxInput) => {
     set(internalLightboxDialogCloseToken$, (value) => {
       return value + 1;
     });
     set(internalLightboxDialogVisible$, true);
     set(internalLightboxDialogFullscreen$, false);
+    if (isAttachmentTextDocumentLightboxInput(value)) {
+      set(internalLightboxState$, {
+        ...value,
+        text$: value.text$ ?? createTextPreviewComputed(value.url),
+      });
+      return;
+    }
     set(internalLightboxState$, value);
   },
 );
@@ -179,7 +202,6 @@ export const openVideoLightbox$ = command(
       url: string;
       filename: string;
       artifact?: AttachmentArtifactMetadata;
-      editAvailable?: boolean;
       shareAvailable?: boolean;
       showSizeInSubtitle?: boolean;
       splitViewAvailable?: boolean;
@@ -201,7 +223,6 @@ export const openAudioLightbox$ = command(
       url: string;
       filename: string;
       artifact?: AttachmentArtifactMetadata;
-      editAvailable?: boolean;
       shareAvailable?: boolean;
       showSizeInSubtitle?: boolean;
       splitViewAvailable?: boolean;

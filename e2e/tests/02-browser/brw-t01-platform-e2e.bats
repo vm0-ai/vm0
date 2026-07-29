@@ -22,11 +22,16 @@ load '../../helpers/setup'
 load '../../helpers/browser'
 
 setup_file() {
+  BROWSER_SESSION_PREFIX="${JOB_REF:-local}-${GITHUB_RUN_ID:-$$}-${GITHUB_RUN_ATTEMPT:-1}"
+  export BROWSER_SESSION_PREFIX
+  export AGENT_BROWSER_SESSION="${BROWSER_SESSION_PREFIX}-sign-up"
   browser_setup
 
   # Generate a password for sign-up
   SIGNUP_PASSWORD="$(generate_password)"
   export SIGNUP_PASSWORD
+  SIGN_UP_COMPLETE_FILE="${BATS_FILE_TMPDIR}/sign-up-complete"
+  export SIGN_UP_COMPLETE_FILE
 
   echo "# Clerk UI E2E (sign-up and sign-in)" >&3
   echo "#   Auth URL: ${VM0_AUTH_URL:-${VM0_API_BACKEND_URL:-}}" >&3
@@ -68,26 +73,101 @@ encode_uri_component() {
 }
 
 wait_for_auth_completion() {
-  local stuck_pattern="$1"
-  local current_url snap
+  local auth_path="$1"
 
-  for _i in $(seq 1 30); do
-    current_url=$(agent-browser get url 2>/dev/null || true)
-    if [[ -n "${VM0_AUTH_REDIRECT_URL:-}" && "$current_url" == "${VM0_AUTH_REDIRECT_URL}"* ]]; then
-      return 0
+  if [[ -n "${VM0_AUTH_REDIRECT_URL:-}" ]]; then
+    local redirect_url_json
+    redirect_url_json=$(node -e \
+      'process.stdout.write(JSON.stringify(process.argv[1]))' \
+      "$VM0_AUTH_REDIRECT_URL")
+    wait_for_browser_target --fn \
+      "window.location.href.startsWith(${redirect_url_json})"
+    return
+  fi
+
+  wait_for_browser_target --fn \
+    "!window.location.pathname.includes('/${auth_path}')"
+}
+
+open_auth_form() {
+  local url="$1"
+  local target_expression="$2"
+  local failed_script_expression
+  failed_script_expression="performance.getEntriesByType('resource').some(
+    (entry) => {
+      const resourceUrl = new URL(entry.name);
+      return resourceUrl.origin === location.origin
+        && entry.initiatorType === 'script'
+        && entry.responseStatus >= 400;
+    }
+  )"
+
+  agent-browser open "$url"
+  if wait_for_browser_target --timeout-seconds 30 --fn \
+    "Boolean(${target_expression}) || Boolean(${failed_script_expression})"; then
+    if [[ "$(agent-browser eval "Boolean(${target_expression})")" == "true" ]]; then
+      return
     fi
 
-    snap=$(full_snapshot)
-    if [[ -z "${VM0_AUTH_REDIRECT_URL:-}" ]] && ! contains "$snap" "$stuck_pattern"; then
-      return 0
+    report_auth_page_failure
+    local failed_script_urls_json
+    failed_script_urls_json="$(agent-browser eval \
+      "Array.from(new Set(
+        performance.getEntriesByType('resource')
+          .filter((entry) => {
+            const resourceUrl = new URL(entry.name);
+            return resourceUrl.origin === location.origin
+              && entry.initiatorType === 'script'
+              && entry.responseStatus >= 400;
+          })
+          .map((entry) => entry.name)
+      ))")"
+    local -a failed_script_urls
+    mapfile -t failed_script_urls < <(
+      jq -r '.[]' <<< "$failed_script_urls_json"
+    )
+    if (( ${#failed_script_urls[@]} == 0 )); then
+      return 1
     fi
+    local failed_script_url
+    for failed_script_url in "${failed_script_urls[@]}"; do
+      if ! wait_for_javascript_target \
+        --timeout-seconds 60 \
+        "$failed_script_url"; then
+        return 1
+      fi
+    done
 
-    sleep 1
-  done
+    echo "# Failed app scripts are available; reloading once" >&3
+    agent-browser reload
+    if ! wait_for_browser_target --timeout-seconds 30 --fn "$target_expression"; then
+      report_auth_page_failure
+      return 1
+    fi
+    echo "# Auth form recovered after app script propagation" >&3
+    return
+  fi
 
-  current_url=$(agent-browser get url 2>/dev/null || true)
-  echo "# Auth flow did not complete; current URL: ${current_url:-<unknown>}" >&3
-  return 1
+  report_auth_page_failure
+
+  # A failed app module request leaves the static HTML bootstrap skeleton in
+  # place before Clerk exists. Recover that transport failure once without
+  # masking a Clerk form stall after the application has started.
+  if [[ "$(agent-browser eval \
+    "Boolean(
+      document.getElementById('app-bootstrap-skeleton')
+      && typeof window.Clerk === 'undefined'
+    )")" != "true" ]]; then
+    return 1
+  fi
+
+  echo "# App bootstrap did not complete; reloading once" >&3
+  agent-browser reload
+  if ! wait_for_browser_target --timeout-seconds 30 --fn "$target_expression"; then
+    report_auth_page_failure
+    return 1
+  fi
+  echo "# App bootstrap recovered after reload" >&3
 }
 
 # ===========================================================================
@@ -98,52 +178,27 @@ wait_for_auth_completion() {
   local sign_up_url
   sign_up_url="$(auth_url "/sign-up")"
   echo "# Navigating to $sign_up_url" >&3
-  agent-browser open "$sign_up_url" --ignore-https-errors
-  agent-browser wait 3000
-  step_screenshot "sign-up-page"
-
-  # Dismiss cookie consent banner early
+  open_auth_form "$sign_up_url" \
+    "Boolean(
+      document.querySelector('input[name=\"emailAddress\"]')
+      && document.querySelector('input[name=\"password\"]')
+    )"
   dismiss_cookie_banner
-
-  # Wait for Clerk sign-up form
-  echo "# Waiting for Clerk sign-up form..." >&3
-  local form_appeared=false
-  for _i in $(seq 1 10); do
-    local snap
-    snap=$(agent-browser snapshot -i 2>/dev/null || true)
-    if contains "$snap" "email address"; then
-      form_appeared=true
-      break
-    fi
-    sleep 3
-  done
-  step_screenshot "sign-up-form"
-  assert [ "$form_appeared" = "true" ]
 
   # Fill sign-up form
   echo "# Filling sign-up form with $E2E_ACCOUNT" >&3
-  agent-browser find label "Email address" fill "$E2E_ACCOUNT"
-  agent-browser wait 500
-  agent-browser find label "Password" fill "$SIGNUP_PASSWORD"
-  agent-browser wait 500
+  agent-browser fill 'input[name="emailAddress"]' "$E2E_ACCOUNT"
+  agent-browser fill 'input[name="password"]' "$SIGNUP_PASSWORD"
   accept_legal_consent
   click_continue
 
   local sign_up_state
-  if ! sign_up_state="$(wait_for_auth_next_step "sign-up" 45)"; then
-    step_screenshot "sign-up-next-step-not-detected"
-    echo "# Clerk sign-up did not reach OTP or redirect state" >&3
-    return 1
-  fi
-  step_screenshot "after-sign-up-continue"
-
-  # Handle OTP verification if prompted
+  sign_up_state="$(wait_for_auth_next_step "sign-up")"
   if [[ "$sign_up_state" == "otp" ]]; then
-    enter_otp "$OTP"
-    step_screenshot "after-sign-up-otp"
+    enter_otp "$OTP" "sign-up"
+    wait_for_auth_completion "sign-up"
   fi
-
-  wait_for_auth_completion "sign.up\|Create your account\|verification code"
+  touch "$SIGN_UP_COMPLETE_FILE"
   echo "# Sign-up successful!" >&3
 }
 
@@ -152,20 +207,23 @@ wait_for_auth_completion() {
 # ===========================================================================
 
 @test "sign out and sign in with same account" {
-  # Close browser session to clear auth state
-  echo "# Closing browser to clear session..." >&3
+  if [[ ! -f "$SIGN_UP_COMPLETE_FILE" ]]; then
+    echo "# Sign-in prerequisite failed: sign-up did not complete" >&3
+    return 1
+  fi
+
+  # Start a fresh isolated session so auth state cannot leak across cases.
   agent-browser close 2>/dev/null || true
-  sleep 1
+  export AGENT_BROWSER_SESSION="${BROWSER_SESSION_PREFIX}-sign-in"
+  browser_setup
 
   # Re-open sign-in page
   local sign_in_url
   sign_in_url="$(auth_url "/sign-in")"
   echo "# Navigating to $sign_in_url" >&3
-  agent-browser open "$sign_in_url" --ignore-https-errors
-  agent-browser wait 3000
-  step_screenshot "sign-in-page"
-
-  dismiss_cookie_banner
+  open_auth_form "$sign_in_url" \
+    "!window.location.pathname.includes('/sign-in')
+      || Boolean(document.querySelector('input[name=\"identifier\"]'))"
 
   # Check if already signed in (redirected away from /sign-in)
   local current_url
@@ -175,67 +233,35 @@ wait_for_auth_completion() {
     return 0
   fi
 
-  # Wait for Clerk sign-in form
-  echo "# Waiting for Clerk sign-in form..." >&3
-  local form_appeared=false
-  for _i in $(seq 1 10); do
-    local snap
-    snap=$(agent-browser snapshot -i 2>/dev/null || true)
-    if contains "$snap" "email address"; then
-      form_appeared=true
-      break
-    fi
-    sleep 3
-  done
-  assert [ "$form_appeared" = "true" ]
+  dismiss_cookie_banner
 
   # Enter email and click Continue
   echo "# Entering email: $E2E_ACCOUNT" >&3
-  agent-browser find label "Email address" fill "$E2E_ACCOUNT"
-  agent-browser wait 500
+  agent-browser fill 'input[name="identifier"]' "$E2E_ACCOUNT"
   click_continue
-  agent-browser wait 1000
 
-  # Handle password or OTP-based sign-in
   local sign_in_state
-  if ! sign_in_state="$(wait_for_auth_next_step "sign-in" 45)"; then
-    step_screenshot "sign-in-next-step-not-detected"
-    echo "# Clerk sign-in did not reach password, OTP, or redirect state" >&3
-    return 1
-  fi
-  step_screenshot "after-email-continue"
-
+  sign_in_state="$(wait_for_auth_next_step "sign-in")"
   if [[ "$sign_in_state" == "complete" ]]; then
     echo "# Sign-in completed after email submit" >&3
     return 0
   fi
 
   if [[ "$sign_in_state" == "password" ]]; then
-    echo "# Password screen detected - looking for email code option" >&3
-    if agent-browser find text "Use another method" click 2>/dev/null \
-        || agent-browser find text "use another method" click 2>/dev/null; then
-      agent-browser wait 3000
-      step_screenshot "after-alt-method-click"
-      if agent-browser find text "Email code" click 2>/dev/null \
-          || agent-browser find text "email code" click 2>/dev/null; then
-        agent-browser wait 3000
-      fi
-    elif agent-browser find text "Forgot password" click 2>/dev/null \
-        || agent-browser find text "forgot password" click 2>/dev/null; then
-      agent-browser wait 3000
+    wait_for_browser_target --fn \
+      "document.body.innerText.toLowerCase().includes('use another method')
+        || document.body.innerText.toLowerCase().includes('forgot password')"
+    if [[ "$(agent-browser eval \
+      "document.body.innerText.toLowerCase().includes('use another method')")" == "true" ]]; then
+      agent-browser find text "Use another method" click
+      wait_for_browser_target --text "Email code"
+      agent-browser find text "Email code" click
+    else
+      agent-browser find text "Forgot password" click
     fi
   fi
 
-  # Wait for OTP screen, then enter code
-  if ! wait_for_otp_screen 30; then
-    step_screenshot "otp-screen-not-detected"
-    echo "# Clerk sign-in did not reach OTP verification" >&3
-    return 1
-  fi
-
-  enter_otp "$OTP"
-  step_screenshot "after-sign-in-otp"
-
-  wait_for_auth_completion "sign.in\|password\|verification code"
+  enter_otp "$OTP" "sign-in"
+  wait_for_auth_completion "sign-in"
   echo "# Sign-in successful!" >&3
 }

@@ -7,7 +7,6 @@ import pytest
 
 from usage import (
     create_anthropic_messages_sse_usage_extractor,
-    extract_anthropic_messages_usage_from_json,
     extract_anthropic_messages_usage_with_error_from_json,
 )
 
@@ -20,6 +19,18 @@ def _create_parser_with_parse_errors():
 
     parse, usage = create_anthropic_messages_sse_usage_extractor(on_parse_error=record_parse_error)
     return parse, usage, parse_errors
+
+
+def _create_parser_with_lifecycle_events():
+    lifecycle_events: list[tuple[str, str | None]] = []
+
+    def record_lifecycle_event(event_type: str, content_block_type: str | None) -> None:
+        lifecycle_events.append((event_type, content_block_type))
+
+    parse, usage = create_anthropic_messages_sse_usage_extractor(
+        on_lifecycle_event=record_lifecycle_event
+    )
+    return parse, usage, lifecycle_events
 
 
 class TestAnthropicSseUsageExtractor:
@@ -168,6 +179,85 @@ class TestAnthropicSseUsageExtractor:
         assert usage["tokens.input"] == 40
         assert usage["tokens.output"] == 250
 
+    def test_reports_content_free_lifecycle_fields_for_selected_events(self):
+        parse, usage, lifecycle_events = _create_parser_with_lifecycle_events()
+
+        parse(
+            b"event: message_start\n"
+            b'data: {"type":"message_start","message":{"model":"claude-sonnet-4-6",'
+            b'"content":[{"type":"text","text":"secret"}],'
+            b'"usage":{"input_tokens":40}}}\n\n'
+            b"event: content_block_start\n"
+            b'data: {"type":"content_block_start","index":0,'
+            b'"content_block":{"type":"thinking","thinking":"secret"}}\n\n'
+            b"event: content_block_start\n"
+            b'data: {"type":"content_block_start","index":1,'
+            b'"content_block":{"type":"tool_use","name":"secret"}}\n\n'
+            b"event: content_block_start\n"
+            b'data: {"type":"content_block_start","index":2,'
+            b'"content_block":{"type":"future_block","content":"secret"}}\n\n'
+        )
+
+        assert usage["tokens.input"] == 40
+        assert lifecycle_events == [
+            ("message_start", None),
+            ("content_block_start", "thinking"),
+            ("content_block_start", "tool_use"),
+            ("content_block_start", "future_block"),
+        ]
+
+    def test_reports_eventless_lifecycle_fields_from_data_type(self):
+        parse, usage, lifecycle_events = _create_parser_with_lifecycle_events()
+
+        parse(
+            b'data: {"type":"message_start","message":{"model":"claude-sonnet-4-6",'
+            b'"usage":{"input_tokens":41}}}\n\n'
+            b'data: {"type":"content_block_start","index":0,'
+            b'"content_block":{"type":"redacted_thinking","data":"secret"}}\n\n'
+            b'data: {"type":"content_block_start","index":1,'
+            b'"content_block":{"type":"text","text":"secret"}}\n\n'
+        )
+
+        assert usage["tokens.input"] == 41
+        assert lifecycle_events == [
+            ("message_start", None),
+            ("content_block_start", "redacted_thinking"),
+            ("content_block_start", "text"),
+        ]
+
+    def test_lifecycle_event_type_mismatch_is_ignored_and_parser_recovers(self):
+        parse, usage, lifecycle_events = _create_parser_with_lifecycle_events()
+
+        parse(
+            b"event: content_block_start\n"
+            b'data: {"type":"message_start","content_block":{"type":"text"}}\n\n'
+            b"event: content_block_start\n"
+            b'data: {"type":"content_block_start",'
+            b'"content_block":{"type":"text","text":"secret"}}\n\n'
+        )
+
+        assert usage == {}
+        assert lifecycle_events == [("content_block_start", "text")]
+
+    def test_malformed_or_oversized_lifecycle_events_do_not_report(self):
+        parse, usage, lifecycle_events = _create_parser_with_lifecycle_events()
+        oversized_type = b"x" * 1025
+
+        parse(b'event: message_start\ndata: {"type":"message_start"\n\n')
+        parse(
+            b"event: content_block_start\n"
+            b'data: {"type":"content_block_start","content_block":{"type":"'
+            + oversized_type
+            + b'"}}\n\n'
+        )
+        parse(
+            b"event: content_block_delta\n"
+            b'data: {"type":"content_block_delta","delta":{"text":"secret"}}\n\n'
+        )
+
+        assert usage == {}
+        assert lifecycle_events == []
+
     @pytest.mark.parametrize("event_type", ["message_start", "message_delta"])
     def test_data_only_malformed_usage_event_reports_parse_error(self, event_type):
         parse, usage, parse_errors = _create_parser_with_parse_errors()
@@ -288,15 +378,15 @@ class TestAnthropicSseUsageExtractor:
         """Entering skip mode leaves unprocessed line_buf data; next chunk should handle it."""
         parse, usage = create_anthropic_messages_sse_usage_extractor()
         # One chunk has event line + start of data (no newline yet) + another event
-        # The while loop processes "event: content_block_start", sets skip, returns.
+        # The while loop processes "event: content_block_stop", sets skip, returns.
         # line_buf still has the partial "data: ..." from this chunk.
         parse(
-            b"event: content_block_start\n"
-            b'data: {"type":"content_block_start"}\n\n'
+            b"event: content_block_stop\n"
+            b'data: {"type":"content_block_stop"}\n\n'
             b"event: message_delta\n"
             b'data: {"usage":{"output_tokens":77}}\n\n'
         )
-        # content_block_start triggers skip, but \n\n boundary is in same chunk.
+        # content_block_stop triggers skip, but \n\n boundary is in same chunk.
         # Skip mode should find it and then process message_delta.
         assert usage["tokens.output"] == 77
 
@@ -310,8 +400,8 @@ class TestAnthropicSseUsageExtractor:
         )
         # Two consecutive skip events
         parse(
-            b"event: content_block_start\n"
-            b'data: {"type":"content_block_start"}\n\n'
+            b"event: ping\n"
+            b'data: {"type":"ping"}\n\n'
             b"event: content_block_delta\n"
             b'data: {"delta":{"text":"hello world"}}\n\n'
             b"event: content_block_stop\n"
@@ -456,12 +546,13 @@ class TestAnthropicSseUsageExtractor:
         assert usage["tokens.input"] == 100  # unchanged (not in delta)
 
 
-class TestExtractAnthropicUsageFromJson:
-    """Tests for extract_anthropic_messages_usage_from_json helper."""
+class TestExtractAnthropicUsageWithErrorFromJson:
+    """Tests for diagnostic Anthropic Messages JSON usage extraction."""
 
     def test_extracts_model_and_tokens(self):
         body = b'{"model":"claude-sonnet-4-6","usage":{"input_tokens":100,"output_tokens":500}}'
-        result = extract_anthropic_messages_usage_from_json(body, None)
+        result, error = extract_anthropic_messages_usage_with_error_from_json(body, None)
+        assert error is None
         assert result == {
             "model": "claude-sonnet-4-6",
             "tokens.input": 100,
@@ -474,7 +565,8 @@ class TestExtractAnthropicUsageFromJson:
             b'{"input_tokens":10,"output_tokens":5,'
             b'"cache_read_input_tokens":50,"cache_creation_input_tokens":0}}'
         )
-        result = extract_anthropic_messages_usage_from_json(body, None)
+        result, error = extract_anthropic_messages_usage_with_error_from_json(body, None)
+        assert error is None
         assert result is not None
         assert result["tokens.cache_read"] == 50
         assert result["tokens.cache_creation"] == 0
@@ -483,29 +575,37 @@ class TestExtractAnthropicUsageFromJson:
         original = b'{"model":"test","usage":{"input_tokens":42}}'
         compressed = gzip.compress(original)
         headers = headers(("Content-Encoding", "gzip"))
-        result = extract_anthropic_messages_usage_from_json(compressed, headers)
+        result, error = extract_anthropic_messages_usage_with_error_from_json(compressed, headers)
+        assert error is None
         assert result is not None
         assert result["model"] == "test"
         assert result["tokens.input"] == 42
 
-    def test_truncated_gzip_stays_silent_but_diagnostic_returns_error(self, headers):
+    def test_truncated_gzip_returns_error(self, headers):
         original = b'{"model":"test","usage":{"input_tokens":42}}'
         truncated = gzip.compress(original)[:10]
         headers = headers(("Content-Encoding", "gzip"))
 
-        assert extract_anthropic_messages_usage_from_json(truncated, headers) is None
         usage, error = extract_anthropic_messages_usage_with_error_from_json(truncated, headers)
         assert usage is None
         assert error == "incomplete compressed body"
 
-    def test_invalid_json_returns_none(self):
-        assert extract_anthropic_messages_usage_from_json(b"not json", None) is None
+    def test_invalid_json_returns_error(self):
+        usage, error = extract_anthropic_messages_usage_with_error_from_json(b"not json", None)
+        assert usage is None
+        assert error == "invalid literal"
 
     def test_no_usage_field_returns_none(self):
-        assert extract_anthropic_messages_usage_from_json(b'{"id":"msg_1"}', None) is None
+        usage, error = extract_anthropic_messages_usage_with_error_from_json(
+            b'{"id":"msg_1"}', None
+        )
+        assert usage is None
+        assert error is None
 
     def test_non_dict_returns_none(self):
-        assert extract_anthropic_messages_usage_from_json(b"[1,2,3]", None) is None
+        usage, error = extract_anthropic_messages_usage_with_error_from_json(b"[1,2,3]", None)
+        assert usage is None
+        assert error is None
 
     def test_ignores_unmapped_web_search_requests(self):
         body = (
@@ -513,7 +613,8 @@ class TestExtractAnthropicUsageFromJson:
             b'{"input_tokens":10,"output_tokens":5,'
             b'"server_tool_use":{"web_search_requests":2}}}'
         )
-        result = extract_anthropic_messages_usage_from_json(body, None)
+        result, error = extract_anthropic_messages_usage_with_error_from_json(body, None)
+        assert error is None
         assert result is not None
         assert "web_search_requests" not in result
         assert result["tokens.input"] == 10
@@ -525,7 +626,8 @@ class TestExtractAnthropicUsageFromJson:
             b'"cache_read_input_tokens":"50",'
             b'"cache_creation_input_tokens":true}}'
         )
-        result = extract_anthropic_messages_usage_from_json(body, None)
+        result, error = extract_anthropic_messages_usage_with_error_from_json(body, None)
+        assert error is None
         assert result == {
             "model": "claude-sonnet-4-6",
             "tokens.output": 5,
@@ -534,12 +636,11 @@ class TestExtractAnthropicUsageFromJson:
     def test_handles_large_gzipped_body(self, headers):
         """Body that decompresses past the legacy 64 KB cap should still parse.
 
-        Regression test for the silent 64 KB default in body_decoding.decompress_body
-        which used to truncate large model-provider non-SSE responses and cause
-        usage extraction to silently fail.
+        Regression test for the legacy 64 KB decompression default, which used
+        to truncate large model-provider non-SSE responses and lose usage.
         """
         # Raw body > 64 KB (legacy STREAM_BUFFER_LIMIT) so the bug, if reintroduced,
-        # would truncate decompression output and break json.loads below.
+        # would truncate decompression output before the selective parser finds usage.
         big_text = "x" * (100 * 1024)
         payload = json.dumps(
             {
@@ -551,7 +652,8 @@ class TestExtractAnthropicUsageFromJson:
         ).encode()
         compressed = gzip.compress(payload)
         headers = headers(("Content-Encoding", "gzip"))
-        result = extract_anthropic_messages_usage_from_json(compressed, headers)
+        result, error = extract_anthropic_messages_usage_with_error_from_json(compressed, headers)
+        assert error is None
         assert result is not None
         assert result["tokens.input"] == 50
         assert result["tokens.output"] == 100

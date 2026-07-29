@@ -12,6 +12,7 @@ import auth
 import auth_base_forwarder as forwarder
 import flow_metadata_keys as metadata_keys
 from tests.auth_base_forwarder_helpers import fake_forwarder_upstream
+from tests.firewall_auth_helpers import handle_firewall_request_without_upstream_admission
 from tests.firewall_rewrite_helpers import make_forwarding_rewrite_inputs
 from tests.jsonl_log_helpers import read_jsonl_text_after_flush
 
@@ -82,12 +83,12 @@ class TestAuthBaseUrlRewriteForwarding:
             patch.object(auth, "get_firewall_headers", AsyncMock(return_value=token_meta)),
             mitm_ctx(),
         ):
-            result = await auth.handle_firewall_request(flow, allow, vm_info)
+            result = await handle_firewall_request_without_upstream_admission(flow, allow, vm_info)
 
         assert result is auth.FirewallAuthHandlingResult.INLINE_PROVIDER_RESPONSE
-        assert upstream.getaddrinfo_calls == [("real.example.com", 443)]
-        assert upstream.create_connection_calls
-        assert upstream.create_connection_calls[0][0] == ("93.184.216.34", 443)
+        assert upstream.resolve_calls == ["real.example.com"]
+        assert upstream.connect_calls
+        assert upstream.connect_calls[0] == ("93.184.216.34", 443)
         assert upstream.contexts[0].server_hostnames == ["real.example.com"]
 
         request_line = upstream.socket.request_lines()[0]
@@ -180,7 +181,7 @@ class TestAuthBaseUrlRewriteForwarding:
             patch.object(auth, "get_firewall_headers", AsyncMock(return_value=token_meta)),
             mitm_ctx(),
         ):
-            result = await auth.handle_firewall_request(flow, allow, vm_info)
+            result = await handle_firewall_request_without_upstream_admission(flow, allow, vm_info)
 
         assert result is auth.FirewallAuthHandlingResult.INLINE_PROVIDER_RESPONSE
         assert flow.response is not None
@@ -222,7 +223,7 @@ class TestAuthBaseUrlRewriteForwarding:
             patch.object(auth, "get_firewall_headers", AsyncMock(return_value=token_meta)),
             mitm_ctx(),
         ):
-            await auth.handle_firewall_request(flow, allow, vm_info)
+            await handle_firewall_request_without_upstream_admission(flow, allow, vm_info)
         assert flow.metadata[metadata_keys.AUTH_URL_REWRITE] is True
         assert upstream.socket.request_header_values("Authorization") == ["Bearer real-token"]
         assert upstream.socket.request_header_values("X-Api-Key") == ["real-api-key"]
@@ -269,7 +270,7 @@ class TestAuthBaseUrlRewriteForwarding:
             patch.object(auth, "get_firewall_headers", AsyncMock(return_value=token_meta)),
             mitm_ctx(),
         ):
-            await auth.handle_firewall_request(flow, allow, vm_info)
+            await handle_firewall_request_without_upstream_admission(flow, allow, vm_info)
 
         assert upstream.socket.request_header_values("Connection") == []
         assert upstream.socket.request_header_values("Authorization") == []
@@ -328,7 +329,7 @@ class TestAuthBaseUrlRewriteForwarding:
             patch.object(auth, "get_firewall_headers", AsyncMock(return_value=token_meta)),
             mitm_ctx(),
         ):
-            await auth.handle_firewall_request(flow, allow, vm_info)
+            await handle_firewall_request_without_upstream_admission(flow, allow, vm_info)
 
         assert upstream.socket.request_header_values("Connection") == []
         assert upstream.socket.request_header_values("X-Remove") == []
@@ -405,7 +406,7 @@ class TestAuthBaseUrlRewriteForwarding:
             patch.object(auth, "get_firewall_headers", AsyncMock(return_value=token_meta)),
             mitm_ctx(),
         ):
-            await auth.handle_firewall_request(flow, allow, vm_info)
+            await handle_firewall_request_without_upstream_admission(flow, allow, vm_info)
 
         assert upstream.socket.request_header_values("Connection") == []
         assert upstream.socket.request_header_values("Content-Length") == []
@@ -447,7 +448,7 @@ class TestAuthBaseUrlRewriteForwarding:
             patch.object(auth, "forward_request", mock_forward),
             mitm_ctx(),
         ):
-            result = await auth.handle_firewall_request(flow, allow, vm_info)
+            result = await handle_firewall_request_without_upstream_admission(flow, allow, vm_info)
 
         assert result is auth.FirewallAuthHandlingResult.LOCAL_RESPONSE
         mock_forward.assert_not_called()
@@ -496,7 +497,7 @@ class TestAuthBaseUrlRewriteForwarding:
             patch.object(auth, "get_firewall_headers", AsyncMock(return_value=token_meta)),
             mitm_ctx(),
         ):
-            await auth.handle_firewall_request(flow, allow, vm_info)
+            await handle_firewall_request_without_upstream_admission(flow, allow, vm_info)
 
         assert f"cOnTeNt-TyPe: {content_type}" in upstream.socket.request_lines()
         assert upstream.socket.request_header_values("X-Drop") == []
@@ -527,7 +528,7 @@ class TestAuthBaseUrlRewriteForwarding:
             patch.object(auth, "forward_request", mock_forward),
             mitm_ctx(),
         ):
-            result = await auth.handle_firewall_request(flow, allow, vm_info)
+            result = await handle_firewall_request_without_upstream_admission(flow, allow, vm_info)
 
         assert result is auth.FirewallAuthHandlingResult.LOCAL_RESPONSE
         get_headers.assert_not_called()
@@ -556,7 +557,7 @@ class TestAuthBaseUrlRewriteForwarding:
             patch.object(auth, "get_firewall_headers", AsyncMock(return_value=token_meta)),
             mitm_ctx(),
         ):
-            await auth.handle_firewall_request(flow, allow, vm_info)
+            await handle_firewall_request_without_upstream_admission(flow, allow, vm_info)
 
         method, _request_target, _version = _request_line_parts(upstream)
         assert method == "DELETE"
@@ -578,7 +579,7 @@ class TestAuthBaseUrlRewriteForwarding:
             patch.object(auth, "get_firewall_headers", AsyncMock(return_value=token_meta)),
             mitm_ctx(),
         ):
-            await auth.handle_firewall_request(flow, allow, vm_info)
+            await handle_firewall_request_without_upstream_admission(flow, allow, vm_info)
 
         method, _request_target, _version = _request_line_parts(upstream)
         assert method == "POST"
@@ -600,7 +601,7 @@ class TestAuthBaseUrlRewriteForwarding:
             patch.object(auth, "get_firewall_headers", AsyncMock(return_value=token_meta)),
             mitm_ctx(),
         ):
-            await auth.handle_firewall_request(flow, allow, vm_info)
+            await handle_firewall_request_without_upstream_admission(flow, allow, vm_info)
 
         method, _request_target, _version = _request_line_parts(upstream)
         assert method == "GET"
@@ -621,7 +622,7 @@ class TestAuthBaseUrlRewriteForwarding:
             patch.object(auth, "get_firewall_headers", get_headers),
             mitm_ctx(),
         ):
-            await auth.handle_firewall_request(flow, allow, vm_info)
+            await handle_firewall_request_without_upstream_admission(flow, allow, vm_info)
 
         assert get_headers.await_count == 1
         assert upstream.socket.request_header_values("Content-Length") == ["4"]
@@ -654,7 +655,7 @@ class TestAuthBaseUrlRewriteForwarding:
             patch.object(auth, "log_proxy_entry", mock_log),
             mitm_ctx(),
         ):
-            result = await auth.handle_firewall_request(flow, allow, vm_info)
+            result = await handle_firewall_request_without_upstream_admission(flow, allow, vm_info)
 
         assert result is auth.FirewallAuthHandlingResult.LOCAL_RESPONSE
         get_headers.assert_not_called()
@@ -711,7 +712,7 @@ class TestAuthBaseUrlRewriteForwarding:
             patch.object(auth, "log_proxy_entry", mock_log),
             mitm_ctx(),
         ):
-            result = await auth.handle_firewall_request(flow, allow, vm_info)
+            result = await handle_firewall_request_without_upstream_admission(flow, allow, vm_info)
 
         assert result is auth.FirewallAuthHandlingResult.LOCAL_RESPONSE
         assert mock_forward.call_count == 1
@@ -754,7 +755,7 @@ class TestAuthBaseUrlRewriteForwarding:
             patch.object(auth, "get_firewall_headers", get_headers),
             mitm_ctx(),
         ):
-            result = await auth.handle_firewall_request(flow, allow, vm_info)
+            result = await handle_firewall_request_without_upstream_admission(flow, allow, vm_info)
 
         assert result is auth.FirewallAuthHandlingResult.CONTINUE_UPSTREAM
         assert get_headers.await_count == 1
@@ -808,7 +809,7 @@ class TestAuthBaseUrlRewriteForwarding:
             patch.object(auth, "forward_request", mock_forward),
             mitm_ctx(),
         ):
-            result = await auth.handle_firewall_request(flow, allow, vm_info)
+            result = await handle_firewall_request_without_upstream_admission(flow, allow, vm_info)
         assert result is auth.FirewallAuthHandlingResult.LOCAL_RESPONSE
         failed_url = mock_forward.call_args[0][0]
         failed_query = parse_qs(urlparse(failed_url).query, keep_blank_values=True)
@@ -869,7 +870,7 @@ class TestAuthBaseUrlRewriteForwarding:
             patch.object(auth, "forward_request", mock_forward),
             mitm_ctx(),
         ):
-            result = await auth.handle_firewall_request(flow, allow, vm_info)
+            result = await handle_firewall_request_without_upstream_admission(flow, allow, vm_info)
 
         assert result is auth.FirewallAuthHandlingResult.LOCAL_RESPONSE
         assert flow.response is not None

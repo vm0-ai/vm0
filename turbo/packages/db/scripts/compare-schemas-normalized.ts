@@ -93,7 +93,10 @@ async function getConstraints(client: Client): Promise<ConstraintInfo[]> {
     JOIN pg_class relation ON relation.oid = catalog_constraint.conrelid
     JOIN pg_namespace namespace ON namespace.oid = relation.relnamespace
     WHERE namespace.nspname = 'public'
-      AND catalog_constraint.contype != 'c'  -- Ignore CHECK constraints
+      -- CHECK constraints are validated against the Drizzle snapshot. PostgreSQL
+      -- 18 also exposes NOT NULL constraints here, but column nullability is
+      -- already compared above and their generated names change across renames.
+      AND catalog_constraint.contype NOT IN ('c', 'n')
     ORDER BY
       relation.relname,
       catalog_constraint.contype,

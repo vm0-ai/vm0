@@ -60,6 +60,7 @@ async fn exec_operation_connection_close_wakes_result_and_stream() {
     let mut handle = host
         .exec_operation_stream(ExecStreamRequest {
             timeout_ms: 5000,
+            start_write_timeout: Duration::from_secs(5),
             command: "stream",
             env: &[],
             sudo: false,
@@ -100,6 +101,7 @@ async fn exec_start_after_connection_close_returns_connection_reset() {
     let err = match host
         .start_exec_operation(ExecOperationRequest {
             timeout_ms: 5000,
+            start_write_timeout: Duration::from_secs(5),
             command: "echo ok",
             env: &[],
             sudo: false,
@@ -125,6 +127,7 @@ async fn host_drop_closes_active_exec_result_and_stream() {
     let mut handle = host
         .exec_operation_stream(ExecStreamRequest {
             timeout_ms: 5000,
+            start_write_timeout: Duration::from_secs(5),
             command: "stream",
             env: &[],
             sudo: false,

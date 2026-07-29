@@ -1,13 +1,11 @@
 import { command, computed } from "ccstate";
-import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
+import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import {
-  chatMessagesContract,
   chatThreadModelSelectionContract,
   chatThreadsContract,
   type AttachFile,
-  type ChatThreadEvent,
   type GenerationTemplateRequest,
-  type PagedChatMessage,
+  type ChatPromptEvent,
   type UserMessageDocument,
 } from "@vm0/api-contracts/contracts/chat-threads";
 import type { OrgModelPoliciesResponse } from "@vm0/api-contracts/contracts/model-providers";
@@ -19,11 +17,6 @@ import { zeroClient$, type ZeroClientFactory } from "../api-client.ts";
 import { currentChatThreadId$ } from "../agent-chat.ts";
 import { detachedNavigateTo$, searchParams$ } from "../route.ts";
 import { loadRightThread$ } from "./chat-thread-panes.ts";
-import {
-  clearArtifactSidebarParams,
-  clearChatAutomationSidebarParams,
-  clearMailDraftSidebarParams,
-} from "../zero-page/right-sidebar-search-params.ts";
 import { talkDraft$ } from "../zero-page/chat-draft.ts";
 import { clearAgentDraftById$ } from "../zero-page/agent-draft.ts";
 import {
@@ -35,6 +28,7 @@ import {
   createOptimisticChatMessageEntry,
   type OptimisticChatMessageInput,
 } from "./optimistic-chat-messages.ts";
+import { sendChatEvent } from "./chat-event-api.ts";
 import {
   applyCodexFastModeDefault,
   isCodexFastModeAvailableForSelection,
@@ -50,6 +44,7 @@ import type { ModelProviderSelection } from "../../views/zero-page/components/mo
 import { registerOptimisticChatThreadEvent$ } from "./chat-thread-event-sourcing.ts";
 import { chatPageModelSelection$ } from "../zero-page/zero-chat-page.ts";
 import { selectedModelAvailable$ } from "../zero-page/model-first-personal-oauth.ts";
+import type { OptimisticChatThreadEvent } from "./chat-thread-event-types.ts";
 import { toast } from "@vm0/ui/components/ui/sonner";
 import {
   textToMessageDocument,
@@ -73,6 +68,7 @@ interface SendNewThreadMessageRequest {
   generationTemplateTitleSnapshot?: string;
   editorDocument?: EditorDocumentSnapshot;
   computerUseHostId?: string | null;
+  cloudBrowserEnabled?: boolean;
   routeSearchParams?: URLSearchParams;
 }
 
@@ -84,27 +80,23 @@ interface SendNewThreadMessageResult {
 interface PreparedNewThreadPayload {
   prompt: string;
   attachFiles: AttachFile[] | undefined;
-  attachments: PagedChatMessage["attachFiles"];
+  attachments: ChatPromptEvent["attachFiles"];
   hasTextContent: boolean;
 }
 
-function structuredPromptForNewThread(
-  enabled: boolean,
+function userMessageForNewThread(
   request: SendNewThreadMessageRequest,
   prepared: PreparedNewThreadPayload,
-): UserMessageDocument | undefined {
-  if (!enabled) {
-    return undefined;
-  }
+): UserMessageDocument {
   const generationTemplate = request.generationTemplate;
   if (
     generationTemplate &&
     !request.editorDocument &&
     !request.generationTemplateTitleSnapshot
   ) {
-    throw new Error("Structured template title snapshot is required");
+    throw new Error("User-message template title snapshot is required");
   }
-  const structuredPrompt = request.editorDocument
+  const userMessage = request.editorDocument
     ? request.editorDocument.toMessageDocument({
         generationTemplate,
         attachments: prepared.attachments,
@@ -117,36 +109,38 @@ function structuredPromptForNewThread(
               template: generationTemplate,
             }
           : undefined,
+        prepared.attachments,
       );
-  if (!structuredPrompt) {
-    throw new Error("Failed to serialize structured prompt");
+  if (!userMessage) {
+    throw new Error("Failed to serialize user message");
   }
-  return structuredPrompt;
+  return userMessage;
 }
 
 function createNewThreadOptimisticMessageEntry({
   threadId,
-  clientMessageId,
+  clientEventId,
   prepared,
   generationTemplate,
-  structuredPrompt,
+  userMessage,
 }: {
   threadId: string;
-  clientMessageId: string;
+  clientEventId: string;
   prepared: PreparedNewThreadPayload;
   generationTemplate: GenerationTemplateRequest | undefined;
-  structuredPrompt: UserMessageDocument | undefined;
+  userMessage: UserMessageDocument;
 }): OptimisticChatMessageInput {
   return {
     threadId,
     optimisticUserMessageAssociation: "run",
     message: {
-      id: clientMessageId,
-      role: "user",
+      id: clientEventId,
+      threadId,
+      eventType: "input.prompt",
       content: prepared.prompt,
       attachFiles: prepared.attachments,
       generationTemplate,
-      ...(structuredPrompt ? { structuredPrompt } : {}),
+      userMessage,
       createdAt: nowDate().toISOString(),
     },
   };
@@ -155,25 +149,27 @@ function createNewThreadOptimisticMessageEntry({
 function newThreadSendBody({
   agentId,
   threadId,
-  clientMessageId,
+  clientEventId,
   prepared,
   modelSelection,
   codexFastModeEnabled,
   realAgentInPreviewEnabled,
   generationTemplate,
-  structuredPrompt,
+  userMessage,
   computerUseHostId,
+  cloudBrowserEnabled,
 }: {
   agentId: string;
   threadId: string;
-  clientMessageId: string;
+  clientEventId: string;
   prepared: PreparedNewThreadPayload;
   modelSelection: ModelProviderSelection;
   codexFastModeEnabled: boolean;
   realAgentInPreviewEnabled: boolean;
   generationTemplate: GenerationTemplateRequest | undefined;
-  structuredPrompt: UserMessageDocument | undefined;
+  userMessage: UserMessageDocument;
   computerUseHostId?: string | null;
+  cloudBrowserEnabled?: boolean;
 }) {
   const runOptions = runOptionsFromModelProviderSelection(
     modelSelection,
@@ -184,12 +180,13 @@ function newThreadSendBody({
     prompt: prepared.prompt,
     threadId,
     hasTextContent: prepared.hasTextContent,
-    clientMessageId,
+    clientEventId: clientEventId,
     ...(runOptions ? { runOptions } : {}),
     ...(realAgentInPreviewEnabled ? { realAgentInPreview: true } : {}),
     generationTemplate,
-    ...(structuredPrompt ? { structuredPrompt } : {}),
+    userMessage,
     ...(computerUseHostId === undefined ? {} : { computerUseHostId }),
+    ...(cloudBrowserEnabled === undefined ? {} : { cloudBrowserEnabled }),
     attachFiles: prepared.attachFiles,
   };
 }
@@ -271,9 +268,6 @@ const routeMainChatThread$ = command(
     if (next.get(SIDEBAR_PARAM) === args.threadId) {
       next.delete(SIDEBAR_PARAM);
     }
-    clearArtifactSidebarParams(next);
-    clearChatAutomationSidebarParams(next);
-    clearMailDraftSidebarParams(next);
     set(detachedNavigateTo$, "/chats/:threadId", {
       pathParams: { threadId: args.threadId },
       searchParams: next,
@@ -327,6 +321,7 @@ const mintOptimisticThreadWithEvent$ = command(
       readonly selectedModel: string | null;
       readonly serviceTier: "priority" | null;
       readonly computerUseHostId: string | null;
+      readonly cloudBrowserEnabled: boolean;
     },
     signal: AbortSignal,
   ): void => {
@@ -345,8 +340,9 @@ const mintOptimisticThreadWithEvent$ = command(
       selectedModel: args.selectedModel,
       serviceTier: args.serviceTier,
       computerUseHostId: args.computerUseHostId,
+      cloudBrowserEnabled: args.cloudBrowserEnabled,
       createdAt,
-    } satisfies ChatThreadEvent);
+    } satisfies OptimisticChatThreadEvent);
   },
 );
 
@@ -431,6 +427,7 @@ const startNewChatThreadCreate$ = command(
         serviceTier:
           modelSelection.codexServiceTier === "fast" ? "priority" : null,
         computerUseHostId: null,
+        cloudBrowserEnabled: false,
       },
       signal,
     );
@@ -486,7 +483,7 @@ const sendNewThreadMessage$ = command(
   } | null> => {
     const { agentId, prompt } = request;
     const generationTemplate = request.generationTemplate;
-    const { computerUseHostId } = request;
+    const { computerUseHostId, cloudBrowserEnabled } = request;
     const draft = get(talkDraft$);
     const resolvedModelSelection = await set(
       resolveCurrentNewThreadModelSelection$,
@@ -510,25 +507,19 @@ const sendNewThreadMessage$ = command(
       return null;
     }
     const features = get(featureSwitch$);
-    const structuredPromptEnabled =
-      features[FeatureSwitchKey.StructuredPrompt] ?? false;
-    const structuredPrompt = structuredPromptForNewThread(
-      structuredPromptEnabled,
-      request,
-      prepared,
-    );
+    const userMessage = userMessageForNewThread(request, prepared);
     const threadId = crypto.randomUUID();
-    const clientMessageId = crypto.randomUUID();
+    const clientEventId = crypto.randomUUID();
     const chatThreadEventId = crypto.randomUUID();
     set(
       appendOptimisticChatMessage$,
       createOptimisticChatMessageEntry(
         createNewThreadOptimisticMessageEntry({
           threadId,
-          clientMessageId,
+          clientEventId,
           prepared,
           generationTemplate,
-          structuredPrompt: structuredPrompt ?? undefined,
+          userMessage,
         }),
       ),
     );
@@ -544,6 +535,7 @@ const sendNewThreadMessage$ = command(
             ? "priority"
             : null,
         computerUseHostId: computerUseHostId ?? null,
+        cloudBrowserEnabled: cloudBrowserEnabled ?? false,
       },
       signal,
     );
@@ -567,33 +559,28 @@ const sendNewThreadMessage$ = command(
     const sendBody = newThreadSendBody({
       agentId,
       threadId,
-      clientMessageId,
+      clientEventId,
       prepared,
       modelSelection: resolvedModelSelection,
       codexFastModeEnabled: codexFastModeSwitchEnabled(features),
       realAgentInPreviewEnabled:
         features[FeatureSwitchKey.RealAgentInPreview] ?? false,
       generationTemplate,
-      structuredPrompt: structuredPrompt ?? undefined,
+      userMessage,
       computerUseHostId,
+      cloudBrowserEnabled,
     });
     const sendResult = (async (): Promise<SendNewThreadMessageResult> => {
       await Promise.all([clearDraftResult, createResult]);
       signal.throwIfAborted();
 
-      const result = await accept(
-        createClient(chatMessagesContract).send({
-          body: sendBody,
-          fetchOptions: { signal },
-        }),
-        [201],
-      );
+      const result = await sendChatEvent(createClient, sendBody, signal);
       signal.throwIfAborted();
-      L.debug("sendNewThreadMessage$ POST chat/messages 201", {
-        threadId: result.body.threadId,
-        runId: result.body.runId,
+      L.debug("sendNewThreadMessage$ POST chat/events 201", {
+        threadId: result.threadId,
+        runId: result.runId,
       });
-      return { threadId: result.body.threadId, runId: result.body.runId };
+      return { threadId: result.threadId, runId: result.runId };
     })();
     return { threadId, sendResult };
   },
