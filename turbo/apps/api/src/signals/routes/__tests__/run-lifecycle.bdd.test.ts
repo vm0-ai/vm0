@@ -7295,8 +7295,21 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
     expect(cancelled.status).toBe("cancelled");
   });
 
-  it("refreshes and injects custom connector OAuth 2.0 authorization", async () => {
-    const provider = mockCustomConnectorOAuth2Provider(context);
+  it("serializes and injects custom connector OAuth 2.0 refreshes", async () => {
+    const provider = mockCustomConnectorOAuth2Provider(context, {
+      initialExpiresIn: 3600,
+      refreshResponse: (attempt) => {
+        if (attempt > 1) {
+          return HttpResponse.json({ error: "invalid_grant" }, { status: 400 });
+        }
+        return HttpResponse.json({
+          access_token: "custom-oauth-refreshed-access-token",
+          refresh_token: "custom-oauth-rotated-refresh-token",
+          token_type: "Bearer",
+          expires_in: 3600,
+        });
+      },
+    });
     const api = createRunsApi(context);
     const connectors = createConnectorBddApi(context);
     const fw = createFirewallApi(context);
@@ -7348,21 +7361,12 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
       prompt: "use the OAuth custom connector",
       modelProvider: "anthropic-api-key",
     });
-    expect(provider.tokenBodies).toHaveLength(2);
-    expect(
-      provider.tokenBodies.map((body) => {
-        return body.get("grant_type");
-      }),
-    ).toStrictEqual(["authorization_code", "refresh_token"]);
-    expect(provider.tokenBodies[1]?.get("refresh_token")).toBe(
-      "custom-oauth-refresh-token",
-    );
     const expectedBasicAuthorization = `Basic ${Buffer.from(
       "runtime-client-id:runtime-client-secret",
       "utf8",
     ).toString("base64")}`;
+    expect(provider.tokenBodies).toHaveLength(1);
     expect(provider.authorizationHeaders).toStrictEqual([
-      expectedBasicAuthorization,
       expectedBasicAuthorization,
     ]);
 
@@ -7376,27 +7380,140 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
       `Bearer \${{ secrets.${secretKey} }}`,
     );
     expect(claim.secretValues).not.toContain(
-      "Bearer custom-oauth-refreshed-access-token",
+      "Bearer custom-oauth-initial-access-token",
     );
 
-    const resolved = await fw.requestFirewallAuth(
-      { authorization: `Bearer ${claim.sandboxToken}` },
-      {
-        encryptedSecrets: fw.encryptedSecretsBody({}),
-        authHeaders: {
-          Authorization: `Bearer \${{ secrets.${secretKey} }}`,
-        },
-      },
-      [200],
-    );
-    if (resolved.status !== 200) {
-      throw new Error("Expected custom OAuth firewall auth to resolve");
-    }
-    expect(resolved.body.headers).toStrictEqual({
-      Authorization: "Bearer custom-oauth-refreshed-access-token",
+    mockNow(now() + 2 * 3_600_000);
+    onTestFinished(() => {
+      clearMockNow();
     });
+    const [firstResolved, secondResolved] = await Promise.all([
+      fw.requestFirewallAuth(
+        { authorization: `Bearer ${claim.sandboxToken}` },
+        {
+          encryptedSecrets: fw.encryptedSecretsBody({}),
+          authHeaders: {
+            Authorization: `Bearer \${{ secrets.${secretKey} }}`,
+          },
+        },
+        [200],
+      ),
+      fw.requestFirewallAuth(
+        { authorization: `Bearer ${claim.sandboxToken}` },
+        {
+          encryptedSecrets: fw.encryptedSecretsBody({}),
+          authHeaders: {
+            Authorization: `Bearer \${{ secrets.${secretKey} }}`,
+          },
+        },
+        [200],
+      ),
+    ]);
+    for (const resolved of [firstResolved, secondResolved]) {
+      if (resolved.status !== 200) {
+        throw new Error("Expected custom OAuth firewall auth to resolve");
+      }
+      expect(resolved.body.headers).toStrictEqual({
+        Authorization: "Bearer custom-oauth-refreshed-access-token",
+      });
+    }
+    expect(
+      provider.tokenBodies.map((body) => {
+        return body.get("grant_type");
+      }),
+    ).toStrictEqual(["authorization_code", "refresh_token"]);
+    expect(provider.tokenBodies[1]?.get("refresh_token")).toBe(
+      "custom-oauth-refresh-token",
+    );
+    expect(provider.authorizationHeaders).toStrictEqual([
+      expectedBasicAuthorization,
+      expectedBasicAuthorization,
+    ]);
 
     await api.requestCancelRun(actor, run.runId, [200]);
+  });
+
+  it("marks a custom OAuth connection for reconnect after invalid_grant", async () => {
+    const provider = mockCustomConnectorOAuth2Provider(context, {
+      refreshResponse: () => {
+        return HttpResponse.json({ error: "invalid_grant" }, { status: 400 });
+      },
+    });
+    const api = createRunsApi(context);
+    const connectors = createConnectorBddApi(context);
+    const { actor, agentId } = await entitledRunActor();
+
+    await connectors.updateFeatureSwitches(actor, {
+      [FeatureSwitchKey.CustomConnectorOAuth2]: true,
+    });
+    const custom = await connectors.createCustomConnector(actor, {
+      displayName: "BDD Revoked OAuth 2.0 Runtime API",
+      prefixTemplates: ["https://revoked-oauth.example.test/api/"],
+      fields: [],
+      headerInjections: [
+        {
+          name: "Authorization",
+          valueTemplate: "Bearer {{oauth.access_token}}",
+        },
+      ],
+      queryInjections: [],
+      authMode: "oauth",
+      oauthConfig: {
+        providerAdapter: "standard",
+        clientId: "revoked-runtime-client-id",
+        clientSecret: "revoked-runtime-client-secret",
+        authorizationUrl: provider.authorizationUrl,
+        tokenUrl: provider.tokenUrl,
+        tokenEndpointAuthMethod: "client_secret_basic",
+        pkceMethod: "none",
+        scopes: ["read"],
+        authorizationParams: {},
+      },
+    });
+    const authorizationUrl = await connectors.startCustomConnectorOAuth2(
+      actor,
+      custom.id,
+    );
+    const state = new URL(authorizationUrl).searchParams.get("state");
+    if (!state) {
+      throw new Error("Expected custom connector OAuth state");
+    }
+    await connectors.completeCustomConnectorOAuth2Callback({
+      code: "revoked-runtime-authorization-code",
+      state,
+    });
+    await connectors.updateAgentCustomConnectors(actor, agentId, [custom.id]);
+
+    const firstRun = await api.createRun(actor, {
+      agentId,
+      prompt: "use the revoked OAuth custom connector",
+      modelProvider: "anthropic-api-key",
+    });
+    expect(
+      provider.tokenBodies.map((body) => {
+        return body.get("grant_type");
+      }),
+    ).toStrictEqual(["authorization_code", "refresh_token"]);
+
+    const customConnectors = await connectors.listCustomConnectors(actor);
+    expect(
+      customConnectors.find((connector) => {
+        return connector.id === custom.id;
+      }),
+    ).toMatchObject({
+      connected: false,
+      missingRequiredFields: ["oauth"],
+    });
+
+    const secondRun = await api.createRun(actor, {
+      agentId,
+      prompt: "do not retry the revoked OAuth custom connector",
+      modelProvider: "anthropic-api-key",
+    });
+    expect(provider.tokenBodies).toHaveLength(2);
+
+    await api.requestCancelRun(actor, firstRun.runId, [200]);
+    await api.requestCancelRun(actor, secondRun.runId, [200]);
   });
 
   it("resolves custom connector auth from run-scoped refs when encrypted secrets omit aliases", async () => {

@@ -130,20 +130,31 @@ interface CustomConnectorOAuth2ProviderRecorder {
   readonly authorizationHeaders: (string | null)[];
 }
 
+interface CustomConnectorOAuth2ProviderOptions {
+  readonly initialExpiresIn?: number;
+  readonly refreshResponse?: (attempt: number) => Response | Promise<Response>;
+}
+
 export function mockCustomConnectorOAuth2Provider(
   context: TestContext,
+  options: CustomConnectorOAuth2ProviderOptions = {},
 ): CustomConnectorOAuth2ProviderRecorder {
   context.mocks.dns.lookupOverrides.set("custom-oauth.example.test", [
     { address: "93.184.216.34", family: 4 },
   ]);
   const tokenBodies: URLSearchParams[] = [];
   const authorizationHeaders: (string | null)[] = [];
+  let refreshAttempts = 0;
   server.use(
     http.post(CUSTOM_CONNECTOR_OAUTH2_TOKEN_URL, async ({ request }) => {
       const body = new URLSearchParams(await request.text());
       tokenBodies.push(body);
       authorizationHeaders.push(request.headers.get("authorization"));
       if (body.get("grant_type") === "refresh_token") {
+        refreshAttempts += 1;
+        if (options.refreshResponse) {
+          return await options.refreshResponse(refreshAttempts);
+        }
         return HttpResponse.json({
           access_token: "custom-oauth-refreshed-access-token",
           token_type: "Bearer",
@@ -155,7 +166,7 @@ export function mockCustomConnectorOAuth2Provider(
         refresh_token: "custom-oauth-refresh-token",
         id_token: "custom-oauth-id-token",
         token_type: "Bearer",
-        expires_in: 0,
+        expires_in: options.initialExpiresIn ?? 0,
       });
     }),
   );
