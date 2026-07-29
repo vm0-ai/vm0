@@ -589,6 +589,35 @@ describe("chat lifecycle", () => {
     });
   });
 
+  it("does not use a goal queue event as composer goal state", async () => {
+    const threadId = "b0000000-0000-4000-a000-000000000722";
+    mockChatLifecycle(context, {
+      threadId,
+      chatEvents: [
+        {
+          id: "msg-goal-queued",
+          eventType: "input.goal",
+          runId: undefined,
+          content: null,
+          goalSnapshot: {
+            objectiveBrief: "Finish the queued goal",
+          },
+          createdAt: "2026-06-09T10:00:00Z",
+        },
+      ],
+    });
+
+    detachedSetupPage({ context, path: `/chats/${threadId}` });
+
+    await waitFor(() => {
+      expect(screen.getByLabelText("Send")).toBeInTheDocument();
+    });
+    expect(screen.queryByLabelText("Active goal")).not.toBeInTheDocument();
+    expect(
+      screen.queryByText("Finish the queued goal"),
+    ).not.toBeInTheDocument();
+  });
+
   it("folds goal-state markers into the goal row beneath the queued messages", async () => {
     const user = userEvent.setup({ delay: null });
     const threadId = "b0000000-0000-4000-a000-000000000723";

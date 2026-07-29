@@ -12,11 +12,8 @@ import { insertChatEvent } from "../signals/services/zero-chat-event.service";
 
 interface GoalQueueAdmissionFixtureArgs {
   readonly threadId: string;
-  readonly orgId: string;
-  readonly userId: string;
   readonly goalId: string;
   readonly objectiveBrief: string;
-  readonly callbackSecret: string;
 }
 
 /**
@@ -29,20 +26,12 @@ export async function admitGoalQueueEventFixture(
 ): Promise<GoalQueueAdmission> {
   return await admitGoalQueueEvent(db(), {
     chatThreadId: args.threadId,
-    orgId: args.orgId,
-    userId: args.userId,
+    goalId: args.goalId,
     objectiveBrief: args.objectiveBrief,
-    params: {
-      goalId: args.goalId,
-      callbackSecret: args.callbackSecret,
-    },
   });
 }
 
-/**
- * Read internal queue facts that are deliberately absent from materialized
- * thread APIs: source input.goal ids and admitted goal-run ids.
- */
+/** Read queue source event ids and admitted goal-run ids for route assertions. */
 export async function readGoalQueueStateFixture(threadId: string): Promise<{
   readonly eventIds: readonly string[];
   readonly runIds: readonly string[];
@@ -114,7 +103,6 @@ export async function createActiveGoalQueueEventFixture(args: {
   readonly agentId: string;
   readonly objective: string;
   readonly objectiveBrief: string;
-  readonly callbackSecret: string;
 }): Promise<{ readonly goalId: string; readonly eventId: string }> {
   const [goal] = await db()
     .insert(threadGoals)
@@ -133,11 +121,8 @@ export async function createActiveGoalQueueEventFixture(args: {
   }
   const admission = await admitGoalQueueEventFixture({
     threadId: args.threadId,
-    orgId: args.orgId,
-    userId: args.userId,
     goalId: goal.id,
     objectiveBrief: args.objectiveBrief,
-    callbackSecret: args.callbackSecret,
   });
   if (admission.kind !== "inserted") {
     throw new Error("Expected the goal fixture event to be inserted");
