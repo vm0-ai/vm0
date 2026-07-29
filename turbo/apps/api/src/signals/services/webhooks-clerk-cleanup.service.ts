@@ -1,4 +1,4 @@
-import { connectorRefSchema } from "@vm0/api-contracts/contracts/connector-identity";
+import { connectorSlugSchema } from "@vm0/api-contracts/contracts/connector-identity";
 import {
   agentComposes,
   agentComposeVersions,
@@ -378,7 +378,7 @@ const revokeOrgConnectorTokens$ = command(
     signal.throwIfAborted();
 
     for (const row of rows) {
-      const parsed = connectorRefSchema.safeParse(row.type);
+      const parsed = connectorSlugSchema.safeParse(row.type);
       if (!parsed.success) {
         L.warn("unknown connector type, skipping revocation", {
           orgId,
@@ -389,7 +389,12 @@ const revokeOrgConnectorTokens$ = command(
 
       await set(
         deleteZeroConnectorLocalState$,
-        { orgId, userId: row.userId, type: parsed.data, snapshot },
+        {
+          orgId,
+          userId: row.userId,
+          connectorSlug: parsed.data,
+          snapshot,
+        },
         signal,
       );
     }
@@ -412,7 +417,7 @@ const revokeUserConnectorTokens$ = command(
     signal.throwIfAborted();
 
     for (const row of rows) {
-      const parsed = connectorRefSchema.safeParse(row.type);
+      const parsed = connectorSlugSchema.safeParse(row.type);
       if (!parsed.success) {
         L.warn("unknown connector type, skipping revocation", {
           userId,
@@ -423,7 +428,12 @@ const revokeUserConnectorTokens$ = command(
 
       await set(
         deleteZeroConnectorLocalState$,
-        { orgId: row.orgId, userId, type: parsed.data, snapshot },
+        {
+          orgId: row.orgId,
+          userId,
+          connectorSlug: parsed.data,
+          snapshot,
+        },
         signal,
       );
     }

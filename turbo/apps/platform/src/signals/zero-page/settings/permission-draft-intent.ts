@@ -289,7 +289,7 @@ export function permissionDraftMetadataKey(
   metadata: PublicConnectorCatalogPermissionDetail,
 ): string {
   return JSON.stringify({
-    connectorRef: metadata.connectorRef,
+    connectorSlug: metadata.connectorRef,
     permissions: metadata.permissions.map((permission) => {
       return permission.name;
     }),

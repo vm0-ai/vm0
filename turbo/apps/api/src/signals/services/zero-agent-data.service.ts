@@ -2,8 +2,8 @@ import { computed, type Computed } from "ccstate";
 import type { ZeroAgentResponse } from "@vm0/api-contracts/contracts/zero-agents";
 import type { TeamComposeItem } from "@vm0/api-contracts/contracts/zero-team";
 import {
-  connectorRefSchema,
-  type ConnectorRef,
+  connectorSlugSchema,
+  type ConnectorSlug,
 } from "@vm0/api-contracts/contracts/connector-identity";
 import { agentComposes } from "@vm0/db/schema/agent-compose";
 import { userConnectors } from "@vm0/db/schema/user-connector";
@@ -162,14 +162,14 @@ export function zeroAgentDetail(args: {
   });
 }
 
-export function zeroAgentEnabledConnectorTypes(args: {
+export function zeroAgentEnabledConnectorSlugs(args: {
   readonly orgId: string;
   readonly userId: string;
   readonly agentId: string;
-}): Computed<Promise<readonly ConnectorRef[]>> {
-  return computed(async (get): Promise<readonly ConnectorRef[]> => {
+}): Computed<Promise<readonly ConnectorSlug[]>> {
+  return computed(async (get): Promise<readonly ConnectorSlug[]> => {
     const rows = await get(db$)
-      .select({ connectorType: userConnectors.connectorType })
+      .select({ connectorSlug: userConnectors.connectorType })
       .from(userConnectors)
       .where(
         and(
@@ -181,7 +181,7 @@ export function zeroAgentEnabledConnectorTypes(args: {
       .orderBy(asc(userConnectors.connectorType));
 
     return rows.map((row) => {
-      return connectorRefSchema.parse(row.connectorType);
+      return connectorSlugSchema.parse(row.connectorSlug);
     });
   });
 }

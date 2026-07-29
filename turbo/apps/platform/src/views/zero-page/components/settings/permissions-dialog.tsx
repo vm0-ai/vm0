@@ -23,7 +23,7 @@ import {
   DropdownMenuContent,
   DropdownMenuItem,
 } from "@vm0/ui";
-import type { ConnectorRef } from "@vm0/api-contracts/contracts/connector-identity";
+import type { ConnectorSlug } from "@vm0/api-contracts/contracts/connector-identity";
 import type {
   PublicConnectorCatalogIcon,
   PublicConnectorCatalogPermissionDetail,
@@ -104,7 +104,7 @@ interface ConnectorPermission {
 interface PermissionsDrawerProps {
   agentId: string;
   targetKind?: "agent" | "workflow";
-  connectorRef: ConnectorRef;
+  connectorSlug: ConnectorSlug;
   connectorLabel: string;
   metadata$: Computed<Promise<PublicConnectorCatalogPermissionDetail | null>>;
   displayName: string;
@@ -142,7 +142,6 @@ interface PermissionsDrawerFooterProps {
 }
 
 interface InitialPermissionDrawerState {
-  readonly ref: ConnectorRef;
   readonly explicitGrants: Map<string, UserPermissionGrantResponse>;
   readonly initialPolicyKey: string;
 }
@@ -165,24 +164,23 @@ type LoadedPermissionsDrawerContentProps = Pick<
 
 function buildInitialPermissionDrawerState({
   agentId,
-  connectorRef,
+  connectorSlug,
   metadata,
   initialPolicies,
   initialGrants,
 }: Pick<
   PermissionsDrawerProps,
-  "agentId" | "connectorRef" | "initialPolicies" | "initialGrants"
+  "agentId" | "connectorSlug" | "initialPolicies" | "initialGrants"
 > & {
   readonly metadata: PublicConnectorCatalogPermissionDetail;
 }): InitialPermissionDrawerState {
-  const explicitGrants = buildExplicitGrantMap(connectorRef, initialGrants);
+  const explicitGrants = buildExplicitGrantMap(connectorSlug, initialGrants);
   const grantStateKey = explicitGrantStateKey(explicitGrants);
   const context = createPermissionDraftContext({ metadata, initialPolicies });
   const initialPolicyStateKey = permissionDraftInitialPolicyKey(context);
   return {
-    ref: connectorRef,
     explicitGrants,
-    initialPolicyKey: `${agentId}\u0000${connectorRef}\u0000${permissionDraftMetadataKey(metadata)}\u0000${initialPolicyStateKey}\u0000${grantStateKey}`,
+    initialPolicyKey: `${agentId}\u0000${connectorSlug}\u0000${permissionDraftMetadataKey(metadata)}\u0000${initialPolicyStateKey}\u0000${grantStateKey}`,
   };
 }
 
@@ -370,12 +368,12 @@ function filterPermissionsForSearch(
 }
 
 function buildExplicitGrantMap(
-  ref: string,
+  connectorSlug: string,
   grants: readonly UserPermissionGrantResponse[],
 ): Map<string, UserPermissionGrantResponse> {
   const result = new Map<string, UserPermissionGrantResponse>();
   for (const grant of grants) {
-    if (grant.connectorRef === ref) {
+    if (grant.connectorRef === connectorSlug) {
       result.set(grant.permission, grant);
     }
   }
@@ -1551,7 +1549,7 @@ function PermissionsContent({
   const loadedInitialState = loadedMetadata
     ? buildInitialPermissionDrawerState({
         agentId: props.agentId,
-        connectorRef: props.connectorRef,
+        connectorSlug: props.connectorSlug,
         metadata: loadedMetadata,
         initialPolicies: props.initialPolicies,
         initialGrants: props.initialGrants,
@@ -1561,7 +1559,7 @@ function PermissionsContent({
   const message =
     metadataLoadable.state === "hasError"
       ? "Failed to load permission metadata"
-      : `No permission metadata found for ${props.connectorRef}`;
+      : `No permission metadata found for ${props.connectorSlug}`;
 
   return (
     <>

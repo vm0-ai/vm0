@@ -216,7 +216,7 @@ export const getGithubInstallation$ = command(
     const resolver = await get(connectorActionResolver());
     signal.throwIfAborted();
     const resolvedMethod = await resolver.resolveNewActionMethod({
-      connectorRef: "github",
+      connectorSlug: "github",
       authMethodId: getGithubOAuthAuthMethod(),
       expectedGrantKind: "auth-code",
     });

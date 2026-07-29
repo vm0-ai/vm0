@@ -46,7 +46,7 @@ function findConnector(
 }
 
 interface ConnectorGuidance {
-  readonly type: string;
+  readonly connectorSlug: string;
   readonly label: string;
   readonly supportsGenerationType: boolean;
 }
@@ -66,7 +66,7 @@ async function resolveConnector(
       return entry === connectorGenerationType;
     });
   return {
-    type: connector.connectorRef,
+    connectorSlug: connector.connectorRef,
     label: connector.label,
     supportsGenerationType: supports,
   };
@@ -89,7 +89,7 @@ export async function printConnectorGuidance(
 
   if (!guidance.supportsGenerationType) {
     console.log(
-      `${guidance.label} (${guidance.type}) does not advertise ${generationType} generation.`,
+      `${guidance.label} (${guidance.connectorSlug}) does not advertise ${generationType} generation.`,
     );
     console.log("");
     console.log(
@@ -99,16 +99,16 @@ export async function printConnectorGuidance(
   }
 
   console.log(
-    `${guidance.label} (${guidance.type}) handles ${generationType} generation through its own connector skill, not through "zero generate".`,
+    `${guidance.label} (${guidance.connectorSlug}) handles ${generationType} generation through its own connector skill, not through "zero generate".`,
   );
   console.log("");
   console.log(`Next steps:`);
-  console.log(`  - Use the "${guidance.type}" skill in this session.`);
+  console.log(`  - Use the "${guidance.connectorSlug}" skill in this session.`);
   console.log(
     `  - Or call the connector directly via its documented endpoints.`,
   );
   console.log("");
   console.log(
-    `Run "zero connector status ${guidance.type}" to verify the connector is connected and authorized for the current agent.`,
+    `Run "zero connector status ${guidance.connectorSlug}" to verify the connector is connected and authorized for the current agent.`,
   );
 }

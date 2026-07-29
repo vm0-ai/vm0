@@ -3,7 +3,7 @@ import userEvent from "@testing-library/user-event";
 import type { ConnectorResponse } from "@vm0/api-contracts/contracts/connector-schemas";
 import type {
   ConnectorAuthMethodId,
-  ConnectorRef,
+  ConnectorSlug,
 } from "@vm0/api-contracts/contracts/connector-identity";
 import {
   ILLUSTRATION_TEMPLATE_ITEMS,
@@ -33,7 +33,7 @@ import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { localStorageSignals } from "../../../signals/external/local-storage.ts";
 import { CODEX_FAST_MODE_LOCAL_DEFAULT_STORAGE_KEY } from "../../../signals/zero-page/codex-fast-local-default.ts";
 import { click, queryAllByRoleFast } from "../../../__tests__/page-helper.ts";
-import { composerOverflowConnectorRefs } from "../../../mocks/handlers/connector-catalog-fixtures.ts";
+import { composerOverflowConnectorSlugs } from "../../../mocks/handlers/connector-catalog-fixtures.ts";
 import { mockChatLifecycle } from "./chat-test-helpers.ts";
 import {
   normalizeMockChatEvents,
@@ -76,8 +76,8 @@ export function applyUserConnectorUpdate(
     return Array.from(new Set([...current, ...body.enabledTypes]));
   }
   if (body.operation === "remove") {
-    return current.filter((type) => {
-      return !body.enabledTypes.includes(type);
+    return current.filter((connectorSlug) => {
+      return !body.enabledTypes.includes(connectorSlug);
     });
   }
   return [...body.enabledTypes];
@@ -491,7 +491,7 @@ export function mockActiveTemplateThread(): void {
 
 export function mockConnectors(
   connectors: {
-    type: ConnectorRef;
+    connectorSlug: ConnectorSlug;
     authMethod?: ConnectorAuthMethodId;
     externalUsername?: string;
     oauthScopes?: string[];
@@ -501,7 +501,7 @@ export function mockConnectors(
     connectors.map((connector): ConnectorResponse => {
       return {
         id: crypto.randomUUID(),
-        type: connector.type,
+        type: connector.connectorSlug,
         authMethod: connector.authMethod ?? "oauth",
         externalId: null,
         externalUsername: connector.externalUsername ?? null,
@@ -519,24 +519,27 @@ export function mockConnectors(
 
 export function mockManyConnectedConnectors(): void {
   mockConnectors([
-    { type: "github", externalUsername: "octocat" },
-    { type: "slack", externalUsername: "launch-team" },
-    ...composerOverflowConnectorRefs.map((type) => {
-      return { type };
+    { connectorSlug: "github", externalUsername: "octocat" },
+    { connectorSlug: "slack", externalUsername: "launch-team" },
+    ...composerOverflowConnectorSlugs.map((connectorSlug) => {
+      return { connectorSlug };
     }),
   ]);
 }
 
 export function mockAgentConnectorAuthorizations(
-  initialTypes: readonly string[],
+  initialConnectorSlugs: readonly string[],
 ): void {
-  let enabledTypes: string[] = [...initialTypes];
+  let enabledConnectorSlugs: string[] = [...initialConnectorSlugs];
   context.mocks.api(zeroUserConnectorsContract.get, ({ respond }) => {
-    return respond(200, { enabledTypes });
+    return respond(200, { enabledTypes: enabledConnectorSlugs });
   });
   context.mocks.api(zeroUserConnectorsContract.update, ({ body, respond }) => {
-    enabledTypes = applyUserConnectorUpdate(enabledTypes, body);
-    return respond(200, { enabledTypes });
+    enabledConnectorSlugs = applyUserConnectorUpdate(
+      enabledConnectorSlugs,
+      body,
+    );
+    return respond(200, { enabledTypes: enabledConnectorSlugs });
   });
 }
 

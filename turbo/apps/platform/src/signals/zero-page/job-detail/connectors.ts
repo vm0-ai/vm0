@@ -12,8 +12,8 @@ import { agentDetail$ } from "./detail.ts";
 // ---------------------------------------------------------------------------
 // Authorized connectors: User↔Agent↔Connector (per-agent grant)
 //  - GET/PUT /api/zero/agents/:id/user-connectors
-//  - Data: { enabledTypes: string[] } — connector types this user authorized
-//    for this agent
+//  - Wire data: { enabledTypes: string[] } — connector slugs this user
+//    authorized for this agent
 // ---------------------------------------------------------------------------
 
 const authorizedConnectors$ = computed(async (get): Promise<string[]> => {
@@ -24,12 +24,12 @@ const authorizedConnectors$ = computed(async (get): Promise<string[]> => {
   const authorizations = await get(
     agentConnectorAuthorizations({ agentId: detail.agentId }),
   );
-  return [...authorizations.enabledTypes];
+  return [...authorizations.enabledConnectorSlugs];
 });
 
 type AuthorizedConnectorsDraft = {
   readonly agentId: string;
-  readonly enabledTypes: readonly string[];
+  readonly enabledConnectorSlugs: readonly string[];
 };
 
 const internalAuthorizedConnectors$ = state<AuthorizedConnectorsDraft | null>(
@@ -44,7 +44,7 @@ export const agentAuthorizedConnectors$ = computed(
     }
     const local = get(internalAuthorizedConnectors$);
     if (local?.agentId === detail.agentId) {
-      return [...local.enabledTypes];
+      return [...local.enabledConnectorSlugs];
     }
     return await get(authorizedConnectors$);
   },
@@ -67,10 +67,10 @@ const setAgentConnectorDraft$ = command(
     const current = get(internalAuthorizedConnectors$);
     const base =
       current?.agentId === detail.agentId
-        ? current.enabledTypes
+        ? current.enabledConnectorSlugs
         : await get(authorizedConnectors$);
     signal.throwIfAborted();
-    const enabledTypes =
+    const enabledConnectorSlugs =
       args.operation === "add"
         ? Array.from(new Set([...base, args.name]))
         : base.filter((s) => {
@@ -78,7 +78,7 @@ const setAgentConnectorDraft$ = command(
           });
     set(internalAuthorizedConnectors$, {
       agentId: detail.agentId,
-      enabledTypes,
+      enabledConnectorSlugs,
     });
   },
 );

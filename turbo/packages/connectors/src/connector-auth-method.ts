@@ -644,7 +644,7 @@ export type ConnectorDeviceAuthStartOptionsParseResult =
     };
 
 function parseConnectorDeviceAuthStartOption(args: {
-  readonly connectorRef: string;
+  readonly connectorSlug: string;
   readonly authMethodId: string;
   readonly optionName: string;
   readonly config: ConnectorDeviceAuthStartOptionConfig;
@@ -655,7 +655,7 @@ function parseConnectorDeviceAuthStartOption(args: {
     if (args.config.required) {
       return {
         success: false,
-        message: `${args.connectorRef} ${args.authMethodId} device-auth start option ${args.optionName} is required`,
+        message: `${args.connectorSlug} ${args.authMethodId} device-auth start option ${args.optionName} is required`,
       };
     }
     return { success: true, options: {} };
@@ -670,7 +670,7 @@ function parseConnectorDeviceAuthStartOption(args: {
       ) {
         return {
           success: false,
-          message: `${args.connectorRef} ${args.authMethodId} device-auth start option ${args.optionName} must be one of: ${args.config.options
+          message: `${args.connectorSlug} ${args.authMethodId} device-auth start option ${args.optionName} must be one of: ${args.config.options
             .map((option) => {
               return option.value;
             })
@@ -693,7 +693,7 @@ function connectorDeviceAuthStartOptionValue(
 }
 
 export function parseConnectorDeviceAuthStartOptionsConfig(args: {
-  readonly connectorRef: string;
+  readonly connectorSlug: string;
   readonly authMethodId: string;
   readonly startOptions: ConnectorDeviceAuthStartOptionsConfig | undefined;
   readonly options: ConnectorDeviceAuthStartOptions | undefined;
@@ -707,7 +707,7 @@ export function parseConnectorDeviceAuthStartOptionsConfig(args: {
     }
     return {
       success: false,
-      message: `${args.connectorRef} ${args.authMethodId} device-auth start options are not supported: ${requestedOptionKeys.join(", ")}`,
+      message: `${args.connectorSlug} ${args.authMethodId} device-auth start options are not supported: ${requestedOptionKeys.join(", ")}`,
     };
   }
 
@@ -715,7 +715,7 @@ export function parseConnectorDeviceAuthStartOptionsConfig(args: {
     if (!Object.hasOwn(configuredOptions, optionName)) {
       return {
         success: false,
-        message: `${args.connectorRef} ${args.authMethodId} device-auth start option ${optionName} is not supported`,
+        message: `${args.connectorSlug} ${args.authMethodId} device-auth start option ${optionName} is not supported`,
       };
     }
   }
@@ -723,7 +723,7 @@ export function parseConnectorDeviceAuthStartOptionsConfig(args: {
   const normalizedOptions: Record<string, string> = {};
   for (const [optionName, config] of Object.entries(configuredOptions)) {
     const parsedOption = parseConnectorDeviceAuthStartOption({
-      connectorRef: args.connectorRef,
+      connectorSlug: args.connectorSlug,
       authMethodId: args.authMethodId,
       optionName,
       config,

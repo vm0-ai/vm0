@@ -27,7 +27,7 @@ const {
   revokeConnectorAuthMethodAccessToken,
   startConnectorExternalCodeAuthorization,
 } = providerOperationFixture({
-  connectorRef: "nintendo-switch-parental-controls",
+  connectorSlug: "nintendo-switch-parental-controls",
   authMethodId: "api",
   method: NINTENDO_SWITCH_PARENTAL_CONTROLS_PROVIDER_METHOD,
 });
@@ -71,7 +71,7 @@ function sha256Base64Url(value: string): string {
 
 async function startNintendoSwitchParentalControlsSession() {
   const result = await startConnectorExternalCodeAuthorization({
-    type: "nintendo-switch-parental-controls",
+    connectorSlug: "nintendo-switch-parental-controls",
     authMethod: "api",
     authClient: nintendoSwitchParentalControlsAuthClient(),
   });
@@ -193,7 +193,7 @@ describe("Nintendo Switch Parental Controls external-code provider", () => {
     );
 
     const completed = await completeConnectorExternalCodeAuthorization({
-      type: "nintendo-switch-parental-controls",
+      connectorSlug: "nintendo-switch-parental-controls",
       authMethod: "api",
       authClient: nintendoSwitchParentalControlsAuthClient(),
       providerState: started.providerState,
@@ -333,7 +333,7 @@ describe("Nintendo Switch Parental Controls external-code provider", () => {
 
     await expect(
       refreshConnectorAuthProviderAccessToken({
-        type: "nintendo-switch-parental-controls",
+        connectorSlug: "nintendo-switch-parental-controls",
         authMethod: "api",
         authClient: nintendoSwitchParentalControlsAuthClient(),
         inputs: {
@@ -362,7 +362,7 @@ describe("Nintendo Switch Parental Controls external-code provider", () => {
 
     await expect(
       refreshConnectorAuthProviderAccessToken({
-        type: "nintendo-switch-parental-controls",
+        connectorSlug: "nintendo-switch-parental-controls",
         authMethod: "api",
         authClient: nintendoSwitchParentalControlsAuthClient(),
         inputs: {
@@ -405,7 +405,7 @@ describe("Nintendo Switch Parental Controls external-code provider", () => {
 
     await expect(
       revokeConnectorAuthMethodAccessToken({
-        type: "nintendo-switch-parental-controls",
+        connectorSlug: "nintendo-switch-parental-controls",
         authMethod: "api",
         readEnv: () => {
           throw new Error("Static public revoke must not read env");

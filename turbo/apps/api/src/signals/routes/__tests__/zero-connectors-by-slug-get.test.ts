@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 
 import {
   zeroConnectorManualGrantContract,
-  zeroConnectorsByTypeContract,
+  zeroConnectorsBySlugContract,
 } from "@vm0/api-contracts/contracts/zero-connectors";
 import { createStore } from "ccstate";
 import { afterEach } from "vitest";
@@ -67,7 +67,7 @@ async function connectOpenai(fixture: AuthenticatedFixture): Promise<void> {
 async function deleteOpenai(fixture: AuthenticatedFixture): Promise<void> {
   mocks.clerk.session(fixture.userId, fixture.orgId);
   await accept(
-    setupApp({ context })(zeroConnectorsByTypeContract).delete({
+    setupApp({ context })(zeroConnectorsBySlugContract).delete({
       params: { type: "openai" },
       headers: authHeaders(),
     }),
@@ -88,7 +88,7 @@ describe("GET /api/zero/connectors/:type", () => {
   });
 
   it("returns 401 when not authenticated", async () => {
-    const client = setupApp({ context })(zeroConnectorsByTypeContract);
+    const client = setupApp({ context })(zeroConnectorsBySlugContract);
     const response = await accept(
       client.get({ params: { type: "github" }, headers: {} }),
       [401],
@@ -100,7 +100,7 @@ describe("GET /api/zero/connectors/:type", () => {
   it("returns 401 when the authenticated session has no organization", async () => {
     mocks.clerk.session(`user_${randomUUID()}`, null);
 
-    const client = setupApp({ context })(zeroConnectorsByTypeContract);
+    const client = setupApp({ context })(zeroConnectorsBySlugContract);
     const response = await accept(
       client.get({
         params: { type: "github" },
@@ -116,7 +116,7 @@ describe("GET /api/zero/connectors/:type", () => {
     const fixture = seedAuthenticatedFixture();
     mocks.clerk.session(fixture.userId, fixture.orgId);
 
-    const client = setupApp({ context })(zeroConnectorsByTypeContract);
+    const client = setupApp({ context })(zeroConnectorsBySlugContract);
     const response = await accept(
       client.get({
         params: { type: "github" },
@@ -134,7 +134,7 @@ describe("GET /api/zero/connectors/:type", () => {
     await connectOpenai(fixture);
     mocks.clerk.session(fixture.userId, fixture.orgId);
 
-    const client = setupApp({ context })(zeroConnectorsByTypeContract);
+    const client = setupApp({ context })(zeroConnectorsBySlugContract);
     const response = await accept(
       client.get({
         params: { type: "openai" },
@@ -166,7 +166,7 @@ describe("GET /api/zero/connectors/:type", () => {
       exp: seconds + 60,
     });
 
-    const client = setupApp({ context })(zeroConnectorsByTypeContract);
+    const client = setupApp({ context })(zeroConnectorsBySlugContract);
     const response = await accept(
       client.get({
         params: { type: "openai" },

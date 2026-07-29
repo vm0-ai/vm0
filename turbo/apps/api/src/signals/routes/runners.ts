@@ -1,5 +1,5 @@
 import { command } from "ccstate";
-import { connectorRefSchema } from "@vm0/api-contracts/contracts/connector-identity";
+import { connectorSlugSchema } from "@vm0/api-contracts/contracts/connector-identity";
 import {
   compatibleStoredExecutionContextSchema,
   elapsedSinceApiStartMs,
@@ -72,7 +72,7 @@ import { loadConnectorRunnerFirewallCatalog } from "../services/connector-runner
 import {
   networkPolicyRefreshesRecord,
   mergeNetworkPolicyRefreshes,
-  networkPolicyRefreshConnectorRefs,
+  networkPolicyRefreshConnectorSlugs,
   resolveActiveNetworkPolicyRefreshes,
   resolveActiveNetworkPolicyRefreshesFromBaseline,
 } from "../services/zero-user-permission-grants.service";
@@ -1205,22 +1205,22 @@ function connectorPermissionBaselineMatchesStoredContext(
   storedContext: StoredExecutionContext,
   baseline: StoredConnectorPermissionBaseline,
 ): boolean {
-  const baselineConnectorRefs = Object.keys(baseline.connectors);
-  const storedBuiltinConnectorRefs = new Set(
+  const baselineConnectorSlugs = Object.keys(baseline.connectors);
+  const storedBuiltinConnectorSlugs = new Set(
     (storedContext.firewalls ?? []).flatMap((firewall) => {
       return firewall.kind === "builtin" &&
-        connectorRefSchema.safeParse(firewall.name).success
+        connectorSlugSchema.safeParse(firewall.name).success
         ? [firewall.name]
         : [];
     }),
   );
   const storedNetworkPolicies = storedContext.networkPolicies ?? {};
   return (
-    baselineConnectorRefs.length === storedBuiltinConnectorRefs.size &&
-    baselineConnectorRefs.every((connectorRef) => {
+    baselineConnectorSlugs.length === storedBuiltinConnectorSlugs.size &&
+    baselineConnectorSlugs.every((connectorSlug) => {
       return (
-        storedBuiltinConnectorRefs.has(connectorRef) &&
-        Object.hasOwn(storedNetworkPolicies, connectorRef)
+        storedBuiltinConnectorSlugs.has(connectorSlug) &&
+        Object.hasOwn(storedNetworkPolicies, connectorSlug)
       );
     })
   );
@@ -1236,8 +1236,8 @@ async function refreshClaimNetworkPolicies(args: {
   Pick<StoredExecutionContext, "networkPolicies" | "networkPolicyRefreshes">
 > {
   const storedNetworkPolicies = args.storedContext.networkPolicies ?? {};
-  const networkPolicyConnectorRefs = Object.keys(storedNetworkPolicies);
-  if (networkPolicyConnectorRefs.length === 0) {
+  const networkPolicyConnectorSlugs = Object.keys(storedNetworkPolicies);
+  if (networkPolicyConnectorSlugs.length === 0) {
     return {
       networkPolicies: args.storedContext.networkPolicies,
       networkPolicyRefreshes: undefined,
@@ -1256,17 +1256,17 @@ async function refreshClaimNetworkPolicies(args: {
       const connectorCatalogSnapshot = await loadConnectorRuntimeSnapshot(
         args.db,
       );
-      const connectorRefs = networkPolicyRefreshConnectorRefs(
+      const connectorSlugs = networkPolicyRefreshConnectorSlugs(
         connectorCatalogSnapshot.serverFirewalls,
-        networkPolicyConnectorRefs,
+        networkPolicyConnectorSlugs,
       );
       const refreshes =
-        connectorRefs.length === 0
+        connectorSlugs.length === 0
           ? []
           : await resolveActiveNetworkPolicyRefreshes(
               args.db,
               scope,
-              connectorRefs,
+              connectorSlugs,
               connectorCatalogSnapshot,
             );
       return { refreshes, path };
@@ -2332,7 +2332,7 @@ const networkPolicyRefreshInner$ = command(
       return authError;
     }
 
-    const connectorRefs = [...new Set(body.data.connectorRefs)];
+    const connectorSlugs = [...new Set(body.data.connectorRefs)];
     const refreshes = await resolveActiveNetworkPolicyRefreshes(
       db,
       {
@@ -2340,11 +2340,11 @@ const networkPolicyRefreshInner$ = command(
         userId: run.userId,
         agentId: run.agentId,
       },
-      connectorRefs,
+      connectorSlugs,
     );
     signal.throwIfAborted();
     if (refreshes.length === 0) {
-      return notFound(`Connectors not found: ${connectorRefs.join(", ")}`);
+      return notFound(`Connectors not found: ${connectorSlugs.join(", ")}`);
     }
 
     return {
@@ -2352,7 +2352,8 @@ const networkPolicyRefreshInner$ = command(
       body: {
         refreshes: refreshes.map((refresh) => {
           return {
-            connectorRef: refresh.connectorRef,
+            // TODO(#23619): Rename with the runner response wire contract.
+            connectorRef: refresh.connectorSlug,
             networkPolicy: refresh.networkPolicy,
             nextRefreshAt: refresh.nextRefreshAt,
           };

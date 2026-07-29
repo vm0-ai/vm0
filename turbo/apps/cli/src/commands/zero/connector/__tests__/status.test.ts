@@ -36,7 +36,7 @@ const connectedGithub = {
 
 function statusItemFromConnector(connector: Record<string, unknown>) {
   return catalogStatusItem({
-    connectorRef: connector.type as string,
+    connectorSlug: connector.type as string,
     authMethods: [authCodeMethod(connector.authMethod as string)],
     connection: {
       authMethod: connector.authMethod as string,
@@ -62,7 +62,7 @@ function stubConnector(
   if (status === 404) {
     return stubConnectorCatalogStatus([
       catalogStatusItem({
-        connectorRef: type,
+        connectorSlug: type,
         authMethods: [authCodeMethod("oauth")],
       }),
     ]);
@@ -94,19 +94,19 @@ function stubAgent(
 
 function stubUserConnectors(
   id: string,
-  enabledTypes: string[],
+  enabledConnectorSlugs: string[],
   origin = "http://localhost:3000",
 ) {
   return http.get(`${origin}/api/zero/agents/${id}/user-connectors`, () => {
-    return HttpResponse.json({ enabledTypes });
+    return HttpResponse.json({ enabledTypes: enabledConnectorSlugs });
   });
 }
 
-function stubAvailableConnectors(types: string[]) {
+function stubAvailableConnectors(connectorSlugs: string[]) {
   return stubConnectorCatalogStatus(
-    types.map((type) => {
+    connectorSlugs.map((connectorSlug) => {
       return catalogStatusItem({
-        connectorRef: type,
+        connectorSlug,
         authMethods: [authCodeMethod("oauth")],
       });
     }),
@@ -503,7 +503,7 @@ describe("zero connector status command", () => {
   });
 
   describe("input validation", () => {
-    it("should reject unavailable connector refs", async () => {
+    it("should reject unavailable connector slugs", async () => {
       await expect(async () => {
         await statusCommand.parseAsync(["node", "cli", "invalid-type"]);
       }).rejects.toThrow("process.exit called");

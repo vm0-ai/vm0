@@ -14,10 +14,10 @@ export const setupDirectedAuthorizePage$ = command(
     }
 
     const params = get(pathParams$);
-    const type = typeof params?.type === "string" ? params.type : "";
+    const connectorSlug = typeof params?.type === "string" ? params.type : "";
 
     set(updatePage$, createElement(ZeroDirectedAuthorizePage), "minimal");
-    set(updateDocumentTitle$, `Authorize ${type}`);
+    set(updateDocumentTitle$, `Authorize ${connectorSlug}`);
     await set(hideAppSkeleton$, signal);
   },
 );

@@ -273,7 +273,7 @@ async function resolveGmailAccess(args: {
     snapshot,
     orgId: args.orgId,
     userId: args.userId,
-    connectorRef: "gmail",
+    connectorSlug: "gmail",
     ...(args.connectorId === undefined
       ? {}
       : { connectorId: args.connectorId }),

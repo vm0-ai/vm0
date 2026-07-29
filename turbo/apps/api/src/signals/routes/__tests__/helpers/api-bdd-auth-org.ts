@@ -1302,7 +1302,7 @@ export function createAuthOrgAgentsBddApi(context: TestContext) {
       );
     },
 
-    async readEnabledConnectorTypes(
+    async readEnabledConnectorSlugs(
       actor: ApiTestUser,
       agentId: string,
     ): Promise<readonly string[]> {

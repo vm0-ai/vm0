@@ -316,7 +316,7 @@ describe("zero workflow automation scheduler", () => {
     );
     await runsApi.applyUserPermissionGrant(scenario.actor, {
       agentId: scenario.agentId,
-      connectorRef: "gmail",
+      connectorSlug: "gmail",
       permission: "messages.write",
       action: "allow",
     });

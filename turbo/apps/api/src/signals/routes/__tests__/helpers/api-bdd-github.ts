@@ -11,7 +11,7 @@ import {
   type GithubConnectUserBody,
   type GithubInstallationResponse,
 } from "@vm0/api-contracts/contracts/integrations-github";
-import { zeroConnectorsByTypeContract } from "@vm0/api-contracts/contracts/zero-connectors";
+import { zeroConnectorsBySlugContract } from "@vm0/api-contracts/contracts/zero-connectors";
 import { zeroFeatureSwitchesContract } from "@vm0/api-contracts/contracts/zero-feature-switches";
 import {
   zeroSecretsContract,
@@ -403,7 +403,7 @@ export function createGithubBddApi(context: TestContext) {
     },
 
     async readGithubConnector(actor: ApiTestUser) {
-      const client = setupApp({ context })(zeroConnectorsByTypeContract);
+      const client = setupApp({ context })(zeroConnectorsBySlugContract);
       const response = await accept(
         client.get({
           headers: authenticate(actor),

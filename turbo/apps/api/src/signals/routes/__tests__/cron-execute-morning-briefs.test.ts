@@ -847,7 +847,7 @@ describe("cron execute morning briefs", () => {
     await flushWaitUntilForTest();
     expect(triggered.body.runId).toBeTruthy();
 
-    const githubConnector = await connectors.readConnectorByType(
+    const githubConnector = await connectors.readConnectorBySlug(
       scenario.actor,
       "github",
     );

@@ -11,7 +11,7 @@ import { useTranslation } from "react-i18next";
 import { ConnectorIcon } from "./components/settings/connector-icons.tsx";
 import { getCategories } from "./zero-ideation-data.ts";
 import { featureSwitch$ } from "../../signals/external/feature-switch.ts";
-import { connectorCatalogStatusByRef$ } from "../../signals/external/connectors.ts";
+import { connectorCatalogStatusBySlug$ } from "../../signals/external/connectors.ts";
 import { detachedNavigateTo$ } from "../../signals/route.ts";
 import { currentAgentId$ } from "../../signals/agent.ts";
 import {
@@ -63,19 +63,19 @@ function localizeCategories(
 export function ZeroIdeationPage() {
   const { t } = useTranslation("agents");
   const features = useLastResolved(featureSwitch$);
-  const connectorStatusLoadable = useLoadable(connectorCatalogStatusByRef$);
-  const lastConnectorStatusByRef = useLastResolved(
-    connectorCatalogStatusByRef$,
+  const connectorStatusLoadable = useLoadable(connectorCatalogStatusBySlug$);
+  const lastConnectorStatusBySlug = useLastResolved(
+    connectorCatalogStatusBySlug$,
   );
-  const connectorStatusByRef =
+  const connectorStatusBySlug =
     connectorStatusLoadable.state === "hasData"
       ? connectorStatusLoadable.data
       : connectorStatusLoadable.state === "loading"
-        ? lastConnectorStatusByRef
+        ? lastConnectorStatusBySlug
         : undefined;
-  const visibleConnectorRefs =
-    connectorStatusByRef !== undefined
-      ? new Set(connectorStatusByRef.keys())
+  const visibleConnectorSlugs =
+    connectorStatusBySlug !== undefined
+      ? new Set(connectorStatusBySlug.keys())
       : connectorStatusLoadable.state === "loading"
         ? undefined
         : new Set<string>();
@@ -86,7 +86,7 @@ export function ZeroIdeationPage() {
     { returnObjects: true },
   );
   const categories = localizeCategories(
-    getCategories({ features, visibleConnectorRefs }).slice(0, 8),
+    getCategories({ features, visibleConnectorSlugs }).slice(0, 8),
     catalogCopy,
   );
   const activeTab = useGet(ideationActiveTab$);
@@ -275,11 +275,11 @@ export function ZeroIdeationPage() {
                       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
                         {category.cases.map((useCase) => {
                           const connectors =
-                            useCase.connectors?.flatMap((connectorRef) => {
+                            useCase.connectors?.flatMap((connectorSlug) => {
                               const connector =
-                                connectorStatusByRef?.get(connectorRef);
+                                connectorStatusBySlug?.get(connectorSlug);
                               return connector
-                                ? [{ connectorRef, icon: connector.icon }]
+                                ? [{ connectorSlug, icon: connector.icon }]
                                 : [];
                             }) ?? [];
                           return (
@@ -307,7 +307,7 @@ export function ZeroIdeationPage() {
                                     {connectors.map((connector) => {
                                       return (
                                         <span
-                                          key={connector.connectorRef}
+                                          key={connector.connectorSlug}
                                           className="flex h-7 w-7 items-center justify-center rounded-md border border-border/60 bg-background"
                                         >
                                           <ConnectorIcon

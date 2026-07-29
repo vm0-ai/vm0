@@ -32,7 +32,7 @@ import {
   agentResponse,
   defaultAgentResponse,
   zeroAgentDetail,
-  zeroAgentEnabledConnectorTypes,
+  zeroAgentEnabledConnectorSlugs,
   zeroAgentEnabledCustomConnectorIds,
   zeroAgentExists,
   zeroAgentList,
@@ -478,27 +478,28 @@ const getAgentUserConnectorsInner$ = computed(async (get) => {
     return agentNotFound(params.id);
   }
 
-  const enabledTypes = await get(
-    zeroAgentEnabledConnectorTypes({
+  const enabledConnectorSlugs = await get(
+    zeroAgentEnabledConnectorSlugs({
       orgId: auth.orgId,
       userId: auth.userId,
       agentId: params.id,
     }),
   );
   const resolver = await get(connectorActionResolver());
-  const availableEnabledTypes: (typeof enabledTypes)[number][] = [];
-  for (const connectorRef of enabledTypes) {
-    const resolved = await resolver.resolveRef({
-      connectorRef,
+  const availableEnabledConnectorSlugs: (typeof enabledConnectorSlugs)[number][] =
+    [];
+  for (const connectorSlug of enabledConnectorSlugs) {
+    const resolved = await resolver.resolveSlug({
+      connectorSlug,
       requireExecutable: true,
     });
     if (resolved.ok) {
-      availableEnabledTypes.push(connectorRef);
+      availableEnabledConnectorSlugs.push(connectorSlug);
     }
   }
   return {
     status: 200 as const,
-    body: { enabledTypes: availableEnabledTypes },
+    body: { enabledTypes: availableEnabledConnectorSlugs },
   };
 });
 
@@ -816,7 +817,7 @@ const updateAgentUserConnectorsInner$ = command(
       return agentNotFound(params.id);
     }
 
-    const uniqueTypes = Array.from(new Set(body.data.enabledTypes));
+    const uniqueConnectorSlugs = Array.from(new Set(body.data.enabledTypes));
     const operation = body.data.operation ?? "replace";
     if (operation !== "remove") {
       // Agent connector selection is persisted execution configuration, not a
@@ -825,14 +826,14 @@ const updateAgentUserConnectorsInner$ = command(
       // must not invalidate direct API updates or an existing agent config.
       const resolver = await get(connectorActionResolver());
       signal.throwIfAborted();
-      const resolved = await resolver.resolveRefs({
-        connectorRefs: uniqueTypes,
+      const resolved = await resolver.resolveSlugs({
+        connectorSlugs: uniqueConnectorSlugs,
         requireExecutable: true,
       });
       signal.throwIfAborted();
       if (!resolved.ok) {
         return validationError(
-          `Invalid connector types: ${resolved.connectorRef}`,
+          `Invalid connector types: ${resolved.connectorSlug}`,
         );
       }
     }
@@ -841,12 +842,12 @@ const updateAgentUserConnectorsInner$ = command(
       orgId: auth.orgId,
       userId: auth.userId,
       agentId: params.id,
-      enabledTypes: uniqueTypes,
+      enabledConnectorSlugs: uniqueConnectorSlugs,
       operation,
       allowMissingZeroAgentForEmptyReplace:
         operation === "replace" &&
         agent.zeroAgentId === null &&
-        uniqueTypes.length === 0,
+        uniqueConnectorSlugs.length === 0,
     });
     signal.throwIfAborted();
     if (updated.status === "agentNotFound") {
@@ -869,7 +870,7 @@ const updateAgentUserConnectorsInner$ = command(
 
     return {
       status: 200 as const,
-      body: { enabledTypes: [...updated.enabledTypes] },
+      body: { enabledTypes: [...updated.enabledConnectorSlugs] },
     };
   },
 );

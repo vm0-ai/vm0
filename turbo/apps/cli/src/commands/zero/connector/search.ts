@@ -62,15 +62,15 @@ export const searchCommand = new Command()
           console.log(`Too many results (top ${options.limit} of ${total}):`);
         }
 
-        const typeHeader = "TYPE";
+        const connectorSlugHeader = "TYPE";
         const connectedAsHeader = "CONNECTED AS";
 
         const connectedCells = results.map((r) => {
           return renderConnectedAsCell(r.connector);
         });
 
-        const typeWidth = Math.max(
-          typeHeader.length,
+        const connectorSlugWidth = Math.max(
+          connectorSlugHeader.length,
           ...results.map((r) => {
             return r.connector.connectorRef.length;
           }),
@@ -83,7 +83,7 @@ export const searchCommand = new Command()
         );
 
         const headerParts = [
-          typeHeader.padEnd(typeWidth),
+          connectorSlugHeader.padEnd(connectorSlugWidth),
           connectedAsHeader.padEnd(connectedAsWidth),
         ];
         if (agentCtx) {
@@ -94,12 +94,14 @@ export const searchCommand = new Command()
         for (let i = 0; i < results.length; i++) {
           const result = results[i]!;
           const parts = [
-            result.connector.connectorRef.padEnd(typeWidth),
+            result.connector.connectorRef.padEnd(connectorSlugWidth),
             padEndAnsi(connectedCells[i]!, connectedAsWidth),
           ];
           if (agentCtx) {
             parts.push(
-              agentCtx.authorizedTypes.has(result.connector.connectorRef)
+              agentCtx.authorizedConnectorSlugs.has(
+                result.connector.connectorRef,
+              )
                 ? chalk.green("✓")
                 : chalk.dim("-"),
             );
