@@ -8,7 +8,12 @@ use tokio::sync::Mutex;
 use tokio_util::sync::CancellationToken;
 use tracing::{error, info, warn};
 
-use api_contracts::generated::{constants::runners::RUNNER_POLL_EXCLUDED_RUN_IDS_MAX, routes};
+use api_contracts::generated::{
+    constants::runners::{
+        RUNNER_CANCELLATION_RECOVERY_CAPABILITY, RUNNER_POLL_EXCLUDED_RUN_IDS_MAX,
+    },
+    routes,
+};
 use reqwest::{Response, StatusCode};
 use serde::{Serialize, de::DeserializeOwned};
 
@@ -33,8 +38,8 @@ use crate::http::{ApiRequestBuilder, HttpClient};
 use crate::ids::RunId;
 use crate::run_cancellation::RunCancellationRegistry;
 use crate::types::{
-    CompleteRequest, ExecutionContext, HeartbeatState, Job, NetworkPolicyRefreshBatchResponse,
-    PollResponse, SandboxReuseResult,
+    CancellationFinalizationRequest, CompleteRequest, CompleteResponse, ExecutionContext,
+    HeartbeatState, Job, NetworkPolicyRefreshBatchResponse, PollResponse, SandboxReuseResult,
 };
 use sandbox::SandboxId;
 
@@ -42,6 +47,7 @@ use sandbox::SandboxId;
 #[serde(rename_all = "camelCase")]
 struct ClaimRequestBody {
     telemetry: ClaimRequestTelemetry,
+    capabilities: [&'static str; 1],
 }
 
 #[derive(Serialize)]
@@ -673,7 +679,18 @@ impl JobProvider for ApiProvider {
                 .complete(&token, run_id, exit_code, error, sandbox_id, reuse_result)
                 .await
             {
-                Ok(()) => return,
+                Ok(response) => {
+                    if response.cancellation_finalization_required {
+                        finalize_cancellation_with_retry(
+                            &self.api,
+                            run_id,
+                            sandbox_id,
+                            reuse_result,
+                        )
+                        .await;
+                    }
+                    return;
+                }
                 Err(e) => {
                     let (retryable, status, failure_kind) = match &e {
                         RunnerError::ApiStatus(api_error) => {
@@ -737,6 +754,45 @@ impl JobProvider for ApiProvider {
                     }
                     return;
                 }
+            }
+        }
+    }
+}
+
+async fn finalize_cancellation_with_retry(
+    api: &ApiClient,
+    run_id: RunId,
+    sandbox_id: Option<SandboxId>,
+    reuse_result: Option<SandboxReuseResult>,
+) {
+    const MAX_ATTEMPTS: usize = 2;
+    const RETRY_DELAY: Duration = Duration::from_secs(2);
+
+    for attempt in 1..=MAX_ATTEMPTS {
+        match api
+            .finalize_cancellation(run_id, sandbox_id, reuse_result)
+            .await
+        {
+            Ok(()) => return,
+            Err(error) if attempt < MAX_ATTEMPTS => {
+                warn!(
+                    run_id = %run_id,
+                    attempt,
+                    max_attempts = MAX_ATTEMPTS,
+                    error = %error,
+                    "cancellation finalization report failed, retrying"
+                );
+                tokio::time::sleep(RETRY_DELAY).await;
+            }
+            Err(error) => {
+                error!(
+                    run_id = %run_id,
+                    attempt,
+                    max_attempts = MAX_ATTEMPTS,
+                    error = %error,
+                    "failed to report cancellation finalization"
+                );
+                return;
             }
         }
     }
@@ -952,7 +1008,7 @@ impl ApiClient {
         error: Option<&str>,
         sandbox_id: Option<SandboxId>,
         reuse_result: Option<SandboxReuseResult>,
-    ) -> RunnerResult<()> {
+    ) -> RunnerResult<CompleteResponse> {
         let body = CompleteRequest {
             run_id,
             exit_code,
@@ -969,8 +1025,59 @@ impl ApiClient {
         )
         .await?;
 
-        check_api_status(resp, "complete").await?;
+        let resp = check_api_status(resp, "complete").await?;
+        let bytes = resp.bytes().await.map_err(|error| {
+            RunnerError::Api(format!("complete response body read failed: {error}"))
+        })?;
 
+        if bytes.is_empty() {
+            return Ok(CompleteResponse {
+                success: true,
+                status: "completed".to_string(),
+                cancellation_finalization_required: false,
+            });
+        }
+        let response: CompleteResponse = decode_api_json_bytes(&bytes)
+            .map_err(|error| RunnerError::Api(format!("complete decode: {error}")))?;
+        if !response.success {
+            return Err(RunnerError::Api(
+                "complete response reported unsuccessful acknowledgement".to_string(),
+            ));
+        }
+        if !matches!(response.status.as_str(), "completed" | "failed") {
+            return Err(RunnerError::Api(
+                "complete response contained an invalid status".to_string(),
+            ));
+        }
+        Ok(response)
+    }
+
+    async fn finalize_cancellation(
+        &self,
+        run_id: RunId,
+        sandbox_id: Option<SandboxId>,
+        reuse_result: Option<SandboxReuseResult>,
+    ) -> RunnerResult<()> {
+        let body = CancellationFinalizationRequest {
+            sandbox_id,
+            sandbox_reuse_result: reuse_result,
+        };
+        let run_id = run_id.to_string();
+        let resp = send_api(
+            self.http
+                .request_resolved_route(
+                    routes::runners::runs::by_run_id::cancellation_finalized::route(
+                        routes::runners::runs::by_run_id::cancellation_finalized::Params {
+                            run_id: &run_id,
+                        },
+                    ),
+                    &self.token,
+                )
+                .json(&body),
+            "cancellation finalization",
+        )
+        .await?;
+        check_api_status(resp, "cancellation finalization").await?;
         Ok(())
     }
 
@@ -1081,6 +1188,7 @@ fn claim_request_body(candidate: &JobCandidate) -> ClaimRequestBody {
     };
 
     ClaimRequestBody {
+        capabilities: [RUNNER_CANCELLATION_RECOVERY_CAPABILITY],
         telemetry: ClaimRequestTelemetry {
             discovery_source: candidate.discovery_source().map(JobDiscoverySource::as_str),
             job_discovered_to_claim_request_ms: claim_telemetry_duration_ms(
@@ -1975,7 +2083,10 @@ mod tests {
         assert!(!body.to_string().contains("historyHash"));
         assert!(!body.to_string().contains("cacheKey"));
         assert!(!body.to_string().contains("path"));
-        assert!(body.get("capabilities").is_none());
+        assert_eq!(
+            body["capabilities"],
+            serde_json::json!([RUNNER_CANCELLATION_RECOVERY_CAPABILITY])
+        );
     }
 
     #[test]
@@ -3824,6 +3935,106 @@ mod tests {
             .await;
 
         mock.assert_calls_async(1).await;
+    }
+
+    #[tokio::test]
+    async fn api_provider_reports_requested_cancellation_finalization() {
+        let server = MockServer::start_async().await;
+        let run_id = RunId::new_v4();
+        let sandbox_id = SandboxId::new_v4();
+        let complete_mock = server
+            .mock_async(|when, then| {
+                when.method(POST)
+                    .path(routes::webhooks::agent::complete::COMPLETE.path)
+                    .header("authorization", "Bearer sandbox-token");
+                then.status(200).json_body(serde_json::json!({
+                    "success": true,
+                    "status": "failed",
+                    "cancellationFinalizationRequired": true
+                }));
+            })
+            .await;
+        let finalization_mock = server
+            .mock_async(|when, then| {
+                when.method(POST)
+                    .path(format!("/api/runners/runs/{run_id}/cancellation-finalized"))
+                    .header("authorization", "Bearer runner-token")
+                    .json_body(serde_json::json!({
+                        "sandboxId": sandbox_id,
+                        "sandboxReuseResult": "poolMiss"
+                    }));
+                then.status(200)
+                    .json_body(serde_json::json!({ "success": true }));
+            })
+            .await;
+        let provider = api_provider_for_test(
+            server.base_url(),
+            CancellationToken::new(),
+            Arc::new(PollWakeups::new(false)),
+        );
+
+        provider
+            .complete(
+                run_id,
+                1,
+                Some("cancelled by user"),
+                Some(sandbox_id),
+                Some(SandboxReuseResult::PoolMiss),
+                CompletionAuth::sandbox_token(run_id, "sandbox-token".to_string()),
+            )
+            .await;
+
+        complete_mock.assert_calls_async(1).await;
+        finalization_mock.assert_calls_async(1).await;
+    }
+
+    #[tokio::test]
+    async fn api_provider_finalizes_cancellation_without_allocated_sandbox() {
+        let server = MockServer::start_async().await;
+        let run_id = RunId::new_v4();
+        let complete_mock = server
+            .mock_async(|when, then| {
+                when.method(POST)
+                    .path(routes::webhooks::agent::complete::COMPLETE.path)
+                    .header("authorization", "Bearer sandbox-token");
+                then.status(200).json_body(serde_json::json!({
+                    "success": true,
+                    "status": "failed",
+                    "cancellationFinalizationRequired": true
+                }));
+            })
+            .await;
+        let finalization_mock = server
+            .mock_async(|when, then| {
+                when.method(POST)
+                    .path(format!("/api/runners/runs/{run_id}/cancellation-finalized"))
+                    .header("authorization", "Bearer runner-token")
+                    .json_body(serde_json::json!({
+                        "sandboxReuseResult": "poolMiss"
+                    }));
+                then.status(200)
+                    .json_body(serde_json::json!({ "success": true }));
+            })
+            .await;
+        let provider = api_provider_for_test(
+            server.base_url(),
+            CancellationToken::new(),
+            Arc::new(PollWakeups::new(false)),
+        );
+
+        provider
+            .complete(
+                run_id,
+                1,
+                Some("cancelled before sandbox allocation"),
+                None,
+                Some(SandboxReuseResult::PoolMiss),
+                CompletionAuth::sandbox_token(run_id, "sandbox-token".to_string()),
+            )
+            .await;
+
+        complete_mock.assert_calls_async(1).await;
+        finalization_mock.assert_calls_async(1).await;
     }
 
     #[tokio::test]

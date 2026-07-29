@@ -36,6 +36,8 @@ export const SESSION_HISTORY_DOWNLOAD_SOURCE_DEFAULT_R2_ENDPOINT =
   "default_r2_endpoint";
 export const SESSION_HISTORY_GZIP_MIN_BYTES = 64 * 1024;
 export const NETWORK_POLICY_REFRESH_CONNECTOR_SLUGS_MAX = 256;
+export const RUNNER_CANCELLATION_RECOVERY_CAPABILITY =
+  "user-cancellation-recovery-v1";
 export const RUNNER_BUILTIN_FIREWALL_RESOLVE_NAMES_MAX = 512;
 export const sessionHistoryEncodingSchema = z.enum([
   SESSION_HISTORY_ENCODING_IDENTITY,
@@ -508,6 +510,27 @@ export const resumeSessionSchema = z.union([
 // jobs through an older API; the API ignores capabilities it does not know.
 export const runnerClaimCapabilitySchema = z.string().min(1);
 
+/**
+ * Sandbox reuse outcome. One enum value per code branch in the runner's
+ * reuse-decision block. `reused` means the sandbox was unparked from the idle
+ * pool; the remaining variants describe why reuse did not happen.
+ *
+ * `featureDisabled` is legacy: written by older runners while reuse was gated
+ * by the `sandboxReuse` feature flag. It remains accepted for historical
+ * compatibility even though current runners no longer emit it.
+ */
+export const sandboxReuseResultSchema = z.enum([
+  "reused",
+  "featureDisabled",
+  "noSessionId",
+  "poolMiss",
+  "profileMismatch",
+  "deviceLimitMismatch",
+  "unparkFailed",
+]);
+
+export type SandboxReuseResult = z.infer<typeof sandboxReuseResultSchema>;
+
 export const secretConnectorMetadataSchema = z.object({
   sourceType: z.enum(["connector", "model-provider", "platform-secret"]),
   sourceUserId: z.string().optional(),
@@ -707,6 +730,32 @@ export const runnersJobClaimContract = c.router({
   },
 });
 
+export const runnersCancellationFinalizationContract = c.router({
+  finalize: {
+    method: "POST",
+    path: "/api/runners/runs/:runId/cancellation-finalized",
+    headers: authHeadersSchema,
+    pathParams: z.object({
+      runId: z.uuid(),
+    }),
+    body: z.object({
+      sandboxId: z.string().min(1).max(255).optional(),
+      sandboxReuseResult: sandboxReuseResultSchema.optional(),
+    }),
+    responses: {
+      200: z.object({
+        success: z.literal(true),
+      }),
+      400: apiErrorSchema,
+      401: apiErrorSchema,
+      403: apiErrorSchema,
+      404: apiErrorSchema,
+      500: apiErrorSchema,
+    },
+    summary: "Finalize a cancelled run after runner-owned cleanup",
+  },
+});
+
 export const runnersNetworkPolicyRefreshContract = c.router({
   refresh: {
     method: "POST",
@@ -870,6 +919,8 @@ export const runnersHeartbeatContract = c.router({
 
 export type RunnersPollContract = typeof runnersPollContract;
 export type RunnersJobClaimContract = typeof runnersJobClaimContract;
+export type RunnersCancellationFinalizationContract =
+  typeof runnersCancellationFinalizationContract;
 export type RunnersNetworkPolicyRefreshContract =
   typeof runnersNetworkPolicyRefreshContract;
 export type RunnersHeartbeatContract = typeof runnersHeartbeatContract;

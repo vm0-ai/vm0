@@ -90,6 +90,7 @@ const PROCESS_CANCEL_TERMINAL_GRACE_TIMEOUT: Duration = Duration::from_secs(8);
 const PROCESS_CANCEL_TIMEOUTS: ProcessCancelTimeouts = ProcessCancelTimeouts {
     write: PROCESS_CANCEL_WRITE_TIMEOUT,
     terminal_grace: PROCESS_CANCEL_TERMINAL_GRACE_TIMEOUT,
+    cooperative_grace: JOB_FINALIZATION_GRACE_TIMEOUT,
 };
 /// Exit code when a process is killed by SIGKILL (128 + 9).
 const EXIT_SIGKILL: i32 = 137;
@@ -162,6 +163,36 @@ fn guest_runtime_path(
         guest_contracts::runtime_paths::run_dir_for_home(CANONICAL_GUEST_HOME_DIR, &run_id)
             .map_err(|e| RunnerError::Internal(format!("guest runtime path: {e}")))?;
     Ok(path(run_dir).to_string_lossy().into_owned())
+}
+
+#[derive(Clone)]
+pub(crate) struct ExecutionCancellation {
+    any: CancellationToken,
+    user: CancellationToken,
+    hard: CancellationToken,
+}
+
+impl ExecutionCancellation {
+    pub(crate) fn new(
+        any: CancellationToken,
+        user: CancellationToken,
+        hard: CancellationToken,
+    ) -> Self {
+        Self { any, user, hard }
+    }
+
+    #[cfg(test)]
+    fn hard(cancel: CancellationToken) -> Self {
+        Self {
+            any: cancel.clone(),
+            user: CancellationToken::new(),
+            hard: cancel,
+        }
+    }
+
+    pub(crate) fn is_cancelled(&self) -> bool {
+        self.any.is_cancelled()
+    }
 }
 
 /// Shared configuration for all executions (profile-independent).
@@ -451,7 +482,7 @@ pub async fn execute_job(
         dispatch,
         config,
         params,
-        cancel,
+        ExecutionCancellation::hard(cancel),
         ExecutionHooks::none(),
     )
     .await
@@ -463,7 +494,7 @@ pub(crate) async fn execute_job_with_prepared_notifier(
     dispatch: NewSandboxDispatch,
     config: &ExecutorConfig,
     params: &JobParams,
-    cancel: CancellationToken,
+    cancel: ExecutionCancellation,
     hooks: ExecutionHooks,
 ) -> (ExecuteOutcome, JobTelemetry) {
     let ExecutionHooks {
@@ -506,7 +537,7 @@ pub(crate) async fn execute_job_with_prepared_notifier(
             params,
             &mut telemetry,
             NewSandboxHooks {
-                controls: RunControls::new(cancel, active_input_source)
+                controls: RunControls::from_cancellation(cancel, active_input_source)
                     .with_spawn_timing(spawn_timing)
                     .with_session_history_restore_plan(session_history_restore_plan),
                 sandbox_prepared: sandbox_prepared.as_ref(),
@@ -550,7 +581,7 @@ pub async fn execute_job_reuse(
         context,
         config,
         params,
-        cancel,
+        ExecutionCancellation::hard(cancel),
         ExecutionHooks::none(),
     )
     .await
@@ -561,7 +592,7 @@ pub(crate) async fn execute_job_reuse_with_hooks(
     context: ExecutionContext,
     config: &ExecutorConfig,
     params: &JobParams,
-    cancel: CancellationToken,
+    cancel: ExecutionCancellation,
     hooks: ExecutionHooks,
 ) -> (ExecuteOutcome, JobTelemetry) {
     let ExecutionHooks {
@@ -671,7 +702,7 @@ pub(crate) async fn execute_job_reuse_with_hooks(
             config,
             &prev_storage,
             &mut telemetry,
-            RunControls::new(cancel, active_input_source)
+            RunControls::from_cancellation(cancel, active_input_source)
                 .with_spawn_timing(spawn_timing)
                 .with_session_history_restore_plan(session_history_restore_plan),
         )

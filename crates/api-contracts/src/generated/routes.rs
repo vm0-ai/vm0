@@ -97,6 +97,39 @@ pub mod runners {
     pub mod runs {
         /// Generated route bindings under `runners::runs::by_run_id`.
         pub mod by_run_id {
+            /// Generated route bindings under `runners::runs::by_run_id::cancellation_finalized`.
+            pub mod cancellation_finalized {
+                /// Finalize a cancelled run after runner-owned cleanup.
+                /// Route contract: `POST /api/runners/runs/:runId/cancellation-finalized`.
+                pub const FINALIZE: crate::RouteTemplate = crate::RouteTemplate {
+                    method: crate::Method::Post,
+                    path: "/api/runners/runs/:runId/cancellation-finalized",
+                };
+
+                /// Path parameters for `POST /api/runners/runs/:runId/cancellation-finalized`.
+                #[derive(Debug, Clone, Copy)]
+                pub struct Params<'a> {
+                    /// Value for the `:runId` path parameter.
+                    pub run_id: &'a str,
+                }
+
+                /// Build the concrete path for `POST /api/runners/runs/:runId/cancellation-finalized`.
+                /// Percent-encodes each path parameter as a URL path segment.
+                #[must_use]
+                pub fn path(params: Params<'_>) -> String {
+                    format!(
+                        "/api/runners/runs/{}/cancellation-finalized",
+                        crate::route::encode_path_segment(params.run_id),
+                    )
+                }
+
+                /// Build a resolved route for `POST /api/runners/runs/:runId/cancellation-finalized`.
+                #[must_use]
+                pub fn route(params: Params<'_>) -> crate::ResolvedRoute {
+                    crate::ResolvedRoute::new(FINALIZE.method, path(params))
+                }
+            }
+
             /// Generated route bindings under `runners::runs::by_run_id::network_policy_refresh`.
             pub mod network_policy_refresh {
                 /// Refresh active run network policies.

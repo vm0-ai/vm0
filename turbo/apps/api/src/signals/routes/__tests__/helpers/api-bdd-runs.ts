@@ -32,6 +32,7 @@ import {
   cronTelegramCleanupContract,
 } from "@vm0/api-contracts/contracts/cron";
 import {
+  runnersCancellationFinalizationContract,
   runnersNetworkPolicyRefreshContract,
   runnersHeartbeatContract,
   runnersJobClaimContract,
@@ -91,6 +92,9 @@ type RunnerJobClaimRequest = z.infer<
 >;
 type RunnerNetworkPolicyRefreshRequest = z.input<
   (typeof runnersNetworkPolicyRefreshContract.refresh)["body"]
+>;
+type RunnerCancellationFinalizationRequest = z.infer<
+  (typeof runnersCancellationFinalizationContract.finalize)["body"]
 >;
 type ComposeContent = z.infer<
   (typeof composesMainContract.create)["body"]
@@ -443,6 +447,22 @@ export function createRunsApi(context: TestContext) {
         [200],
       );
       return response.body;
+    },
+
+    async requestFinalizeRunnerCancellation(
+      validAuth: boolean,
+      runId: string,
+      body: RunnerCancellationFinalizationRequest,
+      statuses: readonly (200 | 400 | 401 | 403 | 404 | 500)[],
+    ) {
+      return await accept(
+        runApp(context)(runnersCancellationFinalizationContract).finalize({
+          headers: runnerHeaders(validAuth),
+          params: { runId },
+          body,
+        }),
+        statuses,
+      );
     },
 
     async refreshRunnerNetworkPolicy(runId: string, connectorSlug: string) {

@@ -108,6 +108,10 @@ pub mod runners {
     /// Rust and TypeScript components use this shared contract value when validating resume history refs, downloads, and idle-reuse verification.
     pub const RESUME_SESSION_HISTORY_MAX_BYTES: u64 = 134217728;
 
+    /// Claim capability for cooperative user cancellation and runner finalization.
+    /// New runners advertise this value so the API can safely activate the cancellation barrier.
+    pub const RUNNER_CANCELLATION_RECOVERY_CAPABILITY: &str = "user-cancellation-recovery-v1";
+
     /// Maximum runner-local claim cooldown exclusions accepted by the poll endpoint.
     /// Rust runners use this shared contract value to bound local cooldown state and poll request size.
     pub const RUNNER_POLL_EXCLUDED_RUN_IDS_MAX: u64 = 128;

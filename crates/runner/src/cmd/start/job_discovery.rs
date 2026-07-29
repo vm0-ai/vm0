@@ -391,7 +391,7 @@ async fn claim_with_local_admission(
             return None;
         }
         RunnerMode::Stopping => {
-            admission.cancellation.cancel().await;
+            admission.cancellation.hard_cancel().await;
         }
         RunnerMode::Stopped => {
             admission.rollback(ctx).await;

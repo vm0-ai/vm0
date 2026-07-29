@@ -8,6 +8,7 @@ import type {
   ChatEventResponse,
   UserMessageDocument,
 } from "@vm0/api-contracts/contracts/chat-threads";
+import { RUNNER_CANCELLATION_RECOVERY_CAPABILITY } from "@vm0/api-contracts/contracts/runners";
 import { zeroGoalsContract } from "@vm0/api-contracts/contracts/zero-goals";
 import {
   ILLUSTRATION_TEMPLATE_ITEMS,
@@ -16,7 +17,7 @@ import {
 import { describe, expect, it, onTestFinished } from "vitest";
 
 import { mockEnv, mockOptionalEnv } from "../../../lib/env";
-import { clearMockNow, mockNow } from "../../../lib/time";
+import { clearMockNow, mockNow, nowDate } from "../../../lib/time";
 import { accept, setupApp } from "../../../__tests__/test-helpers";
 import { readGoalQueueStateFixture } from "../../../test-fixtures/goal-queue";
 import { testContext } from "../../../__tests__/test-context";
@@ -1970,6 +1971,419 @@ Continue the JPM IJTXX Treasury allocation follow-up for issue #20818 and [ACME-
     await api.requestCancelRun(actor, claimed.runId, [200]);
     await waitForRunStatus(actor, claimed.runId, "cancelled");
     await flushWaitUntilForTest();
+  }, 90_000);
+});
+
+describe("CHAT-02/RUN-03: cancellation finalization barrier", () => {
+  it("releases a queued follow-up only after the lifecycle event and runner finalization", async () => {
+    const { actor, agentId, runnerGroup } = await entitledChatActor();
+    chatCallbacks.failIfChatCallbackRouteIsFetched();
+    const first = await startChatRun(actor, {
+      agentId,
+      prompt: "cancel after runner claim",
+    });
+    await api.heartbeatRunner(runnerGroup);
+    const claim = await api.claimRunnerJob(first.runId, {
+      capabilities: [RUNNER_CANCELLATION_RECOVERY_CAPABILITY],
+    });
+    const sandboxHeaders = {
+      authorization: `Bearer ${claim.sandboxToken}`,
+    };
+
+    await queueChatMessage(actor, {
+      agentId,
+      threadId: first.threadId,
+      prompt: "wait for cancellation recovery",
+    });
+    const beforeCancel = await chat.listThreadEvents(actor, first.threadId);
+    const queued = userMessages(beforeCancel.events).find((message) => {
+      return chatEventDisplayText(message) === "wait for cancellation recovery";
+    });
+    if (!queued) {
+      throw new Error("Expected the follow-up message to be queued");
+    }
+
+    await api.requestCancelRun(actor, first.runId, [200]);
+    await flushWaitUntilForTest();
+    const afterCancel = await chat.listThreadEvents(actor, first.threadId);
+    expect(
+      lifecycleMarkers(afterCancel.events, first.runId, "cancelled"),
+    ).toHaveLength(1);
+    expect(
+      userMessages(afterCancel.events).some((message) => {
+        return (
+          message.revokesEventId === queued.id && message.runId !== undefined
+        );
+      }),
+    ).toBeFalsy();
+
+    const completion = await webhooks.requestAgentComplete(
+      {
+        runId: first.runId,
+        exitCode: 1,
+        sandboxId: "00000000-0000-4000-8000-000000000abc",
+        sandboxReuseResult: "poolMiss",
+      },
+      sandboxHeaders,
+      [200],
+    );
+    expect(completion.body).toStrictEqual({
+      success: true,
+      status: "failed",
+      cancellationFinalizationRequired: true,
+    });
+    const afterCompletion = await chat.listThreadEvents(actor, first.threadId);
+    expect(
+      userMessages(afterCompletion.events).some((message) => {
+        return (
+          message.revokesEventId === queued.id && message.runId !== undefined
+        );
+      }),
+    ).toBeFalsy();
+
+    await api.requestFinalizeRunnerCancellation(
+      false,
+      first.runId,
+      {
+        sandboxId: "00000000-0000-4000-8000-000000000abc",
+        sandboxReuseResult: "poolMiss",
+      },
+      [401],
+    );
+    const stillPending = await webhooks.requestAgentComplete(
+      { runId: first.runId, exitCode: 1 },
+      sandboxHeaders,
+      [200],
+    );
+    expect(stillPending.body).toHaveProperty(
+      "cancellationFinalizationRequired",
+      true,
+    );
+
+    await api.requestFinalizeRunnerCancellation(
+      true,
+      first.runId,
+      {
+        sandboxId: "00000000-0000-4000-8000-000000000abc",
+        sandboxReuseResult: "poolMiss",
+      },
+      [200],
+    );
+    await flushWaitUntilForTest();
+    const afterFinalization = await waitForThreadMessages(
+      actor,
+      first.threadId,
+      (messages) => {
+        return userMessages(messages).some((message) => {
+          return (
+            message.revokesEventId === queued.id && message.runId !== undefined
+          );
+        });
+      },
+    );
+    const promoted = userMessages(afterFinalization.events).find((message) => {
+      return message.revokesEventId === queued.id;
+    });
+    if (!promoted?.runId) {
+      throw new Error("Expected finalization to release the queued follow-up");
+    }
+
+    const settledCompletion = await webhooks.requestAgentComplete(
+      { runId: first.runId, exitCode: 1 },
+      sandboxHeaders,
+      [200],
+    );
+    expect(settledCompletion.body).toStrictEqual({
+      success: true,
+      status: "failed",
+    });
+    await api.requestFinalizeRunnerCancellation(
+      true,
+      first.runId,
+      {
+        sandboxId: "00000000-0000-4000-8000-000000000def",
+        sandboxReuseResult: "reused",
+      },
+      [200],
+    );
+    const runnerMetadata = await api.requestRunRunner(
+      actor,
+      first.runId,
+      [200],
+    );
+    expect(runnerMetadata.body).toStrictEqual({
+      sandboxReuseResult: "poolMiss",
+    });
+
+    await api.requestCancelRun(actor, promoted.runId, [200]);
+    await waitForRunStatus(actor, promoted.runId, "cancelled");
+    await flushWaitUntilForTest();
+  }, 90_000);
+
+  it("keeps the queue blocked when runner finalization arrives before the lifecycle event", async () => {
+    const { actor, agentId, runnerGroup } = await entitledChatActor();
+    chatCallbacks.failIfChatCallbackRouteIsFetched();
+    const first = await startChatRun(actor, {
+      agentId,
+      prompt: "cancel while callback publication is delayed",
+    });
+    await api.heartbeatRunner(runnerGroup);
+    const claim = await api.claimRunnerJob(first.runId, {
+      capabilities: [RUNNER_CANCELLATION_RECOVERY_CAPABILITY],
+    });
+    const sandboxHeaders = {
+      authorization: `Bearer ${claim.sandboxToken}`,
+    };
+    const queuedPrompt = "wait for the delayed cancellation callback";
+    await queueChatMessage(actor, {
+      agentId,
+      threadId: first.threadId,
+      prompt: queuedPrompt,
+    });
+    const beforeCancel = await chat.listThreadEvents(actor, first.threadId);
+    const queued = userMessages(beforeCancel.events).find((message) => {
+      return chatEventDisplayText(message) === queuedPrompt;
+    });
+    if (!queued) {
+      throw new Error("Expected the follow-up message to be queued");
+    }
+
+    const cancelPublishGate = deferredGate();
+    context.mocks.ably.publish.mockImplementation((topic: unknown) => {
+      return topic === "cancel"
+        ? cancelPublishGate.wait()
+        : Promise.resolve(undefined);
+    });
+    await api.requestCancelRun(actor, first.runId, [200]);
+    await expect
+      .poll(() => {
+        return context.mocks.ably.publish.mock.calls.some(([topic]) => {
+          return topic === "cancel";
+        });
+      })
+      .toBe(true);
+
+    const completion = await webhooks.requestAgentComplete(
+      {
+        runId: first.runId,
+        exitCode: 1,
+        sandboxId: "00000000-0000-4000-8000-000000000fed",
+        sandboxReuseResult: "poolMiss",
+      },
+      sandboxHeaders,
+      [200],
+    );
+    expect(completion.body).toHaveProperty(
+      "cancellationFinalizationRequired",
+      true,
+    );
+    await api.requestFinalizeRunnerCancellation(
+      true,
+      first.runId,
+      {
+        sandboxId: "00000000-0000-4000-8000-000000000fed",
+        sandboxReuseResult: "poolMiss",
+      },
+      [200],
+    );
+
+    const beforeCallback = await chat.listThreadEvents(actor, first.threadId);
+    expect(
+      lifecycleMarkers(beforeCallback.events, first.runId, "cancelled"),
+    ).toHaveLength(0);
+    expect(
+      userMessages(beforeCallback.events).filter((message) => {
+        return (
+          message.revokesEventId === queued.id && message.runId !== undefined
+        );
+      }),
+    ).toHaveLength(0);
+
+    cancelPublishGate.release();
+    await flushWaitUntilForTest();
+    const afterCallback = await waitForThreadMessages(
+      actor,
+      first.threadId,
+      (messages) => {
+        return userMessages(messages).some((message) => {
+          return (
+            message.revokesEventId === queued.id && message.runId !== undefined
+          );
+        });
+      },
+    );
+    expect(
+      lifecycleMarkers(afterCallback.events, first.runId, "cancelled"),
+    ).toHaveLength(1);
+    const promoted = userMessages(afterCallback.events).filter((message) => {
+      return (
+        message.revokesEventId === queued.id && message.runId !== undefined
+      );
+    });
+    expect(promoted).toHaveLength(1);
+    const [promotedMessage] = promoted;
+    if (!promotedMessage?.runId) {
+      throw new Error("Expected exactly one promoted follow-up");
+    }
+
+    await api.requestCancelRun(actor, promotedMessage.runId, [200]);
+    await waitForRunStatus(actor, promotedMessage.runId, "cancelled");
+    await flushWaitUntilForTest();
+  }, 90_000);
+
+  it("accepts runner finalization when sandbox allocation never completed", async () => {
+    const { actor, agentId, runnerGroup } = await entitledChatActor();
+    chatCallbacks.failIfChatCallbackRouteIsFetched();
+    const first = await startChatRun(actor, {
+      agentId,
+      prompt: "cancel before sandbox allocation completes",
+    });
+    await api.heartbeatRunner(runnerGroup);
+    const claim = await api.claimRunnerJob(first.runId, {
+      capabilities: [RUNNER_CANCELLATION_RECOVERY_CAPABILITY],
+    });
+    const sandboxHeaders = {
+      authorization: `Bearer ${claim.sandboxToken}`,
+    };
+
+    await api.requestCancelRun(actor, first.runId, [200]);
+    await flushWaitUntilForTest();
+    const completion = await webhooks.requestAgentComplete(
+      {
+        runId: first.runId,
+        exitCode: 1,
+        sandboxReuseResult: "poolMiss",
+      },
+      sandboxHeaders,
+      [200],
+    );
+    expect(completion.body).toHaveProperty(
+      "cancellationFinalizationRequired",
+      true,
+    );
+
+    await api.requestFinalizeRunnerCancellation(
+      true,
+      first.runId,
+      { sandboxReuseResult: "poolMiss" },
+      [200],
+    );
+    const settledCompletion = await webhooks.requestAgentComplete(
+      { runId: first.runId, exitCode: 1 },
+      sandboxHeaders,
+      [200],
+    );
+    expect(settledCompletion.body).toStrictEqual({
+      success: true,
+      status: "failed",
+    });
+    const runnerMetadata = await api.requestRunRunner(
+      actor,
+      first.runId,
+      [200],
+    );
+    expect(runnerMetadata.body).toStrictEqual({
+      sandboxReuseResult: "poolMiss",
+    });
+  }, 90_000);
+
+  it("releases a missing runner finalization through the bounded stale fallback", async () => {
+    const { actor, agentId, runnerGroup } = await entitledChatActor();
+    chatCallbacks.failIfChatCallbackRouteIsFetched();
+    const first = await startChatRun(actor, {
+      agentId,
+      prompt: "cancel without runner finalization",
+    });
+    await api.heartbeatRunner(runnerGroup);
+    await api.claimRunnerJob(first.runId, {
+      capabilities: [RUNNER_CANCELLATION_RECOVERY_CAPABILITY],
+    });
+    const queuedPrompt = "resume after the cancellation barrier expires";
+    await queueChatMessage(actor, {
+      agentId,
+      threadId: first.threadId,
+      prompt: queuedPrompt,
+    });
+    const beforeCancel = await chat.listThreadEvents(actor, first.threadId);
+    const queued = userMessages(beforeCancel.events).find((message) => {
+      return chatEventDisplayText(message) === queuedPrompt;
+    });
+    if (!queued) {
+      throw new Error("Expected the follow-up message to be queued");
+    }
+
+    const cancelledAt = nowDate();
+    mockNow(cancelledAt);
+    onTestFinished(() => {
+      clearMockNow();
+    });
+    await api.requestCancelRun(actor, first.runId, [200]);
+    await flushWaitUntilForTest();
+    const whileFresh = await chat.listThreadEvents(actor, first.threadId);
+    expect(
+      userMessages(whileFresh.events).filter((message) => {
+        return (
+          message.revokesEventId === queued.id && message.runId !== undefined
+        );
+      }),
+    ).toHaveLength(0);
+
+    mockNow(cancelledAt.getTime() + 10 * 60 * 1000 + 1);
+    const triggerId = randomUUID();
+    await chat.requestSendEvent(
+      actor,
+      {
+        agentId,
+        threadId: first.threadId,
+        prompt: "trigger the stale queue retry",
+        clientEventId: triggerId,
+      },
+      [201],
+    );
+    const afterStale = await waitForThreadMessages(
+      actor,
+      first.threadId,
+      (messages) => {
+        return userMessages(messages).some((message) => {
+          return (
+            message.revokesEventId === queued.id && message.runId !== undefined
+          );
+        });
+      },
+    );
+    const promoted = userMessages(afterStale.events).filter((message) => {
+      return (
+        message.revokesEventId === queued.id && message.runId !== undefined
+      );
+    });
+    expect(promoted).toHaveLength(1);
+    const [promotedMessage] = promoted;
+    if (!promotedMessage?.runId) {
+      throw new Error("Expected stale fallback to promote one follow-up");
+    }
+
+    await api.requestCancelRun(actor, promotedMessage.runId, [200]);
+    await waitForRunStatus(actor, promotedMessage.runId, "cancelled");
+    await flushWaitUntilForTest();
+    const afterCleanup = await waitForThreadMessages(
+      actor,
+      first.threadId,
+      (messages) => {
+        return userMessages(messages).some((message) => {
+          return (
+            message.revokesEventId === triggerId && message.runId !== undefined
+          );
+        });
+      },
+    );
+    const triggerRun = userMessages(afterCleanup.events).find((message) => {
+      return message.revokesEventId === triggerId;
+    })?.runId;
+    if (triggerRun) {
+      await api.requestCancelRun(actor, triggerRun, [200]);
+      await waitForRunStatus(actor, triggerRun, "cancelled");
+      await flushWaitUntilForTest();
+    }
   }, 90_000);
 });
 

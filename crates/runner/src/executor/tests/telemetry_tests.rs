@@ -15,8 +15,8 @@ use super::super::telemetry::{
     RunnerPreSpawnPhase, elapsed_since_api_start_ms, record_reuse_result,
 };
 use super::super::{
-    ExecutionHooks, NewSandboxDispatch, RunnerPreSpawnTiming, SessionHistoryRestorePlan,
-    execute_job, execute_job_reuse, execute_job_reuse_with_hooks,
+    ExecutionCancellation, ExecutionHooks, NewSandboxDispatch, RunnerPreSpawnTiming,
+    SessionHistoryRestorePlan, execute_job, execute_job_reuse, execute_job_reuse_with_hooks,
     execute_job_with_prepared_notifier,
 };
 use super::support::{
@@ -602,7 +602,7 @@ async fn execute_job_records_runner_pre_spawn_and_fresh_path_timing() {
         },
         &config,
         &default_params(),
-        cancel,
+        ExecutionCancellation::hard(cancel),
         ExecutionHooks {
             sandbox_prepared: None,
             active_input_source: None,
@@ -900,7 +900,7 @@ async fn execute_job_reuse_records_runner_pre_spawn_and_reuse_path_timing() {
         minimal_context(),
         &config,
         &default_params(),
-        cancel,
+        ExecutionCancellation::hard(cancel),
         ExecutionHooks {
             sandbox_prepared: None,
             active_input_source: None,
@@ -960,7 +960,7 @@ async fn start_process_failure_records_phase_failure_without_spawn_completion() 
         },
         &config,
         &default_params(),
-        cancel,
+        ExecutionCancellation::hard(cancel),
         ExecutionHooks {
             sandbox_prepared: None,
             active_input_source: None,

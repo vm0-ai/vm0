@@ -1,0 +1,1 @@
+ALTER TABLE "agent_runs" ADD COLUMN "cancellation_finalization_status" varchar(20);

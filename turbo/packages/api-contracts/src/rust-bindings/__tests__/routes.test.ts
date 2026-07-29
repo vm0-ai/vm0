@@ -22,6 +22,12 @@ const expectedBindings = [
   },
   {
     method: "POST",
+    path: "/api/runners/runs/:runId/cancellation-finalized",
+    rustModulePath: ["runners", "runs", "by_run_id", "cancellation_finalized"],
+    rustConstName: "FINALIZE",
+  },
+  {
+    method: "POST",
     path: "/api/runners/builtin-firewalls/resolve",
     rustModulePath: ["runners", "builtin_firewalls", "resolve"],
     rustConstName: "RESOLVE",

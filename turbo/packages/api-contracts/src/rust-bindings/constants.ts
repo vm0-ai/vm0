@@ -19,6 +19,7 @@ import {
   CANONICAL_WORKING_DIR,
   NETWORK_POLICY_REFRESH_CONNECTOR_SLUGS_MAX,
   RESUME_SESSION_HISTORY_MAX_BYTES,
+  RUNNER_CANCELLATION_RECOVERY_CAPABILITY,
   RUNNER_POLL_EXCLUDED_RUN_IDS_MAX,
   SESSION_HISTORY_DOWNLOAD_SOURCE_CONFIGURED_PUBLIC_ENDPOINT,
   SESSION_HISTORY_DOWNLOAD_SOURCE_DEFAULT_R2_ENDPOINT,
@@ -268,6 +269,15 @@ export const rustConstantBindings = [
     rustDoc: [
       "Maximum resume session history blob size accepted by the API, runner, and guest verifier.",
       "Rust and TypeScript components use this shared contract value when validating resume history refs, downloads, and idle-reuse verification.",
+    ],
+  },
+  {
+    rustModulePath: ["runners"],
+    rustConstName: "RUNNER_CANCELLATION_RECOVERY_CAPABILITY",
+    value: rustString(RUNNER_CANCELLATION_RECOVERY_CAPABILITY),
+    rustDoc: [
+      "Claim capability for cooperative user cancellation and runner finalization.",
+      "New runners advertise this value so the API can safely activate the cancellation barrier.",
     ],
   },
   {

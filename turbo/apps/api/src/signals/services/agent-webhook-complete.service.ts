@@ -24,6 +24,7 @@ import { projectLegacyCheckpointStorage } from "./storage-legacy-projection.serv
 import { maybeEmitRunUsageMessage$ } from "./zero-chat-usage-message.service";
 import { processOrgUsageEvents$ } from "./zero-credit-usage.service";
 import { drainOrgQueue$ } from "./zero-run-queue.service";
+import { cancellationFinalizationRequired } from "./runner-cancellation-finalization.service";
 
 type WebhookCompleteBody = z.infer<
   typeof webhookCompleteContract.complete.body
@@ -48,6 +49,7 @@ interface CompletionResponse {
     | {
         readonly success: true;
         readonly status: TerminalStatus;
+        readonly cancellationFinalizationRequired?: true;
       }
     | {
         readonly error: {
@@ -59,6 +61,7 @@ interface CompletionResponse {
 }
 
 interface RunRecord {
+  readonly cancellationFinalizationStatus: string | null;
   readonly orgId: string;
   readonly status: string;
   readonly userId: string;
@@ -108,18 +111,28 @@ async function persistLastEventSequence(
     .where(and(eq(agentRuns.id, runId), eq(agentRuns.userId, userId)));
 }
 
-async function readCompletionResponseStatus(
+async function readCompletionResponse(
   db: Db,
   runId: string,
   userId: string,
-): Promise<TerminalStatus> {
+): Promise<CompletionResponse["body"]> {
   const [currentRun] = await db
-    .select({ status: agentRuns.status })
+    .select({
+      status: agentRuns.status,
+      cancellationFinalizationStatus: agentRuns.cancellationFinalizationStatus,
+    })
     .from(agentRuns)
     .where(and(eq(agentRuns.id, runId), eq(agentRuns.userId, userId)))
     .limit(1);
 
-  return currentRun?.status === "completed" ? "completed" : "failed";
+  const status = currentRun?.status === "completed" ? "completed" : "failed";
+  return {
+    success: true,
+    status,
+    ...(currentRun && cancellationFinalizationRequired(currentRun)
+      ? { cancellationFinalizationRequired: true as const }
+      : {}),
+  };
 }
 
 async function transitionRunStatus(
@@ -175,14 +188,7 @@ async function currentStatusResponse(
 ): Promise<CompletionResponse> {
   return {
     status: 200,
-    body: {
-      success: true,
-      status: await readCompletionResponseStatus(
-        db,
-        input.body.runId,
-        input.auth.userId,
-      ),
-    },
+    body: await readCompletionResponse(db, input.body.runId, input.auth.userId),
   };
 }
 
@@ -416,6 +422,8 @@ export const completeAgentRun$ = command(
         orgId: agentRuns.orgId,
         status: agentRuns.status,
         userId: agentRuns.userId,
+        cancellationFinalizationStatus:
+          agentRuns.cancellationFinalizationStatus,
       })
       .from(agentRuns)
       .where(
@@ -451,6 +459,19 @@ export const completeAgentRun$ = command(
         body: {
           success: true,
           status: run.status === "completed" ? "completed" : "failed",
+        },
+      };
+    }
+
+    if (run.status === "cancelled") {
+      return {
+        status: 200,
+        body: {
+          success: true,
+          status: "failed",
+          ...(cancellationFinalizationRequired(run)
+            ? { cancellationFinalizationRequired: true as const }
+            : {}),
         },
       };
     }

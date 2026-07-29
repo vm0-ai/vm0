@@ -4,6 +4,7 @@ import { apiErrorSchema } from "./errors";
 import {
   artifactMissingRootPolicySchema,
   RESUME_SESSION_HISTORY_MAX_BYTES,
+  sandboxReuseResultSchema,
   sessionHistoryDownloadSourceSchema,
   sessionHistoryEncodingSchema,
   sessionHistorySizeBucketSchema,
@@ -15,6 +16,8 @@ import {
   storageChangesSchema,
   presignedUploadSchema,
 } from "./storages";
+
+export { sandboxReuseResultSchema, type SandboxReuseResult } from "./runners";
 
 const c = initContract();
 
@@ -269,28 +272,6 @@ export const webhookBuiltInGenerationBytePlusContract = c.router({
 });
 
 /**
- * Sandbox reuse outcome. One enum value per code branch in the runner's
- * reuse-decision block. `reused` means the sandbox was unparked from the idle
- * pool; the remaining variants describe why reuse did not happen.
- *
- * `featureDisabled` is legacy: written by older runners while reuse was gated
- * by the `sandboxReuse` feature flag (removed when reuse went to full rollout
- * in #10744). Retained here so historical `agent_runs.sandbox_reuse_result`
- * rows still parse on read. The runner no longer emits it.
- */
-export const sandboxReuseResultSchema = z.enum([
-  "reused",
-  "featureDisabled",
-  "noSessionId",
-  "poolMiss",
-  "profileMismatch",
-  "deviceLimitMismatch",
-  "unparkFailed",
-]);
-
-export type SandboxReuseResult = z.infer<typeof sandboxReuseResultSchema>;
-
-/**
  * Agent event schema for webhook events
  * Note: Claude Code JSONL events have varying structures with different fields
  * depending on the event type (system, assistant, user, result, etc.)
@@ -465,6 +446,7 @@ export const webhookCompleteContract = c.router({
       200: z.object({
         success: z.boolean(),
         status: z.enum(["completed", "failed"]),
+        cancellationFinalizationRequired: z.literal(true).optional(),
       }),
       400: apiErrorSchema,
       401: apiErrorSchema,

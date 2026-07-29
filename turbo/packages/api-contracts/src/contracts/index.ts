@@ -697,6 +697,7 @@ export {
 export {
   runnersPollContract,
   runnersJobClaimContract,
+  runnersCancellationFinalizationContract,
   runnersNetworkPolicyRefreshContract,
   runnersBuiltinFirewallsResolveContract,
   runnersHeartbeatContract,
@@ -722,6 +723,7 @@ export {
   resumeSessionSchema,
   type RunnersPollContract,
   type RunnersJobClaimContract,
+  type RunnersCancellationFinalizationContract,
   type RunnersNetworkPolicyRefreshContract,
   type RunnersBuiltinFirewallsResolveContract,
   type RunnersHeartbeatContract,

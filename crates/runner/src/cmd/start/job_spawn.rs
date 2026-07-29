@@ -16,7 +16,6 @@ use guest_contracts::diagnostics::{
 use sandbox::SandboxId;
 use tokio::sync::mpsc;
 use tokio::task::JoinSet;
-use tokio_util::sync::CancellationToken;
 use tracing::{error, info, warn};
 
 use super::active_sessions::{ActiveCliAgentSessionGuard, ActiveCliAgentSessions};
@@ -109,7 +108,7 @@ struct ExecutorInvocation {
     reuse_result: SandboxReuseResult,
     pre_spawn_timing: RunnerPreSpawnTiming,
     session_history_restore_plan: SessionHistoryRestorePlan,
-    cancel: CancellationToken,
+    cancel: executor::ExecutionCancellation,
     sandbox_token: String,
     sandbox_prepared: Option<executor::SandboxPreparedNotifier>,
     active_input_source: Option<crate::active_input::ActiveInputSource>,
@@ -590,7 +589,11 @@ pub(super) fn spawn_job(
         reuse_result,
         pre_spawn_timing,
         session_history_restore_plan,
-        cancel: job_cancel.token(),
+        cancel: executor::ExecutionCancellation::new(
+            job_cancel.token(),
+            job_cancel.user_token(),
+            job_cancel.hard_token(),
+        ),
         sandbox_token: sandbox_token.clone(),
         sandbox_prepared,
         active_input_source,

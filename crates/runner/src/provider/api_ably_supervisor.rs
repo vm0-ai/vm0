@@ -640,7 +640,7 @@ async fn handle_ably_message_with_network_policy_refresh(
     if let Some(run_id) = parse_cancel_notification(msg) {
         let handle = cancel_tokens.handle(run_id).await;
         if let Some(handle) = handle {
-            info!(run_id = %run_id, "ably: cancel notification, killing job");
+            info!(run_id = %run_id, "ably: cancel notification, cancelling job");
             handle.cancel().await;
         }
         return;

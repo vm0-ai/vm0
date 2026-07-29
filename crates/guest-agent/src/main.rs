@@ -217,6 +217,7 @@ async fn run(runtime: GuestRuntime) -> i32 {
     let http = runtime.http.clone();
     let masker = Arc::new(masker::SecretMasker::from_config(&runtime.config));
     let shutdown = CancellationToken::new();
+    let cli_cancellation = CancellationToken::new();
     let framework_supports_active_input = framework_supports_active_input(
         runtime.config.framework,
         runtime.config.use_codex_app_server_backend,
@@ -230,7 +231,11 @@ async fn run(runtime: GuestRuntime) -> i32 {
         framework_supports_active_input && has_process_control_endpoint,
         &runtime.config.prompt,
     );
-    let control_handle = control::ControlHandle::spawn(shutdown.clone(), active_input.controller());
+    let control_handle = control::ControlHandle::spawn(
+        shutdown.clone(),
+        active_input.controller(),
+        cli_cancellation.clone(),
+    );
     log_info!(
         LOG_TAG,
         "Working directory: {}",
@@ -278,6 +283,7 @@ async fn run(runtime: GuestRuntime) -> i32 {
         Some(heartbeat_status_rx),
         &telemetry,
         active_input.into_writer(),
+        cli_cancellation,
         &runtime,
     )
     .await;
@@ -318,6 +324,7 @@ async fn execute(
     heartbeat_monitor: cli::HeartbeatMonitor,
     telemetry: &Telemetry,
     active_input: guest_agent::active_input::ActiveInputWriter,
+    cli_cancellation: CancellationToken,
     runtime: &GuestRuntime,
 ) -> i32 {
     let config = &runtime.config;
@@ -394,11 +401,11 @@ async fn execute(
         skip_recovery_checkpoint_for_no_history,
         failure_diagnostic,
         cli_execution_succeeded,
-    ) = match cli::execute_cli_with_active_input_for_config_started_at(
+    ) = match cli::execute_cli_with_active_input_and_cancellation_for_config_started_at(
         masker,
         heartbeat_monitor,
         http.clone(),
-        active_input,
+        cli::CliExecutionControls::new(active_input, cli_cancellation),
         config,
         runtime_paths,
         start,

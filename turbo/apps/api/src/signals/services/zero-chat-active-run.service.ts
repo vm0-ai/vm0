@@ -6,6 +6,7 @@ import {
   and,
   eq,
   exists,
+  gt,
   inArray,
   isNotNull,
   ne,
@@ -15,7 +16,12 @@ import {
 } from "drizzle-orm";
 
 import type { Db } from "../external/db";
+import { nowDate } from "../external/time";
 import { chatEventTypeIn } from "./zero-chat-event-type.service";
+import {
+  CANCELLATION_FINALIZATION_FINALIZED,
+  CANCELLATION_FINALIZATION_STALE_MS,
+} from "./runner-cancellation-finalization.service";
 
 const ACTIVE_CHAT_RUN_STATUSES = ["queued", "pending", "running"] as const;
 
@@ -36,32 +42,63 @@ async function activeChatRunExists(
         args.excludeRunId === undefined
           ? undefined
           : ne(zeroRuns.id, args.excludeRunId),
-        inArray(agentRuns.status, ACTIVE_CHAT_RUN_STATUSES),
         or(
-          notExists(
-            db
-              .select({ id: agentRunCallbacks.id })
-              .from(agentRunCallbacks)
-              .where(
-                and(
-                  eq(agentRunCallbacks.runId, zeroRuns.id),
-                  eq(agentRunCallbacks.internalKind, "chat"),
-                  isNotNull(
-                    sql`${agentRunCallbacks.payload}->>'queuedMessageId'`,
+          and(
+            inArray(agentRuns.status, ACTIVE_CHAT_RUN_STATUSES),
+            or(
+              notExists(
+                db
+                  .select({ id: agentRunCallbacks.id })
+                  .from(agentRunCallbacks)
+                  .where(
+                    and(
+                      eq(agentRunCallbacks.runId, zeroRuns.id),
+                      eq(agentRunCallbacks.internalKind, "chat"),
+                      isNotNull(
+                        sql`${agentRunCallbacks.payload}->>'queuedMessageId'`,
+                      ),
+                    ),
                   ),
-                ),
               ),
+              exists(
+                db
+                  .select({ id: chatMessages.id })
+                  .from(chatMessages)
+                  .where(
+                    and(
+                      eq(chatMessages.runId, zeroRuns.id),
+                      chatEventTypeIn(["input.prompt"]),
+                    ),
+                  ),
+              ),
+            ),
           ),
-          exists(
-            db
-              .select({ id: chatMessages.id })
-              .from(chatMessages)
-              .where(
-                and(
-                  eq(chatMessages.runId, zeroRuns.id),
-                  chatEventTypeIn(["input.prompt"]),
-                ),
+          and(
+            eq(agentRuns.status, "cancelled"),
+            isNotNull(agentRuns.cancellationFinalizationStatus),
+            gt(
+              agentRuns.completedAt,
+              new Date(
+                nowDate().getTime() - CANCELLATION_FINALIZATION_STALE_MS,
               ),
+            ),
+            or(
+              ne(
+                agentRuns.cancellationFinalizationStatus,
+                CANCELLATION_FINALIZATION_FINALIZED,
+              ),
+              notExists(
+                db
+                  .select({ id: chatMessages.id })
+                  .from(chatMessages)
+                  .where(
+                    and(
+                      eq(chatMessages.runId, zeroRuns.id),
+                      eq(chatMessages.runLifecycleEvent, "cancelled"),
+                    ),
+                  ),
+              ),
+            ),
           ),
         ),
       ),

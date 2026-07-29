@@ -4,6 +4,8 @@ import {
   compatibleStoredExecutionContextSchema,
   elapsedSinceApiStartMs,
   RESUME_SESSION_HISTORY_MAX_BYTES,
+  RUNNER_CANCELLATION_RECOVERY_CAPABILITY,
+  runnersCancellationFinalizationContract,
   runnersNetworkPolicyRefreshContract,
   runnersBuiltinFirewallsResolveContract,
   runnersHeartbeatContract,
@@ -67,6 +69,8 @@ import {
 import { generateSandboxToken } from "../auth/tokens";
 import { decryptPersistentSecretsMap } from "../services/crypto.utils";
 import { dispatchCompleteSideEffects$ } from "../services/agent-webhook-complete.service";
+import { dispatchFailedRunCallbacks } from "../services/agent-run-callback.service";
+import { drainChatThreadQueueForRun$ } from "../services/chat-thread-queue-drain.service";
 import { loadConnectorRuntimeSnapshot } from "../services/connector-catalog-runtime.service";
 import { loadConnectorRunnerFirewallCatalog } from "../services/connector-runner-firewall-catalog.service";
 import {
@@ -89,6 +93,11 @@ import {
   runnerSessionAffinityProtection,
   runnerSessionAffinityTelemetryResource,
 } from "../services/runner-session-affinity";
+import {
+  CANCELLATION_FINALIZATION_FINALIZED,
+  CANCELLATION_FINALIZATION_PENDING,
+  CANCELLATION_FINALIZATION_SUPPORTED,
+} from "../services/runner-cancellation-finalization.service";
 import type { RouteEntry } from "../route-entry";
 import { settle, tapError } from "../utils";
 
@@ -870,6 +879,14 @@ const claimTransitionSqlRowSchema = z.object({
   claimedAtMs: z.number().nullable(),
 });
 
+type ClaimCancellationFinalizationStatus =
+  | typeof CANCELLATION_FINALIZATION_SUPPORTED
+  | null;
+interface ClaimTransitionInput {
+  readonly runId: string;
+  readonly cancellationFinalizationStatus: ClaimCancellationFinalizationStatus;
+}
+
 async function lockClaimRun(
   db: Pick<Db, "select">,
   runId: string,
@@ -904,9 +921,17 @@ async function lockRunnerJob(
   return row;
 }
 
+function claimCancellationFinalizationStatus(
+  supportsCancellationRecovery: boolean,
+): ClaimCancellationFinalizationStatus {
+  return supportsCancellationRecovery
+    ? CANCELLATION_FINALIZATION_SUPPORTED
+    : null;
+}
+
 async function transitionClaimedJobToRunning(
   db: Db,
-  runId: string,
+  input: ClaimTransitionInput,
   signal: AbortSignal,
   timing: ClaimRouteTimingCollector,
 ): Promise<ClaimTransitionResult> {
@@ -924,7 +949,7 @@ async function transitionClaimedJobToRunning(
               ${agentRuns.id} AS "id",
               ${agentRuns.status} AS "status"
             FROM ${agentRuns}
-            WHERE ${eq(agentRuns.id, runId)}
+            WHERE ${eq(agentRuns.id, input.runId)}
             FOR UPDATE
           ),
           locked_job AS MATERIALIZED (
@@ -954,7 +979,8 @@ async function transitionClaimedJobToRunning(
             SET
               status = 'running',
               started_at = claim_clock."claimedAt",
-              last_heartbeat_at = claim_clock."claimedAt"
+              last_heartbeat_at = claim_clock."claimedAt",
+              cancellation_finalization_status = ${input.cancellationFinalizationStatus}
             FROM locked_run
             INNER JOIN locked_job
               ON locked_job."runId" = locked_run."id"
@@ -2156,6 +2182,7 @@ const claimAuthorizedJob$ = command(
       readonly authType: RunnerAuthContext["type"];
       readonly jobWithRun: ClaimableJob;
       readonly telemetry: ClaimTimingTelemetry | undefined;
+      readonly supportsCancellationRecovery: boolean;
       readonly claimRequestStartedAtMs: number;
       readonly claimRouteTiming: ClaimRouteTimingCollector;
       readonly signal: AbortSignal;
@@ -2225,7 +2252,12 @@ const claimAuthorizedJob$ = command(
       async () => {
         return await transitionClaimedJobToRunning(
           db,
-          runId,
+          {
+            runId,
+            cancellationFinalizationStatus: claimCancellationFinalizationStatus(
+              args.supportsCancellationRecovery,
+            ),
+          },
           signal,
           claimRouteTiming,
         );
@@ -2294,6 +2326,10 @@ const claimInner$ = command(async ({ get, set }, signal: AbortSignal) => {
     authType: auth.type,
     jobWithRun,
     telemetry: body.data.telemetry,
+    supportsCancellationRecovery:
+      body.data.capabilities?.includes(
+        RUNNER_CANCELLATION_RECOVERY_CAPABILITY,
+      ) ?? false,
     claimRequestStartedAtMs,
     claimRouteTiming,
     signal,
@@ -2302,6 +2338,113 @@ const claimInner$ = command(async ({ get, set }, signal: AbortSignal) => {
 
 const runnerRealtimeTokenBody$ = bodyResultOf(
   runnerRealtimeTokenContract.create,
+);
+const cancellationFinalizationBody$ = bodyResultOf(
+  runnersCancellationFinalizationContract.finalize,
+);
+
+const cancellationFinalizationInner$ = command(
+  async ({ get, set }, signal: AbortSignal) => {
+    const auth = await set(runnerAuth$, get(authorization$), signal);
+    signal.throwIfAborted();
+    if (!auth) {
+      return unauthorizedAuthenticationRequired;
+    }
+
+    const body = await get(cancellationFinalizationBody$);
+    signal.throwIfAborted();
+    if (!body.ok) {
+      return body.response;
+    }
+
+    const runId = get(
+      pathParamsOf(runnersCancellationFinalizationContract.finalize),
+    ).runId;
+    const db = set(writeDb$);
+    const [run] = await db
+      .select({
+        id: agentRuns.id,
+        userId: agentRuns.userId,
+        status: agentRuns.status,
+        runnerGroup: agentRuns.runnerGroup,
+        cancellationFinalizationStatus:
+          agentRuns.cancellationFinalizationStatus,
+      })
+      .from(agentRuns)
+      .where(eq(agentRuns.id, runId))
+      .limit(1);
+    signal.throwIfAborted();
+    if (!run) {
+      return notFound("Run not found");
+    }
+    if (
+      auth.type === "official-runner"
+        ? !run.runnerGroup || !isOfficialRunnerGroup(run.runnerGroup)
+        : run.userId !== auth.userId
+    ) {
+      return forbidden("Run does not belong to runner");
+    }
+
+    if (
+      run.status === "cancelled" &&
+      run.cancellationFinalizationStatus !== null &&
+      run.cancellationFinalizationStatus !== CANCELLATION_FINALIZATION_FINALIZED
+    ) {
+      const [finalized] = await db
+        .update(agentRuns)
+        .set({
+          cancellationFinalizationStatus: CANCELLATION_FINALIZATION_FINALIZED,
+          ...(body.data.sandboxId === undefined
+            ? {}
+            : { sandboxId: body.data.sandboxId }),
+          ...(body.data.sandboxReuseResult === undefined
+            ? {}
+            : { sandboxReuseResult: body.data.sandboxReuseResult }),
+        })
+        .where(
+          and(
+            eq(agentRuns.id, runId),
+            eq(agentRuns.status, "cancelled"),
+            inArray(agentRuns.cancellationFinalizationStatus, [
+              CANCELLATION_FINALIZATION_SUPPORTED,
+              CANCELLATION_FINALIZATION_PENDING,
+            ]),
+          ),
+        )
+        .returning({ id: agentRuns.id });
+      signal.throwIfAborted();
+
+      if (finalized) {
+        const backgroundSignal = new AbortController().signal;
+        waitUntil(
+          tapError(
+            set(
+              drainChatThreadQueueForRun$,
+              {
+                runId,
+                dispatchFailedCallbacks: dispatchFailedRunCallbacks,
+              },
+              backgroundSignal,
+            ),
+            (error) => {
+              L.error(
+                "Failed to drain chat thread after cancellation finalization",
+                {
+                  runId,
+                  error,
+                },
+              );
+            },
+          ),
+        );
+      }
+    }
+
+    return {
+      status: 200 as const,
+      body: { success: true as const },
+    };
+  },
 );
 
 const networkPolicyRefreshInner$ = command(
@@ -2448,6 +2591,10 @@ export const runnersRoutes: readonly RouteEntry[] = [
   {
     route: runnersJobClaimContract.claim,
     handler: claimInner$,
+  },
+  {
+    route: runnersCancellationFinalizationContract.finalize,
+    handler: cancellationFinalizationInner$,
   },
   {
     route: runnersNetworkPolicyRefreshContract.refresh,

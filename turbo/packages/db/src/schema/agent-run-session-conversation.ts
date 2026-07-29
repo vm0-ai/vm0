@@ -19,6 +19,11 @@ import type {
   AgentSessionStorageMounts,
 } from "@vm0/db/jsonb-contracts/agent-run-session-conversation";
 
+export type AgentRunCancellationFinalizationStatus =
+  | "supported"
+  | "pending"
+  | "finalized";
+
 /**
  * Agent Runs table
  * Created when developer executes agent via SDK
@@ -59,6 +64,12 @@ export const agentRuns = pgTable(
     // "profileMismatch" | "deviceLimitMismatch" | "unparkFailed". Null means
     // unknown (old runner or historical row).
     sandboxReuseResult: varchar("sandbox_reuse_result", { length: 50 }),
+    // Null for historical runs and runners without cancellation recovery.
+    // Application values: supported | pending | finalized.
+    cancellationFinalizationStatus: varchar(
+      "cancellation_finalization_status",
+      { length: 20 },
+    ).$type<AgentRunCancellationFinalizationStatus>(),
     result: jsonb("result").$type<AgentRunResult>(),
     error: text("error"),
     lastEventSequence: integer("last_event_sequence"),

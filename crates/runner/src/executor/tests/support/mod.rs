@@ -18,7 +18,8 @@ pub(super) use self::env::{
 };
 pub(super) use self::execution::{
     RUN_IN_SANDBOX_TEST_TIMEOUT, run_new_sandbox_outcome, run_new_sandbox_status,
-    spawn_run_in_sandbox_test, spawn_run_in_sandbox_test_with_timeouts,
+    spawn_run_in_sandbox_test, spawn_run_in_sandbox_test_with_cancellation,
+    spawn_run_in_sandbox_test_with_timeouts,
 };
 pub(super) use self::manifest::{api_artifact, api_storage};
 pub(super) use self::sandbox::{

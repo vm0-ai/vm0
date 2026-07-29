@@ -22,6 +22,7 @@ import {
 import { drainChatThreadQueueForRun$ } from "./chat-thread-queue-drain.service";
 import { processOrgUsageEvents$ } from "./zero-credit-usage.service";
 import { drainOrgQueue$ } from "./zero-run-queue.service";
+import { CANCELLATION_FINALIZATION_PENDING } from "./runner-cancellation-finalization.service";
 
 const L = logger("ZeroRunCancel");
 
@@ -78,6 +79,8 @@ export const cancelRun$ = command(
           orgId: agentRuns.orgId,
           sandboxId: agentRuns.sandboxId,
           runnerGroup: agentRuns.runnerGroup,
+          cancellationFinalizationStatus:
+            agentRuns.cancellationFinalizationStatus,
         })
         .from(agentRuns)
         .where(
@@ -112,7 +115,15 @@ export const cancelRun$ = command(
 
       const [updated] = await tx
         .update(agentRuns)
-        .set({ status: "cancelled", completedAt: nowDate() })
+        .set({
+          status: "cancelled",
+          completedAt: nowDate(),
+          cancellationFinalizationStatus:
+            run.status === "running" &&
+            run.cancellationFinalizationStatus !== null
+              ? CANCELLATION_FINALIZATION_PENDING
+              : run.cancellationFinalizationStatus,
+        })
         .where(
           and(eq(agentRuns.id, args.runId), eq(agentRuns.status, run.status)),
         )

@@ -10,7 +10,8 @@ use super::super::super::agent_run::{
 };
 use super::super::super::sandbox_run::execute_new_sandbox;
 use super::super::super::{
-    ExecuteOutcome, ExecutorConfig, JobParams, NewSandboxDispatch, PROCESS_CANCEL_TIMEOUTS,
+    ExecuteOutcome, ExecutionCancellation, ExecutorConfig, JobParams, NewSandboxDispatch,
+    PROCESS_CANCEL_TIMEOUTS,
 };
 use super::config::test_telemetry;
 use crate::error::RunnerResult;
@@ -80,6 +81,32 @@ pub(in crate::executor::tests) fn spawn_run_in_sandbox_test_with_timeouts(
             },
             &mut telemetry,
             RunControls::new(cancel, None),
+            process_cancel_timeouts,
+        )
+        .await
+    })
+}
+
+pub(in crate::executor::tests) fn spawn_run_in_sandbox_test_with_cancellation(
+    sandbox: Box<dyn Sandbox>,
+    ctx: ExecutionContext,
+    config: ExecutorConfig,
+    cancellation: ExecutionCancellation,
+    process_cancel_timeouts: ProcessCancelTimeouts,
+) -> tokio::task::JoinHandle<RunnerResult<AgentExecutionResult>> {
+    tokio::spawn(async move {
+        let mut telemetry = test_telemetry(&config, &ctx);
+        run_in_sandbox_with_process_cancel_timeouts(
+            &*sandbox,
+            &ctx,
+            &config,
+            RunStart {
+                restore_guest_state: false,
+                reuse_result: SandboxReuseResult::PoolMiss,
+                prev_storage: None,
+            },
+            &mut telemetry,
+            RunControls::from_cancellation(cancellation, None),
             process_cancel_timeouts,
         )
         .await
