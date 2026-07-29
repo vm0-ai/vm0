@@ -780,6 +780,91 @@ describe("initial thinking indicator", () => {
     expect(label.closest("[data-thinking-indicator]")).not.toBeNull();
   });
 
+  it("shows every explicit thinking line inside a fixed-height row", async () => {
+    const threadId = "thread-initial-thinking-multiline";
+    const thinking = "ONE\nTWO\nTHREE";
+    mockThinkingTypewriterLayout({
+      text: thinking,
+      labelWidth: 520,
+      parentWidth: 640,
+      graphemeWidth: 10,
+    });
+    const displayedLabels = new Set<string>();
+    const recordDisplayedLabel = () => {
+      const label = document.querySelector<HTMLParagraphElement>(
+        "[data-thinking-indicator] p[aria-label]",
+      );
+      if (label?.textContent) {
+        displayedLabels.add(label.textContent);
+      }
+    };
+    const labelObserver = new MutationObserver(recordDisplayedLabel);
+    labelObserver.observe(document.body, {
+      childList: true,
+      characterData: true,
+      subtree: true,
+    });
+    context.signal.addEventListener(
+      "abort",
+      () => {
+        labelObserver.disconnect();
+      },
+      { once: true },
+    );
+    mockChatLifecycle(context, {
+      threadId,
+      chatMessages: [
+        {
+          id: "msg-thinking-multiline-user",
+          eventType: "input.prompt" as const,
+          content: "Draft a launch checklist",
+          runId: "run-active",
+          createdAt: "2026-03-10T00:00:00Z",
+        },
+        {
+          id: "msg-thinking-multiline-marker",
+          eventType: "output.thinking" as const,
+          content: null,
+          thinking,
+          runId: "run-active",
+          createdAt: "2026-03-10T00:00:01Z",
+        },
+      ],
+      activeRunIds: ["run-active"],
+    });
+
+    detachedSetupPage({
+      context,
+      path: `/chats/${threadId}`,
+    });
+
+    const label = await waitFor(() => {
+      const currentLabel = document.querySelector<HTMLParagraphElement>(
+        "[data-thinking-indicator] p[aria-label]",
+      );
+      if (!currentLabel) {
+        throw new Error("Thinking label not found");
+      }
+      expect(currentLabel).toHaveAttribute("aria-label", thinking);
+      return currentLabel;
+    });
+    await waitFor(() => {
+      recordDisplayedLabel();
+      expect(Array.from(displayedLabels)).toStrictEqual(
+        expect.arrayContaining(["ONE", "TWO", "THREE"]),
+      );
+    });
+    expect(label).toHaveTextContent(/^THREE$/);
+    expect(label).toHaveClass(
+      "h-5",
+      "overflow-hidden",
+      "whitespace-nowrap",
+      "leading-5",
+    );
+    expect(label.parentElement).toHaveClass("h-5");
+    expect(label.closest("[data-thinking-indicator]")).not.toBeNull();
+  });
+
   it("keeps the thinking marker visible while later messages are queued", async () => {
     const threadId = "thread-initial-thinking-with-queue";
     mockChatLifecycle(context, {

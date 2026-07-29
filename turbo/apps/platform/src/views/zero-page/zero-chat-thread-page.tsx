@@ -3623,7 +3623,7 @@ function ThinkingLabel({
 
   if (isQueued) {
     return (
-      <p className="zero-shimmer-text min-w-0 flex-1 text-[0.8125rem] truncate">
+      <p className="zero-shimmer-text h-5 min-w-0 flex-1 overflow-hidden whitespace-nowrap text-[0.8125rem] leading-5">
         Waiting in{" "}
         <button
           type="button"
@@ -3643,7 +3643,7 @@ function ThinkingLabel({
       <p
         key={serverThinkingLabel.id}
         ref={serverThinkingLabel.setRef}
-        className="zero-shimmer-text min-w-0 flex-1 overflow-hidden whitespace-nowrap text-[0.8125rem]"
+        className="zero-shimmer-text h-5 min-w-0 flex-1 overflow-hidden whitespace-nowrap text-[0.8125rem] leading-5"
         aria-label={serverThinkingLabel.fullText}
       >
         {serverThinkingLabel.displayedText || "\u00a0"}
@@ -3652,7 +3652,7 @@ function ThinkingLabel({
   }
 
   return (
-    <p className="zero-shimmer-text min-w-0 flex-1 text-[0.8125rem] truncate">
+    <p className="zero-shimmer-text h-5 min-w-0 flex-1 overflow-hidden whitespace-nowrap text-[0.8125rem] leading-5">
       {thinkingLabel}
     </p>
   );
@@ -3739,7 +3739,7 @@ function WaitingForAssistantResponse({
       <div className="flex flex-col gap-2 @[900px]:grid @[900px]:grid-cols-[36px_minmax(0,1fr)] @[900px]:gap-2.5 @[900px]:-ml-[46px] @[900px]:items-start">
         <AssistantBubbleAvatar thread={thread} />
         <div className="zero-chat-bubble-assistant rounded-xl py-4 text-[0.9375rem] leading-[1.7] min-w-0 overflow-hidden">
-          <div className="flex items-center gap-2 min-w-0">
+          <div className="flex h-5 min-w-0 items-center gap-2">
             <span className="zero-blocks shrink-0" style={blockStyle}>
               <span />
               <span />
