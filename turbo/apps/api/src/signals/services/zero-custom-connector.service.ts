@@ -110,6 +110,14 @@ interface OAuthClientCredentials {
   readonly clientSecret: string;
 }
 
+type OAuthClientCredentialsUpdate =
+  | { readonly kind: "preserve" }
+  | { readonly kind: "remove" }
+  | {
+      readonly kind: "replace";
+      readonly credentials: OAuthClientCredentials;
+    };
+
 interface ValueMarker {
   readonly connectorId: string;
   readonly kind: CustomConnectorFieldKind;
@@ -331,6 +339,24 @@ export function customConnectorOAuth2AuthMethod(
         return method.type === "oauth2";
       },
     ) ?? null
+  );
+}
+
+function oauth2AuthMethodsEqual(
+  left: CustomConnectorOAuth2AuthMethod | null,
+  right: CustomConnectorOAuth2AuthMethod | null,
+): boolean {
+  if (!left || !right) {
+    return left === right;
+  }
+  return (
+    left.authorizationUrl === right.authorizationUrl &&
+    left.tokenUrl === right.tokenUrl &&
+    left.clientAuthentication === right.clientAuthentication &&
+    left.scopes.length === right.scopes.length &&
+    left.scopes.every((scope, index) => {
+      return scope === right.scopes[index];
+    })
   );
 }
 
@@ -850,6 +876,32 @@ function validateAuthMethods(
   return result;
 }
 
+function validateOAuthClientCredentialValues(args: {
+  readonly clientId: string;
+  readonly clientSecret: string;
+  readonly oauthMethod: CustomConnectorOAuth2AuthMethod;
+}): OAuthClientCredentials | BadRequestResponse {
+  const clientId = args.clientId.trim();
+  const clientSecret = args.clientSecret;
+  if (clientId.length === 0 || clientSecret.trim().length === 0) {
+    return badRequestMessage("OAuth client ID and client secret are required");
+  }
+  if (clientId.length > 2048 || clientSecret.length > 4096) {
+    return badRequestMessage(
+      "OAuth client ID or client secret exceeds the maximum length",
+    );
+  }
+  if (
+    args.oauthMethod.clientAuthentication === "client_secret_basic" &&
+    clientId.includes(":")
+  ) {
+    return badRequestMessage(
+      "OAuth client ID must not contain a colon when using HTTP Basic authentication",
+    );
+  }
+  return { clientId, clientSecret };
+}
+
 function validateOAuthClientCredentials(
   input: CreateCustomConnectorBody,
   authMethods: readonly CustomConnectorAuthMethod[],
@@ -870,25 +922,65 @@ function validateOAuthClientCredentials(
     }
     return null;
   }
-  const clientId = input.oauthClientId?.trim() ?? "";
-  const clientSecret = input.oauthClientSecret ?? "";
-  if (clientId.length === 0 || clientSecret.trim().length === 0) {
-    return badRequestMessage("OAuth client ID and client secret are required");
+  return validateOAuthClientCredentialValues({
+    clientId: input.oauthClientId ?? "",
+    clientSecret: input.oauthClientSecret ?? "",
+    oauthMethod,
+  });
+}
+
+function validateOAuthClientCredentialsUpdate(args: {
+  readonly input: UpdateCustomConnectorBody;
+  readonly existing: CustomConnectorRow;
+  readonly authMethods: readonly CustomConnectorAuthMethod[];
+}): OAuthClientCredentialsUpdate | BadRequestResponse {
+  const oauthMethod = args.authMethods.find(
+    (method): method is CustomConnectorOAuth2AuthMethod => {
+      return method.type === "oauth2";
+    },
+  );
+  const hasClientId = args.input.oauthClientId !== undefined;
+  const hasClientSecret = args.input.oauthClientSecret !== undefined;
+  if (!oauthMethod) {
+    if (hasClientId || hasClientSecret) {
+      return badRequestMessage(
+        "OAuth client credentials require an OAuth 2.0 authentication method",
+      );
+    }
+    return { kind: "remove" };
   }
-  if (clientId.length > 2048 || clientSecret.length > 4096) {
+  if (hasClientId !== hasClientSecret) {
     return badRequestMessage(
-      "OAuth client ID or client secret exceeds the maximum length",
+      "OAuth client ID and client secret must be provided together",
     );
+  }
+  if (hasClientId && hasClientSecret) {
+    const credentials = validateOAuthClientCredentialValues({
+      clientId: args.input.oauthClientId ?? "",
+      clientSecret: args.input.oauthClientSecret ?? "",
+      oauthMethod,
+    });
+    if (isBadRequest(credentials)) {
+      return credentials;
+    }
+    return { kind: "replace", credentials };
   }
   if (
+    !args.existing.encryptedOauthClientId ||
+    !args.existing.encryptedOauthClientSecret
+  ) {
+    return badRequestMessage("OAuth client ID and client secret are required");
+  }
+  const existingOAuthMethod = customConnectorOAuth2AuthMethod(args.existing);
+  if (
     oauthMethod.clientAuthentication === "client_secret_basic" &&
-    clientId.includes(":")
+    existingOAuthMethod?.clientAuthentication !== "client_secret_basic"
   ) {
     return badRequestMessage(
-      "OAuth client ID must not contain a colon when using HTTP Basic authentication",
+      "OAuth client ID and client secret are required when changing token endpoint authentication",
     );
   }
-  return { clientId, clientSecret };
+  return { kind: "preserve" };
 }
 
 function validateDefinition(
@@ -1039,7 +1131,7 @@ function definitionFromUpdateInput(
     fields: input.fields,
     headerInjections: input.headerInjections,
     queryInjections: input.queryInjections,
-    authMethods,
+    authMethods: input.authMethods ?? authMethods,
   };
 }
 
@@ -1220,11 +1312,12 @@ export const createCustomConnector$ = command(
   },
 );
 
-const updateCustomConnectorDefinition$ = command(
+export const updateCustomConnectorDefinition$ = command(
   async (
-    { set },
+    { get, set },
     args: {
       readonly orgId: string;
+      readonly userId: string;
       readonly id: string;
       readonly input: UpdateCustomConnectorBody;
       readonly connectorCatalogSnapshot?: ConnectorRuntimeSnapshot;
@@ -1246,41 +1339,101 @@ const updateCustomConnectorDefinition$ = command(
     if (!existing) {
       return notFound("Custom connector not found");
     }
+    const existingConnector = normaliseCustomConnectorRow(existing);
     const connectorCatalogSnapshot =
       args.connectorCatalogSnapshot ??
       (await loadConnectorRuntimeSnapshot(writeDb));
     signal.throwIfAborted();
     const v = validateDefinition(
-      definitionFromUpdateInput(
-        args.input,
-        normaliseCustomConnectorRow(existing).authMethods,
-      ),
+      definitionFromUpdateInput(args.input, existingConnector.authMethods),
       connectorCatalogSnapshot.serverFirewalls,
     );
     if (isBadRequest(v)) {
       return v;
     }
-    const legacy = legacyColumns(v);
-    const [row] = await writeDb
-      .update(orgCustomConnectors)
-      .set({
-        displayName: v.displayName,
-        prefixes: [...legacy.prefixes],
-        headerName: legacy.headerName,
-        headerTemplate: legacy.headerTemplate,
-        prefixTemplates: [...v.prefixTemplates],
-        fields: [...v.fields],
-        headerInjections: [...v.headerInjections],
-        queryInjections: [...v.queryInjections],
-        updatedAt: nowDate(),
-      })
-      .where(
-        and(
-          eq(orgCustomConnectors.id, args.id),
-          eq(orgCustomConnectors.orgId, args.orgId),
+    const oauthCredentialsUpdate = validateOAuthClientCredentialsUpdate({
+      input: args.input,
+      existing: existingConnector,
+      authMethods: v.authMethods,
+    });
+    if (isBadRequest(oauthCredentialsUpdate)) {
+      return oauthCredentialsUpdate;
+    }
+
+    let encryptedOauthClientId = existing.encryptedOauthClientId;
+    let encryptedOauthClientSecret = existing.encryptedOauthClientSecret;
+    if (oauthCredentialsUpdate.kind === "remove") {
+      encryptedOauthClientId = null;
+      encryptedOauthClientSecret = null;
+    }
+    if (oauthCredentialsUpdate.kind === "replace") {
+      const featureContext = await get(
+        userFeatureSwitchContext(args.orgId, args.userId),
+      );
+      signal.throwIfAborted();
+      [encryptedOauthClientId, encryptedOauthClientSecret] = await Promise.all([
+        encryptStoredSecretValue(
+          oauthCredentialsUpdate.credentials.clientId,
+          featureContext,
         ),
-      )
-      .returning();
+        encryptStoredSecretValue(
+          oauthCredentialsUpdate.credentials.clientSecret,
+          featureContext,
+        ),
+      ]);
+      signal.throwIfAborted();
+    }
+
+    const oauthConfigurationChanged =
+      oauthCredentialsUpdate.kind === "replace" ||
+      !oauth2AuthMethodsEqual(
+        customConnectorOAuth2AuthMethod(existingConnector),
+        customConnectorOAuth2AuthMethod({ authMethods: v.authMethods }),
+      );
+    const legacy = legacyColumns(v);
+    const row = await writeDb.transaction(async (tx) => {
+      const [updated] = await tx
+        .update(orgCustomConnectors)
+        .set({
+          displayName: v.displayName,
+          prefixes: [...legacy.prefixes],
+          headerName: legacy.headerName,
+          headerTemplate: legacy.headerTemplate,
+          prefixTemplates: [...v.prefixTemplates],
+          fields: [...v.fields],
+          headerInjections: [...v.headerInjections],
+          queryInjections: [...v.queryInjections],
+          authMethods: [...v.authMethods],
+          encryptedOauthClientId,
+          encryptedOauthClientSecret,
+          updatedAt: nowDate(),
+        })
+        .where(
+          and(
+            eq(orgCustomConnectors.id, args.id),
+            eq(orgCustomConnectors.orgId, args.orgId),
+          ),
+        )
+        .returning();
+      if (!updated) {
+        return null;
+      }
+      if (oauthConfigurationChanged) {
+        await tx
+          .delete(orgCustomConnectorValues)
+          .where(
+            and(
+              eq(orgCustomConnectorValues.connectorId, args.id),
+              eq(orgCustomConnectorValues.orgId, args.orgId),
+              eq(orgCustomConnectorValues.kind, "secret"),
+              inArray(orgCustomConnectorValues.key, [
+                ...CUSTOM_CONNECTOR_OAUTH_VALUE_KEYS,
+              ]),
+            ),
+          );
+      }
+      return updated;
+    });
     signal.throwIfAborted();
     if (!row) {
       return notFound("Custom connector not found");
@@ -2012,6 +2165,7 @@ const saveProposalDefinition$ = command(
       updateCustomConnectorDefinition$,
       {
         orgId: args.orgId,
+        userId: args.userId,
         id: args.proposal.connectorId,
         input: updateInput,
         connectorCatalogSnapshot: args.connectorCatalogSnapshot,

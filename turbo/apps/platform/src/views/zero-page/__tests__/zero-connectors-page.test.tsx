@@ -5,6 +5,7 @@ import {
   zeroCustomConnectorsContract,
   type CreateCustomConnectorBody,
   type CustomConnectorResponse,
+  type UpdateCustomConnectorBody,
 } from "@vm0/api-contracts/contracts/zero-custom-connectors";
 import {
   zeroConnectorExternalCodeSessionContract,
@@ -386,6 +387,38 @@ function mockCustomConnectorStory(): void {
         return renamed;
       });
       return respond(200, renamed ?? customConnector({}));
+    },
+  );
+  context.mocks.api(
+    zeroCustomConnectorByIdContract.update,
+    ({ params, body, respond }) => {
+      let updated = connectors.find((connector) => {
+        return connector.id === params.id;
+      });
+      connectors = connectors.map((connector) => {
+        if (connector.id !== params.id) {
+          return connector;
+        }
+        const firstHeader = body.headerInjections[0];
+        updated = {
+          ...connector,
+          displayName: body.displayName,
+          prefixes: body.prefixTemplates,
+          prefixTemplates: body.prefixTemplates,
+          fields: body.fields,
+          headerInjections: body.headerInjections,
+          queryInjections: body.queryInjections,
+          ...(body.authMethods ? { authMethods: body.authMethods } : {}),
+          headerName: firstHeader?.name ?? connector.headerName,
+          headerTemplate:
+            firstHeader?.valueTemplate.replaceAll(
+              "{{secrets.secret}}",
+              "{{secret}}",
+            ) ?? connector.headerTemplate,
+        };
+        return updated;
+      });
+      return respond(200, updated ?? customConnector({}));
     },
   );
   context.mocks.api(
@@ -3146,6 +3179,7 @@ describe("connectors page", () => {
       role: "admin",
     });
     const createdBodies: CreateCustomConnectorBody[] = [];
+    const updatedBodies: UpdateCustomConnectorBody[] = [];
     let oauthStartCount = 0;
     let connector: CustomConnectorResponse | null = null;
     const authWindow = createMockAuthWindow();
@@ -3169,6 +3203,27 @@ describe("connectors page", () => {
           connectedAuthMethod: null,
         });
         return respond(201, connector);
+      },
+    );
+    context.mocks.api(
+      zeroCustomConnectorByIdContract.update,
+      ({ params, body, respond }) => {
+        expect(params.id).toBe(connector?.id);
+        updatedBodies.push(body);
+        if (!connector) {
+          throw new Error("Expected custom connector to exist");
+        }
+        connector = {
+          ...connector,
+          displayName: body.displayName,
+          prefixes: body.prefixTemplates,
+          prefixTemplates: body.prefixTemplates,
+          fields: body.fields,
+          headerInjections: body.headerInjections,
+          queryInjections: body.queryInjections,
+          ...(body.authMethods ? { authMethods: body.authMethods } : {}),
+        };
+        return respond(200, connector);
       },
     );
     context.mocks.api(
@@ -3247,9 +3302,9 @@ describe("connectors page", () => {
     if (!(redirectUrlInput instanceof HTMLInputElement)) {
       throw new Error("Expected custom connector redirect URL input");
     }
-    expect(redirectUrlInput.value).toContain(
-      "/api/zero/custom-connectors/oauth2/callback",
-    );
+    const redirectUrl = new URL(redirectUrlInput.value);
+    expect(redirectUrl.origin).toBe(window.location.origin);
+    expect(redirectUrl.pathname).toBe("/connectors/custom/callback");
 
     click(buttonByText("Create", createDialog));
     await waitFor(() => {
@@ -3285,6 +3340,58 @@ describe("connectors page", () => {
       oauthClientId: "connector-oauth-client-id",
       oauthClientSecret: "connector-oauth-client-secret",
     });
+
+    click(screen.getByLabelText("More options"));
+    click(await screen.findByText("Edit"));
+    const editDialog = await screen.findByRole("dialog", {
+      name: "Edit custom connector",
+    });
+    expect(within(editDialog).getByLabelText("Authorization URL")).toHaveValue(
+      "https://oauth.acme.test/authorize",
+    );
+    expect(within(editDialog).getByLabelText("New client ID")).toHaveValue("");
+    expect(within(editDialog).getByLabelText("New client secret")).toHaveValue(
+      "",
+    );
+    await fill(
+      within(editDialog).getByLabelText(/Prefixes/u),
+      "https://api.acme.test/v2/",
+    );
+    await fill(
+      within(editDialog).getByLabelText(/Scopes/u),
+      "search.read calendar.write",
+    );
+    click(buttonByText("Save", editDialog));
+    const confirmationDialog = await screen.findByRole("dialog", {
+      name: "Disconnect existing OAuth connections?",
+    });
+    expect(updatedBodies).toHaveLength(0);
+    expect(
+      within(confirmationDialog).getByText(
+        /disconnect every member currently connected with OAuth/u,
+      ),
+    ).toBeInTheDocument();
+    click(buttonByText("Save and disconnect", confirmationDialog));
+    await waitFor(() => {
+      expect(screen.getByText("https://api.acme.test/v2/")).toBeInTheDocument();
+    });
+    expect(updatedBodies).toHaveLength(1);
+    expect(updatedBodies[0]).toMatchObject({
+      displayName: "Acme API",
+      prefixTemplates: ["https://api.acme.test/v2/"],
+      authMethods: [
+        { type: "api" },
+        {
+          type: "oauth2",
+          authorizationUrl: "https://oauth.acme.test/authorize",
+          tokenUrl: "https://oauth.acme.test/token",
+          scopes: ["search.read", "calendar.write"],
+          clientAuthentication: "client_secret_post",
+        },
+      ],
+    });
+    expect(updatedBodies[0]).not.toHaveProperty("oauthClientId");
+    expect(updatedBodies[0]).not.toHaveProperty("oauthClientSecret");
 
     click(screen.getByText("Connect"));
     const connectDialog = await screen.findByRole("dialog", {

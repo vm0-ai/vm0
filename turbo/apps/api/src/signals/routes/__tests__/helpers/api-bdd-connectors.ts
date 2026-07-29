@@ -33,6 +33,7 @@ import {
   type PatchCustomConnectorBody,
   type SaveCustomConnectorProposalBody,
   type SaveCustomConnectorProposalResponse,
+  type UpdateCustomConnectorBody,
 } from "@vm0/api-contracts/contracts/zero-custom-connectors";
 import { zeroFeatureSwitchesContract } from "@vm0/api-contracts/contracts/zero-feature-switches";
 import {
@@ -1663,6 +1664,38 @@ export function createConnectorBddApi(context: TestContext) {
       return response.body;
     },
 
+    async requestUpdateCustomConnector(
+      actor: ApiTestUser | null,
+      connectorId: string,
+      body: UpdateCustomConnectorBody,
+      statuses: readonly (200 | 400 | 401 | 403 | 404 | 500)[],
+    ) {
+      const client = setupApp({ context })(zeroCustomConnectorByIdContract);
+      return await accept(
+        client.update({
+          params: { id: connectorId },
+          headers: authenticate(actor),
+          body,
+        }),
+        statuses,
+      );
+    },
+
+    async updateCustomConnector(
+      actor: ApiTestUser,
+      connectorId: string,
+      body: UpdateCustomConnectorBody,
+    ): Promise<CustomConnectorResponse> {
+      const response = await api.requestUpdateCustomConnector(
+        actor,
+        connectorId,
+        body,
+        [200],
+      );
+      expectStatus(response, 200);
+      return response.body;
+    },
+
     async requestDeleteCustomConnector(
       actor: ApiTestUser | null,
       connectorId: string,
@@ -1801,6 +1834,16 @@ export function createConnectorBddApi(context: TestContext) {
     async completeCustomConnectorOAuth2Callback(query: CallbackQuery) {
       const client = setupApp({ context })(zeroCustomConnectorOAuth2Contract);
       return await accept(client.callback({ query }), [307]);
+    },
+
+    async completeCustomConnectorOAuth2CallbackResult(query: CallbackQuery) {
+      const client = setupApp({ context })(zeroCustomConnectorOAuth2Contract);
+      const response = await accept(
+        client.callback({ query: { ...query, responseMode: "json" } }),
+        [200],
+      );
+      expectStatus(response, 200);
+      return response;
     },
 
     async requestAgentCustomConnectors(

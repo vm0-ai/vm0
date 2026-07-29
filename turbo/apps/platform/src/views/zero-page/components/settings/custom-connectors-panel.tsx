@@ -9,15 +9,18 @@ import {
   DropdownMenuTrigger,
 } from "@vm0/ui";
 import type { CustomConnectorResponse } from "@vm0/api-contracts/contracts/zero-custom-connectors";
+import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import {
   clearCustomConnectorSecret$,
   customConnectorDialog$,
   customConnectors$,
   openCustomConnectorConnectDialog$,
   openCustomConnectorDeleteDialog$,
+  openCustomConnectorEditDialog$,
   openCustomConnectorRenameDialog$,
   setCustomConnectorRenameInput$,
 } from "../../../../signals/zero-page/settings/custom-connectors.ts";
+import { featureSwitch$ } from "../../../../signals/external/feature-switch.ts";
 import { isOrgAdmin$ } from "../../../../signals/org.ts";
 import { detach, Reason } from "../../../../signals/utils.ts";
 import { pageSignal$ } from "../../../../signals/page-signal.ts";
@@ -26,6 +29,7 @@ import { CustomConnectorCreateDialog } from "./custom-connector-create-dialog.ts
 import { CustomConnectorRenameDialog } from "./custom-connector-rename-dialog.tsx";
 import { CustomConnectorConnectDialog } from "./custom-connector-connect-dialog.tsx";
 import { CustomConnectorDeleteConfirm } from "./custom-connector-delete-confirm.tsx";
+import { CustomConnectorUpdateConfirm } from "./custom-connector-update-confirm.tsx";
 import { DropdownMenuModalItem } from "../../../components/dropdown-menu-modal-item.tsx";
 import { noConnectorImg } from "../../platform-assets.ts";
 
@@ -34,14 +38,18 @@ function CustomConnectorRow({
   isAdmin,
   onConnect,
   onDisconnect,
+  onEdit,
   onRename,
+  fullEditingEnabled,
   onDelete,
 }: {
   connector: CustomConnectorResponse;
   isAdmin: boolean;
   onConnect: () => void;
   onDisconnect: () => void;
+  onEdit: () => void;
   onRename: () => void;
+  fullEditingEnabled: boolean;
   onDelete: () => void;
 }) {
   const { t } = useTranslation();
@@ -116,10 +124,16 @@ function CustomConnectorRow({
               )}
               {isAdmin && (
                 <>
-                  <DropdownMenuModalItem onModalSelect={onRename}>
-                    {t(($) => {
-                      return $.connectors.actions.rename;
-                    })}
+                  <DropdownMenuModalItem
+                    onModalSelect={fullEditingEnabled ? onEdit : onRename}
+                  >
+                    {fullEditingEnabled
+                      ? t(($) => {
+                          return $.connectors.actions.edit;
+                        })
+                      : t(($) => {
+                          return $.connectors.actions.rename;
+                        })}
                   </DropdownMenuModalItem>
                   <DropdownMenuModalItem
                     onModalSelect={onDelete}
@@ -143,7 +157,11 @@ export function CustomConnectorsPanel() {
   const { t } = useTranslation();
   const connectors = useLastResolved(customConnectors$);
   const isAdmin = useLastResolved(isOrgAdmin$) ?? false;
+  const featureSwitches = useGet(featureSwitch$);
+  const fullEditingEnabled =
+    featureSwitches[FeatureSwitchKey.CustomConnectorOAuth2] ?? false;
   const dialog = useGet(customConnectorDialog$);
+  const openEdit = useSet(openCustomConnectorEditDialog$);
   const openRename = useSet(openCustomConnectorRenameDialog$);
   const openConnect = useSet(openCustomConnectorConnectDialog$);
   const openDelete = useSet(openCustomConnectorDeleteDialog$);
@@ -197,9 +215,13 @@ export function CustomConnectorsPanel() {
                 onDisconnect={() => {
                   return handleDisconnect(c);
                 }}
+                onEdit={() => {
+                  return openEdit(c);
+                }}
                 onRename={() => {
                   return handleRename(c);
                 }}
+                fullEditingEnabled={fullEditingEnabled}
                 onDelete={() => {
                   return openDelete(c);
                 }}
@@ -210,6 +232,15 @@ export function CustomConnectorsPanel() {
       )}
 
       {dialog.kind === "create" && <CustomConnectorCreateDialog />}
+      {dialog.kind === "edit" && (
+        <CustomConnectorCreateDialog connector={dialog.connector} />
+      )}
+      {dialog.kind === "edit-confirm" && (
+        <CustomConnectorUpdateConfirm
+          connector={dialog.connector}
+          body={dialog.body}
+        />
+      )}
       {dialog.kind === "rename" && (
         <CustomConnectorRenameDialog
           id={dialog.connector.id}

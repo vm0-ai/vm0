@@ -2,10 +2,11 @@ import { command } from "ccstate";
 import { isFeatureEnabled } from "@vm0/core/feature-switch";
 import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import { zeroCustomConnectorOAuth2Contract } from "@vm0/api-contracts/contracts/zero-custom-connectors";
+import type { ConnectorOauthCallbackResult } from "@vm0/api-contracts/contracts/connectors-type-callback";
 
 import { organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
-import { request$ } from "../context/hono";
+import { setResHeader$ } from "../context/hono";
 import { bodyResultOf, pathParamsOf, queryOf } from "../context/request";
 import { writeDb$ } from "../external/db";
 import {
@@ -31,11 +32,9 @@ import {
   connectorOAuthRedirectResponse,
   clearConnectorOAuthCookies,
 } from "./connector-oauth-route-state";
-import { getOAuthApiOrigin } from "./oauth-web-origin";
-import { getConnectorOAuthOrigin } from "./connector-oauth-origin";
+import { env } from "../../lib/env";
 
-const CUSTOM_CONNECTOR_OAUTH_CALLBACK_PATH =
-  "/api/zero/custom-connectors/oauth2/callback";
+const CUSTOM_CONNECTOR_OAUTH_CALLBACK_PATH = "/connectors/custom/callback";
 
 function callbackRedirect(args: {
   readonly origin: string;
@@ -56,6 +55,28 @@ function callbackRedirect(args: {
 
 function callbackError(origin: string, message: string): Response {
   return callbackRedirect({ origin, status: "error", message });
+}
+
+function callbackResultFromRedirect(
+  response: Response,
+): ConnectorOauthCallbackResult {
+  const location = response.headers.get("location");
+  if (!location) {
+    throw new Error("Custom connector callback response is missing a redirect");
+  }
+  const url = new URL(location);
+  if (url.pathname === "/connectors/custom/callback/success") {
+    return { status: "success", username: null };
+  }
+  if (url.pathname === "/connectors/custom/callback/error") {
+    return {
+      status: "error",
+      message:
+        url.searchParams.get("message") ||
+        "OAuth authorization failed. Please try again.",
+    };
+  }
+  throw new Error(`Unexpected custom connector callback redirect: ${location}`);
 }
 
 const startOAuth2Inner$ = command(async ({ get, set }, signal: AbortSignal) => {
@@ -83,10 +104,9 @@ const startOAuth2Inner$ = command(async ({ get, set }, signal: AbortSignal) => {
       },
     };
   }
-  const request = get(request$).raw;
   const redirectUri = new URL(
     CUSTOM_CONNECTOR_OAUTH_CALLBACK_PATH,
-    getOAuthApiOrigin(request),
+    env("APP_URL"),
   ).toString();
   const result = await set(
     startCustomConnectorOAuth2$,
@@ -126,10 +146,10 @@ function validateClaimedState(storedState: StoredOAuthState):
   return { ok: true, context };
 }
 
-const callbackOAuth2$ = command(
+const completeOAuth2Callback$ = command(
   async ({ get, set }, signal: AbortSignal): Promise<Response> => {
     const query = get(queryOf(zeroCustomConnectorOAuth2Contract.callback));
-    const origin = getConnectorOAuthOrigin(get(request$).raw);
+    const origin = new URL(env("APP_URL")).origin;
     if (!query.state) {
       return callbackError(origin, "Missing OAuth state");
     }
@@ -217,6 +237,20 @@ const callbackOAuth2$ = command(
     return callbackRedirect({ origin, status: "success" });
   },
 );
+
+const callbackOAuth2$ = command(async ({ get, set }, signal: AbortSignal) => {
+  const query = get(queryOf(zeroCustomConnectorOAuth2Contract.callback));
+  const response = await set(completeOAuth2Callback$, signal);
+  signal.throwIfAborted();
+  if (query.responseMode !== "json") {
+    return response;
+  }
+  set(setResHeader$, "Cache-Control", "no-store");
+  for (const cookie of response.headers.getSetCookie()) {
+    set(setResHeader$, "Set-Cookie", cookie, { append: true });
+  }
+  return { status: 200 as const, body: callbackResultFromRedirect(response) };
+});
 
 export const zeroCustomConnectorOAuth2Routes: readonly RouteEntry[] = [
   {

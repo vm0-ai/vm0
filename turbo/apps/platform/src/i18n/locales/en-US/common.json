@@ -773,6 +773,7 @@
       "deleting": "Deleting…",
       "disconnect": "Disconnect",
       "disconnecting": "Disconnecting...",
+      "edit": "Edit",
       "grant": "Grant",
       "reconnect": "Reconnect",
       "rename": "Rename",
@@ -956,6 +957,9 @@
       "delete": {
         "description": "This removes the connector and every member's stored secret for it. Agents authorized for this connector will lose access immediately. This can't be undone.",
         "title": "Delete {{connector}}?"
+      },
+      "edit": {
+        "title": "Edit custom connector"
       },
       "emptyAdmin": "No custom connectors yet. Create one to register an API for every member to use.",
       "emptyMember": "Your org hasn't registered any custom connectors yet.",

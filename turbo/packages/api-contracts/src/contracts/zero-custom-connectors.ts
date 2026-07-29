@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { initContract, authHeadersSchema } from "./base";
+import { connectorOauthCallbackResultSchema } from "./connectors-type-callback";
 import { apiErrorSchema } from "./errors";
 
 const c = initContract();
@@ -121,6 +122,9 @@ export const updateCustomConnectorBodySchema = z.object({
   fields: z.array(customConnectorFieldSchema),
   headerInjections: z.array(customConnectorHeaderInjectionSchema),
   queryInjections: z.array(customConnectorQueryInjectionSchema),
+  authMethods: customConnectorAuthMethodsSchema.optional(),
+  oauthClientId: z.string().min(1).max(2048).optional(),
+  oauthClientSecret: z.string().min(1).max(4096).optional(),
 });
 export type UpdateCustomConnectorBody = z.infer<
   typeof updateCustomConnectorBodySchema
@@ -220,7 +224,8 @@ export type ZeroCustomConnectorsContract = typeof zeroCustomConnectorsContract;
 /**
  * Zero custom connector by id contract for /api/zero/custom-connectors/[id]
  * DELETE: delete a custom connector (admin only — cascades secrets)
- * PATCH: rename a custom connector (admin only — displayName only in v1)
+ * PATCH: rename a custom connector (admin only; retained for old clients)
+ * PUT: update a custom connector definition (admin only)
  */
 export const zeroCustomConnectorByIdContract = c.router({
   get: {
@@ -266,6 +271,22 @@ export const zeroCustomConnectorByIdContract = c.router({
       500: apiErrorSchema,
     },
     summary: "Rename an org custom connector",
+  },
+  update: {
+    method: "PUT",
+    path: "/api/zero/custom-connectors/:id",
+    headers: authHeadersSchema,
+    pathParams: z.object({ id: z.string().uuid() }),
+    body: updateCustomConnectorBodySchema,
+    responses: {
+      200: customConnectorResponseSchema,
+      400: apiErrorSchema,
+      401: apiErrorSchema,
+      403: apiErrorSchema,
+      404: apiErrorSchema,
+      500: apiErrorSchema,
+    },
+    summary: "Update an org custom connector",
   },
 });
 export type ZeroCustomConnectorByIdContract =
@@ -335,9 +356,11 @@ export const zeroCustomConnectorOAuth2Contract = c.router({
         state: z.string().optional(),
         error: z.string().optional(),
         error_description: z.string().optional(),
+        responseMode: z.literal("json").optional(),
       })
       .catchall(z.string()),
     responses: {
+      200: connectorOauthCallbackResultSchema,
       307: c.noBody(),
     },
     summary: "Complete OAuth 2.0 for a custom connector",

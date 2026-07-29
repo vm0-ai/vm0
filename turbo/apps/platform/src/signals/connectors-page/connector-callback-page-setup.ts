@@ -2,6 +2,7 @@ import {
   connectorsSlugCallbackContract,
   type ConnectorOauthCallbackResult,
 } from "@vm0/api-contracts/contracts/connectors-slug-callback";
+import { zeroCustomConnectorOAuth2Contract } from "@vm0/api-contracts/contracts/zero-custom-connectors";
 import {
   publicConnectorCatalogIconSchema,
   type PublicConnectorCatalogIcon,
@@ -27,24 +28,32 @@ import { jsonParseOr } from "../utils.ts";
 type ConnectorCallbackPageResult =
   | { readonly status: "loading" }
   | ConnectorOauthCallbackResult;
+type ConnectorCallbackType = ConnectorSlug | "custom";
 
 const {
   get$: connectorAppOauthCallbackMetadataRaw$,
   clear$: clearConnectorAppOauthCallbackMetadata$,
 } = localStorageSignals(CONNECTOR_APP_OAUTH_CALLBACK_METADATA_STORAGE_KEY);
 
-function connectorSlugFromPath(
+function connectorTypeFromPath(
   value: string | undefined,
-): ConnectorSlug | null {
-  const parsed = connectorSlugSchema.safeParse(value?.toLowerCase());
+): ConnectorCallbackType | null {
+  const normalized = value?.toLowerCase();
+  if (normalized === "custom") {
+    return normalized;
+  }
+  const parsed = connectorSlugSchema.safeParse(normalized);
   return parsed.success ? parsed.data : null;
 }
 
-function connectorLabel(connectorSlug: ConnectorSlug | null): string {
-  if (!connectorSlug) {
+function connectorLabel(connectorType: ConnectorCallbackType | null): string {
+  if (!connectorType) {
     return "Connector";
   }
-  return connectorSlug === "github" ? "GitHub" : connectorSlug.toUpperCase();
+  if (connectorType === "custom") {
+    return "Custom connector";
+  }
+  return connectorType === "github" ? "GitHub" : connectorType.toUpperCase();
 }
 
 function connectorIconFromSearchParams(
@@ -170,13 +179,35 @@ const completeConnectorCallback$ = command(
   },
 );
 
+const completeCustomConnectorCallback$ = command(
+  async (
+    { get },
+    query: Record<string, string>,
+    signal: AbortSignal,
+  ): Promise<ConnectorOauthCallbackResult> => {
+    const client = get(zeroClient$)(zeroCustomConnectorOAuth2Contract, {
+      apiBase: "api",
+    });
+    const response = await accept(
+      client.callback({
+        query: { ...query, responseMode: "json" },
+        fetchOptions: { signal },
+      }),
+      [200],
+    );
+    signal.throwIfAborted();
+    return response.body;
+  },
+);
+
 export const setupConnectorCallbackPage$ = command(
   async ({ get, set }, signal: AbortSignal) => {
     const params = get(pathParams$);
-    const connectorSlug = connectorSlugFromPath(
+    const connectorType = connectorTypeFromPath(
       typeof params?.type === "string" ? params.type : undefined,
     );
-    const label = connectorLabel(connectorSlug);
+    const connectorSlug = connectorType === "custom" ? null : connectorType;
+    const label = connectorLabel(connectorType);
     const searchParams = get(searchParams$);
     const storedMetadata = connectorCallbackMetadataFromStorage(
       get(connectorAppOauthCallbackMetadataRaw$),
@@ -196,7 +227,7 @@ export const setupConnectorCallbackPage$ = command(
       return;
     }
 
-    if (!connectorSlug) {
+    if (!connectorType) {
       set(
         updatePage$,
         callbackPageElement(connectorIcon, label, {
@@ -216,12 +247,11 @@ export const setupConnectorCallbackPage$ = command(
     set(updateDocumentTitle$, `Connect ${label}`);
     await set(hideAppSkeleton$, signal);
 
-    const result = await set(
-      completeConnectorCallback$,
-      connectorSlug,
-      Object.fromEntries(searchParams),
-      signal,
-    );
+    const query = Object.fromEntries(searchParams);
+    const result =
+      connectorType === "custom"
+        ? await set(completeCustomConnectorCallback$, query, signal)
+        : await set(completeConnectorCallback$, connectorType, query, signal);
     set(updatePage$, callbackPageElement(connectorIcon, label, result));
 
     const resultSearchParams = new URLSearchParams();
@@ -235,7 +265,7 @@ export const setupConnectorCallbackPage$ = command(
     set(
       replacePathSilently$,
       ROUTES.connectorCallbackResult,
-      { type: connectorSlug, status: result.status },
+      { type: connectorType, status: result.status },
       resultSearchParams,
     );
     if (storedMetadata) {

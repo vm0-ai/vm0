@@ -1510,6 +1510,7 @@ describe("CONN-02: external-code authorization", () => {
 
 describe("CONN-03: custom connectors and connector-owned secrets", () => {
   it("stores OAuth app credentials at creation and lets members authorize", async () => {
+    mockEnv("APP_URL", "https://app.vm0.test");
     const provider = mockCustomConnectorOAuth2Provider(context);
     const bdd = createBddApi(context);
     bdd.acceptAgentStorageWrites();
@@ -1606,18 +1607,19 @@ describe("CONN-03: custom connectors and connector-owned secrets", () => {
     if (!redirectUri) {
       throw new Error("Expected custom connector OAuth redirect URI");
     }
-    expect(new URL(redirectUri).pathname).toBe(
-      "/api/zero/custom-connectors/oauth2/callback",
-    );
+    expect(redirectUri).toBe("https://app.vm0.test/connectors/custom/callback");
     expectNoVisibleSecret(authorizationUrl, clientSecret);
 
-    const callback = await connectorsApi.completeCustomConnectorOAuth2Callback({
-      code: "bdd-custom-oauth-code",
-      state: stateFromAuthorizationUrl(authorizationUrl),
+    const callback =
+      await connectorsApi.completeCustomConnectorOAuth2CallbackResult({
+        code: "bdd-custom-oauth-code",
+        state: stateFromAuthorizationUrl(authorizationUrl),
+      });
+    expect(callback.body).toStrictEqual({
+      status: "success",
+      username: null,
     });
-    expect(redirectLocation(callback).pathname).toBe(
-      "/connectors/custom/callback/success",
-    );
+    expect(callback.headers.get("cache-control")).toBe("no-store");
     expect(provider.tokenBodies).toHaveLength(1);
     expect(provider.tokenBodies[0]?.get("grant_type")).toBe(
       "authorization_code",
@@ -1669,6 +1671,133 @@ describe("CONN-03: custom connectors and connector-owned secrets", () => {
 
     await connectorsApi.deleteCustomConnector(admin, created.id);
     await bdd.deleteAgent(admin, agent.agentId);
+  });
+
+  it("updates OAuth settings, preserves stored client credentials, and clears member OAuth grants", async () => {
+    const provider = mockCustomConnectorOAuth2Provider(context);
+    const bdd = createBddApi(context);
+    const admin = bdd.user({ orgRole: "org:admin" });
+    const member = bdd.user({
+      orgId: admin.orgId,
+      orgRole: "org:member",
+    });
+    await connectorsApi.updateFeatureSwitches(admin, {
+      [FeatureSwitchKey.CustomConnectorOAuth2]: true,
+    });
+    await connectorsApi.updateFeatureSwitches(member, {
+      [FeatureSwitchKey.CustomConnectorOAuth2]: true,
+    });
+
+    const clientId = "bdd-edit-oauth-client-id";
+    const clientSecret = "bdd-edit-oauth-client-secret";
+    const created = await connectorsApi.createCustomConnector(admin, {
+      displayName: "BDD Editable OAuth Connector",
+      prefixTemplates: ["https://editable-oauth.example.test/v1/"],
+      fields: [],
+      headerInjections: [],
+      queryInjections: [],
+      authMethods: [
+        {
+          type: "oauth2",
+          authorizationUrl: provider.authorizationUrl,
+          tokenUrl: provider.tokenUrl,
+          scopes: ["read"],
+          clientAuthentication: "client_secret_post",
+        },
+      ],
+      oauthClientId: clientId,
+      oauthClientSecret: clientSecret,
+    });
+
+    const initialAuthorizationUrl =
+      await connectorsApi.startCustomConnectorOAuth2(member, created.id);
+    await connectorsApi.completeCustomConnectorOAuth2Callback({
+      code: "bdd-edit-oauth-code",
+      state: stateFromAuthorizationUrl(initialAuthorizationUrl),
+    });
+    const connected = await connectorsApi.listCustomConnectors(member);
+    expect(
+      connected.find((connector) => {
+        return connector.id === created.id;
+      }),
+    ).toMatchObject({
+      connected: true,
+      connectedAuthMethod: "oauth2",
+    });
+
+    const updateBody = {
+      displayName: "BDD Edited OAuth Connector",
+      prefixTemplates: ["https://editable-oauth.example.test/v2/"],
+      fields: [],
+      headerInjections: [],
+      queryInjections: [],
+      authMethods: [
+        {
+          type: "oauth2" as const,
+          authorizationUrl: provider.authorizationUrl,
+          tokenUrl: provider.tokenUrl,
+          scopes: ["read", "write"],
+          clientAuthentication: "client_secret_post" as const,
+        },
+      ],
+    };
+    const memberUpdate = await connectorsApi.requestUpdateCustomConnector(
+      member,
+      created.id,
+      updateBody,
+      [403],
+    );
+    expectApiError(memberUpdate.body);
+    expect(memberUpdate.body.error.message).toContain("Only org admins");
+
+    const incompleteCredentials =
+      await connectorsApi.requestUpdateCustomConnector(
+        admin,
+        created.id,
+        {
+          ...updateBody,
+          oauthClientId: "replacement-client-id",
+        },
+        [400],
+      );
+    expectApiError(incompleteCredentials.body);
+    expect(incompleteCredentials.body.error.message).toContain(
+      "must be provided together",
+    );
+
+    const updated = await connectorsApi.updateCustomConnector(
+      admin,
+      created.id,
+      updateBody,
+    );
+    expect(updated).toMatchObject({
+      displayName: "BDD Edited OAuth Connector",
+      prefixes: ["https://editable-oauth.example.test/v2/"],
+      authMethods: updateBody.authMethods,
+    });
+    expectNoVisibleSecret(updated, clientId);
+    expectNoVisibleSecret(updated, clientSecret);
+
+    const disconnected = await connectorsApi.listCustomConnectors(member);
+    expect(
+      disconnected.find((connector) => {
+        return connector.id === created.id;
+      }),
+    ).toMatchObject({
+      connected: false,
+      connectedAuthMethod: null,
+      missingRequiredFields: ["oauth2"],
+    });
+
+    const nextAuthorizationUrl = await connectorsApi.startCustomConnectorOAuth2(
+      member,
+      created.id,
+    );
+    const nextAuthorization = new URL(nextAuthorizationUrl);
+    expect(nextAuthorization.searchParams.get("client_id")).toBe(clientId);
+    expect(nextAuthorization.searchParams.get("scope")).toBe("read write");
+
+    await connectorsApi.deleteCustomConnector(admin, created.id);
   });
 
   it("rejects API definition updates for an OAuth-only connector without changing it", async () => {
@@ -1800,6 +1929,39 @@ describe("CONN-03: custom connectors and connector-owned secrets", () => {
       })?.hasSecret,
     ).toBeTruthy();
     expectNoVisibleSecret(afterSecret, secretValue);
+
+    const definitionUpdateBody = {
+      displayName: "BDD Custom Connector Updated",
+      prefixTemplates: [`https://${slug}.example.test/v2/`],
+      fields: created.fields,
+      headerInjections: created.headerInjections,
+      queryInjections: created.queryInjections,
+      authMethods: created.authMethods,
+    };
+    const disabledUpdate = await connectorsApi.requestUpdateCustomConnector(
+      admin,
+      created.id,
+      definitionUpdateBody,
+      [403],
+    );
+    expectApiError(disabledUpdate.body);
+    expect(disabledUpdate.body.error.message).toContain("not enabled");
+
+    await connectorsApi.updateFeatureSwitches(admin, {
+      [FeatureSwitchKey.CustomConnectorOAuth2]: true,
+    });
+    const updated = await connectorsApi.updateCustomConnector(
+      admin,
+      created.id,
+      definitionUpdateBody,
+    );
+    expect(updated).toMatchObject({
+      displayName: "BDD Custom Connector Updated",
+      prefixes: [`https://${slug}.example.test/v2/`],
+      connected: true,
+      connectedAuthMethod: "api",
+      hasSecret: true,
+    });
 
     await connectorsApi.patchCustomConnector(admin, created.id, {
       displayName: "BDD Custom Connector Renamed",

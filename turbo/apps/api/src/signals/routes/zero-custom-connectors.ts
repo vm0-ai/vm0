@@ -9,6 +9,7 @@ import { zeroCustomConnectorsCreateRoutes } from "./zero-custom-connectors-creat
 import { zeroCustomConnectorsDeleteRoutes } from "./zero-custom-connectors-delete";
 import { zeroCustomConnectorsGetRoutes } from "./zero-custom-connectors-get";
 import { zeroCustomConnectorsPatchRoutes } from "./zero-custom-connectors-patch";
+import { zeroCustomConnectorsUpdateRoutes } from "./zero-custom-connectors-update";
 import { zeroCustomConnectorProposalRoutes } from "./zero-custom-connectors-proposal";
 import { zeroCustomConnectorSecretDeleteRoutes } from "./zero-custom-connectors-secret-delete";
 import { zeroCustomConnectorsSecretSetRoutes } from "./zero-custom-connectors-secret-set";
@@ -38,6 +39,7 @@ export const zeroCustomConnectorsRoutes: readonly RouteEntry[] = [
   ...zeroCustomConnectorsGetRoutes,
   ...zeroCustomConnectorsDeleteRoutes,
   ...zeroCustomConnectorsPatchRoutes,
+  ...zeroCustomConnectorsUpdateRoutes,
   ...zeroCustomConnectorProposalRoutes,
   ...zeroCustomConnectorSecretDeleteRoutes,
   ...zeroCustomConnectorsSecretSetRoutes,
