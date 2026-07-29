@@ -68,7 +68,7 @@ test("keep scrollbar thumbs visible without global hover styling", async ({
   const apiUrl = process.env.VM0_API_BACKEND_URL!;
   const appUrl = deriveAppUrl(apiUrl);
 
-  await page.goto(appUrl, { waitUntil: "domcontentloaded" });
+  await page.goto(`${appUrl}/_/error`, { waitUntil: "domcontentloaded" });
   await page.waitForFunction(() => {
     return (
       getComputedStyle(document.documentElement).getPropertyValue(
@@ -76,6 +76,7 @@ test("keep scrollbar thumbs visible without global hover styling", async ({
       ) !== "auto"
     );
   });
+  await page.locator("#app-bootstrap-skeleton").waitFor({ state: "detached" });
 
   // Paint invalidation is not exposed as a DOM observable. This probe verifies
   // the production stylesheet's visible scrollbar cascade in real Chromium.
@@ -91,6 +92,7 @@ test("keep scrollbar thumbs visible without global hover styling", async ({
       width: "80px",
       height: "80px",
       overflow: "scroll",
+      zIndex: "2147483647",
     });
 
     const contents = document.createElement("div");
