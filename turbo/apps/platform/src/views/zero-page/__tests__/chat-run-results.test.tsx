@@ -309,7 +309,7 @@ describe("chat lifecycle", () => {
           runId: "run-usage-folded-managed-api",
           usage: {
             version: 1,
-            totalCredits: 180,
+            totalCredits: 216,
             settledAt: "2026-06-09T10:00:03Z",
             breakdown: [
               {
@@ -324,6 +324,11 @@ describe("chat lifecycle", () => {
               },
               {
                 kind: "web-search",
+                credits: 36,
+                providers: [{ provider: "perplexity", credits: 36 }],
+              },
+              {
+                kind: "people-search",
                 credits: 36,
                 providers: [{ provider: "perplexity", credits: 36 }],
               },
@@ -364,16 +369,17 @@ describe("chat lifecycle", () => {
       screen.queryByText("Inspecting managed API results."),
     ).not.toBeInTheDocument();
 
-    const managedApiCredit = await screen.findByLabelText("Credit usage 180");
+    const managedApiCredit = await screen.findByLabelText("Credit usage 216");
     click(managedApiCredit);
 
     await waitFor(() => {
       expect(screen.getByText("Web Fetch")).toBeInTheDocument();
       expect(screen.getByText("Maps")).toBeInTheDocument();
       expect(screen.getByText("Web Search")).toBeInTheDocument();
+      expect(screen.getByText("People Search")).toBeInTheDocument();
       expect(screen.getByText("Finance")).toBeInTheDocument();
       expect(screen.getByText("Weather")).toBeInTheDocument();
-      expect(screen.getAllByText("36")).toHaveLength(5);
+      expect(screen.getAllByText("36")).toHaveLength(6);
       expect(screen.queryByText("Firecrawl")).not.toBeInTheDocument();
       expect(screen.queryByText("Google Maps")).not.toBeInTheDocument();
       expect(screen.queryByText("Perplexity")).not.toBeInTheDocument();

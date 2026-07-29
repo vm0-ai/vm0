@@ -187,6 +187,8 @@ teardown_file() {
     echo "updated-content" > testfile.txt
     run seed_storage_fixture artifact "$artifact_name" .
     assert_success
+    local updated_version_id="$output"
+    echo "# Updated artifact HEAD: $updated_version_id"
 
     # -- Step 4: Continue from session with templateVars (was t06-3d) --
     echo "# Continuing from session..."

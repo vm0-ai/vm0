@@ -20,6 +20,7 @@ import {
   isTypeAssertionExpression,
   isVariableDeclaration,
   isVariableDeclarationList,
+  isVariableStatement,
   NodeFlags,
   type Node,
   type Symbol as TypeScriptSymbol,
@@ -463,7 +464,7 @@ export function createSqlSourceComposer(
       !isFunctionDeclaration(declaration) ||
       declaration.getSourceFile() !== tsCallee.getSourceFile() ||
       declaration.body === undefined ||
-      declaration.body.statements.length !== 1 ||
+      declaration.body.statements.length === 0 ||
       declaration.parameters.length !== node.arguments.length
     ) {
       return null;
@@ -486,7 +487,8 @@ export function createSqlSourceComposer(
       }
       parameters.push(symbol);
     }
-    const statement = declaration.body.statements[0];
+    const statements = declaration.body.statements;
+    const statement = statements[statements.length - 1];
     if (
       statement === undefined ||
       !isReturnStatement(statement) ||
@@ -494,11 +496,39 @@ export function createSqlSourceComposer(
     ) {
       return null;
     }
+    // Model only the conventional straight-line helper shape. Mutation,
+    // control flow, destructuring, and non-final returns remain opaque.
+    const localInitializers: Node[] = [];
+    for (const leadingStatement of statements.slice(0, -1)) {
+      if (
+        !isVariableStatement(leadingStatement) ||
+        (leadingStatement.declarationList.flags & NodeFlags.Const) === 0 ||
+        leadingStatement.declarationList.declarations.length === 0
+      ) {
+        return null;
+      }
+      for (const localDeclaration of leadingStatement.declarationList
+        .declarations) {
+        if (
+          !isIdentifier(localDeclaration.name) ||
+          localDeclaration.initializer === undefined
+        ) {
+          return null;
+        }
+        const initializer = services.tsNodeToESTreeNodeMap.get(
+          localDeclaration.initializer,
+        );
+        if (!isComposableExpression(initializer)) {
+          return null;
+        }
+        localInitializers.push(localDeclaration.initializer);
+      }
+    }
+    const parameterSet = new Set(parameters);
     if (
-      !parametersAppearInComposablePositions(
-        statement.expression,
-        new Set(parameters),
-      )
+      [...localInitializers, statement.expression].some((expression) => {
+        return !parametersAppearInComposablePositions(expression, parameterSet);
+      })
     ) {
       return null;
     }

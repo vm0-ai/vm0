@@ -63,6 +63,12 @@ const PROVIDER_CLEANUP_TIMEOUT_MS = 30_000;
 const PROVIDER_START_LIFECYCLE_TIMEOUT_MS = 90_000;
 const STRANDED_START_GRACE_MS = 60_000;
 const MAX_PROVIDER_VALIDATION_ISSUES_TO_LOG = 10;
+const MAX_PROVIDER_VALUE_PREVIEW_CHARS = 128;
+const PROVIDER_VALUE_DIAGNOSTIC_FIELDS = [
+  "browserCost",
+  "proxyCost",
+  "proxyUsedMb",
+] as const;
 const IDLE_LEASE_MS = ZERO_BROWSER_IDLE_LEASE_MINUTES * 60_000;
 const OWNED_BROWSER_STATUSES = [
   "creating",
@@ -184,6 +190,47 @@ function conflict(message: string, code = "BROWSER_CONFLICT") {
   return serviceError(409, code, message);
 }
 
+interface ProviderValueDiagnostic {
+  readonly providerValueType: string;
+  readonly providerValueLength?: number;
+  readonly providerValuePreview?: string;
+}
+
+function providerValueDiagnostic(
+  path: readonly PropertyKey[],
+  value: unknown,
+): ProviderValueDiagnostic | null {
+  const field = path.length === 1 ? path[0] : undefined;
+  if (
+    typeof field !== "string" ||
+    !PROVIDER_VALUE_DIAGNOSTIC_FIELDS.some((candidate) => {
+      return candidate === field;
+    })
+  ) {
+    return null;
+  }
+  const providerValueType =
+    value === null ? "null" : Array.isArray(value) ? "array" : typeof value;
+  const previewValue =
+    typeof value === "string" ||
+    typeof value === "number" ||
+    typeof value === "boolean" ||
+    value === null
+      ? String(value)
+      : null;
+  if (previewValue === null) {
+    return { providerValueType };
+  }
+  const characters = Array.from(previewValue);
+  return {
+    providerValueType,
+    providerValueLength: characters.length,
+    providerValuePreview: characters
+      .slice(0, MAX_PROVIDER_VALUE_PREVIEW_CHARS)
+      .join(""),
+  };
+}
+
 function providerFailure(error: unknown): BrowserServiceError {
   if (error instanceof BrowserUseProviderError) {
     return serviceError(error.status, error.code, error.message);
@@ -195,6 +242,7 @@ function providerFailure(error: unknown): BrowserServiceError {
       validationIssues: error.issues
         .slice(0, MAX_PROVIDER_VALIDATION_ISSUES_TO_LOG)
         .map((issue) => {
+          const diagnostic = providerValueDiagnostic(issue.path, issue.input);
           return {
             path:
               issue.path.length === 0
@@ -202,6 +250,7 @@ function providerFailure(error: unknown): BrowserServiceError {
                 : issue.path.map(String).join("."),
             code: issue.code,
             message: issue.message,
+            ...diagnostic,
           };
         }),
       validationIssuesOmitted: Math.max(

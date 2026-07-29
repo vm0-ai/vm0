@@ -409,7 +409,13 @@ describe("GET /api/zero/usage/record", () => {
       {
         kind: "connector",
         credits: 250,
-        providers: [{ provider: connectorProvider, credits: 250 }],
+        providers: [
+          {
+            provider: connectorProvider,
+            credits: 250,
+            usageKinds: [{ kind: "connector", credits: 250 }],
+          },
+        ],
       },
     ]);
     expect(response.body.rows[0]?.member).toBeNull();
@@ -424,7 +430,13 @@ describe("GET /api/zero/usage/record", () => {
       {
         kind: "model",
         credits: 50,
-        providers: [{ provider: model, credits: 50 }],
+        providers: [
+          {
+            provider: model,
+            credits: 50,
+            usageKinds: [{ kind: "model", credits: 50 }],
+          },
+        ],
       },
     ]);
 
@@ -489,12 +501,24 @@ describe("GET /api/zero/usage/record", () => {
           {
             kind: "model",
             credits: 50,
-            providers: [{ provider: model, credits: 50 }],
+            providers: [
+              {
+                provider: model,
+                credits: 50,
+                usageKinds: [{ kind: "model", credits: 50 }],
+              },
+            ],
           },
           {
             kind: "connector",
             credits: 20,
-            providers: [{ provider: connectorProvider, credits: 20 }],
+            providers: [
+              {
+                provider: connectorProvider,
+                credits: 20,
+                usageKinds: [{ kind: "connector", credits: 20 }],
+              },
+            ],
           },
         ],
       }),
@@ -616,12 +640,24 @@ describe("GET /api/zero/usage/record", () => {
       {
         kind: "image",
         credits: 30,
-        providers: [{ provider: imageProvider, credits: 30 }],
+        providers: [
+          {
+            provider: imageProvider,
+            credits: 30,
+            usageKinds: [{ kind: "image", credits: 30 }],
+          },
+        ],
       },
       {
         kind: "connector",
         credits: 100,
-        providers: [{ provider: connectorProvider, credits: 100 }],
+        providers: [
+          {
+            provider: connectorProvider,
+            credits: 100,
+            usageKinds: [{ kind: "connector", credits: 100 }],
+          },
+        ],
       },
     ]);
 
@@ -775,6 +811,17 @@ describe("GET /api/zero/usage/record", () => {
     );
     expect(secondPage.body.rows).toHaveLength(1);
     expect(secondPage.body.rows[0]?.threadId).toBe(expectedThreadIds[2]);
+
+    const emptyPage = await accept(
+      apiClient().get({
+        query: { page: 3, pageSize: 2 },
+        headers: authHeaders(),
+      }),
+      [200],
+    );
+    expect(emptyPage.body.rows).toStrictEqual([]);
+    expect(emptyPage.body.pagination.total).toBe(3);
+    expect(emptyPage.body.totalCredits).toBe(30);
   });
 
   it("returns kind and provider breakdowns for each usage row", async () => {
@@ -814,17 +861,35 @@ describe("GET /api/zero/usage/record", () => {
       {
         kind: "model",
         credits: 150,
-        providers: [{ provider: model, credits: 150 }],
+        providers: [
+          {
+            provider: model,
+            credits: 150,
+            usageKinds: [{ kind: "model", credits: 150 }],
+          },
+        ],
       },
       {
         kind: "image",
         credits: 120,
-        providers: [{ provider: imageProvider, credits: 120 }],
+        providers: [
+          {
+            provider: imageProvider,
+            credits: 120,
+            usageKinds: [{ kind: "image", credits: 120 }],
+          },
+        ],
       },
       {
         kind: "connector",
         credits: 20,
-        providers: [{ provider: connectorProvider, credits: 20 }],
+        providers: [
+          {
+            provider: connectorProvider,
+            credits: 20,
+            usageKinds: [{ kind: "connector", credits: 20 }],
+          },
+        ],
       },
     ]);
   });
@@ -900,7 +965,13 @@ describe("GET /api/zero/usage/record", () => {
       {
         kind: "other",
         credits: 6,
-        providers: [{ provider: "google-maps", credits: 6 }],
+        providers: [
+          {
+            provider: "google-maps",
+            credits: 6,
+            usageKinds: [{ kind: "maps", credits: 6 }],
+          },
+        ],
       },
     ]);
   });

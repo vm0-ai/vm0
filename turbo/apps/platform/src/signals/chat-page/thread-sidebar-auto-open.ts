@@ -126,7 +126,7 @@ function orderedThreadSidebarAutoOpenCandidates(
   groups: readonly GroupedChatMessageGroup[],
 ): ThreadSidebarAutoOpenCandidateSource[] {
   const running: ThreadSidebarAutoOpenCandidateSource[] = [];
-  const completed: ThreadSidebarAutoOpenCandidateSource[] = [];
+  let latestCompleted: ThreadSidebarAutoOpenCandidateSource[] | undefined;
   for (let groupIndex = groups.length - 1; groupIndex >= 0; groupIndex--) {
     const group = groups[groupIndex];
     if (!group) {
@@ -136,10 +136,17 @@ function orderedThreadSidebarAutoOpenCandidates(
     if (!state) {
       continue;
     }
-    const target = state === "running" ? running : completed;
-    target.push(...autoOpenCandidatesInGroup(group));
+    if (state === "running") {
+      running.push(...autoOpenCandidatesInGroup(group));
+      continue;
+    }
+    if (latestCompleted === undefined) {
+      // An empty newest completed group intentionally blocks fallback to
+      // cards from older completed runs.
+      latestCompleted = autoOpenCandidatesInGroup(group);
+    }
   }
-  return [...running, ...completed];
+  return [...running, ...(latestCompleted ?? [])];
 }
 
 function candidateFromSource(

@@ -1698,7 +1698,7 @@ function HeaderAutomationSidebar({
   return (
     <aside
       aria-label="Automations"
-      className="flex h-full w-full min-h-0 flex-col border-l border-border/60 bg-background xl:border-l-0 animate-in fade-in slide-in-from-right-2 duration-[180ms] ease"
+      className="flex h-full w-full min-h-0 flex-col border-l border-border/60 bg-background xl:border-l-0"
       data-testid="automation-sidebar"
     >
       <div className="flex min-h-14 shrink-0 items-center gap-3 border-b border-border/60 px-4 py-2">
@@ -1816,6 +1816,7 @@ export function ZeroChatThreadPage() {
   return (
     <>
       <ChatThreadSidebarShell
+        animateEntry={activeThreadSidebar?.animateEntry ?? true}
         open={activeThreadSidebar !== null}
         sidebar={
           activeThreadSidebar ? (

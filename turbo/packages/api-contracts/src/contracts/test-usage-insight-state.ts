@@ -86,8 +86,46 @@ export const testUsageInsightStateActionBodySchema = z.discriminatedUnion(
       status: z.string().optional(),
       credits_charged: z.number().optional(),
       idempotency_key: z.string().optional(),
+      billing_error: z.string().nullable().optional(),
       created_at: optionalDateStringSchema,
       processed_at: nullableDateStringSchema.optional(),
+      count: z.number().int().positive().optional(),
+    }),
+    z.object({
+      action: z.literal("set-browser-usage-hold"),
+      org_id: z.string(),
+      user_id: z.string(),
+      run_id: z.string(),
+      chat_thread_id: z.string(),
+      idempotency_key: z.string(),
+      settled: z.boolean(),
+    }),
+    z.object({
+      action: z.literal("attach-usage-allowance"),
+      org_id: z.string(),
+      run_id: z.string().nullable(),
+      usage_event_id: z.string(),
+      units_applied: z.number().int().positive(),
+      consumed_units: z.number().int().nonnegative(),
+    }),
+    z.object({
+      action: z.literal("read-allowance-window-state"),
+      short_window_id: z.string(),
+      weekly_window_id: z.string(),
+    }),
+    z.object({
+      action: z.literal("read-usage-event-state"),
+      idempotency_key: z.string(),
+    }),
+    z.object({
+      action: z.literal("delete-run"),
+      run_id: z.string(),
+    }),
+    z.object({
+      action: z.literal("seed-usage-overflow-grain"),
+      org_id: z.string(),
+      user_id: z.string(),
+      processed_at: z.string(),
     }),
     z.object({
       action: z.literal("set-usage-event-created-at"),
@@ -105,6 +143,11 @@ export const testUsageInsightStateActionBodySchema = z.discriminatedUnion(
       scope: z.enum(["organization", "user"]),
       id: z.string(),
     }),
+    z.object({
+      action: z.literal("delete-usage-data"),
+      scope: z.enum(["organization", "user"]),
+      id: z.string(),
+    }),
   ],
 );
 
@@ -116,8 +159,18 @@ export const testUsageInsightStateActionResponseSchema = z.object({
   run_id: z.string().optional(),
   chat_thread_id: z.string().optional(),
   usage_event_id: z.string().optional(),
+  usage_event_status: z.string().optional(),
   raw_count: z.number().optional(),
+  processed_raw_count: z.number().optional(),
+  compacted_raw_count: z.number().optional(),
   hourly_count: z.number().optional(),
+  short_window_id: z.string().optional(),
+  weekly_window_id: z.string().optional(),
+  short_window_consumed_units: z.string().optional(),
+  weekly_window_consumed_units: z.string().optional(),
+  raw_allowance_units: z.string().optional(),
+  hourly_allowance_units: z.string().optional(),
+  allocation_count: z.number().optional(),
 });
 
 export const testUsageInsightStateContract = c.router({

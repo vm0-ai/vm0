@@ -1,5 +1,33 @@
 # Changelog
 
+## [1.340.3](https://github.com/vm0-ai/vm0/compare/api-v1.340.2...api-v1.340.3) (2026-07-29)
+
+
+### Refactoring
+
+* **api:** build usage record queries with drizzle ctes ([#23636](https://github.com/vm0-ai/vm0/issues/23636)) ([0bb6628](https://github.com/vm0-ai/vm0/commit/0bb6628aee3040f7c432760485429dd89c7d2386))
+
+
+### Performance Improvements
+
+* compact hourly usage while retaining source events ([#23632](https://github.com/vm0-ai/vm0/issues/23632)) ([e247f8c](https://github.com/vm0-ai/vm0/commit/e247f8cd27b24c6453d9f9f4a4e86a7ed9532a76))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.243.2
+    * @vm0/core bumped to 8.484.2
+    * @vm0/db bumped to 1.150.5
+
+## [1.340.2](https://github.com/vm0-ai/vm0/compare/api-v1.340.1...api-v1.340.2) (2026-07-29)
+
+
+### Bug Fixes
+
+* **browser:** log bounded provider cost diagnostics ([#23613](https://github.com/vm0-ai/vm0/issues/23613)) ([a32f0bb](https://github.com/vm0-ai/vm0/commit/a32f0bbe87fc0a79f7fc36ec1d65d4b3057eadaf))
+
 ## [1.340.1](https://github.com/vm0-ai/vm0/compare/api-v1.340.0...api-v1.340.1) (2026-07-29)
 
 

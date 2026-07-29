@@ -28,7 +28,14 @@ function usageRows(): UsageRecordRow[] {
           providers: [
             { provider: "firecrawl", credits: 180 },
             { provider: "google-maps", credits: 200 },
-            { provider: "perplexity", credits: 200 },
+            {
+              provider: "perplexity",
+              credits: 200,
+              usageKinds: [
+                { kind: "people-search", credits: 80 },
+                { kind: "web-search", credits: 120 },
+              ],
+            },
             { provider: "apidojo", credits: 200 },
             { provider: "google-weather", credits: 200 },
           ],
@@ -196,6 +203,19 @@ describe("personal usage settings", () => {
       expect(screen.getAllByText("Web Search").length).toBeGreaterThanOrEqual(
         1,
       );
+      expect(
+        screen.getAllByText("People Search").length,
+      ).toBeGreaterThanOrEqual(1);
+      expect(
+        screen.getAllByText("People Search").some((element) => {
+          return element.parentElement?.textContent === "People Search80";
+        }),
+      ).toBeTruthy();
+      expect(
+        screen.getAllByText("Web Search").some((element) => {
+          return element.parentElement?.textContent === "Web Search120";
+        }),
+      ).toBeTruthy();
       expect(screen.getAllByText("Finance").length).toBeGreaterThanOrEqual(1);
       expect(screen.getAllByText("Weather").length).toBeGreaterThanOrEqual(1);
       expect(screen.queryByText("Firecrawl")).not.toBeInTheDocument();

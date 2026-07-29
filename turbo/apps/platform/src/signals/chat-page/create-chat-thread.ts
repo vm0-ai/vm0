@@ -13,6 +13,7 @@ import {
   onRef,
   onRejection,
   resetSignal,
+  settle,
   setLoop,
   withCleanup,
 } from "../utils.ts";
@@ -2415,6 +2416,7 @@ function createInitializeIndexedDbMessages({
   persistentMessages$: PersistentChatMessages$;
   registerBodyBlocks: BodyBlocksRenderer;
 }) {
+  const initialized = Promise.withResolvers<void>();
   const mergeIndexedDbMessages$ = command(
     ({ set }, messages: ChatEvent[]): void => {
       const registeredMessages = messages.map((message) => {
@@ -2430,15 +2432,28 @@ function createInitializeIndexedDbMessages({
     },
   );
 
-  return command(async ({ set }, signal: AbortSignal): Promise<void> => {
-    const indexedDbMessages = await set(
-      loadIndexedDbChatEvents$,
-      threadId,
-      signal,
-    );
-    signal.throwIfAborted();
-    set(mergeIndexedDbMessages$, indexedDbMessages);
-  });
+  const initializeIndexedDbMessages$ = command(
+    async ({ set }, signal: AbortSignal): Promise<void> => {
+      const result = await settle(
+        set(loadIndexedDbChatEvents$, threadId, signal),
+        signal,
+      );
+      if (result.ok) {
+        set(mergeIndexedDbMessages$, result.value);
+      }
+      initialized.resolve(undefined);
+      if (!result.ok) {
+        throw result.error;
+      }
+    },
+  );
+
+  return {
+    indexedDbMessagesInitialized$: computed(() => {
+      return initialized.promise;
+    }),
+    initializeIndexedDbMessages$,
+  };
 }
 
 function createMailDraftCardSignalsById(
@@ -2580,7 +2595,7 @@ function createPagedMessages(
     registerBodyBlocks,
     artifactCardSignals,
   );
-  const initializeIndexedDbMessages$ = createInitializeIndexedDbMessages({
+  const indexedDbMessages = createInitializeIndexedDbMessages({
     artifactCardSignals,
     threadId,
     persistentMessages$: persistentChatMessages$,
@@ -2603,7 +2618,7 @@ function createPagedMessages(
   );
 
   return {
-    initializeIndexedDbMessages$,
+    ...indexedDbMessages,
     mergePersistentMessages$,
     ...latestMessageSignals,
     appendOptimisticMessage$,
@@ -2769,6 +2784,7 @@ function createLoadMoreRenderedChatGroupsWithPrependScroll(
 interface RunTrackingDeps {
   threadId: string;
   latestRunFinishCreatedAt$: Computed<Promise<string | undefined>>;
+  initialAutoOpenDecisionCompleted$: Computed<Promise<void>>;
   initializeIndexedDbMessages$: Command<Promise<void>, [AbortSignal]>;
   mergePersistentMessages$: Command<void, [ChatEvent[]]>;
   syncRemoteMessages$: Command<Promise<void>, [AbortSignal]>;
@@ -2959,6 +2975,7 @@ function createMarkThreadReadIfNeeded({
 
 function createOnSubscribedCommand({
   threadId,
+  initialAutoOpenDecisionCompleted$,
   syncRemoteMessages$,
   settleMessageSync$,
   reloadArtifacts$,
@@ -2968,6 +2985,7 @@ function createOnSubscribedCommand({
 }: Pick<
   RunTrackingDeps,
   | "threadId"
+  | "initialAutoOpenDecisionCompleted$"
   | "syncRemoteMessages$"
   | "settleMessageSync$"
   | "reloadArtifacts$"
@@ -2981,6 +2999,8 @@ function createOnSubscribedCommand({
   const hasSubscribed$ = state(false);
   return command(async ({ get, set }, signal: AbortSignal) => {
     L.debug("subscribeChatThread$ catchup start", { threadId });
+    await get(initialAutoOpenDecisionCompleted$);
+    signal.throwIfAborted();
     set(reloadArtifacts$);
     if (get(hasSubscribed$)) {
       set(reloadMailDrafts$);
@@ -3038,6 +3058,7 @@ function createReceiveSyncedEventsCommand({
 function createRunTracking({
   threadId,
   latestRunFinishCreatedAt$,
+  initialAutoOpenDecisionCompleted$,
   initializeIndexedDbMessages$,
   mergePersistentMessages$,
   syncRemoteMessages$,
@@ -3067,6 +3088,7 @@ function createRunTracking({
 
   const onSubscribed$ = createOnSubscribedCommand({
     threadId,
+    initialAutoOpenDecisionCompleted$,
     syncRemoteMessages$,
     settleMessageSync$,
     reloadArtifacts$,
@@ -4335,6 +4357,7 @@ function publicChatThreadMessageSignals(
     latestAssistantTextCreatedAt$: messages.latestAssistantTextCreatedAt$,
     visibleRenderedChatGroups$: messages.visibleRenderedChatGroups$,
     visibleRenderedChatGroupsReady$: messages.visibleRenderedChatGroupsReady$,
+    indexedDbMessagesInitialized$: messages.indexedDbMessagesInitialized$,
     sidebarAutoOpenCandidate$: messages.sidebarAutoOpenCandidate$,
     messageImageGroups$: messages.messageImageGroups$,
     artifactSignalsForUrl: messages.artifactSignalsForUrl,
@@ -4444,6 +4467,8 @@ export function createChatThreadSignals(
   const runTracking = createRunTracking({
     threadId,
     latestRunFinishCreatedAt$: messages.latestRunFinishCreatedAt$,
+    initialAutoOpenDecisionCompleted$:
+      threadOwned.sidebar.initialAutoOpenDecisionCompleted$,
     initializeIndexedDbMessages$: messages.initializeIndexedDbMessages$,
     mergePersistentMessages$: messages.mergePersistentMessages$,
     syncRemoteMessages$: messages.syncRemoteMessages$,

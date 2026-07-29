@@ -1252,7 +1252,7 @@ checksum = "e629b9b98ef3dd8afe6ca2bd0f89306cec16d43d907889945bc5d6687f2f13c7"
 
 [[package]]
 name = "guest-agent"
-version = "0.58.6"
+version = "0.58.7"
 dependencies = [
  "aho-corasick",
  "api-contracts",
@@ -1329,7 +1329,7 @@ dependencies = [
 
 [[package]]
 name = "guest-init"
-version = "0.16.129"
+version = "0.16.130"
 dependencies = [
  "guest-contracts",
  "libc",
@@ -2600,7 +2600,7 @@ dependencies = [
 
 [[package]]
 name = "runner"
-version = "0.148.28"
+version = "0.148.29"
 dependencies = [
  "ably-subscriber",
  "api-contracts",
@@ -3773,7 +3773,7 @@ checksum = "5c3082ca00d5a5ef149bb8b555a72ae84c9c59f7250f013ac822ac2e49b19c64"
 
 [[package]]
 name = "vsock-guest"
-version = "0.19.48"
+version = "0.19.49"
 dependencies = [
  "guest-contracts",
  "libc",
@@ -3806,7 +3806,7 @@ dependencies = [
 
 [[package]]
 name = "vsock-test"
-version = "0.9.170"
+version = "0.9.171"
 dependencies = [
  "guest-write-file",
  "libc",

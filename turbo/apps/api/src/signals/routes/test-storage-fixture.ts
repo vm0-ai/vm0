@@ -7,7 +7,7 @@ import { storages, storageVersions } from "@vm0/db/schema/storage";
 import { command } from "ccstate";
 import { and, desc, eq } from "drizzle-orm";
 
-import { notFound } from "../../lib/error";
+import { conflict, notFound } from "../../lib/error";
 import { nowDate } from "../../lib/time";
 import { authContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
@@ -158,8 +158,9 @@ async function commitStorageState(
   if (!storage) {
     return notFound("Storage fixture commit target not found");
   }
-  const response = await set(
-    commitStorageUploadForStorage$,
+  const response = await commitFixtureStorage(
+    set,
+    db,
     {
       storageId: storage.id,
       versionId: body.versionId,
@@ -168,10 +169,54 @@ async function commitStorageState(
     },
     signal,
   );
-  signal.throwIfAborted();
   return response.status === 200
     ? actionOk({ committed: response.body })
     : response;
+}
+
+async function commitFixtureStorage(
+  set: Parameters<Parameters<typeof command>[0]>[0]["set"],
+  db: Db,
+  input: {
+    readonly storageId: string;
+    readonly versionId: string;
+    readonly files: StorageStateAction<"commit">["files"];
+    readonly message?: string;
+  },
+  signal: AbortSignal,
+) {
+  const response = await set(
+    commitStorageUploadForStorage$,
+    {
+      storageId: input.storageId,
+      versionId: input.versionId,
+      files: input.files,
+      message: input.message,
+    },
+    signal,
+  );
+  signal.throwIfAborted();
+  if (response.status !== 200) {
+    return response;
+  }
+
+  const [storage] = await db
+    .select({ headVersionId: storages.headVersionId })
+    .from(storages)
+    .where(eq(storages.id, input.storageId))
+    .limit(1);
+  signal.throwIfAborted();
+  if (storage?.headVersionId !== input.versionId) {
+    return conflict("Storage fixture HEAD changed before acknowledgement");
+  }
+
+  return {
+    status: 200 as const,
+    body: {
+      ...response.body,
+      headVersionId: storage.headVersionId,
+    },
+  };
 }
 
 async function listStorageState(
@@ -316,8 +361,9 @@ const commit$ = command(async ({ get, set }, signal: AbortSignal) => {
   });
   signal.throwIfAborted();
 
-  return await set(
-    commitStorageUploadForStorage$,
+  return await commitFixtureStorage(
+    set,
+    db,
     {
       storageId,
       versionId: bodyResult.data.versionId,

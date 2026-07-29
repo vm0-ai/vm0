@@ -1,5 +1,4 @@
 import { command } from "ccstate";
-import { and, count, eq, inArray, sql, type SQL } from "drizzle-orm";
 import {
   type UsageRecordKind,
   type UsageRecordRow,
@@ -9,13 +8,33 @@ import {
   usageRecordKindSchema,
   usageRecordSourceSchema,
 } from "@vm0/api-contracts/contracts/zero-usage-record";
-import { z } from "zod";
+import { agentRuns } from "@vm0/db/schema/agent-run";
+import { chatThreads } from "@vm0/db/schema/chat-thread";
+import { zeroRuns } from "@vm0/db/schema/zero-run";
+import {
+  and,
+  asc,
+  count,
+  desc,
+  eq,
+  gt,
+  inArray,
+  isNotNull,
+  isNull,
+  max,
+  notInArray,
+  sql,
+  sum,
+  type SQLWrapper,
+} from "drizzle-orm";
+import { unionAll } from "drizzle-orm/pg-core";
 
 import {
-  executeRawRows,
-  pgInt8ToSafeIntegerSchema,
-  pgTimestampWithoutTimezoneToDateSchema,
-} from "../../lib/db-raw-rows";
+  nullableDriverValueDecoder,
+  pgInt8ToSafeIntegerDecoder,
+  pgTextDecoder,
+  zodEnumDriverValueDecoder,
+} from "../../lib/db-structured-result";
 import { clerk$ } from "../external/clerk";
 import { writeDb$, type Db } from "../external/db";
 import {
@@ -50,6 +69,10 @@ const PASSTHROUGH_TRIGGER_SOURCES = [
   "cli",
   "agent",
 ] as const;
+const usageRecordKindDecoder = zodEnumDriverValueDecoder(usageRecordKindSchema);
+const usageRecordSourceDecoder = zodEnumDriverValueDecoder(
+  usageRecordSourceSchema,
+);
 
 interface UsageRecordArgs {
   readonly userId: string;
@@ -67,70 +90,46 @@ interface UsageRecordIntermediateRow extends UsageRecordRow {
   readonly userId: string;
 }
 
-const usageRecordSqlRowSchema = z
-  .object({
-    row_key: z.string(),
-    source: usageRecordSourceSchema,
-    user_id: z.string(),
-    thread_id: z.string().nullable(),
-    run_id: z.string().nullable(),
-    title: z.string().nullable(),
-    credits: pgInt8ToSafeIntegerSchema,
-    tokens: pgInt8ToSafeIntegerSchema,
-    last_activity: pgTimestampWithoutTimezoneToDateSchema,
-  })
-  .transform((row): UsageRecordIntermediateRow => {
-    return {
-      rowKey: row.row_key,
-      source: row.source,
-      userId: row.user_id,
-      threadId: row.thread_id,
-      runId: row.run_id,
-      title: row.title,
-      credits: row.credits,
-      tokens: row.tokens,
-      breakdown: [],
-      member: null,
-      lastActivityAt: row.last_activity.toISOString(),
-    };
-  });
+interface UsageRecordBreakdownSqlRow {
+  readonly rowKey: string;
+  readonly kind: UsageRecordKind;
+  readonly usageKind: string;
+  readonly provider: string;
+  readonly credits: number;
+}
 
-const usageRecordTotalsSqlRowSchema = z.object({
-  total: pgInt8ToSafeIntegerSchema,
-  total_credits: pgInt8ToSafeIntegerSchema,
-});
-
-const usageRecordBreakdownSqlRowSchema = z.object({
-  row_key: z.string(),
-  kind: usageRecordKindSchema,
-  provider: z.string(),
-  credits: pgInt8ToSafeIntegerSchema,
-});
-type UsageRecordBreakdownSqlRow = z.output<
-  typeof usageRecordBreakdownSqlRowSchema
->;
+interface UsageRecordProviderAccumulator {
+  readonly provider: string;
+  credits: number;
+  readonly usageKinds: {
+    readonly kind: string;
+    readonly credits: number;
+  }[];
+}
 
 function tokenExpr(usage: FinalizedUsageRelation) {
   return sql`CASE WHEN ${and(
     eq(usage.kind, MODEL_USAGE_KIND),
     inArray(usage.category, MODEL_TOKEN_CATEGORIES),
-  )} THEN ${usage.quantity} ELSE 0 END`;
+  )} THEN ${usage.quantity} ELSE 0 END::bigint`.mapWith(
+    pgInt8ToSafeIntegerDecoder,
+  );
 }
 
 function sourceExpr() {
-  const passthroughList = sql.join(
-    PASSTHROUGH_TRIGGER_SOURCES.map((source) => {
-      return sql`${source}`;
-    }),
-    sql`, `,
-  );
   return sql`
     CASE
-      WHEN zr.trigger_source = 'web' THEN 'chat'
-      WHEN zr.trigger_source IN ('workflow-schedule', 'workflow-event') THEN 'automation'
-      WHEN zr.trigger_source IN (${passthroughList}) THEN zr.trigger_source
+      WHEN ${eq(zeroRuns.triggerSource, sql`'web'`)} THEN 'chat'
+      WHEN ${inArray(
+        zeroRuns.triggerSource,
+        sql`('workflow-schedule', 'workflow-event')`,
+      )} THEN 'automation'
+      WHEN ${inArray(
+        zeroRuns.triggerSource,
+        PASSTHROUGH_TRIGGER_SOURCES,
+      )} THEN ${zeroRuns.triggerSource}
       ELSE 'other'
-    END`;
+    END`.mapWith(usageRecordSourceDecoder);
 }
 
 function usageKindExpr(usage: FinalizedUsageRelation) {
@@ -138,11 +137,169 @@ function usageKindExpr(usage: FinalizedUsageRelation) {
     CASE
       WHEN ${inArray(usage.kind, USAGE_RECORD_KINDS)} THEN ${usage.kind}
       ELSE 'other'
-    END`;
+    END`.mapWith(usageRecordKindDecoder);
 }
 
 function usageCreditsExpr(usage: FinalizedUsageRelation) {
-  return sql`${usage.creditsCharged} + ${usage.allowanceUnits}`;
+  return sql`${usage.creditsCharged} + ${usage.allowanceUnits}::bigint`.mapWith(
+    pgInt8ToSafeIntegerDecoder,
+  );
+}
+
+function safeIntegerSum(value: SQLWrapper) {
+  return sql`COALESCE(${sum(value)}, 0)::bigint`.mapWith(
+    pgInt8ToSafeIntegerDecoder,
+  );
+}
+
+function usageRecordRunsWith(
+  db: Db,
+  userId: string | null,
+  orgId: string,
+  period: UsagePeriod | null,
+) {
+  const usage = buildFinalizedUsageRelation(period ?? undefined);
+  const usageRows = db.$with("usage_rows").as(
+    db
+      .select({
+        runId: usage.runId,
+        userId: usage.userId,
+        credits: usageCreditsExpr(usage).as("credits"),
+        tokens: tokenExpr(usage).as("tokens"),
+      })
+      .from(usage)
+      .where(
+        and(
+          eq(usage.orgId, orgId),
+          userId === null ? undefined : eq(usage.userId, userId),
+        ),
+      ),
+  );
+  const runs = db.$with("runs").as(
+    db
+      .select({
+        runId: usageRows.runId,
+        userId: usageRows.userId,
+        credits: usageRows.credits,
+        tokens: usageRows.tokens,
+        source: sourceExpr().as("source"),
+        chatThreadId: zeroRuns.chatThreadId,
+        summary: zeroRuns.summary,
+        prompt: agentRuns.prompt,
+        createdAt: agentRuns.createdAt,
+      })
+      .from(usageRows)
+      .innerJoin(zeroRuns, eq(zeroRuns.id, usageRows.runId))
+      .innerJoin(agentRuns, eq(agentRuns.id, usageRows.runId)),
+  );
+  return { usageRows, runs };
+}
+
+type UsageRecordRuns = ReturnType<typeof usageRecordRunsWith>["runs"];
+
+function threadedUsageRecordWith(db: Db, runs: UsageRecordRuns) {
+  return db.$with("threaded").as(
+    db
+      .select({
+        rowKey:
+          sql`CONCAT(${runs.source}, ':thread:', ${runs.chatThreadId}::text, ':user:', ${runs.userId})`
+            .mapWith(pgTextDecoder)
+            .as("row_key"),
+        source: runs.source,
+        userId: runs.userId,
+        threadId: sql`${runs.chatThreadId}::text`
+          .mapWith(nullableDriverValueDecoder(pgTextDecoder))
+          .as("thread_id"),
+        runId: sql`NULL::text`
+          .mapWith(nullableDriverValueDecoder(pgTextDecoder))
+          .as("run_id"),
+        title: sql`${chatThreads.title}`
+          .mapWith(nullableDriverValueDecoder(pgTextDecoder))
+          .as("title"),
+        credits: safeIntegerSum(runs.credits).as("credits"),
+        tokens: safeIntegerSum(runs.tokens).as("tokens"),
+        lastActivity: max(runs.createdAt)
+          .mapWith(agentRuns.createdAt)
+          .as("last_activity"),
+      })
+      .from(runs)
+      .leftJoin(chatThreads, eq(chatThreads.id, runs.chatThreadId))
+      .where(
+        and(
+          isNotNull(runs.chatThreadId),
+          inArray(runs.source, [...THREADED_SOURCES]),
+        ),
+      )
+      .groupBy(runs.source, runs.userId, runs.chatThreadId, chatThreads.title),
+  );
+}
+
+function deletedThreadedUsageRecordWith(db: Db, runs: UsageRecordRuns) {
+  return db.$with("deleted_threaded").as(
+    db
+      .select({
+        rowKey:
+          sql`CONCAT(${runs.source}, ':deleted-thread:user:', ${runs.userId})`
+            .mapWith(pgTextDecoder)
+            .as("row_key"),
+        source: runs.source,
+        userId: runs.userId,
+        threadId: sql`NULL::text`
+          .mapWith(nullableDriverValueDecoder(pgTextDecoder))
+          .as("thread_id"),
+        runId: sql`NULL::text`
+          .mapWith(nullableDriverValueDecoder(pgTextDecoder))
+          .as("run_id"),
+        title: sql`'Deleted chats'::text`
+          .mapWith(nullableDriverValueDecoder(pgTextDecoder))
+          .as("title"),
+        credits: safeIntegerSum(runs.credits).as("credits"),
+        tokens: safeIntegerSum(runs.tokens).as("tokens"),
+        lastActivity: max(runs.createdAt)
+          .mapWith(agentRuns.createdAt)
+          .as("last_activity"),
+      })
+      .from(runs)
+      .where(
+        and(
+          isNull(runs.chatThreadId),
+          inArray(runs.source, [...THREADED_SOURCES]),
+        ),
+      )
+      .groupBy(runs.source, runs.userId),
+  );
+}
+
+function unthreadedUsageRecordWith(db: Db, runs: UsageRecordRuns) {
+  return db.$with("unthreaded").as(
+    db
+      .select({
+        rowKey:
+          sql`CONCAT(${runs.source}, ':run:', ${runs.runId}::text, ':user:', ${runs.userId})`
+            .mapWith(pgTextDecoder)
+            .as("row_key"),
+        source: runs.source,
+        userId: runs.userId,
+        threadId: sql`NULL::text`
+          .mapWith(nullableDriverValueDecoder(pgTextDecoder))
+          .as("thread_id"),
+        runId: sql`${runs.runId}::text`
+          .mapWith(nullableDriverValueDecoder(pgTextDecoder))
+          .as("run_id"),
+        title:
+          sql`LEFT(COALESCE(NULLIF(${max(runs.summary)}, ''), ${max(runs.prompt)}), 120)`
+            .mapWith(nullableDriverValueDecoder(pgTextDecoder))
+            .as("title"),
+        credits: safeIntegerSum(runs.credits).as("credits"),
+        tokens: safeIntegerSum(runs.tokens).as("tokens"),
+        lastActivity: max(runs.createdAt)
+          .mapWith(agentRuns.createdAt)
+          .as("last_activity"),
+      })
+      .from(runs)
+      .where(notInArray(runs.source, [...THREADED_SOURCES]))
+      .groupBy(runs.runId, runs.source, runs.userId),
+  );
 }
 
 // Per-source usage for one user in one org. `record` is the shared CTE so the
@@ -151,172 +308,148 @@ function usageCreditsExpr(usage: FinalizedUsageRelation) {
 // NULL, collapse to one synthetic row per source/user. Everything else is one
 // row per run.
 function recordWith(
+  db: Db,
   userId: string | null,
   orgId: string,
   period: UsagePeriod | null,
-): SQL {
-  const threadedSourceList = sql.join(
-    THREADED_SOURCES.map((source) => {
-      return sql`${source}`;
-    }),
-    sql`, `,
+) {
+  const { usageRows, runs } = usageRecordRunsWith(db, userId, orgId, period);
+  const threaded = threadedUsageRecordWith(db, runs);
+  const deletedThreaded = deletedThreadedUsageRecordWith(db, runs);
+  const unthreaded = unthreadedUsageRecordWith(db, runs);
+  const record = db.$with("record").as(
+    unionAll(
+      db
+        .select({
+          rowKey: threaded.rowKey,
+          source: threaded.source,
+          userId: threaded.userId,
+          threadId: threaded.threadId,
+          runId: threaded.runId,
+          title: threaded.title,
+          credits: threaded.credits,
+          tokens: threaded.tokens,
+          lastActivity: threaded.lastActivity,
+        })
+        .from(threaded),
+      db
+        .select({
+          rowKey: deletedThreaded.rowKey,
+          source: deletedThreaded.source,
+          userId: deletedThreaded.userId,
+          threadId: deletedThreaded.threadId,
+          runId: deletedThreaded.runId,
+          title: deletedThreaded.title,
+          credits: deletedThreaded.credits,
+          tokens: deletedThreaded.tokens,
+          lastActivity: deletedThreaded.lastActivity,
+        })
+        .from(deletedThreaded),
+      db
+        .select({
+          rowKey: unthreaded.rowKey,
+          source: unthreaded.source,
+          userId: unthreaded.userId,
+          threadId: unthreaded.threadId,
+          runId: unthreaded.runId,
+          title: unthreaded.title,
+          credits: unthreaded.credits,
+          tokens: unthreaded.tokens,
+          lastActivity: unthreaded.lastActivity,
+        })
+        .from(unthreaded),
+    ),
   );
-  const usage = buildFinalizedUsageRelation(period ?? undefined);
-  const userPredicate =
-    userId === null ? sql.empty() : sql`AND ${eq(usage.userId, userId)}`;
-  return sql`
-    WITH usage_rows AS (
-      SELECT
-        ${usage.runId} AS run_id,
-        ${usage.userId} AS user_id,
-        ${usageCreditsExpr(usage)}::bigint AS credits,
-        ${tokenExpr(usage)}::bigint AS tokens
-      FROM ${usage}
-      WHERE ${usage.orgId} = ${orgId}
-        ${userPredicate}
-    ),
-    runs AS (
-      SELECT
-        ur.run_id,
-        ur.user_id,
-        ur.credits,
-        ur.tokens,
-        ${sourceExpr()} AS source,
-        zr.chat_thread_id,
-        zr.summary,
-        ar.prompt,
-        ar.created_at
-      FROM usage_rows ur
-      INNER JOIN zero_runs zr ON zr.id = ur.run_id
-      INNER JOIN agent_runs ar ON ar.id = ur.run_id
-    ),
-    threaded AS (
-      SELECT
-        CONCAT(r.source, ':thread:', r.chat_thread_id::text, ':user:', r.user_id) AS row_key,
-        r.source,
-        r.user_id,
-        r.chat_thread_id::text AS thread_id,
-        NULL::text AS run_id,
-        ct.title AS title,
-        COALESCE(SUM(r.credits), 0)::bigint AS credits,
-        COALESCE(SUM(r.tokens), 0)::bigint AS tokens,
-        MAX(r.created_at) AS last_activity
-      FROM runs r
-      LEFT JOIN chat_threads ct ON ct.id = r.chat_thread_id
-      WHERE r.chat_thread_id IS NOT NULL
-        AND r.source IN (${threadedSourceList})
-      GROUP BY r.source, r.user_id, r.chat_thread_id, ct.title
-    ),
-    deleted_threaded AS (
-      SELECT
-        CONCAT(r.source, ':deleted-thread:user:', r.user_id) AS row_key,
-        r.source,
-        r.user_id,
-        NULL::text AS thread_id,
-        NULL::text AS run_id,
-        'Deleted chats'::text AS title,
-        COALESCE(SUM(r.credits), 0)::bigint AS credits,
-        COALESCE(SUM(r.tokens), 0)::bigint AS tokens,
-        MAX(r.created_at) AS last_activity
-      FROM runs r
-      WHERE r.chat_thread_id IS NULL
-        AND r.source IN (${threadedSourceList})
-      GROUP BY r.source, r.user_id
-    ),
-    unthreaded AS (
-      SELECT
-        CONCAT(r.source, ':run:', r.run_id::text, ':user:', r.user_id) AS row_key,
-        r.source,
-        r.user_id,
-        NULL::text AS thread_id,
-        r.run_id::text AS run_id,
-        LEFT(COALESCE(NULLIF(MAX(r.summary), ''), MAX(r.prompt)), 120) AS title,
-        COALESCE(SUM(r.credits), 0)::bigint AS credits,
-        COALESCE(SUM(r.tokens), 0)::bigint AS tokens,
-        MAX(r.created_at) AS last_activity
-      FROM runs r
-      WHERE r.source NOT IN (${threadedSourceList})
-      GROUP BY r.run_id, r.source, r.user_id
-    ),
-    record AS (
-      SELECT * FROM threaded
-      UNION ALL
-      SELECT * FROM deleted_threaded
-      UNION ALL
-      SELECT * FROM unthreaded
-    )`;
+  return { usageRows, runs, threaded, deletedThreaded, unthreaded, record };
 }
+
+type UsageRecordRelations = ReturnType<typeof recordWith>;
 
 async function queryUsageRecordRows(
   db: Db,
-  recordCte: SQL,
+  relations: UsageRecordRelations,
   sourceFilter: UsageRecordSource | undefined,
   pageSize: number,
   offset: number,
 ): Promise<UsageRecordIntermediateRow[]> {
-  const where =
-    sourceFilter === undefined
-      ? sql.empty()
-      : sql`WHERE source = ${sourceFilter}`;
-  return await executeRawRows(
-    db,
-    sql`
-      ${recordCte}
-      SELECT row_key, source, user_id, thread_id, run_id, title, credits, tokens, last_activity
-      FROM record
-      ${where}
-      ORDER BY last_activity DESC, row_key
-      LIMIT ${pageSize} OFFSET ${offset}
-    `,
-    usageRecordSqlRowSchema,
-  );
+  const rows = await db
+    .with(
+      relations.usageRows,
+      relations.runs,
+      relations.threaded,
+      relations.deletedThreaded,
+      relations.unthreaded,
+      relations.record,
+    )
+    .select({
+      rowKey: relations.record.rowKey,
+      source: relations.record.source,
+      userId: relations.record.userId,
+      threadId: relations.record.threadId,
+      runId: relations.record.runId,
+      title: relations.record.title,
+      credits: relations.record.credits,
+      tokens: relations.record.tokens,
+      lastActivity: relations.record.lastActivity,
+    })
+    .from(relations.record)
+    .where(
+      sourceFilter === undefined
+        ? undefined
+        : eq(relations.record.source, sourceFilter),
+    )
+    .orderBy(desc(relations.record.lastActivity), asc(relations.record.rowKey))
+    .limit(pageSize)
+    .offset(offset);
+  return rows.map((row): UsageRecordIntermediateRow => {
+    return {
+      rowKey: row.rowKey,
+      source: row.source,
+      userId: row.userId,
+      threadId: row.threadId,
+      runId: row.runId,
+      title: row.title,
+      credits: row.credits,
+      tokens: row.tokens,
+      breakdown: [],
+      member: null,
+      lastActivityAt: row.lastActivity.toISOString(),
+    };
+  });
 }
 
 async function queryUsageRecordTotals(
   db: Db,
-  recordCte: SQL,
+  relations: UsageRecordRelations,
   sourceFilter: UsageRecordSource | undefined,
 ): Promise<{ total: number; totalCredits: number }> {
-  const where =
-    sourceFilter === undefined
-      ? sql.empty()
-      : sql`WHERE source = ${sourceFilter}`;
-  const rows = await executeRawRows(
-    db,
-    sql`
-      ${recordCte}
-      SELECT ${count()}::bigint AS total, COALESCE(SUM(credits), 0)::bigint AS total_credits
-      FROM record ${where}
-    `,
-    usageRecordTotalsSqlRowSchema,
-  );
+  const rows = await db
+    .with(
+      relations.usageRows,
+      relations.runs,
+      relations.threaded,
+      relations.deletedThreaded,
+      relations.unthreaded,
+      relations.record,
+    )
+    .select({
+      total: sql`${count()}::bigint`
+        .mapWith(pgInt8ToSafeIntegerDecoder)
+        .as("total"),
+      totalCredits: safeIntegerSum(relations.record.credits).as(
+        "total_credits",
+      ),
+    })
+    .from(relations.record)
+    .where(
+      sourceFilter === undefined
+        ? undefined
+        : eq(relations.record.source, sourceFilter),
+    );
   return {
     total: rows[0]?.total ?? 0,
-    totalCredits: rows[0]?.total_credits ?? 0,
+    totalCredits: rows[0]?.totalCredits ?? 0,
   };
-}
-
-function rowKeyExpr() {
-  const threadedSourceList = sql.join(
-    THREADED_SOURCES.map((source) => {
-      return sql`${source}`;
-    }),
-    sql`, `,
-  );
-  return sql`
-    CASE
-      WHEN ${and(
-        sql`chat_thread_id IS NOT NULL`,
-        sql`source IN (${threadedSourceList})`,
-      )}
-        THEN CONCAT(source, ':thread:', chat_thread_id::text, ':user:', user_id)
-      WHEN ${and(
-        sql`chat_thread_id IS NULL`,
-        sql`source IN (${threadedSourceList})`,
-      )}
-        THEN CONCAT(source, ':deleted-thread:user:', user_id)
-      ELSE CONCAT(source, ':run:', run_id::text, ':user:', user_id)
-    END`;
 }
 
 async function queryUsageRecordBreakdown(
@@ -331,63 +464,96 @@ async function queryUsageRecordBreakdown(
   }
 
   const usage = buildFinalizedUsageRelation(period ?? undefined);
-  const userPredicate =
-    userId === null ? sql.empty() : sql`AND ${eq(usage.userId, userId)}`;
-  const rowKeyList = sql.join(
-    rowKeys.map((rowKey) => {
-      return sql`${rowKey}`;
-    }),
-    sql`, `,
-  );
-  const sourceSql = sourceExpr();
-  const kindSql = usageKindExpr(usage);
-
-  const rows = await executeRawRows(
-    db,
-    sql`
-      WITH usage_rows AS (
-        SELECT
-          ${sourceSql} AS source,
-          zr.chat_thread_id,
-          ${usage.runId} AS run_id,
-          ${usage.userId} AS user_id,
-          ${kindSql} AS kind,
-          COALESCE(NULLIF(${usage.provider}, ''), 'unknown') AS provider,
-          ${usageCreditsExpr(usage)}::bigint AS credits
-        FROM ${usage}
-        INNER JOIN zero_runs zr ON zr.id = ${usage.runId}
-        WHERE ${usage.orgId} = ${orgId}
-          ${userPredicate}
+  const usageRows = db.$with("usage_rows").as(
+    db
+      .select({
+        source: sourceExpr().as("source"),
+        chatThreadId: zeroRuns.chatThreadId,
+        runId: usage.runId,
+        userId: usage.userId,
+        kind: usageKindExpr(usage).as("kind"),
+        usageKind: sql`${usage.kind}`.mapWith(pgTextDecoder).as("usage_kind"),
+        provider: sql`COALESCE(NULLIF(${usage.provider}, ''), 'unknown')`
+          .mapWith(pgTextDecoder)
+          .as("provider"),
+        credits: usageCreditsExpr(usage).as("credits"),
+      })
+      .from(usage)
+      .innerJoin(zeroRuns, eq(zeroRuns.id, usage.runId))
+      .where(
+        and(
+          eq(usage.orgId, orgId),
+          userId === null ? undefined : eq(usage.userId, userId),
+        ),
       ),
-      keyed AS (
-        SELECT
-          ${rowKeyExpr()} AS row_key,
-          kind,
-          provider,
-          credits
-        FROM usage_rows
-      )
-      SELECT row_key, kind, provider, SUM(credits)::bigint AS credits
-      FROM keyed
-      WHERE row_key IN (${rowKeyList})
-      GROUP BY row_key, kind, provider
-      HAVING SUM(credits) > 0
-      ORDER BY row_key, kind, provider
-    `,
-    usageRecordBreakdownSqlRowSchema,
   );
+  const rowKey = sql`
+    CASE
+      WHEN ${and(
+        isNotNull(usageRows.chatThreadId),
+        inArray(usageRows.source, [...THREADED_SOURCES]),
+      )}
+        THEN CONCAT(${usageRows.source}, ':thread:', ${usageRows.chatThreadId}::text, ':user:', ${usageRows.userId})
+      WHEN ${and(
+        isNull(usageRows.chatThreadId),
+        inArray(usageRows.source, [...THREADED_SOURCES]),
+      )}
+        THEN CONCAT(${usageRows.source}, ':deleted-thread:user:', ${usageRows.userId})
+      ELSE CONCAT(${usageRows.source}, ':run:', ${usageRows.runId}::text, ':user:', ${usageRows.userId})
+    END`.mapWith(pgTextDecoder);
+  const keyed = db.$with("keyed").as(
+    db
+      .select({
+        rowKey: rowKey.as("row_key"),
+        kind: usageRows.kind,
+        usageKind: usageRows.usageKind,
+        provider: usageRows.provider,
+        credits: usageRows.credits,
+      })
+      .from(usageRows),
+  );
+  const rows: UsageRecordBreakdownSqlRow[] = await db
+    .with(usageRows, keyed)
+    .select({
+      rowKey: keyed.rowKey,
+      kind: keyed.kind,
+      usageKind: keyed.usageKind,
+      provider: keyed.provider,
+      credits: sql`${sum(keyed.credits)}::bigint`
+        .mapWith(pgInt8ToSafeIntegerDecoder)
+        .as("credits"),
+    })
+    .from(keyed)
+    .where(inArray(keyed.rowKey, [...rowKeys]))
+    .groupBy(keyed.rowKey, keyed.kind, keyed.usageKind, keyed.provider)
+    .having(gt(sum(keyed.credits), sql`0`))
+    .orderBy(
+      asc(keyed.rowKey),
+      asc(keyed.kind),
+      asc(keyed.provider),
+      asc(keyed.usageKind),
+    );
 
   const byRow = new Map<
     string,
-    Map<UsageRecordKind, UsageRecordBreakdownSqlRow[]>
+    Map<UsageRecordKind, Map<string, UsageRecordProviderAccumulator>>
   >();
   for (const row of rows) {
-    const kind = row.kind;
-    const kinds = byRow.get(row.row_key) ?? new Map();
-    const providers = kinds.get(kind) ?? [];
-    providers.push(row);
-    kinds.set(kind, providers);
-    byRow.set(row.row_key, kinds);
+    const kinds = byRow.get(row.rowKey) ?? new Map();
+    const providers = kinds.get(row.kind) ?? new Map();
+    const provider = providers.get(row.provider) ?? {
+      provider: row.provider,
+      credits: 0,
+      usageKinds: [],
+    };
+    provider.credits += row.credits;
+    provider.usageKinds.push({
+      kind: row.usageKind,
+      credits: row.credits,
+    });
+    providers.set(row.provider, provider);
+    kinds.set(row.kind, providers);
+    byRow.set(row.rowKey, kinds);
   }
 
   const breakdownByRow = new Map<string, UsageRecordRow["breakdown"]>();
@@ -400,16 +566,10 @@ async function queryUsageRecordBreakdown(
       "connector",
       "other",
     ] as const) {
-      const providerRows = kindMap.get(kind) ?? [];
-      if (providerRows.length === 0) {
+      const providers = Array.from(kindMap.get(kind)?.values() ?? []);
+      if (providers.length === 0) {
         continue;
       }
-      const providers = providerRows.map((row) => {
-        return {
-          provider: row.provider,
-          credits: row.credits,
-        };
-      });
       breakdown.push({
         kind,
         credits: providers.reduce((sum, provider) => {
@@ -463,12 +623,12 @@ export const zeroUsageRecord$ = command(
     const userId = args.scope === "mine" ? args.userId : null;
     const offset = (args.page - 1) * args.pageSize;
     const queryPeriod = period ? normalizeFinalizedUsagePeriod(period) : null;
-    const recordCte = recordWith(userId, args.orgId, queryPeriod);
+    const relations = recordWith(db, userId, args.orgId, queryPeriod);
 
     signal.throwIfAborted();
     const rows = await queryUsageRecordRows(
       db,
-      recordCte,
+      relations,
       args.source,
       args.pageSize,
       offset,
@@ -486,7 +646,7 @@ export const zeroUsageRecord$ = command(
     signal.throwIfAborted();
     const { total, totalCredits } = await queryUsageRecordTotals(
       db,
-      recordCte,
+      relations,
       args.source,
     );
     signal.throwIfAborted();

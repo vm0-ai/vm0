@@ -1025,7 +1025,7 @@ function MailDraftDetail({
       aria-label="Email details"
       data-chat-thread-container-id={signals.threadId}
       data-testid="mail-draft-sidebar"
-      className="flex h-full w-full min-h-0 flex-col border-l border-border/60 bg-background xl:border-l-0 animate-in fade-in slide-in-from-right-2 duration-[180ms] ease"
+      className="flex h-full w-full min-h-0 flex-col border-l border-border/60 bg-background xl:border-l-0"
     >
       <MailDraftDetails close={close} draft={draft} signals={signals} />
       <footer className="flex shrink-0 items-center justify-between gap-2 border-t border-border/60 px-4 py-3">
