@@ -60,9 +60,9 @@ function formatConnectorSummary(
 ): string {
   const id = formatConnectorIdentity(identity);
   const idStr = id ? ` ${id}` : "";
-  if (!info.hasPermissions) return `${info.type}${idStr}`;
-  if (!info.policies) return `${info.type}${idStr} (full access)`;
-  return `${info.type}${idStr} (${info.allowed}/${info.total} allowed)`;
+  if (!info.hasPermissions) return `${info.connectorSlug}${idStr}`;
+  if (!info.policies) return `${info.connectorSlug}${idStr} (full access)`;
+  return `${info.connectorSlug}${idStr} (${info.allowed}/${info.total} allowed)`;
 }
 
 function formatDetailIdentity(
@@ -105,7 +105,7 @@ Examples:
         agentId: string,
         options: { instructions?: boolean; permissions?: boolean },
       ) => {
-        const [agent, connectorTypes, connectorIdentities] = await Promise.all([
+        const [agent, connectorSlugs, connectorIdentities] = await Promise.all([
           getZeroAgent(agentId),
           getZeroAgentUserConnectors(agentId),
           listZeroConnectors().catch(() => {
@@ -130,14 +130,17 @@ Examples:
             )
           : null;
         const connectorInfos = await loadConnectorPermissionInfos({
-          displayTypes: connectorTypes,
-          defaultPolicyTypes: connectorTypes,
+          displayConnectorSlugs: connectorSlugs,
+          defaultPolicyConnectorSlugs: connectorSlugs,
           storedPolicies,
         });
 
         if (connectorInfos.length > 0) {
           const summaries = connectorInfos.map((info) => {
-            return formatConnectorSummary(info, identityMap.get(info.type));
+            return formatConnectorSummary(
+              info,
+              identityMap.get(info.connectorSlug),
+            );
           });
           console.log(`Connectors:   ${summaries.join(", ")}`);
         }
@@ -152,8 +155,10 @@ Examples:
           console.log();
           console.log(chalk.bold("Connectors:"));
           for (const info of connectorInfos) {
-            const identity = formatDetailIdentity(identityMap.get(info.type));
-            console.log(`  ${info.type.padEnd(14)}${identity}`);
+            const identity = formatDetailIdentity(
+              identityMap.get(info.connectorSlug),
+            );
+            console.log(`  ${info.connectorSlug.padEnd(14)}${identity}`);
             if (info.hasPermissions) {
               printDetailedPermissions(info);
             }

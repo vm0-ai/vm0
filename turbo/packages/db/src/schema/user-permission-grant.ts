@@ -34,6 +34,7 @@ export const userPermissionGrants = pgTable(
         },
         { onDelete: "cascade" },
       ),
+    // TODO(#23619): Rename the property and column in the persistence phase.
     connectorRef: varchar("connector_ref", { length: 64 }).notNull(),
     permission: varchar("permission", { length: 128 }).notNull(),
     action: varchar("action", { length: 8 })

@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 
 import {
   zeroConnectorManualGrantContract,
-  zeroConnectorsByTypeContract,
+  zeroConnectorsBySlugContract,
   zeroConnectorsMainContract,
 } from "@vm0/api-contracts/contracts/zero-connectors";
 import { afterEach } from "vitest";
@@ -53,7 +53,7 @@ async function connectGitlab(fixture: AuthenticatedFixture): Promise<void> {
 async function deleteGitlab(fixture: AuthenticatedFixture): Promise<void> {
   mocks.clerk.session(fixture.userId, fixture.orgId);
   await accept(
-    setupApp({ context })(zeroConnectorsByTypeContract).delete({
+    setupApp({ context })(zeroConnectorsBySlugContract).delete({
       params: { type: "gitlab" },
       headers: authHeaders(),
     }),
@@ -88,7 +88,7 @@ describe("GET /api/zero/connectors", () => {
     expect(Array.isArray(response.body.connectorProvidedBindings)).toBeTruthy();
   });
 
-  it("filters configured connector types by feature availability", async () => {
+  it("filters configured connector slugs by feature availability", async () => {
     const fixture = seedAuthenticatedFixture();
     seededFixtures.push(fixture);
     mocks.clerk.session(fixture.userId, fixture.orgId);

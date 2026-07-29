@@ -11,7 +11,7 @@ import {
 } from "@vm0/api-contracts/contracts/zero-connector-catalog";
 import { zeroUserConnectorsContract } from "@vm0/api-contracts/contracts/user-connectors";
 import type { ConnectorResponse } from "@vm0/api-contracts/contracts/connector-schemas";
-import type { ConnectorRef } from "@vm0/api-contracts/contracts/connector-identity";
+import type { ConnectorSlug } from "@vm0/api-contracts/contracts/connector-identity";
 import { screen, waitFor, within } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 
@@ -31,7 +31,7 @@ const AGENT_ID = "00000000-0000-0000-0000-000000000001";
 const SECOND_AGENT_ID = "00000000-0000-0000-0000-000000000002";
 
 function publicStatusItem(args: {
-  readonly connectorRef: ConnectorRef;
+  readonly connectorSlug: ConnectorSlug;
   readonly label: string;
   readonly description?: string;
   readonly category?: string;
@@ -42,11 +42,11 @@ function publicStatusItem(args: {
 }): PublicConnectorCatalogStatusItem {
   const connected = args.connected ?? false;
   return {
-    connectorRef: args.connectorRef,
+    connectorRef: args.connectorSlug,
     label: args.label,
     description: args.description ?? `${args.label} public description`,
     icon: {
-      url: `https://icons.example.test/${args.connectorRef}.svg`,
+      url: `https://icons.example.test/${args.connectorSlug}.svg`,
       invertInDarkMode: false,
     },
     category: args.category ?? "data-automation-infrastructure",
@@ -78,10 +78,10 @@ function mockPublicConnectorStatus(
   });
 }
 
-function connectorResponse(type: ConnectorRef): ConnectorResponse {
+function connectorResponse(connectorSlug: ConnectorSlug): ConnectorResponse {
   return {
     id: crypto.randomUUID(),
-    type,
+    type: connectorSlug,
     authMethod: "oauth",
     externalId: null,
     externalUsername: null,
@@ -95,8 +95,8 @@ function connectorResponse(type: ConnectorRef): ConnectorResponse {
   };
 }
 
-function mockConnectedConnector(type: ConnectorRef): void {
-  context.mocks.data.connectors([connectorResponse(type)]);
+function mockConnectedConnector(connectorSlug: ConnectorSlug): void {
+  context.mocks.data.connectors([connectorResponse(connectorSlug)]);
 }
 
 function getButtonByText(text: string): HTMLElement {
@@ -312,7 +312,7 @@ describe("directed connector authorize page", () => {
   it("connects a manual-token connector before authorizing the agent", async () => {
     mockPublicConnectorStatus([
       publicStatusItem({
-        connectorRef: "axiom",
+        connectorSlug: "axiom",
         label: "Public Axiom",
         authMethods: [
           {
@@ -410,7 +410,7 @@ describe("directed connector authorize page", () => {
     );
     mockPublicConnectorStatus([
       publicStatusItem({
-        connectorRef: "github",
+        connectorSlug: "github",
         label: "Public GitHub",
         authMethods: [
           {
@@ -478,7 +478,7 @@ describe("directed connector authorize page", () => {
     });
     mockPublicConnectorStatus([
       publicStatusItem({
-        connectorRef: "steam",
+        connectorSlug: "steam",
         label: "Steam",
         authMethods: [
           {
@@ -550,7 +550,7 @@ describe("directed connector authorize page", () => {
     });
     mockPublicConnectorStatus([
       publicStatusItem({
-        connectorRef: "stripe",
+        connectorSlug: "stripe",
         label: "Public Stripe",
         authMethods: [
           {

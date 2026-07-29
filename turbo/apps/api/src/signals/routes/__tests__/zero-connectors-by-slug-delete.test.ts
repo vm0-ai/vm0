@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 
 import {
   zeroConnectorManualGrantContract,
-  zeroConnectorsByTypeContract,
+  zeroConnectorsBySlugContract,
 } from "@vm0/api-contracts/contracts/zero-connectors";
 
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
@@ -19,9 +19,9 @@ interface AuthenticatedFixture {
   readonly userId: string;
 }
 
-type ConnectorToCleanUp = "openai" | "gitlab";
+type ConnectorSlugToCleanUp = "openai" | "gitlab";
 
-const CONNECTOR_TYPES_TO_CLEAN_UP: readonly ConnectorToCleanUp[] = [
+const CONNECTOR_SLUGS_TO_CLEAN_UP: readonly ConnectorSlugToCleanUp[] = [
   "openai",
   "gitlab",
 ];
@@ -74,12 +74,12 @@ async function connectGitlab(fixture: AuthenticatedFixture): Promise<void> {
 
 async function readExistingConnector(
   fixture: AuthenticatedFixture,
-  type: ConnectorToCleanUp,
+  connectorSlug: ConnectorSlugToCleanUp,
 ) {
   mocks.clerk.session(fixture.userId, fixture.orgId);
   return await accept(
-    setupApp({ context })(zeroConnectorsByTypeContract).get({
-      params: { type },
+    setupApp({ context })(zeroConnectorsBySlugContract).get({
+      params: { type: connectorSlug },
       headers: authHeaders(),
     }),
     [200],
@@ -88,12 +88,12 @@ async function readExistingConnector(
 
 async function readMissingConnector(
   fixture: AuthenticatedFixture,
-  type: ConnectorToCleanUp,
+  connectorSlug: ConnectorSlugToCleanUp,
 ) {
   mocks.clerk.session(fixture.userId, fixture.orgId);
   return await accept(
-    setupApp({ context })(zeroConnectorsByTypeContract).get({
-      params: { type },
+    setupApp({ context })(zeroConnectorsBySlugContract).get({
+      params: { type: connectorSlug },
       headers: authHeaders(),
     }),
     [404],
@@ -102,13 +102,13 @@ async function readMissingConnector(
 
 async function deleteConnector(
   fixture: AuthenticatedFixture,
-  type: ConnectorToCleanUp,
+  connectorSlug: ConnectorSlugToCleanUp,
   statuses: readonly [204] | readonly [204, 404] | readonly [404],
 ) {
   mocks.clerk.session(fixture.userId, fixture.orgId);
   return await accept(
-    setupApp({ context })(zeroConnectorsByTypeContract).delete({
-      params: { type },
+    setupApp({ context })(zeroConnectorsBySlugContract).delete({
+      params: { type: connectorSlug },
       headers: authHeaders(),
     }),
     statuses,
@@ -116,8 +116,8 @@ async function deleteConnector(
 }
 
 async function cleanupFixture(fixture: AuthenticatedFixture): Promise<void> {
-  for (const type of CONNECTOR_TYPES_TO_CLEAN_UP) {
-    await deleteConnector(fixture, type, [204, 404]);
+  for (const connectorSlug of CONNECTOR_SLUGS_TO_CLEAN_UP) {
+    await deleteConnector(fixture, connectorSlug, [204, 404]);
   }
 }
 
@@ -125,7 +125,7 @@ describe("DELETE /api/zero/connectors/:type", () => {
   const track = createFixtureTracker<AuthenticatedFixture>(cleanupFixture);
 
   it("returns 401 when not authenticated", async () => {
-    const client = setupApp({ context })(zeroConnectorsByTypeContract);
+    const client = setupApp({ context })(zeroConnectorsBySlugContract);
     const response = await accept(
       client.delete({ params: { type: "github" }, headers: {} }),
       [401],
@@ -139,7 +139,7 @@ describe("DELETE /api/zero/connectors/:type", () => {
   it("returns 401 when the authenticated session has no organization", async () => {
     mocks.clerk.session(`user_${randomUUID()}`, null);
 
-    const client = setupApp({ context })(zeroConnectorsByTypeContract);
+    const client = setupApp({ context })(zeroConnectorsBySlugContract);
     const response = await accept(
       client.delete({
         params: { type: "github" },
@@ -186,7 +186,7 @@ describe("DELETE /api/zero/connectors/:type", () => {
     expect(readAfterDelete.body.error.code).toBe("NOT_FOUND");
   });
 
-  it("deletes only the requested connector type", async () => {
+  it("deletes only the requested connector slug", async () => {
     const fixture = await track(seedFixture());
     await connectOpenai(fixture);
     await connectGitlab(fixture);

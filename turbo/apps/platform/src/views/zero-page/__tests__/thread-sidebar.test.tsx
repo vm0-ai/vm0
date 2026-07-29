@@ -475,11 +475,11 @@ describe("thread-owned utility sidebar", () => {
       });
     });
 
-    let enabledTypes: string[] = [];
+    let enabledConnectorSlugs: string[] = [];
     let agentAuthorized = false;
     let artifactSynced = false;
     context.mocks.api(zeroUserConnectorsContract.get, ({ respond }) => {
-      return respond(200, { enabledTypes });
+      return respond(200, { enabledTypes: enabledConnectorSlugs });
     });
     context.mocks.api(
       zeroUserConnectorsContract.update,
@@ -489,15 +489,15 @@ describe("thread-owned utility sidebar", () => {
           enabledTypes: ["google-drive"],
           operation: "add",
         });
-        enabledTypes = [...body.enabledTypes];
+        enabledConnectorSlugs = [...body.enabledTypes];
         agentAuthorized = true;
-        return respond(200, { enabledTypes });
+        return respond(200, { enabledTypes: enabledConnectorSlugs });
       },
     );
     context.mocks.api(
       chatThreadArtifactsContract.syncGoogleDrive,
       ({ body, respond }) => {
-        expect(enabledTypes).toStrictEqual(["google-drive"]);
+        expect(enabledConnectorSlugs).toStrictEqual(["google-drive"]);
         expect(body).toStrictEqual({
           runId: "run-sidebar",
           fileId: "artifact-drive-agent-notes",

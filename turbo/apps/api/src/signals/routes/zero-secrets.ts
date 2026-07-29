@@ -41,7 +41,7 @@ const listSecretsInner$ = computed(async (get): Promise<unknown> => {
       .select({
         authMethod: connectors.authMethod,
         connectorId: connectors.id,
-        connectorRef: connectors.type,
+        connectorSlug: connectors.type,
         storageVersion: connectors.storageVersion,
       })
       .from(connectors)
@@ -58,7 +58,7 @@ const listSecretsInner$ = computed(async (get): Promise<unknown> => {
       stored: {
         authMethodId: row.authMethod,
         connectorId: row.connectorId,
-        connectorRef: row.connectorRef,
+        connectorSlug: row.connectorSlug,
         orgId: auth.orgId,
         storageVersion: row.storageVersion,
         userId: auth.userId,

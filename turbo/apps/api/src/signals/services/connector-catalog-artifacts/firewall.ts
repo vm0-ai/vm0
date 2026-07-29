@@ -9,7 +9,7 @@ import {
 import { z } from "zod";
 
 import { safeUrlParse } from "../../utils";
-import { connectorRefSchema, privateNameSchema } from "./common";
+import { connectorSlugSchema, privateNameSchema } from "./common";
 
 const TEMPLATE_REFERENCE_PATTERN = /\b(secrets|vars)\.([A-Z][A-Z0-9_]*)\b/gu;
 const DIRECT_TEMPLATE_PATTERN =
@@ -169,7 +169,7 @@ const firewallApiSchema = z
 
 export const firewallConfigSchema = z
   .object({
-    name: connectorRefSchema,
+    name: connectorSlugSchema,
     description: z.string().min(1).optional(),
     placeholders: z.record(privateNameSchema, z.string()).optional(),
     apis: z.array(firewallApiSchema).min(1),
@@ -185,7 +185,8 @@ export const firewallCategoriesSchema = z
 
 const firewallGeneratorResultSchema = z
   .object({
-    connectorRef: connectorRefSchema,
+    // TODO(#23619): Rename only with the external generator artifact version.
+    connectorRef: connectorSlugSchema,
     firewall: firewallConfigSchema,
     categories: firewallCategoriesSchema.nullable(),
     defaultAllowed: z.array(z.string().min(1)).nullable(),
@@ -307,12 +308,12 @@ function assertCanonicalFirewallBaseHostname(normalizedBase: string): void {
 
 export function parseFirewallBaseUrl(
   base: string,
-  connectorRef = "connector-catalog",
+  connectorSlug = "connector-catalog",
 ): URL {
   if (BASE_SECRET_PATTERN.test(base)) {
     throw new Error("Firewall API base URLs must use connector variables");
   }
-  validateBaseUrl(base, connectorRef);
+  validateBaseUrl(base, connectorSlug);
   const normalizedBase = normalizedFirewallBaseUrl(base);
   const parsed = safeUrlParse(normalizedBase);
   if (
@@ -353,14 +354,14 @@ export function firewallAuthInjectsCredentials(auth: {
   );
 }
 
-function validateHostPolicy(connectorRef: string, api: FirewallApi): void {
+function validateHostPolicy(connectorSlug: string, api: FirewallApi): void {
   if (
     firewallAuthInjectsCredentials(api.auth) &&
     firewallBaseUrlTemplateNeedsHostPolicy(api.base)
   ) {
     if (api.hostPolicy === undefined) {
       throw new Error(
-        `Credentialed dynamic base URL requires hostPolicy for ${connectorRef}: ${api.base}`,
+        `Credentialed dynamic base URL requires hostPolicy for ${connectorSlug}: ${api.base}`,
       );
     }
   }

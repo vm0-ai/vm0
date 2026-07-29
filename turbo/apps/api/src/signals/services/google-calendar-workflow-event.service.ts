@@ -263,7 +263,7 @@ async function resolveGoogleCalendarAccess(args: {
     snapshot,
     orgId: args.orgId,
     userId: args.userId,
-    connectorRef: "google-calendar",
+    connectorSlug: "google-calendar",
     ...(args.connectorId === undefined
       ? {}
       : { connectorId: args.connectorId }),

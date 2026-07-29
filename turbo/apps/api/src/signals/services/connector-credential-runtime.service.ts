@@ -39,7 +39,7 @@ const oauthScopesSchema = z.array(z.string());
 export interface ConnectorCredentialConnection {
   readonly access: ConnectorCredentialAccess;
   readonly connectorId: string;
-  readonly connectorRef: string;
+  readonly connectorSlug: string;
   readonly externalEmail: string | null;
   readonly externalId: string | null;
   readonly needsReconnect: boolean;
@@ -124,7 +124,7 @@ function connectorStoredValueRef(valueRef: string): ConnectorStoredValueRef {
 
 export async function loadConnectorCredentialConnection(args: {
   readonly connectorId?: string;
-  readonly connectorRef: string;
+  readonly connectorSlug: string;
   readonly db: ReadonlyDb;
   readonly orgId: string;
   readonly snapshot: ConnectorRuntimeSnapshot;
@@ -133,7 +133,7 @@ export async function loadConnectorCredentialConnection(args: {
   const conditions = [
     eq(connectors.orgId, args.orgId),
     eq(connectors.userId, args.userId),
-    eq(connectors.type, args.connectorRef),
+    eq(connectors.type, args.connectorSlug),
   ];
   if (args.connectorId !== undefined) {
     conditions.push(eq(connectors.id, args.connectorId));
@@ -161,7 +161,7 @@ export async function loadConnectorCredentialConnection(args: {
     stored: {
       authMethodId: row.authMethod,
       connectorId: row.connectorId,
-      connectorRef: args.connectorRef,
+      connectorSlug: args.connectorSlug,
       orgId: args.orgId,
       storageVersion: row.storageVersion,
       userId: args.userId,
@@ -176,7 +176,7 @@ export async function loadConnectorCredentialConnection(args: {
     connection: {
       access,
       connectorId: row.connectorId,
-      connectorRef: args.connectorRef,
+      connectorSlug: args.connectorSlug,
       externalEmail: row.externalEmail,
       externalId: row.externalId,
       needsReconnect: row.needsReconnect,
@@ -316,7 +316,7 @@ async function persistConnectorRefreshOutputs(args: {
       await upsertConnectorOwnedSecret(args.db, {
         connectorId: args.connection.connectorId,
         method: args.connection.runtimeMethod.method,
-        description: `Connector token output for ${args.connection.connectorRef}: ${target.name}`,
+        description: `Connector token output for ${args.connection.connectorSlug}: ${target.name}`,
         encryptedValue,
         name: target.name,
         orgId: args.orgId,
@@ -364,7 +364,7 @@ async function persistConnectorRefresh(args: {
     await lockConnectorState(tx, {
       orgId: args.orgId,
       userId: args.userId,
-      type: args.connection.connectorRef,
+      connectorSlug: args.connection.connectorSlug,
     });
     args.signal.throwIfAborted();
     const [currentConnector] = await tx
@@ -385,7 +385,7 @@ async function persistConnectorRefresh(args: {
           eq(connectors.id, args.connection.connectorId),
           eq(connectors.orgId, args.orgId),
           eq(connectors.userId, args.userId),
-          eq(connectors.type, args.connection.connectorRef),
+          eq(connectors.type, args.connection.connectorSlug),
         ),
       )
       .limit(1);
@@ -455,7 +455,7 @@ async function markConnectorCredentialNeedsReconnectAfterRefreshFailure(args: {
     await lockConnectorState(tx, {
       orgId: args.orgId,
       userId: args.userId,
-      type: args.connection.connectorRef,
+      connectorSlug: args.connection.connectorSlug,
     });
     args.signal.throwIfAborted();
     await tx
@@ -466,7 +466,7 @@ async function markConnectorCredentialNeedsReconnectAfterRefreshFailure(args: {
           eq(connectors.id, args.connection.connectorId),
           eq(connectors.orgId, args.orgId),
           eq(connectors.userId, args.userId),
-          eq(connectors.type, args.connection.connectorRef),
+          eq(connectors.type, args.connection.connectorSlug),
           eq(connectors.authMethod, args.connection.runtimeMethod.authMethodId),
           eq(sql`${connectors.updatedAt}::text`, args.connection.stateRevision),
         ),
@@ -568,7 +568,7 @@ export async function refreshConnectorCredentialAccess(
   }
   const refreshed = await settleIncludingAbort(
     refreshConnectorAuthProviderAccessTokenWithMethod({
-      connectorRef: args.connection.runtimeMethod.connectorRef,
+      connectorSlug: args.connection.runtimeMethod.connectorSlug,
       authMethodId: args.connection.runtimeMethod.authMethodId,
       method: args.connection.runtimeMethod.method,
       ...(authClient === undefined ? {} : { authClient }),
@@ -579,7 +579,8 @@ export async function refreshConnectorCredentialAccess(
   args.signal.throwIfAborted();
   if (!refreshed.ok) {
     log.warn("Connector credential refresh failed", {
-      connectorRef: args.connection.connectorRef,
+      // TODO(#23619): Rename only with the structured-log schema.
+      connectorRef: args.connection.connectorSlug,
       authMethodId: args.connection.runtimeMethod.authMethodId,
       error: refreshed.error,
     });

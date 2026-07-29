@@ -15,7 +15,7 @@ import {
   IconChevronDown,
   IconCheck,
 } from "@tabler/icons-react";
-import type { ConnectorRef } from "@vm0/api-contracts/contracts/connector-identity";
+import type { ConnectorSlug } from "@vm0/api-contracts/contracts/connector-identity";
 import type { PublicConnectorCatalogStatusItem } from "@vm0/api-contracts/contracts/zero-connector-catalog";
 import type { TeamComposeItem } from "@vm0/api-contracts/contracts/zero-team";
 import { Tabs, TabsList, TabsTrigger } from "@vm0/ui/components/ui/tabs";
@@ -32,20 +32,20 @@ import {
   allConnectorCatalogItems$,
   connectConnectorOAuthAuthCode$,
   connectConnectorNoAuth$,
-  connectFlowConnectorRef$,
+  connectFlowConnectorSlug$,
   connectorsSearch$,
   connectorsConnectionFilter$,
   disconnectConnector$,
   filteredConnectorCatalogItems$,
   setConnectorsConnectionFilter$,
   setConnectorsSearch$,
-  selectedConnectorRef$,
-  setSelectedConnectorRef$,
-  pollingOAuthAuthCodeConnectorRef$,
-  pollingOAuthDeviceAuthConnectorRef$,
-  justConnectedRefs$,
-  scopeReviewConnectorRef$,
-  setScopeReviewConnectorRef$,
+  selectedConnectorSlug$,
+  setSelectedConnectorSlug$,
+  pollingOAuthAuthCodeConnectorSlug$,
+  pollingOAuthDeviceAuthConnectorSlug$,
+  justConnectedSlugs$,
+  scopeReviewConnectorSlug$,
+  setScopeReviewConnectorSlug$,
   getAvailableStatusAuthCodeAuthMethod,
   getConnectorStatusAuthMethod,
   type ConnectorsConnectionFilter,
@@ -67,9 +67,9 @@ import { ScopeReviewModal } from "./components/settings/scope-review-modal.tsx";
 import { ConnectorAccessManagementDialog } from "./components/settings/connector-access-management-dialog.tsx";
 import {
   closeConnectorAccessManagement$,
-  connectorAuthorizedAgentsByRef$,
-  managedConnectorAccessRef$,
-  setManagedConnectorAccessRef$,
+  connectorAuthorizedAgentsBySlug$,
+  managedConnectorAccessSlug$,
+  setManagedConnectorAccessSlug$,
 } from "../../signals/zero-page/settings/connector-access-management.ts";
 import { toast } from "@vm0/ui/components/ui/sonner";
 import { noConnectorImg } from "./platform-assets.ts";
@@ -536,20 +536,22 @@ function truncateAgentName(name: string): string {
 }
 
 function ConnectorAccessButton({
-  connectorRef,
+  connectorSlug,
   connectorLabel,
   onClick,
 }: {
-  readonly connectorRef: ConnectorRef;
+  readonly connectorSlug: ConnectorSlug;
   readonly connectorLabel: string;
   readonly onClick: () => void;
 }) {
-  const agentsByRefLoadable = useLastLoadable(connectorAuthorizedAgentsByRef$);
+  const agentsBySlugLoadable = useLastLoadable(
+    connectorAuthorizedAgentsBySlug$,
+  );
   const agents =
-    agentsByRefLoadable.state === "hasData"
-      ? (agentsByRefLoadable.data.get(connectorRef) ?? [])
+    agentsBySlugLoadable.state === "hasData"
+      ? (agentsBySlugLoadable.data.get(connectorSlug) ?? [])
       : [];
-  const loading = agentsByRefLoadable.state === "loading";
+  const loading = agentsBySlugLoadable.state === "loading";
   const visibleNames = agents
     .slice(0, CONNECTOR_CARD_AGENT_NAME_LIMIT)
     .map((agent) => {
@@ -675,17 +677,17 @@ function renderBuiltinList({
   });
 }
 
-function connectorLabelForRef(
+function connectorLabelForSlug(
   connectors: readonly PublicConnectorCatalogStatusItem[],
-  connectorRef: ConnectorRef | null,
+  connectorSlug: ConnectorSlug | null,
 ): string | null {
-  if (!connectorRef) {
+  if (!connectorSlug) {
     return null;
   }
   return (
     connectors.find((connector) => {
-      return connector.connectorRef === connectorRef;
-    })?.label ?? connectorRef
+      return connector.connectorRef === connectorSlug;
+    })?.label ?? connectorSlug
   );
 }
 
@@ -695,21 +697,21 @@ export function ZeroConnectorsPage() {
     filteredConnectorCatalogItems$,
   );
   const catalogStatusLoadable = useLastLoadable(connectorCatalogStatus$);
-  const pollingAuthCodeRef = useGet(pollingOAuthAuthCodeConnectorRef$);
-  const pollingDeviceAuthRef = useGet(pollingOAuthDeviceAuthConnectorRef$);
-  const connectFlowRef = useGet(connectFlowConnectorRef$);
+  const pollingAuthCodeSlug = useGet(pollingOAuthAuthCodeConnectorSlug$);
+  const pollingDeviceAuthSlug = useGet(pollingOAuthDeviceAuthConnectorSlug$);
+  const connectFlowSlug = useGet(connectFlowConnectorSlug$);
   const connect = useSet(connectConnectorOAuthAuthCode$);
   const connectNoAuth = useSet(connectConnectorNoAuth$);
   const [disconnectLoadable, disconnect] = useLoadableSet(disconnectConnector$);
   const signal = useGet(pageSignal$);
-  const selectedConnectorRef = useGet(selectedConnectorRef$);
-  const setSelected = useSet(setSelectedConnectorRef$);
-  const scopeReviewConnectorRef = useGet(scopeReviewConnectorRef$);
-  const setScopeReviewConnectorRef = useSet(setScopeReviewConnectorRef$);
-  const managedConnectorRef = useGet(managedConnectorAccessRef$);
-  const setManagedConnectorRef = useSet(setManagedConnectorAccessRef$);
+  const selectedConnectorSlug = useGet(selectedConnectorSlug$);
+  const setSelected = useSet(setSelectedConnectorSlug$);
+  const scopeReviewConnectorSlug = useGet(scopeReviewConnectorSlug$);
+  const setScopeReviewConnectorSlug = useSet(setScopeReviewConnectorSlug$);
+  const managedConnectorSlug = useGet(managedConnectorAccessSlug$);
+  const setManagedConnectorSlug = useSet(setManagedConnectorAccessSlug$);
   const closeManagedConnector = useSet(closeConnectorAccessManagement$);
-  const optimisticConnected = useGet(justConnectedRefs$);
+  const optimisticConnected = useGet(justConnectedSlugs$);
   const activeTab = useGet(connectorsPageTab$);
   const setActiveTab = useSet(setConnectorsPageTab$);
   const isAdmin = useLastResolved(isOrgAdmin$) ?? false;
@@ -744,9 +746,9 @@ export function ZeroConnectorsPage() {
     allCatalogItemsLoadable.state === "hasData"
       ? allCatalogItemsLoadable.data
       : [];
-  const managedConnectorLabel = connectorLabelForRef(
+  const managedConnectorLabel = connectorLabelForSlug(
     allConnectors,
-    managedConnectorRef,
+    managedConnectorSlug,
   );
   const disconnecting = disconnectLoadable.state === "loading";
 
@@ -772,7 +774,7 @@ export function ZeroConnectorsPage() {
       connectNoAuth: (authMethod) => {
         return connectNoAuth(
           {
-            connectorRef: connector.connectorRef,
+            connectorSlug: connector.connectorRef,
             authMethod,
             options: {
               authorizeVisibleAgents: true,
@@ -786,21 +788,21 @@ export function ZeroConnectorsPage() {
   };
 
   const disconnectHandler = async (
-    connectorRef: ConnectorRef,
+    connectorSlug: ConnectorSlug,
     connectorLabel: string,
   ) => {
     if (disconnecting) {
       return;
     }
-    await disconnect(connectorRef, connectorLabel, signal);
+    await disconnect(connectorSlug, connectorLabel, signal);
   };
 
   const renderCard = (c: PublicConnectorCatalogStatusItem) => {
     const isConnected = c.connected || optimisticConnected.has(c.connectorRef);
     const isPolling =
-      pollingAuthCodeRef === c.connectorRef ||
-      pollingDeviceAuthRef === c.connectorRef ||
-      connectFlowRef === c.connectorRef;
+      pollingAuthCodeSlug === c.connectorRef ||
+      pollingDeviceAuthSlug === c.connectorRef ||
+      connectFlowSlug === c.connectorRef;
     if (!isConnected) {
       return (
         <ConnectorCard
@@ -829,15 +831,15 @@ export function ZeroConnectorsPage() {
         }}
         manageAccess={
           <ConnectorAccessButton
-            connectorRef={c.connectorRef}
+            connectorSlug={c.connectorRef}
             connectorLabel={c.label}
             onClick={() => {
-              setManagedConnectorRef(c.connectorRef);
+              setManagedConnectorSlug(c.connectorRef);
             }}
           />
         }
         onReviewScopes={() => {
-          return setScopeReviewConnectorRef(c.connectorRef);
+          return setScopeReviewConnectorSlug(c.connectorRef);
         }}
       />
     );
@@ -917,7 +919,7 @@ export function ZeroConnectorsPage() {
         </div>
       </main>
 
-      {selectedConnectorRef && (
+      {selectedConnectorSlug && (
         <ConnectModal
           authorizeVisibleAgentsOnConnect
           onClose={() => {
@@ -926,27 +928,27 @@ export function ZeroConnectorsPage() {
           onSuccess={() => {
             const label =
               allConnectors.find((c) => {
-                return c.connectorRef === selectedConnectorRef;
-              })?.label ?? selectedConnectorRef;
+                return c.connectorRef === selectedConnectorSlug;
+              })?.label ?? selectedConnectorSlug;
             toast.success(`${label} connected`);
           }}
         />
       )}
 
-      {scopeReviewConnectorRef && (
+      {scopeReviewConnectorSlug && (
         <ScopeReviewModal
-          connectorRef={scopeReviewConnectorRef}
+          connectorSlug={scopeReviewConnectorSlug}
           onClose={() => {
-            return setScopeReviewConnectorRef(null);
+            return setScopeReviewConnectorSlug(null);
           }}
-          onReconnect={(connectorRef) => {
-            setScopeReviewConnectorRef(null);
+          onReconnect={(connectorSlug) => {
+            setScopeReviewConnectorSlug(null);
             const connector = allConnectors.find((connector) => {
-              return connector.connectorRef === connectorRef;
+              return connector.connectorRef === connectorSlug;
             });
             const connection = connector?.connection ?? null;
             if (!connector || !connection) {
-              setSelected(connectorRef);
+              setSelected(connectorSlug);
               return;
             }
             const authMethodId = getAvailableStatusAuthCodeAuthMethod(
@@ -957,12 +959,12 @@ export function ZeroConnectorsPage() {
               ? getConnectorStatusAuthMethod(connector, authMethodId)
               : null;
             if (!authMethod) {
-              setSelected(connectorRef);
+              setSelected(connectorSlug);
               return;
             }
             detach(
               connect(
-                connectorRef,
+                connectorSlug,
                 authMethod,
                 {
                   authorizeVisibleAgents: true,
@@ -977,9 +979,9 @@ export function ZeroConnectorsPage() {
         />
       )}
 
-      {managedConnectorRef && managedConnectorLabel && (
+      {managedConnectorSlug && managedConnectorLabel && (
         <ConnectorAccessManagementDialog
-          connectorRef={managedConnectorRef}
+          connectorSlug={managedConnectorSlug}
           connectorLabel={managedConnectorLabel}
           onClose={closeManagedConnector}
         />

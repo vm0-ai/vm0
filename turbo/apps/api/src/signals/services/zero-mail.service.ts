@@ -132,7 +132,7 @@ const gmailAttachmentResourceSchema = z.object({
 });
 
 interface MailConnection extends ConnectorCredentialConnection {
-  readonly connectorRef: "gmail";
+  readonly connectorSlug: "gmail";
   readonly externalEmail: string;
   readonly externalUsername: string | null;
   readonly scopesReady: boolean;
@@ -342,7 +342,7 @@ async function loadMailConnections(args: {
   const rows = await args.db
     .select({
       connectorId: connectors.id,
-      connectorType: connectors.type,
+      connectorSlug: connectors.type,
       authMethod: connectors.authMethod,
       externalEmail: connectors.externalEmail,
       externalUsername: connectors.externalUsername,
@@ -372,7 +372,7 @@ async function loadMailConnections(args: {
     );
 
   return rows.flatMap((row): MailConnection[] => {
-    if (row.connectorType !== "gmail" || !row.externalEmail) {
+    if (row.connectorSlug !== "gmail" || !row.externalEmail) {
       return [];
     }
     const accessResult = resolveConnectorCredentialAccess({
@@ -380,7 +380,7 @@ async function loadMailConnections(args: {
       stored: {
         authMethodId: row.authMethod,
         connectorId: row.connectorId,
-        connectorRef: row.connectorType,
+        connectorSlug: row.connectorSlug,
         orgId: args.orgId,
         storageVersion: row.storageVersion,
         userId: args.userId,
@@ -398,7 +398,7 @@ async function loadMailConnections(args: {
       {
         access,
         connectorId: row.connectorId,
-        connectorRef: row.connectorType,
+        connectorSlug: row.connectorSlug,
         runtimeMethod,
         externalEmail: row.externalEmail,
         externalUsername: row.externalUsername,

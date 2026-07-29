@@ -229,14 +229,14 @@ export function searchPublicConnectorCatalog(
 
 export function findConnectorStatusItem(
   connectors: readonly PublicConnectorStatus[],
-  connectorRef: string,
+  connectorSlug: string,
 ): PublicConnectorStatus | null {
   const exact = connectors.find((connector) => {
-    return connector.connectorRef === connectorRef;
+    return connector.connectorRef === connectorSlug;
   });
   if (exact) return exact;
 
-  const lower = connectorRef.toLowerCase();
+  const lower = connectorSlug.toLowerCase();
   return (
     connectors.find((connector) => {
       return connector.connectorRef.toLowerCase() === lower;
@@ -244,7 +244,7 @@ export function findConnectorStatusItem(
   );
 }
 
-export function availableConnectorRefs(
+export function availableConnectorSlugs(
   connectors: readonly PublicConnectorStatus[],
 ): string {
   return connectors

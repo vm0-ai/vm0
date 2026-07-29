@@ -29,7 +29,7 @@ export async function readConnectorCredentialStorageState(
   args: {
     readonly orgId: string;
     readonly userId: string;
-    readonly connectorRef: string;
+    readonly connectorSlug: string;
     readonly secretNames?: readonly string[];
     readonly variableNames?: readonly string[];
   },
@@ -38,7 +38,7 @@ export async function readConnectorCredentialStorageState(
     action: "read",
     org_id: args.orgId,
     user_id: args.userId,
-    connector_ref: args.connectorRef,
+    connector_ref: args.connectorSlug,
     secret_names: [...(args.secretNames ?? [])],
     variable_names: [...(args.variableNames ?? [])],
   });
@@ -49,7 +49,7 @@ export async function seedOwnedConnectorSecret(
   args: {
     readonly orgId: string;
     readonly userId: string;
-    readonly connectorRef: string;
+    readonly connectorSlug: string;
     readonly authMethod: string;
     readonly storageVersion: number;
     readonly name: string;
@@ -61,7 +61,7 @@ export async function seedOwnedConnectorSecret(
     action: "seed-owned-secret",
     org_id: args.orgId,
     user_id: args.userId,
-    connector_ref: args.connectorRef,
+    connector_ref: args.connectorSlug,
     auth_method: args.authMethod,
     storage_version: args.storageVersion,
     name: args.name,
@@ -79,7 +79,7 @@ export async function seedConnectorStorageRow(
   args: {
     readonly orgId: string;
     readonly userId: string;
-    readonly connectorRef: string;
+    readonly connectorSlug: string;
     readonly authMethod: string;
     readonly storageVersion: number;
   },
@@ -88,7 +88,7 @@ export async function seedConnectorStorageRow(
     action: "seed-connector",
     org_id: args.orgId,
     user_id: args.userId,
-    connector_ref: args.connectorRef,
+    connector_ref: args.connectorSlug,
     auth_method: args.authMethod,
     storage_version: args.storageVersion,
   });
@@ -103,7 +103,7 @@ export async function setConnectorCredentialStorageState(
   args: {
     readonly orgId: string;
     readonly userId: string;
-    readonly connectorRef: string;
+    readonly connectorSlug: string;
     readonly storageVersion: number;
     readonly tokenExpiresAt?: string | null;
   },
@@ -112,7 +112,7 @@ export async function setConnectorCredentialStorageState(
     action: "set-connector-state",
     org_id: args.orgId,
     user_id: args.userId,
-    connector_ref: args.connectorRef,
+    connector_ref: args.connectorSlug,
     storage_version: args.storageVersion,
     ...(args.tokenExpiresAt === undefined
       ? {}

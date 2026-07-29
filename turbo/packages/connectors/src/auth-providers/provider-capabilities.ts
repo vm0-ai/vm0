@@ -40,7 +40,7 @@ export interface ConnectorAuthProviderMethodContract {
 }
 
 interface ConnectorAuthProviderMethodRegistration {
-  readonly connectorRef: string;
+  readonly connectorSlug: string;
   readonly authMethodId: string;
   readonly contract: ConnectorAuthProviderMethodContract;
 }
@@ -49,7 +49,7 @@ interface ConnectorAuthProviderMethodRegistration {
 // Keep it limited to facts required to select and validate provider handlers.
 export const CONNECTOR_AUTH_PROVIDER_METHOD_REGISTRATIONS = [
   {
-    connectorRef: "ahrefs",
+    connectorSlug: "ahrefs",
     authMethodId: "oauth",
     contract: {
       client: {
@@ -76,7 +76,7 @@ export const CONNECTOR_AUTH_PROVIDER_METHOD_REGISTRATIONS = [
     },
   },
   {
-    connectorRef: "airtable",
+    connectorSlug: "airtable",
     authMethodId: "oauth",
     contract: {
       client: {
@@ -103,7 +103,7 @@ export const CONNECTOR_AUTH_PROVIDER_METHOD_REGISTRATIONS = [
     },
   },
   {
-    connectorRef: "asana",
+    connectorSlug: "asana",
     authMethodId: "oauth",
     contract: {
       client: {
@@ -130,7 +130,7 @@ export const CONNECTOR_AUTH_PROVIDER_METHOD_REGISTRATIONS = [
     },
   },
   {
-    connectorRef: "aws",
+    connectorSlug: "aws",
     authMethodId: "cli",
     contract: {
       client: {
@@ -168,7 +168,7 @@ export const CONNECTOR_AUTH_PROVIDER_METHOD_REGISTRATIONS = [
     },
   },
   {
-    connectorRef: "base44",
+    connectorSlug: "base44",
     authMethodId: "oauth",
     contract: {
       client: {
@@ -193,7 +193,7 @@ export const CONNECTOR_AUTH_PROVIDER_METHOD_REGISTRATIONS = [
     },
   },
   {
-    connectorRef: "box",
+    connectorSlug: "box",
     authMethodId: "oauth",
     contract: {
       client: {
@@ -220,7 +220,7 @@ export const CONNECTOR_AUTH_PROVIDER_METHOD_REGISTRATIONS = [
     },
   },
   {
-    connectorRef: "cal-com",
+    connectorSlug: "cal-com",
     authMethodId: "oauth",
     contract: {
       client: {
@@ -247,7 +247,7 @@ export const CONNECTOR_AUTH_PROVIDER_METHOD_REGISTRATIONS = [
     },
   },
   {
-    connectorRef: "canva",
+    connectorSlug: "canva",
     authMethodId: "oauth",
     contract: {
       client: {
@@ -274,7 +274,7 @@ export const CONNECTOR_AUTH_PROVIDER_METHOD_REGISTRATIONS = [
     },
   },
   {
-    connectorRef: "close",
+    connectorSlug: "close",
     authMethodId: "oauth",
     contract: {
       client: {
@@ -301,7 +301,7 @@ export const CONNECTOR_AUTH_PROVIDER_METHOD_REGISTRATIONS = [
     },
   },
   {
-    connectorRef: "cloudflare",
+    connectorSlug: "cloudflare",
     authMethodId: "oauth",
     contract: {
       client: {
@@ -328,7 +328,7 @@ export const CONNECTOR_AUTH_PROVIDER_METHOD_REGISTRATIONS = [
     },
   },
   {
-    connectorRef: "copper",
+    connectorSlug: "copper",
     authMethodId: "oauth",
     contract: {
       client: {
@@ -355,7 +355,7 @@ export const CONNECTOR_AUTH_PROVIDER_METHOD_REGISTRATIONS = [
     },
   },
   {
-    connectorRef: "datadog",
+    connectorSlug: "datadog",
     authMethodId: "oauth",
     contract: {
       client: {
@@ -382,7 +382,7 @@ export const CONNECTOR_AUTH_PROVIDER_METHOD_REGISTRATIONS = [
     },
   },
   {
-    connectorRef: "deel",
+    connectorSlug: "deel",
     authMethodId: "oauth",
     contract: {
       client: {
@@ -409,7 +409,7 @@ export const CONNECTOR_AUTH_PROVIDER_METHOD_REGISTRATIONS = [
     },
   },
   {
-    connectorRef: "docusign",
+    connectorSlug: "docusign",
     authMethodId: "oauth",
     contract: {
       client: {
@@ -436,7 +436,7 @@ export const CONNECTOR_AUTH_PROVIDER_METHOD_REGISTRATIONS = [
     },
   },
   {
-    connectorRef: "dropbox",
+    connectorSlug: "dropbox",
     authMethodId: "oauth",
     contract: {
       client: {
@@ -463,7 +463,7 @@ export const CONNECTOR_AUTH_PROVIDER_METHOD_REGISTRATIONS = [
     },
   },
   {
-    connectorRef: "figma",
+    connectorSlug: "figma",
     authMethodId: "oauth",
     contract: {
       client: {
@@ -490,7 +490,7 @@ export const CONNECTOR_AUTH_PROVIDER_METHOD_REGISTRATIONS = [
     },
   },
   {
-    connectorRef: "garmin-connect",
+    connectorSlug: "garmin-connect",
     authMethodId: "oauth",
     contract: {
       client: {
@@ -517,7 +517,7 @@ export const CONNECTOR_AUTH_PROVIDER_METHOD_REGISTRATIONS = [
     },
   },
   {
-    connectorRef: "github",
+    connectorSlug: "github",
     authMethodId: "oauth",
     contract: {
       client: {
@@ -544,7 +544,7 @@ export const CONNECTOR_AUTH_PROVIDER_METHOD_REGISTRATIONS = [
     },
   },
   {
-    connectorRef: "gmail",
+    connectorSlug: "gmail",
     authMethodId: "oauth",
     contract: {
       client: {
@@ -571,7 +571,7 @@ export const CONNECTOR_AUTH_PROVIDER_METHOD_REGISTRATIONS = [
     },
   },
   {
-    connectorRef: "google-ads",
+    connectorSlug: "google-ads",
     authMethodId: "oauth",
     contract: {
       client: {
@@ -598,7 +598,7 @@ export const CONNECTOR_AUTH_PROVIDER_METHOD_REGISTRATIONS = [
     },
   },
   {
-    connectorRef: "google-analytics",
+    connectorSlug: "google-analytics",
     authMethodId: "oauth",
     contract: {
       client: {
@@ -625,7 +625,7 @@ export const CONNECTOR_AUTH_PROVIDER_METHOD_REGISTRATIONS = [
     },
   },
   {
-    connectorRef: "google-calendar",
+    connectorSlug: "google-calendar",
     authMethodId: "oauth",
     contract: {
       client: {
@@ -652,7 +652,7 @@ export const CONNECTOR_AUTH_PROVIDER_METHOD_REGISTRATIONS = [
     },
   },
   {
-    connectorRef: "google-cloud",
+    connectorSlug: "google-cloud",
     authMethodId: "oauth",
     contract: {
       client: {
@@ -679,7 +679,7 @@ export const CONNECTOR_AUTH_PROVIDER_METHOD_REGISTRATIONS = [
     },
   },
   {
-    connectorRef: "google-contacts",
+    connectorSlug: "google-contacts",
     authMethodId: "oauth",
     contract: {
       client: {
@@ -706,7 +706,7 @@ export const CONNECTOR_AUTH_PROVIDER_METHOD_REGISTRATIONS = [
     },
   },
   {
-    connectorRef: "google-docs",
+    connectorSlug: "google-docs",
     authMethodId: "oauth",
     contract: {
       client: {
@@ -733,7 +733,7 @@ export const CONNECTOR_AUTH_PROVIDER_METHOD_REGISTRATIONS = [
     },
   },
   {
-    connectorRef: "google-drive",
+    connectorSlug: "google-drive",
     authMethodId: "oauth",
     contract: {
       client: {
@@ -760,7 +760,7 @@ export const CONNECTOR_AUTH_PROVIDER_METHOD_REGISTRATIONS = [
     },
   },
   {
-    connectorRef: "google-forms",
+    connectorSlug: "google-forms",
     authMethodId: "oauth",
     contract: {
       client: {
@@ -787,7 +787,7 @@ export const CONNECTOR_AUTH_PROVIDER_METHOD_REGISTRATIONS = [
     },
   },
   {
-    connectorRef: "google-maps",
+    connectorSlug: "google-maps",
     authMethodId: "oauth",
     contract: {
       client: {
@@ -814,7 +814,7 @@ export const CONNECTOR_AUTH_PROVIDER_METHOD_REGISTRATIONS = [
     },
   },
   {
-    connectorRef: "google-meet",
+    connectorSlug: "google-meet",
     authMethodId: "oauth",
     contract: {
       client: {
@@ -841,7 +841,7 @@ export const CONNECTOR_AUTH_PROVIDER_METHOD_REGISTRATIONS = [
     },
   },
   {
-    connectorRef: "google-search-console",
+    connectorSlug: "google-search-console",
     authMethodId: "oauth",
     contract: {
       client: {
@@ -868,7 +868,7 @@ export const CONNECTOR_AUTH_PROVIDER_METHOD_REGISTRATIONS = [
     },
   },
   {
-    connectorRef: "google-sheets",
+    connectorSlug: "google-sheets",
     authMethodId: "oauth",
     contract: {
       client: {
@@ -895,7 +895,7 @@ export const CONNECTOR_AUTH_PROVIDER_METHOD_REGISTRATIONS = [
     },
   },
   {
-    connectorRef: "gumroad",
+    connectorSlug: "gumroad",
     authMethodId: "oauth",
     contract: {
       client: {
@@ -922,7 +922,7 @@ export const CONNECTOR_AUTH_PROVIDER_METHOD_REGISTRATIONS = [
     },
   },
   {
-    connectorRef: "hubspot",
+    connectorSlug: "hubspot",
     authMethodId: "oauth",
     contract: {
       client: {
@@ -949,7 +949,7 @@ export const CONNECTOR_AUTH_PROVIDER_METHOD_REGISTRATIONS = [
     },
   },
   {
-    connectorRef: "intervals-icu",
+    connectorSlug: "intervals-icu",
     authMethodId: "oauth",
     contract: {
       client: {
@@ -976,7 +976,7 @@ export const CONNECTOR_AUTH_PROVIDER_METHOD_REGISTRATIONS = [
     },
   },
   {
-    connectorRef: "lark",
+    connectorSlug: "lark",
     authMethodId: "api-token",
     contract: {
       client: {
@@ -1001,7 +1001,7 @@ export const CONNECTOR_AUTH_PROVIDER_METHOD_REGISTRATIONS = [
     },
   },
   {
-    connectorRef: "linear",
+    connectorSlug: "linear",
     authMethodId: "oauth",
     contract: {
       client: {
@@ -1028,7 +1028,7 @@ export const CONNECTOR_AUTH_PROVIDER_METHOD_REGISTRATIONS = [
     },
   },
   {
-    connectorRef: "mailchimp",
+    connectorSlug: "mailchimp",
     authMethodId: "oauth",
     contract: {
       client: {
@@ -1055,7 +1055,7 @@ export const CONNECTOR_AUTH_PROVIDER_METHOD_REGISTRATIONS = [
     },
   },
   {
-    connectorRef: "mercury",
+    connectorSlug: "mercury",
     authMethodId: "oauth",
     contract: {
       client: {
@@ -1082,7 +1082,7 @@ export const CONNECTOR_AUTH_PROVIDER_METHOD_REGISTRATIONS = [
     },
   },
   {
-    connectorRef: "meta-ads",
+    connectorSlug: "meta-ads",
     authMethodId: "oauth",
     contract: {
       client: {
@@ -1109,7 +1109,7 @@ export const CONNECTOR_AUTH_PROVIDER_METHOD_REGISTRATIONS = [
     },
   },
   {
-    connectorRef: "microsoft-365",
+    connectorSlug: "microsoft-365",
     authMethodId: "oauth",
     contract: {
       client: {
@@ -1136,7 +1136,7 @@ export const CONNECTOR_AUTH_PROVIDER_METHOD_REGISTRATIONS = [
     },
   },
   {
-    connectorRef: "monday",
+    connectorSlug: "monday",
     authMethodId: "oauth",
     contract: {
       client: {
@@ -1163,7 +1163,7 @@ export const CONNECTOR_AUTH_PROVIDER_METHOD_REGISTRATIONS = [
     },
   },
   {
-    connectorRef: "neon",
+    connectorSlug: "neon",
     authMethodId: "oauth",
     contract: {
       client: {
@@ -1190,7 +1190,7 @@ export const CONNECTOR_AUTH_PROVIDER_METHOD_REGISTRATIONS = [
     },
   },
   {
-    connectorRef: "netsuite",
+    connectorSlug: "netsuite",
     authMethodId: "api-token",
     contract: {
       client: {
@@ -1220,7 +1220,7 @@ export const CONNECTOR_AUTH_PROVIDER_METHOD_REGISTRATIONS = [
     },
   },
   {
-    connectorRef: "nintendo-store",
+    connectorSlug: "nintendo-store",
     authMethodId: "api",
     contract: {
       client: {
@@ -1251,7 +1251,7 @@ export const CONNECTOR_AUTH_PROVIDER_METHOD_REGISTRATIONS = [
     },
   },
   {
-    connectorRef: "nintendo-switch-parental-controls",
+    connectorSlug: "nintendo-switch-parental-controls",
     authMethodId: "api",
     contract: {
       client: {
@@ -1284,7 +1284,7 @@ export const CONNECTOR_AUTH_PROVIDER_METHOD_REGISTRATIONS = [
     },
   },
   {
-    connectorRef: "notion",
+    connectorSlug: "notion",
     authMethodId: "oauth",
     contract: {
       client: {
@@ -1311,7 +1311,7 @@ export const CONNECTOR_AUTH_PROVIDER_METHOD_REGISTRATIONS = [
     },
   },
   {
-    connectorRef: "outlook-calendar",
+    connectorSlug: "outlook-calendar",
     authMethodId: "oauth",
     contract: {
       client: {
@@ -1338,7 +1338,7 @@ export const CONNECTOR_AUTH_PROVIDER_METHOD_REGISTRATIONS = [
     },
   },
   {
-    connectorRef: "outlook-mail",
+    connectorSlug: "outlook-mail",
     authMethodId: "oauth",
     contract: {
       client: {
@@ -1365,7 +1365,7 @@ export const CONNECTOR_AUTH_PROVIDER_METHOD_REGISTRATIONS = [
     },
   },
   {
-    connectorRef: "paypal",
+    connectorSlug: "paypal",
     authMethodId: "api-token",
     contract: {
       client: {
@@ -1390,7 +1390,7 @@ export const CONNECTOR_AUTH_PROVIDER_METHOD_REGISTRATIONS = [
     },
   },
   {
-    connectorRef: "playstation",
+    connectorSlug: "playstation",
     authMethodId: "api",
     contract: {
       client: {
@@ -1421,7 +1421,7 @@ export const CONNECTOR_AUTH_PROVIDER_METHOD_REGISTRATIONS = [
     },
   },
   {
-    connectorRef: "posthog",
+    connectorSlug: "posthog",
     authMethodId: "oauth",
     contract: {
       client: {
@@ -1448,7 +1448,7 @@ export const CONNECTOR_AUTH_PROVIDER_METHOD_REGISTRATIONS = [
     },
   },
   {
-    connectorRef: "quickbooks",
+    connectorSlug: "quickbooks",
     authMethodId: "oauth",
     contract: {
       client: {
@@ -1475,7 +1475,7 @@ export const CONNECTOR_AUTH_PROVIDER_METHOD_REGISTRATIONS = [
     },
   },
   {
-    connectorRef: "ramp",
+    connectorSlug: "ramp",
     authMethodId: "api-token",
     contract: {
       client: {
@@ -1500,7 +1500,7 @@ export const CONNECTOR_AUTH_PROVIDER_METHOD_REGISTRATIONS = [
     },
   },
   {
-    connectorRef: "reddit",
+    connectorSlug: "reddit",
     authMethodId: "oauth",
     contract: {
       client: {
@@ -1527,7 +1527,7 @@ export const CONNECTOR_AUTH_PROVIDER_METHOD_REGISTRATIONS = [
     },
   },
   {
-    connectorRef: "sentry",
+    connectorSlug: "sentry",
     authMethodId: "oauth",
     contract: {
       client: {
@@ -1554,7 +1554,7 @@ export const CONNECTOR_AUTH_PROVIDER_METHOD_REGISTRATIONS = [
     },
   },
   {
-    connectorRef: "slack",
+    connectorSlug: "slack",
     authMethodId: "oauth",
     contract: {
       client: {
@@ -1581,7 +1581,7 @@ export const CONNECTOR_AUTH_PROVIDER_METHOD_REGISTRATIONS = [
     },
   },
   {
-    connectorRef: "slock",
+    connectorSlug: "slock",
     authMethodId: "oauth",
     contract: {
       client: {
@@ -1606,7 +1606,7 @@ export const CONNECTOR_AUTH_PROVIDER_METHOD_REGISTRATIONS = [
     },
   },
   {
-    connectorRef: "spotify",
+    connectorSlug: "spotify",
     authMethodId: "oauth",
     contract: {
       client: {
@@ -1633,7 +1633,7 @@ export const CONNECTOR_AUTH_PROVIDER_METHOD_REGISTRATIONS = [
     },
   },
   {
-    connectorRef: "steam",
+    connectorSlug: "steam",
     authMethodId: "openid",
     contract: {
       client: {
@@ -1658,7 +1658,7 @@ export const CONNECTOR_AUTH_PROVIDER_METHOD_REGISTRATIONS = [
     },
   },
   {
-    connectorRef: "strava",
+    connectorSlug: "strava",
     authMethodId: "oauth",
     contract: {
       client: {
@@ -1685,7 +1685,7 @@ export const CONNECTOR_AUTH_PROVIDER_METHOD_REGISTRATIONS = [
     },
   },
   {
-    connectorRef: "stripe",
+    connectorSlug: "stripe",
     authMethodId: "cli",
     contract: {
       client: {
@@ -1710,7 +1710,7 @@ export const CONNECTOR_AUTH_PROVIDER_METHOD_REGISTRATIONS = [
     },
   },
   {
-    connectorRef: "stripe",
+    connectorSlug: "stripe",
     authMethodId: "oauth",
     contract: {
       client: {
@@ -1737,7 +1737,7 @@ export const CONNECTOR_AUTH_PROVIDER_METHOD_REGISTRATIONS = [
     },
   },
   {
-    connectorRef: "supabase",
+    connectorSlug: "supabase",
     authMethodId: "oauth",
     contract: {
       client: {
@@ -1764,7 +1764,7 @@ export const CONNECTOR_AUTH_PROVIDER_METHOD_REGISTRATIONS = [
     },
   },
   {
-    connectorRef: "test-oauth",
+    connectorSlug: "test-oauth",
     authMethodId: "api",
     contract: {
       client: {
@@ -1794,7 +1794,7 @@ export const CONNECTOR_AUTH_PROVIDER_METHOD_REGISTRATIONS = [
     },
   },
   {
-    connectorRef: "test-oauth",
+    connectorSlug: "test-oauth",
     authMethodId: "api-token",
     contract: {
       client: {
@@ -1819,7 +1819,7 @@ export const CONNECTOR_AUTH_PROVIDER_METHOD_REGISTRATIONS = [
     },
   },
   {
-    connectorRef: "test-oauth",
+    connectorSlug: "test-oauth",
     authMethodId: "oauth",
     contract: {
       client: {
@@ -1844,7 +1844,7 @@ export const CONNECTOR_AUTH_PROVIDER_METHOD_REGISTRATIONS = [
     },
   },
   {
-    connectorRef: "test-oauth-device",
+    connectorSlug: "test-oauth-device",
     authMethodId: "api",
     contract: {
       client: {
@@ -1869,7 +1869,7 @@ export const CONNECTOR_AUTH_PROVIDER_METHOD_REGISTRATIONS = [
     },
   },
   {
-    connectorRef: "test-oauth-device",
+    connectorSlug: "test-oauth-device",
     authMethodId: "oauth",
     contract: {
       client: {
@@ -1894,7 +1894,7 @@ export const CONNECTOR_AUTH_PROVIDER_METHOD_REGISTRATIONS = [
     },
   },
   {
-    connectorRef: "tiktok-ads",
+    connectorSlug: "tiktok-ads",
     authMethodId: "oauth",
     contract: {
       client: {
@@ -1921,7 +1921,7 @@ export const CONNECTOR_AUTH_PROVIDER_METHOD_REGISTRATIONS = [
     },
   },
   {
-    connectorRef: "todoist",
+    connectorSlug: "todoist",
     authMethodId: "oauth",
     contract: {
       client: {
@@ -1948,7 +1948,7 @@ export const CONNECTOR_AUTH_PROVIDER_METHOD_REGISTRATIONS = [
     },
   },
   {
-    connectorRef: "vercel",
+    connectorSlug: "vercel",
     authMethodId: "oauth",
     contract: {
       client: {
@@ -1975,7 +1975,7 @@ export const CONNECTOR_AUTH_PROVIDER_METHOD_REGISTRATIONS = [
     },
   },
   {
-    connectorRef: "webflow",
+    connectorSlug: "webflow",
     authMethodId: "oauth",
     contract: {
       client: {
@@ -2002,7 +2002,7 @@ export const CONNECTOR_AUTH_PROVIDER_METHOD_REGISTRATIONS = [
     },
   },
   {
-    connectorRef: "workday",
+    connectorSlug: "workday",
     authMethodId: "api-token",
     contract: {
       client: {
@@ -2033,7 +2033,7 @@ export const CONNECTOR_AUTH_PROVIDER_METHOD_REGISTRATIONS = [
     },
   },
   {
-    connectorRef: "x",
+    connectorSlug: "x",
     authMethodId: "oauth",
     contract: {
       client: {
@@ -2060,7 +2060,7 @@ export const CONNECTOR_AUTH_PROVIDER_METHOD_REGISTRATIONS = [
     },
   },
   {
-    connectorRef: "xero",
+    connectorSlug: "xero",
     authMethodId: "oauth",
     contract: {
       client: {
@@ -2087,7 +2087,7 @@ export const CONNECTOR_AUTH_PROVIDER_METHOD_REGISTRATIONS = [
     },
   },
   {
-    connectorRef: "youtube",
+    connectorSlug: "youtube",
     authMethodId: "oauth",
     contract: {
       client: {
@@ -2114,7 +2114,7 @@ export const CONNECTOR_AUTH_PROVIDER_METHOD_REGISTRATIONS = [
     },
   },
   {
-    connectorRef: "zoom",
+    connectorSlug: "zoom",
     authMethodId: "oauth",
     contract: {
       client: {
@@ -2145,18 +2145,18 @@ export const CONNECTOR_AUTH_PROVIDER_METHOD_REGISTRATIONS = [
 type ConnectorAuthProviderMethodRegistrationEntry =
   (typeof CONNECTOR_AUTH_PROVIDER_METHOD_REGISTRATIONS)[number];
 
-export type ConnectorAuthProviderConnectorRef =
-  ConnectorAuthProviderMethodRegistrationEntry["connectorRef"];
+export type ConnectorAuthProviderConnectorSlug =
+  ConnectorAuthProviderMethodRegistrationEntry["connectorSlug"];
 
 type ConnectorAuthProviderMethodRegistrationMap = {
-  readonly [ConnectorRef in ConnectorAuthProviderConnectorRef]: {
+  readonly [ConnectorSlug in ConnectorAuthProviderConnectorSlug]: {
     readonly [AuthMethodId in Extract<
       ConnectorAuthProviderMethodRegistrationEntry,
-      { readonly connectorRef: ConnectorRef }
+      { readonly connectorSlug: ConnectorSlug }
     >["authMethodId"]]: Extract<
       ConnectorAuthProviderMethodRegistrationEntry,
       {
-        readonly connectorRef: ConnectorRef;
+        readonly connectorSlug: ConnectorSlug;
         readonly authMethodId: AuthMethodId;
       }
     >;
@@ -2164,18 +2164,18 @@ type ConnectorAuthProviderMethodRegistrationMap = {
 };
 
 export type ConnectorAuthProviderAuthMethodId<
-  ConnectorRef extends ConnectorAuthProviderConnectorRef,
-> = keyof ConnectorAuthProviderMethodRegistrationMap[ConnectorRef] & string;
+  ConnectorSlug extends ConnectorAuthProviderConnectorSlug,
+> = keyof ConnectorAuthProviderMethodRegistrationMap[ConnectorSlug] & string;
 
 export type ConnectorAuthProviderMethodRegistrationFor<
-  ConnectorRef extends ConnectorAuthProviderConnectorRef,
-  AuthMethodId extends ConnectorAuthProviderAuthMethodId<ConnectorRef>,
-> = ConnectorAuthProviderMethodRegistrationMap[ConnectorRef][AuthMethodId];
+  ConnectorSlug extends ConnectorAuthProviderConnectorSlug,
+  AuthMethodId extends ConnectorAuthProviderAuthMethodId<ConnectorSlug>,
+> = ConnectorAuthProviderMethodRegistrationMap[ConnectorSlug][AuthMethodId];
 
 type ConnectorAuthProviderMethodRegistrationForConnector<
-  ConnectorRef extends ConnectorAuthProviderConnectorRef,
+  ConnectorSlug extends ConnectorAuthProviderConnectorSlug,
 > =
-  ConnectorAuthProviderMethodRegistrationMap[ConnectorRef][ConnectorAuthProviderAuthMethodId<ConnectorRef>];
+  ConnectorAuthProviderMethodRegistrationMap[ConnectorSlug][ConnectorAuthProviderAuthMethodId<ConnectorSlug>];
 
 type RegistrationByGrantKind<
   Registration,
@@ -2204,44 +2204,44 @@ type RegistrationByRevokeKind<
   ? Registration
   : never;
 
-export type ConnectorAuthProviderConnectorRefByGrantKind<
+export type ConnectorAuthProviderConnectorSlugByGrantKind<
   Kind extends ConnectorAuthMethodRuntimeConfig["grant"]["kind"],
 > = RegistrationByGrantKind<
   ConnectorAuthProviderMethodRegistrationEntry,
   Kind
->["connectorRef"];
+>["connectorSlug"];
 
 export type ConnectorAuthProviderAuthMethodIdByGrantKind<
-  ConnectorRef extends ConnectorAuthProviderConnectorRef,
+  ConnectorSlug extends ConnectorAuthProviderConnectorSlug,
   Kind extends ConnectorAuthMethodRuntimeConfig["grant"]["kind"],
-> = ConnectorAuthProviderAuthMethodId<ConnectorRef> &
+> = ConnectorAuthProviderAuthMethodId<ConnectorSlug> &
   RegistrationByGrantKind<
-    ConnectorAuthProviderMethodRegistrationForConnector<ConnectorRef>,
+    ConnectorAuthProviderMethodRegistrationForConnector<ConnectorSlug>,
     Kind
   >["authMethodId"];
 
-export type ConnectorAuthProviderConnectorRefByAccessKind<
+export type ConnectorAuthProviderConnectorSlugByAccessKind<
   Kind extends ConnectorAuthMethodRuntimeConfig["access"]["kind"],
 > = RegistrationByAccessKind<
   ConnectorAuthProviderMethodRegistrationEntry,
   Kind
->["connectorRef"];
+>["connectorSlug"];
 
 export type ConnectorAuthProviderAuthMethodIdByAccessKind<
-  ConnectorRef extends ConnectorAuthProviderConnectorRef,
+  ConnectorSlug extends ConnectorAuthProviderConnectorSlug,
   Kind extends ConnectorAuthMethodRuntimeConfig["access"]["kind"],
-> = ConnectorAuthProviderAuthMethodId<ConnectorRef> &
+> = ConnectorAuthProviderAuthMethodId<ConnectorSlug> &
   RegistrationByAccessKind<
-    ConnectorAuthProviderMethodRegistrationForConnector<ConnectorRef>,
+    ConnectorAuthProviderMethodRegistrationForConnector<ConnectorSlug>,
     Kind
   >["authMethodId"];
 
 export type ConnectorAuthProviderAuthMethodIdByRevokeKind<
-  ConnectorRef extends ConnectorAuthProviderConnectorRef,
+  ConnectorSlug extends ConnectorAuthProviderConnectorSlug,
   Kind extends ConnectorAuthMethodRuntimeConfig["revoke"]["kind"],
-> = ConnectorAuthProviderAuthMethodId<ConnectorRef> &
+> = ConnectorAuthProviderAuthMethodId<ConnectorSlug> &
   RegistrationByRevokeKind<
-    ConnectorAuthProviderMethodRegistrationForConnector<ConnectorRef>,
+    ConnectorAuthProviderMethodRegistrationForConnector<ConnectorSlug>,
     Kind
   >["authMethodId"];
 
@@ -2281,36 +2281,36 @@ type ConnectorAuthProviderClientConfigForContract<
           : never;
 
 type ConnectorAuthProviderClientConfigFor<
-  ConnectorRef extends ConnectorAuthProviderConnectorRef,
-  AuthMethodId extends ConnectorAuthProviderAuthMethodId<ConnectorRef>,
+  ConnectorSlug extends ConnectorAuthProviderConnectorSlug,
+  AuthMethodId extends ConnectorAuthProviderAuthMethodId<ConnectorSlug>,
 > = ConnectorAuthProviderClientConfigForContract<
   ConnectorAuthProviderMethodRegistrationFor<
-    ConnectorRef,
+    ConnectorSlug,
     AuthMethodId
   >["contract"]["client"]
 >;
 
 export type ConnectorAuthProviderClientFor<
-  ConnectorRef extends ConnectorAuthProviderConnectorRef,
-  AuthMethodId extends ConnectorAuthProviderAuthMethodId<ConnectorRef>,
+  ConnectorSlug extends ConnectorAuthProviderConnectorSlug,
+  AuthMethodId extends ConnectorAuthProviderAuthMethodId<ConnectorSlug>,
 > = ConnectorAuthClientForConfig<
-  ConnectorAuthProviderClientConfigFor<ConnectorRef, AuthMethodId>
+  ConnectorAuthProviderClientConfigFor<ConnectorSlug, AuthMethodId>
 >;
 
 export type ConnectorAuthProviderClientIdentityFor<
-  ConnectorRef extends ConnectorAuthProviderConnectorRef,
-  AuthMethodId extends ConnectorAuthProviderAuthMethodId<ConnectorRef>,
+  ConnectorSlug extends ConnectorAuthProviderConnectorSlug,
+  AuthMethodId extends ConnectorAuthProviderAuthMethodId<ConnectorSlug>,
 > = ConnectorAuthClientIdentityForConfig<
-  ConnectorAuthProviderClientConfigFor<ConnectorRef, AuthMethodId>
+  ConnectorAuthProviderClientConfigFor<ConnectorSlug, AuthMethodId>
 >;
 
 export type ConnectorAuthProviderGrantOutputValuesFor<
-  ConnectorRef extends ConnectorAuthProviderConnectorRef,
-  AuthMethodId extends ConnectorAuthProviderAuthMethodId<ConnectorRef>,
+  ConnectorSlug extends ConnectorAuthProviderConnectorSlug,
+  AuthMethodId extends ConnectorAuthProviderAuthMethodId<ConnectorSlug>,
 > = Readonly<
   Record<
     ConnectorAuthProviderMethodRegistrationFor<
-      ConnectorRef,
+      ConnectorSlug,
       AuthMethodId
     >["contract"]["grant"]["outputNames"][number],
     string | null | undefined
@@ -2318,12 +2318,12 @@ export type ConnectorAuthProviderGrantOutputValuesFor<
 >;
 
 export type ConnectorAuthProviderRefreshInputValuesFor<
-  ConnectorRef extends ConnectorAuthProviderConnectorRef,
-  AuthMethodId extends ConnectorAuthProviderAuthMethodId<ConnectorRef>,
+  ConnectorSlug extends ConnectorAuthProviderConnectorSlug,
+  AuthMethodId extends ConnectorAuthProviderAuthMethodId<ConnectorSlug>,
 > = Readonly<
   Record<
     ConnectorAuthProviderMethodRegistrationFor<
-      ConnectorRef,
+      ConnectorSlug,
       AuthMethodId
     >["contract"]["access"]["inputNames"][number],
     string
@@ -2331,13 +2331,13 @@ export type ConnectorAuthProviderRefreshInputValuesFor<
 >;
 
 export type ConnectorAuthProviderRefreshOutputValuesFor<
-  ConnectorRef extends ConnectorAuthProviderConnectorRef,
-  AuthMethodId extends ConnectorAuthProviderAuthMethodId<ConnectorRef>,
+  ConnectorSlug extends ConnectorAuthProviderConnectorSlug,
+  AuthMethodId extends ConnectorAuthProviderAuthMethodId<ConnectorSlug>,
 > = Readonly<
   Partial<
     Record<
       ConnectorAuthProviderMethodRegistrationFor<
-        ConnectorRef,
+        ConnectorSlug,
         AuthMethodId
       >["contract"]["access"]["outputNames"][number],
       string | undefined
@@ -2346,12 +2346,12 @@ export type ConnectorAuthProviderRefreshOutputValuesFor<
 >;
 
 export type ConnectorAuthProviderRevokeInputValuesFor<
-  ConnectorRef extends ConnectorAuthProviderConnectorRef,
-  AuthMethodId extends ConnectorAuthProviderAuthMethodId<ConnectorRef>,
+  ConnectorSlug extends ConnectorAuthProviderConnectorSlug,
+  AuthMethodId extends ConnectorAuthProviderAuthMethodId<ConnectorSlug>,
 > = Readonly<
   Record<
     ConnectorAuthProviderMethodRegistrationFor<
-      ConnectorRef,
+      ConnectorSlug,
       AuthMethodId
     >["contract"]["revoke"]["inputNames"][number],
     string

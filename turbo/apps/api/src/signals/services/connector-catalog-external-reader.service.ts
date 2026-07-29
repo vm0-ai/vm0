@@ -1,5 +1,5 @@
 import { connectorCatalogFilteredAuthMethodsSchema } from "@vm0/api-contracts/contracts/connector-catalog-diagnostics";
-import type { ConnectorRef } from "@vm0/api-contracts/contracts/connector-identity";
+import type { ConnectorSlug } from "@vm0/api-contracts/contracts/connector-identity";
 import type { ConnectorResponse } from "@vm0/api-contracts/contracts/connector-schemas";
 import type { ConnectorSearchItem } from "@vm0/api-contracts/contracts/zero-connectors";
 import type {
@@ -70,7 +70,7 @@ export interface AcceptedConnectorCatalogSnapshot {
   readonly identity: ExternalCatalogIdentity;
   readonly catalogRawSize: number;
   readonly artifact: ConnectorCatalogArtifact;
-  readonly connectorByRef: ReadonlyMap<
+  readonly connectorBySlug: ReadonlyMap<
     string,
     ConnectorCatalogArtifactConnector
   >;
@@ -102,7 +102,7 @@ interface ExternalCatalogReadArgs {
 }
 
 interface ExternalCatalogConnectorReadArgs extends ExternalCatalogReadArgs {
-  readonly connectorRef: string;
+  readonly connectorSlug: string;
 }
 
 interface ExternalCatalogSearchArgs extends ExternalCatalogReadArgs {
@@ -111,11 +111,11 @@ interface ExternalCatalogSearchArgs extends ExternalCatalogReadArgs {
 
 interface ExternalCatalogStatusArgs extends ExternalCatalogReadArgs {
   readonly connectors: readonly ConnectorResponse[];
-  readonly referenceConnectorRefs: readonly string[];
+  readonly referenceConnectorSlugs: readonly string[];
 }
 
 export interface ConnectorCatalogReferenceMetadata {
-  readonly connectorRef: string;
+  readonly connectorSlug: string;
   readonly label: string;
   readonly icon: PublicConnectorCatalogIcon;
 }
@@ -139,8 +139,8 @@ const preparedCatalogCache = singleton((): PreparedExternalCatalogCache => {
   };
 });
 
-function authMethodKey(connectorRef: string, authMethodId: string): string {
-  return `${connectorRef}\0${authMethodId}`;
+function authMethodKey(connectorSlug: string, authMethodId: string): string {
+  return `${connectorSlug}\0${authMethodId}`;
 }
 
 function identityKey(identity: ExternalCatalogIdentity): string {
@@ -413,7 +413,7 @@ async function readCurrentCatalog(args: {
         identity: args.identity,
         catalogRawSize: row.catalogRawSize,
         artifact,
-        connectorByRef: new Map(
+        connectorBySlug: new Map(
           artifact.connectors.map((connector) => {
             return [connector.connectorRef, connector];
           }),
@@ -587,14 +587,14 @@ function iconForCatalog(
 
 function referenceMetadataForCatalog(
   catalog: AcceptedConnectorCatalogSnapshot,
-  connectorRefs: readonly string[],
+  connectorSlugs: readonly string[],
 ): readonly ConnectorCatalogReferenceMetadata[] {
-  const requestedRefs = new Set(connectorRefs);
+  const requestedSlugs = new Set(connectorSlugs);
   return catalog.artifact.connectors.flatMap((connector) => {
-    return requestedRefs.has(connector.connectorRef)
+    return requestedSlugs.has(connector.connectorRef)
       ? [
           {
-            connectorRef: connector.connectorRef,
+            connectorSlug: connector.connectorRef,
             label: connector.label,
             icon: iconForCatalog(connector),
           },
@@ -702,9 +702,9 @@ function connectorCatalogDetail(
 
 export function getAcceptedConnectorCatalogResolutionDetail(args: {
   readonly snapshot: AcceptedConnectorCatalogSnapshot;
-  readonly connectorRef: string;
+  readonly connectorSlug: string;
 }): PublicConnectorCatalogDetail | null {
-  const connector = args.snapshot.connectorByRef.get(args.connectorRef);
+  const connector = args.snapshot.connectorBySlug.get(args.connectorSlug);
   return connector
     ? connectorCatalogDetail({
         connector,
@@ -713,10 +713,10 @@ export function getAcceptedConnectorCatalogResolutionDetail(args: {
     : null;
 }
 
-export function listAcceptedConnectorCatalogAvailableRefs(args: {
+export function listAcceptedConnectorCatalogAvailableSlugs(args: {
   readonly snapshot: AcceptedConnectorCatalogSnapshot;
   readonly featureStates: ConnectorFeatureStates;
-}): readonly ConnectorRef[] {
+}): readonly ConnectorSlug[] {
   return effectiveConnectors({
     catalog: args.snapshot,
     featureStates: args.featureStates,
@@ -729,11 +729,11 @@ export function listAcceptedConnectorCatalogAvailableRefs(args: {
 
 export function acceptedConnectorCatalogMethodIsCompatible(args: {
   readonly snapshot: AcceptedConnectorCatalogSnapshot;
-  readonly connectorRef: string;
+  readonly connectorSlug: string;
   readonly authMethodId: string;
 }): boolean {
   return !args.snapshot.filteredMethodKeys.has(
-    authMethodKey(args.connectorRef, args.authMethodId),
+    authMethodKey(args.connectorSlug, args.authMethodId),
   );
 }
 
@@ -960,7 +960,7 @@ export async function getExternalPublicConnectorCatalogDetail(
     featureStates: args.featureStates,
   });
   const connector = effective.find((entry) => {
-    return entry.connector.connectorRef === args.connectorRef;
+    return entry.connector.connectorRef === args.connectorSlug;
   });
   return connector ? connectorCatalogDetail(connector) : null;
 }
@@ -973,7 +973,7 @@ export async function listExternalPublicConnectorCatalogStatus(
     catalog,
     featureStates: args.featureStates,
   });
-  const connectorsByType = new Map(
+  const connectorsBySlug = new Map(
     args.connectors.map((connector) => {
       return [connector.type, connector];
     }),
@@ -982,7 +982,7 @@ export async function listExternalPublicConnectorCatalogStatus(
     return connectorCatalogStatusItem({
       catalog,
       effective: entry,
-      connector: connectorsByType.get(entry.connector.connectorRef) ?? null,
+      connector: connectorsBySlug.get(entry.connector.connectorRef) ?? null,
     });
   });
   return {
@@ -992,7 +992,7 @@ export async function listExternalPublicConnectorCatalogStatus(
     },
     referenceMetadata: referenceMetadataForCatalog(
       catalog,
-      args.referenceConnectorRefs,
+      args.referenceConnectorSlugs,
     ),
   };
 }
@@ -1006,7 +1006,7 @@ export async function getExternalPublicConnectorCatalogPermissionDetail(
     featureStates: args.featureStates,
   });
   const entry = effective.find((connector) => {
-    return connector.connector.connectorRef === args.connectorRef;
+    return connector.connector.connectorRef === args.connectorSlug;
   });
   if (!entry || entry.connector.firewall.kind === "none") {
     return null;
