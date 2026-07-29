@@ -27,6 +27,7 @@ from mitmproxy.test import tflow, tutils
 
 import auth
 import auth_base_forwarder
+import aws_sigv4_body_admission
 import builtin_connector_diagnostics
 import claude_output_timing
 import codex_model_catalog_cache
@@ -57,6 +58,7 @@ def _reset_module_state() -> Iterator[None]:
     reset them around each case to avoid cross-test callbacks.
     """
     auth_base_forwarder.reset_forward_request_state_for_tests()
+    aws_sigv4_body_admission.reset_for_tests()
     builtin_connector_diagnostics.reset_cache_for_tests()
     registry.reset_cache_for_tests()
     upstream_destination_binding.reset_for_tests()
@@ -80,6 +82,7 @@ def _reset_module_state() -> Iterator[None]:
     codex_output_timing.reset_for_tests()
     logging_utils.reset_log_writer_for_tests()
     auth_base_forwarder.reset_forward_request_state_for_tests()
+    aws_sigv4_body_admission.reset_for_tests()
     builtin_connector_diagnostics.reset_cache_for_tests()
     upstream_destination_binding.reset_for_tests()
     upstream_admission.reset_tls_admission_state_for_tests()

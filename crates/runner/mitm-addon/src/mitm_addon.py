@@ -40,6 +40,7 @@ from mitmproxy.addonmanager import Loader
 #   2. Tests can patch names on the owning module object and affect all
 #      callers — no mock-placement pitfalls from copied function bindings.
 import auth_base_forwarder
+import aws_sigv4_body_admission
 import body_capture
 import builtin_host_policy
 import codex_model_catalog_cache
@@ -70,11 +71,15 @@ import websocket_retention
 from auth import (
     FirewallAuthHandlingResult,
     FirewallHeaderPhaseAuthResult,
+    aws_sigv4_request_requires_body_for_signing,
     handle_firewall_request,
     is_billable_firewall,
     mark_auth_base_forwarding_saturated,
     mark_auth_base_request_length_required,
     mark_auth_base_request_too_large,
+    mark_aws_sigv4_request_admission_saturated,
+    mark_aws_sigv4_request_length_required,
+    mark_aws_sigv4_request_too_large,
     prepare_firewall_metadata,
     try_apply_stream_safe_firewall_auth_for_requestheaders,
 )
@@ -113,12 +118,12 @@ _FIREWALL_AUTH_APPLIED_IN_REQUESTHEADERS = "_firewall_auth_applied_in_requesthea
 _AUTH_BASE_BODYLESS_METHODS = frozenset(("GET", "HEAD"))
 _HTTP_RESPONSE_BODYLESS_METHODS = frozenset(("CONNECT", "HEAD"))
 _WEBSOCKET_KEY_BYTES = 16
-_AuthBaseBodyCheckKind = Literal["ok", "too_large", "length_required"]
+_BufferedRequestBodyCheckKind = Literal["ok", "too_large", "length_required"]
 
 
 @dataclass(frozen=True)
-class _AuthBaseBodyCheck:
-    kind: _AuthBaseBodyCheckKind
+class _BufferedRequestBodyCheck:
+    kind: _BufferedRequestBodyCheckKind
     observed_size: int = 0
     reason: str = ""
 
@@ -297,9 +302,11 @@ def _prebind_requestheaders_upstream_destination(
     )
 
 
-def _prebind_bounded_requestheaders_upstream_destination(flow: http.HTTPFlow) -> None:
+def _prebind_bounded_requestheaders_upstream_destination(
+    flow: http.HTTPFlow,
+) -> request_classification.RequestClassification | None:
     if getattr(ctx, "options", None) is None:
-        return
+        return None
     api_url = get_api_url()
     metadata_snapshot = {
         key: flow.metadata[key]
@@ -310,7 +317,7 @@ def _prebind_bounded_requestheaders_upstream_destination(flow: http.HTTPFlow) ->
         try:
             trusted_authority = get_trusted_authority(flow)
         except AuthorityValidationError:
-            return
+            return None
         flow.metadata[metadata_keys.TRUSTED_AUTHORITY_HOST] = trusted_authority.host
         if upstream_admission.api_destination_matches(
             api_url,
@@ -328,20 +335,19 @@ def _prebind_bounded_requestheaders_upstream_destination(flow: http.HTTPFlow) ->
                     kind="api_allow",
                     api_url=api_url,
                 )
-            return
+            return classification
         if upstream_admission.has_bound_destination(
             flow,
             allowed_kinds=frozenset(("connector_auth",)),
-        ):
-            return
-        _prebind_requestheaders_upstream_destination(
+        ) and not _request_may_use_aws_sigv4(flow):
+            return None
+        classification = _classify_request_for_flow_with_trusted_authority(
             flow,
-            _classify_request_for_flow_with_trusted_authority(
-                flow,
-                trusted_authority=trusted_authority,
-                defer_unresolved_public_destination=True,
-            ),
+            trusted_authority=trusted_authority,
+            defer_unresolved_public_destination=True,
         )
+        _prebind_requestheaders_upstream_destination(flow, classification)
+        return classification
     finally:
         _restore_request_headers_probe_metadata(flow, metadata_snapshot)
 
@@ -354,6 +360,23 @@ def _firewall_allow_auth_base(allow: matching.FirewallAllow) -> str | None:
     auth_config = allow.api_entry.get("auth", {})
     auth_base = auth_config.get("base") if isinstance(auth_config, dict) else None
     return auth_base if isinstance(auth_base, str) and auth_base else None
+
+
+def _firewall_allow_uses_aws_sigv4(allow: matching.FirewallAllow) -> bool:
+    auth_config = allow.api_entry.get("auth", {})
+    if not isinstance(auth_config, dict):
+        return False
+    aws_sigv4 = auth_config.get("awsSigv4")
+    return isinstance(aws_sigv4, dict) and bool(aws_sigv4)
+
+
+def _request_may_use_aws_sigv4(flow: http.HTTPFlow) -> bool:
+    if any(
+        value.lstrip().startswith("AWS4-")
+        for value in flow.request.headers.get_all("Authorization")
+    ):
+        return True
+    return "X-Amz-Algorithm" in flow.request.path
 
 
 def _firewall_allow_injects_ordinary_upstream_credentials(
@@ -423,41 +446,98 @@ def _auth_base_body_header_check(
     flow: http.HTTPFlow,
     *,
     request_end_stream: bool | None,
-) -> _AuthBaseBodyCheck:
+) -> _BufferedRequestBodyCheck:
     if flow.request.headers.get_all("Transfer-Encoding"):
-        return _AuthBaseBodyCheck(kind="length_required", reason="transfer_encoding")
+        return _BufferedRequestBodyCheck(
+            kind="length_required",
+            reason="transfer_encoding",
+        )
 
     raw_content_lengths = flow.request.headers.get_all("Content-Length")
     if not raw_content_lengths:
         if flow.request.method.upper() not in _AUTH_BASE_BODYLESS_METHODS:
-            return _AuthBaseBodyCheck(kind="length_required", reason="missing_content_length")
+            return _BufferedRequestBodyCheck(
+                kind="length_required",
+                reason="missing_content_length",
+            )
         if request_end_stream is not True:
             reason = (
                 "request_stream_open"
                 if request_end_stream is False
                 else "request_end_stream_unavailable"
             )
-            return _AuthBaseBodyCheck(kind="length_required", reason=reason)
-        return _AuthBaseBodyCheck(kind="ok")
+            return _BufferedRequestBodyCheck(kind="length_required", reason=reason)
+        return _BufferedRequestBodyCheck(kind="ok")
 
     parsed_length: int | None = None
     for raw_content_length in raw_content_lengths:
         for part in raw_content_length.split(","):
             candidate = _parse_auth_base_content_length_part(part)
             if candidate is None:
-                return _AuthBaseBodyCheck(kind="length_required", reason="invalid_content_length")
+                return _BufferedRequestBodyCheck(
+                    kind="length_required",
+                    reason="invalid_content_length",
+                )
             if parsed_length is None:
                 parsed_length = candidate
             elif parsed_length != candidate:
-                return _AuthBaseBodyCheck(
+                return _BufferedRequestBodyCheck(
                     kind="length_required",
                     reason="conflicting_content_length",
                 )
 
     observed_size = parsed_length if parsed_length is not None else 0
     if observed_size > auth_base_forwarder.MAX_AUTH_BASE_REQUEST_BODY_BYTES:
-        return _AuthBaseBodyCheck(kind="too_large", observed_size=observed_size)
-    return _AuthBaseBodyCheck(kind="ok", observed_size=observed_size)
+        return _BufferedRequestBodyCheck(kind="too_large", observed_size=observed_size)
+    return _BufferedRequestBodyCheck(kind="ok", observed_size=observed_size)
+
+
+def _aws_sigv4_body_header_check(
+    flow: http.HTTPFlow,
+    *,
+    request_end_stream: bool | None,
+) -> _BufferedRequestBodyCheck:
+    if flow.request.headers.get_all("Transfer-Encoding"):
+        return _BufferedRequestBodyCheck(
+            kind="length_required",
+            reason="transfer_encoding",
+        )
+
+    raw_content_lengths = flow.request.headers.get_all("Content-Length")
+    if not raw_content_lengths:
+        if request_end_stream is True:
+            return _BufferedRequestBodyCheck(kind="ok")
+        reason = (
+            "request_stream_open"
+            if request_end_stream is False
+            else "request_end_stream_unavailable"
+        )
+        return _BufferedRequestBodyCheck(kind="length_required", reason=reason)
+
+    parsed_length: int | None = None
+    for raw_content_length in raw_content_lengths:
+        for part in raw_content_length.split(","):
+            candidate = _parse_limited_content_length_part(
+                part,
+                max_value=aws_sigv4_body_admission.MAX_AWS_SIGV4_REQUEST_BODY_BYTES,
+            )
+            if candidate is None:
+                return _BufferedRequestBodyCheck(
+                    kind="length_required",
+                    reason="invalid_content_length",
+                )
+            if parsed_length is None:
+                parsed_length = candidate
+            elif parsed_length != candidate:
+                return _BufferedRequestBodyCheck(
+                    kind="length_required",
+                    reason="conflicting_content_length",
+                )
+
+    observed_size = parsed_length if parsed_length is not None else 0
+    if observed_size > aws_sigv4_body_admission.MAX_AWS_SIGV4_REQUEST_BODY_BYTES:
+        return _BufferedRequestBodyCheck(kind="too_large", observed_size=observed_size)
+    return _BufferedRequestBodyCheck(kind="ok", observed_size=observed_size)
 
 
 def _parse_auth_base_content_length_part(value: str) -> int | None:
@@ -661,14 +741,26 @@ def requestheaders(flow: http.HTTPFlow) -> Awaitable[None] | None:
     codex_model_catalog_cache.capture_and_strip_prefetch_marker(flow)
     connector_intent.capture_and_strip(flow)
 
-    body_check = _auth_base_body_header_check(
+    auth_base_body_check = _auth_base_body_header_check(
         flow,
         request_end_stream=request_end_stream,
     )
-    body_fits_stream_buffer = body_check.kind == "ok" and _request_body_fits_stream_buffer(flow)
+    aws_sigv4_body_check = _aws_sigv4_body_header_check(
+        flow,
+        request_end_stream=request_end_stream,
+    )
+    body_fits_stream_buffer = (
+        auth_base_body_check.kind == "ok" and _request_body_fits_stream_buffer(flow)
+    )
     if body_fits_stream_buffer:
-        _prebind_bounded_requestheaders_upstream_destination(flow)
-        return None
+        bounded_classification = _prebind_bounded_requestheaders_upstream_destination(flow)
+        if (
+            bounded_classification is None
+            or bounded_classification.kind != "firewall_allow"
+            or _firewall_allow_auth_base(bounded_classification.firewall_allow)
+            or not _firewall_allow_uses_aws_sigv4(bounded_classification.firewall_allow)
+        ):
+            return None
 
     metadata_snapshot = {
         key: flow.metadata[key]
@@ -708,24 +800,24 @@ def requestheaders(flow: http.HTTPFlow) -> Awaitable[None] | None:
         allow = classification.firewall_allow
         vm_info = classification.vm_info
         auth_base = _firewall_allow_auth_base(allow)
-        if body_check.kind != "ok" and auth_base:
+        if auth_base_body_check.kind != "ok" and auth_base:
             _start_request_timing(flow)
             prepare_firewall_metadata(flow, allow, vm_info)
             proxy_log_path = flow_metadata.proxy_log_path(flow.metadata)
             firewall_base = flow.metadata[metadata_keys.FIREWALL_BASE]
-            if body_check.kind == "too_large":
+            if auth_base_body_check.kind == "too_large":
                 mark_auth_base_request_too_large(
                     flow,
                     proxy_log_path=proxy_log_path,
                     firewall_base=firewall_base,
-                    observed_size=body_check.observed_size,
+                    observed_size=auth_base_body_check.observed_size,
                 )
             else:
                 mark_auth_base_request_length_required(
                     flow,
                     proxy_log_path=proxy_log_path,
                     firewall_base=firewall_base,
-                    reason=body_check.reason,
+                    reason=auth_base_body_check.reason,
                 )
             request_classification.pop_cached_classification(flow)
             flow.metadata[_REQUEST_HEADERS_TERMINATED] = True
@@ -733,10 +825,10 @@ def requestheaders(flow: http.HTTPFlow) -> Awaitable[None] | None:
             flow.kill()
             return None
 
-        if auth_base and body_check.kind == "ok":
+        if auth_base and auth_base_body_check.kind == "ok":
             try:
                 admission = auth_base_forwarder.reserve_forward_request_admission(
-                    body_check.observed_size
+                    auth_base_body_check.observed_size
                 )
             except (
                 auth_base_forwarder.AuthBaseForwardingSaturatedError,
@@ -764,6 +856,27 @@ def requestheaders(flow: http.HTTPFlow) -> Awaitable[None] | None:
             request_classification.cache_classification(flow, classification)
             return None
 
+        if _firewall_allow_uses_aws_sigv4(allow):
+            can_apply_from_headers = (
+                not request_classification.firewall_allow_uses_public_destination(allow)
+                and not aws_sigv4_request_requires_body_for_signing(flow)
+            )
+            if can_apply_from_headers:
+                return _try_firewall_request_stream_from_headers(
+                    flow,
+                    classification=classification,
+                    metadata_snapshot=metadata_snapshot,
+                    request_end_stream=request_end_stream,
+                    capture_body=bool(vm_info.get("captureNetworkBodies", False)),
+                    aws_sigv4_buffered_fallback=aws_sigv4_body_check,
+                )
+            _admit_buffered_aws_sigv4_request(
+                flow,
+                classification=classification,
+                body_check=aws_sigv4_body_check,
+            )
+            return None
+
     if isinstance(
         classification,
         request_classification.ApiAllow
@@ -789,26 +902,101 @@ def requestheaders(flow: http.HTTPFlow) -> Awaitable[None] | None:
         classification.kind == "firewall_allow"
         and request_classification.should_try_firewall_stream_capture_request(classification)
     ):
-        return _try_firewall_request_stream_capture_from_headers(
+        return _try_firewall_request_stream_from_headers(
             flow,
             classification=classification,
             metadata_snapshot=metadata_snapshot,
             request_end_stream=request_end_stream,
+            capture_body=True,
+            aws_sigv4_buffered_fallback=None,
         )
 
     _restore_request_headers_probe_metadata(flow, metadata_snapshot)
     return None
 
 
-async def _try_firewall_request_stream_capture_from_headers(
+def _admit_buffered_aws_sigv4_request(
+    flow: http.HTTPFlow,
+    *,
+    classification: request_classification.FirewallAllow,
+    body_check: _BufferedRequestBodyCheck,
+) -> None:
+    allow = classification.firewall_allow
+    vm_info = classification.vm_info
+
+    if body_check.kind != "ok":
+        _start_request_timing(flow)
+        prepare_firewall_metadata(flow, allow, vm_info)
+        proxy_log_path = flow_metadata.proxy_log_path(flow.metadata)
+        firewall_base = flow.metadata[metadata_keys.FIREWALL_BASE]
+        if body_check.kind == "too_large":
+            mark_aws_sigv4_request_too_large(
+                flow,
+                proxy_log_path=proxy_log_path,
+                firewall_base=firewall_base,
+                observed_size=body_check.observed_size,
+            )
+        else:
+            mark_aws_sigv4_request_length_required(
+                flow,
+                proxy_log_path=proxy_log_path,
+                firewall_base=firewall_base,
+                reason=body_check.reason,
+            )
+        request_classification.pop_cached_classification(flow)
+        flow.metadata[_REQUEST_HEADERS_TERMINATED] = True
+        upstream_admission.forget_server_binding(flow.server_conn)
+        flow.kill()
+        return
+
+    try:
+        admission = aws_sigv4_body_admission.reserve(body_check.observed_size)
+    except aws_sigv4_body_admission.AwsSigV4BodyAdmissionSaturatedError:
+        _start_request_timing(flow)
+        prepare_firewall_metadata(flow, allow, vm_info)
+        proxy_log_path = flow_metadata.proxy_log_path(flow.metadata)
+        firewall_base = flow.metadata[metadata_keys.FIREWALL_BASE]
+        mark_aws_sigv4_request_admission_saturated(
+            flow,
+            proxy_log_path=proxy_log_path,
+            firewall_base=firewall_base,
+        )
+        request_classification.pop_cached_classification(flow)
+        flow.metadata[_REQUEST_HEADERS_TERMINATED] = True
+        upstream_admission.forget_server_binding(flow.server_conn)
+        flow.kill()
+        return
+
+    try:
+        aws_sigv4_body_admission.attach_to_flow(flow, admission)
+    except BaseException:
+        aws_sigv4_body_admission.release(admission)
+        raise
+    request_classification.cache_classification(flow, classification)
+
+
+async def _try_firewall_request_stream_from_headers(
     flow: http.HTTPFlow,
     *,
     classification: request_classification.FirewallAllow,
     metadata_snapshot: dict[str, object],
     request_end_stream: bool | None,
+    capture_body: bool,
+    aws_sigv4_buffered_fallback: _BufferedRequestBodyCheck | None,
 ) -> None:
     allow = classification.firewall_allow
     vm_info = classification.vm_info
+
+    def fall_back() -> None:
+        if aws_sigv4_buffered_fallback is None:
+            _restore_request_headers_probe_metadata(flow, metadata_snapshot)
+            return
+        _admit_buffered_aws_sigv4_request(
+            flow,
+            classification=classification,
+            body_check=aws_sigv4_buffered_fallback,
+        )
+
     if _firewall_allow_injects_ordinary_upstream_credentials(
         allow
     ) and not upstream_admission.ensure_bound_destination(
@@ -816,10 +1004,10 @@ async def _try_firewall_request_stream_capture_from_headers(
         kind="connector_auth",
         api_url=get_api_url(),
     ):
-        _restore_request_headers_probe_metadata(flow, metadata_snapshot)
+        fall_back()
         return
     if _builtin_host_policy_error_for_firewall_allow(flow, allow) is not None:
-        _restore_request_headers_probe_metadata(flow, metadata_snapshot)
+        fall_back()
         return
 
     _maybe_normalize_accept_encoding_for_body_inspection(flow, allow, vm_info)
@@ -845,7 +1033,7 @@ async def _try_firewall_request_stream_capture_from_headers(
         upstream_admission.forget_server_binding(flow.server_conn)
         raise
     if result is not FirewallHeaderPhaseAuthResult.APPLIED:
-        _restore_request_headers_probe_metadata(flow, metadata_snapshot)
+        fall_back()
         return
 
     terminal_usage.track_flow_if_needed(
@@ -860,7 +1048,7 @@ async def _try_firewall_request_stream_capture_from_headers(
         request_end_stream=request_end_stream is True,
     )
     if flow.response is None:
-        request_streaming.configure_request_stream(flow)
+        request_streaming.configure_request_stream(flow, capture_body=capture_body)
     else:
         upstream_admission.forget_server_binding(flow.server_conn)
 
@@ -946,12 +1134,14 @@ async def request(flow: http.HTTPFlow) -> None:
 
     if flow.metadata.get(_REQUEST_HEADERS_TERMINATED):
         auth_base_forwarder.release_forward_request_admission_from_flow(flow)
+        aws_sigv4_body_admission.release_from_flow(flow)
         upstream_admission.forget_server_binding(flow.server_conn)
         request_classification.pop_cached_classification(flow)
         return
 
     if flow.response is not None or flow.error is not None:
         auth_base_forwarder.release_forward_request_admission_from_flow(flow)
+        aws_sigv4_body_admission.release_from_flow(flow)
         upstream_admission.forget_server_binding(flow.server_conn)
         request_classification.pop_cached_classification(flow)
         return
@@ -961,6 +1151,10 @@ async def request(flow: http.HTTPFlow) -> None:
             flow.metadata[metadata_keys.REQUEST_STREAM_COMPLETE] = True
 
         classification = _request_classification_for_flow(flow)
+        if classification.kind != "firewall_allow" or not _firewall_allow_uses_aws_sigv4(
+            classification.firewall_allow
+        ):
+            aws_sigv4_body_admission.release_from_flow(flow)
 
         if request_classification.classification_needs_request_timing(classification):
             _start_request_timing(flow)
@@ -1106,6 +1300,7 @@ async def request(flow: http.HTTPFlow) -> None:
     except (asyncio.CancelledError, Exception):
         flow.metadata.pop(metadata_keys.HTTP_REQUEST_START_MONOTONIC, None)
         auth_base_forwarder.release_forward_request_admission_from_flow(flow)
+        aws_sigv4_body_admission.release_from_flow(flow)
         upstream_admission.forget_server_binding(flow.server_conn)
         terminal_usage.release_tracked_flow(flow)
         raise
@@ -1303,6 +1498,7 @@ def _release_terminal_flow_state(
     flow: http.HTTPFlow,
     *,
     release_tracking: bool,
+    release_aws_sigv4_body_admission: bool = True,
 ) -> None:
     if release_tracking:
         websocket_retention.release_terminal_messages(flow)
@@ -1316,6 +1512,8 @@ def _release_terminal_flow_state(
     codex_model_catalog_cache.release_flow_state(flow)
     response_streaming.release_response_stream_state(flow)
     auth_base_forwarder.release_forward_request_admission_from_flow(flow)
+    if release_aws_sigv4_body_admission:
+        aws_sigv4_body_admission.release_from_flow(flow)
     if flow.error is not None:
         upstream_admission.forget_server_binding(flow.server_conn)
     if release_tracking:
@@ -1338,7 +1536,11 @@ def response(flow: http.HTTPFlow) -> None:
         _handle_response(flow)
         release_tracking = not response_streaming.is_model_websocket_usage_enabled(flow)
     finally:
-        _release_terminal_flow_state(flow, release_tracking=release_tracking)
+        _release_terminal_flow_state(
+            flow,
+            release_tracking=release_tracking,
+            release_aws_sigv4_body_admission=flow.websocket is None,
+        )
 
 
 def _handle_response(flow: http.HTTPFlow) -> None:
