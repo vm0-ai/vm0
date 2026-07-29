@@ -354,7 +354,6 @@ async function persistCanonicalSlackMessage(
         id: args.ingress.ingressId,
         chatThreadId: args.chatThreadId,
         eventType: "input.prompt",
-        content: args.displayContent,
         userMessage: createUserMessageDocument({
           text: args.displayContent,
           files: args.canonicalAssets.map((asset) => {

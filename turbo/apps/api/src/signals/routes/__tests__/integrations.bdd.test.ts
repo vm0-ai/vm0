@@ -1501,7 +1501,7 @@ describe("INT-01: Slack app deep webhook flows", () => {
       expect.arrayContaining([
         expect.objectContaining({
           eventType: "input.prompt",
-          content: "admit this event once",
+          content: null,
           userMessage: {
             version: 1,
             parts: [
@@ -1536,10 +1536,17 @@ describe("INT-01: Slack app deep webhook flows", () => {
       ]),
     );
     expect(
-      visibleMessages.some((message) => {
-        return message.content?.includes("[Slack file]") ?? false;
-      }),
-    ).toBeFalsy();
+      visibleMessages
+        .filter((message) => {
+          return (
+            message.eventType === "input.prompt" ||
+            message.eventType === "input.rejected"
+          );
+        })
+        .every((message) => {
+          return message.content === null;
+        }),
+    ).toBeTruthy();
     const canonicalInputRun = await runs.readRun(actor, run1Id);
     expect(canonicalInputRun.prompt).toContain(
       `[Web file] source-notes.txt (text/plain)`,
@@ -2179,7 +2186,16 @@ describe("INT-01: Slack app deep webhook flows", () => {
       expect.arrayContaining([
         expect.objectContaining({
           eventType: "input.prompt",
-          content: "recover this event after admission conflict",
+          content: null,
+          userMessage: {
+            version: 1,
+            parts: [
+              {
+                type: "text",
+                text: "recover this event after admission conflict",
+              },
+            ],
+          },
         }),
       ]),
     );

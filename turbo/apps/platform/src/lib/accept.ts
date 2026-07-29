@@ -1,6 +1,7 @@
 import { toast } from "@vm0/ui/components/ui/sonner";
 import { isAbortError, onRejection } from "../signals/utils.ts";
 import { isNetworkRequestError } from "./network-error.ts";
+import { i18n } from "../i18n/index.ts";
 
 class ApiError extends Error {
   readonly code: string;
@@ -37,7 +38,11 @@ function extractError(
 }
 
 function requestErrorMessage(error: unknown): string {
-  return error instanceof Error ? error.message : "Request failed";
+  return error instanceof Error
+    ? error.message
+    : i18n.t(($) => {
+        return $.global.errors.requestFailed;
+      });
 }
 
 interface AcceptOptions {

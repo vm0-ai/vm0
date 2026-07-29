@@ -277,10 +277,12 @@ through the authenticated Zero Browser API and includes the current chat thread
 ID in that request. A copied card therefore cannot resolve a browser owned by a
 different thread.
 
-The fixed-height card shows the browser name, charged credits, and status, and
-opens the shared right sidebar surface. The live view lives in that sidebar and
-in the full-page route rather than in the message stream, because a live page
-resizes as it loads and would otherwise shift the transcript.
+The compact `268px × 48px` card shows `Cloud browser` and a simplified `Live`
+or `Stopped` status without browser-specific metadata or charged credits. Its
+explicit `Open` button opens the shared right sidebar surface. The live view
+lives in that sidebar and in the full-page route rather than in the message
+stream, because a live page resizes as it loads and would otherwise shift the
+transcript.
 
 A provider instance outlives the run that opened it. Every terminal run callback
 only extends the instance's idle lease, so the user can keep working in the same

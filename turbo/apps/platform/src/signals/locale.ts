@@ -5,6 +5,7 @@ import {
   localeStorageKey,
   resolveDocumentLocale,
 } from "../i18n/locale-storage.ts";
+import { applyDocumentLocaleCopy } from "../i18n/document-copy.ts";
 import { clerk$ } from "./auth.ts";
 import { localStorageSignals } from "./external/local-storage.ts";
 import {
@@ -39,6 +40,7 @@ export const initLocale$ = command(async ({ set }, signal: AbortSignal) => {
   const locale = resolveDocumentLocale();
   await initializeI18n(locale);
   signal.throwIfAborted();
+  applyDocumentLocaleCopy();
   set(internalLocale$, locale);
   document.documentElement.lang = locale;
 });
@@ -47,6 +49,7 @@ export const setLocale$ = command(
   async ({ set }, locale: SupportedLocale, signal: AbortSignal) => {
     await i18n.changeLanguage(locale);
     signal.throwIfAborted();
+    applyDocumentLocaleCopy();
     set(internalLocale$, locale);
     document.documentElement.lang = locale;
   },

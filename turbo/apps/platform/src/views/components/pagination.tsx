@@ -36,6 +36,85 @@ interface PaginationProps {
   onRowsPerPageChange: (limit: number) => void;
 }
 
+interface PaginationNavigationProps {
+  readonly buttonClassName?: string;
+  readonly canGoBackTwo: boolean;
+  readonly hasNext: boolean;
+  readonly hasPrev: boolean;
+  readonly isLoading: boolean;
+  readonly onBackTwoPages: () => void;
+  readonly onForwardTwoPages: () => void;
+  readonly onNextPage: () => void;
+  readonly onPrevPage: () => void;
+}
+
+function PaginationNavigation({
+  buttonClassName,
+  canGoBackTwo,
+  hasNext,
+  hasPrev,
+  isLoading,
+  onBackTwoPages,
+  onForwardTwoPages,
+  onNextPage,
+  onPrevPage,
+}: PaginationNavigationProps) {
+  const { t } = useTranslation();
+
+  return (
+    <div className="flex items-center gap-2">
+      <Button
+        aria-label={t(($) => {
+          return $.activity.pagination.backTwo;
+        })}
+        variant="outline"
+        size="icon"
+        className={cn("h-8 w-8 bg-card", buttonClassName)}
+        onClick={onBackTwoPages}
+        disabled={!canGoBackTwo}
+      >
+        <IconChevronsLeft className="size-4" />
+      </Button>
+      <Button
+        aria-label={t(($) => {
+          return $.activity.pagination.previous;
+        })}
+        variant="outline"
+        size="icon"
+        className={cn("h-8 w-8 bg-card", buttonClassName)}
+        onClick={onPrevPage}
+        disabled={!hasPrev}
+      >
+        <IconChevronLeft className="size-4" />
+      </Button>
+      <Button
+        aria-label={t(($) => {
+          return $.activity.pagination.next;
+        })}
+        variant="outline"
+        size="icon"
+        className={cn("h-8 w-8 bg-card", buttonClassName)}
+        onClick={onNextPage}
+        disabled={!hasNext || isLoading}
+      >
+        <IconChevronRight className="size-4" />
+      </Button>
+      <Button
+        aria-label={t(($) => {
+          return $.activity.pagination.forwardTwo;
+        })}
+        variant="outline"
+        size="icon"
+        className={cn("h-8 w-8 bg-card", buttonClassName)}
+        onClick={onForwardTwoPages}
+        disabled={!hasNext || isLoading}
+      >
+        <IconChevronsRight className="size-4" />
+      </Button>
+    </div>
+  );
+}
+
 function RowsPerPageSelect({
   rowsPerPage,
   labelClassName,
@@ -139,61 +218,17 @@ export function Pagination({
             )}
       </span>
 
-      {/* Navigation buttons */}
-      <div className="flex items-center gap-2">
-        {/* Back two pages */}
-        <Button
-          aria-label={t(($) => {
-            return $.activity.pagination.backTwo;
-          })}
-          variant="outline"
-          size="icon"
-          className={cn("h-8 w-8 bg-card", buttonClassName)}
-          onClick={onBackTwoPages}
-          disabled={!canGoBackTwo}
-        >
-          <IconChevronsLeft className="size-4" />
-        </Button>
-        {/* Previous page */}
-        <Button
-          aria-label={t(($) => {
-            return $.activity.pagination.previous;
-          })}
-          variant="outline"
-          size="icon"
-          className={cn("h-8 w-8 bg-card", buttonClassName)}
-          onClick={onPrevPage}
-          disabled={!hasPrev}
-        >
-          <IconChevronLeft className="size-4" />
-        </Button>
-        {/* Next page */}
-        <Button
-          aria-label={t(($) => {
-            return $.activity.pagination.next;
-          })}
-          variant="outline"
-          size="icon"
-          className={cn("h-8 w-8 bg-card", buttonClassName)}
-          onClick={onNextPage}
-          disabled={!hasNext || isLoading}
-        >
-          <IconChevronRight className="size-4" />
-        </Button>
-        {/* Forward two pages */}
-        <Button
-          aria-label={t(($) => {
-            return $.activity.pagination.forwardTwo;
-          })}
-          variant="outline"
-          size="icon"
-          className={cn("h-8 w-8 bg-card", buttonClassName)}
-          onClick={onForwardTwoPages}
-          disabled={!hasNext || isLoading}
-        >
-          <IconChevronsRight className="size-4" />
-        </Button>
-      </div>
+      <PaginationNavigation
+        buttonClassName={buttonClassName}
+        canGoBackTwo={canGoBackTwo}
+        hasNext={hasNext}
+        hasPrev={hasPrev}
+        isLoading={isLoading}
+        onBackTwoPages={onBackTwoPages}
+        onForwardTwoPages={onForwardTwoPages}
+        onNextPage={onNextPage}
+        onPrevPage={onPrevPage}
+      />
     </div>
   );
 }

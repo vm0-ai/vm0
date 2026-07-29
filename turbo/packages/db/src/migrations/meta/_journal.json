@@ -5101,8 +5101,29 @@
     {
       "idx": 728,
       "version": "7",
-      "when": 1785326738714,
-      "tag": "0728_browser_session_resize_state",
+      "when": 1785322216163,
+      "tag": "0728_add-canonical-user-message-columns",
+      "breakpoints": true
+    },
+    {
+      "idx": 729,
+      "version": "7",
+      "when": 1785322216164,
+      "tag": "0729_bridge-canonical-user-message-columns",
+      "breakpoints": true
+    },
+    {
+      "idx": 730,
+      "version": "7",
+      "when": 1785322216165,
+      "tag": "0730_switch-canonical-user-message-constraints",
+      "breakpoints": true
+    },
+    {
+      "idx": 731,
+      "version": "7",
+      "when": 1785329675714,
+      "tag": "0731_browser_session_resize_state",
       "breakpoints": true
     }
   ]

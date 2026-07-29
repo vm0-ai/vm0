@@ -14,6 +14,7 @@ import {
   withCleanup,
 } from "./utils.ts";
 import { logger } from "./log.ts";
+import { i18n } from "../i18n/index.ts";
 
 const L = logger("Realtime");
 const REALTIME_TRANSIENT_RETRY_DELAYS_MS = [
@@ -28,7 +29,11 @@ const notifyRealtimeDegraded$ = command(({ get, set }) => {
     return;
   }
   set(realtimeDegradedToastShown$, true);
-  toast.error("Live updates ran into a problem. Please refresh the page.");
+  toast.error(
+    i18n.t(($) => {
+      return $.global.realtime.degraded;
+    }),
+  );
 });
 
 const internalUserChannel$ = state<RealtimeChannel | null>(null);
