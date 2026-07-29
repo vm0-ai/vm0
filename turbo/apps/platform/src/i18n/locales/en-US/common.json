@@ -1797,12 +1797,7 @@
           "placeholder": "Workspace name",
           "title": "Name"
         },
-        "sectionTitle": "Profile",
-        "slug": {
-          "description": "URL-friendly identifier for the organization",
-          "placeholder": "organization-slug",
-          "title": "Slug"
-        }
+        "sectionTitle": "Profile"
       },
       "toasts": {
         "deleted": "Workspace deleted",
