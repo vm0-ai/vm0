@@ -9,8 +9,6 @@ import { useGet, useSet } from "ccstate-react";
 import {
   thumbStyle$,
   setThumbStyle$,
-  hovering$,
-  setHovering$,
   setOverlayScrollMetrics$,
   setOverlayScrollViewport$,
 } from "../../signals/zero-page/zero-sidebar-state.ts";
@@ -39,8 +37,6 @@ export function OverlayScrollArea({
 }) {
   const thumbStyleValue = useGet(thumbStyle$);
   const setThumbStyleFn = useSet(setThumbStyle$);
-  const hovering = useGet(hovering$);
-  const setHoveringFn = useSet(setHovering$);
   const setOverlayScrollMetricsFn = useSet(setOverlayScrollMetrics$);
   const setViewportRef = useSet(setOverlayScrollViewport$);
 
@@ -64,18 +60,8 @@ export function OverlayScrollArea({
     setThumbStyleFn({ top, height: thumbH, visible: true });
   };
 
-  const showThumb = thumbStyleValue.visible && hovering;
-
   return (
-    <div
-      className={`relative ${className ?? ""}`}
-      onMouseEnter={() => {
-        return setHoveringFn(true);
-      }}
-      onMouseLeave={() => {
-        return setHoveringFn(false);
-      }}
-    >
+    <div className={`group/sidebar-scroll relative ${className ?? ""}`}>
       <div
         ref={setViewportRef}
         className="h-full overflow-y-auto overflow-x-hidden [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
@@ -90,9 +76,12 @@ export function OverlayScrollArea({
         {children}
       </div>
       <div
-        className="absolute -right-2 top-0 bottom-0 w-[6px] pointer-events-none"
+        className={`absolute -right-2 top-0 bottom-0 w-[6px] pointer-events-none opacity-0 transition-opacity duration-150 ${
+          thumbStyleValue.visible
+            ? "group-hover/sidebar-scroll:opacity-100"
+            : ""
+        }`}
         aria-hidden="true"
-        style={{ opacity: showThumb ? 1 : 0, transition: "opacity 150ms" }}
       >
         <div
           className="absolute right-0 w-[5px] rounded-full bg-foreground/15"

@@ -201,17 +201,6 @@ export const setThumbStyle$ = command(({ set }, style: ThumbStyle) => {
 });
 
 // ---------------------------------------------------------------------------
-// Scrollbar hover state (OverlayScrollArea)
-// ---------------------------------------------------------------------------
-const internalHovering$ = state(false);
-export const hovering$ = computed((get) => {
-  return get(internalHovering$);
-});
-export const setHovering$ = command(({ set }, hovering: boolean) => {
-  set(internalHovering$, hovering);
-});
-
-// ---------------------------------------------------------------------------
 // Overlay scroll viewport (OverlayScrollArea)
 // ---------------------------------------------------------------------------
 const internalOverlayScrollViewport$ = state<HTMLElement | null>(null);
