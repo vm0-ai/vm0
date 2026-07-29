@@ -5489,7 +5489,10 @@ function clipboardAttachmentsFromUserMessage(
 function AttachmentMaterializationState({
   attachment,
 }: {
-  attachment: ReturnType<typeof resolveAttachments>[number];
+  attachment: {
+    readonly filename: string;
+    readonly assetRef?: NonNullable<ResolvedAttachFile["assetRef"]>;
+  };
 }) {
   const materialization = attachment.assetRef?.materialization;
   if (!materialization || materialization.status === "ready") {
@@ -5818,6 +5821,12 @@ function UserMessageFileReference({
   part: Extract<UserMessagePart, { type: "file" }>;
   attachment: ResolvedAttachFile | undefined;
 }) {
+  if (
+    attachment?.assetRef &&
+    attachment.assetRef.materialization.status !== "ready"
+  ) {
+    return <AttachmentMaterializationState attachment={attachment} />;
+  }
   if (attachment) {
     return (
       <span className="inline-flex align-middle">
