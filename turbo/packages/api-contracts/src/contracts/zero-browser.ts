@@ -252,7 +252,7 @@ export const zeroBrowserContract = c.router({
     responses: {
       200: browserResponseSchema,
       ...commonErrorResponses,
-    },
+    } as const,
     summary: "Get a managed browser by universal-link ID",
   },
 });

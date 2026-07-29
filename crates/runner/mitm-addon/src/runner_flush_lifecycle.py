@@ -11,18 +11,21 @@ from typing import Literal
 
 from mitmproxy import ctx
 
+import claude_output_timing
+import codex_output_timing
 import logging_utils
 import usage
 
 _RunnerFlushPhase = Literal["running", "draining", "closed"]
+_DeliveryFlushTrigger = Literal["runner", "shutdown"]
 
 # Runner-triggered flush protocols:
 # - Rust writes `usage-flush-request` with the active usageStateId and a fresh
 #   flushRequestId, then sends SIGUSR1 to this addon process.
-# - This addon flushes buffered usage and writes `usage-pending` with the
+# - This addon flushes buffered delivery work and writes `usage-pending` with the
 #   matching flushRequestId so the runner can observe a fresh snapshot.
 # - Rust performs a bounded wait for the acknowledged snapshot to have zero
-#   flows, buffered events, and reports before stopping the proxy.
+#   flows, buffered work, and reports before stopping the proxy.
 # - Rust may also write `jsonl-flush-request` for a concrete network log path.
 #   An addon-owned watcher independently drains accepted JSONL writes for that
 #   path and acknowledges with `jsonl-flush-state` before Rust uploads the file.
@@ -197,18 +200,25 @@ def _drain_runner_usage_flush_requests() -> None:
 
 
 def _flush_usage_for_runner_request() -> None:
-    """Flush buffered usage and acknowledge the runner's current request.
+    """Flush retained delivery work and acknowledge the runner's current request.
 
     The pending snapshot is written in ``finally`` so the runner can observe
-    fresh counters and the current flushRequestId even if usage flushing fails.
+    fresh counters and the current flushRequestId even if flushing fails.
     """
     flush_request_id = usage.read_usage_flush_request_id()
     try:
-        usage.flush_usage_events(trigger="runner")
+        _flush_delivery_work(trigger="runner")
     except Exception as exc:
-        ctx.log.warn(f"Failed to flush usage events after runner request ({type(exc).__name__})")
+        ctx.log.warn(f"Failed to flush delivery work after runner request ({type(exc).__name__})")
     finally:
         usage.write_pending_snapshot(flush_request_id=flush_request_id)
+
+
+def _flush_delivery_work(*, trigger: _DeliveryFlushTrigger) -> None:
+    """Admit billing work before retained diagnostic timing reports."""
+    usage.flush_usage_events(trigger=trigger)
+    claude_output_timing.retry_all_pending()
+    codex_output_timing.retry_all_pending()
 
 
 def _flush_jsonl_for_runner_request() -> None:
@@ -307,7 +317,7 @@ def drain_and_close() -> None:
     try:
         with _usage_flush_signal_lock:
             try:
-                usage.flush_usage_events(trigger="shutdown")
+                _flush_delivery_work(trigger="shutdown")
                 _drain_runner_usage_flush_requests()
             finally:
                 # Close request admission while still owning the lock, then consume

@@ -5094,8 +5094,15 @@
     {
       "idx": 727,
       "version": "7",
-      "when": 1785324766180,
-      "tag": "0727_browser_session_resize_state",
+      "when": 1785322216162,
+      "tag": "0727_long_amphibian",
+      "breakpoints": true
+    },
+    {
+      "idx": 728,
+      "version": "7",
+      "when": 1785326738714,
+      "tag": "0728_browser_session_resize_state",
       "breakpoints": true
     }
   ]

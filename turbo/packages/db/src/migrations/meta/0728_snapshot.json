@@ -1,6 +1,6 @@
 {
-  "id": "e8e5f071-bed9-4cf4-8b15-45ee425704ab",
-  "prevId": "b43acc64-f006-4c0f-846c-60a8770bf82f",
+  "id": "cdad129c-8121-4c86-86fd-0d20993cd565",
+  "prevId": "e8e5f071-bed9-4cf4-8b15-45ee425704ab",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -3215,6 +3215,27 @@
           "type": "varchar(20)",
           "primaryKey": false,
           "notNull": true
+        },
+        "resizable": {
+          "name": "resizable",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
+        },
+        "screen_width": {
+          "name": "screen_width",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 1440
+        },
+        "screen_height": {
+          "name": "screen_height",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 900
         },
         "browser_cost_microusd": {
           "name": "browser_cost_microusd",

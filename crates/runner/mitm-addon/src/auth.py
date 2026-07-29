@@ -31,7 +31,13 @@ from auth_base_forwarder import (
     resolved_auth_header_pairs,
     take_forward_request_admission_from_flow,
 )
-from aws_sigv4 import AwsSigV4Credentials, AwsSigV4SigningError, sign_request
+from aws_sigv4 import (
+    AwsSigV4Credentials,
+    AwsSigV4SigningError,
+    request_requires_body_for_signing,
+    sign_request,
+)
+from aws_sigv4_body_admission import MAX_AWS_SIGV4_REQUEST_BODY_BYTES
 from firewall_auth_cache import (
     FirewallAuthCacheKey,
     InvalidBillableAuthExpiryError,
@@ -73,6 +79,9 @@ type OrdinaryUpstreamCredentialsGuard = Callable[[], bool]
 _HTTP_STATUS_CLIENT_ERROR_MIN = 400
 _HTTP_STATUS_SERVER_ERROR_MIN = 500
 AUTH_BASE_FORWARDING_SATURATED_ERROR = "auth_base_forwarding_saturated"
+AWS_SIGV4_REQUEST_BODY_ADMISSION_SATURATED_ERROR = "aws_sigv4_request_body_admission_saturated"
+AWS_SIGV4_REQUEST_BODY_LENGTH_REQUIRED_ERROR = "aws_sigv4_request_body_length_required"
+AWS_SIGV4_REQUEST_BODY_TOO_LARGE_ERROR = "aws_sigv4_request_body_too_large"
 _FIREWALL_AUTH_IDENTITY_VERSION = 1
 _FIREWALL_AUTH_IDENTITY_CACHE_KEY = "_firewallAuthIdentityCache"
 
@@ -338,14 +347,21 @@ def _empty_firewall_auth_metadata() -> dict:
     }
 
 
-def _auth_config_uses_body_dependent_auth(auth_config: object) -> bool:
+def _auth_config_uses_body_dependent_auth(
+    flow: http.HTTPFlow,
+    auth_config: object,
+) -> bool:
     if not isinstance(auth_config, dict):
         return False
     auth_base = auth_config.get("base")
     if isinstance(auth_base, str) and auth_base:
         return True
     auth_aws_sigv4 = auth_config.get("awsSigv4")
-    return isinstance(auth_aws_sigv4, dict) and bool(auth_aws_sigv4)
+    return (
+        isinstance(auth_aws_sigv4, dict)
+        and bool(auth_aws_sigv4)
+        and aws_sigv4_request_requires_body_for_signing(flow)
+    )
 
 
 def _restore_header_phase_probe_state(
@@ -353,12 +369,12 @@ def _restore_header_phase_probe_state(
     *,
     metadata_snapshot: dict,
     request_headers_snapshot: http.Headers,
-    request_path_snapshot: str,
+    request_url_snapshot: str,
 ) -> None:
     flow.metadata.clear()
     flow.metadata.update(metadata_snapshot)
+    flow.request.url = request_url_snapshot
     flow.request.headers = http.Headers(request_headers_snapshot.fields)
-    flow.request.path = request_path_snapshot
 
 
 def _apply_header_query_injection(
@@ -397,6 +413,19 @@ def _trusted_aws_sigv4_url(flow: http.HTTPFlow) -> str:
     return urllib.parse.urlunsplit(
         (original.scheme, original.netloc, original.path, current_query, original.fragment)
     )
+
+
+def aws_sigv4_request_requires_body_for_signing(flow: http.HTTPFlow) -> bool:
+    """Conservatively classify whether a configured SigV4 request needs its body."""
+    try:
+        return request_requires_body_for_signing(
+            url=_trusted_aws_sigv4_url(flow),
+            headers=header_pairs(flow.request.headers),
+        )
+    except AwsSigV4SigningError:
+        # Preserve the request-hook signing failure response for malformed or
+        # unsupported placeholders without allowing unbounded body streaming.
+        return True
 
 
 def _request_path_query(flow: http.HTTPFlow) -> str:
@@ -602,6 +631,118 @@ def mark_auth_base_request_length_required(
     )
 
 
+def _log_aws_sigv4_request_too_large(
+    flow: http.HTTPFlow,
+    *,
+    proxy_log_path: str,
+    firewall_base: str,
+    observed_size: int | None = None,
+) -> None:
+    if observed_size is None:
+        body = flow.request.raw_content
+        observed_size = len(body) if body is not None else 0
+    flow.metadata[metadata_keys.SUPPRESS_REQUEST_BODY_CAPTURE] = True
+    log_proxy_entry(
+        proxy_log_path,
+        "warn",
+        "AWS SigV4 request body too large",
+        type="firewall",
+        firewall_base=firewall_base,
+        request_body_size_bytes=observed_size,
+        request_body_limit_bytes=MAX_AWS_SIGV4_REQUEST_BODY_BYTES,
+    )
+
+
+def _set_aws_sigv4_request_too_large(
+    flow: http.HTTPFlow,
+    *,
+    allow: matching.FirewallAllow,
+    proxy_log_path: str,
+    firewall_base: str,
+) -> None:
+    _log_aws_sigv4_request_too_large(
+        flow,
+        proxy_log_path=proxy_log_path,
+        firewall_base=firewall_base,
+    )
+    _set_matched_firewall_failure_response(
+        flow,
+        status=413,
+        action="ALLOW",
+        error_code=AWS_SIGV4_REQUEST_BODY_TOO_LARGE_ERROR,
+        message="AWS SigV4 request body too large",
+        permission=allow.name,
+    )
+
+
+def mark_aws_sigv4_request_too_large(
+    flow: http.HTTPFlow,
+    *,
+    proxy_log_path: str,
+    firewall_base: str,
+    observed_size: int,
+) -> None:
+    """Record an oversized body-dependent SigV4 request before killing it."""
+    _log_aws_sigv4_request_too_large(
+        flow,
+        proxy_log_path=proxy_log_path,
+        firewall_base=firewall_base,
+        observed_size=observed_size,
+    )
+    _mark_matched_firewall_failure(
+        flow,
+        action="ALLOW",
+        error_code=AWS_SIGV4_REQUEST_BODY_TOO_LARGE_ERROR,
+    )
+
+
+def mark_aws_sigv4_request_length_required(
+    flow: http.HTTPFlow,
+    *,
+    proxy_log_path: str,
+    firewall_base: str,
+    reason: str,
+) -> None:
+    """Record unbounded SigV4 body framing before killing the flow."""
+    flow.metadata[metadata_keys.SUPPRESS_REQUEST_BODY_CAPTURE] = True
+    log_proxy_entry(
+        proxy_log_path,
+        "warn",
+        "AWS SigV4 request body requires a valid Content-Length",
+        type="firewall",
+        firewall_base=firewall_base,
+        framing_error=reason,
+        request_body_limit_bytes=MAX_AWS_SIGV4_REQUEST_BODY_BYTES,
+    )
+    _mark_matched_firewall_failure(
+        flow,
+        action="ALLOW",
+        error_code=AWS_SIGV4_REQUEST_BODY_LENGTH_REQUIRED_ERROR,
+    )
+
+
+def mark_aws_sigv4_request_admission_saturated(
+    flow: http.HTTPFlow,
+    *,
+    proxy_log_path: str,
+    firewall_base: str,
+) -> None:
+    """Record aggregate SigV4 body admission saturation before killing the flow."""
+    flow.metadata[metadata_keys.SUPPRESS_REQUEST_BODY_CAPTURE] = True
+    log_proxy_entry(
+        proxy_log_path,
+        "warn",
+        "AWS SigV4 request-body admission saturated",
+        type="firewall",
+        firewall_base=firewall_base,
+    )
+    _mark_matched_firewall_failure(
+        flow,
+        action="ALLOW",
+        error_code=AWS_SIGV4_REQUEST_BODY_ADMISSION_SATURATED_ERROR,
+    )
+
+
 def _preflight_firewall_auth(
     flow: http.HTTPFlow,
     context: _FirewallAuthContext,
@@ -609,6 +750,21 @@ def _preflight_firewall_auth(
     """Handle local firewall auth failures that must happen before auth resolution."""
     if context.auth_request.auth_base and _request_body_exceeds_auth_base_limit(flow):
         _set_auth_base_request_too_large(
+            flow,
+            allow=context.allow,
+            proxy_log_path=context.proxy_log_path,
+            firewall_base=context.firewall_base,
+        )
+        return FirewallAuthHandlingResult.LOCAL_RESPONSE
+
+    body = flow.request.raw_content
+    if (
+        context.auth_request.auth_aws_sigv4 is not None
+        and aws_sigv4_request_requires_body_for_signing(flow)
+        and body is not None
+        and len(body) > MAX_AWS_SIGV4_REQUEST_BODY_BYTES
+    ):
+        _set_aws_sigv4_request_too_large(
             flow,
             allow=context.allow,
             proxy_log_path=context.proxy_log_path,
@@ -1122,9 +1278,14 @@ async def try_apply_stream_safe_firewall_auth_for_requestheaders(
     back before mutation.
     """
     auth_config = allow.api_entry.get("auth", {})
-    if _auth_config_uses_body_dependent_auth(auth_config):
+    if _auth_config_uses_body_dependent_auth(flow, auth_config):
         return FirewallHeaderPhaseAuthResult.FALLBACK
 
+    configured_aws_sigv4 = (
+        isinstance(auth_config, dict)
+        and isinstance(auth_config.get("awsSigv4"), dict)
+        and bool(auth_config["awsSigv4"])
+    )
     injects_credentials = auth_config_injects_credentials(auth_config)
     if injects_credentials and _request_method_forbids_managed_credentials(flow.request.method):
         return FirewallHeaderPhaseAuthResult.FALLBACK
@@ -1139,7 +1300,7 @@ async def try_apply_stream_safe_firewall_auth_for_requestheaders(
 
     metadata_snapshot = dict(flow.metadata)
     request_headers_snapshot = http.Headers(flow.request.headers.fields)
-    request_path_snapshot = flow.request.path
+    request_url_snapshot = flow.request.url
 
     _prepare_firewall_metadata(flow, allow, vm_info)
     context = _build_firewall_auth_context(flow, allow, vm_info)
@@ -1155,7 +1316,7 @@ async def try_apply_stream_safe_firewall_auth_for_requestheaders(
                 flow,
                 metadata_snapshot=metadata_snapshot,
                 request_headers_snapshot=request_headers_snapshot,
-                request_path_snapshot=request_path_snapshot,
+                request_url_snapshot=request_url_snapshot,
             )
             raise
         except Exception as exc:
@@ -1163,7 +1324,7 @@ async def try_apply_stream_safe_firewall_auth_for_requestheaders(
                 flow,
                 metadata_snapshot=metadata_snapshot,
                 request_headers_snapshot=request_headers_snapshot,
-                request_path_snapshot=request_path_snapshot,
+                request_url_snapshot=request_url_snapshot,
             )
             flow.metadata[metadata_keys.FIREWALL_AUTH_PROBE_FAILURE] = exc
             return FirewallHeaderPhaseAuthResult.FALLBACK
@@ -1175,16 +1336,26 @@ async def try_apply_stream_safe_firewall_auth_for_requestheaders(
             flow,
             metadata_snapshot=metadata_snapshot,
             request_headers_snapshot=request_headers_snapshot,
-            request_path_snapshot=request_path_snapshot,
+            request_url_snapshot=request_url_snapshot,
         )
         return FirewallHeaderPhaseAuthResult.FALLBACK
 
-    if token_meta.get("base") or token_meta.get("aws_sigv4") is not None:
+    resolved_aws_sigv4_value = token_meta.get("aws_sigv4")
+    resolved_aws_sigv4 = (
+        resolved_aws_sigv4_value
+        if isinstance(resolved_aws_sigv4_value, AwsSigV4Credentials)
+        else None
+    )
+    if (
+        token_meta.get("base")
+        or (resolved_aws_sigv4_value is not None and not configured_aws_sigv4)
+        or (configured_aws_sigv4 and resolved_aws_sigv4 is None)
+    ):
         _restore_header_phase_probe_state(
             flow,
             metadata_snapshot=metadata_snapshot,
             request_headers_snapshot=request_headers_snapshot,
-            request_path_snapshot=request_path_snapshot,
+            request_url_snapshot=request_url_snapshot,
         )
         return FirewallHeaderPhaseAuthResult.FALLBACK
 
@@ -1193,7 +1364,7 @@ async def try_apply_stream_safe_firewall_auth_for_requestheaders(
             flow,
             metadata_snapshot=metadata_snapshot,
             request_headers_snapshot=request_headers_snapshot,
-            request_path_snapshot=request_path_snapshot,
+            request_url_snapshot=request_url_snapshot,
         )
         return FirewallHeaderPhaseAuthResult.FALLBACK
 
@@ -1205,12 +1376,14 @@ async def try_apply_stream_safe_firewall_auth_for_requestheaders(
             headers=headers,
             resolved_query=resolved_query,
         )
+        if resolved_aws_sigv4 is not None:
+            _sign_flow_request_with_aws_sigv4(flow, resolved_aws_sigv4)
     except Exception:
         _restore_header_phase_probe_state(
             flow,
             metadata_snapshot=metadata_snapshot,
             request_headers_snapshot=request_headers_snapshot,
-            request_path_snapshot=request_path_snapshot,
+            request_url_snapshot=request_url_snapshot,
         )
         return FirewallHeaderPhaseAuthResult.FALLBACK
 

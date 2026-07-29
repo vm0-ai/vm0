@@ -118,6 +118,7 @@ const leaseBrowserByIdInner$ = command(
         orgId: auth.orgId,
         userId: auth.userId,
         browserId: get(leaseByIdParams$).browserId,
+        ...("runId" in auth ? { runId: auth.runId } : {}),
       },
       signal,
     );
@@ -143,6 +144,7 @@ const resumeBrowserByIdInner$ = command(
         orgId: auth.orgId,
         userId: auth.userId,
         browserId: get(resumeByIdParams$).browserId,
+        ...("runId" in auth ? { runId: auth.runId } : {}),
       },
       signal,
     );
@@ -207,6 +209,7 @@ const getBrowserInner$ = command(async ({ get, set }, signal: AbortSignal) => {
       userId: auth.userId,
       browserId: get(getParams$).browserId,
       chatThreadId: get(getQuery$).chatThreadId,
+      ...("runId" in auth ? { runId: auth.runId } : {}),
     },
     signal,
   );

@@ -150,6 +150,7 @@ interface BrowserSessionAccess {
   readonly userId: string;
   readonly browserId: string;
   readonly chatThreadId?: string;
+  readonly runId?: string;
 }
 
 interface ProviderResult<T> {
@@ -915,12 +916,12 @@ async function resolveRunContext(
   };
 }
 
-async function resolveViewerContext(
+async function resolveViewerResumeContext(
   db: Db,
   browser: BrowserSessionRow,
 ): Promise<BrowserServiceResult<BrowserRunContext>> {
   const [thread] = await db
-    .select({ cloudBrowserEnabled: chatThreads.cloudBrowserEnabled })
+    .select({ id: chatThreads.id })
     .from(chatThreads)
     .where(
       and(
@@ -929,12 +930,8 @@ async function resolveViewerContext(
       ),
     )
     .limit(1);
-  if (!thread?.cloudBrowserEnabled) {
-    return serviceError(
-      403,
-      "BROWSER_AUTHORIZATION_REQUIRED",
-      "Cloud browser is not enabled for this chat thread",
-    );
+  if (!thread) {
+    return notFound();
   }
   const attributionRunId =
     (await latestThreadRunId(db, browser.chatThreadId)) ?? browser.runId;
@@ -956,6 +953,45 @@ async function resolveViewerContext(
   };
 }
 
+async function browserSessionAccessError(
+  db: Db,
+  browser: BrowserSessionRow,
+  access: BrowserSessionAccess,
+): Promise<BrowserServiceError | null> {
+  // Session callers are authorized by ownership. Run-scoped callers must also
+  // belong to this thread and retain its agent browser authorization.
+  if (!access.runId) {
+    return null;
+  }
+  const [run] = await db
+    .select({
+      chatThreadId: zeroRuns.chatThreadId,
+      cloudBrowserEnabled: chatThreads.cloudBrowserEnabled,
+    })
+    .from(zeroRuns)
+    .innerJoin(agentRuns, eq(agentRuns.id, zeroRuns.id))
+    .innerJoin(chatThreads, eq(chatThreads.id, zeroRuns.chatThreadId))
+    .where(
+      and(
+        eq(zeroRuns.id, access.runId),
+        eq(agentRuns.orgId, access.orgId),
+        eq(agentRuns.userId, access.userId),
+      ),
+    )
+    .limit(1);
+  if (!run?.chatThreadId || run.chatThreadId !== browser.chatThreadId) {
+    return notFound();
+  }
+  if (!run.cloudBrowserEnabled) {
+    return serviceError(
+      403,
+      "BROWSER_AUTHORIZATION_REQUIRED",
+      "Cloud browser is not enabled for this chat thread",
+    );
+  }
+  return null;
+}
+
 async function loadOwnedBrowser(
   db: Db,
   access: BrowserSessionAccess,
@@ -969,6 +1005,7 @@ async function loadOwnedBrowser(
         eq(browserSessions.id, access.browserId),
         eq(browserSessions.orgId, access.orgId),
         eq(browserSessions.userId, access.userId),
+        eq(chatThreads.userId, access.userId),
         ...(access.chatThreadId
           ? [eq(browserSessions.chatThreadId, access.chatThreadId)]
           : []),
@@ -2129,7 +2166,12 @@ export const resumeZeroBrowserFromViewer$ = command(
     if (!browser) {
       return notFound();
     }
-    const context = await resolveViewerContext(db, browser);
+    const accessError = await browserSessionAccessError(db, browser, access);
+    signal.throwIfAborted();
+    if (accessError) {
+      return accessError;
+    }
+    const context = await resolveViewerResumeContext(db, browser);
     signal.throwIfAborted();
     if (context.kind === "error") {
       return context;
@@ -2205,10 +2247,10 @@ export const leaseZeroBrowserById$ = command(
     if (!browser) {
       return notFound();
     }
-    const context = await resolveViewerContext(db, browser);
+    const accessError = await browserSessionAccessError(db, browser, access);
     signal.throwIfAborted();
-    if (context.kind === "error") {
-      return context;
+    if (accessError) {
+      return accessError;
     }
     return await set(leaseInstanceForBrowser$, browser, signal);
   },
@@ -2226,10 +2268,10 @@ export const resizeZeroBrowserById$ = command(
     if (!browser) {
       return notFound();
     }
-    const context = await resolveViewerContext(db, browser);
+    const accessError = await browserSessionAccessError(db, browser, access);
     signal.throwIfAborted();
-    if (context.kind === "error") {
-      return context;
+    if (accessError) {
+      return accessError;
     }
     if (browser.status !== "active") {
       return conflict(
@@ -2338,10 +2380,10 @@ export const getZeroBrowser$ = command(
     if (!row) {
       return notFound();
     }
-    const context = await resolveViewerContext(db, row);
+    const accessError = await browserSessionAccessError(db, row, access);
     signal.throwIfAborted();
-    if (context.kind === "error") {
-      return context;
+    if (accessError) {
+      return accessError;
     }
     let liveUrl: string | null = null;
     let idleExpiresAt: Date | null = null;
