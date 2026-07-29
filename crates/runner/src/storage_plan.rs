@@ -1,3 +1,40 @@
+//! Storage materialization planning between canonical runner manifests and guest execution.
+//!
+//! [`build_storage_plan`] combines a canonical storage manifest, the guest runtime directory, and
+//! optional fingerprints from a prior filesystem into an explicit [`StoragePlan`]. The plan is
+//! crate-private and is not serialized: it preserves semantic actions while the runner decides
+//! whether guest work is required and resolves eligible archive sources. Only then does
+//! [`StoragePlan::into_guest_manifest`] consume it into the shared runner-to-guest wire format.
+//!
+//! The `previous` input distinguishes a fresh filesystem (`None`) from a reused filesystem
+//! (`Some`). In particular, `Some(empty)` is not equivalent to `None`: both produce materialization
+//! actions for every current entry, but the reused filesystem also requires cleanup of unmatched
+//! paths before materialization.
+//!
+//! ## Action matrix
+//!
+//! | Entry | Matching fingerprint | Fresh or non-matching fingerprint |
+//! | --- | --- | --- |
+//! | Ordinary storage | `ReuseExisting`: keep the mount with no guest work | `Download`: extract an archive |
+//! | Instruction storage | `NormalizeInPlace`: normalize the cached instruction files in place | `DownloadAndNormalize`: stage an archive, then promote its target file |
+//! | Non-empty artifact | `ReuseOrRepair`: preserve an existing root or use the retained archive source to repair a missing root | `Download`: materialize the archive |
+//! | Empty artifact | `PrepareEmpty { cached: true }` | `PrepareEmpty { cached: false }` |
+//!
+//! On a reused filesystem, a changed ordinary storage or artifact receives broad mount-path
+//! cleanup, while a changed instruction storage receives targeted instruction cleanup. Removed
+//! entries are also cleaned. A removed instruction storage at the exact Codex or Claude framework
+//! home uses targeted cleanup only when its fingerprint is tainted or identifies an
+//! `agent-instructions@` storage. This avoids deleting the whole framework home, which can contain
+//! independently cached children, without treating arbitrary data at that path as instructions.
+//!
+//! ## Cache and guest boundary
+//!
+//! [`StoragePlan::cache_candidates`] exposes only remote archives required by download actions.
+//! Cache handling may use [`StoragePlan::stage_archive`] to replace such a remote source with a
+//! guest-staged source after validating the entry identity; it cannot change the storage or
+//! artifact action. [`StoragePlan::requires_guest_work`] is evaluated before cache resolution, and
+//! the resolved plan is finally converted to the guest manifest for execution.
+
 use std::collections::HashSet;
 use std::path::PathBuf;
 
@@ -12,6 +49,11 @@ const CODEX_FRAMEWORK_HOME: &str = "/home/user/.codex";
 const CLAUDE_FRAMEWORK_HOME: &str = "/home/user/.claude";
 const AGENT_INSTRUCTIONS_STORAGE_NAME_PREFIX: &str = "agent-instructions@";
 
+/// The semantic actions required to apply one canonical storage manifest.
+///
+/// This type deliberately remains separate from the guest wire manifest so planning, cleanup, and
+/// repair decisions stay explicit. Archive delivery may refine an eligible action's source from a
+/// remote URL to a guest-staged URL, but it does not change the action itself.
 #[derive(Debug)]
 pub(crate) struct StoragePlan {
     storages: Vec<StoragePlanEntry>,
@@ -123,6 +165,17 @@ pub(crate) struct CacheArchiveCandidate {
     pub(crate) archive_size: Option<u64>,
 }
 
+/// Build the semantic plan for applying `manifest` to a guest filesystem.
+///
+/// `runtime_dir` supplies run-scoped staging paths for instruction normalization. `previous=None`
+/// describes a fresh filesystem and schedules no replacement or removal cleanup.
+/// `previous=Some(...)` describes a reused filesystem, so entries without matching fingerprints
+/// and entries absent from the current manifest are cleaned before the planned actions run. This
+/// makes `Some(empty)` intentionally different from `None`.
+///
+/// # Errors
+///
+/// Returns an internal error when a non-empty artifact has no archive source.
 pub(crate) fn build_storage_plan(
     manifest: &StorageManifest,
     runtime_dir: &str,
@@ -263,6 +316,11 @@ pub(crate) fn build_storage_plan(
 }
 
 impl StoragePlan {
+    /// Return whether applying this plan requires guest execution.
+    ///
+    /// The result is `false` only when there is no cleanup, every storage is
+    /// `ReuseExisting`, and there are no artifacts. Instruction normalization and every artifact
+    /// action require the guest even when their fingerprints match.
     pub(crate) fn requires_guest_work(&self) -> bool {
         !self.cleanup_paths.is_empty()
             || !self.instruction_cleanups.is_empty()
@@ -289,6 +347,11 @@ impl StoragePlan {
         self.instruction_cleanups.len()
     }
 
+    /// Return remote archives eligible for runner-side delivery.
+    ///
+    /// Candidates are limited to storage `Download` and `DownloadAndNormalize` actions and
+    /// artifact `Download` actions. Reuse, repair, normalize-in-place, empty preparation, and
+    /// sources that are already guest-staged are intentionally excluded.
     pub(crate) fn cache_candidates(&self) -> Vec<CacheArchiveCandidate> {
         let storage_candidates = self
             .storages
@@ -333,6 +396,11 @@ impl StoragePlan {
         storage_candidates.chain(artifact_candidates).collect()
     }
 
+    /// Replace one eligible remote archive source with a guest-staged source.
+    ///
+    /// The handle, entry name, version, and current remote URL must all match. A successful
+    /// replacement changes only the action's source and preserves its semantic action. A mismatch
+    /// returns `false` without modifying the plan.
     pub(crate) fn stage_archive(
         &mut self,
         handle: ArchiveHandle,
@@ -373,6 +441,12 @@ impl StoragePlan {
         true
     }
 
+    /// Consume the resolved plan into the shared guest execution manifest.
+    ///
+    /// This conversion encodes the explicit actions as the wire format's archive URL, cached,
+    /// empty, instruction, and cleanup fields. The normal lifecycle calls it after guest-work
+    /// detection and cache source resolution; the wire value is transport state, not a second
+    /// planning representation.
     pub(crate) fn into_guest_manifest(self) -> wire::Manifest {
         wire::Manifest {
             storages: self
