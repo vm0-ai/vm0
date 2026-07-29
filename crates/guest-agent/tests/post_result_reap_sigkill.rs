@@ -19,8 +19,12 @@ async fn post_result_reap_escalates_to_sigkill_when_sigterm_ignored()
     let mock = common::build_and_locate_mock()?;
     let tmp = tempfile::tempdir()?;
     unsafe {
-        // 1s sigterm (ignored by mock) + 1s sigkill (unignorable) → ~2s total.
-        common::setup_env(&mock, tmp.path(), "@hang-after-result-deaf", 1, 1)?;
+        // The 1s execution deadline expires after the terminal result but
+        // before the 2s post-result SIGTERM. It must not reclassify semantic
+        // completion as an execution timeout. SIGTERM is ignored, then the
+        // 1s SIGKILL grace makes the total runtime ~3s.
+        common::setup_env(&mock, tmp.path(), "@hang-after-result-deaf", 2, 1)?;
+        std::env::set_var(guest_contracts::env::AGENT_EXECUTION_TIMEOUT_SECS_ENV, "1");
     }
 
     let runtime = common::guest_runtime_from_process_env()?;
@@ -28,7 +32,7 @@ async fn post_result_reap_escalates_to_sigkill_when_sigterm_ignored()
     let masker = guest_agent::masker::SecretMasker::from_raw("");
     let heartbeat = common::spawn_dummy_heartbeat();
 
-    // Budget: sigterm (1s, ignored) + sigkill (1s, unignorable) +
+    // Budget: sigterm (2s, ignored) + sigkill (1s, unignorable) +
     // stdout drain (5s) + slack = 15s.
     let result = tokio::time::timeout(
         Duration::from_secs(15),

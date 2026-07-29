@@ -907,6 +907,12 @@ async fn execute_cli_inner(
                     CliExitObservation::ExitedAndStdoutClosed => break Ok(()),
                 }
                 agent_execution_deadline_armed = false;
+                if termination_runtime.has_post_result_cleanup() {
+                    // A terminal result already ended semantic execution.
+                    // Its bounded reaper now belongs to finalization and must
+                    // retain the result's success or failure classification.
+                    continue;
+                }
                 active_input_controller.close_terminal();
                 let timeout_error = AgentError::Execution(format!(
                     "Agent execution timed out after {agent_execution_timeout_secs} seconds"
