@@ -5066,22 +5066,36 @@
     {
       "idx": 723,
       "version": "7",
-      "when": 1785305123890,
-      "tag": "0723_add-canonical-user-message-columns",
+      "when": 1785310179237,
+      "tag": "0723_rename_chat_messages_to_chat_events",
       "breakpoints": true
     },
     {
       "idx": 724,
       "version": "7",
-      "when": 1785305123891,
-      "tag": "0724_bridge-canonical-user-message-columns",
+      "when": 1785312573877,
+      "tag": "0724_input_goal_queue_event",
       "breakpoints": true
     },
     {
       "idx": 725,
       "version": "7",
-      "when": 1785305123892,
-      "tag": "0725_switch-canonical-user-message-constraints",
+      "when": 1785312573878,
+      "tag": "0725_add-canonical-user-message-columns",
+      "breakpoints": true
+    },
+    {
+      "idx": 726,
+      "version": "7",
+      "when": 1785312573879,
+      "tag": "0726_bridge-canonical-user-message-columns",
+      "breakpoints": true
+    },
+    {
+      "idx": 727,
+      "version": "7",
+      "when": 1785312573880,
+      "tag": "0727_switch-canonical-user-message-constraints",
       "breakpoints": true
     }
   ]

@@ -14,6 +14,14 @@ export type ConnectorChangedPayload = z.infer<
   typeof connectorChangedPayloadSchema
 >;
 
+export const browserSessionChangedPayloadSchema = z.object({
+  browserId: z.uuid(),
+});
+
+export type BrowserSessionChangedPayload = z.infer<
+  typeof browserSessionChangedPayloadSchema
+>;
+
 /**
  * Ably token request schema (matches Ably SDK's TokenRequest type)
  */

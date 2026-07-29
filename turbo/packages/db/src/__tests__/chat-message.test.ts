@@ -32,12 +32,12 @@ describe("chatMessages schema", () => {
     expect(foreignKeys).toEqual([
       {
         columns: ["chat_thread_id"],
-        name: "chat_messages_chat_thread_id_chat_threads_id_fk",
+        name: "chat_events_chat_thread_id_chat_threads_id_fk",
         onDelete: "cascade",
       },
       {
         columns: ["revokes_message_id"],
-        name: "chat_messages_revokes_message_id_chat_messages_id_fk",
+        name: "chat_events_revokes_message_id_chat_events_id_fk",
         onDelete: "no action",
       },
     ]);

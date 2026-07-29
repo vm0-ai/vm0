@@ -5,7 +5,23 @@ use guest_common::log_warn;
 use std::io;
 use std::path::{Component, Path, PathBuf};
 
-/// Extract a gzip-compressed tar archive into `target_path`.
+/// Extract a gzip-compressed tar archive into an existing target directory.
+///
+/// Accepted entries are unpacked sequentially and directly into `target_path`.
+/// Extraction is non-atomic and does not roll back entries written before a
+/// later error. Entries rejected by the path and link safety checks, and link
+/// targets or sources that are missing or unreadable for non-transport reasons,
+/// are logged and skipped. Consequently, `Ok(())` means that all accepted
+/// entries were processed, not that every archive entry was unpacked.
+///
+/// # Errors
+///
+/// The target is canonicalized before entries are read, so `target_path` must
+/// already exist. A canonicalization failure, an unreadable archive entry or
+/// entry path, or a failure to unpack an accepted entry terminates extraction.
+/// Terminating archive errors are retriable when the source recorded an HTTP
+/// body-read failure; otherwise they are fatal. Files written before an error
+/// remain in the target directory.
 pub(crate) fn extract_tar_gz(
     source: ArchiveSource,
     target_path: &str,

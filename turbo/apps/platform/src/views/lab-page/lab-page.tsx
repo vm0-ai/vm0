@@ -7,6 +7,7 @@ import {
 } from "@vm0/core/feature-switch";
 import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import { Switch, Button, cn } from "@vm0/ui";
+import { useTranslation } from "react-i18next";
 import {
   featureSwitch$,
   setFeatureSwitch$,
@@ -86,14 +87,20 @@ function filterFeatureSwitchKeys(params: {
 }
 
 function LabHeader() {
+  const { t } = useTranslation();
+
   return (
     <header className="shrink-0 px-4 sm:px-6 pt-10 pb-3">
       <div className="mx-auto max-w-[900px]">
         <h1 className="text-xl font-semibold tracking-tight text-foreground">
-          Lab
+          {t(($) => {
+            return $.settings.lab.title;
+          })}
         </h1>
         <p className="mt-1 text-sm text-muted-foreground">
-          Toggle experimental features on or off.
+          {t(($) => {
+            return $.settings.lab.description;
+          })}
         </p>
       </div>
     </header>
@@ -106,10 +113,13 @@ function MaintainerFilterPills(props: {
   readonly options: readonly MaintainerFilterOption[];
   readonly onChange: (value: LabMaintainerFilter) => void;
 }) {
+  const { t } = useTranslation();
   const options: readonly MaintainerFilterOption[] = [
     {
       value: LAB_ALL_MAINTAINERS,
-      label: "All",
+      label: t(($) => {
+        return $.settings.lab.filters.all;
+      }),
       count: props.totalCount,
     },
     ...props.options,
@@ -152,6 +162,8 @@ function LabFilterBar(props: {
   readonly onMaintainerFilterChange: (filter: LabMaintainerFilter) => void;
   readonly onReset: () => void;
 }) {
+  const { t } = useTranslation();
+
   return (
     <div className="flex flex-wrap items-center gap-1.5">
       <MaintainerFilterPills
@@ -167,7 +179,13 @@ function LabFilterBar(props: {
           disabled={props.busy}
           onPointerDown={props.onReset}
         >
-          {props.resetting ? "Resetting…" : "Reset all"}
+          {props.resetting
+            ? t(($) => {
+                return $.settings.lab.actions.resetting;
+              })
+            : t(($) => {
+                return $.settings.lab.actions.resetAll;
+              })}
         </Button>
       </div>
     </div>
@@ -182,6 +200,8 @@ function LabFeatureGroup(props: {
   readonly busy: boolean;
   readonly onToggle: (key: FeatureSwitchKey, checked: boolean) => void;
 }) {
+  const { t } = useTranslation();
+
   return (
     <section>
       <h2 className="mb-2 px-1 text-sm font-medium text-muted-foreground">
@@ -204,7 +224,14 @@ function LabFeatureGroup(props: {
                   </span>
                 )}
                 <span className="break-all text-xs text-muted-foreground">
-                  Maintainer: {featureMetadata.maintainer}
+                  {t(
+                    ($) => {
+                      return $.settings.lab.maintainer;
+                    },
+                    {
+                      maintainer: featureMetadata.maintainer,
+                    },
+                  )}
                 </span>
               </div>
               <Switch
@@ -224,17 +251,26 @@ function LabFeatureGroup(props: {
 }
 
 function LabEmptyState() {
+  const { t } = useTranslation();
+
   return (
     <div className="zero-card flex min-h-[14rem] flex-col items-center justify-center px-6 text-center">
-      <p className="text-sm font-medium text-foreground">No feature switches</p>
+      <p className="text-sm font-medium text-foreground">
+        {t(($) => {
+          return $.settings.lab.empty.title;
+        })}
+      </p>
       <p className="mt-1 text-sm text-muted-foreground">
-        No feature switches for this maintainer.
+        {t(($) => {
+          return $.settings.lab.empty.description;
+        })}
       </p>
     </div>
   );
 }
 
 export function LabPage() {
+  const { t } = useTranslation();
   const features = useLastResolved(featureSwitch$);
   const [toggleLoadable, setFeature] = useLoadableSet(setFeatureSwitch$);
   const [resetLoadable, reset] = useLoadableSet(resetFeatureSwitches$);
@@ -297,7 +333,9 @@ export function LabPage() {
               <>
                 {otherKeys.length > 0 ? (
                   <LabFeatureGroup
-                    title="Other"
+                    title={t(($) => {
+                      return $.settings.lab.groups.other;
+                    })}
                     keys={otherKeys}
                     features={features}
                     metadata={metadata}
@@ -307,7 +345,9 @@ export function LabPage() {
                 ) : null}
                 {connectorKeys.length > 0 ? (
                   <LabFeatureGroup
-                    title="Connectors"
+                    title={t(($) => {
+                      return $.settings.lab.groups.connectors;
+                    })}
                     keys={connectorKeys}
                     features={features}
                     metadata={metadata}

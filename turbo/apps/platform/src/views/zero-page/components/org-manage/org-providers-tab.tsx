@@ -1,6 +1,7 @@
 // TODO(#8609): split large components to comply with max-lines-per-function (128)
 // oxlint-disable max-lines-per-function
 import { useGet, useLoadable, useSet } from "ccstate-react";
+import { useTranslation } from "react-i18next";
 import type { ModelProviderResponse } from "@vm0/api-contracts/contracts/model-providers";
 import { orgConfiguredProviders$ } from "../../../../signals/zero-page/settings/org-model-providers.ts";
 import { openClaudeCodeDeviceAuthDialog$ } from "../../../../signals/zero-page/settings/claude-code-device-auth.ts";
@@ -58,6 +59,7 @@ function StaleProviderBanner({
 }: {
   providers: ModelProviderResponse[];
 }) {
+  const { t } = useTranslation();
   const openClaudeCodeDeviceDialog = useSet(openClaudeCodeDeviceAuthDialog$);
   const openDeviceDialog = useSet(openCodexDeviceAuthDialog$);
   const pageSignal = useGet(pageSignal$);
@@ -72,6 +74,38 @@ function StaleProviderBanner({
     return null;
   }
   const isClaudeCode = stale.type === "claude-code-oauth-token";
+  const message = (() => {
+    switch (stale.lastRefreshErrorCode) {
+      case "refresh_token_expired": {
+        return isClaudeCode
+          ? t(($) => {
+              return $.settings.models.stale.claudeExpired;
+            })
+          : t(($) => {
+              return $.settings.models.stale.codexExpired;
+            });
+      }
+      case "refresh_token_reused": {
+        return t(($) => {
+          return $.settings.models.stale.codexReused;
+        });
+      }
+      case "refresh_token_invalidated": {
+        return t(($) => {
+          return $.settings.models.stale.codexInvalidated;
+        });
+      }
+      default: {
+        return isClaudeCode
+          ? t(($) => {
+              return $.settings.models.stale.claudeFailed;
+            })
+          : t(($) => {
+              return $.settings.models.stale.codexFailed;
+            });
+      }
+    }
+  })();
   return (
     <section
       className="flex items-center gap-3 rounded-xl border border-destructive/40 bg-destructive/5 p-4"
@@ -80,12 +114,14 @@ function StaleProviderBanner({
       <div className="min-w-0 flex-1">
         <p className="text-sm font-medium text-foreground">
           {isClaudeCode
-            ? "Claude Code session needs reconnection"
-            : "ChatGPT session needs reconnection"}
+            ? t(($) => {
+                return $.settings.models.stale.claudeTitle;
+              })
+            : t(($) => {
+                return $.settings.models.stale.codexTitle;
+              })}
         </p>
-        <p className="mt-0.5 text-xs text-muted-foreground">
-          {staleMessage(stale)}
-        </p>
+        <p className="mt-0.5 text-xs text-muted-foreground">{message}</p>
       </div>
       <button
         type="button"
@@ -101,29 +137,10 @@ function StaleProviderBanner({
         }}
         className="shrink-0 rounded-lg bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground hover:bg-primary/90"
       >
-        Reconnect
+        {t(($) => {
+          return $.settings.shared.reconnect;
+        })}
       </button>
     </section>
   );
-}
-
-function staleMessage(provider: ModelProviderResponse): string {
-  switch (provider.lastRefreshErrorCode) {
-    case "refresh_token_expired": {
-      return provider.type === "claude-code-oauth-token"
-        ? "Your Claude Code session expired. Re-connect to continue."
-        : "Your ChatGPT session expired. Re-connect to continue.";
-    }
-    case "refresh_token_reused": {
-      return "Your ChatGPT session was used elsewhere. Re-connect.";
-    }
-    case "refresh_token_invalidated": {
-      return "Your ChatGPT session was revoked. Re-connect.";
-    }
-    default: {
-      return provider.type === "claude-code-oauth-token"
-        ? "Claude Code refresh failed. Re-connect to retry."
-        : "ChatGPT refresh failed. Re-connect to retry.";
-    }
-  }
 }

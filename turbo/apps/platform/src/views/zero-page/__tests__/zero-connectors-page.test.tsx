@@ -1475,14 +1475,22 @@ describe("connectors page", () => {
   });
 
   it.each([
+    ["airtable", "Airtable"],
+    ["asana", "Asana"],
+    ["gumroad", "Gumroad"],
     ["hubspot", "HubSpot"],
     ["intervals-icu", "Intervals.icu"],
     ["linear", "Linear"],
     ["mercury", "Mercury"],
+    ["microsoft-365", "Microsoft 365"],
+    ["monday", "monday.com"],
     ["notion", "Notion"],
+    ["outlook-calendar", "Outlook Calendar"],
+    ["outlook-mail", "Outlook Mail"],
     ["sentry", "Sentry"],
     ["server-authored-oauth", "Server-authored OAuth"],
     ["strava", "Strava"],
+    ["todoist", "Todoist"],
     ["vercel", "Vercel"],
   ] as const)(
     "starts %s OAuth with the app callback",

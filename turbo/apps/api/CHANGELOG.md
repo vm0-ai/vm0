@@ -1,5 +1,33 @@
 # Changelog
 
+## [1.341.0](https://github.com/vm0-ai/vm0/compare/api-v1.340.4...api-v1.341.0) (2026-07-29)
+
+
+### Features
+
+* **platform:** localize account and workspace settings ([#23524](https://github.com/vm0-ai/vm0/issues/23524)) ([f43885a](https://github.com/vm0-ai/vm0/commit/f43885ac2ea5e28fd22862fd729725eb5720dcdd))
+
+
+### Bug Fixes
+
+* **browser:** sync cards after session lifecycle changes ([#23682](https://github.com/vm0-ai/vm0/issues/23682)) ([babb3d6](https://github.com/vm0-ai/vm0/commit/babb3d6fa22bc34a007920b7603fbd06765eaa38))
+* expose inline template switch in lab ([#23670](https://github.com/vm0-ai/vm0/issues/23670)) ([cfd234c](https://github.com/vm0-ai/vm0/commit/cfd234c7a304f88877e2a1f226c9d017fb229a91))
+
+
+### Refactoring
+
+* remove org plan entitlement reads switch ([#23698](https://github.com/vm0-ai/vm0/issues/23698)) ([8fde46e](https://github.com/vm0-ai/vm0/commit/8fde46ecfbddaf2b003ff33dbcb01ee37f87f859))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.243.4
+    * @vm0/connectors bumped to 1.201.0
+    * @vm0/core bumped to 8.484.4
+    * @vm0/db bumped to 1.150.7
+
 ## [1.340.4](https://github.com/vm0-ai/vm0/compare/api-v1.340.3...api-v1.340.4) (2026-07-29)
 
 

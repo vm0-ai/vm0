@@ -245,8 +245,7 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     maintainer: "ethan@vm0.ai",
     description:
       "Enable the managed APIDojo-backed Zero Finance API and finance:read ZERO_TOKEN capability.",
-    enabled: false,
-    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+    enabled: true,
   },
   [FeatureSwitchKey.Banking]: {
     maintainer: "linghan@vm0.ai",
@@ -464,13 +463,6 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     description:
       "Resolve archive-enabled image styles from private R2 packages. When off, image style authoring continues reading vm0-skills from GitHub.",
     enabled: true,
-  },
-  [FeatureSwitchKey.OrgPlanEntitlementReads]: {
-    maintainer: "yuma@vm0.ai",
-    description:
-      "Read runtime plan capability limits from org_plan_entitlements instead of deriving them from org_metadata.tier.",
-    enabled: true,
-    userOverridable: false,
   },
   [FeatureSwitchKey.WorkflowConnectorReadiness]: {
     maintainer: "lancy@vm0.ai",

@@ -14,6 +14,7 @@ import {
   drainWorkflowQueueForThread$,
   type WorkflowQueueDrainResult,
 } from "./zero-workflow-queue-drain.service";
+import { drainGoalQueueForThread$ } from "./zero-goal-queue-drain.service";
 import type { ApiDispatchTimingCollector } from "./api-dispatch-timing.service";
 
 const DRAIN_SWEEP_LIMIT = 20;
@@ -34,10 +35,10 @@ interface DrainChatThreadQueueInput {
 /**
  * The single per-thread scheduler entry: terminal run callbacks, cancel,
  * resume, and the stale sweep all converge here. User messages are attempted
- * first; the workflow drain then observes the newly-created active run and
- * stops, or consumes the oldest workflow event when no user message
- * dispatched. The final claims serialize on the same thread row and fold
- * pending events by user priority, then original `created_at` and id.
+ * first; workflow automation remains second and goal continuation third. Each
+ * later drain observes a newly-created active run and stops. The final claims
+ * serialize on the same thread row and fold pending events by class priority,
+ * then original `created_at` and id.
  *
  * This entry is the designated mounting point for a future unified per-thread
  * rate limiter: admission delays belong here, before either drain half runs.
@@ -58,7 +59,7 @@ export const drainChatThreadQueueForThread$ = command(
       signal,
     );
     signal.throwIfAborted();
-    return await set(
+    const workflowResult = await set(
       drainWorkflowQueueForThread$,
       {
         chatThreadId: input.chatThreadId,
@@ -70,6 +71,20 @@ export const drainChatThreadQueueForThread$ = command(
       },
       signal,
     );
+    signal.throwIfAborted();
+    if (workflowResult) {
+      return workflowResult;
+    }
+    await set(
+      drainGoalQueueForThread$,
+      {
+        chatThreadId: input.chatThreadId,
+        dispatchFailedCallbacks: input.dispatchFailedCallbacks,
+        queueItemCreatedBefore: input.queueItemCreatedBefore,
+      },
+      signal,
+    );
+    return null;
   },
 );
 

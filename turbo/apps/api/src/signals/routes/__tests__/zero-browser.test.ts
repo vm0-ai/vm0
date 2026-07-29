@@ -1093,6 +1093,7 @@ describe("zero browser route", () => {
       settled: 0,
       errors: 1,
     });
+    context.mocks.ably.publish.mockClear();
     const reclaimed = await reconcileBrowsers();
     expect(reclaimed.body).toMatchObject({
       stopped: 1,
@@ -1100,6 +1101,10 @@ describe("zero browser route", () => {
       errors: 0,
     });
     expect(providerStops).toBe(1);
+    expect(context.mocks.ably.publish).toHaveBeenCalledWith(
+      "browserSessionChanged",
+      { browserId },
+    );
     await flushWaitUntilForTest();
 
     routeMocks.clerk.session(actor.userId, actor.orgId, actor.orgRole);
@@ -1160,6 +1165,7 @@ describe("zero browser route", () => {
     ).toBe(0);
 
     // The viewer can restore a reclaimed browser without a live run.
+    context.mocks.ably.publish.mockClear();
     const resumed = await accept(
       client().resumeById({
         headers: { authorization: "Bearer clerk-session" },
@@ -1175,6 +1181,10 @@ describe("zero browser route", () => {
       idleExpiresAt: isoAt(26 * MINUTE_MS),
     });
     expect(providerCreates).toBe(2);
+    expect(context.mocks.ably.publish).toHaveBeenCalledWith(
+      "browserSessionChanged",
+      { browserId },
+    );
 
     mockNow(STARTED_AT_MS + 20 * MINUTE_MS);
     const viewerLease = await accept(

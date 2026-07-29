@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.22.6](https://github.com/vm0-ai/vm0/compare/guest-download-v0.22.5...guest-download-v0.22.6) (2026-07-29)
+
+
+### Documentation
+
+* **rust:** document guest archive extraction outcomes ([#23688](https://github.com/vm0-ai/vm0/issues/23688)) ([7defbf1](https://github.com/vm0-ai/vm0/commit/7defbf12282ba63d0363dbf27ffd9b557de5fabf))
+
 ## [0.22.5](https://github.com/vm0-ai/vm0/compare/guest-download-v0.22.4...guest-download-v0.22.5) (2026-07-28)
 
 

@@ -19,10 +19,28 @@ pub struct ClaudeResultSummary {
 }
 
 /// Semantic status derived from Claude Code's terminal `type=result` event.
+///
+/// This describes only the event's recognized semantic evidence. It is
+/// independent of the CLI process exit status and the outcome of any later
+/// post-result cleanup. When the event contains conflicting evidence,
+/// recognized error evidence takes precedence over recognized success evidence.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ClaudeResultStatus {
+    /// The event contains recognized success evidence (`is_error` is `false` or
+    /// `subtype` is `"success"`) and no recognized error evidence.
     Success,
+
+    /// The event contains recognized error evidence (`is_error` is `true` or
+    /// `subtype` is `"error"`).
+    ///
+    /// This status takes precedence over [`Self::Success`] when both kinds of
+    /// evidence are present.
     Error,
+
+    /// The event contains neither recognized success nor recognized error
+    /// evidence.
+    ///
+    /// This status does not assert either success or failure.
     Unknown,
 }
 

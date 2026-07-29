@@ -33,6 +33,7 @@ import {
   decryptPersistentSecretsMap,
   encryptPersistentSecretsMap,
 } from "./crypto.utils";
+import { goalQueueEventMatchesActiveGoal } from "./chat-goal-queue.service";
 import { feishuOrgCallbackFileSchema } from "./feishu-org-callback-payload";
 import { teamsDeliveryTargetSchema } from "./teams-chat-callback-payload";
 import { createUserMessageDocument } from "./zero-chat-user-message.service";
@@ -122,6 +123,14 @@ export type QueueFirstRunAssociation =
       readonly eventId: string;
       readonly prompt: string;
       readonly runGroupId: string;
+    }
+  | {
+      readonly kind: "goal_event";
+      readonly threadId: string;
+      readonly eventId: string;
+      readonly prompt: string;
+      readonly goalId: string;
+      readonly objectiveBrief: string;
     };
 
 export type QueueFirstRunClaimResult =
@@ -267,7 +276,7 @@ export async function loadNextUnclaimedQueuedUserMessageId(
   return head?.eventType === "input.prompt" ? head.id : null;
 }
 
-export async function hasUnclaimedQueuedUserMessage(
+async function hasUnclaimedQueuedUserMessage(
   db: Db,
   threadId: string,
 ): Promise<boolean> {
@@ -341,6 +350,54 @@ async function appendClaimedUserMessage(
   return claimed;
 }
 
+type GoalQueueFirstRunAssociation = Extract<
+  QueueFirstRunAssociation,
+  { readonly kind: "goal_event" }
+> & { readonly runId: string };
+
+async function claimGoalQueueFirstRunAssociation(
+  db: DbTransaction,
+  args: GoalQueueFirstRunAssociation,
+): Promise<QueueFirstRunClaimResult> {
+  const pending = await listPendingChatQueueEvents(db, args.threadId);
+  const automationPause = await loadChatAutomationIntakePause(
+    db,
+    args.threadId,
+  );
+  const goalMatches = await goalQueueEventMatchesActiveGoal(db, {
+    chatThreadId: args.threadId,
+    goalId: args.goalId,
+    eventId: args.eventId,
+  });
+  const head =
+    automationPause === null
+      ? pending[0]
+      : pending.find((event) => {
+          return event.eventType !== "input.automation";
+        });
+  if (
+    head?.eventType !== "input.goal" ||
+    head.id !== args.eventId ||
+    !goalMatches
+  ) {
+    return { kind: "lost" };
+  }
+
+  const claimed = await replaceChatEvent(db, args.eventId, {
+    chatThreadId: args.threadId,
+    eventType: "input.prompt",
+    userMessage: createUserMessageDocument({ text: args.prompt }),
+    runId: args.runId,
+    runGroupId: args.goalId,
+    goalSnapshot: { objectiveBrief: args.objectiveBrief },
+    triggerSource: "workflow-event",
+  });
+  if (!claimed) {
+    throw new Error("Claimed goal queue event disappeared");
+  }
+  return { kind: "claimed", createdAt: claimed.createdAt };
+}
+
 /**
  * Authoritatively arbitrate a queue-first launch inside its final persistence
  * transaction. Successful launches acquire the organization admission lock
@@ -373,6 +430,12 @@ export async function claimQueueFirstRunAssociation(
       if (await chatThreadAdmissionBlocked(db, { threadId: args.threadId })) {
         outcome = "lost";
         return { kind: "lost" };
+      }
+
+      if (args.kind === "goal_event") {
+        const claim = await claimGoalQueueFirstRunAssociation(db, args);
+        outcome = claim.kind;
+        return claim;
       }
 
       if (args.kind === "workflow_event") {

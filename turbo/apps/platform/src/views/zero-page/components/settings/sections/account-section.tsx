@@ -1,4 +1,5 @@
 import { useGet, useLoadable, useSet } from "ccstate-react";
+import { useTranslation } from "react-i18next";
 import { IconUser } from "@tabler/icons-react";
 import { Button } from "@vm0/ui/components/ui/button";
 import { currentUserInfo$ } from "../../../../../signals/auth.ts";
@@ -10,6 +11,7 @@ import {
 import { detach, Reason } from "../../../../../signals/utils.ts";
 
 export function AccountSection() {
+  const { t } = useTranslation();
   const clerkProfilePortalContainer = useGet(
     settingsClerkProfilePortalContainer$,
   );
@@ -55,7 +57,9 @@ export function AccountSection() {
         className="shrink-0"
       >
         <IconUser size={14} />
-        Manage
+        {t(($) => {
+          return $.settings.preferences.account.manage;
+        })}
       </Button>
     </div>
   );

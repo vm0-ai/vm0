@@ -1,6 +1,6 @@
 {
-  "id": "86a70431-86fa-45ed-88f8-e0e469718fa1",
-  "prevId": "3972f729-d568-4b71-ae8d-27ab8a8c2bb2",
+  "id": "2689f164-4ded-42ad-8e2f-92dc1e853555",
+  "prevId": "0234b8c5-3576-484f-a596-3d0eb1b32762",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -3977,8 +3977,8 @@
       "checkConstraints": {},
       "isRLSEnabled": false
     },
-    "public.chat_messages": {
-      "name": "chat_messages",
+    "public.chat_events": {
+      "name": "chat_events",
       "schema": "",
       "columns": {
         "id": {
@@ -4062,12 +4062,6 @@
         },
         "structured_prompt": {
           "name": "structured_prompt",
-          "type": "jsonb",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "user_message": {
-          "name": "user_message",
           "type": "jsonb",
           "primaryKey": false,
           "notNull": false
@@ -4162,11 +4156,17 @@
           "primaryKey": false,
           "notNull": true,
           "default": "now()"
+        },
+        "user_message": {
+          "name": "user_message",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": false
         }
       },
       "indexes": {
-        "idx_chat_messages_thread_created": {
-          "name": "idx_chat_messages_thread_created",
+        "idx_chat_events_thread_created": {
+          "name": "idx_chat_events_thread_created",
           "columns": [
             {
               "expression": "chat_thread_id",
@@ -4186,8 +4186,8 @@
           "method": "btree",
           "with": {}
         },
-        "idx_chat_messages_thread_run_finish_created": {
-          "name": "idx_chat_messages_thread_run_finish_created",
+        "idx_chat_events_thread_run_finish_created": {
+          "name": "idx_chat_events_thread_run_finish_created",
           "columns": [
             {
               "expression": "chat_thread_id",
@@ -4203,13 +4203,13 @@
             }
           ],
           "isUnique": false,
-          "where": "\"chat_messages\".\"run_lifecycle_event\" IS NOT NULL",
+          "where": "\"chat_events\".\"run_lifecycle_event\" IS NOT NULL",
           "concurrently": false,
           "method": "btree",
           "with": {}
         },
-        "idx_chat_messages_run_id": {
-          "name": "idx_chat_messages_run_id",
+        "idx_chat_events_run_id": {
+          "name": "idx_chat_events_run_id",
           "columns": [
             {
               "expression": "run_id",
@@ -4223,8 +4223,8 @@
           "method": "btree",
           "with": {}
         },
-        "chat_messages_usage_run_id_idx": {
-          "name": "chat_messages_usage_run_id_idx",
+        "chat_events_usage_run_id_idx": {
+          "name": "chat_events_usage_run_id_idx",
           "columns": [
             {
               "expression": "run_id",
@@ -4234,13 +4234,13 @@
             }
           ],
           "isUnique": false,
-          "where": "\"chat_messages\".\"usage_payload\" IS NOT NULL",
+          "where": "\"chat_events\".\"usage_payload\" IS NOT NULL",
           "concurrently": false,
           "method": "btree",
           "with": {}
         },
-        "chat_messages_revokes_message_id_unique": {
-          "name": "chat_messages_revokes_message_id_unique",
+        "chat_events_revokes_message_id_unique": {
+          "name": "chat_events_revokes_message_id_unique",
           "columns": [
             {
               "expression": "revokes_message_id",
@@ -4254,8 +4254,8 @@
           "method": "btree",
           "with": {}
         },
-        "chat_messages_interrupts_run_id_unique": {
-          "name": "chat_messages_interrupts_run_id_unique",
+        "chat_events_interrupts_run_id_unique": {
+          "name": "chat_events_interrupts_run_id_unique",
           "columns": [
             {
               "expression": "interrupts_run_id",
@@ -4269,8 +4269,8 @@
           "method": "btree",
           "with": {}
         },
-        "idx_chat_messages_run_group_id": {
-          "name": "idx_chat_messages_run_group_id",
+        "idx_chat_events_run_group_id": {
+          "name": "idx_chat_events_run_group_id",
           "columns": [
             {
               "expression": "run_group_id",
@@ -4280,13 +4280,13 @@
             }
           ],
           "isUnique": false,
-          "where": "\"chat_messages\".\"run_group_id\" IS NOT NULL",
+          "where": "\"chat_events\".\"run_group_id\" IS NOT NULL",
           "concurrently": false,
           "method": "btree",
           "with": {}
         },
-        "chat_messages_input_automation_idx": {
-          "name": "chat_messages_input_automation_idx",
+        "chat_events_input_automation_idx": {
+          "name": "chat_events_input_automation_idx",
           "columns": [
             {
               "expression": "automation_id",
@@ -4296,13 +4296,13 @@
             }
           ],
           "isUnique": false,
-          "where": "\"chat_messages\".\"event_type\" = 'input.automation'",
+          "where": "\"chat_events\".\"event_type\" = 'input.automation'",
           "concurrently": false,
           "method": "btree",
           "with": {}
         },
-        "chat_messages_pending_queue_idx": {
-          "name": "chat_messages_pending_queue_idx",
+        "chat_events_pending_queue_idx": {
+          "name": "chat_events_pending_queue_idx",
           "columns": [
             {
               "expression": "chat_thread_id",
@@ -4324,13 +4324,13 @@
             }
           ],
           "isUnique": false,
-          "where": "\"chat_messages\".\"run_id\" IS NULL AND \"chat_messages\".\"event_type\" IN ('input.prompt', 'input.automation')",
+          "where": "\"chat_events\".\"run_id\" IS NULL AND \"chat_events\".\"event_type\" IN ('input.prompt', 'input.automation', 'input.goal')",
           "concurrently": false,
           "method": "btree",
           "with": {}
         },
-        "chat_messages_automation_pause_idx": {
-          "name": "chat_messages_automation_pause_idx",
+        "chat_events_automation_pause_idx": {
+          "name": "chat_events_automation_pause_idx",
           "columns": [
             {
               "expression": "chat_thread_id",
@@ -4346,13 +4346,13 @@
             }
           ],
           "isUnique": false,
-          "where": "\"chat_messages\".\"event_type\" IN ('queue.automation_paused', 'queue.automation_resumed')",
+          "where": "\"chat_events\".\"event_type\" IN ('queue.automation_paused', 'queue.automation_resumed')",
           "concurrently": false,
           "method": "btree",
           "with": {}
         },
-        "chat_messages_run_seq_unique": {
-          "name": "chat_messages_run_seq_unique",
+        "chat_events_run_seq_unique": {
+          "name": "chat_events_run_seq_unique",
           "columns": [
             {
               "expression": "run_id",
@@ -4372,8 +4372,8 @@
           "method": "btree",
           "with": {}
         },
-        "chat_messages_thread_seq_unique": {
-          "name": "chat_messages_thread_seq_unique",
+        "chat_events_thread_seq_unique": {
+          "name": "chat_events_thread_seq_unique",
           "columns": [
             {
               "expression": "chat_thread_id",
@@ -4393,8 +4393,8 @@
           "method": "btree",
           "with": {}
         },
-        "chat_messages_run_lifecycle_unique": {
-          "name": "chat_messages_run_lifecycle_unique",
+        "chat_events_run_lifecycle_unique": {
+          "name": "chat_events_run_lifecycle_unique",
           "columns": [
             {
               "expression": "run_id",
@@ -4404,13 +4404,13 @@
             }
           ],
           "isUnique": true,
-          "where": "\"chat_messages\".\"run_lifecycle_event\" IS NOT NULL",
+          "where": "\"chat_events\".\"run_lifecycle_event\" IS NOT NULL",
           "concurrently": false,
           "method": "btree",
           "with": {}
         },
-        "chat_messages_run_thinking_unique": {
-          "name": "chat_messages_run_thinking_unique",
+        "chat_events_run_thinking_unique": {
+          "name": "chat_events_run_thinking_unique",
           "columns": [
             {
               "expression": "run_id",
@@ -4420,16 +4420,16 @@
             }
           ],
           "isUnique": true,
-          "where": "\"chat_messages\".\"thinking\" IS NOT NULL",
+          "where": "\"chat_events\".\"thinking\" IS NOT NULL",
           "concurrently": false,
           "method": "btree",
           "with": {}
         }
       },
       "foreignKeys": {
-        "chat_messages_chat_thread_id_chat_threads_id_fk": {
-          "name": "chat_messages_chat_thread_id_chat_threads_id_fk",
-          "tableFrom": "chat_messages",
+        "chat_events_chat_thread_id_chat_threads_id_fk": {
+          "name": "chat_events_chat_thread_id_chat_threads_id_fk",
+          "tableFrom": "chat_events",
           "tableTo": "chat_threads",
           "columnsFrom": [
             "chat_thread_id"
@@ -4440,10 +4440,10 @@
           "onDelete": "cascade",
           "onUpdate": "no action"
         },
-        "chat_messages_revokes_message_id_chat_messages_id_fk": {
-          "name": "chat_messages_revokes_message_id_chat_messages_id_fk",
-          "tableFrom": "chat_messages",
-          "tableTo": "chat_messages",
+        "chat_events_revokes_message_id_chat_events_id_fk": {
+          "name": "chat_events_revokes_message_id_chat_events_id_fk",
+          "tableFrom": "chat_events",
+          "tableTo": "chat_events",
           "columnsFrom": [
             "revokes_message_id"
           ],
@@ -4458,17 +4458,13 @@
       "uniqueConstraints": {},
       "policies": {},
       "checkConstraints": {
-        "chat_messages_event_type_check": {
-          "name": "chat_messages_event_type_check",
-          "value": "\"chat_messages\".\"event_type\" IN (\n          'input.prompt',\n          'input.automation',\n          'input.rejected',\n          'output.message',\n          'output.error',\n          'output.thinking',\n          'output.followups',\n          'run.queued',\n          'run.dequeued',\n          'run.completed',\n          'run.failed',\n          'run.cancelled',\n          'queue.automation_paused',\n          'queue.automation_resumed',\n          'control.interrupt',\n          'control.revoke',\n          'goal.changed',\n          'usage.recorded'\n        )"
+        "chat_events_event_type_check": {
+          "name": "chat_events_event_type_check",
+          "value": "\"chat_events\".\"event_type\" IN (\n          'input.prompt',\n          'input.automation',\n          'input.goal',\n          'input.rejected',\n          'output.message',\n          'output.error',\n          'output.thinking',\n          'output.followups',\n          'run.queued',\n          'run.dequeued',\n          'run.completed',\n          'run.failed',\n          'run.cancelled',\n          'queue.automation_paused',\n          'queue.automation_resumed',\n          'control.interrupt',\n          'control.revoke',\n          'goal.changed',\n          'usage.recorded'\n        )"
         },
-        "chat_messages_input_user_message_check": {
-          "name": "chat_messages_input_user_message_check",
-          "value": "\"chat_messages\".\"event_type\" NOT IN ('input.prompt', 'input.rejected')\n          OR \"chat_messages\".\"user_message\" IS NOT NULL"
-        },
-        "chat_messages_input_content_check": {
-          "name": "chat_messages_input_content_check",
-          "value": "\"chat_messages\".\"event_type\" NOT IN ('input.prompt', 'input.rejected')\n          OR \"chat_messages\".\"content\" IS NULL"
+        "chat_events_input_user_message_check": {
+          "name": "chat_events_input_user_message_check",
+          "value": "\"chat_events\".\"event_type\" NOT IN ('input.prompt', 'input.rejected')\n          OR \"chat_events\".\"structured_prompt\" IS NOT NULL"
         }
       },
       "isRLSEnabled": false
@@ -4879,12 +4875,6 @@
           "primaryKey": false,
           "notNull": false
         },
-        "draft_user_message": {
-          "name": "draft_user_message",
-          "type": "jsonb",
-          "primaryKey": false,
-          "notNull": false
-        },
         "draft_attachments": {
           "name": "draft_attachments",
           "type": "jsonb",
@@ -4985,6 +4975,12 @@
           "primaryKey": false,
           "notNull": true,
           "default": "now()"
+        },
+        "draft_user_message": {
+          "name": "draft_user_message",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": false
         }
       },
       "indexes": {
@@ -5150,7 +5146,7 @@
         },
         "chat_threads_draft_user_message_check": {
           "name": "chat_threads_draft_user_message_check",
-          "value": "\"chat_threads\".\"draft_user_message\" IS NOT NULL\n          OR (\n            COALESCE(\"chat_threads\".\"draft_content\", '') = ''\n            AND COALESCE(\"chat_threads\".\"draft_attachments\", '[]'::jsonb) = '[]'::jsonb\n          )"
+          "value": "\"chat_threads\".\"draft_structured_prompt\" IS NOT NULL\n          OR (\n            COALESCE(\"chat_threads\".\"draft_content\", '') = ''\n            AND COALESCE(\"chat_threads\".\"draft_attachments\", '[]'::jsonb) = '[]'::jsonb\n          )"
         }
       },
       "isRLSEnabled": false
@@ -15174,10 +15170,10 @@
         }
       },
       "foreignKeys": {
-        "chat_message_asset_refs_chat_message_id_chat_messages_id_fk": {
-          "name": "chat_message_asset_refs_chat_message_id_chat_messages_id_fk",
+        "chat_message_asset_refs_chat_message_id_chat_events_id_fk": {
+          "name": "chat_message_asset_refs_chat_message_id_chat_events_id_fk",
           "tableFrom": "chat_message_asset_refs",
-          "tableTo": "chat_messages",
+          "tableTo": "chat_events",
           "columnsFrom": [
             "chat_message_id"
           ],
@@ -21251,12 +21247,6 @@
           "primaryKey": false,
           "notNull": false
         },
-        "draft_user_message": {
-          "name": "draft_user_message",
-          "type": "jsonb",
-          "primaryKey": false,
-          "notNull": false
-        },
         "draft_attachments": {
           "name": "draft_attachments",
           "type": "jsonb",
@@ -21276,6 +21266,12 @@
           "primaryKey": false,
           "notNull": true,
           "default": "now()"
+        },
+        "draft_user_message": {
+          "name": "draft_user_message",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": false
         }
       },
       "indexes": {
@@ -21328,7 +21324,7 @@
       "checkConstraints": {
         "zero_agent_drafts_draft_user_message_check": {
           "name": "zero_agent_drafts_draft_user_message_check",
-          "value": "\"zero_agent_drafts\".\"draft_user_message\" IS NOT NULL\n          OR (\n            COALESCE(\"zero_agent_drafts\".\"draft_content\", '') = ''\n            AND COALESCE(\"zero_agent_drafts\".\"draft_attachments\", '[]'::jsonb) = '[]'::jsonb\n          )"
+          "value": "\"zero_agent_drafts\".\"draft_structured_prompt\" IS NOT NULL\n          OR (\n            COALESCE(\"zero_agent_drafts\".\"draft_content\", '') = ''\n            AND COALESCE(\"zero_agent_drafts\".\"draft_attachments\", '[]'::jsonb) = '[]'::jsonb\n          )"
         }
       },
       "isRLSEnabled": false

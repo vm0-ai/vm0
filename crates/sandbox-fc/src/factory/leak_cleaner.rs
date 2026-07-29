@@ -1,8 +1,12 @@
+use futures_util::stream::{FuturesUnordered, StreamExt};
 use tracing::{info, warn};
 
 use crate::cow_cleanup::{CowCleanupOutcome, destroy_cow_device_with_retries};
 use crate::leaked_resources::LeakedResources;
 use crate::network::NetnsPoolHandle;
+
+/// Maximum number of leaked sandbox reports cleaned up concurrently.
+const LEAK_CLEANUP_CONCURRENCY: usize = 4;
 
 /// Maximum time to wait for leaked-resource cleanup during normal shutdown.
 ///
@@ -130,23 +134,40 @@ async fn drain_leaked_resources_with_cleanup<C, Fut>(
     Fut: std::future::Future<Output = ()>,
 {
     let mut shutdown_rx = Some(shutdown_rx);
+    let mut cleanups = FuturesUnordered::new();
+    let mut receiver_closed = false;
+
     loop {
+        if receiver_closed && cleanups.is_empty() {
+            break;
+        }
+
         tokio::select! {
             biased;
             shutdown = wait_for_leak_cleaner_shutdown(&mut shutdown_rx) => {
                 if shutdown {
                     rx.close();
-                    while let Some(leaked) = rx.recv().await {
-                        cleanup(leaked).await;
-                    }
-                    break;
                 }
             }
-            maybe_leaked = rx.recv() => {
-                let Some(leaked) = maybe_leaked else {
-                    break;
-                };
-                cleanup(leaked).await;
+            _ = cleanups.next(), if !cleanups.is_empty() => {}
+            maybe_leaked = rx.recv(),
+                if !receiver_closed && cleanups.len() < LEAK_CLEANUP_CONCURRENCY =>
+            {
+                match maybe_leaked {
+                    Some(leaked) => {
+                        warn!(
+                            id = %leaked.sandbox_id,
+                            has_cow_device = leaked.cow_device.is_some(),
+                            has_network = leaked.network.is_some(),
+                            queued_reports = rx.len(),
+                            active_cleanups = cleanups.len() + 1,
+                            concurrency_limit = LEAK_CLEANUP_CONCURRENCY,
+                            "cleaning up leaked sandbox resources"
+                        );
+                        cleanups.push(cleanup(leaked));
+                    }
+                    None => receiver_closed = true,
+                }
             }
         }
     }
@@ -159,23 +180,12 @@ async fn wait_for_leak_cleaner_shutdown(
         return std::future::pending::<bool>().await;
     };
 
-    match rx.await {
-        Ok(()) => true,
-        Err(_) => {
-            *shutdown_rx = None;
-            false
-        }
-    }
+    let shutdown = rx.await.is_ok();
+    *shutdown_rx = None;
+    shutdown
 }
 
 async fn cleanup_leaked_resource(leaked: LeakedResources, netns_pool: &NetnsPoolHandle) {
-    warn!(
-        id = %leaked.sandbox_id,
-        has_cow_device = leaked.cow_device.is_some(),
-        has_network = leaked.network.is_some(),
-        "cleaning up leaked sandbox resources"
-    );
-
     let cow_cleanup_outcome = match leaked.cow_device {
         Some(cow_device) => destroy_cow_device_with_retries(&leaked.sandbox_id, cow_device).await,
         None => CowCleanupOutcome::BackingFilesSafeToDelete,
@@ -207,12 +217,13 @@ mod tests {
         path::PathBuf,
         sync::{
             Arc,
-            atomic::{AtomicBool, Ordering},
+            atomic::{AtomicBool, AtomicUsize, Ordering},
         },
     };
 
     use crate::cow_cleanup::cow_destroy_retry_policy;
     use crate::network::NetnsPool;
+    use tracing_subscriber::prelude::*;
 
     fn test_leaked_resource(sandbox_id: &str) -> LeakedResources {
         LeakedResources {
@@ -281,12 +292,249 @@ mod tests {
             .unwrap()
             .unwrap();
 
-        let expected: Vec<String> = (0..64).map(|index| format!("leaked-{index}")).collect();
-        assert_eq!(*cleaned.lock().await, expected);
+        let mut expected: Vec<String> = (0..64).map(|index| format!("leaked-{index}")).collect();
+        expected.sort();
+        let mut actual = cleaned.lock().await.clone();
+        actual.sort();
+        assert_eq!(actual, expected);
         assert!(matches!(
             live_sender_clone.send(test_leaked_resource("late")),
             Err(tokio::sync::mpsc::error::SendError(_))
         ));
+    }
+
+    #[tokio::test]
+    async fn drain_leaked_resources_starts_later_cleanup_while_first_is_blocked() {
+        let (tx, rx) = tokio::sync::mpsc::unbounded_channel::<LeakedResources>();
+        let (_shutdown_tx, shutdown_rx) = tokio::sync::oneshot::channel();
+        let release_first = Arc::new(tokio::sync::Semaphore::new(0));
+        let (started_tx, mut started_rx) = tokio::sync::mpsc::unbounded_channel();
+        let (completed_tx, mut completed_rx) = tokio::sync::mpsc::unbounded_channel();
+
+        tx.send(test_leaked_resource("first")).unwrap();
+        tx.send(test_leaked_resource("second")).unwrap();
+        drop(tx);
+
+        let cleanup_release_first = Arc::clone(&release_first);
+        let handle = tokio::spawn(drain_leaked_resources_with_cleanup(
+            rx,
+            shutdown_rx,
+            move |leaked| {
+                let release_first = Arc::clone(&cleanup_release_first);
+                let started_tx = started_tx.clone();
+                let completed_tx = completed_tx.clone();
+                async move {
+                    let sandbox_id = leaked.sandbox_id;
+                    started_tx.send(sandbox_id.clone()).unwrap();
+                    if sandbox_id == "first" {
+                        release_first.acquire().await.unwrap().forget();
+                    }
+                    completed_tx.send(sandbox_id).unwrap();
+                }
+            },
+        ));
+
+        assert_eq!(
+            tokio::time::timeout(std::time::Duration::from_secs(1), started_rx.recv())
+                .await
+                .unwrap()
+                .unwrap(),
+            "first"
+        );
+        assert_eq!(
+            tokio::time::timeout(std::time::Duration::from_secs(1), started_rx.recv())
+                .await
+                .unwrap()
+                .unwrap(),
+            "second"
+        );
+        assert_eq!(
+            tokio::time::timeout(std::time::Duration::from_secs(1), completed_rx.recv())
+                .await
+                .unwrap()
+                .unwrap(),
+            "second"
+        );
+        assert!(!handle.is_finished());
+
+        release_first.add_permits(1);
+        assert_eq!(
+            tokio::time::timeout(std::time::Duration::from_secs(1), completed_rx.recv())
+                .await
+                .unwrap()
+                .unwrap(),
+            "first"
+        );
+        handle.await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn drain_leaked_resources_bounds_active_cleanup_and_refills_capacity() {
+        let report_count = LEAK_CLEANUP_CONCURRENCY + 2;
+        let (tx, rx) = tokio::sync::mpsc::unbounded_channel::<LeakedResources>();
+        let (_shutdown_tx, shutdown_rx) = tokio::sync::oneshot::channel();
+        let release = Arc::new(tokio::sync::Semaphore::new(0));
+        let active = Arc::new(AtomicUsize::new(0));
+        let peak = Arc::new(AtomicUsize::new(0));
+        let (started_tx, mut started_rx) = tokio::sync::mpsc::unbounded_channel();
+
+        for index in 0..report_count {
+            tx.send(test_leaked_resource(&format!("leaked-{index}")))
+                .unwrap();
+        }
+        drop(tx);
+
+        let cleanup_release = Arc::clone(&release);
+        let cleanup_active = Arc::clone(&active);
+        let cleanup_peak = Arc::clone(&peak);
+        let handle = tokio::spawn(drain_leaked_resources_with_cleanup(
+            rx,
+            shutdown_rx,
+            move |leaked| {
+                let release = Arc::clone(&cleanup_release);
+                let active = Arc::clone(&cleanup_active);
+                let peak = Arc::clone(&cleanup_peak);
+                let started_tx = started_tx.clone();
+                async move {
+                    let current = active.fetch_add(1, Ordering::SeqCst) + 1;
+                    peak.fetch_max(current, Ordering::SeqCst);
+                    started_tx.send(leaked.sandbox_id).unwrap();
+                    release.acquire().await.unwrap().forget();
+                    active.fetch_sub(1, Ordering::SeqCst);
+                }
+            },
+        ));
+
+        for _ in 0..LEAK_CLEANUP_CONCURRENCY {
+            tokio::time::timeout(std::time::Duration::from_secs(1), started_rx.recv())
+                .await
+                .unwrap()
+                .unwrap();
+        }
+        assert_eq!(active.load(Ordering::SeqCst), LEAK_CLEANUP_CONCURRENCY);
+        assert_eq!(peak.load(Ordering::SeqCst), LEAK_CLEANUP_CONCURRENCY);
+        assert!(matches!(
+            started_rx.try_recv(),
+            Err(tokio::sync::mpsc::error::TryRecvError::Empty)
+        ));
+
+        release.add_permits(1);
+        tokio::time::timeout(std::time::Duration::from_secs(1), started_rx.recv())
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(active.load(Ordering::SeqCst), LEAK_CLEANUP_CONCURRENCY);
+        assert_eq!(peak.load(Ordering::SeqCst), LEAK_CLEANUP_CONCURRENCY);
+
+        release.add_permits(report_count);
+        handle.await.unwrap();
+        assert_eq!(active.load(Ordering::SeqCst), 0);
+        assert_eq!(peak.load(Ordering::SeqCst), LEAK_CLEANUP_CONCURRENCY);
+    }
+
+    #[tokio::test]
+    async fn drain_leaked_resources_shutdown_closes_intake_and_waits_for_active_cleanup() {
+        let report_count = LEAK_CLEANUP_CONCURRENCY + 2;
+        let (tx, rx) = tokio::sync::mpsc::unbounded_channel::<LeakedResources>();
+        let live_sender_clone = tx.clone();
+        let (shutdown_tx, shutdown_rx) = tokio::sync::oneshot::channel();
+        let release = Arc::new(tokio::sync::Semaphore::new(0));
+        let completed = Arc::new(AtomicUsize::new(0));
+        let (started_tx, mut started_rx) = tokio::sync::mpsc::unbounded_channel();
+
+        for index in 0..report_count {
+            tx.send(test_leaked_resource(&format!("leaked-{index}")))
+                .unwrap();
+        }
+        drop(tx);
+
+        let cleanup_release = Arc::clone(&release);
+        let cleanup_completed = Arc::clone(&completed);
+        let handle = tokio::spawn(drain_leaked_resources_with_cleanup(
+            rx,
+            shutdown_rx,
+            move |leaked| {
+                let release = Arc::clone(&cleanup_release);
+                let completed = Arc::clone(&cleanup_completed);
+                let started_tx = started_tx.clone();
+                async move {
+                    started_tx.send(leaked.sandbox_id).unwrap();
+                    release.acquire().await.unwrap().forget();
+                    completed.fetch_add(1, Ordering::SeqCst);
+                }
+            },
+        ));
+
+        for _ in 0..LEAK_CLEANUP_CONCURRENCY {
+            tokio::time::timeout(std::time::Duration::from_secs(1), started_rx.recv())
+                .await
+                .unwrap()
+                .unwrap();
+        }
+        shutdown_tx.send(()).unwrap();
+        tokio::time::timeout(std::time::Duration::from_secs(1), async {
+            while !live_sender_clone.is_closed() {
+                tokio::task::yield_now().await;
+            }
+        })
+        .await
+        .unwrap();
+
+        assert!(!handle.is_finished());
+        assert!(matches!(
+            live_sender_clone.send(test_leaked_resource("late")),
+            Err(tokio::sync::mpsc::error::SendError(_))
+        ));
+
+        release.add_permits(report_count);
+        handle.await.unwrap();
+        assert_eq!(completed.load(Ordering::SeqCst), report_count);
+    }
+
+    #[tokio::test]
+    async fn drain_leaked_resources_reports_backlog_and_active_cleanup_fields() {
+        let (tx, rx) = tokio::sync::mpsc::unbounded_channel::<LeakedResources>();
+        let (_shutdown_tx, shutdown_rx) = tokio::sync::oneshot::channel();
+        tx.send(test_leaked_resource("first")).unwrap();
+        tx.send(test_leaked_resource("second")).unwrap();
+        drop(tx);
+
+        let captured = tracing_test_support::CapturedEvents::default();
+        let subscriber = tracing_subscriber::registry().with(captured.clone());
+        let guard = tracing::subscriber::set_default(subscriber);
+        tracing::callsite::rebuild_interest_cache();
+        drain_leaked_resources_with_cleanup(rx, shutdown_rx, |_| async {}).await;
+        drop(guard);
+
+        let events = captured.entries();
+        let event = events
+            .iter()
+            .find(|event| {
+                event.fields.get("message").map(String::as_str)
+                    == Some("cleaning up leaked sandbox resources")
+                    && event.fields.get("queued_reports").map(String::as_str) == Some("1")
+            })
+            .unwrap_or_else(|| panic!("missing cleanup backlog event; events={events:#?}"));
+        assert_eq!(
+            event.fields.get("active_cleanups").map(String::as_str),
+            Some("1")
+        );
+        assert_eq!(
+            event.fields.get("concurrency_limit").map(String::as_str),
+            Some("4")
+        );
+        assert_eq!(
+            event.field_kinds.get("queued_reports").copied(),
+            Some("u64")
+        );
+        assert_eq!(
+            event.field_kinds.get("active_cleanups").copied(),
+            Some("u64")
+        );
+        assert_eq!(
+            event.field_kinds.get("concurrency_limit").copied(),
+            Some("u64")
+        );
     }
 
     #[tokio::test]

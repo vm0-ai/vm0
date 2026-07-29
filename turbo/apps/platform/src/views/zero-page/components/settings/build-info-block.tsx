@@ -4,6 +4,7 @@ import {
   IconGitCommit,
   IconPackage,
 } from "@tabler/icons-react";
+import { useTranslation } from "react-i18next";
 
 import {
   getBuildCommitSha,
@@ -11,10 +12,11 @@ import {
 } from "../../../../lib/build-info.ts";
 import { backendBuildInfo$ } from "../../../../signals/zero-page/settings/build-info.ts";
 
-const UNAVAILABLE_VALUE = "Unavailable";
-
-function formatBuildInfoValue(value: string | null | undefined): string {
-  return value ?? UNAVAILABLE_VALUE;
+function formatBuildInfoValue(
+  value: string | null | undefined,
+  unavailable: string,
+): string {
+  return value ?? unavailable;
 }
 
 function BuildInfoTarget({
@@ -28,6 +30,8 @@ function BuildInfoTarget({
   readonly commitSha: string;
   readonly icon: typeof IconGitCommit;
 }) {
+  const { t } = useTranslation();
+
   return (
     <div className="flex min-w-0 flex-col gap-3">
       <div className="flex min-w-0 items-center justify-between gap-3">
@@ -44,7 +48,11 @@ function BuildInfoTarget({
         </code>
       </div>
       <div className="flex min-w-0 flex-col gap-1">
-        <div className="text-xs text-muted-foreground">Commit SHA</div>
+        <div className="text-xs text-muted-foreground">
+          {t(($) => {
+            return $.settings.buildInfo.commitSha;
+          })}
+        </div>
         <code className="block min-h-7 break-all rounded-md bg-muted/40 px-2 py-1.5 text-[11px] leading-4 text-foreground">
           {commitSha}
         </code>
@@ -54,20 +62,30 @@ function BuildInfoTarget({
 }
 
 export function BuildInfoBlock() {
+  const { t } = useTranslation();
   const backendBuildInfoLoadable = useLoadable(backendBuildInfo$);
   const loading = backendBuildInfoLoadable.state === "loading";
   const backendBuildInfo =
     backendBuildInfoLoadable.state === "hasData"
       ? backendBuildInfoLoadable.data
       : null;
-  const frontendCommitSha = formatBuildInfoValue(getBuildCommitSha());
-  const frontendVersion = formatBuildInfoValue(getBuildVersion());
+  const unavailable = t(($) => {
+    return $.settings.buildInfo.unavailable;
+  });
+  const loadingLabel = t(($) => {
+    return $.settings.buildInfo.loading;
+  });
+  const frontendCommitSha = formatBuildInfoValue(
+    getBuildCommitSha(),
+    unavailable,
+  );
+  const frontendVersion = formatBuildInfoValue(getBuildVersion(), unavailable);
   const backendCommitSha = loading
-    ? "Loading"
-    : formatBuildInfoValue(backendBuildInfo?.backendCommitSha);
+    ? loadingLabel
+    : formatBuildInfoValue(backendBuildInfo?.backendCommitSha, unavailable);
   const backendVersion = loading
-    ? "Loading"
-    : formatBuildInfoValue(backendBuildInfo?.backendVersion);
+    ? loadingLabel
+    : formatBuildInfoValue(backendBuildInfo?.backendVersion, unavailable);
 
   return (
     <div className="flex items-start gap-4 rounded-xl bg-card p-4 zero-border">
@@ -82,12 +100,16 @@ export function BuildInfoBlock() {
       </div>
       <div className="flex min-w-0 flex-1 flex-col gap-3">
         <div className="text-sm font-medium text-foreground">
-          Build information
+          {t(($) => {
+            return $.settings.buildInfo.title;
+          })}
         </div>
         <div className="grid gap-4 sm:grid-cols-2 sm:gap-0">
           <div className="min-w-0 sm:pr-5">
             <BuildInfoTarget
-              title="Frontend"
+              title={t(($) => {
+                return $.settings.buildInfo.frontend;
+              })}
               version={frontendVersion}
               commitSha={frontendCommitSha}
               icon={IconDeviceDesktop}
@@ -95,7 +117,9 @@ export function BuildInfoBlock() {
           </div>
           <div className="min-w-0 border-t border-border/60 pt-4 sm:border-l sm:border-t-0 sm:pl-5 sm:pt-0">
             <BuildInfoTarget
-              title="Backend"
+              title={t(($) => {
+                return $.settings.buildInfo.backend;
+              })}
               version={backendVersion}
               commitSha={backendCommitSha}
               icon={IconPackage}

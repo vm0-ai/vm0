@@ -12,6 +12,7 @@ import {
 describe("isFeatureEnabled", () => {
   it("should return true for globally enabled switch", () => {
     expect(isFeatureEnabled(FeatureSwitchKey.Dummy, {})).toBe(true);
+    expect(isFeatureEnabled(FeatureSwitchKey.ZeroFinance, {})).toBe(true);
     expect(isFeatureEnabled(FeatureSwitchKey.ImageStyleR2, {})).toBe(true);
     expect(isFeatureEnabled(FeatureSwitchKey.VideoArtifactPosters, {})).toBe(
       true,
@@ -143,7 +144,6 @@ describe("getAllFeatureStates", () => {
     expect(
       staffOrgStates[FeatureSwitchKey.StructuredPromptInlineTemplates],
     ).toBe(true);
-    expect(staffOrgStates[FeatureSwitchKey.OrgPlanEntitlementReads]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.WorkflowConnectorReadiness]).toBe(
       true,
     );
@@ -156,7 +156,7 @@ describe("getAllFeatureStates", () => {
       orgId: "org_nonexistent",
     });
     expect(otherOrgStates[FeatureSwitchKey.Lab]).toBe(false);
-    expect(otherOrgStates[FeatureSwitchKey.ZeroFinance]).toBe(false);
+    expect(otherOrgStates[FeatureSwitchKey.ZeroFinance]).toBe(true);
     expect(otherOrgStates[FeatureSwitchKey.ZeroBrowser]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.LanguagePreference]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.BrazilianPortugueseLocale]).toBe(
@@ -179,7 +179,6 @@ describe("getAllFeatureStates", () => {
     expect(
       otherOrgStates[FeatureSwitchKey.StructuredPromptInlineTemplates],
     ).toBe(false);
-    expect(otherOrgStates[FeatureSwitchKey.OrgPlanEntitlementReads]).toBe(true);
     expect(otherOrgStates[FeatureSwitchKey.WorkflowConnectorReadiness]).toBe(
       false,
     );
@@ -227,9 +226,6 @@ describe("user-overridable switches", () => {
       FeatureSwitchKey.WorkflowConnectorReadiness,
     );
     expect(getUserOverridableFeatureSwitchKeys()).not.toContain(
-      FeatureSwitchKey.OrgPlanEntitlementReads,
-    );
-    expect(getUserOverridableFeatureSwitchKeys()).not.toContain(
       FeatureSwitchKey.ZeroMailReplyFollowUp,
     );
     expect(getUserOverridableFeatureSwitchKeys()).toContain(
@@ -264,7 +260,6 @@ describe("user-overridable switches", () => {
       filterUserOverridableFeatureSwitchOverrides({
         [FeatureSwitchKey.ComposerUploadPopover]: true,
         [FeatureSwitchKey.WorkflowConnectorReadiness]: true,
-        [FeatureSwitchKey.OrgPlanEntitlementReads]: true,
         [FeatureSwitchKey.StructuredPromptInlineTemplates]: true,
         [FeatureSwitchKey.ZeroMailReplyFollowUp]: true,
         [FeatureSwitchKey.BrazilianPortugueseLocale]: true,

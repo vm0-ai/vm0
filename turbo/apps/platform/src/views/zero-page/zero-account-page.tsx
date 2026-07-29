@@ -1,5 +1,6 @@
 import { useGet, useSet, useLoadable, useLastResolved } from "ccstate-react";
 import { useLoadableSet } from "ccstate-react/experimental";
+import { useTranslation } from "react-i18next";
 import { pageSignal$ } from "../../signals/page-signal.ts";
 import {
   IconSun,
@@ -38,12 +39,12 @@ import { BuildInfoBlock } from "./components/settings/build-info-block.tsx";
 import { LanguageSettings } from "./components/settings/language-settings.tsx";
 
 function AppearanceSettings() {
+  const { t } = useTranslation();
   const THEME_OPTIONS = [
-    { value: "light" as ThemePreference, label: "Light", icon: IconSun },
-    { value: "dark" as ThemePreference, label: "Dark", icon: IconMoon },
+    { value: "light" as ThemePreference, icon: IconSun },
+    { value: "dark" as ThemePreference, icon: IconMoon },
     {
       value: "system" as ThemePreference,
-      label: "System",
       icon: IconDeviceDesktop,
     },
   ] as const;
@@ -55,7 +56,9 @@ function AppearanceSettings() {
   return (
     <div className="flex flex-col gap-3">
       <p className="text-sm text-muted-foreground">
-        Choose how the interface looks.
+        {t(($) => {
+          return $.settings.preferences.appearance.description;
+        })}
       </p>
       <div className="flex items-center gap-4 bg-card p-4 rounded-xl zero-border">
         <div className="shrink-0">
@@ -68,13 +71,31 @@ function AppearanceSettings() {
           </div>
         </div>
         <div className="flex flex-1 flex-col gap-1 min-w-0">
-          <div className="text-sm font-medium text-foreground">Theme</div>
+          <div className="text-sm font-medium text-foreground">
+            {t(($) => {
+              return $.settings.preferences.appearance.theme.title;
+            })}
+          </div>
           <div className="text-sm text-muted-foreground">
-            Your preferred color scheme
+            {t(($) => {
+              return $.settings.preferences.appearance.theme.description;
+            })}
           </div>
         </div>
         <div className="flex gap-2 shrink-0">
-          {THEME_OPTIONS.map(({ value, label, icon: Icon }) => {
+          {THEME_OPTIONS.map(({ value, icon: Icon }) => {
+            const label =
+              value === "light"
+                ? t(($) => {
+                    return $.settings.preferences.appearance.theme.light;
+                  })
+                : value === "dark"
+                  ? t(($) => {
+                      return $.settings.preferences.appearance.theme.dark;
+                    })
+                  : t(($) => {
+                      return $.settings.preferences.appearance.theme.system;
+                    });
             return (
               <button
                 key={value}
@@ -102,10 +123,8 @@ function AppearanceSettings() {
 }
 
 function SendModeSettings() {
-  const SEND_OPTIONS = [
-    { value: "enter" as SendMode, label: "Enter" },
-    { value: "cmd-enter" as SendMode, label: "⌘ Enter" },
-  ] as const;
+  const { t } = useTranslation();
+  const SEND_OPTIONS: readonly SendMode[] = ["enter", "cmd-enter"];
   const prefsLoadable = useLoadable(sendMode$);
   const current: SendMode =
     prefsLoadable.state === "hasData" ? prefsLoadable.data : "enter";
@@ -121,7 +140,9 @@ function SendModeSettings() {
   return (
     <div className="flex flex-col gap-3">
       <p className="text-sm text-muted-foreground">
-        Choose how to send messages in chat.
+        {t(($) => {
+          return $.settings.preferences.send.description;
+        })}
       </p>
       <div className="flex items-center gap-4 bg-card p-4 rounded-xl zero-border">
         <div className="shrink-0">
@@ -135,18 +156,32 @@ function SendModeSettings() {
         </div>
         <div className="flex flex-1 flex-col gap-1 min-w-0">
           <div className="text-sm font-medium text-foreground">
-            Send message with
+            {t(($) => {
+              return $.settings.preferences.send.title;
+            })}
           </div>
           <div className="text-sm text-muted-foreground">
             {(saving ?? current) === "enter"
-              ? "Press Enter to send, Shift+Enter for new line"
-              : "Press ⌘/Ctrl+Enter to send, Enter for new line"}
+              ? t(($) => {
+                  return $.settings.preferences.send.enterDescription;
+                })
+              : t(($) => {
+                  return $.settings.preferences.send.cmdEnterDescription;
+                })}
           </div>
         </div>
         <div className="flex gap-2 shrink-0">
-          {SEND_OPTIONS.map(({ value, label }) => {
+          {SEND_OPTIONS.map((value) => {
             const isActive =
               saving === value ? true : saving === null && current === value;
+            const label =
+              value === "enter"
+                ? t(($) => {
+                    return $.settings.preferences.send.enter;
+                  })
+                : t(($) => {
+                    return $.settings.preferences.send.cmdEnter;
+                  });
             return (
               <button
                 key={value}
@@ -180,6 +215,7 @@ function SendModeSettings() {
 const CAPTURE_RUN_COUNT = 3;
 
 function CaptureNetworkBodiesSettings() {
+  const { t } = useTranslation();
   const remainingLoadable = useLoadable(captureNetworkBodiesRemaining$);
   const remaining =
     remainingLoadable.state === "hasData" ? remainingLoadable.data : 0;
@@ -200,8 +236,9 @@ function CaptureNetworkBodiesSettings() {
   return (
     <div className="flex flex-col gap-3">
       <p className="text-sm text-muted-foreground">
-        Capture HTTP header names, selected safe header values, and bodies in
-        network logs for debugging.
+        {t(($) => {
+          return $.settings.preferences.debug.capture.description;
+        })}
       </p>
       <div className="flex items-center gap-4 bg-card p-4 rounded-xl zero-border">
         <div className="shrink-0">
@@ -211,12 +248,23 @@ function CaptureNetworkBodiesSettings() {
         </div>
         <div className="flex flex-1 flex-col gap-1 min-w-0">
           <div className="text-sm font-medium text-foreground">
-            Capture network bodies
+            {t(($) => {
+              return $.settings.preferences.debug.capture.title;
+            })}
           </div>
           <div className="text-sm text-muted-foreground">
             {enabled
-              ? `Enabled for the next ${remaining} run${remaining === 1 ? "" : "s"}`
-              : "Disabled"}
+              ? t(
+                  ($) => {
+                    return $.settings.preferences.debug.capture.enabled;
+                  },
+                  {
+                    count: remaining,
+                  },
+                )
+              : t(($) => {
+                  return $.settings.preferences.debug.capture.disabled;
+                })}
           </div>
         </div>
         <Switch
@@ -246,6 +294,7 @@ function resolveVisiblePreferencesTab(
 }
 
 export function ZeroPreferencesPage() {
+  const { t } = useTranslation();
   const features = useLastResolved(featureSwitch$);
   const showDebug = features?.[FeatureSwitchKey.ZeroDebug] ?? false;
   const showLanguagePreference =
@@ -263,10 +312,14 @@ export function ZeroPreferencesPage() {
       <header className="hidden md:block shrink-0 bg-transparent px-4 sm:px-6 pt-10 pb-4">
         <div className="mx-auto max-w-[900px]">
           <h1 className="hidden md:block text-xl font-semibold tracking-tight text-foreground">
-            Preferences
+            {t(($) => {
+              return $.settings.preferences.pageTitle;
+            })}
           </h1>
           <p className="hidden md:block text-sm text-muted-foreground mt-1">
-            Manage your appearance and agent runtime preferences
+            {t(($) => {
+              return $.settings.preferences.pageDescription;
+            })}
           </p>
         </div>
       </header>
@@ -284,20 +337,26 @@ export function ZeroPreferencesPage() {
                 value="appearance"
                 className="gap-1.5 text-sm data-[state=active]:bg-background px-3"
               >
-                Appearance
+                {t(($) => {
+                  return $.settings.preferences.tabs.appearance;
+                })}
               </TabsTrigger>
               <TabsTrigger
                 value="timezone"
                 className="gap-1.5 text-sm data-[state=active]:bg-background px-3"
               >
-                Time Zone
+                {t(($) => {
+                  return $.settings.preferences.tabs.timezone;
+                })}
               </TabsTrigger>
               {showModelConfiguration && (
                 <TabsTrigger
                   value="model-configuration"
                   className="gap-1.5 text-sm data-[state=active]:bg-background px-3"
                 >
-                  Personal Models
+                  {t(($) => {
+                    return $.settings.preferences.tabs.models;
+                  })}
                 </TabsTrigger>
               )}
               {showDebug && (
@@ -305,7 +364,9 @@ export function ZeroPreferencesPage() {
                   value="debug"
                   className="gap-1.5 text-sm data-[state=active]:bg-background px-3"
                 >
-                  Debug
+                  {t(($) => {
+                    return $.settings.preferences.debug.tab;
+                  })}
                 </TabsTrigger>
               )}
             </TabsList>

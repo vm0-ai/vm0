@@ -875,6 +875,11 @@ fn record_remote_archive_attribution(
     );
 }
 
+/// Download and extract an archive, retrying retriable failures.
+///
+/// Every attempt uses the same `target_path`. The retry loop neither clears the
+/// target nor rolls back files written by a failed extraction attempt, so later
+/// attempts run against any filesystem state left by earlier ones.
 fn download_with_retry(
     url: &str,
     target_path: &str,

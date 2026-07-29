@@ -4,6 +4,7 @@ import type { ZeroGoalEvent } from "./zero-goals";
 export const CHAT_EVENT_TYPES = [
   "input.prompt",
   "input.automation",
+  "input.goal",
   "input.rejected",
   "output.message",
   "output.error",
@@ -25,14 +26,31 @@ export const CHAT_EVENT_TYPES = [
 export const chatEventTypeSchema = z.enum(CHAT_EVENT_TYPES);
 
 export type ChatEventType = z.infer<typeof chatEventTypeSchema>;
+type MaterializedChatEventType = Exclude<ChatEventType, "input.goal">;
+export const MATERIALIZED_CHAT_EVENT_TYPES = CHAT_EVENT_TYPES.filter(
+  (eventType): eventType is MaterializedChatEventType => {
+    return eventType !== "input.goal";
+  },
+);
 export type ChatEventCompatibilityRole = "user" | "assistant";
 export type ChatEventRunLifecycle = "completed" | "failed" | "cancelled";
 export type ChatRunFoldState = "queued" | "dequeued" | ChatEventRunLifecycle;
 
 const VALID_CHAT_EVENT_REVOCATION_TARGETS = {
-  "input.prompt": ["input.prompt", "input.automation", "output.followups"],
+  "input.prompt": [
+    "input.prompt",
+    "input.automation",
+    "input.goal",
+    "output.followups",
+  ],
   "input.automation": [],
-  "input.rejected": ["input.prompt", "input.automation", "output.followups"],
+  "input.goal": [],
+  "input.rejected": [
+    "input.prompt",
+    "input.automation",
+    "input.goal",
+    "output.followups",
+  ],
   "output.message": [],
   "output.error": [],
   "output.thinking": [],
@@ -45,7 +63,12 @@ const VALID_CHAT_EVENT_REVOCATION_TARGETS = {
   "queue.automation_paused": [],
   "queue.automation_resumed": [],
   "control.interrupt": [],
-  "control.revoke": ["input.prompt", "input.automation", "input.rejected"],
+  "control.revoke": [
+    "input.prompt",
+    "input.automation",
+    "input.goal",
+    "input.rejected",
+  ],
   "goal.changed": [],
   "usage.recorded": [],
 } satisfies Record<ChatEventType, readonly ChatEventType[]>;
@@ -53,6 +76,7 @@ const VALID_CHAT_EVENT_REVOCATION_TARGETS = {
 const CHAT_RUN_FOLD_STATES = {
   "input.prompt": null,
   "input.automation": null,
+  "input.goal": null,
   "input.rejected": null,
   "output.message": null,
   "output.error": null,
@@ -74,6 +98,7 @@ const CHAT_RUN_FOLD_STATES = {
 const CHAT_AUTOMATION_INTAKE_PAUSE_TRANSITIONS = {
   "input.prompt": null,
   "input.automation": null,
+  "input.goal": null,
   "input.rejected": null,
   "output.message": null,
   "output.error": null,
@@ -128,6 +153,7 @@ export function chatEventCompatibilityRole(
   switch (eventType) {
     case "input.prompt":
     case "input.automation":
+    case "input.goal":
     case "input.rejected":
     case "control.interrupt":
     case "control.revoke":
@@ -161,6 +187,7 @@ export function chatEventRunLifecycle(
       return "cancelled";
     case "input.prompt":
     case "input.automation":
+    case "input.goal":
     case "input.rejected":
     case "output.message":
     case "output.error":
@@ -190,10 +217,15 @@ export function isChatRunTerminalEventType(
 
 export function isChatInputEventType(
   eventType: ChatEventType,
-): eventType is "input.prompt" | "input.automation" | "input.rejected" {
+): eventType is
+  | "input.prompt"
+  | "input.automation"
+  | "input.goal"
+  | "input.rejected" {
   return (
     eventType === "input.prompt" ||
     eventType === "input.automation" ||
+    eventType === "input.goal" ||
     eventType === "input.rejected"
   );
 }
@@ -279,7 +311,8 @@ export function isPendingChatQueueEvent(
 ): boolean {
   return (
     (event.eventType === "input.prompt" ||
-      event.eventType === "input.automation") &&
+      event.eventType === "input.automation" ||
+      event.eventType === "input.goal") &&
     (event.runId === undefined || event.runId === null) &&
     !revokedEventIds.has(event.id)
   );
@@ -289,8 +322,17 @@ function compareChatQueueEvents(
   left: ChatQueueFoldInput,
   right: ChatQueueFoldInput,
 ): number {
-  const leftPriority = left.eventType === "input.prompt" ? 0 : 1;
-  const rightPriority = right.eventType === "input.prompt" ? 0 : 1;
+  const priority = (eventType: ChatEventType): number => {
+    if (eventType === "input.prompt") {
+      return 0;
+    }
+    if (eventType === "input.automation") {
+      return 1;
+    }
+    return 2;
+  };
+  const leftPriority = priority(left.eventType);
+  const rightPriority = priority(right.eventType);
   if (leftPriority !== rightPriority) {
     return leftPriority - rightPriority;
   }
@@ -340,7 +382,7 @@ export function foldRunnableChatQueueEvents<
   return foldChatAutomationIntakePause(events) === null
     ? pending
     : pending.filter((event) => {
-        return event.eventType === "input.prompt";
+        return event.eventType !== "input.automation";
       });
 }
 

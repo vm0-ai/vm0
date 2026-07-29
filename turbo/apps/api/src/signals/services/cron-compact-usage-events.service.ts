@@ -16,7 +16,7 @@ import { timestampWithoutTimeZone } from "../external/time";
 import { lockUsageEventCompaction } from "./usage-event-compaction-lock.service";
 
 const L = logger("CronCompactUsageEvents");
-const USAGE_EVENT_COMPACTION_RAW_SEED_LIMIT = 100;
+const USAGE_EVENT_COMPACTION_RAW_SEED_LIMIT = 500;
 
 type UsageEventCompactionDb = Pick<Db, "execute" | "transaction">;
 

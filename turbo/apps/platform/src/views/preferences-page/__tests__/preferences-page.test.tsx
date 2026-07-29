@@ -174,4 +174,59 @@ describe("preferences page", () => {
       expect(screen.getByText("Disabled")).toBeInTheDocument();
     });
   });
+
+  it("keeps preference identifiers stable in Brazilian Portuguese", async () => {
+    const capturedBodies: Record<string, unknown>[] = [];
+    context.mocks.data.userPreferences(
+      createMockPreferences({
+        locale: "pt-BR",
+        supportedLocales: ["en-US", "pt-BR"],
+        timezone: "UTC",
+      }),
+    );
+    context.mocks.api(
+      zeroUserPreferencesContract.update,
+      ({ body, respond }) => {
+        capturedBodies.push(body as Record<string, unknown>);
+        return respond(200, {
+          ...createMockPreferences({
+            locale: "pt-BR",
+            supportedLocales: ["en-US", "pt-BR"],
+          }),
+          ...(body as Partial<UserPreferencesResponse>),
+        });
+      },
+    );
+
+    detachedSetupPage({
+      context,
+      path: "/settings",
+      featureSwitches: {
+        [FeatureSwitchKey.LanguagePreference]: true,
+      },
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText("Enviar mensagem com")).toBeInTheDocument();
+      expect(screen.getByText("Seu esquema de cores preferido")).toBeVisible();
+    });
+
+    click(getButtonByText("⌘ Enter"));
+    click(screen.getByText("Fuso horário"));
+
+    await waitFor(() => {
+      expect(screen.getByText("Fuso horário")).toBeInTheDocument();
+    });
+    click(screen.getByRole("combobox"));
+    click(screen.getByText(/Horário de Brasília \(BRT\)/u));
+
+    await waitFor(() => {
+      expect(capturedBodies).toStrictEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ sendMode: "cmd-enter" }),
+          expect.objectContaining({ timezone: "America/Sao_Paulo" }),
+        ]),
+      );
+    });
+  });
 });
