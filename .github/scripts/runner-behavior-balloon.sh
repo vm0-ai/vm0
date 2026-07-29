@@ -117,14 +117,23 @@ if [ "$LOAD_STATE" = "loaded" ]; then
       exit 0
       ;;
     *)
+      if [ -f "$STATUS_FILE" ]; then
+        exit 0
+      fi
       echo "durable balloon unit stopped without publishing a result: ${ACTIVE_STATE}" >&2
       exit 1
       ;;
   esac
 fi
 if [ -n "$LOAD_STATE" ] && [ "$LOAD_STATE" != "not-found" ]; then
+  if [ -f "$STATUS_FILE" ]; then
+    exit 0
+  fi
   echo "unexpected durable balloon unit load state: ${LOAD_STATE}" >&2
   exit 1
+fi
+if [ -f "$STATUS_FILE" ]; then
+  exit 0
 fi
 
 REMOTE_UID=$(id -u)

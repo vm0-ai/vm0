@@ -152,6 +152,13 @@ esac
 FAKE_SYSTEMCTL
 chmod +x "$fake_bin/systemctl"
 
+cat > "$fake_bin/systemd-run" <<'FAKE_SYSTEMD_RUN'
+#!/usr/bin/env bash
+set -euo pipefail
+touch "$REPLAY_MARKER"
+FAKE_SYSTEMD_RUN
+chmod +x "$fake_bin/systemd-run"
+
 status=0
 PATH="$fake_bin:$PATH" \
   FAKE_SLEEP_INVOCATIONS="$state_dir/sleep-invocations" \
@@ -196,6 +203,26 @@ RACE_STATUS_FILE="$race_status" PATH="$fake_bin:$PATH" \
   bash "$state_dir/state-script" "$race_status" "race-unit" \
   > "$state_dir/race-state"
 assert_value "$state_dir/race-state" "done:37"
+
+launch_race_dir="$state_dir/launch-race"
+launch_race_status="$launch_race_dir/status"
+replay_marker="$launch_race_dir/replayed"
+mkdir -p "$launch_race_dir"
+launch_race_result=0
+RACE_STATUS_FILE="$launch_race_status" REPLAY_MARKER="$replay_marker" \
+  PATH="$fake_bin:$PATH" \
+  bash "$state_dir/launch-script" \
+    "$launch_race_dir" "$launch_race_dir/worker.sh" \
+    "$launch_race_dir/output.log" "$launch_race_status" \
+    "race-unit" "/opt/vm0" "behavior-a" || launch_race_result=$?
+if [ "$launch_race_result" -ne 0 ]; then
+  echo "expected launch retry to accept the concurrently published result" >&2
+  exit 1
+fi
+if [ -e "$replay_marker" ]; then
+  echo "expected launch retry not to replay a completed worker" >&2
+  exit 1
+fi
 
 if find "$runner_temp" -mindepth 1 -print -quit | grep -q .; then
   echo "expected driver to remove its local result file" >&2
