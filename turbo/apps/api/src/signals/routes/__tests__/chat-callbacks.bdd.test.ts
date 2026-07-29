@@ -37,7 +37,6 @@ import { createWebhookCallbackApi } from "./helpers/api-bdd-webhooks";
 import { chatEventDisplayText } from "./helpers/chat-event";
 import { updateFeatureSwitchesForUser } from "./helpers/zero-feature-switches";
 import {
-  decryptDataKeyOutput,
   generateDataKeyOutput,
   useSecretKmsProbe,
 } from "./helpers/secret-kms-probe";
@@ -1558,197 +1557,7 @@ Continue the JPM IJTXX Treasury allocation follow-up for issue #20818 and [ACME-
     await flushWaitUntilForTest();
   }, 90_000);
 
-  it("pauses the goal when continuation event enqueue fails", async () => {
-    const { actor, agentId, runnerGroup } = await entitledChatActor();
-    await enableGoalWorkflows(actor);
-    chatCallbacks.failIfChatCallbackRouteIsFetched();
-
-    const first = await startChatRun(actor, {
-      agentId,
-      prompt: "finish before goal enqueue fails",
-    });
-    await createGoalForRun(actor, first.runId, "pause after enqueue failure");
-    useSecretKmsProbe((_command, callNumber) => {
-      return callNumber === 1
-        ? Promise.reject(new Error("goal queue encryption failed"))
-        : undefined;
-    });
-    chatCallbacks.mockChatOutputEvents([
-      assistantEvent(0, "completed before goal enqueue failure"),
-    ]);
-
-    const sandboxHeaders = await claimChatRun(runnerGroup, first.runId);
-    await completeChatRunOk(first.runId, sandboxHeaders, {
-      lastEventSequence: 0,
-    });
-
-    await expect
-      .poll(async () => {
-        const goal = await accept(
-          goalsClient().get({
-            headers: zeroGoalHeaders(actor, first.runId),
-          }),
-          [200],
-        );
-        return goal.body.status;
-      })
-      .toBe("paused");
-    await expect(goalQueueEventIds(first.threadId)).resolves.toHaveLength(0);
-    await expect(goalRunIds(first.threadId)).resolves.toHaveLength(0);
-  }, 90_000);
-
-  it("pauses the goal and rejects an unreadable continuation payload as a goal artifact", async () => {
-    const { actor, agentId, runnerGroup } = await entitledChatActor();
-    await enableGoalWorkflows(actor);
-    chatCallbacks.failIfChatCallbackRouteIsFetched();
-
-    const first = await startChatRun(actor, {
-      agentId,
-      prompt: "finish before goal payload decryption fails",
-    });
-    const objectiveBrief = "pause after goal payload decryption failure";
-    await createGoalForRun(actor, first.runId, objectiveBrief);
-    useSecretKmsProbe(undefined, (_command, callNumber) => {
-      return callNumber === 1
-        ? Promise.reject(new Error("internal kms decryption failure"))
-        : undefined;
-    });
-    chatCallbacks.mockChatOutputEvents([
-      assistantEvent(0, "completed before goal payload decryption failure"),
-    ]);
-
-    const sandboxHeaders = await claimChatRun(runnerGroup, first.runId);
-    await completeChatRunOk(first.runId, sandboxHeaders, {
-      lastEventSequence: 0,
-    });
-
-    await expect
-      .poll(async () => {
-        const goal = await accept(
-          goalsClient().get({
-            headers: zeroGoalHeaders(actor, first.runId),
-          }),
-          [200],
-        );
-        return goal.body.status;
-      })
-      .toBe("paused");
-    const [goalEventId] = await goalQueueEventIds(first.threadId);
-    expect(goalEventId).toBeDefined();
-    const events = await waitForThreadMessages(
-      actor,
-      first.threadId,
-      (items) => {
-        return items.some((event) => {
-          return (
-            event.eventType === "input.rejected" &&
-            event.revokesEventId === goalEventId
-          );
-        });
-      },
-    );
-    const rejected = events.events.find((event) => {
-      return (
-        event.eventType === "input.rejected" &&
-        event.revokesEventId === goalEventId
-      );
-    });
-    if (rejected?.eventType !== "input.rejected") {
-      throw new Error("Expected the unreadable goal event to be rejected");
-    }
-    expect(rejected).toMatchObject({
-      eventType: "input.rejected",
-      content: null,
-      error: "Goal continuation queue payload is unreadable",
-      goalSnapshot: { objectiveBrief },
-      userMessage: {
-        parts: [{ type: "text", text: objectiveBrief }],
-      },
-    });
-    expect(chatEventDisplayText(rejected)).toBe(objectiveBrief);
-    expect(JSON.stringify(rejected.userMessage)).not.toContain("internal kms");
-    expect(rejected).not.toHaveProperty("runId");
-    await expect(goalRunIds(first.threadId)).resolves.toHaveLength(0);
-  }, 90_000);
-
-  it("rejects a goal invalidated before launch without creating a run", async () => {
-    const { actor, agentId, runnerGroup } = await entitledChatActor();
-    await enableGoalWorkflows(actor);
-    chatCallbacks.failIfChatCallbackRouteIsFetched();
-
-    const first = await startChatRun(actor, {
-      agentId,
-      prompt: "finish before pre-launch goal invalidation",
-    });
-    const objectiveBrief = "invalidate before goal launch";
-    await createGoalForRun(actor, first.runId, objectiveBrief);
-    const decryptStarted = createDeferredPromise<void>(context.signal);
-    const releaseDecrypt = deferredGate();
-    useSecretKmsProbe(undefined, (_command, callNumber) => {
-      if (callNumber !== 1) {
-        return undefined;
-      }
-      decryptStarted.resolve(undefined);
-      return releaseDecrypt.wait().then(() => {
-        return decryptDataKeyOutput();
-      });
-    });
-    chatCallbacks.mockChatOutputEvents([
-      assistantEvent(0, "completed before pre-launch goal invalidation"),
-    ]);
-
-    const sandboxHeaders = await claimChatRun(runnerGroup, first.runId);
-    await completeChatRunOk(first.runId, sandboxHeaders, {
-      lastEventSequence: 0,
-    });
-    await decryptStarted.promise;
-
-    const paused = await accept(
-      goalsClient().pause({
-        headers: zeroGoalHeaders(actor, first.runId),
-      }),
-      [200],
-    );
-    expect(paused.body.status).toBe("paused");
-    const [goalEventId] = await goalQueueEventIds(first.threadId);
-    expect(goalEventId).toBeDefined();
-    releaseDecrypt.release();
-
-    const events = await waitForThreadMessages(
-      actor,
-      first.threadId,
-      (items) => {
-        return items.some((event) => {
-          return (
-            event.eventType === "input.rejected" &&
-            event.revokesEventId === goalEventId
-          );
-        });
-      },
-    );
-    expect(events.events).toContainEqual(
-      expect.objectContaining({
-        eventType: "input.rejected",
-        revokesEventId: goalEventId,
-        content: null,
-        error: "Goal continuation no longer matches the active goal",
-        goalSnapshot: { objectiveBrief },
-      }),
-    );
-    const rejected = events.events.find((event) => {
-      return (
-        event.eventType === "input.rejected" &&
-        event.revokesEventId === goalEventId
-      );
-    });
-    if (rejected?.eventType !== "input.rejected") {
-      throw new Error("Expected the invalidated goal event to be rejected");
-    }
-    expect(chatEventDisplayText(rejected)).toBe(objectiveBrief);
-    await expect(goalRunIds(first.threadId)).resolves.toHaveLength(0);
-  }, 90_000);
-
-  it("rejects a goal invalidated after a lost final claim without creating a run", async () => {
+  it("rejects a goal invalidated during run preparation without creating a run", async () => {
     const { actor, agentId, runnerGroup } = await entitledChatActor();
     await enableGoalWorkflows(actor);
     chatCallbacks.failIfChatCallbackRouteIsFetched();
@@ -1761,10 +1570,7 @@ Continue the JPM IJTXX Treasury allocation follow-up for issue #20818 and [ACME-
     await createGoalForRun(actor, first.runId, objectiveBrief);
     const runPreparationStarted = createDeferredPromise<void>(context.signal);
     const releaseRunPreparation = deferredGate();
-    useSecretKmsProbe((command, callNumber) => {
-      if (callNumber === 1) {
-        return undefined;
-      }
+    useSecretKmsProbe((command) => {
       // The terminal callback drain and the goal enqueue drain may both prepare
       // this queued run. Hold every preparation so neither can win the final
       // claim before the goal is paused.
@@ -1962,7 +1768,7 @@ Continue the JPM IJTXX Treasury allocation follow-up for issue #20818 and [ACME-
     await flushWaitUntilForTest();
   }, 90_000);
 
-  it("admits a user message enqueued while the goal trigger is in flight before the pending goal event", async () => {
+  it("admits a user message while the pending goal run is being prepared", async () => {
     const { actor, agentId, runnerGroup } = await entitledChatActor();
     await enableGoalWorkflows(actor);
     chatCallbacks.failIfChatCallbackRouteIsFetched();
@@ -1978,14 +1784,16 @@ Continue the JPM IJTXX Treasury allocation follow-up for issue #20818 and [ACME-
       assistantEvent(0, "completed before the queued message"),
     ]);
 
-    const goalEncryptionStarted = createDeferredPromise<void>(context.signal);
-    const releaseGoalEncryption = deferredGate();
+    const goalRunPreparationStarted = createDeferredPromise<void>(
+      context.signal,
+    );
+    const releaseGoalRunPreparation = deferredGate();
     const kms = useSecretKmsProbe((command, callNumber) => {
       if (callNumber !== 1) {
         return undefined;
       }
-      goalEncryptionStarted.resolve(undefined);
-      return releaseGoalEncryption.wait().then(() => {
+      goalRunPreparationStarted.resolve(undefined);
+      return releaseGoalRunPreparation.wait().then(() => {
         return generateDataKeyOutput(command);
       });
     });
@@ -1994,15 +1802,15 @@ Continue the JPM IJTXX Treasury allocation follow-up for issue #20818 and [ACME-
     await completeChatRunOk(first.runId, sandboxHeaders, {
       lastEventSequence: 0,
     });
-    await goalEncryptionStarted.promise;
+    await goalRunPreparationStarted.promise;
     expect(kms.generateDataKeyCalls).toBe(1);
 
     const userRun = await startChatRun(actor, {
       agentId,
       threadId: first.threadId,
-      prompt: "user message admitted during goal trigger encryption",
+      prompt: "user message admitted during goal run preparation",
     });
-    releaseGoalEncryption.release();
+    releaseGoalRunPreparation.release();
 
     let goalEventId: string | undefined;
     await expect
@@ -2017,11 +1825,14 @@ Continue the JPM IJTXX Treasury allocation follow-up for issue #20818 and [ACME-
     }
 
     const pendingPage = await chat.listThreadEvents(actor, first.threadId);
-    expect(
-      pendingPage.events.map((event) => {
-        return event.id;
+    expect(pendingPage.events).toContainEqual(
+      expect.objectContaining({
+        id: goalEventId,
+        eventType: "input.goal",
+        content: null,
+        goalSnapshot: { objectiveBrief: goalBrief },
       }),
-    ).not.toContain(goalEventId);
+    );
     expect(
       userMessages(pendingPage.events).find((message) => {
         return isGoalContinuationUserMessage(message, goalBrief);
