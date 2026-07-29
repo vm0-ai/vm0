@@ -1156,7 +1156,7 @@ describe("zero sidebar", () => {
     expect(within(sidebar()).getByText("Archived context")).toBeInTheDocument();
   });
 
-  it("keeps the chat thread focus ring inside the virtual row", async () => {
+  it("uses modality-aware inset focus rings for the chat thread list", async () => {
     prepareDefaultAgent();
     mockSidebarThreadStory([
       createThread(EXISTING_THREAD_ID, "Release plan"),
@@ -1171,7 +1171,12 @@ describe("zero sidebar", () => {
     const link = await waitFor(() => {
       return threadLinkByTitle("Release plan");
     });
+    const scrollArea = screen.getByTestId("sidebar-scroll-area");
 
+    expect(scrollArea).toHaveClass("focus:outline-none");
+    expect(scrollArea).toHaveClass("focus-visible:ring-2");
+    expect(scrollArea).toHaveClass("focus-visible:ring-inset");
+    expect(scrollArea).toHaveClass("focus-visible:ring-ring");
     expect(link).toHaveClass("focus-visible:outline-none");
     expect(link).toHaveClass("focus-visible:ring-2");
     expect(link).toHaveClass("focus-visible:ring-inset");
