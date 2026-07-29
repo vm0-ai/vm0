@@ -1,5 +1,23 @@
 # Changelog
 
+## [0.148.35](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.148.34...runner-rs-v0.148.35) (2026-07-29)
+
+
+### Bug Fixes
+
+* bridge network policy connector slug fields ([#23828](https://github.com/vm0-ai/vm0/issues/23828)) ([ce1a3bb](https://github.com/vm0-ai/vm0/commit/ce1a3bb8d32e5049e3916af9f7233447ed3f5790))
+
+
+### Refactoring
+
+* retire signed model pricing protocol ([#23811](https://github.com/vm0-ai/vm0/issues/23811)) ([918a5ef](https://github.com/vm0-ai/vm0/commit/918a5ef92aeccf84ebfbf78a745d1f6062a4d55e))
+
+
+### Performance Improvements
+
+* **python:** bound websocket json inspection work ([#23768](https://github.com/vm0-ai/vm0/issues/23768)) ([7a673c4](https://github.com/vm0-ai/vm0/commit/7a673c4e48fa96ecf2fe6bc7d23a907cc7975bab))
+* **runner:** move workspace images into cache ([#23817](https://github.com/vm0-ai/vm0/issues/23817)) ([80eb14e](https://github.com/vm0-ai/vm0/commit/80eb14e065a3dfda9a709d80cb80eb8e8cfaee11))
+
 ## [0.148.34](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.148.33...runner-rs-v0.148.34) (2026-07-29)
 
 
