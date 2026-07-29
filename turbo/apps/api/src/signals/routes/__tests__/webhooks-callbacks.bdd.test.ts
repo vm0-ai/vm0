@@ -2328,7 +2328,7 @@ describe("WHCB-07: Stripe billing lifecycle webhooks", () => {
     ]);
   });
 
-  it("cancels replaced Stripe subscriptions after Atom Team and Custom grants", async () => {
+  it("cancels replaced subscriptions and reads the Custom grant billing period", async () => {
     const bdd = createBddApi(context);
     const billing = createBillingMediaApi(context);
     const runs = createRunsApi(context);
@@ -2336,7 +2336,8 @@ describe("WHCB-07: Stripe billing lifecycle webhooks", () => {
     const orgId = orgOf(actor);
     const granted = await runs.grantProEntitlement(actor);
     const suffix = randomUUID().slice(0, 8);
-    const grantExpiresAtUnix = epochSeconds(30);
+    const grantStartsAtUnix = epochSeconds(0);
+    const grantExpiresAtUnix = epochSeconds(7);
 
     context.mocks.stripe.subscriptions.list.mockResolvedValue({
       data: [
@@ -2364,7 +2365,7 @@ describe("WHCB-07: Stripe billing lifecycle webhooks", () => {
             source: "atom_entitlement",
             orgId,
             tier: "team",
-            duration: "30d",
+            duration: "7d",
             atomGrantExpiresAt: isoOf(grantExpiresAtUnix),
           },
           parent: null,
@@ -2375,7 +2376,7 @@ describe("WHCB-07: Stripe billing lifecycle webhooks", () => {
                 quantity: 1,
                 price: { id: "price_bdd_atom_grant" },
                 period: {
-                  start: epochSeconds(0),
+                  start: grantStartsAtUnix,
                   end: grantExpiresAtUnix,
                 },
                 parent: { type: "invoice_item_details" },
@@ -2420,7 +2421,7 @@ describe("WHCB-07: Stripe billing lifecycle webhooks", () => {
             source: "atom_entitlement",
             orgId,
             tier: "custom",
-            duration: "30d",
+            duration: "7d",
             atomGrantExpiresAt: isoOf(grantExpiresAtUnix),
           },
           parent: null,
@@ -2431,7 +2432,7 @@ describe("WHCB-07: Stripe billing lifecycle webhooks", () => {
                 quantity: 1,
                 price: { id: "price_bdd_atom_grant" },
                 period: {
-                  start: epochSeconds(0),
+                  start: grantStartsAtUnix,
                   end: grantExpiresAtUnix,
                 },
                 parent: { type: "invoice_item_details" },
@@ -2448,6 +2449,10 @@ describe("WHCB-07: Stripe billing lifecycle webhooks", () => {
       { invoice_now: false, prorate: false },
     );
     expect((await billing.readBillingStatus(actor)).tier).toBe("custom");
+    expect((await billing.readUsageMembers(actor)).body.period).toStrictEqual({
+      start: isoOf(grantStartsAtUnix),
+      end: isoOf(grantExpiresAtUnix),
+    });
   });
 
   it("rejects lower Atom grants after a Custom grant without canceling subscriptions", async () => {
