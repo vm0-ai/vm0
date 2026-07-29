@@ -848,10 +848,6 @@ describe("chat lifecycle", () => {
             version: 1,
             parts: [{ type: "text", text: "Summarize the standup" }],
           },
-          draftStructuredPrompt: {
-            version: 1,
-            parts: [{ type: "text", text: "Summarize the standup" }],
-          },
           draftAttachments: null,
         });
       });
@@ -919,10 +915,6 @@ describe("chat lifecycle", () => {
       expect(draftPatches).toContainEqual({
         draftContent: "First sentence",
         draftUserMessage: {
-          version: 1,
-          parts: [{ type: "text", text: "First sentence" }],
-        },
-        draftStructuredPrompt: {
           version: 1,
           parts: [{ type: "text", text: "First sentence" }],
         },

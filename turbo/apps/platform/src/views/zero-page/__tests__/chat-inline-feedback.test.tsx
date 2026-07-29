@@ -586,9 +586,11 @@ describe("chat inline feedback", () => {
     await user.click(await screen.findByLabelText("Remove queued message"));
 
     const composer = await findComposerEditor();
-    expect(
-      screen.getByLabelText(`Remove template ${template.title}`),
-    ).toBeInTheDocument();
+    await waitFor(() => {
+      expect(
+        screen.getByLabelText(`Remove template ${template.title}`),
+      ).toBeInTheDocument();
+    });
     await waitFor(() => {
       const feedbackItem = composer.querySelector("[data-feedback-item]");
       expect(feedbackItem).toHaveTextContent(assistantReply);
@@ -607,7 +609,6 @@ describe("chat inline feedback", () => {
           `> ${assistantReply}\n\n` +
           "Name the owner and explain the complete result.",
         draftUserMessage: queuedMessages[0]?.userMessage,
-        draftStructuredPrompt: queuedMessages[0]?.userMessage,
         draftAttachments: null,
       });
     });

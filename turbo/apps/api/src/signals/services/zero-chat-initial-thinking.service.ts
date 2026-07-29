@@ -30,6 +30,10 @@ import {
   chatEventTypeSql,
 } from "./zero-chat-event-type.service";
 import { queuedUserMessageExists } from "./zero-chat-queued-message.service";
+import {
+  projectUserMessage,
+  requiredUserMessageForEvent,
+} from "./zero-chat-user-message.service";
 
 const log = logger("api:zero:chat-initial-thinking");
 
@@ -84,6 +88,7 @@ async function loadThinkingContextMessages(args: {
     .select({
       eventType: chatEventTypeSql().as("event_type"),
       content: chatMessages.content,
+      userMessage: chatMessages.userMessage,
       createdAt: chatMessages.createdAt,
       sequenceNumber: chatMessages.sequenceNumber,
     })
@@ -91,13 +96,22 @@ async function loadThinkingContextMessages(args: {
     .where(
       and(
         eq(chatMessages.chatThreadId, args.threadId),
-        isNotNull(chatMessages.content),
         chatEventTypeIn([
           "input.prompt",
           "input.rejected",
           "output.message",
           "output.error",
         ]),
+        or(
+          and(
+            chatEventTypeIn(["input.prompt", "input.rejected"]),
+            isNotNull(chatMessages.userMessage),
+          ),
+          and(
+            not(chatEventTypeIn(["input.prompt", "input.rejected"])),
+            isNotNull(chatMessages.content),
+          ),
+        ),
         visibleChatEventCondition(args.db),
         not(queuedUserMessageExists(args.db)),
         or(
@@ -118,13 +132,20 @@ async function loadThinkingContextMessages(args: {
     .limit(THINKING_CONTEXT_MESSAGE_CAP);
 
   return rows.reverse().flatMap((row) => {
-    if (row.content === null) {
+    const userMessage = requiredUserMessageForEvent(
+      row.eventType,
+      row.userMessage,
+    );
+    const content = userMessage
+      ? projectUserMessage(userMessage).agentPrompt
+      : row.content;
+    if (content === null) {
       return [];
     }
     return [
       {
         role: chatEventCompatibilityRole(row.eventType),
-        content: row.content,
+        content,
       },
     ];
   });

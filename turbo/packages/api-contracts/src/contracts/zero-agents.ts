@@ -6,7 +6,6 @@ import {
   persistedAttachmentSchema,
   userMessageDocumentSchema,
 } from "./chat-threads";
-import { normalizePrecedingDraftStructuredPrompt } from "./user-message-rollout";
 
 const c = initContract();
 
@@ -66,16 +65,13 @@ export const zeroAgentInstructionsRequestSchema = z.object({
   content: z.string(),
 });
 
-export const zeroAgentDraftResponseSchema = z.preprocess(
-  normalizePrecedingDraftStructuredPrompt,
-  z
-    .object({
-      draftContent: z.string().nullable(),
-      draftUserMessage: userMessageDocumentSchema.nullable(),
-      draftAttachments: z.array(persistedAttachmentSchema).nullable(),
-    })
-    .superRefine(requireUserMessageForNonEmptyDraft),
-);
+export const zeroAgentDraftResponseSchema = z
+  .object({
+    draftContent: z.string().nullable(),
+    draftUserMessage: userMessageDocumentSchema.nullable(),
+    draftAttachments: z.array(persistedAttachmentSchema).nullable(),
+  })
+  .superRefine(requireUserMessageForNonEmptyDraft);
 
 export const zeroAgentDraftRequestSchema = z
   .object({

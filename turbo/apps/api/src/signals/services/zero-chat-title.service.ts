@@ -41,7 +41,10 @@ import {
 } from "./zero-chat-recommended-followups.service";
 import { appendChatThreadEvent } from "./zero-chat-thread-event.service";
 import { queuedUserMessageExists } from "./zero-chat-queued-message.service";
-import { projectUserMessage } from "./zero-chat-user-message.service";
+import {
+  projectUserMessage,
+  requiredUserMessageForEvent,
+} from "./zero-chat-user-message.service";
 
 const log = logger("api:zero:chat-title");
 const OPENROUTER_CHAT_COMPLETIONS_URL =
@@ -119,10 +122,13 @@ function completedConversationContextMessageCondition(db: SelectDb) {
 
 function contextMessageContentCondition(): SQL {
   return or(
-    isNotNull(chatMessages.content),
     and(
       chatEventTypeIn(["input.prompt", "input.rejected"]),
       isNotNull(chatMessages.userMessage),
+    ),
+    and(
+      not(chatEventTypeIn(["input.prompt", "input.rejected"])),
+      isNotNull(chatMessages.content),
     ),
   ) as SQL;
 }
@@ -131,11 +137,15 @@ function chatCompletionContextMessage(
   row: ChatCompletionContextRow,
 ): ChatCompletionContextMessage[] {
   const role = chatEventCompatibilityRole(row.eventType);
-  if (role === "user" && row.userMessage) {
+  const userMessage = requiredUserMessageForEvent(
+    row.eventType,
+    row.userMessage,
+  );
+  if (userMessage) {
     return [
       {
         role,
-        content: projectUserMessage(row.userMessage).agentPrompt,
+        content: projectUserMessage(userMessage).agentPrompt,
       },
     ];
   }

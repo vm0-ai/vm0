@@ -54,7 +54,7 @@ async function findThreadLink(title: string): Promise<HTMLAnchorElement> {
 }
 
 describe("chat message persistence", () => {
-  it("round-trips structured and legacy messages through IndexedDB on thread re-entry", async () => {
+  it("round-trips canonical user and assistant messages through IndexedDB on thread re-entry", async () => {
     mockUser(
       { id: "idb-reentry-user", fullName: "IndexedDB Test User" },
       { token: "test-token" },

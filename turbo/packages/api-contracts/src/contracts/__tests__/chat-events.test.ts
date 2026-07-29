@@ -291,17 +291,18 @@ describe("ChatEvent catalog", () => {
     }
   });
 
-  it("normalizes the preceding rich-input response field", () => {
+  it("rejects a response that only carries the retired rich-input field", () => {
     const userMessage = {
       version: 1 as const,
       parts: [{ type: "text" as const, text: "Run the task" }],
     };
     expect(
-      chatEventResponseSchema.parse({
+      chatEventResponseSchema.safeParse({
         ...chatEventResponse(chatEvents[0]!),
+        userMessage: undefined,
         structuredPrompt: userMessage,
-      }),
-    ).toStrictEqual({ ...chatEvents[0], userMessage });
+      }).success,
+    ).toBe(false);
   });
 });
 

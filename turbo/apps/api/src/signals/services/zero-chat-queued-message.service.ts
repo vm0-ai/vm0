@@ -115,7 +115,7 @@ const queuedChatMessageRevoker = alias(
 export interface QueuedUserMessage {
   readonly id: string;
   readonly content: string | null;
-  readonly userMessage: ChatMessageUserMessage | null;
+  readonly userMessage: ChatMessageUserMessage;
   readonly attachFiles: readonly string[] | null;
   readonly attachFileMetadata: readonly ChatMessageAttachFileMetadata[] | null;
   readonly generationTemplate: ChatMessageGenerationTemplate | null;
@@ -298,6 +298,9 @@ export async function loadNextUnclaimedQueuedUserMessage(
   if (!message) {
     return null;
   }
+  if (!message.userMessage) {
+    throw new Error("Queued input event is missing userMessage");
+  }
   const triggerSource = queuedUserMessageTriggerSourceSchema.safeParse(
     message.triggerSource,
   );
@@ -307,7 +310,11 @@ export async function loadNextUnclaimedQueuedUserMessage(
   if (!triggerSource.success) {
     return null;
   }
-  return { ...message, triggerSource: triggerSource.data };
+  return {
+    ...message,
+    userMessage: message.userMessage,
+    triggerSource: triggerSource.data,
+  };
 }
 
 export async function loadNextUnclaimedQueuedUserMessageId(

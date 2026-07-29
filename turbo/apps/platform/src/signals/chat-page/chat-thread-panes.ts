@@ -97,15 +97,6 @@ interface RestoredDraftState {
   readonly attachments: PersistedAttachment[];
 }
 
-function legacyDraftState(threadDraft: ChatThreadDraft): RestoredDraftState {
-  return {
-    content: threadDraft.draftContent ?? "",
-    userMessage: null,
-    generationTemplate: undefined,
-    attachments: threadDraft.draftAttachments ?? [],
-  };
-}
-
 function userMessageDraftAttachments(
   document: UserMessageDocument,
   attachments: readonly PersistedAttachment[],
@@ -177,9 +168,13 @@ const loadDraft$ = command(
     const features = get(featureSwitch$);
     const inlineTemplatesEnabled =
       features[FeatureSwitchKey.StructuredPromptInlineTemplates] ?? false;
-    const restoredDraft =
-      userMessageDraftState(threadDraft, inlineTemplatesEnabled) ??
-      legacyDraftState(threadDraft);
+    const restoredDraft = userMessageDraftState(
+      threadDraft,
+      inlineTemplatesEnabled,
+    );
+    if (!restoredDraft) {
+      return;
+    }
     const hasDraft =
       restoredDraft.content.length > 0 ||
       restoredDraft.userMessage !== null ||
