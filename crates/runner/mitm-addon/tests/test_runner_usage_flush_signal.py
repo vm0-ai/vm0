@@ -1,11 +1,13 @@
-"""Tests for runner-triggered usage flush hooks."""
+"""Tests for runner-triggered usage and JSONL flush lifecycles."""
 
 import json
 import multiprocessing
 import os
 import signal
 import threading
+import time
 from collections.abc import Callable, Iterator
+from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
 from unittest.mock import MagicMock, patch
@@ -31,6 +33,32 @@ _PROCESS_EXIT_TIMEOUT_SECONDS = 5
 
 def wait_for_usage_flush_worker_to_stop(timeout: float = 1.0) -> None:
     runner_flush_lifecycle.wait_for_runner_usage_flush_worker_to_stop_for_tests(timeout=timeout)
+
+
+def wait_for_jsonl_flush_state(
+    files: "RunnerUsageFlushFiles",
+    *,
+    flush_request_id: str = _DEFAULT_JSONL_FLUSH_REQUEST_ID,
+    pending: int | None = None,
+    timeout: float = 1.0,
+) -> dict[str, object]:
+    deadline = time.monotonic() + timeout
+    while True:
+        try:
+            state = json.loads(files.jsonl_flush_state_path.read_text())
+        except (OSError, json.JSONDecodeError):
+            state = None
+        if (
+            isinstance(state, dict)
+            and state.get("flushRequestId") == flush_request_id
+            and (pending is None or state.get("pending") == pending)
+        ):
+            return state
+
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            raise AssertionError(f"JSONL flush state did not acknowledge {flush_request_id}")
+        time.sleep(min(0.005, remaining))
 
 
 def record_stranded_runner_usage_flush_signal() -> None:
@@ -146,6 +174,16 @@ def runner_usage_flush_files(tmp_path: Path) -> Iterator[RunnerUsageFlushFiles]:
         usage.set_pending_path("")
 
 
+@contextmanager
+def running_jsonl_flush_worker(files: RunnerUsageFlushFiles) -> Iterator[None]:
+    with patch.object(runner_flush_lifecycle, "__file__", str(files.lifecycle_file)):
+        runner_flush_lifecycle.start_runner_jsonl_flush_worker()
+        try:
+            yield
+        finally:
+            runner_flush_lifecycle.stop_runner_jsonl_flush_worker_for_tests()
+
+
 class _InstrumentedFlushOwnerLock:
     def __init__(self) -> None:
         self._lock = threading.Lock()
@@ -244,7 +282,7 @@ class TestRunnerUsageFlushSignal:
         release_shutdown_flush = threading.Event()
         calls: list[str] = []
         runner_usage_flush_files.write_usage_flush_request()
-        log_path = runner_usage_flush_files.write_jsonl_flush_request()
+        log_path = runner_usage_flush_files.network_log_path
 
         def flush_usage_events(*, trigger: str) -> int:
             calls.append(f"flush:{trigger}")
@@ -286,6 +324,7 @@ class TestRunnerUsageFlushSignal:
             patch.object(mitm_addon, "shutdown_log_writer", lambda: calls.append("jsonl:shutdown")),
         ):
             try:
+                runner_flush_lifecycle.start_runner_jsonl_flush_worker()
                 done_thread.start()
                 wait_for_event(
                     shutdown_flush_started,
@@ -295,9 +334,12 @@ class TestRunnerUsageFlushSignal:
                 )
 
                 runner_flush_lifecycle.handle_runner_usage_flush_signal(0, None)
+                runner_usage_flush_files.write_jsonl_flush_request(log_path=log_path)
+                state = wait_for_jsonl_flush_state(runner_usage_flush_files)
+                assert state["path"] == str(log_path)
+                assert state["pending"] == 0
                 state_before_release = json.loads(runner_usage_flush_files.pending_path.read_text())
                 assert "flushRequestId" not in state_before_release
-                assert not runner_usage_flush_files.jsonl_flush_state_path.exists()
 
                 release_shutdown_flush.set()
                 done_thread.join_and_raise(timeout=1)
@@ -353,24 +395,20 @@ class TestRunnerUsageFlushSignal:
             flush_request_id="request-1",
         )
 
-    def test_signal_handler_acknowledges_jsonl_flush_request(
+    def test_jsonl_watcher_acknowledges_flush_request(
         self, runner_usage_flush_files: RunnerUsageFlushFiles
     ):
         log_path = runner_usage_flush_files.write_jsonl_flush_request()
 
         with (
-            patch.object(
-                runner_flush_lifecycle, "__file__", str(runner_usage_flush_files.lifecycle_file)
-            ),
             patch.object(logging_utils.ctx, "log", MagicMock(), create=True),
+            running_jsonl_flush_worker(runner_usage_flush_files),
         ):
             logging_utils.log_network_entry(str(log_path), {"action": "ALLOW"})
-            runner_flush_lifecycle.handle_runner_usage_flush_signal(0, None)
-            wait_for_usage_flush_worker_to_stop()
+            state = wait_for_jsonl_flush_state(runner_usage_flush_files)
 
         entry = json.loads(log_path.read_text().strip())
         assert entry["action"] == "ALLOW"
-        state = json.loads(runner_usage_flush_files.jsonl_flush_state_path.read_text())
         assert state == {
             "pid": state["pid"],
             "usageStateId": "runner-state",
@@ -386,13 +424,10 @@ class TestRunnerUsageFlushSignal:
         runner_usage_flush_files.write_jsonl_flush_request(flush_request_id="../jsonl-request-1")
 
         with (
-            patch.object(
-                runner_flush_lifecycle, "__file__", str(runner_usage_flush_files.lifecycle_file)
-            ),
             patch.object(logging_utils, "flush_log_path") as flush_log_path,
+            running_jsonl_flush_worker(runner_usage_flush_files),
         ):
-            runner_flush_lifecycle.handle_runner_usage_flush_signal(0, None)
-            wait_for_usage_flush_worker_to_stop()
+            pass
 
         flush_log_path.assert_not_called()
         assert not runner_usage_flush_files.jsonl_flush_state_path.exists()
@@ -413,7 +448,7 @@ class TestRunnerUsageFlushSignal:
         flush_log_path.assert_not_called()
         assert not runner_usage_flush_files.jsonl_flush_state_path.exists()
 
-    def test_jsonl_flush_failure_writes_pending_state(
+    def test_jsonl_flush_exception_writes_pending_state(
         self, runner_usage_flush_files: RunnerUsageFlushFiles
     ):
         log_path = runner_usage_flush_files.write_jsonl_flush_request()
@@ -426,8 +461,7 @@ class TestRunnerUsageFlushSignal:
             patch.object(logging_utils, "flush_log_path", side_effect=RuntimeError("secret")),
             patch.object(runner_flush_lifecycle.ctx, "log", log, create=True),
         ):
-            runner_flush_lifecycle.handle_runner_usage_flush_signal(0, None)
-            wait_for_usage_flush_worker_to_stop()
+            runner_flush_lifecycle._flush_jsonl_for_runner_request()
 
         state = json.loads(runner_usage_flush_files.jsonl_flush_state_path.read_text())
         assert state == {
@@ -467,90 +501,75 @@ class TestRunnerUsageFlushSignal:
                 "RUNNER_JSONL_FLUSH_TIMEOUT_SECONDS",
                 0.01,
             ),
+            patch.object(
+                logging_utils,
+                "flush_log_path",
+                wraps=logging_utils.flush_log_path,
+            ) as flush_log_path,
             patch.object(runner_flush_lifecycle.ctx, "log", log, create=True),
         ):
             try:
                 logging_utils.log_network_entry(str(log_path), {"action": "ALLOW"})
                 assert append_started.wait(timeout=1)
 
-                runner_flush_lifecycle.handle_runner_usage_flush_signal(0, None)
-                wait_for_usage_flush_worker_to_stop()
-
-                state = json.loads(runner_usage_flush_files.jsonl_flush_state_path.read_text())
-                assert state == {
-                    "pid": state["pid"],
-                    "usageStateId": "runner-state",
-                    "updatedAtMs": state["updatedAtMs"],
-                    "flushRequestId": "jsonl-request-1",
-                    "path": str(log_path),
-                    "pending": 1,
-                }
-
-                with patch.object(logging_utils, "flush_log_path") as retry_flush:
-                    runner_flush_lifecycle.handle_runner_usage_flush_signal(0, None)
-                    wait_for_usage_flush_worker_to_stop()
-
-                retry_flush.assert_not_called()
+                runner_flush_lifecycle.start_runner_jsonl_flush_worker()
+                state = wait_for_jsonl_flush_state(runner_usage_flush_files)
+                runner_flush_lifecycle.stop_runner_jsonl_flush_worker_for_tests()
             finally:
+                runner_flush_lifecycle.stop_runner_jsonl_flush_worker_for_tests()
                 release_append.set()
                 jsonl_writer.reset_for_tests()
 
+        assert state == {
+            "pid": state["pid"],
+            "usageStateId": "runner-state",
+            "updatedAtMs": state["updatedAtMs"],
+            "flushRequestId": "jsonl-request-1",
+            "path": str(log_path),
+            "pending": 1,
+        }
+        flush_log_path.assert_called_once_with(str(log_path), timeout=0.01)
         log.warn.assert_called_once_with("JSONL flush did not complete before timeout")
 
-    def test_signal_handler_does_not_reprocess_acknowledged_jsonl_flush_request(
+    def test_jsonl_watcher_does_not_reprocess_acknowledged_request(
         self, runner_usage_flush_files: RunnerUsageFlushFiles
     ):
         log_path = runner_usage_flush_files.write_jsonl_flush_request()
 
         with (
-            patch.object(
-                runner_flush_lifecycle, "__file__", str(runner_usage_flush_files.lifecycle_file)
-            ),
             patch.object(logging_utils, "flush_log_path") as flush_log_path,
             patch.object(runner_flush_lifecycle.ctx, "log", MagicMock(), create=True),
+            running_jsonl_flush_worker(runner_usage_flush_files),
         ):
-            runner_flush_lifecycle.handle_runner_usage_flush_signal(0, None)
-            wait_for_usage_flush_worker_to_stop()
-            runner_flush_lifecycle.handle_runner_usage_flush_signal(0, None)
-            wait_for_usage_flush_worker_to_stop()
+            wait_for_jsonl_flush_state(runner_usage_flush_files)
 
         flush_log_path.assert_called_once_with(
             str(log_path),
             timeout=runner_flush_lifecycle.RUNNER_JSONL_FLUSH_TIMEOUT_SECONDS,
         )
 
-    def test_jsonl_flush_failure_is_retryable(
+    def test_jsonl_flush_exception_is_retried_by_watcher(
         self, runner_usage_flush_files: RunnerUsageFlushFiles
     ):
         log_path = runner_usage_flush_files.write_jsonl_flush_request()
 
         with (
-            patch.object(
-                runner_flush_lifecycle, "__file__", str(runner_usage_flush_files.lifecycle_file)
-            ),
             patch.object(runner_flush_lifecycle.ctx, "log", MagicMock(), create=True),
-        ):
-            with patch.object(
+            patch.object(
                 logging_utils,
                 "flush_log_path",
-                side_effect=RuntimeError("flush failed"),
-            ) as failed_flush:
-                runner_flush_lifecycle.handle_runner_usage_flush_signal(0, None)
-                wait_for_usage_flush_worker_to_stop()
+                side_effect=(RuntimeError("flush failed"), True),
+            ) as flush_log_path,
+            running_jsonl_flush_worker(runner_usage_flush_files),
+        ):
+            state = wait_for_jsonl_flush_state(runner_usage_flush_files, pending=0)
 
-            with patch.object(logging_utils, "flush_log_path") as retry_flush:
-                runner_flush_lifecycle.handle_runner_usage_flush_signal(0, None)
-                wait_for_usage_flush_worker_to_stop()
-
-        failed_flush.assert_called_once_with(
-            str(log_path),
-            timeout=runner_flush_lifecycle.RUNNER_JSONL_FLUSH_TIMEOUT_SECONDS,
-        )
-        retry_flush.assert_called_once_with(
-            str(log_path),
-            timeout=runner_flush_lifecycle.RUNNER_JSONL_FLUSH_TIMEOUT_SECONDS,
-        )
-        state = json.loads(runner_usage_flush_files.jsonl_flush_state_path.read_text())
+        assert flush_log_path.call_count == 2
+        for flush_call in flush_log_path.call_args_list:
+            assert flush_call.args == (str(log_path),)
+            assert flush_call.kwargs == {
+                "timeout": runner_flush_lifecycle.RUNNER_JSONL_FLUSH_TIMEOUT_SECONDS
+            }
         assert state["pending"] == 0
 
     def test_jsonl_flush_acknowledgement_write_failure_is_retryable(
@@ -577,36 +596,18 @@ class TestRunnerUsageFlushSignal:
 
         with (
             patch.object(
-                runner_flush_lifecycle, "__file__", str(runner_usage_flush_files.lifecycle_file)
-            ),
-            patch.object(
                 logging_utils,
                 "flush_log_path",
                 wraps=logging_utils.flush_log_path,
             ) as flush_log_path,
             patch.object(runner_flush_lifecycle.ctx, "log", MagicMock(), create=True),
+            patch.object(Path, "replace", new=fail_first_state_replace),
+            running_jsonl_flush_worker(runner_usage_flush_files),
         ):
-            with patch.object(Path, "replace", new=fail_first_state_replace):
-                runner_flush_lifecycle.handle_runner_usage_flush_signal(0, None)
-                wait_for_usage_flush_worker_to_stop()
+            state = wait_for_jsonl_flush_state(runner_usage_flush_files)
 
-            assert failure_injected
-            flush_log_path.assert_called_once_with(
-                str(log_path),
-                timeout=runner_flush_lifecycle.RUNNER_JSONL_FLUSH_TIMEOUT_SECONDS,
-            )
-            assert not state_path.exists()
-            assert not tmp_state_path.exists()
-
-            runner_flush_lifecycle.handle_runner_usage_flush_signal(0, None)
-            wait_for_usage_flush_worker_to_stop()
-
+        assert failure_injected
         assert flush_log_path.call_count == 2
-        flush_log_path.assert_called_with(
-            str(log_path),
-            timeout=runner_flush_lifecycle.RUNNER_JSONL_FLUSH_TIMEOUT_SECONDS,
-        )
-        state = json.loads(state_path.read_text())
         assert state == {
             "pid": state["pid"],
             "usageStateId": "runner-state",
@@ -616,6 +617,67 @@ class TestRunnerUsageFlushSignal:
             "pending": 0,
         }
         assert not tmp_state_path.exists()
+
+    def test_jsonl_watcher_acknowledges_rapid_sequential_paths(
+        self, runner_usage_flush_files: RunnerUsageFlushFiles
+    ):
+        first_path = runner_usage_flush_files.write_jsonl_flush_request()
+        second_path = runner_usage_flush_files.tmp_path / "network-2.jsonl"
+
+        with (
+            patch.object(logging_utils, "flush_log_path", return_value=True) as flush_log_path,
+            running_jsonl_flush_worker(runner_usage_flush_files),
+        ):
+            first_state = wait_for_jsonl_flush_state(runner_usage_flush_files)
+            runner_usage_flush_files.write_jsonl_flush_request(
+                flush_request_id="jsonl-request-2",
+                log_path=second_path,
+            )
+            second_state = wait_for_jsonl_flush_state(
+                runner_usage_flush_files,
+                flush_request_id="jsonl-request-2",
+            )
+
+        assert first_state["path"] == str(first_path)
+        assert first_state["pending"] == 0
+        assert second_state["path"] == str(second_path)
+        assert second_state["pending"] == 0
+        assert [flush_call.args for flush_call in flush_log_path.call_args_list] == [
+            (str(first_path),),
+            (str(second_path),),
+        ]
+
+    def test_jsonl_watcher_rejects_previous_usage_generation(
+        self, runner_usage_flush_files: RunnerUsageFlushFiles
+    ):
+        runner_usage_flush_files.write_jsonl_flush_request()
+        marker = json.loads(runner_usage_flush_files.jsonl_flush_request_path.read_text())
+        marker["usageStateId"] = "previous-runner-state"
+        runner_usage_flush_files.jsonl_flush_request_path.write_text(json.dumps(marker))
+
+        with (
+            patch.object(logging_utils, "flush_log_path") as flush_log_path,
+            running_jsonl_flush_worker(runner_usage_flush_files),
+        ):
+            pass
+
+        flush_log_path.assert_not_called()
+        assert not runner_usage_flush_files.jsonl_flush_state_path.exists()
+
+    def test_jsonl_watcher_final_observation_processes_published_marker(
+        self, runner_usage_flush_files: RunnerUsageFlushFiles
+    ):
+        with patch.object(
+            runner_flush_lifecycle, "__file__", str(runner_usage_flush_files.lifecycle_file)
+        ):
+            runner_flush_lifecycle.start_runner_jsonl_flush_worker()
+            log_path = runner_usage_flush_files.write_jsonl_flush_request()
+            runner_flush_lifecycle.stop_runner_jsonl_flush_worker_for_tests()
+
+        state = json.loads(runner_usage_flush_files.jsonl_flush_state_path.read_text())
+        assert state["flushRequestId"] == _DEFAULT_JSONL_FLUSH_REQUEST_ID
+        assert state["path"] == str(log_path)
+        assert state["pending"] == 0
 
     def test_runner_flush_failure_warns_without_error_text(self):
         log = MagicMock()

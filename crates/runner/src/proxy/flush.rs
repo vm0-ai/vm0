@@ -5,7 +5,7 @@ use std::sync::{Arc, Mutex};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use serde::{Deserialize, Serialize};
-use tokio::sync::{Mutex as AsyncMutex, mpsc};
+use tokio::sync::Mutex as AsyncMutex;
 use tracing::{error, warn};
 use uuid::Uuid;
 
@@ -32,9 +32,6 @@ const USAGE_FLUSH_REQUEST_INTERVAL: Duration = Duration::from_secs(1);
 
 /// Poll interval when waiting for a single JSONL path flush.
 const JSONL_FLUSH_POLL: Duration = Duration::from_millis(50);
-
-/// Minimum interval between repeated JSONL flush signals while the addon is not ready.
-const JSONL_FLUSH_REQUEST_INTERVAL: Duration = Duration::from_millis(250);
 
 /// Tolerated wall-clock skew when validating addon timestamps.
 const USAGE_PENDING_CLOCK_SKEW: Duration = Duration::from_secs(300);
@@ -156,6 +153,7 @@ impl From<&JsonlFlushState> for JsonlFlushSnapshot {
 enum FlushReadiness<S> {
     Ready,
     NotReady {
+        phase: &'static str,
         not_ready: String,
         snapshot: Option<S>,
     },
@@ -163,9 +161,11 @@ enum FlushReadiness<S> {
 
 enum FlushWaitFailure<S> {
     RequestFailed {
+        phase: &'static str,
         not_ready: String,
     },
     TimedOut {
+        phase: &'static str,
         not_ready: String,
         snapshot: Option<S>,
     },
@@ -176,7 +176,6 @@ pub struct MitmJsonlFlushHandle {
     pub(super) addon_dir: PathBuf,
     pub(super) usage_state: Arc<Mutex<UsageFlushTarget>>,
     pub(super) request_lock: Arc<AsyncMutex<()>>,
-    pub(super) request_flush_tx: mpsc::Sender<()>,
 }
 
 pub(super) fn now_millis() -> u64 {
@@ -241,21 +240,7 @@ impl MitmJsonlFlushHandle {
                 return false;
             }
         };
-        if !self.request_flush() {
-            warn!(path = %path.display(), "failed to request JSONL flush");
-            return false;
-        }
-        wait_jsonl_flush_requesting(&self.addon_dir, JSONL_FLUSH_TIMEOUT, &request, || {
-            self.request_flush()
-        })
-        .await
-    }
-
-    fn request_flush(&self) -> bool {
-        match self.request_flush_tx.try_send(()) {
-            Ok(()) | Err(mpsc::error::TrySendError::Full(())) => true,
-            Err(mpsc::error::TrySendError::Closed(())) => false,
-        }
+        wait_jsonl_flush(&self.addon_dir, JSONL_FLUSH_TIMEOUT, &request).await
     }
 }
 
@@ -429,12 +414,11 @@ pub async fn wait_usage_flush_requesting(
     request: &UsageFlushRequest,
     request_flush: impl FnMut() -> bool,
 ) -> bool {
-    match wait_flush_requesting(
+    match wait_flush(
         addon_dir,
         "usage-pending",
         timeout,
         USAGE_FLUSH_POLL,
-        USAGE_FLUSH_REQUEST_INTERVAL,
         |content| match parse_usage_pending_state(content) {
             Ok(state) => {
                 let snapshot = Some(UsagePendingSnapshot::from(&state));
@@ -443,6 +427,7 @@ pub async fn wait_usage_flush_requesting(
                         FlushReadiness::Ready
                     }
                     Ok(()) => FlushReadiness::NotReady {
+                        phase: "pending_delivery",
                         not_ready: format!(
                             "pending flows={} buffered={} reports={}",
                             state.flows, state.buffered, state.reports
@@ -450,27 +435,30 @@ pub async fn wait_usage_flush_requesting(
                         snapshot,
                     },
                     Err(not_ready) => FlushReadiness::NotReady {
+                        phase: "state_validation",
                         not_ready,
                         snapshot,
                     },
                 }
             }
             Err(not_ready) => FlushReadiness::NotReady {
+                phase: "state_read",
                 not_ready,
                 snapshot: None,
             },
         },
-        request_flush,
+        Some((USAGE_FLUSH_REQUEST_INTERVAL, request_flush)),
     )
     .await
     {
         Ok(()) => true,
-        Err(FlushWaitFailure::RequestFailed { not_ready }) => {
+        Err(FlushWaitFailure::RequestFailed { phase, not_ready }) => {
             error!(
                 r#type = "usage_underbilling",
                 reason = "usage_flush_request_failed",
                 underbilling_class = "risk",
                 component = "runner",
+                phase,
                 not_ready = %not_ready,
                 request_usage_state_id = %request.core.expected_usage_state_id,
                 request_id = %request.core.flush_request_id,
@@ -479,6 +467,7 @@ pub async fn wait_usage_flush_requesting(
             false
         }
         Err(FlushWaitFailure::TimedOut {
+            phase,
             not_ready,
             snapshot,
         }) => {
@@ -489,6 +478,7 @@ pub async fn wait_usage_flush_requesting(
                         reason = "usage_flush_timeout",
                         underbilling_class = "risk",
                         component = "runner",
+                        phase,
                         timeout_secs = timeout.as_secs(),
                         not_ready = %not_ready,
                         pid = snapshot.pid,
@@ -507,6 +497,7 @@ pub async fn wait_usage_flush_requesting(
                         reason = "usage_flush_timeout",
                         underbilling_class = "risk",
                         component = "runner",
+                        phase,
                         timeout_secs = timeout.as_secs(),
                         not_ready = %not_ready,
                         request_usage_state_id = %request.core.expected_usage_state_id,
@@ -520,40 +511,57 @@ pub async fn wait_usage_flush_requesting(
     }
 }
 
-async fn wait_flush_requesting<S>(
+async fn wait_flush<S, F>(
     addon_dir: &Path,
     state_file_name: &str,
     timeout: Duration,
     poll_interval: Duration,
-    repeat_request_interval: Duration,
     mut evaluate_state: impl FnMut(&str) -> FlushReadiness<S>,
-    mut request_flush: impl FnMut() -> bool,
-) -> Result<(), FlushWaitFailure<S>> {
+    mut repeat_request: Option<(Duration, F)>,
+) -> Result<(), FlushWaitFailure<S>>
+where
+    F: FnMut() -> bool,
+{
     let path = addon_dir.join(state_file_name);
     let started_at = tokio::time::Instant::now();
     let deadline = started_at + timeout;
-    let mut next_flush_request_at = started_at + repeat_request_interval;
+    let mut next_flush_request_at = repeat_request
+        .as_ref()
+        .map(|(repeat_request_interval, _)| started_at + *repeat_request_interval);
     loop {
-        let (not_ready, snapshot) = match read_addon_state_file(&path).await {
+        let (phase, not_ready, snapshot) = match read_addon_state_file(&path).await {
             Ok(Some(content)) => match evaluate_state(&content) {
                 FlushReadiness::Ready => return Ok(()),
                 FlushReadiness::NotReady {
+                    phase,
                     not_ready,
                     snapshot,
-                } => (not_ready, snapshot),
+                } => (phase, not_ready, snapshot),
             },
-            Ok(None) => (format!("cannot read {}: not found", path.display()), None),
-            Err(e) => (format!("cannot read {}: {e}", path.display()), None),
+            Ok(None) => (
+                "state_read",
+                format!("cannot read {}: not found", path.display()),
+                None,
+            ),
+            Err(e) => (
+                "state_read",
+                format!("cannot read {}: {e}", path.display()),
+                None,
+            ),
         };
         let now = tokio::time::Instant::now();
-        if now >= next_flush_request_at {
+        if let Some(next_request_at) = next_flush_request_at.as_mut()
+            && let Some((repeat_request_interval, request_flush)) = repeat_request.as_mut()
+            && now >= *next_request_at
+        {
             if !request_flush() {
-                return Err(FlushWaitFailure::RequestFailed { not_ready });
+                return Err(FlushWaitFailure::RequestFailed { phase, not_ready });
             }
-            next_flush_request_at = now + repeat_request_interval;
+            *next_request_at = now + *repeat_request_interval;
         }
         if now >= deadline {
             return Err(FlushWaitFailure::TimedOut {
+                phase,
                 not_ready,
                 snapshot,
             });
@@ -562,68 +570,71 @@ async fn wait_flush_requesting<S>(
     }
 }
 
-#[cfg(test)]
 async fn wait_jsonl_flush(
     addon_dir: &Path,
     timeout: Duration,
     request: &JsonlFlushRequest,
 ) -> bool {
-    wait_jsonl_flush_requesting(addon_dir, timeout, request, || true).await
-}
-
-async fn wait_jsonl_flush_requesting(
-    addon_dir: &Path,
-    timeout: Duration,
-    request: &JsonlFlushRequest,
-    request_flush: impl FnMut() -> bool,
-) -> bool {
-    match wait_flush_requesting(
+    match wait_flush::<_, fn() -> bool>(
         addon_dir,
         "jsonl-flush-state",
         timeout,
         JSONL_FLUSH_POLL,
-        JSONL_FLUSH_REQUEST_INTERVAL,
         |content| match parse_jsonl_flush_state(content) {
             Ok(state) => {
                 let snapshot = Some(JsonlFlushSnapshot::from(&state));
                 match validate_jsonl_flush_state(&state, request, now_millis()) {
                     Ok(()) if state.pending == 0 => FlushReadiness::Ready,
                     Ok(()) => FlushReadiness::NotReady {
+                        phase: "path_drain",
                         not_ready: format!("pending writes={}", state.pending),
                         snapshot,
                     },
                     Err(not_ready) => FlushReadiness::NotReady {
+                        phase: "state_validation",
                         not_ready,
                         snapshot,
                     },
                 }
             }
             Err(not_ready) => FlushReadiness::NotReady {
+                phase: "state_read",
                 not_ready,
                 snapshot: None,
             },
         },
-        request_flush,
+        None,
     )
     .await
     {
         Ok(()) => true,
-        Err(FlushWaitFailure::RequestFailed { not_ready }) => {
+        Err(FlushWaitFailure::RequestFailed { phase, not_ready }) => {
             warn!(
+                phase,
                 reason = %not_ready,
-                "JSONL flush request failed, proceeding with network log upload"
+                expected_request_id = %request.core.flush_request_id,
+                expected_usage_state_id = %request.core.expected_usage_state_id,
+                expected_path = %request.path,
+                expected_requested_at_ms = request.core.requested_at_ms,
+                "JSONL flush wait stopped, proceeding with network log upload"
             );
             false
         }
         Err(FlushWaitFailure::TimedOut {
+            phase,
             not_ready,
             snapshot,
         }) => {
             match snapshot {
                 Some(snapshot) => {
                     warn!(
+                        phase,
                         timeout_secs = timeout.as_secs(),
                         reason = %not_ready,
+                        expected_request_id = %request.core.flush_request_id,
+                        expected_usage_state_id = %request.core.expected_usage_state_id,
+                        expected_path = %request.path,
+                        expected_requested_at_ms = request.core.requested_at_ms,
                         pid = snapshot.pid,
                         usage_state_id = %snapshot.usage_state_id,
                         updated_at_ms = snapshot.updated_at_ms,
@@ -635,8 +646,13 @@ async fn wait_jsonl_flush_requesting(
                 }
                 None => {
                     warn!(
+                        phase,
                         timeout_secs = timeout.as_secs(),
                         reason = %not_ready,
+                        expected_request_id = %request.core.flush_request_id,
+                        expected_usage_state_id = %request.core.expected_usage_state_id,
+                        expected_path = %request.path,
+                        expected_requested_at_ms = request.core.requested_at_ms,
                         "JSONL flush timed out, proceeding with network log upload"
                     );
                 }
@@ -696,11 +712,35 @@ mod tests {
         );
     }
 
+    fn assert_jsonl_expected_fields(event: &CapturedEvent, path: &Path, phase: &str) {
+        assert_event_field(event, "phase", phase);
+        assert_event_field(event, "expected_request_id", "jsonl-request-test");
+        assert_event_field(event, "expected_usage_state_id", "state-test");
+        assert_event_field(event, "expected_path", &path.to_string_lossy());
+        assert_event_field(event, "expected_requested_at_ms", "1770000000000");
+    }
+
     fn usage_target() -> UsageFlushTarget {
         UsageFlushTarget {
             expected_usage_state_id: "state-test".to_string(),
             usage_state_started_at_ms: 1_770_000_000_000,
         }
+    }
+
+    async fn wait_for_jsonl_request(addon_dir: &Path, expected_path: &Path) -> serde_json::Value {
+        tokio::time::timeout(Duration::from_secs(1), async {
+            loop {
+                if let Ok(content) = std::fs::read_to_string(addon_dir.join("jsonl-flush-request"))
+                    && let Ok(marker) = serde_json::from_str::<serde_json::Value>(&content)
+                    && marker["path"] == expected_path.to_string_lossy().as_ref()
+                {
+                    return marker;
+                }
+                tokio::task::yield_now().await;
+            }
+        })
+        .await
+        .expect("JSONL flush request was not published")
     }
 
     fn usage_request() -> UsageFlushRequest {
@@ -936,67 +976,6 @@ mod tests {
     }
 
     #[tokio::test(start_paused = true)]
-    async fn wait_jsonl_flush_requests_flush_when_pending() {
-        let dir = tempfile::tempdir().unwrap();
-        let log_path = dir.path().join("network.jsonl");
-        let request = jsonl_request(&log_path);
-        let path = dir.path().join("jsonl-flush-state");
-        std::fs::write(&path, jsonl_state(&log_path, 1)).unwrap();
-        let request_count = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
-
-        let p = path.clone();
-        let l = log_path.clone();
-        let requests = std::sync::Arc::clone(&request_count);
-        let flushed =
-            wait_jsonl_flush_requesting(dir.path(), Duration::from_secs(5), &request, || {
-                requests.fetch_add(1, Ordering::SeqCst);
-                std::fs::write(&p, jsonl_state(&l, 0)).unwrap();
-                true
-            })
-            .await;
-
-        assert!(flushed);
-        assert_eq!(request_count.load(Ordering::SeqCst), 1);
-    }
-
-    #[tokio::test(start_paused = true)]
-    async fn wait_jsonl_flush_request_failure_at_deadline_logs_warning() {
-        let dir = tempfile::tempdir().unwrap();
-        let log_path = dir.path().join("network.jsonl");
-        let request = jsonl_request(&log_path);
-        std::fs::write(
-            dir.path().join("jsonl-flush-state"),
-            jsonl_state(&log_path, 1),
-        )
-        .unwrap();
-        let request_count = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
-
-        let requests = std::sync::Arc::clone(&request_count);
-        let (flushed, events) = capture_async_log_events(wait_jsonl_flush_requesting(
-            dir.path(),
-            JSONL_FLUSH_REQUEST_INTERVAL,
-            &request,
-            || {
-                requests.fetch_add(1, Ordering::SeqCst);
-                false
-            },
-        ))
-        .await;
-
-        assert!(!flushed);
-        assert_eq!(request_count.load(Ordering::SeqCst), 1);
-        assert_eq!(events.len(), 1, "captured events: {events:#?}");
-        let event = &events[0];
-        assert_eq!(event.level, Level::WARN);
-        assert_event_field(
-            event,
-            "message",
-            "JSONL flush request failed, proceeding with network log upload",
-        );
-        assert_event_field(event, "reason", "pending writes=1");
-    }
-
-    #[tokio::test(start_paused = true)]
     async fn wait_jsonl_flush_timeout_logs_snapshot_fields() {
         let dir = tempfile::tempdir().unwrap();
         let log_path = dir.path().join("network.jsonl");
@@ -1024,6 +1003,7 @@ mod tests {
             "JSONL flush timed out, proceeding with network log upload",
         );
         assert_event_field(event, "reason", "pending writes=2");
+        assert_jsonl_expected_fields(event, &log_path, "path_drain");
         assert_event_field(event, "pid", "1234");
         assert_event_field(event, "flush_request_id", "jsonl-request-test");
         let log_path_string = log_path.to_string_lossy().to_string();
@@ -1058,6 +1038,7 @@ mod tests {
             event_field(event, "reason").starts_with("state file is not valid JSONL flush JSON:"),
             "event={event:#?}"
         );
+        assert_jsonl_expected_fields(event, &log_path, "state_read");
         assert_event_missing_field(event, "pid");
         assert_event_missing_field(event, "path");
         assert_event_missing_field(event, "pending");
@@ -1096,6 +1077,7 @@ mod tests {
             "reason",
             "JSONL flush path does not match current request",
         );
+        assert_jsonl_expected_fields(event, &log_path, "state_validation");
         assert_event_field(event, "pid", "1234");
         assert_event_field(event, "flush_request_id", "jsonl-request-test");
         let other_path_string = other_path.to_string_lossy().to_string();
@@ -1104,26 +1086,21 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn jsonl_flush_handle_writes_request_and_sends_flush_signal() {
+    async fn jsonl_flush_handle_completes_without_usage_channel() {
         let dir = tempfile::tempdir().unwrap();
         let log_path = dir.path().join("network.jsonl");
-        let (tx, mut rx) = mpsc::channel(1);
         let usage_state = Arc::new(Mutex::new(usage_target()));
         let handle = MitmJsonlFlushHandle {
             addon_dir: dir.path().to_path_buf(),
             usage_state,
             request_lock: Arc::new(AsyncMutex::new(())),
-            request_flush_tx: tx,
         };
 
         let d = dir.path().to_path_buf();
         let l = log_path.clone();
         let waiter = tokio::spawn(async move { handle.flush_path(&l).await });
 
-        rx.recv().await.unwrap();
-        let marker: serde_json::Value =
-            serde_json::from_str(&std::fs::read_to_string(d.join("jsonl-flush-request")).unwrap())
-                .unwrap();
+        let marker = wait_for_jsonl_request(&d, &log_path).await;
         let state = serde_json::json!({
             "pid": 1234,
             "usageStateId": "state-test",
@@ -1142,23 +1119,17 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let first_log_path = dir.path().join("network-a.jsonl");
         let second_log_path = dir.path().join("network-b.jsonl");
-        let (tx, mut rx) = mpsc::channel(1);
         let handle = MitmJsonlFlushHandle {
             addon_dir: dir.path().to_path_buf(),
             usage_state: Arc::new(Mutex::new(usage_target())),
             request_lock: Arc::new(AsyncMutex::new(())),
-            request_flush_tx: tx,
         };
 
         let first_handle = handle.clone();
         let first_path = first_log_path.clone();
         let first = tokio::spawn(async move { first_handle.flush_path(&first_path).await });
 
-        rx.recv().await.unwrap();
-        let first_marker: serde_json::Value = serde_json::from_str(
-            &std::fs::read_to_string(dir.path().join("jsonl-flush-request")).unwrap(),
-        )
-        .unwrap();
+        let first_marker = wait_for_jsonl_request(dir.path(), &first_log_path).await;
         assert_eq!(
             first_marker["path"],
             first_log_path.to_string_lossy().to_string()
@@ -1168,7 +1139,14 @@ mod tests {
         let second_path = second_log_path.clone();
         let second = tokio::spawn(async move { second_handle.flush_path(&second_path).await });
         tokio::task::yield_now().await;
-        assert!(rx.try_recv().is_err());
+        let marker_while_first_is_pending: serde_json::Value = serde_json::from_str(
+            &std::fs::read_to_string(dir.path().join("jsonl-flush-request")).unwrap(),
+        )
+        .unwrap();
+        assert_eq!(
+            marker_while_first_is_pending["path"],
+            first_log_path.to_string_lossy().to_string()
+        );
 
         let first_state = serde_json::json!({
             "pid": 1234,
@@ -1185,11 +1163,7 @@ mod tests {
         .unwrap();
         assert!(first.await.unwrap());
 
-        rx.recv().await.unwrap();
-        let second_marker: serde_json::Value = serde_json::from_str(
-            &std::fs::read_to_string(dir.path().join("jsonl-flush-request")).unwrap(),
-        )
-        .unwrap();
+        let second_marker = wait_for_jsonl_request(dir.path(), &second_log_path).await;
         assert_eq!(
             second_marker["path"],
             second_log_path.to_string_lossy().to_string()
@@ -1217,18 +1191,13 @@ mod tests {
         let second_log_path = dir.path().join("network-b.jsonl");
         let (mut proxy, _crash_rx) = MitmProxy::noop();
         proxy.set_addon_dir_for_test(dir.path().to_path_buf());
-        let (tx, mut rx) = mpsc::channel(1);
-        let first_handle = proxy.jsonl_flush_handle(tx.clone());
-        let second_handle = proxy.jsonl_flush_handle(tx);
+        let first_handle = proxy.jsonl_flush_handle();
+        let second_handle = proxy.jsonl_flush_handle();
 
         let first_path = first_log_path.clone();
         let first = tokio::spawn(async move { first_handle.flush_path(&first_path).await });
 
-        rx.recv().await.unwrap();
-        let first_marker: serde_json::Value = serde_json::from_str(
-            &std::fs::read_to_string(dir.path().join("jsonl-flush-request")).unwrap(),
-        )
-        .unwrap();
+        let first_marker = wait_for_jsonl_request(dir.path(), &first_log_path).await;
         assert_eq!(
             first_marker["path"],
             first_log_path.to_string_lossy().to_string()
@@ -1237,7 +1206,14 @@ mod tests {
         let second_path = second_log_path.clone();
         let second = tokio::spawn(async move { second_handle.flush_path(&second_path).await });
         tokio::task::yield_now().await;
-        assert!(rx.try_recv().is_err());
+        let marker_while_first_is_pending: serde_json::Value = serde_json::from_str(
+            &std::fs::read_to_string(dir.path().join("jsonl-flush-request")).unwrap(),
+        )
+        .unwrap();
+        assert_eq!(
+            marker_while_first_is_pending["path"],
+            first_log_path.to_string_lossy().to_string()
+        );
 
         let first_state = serde_json::json!({
             "pid": 1234,
@@ -1254,11 +1230,7 @@ mod tests {
         .unwrap();
         assert!(first.await.unwrap());
 
-        rx.recv().await.unwrap();
-        let second_marker: serde_json::Value = serde_json::from_str(
-            &std::fs::read_to_string(dir.path().join("jsonl-flush-request")).unwrap(),
-        )
-        .unwrap();
+        let second_marker = wait_for_jsonl_request(dir.path(), &second_log_path).await;
         assert_eq!(
             second_marker["path"],
             second_log_path.to_string_lossy().to_string()

@@ -73,20 +73,18 @@ write_jsonl_flush_state() {
   now_ms="$(date +%s%3N)"
   printf '{"pid":%s,"usageStateId":"%s","updatedAtMs":%s,"flushRequestId":"%s","path":"%s","pending":0}' "$$" "$state_id" "$now_ms" "$flush_id" "$path" > "$jsonl_state"
 }
-handle_flush_request() {
-  write_pending_snapshot
-  write_jsonl_flush_state
-}
 mkfifo "$fifo"
 exec 3<>"$fifo"
-# Match the addon lifecycle: the signal handler only wakes the worker. File I/O
-# runs outside the trap, and every queued wake reads the latest request markers.
+# Match the addon lifecycle: SIGUSR1 only wakes usage work, while the JSONL
+# marker watcher progresses independently.
 trap 'printf "\n" >&3' USR1
 trap 'exit 0' TERM
 echo ready
 while true; do
-  read -r _ <&3 || true
-  handle_flush_request
+  if read -r -t 0.05 _ <&3; then
+    write_pending_snapshot
+  fi
+  write_jsonl_flush_state
 done
 "#,
     )
@@ -174,10 +172,7 @@ async fn deferred_network_log_upload_drains_on_graceful_shutdown() {
     install_usage_flush_child(&mut config).await;
     let addon_dir = config.paths.base_dir.join("mitm-addon");
     config.proxy.mitm.set_addon_dir_for_test(addon_dir.clone());
-    let mitm_jsonl_flush = config
-        .proxy
-        .mitm
-        .jsonl_flush_handle(config.usage_flush_tx.clone());
+    let mitm_jsonl_flush = config.proxy.mitm.jsonl_flush_handle();
     let write_started = Arc::new(tokio::sync::Notify::new());
     let release_write = Arc::new(tokio::sync::Semaphore::new(0));
     let network_log_manager =

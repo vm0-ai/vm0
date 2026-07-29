@@ -192,12 +192,11 @@ impl MitmProxy {
     }
 
     /// Create a cloneable handle for asking the addon to flush accepted JSONL writes.
-    pub fn jsonl_flush_handle(&self, request_flush_tx: mpsc::Sender<()>) -> MitmJsonlFlushHandle {
+    pub fn jsonl_flush_handle(&self) -> MitmJsonlFlushHandle {
         MitmJsonlFlushHandle {
             addon_dir: self.config.addon_dir.clone(),
             usage_state: Arc::clone(&self.usage_flush_state),
             request_lock: Arc::clone(&self.jsonl_flush_request_lock),
-            request_flush_tx,
         }
     }
 

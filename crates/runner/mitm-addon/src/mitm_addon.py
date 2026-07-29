@@ -211,6 +211,7 @@ def configure(updated: set[str]) -> None:
         ready_path = ctx.options.vm0_addon_ready_path
         usage_state_id = ctx.options.vm0_usage_state_id
         if ready_path and usage_state_id:
+            runner_flush_lifecycle.start_runner_jsonl_flush_worker()
             Path(ready_path).write_text(usage_state_id, encoding="utf-8")
 
 
