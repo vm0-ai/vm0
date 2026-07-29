@@ -50,6 +50,9 @@ _UTF8_MAX_CODEPOINT = 0x10FFFF
 _UTF8_SURROGATE_MIN = 0xD800
 _UTF8_SURROGATE_MAX = 0xDFFF
 _DEFAULT_MAX_DEPTH = 256
+_SLOW_SCALAR_BYTES_PER_WORK_UNIT = 32
+_DISCARDED_ASCII_BYTES_PER_WORK_UNIT = 64 * 1024
+JSON_WORK_LIMIT_EXCEEDED = "work limit exceeded"
 _JSON_STRING_OR_CONTAINER_RE = re.compile(rb'"(?:\\.|[^"\\])*"|[{}\[\]]', re.DOTALL)
 
 
@@ -205,6 +208,7 @@ class JsonSelectiveExtractor:
         max_key_bytes: int = 1024,
         max_number_bytes: int = 128,
         max_wildcard_keys: int = 256,
+        max_work_units: int | None = None,
     ) -> None:
         """Create an extractor for selected JSON observations.
 
@@ -214,6 +218,8 @@ class JsonSelectiveExtractor:
         ``max_number_bytes`` bounds number tokens and fails with
         ``"number limit exceeded"``. ``max_wildcard_keys`` bounds distinct
         wildcard keys and fails with ``"max wildcard keys exceeded"``.
+        ``max_work_units`` optionally bounds total parser work across all
+        chunks and fails with ``"work limit exceeded"``.
         """
         self.scalar_fields = dict(scalar_fields) if scalar_fields is not None else {}
         self.array_count_paths = set(array_count_paths) if array_count_paths is not None else set()
@@ -227,6 +233,7 @@ class JsonSelectiveExtractor:
         self.max_key_bytes = max_key_bytes
         self.max_number_bytes = max_number_bytes
         self.max_wildcard_keys = max_wildcard_keys
+        self.max_work_units = max_work_units
         _validate_extractor_config(
             self.scalar_fields,
             self.array_count_paths,
@@ -236,6 +243,7 @@ class JsonSelectiveExtractor:
             max_key_bytes=self.max_key_bytes,
             max_number_bytes=self.max_number_bytes,
             max_wildcard_keys=self.max_wildcard_keys,
+            max_work_units=self.max_work_units,
         )
         key_collection_paths = _build_key_collection_paths(
             set(self.scalar_fields)
@@ -264,6 +272,9 @@ class JsonSelectiveExtractor:
         self._string: _StringState | None = None
         self._number: _NumberState | None = None
         self._literal: _LiteralState | None = None
+        self._work_units_used = 0
+        self._slow_work_bytes_remaining = 0
+        self._discarded_ascii_work_bytes_remaining = 0
 
     def feed(self, chunk: bytes) -> None:
         """Consume the next bytes for this JSON document.
@@ -327,6 +338,8 @@ class JsonSelectiveExtractor:
         )
 
     def _consume_main(self, chunk: bytes, i: int) -> int:
+        if not self._consume_work_unit():
+            return i
         b = chunk[i]
         if b in b" \t\r\n":
             return i + 1
@@ -602,65 +615,71 @@ class JsonSelectiveExtractor:
             and not state.escape
             and not state.unicode_remaining
             and not state.utf8_remaining
+            and _is_discarded_ascii_string_byte(chunk[i])
         ):
-            if chunk[i] == ord('"'):
-                self._finish_string(state)
-                self._string = None
-                return i + 1
-            match = _DISCARDED_STRING_STATE_BYTE_RE.search(chunk, i)
+            end = self._discarded_ascii_work_span_end(len(chunk), i)
+            if self._error:
+                return i
+            match = _DISCARDED_STRING_STATE_BYTE_RE.search(chunk, i, end)
             if match is None:
-                return len(chunk)
-            i = match.start()
-            if chunk[i] == ord('"'):
-                self._finish_string(state)
-                self._string = None
-                return i + 1
-        while i < len(chunk):
-            b = chunk[i]
-            i += 1
+                self._record_discarded_ascii_work(end - i)
+                return end
+            skipped = match.start() - i
+            self._record_discarded_ascii_work(skipped)
+            return i + skipped
 
-            if state.unicode_remaining:
-                if not _is_hex_byte(b):
-                    self._error = "invalid unicode escape"
-                    return i
-                self._append_string_byte(state, b)
-                if self._error:
-                    return i
-                state.unicode_remaining -= 1
-                continue
+        end = self._slow_work_span_end(len(chunk), i)
+        if self._error:
+            return i
+        start = i
+        try:
+            while i < end:
+                b = chunk[i]
+                i += 1
 
-            if state.escape:
-                if b not in b'"\\/bfnrtu':
-                    self._error = "invalid string escape"
-                    return i
-                self._append_string_byte(state, b)
-                if self._error:
-                    return i
-                state.escape = False
-                if b == ord("u"):
-                    state.unicode_remaining = 4
-                continue
+                if state.unicode_remaining:
+                    if not _is_hex_byte(b):
+                        self._error = "invalid unicode escape"
+                        return i
+                    self._append_string_byte(state, b)
+                    if self._error:
+                        return i
+                    state.unicode_remaining -= 1
+                    continue
 
-            if b == ord("\\"):
+                if state.escape:
+                    if b not in b'"\\/bfnrtu':
+                        self._error = "invalid string escape"
+                        return i
+                    self._append_string_byte(state, b)
+                    if self._error:
+                        return i
+                    state.escape = False
+                    if b == ord("u"):
+                        state.unicode_remaining = 4
+                    continue
+
+                if b == ord("\\"):
+                    self._accept_string_byte(state, b)
+                    if self._error:
+                        return i
+                    state.has_escape = True
+                    state.escape = True
+                    continue
+
+                if b == ord('"'):
+                    self._finish_string(state)
+                    self._string = None
+                    return i
+
+                if b < _JSON_CONTROL_CHAR_MAX:
+                    self._error = "control character in string"
+                    return i
                 self._accept_string_byte(state, b)
                 if self._error:
                     return i
-                state.has_escape = True
-                state.escape = True
-                continue
-
-            if b == ord('"'):
-                self._finish_string(state)
-                self._string = None
-                return i
-
-            if b < _JSON_CONTROL_CHAR_MAX:
-                self._error = "control character in string"
-                return i
-            self._accept_string_byte(state, b)
-            if self._error:
-                return i
-
+        finally:
+            self._record_slow_work(i - start)
         return i
 
     def _accept_string_byte(self, state: _StringState, b: int) -> None:
@@ -750,15 +769,21 @@ class JsonSelectiveExtractor:
         if state is None:
             self._error = "missing number parser state"
             return i
-        while i < len(chunk):
+        end = self._slow_work_span_end(len(chunk), i)
+        if self._error:
+            return i
+        start = i
+        while i < end:
             b = chunk[i]
             if b in b" \t\r\n,]}":
                 self._finish_number()
-                return i
+                break
             self._accept_number_byte(state, b)
             if self._error:
-                return i + 1
+                i += 1
+                break
             i += 1
+        self._record_slow_work(i - start)
         return i
 
     def _accept_number_byte(self, state: _NumberState, b: int) -> None:
@@ -868,16 +893,57 @@ class JsonSelectiveExtractor:
         if state is None:
             self._error = "missing literal parser state"
             return i
-        while i < len(chunk) and state.offset < len(state.literal):
+        end = self._slow_work_span_end(len(chunk), i)
+        if self._error:
+            return i
+        start = i
+        while i < end and state.offset < len(state.literal):
             if chunk[i] != state.literal[state.offset]:
                 self._error = "invalid literal"
-                return i + 1
+                i += 1
+                break
             i += 1
             state.offset += 1
-        if state.offset == len(state.literal):
+        self._record_slow_work(i - start)
+        if not self._error and state.offset == len(state.literal):
             self._literal = None
             self._value_complete()
         return i
+
+    def _consume_work_unit(self) -> bool:
+        if self.max_work_units is None:
+            return True
+        if self._work_units_used >= self.max_work_units:
+            self._error = JSON_WORK_LIMIT_EXCEEDED
+            return False
+        self._work_units_used += 1
+        return True
+
+    def _slow_work_span_end(self, chunk_len: int, i: int) -> int:
+        if self.max_work_units is None:
+            return chunk_len
+        if self._slow_work_bytes_remaining == 0:
+            if not self._consume_work_unit():
+                return i
+            self._slow_work_bytes_remaining = _SLOW_SCALAR_BYTES_PER_WORK_UNIT
+        return min(chunk_len, i + self._slow_work_bytes_remaining)
+
+    def _discarded_ascii_work_span_end(self, chunk_len: int, i: int) -> int:
+        if self.max_work_units is None:
+            return chunk_len
+        if self._discarded_ascii_work_bytes_remaining == 0:
+            if not self._consume_work_unit():
+                return i
+            self._discarded_ascii_work_bytes_remaining = _DISCARDED_ASCII_BYTES_PER_WORK_UNIT
+        return min(chunk_len, i + self._discarded_ascii_work_bytes_remaining)
+
+    def _record_slow_work(self, byte_count: int) -> None:
+        if self.max_work_units is not None:
+            self._slow_work_bytes_remaining -= byte_count
+
+    def _record_discarded_ascii_work(self, byte_count: int) -> None:
+        if self.max_work_units is not None:
+            self._discarded_ascii_work_bytes_remaining -= byte_count
 
 
 def _is_hex_byte(b: int) -> bool:
@@ -900,6 +966,10 @@ def _is_json_value_start(b: int) -> bool:
     return b in b'{["tfn-' or ord("0") <= b <= ord("9")
 
 
+def _is_discarded_ascii_string_byte(b: int) -> bool:
+    return _JSON_CONTROL_CHAR_MAX <= b < _UTF8_ONE_BYTE_MAX and b not in b'"\\'
+
+
 def _validate_extractor_config(
     scalar_fields: dict[Path, ScalarField],
     array_count_paths: set[Path],
@@ -910,6 +980,7 @@ def _validate_extractor_config(
     max_key_bytes: int,
     max_number_bytes: int,
     max_wildcard_keys: int,
+    max_work_units: int | None,
 ) -> None:
     for name, value in (
         ("max_depth", max_depth),
@@ -918,6 +989,8 @@ def _validate_extractor_config(
         ("max_wildcard_keys", max_wildcard_keys),
     ):
         _validate_positive_int(name, value)
+    if max_work_units is not None:
+        _validate_positive_int("max_work_units", max_work_units)
 
     for scalar_field in scalar_fields.values():
         if not isinstance(scalar_field, ScalarField):
