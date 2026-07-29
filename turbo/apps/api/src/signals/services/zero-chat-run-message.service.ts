@@ -1,7 +1,4 @@
-import {
-  chatMessages,
-  type ChatMessageGoalSnapshot,
-} from "@vm0/db/schema/chat-message";
+import { chatMessages } from "@vm0/db/schema/chat-message";
 import { zeroRuns } from "@vm0/db/schema/zero-run";
 import { isFeatureEnabled } from "@vm0/core/feature-switch";
 import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
@@ -13,13 +10,9 @@ import {
   publishThreadListChanged,
   publishUserSignal,
 } from "../external/realtime";
-import { nowDate } from "../external/time";
 import { loadUserFeatureSwitchContext } from "./feature-switches.service";
-import { insertChatEvent } from "./zero-chat-event.service";
-import { createUserMessageDocument } from "./zero-chat-user-message.service";
 import { chatEventTypeIn } from "./zero-chat-event-type.service";
 import { appendQueuedRunAssistantMarker } from "./zero-chat-queue-marker.service";
-import { nonEmptyGoalObjectiveBrief } from "./zero-goal-objective-brief-normalization.service";
 import {
   resolvePersistedChatThreadModel,
   type ResolvedPersistedChatThreadModel,
@@ -79,50 +72,6 @@ export async function resolveRunChatThreadModelContext(params: {
     return badRequestMessage("Chat thread not found");
   }
   return resolved;
-}
-
-/**
- * Post a run's prompt as a user chat message into its linked
- * thread and publish realtime signals so the client surfaces the run.
- */
-export async function postRunUserMessage(params: {
-  readonly db: Db;
-  readonly threadId: string;
-  readonly userId: string;
-  readonly runId: string;
-  readonly prompt: string;
-  readonly appendQueueMarker: boolean;
-  readonly runGroupId?: string;
-  readonly goalSnapshot?: ChatMessageGoalSnapshot;
-}): Promise<void> {
-  const goalSnapshot = params.goalSnapshot
-    ? {
-        objectiveBrief: nonEmptyGoalObjectiveBrief(
-          params.goalSnapshot.objectiveBrief,
-        ),
-      }
-    : undefined;
-  await params.db.transaction(async (tx): Promise<void> => {
-    const inserted = await insertChatEvent(tx, {
-      chatThreadId: params.threadId,
-      eventType: "input.prompt",
-      content: params.prompt,
-      userMessage: createUserMessageDocument({ text: params.prompt }),
-      runId: params.runId,
-      runGroupId: params.runGroupId,
-      goalSnapshot,
-    });
-    if (!params.appendQueueMarker) {
-      return;
-    }
-    await appendQueuedRunAssistantMarker(tx, {
-      chatThreadId: params.threadId,
-      runId: params.runId,
-      runGroupId: params.runGroupId,
-      createdAfter: inserted?.createdAt ?? nowDate(),
-    });
-  });
-  await publishRunUserMessageSignals(params.userId, params.threadId);
 }
 
 async function publishRunUserMessageSignals(
