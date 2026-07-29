@@ -762,11 +762,7 @@ describe("zero browser route", () => {
       }),
       [200],
     );
-    expect(previousApiBrowser.body.browser.screen).toStrictEqual({
-      width: 1440,
-      height: 900,
-      resizable: false,
-    });
+    expect(previousApiBrowser.body.browser.screen).toBeUndefined();
     const unsupportedResize = await createApp({
       signal: context.signal,
     }).request(

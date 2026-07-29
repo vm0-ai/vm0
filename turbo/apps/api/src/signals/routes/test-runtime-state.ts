@@ -20,6 +20,7 @@ import { agentSessions } from "@vm0/db/schema/agent-session";
 import {
   browserProfiles,
   browserSessionInstances,
+  browserSessionResizeStates,
   browserSessions,
 } from "@vm0/db/schema/browser-session";
 import { chatThreads } from "@vm0/db/schema/chat-thread";
@@ -778,23 +779,38 @@ async function setBrowserInstanceAsPreviousApi(
   body: PreviousApiBrowserInstanceAction,
   signal: AbortSignal,
 ) {
-  // The previous API created provider sessions with resizing disabled. Its
-  // insert receives the migration's false/default 1440x900 resize state.
-  const [updated] = await db
-    .update(browserSessionInstances)
-    .set({ resizable: false })
+  const [instance] = await db
+    .select({
+      providerSessionId: browserSessionInstances.providerSessionId,
+    })
+    .from(browserSessionInstances)
     .where(
       and(
         eq(browserSessionInstances.browserSessionId, body.browser_id),
         eq(browserSessionInstances.status, "active"),
       ),
     )
+    .limit(1);
+  signal.throwIfAborted();
+  if (!instance) {
+    throw new Error("Expected an active previous API browser instance");
+  }
+  // Previous API inserts have no companion row. The migration consistency
+  // suite executes that binary's real insert shape after migration 0734.
+  const [deleted] = await db
+    .delete(browserSessionResizeStates)
+    .where(
+      eq(
+        browserSessionResizeStates.providerSessionId,
+        instance.providerSessionId,
+      ),
+    )
     .returning({
-      providerSessionId: browserSessionInstances.providerSessionId,
+      providerSessionId: browserSessionResizeStates.providerSessionId,
     });
   signal.throwIfAborted();
-  if (!updated) {
-    throw new Error("Expected an active previous API browser instance");
+  if (!deleted) {
+    throw new Error("Expected a current API browser resize state");
   }
   return { status: 200 as const, body: { ok: true as const } };
 }

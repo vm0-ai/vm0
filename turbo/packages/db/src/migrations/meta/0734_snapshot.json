@@ -1,5 +1,5 @@
 {
-  "id": "c129f1bc-54d0-4431-886b-b53184cc9062",
+  "id": "854d74ce-c73f-44bf-ba4b-4e8ccf791605",
   "prevId": "35fa186c-9687-4f8c-914d-3c0a7cfb33b5",
   "version": "7",
   "dialect": "postgresql",
@@ -3223,27 +3223,6 @@
           "primaryKey": false,
           "notNull": true
         },
-        "resizable": {
-          "name": "resizable",
-          "type": "boolean",
-          "primaryKey": false,
-          "notNull": true,
-          "default": false
-        },
-        "screen_width": {
-          "name": "screen_width",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "default": 1440
-        },
-        "screen_height": {
-          "name": "screen_height",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "default": 900
-        },
         "browser_cost_microusd": {
           "name": "browser_cost_microusd",
           "type": "bigint",
@@ -3467,6 +3446,65 @@
             "id"
           ],
           "onDelete": "set null",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.browser_session_resize_states": {
+      "name": "browser_session_resize_states",
+      "schema": "",
+      "columns": {
+        "provider_session_id": {
+          "name": "provider_session_id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "screen_width": {
+          "name": "screen_width",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "screen_height": {
+          "name": "screen_height",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "browser_session_resize_states_provider_session_id_browser_session_instances_provider_session_id_fk": {
+          "name": "browser_session_resize_states_provider_session_id_browser_session_instances_provider_session_id_fk",
+          "tableFrom": "browser_session_resize_states",
+          "tableTo": "browser_session_instances",
+          "columnsFrom": [
+            "provider_session_id"
+          ],
+          "columnsTo": [
+            "provider_session_id"
+          ],
+          "onDelete": "cascade",
           "onUpdate": "no action"
         }
       },

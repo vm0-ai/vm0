@@ -1,7 +1,6 @@
 import { sql } from "drizzle-orm";
 import {
   bigint,
-  boolean,
   index,
   integer,
   pgTable,
@@ -18,11 +17,6 @@ import type {
 
 import { agentRuns } from "./agent-run";
 import { usageEvent } from "./usage-event";
-
-// These defaults match the managed-browser API contract. They stay literal
-// here because drizzle-kit evaluates DB schemas through its CJS loader.
-const BROWSER_SCREEN_WIDTH = 1440;
-const BROWSER_INITIAL_SCREEN_HEIGHT = 900;
 
 export const browserProfiles = pgTable(
   "browser_profiles",
@@ -195,16 +189,6 @@ export const browserSessionInstances = pgTable(
     status: varchar("status", { length: 20 })
       .$type<"active" | "stopping" | "stopped">()
       .notNull(),
-    // The migration defaults to false so instances created by the previous
-    // API remain safely non-resizable while that API drains.
-    resizable: boolean("resizable").default(false).notNull(),
-    screenWidth: integer("screen_width")
-      .$type<typeof BROWSER_SCREEN_WIDTH>()
-      .default(BROWSER_SCREEN_WIDTH)
-      .notNull(),
-    screenHeight: integer("screen_height")
-      .default(BROWSER_INITIAL_SCREEN_HEIGHT)
-      .notNull(),
     browserCostMicrousd: bigint("browser_cost_microusd", { mode: "number" })
       .default(0)
       .notNull(),
@@ -262,5 +246,31 @@ export const browserSessionInstances = pgTable(
         .on(table.chatThreadId)
         .where(sql`${table.status} IN ('active', 'stopping')`),
     ];
+  },
+);
+
+/**
+ * Resize capability and persisted dimensions for provider instances created
+ * by APIs that support manual window fitting.
+ *
+ * Keeping this state in a companion table preserves the statement shape of
+ * browser_session_instances while the previous API and migration 0734 may
+ * deploy in either order. Row absence means the instance is not resizable.
+ */
+export const browserSessionResizeStates = pgTable(
+  "browser_session_resize_states",
+  {
+    providerSessionId: uuid("provider_session_id")
+      .primaryKey()
+      .references(
+        () => {
+          return browserSessionInstances.providerSessionId;
+        },
+        { onDelete: "cascade" },
+      ),
+    screenWidth: integer("screen_width").notNull(),
+    screenHeight: integer("screen_height").notNull(),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    updatedAt: timestamp("updated_at").defaultNow().notNull(),
   },
 );
