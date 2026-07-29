@@ -292,6 +292,98 @@ function menuItemByText(text: string): HTMLElement {
 }
 
 describe("thread-owned utility sidebar", () => {
+  it("opens the latest browser session from the thread header", async () => {
+    const firstBrowserId = "c0000000-0000-4000-a000-000000000051";
+    const latestBrowserId = "c0000000-0000-4000-a000-000000000052";
+    const browsers = new Map<string, ZeroBrowserSession>([
+      [
+        firstBrowserId,
+        {
+          id: firstBrowserId,
+          name: "First browser",
+          status: "suspended",
+          viewerUrl: `https://app.vm0.ai/browsers/${firstBrowserId}`,
+          liveUrl: null,
+          proxyCountryCode: null,
+          timeoutMinutes: 240,
+          maxCredits: 500,
+          grossCredits: 2,
+          creditsCharged: 2,
+          idleExpiresAt: null,
+          suspendedAt: "2026-03-10T00:05:00.000Z",
+          suspensionReason: "idle",
+          createdAt: "2026-03-10T00:00:00.000Z",
+          updatedAt: "2026-03-10T00:05:00.000Z",
+        },
+      ],
+      [
+        latestBrowserId,
+        {
+          id: latestBrowserId,
+          name: "Latest browser",
+          status: "active",
+          viewerUrl: `https://app.vm0.ai/browsers/${latestBrowserId}`,
+          liveUrl: "https://live.browser-use.com/?wss=latest-browser",
+          proxyCountryCode: null,
+          timeoutMinutes: 240,
+          maxCredits: 500,
+          grossCredits: 3,
+          creditsCharged: 3,
+          idleExpiresAt: "2026-03-10T00:20:00.000Z",
+          suspendedAt: null,
+          suspensionReason: null,
+          createdAt: "2026-03-10T00:10:00.000Z",
+          updatedAt: "2026-03-10T00:10:00.000Z",
+        },
+      ],
+    ]);
+    context.mocks.api(zeroBrowserContract.get, ({ params, respond }) => {
+      const browser = browsers.get(params.browserId);
+      if (!browser) {
+        throw new Error(`Unexpected browser ${params.browserId}`);
+      }
+      return respond(200, { browser });
+    });
+    context.mocks.api(zeroBrowserContract.leaseById, ({ params, respond }) => {
+      const browser = browsers.get(params.browserId);
+      if (!browser) {
+        throw new Error(`Unexpected browser ${params.browserId}`);
+      }
+      return respond(200, { browser });
+    });
+    setupChatThread({
+      messages: [
+        {
+          id: "msg-first-browser",
+          role: "assistant",
+          content: `[First browser](/browsers/${firstBrowserId})`,
+          runId: "run-first-browser",
+          seqId: 1,
+          createdAt: "2026-03-10T00:00:00Z",
+        },
+        {
+          id: "msg-latest-browser",
+          role: "assistant",
+          content: `[Latest browser](/browsers/${latestBrowserId})`,
+          runId: "run-latest-browser",
+          seqId: 2,
+          createdAt: "2026-03-10T00:10:00Z",
+        },
+      ],
+    });
+
+    const button = await screen.findByLabelText("Open browser");
+    expect(button).toHaveAttribute("aria-pressed", "false");
+    click(button);
+
+    const frame = await screen.findByTitle("Live browser: Latest browser");
+    expect(frame).toHaveAttribute(
+      "src",
+      "https://live.browser-use.com/?wss=latest-browser",
+    );
+    expect(button).toHaveAttribute("aria-pressed", "true");
+  });
+
   it("opens the thread-scoped catalog list", async () => {
     const requestedThreadIds: (string | undefined)[] = [];
     context.mocks.api(artifactCatalogContract.list, ({ query, respond }) => {
