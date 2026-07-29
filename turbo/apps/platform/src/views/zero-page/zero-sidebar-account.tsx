@@ -29,11 +29,7 @@ import {
   DropdownMenuSubTrigger,
   DropdownMenuSubContent,
 } from "@vm0/ui";
-import {
-  clerk$,
-  currentUserInfo$,
-  resolveAppAuthUrl,
-} from "../../signals/auth.ts";
+import { clerk$, currentUserInfo$ } from "../../signals/auth.ts";
 import { suppressUnauthorizedRedirectForAuthTransition$ } from "../../signals/auth-retry.ts";
 import {
   reloadAccountMenuSubscriptionUsageRows$,
@@ -664,10 +660,9 @@ export function AccountDropdown({
   const handleAccountAction = (action: ZeroAccountAction) => {
     if (action === "signout") {
       const sessionId = clerk?.session?.id;
-      const signInUrl = new URL(resolveAppAuthUrl("/sign-in"));
-      signInUrl.searchParams.set("redirect_url", location.href);
+      const signInUrl = clerk?.buildSignInUrl({ redirectUrl: location.href });
       detach(
-        clerk?.signOut({ sessionId, redirectUrl: signInUrl.toString() }),
+        clerk?.signOut({ sessionId, redirectUrl: signInUrl }),
         Reason.DomCallback,
       );
       return;
