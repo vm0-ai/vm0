@@ -311,6 +311,9 @@ function OAuth2RedirectUrlField() {
         className="text-sm font-medium text-foreground"
       >
         Redirect URL
+        <span className="ml-1 font-normal text-amber-600 dark:text-amber-400">
+          (Register this URL in the provider&apos;s OAuth application.)
+        </span>
       </label>
       <Input
         id="cc-oauth-callback-url"
@@ -318,9 +321,6 @@ function OAuth2RedirectUrlField() {
         readOnly
         className="font-mono text-xs"
       />
-      <p className="text-xs text-muted-foreground">
-        Register this URL in the provider&apos;s OAuth application.
-      </p>
     </div>
   );
 }
@@ -452,16 +452,18 @@ function OAuth2AuthenticationFields({
         >
           Scopes
           <span className="text-muted-foreground font-normal ml-1">
-            (space separated)
+            (one per line)
           </span>
         </label>
-        <Input
+        <textarea
           id="cc-oauth-scopes"
           value={form.oauthScopesRaw}
           onChange={(event) => {
             setField("oauthScopesRaw", event.target.value);
           }}
-          placeholder="read write"
+          placeholder={"read\nwrite"}
+          rows={3}
+          className="w-full rounded-lg border-[0.7px] border-[hsl(var(--gray-400))] bg-input px-3 py-2 text-sm font-mono text-foreground placeholder:text-muted-foreground outline-none transition-colors focus:border-primary focus:ring-[3px] focus:ring-primary/10 resize-y min-h-[72px]"
         />
       </div>
       <div className="flex flex-col gap-2">

@@ -381,7 +381,7 @@ function createFormFromConnector(
     authMethodTypes: [connector.authMode === "oauth" ? "oauth2" : "api"],
     oauthAuthorizationUrl: oauthConfig?.authorizationUrl ?? "",
     oauthTokenUrl: oauthConfig?.tokenUrl ?? "",
-    oauthScopesRaw: oauthConfig?.scopes.join(" ") ?? "",
+    oauthScopesRaw: oauthConfig?.scopes.join("\n") ?? "",
     oauthClientAuthentication:
       oauthConfig?.tokenEndpointAuthMethod ?? "client_secret_post",
     oauthPkceMethod: oauthConfig?.pkceMethod ?? "none",

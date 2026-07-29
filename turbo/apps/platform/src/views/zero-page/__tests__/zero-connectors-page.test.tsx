@@ -3324,14 +3324,14 @@ describe("connectors page", () => {
     );
     await fill(
       within(createDialog).getByLabelText(/Scopes/u),
-      "search.read search.write",
+      "search.read\nsearch.write",
     );
     await fill(
       within(createDialog).getByLabelText("Authorization URL"),
       "https://oauth.acme.test/authorize",
     );
     const redirectUrlInput =
-      within(createDialog).getByLabelText("Redirect URL");
+      within(createDialog).getByLabelText(/Redirect URL/u);
     if (!(redirectUrlInput instanceof HTMLInputElement)) {
       throw new Error("Expected custom connector redirect URL input");
     }
@@ -3396,13 +3396,16 @@ describe("connectors page", () => {
     expect(within(editDialog).getByLabelText("New client secret")).toHaveValue(
       "",
     );
+    expect(within(editDialog).getByLabelText(/Scopes/u)).toHaveValue(
+      "search.read\nsearch.write",
+    );
     await fill(
       within(editDialog).getByLabelText(/Prefixes/u),
       "https://api.acme.test/v2/",
     );
     await fill(
       within(editDialog).getByLabelText(/Scopes/u),
-      "search.read calendar.write",
+      "search.read\ncalendar.write",
     );
     click(buttonByText("Save", editDialog));
     const confirmationDialog = await screen.findByRole("dialog", {
