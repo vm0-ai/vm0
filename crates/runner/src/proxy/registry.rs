@@ -107,7 +107,6 @@ async fn write_registry_with_reserve(
             path.display()
         )));
     }
-    remove_legacy_registry_tmp(path).await?;
     crate::state_file::write_private_atomic(path, &content).await
 }
 
@@ -135,18 +134,6 @@ fn fail_closed_capacity_bytes(value: &ProxyRegistry) -> RunnerResult<u64> {
                     RunnerError::Internal("proxy registry fail-closed reserve overflow".to_string())
                 })
         })
-}
-
-async fn remove_legacy_registry_tmp(path: &Path) -> RunnerResult<()> {
-    let tmp = path.with_extension("json.tmp");
-    match tokio::fs::remove_file(&tmp).await {
-        Ok(()) => Ok(()),
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(()),
-        Err(e) => Err(RunnerError::Internal(format!(
-            "remove stale registry tmp {}: {e}",
-            tmp.display()
-        ))),
-    }
 }
 
 /// Lightweight, cloneable handle for proxy registry operations.
@@ -540,48 +527,6 @@ mod tests {
                 .mode()
                 & 0o777,
             0o600
-        );
-    }
-
-    #[tokio::test]
-    async fn write_registry_removes_stale_fixed_tmp_file() {
-        let dir = tempfile::tempdir().unwrap();
-        let registry_path = dir.path().join("proxy-registry.json");
-        let legacy_tmp = registry_path.with_extension("json.tmp");
-        std::fs::write(&legacy_tmp, b"stale").unwrap();
-        let empty = ProxyRegistry {
-            vms: HashMap::new(),
-            updated_at: 0,
-        };
-
-        write_registry(&registry_path, &empty).await.unwrap();
-
-        assert!(
-            !legacy_tmp.exists(),
-            "stale fixed registry tmp was not removed"
-        );
-        read_registry(&registry_path).await.unwrap();
-    }
-
-    #[tokio::test]
-    async fn write_registry_removes_stale_fixed_tmp_symlink_without_following_it() {
-        let dir = tempfile::tempdir().unwrap();
-        let registry_path = dir.path().join("proxy-registry.json");
-        let legacy_tmp = registry_path.with_extension("json.tmp");
-        let outside = dir.path().join("outside-target");
-        std::fs::write(&outside, b"outside").unwrap();
-        std::os::unix::fs::symlink(&outside, &legacy_tmp).unwrap();
-        let empty = ProxyRegistry {
-            vms: HashMap::new(),
-            updated_at: 0,
-        };
-
-        write_registry(&registry_path, &empty).await.unwrap();
-
-        assert_eq!(std::fs::read(&outside).unwrap(), b"outside");
-        assert!(
-            std::fs::symlink_metadata(&legacy_tmp).is_err(),
-            "stale fixed registry tmp symlink was not removed"
         );
     }
 
