@@ -675,7 +675,7 @@ describe("chat thread event sourcing local-first list", () => {
     });
 
     let threadDraftRequests = 0;
-    let initialMessagesRequests = 0;
+    let initialEventsRequests = 0;
     context.mocks.api(chatThreadDraftContract.get, ({ params, respond }) => {
       threadDraftRequests += 1;
       expect(params.id).toBe(OPTIMISTIC_THREAD_ID);
@@ -686,7 +686,7 @@ describe("chat thread event sourcing local-first list", () => {
       });
     });
     context.mocks.api(chatThreadEventsContract.list, ({ params, respond }) => {
-      initialMessagesRequests += 1;
+      initialEventsRequests += 1;
       expect(params.threadId).toBe(OPTIMISTIC_THREAD_ID);
       return respond(200, { events: [], hasHistoryBefore: false });
     });
@@ -703,7 +703,7 @@ describe("chat thread event sourcing local-first list", () => {
       ),
     ).resolves.toStrictEqual([]);
     expect(threadDraftRequests).toBe(0);
-    expect(initialMessagesRequests).toBe(0);
+    expect(initialEventsRequests).toBe(0);
 
     context.store.set(reconcileOptimisticChatThreadEvents$, {
       snapshot: [],
@@ -728,7 +728,7 @@ describe("chat thread event sourcing local-first list", () => {
       hasHistoryBefore: false,
     });
     expect(threadDraftRequests).toBe(1);
-    expect(initialMessagesRequests).toBe(1);
+    expect(initialEventsRequests).toBe(1);
   });
 
   it("settles optimistic create events once the matching persisted event arrives", async () => {

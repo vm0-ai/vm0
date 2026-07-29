@@ -12,7 +12,7 @@ import {
   formatLogTime,
   formatDuration,
 } from "../../signals/activity-page/activity-signals.ts";
-import { groupedMessageMatchesSearch } from "../zero-page/components/log-views/log-detail-utils.ts";
+import { eventGroupMatchesSearch } from "../zero-page/components/log-views/log-detail-utils.ts";
 import {
   ActivityHeaderCard,
   StepsList,
@@ -21,7 +21,7 @@ import {
   inspectLogData$,
   inspectLogLoadError$,
   inspectStepSearch$,
-  inspectVisibleMessages$,
+  inspectVisibleGroups$,
   loadInspectLogFile$,
   setInspectStepSearch$,
   type InspectLogData,
@@ -196,13 +196,13 @@ function StepsTab({
 }) {
   const stepSearch = useGet(inspectStepSearch$);
   const setStepSearch = useSet(setInspectStepSearch$);
-  const visibleMessages = useGet(inspectVisibleMessages$);
+  const visibleGroups = useGet(inspectVisibleGroups$);
   const { prompt, appendSystemPrompt } = prepared;
   const showSystemPrompt = appendSystemPrompt.trim().length > 0;
 
   const searchTerm = stepSearch.trim();
-  const messages = visibleMessages.filter((message) => {
-    return groupedMessageMatchesSearch(message, searchTerm);
+  const groups = visibleGroups.filter((group) => {
+    return eventGroupMatchesSearch(group, searchTerm);
   });
 
   return (
@@ -214,8 +214,8 @@ function StepsTab({
           </span>
           <span className="text-sm text-muted-foreground whitespace-nowrap">
             {stepSearch.trim()
-              ? `(${messages.length}/${visibleMessages.length} matched)`
-              : `${visibleMessages.length} total`}
+              ? `(${groups.length}/${visibleGroups.length} matched)`
+              : `${visibleGroups.length} total`}
           </span>
         </div>
         <div className="flex items-center gap-2 sm:gap-3">
@@ -236,7 +236,7 @@ function StepsTab({
       <StepsList
         prompt={prompt}
         appendSystemPrompt={showSystemPrompt ? appendSystemPrompt : ""}
-        messages={messages}
+        groups={groups}
         stepSearch={stepSearch}
         isLoading={false}
         startedAt={prepared.startedAt}

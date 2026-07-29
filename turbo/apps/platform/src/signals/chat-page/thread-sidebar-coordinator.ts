@@ -86,7 +86,7 @@ function targetFromAutoOpenCandidate(
   };
 }
 
-const autoOpenThreadSidebarFromCurrentMessages$ = command(
+const autoOpenThreadSidebarFromCurrentGroups$ = command(
   async (
     { get, set },
     thread: ChatThreadSignals,
@@ -137,10 +137,10 @@ export const autoOpenInitialThreadSidebar$ = command(
     thread: ChatThreadSignals,
     signal: AbortSignal,
   ): Promise<void> => {
-    await get(thread.indexedDbMessagesInitialized$);
+    await get(thread.indexedDbEventsInitialized$);
     signal.throwIfAborted();
     const result = await settle(
-      set(autoOpenThreadSidebarFromCurrentMessages$, thread, signal),
+      set(autoOpenThreadSidebarFromCurrentGroups$, thread, signal),
       signal,
     );
     set(thread.sidebar.enableEntryAnimations$);
@@ -156,9 +156,9 @@ export const autoOpenThreadSidebar$ = command(
     thread: ChatThreadSignals,
     signal: AbortSignal,
   ): Promise<void> => {
-    await get(thread.hasNewMessages$);
+    await get(thread.hasNewEvents$);
     signal.throwIfAborted();
-    await set(autoOpenThreadSidebarFromCurrentMessages$, thread, signal);
+    await set(autoOpenThreadSidebarFromCurrentGroups$, thread, signal);
   },
 );
 

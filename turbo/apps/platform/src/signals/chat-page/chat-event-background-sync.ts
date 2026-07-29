@@ -15,7 +15,7 @@ import {
 } from "./chat-thread-panes.ts";
 import { autoOpenThreadSidebar$ } from "./thread-sidebar-coordinator.ts";
 import {
-  CHAT_MESSAGES_PAGE_LIMIT,
+  CHAT_EVENTS_PAGE_LIMIT,
   listEventsAfter$,
 } from "./remote-chat-thread-data-source.ts";
 
@@ -106,7 +106,7 @@ const syncChatThreadEventsToIndexedDb$ = command(
       sinceSeqId = result.events[result.events.length - 1]!.seqId;
       if (
         requestedSinceSeqId !== undefined &&
-        result.events.length < CHAT_MESSAGES_PAGE_LIMIT
+        result.events.length < CHAT_EVENTS_PAGE_LIMIT
       ) {
         return;
       }

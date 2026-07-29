@@ -2,16 +2,16 @@ import { describe, expect, it } from "vitest";
 
 import type { AgentEvent } from "../../../../signals/zero-page/log-types.ts";
 import {
-  groupEventsIntoMessages,
-  groupedMessageKey,
-  groupedMessageMatchesSearch,
+  groupEventsIntoGroups,
+  eventGroupKey,
+  eventGroupMatchesSearch,
 } from "./log-detail-utils.ts";
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
-describe("groupEventsIntoMessages progress events", () => {
+describe("groupEventsIntoGroups progress events", () => {
   it("filters Claude Code thinking token progress events", () => {
     const events: AgentEvent[] = [
       {
@@ -44,12 +44,12 @@ describe("groupEventsIntoMessages progress events", () => {
       },
     ];
 
-    const messages = groupEventsIntoMessages(events);
+    const groups = groupEventsIntoGroups(events);
 
-    expect(messages).toHaveLength(2);
+    expect(groups).toHaveLength(2);
     expect(
-      messages.map((message) => {
-        return message.eventData;
+      groups.map((group) => {
+        return group.eventData;
       }),
     ).toEqual([
       { type: "system", subtype: "init" },
@@ -62,7 +62,7 @@ describe("groupEventsIntoMessages progress events", () => {
   });
 
   it("keeps Codex reasoning text visible", () => {
-    const messages = groupEventsIntoMessages([
+    const groups = groupEventsIntoGroups([
       {
         sequenceNumber: 0,
         eventType: "item.completed",
@@ -77,16 +77,16 @@ describe("groupEventsIntoMessages progress events", () => {
       },
     ]);
 
-    expect(messages).toHaveLength(1);
-    expect(messages[0]?.textBefore).toBe(
+    expect(groups).toHaveLength(1);
+    expect(groups[0]?.textBefore).toBe(
       "[thinking] Consider the failing branch before editing.",
     );
   });
 });
 
-describe("groupEventsIntoMessages Codex turn completion signals", () => {
+describe("groupEventsIntoGroups Codex turn completion signals", () => {
   it("keeps top-level success false even when nested turn status is completed", () => {
-    const messages = groupEventsIntoMessages(
+    const groups = groupEventsIntoGroups(
       [
         {
           sequenceNumber: 0,
@@ -106,16 +106,16 @@ describe("groupEventsIntoMessages Codex turn completion signals", () => {
       { framework: "codex" },
     );
 
-    expect(messages).toHaveLength(1);
-    expect(messages[0]?.type).toBe("result");
-    expect(messages[0]?.eventData).toMatchObject({
+    expect(groups).toHaveLength(1);
+    expect(groups[0]?.type).toBe("result");
+    expect(groups[0]?.eventData).toMatchObject({
       is_error: true,
       result: "Turn failed",
     });
   });
 
   it("keeps top-level failed status even when nested turn status is completed", () => {
-    const messages = groupEventsIntoMessages(
+    const groups = groupEventsIntoGroups(
       [
         {
           sequenceNumber: 0,
@@ -134,18 +134,18 @@ describe("groupEventsIntoMessages Codex turn completion signals", () => {
       { framework: "codex" },
     );
 
-    expect(messages).toHaveLength(1);
-    expect(messages[0]?.type).toBe("result");
-    expect(messages[0]?.eventData).toMatchObject({
+    expect(groups).toHaveLength(1);
+    expect(groups[0]?.type).toBe("result");
+    expect(groups[0]?.eventData).toMatchObject({
       is_error: true,
       result: "Turn failed",
     });
   });
 });
 
-describe("groupEventsIntoMessages Codex plan events", () => {
+describe("groupEventsIntoGroups Codex plan events", () => {
   it("drops empty Codex plan updates", () => {
-    const messages = groupEventsIntoMessages(
+    const groups = groupEventsIntoGroups(
       [
         {
           sequenceNumber: 0,
@@ -160,11 +160,11 @@ describe("groupEventsIntoMessages Codex plan events", () => {
       { framework: "codex" },
     );
 
-    expect(messages).toEqual([]);
+    expect(groups).toEqual([]);
   });
 
   it("keeps Codex plan updates with content", () => {
-    const messages = groupEventsIntoMessages(
+    const groups = groupEventsIntoGroups(
       [
         {
           sequenceNumber: 0,
@@ -180,13 +180,13 @@ describe("groupEventsIntoMessages Codex plan events", () => {
       { framework: "codex" },
     );
 
-    expect(messages[0]?.textBefore).toBe(
+    expect(groups[0]?.textBefore).toBe(
       "[plan]\nReview edge cases\n- in progress: Check empty plans",
     );
   });
 
   it("bounds Codex plan updates with many visible steps", () => {
-    const messages = groupEventsIntoMessages(
+    const groups = groupEventsIntoGroups(
       [
         {
           sequenceNumber: 0,
@@ -206,15 +206,15 @@ describe("groupEventsIntoMessages Codex plan events", () => {
       { framework: "codex" },
     );
 
-    expect(messages[0]?.textBefore).toContain("- pending: Step 19");
-    expect(messages[0]?.textBefore).not.toContain("- pending: Step 20");
-    expect(messages[0]?.textBefore).toContain("- ... +5 more steps");
+    expect(groups[0]?.textBefore).toContain("- pending: Step 19");
+    expect(groups[0]?.textBefore).not.toContain("- pending: Step 20");
+    expect(groups[0]?.textBefore).toContain("- ... +5 more steps");
   });
 });
 
-describe("groupEventsIntoMessages Codex file changes", () => {
+describe("groupEventsIntoGroups Codex file changes", () => {
   it("bounds Codex file change output with many changes", () => {
-    const messages = groupEventsIntoMessages(
+    const groups = groupEventsIntoGroups(
       [
         {
           sequenceNumber: 0,
@@ -238,13 +238,13 @@ describe("groupEventsIntoMessages Codex file changes", () => {
       { framework: "codex" },
     );
 
-    expect(messages[0]?.textBefore).toContain("- modify src/file-19.ts");
-    expect(messages[0]?.textBefore).not.toContain("- modify src/file-20.ts");
-    expect(messages[0]?.textBefore).toContain("- ... +5 more changes");
+    expect(groups[0]?.textBefore).toContain("- modify src/file-19.ts");
+    expect(groups[0]?.textBefore).not.toContain("- modify src/file-20.ts");
+    expect(groups[0]?.textBefore).toContain("- ... +5 more changes");
   });
 });
 
-describe("groupEventsIntoMessages unserializable event data", () => {
+describe("groupEventsIntoGroups unserializable event data", () => {
   it("does not throw when same-sequence event data contains cycles", () => {
     const circularEventData: Record<string, unknown> = {
       message: {
@@ -253,7 +253,7 @@ describe("groupEventsIntoMessages unserializable event data", () => {
     };
     circularEventData.self = circularEventData;
 
-    const messages = groupEventsIntoMessages([
+    const groups = groupEventsIntoGroups([
       {
         sequenceNumber: 3,
         eventType: "assistant",
@@ -273,16 +273,16 @@ describe("groupEventsIntoMessages unserializable event data", () => {
     ]);
 
     expect(
-      messages.map((message) => {
-        return message.textBefore;
+      groups.map((group) => {
+        return group.textBefore;
       }),
     ).toEqual(["Circular same-sequence event.", "Second same-sequence event."]);
   });
 });
 
-describe("groupEventsIntoMessages event dedupe", () => {
+describe("groupEventsIntoGroups event dedupe", () => {
   it("keeps distinct events that share a sequence number", () => {
-    const messages = groupEventsIntoMessages([
+    const groups = groupEventsIntoGroups([
       {
         sequenceNumber: 3,
         eventType: "assistant",
@@ -306,21 +306,21 @@ describe("groupEventsIntoMessages event dedupe", () => {
     ]);
 
     expect(
-      messages.map((message) => {
-        return message.textBefore;
+      groups.map((group) => {
+        return group.textBefore;
       }),
     ).toEqual(["First same-sequence event.", "Second same-sequence event."]);
     expect(
       new Set(
-        messages.map((message) => {
-          return message.sequenceNumber;
+        groups.map((group) => {
+          return group.sequenceNumber;
         }),
       ).size,
     ).toBe(2);
     expect(
       new Set(
-        messages.map((message) => {
-          return groupedMessageKey(message);
+        groups.map((group) => {
+          return eventGroupKey(group);
         }),
       ).size,
     ).toBe(2);
@@ -338,13 +338,13 @@ describe("groupEventsIntoMessages event dedupe", () => {
       createdAt: "2026-06-26T02:31:21Z",
     };
 
-    const messages = groupEventsIntoMessages([
+    const groups = groupEventsIntoGroups([
       duplicateEvent,
       { ...duplicateEvent },
     ]);
 
-    expect(messages).toHaveLength(1);
-    expect(messages[0]?.textBefore).toBe("Repeated boundary event.");
+    expect(groups).toHaveLength(1);
+    expect(groups[0]?.textBefore).toBe("Repeated boundary event.");
   });
 
   it("keeps same-sequence events that differ after display truncation limits", () => {
@@ -367,7 +367,7 @@ describe("groupEventsIntoMessages event dedupe", () => {
       },
     } satisfies AgentEvent;
 
-    const messages = groupEventsIntoMessages([
+    const groups = groupEventsIntoGroups([
       {
         ...baseEvent,
         eventData: {
@@ -384,11 +384,11 @@ describe("groupEventsIntoMessages event dedupe", () => {
       },
     ]);
 
-    expect(messages).toHaveLength(2);
+    expect(groups).toHaveLength(2);
   });
 });
 
-describe("groupEventsIntoMessages event dedupe edge cases", () => {
+describe("groupEventsIntoGroups event dedupe edge cases", () => {
   it("keeps too-deep same-sequence events instead of lossy deduping", () => {
     const deepPayload = (): unknown => {
       let value: unknown = "leaf";
@@ -409,13 +409,13 @@ describe("groupEventsIntoMessages event dedupe edge cases", () => {
       },
     } satisfies AgentEvent;
 
-    const messages = groupEventsIntoMessages([event, event]);
+    const groups = groupEventsIntoGroups([event, event]);
 
-    expect(messages).toHaveLength(2);
+    expect(groups).toHaveLength(2);
   });
 
   it("keeps fallback tool ids unique for same-sequence events", () => {
-    const messages = groupEventsIntoMessages([
+    const groups = groupEventsIntoGroups([
       {
         sequenceNumber: 5,
         eventType: "assistant",
@@ -450,9 +450,9 @@ describe("groupEventsIntoMessages event dedupe edge cases", () => {
       },
     ]);
 
-    const toolUseIds = messages.flatMap((message) => {
+    const toolUseIds = groups.flatMap((group) => {
       return (
-        message.toolOperations?.map((operation) => {
+        group.toolOperations?.map((operation) => {
           return operation.toolUseId;
         }) ?? []
       );
@@ -462,9 +462,9 @@ describe("groupEventsIntoMessages event dedupe edge cases", () => {
   });
 });
 
-describe("groupEventsIntoMessages sequence ordering", () => {
+describe("groupEventsIntoGroups sequence ordering", () => {
   it("keeps same-sequence events before the next fractional sequence", () => {
-    const messages = groupEventsIntoMessages([
+    const groups = groupEventsIntoGroups([
       {
         sequenceNumber: 5,
         eventType: "assistant",
@@ -498,23 +498,23 @@ describe("groupEventsIntoMessages sequence ordering", () => {
     ]);
 
     expect(
-      messages.map((message) => {
-        return message.textBefore;
+      groups.map((group) => {
+        return group.textBefore;
       }),
     ).toEqual([
       "First duplicate sequence.",
       "Second duplicate sequence.",
       "Next fractional sequence.",
     ]);
-    expect(messages[1]?.sequenceNumber).toBeGreaterThan(5);
-    expect(messages[1]?.sequenceNumber).toBeLessThan(5.0005);
+    expect(groups[1]?.sequenceNumber).toBeGreaterThan(5);
+    expect(groups[1]?.sequenceNumber).toBeLessThan(5.0005);
   });
 });
 
-describe("groupEventsIntoMessages split sequence ordering", () => {
+describe("groupEventsIntoGroups split sequence ordering", () => {
   it("keeps split orphan tool results before the next fractional sequence", () => {
     const nextSequenceNumber = 9.000001;
-    const messages = groupEventsIntoMessages([
+    const groups = groupEventsIntoGroups([
       {
         sequenceNumber: 9,
         eventType: "user",
@@ -541,23 +541,21 @@ describe("groupEventsIntoMessages split sequence ordering", () => {
     ]);
 
     expect(
-      messages.map((message) => {
-        return (
-          message.textBefore ?? message.toolOperations?.[0]?.result?.content
-        );
+      groups.map((group) => {
+        return group.textBefore ?? group.toolOperations?.[0]?.result?.content;
       }),
     ).toEqual(["first orphan", "second orphan", "Next fractional sequence."]);
-    expect(messages[0]?.sequenceNumber).toBeGreaterThan(9);
-    expect(messages[1]?.sequenceNumber).toBeGreaterThan(
-      messages[0]?.sequenceNumber ?? 9,
+    expect(groups[0]?.sequenceNumber).toBeGreaterThan(9);
+    expect(groups[1]?.sequenceNumber).toBeGreaterThan(
+      groups[0]?.sequenceNumber ?? 9,
     );
-    expect(messages[1]?.sequenceNumber).toBeLessThan(nextSequenceNumber);
-    expect(messages[2]?.sequenceNumber).toBe(nextSequenceNumber);
+    expect(groups[1]?.sequenceNumber).toBeLessThan(nextSequenceNumber);
+    expect(groups[2]?.sequenceNumber).toBe(nextSequenceNumber);
   });
 
   it("keeps split TodoWrite cards before the next fractional sequence", () => {
     const nextSequenceNumber = 7.000001;
-    const messages = groupEventsIntoMessages([
+    const groups = groupEventsIntoGroups([
       {
         sequenceNumber: 7,
         eventType: "assistant",
@@ -601,24 +599,24 @@ describe("groupEventsIntoMessages split sequence ordering", () => {
     ]);
 
     expect(
-      messages.map((message) => {
-        return message.type === "todo"
-          ? message.todoState?.at(-1)?.content
-          : message.textBefore;
+      groups.map((group) => {
+        return group.type === "todo"
+          ? group.todoState?.at(-1)?.content
+          : group.textBefore;
       }),
     ).toEqual(["First task", "Second task", "Next fractional sequence."]);
-    expect(messages[0]?.sequenceNumber).toBeGreaterThan(7);
-    expect(messages[1]?.sequenceNumber).toBeGreaterThan(
-      messages[0]?.sequenceNumber ?? 7,
+    expect(groups[0]?.sequenceNumber).toBeGreaterThan(7);
+    expect(groups[1]?.sequenceNumber).toBeGreaterThan(
+      groups[0]?.sequenceNumber ?? 7,
     );
-    expect(messages[1]?.sequenceNumber).toBeLessThan(nextSequenceNumber);
-    expect(messages[2]?.sequenceNumber).toBe(nextSequenceNumber);
+    expect(groups[1]?.sequenceNumber).toBeLessThan(nextSequenceNumber);
+    expect(groups[2]?.sequenceNumber).toBe(nextSequenceNumber);
   });
 });
 
-describe("groupEventsIntoMessages task event data", () => {
+describe("groupEventsIntoGroups task event data", () => {
   it("does not treat task_started status as a terminal task status", () => {
-    const messages = groupEventsIntoMessages([
+    const groups = groupEventsIntoGroups([
       {
         sequenceNumber: 0,
         eventType: "system",
@@ -632,17 +630,17 @@ describe("groupEventsIntoMessages task event data", () => {
       },
     ]);
 
-    const taskMessage = messages[0];
-    if (!taskMessage || !isRecord(taskMessage.eventData)) {
+    const taskGroup = groups[0];
+    if (!taskGroup || !isRecord(taskGroup.eventData)) {
       throw new Error("expected task started message");
     }
 
-    expect(taskMessage.eventData.status).toBe("running");
-    expect(taskMessage.eventData.task_status).toBeUndefined();
+    expect(taskGroup.eventData.status).toBe("running");
+    expect(taskGroup.eventData.task_status).toBeUndefined();
   });
 
   it("keeps orphan task notification status and summary searchable", () => {
-    const messages = groupEventsIntoMessages([
+    const groups = groupEventsIntoGroups([
       {
         sequenceNumber: 0,
         eventType: "system",
@@ -656,21 +654,19 @@ describe("groupEventsIntoMessages task event data", () => {
       },
     ]);
 
-    const taskMessage = messages[0];
-    if (!taskMessage || !isRecord(taskMessage.eventData)) {
+    const taskGroup = groups[0];
+    if (!taskGroup || !isRecord(taskGroup.eventData)) {
       throw new Error("expected task notification message");
     }
 
-    expect(taskMessage.eventData.task_status).toBe("completed");
-    expect(taskMessage.eventData.task_summary).toBe("Orphan task finished");
-    expect(groupedMessageMatchesSearch(taskMessage, "orphan task")).toBe(true);
-    expect(groupedMessageMatchesSearch(taskMessage, " orphan task ")).toBe(
-      true,
-    );
+    expect(taskGroup.eventData.task_status).toBe("completed");
+    expect(taskGroup.eventData.task_summary).toBe("Orphan task finished");
+    expect(eventGroupMatchesSearch(taskGroup, "orphan task")).toBe(true);
+    expect(eventGroupMatchesSearch(taskGroup, " orphan task ")).toBe(true);
   });
 
   it("merges task notifications that already use task status fields", () => {
-    const messages = groupEventsIntoMessages([
+    const groups = groupEventsIntoGroups([
       {
         sequenceNumber: 0,
         eventType: "system",
@@ -695,20 +691,20 @@ describe("groupEventsIntoMessages task event data", () => {
       },
     ]);
 
-    const taskMessage = messages[0];
-    if (!taskMessage || !isRecord(taskMessage.eventData)) {
+    const taskGroup = groups[0];
+    if (!taskGroup || !isRecord(taskGroup.eventData)) {
       throw new Error("expected merged task message");
     }
 
-    expect(messages).toHaveLength(1);
-    expect(taskMessage.eventData.task_status).toBe("completed");
-    expect(taskMessage.eventData.task_summary).toBe(
+    expect(groups).toHaveLength(1);
+    expect(taskGroup.eventData.task_status).toBe("completed");
+    expect(taskGroup.eventData.task_summary).toBe(
       "Task finished through normalized fields",
     );
   });
 
   it("ignores task progress that arrives after completion", () => {
-    const messages = groupEventsIntoMessages([
+    const groups = groupEventsIntoGroups([
       {
         sequenceNumber: 0,
         eventType: "system",
@@ -742,14 +738,14 @@ describe("groupEventsIntoMessages task event data", () => {
       },
     ]);
 
-    expect(messages).toHaveLength(1);
-    expect(messages[0]?.type).toBe("system");
+    expect(groups).toHaveLength(1);
+    expect(groups[0]?.type).toBe("system");
   });
 });
 
-describe("groupedMessageMatchesSearch", () => {
-  it("matches text nested in task child messages", () => {
-    const messages = groupEventsIntoMessages([
+describe("eventGroupMatchesSearch", () => {
+  it("matches text nested in task child groups", () => {
+    const groups = groupEventsIntoGroups([
       {
         sequenceNumber: 0,
         eventType: "system",
@@ -774,22 +770,18 @@ describe("groupedMessageMatchesSearch", () => {
       },
     ]);
 
-    const taskMessage = messages[0];
-    if (!taskMessage) {
+    const taskGroup = groups[0];
+    if (!taskGroup) {
       throw new Error("expected task message");
     }
 
-    expect(taskMessage.childMessages?.[0]?.textBefore).toBe(
-      "Nested child output.",
-    );
-    expect(groupedMessageMatchesSearch(taskMessage, "nested child")).toBe(true);
-    expect(groupedMessageMatchesSearch(taskMessage, "missing text")).toBe(
-      false,
-    );
+    expect(taskGroup.childGroups?.[0]?.textBefore).toBe("Nested child output.");
+    expect(eventGroupMatchesSearch(taskGroup, "nested child")).toBe(true);
+    expect(eventGroupMatchesSearch(taskGroup, "missing text")).toBe(false);
   });
 
   it("matches todo item content", () => {
-    const messages = groupEventsIntoMessages([
+    const groups = groupEventsIntoGroups([
       {
         sequenceNumber: 0,
         eventType: "assistant",
@@ -816,23 +808,19 @@ describe("groupedMessageMatchesSearch", () => {
       },
     ]);
 
-    const todoMessage = messages[0];
-    if (!todoMessage) {
+    const todoGroup = groups[0];
+    if (!todoGroup) {
       throw new Error("expected todo message");
     }
 
-    expect(groupedMessageMatchesSearch(todoMessage, "sandbox retry")).toBe(
-      true,
-    );
-    expect(groupedMessageMatchesSearch(todoMessage, "missing text")).toBe(
-      false,
-    );
+    expect(eventGroupMatchesSearch(todoGroup, "sandbox retry")).toBe(true);
+    expect(eventGroupMatchesSearch(todoGroup, "missing text")).toBe(false);
   });
 });
 
-describe("groupEventsIntoMessages duplicate tool ids", () => {
+describe("groupEventsIntoGroups duplicate tool ids", () => {
   it("matches child tool results by parent task when tool ids repeat", () => {
-    const messages = groupEventsIntoMessages([
+    const groups = groupEventsIntoGroups([
       {
         sequenceNumber: 0,
         eventType: "system",
@@ -927,21 +915,21 @@ describe("groupEventsIntoMessages duplicate tool ids", () => {
       },
     ]);
 
-    expect(messages).toHaveLength(2);
-    expect(messages[0]?.childMessages).toHaveLength(1);
-    expect(messages[1]?.childMessages).toHaveLength(1);
+    expect(groups).toHaveLength(2);
+    expect(groups[0]?.childGroups).toHaveLength(1);
+    expect(groups[1]?.childGroups).toHaveLength(1);
     expect(
-      messages[0]?.childMessages?.[0]?.toolOperations?.[0]?.result?.content,
+      groups[0]?.childGroups?.[0]?.toolOperations?.[0]?.result?.content,
     ).toBe("result task-a");
     expect(
-      messages[1]?.childMessages?.[0]?.toolOperations?.[0]?.result?.content,
+      groups[1]?.childGroups?.[0]?.toolOperations?.[0]?.result?.content,
     ).toBe("result task-b");
   });
 });
 
-describe("groupEventsIntoMessages parent tool ids", () => {
+describe("groupEventsIntoGroups parent tool ids", () => {
   it("does not attach child tool results to a mismatched parent task", () => {
-    const messages = groupEventsIntoMessages([
+    const groups = groupEventsIntoGroups([
       {
         sequenceNumber: 0,
         eventType: "system",
@@ -990,11 +978,11 @@ describe("groupEventsIntoMessages parent tool ids", () => {
       },
     ]);
 
-    expect(messages).toHaveLength(2);
+    expect(groups).toHaveLength(2);
     expect(
-      messages[0]?.childMessages?.[0]?.toolOperations?.[0]?.result,
+      groups[0]?.childGroups?.[0]?.toolOperations?.[0]?.result,
     ).toBeUndefined();
-    expect(messages[1]?.toolOperations?.[0]).toMatchObject({
+    expect(groups[1]?.toolOperations?.[0]).toMatchObject({
       toolName: "Unknown",
       result: {
         content: "wrong parent result",
@@ -1004,9 +992,9 @@ describe("groupEventsIntoMessages parent tool ids", () => {
   });
 });
 
-describe("groupEventsIntoMessages thinking content", () => {
+describe("groupEventsIntoGroups thinking content", () => {
   it("keeps Claude Code thinking content blocks visible", () => {
-    const messages = groupEventsIntoMessages([
+    const groups = groupEventsIntoGroups([
       {
         sequenceNumber: 0,
         eventType: "assistant",
@@ -1025,15 +1013,15 @@ describe("groupEventsIntoMessages thinking content", () => {
       },
     ]);
 
-    expect(messages).toHaveLength(1);
-    expect(messages[0]?.thinkingBlocks).toEqual([
+    expect(groups).toHaveLength(1);
+    expect(groups[0]?.thinkingBlocks).toEqual([
       "Review the failing logs before responding.",
     ]);
-    expect(messages[0]?.textBefore).toBe("The failure is in the log renderer.");
+    expect(groups[0]?.textBefore).toBe("The failure is in the log renderer.");
   });
 
   it("does not drop thinking-only assistant events", () => {
-    const messages = groupEventsIntoMessages([
+    const groups = groupEventsIntoGroups([
       {
         sequenceNumber: 0,
         eventType: "assistant",
@@ -1051,15 +1039,15 @@ describe("groupEventsIntoMessages thinking content", () => {
       },
     ]);
 
-    expect(messages).toHaveLength(1);
-    expect(messages[0]?.thinkingBlocks).toEqual([
+    expect(groups).toHaveLength(1);
+    expect(groups[0]?.thinkingBlocks).toEqual([
       "Inspect the previous run output.",
     ]);
-    expect(messages[0]?.textBefore).toBeUndefined();
+    expect(groups[0]?.textBefore).toBeUndefined();
   });
 });
 
-describe("groupEventsIntoMessages malformed tool ids", () => {
+describe("groupEventsIntoGroups malformed tool ids", () => {
   it("uses stable fallback ids for tool uses without ids", () => {
     const events: AgentEvent[] = [
       {
@@ -1085,21 +1073,21 @@ describe("groupEventsIntoMessages malformed tool ids", () => {
       },
     ];
 
-    const firstMessages = groupEventsIntoMessages(events);
-    const secondMessages = groupEventsIntoMessages(events);
+    const firstGroups = groupEventsIntoGroups(events);
+    const secondGroups = groupEventsIntoGroups(events);
 
     expect(
-      firstMessages[0]?.toolOperations?.map((operation) => {
+      firstGroups[0]?.toolOperations?.map((operation) => {
         return operation.toolUseId;
       }),
     ).toEqual(["unknown-4-0", "unknown-4-1"]);
-    expect(secondMessages[0]?.toolOperations).toEqual(
-      firstMessages[0]?.toolOperations,
+    expect(secondGroups[0]?.toolOperations).toEqual(
+      firstGroups[0]?.toolOperations,
     );
   });
 
   it("keeps multiple orphan tool results from one event addressable", () => {
-    const messages = groupEventsIntoMessages([
+    const groups = groupEventsIntoGroups([
       {
         sequenceNumber: 9,
         eventType: "user",
@@ -1116,19 +1104,19 @@ describe("groupEventsIntoMessages malformed tool ids", () => {
     ]);
 
     expect(
-      messages.map((message) => {
-        return message.sequenceNumber;
+      groups.map((group) => {
+        return group.sequenceNumber;
       }),
     ).toEqual([9 + 1 / 1_000_000, 9 + 2 / 1_000_000]);
     expect(
-      messages.map((message) => {
-        return message.toolOperations?.[0]?.toolUseId;
+      groups.map((group) => {
+        return group.toolOperations?.[0]?.toolUseId;
       }),
     ).toEqual(["orphan-9-0", "orphan-9-1"]);
   });
 
   it("keeps multiple TodoWrite cards from one event addressable", () => {
-    const messages = groupEventsIntoMessages([
+    const groups = groupEventsIntoGroups([
       {
         sequenceNumber: 7,
         eventType: "assistant",
@@ -1162,33 +1150,33 @@ describe("groupEventsIntoMessages malformed tool ids", () => {
     ]);
 
     expect(
-      messages.map((message) => {
-        return message.sequenceNumber;
+      groups.map((group) => {
+        return group.sequenceNumber;
       }),
     ).toEqual([7 + 1 / 1_000_000, 7 + 2 / 1_000_000]);
     expect(
       new Set(
-        messages.map((message) => {
-          return groupedMessageKey(message);
+        groups.map((group) => {
+          return eventGroupKey(group);
         }),
       ).size,
     ).toBe(2);
-    expect(messages[0]?.todoState).toEqual([
+    expect(groups[0]?.todoState).toEqual([
       { content: "First task", status: "in_progress" },
     ]);
-    expect(messages[1]?.todoState).toEqual([
+    expect(groups[1]?.todoState).toEqual([
       { content: "First task", status: "completed" },
       { content: "Second task", status: "in_progress" },
     ]);
   });
 });
 
-describe("groupEventsIntoMessages tool result metadata", () => {
+describe("groupEventsIntoGroups tool result metadata", () => {
   it("normalizes tool result content that JSON.stringify cannot handle", () => {
     const circularContent: Record<string, unknown> = { output: "done" };
     circularContent.self = circularContent;
 
-    const messages = groupEventsIntoMessages([
+    const groups = groupEventsIntoGroups([
       {
         sequenceNumber: 1,
         eventType: "assistant",
@@ -1235,10 +1223,10 @@ describe("groupEventsIntoMessages tool result metadata", () => {
       },
     ]);
 
-    expect(messages[0]?.toolOperations?.[0]?.result?.content).toBe(
+    expect(groups[0]?.toolOperations?.[0]?.result?.content).toBe(
       '{"output":"done","self":"[Circular]"}',
     );
-    expect(messages[0]?.toolOperations?.[1]?.result?.content).toBe("42");
+    expect(groups[0]?.toolOperations?.[1]?.result?.content).toBe("42");
   });
 
   it("bounds deeply nested and sparse tool result content", () => {
@@ -1249,7 +1237,7 @@ describe("groupEventsIntoMessages tool result metadata", () => {
     const sparseContent: unknown[] = [];
     sparseContent.length = 10_000;
 
-    const messages = groupEventsIntoMessages([
+    const groups = groupEventsIntoGroups([
       {
         sequenceNumber: 1,
         eventType: "assistant",
@@ -1296,18 +1284,18 @@ describe("groupEventsIntoMessages tool result metadata", () => {
       },
     ]);
 
-    expect(messages[0]?.toolOperations?.[0]?.result?.content).toContain(
+    expect(groups[0]?.toolOperations?.[0]?.result?.content).toContain(
       '"[MaxDepth]"',
     );
-    expect(messages[0]?.toolOperations?.[1]?.result?.content).toContain(
+    expect(groups[0]?.toolOperations?.[1]?.result?.content).toContain(
       '"... 9900 more items"',
     );
   });
 });
 
-describe("groupEventsIntoMessages tool result metadata validation", () => {
+describe("groupEventsIntoGroups tool result metadata validation", () => {
   it("ignores negative tool result duration and bytes", () => {
-    const messages = groupEventsIntoMessages([
+    const groups = groupEventsIntoGroups([
       {
         sequenceNumber: 1,
         eventType: "assistant",
@@ -1344,25 +1332,23 @@ describe("groupEventsIntoMessages tool result metadata validation", () => {
       },
     ]);
 
-    expect(messages[0]?.toolOperations?.[0]?.result).toMatchObject({
+    expect(groups[0]?.toolOperations?.[0]?.result).toMatchObject({
       content: "done",
       isError: false,
     });
-    expect(
-      messages[0]?.toolOperations?.[0]?.result?.durationMs,
-    ).toBeUndefined();
-    expect(messages[0]?.toolOperations?.[0]?.result?.bytes).toBeUndefined();
+    expect(groups[0]?.toolOperations?.[0]?.result?.durationMs).toBeUndefined();
+    expect(groups[0]?.toolOperations?.[0]?.result?.bytes).toBeUndefined();
   });
 });
 
-describe("groupEventsIntoMessages malformed TodoWrite values", () => {
+describe("groupEventsIntoGroups malformed TodoWrite values", () => {
   it("uses a safe fallback for malformed todo values", () => {
     const malformedTodo = Object.create(null) as Record<string, unknown>;
     malformedTodo.toJSON = () => {
       throw new Error("cannot serialize todo");
     };
 
-    const messages = groupEventsIntoMessages([
+    const groups = groupEventsIntoGroups([
       {
         sequenceNumber: 7,
         eventType: "assistant",
@@ -1382,15 +1368,15 @@ describe("groupEventsIntoMessages malformed TodoWrite values", () => {
       },
     ]);
 
-    expect(messages[0]?.todoState).toEqual([
+    expect(groups[0]?.todoState).toEqual([
       { content: "{}", status: "pending" },
     ]);
   });
 });
 
-describe("groupEventsIntoMessages TodoWrite snapshots", () => {
+describe("groupEventsIntoGroups TodoWrite snapshots", () => {
   it("renders malformed TodoWrite calls as ordinary tools", () => {
-    const messages = groupEventsIntoMessages([
+    const groups = groupEventsIntoGroups([
       {
         sequenceNumber: 7,
         eventType: "assistant",
@@ -1427,10 +1413,10 @@ describe("groupEventsIntoMessages TodoWrite snapshots", () => {
       },
     ]);
 
-    expect(messages).toHaveLength(1);
-    expect(messages[0]?.type).toBe("assistant");
-    expect(messages[0]?.todoState).toBeUndefined();
-    expect(messages[0]?.toolOperations?.[0]).toMatchObject({
+    expect(groups).toHaveLength(1);
+    expect(groups[0]?.type).toBe("assistant");
+    expect(groups[0]?.todoState).toBeUndefined();
+    expect(groups[0]?.toolOperations?.[0]).toMatchObject({
       toolName: "TodoWrite",
       result: {
         content: "invalid todo payload",
@@ -1440,7 +1426,7 @@ describe("groupEventsIntoMessages TodoWrite snapshots", () => {
   });
 
   it("keeps TodoWrite errors attached to todo cards", () => {
-    const messages = groupEventsIntoMessages([
+    const groups = groupEventsIntoGroups([
       {
         sequenceNumber: 7,
         eventType: "assistant",
@@ -1479,33 +1465,31 @@ describe("groupEventsIntoMessages TodoWrite snapshots", () => {
       },
     ]);
 
-    expect(messages).toHaveLength(1);
-    const [message] = messages;
-    if (!message) {
+    expect(groups).toHaveLength(1);
+    const [group] = groups;
+    if (!group) {
       throw new Error("expected todo message");
     }
 
-    expect(message.type).toBe("todo");
-    expect(message.todoState).toEqual([
+    expect(group.type).toBe("todo");
+    expect(group.todoState).toEqual([
       { content: "Check failure", status: "pending" },
     ]);
-    expect(message.toolOperations?.[0]).toMatchObject({
+    expect(group.toolOperations?.[0]).toMatchObject({
       toolName: "TodoWrite",
       result: {
         content: "todo write failed",
         isError: true,
       },
     });
-    expect(groupedMessageMatchesSearch(message, "todo write failed")).toBe(
-      true,
-    );
-    expect(groupedMessageMatchesSearch(message, "TodoWrite")).toBe(false);
+    expect(eventGroupMatchesSearch(group, "todo write failed")).toBe(true);
+    expect(eventGroupMatchesSearch(group, "TodoWrite")).toBe(false);
   });
 });
 
-describe("groupEventsIntoMessages TodoWrite state", () => {
+describe("groupEventsIntoGroups TodoWrite state", () => {
   it("treats TodoWrite input as the latest ordered todo snapshot", () => {
-    const messages = groupEventsIntoMessages([
+    const groups = groupEventsIntoGroups([
       {
         sequenceNumber: 7,
         eventType: "assistant",
@@ -1553,12 +1537,12 @@ describe("groupEventsIntoMessages TodoWrite state", () => {
       },
     ]);
 
-    expect(messages[0]?.todoState).toEqual([
+    expect(groups[0]?.todoState).toEqual([
       { content: "Duplicate task", status: "pending" },
       { content: "Duplicate task", status: "in_progress" },
       { content: "Removed task", status: "pending" },
     ]);
-    expect(messages[1]?.todoState).toEqual([
+    expect(groups[1]?.todoState).toEqual([
       { content: "Duplicate task", status: "completed" },
       { content: "Duplicate task", status: "in_progress" },
     ]);

@@ -141,7 +141,7 @@ function toModelUsage(value: unknown): ModelUsage | undefined {
   return entries.length > 0 ? Object.fromEntries(entries) : undefined;
 }
 
-// Exported for use in GroupedMessageCard
+// Exported for use in EventGroupCard
 export function SystemInitContent({ eventData }: { eventData: unknown }) {
   const data = isRecord(eventData) ? eventData : {};
   const tools = toStringList(data.tools);
@@ -230,7 +230,7 @@ function ModelUsagePopover({ modelUsage }: { modelUsage: ModelUsage }) {
   );
 }
 
-// Exported for use in GroupedMessageCard
+// Exported for use in EventGroupCard
 export function ResultEventContent({ eventData }: { eventData: unknown }) {
   const data = isRecord(eventData) ? eventData : {};
   const durationMs = toNonNegativeFiniteNumber(data.duration_ms);

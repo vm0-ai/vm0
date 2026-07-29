@@ -234,16 +234,16 @@ import { ReplaceComposerDraftDialog } from "./replace-composer-draft-dialog.tsx"
 
 import {
   renameChatThread$,
-  type EnrichedChatMessage,
-  type GroupedChatMessageGroup,
-} from "../../signals/chat-page/chat-message.ts";
+  type EnrichedChatEvent,
+  type ChatEventGroup,
+} from "../../signals/chat-page/chat-event.ts";
 import type {
-  ChatInputMessage,
-  ChatMessage,
-} from "../../signals/chat-page/chat-message-types.ts";
+  ChatInputEvent,
+  ChatEvent,
+} from "../../signals/chat-page/chat-event-types.ts";
 import type {
   ChatThreadSignals,
-  QueuedChatMessageItem,
+  QueuedChatEventItem,
   RecommendedFollowupSource,
   ThinkingIndicatorMode,
 } from "../../signals/chat-page/chat-thread-signals.ts";
@@ -319,37 +319,36 @@ type RecommendedFollowup = NonNullable<
   ChatFollowupsEvent["recommendedFollowups"]
 >[number];
 
-function isInputChatEvent(message: ChatMessage): message is ChatInputMessage {
+function isInputChatEvent(event: ChatEvent): event is ChatInputEvent {
   return (
-    message.eventType === "input.prompt" ||
-    message.eventType === "input.rejected"
+    event.eventType === "input.prompt" || event.eventType === "input.rejected"
   );
 }
 
-function asInputChatEvent(message: ChatMessage): ChatInputMessage | undefined {
-  return isInputChatEvent(message) ? message : undefined;
+function asInputChatEvent(event: ChatEvent): ChatInputEvent | undefined {
+  return isInputChatEvent(event) ? event : undefined;
 }
 
 function visibleUserMessage(
-  inputMessage: ChatInputMessage | undefined,
+  inputEvent: ChatInputEvent | undefined,
 ): UserMessageDocument | undefined {
-  return inputMessage?.userMessage;
+  return inputEvent?.userMessage;
 }
 
-function chatEventAttachments(message: ChatMessage) {
-  return isInputChatEvent(message) || message.eventType === "run.completed"
-    ? message.attachFiles
+function chatEventAttachments(event: ChatEvent) {
+  return isInputChatEvent(event) || event.eventType === "run.completed"
+    ? event.attachFiles
     : undefined;
 }
 
-function chatEventError(message: ChatMessage): string | undefined {
+function chatEventError(event: ChatEvent): string | undefined {
   if (
-    message.eventType === "input.rejected" ||
-    message.eventType === "output.error" ||
-    message.eventType === "run.failed" ||
-    message.eventType === "run.cancelled"
+    event.eventType === "input.rejected" ||
+    event.eventType === "output.error" ||
+    event.eventType === "run.failed" ||
+    event.eventType === "run.cancelled"
   ) {
-    return message.error;
+    return event.error;
   }
   return undefined;
 }
@@ -1862,7 +1861,7 @@ const CHAT_THREAD_CONTENT_MAIN_CLASS =
   "items-center py-4 pl-4 pr-4 sm:pl-6 sm:pr-6 @container";
 const CHAT_RENDER_LOAD_MORE_TOP_THRESHOLD_PX = 100;
 
-function ChatThreadRenderedMessageGroups({
+function ChatThreadRenderedEventGroups({
   thread,
 }: {
   thread: ChatThreadSignals;
@@ -1872,7 +1871,7 @@ function ChatThreadRenderedMessageGroups({
       equalityFn: equalArrays,
     }) ?? [];
   const { activeGroups: renderedActiveGroups } =
-    splitQueuedMessagesForThinkingIndicator(renderedGroups);
+    splitQueuedEventsForThinkingIndicator(renderedGroups);
   const runGroupExpansionOverrides = useGet(runGroupExpansionOverrides$);
   const toggleRunGroupExpanded = useSet(toggleRunGroupExpanded$);
   const runGroupFolding = buildRunGroupFolding(
@@ -1888,7 +1887,7 @@ function ChatThreadRenderedMessageGroups({
     completedWorkFolding?.visibleGroups ?? runGroupVisibleGroups;
 
   return (
-    <ChatThreadMessageGroups
+    <ChatThreadEventGroups
       thread={thread}
       groups={visibleGroups}
       runGroupFolding={runGroupFolding}
@@ -1922,13 +1921,13 @@ function ChatThreadEmptyState({ thread }: { thread: ChatThreadSignals }) {
   const renderedGroupsReady =
     useLastResolved(thread.visibleRenderedChatGroupsReady$) ?? false;
   const threadSettledInServer = useGet(thread.threadSettledInServer$);
-  const hasMessages = useLastResolved(thread.hasMessages$);
-  const hasNewMessagesState = useLoadableState(thread.hasNewMessages$);
+  const hasEvents = useLastResolved(thread.hasEvents$);
+  const hasNewEventsState = useLoadableState(thread.hasNewEvents$);
   if (
     !renderedGroupsReady ||
     !threadSettledInServer ||
-    hasMessages !== false ||
-    hasNewMessagesState === "loading"
+    hasEvents !== false ||
+    hasNewEventsState === "loading"
   ) {
     return null;
   }
@@ -1948,7 +1947,7 @@ function ChatThreadEmptyState({ thread }: { thread: ChatThreadSignals }) {
   );
 }
 
-function ChatThreadMessagesMain({ thread }: { thread: ChatThreadSignals }) {
+function ChatThreadEventsMain({ thread }: { thread: ChatThreadSignals }) {
   const renderedGroupsReady =
     useLastResolved(thread.visibleRenderedChatGroupsReady$) ?? false;
 
@@ -1962,7 +1961,7 @@ function ChatThreadMessagesMain({ thread }: { thread: ChatThreadSignals }) {
         <ChatThreadSessionError thread={thread} />
         <ChatThreadEmptyState thread={thread} />
         <ChatHistoryBackfillSkeleton thread={thread} />
-        <ChatThreadRenderedMessageGroups thread={thread} />
+        <ChatThreadRenderedEventGroups thread={thread} />
         <ChatThreadThinkingIndicator thread={thread} />
       </div>
     </main>
@@ -1977,7 +1976,7 @@ function ChatThreadThinkingIndicator({
   return <ThinkingIndicator thread={thread} />;
 }
 
-function ChatThreadMessageGroups({
+function ChatThreadEventGroups({
   thread,
   groups,
   runGroupFolding,
@@ -1987,7 +1986,7 @@ function ChatThreadMessageGroups({
   onToggleCompletedWork,
 }: {
   thread: ChatThreadSignals;
-  groups: readonly GroupedChatMessageGroup[];
+  groups: readonly ChatEventGroup[];
   runGroupFolding: RunGroupFolding | null;
   onToggleRunGroup: (key: string, expanded: boolean) => void;
   completedWorkFolding: CompletedWorkFolding | null;
@@ -2005,9 +2004,9 @@ function ChatThreadMessageGroups({
     <>
       {groups.map((group) => {
         const runGroupFolds =
-          externalRunGroupFolds.get(group.beginMessageId) ?? [];
+          externalRunGroupFolds.get(group.beginEventId) ?? [];
         const embeddedFolds =
-          embeddedRunGroupFolds.get(group.beginMessageId) ?? [];
+          embeddedRunGroupFolds.get(group.beginEventId) ?? [];
         const completedWorkFold = completedWorkFoldForGroup(
           completedWorkFolding,
           group,
@@ -2016,7 +2015,7 @@ function ChatThreadMessageGroups({
           completedWorkFold !== null &&
           completedWorkExpandedKeys.has(completedWorkFold.key);
         return (
-          <div key={group.beginMessageId} className="contents">
+          <div key={group.beginEventId} className="contents">
             {runGroupFolds.map((runGroupFold) => {
               return (
                 <RunGroupFoldRow
@@ -2060,7 +2059,7 @@ function resolveRunGroupFoldPlacements({
   runGroupFolding,
   onToggleRunGroup,
 }: {
-  groups: readonly GroupedChatMessageGroup[];
+  groups: readonly ChatEventGroup[];
   runGroupFolding: RunGroupFolding | null;
   onToggleRunGroup: (key: string, expanded: boolean) => void;
 }): {
@@ -2075,7 +2074,7 @@ function resolveRunGroupFoldPlacements({
   }
 
   for (const [index, group] of groups.entries()) {
-    const folds = runGroupFolding.foldsByNextGroupId.get(group.beginMessageId);
+    const folds = runGroupFolding.foldsByNextGroupId.get(group.beginEventId);
     if (!folds || folds.length === 0) {
       continue;
     }
@@ -2094,7 +2093,7 @@ function resolveRunGroupFoldPlacements({
       const target = embeddedGroupId
         ? embeddedRunGroupFolds
         : externalRunGroupFolds;
-      const targetGroupId = embeddedGroupId ?? group.beginMessageId;
+      const targetGroupId = embeddedGroupId ?? group.beginEventId;
       const existing = target.get(targetGroupId);
       if (existing) {
         existing.push(control);
@@ -2108,43 +2107,43 @@ function resolveRunGroupFoldPlacements({
 }
 
 function inlineGroupIdForCollapsedRunGroupFold(
-  groups: readonly GroupedChatMessageGroup[],
+  groups: readonly ChatEventGroup[],
   index: number,
 ): string | undefined {
   const group = groups[index];
   if (!group || group.role !== "user") {
     return undefined;
   }
-  if (firstRunIdForMessages(group.messages) === undefined) {
+  if (firstRunIdForEvents(group.events) === undefined) {
     return undefined;
   }
   return (
     assistantGroupIdForCollapsedRunGroupFold(groups, index) ??
-    group.beginMessageId
+    group.beginEventId
   );
 }
 
 function assistantGroupIdForCollapsedRunGroupFold(
-  groups: readonly GroupedChatMessageGroup[],
+  groups: readonly ChatEventGroup[],
   index: number,
 ): string | undefined {
   const group = groups[index];
   if (!group || group.role !== "user") {
     return undefined;
   }
-  const runId = firstRunIdForMessages(group.messages);
+  const runId = firstRunIdForEvents(group.events);
   if (runId === undefined) {
     return undefined;
   }
 
   for (let nextIndex = index + 1; nextIndex < groups.length; nextIndex++) {
     const candidate = groups[nextIndex]!;
-    const candidateRunId = firstRunIdForMessages(candidate.messages);
+    const candidateRunId = firstRunIdForEvents(candidate.events);
     if (candidateRunId !== runId) {
       return undefined;
     }
     if (candidate.role === "assistant") {
-      return candidate.beginMessageId;
+      return candidate.beginEventId;
     }
   }
 
@@ -2153,15 +2152,15 @@ function assistantGroupIdForCollapsedRunGroupFold(
 
 function completedWorkFoldForGroup(
   completedWorkFolding: CompletedWorkFolding | null,
-  group: GroupedChatMessageGroup,
+  group: ChatEventGroup,
 ): CompletedWorkFold | null {
   if (completedWorkFolding === null) {
     return null;
   }
   return (
-    group.messages
-      .map((message) => {
-        return completedWorkFolding.foldsByFinalMessageId.get(message.id);
+    group.events
+      .map((event) => {
+        return completedWorkFolding.foldsByFinalEventId.get(event.id);
       })
       .find((fold) => {
         return fold !== undefined;
@@ -2169,21 +2168,21 @@ function completedWorkFoldForGroup(
   );
 }
 
-function groupMessagesByRole(
-  messages: readonly EnrichedChatMessage[],
-): GroupedChatMessageGroup[] {
-  const groups: GroupedChatMessageGroup[] = [];
-  for (const message of messages) {
-    const role = chatEventCompatibilityRole(message.eventType);
+function groupEventsByRole(
+  events: readonly EnrichedChatEvent[],
+): ChatEventGroup[] {
+  const groups: ChatEventGroup[] = [];
+  for (const event of events) {
+    const role = chatEventCompatibilityRole(event.eventType);
     const last = groups[groups.length - 1];
     if (last && last.role === role) {
-      last.messages.push(message);
+      last.events.push(event);
       continue;
     }
     groups.push({
-      beginMessageId: message.id,
+      beginEventId: event.id,
       role,
-      messages: [message],
+      events: [event],
     });
   }
   return groups;
@@ -2191,35 +2190,34 @@ function groupMessagesByRole(
 
 interface CompletedWorkFold {
   key: string;
-  finalMessageId: string;
-  hiddenGroups: GroupedChatMessageGroup[];
-  labelGroups: GroupedChatMessageGroup[];
+  finalEventId: string;
+  hiddenGroups: ChatEventGroup[];
+  labelGroups: ChatEventGroup[];
 }
 
 interface CompletedWorkFolding {
-  visibleGroups: GroupedChatMessageGroup[];
-  foldsByFinalMessageId: Map<string, CompletedWorkFold>;
+  visibleGroups: ChatEventGroup[];
+  foldsByFinalEventId: Map<string, CompletedWorkFold>;
 }
 
-function groupMessagesForCompletedWorkDisplay(
-  messages: readonly EnrichedChatMessage[],
-  foldFinalMessageIds: ReadonlySet<string>,
-): GroupedChatMessageGroup[] {
-  const groups: GroupedChatMessageGroup[] = [];
-  for (const message of messages) {
-    const role = chatEventCompatibilityRole(message.eventType);
-    const forceStandalone = foldFinalMessageIds.has(message.id);
+function groupEventsForCompletedWorkDisplay(
+  events: readonly EnrichedChatEvent[],
+  foldFinalEventIds: ReadonlySet<string>,
+): ChatEventGroup[] {
+  const groups: ChatEventGroup[] = [];
+  for (const event of events) {
+    const role = chatEventCompatibilityRole(event.eventType);
+    const forceStandalone = foldFinalEventIds.has(event.id);
     const last = groups[groups.length - 1];
     const lastHasFoldFinal =
-      last?.messages.some((candidate) => {
-        return foldFinalMessageIds.has(candidate.id);
+      last?.events.some((candidate) => {
+        return foldFinalEventIds.has(candidate.id);
       }) ?? false;
-    const lastFoldFinal = last?.messages.find((candidate) => {
-      return foldFinalMessageIds.has(candidate.id);
+    const lastFoldFinal = last?.events.find((candidate) => {
+      return foldFinalEventIds.has(candidate.id);
     });
     const continuesFoldFinalRun =
-      lastFoldFinal?.runId !== undefined &&
-      lastFoldFinal.runId === message.runId;
+      lastFoldFinal?.runId !== undefined && lastFoldFinal.runId === event.runId;
 
     if (
       !forceStandalone &&
@@ -2227,33 +2225,33 @@ function groupMessagesForCompletedWorkDisplay(
       last.role === role &&
       (!lastHasFoldFinal || continuesFoldFinalRun)
     ) {
-      last.messages.push(message);
+      last.events.push(event);
       continue;
     }
 
     groups.push({
-      beginMessageId: message.id,
+      beginEventId: event.id,
       role,
-      messages: [message],
+      events: [event],
     });
   }
   return groups;
 }
 
-function firstRunIdForMessages(
-  messages: readonly EnrichedChatMessage[],
+function firstRunIdForEvents(
+  events: readonly EnrichedChatEvent[],
 ): string | undefined {
-  return messages.find((message) => {
-    return message.runId !== undefined;
+  return events.find((event) => {
+    return event.runId !== undefined;
   })?.runId;
 }
 
 function usageByRunIdFromGroups(
-  groups: readonly GroupedChatMessageGroup[],
+  groups: readonly ChatEventGroup[],
 ): Map<string, ChatMessageUsagePayload> {
   return foldLatestChatUsageByRunId(
     groups.flatMap((group) => {
-      const runId = firstRunIdForMessages(group.messages);
+      const runId = firstRunIdForEvents(group.events);
       return group.role === "assistant" &&
         group.usage !== undefined &&
         runId !== undefined
@@ -2270,137 +2268,136 @@ function usageByRunIdFromGroups(
 }
 
 function attachUsageToCompletedWorkGroups(
-  groups: readonly GroupedChatMessageGroup[],
+  groups: readonly ChatEventGroup[],
   usageByRunId: ReadonlyMap<string, ChatMessageUsagePayload>,
-): GroupedChatMessageGroup[] {
+): ChatEventGroup[] {
   return groups.map((group) => {
     if (group.role !== "assistant") {
       return group;
     }
-    const runId = firstRunIdForMessages(group.messages);
+    const runId = firstRunIdForEvents(group.events);
     const usage = runId === undefined ? undefined : usageByRunId.get(runId);
     return usage === undefined ? group : { ...group, usage };
   });
 }
 
-function isRenderableAssistantMessage(message: EnrichedChatMessage): boolean {
+function isRenderableAssistantEvent(event: EnrichedChatEvent): boolean {
   return (
-    chatEventCompatibilityRole(message.eventType) === "assistant" &&
-    (Boolean(message.content) ||
-      Boolean(chatEventError(message)) ||
-      message.blocks.length > 0 ||
-      Boolean(chatEventAttachments(message)?.length))
+    chatEventCompatibilityRole(event.eventType) === "assistant" &&
+    (Boolean(event.content) ||
+      Boolean(chatEventError(event)) ||
+      event.blocks.length > 0 ||
+      Boolean(chatEventAttachments(event)?.length))
   );
 }
 
-function isPrimaryAssistantResult(message: EnrichedChatMessage): boolean {
+function isPrimaryAssistantResultEvent(event: EnrichedChatEvent): boolean {
   return (
-    (message.eventType !== "run.completed" || Boolean(message.content)) &&
-    isRenderableAssistantMessage(message)
+    (event.eventType !== "run.completed" || Boolean(event.content)) &&
+    isRenderableAssistantEvent(event)
   );
 }
 
-function isThinkingOnlyAssistantMessage(message: EnrichedChatMessage): boolean {
+function isThinkingOnlyAssistantEvent(event: EnrichedChatEvent): boolean {
   return (
-    message.eventType === "output.thinking" &&
-    message.thinking.trim().length > 0
+    event.eventType === "output.thinking" && event.thinking.trim().length > 0
   );
 }
 
 function terminatedRunIdsForCompletedWork(
-  messages: readonly EnrichedChatMessage[],
+  events: readonly EnrichedChatEvent[],
 ): Set<string> {
-  return terminatedChatRunIds(messages);
+  return terminatedChatRunIds(events);
 }
 
 function buildCompletedWorkFolding(
-  groups: readonly GroupedChatMessageGroup[],
+  groups: readonly ChatEventGroup[],
 ): CompletedWorkFolding | null {
   const usageByRunId = usageByRunIdFromGroups(groups);
-  const messages = groups.flatMap((group) => {
-    return group.messages;
+  const events = groups.flatMap((group) => {
+    return group.events;
   });
-  const terminatedRunIds = terminatedRunIdsForCompletedWork(messages);
-  const visibleMessages: EnrichedChatMessage[] = [];
+  const terminatedRunIds = terminatedRunIdsForCompletedWork(events);
+  const visibleEvents: EnrichedChatEvent[] = [];
   const folds: CompletedWorkFold[] = [];
 
-  for (let index = 0; index < messages.length; ) {
-    const runId = messages[index]!.runId;
+  for (let index = 0; index < events.length; ) {
+    const runId = events[index]!.runId;
     if (runId === undefined) {
-      visibleMessages.push(messages[index]!);
+      visibleEvents.push(events[index]!);
       index++;
       continue;
     }
 
     let endIndex = index + 1;
-    while (endIndex < messages.length && messages[endIndex]!.runId === runId) {
+    while (endIndex < events.length && events[endIndex]!.runId === runId) {
       endIndex++;
     }
 
-    const runMessages = messages.slice(index, endIndex);
-    if (!terminatedRunIds.has(runId) || runMessages.some(isCancelledRunEvent)) {
-      visibleMessages.push(...runMessages);
+    const runEvents = events.slice(index, endIndex);
+    if (!terminatedRunIds.has(runId) || runEvents.some(isCancelledRunEvent)) {
+      visibleEvents.push(...runEvents);
       index = endIndex;
       continue;
     }
 
-    let finalMessageIndex = -1;
-    for (let offset = runMessages.length - 1; offset >= 0; offset--) {
-      if (isPrimaryAssistantResult(runMessages[offset]!)) {
-        finalMessageIndex = offset;
+    let finalEventIndex = -1;
+    for (let offset = runEvents.length - 1; offset >= 0; offset--) {
+      if (isPrimaryAssistantResultEvent(runEvents[offset]!)) {
+        finalEventIndex = offset;
         break;
       }
     }
-    if (finalMessageIndex < 0) {
-      for (let offset = runMessages.length - 1; offset >= 0; offset--) {
-        if (isRenderableAssistantMessage(runMessages[offset]!)) {
-          finalMessageIndex = offset;
+    if (finalEventIndex < 0) {
+      for (let offset = runEvents.length - 1; offset >= 0; offset--) {
+        if (isRenderableAssistantEvent(runEvents[offset]!)) {
+          finalEventIndex = offset;
           break;
         }
       }
     }
-    const finalMessage =
-      finalMessageIndex >= 0 ? runMessages[finalMessageIndex]! : undefined;
-    const precedingMessages =
-      finalMessageIndex > 0 ? runMessages.slice(0, finalMessageIndex) : [];
-    const hiddenMessages = precedingMessages.filter((message) => {
+    const finalEvent =
+      finalEventIndex >= 0 ? runEvents[finalEventIndex]! : undefined;
+    const precedingEvents =
+      finalEventIndex > 0 ? runEvents.slice(0, finalEventIndex) : [];
+    const hiddenEvents = precedingEvents.filter((event) => {
       return (
-        chatEventCompatibilityRole(message.eventType) !== "user" &&
-        !isThinkingOnlyAssistantMessage(message)
+        chatEventCompatibilityRole(event.eventType) !== "user" &&
+        !isThinkingOnlyAssistantEvent(event)
       );
     });
-    const trailingMessages =
-      finalMessageIndex >= 0 ? runMessages.slice(finalMessageIndex + 1) : [];
-    const trailingMessagesAreMarkers = trailingMessages.every((message) => {
+    const trailingEvents =
+      finalEventIndex >= 0 ? runEvents.slice(finalEventIndex + 1) : [];
+    const trailingEventsAreMarkers = trailingEvents.every((event) => {
       return (
-        chatEventCompatibilityRole(message.eventType) === "assistant" &&
-        (!isRenderableAssistantMessage(message) ||
-          message.eventType === "run.completed")
+        chatEventCompatibilityRole(event.eventType) === "assistant" &&
+        (!isRenderableAssistantEvent(event) ||
+          event.eventType === "run.completed")
       );
     });
-    const visibleTrailingMessages = trailingMessages.filter((message) => {
-      return isRenderableAssistantMessage(message);
+    const visibleTrailingEvents = trailingEvents.filter((event) => {
+      return isRenderableAssistantEvent(event);
     });
     if (
-      finalMessage !== undefined &&
-      hiddenMessages.length > 0 &&
-      trailingMessagesAreMarkers
+      finalEvent !== undefined &&
+      hiddenEvents.length > 0 &&
+      trailingEventsAreMarkers
     ) {
-      visibleMessages.push(
-        ...precedingMessages.filter((message) => {
-          return chatEventCompatibilityRole(message.eventType) === "user";
+      visibleEvents.push(
+        ...precedingEvents.filter((event) => {
+          return chatEventCompatibilityRole(event.eventType) === "user";
         }),
-        finalMessage,
-        ...visibleTrailingMessages,
+        finalEvent,
+        ...visibleTrailingEvents,
       );
       folds.push({
-        key: `${runId}:${finalMessage.id}`,
-        finalMessageId: finalMessage.id,
-        hiddenGroups: groupMessagesByRole(hiddenMessages),
-        labelGroups: groupMessagesByRole(runMessages),
+        key: `${runId}:${finalEvent.id}`,
+        finalEventId: finalEvent.id,
+        hiddenGroups: groupEventsByRole(hiddenEvents),
+        labelGroups: groupEventsByRole(runEvents),
       });
     } else {
-      visibleMessages.push(...runMessages);
+      visibleEvents.push(...runEvents);
     }
 
     index = endIndex;
@@ -2410,28 +2407,25 @@ function buildCompletedWorkFolding(
     return null;
   }
 
-  const foldFinalMessageIds = new Set(
+  const foldFinalEventIds = new Set(
     folds.map((fold) => {
-      return fold.finalMessageId;
+      return fold.finalEventId;
     }),
   );
   return {
     visibleGroups: attachUsageToCompletedWorkGroups(
-      groupMessagesForCompletedWorkDisplay(
-        visibleMessages,
-        foldFinalMessageIds,
-      ),
+      groupEventsForCompletedWorkDisplay(visibleEvents, foldFinalEventIds),
       usageByRunId,
     ),
-    foldsByFinalMessageId: new Map(
+    foldsByFinalEventId: new Map(
       folds.map((fold) => {
-        return [fold.finalMessageId, fold];
+        return [fold.finalEventId, fold];
       }),
     ),
   };
 }
 
-function parseMessageTime(value: string): number | null {
+function parseEventTime(value: string): number | null {
   const timestamp = Date.parse(value);
   return Number.isNaN(timestamp) ? null : timestamp;
 }
@@ -2449,11 +2443,11 @@ function formatCompactDuration(totalSeconds: number): string {
 }
 
 function durationLabelForGroups(
-  groups: readonly GroupedChatMessageGroup[],
+  groups: readonly ChatEventGroup[],
 ): string | null {
   const timestamps = groups.flatMap((group) => {
-    return group.messages.flatMap((message) => {
-      const timestamp = parseMessageTime(message.createdAt);
+    return group.events.flatMap((event) => {
+      const timestamp = parseEventTime(event.createdAt);
       return timestamp === null ? [] : [timestamp];
     });
   });
@@ -2467,9 +2461,7 @@ function durationLabelForGroups(
   return formatCompactDuration(elapsedSeconds);
 }
 
-function completedWorkLabel(
-  groups: readonly GroupedChatMessageGroup[],
-): string {
+function completedWorkLabel(groups: readonly ChatEventGroup[]): string {
   const duration = durationLabelForGroups(groups);
   return duration ? `Worked for ${duration}` : "Worked";
 }
@@ -2482,7 +2474,7 @@ function CompletedWorkFoldRow({
   expanded,
   onToggle,
 }: {
-  groups: readonly GroupedChatMessageGroup[];
+  groups: readonly ChatEventGroup[];
   expanded: boolean;
   onToggle: () => void;
 }) {
@@ -2519,23 +2511,23 @@ function normalizedInlineLabel(value: string): string {
   return value.trim().replace(/\s+/g, " ");
 }
 
-function runGroupFoldMessages(fold: RunGroupFold): EnrichedChatMessage[] {
+function runGroupFoldEvents(fold: RunGroupFold): EnrichedChatEvent[] {
   return fold.labelGroups.flatMap((group) => {
-    return group.messages;
+    return group.events;
   });
 }
 
 function runGroupFoldSourceLabel(fold: RunGroupFold): string {
-  const messages = runGroupFoldMessages(fold);
+  const events = runGroupFoldEvents(fold);
   const workflowLabel = runGroupFoldWorkflowLabel(fold);
   if (workflowLabel) {
     return workflowLabel;
   }
-  for (const message of messages) {
-    if (!isInputChatEvent(message)) {
+  for (const event of events) {
+    if (!isInputChatEvent(event)) {
       continue;
     }
-    const content = messageDocumentToDisplayText(message.userMessage);
+    const content = messageDocumentToDisplayText(event.userMessage);
     if (content?.trim()) {
       return normalizedInlineLabel(content);
     }
@@ -2544,11 +2536,11 @@ function runGroupFoldSourceLabel(fold: RunGroupFold): string {
 }
 
 function runGroupFoldWorkflowLabel(fold: RunGroupFold): string | null {
-  for (const message of runGroupFoldMessages(fold)) {
-    if (isWorkflowUserMessage(message)) {
-      return normalizedInlineLabel(workflowMessageBody(message));
+  for (const event of runGroupFoldEvents(fold)) {
+    if (isWorkflowUserMessage(event)) {
+      return normalizedInlineLabel(workflowMessageBody(event));
     }
-    const workflowSnapshot = message.workflowSnapshot;
+    const workflowSnapshot = event.workflowSnapshot;
     const label =
       workflowSnapshot?.triggerBrief?.trim() ||
       workflowSnapshot?.description?.trim() ||
@@ -2562,35 +2554,35 @@ function runGroupFoldWorkflowLabel(fold: RunGroupFold): string | null {
 }
 
 function runGroupFoldGoalLabel(fold: RunGroupFold): string {
-  const goalMessage = runGroupFoldMessages(fold).find(isGoalUserMessage);
-  const content = goalMessage ? goalUserMessageBrief(goalMessage) : null;
+  const goalEvent = runGroupFoldEvents(fold).find(isGoalUserMessage);
+  const content = goalEvent ? goalUserMessageBrief(goalEvent) : null;
   return content ? normalizedInlineLabel(content) : "goal";
 }
 
-function goalUserMessageBrief(message: EnrichedChatMessage): string | null {
+function goalUserMessageBrief(event: EnrichedChatEvent): string | null {
   return (
-    message.goalSnapshot?.objectiveBrief?.trim() ||
-    (isInputChatEvent(message)
-      ? messageDocumentToDisplayText(message.userMessage)?.trim()
+    event.goalSnapshot?.objectiveBrief?.trim() ||
+    (isInputChatEvent(event)
+      ? messageDocumentToDisplayText(event.userMessage)?.trim()
       : null) ||
     null
   );
 }
 
 function isGoalUserMessage(
-  message: EnrichedChatMessage,
-): message is EnrichedChatMessage & ChatInputMessage {
+  event: EnrichedChatEvent,
+): event is EnrichedChatEvent & ChatInputEvent {
   return (
-    isInputChatEvent(message) &&
-    message.isGoalRun === true &&
-    !hasWorkflowMessageMetadata(message) &&
-    goalUserMessageBrief(message) !== null
+    isInputChatEvent(event) &&
+    event.isGoalRun === true &&
+    !hasWorkflowMessageMetadata(event) &&
+    goalUserMessageBrief(event) !== null
   );
 }
 
 function isGoalRunGroupFold(fold: RunGroupFold): boolean {
   return fold.labelGroups.some((group) => {
-    return group.messages.some(isGoalUserMessage);
+    return group.events.some(isGoalUserMessage);
   });
 }
 
@@ -2598,11 +2590,11 @@ function verboseDurationLabelForRunGroupFold(
   fold: RunGroupFold,
 ): string | null {
   const timestamps = fold.labelGroups.flatMap((group) => {
-    return group.messages.flatMap((message) => {
-      if (message.runGroupId !== fold.runGroupId) {
+    return group.events.flatMap((event) => {
+      if (event.runGroupId !== fold.runGroupId) {
         return [];
       }
-      const timestamp = parseMessageTime(message.createdAt);
+      const timestamp = parseEventTime(event.createdAt);
       return timestamp === null ? [] : [timestamp];
     });
   });
@@ -2692,10 +2684,10 @@ function ChatThreadSkeletonOverlay({ thread }: { thread: ChatThreadSignals }) {
     thread.visibleRenderedChatGroupsReady$,
   );
   const sessionError = resolveSessionError(renderedGroupsReadyLoadable);
-  const hasMessages = useLastResolved(thread.hasMessages$);
-  const hasNewMessagesState = useLoadableState(thread.hasNewMessages$);
+  const hasEvents = useLastResolved(thread.hasEvents$);
+  const hasNewEventsState = useLoadableState(thread.hasNewEvents$);
   const skeletonVisible =
-    hasMessages === false && hasNewMessagesState === "loading";
+    hasEvents === false && hasNewEventsState === "loading";
   if (!skeletonVisible || sessionError) {
     return null;
   }
@@ -2714,7 +2706,7 @@ function ChatThreadSkeletonOverlay({ thread }: { thread: ChatThreadSignals }) {
   );
 }
 
-function ChatThreadMessagesPane({ thread }: { thread: ChatThreadSignals }) {
+function ChatThreadEventsPane({ thread }: { thread: ChatThreadSignals }) {
   const setScrollContainer = useSet(thread.setScrollContainer$);
   const loadMoreRenderedChatGroups = useSet(thread.loadMoreRenderedChatGroups$);
   const pageSignal = useGet(pageSignal$);
@@ -2737,7 +2729,7 @@ function ChatThreadMessagesPane({ thread }: { thread: ChatThreadSignals }) {
         onScroll={handleScroll}
         className="absolute inset-0 overflow-y-auto focus:outline-none [overflow-anchor:none] [scrollbar-gutter:stable]"
       >
-        <ChatThreadMessagesMain
+        <ChatThreadEventsMain
           key={`messages:${thread.threadId}`}
           thread={thread}
         />
@@ -2770,7 +2762,7 @@ function ChatHistoryBackfillSkeleton({
       aria-label="Loading earlier messages"
       className="flex flex-col gap-6"
     >
-      <ChatMessageSkeletonPair />
+      <ChatEventSkeletonPair />
     </div>
   );
 }
@@ -2785,9 +2777,9 @@ function ChatThreadContent({ thread }: { thread: ChatThreadSignals }) {
 
       <div className="relative min-h-0 flex-1">
         <div className="flex h-full min-w-0 flex-col">
-          <ChatThreadMessagesPane thread={thread} />
+          <ChatThreadEventsPane thread={thread} />
           {/* Command loadables are hook-owned, so keep their identity boundary
-              narrower than the persistent thread and message owners. */}
+              narrower than the persistent thread and event owners. */}
           <ChatThreadComposer
             key={thread.threadId}
             thread={thread}
@@ -2857,7 +2849,7 @@ function recommendedFollowupShownKey(
   source: RecommendedFollowupSource,
 ): string {
   return [
-    source.messageId,
+    source.eventId,
     source.followups.length,
     ...source.followups.map((followup) => {
       return `${followup.kind}:${followup.generationType ?? ""}`;
@@ -2880,7 +2872,7 @@ function reportRecommendedFollowupsShown(
   element.dataset.recommendedFollowupsShownKey = shownKey;
 
   captureRecommendedFollowupsShown({
-    messageId: source.messageId,
+    messageId: source.eventId,
     followups: source.followups,
   });
 }
@@ -2904,7 +2896,7 @@ function RecommendedFollowupList({
     followupIndex: number,
   ) => {
     captureRecommendedFollowupSelected({
-      messageId: source.messageId,
+      messageId: source.eventId,
       followupIndex,
       followupCount: source.followups.length,
       followup,
@@ -2943,14 +2935,12 @@ function RecommendedFollowupList({
   );
 }
 
-function splitQueuedMessagesForThinkingIndicator(
-  groups: GroupedChatMessageGroup[],
-): {
-  activeGroups: GroupedChatMessageGroup[];
-  queuedGroups: GroupedChatMessageGroup[];
+function splitQueuedEventsForThinkingIndicator(groups: ChatEventGroup[]): {
+  activeGroups: ChatEventGroup[];
+  queuedGroups: ChatEventGroup[];
 } {
-  const activeGroups: GroupedChatMessageGroup[] = [];
-  const queuedMessages: EnrichedChatMessage[] = [];
+  const activeGroups: ChatEventGroup[] = [];
+  const queuedEvents: EnrichedChatEvent[] = [];
 
   for (const group of groups) {
     if (group.role !== "user") {
@@ -2958,20 +2948,20 @@ function splitQueuedMessagesForThinkingIndicator(
       continue;
     }
 
-    const activeMessages: EnrichedChatMessage[] = [];
-    for (const message of group.messages) {
-      if (message.isQueued) {
-        queuedMessages.push(message);
+    const activeEvents: EnrichedChatEvent[] = [];
+    for (const event of group.events) {
+      if (event.isQueued) {
+        queuedEvents.push(event);
       } else {
-        activeMessages.push(message);
+        activeEvents.push(event);
       }
     }
 
-    if (activeMessages.length > 0) {
+    if (activeEvents.length > 0) {
       activeGroups.push({
         ...group,
-        beginMessageId: activeMessages[0]!.id,
-        messages: activeMessages,
+        beginEventId: activeEvents[0]!.id,
+        events: activeEvents,
       });
     }
   }
@@ -2979,12 +2969,12 @@ function splitQueuedMessagesForThinkingIndicator(
   return {
     activeGroups,
     queuedGroups:
-      queuedMessages.length > 0
+      queuedEvents.length > 0
         ? [
             {
-              beginMessageId: queuedMessages[0]!.id,
+              beginEventId: queuedEvents[0]!.id,
               role: "user",
-              messages: queuedMessages,
+              events: queuedEvents,
             },
           ]
         : [],
@@ -3001,13 +2991,13 @@ function canQueueMessage({ sending }: { sending: boolean }): boolean {
 
 function shouldAutoFocusComposer({
   autoFocus,
-  hasMessages,
+  hasEvents,
 }: {
   autoFocus: boolean;
-  hasMessages: boolean;
+  hasEvents: boolean;
 }): boolean {
   return (
-    autoFocus && !hasMessages && !window.matchMedia("(pointer: coarse)").matches
+    autoFocus && !hasEvents && !window.matchMedia("(pointer: coarse)").matches
   );
 }
 
@@ -3031,28 +3021,28 @@ function resolveChatComposerModelPicker(params: {
 
 function useChatComposerQueue(
   thread: ChatThreadSignals,
-  queuedMessages: readonly QueuedChatMessageItem[],
+  queuedEvents: readonly QueuedChatEventItem[],
 ) {
   const recallMessage = useSet(thread.recallMessage$);
   const focusInput = useSet(thread.focusInput$);
   const pageSignal = useGet(pageSignal$);
 
-  const queuedMessagesById = new Map(
-    queuedMessages.map((message) => {
-      return [message.id, message] as const;
+  const queuedEventsById = new Map(
+    queuedEvents.map((event) => {
+      return [event.id, event] as const;
     }),
   );
   const queuedItems: QueuedComposerItem[] = Array.from(
-    queuedMessagesById.values(),
-  ).map((message) => {
+    queuedEventsById.values(),
+  ).map((event) => {
     return {
-      id: message.id,
-      text: message.text,
+      id: event.id,
+      text: event.text,
     };
   });
 
   const onRemoveQueuedItem = (id: string) => {
-    if (!queuedMessagesById.has(id)) {
+    if (!queuedEventsById.has(id)) {
       return;
     }
     detach(
@@ -3412,26 +3402,26 @@ function useChatThreadComposerWorkflowPrompt({
   };
 }
 
-const EMPTY_QUEUED_MESSAGE_ITEMS: readonly QueuedChatMessageItem[] = [];
+const EMPTY_QUEUED_EVENT_ITEMS: readonly QueuedChatEventItem[] = [];
 
-function equalQueuedMessageItems(
-  previous: readonly QueuedChatMessageItem[],
-  next: readonly QueuedChatMessageItem[],
+function equalQueuedEventItems(
+  previous: readonly QueuedChatEventItem[],
+  next: readonly QueuedChatEventItem[],
 ): boolean {
   return equalArrays(previous, next, (left, right) => {
     return left.id === right.id && left.text === right.text;
   });
 }
 
-function useQueuedMessageItems(thread: ChatThreadSignals) {
-  const hasQueuedMessages = useLastResolved(thread.hasQueuedMessages$) ?? false;
-  const queuedMessageItems$ = hasQueuedMessages
-    ? thread.queuedMessageItems$
-    : thread.emptyQueuedMessageItems$;
+function useQueuedEventItems(thread: ChatThreadSignals) {
+  const hasQueuedEvents = useLastResolved(thread.hasQueuedEvents$) ?? false;
+  const queuedEventItems$ = hasQueuedEvents
+    ? thread.queuedEventItems$
+    : thread.emptyQueuedEventItems$;
   return (
-    useLastResolved(queuedMessageItems$, {
-      equalityFn: equalQueuedMessageItems,
-    }) ?? EMPTY_QUEUED_MESSAGE_ITEMS
+    useLastResolved(queuedEventItems$, {
+      equalityFn: equalQueuedEventItems,
+    }) ?? EMPTY_QUEUED_EVENT_ITEMS
   );
 }
 
@@ -3442,9 +3432,9 @@ function ChatThreadComposer({
   thread: ChatThreadSignals;
   connectorReadState: ComposerConnectorReadState;
 }) {
-  const queuedMessageItems = useQueuedMessageItems(thread);
-  const hasMessagesResolved = useLastResolved(thread.hasMessages$);
-  const hasMessages = hasMessagesResolved ?? false;
+  const queuedEventItems = useQueuedEventItems(thread);
+  const hasEventsResolved = useLastResolved(thread.hasEvents$);
+  const hasEvents = hasEventsResolved ?? false;
   const displayName = useLastResolved(thread.agentDisplayName$) ?? "Zero";
   const sendButtonStatus =
     useLastResolved(thread.composerSendButtonStatus$) ?? "sending";
@@ -3460,7 +3450,7 @@ function ChatThreadComposer({
 
   const { queuedItems, onRemoveQueuedItem } = useChatComposerQueue(
     thread,
-    queuedMessageItems,
+    queuedEventItems,
   );
   const workflowEvents = useChatComposerWorkflowEvents(thread);
   const { activeGoal, onCancelActiveGoal } = useChatComposerActiveGoal(
@@ -3476,7 +3466,7 @@ function ChatThreadComposer({
       cloudBrowserEnabledForSend,
       clearComputerAccessOverride,
     });
-  const skeletonVisible = hasMessagesResolved === undefined;
+  const skeletonVisible = hasEventsResolved === undefined;
   const composerSending = sendButtonStatus === "sending";
   const queueWhileSending = canQueueMessage({ sending: composerSending });
 
@@ -3505,7 +3495,7 @@ function ChatThreadComposer({
     className: "w-full min-w-0",
     autoFocus: shouldAutoFocusComposer({
       autoFocus: true,
-      hasMessages,
+      hasEvents,
     }),
     enableMobileSingleLine: true,
     onDraftChange: handleDraftChange,
@@ -3554,7 +3544,7 @@ function ChatThreadComposer({
 // Skeleton placeholder while session loads
 // ---------------------------------------------------------------------------
 
-function ChatMessageSkeletonPair({ compact = false }: { compact?: boolean }) {
+function ChatEventSkeletonPair({ compact = false }: { compact?: boolean }) {
   return (
     <>
       {/* User bubble skeleton */}
@@ -3591,8 +3581,8 @@ function ChatMessageSkeletonPair({ compact = false }: { compact?: boolean }) {
 function ChatSkeleton() {
   return (
     <>
-      <ChatMessageSkeletonPair />
-      <ChatMessageSkeletonPair compact />
+      <ChatEventSkeletonPair />
+      <ChatEventSkeletonPair compact />
     </>
   );
 }
@@ -3829,7 +3819,7 @@ function equalRecommendedFollowupSources(
     previous === next ||
     (previous !== null &&
       next !== null &&
-      previous.messageId === next.messageId &&
+      previous.eventId === next.eventId &&
       previous.followups === next.followups)
   );
 }
@@ -3850,18 +3840,18 @@ function ThinkingIndicator({ thread }: { thread: ChatThreadSignals }) {
   const thinkingLabel = useGet(thread.thinkingPhrase$);
   const running = thinkingIndicatorRunning(mode);
   const isQueued = thinkingIndicatorQueued(mode);
-  const thinkingMessageId = useLastResolved(thread.thinkingMessageId$);
+  const thinkingEventId = useLastResolved(thread.thinkingEventId$);
   const displayedThinkingText =
     useLastResolved(thread.displayedThinkingText$) ?? "";
   const setThinkingIndicatorTextRef = useSet(
     thread.setThinkingIndicatorTextRef$,
   );
   const serverThinkingLabel =
-    thinkingText && thinkingMessageId && running
+    thinkingText && thinkingEventId && running
       ? {
           displayedText: displayedThinkingText,
           fullText: thinkingText,
-          id: thinkingMessageId,
+          id: thinkingEventId,
           setRef: setThinkingIndicatorTextRef,
         }
       : undefined;
@@ -3898,7 +3888,7 @@ function ThinkingIndicator({ thread }: { thread: ChatThreadSignals }) {
 }
 
 /**
- * Parse inline attachment lines from message content.
+ * Parse inline attachment lines from event content.
  * Matches `[Attached file: name](url)` optionally followed by a curl line.
  * Returns the cleaned content and parsed attachments.
  */
@@ -5264,7 +5254,7 @@ function AssistantBubbleAvatar({ thread }: { thread: ChatThreadSignals }) {
 }
 
 // ---------------------------------------------------------------------------
-// Paged message rendering — renders from visibleRenderedChatGroups$ (flat data,
+// Paged event rendering — renders from visibleRenderedChatGroups$ (flat data,
 // no signal-based run loops).
 // ---------------------------------------------------------------------------
 
@@ -5274,12 +5264,12 @@ function PagedGroupRow({
   runGroupFolds,
   completedWorkFold,
 }: {
-  group: GroupedChatMessageGroup;
+  group: ChatEventGroup;
   thread: ChatThreadSignals;
   runGroupFolds?: readonly RunGroupFoldControl[];
   completedWorkFold?: {
-    groups: readonly GroupedChatMessageGroup[];
-    hiddenGroups: readonly GroupedChatMessageGroup[];
+    groups: readonly ChatEventGroup[];
+    hiddenGroups: readonly ChatEventGroup[];
     expanded: boolean;
     onToggle: () => void;
   };
@@ -5308,14 +5298,16 @@ function PagedUserGroup({
   thread,
   runGroupFolds,
 }: {
-  group: GroupedChatMessageGroup;
+  group: ChatEventGroup;
   thread: ChatThreadSignals;
   runGroupFolds?: readonly RunGroupFoldControl[];
 }) {
   return (
     <>
-      {group.messages.map((msg) => {
-        return <PagedUserMessage key={msg.id} message={msg} thread={thread} />;
+      {group.events.map((event) => {
+        return (
+          <PagedUserMessage key={event.id} event={event} thread={thread} />
+        );
       })}
       {runGroupFolds?.map((fold) => {
         return <RunGroupFoldRow key={fold.fold.key} control={fold} />;
@@ -5325,17 +5317,17 @@ function PagedUserGroup({
 }
 
 function isWorkflowUserMessage(
-  message: EnrichedChatMessage,
-): message is EnrichedChatMessage & ChatInputMessage {
-  return isInputChatEvent(message) && hasWorkflowMessageMetadata(message);
+  event: EnrichedChatEvent,
+): event is EnrichedChatEvent & ChatInputEvent {
+  return isInputChatEvent(event) && hasWorkflowMessageMetadata(event);
 }
 
-function hasWorkflowMessageMetadata(message: EnrichedChatMessage): boolean {
-  return message.workflowSnapshot !== undefined;
+function hasWorkflowMessageMetadata(event: EnrichedChatEvent): boolean {
+  return event.workflowSnapshot !== undefined;
 }
 
 function workflowSnapshotTitle(
-  workflowSnapshot: NonNullable<EnrichedChatMessage["workflowSnapshot"]>,
+  workflowSnapshot: NonNullable<EnrichedChatEvent["workflowSnapshot"]>,
 ): string {
   return (
     workflowSnapshot.displayName?.trim() ||
@@ -5345,7 +5337,7 @@ function workflowSnapshotTitle(
 }
 
 function workflowMessageBrief(
-  workflowSnapshot: NonNullable<EnrichedChatMessage["workflowSnapshot"]>,
+  workflowSnapshot: NonNullable<EnrichedChatEvent["workflowSnapshot"]>,
 ): string | null {
   const brief =
     workflowSnapshot.triggerBrief?.trim() ||
@@ -5355,12 +5347,12 @@ function workflowMessageBrief(
 }
 
 function workflowMessageBody(
-  message: EnrichedChatMessage & ChatInputMessage,
+  event: EnrichedChatEvent & ChatInputEvent,
 ): string {
-  const workflowSnapshot = message.workflowSnapshot;
+  const workflowSnapshot = event.workflowSnapshot;
   if (!workflowSnapshot) {
     return (
-      messageDocumentToDisplayText(message.userMessage)?.trim() || "Workflow"
+      messageDocumentToDisplayText(event.userMessage)?.trim() || "Workflow"
     );
   }
   return (
@@ -5381,11 +5373,11 @@ interface ResolvedMessageAttachment {
 }
 
 function resolveAttachments(
-  message: EnrichedChatMessage,
+  event: EnrichedChatEvent,
   parsed: { filename: string; url: string }[],
   artifactSignalsForUrl: ChatThreadSignals["artifactSignalsForUrl"],
 ): ResolvedMessageAttachment[] {
-  const eventAttachments = chatEventAttachments(message);
+  const eventAttachments = chatEventAttachments(event);
   const source =
     eventAttachments && eventAttachments.length > 0 ? eventAttachments : parsed;
   return source.map((f) => {
@@ -5424,11 +5416,11 @@ function attachmentIdFromUrl(url: string): string | null {
   return match?.[1] ?? null;
 }
 
-function clipboardAttachmentsFromMessage(
-  message: ChatMessage,
+function clipboardAttachmentsFromEvent(
+  event: ChatEvent,
   parsed: { filename: string; url: string }[],
 ): ChatClipboardAttachment[] {
-  const eventAttachments = chatEventAttachments(message);
+  const eventAttachments = chatEventAttachments(event);
   const source =
     eventAttachments && eventAttachments.length > 0 ? eventAttachments : parsed;
   return source.map((f) => {
@@ -6200,16 +6192,16 @@ function UserMessageContent({
 }
 
 function WorkflowUserMessage({
-  message,
+  event,
 }: {
-  message: EnrichedChatMessage & ChatInputMessage;
+  event: EnrichedChatEvent & ChatInputEvent;
 }) {
-  const workflowSnapshot = message.workflowSnapshot;
+  const workflowSnapshot = event.workflowSnapshot;
   if (!workflowSnapshot) {
     return null;
   }
   const workflowTitle = workflowSnapshotTitle(workflowSnapshot);
-  const workflowBody = workflowMessageBody(message);
+  const workflowBody = workflowMessageBody(event);
   const bubbleClassName =
     "zero-chat-bubble-user rounded-xl max-w-[85%] text-[0.9375rem] leading-[1.7] [overflow-wrap:anywhere] overflow-hidden whitespace-pre-wrap transition-colors duration-150";
   const body = (
@@ -6258,15 +6250,15 @@ function WorkflowUserMessage({
 }
 
 function GoalUserMessage({
-  message,
+  event,
   bodyBlocks,
   openLightbox,
 }: {
-  message: EnrichedChatMessage & ChatInputMessage;
+  event: EnrichedChatEvent & ChatInputEvent;
   bodyBlocks: BodyRenderBlock[];
   openLightbox: (url: string) => void;
 }) {
-  const objectiveBrief = message.goalSnapshot?.objectiveBrief?.trim();
+  const objectiveBrief = event.goalSnapshot?.objectiveBrief?.trim();
   return (
     <div data-role="user" className="group">
       <div className="flex flex-col items-end min-w-0 animate-in fade-in slide-in-from-bottom-2 duration-300 @[900px]:grid @[900px]:grid-cols-[36px_minmax(0,1fr)] @[900px]:gap-2.5 @[900px]:-ml-[46px] @[900px]:items-start">
@@ -6314,32 +6306,32 @@ function useUserMessageRendering() {
 }
 
 function resolvePagedUserMessageRendering({
-  message,
-  inputMessage,
+  event,
+  inputEvent,
   userMessage,
   inlineTemplates,
 }: {
-  message: EnrichedChatMessage;
-  inputMessage: ChatInputMessage | undefined;
+  event: EnrichedChatEvent;
+  inputEvent: ChatInputEvent | undefined;
   userMessage: UserMessageDocument | undefined;
   inlineTemplates: boolean;
 }) {
   const legacyContent =
-    message.eventType === "input.automation"
-      ? (message.triggerBrief ?? "")
-      : (message.content ?? "");
+    event.eventType === "input.automation"
+      ? (event.triggerBrief ?? "")
+      : (event.content ?? "");
   const { cleanContent, parsed } = parseInlineAttachments(
-    inputMessage ? "" : legacyContent,
+    inputEvent ? "" : legacyContent,
   );
   const canonicalUserMessage = userMessage;
-  const attachFiles = inputMessage?.attachFiles;
+  const attachFiles = inputEvent?.attachFiles;
   const copyText = canonicalUserMessage
     ? (messageDocumentToPrompt(canonicalUserMessage, {
         inlineTemplates,
       }) ?? "")
     : cleanContent;
-  const legacyClipboardAttachments = clipboardAttachmentsFromMessage(
-    message,
+  const legacyClipboardAttachments = clipboardAttachmentsFromEvent(
+    event,
     parsed,
   );
   const clipboardAttachments = canonicalUserMessage
@@ -6359,15 +6351,15 @@ function resolvePagedUserMessageRendering({
 }
 
 function PagedUserMessage({
-  message,
+  event,
   thread,
 }: {
-  message: EnrichedChatMessage;
+  event: EnrichedChatEvent;
   thread: ChatThreadSignals;
 }) {
   const { inlineTemplates } = useUserMessageRendering();
-  const inputMessage = asInputChatEvent(message);
-  const userMessage = visibleUserMessage(inputMessage);
+  const inputEvent = asInputChatEvent(event);
+  const userMessage = visibleUserMessage(inputEvent);
   const {
     attachFiles,
     canonicalUserMessage,
@@ -6375,20 +6367,20 @@ function PagedUserMessage({
     copyText,
     parsed,
   } = resolvePagedUserMessageRendering({
-    message,
-    inputMessage,
+    event,
+    inputEvent,
     userMessage,
     inlineTemplates,
   });
-  const bodyBlocks = message.blocks;
+  const bodyBlocks = event.blocks;
   const pageSignal = useGet(pageSignal$);
   const openImageLightbox = useSet(openAttachmentImageLightbox$);
   const openLightbox = openImageLightbox;
-  const copiedId = useGet(thread.copiedMessageId$);
-  const copied = copiedId === message.id;
-  const copyMessage = useSet(thread.copyMessage$);
+  const copiedId = useGet(thread.copiedEventId$);
+  const copied = copiedId === event.id;
+  const copyEvent = useSet(thread.copyEvent$);
   const findArtifact = thread.artifactSignalsForUrl;
-  const allAttachments = resolveAttachments(message, parsed, findArtifact);
+  const allAttachments = resolveAttachments(event, parsed, findArtifact);
   const canCopy =
     userMessage !== undefined ||
     copyText.trim().length > 0 ||
@@ -6399,8 +6391,8 @@ function PagedUserMessage({
       return;
     }
     detach(
-      copyMessage(
-        message.id,
+      copyEvent(
+        event.id,
         {
           text: copyText,
           attachments: clipboardAttachments,
@@ -6412,14 +6404,14 @@ function PagedUserMessage({
     );
   };
 
-  if (isWorkflowUserMessage(message)) {
-    return <WorkflowUserMessage message={message} />;
+  if (isWorkflowUserMessage(event)) {
+    return <WorkflowUserMessage event={event} />;
   }
 
-  if (isGoalUserMessage(message)) {
+  if (isGoalUserMessage(event)) {
     return (
       <GoalUserMessage
-        message={message}
+        event={event}
         bodyBlocks={bodyBlocks}
         openLightbox={openLightbox}
       />
@@ -6431,8 +6423,8 @@ function PagedUserMessage({
       <div className="flex flex-col items-end min-w-0 animate-in fade-in slide-in-from-bottom-2 duration-300 @[900px]:grid @[900px]:grid-cols-[36px_minmax(0,1fr)] @[900px]:gap-2.5 @[900px]:-ml-[46px] @[900px]:items-start">
         <div className="hidden @[900px]:block @[900px]:w-9 @[900px]:h-9 @[900px]:shrink-0" />
         <div className="flex flex-col items-end w-full">
-          <SlackUserMessageOrigin permalink={message.slackMessagePermalink} />
-          <FeishuUserMessageOrigin chatOpenUrl={message.feishuChatOpenUrl} />
+          <SlackUserMessageOrigin permalink={event.slackMessagePermalink} />
+          <FeishuUserMessageOrigin chatOpenUrl={event.feishuChatOpenUrl} />
           {canonicalUserMessage ? (
             <UserMessageContent
               document={canonicalUserMessage}
@@ -6479,43 +6471,43 @@ function PagedAssistantGroup({
   runGroupFolds,
   completedWorkFold,
 }: {
-  group: GroupedChatMessageGroup;
+  group: ChatEventGroup;
   thread: ChatThreadSignals;
   runGroupFolds?: readonly RunGroupFoldControl[];
   completedWorkFold?: {
-    groups: readonly GroupedChatMessageGroup[];
-    hiddenGroups: readonly GroupedChatMessageGroup[];
+    groups: readonly ChatEventGroup[];
+    hiddenGroups: readonly ChatEventGroup[];
     expanded: boolean;
     onToggle: () => void;
   };
 }) {
-  const hasRenderableMessage = group.messages.some((message) => {
-    return isRenderableAssistantMessage(message);
+  const hasRenderableEvent = group.events.some((event) => {
+    return isRenderableAssistantEvent(event);
   });
   const hasRunGroupFolds = (runGroupFolds?.length ?? 0) > 0;
   const showCompletedWorkFold = completedWorkFold && !hasRunGroupFolds;
-  if (!hasRenderableMessage && !completedWorkFold && !hasRunGroupFolds) {
+  if (!hasRenderableEvent && !completedWorkFold && !hasRunGroupFolds) {
     return null;
   }
 
-  const groupElementId = `chat-message-group-${group.beginMessageId}`;
-  const fullContent = group.messages
+  const groupElementId = `chat-message-group-${group.beginEventId}`;
+  const fullContent = group.events
     .map((m) => {
       return m.content;
     })
     .filter(Boolean)
     .join("\n\n");
-  let renderedAssistantMessageCount = 0;
-  const renderAssistantMessageItem = (message: EnrichedChatMessage) => {
-    const isRenderable = isRenderableAssistantMessage(message);
-    const compactTop = isRenderable && renderedAssistantMessageCount > 0;
+  let renderedAssistantEventCount = 0;
+  const renderAssistantEventItem = (event: EnrichedChatEvent) => {
+    const isRenderable = isRenderableAssistantEvent(event);
+    const compactTop = isRenderable && renderedAssistantEventCount > 0;
     if (isRenderable) {
-      renderedAssistantMessageCount += 1;
+      renderedAssistantEventCount += 1;
     }
     return (
-      <PagedAssistantMessageItem
-        key={message.id}
-        message={message}
+      <PagedAssistantEventItem
+        key={event.id}
+        event={event}
         compactTop={compactTop}
         thread={thread}
       />
@@ -6546,16 +6538,16 @@ function PagedAssistantGroup({
           {showCompletedWorkFold && completedWorkFold.expanded
             ? completedWorkFold.hiddenGroups.map((hiddenGroup) => {
                 return (
-                  <div key={hiddenGroup.beginMessageId} className="contents">
-                    {hiddenGroup.messages.map((msg) => {
-                      return renderAssistantMessageItem(msg);
+                  <div key={hiddenGroup.beginEventId} className="contents">
+                    {hiddenGroup.events.map((event) => {
+                      return renderAssistantEventItem(event);
                     })}
                   </div>
                 );
               })
             : null}
-          {group.messages.map((msg) => {
-            return renderAssistantMessageItem(msg);
+          {group.events.map((event) => {
+            return renderAssistantEventItem(event);
           })}
         </div>
       </div>
@@ -6564,12 +6556,12 @@ function PagedAssistantGroup({
   );
 }
 
-function PagedAssistantMessageItem({
-  message,
+function PagedAssistantEventItem({
+  event,
   compactTop = false,
   thread,
 }: {
-  message: EnrichedChatMessage;
+  event: EnrichedChatEvent;
   compactTop?: boolean;
   thread: ChatThreadSignals;
 }) {
@@ -6578,12 +6570,12 @@ function PagedAssistantMessageItem({
     openImageLightbox(url);
   };
   const attachments = resolveAttachments(
-    message,
+    event,
     [],
     thread.artifactSignalsForUrl,
   );
 
-  const error = chatEventError(message);
+  const error = chatEventError(event);
   if (error) {
     return (
       <div
@@ -6597,8 +6589,8 @@ function PagedAssistantMessageItem({
     );
   }
 
-  if (message.content || message.blocks.length > 0 || attachments.length > 0) {
-    const { blocks } = message;
+  if (event.content || event.blocks.length > 0 || attachments.length > 0) {
+    const { blocks } = event;
     return (
       <div
         className={cn(
@@ -6835,16 +6827,16 @@ function PagedGroupActions({
   content,
   thread,
 }: {
-  group: GroupedChatMessageGroup;
+  group: ChatEventGroup;
   content: string;
   thread: ChatThreadSignals;
 }) {
   const pageSignal = useGet(pageSignal$);
-  const copiedId = useGet(thread.copiedMessageId$);
-  const copied = copiedId === group.beginMessageId;
-  const copyMessage = useSet(thread.copyMessage$);
+  const copiedId = useGet(thread.copiedEventId$);
+  const copied = copiedId === group.beginEventId;
+  const copyEvent = useSet(thread.copyEvent$);
 
-  const firstRunId = group.messages.find((m) => {
+  const firstRunId = group.events.find((m) => {
     return m.runId;
   })?.runId;
   const usage = group.usage;
@@ -6859,8 +6851,8 @@ function PagedGroupActions({
       return;
     }
     detach(
-      copyMessage(
-        group.beginMessageId,
+      copyEvent(
+        group.beginEventId,
         { text: content, attachments: [] },
         pageSignal,
       ),

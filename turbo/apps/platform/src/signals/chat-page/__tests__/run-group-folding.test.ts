@@ -1,8 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type {
-  EnrichedChatMessage,
-  GroupedChatMessageGroup,
-} from "../chat-message.ts";
+import type { EnrichedChatEvent, ChatEventGroup } from "../chat-event.ts";
 import {
   buildRunGroupFolding,
   previousRunGroupVisualWindowStartIndex,
@@ -16,7 +13,7 @@ function userMessage(params: {
   readonly runId?: string;
   readonly runGroupId?: string;
   readonly content?: string;
-}): EnrichedChatMessage {
+}): EnrichedChatEvent {
   const content = params.content ?? params.id;
   return {
     id: params.id,
@@ -36,12 +33,12 @@ function userMessage(params: {
   };
 }
 
-function assistantMessage(params: {
+function assistantEvent(params: {
   readonly id: string;
   readonly runId?: string;
   readonly runGroupId?: string;
   readonly content?: string;
-}): EnrichedChatMessage {
+}): EnrichedChatEvent {
   return {
     id: params.id,
     threadId: THREAD_ID,
@@ -58,13 +55,13 @@ function assistantMessage(params: {
 
 function group(
   role: "user" | "assistant",
-  messages: EnrichedChatMessage[],
-  usage?: GroupedChatMessageGroup["usage"],
-): GroupedChatMessageGroup {
-  const result: GroupedChatMessageGroup = {
-    beginMessageId: messages[0]!.id,
+  events: EnrichedChatEvent[],
+  usage?: ChatEventGroup["usage"],
+): ChatEventGroup {
+  const result: ChatEventGroup = {
+    beginEventId: events[0]!.id,
     role,
-    messages,
+    events,
   };
   if (usage !== undefined) {
     result.usage = usage;
@@ -72,10 +69,10 @@ function group(
   return result;
 }
 
-function messageIds(groups: readonly GroupedChatMessageGroup[]): string[] {
+function eventIds(groups: readonly ChatEventGroup[]): string[] {
   return groups.flatMap((item) => {
-    return item.messages.map((message) => {
-      return message.id;
+    return item.events.map((event) => {
+      return event.id;
     });
   });
 }
@@ -85,7 +82,7 @@ function usagePayload(params: {
   readonly settledAt: string;
   readonly kind: string;
   readonly provider: string;
-}): NonNullable<GroupedChatMessageGroup["usage"]> {
+}): NonNullable<ChatEventGroup["usage"]> {
   return {
     version: 1,
     totalCredits: params.totalCredits,
@@ -106,12 +103,12 @@ function assistantRunGroups(params: {
   readonly label: string;
   readonly count: number;
   readonly runGroupId?: string;
-}): GroupedChatMessageGroup[] {
+}): ChatEventGroup[] {
   return Array.from({ length: params.count }, (_, index) => {
     const itemNumber = index + 1;
     const id = `${params.label}-${itemNumber}`;
     return group("assistant", [
-      assistantMessage({
+      assistantEvent({
         id,
         runId: `${params.label}-run-${itemNumber}`,
         runGroupId: params.runGroupId,
@@ -122,28 +119,28 @@ function assistantRunGroups(params: {
 
 describe("buildRunGroupFolding", () => {
   it("folds earlier consecutive runs in the same run group", () => {
-    const groups: GroupedChatMessageGroup[] = [
+    const groups: ChatEventGroup[] = [
       group("user", [userMessage({ id: "u1", runId: "r1", runGroupId: "g1" })]),
       group("assistant", [
-        assistantMessage({ id: "a1", runId: "r1", runGroupId: "g1" }),
+        assistantEvent({ id: "a1", runId: "r1", runGroupId: "g1" }),
       ]),
       group("user", [userMessage({ id: "u2", runId: "r2", runGroupId: "g1" })]),
       group("assistant", [
-        assistantMessage({ id: "a2", runId: "r2", runGroupId: "g1" }),
+        assistantEvent({ id: "a2", runId: "r2", runGroupId: "g1" }),
       ]),
       group("user", [userMessage({ id: "u3", runId: "r3", runGroupId: "g1" })]),
       group("assistant", [
-        assistantMessage({ id: "a3", runId: "r3", runGroupId: "g1" }),
+        assistantEvent({ id: "a3", runId: "r3", runGroupId: "g1" }),
       ]),
     ];
 
     const folding = buildRunGroupFolding(groups);
 
     expect(folding).not.toBeNull();
-    expect(messageIds(folding!.visibleGroups)).toStrictEqual(["u3", "a3"]);
+    expect(eventIds(folding!.visibleGroups)).toStrictEqual(["u3", "a3"]);
     const fold = folding!.foldsByNextGroupId.get("u3")?.[0];
     expect(fold?.hiddenRunCount).toBe(2);
-    expect(messageIds(fold?.hiddenGroups ?? [])).toStrictEqual([
+    expect(eventIds(fold?.hiddenGroups ?? [])).toStrictEqual([
       "u1",
       "a1",
       "u2",
@@ -152,11 +149,11 @@ describe("buildRunGroupFolding", () => {
   });
 
   it("rolls up usage from folded runs onto the latest assistant group", () => {
-    const groups: GroupedChatMessageGroup[] = [
+    const groups: ChatEventGroup[] = [
       group("user", [userMessage({ id: "u1", runId: "r1", runGroupId: "g1" })]),
       group(
         "assistant",
-        [assistantMessage({ id: "a1", runId: "r1", runGroupId: "g1" })],
+        [assistantEvent({ id: "a1", runId: "r1", runGroupId: "g1" })],
         usagePayload({
           totalCredits: 10,
           settledAt: "2026-06-24T00:00:01.000Z",
@@ -167,7 +164,7 @@ describe("buildRunGroupFolding", () => {
       group("user", [userMessage({ id: "u2", runId: "r2", runGroupId: "g1" })]),
       group(
         "assistant",
-        [assistantMessage({ id: "a2", runId: "r2", runGroupId: "g1" })],
+        [assistantEvent({ id: "a2", runId: "r2", runGroupId: "g1" })],
         usagePayload({
           totalCredits: 20,
           settledAt: "2026-06-24T00:00:02.000Z",
@@ -178,7 +175,7 @@ describe("buildRunGroupFolding", () => {
       group("user", [userMessage({ id: "u3", runId: "r3", runGroupId: "g1" })]),
       group(
         "assistant",
-        [assistantMessage({ id: "a3", runId: "r3", runGroupId: "g1" })],
+        [assistantEvent({ id: "a3", runId: "r3", runGroupId: "g1" })],
         usagePayload({
           totalCredits: 30,
           settledAt: "2026-06-24T00:00:03.000Z",
@@ -191,9 +188,9 @@ describe("buildRunGroupFolding", () => {
     const folding = buildRunGroupFolding(groups);
 
     expect(folding).not.toBeNull();
-    expect(messageIds(folding!.visibleGroups)).toStrictEqual(["u3", "a3"]);
+    expect(eventIds(folding!.visibleGroups)).toStrictEqual(["u3", "a3"]);
     const latestAssistantGroup = folding!.visibleGroups.find((item) => {
-      return item.beginMessageId === "a3";
+      return item.beginEventId === "a3";
     });
     expect(latestAssistantGroup?.usage).toStrictEqual({
       version: 1,
@@ -210,11 +207,11 @@ describe("buildRunGroupFolding", () => {
   });
 
   it("keeps the latest usage payload when a run has stale usage", () => {
-    const groups: GroupedChatMessageGroup[] = [
+    const groups: ChatEventGroup[] = [
       group("user", [userMessage({ id: "u1", runId: "r1", runGroupId: "g1" })]),
       group(
         "assistant",
-        [assistantMessage({ id: "a1", runId: "r1", runGroupId: "g1" })],
+        [assistantEvent({ id: "a1", runId: "r1", runGroupId: "g1" })],
         usagePayload({
           totalCredits: 10,
           settledAt: "2026-06-24T00:00:01.000Z",
@@ -225,7 +222,7 @@ describe("buildRunGroupFolding", () => {
       group("user", [userMessage({ id: "u2", runId: "r2", runGroupId: "g1" })]),
       group(
         "assistant",
-        [assistantMessage({ id: "a2", runId: "r2", runGroupId: "g1" })],
+        [assistantEvent({ id: "a2", runId: "r2", runGroupId: "g1" })],
         usagePayload({
           totalCredits: 20,
           settledAt: "2026-06-24T00:00:02.000Z",
@@ -235,7 +232,7 @@ describe("buildRunGroupFolding", () => {
       ),
       group(
         "assistant",
-        [assistantMessage({ id: "a2-stale", runId: "r2", runGroupId: "g1" })],
+        [assistantEvent({ id: "a2-stale", runId: "r2", runGroupId: "g1" })],
         usagePayload({
           totalCredits: 0,
           settledAt: "2026-06-24T00:00:01.500Z",
@@ -246,7 +243,7 @@ describe("buildRunGroupFolding", () => {
       group("user", [userMessage({ id: "u3", runId: "r3", runGroupId: "g1" })]),
       group(
         "assistant",
-        [assistantMessage({ id: "a3", runId: "r3", runGroupId: "g1" })],
+        [assistantEvent({ id: "a3", runId: "r3", runGroupId: "g1" })],
         usagePayload({
           totalCredits: 30,
           settledAt: "2026-06-24T00:00:03.000Z",
@@ -260,21 +257,21 @@ describe("buildRunGroupFolding", () => {
 
     expect(folding).not.toBeNull();
     const latestAssistantGroup = folding!.visibleGroups.find((item) => {
-      return item.beginMessageId === "a3";
+      return item.beginEventId === "a3";
     });
     expect(latestAssistantGroup?.usage?.totalCredits).toBe(60);
   });
 
-  it("does not fold runs separated by a normal message", () => {
-    const groups: GroupedChatMessageGroup[] = [
+  it("does not fold runs separated by a normal event", () => {
+    const groups: ChatEventGroup[] = [
       group("user", [userMessage({ id: "u1", runId: "r1", runGroupId: "g1" })]),
       group("assistant", [
-        assistantMessage({ id: "a1", runId: "r1", runGroupId: "g1" }),
+        assistantEvent({ id: "a1", runId: "r1", runGroupId: "g1" }),
       ]),
       group("user", [userMessage({ id: "manual" })]),
       group("user", [userMessage({ id: "u2", runId: "r2", runGroupId: "g1" })]),
       group("assistant", [
-        assistantMessage({ id: "a2", runId: "r2", runGroupId: "g1" }),
+        assistantEvent({ id: "a2", runId: "r2", runGroupId: "g1" }),
       ]),
     ];
 
@@ -282,43 +279,43 @@ describe("buildRunGroupFolding", () => {
   });
 
   it("treats interleaved run groups as separate fold sections", () => {
-    const groups: GroupedChatMessageGroup[] = [
+    const groups: ChatEventGroup[] = [
       group("user", [
         userMessage({ id: "a1u", runId: "a1", runGroupId: "group-a" }),
       ]),
       group("assistant", [
-        assistantMessage({ id: "a1a", runId: "a1", runGroupId: "group-a" }),
+        assistantEvent({ id: "a1a", runId: "a1", runGroupId: "group-a" }),
       ]),
       group("user", [
         userMessage({ id: "a2u", runId: "a2", runGroupId: "group-a" }),
       ]),
       group("assistant", [
-        assistantMessage({ id: "a2a", runId: "a2", runGroupId: "group-a" }),
+        assistantEvent({ id: "a2a", runId: "a2", runGroupId: "group-a" }),
       ]),
       group("user", [
         userMessage({ id: "b1u", runId: "b1", runGroupId: "group-b" }),
       ]),
       group("assistant", [
-        assistantMessage({ id: "b1a", runId: "b1", runGroupId: "group-b" }),
+        assistantEvent({ id: "b1a", runId: "b1", runGroupId: "group-b" }),
       ]),
       group("user", [
         userMessage({ id: "a3u", runId: "a3", runGroupId: "group-a" }),
       ]),
       group("assistant", [
-        assistantMessage({ id: "a3a", runId: "a3", runGroupId: "group-a" }),
+        assistantEvent({ id: "a3a", runId: "a3", runGroupId: "group-a" }),
       ]),
       group("user", [
         userMessage({ id: "a4u", runId: "a4", runGroupId: "group-a" }),
       ]),
       group("assistant", [
-        assistantMessage({ id: "a4a", runId: "a4", runGroupId: "group-a" }),
+        assistantEvent({ id: "a4a", runId: "a4", runGroupId: "group-a" }),
       ]),
     ];
 
     const folding = buildRunGroupFolding(groups);
 
     expect(folding).not.toBeNull();
-    expect(messageIds(folding!.visibleGroups)).toStrictEqual([
+    expect(eventIds(folding!.visibleGroups)).toStrictEqual([
       "a2u",
       "a2a",
       "b1u",
@@ -328,11 +325,11 @@ describe("buildRunGroupFolding", () => {
     ]);
     const firstFold = folding!.foldsByNextGroupId.get("a2u")?.[0];
     const secondFold = folding!.foldsByNextGroupId.get("a4u")?.[0];
-    expect(messageIds(firstFold?.hiddenGroups ?? [])).toStrictEqual([
+    expect(eventIds(firstFold?.hiddenGroups ?? [])).toStrictEqual([
       "a1u",
       "a1a",
     ]);
-    expect(messageIds(secondFold?.hiddenGroups ?? [])).toStrictEqual([
+    expect(eventIds(secondFold?.hiddenGroups ?? [])).toStrictEqual([
       "a3u",
       "a3a",
     ]);
@@ -362,7 +359,7 @@ describe("runGroupVisualWindowStartIndex", () => {
     expect(folding?.foldsByNextGroupId.get("A-11")?.[0]?.hiddenRunCount).toBe(
       10,
     );
-    expect(messageIds(folding?.visibleGroups ?? [])).toStrictEqual([
+    expect(eventIds(folding?.visibleGroups ?? [])).toStrictEqual([
       "A-11",
       "B-1",
     ]);
@@ -394,7 +391,7 @@ describe("runGroupVisualWindowStartIndex", () => {
     expect(folding?.foldsByNextGroupId.get("B-10")?.[0]?.hiddenRunCount).toBe(
       9,
     );
-    expect(messageIds(folding?.visibleGroups ?? [])).toStrictEqual([
+    expect(eventIds(folding?.visibleGroups ?? [])).toStrictEqual([
       "A-1",
       "B-10",
       "C-1",
@@ -423,7 +420,7 @@ describe("runGroupVisualWindowStartIndex", () => {
       10,
     );
 
-    expect(groups[initialStartIndex]?.beginMessageId).toBe("older-5");
+    expect(groups[initialStartIndex]?.beginEventId).toBe("older-5");
     expect(previousStartIndex).toBe(0);
   });
 });

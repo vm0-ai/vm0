@@ -1,5 +1,22 @@
 # Changelog
 
+## [1.340.4](https://github.com/vm0-ai/vm0/compare/api-v1.340.3...api-v1.340.4) (2026-07-29)
+
+
+### Bug Fixes
+
+* **usage:** distinguish people search from web search ([#23635](https://github.com/vm0-ai/vm0/issues/23635)) ([c3f3bd1](https://github.com/vm0-ai/vm0/commit/c3f3bd1be60c48bf2ceae5a0a46a1a901ab2a5ec))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.243.3
+    * @vm0/connectors bumped to 1.200.0
+    * @vm0/core bumped to 8.484.3
+    * @vm0/db bumped to 1.150.6
+
 ## [1.340.3](https://github.com/vm0-ai/vm0/compare/api-v1.340.2...api-v1.340.3) (2026-07-29)
 
 

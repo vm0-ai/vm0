@@ -13,7 +13,7 @@ import {
   detachedSetupPage,
   SERVER_QUEUED_RUN_THREAD_ID,
   expectTextBefore,
-  makeMessage,
+  makeEvent,
   mockServerQueuedThreadStories,
   buttonByText,
   buttonByLabel,
@@ -23,7 +23,7 @@ describe("chat lifecycle", () => {
   it("shows run credit usage with friendly popover details", async () => {
     mockChatLifecycle(context, {
       threadId: "thread-usage-chip",
-      chatMessages: [
+      chatEvents: [
         {
           id: "msg-usage-chip-user",
           role: "user",
@@ -130,7 +130,7 @@ describe("chat lifecycle", () => {
   it("shows generation usage with model names only", async () => {
     mockChatLifecycle(context, {
       threadId: "thread-generation-usage-model-names",
-      chatMessages: [
+      chatEvents: [
         {
           id: "msg-generation-usage-user",
           role: "user",
@@ -205,7 +205,7 @@ describe("chat lifecycle", () => {
   it("shows the latest immutable run usage settlement", async () => {
     mockChatLifecycle(context, {
       threadId: "thread-usage-chip-settlements",
-      chatMessages: [
+      chatEvents: [
         {
           id: "msg-usage-settlement-user",
           role: "user",
@@ -280,7 +280,7 @@ describe("chat lifecycle", () => {
   it("keeps managed API usage visible when completed work is folded", async () => {
     mockChatLifecycle(context, {
       threadId: "thread-usage-chip-folded-managed-api",
-      chatMessages: [
+      chatEvents: [
         {
           id: "msg-usage-folded-user",
           role: "user",
@@ -391,7 +391,7 @@ describe("chat lifecycle", () => {
   it("keeps connector usage attached to consecutive assistant runs", async () => {
     mockChatLifecycle(context, {
       threadId: "thread-usage-chip-consecutive-runs",
-      chatMessages: [
+      chatEvents: [
         {
           id: "msg-usage-consecutive-user",
           role: "user",
@@ -494,7 +494,7 @@ describe("chat lifecycle", () => {
     const recalls: string[] = [];
     mockChatLifecycle(context, {
       threadId: SERVER_QUEUED_RUN_THREAD_ID,
-      chatMessages: [
+      chatEvents: [
         {
           id: "msg-server-queued-user",
           role: "user",
@@ -518,10 +518,10 @@ describe("chat lifecycle", () => {
           createdAt: "2026-06-09T10:00:02Z",
         },
       ],
-      onInterruptMessageAppend: (body) => {
+      onInterruptEventAppend: (body) => {
         interrupts.push(body.interruptsRunId);
       },
-      onRecallMessageAppend: (body) => {
+      onRecallEventAppend: (body) => {
         recalls.push(body.revokesEventId);
       },
       activeRunIds: ["run-server-queued"],
@@ -582,7 +582,7 @@ describe("chat lifecycle", () => {
     mockChatLifecycle(context, {
       threadId: "thread-work-folding-running",
       activeRunIds: ["run-work-folding-running"],
-      chatMessages: [
+      chatEvents: [
         {
           role: "user",
           content: "Draft the launch checklist",
@@ -618,7 +618,7 @@ describe("chat lifecycle", () => {
     mockChatLifecycle(context, {
       threadId: "thread-work-folding-completed-before-active",
       activeRunIds: ["run-work-folding-active-later"],
-      chatMessages: [
+      chatEvents: [
         {
           role: "user",
           content: "Summarize the earlier launch",
@@ -681,7 +681,7 @@ describe("chat lifecycle", () => {
   it("folds completed chat work and toggles the hidden history", async () => {
     mockChatLifecycle(context, {
       threadId: "thread-work-folding-completed",
-      chatMessages: [
+      chatEvents: [
         {
           role: "user",
           content: "Summarize the launch status",
@@ -780,7 +780,7 @@ describe("chat lifecycle", () => {
 
     mockChatLifecycle(context, {
       threadId: "thread-completed-run-layout",
-      chatMessages: [
+      chatEvents: [
         {
           role: "user",
           content: "Prepare the launch plan",
@@ -901,7 +901,7 @@ describe("chat lifecycle", () => {
   it("does not let an attached lifecycle marker hide the final answer", async () => {
     mockChatLifecycle(context, {
       threadId: "thread-work-folding-completion-marker",
-      chatMessages: [
+      chatEvents: [
         {
           role: "user",
           content: "Summarize the production launch status",
@@ -969,7 +969,7 @@ describe("chat lifecycle", () => {
   it("folds each completed run independently", async () => {
     mockChatLifecycle(context, {
       threadId: "thread-work-folding-each-run",
-      chatMessages: [
+      chatEvents: [
         {
           role: "user",
           content: "Summarize the first launch",
@@ -1075,7 +1075,7 @@ describe("chat lifecycle", () => {
   it("keeps chat work visible when the run was cancelled", async () => {
     mockChatLifecycle(context, {
       threadId: "thread-work-folding-cancelled",
-      chatMessages: [
+      chatEvents: [
         {
           role: "user",
           content: "Summarize the launch status",
@@ -1116,7 +1116,7 @@ describe("chat lifecycle", () => {
   it("does not fold a completed run with only a user message and final reply", async () => {
     mockChatLifecycle(context, {
       threadId: "thread-work-folding-user-final-only",
-      chatMessages: [
+      chatEvents: [
         {
           role: "user",
           content: "Answer directly",
@@ -1148,7 +1148,7 @@ describe("chat lifecycle", () => {
   it("does not fold a completed run when the only prior assistant message is thinking", async () => {
     mockChatLifecycle(context, {
       threadId: "thread-work-folding-thinking-only",
-      chatMessages: [
+      chatEvents: [
         {
           role: "user",
           content: "Summarize the launch status",
@@ -1190,7 +1190,7 @@ describe("chat lifecycle", () => {
   it("does not fold a completed run with a single message", async () => {
     mockChatLifecycle(context, {
       threadId: "thread-work-folding-single-message",
-      chatMessages: [
+      chatEvents: [
         {
           role: "assistant",
           content: "Standalone run result.",
@@ -1216,7 +1216,7 @@ describe("chat lifecycle", () => {
     mockChatLifecycle(context, {
       threadId: "thread-corrected-answer",
       threadTitle: "Corrected answer",
-      chatMessages: [
+      chatEvents: [
         {
           id: "msg-corrected-user",
           role: "user",
@@ -1261,7 +1261,7 @@ describe("chat lifecycle", () => {
     mockChatLifecycle(context, {
       threadId: "thread-restored-interrupt",
       threadTitle: "Restored interrupt",
-      chatMessages: [
+      chatEvents: [
         {
           id: "msg-interrupted-user",
           role: "user",
@@ -1312,13 +1312,13 @@ describe("chat lifecycle", () => {
     const threadId = "b0000000-0000-4000-a000-000000000748";
     const baselineMessages = Array.from({ length: 5 }, (_, index) => {
       return {
-        ...makeMessage(`base-${index}`, `Baseline ${index}`, threadId),
+        ...makeEvent(`base-${index}`, `Baseline ${index}`, threadId),
         seqId: index + 1,
       };
     });
     const burstMessages = Array.from({ length: 120 }, (_, index) => {
       return {
-        ...makeMessage(`burst-${index}`, `Burst ${index}`, threadId),
+        ...makeEvent(`burst-${index}`, `Burst ${index}`, threadId),
         seqId: baselineMessages.length + index + 1,
       };
     });
