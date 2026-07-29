@@ -40,6 +40,27 @@ function parseTelegramTypingTarget(
   return { installationId: data.installationId, chatId: data.chatId };
 }
 
+function telegramTypingTargetForCallback(args: {
+  readonly internalKind: ReturnType<typeof internalRunCallbackKindForRecord>;
+  readonly payload: unknown;
+}): TelegramTypingTarget | undefined {
+  if (args.internalKind === "chat") {
+    if (!args.payload || typeof args.payload !== "object") {
+      return undefined;
+    }
+    return parseTelegramTypingTarget(
+      (args.payload as Record<string, unknown>).telegramDelivery,
+    );
+  }
+  if (
+    args.internalKind !== "telegram" &&
+    args.internalKind !== "telegram:chat"
+  ) {
+    return undefined;
+  }
+  return parseTelegramTypingTarget(args.payload);
+}
+
 // Background-task command. Receives a fresh signal from the caller; failures
 // here are caught by tapError at the call site so they cannot crash
 // the already-returned 200 response.
@@ -62,10 +83,10 @@ const refreshTelegramTypingForRun$ = command(
 
     const targets = new Map<string, TelegramTypingTarget>();
     for (const callback of callbacks) {
-      if (internalRunCallbackKindForRecord(callback) !== "telegram") {
-        continue;
-      }
-      const target = parseTelegramTypingTarget(callback.payload);
+      const target = telegramTypingTargetForCallback({
+        internalKind: internalRunCallbackKindForRecord(callback),
+        payload: callback.payload,
+      });
       if (target) {
         targets.set(`${target.installationId}:${target.chatId}`, target);
       }

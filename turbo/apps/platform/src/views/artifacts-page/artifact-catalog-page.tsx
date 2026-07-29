@@ -15,6 +15,7 @@ import { r2ImageTransformUrl } from "@vm0/core";
 import { useGet, useLoadable, useSet } from "ccstate-react";
 import { cn } from "@vm0/ui";
 import { Alert, AlertDescription } from "@vm0/ui/components/ui/alert";
+import { useTranslation } from "react-i18next";
 
 import {
   artifactCatalog$,
@@ -40,27 +41,16 @@ const ARTIFACT_AUTO_LOAD_VIEWPORT_COUNT = 2;
 const ARTIFACT_GRID_MIN_CARD_WIDTH_PX = 292;
 const ARTIFACT_CARD_THUMBNAIL_WIDTH_PX = 640;
 
-const ARTIFACT_KIND_OPTIONS: readonly {
-  readonly ariaLabel: string;
-  readonly label: string;
-  readonly value: ArtifactCatalogKind | null;
-}[] = [
-  {
-    ariaLabel: "Show presentation artifacts",
-    label: "Presentations",
-    value: "presentation",
-  },
-  {
-    ariaLabel: "Show website artifacts",
-    label: "Websites",
-    value: "hosted-site",
-  },
-  { ariaLabel: "Show image artifacts", label: "Images", value: "image" },
-  { ariaLabel: "Show video artifacts", label: "Videos", value: "video" },
-  { ariaLabel: "Show file artifacts", label: "Files", value: "file" },
+const ARTIFACT_KIND_OPTIONS: readonly ArtifactCatalogKind[] = [
+  "presentation",
+  "hosted-site",
+  "image",
+  "video",
+  "file",
 ];
 
 function ArtifactKindIcon({ kind }: { readonly kind: ArtifactCatalogKind }) {
+  const { t } = useTranslation();
   const icon =
     kind === "presentation" ? (
       <IconPresentationAnalytics size={16} stroke={1.7} />
@@ -73,10 +63,35 @@ function ArtifactKindIcon({ kind }: { readonly kind: ArtifactCatalogKind }) {
     ) : (
       <IconFile size={16} stroke={1.7} />
     );
+  const kindLabel =
+    kind === "presentation"
+      ? t(($) => {
+          return $.artifacts.kinds.presentation;
+        })
+      : kind === "hosted-site"
+        ? t(($) => {
+            return $.artifacts.kinds.hostedSite;
+          })
+        : kind === "image"
+          ? t(($) => {
+              return $.artifacts.kinds.image;
+            })
+          : kind === "video"
+            ? t(($) => {
+                return $.artifacts.kinds.video;
+              })
+            : t(($) => {
+                return $.artifacts.kinds.file;
+              });
 
   return (
     <span
-      aria-label={`${kind} artifact`}
+      aria-label={t(
+        ($) => {
+          return $.artifacts.catalog.kindIcon;
+        },
+        { kind: kindLabel },
+      )}
       data-testid={`artifact-catalog-kind-icon-${kind}`}
       className="pointer-events-none absolute left-3 top-3 z-10 inline-flex h-8 w-8 items-center justify-center rounded-full bg-black/55 text-white shadow-sm ring-1 ring-white/15"
     >
@@ -116,11 +131,19 @@ function ArtifactCatalogCard({
   readonly artifact: ArtifactSummary;
   readonly onOpen: (artifactId: string) => void;
 }) {
+  const { t } = useTranslation();
   return (
     <article
       role="button"
       tabIndex={0}
-      aria-label={`Preview ${artifact.title}`}
+      aria-label={t(
+        ($) => {
+          return $.artifacts.catalog.cardPreview;
+        },
+        {
+          title: artifact.title,
+        },
+      )}
       onClick={() => {
         onOpen(artifact.id);
       }}
@@ -195,10 +218,13 @@ export function ArtifactCatalogGrid({
 }
 
 export function ArtifactCatalogSkeleton() {
+  const { t } = useTranslation();
   return (
     <div
       className="grid gap-3"
-      aria-label="Loading artifacts"
+      aria-label={t(($) => {
+        return $.artifacts.catalog.loading;
+      })}
       style={{
         gridTemplateColumns: `repeat(auto-fit, minmax(min(100%, ${String(ARTIFACT_GRID_MIN_CARD_WIDTH_PX)}px), 1fr))`,
       }}
@@ -221,17 +247,21 @@ export function ArtifactCatalogSkeleton() {
 }
 
 export function ArtifactCatalogError() {
+  const { t } = useTranslation();
   return (
     <Alert variant="destructive">
       <IconAlertTriangle size={16} stroke={1.5} aria-hidden />
       <AlertDescription>
-        Could not load artifacts. Try again later.
+        {t(($) => {
+          return $.artifacts.catalog.error;
+        })}
       </AlertDescription>
     </Alert>
   );
 }
 
 export function ArtifactCatalogEmpty() {
+  const { t } = useTranslation();
   return (
     <div className="rounded-lg border border-dashed border-border bg-card px-6 py-12 text-center">
       <img
@@ -242,10 +272,14 @@ export function ArtifactCatalogEmpty() {
         className="mx-auto h-24 w-24 object-contain opacity-80"
       />
       <h2 className="mt-4 text-sm font-medium text-foreground">
-        No artifacts found
+        {t(($) => {
+          return $.artifacts.catalog.emptyTitle;
+        })}
       </h2>
       <p className="mx-auto mt-1 max-w-md text-sm text-muted-foreground">
-        Artifacts will appear here when they are available.
+        {t(($) => {
+          return $.artifacts.catalog.emptyDescription;
+        })}
       </p>
     </div>
   );
@@ -258,21 +292,64 @@ function ArtifactCatalogKindFilter({
   readonly selectedKind: ArtifactCatalogKind | null;
   readonly onKindChange: (value: ArtifactCatalogKind | null) => void;
 }) {
+  const { t } = useTranslation();
   return (
     <div
       className="flex flex-wrap items-center gap-1.5"
-      aria-label="Artifact kind filters"
+      aria-label={t(($) => {
+        return $.artifacts.catalog.filters.label;
+      })}
     >
-      {ARTIFACT_KIND_OPTIONS.map((option) => {
-        const selected = option.value === selectedKind;
+      {ARTIFACT_KIND_OPTIONS.map((kind) => {
+        const selected = kind === selectedKind;
+        const label =
+          kind === "presentation"
+            ? t(($) => {
+                return $.artifacts.catalog.filters.presentation;
+              })
+            : kind === "hosted-site"
+              ? t(($) => {
+                  return $.artifacts.catalog.filters.website;
+                })
+              : kind === "image"
+                ? t(($) => {
+                    return $.artifacts.catalog.filters.image;
+                  })
+                : kind === "video"
+                  ? t(($) => {
+                      return $.artifacts.catalog.filters.video;
+                    })
+                  : t(($) => {
+                      return $.artifacts.catalog.filters.file;
+                    });
+        const ariaLabel =
+          kind === "presentation"
+            ? t(($) => {
+                return $.artifacts.catalog.filters.presentationAria;
+              })
+            : kind === "hosted-site"
+              ? t(($) => {
+                  return $.artifacts.catalog.filters.websiteAria;
+                })
+              : kind === "image"
+                ? t(($) => {
+                    return $.artifacts.catalog.filters.imageAria;
+                  })
+                : kind === "video"
+                  ? t(($) => {
+                      return $.artifacts.catalog.filters.videoAria;
+                    })
+                  : t(($) => {
+                      return $.artifacts.catalog.filters.fileAria;
+                    });
         return (
           <button
-            key={option.label}
+            key={kind}
             type="button"
-            aria-label={option.ariaLabel}
+            aria-label={ariaLabel}
             aria-pressed={selected}
             onClick={() => {
-              onKindChange(option.value);
+              onKindChange(kind);
             }}
             className={cn(
               "inline-flex h-7 shrink-0 cursor-pointer items-center rounded-md border border-border px-2.5 text-sm font-medium leading-none transition-colors",
@@ -281,7 +358,7 @@ function ArtifactCatalogKindFilter({
                 : "bg-background text-muted-foreground hover:bg-muted/50 hover:text-foreground",
             )}
           >
-            {option.label}
+            {label}
           </button>
         );
       })}
@@ -290,6 +367,7 @@ function ArtifactCatalogKindFilter({
 }
 
 export function ArtifactCatalogPage() {
+  const { t } = useTranslation();
   const selectedKind = useGet(selectedArtifactCatalogKind$);
   const setKind = useSet(setArtifactCatalogKind$);
   const openArtifact = useSet(openArtifact$);
@@ -323,10 +401,14 @@ export function ArtifactCatalogPage() {
         <div className="mx-auto w-full max-w-[900px]">
           <div className="hidden min-w-0 md:block">
             <h1 className="text-lg font-semibold tracking-tight text-foreground">
-              Artifacts
+              {t(($) => {
+                return $.artifacts.title;
+              })}
             </h1>
             <p className="mt-0.5 text-sm text-muted-foreground">
-              Browse everything you have created here.
+              {t(($) => {
+                return $.artifacts.catalog.description;
+              })}
             </p>
           </div>
         </div>

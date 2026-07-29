@@ -18,7 +18,7 @@ import { API_TEST_CONNECTOR_CATALOG } from "./connector-catalog";
 const xOAuthStorageVersion = (() => {
   const version = API_TEST_CONNECTOR_CATALOG.connectors
     .find((connector) => {
-      return connector.connectorRef === "x";
+      return connector.slug === "x";
     })
     ?.authMethods.find((method) => {
       return method.id === "oauth";

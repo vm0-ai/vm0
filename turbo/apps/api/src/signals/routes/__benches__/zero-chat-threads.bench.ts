@@ -116,7 +116,7 @@ function benchCatalogConnector(args: {
   readonly secretName: string;
 }): ConnectorCatalogArtifactConnector {
   return {
-    connectorRef: args.connectorSlug,
+    slug: args.connectorSlug,
     label: args.label,
     description: `${args.label} connector used by the API benchmark`,
     category: "benchmark",
@@ -836,7 +836,7 @@ const ensureSeeded: () => Promise<BenchChatThreadFixture> = (() => {
       );
       const missingConnectorSlugs = BENCH_CONNECTOR_CATALOG.connectors
         .map((connector) => {
-          return connector.connectorRef;
+          return connector.slug;
         })
         .filter((connectorSlug) => {
           return !listedConnectorSlugs.has(connectorSlug);

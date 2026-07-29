@@ -79,9 +79,17 @@ import {
   dispatchTeamsChatDeliveryOnce,
 } from "./internal-teams-chat-run-callback.service";
 import {
+  deliverTelegramChatAdmissionFailure,
+  dispatchTelegramChatDeliveryOnce,
+} from "./internal-telegram-chat-run-callback.service";
+import {
   teamsDeliveryTargetSchema,
   type TeamsDeliveryTarget,
 } from "./teams-chat-callback-payload";
+import {
+  telegramDeliveryTargetSchema,
+  type TelegramDeliveryTarget,
+} from "./telegram-chat-callback-payload";
 import {
   clearCanonicalSlackThreadStatusIfIdle,
   refreshCanonicalSlackThreadStatus,
@@ -305,6 +313,7 @@ const chatCallbackPayloadSchema = z
       .optional(),
     feishuDelivery: feishuDeliveryTargetSchema.optional(),
     teamsDelivery: teamsDeliveryTargetSchema.optional(),
+    telegramDelivery: telegramDeliveryTargetSchema.optional(),
     // Retain while callbacks created by this version can be dispatched by
     // rollback-eligible API versions that still gate pushes by run origin.
     isGoalRun: z.boolean().optional(),
@@ -490,6 +499,22 @@ interface ChatCallbackDependencies {
     },
     signal: AbortSignal,
   ) => Promise<void>;
+  readonly dispatchTelegramDelivery: (
+    callbackId: string,
+    status: "completed" | "failed",
+    signal: AbortSignal,
+  ) => Promise<void>;
+  readonly deliverTelegramAdmissionFailure: (
+    args: {
+      readonly chatThreadId: string;
+      readonly userId: string;
+      readonly orgId: string;
+      readonly agentId: string;
+      readonly target: TelegramDeliveryTarget;
+      readonly chatMessageId: string;
+    },
+    signal: AbortSignal,
+  ) => Promise<void>;
   readonly createQueuedRun?: CreateQueuedRun;
   readonly drainThreadQueue?: (
     chatThreadId: string,
@@ -535,6 +560,7 @@ interface CreateQueuedChatRunInput {
   };
   readonly feishuDelivery?: FeishuDeliveryTarget;
   readonly teamsDelivery?: TeamsDeliveryTarget;
+  readonly telegramDelivery?: TelegramDeliveryTarget;
   readonly morningBriefDelivery?: {
     readonly deliveryId: string;
     readonly internalKind: "morning-brief:email";
@@ -550,6 +576,10 @@ interface CreateQueuedChatRunInput {
     readonly teamsUserDisplayName?: string;
     readonly teamsUserPrincipalName?: string;
     readonly teamsUserId?: string;
+    readonly telegramDisplayName?: string;
+    readonly telegramUsername?: string;
+    readonly telegramUserId?: string;
+    readonly telegramLanguage?: string;
   };
 }
 
@@ -589,9 +619,21 @@ interface MorningBriefQueuedMessageAdmissionFailure {
   readonly error: QueuedMessageModelRouteError;
 }
 
+interface TelegramQueuedMessageAdmissionFailure {
+  readonly kind: "telegram_admission_failure";
+  readonly orgId: string;
+  readonly userId: string;
+  readonly agentId: string;
+  readonly threadId: string;
+  readonly queuedMessage: QueuedUserMessage;
+  readonly telegramDelivery: TelegramDeliveryTarget;
+  readonly error: QueuedMessageModelRouteError;
+}
+
 type QueuedMessageAdmissionFailure =
   | SlackQueuedMessageAdmissionFailure
   | TeamsQueuedMessageAdmissionFailure
+  | TelegramQueuedMessageAdmissionFailure
   | MorningBriefQueuedMessageAdmissionFailure;
 
 type CompletedChatCallbackResult =
@@ -602,6 +644,7 @@ type CompletedChatCallbackResult =
       readonly slackDeliveryCallbackId?: string;
       readonly feishuDeliveryCallbackId?: string;
       readonly teamsDeliveryCallbackId?: string;
+      readonly telegramDeliveryCallbackId?: string;
     }
   | { readonly inserted: false };
 
@@ -612,6 +655,7 @@ type FailedChatCallbackResult =
       readonly slackDeliveryCallbackId?: string;
       readonly feishuDeliveryCallbackId?: string;
       readonly teamsDeliveryCallbackId?: string;
+      readonly telegramDeliveryCallbackId?: string;
     }
   | { readonly inserted: false };
 
@@ -620,6 +664,7 @@ interface TerminalChatCallbackWork {
   readonly slackDeliveryCallbackId?: string;
   readonly feishuDeliveryCallbackId?: string;
   readonly teamsDeliveryCallbackId?: string;
+  readonly telegramDeliveryCallbackId?: string;
   readonly deferredSideEffects?: () => Promise<void>;
 }
 
@@ -677,6 +722,7 @@ function buildQueuedCreateZeroRunArgs(
           slackDelivery: input.slackDelivery,
           feishuDelivery: input.feishuDelivery,
           teamsDelivery: input.teamsDelivery,
+          telegramDelivery: input.telegramDelivery,
         },
       },
       ...(input.feishuDelivery
@@ -1178,6 +1224,50 @@ async function insertTeamsChatDeliveryCallback(args: {
   return callback.id;
 }
 
+async function insertTelegramChatDeliveryCallback(args: {
+  readonly db: Db;
+  readonly runId: string;
+  readonly sourceCallbackId?: string;
+  readonly target: TelegramDeliveryTarget;
+  readonly chatMessageId: string;
+}): Promise<string> {
+  const callbackCondition = args.sourceCallbackId
+    ? and(
+        eq(agentRunCallbacks.id, args.sourceCallbackId),
+        eq(agentRunCallbacks.runId, args.runId),
+        eq(agentRunCallbacks.internalKind, "chat"),
+      )
+    : and(
+        eq(agentRunCallbacks.runId, args.runId),
+        eq(agentRunCallbacks.internalKind, "chat"),
+      );
+  const [sourceCallback] = await args.db
+    .select({ encryptedSecret: agentRunCallbacks.encryptedSecret })
+    .from(agentRunCallbacks)
+    .where(callbackCondition)
+    .limit(1);
+  if (!sourceCallback) {
+    throw new Error("Canonical Telegram run is missing its chat callback");
+  }
+
+  const [callback] = await args.db
+    .insert(agentRunCallbacks)
+    .values({
+      runId: args.runId,
+      internalKind: "telegram:chat",
+      encryptedSecret: sourceCallback.encryptedSecret,
+      payload: {
+        ...args.target,
+        chatMessageId: args.chatMessageId,
+      },
+    })
+    .returning({ id: agentRunCallbacks.id });
+  if (!callback) {
+    throw new Error("Failed to persist canonical Telegram delivery callback");
+  }
+  return callback.id;
+}
+
 async function insertAssistantErrorMessage(args: {
   readonly db: Db;
   readonly runId: string;
@@ -1188,6 +1278,7 @@ async function insertAssistantErrorMessage(args: {
   readonly slackDelivery?: SlackDeliveryTarget;
   readonly feishuDelivery?: FeishuDeliveryTarget;
   readonly teamsDelivery?: TeamsDeliveryTarget;
+  readonly telegramDelivery?: TelegramDeliveryTarget;
   readonly sourceCallbackId?: string;
 }): Promise<FailedChatCallbackResult> {
   const displayErrorMessage = await args.getFormattedError();
@@ -1236,11 +1327,21 @@ async function insertAssistantErrorMessage(args: {
           chatMessageId: message.id,
         })
       : undefined;
+    const telegramDeliveryCallbackId = args.telegramDelivery
+      ? await insertTelegramChatDeliveryCallback({
+          db: tx,
+          runId: args.runId,
+          sourceCallbackId: args.sourceCallbackId,
+          target: args.telegramDelivery,
+          chatMessageId: message.id,
+        })
+      : undefined;
     await touchChatThreadLastMessageAt(tx, args.threadId, message.createdAt);
     return {
       slackDeliveryCallbackId,
       feishuDeliveryCallbackId,
       teamsDeliveryCallbackId,
+      telegramDeliveryCallbackId,
     };
   });
   if (!inserted) {
@@ -1258,6 +1359,7 @@ async function insertAssistantErrorMessage(args: {
     slackDeliveryCallbackId: inserted.slackDeliveryCallbackId,
     feishuDeliveryCallbackId: inserted.feishuDeliveryCallbackId,
     teamsDeliveryCallbackId: inserted.teamsDeliveryCallbackId,
+    telegramDeliveryCallbackId: inserted.telegramDeliveryCallbackId,
   };
 }
 
@@ -1308,7 +1410,7 @@ async function loadCanonicalDeliveryMessage(
   return message;
 }
 
-async function insertTeamsCompletionFallback(args: {
+async function insertIntegrationCompletionFallback(args: {
   readonly db: ChatCallbackTransaction;
   readonly runId: string;
   readonly threadId: string;
@@ -1338,12 +1440,12 @@ async function insertTeamsCompletionFallback(args: {
     .where(eq(chatMessages.id, messageId))
     .limit(1);
   if (!existing) {
-    throw new Error("Failed to persist Teams completion fallback");
+    throw new Error("Failed to persist integration completion fallback");
   }
   return existing;
 }
 
-async function insertRunLifecycleMarker(args: {
+interface RunLifecycleMarkerArgs {
   readonly db: Db;
   readonly runId: string;
   readonly threadId: string;
@@ -1352,98 +1454,150 @@ async function insertRunLifecycleMarker(args: {
   readonly slackDelivery?: SlackDeliveryTarget;
   readonly feishuDelivery?: FeishuDeliveryTarget;
   readonly teamsDelivery?: TeamsDeliveryTarget;
+  readonly telegramDelivery?: TelegramDeliveryTarget;
   readonly sourceCallbackId?: string;
-}): Promise<
+}
+
+interface RunLifecycleDeliveryCallbacks {
+  readonly slackDeliveryCallbackId?: string;
+  readonly feishuDeliveryCallbackId?: string;
+  readonly teamsDeliveryCallbackId?: string;
+  readonly telegramDeliveryCallbackId?: string;
+}
+
+function hasCanonicalIntegrationDelivery(
+  args: RunLifecycleMarkerArgs,
+): boolean {
+  return Boolean(
+    args.slackDelivery ||
+    args.feishuDelivery ||
+    args.teamsDelivery ||
+    args.telegramDelivery,
+  );
+}
+
+async function insertRunLifecycleMarkerTransaction(args: {
+  readonly tx: ChatCallbackTransaction;
+  readonly input: RunLifecycleMarkerArgs;
+  readonly markerCreatedAt: Date;
+  readonly runGroupId: string | undefined;
+}): Promise<RunLifecycleDeliveryCallbacks | null> {
+  const { input } = args;
+  if (
+    input.teamsDelivery &&
+    (await teamsRunLifecycleMarkerExists(args.tx, input.runId))
+  ) {
+    return null;
+  }
+  let deliveryMessage = await loadCanonicalDeliveryMessage(
+    args.tx,
+    input.runId,
+    hasCanonicalIntegrationDelivery(input),
+  );
+  if (
+    !deliveryMessage &&
+    input.event === "completed" &&
+    (input.teamsDelivery || input.telegramDelivery)
+  ) {
+    deliveryMessage = await insertIntegrationCompletionFallback({
+      db: args.tx,
+      runId: input.runId,
+      threadId: input.threadId,
+      runGroupId: args.runGroupId,
+      createdAt: args.markerCreatedAt,
+    });
+  }
+  const marker = await insertChatEvent(
+    args.tx,
+    {
+      chatThreadId: input.threadId,
+      eventType:
+        input.event === "completed" ? "run.completed" : "run.cancelled",
+      content: null,
+      runId: input.runId,
+      runGroupId: args.runGroupId,
+      createdAt: args.markerCreatedAt,
+    },
+    "run-lifecycle",
+  );
+  if (!marker) {
+    return null;
+  }
+  if (input.event === "completed") {
+    await attachCanonicalPublishedAssetsToCompletionEvent(args.tx, {
+      runId: input.runId,
+      threadId: input.threadId,
+      completedEventId: marker.id,
+    });
+  }
+  const slackDeliveryCallbackId =
+    deliveryMessage && input.slackDelivery
+      ? await insertSlackChatDeliveryCallback({
+          db: args.tx,
+          runId: input.runId,
+          sourceCallbackId: input.sourceCallbackId,
+          target: input.slackDelivery,
+          chatMessageId: deliveryMessage.id,
+        })
+      : undefined;
+  const feishuDeliveryCallbackId =
+    deliveryMessage && input.feishuDelivery
+      ? await insertFeishuChatDeliveryCallback({
+          db: args.tx,
+          runId: input.runId,
+          sourceCallbackId: input.sourceCallbackId,
+          target: input.feishuDelivery,
+          chatMessageId: deliveryMessage.id,
+        })
+      : undefined;
+  const teamsDeliveryCallbackId =
+    deliveryMessage && input.teamsDelivery
+      ? await insertTeamsChatDeliveryCallback({
+          db: args.tx,
+          runId: input.runId,
+          sourceCallbackId: input.sourceCallbackId,
+          target: input.teamsDelivery,
+          chatMessageId: deliveryMessage.id,
+        })
+      : undefined;
+  const telegramDeliveryCallbackId =
+    deliveryMessage && input.telegramDelivery
+      ? await insertTelegramChatDeliveryCallback({
+          db: args.tx,
+          runId: input.runId,
+          sourceCallbackId: input.sourceCallbackId,
+          target: input.telegramDelivery,
+          chatMessageId: deliveryMessage.id,
+        })
+      : undefined;
+  await touchChatThreadLastMessageAt(
+    args.tx,
+    input.threadId,
+    args.markerCreatedAt,
+  );
+  return {
+    slackDeliveryCallbackId,
+    feishuDeliveryCallbackId,
+    teamsDeliveryCallbackId,
+    telegramDeliveryCallbackId,
+  };
+}
+
+async function insertRunLifecycleMarker(
+  args: RunLifecycleMarkerArgs,
+): Promise<
   | { readonly inserted: false }
-  | {
-      readonly inserted: true;
-      readonly slackDeliveryCallbackId?: string;
-      readonly feishuDeliveryCallbackId?: string;
-      readonly teamsDeliveryCallbackId?: string;
-    }
+  | ({ readonly inserted: true } & RunLifecycleDeliveryCallbacks)
 > {
   const markerCreatedAt = nowDate();
   const runGroupId = await runGroupIdForRun(args.db, args.runId);
   const inserted = await args.db.transaction(async (tx) => {
-    if (
-      args.teamsDelivery &&
-      (await teamsRunLifecycleMarkerExists(tx, args.runId))
-    ) {
-      return null;
-    }
-    let deliveryMessage = await loadCanonicalDeliveryMessage(
+    return await insertRunLifecycleMarkerTransaction({
       tx,
-      args.runId,
-      Boolean(args.slackDelivery || args.feishuDelivery || args.teamsDelivery),
-    );
-    if (!deliveryMessage && args.event === "completed" && args.teamsDelivery) {
-      deliveryMessage = await insertTeamsCompletionFallback({
-        db: tx,
-        runId: args.runId,
-        threadId: args.threadId,
-        runGroupId,
-        createdAt: markerCreatedAt,
-      });
-    }
-    const marker = await insertChatEvent(
-      tx,
-      {
-        chatThreadId: args.threadId,
-        eventType:
-          args.event === "completed" ? "run.completed" : "run.cancelled",
-        content: null,
-        runId: args.runId,
-        runGroupId,
-        createdAt: markerCreatedAt,
-      },
-      "run-lifecycle",
-    );
-    if (!marker) {
-      return null;
-    }
-    if (args.event === "completed") {
-      await attachCanonicalPublishedAssetsToCompletionEvent(tx, {
-        runId: args.runId,
-        threadId: args.threadId,
-        completedEventId: marker.id,
-      });
-    }
-    const slackDeliveryCallbackId =
-      deliveryMessage && args.slackDelivery
-        ? await insertSlackChatDeliveryCallback({
-            db: tx,
-            runId: args.runId,
-            sourceCallbackId: args.sourceCallbackId,
-            target: args.slackDelivery,
-            chatMessageId: deliveryMessage.id,
-          })
-        : undefined;
-    const feishuDeliveryCallbackId =
-      deliveryMessage && args.feishuDelivery
-        ? await insertFeishuChatDeliveryCallback({
-            db: tx,
-            runId: args.runId,
-            sourceCallbackId: args.sourceCallbackId,
-            target: args.feishuDelivery,
-            chatMessageId: deliveryMessage.id,
-          })
-        : undefined;
-    const teamsDeliveryCallbackId =
-      deliveryMessage && args.teamsDelivery
-        ? await insertTeamsChatDeliveryCallback({
-            db: tx,
-            runId: args.runId,
-            sourceCallbackId: args.sourceCallbackId,
-            target: args.teamsDelivery,
-            chatMessageId: deliveryMessage.id,
-          })
-        : undefined;
-    await touchChatThreadLastMessageAt(tx, args.threadId, markerCreatedAt);
-    return {
-      slackDeliveryCallbackId,
-      feishuDeliveryCallbackId,
-      teamsDeliveryCallbackId,
-    };
+      input: args,
+      markerCreatedAt,
+      runGroupId,
+    });
   });
   if (!inserted) {
     return { inserted: false };
@@ -1458,6 +1612,7 @@ async function insertRunLifecycleMarker(args: {
     slackDeliveryCallbackId: inserted.slackDeliveryCallbackId,
     feishuDeliveryCallbackId: inserted.feishuDeliveryCallbackId,
     teamsDeliveryCallbackId: inserted.teamsDeliveryCallbackId,
+    telegramDeliveryCallbackId: inserted.telegramDeliveryCallbackId,
   };
 }
 
@@ -1616,6 +1771,7 @@ async function handleCompletedChatCallback(args: {
   readonly slackDelivery?: SlackDeliveryTarget;
   readonly feishuDelivery?: FeishuDeliveryTarget;
   readonly teamsDelivery?: TeamsDeliveryTarget;
+  readonly telegramDelivery?: TelegramDeliveryTarget;
   readonly sourceCallbackId?: string;
   readonly insertAssistantItems: (
     items: readonly AssistantEventItem[],
@@ -1626,7 +1782,9 @@ async function handleCompletedChatCallback(args: {
     runId: args.runId,
     lastEventSequence: args.run.lastEventSequence,
     preferResultFallback:
-      args.slackDelivery !== undefined || args.teamsDelivery !== undefined,
+      args.slackDelivery !== undefined ||
+      args.teamsDelivery !== undefined ||
+      args.telegramDelivery !== undefined,
     timing: args.timing,
     signal: args.signal,
   });
@@ -1638,7 +1796,9 @@ async function handleCompletedChatCallback(args: {
     lastEventSequence: args.run.lastEventSequence,
     output,
     preferResultFallback:
-      args.slackDelivery !== undefined || args.teamsDelivery !== undefined,
+      args.slackDelivery !== undefined ||
+      args.teamsDelivery !== undefined ||
+      args.telegramDelivery !== undefined,
     timing: args.timing,
     signal: args.signal,
     insertAssistantItems: args.insertAssistantItems,
@@ -1668,6 +1828,7 @@ async function handleCompletedChatCallback(args: {
         slackDelivery: args.slackDelivery,
         feishuDelivery: args.feishuDelivery,
         teamsDelivery: args.teamsDelivery,
+        telegramDelivery: args.telegramDelivery,
         sourceCallbackId: args.sourceCallbackId,
       });
     },
@@ -1698,6 +1859,7 @@ async function handleCompletedChatCallback(args: {
     slackDeliveryCallbackId: inserted.slackDeliveryCallbackId,
     feishuDeliveryCallbackId: inserted.feishuDeliveryCallbackId,
     teamsDeliveryCallbackId: inserted.teamsDeliveryCallbackId,
+    telegramDeliveryCallbackId: inserted.telegramDeliveryCallbackId,
   };
 }
 
@@ -1804,6 +1966,7 @@ async function handleFailedChatCallback(args: {
   readonly slackDelivery?: SlackDeliveryTarget;
   readonly feishuDelivery?: FeishuDeliveryTarget;
   readonly teamsDelivery?: TeamsDeliveryTarget;
+  readonly telegramDelivery?: TelegramDeliveryTarget;
   readonly sourceCallbackId?: string;
 }): Promise<FailedChatCallbackResult> {
   const lifecycleEvent =
@@ -1820,6 +1983,7 @@ async function handleFailedChatCallback(args: {
     slackDelivery: args.slackDelivery,
     feishuDelivery: args.feishuDelivery,
     teamsDelivery: args.teamsDelivery,
+    telegramDelivery: args.telegramDelivery,
     sourceCallbackId: args.sourceCallbackId,
   });
 }
@@ -1978,9 +2142,11 @@ function buildChatPriorRunsContext(
           ? "Feishu"
           : triggerSource === "teams"
             ? "Microsoft Teams"
-            : triggerSource === "workflow-schedule"
-              ? "Morning Brief"
-              : "Web Chat"
+            : triggerSource === "telegram"
+              ? "Telegram"
+              : triggerSource === "workflow-schedule"
+                ? "Morning Brief"
+                : "Web Chat"
     } Run Context`,
     "The current CLI session is fresh, so recent visible chat rounds are provided here for continuity.",
     "Use these messages as context for the user's current request.",
@@ -2432,6 +2598,29 @@ function morningBriefQueuedMessageAdmissionFailure(
   };
 }
 
+function telegramQueuedMessageAdmissionFailure(
+  args: CreateQueuedChatRunInputArgs,
+  sourceParams: Awaited<ReturnType<typeof decryptQueuedUserMessageRunParams>>,
+  error: QueuedMessageModelRouteError,
+): TelegramQueuedMessageAdmissionFailure | null {
+  if (
+    args.queuedMessage.triggerSource !== "telegram" ||
+    !sourceParams?.telegramDelivery
+  ) {
+    return null;
+  }
+  return {
+    kind: "telegram_admission_failure",
+    orgId: args.agent.orgId,
+    userId: args.userId,
+    agentId: args.agent.id,
+    threadId: args.threadId,
+    queuedMessage: args.queuedMessage,
+    telegramDelivery: sourceParams.telegramDelivery,
+    error,
+  };
+}
+
 function queuedMessageAdmissionFailure(
   args: CreateQueuedChatRunInputArgs,
   sourceParams: Awaited<ReturnType<typeof decryptQueuedUserMessageRunParams>>,
@@ -2440,6 +2629,7 @@ function queuedMessageAdmissionFailure(
   return (
     slackQueuedMessageAdmissionFailure(args, sourceParams, error) ??
     teamsQueuedMessageAdmissionFailure(args, sourceParams, error) ??
+    telegramQueuedMessageAdmissionFailure(args, sourceParams, error) ??
     morningBriefQueuedMessageAdmissionFailure(args, sourceParams, error)
   );
 }
@@ -2452,6 +2642,25 @@ function queuedMessageApiStartTime(
     return undefined;
   }
   return sourceParams?.apiStartTime;
+}
+
+function queuedIntegrationDeliveries(
+  sourceParams: Awaited<ReturnType<typeof decryptQueuedUserMessageRunParams>>,
+): Pick<
+  CreateQueuedChatRunInput,
+  | "slackDelivery"
+  | "feishuDelivery"
+  | "teamsDelivery"
+  | "telegramDelivery"
+  | "morningBriefDelivery"
+> {
+  return {
+    slackDelivery: sourceParams?.slackDelivery,
+    feishuDelivery: sourceParams?.feishuDelivery,
+    teamsDelivery: sourceParams?.teamsDelivery,
+    telegramDelivery: sourceParams?.telegramDelivery,
+    morningBriefDelivery: sourceParams?.morningBriefDelivery,
+  };
 }
 
 function resolveQueuedMessageGenerationTemplatePrompt(args: {
@@ -2588,10 +2797,7 @@ async function buildCreateQueuedChatRunInput(
     computerUseHostGrant,
     triggerSource: args.queuedMessage.triggerSource,
     realAgentInPreview: sourceParams?.realAgentInPreview,
-    slackDelivery: sourceParams?.slackDelivery,
-    feishuDelivery: sourceParams?.feishuDelivery,
-    teamsDelivery: sourceParams?.teamsDelivery,
-    morningBriefDelivery: sourceParams?.morningBriefDelivery,
+    ...queuedIntegrationDeliveries(sourceParams),
     apiStartTime: queuedMessageApiStartTime(
       args.queuedMessage.triggerSource,
       sourceParams,
@@ -2809,6 +3015,62 @@ async function handleTeamsQueuedMessageAdmissionFailure(args: {
   );
 }
 
+async function handleTelegramQueuedMessageAdmissionFailure(args: {
+  readonly db: Db;
+  readonly failure: TelegramQueuedMessageAdmissionFailure;
+  readonly signal: AbortSignal;
+  readonly formatError: ChatCallbackDependencies["formatIntegrationRunError"];
+  readonly deliver: ChatCallbackDependencies["deliverTelegramAdmissionFailure"];
+}): Promise<void> {
+  const displayError = await args.formatError(
+    {
+      orgId: args.failure.orgId,
+      userId: args.failure.userId,
+      code: args.failure.error.code,
+      message: args.failure.error.message,
+    },
+    args.signal,
+  );
+  args.signal.throwIfAborted();
+  const failed = await failQueuedUserMessage(args.db, {
+    threadId: args.failure.threadId,
+    messageId: args.failure.queuedMessage.id,
+    assistantContent: displayError,
+    errorMarker: args.failure.error.code.toLowerCase(),
+    currentTime: nowDate(),
+  });
+  args.signal.throwIfAborted();
+  if (!failed) {
+    return;
+  }
+
+  await publishUserSignal(
+    [args.failure.userId],
+    `chatThreadMessageCreated:${args.failure.threadId}`,
+  );
+  await publishThreadListChanged(args.failure.userId);
+  args.signal.throwIfAborted();
+  await tapError(
+    args.deliver(
+      {
+        chatThreadId: args.failure.threadId,
+        userId: args.failure.userId,
+        orgId: args.failure.orgId,
+        agentId: args.failure.agentId,
+        target: args.failure.telegramDelivery,
+        chatMessageId: failed.assistantMessageId,
+      },
+      args.signal,
+    ),
+    (error) => {
+      log.warn("Failed to deliver canonical Telegram admission error", {
+        threadId: args.failure.threadId,
+        error,
+      });
+    },
+  );
+}
+
 async function handleQueuedMessageAdmissionFailure(args: {
   readonly db: Db;
   readonly failure: QueuedMessageAdmissionFailure;
@@ -2816,6 +3078,7 @@ async function handleQueuedMessageAdmissionFailure(args: {
   readonly formatError: ChatCallbackDependencies["formatIntegrationRunError"];
   readonly deliverSlack: ChatCallbackDependencies["deliverSlackAdmissionFailure"];
   readonly deliverTeams: ChatCallbackDependencies["deliverTeamsAdmissionFailure"];
+  readonly deliverTelegram: ChatCallbackDependencies["deliverTelegramAdmissionFailure"];
   readonly continueDrain: () => Promise<void>;
 }): Promise<void> {
   if (args.failure.kind === "slack_admission_failure") {
@@ -2825,6 +3088,16 @@ async function handleQueuedMessageAdmissionFailure(args: {
       signal: args.signal,
       formatError: args.formatError,
       deliver: args.deliverSlack,
+    });
+    return;
+  }
+  if (args.failure.kind === "telegram_admission_failure") {
+    await handleTelegramQueuedMessageAdmissionFailure({
+      db: args.db,
+      failure: args.failure,
+      signal: args.signal,
+      formatError: args.formatError,
+      deliver: args.deliverTelegram,
     });
     return;
   }
@@ -2879,6 +3152,7 @@ interface AutoSendQueuedMessageArgs {
   readonly formatIntegrationRunError: ChatCallbackDependencies["formatIntegrationRunError"];
   readonly deliverSlackAdmissionFailure: ChatCallbackDependencies["deliverSlackAdmissionFailure"];
   readonly deliverTeamsAdmissionFailure: ChatCallbackDependencies["deliverTeamsAdmissionFailure"];
+  readonly deliverTelegramAdmissionFailure: ChatCallbackDependencies["deliverTelegramAdmissionFailure"];
 }
 
 /**
@@ -2961,6 +3235,7 @@ async function autoSendQueuedMessageForThread(
       formatError: args.formatIntegrationRunError,
       deliverSlack: args.deliverSlackAdmissionFailure,
       deliverTeams: args.deliverTeamsAdmissionFailure,
+      deliverTelegram: args.deliverTelegramAdmissionFailure,
       continueDrain: async () => {
         await autoSendQueuedMessageForThread(args);
       },
@@ -3083,6 +3358,7 @@ async function prepareCompletedTerminalChatCallbackWork(args: {
   readonly slackDelivery?: SlackDeliveryTarget;
   readonly feishuDelivery?: FeishuDeliveryTarget;
   readonly teamsDelivery?: TeamsDeliveryTarget;
+  readonly telegramDelivery?: TelegramDeliveryTarget;
   readonly sourceCallbackId?: string;
 }): Promise<TerminalChatCallbackWork> {
   const prepared = await measureChatCallbackPreCreateTiming(
@@ -3100,6 +3376,7 @@ async function prepareCompletedTerminalChatCallbackWork(args: {
         slackDelivery: args.slackDelivery,
         feishuDelivery: args.feishuDelivery,
         teamsDelivery: args.teamsDelivery,
+        telegramDelivery: args.telegramDelivery,
         sourceCallbackId: args.sourceCallbackId,
         insertAssistantItems: async (items) => {
           await args.dependencies.insertAssistantItems(
@@ -3126,6 +3403,7 @@ async function prepareCompletedTerminalChatCallbackWork(args: {
     slackDeliveryCallbackId: completed.slackDeliveryCallbackId,
     feishuDeliveryCallbackId: completed.feishuDeliveryCallbackId,
     teamsDeliveryCallbackId: completed.teamsDeliveryCallbackId,
+    telegramDeliveryCallbackId: completed.telegramDeliveryCallbackId,
     deferredSideEffects: () => {
       return runCompletedChatCallbackSideEffects({
         db: args.db,
@@ -3162,6 +3440,7 @@ async function prepareFailedTerminalChatCallbackWork(args: {
   readonly slackDelivery?: SlackDeliveryTarget;
   readonly feishuDelivery?: FeishuDeliveryTarget;
   readonly teamsDelivery?: TeamsDeliveryTarget;
+  readonly telegramDelivery?: TelegramDeliveryTarget;
   readonly sourceCallbackId?: string;
 }): Promise<TerminalChatCallbackWork> {
   const failed = await measureChatCallbackPreCreateTiming(
@@ -3187,6 +3466,7 @@ async function prepareFailedTerminalChatCallbackWork(args: {
         slackDelivery: args.slackDelivery,
         feishuDelivery: args.feishuDelivery,
         teamsDelivery: args.teamsDelivery,
+        telegramDelivery: args.telegramDelivery,
         sourceCallbackId: args.sourceCallbackId,
       });
     },
@@ -3200,6 +3480,7 @@ async function prepareFailedTerminalChatCallbackWork(args: {
     slackDeliveryCallbackId: failed.slackDeliveryCallbackId,
     feishuDeliveryCallbackId: failed.feishuDeliveryCallbackId,
     teamsDeliveryCallbackId: failed.teamsDeliveryCallbackId,
+    telegramDeliveryCallbackId: failed.telegramDeliveryCallbackId,
     deferredSideEffects: () => {
       return runFailedChatCallbackSideEffects({
         db: args.db,
@@ -3327,9 +3608,11 @@ async function handleTerminalChatCallbackPreparationFailure(args: {
 
 async function dispatchCanonicalDeliveryCallbacks(args: {
   readonly runId: string;
+  readonly status: "completed" | "failed";
   readonly slackDeliveryCallbackId: string | undefined;
   readonly feishuDeliveryCallbackId: string | undefined;
   readonly teamsDeliveryCallbackId: string | undefined;
+  readonly telegramDeliveryCallbackId: string | undefined;
   readonly dependencies: ChatCallbackDependencies;
   readonly signal: AbortSignal;
 }): Promise<void> {
@@ -3381,6 +3664,23 @@ async function dispatchCanonicalDeliveryCallbacks(args: {
       });
     }
   }
+  if (args.telegramDeliveryCallbackId) {
+    const delivery = await settle(
+      args.dependencies.dispatchTelegramDelivery(
+        args.telegramDeliveryCallbackId,
+        args.status,
+        args.signal,
+      ),
+      args.signal,
+    );
+    if (!delivery.ok) {
+      log.error("Failed to finalize canonical Telegram delivery callback", {
+        runId: args.runId,
+        callbackId: args.telegramDeliveryCallbackId,
+        error: delivery.error,
+      });
+    }
+  }
 }
 
 interface TerminalChatCallbackArgs {
@@ -3390,6 +3690,20 @@ interface TerminalChatCallbackArgs {
   readonly suppressWebPushForActiveGoal: boolean;
   readonly dependencies: ChatCallbackDependencies;
   readonly signal: AbortSignal;
+}
+
+function terminalIntegrationDeliveries(
+  payload: ChatCallbackPayload,
+): Pick<
+  ChatCallbackPayload,
+  "slackDelivery" | "feishuDelivery" | "teamsDelivery" | "telegramDelivery"
+> {
+  return {
+    slackDelivery: payload.slackDelivery,
+    feishuDelivery: payload.feishuDelivery,
+    teamsDelivery: payload.teamsDelivery,
+    telegramDelivery: payload.telegramDelivery,
+  };
 }
 
 async function releaseManagedBrowsersForTerminalCallback(
@@ -3467,9 +3781,7 @@ async function processTerminalChatCallback(
           dependencies: args.dependencies,
           timing,
           signal: args.signal,
-          slackDelivery: args.payload.slackDelivery,
-          feishuDelivery: args.payload.feishuDelivery,
-          teamsDelivery: args.payload.teamsDelivery,
+          ...terminalIntegrationDeliveries(args.payload),
           sourceCallbackId: args.callback.callbackId,
         })
       : prepareFailedTerminalChatCallbackWork({
@@ -3485,9 +3797,7 @@ async function processTerminalChatCallback(
           dependencies: args.dependencies,
           timing,
           signal: args.signal,
-          slackDelivery: args.payload.slackDelivery,
-          feishuDelivery: args.payload.feishuDelivery,
-          teamsDelivery: args.payload.teamsDelivery,
+          ...terminalIntegrationDeliveries(args.payload),
           sourceCallbackId: args.callback.callbackId,
         }),
     args.signal,
@@ -3509,9 +3819,11 @@ async function processTerminalChatCallback(
 
   await dispatchCanonicalDeliveryCallbacks({
     runId,
+    status: callbackStatus,
     slackDeliveryCallbackId: work.slackDeliveryCallbackId,
     feishuDeliveryCallbackId: work.feishuDeliveryCallbackId,
     teamsDeliveryCallbackId: work.teamsDeliveryCallbackId,
+    telegramDeliveryCallbackId: work.telegramDeliveryCallbackId,
     dependencies: args.dependencies,
     signal: args.signal,
   });
@@ -3562,8 +3874,11 @@ function withoutQueuedRunDependency(
     formatIntegrationRunError: dependencies.formatIntegrationRunError,
     deliverSlackAdmissionFailure: dependencies.deliverSlackAdmissionFailure,
     deliverTeamsAdmissionFailure: dependencies.deliverTeamsAdmissionFailure,
+    deliverTelegramAdmissionFailure:
+      dependencies.deliverTelegramAdmissionFailure,
     dispatchFeishuDelivery: dependencies.dispatchFeishuDelivery,
     dispatchTeamsDelivery: dependencies.dispatchTeamsDelivery,
+    dispatchTelegramDelivery: dependencies.dispatchTelegramDelivery,
     clearFeishuThinkingReaction: dependencies.clearFeishuThinkingReaction,
     drainThreadQueue: dependencies.drainThreadQueue,
   };
@@ -3602,6 +3917,7 @@ function buildQueuedChatDispatchFailedCallbacks(args: {
       slackDelivery: args.runInput.slackDelivery,
       feishuDelivery: args.runInput.feishuDelivery,
       teamsDelivery: args.runInput.teamsDelivery,
+      telegramDelivery: args.runInput.telegramDelivery,
       morningBriefDelivery: args.runInput.morningBriefDelivery,
     };
     if (payload.morningBriefDelivery) {
@@ -3737,6 +4053,26 @@ function teamsChatDeliveryDependencies(
   };
 }
 
+function telegramChatDeliveryDependencies(
+  db: Db,
+): Pick<
+  ChatCallbackDependencies,
+  "deliverTelegramAdmissionFailure" | "dispatchTelegramDelivery"
+> {
+  return {
+    deliverTelegramAdmissionFailure: (params, signal) => {
+      return deliverTelegramChatAdmissionFailure({
+        db,
+        ...params,
+        signal,
+      });
+    },
+    dispatchTelegramDelivery: (callbackId, status, signal) => {
+      return dispatchTelegramChatDeliveryOnce(db, callbackId, status, signal);
+    },
+  };
+}
+
 export async function handleChatInternalCallbackWithoutCcstate(
   db: Db,
   callback: InternalRunCallbackEnvelope,
@@ -3803,6 +4139,7 @@ export async function handleChatInternalCallbackWithoutCcstate(
         return dispatchFeishuChatDeliveryOnce(db, callbackId, inputSignal);
       },
       ...teamsChatDeliveryDependencies(db),
+      ...telegramChatDeliveryDependencies(db),
       clearFeishuThinkingReaction: (target, inputSignal) => {
         return clearCanonicalFeishuThinkingReaction(db, target, inputSignal);
       },
@@ -3864,6 +4201,7 @@ const buildChatCallbackDependencies$ = command(
         return dispatchFeishuChatDeliveryOnce(db, callbackId, inputSignal);
       },
       ...teamsChatDeliveryDependencies(db),
+      ...telegramChatDeliveryDependencies(db),
       clearFeishuThinkingReaction: (target, inputSignal) => {
         return clearCanonicalFeishuThinkingReaction(db, target, inputSignal);
       },
@@ -3981,6 +4319,8 @@ export const drainQueuedUserMessagesForThread$ = command(
       formatIntegrationRunError: dependencies.formatIntegrationRunError,
       deliverSlackAdmissionFailure: dependencies.deliverSlackAdmissionFailure,
       deliverTeamsAdmissionFailure: dependencies.deliverTeamsAdmissionFailure,
+      deliverTelegramAdmissionFailure:
+        dependencies.deliverTelegramAdmissionFailure,
       createRun: (input) => {
         return createQueuedChatRun({
           input,

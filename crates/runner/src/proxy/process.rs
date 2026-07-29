@@ -249,7 +249,7 @@ impl MitmProxy {
         })
     }
 
-    /// Ask the running addon to flush buffered usage before shutdown.
+    /// Ask the running addon to flush buffered webhook work before shutdown.
     pub fn request_usage_flush(&mut self) -> bool {
         let Some(child) = self.child.as_mut() else {
             return false;
