@@ -3,7 +3,6 @@ export const CONNECTOR_APP_OAUTH_CALLBACK_METADATA_STORAGE_KEY =
   "vm0.connector.appOauthCallbackMetadata";
 
 const LEGACY_CALLBACK_CONNECTOR_SLUGS: ReadonlySet<string> = new Set([
-  "cloudflare",
   "slack",
   "xero",
 ]);
