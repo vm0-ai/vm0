@@ -160,7 +160,7 @@ wait_for_teams_mock_reply_activity() {
         failed_callback=$(printf '%s' "$state" \
             | jq -c '
                 [.recent_callbacks[]?
-                 | select(.internalKind == "teams:org")
+                 | select(.internalKind == "teams:chat")
                  | select(.status == "failed")]
                 | .[0]' 2>/dev/null)
         if [[ -n "$failed_callback" && "$failed_callback" != "null" ]]; then

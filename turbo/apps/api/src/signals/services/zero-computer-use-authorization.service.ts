@@ -15,7 +15,6 @@ import {
 } from "@vm0/db/schema/computer-use-host";
 import { teamsOrgConnections } from "@vm0/db/schema/teams-org-connection";
 import { teamsOrgInstallations } from "@vm0/db/schema/teams-org-installation";
-import { teamsOrgThreadSessions } from "@vm0/db/schema/teams-org-thread-session";
 import { teamsChatThreadRoutes } from "@vm0/db/schema/teams-chat-thread-route";
 import { zeroRuns } from "@vm0/db/schema/zero-run";
 
@@ -246,6 +245,42 @@ async function onlineHostExists(args: {
   return host !== undefined && computerUseHostIsOnline(host, args.now);
 }
 
+async function loadTeamsChatThread(args: {
+  readonly db: Pick<Db, "select">;
+  readonly request: AuthorizationRequestRow;
+  readonly userId: string;
+}) {
+  const connectionId = args.request.teamsConnectionId;
+  const conversationId = args.request.teamsConversationId;
+  const threadId = args.request.teamsThreadId;
+  if (!connectionId || !conversationId || !threadId) {
+    return undefined;
+  }
+
+  const [thread] = await args.db
+    .select({
+      id: chatThreads.id,
+      agentComposeId: chatThreads.agentComposeId,
+      computerUseHostId: chatThreads.computerUseHostId,
+    })
+    .from(teamsChatThreadRoutes)
+    .innerJoin(
+      chatThreads,
+      eq(chatThreads.id, teamsChatThreadRoutes.chatThreadId),
+    )
+    .where(
+      and(
+        eq(teamsChatThreadRoutes.connectionId, connectionId),
+        eq(teamsChatThreadRoutes.conversationId, conversationId),
+        eq(teamsChatThreadRoutes.threadId, threadId),
+        eq(teamsChatThreadRoutes.userId, args.userId),
+        eq(chatThreads.userId, args.userId),
+      ),
+    )
+    .limit(1);
+  return thread;
+}
+
 async function loadAuthorizedComputerUseHostId(args: {
   readonly db: Db;
   readonly request: AuthorizationRequestRow;
@@ -275,24 +310,8 @@ async function loadAuthorizedComputerUseHostId(args: {
     args.request.teamsConversationId &&
     args.request.teamsThreadId
   ) {
-    const [threadSession] = await args.db
-      .select({ computerUseHostId: teamsOrgThreadSessions.computerUseHostId })
-      .from(teamsOrgThreadSessions)
-      .where(
-        and(
-          eq(
-            teamsOrgThreadSessions.connectionId,
-            args.request.teamsConnectionId,
-          ),
-          eq(
-            teamsOrgThreadSessions.teamsConversationId,
-            args.request.teamsConversationId,
-          ),
-          eq(teamsOrgThreadSessions.teamsThreadId, args.request.teamsThreadId),
-        ),
-      )
-      .limit(1);
-    return threadSession?.computerUseHostId ?? null;
+    const thread = await loadTeamsChatThread(args);
+    return thread?.computerUseHostId ?? null;
   }
 
   return null;
@@ -393,52 +412,25 @@ async function applyTeamsAuthorizationScope(args: {
     return false;
   }
 
-  await args.db.transaction(async (tx) => {
-    await tx
-      .insert(teamsOrgThreadSessions)
-      .values({
-        connectionId,
-        teamsConversationId: conversationId,
-        teamsThreadId: threadId,
-        computerUseHostId: args.computerUseHostId,
-        updatedAt: args.now,
-      })
-      .onConflictDoUpdate({
-        target: [
-          teamsOrgThreadSessions.connectionId,
-          teamsOrgThreadSessions.teamsConversationId,
-          teamsOrgThreadSessions.teamsThreadId,
-        ],
-        set: {
-          computerUseHostId: args.computerUseHostId,
-          updatedAt: args.now,
-        },
-      });
-
-    const [route] = await tx
-      .select({ chatThreadId: teamsChatThreadRoutes.chatThreadId })
-      .from(teamsChatThreadRoutes)
-      .where(
-        and(
-          eq(teamsChatThreadRoutes.connectionId, connectionId),
-          eq(teamsChatThreadRoutes.conversationId, conversationId),
-          eq(teamsChatThreadRoutes.threadId, threadId),
-          eq(teamsChatThreadRoutes.userId, args.userId),
-        ),
-      )
-      .limit(1);
-    if (!route) {
-      return;
+  return await args.db.transaction(async (tx) => {
+    const existing = await loadTeamsChatThread({
+      db: tx,
+      request: args.request,
+      userId: args.userId,
+    });
+    if (!existing) {
+      return false;
     }
     const [thread] = await tx
       .update(chatThreads)
       .set({
         computerUseHostId: args.computerUseHostId,
+        cloudBrowserEnabled: false,
         updatedAt: args.now,
       })
       .where(
         and(
-          eq(chatThreads.id, route.chatThreadId),
+          eq(chatThreads.id, existing.id),
           eq(chatThreads.userId, args.userId),
         ),
       )
@@ -447,7 +439,7 @@ async function applyTeamsAuthorizationScope(args: {
         agentComposeId: chatThreads.agentComposeId,
       });
     if (!thread) {
-      return;
+      return false;
     }
     await appendChatThreadEvent(tx, {
       kind: "computer_use_host_updated",
@@ -456,11 +448,11 @@ async function applyTeamsAuthorizationScope(args: {
       chatThreadId: thread.id,
       agentComposeId: thread.agentComposeId,
       computerUseHostId: args.computerUseHostId,
+      cloudBrowserEnabled: false,
       createdAt: args.now,
     });
+    return true;
   });
-
-  return true;
 }
 
 export const createComputerUseAuthorizationRequest$ = command(
@@ -640,10 +632,8 @@ export const applyComputerUseAuthorizationRequest$ = command(
       .where(eq(computerUseAuthorizationRequests.id, request.id));
     signal.throwIfAborted();
 
-    if (request.source === "chat") {
-      await publishThreadListChanged(args.userId);
-      signal.throwIfAborted();
-    }
+    await publishThreadListChanged(args.userId);
+    signal.throwIfAborted();
 
     return {
       status: "applied",
