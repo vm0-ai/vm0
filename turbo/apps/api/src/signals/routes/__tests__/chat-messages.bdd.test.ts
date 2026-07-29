@@ -3460,6 +3460,10 @@ describe("CHAT-02: run-level model overrides", () => {
       await expect
         .poll(conversationChanges.blockedWaiterCount)
         .toBeGreaterThanOrEqual(1);
+      if (attempt + 1 < preparationAttempts) {
+        conversationChanges.queueNextChange();
+        await expect.poll(conversationChanges.queuedChangeIsBlocked).toBe(true);
+      }
       conversationChanges.release();
       if (attempt + 1 < preparationAttempts) {
         await expect
