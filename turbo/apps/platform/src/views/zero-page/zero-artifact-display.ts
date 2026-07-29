@@ -1,4 +1,5 @@
 import type { AttachmentArtifactMetadata } from "../../signals/zero-page/zero-attachment-chips.ts";
+import { i18n } from "../../i18n/index.ts";
 
 type ArtifactDisplayKind =
   | "markdown"
@@ -16,6 +17,17 @@ type ArtifactTitleMetadata = Pick<
   AttachmentArtifactMetadata,
   "artifactKind" | "contentType" | "createdAt" | "filename" | "size"
 >;
+
+type ArtifactTitleKind =
+  | "presentation"
+  | "hosted-site"
+  | "code"
+  | "document"
+  | "data"
+  | "image"
+  | "video"
+  | "audio"
+  | "file";
 
 function fileExtension(filename: string): string | null {
   const extension = filename.split(".").pop();
@@ -81,70 +93,123 @@ function artifactFormat(meta: ArtifactTitleMetadata): string | null {
 }
 
 function formatArtifactBytes(bytes: number): string {
-  if (bytes < 1024) {
-    return `${bytes} B`;
-  }
-  const units = ["KB", "MB", "GB"] as const;
-  let value = bytes / 1024;
-  for (let i = 0; i < units.length; i++) {
-    const unit = units[i]!;
-    if (value < 1024 || i === units.length - 1) {
-      return `${value.toFixed(value >= 10 ? 0 : 1)} ${unit}`;
-    }
+  const units = ["byte", "kilobyte", "megabyte", "gigabyte"] as const;
+  let value = bytes;
+  let unitIndex = 0;
+  while (value >= 1024 && unitIndex < units.length - 1) {
     value = value / 1024;
+    unitIndex += 1;
   }
-  return `${bytes} B`;
+  return new Intl.NumberFormat(i18n.resolvedLanguage ?? i18n.language, {
+    style: "unit",
+    unit: units[unitIndex],
+    unitDisplay: "short",
+    maximumFractionDigits: value >= 10 || unitIndex === 0 ? 0 : 1,
+  }).format(value);
 }
 
 function formatArtifactGeneratedTime(value: string): string {
-  return new Date(value).toLocaleString("en-US", {
-    month: "short",
-    day: "numeric",
-    hour: "numeric",
-    minute: "2-digit",
-  });
+  return new Date(value).toLocaleString(
+    i18n.resolvedLanguage ?? i18n.language,
+    {
+      month: "short",
+      day: "numeric",
+      hour: "numeric",
+      minute: "2-digit",
+    },
+  );
 }
 
-function artifactKindTitle(
+function artifactTitleKind(
   kind: ArtifactDisplayKind,
   filename: string,
   artifactKind: ArtifactTitleMetadata["artifactKind"],
-): string {
+): ArtifactTitleKind {
   if (artifactKind === "presentation-html") {
-    return "Presentation";
+    return "presentation";
   }
   const extension = fileExtension(filename);
   if (extension && isPresentationExtension(extension)) {
-    return "Presentation";
+    return "presentation";
   }
   if (extension && isCodeExtension(extension)) {
-    return kind === "html" ? "Hosted site" : "Code";
+    return kind === "html" ? "hosted-site" : "code";
   }
 
   switch (kind) {
     case "markdown":
     case "pdf":
     case "text": {
-      return "Document";
+      return "document";
     }
     case "json":
     case "csv": {
-      return "Data";
+      return "data";
     }
     case "html": {
-      return "Hosted site";
+      return "hosted-site";
     }
     case "image": {
-      return "Image";
+      return "image";
     }
     case "video": {
-      return "Video";
+      return "video";
     }
     case "audio": {
-      return "Audio";
+      return "audio";
     }
     case "file": {
-      return "File";
+      return "file";
+    }
+  }
+}
+
+function artifactKindTitle(kind: ArtifactTitleKind): string {
+  switch (kind) {
+    case "presentation": {
+      return i18n.t(($) => {
+        return $.artifacts.kinds.presentation;
+      });
+    }
+    case "hosted-site": {
+      return i18n.t(($) => {
+        return $.artifacts.kinds.hostedSite;
+      });
+    }
+    case "code": {
+      return i18n.t(($) => {
+        return $.artifacts.kinds.code;
+      });
+    }
+    case "document": {
+      return i18n.t(($) => {
+        return $.artifacts.kinds.document;
+      });
+    }
+    case "data": {
+      return i18n.t(($) => {
+        return $.artifacts.kinds.data;
+      });
+    }
+    case "image": {
+      return i18n.t(($) => {
+        return $.artifacts.kinds.image;
+      });
+    }
+    case "video": {
+      return i18n.t(($) => {
+        return $.artifacts.kinds.video;
+      });
+    }
+    case "audio": {
+      return i18n.t(($) => {
+        return $.artifacts.kinds.audio;
+      });
+    }
+    case "file": {
+      return i18n.t(($) => {
+        return $.artifacts.kinds.file;
+      });
     }
   }
 }
@@ -153,7 +218,7 @@ export function artifactFallbackSubtitle(
   kind: ArtifactDisplayKind,
   filename: string,
 ): string {
-  return artifactKindTitle(kind, filename, undefined);
+  return artifactKindTitle(artifactTitleKind(kind, filename, undefined));
 }
 
 export function artifactTitleSubtitle(
@@ -161,14 +226,24 @@ export function artifactTitleSubtitle(
   meta: ArtifactTitleMetadata,
   options: { readonly showSize?: boolean } = {},
 ): string {
-  const parts = [artifactKindTitle(kind, meta.filename, meta.artifactKind)];
+  const titleKind = artifactTitleKind(kind, meta.filename, meta.artifactKind);
+  const parts = [artifactKindTitle(titleKind)];
   const format = artifactFormat(meta);
-  if (format && parts[0] !== "Hosted site") {
+  if (format && titleKind !== "hosted-site") {
     parts.push(format);
   }
   if (options.showSize ?? true) {
     parts.push(formatArtifactBytes(meta.size));
   }
-  parts.push(`Generated ${formatArtifactGeneratedTime(meta.createdAt)}`);
+  parts.push(
+    i18n.t(
+      ($) => {
+        return $.artifacts.metadata.generated;
+      },
+      {
+        date: formatArtifactGeneratedTime(meta.createdAt),
+      },
+    ),
+  );
   return parts.join(" · ");
 }

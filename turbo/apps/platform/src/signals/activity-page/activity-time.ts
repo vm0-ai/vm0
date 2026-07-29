@@ -1,3 +1,5 @@
+import { formatAppNumber, resolvedAppLocale } from "../../i18n/format.ts";
+
 function pad(value: number, length: number): string {
   return String(value).padStart(length, "0");
 }
@@ -18,10 +20,13 @@ export function formatActivityClockTime(timestamp: string): string {
     return timestamp.trim().length > 0 ? timestamp : "—";
   }
 
-  return `${pad(date.getHours(), 2)}:${pad(date.getMinutes(), 2)}:${pad(
-    date.getSeconds(),
-    2,
-  )}.${pad(date.getMilliseconds(), 3)}`;
+  return new Intl.DateTimeFormat(resolvedAppLocale(), {
+    fractionalSecondDigits: 3,
+    hour: "2-digit",
+    hourCycle: "h23",
+    minute: "2-digit",
+    second: "2-digit",
+  }).format(date);
 }
 
 function formatSignedElapsedTime(deltaMs: number): string {
@@ -31,12 +36,50 @@ function formatSignedElapsedTime(deltaMs: number): string {
   const minutes = Math.floor(absoluteMs / 60_000) % 60;
   const seconds = Math.floor(absoluteMs / 1000) % 60;
   const milliseconds = absoluteMs % 1000;
+  const secondsWithMilliseconds = formatAppNumber(
+    seconds + milliseconds / 1000,
+    {
+      maximumFractionDigits: 3,
+      minimumFractionDigits: 3,
+      minimumIntegerDigits: 2,
+      useGrouping: false,
+    },
+  );
   const clock =
     hours > 0
-      ? `${pad(hours, 2)}:${pad(minutes, 2)}:${pad(seconds, 2)}.${pad(milliseconds, 3)}`
-      : `${pad(minutes, 2)}:${pad(seconds, 2)}.${pad(milliseconds, 3)}`;
+      ? `${pad(hours, 2)}:${pad(minutes, 2)}:${secondsWithMilliseconds}`
+      : `${pad(minutes, 2)}:${secondsWithMilliseconds}`;
 
   return `${sign}${clock}`;
+}
+
+export function formatActivityDurationMs(ms: number): string {
+  if (!Number.isFinite(ms) || ms < 0) {
+    return "—";
+  }
+  if (ms < 1000) {
+    return `${formatAppNumber(ms, {
+      maximumFractionDigits: 0,
+      useGrouping: false,
+    })}ms`;
+  }
+  const seconds = ms / 1000;
+  if (seconds < 60) {
+    return `${formatAppNumber(seconds, {
+      maximumFractionDigits: 1,
+      minimumFractionDigits: 1,
+      useGrouping: false,
+    })}s`;
+  }
+  const minutes = Math.floor(seconds / 60);
+  const remainingSeconds = Math.round(seconds % 60);
+  return `${formatAppNumber(minutes, {
+    maximumFractionDigits: 0,
+    useGrouping: false,
+  })}m ${formatAppNumber(remainingSeconds, {
+    maximumFractionDigits: 0,
+    useGrouping: false,
+  })}s`;
 }
 
 /**

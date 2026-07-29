@@ -1,6 +1,7 @@
 import { IconAlertCircle, IconCheck, IconLoader2 } from "@tabler/icons-react";
 import type { PublicConnectorCatalogIcon } from "@vm0/api-contracts/contracts/zero-connector-catalog";
 import { Button } from "@vm0/ui/components/ui/button";
+import { useTranslation } from "react-i18next";
 import { ZeroConnectorFlowCard } from "./zero-connector-flow-card.tsx";
 
 type ConnectorCallbackPageStatus = "loading" | "success" | "error";
@@ -18,29 +19,56 @@ export function ZeroConnectorCallbackPage({
   readonly username: string | null;
   readonly errorMessage: string | null;
 }): React.JSX.Element {
+  const { t } = useTranslation();
   const title =
     status === "success"
-      ? `${connectorLabel} connected`
+      ? t(
+          ($) => {
+            return $.connectors.callback.connected;
+          },
+          { connector: connectorLabel },
+        )
       : status === "error"
-        ? `Couldn’t connect ${connectorLabel}`
-        : `Connecting ${connectorLabel}…`;
+        ? t(
+            ($) => {
+              return $.connectors.callback.failedTitle;
+            },
+            { connector: connectorLabel },
+          )
+        : t(
+            ($) => {
+              return $.connectors.callback.connecting;
+            },
+            { connector: connectorLabel },
+          );
   const description =
-    status === "success" ? (
-      username ? (
-        <>
-          Connected as <strong>{username}</strong>. You can close this window.
-        </>
-      ) : (
-        "Your account has been connected. You can close this window."
-      )
-    ) : status === "error" ? (
-      <>
-        {errorMessage || "An error occurred during connection."} Close this
-        window and try again.
-      </>
-    ) : (
-      "Please wait while we finish connecting your account."
-    );
+    status === "success"
+      ? username
+        ? t(
+            ($) => {
+              return $.connectors.callback.connectedAs;
+            },
+            { username },
+          )
+        : t(($) => {
+            return $.connectors.callback.connectedDescription;
+          })
+      : status === "error"
+        ? t(
+            ($) => {
+              return $.connectors.callback.errorDescription;
+            },
+            {
+              error:
+                errorMessage ??
+                t(($) => {
+                  return $.connectors.callback.errorFallback;
+                }),
+            },
+          )
+        : t(($) => {
+            return $.connectors.callback.connectingDescription;
+          });
 
   return (
     <ZeroConnectorFlowCard
@@ -51,7 +79,11 @@ export function ZeroConnectorCallbackPage({
       {status === "loading" ? (
         <div className="flex items-center gap-2 text-sm text-muted-foreground">
           <IconLoader2 size={16} className="animate-spin" aria-hidden="true" />
-          <span>Finishing the secure connection</span>
+          <span>
+            {t(($) => {
+              return $.connectors.callback.finishing;
+            })}
+          </span>
         </div>
       ) : (
         <div className="flex flex-col items-center gap-4">
@@ -68,7 +100,13 @@ export function ZeroConnectorCallbackPage({
               <IconAlertCircle size={16} aria-hidden="true" />
             )}
             <span>
-              {status === "success" ? "Connected" : "Connection failed"}
+              {status === "success"
+                ? t(($) => {
+                    return $.connectors.callback.success;
+                  })
+                : t(($) => {
+                    return $.connectors.callback.failed;
+                  })}
             </span>
           </div>
           <Button
@@ -77,7 +115,9 @@ export function ZeroConnectorCallbackPage({
               window.close();
             }}
           >
-            Close window
+            {t(($) => {
+              return $.connectors.actions.closeWindow;
+            })}
           </Button>
         </div>
       )}

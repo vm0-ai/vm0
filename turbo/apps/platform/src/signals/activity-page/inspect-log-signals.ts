@@ -6,20 +6,27 @@ import { parseInspectLog, type InspectLogMeta } from "./inspect-log-parser.ts";
 import { logger } from "../log.ts";
 import { tapError } from "../utils.ts";
 import { groupVisibleGroups, type EventGroup } from "./log-detail-utils.ts";
+import { i18n } from "../../i18n/index.ts";
 
 const L = logger("InspectLogSignals");
 const MAX_INSPECT_LOG_FILE_SIZE_BYTES = 25 * 1024 * 1024;
 
 function inspectLogLoadErrorMessage(): string {
-  return "Could not load JSON file. Upload an exported activity log JSON file.";
+  return i18n.t(($) => {
+    return $.activity.inspect.errors.load;
+  });
 }
 
 function invalidInspectLogMessage(): string {
-  return "Invalid JSON file. Upload an exported activity log JSON file.";
+  return i18n.t(($) => {
+    return $.activity.inspect.errors.invalid;
+  });
 }
 
 function oversizedInspectLogMessage(): string {
-  return "JSON file is too large. Upload an exported activity log JSON file under 25 MB.";
+  return i18n.t(($) => {
+    return $.activity.inspect.errors.oversized;
+  });
 }
 
 export interface InspectLogData {

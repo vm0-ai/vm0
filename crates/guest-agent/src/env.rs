@@ -95,6 +95,26 @@ fn bounded_duration_secs_value_or(
     }
 }
 
+fn optional_positive_duration_secs(
+    name: &str,
+    value: Option<&str>,
+) -> Result<Option<Duration>, String> {
+    let Some(value) = value else {
+        return Ok(None);
+    };
+    let seconds = value
+        .parse::<u64>()
+        .map_err(|_| format!("{name} must be a positive integer number of seconds"))?;
+    if seconds == 0 {
+        return Err(format!("{name} must be greater than zero"));
+    }
+    let duration = Duration::from_secs(seconds);
+    if std::time::Instant::now().checked_add(duration).is_none() {
+        return Err(format!("{name} is too large"));
+    }
+    Ok(Some(duration))
+}
+
 // ---------------------------------------------------------------------------
 // Artifacts (multi-mount)
 //
@@ -142,6 +162,7 @@ pub struct GuestConfigRaw {
     pub vercel_bypass: String,
     pub resume_session_id: String,
     pub api_start_time: String,
+    pub agent_execution_timeout_secs: String,
     pub use_mock_claude: String,
     pub mock_claude_path: Option<String>,
     pub cli_agent_type: String,
@@ -176,6 +197,9 @@ impl GuestConfigRaw {
             vercel_bypass: env_or_empty(guest_contracts::env::VERCEL_PROTECTION_BYPASS_ENV),
             resume_session_id: env_or_empty(guest_contracts::env::RESUME_SESSION_ID_ENV),
             api_start_time: env_or_empty(guest_contracts::env::API_START_TIME_ENV),
+            agent_execution_timeout_secs: env_or_empty(
+                guest_contracts::env::AGENT_EXECUTION_TIMEOUT_SECS_ENV,
+            ),
             use_mock_claude: env_or_empty(guest_contracts::env::USE_MOCK_CLAUDE_ENV),
             mock_claude_path: std::env::var(guest_contracts::env::MOCK_CLAUDE_PATH_ENV).ok(),
             cli_agent_type: env_or_empty(guest_contracts::env::CLI_AGENT_TYPE_ENV),
@@ -225,6 +249,7 @@ pub struct GuestConfig {
     pub vercel_bypass: String,
     pub resume_session_id: String,
     pub api_start_time: String,
+    pub agent_execution_timeout: Option<Duration>,
     pub secret_values: String,
     pub disallowed_tools: String,
     pub tools: String,
@@ -298,6 +323,10 @@ impl GuestConfig {
             vercel_bypass: raw.vercel_bypass,
             resume_session_id: raw.resume_session_id,
             api_start_time: raw.api_start_time,
+            agent_execution_timeout: optional_positive_duration_secs(
+                guest_contracts::env::AGENT_EXECUTION_TIMEOUT_SECS_ENV,
+                non_empty(&raw.agent_execution_timeout_secs),
+            )?,
             secret_values: payload.secret_values,
             disallowed_tools: payload.disallowed_tools,
             tools: payload.tools,
@@ -709,6 +738,38 @@ mod tests {
     }
 
     #[test]
+    fn agent_execution_timeout_is_optional_and_strict() {
+        assert_eq!(
+            optional_positive_duration_secs(
+                guest_contracts::env::AGENT_EXECUTION_TIMEOUT_SECS_ENV,
+                None,
+            )
+            .unwrap(),
+            None
+        );
+        assert_eq!(
+            optional_positive_duration_secs(
+                guest_contracts::env::AGENT_EXECUTION_TIMEOUT_SECS_ENV,
+                Some("7200"),
+            )
+            .unwrap(),
+            Some(Duration::from_secs(7200))
+        );
+
+        for invalid in ["0", "-1", "not-a-number", "18446744073709551615"] {
+            let error = optional_positive_duration_secs(
+                guest_contracts::env::AGENT_EXECUTION_TIMEOUT_SECS_ENV,
+                Some(invalid),
+            )
+            .unwrap_err();
+            assert!(
+                error.contains(guest_contracts::env::AGENT_EXECUTION_TIMEOUT_SECS_ENV),
+                "{error}"
+            );
+        }
+    }
+
+    #[test]
     fn framework_from_cli_agent_type_accepts_known_values_and_defaults_unknown() {
         assert_eq!(framework_from_cli_agent_type(""), Framework::ClaudeCode);
         assert_eq!(
@@ -745,6 +806,7 @@ mod tests {
             vercel_bypass: "bypass".to_string(),
             resume_session_id: "session-1".to_string(),
             api_start_time: "123".to_string(),
+            agent_execution_timeout_secs: "11".to_string(),
             use_mock_claude: "true".to_string(),
             cli_agent_type: "codex".to_string(),
             use_mock_codex: "1".to_string(),
@@ -768,6 +830,10 @@ mod tests {
         assert_eq!(config.vercel_bypass, "bypass");
         assert_eq!(config.resume_session_id, "session-1");
         assert_eq!(config.api_start_time, "123");
+        assert_eq!(
+            config.agent_execution_timeout,
+            Some(Duration::from_secs(11))
+        );
         assert_eq!(config.secret_values, "encoded-secret");
         assert_eq!(config.disallowed_tools, "WebFetch");
         assert_eq!(config.tools, "Bash");

@@ -430,6 +430,43 @@ mod tests {
     }
 
     #[test]
+    fn workspace_image_cache_help_documents_locked_entry_semantics() {
+        let info_error = Cli::try_parse_from(["runner", "workspace-image-cache", "info", "--help"])
+            .err()
+            .expect("workspace-image-cache info --help should exit through clap");
+        assert_eq!(info_error.kind(), clap::error::ErrorKind::DisplayHelp);
+        let info_help = info_error
+            .to_string()
+            .split_whitespace()
+            .collect::<Vec<_>>()
+            .join(" ");
+        assert!(info_help.contains("non-blocking, best-effort"));
+        assert!(info_help.contains(
+            "Locked entries skip metadata, image-size, temporary-path, storage, and artifact inspection."
+        ));
+        assert!(
+            info_help.contains("status-category, temporary-path, and size values are lower bounds")
+        );
+
+        let list_error = Cli::try_parse_from(["runner", "workspace-image-cache", "list", "--help"])
+            .err()
+            .expect("workspace-image-cache list --help should exit through clap");
+        assert_eq!(list_error.kind(), clap::error::ErrorKind::DisplayHelp);
+        let list_help = list_error
+            .to_string()
+            .split_whitespace()
+            .collect::<Vec<_>>()
+            .join(" ");
+        assert!(list_help.contains("non-blocking, best-effort"));
+        assert!(list_help.contains(
+            "zero measurements and null metadata fields on locked entries mean unavailable rather than measured zero"
+        ));
+        assert!(list_help.contains(
+            "Status-category, temporary-path, and size summary values are lower bounds when `lockedEntries` is greater than zero."
+        ));
+    }
+
+    #[test]
     fn service_unit_state_command_is_registered() {
         assert!(
             Cli::try_parse_from([

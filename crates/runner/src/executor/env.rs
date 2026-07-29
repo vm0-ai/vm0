@@ -7,7 +7,7 @@ use super::cli_framework::{
     EffectiveCliFramework, effective_cli_framework, normalized_cli_agent_type,
 };
 use super::session_id::{canonical_codex_thread_id, is_valid_session_id};
-use super::{RunnerError, RunnerResult, guest_runtime_dir, guest_runtime_path};
+use super::{JOB_TIMEOUT, RunnerError, RunnerResult, guest_runtime_dir, guest_runtime_path};
 use crate::ids::RunId;
 use crate::types::{CodexRuntimeConfig, ExecutionContext, SandboxReuseResult};
 
@@ -418,6 +418,10 @@ pub(super) fn build_env_json_with_host_env_for_run(
     env.insert(
         guest_contracts::env::SANDBOX_REUSE_RESULT_ENV.into(),
         reuse_result.as_wire().into(),
+    );
+    env.insert(
+        guest_contracts::env::AGENT_EXECUTION_TIMEOUT_SECS_ENV.into(),
+        JOB_TIMEOUT.as_secs().to_string(),
     );
     insert_guest_agent_tuning_env(&mut env, context);
     env.insert(

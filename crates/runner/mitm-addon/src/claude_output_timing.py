@@ -1,7 +1,13 @@
-"""Content-free provider-output timing observations for Claude Code runs."""
+"""Content-free provider-output timing observations for Claude Code runs.
+
+Unadmitted reports retain only their run ID, fixed milestone timestamps, and
+minimal platform reporting context. The runner's pre-stop flush retries them
+while the shared buffered-work counter keeps shutdown pending.
+"""
 
 from __future__ import annotations
 
+import threading
 from collections import OrderedDict
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
@@ -10,7 +16,7 @@ from mitmproxy import http
 
 import flow_metadata
 import usage
-from usage.reporting_context import usage_reporting_context
+from usage.reporting_context import UsageReportingContext, usage_reporting_context
 
 FIRST_MESSAGE_START = "claude_proxy_first_message_start"
 FIRST_THINKING_OR_TEXT_BLOCK_START = "claude_proxy_first_thinking_or_text_block_start"
@@ -29,9 +35,12 @@ class _RunTimingState:
     first_thinking_or_text_block_observed: bool = False
     first_text_block_observed: bool = False
     pending_operations: dict[str, str] = field(default_factory=dict)
+    pending_context: UsageReportingContext | None = None
+    buffered_report: usage.BufferedReportLease | None = None
 
 
 _run_states: OrderedDict[str, _RunTimingState] = OrderedDict()
+_state_lock = threading.Lock()
 
 
 def observe_lifecycle_event(
@@ -44,41 +53,42 @@ def observe_lifecycle_event(
     if not run_id:
         return
 
-    state = _run_states.get(run_id)
-    if event_type == _MESSAGE_START_EVENT:
-        if state is None:
-            state = _state_for_run(run_id)
-        else:
-            _touch_run(run_id)
-        if not state.first_message_start_observed:
-            state.first_message_start_observed = True
-            state.pending_operations[FIRST_MESSAGE_START] = _observation_time()
-        _admit_pending(flow, run_id, state)
-        return
-
-    if event_type != _CONTENT_BLOCK_START_EVENT:
-        return
-
-    is_thinking_or_text = content_block_type in _THINKING_OR_TEXT_BLOCK_TYPES
-    is_text = content_block_type == "text"
-    if state is None:
-        if not is_thinking_or_text:
+    with _state_lock:
+        state = _run_states.get(run_id)
+        if event_type == _MESSAGE_START_EVENT:
+            if state is None:
+                state = _state_for_run_locked(run_id)
+            else:
+                _touch_run_locked(run_id)
+            if not state.first_message_start_observed:
+                state.first_message_start_observed = True
+                state.pending_operations[FIRST_MESSAGE_START] = _observation_time()
+            _admit_pending_locked(flow, run_id, state)
             return
-        state = _state_for_run(run_id)
-    else:
-        _touch_run(run_id)
 
-    observed_at: str | None = None
-    if is_thinking_or_text and not state.first_thinking_or_text_block_observed:
-        observed_at = _observation_time()
-        state.first_thinking_or_text_block_observed = True
-        state.pending_operations[FIRST_THINKING_OR_TEXT_BLOCK_START] = observed_at
-    if is_text and not state.first_text_block_observed:
-        if observed_at is None:
+        if event_type != _CONTENT_BLOCK_START_EVENT:
+            return
+
+        is_thinking_or_text = content_block_type in _THINKING_OR_TEXT_BLOCK_TYPES
+        is_text = content_block_type == "text"
+        if state is None:
+            if not is_thinking_or_text:
+                return
+            state = _state_for_run_locked(run_id)
+        else:
+            _touch_run_locked(run_id)
+
+        observed_at: str | None = None
+        if is_thinking_or_text and not state.first_thinking_or_text_block_observed:
             observed_at = _observation_time()
-        state.first_text_block_observed = True
-        state.pending_operations[FIRST_TEXT_BLOCK_START] = observed_at
-    _admit_pending(flow, run_id, state)
+            state.first_thinking_or_text_block_observed = True
+            state.pending_operations[FIRST_THINKING_OR_TEXT_BLOCK_START] = observed_at
+        if is_text and not state.first_text_block_observed:
+            if observed_at is None:
+                observed_at = _observation_time()
+            state.first_text_block_observed = True
+            state.pending_operations[FIRST_TEXT_BLOCK_START] = observed_at
+        _admit_pending_locked(flow, run_id, state)
 
 
 def retry_pending(flow: http.HTTPFlow) -> None:
@@ -86,42 +96,65 @@ def retry_pending(flow: http.HTTPFlow) -> None:
     run_id = flow_metadata.run_id(flow.metadata)
     if not run_id:
         return
-    state = _run_states.get(run_id)
-    if state is None:
-        return
-    _touch_run(run_id)
-    _admit_pending(flow, run_id, state)
+    with _state_lock:
+        state = _run_states.get(run_id)
+        if state is None:
+            return
+        _touch_run_locked(run_id)
+        _admit_pending_locked(flow, run_id, state)
+
+
+def retry_all_pending() -> None:
+    """Retry retained reports until admission capacity is saturated."""
+    with _state_lock:
+        for run_id, state in _run_states.items():
+            if not _admit_retained_locked(run_id, state):
+                return
 
 
 def _observation_time() -> str:
     return datetime.now(UTC).isoformat()
 
 
-def _state_for_run(run_id: str) -> _RunTimingState:
+def _state_for_run_locked(run_id: str) -> _RunTimingState:
     state = _run_states.get(run_id)
     if state is None:
         state = _RunTimingState()
         _run_states[run_id] = state
         if len(_run_states) > _MAX_TRACKED_RUNS:
-            _run_states.popitem(last=False)
+            _, evicted = _run_states.popitem(last=False)
+            _release_buffered_report_locked(evicted)
         return state
 
-    _touch_run(run_id)
+    _touch_run_locked(run_id)
     return state
 
 
-def _touch_run(run_id: str) -> None:
+def _touch_run_locked(run_id: str) -> None:
     _run_states.move_to_end(run_id)
 
 
-def _admit_pending(flow: http.HTTPFlow, run_id: str, state: _RunTimingState) -> None:
+def _admit_pending_locked(
+    flow: http.HTTPFlow,
+    run_id: str,
+    state: _RunTimingState,
+) -> None:
     if not state.pending_operations:
         return
 
     context = usage_reporting_context(flow)
     if not context.is_complete:
         return
+    state.pending_context = context
+    if state.buffered_report is None:
+        state.buffered_report = usage.admit_buffered_report()
+    _admit_retained_locked(run_id, state)
 
+
+def _admit_retained_locked(run_id: str, state: _RunTimingState) -> bool:
+    context = state.pending_context
+    if not state.pending_operations or context is None:
+        return True
     operations = [
         {
             "ts": observed_at,
@@ -135,15 +168,35 @@ def _admit_pending(flow: http.HTTPFlow, run_id: str, state: _RunTimingState) -> 
         "runId": run_id,
         "sandboxOperations": operations,
     }
-    if usage.webhook.enqueue_webhook_delivery(
+    if not usage.webhook.enqueue_webhook_delivery(
         context.telemetry_url(),
         context.sandbox_token,
         payload,
         context.proxy_log_path,
         _LOG_TYPE,
     ):
-        state.pending_operations.clear()
+        return False
+
+    lease = state.buffered_report
+    if lease is None:
+        raise RuntimeError("admitted Claude timing report had no buffered owner")
+    state.pending_operations.clear()
+    state.pending_context = None
+    state.buffered_report = None
+    lease.release()
+    return True
+
+
+def _release_buffered_report_locked(state: _RunTimingState) -> None:
+    lease = state.buffered_report
+    if lease is None:
+        return
+    state.buffered_report = None
+    lease.release()
 
 
 def reset_for_tests() -> None:
-    _run_states.clear()
+    with _state_lock:
+        for state in _run_states.values():
+            _release_buffered_report_locked(state)
+        _run_states.clear()

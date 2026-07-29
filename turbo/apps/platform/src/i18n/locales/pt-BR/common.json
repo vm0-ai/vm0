@@ -1,4 +1,525 @@
 {
+  "activity": {
+    "context": {
+      "artifact": "Artefato",
+      "environmentMapping": "Mapeamento de ambiente",
+      "featureFlags": "Flags de recurso",
+      "firewalls": "Firewalls",
+      "mountPath": "Caminho de montagem",
+      "name": "Nome",
+      "networkPolicies": "Políticas de rede",
+      "none": "Nenhum",
+      "prompt": "Prompt",
+      "runId": "ID da execução",
+      "secrets": "Segredos",
+      "session": "Sessão",
+      "storageName": "Nome do armazenamento",
+      "systemPrompt": "Prompt do sistema",
+      "value": "Valor",
+      "variables": "Variáveis",
+      "version": "Versão",
+      "volumes": "Volumes"
+    },
+    "detail": {
+      "activity": "Atividade",
+      "contextUnavailable": {
+        "description": "O contexto de execução não está disponível para esta execução. Talvez seja uma execução antiga, criada antes da ativação dos snapshots de contexto.",
+        "title": "Contexto indisponível"
+      },
+      "downloadRawData": "Baixar dados brutos",
+      "errorGuidance": {
+        "computerUseAuthorizationRequired": {
+          "guidance": "Solicite um link de autorização delegada do Computer Use, peça ao usuário para selecionar um host do Zero Desktop para este chat ou thread do Slack e inicie uma nova execução. Os tokens de uma execução existente não podem receber permissões adicionais.",
+          "title": "Autorização do Computer Use necessária"
+        },
+        "concurrentRunLimitReached": {
+          "guidance": "Aguarde a conclusão da execução atual antes de iniciar outra.",
+          "title": "Limite de execuções simultâneas atingido"
+        },
+        "creditsDepleted": {
+          "guidance": "Primeiro, execute o diagnóstico de créditos. Compre créditos somente quando o plano atual permitir; caso contrário, retorne o link de upgrade do plano.",
+          "title": "Créditos esgotados"
+        },
+        "modelProviderUnavailable": {
+          "guidance": "O provedor de modelos usado por esta thread foi excluído. Inicie uma nova thread de chat para continuar.",
+          "title": "Provedor de modelos indisponível"
+        },
+        "noModelProvider": {
+          "guidance": "Configure um provedor de modelos para começar a executar agentes.",
+          "title": "Nenhum provedor de modelos configurado"
+        },
+        "paidPlanRequired": {
+          "guidance": "A geração de vídeo integrada não está disponível no plano atual.",
+          "title": "Plano pago necessário"
+        },
+        "providerIncompatible": {
+          "guidance": "Esta sessão foi criada com um tipo de provedor diferente.",
+          "title": "Provedor incompatível"
+        },
+        "providerTemporarilyUnavailable": {
+          "guidance": "O provedor de modelos está temporariamente indisponível. Tente novamente mais tarde.",
+          "title": "Provedor temporariamente indisponível"
+        }
+      },
+      "fallbackAgent": "Agente",
+      "fields": {
+        "duration": "Duração",
+        "model": "Modelo",
+        "source": "Origem",
+        "status": "Status",
+        "time": "Horário"
+      },
+      "log": "Log",
+      "modelProvidedBy": "{{model}} fornecido por {{provider}}",
+      "networkEmpty": {
+        "description": "Nenhum tráfego de rede foi registrado para esta execução.",
+        "title": "Nenhum log de rede"
+      },
+      "notFound": {
+        "back": "Voltar para a atividade",
+        "description": "Este log não existe ou você não tem permissão para visualizá-lo no espaço de trabalho atual.",
+        "title": "Log não encontrado"
+      },
+      "runner": {
+        "deviceLimitMismatch": "A entrada no pool ocioso existe, mas o estado do limitador de uso do dispositivo não corresponde.",
+        "featureDisabled": "A reutilização de sandbox está desativada para esta execução.",
+        "noSessionId": "Não há um ID de sessão disponível para procurar uma correspondência no pool ocioso.",
+        "notReused": "Não reutilizado",
+        "poolMiss": "Nenhum sandbox correspondente foi encontrado no pool ocioso.",
+        "profileMismatch": "A entrada no pool ocioso existe, mas o perfil não corresponde.",
+        "reused": "Reutilizado",
+        "reusedDescription": "O sandbox foi reativado a partir do pool ocioso.",
+        "sandbox": "Sandbox",
+        "unknown": "Desconhecido (execução antiga, registrada antes da adição do rastreamento de reutilização de sandbox).",
+        "unparkFailed": "A tentativa de reativação falhou; um novo sandbox foi provisionado."
+      },
+      "steps": {
+        "matched": "({{matched}}/{{total}} correspondentes)",
+        "noEvents": "Nenhum evento disponível",
+        "search": "Pesquisar etapas",
+        "systemPrompt": "Prompt do sistema",
+        "title": "Etapas",
+        "total": "{{total}} no total",
+        "userPrompt": "Prompt"
+      },
+      "tabs": {
+        "context": "Contexto",
+        "network": "Rede",
+        "runner": "Runner",
+        "steps": "Etapas"
+      }
+    },
+    "documentTitle": "Atividade",
+    "events": {
+      "agents_one": "agente",
+      "agents_many": "agentes",
+      "agents_other": "agentes",
+      "allTasksCompleted": "Todas as tarefas foram concluídas",
+      "argsLabel": "argumentos:",
+      "calls_one": "{{formattedCount}} chamada",
+      "calls_many": "{{formattedCount}} chamadas",
+      "calls_other": "{{formattedCount}} chamadas",
+      "commands_one": "comando",
+      "commands_many": "comandos",
+      "commands_other": "comandos",
+      "duration": "Duração: {{duration}}",
+      "emptyOutput": "(saída vazia)",
+      "files_one": "{{formattedCount}} arquivo",
+      "files_many": "{{formattedCount}} arquivos",
+      "files_other": "{{formattedCount}} arquivos",
+      "initialize": "Inicialização",
+      "inputTokens": "entrada: {{formattedCount}}",
+      "models_one": "{{formattedCount}} modelo",
+      "models_many": "{{formattedCount}} modelos",
+      "models_other": "{{formattedCount}} modelos",
+      "nameLabel": "nome:",
+      "outputTokens": "saída: {{formattedCount}}",
+      "remainingLines_one": "+{{formattedCount}} linha",
+      "remainingLines_many": "+{{formattedCount}} linhas",
+      "remainingLines_other": "+{{formattedCount}} linhas",
+      "searches_one": "{{formattedCount}} busca",
+      "searches_many": "{{formattedCount}} buscas",
+      "searches_other": "{{formattedCount}} buscas",
+      "steps_one": "{{formattedCount}} etapa",
+      "steps_many": "{{formattedCount}} etapas",
+      "steps_other": "{{formattedCount}} etapas",
+      "summary": "Resumo",
+      "task": "Tarefa",
+      "thinking": "Raciocínio",
+      "todo": "Tarefas",
+      "toolFailed": "{{toolName}} falhou",
+      "tools_one": "ferramenta",
+      "tools_many": "ferramentas",
+      "tools_other": "ferramentas",
+      "turns_one": "{{formattedCount}} turno",
+      "turns_many": "{{formattedCount}} turnos",
+      "turns_other": "{{formattedCount}} turnos"
+    },
+    "inspect": {
+      "contextUnavailable": {
+        "description": "O contexto de execução não está disponível neste log importado.",
+        "title": "Contexto indisponível"
+      },
+      "documentTitle": "Inspecionar log",
+      "errors": {
+        "invalid": "Arquivo JSON inválido. Envie um arquivo JSON exportado de um log de atividade.",
+        "load": "Não foi possível carregar o arquivo JSON. Envie um arquivo JSON exportado de um log de atividade.",
+        "oversized": "O arquivo JSON é muito grande. Envie um arquivo JSON exportado de um log de atividade com menos de 25 MB."
+      },
+      "fallbackName": "Log importado",
+      "inspect": "Inspecionar",
+      "networkUnavailable": {
+        "description": "Os logs de rede não estão disponíveis neste log importado.",
+        "title": "Logs de rede indisponíveis"
+      },
+      "noLog": {
+        "description": "Envie o arquivo JSON de um log de atividade para inspecioná-lo.",
+        "title": "Nenhum log carregado",
+        "upload": "Enviar JSON"
+      }
+    },
+    "list": {
+      "description": "Logs e execuções dos seus agentes.",
+      "errors": {
+        "description": "Algo deu errado. Tente novamente mais tarde.",
+        "title": "Não foi possível carregar os dados de atividade"
+      },
+      "filters": {
+        "agent": "Filtro de agente",
+        "allAgents": "Todos os agentes",
+        "allSources": "Todas as origens",
+        "allStatuses": "Todos os status",
+        "source": "Filtro de origem",
+        "status": "Filtro de status"
+      },
+      "title": "Atividade"
+    },
+    "network": {
+      "browser": "navegador",
+      "capture": {
+        "binaryData": "[Dados binários, {{size}} codificados em base64]",
+        "complete": "completo",
+        "headersWithCount": "{{title}} ({{formattedCount}})",
+        "requestBody": "Corpo da requisição",
+        "requestHeaders": "Cabeçalhos da requisição",
+        "responseBody": "Corpo da resposta",
+        "responseHeaders": "Cabeçalhos da resposta",
+        "truncated": "truncado"
+      },
+      "details": {
+        "action": "Ação",
+        "authCacheHit": "Acerto de cache",
+        "authRefreshedConnectors": "Conectores atualizados",
+        "authRefreshedSecrets": "Segredos atualizados",
+        "authResolvedSecrets": "Segredos resolvidos",
+        "authUrlRewrite": "Reescrita de URL",
+        "baseUrl": "URL base",
+        "billable": "Faturável",
+        "browserUserAgent": "User-Agent do navegador",
+        "connectorBaseUrl": "URL base do conector",
+        "connectorDiagnostic": "Diagnóstico do conector",
+        "connectorEnvNames": "Nomes de ambiente do conector",
+        "connectorReason": "Motivo do conector",
+        "connectorRouteCandidates": "Rotas candidatas do conector",
+        "connectorRouteReason": "Motivo da rota do conector",
+        "dnsEvent": "Evento de DNS",
+        "dnsQueryType": "Tipo de consulta DNS",
+        "dnsResult": "Resultado de DNS",
+        "dnsSerial": "Serial de DNS",
+        "error": "Erro",
+        "firewall": "Firewall",
+        "host": "Host",
+        "latency": "Latência",
+        "method": "Método",
+        "modelCatalogCacheBypassReason": "Motivo para ignorar o cache do catálogo de modelos",
+        "modelCatalogCacheEntryAge": "Idade da entrada do cache do catálogo de modelos",
+        "modelCatalogCacheEvictionCount": "Contagem de remoções do cache do catálogo de modelos",
+        "modelCatalogCacheStatus": "Status do cache do catálogo de modelos",
+        "modelCatalogCacheValidationLatency": "Latência de validação do cache do catálogo de modelos",
+        "modelCatalogPrefetchRole": "Função de pré-carregamento do catálogo de modelos",
+        "modelCatalogUpstreamEncoding": "Codificação upstream do catálogo de modelos",
+        "params": "Parâmetros",
+        "permission": "Permissão",
+        "permissionError": "Erro de permissão",
+        "port": "Porta",
+        "requestSize": "Tamanho da requisição",
+        "responseSize": "Tamanho da resposta",
+        "ruleMatch": "Regra correspondente",
+        "status": "Status",
+        "timestamp": "Data e hora",
+        "type": "Tipo",
+        "upstreamBindingClientBindingCount": "Contagem de vinculações do cliente upstream",
+        "upstreamBindingClientBindingEndpointMatch": "Correspondência do endpoint da vinculação do cliente upstream",
+        "upstreamBindingClientBindingHosts": "Hosts da vinculação do cliente upstream",
+        "upstreamBindingClientBindingMatch": "Correspondência da vinculação do cliente upstream",
+        "upstreamBindingClientId": "ID do cliente da vinculação upstream",
+        "upstreamBindingClientSockname": "Sockname do cliente da vinculação upstream",
+        "upstreamBindingDirectBindingHost": "Host da vinculação direta upstream",
+        "upstreamBindingDirectBindingKinds": "Tipos de vinculação direta upstream",
+        "upstreamBindingDirectBindingPort": "Porta da vinculação direta upstream",
+        "upstreamBindingDirectBindingPresent": "Presença de vinculação direta upstream",
+        "upstreamBindingReason": "Motivo da vinculação upstream",
+        "upstreamBindingRequestHost": "Host da requisição da vinculação upstream",
+        "upstreamBindingRequestPort": "Porta da requisição da vinculação upstream",
+        "upstreamBindingServerAddress": "Endereço do servidor da vinculação upstream",
+        "upstreamBindingServerConnected": "Servidor da vinculação upstream conectado",
+        "upstreamBindingServerId": "ID do servidor da vinculação upstream",
+        "upstreamBindingServerPeername": "Peername do servidor da vinculação upstream",
+        "upstreamBindingServerSockname": "Sockname do servidor da vinculação upstream",
+        "upstreamBindingTrustedHost": "Host confiável da vinculação upstream",
+        "url": "URL"
+      },
+      "filter": {
+        "allTypes": "Todos os tipos",
+        "selectedTypes_one": "{{formattedCount}} tipo",
+        "selectedTypes_many": "{{formattedCount}} tipos",
+        "selectedTypes_other": "{{formattedCount}} tipos",
+        "type": "Filtro de tipo"
+      },
+      "headers": {
+        "latency": "Latência",
+        "method": "Método",
+        "permission": "Permissão",
+        "status": "Status",
+        "time": "Horário",
+        "type": "Tipo",
+        "urlHost": "URL / Host"
+      },
+      "loadMore": "Carregar mais",
+      "no": "Não",
+      "noMatchingLogs": "Nenhum log correspondente nos resultados carregados",
+      "unknown": "desconhecido",
+      "yes": "Sim"
+    },
+    "pagination": {
+      "backTwo": "Voltar 2 páginas",
+      "forwardTwo": "Avançar 2 páginas",
+      "next": "Próxima página",
+      "page": "Página {{current}}",
+      "pageOf": "Página {{current}} de {{total}}",
+      "previous": "Página anterior",
+      "rowsPerPage": "Linhas por página"
+    },
+    "sources": {
+      "agent": "Agente",
+      "agentphone": "AgentPhone",
+      "agentWithName": "Agente ({{name}})",
+      "cli": "CLI",
+      "email": "E-mail",
+      "feishu": "Feishu",
+      "github": "GitHub",
+      "slack": "Slack",
+      "teams": "Teams",
+      "telegram": "Telegram",
+      "web": "Web",
+      "webhook": "Webhook",
+      "workflowEvent": "Evento de workflow",
+      "workflowSchedule": "Agendamento de workflow"
+    },
+    "statuses": {
+      "cancelled": "Cancelado",
+      "completed": "Concluído",
+      "failed": "Falhou",
+      "pending": "Pendente",
+      "queued": "Na fila",
+      "running": "Em execução",
+      "timeout": "Tempo esgotado"
+    },
+    "statusFilters": {
+      "cancelled": "Cancelado",
+      "completed": "Concluído",
+      "failed": "Falhou",
+      "pending": "Pendente",
+      "queued": "Na fila",
+      "running": "Em execução",
+      "timeout": "Tempo esgotado"
+    },
+    "table": {
+      "empty": {
+        "description": "Quando seus agentes começarem a trabalhar, as atividades aparecerão aqui.",
+        "title": "Tudo tranquilo por enquanto"
+      },
+      "filteredEmpty": {
+        "description": "Tente outros filtros para encontrar o que procura.",
+        "title": "Nenhum resultado para esses filtros"
+      },
+      "headers": {
+        "agent": "Agente",
+        "description": "Descrição",
+        "duration": "Duração",
+        "session": "Sessão",
+        "source": "Origem",
+        "startTime": "Hora de início",
+        "status": "Status"
+      }
+    }
+  },
+  "artifacts": {
+    "actions": {
+      "backToAll": "Voltar para todos os artefatos",
+      "backToArtifacts": "Voltar aos artefatos",
+      "close": "Fechar",
+      "closeArtifact": "Fechar artefato",
+      "closeDownloadMenu": "Fechar menu de download",
+      "closeNamed": "Fechar {{title}}",
+      "closePreviewMenu": "Fechar menu de visualização",
+      "download": "Baixar",
+      "downloadArtifact": "Baixar artefato",
+      "downloadOptions": "Opções de download",
+      "enterFullscreen": "Entrar em tela cheia",
+      "exitFullscreen": "Sair da tela cheia",
+      "more": "Mais ações do artefato",
+      "nextImage": "Próximo artefato de imagem",
+      "openNewTab": "Abrir em nova guia",
+      "openSplitView": "Abrir em visualização dividida",
+      "previousImage": "Artefato de imagem anterior",
+      "resetZoom": "Redefinir zoom",
+      "share": "Compartilhar",
+      "shareArtifact": "Compartilhar artefato",
+      "zoomIn": "Ampliar zoom",
+      "zoomOut": "Reduzir zoom"
+    },
+    "attachments": {
+      "cancelUpload": "Cancelar envio de {{filename}}",
+      "download": "Baixar {{filename}}",
+      "openImagePreview": "Abrir visualização de imagem de {{filename}}",
+      "remove": "Remover {{filename}}"
+    },
+    "catalog": {
+      "cardPreview": "Visualizar {{title}}",
+      "description": "Navegue por tudo o que você criou aqui.",
+      "emptyDescription": "Os artefatos aparecerão aqui quando estiverem disponíveis.",
+      "emptyTitle": "Nenhum artefato encontrado",
+      "error": "Não foi possível carregar os artefatos. Tente novamente mais tarde.",
+      "filters": {
+        "file": "Arquivos",
+        "fileAria": "Mostrar artefatos de arquivo",
+        "image": "Imagens",
+        "imageAria": "Mostrar artefatos de imagem",
+        "label": "Filtros de tipo de artefato",
+        "presentation": "Apresentações",
+        "presentationAria": "Mostrar artefatos de apresentação",
+        "video": "Vídeos",
+        "videoAria": "Mostrar artefatos de vídeo",
+        "website": "Sites",
+        "websiteAria": "Mostrar artefatos de site"
+      },
+      "kindIcon": "Artefato do tipo {{kind}}",
+      "loading": "Carregando artefatos"
+    },
+    "googleDrive": {
+      "agentLoading": "O agente ainda está carregando",
+      "connect": "Conectar o Google Drive",
+      "connectTooltip": "Conecte o Google Drive para enviar artefatos",
+      "failedToOpenConnect": "Não foi possível abrir a página de conexão do Google Drive",
+      "noArtifacts": "Nenhum artefato para sincronizar",
+      "partial_one": "{{synced}} de {{count}} arquivo sincronizado com o Google Drive",
+      "partial_many": "{{synced}} de {{count}} arquivos sincronizados com o Google Drive",
+      "partial_other": "{{synced}} de {{count}} arquivos sincronizados com o Google Drive",
+      "synced": "Sincronizado com o Google Drive",
+      "syncedFiles_one": "Sincronizado com o Google Drive",
+      "syncedFiles_many": "{{count}} arquivos sincronizados com o Google Drive",
+      "syncedFiles_other": "{{count}} arquivos sincronizados com o Google Drive",
+      "syncFailed": "Falha ao sincronizar com o Google Drive",
+      "syncingArtifact": "Sincronizando artefato...",
+      "syncingFiles_one": "Sincronizando {{count}} arquivo...",
+      "syncingFiles_many": "Sincronizando {{count}} arquivos...",
+      "syncingFiles_other": "Sincronizando {{count}} arquivos...",
+      "syncingNamed": "Sincronizando {{filename}}...",
+      "upload": "Enviar para o Google Drive"
+    },
+    "kinds": {
+      "audio": "Áudio",
+      "code": "Código",
+      "csv": "CSV",
+      "data": "Dados",
+      "document": "Documento",
+      "file": "Arquivo",
+      "hostedSite": "Site hospedado",
+      "image": "Imagem",
+      "json": "JSON",
+      "markdown": "Markdown",
+      "presentation": "Apresentação",
+      "text": "Texto",
+      "video": "Vídeo"
+    },
+    "metadata": {
+      "generated": "Gerado em {{date}}"
+    },
+    "preview": {
+      "audioLabel": "Visualização de áudio de {{filename}}",
+      "badge": "Visualizar",
+      "dialogLabel": "Visualização de {{filename}}",
+      "emptyCsv": "CSV vazio.",
+      "genericUnavailable": "Visualização indisponível.",
+      "noInline": "Não há visualização disponível para este arquivo.",
+      "openKind": "Abrir visualização de {{kind}} de {{filename}}",
+      "openKinds": {
+        "audio": "áudio",
+        "csv": "CSV",
+        "html": "HTML",
+        "json": "JSON",
+        "markdown": "Markdown",
+        "pdf": "PDF",
+        "text": "texto",
+        "video": "vídeo"
+      },
+      "siteLabel": "Visualização do site {{title}}",
+      "unavailable": "Visualização de {{kind}} indisponível.",
+      "videoLabel": "Visualização de vídeo de {{filename}}"
+    },
+    "sidebar": {
+      "panelTitle": "Artefatos",
+      "singularTitle": "Artefato",
+      "unavailable": "Este artefato não está mais disponível."
+    },
+    "templates": {
+      "activeHtmlPreview": "Visualização HTML ativa de {{title}}",
+      "all": "Todos",
+      "categories": "Categorias de modelo",
+      "category": "Categoria de modelo",
+      "fullPreview": "Visualização completa do site {{title}}",
+      "htmlPreview": "Visualização HTML de {{title}}",
+      "illustration": "Ilustração",
+      "illustrationPreview": "Visualização da ilustração {{title}}",
+      "multiAccent": "Várias cores de destaque",
+      "nextSlide": "Visualizar próximo slide",
+      "noMatches": "Nenhum resultado",
+      "placeholder": "Espaço reservado para visualização do site {{title}}",
+      "playVideo": "Reproduzir a visualização do modelo de vídeo {{title}}",
+      "previewCurrentSlide": "Visualizar {{title}} no slide atual",
+      "previewSlide": "Visualizar slide {{slideNumber}}",
+      "previewWebsite": "Visualizar o modelo de site {{title}}",
+      "previousHtmlPreview": "Visualização HTML anterior de {{title}}",
+      "previousSlide": "Visualizar slide anterior",
+      "searchConnector": "Buscar conector...",
+      "searchConnectors": "Buscar conectores",
+      "selected": "Modelo: {{title}}",
+      "selectStyle": "Selecionar estilo {{style}}",
+      "selectTemplate": "Selecionar modelo {{title}}",
+      "selectVideo": "Selecionar modelo de vídeo {{title}}",
+      "selectWebsite": "Selecionar modelo de site {{title}}",
+      "selectWorkflow": "Selecionar modelo de fluxo de trabalho {{title}}",
+      "showVariant": "Mostrar variação {{variantNumber}}",
+      "singleAccent": "Uma cor de destaque",
+      "slidePreview": "Visualização dos slides de {{title}}",
+      "slideThumbnail": "Visualização do slide {{slideNumber}} de {{title}}",
+      "template": "Modelo",
+      "theme": "Tema",
+      "tryDifferentSearch": "Tente outra busca.",
+      "use": "Usar",
+      "useThisTemplate": "Usar este modelo",
+      "website": "Site",
+      "websitePreview": "Visualização do modelo de site {{title}}",
+      "workflow": "Fluxo de trabalho"
+    },
+    "title": "Artefatos",
+    "toasts": {
+      "copyLinkFailed": "Falha ao copiar o link",
+      "downloadFailed": "Falha no download",
+      "linkCopied": "Link copiado"
+    }
+  },
   "auth": {
     "clerk": {
       "accessNotAllowed": "Acesso não permitido.",
@@ -10,6 +531,801 @@
     },
     "loading": "Carregando autenticação",
     "toggleTheme": "Alternar tema"
+  },
+  "authorization": {
+    "browser": {
+      "description": "O Zero usará um perfil isolado de navegador na nuvem para esta conversa. Ao ativá-lo, o Computer Use será desconectado da conversa.",
+      "enable": "Ativar para esta conversa",
+      "enabled": "Navegador na nuvem ativado",
+      "linkExpires": "O link expira em {{date}}.",
+      "title": "Ativar navegador na nuvem",
+      "unavailableDescription": "Este link de autorização do navegador na nuvem é inválido, expirou ou não está disponível para este workspace.",
+      "unavailableTitle": "Link de autorização indisponível"
+    },
+    "computerUse": {
+      "authorize": "Autorizar",
+      "authorized": "Autorizado",
+      "checkingCompatibility": "Verificando compatibilidade",
+      "description": "Escolha um computador online para o Zero usar {{source}}.",
+      "downloadMac": "Baixar para macOS",
+      "lastSeen": "Visto pela última vez em {{date}}",
+      "linkExpires": "O link expira em {{date}}.",
+      "macRequirement": "Requer um Mac com Apple silicon e macOS 14 ou mais recente. Macs com Intel não são compatíveis.",
+      "noHostsDescription": "Abra o Zero Computer Use no Mac e atualize esta página quando ele ficar online.",
+      "noHostsTitle": "Nenhum computador online",
+      "sources": {
+        "chat": "nesta conversa",
+        "slack": "nesta conversa do Slack",
+        "teams": "nesta conversa do Teams"
+      },
+      "title": "Autorizar uso do computador",
+      "unavailableDescription": "Este link de autorização do Computer Use é inválido, expirou ou não está disponível para este workspace.",
+      "unavailableTitle": "Link de autorização indisponível",
+      "unsupportedIntelMac": "Requer um Mac com Apple silicon"
+    },
+    "permission": {
+      "confirm": "Confirmar",
+      "duration": "Duração",
+      "durationLabel": "Duração da permissão",
+      "durationOptions": {
+        "always": "Sempre",
+        "oneHour": "1 hora",
+        "sevenDays": "7 dias",
+        "twentyFourHours": "24 horas"
+      },
+      "errors": {
+        "agentNotFound": "Agente não encontrado",
+        "loadAgent": "Não foi possível carregar o agente",
+        "loadGrants": "Não foi possível carregar as concessões de permissão",
+        "loadMetadata": "Não foi possível carregar os metadados de permissão",
+        "missingAgentId": "O ID do agente não está nos parâmetros da URL",
+        "missingPermission": "A permissão não está nos parâmetros da URL",
+        "unknownAction": "Ação de permissão desconhecida: {{action}}",
+        "unknownConnector": "Conector desconhecido: {{connector}}",
+        "unknownPermission": "Permissão desconhecida: {{permission}}",
+        "updateFailed": "Não foi possível atualizar as permissões"
+      },
+      "expiration": {
+        "expired": "Expirada",
+        "inDays_one": "Expira em {{count}} dia",
+        "inDays_many": "Expira em {{count}} dias",
+        "inDays_other": "Expira em {{count}} dias",
+        "inHours_one": "Expira em {{count}} hora",
+        "inHours_many": "Expira em {{count}} horas",
+        "inHours_other": "Expira em {{count}} horas",
+        "lessThanHour": "Expira em menos de 1 hora",
+        "lessThanHourShort": "< 1 hora",
+        "prefix": "Expira em "
+      },
+      "greeting": "Olá, {{userName}}. Você está atualizando suas permissões para {{targetName}}.",
+      "result": {
+        "alreadyAllowedDescription": "Sua concessão de permissão do conector já está permitida",
+        "alreadyAllowedTitle": "Já permitido",
+        "alreadyDeniedDescription": "Sua concessão de permissão do conector já está negada",
+        "alreadyDeniedTitle": "Já negado",
+        "deniedDescription": "Sua concessão de permissão do conector foi negada",
+        "deniedTitle": "Permissões negadas",
+        "updatedDescription": "Sua concessão de permissão do conector foi atualizada",
+        "updatedTitle": "Permissões atualizadas"
+      },
+      "saving": "Salvando...",
+      "unknownEndpoints": "Endpoints desconhecidos",
+      "userFallback": "você",
+      "wouldLike": "Gostaria de"
+    }
+  },
+  "browserSession": {
+    "cardTitle": "Navegador na nuvem",
+    "close": "Fechar navegador ao vivo",
+    "creditsCharged_one": "{{formattedCount}} crédito cobrado",
+    "creditsCharged_many": "{{formattedCount}} créditos cobrados",
+    "creditsCharged_other": "{{formattedCount}} créditos cobrados",
+    "documentTitle": "Navegador ao vivo",
+    "iframeTitle": "Navegador ao vivo: {{name}}",
+    "invalidLink": "Link de navegador inválido",
+    "open": "Abrir o navegador {{name}}",
+    "openAction": "Abrir",
+    "openNewPage": "Abrir este navegador em uma nova página",
+    "panel": {
+      "notLive": "Navegador não está ao vivo",
+      "resume": "Retomar navegador",
+      "resumeDescription": "Ao retomar, o perfil de login e o armazenamento salvos são restaurados. As páginas e abas anteriores não são recuperadas.",
+      "resuming": "Retomando…",
+      "suspended": "Navegador suspenso"
+    },
+    "reclaimHint_one": "O Zero mantém este navegador enquanto o painel está aberto e o recupera após {{formattedCount}} minuto de inatividade.",
+    "reclaimHint_many": "O Zero mantém este navegador enquanto o painel está aberto e o recupera após {{formattedCount}} minutos de inatividade.",
+    "reclaimHint_other": "O Zero mantém este navegador enquanto o painel está aberto e o recupera após {{formattedCount}} minutos de inatividade.",
+    "status": {
+      "error": "Erro",
+      "live": "Ao vivo",
+      "starting": "Iniciando",
+      "stopped": "Parado",
+      "stopping": "Parando",
+      "suspended": "Suspenso"
+    },
+    "title": "Navegador ao vivo",
+    "unavailable": {
+      "description": "Este navegador não pertence a este chat ou foi removido.",
+      "title": "Navegador indisponível"
+    }
+  },
+  "connectors": {
+    "access": {
+      "accessFor": "{{action}} acesso ao {{connector}} para {{agent}}",
+      "accessUpdated": "Acesso ao {{connector}} atualizado",
+      "clearSearch": "Limpar busca de agentes",
+      "description": "Escolha quais agentes podem usar este conector.",
+      "loading": "Carregando agentes...",
+      "managePermissions": "Gerenciar permissões",
+      "managePermissionsFor": "Gerenciar permissões do {{connector}} para {{agent}}",
+      "noAgents": "Nenhum agente encontrado",
+      "noMatchingAgents": "Nenhum agente correspondente a \"{{search}}\"",
+      "permissionsUpdated": "Permissões atualizadas",
+      "search": "Buscar agentes",
+      "title": "Gerenciar acesso ao {{connector}}",
+      "unnamedAgent": "Sem nome"
+    },
+    "actions": {
+      "apply": "Aplicar",
+      "authorize": "Autorizar",
+      "cancel": "Cancelar",
+      "close": "Fechar",
+      "closeWindow": "Fechar janela",
+      "connect": "Conectar",
+      "connecting": "Conectando...",
+      "create": "Criar",
+      "creating": "Criando…",
+      "delete": "Excluir",
+      "deleting": "Excluindo…",
+      "disconnect": "Desconectar",
+      "disconnecting": "Desconectando...",
+      "grant": "Conceder",
+      "reconnect": "Reconectar",
+      "rename": "Renomear",
+      "revoke": "Revogar",
+      "save": "Salvar",
+      "saving": "Salvando...",
+      "savingEllipsis": "Salvando…",
+      "tryAgain": "Tentar novamente",
+      "uninstall": "Desinstalar",
+      "uninstalling": "Desinstalando..."
+    },
+    "callback": {
+      "connected": "{{connector}} conectado",
+      "connectedAs": "Conectado como {{username}}. Você pode fechar esta janela.",
+      "connectedDescription": "Sua conta foi conectada. Você pode fechar esta janela.",
+      "connecting": "Conectando {{connector}}…",
+      "connectingDescription": "Aguarde enquanto terminamos de conectar sua conta.",
+      "errorDescription": "{{error}} Feche esta janela e tente novamente.",
+      "errorFallback": "Ocorreu um erro durante a conexão.",
+      "failed": "Falha na conexão",
+      "failedTitle": "Não foi possível conectar {{connector}}",
+      "finishing": "Finalizando a conexão segura",
+      "success": "Conectado"
+    },
+    "card": {
+      "accessFor": "{{action}} acesso ao {{connector}}",
+      "authorized": "Autorizado",
+      "connectAria": "Conectar {{connector}}",
+      "connected": "Conectado",
+      "connecting": "Conectando…",
+      "connectionExpired": "A conexão expirou",
+      "connectToContinue": "Conecte esta conta para continuar",
+      "managePermissions": "Gerenciar permissões",
+      "managePermissionsFor": "Gerenciar permissões do {{connector}}",
+      "optional": "Opcional",
+      "required": "Obrigatório",
+      "reviewPermissions": "Revisar permissões",
+      "updatePermissions": "Atualizar permissões"
+    },
+    "catalog": {
+      "access": {
+        "add": "Adicionar acesso",
+        "manage": "Gerenciar acesso ao {{connector}}",
+        "usedBy": "Usado por "
+      },
+      "categories": {
+        "ai": {
+          "label": "IA",
+          "menu": "IA"
+        },
+        "aiAgentApps": {
+          "label": "Plataformas de agentes e apps de IA",
+          "menu": "Plataformas de agentes"
+        },
+        "aiGeneralModels": {
+          "label": "Modelos gerais e raciocínio",
+          "menu": "Modelos gerais"
+        },
+        "aiImageVideo": {
+          "label": "Geração de imagens e vídeos",
+          "menu": "Imagens e vídeos"
+        },
+        "aiMemoryTracingEval": {
+          "label": "Memória, rastreamento e avaliação",
+          "menu": "Memória e avaliação"
+        },
+        "aiVoiceAudio": {
+          "label": "Voz e áudio",
+          "menu": "Voz e áudio"
+        },
+        "communicationCollaboration": {
+          "label": "Comunicação e colaboração",
+          "menu": "Comunicação"
+        },
+        "dataAutomationInfrastructure": {
+          "label": "Dados, automação e infraestrutura",
+          "menu": "Dados e automação"
+        },
+        "docsFilesKnowledge": {
+          "label": "Documentos, arquivos e conhecimento",
+          "menu": "Documentos"
+        },
+        "engineeringTeamExecution": {
+          "label": "Engenharia e execução da equipe",
+          "menu": "Engenharia"
+        },
+        "marketingContentGrowth": {
+          "label": "Marketing, conteúdo e crescimento",
+          "menu": "Marketing"
+        },
+        "meetingsScheduling": {
+          "label": "Reuniões e agendamento",
+          "menu": "Reuniões"
+        },
+        "salesCrmBusinessOperations": {
+          "label": "Vendas, CRM e operações de negócios",
+          "menu": "Vendas e negócios"
+        }
+      },
+      "categoriesAria": "Categorias de conectores",
+      "description": "Conecte serviços de terceiros para seus agentes usarem.",
+      "empty": {
+        "agent": "Nenhum conector para este agente",
+        "connected": "Nenhum conector conectado",
+        "matching": "{{message}} correspondente a \"{{search}}\"",
+        "notConnected": "Não há mais conectores para conectar",
+        "search": "Nenhum conector correspondente a \"{{search}}\""
+      },
+      "filters": {
+        "agents": "Agentes",
+        "all": "Todos",
+        "aria": "Filtrar conectores",
+        "connected": "Conectados",
+        "notConnected": "Não conectados",
+        "status": "Status"
+      },
+      "iconUnavailable": "Ícone do conector indisponível",
+      "newConnector": "Novo conector",
+      "noConnectorsAlt": "Nenhum conector",
+      "otherCategory": "Outros",
+      "search": "Buscar conectores",
+      "tabs": {
+        "builtin": "Integrados",
+        "custom": "Personalizados"
+      },
+      "title": "Conectores",
+      "unnamedAgent": "Sem nome"
+    },
+    "connectDialog": {
+      "connectedAs": "Conectado como {{username}}",
+      "device": {
+        "checking": "Verificando a aprovação...",
+        "connect": "Conectar {{connector}}",
+        "copyThenOpen": "Copie este código e abra a página de verificação para aprovar o acesso.",
+        "description": "Abra a página de verificação do provedor e insira este código para aprovar o acesso.",
+        "intro": "Conecte-se para obter um código de verificação e use-o na página de verificação do provedor para aprovar o acesso.",
+        "openPage": "Abrir página de verificação",
+        "selectOption": "Selecionar {{option}}",
+        "starting": "Iniciando...",
+        "startingConnection": "Iniciando conexão...",
+        "verificationCode": "Código de verificação",
+        "waiting": "Aguardando aprovação. Mantenha esta caixa de diálogo aberta."
+      },
+      "external": {
+        "code": "Código",
+        "complete": "Concluir conexão",
+        "description": "Abra o login do {{connector}} e cole o código exibido pelo {{connector}}.",
+        "open": "Abrir login do {{connector}}",
+        "start": "Iniciar login do {{connector}}"
+      },
+      "noAuth": {
+        "enable": "Ativar {{connector}}",
+        "enabling": "Ativando..."
+      },
+      "noMethod": "Nenhum método de conexão está disponível.",
+      "or": "ou",
+      "progress": {
+        "connecting": "Conectando...",
+        "savingPermissions": "Salvando permissões..."
+      },
+      "unavailable": {
+        "description": "Este conector tem métodos de conexão disponíveis, mas nenhum deles pode ser configurado nesta caixa de diálogo.",
+        "title": "Métodos de conexão indisponíveis"
+      }
+    },
+    "custom": {
+      "connect": {
+        "description": "Seu segredo é criptografado em repouso e injetado nas solicitações de saída pelo firewall. Ele nunca é exposto ao agente como uma variável de ambiente.",
+        "secret": "Segredo",
+        "title": "Conectar {{connector}}"
+      },
+      "create": {
+        "displayName": "Nome de exibição",
+        "headerName": "Nome do header",
+        "headerTemplate": "Modelo do header",
+        "headerTemplateHint": "(deve conter {{placeholder}})",
+        "prefixes": "Prefixos",
+        "prefixesHint": "(um por linha, somente https)",
+        "title": "Novo conector personalizado"
+      },
+      "delete": {
+        "description": "Isso remove o conector e o segredo armazenado de cada membro. Os agentes autorizados para este conector perderão o acesso imediatamente. Esta ação não pode ser desfeita.",
+        "title": "Excluir {{connector}}?"
+      },
+      "emptyAdmin": "Ainda não há conectores personalizados. Crie um para registrar uma API que todos os membros possam usar.",
+      "emptyMember": "Sua organização ainda não registrou conectores personalizados.",
+      "moreOptions": "Mais opções",
+      "rename": {
+        "displayName": "Nome de exibição",
+        "title": "Renomear conector personalizado"
+      },
+      "statusConnected": "Conectado",
+      "toasts": {
+        "connected": "Conectado",
+        "created": "\"{{connector}}\" criado",
+        "deleted": "Conector personalizado excluído",
+        "disconnected": "Desconectado",
+        "renamed": "Renomeado para \"{{connector}}\""
+      }
+    },
+    "customProposal": {
+      "configure": "Configurar {{connector}}",
+      "descriptionAgent": "Ao salvar, seus valores serão conectados e {{agent}} será autorizado.",
+      "descriptionUser": "Ao salvar, este conector personalizado será conectado à sua conta.",
+      "invalid": "Este link de proposta de conector personalizado é inválido ou expirou.",
+      "requestScope": "Escopo da solicitação",
+      "returnToChat": "Volte ao chat e responda ACK para que o agente possa verificar o conector.",
+      "saved": "Salvo",
+      "savedToast": "{{connector}} salvo",
+      "targetFallback": "este agente",
+      "update": "Atualizar {{connector}}"
+    },
+    "directed": {
+      "authorizeAgent": "Autorizar {{agent}}",
+      "authorized": "{{connector}} autorizado",
+      "connected": "{{connector}} conectado",
+      "needsConnector": "{{agent}} precisa de {{connector}} para continuar",
+      "reconnecting": "Reconectando..."
+    },
+    "expiration": {
+      "inDays_one": "Expira em {{count}} dia",
+      "inDays_many": "Expira em {{count}} dias",
+      "inDays_other": "Expira em {{count}} dias",
+      "inHours_one": "Expira em {{count}} hora",
+      "inHours_many": "Expira em {{count}} horas",
+      "inHours_other": "Expira em {{count}} horas",
+      "lessThanHour": "Expira em menos de 1 hora"
+    },
+    "permissions": {
+      "actions": {
+        "allow": "Permitir",
+        "deny": "Negar",
+        "mixed": "Misto"
+      },
+      "allowDuration": {
+        "always": "Permitir sempre",
+        "oneHour": "Permitir por 1 h",
+        "sevenDays": "Permitir por 7 dias",
+        "twentyFourHours": "Permitir por 24 h"
+      },
+      "allowOptions": "Opções de permissão para {{permission}}",
+      "always": "Sempre",
+      "clearSearch": "Limpar busca de permissões",
+      "descriptionAgent": "Configure quais ações este agente pode realizar por meio deste conector.",
+      "descriptionWorkflow": "Configure quais ações este fluxo de trabalho pode realizar por meio deste conector.",
+      "find": "Buscar permissões",
+      "findPlaceholder": "Buscar permissões...",
+      "forTarget": "para {{target}}",
+      "loadError": "Falha ao carregar os metadados de permissões",
+      "loading": "Carregando permissões...",
+      "metadataMissing": "Nenhum metadado de permissão encontrado para {{connector}}",
+      "noResults": "Nenhum resultado para “{{search}}”",
+      "otherEndpoints": "Outros endpoints",
+      "otherEndpointsDescription": "Endpoints de API que não correspondem a nenhuma permissão acima",
+      "permissions": "Permissões",
+      "restore": "Restaurar",
+      "scopeReview": {
+        "added": "Novas permissões",
+        "description": "As permissões necessárias para este conector mudaram. Revise-as e reconecte para aplicar a atualização.",
+        "failed": "Falha ao carregar as alterações de escopo.",
+        "loading": "Carregando alterações de escopo...",
+        "removed": "Permissões removidas",
+        "title": "Atualização das permissões de {{connector}}"
+      },
+      "selectAll": "Selecionar tudo",
+      "showMore_one": "Mostrar mais ({{count}})",
+      "showMore_many": "Mostrar mais ({{count}})",
+      "showMore_other": "Mostrar mais ({{count}})",
+      "title": "Permissões de {{connector}}"
+    },
+    "providerConnect": {
+      "agentphone": {
+        "back": "Voltar para {{brandName}}",
+        "connectDescription": "Vincule este número de telefone à sua conta do {{brandName}} para interagir com o Zero por mensagens de texto.",
+        "connectTitle": "Conectar número de telefone",
+        "errorFallback": "Não foi possível conectar este número de telefone. Tente novamente pelas suas mensagens de texto.",
+        "incompleteDescription": "Abra um novo link /connect nas suas mensagens de texto.",
+        "incompleteTitle": "O link de conexão está incompleto",
+        "invalidSignature": "A assinatura deste link não é válida.",
+        "invalidTimestamp": "O carimbo de data e hora deste link não é válido.",
+        "invalidTitle": "O link de conexão não é válido",
+        "risk": "As respostas por SMS e MMS podem não ser entregues de forma confiável. Para uma experiência mais confiável, use o iMessage com este número do AgentPhone.",
+        "successDescription": "{{phone}} está conectado. Envie uma mensagem de texto para começar a conversar com o Zero.",
+        "successTitle": "Número de telefone conectado"
+      },
+      "common": {
+        "backToSettings": "Voltar para as configurações",
+        "checkingTitle": "Verificando o status da conta...",
+        "connectionFailed": "Falha na conexão",
+        "invalidLink": "Link inválido",
+        "verifying": "Aguarde enquanto verificamos sua conexão."
+      },
+      "feishu": {
+        "back": "Voltar para as configurações do Feishu",
+        "checkingTitle": "Verificando o status da conta…",
+        "connectDescription": "Vincule sua conta do {{brandName}} a este bot do Feishu para trabalhar com seu agente diretamente pelo Feishu.",
+        "connectTitle": "Conectar ao Feishu",
+        "errorFallback": "Não foi possível conectar o Feishu. Abra um novo link de conexão e tente novamente.",
+        "invalidDescription": "Abra um novo link de conexão no Feishu e tente novamente.",
+        "open": "Abrir Feishu",
+        "successDescription": "Você está conectado. Envie uma mensagem no Feishu para começar a conversar.",
+        "successDescriptionNamed": "Você está conectado a {{bot}}. Envie uma mensagem no Feishu para começar a conversar.",
+        "successTitle": "Conectado ao Feishu!"
+      },
+      "github": {
+        "accountFallback": "esta conta do GitHub",
+        "alreadyDescription": "Você já está conectado como {{account}}. Mencione seu agente em issues ou pull requests do GitHub para começar a conversar.",
+        "alreadyTitle": "Já conectado ao GitHub",
+        "back": "Voltar para fluxos de trabalho",
+        "checkingConnectionDescription": "Aguarde enquanto verificamos sua conexão com o GitHub.",
+        "checkingConnectionTitle": "Verificando a conexão...",
+        "checkingSession": "Aguarde enquanto verificamos sua sessão do {{brandName}}.",
+        "connectDescription": "Vincule sua conta do {{brandName}} a {{account}} para que menções no GitHub possam executar seus agentes em issues e pull requests.",
+        "connectTitle": "Conectar ao GitHub",
+        "errorFallback": "Não foi possível conectar o GitHub. Tente novamente pelo GitHub.",
+        "invalidInstallation": "A instalação do GitHub neste link não é válida.",
+        "invalidSignature": "A assinatura deste link não é válida.",
+        "invalidTimestamp": "O carimbo de data e hora deste link não é válido.",
+        "invalidTitle": "O link de conexão não é válido",
+        "invalidUser": "O usuário do GitHub neste link não é válido.",
+        "invalidUsername": "O nome de usuário do GitHub neste link não é válido.",
+        "linkIncomplete": "Abra um novo link de conexão do GitHub e tente novamente.",
+        "linkIncompleteTitle": "O link de conexão está incompleto",
+        "notInstalledDescription": "Peça a um administrador da organização para instalar o GitHub antes de conectar sua conta.",
+        "notInstalledTitle": "O GitHub não está instalado",
+        "refresh": "Atualize esta página e tente novamente.",
+        "signInButton": "Entrar no {{brandName}}",
+        "signInCheckFailed": "Não foi possível verificar o login",
+        "signInDescription": "Entre com sua conta do {{brandName}} antes de conectar este usuário do GitHub.",
+        "signInTitle": "Entre para continuar",
+        "successDescription": "Você está conectado como {{account}}. Mencione seu agente em issues ou pull requests do GitHub para começar a conversar.",
+        "successTitle": "Conectado ao GitHub!",
+        "wrongOrganizationDescription": "Sua organização ativa não corresponde a esta instalação do GitHub. Mude para a organização correta e abra o link novamente.",
+        "wrongOrganizationTitle": "Mudar de organização"
+      },
+      "slack": {
+        "connectDescription": "Vincule sua conta a este workspace do Slack para interagir com seu agente diretamente pelo Slack.",
+        "connectTitle": "Conectar ao Slack",
+        "invalidDescription": "Esta página deve ser aberta por um link de conexão do Slack.",
+        "open": "Abrir Slack",
+        "successDescription": "Mencione @Zero em qualquer canal ou envie uma DM para começar a conversar.",
+        "successDescriptionWorkspace": "Você está conectado a {{workspace}}. Mencione @Zero em qualquer canal ou envie uma DM para começar a conversar.",
+        "successTitle": "Conectado ao Slack!"
+      },
+      "teams": {
+        "connectDescription": "Vincule sua conta do Teams para interagir com seu agente diretamente pelo Microsoft Teams.",
+        "connectDescriptionNamed": "{{displayName}}, vincule sua conta do Teams para interagir com seu agente diretamente pelo Microsoft Teams.",
+        "connectTitle": "Conectar o Microsoft Teams",
+        "invalidDescription": "Esta página deve ser aberta por um link de conexão do Microsoft Teams.",
+        "open": "Abrir Teams",
+        "successDescription": "Você está conectado a {{team}}. Mencione @Zero no Teams para começar a conversar.",
+        "successTitle": "Conectado ao Microsoft Teams"
+      },
+      "telegram": {
+        "alreadyDescription": "Você já está conectado. Envie uma mensagem no Telegram para começar a conversar.",
+        "alreadyDescriptionNamed": "Você já está conectado a {{bot}}. Envie uma mensagem no Telegram para começar a conversar.",
+        "alreadyTitle": "Já conectado ao Telegram",
+        "back": "Voltar para as configurações do Telegram",
+        "botFallback": "este bot",
+        "checkingConnectionDescription": "Aguarde enquanto verificamos sua conexão com o Telegram.",
+        "checkingConnectionTitle": "Verificando a conexão...",
+        "checkingDomain": "Verificando o status do domínio...",
+        "checkingSession": "Aguarde enquanto verificamos sua sessão do {{brandName}}.",
+        "connectDescription": "Vincule sua conta a este bot do Telegram para interagir com seu agente diretamente pelo Telegram.",
+        "connectTitle": "Conectar ao Telegram",
+        "continue": "Continuar com o Telegram",
+        "domainDescription": "O login web do Telegram não está ativado para {{bot}}.",
+        "domainIn": "No ",
+        "domainInstructionsAfter": ", escolha o bot e defina o domínio como:",
+        "domainKeepOpen": "Mantenha esta página aberta depois de salvar o domínio. Você também pode se conectar pelo Telegram com /connect.",
+        "domainSend": ", envie ",
+        "domainTitle": "Definir domínio de login do Telegram",
+        "errorFallback": "Não foi possível conectar o Telegram. Tente novamente pelo Telegram.",
+        "invalidSignature": "A assinatura deste link não é válida.",
+        "invalidTimestamp": "O carimbo de data e hora deste link não é válido.",
+        "invalidTitle": "O link de conexão não é válido",
+        "invalidUser": "O usuário do Telegram neste link não é válido.",
+        "invalidUsername": "O nome de usuário do Telegram neste link não é válido.",
+        "linkIncomplete": "Abra um novo link /connect no Telegram e tente novamente.",
+        "linkIncompleteTitle": "O link de conexão está incompleto",
+        "open": "Abrir Telegram",
+        "openBotFather": "Abrir BotFather",
+        "refresh": "Atualize esta página e tente novamente.",
+        "signInButton": "Entrar no {{brandName}}",
+        "signInCheckFailed": "Não foi possível verificar o login",
+        "signInDescription": "Entre com sua conta do {{brandName}} antes de conectar este usuário do Telegram.",
+        "signInTitle": "Entre para continuar",
+        "successDescription": "Você está conectado a {{bot}}. Envie uma mensagem no Telegram para começar a conversar.",
+        "successTitle": "Conectado ao Telegram!"
+      }
+    },
+    "providerSettings": {
+      "agentphone": {
+        "authorizedSender": "Remetente autorizado",
+        "connectAria": "Conectar telefone",
+        "connectDescription": "Digite seu número de telefone. Enviaremos por mensagem um link de verificação que conecta este workspace.",
+        "connectTitle": "Conectar telefone",
+        "copyAria": "Copiar {{phone}}",
+        "copyError": "Falha ao copiar o número de telefone",
+        "copySuccess": "Número de telefone copiado",
+        "description": "Acesso ao Zero por mensagens de texto",
+        "destination": "iMessage ou SMS para",
+        "normalized": "Enviaremos uma mensagem para {{phone}}.",
+        "options": "Opções do telefone",
+        "phoneLabel": "Telefone",
+        "phoneNumber": "Número de telefone",
+        "risk": "As respostas por SMS e MMS podem não ser entregues de forma confiável. Para uma experiência mais confiável, use o iMessage com este número do AgentPhone.",
+        "sending": "Enviando...",
+        "sendVerification": "Enviar verificação",
+        "verificationSent": "Mensagem de verificação enviada para {{phone}}. Abra o link dessa mensagem para concluir a conexão."
+      },
+      "errors": {
+        "agentphonePhone": "Digite um número de telefone com código do país, como +1 555 555 1212.",
+        "githubAuthorizationWindow": "Falha ao abrir a janela de autorização",
+        "telegramDomain": "O domínio ainda não está visível para o Telegram. Verifique o BotFather e tente novamente.",
+        "telegramPrivacy": "O modo de privacidade ainda parece estar ativado. Desative-o no BotFather e tente novamente."
+      },
+      "feishu": {
+        "addBot": "Adicionar bot",
+        "addDialogDescription": "Crie um app personalizado empresarial, ative o bot e conclua estas etapas no console de desenvolvedor do Feishu.",
+        "addDialogTitle": "Adicionar um bot do Feishu",
+        "agentDescription": "Escolha o agente que deve processar as mensagens enviadas a este bot.",
+        "backToIntegrations": "Voltar para integrações",
+        "botFallback": "Bot do Feishu",
+        "botIconAlt": "Ícone do bot {{bot}}",
+        "bots": "Bots do Feishu",
+        "callbackStatusVerified": "Callback verificado",
+        "callbackStatusWaiting": "Aguardando callback",
+        "configured": "Configurado",
+        "copied": "{{label}} copiado",
+        "copy": "Copiar",
+        "create": {
+          "descriptionAfter": ", crie um app personalizado empresarial chamado {{brandName}}, envie o ícone do {{brandName}} e adicione o recurso Bot.",
+          "descriptionBefore": "No ",
+          "downloadIcon": "Baixar o ícone do {{brandName}}",
+          "iconAlt": "Ícone do app {{brandName}}",
+          "iconHint": " ou use qualquer ícone de sua preferência.",
+          "iconTitle": "Ícone do app {{brandName}}",
+          "imageAlt": "Formulário de criação de app do Feishu com o nome, o ícone e o botão Criar destacados",
+          "title": "Criar um app personalizado empresarial"
+        },
+        "credentials": {
+          "description": "Copie o App ID e o App Secret de Credentials & Basic Information.",
+          "imageAlt": "Resultado da criação do app do Feishu mostrando onde encontrar o App ID e o App Secret",
+          "title": "Adicionar as credenciais do app"
+        },
+        "defaultAgent": "Agente padrão",
+        "defaultAgentAria": "Agente padrão para {{appId}}",
+        "dialogAdminRequired": "Um administrador da organização deve configurar o app. Você poderá conectar sua própria conta pela lista de bots do Feishu após a conclusão da configuração.",
+        "emptyAdmin": "Adicione um app personalizado para encaminhar mensagens do Feishu a um agente.",
+        "emptyMember": "Peça a um administrador da organização para adicionar um bot do Feishu.",
+        "emptyTitle": "Ainda não há bots do Feishu",
+        "events": {
+          "callbackLabel": "URL de callback",
+          "continue": "Continue depois que o Feishu verificar a URL de callback e o evento de mensagem estiver inscrito.",
+          "description": "Abra Event Configuration. Em Subscription mode, selecione “Send notifications to developer's server”. Depois, abra Callback Configuration e cole a URL de callback. Após a verificação do Feishu, adicione o evento “Receive message v1”.",
+          "requestAlt": "Tela Event Configuration do Feishu com o campo Request URL destacado",
+          "requestLabel": "Adicionar a URL de solicitação de callback",
+          "subscriptionAlt": "Tela Event Configuration do Feishu com o controle de edição do modo de inscrição destacado",
+          "subscriptionLabel": "Selecionar o modo de inscrição de eventos",
+          "title": "Configurar a entrega de eventos"
+        },
+        "faq": {
+          "approvalAnswer": "Se a disponibilidade estiver definida como All members, um administrador do Feishu deverá aprovar a versão. O Feishu envia a solicitação de aprovação a um administrador por mensagem direta, e o app permanece pendente até a conclusão da revisão.",
+          "approvalQuestion": "Por que a publicação do app está aguardando aprovação?",
+          "challengeAnswer": "Isso geralmente significa que o Encrypt Key ou o Verification Token salvo na etapa Tokens está incorreto. Volte à etapa Tokens, insira novamente os dois valores de Event Configuration → Encryption Strategy, salve-os e tente a Request URL outra vez.",
+          "challengeQuestion": "Por que o Feishu mostra \"Challenge code didn't get a response\"?",
+          "title": "Perguntas frequentes sobre a configuração"
+        },
+        "guide": {
+          "next": "Mostrar a próxima imagem do guia do Feishu",
+          "previous": "Mostrar a imagem anterior do guia do Feishu",
+          "show": "Mostrar a imagem {{number}} do guia do Feishu"
+        },
+        "loadError": "Não foi possível carregar as configurações do Feishu.",
+        "manage": "Gerenciar",
+        "manageDialogTitle": "Gerenciar bot do Feishu",
+        "moreOptions": "Mais opções para {{bot}}",
+        "pageDescription": "Gerencie o encaminhamento dos bots neste workspace",
+        "publish": {
+          "allMembersAlt": "Configurações de disponibilidade do Feishu com All members selecionado",
+          "allMembersLabel": "Disponibilizar o app para todos os membros",
+          "createVersionAlt": "Página Version Management do Feishu com o botão Create a version destacado",
+          "createVersionLabel": "Criar uma versão do app",
+          "description": "Crie e publique uma versão do app, edite as configurações de disponibilidade e selecione All members. Outros membros da organização só poderão usar o app depois que você conceder acesso.",
+          "editAvailabilityAlt": "Página de detalhes da versão do Feishu com a ação de editar as configurações de disponibilidade destacada",
+          "editAvailabilityLabel": "Editar as configurações de disponibilidade",
+          "title": "Publicar o app"
+        },
+        "redirect": {
+          "descriptionAfter": ", abra Development Configuration → Security Settings. Adicione a URL abaixo em Redirect URLs para que os membros do workspace conectem suas contas do Feishu ao {{brandName}}.",
+          "descriptionBefore": "No ",
+          "imageAlt": "Página Security Settings do Feishu mostrando onde adicionar uma URL de redirecionamento OAuth",
+          "label": "URL de redirecionamento OAuth",
+          "title": "Configurar a URL de redirecionamento OAuth"
+        },
+        "reviewGuide": "Revisar guia",
+        "reviewGuideDescription": "Revise as etapas concluídas da configuração deste bot do Feishu.",
+        "reviewGuideTitle": "Guia de revisão do Feishu",
+        "routeDescription": "Encaminhe mensagens do Feishu para agentes",
+        "selectAgent": "Selecionar um agente",
+        "setupIncomplete": "Configuração incompleta",
+        "steps": {
+          "back": "Voltar",
+          "checking": "Verificando…",
+          "close": "Fechar",
+          "create": "Criar",
+          "credentials": "Credenciais",
+          "done": "Concluído",
+          "events": "Eventos",
+          "next": "Avançar",
+          "publish": "Publicar",
+          "redirect": "Redirecionar",
+          "tokens": "Tokens",
+          "verify": "Verificar e continuar",
+          "verifying": "Verificando…",
+          "waiting": "Aguardando callback"
+        },
+        "tokens": {
+          "descriptionAfter": ", selecione o app que você acabou de criar e abra sua página de configuração. Acesse Event Configuration → Encryption Strategy e copie o Encrypt Key e o Verification Token.",
+          "descriptionBefore": "Abra o ",
+          "imageAlt": "Tela Encryption Strategy do Feishu mostrando o Encrypt Key e o Verification Token",
+          "title": "Adicionar os tokens de verificação de eventos"
+        },
+        "uninstallDescription": "Isso desinstala {{bot}} do workspace e desconecta todas as contas do {{brandName}} que o utilizam. Esta ação não pode ser desfeita.",
+        "uninstallTargetFallback": "este bot",
+        "uninstallTitle": "Desinstalar o bot do Feishu?"
+      },
+      "telegram": {
+        "addBot": "Adicionar bot",
+        "addDescription": "Conclua cada etapa no BotFather e crie o bot do workspace.",
+        "adding": "Adicionando...",
+        "addTitle": "Adicionar bot do Telegram",
+        "agentAria": "Agente padrão para {{bot}}",
+        "backToIntegrations": "Voltar para integrações",
+        "botFallback": "Bot do Telegram",
+        "bots": "Bots do Telegram",
+        "botToken": "Token do bot",
+        "checking": "Verificando...",
+        "copied": "copiado!",
+        "copyAria": "Copiar {{value}}",
+        "copyTitle": "Clique para copiar",
+        "create": {
+          "description": "O {{brandName}} registrará este bot e configurará seu webhook. Após a configuração, mencione o bot em um grupo ou envie uma DM para conversar com o agente selecionado.",
+          "descriptionNamed": "O {{brandName}} registrará {{bot}} e configurará seu webhook. Após a configuração, mencione o bot em um grupo ou envie uma DM para conversar com o agente selecionado.",
+          "title": "Tudo pronto para criar a integração"
+        },
+        "defaultAgent": "Agente padrão",
+        "disconnectAria": "Desconectar {{bot}}",
+        "domain": {
+          "detected": "Domínio detectado",
+          "instructionAfter": ", escolha este bot e defina o domínio como ",
+          "instructionEnd": ". O Telegram usa este domínio para permitir o fluxo de conexão deste bot.",
+          "instructionStart": "No {{botFather}}, envie ",
+          "title": "Definir o domínio de login do Telegram"
+        },
+        "emptyDescription": "Adicione um token de bot para encaminhar mensagens do Telegram a um agente.",
+        "emptyTitle": "Ainda não há bots do Telegram",
+        "invalidTokenDescription": "Reinstale o bot com um novo token do BotFather.",
+        "loadError": "Não foi possível carregar as configurações do Telegram.",
+        "moreOptions": "Mais opções para {{bot}}",
+        "newBotToken": "Novo token do bot",
+        "notConnected": "Não conectado",
+        "officialBot": "Bot oficial do Zero",
+        "officialDescription": "Bot oficial fornecido pelo {{brandName}}.",
+        "officialMissing": "A configuração do bot oficial está ausente.",
+        "pageDescription": "Gerencie o encaminhamento dos bots neste workspace",
+        "privacy": {
+          "instructionAfter": ", escolha este bot e desative o modo de privacidade. Isso permite que o agente leia o contexto do grupo em torno de menções e respostas.",
+          "instructionStart": "No {{botFather}}, envie ",
+          "off": "O modo de privacidade está desativado",
+          "title": "Opcional: desativar o modo de privacidade"
+        },
+        "registerAria": "Registrar bot do Telegram",
+        "reinstall": "Reinstalar",
+        "reinstallDescription": "Cole o novo token do BotFather para {{bot}}. O token deve pertencer a este mesmo bot.",
+        "reinstalling": "Reinstalando...",
+        "reinstallTargetFallback": "este bot",
+        "reinstallTitle": "Reinstalar bot do Telegram",
+        "selectAgent": "Selecionar agente",
+        "steps": {
+          "back": "Voltar",
+          "create": "Criar",
+          "domain": "Domínio",
+          "next": "Avançar",
+          "privacy": "Privacidade",
+          "token": "Token"
+        },
+        "token": {
+          "instructionAfter": ", escolha um nome e um nome de usuário e cole o token abaixo.",
+          "open": "Abra ",
+          "send": ", envie ",
+          "title": "Criar um token de bot no BotFather",
+          "verified": "Token verificado"
+        },
+        "tokenInvalid": "Token inválido",
+        "uninstallAria": "Desinstalar {{bot}}",
+        "uninstallDescription": "Isso remove {{bot}} do workspace e desconecta o acesso ao Telegram dos usuários que o utilizam. Esta ação não pode ser desfeita.",
+        "uninstallTargetFallback": "este bot",
+        "uninstallTitle": "Desinstalar o bot do Telegram?"
+      },
+      "toasts": {
+        "agentphoneConnected": "AgentPhone conectado",
+        "agentphoneDisconnected": "AgentPhone desconectado",
+        "agentphoneVerificationSent": "Mensagem de verificação enviada",
+        "feishuBotInstalled": "Bot do Feishu instalado com sucesso",
+        "feishuBotUninstalled": "Bot do Feishu desinstalado",
+        "feishuConnected": "Feishu conectado com sucesso",
+        "feishuDisconnected": "Desconectado do Feishu",
+        "slackConnected": "Slack conectado com sucesso",
+        "slackDisconnected": "Desconectado do Slack",
+        "slackInstalled": "Slack instalado com sucesso",
+        "slackPermissionsUpdated": "Permissões atualizadas",
+        "slackUninstalled": "Workspace do Slack desinstalado",
+        "slackUpdated": "Slack atualizado",
+        "teamsConnected": "Microsoft Teams conectado com sucesso",
+        "teamsDisconnected": "Desconectado do Microsoft Teams",
+        "teamsInstalled": "Microsoft Teams instalado com sucesso",
+        "teamsUninstalled": "Integração do Microsoft Teams desinstalada",
+        "teamsUpdated": "Microsoft Teams atualizado",
+        "telegramAgentUpdated": "Agente padrão atualizado",
+        "telegramBotAdded": "Bot do Telegram adicionado",
+        "telegramBotReinstalled": "Bot do Telegram reinstalado",
+        "telegramBotUninstalled": "Bot do Telegram desinstalado",
+        "telegramDisconnected": "Conta do Telegram desconectada",
+        "telegramUpdatingAgent": "Atualizando o agente padrão..."
+      },
+      "works": {
+        "connected": "Conectado",
+        "connectedDetail": "Conectado ({{detail}})"
+      }
+    },
+    "redirect": {
+      "back": "Voltar para {{brandName}}",
+      "errorDescription": "Volte para {{brandName}} e tente conectar novamente.",
+      "errorStatus": "Não foi possível iniciar a conexão",
+      "errorTitle": "Não foi possível abrir {{connector}}",
+      "mobileWarning": "O app {{connector}} pode não aceitar este link OAuth. Conclua esta conexão no app web do {{brandName}} em um computador.",
+      "preparing": "Preparando uma conexão segura",
+      "redirectDescription": "Você continuará no {{connector}} para autorizar o {{brandName}}.",
+      "redirectTitle": "Redirecionando para {{connector}}…"
+    },
+    "toasts": {
+      "connected": "{{connector}} conectado",
+      "disconnected": "{{connector}} desconectado"
+    }
   },
   "lifecycle": {
     "emailUnsubscribe": {
@@ -1344,6 +2660,40 @@
       }
     }
   },
+  "reportError": {
+    "description": "Envie informações de diagnóstico desta execução com falha para a equipe de desenvolvimento. Investigaremos o caso e retornaremos em breve.",
+    "disclosure": {
+      "agentConfiguration": "Configuração do agente",
+      "agentTelemetry": "Telemetria do agente e logs da execução",
+      "chatHistory": "Histórico do chat e eventos do agente",
+      "connectedServices": "Serviços conectados (sem credenciais)",
+      "networkLogs": "Logs de requisições de rede",
+      "runContext": "Contexto e ambiente da execução",
+      "title": "O que será enviado"
+    },
+    "documentTitle": "Relatar erro",
+    "error": {
+      "loadFailed": "Não foi possível carregar os detalhes da execução",
+      "notFailed": "Esta execução não falhou e não pode ser relatada",
+      "title": "Erro",
+      "tryAgain": "Tentar novamente"
+    },
+    "fields": {
+      "description": "Descrição",
+      "descriptionPlaceholder": "O que aconteceu? O que você esperava?",
+      "title": "Título",
+      "titlePlaceholder": "Resumo breve do problema"
+    },
+    "loading": "Carregando detalhes da execução",
+    "send": "Enviar relatório",
+    "sending": "Enviando...",
+    "success": {
+      "description": "Seu relatório de erro foi enviado para a equipe de desenvolvimento. Ela investigará o caso e retornará.",
+      "reference": "Referência: {{reference}}",
+      "title": "Relatório enviado"
+    },
+    "title": "Relatar erro ao desenvolvedor"
+  },
   "settings": {
     "accountMenu": {
       "addAccount": "Adicionar conta",
@@ -1820,6 +3170,622 @@
         "logoTooLarge": "O logo é muito grande ({{width}}×{{height}}px). O tamanho máximo é {{maximum}}×{{maximum}}px.",
         "logoTooSmall": "O logo é muito pequeno ({{width}}×{{height}}px). O tamanho mínimo é {{minimum}}×{{minimum}}px."
       }
+    }
+  },
+  "workflows": {
+    "automations": {
+      "calendar": {
+        "addAction": "Adicionar automação do Calendar",
+        "addAria": "Adicionar automação do Google Calendar",
+        "addDescriptionCancelled": "Execute este fluxo de trabalho quando um evento do Google Calendar for cancelado.",
+        "addDescriptionCreated": "Execute este fluxo de trabalho quando um novo evento do Google Calendar for criado.",
+        "addDescriptionUpdated": "Execute este fluxo de trabalho quando um evento do Google Calendar for atualizado.",
+        "addTitle": "Adicionar automação do Google Calendar",
+        "calendarId": "ID do calendário",
+        "cancelledDescription": "Execute quando um evento do calendário for cancelado.",
+        "cancelledRule": "Quando um evento do calendário {{calendar}} for cancelado",
+        "cancelledTitle": "Evento do Google Calendar cancelado",
+        "createdDescription": "Execute quando um evento do calendário for criado.",
+        "createdRule": "Quando o calendário {{calendar}} receber um novo evento",
+        "createdTitle": "Evento do Google Calendar criado",
+        "summary": "Calendário {{calendar}}",
+        "updatedDescription": "Execute quando um evento do calendário for atualizado.",
+        "updatedRule": "Quando um evento do calendário {{calendar}} for atualizado",
+        "updatedTitle": "Evento do Google Calendar atualizado"
+      },
+      "common": {
+        "addAutomation": "Adicionar automação",
+        "automation": "Automação",
+        "cancel": "Cancelar",
+        "chooseAutomation": "Escolha uma automação para iniciar este fluxo de trabalho.",
+        "deleteAutomation": "Excluir automação",
+        "disable": "Desativar {{title}}",
+        "disabledPaidPlan": "Desativada — requer plano pago",
+        "done": "Concluído",
+        "editAutomation": "Editar automação",
+        "enable": "Ativar {{title}}",
+        "eventAutomation": "Automação de evento",
+        "moreActions": "Mais ações",
+        "noAutomations": "Nenhuma automação",
+        "noAutomationsDescription": "Adicione uma automação para executar este fluxo de trabalho sempre que ela for acionada.",
+        "runNow": "Executar agora",
+        "schedule": "Agendamento",
+        "scheduleAutomation": "Automação agendada",
+        "updateDescription": "Atualize esta automação.",
+        "webhookAutomation": "Automação de webhook"
+      },
+      "duration": {
+        "hour_one": "{{count}} hora",
+        "hour_many": "{{count}} horas",
+        "hour_other": "{{count}} horas",
+        "minute_one": "{{count}} minuto",
+        "minute_many": "{{count}} minutos",
+        "minute_other": "{{count}} minutos",
+        "second_one": "{{count}} segundo",
+        "second_many": "{{count}} segundos",
+        "second_other": "{{count}} segundos"
+      },
+      "github": {
+        "accountConnect": "Conectar GitHub",
+        "accountRequired": "Conecte sua conta do GitHub para usar a opção Eu.",
+        "actorAnyone": "Qualquer pessoa",
+        "actorMe": "Eu",
+        "actors": "Atores",
+        "addLabelAction": "Adicionar automação de rótulo",
+        "addLabelAria": "Adicionar automação de rótulo do GitHub",
+        "addLabelDescription": "Execute este fluxo de trabalho quando um rótulo do GitHub for aplicado.",
+        "addLabelTitle": "Adicionar automação de rótulo do GitHub",
+        "addWebhookAction": "Adicionar automação",
+        "addWebhookAria": "Adicionar automação de {{title}}",
+        "addWebhookDescription": "Execute este fluxo de trabalho quando chegar um evento de webhook correspondente do GitHub.",
+        "addWorkflowAction": "Adicionar automação de workflow",
+        "addWorkflowAria": "Adicionar automação de workflow do GitHub",
+        "addWorkflowDescription": "Execute este fluxo de trabalho quando uma execução correspondente do GitHub Actions for concluída.",
+        "addWorkflowTitle": "Adicionar automação de workflow do GitHub",
+        "aJob": "um job de workflow do GitHub",
+        "any": "Qualquer",
+        "anyAuthor": "Qualquer autor",
+        "anyComment": "Qualquer comentário",
+        "anyConclusion": "Qualquer conclusão",
+        "anyDeploymentState": "Qualquer status de implantação",
+        "anyEnvironment": "Qualquer ambiente",
+        "anyJob": "Qualquer job",
+        "anyRepository": "Qualquer repositório",
+        "anyResult": "Qualquer resultado",
+        "anyReview": "Qualquer revisão",
+        "anyReviewState": "Qualquer status de revisão",
+        "anyWorkflow": "Qualquer workflow",
+        "apps": "GitHub Apps",
+        "authorsSummary": "Autores {{values}}",
+        "aWorkflow": "um workflow do GitHub",
+        "baseBranches": "Branches base",
+        "branches": "Branches",
+        "commentPrefixes": "Prefixos de comentário",
+        "conclusions": "Conclusões",
+        "conclusionsSummary": "Conclusões {{values}}",
+        "creators": "Criadores",
+        "deploymentStates": "Status de implantação",
+        "deploymentStatesSummary": "Status de implantação {{values}}",
+        "deploymentStatusDescription": "Execute quando um status de implantação correspondente for criado.",
+        "deploymentStatusRule": "Quando um status de implantação correspondente for criado no GitHub",
+        "deploymentStatusTitle": "Status de implantação do GitHub criado",
+        "editLabel": "Editar rótulo",
+        "editWebhookFilters": "Editar filtros de {{title}}",
+        "editWorkflowFilters": "Editar filtros do workflow do GitHub",
+        "environments": "Ambientes",
+        "environmentsSummary": "Ambientes {{values}}",
+        "events": "Eventos de acionamento",
+        "filterHelp": "Deixe um filtro vazio para corresponder a qualquer valor. Separe vários valores com vírgulas.",
+        "headBranches": "Branches de origem",
+        "installedRequired": "O GitHub não está instalado neste espaço de trabalho.",
+        "issueCommentDescription": "Execute quando um comentário correspondente em issue ou PR for criado.",
+        "issueCommentRule": "Quando um comentário correspondente em issue ou pull request for criado no GitHub",
+        "issueCommentTitle": "Comentário em issue do GitHub criado",
+        "issuesAndPullRequests": "Issues e pull requests",
+        "issuesOnly": "Somente issues",
+        "jobs": "Jobs",
+        "jobsSummary": "Jobs {{values}}",
+        "labelAppliedDescription": "Execute quando uma issue ou pull request receber um rótulo.",
+        "labelAppliedRule": "Quando o rótulo do GitHub {{label}} for aplicado",
+        "labelAppliedTitle": "Rótulo do GitHub aplicado",
+        "labelName": "Nome do rótulo",
+        "labelOnlySummary": "Rótulo {{label}}",
+        "labelSummary": "Rótulo {{label}} · {{subject}} · Ator {{actor}}",
+        "loadError": "Não foi possível carregar as configurações do GitHub.",
+        "nonProductionOnly": "Somente não produção",
+        "option": {
+          "actionRequired": "Ação necessária",
+          "approved": "Aprovado",
+          "cancelled": "Cancelado",
+          "changesRequested": "Alterações solicitadas",
+          "commented": "Comentado",
+          "error": "Erro",
+          "failure": "Falha",
+          "inactive": "Inativo",
+          "inProgress": "Em andamento",
+          "neutral": "Neutro",
+          "pending": "Pendente",
+          "queued": "Na fila",
+          "skipped": "Ignorado",
+          "stale": "Obsoleto",
+          "startupFailure": "Falha na inicialização",
+          "success": "Sucesso",
+          "timedOut": "Tempo esgotado",
+          "waiting": "Aguardando"
+        },
+        "productionEnvironment": "Ambiente de produção",
+        "productionOnly": "Somente produção",
+        "pullRequestsOnly": "Somente pull requests",
+        "refs": "Refs",
+        "repositories": "Repositórios",
+        "repositoriesSummary": "Repositórios {{values}}",
+        "reviewDescription": "Execute quando uma revisão correspondente for enviada.",
+        "reviewRule": "Quando uma revisão correspondente de pull request for enviada no GitHub",
+        "reviewStates": "Status de revisão",
+        "reviewTitle": "Revisão de pull request do GitHub enviada",
+        "runnerGroups": "Grupos de runners",
+        "runnerLabels": "Rótulos de runners",
+        "saveFilters": "Salvar filtros",
+        "selectNoneAny": "Não selecione nada para corresponder a qualquer valor.",
+        "selectNoneConclusion": "Não selecione nada para corresponder a qualquer conclusão.",
+        "startedBy": "Iniciado por",
+        "subject": "Assunto",
+        "trustedAuthors": "Autores confiáveis",
+        "updateLabelAria": "Atualizar automação de rótulo do GitHub",
+        "updateWebhookAria": "Atualizar automação de {{title}}",
+        "updateWorkflowAria": "Atualizar automação de workflow do GitHub",
+        "withConclusions": " com {{values}}",
+        "workflowJobDescription": "Execute quando um job correspondente do Actions for concluído.",
+        "workflowJobRule": "Quando {{jobs}} for concluído",
+        "workflowJobTitle": "Job do workflow do GitHub concluído",
+        "workflowRunDescription": "Execute quando uma execução correspondente do Actions for concluída.",
+        "workflowRunRule": "Quando {{workflows}} for concluído{{conclusions}}",
+        "workflowRunTitle": "Workflow do GitHub concluído",
+        "workflows": "Workflows do GitHub",
+        "workflowsSummary": "Workflows {{values}}"
+      },
+      "gmail": {
+        "addCondition": "Adicionar condição",
+        "addLabelAction": "Adicionar automação de rótulo",
+        "addLabelAria": "Adicionar automação de rótulo do Gmail",
+        "addLabelDescription": "Execute este fluxo de trabalho quando um rótulo específico do Gmail for aplicado.",
+        "addLabelTitle": "Adicionar automação de rótulo do Gmail",
+        "addMessageAction": "Adicionar automação do Gmail",
+        "addMessageAria": "Adicionar automação do Gmail",
+        "addMessageDescription": "Execute este fluxo de trabalho quando chegar uma mensagem correspondente.",
+        "addMessageTitle": "Adicionar automação do Gmail",
+        "allInboundMessages": "todas as mensagens recebidas",
+        "anyMessageRule": "Quando qualquer mensagem do Gmail chegar",
+        "conditionField": "Campo da condição {{number}}",
+        "conditionOperator": "Operador da condição {{number}}",
+        "editLabel": "Editar rótulo",
+        "editMatch": "Editar correspondência",
+        "enterValue": "Digite um valor",
+        "field": {
+          "body": "Corpo",
+          "cc": "Cc",
+          "from": "De",
+          "subject": "Assunto",
+          "threadId": "ID da conversa",
+          "to": "Para"
+        },
+        "labelAppliedRule": "Quando o rótulo do Gmail {{label}} for aplicado",
+        "labelAppliedTitle": "Rótulo do Gmail aplicado",
+        "labelName": "Nome do rótulo",
+        "labelSummary": "Rótulo {{label}}",
+        "messageMatchesRule": "Quando uma mensagem do Gmail corresponder a {{summary}}",
+        "newMessageDescription": "Execute este fluxo de trabalho a partir de um e-mail correspondente.",
+        "newMessageTitle": "Nova mensagem do Gmail",
+        "operator": {
+          "contains": "Contém",
+          "containsAny": "Contém qualquer um",
+          "doesNotContain": "Não contém",
+          "is": "É"
+        },
+        "removeCondition": "Remover condição {{number}}",
+        "saveLabel": "Salvar rótulo",
+        "saveMatch": "Salvar correspondência",
+        "summary": {
+          "contains": "{{field}} contém {{value}}",
+          "containsAny": "{{field}} contém qualquer um de {{value}}",
+          "doesNotContain": "{{field}} não contém {{value}}",
+          "doesNotContainAny": "{{field}} não contém nenhum de {{value}}",
+          "threadId": "O ID da conversa é {{value}}"
+        },
+        "updateLabelAria": "Atualizar automação de rótulo do Gmail",
+        "updateMessageAria": "Atualizar automação de nova mensagem do Gmail"
+      },
+      "meet": {
+        "addAction": "Adicionar automação do Meet",
+        "addAria": "Adicionar automação de transcrição do Google Meet",
+        "addDescription": "Execute este fluxo de trabalho quando o Google Meet terminar de gerar a transcrição de uma reunião organizada pela conta conectada do Google Meet.",
+        "addTitle": "Adicionar automação do Google Meet",
+        "rule": "Quando o Google Meet terminar de gerar uma transcrição",
+        "summary": "Reuniões que você organiza",
+        "transcriptHint": "A transcrição deve estar ativada para a reunião. Se o Meet não criar uma transcrição, esta automação não será executada.",
+        "transcriptReadyDescription": "Execute quando o Meet terminar de gerar uma transcrição.",
+        "transcriptReadyTitle": "Transcrição do Google Meet pronta"
+      },
+      "notion": {
+        "addAction": "Adicionar automação do Notion",
+        "childPageAddAria": "Adicionar automação de página filha do Notion",
+        "childPageDescription": "Execute quando uma página filha direta for criada.",
+        "childPageDialogDescription": "Execute este fluxo de trabalho quando uma página filha direta for criada em uma página do Notion.",
+        "childPageRule": "Quando uma página filha do Notion for criada em {{title}}",
+        "childPageRuleGeneric": "Quando uma página filha do Notion for criada",
+        "childPageTitle": "Nova página filha do Notion",
+        "configuredDatabase": "Banco de dados configurado",
+        "configuredPage": "Página configurada",
+        "configuredParentPage": "Página principal configurada",
+        "contentUpdatedAddAria": "Adicionar automação de atualização de conteúdo do Notion",
+        "contentUpdatedDescription": "Execute quando o conteúdo de uma página ou item de banco de dados mudar.",
+        "contentUpdatedDialogDescription": "Execute este fluxo de trabalho quando uma atualização de conteúdo de página do Notion for concluída.",
+        "contentUpdatedTitle": "Conteúdo da página do Notion atualizado",
+        "database": "Banco de dados",
+        "databaseItemAddAria": "Adicionar automação de item de banco de dados do Notion",
+        "databaseItemDescription": "Execute quando uma página for adicionada a um banco de dados do Notion.",
+        "databaseItemDialogDescription": "Execute este fluxo de trabalho quando uma página for adicionada a um banco de dados do Notion.",
+        "databaseItemRule": "Quando o banco de dados do Notion {{title}} receber um novo item",
+        "databaseItemRuleGeneric": "Quando um banco de dados do Notion receber um novo item",
+        "databaseItemTitle": "Novo item de banco de dados do Notion",
+        "databaseSummary": "Banco de dados {{title}}",
+        "databaseUpdatedRule": "Quando o conteúdo de um item do banco de dados do Notion {{title}} for atualizado",
+        "databaseUpdatedRuleGeneric": "Quando o conteúdo de um item de banco de dados do Notion for atualizado",
+        "databaseUrl": "URL do banco de dados",
+        "page": "Página",
+        "pageSummary": "Página {{title}}",
+        "pageUpdatedRule": "Quando o conteúdo da página do Notion {{title}} for atualizado",
+        "pageUpdatedRuleGeneric": "Quando o conteúdo de uma página do Notion for atualizado",
+        "pageUrl": "URL da página",
+        "parentPageSummary": "Página principal {{title}}",
+        "parentPageUrl": "URL da página principal",
+        "scope": "Escopo"
+      },
+      "picker": {
+        "calendar": "Calendário",
+        "email": "E-mail",
+        "integrations": "Integrações",
+        "notion": "Notion",
+        "schedule": "Agendamento"
+      },
+      "rules": {
+        "inboundWebhook": "Quando um webhook de entrada for recebido"
+      },
+      "schedule": {
+        "addIntervalAction": "Adicionar intervalo",
+        "addIntervalAria": "Adicionar automação por intervalo",
+        "addIntervalDescription": "Escolha com que frequência este fluxo de trabalho deve ser executado.",
+        "addIntervalTitle": "Adicionar automação por intervalo",
+        "addOnceAction": "Adicionar execução única",
+        "addOnceAria": "Adicionar automação de execução única",
+        "addOnceDescription": "Escolha a data e a hora para executar este fluxo de trabalho uma vez.",
+        "addOnceTitle": "Adicionar automação de execução única",
+        "addScheduleAction": "Adicionar agendamento",
+        "addScheduleAria": "Adicionar automação agendada",
+        "addScheduleDescription": "Escolha quando este fluxo de trabalho deve ser executado.",
+        "addScheduleTitle": "Adicionar automação agendada",
+        "cronExpression": "Expressão cron",
+        "customCron": "Cron personalizado",
+        "dayOfMonth": "Dia do mês",
+        "dayOfWeek": "Dia da semana",
+        "displaysIn": "Exibido em {{timezone}}",
+        "editSchedule": "Editar agendamento",
+        "every": "A cada",
+        "everyDay": "Todos os dias",
+        "everyDayAt": "Todos os dias às {{time}}",
+        "everyMonth": "Todo mês",
+        "everyMonthAt": "Todo mês, no dia {{day}}, às {{time}}",
+        "everyWeek": "Toda semana",
+        "everyWeekAt": "Toda semana às {{time}}",
+        "everyWeekday": "A cada dia útil",
+        "everyWeekdayAt": "A cada dia útil às {{time}}",
+        "everyWeekOn": "Toda semana, em {{days}}, às {{time}}",
+        "frequencyIntervalDescription": "Execute este fluxo de trabalho em um intervalo fixo.",
+        "frequencyIntervalTitle": "Intervalo",
+        "frequencyOnceDescription": "Execute este fluxo de trabalho uma vez em uma data e hora.",
+        "frequencyOnceTitle": "Execução única",
+        "frequencyScheduleDescription": "Execute este fluxo de trabalho a partir de uma regra de horário.",
+        "frequencyScheduleTitle": "Horário agendado",
+        "hour": "Hora",
+        "last": "Última",
+        "minute": "Minuto",
+        "next": "Próxima",
+        "noRunsYet": "Nenhuma execução ainda",
+        "noUpcomingRun": "Nenhuma execução futura",
+        "onceOn": "Uma vez em {{date}}, às {{time}}",
+        "repeatEvery": "A cada {{interval}}",
+        "repeats": "Repete",
+        "runAt": "Executar em",
+        "saveSchedule": "Salvar agendamento",
+        "time": "Horário ({{timezone}})",
+        "updateScheduleAria": "Atualizar automação agendada"
+      },
+      "strapi": {
+        "addAction": "Adicionar automação do Strapi",
+        "addAria": "Adicionar automação de entrada publicada no Strapi",
+        "addDescription": "Execute este fluxo de trabalho depois que os eventos de publicação localizados correspondentes forem concluídos.",
+        "addTitle": "Adicionar automação do Strapi",
+        "configure": "Configurar Strapi",
+        "connectFirst": "Conecte uma instância do Strapi antes de criar esta automação.",
+        "contentType": "UID do tipo de conteúdo (opcional)",
+        "contentTypeAny": "Qualquer tipo de conteúdo",
+        "entryPublishedDescription": "Execute depois que uma entrada correspondente do Strapi for publicada.",
+        "entryPublishedTitle": "Entrada do Strapi publicada",
+        "instance": "Instância do Strapi",
+        "locale": "Localidade (opcional)",
+        "localeAny": "Qualquer localidade",
+        "localeHint": "Deixe a localidade em branco para combinar todos os eventos de publicação localizados do mesmo documento em uma única execução do fluxo de trabalho.",
+        "localeSummary": "Localidade {{locale}}",
+        "rule": "Quando uma entrada correspondente for publicada no Strapi"
+      },
+      "webhook": {
+        "addDescription": "Crie um endpoint assinado para este fluxo de trabalho.",
+        "addTitle": "Adicionar automação de webhook",
+        "copy": "Copiar",
+        "create": "Criar webhook",
+        "createDescription": "Execute este fluxo de trabalho a partir de uma solicitação POST assinada.",
+        "createTitle": "Webhook",
+        "hidden": "URL do webhook oculta",
+        "paidBadge": "Team",
+        "reveal": "Revelar segredo",
+        "revealDescription": "Revele o endpoint assinado e o segredo que termina em {{suffix}}",
+        "revealTitle": "Ver segredo do webhook",
+        "secret": "Segredo de assinatura",
+        "secretHiddenHint": "Os valores secretos ficam ocultos na lista de automações. Revele-os somente quando precisar configurar ou testar este webhook.",
+        "secretOneTimeHint": "O segredo de assinatura é exibido somente após a criação.",
+        "signedCurl": "curl assinado",
+        "upgrade": {
+          "adminHint": "Peça a um administrador do espaço de trabalho para fazer o upgrade.",
+          "benefitDescription": "Crie endpoints assinados que iniciam fluxos de trabalho a partir de sistemas externos.",
+          "benefitTitle": "Automação segura de entrada para fluxos de trabalho",
+          "description": "As automações de webhook exigem um espaço de trabalho Team ou Custom.",
+          "title": "Faça upgrade para usar automações de webhook",
+          "upgradeAction": "Fazer upgrade para Team"
+        },
+        "url": "URL do webhook"
+      }
+    },
+    "common": {
+      "agents": "Agentes",
+      "cancel": "Cancelar",
+      "close": "Fechar",
+      "copyWorkflow": "Copiar fluxo de trabalho",
+      "delete": "Excluir",
+      "deleteWorkflow": "Excluir fluxo de trabalho",
+      "instructions": "Instruções",
+      "manual": "Manual",
+      "others": "Outros",
+      "pinned": "Fixados",
+      "private": "Privado",
+      "public": "Público",
+      "settings": "Configurações",
+      "view": "Ver",
+      "workflow": "Fluxo de trabalho",
+      "workflows": "Fluxos de trabalho"
+    },
+    "composer": {
+      "nextMessage": "Digite sua próxima mensagem…",
+      "placeholder": "Peça para automatizar fluxos de trabalho, gerenciar tarefas..."
+    },
+    "createDialog": {
+      "addAutomation": "Adicionar automação",
+      "chooseAgentAutomation": "Escolha o agente para esta automação",
+      "chooseAgentWorkflow": "Escolha o agente para este fluxo de trabalho.",
+      "chooseWorkflow": "Escolha um fluxo de trabalho para automatizar ou crie um no chat.",
+      "createAutomation": "Criar automação",
+      "createInChat": "Criar no chat",
+      "createInChatDescription": "Comece por uma conversa quando nenhum fluxo de trabalho for adequado.",
+      "createWorkflow": "Criar fluxo de trabalho",
+      "noAgents": "Nenhum agente ainda",
+      "noAgentsFound": "Nenhum agente encontrado",
+      "noWorkflows": "Nenhum fluxo de trabalho ainda. Crie um no chat para continuar."
+    },
+    "detail": {
+      "connectors": {
+        "action": {
+          "connect": "Conectar",
+          "enable": "Ativar para o agente",
+          "reconnect": "Reconectar",
+          "reviewPermissions": "Revisar permissões"
+        },
+        "aria": "Prontidão dos conectores",
+        "check": "Verificar conectores",
+        "checkAgain": "Verificar novamente",
+        "checking": "Verificando...",
+        "description": "Veja quais conectores integrados este fluxo de trabalho pode precisar e se estão prontos.",
+        "empty": "Nenhum conector obrigatório detectado",
+        "error": {
+          "inputTooLong": "Este fluxo de trabalho é longo demais para verificar. Mantenha o nome, a descrição e as instruções dentro do limite de 100.000 caracteres.",
+          "retry": "Não foi possível verificar os conectores. Tente novamente.",
+          "timeout": "A verificação dos conectores expirou. Tente novamente."
+        },
+        "saveFirst": "Salve suas alterações antes de verificar os conectores.",
+        "status": {
+          "connected": "Conectado",
+          "notConnected": "Não conectado",
+          "notEnabled": "Não ativado para este agente",
+          "reconnect": "Reconexão necessária",
+          "scopeMismatch": "Atualizar permissões",
+          "unavailable": "Indisponível no momento"
+        },
+        "title": "Prontidão dos conectores"
+      },
+      "copy": {
+        "agentFallback": "o agente",
+        "copied": "Copiado para {{agent}}",
+        "copyAndRemove": "Copiar e remover",
+        "description": "Copie este fluxo de trabalho para outro agente como um novo fluxo privado.",
+        "moved": "Movido para {{agent}}",
+        "moveDescription": "Original removido de {{agent}}.",
+        "noAgents": "Nenhum outro agente ainda",
+        "privateReady": "Uma cópia privada está pronta.",
+        "removalAlert": "Isso exclui o original",
+        "removalNoAutomations": "Este fluxo de trabalho é excluído de {{agent}}.",
+        "removalWithAutomations_one": "{{count}} automação é pausada em {{agent}} e este fluxo de trabalho é excluído.",
+        "removalWithAutomations_many": "{{count}} automações são pausadas em {{agent}} e este fluxo de trabalho é excluído.",
+        "removalWithAutomations_other": "{{count}} automações são pausadas em {{agent}} e este fluxo de trabalho é excluído.",
+        "removeOriginal": "Remover o original de {{agent}} após copiar",
+        "selectAgent": "Escolha um agente",
+        "title": "Copiar fluxo de trabalho",
+        "to": "Copiar para"
+      },
+      "delete": {
+        "confirm": "{{title}} e todas as automações vinculadas serão excluídos.",
+        "dangerDescription": "Exclua este fluxo de trabalho e suas automações. Esta ação não pode ser desfeita.",
+        "dangerTitle": "Zona de perigo",
+        "description": "Esta é uma operação perigosa. Excluir este fluxo de trabalho também exclui todas as automações vinculadas a ele, inclusive as criadas por outros usuários.",
+        "title": "Excluir fluxo de trabalho"
+      },
+      "files": {
+        "aria": "Arquivos do fluxo de trabalho",
+        "deleteAria": "Excluir {{path}}",
+        "deleteSelected": "Excluir arquivo selecionado",
+        "fileContent": "Conteúdo do arquivo do fluxo de trabalho",
+        "filePlaceholder": "Edite este arquivo Markdown...",
+        "instruction": "Instrução do fluxo de trabalho",
+        "instructionPlaceholder": "Escreva as instruções do fluxo de trabalho...",
+        "instructions": "instruções",
+        "noContent": "Nenhum conteúdo disponível para este arquivo.",
+        "upload": "Enviar arquivos de texto",
+        "uploadAria": "Enviar arquivos do fluxo de trabalho"
+      },
+      "info": {
+        "copyDescription": "Copie este fluxo de trabalho para outro agente.",
+        "copyTitle": "Copiar fluxo de trabalho"
+      },
+      "metadata": {
+        "agent": "Agente",
+        "agentDescription": "Este fluxo de trabalho pertence a este agente.",
+        "aria": "Metadados do fluxo de trabalho",
+        "description": "Descrição",
+        "descriptionHelp": "Informe ao agente quando usar este fluxo de trabalho.",
+        "name": "Nome",
+        "nameHelp": "Exibido nas listas e ao escolher um fluxo de trabalho.",
+        "namePlaceholder": "Nome do fluxo de trabalho",
+        "saved": "Fluxo de trabalho salvo",
+        "slug": "Slug",
+        "slugHelp": "Use apenas letras minúsculas, números e -. Use {{command}} no chat para usar este fluxo de trabalho.",
+        "slugTitle": "Use apenas letras minúsculas, números e hifens",
+        "visibility": "Visibilidade",
+        "visibilityHelp": "Escolha como este fluxo de trabalho é compartilhado no seu espaço de trabalho."
+      },
+      "notFound": "Fluxo de trabalho não encontrado.",
+      "refineWith": "Refinar com {{agent}}",
+      "shadow": {
+        "end": "para você. Este fluxo de trabalho está oculto pela regra de prioridade de slug idêntico.",
+        "resolvesTo": "atualmente resolve para"
+      },
+      "visibility": {
+        "adminRequired": "Publicar um fluxo de trabalho em um agente que não pertence a você exige permissões de administrador da organização.",
+        "automationWarning": "As automações serão interrompidas",
+        "confirmDescription": "Esta é uma operação perigosa. Enquanto este fluxo de trabalho estiver privado, as automações criadas por outros membros deixarão de ser executadas.",
+        "confirmTitle": "Tornar este fluxo de trabalho privado?",
+        "makePrivate": "Tornar privado",
+        "publishAria": "Tornar o fluxo de trabalho público",
+        "workflowHidden": "{{title}} ficará oculto para outros membros, e as automações deles deixarão de ser executadas."
+      }
+    },
+    "editor": {
+      "aria": "Editor de instruções",
+      "footer": "Edite as instruções diretamente para personalizar o comportamento do seu agente.",
+      "placeholder": "Escreva instruções para seu agente...",
+      "toolbar": {
+        "blockquote": "Citação",
+        "bold": "Negrito",
+        "bulletList": "Lista com marcadores",
+        "heading1": "Título 1",
+        "heading2": "Título 2",
+        "heading3": "Título 3",
+        "inlineCode": "Código em linha",
+        "italic": "Itálico",
+        "orderedList": "Lista numerada",
+        "strikethrough": "Tachado"
+      }
+    },
+    "list": {
+      "agentEmpty": "Nenhum fluxo de trabalho é executado como este agente ainda.",
+      "all": "Todos",
+      "allAgents": "Todos os agentes",
+      "automated": "Automatizados",
+      "automations": "Automações",
+      "createdBy": "Criado por",
+      "createInChat": "Criar no chat",
+      "description": "Um procedimento operacional padrão reutilizável para uma tarefa. Crie um do zero ou extraia-o do seu trabalho diário; depois, execute, edite ou automatize.",
+      "empty": {
+        "all": "Crie um fluxo de trabalho no chat ou salve um de uma execução útil.",
+        "automated": "Adicione uma automação a um fluxo de trabalho para que ele apareça aqui.",
+        "private": "Nenhum fluxo de trabalho privado ainda.",
+        "public": "Nenhum fluxo de trabalho público ainda.",
+        "without": "Todos os fluxos de trabalho daqui são executados por agendamento ou evento."
+      },
+      "noWorkflows": "Nenhum fluxo de trabalho",
+      "open": "Abrir {{title}}",
+      "runsAs": "Executado como",
+      "runsAsAria": "Executado como {{agent}}",
+      "section": {
+        "event": "Por automação",
+        "later": "Mais tarde",
+        "manual": "Manual",
+        "today": "Executados hoje",
+        "week": "Esta semana"
+      },
+      "sort": {
+        "alphabetical": "Ordem alfabética",
+        "created": "Data de criação",
+        "label": "Próxima execução",
+        "nextRun": "Próxima execução"
+      },
+      "title": "Fluxos de trabalho",
+      "viewAutomations": "Ver automações"
+    }
+  },
+  "works": {
+    "actions": {
+      "cancel": "Cancelar",
+      "connect": "Conectar",
+      "disconnect": "Desconectar",
+      "disconnecting": "Desconectando…",
+      "manage": "Gerenciar",
+      "moreOptions": "Mais opções",
+      "uninstall": "Desinstalar",
+      "uninstalling": "Desinstalando…",
+      "updatePermissions": "Atualizar permissões"
+    },
+    "connected": "Conectado",
+    "connectedWithDetail": "Conectado ({{detail}})",
+    "documentTitle": "Integrações",
+    "feishuConnected": "Feishu conectado com sucesso",
+    "header": {
+      "description": "Conecte-se com {{displayName}} por estes canais",
+      "title": "Onde {{displayName}} trabalha"
+    },
+    "slack": {
+      "adminInstall": "Peça ao administrador para instalar a integração com o Slack",
+      "description": "Comunicação e colaboração em equipe",
+      "install": "Instalar no Slack",
+      "permissionsUpdated": "As permissões do Slack foram atualizadas",
+      "uninstallDescription": "Isso removerá a integração com o Slack de todo o espaço de trabalho. Todos os usuários conectados serão desconectados, e {{displayName}} deixará de responder a mensagens ou menções no Slack. Essa ação não pode ser desfeita.",
+      "uninstallTitle": "Desinstalar a integração com o Slack?"
+    },
+    "strapi": {
+      "description": "Automatize o trabalho quando entradas forem publicadas"
+    },
+    "teams": {
+      "adminInstall": "Peça ao administrador para instalar a integração com o Microsoft Teams",
+      "connectAccount": "Conecte sua conta Microsoft para concluir a configuração",
+      "connectThenInstall": "Conecte sua conta Microsoft e instale o aplicativo do Teams",
+      "description": "Comunicação e colaboração em equipe",
+      "disconnect": "Desconectar Microsoft Teams",
+      "install": "Instalar no Teams",
+      "moreOptions": "Mais opções do Microsoft Teams",
+      "permissionsUpdated": "As permissões do Microsoft Teams foram atualizadas",
+      "uninstall": "Desinstalar Microsoft Teams",
+      "uninstallDescription": "Isso removerá a integração com o Microsoft Teams do {{brandName}} neste espaço de trabalho. Todos os usuários conectados serão desconectados, e {{displayName}} deixará de responder a mensagens do Teams neste espaço até que um administrador reconecte a integração.",
+      "uninstallTitle": "Desinstalar a integração com o Microsoft Teams?"
+    },
+    "telegram": {
+      "description": "Encaminhe mensagens do Telegram para agentes",
+      "openSettings": "Abrir configurações do Telegram"
     }
   }
 }

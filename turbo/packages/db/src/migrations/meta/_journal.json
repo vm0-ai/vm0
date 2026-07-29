@@ -5083,6 +5083,20 @@
       "when": 1785315790679,
       "tag": "0725_rename_chat_message_asset_refs_to_chat_event_asset_refs",
       "breakpoints": true
+    },
+    {
+      "idx": 726,
+      "version": "7",
+      "when": 1785319219172,
+      "tag": "0726_drop_teams_org_thread_sessions",
+      "breakpoints": true
+    },
+    {
+      "idx": 727,
+      "version": "7",
+      "when": 1785322216162,
+      "tag": "0727_long_amphibian",
+      "breakpoints": true
     }
   ]
 }
