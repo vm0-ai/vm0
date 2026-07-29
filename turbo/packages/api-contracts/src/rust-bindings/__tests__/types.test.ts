@@ -191,9 +191,6 @@ describe("Rust type bindings", () => {
     ).toHaveLength(2);
     expect(firstRender).not.toContain("pub struct RequestFile {");
     expect(firstRender).toContain("pub uploads: Option<ResponseUploads>,");
-    expect(firstRender).not.toContain("pub struct StorageManifest {");
-    expect(firstRender).not.toContain("pub struct StorageEntry {");
-    expect(firstRender).not.toContain("pub struct ArtifactEntry {");
     expect(firstRender).toContain("pub struct StorageMountEntry {");
     expect(firstRender).toContain("pub storage_id: String,");
     expect(firstRender).toContain("pub version_id: String,");

@@ -150,7 +150,7 @@ export const testRuntimeStateActionResponseSchema = z.object({
     .optional(),
   runner_job_storage_state: z
     .object({
-      legacy_manifest_state: z.enum(["missing", "null", "object"]),
+      has_stored_storage_manifest: z.boolean(),
       canonical_mount_count: z.number().int().nonnegative(),
       has_run_context_storage: z.boolean(),
     })
