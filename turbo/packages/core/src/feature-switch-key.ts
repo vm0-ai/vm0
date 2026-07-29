@@ -75,7 +75,6 @@ export enum FeatureSwitchKey {
   StrapiIntegration = "strapiIntegration",
   Artifacts = "artifacts",
   HostedArtifactVersions = "hostedArtifactVersions",
-  VideoArtifactPosters = "videoArtifactPosters",
   ImageStyleR2 = "imageStyleR2",
   OrgPlanEntitlementReads = "orgPlanEntitlementReads",
   WorkflowConnectorReadiness = "workflowConnectorReadiness",

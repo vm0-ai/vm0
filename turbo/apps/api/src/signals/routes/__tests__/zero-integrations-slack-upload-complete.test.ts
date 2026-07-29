@@ -1042,9 +1042,6 @@ describe("POST /api/zero/integrations/slack/upload-file/complete", () => {
 
   it("generates a poster immediately for a Slack video Artifact", async () => {
     const { orgId, userId, runId } = await seedRunScoped();
-    await updateFeatureSwitchesForUser(context, actorFor({ orgId, userId }), {
-      [FeatureSwitchKey.VideoArtifactPosters]: true,
-    });
     const fileId = `F-${randomUUID().slice(0, 8)}`;
     const permalink = `https://slack.example/files/${fileId}`;
     context.mocks.slack.files.info.mockResolvedValue({

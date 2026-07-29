@@ -453,12 +453,6 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
-  [FeatureSwitchKey.VideoArtifactPosters]: {
-    maintainer: "bingjie@vm0.ai",
-    description:
-      "Generate poster images asynchronously when video artifacts are recorded.",
-    enabled: true,
-  },
   [FeatureSwitchKey.ImageStyleR2]: {
     maintainer: "bingjie@vm0.ai",
     description:

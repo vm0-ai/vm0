@@ -13,7 +13,7 @@ import { syncArtifactCatalogForFile$ } from "./artifact-catalog.service";
 import { publishArtifactsChangedForRun } from "./artifact-realtime.service";
 import {
   scheduleVideoArtifactPreviewRender$,
-  type VideoArtifactPreviewRenderArgs,
+  type RenderArtifactPreviewArgs,
 } from "./artifact-preview.service";
 
 interface RecordWebUploadedFileArgs {
@@ -84,16 +84,14 @@ function videoArtifactPreviewArgs(
   args: {
     readonly runId: string;
     readonly userId: string;
-    readonly orgId: string | null | undefined;
     readonly url: string | null;
     readonly contentType: string | null;
   },
   row: RecordedUploadedFile | undefined,
-): VideoArtifactPreviewRenderArgs | null {
+): RenderArtifactPreviewArgs | null {
   if (
     !row ||
     row.previewImageUrl ||
-    !args.orgId ||
     !args.url ||
     !args.contentType?.startsWith("video/")
   ) {
@@ -103,7 +101,6 @@ function videoArtifactPreviewArgs(
     id: row.id,
     runId: args.runId,
     userId: args.userId,
-    orgId: args.orgId,
     url: args.url,
     contentType: args.contentType,
   };
@@ -286,7 +283,6 @@ export const recordWebUploadedFile$ = command(
         {
           runId: args.runId,
           userId: args.userId,
-          orgId: args.orgId,
           url: args.url,
           contentType: args.contentType,
         },
@@ -375,7 +371,6 @@ export const recordTelegramUploadedFile$ = command(
         {
           runId: args.runId,
           userId: args.userId,
-          orgId: args.orgId,
           url: args.url,
           contentType: args.contentType,
         },
@@ -502,7 +497,6 @@ export const recordGithubUploadedFile$ = command(
         {
           runId: args.runId,
           userId: args.userId,
-          orgId: args.orgId,
           url: args.url,
           contentType: args.contentType,
         },
@@ -569,7 +563,6 @@ export const recordFeishuUploadedFile$ = command(
         {
           runId: args.runId,
           userId: args.userId,
-          orgId: args.orgId,
           url: args.url,
           contentType: args.contentType,
         },
@@ -636,7 +629,6 @@ export const recordTeamsUploadedFile$ = command(
         {
           runId: args.runId,
           userId: args.userId,
-          orgId: args.orgId,
           url: args.url,
           contentType: args.contentType,
         },
@@ -714,7 +706,6 @@ export const recordAgentPhoneUploadedFile$ = command(
         {
           runId: args.runId,
           userId: args.userId,
-          orgId: args.orgId,
           url: args.url,
           contentType: args.contentType,
         },
@@ -792,7 +783,6 @@ export const recordSlackUploadedFile$ = command(
         {
           runId: args.runId,
           userId: args.userId,
-          orgId: args.orgId,
           url: args.url,
           contentType: args.contentType,
         },
