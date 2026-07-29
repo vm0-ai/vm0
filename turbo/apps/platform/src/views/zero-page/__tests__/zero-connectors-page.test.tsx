@@ -3326,6 +3326,18 @@ describe("connectors page", () => {
       within(createDialog).getByLabelText(/Scopes/u),
       "search.read\nsearch.write",
     );
+    click(within(createDialog).getByLabelText("PKCE"));
+    click(await screen.findByRole("option", { name: "S256" }));
+    await waitFor(() => {
+      expect(screen.queryByRole("listbox")).not.toBeInTheDocument();
+    });
+    await fill(
+      within(createDialog).getByLabelText(/Resource/u),
+      "https://api.acme.test",
+    );
+    await fill(within(createDialog).getByLabelText(/Audience/u), "acme-api");
+    await fill(within(createDialog).getByLabelText(/Access type/u), "offline");
+    await fill(within(createDialog).getByLabelText(/Prompt/u), "consent");
     await fill(
       within(createDialog).getByLabelText("Authorization URL"),
       "https://oauth.acme.test/authorize",
@@ -3348,6 +3360,11 @@ describe("connectors page", () => {
       oauthTokenUrl: "https://oauth.acme.test/token",
       oauthClientId: "connector-oauth-client-id",
       oauthClientSecret: "connector-oauth-client-secret",
+      oauthPkceMethod: "S256",
+      oauthResource: "https://api.acme.test",
+      oauthAudience: "acme-api",
+      oauthAccessType: "offline",
+      oauthPrompt: "consent",
     });
     expect(createButton).toBeEnabled();
     click(createButton);
@@ -3377,8 +3394,13 @@ describe("connectors page", () => {
         tokenUrl: "https://oauth.acme.test/token",
         scopes: ["search.read", "search.write"],
         tokenEndpointAuthMethod: "client_secret_post",
-        pkceMethod: "none",
-        authorizationParams: {},
+        pkceMethod: "S256",
+        authorizationParams: {
+          resource: "https://api.acme.test",
+          audience: "acme-api",
+          access_type: "offline",
+          prompt: "consent",
+        },
       },
     });
 
@@ -3399,6 +3421,17 @@ describe("connectors page", () => {
     expect(within(editDialog).getByLabelText(/Scopes/u)).toHaveValue(
       "search.read\nsearch.write",
     );
+    expect(within(editDialog).getByLabelText("PKCE")).toHaveTextContent("S256");
+    expect(within(editDialog).getByLabelText(/Resource/u)).toHaveValue(
+      "https://api.acme.test",
+    );
+    expect(within(editDialog).getByLabelText(/Audience/u)).toHaveValue(
+      "acme-api",
+    );
+    expect(within(editDialog).getByLabelText(/Access type/u)).toHaveValue(
+      "offline",
+    );
+    expect(within(editDialog).getByLabelText(/Prompt/u)).toHaveValue("consent");
     await fill(
       within(editDialog).getByLabelText(/Prefixes/u),
       "https://api.acme.test/v2/",
@@ -3434,8 +3467,13 @@ describe("connectors page", () => {
         tokenUrl: "https://oauth.acme.test/token",
         scopes: ["search.read", "calendar.write"],
         tokenEndpointAuthMethod: "client_secret_post",
-        pkceMethod: "none",
-        authorizationParams: {},
+        pkceMethod: "S256",
+        authorizationParams: {
+          resource: "https://api.acme.test",
+          audience: "acme-api",
+          access_type: "offline",
+          prompt: "consent",
+        },
       },
     });
     expect(updatedBodies[0]?.oauthConfig).not.toHaveProperty("clientSecret");

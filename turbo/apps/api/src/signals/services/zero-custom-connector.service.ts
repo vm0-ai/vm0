@@ -128,7 +128,10 @@ interface ValidatedDefinition {
 
 type ValidatedOAuthConfigUpdate =
   | { readonly kind: "none" }
-  | { readonly kind: "preserve"; readonly config: CustomConnectorOAuthConfigRow }
+  | {
+      readonly kind: "preserve";
+      readonly config: CustomConnectorOAuthConfigRow;
+    }
   | {
       readonly kind: "upsert";
       readonly config: CustomConnectorOAuthConfig;
@@ -254,7 +257,6 @@ function canonicalFieldsFromLegacy(): readonly CustomConnectorField[] {
     },
   ];
 }
-
 
 function canonicalHeaderTemplateFromLegacy(template: string): string {
   return template.replaceAll(

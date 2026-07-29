@@ -350,12 +350,22 @@ export interface CustomConnectorCreateForm {
   oauthClientSecret: string;
 }
 
-const CREATE_FORM_DEFAULTS = {
-  displayName: "",
-  prefixesRaw: "",
-  headerName: "Authorization",
-  headerTemplate: "Bearer {{secret}}",
-  authMethodTypes: ["api"],
+type CustomConnectorOAuthCreateForm = Pick<
+  CustomConnectorCreateForm,
+  | "oauthAuthorizationUrl"
+  | "oauthTokenUrl"
+  | "oauthScopesRaw"
+  | "oauthClientAuthentication"
+  | "oauthPkceMethod"
+  | "oauthResource"
+  | "oauthAudience"
+  | "oauthAccessType"
+  | "oauthPrompt"
+  | "oauthClientId"
+  | "oauthClientSecret"
+>;
+
+const OAUTH_CREATE_FORM_DEFAULTS = {
   oauthAuthorizationUrl: "",
   oauthTokenUrl: "",
   oauthScopesRaw: "",
@@ -367,30 +377,50 @@ const CREATE_FORM_DEFAULTS = {
   oauthPrompt: "",
   oauthClientId: "",
   oauthClientSecret: "",
+} as const satisfies CustomConnectorOAuthCreateForm;
+
+const CREATE_FORM_DEFAULTS = {
+  displayName: "",
+  prefixesRaw: "",
+  headerName: "Authorization",
+  headerTemplate: "Bearer {{secret}}",
+  authMethodTypes: ["api"],
+  ...OAUTH_CREATE_FORM_DEFAULTS,
 } as const satisfies CustomConnectorCreateForm;
+
+function oauthCreateFormFromConnector(
+  connector: CustomConnectorResponse,
+): CustomConnectorOAuthCreateForm {
+  const oauthConfig = connector.oauthConfig;
+  if (!oauthConfig) {
+    return { ...OAUTH_CREATE_FORM_DEFAULTS };
+  }
+  const authorizationParams = oauthConfig.authorizationParams;
+  return {
+    oauthAuthorizationUrl: oauthConfig.authorizationUrl,
+    oauthTokenUrl: oauthConfig.tokenUrl,
+    oauthScopesRaw: oauthConfig.scopes.join("\n"),
+    oauthClientAuthentication: oauthConfig.tokenEndpointAuthMethod,
+    oauthPkceMethod: oauthConfig.pkceMethod,
+    oauthResource: authorizationParams.resource ?? "",
+    oauthAudience: authorizationParams.audience ?? "",
+    oauthAccessType: authorizationParams.access_type ?? "",
+    oauthPrompt: authorizationParams.prompt ?? "",
+    oauthClientId: oauthConfig.clientId,
+    oauthClientSecret: "",
+  };
+}
 
 function createFormFromConnector(
   connector: CustomConnectorResponse,
 ): CustomConnectorCreateForm {
-  const oauthConfig = connector.oauthConfig;
   return {
     displayName: connector.displayName,
     prefixesRaw: connector.prefixTemplates.join("\n"),
     headerName: connector.headerName,
     headerTemplate: connector.headerTemplate,
     authMethodTypes: [connector.authMode === "oauth" ? "oauth2" : "api"],
-    oauthAuthorizationUrl: oauthConfig?.authorizationUrl ?? "",
-    oauthTokenUrl: oauthConfig?.tokenUrl ?? "",
-    oauthScopesRaw: oauthConfig?.scopes.join("\n") ?? "",
-    oauthClientAuthentication:
-      oauthConfig?.tokenEndpointAuthMethod ?? "client_secret_post",
-    oauthPkceMethod: oauthConfig?.pkceMethod ?? "none",
-    oauthResource: oauthConfig?.authorizationParams.resource ?? "",
-    oauthAudience: oauthConfig?.authorizationParams.audience ?? "",
-    oauthAccessType: oauthConfig?.authorizationParams.access_type ?? "",
-    oauthPrompt: oauthConfig?.authorizationParams.prompt ?? "",
-    oauthClientId: oauthConfig?.clientId ?? "",
-    oauthClientSecret: "",
+    ...oauthCreateFormFromConnector(connector),
   };
 }
 

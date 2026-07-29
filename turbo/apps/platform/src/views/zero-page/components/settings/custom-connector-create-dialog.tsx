@@ -593,7 +593,7 @@ function oauthAuthorizationParamsFromForm(
   connector?: CustomConnectorResponse,
 ): Readonly<Record<string, string>> {
   const authorizationParams = {
-    ...(connector?.oauthConfig?.authorizationParams ?? {}),
+    ...connector?.oauthConfig?.authorizationParams,
   };
   const formParams = [
     ["resource", form.oauthResource],
