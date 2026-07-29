@@ -492,7 +492,6 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
       "Advertise zero chat send and cancel in the agent system prompt without gating the CLI commands or API.",
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
-    userOverridable: false,
   },
   [FeatureSwitchKey.ComposerConnectorPermissions]: {
     maintainer: "ming@vm0.ai",

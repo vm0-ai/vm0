@@ -233,9 +233,6 @@ describe("user-overridable switches", () => {
     expect(getUserOverridableFeatureSwitchKeys()).not.toContain(
       FeatureSwitchKey.ZeroMailReplyFollowUp,
     );
-    expect(getUserOverridableFeatureSwitchKeys()).not.toContain(
-      FeatureSwitchKey.ZeroChatMessaging,
-    );
     expect(getUserOverridableFeatureSwitchKeys()).toContain(
       FeatureSwitchKey.LanguagePreference,
     );
@@ -270,7 +267,6 @@ describe("user-overridable switches", () => {
         [FeatureSwitchKey.WorkflowConnectorReadiness]: true,
         [FeatureSwitchKey.StructuredPromptInlineTemplates]: true,
         [FeatureSwitchKey.ZeroMailReplyFollowUp]: true,
-        [FeatureSwitchKey.ZeroChatMessaging]: true,
         [FeatureSwitchKey.BrazilianPortugueseLocale]: true,
         [FeatureSwitchKey.ZeroBrowser]: true,
         [FeatureSwitchKey.ComposerConnectorPermissions]: true,
