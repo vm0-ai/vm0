@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.651.2](https://github.com/vm0-ai/vm0/compare/app-v0.651.1...app-v0.651.2) (2026-07-29)
+
+
+### Bug Fixes
+
+* **platform:** recover 401 requests without unauthorized toasts ([#23623](https://github.com/vm0-ai/vm0/issues/23623)) ([2851e51](https://github.com/vm0-ai/vm0/commit/2851e51546d35b1427e57016b74c4b4b522f86a9))
+* **platform:** use standard inputs for chat header automation fields ([#23605](https://github.com/vm0-ai/vm0/issues/23605)) ([ffb5706](https://github.com/vm0-ai/vm0/commit/ffb57068a4fd71c7ed7afd8dfa06b892c0e33da9))
+
+
+### Performance Improvements
+
+* **platform:** avoid sidebar scrollbar hover renders ([#23625](https://github.com/vm0-ai/vm0/issues/23625)) ([933c7f3](https://github.com/vm0-ai/vm0/commit/933c7f3a0c0ec0d3b2cd703b57900e2df38cc0fc))
+
 ## [0.651.1](https://github.com/vm0-ai/vm0/compare/app-v0.651.0...app-v0.651.1) (2026-07-29)
 
 

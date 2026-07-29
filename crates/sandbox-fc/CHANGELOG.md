@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.37.159](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.37.158...sandbox-fc-v0.37.159) (2026-07-29)
+
+
+### Documentation
+
+* **runner:** document guest dns network evidence architecture ([#23624](https://github.com/vm0-ai/vm0/issues/23624)) ([573928a](https://github.com/vm0-ai/vm0/commit/573928ad414d4c10b535bc17d7e927495a465ce1))
+
 ## [0.37.158](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.37.157...sandbox-fc-v0.37.158) (2026-07-28)
 
 ## [0.37.157](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.37.156...sandbox-fc-v0.37.157) (2026-07-28)
