@@ -1,5 +1,29 @@
 # Changelog
 
+## [0.653.0](https://github.com/vm0-ai/vm0/compare/app-v0.652.0...app-v0.653.0) (2026-07-29)
+
+
+### Features
+
+* **connectors:** route microsoft oauth through the app callback ([#23699](https://github.com/vm0-ai/vm0/issues/23699)) ([3657098](https://github.com/vm0-ai/vm0/commit/36570980a215a35ad00875151ba14f43c19dd739))
+* **platform:** localize account and workspace settings ([#23524](https://github.com/vm0-ai/vm0/issues/23524)) ([f43885a](https://github.com/vm0-ai/vm0/commit/f43885ac2ea5e28fd22862fd729725eb5720dcdd))
+
+
+### Bug Fixes
+
+* **browser:** sync cards after session lifecycle changes ([#23682](https://github.com/vm0-ai/vm0/issues/23682)) ([babb3d6](https://github.com/vm0-ai/vm0/commit/babb3d6fa22bc34a007920b7603fbd06765eaa38))
+* **platform:** center personal profile modal in settings ([#23685](https://github.com/vm0-ai/vm0/issues/23685)) ([390dbfb](https://github.com/vm0-ai/vm0/commit/390dbfb301718adf7c1143ef6177ec200c52322f))
+* **platform:** keep multiline thinking indicators height stable ([#23644](https://github.com/vm0-ai/vm0/issues/23644)) ([3b3c842](https://github.com/vm0-ai/vm0/commit/3b3c842b0741b4d0cb89518b0bba356df0edfe56))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.243.4
+    * @vm0/connectors bumped to 1.201.0
+    * @vm0/core bumped to 8.484.4
+
 ## [0.652.0](https://github.com/vm0-ai/vm0/compare/app-v0.651.4...app-v0.652.0) (2026-07-29)
 
 

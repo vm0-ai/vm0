@@ -1,5 +1,23 @@
 # Changelog
 
+## [0.148.31](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.148.30...runner-rs-v0.148.31) (2026-07-29)
+
+
+### Bug Fixes
+
+* **runner:** separate mitmdump discovery from exit wait ([#23677](https://github.com/vm0-ai/vm0/issues/23677)) ([e6c7696](https://github.com/vm0-ai/vm0/commit/e6c7696c778dedac3ea02ba07489d64d9055e950))
+
+
+### Refactoring
+
+* **runner:** retire legacy unit staging formats ([#23691](https://github.com/vm0-ai/vm0/issues/23691)) ([18fd293](https://github.com/vm0-ai/vm0/commit/18fd2938b8cf382ba58c2da32a01da2746367341))
+* **runner:** split test fixtures by responsibility ([#23681](https://github.com/vm0-ai/vm0/issues/23681)) ([431a8fc](https://github.com/vm0-ai/vm0/commit/431a8fcb45946b7b7a6f30abe0f1bd97140f792c))
+
+
+### Performance Improvements
+
+* **python:** fast-path ascii hostname labels ([#23671](https://github.com/vm0-ai/vm0/issues/23671)) ([d13ba3d](https://github.com/vm0-ai/vm0/commit/d13ba3d72c17d77997a0ca40f1b7fb323aabe616))
+
 ## [0.148.30](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.148.29...runner-rs-v0.148.30) (2026-07-29)
 
 

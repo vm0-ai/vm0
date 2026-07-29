@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.9.172](https://github.com/vm0-ai/vm0/compare/vsock-test-v0.9.171...vsock-test-v0.9.172) (2026-07-29)
+
+
+### Bug Fixes
+
+* **vsock:** retain guest transport until host disconnect ([#23679](https://github.com/vm0-ai/vm0/issues/23679)) ([b3a059c](https://github.com/vm0-ai/vm0/commit/b3a059c9a65b25adddcd6b9a1ca7c88be5e50b45))
+
 ## [0.9.171](https://github.com/vm0-ai/vm0/compare/vsock-test-v0.9.170...vsock-test-v0.9.171) (2026-07-29)
 
 ## [0.9.170](https://github.com/vm0-ai/vm0/compare/vsock-test-v0.9.169...vsock-test-v0.9.170) (2026-07-28)
