@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.651.4](https://github.com/vm0-ai/vm0/compare/app-v0.651.3...app-v0.651.4) (2026-07-29)
+
+
+### Bug Fixes
+
+* **platform:** make initial thread sidebar selection immediate ([#23634](https://github.com/vm0-ai/vm0/issues/23634)) ([8d894a0](https://github.com/vm0-ai/vm0/commit/8d894a029bd7188dda5ad7165153ae5cfc7e4227))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.243.2
+    * @vm0/core bumped to 8.484.2
+
 ## [0.651.3](https://github.com/vm0-ai/vm0/compare/app-v0.651.2...app-v0.651.3) (2026-07-29)
 
 
