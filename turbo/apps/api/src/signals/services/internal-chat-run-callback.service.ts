@@ -673,20 +673,6 @@ function buildQueuedCreateZeroRunArgs(
             },
           ]
         : []),
-      ...(input.teamsDelivery
-        ? [
-            {
-              internalKind: "teams:org" as const,
-              secret: generateCallbackSecret(),
-              payload: {
-                ...input.teamsDelivery,
-                agentId: input.agentId,
-                existingSessionId: null,
-                canonicalChatDelivery: true,
-              },
-            },
-          ]
-        : []),
     ],
     triggerSource: input.triggerSource,
     zeroPreCreateSource: "chat_callback_auto_send" as const,

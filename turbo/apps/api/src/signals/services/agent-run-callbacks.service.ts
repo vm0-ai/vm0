@@ -13,7 +13,6 @@ import { userFeatureSwitchOverrides } from "./feature-switches.service";
 import { handleAgentPhoneInternalCallback$ } from "./internal-agentphone-run-callback.service";
 import { handleChatInternalCallback$ } from "./internal-chat-run-callback.service";
 import { internalRunCallbackKindForRecord } from "./internal-run-callback";
-import { handleTeamsOrgInternalCallback$ } from "./internal-teams-org-run-callback.service";
 import { handleTelegramInternalCallback$ } from "./internal-telegram-run-callback.service";
 
 function resolveCallbackUrl(url: string): string {
@@ -105,10 +104,6 @@ export const dispatchProgressCallbacks$ = command(
             progressCallback,
             signal,
           );
-          return;
-        }
-        if (internalKind === "teams:org") {
-          await set(handleTeamsOrgInternalCallback$, progressCallback, signal);
           return;
         }
         if (internalKind === "telegram") {

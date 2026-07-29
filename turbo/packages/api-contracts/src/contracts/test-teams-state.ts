@@ -74,12 +74,24 @@ export const testTeamsStateResponseSchema = z.object({
       createdAt: z.string(),
     }),
   ),
+  routes: z.array(
+    z.object({
+      id: z.string(),
+      connectionId: z.string(),
+      conversationId: z.string(),
+      threadId: z.string(),
+      userId: z.string(),
+      chatThreadId: z.string(),
+      createdAt: z.string(),
+    }),
+  ),
   recent_runs: z.array(
     z.object({
       id: z.string(),
       status: z.string(),
       createdAt: z.string(),
       triggerSource: z.string().nullable(),
+      chatThreadId: z.string().nullable(),
       userId: z.string(),
       error: z.string().nullable(),
       promptPreview: z.string().nullable(),
