@@ -77,7 +77,7 @@ function mockOAuthEnv(): void {
 function expectCloudflareAuthorizationScopes(authorizationUrl: URL): void {
   const method = API_TEST_CONNECTOR_CATALOG.connectors
     .find((connector) => {
-      return connector.connectorRef === "cloudflare";
+      return connector.slug === "cloudflare";
     })
     ?.authMethods.find((authMethod) => {
       return authMethod.id === "oauth";
