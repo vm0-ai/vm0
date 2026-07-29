@@ -598,8 +598,8 @@ fn truncate_log_field(value: String) -> String {
 #[cfg(test)]
 mod tests {
     use std::fmt::Write as _;
+    use std::sync::Arc;
     use std::sync::atomic::{AtomicUsize, Ordering};
-    use std::sync::{Arc, Mutex};
 
     use httpmock::prelude::*;
     use serde_json::json;
@@ -950,11 +950,11 @@ mod tests {
 
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
         let api_url = format!("http://{}", listener.local_addr().unwrap());
-        let received_batches = Arc::new(Mutex::new(Vec::new()));
-        let server_batches = received_batches.clone();
         let stop_server = Arc::new(tokio::sync::Notify::new());
         let server_stop = stop_server.clone();
         let server_task = tokio::spawn(async move {
+            let mut received_batch_count = 0;
+            let mut received_entry_count = 0;
             loop {
                 let (mut stream, _) = tokio::select! {
                     () = server_stop.notified() => break,
@@ -966,7 +966,8 @@ mod tests {
                 let estimated_bytes = estimated_batch_bytes(&run_id, logs);
                 assert!(logs.len() <= NETWORK_LOG_UPLOAD_MAX_BATCH_ENTRIES);
                 assert!(estimated_bytes <= NETWORK_LOG_UPLOAD_MAX_BATCH_BYTES);
-                server_batches.lock().unwrap().push(logs.len());
+                received_batch_count += 1;
+                received_entry_count += logs.len();
                 stream
                     .write_all(
                         b"HTTP/1.1 200 OK\r\nContent-Length: 2\r\nConnection: close\r\n\r\n{}",
@@ -974,6 +975,7 @@ mod tests {
                     .await
                     .unwrap();
             }
+            (received_batch_count, received_entry_count)
         });
 
         let http = HttpClient::new(HttpClientConfig {
@@ -993,15 +995,7 @@ mod tests {
         clock_guard.abort();
         let _ = clock_guard.await;
         stop_server.notify_one();
-        server_task.await.unwrap();
-
-        let (received_batch_count, received_entry_count) = {
-            let received_batches = received_batches.lock().unwrap();
-            (
-                received_batches.len(),
-                received_batches.iter().sum::<usize>(),
-            )
-        };
+        let (received_batch_count, received_entry_count) = server_task.await.unwrap();
         assert!(received_batch_count > 0);
         assert!(received_batch_count <= NETWORK_LOG_UPLOAD_MAX_BATCHES);
         assert_eq!(received_entry_count, INCIDENT_ENTRY_COUNT);
