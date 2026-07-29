@@ -24,6 +24,7 @@ import type {
   OAuthDeviceAuthCompleteResultBase,
   OAuthDeviceAuthPollResultBase,
 } from "@vm0/connectors/auth-providers/provider-flow-types";
+import { connectorSlugLegacyInsertOauthDeviceSessions } from "@vm0/db/compat/connector-slug-legacy-insert";
 import { connectorOauthDeviceAuthorizationSessions } from "@vm0/db/schema/connector-oauth-device-authorization-session";
 import { command } from "ccstate";
 import { and, eq, inArray, lt, or, sql } from "drizzle-orm";
@@ -1006,7 +1007,7 @@ export const startConnectorOauthDeviceAuthSession$ = command(
         now,
       });
       return await tx
-        .insert(connectorOauthDeviceAuthorizationSessions)
+        .insert(connectorSlugLegacyInsertOauthDeviceSessions)
         .values({
           orgId: args.orgId,
           userId: args.userId,
@@ -1026,7 +1027,7 @@ export const startConnectorOauthDeviceAuthSession$ = command(
           expiresAt,
         })
         .returning({
-          id: connectorOauthDeviceAuthorizationSessions.id,
+          id: connectorSlugLegacyInsertOauthDeviceSessions.id,
         });
     });
     signal.throwIfAborted();

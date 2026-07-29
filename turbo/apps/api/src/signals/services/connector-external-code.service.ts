@@ -22,6 +22,7 @@ import {
   type ConnectorAuthProviderGrantResult,
 } from "@vm0/connectors/auth-providers";
 import { isOAuthProviderHttpError } from "@vm0/connectors/auth-providers/oauth/error";
+import { connectorSlugLegacyInsertExternalCodeSessions } from "@vm0/db/compat/connector-slug-legacy-insert";
 import { connectorExternalCodeSessions } from "@vm0/db/schema/connector-external-code-session";
 import { command } from "ccstate";
 import { and, eq, inArray, or, sql } from "drizzle-orm";
@@ -836,7 +837,7 @@ export const startConnectorExternalCodeSession$ = command(
         now,
       });
       return await tx
-        .insert(connectorExternalCodeSessions)
+        .insert(connectorSlugLegacyInsertExternalCodeSessions)
         .values({
           orgId: args.orgId,
           userId: args.userId,
@@ -852,7 +853,7 @@ export const startConnectorExternalCodeSession$ = command(
           updatedAt: now,
           expiresAt,
         })
-        .returning({ id: connectorExternalCodeSessions.id });
+        .returning({ id: connectorSlugLegacyInsertExternalCodeSessions.id });
     });
     signal.throwIfAborted();
 

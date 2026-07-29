@@ -1,4 +1,5 @@
 import { initContract } from "@vm0/api-contracts/contracts/trpc-contract";
+import { connectorSlugLegacyInsertOauthStates } from "@vm0/db/compat/connector-slug-legacy-insert";
 import { connectorOauthStates } from "@vm0/db/schema/connector-oauth-state";
 import { telegramMessages } from "@vm0/db/schema/telegram-message";
 import { command } from "ccstate";
@@ -120,11 +121,11 @@ async function seedConnectorStates(
     offset += FIXTURE_INSERT_BATCH_SIZE
   ) {
     await db
-      .insert(connectorOauthStates)
+      .insert(connectorSlugLegacyInsertOauthStates)
       .values(expiredStates.slice(offset, offset + FIXTURE_INSERT_BATCH_SIZE));
     signal.throwIfAborted();
   }
-  await db.insert(connectorOauthStates).values([
+  await db.insert(connectorSlugLegacyInsertOauthStates).values([
     {
       state: connectorState(body.marker, "equal"),
       type: "github",

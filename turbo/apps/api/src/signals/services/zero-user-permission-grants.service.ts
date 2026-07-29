@@ -12,6 +12,7 @@ import {
   type NetworkPolicies,
   type NetworkPolicy,
 } from "@vm0/connectors/firewall-types";
+import { connectorSlugLegacyInsertUserPermissionGrants } from "@vm0/db/compat/connector-slug-legacy-insert";
 import { userPermissionGrants } from "@vm0/db/schema/user-permission-grant";
 import {
   connectorCatalogActiveSnapshot,
@@ -72,6 +73,19 @@ const userPermissionGrantSelection = Object.freeze({
   expiresAt: userPermissionGrants.expiresAt,
   createdAt: userPermissionGrants.createdAt,
   updatedAt: userPermissionGrants.updatedAt,
+});
+
+const connectorSlugLegacyInsertUserPermissionGrantSelection = Object.freeze({
+  id: connectorSlugLegacyInsertUserPermissionGrants.id,
+  orgId: connectorSlugLegacyInsertUserPermissionGrants.orgId,
+  userId: connectorSlugLegacyInsertUserPermissionGrants.userId,
+  agentId: connectorSlugLegacyInsertUserPermissionGrants.agentId,
+  connectorRef: connectorSlugLegacyInsertUserPermissionGrants.connectorRef,
+  permission: connectorSlugLegacyInsertUserPermissionGrants.permission,
+  action: connectorSlugLegacyInsertUserPermissionGrants.action,
+  expiresAt: connectorSlugLegacyInsertUserPermissionGrants.expiresAt,
+  createdAt: connectorSlugLegacyInsertUserPermissionGrants.createdAt,
+  updatedAt: connectorSlugLegacyInsertUserPermissionGrants.updatedAt,
 });
 
 type UserPermissionGrantRow = Omit<
@@ -812,7 +826,7 @@ async function applyVisibleAgentGrantRows(
             )
             .returning(userPermissionGrantSelection)
         : await tx
-            .insert(userPermissionGrants)
+            .insert(connectorSlugLegacyInsertUserPermissionGrants)
             .values({
               orgId: args.orgId,
               userId: args.userId,
@@ -824,7 +838,7 @@ async function applyVisibleAgentGrantRows(
               createdAt: timestamp,
               updatedAt: timestamp,
             })
-            .returning(userPermissionGrantSelection);
+            .returning(connectorSlugLegacyInsertUserPermissionGrantSelection);
       if (!row) {
         throw new Error("User permission grant apply did not return a row");
       }

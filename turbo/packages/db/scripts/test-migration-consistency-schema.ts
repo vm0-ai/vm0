@@ -38,6 +38,14 @@ import { fileURLToPath } from "node:url";
 import { eq } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/node-postgres";
 import { Client } from "pg";
+import {
+  connectorSlugLegacyInsertConnectors,
+  connectorSlugLegacyInsertExternalCodeSessions,
+  connectorSlugLegacyInsertOauthDeviceSessions,
+  connectorSlugLegacyInsertOauthStates,
+  connectorSlugLegacyInsertUserConnectors,
+  connectorSlugLegacyInsertUserPermissionGrants,
+} from "../src/compat/connector-slug-legacy-insert";
 import { connectorExternalCodeSessions } from "../src/schema/connector-external-code-session";
 import { connectorOauthDeviceAuthorizationSessions } from "../src/schema/connector-oauth-device-authorization-session";
 import { connectorOauthStates } from "../src/schema/connector-oauth-state";
@@ -6326,6 +6334,23 @@ const CONNECTOR_SLUG_EXPANSION_CUSTOM_CONNECTION_ID =
   "71000000-0000-4000-8000-000000000097";
 const CONNECTOR_SLUG_EXPANSION_CUSTOM_OAUTH_STATE_ID =
   "71000000-0000-4000-8000-000000000096";
+const connectorSlugLegacyInsertIds = {
+  connector_external_code_sessions: "71000000-0000-4000-8000-000000000085",
+  connector_oauth_device_authorization_sessions:
+    "71000000-0000-4000-8000-000000000084",
+  connector_oauth_states: "71000000-0000-4000-8000-000000000083",
+  connectors: "71000000-0000-4000-8000-000000000081",
+  user_connectors: "71000000-0000-4000-8000-000000000082",
+  user_permission_grants: "71000000-0000-4000-8000-000000000086",
+} as const;
+const connectorSlugLegacyInsertValues = {
+  connector_external_code_sessions: "x",
+  connector_oauth_device_authorization_sessions: "youtube",
+  connector_oauth_states: "gmail",
+  connectors: "google-drive",
+  user_connectors: "google-calendar",
+  user_permission_grants: "slack",
+} as const;
 
 const connectorSlugCompatibilitySpecs: readonly ConnectorSlugCompatibilitySpec[] =
   [
@@ -6763,6 +6788,208 @@ async function validateExpandedBuildAgainstConnectorSlugPredecessor(
     ).length,
     1,
   );
+
+  assert.deepEqual(
+    await database
+      .insert(connectorSlugLegacyInsertConnectors)
+      .values({
+        id: connectorSlugLegacyInsertIds.connectors,
+        type: "google-drive",
+        authMethod: "oauth",
+        storageVersion: 1,
+        userId: "connector-slug-current-build-connector-user",
+        orgId: "connector-slug-org",
+      })
+      .returning({ id: connectorSlugLegacyInsertConnectors.id }),
+    [{ id: connectorSlugLegacyInsertIds.connectors }],
+  );
+  assert.deepEqual(
+    await database
+      .insert(connectorSlugLegacyInsertUserConnectors)
+      .values({
+        id: connectorSlugLegacyInsertIds.user_connectors,
+        orgId: "connector-slug-org",
+        userId: "connector-slug-current-build-user-connector-user",
+        agentId: CONNECTOR_SLUG_EXPANSION_AGENT_ID,
+        connectorType: "google-calendar",
+      })
+      .returning({ id: connectorSlugLegacyInsertUserConnectors.id }),
+    [{ id: connectorSlugLegacyInsertIds.user_connectors }],
+  );
+  assert.deepEqual(
+    await database
+      .insert(connectorSlugLegacyInsertOauthStates)
+      .values({
+        id: connectorSlugLegacyInsertIds.connector_oauth_states,
+        state: "connector-slug-current-build-state",
+        type: "gmail",
+        authMethod: "oauth",
+        userId: "connector-slug-current-build-oauth-state-user",
+        orgId: "connector-slug-org",
+        redirectUri: "https://example.com/current-build/callback",
+        expiresAt: new Date("2030-01-01T00:00:00.000Z"),
+      })
+      .returning({ id: connectorSlugLegacyInsertOauthStates.id }),
+    [{ id: connectorSlugLegacyInsertIds.connector_oauth_states }],
+  );
+  assert.deepEqual(
+    await database
+      .insert(connectorSlugLegacyInsertOauthDeviceSessions)
+      .values({
+        id: connectorSlugLegacyInsertIds.connector_oauth_device_authorization_sessions,
+        orgId: "connector-slug-org",
+        userId: "connector-slug-current-build-device-user",
+        connectorType: "youtube",
+        authMethod: "oauth-device",
+        sessionTokenHash: "connector-slug-current-build-device-token",
+        encryptedProviderState: "connector-slug-current-build-device-state",
+        userCode: "CURRENT-BUILD",
+        verificationUri: "https://example.com/current-build/device",
+        intervalSeconds: 5,
+        expiresAt: new Date("2030-01-01T00:00:00.000Z"),
+      })
+      .returning({
+        id: connectorSlugLegacyInsertOauthDeviceSessions.id,
+      }),
+    [
+      {
+        id: connectorSlugLegacyInsertIds.connector_oauth_device_authorization_sessions,
+      },
+    ],
+  );
+  assert.deepEqual(
+    await database
+      .insert(connectorSlugLegacyInsertExternalCodeSessions)
+      .values({
+        id: connectorSlugLegacyInsertIds.connector_external_code_sessions,
+        orgId: "connector-slug-org",
+        userId: "connector-slug-current-build-external-code-user",
+        connectorType: "x",
+        authMethod: "external-code",
+        sessionTokenHash: "connector-slug-current-build-external-code-token",
+        encryptedProviderState:
+          "connector-slug-current-build-external-code-state",
+        authorizationUrl: "https://example.com/current-build/authorize",
+        expiresAt: new Date("2030-01-01T00:00:00.000Z"),
+      })
+      .returning({
+        id: connectorSlugLegacyInsertExternalCodeSessions.id,
+      }),
+    [
+      {
+        id: connectorSlugLegacyInsertIds.connector_external_code_sessions,
+      },
+    ],
+  );
+  assert.deepEqual(
+    await database
+      .insert(connectorSlugLegacyInsertUserPermissionGrants)
+      .values({
+        id: connectorSlugLegacyInsertIds.user_permission_grants,
+        orgId: "connector-slug-org",
+        userId: "connector-slug-current-build-permission-user",
+        agentId: CONNECTOR_SLUG_EXPANSION_AGENT_ID,
+        connectorRef: "slack",
+        permission: "channels:history",
+        action: "allow",
+      })
+      .returning({
+        id: connectorSlugLegacyInsertUserPermissionGrants.id,
+      }),
+    [{ id: connectorSlugLegacyInsertIds.user_permission_grants }],
+  );
+}
+
+async function waitForConnectorSlugMigrationLock(
+  observer: Client,
+  migrationPid: number,
+): Promise<void> {
+  for (let attempt = 0; attempt < 1000; attempt += 1) {
+    const result = await observer.query<{ readonly waiting: boolean }>(
+      `
+        SELECT EXISTS (
+          SELECT 1
+          FROM "pg_catalog"."pg_locks"
+          WHERE "pid" = $1
+            AND "relation" = 'connectors'::regclass
+            AND "mode" = 'AccessExclusiveLock'
+            AND NOT "granted"
+        ) AS "waiting"
+      `,
+      [migrationPid],
+    );
+    if (result.rows[0]?.waiting) {
+      return;
+    }
+    await delay(10);
+  }
+
+  throw new Error(
+    "Connector slug migration did not wait for the expected ACCESS EXCLUSIVE lock",
+  );
+}
+
+async function applyConnectorSlugExpansionBehindConcurrentWriter(
+  testDbUrl: string,
+  connectorId: string,
+): Promise<void> {
+  const writer = new Client({ connectionString: testDbUrl });
+  const migration = new Client({ connectionString: testDbUrl });
+  const observer = new Client({ connectionString: testDbUrl });
+  await writer.connect();
+  await migration.connect();
+  await observer.connect();
+
+  let writerTransactionOpen = false;
+  let migrationFailure: unknown = null;
+  let migrationTask: Promise<void> | null = null;
+  try {
+    await writer.query("BEGIN");
+    writerTransactionOpen = true;
+    const lockedConnector = await writer.query(
+      `SELECT "id" FROM "connectors" WHERE "id" = $1 FOR UPDATE`,
+      [connectorId],
+    );
+    assert.equal(lockedConnector.rowCount, 1);
+    const migrationPidResult = await migration.query<{
+      readonly pid: number;
+    }>(`SELECT pg_backend_pid() AS "pid"`);
+    const migrationPid = migrationPidResult.rows[0]?.pid;
+    assert.ok(migrationPid);
+
+    migrationTask = applyMigrationsUpToInTransaction(migration, 737).catch(
+      (error: unknown) => {
+        migrationFailure = error;
+      },
+    );
+    await waitForConnectorSlugMigrationLock(observer, migrationPid);
+
+    await writer.query(
+      `
+        UPDATE "connectors"
+        SET "updated_at" = clock_timestamp()
+        WHERE "id" = $1
+      `,
+      [connectorId],
+    );
+    await writer.query("COMMIT");
+    writerTransactionOpen = false;
+
+    await migrationTask;
+    if (migrationFailure !== null) {
+      throw migrationFailure;
+    }
+  } finally {
+    if (writerTransactionOpen) {
+      await writer.query("ROLLBACK");
+    }
+    if (migrationTask !== null) {
+      await migrationTask;
+    }
+    await writer.end();
+    await migration.end();
+    await observer.end();
+  }
 }
 
 async function validateConnectorSlugExpansion(): Promise<void> {
@@ -6947,7 +7174,10 @@ async function validateConnectorSlugExpansion(): Promise<void> {
 
       await validateExpandedBuildAgainstConnectorSlugPredecessor(client);
 
-      await applyMigrationsUpToInTransaction(client, 737);
+      await applyConnectorSlugExpansionBehindConcurrentWriter(
+        testDbUrl,
+        connectorSlugLegacyInsertIds.connectors,
+      );
 
       const customConnection = await client.query<{
         readonly connectorSlug: string | null;
@@ -7014,6 +7244,24 @@ async function validateConnectorSlugExpansion(): Promise<void> {
         assert.deepEqual(storedRow.data, originalRows.get(spec.tableName));
         assert.equal(storedRow.legacyValue, spec.originalSlug);
         assert.equal(storedRow.connectorSlug, spec.originalSlug);
+
+        const currentBuildInsert = await client.query<{
+          readonly connectorSlug: string;
+          readonly legacyValue: string;
+        }>(
+          `
+            SELECT
+              "${spec.legacyColumn}" AS "legacyValue",
+              "connector_slug" AS "connectorSlug"
+            FROM "${spec.tableName}"
+            WHERE "id" = $1
+          `,
+          [connectorSlugLegacyInsertIds[spec.tableName]],
+        );
+        assert.deepEqual(requireSingleResultRow(currentBuildInsert.rows), {
+          connectorSlug: connectorSlugLegacyInsertValues[spec.tableName],
+          legacyValue: connectorSlugLegacyInsertValues[spec.tableName],
+        });
 
         const oldColumns = legacyColumns.get(spec.tableName);
         assert.ok(oldColumns);
@@ -7367,7 +7615,7 @@ async function validateConnectorSlugExpansion(): Promise<void> {
   }
 
   console.log(
-    "   ✅ Connector slug expansion preserves old/new statements and enforces mirrored identity\n",
+    "   ✅ Connector slug expansion preserves predecessor inserts, avoids lock-upgrade deadlocks, and enforces mirrored identity\n",
   );
 }
 

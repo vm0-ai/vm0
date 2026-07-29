@@ -1,5 +1,7 @@
--- Keep previous API writes serialized with bridge installation and backfill.
+-- Acquire the final ALTER TABLE lock modes up front so concurrent transactions
+-- cannot deadlock while this migration upgrades weaker table locks.
 -- #23793 owns cutover and #23794 owns bridge cleanup.
+SET LOCAL lock_timeout = '5s';--> statement-breakpoint
 LOCK TABLE
   "connector_external_code_sessions",
   "connector_oauth_device_authorization_sessions",
@@ -7,7 +9,7 @@ LOCK TABLE
   "connectors",
   "user_connectors",
   "user_permission_grants"
-IN SHARE ROW EXCLUSIVE MODE;--> statement-breakpoint
+IN ACCESS EXCLUSIVE MODE;--> statement-breakpoint
 
 ALTER TABLE "connector_external_code_sessions" ADD COLUMN "connector_slug" varchar(64);--> statement-breakpoint
 ALTER TABLE "connector_oauth_device_authorization_sessions" ADD COLUMN "connector_slug" varchar(64);--> statement-breakpoint
