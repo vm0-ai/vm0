@@ -404,7 +404,7 @@ describe("zero browser route", () => {
     );
   });
 
-  it("logs provider validation issues without exposing invalid values", async () => {
+  it("logs bounded cost diagnostics without exposing other provider values", async () => {
     const { runs, chat, actor, agent } = await setupBrowserScenario();
     const sent = await chat.requestSendEvent(
       actor,
@@ -425,7 +425,10 @@ describe("zero browser route", () => {
         ["browser:read", "browser:write"],
       )}`,
     };
-    const privateProviderValue = "private-provider-value";
+    const invalidBrowserCost = "-0.001";
+    const oversizedProxyCost = "1".repeat(160);
+    const privateProviderValue =
+      "https://provider.invalid/private-provider-value";
     server.use(
       http.post(`${BROWSER_USE_API_URL}/profiles`, async ({ request }) => {
         const body = z
@@ -437,9 +440,13 @@ describe("zero browser route", () => {
       }),
       http.post(`${BROWSER_USE_API_URL}/browsers`, () => {
         return HttpResponse.json(
-          providerBrowser(randomUUID(), {
-            browserCost: privateProviderValue,
-          }),
+          {
+            ...providerBrowser(randomUUID(), {
+              browserCost: invalidBrowserCost,
+              proxyCost: oversizedProxyCost,
+            }),
+            liveUrl: privateProviderValue,
+          },
           { status: 201 },
         );
       }),
@@ -462,20 +469,36 @@ describe("zero browser route", () => {
     expect(context.mocks.axiomLogging.warn).toHaveBeenCalledWith(
       "Managed browser provider returned an invalid response",
       expect.objectContaining({
-        validationIssueCount: 1,
-        validationIssues: [
+        validationIssueCount: 3,
+        validationIssues: expect.arrayContaining([
           expect.objectContaining({
             path: "browserCost",
             code: "invalid_format",
             message: expect.any(String),
+            providerValueType: "string",
+            providerValueLength: invalidBrowserCost.length,
+            providerValuePreview: invalidBrowserCost,
           }),
-        ],
+          expect.objectContaining({
+            path: "proxyCost",
+            code: "too_big",
+            message: expect.any(String),
+            providerValueType: "string",
+            providerValueLength: oversizedProxyCost.length,
+            providerValuePreview: oversizedProxyCost.slice(0, 128),
+          }),
+          expect.objectContaining({
+            path: "liveUrl",
+            code: "custom",
+            message: expect.any(String),
+          }),
+        ]),
         validationIssuesOmitted: 0,
       }),
     );
-    expect(
-      JSON.stringify(context.mocks.axiomLogging.warn.mock.calls),
-    ).not.toContain(privateProviderValue);
+    const logged = JSON.stringify(context.mocks.axiomLogging.warn.mock.calls);
+    expect(logged).not.toContain(oversizedProxyCost);
+    expect(logged).not.toContain(privateProviderValue);
   });
 
   it("isolates profiles across concurrent thread browser sessions", async () => {
