@@ -4533,7 +4533,7 @@ describe("WHCB-08: Clerk deletion webhooks tear down account state", () => {
     const botToken = await registerTelegramBot(actor, agent.agentId);
     await runs.applyUserPermissionGrant(actor, {
       agentId: agent.agentId,
-      connectorRef: "slack",
+      connectorSlug: "slack",
       permission: "conversations:read",
       action: "allow",
     });
@@ -4977,13 +4977,13 @@ describe("WHCB-08: Clerk deletion webhooks tear down account state", () => {
 
     await runs.applyUserPermissionGrant(doomed, {
       agentId: sharedAgent.agentId,
-      connectorRef: "slack",
+      connectorSlug: "slack",
       permission: "conversations:read",
       action: "allow",
     });
     await runs.applyUserPermissionGrant(peer, {
       agentId: sharedAgent.agentId,
-      connectorRef: "slack",
+      connectorSlug: "slack",
       permission: "chat:write",
       action: "deny",
     });

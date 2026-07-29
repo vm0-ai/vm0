@@ -50,7 +50,7 @@ export function prepareConnectorAuthCodeStartWithMethod(args: {
 }
 
 export async function buildConnectorAuthCodeAuthUrlWithMethod(args: {
-  readonly connectorRef: string;
+  readonly connectorSlug: string;
   readonly authMethodId: string;
   readonly method: ConnectorAuthMethodRuntimeConfig;
   readonly authClient: ConnectorAuthClient;
@@ -59,7 +59,7 @@ export async function buildConnectorAuthCodeAuthUrlWithMethod(args: {
 }): Promise<AuthUrlResult> {
   return normalizeAuthUrlResult(
     await buildConnectorAuthCodeAuthorizationUrlWithMethod({
-      connectorRef: args.connectorRef,
+      connectorSlug: args.connectorSlug,
       authMethodId: args.authMethodId,
       method: args.method,
       authClient: args.authClient,

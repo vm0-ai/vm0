@@ -654,13 +654,13 @@ async fn handle_ably_message_with_network_policy_refresh(
             network_policy_refresh
                 .notify_network_policy_refresh_until_cancelled(
                     notification.run_id,
-                    notification.connector_ref,
+                    notification.connector_slug,
                     cancel,
                 )
                 .await;
         } else {
             network_policy_refresh
-                .notify_network_policy_refresh(notification.run_id, notification.connector_ref)
+                .notify_network_policy_refresh(notification.run_id, notification.connector_slug)
                 .await;
         }
         return;
@@ -740,7 +740,7 @@ struct JobNotification<'a> {
 
 struct NetworkPolicyRefreshNotification {
     run_id: RunId,
-    connector_ref: String,
+    connector_slug: String,
 }
 
 fn supports_profile(profiles: &[String], profile: &str) -> bool {
@@ -835,7 +835,8 @@ fn parse_network_policy_refresh_notification(
             return None;
         }
     };
-    let Some(connector_ref) = msg
+    // TODO(#23619): Rename this key with the realtime notification contract.
+    let Some(connector_slug) = msg
         .data
         .get("connectorRef")
         .and_then(|v| v.as_str())
@@ -847,7 +848,7 @@ fn parse_network_policy_refresh_notification(
 
     Some(NetworkPolicyRefreshNotification {
         run_id,
-        connector_ref: connector_ref.to_string(),
+        connector_slug: connector_slug.to_string(),
     })
 }
 
@@ -2116,7 +2117,7 @@ mod tests {
             notification.run_id.to_string(),
             "00000000-0000-0000-0000-000000000003"
         );
-        assert_eq!(notification.connector_ref, "github");
+        assert_eq!(notification.connector_slug, "github");
     }
 
     #[test]

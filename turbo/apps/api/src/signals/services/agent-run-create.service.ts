@@ -12,7 +12,7 @@ import {
 import type { RunContextResponse } from "@vm0/api-contracts/contracts/zero-runs";
 import type {
   ConnectorAuthMethodId,
-  ConnectorRef,
+  ConnectorSlug,
 } from "@vm0/api-contracts/contracts/connector-identity";
 import {
   getDefaultModel,
@@ -194,6 +194,7 @@ import type {
 } from "./chat-session-continuity.service";
 import {
   claimQueueFirstRunAssociation,
+  recordQueueFirstClaimedRun,
   type QueueFirstRunAssociation,
   type QueueFirstRunClaimResult,
 } from "./zero-chat-queued-message.service";
@@ -387,13 +388,13 @@ interface ResolvedCompose {
 type ConnectorScopeSource = "explicit" | "zero_agent" | "legacy_all" | "empty";
 
 interface EffectiveConnectorScope {
-  readonly allowedConnectorTypes: readonly ConnectorRef[] | undefined;
+  readonly allowedConnectorSlugs: readonly ConnectorSlug[] | undefined;
   readonly allowedCustomConnectorIds: readonly string[] | undefined;
   readonly source: ConnectorScopeSource;
 }
 
 interface ExplicitConnectorScope {
-  readonly allowedConnectorTypes: readonly ConnectorRef[];
+  readonly allowedConnectorSlugs: readonly ConnectorSlug[];
   readonly allowedCustomConnectorIds: readonly string[];
   readonly source?: Exclude<ConnectorScopeSource, "legacy_all" | "empty">;
 }
@@ -720,7 +721,7 @@ interface ConnectorRuntimeContext {
   readonly secretConnectorMetadataMap:
     | Record<string, SecretConnectorMetadata>
     | undefined;
-  readonly connectorTypes: readonly ConnectorRef[];
+  readonly connectorSlugs: readonly ConnectorSlug[];
   readonly storedEnvironment: Record<string, string> | undefined;
 }
 
@@ -883,12 +884,12 @@ function buildLegacySystemSkillVolumes(
 }
 
 function buildConnectorSkillVolumes(
-  connectorTypes: readonly ConnectorRef[],
+  connectorSlugs: readonly ConnectorSlug[],
   snapshot: ConnectorRuntimeSnapshot,
   framework: SupportedFramework,
 ): readonly PreparedAdditionalVolume[] {
-  return connectorTypes.flatMap((connectorRef) => {
-    const connector = getConnectorRuntimeConnector(snapshot, connectorRef);
+  return connectorSlugs.flatMap((connectorSlug) => {
+    const connector = getConnectorRuntimeConnector(snapshot, connectorSlug);
     if (connector === undefined) {
       throw new Error("Accepted connector skill metadata is unavailable");
     }
@@ -899,7 +900,7 @@ function buildConnectorSkillVolumes(
       volume: {
         name: connector.skill.storageName,
         version: connector.skill.versionId,
-        mountPath: skillMountPath(framework, connectorRef),
+        mountPath: skillMountPath(framework, connectorSlug),
         system: true,
       },
       source: "connector_skill",
@@ -928,7 +929,7 @@ function buildWorkflowSkillVolumes(
 function buildInjectedSkillVolumes(
   args: {
     readonly injectSkillVolumes: CreateAgentRunArgs["injectSkillVolumes"];
-    readonly allowedConnectorTypes: readonly ConnectorRef[] | undefined;
+    readonly allowedConnectorSlugs: readonly ConnectorSlug[] | undefined;
     readonly connectorCatalogSnapshot: ConnectorRuntimeSnapshot;
   },
   framework: SupportedFramework,
@@ -936,9 +937,9 @@ function buildInjectedSkillVolumes(
   if (!args.injectSkillVolumes) {
     return undefined;
   }
-  const connectorTypes = args.allowedConnectorTypes ?? [];
+  const connectorSlugs = args.allowedConnectorSlugs ?? [];
   const seedSkillNames = [...SEED_SKILLS, GOAL_SKILL_NAME];
-  // Connector rollout switches govern discovery only. Once a connector ref is
+  // Connector rollout switches govern discovery only. Once a connector slug is
   // part of a run, its accepted catalog skill remains executable and mountable.
   const systemSkillVolumes = [
     ...(prepareAdditionalVolumesWithSource(
@@ -946,7 +947,7 @@ function buildInjectedSkillVolumes(
       "system_skill",
     ) ?? []),
     ...buildConnectorSkillVolumes(
-      connectorTypes,
+      connectorSlugs,
       args.connectorCatalogSnapshot,
       framework,
     ),
@@ -2257,7 +2258,7 @@ function filterSecretConnectorMetadataMap(args: {
 
 interface StoredConnectorRuntimeRow {
   readonly access: ConnectorCredentialAccess;
-  readonly connectorType: ConnectorRef;
+  readonly connectorSlug: ConnectorSlug;
   readonly connectorStateRevision: bigint;
   readonly authMethod: ConnectorAuthMethodId;
   readonly runtimeMethod: ConnectorRuntimeMethod;
@@ -2267,7 +2268,7 @@ interface StoredConnectorRuntimeRow {
 
 interface StoredConnectorRuntimeRowCandidate {
   readonly connectorId: string;
-  readonly type: string;
+  readonly connectorSlug: string;
   readonly authMethod: string;
   readonly connectorStateRevision: bigint;
   readonly needsReconnect: boolean;
@@ -2291,7 +2292,7 @@ const storedConnectorVariableValuesDecoder = zodDriverValueDecoder(
 
 interface ConnectorEnvBindingSet {
   readonly access: ConnectorCredentialAccess;
-  readonly connectorType: ConnectorRef;
+  readonly connectorSlug: ConnectorSlug;
   readonly connectorStateRevision: bigint;
   readonly authMethod: ConnectorAuthMethodId;
   readonly runtimeBindings: readonly ConnectorRuntimeBindingEntry[];
@@ -2336,14 +2337,14 @@ function emptyConnectorRuntimeContext(): ConnectorRuntimeContext {
     vars: undefined,
     secretConnectorMap: undefined,
     secretConnectorMetadataMap: undefined,
-    connectorTypes: [],
+    connectorSlugs: [],
     storedEnvironment: undefined,
   };
 }
 
 function allowedStoredConnectorRows(
   rows: readonly StoredConnectorRuntimeRowCandidate[],
-  allowedConnectorTypes: readonly ConnectorRef[] | undefined,
+  allowedConnectorSlugs: readonly ConnectorSlug[] | undefined,
   snapshot: ConnectorRuntimeSnapshot,
   now: Date,
 ): readonly StoredConnectorRuntimeRow[] {
@@ -2353,7 +2354,7 @@ function allowedStoredConnectorRows(
       stored: {
         authMethodId: row.authMethod,
         connectorId: row.connectorId,
-        connectorRef: row.type,
+        connectorSlug: row.connectorSlug,
         orgId: row.orgId,
         storageVersion: row.storageVersion,
         userId: row.userId,
@@ -2366,7 +2367,7 @@ function allowedStoredConnectorRows(
     return [
       {
         access,
-        connectorType: access.runtimeMethod.connectorRef,
+        connectorSlug: access.runtimeMethod.connectorSlug,
         connectorStateRevision: row.connectorStateRevision,
         authMethod: access.runtimeMethod.authMethodId,
         runtimeMethod: access.runtimeMethod,
@@ -2377,8 +2378,8 @@ function allowedStoredConnectorRows(
   });
   return validRows.filter((row) => {
     return (
-      (!allowedConnectorTypes ||
-        allowedConnectorTypes.includes(row.connectorType)) &&
+      (!allowedConnectorSlugs ||
+        allowedConnectorSlugs.includes(row.connectorSlug)) &&
       storedConnectorRuntimeCredentialStatus(row, now) === "available"
     );
   });
@@ -2405,7 +2406,7 @@ function connectorEnvBindingSets(
     );
     return {
       access: row.access,
-      connectorType: row.connectorType,
+      connectorSlug: row.connectorSlug,
       connectorStateRevision: row.connectorStateRevision,
       authMethod: row.authMethod,
       runtimeBindings: metadata.runtimeBindings,
@@ -2680,7 +2681,7 @@ function resolveStoredConnectorState(
     {};
   const environment: Record<string, string> = {};
 
-  for (const { connectorType, runtimeBindings } of bindingSets) {
+  for (const { connectorSlug, runtimeBindings } of bindingSets) {
     for (const { envName, valueRef, optional, source } of runtimeBindings) {
       switch (source.kind) {
         case "connector-secret": {
@@ -2718,9 +2719,9 @@ function resolveStoredConnectorState(
     // backing secret name. Refreshability is resolved later from access metadata.
     for (const { envName, source } of runtimeBindings) {
       if (source.kind === "connector-secret") {
-        secretConnectorMap[envName] = connectorType;
+        secretConnectorMap[envName] = connectorSlug;
       } else if (source.kind === "platform-secret") {
-        secretConnectorMap[envName] = connectorType;
+        secretConnectorMap[envName] = connectorSlug;
         secretConnectorMetadataMap[envName] = { sourceType: "platform-secret" };
       }
     }
@@ -2751,8 +2752,8 @@ function storedConnectorContextFromSnapshot(
     ),
     secretConnectorMap: undefined,
     secretConnectorMetadataMap: undefined,
-    connectorTypes: snapshot.allowedConnectorRows.map((row) => {
-      return row.connectorType;
+    connectorSlugs: snapshot.allowedConnectorRows.map((row) => {
+      return row.connectorSlug;
     }),
     storedEnvironment: undefined,
   };
@@ -2833,8 +2834,8 @@ async function materializeStoredConnectorContext(
         secretConnectorMetadataMap: compactRecord(
           resolved.secretConnectorMetadataMap,
         ),
-        connectorTypes: snapshot.allowedConnectorRows.map((row) => {
-          return row.connectorType;
+        connectorSlugs: snapshot.allowedConnectorRows.map((row) => {
+          return row.connectorSlug;
         }),
         storedEnvironment: compactRecord(resolved.environment),
       });
@@ -2964,18 +2965,18 @@ async function loadStoredConnectorMaterializationPlan(
   args: {
     readonly orgId: string;
     readonly userId: string;
-    readonly allowedConnectorTypes: readonly ConnectorRef[] | undefined;
+    readonly allowedConnectorSlugs: readonly ConnectorSlug[] | undefined;
     readonly scopeSource: ConnectorScopeSource;
     readonly connectorCatalogSnapshot: ConnectorRuntimeSnapshot;
   },
   timing?: ApiDispatchTimingCollector,
 ): Promise<StoredConnectorMaterializationSnapshot | null> {
-  if (args.allowedConnectorTypes?.length === 0) {
+  if (args.allowedConnectorSlugs?.length === 0) {
     return null;
   }
 
-  const allowedConnectorTypes = args.allowedConnectorTypes
-    ? [...new Set(args.allowedConnectorTypes)]
+  const allowedConnectorSlugs = args.allowedConnectorSlugs
+    ? [...new Set(args.allowedConnectorSlugs)]
     : undefined;
 
   const snapshot = await loadStoredConnectorMaterializationSnapshot(
@@ -2983,7 +2984,7 @@ async function loadStoredConnectorMaterializationPlan(
     {
       orgId: args.orgId,
       userId: args.userId,
-      allowedConnectorTypes,
+      allowedConnectorSlugs,
       scopeSource: args.scopeSource,
       connectorCatalogSnapshot: args.connectorCatalogSnapshot,
     },
@@ -2997,14 +2998,14 @@ function storedConnectorSnapshotQuery(
   args: {
     readonly orgId: string;
     readonly userId: string;
-    readonly allowedConnectorTypes: readonly ConnectorRef[] | undefined;
+    readonly allowedConnectorSlugs: readonly ConnectorSlug[] | undefined;
   },
 ) {
   const selectedConnectors = db.$with("stored_connector_candidates").as(
     db
       .select({
         connectorId: connectors.id,
-        type: connectors.type,
+        connectorSlug: connectors.type,
         authMethod: connectors.authMethod,
         connectorStateRevision: sql`(
             EXTRACT(EPOCH FROM ${connectors.updatedAt})
@@ -3023,8 +3024,8 @@ function storedConnectorSnapshotQuery(
         and(
           eq(connectors.orgId, args.orgId),
           eq(connectors.userId, args.userId),
-          args.allowedConnectorTypes
-            ? inArray(connectors.type, args.allowedConnectorTypes)
+          args.allowedConnectorSlugs
+            ? inArray(connectors.type, args.allowedConnectorSlugs)
             : undefined,
         ),
       ),
@@ -3072,7 +3073,7 @@ function storedConnectorSnapshotQuery(
     .with(selectedConnectors)
     .select({
       connectorId: selectedConnectors.connectorId,
-      type: selectedConnectors.type,
+      connectorSlug: selectedConnectors.connectorSlug,
       authMethod: selectedConnectors.authMethod,
       connectorStateRevision: selectedConnectors.connectorStateRevision,
       needsReconnect: selectedConnectors.needsReconnect,
@@ -3104,7 +3105,7 @@ async function loadStoredConnectorSnapshotRows(
   args: {
     readonly orgId: string;
     readonly userId: string;
-    readonly allowedConnectorTypes: readonly ConnectorRef[] | undefined;
+    readonly allowedConnectorSlugs: readonly ConnectorSlug[] | undefined;
     readonly timingDimensions: ApiDispatchTimingDimensions;
   },
   timing?: ApiDispatchTimingCollector,
@@ -3134,12 +3135,12 @@ async function loadStoredConnectorSnapshotRows(
 
 function buildStoredConnectorMaterializationPlan(args: {
   readonly connectorRows: readonly StoredConnectorRuntimeRowCandidate[];
-  readonly allowedConnectorTypes: readonly ConnectorRef[] | undefined;
+  readonly allowedConnectorSlugs: readonly ConnectorSlug[] | undefined;
   readonly connectorCatalogSnapshot: ConnectorRuntimeSnapshot;
 }): StoredConnectorMaterializationPlan | null {
   const allowedConnectorRows = allowedStoredConnectorRows(
     args.connectorRows,
-    args.allowedConnectorTypes,
+    args.allowedConnectorSlugs,
     args.connectorCatalogSnapshot,
     nowDate(),
   );
@@ -3157,7 +3158,7 @@ function buildStoredConnectorMaterializationPlan(args: {
 function materializeStoredConnectorSnapshotRows(
   args: {
     readonly rows: readonly StoredConnectorMaterializationSnapshotRow[];
-    readonly allowedConnectorTypes: readonly ConnectorRef[] | undefined;
+    readonly allowedConnectorSlugs: readonly ConnectorSlug[] | undefined;
     readonly connectorCatalogSnapshot: ConnectorRuntimeSnapshot;
     readonly timingDimensions: ApiDispatchTimingDimensions;
   },
@@ -3167,7 +3168,7 @@ function materializeStoredConnectorSnapshotRows(
   const result = safeSync(() => {
     const plan = buildStoredConnectorMaterializationPlan({
       connectorRows: args.rows,
-      allowedConnectorTypes: args.allowedConnectorTypes,
+      allowedConnectorSlugs: args.allowedConnectorSlugs,
       connectorCatalogSnapshot: args.connectorCatalogSnapshot,
     });
     if (!plan) {
@@ -3241,7 +3242,7 @@ async function loadStoredConnectorMaterializationSnapshot(
   args: {
     readonly orgId: string;
     readonly userId: string;
-    readonly allowedConnectorTypes: readonly ConnectorRef[] | undefined;
+    readonly allowedConnectorSlugs: readonly ConnectorSlug[] | undefined;
     readonly scopeSource: ConnectorScopeSource;
     readonly connectorCatalogSnapshot: ConnectorRuntimeSnapshot;
   },
@@ -3255,7 +3256,7 @@ async function loadStoredConnectorMaterializationSnapshot(
     {
       orgId: args.orgId,
       userId: args.userId,
-      allowedConnectorTypes: args.allowedConnectorTypes,
+      allowedConnectorSlugs: args.allowedConnectorSlugs,
       timingDimensions: baseTimingDimensions,
     },
     timing,
@@ -3267,7 +3268,7 @@ async function loadStoredConnectorMaterializationSnapshot(
   return materializeStoredConnectorSnapshotRows(
     {
       rows,
-      allowedConnectorTypes: args.allowedConnectorTypes,
+      allowedConnectorSlugs: args.allowedConnectorSlugs,
       connectorCatalogSnapshot: args.connectorCatalogSnapshot,
       timingDimensions: baseTimingDimensions,
     },
@@ -3620,14 +3621,14 @@ function allAllowPolicyForPermissions(
 
 async function loadRequiredFirewallPermissionIndex(args: {
   readonly snapshot: ConnectorRuntimeSnapshot;
-  readonly connectorRef: string;
+  readonly connectorSlug: string;
 }): Promise<ConnectorServerFirewallPermissionIndex> {
   const index = await args.snapshot.serverFirewalls.loadPermissionIndex(
-    args.connectorRef,
+    args.connectorSlug,
   );
   if (!index) {
     throw new Error(
-      `Missing connector server firewall permission metadata: ${args.connectorRef}`,
+      `Missing connector server firewall permission metadata: ${args.connectorSlug}`,
     );
   }
   return index;
@@ -3635,12 +3636,12 @@ async function loadRequiredFirewallPermissionIndex(args: {
 
 function getRequiredFirewallExecutionMetadata(
   snapshot: ConnectorRuntimeSnapshot,
-  connectorRef: string,
+  connectorSlug: string,
 ): ConnectorServerFirewallExecutionMetadata {
-  const metadata = snapshot.serverFirewalls.getExecutionMetadata(connectorRef);
+  const metadata = snapshot.serverFirewalls.getExecutionMetadata(connectorSlug);
   if (!metadata) {
     throw new Error(
-      `Missing connector server firewall execution metadata: ${connectorRef}`,
+      `Missing connector server firewall execution metadata: ${connectorSlug}`,
     );
   }
   return metadata;
@@ -3704,11 +3705,11 @@ function builtinFirewallEntryForMetadata(
   vars: Record<string, string> | undefined,
 ): ExecutionFirewallEntry {
   if (metadata.baseUrlVarNames.length === 0) {
-    return { kind: "builtin", name: metadata.connectorRef };
+    return { kind: "builtin", name: metadata.connectorSlug };
   }
 
   const validationFirewall: Firewall = {
-    name: metadata.connectorRef,
+    name: metadata.connectorSlug,
     apis: metadata.baseUrlTemplates.map((template) => {
       return {
         base: template.base,
@@ -3724,7 +3725,7 @@ function builtinFirewallEntryForMetadata(
     [validationFirewall],
     vars,
   );
-  return { kind: "builtin", name: metadata.connectorRef, baseUrlVars };
+  return { kind: "builtin", name: metadata.connectorSlug, baseUrlVars };
 }
 
 function inlineFirewallEntry(
@@ -3836,7 +3837,7 @@ function buildConnectorPermissionBaseline(
         const defaultPolicy = source.permissionIndex.defaultPolicy;
         const permissionOverrides = defaultPolicy.permissionOverrides;
         return [
-          source.metadata.connectorRef,
+          source.metadata.connectorSlug,
           {
             permissionNames: [...source.permissionIndex.permissionNames],
             defaultPolicy: {
@@ -3876,7 +3877,7 @@ function applyBuiltinConnectorMetadataPolicies(
   const billableFirewalls: string[] = [];
 
   for (const source of sources) {
-    const name = source.metadata.connectorRef;
+    const name = source.metadata.connectorSlug;
     const permissionNames = [...source.permissionIndex.permissionNames];
     const defaultPolicy = defaultFirewallPolicyForPermissionIndex(
       source.permissionIndex,
@@ -3919,18 +3920,18 @@ async function buildPermissionManifest(args: {
   readonly permissionPolicies: FirewallPolicies | undefined;
   readonly vars: Record<string, string> | undefined;
   readonly connectorVars?: Record<string, string>;
-  readonly connectorTypes?: readonly ConnectorRef[];
+  readonly connectorSlugs?: readonly ConnectorSlug[];
   readonly customConnectorFirewalls?: readonly ExpandedFirewallConfig[];
   readonly timing?: ApiDispatchTimingCollector;
 }): Promise<PermissionManifest | undefined> {
-  const connectorTypes =
-    args.connectorTypes ??
-    Object.keys(args.permissionPolicies ?? {}).filter((connectorRef) => {
-      return args.connectorCatalogSnapshot.serverFirewalls.has(connectorRef);
+  const connectorSlugs =
+    args.connectorSlugs ??
+    Object.keys(args.permissionPolicies ?? {}).filter((connectorSlug) => {
+      return args.connectorCatalogSnapshot.serverFirewalls.has(connectorSlug);
     });
   const connectorBaseUrlVars = mergeRecords(args.vars, args.connectorVars);
-  const builtinConnectorTypes = connectorTypes.filter((connectorRef) => {
-    return args.connectorCatalogSnapshot.serverFirewalls.has(connectorRef);
+  const builtinConnectorSlugs = connectorSlugs.filter((connectorSlug) => {
+    return args.connectorCatalogSnapshot.serverFirewalls.has(connectorSlug);
   });
 
   const builtinSources = await measureApiDispatchTiming(
@@ -3939,14 +3940,14 @@ async function buildPermissionManifest(args: {
     "nested",
     async () => {
       return await Promise.all(
-        builtinConnectorTypes.map(async (type) => {
+        builtinConnectorSlugs.map(async (connectorSlug) => {
           const metadata = getRequiredFirewallExecutionMetadata(
             args.connectorCatalogSnapshot,
-            type,
+            connectorSlug,
           );
           const permissionIndex = await loadRequiredFirewallPermissionIndex({
             snapshot: args.connectorCatalogSnapshot,
-            connectorRef: type,
+            connectorSlug,
           });
           return { metadata, permissionIndex };
         }),
@@ -5511,6 +5512,12 @@ async function commitFailedLaunch(args: {
         runnerGroup: undefined,
         error: message,
       });
+      if (queueFirstClaim) {
+        await recordQueueFirstClaimedRun(tx, {
+          claim: queueFirstClaim,
+          runId: args.identity.runId,
+        });
+      }
       return {
         kind: "failed",
         createdAt,
@@ -5783,6 +5790,12 @@ async function commitQueuedPreparedLaunch(
     status: "queued",
     runnerGroup: payload.runnerGroup,
   });
+  if (queueFirstClaim) {
+    await recordQueueFirstClaimedRun(tx, {
+      claim: queueFirstClaim,
+      runId: run.id,
+    });
+  }
   await args.timing.measure(
     "api_dispatch_persist_custom_connector_auth_refs",
     "nested",
@@ -5847,6 +5860,12 @@ async function commitPendingPreparedLaunch(
     status: "pending",
     runnerGroup: payload.runnerGroup,
   });
+  if (queueFirstClaim) {
+    await recordQueueFirstClaimedRun(tx, {
+      claim: queueFirstClaim,
+      runId: run.id,
+    });
+  }
   const runnerJobCreatedAt = await args.timing.measure(
     "api_dispatch_persist_runner_job_queue",
     "top_level",
@@ -6171,7 +6190,7 @@ async function loadRunConnectorContexts(
           {
             orgId: args.orgId,
             userId: args.userId,
-            allowedConnectorTypes: args.connectorScope.allowedConnectorTypes,
+            allowedConnectorSlugs: args.connectorScope.allowedConnectorSlugs,
             scopeSource: args.connectorScope.source,
             connectorCatalogSnapshot,
           },
@@ -6293,7 +6312,7 @@ async function buildPreparedPermissionManifest(args: {
       permissionPolicies: args.body.permissionPolicies,
       vars: args.body.vars,
       connectorVars: args.storedConnectorMetadataContext.vars,
-      connectorTypes: args.storedConnectorMetadataContext.connectorTypes,
+      connectorSlugs: args.storedConnectorMetadataContext.connectorSlugs,
       customConnectorFirewalls: args.customConnectorContext.firewalls,
       timing: args.timing,
     }),
@@ -6321,7 +6340,7 @@ function preparedRunAdditionalVolumes(args: {
     prepend: buildInjectedSkillVolumes(
       {
         injectSkillVolumes: args.createArgs.injectSkillVolumes,
-        allowedConnectorTypes: args.connectorScope.allowedConnectorTypes,
+        allowedConnectorSlugs: args.connectorScope.allowedConnectorSlugs,
         connectorCatalogSnapshot: args.connectorCatalogSnapshot,
       },
       args.framework,
@@ -6359,14 +6378,14 @@ function connectorScopeForRuntimeSnapshot(
   scope: EffectiveConnectorScope,
   snapshot: ConnectorRuntimeSnapshot,
 ): EffectiveConnectorScope {
-  if (scope.allowedConnectorTypes === undefined) {
+  if (scope.allowedConnectorSlugs === undefined) {
     return scope;
   }
   return {
     ...scope,
-    allowedConnectorTypes: scope.allowedConnectorTypes.filter(
-      (connectorRef) => {
-        const connector = getConnectorRuntimeConnector(snapshot, connectorRef);
+    allowedConnectorSlugs: scope.allowedConnectorSlugs.filter(
+      (connectorSlug) => {
+        const connector = getConnectorRuntimeConnector(snapshot, connectorSlug);
         return (
           connector !== undefined &&
           [...connector.methods.values()].some((method) => {
@@ -6385,12 +6404,12 @@ function connectorScopeFromCreateArgs(
     return null;
   }
   const source =
-    args.connectorScope.allowedConnectorTypes.length === 0 &&
+    args.connectorScope.allowedConnectorSlugs.length === 0 &&
     args.connectorScope.allowedCustomConnectorIds.length === 0
       ? "empty"
       : (args.connectorScope.source ?? "explicit");
   return {
-    allowedConnectorTypes: args.connectorScope.allowedConnectorTypes,
+    allowedConnectorSlugs: args.connectorScope.allowedConnectorSlugs,
     allowedCustomConnectorIds: args.connectorScope.allowedCustomConnectorIds,
     source,
   };
@@ -6426,7 +6445,7 @@ async function resolveEffectiveConnectorScope(args: {
     return {
       ...scope,
       source:
-        scope.allowedConnectorTypes.length === 0 &&
+        scope.allowedConnectorSlugs.length === 0 &&
         scope.allowedCustomConnectorIds.length === 0
           ? "empty"
           : "zero_agent",
@@ -6434,7 +6453,7 @@ async function resolveEffectiveConnectorScope(args: {
   }
 
   return {
-    allowedConnectorTypes: undefined,
+    allowedConnectorSlugs: undefined,
     allowedCustomConnectorIds: undefined,
     source: "legacy_all",
   };
@@ -6744,7 +6763,7 @@ async function connectorCatalogSnapshotForRun(args: {
     (await loadConnectorRuntimeSnapshot(args.db, {
       timing: args.timing,
       requestedConnectorCount:
-        args.connectorScope.allowedConnectorTypes?.length,
+        args.connectorScope.allowedConnectorSlugs?.length,
     }))
   );
 }

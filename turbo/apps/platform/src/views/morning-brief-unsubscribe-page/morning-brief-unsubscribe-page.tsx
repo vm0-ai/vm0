@@ -1,5 +1,7 @@
 import type { ReactNode } from "react";
 import { useGet } from "ccstate-react";
+import type { TFunction } from "i18next";
+import { useTranslation } from "react-i18next";
 import { IconCheck, IconLoader2, IconX } from "@tabler/icons-react";
 import { Button } from "@vm0/ui";
 import {
@@ -15,16 +17,27 @@ interface CardInfo {
   body: string;
 }
 
-function resolveCard(status: MorningBriefUnsubscribeStatus): CardInfo {
+function resolveCard(
+  status: MorningBriefUnsubscribeStatus,
+  t: TFunction<"common">,
+): CardInfo {
   if (status === "unsubscribed") {
     return {
-      title: "Morning Brief turned off",
-      body: "You will no longer receive the daily Morning Brief email. You can turn it back on any time in Settings.",
+      title: t(($) => {
+        return $.lifecycle.morningBriefUnsubscribe.doneTitle;
+      }),
+      body: t(($) => {
+        return $.lifecycle.morningBriefUnsubscribe.doneBody;
+      }),
     };
   }
   return {
-    title: "This link is invalid",
-    body: "The unsubscribe link is invalid or incomplete. Open the latest Morning Brief email and use its unsubscribe link, or manage the preference in Settings.",
+    title: t(($) => {
+      return $.lifecycle.morningBriefUnsubscribe.errorTitle;
+    }),
+    body: t(($) => {
+      return $.lifecycle.morningBriefUnsubscribe.errorBody;
+    }),
   };
 }
 
@@ -40,17 +53,23 @@ function CardIcon({
 }
 
 export function MorningBriefUnsubscribePage() {
+  const { t } = useTranslation();
   const status = useGet(morningBriefUnsubscribeStatus$);
 
   if (!status) {
     return (
       <div className="flex min-h-0 flex-1 items-center justify-center">
         <IconLoader2 size={40} className="animate-spin text-muted-foreground" />
+        <span className="sr-only">
+          {t(($) => {
+            return $.lifecycle.morningBriefUnsubscribe.loadingLabel;
+          })}
+        </span>
       </div>
     );
   }
 
-  const info = resolveCard(status);
+  const info = resolveCard(status, t);
 
   return (
     <div className="flex min-h-0 flex-1 items-center justify-center px-6">
@@ -66,7 +85,11 @@ export function MorningBriefUnsubscribePage() {
           </p>
         </div>
         <Button className="w-full" asChild>
-          <Link pathname={ROUTES.settings}>Manage preferences</Link>
+          <Link pathname={ROUTES.settings}>
+            {t(($) => {
+              return $.lifecycle.morningBriefUnsubscribe.managePreferences;
+            })}
+          </Link>
         </Button>
       </div>
     </div>

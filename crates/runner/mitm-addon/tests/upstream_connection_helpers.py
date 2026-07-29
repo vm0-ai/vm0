@@ -1,7 +1,9 @@
 """Shared helpers for upstream mitmproxy test state."""
 
+import ipaddress
 from typing import cast
 
+import pytest
 from mitmproxy import certs, connection, http
 
 import upstream_destination_binding
@@ -10,6 +12,52 @@ import upstream_destination_binding
 _NO_CONNECTED_CLIENT_SOCKNAME = ("", 0)
 # Admission only checks that mitmproxy recorded at least one upstream certificate.
 _TLS_CERTIFICATE_PROOF = cast(certs.Cert, object())
+
+
+def track_normalized_binding_ip_parses(
+    monkeypatch: pytest.MonkeyPatch,
+) -> list[tuple[str | bytes | int, ...]]:
+    """Track IP parses performed inside each normalized binding match."""
+    binding_ip_parses: list[tuple[str | bytes | int, ...]] = []
+    active_ip_parses: list[str | bytes | int] | None = None
+    flow_matches_normalized_destination = (
+        upstream_destination_binding.flow_matches_normalized_destination
+    )
+    parse_ip_address = ipaddress.ip_address
+
+    def track_flow_matches_normalized_destination(
+        flow: http.HTTPFlow,
+        *,
+        destination: upstream_destination_binding.NormalizedUpstreamDestination,
+        allowed_kinds: frozenset[upstream_destination_binding.BindingKind],
+    ) -> bool:
+        nonlocal active_ip_parses
+        current_ip_parses: list[str | bytes | int] = []
+        active_ip_parses = current_ip_parses
+        try:
+            return flow_matches_normalized_destination(
+                flow,
+                destination=destination,
+                allowed_kinds=allowed_kinds,
+            )
+        finally:
+            binding_ip_parses.append(tuple(current_ip_parses))
+            active_ip_parses = None
+
+    def track_ip_address(
+        address: str | bytes | int,
+    ) -> ipaddress.IPv4Address | ipaddress.IPv6Address:
+        if active_ip_parses is not None:
+            active_ip_parses.append(address)
+        return parse_ip_address(address)
+
+    monkeypatch.setattr(
+        upstream_destination_binding,
+        "flow_matches_normalized_destination",
+        track_flow_matches_normalized_destination,
+    )
+    monkeypatch.setattr(ipaddress, "ip_address", track_ip_address)
+    return binding_ip_parses
 
 
 def seed_server_binding(

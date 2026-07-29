@@ -118,23 +118,23 @@ async function showSandboxInfo(showPermissions: boolean): Promise<void> {
 
       if (identities.length === 0) return;
 
-      let permissionInfoByType = new Map<string, ConnectorPermissionInfo>();
+      let permissionInfoBySlug = new Map<string, ConnectorPermissionInfo>();
       const permissionDataAvailable =
         grantsResult.status === "fulfilled" &&
         enabledResult.status === "fulfilled";
       if (permissionDataAvailable) {
         const permissionInfos = await loadConnectorPermissionInfos({
-          displayTypes: identities.map((connector) => {
+          displayConnectorSlugs: identities.map((connector) => {
             return connector.type;
           }),
-          defaultPolicyTypes: enabledResult.value,
+          defaultPolicyConnectorSlugs: enabledResult.value,
           storedPolicies: permissionGrantsToFirewallPolicies(
             grantsResult.value,
           ),
         });
-        permissionInfoByType = new Map(
+        permissionInfoBySlug = new Map(
           permissionInfos.map((info) => {
-            return [info.type, info];
+            return [info.connectorSlug, info];
           }),
         );
       }
@@ -146,7 +146,7 @@ async function showSandboxInfo(showPermissions: boolean): Promise<void> {
         console.log(`  ${connector.type.padEnd(14)}${identity}`);
 
         if (permissionDataAvailable) {
-          const info = permissionInfoByType.get(connector.type);
+          const info = permissionInfoBySlug.get(connector.type);
           if (info) {
             printConnectorPermissions(info);
           }

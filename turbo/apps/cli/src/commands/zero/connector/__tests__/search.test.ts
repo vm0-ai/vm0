@@ -35,7 +35,7 @@ const connectedGithub = {
 };
 
 function stubConnectors(connectors: Array<Record<string, unknown>>) {
-  const connectedByType = new Map(
+  const connectedBySlug = new Map(
     connectors.map((connector) => {
       const scopeMismatch =
         Array.isArray(connector.oauthScopes) &&
@@ -44,7 +44,7 @@ function stubConnectors(connectors: Array<Record<string, unknown>>) {
       return [
         connector.type as string,
         catalogStatusItem({
-          connectorRef: connector.type as string,
+          connectorSlug: connector.type as string,
           authMethods: [authCodeMethod(connector.authMethod as string)],
           tags: connector.type === "github" ? ["vcs"] : [],
           connection: {
@@ -65,19 +65,19 @@ function stubConnectors(connectors: Array<Record<string, unknown>>) {
       ] as const;
     }),
   );
-  const visibleTypes = new Set([
+  const visibleConnectorSlugs = new Set([
     "github",
     "mercury",
-    ...connectedByType.keys(),
+    ...connectedBySlug.keys(),
   ]);
   return stubConnectorCatalogStatus(
-    [...visibleTypes].map((type) => {
+    [...visibleConnectorSlugs].map((connectorSlug) => {
       return (
-        connectedByType.get(type) ??
+        connectedBySlug.get(connectorSlug) ??
         catalogStatusItem({
-          connectorRef: type,
+          connectorSlug,
           authMethods: [authCodeMethod("oauth")],
-          tags: type === "github" ? ["vcs"] : [],
+          tags: connectorSlug === "github" ? ["vcs"] : [],
         })
       );
     }),
@@ -97,23 +97,23 @@ function stubAgent(id: string, displayName: string | null) {
   });
 }
 
-function stubUserConnectors(id: string, enabledTypes: string[]) {
+function stubUserConnectors(id: string, enabledConnectorSlugs: string[]) {
   return http.get(
     `http://localhost:3000/api/zero/agents/${id}/user-connectors`,
     () => {
-      return HttpResponse.json({ enabledTypes });
+      return HttpResponse.json({ enabledTypes: enabledConnectorSlugs });
     },
   );
 }
 
-function stubAvailableConnectors(types: string[]) {
+function stubAvailableConnectors(connectorSlugs: string[]) {
   return stubConnectorCatalogStatus(
-    types.map((type) => {
+    connectorSlugs.map((connectorSlug) => {
       return catalogStatusItem({
-        connectorRef: type,
-        label: type.replaceAll("-", " "),
+        connectorSlug,
+        label: connectorSlug.replaceAll("-", " "),
         authMethods: [authCodeMethod("oauth")],
-        tags: type === "google-ads" ? ["ads"] : [],
+        tags: connectorSlug === "google-ads" ? ["ads"] : [],
       });
     }),
   );

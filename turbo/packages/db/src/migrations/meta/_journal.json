@@ -5069,6 +5069,20 @@
       "when": 1785310179237,
       "tag": "0723_rename_chat_messages_to_chat_events",
       "breakpoints": true
+    },
+    {
+      "idx": 724,
+      "version": "7",
+      "when": 1785312573877,
+      "tag": "0724_input_goal_queue_event",
+      "breakpoints": true
+    },
+    {
+      "idx": 725,
+      "version": "7",
+      "when": 1785315790679,
+      "tag": "0725_rename_chat_message_asset_refs_to_chat_event_asset_refs",
+      "breakpoints": true
     }
   ]
 }

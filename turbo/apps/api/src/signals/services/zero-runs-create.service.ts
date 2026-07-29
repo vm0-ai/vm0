@@ -4,7 +4,7 @@ import { PLAN_UPGRADE_CLI_HINT } from "@vm0/api-contracts/contracts/errors";
 import { CANONICAL_WORKING_DIR } from "@vm0/api-contracts/contracts/runners";
 import { zeroRunsMainContract } from "@vm0/api-contracts/contracts/zero-runs";
 import type { TriggerSource } from "@vm0/api-contracts/contracts/logs";
-import type { ConnectorRef } from "@vm0/api-contracts/contracts/connector-identity";
+import type { ConnectorSlug } from "@vm0/api-contracts/contracts/connector-identity";
 import type { ModelProviderCredentialScope } from "@vm0/api-contracts/contracts/model-providers";
 import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import { permissionGrantsToFirewallPolicies } from "@vm0/connectors/firewall-metadata/policy";
@@ -857,7 +857,7 @@ async function loadZeroRunPostAuthorizationContext(
 
   const connectorCatalogSnapshot = await loadConnectorRuntimeSnapshot(db, {
     timing: args.timing,
-    requestedConnectorCount: bootstrapContext.allowedConnectorTypes.length,
+    requestedConnectorCount: bootstrapContext.allowedConnectorSlugs.length,
   });
   signal.throwIfAborted();
   const runPermissionPolicies = await measureZeroPreCreate(
@@ -869,7 +869,7 @@ async function loadZeroRunPostAuthorizationContext(
         stored: permissionGrantsToFirewallPolicies(
           bootstrapContext.permissionGrants,
         ),
-        connectorRefs: [...bootstrapContext.allowedConnectorTypes],
+        connectorSlugs: [...bootstrapContext.allowedConnectorSlugs],
       });
     },
   );
@@ -891,7 +891,7 @@ function buildZeroCreateAgentRunArgs(args: {
   readonly runPermissionPolicies: FirewallPolicies | null | undefined;
   readonly triggerAgentId: string | undefined;
   readonly workflows: readonly RunWorkflowRef[];
-  readonly allowedConnectorTypes: readonly ConnectorRef[];
+  readonly allowedConnectorSlugs: readonly ConnectorSlug[];
   readonly allowedCustomConnectorIds: readonly string[];
   readonly timing: ApiDispatchTimingCollector;
   readonly threadSessionResolution?: ChatThreadSessionResolution;
@@ -940,7 +940,7 @@ function buildZeroCreateAgentRunArgs(args: {
     queueOnConcurrencyLimit: true,
     injectSkillVolumes: { workflows: args.workflows },
     connectorScope: {
-      allowedConnectorTypes: args.allowedConnectorTypes,
+      allowedConnectorSlugs: args.allowedConnectorSlugs,
       allowedCustomConnectorIds: args.allowedCustomConnectorIds,
       source: "zero_agent",
     },
@@ -974,7 +974,7 @@ function buildZeroIntegrationCreateAgentRunArgs(args: {
   readonly zeroFinanceEnabled: boolean;
   readonly runPermissionPolicies: FirewallPolicies | null | undefined;
   readonly workflows: readonly RunWorkflowRef[];
-  readonly allowedConnectorTypes: readonly ConnectorRef[];
+  readonly allowedConnectorSlugs: readonly ConnectorSlug[];
   readonly allowedCustomConnectorIds: readonly string[];
   readonly timing: ApiDispatchTimingCollector;
 }): CreateAgentRunArgs {
@@ -1007,7 +1007,7 @@ function buildZeroIntegrationCreateAgentRunArgs(args: {
     queueOnConcurrencyLimit: true,
     injectSkillVolumes: { workflows: args.workflows },
     connectorScope: {
-      allowedConnectorTypes: args.allowedConnectorTypes,
+      allowedConnectorSlugs: args.allowedConnectorSlugs,
       allowedCustomConnectorIds: args.allowedCustomConnectorIds,
       source: "zero_agent",
     },
@@ -1026,7 +1026,7 @@ interface ZeroRunAfterPreCreateBase {
   readonly runPermissionPolicies: FirewallPolicies | null | undefined;
   readonly connectorCatalogSnapshot: ConnectorRuntimeSnapshot;
   readonly workflows: readonly RunWorkflowRef[];
-  readonly allowedConnectorTypes: readonly ConnectorRef[];
+  readonly allowedConnectorSlugs: readonly ConnectorSlug[];
   readonly allowedCustomConnectorIds: readonly string[];
   readonly timing: ApiDispatchTimingCollector;
   readonly cloudBrowserEnabled: boolean | undefined;
@@ -1177,7 +1177,7 @@ export const createZeroIntegrationRun$ = command(
       userInfo,
       featureSwitchContext,
       zeroFinanceEnabled,
-      allowedConnectorTypes,
+      allowedConnectorSlugs,
       allowedCustomConnectorIds,
       workflows,
       runPermissionPolicies,
@@ -1207,7 +1207,7 @@ export const createZeroIntegrationRun$ = command(
         runPermissionPolicies,
         connectorCatalogSnapshot,
         workflows,
-        allowedConnectorTypes,
+        allowedConnectorSlugs,
         allowedCustomConnectorIds,
         timing,
         cloudBrowserEnabled: undefined,
@@ -1268,7 +1268,7 @@ const createZeroRunInternal$ = command(
       userInfo,
       featureSwitchContext,
       zeroFinanceEnabled,
-      allowedConnectorTypes,
+      allowedConnectorSlugs,
       allowedCustomConnectorIds,
       workflows,
       runPermissionPolicies,
@@ -1306,7 +1306,7 @@ const createZeroRunInternal$ = command(
         connectorCatalogSnapshot,
         triggerAgentId,
         workflows,
-        allowedConnectorTypes,
+        allowedConnectorSlugs,
         allowedCustomConnectorIds,
         timing,
         cloudBrowserEnabled,

@@ -5,7 +5,7 @@ import { listZeroConnectorCatalogStatus } from "../../../lib/api";
 import { withErrorHandler } from "../../../lib/command";
 import { resolveAgentContext } from "../connector/agent-context";
 import { findConnectorStatusItem } from "../connector/public-catalog";
-import { MAIL_CONNECTOR_REF, currentAgentId } from "./shared";
+import { MAIL_CONNECTOR_SLUG_BY_PROVIDER, currentAgentId } from "./shared";
 
 export const listCommand = new Command()
   .name("list")
@@ -22,10 +22,10 @@ export const listCommand = new Command()
         throw new Error("Agent context could not be loaded");
       }
 
-      const rows = Object.entries(MAIL_CONNECTOR_REF).map(
-        ([provider, connectorRef]) => {
-          const connector = findConnectorStatusItem(connectors, connectorRef);
-          const authorized = agent.authorizedTypes.has(connectorRef);
+      const rows = Object.entries(MAIL_CONNECTOR_SLUG_BY_PROVIDER).map(
+        ([provider, connectorSlug]) => {
+          const connector = findConnectorStatusItem(connectors, connectorSlug);
+          const authorized = agent.authorizedConnectorSlugs.has(connectorSlug);
           const ready =
             authorized &&
             connector?.connected === true &&

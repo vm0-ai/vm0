@@ -34,7 +34,7 @@ import {
   type ZeroClientFactory,
 } from "../../signals/api-client.ts";
 import {
-  connectorCatalogStatusByRef$,
+  connectorCatalogStatusBySlug$,
   connectors$,
 } from "../../signals/external/connectors.ts";
 import { pageSignal$ } from "../../signals/page-signal.ts";
@@ -61,7 +61,7 @@ import {
   publicAttachmentUrl,
 } from "./zero-attachment-url.ts";
 
-const GOOGLE_DRIVE_CONNECTOR_REF = "google-drive";
+const GOOGLE_DRIVE_CONNECTOR_SLUG = "google-drive";
 const ARTIFACT_FLOATING_LAYER_CLASS =
   "!z-[10000] transition-[opacity,transform] duration-[180ms] ease data-[state=open]:!animate-none data-[state=closed]:!animate-none data-[state=open]:translate-y-0 data-[state=open]:opacity-100 data-[state=closed]:translate-y-2 data-[state=closed]:opacity-0";
 
@@ -366,29 +366,29 @@ function useGoogleDriveAvailability(
 ) {
   const connectorListLoadable = useLoadable(connectors$);
   const lastConnectorList = useLastResolved(connectors$);
-  const catalogByRefLoadable = useLoadable(connectorCatalogStatusByRef$);
-  const lastCatalogByRef = useLastResolved(connectorCatalogStatusByRef$);
+  const catalogBySlugLoadable = useLoadable(connectorCatalogStatusBySlug$);
+  const lastCatalogBySlug = useLastResolved(connectorCatalogStatusBySlug$);
   const connectorList =
     connectorListLoadable.state === "hasData"
       ? connectorListLoadable.data
       : connectorListLoadable.state === "loading"
         ? lastConnectorList
         : undefined;
-  const catalogByRef =
-    catalogByRefLoadable.state === "hasData"
-      ? catalogByRefLoadable.data
-      : catalogByRefLoadable.state === "loading"
-        ? lastCatalogByRef
+  const catalogBySlug =
+    catalogBySlugLoadable.state === "hasData"
+      ? catalogBySlugLoadable.data
+      : catalogBySlugLoadable.state === "loading"
+        ? lastCatalogBySlug
         : undefined;
   const googleDriveConnected =
     connectorList?.connectors.some((connector) => {
       return (
-        connector.type === GOOGLE_DRIVE_CONNECTOR_REF &&
+        connector.type === GOOGLE_DRIVE_CONNECTOR_SLUG &&
         connector.connectionStatus === "connected"
       );
     }) ?? false;
   const googleDriveConnector =
-    catalogByRef?.get(GOOGLE_DRIVE_CONNECTOR_REF) ?? null;
+    catalogBySlug?.get(GOOGLE_DRIVE_CONNECTOR_SLUG) ?? null;
   const googleDriveAuthMethod =
     googleDriveConnector === null
       ? null
@@ -397,7 +397,7 @@ function useGoogleDriveAvailability(
   return {
     connectorListLoaded:
       connectorList !== undefined &&
-      (googleDriveConnected || catalogByRef !== undefined),
+      (googleDriveConnected || catalogBySlug !== undefined),
     googleDriveAuthMethod,
     googleDriveConnected,
     googleDriveConnector,

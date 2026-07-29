@@ -14,7 +14,7 @@ const AGENT_ID = "550e8400-e29b-41d4-a716-446655440000";
 const THREAD_ID = "550e8400-e29b-41d4-a716-446655440001";
 const MAIL_DRAFT_ID = "550e8400-e29b-41d4-a716-446655440002";
 
-function stubAgentContext(enabledTypes: readonly string[]) {
+function stubAgentContext(enabledConnectorSlugs: readonly string[]) {
   return [
     http.get(`http://localhost:3000/api/zero/agents/${AGENT_ID}`, () => {
       return HttpResponse.json({
@@ -29,7 +29,9 @@ function stubAgentContext(enabledTypes: readonly string[]) {
     http.get(
       `http://localhost:3000/api/zero/agents/${AGENT_ID}/user-connectors`,
       () => {
-        return HttpResponse.json({ enabledTypes: [...enabledTypes] });
+        return HttpResponse.json({
+          enabledTypes: [...enabledConnectorSlugs],
+        });
       },
     ),
   ];
@@ -38,7 +40,7 @@ function stubAgentContext(enabledTypes: readonly string[]) {
 function mailCatalog() {
   return stubConnectorCatalogStatus([
     catalogStatusItem({
-      connectorRef: "gmail",
+      connectorSlug: "gmail",
       label: "Gmail",
       authMethods: [authCodeMethod()],
       connected: true,
@@ -51,7 +53,7 @@ function mailCatalog() {
       },
     }),
     catalogStatusItem({
-      connectorRef: "outlook-mail",
+      connectorSlug: "outlook-mail",
       label: "Outlook Mail",
       authMethods: [authCodeMethod()],
     }),

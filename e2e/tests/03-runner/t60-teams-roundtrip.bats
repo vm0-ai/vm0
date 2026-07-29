@@ -74,11 +74,29 @@ teardown_file() {
 
     wait_for_teams_run_completion "$TENANT_ID" 150
 
-    local state status_value
+    local state status_value chat_thread_id route_count
     state=$(teams_fetch_state "$TENANT_ID")
     status_value=$(echo "$state" | jq -r '[.recent_runs[] | select(.triggerSource == "teams")][0].status // ""')
     [[ "$status_value" == "completed" || "$status_value" == "succeeded" ]] || {
         echo "# run ended in non-successful state: $status_value" >&2
+        echo "# state: $state" >&2
+        return 1
+    }
+    chat_thread_id=$(echo "$state" | jq -r '[.recent_runs[] | select(.triggerSource == "teams")][0].chatThreadId // ""')
+    [[ -n "$chat_thread_id" ]] || {
+        echo "# Teams run was not bound to a canonical chat thread" >&2
+        echo "# state: $state" >&2
+        return 1
+    }
+    route_count=$(echo "$state" | jq \
+        --arg conversation "$CONVERSATION_ID" \
+        --arg chat_thread_id "$chat_thread_id" \
+        '[.routes[]
+          | select(.conversationId == $conversation)
+          | select(.chatThreadId == $chat_thread_id)]
+         | length')
+    [[ "$route_count" == "1" ]] || {
+        echo "# canonical Teams chat-thread route was not created" >&2
         echo "# state: $state" >&2
         return 1
     }

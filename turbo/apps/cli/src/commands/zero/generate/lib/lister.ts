@@ -263,7 +263,7 @@ interface ListerOptions {
 }
 
 interface GenerationCandidate {
-  type: string;
+  connectorSlug: string;
   label: string;
   status: CandidateStatus;
   reason: string;
@@ -344,7 +344,7 @@ function formatAccount(
 
 function getAction(
   status: CandidateStatus,
-  type: string,
+  connectorSlug: string,
   label: string,
   agentId: string | undefined,
   platformOrigin: string,
@@ -359,7 +359,7 @@ function getAction(
   if (status === "not-authorized" && agentId) {
     return {
       actionLabel: `Authorize ${label}`,
-      actionUrl: `${platformOrigin}/connectors/${type}/authorize?agentId=${agentId}`,
+      actionUrl: `${platformOrigin}/connectors/${connectorSlug}/authorize?agentId=${agentId}`,
     };
   }
 
@@ -367,13 +367,13 @@ function getAction(
     if (agentId) {
       return {
         actionLabel: `Connect and authorize ${label}`,
-        actionUrl: `${platformOrigin}/connectors/${type}/connect?agentId=${agentId}`,
+        actionUrl: `${platformOrigin}/connectors/${connectorSlug}/connect?agentId=${agentId}`,
       };
     }
 
     return {
       actionLabel: `Connect ${label}`,
-      actionUrl: `${platformOrigin}/connectors/${type}/connect`,
+      actionUrl: `${platformOrigin}/connectors/${connectorSlug}/connect`,
     };
   }
 
@@ -382,12 +382,13 @@ function getAction(
 
 function toCandidate(params: {
   connector: PublicConnectorCatalogStatusItem;
-  authorizedTypes: Set<string> | null;
+  authorizedConnectorSlugs: Set<string> | null;
   agentId: string | undefined;
   platformOrigin: string;
 }): GenerationCandidate {
-  const { connector, authorizedTypes, agentId, platformOrigin } = params;
-  const type = connector.connectorRef;
+  const { connector, authorizedConnectorSlugs, agentId, platformOrigin } =
+    params;
+  const connectorSlug = connector.connectorRef;
 
   let status: CandidateStatus;
   let reason: string;
@@ -400,7 +401,10 @@ function toCandidate(params: {
     reason = agentId
       ? "not connected or authorized for current agent"
       : "not connected";
-  } else if (authorizedTypes && !authorizedTypes.has(type)) {
+  } else if (
+    authorizedConnectorSlugs &&
+    !authorizedConnectorSlugs.has(connectorSlug)
+  ) {
     status = "not-authorized";
     reason = "connected, not authorized for current agent";
   } else {
@@ -411,13 +415,19 @@ function toCandidate(params: {
   }
 
   return {
-    type,
+    connectorSlug,
     label: connector.label,
     status,
     reason,
     account: connector.connected ? formatAccount(connector) : undefined,
     authMethod: connector.connection?.authMethod,
-    ...getAction(status, type, connector.label, agentId, platformOrigin),
+    ...getAction(
+      status,
+      connectorSlug,
+      connector.label,
+      agentId,
+      platformOrigin,
+    ),
   };
 }
 
@@ -426,10 +436,10 @@ function pad(value: string, width: number): string {
 }
 
 function renderRows(candidates: GenerationCandidate[]): void {
-  const typeWidth = Math.max(
+  const connectorSlugWidth = Math.max(
     4,
     ...candidates.map((candidate) => {
-      return candidate.type.length;
+      return candidate.connectorSlug.length;
     }),
   );
   const labelWidth = Math.max(
@@ -445,7 +455,7 @@ function renderRows(candidates: GenerationCandidate[]): void {
         ? (candidate.account ?? candidate.authMethod ?? "")
         : candidate.reason;
     console.log(
-      `  ${pad(candidate.type, typeWidth)}  ${pad(candidate.label, labelWidth)}  ${suffix}`,
+      `  ${pad(candidate.connectorSlug, connectorSlugWidth)}  ${pad(candidate.label, labelWidth)}  ${suffix}`,
     );
   }
 }
@@ -592,21 +602,24 @@ export async function runLister(
 ): Promise<void> {
   const connectorGenerationType = getConnectorGenerationType(generationType);
   const agentId = process.env.ZERO_AGENT_ID;
-  const [catalog, enabledTypes, platformOrigin, billing] = await Promise.all([
-    listZeroConnectorCatalogStatus(),
-    agentId ? getZeroAgentUserConnectors(agentId) : Promise.resolve(null),
-    getPlatformOrigin(),
-    generationType === "video" && currentTokenCanReadBilling()
-      ? getZeroBillingStatus()
-      : Promise.resolve(null),
-  ]);
-  const authorizedTypes = enabledTypes ? new Set(enabledTypes) : null;
+  const [catalog, enabledConnectorSlugs, platformOrigin, billing] =
+    await Promise.all([
+      listZeroConnectorCatalogStatus(),
+      agentId ? getZeroAgentUserConnectors(agentId) : Promise.resolve(null),
+      getPlatformOrigin(),
+      generationType === "video" && currentTokenCanReadBilling()
+        ? getZeroBillingStatus()
+        : Promise.resolve(null),
+    ]);
+  const authorizedConnectorSlugs = enabledConnectorSlugs
+    ? new Set(enabledConnectorSlugs)
+    : null;
   const candidates = connectorGenerationType
     ? getGenerationConnectors(connectorGenerationType, catalog.connectors).map(
         (connector) => {
           return toCandidate({
             connector,
-            authorizedTypes,
+            authorizedConnectorSlugs,
             agentId,
             platformOrigin,
           });

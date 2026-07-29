@@ -392,7 +392,7 @@ export async function buildGithubUserConnectAuthorizationUrl(args: {
   const redirectUri = `${args.origin}/api/connectors/github/callback`;
   const authResult = normalizeAuthUrlResult(
     await buildConnectorAuthCodeAuthorizationUrlWithMethod({
-      connectorRef: "github",
+      connectorSlug: "github",
       authMethodId: args.authMethodId,
       method: args.method,
       authClient,

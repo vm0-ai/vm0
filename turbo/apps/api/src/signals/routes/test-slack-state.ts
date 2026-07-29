@@ -40,10 +40,7 @@ import { db$, type Db, type ReadonlyDb, writeDb$ } from "../external/db";
 import type { RouteEntry } from "../route-entry";
 import { resolveTestOrgId$, testUserId$ } from "../services/cli-auth.service";
 import { encryptPersistentSecretValue } from "../services/crypto.utils";
-import {
-  chatEventTypeIn,
-  chatEventTypeSql,
-} from "../services/zero-chat-event-type.service";
+import { chatEventTypeIn } from "../services/zero-chat-event-type.service";
 import {
   isTestEndpointAllowed,
   testEndpointNotFoundResponse,
@@ -572,7 +569,7 @@ function slackPendingChatEventRows(db: ReadonlyDb, teamId: string) {
     .select({
       id: chatMessages.id,
       chatThreadId: chatMessages.chatThreadId,
-      eventType: chatEventTypeSql().as("event_type"),
+      eventType: chatMessages.eventType,
       triggerSource: chatMessages.triggerSource,
       createdAt: chatMessages.createdAt,
     })

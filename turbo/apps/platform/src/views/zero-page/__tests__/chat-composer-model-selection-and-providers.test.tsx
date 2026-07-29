@@ -2203,12 +2203,14 @@ describe("chat composer models", () => {
     const user = userEvent.setup({ delay: null });
     const initialAuthorization = context.mocks.deferred<void>();
     let authorizationRequestCount = 0;
-    let enabledTypes: string[] = ["slack"];
+    let enabledConnectorSlugs: string[] = ["slack"];
     let updatedAuthorizationAgentId: string | undefined;
 
     mockOrgModelRoutes("claude-sonnet-4-6");
     mockAgent();
-    mockConnectors([{ type: "slack", externalUsername: "launch-team" }]);
+    mockConnectors([
+      { connectorSlug: "slack", externalUsername: "launch-team" },
+    ]);
     mockChatLifecycle(context, { threadId: THREAD_ID });
     mockComposerThreadSnapshot([
       { id: THREAD_ID, agentId: AGENT_ID, title: "First Scout thread" },
@@ -2225,15 +2227,18 @@ describe("chat composer models", () => {
         if (authorizationRequestCount === 1) {
           await withSignal(initialAuthorization.promise);
         }
-        return respond(200, { enabledTypes });
+        return respond(200, { enabledTypes: enabledConnectorSlugs });
       },
     );
     context.mocks.api(
       zeroUserConnectorsContract.update,
       ({ params, body, respond }) => {
         updatedAuthorizationAgentId = params.id;
-        enabledTypes = applyUserConnectorUpdate(enabledTypes, body);
-        return respond(200, { enabledTypes });
+        enabledConnectorSlugs = applyUserConnectorUpdate(
+          enabledConnectorSlugs,
+          body,
+        );
+        return respond(200, { enabledTypes: enabledConnectorSlugs });
       },
     );
 
@@ -2289,7 +2294,9 @@ describe("chat composer models", () => {
 
     mockOrgModelRoutes("claude-sonnet-4-6");
     mockAgent({ includeOtherAgent: true });
-    mockConnectors([{ type: "slack", externalUsername: "launch-team" }]);
+    mockConnectors([
+      { connectorSlug: "slack", externalUsername: "launch-team" },
+    ]);
     mockChatLifecycle(context, { threadId: THREAD_ID });
     mockComposerThreadSnapshot([
       { id: THREAD_ID, agentId: AGENT_ID, title: "Scout thread" },
@@ -2324,12 +2331,12 @@ describe("chat composer models", () => {
       zeroUserConnectorsContract.update,
       ({ params, body, respond }) => {
         updatedAuthorizationAgentId = params.id;
-        const enabledTypes = applyUserConnectorUpdate(
+        const enabledConnectorSlugs = applyUserConnectorUpdate(
           enabledByAgent.get(params.id) ?? [],
           body,
         );
-        enabledByAgent.set(params.id, enabledTypes);
-        return respond(200, { enabledTypes });
+        enabledByAgent.set(params.id, enabledConnectorSlugs);
+        return respond(200, { enabledTypes: enabledConnectorSlugs });
       },
     );
     context.mocks.api(

@@ -14,7 +14,7 @@ type PermissionAction = "allow" | "deny";
 export interface PermissionActionDescriptor {
   scope: "agent";
   agentId: string;
-  connectorRef: string;
+  connectorSlug: string;
   permission: string;
   action: PermissionAction;
   method: string | null;
@@ -171,7 +171,8 @@ export function parsePermissionActionUrl(
   if (!path) {
     return null;
   }
-  const connectorRef = url.searchParams.get("ref");
+  // TODO(#23619): Rename this serialized chat-action query parameter.
+  const connectorSlug = url.searchParams.get("ref");
   const permission = url.searchParams.get("permission");
   const action = url.searchParams.get("action") ?? "allow";
   const method = url.searchParams.get("method");
@@ -185,7 +186,7 @@ export function parsePermissionActionUrl(
 
   if (
     !path.agentId ||
-    !connectorRef ||
+    !connectorSlug ||
     !permission ||
     !isPermissionAction(action)
   ) {
@@ -195,7 +196,7 @@ export function parsePermissionActionUrl(
   return {
     scope: path.scope,
     agentId: path.agentId,
-    connectorRef,
+    connectorSlug,
     permission,
     action,
     method,

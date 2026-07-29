@@ -1,6 +1,6 @@
 import {
-  connectorRefSchema,
-  type ConnectorRef,
+  connectorSlugSchema,
+  type ConnectorSlug,
 } from "@vm0/api-contracts/contracts/connector-identity";
 import {
   publicConnectorCatalogIconSchema,
@@ -19,8 +19,10 @@ import {
   type ConnectorRedirectingStatus,
 } from "./connector-redirecting.ts";
 
-function connectorTypeFromPath(value: string | undefined): ConnectorRef | null {
-  const parsed = connectorRefSchema.safeParse(value?.toLowerCase());
+function connectorSlugFromPath(
+  value: string | undefined,
+): ConnectorSlug | null {
+  const parsed = connectorSlugSchema.safeParse(value?.toLowerCase());
   return parsed.success ? parsed.data : null;
 }
 
@@ -44,12 +46,12 @@ function connectorIconFromSearchParams(
 export const setupConnectorRedirectingPage$ = command(
   async ({ get, set }, signal: AbortSignal) => {
     const params = get(pathParams$);
-    const connectorType = connectorTypeFromPath(
+    const connectorSlug = connectorSlugFromPath(
       typeof params?.type === "string" ? params.type : undefined,
     );
     const searchParams = get(searchParams$);
     const connectorLabel =
-      searchParams.get("label")?.trim() || connectorType || "connector";
+      searchParams.get("label")?.trim() || connectorSlug || "connector";
     const status: ConnectorRedirectingStatus =
       searchParams.get("status") === "error" ? "error" : "redirecting";
     const connectorIcon = connectorIconFromSearchParams(searchParams);

@@ -2,7 +2,7 @@ import { z } from "zod";
 import { initContract } from "./base";
 import {
   connectorAuthMethodIdSchema,
-  connectorRefSchema,
+  connectorSlugSchema,
 } from "./connector-identity";
 
 const c = initContract();
@@ -51,7 +51,8 @@ export const cliAuthTestConnectorContract = c.router({
     responses: {
       200: z.object({
         ok: z.literal(true),
-        connectorType: connectorRefSchema,
+        // TODO(#23619): Rename this test API wire field with its CLI caller.
+        connectorType: connectorSlugSchema,
         orgId: z.string(),
       }),
       400: stringErrorResponseSchema,
@@ -68,12 +69,14 @@ export const cliAuthTestEnableConnectorContract = c.router({
     query: testEmailQuerySchema,
     body: z.object({
       composeId: z.string().uuid(),
+      // TODO(#23619): Rename these test API wire fields with their CLI caller.
       connectorTypes: z.array(z.string()).min(1),
     }),
     responses: {
       200: z.object({
         ok: z.literal(true),
         composeId: z.string(),
+        // TODO(#23619): Rename with the corresponding request field.
         connectorTypes: z.array(z.string()),
       }),
       400: stringErrorResponseSchema,

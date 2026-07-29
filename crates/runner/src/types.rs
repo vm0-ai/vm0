@@ -1110,6 +1110,7 @@ pub struct NetworkPolicyRefresh {
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct NetworkPolicyRefreshResponse {
+    /// TODO(#23619): Rename only with the runner API response wire contract.
     pub connector_ref: String,
     pub network_policy: NetworkPolicy,
     pub next_refresh_at: Option<String>,

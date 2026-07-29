@@ -65,7 +65,7 @@ describe("connector redirecting page", () => {
     expect(warning).toHaveClass("text-amber-600");
   });
 
-  it("renders a validated catalog icon for an unknown server connector ref", async () => {
+  it("renders a validated catalog icon for an unknown server connector slug", async () => {
     detachedSetupPage({
       context,
       path: "/connectors/server-only/redirecting?label=Server+Only&iconUrl=https%3A%2F%2Ficons.example.test%2Fserver-only.svg&iconInvertInDarkMode=true&iconScale=1.5",

@@ -136,6 +136,7 @@ const createGoalInner$ = command(async ({ get, set }, signal: AbortSignal) => {
         set(
           bootstrapGoalRun$,
           {
+            db,
             goal: bootstrapGoal,
             dispatchFailedCallbacks: dispatchFailedRunCallbacks,
           },
@@ -149,7 +150,7 @@ const createGoalInner$ = command(async ({ get, set }, signal: AbortSignal) => {
         },
       );
       signal.throwIfAborted();
-      if (bootstrap && bootstrap.kind !== "ok") {
+      if (bootstrap?.kind === "failed-to-enqueue") {
         log.warn("Goal bootstrap run was not enqueued", {
           goalId: bootstrapGoal.goalId,
           reason: bootstrap.kind,

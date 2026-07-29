@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.37.160](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.37.159...sandbox-fc-v0.37.160) (2026-07-29)
+
+
+### Performance Improvements
+
+* **sandbox-fc:** parallelize leaked sandbox cleanup ([#23689](https://github.com/vm0-ai/vm0/issues/23689)) ([f3b2b5c](https://github.com/vm0-ai/vm0/commit/f3b2b5cd0c677da566abb7cc7a3499ea3776c817))
+
 ## [0.37.159](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.37.158...sandbox-fc-v0.37.159) (2026-07-29)
 
 

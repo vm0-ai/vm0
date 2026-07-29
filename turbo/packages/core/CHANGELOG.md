@@ -1,5 +1,43 @@
 # Changelog
 
+## [8.485.0](https://github.com/vm0-ai/vm0/compare/core-v8.484.4...core-v8.485.0) (2026-07-29)
+
+
+### Features
+
+* **zero:** enable zero finance for all users ([#23701](https://github.com/vm0-ai/vm0/issues/23701)) ([e2aac84](https://github.com/vm0-ai/vm0/commit/e2aac848b5e88debc8f729e1899210e742183fb0))
+
+
+### Refactoring
+
+* **connectors:** adopt slug terminology internally ([#23697](https://github.com/vm0-ai/vm0/issues/23697)) ([ffa2a39](https://github.com/vm0-ai/vm0/commit/ffa2a39c3624c85ceed4d3b6bed32bc652ed4feb))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.244.0
+
+## [8.484.4](https://github.com/vm0-ai/vm0/compare/core-v8.484.3...core-v8.484.4) (2026-07-29)
+
+
+### Bug Fixes
+
+* expose inline template switch in lab ([#23670](https://github.com/vm0-ai/vm0/issues/23670)) ([cfd234c](https://github.com/vm0-ai/vm0/commit/cfd234c7a304f88877e2a1f226c9d017fb229a91))
+
+
+### Refactoring
+
+* remove org plan entitlement reads switch ([#23698](https://github.com/vm0-ai/vm0/issues/23698)) ([8fde46e](https://github.com/vm0-ai/vm0/commit/8fde46ecfbddaf2b003ff33dbcb01ee37f87f859))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.243.4
+
 ## [8.484.3](https://github.com/vm0-ai/vm0/compare/core-v8.484.2...core-v8.484.3) (2026-07-29)
 
 
