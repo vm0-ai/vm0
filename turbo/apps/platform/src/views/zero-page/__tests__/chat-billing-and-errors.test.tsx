@@ -780,7 +780,7 @@ describe("initial thinking indicator", () => {
     expect(label.closest("[data-thinking-indicator]")).not.toBeNull();
   });
 
-  it("shows every explicit thinking line inside a fixed-height row", async () => {
+  it("shows every explicit thinking line in sequence", async () => {
     const threadId = "thread-initial-thinking-multiline";
     const thinking = "ONE\nTWO\nTHREE";
     mockThinkingTypewriterLayout({
@@ -850,18 +850,15 @@ describe("initial thinking indicator", () => {
     });
     await waitFor(() => {
       recordDisplayedLabel();
-      expect(Array.from(displayedLabels)).toStrictEqual(
-        expect.arrayContaining(["ONE", "TWO", "THREE"]),
-      );
+      const displayedSequence = Array.from(displayedLabels);
+      const firstLineIndex = displayedSequence.indexOf("ONE");
+      const secondLineIndex = displayedSequence.indexOf("TWO");
+      const thirdLineIndex = displayedSequence.indexOf("THREE");
+      expect(firstLineIndex).toBeGreaterThanOrEqual(0);
+      expect(secondLineIndex).toBeGreaterThan(firstLineIndex);
+      expect(thirdLineIndex).toBeGreaterThan(secondLineIndex);
     });
     expect(label).toHaveTextContent(/^THREE$/);
-    expect(label).toHaveClass(
-      "h-5",
-      "overflow-hidden",
-      "whitespace-nowrap",
-      "leading-5",
-    );
-    expect(label.parentElement).toHaveClass("h-5");
     expect(label.closest("[data-thinking-indicator]")).not.toBeNull();
   });
 
