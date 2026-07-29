@@ -71,6 +71,10 @@ const browserUseSessionSchema = z.object({
 
 export type BrowserUseSession = z.infer<typeof browserUseSessionSchema>;
 
+function parseBrowserUseSession(body: unknown): BrowserUseSession {
+  return browserUseSessionSchema.parse(body, { reportInput: true });
+}
+
 export class BrowserUseProviderError extends Error {
   readonly status: 502 | 503;
   readonly code: string;
@@ -250,7 +254,7 @@ export async function createBrowserUseSession(
     },
     signal,
   );
-  return browserUseSessionSchema.parse(body);
+  return parseBrowserUseSession(body);
 }
 
 export async function getBrowserUseSession(
@@ -262,7 +266,7 @@ export async function getBrowserUseSession(
     { method: "GET" },
     signal,
   );
-  return browserUseSessionSchema.parse(body);
+  return parseBrowserUseSession(body);
 }
 
 export async function stopBrowserUseSession(
@@ -277,5 +281,5 @@ export async function stopBrowserUseSession(
     },
     signal,
   );
-  return browserUseSessionSchema.parse(body);
+  return parseBrowserUseSession(body);
 }
