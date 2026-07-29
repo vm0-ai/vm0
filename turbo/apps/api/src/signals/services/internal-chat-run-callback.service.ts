@@ -49,6 +49,7 @@ import { writeDb$, type Db } from "../external/db";
 import {
   publishChatThreadMessageCreatedSafely,
   publishThreadListChanged,
+  publishThreadListChangedSafely,
   publishUserSignal,
 } from "../external/realtime";
 import {
@@ -1348,11 +1349,8 @@ async function insertAssistantErrorMessage(args: {
     return { inserted: false };
   }
 
-  await publishUserSignal(
-    [args.userId],
-    `chatThreadMessageCreated:${args.threadId}`,
-  );
-  await publishThreadListChanged(args.userId);
+  await publishChatThreadMessageCreatedSafely(args.userId, args.threadId);
+  await publishThreadListChangedSafely(args.userId);
   return {
     displayErrorMessage,
     inserted: true,
@@ -1602,11 +1600,8 @@ async function insertRunLifecycleMarker(
   if (!inserted) {
     return { inserted: false };
   }
-  await publishUserSignal(
-    [args.userId],
-    `chatThreadMessageCreated:${args.threadId}`,
-  );
-  await publishThreadListChanged(args.userId);
+  await publishChatThreadMessageCreatedSafely(args.userId, args.threadId);
+  await publishThreadListChangedSafely(args.userId);
   return {
     inserted: true,
     slackDeliveryCallbackId: inserted.slackDeliveryCallbackId,

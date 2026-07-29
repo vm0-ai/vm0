@@ -714,7 +714,6 @@ describe("realtime signals", () => {
             onAutomationsChanged$: keepAliveLoop$,
             onArtifactsChanged$: keepAliveLoop$,
             onWorkflowsChanged$: keepAliveLoop$,
-            onWorkflowQueueChanged$: keepAliveLoop$,
             onSubscribed$: failReadyCatchup$,
           },
         },

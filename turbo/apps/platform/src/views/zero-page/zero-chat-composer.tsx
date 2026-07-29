@@ -29,14 +29,12 @@ import {
   IconColorSwatch,
   IconDeviceDesktop,
   IconDownload,
-  IconDots,
   IconPresentation,
   IconLoader2,
   IconLink,
   IconMicrophone,
   IconPaperclip,
   IconPalette,
-  IconPlayerPause,
   IconPlayerPlay,
   IconPlayerStop,
   IconPlug,
@@ -62,10 +60,6 @@ import {
   Button,
   Card,
   CardContent,
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
   Input,
   Popover,
   PopoverClose,
@@ -351,14 +345,6 @@ export interface ZeroChatComposerProps {
   workflowEventItems?: WorkflowEventComposerItem[];
   /** Skips one pending workflow event. */
   onRemoveWorkflowEvent?: (id: string) => void;
-  /** Whether workflow event processing is paused for this thread. */
-  workflowEventsPaused?: boolean;
-  /** Optional server-provided reason for the paused workflow event queue. */
-  workflowEventsPauseReason?: string | null;
-  /** Pauses or resumes workflow event processing without affecting messages. */
-  onSetWorkflowEventsPaused?: (paused: boolean) => void;
-  /** Clears every pending workflow event without affecting messages. */
-  onClearWorkflowEvents?: () => void;
   /**
    * The thread's active goal. Rendered as a row beneath the queued messages in
    * the strip above the composer — a goal runs only once the queue drains, so it
@@ -720,73 +706,12 @@ function ActiveGoalObjectiveDialog({ threadId }: { threadId?: string }) {
   );
 }
 
-function PendingItemsStripHeader({
-  count,
-  label,
-  workflowEventCount,
-  workflowEventsPaused,
-  onSetWorkflowEventsPaused,
-  onClearWorkflowEvents,
-}: {
-  count: number;
-  label: string;
-  workflowEventCount: number;
-  workflowEventsPaused: boolean;
-  onSetWorkflowEventsPaused?: (paused: boolean) => void;
-  onClearWorkflowEvents?: () => void;
-}) {
-  const showWorkflowControls =
-    onSetWorkflowEventsPaused !== undefined &&
-    (workflowEventCount > 0 || workflowEventsPaused);
+function PendingItemsStripHeader({ label }: { label: string }) {
   return (
     <div className="flex items-center gap-2 px-5 pt-3 pb-2">
       <div className="min-w-0 flex-1">
-        <span className="text-sm text-muted-foreground">
-          {count > 0 ? label : "Automation events paused"}
-        </span>
+        <span className="text-sm text-muted-foreground">{label}</span>
       </div>
-      {showWorkflowControls ? (
-        <button
-          type="button"
-          className="inline-flex h-7 shrink-0 items-center gap-1 rounded-md px-2 text-xs text-muted-foreground transition-colors hover:bg-[hsl(var(--gray-200))] hover:text-sidebar-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-          aria-label={
-            workflowEventsPaused
-              ? "Resume automation events"
-              : "Pause automation events"
-          }
-          onClick={() => {
-            onSetWorkflowEventsPaused?.(!workflowEventsPaused);
-          }}
-        >
-          {workflowEventsPaused ? (
-            <IconPlayerPlay size={14} stroke={1.5} />
-          ) : (
-            <IconPlayerPause size={14} stroke={1.5} />
-          )}
-          {workflowEventsPaused ? "Resume events" : "Pause events"}
-        </button>
-      ) : null}
-      {workflowEventCount > 0 && onClearWorkflowEvents ? (
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <button
-              type="button"
-              className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-[hsl(var(--gray-200))] hover:text-sidebar-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-              aria-label="Automation event queue actions"
-            >
-              <IconDots size={16} stroke={1.5} />
-            </button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end" className="w-52">
-            <DropdownMenuItem
-              className="text-destructive focus:text-destructive"
-              onClick={onClearWorkflowEvents}
-            >
-              Clear automation events ({workflowEventCount})
-            </DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
-      ) : null}
     </div>
   );
 }
@@ -796,10 +721,6 @@ function PendingItemsStrip({
   onRemove,
   workflowEvents,
   onRemoveWorkflowEvent,
-  workflowEventsPaused,
-  workflowEventsPauseReason,
-  onSetWorkflowEventsPaused,
-  onClearWorkflowEvents,
   activeGoal,
   onCancelGoal,
   onOpenGoal,
@@ -808,10 +729,6 @@ function PendingItemsStrip({
   onRemove?: (id: string) => void;
   workflowEvents: WorkflowEventComposerItem[] | undefined;
   onRemoveWorkflowEvent?: (id: string) => void;
-  workflowEventsPaused: boolean;
-  workflowEventsPauseReason?: string | null;
-  onSetWorkflowEventsPaused?: (paused: boolean) => void;
-  onClearWorkflowEvents?: () => void;
   activeGoal?: ActiveGoalComposerItem;
   onCancelGoal?: () => void;
   onOpenGoal?: () => void;
@@ -825,28 +742,12 @@ function PendingItemsStrip({
     queued.length > 0 && events.length > 0
       ? `${messageLabel} and ${eventLabel} waiting`
       : `${queued.length > 0 ? messageLabel : eventLabel} waiting`;
-  if (count === 0 && !activeGoal && !workflowEventsPaused) {
+  if (count === 0 && !activeGoal) {
     return null;
   }
   return (
     <div className="relative z-0 mx-5 -mb-6 overflow-hidden rounded-xl bg-gray-50 dark:bg-gray-100">
-      {count > 0 || workflowEventsPaused ? (
-        <PendingItemsStripHeader
-          count={count}
-          label={label}
-          workflowEventCount={events.length}
-          workflowEventsPaused={workflowEventsPaused}
-          onSetWorkflowEventsPaused={onSetWorkflowEventsPaused}
-          onClearWorkflowEvents={onClearWorkflowEvents}
-        />
-      ) : null}
-      {workflowEventsPaused ? (
-        <div className="mx-4 mb-1 rounded-md border border-amber-500/30 bg-amber-500/10 px-2 py-1.5 text-xs text-amber-700 dark:text-amber-400">
-          Automation events paused
-          {workflowEventsPauseReason ? `: ${workflowEventsPauseReason}` : ""}.
-          New events keep queueing and run after you resume.
-        </div>
-      ) : null}
+      {count > 0 ? <PendingItemsStripHeader label={label} /> : null}
       <div className="max-h-[200px] overflow-y-auto px-2 pb-7 pt-1" role="list">
         {queued.map((item) => {
           return (
@@ -7115,10 +7016,6 @@ export function useZeroChatComposer(
     onRemoveQueuedItem,
     workflowEventItems,
     onRemoveWorkflowEvent,
-    workflowEventsPaused = false,
-    workflowEventsPauseReason,
-    onSetWorkflowEventsPaused,
-    onClearWorkflowEvents,
     activeGoal,
     onCancelActiveGoal,
   }: ZeroChatComposerProps,
@@ -7582,10 +7479,6 @@ export function useZeroChatComposer(
           onRemove={onRemoveQueuedItem}
           workflowEvents={workflowEventItems}
           onRemoveWorkflowEvent={onRemoveWorkflowEvent}
-          workflowEventsPaused={workflowEventsPaused}
-          workflowEventsPauseReason={workflowEventsPauseReason}
-          onSetWorkflowEventsPaused={onSetWorkflowEventsPaused}
-          onClearWorkflowEvents={onClearWorkflowEvents}
           activeGoal={activeGoal}
           onCancelGoal={onCancelActiveGoal}
           onOpenGoal={

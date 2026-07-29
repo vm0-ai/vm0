@@ -3073,8 +3073,8 @@ function useChatComposerQueue(
   const pageSignal = useGet(pageSignal$);
 
   const queuedEventsById = new Map(
-    queuedEvents.map((event) => {
-      return [event.id, event] as const;
+    queuedEvents.flatMap((event) => {
+      return event.kind === "message" ? [[event.id, event] as const] : [];
     }),
   );
   const queuedItems: QueuedComposerItem[] = Array.from(
@@ -3102,18 +3102,18 @@ function useChatComposerQueue(
   return { queuedItems, onRemoveQueuedItem };
 }
 
-function useChatComposerWorkflowEvents(thread: ChatThreadSignals) {
-  const queue = useLastResolved(thread.workflowQueue.queue$);
+function useChatComposerWorkflowEvents(
+  thread: ChatThreadSignals,
+  queuedEvents: readonly QueuedChatEventItem[],
+) {
   const workflowAutomations =
     useLastResolved(thread.headerAutomations.automations$) ?? [];
-  const skipEvent = useSet(thread.workflowQueue.skipEvent$);
-  const clearEvents = useSet(thread.workflowQueue.clear$);
-  const setEventsPaused = useSet(thread.workflowQueue.setPaused$);
+  const skipEvent = useSet(thread.skipAutomationEvent$);
   const pageSignal = useGet(pageSignal$);
   const pendingEventIds = new Set(
-    queue?.pending.map((event) => {
-      return event.id;
-    }) ?? [],
+    queuedEvents.flatMap((event) => {
+      return event.kind === "automation" ? [event.id] : [];
+    }),
   );
   const workflowLabelsByAutomationId = new Map(
     workflowAutomations.map((automation) => {
@@ -3123,8 +3123,11 @@ function useChatComposerWorkflowEvents(thread: ChatThreadSignals) {
       ] as const;
     }),
   );
-  const workflowEventItems: WorkflowEventComposerItem[] =
-    queue?.pending.map((event) => {
+  const workflowEventItems: WorkflowEventComposerItem[] = queuedEvents.flatMap(
+    (event) => {
+      if (event.kind !== "automation") {
+        return [];
+      }
       return {
         id: event.id,
         text:
@@ -3132,7 +3135,8 @@ function useChatComposerWorkflowEvents(thread: ChatThreadSignals) {
           workflowLabelsByAutomationId.get(event.automationId) ||
           "Automation event",
       };
-    }) ?? [];
+    },
+  );
 
   const onRemoveWorkflowEvent = (id: string) => {
     if (!pendingEventIds.has(id)) {
@@ -3144,14 +3148,6 @@ function useChatComposerWorkflowEvents(thread: ChatThreadSignals) {
   return {
     workflowEventItems,
     onRemoveWorkflowEvent,
-    workflowEventsPaused: queue ? queue.pausedAt !== null : false,
-    workflowEventsPauseReason: queue?.pauseReason,
-    onSetWorkflowEventsPaused: (paused: boolean) => {
-      detach(setEventsPaused(paused, pageSignal), Reason.DomCallback);
-    },
-    onClearWorkflowEvents: () => {
-      detach(clearEvents(pageSignal), Reason.DomCallback);
-    },
   };
 }
 
@@ -3454,7 +3450,15 @@ function equalQueuedEventItems(
   next: readonly QueuedChatEventItem[],
 ): boolean {
   return equalArrays(previous, next, (left, right) => {
-    return left.id === right.id && left.text === right.text;
+    if (left.kind !== right.kind || left.id !== right.id) {
+      return false;
+    }
+    return left.kind === "message" && right.kind === "message"
+      ? left.text === right.text
+      : left.kind === "automation" &&
+          right.kind === "automation" &&
+          left.automationId === right.automationId &&
+          left.triggerBrief === right.triggerBrief;
   });
 }
 
@@ -3497,7 +3501,10 @@ function ChatThreadComposer({
     thread,
     queuedEventItems,
   );
-  const workflowEvents = useChatComposerWorkflowEvents(thread);
+  const workflowEvents = useChatComposerWorkflowEvents(
+    thread,
+    queuedEventItems,
+  );
   const { activeGoal, onCancelActiveGoal } = useChatComposerActiveGoal(
     thread,
     pageSignal,

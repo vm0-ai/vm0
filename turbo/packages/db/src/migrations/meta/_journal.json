@@ -5164,8 +5164,22 @@
     {
       "idx": 737,
       "version": "7",
-      "when": 1785341527268,
-      "tag": "0737_retire_legacy_user_message_storage",
+      "when": 1785341952944,
+      "tag": "0737_browser_session_resize_state",
+      "breakpoints": true
+    },
+    {
+      "idx": 738,
+      "version": "7",
+      "when": 1785344698053,
+      "tag": "0738_expand_connector_slug_columns",
+      "breakpoints": true
+    },
+    {
+      "idx": 739,
+      "version": "7",
+      "when": 1785367511267,
+      "tag": "0739_retire_legacy_user_message_storage",
       "breakpoints": true
     }
   ]
