@@ -298,7 +298,7 @@ mod tests {
     use crate::restored_session_identity::{
         RestoredSessionFramework, RestoredSessionHistoryHashSizeRelationship,
     };
-    use crate::test_fixtures::execution_context_for_test;
+    use crate::test_fixtures::execution_context::execution_context_for_test;
     use crate::types::{
         ResumeSession, ResumeSessionHistory, ResumeSessionHistoryEncoding, ResumeSessionHistoryRef,
         ResumeSessionHistoryRefKind,

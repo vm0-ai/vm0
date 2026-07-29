@@ -2,7 +2,7 @@ use super::super::super::*;
 use super::env::MockRunEnv;
 use super::wait::assert_run_exits_within;
 use crate::provider::JobCandidate;
-use crate::test_fixtures::execution_context_for_test;
+use crate::test_fixtures::execution_context::execution_context_for_test;
 
 pub(in super::super) const TEST_SESSION_LAST_COMPLETED_AT: &str = "2026-05-28T00:00:00.000Z";
 

@@ -1237,7 +1237,7 @@ mod tests {
     use super::*;
     use crate::http::{HttpClient, HttpClientConfig};
     use crate::restored_session_identity::RestoredSessionHistoryPrefixAttribution;
-    use crate::test_fixtures::OneShotSessionHistoryServer;
+    use crate::test_fixtures::session_history::OneShotSessionHistoryServer;
     use crate::types::{
         ResumeSessionHistory, ResumeSessionHistoryEncoding, ResumeSessionHistoryRef,
         ResumeSessionHistoryRefKind,

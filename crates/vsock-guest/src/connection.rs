@@ -494,7 +494,6 @@ impl ConnectionDispatcher {
                 }) {
                     log("WARN", &format!("Failed to send shutdown_ack: {e}"));
                 }
-                log("INFO", "Shutdown complete, exiting");
                 Ok(DispatchOutcome::Shutdown)
             }
         }
@@ -637,6 +636,18 @@ fn handle_connection_with_outcome(
                 return Err(session.failure(error));
             }
             Err(DecodeWithError::Visitor(DecodeDispatchError::Shutdown)) => {
+                // Shutdown is terminal, so ignore all later frames while
+                // retaining the transport until the host has observed the ACK
+                // or abandoned its bounded graceful-shutdown attempt.
+                loop {
+                    match reader.read(&mut buf) {
+                        Ok(0) => break,
+                        Ok(_) => {}
+                        Err(error) if error.kind() == io::ErrorKind::Interrupted => continue,
+                        Err(_) => break,
+                    }
+                }
+                log("INFO", "Shutdown complete, exiting");
                 return Ok(ConnectionEnd::Shutdown);
             }
         }

@@ -60,7 +60,7 @@ use crate::restored_session_identity::{
 use crate::storage_fingerprints::{StorageFingerprint, StorageFingerprints};
 use crate::storage_manifest::StorageManifest;
 use crate::telemetry::SessionHistoryTelemetrySnapshot;
-use crate::test_fixtures::OneShotSessionHistoryServer;
+use crate::test_fixtures::session_history::OneShotSessionHistoryServer;
 use crate::types::{
     CodexRuntimeConfig, ExecutionContext, FirewallEntry, ResumeSession, ResumeSessionHistory,
     ResumeSessionHistoryDownloadSource, ResumeSessionHistoryEncoding, ResumeSessionHistoryRef,

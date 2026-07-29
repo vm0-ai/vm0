@@ -1,6 +1,8 @@
 use std::time::Duration;
 
-use crate::test_fixtures::{ignored_child_test_env_guard_enabled, run_ignored_child_test};
+use crate::test_fixtures::ignored_child::{
+    ignored_child_test_env_guard_enabled, run_ignored_child_test,
+};
 
 use super::super::{R2Error, R2ImageCache, config::ENV_VARS, keys::key_for_template_hash};
 
