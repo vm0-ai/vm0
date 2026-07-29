@@ -2259,6 +2259,21 @@ const queryBuilderCases = {
         await db.execute(query);
       `,
     },
+    {
+      code: `${structuredSelectionPreamble}
+        import { eq, max, sql } from "drizzle-orm";
+        import { alias } from "drizzle-orm/pg-core";
+        const boundaryMessage = alias(messages, "boundary_message");
+        const boundary = db
+          .select({ id: max(boundaryMessage.id) })
+          .from(boundaryMessage)
+          .where(eq(boundaryMessage.userId, users.id));
+        db
+          .select()
+          .from(users)
+          .where(sql\`\${users.id} > COALESCE(\${boundary}, 0)\`);
+      `,
+    },
   ],
   readInvalid: [
     {
@@ -3513,6 +3528,23 @@ const queryBuilderCases = {
         { messageId: "structuredScalarQuery" },
         { messageId: "structuredScalarQuery" },
       ],
+    },
+    {
+      code: `${structuredSelectionPreamble}
+        import { eq, max, sql } from "drizzle-orm";
+        import { alias } from "drizzle-orm/pg-core";
+        const boundaryMessage = alias(messages, "boundary_message");
+        const boundary = sql\`COALESCE((
+          SELECT \${max(boundaryMessage.id)}
+          FROM \${boundaryMessage}
+          WHERE \${eq(boundaryMessage.userId, users.id)}
+        ), 0)\`;
+        db
+          .select()
+          .from(users)
+          .where(sql\`boundary_matches(\${boundary})\`);
+      `,
+      errors: [{ messageId: "structuredScalarQuery" }],
     },
   ],
 } satisfies {

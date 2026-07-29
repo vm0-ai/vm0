@@ -200,6 +200,7 @@ async function startChatRun(
     readonly attachFiles?: readonly AttachFile[];
     readonly generationTemplate?: GenerationTemplateRequest;
     readonly userMessage?: UserMessageDocument;
+    readonly revokesEventId?: string;
   },
 ): Promise<{
   readonly runId: string;
@@ -221,6 +222,9 @@ async function startChatRun(
     ...(body.userMessage === undefined
       ? {}
       : { userMessage: body.userMessage }),
+    ...(body.revokesEventId === undefined
+      ? {}
+      : { revokesEventId: body.revokesEventId }),
     ...(body.selectedModel === undefined
       ? body.threadId === undefined
         ? { model: "claude-sonnet-4-6" }
@@ -2985,6 +2989,117 @@ describe("CHAT-02: auto-send after failures", () => {
 
     await api.requestCancelRun(actor, promoted.runId, [200]);
     await waitForRunStatus(actor, promoted.runId, "cancelled");
+  }, 90_000);
+
+  it("uses the latest unrevoked successful event as the incomplete-round boundary", async () => {
+    const { actor, agentId, runnerGroup } = await entitledChatActor();
+    chatCallbacks.failIfChatCallbackRouteIsFetched();
+
+    const followupGate = deferredGate();
+    let followupRequests = 0;
+
+    const anchor = await startChatRun(actor, {
+      agentId,
+      prompt: "successful boundary anchor",
+    });
+    const anchorHeaders = await claimChatRun(runnerGroup, anchor.runId);
+    mockOptionalEnv("OPENROUTER_API_KEY", "bdd-openrouter-key");
+    chatCallbacks.mockOpenRouterCompletions(async (body) => {
+      const systemContent = body.messages[0]?.content ?? "";
+      if (systemContent.includes("concise follow-up prompts")) {
+        followupRequests += 1;
+        await followupGate.wait();
+        return JSON.stringify([
+          { prompt: "Inspect the failed round", kind: "talk" },
+        ]);
+      }
+      if (systemContent.includes("Generate a short, descriptive title")) {
+        return "Revoked Boundary";
+      }
+      return "Boundary summary";
+    });
+    chatCallbacks.mockChatOutputEvents([
+      assistantEvent(0, "successful boundary answer"),
+    ]);
+    await completeChatRunOk(anchor.runId, anchorHeaders, {
+      lastEventSequence: 0,
+    });
+    await waitForThreadMessages(actor, anchor.threadId, (messages) => {
+      return lifecycleMarkers(messages, anchor.runId, "completed").length > 0;
+    });
+    await expect
+      .poll(() => {
+        return followupRequests;
+      })
+      .toBe(1);
+
+    const firstFailedPrompt = "failed before the late successful follow-up";
+    const firstFailed = await startChatRun(actor, {
+      agentId,
+      threadId: anchor.threadId,
+      prompt: firstFailedPrompt,
+    });
+    const firstFailedHeaders = await claimChatRun(
+      runnerGroup,
+      firstFailed.runId,
+    );
+    await failChatRun(
+      firstFailed.runId,
+      firstFailedHeaders,
+      "first boundary failure",
+    );
+    await waitForThreadMessages(actor, anchor.threadId, (messages) => {
+      return lifecycleMarkers(messages, firstFailed.runId, "failed").length > 0;
+    });
+
+    followupGate.release();
+    const afterFollowup = await waitForThreadMessages(
+      actor,
+      anchor.threadId,
+      (messages) => {
+        return recommendedFollowupMessages(messages, anchor.runId).length > 0;
+      },
+    );
+    const lateFollowup = recommendedFollowupMessages(
+      afterFollowup.events,
+      anchor.runId,
+    )[0];
+    if (!lateFollowup) {
+      throw new Error("Expected the delayed recommended follow-up event");
+    }
+    await flushWaitUntilForTest();
+
+    const revokingFailure = await startChatRun(actor, {
+      agentId,
+      threadId: anchor.threadId,
+      prompt: "revoke the late successful follow-up",
+      revokesEventId: lateFollowup.id,
+    });
+    const revokingFailureHeaders = await claimChatRun(
+      runnerGroup,
+      revokingFailure.runId,
+    );
+    await failChatRun(
+      revokingFailure.runId,
+      revokingFailureHeaders,
+      "revoking boundary failure",
+    );
+    await waitForThreadMessages(actor, anchor.threadId, (messages) => {
+      return (
+        lifecycleMarkers(messages, revokingFailure.runId, "failed").length > 0
+      );
+    });
+
+    const probe = await startChatRun(actor, {
+      agentId,
+      threadId: anchor.threadId,
+      prompt: "probe the revoked boundary",
+    });
+    const probeContext = await waitForRunContext(actor, probe.runId);
+    expect(probeContext.body.appendSystemPrompt).toContain(firstFailedPrompt);
+
+    await api.requestCancelRun(actor, probe.runId, [200]);
+    await waitForRunStatus(actor, probe.runId, "cancelled");
   }, 90_000);
 
   it("auto-sends the queued message after a failure, carrying attachments, incomplete-round context, and the continued session", async () => {
