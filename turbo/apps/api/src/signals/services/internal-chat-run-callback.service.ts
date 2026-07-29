@@ -2444,6 +2444,16 @@ function queuedMessageAdmissionFailure(
   );
 }
 
+function queuedMessageApiStartTime(
+  triggerSource: QueuedUserMessage["triggerSource"],
+  sourceParams: Awaited<ReturnType<typeof decryptQueuedUserMessageRunParams>>,
+): number | undefined {
+  if (triggerSource === "workflow-schedule") {
+    return undefined;
+  }
+  return sourceParams?.apiStartTime;
+}
+
 function resolveQueuedMessageGenerationTemplatePrompt(args: {
   readonly input: CreateQueuedChatRunInputArgs;
   readonly userMessageProjection:
@@ -2582,7 +2592,10 @@ async function buildCreateQueuedChatRunInput(
     feishuDelivery: sourceParams?.feishuDelivery,
     teamsDelivery: sourceParams?.teamsDelivery,
     morningBriefDelivery: sourceParams?.morningBriefDelivery,
-    apiStartTime: sourceParams?.apiStartTime,
+    apiStartTime: queuedMessageApiStartTime(
+      args.queuedMessage.triggerSource,
+      sourceParams,
+    ),
     userInfoExtras: sourceParams?.userInfoExtras,
   };
 }

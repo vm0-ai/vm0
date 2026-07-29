@@ -140,6 +140,7 @@ export async function insertOldFormatQueuedUserMessageFixture(args: {
   readonly content: string;
   readonly prompt: string;
   readonly appendSystemPrompt: string;
+  readonly apiStartTime?: number;
 }): Promise<string> {
   const messageId = randomUUID();
   const encryptedParams = await encryptQueuedUserMessageRunParams(
@@ -147,6 +148,7 @@ export async function insertOldFormatQueuedUserMessageFixture(args: {
       version: 1,
       prompt: args.prompt,
       appendSystemPrompt: args.appendSystemPrompt,
+      apiStartTime: args.apiStartTime,
     },
     { orgId: args.orgId, userId: args.userId },
   );

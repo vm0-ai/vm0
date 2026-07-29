@@ -49,6 +49,7 @@ import {
   readMorningBriefQueuedParamsFixture,
 } from "../../../test-fixtures/morning-brief";
 import { useSecretKmsProbe } from "./helpers/secret-kms-probe";
+import { readRunApiStart } from "./helpers/runtime-state";
 
 /**
  * MORNING-BRIEF: the daily 7:00 local-time brief end to end.
@@ -1494,6 +1495,7 @@ describe("cron execute morning briefs", () => {
       content: displayContent,
       prompt: realPrompt,
       appendSystemPrompt,
+      apiStartTime: BEFORE_SEVEN_LOCAL,
     });
     const oldParams = await readMorningBriefQueuedParamsFixture({
       messageId,
@@ -1504,6 +1506,7 @@ describe("cron execute morning briefs", () => {
       version: 1,
       prompt: realPrompt,
       appendSystemPrompt,
+      apiStartTime: BEFORE_SEVEN_LOCAL,
     });
 
     mockUploadedBriefOutput(VALID_OUTPUT);
@@ -1523,6 +1526,9 @@ describe("cron execute morning briefs", () => {
     if (!claimed?.runId) {
       throw new Error("Expected the old-format queue item to drain");
     }
+    await expect(readRunApiStart(context, claimed.runId)).resolves.toBe(
+      new Date(AFTER_SEVEN_LOCAL).toISOString(),
+    );
     const runInput = await completeMorningBriefRun(scenario, claimed.runId, 0);
     expect(runInput.prompt).toBe(realPrompt);
     expect(runInput.appendSystemPrompt).toContain(appendSystemPrompt);
