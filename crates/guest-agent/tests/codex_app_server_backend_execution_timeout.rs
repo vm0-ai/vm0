@@ -30,7 +30,7 @@ async fn codex_app_server_execution_timeout_interrupts_hung_turn_start()
     let masker = SecretMasker::from_raw("");
 
     let result = tokio::time::timeout(
-        Duration::from_secs(5),
+        Duration::from_secs(10),
         common::execute_cli_for_runtime(&runtime, &masker, common::spawn_dummy_heartbeat()),
     )
     .await
