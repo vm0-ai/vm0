@@ -1,7 +1,6 @@
 import {
   AST_NODE_TYPES,
   ESLintUtils,
-  type TSESLint,
   type TSESTree,
 } from "@typescript-eslint/utils";
 import {
@@ -864,54 +863,11 @@ export const preferDrizzleApis = createRule({
       );
     }
 
-    function localDirectColumnInitializer(
-      node: TSESTree.Expression,
-    ): TSESTree.Expression | undefined {
-      if (node.type !== AST_NODE_TYPES.Identifier) {
-        return undefined;
-      }
-      let scope: TSESLint.Scope.Scope | null =
-        context.sourceCode.getScope(node);
-      while (scope !== null) {
-        const variable = scope.variables.find((candidate) => {
-          return candidate.name === node.name;
-        });
-        if (variable !== undefined) {
-          const declarations = variable.defs.filter((definition) => {
-            return definition.node.type === AST_NODE_TYPES.VariableDeclarator;
-          });
-          const declaration = declarations[0]?.node;
-          return declarations.length === 1 &&
-            declaration?.type === AST_NODE_TYPES.VariableDeclarator &&
-            declaration.id.type === AST_NODE_TYPES.Identifier &&
-            declaration.init !== null &&
-            declaration.parent.kind === "const"
-            ? declaration.init
-            : undefined;
-        }
-        scope = scope.upper;
-      }
-      return undefined;
-    }
-
     function composeDirectColumnSource(
       node: TSESTree.Expression,
-      visited: Set<TSESTree.Node>,
     ): SqlSource | null {
-      if (visited.has(node)) {
-        return null;
-      }
-      visited.add(node);
-      if (sqlSourceComposer.couldCompose(node)) {
-        const source = sqlSourceComposer.compose(node);
-        if (source !== null) {
-          return source;
-        }
-      }
-      const initializer = localDirectColumnInitializer(node);
-      return initializer !== undefined &&
-        isSqlCompositionExpression(initializer)
-        ? composeDirectColumnSource(initializer, visited)
+      return sqlSourceComposer.couldCompose(node)
+        ? sqlSourceComposer.compose(node)
         : null;
     }
 
@@ -1011,10 +967,7 @@ export const preferDrizzleApis = createRule({
       if (result === null) {
         return;
       }
-      const source = composeDirectColumnSource(
-        result.source,
-        new Set<TSESTree.Node>(),
-      );
+      const source = composeDirectColumnSource(result.source);
       const variant = source?.variants[0];
       if (
         source === null ||
