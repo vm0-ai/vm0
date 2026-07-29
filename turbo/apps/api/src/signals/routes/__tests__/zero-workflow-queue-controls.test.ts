@@ -1,6 +1,7 @@
 import { createHash, randomUUID } from "node:crypto";
 
 import { chatEventsContract } from "@vm0/api-contracts/contracts/chat-threads";
+import { zeroWorkflowQueueContract } from "@vm0/api-contracts/contracts/zero-workflow-queue";
 import { zeroWorkflowAutomationsContract } from "@vm0/api-contracts/contracts/zero-workflows";
 
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
@@ -34,6 +35,10 @@ function automationsClient() {
 
 function chatMessagesClient() {
   return setupApp({ context })(chatEventsContract);
+}
+
+function previousQueueClient() {
+  return setupApp({ context })(zeroWorkflowQueueContract);
 }
 
 interface Scenario {
@@ -247,6 +252,84 @@ async function busyQueueFixture(pendingCount: number): Promise<{
 }
 
 describe("workflow automation queue controls", () => {
+  it("serves the previous frontend queue routes from canonical events during rollout", async () => {
+    const { automation, runningRunId } = await busyQueueFixture(3);
+
+    const initial = await accept(
+      previousQueueClient().get({
+        headers: authHeaders(),
+        params: { threadId: automation.threadId },
+      }),
+      [200],
+    );
+    expect(initial.body.running?.runId).toBe(runningRunId);
+    expect(initial.body.pending).toHaveLength(3);
+    expect(initial.body.pausedAt).toBeNull();
+    expect(initial.body.pauseReason).toBeNull();
+
+    // Pause and resume no longer change queue behavior, but previous clients
+    // receive the compatible response shape instead of failing with 404.
+    const paused = await accept(
+      previousQueueClient().pause({
+        headers: authHeaders(),
+        params: { threadId: automation.threadId },
+      }),
+      [200],
+    );
+    expect(paused.body.pausedAt).toBeNull();
+    expect(paused.body.pending).toHaveLength(3);
+    const resumed = await accept(
+      previousQueueClient().resume({
+        headers: authHeaders(),
+        params: { threadId: automation.threadId },
+      }),
+      [200],
+    );
+    expect(resumed.body.pausedAt).toBeNull();
+    expect(resumed.body.pending).toHaveLength(3);
+
+    const skippedEventId = initial.body.pending[0]!.id;
+    const skipped = await accept(
+      previousQueueClient().skipEvent({
+        headers: authHeaders(),
+        params: { id: skippedEventId },
+      }),
+      [200],
+    );
+    expect(skipped.body.pending).toHaveLength(2);
+
+    const cleared = await accept(
+      previousQueueClient().clear({
+        headers: authHeaders(),
+        params: { threadId: automation.threadId },
+      }),
+      [200],
+    );
+    expect(cleared.body.pending).toStrictEqual([]);
+
+    const revocations = (await wf.readThreadEvents(automation.threadId)).filter(
+      (
+        event,
+      ): event is Extract<
+        Awaited<ReturnType<typeof wf.readThreadEvents>>[number],
+        { readonly eventType: "control.revoke" }
+      > => {
+        return event.eventType === "control.revoke";
+      },
+    );
+    expect(
+      revocations.map((event) => {
+        return event.revokesEventId;
+      }),
+    ).toStrictEqual(
+      expect.arrayContaining(
+        initial.body.pending.map((event) => {
+          return event.id;
+        }),
+      ),
+    );
+  });
+
   it("revokes one pending event with the caller's client event id", async () => {
     const { scenario, automation, runningRunId } = await busyQueueFixture(2);
 

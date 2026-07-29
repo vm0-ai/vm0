@@ -141,6 +141,7 @@ import { zeroBrowserRoutes } from "./routes/zero-browser";
 import { zeroBrowserAuthorizationRoutes } from "./routes/zero-browser-authorization";
 import { zeroWorkflowsRoutes } from "./routes/zero-workflows";
 import { zeroWorkflowAutomationsRoutes } from "./routes/zero-workflow-automations";
+import { zeroWorkflowQueueRoutes } from "./routes/zero-workflow-queue";
 import { zeroStrapiIntegrationsRoutes } from "./routes/zero-strapi-integrations";
 import { zeroStrapiEventsRoutes } from "./routes/zero-strapi-events";
 import { integrationsGithubRoutes } from "./routes/integrations-github";
@@ -350,6 +351,7 @@ export const ROUTES: readonly RouteEntry[] = [
   ...zeroSecretsRoutes,
   ...zeroWorkflowsRoutes,
   ...zeroWorkflowAutomationsRoutes,
+  ...zeroWorkflowQueueRoutes,
   ...zeroStrapiIntegrationsRoutes,
   ...integrationsGithubRoutes,
   ...zeroSlackConnectRoutes,
