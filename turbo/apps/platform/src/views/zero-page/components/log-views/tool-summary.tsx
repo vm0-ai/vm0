@@ -6,6 +6,9 @@ import {
 } from "./log-detail-utils.ts";
 import { formatDuration } from "./event-card.tsx";
 import { StatusDot } from "./status-dot.tsx";
+import { useTranslation } from "react-i18next";
+import { formatAppNumber } from "../../../../i18n/format.ts";
+import { formatSize } from "../network-badge.tsx";
 
 interface ToolSummaryProps {
   operation: ToolOperation;
@@ -107,6 +110,7 @@ export function ToolSummary({
   matchStartIndex,
   timestamp,
 }: ToolSummaryProps) {
+  const { t } = useTranslation();
   const { toolName, keyParam, result, input } = operation;
   const isError = result?.isError ?? false;
   const durationMs = result?.durationMs;
@@ -150,7 +154,12 @@ export function ToolSummary({
         <div className="flex-1 min-w-0 space-y-1">
           {durationText && (
             <div className="text-xs text-muted-foreground">
-              Duration: {durationText}
+              {t(
+                ($) => {
+                  return $.activity.events.duration;
+                },
+                { duration: durationText },
+              )}
             </div>
           )}
 
@@ -217,6 +226,7 @@ function ToolInputDetails({
   input: Record<string, unknown>;
   toolName: string;
 }) {
+  const { t } = useTranslation();
   const lowerName = toolName.toLowerCase();
 
   // Bash - show full command
@@ -238,11 +248,19 @@ function ToolInputDetails({
     if (skill) {
       return (
         <div className="font-mono text-xs">
-          <span className="text-muted-foreground">name: </span>
+          <span className="text-muted-foreground">
+            {t(($) => {
+              return $.activity.events.nameLabel;
+            })}{" "}
+          </span>
           <span className="text-foreground">{skill}</span>
           {args && (
             <>
-              <span className="text-muted-foreground ml-3">args: </span>
+              <span className="text-muted-foreground ml-3">
+                {t(($) => {
+                  return $.activity.events.argsLabel;
+                })}{" "}
+              </span>
               <span className="text-foreground">{args}</span>
             </>
           )}
@@ -344,12 +362,18 @@ function ToolResultDetails({
   currentMatchIndex?: number;
   matchStartIndex?: number;
 }) {
+  const { t } = useTranslation();
   const { content, isError, bytes } = result;
+  const formattedBytes = bytes
+    ? formatSize(bytes).replace(/(KB|MB|B)$/u, " $1")
+    : null;
 
   if (!content || content.trim() === "") {
     return (
       <span className="text-xs text-muted-foreground italic">
-        (empty output)
+        {t(($) => {
+          return $.activity.events.emptyOutput;
+        })}
       </span>
     );
   }
@@ -394,8 +418,16 @@ function ToolResultDetails({
           data-testid="tool-result-expand"
         >
           <summary className="list-none cursor-pointer text-xs text-muted-foreground hover:text-foreground">
-            +{remainingLines} lines
-            {bytes ? ` (${(bytes / 1024).toFixed(1)} KB)` : ""}
+            {t(
+              ($) => {
+                return $.activity.events.remainingLines;
+              },
+              {
+                count: remainingLines,
+                formattedCount: formatAppNumber(remainingLines),
+              },
+            )}
+            {formattedBytes ? ` (${formattedBytes})` : ""}
           </summary>
           <pre className="text-xs text-foreground whitespace-pre-wrap break-all">
             {lines.slice(3).join("\n")}

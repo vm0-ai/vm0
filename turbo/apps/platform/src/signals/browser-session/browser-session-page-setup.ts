@@ -12,6 +12,7 @@ import { updatePage$ } from "../react-router.ts";
 import { pathParams$ } from "../route.ts";
 import { onboardGuard$ } from "../zero-page/onboard-guard.ts";
 import { setBrowserSessionPageSignals$ } from "./browser-session-page-state.ts";
+import { i18n } from "../../i18n/index.ts";
 
 export const setupBrowserSessionPage$ = command(
   async ({ get, set }, signal: AbortSignal) => {
@@ -22,7 +23,12 @@ export const setupBrowserSessionPage$ = command(
       descriptor ? createBrowserSessionSignals(null, descriptor) : null,
     );
     set(updatePage$, createElement(BrowserSessionPage), "minimal");
-    set(updateDocumentTitle$, "Live browser");
+    set(
+      updateDocumentTitle$,
+      i18n.t(($) => {
+        return $.browserSession.documentTitle;
+      }),
+    );
     await set(hideAppSkeleton$, signal);
     signal.throwIfAborted();
     await set(onboardGuard$, signal);

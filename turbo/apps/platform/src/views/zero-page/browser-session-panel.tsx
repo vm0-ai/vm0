@@ -6,6 +6,7 @@ import {
 } from "@tabler/icons-react";
 import { cn } from "@vm0/ui";
 import { useGet, useLastLoadable, useSet } from "ccstate-react";
+import { useTranslation } from "react-i18next";
 
 import {
   browserSessionReclaimHint,
@@ -60,6 +61,7 @@ function PanelMessage({
 }
 
 export function BrowserSessionPanel({ signals }: BrowserSessionPanelProps) {
+  const { t } = useTranslation();
   const sessionLoadable = useLastLoadable(signals.panelSession$);
   const keepAliveRef = useSet(signals.keepAliveRef$);
   const resume = useSet(signals.resume$);
@@ -69,11 +71,16 @@ export function BrowserSessionPanel({ signals }: BrowserSessionPanelProps) {
   if (sessionLoadable.state === "loading") {
     return (
       <PanelFrame>
-        <div className="flex flex-1 items-center justify-center">
+        <div role="status" className="flex flex-1 items-center justify-center">
           <IconLoader2
             className="animate-spin text-muted-foreground"
             size={20}
           />
+          <span className="sr-only">
+            {t(($) => {
+              return $.browserSession.status.starting;
+            })}
+          </span>
         </div>
       </PanelFrame>
     );
@@ -83,8 +90,12 @@ export function BrowserSessionPanel({ signals }: BrowserSessionPanelProps) {
       <PanelFrame>
         <PanelMessage
           icon={<IconBrowserOff size={26} className="text-muted-foreground" />}
-          title="Browser unavailable"
-          description="This browser does not belong to this chat or has been removed."
+          title={t(($) => {
+            return $.browserSession.unavailable.title;
+          })}
+          description={t(($) => {
+            return $.browserSession.unavailable.description;
+          })}
         />
       </PanelFrame>
     );
@@ -99,10 +110,16 @@ export function BrowserSessionPanel({ signals }: BrowserSessionPanelProps) {
           icon={<IconBrowser size={26} className="text-muted-foreground" />}
           title={
             session.status === "suspended"
-              ? "Browser suspended"
-              : "Browser not live"
+              ? t(($) => {
+                  return $.browserSession.panel.suspended;
+                })
+              : t(($) => {
+                  return $.browserSession.panel.notLive;
+                })
           }
-          description="Resuming restores the saved login profile and storage. The previous pages and tabs do not come back."
+          description={t(($) => {
+            return $.browserSession.panel.resumeDescription;
+          })}
           action={
             <button
               type="button"
@@ -118,7 +135,13 @@ export function BrowserSessionPanel({ signals }: BrowserSessionPanelProps) {
               ) : (
                 <IconPlayerPlay size={14} />
               )}
-              {resuming ? "Resuming…" : "Resume browser"}
+              {resuming
+                ? t(($) => {
+                    return $.browserSession.panel.resuming;
+                  })
+                : t(($) => {
+                    return $.browserSession.panel.resume;
+                  })}
             </button>
           }
         />
@@ -130,7 +153,12 @@ export function BrowserSessionPanel({ signals }: BrowserSessionPanelProps) {
     <PanelFrame panelRef={keepAliveRef}>
       <iframe
         src={liveUrl}
-        title={`Live browser: ${session.name}`}
+        title={t(
+          ($) => {
+            return $.browserSession.iframeTitle;
+          },
+          { name: session.name },
+        )}
         referrerPolicy="no-referrer"
         allow="autoplay; clipboard-read; clipboard-write; fullscreen"
         className={cn("w-full min-h-0 flex-1 border-0 bg-background")}

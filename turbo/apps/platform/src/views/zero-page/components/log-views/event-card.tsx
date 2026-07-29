@@ -7,7 +7,12 @@ import {
 } from "@tabler/icons-react";
 import { Markdown } from "../../../components/markdown.tsx";
 import { Popover, PopoverContent, PopoverTrigger } from "@vm0/ui";
-import { formatActivityEventTime } from "../../../../signals/activity-page/activity-time.ts";
+import {
+  formatActivityDurationMs,
+  formatActivityEventTime,
+} from "../../../../signals/activity-page/activity-time.ts";
+import { useTranslation } from "react-i18next";
+import { formatAppNumber } from "../../../../i18n/format.ts";
 
 type ModelUsage = Record<
   string,
@@ -28,19 +33,7 @@ export function formatEventTime(
 
 // Exported for reuse
 export function formatDuration(ms: number): string {
-  if (!Number.isFinite(ms) || ms < 0) {
-    return "—";
-  }
-  if (ms < 1000) {
-    return `${ms}ms`;
-  }
-  const seconds = ms / 1000;
-  if (seconds < 60) {
-    return `${seconds.toFixed(1)}s`;
-  }
-  const minutes = Math.floor(seconds / 60);
-  const remainingSeconds = seconds % 60;
-  return `${minutes}m ${remainingSeconds.toFixed(0)}s`;
+  return formatActivityDurationMs(ms);
 }
 
 // ============ SYSTEM EVENT (Init) ============
@@ -63,7 +56,7 @@ function CategoryPopover({
       <PopoverTrigger className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors cursor-pointer">
         <Icon className="h-3 w-3" />
         <span>
-          {count} {label}
+          {formatAppNumber(count)} {label}
         </span>
       </PopoverTrigger>
       <PopoverContent
@@ -143,6 +136,7 @@ function toModelUsage(value: unknown): ModelUsage | undefined {
 
 // Exported for use in EventGroupCard
 export function SystemInitContent({ eventData }: { eventData: unknown }) {
+  const { t } = useTranslation();
   const data = isRecord(eventData) ? eventData : {};
   const tools = toStringList(data.tools);
   const agents = toStringList(data.agents);
@@ -160,7 +154,12 @@ export function SystemInitContent({ eventData }: { eventData: unknown }) {
       {tools.length > 0 && (
         <CategoryPopover
           icon={IconTool}
-          label="tools"
+          label={t(
+            ($) => {
+              return $.activity.events.tools;
+            },
+            { count: tools.length },
+          )}
           count={tools.length}
           items={tools}
         />
@@ -168,7 +167,12 @@ export function SystemInitContent({ eventData }: { eventData: unknown }) {
       {agents.length > 0 && (
         <CategoryPopover
           icon={IconRobot}
-          label="agents"
+          label={t(
+            ($) => {
+              return $.activity.events.agents;
+            },
+            { count: agents.length },
+          )}
           count={agents.length}
           items={agents}
         />
@@ -176,7 +180,12 @@ export function SystemInitContent({ eventData }: { eventData: unknown }) {
       {slashCommands.length > 0 && (
         <CategoryPopover
           icon={IconTerminal}
-          label="commands"
+          label={t(
+            ($) => {
+              return $.activity.events.commands;
+            },
+            { count: slashCommands.length },
+          )}
           count={slashCommands.length}
           items={slashCommands.map((cmd) => {
             return `/${cmd}`;
@@ -190,6 +199,7 @@ export function SystemInitContent({ eventData }: { eventData: unknown }) {
 // ============ RESULT EVENT (Final stats) ============
 
 function ModelUsagePopover({ modelUsage }: { modelUsage: ModelUsage }) {
+  const { t } = useTranslation();
   const entries = Object.entries(modelUsage).filter(([, usage]) => {
     return usage.inputTokens || usage.outputTokens;
   });
@@ -202,7 +212,17 @@ function ModelUsagePopover({ modelUsage }: { modelUsage: ModelUsage }) {
     <Popover>
       <PopoverTrigger className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors cursor-pointer">
         <IconTool className="h-3 w-3" />
-        <span>{entries.length} models</span>
+        <span>
+          {t(
+            ($) => {
+              return $.activity.events.models;
+            },
+            {
+              count: entries.length,
+              formattedCount: formatAppNumber(entries.length),
+            },
+          )}
+        </span>
       </PopoverTrigger>
       <PopoverContent
         align="start"
@@ -215,10 +235,28 @@ function ModelUsagePopover({ modelUsage }: { modelUsage: ModelUsage }) {
                 <div className="text-foreground font-medium">{model}</div>
                 <div className="text-muted-foreground pl-2">
                   {usage.inputTokens && (
-                    <div>in: {usage.inputTokens.toLocaleString()}</div>
+                    <div>
+                      {t(
+                        ($) => {
+                          return $.activity.events.inputTokens;
+                        },
+                        {
+                          formattedCount: formatAppNumber(usage.inputTokens),
+                        },
+                      )}
+                    </div>
                   )}
                   {usage.outputTokens && (
-                    <div>out: {usage.outputTokens.toLocaleString()}</div>
+                    <div>
+                      {t(
+                        ($) => {
+                          return $.activity.events.outputTokens;
+                        },
+                        {
+                          formattedCount: formatAppNumber(usage.outputTokens),
+                        },
+                      )}
+                    </div>
                   )}
                 </div>
               </div>
@@ -232,6 +270,7 @@ function ModelUsagePopover({ modelUsage }: { modelUsage: ModelUsage }) {
 
 // Exported for use in EventGroupCard
 export function ResultEventContent({ eventData }: { eventData: unknown }) {
+  const { t } = useTranslation();
   const data = isRecord(eventData) ? eventData : {};
   const durationMs = toNonNegativeFiniteNumber(data.duration_ms);
   const numTurns = toNonNegativeInteger(data.num_turns);
@@ -251,7 +290,17 @@ export function ResultEventContent({ eventData }: { eventData: unknown }) {
         {numTurns !== null && numTurns !== undefined && (
           <div className="inline-flex items-center gap-1 text-xs text-muted-foreground">
             <IconRepeat className="h-3 w-3" />
-            <span>{numTurns} turns</span>
+            <span>
+              {t(
+                ($) => {
+                  return $.activity.events.turns;
+                },
+                {
+                  count: numTurns,
+                  formattedCount: formatAppNumber(numTurns),
+                },
+              )}
+            </span>
           </div>
         )}
         {modelUsage && Object.keys(modelUsage).length > 0 && (
