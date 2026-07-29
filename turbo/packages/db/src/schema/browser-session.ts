@@ -218,7 +218,7 @@ export const browserSessionInstances = pgTable(
  * by APIs that support manual window fitting.
  *
  * Keeping this state in a companion table preserves the statement shape of
- * browser_session_instances while the previous API and migration 0736 may
+ * browser_session_instances while the previous API and migration 0737 may
  * deploy in either order. Row absence means the instance is not resizable.
  */
 export const browserSessionResizeStates = pgTable(

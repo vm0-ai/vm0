@@ -268,7 +268,7 @@ async function browserResizeStateTableAvailable(
   signal: AbortSignal,
 ): Promise<boolean> {
   // This probe keeps the current API safe when it deploys before migration
-  // 0736. Remove it after 0736 is guaranteed everywhere and rollback closes.
+  // 0737. Remove it after 0737 is guaranteed everywhere and rollback closes.
   const [state] = await executeRawRows(
     db,
     sql`

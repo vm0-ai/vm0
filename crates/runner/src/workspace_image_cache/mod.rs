@@ -25,6 +25,9 @@
 //!   nested lock acquisition.
 //! - A checkout hit removes `metadata.json` before returning the current image as
 //!   a move seed, so the cache entry is not reusable while the image is active.
+//! - Promotion may move the active image into the cache. Callers must stop all
+//!   image writers before promotion and must not depend on the active path
+//!   afterward.
 //! - Metadata is reusable only when it matches the cache key inputs, workspace
 //!   drive layout, terminal status, trust/state, and current image identity.
 //! - GC refreshes a candidate and compares the current image identity before

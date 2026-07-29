@@ -237,7 +237,7 @@ describe("platform auth redirects", () => {
       expect(url.origin).toBe("https://app.vm0.ai");
       expect(url.pathname).toBe("/sign-in");
       expect(url.searchParams.get("redirect_url")).toBe(
-        "https://app.okou.ai/agents?utm_source=okou-launch",
+        "https://app.okou.ai/agents?utm_source=okou-launch&__clerk_synced=false",
       );
     });
 
