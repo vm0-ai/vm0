@@ -89,6 +89,9 @@ type RunsListQuery = z.input<(typeof runsMainContract.list)["query"]>;
 type RunnerJobClaimRequest = z.infer<
   (typeof runnersJobClaimContract.claim)["body"]
 >;
+type RunnerNetworkPolicyRefreshRequest = z.input<
+  (typeof runnersNetworkPolicyRefreshContract.refresh)["body"]
+>;
 type ComposeContent = z.infer<
   (typeof composesMainContract.create)["body"]
 >["content"];
@@ -447,7 +450,10 @@ export function createRunsApi(context: TestContext) {
         runApp(context)(runnersNetworkPolicyRefreshContract).refresh({
           headers: runnerHeaders(true),
           params: { runId },
-          body: { connectorRefs: [connectorSlug] },
+          body: {
+            connectorSlugs: [connectorSlug],
+            connectorRefs: [connectorSlug],
+          },
         }),
         [200],
       );
@@ -463,14 +469,14 @@ export function createRunsApi(context: TestContext) {
     async requestRefreshRunnerNetworkPolicyAs(
       authorization: string | undefined,
       runId: string,
-      connectorSlug: string,
+      body: RunnerNetworkPolicyRefreshRequest,
       statuses: readonly (200 | 400 | 401 | 403 | 404 | 500)[],
     ) {
       return await accept(
         runApp(context)(runnersNetworkPolicyRefreshContract).refresh({
           headers: authorization === undefined ? {} : { authorization },
           params: { runId },
-          body: { connectorRefs: [connectorSlug] },
+          body,
         }),
         statuses,
       );

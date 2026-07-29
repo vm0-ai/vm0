@@ -17,9 +17,9 @@ import {
   connectorAuthMethodRuntimeMetadata,
   type ConnectorOutputTarget,
 } from "@vm0/connectors/connector-auth-method";
+import { connectorSlugLegacyInsertUserConnectors } from "@vm0/db/compat/connector-slug-legacy-insert";
 import { agentComposes } from "@vm0/db/schema/agent-compose";
 import { modelProviders } from "@vm0/db/schema/model-provider";
-import { userConnectors } from "@vm0/db/schema/user-connector";
 import { zeroAgents } from "@vm0/db/schema/zero-agent";
 import { command, type Computed } from "ccstate";
 import { and, eq } from "drizzle-orm";
@@ -458,7 +458,7 @@ const enableTestConnectors$ = command(
       });
     signal.throwIfAborted();
 
-    await writeDb.insert(userConnectors).values(
+    await writeDb.insert(connectorSlugLegacyInsertUserConnectors).values(
       connectorSlugs.map((connectorSlug) => {
         return {
           orgId,
