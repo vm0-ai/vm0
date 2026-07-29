@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.58.8](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.58.7...guest-agent-v0.58.8) (2026-07-29)
+
+
+### Documentation
+
+* **guest-agent:** document claude result status ([#23687](https://github.com/vm0-ai/vm0/issues/23687)) ([915e342](https://github.com/vm0-ai/vm0/commit/915e3422dc04d9729e5691c76147fa0dbdecf2fc))
+
 ## [0.58.7](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.58.6...guest-agent-v0.58.7) (2026-07-29)
 
 ## [0.58.6](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.58.5...guest-agent-v0.58.6) (2026-07-29)
