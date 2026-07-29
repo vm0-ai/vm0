@@ -1,6 +1,7 @@
 import { useGet, useLastLoadable } from "ccstate-react";
 import { useLoadableSet } from "ccstate-react/experimental";
 import { useTranslation } from "react-i18next";
+import { capturePaidOnboardingStepCompleted } from "../../lib/posthog.ts";
 import { billingStatusAsync$ } from "../../signals/zero-page/billing.ts";
 import {
   completeOnboarding$,
@@ -18,6 +19,7 @@ export function OnboardingRunAction({
   template,
   templateSlug,
   requiresPaidPlan = false,
+  stepKey,
   disabled = false,
   runLabel,
   onBack,
@@ -27,6 +29,7 @@ export function OnboardingRunAction({
   readonly template?: string;
   readonly templateSlug?: string;
   readonly requiresPaidPlan?: boolean;
+  readonly stepKey: string;
   readonly disabled?: boolean;
   readonly runLabel?: string;
   readonly onBack: () => void;
@@ -66,6 +69,10 @@ export function OnboardingRunAction({
 
   const completeAndRun = async (): Promise<void> => {
     await complete(redeemCode, pageSignal);
+    capturePaidOnboardingStepCompleted({
+      stepKey,
+      completionMethod: templateSlug ?? template,
+    });
     runPrompt(prompt, template);
   };
 

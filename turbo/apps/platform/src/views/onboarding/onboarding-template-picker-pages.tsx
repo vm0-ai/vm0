@@ -14,6 +14,7 @@ import {
 } from "@vm0/core";
 import { cn } from "@vm0/ui";
 import { useTranslation } from "react-i18next";
+import { capturePaidOnboardingStepCompleted } from "../../lib/posthog.ts";
 import {
   onboardingDraft$,
   onboardingUi$,
@@ -247,6 +248,10 @@ export function OnboardingPresentationTemplatePage() {
     if (!selectedSlug) {
       return;
     }
+    capturePaidOnboardingStepCompleted({
+      stepKey: "presentation-template",
+      completionMethod: selectedSlug,
+    });
     setDraft({ presentationTemplateSlug: selectedSlug });
     navigateTo(ROUTES.onboardingPresentationRun, {
       updates: { template: selectedSlug },
@@ -427,6 +432,10 @@ export function OnboardingImageTemplatePage() {
     if (!selectedSlug) {
       return;
     }
+    capturePaidOnboardingStepCompleted({
+      stepKey: "image-template",
+      completionMethod: selectedSlug,
+    });
     setDraft({ imageTemplateSlug: selectedSlug });
     navigateTo(ROUTES.onboardingImageRun, {
       updates: { template: selectedSlug },
@@ -558,6 +567,10 @@ export function OnboardingVideoTemplatePage() {
     if (!selectedSlug) {
       return;
     }
+    capturePaidOnboardingStepCompleted({
+      stepKey: "video-template",
+      completionMethod: selectedSlug,
+    });
     setDraft({ videoTemplateSlug: selectedSlug });
     navigateTo(ROUTES.onboardingVideoRun, {
       updates: { template: selectedSlug },

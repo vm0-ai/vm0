@@ -72,6 +72,7 @@ export function OnboardingWorkflowRunPage() {
         footer={
           <OnboardingRunAction
             prompt={prompt}
+            stepKey="workflow-run"
             disabled={custom && !draft.workflowNote.trim()}
             runLabel={
               custom

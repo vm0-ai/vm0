@@ -294,6 +294,7 @@ function OnboardingTemplateRunPage({
       footer={
         <OnboardingRunAction
           prompt={config.prompt}
+          stepKey={`${kind}-run`}
           note={config.note}
           template={config.templateId}
           templateSlug={config.templateSlug}

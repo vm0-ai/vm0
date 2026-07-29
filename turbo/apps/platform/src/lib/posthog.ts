@@ -58,6 +58,47 @@ export function clearPostHogUser(): void {
   });
 }
 
+function currentRoutePath(): string | undefined {
+  return typeof window === "undefined" ? undefined : window.location.pathname;
+}
+
+function capturePaidOnboarding(
+  event:
+    | "PaidOnboarding: PageViewed"
+    | "PaidOnboarding: StepViewed"
+    | "PaidOnboarding: StepCompleted",
+  properties: {
+    readonly step_key?: string;
+    readonly completion_method?: string;
+  } = {},
+): void {
+  runPostHog(() => {
+    posthog.capture(event, {
+      surface: "vm0_make_onboarding",
+      route_path: currentRoutePath(),
+      ...properties,
+    });
+  });
+}
+
+export function capturePaidOnboardingPageViewed(): void {
+  capturePaidOnboarding("PaidOnboarding: PageViewed");
+}
+
+export function capturePaidOnboardingStepViewed(stepKey: string): void {
+  capturePaidOnboarding("PaidOnboarding: StepViewed", { step_key: stepKey });
+}
+
+export function capturePaidOnboardingStepCompleted(args: {
+  readonly stepKey: string;
+  readonly completionMethod?: string;
+}): void {
+  capturePaidOnboarding("PaidOnboarding: StepCompleted", {
+    step_key: args.stepKey,
+    completion_method: args.completionMethod,
+  });
+}
+
 export function captureTaskCompletedSuccessfully(): void {
   runPostHog(() => {
     posthog.capture("task_completed_successfully", { surface: "chat_thread" });

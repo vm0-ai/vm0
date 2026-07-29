@@ -2,6 +2,7 @@ import { useGet, useSet } from "ccstate-react";
 import { useLoadableSet } from "ccstate-react/experimental";
 import { cn } from "@vm0/ui";
 import { useTranslation } from "react-i18next";
+import { capturePaidOnboardingStepCompleted } from "../../lib/posthog.ts";
 import { completeOnboarding$ } from "../../signals/onboarding/onboarding-actions.ts";
 import {
   onboardingDraft$,
@@ -66,6 +67,10 @@ function PromptOnboarding() {
     const redeemCode = searchParams.get("redeemCode")?.trim() || null;
     const completeAndRun = async (): Promise<void> => {
       await complete(redeemCode, pageSignal);
+      capturePaidOnboardingStepCompleted({
+        stepKey: "make",
+        completionMethod: "prompt",
+      });
       runPrompt(draft.prompt);
     };
     detach(completeAndRun(), Reason.DomCallback);
@@ -130,11 +135,19 @@ export function OnboardingMakePage() {
       const redeemCode = searchParams.get("redeemCode")?.trim() || null;
       const completeAndOpenHome = async (): Promise<void> => {
         await complete(redeemCode, pageSignal);
+        capturePaidOnboardingStepCompleted({
+          stepKey: "make",
+          completionMethod: draft.choice,
+        });
         navigateTo(ROUTES.home, { preserve: false, replace: true });
       };
       detach(completeAndOpenHome(), Reason.DomCallback);
       return;
     }
+    capturePaidOnboardingStepCompleted({
+      stepKey: "make",
+      completionMethod: draft.choice,
+    });
     navigateTo(choicePath(draft.choice), {
       remove: BRANCH_STATE_PARAMS,
       updates: { choice: draft.choice },

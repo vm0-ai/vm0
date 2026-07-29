@@ -10,6 +10,10 @@ import {
   hasOnboardingWorkflow,
 } from "../../views/onboarding/onboarding-data.ts";
 import { i18n } from "../../i18n/index.ts";
+import {
+  capturePaidOnboardingPageViewed,
+  capturePaidOnboardingStepViewed,
+} from "../../lib/posthog.ts";
 import { OnboardingMakePage } from "../../views/onboarding/onboarding-make-page.tsx";
 import { OnboardingWorkflowPickerPage } from "../../views/onboarding/onboarding-workflow-picker-page.tsx";
 import { OnboardingWorkflowRunPage } from "../../views/onboarding/onboarding-workflow-run-page.tsx";
@@ -149,6 +153,8 @@ function createOnboardingPageSetup(
     set(updatePage$, createElement(config.Page), "none");
     set(updateDocumentTitle$, title);
     await set(hideAppSkeleton$, signal);
+    capturePaidOnboardingPageViewed();
+    capturePaidOnboardingStepViewed(config.step);
   });
 }
 

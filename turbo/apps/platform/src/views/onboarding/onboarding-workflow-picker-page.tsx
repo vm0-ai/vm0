@@ -17,6 +17,7 @@ import {
 } from "@tabler/icons-react";
 import { cn } from "@vm0/ui";
 import { useTranslation } from "react-i18next";
+import { capturePaidOnboardingStepCompleted } from "../../lib/posthog.ts";
 import {
   onboardingDraft$,
   onboardingUi$,
@@ -56,6 +57,13 @@ const CATEGORY_ICONS: Readonly<Record<OnboardingWorkflowCategoryId, Icon>> = {
   operations: IconSun,
   everyone: IconSparkles,
 };
+
+function captureWorkflowPickerCompletion(completionMethod: string): void {
+  capturePaidOnboardingStepCompleted({
+    stepKey: "workflow-picker",
+    completionMethod,
+  });
+}
 
 function WorkflowConnectorIcon({
   connectorSlug,
@@ -399,11 +407,13 @@ export function OnboardingWorkflowPickerPage() {
       const redeemCode = searchParams.get("redeemCode")?.trim() || null;
       const completeAndOpenHome = async (): Promise<void> => {
         await complete(redeemCode, pageSignal);
+        captureWorkflowPickerCompletion("custom");
         navigateTo(ROUTES.home, { preserve: false, replace: true });
       };
       detach(completeAndOpenHome(), Reason.DomCallback);
       return;
     }
+    captureWorkflowPickerCompletion(selectedWorkflowId);
     navigateTo(ROUTES.onboardingWorkflowRun, {
       updates: {
         choice: "workflow",
