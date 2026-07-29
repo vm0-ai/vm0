@@ -15,7 +15,7 @@ interface TelegramChatThreadRouteKey {
   readonly rootMessageId: string;
 }
 
-export interface TelegramChatThreadBinding {
+interface TelegramChatThreadBinding {
   readonly chatThreadId: string;
 }
 
