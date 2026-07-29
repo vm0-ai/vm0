@@ -602,8 +602,104 @@ ruleTester.run("prefer-drizzle-apis", preferDrizzleApis, {
           .innerJoin(users, sql\`true ORDER BY \${users.id}\`);
       `,
     },
+    {
+      name: "column wrappers with material behavior remain valid",
+      code: `${drizzlePreamble}
+        import { eq, sql, type SQL } from "drizzle-orm";
+        declare const importedColumnSql: () => SQL<string>;
+        declare const currentUsers: () => typeof users;
+        const nullableDateDecoder = {
+          mapFromDriverValue(value: unknown): Date | null {
+            return value === null ? null : new Date(String(value));
+          },
+        };
+        db.select({
+          qualified: sql\`CASE
+            WHEN \${eq(users.id, 1)} THEN \${"one"}
+            ELSE \${sql\`\${users.name}\`}
+          END\`.mapWith(users.name),
+          distinctAlias: sql\`\${users.name}\`
+            .mapWith(users.name)
+            .as("context_name"),
+          customDecoder: sql\`\${users.name}\`.mapWith(String).as("name"),
+          precisionDecoder: sql\`\${users.id}\`.mapWith(Number).as("id"),
+          imported: importedColumnSql(),
+          dynamic: sql\`\${currentUsers().name}\`.mapWith(currentUsers().name),
+        }).from(users);
+        db.select({
+          deletedAt: sql\`\${users.deletedAt}\`
+            .mapWith(nullableDateDecoder)
+            .as("deleted_at"),
+        }).from(users).unionAll(
+          db.select({ deletedAt: users.deletedAt }).from(users),
+        );
+        db.select()
+          .from(users)
+          .where(eq(sql\`\${users.name}\`, "encoded value"));
+        export function exportedColumnSql() {
+          return sql\`\${users.name}\`;
+        }
+      `,
+    },
+    {
+      name: "unmapped SQL results retain their noop decoder",
+      code: `${drizzlePreamble}
+        import { sql } from "drizzle-orm";
+        db.select({
+          name: sql\`\${users.name}\`,
+          deletedAt: sql\`\${users.deletedAt}\`,
+        }).from(users);
+      `,
+    },
+    {
+      name: "non-Drizzle wrapper lookalikes remain valid",
+      code: `${drizzlePreamble}
+        import { sql } from "drizzle-orm";
+        const lookalike = {
+          getSQL() {
+            return sql\`\${users.name}\`;
+          },
+        };
+        db.select({ name: sql\`\${lookalike}\` }).from(users);
+      `,
+    },
   ],
   invalid: [
+    {
+      name: "identity column wrappers use direct structured fields",
+      code: `${drizzlePreamble}
+        import { sql } from "drizzle-orm";
+        const selectedUsers = db
+          .select({ name: users.name })
+          .from(users)
+          .as("selected_users");
+        const localName = sql\`\${users.name}\`;
+        const localSelection = {
+          selectedName: sql\`\${selectedUsers.name}\`.mapWith(selectedUsers.name),
+        };
+        function nameSql() {
+          return sql\`\${users.name}\`;
+        }
+        db.select({
+          direct: sql\`\${users.name}\`.mapWith(users.name),
+          mapped: sql\`\${users.name}\`.mapWith(users.name),
+          sameAlias: sql\`\${users.name}\`.mapWith(users.name).as("name"),
+          selectedName: sql\`\${selectedUsers.name}\`.mapWith(selectedUsers.name),
+          localName: localName.mapWith(users.name),
+          returnedName: nameSql().mapWith(users.name),
+        }).from(users);
+        db.select(localSelection).from(selectedUsers);
+      `,
+      errors: [
+        { messageId: "directColumn" },
+        { messageId: "directColumn" },
+        { messageId: "directColumn" },
+        { messageId: "directColumn" },
+        { messageId: "directColumn" },
+        { messageId: "directColumn" },
+        { messageId: "directColumn" },
+      ],
+    },
     {
       code: `${drizzlePreamble}
         import { eq, sql } from "drizzle-orm";

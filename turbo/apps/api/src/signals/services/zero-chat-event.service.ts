@@ -10,7 +10,6 @@ import { eq, isNotNull, sql } from "drizzle-orm";
 
 import type { Db } from "../external/db";
 import { nowDate } from "../external/time";
-import { chatEventTypeSql } from "./zero-chat-event-type.service";
 
 type ChatEventInsert = typeof chatMessages.$inferInsert;
 type ChatEventWriteTransaction = Parameters<
@@ -377,7 +376,7 @@ export async function replaceChatEvent(
     .select({
       chatThreadId: chatMessages.chatThreadId,
       createdAt: chatMessages.createdAt,
-      eventType: chatEventTypeSql(),
+      eventType: chatMessages.eventType,
     })
     .from(chatMessages)
     .where(eq(chatMessages.id, eventId))

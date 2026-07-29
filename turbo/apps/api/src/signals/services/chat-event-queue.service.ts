@@ -20,10 +20,7 @@ import {
 import { alias } from "drizzle-orm/pg-core";
 
 import type { Db } from "../external/db";
-import {
-  chatEventTypeIn,
-  chatEventTypeSql,
-} from "./zero-chat-event-type.service";
+import { chatEventTypeIn } from "./zero-chat-event-type.service";
 
 type ChatQueueReadDb = Pick<Db, "select">;
 type ChatQueueDistinctReadDb = Pick<Db, "select" | "selectDistinct">;
@@ -70,7 +67,7 @@ export async function listPendingChatQueueEvents(
     .select({
       id: chatMessages.id,
       chatThreadId: chatMessages.chatThreadId,
-      eventType: chatEventTypeSql().as("event_type"),
+      eventType: chatMessages.eventType,
       runId: chatMessages.runId,
       createdAt: chatMessages.createdAt,
     })
@@ -123,7 +120,7 @@ export async function loadPendingChatQueueEvent(
     .select({
       id: chatMessages.id,
       chatThreadId: chatMessages.chatThreadId,
-      eventType: chatEventTypeSql().as("event_type"),
+      eventType: chatMessages.eventType,
       createdAt: chatMessages.createdAt,
     })
     .from(chatMessages)
@@ -173,7 +170,7 @@ export async function loadChatAutomationIntakePause(
 ): Promise<ChatAutomationIntakePause | null> {
   const rows = await db
     .select({
-      eventType: chatEventTypeSql().as("event_type"),
+      eventType: chatMessages.eventType,
       createdAt: chatMessages.createdAt,
       pauseReason: chatMessages.error,
     })

@@ -44,10 +44,7 @@ import {
   projectUserMessage,
   requiredUserMessageForEvent,
 } from "./zero-chat-user-message.service";
-import {
-  chatEventTypeIn,
-  chatEventTypeSql,
-} from "./zero-chat-event-type.service";
+import { chatEventTypeIn } from "./zero-chat-event-type.service";
 
 const GITHUB_API_BASE = "https://api.github.com";
 const GMAIL_API_BASE = "https://gmail.googleapis.com/gmail/v1/users/me";
@@ -619,7 +616,7 @@ async function collectUnreadChatThreads(args: {
   for (const row of rows) {
     const messages = await args.db
       .select({
-        eventType: chatEventTypeSql().as("event_type"),
+        eventType: chatMessages.eventType,
         content: chatMessages.content,
         userMessage: chatMessages.userMessage,
         createdAt: chatMessages.createdAt,

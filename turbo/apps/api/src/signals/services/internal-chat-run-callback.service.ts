@@ -135,10 +135,7 @@ import {
   resolveModelFirstProviderAdmission,
   type ModelFirstPin,
 } from "./zero-model-selection.service";
-import {
-  chatEventTypeIn,
-  chatEventTypeSql,
-} from "./zero-chat-event-type.service";
+import { chatEventTypeIn } from "./zero-chat-event-type.service";
 
 const log = logger("callback:chat");
 const AGENT_RUN_EVENTS_DATASET = "agent-run-events";
@@ -2010,7 +2007,7 @@ async function getLatestRunsByThreadId(
   const messageRows = await db
     .select({
       runId: chatMessages.runId,
-      eventType: chatEventTypeSql().as("event_type"),
+      eventType: chatMessages.eventType,
       content: chatMessages.content,
       userMessage: chatMessages.userMessage,
       attachFiles: chatMessages.attachFiles,

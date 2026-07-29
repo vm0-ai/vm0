@@ -1,6 +1,7 @@
 import {
   AST_NODE_TYPES,
   ESLintUtils,
+  type TSESLint,
   type TSESTree,
 } from "@typescript-eslint/utils";
 import {
@@ -29,6 +30,7 @@ import {
 } from "typescript";
 
 import {
+  getDrizzleColumnMetadata,
   isDrizzleDeclaration,
   isDrizzlePgCoreDeclaration,
   isDrizzleSqlTag,
@@ -46,7 +48,10 @@ import {
   type SqlCapabilityChecks,
   type SqlAnalysisFinding,
 } from "../sql-analysis/sql-analysis.ts";
-import { createSqlSourceComposer } from "../sql-analysis/sql-source.ts";
+import {
+  createSqlSourceComposer,
+  type SqlSource,
+} from "../sql-analysis/sql-source.ts";
 import { createRule } from "../utils.ts";
 
 const PREDICATE_HELPERS = new Set([
@@ -129,6 +134,8 @@ export const preferDrizzleApis = createRule({
         "Use Drizzle crossJoin(...) for this equivalent inner join on true.",
       crossJoinLateral:
         "Use Drizzle crossJoinLateral(...) for this equivalent lateral join.",
+      directColumn:
+        "Select the Drizzle column directly instead of using an identity SQL wrapper.",
       composedCteQueryBuilder:
         "Use Drizzle $with(...), select(), joins, grouping, ordering, and set-operation builders for this complete read CTE query.",
       deleteQueryBuilder:
@@ -168,7 +175,9 @@ export const preferDrizzleApis = createRule({
     const structuralCallInspections: Array<() => void> = [];
     const structuredScalarCandidates =
       new Set<TSESTree.TaggedTemplateExpression>();
+    const directColumnCandidates = new Set<TSESTree.TaggedTemplateExpression>();
     const structuredSelectionCalls: TSESTree.CallExpression[] = [];
+    const reportedDirectColumnSelections = new WeakSet<TSESTree.Node>();
     const reportedStructuralFindings = new WeakMap<
       TSESTree.Node,
       Set<string>
@@ -642,7 +651,9 @@ export const preferDrizzleApis = createRule({
       return [];
     }
 
-    function transparentNode(node: TSESTree.Node): TSESTree.Node | undefined {
+    function transparentNode(
+      node: TSESTree.Node,
+    ): TSESTree.Expression | undefined {
       if (
         node.type === AST_NODE_TYPES.TSAsExpression ||
         node.type === AST_NODE_TYPES.TSTypeAssertion ||
@@ -792,6 +803,259 @@ export const preferDrizzleApis = createRule({
         : [];
     }
 
+    function structuredFieldRoots(
+      node: TSESTree.Node,
+      visited: Set<TSESTree.Node>,
+    ): readonly TSESTree.Expression[] {
+      if (visited.has(node)) {
+        return [];
+      }
+      visited.add(node);
+      const transparent = transparentNode(node);
+      if (transparent !== undefined) {
+        return structuredFieldRoots(transparent, visited);
+      }
+      if (node.type === AST_NODE_TYPES.ObjectExpression) {
+        return node.properties.flatMap((property) => {
+          return property.type === AST_NODE_TYPES.SpreadElement
+            ? structuredFieldRoots(property.argument, visited)
+            : structuredFieldRoots(property.value, visited);
+        });
+      }
+      if (node.type === AST_NODE_TYPES.ArrayExpression) {
+        return node.elements.flatMap((element) => {
+          return element === null
+            ? []
+            : element.type === AST_NODE_TYPES.SpreadElement
+              ? structuredFieldRoots(element.argument, visited)
+              : structuredFieldRoots(element, visited);
+        });
+      }
+      const initializer = localSelectionInitializer(node);
+      if (
+        initializer?.type === AST_NODE_TYPES.ObjectExpression ||
+        initializer?.type === AST_NODE_TYPES.ArrayExpression
+      ) {
+        return structuredFieldRoots(initializer, visited);
+      }
+      const returned = localSelectionReturn(node);
+      if (
+        returned?.type === AST_NODE_TYPES.ObjectExpression ||
+        returned?.type === AST_NODE_TYPES.ArrayExpression
+      ) {
+        return structuredFieldRoots(returned, visited);
+      }
+      return isSqlCompositionExpression(node) ? [node] : [];
+    }
+
+    function isSqlCompositionExpression(
+      node: TSESTree.Node,
+    ): node is TSESTree.Expression {
+      return (
+        node.type === AST_NODE_TYPES.CallExpression ||
+        node.type === AST_NODE_TYPES.ChainExpression ||
+        node.type === AST_NODE_TYPES.ConditionalExpression ||
+        node.type === AST_NODE_TYPES.Identifier ||
+        node.type === AST_NODE_TYPES.TaggedTemplateExpression ||
+        node.type === AST_NODE_TYPES.TSAsExpression ||
+        node.type === AST_NODE_TYPES.TSNonNullExpression ||
+        node.type === AST_NODE_TYPES.TSSatisfiesExpression ||
+        node.type === AST_NODE_TYPES.TSTypeAssertion
+      );
+    }
+
+    function localDirectColumnInitializer(
+      node: TSESTree.Expression,
+    ): TSESTree.Expression | undefined {
+      if (node.type !== AST_NODE_TYPES.Identifier) {
+        return undefined;
+      }
+      let scope: TSESLint.Scope.Scope | null =
+        context.sourceCode.getScope(node);
+      while (scope !== null) {
+        const variable = scope.variables.find((candidate) => {
+          return candidate.name === node.name;
+        });
+        if (variable !== undefined) {
+          const declarations = variable.defs.filter((definition) => {
+            return definition.node.type === AST_NODE_TYPES.VariableDeclarator;
+          });
+          const declaration = declarations[0]?.node;
+          return declarations.length === 1 &&
+            declaration?.type === AST_NODE_TYPES.VariableDeclarator &&
+            declaration.id.type === AST_NODE_TYPES.Identifier &&
+            declaration.init !== null &&
+            declaration.parent.kind === "const"
+            ? declaration.init
+            : undefined;
+        }
+        scope = scope.upper;
+      }
+      return undefined;
+    }
+
+    function composeDirectColumnSource(
+      node: TSESTree.Expression,
+      visited: Set<TSESTree.Node>,
+    ): SqlSource | null {
+      if (visited.has(node)) {
+        return null;
+      }
+      visited.add(node);
+      if (sqlSourceComposer.couldCompose(node)) {
+        const source = sqlSourceComposer.compose(node);
+        if (source !== null) {
+          return source;
+        }
+      }
+      const initializer = localDirectColumnInitializer(node);
+      return initializer !== undefined &&
+        isSqlCompositionExpression(initializer)
+        ? composeDirectColumnSource(initializer, visited)
+        : null;
+    }
+
+    function columnMetadata(node: TSESTree.Expression) {
+      const tsNode = services.esTreeNodeToTSNodeMap.get(node);
+      return getDrizzleColumnMetadata(
+        checker,
+        checker.getTypeAtLocation(tsNode),
+        tsNode,
+      );
+    }
+
+    // Identity-wrapper linting intentionally recognizes only normal stable
+    // identifier/property access. Calls, computed access, and other unusual
+    // metaprogramming stay opaque even when their static type resembles a
+    // Drizzle column.
+    function isConventionalColumnExpression(
+      node: TSESTree.Expression,
+    ): boolean {
+      if (node.type === AST_NODE_TYPES.Identifier) {
+        return true;
+      }
+      return (
+        node.type === AST_NODE_TYPES.MemberExpression &&
+        !node.computed &&
+        !node.optional &&
+        node.property.type === AST_NODE_TYPES.Identifier &&
+        (node.object.type === AST_NODE_TYPES.Identifier ||
+          (node.object.type === AST_NODE_TYPES.MemberExpression &&
+            isConventionalColumnExpression(node.object)))
+      );
+    }
+
+    function isSameColumnExpression(
+      left: TSESTree.Expression,
+      right: TSESTree.Expression,
+    ): boolean {
+      const leftMetadata = columnMetadata(left);
+      const rightMetadata = columnMetadata(right);
+      return (
+        isConventionalColumnExpression(left) &&
+        isConventionalColumnExpression(right) &&
+        leftMetadata !== undefined &&
+        rightMetadata !== undefined &&
+        leftMetadata.databaseName === rightMetadata.databaseName &&
+        leftMetadata.tableName === rightMetadata.tableName &&
+        context.sourceCode.getText(left) === context.sourceCode.getText(right)
+      );
+    }
+
+    function unwrapDirectColumnResult(node: TSESTree.Expression): {
+      readonly alias: string | undefined;
+      readonly mapWith: TSESTree.Expression | undefined;
+      readonly source: TSESTree.Expression;
+    } | null {
+      let current = node;
+      let alias: string | undefined;
+      let mapWith: TSESTree.Expression | undefined;
+      while (true) {
+        const transparent = transparentNode(current);
+        if (transparent !== undefined) {
+          current = transparent;
+          continue;
+        }
+        if (
+          current.type !== AST_NODE_TYPES.CallExpression ||
+          current.callee.type !== AST_NODE_TYPES.MemberExpression ||
+          !isDrizzleResultWrapper(current)
+        ) {
+          return { alias, mapWith, source: current };
+        }
+        const method = memberName(current.callee);
+        const argument = current.arguments[0];
+        if (
+          method === "as" &&
+          alias === undefined &&
+          argument?.type === AST_NODE_TYPES.Literal &&
+          typeof argument.value === "string"
+        ) {
+          alias = argument.value;
+        } else if (
+          method === "mapWith" &&
+          mapWith === undefined &&
+          argument !== undefined &&
+          argument.type !== AST_NODE_TYPES.SpreadElement
+        ) {
+          mapWith = argument;
+        } else {
+          return null;
+        }
+        current = current.callee.object;
+      }
+    }
+
+    function inspectDirectColumnSelection(node: TSESTree.Expression): void {
+      const result = unwrapDirectColumnResult(node);
+      if (result === null) {
+        return;
+      }
+      const source = composeDirectColumnSource(
+        result.source,
+        new Set<TSESTree.Node>(),
+      );
+      const variant = source?.variants[0];
+      if (
+        source === null ||
+        source.variants.length !== 1 ||
+        variant === undefined ||
+        ![...source.expandedTemplates].every((template) => {
+          return isDrizzleSqlTag(checker, services, template.tag);
+        })
+      ) {
+        return;
+      }
+      const expressions = variant.chunks.filter((chunk) => {
+        return chunk.kind === "expression";
+      });
+      const expression = expressions[0];
+      if (
+        expressions.length !== 1 ||
+        expression === undefined ||
+        expression.depth !== 0 ||
+        variant.chunks.some((chunk) => {
+          return chunk.kind === "literal" && chunk.text !== "";
+        })
+      ) {
+        return;
+      }
+      const metadata = columnMetadata(expression.expression);
+      if (
+        !isConventionalColumnExpression(expression.expression) ||
+        metadata === undefined ||
+        (result.alias !== undefined &&
+          result.alias !== metadata.databaseName) ||
+        result.mapWith === undefined ||
+        !isSameColumnExpression(expression.expression, result.mapWith) ||
+        reportedDirectColumnSelections.has(node)
+      ) {
+        return;
+      }
+      reportedDirectColumnSelections.add(node);
+      context.report({ node, messageId: "directColumn" });
+    }
+
     function inspectStructuredSelectionCall(
       node: TSESTree.CallExpression,
     ): void {
@@ -817,7 +1081,10 @@ export const preferDrizzleApis = createRule({
     }
 
     function inspectStructuredSelections(): void {
-      if (structuredScalarCandidates.size === 0) {
+      if (
+        structuredScalarCandidates.size === 0 &&
+        directColumnCandidates.size === 0
+      ) {
         return;
       }
       for (const call of structuredSelectionCalls) {
@@ -841,9 +1108,19 @@ export const preferDrizzleApis = createRule({
         ) {
           continue;
         }
-        const roots = structuredScalarRoots(fields, new Set<TSESTree.Node>());
-        for (const root of roots) {
-          reportAnalysis(root, "structured-selection");
+        if (directColumnCandidates.size > 0) {
+          for (const field of structuredFieldRoots(
+            fields,
+            new Set<TSESTree.Node>(),
+          )) {
+            inspectDirectColumnSelection(field);
+          }
+        }
+        if (structuredScalarCandidates.size > 0) {
+          const roots = structuredScalarRoots(fields, new Set<TSESTree.Node>());
+          for (const root of roots) {
+            reportAnalysis(root, "structured-selection");
+          }
         }
       }
     }
@@ -1583,6 +1860,15 @@ export const preferDrizzleApis = createRule({
           /\bLIMIT\s+1\s*\)\s*$/iu.test(literalSource)
         ) {
           structuredScalarCandidates.add(node);
+        }
+        if (
+          node.quasi.expressions.length === 1 &&
+          node.quasi.quasis.length === 2 &&
+          node.quasi.quasis.every((quasi) => {
+            return (quasi.value.cooked ?? quasi.value.raw) === "";
+          })
+        ) {
+          directColumnCandidates.add(node);
         }
         const firstQuasi = node.quasi.quasis[0];
         const isExactEmpty =
