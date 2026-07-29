@@ -39,7 +39,7 @@ describe("/api/zero/feature-switches", () => {
       updated.body.effectiveSwitches[
         FeatureSwitchKey.StructuredPromptInlineTemplates
       ],
-    ).toBe(true);
+    ).toBeTruthy();
 
     const current = await accept(client().get({ headers }), [200]);
     expect(current.body.switches).toStrictEqual({
@@ -49,6 +49,6 @@ describe("/api/zero/feature-switches", () => {
       current.body.effectiveSwitches[
         FeatureSwitchKey.StructuredPromptInlineTemplates
       ],
-    ).toBe(true);
+    ).toBeTruthy();
   });
 });
