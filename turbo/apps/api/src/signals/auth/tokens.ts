@@ -33,20 +33,12 @@ const CONDITIONAL_CAPABILITIES = [
   ["finance:read", FeatureSwitchKey.ZeroFinance],
   ["browser:read", FeatureSwitchKey.ZeroBrowser],
   ["browser:write", FeatureSwitchKey.ZeroBrowser],
-  ["mcp:read", FeatureSwitchKey.ZeroMcp],
-  ["mcp:write", FeatureSwitchKey.ZeroMcp],
 ] as const satisfies readonly (readonly [ZeroCapability, FeatureSwitchKey])[];
 
 const AGENT_EXCLUDED_CAPABILITIES = [
   "agent-run:write",
   "agent:delete",
 ] as const satisfies readonly ZeroCapability[];
-
-interface ZeroTokenResourceOptions {
-  readonly computerUseHostId?: string;
-  readonly cloudBrowserEnabled?: boolean;
-  readonly mcpServerAccessEnabled?: boolean;
-}
 
 const jwtBaseSchema = z.object({
   userId: z.string().min(1),
@@ -149,22 +141,6 @@ function isZeroCapabilityEnabled(
       ? { userId, orgId, overrides }
       : { userId, orgId },
   );
-}
-
-function zeroCapabilityResourceEnabled(
-  capability: ZeroCapability,
-  options: ZeroTokenResourceOptions | undefined,
-): boolean {
-  if (capability === "computer-use:write") {
-    return Boolean(options?.computerUseHostId);
-  }
-  if (capability === "browser:read" || capability === "browser:write") {
-    return options?.cloudBrowserEnabled === true;
-  }
-  if (capability === "mcp:read" || capability === "mcp:write") {
-    return options?.mcpServerAccessEnabled === true;
-  }
-  return true;
 }
 
 const getJwtKey = singleton((): Buffer => {
@@ -325,12 +301,21 @@ export function generateZeroToken(
   runId: string,
   orgId: string,
   overrides?: Partial<Record<FeatureSwitchKey, boolean>>,
-  options?: ZeroTokenResourceOptions,
+  options?: {
+    readonly computerUseHostId?: string;
+    readonly cloudBrowserEnabled?: boolean;
+  },
 ): string {
   const nowSeconds = Math.floor(now() / 1000);
   const capabilities: ZeroCapability[] = [];
   for (const capability of ZERO_CAPABILITIES) {
-    if (!zeroCapabilityResourceEnabled(capability, options)) {
+    if (capability === "computer-use:write" && !options?.computerUseHostId) {
+      continue;
+    }
+    if (
+      (capability === "browser:read" || capability === "browser:write") &&
+      options?.cloudBrowserEnabled !== true
+    ) {
       continue;
     }
     if (
