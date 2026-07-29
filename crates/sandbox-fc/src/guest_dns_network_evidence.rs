@@ -1,4 +1,74 @@
 //! Attachment-local network evidence for terminal guest DNS readiness failures.
+//!
+//! This module takes best-effort counter snapshots around one network attachment's readiness
+//! attempts and reports how far those attempts can be correlated across the namespace/root veth
+//! boundary. The report is diagnostic only: capture failures and inconclusive evidence do not
+//! decide whether a namespace is admitted to the pool or whether readiness should be retried.
+//!
+//! # Baseline lifecycle
+//!
+//! A [`GuestDnsNetworkEvidenceTarget`] identifies the attachment-facing state that makes a
+//! [`GuestDnsNetworkEvidenceBaseline`] reusable: namespace, root veth, peer IP, and DNS proxy port.
+//! The trace reader carried by its per-namespace root-netfilter attachment is runtime-wide
+//! diagnostic capability rather than network identity, so the attachment is neither serialized
+//! nor part of target equality.
+//!
+//! After acquiring a new namespace, the factory captures its first baseline concurrently with COW
+//! preparation. A reused namespace instead carries a quiescent baseline captured during teardown
+//! after the previous sandbox has stopped and before the network lease returns to the pool.
+//! Baseline capture snapshots namespace `veth0`, the reciprocal root veth, and the exact namespace
+//! MASQUERADE rule, then records the root-netfilter trace cursor.
+//!
+//! Terminal capture compares a baseline only with an equal current target. A mismatch makes
+//! counter correlation inconclusive and prevents the old trace cursor from defining the current
+//! trace window. Target equality prevents reuse across different attachment-facing configuration;
+//! reciprocal and stable link-identity checks separately reject a recreated veth.
+//!
+//! # Counter correlation
+//!
+//! Each counter snapshot runs three bounded commands concurrently: namespace and root
+//! `ip -statistics link` queries, and namespace `iptables-save -c -t nat`. Command and parse
+//! failures are retained as unavailable capture values so terminal diagnostics remain best effort.
+//! The only positive aggregate classification, `readiness_correlated_root_veth_rx`, requires:
+//!
+//! - a non-zero readiness-attempt count and available baseline and terminal surfaces;
+//! - an equal target, reciprocal veth identities within both snapshots, and stable identities
+//!   across the window;
+//! - monotonic counters on every captured link field and the exact MASQUERADE rule;
+//! - MASQUERADE packet and byte deltas equal to the attempt count and fixed readiness-packet size;
+//! - namespace TX and root RX packet deltas equal to the attempt count;
+//! - equal, non-zero namespace TX and root RX byte deltas; and
+//! - no namespace TX or root RX error or drop delta.
+//!
+//! That classification proves exact attempt-correlated receipt at the root side of the veth. It
+//! does not prove later root-netfilter traversal, delivery to the DNS proxy, upstream resolution,
+//! or a guest-visible response. Zero attempts, unavailable surfaces, attachment identity changes,
+//! and counter resets cannot form a comparable window. Other mismatches remain inconclusive
+//! because unrelated traffic may make an otherwise valid counter window noisy; their reason names
+//! the first failed exact-correlation condition, not a proven packet-loss location.
+//!
+//! # Aggregate classification and independent observations
+//!
+//! The aggregate `classification` and `reason` answer whether every exact condition above holds.
+//! [`CounterObservations`] separately evaluates the exact namespace MASQUERADE delta and aggregate
+//! veth handoff from any valid deltas. Both observations can therefore be `observed` while the
+//! aggregate classification is inconclusive, for example when unrelated veth traffic raises both
+//! sides above the readiness-attempt count. These observations preserve partial evidence; they are
+//! not independent root-cause or per-attempt classifications.
+//!
+//! # Report composition and bounds
+//!
+//! Terminal counter capture and root-netfilter trace capture run concurrently. The separately
+//! bounded [`GuestDnsNetfilterTraceReport`] is embedded as another evidence dimension and never
+//! changes the counter classification. Disabled tracing omits it; other trace availability and
+//! capture states remain in the trace report itself.
+//!
+//! Baseline commands use [`BASELINE_COMMAND_TIMEOUT`], while the terminal caller supplies its
+//! counter-command timeout and the trace subsystem owns its capture wait. Command and parse failure
+//! details retain at most [`FAILURE_DETAIL_LIMIT_BYTES`] bytes plus a truncation marker. The
+//! enclosing failure diagnostic owns the overall snapshot deadline. Report serialization also
+//! remains best effort and falls back to a plain serialization-error string rather than affecting
+//! readiness behavior.
 
 use std::sync::Arc;
 use std::time::Duration;
@@ -17,6 +87,11 @@ const EXPECTED_NAMESPACE_MASQUERADE_RULE: &str =
     "-A POSTROUTING -s 192.168.241.0/29 -o veth0 -j MASQUERADE";
 const FAILURE_DETAIL_LIMIT_BYTES: usize = 256;
 
+/// Attachment-facing identity and trace capability for one evidence window.
+///
+/// Equality deliberately covers only namespace, root veth, peer IP, and DNS proxy port. The
+/// per-namespace trace attachment is cloned for capture, but its runtime-wide reader/capability is
+/// neither serialized nor part of baseline compatibility.
 #[derive(Clone, Debug, Serialize)]
 pub(crate) struct GuestDnsNetworkEvidenceTarget {
     namespace: String,
@@ -28,6 +103,7 @@ pub(crate) struct GuestDnsNetworkEvidenceTarget {
 }
 
 impl GuestDnsNetworkEvidenceTarget {
+    /// Build a target from the network attachment currently assigned to a sandbox.
     pub(crate) fn new(
         namespace: &str,
         host_device: &str,
@@ -45,8 +121,6 @@ impl GuestDnsNetworkEvidenceTarget {
     }
 }
 
-// The trace reader is runtime-wide diagnostic capability, not attachment
-// identity. Baseline reuse is keyed by the namespace-facing fields only.
 impl PartialEq for GuestDnsNetworkEvidenceTarget {
     fn eq(&self, other: &Self) -> bool {
         self.namespace == other.namespace
@@ -58,6 +132,10 @@ impl PartialEq for GuestDnsNetworkEvidenceTarget {
 
 impl Eq for GuestDnsNetworkEvidenceTarget {}
 
+/// Counter and root-trace position captured before one attachment's readiness attempts.
+///
+/// The target makes the snapshot attachment-specific. A baseline can originate from initial
+/// namespace allocation or from quiescent teardown before that namespace is pooled for reuse.
 #[derive(Debug)]
 pub(crate) struct GuestDnsNetworkEvidenceBaseline {
     target: GuestDnsNetworkEvidenceTarget,
@@ -65,6 +143,11 @@ pub(crate) struct GuestDnsNetworkEvidenceBaseline {
     root_netfilter_trace_cursor: Option<GuestDnsNetfilterTraceCursor>,
 }
 
+/// Capture an attachment-specific baseline without making diagnostic availability fatal.
+///
+/// The three counter surfaces are queried concurrently with the fixed baseline command timeout.
+/// Their individual failures remain in the snapshot; after counter capture, the target's current
+/// root-trace cursor is recorded for the later terminal window.
 pub(crate) async fn capture_guest_dns_network_evidence_baseline(
     target: GuestDnsNetworkEvidenceTarget,
 ) -> Arc<GuestDnsNetworkEvidenceBaseline> {
@@ -77,6 +160,12 @@ pub(crate) async fn capture_guest_dns_network_evidence_baseline(
     })
 }
 
+/// Capture and serialize terminal counter and root-trace evidence.
+///
+/// Counter commands use `command_timeout`, while trace capture owns its separate wait bound. Both
+/// captures run concurrently. A baseline whose target differs from `target` contributes neither a
+/// comparable counter window nor its trace cursor. Serialization failure returns a diagnostic
+/// fallback string instead of propagating into readiness handling.
 pub(crate) async fn capture_guest_dns_network_evidence_report(
     target: GuestDnsNetworkEvidenceTarget,
     baseline: Option<&GuestDnsNetworkEvidenceBaseline>,
@@ -157,6 +246,7 @@ async fn capture_network_evidence(
     }
 }
 
+/// Best-effort snapshots of the three counter surfaces at one point in the evidence window.
 #[derive(Debug, Serialize)]
 struct NetworkCapture {
     namespace_link: CaptureValue<LinkSnapshot>,
@@ -328,6 +418,7 @@ fn bounded_detail(detail: String) -> String {
     format!("{} [truncated]", &detail[..end])
 }
 
+/// Aggregate result of exact readiness-attempt correlation across the veth boundary.
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "snake_case")]
 enum EvidenceClassification {
@@ -335,6 +426,10 @@ enum EvidenceClassification {
     Inconclusive,
 }
 
+/// First condition that determined the aggregate classification.
+///
+/// An inconclusive reason describes why exact correlation was unavailable or failed; it does not
+/// by itself prove where a readiness packet was lost.
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "snake_case")]
 enum EvidenceReason {
@@ -358,6 +453,7 @@ enum EvidenceBoundary {
     RootVethRx,
 }
 
+/// Checked counter deltas retained after capture availability and identity validation.
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize)]
 struct EvidenceDeltas {
     namespace_link: LinkStats,
@@ -365,6 +461,10 @@ struct EvidenceDeltas {
     namespace_masquerade: PacketCounters,
 }
 
+/// Aggregate classification together with its proof boundary and any usable deltas.
+///
+/// Deltas remain available for mismatch reasons caused by a noisy or inconsistent window, allowing
+/// independent observations without upgrading the aggregate result.
 #[derive(Debug)]
 struct EvidenceCorrelation {
     classification: EvidenceClassification,
@@ -386,6 +486,10 @@ enum CounterObservationStatus {
     ErrorOrDrop,
 }
 
+/// Per-surface observations derived independently from the aggregate classification.
+///
+/// These fields preserve useful partial evidence from valid deltas, but neither field is a
+/// per-attempt root-cause classification.
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize)]
 struct CounterObservations {
     exact_namespace_masquerade: CounterObservationStatus,
@@ -421,6 +525,11 @@ impl EvidenceCorrelation {
     }
 }
 
+/// Apply the exact attempt-correlation contract to baseline and terminal snapshots.
+///
+/// Capture availability and stable reciprocal identities are prerequisites for deltas. Only a
+/// fully exact, monotonic window with no relevant namespace-TX or root-RX errors or drops reaches
+/// the root-veth-RX boundary; all other states are inconclusive.
 fn correlate(
     target: &GuestDnsNetworkEvidenceTarget,
     baseline: Option<&GuestDnsNetworkEvidenceBaseline>,
@@ -527,6 +636,10 @@ fn correlate(
     EvidenceCorrelation::root_veth_rx(deltas)
 }
 
+/// Preserve independent MASQUERADE and aggregate veth-handoff observations from valid deltas.
+///
+/// A noisy window can produce positive observations even when [`correlate`] rejects exact attempt
+/// correlation. States without usable deltas are propagated uniformly instead.
 fn observe_counters(
     correlation: &EvidenceCorrelation,
     readiness_attempts: u16,
@@ -590,6 +703,11 @@ fn same_identity(baseline: &LinkSnapshot, terminal: &LinkSnapshot) -> bool {
         && baseline.link_index == terminal.link_index
 }
 
+/// Serialized counter evidence with an optional, independently interpreted root trace.
+///
+/// `classification`, `reason`, and `farthest_observed_boundary` describe aggregate exact
+/// correlation. `counter_observations` preserves per-surface evidence, while the baseline,
+/// terminal, and delta fields expose the bounded inputs used for both interpretations.
 #[derive(Serialize)]
 struct EvidenceReport<'a> {
     target: &'a GuestDnsNetworkEvidenceTarget,
@@ -605,6 +723,7 @@ struct EvidenceReport<'a> {
     root_netfilter_trace: Option<&'a GuestDnsNetfilterTraceReport>,
 }
 
+/// Correlate snapshots, derive independent observations, and serialize the composed report.
 fn render_report(
     target: &GuestDnsNetworkEvidenceTarget,
     baseline: Option<&GuestDnsNetworkEvidenceBaseline>,
