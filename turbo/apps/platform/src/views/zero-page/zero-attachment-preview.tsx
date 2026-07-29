@@ -7,6 +7,7 @@ import {
   IconVideo,
 } from "@tabler/icons-react";
 import { useGet, useSet } from "ccstate-react";
+import { useTranslation } from "react-i18next";
 import { detach, Reason } from "../../signals/utils.ts";
 import type { TextPreviewComputed } from "../../signals/text-preview.ts";
 import {
@@ -172,8 +173,33 @@ function AttachmentAnchorChip({
   kind: AttachmentAnchorChipKind;
   text$?: TextPreviewComputed;
 }) {
+  const { t } = useTranslation();
   const publicUrl = publicAttachmentUrl(url);
   const openDocument = useSet(openDocumentLightbox$);
+  const kindLabel =
+    kind === "markdown"
+      ? t(($) => {
+          return $.artifacts.preview.openKinds.markdown;
+        })
+      : kind === "text"
+        ? t(($) => {
+            return $.artifacts.preview.openKinds.text;
+          })
+        : kind === "json"
+          ? t(($) => {
+              return $.artifacts.preview.openKinds.json;
+            })
+          : kind === "csv"
+            ? t(($) => {
+                return $.artifacts.preview.openKinds.csv;
+              })
+            : kind === "pdf"
+              ? t(($) => {
+                  return $.artifacts.preview.openKinds.pdf;
+                })
+              : t(($) => {
+                  return $.artifacts.preview.openKinds.html;
+                });
 
   return (
     <a
@@ -192,13 +218,23 @@ function AttachmentAnchorChip({
           ...(text$ ? { text$ } : {}),
         });
       }}
-      aria-label={`Open ${kind} preview for ${filename}`}
+      aria-label={t(
+        ($) => {
+          return $.artifacts.preview.openKind;
+        },
+        {
+          kind: kindLabel,
+          filename,
+        },
+      )}
       title={filename}
       className="group/doc-preview inline-flex w-fit self-start align-top text-left no-underline"
     >
       <AttachmentDocumentThumbnailArtwork
         actionIcon={<IconEye size={10} />}
-        actionLabel="Preview"
+        actionLabel={t(($) => {
+          return $.artifacts.preview.badge;
+        })}
         filename={filename}
         kind={kind}
       />
@@ -243,6 +279,7 @@ function HtmlSitePreviewCard({
   previewImageUrl?: string;
   url: string;
 }) {
+  const { t } = useTranslation();
   const publicUrl = publicAttachmentUrl(url);
   const openDocument = useSet(openDocumentLightbox$);
   const title = fallbackHtmlPreviewTitle(filename, url);
@@ -259,7 +296,17 @@ function HtmlSitePreviewCard({
         event.currentTarget.blur();
         openDocument({ kind: "html", url, filename });
       }}
-      aria-label={`Open html preview for ${filename}`}
+      aria-label={t(
+        ($) => {
+          return $.artifacts.preview.openKind;
+        },
+        {
+          kind: t(($) => {
+            return $.artifacts.preview.openKinds.html;
+          }),
+          filename,
+        },
+      )}
       title={title}
       className={`group/site-preview flex-col ${MEDIA_PREVIEW_CARD_CLASS} ${MEDIA_PREVIEW_CARD_HOVER_CLASS}`}
     >
@@ -298,6 +345,7 @@ function HtmlSitePreviewViewport({
   publicUrl: string;
   title: string;
 }) {
+  const { t } = useTranslation();
   return (
     <div
       data-testid="attachment-preview-html-viewport"
@@ -305,7 +353,12 @@ function HtmlSitePreviewViewport({
     >
       <iframe
         src={publicUrl}
-        title={`Site preview for ${title}`}
+        title={t(
+          ($) => {
+            return $.artifacts.preview.siteLabel;
+          },
+          { title },
+        )}
         sandbox="allow-same-origin allow-scripts"
         tabIndex={-1}
         loading="lazy"
@@ -361,6 +414,7 @@ function FileThumbnailPreview({
   url: string;
   contentType?: string;
 }) {
+  const { t } = useTranslation();
   const accentClass = getFilePreviewAccentClass(filename, contentType);
 
   return (
@@ -379,7 +433,12 @@ function FileThumbnailPreview({
       }}
       title={filename}
       data-testid="attachment-preview-file"
-      aria-label={`Download ${filename}`}
+      aria-label={t(
+        ($) => {
+          return $.artifacts.attachments.download;
+        },
+        { filename },
+      )}
       className="group/doc-preview inline-flex w-fit self-start align-top text-left"
     >
       <div
@@ -396,7 +455,9 @@ function FileThumbnailPreview({
         </div>
         <div className="absolute right-2 top-2 inline-flex items-center gap-1 rounded-full bg-background/85 px-1.5 py-0.5 text-[9px] font-medium uppercase tracking-wide text-muted-foreground opacity-0 transition-opacity duration-200 group-hover/doc-preview:opacity-100">
           <IconDownload size={10} />
-          Download
+          {t(($) => {
+            return $.artifacts.actions.download;
+          })}
         </div>
         <div className="absolute inset-x-0 bottom-0 flex items-end justify-between gap-2 bg-gradient-to-t from-black/55 via-black/15 to-transparent px-2.5 py-2.5 text-white opacity-0 transition-opacity duration-200 group-hover/doc-preview:opacity-100">
           <div className="min-w-0">
@@ -417,6 +478,7 @@ function AudioPreview({
   filename: string;
   url: string;
 }) {
+  const { t } = useTranslation();
   const openAudioLightbox = useSet(openAudioLightbox$);
   const lightboxOpen = useGet(lightboxUrl$) !== null;
   const accentClass = getFilePreviewAccentClass(
@@ -433,7 +495,17 @@ function AudioPreview({
       }}
       disabled={lightboxOpen}
       title={filename}
-      aria-label={`Open audio preview for ${filename}`}
+      aria-label={t(
+        ($) => {
+          return $.artifacts.preview.openKind;
+        },
+        {
+          kind: t(($) => {
+            return $.artifacts.preview.openKinds.audio;
+          }),
+          filename,
+        },
+      )}
       data-testid="attachment-preview-audio"
       className={`${lightboxOpen ? "" : "group/doc-preview"} inline-flex w-fit self-start align-top text-left disabled:pointer-events-none`}
     >
@@ -451,7 +523,9 @@ function AudioPreview({
         </div>
         <div className="absolute right-2 top-2 inline-flex items-center gap-1 rounded-full bg-background/85 px-1.5 py-0.5 text-[9px] font-medium uppercase tracking-wide text-muted-foreground opacity-0 transition-opacity duration-200 group-hover/doc-preview:opacity-100">
           <IconFileMusic size={10} />
-          Preview
+          {t(($) => {
+            return $.artifacts.preview.badge;
+          })}
         </div>
         <div className="absolute inset-x-0 bottom-0 flex items-end justify-between gap-2 bg-gradient-to-t from-black/55 via-black/15 to-transparent px-2.5 py-2.5 text-white opacity-0 transition-opacity duration-200 group-hover/doc-preview:opacity-100">
           <div className="min-w-0">
@@ -472,6 +546,7 @@ function VideoThumbnailPreview({
   filename: string;
   url: string;
 }) {
+  const { t } = useTranslation();
   const openVideoLightbox = useSet(openVideoLightbox$);
   const lightboxOpen = useGet(lightboxUrl$) !== null;
   const videoUrl = publicAttachmentUrl(url);
@@ -485,7 +560,17 @@ function VideoThumbnailPreview({
       }}
       disabled={lightboxOpen}
       title={filename}
-      aria-label={`Open video preview for ${filename}`}
+      aria-label={t(
+        ($) => {
+          return $.artifacts.preview.openKind;
+        },
+        {
+          kind: t(($) => {
+            return $.artifacts.preview.openKinds.video;
+          }),
+          filename,
+        },
+      )}
       data-testid="attachment-preview-video"
       className={`${
         lightboxOpen
@@ -519,7 +604,9 @@ function VideoThumbnailPreview({
         </span>
         <div className="absolute right-2 top-2 z-30 inline-flex items-center gap-1 rounded-full bg-background/85 px-1.5 py-0.5 text-[9px] font-medium uppercase tracking-wide text-muted-foreground opacity-0 transition-opacity duration-200 group-hover/video-preview:opacity-100">
           <IconVideo size={10} />
-          Preview
+          {t(($) => {
+            return $.artifacts.preview.badge;
+          })}
         </div>
         <div className="absolute inset-x-0 bottom-0 z-30 flex items-end justify-between gap-2 bg-gradient-to-t from-black/65 via-black/20 to-transparent px-2.5 py-2.5 text-white opacity-0 transition-opacity duration-200 group-hover/video-preview:opacity-100">
           <div className="min-w-0">
