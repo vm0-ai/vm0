@@ -357,3 +357,13 @@ export async function readBrowserProfileAsPreviousApi(
       response.previous_api_browser_profile.provider_profile_id,
   };
 }
+
+export async function setBrowserInstanceAsPreviousApi(
+  context: TestContext,
+  browserId: string,
+): Promise<void> {
+  await postAction(context, {
+    action: "set-browser-instance-as-previous-api",
+    browser_id: browserId,
+  });
+}

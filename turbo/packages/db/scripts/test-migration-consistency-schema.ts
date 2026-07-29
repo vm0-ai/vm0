@@ -7090,6 +7090,187 @@ async function validateModelObservationContractCleanup(): Promise<void> {
   }
 }
 
+const BROWSER_RESIZE_STATE_PREVIOUS_MIGRATION = 736;
+const BROWSER_RESIZE_STATE_MIGRATION = 737;
+
+const browserResizeRolloutFixture = {
+  orgId: "browser-resize-rollout-org",
+  userId: "browser-resize-rollout-user",
+  profileId: "98000000-0000-4000-8000-000000000001",
+  providerProfileId: "98000000-0000-4000-8000-000000000002",
+  instances: [
+    {
+      browserSessionId: "98000000-0000-4000-8000-000000000011",
+      chatThreadId: "98000000-0000-4000-8000-000000000012",
+      runId: "98000000-0000-4000-8000-000000000013",
+      providerSessionId: "98000000-0000-4000-8000-000000000014",
+    },
+    {
+      browserSessionId: "98000000-0000-4000-8000-000000000021",
+      chatThreadId: "98000000-0000-4000-8000-000000000022",
+      runId: "98000000-0000-4000-8000-000000000023",
+      providerSessionId: "98000000-0000-4000-8000-000000000024",
+    },
+    {
+      browserSessionId: "98000000-0000-4000-8000-000000000031",
+      chatThreadId: "98000000-0000-4000-8000-000000000032",
+      runId: "98000000-0000-4000-8000-000000000033",
+      providerSessionId: "98000000-0000-4000-8000-000000000034",
+    },
+  ],
+} as const;
+
+async function seedBrowserResizeRolloutSessions(client: Client): Promise<void> {
+  const fixture = browserResizeRolloutFixture;
+  await client.query(
+    `INSERT INTO "browser_profiles" (
+       "id", "org_id", "user_id", "provider_profile_id"
+     )
+     VALUES ($1, $2, $3, $4)`,
+    [
+      fixture.profileId,
+      fixture.orgId,
+      fixture.userId,
+      fixture.providerProfileId,
+    ],
+  );
+  for (const instance of fixture.instances) {
+    await client.query(
+      `INSERT INTO "browser_sessions" (
+         "id", "chat_thread_id", "org_id", "user_id", "name",
+         "browser_profile_id", "status", "timeout_minutes", "max_credits"
+       )
+       VALUES ($1, $2, $3, $4, 'resize-rollout', $5, 'active', 240, 1)`,
+      [
+        instance.browserSessionId,
+        instance.chatThreadId,
+        fixture.orgId,
+        fixture.userId,
+        fixture.profileId,
+      ],
+    );
+  }
+}
+
+async function insertBrowserInstanceWithPreviousApiShape(
+  client: Client,
+  instance: (typeof browserResizeRolloutFixture.instances)[number],
+): Promise<void> {
+  const inserted = await client.query<{ providerSessionId: string }>(
+    `INSERT INTO "browser_session_instances" (
+       "provider_session_id", "browser_session_id", "chat_thread_id", "run_id",
+       "status", "pricing_unit_price", "pricing_unit_size", "timeout_at",
+       "started_at", "last_touched_at", "idle_expires_at", "stop_requested_at",
+       "finished_at"
+     )
+     VALUES (
+       $1, $2, $3, $4, 'active', 0, 1, NOW() + INTERVAL '4 hours', NOW(),
+       NOW(), NOW() + INTERVAL '10 minutes', NULL, NULL
+     )
+     RETURNING "provider_session_id" AS "providerSessionId"`,
+    [
+      instance.providerSessionId,
+      instance.browserSessionId,
+      instance.chatThreadId,
+      instance.runId,
+    ],
+  );
+  assert.deepEqual(inserted.rows, [
+    { providerSessionId: instance.providerSessionId },
+  ]);
+}
+
+async function browserResizeStateTableAvailable(
+  client: Client,
+): Promise<boolean> {
+  const result = await client.query<{ available: boolean }>(
+    `SELECT to_regclass('public.browser_session_resize_states') IS NOT NULL
+       AS "available"`,
+  );
+  return result.rows[0]?.available ?? false;
+}
+
+async function validateBrowserResizeStateRolloutCompatibility(): Promise<void> {
+  console.log("=== Validate browser resize state rollout compatibility ===\n");
+  const testDb = "migration_browser_resize_state_rollout_test";
+  const testDbUrl = createTestDbUrl(testDb);
+  const [beforeMigration, previousAfterMigration, currentAfterMigration] =
+    browserResizeRolloutFixture.instances;
+
+  await createDatabase(testDb);
+  try {
+    await runMigrationsUpTo(testDbUrl, BROWSER_RESIZE_STATE_PREVIOUS_MIGRATION);
+    const client = new Client({ connectionString: testDbUrl });
+    await client.connect();
+    try {
+      await seedBrowserResizeRolloutSessions(client);
+      assert.equal(await browserResizeStateTableAvailable(client), false);
+      await insertBrowserInstanceWithPreviousApiShape(client, beforeMigration);
+
+      await applyMigrationsUpToInTransaction(
+        client,
+        BROWSER_RESIZE_STATE_MIGRATION,
+      );
+      assert.equal(await browserResizeStateTableAvailable(client), true);
+      await insertBrowserInstanceWithPreviousApiShape(
+        client,
+        previousAfterMigration,
+      );
+      await insertBrowserInstanceWithPreviousApiShape(
+        client,
+        currentAfterMigration,
+      );
+      await client.query(
+        `INSERT INTO "browser_session_resize_states" (
+           "provider_session_id", "screen_width", "screen_height"
+         )
+         VALUES ($1, 1440, 900)`,
+        [currentAfterMigration.providerSessionId],
+      );
+
+      const states = await client.query<{
+        providerSessionId: string;
+        screenHeight: number | null;
+        screenWidth: number | null;
+      }>(
+        `SELECT
+           instances."provider_session_id" AS "providerSessionId",
+           resize_state."screen_width" AS "screenWidth",
+           resize_state."screen_height" AS "screenHeight"
+         FROM "browser_session_instances" AS instances
+         LEFT JOIN "browser_session_resize_states" AS resize_state
+           ON resize_state."provider_session_id" =
+             instances."provider_session_id"
+         ORDER BY instances."provider_session_id"`,
+      );
+      assert.deepEqual(states.rows, [
+        {
+          providerSessionId: beforeMigration.providerSessionId,
+          screenHeight: null,
+          screenWidth: null,
+        },
+        {
+          providerSessionId: previousAfterMigration.providerSessionId,
+          screenHeight: null,
+          screenWidth: null,
+        },
+        {
+          providerSessionId: currentAfterMigration.providerSessionId,
+          screenHeight: 900,
+          screenWidth: 1440,
+        },
+      ]);
+    } finally {
+      await client.end();
+    }
+  } finally {
+    await dropDatabase(testDb);
+  }
+  console.log(
+    "   ✅ Current API tolerates pre-0737 schema, previous API inserts after 0737, and only current post-migration instances gain resize state\n",
+  );
+}
+
 async function validateTimestampOrdering(): Promise<void> {
   console.log("=== Phase 0.5: Validate Journal Timestamp Ordering ===\n");
 
@@ -7280,6 +7461,7 @@ async function main(): Promise<void> {
     await validateChatEventTableRename();
     await validateChatInputGoalEvent();
     await validateChatEventAssetRefTableRename();
+    await validateBrowserResizeStateRolloutCompatibility();
     await validateCurrentBrowserApiBeforeBillingMigration();
 
     // Step 1.5: Validate latest snapshot accuracy (NEW)
