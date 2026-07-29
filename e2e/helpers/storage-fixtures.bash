@@ -114,6 +114,16 @@ seed_storage_fixture() (
         --slurpfile files "$files_json" \
         '{storageName: $storageName, storageOwner: $storageOwner, versionId: $versionId, files: $files[0]}' > "$commit_payload"
 
-    e2e_api_curl "/api/test/storage-fixture/commit" -X POST --data-binary "@$commit_payload" >/dev/null
+    local commit_response
+    commit_response="$(e2e_api_curl "/api/test/storage-fixture/commit" -X POST --data-binary "@$commit_payload")"
+    if ! jq -e --arg versionId "$version_id" '
+        .success == true
+        and .versionId == $versionId
+        and .headVersionId == $versionId
+    ' <<< "$commit_response" >/dev/null; then
+        echo "# Storage fixture commit did not acknowledge HEAD $version_id" >&2
+        jq -c '{success, versionId, headVersionId}' <<< "$commit_response" >&2 || true
+        return 1
+    fi
     printf '%s\n' "$version_id"
 )
