@@ -276,7 +276,8 @@ jobs:
             .github/scripts/tests/check-release-please-component-releases-test.sh \
             .github/scripts/tests/check-workflow-shell-compatibility-test.sh \
             .github/scripts/tests/cloudflare-ssh-preconnect-test.sh \
-            .github/scripts/tests/cloudflare-ssh-proxy-test.sh
+            .github/scripts/tests/cloudflare-ssh-proxy-test.sh \
+            .github/scripts/tests/runner-behavior-balloon-test.sh
           # actionlint assumes Bash when shell is omitted and does not model the
           # sh default used by container jobs.
           .github/scripts/check-workflow-shell-compatibility.sh
