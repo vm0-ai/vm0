@@ -1,4 +1,5 @@
 import { useGet } from "ccstate-react";
+import { useTranslation } from "react-i18next";
 import { Button } from "@vm0/ui/components/ui/button";
 import {
   Dialog,
@@ -25,6 +26,7 @@ export function ForceUpgradeDialog({
 }: ForceUpgradeDialogProps) {
   const open = useGet(forceUpgradeDialogOpen$);
   const brandName = useGet(brandName$);
+  const { t } = useTranslation();
 
   return (
     <Dialog open={open}>
@@ -41,15 +43,25 @@ export function ForceUpgradeDialog({
         }}
       >
         <DialogHeader>
-          <DialogTitle>Update required</DialogTitle>
+          <DialogTitle>
+            {t(($) => {
+              return $.shared.forceUpgrade.title;
+            })}
+          </DialogTitle>
           <DialogDescription>
-            This version of {brandName} is no longer supported. Refresh to load
-            the latest version.
+            {t(
+              ($) => {
+                return $.shared.forceUpgrade.description;
+              },
+              { brandName },
+            )}
           </DialogDescription>
         </DialogHeader>
         <DialogFooter>
           <Button type="button" onClick={reload}>
-            Refresh
+            {t(($) => {
+              return $.shared.forceUpgrade.action;
+            })}
           </Button>
         </DialogFooter>
       </DialogContent>

@@ -343,6 +343,122 @@
       }
     }
   },
+  "appShell": {
+    "browserUpgrade": {
+      "browser": {
+        "action": "Update browser",
+        "description": "Zero does not support your current browser version. Update your browser to continue.",
+        "title": "Update your browser to continue"
+      },
+      "chrome": {
+        "action": "Update Chrome",
+        "description": "Zero does not support your current browser version. Update Chrome to continue.",
+        "title": "Update Chrome to continue"
+      },
+      "chromium": {
+        "action": "Update Chromium",
+        "description": "Zero does not support your current browser version. Update Chromium to continue.",
+        "title": "Update Chromium to continue"
+      },
+      "ios": {
+        "action": "Update iOS",
+        "description": "Zero does not support your current browser version. Update iOS to continue.",
+        "title": "Update iOS to continue"
+      },
+      "safari": {
+        "action": "Update Safari",
+        "description": "Zero does not support your current browser version. Update Safari to continue.",
+        "title": "Update Safari to continue"
+      }
+    },
+    "loading": {
+      "ariaLabel": "Loading your workspace",
+      "messages": {
+        "almostThere": "Almost there...",
+        "brewingIdeas": "Brewing some ideas...",
+        "connectingDots": "Connecting the dots...",
+        "gettingReady": "Getting things ready...",
+        "loadingWorkspace": "Loading your workspace...",
+        "spinningTeam": "Spinning up the team...",
+        "tuningInstruments": "Tuning the instruments...",
+        "warmingNeurons": "Warming up the neurons..."
+      }
+    },
+    "metadata": {
+      "description": "Zero is your AI coworker from vm0. Text Zero or chat on the web — research, email, docs, Slack, GitHub, Notion, and 100+ tools.",
+      "title": "Zero — Your AI coworker from vm0"
+    },
+    "shortcutHelp": {
+      "close": "Close keyboard shortcuts",
+      "description": "Available shortcuts on this page",
+      "sections": {
+        "composer": "Composer",
+        "global": "Global",
+        "messages": "Messages"
+      },
+      "shortcuts": {
+        "blurComposer": "Blur composer",
+        "changeIcon": "Change icon",
+        "clearIcon": "Clear icon",
+        "newChat": "New chat",
+        "nextAgent": "Next agent",
+        "nextThread": "Next thread",
+        "openAgentList": "Open agent list",
+        "openFirstThread": "Open first thread",
+        "previousAgent": "Previous agent",
+        "previousThread": "Previous thread",
+        "renameChat": "Rename chat",
+        "scrollBottom": "Scroll to bottom",
+        "scrollTop": "Scroll to top",
+        "sendMessage": "Send message",
+        "setIcon": "Set icon (Ctrl+Shift+1-9)",
+        "showShortcuts": "Show shortcuts",
+        "toggleSidebar": "Toggle sidebar"
+      },
+      "title": "Keyboard Shortcuts"
+    },
+    "sidebar": {
+      "ariaLabel": "Sidebar",
+      "chat": "Chat",
+      "collapse": "Collapse sidebar",
+      "expand": "Expand sidebar",
+      "manage": "Manage",
+      "mobile": {
+        "invite": "Invite",
+        "openArtifacts": "Open mobile artifacts",
+        "openAutomations": "Open mobile automations",
+        "openMenu": "Open menu",
+        "overlay": "Sidebar overlay"
+      },
+      "navigation": {
+        "activity": "Activity logs",
+        "agents": "Agents",
+        "artifacts": "Artifacts",
+        "connectors": "Connectors",
+        "insights": "Insights",
+        "insightsAndUsage": "Insights & Usage",
+        "newChat": "New chat",
+        "settings": "Settings",
+        "workflows": "Workflows",
+        "works": "Where {{agentName}} works"
+      },
+      "rail": {
+        "activity": "Activity",
+        "new": "New",
+        "workflows": "Workflows",
+        "works": "Works"
+      },
+      "searchConversations": "Search conversations",
+      "workspaceSwitcher": {
+        "create": "Create workspace",
+        "creating": "Creating…",
+        "join": "Join",
+        "joining": "Joining…",
+        "organizationFallback": "Organization",
+        "switch": "Switch workspace"
+      }
+    }
+  },
   "artifacts": {
     "actions": {
       "backToAll": "Back to all artifacts",
@@ -1301,6 +1417,14 @@
     "toasts": {
       "connected": "{{connector}} connected",
       "disconnected": "{{connector}} disconnected"
+    }
+  },
+  "global": {
+    "errors": {
+      "requestFailed": "Request failed"
+    },
+    "realtime": {
+      "degraded": "Live updates ran into a problem. Please refresh the page."
     }
   },
   "lifecycle": {
@@ -3144,6 +3268,24 @@
         "logoTooLarge": "Logo is too large ({{width}}×{{height}}px). Maximum size is {{maximum}}×{{maximum}}px.",
         "logoTooSmall": "Logo is too small ({{width}}×{{height}}px). Minimum size is {{minimum}}×{{minimum}}px."
       }
+    }
+  },
+  "shared": {
+    "breadcrumb": "Breadcrumb",
+    "errorBoundary": {
+      "contactSupport": "support",
+      "description": "Give it another try or reach out",
+      "help": "We're here to help",
+      "title": "Oops! Something went sideways"
+    },
+    "forceUpgrade": {
+      "action": "Refresh",
+      "description": "This version of {{brandName}} is no longer supported. Refresh to load the latest version.",
+      "title": "Update required"
+    },
+    "notFound": {
+      "description": "The page you are looking for does not exist.",
+      "title": "Page not found"
     }
   },
   "workflows": {

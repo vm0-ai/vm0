@@ -151,15 +151,138 @@
       }
     </style>
     <script>
+      // Resolve locale before any visible pre-bundle UI is constructed.
+      (function () {
+        var orgId = sessionStorage.getItem("clerk-active-org-id");
+        var cacheKey = orgId ? "vm0:locale:" + orgId : null;
+        var cached = cacheKey ? localStorage.getItem(cacheKey) : null;
+        // Browser-language auto-selection stays disabled during rollout.
+        // Locale changes come from the workspace cache or gated preference UI.
+        var locale =
+          cached === "en-US" || cached === "pt-BR" ? cached : "en-US";
+        var copyByLocale = {
+          "en-US": {
+            browserUpgrade: {
+              browser: {
+                actionLabel: "Update browser",
+                description:
+                  "Zero does not support your current browser version. Update your browser to continue.",
+                title: "Update your browser to continue",
+              },
+              chrome: {
+                actionLabel: "Update Chrome",
+                description:
+                  "Zero does not support your current browser version. Update Chrome to continue.",
+                title: "Update Chrome to continue",
+              },
+              chromium: {
+                actionLabel: "Update Chromium",
+                description:
+                  "Zero does not support your current browser version. Update Chromium to continue.",
+                title: "Update Chromium to continue",
+              },
+              ios: {
+                actionLabel: "Update iOS",
+                description:
+                  "Zero does not support your current browser version. Update iOS to continue.",
+                title: "Update iOS to continue",
+              },
+              safari: {
+                actionLabel: "Update Safari",
+                description:
+                  "Zero does not support your current browser version. Update Safari to continue.",
+                title: "Update Safari to continue",
+              },
+            },
+            loading: {
+              ariaLabel: "Loading your workspace",
+              messages: [
+                "Warming up the neurons...",
+                "Brewing some ideas...",
+                "Getting things ready...",
+                "Almost there...",
+                "Loading your workspace...",
+                "Tuning the instruments...",
+                "Connecting the dots...",
+                "Spinning up the team...",
+              ],
+            },
+            metadata: {
+              description:
+                "Zero is your AI coworker from vm0. Text Zero or chat on the web — research, email, docs, Slack, GitHub, Notion, and 100+ tools.",
+              title: "Zero — Your AI coworker from vm0",
+            },
+          },
+          "pt-BR": {
+            browserUpgrade: {
+              browser: {
+                actionLabel: "Atualizar navegador",
+                description:
+                  "O Zero não oferece suporte à versão atual do seu navegador. Atualize o navegador para continuar.",
+                title: "Atualize seu navegador para continuar",
+              },
+              chrome: {
+                actionLabel: "Atualizar Chrome",
+                description:
+                  "O Zero não oferece suporte à versão atual do seu navegador. Atualize o Chrome para continuar.",
+                title: "Atualize o Chrome para continuar",
+              },
+              chromium: {
+                actionLabel: "Atualizar Chromium",
+                description:
+                  "O Zero não oferece suporte à versão atual do seu navegador. Atualize o Chromium para continuar.",
+                title: "Atualize o Chromium para continuar",
+              },
+              ios: {
+                actionLabel: "Atualizar iOS",
+                description:
+                  "O Zero não oferece suporte à versão atual do seu navegador. Atualize o iOS para continuar.",
+                title: "Atualize o iOS para continuar",
+              },
+              safari: {
+                actionLabel: "Atualizar Safari",
+                description:
+                  "O Zero não oferece suporte à versão atual do seu navegador. Atualize o Safari para continuar.",
+                title: "Atualize o Safari para continuar",
+              },
+            },
+            loading: {
+              ariaLabel: "Carregando seu espaço de trabalho",
+              messages: [
+                "Aquecendo os neurônios...",
+                "Preparando algumas ideias...",
+                "Preparando tudo...",
+                "Quase lá...",
+                "Carregando seu espaço de trabalho...",
+                "Ajustando os instrumentos...",
+                "Ligando os pontos...",
+                "Reunindo a equipe...",
+              ],
+            },
+            metadata: {
+              description:
+                "Zero é seu colega de IA da vm0. Envie uma mensagem para o Zero ou converse pela web — pesquise, envie e-mails, crie documentos e use Slack, GitHub, Notion e mais de 100 ferramentas.",
+              title: "Zero — Seu colega de IA da vm0",
+            },
+          },
+        };
+
+        window.__vm0PreBundleCopy = copyByLocale[locale];
+        document.documentElement.lang = locale;
+        if (cacheKey) localStorage.setItem(cacheKey, locale);
+      })();
+    </script>
+    <script>
       (function () {
         var ua = navigator.userAgent || "";
         var supported = true;
+        var copy = window.__vm0PreBundleCopy.browserUpgrade;
+        var upgradeTargetKind = "browser";
         var upgradeTarget = {
-          actionLabel: "Update browser",
+          actionLabel: copy.browser.actionLabel,
           actionUrl: "https://www.google.com/chrome/",
-          description:
-            "Zero does not support your current browser version. Update your browser to continue.",
-          title: "Update your browser to continue",
+          description: copy.browser.description,
+          title: copy.browser.title,
         };
         var iosPattern = /\b(?:iPhone|iPad|iPod)\b.*\bOS (\d+)(?:_(\d+))?/;
         var iosMatch = iosPattern.exec(ua);
@@ -167,12 +290,12 @@
         var chromeMatch = /\b(?:Chrome|CriOS|HeadlessChrome)\/(\d+)/.exec(ua);
 
         if (iosMatch) {
+          upgradeTargetKind = "ios";
           upgradeTarget = {
-            actionLabel: "Update iOS",
+            actionLabel: copy.ios.actionLabel,
             actionUrl: "https://support.apple.com/HT204204",
-            description:
-              "Zero does not support your current browser version. Update iOS to continue.",
-            title: "Update iOS to continue",
+            description: copy.ios.description,
+            title: copy.ios.title,
           };
           var iosMajor = parseInt(iosMatch[1], 10);
           var iosMinor = iosMatch[2] ? parseInt(iosMatch[2], 10) : 0;
@@ -184,19 +307,15 @@
           !/\b(?:Edg|OPR|SamsungBrowser)\//.test(ua)
         ) {
           var chromiumBrowser = !!chromiumMatch;
+          var chromiumCopy = chromiumBrowser ? copy.chromium : copy.chrome;
+          upgradeTargetKind = chromiumBrowser ? "chromium" : "chrome";
           upgradeTarget = {
-            actionLabel: chromiumBrowser ? "Update Chromium" : "Update Chrome",
+            actionLabel: chromiumCopy.actionLabel,
             actionUrl: chromiumBrowser
               ? "https://www.chromium.org/getting-involved/download-chromium/"
               : "https://www.google.com/chrome/",
-            description:
-              "Zero does not support your current browser version. Update " +
-              (chromiumBrowser ? "Chromium" : "Chrome") +
-              " to continue.",
-            title:
-              "Update " +
-              (chromiumBrowser ? "Chromium" : "Chrome") +
-              " to continue",
+            description: chromiumCopy.description,
+            title: chromiumCopy.title,
           };
           var chromeMajor = parseInt(
             chromiumBrowser ? chromiumMatch[1] : chromeMatch[1],
@@ -211,12 +330,12 @@
             safariMatch &&
             !/\b(?:Chrome|CriOS|Chromium|Edg|OPR|FxiOS)\//.test(ua)
           ) {
+            upgradeTargetKind = "safari";
             upgradeTarget = {
-              actionLabel: "Update Safari",
+              actionLabel: copy.safari.actionLabel,
               actionUrl: "https://support.apple.com/safari",
-              description:
-                "Zero does not support your current browser version. Update Safari to continue.",
-              title: "Update Safari to continue",
+              description: copy.safari.description,
+              title: copy.safari.title,
             };
             var safariMajor = parseInt(safariMatch[1], 10);
             var safariMinor = safariMatch[2] ? parseInt(safariMatch[2], 10) : 0;
@@ -229,6 +348,8 @@
 
         window.__vm0BrowserUpgrade = upgradeTarget;
         window.__vm0BrowserSupported = supported;
+        document.documentElement.dataset.browserUpgradeTarget =
+          upgradeTargetKind;
         document.documentElement.setAttribute(
           "data-browser-supported",
           supported ? "true" : "false",
@@ -394,6 +515,23 @@
       name="twitter:image"
       content="https://static.vm0.io/web/og-image.png"
     />
+    <script>
+      (function () {
+        var copy = window.__vm0PreBundleCopy.metadata;
+        var metadata = [
+          ['meta[name="description"]', copy.description],
+          ['meta[property="og:description"]', copy.description],
+          ['meta[property="og:image:alt"]', copy.title],
+          ['meta[property="og:title"]', copy.title],
+          ['meta[name="twitter:description"]', copy.description],
+          ['meta[name="twitter:title"]', copy.title],
+        ];
+        for (var i = 0; i < metadata.length; i += 1) {
+          var element = document.querySelector(metadata[i][0]);
+          if (element) element.setAttribute("content", metadata[i][1]);
+        }
+      })();
+    </script>
     <meta name="google" content="notranslate" />
     <meta
       name="theme-color"
@@ -421,22 +559,6 @@
               : "light";
         document.documentElement.dataset.theme = t;
         if (t === "dark") document.documentElement.classList.add("dark");
-      })();
-    </script>
-    <script>
-      // Resolve locale before the app bundle runs so refreshes use the cached
-      // workspace language while the server preference is loading.
-      (function () {
-        var orgId = sessionStorage.getItem("clerk-active-org-id");
-        var cacheKey = orgId ? "vm0:locale:" + orgId : null;
-        var cached = cacheKey ? localStorage.getItem(cacheKey) : null;
-        // Browser-language auto-selection stays disabled during rollout.
-        // Locale changes come from the workspace cache or gated preference UI.
-        var locale =
-          cached === "en-US" || cached === "pt-BR" ? cached : "en-US";
-
-        document.documentElement.lang = locale;
-        if (cacheKey) localStorage.setItem(cacheKey, locale);
       })();
     </script>
     <script type="module">
@@ -490,7 +612,12 @@
       })();
     </script>
     <div id="root"></div>
-    <div id="app-bootstrap-skeleton">
+    <div
+      id="app-bootstrap-skeleton"
+      role="status"
+      aria-live="polite"
+      aria-label="Loading your workspace"
+    >
       <style>
         :root {
           --zero-viewport-height: 100dvh;
@@ -667,16 +794,9 @@
         if (window.__vm0BrowserSupported !== true) return;
 
         var skeleton = document.getElementById("app-bootstrap-skeleton");
-        var messages = [
-          "Warming up the neurons...",
-          "Brewing some ideas...",
-          "Getting things ready...",
-          "Almost there...",
-          "Loading your workspace...",
-          "Tuning the instruments...",
-          "Connecting the dots...",
-          "Spinning up the team...",
-        ];
+        var loadingCopy = window.__vm0PreBundleCopy.loading;
+        var messages = loadingCopy.messages;
+        skeleton.setAttribute("aria-label", loadingCopy.ariaLabel);
         var avatarPresets = [
           {
             rotation: 1,
