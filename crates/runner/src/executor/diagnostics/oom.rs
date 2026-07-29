@@ -8,10 +8,11 @@ pub(in crate::executor) fn dmesg_indicates_oom(stdout: &str) -> bool {
     lower.contains("out of memory") || lower.contains("oom-kill") || lower.contains("oom_reaper")
 }
 
-/// Check host dmesg for a cgroup OOM kill of a specific firecracker process.
-/// Reads the entire ring buffer (~512KB) directly — no shell wrapper needed
-/// since the pure function handles filtering.  Times out after 5s to avoid
-/// blocking if sudo hangs.
+/// Checks host `dmesg` output for OOM evidence naming a specific Firecracker process.
+///
+/// Invokes `dmesg` directly under the runner's current privileges and times out
+/// after five seconds. Returns `false` when the command exits unsuccessfully,
+/// cannot be started, or times out.
 pub(in crate::executor) async fn check_host_oom(pid: u32) -> bool {
     let result = tokio::time::timeout(Duration::from_secs(5), async {
         tokio::process::Command::new("dmesg").output().await
@@ -36,9 +37,13 @@ pub(in crate::executor) async fn check_host_oom(pid: u32) -> bool {
     }
 }
 
-/// Returns true if host dmesg output contains an OOM kill record for the
-/// given firecracker PID.  Checks that the character after the PID is not
-/// a digit to avoid prefix matches (e.g. pid=1234 must not match pid=12345).
+/// Returns `true` when host `dmesg` output contains the case-sensitive
+/// `oom-kill` marker and an exact `task=firecracker,pid=<pid>` token.
+///
+/// The marker and task token are searched independently across the output, so
+/// this does not validate a memory-cgroup constraint. The character after the
+/// PID must not be a digit, avoiding prefix matches such as `pid=1234` matching
+/// `pid=12345`.
 pub(in crate::executor) fn host_dmesg_indicates_oom(dmesg: &str, pid: u32) -> bool {
     if !dmesg.contains("oom-kill") {
         return false;
