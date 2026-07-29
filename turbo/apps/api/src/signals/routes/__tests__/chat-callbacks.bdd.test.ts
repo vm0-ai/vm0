@@ -36,6 +36,7 @@ import { createRunsApi } from "./helpers/api-bdd-runs";
 import { createWebhookCallbackApi } from "./helpers/api-bdd-webhooks";
 import { updateFeatureSwitchesForUser } from "./helpers/zero-feature-switches";
 import {
+  decryptDataKeyOutput,
   generateDataKeyOutput,
   useSecretKmsProbe,
 } from "./helpers/secret-kms-probe";
@@ -1582,6 +1583,214 @@ Continue the JPM IJTXX Treasury allocation follow-up for issue #20818 and [ACME-
     await expect(goalRunIds(first.threadId)).resolves.toHaveLength(0);
   }, 90_000);
 
+  it("pauses the goal and rejects an unreadable continuation payload as a goal artifact", async () => {
+    const { actor, agentId, runnerGroup } = await entitledChatActor();
+    await enableGoalWorkflows(actor);
+    chatCallbacks.failIfChatCallbackRouteIsFetched();
+
+    const first = await startChatRun(actor, {
+      agentId,
+      prompt: "finish before goal payload decryption fails",
+    });
+    const objectiveBrief = "pause after goal payload decryption failure";
+    await createGoalForRun(actor, first.runId, objectiveBrief);
+    useSecretKmsProbe(undefined, (_command, callNumber) => {
+      return callNumber === 1
+        ? Promise.reject(new Error("internal kms decryption failure"))
+        : undefined;
+    });
+    chatCallbacks.mockChatOutputEvents([
+      assistantEvent(0, "completed before goal payload decryption failure"),
+    ]);
+
+    const sandboxHeaders = await claimChatRun(runnerGroup, first.runId);
+    await completeChatRunOk(first.runId, sandboxHeaders, {
+      lastEventSequence: 0,
+    });
+
+    await expect
+      .poll(async () => {
+        const goal = await accept(
+          goalsClient().get({
+            headers: zeroGoalHeaders(actor, first.runId),
+          }),
+          [200],
+        );
+        return goal.body.status;
+      })
+      .toBe("paused");
+    const [goalEventId] = await goalQueueEventIds(first.threadId);
+    expect(goalEventId).toBeDefined();
+    const events = await waitForThreadMessages(
+      actor,
+      first.threadId,
+      (items) => {
+        return items.some((event) => {
+          return (
+            event.eventType === "input.rejected" &&
+            event.revokesEventId === goalEventId
+          );
+        });
+      },
+    );
+    const rejected = events.events.find((event) => {
+      return (
+        event.eventType === "input.rejected" &&
+        event.revokesEventId === goalEventId
+      );
+    });
+    if (rejected?.eventType !== "input.rejected") {
+      throw new Error("Expected the unreadable goal event to be rejected");
+    }
+    expect(rejected).toMatchObject({
+      eventType: "input.rejected",
+      content: objectiveBrief,
+      error: "Goal continuation queue payload is unreadable",
+      goalSnapshot: { objectiveBrief },
+      userMessage: {
+        parts: [{ type: "text", text: objectiveBrief }],
+      },
+    });
+    expect(rejected.content).not.toContain("internal kms");
+    expect(JSON.stringify(rejected.userMessage)).not.toContain("internal kms");
+    expect(rejected).not.toHaveProperty("runId");
+    await expect(goalRunIds(first.threadId)).resolves.toHaveLength(0);
+  }, 90_000);
+
+  it("rejects a goal invalidated before launch without creating a run", async () => {
+    const { actor, agentId, runnerGroup } = await entitledChatActor();
+    await enableGoalWorkflows(actor);
+    chatCallbacks.failIfChatCallbackRouteIsFetched();
+
+    const first = await startChatRun(actor, {
+      agentId,
+      prompt: "finish before pre-launch goal invalidation",
+    });
+    const objectiveBrief = "invalidate before goal launch";
+    await createGoalForRun(actor, first.runId, objectiveBrief);
+    const decryptStarted = createDeferredPromise<void>(context.signal);
+    const releaseDecrypt = deferredGate();
+    useSecretKmsProbe(undefined, (_command, callNumber) => {
+      if (callNumber !== 1) {
+        return undefined;
+      }
+      decryptStarted.resolve(undefined);
+      return releaseDecrypt.wait().then(() => {
+        return decryptDataKeyOutput();
+      });
+    });
+    chatCallbacks.mockChatOutputEvents([
+      assistantEvent(0, "completed before pre-launch goal invalidation"),
+    ]);
+
+    const sandboxHeaders = await claimChatRun(runnerGroup, first.runId);
+    await completeChatRunOk(first.runId, sandboxHeaders, {
+      lastEventSequence: 0,
+    });
+    await decryptStarted.promise;
+
+    const paused = await accept(
+      goalsClient().pause({
+        headers: zeroGoalHeaders(actor, first.runId),
+      }),
+      [200],
+    );
+    expect(paused.body.status).toBe("paused");
+    const [goalEventId] = await goalQueueEventIds(first.threadId);
+    expect(goalEventId).toBeDefined();
+    releaseDecrypt.release();
+
+    const events = await waitForThreadMessages(
+      actor,
+      first.threadId,
+      (items) => {
+        return items.some((event) => {
+          return (
+            event.eventType === "input.rejected" &&
+            event.revokesEventId === goalEventId
+          );
+        });
+      },
+    );
+    expect(events.events).toContainEqual(
+      expect.objectContaining({
+        eventType: "input.rejected",
+        revokesEventId: goalEventId,
+        content: objectiveBrief,
+        error: "Goal continuation no longer matches the active goal",
+        goalSnapshot: { objectiveBrief },
+      }),
+    );
+    await expect(goalRunIds(first.threadId)).resolves.toHaveLength(0);
+  }, 90_000);
+
+  it("rejects a goal invalidated after a lost final claim without creating a run", async () => {
+    const { actor, agentId, runnerGroup } = await entitledChatActor();
+    await enableGoalWorkflows(actor);
+    chatCallbacks.failIfChatCallbackRouteIsFetched();
+
+    const first = await startChatRun(actor, {
+      agentId,
+      prompt: "finish before post-claim goal invalidation",
+    });
+    const objectiveBrief = "invalidate after goal preparation";
+    await createGoalForRun(actor, first.runId, objectiveBrief);
+    const runPreparationStarted = createDeferredPromise<void>(context.signal);
+    const releaseRunPreparation = deferredGate();
+    useSecretKmsProbe((command, callNumber) => {
+      if (callNumber !== 2) {
+        return undefined;
+      }
+      runPreparationStarted.resolve(undefined);
+      return releaseRunPreparation.wait().then(() => {
+        return generateDataKeyOutput(command);
+      });
+    });
+    chatCallbacks.mockChatOutputEvents([
+      assistantEvent(0, "completed before post-claim goal invalidation"),
+    ]);
+
+    const sandboxHeaders = await claimChatRun(runnerGroup, first.runId);
+    await completeChatRunOk(first.runId, sandboxHeaders, {
+      lastEventSequence: 0,
+    });
+    await runPreparationStarted.promise;
+
+    const paused = await accept(
+      goalsClient().pause({
+        headers: zeroGoalHeaders(actor, first.runId),
+      }),
+      [200],
+    );
+    expect(paused.body.status).toBe("paused");
+    const [goalEventId] = await goalQueueEventIds(first.threadId);
+    expect(goalEventId).toBeDefined();
+    releaseRunPreparation.release();
+
+    const events = await waitForThreadMessages(
+      actor,
+      first.threadId,
+      (items) => {
+        return items.some((event) => {
+          return (
+            event.eventType === "input.rejected" &&
+            event.revokesEventId === goalEventId
+          );
+        });
+      },
+    );
+    expect(events.events).toContainEqual(
+      expect.objectContaining({
+        eventType: "input.rejected",
+        revokesEventId: goalEventId,
+        content: objectiveBrief,
+        error: "Goal continuation no longer matches the active goal",
+        goalSnapshot: { objectiveBrief },
+      }),
+    );
+    await expect(goalRunIds(first.threadId)).resolves.toHaveLength(0);
+  }, 90_000);
+
   it("pauses the goal and rejects its event when claim-time run creation fails", async () => {
     const { actor, agentId, runnerGroup } = await entitledChatActor();
     await enableGoalWorkflows(actor);
@@ -1633,9 +1842,18 @@ Continue the JPM IJTXX Treasury allocation follow-up for issue #20818 and [ACME-
         event.revokesEventId === goalEventId
       );
     });
+    if (rejectedGoalEvent?.eventType !== "input.rejected") {
+      throw new Error("Expected the failed goal event to be rejected");
+    }
     expect(rejectedGoalEvent).toMatchObject({
       eventType: "input.rejected",
+      content: "pause after claim failure",
+      goalSnapshot: { objectiveBrief: "pause after claim failure" },
     });
+    expect(rejectedGoalEvent?.content).not.toBe(rejectedGoalEvent?.error);
+    expect(JSON.stringify(rejectedGoalEvent?.userMessage)).not.toContain(
+      rejectedGoalEvent.error,
+    );
     expect(rejectedGoalEvent).not.toHaveProperty("runId");
     await expect(goalRunIds(first.threadId)).resolves.toHaveLength(0);
   }, 90_000);
