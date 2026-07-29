@@ -619,9 +619,7 @@
     "status": {
       "live": "Live",
       "starting": "Starting",
-      "stopped": "Stopped",
-      "stopping": "Stopping",
-      "suspended": "Suspended"
+      "stopped": "Stopped"
     },
     "title": "Live browser",
     "unavailable": {

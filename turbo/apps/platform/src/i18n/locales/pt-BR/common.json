@@ -636,9 +636,7 @@
     "status": {
       "live": "Ao vivo",
       "starting": "Iniciando",
-      "stopped": "Parado",
-      "stopping": "Parando",
-      "suspended": "Suspenso"
+      "stopped": "Parado"
     },
     "title": "Navegador ao vivo",
     "unavailable": {
