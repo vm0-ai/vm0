@@ -73,6 +73,7 @@ const connectorCheckIdentitySchema = z
   .object({
     // TODO(#23821): Remove this legacy response field after clients migrate.
     connectorRef: connectorSlugSchema,
+    // Capability-gated while supported legacy CLI schemas reject unknown fields.
     connectorSlug: connectorSlugSchema.optional(),
     label: z.string().min(1),
     visibility: z.enum(["available", "unavailable"]),
@@ -84,6 +85,7 @@ const connectorCheckCandidateSchema = z
   .object({
     // TODO(#23821): Remove this legacy response field after clients migrate.
     connectorRef: connectorSlugSchema,
+    // Capability-gated while supported legacy CLI schemas reject unknown fields.
     connectorSlug: connectorSlugSchema.optional(),
     label: z.string().min(1),
   })

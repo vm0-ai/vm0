@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { http, HttpResponse } from "msw";
 import {
+  CLIENT_CAPABILITY_CONNECTOR_SLUG_IDENTITIES,
   CLIENT_REQUEST_ID_HEADER,
   CLIENT_SESSION_ID_HEADER,
   CLIENT_TYPE_CLI,
@@ -121,9 +122,13 @@ describe("CLI client headers", () => {
     expect(secondHeaders.get("x-vercel-protection-bypass")).toBe(
       "preview-bypass",
     );
-    expect(firstHeaders.get(CLIENT_VERSION_HEADER)).toBe("0.0.0-test");
+    expect(firstHeaders.get(CLIENT_VERSION_HEADER)).toBe(
+      `0.0.0-test+${CLIENT_CAPABILITY_CONNECTOR_SLUG_IDENTITIES}`,
+    );
     expect(firstHeaders.get(CLIENT_TYPE_HEADER)).toBe(CLIENT_TYPE_CLI);
-    expect(secondHeaders.get(CLIENT_VERSION_HEADER)).toBe("0.0.0-test");
+    expect(secondHeaders.get(CLIENT_VERSION_HEADER)).toBe(
+      `0.0.0-test+${CLIENT_CAPABILITY_CONNECTOR_SLUG_IDENTITIES}`,
+    );
     expect(secondHeaders.get(CLIENT_TYPE_HEADER)).toBe(CLIENT_TYPE_CLI);
 
     const sessionId = requiredHeader(firstHeaders, CLIENT_SESSION_ID_HEADER);
