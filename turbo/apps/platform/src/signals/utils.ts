@@ -346,6 +346,53 @@ const FIB_DELAYS_MS = [
 ] as const;
 
 const MAX_LOOP_COUNT_IN_TEST = 100;
+
+function fibonacciRetryDelayMs(retryIndex: number): number {
+  return (
+    FIB_DELAYS_MS[Math.min(retryIndex, FIB_DELAYS_MS.length - 1)] ?? 60_000
+  );
+}
+
+async function waitForFibonacciRetry(
+  retryIndex: number,
+  signal: AbortSignal,
+): Promise<void> {
+  const delayMs = fibonacciRetryDelayMs(retryIndex);
+  await (IN_VITEST
+    ? delay(0, { signal: AbortSignal.any([]) })
+    : delay(delayMs, { signal }));
+  signal.throwIfAborted();
+}
+
+/**
+ * Retry one async operation with fibonacci backoff while `shouldRetry`
+ * classifies its rejection as transient. Resolves on the first successful
+ * attempt and rejects when the signal aborts or an error is not retryable.
+ */
+export async function retryWithFibonacciBackoff<T>(
+  operation: () => Promise<T>,
+  shouldRetry: (error: unknown) => boolean,
+  signal: AbortSignal,
+): Promise<T> {
+  let retryIndex = 0;
+  while (true) {
+    if (IN_VITEST && retryIndex > MAX_LOOP_COUNT_IN_TEST) {
+      throw new Error(
+        `retryWithFibonacciBackoff: infinite retry detected — exceeded ${MAX_LOOP_COUNT_IN_TEST} attempts in test`,
+      );
+    }
+    const result = await settle(runRetriedLoad(operation), signal);
+    if (result.ok) {
+      return result.value;
+    }
+    if (!shouldRetry(result.error)) {
+      throw result.error;
+    }
+    await waitForFibonacciRetry(retryIndex, signal);
+    retryIndex++;
+  }
+}
+
 /**
  * Run `loopBody` in a loop with `interval` between iterations.
  * Transient (non-abort) errors trigger fibonacci backoff retries.
@@ -389,16 +436,13 @@ export async function setLoop(
       if (options.retryTransientErrors === false) {
         throw error;
       }
-      const backoff =
-        FIB_DELAYS_MS[Math.min(fibIndex, FIB_DELAYS_MS.length - 1)] ?? 60_000;
+      const backoff = fibonacciRetryDelayMs(fibIndex);
       L.warn(
         `setLoop: transient error (attempt ${fibIndex + 1}), retrying in ${backoff}ms`,
         error,
       );
+      await waitForFibonacciRetry(fibIndex, signal);
       fibIndex++;
-      await (IN_VITEST
-        ? delay(0, { signal: AbortSignal.any([]) })
-        : delay(backoff, { signal }));
     }
   }
 }

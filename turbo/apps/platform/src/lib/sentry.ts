@@ -42,8 +42,8 @@ export function initSentry(): void {
         return null;
       }
 
-      // ApiError thrown by accept() — surfaced to users via toast
-      // notifications and not actionable in Sentry.
+      // ApiError thrown by accept() — surfaced through toast notifications or
+      // authentication recovery and not actionable in Sentry.
       const original = hint?.originalException;
       if (original instanceof ApiError) {
         return null;

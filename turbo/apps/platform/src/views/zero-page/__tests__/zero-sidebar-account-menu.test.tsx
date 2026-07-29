@@ -1,5 +1,6 @@
 import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { HttpResponse } from "msw";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type { ModelProviderResponse } from "@vm0/api-contracts/contracts/model-providers";
@@ -9,6 +10,7 @@ import {
   zeroPersonalModelProvidersMainContract,
 } from "@vm0/api-contracts/contracts/zero-personal-model-providers";
 import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
+import { toast } from "@vm0/ui/components/ui/sonner";
 
 import {
   click,
@@ -859,34 +861,45 @@ describe("zero sidebar account menu", () => {
     });
   });
 
-  it("keeps the session active when a token refresh detects offline state", async () => {
+  it("retries auth recovery network failures before replaying the request", async () => {
     mockAdminAccountSidebar();
-    context.mocks.data.personalModelProviders([
-      connectedPersonalCodexProvider(),
-    ]);
+    const provider = connectedPersonalCodexProvider();
+    context.mocks.data.personalModelProviders([provider]);
 
     let modelProviderRequests = 0;
     let forcedTokenRefreshes = 0;
-    context.mocks.api(
-      zeroPersonalModelProvidersMainContract.list,
-      ({ respond }) => {
-        modelProviderRequests += 1;
-        return respond(401, {
-          error: {
-            code: "UNAUTHORIZED",
-            message: "Unauthorized",
+    context.mocks.http.get("*/api/zero/me/model-providers", () => {
+      modelProviderRequests += 1;
+      if (modelProviderRequests === 1) {
+        return HttpResponse.json(
+          {
+            error: {
+              code: "UNAUTHORIZED",
+              message: "Unauthorized",
+            },
           },
-        });
-      },
-    );
+          { status: 401 },
+        );
+      }
+      if (modelProviderRequests === 2) {
+        return HttpResponse.error();
+      }
+      return HttpResponse.json({ modelProviders: [provider] });
+    });
     mockedClerk.sessionGetToken.mockImplementation((options) => {
       if (options?.skipCache) {
         forcedTokenRefreshes += 1;
-        return Promise.reject(
-          Object.assign(new Error("Clerk is offline"), {
-            code: "clerk_offline",
-          }),
-        );
+        if (forcedTokenRefreshes === 1) {
+          return Promise.reject(
+            Object.assign(new Error("Clerk is offline"), {
+              code: "clerk_offline",
+            }),
+          );
+        }
+        if (forcedTokenRefreshes === 2) {
+          return Promise.reject(new TypeError("Failed to fetch"));
+        }
+        return Promise.resolve("fresh-token");
       }
       return Promise.resolve("test-token");
     });
@@ -903,10 +916,59 @@ describe("zero sidebar account menu", () => {
     });
 
     await waitFor(() => {
-      expect(modelProviderRequests).toBe(1);
-      expect(forcedTokenRefreshes).toBe(1);
+      expect(modelProviderRequests).toBe(3);
+      expect(forcedTokenRefreshes).toBe(3);
     });
     expect(mockedClerk.redirectToSignIn).not.toHaveBeenCalled();
+
+    const menu = await openAccountMenu();
+    const panel = await within(menu).findByTestId("account-menu-subscriptions");
+    expect(
+      within(panel).getByRole("heading", { name: "Codex" }),
+    ).toBeInTheDocument();
+  });
+
+  it("redirects without a toast when the fresh-token request remains unauthorized", async () => {
+    const toastError = vi.spyOn(toast, "error");
+    mockAdminAccountSidebar();
+    context.mocks.data.personalModelProviders([
+      connectedPersonalCodexProvider(),
+    ]);
+
+    let modelProviderRequests = 0;
+    context.mocks.api(
+      zeroPersonalModelProvidersMainContract.list,
+      ({ respond }) => {
+        modelProviderRequests += 1;
+        return respond(401, {
+          error: {
+            code: "UNAUTHORIZED",
+            message: "Unauthorized",
+          },
+        });
+      },
+    );
+    mockedClerk.sessionGetToken.mockImplementation((options) => {
+      return Promise.resolve(options?.skipCache ? "fresh-token" : "test-token");
+    });
+
+    detachedSetupPage({
+      context,
+      path: `/agents/${AGENT_ID}/chat`,
+      user: {
+        id: "test-user-123",
+        fullName: "Alex Rivera",
+        email: "alex.rivera@example.test",
+      },
+      featureSwitches: { [FeatureSwitchKey.SidebarSubscriptionUsage]: true },
+    });
+
+    await waitFor(() => {
+      expect(modelProviderRequests).toBe(2);
+      expect(mockedClerk.redirectToSignIn).toHaveBeenCalledWith();
+    });
+    expect(toastError).not.toHaveBeenCalledWith("Unauthorized");
+    toastError.mockRestore();
   });
 
   it("suppresses global sign-in redirects during add-account auth transitions", async () => {
