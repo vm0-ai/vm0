@@ -1,6 +1,6 @@
 import {
-  chatEventResponseSchema,
-  type ChatEventResponse,
+  chatEventSchema,
+  type ChatEvent,
   type UserMessageDocument,
 } from "@vm0/api-contracts/contracts/chat-threads";
 
@@ -15,7 +15,7 @@ type OptionalUnionFields<T> = {
   [K in UnionKeys<T>]?: UnionValue<T, K>;
 };
 
-export type MockChatEventInput = OptionalUnionFields<ChatEventResponse> & {
+export type MockChatEventInput = OptionalUnionFields<ChatEvent> & {
   id?: string;
   role?: "user" | "assistant";
   content: string | null;
@@ -24,7 +24,7 @@ export type MockChatEventInput = OptionalUnionFields<ChatEventResponse> & {
 
 function inferredEventType(
   message: MockChatEventInput,
-): ChatEventResponse["eventType"] {
+): ChatEvent["eventType"] {
   if (message.eventType !== undefined) {
     return message.eventType;
   }
@@ -232,16 +232,16 @@ const mockChatEventOverrides = {
       usage: message.usage,
     };
   },
-} satisfies Record<ChatEventResponse["eventType"], MockChatEventOverrides>;
+} satisfies Record<ChatEvent["eventType"], MockChatEventOverrides>;
 
 function normalizeMockChatEvent(
   message: MockChatEventInput,
   fallbackId: string,
   fallbackSeqId = 1,
-): ChatEventResponse {
+): ChatEvent {
   const id = message.id ?? fallbackId;
   const eventType = inferredEventType(message);
-  return chatEventResponseSchema.parse({
+  return chatEventSchema.parse({
     ...baseEvent(message, id, message.content, fallbackSeqId),
     eventType,
     ...mockChatEventOverrides[eventType](message, id),
@@ -250,7 +250,7 @@ function normalizeMockChatEvent(
 
 export function normalizeMockChatEvents(
   messages: readonly MockChatEventInput[],
-): ChatEventResponse[] {
+): ChatEvent[] {
   let nextSeqId = 1;
   return messages.flatMap((message, index) => {
     const fallbackId = `mock-chat-event-${index.toString()}`;

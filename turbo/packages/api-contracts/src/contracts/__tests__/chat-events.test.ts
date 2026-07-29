@@ -279,6 +279,34 @@ describe("ChatEvent catalog", () => {
     }
   });
 
+  it("accepts retired automation pause markers only as read responses", () => {
+    const legacyMarkers = [
+      {
+        id: "legacy-automation-pause",
+        seqId: 18,
+        threadId: THREAD_ID,
+        eventType: "queue.automation_paused",
+        content: null,
+        pauseReason: "Previous frontend request",
+        createdAt: CREATED_AT,
+      },
+      {
+        id: "legacy-automation-resume",
+        seqId: 19,
+        threadId: THREAD_ID,
+        eventType: "queue.automation_resumed",
+        content: null,
+        createdAt: CREATED_AT,
+      },
+    ] as const;
+
+    for (const marker of legacyMarkers) {
+      expect(chatEventResponseSchema.parse(marker)).toStrictEqual(marker);
+      expect(chatEventSchema.safeParse(marker).success).toBe(false);
+      expect(CHAT_EVENT_TYPES).not.toContain(marker.eventType);
+    }
+  });
+
   it("rejects a response that only carries the retired rich-input field", () => {
     const userMessage = {
       version: 1 as const,

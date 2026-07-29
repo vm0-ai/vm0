@@ -558,6 +558,25 @@ const runCancelledEventSchema = chatEventBaseSchema
   })
   .strict();
 
+// Read-only rollout compatibility for browser bundles that may reach the
+// previous API while historical queue pause markers still exist. These leaves
+// deliberately stay outside CHAT_EVENT_TYPES and chatEventSchema so no current
+// writer or fold can recreate the retired pause/resume behavior.
+const legacyQueueAutomationPausedEventSchema = chatEventBaseSchema
+  .extend({
+    eventType: z.literal("queue.automation_paused"),
+    content: z.null(),
+    pauseReason: z.string().nullable(),
+  })
+  .strict();
+
+const legacyQueueAutomationResumedEventSchema = chatEventBaseSchema
+  .extend({
+    eventType: z.literal("queue.automation_resumed"),
+    content: z.null(),
+  })
+  .strict();
+
 const controlInterruptEventSchema = chatEventBaseSchema
   .extend({
     eventType: z.literal("control.interrupt"),
@@ -610,7 +629,11 @@ const chatEventSchema = z.discriminatedUnion("eventType", [
   usageRecordedEventSchema,
 ]);
 
-const chatEventResponseSchema = chatEventSchema;
+const chatEventResponseSchema = z.discriminatedUnion("eventType", [
+  ...chatEventSchema.options,
+  legacyQueueAutomationPausedEventSchema,
+  legacyQueueAutomationResumedEventSchema,
+]);
 
 if (
   MATERIALIZED_CHAT_EVENT_TYPES.length !== chatEventSchema.options.length ||
@@ -1565,6 +1588,15 @@ export type ChatThreadDraft = z.infer<typeof chatThreadDraftSchema>;
 export type ChatEvent = z.infer<typeof chatEventSchema>;
 export type ChatEventResponse = z.infer<typeof chatEventResponseSchema>;
 export type ChatEventSendBody = z.infer<typeof chatEventsContract.send.body>;
+
+export function isCanonicalChatEventResponse(
+  event: ChatEventResponse,
+): event is ChatEvent {
+  return (
+    event.eventType !== "queue.automation_paused" &&
+    event.eventType !== "queue.automation_resumed"
+  );
+}
 
 export function chatEventResponse(event: ChatEvent): ChatEventResponse {
   return chatEventResponseSchema.parse(event);
