@@ -61,13 +61,16 @@ export const updateUserPreference$ = command(
 );
 
 export const triggerMorningBrief$ = command(
-  async ({ get }, _signal: AbortSignal): Promise<{ runId: string }> => {
+  async (
+    { get },
+    _signal: AbortSignal,
+  ): Promise<{ runId: string | null; queued: boolean }> => {
     const createClient = get(zeroClient$);
     const client = createClient(zeroMorningBriefContract);
     const result = await accept(
       client.trigger({ body: {}, fetchOptions: { signal: _signal } }),
       [200],
     );
-    return { runId: result.body.runId };
+    return { runId: result.body.runId, queued: result.body.queued };
   },
 );
