@@ -65,7 +65,9 @@ function cronClient() {
 
 async function requestBrowserCreate(
   headers: Readonly<Record<string, string>>,
-  body: ZeroBrowserCreateRequest,
+  // The previous CLI sends maxCredits. The current request schema must keep
+  // accepting that extra field throughout the client drain window.
+  body: ZeroBrowserCreateRequest & { readonly maxCredits?: number },
 ): Promise<Response> {
   return await createApp({ signal: context.signal }).request(
     "/api/zero/browsers",
@@ -729,8 +731,16 @@ describe("zero browser route", () => {
     const admitted = await requestBrowserCreate(candidate.browserHeaders, {
       name: "concurrency-replacement",
       proxyCountryCode: null,
+      maxCredits: 500,
     });
     expect(admitted.status).toBe(201);
+    await expect(admitted.json()).resolves.toMatchObject({
+      browser: {
+        maxCredits: 1,
+        grossCredits: 0,
+        creditsCharged: 0,
+      },
+    });
     await flushWaitUntilForTest();
     expect(providerCreates).toBe(3);
     expect(providerStopAttempts).toStrictEqual([providerIds[0]]);

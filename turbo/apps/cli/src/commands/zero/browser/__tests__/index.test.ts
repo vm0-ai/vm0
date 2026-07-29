@@ -51,6 +51,9 @@ function browser(status: "active" | "suspended" = "active") {
         : null,
     proxyCountryCode: null,
     timeoutMinutes: 240,
+    maxCredits: 1,
+    grossCredits: 0,
+    creditsCharged: 0,
     idleExpiresAt: status === "active" ? "2026-07-24T10:10:00.000Z" : null,
     suspendedAt: status === "suspended" ? "2026-07-24T10:05:00.000Z" : null,
     suspensionReason: status === "suspended" ? ("idle" as const) : null,
@@ -247,12 +250,19 @@ describe("zero browser command", () => {
     const output = consoleLog.mock.calls.flat().join("\n");
     expect(output).not.toContain("secret-cdp-token");
     expect(output).not.toContain("secret-live-token");
-    expect(JSON.parse(output)).toMatchObject({
+    const parsedOutput = JSON.parse(output) as {
+      readonly agentBrowserSession: string;
+      readonly browser: Readonly<Record<string, unknown>>;
+    };
+    expect(parsedOutput).toMatchObject({
       browser: {
         id: BROWSER_ID,
         viewerUrl: `https://app.vm0.ai/browsers/${BROWSER_ID}`,
       },
       agentBrowserSession: "zero-browser",
     });
+    expect(parsedOutput.browser).not.toHaveProperty("maxCredits");
+    expect(parsedOutput.browser).not.toHaveProperty("grossCredits");
+    expect(parsedOutput.browser).not.toHaveProperty("creditsCharged");
   });
 });

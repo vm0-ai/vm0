@@ -53,8 +53,17 @@ function parseAgentSession(value: string): string {
 
 function browserJson(
   browser: ZeroBrowserSession,
-): Omit<ZeroBrowserSession, "liveUrl"> {
-  const { liveUrl: _liveUrl, ...safeBrowser } = browser;
+): Omit<
+  ZeroBrowserSession,
+  "creditsCharged" | "grossCredits" | "liveUrl" | "maxCredits"
+> {
+  const {
+    creditsCharged: _creditsCharged,
+    grossCredits: _grossCredits,
+    liveUrl: _liveUrl,
+    maxCredits: _maxCredits,
+    ...safeBrowser
+  } = browser;
   return safeBrowser;
 }
 

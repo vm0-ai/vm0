@@ -215,6 +215,11 @@ function publicBrowser(
     liveUrl,
     proxyCountryCode: row.proxyCountryCode,
     timeoutMinutes: row.timeoutMinutes,
+    // The previous CLI requires these response fields. They no longer control
+    // admission or settlement and can be removed after that client drains.
+    maxCredits: 1,
+    grossCredits: 0,
+    creditsCharged: 0,
     idleExpiresAt: idleExpiresAt?.toISOString() ?? null,
     suspendedAt: row.suspendedAt?.toISOString() ?? null,
     suspensionReason: row.suspensionReason,

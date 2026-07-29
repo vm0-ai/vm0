@@ -39,6 +39,12 @@ export const zeroBrowserSessionSchema = z.object({
   liveUrl: z.url().nullable(),
   proxyCountryCode: z.string().length(2).nullable(),
   timeoutMinutes: z.number().int().positive(),
+  // Deprecated compatibility fields for clients deployed before browser
+  // billing moved to organization concurrency. Remove after that client
+  // version has drained.
+  maxCredits: z.number().int().positive(),
+  grossCredits: z.number().int().nonnegative(),
+  creditsCharged: z.number().int().nonnegative(),
   // When Zero reclaims the live provider instance unless somebody leases it
   // again. Null once no provider instance is running.
   idleExpiresAt: z.iso.datetime().nullable(),
