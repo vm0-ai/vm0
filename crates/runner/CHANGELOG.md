@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.148.34](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.148.33...runner-rs-v0.148.34) (2026-07-29)
+
+
+### Refactoring
+
+* **python:** retire auto model routing exception ([#23805](https://github.com/vm0-ai/vm0/issues/23805)) ([dacbaee](https://github.com/vm0-ai/vm0/commit/dacbaee367d03939e811a52bfbafa4870fac5927))
+
 ## [0.148.33](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.148.32...runner-rs-v0.148.33) (2026-07-29)
 
 
