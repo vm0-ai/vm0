@@ -1,4 +1,4 @@
-use std::collections::{HashMap, HashSet};
+use std::collections::{BTreeMap, HashMap, HashSet};
 
 use api_contracts::generated::constants::model_provider_env::placeholders as model_provider_placeholders;
 use api_contracts::generated::types::runners::storage::ArtifactEntryMissingRootPolicy;
@@ -46,6 +46,8 @@ fn codex_runtime_config_for_test(model_catalog: Option<serde_json::Value>) -> Co
         name: "MiniMax".into(),
         base_url: "https://api.minimax.io/v1".into(),
         env_key: "OPENAI_API_KEY".into(),
+        http_headers: None,
+        requires_openai_auth: None,
         wire_api: "responses".into(),
         supports_websockets: false,
         model_catalog,
@@ -1202,9 +1204,15 @@ fn build_run_payload_for_run_rejects_prompt_nul() {
 #[test]
 fn build_run_payload_for_run_serializes_codex_runtime_config() {
     let mut ctx = minimal_context();
-    ctx.codex_runtime_config = Some(codex_runtime_config_for_test(Some(json!({
+    let mut config = codex_runtime_config_for_test(Some(json!({
         "models": [{ "slug": "MiniMax-M3" }],
-    }))));
+    })));
+    config.http_headers = Some(BTreeMap::from([(
+        "x-api-key".to_string(),
+        "__VM0_OPENAI_API_KEY_PLACEHOLDER__".to_string(),
+    )]));
+    config.requires_openai_auth = Some(false);
+    ctx.codex_runtime_config = Some(config);
 
     let payload = build_run_payload_for_run(&ctx).unwrap();
     let value: serde_json::Value = serde_json::from_str(&payload.codex_runtime_config).unwrap();
@@ -1212,6 +1220,11 @@ fn build_run_payload_for_run_serializes_codex_runtime_config() {
     assert_eq!(value["providerId"], "minimax");
     assert_eq!(value["baseUrl"], "https://api.minimax.io/v1");
     assert_eq!(value["envKey"], "OPENAI_API_KEY");
+    assert_eq!(
+        value["httpHeaders"]["x-api-key"],
+        "__VM0_OPENAI_API_KEY_PLACEHOLDER__"
+    );
+    assert_eq!(value["requiresOpenaiAuth"], false);
     assert_eq!(value["wireApi"], "responses");
     assert_eq!(value["supportsWebsockets"], false);
     assert_eq!(value["modelCatalog"]["models"][0]["slug"], "MiniMax-M3");

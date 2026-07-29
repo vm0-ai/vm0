@@ -8,6 +8,10 @@ import { agentRuns } from "@vm0/db/schema/agent-run";
 import { agentSessions } from "@vm0/db/schema/agent-session";
 import { chatThreads } from "@vm0/db/schema/chat-thread";
 import { conversations } from "@vm0/db/schema/conversation";
+import {
+  modelProviderConnections,
+  modelProviderSurfaces,
+} from "@vm0/db/schema/model-provider-gateway";
 import { zeroRuns } from "@vm0/db/schema/zero-run";
 import { and, desc, eq, sql } from "drizzle-orm";
 
@@ -16,6 +20,7 @@ import type { Db, ReadonlyDb } from "../external/db";
 export interface ChatThreadSessionRoute {
   readonly selectedModel: string | null;
   readonly modelProvider: string | null;
+  readonly modelProviderId: string | null;
   readonly cliAgentType: string | null;
 }
 
@@ -42,11 +47,14 @@ interface HistoricalThreadSession {
   readonly sessionId: string;
   readonly conversationId: string | null;
   readonly route: ChatThreadSessionRoute;
+  readonly routeRunCreatedAt: Date;
 }
 
 interface SessionRunRoute {
   readonly selectedModel: string | null;
   readonly modelProvider: string | null;
+  readonly modelProviderId: string | null;
+  readonly createdAt: Date;
 }
 
 function isKnownModelProvider(
@@ -80,6 +88,8 @@ function shouldStartNewChatSession(args: {
   readonly nextModel: string | null;
   readonly latestModelProvider?: string | null;
   readonly nextModelProvider?: string | null;
+  readonly latestModelProviderId?: string | null;
+  readonly nextModelProviderId?: string | null;
   readonly latestCliAgentType?: string | null;
   readonly nextCliAgentType?: string | null;
 }): boolean {
@@ -87,6 +97,13 @@ function shouldStartNewChatSession(args: {
     args.latestCliAgentType &&
     args.nextCliAgentType &&
     args.latestCliAgentType !== args.nextCliAgentType
+  ) {
+    return true;
+  }
+  if (
+    args.latestModelProviderId !== undefined &&
+    args.nextModelProviderId !== undefined &&
+    args.latestModelProviderId !== args.nextModelProviderId
   ) {
     return true;
   }
@@ -124,7 +141,9 @@ async function latestHistoricalThreadSession(args: {
       conversationId: agentSessions.conversationId,
       selectedModel: zeroRuns.selectedModel,
       modelProvider: zeroRuns.modelProvider,
+      modelProviderId: zeroRuns.modelProviderId,
       cliAgentType: conversations.cliAgentType,
+      routeRunCreatedAt: agentRuns.createdAt,
     })
     .from(zeroRuns)
     .innerJoin(agentRuns, eq(agentRuns.id, zeroRuns.id))
@@ -154,8 +173,10 @@ async function latestHistoricalThreadSession(args: {
     route: {
       selectedModel: row.selectedModel,
       modelProvider: row.modelProvider,
+      modelProviderId: row.modelProviderId,
       cliAgentType: row.cliAgentType,
     },
+    routeRunCreatedAt: row.routeRunCreatedAt,
   };
 }
 
@@ -167,6 +188,8 @@ async function latestSessionRunRoute(args: {
     .select({
       selectedModel: zeroRuns.selectedModel,
       modelProvider: zeroRuns.modelProvider,
+      modelProviderId: zeroRuns.modelProviderId,
+      createdAt: agentRuns.createdAt,
     })
     .from(agentRuns)
     .innerJoin(zeroRuns, eq(zeroRuns.id, agentRuns.id))
@@ -174,6 +197,44 @@ async function latestSessionRunRoute(args: {
     .orderBy(desc(agentRuns.createdAt))
     .limit(1);
   return row ?? null;
+}
+
+async function customSurfaceChangedSince(args: {
+  readonly db: Db | ReadonlyDb;
+  readonly orgId: string;
+  readonly previousModelProviderId: string | null;
+  readonly nextModelProviderId: string | null;
+  readonly previousRunCreatedAt: Date | null;
+}): Promise<boolean> {
+  if (
+    !args.nextModelProviderId ||
+    args.previousModelProviderId !== args.nextModelProviderId ||
+    !args.previousRunCreatedAt
+  ) {
+    return false;
+  }
+  const [surface] = await args.db
+    .select({
+      surfaceUpdatedAt: modelProviderSurfaces.updatedAt,
+      connectionUpdatedAt: modelProviderConnections.updatedAt,
+    })
+    .from(modelProviderSurfaces)
+    .innerJoin(
+      modelProviderConnections,
+      eq(modelProviderSurfaces.connectionId, modelProviderConnections.id),
+    )
+    .where(
+      and(
+        eq(modelProviderSurfaces.id, args.nextModelProviderId),
+        eq(modelProviderConnections.orgId, args.orgId),
+      ),
+    )
+    .limit(1);
+  return (
+    surface !== undefined &&
+    (surface.surfaceUpdatedAt > args.previousRunCreatedAt ||
+      surface.connectionUpdatedAt > args.previousRunCreatedAt)
+  );
 }
 
 function shouldRotateCanonicalSession(args: {
@@ -185,9 +246,33 @@ function shouldRotateCanonicalSession(args: {
     nextModel: args.nextRoute.selectedModel,
     latestModelProvider: args.previousRoute.modelProvider,
     nextModelProvider: args.nextRoute.modelProvider,
+    latestModelProviderId: args.previousRoute.modelProviderId,
+    nextModelProviderId: args.nextRoute.modelProviderId,
     latestCliAgentType: args.previousRoute.cliAgentType,
     nextCliAgentType: args.nextRoute.cliAgentType,
   });
+}
+
+async function shouldRotateResolvedSession(args: {
+  readonly db: Db | ReadonlyDb;
+  readonly orgId: string;
+  readonly previousRoute: ChatThreadSessionRoute;
+  readonly nextRoute: ChatThreadSessionRoute;
+  readonly previousRunCreatedAt: Date | null;
+}): Promise<boolean> {
+  const routeConfigurationChanged = await customSurfaceChangedSince({
+    db: args.db,
+    orgId: args.orgId,
+    previousModelProviderId: args.previousRoute.modelProviderId,
+    nextModelProviderId: args.nextRoute.modelProviderId,
+    previousRunCreatedAt: args.previousRunCreatedAt,
+  });
+  return routeConfigurationChanged
+    ? true
+    : shouldRotateCanonicalSession({
+        previousRoute: args.previousRoute,
+        nextRoute: args.nextRoute,
+      });
 }
 
 export async function resolveChatThreadSession(args: {
@@ -206,7 +291,9 @@ export async function resolveChatThreadSession(args: {
       conversationId: agentSessions.conversationId,
       selectedModel: zeroRuns.selectedModel,
       modelProvider: zeroRuns.modelProvider,
+      modelProviderId: zeroRuns.modelProviderId,
       routeRunId: zeroRuns.id,
+      routeRunCreatedAt: agentRuns.createdAt,
       cliAgentType: conversations.cliAgentType,
     })
     .from(chatThreads)
@@ -220,6 +307,7 @@ export async function resolveChatThreadSession(args: {
       ),
     )
     .leftJoin(conversations, eq(conversations.id, agentSessions.conversationId))
+    .leftJoin(agentRuns, eq(agentRuns.id, chatThreads.agentSessionRunId))
     .leftJoin(zeroRuns, eq(zeroRuns.id, chatThreads.agentSessionRunId))
     .where(
       and(
@@ -247,13 +335,19 @@ export async function resolveChatThreadSession(args: {
             sessionId: thread.sessionId,
           })
         : null;
-    const rotate = shouldRotateCanonicalSession({
-      previousRoute: {
-        selectedModel: latestRoute?.selectedModel ?? thread.selectedModel,
-        modelProvider: latestRoute?.modelProvider ?? thread.modelProvider,
-        cliAgentType: thread.cliAgentType,
-      },
+    const previousRoute = {
+      selectedModel: latestRoute?.selectedModel ?? thread.selectedModel,
+      modelProvider: latestRoute?.modelProvider ?? thread.modelProvider,
+      modelProviderId: latestRoute?.modelProviderId ?? thread.modelProviderId,
+      cliAgentType: thread.cliAgentType,
+    };
+    const rotate = await shouldRotateResolvedSession({
+      db: args.db,
+      orgId: args.orgId,
+      previousRoute,
       nextRoute: args.route,
+      previousRunCreatedAt:
+        latestRoute?.createdAt ?? thread.routeRunCreatedAt ?? null,
     });
     return {
       sessionId: rotate ? undefined : thread.sessionId,
@@ -276,9 +370,12 @@ export async function resolveChatThreadSession(args: {
     };
   }
 
-  const rotate = shouldRotateCanonicalSession({
+  const rotate = await shouldRotateResolvedSession({
+    db: args.db,
+    orgId: args.orgId,
     previousRoute: historical.route,
     nextRoute: args.route,
+    previousRunCreatedAt: historical.routeRunCreatedAt,
   });
   return {
     sessionId: rotate ? undefined : historical.sessionId,

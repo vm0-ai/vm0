@@ -10,8 +10,16 @@ import {
   type ModelProviderType,
   type SupportedRunModel,
 } from "@vm0/api-contracts/contracts/model-providers";
+import {
+  getModelProviderTypeForSurfaceProtocol,
+  modelProviderSurfaceProtocolSchema,
+} from "@vm0/api-contracts/contracts/zero-model-provider-gateways";
 import type { SupportedFramework } from "@vm0/core/frameworks";
 import { modelProviders } from "@vm0/db/schema/model-provider";
+import {
+  modelProviderConnections,
+  modelProviderSurfaces,
+} from "@vm0/db/schema/model-provider-gateway";
 import { orgMembersMetadata } from "@vm0/db/schema/org-members-metadata";
 import { orgModelPolicies } from "@vm0/db/schema/org-model-policy";
 import { and, eq, or } from "drizzle-orm";
@@ -55,6 +63,15 @@ interface ModelSelectionRequest {
 
 interface AvailableModelProviderPin {
   readonly type: string;
+}
+
+function providerTypeForSurfaceProtocol(
+  protocol: string,
+): ModelProviderType | null {
+  const parsed = modelProviderSurfaceProtocolSchema.safeParse(protocol);
+  return parsed.success
+    ? getModelProviderTypeForSurfaceProtocol(parsed.data)
+    : null;
 }
 
 function modelFirstPinFromRoute(
@@ -115,6 +132,85 @@ function parseModelProviderCredentialScope(
   throw new Error(`Unknown model provider credential scope "${value}"`);
 }
 
+async function resolveCustomSurfacePolicyRoute(params: {
+  readonly db: Db;
+  readonly orgId: string;
+  readonly policy: {
+    readonly model: SupportedRunModel;
+    readonly modelProviderId: string | null;
+    readonly modelProviderSurfaceId: string;
+  };
+  readonly providerType: ModelProviderType;
+  readonly credentialScope: ModelProviderCredentialScope;
+}): Promise<ResolvedModelFirstPolicyRoute | null> {
+  if (
+    params.credentialScope !== "org" ||
+    params.policy.modelProviderId !== null ||
+    isOAuthMemberProviderType(params.providerType)
+  ) {
+    return null;
+  }
+  const [surface] = await params.db
+    .select({
+      protocol: modelProviderSurfaces.protocol,
+      modelMappings: modelProviderSurfaces.modelMappings,
+    })
+    .from(modelProviderSurfaces)
+    .innerJoin(
+      modelProviderConnections,
+      eq(modelProviderSurfaces.connectionId, modelProviderConnections.id),
+    )
+    .where(
+      and(
+        eq(modelProviderSurfaces.id, params.policy.modelProviderSurfaceId),
+        eq(modelProviderConnections.orgId, params.orgId),
+      ),
+    )
+    .limit(1);
+  if (
+    !surface ||
+    providerTypeForSurfaceProtocol(surface.protocol) !== params.providerType ||
+    typeof surface.modelMappings[params.policy.model] !== "string"
+  ) {
+    return null;
+  }
+  return {
+    modelProviderId: params.policy.modelProviderSurfaceId,
+    modelProviderType: params.providerType,
+    modelProviderCredentialScope: params.credentialScope,
+    selectedModel: params.policy.model,
+  };
+}
+
+function isLegacyPolicyRouteShapeValid(params: {
+  readonly credentialScope: ModelProviderCredentialScope;
+  readonly providerType: ModelProviderType;
+  readonly modelProviderId: string | null;
+}): boolean {
+  if (params.credentialScope === "member") {
+    return (
+      isOAuthMemberProviderType(params.providerType) &&
+      params.modelProviderId === null
+    );
+  }
+  if (isOAuthMemberProviderType(params.providerType)) {
+    return false;
+  }
+  return params.providerType === "vm0"
+    ? params.modelProviderId === null
+    : params.modelProviderId !== null;
+}
+
+function getLegacyOrgProviderId(params: {
+  readonly credentialScope: ModelProviderCredentialScope;
+  readonly providerType: ModelProviderType;
+  readonly modelProviderId: string | null;
+}): string | null {
+  return params.credentialScope === "org" && params.providerType !== "vm0"
+    ? params.modelProviderId
+    : null;
+}
+
 async function resolveValidPolicyRoute(params: {
   readonly db: Db;
   readonly orgId: string;
@@ -140,6 +236,7 @@ async function resolveValidPolicyRoute(params: {
       defaultProviderType: orgModelPolicies.defaultProviderType,
       credentialScope: orgModelPolicies.credentialScope,
       modelProviderId: orgModelPolicies.modelProviderId,
+      modelProviderSurfaceId: orgModelPolicies.modelProviderSurfaceId,
     })
     .from(orgModelPolicies)
     .where(
@@ -156,7 +253,8 @@ async function resolveValidPolicyRoute(params: {
     !policy ||
     !isSupportedRunModel(policy.model) ||
     !providerType?.success ||
-    !isModelSupportedByProvider(policy.model, providerType.data) ||
+    (!policy.modelProviderSurfaceId &&
+      !isModelSupportedByProvider(policy.model, providerType.data)) ||
     !modelProviderAllowedForOrgPlan({
       capabilities: params.capabilities,
       modelProviderType: providerType.data,
@@ -171,29 +269,40 @@ async function resolveValidPolicyRoute(params: {
   if (credentialScope === null) {
     return null;
   }
-  if (credentialScope === "member") {
-    if (
-      !isOAuthMemberProviderType(providerType.data) ||
-      policy.modelProviderId !== null
-    ) {
-      return null;
-    }
-  } else if (isOAuthMemberProviderType(providerType.data)) {
+  if (policy.modelProviderSurfaceId) {
+    return await resolveCustomSurfacePolicyRoute({
+      db: params.db,
+      orgId: params.orgId,
+      policy: {
+        model: policy.model,
+        modelProviderId: policy.modelProviderId,
+        modelProviderSurfaceId: policy.modelProviderSurfaceId,
+      },
+      providerType: providerType.data,
+      credentialScope,
+    });
+  }
+  if (
+    !isLegacyPolicyRouteShapeValid({
+      credentialScope,
+      providerType: providerType.data,
+      modelProviderId: policy.modelProviderId,
+    })
+  ) {
     return null;
-  } else if (providerType.data === "vm0") {
-    if (policy.modelProviderId !== null) {
-      return null;
-    }
-  } else {
-    if (policy.modelProviderId === null) {
-      return null;
-    }
+  }
+  const legacyOrgProviderId = getLegacyOrgProviderId({
+    credentialScope,
+    providerType: providerType.data,
+    modelProviderId: policy.modelProviderId,
+  });
+  if (legacyOrgProviderId) {
     const [provider] = await params.db
       .select({ type: modelProviders.type })
       .from(modelProviders)
       .where(
         and(
-          eq(modelProviders.id, policy.modelProviderId),
+          eq(modelProviders.id, legacyOrgProviderId),
           eq(modelProviders.orgId, params.orgId),
           eq(modelProviders.userId, ORG_SENTINEL_USER_ID),
         ),
@@ -463,6 +572,34 @@ export async function resolveModelFirstProviderAdmission(params: {
   const effectiveModelProvider =
     await resolveEffectiveModelProviderType(params);
   const selectedModel = params.modelPin.selectedModel;
+  const [customSurface] =
+    params.modelPin.modelProviderId === null
+      ? []
+      : await params.db
+          .select({
+            protocol: modelProviderSurfaces.protocol,
+            modelMappings: modelProviderSurfaces.modelMappings,
+          })
+          .from(modelProviderSurfaces)
+          .innerJoin(
+            modelProviderConnections,
+            eq(modelProviderSurfaces.connectionId, modelProviderConnections.id),
+          )
+          .where(
+            and(
+              eq(modelProviderSurfaces.id, params.modelPin.modelProviderId),
+              eq(modelProviderConnections.orgId, params.orgId),
+            ),
+          )
+          .limit(1);
+  const customSurfaceProviderType = customSurface
+    ? providerTypeForSurfaceProtocol(customSurface.protocol)
+    : null;
+  const usesCustomSurface =
+    customSurfaceProviderType !== null &&
+    customSurfaceProviderType === effectiveModelProvider &&
+    isSupportedRunModel(selectedModel) &&
+    typeof customSurface?.modelMappings[selectedModel] === "string";
   const parsedProvider = modelProviderTypeSchema.safeParse(
     effectiveModelProvider,
   );
@@ -476,6 +613,7 @@ export async function resolveModelFirstProviderAdmission(params: {
     : null;
   if (
     isSupportedRunModel(selectedModel) &&
+    !usesCustomSurface &&
     (!knownProvider ||
       !isModelSupportedByProvider(selectedModel, knownProvider))
   ) {

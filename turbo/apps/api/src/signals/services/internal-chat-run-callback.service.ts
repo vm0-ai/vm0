@@ -771,6 +771,7 @@ function buildQueuedCreateZeroRunArgs(
     threadSessionRoute: {
       selectedModel: input.modelPin.selectedModel,
       modelProvider: input.effectiveModelProvider ?? null,
+      modelProviderId: input.modelPin.modelProviderId,
       cliAgentType: input.cliAgentType,
     },
     body: {
@@ -2504,6 +2505,7 @@ function loadQueuedMessageSessionState(
           route: {
             selectedModel: modelRoute.modelPin.selectedModel,
             modelProvider: modelRoute.effectiveModelProvider ?? null,
+            modelProviderId: modelRoute.modelPin.modelProviderId,
             cliAgentType: modelRoute.cliAgentType,
           },
         }),

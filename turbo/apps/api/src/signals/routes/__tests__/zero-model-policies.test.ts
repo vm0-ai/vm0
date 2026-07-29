@@ -9,6 +9,7 @@ import {
   type UpdateOrgModelPolicy,
 } from "@vm0/api-contracts/contracts/model-providers";
 import { zeroModelPoliciesMainContract } from "@vm0/api-contracts/contracts/zero-model-policies";
+import { zeroModelProviderConnectionsMainContract } from "@vm0/api-contracts/contracts/zero-model-provider-gateways";
 import { zeroUserModelPreferenceContract } from "@vm0/api-contracts/contracts/zero-user-model-preference";
 
 import { createApp } from "../../../app-factory";
@@ -42,6 +43,7 @@ function toUpdate(data: OrgModelPoliciesResponse): UpdateOrgModelPolicy[] {
       defaultProviderType: policy.defaultProviderType,
       credentialScope: policy.credentialScope,
       modelProviderId: policy.modelProviderId,
+      modelProviderSurfaceId: policy.modelProviderSurfaceId ?? null,
     };
   });
 }
@@ -796,6 +798,72 @@ describe("GET/PUT /api/zero/model-policies", () => {
       defaultProviderType: "openai-api-key",
       credentialScope: "org",
       modelProviderId: openAiProviderId,
+      routeStatus: "valid",
+    });
+  });
+
+  it("allows a model mapped by a custom gateway surface", async () => {
+    const fixture = await seedFixture();
+    useSession(fixture);
+    const gatewayClient = setupApp({ context })(
+      zeroModelProviderConnectionsMainContract,
+    );
+    const created = await accept(
+      gatewayClient.create({
+        headers: authHeaders(),
+        body: {
+          displayName: "Company Gateway",
+          secret: "gateway-secret",
+          surfaces: [
+            {
+              protocol: "anthropic-messages",
+              apiBaseUrl: "https://gateway.example.com/anthropic",
+              authHeaderName: "Authorization",
+              authHeaderTemplate: "Bearer {{secret}}",
+              modelMappings: {
+                "claude-sonnet-4-6": "company-sonnet-production",
+              },
+            },
+          ],
+        },
+      }),
+      [201],
+    );
+    const surfaceId = created.body.surfaces[0]?.id;
+    if (!surfaceId) {
+      throw new Error("Expected custom gateway surface");
+    }
+
+    const client = apiClient();
+    const listed = await accept(client.list({ headers: authHeaders() }), [200]);
+    const updates = toUpdate(listed.body).map((policy) => {
+      return policy.model === "claude-sonnet-4-6"
+        ? {
+            ...policy,
+            defaultProviderType: "vercel-ai-gateway" as const,
+            credentialScope: "org" as const,
+            modelProviderId: null,
+            modelProviderSurfaceId: surfaceId,
+          }
+        : policy;
+    });
+
+    const updated = await accept(
+      client.update({
+        headers: authHeaders(),
+        body: { policies: updates },
+      }),
+      [200],
+    );
+    const sonnet = updated.body.policies.find((policy) => {
+      return policy.model === "claude-sonnet-4-6";
+    });
+
+    expect(sonnet).toMatchObject({
+      defaultProviderType: "vercel-ai-gateway",
+      credentialScope: "org",
+      modelProviderId: null,
+      modelProviderSurfaceId: surfaceId,
       routeStatus: "valid",
     });
   });
