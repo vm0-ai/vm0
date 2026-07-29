@@ -617,9 +617,6 @@
   "browserSession": {
     "cardTitle": "Navegador na nuvem",
     "close": "Fechar navegador ao vivo",
-    "creditsCharged_one": "{{formattedCount}} crédito cobrado",
-    "creditsCharged_many": "{{formattedCount}} créditos cobrados",
-    "creditsCharged_other": "{{formattedCount}} créditos cobrados",
     "documentTitle": "Navegador ao vivo",
     "iframeTitle": "Navegador ao vivo: {{name}}",
     "invalidLink": "Link de navegador inválido",
@@ -637,7 +634,6 @@
     "reclaimHint_many": "O Zero mantém este navegador enquanto o painel está aberto e o recupera após {{formattedCount}} minutos de inatividade.",
     "reclaimHint_other": "O Zero mantém este navegador enquanto o painel está aberto e o recupera após {{formattedCount}} minutos de inatividade.",
     "status": {
-      "error": "Erro",
       "live": "Ao vivo",
       "starting": "Iniciando",
       "stopped": "Parado",

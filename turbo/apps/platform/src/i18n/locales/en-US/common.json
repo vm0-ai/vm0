@@ -601,8 +601,6 @@
   "browserSession": {
     "cardTitle": "Cloud browser",
     "close": "Close live browser",
-    "creditsCharged_one": "{{formattedCount}} credit charged",
-    "creditsCharged_other": "{{formattedCount}} credits charged",
     "documentTitle": "Live browser",
     "iframeTitle": "Live browser: {{name}}",
     "invalidLink": "Invalid browser link",
@@ -619,7 +617,6 @@
     "reclaimHint_one": "Zero keeps this browser while this panel is open, and reclaims it after {{formattedCount}} idle minute.",
     "reclaimHint_other": "Zero keeps this browser while this panel is open, and reclaims it after {{formattedCount}} idle minutes.",
     "status": {
-      "error": "Error",
       "live": "Live",
       "starting": "Starting",
       "stopped": "Stopped",
