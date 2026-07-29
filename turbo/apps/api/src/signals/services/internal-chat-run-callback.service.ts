@@ -2537,7 +2537,10 @@ async function buildCreateQueuedChatRunInput(
       });
     },
   );
-  const prompt = sourceParams?.prompt ?? userMessageProjection.agentPrompt;
+  const prompt =
+    args.queuedMessage.triggerSource === "workflow-schedule"
+      ? (sourceParams?.prompt ?? userMessageProjection.agentPrompt)
+      : userMessageProjection.agentPrompt;
 
   return {
     orgId: args.agent.orgId,
