@@ -8631,9 +8631,6 @@ describe("RUN-01: zero runner context, queue promotion, and skills", () => {
     await bdd.readMe(actor);
     await api.grantProEntitlement(actor);
     await api.ensureOrgModelProvider(actor);
-    await connectors.updateFeatureSwitches(actor, {
-      [FeatureSwitchKey.ZeroFinance]: true,
-    });
     const agent = await bdd.createAgent(actor, {
       displayName: "Research Bot",
       description: "Finds release details",
@@ -8878,7 +8875,7 @@ describe("RUN-01: zero runner context, queue promotion, and skills", () => {
       EXPECTED_ZERO_RUN_DISALLOWED_TOOLS,
     );
     expect(claim.appendSystemPrompt ?? "").toContain("zero web-search --help");
-    expect(claim.appendSystemPrompt ?? "").not.toContain("zero finance --help");
+    expect(claim.appendSystemPrompt ?? "").toContain("zero finance --help");
     expect(claim.appendSystemPrompt ?? "").toContain("zero scrape --help");
     expect(claim.appendSystemPrompt ?? "").toContain(
       "zero people-search <query>",
