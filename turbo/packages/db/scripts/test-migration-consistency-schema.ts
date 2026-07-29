@@ -165,7 +165,7 @@ async function validateCanonicalChatMessageCompatibility(
     userMessage: unknown;
   }>(
     `
-      INSERT INTO "chat_messages" (
+      INSERT INTO "chat_events" (
         "chat_thread_id",
         "content",
         "event_type",
@@ -197,7 +197,7 @@ async function validateCanonicalChatMessageCompatibility(
 
   const nextMessage = await client.query<{ seqId: string }>(
     `
-      INSERT INTO "chat_messages" (
+      INSERT INTO "chat_events" (
         "chat_thread_id",
         "content",
         "event_type"
@@ -224,7 +224,7 @@ async function validateCanonicalChatMessageCompatibility(
     userMessage: unknown;
   }>(
     `
-      INSERT INTO "chat_messages" (
+      INSERT INTO "chat_events" (
         "chat_thread_id",
         "content",
         "event_type",
@@ -368,9 +368,8 @@ async function validateChatEventSourcesAreAppendOnly(
       throw new Error("Failed to create append-only chat thread fixture");
     }
 
-    // Simulate the previous typed API version serving during migration: it
-    // writes event_type but does not know about seq_id and relies on the
-    // temporary database allocator.
+    // Insert through the canonical table without seq_id and rely on the
+    // database allocator.
     messageId = await validateCanonicalChatMessageCompatibility(
       client,
       threadId,
@@ -472,7 +471,7 @@ async function validateChatEventSourcesAreAppendOnly(
 
     await expectAppendOnlyUpdateRejected(client, {
       tableName: "chat_events",
-      query: `UPDATE "chat_messages" SET "content" = 'mutated' WHERE "id" = $1`,
+      query: `UPDATE "chat_events" SET "content" = 'mutated' WHERE "id" = $1`,
       rowId: messageId,
     });
     await expectAppendOnlyUpdateRejected(client, {
@@ -481,11 +480,9 @@ async function validateChatEventSourcesAreAppendOnly(
       rowId: eventId,
     });
 
-    console.log("   ✅ chat_messages compatibility view rejects UPDATE");
+    console.log("   ✅ chat_events rejects UPDATE");
     console.log("   ✅ chat_thread_events rejects UPDATE\n");
-    console.log(
-      "   ✅ previous API writes receive database-allocated seq_ids\n",
-    );
+    console.log("   ✅ chat event writes receive database-allocated seq_ids\n");
   } finally {
     await client.query(
       `
@@ -3671,6 +3668,7 @@ async function validateChatMessageRoleContraction(): Promise<void> {
 
 const CHAT_EVENT_TABLE_RENAME_PREVIOUS_MIGRATION = 722;
 const CHAT_EVENT_TABLE_RENAME_MIGRATION = 723;
+const CHAT_MESSAGES_VIEW_CONTRACTION_MIGRATION = 734;
 
 async function validateChatEventTableRename(): Promise<void> {
   console.log(
@@ -3968,6 +3966,49 @@ async function validateChatEventTableRename(): Promise<void> {
         query: `UPDATE "chat_events" SET "content" = 'mutated' WHERE "id" = $1`,
         rowId: historicalEventId,
       });
+
+      await applyMigrationsUpToInTransaction(
+        client,
+        CHAT_MESSAGES_VIEW_CONTRACTION_MIGRATION,
+      );
+
+      const contractedRelations = await client.query<{
+        relationKind: string;
+        relationName: string;
+      }>(`
+        SELECT
+          "relname" AS "relationName",
+          "relkind"::text AS "relationKind"
+        FROM "pg_class"
+        INNER JOIN "pg_namespace"
+          ON "pg_namespace"."oid" = "pg_class"."relnamespace"
+        WHERE "pg_namespace"."nspname" = 'public'
+          AND "pg_class"."relname" IN ('chat_events', 'chat_messages')
+        ORDER BY "pg_class"."relname"
+      `);
+      assert.deepEqual(contractedRelations.rows, [
+        { relationKind: "r", relationName: "chat_events" },
+      ]);
+
+      const contractedRows = await client.query<{
+        content: string;
+        seqId: string;
+      }>(
+        `
+          SELECT "content", "seq_id" AS "seqId"
+          FROM "chat_events"
+          WHERE "chat_thread_id" = $1
+          ORDER BY "seq_id"
+        `,
+        [threadId],
+      );
+      assert.deepEqual(contractedRows.rows, physicalRows.rows);
+
+      await expectAppendOnlyUpdateRejected(client, {
+        tableName: "chat_events",
+        query: `UPDATE "chat_events" SET "content" = 'mutated' WHERE "id" = $1`,
+        rowId: historicalEventId,
+      });
     } finally {
       await client.end();
     }
@@ -3976,7 +4017,7 @@ async function validateChatEventTableRename(): Promise<void> {
   }
 
   console.log(
-    "   ✅ Historical rows survive, previous-API SELECT/INSERT RETURNING remains compatible, physical objects are renamed, and append-only protection holds through the rename\n",
+    "   ✅ Historical rows survive the rename and compatibility-view contraction, previous-API access remains compatible through the expand step, and append-only protection stays active\n",
   );
 }
 
