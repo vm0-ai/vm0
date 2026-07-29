@@ -16,7 +16,7 @@
 //! | Entry | Matching fingerprint | Fresh or non-matching fingerprint |
 //! | --- | --- | --- |
 //! | Ordinary storage | `ReuseExisting`: keep the mount with no guest work | `Download`: extract an archive |
-//! | Instruction storage | `NormalizeInPlace`: promote the cached instructions in the guest | `DownloadAndNormalize`: stage an archive, then promote its target file |
+//! | Instruction storage | `NormalizeInPlace`: normalize the cached instruction files in place | `DownloadAndNormalize`: stage an archive, then promote its target file |
 //! | Non-empty artifact | `ReuseOrRepair`: preserve an existing root or use the retained archive source to repair a missing root | `Download`: materialize the archive |
 //! | Empty artifact | `PrepareEmpty { cached: true }` | `PrepareEmpty { cached: false }` |
 //!
