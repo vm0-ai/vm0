@@ -10838,16 +10838,33 @@ describe("HOOK-02/CHAT-02: assistant events reach optional chat consumers", () =
 });
 
 describe("BILL-02: usage reads for an entitled organization with runs", () => {
-  it("uses runner-supplied gross credits instead of the pricing table", async () => {
+  it("prices model usage from the server pricing table", async () => {
     const api = createRunsApi(context);
     const billing = createBillingMediaApi(context);
     const webhooks = createWebhookCallbackApi(context);
     const { actor, agentId, runnerGroup } = await entitledRunActor();
     await seedVm0ManagedDefaultModelKey();
+    const modelProvider = `bdd-model-pricing-${randomUUID()}`;
+    onTestFinished(async () => {
+      await deleteUsagePricingRows({
+        kind: "model",
+        provider: modelProvider,
+        categories: ["tokens.output"],
+      });
+    });
+    await seedUsagePricingRows([
+      {
+        kind: "model",
+        provider: modelProvider,
+        category: "tokens.output",
+        unitPrice: 17,
+        unitSize: 1000,
+      },
+    ]);
 
     const run = await api.createRun(actor, {
       agentId,
-      prompt: "generate pre-priced model usage",
+      prompt: "generate server-priced model usage",
       modelProvider: "vm0",
     });
     await api.heartbeatRunner(runnerGroup);
@@ -10859,10 +10876,9 @@ describe("BILL-02: usage reads for an entitled organization with runs", () => {
           {
             idempotencyKey: randomUUID(),
             kind: "model",
-            provider: "vm0-model",
+            provider: modelProvider,
             category: "tokens.output",
             quantity: 1000,
-            grossCredits: 17,
           },
         ],
       },

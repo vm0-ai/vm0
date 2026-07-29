@@ -52,7 +52,6 @@ import http_local_responses
 import http_network_log
 import matching
 import mitmproxy_compat
-import model_usage_pricing
 import network_log_sanitization
 import platform_api
 import registry
@@ -1201,7 +1200,6 @@ def _is_valid_websocket_key(value: str) -> bool:
 
 def responseheaders(flow: http.HTTPFlow) -> None:
     """Install response stream buffering and incremental body parsers."""
-    model_usage_pricing.apply_signed_usage_pricing(flow)
     codex_model_catalog_cache.observe_authenticated_models_etag(flow)
     if not codex_model_catalog_cache.handle_response_headers(flow):
         return
