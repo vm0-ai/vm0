@@ -1654,14 +1654,14 @@ Continue the JPM IJTXX Treasury allocation follow-up for issue #20818 and [ACME-
     }
     expect(rejected).toMatchObject({
       eventType: "input.rejected",
-      content: objectiveBrief,
+      content: null,
       error: "Goal continuation queue payload is unreadable",
       goalSnapshot: { objectiveBrief },
       userMessage: {
         parts: [{ type: "text", text: objectiveBrief }],
       },
     });
-    expect(rejected.content).not.toContain("internal kms");
+    expect(chatEventDisplayText(rejected)).toBe(objectiveBrief);
     expect(JSON.stringify(rejected.userMessage)).not.toContain("internal kms");
     expect(rejected).not.toHaveProperty("runId");
     await expect(goalRunIds(first.threadId)).resolves.toHaveLength(0);
@@ -1726,11 +1726,21 @@ Continue the JPM IJTXX Treasury allocation follow-up for issue #20818 and [ACME-
       expect.objectContaining({
         eventType: "input.rejected",
         revokesEventId: goalEventId,
-        content: objectiveBrief,
+        content: null,
         error: "Goal continuation no longer matches the active goal",
         goalSnapshot: { objectiveBrief },
       }),
     );
+    const rejected = events.events.find((event) => {
+      return (
+        event.eventType === "input.rejected" &&
+        event.revokesEventId === goalEventId
+      );
+    });
+    if (rejected?.eventType !== "input.rejected") {
+      throw new Error("Expected the invalidated goal event to be rejected");
+    }
+    expect(chatEventDisplayText(rejected)).toBe(objectiveBrief);
     await expect(goalRunIds(first.threadId)).resolves.toHaveLength(0);
   }, 90_000);
 
@@ -1793,11 +1803,21 @@ Continue the JPM IJTXX Treasury allocation follow-up for issue #20818 and [ACME-
       expect.objectContaining({
         eventType: "input.rejected",
         revokesEventId: goalEventId,
-        content: objectiveBrief,
+        content: null,
         error: "Goal continuation no longer matches the active goal",
         goalSnapshot: { objectiveBrief },
       }),
     );
+    const rejected = events.events.find((event) => {
+      return (
+        event.eventType === "input.rejected" &&
+        event.revokesEventId === goalEventId
+      );
+    });
+    if (rejected?.eventType !== "input.rejected") {
+      throw new Error("Expected the invalidated goal event to be rejected");
+    }
+    expect(chatEventDisplayText(rejected)).toBe(objectiveBrief);
     await expect(goalRunIds(first.threadId)).resolves.toHaveLength(0);
   }, 90_000);
 
@@ -1857,10 +1877,12 @@ Continue the JPM IJTXX Treasury allocation follow-up for issue #20818 and [ACME-
     }
     expect(rejectedGoalEvent).toMatchObject({
       eventType: "input.rejected",
-      content: "pause after claim failure",
+      content: null,
       goalSnapshot: { objectiveBrief: "pause after claim failure" },
     });
-    expect(rejectedGoalEvent?.content).not.toBe(rejectedGoalEvent?.error);
+    expect(chatEventDisplayText(rejectedGoalEvent)).toBe(
+      "pause after claim failure",
+    );
     expect(JSON.stringify(rejectedGoalEvent?.userMessage)).not.toContain(
       rejectedGoalEvent.error,
     );
