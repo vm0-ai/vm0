@@ -14,10 +14,13 @@ import {
   gt,
   inArray,
   isNotNull,
+  max,
   not,
+  notExists,
   or,
   sql,
 } from "drizzle-orm";
+import { alias } from "drizzle-orm/pg-core";
 import { z } from "zod";
 
 import { executeRawRows } from "../../lib/db-raw-rows";
@@ -31,6 +34,14 @@ import {
 
 const INCOMPLETE_ROUND_LIMIT = 20;
 const INCOMPLETE_MESSAGE_CHAR_CAP = 4000;
+const successfulRunBoundaryEvent = alias(
+  chatMessages,
+  "successful_run_boundary_event",
+);
+const successfulRunBoundaryRevoker = alias(
+  chatMessages,
+  "successful_run_boundary_revoker",
+);
 
 type IncompleteRunStatus = "cancelled" | "failed" | "timeout";
 
@@ -163,24 +174,32 @@ async function selectIncompleteRoundFrontier(
   return { rounds: rounds.reverse(), successfulRunId };
 }
 
-function afterSuccessfulRunBoundary(threadId: string, successfulRunId: string) {
-  return gt(
-    chatMessages.seqId,
-    sql`COALESCE(
-      (
-        SELECT MAX(boundary_message.seq_id)
-        FROM chat_events boundary_message
-        WHERE boundary_message.chat_thread_id = ${threadId}
-          AND boundary_message.run_id = ${successfulRunId}
-          AND NOT EXISTS (
-            SELECT 1
-            FROM chat_events boundary_revoker
-            WHERE boundary_revoker.revokes_message_id = boundary_message.id
-          )
+function afterSuccessfulRunBoundary(
+  db: Pick<Db, "select">,
+  threadId: string,
+  successfulRunId: string,
+) {
+  const boundary = db
+    .select({ seqId: max(successfulRunBoundaryEvent.seqId) })
+    .from(successfulRunBoundaryEvent)
+    .where(
+      and(
+        eq(successfulRunBoundaryEvent.chatThreadId, threadId),
+        eq(successfulRunBoundaryEvent.runId, successfulRunId),
+        notExists(
+          db
+            .select({ id: successfulRunBoundaryRevoker.id })
+            .from(successfulRunBoundaryRevoker)
+            .where(
+              eq(
+                successfulRunBoundaryRevoker.revokesEventId,
+                successfulRunBoundaryEvent.id,
+              ),
+            ),
+        ),
       ),
-      0::bigint
-    )`,
-  );
+    );
+  return gt(chatMessages.seqId, sql`COALESCE(${boundary}, 0::bigint)`);
 }
 
 async function loadSelectedIncompleteRounds(
@@ -215,7 +234,13 @@ async function loadSelectedIncompleteRounds(
         visibleChatEventCondition(db),
         ...(selection.successfulRunId === null
           ? []
-          : [afterSuccessfulRunBoundary(threadId, selection.successfulRunId)]),
+          : [
+              afterSuccessfulRunBoundary(
+                db,
+                threadId,
+                selection.successfulRunId,
+              ),
+            ]),
       ),
     )
     .orderBy(asc(chatMessages.seqId));
