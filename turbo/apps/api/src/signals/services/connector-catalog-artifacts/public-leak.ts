@@ -239,7 +239,7 @@ function publicGrant(
 
 function publicConnector(connector: ConnectorCatalogArtifactConnector) {
   return {
-    connectorRef: connector.connectorRef,
+    connectorRef: connector.slug,
     label: connector.label,
     description: connector.description,
     category: connector.category,
@@ -275,7 +275,7 @@ export function validateConnectorCatalogPublicProjection(
     assertPublicValueHasNoPrivateFields(
       publicConnector(connector),
       connectorCatalogSensitiveValues(connector),
-      `$.connectors[${connector.connectorRef}]`,
+      `$.connectors[${connector.slug}]`,
     );
   }
 }

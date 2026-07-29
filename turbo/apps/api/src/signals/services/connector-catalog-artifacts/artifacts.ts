@@ -28,7 +28,7 @@ import { isConnectorCatalogIconKey } from "./icon";
 
 export { connectorCatalogVersionSchema } from "./common";
 
-export const SUPPORTED_CONNECTOR_CATALOG_SCHEMA_VERSION = 1;
+export const SUPPORTED_CONNECTOR_CATALOG_SCHEMA_VERSION = 2;
 export const CONNECTOR_CATALOG_ACTIVE_KEY = `connectors/v${SUPPORTED_CONNECTOR_CATALOG_SCHEMA_VERSION}/active.json`;
 
 export const CONNECTOR_CATALOG_MAX_RAW_BYTES = 8 * 1024 * 1024;
@@ -197,8 +197,7 @@ const connectorCatalogFirewallSchema = z.discriminatedUnion("kind", [
 
 export const connectorCatalogArtifactConnectorSchema = z
   .object({
-    // TODO(#23619): Rename only with the external catalog producer and version.
-    connectorRef: connectorSlugSchema,
+    slug: connectorSlugSchema,
     label: z.string().min(1),
     description: z.string().min(1),
     category: z.string().min(1),
@@ -249,7 +248,7 @@ export const connectorCatalogArtifactSchema = z
   .strict()
   .superRefine((artifact, context) => {
     const connectorSlugs = artifact.connectors.map((connector) => {
-      return connector.connectorRef;
+      return connector.slug;
     });
     const duplicates = connectorSlugs.filter((connectorSlug, index) => {
       return connectorSlugs.indexOf(connectorSlug) !== index;
@@ -257,7 +256,7 @@ export const connectorCatalogArtifactSchema = z
     for (const connectorSlug of new Set(duplicates)) {
       context.addIssue({
         code: "custom",
-        message: `Connector catalog refs must be unique: ${connectorSlug}`,
+        message: `Connector catalog slugs must be unique: ${connectorSlug}`,
         path: ["connectors"],
       });
     }
