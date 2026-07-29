@@ -135,6 +135,7 @@ REMOTE_PWD=$PWD
 sudo systemd-run \
   --quiet \
   --collect \
+  --expand-environment=no \
   --service-type=exec \
   --unit="$UNIT" \
   --uid="$REMOTE_UID" \
@@ -148,8 +149,9 @@ sudo systemd-run \
     bin_dir=$4
     job_ref=$5
 
-    "$worker" "$bin_dir" "$job_ref" > "$log" 2>&1
-    worker_status=$?
+    set -euo pipefail
+    worker_status=0
+    "$worker" "$bin_dir" "$job_ref" > "$log" 2>&1 || worker_status=$?
     printf "%s\n" "$worker_status" > "${status_file}.tmp"
     mv "${status_file}.tmp" "$status_file"
     exit "$worker_status"
@@ -183,19 +185,31 @@ set -euo pipefail
 STATUS_FILE=$1
 UNIT=$2
 
-if [ -f "$STATUS_FILE" ]; then
+emit_result_if_ready() {
+  if [ ! -f "$STATUS_FILE" ]; then
+    return 1
+  fi
   STATUS=$(<"$STATUS_FILE")
   printf 'done:%s\n' "$STATUS"
+}
+
+if emit_result_if_ready; then
   exit 0
 fi
 
 LOAD_STATE=$(sudo systemctl show "${UNIT}.service" \
   --property=LoadState --value 2>/dev/null || true)
 if [ -z "$LOAD_STATE" ] || [ "$LOAD_STATE" = "not-found" ]; then
+  if emit_result_if_ready; then
+    exit 0
+  fi
   echo "absent"
   exit 0
 fi
 if [ "$LOAD_STATE" != "loaded" ]; then
+  if emit_result_if_ready; then
+    exit 0
+  fi
   printf 'invalid-load:%s\n' "$LOAD_STATE"
   exit 0
 fi
@@ -207,6 +221,9 @@ case "$ACTIVE_STATE" in
     echo "pending"
     ;;
   *)
+    if emit_result_if_ready; then
+      exit 0
+    fi
     printf 'stopped:%s\n' "$ACTIVE_STATE"
     ;;
 esac
@@ -337,14 +354,23 @@ while [ "$SECONDS" -lt "$DEADLINE" ]; do
       fi
       ;;
     absent)
+      if fetch_remote_log; then
+        cat "$LOCAL_LOG"
+      fi
       echo "durable balloon unit disappeared without publishing a result" >&2
       exit 1
       ;;
     stopped:*)
+      if fetch_remote_log; then
+        cat "$LOCAL_LOG"
+      fi
       echo "durable balloon unit stopped without publishing a result: ${STATE#stopped:}" >&2
       exit 1
       ;;
     invalid-load:*)
+      if fetch_remote_log; then
+        cat "$LOCAL_LOG"
+      fi
       echo "unexpected durable balloon unit load state: ${STATE#invalid-load:}" >&2
       exit 1
       ;;

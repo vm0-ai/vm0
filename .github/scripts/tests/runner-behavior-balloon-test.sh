@@ -125,6 +125,33 @@ printf '%s\n' "$*" >> "$FAKE_SLEEP_INVOCATIONS"
 FAKE_SLEEP
 chmod +x "$fake_bin/sleep"
 
+cat > "$fake_bin/sudo" <<'FAKE_SUDO'
+#!/usr/bin/env bash
+set -euo pipefail
+exec "$@"
+FAKE_SUDO
+chmod +x "$fake_bin/sudo"
+
+cat > "$fake_bin/systemctl" <<'FAKE_SYSTEMCTL'
+#!/usr/bin/env bash
+set -euo pipefail
+
+case " $* " in
+  *" --property=LoadState "*)
+    printf '37\n' > "$RACE_STATUS_FILE"
+    echo "loaded"
+    ;;
+  *" --property=ActiveState "*)
+    echo "inactive"
+    ;;
+  *)
+    echo "unexpected systemctl invocation: $*" >&2
+    exit 2
+    ;;
+esac
+FAKE_SYSTEMCTL
+chmod +x "$fake_bin/systemctl"
+
 status=0
 PATH="$fake_bin:$PATH" \
   FAKE_SLEEP_INVOCATIONS="$state_dir/sleep-invocations" \
@@ -159,9 +186,16 @@ assert_value "$state_dir/remove-count" "1"
 assert_contains "$state_dir/launch-script" "flock 9"
 assert_contains "$state_dir/launch-script" "systemd-run"
 assert_contains "$state_dir/launch-script" "--collect"
+assert_contains "$state_dir/launch-script" "--expand-environment=no"
 assert_contains "$state_dir/stdout" "durable balloon output"
 assert_contains "$state_dir/stderr" "Lost SSH launch response"
 assert_contains "$state_dir/stderr" "Transient SSH failure while observing balloon result"
+
+race_status="$state_dir/race-status"
+RACE_STATUS_FILE="$race_status" PATH="$fake_bin:$PATH" \
+  bash "$state_dir/state-script" "$race_status" "race-unit" \
+  > "$state_dir/race-state"
+assert_value "$state_dir/race-state" "done:37"
 
 if find "$runner_temp" -mindepth 1 -print -quit | grep -q .; then
   echo "expected driver to remove its local result file" >&2
