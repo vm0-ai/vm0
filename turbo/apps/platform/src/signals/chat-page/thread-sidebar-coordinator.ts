@@ -16,6 +16,7 @@ import {
   threadSidebarAutoOpenCandidateKey,
   type ThreadSidebarAutoOpenCandidate,
 } from "./thread-sidebar-auto-open.ts";
+import { settle } from "../utils.ts";
 
 // ---------------------------------------------------------------------------
 // Page-level coordinator for the thread-owned utility sidebar. Sidebar state
@@ -34,6 +35,7 @@ export const activeThreadSidebar$ = computed(
   ): {
     readonly thread: ChatThreadSignals;
     readonly target: ThreadSidebarTarget;
+    readonly animateEntry: boolean;
   } | null => {
     for (const thread of [get(currentLeftThread$), get(currentRightThread$)]) {
       if (!thread) {
@@ -41,7 +43,11 @@ export const activeThreadSidebar$ = computed(
       }
       const target = get(thread.sidebar.target$);
       if (target) {
-        return { thread, target };
+        return {
+          thread,
+          target,
+          animateEntry: get(thread.sidebar.animateEntry$),
+        };
       }
     }
     return null;
@@ -80,14 +86,12 @@ function targetFromAutoOpenCandidate(
   };
 }
 
-export const autoOpenThreadSidebar$ = command(
+const autoOpenThreadSidebarFromCurrentMessages$ = command(
   async (
     { get, set },
     thread: ChatThreadSignals,
     signal: AbortSignal,
   ): Promise<void> => {
-    await get(thread.hasNewMessages$);
-    signal.throwIfAborted();
     if (
       !get(chatThreadSidebarAutoOpenEnabled$) ||
       typeof window === "undefined" ||
@@ -124,6 +128,37 @@ export const autoOpenThreadSidebar$ = command(
       return;
     }
     set(openOnThread$, thread, targetFromAutoOpenCandidate(candidate));
+  },
+);
+
+export const autoOpenInitialThreadSidebar$ = command(
+  async (
+    { get, set },
+    thread: ChatThreadSignals,
+    signal: AbortSignal,
+  ): Promise<void> => {
+    await get(thread.indexedDbMessagesInitialized$);
+    signal.throwIfAborted();
+    const result = await settle(
+      set(autoOpenThreadSidebarFromCurrentMessages$, thread, signal),
+      signal,
+    );
+    set(thread.sidebar.enableEntryAnimations$);
+    if (!result.ok) {
+      throw result.error;
+    }
+  },
+);
+
+export const autoOpenThreadSidebar$ = command(
+  async (
+    { get, set },
+    thread: ChatThreadSignals,
+    signal: AbortSignal,
+  ): Promise<void> => {
+    await get(thread.hasNewMessages$);
+    signal.throwIfAborted();
+    await set(autoOpenThreadSidebarFromCurrentMessages$, thread, signal);
   },
 );
 

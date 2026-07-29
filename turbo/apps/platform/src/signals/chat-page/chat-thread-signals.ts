@@ -153,6 +153,7 @@ export interface ChatThreadSignals {
   // -- Paged messages (sole rendering path) --------------------------------
   latestRunFinishCreatedAt$: Computed<Promise<string | undefined>>;
   latestAssistantTextCreatedAt$: Computed<Promise<string | undefined>>;
+  indexedDbMessagesInitialized$: Computed<Promise<void>>;
   visibleRenderedChatGroups$: Computed<Promise<GroupedChatMessageGroup[]>>;
   visibleRenderedChatGroupsReady$: Computed<Promise<boolean>>;
   sidebarAutoOpenCandidate$: Computed<

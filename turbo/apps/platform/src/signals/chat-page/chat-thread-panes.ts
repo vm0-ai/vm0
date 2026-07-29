@@ -33,7 +33,10 @@ import {
 import { createRemoteChatThreadDataSource } from "./remote-chat-thread-data-source.ts";
 import { setupChatThreadInitScroll$ } from "./setup-chat-thread-signals.ts";
 import { syncPrimaryThread$ } from "./sync-primary-thread.ts";
-import { autoOpenThreadSidebar$ } from "./thread-sidebar-coordinator.ts";
+import {
+  autoOpenInitialThreadSidebar$,
+  autoOpenThreadSidebar$,
+} from "./thread-sidebar-coordinator.ts";
 import {
   createComposerConnectorAuthorizationSignals,
   type ComposerConnectorAuthorizationSignals,
@@ -210,6 +213,7 @@ const resolvePaneThread$ = command(
       set(loadDraft$, thread, isNew, signal),
       set(setupChatThreadInitScroll$, thread, signal),
       set(thread.subscribeChatThread$, signal),
+      set(autoOpenInitialThreadSidebar$, thread, signal),
       set(autoOpenThreadSidebar$, thread, signal),
     ]);
     signal.throwIfAborted();

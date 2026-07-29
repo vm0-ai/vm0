@@ -169,7 +169,6 @@ function ThreadArtifactsPanel({ thread }: { thread: ChatThreadSignals }) {
         fullscreen
           ? THREAD_SIDEBAR_FULLSCREEN_CLASSNAME
           : "flex h-full w-full min-h-0 flex-col border-l border-border/60 bg-background xl:border-l-0",
-        "animate-in fade-in duration-[180ms] ease",
       )}
     >
       <ThreadSidebarHeader

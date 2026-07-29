@@ -1,10 +1,12 @@
 import { screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
+  chatThreadArtifactsContract,
   chatThreadByIdContract,
   chatThreadEventsContract,
   chatThreadsContract,
 } from "@vm0/api-contracts/contracts/chat-threads";
+import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 
 import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
 import { mockOrganization, mockUser } from "../../../__tests__/mock-auth.ts";
@@ -19,6 +21,7 @@ import {
   chatIdb$,
   openChatIdb,
 } from "../../../signals/external/chat-idb-store.ts";
+import { CHAT_THREAD_SIDEBAR_SPLIT_VIEW_MEDIA_QUERY } from "../../../signals/chat-page/chat-thread-sidebar-layout.ts";
 import { PLACEHOLDER } from "./chat-test-helpers.ts";
 
 vi.mock("idb", async () => {
@@ -46,7 +49,11 @@ async function primeRuntimeChatDb(): Promise<
   return await context.store.get(chatIdb$);
 }
 
-function setupChatPage(): void {
+function setupChatPage({
+  autoOpenEnabled = false,
+}: {
+  readonly autoOpenEnabled?: boolean;
+} = {}): void {
   detachedSetupPage({
     context,
     path: `/chats/${THREAD_ID}`,
@@ -54,6 +61,9 @@ function setupChatPage(): void {
     org: {
       activeOrg: { id: IDB_ORG_ID, name: "Default Org" },
       memberships: [{ id: IDB_ORG_ID }],
+    },
+    featureSwitches: {
+      [FeatureSwitchKey.ChatThreadSidebarAutoOpen]: autoOpenEnabled,
     },
   });
 }
@@ -158,6 +168,69 @@ describe("zero chat thread IndexedDB fallback", () => {
 
   afterEach(async () => {
     await clearCachedChatData();
+  });
+
+  it("auto-opens a cached card before remote catch-up without entry animation", async () => {
+    const cachedUrl = "https://cached-initial-deck.sites.vm7.io";
+    prepareDefaultAgent();
+    mockCurrentThreadDetail();
+    mockSidebarThread();
+    context.mocks.browser.matchMedia((query) => {
+      return query === CHAT_THREAD_SIDEBAR_SPLIT_VIEW_MEDIA_QUERY;
+    });
+    context.mocks.api(chatThreadArtifactsContract.list, ({ respond }) => {
+      return respond(200, { runs: [] });
+    });
+
+    const runtimeDb = await primeRuntimeChatDb();
+    await runtimeDb.put(CHAT_MESSAGES_STORE, {
+      id: "00000000-0000-4000-8000-000000000091",
+      threadId: THREAD_ID,
+      eventType: "output.message",
+      content: `[Cached initial deck](${cachedUrl})`,
+      runId: "run-cached-initial",
+      seqId: 1,
+      createdAt: "2026-03-10T00:00:01Z",
+    });
+    await runtimeDb.put(CHAT_MESSAGES_STORE, {
+      id: "00000000-0000-4000-8000-000000000092",
+      threadId: THREAD_ID,
+      eventType: "run.completed",
+      content: null,
+      runId: "run-cached-initial",
+      runLifecycleEvent: "completed",
+      seqId: 2,
+      createdAt: "2026-03-10T00:00:02Z",
+    });
+
+    const catchUpRequested = context.mocks.deferred<void>();
+    const releaseCatchUp = context.mocks.deferred<void>();
+    context.mocks.api(chatThreadEventsContract.list, async ({ respond }) => {
+      catchUpRequested.resolve();
+      await releaseCatchUp.promise;
+      return respond(200, { events: [], hasHistoryBefore: false });
+    });
+
+    try {
+      setupChatPage({ autoOpenEnabled: true });
+      await catchUpRequested.promise;
+
+      const sidebar = await screen.findByTestId("artifact-sidebar");
+      expect(sidebar).toBeInTheDocument();
+      expect(screen.getByTestId("artifact-sidebar-body-html")).toHaveAttribute(
+        "src",
+        cachedUrl,
+      );
+      expect(screen.getByTestId("chat-thread-sidebar-pane")).not.toHaveClass(
+        "animate-in",
+        "transition-[flex-basis,width]",
+      );
+    } finally {
+      if (!releaseCatchUp.settled()) {
+        releaseCatchUp.resolve();
+      }
+      runtimeDb.close();
+    }
   });
 
   it("falls back to remote messages when IndexedDB has no cached events", async () => {
