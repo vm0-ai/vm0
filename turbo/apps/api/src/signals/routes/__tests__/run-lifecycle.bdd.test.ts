@@ -5124,7 +5124,7 @@ describe("RUN-02: model provider selection and vm0 admission", () => {
     bdd.acceptAgentStorageWrites();
     api.acceptStorageDownloads();
     api.acceptTelemetryIngest();
-    api.configureRunnerGroup();
+    const runnerGroup = api.configureRunnerGroup();
 
     await upsertOrgPlanEntitlementFixture({
       orgId: STAFF_ORG_ID,
@@ -5167,6 +5167,15 @@ describe("RUN-02: model provider selection and vm0 admission", () => {
     expectNoApiDispatchActions(apiDispatchTimingEventsForRun(run.runId), [
       "api_dispatch_check_org_tier",
     ]);
+    await api.heartbeatRunner(runnerGroup);
+    const claim = await api.claimRunnerJob(run.runId);
+    const appendSystemPrompt = claim.appendSystemPrompt ?? "";
+    expect(claim.featureFlags).toMatchObject({
+      [FeatureSwitchKey.ZeroChatMessaging]: true,
+    });
+    expect(appendSystemPrompt).toContain("zero chat send");
+    expect(appendSystemPrompt).toContain("zero chat cancel");
+    expect(appendSystemPrompt).not.toContain("zero chat queued");
     await api.requestCancelRun(actor, run.runId, [200]);
 
     await upsertOrgPlanEntitlementFixture({
@@ -8805,6 +8814,9 @@ describe("RUN-01: zero runner context, queue promotion, and skills", () => {
       expect(appendSystemPrompt).toContain(toolHint);
     }
     expect(appendSystemPrompt).toContain("zero upgrade pro");
+    expect(appendSystemPrompt).not.toContain("zero chat send");
+    expect(appendSystemPrompt).not.toContain("zero chat cancel");
+    expect(appendSystemPrompt).not.toContain("zero chat queued");
     for (const otherIntegrationHint of [
       "zero slack download-file -h",
       "zero github download-file -h",
@@ -8820,6 +8832,7 @@ describe("RUN-01: zero runner context, queue promotion, and skills", () => {
 
     expect(claim.featureFlags).toMatchObject({
       [FeatureSwitchKey.ZeroFinance]: true,
+      [FeatureSwitchKey.ZeroChatMessaging]: false,
       [FeatureSwitchKey.CodexSessionPruning]: false,
       [FeatureSwitchKey.ClaudeSessionPruning]: false,
     });

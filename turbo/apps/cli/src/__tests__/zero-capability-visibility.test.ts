@@ -407,6 +407,32 @@ describe("registerZeroCommands", () => {
     expect(visibleCommandNames(prog)).toContain("whoami");
   });
 
+  it("should show chat when chat-message:read capability is present", () => {
+    const token = buildZeroToken({
+      scope: "zero",
+      capabilities: ["chat-message:read"],
+    });
+    vi.stubEnv("ZERO_TOKEN", token);
+
+    const prog = buildProgram();
+
+    expect(visibleCommandNames(prog)).toContain("chat");
+    expect(visibleCommandNames(prog)).toContain("whoami");
+  });
+
+  it("should show chat when chat-message:write capability is present", () => {
+    const token = buildZeroToken({
+      scope: "zero",
+      capabilities: ["chat-message:write"],
+    });
+    vi.stubEnv("ZERO_TOKEN", token);
+
+    const prog = buildProgram();
+
+    expect(visibleCommandNames(prog)).toContain("chat");
+    expect(visibleCommandNames(prog)).toContain("whoami");
+  });
+
   it("should show telegram when telegram:read capability is present", () => {
     const token = buildZeroToken({
       scope: "zero",
