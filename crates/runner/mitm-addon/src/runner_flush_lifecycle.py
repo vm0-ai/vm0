@@ -14,7 +14,7 @@ from mitmproxy import ctx
 import logging_utils
 import usage
 
-_UsageFlushPhase = Literal["running", "draining", "closed"]
+_RunnerFlushPhase = Literal["running", "draining", "closed"]
 
 # Runner-triggered flush protocols:
 # - Rust writes `usage-flush-request` with the active usageStateId and a fresh
@@ -38,7 +38,7 @@ _usage_flush_requested: bool = False
 _usage_flush_signal_lock = threading.Lock()
 # Running workers own requests under the lock. During shutdown, drain_and_close()
 # changes the phase before waiting for that lock and becomes the sole draining owner.
-_usage_flush_phase: _UsageFlushPhase = "running"
+_runner_flush_phase: _RunnerFlushPhase = "running"
 _jsonl_flush_state_write_lock = threading.Lock()
 _jsonl_flush_worker_lock = threading.Lock()
 _jsonl_flush_stop = threading.Event()
@@ -60,7 +60,7 @@ def handle_runner_usage_flush_signal(signum: int, _frame: object) -> None:
     global _usage_flush_requested
 
     del signum
-    if _usage_flush_phase == "closed":
+    if _runner_flush_phase == "closed":
         return
     _usage_flush_requested = True
     _start_usage_flush_worker()
@@ -85,14 +85,14 @@ def wait_for_runner_usage_flush_worker_to_stop_for_tests(timeout: float = 1.0) -
 
 
 def reset_runner_usage_flush_state_for_tests(timeout: float = 1.0) -> None:
-    global _last_jsonl_flush_request_id, _usage_flush_phase, _usage_flush_requested
+    global _last_jsonl_flush_request_id, _runner_flush_phase, _usage_flush_requested
 
     _stop_runner_jsonl_flush_worker()
     acquired = _usage_flush_signal_lock.acquire(timeout=timeout)
     if not acquired:
         raise AssertionError("runner usage flush worker did not stop")
     try:
-        _usage_flush_phase = "running"
+        _runner_flush_phase = "running"
         _usage_flush_requested = False
         _last_jsonl_flush_request_id = None
     finally:
@@ -104,7 +104,7 @@ def start_runner_jsonl_flush_worker() -> None:
     global _jsonl_flush_worker
 
     with _jsonl_flush_worker_lock:
-        if _usage_flush_phase != "running":
+        if _runner_flush_phase != "running":
             return
         if _jsonl_flush_worker is not None and _jsonl_flush_worker.is_alive():
             return
@@ -151,11 +151,11 @@ def _stop_runner_jsonl_flush_worker() -> None:
 
 def _start_usage_flush_worker() -> None:
     """Start one flush worker, coalescing repeated signals while active."""
-    if _usage_flush_phase != "running":
+    if _runner_flush_phase != "running":
         return
     if not _usage_flush_signal_lock.acquire(blocking=False):
         return
-    if _usage_flush_phase != "running":
+    if _runner_flush_phase != "running":
         _usage_flush_signal_lock.release()
         return
 
@@ -302,9 +302,9 @@ def _write_jsonl_flush_state(
 
 def drain_and_close() -> None:
     """Drain accepted runner flush requests and close further admission."""
-    global _usage_flush_phase
+    global _runner_flush_phase
 
-    _usage_flush_phase = "draining"
+    _runner_flush_phase = "draining"
     try:
         with _usage_flush_signal_lock:
             try:
@@ -313,7 +313,7 @@ def drain_and_close() -> None:
             finally:
                 # Close request admission while still owning the lock, then consume
                 # any request recorded immediately before this cutoff.
-                _usage_flush_phase = "closed"
+                _runner_flush_phase = "closed"
                 _drain_runner_usage_flush_requests()
     finally:
         _stop_runner_jsonl_flush_worker()

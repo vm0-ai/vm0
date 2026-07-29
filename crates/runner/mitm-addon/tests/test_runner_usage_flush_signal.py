@@ -97,7 +97,7 @@ def _run_signal_while_legacy_request_flag_lock_is_held(tmp_path: str) -> None:
             "_usage_flush_requested",
             legacy_request_flag,
         ),
-        patch.object(runner_flush_lifecycle, "_usage_flush_phase", "draining"),
+        patch.object(runner_flush_lifecycle, "_runner_flush_phase", "draining"),
     ):
         signal.signal(
             runner_flush_lifecycle.RUNNER_USAGE_FLUSH_SIGNAL,
