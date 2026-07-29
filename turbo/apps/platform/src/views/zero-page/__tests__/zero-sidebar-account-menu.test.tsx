@@ -10,7 +10,6 @@ import {
   zeroPersonalModelProvidersMainContract,
 } from "@vm0/api-contracts/contracts/zero-personal-model-providers";
 import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
-import { toast } from "@vm0/ui/components/ui/sonner";
 
 import {
   click,
@@ -929,7 +928,6 @@ describe("zero sidebar account menu", () => {
   });
 
   it("redirects without a toast when the fresh-token request remains unauthorized", async () => {
-    const toastError = vi.spyOn(toast, "error");
     mockAdminAccountSidebar();
     context.mocks.data.personalModelProviders([
       connectedPersonalCodexProvider(),
@@ -967,8 +965,7 @@ describe("zero sidebar account menu", () => {
       expect(modelProviderRequests).toBe(2);
       expect(mockedClerk.redirectToSignIn).toHaveBeenCalledWith();
     });
-    expect(toastError).not.toHaveBeenCalledWith("Unauthorized");
-    toastError.mockRestore();
+    expect(screen.queryByText("Unauthorized")).not.toBeInTheDocument();
   });
 
   it("suppresses global sign-in redirects during add-account auth transitions", async () => {

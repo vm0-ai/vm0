@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { HttpResponse } from "msw";
 import {
   addClientCapabilityToVersion,
   CLIENT_CAPABILITY_PT_BR_LOCALE,
@@ -6,7 +7,11 @@ import {
 } from "@vm0/api-contracts/contracts/client-headers";
 import { zeroUserConnectorsContract } from "@vm0/api-contracts/contracts/user-connectors";
 
-import { clearMockedAuth, mockUser } from "../../__tests__/mock-auth.ts";
+import {
+  clearMockedAuth,
+  mockedClerk,
+  mockUser,
+} from "../../__tests__/mock-auth.ts";
 import { accept } from "../../lib/accept.ts";
 import { zeroClient$ } from "../api-client.ts";
 import { fetch$ } from "../fetch.ts";
@@ -14,6 +19,7 @@ import {
   forceUpgradeDialogOpen$,
   listenForceUpgradeDialog$,
 } from "../force-upgrade.ts";
+import { setRootSignal$ } from "../root-signal.ts";
 import { testContext } from "./test-helpers.ts";
 
 const context = testContext();
@@ -146,6 +152,83 @@ describe("api client headers", () => {
     expect(first.requestId).toMatch(UUID_REGEX);
     expect(second.requestId).toMatch(UUID_REGEX);
     expect(second.requestId).not.toBe(first.requestId);
+  });
+
+  it("retries fetch$ auth recovery network failures without redirecting", async () => {
+    mockSignedInUser();
+    context.store.set(setRootSignal$, context.signal);
+    let requests = 0;
+    let forcedTokenRefreshes = 0;
+    context.mocks.http.get("*/api/zero/auth-recovery-test", () => {
+      requests += 1;
+      if (requests === 1) {
+        return HttpResponse.json(
+          {
+            error: {
+              code: "UNAUTHORIZED",
+              message: "Unauthorized",
+            },
+          },
+          { status: 401 },
+        );
+      }
+      if (requests === 2) {
+        return HttpResponse.error();
+      }
+      return HttpResponse.json({ recovered: true });
+    });
+    mockedClerk.sessionGetToken.mockImplementation((options) => {
+      if (options?.skipCache) {
+        forcedTokenRefreshes += 1;
+        if (forcedTokenRefreshes === 1) {
+          return Promise.reject(
+            Object.assign(new Error("Clerk is offline"), {
+              code: "clerk_offline",
+            }),
+          );
+        }
+        if (forcedTokenRefreshes === 2) {
+          return Promise.reject(new TypeError("Failed to fetch"));
+        }
+        return Promise.resolve("fresh-token");
+      }
+      return Promise.resolve("test-token");
+    });
+
+    const response = await getFetchForTest()("/api/zero/auth-recovery-test");
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toStrictEqual({ recovered: true });
+    expect(requests).toBe(3);
+    expect(forcedTokenRefreshes).toBe(3);
+    expect(mockedClerk.redirectToSignIn).not.toHaveBeenCalled();
+  });
+
+  it("redirects fetch$ when the fresh-token replay remains unauthorized", async () => {
+    mockSignedInUser();
+    context.store.set(setRootSignal$, context.signal);
+    let requests = 0;
+    context.mocks.http.get("*/api/zero/auth-recovery-test", () => {
+      requests += 1;
+      return HttpResponse.json(
+        {
+          error: {
+            code: "UNAUTHORIZED",
+            message: "Unauthorized",
+          },
+        },
+        { status: 401 },
+      );
+    });
+    mockedClerk.sessionGetToken.mockImplementation((options) => {
+      return Promise.resolve(options?.skipCache ? "fresh-token" : "test-token");
+    });
+
+    const response = await getFetchForTest()("/api/zero/auth-recovery-test");
+
+    expect(response.status).toBe(401);
+    expect(requests).toBe(2);
+    expect(mockedClerk.redirectToSignIn).toHaveBeenCalledWith();
   });
 
   it("forwards the captured omby preview bypass to vm6 API requests", async () => {
