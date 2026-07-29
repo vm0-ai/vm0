@@ -939,6 +939,7 @@
     "cardTitle": "Cloud browser",
     "close": "Close live browser",
     "documentTitle": "Live browser",
+    "fitWindow": "Fit browser to window",
     "iframeTitle": "Live browser: {{name}}",
     "invalidLink": "Invalid browser link",
     "open": "Open {{name}} browser",
