@@ -2875,6 +2875,27 @@ ruleTester.run("prefer-drizzle-apis source-local analysis", preferDrizzleApis, {
       ],
     },
     {
+      name: "scalar query remains maximal in an optional predicate argument",
+      code: `${drizzlePreamble}
+        import { and, eq, max, sql } from "drizzle-orm";
+        import { alias } from "drizzle-orm/pg-core";
+        const boundaryEvent = alias(users, "boundary_event");
+        const boundary = sql\`COALESCE((
+          SELECT \${max(boundaryEvent.id)}
+          FROM \${boundaryEvent}
+          WHERE \${and(
+            eq(boundaryEvent.name, users.name),
+            eq(boundaryEvent.id, users.id),
+          )}
+        ), 0)\`;
+        db
+          .select()
+          .from(users)
+          .where(and(sql\`boundary_matches(\${boundary})\`, eq(users.id, 1)));
+      `,
+      errors: [{ messageId: "structuredScalarQuery" }],
+    },
+    {
       name: "unsupported scalar shape still exposes supported descendants",
       code: `${drizzlePreamble}
         import { sql } from "drizzle-orm";
