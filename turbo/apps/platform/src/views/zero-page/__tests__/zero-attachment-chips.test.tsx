@@ -784,7 +784,7 @@ describe("zero attachment chips", () => {
     ).toBeTruthy();
   });
 
-  it("renders a canonical Slack input as a file reference", async () => {
+  it("renders a canonical Slack input with the standard attachment UI", async () => {
     const assetId = "a0000000-0000-4000-a000-000000000051";
     mockChatLifecycle(context, {
       threadId: THREAD_ID,
@@ -819,7 +819,7 @@ describe("zero attachment chips", () => {
     detachedSetupPage({ context, path: `/chats/${THREAD_ID}` });
 
     await expect(
-      screen.findByLabelText("Download source-notes.md"),
+      screen.findByLabelText("Open markdown preview for source-notes.md"),
     ).resolves.toBeInTheDocument();
     expect(
       screen.getByLabelText("Open original message in Slack"),
@@ -919,7 +919,7 @@ describe("zero attachment chips", () => {
     ).resolves.toBeInTheDocument();
   });
 
-  it("elevates user images and renders videos as canonical file references", async () => {
+  it("renders canonical user video attachments at the same size as image attachments", async () => {
     const imageUrl = "https://cdn.vm7.io/artifacts/test/media/photo.png";
     const videoUrl = "https://cdn.vm7.io/artifacts/test/media/screencast.mp4";
     mockChatLifecycle(context, {
@@ -953,6 +953,7 @@ describe("zero attachment chips", () => {
     detachedSetupPage({ context, path: `/chats/${THREAD_ID}` });
 
     const imagePreview = await screen.findByLabelText("Preview photo.png");
+    const videoPreview = screen.getByLabelText("Preview screencast.mp4");
 
     const inlineMediaPreviewSizeClasses = [
       "aspect-[10/9]",
@@ -961,20 +962,30 @@ describe("zero attachment chips", () => {
     ];
 
     expect(imagePreview).toHaveClass(...inlineMediaPreviewSizeClasses);
+    expect(videoPreview).toHaveClass(...inlineMediaPreviewSizeClasses);
+    expect(videoPreview).toHaveClass("cursor-pointer", "bg-black");
     expect(
-      screen.getByLabelText("Download screencast.mp4"),
-    ).toBeInTheDocument();
-    expect(screen.queryByLabelText("Preview screencast.mp4")).toBeNull();
+      within(videoPreview).getByTestId("chat-video-preview-poster"),
+    ).toHaveClass("h-full", "w-full");
+    expect(
+      within(videoPreview).getByTestId("chat-video-preview-poster"),
+    ).toBeEmptyDOMElement();
+    expect(videoPreview).not.toHaveClass("w-[min(100%,400px)]");
     expect(screen.getByText("this is the screencast")).toBeInTheDocument();
   });
 
-  it("renders persisted audio, video, and document inputs as canonical file references", async () => {
+  it("opens persisted canonical audio, video, and document attachments", async () => {
     const audioUrl =
       "https://cdn.vm7.io/artifacts/test/attachment-audio/briefing.mp3";
     const videoUrl =
       "https://cdn.vm7.io/artifacts/test/attachment-video/demo.mp4";
     const jsonUrl =
       "https://cdn.vm7.io/artifacts/test/attachment-json/status.json";
+    context.mocks.http.get(jsonUrl, () => {
+      return new Response(JSON.stringify({ status: "ready" }), {
+        headers: { "Content-Type": "application/json" },
+      });
+    });
     mockChatLifecycle(context, {
       threadId: THREAD_ID,
       chatMessages: [
@@ -1015,20 +1026,71 @@ describe("zero attachment chips", () => {
     await waitFor(() => {
       expect(screen.getByText("Review these attachments")).toBeInTheDocument();
       expect(
-        screen.getByLabelText("Download briefing.mp3"),
+        screen.getByLabelText("Open audio preview for briefing.mp3"),
       ).toBeInTheDocument();
-      expect(screen.getByLabelText("Download demo.mp4")).toBeInTheDocument();
-      expect(screen.getByLabelText("Download status.json")).toBeInTheDocument();
+      expect(screen.getByLabelText("Preview demo.mp4")).toBeInTheDocument();
+      expect(
+        screen.getByLabelText("Open json preview for status.json"),
+      ).toBeInTheDocument();
+    });
+
+    click(screen.getByLabelText("Open audio preview for briefing.mp3"));
+
+    await waitFor(() => {
+      expect(screen.getByTestId("artifact-dialog-audio")).toBeInTheDocument();
+    });
+
+    click(screen.getByLabelText("Close"));
+
+    await waitFor(() => {
+      expect(
+        screen.queryByTestId("attachment-lightbox"),
+      ).not.toBeInTheDocument();
+    });
+
+    click(screen.getByLabelText("Preview demo.mp4"));
+
+    await waitFor(() => {
+      expect(
+        screen.getByLabelText("Video preview for demo.mp4"),
+      ).toBeInTheDocument();
+    });
+
+    click(screen.getByLabelText("Open in split view"));
+
+    await waitFor(() => {
+      expect(screen.getByTestId("artifact-sidebar")).toBeInTheDocument();
+      expect(
+        screen.getByTestId("artifact-sidebar-body-video"),
+      ).toBeInTheDocument();
+    });
+
+    click(screen.getByLabelText("Close artifact"));
+
+    await waitFor(() => {
+      expect(screen.queryByTestId("artifact-sidebar")).not.toBeInTheDocument();
+    });
+
+    click(screen.getByLabelText("Open json preview for status.json"));
+
+    await waitFor(() => {
+      expect(screen.getByTestId("attachment-lightbox")).toBeInTheDocument();
+      expect(screen.getByText(/"status": "ready"/u)).toBeInTheDocument();
     });
   });
 
-  it("renders persisted document inputs as canonical file references", async () => {
+  it("opens persisted canonical csv, pdf, and html document previews", async () => {
     const csvUrl =
       "https://cdn.vm7.io/artifacts/test/attachment-csv/launch-metrics.csv";
     const pdfUrl =
       "https://cdn.vm7.io/artifacts/test/attachment-pdf/launch-plan.pdf";
     const htmlUrl =
       "https://cdn.vm7.io/artifacts/test/attachment-html/launch-site.html";
+    context.mocks.http.get(csvUrl, () => {
+      return new Response("metric,value\nsignups,42\nactivation,87", {
+        headers: { "Content-Type": "text/csv" },
+      });
+    });
     mockChatLifecycle(context, {
       threadId: THREAD_ID,
       chatMessages: [
@@ -1071,13 +1133,61 @@ describe("zero attachment chips", () => {
         screen.getByText("Review these document previews"),
       ).toBeInTheDocument();
       expect(
-        screen.getByLabelText("Download launch-metrics.csv"),
+        screen.getByLabelText("Open csv preview for launch-metrics.csv"),
       ).toBeInTheDocument();
       expect(
-        screen.getByLabelText("Download launch-plan.pdf"),
+        screen.getByLabelText("Open pdf preview for launch-plan.pdf"),
       ).toBeInTheDocument();
       expect(
-        screen.getByLabelText("Download launch-site.html"),
+        screen.getByLabelText("Open html preview for launch-site.html"),
+      ).toBeInTheDocument();
+    });
+
+    click(screen.getByLabelText("Open csv preview for launch-metrics.csv"));
+
+    await waitFor(() => {
+      expect(screen.getByTestId("attachment-lightbox")).toBeInTheDocument();
+      expect(screen.getByText("metric")).toBeInTheDocument();
+      expect(screen.getByText("activation")).toBeInTheDocument();
+    });
+
+    click(screen.getByLabelText("Close"));
+
+    await waitFor(() => {
+      expect(
+        screen.queryByTestId("attachment-lightbox"),
+      ).not.toBeInTheDocument();
+    });
+
+    click(screen.getByLabelText("Open pdf preview for launch-plan.pdf"));
+
+    await waitFor(() => {
+      expect(
+        screen.getByTestId("artifact-dialog-document-frame"),
+      ).toBeInTheDocument();
+    });
+    const documentFrame = screen.getByTestId("artifact-dialog-document-frame");
+    const iframe = screen.getByTitle("launch-plan.pdf preview");
+    expect(screen.getByTestId("artifact-dialog-stage")).toHaveClass(
+      "overflow-hidden",
+    );
+    expect(documentFrame).toHaveClass("h-full", "min-h-0");
+    expect(iframe).toHaveAttribute("src", `${pdfUrl}#navpanes=0`);
+    expect(iframe).toHaveClass("h-full", "min-h-0", "border-0");
+
+    click(screen.getByLabelText("Close"));
+
+    await waitFor(() => {
+      expect(
+        screen.queryByTestId("attachment-lightbox"),
+      ).not.toBeInTheDocument();
+    });
+
+    click(screen.getByLabelText("Open html preview for launch-site.html"));
+
+    await waitFor(() => {
+      expect(
+        screen.getByTestId("artifact-dialog-body-html"),
       ).toBeInTheDocument();
     });
   });
@@ -2152,13 +2262,24 @@ describe("zero attachment chips", () => {
     expect(screen.queryByAltText("1280x720")).toBeNull();
   });
 
-  it("renders text inputs as canonical file references and reports download failures", async () => {
+  it("opens canonical markdown and text previews, shares a document link, and reports download failures", async () => {
     const releaseNotesUrl =
       "https://cdn.vm7.io/artifacts/test/attachment-markdown/release-notes.md";
     const transcriptUrl =
       "https://cdn.vm7.io/artifacts/test/attachment-text/transcript.txt";
     const archiveUrl =
       "https://cdn.vm7.io/artifacts/test/attachment-file/archive.bin";
+    context.mocks.browser.clipboardWriteText();
+    context.mocks.http.get(releaseNotesUrl, () => {
+      return new Response("# Release notes\n\nThe rollout is ready.", {
+        headers: { "Content-Type": "text/markdown" },
+      });
+    });
+    context.mocks.http.get(transcriptUrl, () => {
+      return new Response("Meeting transcript\nDecision: ship", {
+        headers: { "Content-Type": "text/plain" },
+      });
+    });
     context.mocks.http.get(archiveUrl, () => {
       return new Response(null, { status: 500 });
     });
@@ -2204,12 +2325,52 @@ describe("zero attachment chips", () => {
         screen.getByText("Review these text attachments"),
       ).toBeInTheDocument();
       expect(
-        screen.getByLabelText("Download release-notes.md"),
+        screen.getByLabelText("Open markdown preview for release-notes.md"),
       ).toBeInTheDocument();
       expect(
-        screen.getByLabelText("Download transcript.txt"),
+        screen.getByLabelText("Open text preview for transcript.txt"),
       ).toBeInTheDocument();
       expect(screen.getByLabelText("Download archive.bin")).toBeInTheDocument();
+    });
+
+    click(screen.getByLabelText("Open markdown preview for release-notes.md"));
+
+    await waitFor(() => {
+      expect(screen.getByTestId("attachment-lightbox")).toBeInTheDocument();
+      expect(screen.getByText("The rollout is ready.")).toBeInTheDocument();
+    });
+
+    const shareLink = screen.getByLabelText("Share");
+    expect(shareLink.tagName).toBe("A");
+    expect(shareLink).toHaveAttribute("href", releaseNotesUrl);
+
+    click(shareLink);
+
+    await waitFor(() => {
+      expect(screen.getByText("Link copied")).toBeInTheDocument();
+    });
+
+    click(screen.getByLabelText("Close"));
+
+    await waitFor(() => {
+      expect(
+        screen.queryByTestId("attachment-lightbox"),
+      ).not.toBeInTheDocument();
+    });
+
+    click(screen.getByLabelText("Open text preview for transcript.txt"));
+
+    await waitFor(() => {
+      expect(screen.getByTestId("attachment-lightbox")).toBeInTheDocument();
+      expect(screen.getByText(/Decision: ship/u)).toBeInTheDocument();
+    });
+
+    click(screen.getByLabelText("Close"));
+
+    await waitFor(() => {
+      expect(
+        screen.queryByTestId("attachment-lightbox"),
+      ).not.toBeInTheDocument();
     });
 
     click(screen.getByLabelText("Download archive.bin"));

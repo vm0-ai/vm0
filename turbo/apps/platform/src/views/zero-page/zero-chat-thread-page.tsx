@@ -5821,6 +5821,8 @@ function UserMessageFileReference({
   part: Extract<UserMessagePart, { type: "file" }>;
   attachment: ResolvedAttachFile | undefined;
 }) {
+  const openVideoLightbox = useSet(openAttachmentVideoLightbox$);
+
   if (
     attachment?.assetRef &&
     attachment.assetRef.materialization.status !== "ready"
@@ -5828,15 +5830,62 @@ function UserMessageFileReference({
     return <AttachmentMaterializationState attachment={attachment} />;
   }
   if (attachment) {
-    return (
-      <span className="inline-flex align-middle">
+    const kind = classifyChatAttachment({
+      filename: part.filenameSnapshot,
+      url: attachment.url,
+      contentType: part.contentType,
+    });
+    let reference: ReactNode;
+    if (kind === "video") {
+      reference = (
+        <ChatVideoPreviewButton
+          ariaLabel={`Preview ${part.filenameSnapshot}`}
+          buttonClassName={CHAT_INLINE_VIDEO_ATTACHMENT_PREVIEW_CLASS}
+          filename={part.filenameSnapshot}
+          onPreview={() => {
+            openVideoLightbox({
+              url: attachment.url,
+              filename: part.filenameSnapshot,
+            });
+          }}
+          posterClassName="h-full w-full"
+          url={attachment.url}
+          videoClassName="h-full w-full object-contain"
+        />
+      );
+    } else if (
+      kind === "markdown" ||
+      kind === "text" ||
+      kind === "json" ||
+      kind === "csv" ||
+      kind === "pdf" ||
+      kind === "html"
+    ) {
+      reference = (
+        <PreviewableFileAttachmentChip
+          filename={part.filenameSnapshot}
+          url={attachment.url}
+          kind={kind}
+        />
+      );
+    } else if (kind === "audio") {
+      reference = (
+        <PreviewableAudioAttachmentChip
+          filename={part.filenameSnapshot}
+          url={attachment.url}
+          contentType={part.contentType}
+        />
+      );
+    } else {
+      reference = (
         <FileAttachmentChip
           contentType={part.contentType}
           filename={part.filenameSnapshot}
           url={attachment.url}
         />
-      </span>
-    );
+      );
+    }
+    return <span className="inline-flex align-middle">{reference}</span>;
   }
   return (
     <span
