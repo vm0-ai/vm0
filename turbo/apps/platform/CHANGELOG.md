@@ -1,5 +1,33 @@
 # Changelog
 
+## [0.655.0](https://github.com/vm0-ai/vm0/compare/app-v0.654.0...app-v0.655.0) (2026-07-29)
+
+
+### Features
+
+* **connectors:** route cloudflare oauth through the app callback ([#23739](https://github.com/vm0-ai/vm0/issues/23739)) ([8fc2316](https://github.com/vm0-ai/vm0/commit/8fc23165b7b813b7c1227f724d7975197baab1ae))
+* **connectors:** route xero oauth through the app callback ([#23783](https://github.com/vm0-ai/vm0/issues/23783)) ([8d77aff](https://github.com/vm0-ai/vm0/commit/8d77aff9c4626b0bd73fdb5f92ebd02978a33a0e))
+* **platform:** localize activity and runtime inspection ([#23715](https://github.com/vm0-ai/vm0/issues/23715)) ([20129c9](https://github.com/vm0-ai/vm0/commit/20129c9910bc4a16203bc47a30983b1a278b1fa0))
+* **platform:** localize artifacts and previews ([#23718](https://github.com/vm0-ai/vm0/issues/23718)) ([7224648](https://github.com/vm0-ai/vm0/commit/72246485da37399078cc07ea64b937fd32507ace))
+* **platform:** localize connectors and authorization flows ([#23722](https://github.com/vm0-ai/vm0/issues/23722)) ([a215dd8](https://github.com/vm0-ai/vm0/commit/a215dd81b884309e07f81769c5edef05a1c1bc9d))
+* **platform:** localize workflows and automations ([#23723](https://github.com/vm0-ai/vm0/issues/23723)) ([5929844](https://github.com/vm0-ai/vm0/commit/5929844c39acef138b4621713263859c420fa489))
+
+
+### Bug Fixes
+
+* **api:** harden morning brief failure paths ([#23758](https://github.com/vm0-ai/vm0/issues/23758)) ([2769085](https://github.com/vm0-ai/vm0/commit/2769085d188d83c1468a4bda4e447bf107bff92f))
+* **platform:** remove workspace slug setting ([#23733](https://github.com/vm0-ai/vm0/issues/23733)) ([865ad80](https://github.com/vm0-ai/vm0/commit/865ad807f3ebe13cb2db0571cc83495e5b58a3a8))
+* separate cloud browser viewer access from agent authorization ([#23752](https://github.com/vm0-ai/vm0/issues/23752)) ([3f431f7](https://github.com/vm0-ai/vm0/commit/3f431f721fcb7b7137465c2259dfa15792820a83))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.245.0
+    * @vm0/connectors bumped to 1.202.0
+    * @vm0/core bumped to 8.485.1
+
 ## [0.654.0](https://github.com/vm0-ai/vm0/compare/app-v0.653.0...app-v0.654.0) (2026-07-29)
 
 
