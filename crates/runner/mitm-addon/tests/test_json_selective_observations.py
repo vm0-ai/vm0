@@ -1,0 +1,432 @@
+"""Observation contracts for bounded selective JSON extraction."""
+
+import json
+import sys
+from types import FrameType
+
+from usage import json_selective
+from usage.json_selective import JsonSelectiveExtractor, ScalarField
+
+_COMMON_SCALAR_FIELDS = {
+    ("id",): ScalarField("string"),
+    ("model",): ScalarField("string"),
+    ("usage", "input_tokens"): ScalarField("int"),
+    ("usage", "output_tokens"): ScalarField("int"),
+    ("meta", "result_count"): ScalarField("int"),
+    ("meta", "total_tweet_count"): ScalarField("int"),
+}
+_COMMON_ARRAY_COUNT_PATHS = {("data",), ("errors",)}
+_COMMON_WILDCARD_ARRAY_COUNT_PATHS = {("includes", "*")}
+_COMMON_OBJECT_PRESENCE_PATHS = {(), ("data",)}
+
+
+def _get_path(data: object, path: tuple[str, ...]) -> tuple[object, bool]:
+    cur = data
+    for key in path:
+        if not isinstance(cur, dict) or key not in cur:
+            return None, False
+        cur = cur[key]
+    return cur, True
+
+
+def _expected_common_extraction(data: object):
+    values = {}
+    for path, field in _COMMON_SCALAR_FIELDS.items():
+        value, found = _get_path(data, path)
+        if not found:
+            continue
+        if (field.kind == "string" and isinstance(value, str)) or (
+            field.kind == "int" and isinstance(value, int) and not isinstance(value, bool)
+        ):
+            values[path] = value
+
+    array_counts = {}
+    for path in _COMMON_ARRAY_COUNT_PATHS:
+        value, found = _get_path(data, path)
+        if found and isinstance(value, list):
+            array_counts[path] = len(value)
+
+    wildcard_array_counts = {}
+    includes = data.get("includes") if isinstance(data, dict) else None
+    if isinstance(includes, dict):
+        counts = {
+            key: len(value)
+            for key, value in includes.items()
+            if isinstance(key, str)
+            and isinstance(value, list)
+            and not key.startswith("\0__vm0_json_")
+        }
+        if counts:
+            wildcard_array_counts[("includes", "*")] = counts
+
+    object_present = set()
+    if isinstance(data, dict):
+        object_present.add(())
+        if isinstance(data.get("data"), dict):
+            object_present.add(("data",))
+
+    return values, array_counts, wildcard_array_counts, object_present
+
+
+def _common_extractor() -> JsonSelectiveExtractor:
+    return JsonSelectiveExtractor(
+        scalar_fields=_COMMON_SCALAR_FIELDS,
+        array_count_paths=_COMMON_ARRAY_COUNT_PATHS,
+        wildcard_array_count_paths=_COMMON_WILDCARD_ARRAY_COUNT_PATHS,
+        object_presence_paths=_COMMON_OBJECT_PRESENCE_PATHS,
+    )
+
+
+def test_diagnostic_scalar_can_observe_completed_value_in_incomplete_json():
+    extractor = JsonSelectiveExtractor(scalar_fields={("type",): ScalarField("string")})
+
+    extractor.feed(b'{"type":"message_start","message":{"id":"msg_1","mod')
+    result = extractor.finish()
+
+    assert result.complete is False
+    assert result.values == {}
+    assert extractor.observed_scalar_for_diagnostics(("type",)) == "message_start"
+
+
+def test_diagnostic_scalar_does_not_return_stale_duplicate_value():
+    extractor = JsonSelectiveExtractor(scalar_fields={("type",): ScalarField("string")})
+
+    extractor.feed(b'{"type":"message_start","type":"message_delta')
+    result = extractor.finish()
+
+    assert result.complete is False
+    assert result.values == {}
+    assert extractor.observed_scalar_for_diagnostics(("type",)) is None
+
+
+def test_common_extraction_matches_json_loads_across_chunk_sizes():
+    payloads = [
+        (
+            b'{"id":"msg_1","model":"claude\\n\\u2603",'
+            b'"content":[{"text":"ignored"}],'
+            b'"usage":{"input_tokens":10,"output_tokens":5},'
+            b'"data":[{"id":"1"},{"id":"2"}],"errors":[{"title":"bad"}],'
+            b'"includes":{"users":[{"id":"u1"},{"id":"u2"}],"tweets":[{"id":"t1"}]},'
+            b'"meta":{"result_count":3}}'
+        ),
+        (
+            b'{"id":"msg_2","data":{"id":"1"},'
+            b'"usage":{"input_tokens":0,"output_tokens":7},'
+            b'"meta":{"total_tweet_count":9}}'
+        ),
+    ]
+
+    for payload in payloads:
+        expected = _expected_common_extraction(json.loads(payload))
+        for chunk_size in (1, 2, 3, 5, 8, 13):
+            extractor = _common_extractor()
+            for idx in range(0, len(payload), chunk_size):
+                extractor.feed(payload[idx : idx + chunk_size])
+            result = extractor.finish()
+
+            assert result.complete is True
+            assert (
+                result.values,
+                result.array_counts,
+                result.wildcard_array_counts,
+                result.object_present,
+            ) == expected
+
+
+def test_extracts_selected_scalars_across_chunks():
+    extractor = JsonSelectiveExtractor(
+        scalar_fields={
+            ("model",): ScalarField("string"),
+            ("usage", "input_tokens"): ScalarField("int"),
+        }
+    )
+
+    extractor.feed(b'{"mo')
+    extractor.feed(b'del":"claude","usage":{"input_')
+    extractor.feed(b'tokens":42}}')
+    result = extractor.finish()
+
+    assert result.complete is True
+    assert result.values == {
+        ("model",): "claude",
+        ("usage", "input_tokens"): 42,
+    }
+
+
+def test_counts_arrays_and_wildcard_child_arrays():
+    extractor = JsonSelectiveExtractor(
+        array_count_paths={("data",), ("errors",)},
+        wildcard_array_count_paths={("includes", "*")},
+    )
+
+    extractor.feed(
+        b'{"data":[{"id":"1"},{"id":"2"}],'
+        b'"errors":[{"title":"bad"}],'
+        b'"includes":{"users":[{"id":"u1"}],"tweets":[{"id":"t1"},{"id":"t2"}]}}'
+    )
+    result = extractor.finish()
+
+    assert result.complete is True
+    assert result.array_counts == {("data",): 2, ("errors",): 1}
+    assert result.wildcard_array_counts == {("includes", "*"): {"users": 1, "tweets": 2}}
+
+
+def test_counts_all_matching_wildcard_patterns():
+    extractor = JsonSelectiveExtractor(
+        wildcard_array_count_paths={("a", "*"), ("*", "b")},
+    )
+
+    extractor.feed(b'{"a":{"b":[{"id":"1"},{"id":"2"}]}}')
+    result = extractor.finish()
+
+    assert result.complete is True
+    assert result.wildcard_array_counts == {
+        ("a", "*"): {"b": 2},
+        ("*", "b"): {"a": 2},
+    }
+
+
+def test_wildcard_pattern_collects_keys_after_wildcard_segment():
+    extractor = JsonSelectiveExtractor(wildcard_array_count_paths={("*", "items")})
+
+    extractor.feed(b'{"a":{"items":[1,2]},"b":{"items":[3]}}')
+    result = extractor.finish()
+
+    assert result.complete is True
+    assert result.wildcard_array_counts == {("*", "items"): {"a": 2, "b": 1}}
+
+
+def test_mixed_paths_match_collection_prefixes_once_per_object_across_chunks():
+    generic_match_calls = 0
+    generic_match_code = json_selective._matches_any_path_pattern.__code__
+
+    # Profile the public parser operation so the real matcher stays in place
+    # while calls provide a deterministic performance contract.
+    def count_generic_match_calls(frame: FrameType, event: str, _arg: object) -> None:
+        nonlocal generic_match_calls
+        if event == "call" and frame.f_code is generic_match_code:
+            generic_match_calls += 1
+
+    extractor = JsonSelectiveExtractor(
+        scalar_fields={("usage", "input_tokens"): ScalarField("int")},
+        wildcard_array_count_paths={("*", "items")},
+    )
+    chunks = (
+        b'{"alpha":{"empty":{},"noise":{"deep":1},"first":0,',
+        b'"second":0,"items":[1,2]},"usage":{"input_',
+        b'tokens":7}}',
+    )
+
+    previous_profile = sys.getprofile()
+    sys.setprofile(count_generic_match_calls)
+    try:
+        for chunk in chunks:
+            extractor.feed(chunk)
+    finally:
+        sys.setprofile(previous_profile)
+    result = extractor.finish()
+
+    assert result.complete is True
+    assert result.values == {("usage", "input_tokens"): 7}
+    assert result.wildcard_array_counts == {("*", "items"): {"alpha": 2}}
+    # The wildcard prefix is checked at most once for "alpha" and once for its
+    # unselected "noise" object, never for the empty object or every key.
+    assert generic_match_calls <= 2
+
+
+def test_leading_wildcard_does_not_match_array_element_marker():
+    extractor = JsonSelectiveExtractor(wildcard_array_count_paths={("*", "items")})
+
+    extractor.feed(b'[{"items":[1,2]}]')
+    result = extractor.finish()
+
+    assert result.complete is True
+    assert result.wildcard_array_counts == {}
+
+
+def test_counts_empty_arrays_as_zero():
+    extractor = JsonSelectiveExtractor(array_count_paths={("data",), ("errors",)})
+
+    extractor.feed(b'{"data":[],"errors":[]}')
+    result = extractor.finish()
+
+    assert result.complete is True
+    assert result.array_counts == {("data",): 0, ("errors",): 0}
+
+
+def test_array_element_object_does_not_record_parent_object_presence():
+    extractor = JsonSelectiveExtractor(
+        array_count_paths={("data",)},
+        object_presence_paths={(), ("data",)},
+    )
+
+    extractor.feed(b'{"data":[{"id":"1"}]}')
+    result = extractor.finish()
+
+    assert result.complete is True
+    assert result.array_counts == {("data",): 1}
+    assert result.object_present == {()}
+
+
+def test_array_element_object_fields_do_not_match_object_paths():
+    extractor = JsonSelectiveExtractor(
+        scalar_fields={
+            ("model",): ScalarField("string"),
+            ("usage", "input_tokens"): ScalarField("int"),
+        },
+        wildcard_array_count_paths={("includes", "*")},
+    )
+
+    extractor.feed(
+        b'[{"model":"claude","usage":{"input_tokens":7},"includes":{"users":[{"id":"u1"}]}}]'
+    )
+    result = extractor.finish()
+
+    assert result.complete is True
+    assert result.values == {}
+    assert result.wildcard_array_counts == {}
+
+
+def test_array_value_fields_do_not_match_object_paths():
+    extractor = JsonSelectiveExtractor(
+        scalar_fields={
+            ("model",): ScalarField("string"),
+            ("usage", "input_tokens"): ScalarField("int"),
+        }
+    )
+
+    extractor.feed(b'{"model":"claude","usage":[{"input_tokens":7}]}')
+    result = extractor.finish()
+
+    assert result.complete is True
+    assert result.values == {("model",): "claude"}
+
+
+def test_root_array_object_does_not_record_root_object_presence():
+    extractor = JsonSelectiveExtractor(object_presence_paths={()})
+
+    extractor.feed(b'[{"id":"1"}]')
+    result = extractor.finish()
+
+    assert result.complete is True
+    assert result.object_present == set()
+
+
+def test_duplicate_scalar_parent_uses_last_value():
+    extractor = JsonSelectiveExtractor(
+        scalar_fields={("usage", "input_tokens"): ScalarField("int")}
+    )
+
+    extractor.feed(b'{"usage":{"input_tokens":7},"usage":{}}')
+    result = extractor.finish()
+
+    assert result.complete is True
+    assert result.values == {}
+
+
+def test_duplicate_array_path_uses_last_value_kind():
+    extractor = JsonSelectiveExtractor(
+        array_count_paths={("data",)},
+        object_presence_paths={("data",)},
+    )
+
+    extractor.feed(b'{"data":[{"id":"1"},{"id":"2"}],"data":{"id":"3"}}')
+    result = extractor.finish()
+
+    assert result.complete is True
+    assert result.array_counts == {}
+    assert result.object_present == {("data",)}
+
+
+def test_duplicate_object_path_replaced_by_array_clears_presence():
+    extractor = JsonSelectiveExtractor(
+        array_count_paths={("data",)},
+        object_presence_paths={("data",)},
+    )
+
+    extractor.feed(b'{"data":{"id":"1"},"data":[]}')
+    result = extractor.finish()
+
+    assert result.complete is True
+    assert result.array_counts == {("data",): 0}
+    assert result.object_present == set()
+
+
+def test_duplicate_wildcard_parent_clears_previous_counts():
+    extractor = JsonSelectiveExtractor(wildcard_array_count_paths={("includes", "*")})
+
+    extractor.feed(b'{"includes":{"users":[{"id":"1"},{"id":"2"}]},"includes":{}}')
+    result = extractor.finish()
+
+    assert result.complete is True
+    assert result.wildcard_array_counts == {}
+
+
+def test_duplicate_wildcard_child_uses_last_array_count():
+    extractor = JsonSelectiveExtractor(wildcard_array_count_paths={("includes", "*")})
+
+    extractor.feed(b'{"includes":{"users":[{"id":"1"},{"id":"2"}],"users":[]}}')
+    result = extractor.finish()
+
+    assert result.complete is True
+    assert result.wildcard_array_counts == {("includes", "*"): {"users": 0}}
+
+
+def test_duplicate_wildcard_prefix_keeps_unrelated_keys():
+    extractor = JsonSelectiveExtractor(wildcard_array_count_paths={("*", "items")})
+
+    extractor.feed(b'{"a":{"items":[1,2]},"b":{"items":[3]},"b":{}}')
+    result = extractor.finish()
+
+    assert result.complete is True
+    assert result.wildcard_array_counts == {("*", "items"): {"a": 2}}
+
+
+def test_records_object_presence():
+    extractor = JsonSelectiveExtractor(object_presence_paths={("data",)})
+
+    extractor.feed(b'{"data":{"id":"1"}}')
+    result = extractor.finish()
+
+    assert result.complete is True
+    assert result.object_present == {("data",)}
+
+
+def test_rejects_excessive_depth():
+    extractor = JsonSelectiveExtractor(max_depth=2)
+
+    extractor.feed(b'{"a":{"b":{"c":1}}}')
+    result = extractor.finish()
+
+    assert result.complete is False
+    assert result.error == "max depth exceeded"
+
+
+def test_default_depth_allows_deep_unselected_subtree():
+    extractor = JsonSelectiveExtractor(
+        scalar_fields={("usage", "input_tokens"): ScalarField("int")}
+    )
+    depth = 80
+
+    extractor.feed(b'{"content":')
+    extractor.feed(b'{"x":' * depth)
+    extractor.feed(b"0")
+    extractor.feed(b"}" * depth)
+    extractor.feed(b',"usage":{"input_tokens":7}}')
+    result = extractor.finish()
+
+    assert result.complete is True
+    assert result.values == {("usage", "input_tokens"): 7}
+
+
+def test_rejects_too_many_wildcard_keys():
+    extractor = JsonSelectiveExtractor(
+        wildcard_array_count_paths={("includes", "*")},
+        max_wildcard_keys=1,
+    )
+
+    extractor.feed(b'{"includes":{"users":[],"tweets":[]}}')
+    result = extractor.finish()
+
+    assert result.complete is False
+    assert result.error == "max wildcard keys exceeded"

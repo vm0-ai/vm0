@@ -2,7 +2,7 @@ use std::collections::HashMap;
 use std::fs;
 use std::io::Write;
 use std::os::unix::fs::{OpenOptionsExt, PermissionsExt};
-use std::process::Command;
+use std::process::{Command, Stdio};
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -488,20 +488,21 @@ fn agent_start_command_reports_non_file_agent_on_stderr() {
 
 #[test]
 fn agent_start_command_keeps_agent_stderr_merged_into_stdout() {
-    let dir = tempfile::tempdir().unwrap();
-    let agent_path = dir.path().join("guest-agent");
-    fs::write(
-        &agent_path,
-        "#!/bin/sh\nprintf 'agent stdout\\n'\nprintf 'agent stderr\\n' >&2\n",
-    )
-    .unwrap();
-    fs::set_permissions(&agent_path, fs::Permissions::from_mode(0o755)).unwrap();
-
-    let output = Command::new("sh")
+    let mut child = Command::new("sh")
         .arg("-c")
-        .arg(build_agent_start_command(agent_path.to_str().unwrap()))
-        .output()
+        .arg(build_agent_start_command("/bin/sh"))
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
         .unwrap();
+    child
+        .stdin
+        .take()
+        .unwrap()
+        .write_all(b"printf 'agent stdout\\n'\nprintf 'agent stderr\\n' >&2\n")
+        .unwrap();
+    let output = child.wait_with_output().unwrap();
 
     assert_eq!(output.status.code(), Some(0));
     assert_eq!(

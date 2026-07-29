@@ -13,6 +13,8 @@ import {
   SelectValue,
   cn,
 } from "@vm0/ui";
+import { useTranslation } from "react-i18next";
+import { formatAppNumber } from "../../i18n/format.ts";
 
 const ROWS_PER_PAGE_OPTIONS = [10, 20, 50, 100] as const;
 
@@ -34,6 +36,55 @@ interface PaginationProps {
   onRowsPerPageChange: (limit: number) => void;
 }
 
+function RowsPerPageSelect({
+  rowsPerPage,
+  labelClassName,
+  onRowsPerPageChange,
+}: Pick<
+  PaginationProps,
+  "rowsPerPage" | "labelClassName" | "onRowsPerPageChange"
+>) {
+  const { t } = useTranslation();
+  const label = t(($) => {
+    return $.activity.pagination.rowsPerPage;
+  });
+
+  return (
+    <div className="flex items-center gap-2">
+      <span
+        className={cn(
+          "pr-2 text-sm font-medium text-foreground whitespace-nowrap",
+          labelClassName,
+        )}
+      >
+        {label}
+      </span>
+      <Select
+        value={String(rowsPerPage)}
+        onValueChange={(value) => {
+          onRowsPerPageChange(Number.parseInt(value, 10));
+        }}
+      >
+        <SelectTrigger
+          aria-label={label}
+          className="zero-btn-morandi h-8 w-[72px]"
+        >
+          <SelectValue />
+        </SelectTrigger>
+        <SelectContent>
+          {ROWS_PER_PAGE_OPTIONS.map((option) => {
+            return (
+              <SelectItem key={option} value={String(option)}>
+                {formatAppNumber(option)}
+              </SelectItem>
+            );
+          })}
+        </SelectContent>
+      </Select>
+    </div>
+  );
+}
+
 export function Pagination({
   currentPage,
   totalPages,
@@ -49,46 +100,19 @@ export function Pagination({
   onBackTwoPages,
   onRowsPerPageChange,
 }: PaginationProps) {
+  const { t } = useTranslation();
   const canGoBackTwo = currentPage > 1;
-
-  const handleRowsPerPageChange = (value: string) => {
-    const limit = Number.parseInt(value, 10);
-    onRowsPerPageChange(limit);
-  };
+  const formattedCurrentPage = formatAppNumber(currentPage);
+  const formattedTotalPages =
+    totalPages === undefined ? undefined : formatAppNumber(totalPages);
 
   return (
     <div className="flex flex-wrap items-center justify-end gap-4 sm:gap-8">
-      {/* Rows per page selector */}
-      <div className="flex items-center gap-2">
-        <span
-          className={cn(
-            "pr-2 text-sm font-medium text-foreground whitespace-nowrap",
-            labelClassName,
-          )}
-        >
-          Rows per page
-        </span>
-        <Select
-          value={String(rowsPerPage)}
-          onValueChange={handleRowsPerPageChange}
-        >
-          <SelectTrigger
-            aria-label="Rows per page"
-            className="zero-btn-morandi h-8 w-[72px]"
-          >
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            {ROWS_PER_PAGE_OPTIONS.map((option) => {
-              return (
-                <SelectItem key={option} value={String(option)}>
-                  {option}
-                </SelectItem>
-              );
-            })}
-          </SelectContent>
-        </Select>
-      </div>
+      <RowsPerPageSelect
+        rowsPerPage={rowsPerPage}
+        labelClassName={labelClassName}
+        onRowsPerPageChange={onRowsPerPageChange}
+      />
 
       {/* Page indicator */}
       <span
@@ -97,15 +121,31 @@ export function Pagination({
           labelClassName,
         )}
       >
-        Page {currentPage}
-        {totalPages !== undefined ? ` of ${totalPages}` : ""}
+        {formattedTotalPages === undefined
+          ? t(
+              ($) => {
+                return $.activity.pagination.page;
+              },
+              { current: formattedCurrentPage },
+            )
+          : t(
+              ($) => {
+                return $.activity.pagination.pageOf;
+              },
+              {
+                current: formattedCurrentPage,
+                total: formattedTotalPages,
+              },
+            )}
       </span>
 
       {/* Navigation buttons */}
       <div className="flex items-center gap-2">
         {/* Back two pages */}
         <Button
-          aria-label="Back 2 pages"
+          aria-label={t(($) => {
+            return $.activity.pagination.backTwo;
+          })}
           variant="outline"
           size="icon"
           className={cn("h-8 w-8 bg-card", buttonClassName)}
@@ -116,7 +156,9 @@ export function Pagination({
         </Button>
         {/* Previous page */}
         <Button
-          aria-label="Previous page"
+          aria-label={t(($) => {
+            return $.activity.pagination.previous;
+          })}
           variant="outline"
           size="icon"
           className={cn("h-8 w-8 bg-card", buttonClassName)}
@@ -127,7 +169,9 @@ export function Pagination({
         </Button>
         {/* Next page */}
         <Button
-          aria-label="Next page"
+          aria-label={t(($) => {
+            return $.activity.pagination.next;
+          })}
           variant="outline"
           size="icon"
           className={cn("h-8 w-8 bg-card", buttonClassName)}
@@ -138,7 +182,9 @@ export function Pagination({
         </Button>
         {/* Forward two pages */}
         <Button
-          aria-label="Forward 2 pages"
+          aria-label={t(($) => {
+            return $.activity.pagination.forwardTwo;
+          })}
           variant="outline"
           size="icon"
           className={cn("h-8 w-8 bg-card", buttonClassName)}
