@@ -857,7 +857,7 @@ async fn execute_cli_inner(
     // a tool_result, kill the process. Keyed by tool_use_id to handle
     // parallel tool calls correctly.
     // See: https://github.com/anthropics/claude-code/issues/11650
-    let mut stuck_tool_tracker: HashMap<String, (String, Instant)> = HashMap::new();
+    let mut stuck_tool_tracker: HashMap<String, (String, tokio::time::Instant)> = HashMap::new();
     let mut stuck_tool_check = if behavior.uses_claude_tool_watchdog() {
         let stuck_tool_interval = Duration::from_secs(constants::STUCK_TOOL_CHECK_INTERVAL_SECS);
         Some(tokio::time::interval_at(
