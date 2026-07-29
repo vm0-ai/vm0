@@ -32,7 +32,7 @@ const goalQueueEventParamsSchema = z.object({
   callbackSecret: z.string().min(1),
 });
 
-export interface GoalQueueEventParams {
+interface GoalQueueEventParams {
   readonly goalId: string;
   readonly callbackSecret: string;
 }
