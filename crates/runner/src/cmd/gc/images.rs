@@ -93,10 +93,6 @@ async fn try_delete_orphan_rootfs(
 
 fn template_warm_hash(name: &str) -> Option<&str> {
     name.strip_prefix(TEMPLATE_WARM_DIR_PREFIX)
-        .or_else(|| {
-            name.strip_prefix("template-")
-                .and_then(|rest| rest.strip_suffix(".warm.tmp"))
-        })
         .filter(|hash| !hash.is_empty())
 }
 
